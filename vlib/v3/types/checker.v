@@ -4790,7 +4790,7 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	if field_cases.known && field_cases.cases.len == 0 {
 		return
 	}
-	tc.check_comptime_static_body(body_id, parts[0], field_cases)
+	tc.check_comptime_static_body(body_id, parts[0], parts[1], field_cases)
 }
 
 fn (mut tc TypeChecker) check_comptime_members(id flat.NodeId, var_name string, members []string, meta_name string) {
@@ -4884,14 +4884,14 @@ fn comptime_cond_name_char(ch u8) bool {
 	return ch.is_letter() || ch.is_digit() || ch == `_`
 }
 
-fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name string, field_cases ComptimeStaticFieldCases) {
+fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases) {
 	if !tc.valid_node_id(id) {
 		return
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .block {
 		for i in 0 .. node.children_count {
-			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, field_cases)
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases)
 		}
 		return
 	}
@@ -4900,18 +4900,18 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	}
 	if node.kind == .if_expr {
 		for i in 0 .. node.children_count {
-			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, field_cases)
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases)
 		}
 		return
 	}
 	if node.kind in [.expr_stmt, .return_stmt] {
 		for i in 0 .. node.children_count {
-			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, field_cases)
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases)
 		}
 		return
 	}
 	if node.kind == .comptime_if && comptime_text_references_var(node.value, var_name) {
-		tc.check_comptime_static_metadata_if(node, var_name, field_cases)
+		tc.check_comptime_static_metadata_if(node, var_name, loop_kind, field_cases)
 		return
 	}
 	if !tc.comptime_subtree_references_var(id, var_name) {
@@ -4919,15 +4919,15 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		return
 	}
 	if node.kind == .call {
-		tc.check_comptime_static_call(id, node, var_name, field_cases)
+		tc.check_comptime_static_call(id, node, var_name, loop_kind, field_cases)
 		return
 	}
 }
 
-fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, field_cases ComptimeStaticFieldCases) {
+fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases) {
 	if !field_cases.known {
 		for i in 0 .. node.children_count {
-			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, field_cases)
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases)
 		}
 		return
 	}
@@ -4952,10 +4952,10 @@ fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_na
 		}
 	}
 	if check_then && node.children_count > 0 {
-		tc.check_comptime_static_body(tc.a.child(&node, 0), var_name, field_cases)
+		tc.check_comptime_static_body(tc.a.child(&node, 0), var_name, loop_kind, field_cases)
 	}
 	if check_else && node.children_count > 1 {
-		tc.check_comptime_static_body(tc.a.child(&node, 1), var_name, field_cases)
+		tc.check_comptime_static_body(tc.a.child(&node, 1), var_name, loop_kind, field_cases)
 	}
 }
 
@@ -4981,17 +4981,17 @@ fn (tc &TypeChecker) comptime_subtree_references_var(id flat.NodeId, var_name st
 	return false
 }
 
-fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Node, var_name string, field_cases ComptimeStaticFieldCases) {
+fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases) {
 	if node.children_count == 0 {
 		return
 	}
 	callee_id := tc.a.child(&node, 0)
 	if tc.comptime_subtree_references_var(callee_id, var_name) {
-		tc.check_comptime_static_call_args(node, var_name, field_cases)
+		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases)
 		return
 	}
 	if _ := tc.sum_constructor_call_name(node) {
-		tc.check_comptime_static_call_args(node, var_name, field_cases)
+		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases)
 		return
 	}
 	if info0 := tc.resolve_call_info(id, node) {
@@ -5002,8 +5002,8 @@ fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Nod
 		if info.return_type !is Void && info.return_type !is Unknown {
 			tc.remember_expr_type(id, info.return_type)
 		}
-		tc.check_comptime_static_call_metadata_arg_types(id, node, info, var_name)
-		tc.check_comptime_static_call_args(node, var_name, field_cases)
+		tc.check_comptime_static_call_metadata_arg_types(id, node, info, var_name, loop_kind)
+		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases)
 		return
 	}
 	if tc.is_unsupported_hex_call(node) {
@@ -5020,10 +5020,10 @@ fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Nod
 	if tc.should_diagnose(id) && !tc.is_known_call(node) {
 		tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
 	}
-	tc.check_comptime_static_call_args(node, var_name, field_cases)
+	tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases)
 }
 
-fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.NodeId, node flat.Node, info CallInfo, var_name string) {
+fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.NodeId, node flat.Node, info CallInfo, var_name string, loop_kind string) {
 	if !info.params_known {
 		return
 	}
@@ -5053,7 +5053,7 @@ fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.No
 			continue
 		}
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
-		actual := tc.comptime_static_metadata_expr_type(arg_id, var_name) or { continue }
+		actual := tc.comptime_static_metadata_expr_type(arg_id, var_name, loop_kind) or { continue }
 		expected := tc.call_arg_expected_type(info, param_idx)
 		if !tc.receiver_compatible(actual, expected) && !tc.type_compatible(actual, expected) {
 			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
@@ -5063,27 +5063,43 @@ fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.No
 	}
 }
 
-fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name string) ?Type {
+fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name string, loop_kind string) ?Type {
 	if !tc.valid_node_id(id) {
 		return none
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .paren && node.children_count > 0 {
-		return tc.comptime_static_metadata_expr_type(tc.a.child(&node, 0), var_name)
+		return tc.comptime_static_metadata_expr_type(tc.a.child(&node, 0), var_name, loop_kind)
 	}
 	if node.kind == .ident && node.value == var_name {
-		return tc.parse_type('FieldData')
+		return tc.parse_type(if loop_kind == 'values' { 'EnumData' } else { 'FieldData' })
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.a.child_node(&node, 0)
 		if base.kind == .ident && base.value == var_name {
-			return tc.comptime_static_metadata_member_type(node.value)
+			return tc.comptime_static_metadata_member_type(node.value, loop_kind)
 		}
 	}
 	return none
 }
 
-fn (tc &TypeChecker) comptime_static_metadata_member_type(member string) ?Type {
+fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_kind string) ?Type {
+	if loop_kind == 'values' {
+		return match member {
+			'name' {
+				tc.parse_type('string')
+			}
+			'value' {
+				tc.parse_type('i64')
+			}
+			'attrs' {
+				tc.parse_type('[]string')
+			}
+			else {
+				none
+			}
+		}
+	}
 	return match member {
 		'name' {
 			tc.parse_type('string')
@@ -5107,9 +5123,9 @@ fn (tc &TypeChecker) comptime_static_metadata_member_type(member string) ?Type {
 	}
 }
 
-fn (mut tc TypeChecker) check_comptime_static_call_args(node flat.Node, var_name string, field_cases ComptimeStaticFieldCases) {
+fn (mut tc TypeChecker) check_comptime_static_call_args(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases) {
 	for i in 1 .. node.children_count {
-		tc.check_comptime_static_body(tc.call_arg_value(tc.a.child(&node, i)), var_name,
+		tc.check_comptime_static_body(tc.call_arg_value(tc.a.child(&node, i)), var_name, loop_kind,
 			field_cases)
 	}
 }

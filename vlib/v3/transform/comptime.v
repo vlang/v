@@ -1112,7 +1112,7 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 		if node.value == '$' && node.children_count >= 2
 			&& t.dollar_selector_names_var(t.a.child(&node, 1), var_name) {
 			receiver := t.clone_field_subst(t.a.child(&node, 0), var_name, fm) or { return none }
-			return t.make_selector(receiver, fm.name, fm.typ)
+			return t.make_selector(receiver, fm.name, fm.comptime_typ)
 		}
 	}
 	// `$if`/`$else $if` referencing the loop variable: evaluate now, keep the taken branch.

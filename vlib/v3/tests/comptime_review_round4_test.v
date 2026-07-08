@@ -565,6 +565,89 @@ fn main() {
 	assert out == 'items'
 }
 
+fn test_enum_value_metadata_call_arguments_use_enumdata_types() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_value_metadata_call_args', "enum Color {
+	red = 7
+}
+
+fn use_enum(item EnumData) string {
+	return item.name
+}
+
+fn use_i64(value i64) string {
+	return value.str()
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in Color.values {
+		rows << use_enum(item) + ':' + use_i64(item.value)
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'red:7'
+}
+
+fn test_enum_value_metadata_value_arg_is_checked() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_enum_value_metadata_arg_type', 'enum Color {
+	red
+}
+
+fn takes_string(value string) {}
+
+fn main() {
+	$for item in Color.values {
+		takes_string(item.value)
+	}
+}
+',
+		'cannot use `i64` as argument 1 to `takes_string`; expected `string`')
+}
+
+fn test_cross_module_dynamic_field_selector_uses_qualified_type() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'cross_module_dynamic_field_selector_type', {
+		'v.mod':     "Module { name: 'cross_module_dynamic_field_selector_type' }\n"
+		'pkg/pkg.v': 'module pkg
+
+pub struct Child {
+pub:
+	value int
+}
+
+pub fn (c Child) str() string {
+	return "child:" + c.value.str()
+}
+
+pub struct Outer {
+pub:
+	child Child
+}
+'
+		'main.v':    'module main
+
+import pkg
+
+fn main() {
+	outer := pkg.Outer{
+		child: pkg.Child{
+			value: 9
+		}
+	}
+	mut rows := []string{}
+	$for field in pkg.Outer.fields {
+		rows << outer.$(field.name).str()
+	}
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'child:9'
+}
+
 fn test_comptime_for_body_checks_static_code() {
 	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_static_code_in_comptime_for', 'struct S {
