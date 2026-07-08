@@ -573,6 +573,57 @@ fn main() {
 		'unknown function `missing_type_guard_fn`')
 }
 
+fn test_comptime_for_static_check_skips_untaken_metadata_if_branch() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'untaken_metadata_if_static_code', 'struct S {
+	id int
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field is string {
+			missing_type_branch_fn()
+		} $else {
+			rows << field.name
+		}
+		$if field.name == "missing" {
+			missing_name_branch_fn()
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'id'
+}
+
+fn test_nested_comptime_for_uses_substituted_field_type_source() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'nested_comptime_for_field_type_source', 'struct Inner {
+	count int
+	label string
+}
+
+struct Outer {
+	id int
+	nested Inner
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in Outer.fields {
+		$if field is $struct {
+			$for sub in field.typ.fields {
+				rows << field.name + "." + sub.name
+			}
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'nested.count|nested.label'
+}
+
 fn test_nested_comptime_for_shadowed_loop_variables() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'shadowed_comptime_for', "struct A {

@@ -1131,11 +1131,21 @@ fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name strin
 		op:             node.op
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            t.clone_field_subst_type_text(node, var_name, fm)
 		is_mut:         node.is_mut
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
+}
+
+fn (t &Transformer) clone_field_subst_type_text(node flat.Node, var_name string, fm FieldMeta) string {
+	if node.kind != .comptime_for {
+		return node.typ
+	}
+	mut typ := node.typ
+	typ = typ.replace('${var_name}.unaliased_typ', fm.comptime_unaliased)
+	typ = typ.replace('${var_name}.typ', fm.comptime_typ)
+	return comptime_cond_replace_bare_ident(typ, var_name, fm.comptime_typ)
 }
 
 // field_member_value replaces `<var>.member` with its concrete compile-time value. Returns none
