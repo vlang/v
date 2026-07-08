@@ -1,0 +1,7 @@
+vlib/v/checker/tests/match_interface_unknown_type_err.vv:9:3: error: unknown type `Nil`
+    7 | fn (v Value) get_str() string {
+    8 |     return match v {
+    9 |         Nil {
+      |         ~~~
+   10 |             ''
+   11 |         }

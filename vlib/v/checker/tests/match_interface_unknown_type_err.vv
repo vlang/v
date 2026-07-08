@@ -1,0 +1,23 @@
+interface Value {}
+
+struct Holder {
+	val Value
+}
+
+fn (v Value) get_str() string {
+	return match v {
+		Nil {
+			''
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn main() {
+	s := Holder{
+		val: 42
+	}
+	println(s.val.get_str())
+}
