@@ -46,12 +46,23 @@ jobs:
           where.exe cl.exe
           where.exe link.exe
           where.exe dumpbin.exe
+          $headers = @($env:INCLUDE -split ';' | Where-Object { $_ -and $_.Trim().Length -gt 0 } | ForEach-Object { Join-Path $_ 'd3d11.h' } | Where-Object { Test-Path $_ })
+          if ($headers.Count -eq 0) {
+            throw 'd3d11.h not found in INCLUDE; Windows SDK is not visible to the D3D11 multiwindow lane'
+          }
+          Write-Host "Found d3d11.h at $($headers[0])"
       - name: Build
         run: |
           echo %VFLAGS%
           echo $VFLAGS
           .\makev.bat -msvc
           .\v.exe symlink
+      - name: Legacy gg import multiwindow isolation
+        run: v -cc msvc test vlib/gg/legacy_import_multiwindow_isolation_test.v
+      - name: Multiwindow D3D11 smoke
+        run: v -cc msvc -d gg_multiwindow -d sokol_d3d11 test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v
+      - name: Compile gg multiwindow example with D3D11
+        run: v -cc msvc -d gg_multiwindow -d sokol_d3d11 -o "$env:TEMP\gg_multiwindow.exe" examples/gg/multiwindow.v
       - name: backend x64 regressions
         if: ${{ false }} # Temporarily disabled.
         run: |
