@@ -1447,6 +1447,7 @@ fn (mut t Transformer) generated_fn_used_names(decl GenericFnDecl, clone_id flat
 	qname := transform_qualified_fn_name(decl.module, clone.value)
 	mut names := [clone.value, qname, c_name(clone.value), c_name(qname)]
 	names << specialized_generic_fn_signature_aliases(decl, args)
+	t.record_generic_specialization_args_for_names(names, args)
 	old_module := t.cur_module
 	old_file := t.cur_file
 	t.cur_module = decl.module
@@ -3001,6 +3002,11 @@ fn (mut t Transformer) specialized_plain_generic_call_args(node flat.Node, decl 
 		return none
 	}
 	params := t.generic_fn_param_names(decl.node, decl.module)
+	if recorded := t.recorded_generic_specialization_args(callee.value) {
+		if recorded.len == params.len {
+			return recorded.clone()
+		}
+	}
 	if params.len != 1 {
 		return none
 	}
@@ -5676,6 +5682,18 @@ fn (mut t Transformer) record_generic_specialization_args_in_module(base string,
 	}
 }
 
+fn (mut t Transformer) record_generic_specialization_args_for_names(names []string, args []string) {
+	if args.len == 0 || t.generic_args_have_placeholders(args) {
+		return
+	}
+	recorded_args := t.canonical_generic_specialization_args(args)
+	for name in names {
+		if name.len > 0 && name !in t.generic_specialization_args {
+			t.generic_specialization_args[name] = recorded_args.clone()
+		}
+	}
+}
+
 fn (t &Transformer) canonical_generic_specialization_args(args []string) []string {
 	mut out := []string{cap: args.len}
 	for arg in args {
@@ -5936,6 +5954,12 @@ fn generic_type_arg_from_suffix(suffix string) string {
 	clean := suffix.trim_space()
 	if clean.len == 0 {
 		return ''
+	}
+	if clean.starts_with('ptr_') {
+		inner := generic_type_arg_from_suffix(clean['ptr_'.len..])
+		if inner.len > 0 {
+			return '&${inner}'
+		}
 	}
 	return match clean {
 		'v_int' { 'int' }

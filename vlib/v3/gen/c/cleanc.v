@@ -7872,6 +7872,9 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
 	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
 	g.writeln('#else')
+	g.writeln('#if defined(__TINYC__) && defined(__x86_64__) && !defined(_WIN32)')
+	g.writeln('extern void __atomic_thread_fence(int order);')
+	g.writeln('#endif')
 	g.writeln('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	g.writeln('#endif')
 	// Weak fallbacks for the heap-tracking hooks. A program that provides real
