@@ -74,3 +74,17 @@ q = "2"
 	toml_json := to.json(toml_doc)
 	assert toml_json == '{ "a": [ { "n": "x", "b": [ { "p": "1", "c": { "q": "2" } } ] } ] }'
 }
+
+fn test_nested_array_of_tables_with_numeric_dashed_key_child_subtable() {
+	toml_doc := toml.parse_text('[[a]]
+n = "x"
+[[a.1-2]]
+p = "1"
+# comment
+[a.1-2.c]
+q = "2"
+')!
+
+	toml_json := to.json(toml_doc)
+	assert toml_json == '{ "a": [ { "n": "x", "1-2": [ { "p": "1", "c": { "q": "2" } } ] } ] }'
+}
