@@ -995,7 +995,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 								c.mark_as_referenced(mut &branch.exprs[k], true)
 							}
 						}
-					} else if expr_type_sym.kind == .placeholder {
+					} else if expr_type_sym.kind == .placeholder && expr_type_sym.language != .c {
 						c.error('unknown type `${expr_type_sym.name}`', expr_pos)
 					}
 				} else if is_cond_match_sumtype {
