@@ -4732,17 +4732,18 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	if parts.len != 2 || parts[0].len == 0 || node.children_count == 0 {
 		return
 	}
+	body_id := tc.a.child(&node, 0)
 	match parts[1] {
 		'fields' {
-			tc.check_comptime_members(tc.a.child(&node, 0), parts[0], comptime_field_members,
-				'FieldData')
+			tc.check_comptime_members(body_id, parts[0], comptime_field_members, 'FieldData')
 		}
 		'values' {
-			tc.check_comptime_members(tc.a.child(&node, 0), parts[0], comptime_enum_value_members,
-				'EnumData')
+			tc.check_comptime_members(body_id, parts[0], comptime_enum_value_members, 'EnumData')
 		}
 		else {}
 	}
+
+	tc.check_comptime_static_body(body_id, parts[0])
 }
 
 fn (mut tc TypeChecker) check_comptime_members(id flat.NodeId, var_name string, members []string, meta_name string) {
@@ -4832,6 +4833,83 @@ fn comptime_cond_skip_string(cond string, start int) int {
 
 fn comptime_cond_name_char(ch u8) bool {
 	return ch.is_letter() || ch.is_digit() || ch == `_`
+}
+
+fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name string) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .block {
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name)
+		}
+		return
+	}
+	if node.kind == .comptime_for && comptime_for_declares_var_in_value(node.value, var_name) {
+		tc.check_comptime_for_members(id, node)
+		return
+	}
+	if node.kind == .if_expr {
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name)
+		}
+		return
+	}
+	if node.kind == .comptime_if && comptime_text_references_member(node.value, var_name) {
+		return
+	}
+	if !tc.comptime_subtree_references_var(id, var_name) {
+		tc.check_node(id)
+		return
+	}
+}
+
+fn (tc &TypeChecker) comptime_subtree_references_var(id flat.NodeId, var_name string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .comptime_for && comptime_for_declares_var_in_value(node.value, var_name) {
+		return false
+	}
+	if node.kind == .ident && node.value == var_name {
+		return true
+	}
+	if node.kind == .comptime_if && comptime_text_references_member(node.value, var_name) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if tc.comptime_subtree_references_var(tc.a.child(&node, i), var_name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn comptime_text_references_member(cond string, var_name string) bool {
+	prefix := '${var_name}.'
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			offset = comptime_cond_skip_string(cond, offset)
+			continue
+		}
+		if offset + prefix.len > cond.len || cond[offset..offset + prefix.len] != prefix {
+			offset++
+			continue
+		}
+		if offset > 0 && comptime_cond_name_char(cond[offset - 1]) {
+			offset++
+			continue
+		}
+		member_start := offset + prefix.len
+		if member_start < cond.len && comptime_cond_name_char(cond[member_start]) {
+			return true
+		}
+		offset = member_start
+	}
+	return false
 }
 
 // check_node validates check node state for types.

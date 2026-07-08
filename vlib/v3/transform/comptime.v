@@ -76,7 +76,24 @@ fn comptime_for_declares_var(node flat.Node, var_name string) bool {
 // comptime_for_base_type resolves the loop source type to a concrete name. Generic `T` was already
 // substituted to the concrete type in `node.typ` during monomorphization.
 fn (t &Transformer) comptime_for_base_type(raw string) string {
-	return t.comptime_normalize_type_alias_chain(raw.trim_space())
+	return t.comptime_normalize_type_alias_chain(t.comptime_resolve_selective_import_type(raw))
+}
+
+fn (t &Transformer) comptime_resolve_selective_import_type(raw string) string {
+	clean := raw.trim_space()
+	if clean.len == 0 || clean.contains('.') || isnil(t.tc) || t.cur_file.len == 0 {
+		return clean
+	}
+	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
+		[]string{}
+	} {
+		if candidate in t.tc.type_aliases || candidate in t.tc.structs
+			|| candidate in t.tc.interface_names || candidate in t.tc.flag_enums
+			|| candidate in t.tc.enum_names || candidate in t.tc.sum_types {
+			return candidate
+		}
+	}
+	return clean
 }
 
 fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {

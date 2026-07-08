@@ -195,6 +195,47 @@ fn main() {
 	assert out == 'value:red|value:blue|field:id'
 }
 
+fn test_comptime_for_selective_import_alias_source_unrolls() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'selective_comptime_for_alias_chain', {
+		'v.mod':           "Module { name: 'selective_comptime_for_alias_chain' }\n"
+		'colors/colors.v': 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+
+pub type Shade = Color
+pub type Tint = Shade
+
+pub struct S {
+pub:
+	id int
+}
+
+pub type StructAlias = S
+pub type StructTint = StructAlias
+'
+		'main.v':          'module main
+
+import colors { StructTint, Tint }
+
+fn main() {
+	mut rows := []string{}
+	$for item in Tint.values {
+		rows << "value:" + item.name
+	}
+	$for field in StructTint.fields {
+		rows << "field:" + field.name
+	}
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'value:red|value:blue|field:id'
+}
+
 fn test_non_generic_call_matching_generic_short_name_does_not_skip_comptime_for() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'generic_short_name_false_positive', {
@@ -235,6 +276,38 @@ fn main() {
 "
 	}, 'main.v')
 	assert out == 'id:ok'
+}
+
+fn test_comptime_for_body_checks_static_code() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_static_code_in_comptime_for', 'struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		missing_fn()
+	}
+}
+',
+		'unknown function `missing_fn`')
+}
+
+fn test_comptime_for_body_checks_static_code_in_regular_if_branch() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_static_code_in_comptime_for_if_branch', 'struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		if field.name == "id" {
+			missing_branch_fn()
+		}
+	}
+}
+',
+		'unknown function `missing_branch_fn`')
 }
 
 fn test_nested_comptime_for_shadowed_loop_variables() {
