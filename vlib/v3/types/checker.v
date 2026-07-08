@@ -3,6 +3,33 @@ module types
 import v3.flat
 import v3.gen.c.naming
 
+const comptime_field_members = [
+	'name',
+	'is_option',
+	'is_opt',
+	'is_embed',
+	'is_array',
+	'is_map',
+	'is_chan',
+	'is_struct',
+	'is_enum',
+	'is_alias',
+	'is_shared',
+	'is_atomic',
+	'is_mut',
+	'is_pub',
+	'indirections',
+	'attrs',
+	'typ',
+	'unaliased_typ',
+]
+
+const comptime_enum_value_members = [
+	'name',
+	'value',
+	'attrs',
+]
+
 const export_c_reserved_words = {
 	'auto':     true
 	'break':    true
@@ -3586,6 +3613,11 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			continue
 		}
 		child := tc.a.nodes[int(child_id)]
+		// A `comptime_for` node stores its loop source (`val`, `T`) in `typ`, which is a value
+		// or generic placeholder rather than a declared type; it is validated at unroll time.
+		if child.kind == .comptime_for {
+			continue
+		}
 		tc.check_type_string_for_unsupported_generics(child.typ, child_id, generic_params)
 		if node.kind == .type_decl && child.value.len > 0 {
 			tc.check_type_string_for_unsupported_generics(child.value, child_id, generic_params)
@@ -3596,6 +3628,9 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 				continue
 			}
 			grandchild := tc.a.nodes[int(grandchild_id)]
+			if grandchild.kind == .comptime_for {
+				continue
+			}
 			tc.check_type_string_for_unsupported_generics(grandchild.typ, grandchild_id,
 				generic_params)
 		}
@@ -4692,6 +4727,1255 @@ fn node_kind_id(node flat.Node) int {
 	return kind_id
 }
 
+struct ComptimeStaticFieldCase {
+	name          string
+	typ           string
+	unaliased_typ string
+	is_option     bool
+	is_embed      bool
+	is_array      bool
+	is_map        bool
+	is_chan       bool
+	is_struct     bool
+	is_enum       bool
+	is_alias      bool
+	is_shared     bool
+	is_atomic     bool
+	is_mut        bool
+	is_pub        bool
+	has_decl_meta bool
+	indirections  int
+}
+
+struct ComptimeStaticFieldCases {
+	known bool
+	cases []ComptimeStaticFieldCase
+}
+
+struct ComptimeStaticValueCase {
+	name      string
+	value     int
+	has_value bool
+}
+
+struct ComptimeStaticValueCases {
+	known bool
+	cases []ComptimeStaticValueCase
+}
+
+struct ComptimeStaticFieldDeclMeta {
+	is_mut   bool
+	is_pub   bool
+	is_embed bool
+	raw_typ  string
+}
+
+struct ComptimeStaticFieldTypeFlags {
+mut:
+	is_shared    bool
+	is_atomic    bool
+	indirections int
+}
+
+fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.Node) {
+	parts := node.value.split('|')
+	if parts.len != 2 || parts[0].len == 0 || node.children_count == 0 {
+		return
+	}
+	body_id := tc.a.child(&node, 0)
+	match parts[1] {
+		'fields' {
+			tc.check_comptime_members(body_id, parts[0], comptime_field_members, 'FieldData')
+		}
+		'values' {
+			tc.check_comptime_members(body_id, parts[0], comptime_enum_value_members, 'EnumData')
+		}
+		else {}
+	}
+
+	field_cases := if parts[1] == 'fields' {
+		tc.comptime_static_field_cases(node.typ)
+	} else {
+		ComptimeStaticFieldCases{}
+	}
+	value_cases := if parts[1] == 'values' {
+		tc.comptime_static_enum_value_cases(node.typ)
+	} else {
+		ComptimeStaticValueCases{}
+	}
+	if field_cases.known && field_cases.cases.len == 0 {
+		return
+	}
+	if value_cases.known && value_cases.cases.len == 0 {
+		return
+	}
+	tc.check_comptime_static_body(body_id, parts[0], parts[1], field_cases, value_cases)
+}
+
+fn (mut tc TypeChecker) check_comptime_members(id flat.NodeId, var_name string, members []string, meta_name string) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .comptime_for {
+		tc.check_comptime_for_members(id, node)
+		if comptime_for_declares_var_in_value(node.value, var_name) {
+			return
+		}
+	}
+	if node.kind == .comptime_if {
+		if member := comptime_cond_unknown_member(node.value, var_name, members) {
+			tc.record_error(.unknown_field, 'unknown ${meta_name} member `${member}`', id)
+		}
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base_id := tc.a.child(&node, 0)
+		if tc.valid_node_id(base_id) {
+			base := tc.a.nodes[int(base_id)]
+			if base.kind == .ident && base.value == var_name && node.value !in members {
+				tc.record_error(.unknown_field, 'unknown ${meta_name} member `${node.value}`', id)
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		tc.check_comptime_members(tc.a.child(&node, i), var_name, members, meta_name)
+	}
+}
+
+fn comptime_for_declares_var_in_value(value string, var_name string) bool {
+	if idx := value.index('|') {
+		return value[..idx] == var_name
+	}
+	return value == var_name
+}
+
+fn comptime_cond_unknown_member(cond string, var_name string, members []string) ?string {
+	prefix := '${var_name}.'
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			offset = comptime_cond_skip_string(cond, offset)
+			continue
+		}
+		if offset + prefix.len > cond.len || cond[offset..offset + prefix.len] != prefix {
+			offset++
+			continue
+		}
+		if offset > 0 && comptime_cond_name_char(cond[offset - 1]) {
+			offset++
+			continue
+		}
+		member_start := offset + prefix.len
+		mut member_end := member_start
+		for member_end < cond.len && comptime_cond_name_char(cond[member_end]) {
+			member_end++
+		}
+		if member_end == member_start {
+			offset = member_start
+			continue
+		}
+		member := cond[member_start..member_end]
+		if member !in members {
+			return member
+		}
+		offset = member_end
+	}
+	return none
+}
+
+fn comptime_cond_skip_string(cond string, start int) int {
+	quote := cond[start]
+	mut i := start + 1
+	for i < cond.len {
+		if cond[i] == `\\` {
+			i += 2
+			continue
+		}
+		if cond[i] == quote {
+			return i + 1
+		}
+		i++
+	}
+	return cond.len
+}
+
+fn comptime_cond_name_char(ch u8) bool {
+	return ch.is_letter() || ch.is_digit() || ch == `_`
+}
+
+fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .block {
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
+				value_cases)
+		}
+		return
+	}
+	if node.kind == .comptime_for {
+		return
+	}
+	if node.kind == .if_expr {
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
+				value_cases)
+		}
+		return
+	}
+	if node.kind in [.expr_stmt, .return_stmt] {
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
+				value_cases)
+		}
+		return
+	}
+	if node.kind == .comptime_if && comptime_text_references_var(node.value, var_name) {
+		tc.check_comptime_static_metadata_if(node, var_name, loop_kind, field_cases, value_cases)
+		return
+	}
+	if !tc.comptime_subtree_references_var(id, var_name) {
+		tc.check_node(id)
+		return
+	}
+	if node.kind == .call {
+		tc.check_comptime_static_call(id, node, var_name, loop_kind, field_cases, value_cases)
+		return
+	}
+}
+
+fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
+	if loop_kind == 'values' {
+		tc.check_comptime_static_value_metadata_if(node, var_name, loop_kind, field_cases,
+			value_cases)
+		return
+	}
+	if !field_cases.known {
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
+				value_cases)
+		}
+		return
+	}
+	mut check_then := false
+	mut check_else := false
+	for f in field_cases.cases {
+		cond := tc.comptime_static_subst_field_cond(node.value, var_name, f)
+		if comptime_text_references_var(cond, var_name) {
+			check_then = true
+			check_else = true
+			continue
+		}
+		taken := tc.comptime_static_eval_field_cond(cond) or {
+			check_then = true
+			check_else = true
+			continue
+		}
+		if taken {
+			check_then = true
+		} else {
+			check_else = true
+		}
+	}
+	if check_then && node.children_count > 0 {
+		tc.check_comptime_static_body(tc.a.child(&node, 0), var_name, loop_kind, field_cases,
+			value_cases)
+	}
+	if check_else && node.children_count > 1 {
+		tc.check_comptime_static_body(tc.a.child(&node, 1), var_name, loop_kind, field_cases,
+			value_cases)
+	}
+}
+
+fn (mut tc TypeChecker) check_comptime_static_value_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
+	if !value_cases.known {
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
+				value_cases)
+		}
+		return
+	}
+	mut check_then := false
+	mut check_else := false
+	for item in value_cases.cases {
+		cond := comptime_static_subst_value_cond(node.value, var_name, item)
+		if comptime_text_references_var(cond, var_name) {
+			check_then = true
+			check_else = true
+			continue
+		}
+		taken := tc.comptime_static_eval_field_cond(cond) or {
+			check_then = true
+			check_else = true
+			continue
+		}
+		if taken {
+			check_then = true
+		} else {
+			check_else = true
+		}
+	}
+	if check_then && node.children_count > 0 {
+		tc.check_comptime_static_body(tc.a.child(&node, 0), var_name, loop_kind, field_cases,
+			value_cases)
+	}
+	if check_else && node.children_count > 1 {
+		tc.check_comptime_static_body(tc.a.child(&node, 1), var_name, loop_kind, field_cases,
+			value_cases)
+	}
+}
+
+fn (tc &TypeChecker) comptime_subtree_references_var(id flat.NodeId, var_name string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .comptime_for && comptime_for_declares_var_in_value(node.value, var_name) {
+		return false
+	}
+	if node.kind == .ident && node.value == var_name {
+		return true
+	}
+	if node.kind == .comptime_if && comptime_text_references_var(node.value, var_name) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if tc.comptime_subtree_references_var(tc.a.child(&node, i), var_name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
+	if node.children_count == 0 {
+		return
+	}
+	callee_id := tc.a.child(&node, 0)
+	if tc.comptime_subtree_references_var(callee_id, var_name) {
+		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases, value_cases)
+		return
+	}
+	if _ := tc.sum_constructor_call_name(node) {
+		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases, value_cases)
+		return
+	}
+	if info0 := tc.resolve_call_info(id, node) {
+		info := tc.specialized_plain_generic_call_info(node, info0)
+		if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
+			tc.remember_resolved_call(id, info.name)
+		}
+		if info.return_type !is Void && info.return_type !is Unknown {
+			tc.remember_expr_type(id, info.return_type)
+		}
+		tc.check_comptime_static_call_metadata_arg_types(id, node, info, var_name, loop_kind)
+		tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases, value_cases)
+		return
+	}
+	if tc.is_unsupported_hex_call(node) {
+		if tc.should_diagnose(id) {
+			tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
+		}
+		return
+	}
+	if tc.call_has_ambiguous_selective_import(node) {
+		tc.record_error(.unknown_fn, 'ambiguous selective import `${tc.call_display_name(node)}`',
+			id)
+		return
+	}
+	if tc.should_diagnose(id) && !tc.is_known_call(node) {
+		tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
+	}
+	tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases, value_cases)
+}
+
+fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.NodeId, node flat.Node, info CallInfo, var_name string, loop_kind string) {
+	if !info.params_known {
+		return
+	}
+	mut field_init_args := 0
+	for i in 1 .. node.children_count {
+		if tc.a.child_node(&node, i).kind == .field_init {
+			field_init_args++
+		}
+	}
+	collapsed := if field_init_args > 0 { 1 } else { 0 }
+	recv_extra := if info.has_receiver { 1 } else { 0 }
+	actual_count := node.children_count - 1 - info.arg_offset - field_init_args + collapsed +
+		recv_extra
+	ctx_count := if info.has_implicit_veb_ctx { 1 } else { 0 }
+	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
+	for i in 1 + info.arg_offset .. node.children_count {
+		raw_arg := tc.a.child_node(&node, i)
+		if raw_arg.kind == .field_init {
+			continue
+		}
+		arg_shift := if ctx_omitted { ctx_count } else { 0 }
+		param_idx := i - 1 - info.arg_offset + (if info.has_receiver { 1 } else { 0 }) + arg_shift
+		if info.is_c_variadic && param_idx >= c_variadic_fixed_param_count(info) {
+			continue
+		}
+		if param_idx >= info.params.len {
+			continue
+		}
+		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		actual := tc.comptime_static_metadata_expr_type(arg_id, var_name, loop_kind) or { continue }
+		expected := tc.call_arg_expected_type(info, param_idx)
+		if !tc.receiver_compatible(actual, expected) && !tc.type_compatible(actual, expected) {
+			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
+				param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected.name()}`',
+				id)
+		}
+	}
+}
+
+fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name string, loop_kind string) ?Type {
+	if !tc.valid_node_id(id) {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.comptime_static_metadata_expr_type(tc.a.child(&node, 0), var_name, loop_kind)
+	}
+	if node.kind == .ident && node.value == var_name {
+		return tc.parse_type(if loop_kind == 'values' { 'EnumData' } else { 'FieldData' })
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := tc.a.child_node(&node, 0)
+		if base.kind == .ident && base.value == var_name {
+			return tc.comptime_static_metadata_member_type(node.value, loop_kind)
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_kind string) ?Type {
+	if loop_kind == 'values' {
+		return match member {
+			'name' {
+				tc.parse_type('string')
+			}
+			'value' {
+				tc.parse_type('i64')
+			}
+			'attrs' {
+				tc.parse_type('[]string')
+			}
+			else {
+				none
+			}
+		}
+	}
+	return match member {
+		'name' {
+			tc.parse_type('string')
+		}
+		'typ', 'unaliased_typ' {
+			tc.parse_type('int')
+		}
+		'attrs' {
+			tc.parse_type('[]string')
+		}
+		'indirections' {
+			tc.parse_type('u8')
+		}
+		'is_option', 'is_opt', 'is_embed', 'is_array', 'is_map', 'is_chan', 'is_struct', 'is_enum',
+		'is_alias', 'is_shared', 'is_atomic', 'is_mut', 'is_pub' {
+			tc.parse_type('bool')
+		}
+		else {
+			none
+		}
+	}
+}
+
+fn (mut tc TypeChecker) check_comptime_static_call_args(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
+	for i in 1 .. node.children_count {
+		tc.check_comptime_static_body(tc.call_arg_value(tc.a.child(&node, i)), var_name, loop_kind,
+			field_cases, value_cases)
+	}
+}
+
+fn (mut tc TypeChecker) comptime_static_enum_value_cases(base_type string) ComptimeStaticValueCases {
+	source_type := tc.comptime_static_for_base_type(base_type)
+	enum_name := tc.comptime_static_enum_name(source_type) or { return ComptimeStaticValueCases{} }
+	names := tc.enum_fields[enum_name] or { return ComptimeStaticValueCases{
+		known: true
+	} }
+	metas := tc.comptime_static_enum_decl_value_cases(enum_name)
+	if metas.len > 0 {
+		return ComptimeStaticValueCases{
+			known: true
+			cases: metas
+		}
+	}
+	mut cases := []ComptimeStaticValueCase{cap: names.len}
+	is_flag := enum_name in tc.flag_enums
+	for idx, name in names {
+		cases << ComptimeStaticValueCase{
+			name:      name
+			value:     if is_flag { 1 << idx } else { idx }
+			has_value: true
+		}
+	}
+	return ComptimeStaticValueCases{
+		known: true
+		cases: cases
+	}
+}
+
+fn (tc &TypeChecker) comptime_static_enum_name(raw string) ?string {
+	mut cur := raw.trim_space()
+	mut seen := map[string]bool{}
+	for cur.len > 0 && cur !in seen {
+		seen[cur] = true
+		mut candidates := [cur, tc.qualify_name(cur)]
+		if resolved := tc.resolve_selective_import_type_symbol(cur) {
+			candidates << resolved
+		}
+		for candidate in candidates {
+			if candidate in tc.enum_names {
+				return candidate
+			}
+		}
+		next := tc.alias_target_type_text(cur) or { break }
+		if next == cur {
+			break
+		}
+		cur = next.trim_space()
+	}
+	return none
+}
+
+fn comptime_static_subst_value_cond(cond string, var_name string, item ComptimeStaticValueCase) string {
+	mut c := cond
+	if item.has_value {
+		c = c.replace('${var_name}.value', item.value.str())
+	}
+	c = c.replace('${var_name}.name', "'${item.name}'")
+	c = comptime_static_replace_bare_ident(c, var_name, 'EnumData')
+	return c
+}
+
+fn comptime_text_references_member(cond string, var_name string) bool {
+	prefix := '${var_name}.'
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			offset = comptime_cond_skip_string(cond, offset)
+			continue
+		}
+		if offset + prefix.len > cond.len || cond[offset..offset + prefix.len] != prefix {
+			offset++
+			continue
+		}
+		if offset > 0 && comptime_cond_name_char(cond[offset - 1]) {
+			offset++
+			continue
+		}
+		member_start := offset + prefix.len
+		if member_start < cond.len && comptime_cond_name_char(cond[member_start]) {
+			return true
+		}
+		offset = member_start
+	}
+	return false
+}
+
+fn comptime_text_references_var(cond string, var_name string) bool {
+	if var_name.len == 0 {
+		return false
+	}
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			offset = comptime_cond_skip_string(cond, offset)
+			continue
+		}
+		if offset + var_name.len <= cond.len && cond[offset..offset + var_name.len] == var_name {
+			before_ok := offset == 0 || !comptime_cond_name_char(cond[offset - 1])
+			after := offset + var_name.len
+			after_ok := after >= cond.len || !comptime_cond_name_char(cond[after])
+			if before_ok && after_ok {
+				return true
+			}
+		}
+		offset++
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) comptime_static_field_cases(base_type string) ComptimeStaticFieldCases {
+	source_type := tc.comptime_static_for_base_type(base_type)
+	struct_name := tc.comptime_static_struct_name(source_type) or {
+		return ComptimeStaticFieldCases{}
+	}
+	fields := tc.structs[struct_name] or { return ComptimeStaticFieldCases{
+		known: true
+	} }
+	decl_metas := tc.comptime_static_field_decl_metas(struct_name)
+	mut cases := []ComptimeStaticFieldCase{cap: fields.len}
+	for field in fields {
+		typ := field.typ.name()
+		unaliased_typ := tc.comptime_type_match_type(typ).name()
+		core_type := comptime_static_unwrap_field_type(field.typ)
+		decl_meta := decl_metas[field.name] or { ComptimeStaticFieldDeclMeta{} }
+		raw_typ := if decl_meta.raw_typ.len > 0 { decl_meta.raw_typ } else { typ }
+		type_flags := comptime_static_field_type_flags(raw_typ)
+		cases << ComptimeStaticFieldCase{
+			name:          field.name
+			typ:           typ
+			unaliased_typ: unaliased_typ
+			is_option:     field.typ is OptionType || tc.comptime_type_match_type(typ) is OptionType
+			is_embed:      decl_meta.is_embed
+			is_array:      core_type is Array || core_type is ArrayFixed
+			is_map:        core_type is Map
+			is_chan:       core_type is Channel
+			is_struct:     tc.comptime_static_type_is_struct(core_type, typ, raw_typ)
+			is_enum:       core_type is Enum && core_type.name() in tc.enum_names
+			is_alias:      field.typ is Alias || typ in tc.type_aliases
+				|| tc.qualify_name(typ) in tc.type_aliases
+			is_shared:     type_flags.is_shared
+			is_atomic:     type_flags.is_atomic
+			is_mut:        decl_meta.is_mut
+			is_pub:        decl_meta.is_pub
+			has_decl_meta: field.name in decl_metas
+			indirections:  type_flags.indirections
+		}
+	}
+	return ComptimeStaticFieldCases{
+		known: true
+		cases: cases
+	}
+}
+
+fn (tc &TypeChecker) comptime_static_type_is_struct(typ Type, typ_name string, raw_typ string) bool {
+	if typ is Struct && tc.comptime_static_type_name_is_struct(typ.name()) {
+		return true
+	}
+	if tc.comptime_static_type_name_is_struct(typ_name) {
+		return true
+	}
+	return tc.comptime_static_type_name_is_struct(raw_typ)
+}
+
+fn (tc &TypeChecker) comptime_static_type_name_is_struct(name string) bool {
+	clean := comptime_static_unwrap_type_text(name)
+	if clean.len == 0 {
+		return false
+	}
+	if clean in tc.structs {
+		return true
+	}
+	base, _, is_generic := generic_type_application_parts(clean)
+	if !is_generic {
+		return false
+	}
+	if base in tc.structs || base in tc.struct_generic_params {
+		return true
+	}
+	qbase := tc.qualify_name(base)
+	if qbase in tc.structs || qbase in tc.struct_generic_params {
+		return true
+	}
+	if resolved := tc.resolve_selective_import_type_symbol(base) {
+		return resolved in tc.structs || resolved in tc.struct_generic_params
+	}
+	return false
+}
+
+fn comptime_static_unwrap_type_text(name string) string {
+	mut clean := name.trim_space()
+	for _ in 0 .. 16 {
+		if clean.starts_with('?') || clean.starts_with('!') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		if clean.starts_with('shared ') {
+			clean = clean[7..].trim_space()
+			continue
+		}
+		if clean.starts_with('atomic ') {
+			clean = clean[7..].trim_space()
+			continue
+		}
+		if clean.starts_with('&') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		break
+	}
+	return clean
+}
+
+fn (tc &TypeChecker) comptime_static_for_base_type(raw string) string {
+	if source := tc.comptime_static_for_value_source_type(raw) {
+		return source
+	}
+	return raw
+}
+
+fn (tc &TypeChecker) comptime_static_for_value_source_type(raw string) ?string {
+	clean := raw.trim_space()
+	if clean.len == 0 {
+		return none
+	}
+	parts := clean.split('.')
+	if parts.len == 0 {
+		return none
+	}
+	mut typ := tc.comptime_static_for_var_source_type(parts[0]) or { return none }
+	for field in parts[1..] {
+		typ = tc.comptime_static_for_field_source_type(typ, field) or { return none }
+	}
+	return typ
+}
+
+fn (tc &TypeChecker) comptime_static_for_var_source_type(name string) ?string {
+	if tc.cur_scope != unsafe { nil } {
+		if typ := tc.cur_scope.lookup(name) {
+			return comptime_static_source_type_name(typ)
+		}
+	}
+	if tc.file_scope != unsafe { nil } {
+		if typ := tc.file_scope.lookup(name) {
+			return comptime_static_source_type_name(typ)
+		}
+		qname := tc.qualify_name(name)
+		if qname != name {
+			if typ := tc.file_scope.lookup(qname) {
+				return comptime_static_source_type_name(typ)
+			}
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name string) []ComptimeStaticValueCase {
+	mut cur_mod := ''
+	for idx in 0 .. tc.a.nodes.len {
+		kind := tc.a.nodes[idx].kind
+		if kind == .module_decl {
+			cur_mod = tc.a.nodes[idx].value
+			continue
+		}
+		if kind != .enum_decl {
+			continue
+		}
+		node := tc.a.nodes[idx]
+		qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+			'${cur_mod}.${node.value}'
+		} else {
+			node.value
+		}
+		if enum_name != node.value && enum_name != qualified {
+			continue
+		}
+		is_flag := node.typ == 'flag'
+		mut field_order := []string{}
+		mut field_exprs := map[string]flat.NodeId{}
+		for i in 0 .. node.children_count {
+			f := tc.a.child_node(&node, i)
+			if f.kind != .enum_field {
+				continue
+			}
+			field_order << f.value
+			if f.children_count > 0 {
+				field_exprs[f.value] = tc.a.child(f, 0)
+			}
+		}
+		mut out := []ComptimeStaticValueCase{}
+		mut field_values := map[string]int{}
+		mut next_val := 0
+		for field_name in field_order {
+			mut val := next_val
+			if expr_id := field_exprs[field_name] {
+				mut resolving := map[string]bool{}
+				if ev := tc.comptime_static_enum_field_value(expr_id, cur_mod, enum_name, mut
+					field_values, field_exprs, mut resolving)
+				{
+					val = ev
+				}
+			}
+			field_values[field_name] = val
+			out << ComptimeStaticValueCase{
+				name:      field_name
+				value:     if is_flag { 1 << val } else { val }
+				has_value: true
+			}
+			next_val = val + 1
+		}
+		return out
+	}
+	return []ComptimeStaticValueCase{}
+}
+
+fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.int_literal {
+			if v := v_int_literal_value(node.value) {
+				return v
+			}
+		}
+		.ident, .enum_val {
+			if ev := tc.comptime_static_enum_field_ref_value(node.value, enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)
+			{
+				return ev
+			}
+			return tc.const_int_value_in_module(node.value, enum_module, []string{})
+		}
+		.paren {
+			if node.children_count > 0 {
+				return tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
+					enum_name, mut field_values, field_exprs, mut resolving)
+			}
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return none
+			}
+			value := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
+				enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+			return match node.op {
+				.minus { -value }
+				.plus { value }
+				.bit_not { ~value }
+				else { none }
+			}
+		}
+		.infix {
+			if node.children_count < 2 {
+				return none
+			}
+			left := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
+				enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+			right := tc.comptime_static_enum_field_value(tc.a.child(&node, 1), enum_module,
+				enum_name, mut field_values, field_exprs, mut resolving) or { return none }
+			if (node.op == .div || node.op == .mod) && right == 0 {
+				return none
+			}
+			if (node.op == .left_shift || node.op == .right_shift
+				|| node.op == .right_shift_unsigned) && (right < 0 || right >= 64) {
+				return none
+			}
+			return match node.op {
+				.plus { left + right }
+				.minus { left - right }
+				.mul { left * right }
+				.div { left / right }
+				.mod { left % right }
+				.left_shift { int(u64(left) << right) }
+				.right_shift { left >> right }
+				.right_shift_unsigned { int(u64(left) >> right) }
+				.amp { left & right }
+				.pipe { left | right }
+				.xor { left ^ right }
+				else { none }
+			}
+		}
+		.selector {
+			if field := tc.comptime_static_enum_selector_ref_field(id, enum_module, enum_name) {
+				return tc.comptime_static_enum_field_ref_value(field, enum_module, enum_name, mut
+					field_values, field_exprs, mut resolving)
+			}
+			return none
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn (tc &TypeChecker) comptime_static_enum_field_ref_value(field_name string, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+	if field_name in field_values {
+		return field_values[field_name]
+	}
+	expr_id := field_exprs[field_name] or { return none }
+	if resolving[field_name] {
+		return none
+	}
+	resolving[field_name] = true
+	maybe_val := tc.comptime_static_enum_field_value(expr_id, enum_module, enum_name, mut
+		field_values, field_exprs, mut resolving)
+	resolving.delete(field_name)
+	val := maybe_val?
+	field_values[field_name] = val
+	return val
+}
+
+fn (tc &TypeChecker) comptime_static_enum_selector_ref_field(id flat.NodeId, enum_module string, enum_name string) ?string {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	prefix := tc.comptime_static_enum_selector_base_text(tc.a.child(&node, 0))
+	if !comptime_static_enum_ref_prefix_matches(prefix, enum_module, enum_name) {
+		return none
+	}
+	return node.value
+}
+
+fn (tc &TypeChecker) comptime_static_enum_selector_base_text(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return ''
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return node.value
+			}
+			base := tc.comptime_static_enum_selector_base_text(tc.a.child(&node, 0))
+			if base.len == 0 {
+				return node.value
+			}
+			return '${base}.${node.value}'
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+fn comptime_static_enum_ref_prefix_matches(prefix string, enum_module string, enum_name string) bool {
+	if prefix.len == 0 || enum_name.len == 0 {
+		return false
+	}
+	short := enum_name.all_after_last('.')
+	if prefix == enum_name || prefix == short {
+		return true
+	}
+	if enum_module.len > 0 && prefix == '${enum_module}.${short}' {
+		return true
+	}
+	return false
+}
+
+fn (tc &TypeChecker) comptime_static_for_field_source_type(owner_type string, field_name string) ?string {
+	struct_name := tc.comptime_static_struct_name(owner_type) or { return none }
+	typ := tc.struct_field_type(struct_name, field_name) or { return none }
+	return comptime_static_source_type_name(typ)
+}
+
+fn comptime_static_source_type_name(typ Type) string {
+	mut cur := typ
+	for _ in 0 .. 16 {
+		if cur is Pointer {
+			cur = cur.base_type
+			continue
+		}
+		if cur is OptionType {
+			cur = cur.base_type
+			continue
+		}
+		if cur is ResultType {
+			cur = cur.base_type
+			continue
+		}
+		return cur.name()
+	}
+	return cur.name()
+}
+
+fn (tc &TypeChecker) comptime_static_struct_name(raw string) ?string {
+	mut cur := raw.trim_space()
+	mut seen := map[string]bool{}
+	for cur.len > 0 && cur !in seen {
+		seen[cur] = true
+		mut candidates := [cur, tc.qualify_name(cur)]
+		if resolved := tc.resolve_selective_import_type_symbol(cur) {
+			candidates << resolved
+		}
+		for candidate in candidates {
+			if candidate in tc.structs {
+				return candidate
+			}
+		}
+		next := tc.alias_target_type_text(cur) or { break }
+		if next == cur {
+			break
+		}
+		cur = next.trim_space()
+	}
+	return none
+}
+
+fn (tc &TypeChecker) comptime_static_field_decl_metas(base_type string) map[string]ComptimeStaticFieldDeclMeta {
+	mut out := map[string]ComptimeStaticFieldDeclMeta{}
+	mut decl_name := base_type.trim_space()
+	if idx := decl_name.index('[') {
+		decl_name = decl_name[..idx]
+	}
+	mut cur_mod := ''
+	for idx in 0 .. tc.a.nodes.len {
+		kind := tc.a.nodes[idx].kind
+		if kind == .module_decl {
+			cur_mod = tc.a.nodes[idx].value
+			continue
+		}
+		if kind != .struct_decl {
+			continue
+		}
+		node := tc.a.nodes[idx]
+		qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+			'${cur_mod}.${node.value}'
+		} else {
+			node.value
+		}
+		if decl_name != node.value && decl_name != qualified {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			f := tc.a.child_node(&node, i)
+			if f.kind != .field_decl {
+				continue
+			}
+			raw_typ := if f.typ.len > 0 { f.typ } else { f.value }
+			mut is_mut := false
+			mut is_pub := false
+			if f.generic_params.len > 0 {
+				flags := f.generic_params[0]
+				is_mut = flags.contains('m')
+				is_pub = flags.contains('p')
+			}
+			out[f.value] = ComptimeStaticFieldDeclMeta{
+				is_mut:   is_mut
+				is_pub:   is_pub
+				is_embed: source_field_decl_is_embed(f, raw_typ)
+				raw_typ:  raw_typ
+			}
+		}
+		return out
+	}
+	return out
+}
+
+fn comptime_static_unwrap_field_type(typ Type) Type {
+	mut cur := typ
+	for _ in 0 .. 16 {
+		if cur is Alias {
+			cur = cur.base_type
+			continue
+		}
+		if cur is OptionType {
+			cur = cur.base_type
+			continue
+		}
+		if cur is Pointer {
+			cur = cur.base_type
+			continue
+		}
+		return cur
+	}
+	return cur
+}
+
+fn comptime_static_field_type_flags(raw string) ComptimeStaticFieldTypeFlags {
+	mut core := raw.trim_space()
+	mut flags := ComptimeStaticFieldTypeFlags{}
+	if core.starts_with('?') {
+		core = core[1..].trim_space()
+	}
+	if core.starts_with('shared ') {
+		flags.is_shared = true
+		flags.indirections++
+		core = core[7..].trim_space()
+	} else if core.starts_with('atomic ') {
+		flags.is_atomic = true
+		core = core[7..].trim_space()
+	}
+	for core.starts_with('&') {
+		flags.indirections++
+		core = core[1..].trim_space()
+	}
+	return flags
+}
+
+fn (mut tc TypeChecker) comptime_static_subst_field_cond(cond string, var_name string, field ComptimeStaticFieldCase) string {
+	mut c := cond
+	c = c.replace('${var_name}.unaliased_typ', field.unaliased_typ)
+	c = c.replace('${var_name}.is_option', field.is_option.str())
+	c = c.replace('${var_name}.is_opt', field.is_option.str())
+	if field.has_decl_meta {
+		c = c.replace('${var_name}.is_embed', field.is_embed.str())
+		c = c.replace('${var_name}.is_mut', field.is_mut.str())
+		c = c.replace('${var_name}.is_pub', field.is_pub.str())
+	}
+	c = c.replace('${var_name}.is_array', field.is_array.str())
+	c = c.replace('${var_name}.is_map', field.is_map.str())
+	c = c.replace('${var_name}.is_chan', field.is_chan.str())
+	c = c.replace('${var_name}.is_struct', field.is_struct.str())
+	c = c.replace('${var_name}.is_enum', field.is_enum.str())
+	c = c.replace('${var_name}.is_alias', field.is_alias.str())
+	c = c.replace('${var_name}.is_shared', field.is_shared.str())
+	c = c.replace('${var_name}.is_atomic', field.is_atomic.str())
+	c = c.replace('${var_name}.indirections', field.indirections.str())
+	c = c.replace('${var_name}.typ', field.typ)
+	c = c.replace('${var_name}.name', "'${field.name}'")
+	c = comptime_static_replace_bare_ident(c, var_name, field.typ)
+	return c
+}
+
+fn comptime_static_replace_bare_ident(cond string, ident string, replacement string) string {
+	if ident.len == 0 {
+		return cond
+	}
+	mut out := ''
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			end := comptime_cond_skip_string(cond, offset)
+			out += cond[offset..end]
+			offset = end
+			continue
+		}
+		if offset + ident.len <= cond.len && cond[offset..offset + ident.len] == ident {
+			before_ok := offset == 0 || !comptime_cond_name_char(cond[offset - 1])
+			after := offset + ident.len
+			after_ok := after >= cond.len
+				|| (!comptime_cond_name_char(cond[after]) && cond[after] != `.`)
+			if before_ok && after_ok {
+				out += replacement
+				offset = after
+				continue
+			}
+		}
+		out += cond[offset..offset + 1]
+		offset++
+	}
+	return out
+}
+
+fn (mut tc TypeChecker) comptime_static_eval_field_cond(cond string) ?bool {
+	clean := comptime_condition_strip_outer_parens(cond.trim_space())
+	if clean == 'true' {
+		return true
+	}
+	if clean == 'false' {
+		return false
+	}
+	or_idx := comptime_condition_top_level_index(clean, '||')
+	if or_idx >= 0 {
+		left := tc.comptime_static_eval_field_cond(clean[..or_idx]) or { return none }
+		if left {
+			return true
+		}
+		return tc.comptime_static_eval_field_cond(clean[or_idx + 2..])
+	}
+	and_idx := comptime_condition_top_level_index(clean, '&&')
+	if and_idx >= 0 {
+		left := tc.comptime_static_eval_field_cond(clean[..and_idx]) or { return none }
+		if !left {
+			return false
+		}
+		return tc.comptime_static_eval_field_cond(clean[and_idx + 2..])
+	}
+	for op in [' !is ', ' is '] {
+		op_idx := comptime_condition_top_level_index(clean, op)
+		if op_idx >= 0 {
+			left := clean[..op_idx].trim_space()
+			right := clean[op_idx + op.len..].trim_space()
+			matches := tc.comptime_type_matches(left, right) or { return none }
+			return if op == ' is ' { matches } else { !matches }
+		}
+	}
+	for op in [' != ', ' == '] {
+		op_idx := comptime_condition_top_level_index(clean, op)
+		if op_idx >= 0 {
+			left := comptime_static_unquote(clean[..op_idx].trim_space())
+			right := comptime_static_unquote(clean[op_idx + op.len..].trim_space())
+			eq := left == right
+			return if op == ' == ' { eq } else { !eq }
+		}
+	}
+	for op in [' !in', ' in'] {
+		op_idx := comptime_condition_top_level_index(clean, op)
+		if op_idx >= 0 {
+			after := op_idx + op.len
+			if after < clean.len && clean[after] != ` ` && clean[after] != `[`
+				&& clean[after] != `(` {
+				continue
+			}
+			needle := comptime_static_unquote(clean[..op_idx].trim_space())
+			found := comptime_static_list_contains(clean[after..].trim_space(), needle)
+			return if op == ' in' { found } else { !found }
+		}
+	}
+	for op in [' <= ', ' >= ', ' < ', ' > '] {
+		op_idx := comptime_condition_top_level_index(clean, op)
+		if op_idx >= 0 {
+			left := clean[..op_idx].trim_space()
+			right := clean[op_idx + op.len..].trim_space()
+			if !comptime_static_is_int(left) || !comptime_static_is_int(right) {
+				return none
+			}
+			l := left.int()
+			r := right.int()
+			return match op {
+				' <= ' { l <= r }
+				' >= ' { l >= r }
+				' < ' { l < r }
+				else { l > r }
+			}
+		}
+	}
+	if clean.starts_with('!') {
+		value := tc.comptime_static_eval_field_cond(clean[1..]) or { return none }
+		return !value
+	}
+	return none
+}
+
+fn comptime_static_list_contains(list_text string, needle string) bool {
+	clean := list_text.trim_space()
+	if !clean.starts_with('[') || !clean.ends_with(']') {
+		return false
+	}
+	inner := clean[1..clean.len - 1]
+	for part in inner.split(',') {
+		if comptime_static_unquote(part.trim_space()) == needle {
+			return true
+		}
+	}
+	return false
+}
+
+fn comptime_static_is_int(s string) bool {
+	if s.len == 0 {
+		return false
+	}
+	start := if s[0] == `-` || s[0] == `+` { 1 } else { 0 }
+	if start >= s.len {
+		return false
+	}
+	for i in start .. s.len {
+		if !s[i].is_digit() {
+			return false
+		}
+	}
+	return true
+}
+
+fn comptime_static_unquote(s string) string {
+	if s.len >= 2 && (s[0] == `'` || s[0] == `"`) && s[s.len - 1] == s[0] {
+		return s[1..s.len - 1]
+	}
+	return s
+}
+
 // check_node validates check node state for types.
 fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	idx := int(id)
@@ -4742,6 +6026,14 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	}
 	if node.kind == .comptime_if {
 		tc.check_comptime_if(id, node)
+		return
+	}
+	if node.kind == .comptime_for {
+		// The body references the loop variable (`field.name`, `field.typ`, ...) which only
+		// exists once the transformer unrolls the loop against a concrete type, so it cannot
+		// be type-checked here. Validate the known compile-time member surface, then skip it;
+		// the unrolled statements are concrete.
+		tc.check_comptime_for_members(id, node)
 		return
 	}
 	if kind_id == 46 {
@@ -5014,6 +6306,12 @@ fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?b
 		'$array' {
 			return actual_type is Array || actual_type is ArrayFixed
 		}
+		'$array_dynamic' {
+			return actual_type is Array
+		}
+		'$array_fixed' {
+			return actual_type is ArrayFixed
+		}
 		'$map' {
 			return actual_type is Map
 		}
@@ -5022,6 +6320,15 @@ fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?b
 		}
 		'$option' {
 			return actual_type is OptionType
+		}
+		'$shared' {
+			return tc.comptime_type_text_is_shared(clean_actual)
+		}
+		'$pointer' {
+			return actual_type is Pointer
+		}
+		'$voidptr' {
+			return fn_param_is_voidptr_type(actual_type)
 		}
 		'$int' {
 			return actual_type.is_integer()
@@ -5061,6 +6368,21 @@ fn (mut tc TypeChecker) comptime_type_matches(actual string, expected string) ?b
 		})
 	}
 	return normalized == expected_type.name()
+}
+
+fn (tc &TypeChecker) comptime_type_text_is_shared(type_text string) bool {
+	mut cur := type_text.trim_space()
+	for _ in 0 .. 16 {
+		if cur.starts_with('shared ') {
+			return true
+		}
+		target := tc.alias_target_type_text(cur) or { return false }
+		if target == cur {
+			return false
+		}
+		cur = target.trim_space()
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) comptime_type_match_type(type_text string) Type {
@@ -6782,8 +8104,8 @@ fn (tc &TypeChecker) multi_expr_tail_return_compat_supported(expr_id flat.NodeId
 		return false
 	}
 	node := tc.a.nodes[int(expr_id)]
-	// Raw tuple-tail return lowering is currently only implemented for if-expressions.
-	if node.kind == .if_expr {
+	// Raw tuple-tail return lowering is currently implemented for if- and match-expressions.
+	if node.kind in [.if_expr, .match_stmt] {
 		return true
 	}
 	if node.kind == .expr_stmt && node.children_count > 0 {
@@ -6829,11 +8151,6 @@ fn (tc &TypeChecker) tuple_tail_return_error(expr_id flat.NodeId, expected []Typ
 		.expr_stmt, .paren {
 			if node.children_count > 0 {
 				return tc.tuple_tail_return_error(tc.a.child(&node, 0), expected)
-			}
-		}
-		.match_stmt {
-			if tc.match_has_tuple_tail_values(expr_id, count) {
-				return 'match expression branches cannot produce multiple return values'
 			}
 		}
 		.if_expr {
@@ -12024,6 +13341,10 @@ fn (tc &TypeChecker) is_namespace_selector(node flat.Node, base flat.Node) bool 
 		|| qbase in tc.interface_names {
 		return true
 	}
+	// An alias of an enum (`type Col = Color`) is a namespace for its members: `Col.member`.
+	if _ := tc.resolve_enum_name(base.value) {
+		return true
+	}
 	qname := '${qbase}.${node.value}'
 	return qname in tc.const_types || qname in tc.fn_ret_types || qname in tc.enum_names
 }
@@ -12761,7 +14082,31 @@ fn (tc &TypeChecker) resolve_enum_name(name string) ?string {
 			if resolved in tc.enum_names || resolved in tc.flag_enums {
 				return resolved
 			}
+			if target := tc.resolve_enum_alias_target(resolved) {
+				return target
+			}
 		}
+	}
+	if target := tc.resolve_enum_alias_target(name) {
+		return target
+	}
+	if target := tc.resolve_enum_alias_target(qname) {
+		return target
+	}
+	return none
+}
+
+fn (tc &TypeChecker) resolve_enum_alias_target(name string) ?string {
+	mut cur := name
+	for _ in 0 .. 16 {
+		target := tc.alias_target_type_text(cur) or { return none }
+		if target == cur {
+			return none
+		}
+		if target in tc.enum_names || target in tc.flag_enums {
+			return target
+		}
+		cur = target
 	}
 	return none
 }

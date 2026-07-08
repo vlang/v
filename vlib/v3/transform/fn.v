@@ -2524,7 +2524,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	}
 	if !isnil(t.tc) {
 		if alias := t.tc.type_aliases[clean_typ] {
-			return t.wrap_string_conversion(expr, alias)
+			return t.alias_str_wrap(expr, clean_typ, alias)
 		}
 		mut qtyp := clean_typ
 		if !qtyp.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
@@ -2532,12 +2532,12 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			qtyp = '${t.cur_module}.${clean_typ}'
 		}
 		if alias := t.tc.type_aliases[qtyp] {
-			return t.wrap_string_conversion(expr, alias)
+			return t.alias_str_wrap(expr, clean_typ, alias)
 		}
 		if !clean_typ.contains('.') {
 			for aname, target in t.tc.type_aliases {
 				if aname.all_after_last('.') == clean_typ {
-					return t.wrap_string_conversion(expr, target)
+					return t.alias_str_wrap(expr, clean_typ, target)
 				}
 			}
 		}
@@ -2568,6 +2568,13 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		expr_node := t.a.nodes[int(expr)]
 		if expr_node.kind == .ident && t.string_interp_needs_value_read(expr_node.value, typ) {
 			return t.wrap_string_conversion(t.make_prefix(.mul, expr), clean_typ)
+		}
+		// A `&Struct`/`&SumType` stringifies to the pointee's `.str()` value: the custom
+		// method when one exists (no `&` prefix, e.g. map/array elements), otherwise
+		// `&nil` for a null pointer or `&` + the value's auto str. Other pointer kinds
+		// (voidptr, `&int`, `&string`, `&Interface`, ...) keep the raw ptr_str below.
+		if aggregate := t.stringify_aggregate_type_name(clean_typ) {
+			return t.lower_ref_str(expr, aggregate)
 		}
 	}
 	iface_name := t.resolve_interface_type_name(clean_typ)
@@ -2681,6 +2688,125 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 	}
+}
+
+// lower_ref_str stringifies a `&Struct`/`&SumType` pointer with the same semantics V uses
+// for `.str()` and for map/array elements: when the pointee type defines a custom `str()`,
+// call it (no `&` prefix); otherwise emit `&nil` for a null pointer and `&` + the value's
+// auto str for a live one. `aggregate` is the resolved (non-reference) struct/sum type name.
+fn (mut t Transformer) lower_ref_str(expr flat.NodeId, aggregate string) flat.NodeId {
+	str_fn := '${c_name(aggregate)}__str'
+	has_custom := str_fn in t.fn_ret_types || (!isnil(t.tc) && str_fn in t.tc.fn_ret_types)
+	if has_custom {
+		return t.lower_ref_str_guarded(expr, aggregate, false)
+	}
+	return t.lower_ref_str_prefixed(expr, aggregate)
+}
+
+fn (t &Transformer) str_method_has_pointer_receiver(str_fn string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	params := t.tc.fn_param_types[str_fn] or { return false }
+	if params.len == 0 {
+		return false
+	}
+	receiver := params[0]
+	return receiver is types.Pointer || receiver.name().starts_with('&')
+}
+
+fn (mut t Transformer) lower_ref_str_prefixed(expr flat.NodeId, aggregate string) flat.NodeId {
+	return t.lower_ref_str_guarded(expr, aggregate, true)
+}
+
+fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string, prefix_non_nil bool) flat.NodeId {
+	ptr_type := '&${aggregate}'
+	ptr_name := t.new_temp('ref_str_ptr')
+	res_name := t.new_temp('ref_str_text')
+	t.pending_stmts << t.make_decl_assign_typed(ptr_name, expr, ptr_type)
+	t.set_var_type(ptr_name, ptr_type)
+	t.pending_stmts << t.make_decl_assign_typed(res_name, t.make_string_literal('&nil'), 'string')
+	// Stringifying the pointee may hoist its own prelude (nested arrays/maps dereference the
+	// pointer). Capture that prelude and keep it inside the non-nil branch so a null pointer
+	// is never dereferenced.
+	saved := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	str_fn := '${c_name(aggregate)}__str'
+	value_str := if t.str_method_has_pointer_receiver(str_fn) {
+		t.make_call_typed(str_fn, arr1(t.make_ident(ptr_name)), 'string')
+	} else {
+		t.wrap_string_conversion(t.make_prefix(.mul, t.make_ident(ptr_name)), aggregate)
+	}
+	mut then_body := []flat.NodeId{}
+	t.drain_pending(mut then_body)
+	t.pending_stmts = saved
+	t.unset_var_type(ptr_name)
+	non_nil := if prefix_non_nil {
+		t.string_plus(t.make_string_literal('&'), value_str)
+	} else {
+		value_str
+	}
+	then_body << t.make_assign(t.make_ident(res_name), non_nil)
+	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+	t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
+	return t.make_ident(res_name)
+}
+
+// alias_str_wrap stringifies an alias value. V wraps the base str with `AliasName(...)` for
+// aliases of non-primitive types (arrays, maps, structs, sum types, enums), e.g.
+// `Block([1, 2])` or `AEnum(red)`, but stringifies primitive aliases (int, string, bool, ...)
+// as the bare value.
+fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_type string) flat.NodeId {
+	resolved_base := t.alias_str_resolved_base_type(base_type)
+	inner := t.wrap_string_conversion(expr, resolved_base)
+	if t.alias_str_suppress_wrapper_for_mut_param_deref(expr) {
+		return inner
+	}
+	if !t.alias_str_needs_name_wrapper(base_type) {
+		return inner
+	}
+	display := struct_string_display_name(alias_name)
+	return t.string_plus(t.string_plus(t.make_string_literal('${display}('), inner),
+		t.make_string_literal(')'))
+}
+
+fn (t &Transformer) alias_str_suppress_wrapper_for_mut_param_deref(expr flat.NodeId) bool {
+	if int(expr) < 0 || int(expr) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(expr)]
+	if node.kind != .prefix || node.op != .mul || node.children_count == 0 {
+		return false
+	}
+	base := t.a.child_node(&node, 0)
+	return base.kind == .ident && t.mut_param_values[base.value]
+}
+
+fn (t &Transformer) alias_str_resolved_base_type(base_type string) string {
+	mut clean := base_type.trim_space()
+	mut seen := []string{}
+	for clean.len > 0 && clean !in seen {
+		seen << clean
+		next := t.normalize_type_alias(clean).trim_space()
+		if next == clean {
+			break
+		}
+		clean = next
+	}
+	return clean
+}
+
+fn (t &Transformer) alias_str_needs_name_wrapper(base_type string) bool {
+	mut clean := t.alias_str_resolved_base_type(base_type)
+	if clean.starts_with('&') {
+		return false
+	}
+	if clean.starts_with('builtin.') {
+		clean = clean.all_after_last('.')
+	}
+	return clean !in ['string', 'bool', 'rune', 'char', 'i8', 'i16', 'i32', 'i64', 'int', 'isize',
+		'u8', 'byte', 'u16', 'u32', 'u64', 'usize', 'f32', 'f64', 'int literal', 'float literal',
+		'voidptr', 'byteptr', 'charptr', 'nil', 'void']
 }
 
 fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?flat.NodeId {
@@ -3334,11 +3460,13 @@ fn (mut t Transformer) lower_array_str(arr_expr flat.NodeId, base_type string) f
 	elem_str := t.wrap_string_conversion(t.make_ident(elem_name), elem_type)
 	t.unset_var_type(elem_name)
 	t.drain_pending(mut loop_body)
-	if elem_type == 'string' {
+	// Quote string/rune elements, including aliases of them (`type Literal = string`).
+	quote_elem := t.normalize_type_alias(elem_type)
+	if quote_elem == 'string' {
 		loop_body << t.append_string(result_name, t.make_string_literal("'"))
 		loop_body << t.append_string(result_name, elem_str)
 		loop_body << t.append_string(result_name, t.make_string_literal("'"))
-	} else if elem_type == 'rune' {
+	} else if quote_elem == 'rune' {
 		loop_body << t.append_string(result_name, t.make_string_literal('`'))
 		loop_body << t.append_string(result_name, elem_str)
 		loop_body << t.append_string(result_name, t.make_string_literal('`'))
@@ -5045,6 +5173,13 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if method == 'str' {
 		if t.is_enum_stringify_type(base_type) {
 			return none
+		}
+		// `(&Struct).str()` keeps the reference so the pointee is stringified with V's `&`
+		// prefix (or `&nil`); primitive/alias pointers keep their existing ptr_str behavior.
+		if base_is_pointer {
+			if aggregate := t.stringify_aggregate_type_name(base_type) {
+				return t.lower_ref_str_prefixed(t.transform_expr(base_id), aggregate)
+			}
 		}
 		return t.wrap_string_conversion(t.transform_expr(base_id), base_type)
 	}

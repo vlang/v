@@ -2462,6 +2462,12 @@ fn (g &FlatGen) enum_selector_base_name(name string) ?string {
 	if qname in g.tc.enum_names || qname in g.tc.flag_enums {
 		return qname
 	}
+	if target := g.enum_selector_alias_target(name) {
+		return target
+	}
+	if target := g.enum_selector_alias_target(qname) {
+		return target
+	}
 	if name.contains('.') || g.tc.cur_file.len == 0 {
 		return none
 	}
@@ -2470,6 +2476,24 @@ fn (g &FlatGen) enum_selector_base_name(name string) ?string {
 		if candidate in g.tc.enum_names || candidate in g.tc.flag_enums {
 			return candidate
 		}
+		if target := g.enum_selector_alias_target(candidate) {
+			return target
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) enum_selector_alias_target(name string) ?string {
+	mut cur := name
+	for _ in 0 .. 16 {
+		target := g.tc.type_aliases[cur] or { return none }
+		if target == cur {
+			return none
+		}
+		if target in g.tc.enum_names || target in g.tc.flag_enums {
+			return target
+		}
+		cur = target
 	}
 	return none
 }

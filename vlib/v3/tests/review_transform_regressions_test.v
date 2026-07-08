@@ -447,6 +447,13 @@ fn test_map_str_normalizes_alias_key_and_value_types() {
 	assert out == "{23: 'id'}\n{'price': 1.25}"
 }
 
+fn test_chained_array_alias_stringification_uses_outer_alias_only() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'chained_array_alias_str',
+		"type A = []int\n\ntype B = A\n\nfn main() {\n\tvalue := B([1, 2])\n\tprintln('\${value}')\n}\n")
+	assert out == 'B([1, 2])'
+}
+
 fn test_mut_map_param_interpolation_preserves_pointer() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'mut_map_param_interpolation',

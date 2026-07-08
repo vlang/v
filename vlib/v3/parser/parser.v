@@ -43,6 +43,8 @@ mut:
 	cur_file          string
 	cur_module        string
 	cur_fn            string
+	cur_struct        string   // receiver type name of the current method, for `@STRUCT`
+	comptime_for_vars []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
 	pending_flag      bool
 	pending_params    bool
 	pending_export    string
@@ -848,7 +850,9 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	mut body_ids := []flat.NodeId{}
 	if p.tok == .lcbr {
 		prev_fn := p.cur_fn
+		prev_struct := p.cur_struct
 		p.cur_fn = name
+		p.cur_struct = receiver_type.trim_left('&').all_after_last('.')
 		p.push_local_type_scope(name)
 		if disable_body {
 			p.mark_disabled_fn(name)
@@ -867,6 +871,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		}
 		p.pop_local_type_scope()
 		p.cur_fn = prev_fn
+		p.cur_struct = prev_struct
 	}
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
@@ -947,7 +952,10 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	// body
 	mut body_ids := []flat.NodeId{}
 	prev_fn := p.cur_fn
+	prev_struct := p.cur_struct
 	p.cur_fn = name
+	// `@STRUCT` inside a method expands to the receiver's (dereferenced) type name.
+	p.cur_struct = if is_method { receiver_type.trim_left('&').all_after_last('.') } else { '' }
 	p.push_local_type_scope(name)
 	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
 	// (a no-op stub), so callers still resolve while the body is compiled out.
@@ -968,6 +976,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	}
 	p.pop_local_type_scope()
 	p.cur_fn = prev_fn
+	p.cur_struct = prev_struct
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}
 	for id in param_ids {
@@ -1177,6 +1186,11 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	}
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
+	// Track the current `pub:`/`mut:` section and any leading attributes so each field's real
+	// mutability/visibility/attrs are recorded on its `field_decl` node for `$for` reflection.
+	mut sect_is_pub := false
+	mut sect_is_mut := false
+	mut pending_attrs := []string{}
 	for p.tok != .rcbr && p.tok != .eof {
 		// access modifiers
 		if p.tok == .key_pub {
@@ -1185,15 +1199,20 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			if peek_tok == .colon || peek_tok == .key_mut
 				|| (peek_tok == .name && peek_lit == 'module_mut') {
 				p.next()
+				mut section_mut := false
 				if p.tok == .key_mut {
+					section_mut = true
 					p.next()
 				}
 				if p.tok == .name && p.lit == 'module_mut' {
+					section_mut = true
 					p.next()
 				}
 				if p.tok == .colon {
 					p.next()
 				}
+				sect_is_pub = true
+				sect_is_mut = section_mut
 				continue
 			}
 		}
@@ -1201,6 +1220,17 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			if p.peek() == .colon {
 				p.next()
 				p.next()
+				sect_is_pub = false
+				sect_is_mut = true
+				continue
+			}
+		}
+		if p.tok == .key_global {
+			if p.peek() == .colon {
+				p.next()
+				p.next()
+				sect_is_pub = true
+				sect_is_mut = true
 				continue
 			}
 		}
@@ -1216,9 +1246,9 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			}
 			continue
 		}
-		// attributes — skip
+		// leading attributes apply to the next field
 		if p.tok == .attribute {
-			p.skip_attrs()
+			pending_attrs << p.parse_field_attrs()
 			continue
 		}
 		// field: name type [= default] [@[attrs]]
@@ -1229,11 +1259,14 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				second := p.expect_name_or_keyword()
 				full_type := '${field_name}.${second}'
 				field_type := full_type + p.parse_type_generic_suffix()
-				ids << p.a.add_node(flat.Node{
+				fid := p.a.add_node(flat.Node{
 					kind:  .field_decl
 					value: full_type
 					typ:   field_type
 				})
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, pending_attrs)
+				pending_attrs = []string{}
+				ids << fid
 				if p.tok == .semicolon {
 					p.next()
 				}
@@ -1242,11 +1275,14 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			// embedded struct (type on its own line, followed by semicolon)
 			if p.tok == .semicolon || p.tok == .rcbr {
 				embedded_type := p.resolve_local_type_name(field_name)
-				ids << p.a.add_node(flat.Node{
+				fid := p.a.add_node(flat.Node{
 					kind:  .field_decl
 					value: embedded_type
 					typ:   embedded_type
 				})
+				p.apply_field_meta(fid, sect_is_mut, sect_is_pub, pending_attrs)
+				pending_attrs = []string{}
+				ids << fid
 				if p.tok == .semicolon {
 					p.next()
 				}
@@ -1261,12 +1297,19 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 					names << p.expect_name_or_keyword()
 				}
 				field_type := p.parse_type_name()
+				mut group_attrs := pending_attrs.clone()
+				pending_attrs = []string{}
+				if p.tok == .attribute || p.tok == .lsbr {
+					group_attrs << p.parse_field_attrs()
+				}
 				for n in names {
-					ids << p.a.add_node(flat.Node{
+					fid := p.a.add_node(flat.Node{
 						kind:  .field_decl
 						value: n
 						typ:   field_type
 					})
+					p.apply_field_meta(fid, sect_is_mut, sect_is_pub, group_attrs)
+					ids << fid
 				}
 				if p.tok == .semicolon {
 					p.next()
@@ -1288,17 +1331,21 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 				children_start = p.add_child(default_id)
 				children_count = 1
 			}
-			// trailing field attributes — skip
+			// trailing field attributes
+			mut fattrs := pending_attrs.clone()
+			pending_attrs = []string{}
 			if p.tok == .attribute || p.tok == .lsbr {
-				p.skip_attrs()
+				fattrs << p.parse_field_attrs()
 			}
-			ids << p.a.add_node(flat.Node{
+			fid := p.a.add_node(flat.Node{
 				kind:           .field_decl
 				value:          field_name
 				typ:            field_type
 				children_start: children_start
 				children_count: flat.child_count(children_count)
 			})
+			p.apply_field_meta(fid, sect_is_mut, sect_is_pub, fattrs)
+			ids << fid
 			if p.tok == .semicolon {
 				p.next()
 			}
@@ -1527,33 +1574,41 @@ fn (mut p Parser) enum_decl() flat.NodeId {
 	}
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
+	mut pending_attrs := []string{}
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
 			continue
 		}
-		// attributes on enum fields — skip
+		// Leading attributes apply to the next enum field.
 		if p.tok == .attribute || p.tok == .lsbr {
-			p.skip_attrs()
+			pending_attrs << p.parse_field_attrs()
 			continue
 		}
 		field_name := p.expect_name_or_keyword()
+		mut attrs := pending_attrs.clone()
+		pending_attrs = []string{}
+		mut children_start := 0
+		mut children_count := flat.child_count(0)
 		if p.tok == .assign {
 			p.next()
 			val_id := p.expr(.lowest)
-			vstart := p.add_child(val_id)
-			ids << p.a.add_node(flat.Node{
-				kind:           .enum_field
-				value:          field_name
-				children_start: vstart
-				children_count: 1
-			})
-		} else {
-			ids << p.a.add_node(flat.Node{
-				kind:  .enum_field
-				value: field_name
-			})
+			children_start = p.add_child(val_id)
+			children_count = 1
 		}
+		if p.tok == .attribute || p.tok == .lsbr {
+			attrs << p.parse_field_attrs()
+		}
+		mut field := flat.Node{
+			kind:           .enum_field
+			value:          field_name
+			children_start: children_start
+			children_count: children_count
+		}
+		if attrs.len > 0 {
+			field.generic_params = attrs
+		}
+		ids << p.a.add_node(field)
 		if p.tok == .semicolon {
 			p.next()
 		}
@@ -1883,6 +1938,90 @@ fn (mut p Parser) skip_attrs() {
 	}
 }
 
+// apply_field_meta records a struct field's mutability, visibility, and attributes on its
+// `field_decl` node so `$for field in T.fields` reflection can expose `field.is_mut`,
+// `field.is_pub`, and `field.attrs`. Everything is packed into the otherwise-unused
+// `generic_params` (element 0 is a flag string: `m` = mut, `p` = pub; the rest are the
+// attributes) - the node's own `kind_id`/`is_mut` are load-bearing (kind dispatch) and must not
+// be repurposed. A default field (private, immutable, no attrs) is left untouched so it costs no
+// allocation and reads back as the default.
+fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, attrs []string) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	if !is_mut && !is_pub && attrs.len == 0 {
+		return
+	}
+	mut flags := ''
+	if is_mut {
+		flags += 'm'
+	}
+	if is_pub {
+		flags += 'p'
+	}
+	mut gp := []string{cap: attrs.len + 1}
+	gp << flags
+	gp << attrs
+	p.a.nodes[int(id)].generic_params = gp
+}
+
+// attr_unquote strips a single pair of surrounding quotes from an attribute key (unlike
+// strip_quotes, it does not treat a leading `r` as a raw-string prefix).
+fn attr_unquote(s string) string {
+	if s.len >= 2 && (s[0] == `'` || s[0] == `"`) && s[s.len - 1] == s[0] {
+		return s[1..s.len - 1]
+	}
+	return s
+}
+
+// parse_field_attrs captures the attributes on a struct field (`@[json: 'x']`, `@[required]`,
+// `@[sql: serial]`) as their `key` / `key: value` string forms, mirroring V's `FieldData.attrs`.
+// A comptime `@[if cond]` guard keeps its existing evaluation semantics and is not exposed as an
+// attribute. Regardless of how the content splits, the loop always consumes through the closing
+// `]`, so parsing stays correct even for attribute forms it does not fully model.
+fn (mut p Parser) parse_field_attrs() []string {
+	mut attrs := []string{}
+	for p.tok == .attribute || p.tok == .lsbr {
+		p.next() // consume `@[` / `[`
+		if p.tok == .key_if {
+			p.next()
+			mut cond := strings.new_builder(16)
+			for p.tok != .rsbr && p.tok != .eof {
+				tok_str := p.comptime_cond_token_text()
+				if cond.len > 0 && tok_str != '?' {
+					cond.write_string(' ')
+				}
+				cond.write_string(tok_str)
+				p.next()
+			}
+			if !eval_comptime_cond(p.prefs, cond.str()) {
+				p.skip_next_decl = true
+			}
+			p.check(.rsbr)
+			continue
+		}
+		for p.tok != .rsbr && p.tok != .eof {
+			if p.tok == .comma || p.tok == .semicolon {
+				p.next()
+				continue
+			}
+			mut piece := attr_unquote(p.lit)
+			p.next()
+			if p.tok == .colon {
+				p.next()
+				piece += ': ' + p.lit.trim_space()
+				p.next()
+			}
+			piece = piece.trim_space()
+			if piece.len > 0 {
+				attrs << piece
+			}
+		}
+		p.check(.rsbr)
+	}
+	return attrs
+}
+
 fn (mut p Parser) try_parse_export_attr() {
 	p.next()
 	if p.tok != .colon {
@@ -1946,26 +2085,26 @@ fn (mut p Parser) skip_top_level_stmt() {
 fn (mut p Parser) parse_comptime_if() flat.NodeId {
 	p.next() // skip $
 	if p.tok != .key_if {
-		// $for or other comptime — skip
 		if p.tok == .key_for {
+			return p.parse_comptime_for()
+		}
+		// other comptime — skip
+		for p.tok != .semicolon && p.tok != .eof {
 			p.next()
-			for p.tok != .lcbr && p.tok != .eof {
-				p.next()
-			}
-			p.skip_block()
-		} else {
-			for p.tok != .semicolon && p.tok != .eof {
-				p.next()
-			}
-			if p.tok == .semicolon {
-				p.next()
-			}
+		}
+		if p.tok == .semicolon {
+			p.next()
 		}
 		return flat.empty_node
 	}
 	p.next() // skip 'if'
 	cond := p.parse_comptime_cond()
-	if comptime_cond_has_type_test(cond) {
+	// Only defer conditions that need information unavailable at parse time: a `$for` loop var
+	// (`field.typ`, `field.indirections`, `value.value`), known once the loop is unrolled, or a
+	// type test (`T is int`), known after monomorphization. Ordinary platform/custom flags
+	// (`$if linux`) must still be evaluated here — the transformer only folds loop-var/type
+	// conditions and the C backend drops any `.comptime_if` that survives.
+	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond) {
 		then_block := p.block_stmt()
 		else_block := p.parse_comptime_else()
 		return p.comptime_if_node(cond, then_block, else_block)
@@ -1979,6 +2118,38 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 		p.skip_block()
 		return p.parse_comptime_else()
 	}
+}
+
+// parse_comptime_for parses `$for <var> in <Type>.<kind> { body }` into a comptime_for node.
+// The loop is unrolled later (once <Type> is concrete) by the transformer. `value` holds
+// `<var>|<kind>` (e.g. `field|fields`); `typ` holds the base type so generic substitution can
+// turn `T` into the concrete type during monomorphization.
+fn (mut p Parser) parse_comptime_for() flat.NodeId {
+	p.next() // skip 'for'
+	val_var := p.expect_name()
+	if p.tok == .key_in {
+		p.next()
+	} else if p.tok == .name && p.lit == 'in' {
+		p.next()
+	}
+	mut segs := [p.expect_name()]
+	for p.tok == .dot {
+		p.next()
+		segs << p.expect_name()
+	}
+	kind := if segs.len > 1 { segs.last() } else { 'fields' }
+	base := if segs.len > 1 { segs[..segs.len - 1].join('.') } else { segs.last() }
+	p.comptime_for_vars << val_var
+	body := p.block_stmt()
+	p.comptime_for_vars.pop()
+	start := p.add_children([body])
+	return p.a.add_node(flat.Node{
+		kind:           .comptime_for
+		value:          '${val_var}|${kind}'
+		typ:            base
+		children_start: start
+		children_count: 1
+	})
 }
 
 fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
@@ -2077,6 +2248,16 @@ fn (mut p Parser) parse_comptime_cond() string {
 	return cond.str()
 }
 
+// comptime_char_is_name_cont reports whether the byte at `pos` continues an identifier. Used
+// to keep the word operators `!is`/`!in` from matching identifiers such as `!isset`/`!inner`.
+fn comptime_char_is_name_cont(src string, pos int) bool {
+	if pos < 0 || pos >= src.len {
+		return false
+	}
+	c := src[pos]
+	return c.is_letter() || c.is_digit() || c == `_`
+}
+
 fn (p &Parser) comptime_cond_token_text() string {
 	if p.s.pos >= 0 && p.s.pos < p.s.src.len {
 		c := p.s.src[p.s.pos]
@@ -2087,8 +2268,15 @@ fn (p &Parser) comptime_cond_token_text() string {
 			return '||'
 		}
 		if c == `!` && p.s.pos + 2 < p.s.src.len && p.s.src[p.s.pos + 1] == `i`
-			&& p.s.src[p.s.pos + 2] == `s` {
+			&& p.s.src[p.s.pos + 2] == `s` && !comptime_char_is_name_cont(p.s.src, p.s.pos + 3) {
 			return '!is'
+		}
+		if c == `!` && p.s.pos + 2 < p.s.src.len && p.s.src[p.s.pos + 1] == `i`
+			&& p.s.src[p.s.pos + 2] == `n` && !comptime_char_is_name_cont(p.s.src, p.s.pos + 3) {
+			return '!in'
+		}
+		if c == `!` && p.s.pos + 1 < p.s.src.len && p.s.src[p.s.pos + 1] == `=` {
+			return '!='
 		}
 		if c == `!` {
 			return '!'
@@ -2118,6 +2306,30 @@ fn (p &Parser) comptime_cond_token_text() string {
 	}
 	if tok == .not_is {
 		return '!is'
+	}
+	if tok == .eq {
+		return '=='
+	}
+	if tok == .ne {
+		return '!='
+	}
+	if tok == .lt {
+		return '<'
+	}
+	if tok == .gt {
+		return '>'
+	}
+	if tok == .le {
+		return '<='
+	}
+	if tok == .ge {
+		return '>='
+	}
+	if tok == .key_in {
+		return 'in'
+	}
+	if tok == .not_in {
+		return '!in'
 	}
 	if tok == .dollar {
 		return '$'
@@ -2167,6 +2379,42 @@ fn comptime_cond_needs_space(prev string, cur string) bool {
 
 fn comptime_cond_has_type_test(cond string) bool {
 	return cond.contains(' is ') || cond.contains(' !is ')
+}
+
+// comptime_cond_needs_loop_var reports whether a `$if` condition reads any currently active
+// `$for` loop variable, meaning it can only be evaluated once the loop is unrolled.
+fn (p &Parser) comptime_cond_needs_loop_var(cond string) bool {
+	for var_name in p.comptime_for_vars {
+		if comptime_cond_references_var(cond, var_name) {
+			return true
+		}
+	}
+	return false
+}
+
+// comptime_cond_references_var reports whether `cond` reads `var_name` as a whole identifier
+// (bare `var_name` or the base of a `var_name.member` selector), so `field` is not matched
+// inside `fields_enabled` or `myfield`.
+fn comptime_cond_references_var(cond string, var_name string) bool {
+	if var_name.len == 0 {
+		return false
+	}
+	mut i := 0
+	for i < cond.len {
+		c := cond[i]
+		if c.is_letter() || c == `_` {
+			start := i
+			for i < cond.len && (cond[i].is_letter() || cond[i].is_digit() || cond[i] == `_`) {
+				i++
+			}
+			if cond[start..i] == var_name {
+				return true
+			}
+		} else {
+			i++
+		}
+	}
+	return false
 }
 
 fn (mut p Parser) skip_comptime_else() {
@@ -4427,6 +4675,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			if name == '@FN' || name == '@METHOD' {
 				return p.a.add_val_id(5, p.cur_fn)
 			}
+			if name == '@STRUCT' {
+				return p.a.add_val_id(5, p.cur_struct)
+			}
 			if name == '@LOCATION' {
 				return p.a.add_val_id(5,
 					'${p.cur_file}:${p.line_nr_for_pos(name_pos)}: ${p.cur_fn}')
@@ -4809,6 +5060,21 @@ fn (mut p Parser) pointer_cast_expr_from_current_amp() ?flat.NodeId {
 
 fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 	p.next() // skip '.'
+	if p.tok == .dollar && p.peek() == .lpar {
+		// Compile-time field selector `receiver.$(field.name)`: the field name is resolved when
+		// the enclosing `$for` loop is unrolled. Marker value `$`; child 1 is the name expr.
+		p.next() // skip $
+		p.next() // skip (
+		inner := p.expr(.lowest)
+		p.check(.rpar)
+		sel_start := p.add_children2(lhs, inner)
+		return p.a.add_node(flat.Node{
+			kind:           .selector
+			value:          '$'
+			children_start: sel_start
+			children_count: 2
+		})
+	}
 	field_name := p.expect_name_or_keyword()
 	sel_start := p.add_child(lhs)
 	sel := p.a.add_node(flat.Node{
