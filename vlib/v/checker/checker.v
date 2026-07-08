@@ -2177,6 +2177,11 @@ fn (mut c Checker) type_implements_with_mut_receiver(typ ast.Type, interface_typ
 	utyp := c.unwrap_generic(typ)
 	styp := c.table.type_to_str(utyp)
 	typ_sym := c.table.sym(utyp)
+	if typ_sym.kind == .placeholder {
+		// `typ` is unresolved (undeclared), so never implements anything.
+		// Callers report the error themselves to avoid duplicate messages.
+		return false
+	}
 	mut inter_sym := c.table.final_sym(resolved_interface_type)
 	if !inter_sym.is_pub && inter_sym.mod !in [typ_sym.mod, c.mod] && typ_sym.mod != 'builtin' {
 		c.error('`${styp}` cannot implement private interface `${inter_sym.name}` of other module',
