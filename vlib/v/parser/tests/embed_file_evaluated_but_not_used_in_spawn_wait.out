@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_spawn_wait.vv:12:47: error: expression evaluated but not used
+   10 | 
+   11 | fn main() {
+   12 |     (spawn load($embed_file(@FILE).path)).wait().path
+      |                                                  ~~~~
+   13 | }

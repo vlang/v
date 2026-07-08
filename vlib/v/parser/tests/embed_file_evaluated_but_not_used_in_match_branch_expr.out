@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_match_branch_expr.vv:2:2: error: expression evaluated but not used
+    1 | fn main() {
+    2 |     '' == (match '' {
+      |     ~~~~~~~~~~~~~~~~~
+    3 |         $embed_file(@FILE).path {
+    4 |             'a'

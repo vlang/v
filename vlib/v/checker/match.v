@@ -7,7 +7,7 @@ import strings
 
 fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 	if !node.is_comptime {
-		node.is_expr = c.expected_type != ast.void_type
+		node.is_expr = node.is_expr || c.expected_type != ast.void_type
 	}
 	node.expected_type = c.expected_type
 	if mut node.cond is ast.ParExpr && !c.pref.translated && !c.file.is_translated {
@@ -293,7 +293,7 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 
 		if !node.is_comptime || (node.is_comptime && comptime_match_branch_result) {
 			if node.is_expr {
-				c.stmts_ending_with_expression(mut branch.stmts, c.expected_or_type)
+				c.stmts_before_branch_expr(mut branch.stmts)
 			} else {
 				c.stmts(mut branch.stmts)
 			}

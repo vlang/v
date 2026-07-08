@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_unused_or_block.vv:9:3: error: expression evaluated but not used
+    7 | fn main() {
+    8 |     maybe_file() or {
+    9 |         $embed_file(@FILE)
+      |         ~~~~~~~~~~~~~~~~~~
+   10 |     }
+   11 | }

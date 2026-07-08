@@ -184,7 +184,7 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 	}
 	return match fn_name.len {
 		3 {
-			match fn_name {
+			return match fn_name {
 				'str' {
 					.str
 				}
@@ -206,7 +206,7 @@ fn (mut p Parser) call_kind(fn_name string) ast.CallKind {
 			}
 		}
 		4 {
-			match fn_name {
+			return match fn_name {
 				'wait' {
 					.wait
 				}

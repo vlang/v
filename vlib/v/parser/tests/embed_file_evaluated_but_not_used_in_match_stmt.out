@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_match_stmt.vv:5:4: error: expression evaluated but not used
+    3 |     match n {
+    4 |         1 {
+    5 |             $embed_file(@FILE)
+      |             ~~~~~~~~~~~~~~~~~~
+    6 |         }
+    7 |         else {}

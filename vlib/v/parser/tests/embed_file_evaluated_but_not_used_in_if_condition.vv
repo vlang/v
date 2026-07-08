@@ -1,0 +1,7 @@
+fn main() {
+	'' == (if $embed_file(@FILE).path == '' {
+		'a'
+	} else {
+		'b'
+	})
+}

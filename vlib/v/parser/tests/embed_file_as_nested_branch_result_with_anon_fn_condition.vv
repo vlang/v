@@ -1,0 +1,30 @@
+fn yes() bool {
+	return true
+}
+
+fn main() {
+	fallback := $embed_file(@FILE)
+	embedded_if := if yes() {
+		if fn () ?bool {
+			return true
+		}() or { false } {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+	} else {
+		fallback
+	}
+	embedded_match := if yes() {
+		match fn () ?int {
+			return 0
+		}() or { 0 } {
+			0 { $embed_file(@FILE) }
+			else { fallback }
+		}
+	} else {
+		fallback
+	}
+	assert embedded_if.len > 0
+	assert embedded_match.len > 0
+}

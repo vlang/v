@@ -40,6 +40,8 @@ mut:
 	inside_if_cond              bool
 	inside_ct_if_expr           bool
 	inside_or_expr              bool
+	or_expr_scope_depth         int
+	or_expr_is_used             bool
 	inside_for                  bool
 	inside_for_expr             bool
 	inside_fn                   bool // true even with implicit main
@@ -54,14 +56,20 @@ mut:
 	inside_in_array             bool
 	inside_infix                bool
 	inside_assign_rhs           bool // rhs assignment
+	inside_return_expr          bool
+	return_expr_scope_depth     int
 	inside_match                bool // to separate `match A { }` from `Struct{}`
 	inside_select               bool // to allow `ch <- Struct{} {` inside `select`
 	inside_match_case           bool // to separate `match_expr { }` from `Struct{}`
 	inside_match_body           bool // to fix eval not used TODO
+	inside_expr_branch          bool
+	expr_branch_scope_depth     int
 	inside_ct_match             bool
 	inside_ct_match_case        bool
 	inside_ct_match_body        bool
 	inside_unsafe               bool
+	unsafe_expr_scope_depth     int
+	unsafe_expr_is_used         bool
 	inside_sum_type             bool // to prevent parsing inline sum type again
 	inside_asm_template         bool
 	inside_asm                  bool
@@ -76,6 +84,8 @@ mut:
 	inside_chan_decl            bool
 	inside_attr_decl            bool
 	inside_lock_exprs           bool
+	lock_expr_scope_depth       int
+	lock_expr_is_used           bool
 	array_dim                   int               // array dim parsing level
 	fixed_array_dim             int               // fixed array dim parsing level
 	allow_auto_fixed_array_size bool              // allow `[..]` while parsing fixed array literal types
@@ -103,6 +113,7 @@ mut:
 	is_stmt_ident               bool // true while the beginning of a statement is an ident/selector
 	expecting_type              bool // `is Type`, expecting type
 	expecting_value             bool = true // true where a node value will be used
+	parenthesized_expr_is_used  bool = true // true when the current parenthesized expression value is used
 	cur_fn_name                 string
 	cur_fn_scope                &ast.Scope = unsafe { nil }
 	label_names                 []string
@@ -576,6 +587,18 @@ fn (mut p Parser) parse_block_no_scope(is_top_level bool) []ast.Stmt {
 	return stmts
 }
 
+fn (mut p Parser) parse_branch_block_no_scope(is_expr bool) []ast.Stmt {
+	old_inside_expr_branch := p.inside_expr_branch
+	old_expr_branch_scope_depth := p.expr_branch_scope_depth
+	defer {
+		p.inside_expr_branch = old_inside_expr_branch
+		p.expr_branch_scope_depth = old_expr_branch_scope_depth
+	}
+	p.inside_expr_branch = is_expr
+	p.expr_branch_scope_depth = p.opened_scopes
+	return p.parse_block_no_scope(false)
+}
+
 fn (mut p Parser) mark_last_call_return_as_used(mut last_stmt ast.Stmt) {
 	match mut last_stmt {
 		ast.ExprStmt {
@@ -827,38 +850,45 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 						return p.other_stmts(comptime_for_stmt)
 					}
 					.key_if {
+						inside_top_level_comptime := p.is_in_top_level_comptime(p.inside_assign_rhs)
 						if_expr := p.if_expr(true, false)
 						cur_stmt := ast.ExprStmt{
 							expr: if_expr
 							pos:  if_expr.pos
 						}
-						if p.pref.is_fmt || comptime_if_expr_contains_top_stmt(if_expr) {
+						if p.pref.is_fmt || inside_top_level_comptime
+							|| comptime_if_expr_contains_top_stmt(if_expr) {
 							return cur_stmt
 						} else {
 							return p.other_stmts(cur_stmt)
 						}
 					}
 					.key_match {
+						inside_top_level_comptime := p.is_in_top_level_comptime(p.inside_assign_rhs)
 						mut pos := p.tok.pos()
 						expr := p.match_expr(true, false)
 						pos.update_last_line(p.prev_tok.line_nr)
-						return ast.ExprStmt{
+						cur_stmt := ast.ExprStmt{
 							expr: expr
 							pos:  pos
+						}
+						if p.pref.is_fmt || inside_top_level_comptime
+							|| comptime_match_expr_contains_top_stmt(expr) {
+							return cur_stmt
+						} else {
+							return p.other_stmts(cur_stmt)
 						}
 					}
 					.name {
 						// handles $dbg directly without registering token
 						if p.peek_tok.lit == 'dbg' {
+							if p.pref.is_script && !p.pref.is_test
+								&& !p.is_in_top_level_comptime(p.inside_assign_rhs) {
+								return p.other_stmts(ast.empty_stmt)
+							}
 							return p.dbg_stmt()
 						} else {
-							mut pos := p.tok.pos()
-							expr := p.expr(0)
-							pos.update_last_line(p.prev_tok.line_nr)
-							return ast.ExprStmt{
-								expr: expr
-								pos:  pos
-							}
+							return p.dollar_name_expr_stmt(true)
 						}
 					}
 					else {
@@ -908,20 +938,42 @@ fn (mut p Parser) top_stmt() ast.Stmt {
 
 fn comptime_if_expr_contains_top_stmt(if_expr ast.IfExpr) bool {
 	for branch in if_expr.branches {
-		for stmt in branch.stmts {
-			if stmt is ast.ExprStmt {
-				if stmt.expr is ast.IfExpr {
-					if !comptime_if_expr_contains_top_stmt(stmt.expr) {
-						return false
-					}
-				} else if stmt.expr is ast.CallExpr {
+		if !comptime_stmts_contain_top_stmt(branch.stmts) {
+			return false
+		}
+	}
+	return true
+}
+
+fn comptime_match_expr_contains_top_stmt(match_expr ast.MatchExpr) bool {
+	for branch in match_expr.branches {
+		if !comptime_stmts_contain_top_stmt(branch.stmts) {
+			return false
+		}
+	}
+	return true
+}
+
+fn comptime_stmts_contain_top_stmt(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if stmt is ast.ExprStmt {
+			if stmt.expr is ast.IfExpr {
+				if !comptime_if_expr_contains_top_stmt(stmt.expr) {
 					return false
 				}
-			} else if stmt is ast.AssignStmt {
+			} else if stmt.expr is ast.MatchExpr {
+				if !comptime_match_expr_contains_top_stmt(stmt.expr) {
+					return false
+				}
+			} else if stmt.expr is ast.CallExpr {
 				return false
-			} else if stmt is ast.HashStmt {
-				return true
 			}
+		} else if stmt is ast.AssignStmt {
+			return false
+		} else if stmt is ast.DebuggerStmt {
+			return false
+		} else if stmt is ast.HashStmt {
+			continue
 		}
 	}
 	return true
@@ -1008,6 +1060,14 @@ fn (p &Parser) relative_token(offset int) token.Token {
 		1 { p.peek_tok }
 		else { p.peek_token(offset) }
 	}
+}
+
+fn (p &Parser) next_non_comment_token_offset(offset int) int {
+	mut current_offset := offset
+	for p.relative_token(current_offset).kind == .comment {
+		current_offset++
+	}
+	return current_offset
 }
 
 fn (p &Parser) is_script_receiver_method_decl_start() bool {
@@ -1263,7 +1323,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 			match p.peek_tok.kind {
 				.key_if {
 					mut pos := p.tok.pos()
-					expr := p.if_expr(true, false)
+					expr := p.if_expr(true, p.comptime_stmt_is_expr_branch_result())
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
@@ -1275,7 +1335,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 				}
 				.key_match {
 					mut pos := p.tok.pos()
-					expr := p.match_expr(true, false)
+					expr := p.match_expr(true, p.comptime_stmt_is_expr_branch_result())
 					pos.update_last_line(p.prev_tok.line_nr)
 					return ast.ExprStmt{
 						expr: expr
@@ -1287,13 +1347,7 @@ fn (mut p Parser) stmt(is_top_level bool) ast.Stmt {
 					if p.peek_tok.lit == 'dbg' {
 						return p.dbg_stmt()
 					} else {
-						mut pos := p.tok.pos()
-						expr := p.expr(0)
-						pos.update_last_line(p.prev_tok.line_nr)
-						return ast.ExprStmt{
-							expr: expr
-							pos:  pos
-						}
+						return p.dollar_name_expr_stmt(is_top_level)
 					}
 				}
 				else {
@@ -1455,6 +1509,22 @@ fn (mut p Parser) dbg_stmt() ast.DebuggerStmt {
 	}
 }
 
+fn (mut p Parser) dollar_name_expr_stmt(is_top_level bool) ast.Stmt {
+	mut pos := p.tok.pos()
+	expr := p.expr(0)
+	pos.update_last_line(p.prev_tok.line_nr)
+	is_expr_branch_result_end := p.is_expr_branch_result_end()
+	if p.should_check_unused_exprs(.dollar) && (is_top_level || !is_expr_branch_result_end)
+		&& !p.expr_can_be_unused_stmt(expr) {
+		return p.error_with_pos('expression evaluated but not used', expr.pos())
+	}
+	return ast.ExprStmt{
+		expr:    expr
+		pos:     pos
+		is_expr: is_expr_branch_result_end
+	}
+}
+
 fn (mut p Parser) semicolon_stmt() ast.SemicolonStmt {
 	pos := p.tok.pos()
 	p.check(.semicolon)
@@ -1476,6 +1546,1393 @@ fn (mut p Parser) expr_list(expect_value bool) []ast.Expr {
 		}
 	}
 	return exprs
+}
+
+fn (p &Parser) should_check_unused_exprs(tok_kind token.Kind) bool {
+	return !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
+		&& tok_kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select]
+}
+
+fn (p &Parser) expr_can_be_unused_stmt(expr ast.Expr) bool {
+	return match expr {
+		ast.CallExpr, ast.PostfixExpr, ast.DumpExpr {
+			true
+		}
+		ast.ParExpr {
+			p.expr_can_be_unused_stmt(expr.expr)
+		}
+		ast.SelectorExpr {
+			!p.expr_contains_embed_file_value(expr)
+		}
+		ast.ComptimeCall {
+			expr.kind != .embed_file
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (p &Parser) expr_contains_embed_file_value(expr ast.Expr) bool {
+	match expr {
+		ast.ComptimeCall {
+			if expr.kind == .embed_file {
+				return true
+			}
+			if p.expr_contains_embed_file_value(expr.left)
+				|| p.or_block_contains_embed_file_value(expr.or_block) {
+				return true
+			}
+			for arg in expr.args {
+				if p.expr_contains_embed_file_value(arg.expr) {
+					return true
+				}
+			}
+		}
+		ast.Ident {
+			return p.or_block_contains_embed_file_value(expr.or_expr)
+		}
+		ast.IfGuardExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.ParExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.SelectorExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+				|| p.or_block_contains_embed_file_value(expr.or_block)
+		}
+		ast.ComptimeSelector {
+			return p.expr_contains_embed_file_value(expr.left)
+				|| p.expr_contains_embed_file_value(expr.field_expr)
+				|| p.or_block_contains_embed_file_value(expr.or_block)
+		}
+		ast.CallExpr {
+			if p.expr_contains_embed_file_value(expr.left)
+				|| p.or_block_contains_embed_file_value(expr.or_block) {
+				return true
+			}
+			for arg in expr.args {
+				if p.expr_contains_embed_file_value(arg.expr) {
+					return true
+				}
+			}
+		}
+		ast.InfixExpr {
+			return p.expr_contains_embed_file_value(expr.left)
+				|| p.expr_contains_embed_file_value(expr.right)
+				|| p.or_block_contains_embed_file_value(expr.or_block)
+		}
+		ast.PrefixExpr {
+			return p.expr_contains_embed_file_value(expr.right)
+				|| p.or_block_contains_embed_file_value(expr.or_block)
+		}
+		ast.PostfixExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.IndexExpr {
+			if p.expr_contains_embed_file_value(expr.left)
+				|| p.expr_contains_embed_file_value(expr.index)
+				|| p.or_block_contains_embed_file_value(expr.or_expr) {
+				return true
+			}
+			for index_expr in expr.indices {
+				if p.expr_contains_embed_file_value(index_expr) {
+					return true
+				}
+			}
+		}
+		ast.CastExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+				|| (expr.has_arg && p.expr_contains_embed_file_value(expr.arg))
+		}
+		ast.AsCast {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.SizeOf {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.IsRefType {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.TypeOf {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.AnonFn {
+			return p.stmts_contain_embed_file_value(expr.decl.stmts)
+		}
+		ast.LambdaExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.ChanInit {
+			return expr.has_cap && p.expr_contains_embed_file_value(expr.cap_expr)
+		}
+		ast.ArrayInit {
+			if p.expr_contains_embed_file_value(expr.len_expr)
+				|| p.expr_contains_embed_file_value(expr.cap_expr)
+				|| p.expr_contains_embed_file_value(expr.init_expr)
+				|| p.expr_contains_embed_file_value(expr.elem_type_expr)
+				|| p.expr_contains_embed_file_value(expr.update_expr) {
+				return true
+			}
+			for array_expr in expr.exprs {
+				if p.expr_contains_embed_file_value(array_expr) {
+					return true
+				}
+			}
+		}
+		ast.ArrayDecompose {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.MapInit {
+			if expr.has_update_expr && p.expr_contains_embed_file_value(expr.update_expr) {
+				return true
+			}
+			for key_expr in expr.keys {
+				if p.expr_contains_embed_file_value(key_expr) {
+					return true
+				}
+			}
+			for val_expr in expr.vals {
+				if p.expr_contains_embed_file_value(val_expr) {
+					return true
+				}
+			}
+		}
+		ast.StructInit {
+			if p.expr_contains_embed_file_value(expr.typ_expr)
+				|| (expr.has_update_expr && p.expr_contains_embed_file_value(expr.update_expr)) {
+				return true
+			}
+			for init_field in expr.init_fields {
+				if p.expr_contains_embed_file_value(init_field.expr) {
+					return true
+				}
+			}
+		}
+		ast.StringInterLiteral {
+			for inter_expr in expr.exprs {
+				if p.expr_contains_embed_file_value(inter_expr) {
+					return true
+				}
+			}
+			for fwidth_expr in expr.fwidth_exprs {
+				if p.expr_contains_embed_file_value(fwidth_expr) {
+					return true
+				}
+			}
+			for precision_expr in expr.precision_exprs {
+				if p.expr_contains_embed_file_value(precision_expr) {
+					return true
+				}
+			}
+		}
+		ast.RangeExpr {
+			return p.expr_contains_embed_file_value(expr.low)
+				|| p.expr_contains_embed_file_value(expr.high)
+		}
+		ast.UnsafeExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.LockExpr {
+			return p.stmts_contain_embed_file_value(expr.stmts)
+		}
+		ast.OrExpr {
+			return p.or_block_contains_embed_file_value(expr)
+		}
+		ast.IfExpr {
+			if !expr.is_expr && !expr.force_expr {
+				return false
+			}
+			if expr.is_comptime {
+				return p.comptime_if_expr_contains_embed_file_value(expr)
+			}
+			for branch in expr.branches {
+				if p.expr_contains_embed_file_value(branch.cond)
+					|| p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+			}
+		}
+		ast.MatchExpr {
+			if !expr.is_expr {
+				return false
+			}
+			if expr.is_comptime {
+				return p.comptime_match_expr_contains_embed_file_value(expr)
+			}
+			if p.expr_contains_embed_file_value(expr.cond) {
+				return true
+			}
+			for branch in expr.branches {
+				for branch_expr in branch.exprs {
+					if p.expr_contains_embed_file_value(branch_expr) {
+						return true
+					}
+				}
+				if p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+			}
+		}
+		ast.SelectExpr {
+			for branch in expr.branches {
+				if p.stmt_contains_embed_file_value(branch.stmt)
+					|| p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+			}
+		}
+		ast.ConcatExpr {
+			for concat_expr in expr.vals {
+				if p.expr_contains_embed_file_value(concat_expr) {
+					return true
+				}
+			}
+		}
+		ast.Likely {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.DumpExpr {
+			return p.expr_contains_embed_file_value(expr.expr)
+		}
+		ast.SpawnExpr {
+			return p.expr_contains_embed_file_value(ast.Expr(expr.call_expr))
+		}
+		ast.GoExpr {
+			return p.expr_contains_embed_file_value(ast.Expr(expr.call_expr))
+		}
+		ast.SqlExpr {
+			if p.expr_contains_embed_file_value(expr.db_expr)
+				|| p.expr_contains_embed_file_value(expr.where_expr)
+				|| p.expr_contains_embed_file_value(expr.order_expr)
+				|| p.expr_contains_embed_file_value(expr.limit_expr)
+				|| p.expr_contains_embed_file_value(expr.offset_expr)
+				|| p.or_block_contains_embed_file_value(expr.or_expr) {
+				return true
+			}
+			for _, sub_expr in expr.sub_structs {
+				if p.expr_contains_embed_file_value(ast.Expr(sub_expr)) {
+					return true
+				}
+			}
+			for join in expr.joins {
+				if p.expr_contains_embed_file_value(join.on_expr) {
+					return true
+				}
+			}
+		}
+		ast.SqlQueryDataExpr {
+			return p.sql_query_data_items_contain_embed_file_value(expr.items)
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (p &Parser) comptime_match_expr_contains_embed_file_value(expr ast.MatchExpr) bool {
+	if p.expr_contains_embed_file_value(expr.cond) {
+		return true
+	}
+	cond_value := p.comptime_match_value_for_embed_scan(expr.cond) or {
+		return p.match_expr_branches_contain_embed_file_value(expr.branches)
+	}
+	mut found_branch := false
+	for branch in expr.branches {
+		for branch_expr in branch.exprs {
+			if p.expr_contains_embed_file_value(branch_expr) {
+				return true
+			}
+		}
+		if branch.is_else {
+			if found_branch {
+				return false
+			}
+			return p.stmts_contain_embed_file_value(branch.stmts)
+		}
+		if found_branch {
+			continue
+		}
+		mut has_unknown_case := false
+		mut branch_matches := false
+		for branch_expr in branch.exprs {
+			branch_value := p.comptime_match_value_for_embed_scan(branch_expr) or {
+				has_unknown_case = true
+				continue
+			}
+			if branch_value == cond_value {
+				branch_matches = true
+				break
+			}
+		}
+		if branch_matches {
+			if p.stmts_contain_embed_file_value(branch.stmts) {
+				return true
+			}
+			found_branch = true
+		} else if has_unknown_case && p.stmts_contain_embed_file_value(branch.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (p &Parser) match_expr_branches_contain_embed_file_value(branches []ast.MatchBranch) bool {
+	for branch in branches {
+		for branch_expr in branch.exprs {
+			if p.expr_contains_embed_file_value(branch_expr) {
+				return true
+			}
+		}
+		if p.stmts_contain_embed_file_value(branch.stmts) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (p &Parser) comptime_match_value_for_embed_scan(expr ast.Expr) ?string {
+	return p.comptime_match_value_for_embed_scan_with_depth(expr, 0)
+}
+
+fn (p &Parser) comptime_match_value_for_embed_scan_with_depth(expr ast.Expr, depth int) ?string {
+	if depth > 8 {
+		return none
+	}
+	match expr {
+		ast.StringLiteral {
+			return 'string:${expr.val}'
+		}
+		ast.IntegerLiteral {
+			return 'int:${expr.val}'
+		}
+		ast.BoolLiteral {
+			return 'bool:${expr.val}'
+		}
+		ast.AtExpr {
+			value := p.comptime_if_string_value_for_embed_scan(expr) or { return none }
+			return 'string:${value}'
+		}
+		ast.Ident {
+			return p.comptime_match_ident_value_for_embed_scan(expr, depth)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (p &Parser) comptime_match_ident_value_for_embed_scan(expr ast.Ident, depth int) ?string {
+	if imported_name := p.imported_symbols[expr.name] {
+		if const_field := p.table.global_scope.find_const(imported_name) {
+			return p.comptime_match_const_value_for_embed_scan(const_field, depth)
+		}
+	}
+	if const_field := p.table.global_scope.find_const(expr.name) {
+		return p.comptime_match_const_value_for_embed_scan(const_field, depth)
+	}
+	if const_field := p.table.global_scope.find_const('${expr.mod}.${expr.name}') {
+		return p.comptime_match_const_value_for_embed_scan(const_field, depth)
+	}
+	if const_field := p.table.global_scope.find_const('${p.mod}.${expr.name}') {
+		return p.comptime_match_const_value_for_embed_scan(const_field, depth)
+	}
+	return none
+}
+
+fn (p &Parser) comptime_match_const_value_for_embed_scan(field &ast.ConstField, depth int) ?string {
+	return p.comptime_match_value_for_embed_scan_with_depth(field.expr, depth + 1)
+}
+
+enum ComptimeIfEmbedScanValue {
+	unknown
+	disabled
+	enabled
+}
+
+fn (p &Parser) comptime_if_expr_contains_embed_file_value(expr ast.IfExpr) bool {
+	mut found_branch := false
+	for branch in expr.branches {
+		if branch.cond is ast.EmptyExpr || branch.cond is ast.NodeError {
+			if found_branch {
+				return false
+			}
+			return p.stmts_contain_embed_file_value(branch.stmts)
+		}
+		cond_value := p.comptime_if_cond_value_for_embed_scan(branch.cond)
+		match cond_value {
+			.enabled {
+				if !found_branch && p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+				found_branch = true
+			}
+			.disabled {}
+			.unknown {
+				if !found_branch && (p.expr_contains_embed_file_value(branch.cond)
+					|| p.stmts_contain_embed_file_value(branch.stmts)) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (p &Parser) comptime_if_cond_value_for_embed_scan(cond ast.Expr) ComptimeIfEmbedScanValue {
+	match cond {
+		ast.BoolLiteral {
+			return comptime_if_embed_scan_bool_value(cond.val)
+		}
+		ast.ParExpr {
+			return p.comptime_if_cond_value_for_embed_scan(cond.expr)
+		}
+		ast.PrefixExpr {
+			if cond.op != .not {
+				return .unknown
+			}
+			return comptime_if_embed_scan_negate(p.comptime_if_cond_value_for_embed_scan(cond.right))
+		}
+		ast.PostfixExpr {
+			if cond.op == .question && cond.expr is ast.Ident {
+				return comptime_if_embed_scan_bool_value((cond.expr as ast.Ident).name in p.pref.compile_defines)
+			}
+		}
+		ast.InfixExpr {
+			return p.comptime_if_infix_cond_value_for_embed_scan(cond)
+		}
+		ast.Ident {
+			cname := cond.name
+			if cname in ast.valid_comptime_not_user_defined {
+				if cname == 'threads' {
+					return .unknown
+				}
+				return comptime_if_embed_scan_bool_value(ast.eval_comptime_not_user_defined_ident(cname,
+					p.pref) or { return .unknown })
+			}
+		}
+		else {}
+	}
+
+	return .unknown
+}
+
+fn (p &Parser) comptime_if_infix_cond_value_for_embed_scan(cond ast.InfixExpr) ComptimeIfEmbedScanValue {
+	match cond.op {
+		.and, .logical_or {
+			left := p.comptime_if_cond_value_for_embed_scan(cond.left)
+			right := p.comptime_if_cond_value_for_embed_scan(cond.right)
+			if cond.op == .and {
+				if left == .disabled || right == .disabled {
+					return .disabled
+				}
+				if left == .enabled && right == .enabled {
+					return .enabled
+				}
+				return .unknown
+			}
+			if left == .enabled || right == .enabled {
+				return .enabled
+			}
+			if left == .disabled && right == .disabled {
+				return .disabled
+			}
+			return .unknown
+		}
+		.eq, .ne {
+			left := p.comptime_if_string_value_for_embed_scan(cond.left) or { return .unknown }
+			right := p.comptime_if_string_value_for_embed_scan(cond.right) or { return .unknown }
+			return comptime_if_embed_scan_bool_value(if cond.op == .eq {
+				left == right
+			} else {
+				left != right
+			})
+		}
+		else {
+			return .unknown
+		}
+	}
+}
+
+fn (p &Parser) comptime_if_string_value_for_embed_scan(expr ast.Expr) ?string {
+	match expr {
+		ast.StringLiteral {
+			return expr.val
+		}
+		ast.AtExpr {
+			match expr.kind {
+				.mod_name { return p.mod }
+				.os { return pref.get_host_os().lower() }
+				.ccompiler { return p.pref.ccompiler_type.str() }
+				.backend { return p.pref.backend.str() }
+				.platform { return p.pref.arch.str() }
+				else { return none }
+			}
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn comptime_if_embed_scan_bool_value(value bool) ComptimeIfEmbedScanValue {
+	return if value { .enabled } else { .disabled }
+}
+
+fn comptime_if_embed_scan_negate(value ComptimeIfEmbedScanValue) ComptimeIfEmbedScanValue {
+	match value {
+		.enabled { return .disabled }
+		.disabled { return .enabled }
+		.unknown { return .unknown }
+	}
+}
+
+fn (p &Parser) sql_query_data_items_contain_embed_file_value(items []ast.SqlQueryDataItem) bool {
+	for item in items {
+		match item {
+			ast.SqlQueryDataLeaf {
+				if p.expr_contains_embed_file_value(item.expr) {
+					return true
+				}
+			}
+			ast.SqlQueryDataIf {
+				for branch in item.branches {
+					if p.expr_contains_embed_file_value(branch.cond)
+						|| p.sql_query_data_items_contain_embed_file_value(branch.items) {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (p &Parser) or_block_contains_embed_file_value(or_block ast.OrExpr) bool {
+	return p.stmts_contain_embed_file_value(or_block.stmts)
+}
+
+fn (p &Parser) stmts_contain_embed_file_value(stmts []ast.Stmt) bool {
+	for stmt in stmts {
+		if p.stmt_contains_embed_file_value(stmt) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (p &Parser) stmt_contains_embed_file_value(stmt ast.Stmt) bool {
+	match stmt {
+		ast.ExprStmt {
+			return p.stmt_expr_contains_embed_file_value(stmt.expr)
+		}
+		ast.Block {
+			return p.stmts_contain_embed_file_value(stmt.stmts)
+		}
+		ast.ComptimeFor {
+			return p.stmts_contain_embed_file_value(stmt.stmts)
+		}
+		ast.ForStmt {
+			return (!stmt.is_inf && p.expr_contains_embed_file_value(stmt.cond))
+				|| p.stmts_contain_embed_file_value(stmt.stmts)
+		}
+		ast.ForInStmt {
+			return p.expr_contains_embed_file_value(stmt.cond)
+				|| (stmt.is_range && p.expr_contains_embed_file_value(stmt.high))
+				|| p.stmts_contain_embed_file_value(stmt.stmts)
+		}
+		ast.ForCStmt {
+			return (stmt.has_init && p.stmt_contains_embed_file_value(stmt.init))
+				|| (stmt.has_cond && p.expr_contains_embed_file_value(stmt.cond))
+				|| (stmt.has_inc && p.stmt_contains_embed_file_value(stmt.inc))
+				|| p.stmts_contain_embed_file_value(stmt.stmts)
+		}
+		ast.Return {
+			for return_expr in stmt.exprs {
+				if p.expr_contains_embed_file_value(return_expr) {
+					return true
+				}
+			}
+		}
+		ast.AssignStmt {
+			for right_expr in stmt.right {
+				if p.expr_contains_embed_file_value(right_expr) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (p &Parser) stmt_expr_contains_embed_file_value(expr ast.Expr) bool {
+	match expr {
+		ast.IfExpr {
+			for branch in expr.branches {
+				if p.expr_contains_embed_file_value(branch.cond)
+					|| p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.MatchExpr {
+			if p.expr_contains_embed_file_value(expr.cond) {
+				return true
+			}
+			for branch in expr.branches {
+				for branch_expr in branch.exprs {
+					if p.expr_contains_embed_file_value(branch_expr) {
+						return true
+					}
+				}
+				if p.stmts_contain_embed_file_value(branch.stmts) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return p.expr_contains_embed_file_value(expr)
+		}
+	}
+}
+
+fn (p &Parser) is_current_expr_branch_scope() bool {
+	return p.inside_expr_branch && p.opened_scopes == p.expr_branch_scope_depth
+}
+
+fn (p &Parser) is_current_or_expr_scope() bool {
+	return p.inside_or_expr && p.opened_scopes == p.or_expr_scope_depth
+}
+
+fn (p &Parser) is_current_unsafe_expr_scope() bool {
+	return p.inside_unsafe && p.unsafe_expr_is_used && p.opened_scopes == p.unsafe_expr_scope_depth
+}
+
+fn (p &Parser) is_current_lock_expr_scope() bool {
+	return p.lock_expr_is_used && p.opened_scopes == p.lock_expr_scope_depth
+}
+
+fn (p &Parser) is_current_value_result_scope() bool {
+	return p.is_current_expr_branch_scope()
+		|| (p.is_current_or_expr_scope() && p.or_expr_is_used)
+		|| p.is_current_unsafe_expr_scope() || p.is_current_lock_expr_scope()
+}
+
+fn (p &Parser) current_expr_is_value_result_stmt() bool {
+	if !p.is_current_value_result_scope() {
+		return false
+	}
+	next_offset := match p.tok.kind {
+		.key_if {
+			p.current_if_expr_next_non_comment_offset(0)
+		}
+		.key_match {
+			p.current_match_expr_next_non_comment_offset(0)
+		}
+		.dollar {
+			match p.peek_tok.kind {
+				.key_if { p.current_if_expr_next_non_comment_offset(1) }
+				.key_match { p.current_match_expr_next_non_comment_offset(1) }
+				else { -1 }
+			}
+		}
+		.lpar {
+			p.current_parenthesized_expr_next_non_comment_offset(0)
+		}
+		else {
+			-1
+		}
+	}
+
+	if next_offset < 0 {
+		return false
+	}
+	return p.result_token_is_value_continuation(next_offset)
+		|| p.result_is_followed_by_postfix_call(next_offset)
+		|| p.result_is_followed_by_postfix_value_result(next_offset)
+}
+
+fn (p &Parser) is_current_return_expr_scope() bool {
+	return p.inside_return_expr && p.opened_scopes == p.return_expr_scope_depth
+}
+
+fn (p &Parser) current_if_expr_next_non_comment_offset(start_offset int) int {
+	mut offset := start_offset
+	mut brace_depth := 0
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.key_orelse {
+				or_block_end_offset := p.current_or_block_end_offset(offset)
+				if or_block_end_offset >= 0 {
+					offset = or_block_end_offset
+				}
+			}
+			.key_if, .key_match {
+				if brace_depth == 0 {
+					condition_branch_end_offset := p.current_condition_branch_expr_end_offset(offset,
+						start_offset)
+					if condition_branch_end_offset >= 0 {
+						offset = condition_branch_end_offset - 1
+					}
+				}
+			}
+			.lcbr {
+				if brace_depth == 0 {
+					condition_block_end_offset := p.current_condition_braced_expr_end_offset(offset)
+					if condition_block_end_offset >= 0 {
+						offset = condition_block_end_offset
+					} else {
+						brace_depth++
+					}
+				} else {
+					brace_depth++
+				}
+			}
+			.rcbr {
+				if brace_depth == 0 {
+					return -1
+				}
+				brace_depth--
+				if brace_depth == 0 {
+					next_offset := p.next_non_comment_token_offset(offset + 1)
+					next_tok := p.relative_token(next_offset)
+					if next_tok.kind == .key_else {
+						offset = next_offset
+					} else if next_tok.kind == .dollar
+						&& p.relative_token(next_offset + 1).kind == .key_else {
+						offset = next_offset + 1
+					} else {
+						return next_offset
+					}
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) current_match_expr_next_non_comment_offset(start_offset int) int {
+	mut offset := start_offset
+	mut brace_depth := 0
+	mut found_lcbr := false
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.key_orelse {
+				or_block_end_offset := p.current_or_block_end_offset(offset)
+				if or_block_end_offset >= 0 {
+					offset = or_block_end_offset
+				}
+			}
+			.key_if, .key_match {
+				if !found_lcbr {
+					condition_branch_end_offset := p.current_condition_branch_expr_end_offset(offset,
+						start_offset)
+					if condition_branch_end_offset >= 0 {
+						offset = condition_branch_end_offset - 1
+					}
+				}
+			}
+			.lcbr {
+				if !found_lcbr {
+					condition_block_end_offset := p.current_condition_braced_expr_end_offset(offset)
+					if condition_block_end_offset >= 0 {
+						offset = condition_block_end_offset
+					} else {
+						found_lcbr = true
+						brace_depth++
+					}
+				} else {
+					brace_depth++
+				}
+			}
+			.rcbr {
+				if !found_lcbr || brace_depth == 0 {
+					return -1
+				}
+				brace_depth--
+				if brace_depth == 0 {
+					return p.next_non_comment_token_offset(offset + 1)
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) current_condition_branch_expr_end_offset(offset int, start_offset int) int {
+	if offset == start_offset || p.current_condition_branch_follows_else(offset) {
+		return -1
+	}
+	return match p.relative_token(offset).kind {
+		.key_if { p.current_if_expr_next_non_comment_offset(offset) }
+		.key_match { p.current_match_expr_next_non_comment_offset(offset) }
+		else { -1 }
+	}
+}
+
+fn (p &Parser) current_condition_branch_follows_else(offset int) bool {
+	prev_offset := p.previous_non_comment_token_offset(offset)
+	if prev_offset < 0 {
+		return false
+	}
+	prev_kind := p.relative_token(prev_offset).kind
+	if prev_kind == .key_else {
+		return true
+	}
+	if prev_kind != .dollar {
+		return false
+	}
+	prev_prev_offset := p.previous_non_comment_token_offset(prev_offset)
+	return prev_prev_offset >= 0 && p.relative_token(prev_prev_offset).kind == .key_else
+}
+
+fn (p &Parser) previous_non_comment_token_offset(offset int) int {
+	mut current_offset := offset - 1
+	for current_offset >= 0 {
+		tok := p.relative_token(current_offset)
+		if tok.kind != .comment {
+			return current_offset
+		}
+		current_offset--
+	}
+	return -1
+}
+
+fn (p &Parser) current_condition_braced_expr_end_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind != .lcbr {
+		return -1
+	}
+	end_offset := p.current_brace_block_end_offset(start_offset)
+	if end_offset < 0 {
+		return -1
+	}
+	next_offset := p.next_non_comment_token_offset(end_offset + 1)
+	next_kind := p.relative_token(next_offset).kind
+	prev_tok := p.relative_token(start_offset - 1)
+	tok := p.relative_token(start_offset)
+	opens_literal := tok.is_next_to(prev_tok)
+		|| prev_tok.kind in [.key_if, .key_match, .key_select, .key_unsafe, .lpar, .lsbr, .comma]
+		|| prev_tok.kind.precedence() > 0
+	if opens_literal && next_kind == .lcbr {
+		return end_offset
+	}
+	if p.current_brace_opens_anon_fn_body(start_offset)
+		&& next_kind in [.lpar, .rpar, .rsbr, .rcbr, .comma] {
+		return end_offset
+	}
+	if p.current_brace_opens_lock_expr_body(start_offset) {
+		return end_offset
+	}
+	if p.current_brace_opens_sql_expr_body(start_offset) {
+		return end_offset
+	}
+	if opens_literal
+		&& (next_kind in [.dot, .lsbr, .nilsbr, .lpar, .rpar, .rsbr, .comma, .key_orelse]
+		|| next_kind.precedence() > 0) {
+		return end_offset
+	}
+	return -1
+}
+
+fn (p &Parser) current_brace_opens_anon_fn_body(start_offset int) bool {
+	mut offset := start_offset - 1
+	for offset >= 0 {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.key_fn {
+				return true
+			}
+			.lcbr, .rcbr, .key_if, .key_match, .key_else, .key_orelse, .semicolon {
+				return false
+			}
+			else {}
+		}
+
+		offset--
+	}
+	return false
+}
+
+fn (p &Parser) current_brace_opens_sql_expr_body(start_offset int) bool {
+	mut offset := start_offset - 1
+	mut paren_depth := 0
+	mut square_depth := 0
+	for offset >= 0 {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.rpar {
+				paren_depth++
+			}
+			.lpar {
+				if paren_depth > 0 {
+					paren_depth--
+				} else {
+					return false
+				}
+			}
+			.rsbr {
+				square_depth++
+			}
+			.lsbr {
+				if square_depth > 0 {
+					square_depth--
+				} else {
+					return false
+				}
+			}
+			.name {
+				if paren_depth == 0 && square_depth == 0 && tok.lit == 'sql' {
+					return p.current_sql_prefix_has_db_expr(offset, start_offset)
+				}
+			}
+			.lcbr, .rcbr, .key_if, .key_match, .key_else, .key_orelse, .semicolon {
+				if paren_depth == 0 && square_depth == 0 {
+					return false
+				}
+			}
+			else {}
+		}
+
+		offset--
+	}
+	return false
+}
+
+fn (p &Parser) current_sql_prefix_has_db_expr(sql_offset int, body_start_offset int) bool {
+	next_offset := p.next_non_comment_token_offset(sql_offset + 1)
+	if next_offset >= body_start_offset {
+		return false
+	}
+	sql_tok := p.relative_token(sql_offset)
+	next_tok := p.relative_token(next_offset)
+	return !sql_tok.is_next_to(next_tok) && next_tok.kind in [.name, .lpar]
+}
+
+fn (p &Parser) current_brace_opens_lock_expr_body(start_offset int) bool {
+	mut offset := start_offset - 1
+	for offset >= 0 {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.key_lock, .key_rlock {
+				return true
+			}
+			.lcbr, .rcbr, .key_if, .key_match, .key_else, .key_orelse, .semicolon {
+				return false
+			}
+			else {}
+		}
+
+		offset--
+	}
+	return false
+}
+
+fn (p &Parser) current_or_block_end_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind != .key_orelse {
+		return -1
+	}
+	block_start_offset := p.next_non_comment_token_offset(start_offset + 1)
+	if p.relative_token(block_start_offset).kind != .lcbr {
+		return -1
+	}
+	return p.current_brace_block_end_offset(block_start_offset)
+}
+
+fn (p &Parser) current_brace_block_end_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind != .lcbr {
+		return -1
+	}
+	mut offset := start_offset
+	mut brace_depth := 0
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.lcbr {
+				brace_depth++
+			}
+			.rcbr {
+				if brace_depth == 0 {
+					return -1
+				}
+				brace_depth--
+				if brace_depth == 0 {
+					return offset
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) current_parenthesized_expr_next_non_comment_offset(start_offset int) int {
+	mut offset := start_offset
+	mut paren_depth := 0
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.lpar {
+				paren_depth++
+			}
+			.rpar {
+				if paren_depth == 0 {
+					return -1
+				}
+				paren_depth--
+				if paren_depth == 0 {
+					return p.next_non_comment_token_offset(offset + 1)
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) current_unsafe_expr_next_non_comment_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind != .key_unsafe {
+		return -1
+	}
+	block_start_offset := p.next_non_comment_token_offset(start_offset + 1)
+	if p.relative_token(block_start_offset).kind != .lcbr {
+		return -1
+	}
+	block_end_offset := p.current_brace_block_end_offset(block_start_offset)
+	if block_end_offset < 0 {
+		return -1
+	}
+	return p.next_non_comment_token_offset(block_end_offset + 1)
+}
+
+fn (p &Parser) current_lock_expr_next_non_comment_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind !in [.key_lock, .key_rlock] {
+		return -1
+	}
+	mut offset := p.next_non_comment_token_offset(start_offset + 1)
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.lcbr {
+				block_end_offset := p.current_brace_block_end_offset(offset)
+				if block_end_offset < 0 {
+					return -1
+				}
+				return p.next_non_comment_token_offset(block_end_offset + 1)
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) current_or_block_next_non_comment_offset() int {
+	if p.tok.kind != .key_orelse {
+		return -1
+	}
+	mut offset := 0
+	mut brace_depth := 0
+	mut found_lcbr := false
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.lcbr {
+				found_lcbr = true
+				brace_depth++
+			}
+			.rcbr {
+				if !found_lcbr || brace_depth == 0 {
+					return -1
+				}
+				brace_depth--
+				if brace_depth == 0 {
+					return p.next_non_comment_token_offset(offset + 1)
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) result_is_followed_by_postfix_call(next_offset int) bool {
+	offset := p.result_postfix_chain_next_non_comment_offset(next_offset)
+	if offset < 0 {
+		return false
+	}
+	tok := p.relative_token(offset)
+	if tok.kind != .lpar {
+		return false
+	}
+	prev_offset := p.previous_non_comment_token_offset(offset)
+	return prev_offset >= 0 && tok.line_nr == p.relative_token(prev_offset).line_nr
+}
+
+fn (p &Parser) result_is_followed_by_postfix_value_result(next_offset int) bool {
+	offset := p.result_postfix_chain_next_non_comment_offset(next_offset)
+	if offset < 0 {
+		return false
+	}
+	return p.result_token_is_value_continuation(offset)
+}
+
+fn (p &Parser) result_token_is_value_continuation(offset int) bool {
+	if offset < 0 {
+		return false
+	}
+	tok := p.relative_token(offset)
+	if tok.kind in [.lsbr, .nilsbr] {
+		return p.result_continuation_is_same_line(offset)
+	}
+	if tok.kind.precedence() > 0 {
+		if tok.kind in [.minus, .amp, .mul, .arrow, .key_as, .key_in, .key_is] {
+			return p.result_continuation_is_same_line(offset)
+		}
+		return true
+	}
+	return tok.kind in [.comma, .rcbr, .key_orelse]
+}
+
+fn (p &Parser) result_continuation_is_same_line(offset int) bool {
+	prev_offset := p.previous_non_comment_token_offset(offset)
+	if prev_offset < 0 {
+		return false
+	}
+	prev_tok := p.relative_token(prev_offset)
+	tok := p.relative_token(offset)
+	return tok.line_nr == prev_tok.line_nr
+		|| (prev_tok.kind == .string && tok.line_nr == prev_tok.line_nr + prev_tok.lit.count('\n'))
+}
+
+fn (p &Parser) result_postfix_chain_next_non_comment_offset(next_offset int) int {
+	if next_offset < 0 {
+		return -1
+	}
+	mut offset := next_offset
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.rpar {
+				offset = p.next_non_comment_token_offset(offset + 1)
+			}
+			.dot {
+				field_offset := p.next_non_comment_token_offset(offset + 1)
+				if p.relative_token(field_offset).kind == .eof {
+					return -1
+				}
+				offset = p.next_non_comment_token_offset(field_offset + 1)
+			}
+			.lsbr, .nilsbr {
+				if !p.result_continuation_is_same_line(offset) {
+					return offset
+				}
+				bracket_end_offset := p.current_square_block_end_offset(offset)
+				if bracket_end_offset < 0 {
+					return -1
+				}
+				offset = p.next_non_comment_token_offset(bracket_end_offset + 1)
+			}
+			.question, .not {
+				if !p.result_continuation_is_same_line(offset) {
+					return offset
+				}
+				offset = p.next_non_comment_token_offset(offset + 1)
+			}
+			else {
+				return offset
+			}
+		}
+	}
+	return -1
+}
+
+fn (p &Parser) current_square_block_end_offset(start_offset int) int {
+	if p.relative_token(start_offset).kind !in [.lsbr, .nilsbr] {
+		return -1
+	}
+	mut offset := start_offset
+	mut bracket_depth := 0
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return -1
+			}
+			.lsbr, .nilsbr {
+				bracket_depth++
+			}
+			.rsbr {
+				if bracket_depth == 0 {
+					return -1
+				}
+				bracket_depth--
+				if bracket_depth == 0 {
+					return offset
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return -1
+}
+
+fn (p &Parser) expecting_consumed_value() bool {
+	return p.expecting_value && (p.parenthesized_expr_is_used || p.inside_call_args)
+}
+
+fn (p &Parser) or_block_value_is_used() bool {
+	if p.expecting_consumed_value() {
+		return true
+	}
+	next_offset := p.current_or_block_next_non_comment_offset()
+	if p.result_is_followed_by_postfix_call(next_offset) {
+		return true
+	}
+	if !p.parenthesized_expr_is_used || !p.is_current_value_result_scope() {
+		return false
+	}
+	return p.result_token_is_value_continuation(next_offset)
+		|| p.result_is_followed_by_postfix_value_result(next_offset)
+}
+
+fn (p &Parser) lock_expr_value_is_used() bool {
+	if p.expecting_consumed_value() || p.prev_tok.kind.is_assign() {
+		return true
+	}
+	next_offset := p.current_lock_expr_next_non_comment_offset(0)
+	if next_offset < 0 {
+		return false
+	}
+	if p.result_is_followed_by_postfix_call(next_offset) {
+		return true
+	}
+	return p.is_current_value_result_scope() && (p.result_token_is_value_continuation(next_offset)
+		|| p.result_is_followed_by_postfix_value_result(next_offset))
+}
+
+fn (p &Parser) unsafe_stmt_value_is_used() bool {
+	if p.prev_tok.kind.is_assign() {
+		return true
+	}
+	next_offset := p.current_unsafe_expr_next_non_comment_offset(0)
+	if next_offset < 0 {
+		return false
+	}
+	if p.result_is_followed_by_postfix_call(next_offset) {
+		return true
+	}
+	return p.is_current_value_result_scope() && (p.result_token_is_value_continuation(next_offset)
+		|| p.result_is_followed_by_postfix_value_result(next_offset))
+}
+
+fn (p &Parser) is_current_unsafe_expr_result_end() bool {
+	if !p.is_current_unsafe_expr_scope() {
+		return false
+	}
+	if p.tok.kind == .rcbr {
+		return true
+	}
+	if p.tok.kind == .comment {
+		next_offset := p.next_non_comment_token_offset(1)
+		return p.relative_token(next_offset).kind == .rcbr
+	}
+	return false
+}
+
+fn (p &Parser) comptime_stmt_is_expr_branch_result() bool {
+	if !p.is_current_value_result_scope() {
+		return false
+	}
+	mut offset := 0
+	mut brace_depth := 0
+	for {
+		tok := p.relative_token(offset)
+		match tok.kind {
+			.eof {
+				return false
+			}
+			.lcbr {
+				brace_depth++
+			}
+			.rcbr {
+				if brace_depth == 0 {
+					return false
+				}
+				brace_depth--
+				if brace_depth == 0 {
+					next_offset := p.next_non_comment_token_offset(offset + 1)
+					next_tok := p.relative_token(next_offset)
+					if next_tok.kind == .dollar
+						&& p.relative_token(next_offset + 1).kind == .key_else {
+						offset = next_offset + 1
+					} else {
+						return next_tok.kind == .rcbr
+					}
+				}
+			}
+			else {}
+		}
+
+		offset++
+	}
+	return false
+}
+
+fn (p &Parser) is_expr_branch_result_end() bool {
+	if p.is_current_unsafe_expr_result_end() {
+		return true
+	}
+	if !p.is_current_value_result_scope() {
+		return false
+	}
+	if p.tok.kind == .rcbr {
+		return true
+	}
+	if p.tok.kind == .comment {
+		next_offset := p.next_non_comment_token_offset(1)
+		return p.relative_token(next_offset).kind == .rcbr
+	}
+	return false
 }
 
 @[direct_array_access]
@@ -1508,11 +2965,12 @@ fn (mut p Parser) parse_multi_expr(is_top_level bool) ast.Stmt {
 	// TODO: remove translated
 	if p.tok.kind.is_assign() {
 		return p.partial_assign_stmt(left)
-	} else if !p.pref.translated && !p.is_translated && !p.pref.is_fmt && !p.pref.is_vet
-		&& tok.kind !in [.key_if, .key_match, .key_lock, .key_rlock, .key_select] {
+	} else if p.should_check_unused_exprs(tok.kind) {
 		for node in left {
-			if (is_top_level || p.tok.kind !in [.comment, .rcbr])
-				&& node !in [ast.CallExpr, ast.PostfixExpr, ast.ComptimeCall, ast.SelectorExpr, ast.DumpExpr] {
+			has_embed_file_value := p.expr_contains_embed_file_value(node)
+			if (is_top_level || p.tok.kind !in [.comment, .rcbr]
+				|| (has_embed_file_value && !p.is_expr_branch_result_end()))
+				&& !p.expr_can_be_unused_stmt(node) {
 				is_complex_infix_expr := node is ast.InfixExpr
 					&& node.op in [.left_shift, .right_shift, .unsigned_right_shift, .arrow]
 				if !is_complex_infix_expr && !p.is_vls {
@@ -2161,14 +3619,21 @@ enum OrBlockErrVarMode {
 
 fn (mut p Parser) or_block(err_var_mode OrBlockErrVarMode) ([]ast.Stmt, token.Pos, &ast.Scope) {
 	was_inside_or_expr := p.inside_or_expr
+	was_or_expr_scope_depth := p.or_expr_scope_depth
+	was_or_expr_is_used := p.or_expr_is_used
+	or_expr_is_used := p.or_block_value_is_used()
 	defer {
 		p.inside_or_expr = was_inside_or_expr
+		p.or_expr_scope_depth = was_or_expr_scope_depth
+		p.or_expr_is_used = was_or_expr_is_used
 	}
 	p.inside_or_expr = true
 
 	mut pos := p.tok.pos()
 	p.next()
 	p.open_scope()
+	p.or_expr_scope_depth = p.opened_scopes
+	p.or_expr_is_used = or_expr_is_used
 	or_scope := p.scope
 	defer {
 		p.close_scope()
@@ -2936,9 +4401,15 @@ fn (mut p Parser) return_stmt() ast.Return {
 	}
 	// return exprs
 	old_assign_rhs := p.inside_assign_rhs
+	old_inside_return_expr := p.inside_return_expr
+	old_return_expr_scope_depth := p.return_expr_scope_depth
 	p.inside_assign_rhs = true
+	p.inside_return_expr = true
+	p.return_expr_scope_depth = p.opened_scopes
 	exprs := p.expr_list(true)
 	p.inside_assign_rhs = old_assign_rhs
+	p.inside_return_expr = old_inside_return_expr
+	p.return_expr_scope_depth = old_return_expr_scope_depth
 	end_pos := exprs.last().pos()
 	return ast.Return{
 		scope:    p.scope
@@ -3409,6 +4880,7 @@ fn (mut p Parser) rewind_scanner_to_current_token_in_new_mode() {
 }
 
 fn (mut p Parser) unsafe_stmt() ast.Stmt {
+	unsafe_expr_is_used := p.unsafe_stmt_value_is_used()
 	mut pos := p.tok.pos()
 	p.next()
 	if p.tok.kind != .lcbr {
@@ -3420,11 +4892,17 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		p.recover_until_closing_rcbr()
 		return err
 	}
+	was_unsafe_expr_scope_depth := p.unsafe_expr_scope_depth
+	was_unsafe_expr_is_used := p.unsafe_expr_is_used
 	p.inside_unsafe = true
 	p.open_scope() // needed in case of `unsafe {stmt}`
+	p.unsafe_expr_scope_depth = p.opened_scopes
+	p.unsafe_expr_is_used = unsafe_expr_is_used
 	sc := p.scope
 	defer {
 		p.inside_unsafe = false
+		p.unsafe_expr_scope_depth = was_unsafe_expr_scope_depth
+		p.unsafe_expr_is_used = was_unsafe_expr_is_used
 		p.close_scope()
 	}
 	if p.tok.kind == .rcbr {
@@ -3458,6 +4936,7 @@ fn (mut p Parser) unsafe_stmt() ast.Stmt {
 		}
 	}
 	// unsafe {stmts}
+	p.unsafe_expr_is_used = false
 	mut stmts := [stmt]
 	for p.tok.kind != .rcbr {
 		stmts << p.stmt(false)

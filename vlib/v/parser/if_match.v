@@ -73,7 +73,7 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 					}
 				} else {
 					branches << ast.IfBranch{
-						stmts:    p.parse_block_no_scope(false)
+						stmts:    p.parse_branch_block_no_scope(is_expr_)
 						pos:      start_pos.extend(end_pos)
 						body_pos: body_pos.extend(p.tok.pos())
 						comments: comments
@@ -206,7 +206,7 @@ fn (mut p Parser) if_expr(is_comptime bool, is_expr bool) ast.IfExpr {
 				scope:    p.scope
 			}
 		} else {
-			stmts := p.parse_block_no_scope(false)
+			stmts := p.parse_branch_block_no_scope(is_expr_)
 			branches << ast.IfBranch{
 				cond:     cond
 				stmts:    stmts
@@ -553,7 +553,7 @@ fn (mut p Parser) match_expr(is_comptime bool, is_expr bool) ast.MatchExpr {
 			&& !p.pref.output_cross_c {
 			p.skip_scope()
 		} else {
-			stmts = p.parse_block_no_scope(false)
+			stmts = p.parse_branch_block_no_scope(is_expr_)
 		}
 		branch_scope := p.scope
 		p.close_scope()

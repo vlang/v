@@ -43,6 +43,11 @@ fn (mut p Parser) expr(precedence int) ast.Expr {
 	}
 }
 
+fn (p &Parser) expr_value_is_used() bool {
+	return p.expecting_consumed_value() || p.prev_tok.kind.is_assign()
+		|| p.is_current_return_expr_scope() || p.current_expr_is_value_result_stmt()
+}
+
 fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 	p.trace_parser('expr(${precedence})')
 	p.expr_level++
@@ -147,14 +152,10 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 					p.is_stmt_ident = is_stmt_ident
 				}
 				.key_if {
-					mut is_expr := false
-					if p.prev_tok.kind.is_assign() {
-						is_expr = true
-					}
-					return p.if_expr(true, is_expr)
+					return p.if_expr(true, p.expr_value_is_used())
 				}
 				.key_match {
-					return p.match_expr(true, p.prev_tok.kind.is_assign())
+					return p.match_expr(true, p.expr_value_is_used())
 				}
 				else {
 					return p.unexpected_with_pos(p.peek_tok.pos(),
@@ -220,7 +221,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			node = if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
 				p.call_expr(p.language, p.mod)
 			} else {
-				p.match_expr(false, false)
+				p.match_expr(false, p.expr_value_is_used())
 			}
 		}
 		.key_select {
@@ -241,9 +242,17 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 		}
 		.lpar {
 			mut pos := p.tok.pos()
+			next_offset := p.current_parenthesized_expr_next_non_comment_offset(0)
+			postfix_value_result_is_used := p.is_current_value_result_scope()
+				&& p.result_is_followed_by_postfix_value_result(next_offset)
+			parenthesized_expr_is_used := p.expecting_value || p.expr_value_is_used()
+				|| p.result_is_followed_by_postfix_call(next_offset) || postfix_value_result_is_used
 			p.check(.lpar)
 			mut comments := p.eat_comments()
+			old_parenthesized_expr_is_used := p.parenthesized_expr_is_used
+			p.parenthesized_expr_is_used = parenthesized_expr_is_used
 			node = p.expr(0)
+			p.parenthesized_expr_is_used = old_parenthesized_expr_is_used
 			comments << p.eat_comments()
 			p.check(.rpar)
 			rpar_pos := p.prev_tok.pos()
@@ -258,11 +267,7 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 			if p.peek_tok.kind in [.lpar, .lsbr] && p.peek_tok.is_next_to(p.tok) {
 				node = p.call_expr(p.language, p.mod)
 			} else {
-				mut is_expr := false
-				if p.prev_tok.kind.is_assign() {
-					is_expr = true
-				}
-				node = p.if_expr(false, is_expr)
+				node = p.if_expr(false, p.expr_value_is_used())
 			}
 		}
 		.key_unsafe {
@@ -276,7 +281,12 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				}
 				return err
 			}
+			unsafe_expr_is_used := p.expr_value_is_used()
+			was_unsafe_expr_scope_depth := p.unsafe_expr_scope_depth
+			was_unsafe_expr_is_used := p.unsafe_expr_is_used
 			p.inside_unsafe = true
+			p.unsafe_expr_scope_depth = p.opened_scopes
+			p.unsafe_expr_is_used = unsafe_expr_is_used
 			p.check(.lcbr)
 			e := p.expr(0)
 			p.check(.rcbr)
@@ -286,6 +296,8 @@ fn (mut p Parser) check_expr(precedence int) !ast.Expr {
 				pos:  pos
 			}
 			p.inside_unsafe = false
+			p.unsafe_expr_scope_depth = was_unsafe_expr_scope_depth
+			p.unsafe_expr_is_used = was_unsafe_expr_is_used
 		}
 		.pipe, .logical_or {
 			if nnn := p.lambda_expr() {
@@ -697,7 +709,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 	for {
 		if p.tok.kind == .lpar && p.tok.line_nr == p.prev_tok.line_nr
 			&& node in [ast.CallExpr, ast.IndexExpr, ast.ParExpr, ast.SelectorExpr] {
-			p.promote_if_expr_to_value(mut node)
+			p.promote_branch_expr_to_value(mut node)
 			node = p.call_expr_with_left(node)
 			p.is_stmt_ident = is_stmt_ident
 			continue
@@ -717,7 +729,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 				&& p.tok.pos - p.prev_tok.pos > p.prev_tok.len {
 				return node
 			}
-			p.promote_if_expr_to_value(mut node)
+			p.promote_branch_expr_to_value(mut node)
 			node = p.dot_expr(node)
 			if p.name_error {
 				return node
@@ -726,7 +738,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 		} else if left !is ast.IntegerLiteral && p.tok.kind in [.lsbr, .nilsbr]
 			&& (p.tok.line_nr == p.prev_tok.line_nr || (p.prev_tok.kind == .string
 			&& p.tok.line_nr == p.prev_tok.line_nr + p.prev_tok.lit.count('\n'))) {
-			p.promote_if_expr_to_value(mut node)
+			p.promote_branch_expr_to_value(mut node)
 			if p.peek_tok.kind == .question && p.peek_token(2).kind == .name {
 				p.next()
 				p.error_with_pos('cannot use Option type name as concrete type', p.tok.pos())
@@ -740,7 +752,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			// sum type as cast `x := SumType as Variant`
 			if !p.inside_asm {
 				pos := p.tok.pos()
-				p.promote_if_expr_to_value(mut node)
+				p.promote_branch_expr_to_value(mut node)
 				p.next()
 				typ := p.parse_type()
 				node = ast.AsCast{
@@ -775,7 +787,7 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 			&& !(p.tok.kind in [.minus, .amp, .mul, .arrow, .key_as, .key_in, .key_is]
 			&& p.tok.line_nr != p.prev_tok.line_nr) {
 			// continue on infix expr
-			p.promote_if_expr_to_value(mut node)
+			p.promote_branch_expr_to_value(mut node)
 			node = p.infix_expr(node)
 			// return early `if bar is SumType as b {`
 			if p.tok.kind == .key_as && p.inside_if {
@@ -841,11 +853,17 @@ fn (mut p Parser) expr_with_left(left ast.Expr, precedence int, is_stmt_ident bo
 	return node
 }
 
-fn (mut p Parser) promote_if_expr_to_value(mut expr ast.Expr) {
+fn (mut p Parser) promote_branch_expr_to_value(mut expr ast.Expr) {
 	match mut expr {
 		ast.IfExpr {
 			expr.is_expr = true
 			expr.force_expr = true
+		}
+		ast.MatchExpr {
+			expr.is_expr = true
+		}
+		ast.ParExpr {
+			p.promote_branch_expr_to_value(mut expr.expr)
 		}
 		else {}
 	}

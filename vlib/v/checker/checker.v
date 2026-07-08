@@ -313,10 +313,11 @@ fn (mut c Checker) refresh_generic_scope_var_type_for_use(mut v ast.Var, use_pos
 		c.inside_recheck = saved_inside_recheck
 		c.anon_struct_should_be_mut = saved_anon_struct_should_be_mut
 	}
-	c.expected_type = ast.void_type
+	// Recheck local initializers in the same consumed-value context as declaration RHS.
+	c.expected_type = ast.none_type
 	c.expected_or_type = ast.void_type
 	c.expected_expr_type = ast.void_type
-	c.inside_assign = false
+	c.inside_assign = true
 	c.inside_decl_rhs = false
 	c.inside_selector_expr = false
 	c.inside_fn_arg = false
@@ -4063,7 +4064,11 @@ fn (mut c Checker) stmt(mut node ast.Stmt) {
 			}
 		}
 		ast.NodeError {}
-		ast.DebuggerStmt {}
+		ast.DebuggerStmt {
+			if c.fn_level == 0 && !c.inside_anon_fn {
+				c.error('`\$dbg` can only be used inside functions', node.pos)
+			}
+		}
 		ast.AsmStmt {
 			c.asm_stmt(mut node)
 		}
@@ -4635,6 +4640,35 @@ fn (mut c Checker) stmts(mut stmts []ast.Stmt) {
 //    `x := if cond { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`,
 //    `x := match expr { Type1 { stmt1 stmt2 ExprStmt } else { stmt2 stmt3 ExprStmt }`.
 fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_or_type ast.Type) {
+	c.stmts_ending_with_expression_until(mut stmts, expected_or_type, stmts.len)
+}
+
+fn (mut c Checker) stmts_before_branch_expr(mut stmts []ast.Stmt) {
+	if stmts.len > 0 {
+		last_stmt := stmts.last()
+		if last_stmt is ast.ExprStmt && branch_expr_needs_expected_type(last_stmt.expr) {
+			c.stmts_ending_with_expression_until(mut stmts, ast.void_type, stmts.len - 1)
+			return
+		}
+	}
+	c.stmts_ending_with_expression_until(mut stmts, c.expected_or_type, stmts.len)
+}
+
+fn branch_expr_needs_expected_type(expr ast.Expr) bool {
+	match expr {
+		ast.IfExpr, ast.MatchExpr, ast.LockExpr, ast.UnsafeExpr {
+			return true
+		}
+		ast.ParExpr {
+			return branch_expr_needs_expected_type(expr.expr)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (mut c Checker) stmts_ending_with_expression_until(mut stmts []ast.Stmt, expected_or_type ast.Type, end int) {
 	if stmts.len == 0 {
 		c.scope_returns = false
 		return
@@ -4649,6 +4683,9 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 	}
 	c.stmt_level++
 	for i, mut stmt in stmts {
+		if i >= end {
+			break
+		}
 		c.is_last_stmt = i == stmts.len - 1
 		if c.scope_returns && unreachable.line_nr == -1 && stmt !is ast.SemicolonStmt
 			&& stmt !is ast.EmptyStmt {
@@ -4668,7 +4705,14 @@ fn (mut c Checker) stmts_ending_with_expression(mut stmts []ast.Stmt, expected_o
 			c.scope_returns = false
 		}
 		if c.should_abort {
+			c.stmt_level--
 			return
+		}
+	}
+	if end < stmts.len && c.scope_returns && unreachable.line_nr == -1 {
+		stmt := stmts[end]
+		if stmt !is ast.SemicolonStmt && stmt !is ast.EmptyStmt {
+			unreachable = stmt.pos
 		}
 	}
 	c.stmt_level--

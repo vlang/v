@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_as_nested_branch_result_with_anon_fn_array_condition.vv:23:9: error: undefined ident: `missing_symbol`
+   21 |     assert data.path.len > 0
+   22 |     assert sink == 0
+   23 |     sink = missing_symbol
+      |            ~~~~~~~~~~~~~~
+   24 | }
