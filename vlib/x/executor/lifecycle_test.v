@@ -5,13 +5,20 @@ import time
 fn test_run_drains_accepted_jobs_then_wait_returns() {
 	mut ex := new(queue_size: 4)!
 	ran := chan int{cap: 3}
+	third_started := chan bool{cap: 1}
+	release_third := chan bool{cap: 1}
 	result := chan string{cap: 1}
 
-	for i in 0 .. 3 {
+	for i in 0 .. 2 {
 		ex.try_post(fn [ran, i] () ! {
 			ran <- i
 		})!
 	}
+	ex.try_post(fn [ran, third_started, release_third] () ! {
+		third_started <- true
+		_ := <-release_third
+		ran <- 2
+	})!
 
 	runner := spawn fn [mut ex, result] () {
 		ex.run() or {
@@ -23,8 +30,10 @@ fn test_run_drains_accepted_jobs_then_wait_returns() {
 
 	assert wait_for_int(ran, 'first run job missing') == 0
 	assert wait_for_int(ran, 'second run job missing') == 1
-	assert wait_for_int(ran, 'third run job missing') == 2
+	assert wait_for_bool(third_started, 'third run job did not start')
 	ex.stop()
+	release_third <- true
+	assert wait_for_int(ran, 'third run job missing') == 2
 	assert wait_for_string(result, 'run did not return after stop') == 'ok'
 	ex.wait()!
 	runner.wait()

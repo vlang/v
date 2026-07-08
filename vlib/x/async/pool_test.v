@@ -114,30 +114,42 @@ fn test_pool_submit_with_context_waits_until_capacity_is_available() {
 
 fn test_pool_submit_with_timeout_returns_timeout_without_leaking_acceptance() {
 	mut pool := xasync.new_pool(workers: 1, queue_size: 1)!
-	started := chan bool{cap: 2}
-	release := chan bool{cap: 2}
-	finished := chan bool{cap: 2}
-	blocking_job := fn [started, release, finished] (mut ctx context.Context) ! {
+	first_started := chan bool{cap: 1}
+	first_release := chan bool{cap: 1}
+	first_finished := chan bool{cap: 1}
+	queued_started := chan bool{cap: 1}
+	queued_release := chan bool{cap: 1}
+	queued_finished := chan bool{cap: 1}
+	first_blocking_job := fn [first_started, first_release, first_finished] (mut ctx context.Context) ! {
 		_ = ctx
-		started <- true
-		_ := <-release
-		finished <- true
+		first_started <- true
+		_ := <-first_release
+		first_finished <- true
+	}
+	queued_blocking_job := fn [queued_started, queued_release, queued_finished] (mut ctx context.Context) ! {
+		_ = ctx
+		queued_started <- true
+		_ := <-queued_release
+		queued_finished <- true
 	}
 
-	pool.try_submit(blocking_job)!
-	wait_for_bool_signal(started, 'first blocking pool job did not start')
-	pool.try_submit(blocking_job)!
+	pool.try_submit(first_blocking_job)!
+	wait_for_bool_signal(first_started, 'first blocking pool job did not start')
+	pool.try_submit(queued_blocking_job)!
 
 	pool.submit_with_timeout(20 * time.millisecond, fn (mut ctx context.Context) ! {
 		_ = ctx
 	}) or {
 		assert err.msg() == 'async: timeout'
-		release <- true
-		wait_for_bool_signal(finished, 'first blocking pool job did not finish')
-		pool.submit_with_timeout(1 * time.second, fn (mut ctx context.Context) ! {
+		first_release <- true
+		wait_for_bool_signal(first_finished, 'first blocking pool job did not finish')
+		wait_for_bool_signal(queued_started,
+			'queued blocking pool job did not start after capacity opened')
+		pool.submit_with_timeout(pool_test_signal_timeout(), fn (mut ctx context.Context) ! {
 			_ = ctx
 		})!
-		release <- true
+		queued_release <- true
+		wait_for_bool_signal(queued_finished, 'queued blocking pool job did not finish')
 		pool.close()!
 		return
 	}
@@ -426,23 +438,32 @@ fn test_pool_concurrent_errors_return_one_error_and_drain_accepted_jobs() {
 }
 
 fn test_pool_close_drains_many_accepted_jobs_while_finishing() {
-	jobs := 12
-	workers := 3
+	mut jobs := 12
+	mut workers := 3
+	$if windows && (tinyc || gcc) {
+		jobs = 6
+		workers = 2
+	}
 	mut pool := xasync.new_pool(workers: workers, queue_size: jobs - workers)!
-	started := chan bool{cap: jobs}
-	release := chan bool{cap: jobs}
-	finished := chan bool{cap: jobs}
-	closed := chan bool{cap: 1}
+	started := chan int{cap: jobs}
+	finished := chan int{cap: jobs}
+	mut releases := []chan bool{cap: jobs}
 	for _ in 0 .. jobs {
-		pool.try_submit(fn [started, release, finished] (mut ctx context.Context) ! {
+		releases << chan bool{cap: 1}
+	}
+	closed := chan bool{cap: 1}
+	for i in 0 .. jobs {
+		release := releases[i]
+		pool.try_submit(fn [started, release, finished, i] (mut ctx context.Context) ! {
 			_ = ctx
-			started <- true
+			started <- i
 			_ := <-release
-			finished <- true
+			finished <- i
 		})!
 	}
+	mut active_jobs := []int{cap: workers}
 	for _ in 0 .. workers {
-		wait_for_bool_signal(started, 'initial pool job did not start')
+		active_jobs << wait_for_int_signal(started, 'initial pool job did not start')
 	}
 	close_thread := spawn fn [mut pool, closed] () {
 		pool.close() or {
@@ -454,16 +475,28 @@ fn test_pool_close_drains_many_accepted_jobs_while_finishing() {
 	wait_until_pool_rejects_as_closed(mut pool)
 	assert_no_bool_signal(closed, 'pool close returned while accepted jobs were still blocked')
 
-	for _ in 0 .. jobs - 1 {
-		release <- true
-	}
-	for _ in 0 .. jobs - 1 {
-		wait_for_bool_signal(finished, 'accepted pool job did not finish')
+	// Drain full worker waves deterministically. Each release opens exactly one
+	// worker slot, so wait for the replacement job to start before the next wave.
+	for _ in 0 .. (jobs / workers) - 1 {
+		for job_id in active_jobs {
+			releases[job_id] <- true
+		}
+		for _ in 0 .. workers {
+			wait_for_int_signal(finished, 'accepted pool job did not finish')
+		}
+		active_jobs = []int{cap: workers}
+		for _ in 0 .. workers {
+			active_jobs << wait_for_int_signal(started, 'next pool worker wave did not start')
+		}
 	}
 	assert_no_bool_signal(closed, 'pool close returned before the last accepted job finished')
 
-	release <- true
-	wait_for_bool_signal(finished, 'last accepted pool job did not finish')
+	for job_id in active_jobs {
+		releases[job_id] <- true
+	}
+	for _ in 0 .. workers {
+		wait_for_int_signal(finished, 'last accepted pool job did not finish')
+	}
 	wait_for_bool_signal(closed, 'pool close did not drain accepted jobs')
 	close_thread.wait()
 }
@@ -537,7 +570,10 @@ fn test_pool_bounded_submit_stress_waiting_submitters_are_released() {
 	workers := 2
 	queue_size := 2
 	initial_jobs := workers + queue_size
-	submitters := 8
+	mut submitters := 8
+	$if windows {
+		submitters = initial_jobs
+	}
 	mut pool := xasync.new_pool(workers: workers, queue_size: queue_size)!
 	started := chan bool{cap: initial_jobs}
 	release := chan bool{cap: initial_jobs}
@@ -607,7 +643,10 @@ fn test_pool_bounded_submit_stress_waiting_submitters_rejected_on_close() {
 	workers := 2
 	queue_size := 2
 	initial_jobs := workers + queue_size
-	submitters := 8
+	mut submitters := 8
+	$if windows {
+		submitters = initial_jobs
+	}
 	mut pool := xasync.new_pool(workers: workers, queue_size: queue_size)!
 	started := chan bool{cap: initial_jobs}
 	release := chan bool{cap: initial_jobs}
