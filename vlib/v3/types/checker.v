@@ -5333,7 +5333,7 @@ fn (mut tc TypeChecker) comptime_static_field_cases(base_type string) ComptimeSt
 			is_array:      core_type is Array || core_type is ArrayFixed
 			is_map:        core_type is Map
 			is_chan:       core_type is Channel
-			is_struct:     core_type is Struct && core_type.name() in tc.structs
+			is_struct:     tc.comptime_static_type_is_struct(core_type, typ, raw_typ)
 			is_enum:       core_type is Enum && core_type.name() in tc.enum_names
 			is_alias:      field.typ is Alias || typ in tc.type_aliases
 				|| tc.qualify_name(typ) in tc.type_aliases
@@ -5349,6 +5349,65 @@ fn (mut tc TypeChecker) comptime_static_field_cases(base_type string) ComptimeSt
 		known: true
 		cases: cases
 	}
+}
+
+fn (tc &TypeChecker) comptime_static_type_is_struct(typ Type, typ_name string, raw_typ string) bool {
+	if typ is Struct && tc.comptime_static_type_name_is_struct(typ.name()) {
+		return true
+	}
+	if tc.comptime_static_type_name_is_struct(typ_name) {
+		return true
+	}
+	return tc.comptime_static_type_name_is_struct(raw_typ)
+}
+
+fn (tc &TypeChecker) comptime_static_type_name_is_struct(name string) bool {
+	clean := comptime_static_unwrap_type_text(name)
+	if clean.len == 0 {
+		return false
+	}
+	if clean in tc.structs {
+		return true
+	}
+	base, _, is_generic := generic_type_application_parts(clean)
+	if !is_generic {
+		return false
+	}
+	if base in tc.structs || base in tc.struct_generic_params {
+		return true
+	}
+	qbase := tc.qualify_name(base)
+	if qbase in tc.structs || qbase in tc.struct_generic_params {
+		return true
+	}
+	if resolved := tc.resolve_selective_import_type_symbol(base) {
+		return resolved in tc.structs || resolved in tc.struct_generic_params
+	}
+	return false
+}
+
+fn comptime_static_unwrap_type_text(name string) string {
+	mut clean := name.trim_space()
+	for _ in 0 .. 16 {
+		if clean.starts_with('?') || clean.starts_with('!') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		if clean.starts_with('shared ') {
+			clean = clean[7..].trim_space()
+			continue
+		}
+		if clean.starts_with('atomic ') {
+			clean = clean[7..].trim_space()
+			continue
+		}
+		if clean.starts_with('&') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		break
+	}
+	return clean
 }
 
 fn (tc &TypeChecker) comptime_static_for_base_type(raw string) string {

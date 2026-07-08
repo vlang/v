@@ -957,6 +957,32 @@ fn main() {
 	assert out == 'ptr'
 }
 
+fn test_comptime_field_is_struct_for_generic_struct_instance() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'generic_struct_field_is_struct', 'struct Box[T] {
+	value T
+}
+
+struct S {
+	box Box[int]
+	name string
+}
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.is_struct {
+			rows << field.name + ":" + field.is_struct.str()
+		} $else $if field.name == "box" {
+			missing_fn()
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'box:true'
+}
+
 fn test_nested_comptime_for_uses_substituted_field_type_source() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_comptime_for_field_type_source', 'struct Inner {

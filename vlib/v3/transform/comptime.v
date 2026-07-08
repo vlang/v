@@ -956,8 +956,7 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 			|| t.is_fixed_array_type(unaliased_core)
 		is_map:             unaliased_core.starts_with('map[')
 		is_chan:            unaliased_core.starts_with('chan ')
-		is_struct:          unaliased_core in t.structs
-			&& !comptime_is_primitive_type(unaliased_core)
+		is_struct:          t.comptime_field_type_is_struct(unaliased_core)
 		is_enum:            unaliased_core in t.enum_types
 		is_alias:           is_alias
 		is_shared:          is_shared
@@ -967,6 +966,31 @@ fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string
 		attrs:              extra.attrs
 		indirections:       indir
 	}
+}
+
+fn (t &Transformer) comptime_field_type_is_struct(typ string) bool {
+	clean := typ.trim_space()
+	if clean.len == 0 || comptime_is_primitive_type(clean) {
+		return false
+	}
+	if clean in t.structs {
+		return true
+	}
+	base := comptime_generic_type_base(clean)
+	return base.len > 0 && base in t.structs
+}
+
+fn comptime_generic_type_base(typ string) string {
+	clean := typ.trim_space()
+	if clean.starts_with('[') || !clean.contains('[') {
+		return ''
+	}
+	bracket := clean.index_u8(`[`)
+	bracket_end := generic_matching_bracket(clean, bracket)
+	if bracket <= 0 || bracket_end <= bracket {
+		return ''
+	}
+	return clean[..bracket].trim_space()
 }
 
 fn (t &Transformer) comptime_field_type_id(typ string, decl_module string) int {
