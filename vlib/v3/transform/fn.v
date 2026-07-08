@@ -2698,11 +2698,25 @@ fn (mut t Transformer) lower_ref_str(expr flat.NodeId, aggregate string) flat.No
 	str_fn := '${c_name(aggregate)}__str'
 	has_custom := str_fn in t.fn_ret_types || (!isnil(t.tc) && str_fn in t.tc.fn_ret_types)
 	if has_custom {
-		// Reuse the value path: dereferencing then letting it re-address the pointer for a
-		// pointer receiver collapses back to the original pointer, so the method sees `&T`.
+		if t.str_method_has_pointer_receiver(str_fn) {
+			return t.make_call_typed(str_fn, arr1(expr), 'string')
+		}
+		// Value-receiver str methods still use the existing value stringify path.
 		return t.wrap_string_conversion(t.make_prefix(.mul, expr), aggregate)
 	}
 	return t.lower_ref_str_prefixed(expr, aggregate)
+}
+
+fn (t &Transformer) str_method_has_pointer_receiver(str_fn string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	params := t.tc.fn_param_types[str_fn] or { return false }
+	if params.len == 0 {
+		return false
+	}
+	receiver := params[0]
+	return receiver is types.Pointer || receiver.name().starts_with('&')
 }
 
 fn (mut t Transformer) lower_ref_str_prefixed(expr flat.NodeId, aggregate string) flat.NodeId {
@@ -2717,7 +2731,12 @@ fn (mut t Transformer) lower_ref_str_prefixed(expr flat.NodeId, aggregate string
 	// is never dereferenced.
 	saved := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	value_str := t.wrap_string_conversion(t.make_prefix(.mul, t.make_ident(ptr_name)), aggregate)
+	str_fn := '${c_name(aggregate)}__str'
+	value_str := if t.str_method_has_pointer_receiver(str_fn) {
+		t.make_call_typed(str_fn, arr1(t.make_ident(ptr_name)), 'string')
+	} else {
+		t.wrap_string_conversion(t.make_prefix(.mul, t.make_ident(ptr_name)), aggregate)
+	}
 	mut then_body := []flat.NodeId{}
 	t.drain_pending(mut then_body)
 	t.pending_stmts = saved

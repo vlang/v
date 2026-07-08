@@ -65,3 +65,35 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '&item:7'
 }
+
+fn test_pointer_receiver_str_uses_pointer_argument() {
+	v3_bin := build_v3_pointer_interface_str()
+	src_path := '${tmp_pointer_interface_str_path('pointer_receiver_source')}.v'
+	bin_path := tmp_pointer_interface_str_path('pointer_receiver_bin')
+	os.write_file(src_path, "struct Item {
+	value int
+}
+
+fn (i &Item) str() string {
+	return 'ptr:' + int_str(i.value)
+}
+
+fn main() {
+	item := Item{
+		value: 9
+	}
+	ptr := &item
+	println('\${ptr}')
+	println(ptr.str())
+}
+") or {
+		panic(err)
+	}
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(src_path)} -b c -o ${os.quoted_path(bin_path)}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(os.quoted_path(bin_path))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ptr:9\n&ptr:9'
+}
