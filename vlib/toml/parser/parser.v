@@ -318,7 +318,7 @@ fn (mut p Parser) peek_key_at(offset int) !(string, int, bool) {
 			mut next_offset := offset + 1
 			for {
 				next_tok := p.peek_token_at(next_offset)!
-				if next_tok.kind !in [.bare, .minus, .number, .underscore] {
+				if next_tok.kind !in [.bare, .boolean, .minus, .number, .underscore] {
 					break
 				}
 				lit += next_tok.lit
