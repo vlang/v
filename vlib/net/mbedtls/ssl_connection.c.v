@@ -747,6 +747,14 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	C.mbedtls_ssl_set_bio(&s.ssl, &s.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
 		C.mbedtls_net_recv_timeout)
 	ret = C.mbedtls_ssl_handshake(&s.ssl)
+	// WANT_READ/WANT_WRITE are not errors -- mbedtls's own docs require every
+	// caller to retry the handshake call on them. On this blocking BIO each
+	// retry's internal recv already blocks up to read_timeout (via
+	// mbedtls_net_recv_timeout), so a genuinely stalled peer still surfaces
+	// as MBEDTLS_ERR_SSL_TIMEOUT rather than spinning here forever.
+	for ret == C.MBEDTLS_ERR_SSL_WANT_READ || ret == C.MBEDTLS_ERR_SSL_WANT_WRITE {
+		ret = C.mbedtls_ssl_handshake(&s.ssl)
+	}
 	if ret != 0 {
 		return error_with_code('net.mbedtls SSLConn.connect, mbedtls_ssl_handshake failed 2; ret: ${ret}',
 			ret)
@@ -796,6 +804,11 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 		C.mbedtls_net_recv_timeout)
 	s.handle = s.server_fd.fd
 	ret = C.mbedtls_ssl_handshake(&s.ssl)
+	// See the identical retry loop in SSLConn.connect() above for why
+	// WANT_READ/WANT_WRITE must be retried rather than treated as fatal.
+	for ret == C.MBEDTLS_ERR_SSL_WANT_READ || ret == C.MBEDTLS_ERR_SSL_WANT_WRITE {
+		ret = C.mbedtls_ssl_handshake(&s.ssl)
+	}
 	if ret != 0 {
 		return error_with_code('net.mbedtls SSLConn.dial, mbedtls_ssl_handshake failed 3; ret: ${ret}',
 			ret)
