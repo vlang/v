@@ -46,3 +46,31 @@ q = "4"
 	toml_json := to.json(toml_doc)
 	assert toml_json == '{ "a": [ { "n": "x", "b": [ { "p": "1", "q": "2" }, { "p": "3", "q": "4" } ] } ] }'
 }
+
+fn test_nested_array_of_tables_with_comment_before_parent_subtable() {
+	toml_doc := toml.parse_text('[[a]]
+n = "x"
+[[a.b]]
+p = "1"
+# comment
+[a.c]
+q = "2"
+')!
+
+	toml_json := to.json(toml_doc)
+	assert toml_json == '{ "a": [ { "n": "x", "b": [ { "p": "1" } ], "c": { "q": "2" } } ] }'
+}
+
+fn test_nested_array_of_tables_with_comment_before_child_subtable() {
+	toml_doc := toml.parse_text('[[a]]
+n = "x"
+[[a.b]]
+p = "1"
+# comment
+[a.b.c]
+q = "2"
+')!
+
+	toml_json := to.json(toml_doc)
+	assert toml_json == '{ "a": [ { "n": "x", "b": [ { "p": "1", "c": { "q": "2" } } ] } ] }'
+}

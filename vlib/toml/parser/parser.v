@@ -258,6 +258,89 @@ fn (mut p Parser) peek_over(i int, tokens []token.Kind) !(token.Token, int) {
 	return peek_tok, peek_i
 }
 
+fn (mut p Parser) peek_token_at(offset int) !token.Token {
+	if offset == 0 {
+		return p.peek_tok
+	}
+	return p.peek(offset)!
+}
+
+fn unquoted_key_lit(lit string) string {
+	if lit.len < 2 {
+		return lit
+	}
+	quote := lit[0]
+	if lit.len >= 6 && lit[1] == quote && lit[2] == quote {
+		return lit[3..lit.len - 3]
+	}
+	return lit[1..lit.len - 1]
+}
+
+fn (mut p Parser) peek_key_at(offset int) !(string, int, bool) {
+	tok := p.peek_token_at(offset)!
+	match tok.kind {
+		.quoted {
+			return unquoted_key_lit(tok.lit), offset + 1, true
+		}
+		.bare, .boolean, .number, .minus, .underscore {
+			mut lit := tok.lit
+			mut next_offset := offset + 1
+			for {
+				next_tok := p.peek_token_at(next_offset)!
+				if next_tok.kind !in [.bare, .minus, .underscore] {
+					break
+				}
+				lit += next_tok.lit
+				next_offset++
+			}
+			return lit, next_offset, true
+		}
+		else {
+			return '', offset, false
+		}
+	}
+}
+
+fn (mut p Parser) peek_dotted_key_after_lsbr() !DottedKey {
+	mut dotted_key := DottedKey([]string{})
+	mut offset := 0
+	for {
+		tok := p.peek_token_at(offset)!
+		if tok.kind !in space_formatting_kinds() {
+			break
+		}
+		offset++
+	}
+	for {
+		key, next_offset, ok := p.peek_key_at(offset)!
+		if !ok {
+			break
+		}
+		dotted_key << key
+		offset = next_offset
+		for {
+			tok := p.peek_token_at(offset)!
+			if tok.kind !in space_formatting_kinds() {
+				break
+			}
+			offset++
+		}
+		tok := p.peek_token_at(offset)!
+		if tok.kind != .period {
+			break
+		}
+		offset++
+		for {
+			next_tok := p.peek_token_at(offset)!
+			if next_tok.kind !in space_formatting_kinds() {
+				break
+			}
+			offset++
+		}
+	}
+	return dotted_key
+}
+
 // is_at returns true if the token kind is equal to `expected_token`.
 fn (mut p Parser) is_at(expected_token token.Kind) bool {
 	return p.tok.kind == expected_token
@@ -1168,6 +1251,12 @@ pub fn (mut p Parser) double_array_of_tables_contents(target_key DottedKey) ![]a
 				mut arr := []ast.Value{}
 				arr << tbl
 				return arr
+			}
+		}
+		if p.tok.kind == .lsbr {
+			dotted_key := p.peek_dotted_key_after_lsbr()!
+			if dotted_key.len <= target_key.len || !dotted_key.starts_with(target_key) {
+				break
 			}
 		}
 
