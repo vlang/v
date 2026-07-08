@@ -382,6 +382,37 @@ fn main() {
 	assert out == 'value:red|value:blue|field:id'
 }
 
+fn test_selective_import_comptime_for_static_pruning_resolves_type() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'selective_import_comptime_for_static_pruning', {
+		'v.mod':     "Module { name: 'selective_import_comptime_for_static_pruning' }\n"
+		'pkg/pkg.v': 'module pkg
+
+pub struct S {
+pub:
+	id int
+}
+'
+		'main.v':    'module main
+
+import pkg { S }
+
+fn main() {
+	mut rows := []string{}
+	$for field in S.fields {
+		$if field.name == "id" {
+			rows << field.name
+		} $else {
+			missing_fn()
+		}
+	}
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'id'
+}
+
 fn test_non_generic_call_matching_generic_short_name_does_not_skip_comptime_for() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'generic_short_name_false_positive', {
@@ -643,6 +674,29 @@ fn main() {
 }
 ")
 	assert out == '4'
+}
+
+fn test_enum_value_static_pruning_resolves_forward_refs() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_value_static_pruning_forward_refs', "@[_allow_multiple_values]
+enum E {
+	a = .c
+	c = 2
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in E.values {
+		$if item.value == 2 {
+			rows << item.name
+		} $else {
+			missing_fn()
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'a|c'
 }
 
 fn test_cross_module_dynamic_field_selector_uses_qualified_type() {
@@ -1213,6 +1267,26 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == 'red'
+}
+
+fn test_operator_overload_struct_pseudovar() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'operator_overload_struct_pseudovar', 'struct S {
+	name string
+}
+
+fn (a S) + (b S) S {
+	return S{
+		name: @STRUCT
+	}
+}
+
+fn main() {
+	res := S{} + S{}
+	println(res.name)
+}
+')
+	assert out == 'S'
 }
 
 fn test_comptime_shared_type_group_is_checked_like_transformer() {

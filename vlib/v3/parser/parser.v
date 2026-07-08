@@ -850,7 +850,9 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	mut body_ids := []flat.NodeId{}
 	if p.tok == .lcbr {
 		prev_fn := p.cur_fn
+		prev_struct := p.cur_struct
 		p.cur_fn = name
+		p.cur_struct = receiver_type.trim_left('&').all_after_last('.')
 		p.push_local_type_scope(name)
 		if disable_body {
 			p.mark_disabled_fn(name)
@@ -869,6 +871,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		}
 		p.pop_local_type_scope()
 		p.cur_fn = prev_fn
+		p.cur_struct = prev_struct
 	}
 
 	mut all_ids := []flat.NodeId{cap: param_ids.len + body_ids.len}

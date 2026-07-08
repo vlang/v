@@ -5231,7 +5231,11 @@ fn (tc &TypeChecker) comptime_static_enum_name(raw string) ?string {
 	mut seen := map[string]bool{}
 	for cur.len > 0 && cur !in seen {
 		seen[cur] = true
-		for candidate in [cur, tc.qualify_name(cur)] {
+		mut candidates := [cur, tc.qualify_name(cur)]
+		if resolved := tc.resolve_selective_import_type_symbol(cur) {
+			candidates << resolved
+		}
+		for candidate in candidates {
 			if candidate in tc.enum_names {
 				return candidate
 			}
@@ -5411,23 +5415,34 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name string) []C
 			continue
 		}
 		is_flag := node.typ == 'flag'
-		mut out := []ComptimeStaticValueCase{}
-		mut previous := map[string]int{}
-		mut next_val := 0
+		mut field_order := []string{}
+		mut field_exprs := map[string]flat.NodeId{}
 		for i in 0 .. node.children_count {
 			f := tc.a.child_node(&node, i)
 			if f.kind != .enum_field {
 				continue
 			}
-			mut val := next_val
+			field_order << f.value
 			if f.children_count > 0 {
-				if ev := tc.comptime_static_enum_field_value(tc.a.child(f, 0), cur_mod, previous) {
+				field_exprs[f.value] = tc.a.child(f, 0)
+			}
+		}
+		mut out := []ComptimeStaticValueCase{}
+		mut field_values := map[string]int{}
+		mut next_val := 0
+		for field_name in field_order {
+			mut val := next_val
+			if expr_id := field_exprs[field_name] {
+				mut resolving := map[string]bool{}
+				if ev := tc.comptime_static_enum_field_value(expr_id, cur_mod, enum_name, mut
+					field_values, field_exprs, mut resolving)
+				{
 					val = ev
 				}
 			}
-			previous[f.value] = val
+			field_values[field_name] = val
 			out << ComptimeStaticValueCase{
-				name:      f.value
+				name:      field_name
 				value:     if is_flag { 1 << val } else { val }
 				has_value: true
 			}
@@ -5438,7 +5453,7 @@ fn (tc &TypeChecker) comptime_static_enum_decl_value_cases(enum_name string) []C
 	return []ComptimeStaticValueCase{}
 }
 
-fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_module string, previous map[string]int) ?int {
+fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return none
 	}
@@ -5450,15 +5465,17 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 			}
 		}
 		.ident, .enum_val {
-			if v := previous[node.value] {
-				return v
+			if ev := tc.comptime_static_enum_field_ref_value(node.value, enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)
+			{
+				return ev
 			}
 			return tc.const_int_value_in_module(node.value, enum_module, []string{})
 		}
 		.paren {
 			if node.children_count > 0 {
 				return tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
-					previous)
+					enum_name, mut field_values, field_exprs, mut resolving)
 			}
 		}
 		.prefix {
@@ -5466,7 +5483,7 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				return none
 			}
 			value := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
-				previous) or { return none }
+				enum_name, mut field_values, field_exprs, mut resolving) or { return none }
 			return match node.op {
 				.minus { -value }
 				.plus { value }
@@ -5478,11 +5495,10 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 			if node.children_count < 2 {
 				return none
 			}
-			left := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module, previous) or {
-				return none
-			}
+			left := tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
+				enum_name, mut field_values, field_exprs, mut resolving) or { return none }
 			right := tc.comptime_static_enum_field_value(tc.a.child(&node, 1), enum_module,
-				previous) or { return none }
+				enum_name, mut field_values, field_exprs, mut resolving) or { return none }
 			if (node.op == .div || node.op == .mod) && right == 0 {
 				return none
 			}
@@ -5505,10 +5521,88 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				else { none }
 			}
 		}
+		.selector {
+			if field := tc.comptime_static_enum_selector_ref_field(id, enum_module, enum_name) {
+				return tc.comptime_static_enum_field_ref_value(field, enum_module, enum_name, mut
+					field_values, field_exprs, mut resolving)
+			}
+			return none
+		}
 		else {}
 	}
 
 	return none
+}
+
+fn (tc &TypeChecker) comptime_static_enum_field_ref_value(field_name string, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+	if field_name in field_values {
+		return field_values[field_name]
+	}
+	expr_id := field_exprs[field_name] or { return none }
+	if resolving[field_name] {
+		return none
+	}
+	resolving[field_name] = true
+	maybe_val := tc.comptime_static_enum_field_value(expr_id, enum_module, enum_name, mut
+		field_values, field_exprs, mut resolving)
+	resolving.delete(field_name)
+	val := maybe_val?
+	field_values[field_name] = val
+	return val
+}
+
+fn (tc &TypeChecker) comptime_static_enum_selector_ref_field(id flat.NodeId, enum_module string, enum_name string) ?string {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return none
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	prefix := tc.comptime_static_enum_selector_base_text(tc.a.child(&node, 0))
+	if !comptime_static_enum_ref_prefix_matches(prefix, enum_module, enum_name) {
+		return none
+	}
+	return node.value
+}
+
+fn (tc &TypeChecker) comptime_static_enum_selector_base_text(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return ''
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return node.value
+			}
+			base := tc.comptime_static_enum_selector_base_text(tc.a.child(&node, 0))
+			if base.len == 0 {
+				return node.value
+			}
+			return '${base}.${node.value}'
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+fn comptime_static_enum_ref_prefix_matches(prefix string, enum_module string, enum_name string) bool {
+	if prefix.len == 0 || enum_name.len == 0 {
+		return false
+	}
+	short := enum_name.all_after_last('.')
+	if prefix == enum_name || prefix == short {
+		return true
+	}
+	if enum_module.len > 0 && prefix == '${enum_module}.${short}' {
+		return true
+	}
+	return false
 }
 
 fn (tc &TypeChecker) comptime_static_for_field_source_type(owner_type string, field_name string) ?string {
@@ -5542,7 +5636,11 @@ fn (tc &TypeChecker) comptime_static_struct_name(raw string) ?string {
 	mut seen := map[string]bool{}
 	for cur.len > 0 && cur !in seen {
 		seen[cur] = true
-		for candidate in [cur, tc.qualify_name(cur)] {
+		mut candidates := [cur, tc.qualify_name(cur)]
+		if resolved := tc.resolve_selective_import_type_symbol(cur) {
+			candidates << resolved
+		}
+		for candidate in candidates {
 			if candidate in tc.structs {
 				return candidate
 			}
