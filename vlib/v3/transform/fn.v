@@ -2745,6 +2745,15 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 
 fn (t &Transformer) alias_str_needs_name_wrapper(base_type string) bool {
 	mut clean := base_type.trim_space()
+	mut seen := []string{}
+	for clean.len > 0 && clean !in seen {
+		seen << clean
+		next := t.normalize_type_alias(clean).trim_space()
+		if next == clean {
+			break
+		}
+		clean = next
+	}
 	if clean.starts_with('&') {
 		return false
 	}

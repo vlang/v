@@ -310,6 +310,21 @@ fn main() {
 		'unknown function `missing_branch_fn`')
 }
 
+fn test_comptime_for_body_checks_static_call_in_mixed_expression() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_static_call_in_comptime_for_mixed_expr', 'struct S {
+	id int
+}
+
+fn main() {
+	$for field in S.fields {
+		missing_fn(field.name)
+	}
+}
+',
+		'unknown function `missing_fn`')
+}
+
 fn test_nested_comptime_for_shadowed_loop_variables() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'shadowed_comptime_for', "struct A {

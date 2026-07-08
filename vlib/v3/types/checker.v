@@ -4856,11 +4856,21 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		}
 		return
 	}
+	if node.kind in [.expr_stmt, .return_stmt] {
+		for i in 0 .. node.children_count {
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name)
+		}
+		return
+	}
 	if node.kind == .comptime_if && comptime_text_references_member(node.value, var_name) {
 		return
 	}
 	if !tc.comptime_subtree_references_var(id, var_name) {
 		tc.check_node(id)
+		return
+	}
+	if node.kind == .call {
+		tc.check_comptime_static_call(id, node, var_name)
 		return
 	}
 }
@@ -4885,6 +4895,53 @@ fn (tc &TypeChecker) comptime_subtree_references_var(id flat.NodeId, var_name st
 		}
 	}
 	return false
+}
+
+fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Node, var_name string) {
+	if node.children_count == 0 {
+		return
+	}
+	callee_id := tc.a.child(&node, 0)
+	if tc.comptime_subtree_references_var(callee_id, var_name) {
+		tc.check_comptime_static_call_args(node, var_name)
+		return
+	}
+	if _ := tc.sum_constructor_call_name(node) {
+		tc.check_comptime_static_call_args(node, var_name)
+		return
+	}
+	if info0 := tc.resolve_call_info(id, node) {
+		info := tc.specialized_plain_generic_call_info(node, info0)
+		if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
+			tc.remember_resolved_call(id, info.name)
+		}
+		if info.return_type !is Void && info.return_type !is Unknown {
+			tc.remember_expr_type(id, info.return_type)
+		}
+		tc.check_comptime_static_call_args(node, var_name)
+		return
+	}
+	if tc.is_unsupported_hex_call(node) {
+		if tc.should_diagnose(id) {
+			tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
+		}
+		return
+	}
+	if tc.call_has_ambiguous_selective_import(node) {
+		tc.record_error(.unknown_fn, 'ambiguous selective import `${tc.call_display_name(node)}`',
+			id)
+		return
+	}
+	if tc.should_diagnose(id) && !tc.is_known_call(node) {
+		tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
+	}
+	tc.check_comptime_static_call_args(node, var_name)
+}
+
+fn (mut tc TypeChecker) check_comptime_static_call_args(node flat.Node, var_name string) {
+	for i in 1 .. node.children_count {
+		tc.check_comptime_static_body(tc.call_arg_value(tc.a.child(&node, i)), var_name)
+	}
 }
 
 fn comptime_text_references_member(cond string, var_name string) bool {
