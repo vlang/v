@@ -806,7 +806,7 @@ fn (mut g FlatGen) gen_channel_try_call(node flat.Node, fn_node flat.Node) bool 
 	channel_type := base_type as types.Channel
 	arg_id := g.a.child(&node, 1)
 	if fn_node.value == 'try_push' {
-		elem_ct := g.tc.c_type(channel_type.elem_type)
+		elem_ct := g.value_c_type(channel_type.elem_type)
 		g.write('sync__Channel__try_push(')
 		g.gen_channel_try_receiver(base_id)
 		g.write(', &(${elem_ct}[]){')
@@ -7592,8 +7592,9 @@ fn (mut g FlatGen) gen_flag_enum_from_call(fn_node flat.Node, node flat.Node) bo
 	storage_ct := g.enum_storage_c_type(enum_info)
 	mask := g.flag_enum_mask_expr(enum_name)
 	arg := g.expr_to_string(g.a.child(&node, 1))
-	tmp := g.tmp_name()
-	g.write('({ ${storage_ct} ${tmp} = (${storage_ct})(${arg}); (${ct}){.ok = ((${tmp} & ~((${storage_ct})${mask})) == 0), .value = (${value_ct})${tmp}}; })')
+	value_tmp := g.tmp_name()
+	ok_tmp := g.tmp_name()
+	g.write('({ u64 ${value_tmp} = (u64)(${arg}); bool ${ok_tmp} = ((${value_tmp} & ~((u64)${mask})) == 0); (${ct}){.ok = ${ok_tmp}, .value = (${value_ct})(${ok_tmp} ? (${storage_ct})${value_tmp} : (${storage_ct})0)}; })')
 	return true
 }
 
