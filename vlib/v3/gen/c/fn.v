@@ -823,6 +823,9 @@ fn (mut g FlatGen) gen_compiler_default_free_call(fn_node flat.Node) bool {
 	}
 	base_id := g.a.child(&fn_node, 0)
 	base_type := g.usable_expr_type(base_id)
+	if base_type is types.Void || base_type is types.Unknown {
+		return false
+	}
 	clean := concrete_receiver_type(base_type)
 	if _ := array_like_type(clean) {
 		return false
@@ -830,8 +833,47 @@ fn (mut g FlatGen) gen_compiler_default_free_call(fn_node flat.Node) bool {
 	if clean is types.Map || clean is types.String {
 		return false
 	}
+	if g.receiver_has_method(base_type, 'free') {
+		return false
+	}
 	g.write('((void)0)')
 	return true
+}
+
+fn (g &FlatGen) receiver_has_method(base_type types.Type, method string) bool {
+	mut names := []string{}
+	raw := types.unwrap_pointer(base_type)
+	if raw_name := receiver_method_type_name(raw) {
+		names << raw_name
+	}
+	clean := concrete_receiver_type(base_type)
+	if clean_name := receiver_method_type_name(clean) {
+		if clean_name !in names {
+			names << clean_name
+		}
+	}
+	for name in names {
+		if g.resolve_method_name(name, method).len > 0 {
+			return true
+		}
+		for alias, target in g.tc.type_aliases {
+			if target == name {
+				alias_method := '${alias}.${method}'
+				if alias_method in g.tc.fn_param_types || alias_method in g.tc.fn_ret_types {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn receiver_method_type_name(t types.Type) ?string {
+	name := t.name()
+	if name.len == 0 {
+		return none
+	}
+	return name
 }
 
 fn (g &FlatGen) channel_close_receiver_needs_deref(base_id flat.NodeId) bool {
