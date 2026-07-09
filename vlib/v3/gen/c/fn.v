@@ -34,6 +34,7 @@ struct SpawnPackedArg {
 	field_ct    string
 	assign_expr string
 	call_expr   string
+	copy_array  bool
 }
 
 // FlatFnGenItem represents one top-level function selected for C emission.
@@ -2156,7 +2157,7 @@ fn (mut g FlatGen) emit_args_spawn_expr(cfn string, args []SpawnPackedArg, ret_c
 	g.tmp_count++
 	g.write('({ ${struct_name}* _sa${tmp} = (${struct_name}*)malloc(sizeof(${struct_name})); ')
 	for i, arg in args {
-		g.write('_sa${tmp}->a${i} = ${arg.assign_expr}; ')
+		g.write_spawn_packed_arg_init(tmp, i, arg)
 	}
 	g.write('pthread_t _t${tmp}; pthread_attr_t _at${tmp}; pthread_attr_init(&_at${tmp}); ')
 	g.write('pthread_attr_setstacksize(&_at${tmp}, 8388608); ')
@@ -2197,13 +2198,21 @@ fn (mut g FlatGen) emit_fn_value_spawn_expr(call_id flat.NodeId, fn_node flat.No
 	g.gen_expr_with_expected_type(g.a.child(&g.a.nodes[int(call_id)], 0), fn_type)
 	g.write('; ')
 	for i, arg in args {
-		g.write('_sa${tmp}->a${i} = ${arg.assign_expr}; ')
+		g.write_spawn_packed_arg_init(tmp, i, arg)
 	}
 	g.write('pthread_t _t${tmp}; pthread_attr_t _at${tmp}; pthread_attr_init(&_at${tmp}); ')
 	g.write('pthread_attr_setstacksize(&_at${tmp}, 8388608); ')
 	g.write('int _r${tmp} = pthread_create(&_t${tmp}, &_at${tmp}, ${wrapper}, (void*)_sa${tmp}); ')
 	g.write('pthread_attr_destroy(&_at${tmp}); (void)_r${tmp}; (void*)_t${tmp}; })')
 	_ = fn_node
+}
+
+fn (mut g FlatGen) write_spawn_packed_arg_init(tmp int, idx int, arg SpawnPackedArg) {
+	if arg.copy_array {
+		g.write('memmove(_sa${tmp}->a${idx}, ${arg.assign_expr}, sizeof(_sa${tmp}->a${idx})); ')
+		return
+	}
+	g.write('_sa${tmp}->a${idx} = ${arg.assign_expr}; ')
 }
 
 fn (g &FlatGen) shared_local_arg_c_expr(arg_id flat.NodeId) ?string {
@@ -2263,6 +2272,14 @@ fn (mut g FlatGen) spawn_arg_c_type(expected types.Type) string {
 }
 
 fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types.Type, expected_ct string, field_idx int) SpawnPackedArg {
+	if fixed := array_fixed_type(expected) {
+		return SpawnPackedArg{
+			field_ct:    expected_ct
+			assign_expr: g.fixed_array_copy_source_string(arg_id, types.Type(fixed))
+			call_expr:   'p->a${field_idx}'
+			copy_array:  true
+		}
+	}
 	if spawn_c_type_is_pointer(expected_ct) {
 		arg_node := g.a.nodes[int(arg_id)]
 		if child_id := g.spawn_materialized_pointer_rvalue_arg(arg_node) {
