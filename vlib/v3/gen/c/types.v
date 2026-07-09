@@ -420,25 +420,37 @@ fn (mut g FlatGen) enum_decls() {
 					}
 					emitted[cn] = true
 					is_flag := enum_decl_is_flag(node)
-					if is_flag {
-						if backing := enum_decl_backing_type(node) {
-							storage_ct := g.enum_backing_storage_c_type(backing)
-							g.writeln('typedef ${storage_ct} ${cn};')
-							mut flag_val := 0
+					if backing := enum_decl_backing_type(node) {
+						storage_ct := g.enum_backing_storage_c_type(backing)
+						g.writeln('typedef ${storage_ct} ${cn};')
+						if is_flag {
+							mut val := 0
 							for i in 0 .. node.children_count {
 								f := g.a.child_node(&node, i)
 								if f.children_count > 0 {
 									if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
-										flag_val = enum_val
+										val = enum_val
 									}
 								}
 								cfield := g.cname(f.value)
-								g.writeln('static const ${cn} ${cn}__${cfield} = (${cn})((${storage_ct})1 << ${flag_val});')
-								flag_val++
+								g.writeln('static const ${cn} ${cn}__${cfield} = (${cn})((${storage_ct})1 << ${val});')
+								val++
 							}
-							g.writeln('')
-							continue
+						} else {
+							mut next_value_expr := '0'
+							for i in 0 .. node.children_count {
+								f := g.a.child_node(&node, i)
+								mut value_expr := next_value_expr
+								if f.children_count > 0 {
+									value_expr = g.expr_to_string(g.a.child(f, 0))
+								}
+								cfield := g.cname(f.value)
+								g.writeln('#define ${cn}__${cfield} ((${cn})(${value_expr}))')
+								next_value_expr = '(${value_expr}) + 1'
+							}
 						}
+						g.writeln('')
+						continue
 					}
 					g.writeln('typedef enum {')
 					mut val := 0
@@ -530,6 +542,18 @@ fn (mut g FlatGen) enum_str_defs() {
 					// `Enum{.a | .b}` form by testing each field bit instead of matching a
 					// single case (which would send any combination to the integer path).
 					g.emit_flag_enum_autostr(node, cn)
+				} else if backing := enum_decl_backing_type(node) {
+					storage_ct := g.enum_backing_storage_c_type(backing)
+					g.writeln('string ${cn}__autostr(${cn} it) {')
+					for i in 0 .. node.children_count {
+						f := g.a.child_node(&node, i)
+						fname := f.value
+						cfield := g.cname(fname)
+						g.writeln('\tif (it == ${cn}__${cfield}) return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
+					}
+					g.writeln('\treturn strconv__format_int((i64)(${storage_ct})it, 10);')
+					g.writeln('}')
+					g.writeln('')
 				} else {
 					g.writeln('string ${cn}__autostr(${cn} it) {')
 					g.writeln('\tswitch (it) {')

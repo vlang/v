@@ -915,7 +915,7 @@ fn (mut g FlatGen) collect_gen_info() {
 			if backing.len > 0 {
 				g.register_enum_backing_info(enum_name, backing)
 			}
-			is_backed_flag := is_flag && backing.len > 0
+			is_backed_enum := backing.len > 0
 			for i in 0 .. node.children_count {
 				f := g.a.child_node(&node, i)
 				if f.children_count > 0 {
@@ -924,7 +924,7 @@ fn (mut g FlatGen) collect_gen_info() {
 					}
 				}
 				key := '${enum_name}.${f.value}'
-				if is_backed_flag {
+				if is_backed_enum {
 					g.enum_value_exprs[key] = '${g.cname(enum_name)}__${g.cname(f.value)}'
 					val++
 				} else if is_flag {

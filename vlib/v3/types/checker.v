@@ -174,6 +174,7 @@ pub struct CallInfo {
 pub:
 	name                 string
 	params               []Type
+	shared_params        []bool
 	return_type          Type
 	has_receiver         bool
 	is_variadic          bool
@@ -255,6 +256,7 @@ pub mut:
 	a                            &flat.FlatAst = unsafe { nil }
 	fn_ret_types                 map[string]Type
 	fn_param_types               map[string][]Type
+	fn_shared_params             map[string][]bool
 	fn_ret_type_texts            map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
 	fn_param_type_texts          map[string][]string // generic struct method key -> original param type texts (receiver first)
 	fn_type_files                map[string]string
@@ -338,6 +340,7 @@ pub mut:
 	cur_fn_mut_param_base_types     map[string]Type
 	cur_fn_mut_param_binding_owners map[string]ScopeBindingOwner
 	cur_fn_mut_local_binding_owners map[string]ScopeBindingOwner
+	cur_fn_shared_binding_owners    map[string]ScopeBindingOwner
 	expr_type_values                []Type // node_id -> complex/contextual resolved type
 	expr_type_set                   []bool
 	checking_nodes                  []bool
@@ -398,6 +401,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		a:                                  a
 		fn_ret_types:                       map[string]Type{}
 		fn_param_types:                     map[string][]Type{}
+		fn_shared_params:                   map[string][]bool{}
 		fn_ret_type_texts:                  map[string]string{}
 		fn_param_type_texts:                map[string][]string{}
 		fn_type_files:                      map[string]string{}
@@ -458,6 +462,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		cur_fn_mut_param_base_types:     map[string]Type{}
 		cur_fn_mut_param_binding_owners: map[string]ScopeBindingOwner{}
 		cur_fn_mut_local_binding_owners: map[string]ScopeBindingOwner{}
+		cur_fn_shared_binding_owners:    map[string]ScopeBindingOwner{}
 		expr_type_values:                []Type{}
 		expr_type_set:                   []bool{}
 		checking_nodes:                  []bool{}
@@ -974,6 +979,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				ret_type := tc.parse_type(node.typ)
 				mut ptypes := []Type{}
 				mut param_texts := []string{}
+				mut shared_params := []bool{}
 				mut is_variadic := false
 				for i in 0 .. node.children_count {
 					child := a.child_node(&node, i)
@@ -983,14 +989,18 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						}
 						ptypes << tc.parse_type(child.typ)
 						param_texts << child.typ
+						shared_params << param_type_text_is_shared(child.typ)
 					}
 				}
 				needs_ctx := tc.fn_needs_implicit_veb_ctx(node)
 				ptypes = tc.fn_param_types_with_implicit_veb_ctx(node, ptypes)
-				tc.register_fn_signature(qname, ret_type, ptypes, is_variadic, needs_ctx)
+				shared_params = tc.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
+				tc.register_fn_signature(qname, ret_type, ptypes, shared_params, is_variadic,
+					needs_ctx)
 				if tc.cur_module in ['', 'main', 'builtin'] && qname != node.value
 					&& node.value !in tc.fn_param_types {
-					tc.register_fn_signature(node.value, ret_type, ptypes, is_variadic, needs_ctx)
+					tc.register_fn_signature(node.value, ret_type, ptypes, shared_params,
+						is_variadic, needs_ctx)
 				}
 				// A generic struct method (`Box[T].clone`) keeps its original signature
 				// TEXT: the parsed types collapse a non-concrete `Box[T]` to the bare base,
@@ -1086,13 +1096,14 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						ptypes << tc.parse_type(child.typ)
 					}
 				}
-				tc.register_fn_signature(node.value, ret_type, ptypes, is_variadic, false)
+				tc.register_fn_signature(node.value, ret_type, ptypes, []bool{}, is_variadic,
+					false)
 				if is_variadic {
 					tc.register_c_variadic_fn(node.value)
 				}
 				if !node.value.starts_with('C.') {
-					tc.register_fn_signature('C.${node.value}', ret_type, ptypes, is_variadic,
-						false)
+					tc.register_fn_signature('C.${node.value}', ret_type, ptypes, []bool{},
+						is_variadic, false)
 					if is_variadic {
 						tc.register_c_variadic_fn('C.${node.value}')
 					}
@@ -1112,12 +1123,14 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						tc.interface_abstract_methods[iface_name] = absm
 						ret_type := tc.parse_type(f.typ)
 						mut ptypes := []Type{}
+						mut shared_params := []bool{}
 						mut is_variadic := false
 						ptypes << Type(Pointer{
 							base_type: Type(Interface{
 								name: iface_name
 							})
 						})
+						shared_params << false
 						for j in 0 .. f.children_count {
 							child := a.child_node(f, j)
 							if child.kind == .param {
@@ -1125,9 +1138,11 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 									is_variadic = true
 								}
 								ptypes << tc.parse_type(child.typ)
+								shared_params << param_type_text_is_shared(child.typ)
 							}
 						}
-						tc.register_fn_name_alias(mname, ret_type, ptypes, is_variadic, false)
+						tc.register_fn_name_alias(mname, ret_type, ptypes, shared_params,
+							is_variadic, false)
 					} else if f.typ.len > 0 {
 						mut fields := tc.interface_fields[iface_name] or { []StructField{} }
 						fields << StructField{
@@ -2044,25 +2059,32 @@ fn (tc &TypeChecker) has_active_import(alias string) bool {
 const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__'
 
 // register_fn_signature updates register fn signature state for types.
-fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params []Type, is_variadic bool, implicit_veb_ctx bool) {
-	tc.register_fn_name_alias(name, ret_type, params, is_variadic, implicit_veb_ctx)
+fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params []Type, shared_params []bool, is_variadic bool, implicit_veb_ctx bool) {
+	tc.register_fn_name_alias(name, ret_type, params, shared_params, is_variadic, implicit_veb_ctx)
 	lowered_name := tc.cached_c_name(name)
 	if lowered_name != name {
-		tc.register_fn_name_alias(lowered_name, ret_type, params, is_variadic, implicit_veb_ctx)
+		tc.register_fn_name_alias(lowered_name, ret_type, params, shared_params, is_variadic,
+			implicit_veb_ctx)
 	}
 	if name.ends_with('.str') {
 		receiver := name.all_before_last('.')
 		legacy_name := '${receiver}_str'
 		if !legacy_name.contains('.') {
-			tc.register_fn_name_alias(legacy_name, ret_type, params, is_variadic, implicit_veb_ctx)
+			tc.register_fn_name_alias(legacy_name, ret_type, params, shared_params, is_variadic,
+				implicit_veb_ctx)
 		}
 	}
 }
 
 // register_fn_name_alias updates register fn name alias state for types.
-fn (mut tc TypeChecker) register_fn_name_alias(name string, ret_type Type, params []Type, is_variadic bool, implicit_veb_ctx bool) {
+fn (mut tc TypeChecker) register_fn_name_alias(name string, ret_type Type, params []Type, shared_params []bool, is_variadic bool, implicit_veb_ctx bool) {
 	tc.fn_ret_types[name] = ret_type
 	tc.fn_param_types[name] = params.clone()
+	if shared_params.len > 0 {
+		tc.fn_shared_params[name] = shared_params.clone()
+	} else {
+		tc.fn_shared_params.delete(name)
+	}
 	if tc.cur_file.len > 0 {
 		tc.fn_type_files[name] = tc.cur_file
 		tc.fn_type_modules[name] = tc.cur_module
@@ -2121,6 +2143,9 @@ fn (mut tc TypeChecker) insert_fn_param_binding(p flat.Node) {
 		tc.cur_fn_mut_param_base_types[p.value] = mut_param_base_type(typ)
 		tc.cur_fn_mut_param_binding_owners[p.value] = owner
 	}
+	if param_type_text_is_shared(p.typ) {
+		tc.cur_fn_shared_binding_owners[p.value] = owner
+	}
 }
 
 fn mut_param_base_type(typ Type) Type {
@@ -2162,9 +2187,11 @@ pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 			mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
 			mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 			mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
+			mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
 			tc.cur_fn_mut_param_base_types = map[string]Type{}
 			tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 			tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
+			tc.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
 			tc.cur_scope = tc.file_scope
 			tc.push_scope()
 			for pi in 0 .. node.children_count {
@@ -2182,6 +2209,7 @@ pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 			tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 			tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 			tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
+			tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
 		}
 	}
 }
@@ -2816,14 +2844,17 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
 				mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 				mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
+				mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
 				tc.cur_fn_mut_param_base_types = map[string]Type{}
 				tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 				tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
+				tc.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 				tc.check_fn_decl_semantics(i, node, tc.cur_file, tc.cur_module)
 				tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 				tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 				tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
+				tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
 			}
 			.c_fn_decl {
 				if tc.reject_unsupported_generics {
@@ -3518,6 +3549,32 @@ fn (tc &TypeChecker) fn_param_types_with_implicit_veb_ctx(node flat.Node, params
 		result << tc.implicit_veb_ctx_type()
 	}
 	return result
+}
+
+fn (tc &TypeChecker) fn_shared_params_with_implicit_veb_ctx(node flat.Node, flags []bool) []bool {
+	if !tc.fn_needs_implicit_veb_ctx(node) {
+		return flags
+	}
+	insert_idx := tc.fn_implicit_veb_ctx_insert_index(node)
+	mut result := []bool{cap: flags.len + 1}
+	for i, flag in flags {
+		if i == insert_idx {
+			result << false
+		}
+		result << flag
+	}
+	if insert_idx >= flags.len {
+		result << false
+	}
+	return result
+}
+
+fn param_type_text_is_shared(raw string) bool {
+	return raw.trim_space().starts_with('shared ')
+}
+
+fn decl_assign_is_shared_marker(value string) bool {
+	return value == 'shared' || value.starts_with('shared:')
 }
 
 fn (tc &TypeChecker) implicit_veb_ctx_type() Type {
@@ -6652,9 +6709,11 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
 	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
+	mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
 	tc.cur_fn_mut_param_base_types = map[string]Type{}
 	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
+	tc.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
 	$if ownership ? {
 		tc.ownership_begin_fn_literal(node)
@@ -6680,6 +6739,7 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
+	tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
 }
 
 // check_lambda_expr validates check lambda expr state for types.
@@ -6906,7 +6966,13 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 					'cannot assign `${rhs_type.name()}` to `${expected.name()}`', id)
 			}
 		}
-		tc.insert_decl_lhs(lhs_id, expected, tc.decl_lhs_is_mut(node, lhs_id))
+		owner := tc.insert_decl_lhs(lhs_id, expected, tc.decl_lhs_is_mut(node, lhs_id))
+		if owner.storage_key().len > 0 && decl_assign_is_shared_marker(node.value) {
+			lhs := tc.a.nodes[int(lhs_id)]
+			if lhs.kind == .ident && lhs.value.len > 0 {
+				tc.cur_fn_shared_binding_owners[lhs.value] = owner
+			}
+		}
 		$if ownership ? {
 			tc.ownership_after_decl_assign(lhs_id, rhs_id, expected, id)
 		}
@@ -7557,23 +7623,25 @@ fn (tc &TypeChecker) decl_lhs_is_mut(node flat.Node, lhs_id flat.NodeId) bool {
 	return tc.a.nodes[int(lhs_id)].is_mut
 }
 
-fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut bool) {
+fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut bool) ScopeBindingOwner {
 	if int(lhs_id) < 0 || typ is Void {
-		return
+		return ScopeBindingOwner{}
 	}
 	lhs := tc.a.nodes[int(lhs_id)]
 	if lhs.kind == .ident && lhs.value.len > 0 {
 		if lhs.value != '_' && (tc.visible_local_scope_owns_name(lhs.value)
 			|| tc.mut_param_binding_matches_lvalue(lhs.value)) {
 			tc.record_error(.assignment_mismatch, 'redefinition of ${lhs.value}', lhs_id)
-			return
+			return ScopeBindingOwner{}
 		}
 		owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
 		if is_mut && lhs.value != '_' {
 			tc.cur_fn_mut_local_binding_owners[lhs.value] = owner
 		}
 		tc.register_synth_type(lhs_id, typ)
+		return owner
 	}
+	return ScopeBindingOwner{}
 }
 
 fn (tc &TypeChecker) visible_local_scope_owns_name(name string) bool {
@@ -9872,6 +9940,7 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		return CallInfo{
 			name:          call_name
 			params:        tc.fn_param_types[call_name] or { []Type{} }
+			shared_params: tc.fn_shared_params[call_name] or { []bool{} }
 			return_type:   Type(ResultType{
 				base_type: tc.parse_type(type_args[0])
 			})
@@ -9937,6 +10006,7 @@ fn (mut tc TypeChecker) explicit_generic_call_info(name string, has_receiver boo
 	return CallInfo{
 		name:                 name
 		params:               sub_params
+		shared_params:        tc.fn_shared_params[name] or { []bool{} }
 		return_type:          sub_ret
 		has_receiver:         has_receiver
 		is_variadic:          tc.fn_variadic[name] or { false }
@@ -10133,6 +10203,7 @@ fn (tc &TypeChecker) call_info(name string, has_receiver bool) CallInfo {
 	return CallInfo{
 		name:                 name
 		params:               params
+		shared_params:        tc.fn_shared_params[name] or { []bool{} }
 		return_type:          tc.fn_ret_types[name] or {
 			unknown_type('unknown return type for `${name}`')
 		}
@@ -10639,6 +10710,31 @@ fn (tc &TypeChecker) array_insert_prepend_many_arg_compatible(node flat.Node, in
 	return false
 }
 
+fn call_param_is_shared(info CallInfo, param_idx int) bool {
+	return param_idx >= 0 && param_idx < info.shared_params.len && info.shared_params[param_idx]
+}
+
+fn (tc &TypeChecker) expr_is_shared_arg(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.expr_is_shared_arg(tc.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.children_count > 0 {
+		return tc.expr_is_shared_arg(tc.a.child(&node, 0))
+	}
+	if node.kind != .ident || node.value.len == 0 {
+		return false
+	}
+	owner := tc.cur_fn_shared_binding_owners[node.value] or { return false }
+	if tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	return tc.cur_scope.nearest_binding_owned_by(node.value, owner)
+}
+
 // check_call_arg_types validates check call arg types state for types.
 fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, info0 CallInfo) {
 	info := tc.specialized_plain_generic_call_info(node, info0)
@@ -10831,6 +10927,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		} else {
 			actual = tc.resolve_expr(arg_id, expected)
 		}
+		if call_param_is_shared(info, param_idx) && !tc.expr_is_shared_arg(arg_id) {
+			if tc.should_diagnose(id) {
+				tc.record_error(.call_arg_mismatch, 'cannot use non-shared `${actual.name()}` as argument ${
+					param_idx + 1} to `${tc.call_display_name(node)}`; expected `shared ${expected.name()}`',
+					id)
+			}
+			continue
+		}
 		if !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected) {
 			if json_encode_accepts_arg(info.name, param_idx, expected, actual) {
@@ -10996,6 +11100,7 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 	return CallInfo{
 		name:                 info.name
 		params:               sub_params
+		shared_params:        info.shared_params.clone()
 		return_type:          sub_ret
 		has_receiver:         info.has_receiver
 		is_variadic:          info.is_variadic
@@ -15887,6 +15992,7 @@ fn (tc &TypeChecker) interface_receiver_method_call_info(iface_name string, meth
 	return CallInfo{
 		name:         call_name
 		params:       params
+		shared_params: tc.fn_shared_params[decl_key] or { []bool{} }
 		return_type:  tc.fn_ret_types[decl_key] or { Type(void_) }
 		has_receiver: true
 		params_known: true
@@ -16153,6 +16259,7 @@ fn (tc &TypeChecker) embedded_method_call_info_inner(struct_name string, method 
 				return CallInfo{
 					name:          info.name
 					params:        info.params
+					shared_params: info.shared_params
 					return_type:   info.return_type
 					has_receiver:  info.has_receiver
 					is_variadic:   info.is_variadic
@@ -18980,6 +19087,7 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 	return CallInfo{
 		name:         generic_key
 		params:       sub_params
+		shared_params: tc.fn_shared_params[generic_key] or { []bool{} }
 		return_type:  sub_ret
 		has_receiver: true
 		is_variadic:  tc.fn_variadic[generic_key] or { false }
@@ -19047,6 +19155,7 @@ pub fn (tc &TypeChecker) resolve_generic_sum_method(type_name string, method str
 	return CallInfo{
 		name:         generic_key
 		params:       sub_params
+		shared_params: tc.fn_shared_params[generic_key] or { []bool{} }
 		return_type:  sub_ret
 		has_receiver: true
 		is_variadic:  tc.fn_variadic[generic_key] or { false }
