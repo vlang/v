@@ -181,6 +181,14 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		&& (g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).typ)).kind == .interface
 		|| ((expr.obj as ast.Var).orig_type != 0
 		&& g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).orig_type)).kind == .interface))
+	// An interface variable smart-cast to a primitive value
+	// type is still boxed via a pointer in C, but that pointer is only cgen's
+	// internal boxing representation -- not a real reference/pointer value the
+	// user asked to print. Rebinding first (`x := v; x.str()`) already prints
+	// the plain value with no `&`; calling `.str()` directly on `v` should
+	// behave the same way.
+	is_interface_smartcast_boxed_primitive := is_ptr && expr is ast.Ident && expr.obj is ast.Var
+		&& (expr.obj as ast.Var).orig_type != 0 && g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).orig_type)).kind == .interface && g.table.final_sym(g.unwrap_generic(typ.deref())).kind !in [.struct, .interface, .sum_type, .array, .array_fixed, .map, .multi_return]
 	if typ.has_flag(.variadic) {
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')
@@ -264,7 +272,11 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write(line)
 		}
 		if is_ptr && !is_var_mut {
-			ref_str := '&'.repeat(typ.nr_muls())
+			ref_str := if is_interface_smartcast_boxed_primitive {
+				''
+			} else {
+				'&'.repeat(typ.nr_muls())
+			}
 			g.write('builtin__str_intp(1, _MOV((StrIntpData[]){{_S("${ref_str}"), ${si_s_code}, {.d_s = builtin__isnil(')
 			if typ.has_flag(.option) || mut_arg_option_type != 0 {
 				if mut_arg_option_type != 0 {

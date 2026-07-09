@@ -335,6 +335,24 @@ fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_
 	assert compilation.output.contains('builtin__str_intp')
 }
 
+fn test_interface_match_smartcast_direct_str_call() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_interface_match_smartcast_str_intp.vv')
+	test_exe := os.join_path(os.vtmp_dir(), 'coutput_interface_match_smartcast_str_intp')
+	os.write_file(test_source,
+		"module main\n\ninterface Value {}\n\nfn get_str(v Value) string {\n\treturn match v {\n\t\tint {\n\t\t\tv.str()\n\t\t}\n\t\telse {\n\t\t\t''\n\t\t}\n\t}\n}\n\nfn main() {\n\tprintln(get_str(42))\n}\n")!
+	defer {
+		os.rm(test_source) or {}
+		os.rm(test_exe) or {}
+	}
+	build_cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(test_exe)} ${os.quoted_path(test_source)}'
+	build_result := os.execute(build_cmd)
+	ensure_compilation_succeeded(build_result, build_cmd)
+	run_result := os.execute(os.quoted_path(test_exe))
+	assert run_result.exit_code == 0
+	assert run_result.output.trim_space() == '42'
+}
+
 fn test_simple_string_interpolation_does_not_emit_str_intp_runtime() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_simple_interpolation_no_str_intp.vv')
