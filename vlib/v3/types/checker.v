@@ -278,6 +278,7 @@ pub mut:
 	struct_error_embeds_shadow_builtin map[string]bool
 	struct_generic_params              map[string][]string // generic struct base name -> type-param names (e.g. Vec4 -> [T])
 	struct_implements                  map[string][]string
+	struct_shared_fields               map[string]bool
 	struct_field_c_abi_fns             map[string]string
 	// concrete `Box[int].method` -> substituted CallInfo for a method *value* on a
 	// generic receiver. The open `Box[T].method` registration is gone by cgen time, so
@@ -419,6 +420,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		struct_error_embeds_shadow_builtin: map[string]bool{}
 		struct_generic_params:              map[string][]string{}
 		struct_implements:                  map[string][]string{}
+		struct_shared_fields:               map[string]bool{}
 		struct_field_c_abi_fns:             map[string]string{}
 		generic_method_value_info:          map[string]CallInfo{}
 		params_structs:                     map[string]bool{}
@@ -1022,6 +1024,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			.struct_decl {
 				mut fields := []StructField{}
 				mut field_c_abi_fns := map[string]string{}
+				mut shared_field_names := []string{}
 				mut shadows_builtin_error_embed := false
 				for i in 0 .. node.children_count {
 					f := a.child_node(&node, i)
@@ -1048,6 +1051,9 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 					if c_abi_fn := tc.c_abi_fn_ptr_type_for_type_text(field_typ) {
 						field_c_abi_fns[f.value] = c_abi_fn
 					}
+					if param_type_text_is_shared(field_typ) {
+						shared_field_names << f.value
+					}
 					fields << StructField{
 						name: f.value
 						typ:  typ
@@ -1072,6 +1078,9 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				tc.struct_files[qname] = tc.cur_file
 				if shadows_builtin_error_embed {
 					tc.struct_error_embeds_shadow_builtin[qname] = true
+				}
+				for field_name in shared_field_names {
+					tc.struct_shared_fields[struct_field_c_abi_key(qname, field_name)] = true
 				}
 				for field_name, c_abi_fn in field_c_abi_fns {
 					tc.struct_field_c_abi_fns[struct_field_c_abi_key(qname, field_name)] = c_abi_fn
@@ -10725,6 +10734,9 @@ fn (tc &TypeChecker) expr_is_shared_arg(id flat.NodeId) bool {
 	if node.kind == .prefix && node.children_count > 0 {
 		return tc.expr_is_shared_arg(tc.a.child(&node, 0))
 	}
+	if node.kind == .selector && node.children_count > 0 {
+		return tc.selector_is_shared_arg(node)
+	}
 	if node.kind != .ident || node.value.len == 0 {
 		return false
 	}
@@ -10733,6 +10745,47 @@ fn (tc &TypeChecker) expr_is_shared_arg(id flat.NodeId) bool {
 		return false
 	}
 	return tc.cur_scope.nearest_binding_owned_by(node.value, owner)
+}
+
+fn (tc &TypeChecker) selector_is_shared_arg(node flat.Node) bool {
+	if node.children_count == 0 || node.value.len == 0 {
+		return false
+	}
+	base_id := tc.a.child(&node, 0)
+	base_type := tc.smartcast_type(base_id) or {
+		tc.cached_expr_type(base_id) or { tc.resolve_type(base_id) }
+	}
+	clean := unalias_and_unwrap_pointer_type(base_type)
+	if clean is Struct {
+		return tc.struct_field_is_shared(clean.name, node.value)
+	}
+	return false
+}
+
+fn (tc &TypeChecker) struct_field_is_shared(struct_name string, field_name string) bool {
+	if struct_name.len == 0 || field_name.len == 0 {
+		return false
+	}
+	mut candidates := []string{cap: 4}
+	candidates << struct_name
+	base, _, is_generic := generic_type_application_parts(struct_name)
+	if is_generic {
+		candidates << base
+	}
+	if struct_name.contains('.') {
+		candidates << struct_name.all_after_last('.')
+	} else {
+		qname := tc.qualify_name(struct_name)
+		if qname != struct_name {
+			candidates << qname
+		}
+	}
+	for candidate in candidates {
+		if tc.struct_shared_fields[struct_field_c_abi_key(candidate, field_name)] {
+			return true
+		}
+	}
+	return false
 }
 
 // check_call_arg_types validates check call arg types state for types.

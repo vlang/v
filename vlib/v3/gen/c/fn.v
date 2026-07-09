@@ -3950,7 +3950,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				receiver_wants_shared := g.fn_param_is_shared(actual_fn, 0)
 					|| g.fn_param_is_shared(method_name, 0) || g.fn_param_is_shared(fn_name, 0)
 					|| g.fn_param_is_shared(emitted_callee_name, 0)
-				if receiver_wants_shared && g.gen_shared_local_receiver_arg(base_id) {
+				if receiver_wants_shared
+					&& (g.gen_shared_local_receiver_arg(base_id) || g.gen_shared_storage_expr(base_id)) {
 					arg_start = 1
 				} else if param_types.len > 0
 					&& g.gen_embedded_method_receiver(base_id, base_type, param_types[0], receiver_wants_ptr) {
@@ -7145,12 +7146,15 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			g.gen_expr(arg_id)
 			continue
 		}
-		if arg_idx < typed_param_count && (g.fn_param_is_shared(fn_name, arg_idx)
-			|| g.fn_param_is_shared(callee_name, arg_idx)
-			|| g.fn_param_is_shared(g.direct_call_name(fn_name), arg_idx)
-			|| g.fn_param_is_shared(g.direct_call_name(callee_name), arg_idx))
-			&& g.gen_shared_local_receiver_arg(arg_id) {
-			continue
+		if arg_idx < typed_param_count {
+			arg_param_is_shared := g.fn_param_is_shared(fn_name, arg_idx)
+				|| g.fn_param_is_shared(callee_name, arg_idx)
+				|| g.fn_param_is_shared(g.direct_call_name(fn_name), arg_idx)
+				|| g.fn_param_is_shared(g.direct_call_name(callee_name), arg_idx)
+			if arg_param_is_shared
+				&& (g.gen_shared_local_receiver_arg(arg_id) || g.gen_shared_storage_expr(arg_id)) {
+				continue
+			}
 		}
 		if arg_node.kind == .sizeof_expr {
 			g.write('sizeof(${g.sizeof_target(arg_node.value)})')
@@ -8531,6 +8535,9 @@ fn (mut g FlatGen) gen_shared_local_receiver_arg(base_id flat.NodeId) bool {
 		return false
 	}
 	base := g.a.nodes[int(base_id)]
+	if base.kind == .paren && base.children_count > 0 {
+		return g.gen_shared_local_receiver_arg(g.a.child(&base, 0))
+	}
 	if base.kind == .prefix && base.children_count > 0 {
 		return g.gen_shared_local_receiver_arg(g.a.child(&base, 0))
 	}

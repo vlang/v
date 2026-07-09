@@ -1571,6 +1571,12 @@ fn (mut g FlatGen) gen_shared_storage_expr(id flat.NodeId) bool {
 		return false
 	}
 	node := g.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return g.gen_shared_storage_expr(g.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.children_count > 0 {
+		return g.gen_shared_storage_expr(g.a.child(&node, 0))
+	}
 	if node.kind != .selector || node.children_count == 0 {
 		return false
 	}
