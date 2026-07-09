@@ -1970,10 +1970,7 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 				mut packed_args := []SpawnPackedArg{}
 				for i, pt in fn_type.params {
 					arg_id := g.a.child(&call_node, i + 1)
-					mut expected_ct := g.tc.c_type(pt)
-					if expected_ct.starts_with('fn_ptr:') {
-						expected_ct = g.resolve_fn_ptr_type(expected_ct)
-					}
+					expected_ct := g.spawn_arg_c_type(pt)
 					packed_args << g.spawn_packed_arg_for_param(arg_id, pt, expected_ct, i)
 				}
 				g.emit_fn_value_spawn_expr(call_id, fn_node, fn_type, packed_args, ret_ct)
@@ -2257,11 +2254,12 @@ fn (mut g FlatGen) spawn_packed_arg_for_call_param(fn_name string, arg_id flat.N
 			}
 		}
 	}
-	mut expected_ct := g.tc.c_type(expected)
-	if expected_ct.starts_with('fn_ptr:') {
-		expected_ct = g.resolve_fn_ptr_type(expected_ct)
-	}
+	expected_ct := g.spawn_arg_c_type(expected)
 	return g.spawn_packed_arg_for_param(arg_id, expected, expected_ct, field_idx)
+}
+
+fn (mut g FlatGen) spawn_arg_c_type(expected types.Type) string {
+	return g.value_c_type(expected)
 }
 
 fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types.Type, expected_ct string, field_idx int) SpawnPackedArg {
