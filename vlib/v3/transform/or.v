@@ -453,6 +453,9 @@ fn (t &Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStringIn
 	if fn_node.kind != .selector || fn_node.value != 'from_string' || fn_node.children_count == 0 {
 		return none
 	}
+	if t.enum_from_string_call_uses_user_method(expr_id) {
+		return none
+	}
 	enum_id := t.a.child(&fn_node, 0)
 	enum_type := t.enum_type_from_node(enum_id) or { return none }
 	fields := t.enum_types[enum_type] or { return none }
@@ -464,6 +467,14 @@ fn (t &Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStringIn
 		fields:    fields.clone()
 		arg_id:    t.a.child(&expr, 1)
 	}
+}
+
+fn (t &Transformer) enum_from_string_call_uses_user_method(expr_id flat.NodeId) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	resolved := t.tc.resolved_call_name(expr_id) or { return false }
+	return resolved.len > 0 && t.is_known_fn_name(resolved)
 }
 
 // enum_type_from_node converts enum type from node data for transform.

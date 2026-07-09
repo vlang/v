@@ -2214,7 +2214,7 @@ fn (g &FlatGen) shared_local_arg_c_expr(arg_id flat.NodeId) ?string {
 		return none
 	}
 	arg := g.a.nodes[int(arg_id)]
-	if arg.kind == .prefix && arg.children_count > 0 {
+	if arg.kind in [.paren, .prefix] && arg.children_count > 0 {
 		return g.shared_local_arg_c_expr(g.a.child(&arg, 0))
 	}
 	if arg.kind == .ident && g.local_storage_is_shared(arg.value) {
@@ -2223,10 +2223,28 @@ fn (g &FlatGen) shared_local_arg_c_expr(arg_id flat.NodeId) ?string {
 	return none
 }
 
+fn (mut g FlatGen) shared_arg_storage_c_expr(arg_id flat.NodeId) ?string {
+	if expr := g.shared_local_arg_c_expr(arg_id) {
+		return expr
+	}
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	g.line_start = false
+	ok := g.gen_shared_storage_expr(arg_id)
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	if !ok || result.len == 0 {
+		return none
+	}
+	return result
+}
+
 fn (mut g FlatGen) spawn_packed_arg_for_call_param(fn_name string, arg_id flat.NodeId, expected types.Type, field_idx int) SpawnPackedArg {
 	if g.fn_param_is_shared(fn_name, field_idx)
 		|| g.fn_param_is_shared(g.direct_call_name(fn_name), field_idx) {
-		if expr := g.shared_local_arg_c_expr(arg_id) {
+		if expr := g.shared_arg_storage_c_expr(arg_id) {
 			inner := g.shared_qualify_type_text(expected.name(), g.tc.cur_module)
 			wrapper_ct := '${g.shared_wrapper_c_name(inner)}*'
 			return SpawnPackedArg{
