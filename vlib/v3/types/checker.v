@@ -10336,6 +10336,10 @@ fn (tc &TypeChecker) fixed_array_type_from_receiver(t Type) ?ArrayFixed {
 		bracket_end := name.last_index_u8(`]`)
 		if bracket >= 0 && bracket_end > bracket {
 			len_text := name[bracket + 1..bracket_end].trim_space()
+			if !is_fixed_array_len_text(len_text)
+				&& tc.const_int_value_in_module(len_text, tc.cur_module, []string{}) == none {
+				return none
+			}
 			return ArrayFixed{
 				elem_type: tc.parse_type(name[..bracket])
 				len:       if is_decimal_int_literal(len_text) { len_text.int() } else { 0 }

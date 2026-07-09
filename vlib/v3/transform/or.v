@@ -5,10 +5,11 @@ import v3.types
 
 // ArrayIndexInfo stores array index info metadata used by transform.
 struct ArrayIndexInfo {
-	base_id    flat.NodeId
-	index_id   flat.NodeId
-	base_type  string
-	value_type string
+	base_id        flat.NodeId
+	index_id       flat.NodeId
+	base_type      string
+	value_type     string
+	is_fixed_array bool
 }
 
 struct StringSliceInfo {
@@ -85,6 +86,16 @@ fn (mut t Transformer) array_index_info(index_id flat.NodeId) ?ArrayIndexInfo {
 			value_type: 'u8'
 		}
 	}
+	if t.is_fixed_array_type(base_type) {
+		fixed_type := t.resolved_fixed_array_canonical_type(base_type)
+		return ArrayIndexInfo{
+			base_id:        base_id
+			index_id:       index_expr_id
+			base_type:      fixed_type
+			value_type:     fixed_array_elem_type(fixed_type)
+			is_fixed_array: true
+		}
+	}
 	if !base_type.starts_with('[]') {
 		return none
 	}
@@ -98,6 +109,13 @@ fn (mut t Transformer) array_index_info(index_id flat.NodeId) ?ArrayIndexInfo {
 		base_type:  base_type
 		value_type: value_type
 	}
+}
+
+fn (mut t Transformer) array_index_len_expr(info ArrayIndexInfo, base_expr flat.NodeId) flat.NodeId {
+	if info.is_fixed_array {
+		return t.make_fixed_array_len_expr(info.base_type)
+	}
+	return t.make_selector(base_expr, 'len', 'int')
 }
 
 // is_array_index_or_expr reports whether is array index or expr applies in transform.
@@ -361,8 +379,8 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 
 	idx_ident := t.make_ident(index_name)
 	lower_ok := t.make_infix(.ge, idx_ident, t.make_int_literal(0))
-	upper_ok := t.make_infix(.lt, t.make_ident(index_name),
-		t.make_selector(base_expr, 'len', 'int'))
+	upper_ok := t.make_infix(.lt, t.make_ident(index_name), t.array_index_len_expr(info,
+		base_expr))
 	found_cond := t.make_infix(.logical_and, lower_ok, upper_ok)
 	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
 		result_type, node.value, t.make_ierror_none()))
