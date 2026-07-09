@@ -743,7 +743,12 @@ fn (mut g FlatGen) ensure_thread_optional_arr_wait_fn(ret_type types.Type) strin
 		return name
 	}
 	value_ct := g.optional_payload_c_type(base_type)
-	g.spawn_wrapper_defs << 'static ${result_ct} ${name}(Array a) { Array __res = array_new(sizeof(${value_ct}), a.len, a.len); bool __failed = false; IError __err; memset(&__err, 0, sizeof(__err)); for (int __i = 0; __i < a.len; __i++) { void* __r = NULL; pthread_join((pthread_t)(((void**)a.data)[__i]), &__r); ${ret_ct} __item; if (__r) { __item = *((${ret_ct}*)__r); free(__r); } else { memset(&__item, 0, sizeof(__item)); } if (!__item.ok) { if (!__failed) { __failed = true; __err = __item.err; } continue; } ((${value_ct}*)__res.data)[__i] = __item.value; } if (__failed) return (${result_ct}){.ok = false, .err = __err}; return (${result_ct}){.ok = true, .value = __res}; }'
+	value_assign := if _ := array_fixed_type(base_type) {
+		'memmove(&(((${value_ct}*)__res.data)[__i]), __item.value, sizeof(${value_ct}));'
+	} else {
+		'((${value_ct}*)__res.data)[__i] = __item.value;'
+	}
+	g.spawn_wrapper_defs << 'static ${result_ct} ${name}(Array a) { Array __res = array_new(sizeof(${value_ct}), a.len, a.len); bool __failed = false; IError __err; memset(&__err, 0, sizeof(__err)); for (int __i = 0; __i < a.len; __i++) { void* __r = NULL; pthread_join((pthread_t)(((void**)a.data)[__i]), &__r); ${ret_ct} __item; if (__r) { __item = *((${ret_ct}*)__r); free(__r); } else { memset(&__item, 0, sizeof(__item)); } if (!__item.ok) { if (!__failed) { __failed = true; __err = __item.err; } continue; } ${value_assign} } if (__failed) return (${result_ct}){.ok = false, .err = __err}; return (${result_ct}){.ok = true, .value = __res}; }'
 	return name
 }
 

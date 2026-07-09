@@ -859,6 +859,12 @@ fn (mut g FlatGen) gen_compiler_default_free_call(fn_node flat.Node, resolved_ta
 	if base_type is types.Void || base_type is types.Unknown {
 		return false
 	}
+	if resolved_target_name in ['free', 'builtin.free'] && cgen_type_is_pointer_like(base_type) {
+		g.write('free(')
+		g.gen_expr(base_id)
+		g.write(')')
+		return true
+	}
 	clean := concrete_receiver_type(base_type)
 	if _ := array_like_type(clean) {
 		return false
@@ -871,6 +877,19 @@ fn (mut g FlatGen) gen_compiler_default_free_call(fn_node flat.Node, resolved_ta
 	}
 	g.write('((void)0)')
 	return true
+}
+
+fn cgen_type_is_pointer_like(t types.Type) bool {
+	if t is types.Pointer {
+		return true
+	}
+	if t is types.Alias {
+		if t.name in ['charptr', 'byteptr', 'voidptr'] {
+			return true
+		}
+		return cgen_type_is_pointer_like(t.base_type)
+	}
+	return false
 }
 
 fn (g &FlatGen) receiver_has_method(base_type types.Type, method string) bool {

@@ -422,22 +422,22 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 }
 
 fn (t &Transformer) map_value_type_is_optional(typ string) bool {
-	return t.is_optional_type_name(typ) || typ == 'Optional' || typ.starts_with('Optional_')
+	clean := t.normalize_type_alias(typ).trim_space()
+	return t.is_optional_type_name(clean) || clean == 'Optional'
 }
 
 fn (t &Transformer) map_optional_target_type(typ string) string {
-	if t.is_optional_type_name(typ) {
-		return t.qualify_optional_type(typ)
+	clean := t.normalize_type_alias(typ).trim_space()
+	if t.is_optional_type_name(clean) {
+		return t.qualify_optional_type(clean)
 	}
 	return typ
 }
 
 fn (t &Transformer) map_optional_value_base_type(typ string) string {
-	if t.is_optional_type_name(typ) {
-		return t.optional_base_type(t.qualify_optional_type(typ))
-	}
-	if typ.starts_with('Optional_') {
-		return typ['Optional_'.len..]
+	clean := t.normalize_type_alias(typ).trim_space()
+	if t.is_optional_type_name(clean) {
+		return t.optional_base_type(t.qualify_optional_type(clean))
 	}
 	return typ
 }
