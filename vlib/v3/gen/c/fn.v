@@ -760,7 +760,7 @@ fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_na
 	g.write(g.cname(g.method_call_name_for_call(id, node, method_name)))
 }
 
-fn (mut g FlatGen) gen_channel_close_call(base_id flat.NodeId) {
+fn (mut g FlatGen) gen_channel_close_call(base_id flat.NodeId, node flat.Node) {
 	g.write('sync__Channel__close(')
 	if g.channel_close_receiver_needs_deref(base_id) {
 		g.write('*(')
@@ -771,7 +771,26 @@ fn (mut g FlatGen) gen_channel_close_call(base_id flat.NodeId) {
 		g.gen_expr(base_id)
 		g.write(')')
 	}
-	g.write(', array_new(sizeof(IError), 0, 0))')
+	g.write(', ')
+	g.gen_channel_close_errors(node)
+	g.write(')')
+}
+
+fn (mut g FlatGen) gen_channel_close_errors(node flat.Node) {
+	if node.children_count <= 1 {
+		g.write('array_new(sizeof(IError), 0, 0)')
+		return
+	}
+	count := node.children_count - 1
+	ierror_type := g.tc.parse_type('IError')
+	g.write('new_array_from_c_array(${count}, ${count}, sizeof(IError), (IError[]){')
+	for i in 1 .. node.children_count {
+		if i > 1 {
+			g.write(', ')
+		}
+		g.gen_expr_with_expected_type(g.a.child(&node, i), ierror_type)
+	}
+	g.write('})')
 }
 
 fn (mut g FlatGen) gen_channel_try_call(node flat.Node, fn_node flat.Node) bool {
@@ -3153,7 +3172,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if resolved_target_name == 'chan.close' && fn_node.kind == .selector {
-		g.gen_channel_close_call(g.a.child(fn_node, 0))
+		g.gen_channel_close_call(g.a.child(fn_node, 0), node)
 		return
 	}
 	if fn_node.kind == .selector && g.gen_channel_try_call(node, fn_node) {
@@ -3214,7 +3233,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		base_id := g.a.child(fn_node, 0)
 		base_type := g.tc.resolve_type(base_id)
 		if cgen_is_channel_close_receiver_type(base_type) {
-			g.gen_channel_close_call(base_id)
+			g.gen_channel_close_call(base_id, node)
 			return
 		}
 	}
@@ -3606,7 +3625,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					base_type := g.usable_expr_type(g.a.child(fn_node, 0))
 					clean_type := concrete_receiver_type(base_type)
 					if cgen_is_channel_close_receiver_type(clean_type) && fn_node.value == 'close' {
-						g.gen_channel_close_call(g.a.child(fn_node, 0))
+						g.gen_channel_close_call(g.a.child(fn_node, 0), node)
 						return
 					}
 					if g.gen_thread_wait_call(fn_node) {

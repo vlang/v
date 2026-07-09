@@ -19,8 +19,9 @@ struct StringSliceInfo {
 }
 
 struct ChannelReceiveInfo {
-	channel_id flat.NodeId
-	value_type string
+	channel_id  flat.NodeId
+	value_type  string
+	needs_deref bool
 }
 
 struct MultiReturnTailValues {
@@ -149,14 +150,17 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 		return none
 	}
 	channel_id := t.a.child(&expr, 0)
+	source_needs_deref := t.channel_receive_source_needs_deref(channel_id)
 	if !isnil(t.tc) {
-		clean_type := types.unwrap_pointer(t.tc.resolve_type(channel_id))
+		raw_type := t.tc.resolve_type(channel_id)
+		clean_type := types.unwrap_pointer(raw_type)
 		if clean_type is types.Channel {
 			value_type := t.normalize_type_alias(clean_type.elem_type.name())
 			if value_type.len > 0 {
 				return ChannelReceiveInfo{
-					channel_id: channel_id
-					value_type: value_type
+					channel_id:   channel_id
+					value_type:   value_type
+					needs_deref: raw_type is types.Pointer
 				}
 			}
 		}
@@ -164,8 +168,9 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 			value_type := t.normalize_type_alias(recv_type.name())
 			if value_type.len > 0 && value_type !in ['void', 'unknown'] {
 				return ChannelReceiveInfo{
-					channel_id: channel_id
-					value_type: value_type
+					channel_id:   channel_id
+					value_type:   value_type
+					needs_deref: source_needs_deref
 				}
 			}
 		}
@@ -174,8 +179,9 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 		value_type := t.normalize_type_alias(expr.typ)
 		if value_type.len > 0 && value_type !in ['void', 'unknown'] {
 			return ChannelReceiveInfo{
-				channel_id: channel_id
-				value_type: value_type
+				channel_id:   channel_id
+				value_type:   value_type
+				needs_deref: source_needs_deref
 			}
 		}
 	}
@@ -184,6 +190,7 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 		channel_type = t.node_type(channel_id)
 	}
 	channel_type = t.normalize_type_alias(channel_type).trim_space()
+	fallback_needs_deref := channel_type.starts_with('&')
 	for channel_type.starts_with('&') {
 		channel_type = channel_type[1..].trim_space()
 	}
@@ -195,9 +202,29 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 		return none
 	}
 	return ChannelReceiveInfo{
-		channel_id: channel_id
-		value_type: value_type
+		channel_id:   channel_id
+		value_type:   value_type
+		needs_deref: fallback_needs_deref
 	}
+}
+
+fn (mut t Transformer) channel_receive_source_needs_deref(channel_id flat.NodeId) bool {
+	if int(channel_id) < 0 {
+		return false
+	}
+	if !isnil(t.tc) {
+		raw_type := t.tc.resolve_type(channel_id)
+		clean_type := types.unwrap_pointer(raw_type)
+		if raw_type is types.Pointer && clean_type is types.Channel {
+			return true
+		}
+	}
+	mut source_type := t.resolve_expr_type(channel_id)
+	if source_type.len == 0 {
+		source_type = t.node_type(channel_id)
+	}
+	source_type = t.normalize_type_alias(source_type).trim_space()
+	return source_type.starts_with('&')
 }
 
 fn (mut t Transformer) is_channel_receive_or_expr(node flat.Node) bool {
@@ -226,7 +253,11 @@ fn (mut t Transformer) transform_channel_receive_or_expr(id flat.NodeId, node fl
 	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.value_type),
 		info.value_type)
 	channel_name := t.new_temp('chan_src')
-	channel_cast := t.make_cast('&sync.Channel', channel_expr, '&sync.Channel')
+	mut channel_source := channel_expr
+	if info.needs_deref {
+		channel_source = t.make_prefix(.mul, channel_source)
+	}
+	channel_cast := t.make_cast('&sync.Channel', channel_source, '&sync.Channel')
 	prelude << t.make_decl_assign_typed(channel_name, channel_cast, '&sync.Channel')
 	pop_call := t.make_call_typed('sync__Channel__pop', arr2(t.make_ident(channel_name), t.make_prefix(.amp,
 		t.make_ident(val_name))), 'bool')
