@@ -521,6 +521,11 @@ fn (t &Transformer) enum_type_from_node(id flat.NodeId) ?string {
 		base := t.a.child_node(&node, 0)
 		if base.kind == .ident {
 			qname := '${base.value}.${node.value}'
+			if resolved := t.resolve_import_alias_pattern(qname) {
+				if resolved in t.enum_types {
+					return resolved
+				}
+			}
 			if qname in t.enum_types {
 				return qname
 			}

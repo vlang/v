@@ -4292,7 +4292,133 @@ fn (mut tc TypeChecker) check_enum_backing_type(node_id flat.NodeId, node flat.N
 	if !clean.is_integer() {
 		tc.type_mismatch(.assignment_mismatch,
 			'enum backing type `${backing}` must be integer, not `${clean.name()}`', node_id)
+		return
 	}
+	if bounds := enum_backing_value_bounds(clean) {
+		tc.check_backed_enum_field_value_ranges(node, backing, bounds)
+	}
+}
+
+struct EnumBackingValueBounds {
+	min     int
+	max     int
+	has_min bool
+	has_max bool
+	bits    int
+}
+
+fn enum_backing_value_bounds(typ Type) ?EnumBackingValueBounds {
+	clean := unalias_type(typ)
+	if clean is Primitive {
+		if !clean.props.has(.integer) {
+			return none
+		}
+		bits := match clean.size {
+			8 { 8 }
+			16 { 16 }
+			32 { 32 }
+			64 { 64 }
+			else { 32 }
+		}
+		if clean.props.has(.unsigned) {
+			return match clean.size {
+				8 {
+					EnumBackingValueBounds{min: 0, max: 255, has_min: true, has_max: true, bits: bits}
+				}
+				16 {
+					EnumBackingValueBounds{min: 0, max: 65535, has_min: true, has_max: true, bits: bits}
+				}
+				else {
+					EnumBackingValueBounds{min: 0, has_min: true, bits: bits}
+				}
+			}
+		}
+		return match clean.size {
+			8 {
+				EnumBackingValueBounds{min: -128, max: 127, has_min: true, has_max: true, bits: bits}
+			}
+			16 {
+				EnumBackingValueBounds{min: -32768, max: 32767, has_min: true, has_max: true, bits: bits}
+			}
+			32, 0 {
+				EnumBackingValueBounds{min: -2147483647 - 1, max: 2147483647, has_min: true, has_max: true, bits: bits}
+			}
+			else {
+				EnumBackingValueBounds{bits: bits}
+			}
+		}
+	}
+	if clean is Rune {
+		return EnumBackingValueBounds{min: -2147483647 - 1, max: 2147483647, has_min: true, has_max: true, bits: 32}
+	}
+	if clean is USize {
+		return EnumBackingValueBounds{min: 0, has_min: true, bits: 64}
+	}
+	if clean is ISize {
+		return EnumBackingValueBounds{bits: 64}
+	}
+	return none
+}
+
+fn (mut tc TypeChecker) check_backed_enum_field_value_ranges(node flat.Node, backing string, bounds EnumBackingValueBounds) {
+	is_flag := node.typ == 'flag'
+	mut field_values := map[string]int{}
+	mut field_exprs := map[string]flat.NodeId{}
+	mut field_ids := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		field_id := tc.a.child(&node, i)
+		field := tc.a.nodes[int(field_id)]
+		if field.kind != .enum_field {
+			continue
+		}
+		field_ids << field_id
+		if field.children_count > 0 {
+			field_exprs[field.value] = tc.a.child(&field, 0)
+		}
+	}
+	mut next_val := 0
+	for field_id in field_ids {
+		field := tc.a.nodes[int(field_id)]
+		mut val := next_val
+		if expr_id := field_exprs[field.value] {
+			mut resolving := map[string]bool{}
+			if resolved := tc.comptime_static_enum_field_value(expr_id, tc.cur_module, node.value, mut
+				field_values, field_exprs, mut resolving)
+			{
+				val = resolved
+			}
+		}
+		field_values[field.value] = val
+		if !enum_backing_value_fits(val, bounds, is_flag) {
+			if is_flag {
+				tc.record_error(.assignment_mismatch,
+					'enum field `${field.value}` bit ${val} does not fit backing type `${backing}`',
+					field_id)
+			} else {
+				tc.record_error(.assignment_mismatch,
+					'enum field `${field.value}` value ${val} does not fit backing type `${backing}`',
+					field_id)
+			}
+		}
+		next_val = val + 1
+	}
+}
+
+fn enum_backing_value_fits(value int, bounds EnumBackingValueBounds, is_flag bool) bool {
+	if is_flag {
+		if value < 0 || bounds.bits <= 0 {
+			return false
+		}
+		limit := if bounds.has_min && bounds.min < 0 { bounds.bits - 1 } else { bounds.bits }
+		return value < limit
+	}
+	if bounds.has_min && value < bounds.min {
+		return false
+	}
+	if bounds.has_max && value > bounds.max {
+		return false
+	}
+	return true
 }
 
 // check_enum_field_values validates check enum field values state for types.
