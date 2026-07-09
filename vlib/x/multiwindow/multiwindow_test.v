@@ -667,6 +667,13 @@ fn test_capabilities_for_config_render_required_prefers_x11_over_wayland() {
 			}
 		} $else {
 			$if darwin {
+				if !multiwindow_render_enabled() {
+					capabilities_for_config(backend: .auto, require_renderer: true) or {
+						assert err.msg() == err_renderer_unsupported
+						return
+					}
+					assert false, 'appkit render capability succeeded without a render-enabled build'
+				}
 				$if darwin_sokol_glcore33 ? {
 					capabilities_for_config(backend: .auto, require_renderer: true) or {
 						assert err.msg() == err_renderer_unsupported
