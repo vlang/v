@@ -540,6 +540,14 @@ fn test_shared_tcc_compile_args_skip_bt25_after_late_compiler_resolution() {
 	assert !builder.get_compile_args().contains('-bt25')
 }
 
+fn test_shared_build_module_keeps_shared_linker_flag() {
+	mut builder := new_test_builder(['-shared', hello_world_example()])
+	builder.pref.build_mode = .build_module
+	linker_args := builder.get_linker_args()
+
+	assert linker_args.contains('-shared')
+}
+
 fn test_linux_shared_boehm_linker_args_hide_static_gc_archive_symbols() {
 	linker_args := builder_linker_args_with_cc([
 		'-os',

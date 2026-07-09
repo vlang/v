@@ -187,8 +187,8 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 			value_type := t.normalize_type_alias(clean_type.elem_type.name())
 			if value_type.len > 0 {
 				return ChannelReceiveInfo{
-					channel_id:   channel_id
-					value_type:   value_type
+					channel_id:  channel_id
+					value_type:  value_type
 					needs_deref: raw_type is types.Pointer
 				}
 			}
@@ -197,8 +197,8 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 			value_type := t.normalize_type_alias(recv_type.name())
 			if value_type.len > 0 && value_type !in ['void', 'unknown'] {
 				return ChannelReceiveInfo{
-					channel_id:   channel_id
-					value_type:   value_type
+					channel_id:  channel_id
+					value_type:  value_type
 					needs_deref: source_needs_deref
 				}
 			}
@@ -208,8 +208,8 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 		value_type := t.normalize_type_alias(expr.typ)
 		if value_type.len > 0 && value_type !in ['void', 'unknown'] {
 			return ChannelReceiveInfo{
-				channel_id:   channel_id
-				value_type:   value_type
+				channel_id:  channel_id
+				value_type:  value_type
 				needs_deref: source_needs_deref
 			}
 		}
@@ -231,8 +231,8 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 		return none
 	}
 	return ChannelReceiveInfo{
-		channel_id:   channel_id
-		value_type:   value_type
+		channel_id:  channel_id
+		value_type:  value_type
 		needs_deref: fallback_needs_deref
 	}
 }
@@ -390,8 +390,7 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 
 	idx_ident := t.make_ident(index_name)
 	lower_ok := t.make_infix(.ge, idx_ident, t.make_int_literal(0))
-	upper_ok := t.make_infix(.lt, t.make_ident(index_name), t.array_index_len_expr(info,
-		base_expr))
+	upper_ok := t.make_infix(.lt, t.make_ident(index_name), t.array_index_len_expr(info, base_expr))
 	found_cond := t.make_infix(.logical_and, lower_ok, upper_ok)
 	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
 		result_type, node.value, t.make_ierror_none()))

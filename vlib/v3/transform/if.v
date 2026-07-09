@@ -248,8 +248,8 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 
 	idx_ident := t.make_ident(index_name)
 	lower_ok := t.make_infix(.ge, idx_ident, t.make_int_literal(0))
-	upper_ok := t.make_infix(.lt, t.make_ident(index_name), t.array_index_len_expr(info,
-		array_expr))
+	upper_ok := t.make_infix(.lt, t.make_ident(index_name),
+		t.array_index_len_expr(info, array_expr))
 	found_cond := t.make_infix(.logical_and, lower_ok, upper_ok)
 
 	then_id := t.a.child(&node, 1)
@@ -915,8 +915,8 @@ fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node,
 	result << t.make_decl_assign_typed(index_name, index_expr, 'int')
 	idx_ident := t.make_ident(index_name)
 	lower_ok := t.make_infix(.ge, idx_ident, t.make_int_literal(0))
-	upper_ok := t.make_infix(.lt, t.make_ident(index_name), t.array_index_len_expr(info,
-		array_expr))
+	upper_ok := t.make_infix(.lt, t.make_ident(index_name),
+		t.array_index_len_expr(info, array_expr))
 	found_cond := t.make_infix(.logical_and, lower_ok, upper_ok)
 
 	saved_var_types := t.var_types.clone()

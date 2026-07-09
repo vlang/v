@@ -960,7 +960,11 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	prev_struct := p.cur_struct
 	p.cur_fn = name
 	// `@STRUCT` inside a method expands to the receiver's (dereferenced) type name.
-	p.cur_struct = if is_method { method_receiver_type_name(receiver_type).all_after_last('.') } else { '' }
+	p.cur_struct = if is_method {
+		method_receiver_type_name(receiver_type).all_after_last('.')
+	} else {
+		''
+	}
 	p.push_local_type_scope(name)
 	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
 	// (a no-op stub), so callers still resolve while the body is compiled out.

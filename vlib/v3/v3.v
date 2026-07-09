@@ -55,13 +55,13 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	return ' ${atomic_s}'
 }
 
-fn prepare_c_flags_for_link(flags []string, c99 bool) ![]string {
+fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
 	for flag in flags {
 		clean := flag.trim_space()
 		if c_flag_is_object_file(clean) {
-			prepared << ensure_c_object_file(clean, support_flags, c99)!
+			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag)!
 		} else {
 			prepared << flag
 		}
@@ -97,7 +97,7 @@ fn c_flags_need_objective_c(flags []string) bool {
 	return false
 }
 
-fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool) !string {
+fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string) !string {
 	if os.exists(obj_path) {
 		return obj_path
 	}
@@ -107,13 +107,15 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool) !stri
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
 	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { c_standard_flag(c99) }
-	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, support_flags, std_flag))
+	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, support_flags, std_flag,
+		pic_flag))
 	if os.exists(cached_obj)
 		&& os.file_last_mod_unix(cached_obj) >= os.file_last_mod_unix(source_file) {
 		return cached_obj
 	}
 	compiler := if source_file.ends_with('.cpp') { 'c++' } else { 'cc' }
-	cmd := '${compiler} ${std_flag} -w ${support_flags.join(' ')} -o ${os.quoted_path(cached_obj)} -c ${os.quoted_path(source_file)}'
+	pic_arg := if pic_flag.len > 0 { '${pic_flag} ' } else { '' }
+	cmd := '${compiler} ${std_flag} ${pic_arg}-w ${support_flags.join(' ')} -o ${os.quoted_path(cached_obj)} -c ${os.quoted_path(source_file)}'
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
 		return error('failed to build C object ${obj_path} from ${source_file}:\n${res.output}')
@@ -132,12 +134,15 @@ fn c_source_from_object_file(obj_path string) ?string {
 	return none
 }
 
-fn c_object_cache_name(path string, support_flags []string, std_flag string) string {
+fn c_object_cache_name(path string, support_flags []string, std_flag string, pic_flag string) string {
 	base := path.replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_'])
 	// The compile flags (`-D`/`-I`/...) change the object contents, so they must
 	// be part of the cache key; otherwise a rebuild with different `#flag` defines
 	// silently links the stale object built with the previous configuration.
 	mut cache_flags := [std_flag]
+	if pic_flag.len > 0 {
+		cache_flags << pic_flag
+	}
 	cache_flags << support_flags
 	return '${base}_${c_flags_hash(cache_flags)}.o'
 }
@@ -161,6 +166,13 @@ fn c_flag_is_c_source_file(flag string) bool {
 
 fn c_standard_flag(c99 bool) string {
 	return if c99 { '-std=c99' } else { '-std=gnu11' }
+}
+
+fn shared_pic_flag(is_shared bool, target_os string) string {
+	if is_shared && target_os != 'windows' {
+		return '-fPIC'
+	}
+	return ''
 }
 
 fn run_test_binary(bin_file string) int {
@@ -212,6 +224,38 @@ fn input_is_cmd_v(input_file string) bool {
 		|| normalized.ends_with('/cmd/v/v.v')
 }
 
+fn default_bin_file_for_input(input_file string) string {
+	if os.is_dir(input_file) {
+		base := os.base(os.real_path(input_file))
+		if base.contains('.') {
+			return base.all_before('.')
+		}
+		return base
+	}
+	if input_file.ends_with('.v') {
+		return input_file.all_before_last('.v')
+	}
+	return input_file
+}
+
+fn shared_library_postfix() string {
+	$if windows {
+		return '.dll'
+	} $else $if macos {
+		return '.dylib'
+	} $else {
+		return '.so'
+	}
+}
+
+fn with_shared_library_postfix(path string) string {
+	postfix := shared_library_postfix()
+	if path.ends_with(postfix) {
+		return path
+	}
+	return path + postfix
+}
+
 // main runs the v3 entry point.
 fn main() {
 	args := os.args[1..]
@@ -225,6 +269,7 @@ fn main() {
 	mut explicit_output := false
 	mut backend := 'c'
 	mut is_prod := false
+	mut is_shared := false
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_parallel := false
@@ -261,6 +306,9 @@ fn main() {
 			i += 2
 		} else if args[i] == '-prod' {
 			is_prod = true
+			i++
+		} else if args[i] == '-shared' || args[i] == '--shared' {
+			is_shared = true
 			i++
 		} else if args[i] == '-selfhost' {
 			is_selfhost = true
@@ -365,7 +413,10 @@ fn main() {
 	mut bin_file := ''
 	mut c_only := false
 	if output_file == '' {
-		bin_file = input_file.all_before_last('.v')
+		bin_file = default_bin_file_for_input(input_file)
+		if is_shared {
+			bin_file = with_shared_library_postfix(bin_file)
+		}
 		// The wasm backend writes the binary itself; default to <name>.wasm.
 		output_file = if backend == 'wasm' { bin_file + '.wasm' } else { bin_file + '.c' }
 	} else if backend == 'wasm' {
@@ -376,6 +427,9 @@ fn main() {
 		bin_file = output_file.all_before_last('.c')
 	} else {
 		bin_file = output_file
+		if is_shared {
+			bin_file = with_shared_library_postfix(bin_file)
+		}
 		output_file = bin_file + '.c'
 	}
 
@@ -612,12 +666,15 @@ fn main() {
 		}
 
 		opt_flag := if is_prod { '-O2 ' } else { '' }
+		shared_link_flag := if is_shared { '-shared ' } else { '' }
+		pic_flag := shared_pic_flag(is_shared, prefs.normalized_target_os())
+		pic_arg := if pic_flag.len > 0 { '${pic_flag} ' } else { '' }
 		warn_flags := if is_strict {
 			'-Wall -Wextra -Werror=implicit-function-declaration -Wno-unused-variable -Wno-unused-parameter -Wno-int-conversion -Wno-missing-braces'
 		} else {
 			'-w'
 		}
-		resolved_c_flags := prepare_c_flags_for_link(g.c_flags(), prefs.c99) or {
+		resolved_c_flags := prepare_c_flags_for_link(g.c_flags(), prefs.c99, pic_flag) or {
 			eprintln(err.msg())
 			exit(1)
 		}
@@ -652,8 +709,8 @@ fn main() {
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
 			atomic_s_arg := tcc_atomic_s_arg(prefs)
-			cc_cmd = '${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file}${atomic_s_arg} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c${atomic_s_arg} ${c_flags} -lm'
+			cc_cmd = '${tcc_path} ${c_standard} ${pic_arg}${tcc_includes} ${tcc_lib} ${warn_flags} ${shared_link_flag}-o ${bin_file} ${output_file}${atomic_s_arg} ${c_flags} -lm'
+			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${pic_arg}${tcc_includes} ${tcc_lib} ${warn_flags} ${shared_link_flag}-o out src.c${atomic_s_arg} ${c_flags} -lm'
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
 		}
@@ -661,17 +718,17 @@ fn main() {
 			if result.exit_code != 0 && result.output.len > 0 {
 				eprintln('  tcc error: ${result.output.trim_space()}')
 			}
-			stack_flag := if prefs.normalized_target_os() == 'macos' {
+			stack_flag := if prefs.normalized_target_os() == 'macos' && !is_shared {
 				' -Wl,-stack_size,0x4000000'
 			} else {
 				''
 			}
 			if needs_objective_c {
-				cc_cmd = 'cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o ${bin_file} -x objective-c ${output_file} -x none ${c_flags} -lm'
-				exec_cmd = 'cd ${cc_dir} && cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o out -x objective-c src.c -x none ${c_flags} -lm'
+				cc_cmd = 'cc ${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o ${bin_file} -x objective-c ${output_file} -x none ${c_flags} -lm'
+				exec_cmd = 'cd ${cc_dir} && cc ${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o out -x objective-c src.c -x none ${c_flags} -lm'
 			} else {
-				cc_cmd = 'cc ${cc_lang_flag}${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o ${bin_file} ${output_file} ${c_flags} -lm'
-				exec_cmd = 'cd ${cc_dir} && cc ${cc_lang_flag}${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o out src.c ${c_flags} -lm'
+				cc_cmd = 'cc ${cc_lang_flag}${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o ${bin_file} ${output_file} ${c_flags} -lm'
+				exec_cmd = 'cd ${cc_dir} && cc ${cc_lang_flag}${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o out src.c ${c_flags} -lm'
 			}
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
