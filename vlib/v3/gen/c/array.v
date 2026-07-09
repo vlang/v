@@ -202,7 +202,7 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 	// A fixed-array value (e.g. `[4]u8` color) is sometimes represented as a dynamic
 	// `Array`; a C fixed-array parameter decays to `elem*`, so pass the data pointer.
 	if types.unwrap_pointer(g.usable_expr_type(id)) is types.Array {
-		elem_ct := g.tc.c_type(arr.elem_type)
+		elem_ct := g.fixed_array_elem_c_type(arr.elem_type)
 		g.write('(${elem_ct}*)(')
 		g.gen_expr(id)
 		g.write(').data')
@@ -285,7 +285,7 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 	if base_type is types.String {
 		g.write('string__substr(${base_str}, ${start_str}, ${end_str})')
 	} else if is_fixed_array {
-		c_elem := g.tc.c_type(fixed.elem_type)
+		c_elem := g.fixed_array_elem_c_type(fixed.elem_type)
 		mut data_str := if fixed_is_ptr { '(*${base_str})' } else { base_str }
 		literal := g.fixed_array_compound_literal_expr(base_id, fixed)
 		if trimmed_space(literal).len > 0 {

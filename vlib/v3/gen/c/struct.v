@@ -3018,19 +3018,29 @@ fn (mut g FlatGen) preseed_fn_ptr_type(typ types.Type) {
 fn (mut g FlatGen) emit_struct_option_typedefs(fields []types.StructField) {
 	mut wrote := false
 	for f in fields {
-		if f.typ is types.OptionType || f.typ is types.ResultType {
-			opt_name := g.optional_type_name(f.typ)
-			if opt_name == 'Optional' {
-				continue
-			}
-			if val_type := g.needed_optional_types[opt_name] {
-				if g.emit_optional_typedef(opt_name, val_type) {
-					wrote = true
-				}
-			}
-		}
+		wrote = g.emit_option_typedefs_for_type(f.typ) || wrote
 	}
 	if wrote {
 		g.writeln('')
 	}
+}
+
+fn (mut g FlatGen) emit_option_typedefs_for_type(typ types.Type) bool {
+	if typ is types.OptionType || typ is types.ResultType {
+		opt_name := g.optional_type_name(typ)
+		if opt_name == 'Optional' {
+			return false
+		}
+		if val_type := g.needed_optional_types[opt_name] {
+			return g.emit_optional_typedef(opt_name, val_type)
+		}
+		return false
+	}
+	if typ is types.ArrayFixed {
+		return g.emit_option_typedefs_for_type(typ.elem_type)
+	}
+	if typ is types.Alias {
+		return g.emit_option_typedefs_for_type(typ.base_type)
+	}
+	return false
 }

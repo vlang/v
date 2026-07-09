@@ -3,6 +3,7 @@ module c
 import os
 import strings
 import v3.flat
+import v3.gen.c.naming
 import v3.types
 
 struct ActiveLock {
@@ -4603,12 +4604,24 @@ fn (mut g FlatGen) fixed_array_decl_parts(arr types.ArrayFixed) (string, string)
 		base_ct, suffix := g.fixed_array_decl_parts(arr.elem_type)
 		return base_ct, '[${len_expr}]${suffix}'
 	}
-	elem_ct := if arr.elem_type is types.OptionType || arr.elem_type is types.ResultType {
-		g.optional_type_name(arr.elem_type)
-	} else {
-		g.tc.c_type(arr.elem_type)
-	}
+	elem_ct := g.fixed_array_elem_c_type(arr.elem_type)
 	return elem_ct, '[${len_expr}]'
+}
+
+fn (mut g FlatGen) fixed_array_elem_c_type(elem types.Type) string {
+	if elem is types.ArrayFixed {
+		return g.fixed_array_c_type(elem)
+	}
+	if elem is types.OptionType || elem is types.ResultType {
+		return g.optional_type_name(elem)
+	}
+	return g.value_c_type(elem)
+}
+
+fn (mut g FlatGen) fixed_array_c_type(arr types.ArrayFixed) string {
+	len_text := if arr.len_expr.len > 0 { arr.len_expr } else { arr.len.str() }
+	len_name := naming.type_name_part(len_text)
+	return 'Array_fixed_${naming.type_name_part(g.fixed_array_elem_c_type(arr.elem_type))}_${len_name}'
 }
 
 // infix_can_skip_child_parens reports whether a child infix operand needs no
@@ -8444,7 +8457,7 @@ fn (mut g FlatGen) emit_fixed_array_ret_wrapper(name string, info FixedArrayType
 	arr := info.arr
 	old_module := g.tc.cur_module
 	g.tc.cur_module = info.module
-	elem_ct := g.tc.c_type(arr.elem_type)
+	elem_ct := g.fixed_array_elem_c_type(arr.elem_type)
 	len_expr := g.fixed_array_len_value(arr)
 	g.tc.cur_module = old_module
 	wname := fixed_array_ret_wrapper_name(name)
@@ -8627,7 +8640,7 @@ fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, source_module str
 	if typ is types.ArrayFixed {
 		old_module := g.tc.cur_module
 		g.tc.cur_module = source_module
-		name := g.tc.c_type(typ)
+		name := g.fixed_array_c_type(typ)
 		g.tc.cur_module = old_module
 		existing_priority := if name in needed {
 			fixed_array_typedef_module_priority(needed[name].module)
@@ -8744,17 +8757,45 @@ fn (mut g FlatGen) emit_fixed_array_typedef(name string, info FixedArrayTypedefI
 	arr := info.arr
 	old_module := g.tc.cur_module
 	g.tc.cur_module = info.module
-	if arr.elem_type is types.ArrayFixed {
-		inner_name := g.tc.c_type(arr.elem_type)
-		if inner := needed[inner_name] {
-			g.emit_fixed_array_typedef(inner_name, inner, needed, mut emitted)
-		}
-	}
-	elem_ct := g.tc.c_type(arr.elem_type)
+	g.emit_fixed_array_elem_deps(arr.elem_type, needed, mut emitted)
+	elem_ct := g.fixed_array_elem_c_type(arr.elem_type)
 	len_expr := g.fixed_array_len_value(arr)
 	g.writeln('typedef ${elem_ct} ${name}[${len_expr}];')
 	g.tc.cur_module = old_module
 	emitted[name] = true
+}
+
+fn (mut g FlatGen) emit_fixed_array_elem_deps(elem types.Type, needed map[string]FixedArrayTypedefInfo, mut emitted map[string]bool) {
+	if elem is types.ArrayFixed {
+		inner_name := g.fixed_array_c_type(elem)
+		if inner := needed[inner_name] {
+			g.emit_fixed_array_typedef(inner_name, inner, needed, mut emitted)
+		}
+	} else if elem is types.OptionType {
+		g.emit_fixed_array_optional_elem_deps(elem, needed, mut emitted)
+	} else if elem is types.ResultType {
+		g.emit_fixed_array_optional_elem_deps(elem, needed, mut emitted)
+	} else if elem is types.Alias {
+		g.emit_fixed_array_elem_deps(elem.base_type, needed, mut emitted)
+	}
+}
+
+fn (mut g FlatGen) emit_fixed_array_optional_elem_deps(elem types.Type, needed map[string]FixedArrayTypedefInfo, mut emitted map[string]bool) {
+	base := if elem is types.OptionType {
+		elem.base_type
+	} else if elem is types.ResultType {
+		elem.base_type
+	} else {
+		return
+	}
+	if base is types.ArrayFixed {
+		g.emit_fixed_array_elem_deps(base, needed, mut emitted)
+	}
+	opt_name := g.optional_type_name(elem)
+	if opt_name != 'Optional' {
+		val_ct, _ := g.optional_value_ct(elem)
+		g.emit_optional_typedef(opt_name, val_ct)
+	}
 }
 
 fn (mut g FlatGen) global_decls() {

@@ -84,7 +84,7 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	if g.type_contains_generic_placeholder(base_type) {
 		return 'Optional'
 	}
-	mut inner_ct := g.value_c_type(base_type)
+	mut inner_ct := g.optional_payload_c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = g.resolve_fn_ptr_type(inner_ct)
 	}
@@ -113,6 +113,9 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 	}
 	if t is types.Enum {
 		return g.enum_value_c_type(t)
+	}
+	if t is types.ArrayFixed {
+		return g.fixed_array_c_type(t)
 	}
 	mut ct := g.tc.c_type(t)
 	if ct.starts_with('fn_ptr:') {
@@ -161,6 +164,9 @@ fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 }
 
 fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
+	if t is types.ArrayFixed {
+		return g.fixed_array_c_type(t)
+	}
 	return g.value_c_type(t)
 }
 

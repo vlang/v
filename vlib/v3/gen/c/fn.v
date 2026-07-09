@@ -8887,7 +8887,7 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		} else if concrete_optional_params && (pt is types.OptionType || pt is types.ResultType) {
 			g.concrete_optional_type_name(pt)
 		} else if pt is types.ArrayFixed {
-			'${g.tc.c_type(pt.elem_type)}*'
+			'${g.fixed_array_elem_c_type(pt.elem_type)}*'
 		} else if pt is types.OptionType || pt is types.ResultType {
 			g.optional_type_name(pt)
 		} else {

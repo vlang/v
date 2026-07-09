@@ -19071,7 +19071,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		// the emitted C dimension is folded separately by fixed_array_len_value.
 		len_text := if t.len_expr.len > 0 { t.len_expr } else { t.len.str() }
 		len_name := naming.type_name_part(len_text)
-		return 'Array_fixed_${naming.type_name_part(tc.c_type(t.elem_type))}_${len_name}'
+		return 'Array_fixed_${naming.type_name_part(tc.fixed_array_elem_c_type(t.elem_type))}_${len_name}'
 	}
 	if t is Channel {
 		return 'chan'
@@ -19205,6 +19205,16 @@ fn (tc &TypeChecker) c_generic_struct_fixed_array_arg_name(arg string) ?string {
 			return none
 		}
 	}
+}
+
+fn (tc &TypeChecker) fixed_array_elem_c_type(t Type) string {
+	if t is OptionType {
+		return tc.optional_c_type_name(t.base_type)
+	}
+	if t is ResultType {
+		return tc.optional_c_type_name(t.base_type)
+	}
+	return tc.c_type(t)
 }
 
 fn (tc &TypeChecker) fn_ptr_return_c_type(t Type) string {
