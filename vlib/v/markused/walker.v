@@ -982,6 +982,21 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 				}
 			} else if node.is_method && node.name == 'str' {
 				w.uses_str[node.left_type] = true
+				// cgen may unbox the receiver via its raw (still pointer-flagged)
+				// smartcast type instead of node.left_type, requiring str_intp
+				// support that this pass would otherwise miss.
+				if node.left is ast.Ident {
+					left_ident := node.left as ast.Ident
+					if left_ident.obj is ast.Var {
+						v := left_ident.obj as ast.Var
+						if v.smartcasts.len > 0 {
+							raw_smartcast_typ := v.smartcasts.last()
+							if raw_smartcast_typ.is_ptr() {
+								w.uses_str[raw_smartcast_typ] = true
+							}
+						}
+					}
+				}
 			} else if node.is_method && node.name == 'free' {
 				w.uses_free[node.left_type] = true
 			} else if node.is_method && node.name == 'clone' && !w.uses_arr_clone
