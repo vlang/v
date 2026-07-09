@@ -130,7 +130,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			clean_container_type := types.unwrap_pointer(container_type)
 			mut map_snapshot_var := ''
 			if clean_container_type is types.Map {
-				c_key := g.value_c_type(clean_container_type.key_type)
+				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
 				c_val := g.value_c_type(clean_container_type.value_type)
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				iter_var := '__mi_${g.tmp_count}'

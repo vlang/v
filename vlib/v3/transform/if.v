@@ -189,10 +189,10 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	ptr_name := t.new_temp('map_ptr')
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	key_expr := t.transform_expr(info.key_id)
+	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
-	prelude << t.make_decl_assign_typed(key_name, key_expr, info.key_type)
+	prelude << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
 	prelude << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr,
 		info.base_type, key_name), 'voidptr')
 
@@ -868,10 +868,10 @@ fn (mut t Transformer) build_map_index_if_value_guard_chain(if_node flat.Node, l
 	ptr_name := t.new_temp('map_ptr')
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	key_expr := t.transform_expr(info.key_id)
+	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
-	result << t.make_decl_assign_typed(key_name, key_expr, info.key_type)
+	result << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
 	result << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr,
 		info.base_type, key_name), 'voidptr')
 	ptr_ident := t.make_ident(ptr_name)

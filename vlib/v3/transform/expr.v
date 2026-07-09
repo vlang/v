@@ -120,6 +120,7 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 			return none
 		}
 	}
+
 	if lhs_pending.len > 0 || rhs_pending.len > 0 {
 		tmp_name := t.new_temp(if result_type == 'string' { 'str_expr' } else { 'str_cmp' })
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, result, result_type)
@@ -2144,7 +2145,7 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 	t.pending_stmts << t.make_decl_assign_typed(result_name, len_eq, 'bool')
 	t.pending_stmts << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type),
 		value_type)
-	t.set_var_type(key_name, key_type)
+	t.set_var_type(key_name, t.map_key_storage_type(key_type))
 	t.set_var_type(lhs_val_name, value_type)
 	key_ident := t.make_ident(key_name)
 	val_ident := t.make_ident(lhs_val_name)

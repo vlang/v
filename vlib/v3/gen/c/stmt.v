@@ -11,7 +11,7 @@ fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 		base_id := g.a.child(&node, 0)
 		base_type := g.usable_expr_type(base_id)
 		if base_type is types.Map {
-			c_key := g.tc.c_type(base_type.key_type)
+			c_key := g.map_key_temp_c_type(base_type.key_type)
 			c_val := g.tc.c_type(base_type.value_type)
 			g.write('(*(${c_val}*)map__get_or_set(&')
 			g.gen_expr(base_id)
@@ -438,7 +438,9 @@ fn (mut g FlatGen) gen_lock_expr_multi_return_assign(tmp string, result_type typ
 }
 
 fn (mut g FlatGen) gen_multi_return_block_field_assigns(tmp string, result_type types.MultiReturn, block &flat.Node) bool {
-	value_ids := g.multi_return_value_exprs_in_block(block, result_type.types.len) or { return false }
+	value_ids := g.multi_return_value_exprs_in_block(block, result_type.types.len) or {
+		return false
+	}
 	mut value_idx := 0
 	for i in 0 .. block.children_count {
 		child_id := g.a.child(block, i)
@@ -737,15 +739,15 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 						g.writeln(';')
 						return
 					}
-						if base is types.MultiReturn && node.children_count > 1 {
-							base_ct := g.value_c_type(base)
-							if g.return_children_all_none(node) {
-								g.writeln('return (${ct}){.ok = false};')
-								return
-							}
-							if g.multi_return_types_have_fixed_array(base.types) {
-								g.write('return ({ ${ct} __opt = {.ok = true}; ')
-								tmp := g.gen_multi_return_temp(base_ct, base.types, node)
+					if base is types.MultiReturn && node.children_count > 1 {
+						base_ct := g.value_c_type(base)
+						if g.return_children_all_none(node) {
+							g.writeln('return (${ct}){.ok = false};')
+							return
+						}
+						if g.multi_return_types_have_fixed_array(base.types) {
+							g.write('return ({ ${ct} __opt = {.ok = true}; ')
+							tmp := g.gen_multi_return_temp(base_ct, base.types, node)
 							g.writeln('__opt.value = ${tmp}; __opt; });')
 							return
 						}
@@ -1290,7 +1292,7 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			return g.expr_to_string(ret_id)
 		}
 		if base is types.MultiReturn && node.children_count > 1 {
-				base_ct := g.value_c_type(base)
+			base_ct := g.value_c_type(base)
 			mut parts := []string{cap: int(node.children_count)}
 			for i in 0 .. node.children_count {
 				child_id := g.a.child(&node, i)
@@ -1343,7 +1345,7 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		} else if expr_type is types.ResultType {
 			expr_value_type = expr_type.base_type
 		}
-			base_ct := g.value_c_type(base)
+		base_ct := g.value_c_type(base)
 		expr_ct := g.tc.c_type(expr_value_type)
 		struct_init_ct := if ret_node.kind == .struct_init {
 			g.struct_init_c_type_name(ret_node.value)
@@ -2416,7 +2418,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			}
 			if rhs.children_count > 0 {
 				if v_type is types.Map {
-					c_key := g.value_c_type(v_type.key_type)
+					c_key := g.map_key_temp_c_type(v_type.key_type)
 					c_val := g.value_c_type(v_type.value_type)
 					for j := 0; j < rhs.children_count; j += 2 {
 						g.write('map__set(&')
@@ -2451,12 +2453,12 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			} else {
 				g.usable_expr_type(rhs_id)
 			}
-				if rhs.kind == .lock_expr && v_type !is types.MultiReturn {
-					lock_type := g.usable_expr_type(rhs_id)
-					if lock_type !is types.Unknown && lock_type !is types.Void {
-						v_type = lock_type
-					}
+			if rhs.kind == .lock_expr && v_type !is types.MultiReturn {
+				lock_type := g.usable_expr_type(rhs_id)
+				if lock_type !is types.Unknown && lock_type !is types.Void {
+					v_type = lock_type
 				}
+			}
 			if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0
 				&& v_type !is types.Pointer {
 				v_type = types.Type(types.Pointer{
@@ -2495,13 +2497,13 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			} else if rhs.kind == .struct_init
 				&& g.struct_init_decl_type_is_bare_generic_instance(rhs, v_type) {
 				g.tc.c_type(v_type)
-				} else if rhs.kind == .struct_init {
-					g.struct_init_c_type_name(rhs.value)
-				} else if v_type is types.Enum {
-					g.value_c_type(v_type)
-				} else {
-					g.tc.c_type(v_type)
-				}
+			} else if rhs.kind == .struct_init {
+				g.struct_init_c_type_name(rhs.value)
+			} else if v_type is types.Enum {
+				g.value_c_type(v_type)
+			} else {
+				g.tc.c_type(v_type)
+			}
 			ct := if v_type is types.OptionType || v_type is types.ResultType {
 				g.optional_type_name_for_expr(rhs_id, v_type)
 			} else {
@@ -2877,7 +2879,9 @@ fn (mut g FlatGen) gen_fixed_array_copy_from_node(dst string, rhs_id flat.NodeId
 
 fn (mut g FlatGen) gen_multi_return_decl(node flat.Node) {
 	rhs_id := g.a.child(&node, 1)
-	rhs_multi := g.multi_return_expr_type_for_lhs_count(rhs_id, node.children_count - 1) or { return }
+	rhs_multi := g.multi_return_expr_type_for_lhs_count(rhs_id, node.children_count - 1) or {
+		return
+	}
 	rhs_type := types.Type(rhs_multi)
 	ct := g.value_c_type(rhs_type)
 	tmp := g.tmp_name()
@@ -3259,7 +3263,9 @@ fn (g &FlatGen) assign_lhs_needs_deref(lhs_id flat.NodeId, lhs_type types.Type, 
 // gen_multi_return_assign emits multi return assign output for c.
 fn (mut g FlatGen) gen_multi_return_assign(node flat.Node) {
 	rhs_id := g.a.child(&node, 1)
-	rhs_multi := g.multi_return_expr_type_for_lhs_count(rhs_id, node.children_count - 1) or { return }
+	rhs_multi := g.multi_return_expr_type_for_lhs_count(rhs_id, node.children_count - 1) or {
+		return
+	}
 	rhs_type := types.Type(rhs_multi)
 	ct := g.value_c_type(rhs_type)
 	tmp := g.tmp_name()
@@ -3435,7 +3441,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m types.Map, or_body flat.Node) {
 	tmp := g.tmp_name()
 	c_val := g.tc.c_type(m.value_type)
-	c_key := g.tc.c_type(m.key_type)
+	c_key := g.map_key_temp_c_type(m.key_type)
 	owner := g.tc.cur_scope.insert_with_owner(lhs.value, m.value_type)
 	g.track_local_pointer_storage_decl(lhs, owner, m.value_type, c_val)
 	g.write('void* ${tmp} = map__get_check(&')
@@ -3735,7 +3741,7 @@ fn (g &FlatGen) expr_is_error_call(id flat.NodeId) bool {
 fn (mut g FlatGen) gen_or_map_index(expr_node flat.Node, m types.Map, or_body flat.Node) {
 	tmp := g.tmp_name()
 	c_val := g.tc.c_type(m.value_type)
-	c_key := g.tc.c_type(m.key_type)
+	c_key := g.map_key_temp_c_type(m.key_type)
 	val := g.tmp_name()
 	g.write('({void* ${tmp} = map__get_check(&')
 	g.gen_expr(g.a.child(&expr_node, 0))

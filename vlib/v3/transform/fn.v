@@ -2607,19 +2607,19 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 	}
-		if clean_typ == 'string' {
-			return expr
+	if clean_typ == 'string' {
+		return expr
+	}
+	if clean_typ == 'thread' || clean_typ.starts_with('thread ') {
+		payload := if clean_typ.starts_with('thread ') {
+			clean_typ[7..].trim_space()
+		} else {
+			'void'
 		}
-		if clean_typ == 'thread' || clean_typ.starts_with('thread ') {
-			payload := if clean_typ.starts_with('thread ') {
-				clean_typ[7..].trim_space()
-			} else {
-				'void'
-			}
-			return t.make_string_literal('thread(${payload})')
-		}
-		if is_ref {
-			expr_node := t.a.nodes[int(expr)]
+		return t.make_string_literal('thread(${payload})')
+	}
+	if is_ref {
+		expr_node := t.a.nodes[int(expr)]
 		if expr_node.kind == .ident && t.string_interp_needs_value_read(expr_node.value, typ) {
 			return t.wrap_string_conversion(t.make_prefix(.mul, expr), clean_typ)
 		}
@@ -3278,21 +3278,21 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 			} else {
 				t.make_cast('u64', expr, 'u64')
 			}
-			t.make_call_typed('strconv__format_uint', arr2(arg, t.make_int_literal(base_format.base)),
-				'string')
+			t.make_call_typed('strconv__format_uint', arr2(arg,
+				t.make_int_literal(base_format.base)), 'string')
 		} else if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize'] {
 			arg := if clean_typ == 'i64' {
 				expr
 			} else {
 				t.make_cast('i64', expr, 'i64')
 			}
-			t.make_call_typed('strconv__format_int', arr2(arg, t.make_int_literal(base_format.base)),
-				'string')
+			t.make_call_typed('strconv__format_int',
+				arr2(arg, t.make_int_literal(base_format.base)), 'string')
 		} else {
 			t.wrap_string_conversion(expr, typ)
 		}
-		return t.make_call_typed('v3_string_zpad', arr2(converted, t.make_int_literal(base_format.width)),
-			'string')
+		return t.make_call_typed('v3_string_zpad', arr2(converted,
+			t.make_int_literal(base_format.width)), 'string')
 	}
 	if width := zero_padded_decimal_width(format) {
 		if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
@@ -3471,6 +3471,7 @@ fn zero_padded_integer_base_format(format string) ?ZeroPaddedIntegerBaseFormat {
 		`o` { 8 }
 		else { return none }
 	}
+
 	mut width := 0
 	for i in 1 .. end {
 		ch := format[i]
@@ -3568,7 +3569,8 @@ fn (mut t Transformer) lower_array_str(arr_expr flat.NodeId, base_type string) f
 					if raw_type := t.lookup_struct_field_raw_type(field_base_type, selector.value) {
 						selector_type = raw_type
 					} else if field_type := t.lookup_struct_field_type(field_base_type,
-						selector.value) {
+						selector.value)
+					{
 						selector_type = field_type
 					}
 				}
@@ -3762,7 +3764,8 @@ fn (mut t Transformer) lower_typed_map_str(map_expr flat.NodeId, map_type string
 	value_name := t.new_temp('map_str_value')
 	key_kind := t.map_str_kind_for_type(key_type)
 	value_kind := t.map_str_kind_for_type(value_type)
-	keys_type := '[]${key_type}'
+	key_storage_type := t.map_key_storage_type(key_type)
+	keys_type := '[]${key_storage_type}'
 	keys_call := t.make_call_typed('map__keys', arr1(t.runtime_addr(base, map_type)), keys_type)
 	prefix << t.make_decl_assign_typed(result_name, t.make_string_literal('{'), 'string')
 	prefix << t.make_decl_assign_typed(keys_name, keys_call, keys_type)
@@ -3770,8 +3773,8 @@ fn (mut t Transformer) lower_typed_map_str(map_expr flat.NodeId, map_type string
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(t.make_ident(keys_name),
 		'len', 'int'))
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	key_expr := t.array_get_value(t.make_ident(keys_name), t.make_ident(idx_name), key_type)
-	key_decl := t.make_decl_assign_typed(key_name, key_expr, key_type)
+	key_expr := t.array_get_value(t.make_ident(keys_name), t.make_ident(idx_name), key_storage_type)
+	key_decl := t.make_decl_assign_typed(key_name, key_expr, key_storage_type)
 	zero_decl := t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type), value_type)
 	value_expr := t.make_map_get_expr(base, map_type, key_name, zero_name, value_type)
 	value_decl := t.make_decl_assign_typed(value_name, value_expr, value_type)
@@ -4020,6 +4023,7 @@ fn (mut t Transformer) try_lower_flag_enum_stmt(call_id flat.NodeId) ?flat.NodeI
 		}
 		else {}
 	}
+
 	return none
 }
 
@@ -4121,8 +4125,7 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	base_id := t.a.children[fn_node.children_start]
 	array_builtin_method := t.array_builtin_method_name(fn_node.value) or { '' }
 	if fn_node.value !in ['clone', 'reverse', 'contains', 'index', 'last_index', 'join', 'any',
-		'all', 'count', 'equals', 'prepend', 'insert', 'push_many', 'str', 'to_fixed_size',
-		'wait'] {
+		'all', 'count', 'equals', 'prepend', 'insert', 'push_many', 'str', 'to_fixed_size', 'wait'] {
 		if fn_node.value !in ['filter', 'map', 'sort', 'sorted', 'sort_with_compare', 'sorted_with_compare']
 			&& array_builtin_method.len == 0 {
 			mut early_base_type := t.node_type(base_id)
@@ -4593,8 +4596,9 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		}
 		t.mark_fn_used('map__delete')
 		key_name := t.new_temp('map_key')
+		key_storage_type := t.map_key_storage_type(key_type)
 		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(t.a.child(&node, 1),
-			key_type), key_type)
+			key_type), key_storage_type)
 		return t.make_call_typed('map__delete', arr2(t.runtime_addr(base, base_type), t.make_prefix(.amp,
 			t.make_ident(key_name))), 'void')
 	}
@@ -5410,7 +5414,11 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if method == 'close' && !isnil(t.tc) {
 		if resolved_method := t.tc.resolved_call_name(id) {
 			if resolved_method == 'chan.close' || resolved_method == 'sync__Channel__close' {
-				return t.lower_runtime_channel_close(base_id, node, if base_is_pointer { 1 } else { 0 })
+				return t.lower_runtime_channel_close(base_id, node, if base_is_pointer {
+					1
+				} else {
+					0
+				})
 			}
 		}
 	}

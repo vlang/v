@@ -789,18 +789,28 @@ fn (mut g FlatGen) gen_channel_try_call(node flat.Node, fn_node flat.Node) bool 
 	if fn_node.value == 'try_push' {
 		elem_ct := g.tc.c_type(channel_type.elem_type)
 		g.write('sync__Channel__try_push(')
-		g.gen_expr(base_id)
+		g.gen_channel_try_receiver(base_id)
 		g.write(', &(${elem_ct}[]){')
 		g.gen_expr_with_expected_type(arg_id, channel_type.elem_type)
 		g.write('})')
 		return true
 	}
 	g.write('sync__Channel__try_pop(')
-	g.gen_expr(base_id)
+	g.gen_channel_try_receiver(base_id)
 	g.write(', ')
 	g.gen_channel_try_pop_arg(arg_id)
 	g.write(')')
 	return true
+}
+
+fn (mut g FlatGen) gen_channel_try_receiver(base_id flat.NodeId) {
+	if g.channel_close_receiver_needs_deref(base_id) {
+		g.write('*(')
+		g.gen_expr(base_id)
+		g.write(')')
+		return
+	}
+	g.gen_expr(base_id)
 }
 
 fn (mut g FlatGen) gen_channel_try_pop_arg(arg_id flat.NodeId) {

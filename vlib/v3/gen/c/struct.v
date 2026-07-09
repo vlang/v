@@ -2335,6 +2335,13 @@ fn (mut g FlatGen) map_key_sizeof_target(key_type types.Type) string {
 	return g.value_sizeof_target(key_type)
 }
 
+fn (mut g FlatGen) map_key_temp_c_type(key_type types.Type) string {
+	if key_type is types.Enum {
+		return g.enum_storage_c_type(key_type)
+	}
+	return g.value_c_type(key_type)
+}
+
 // map_callback_names supports map callback names handling for FlatGen.
 fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string, string) {
 	if key_type is types.String {

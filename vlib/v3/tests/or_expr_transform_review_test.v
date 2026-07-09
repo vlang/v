@@ -102,6 +102,18 @@ fn test_default_free_without_user_method_stays_noop() {
 fn test_backed_enum_map_key_uses_backing_storage_size() {
 	v3_bin := build_v3_or_review()
 	c_source := or_review_gen_c(v3_bin, 'backed_enum_map_key_size',
-		'enum Wide as u64 {\n\ta = 1\n}\n\nfn main() {\n\tmut m := map[Wide]int{}\n\tm[.a] = 3\n\tprintln(int_str(m[.a] or { 0 }))\n}\n')
+		'enum Wide as u64 {\n\ta = 1\n\tb = 2\n}\n\nfn main() {\n\tmut m := map[Wide]int{}\n\tm[.a] = 3\n\tm[.b] = 4\n\tm.delete(.a)\n\tprintln(int_str(m[.b] or { 0 }))\n}\n')
 	assert c_source.contains('new_map(sizeof(u64), sizeof(int), map_hash_int_8, map_eq_int_8'), 'backed enum map key size does not match 8-byte callbacks'
+	assert c_source.contains('u64 __map_key_'), 'backed enum map key temp does not use backing storage'
+	assert !c_source.contains('Wide __map_key_'), 'backed enum map key temp still uses enum typedef storage'
+	assert !c_source.contains('new_map(sizeof(Wide)'), 'backed enum map allocation still uses enum typedef size'
+	assert !c_source.contains('&(Wide[]){'), 'backed enum map compound key literal still uses enum typedef storage'
+}
+
+fn test_pointer_channel_try_call_derefs_receiver() {
+	v3_bin := build_v3_or_review()
+	c_source := or_review_gen_c(v3_bin, 'pointer_channel_try_receiver',
+		'fn push(mut ch chan int) bool {\n\treturn ch.try_push(7) == .success\n}\n\nfn pop(mut ch chan int, mut out int) bool {\n\treturn ch.try_pop(mut out) == .success\n}\n\nfn main() {\n\tmut ch := chan int{cap: 1}\n\tmut out := 0\n\tprintln(push(mut ch))\n\tprintln(pop(mut ch, mut out))\n\tprintln(int_str(out))\n}\n')
+	assert c_source.contains('sync__Channel__try_push(*(ch),'), 'try_push on pointer channel receiver does not dereference the channel handle'
+	assert c_source.contains('sync__Channel__try_pop(*(ch),'), 'try_pop on pointer channel receiver does not dereference the channel handle'
 }

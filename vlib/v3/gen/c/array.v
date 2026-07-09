@@ -839,7 +839,7 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 		base_type := g.usable_expr_type(base_id)
 		clean_base := types.unwrap_pointer(base_type)
 		if clean_base is types.Map {
-			c_key := g.value_c_type(clean_base.key_type)
+			c_key := g.map_key_temp_c_type(clean_base.key_type)
 			c_val := g.value_c_type(clean_base.value_type)
 			is_ptr := base_type is types.Pointer
 			if is_ptr {

@@ -85,6 +85,7 @@ mut:
 	receiver_method_suffix_index map[string]string
 	const_suffixes               map[string]string
 	enum_types                   map[string][]string
+	enum_backing_types           map[string]string
 	cur_file                     string
 	cur_module                   string
 	cur_fn_name                  string
@@ -500,6 +501,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		call_param_types_decl_cache:      map[string][]types.Type{}
 		call_param_types_decl_misses:     map[string]bool{}
 		call_param_types_decl_index:      map[string]FnParamDeclRef{}
+		enum_backing_types:               map[string]string{}
 		sum_variant_names:                map[string]bool{}
 		used_fns:                         used_fns.clone()
 		interface_boxed_types:            map[string]bool{}
@@ -864,8 +866,14 @@ fn (mut t Transformer) collect_types() {
 					}
 				}
 				t.enum_types[node.value] = field_names
+				if node.generic_params.len > 0 && node.generic_params[0].len > 0 {
+					t.enum_backing_types[node.value] = node.generic_params[0]
+				}
 				if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
 					t.enum_types['${cur_mod}.${node.value}'] = field_names
+					if node.generic_params.len > 0 && node.generic_params[0].len > 0 {
+						t.enum_backing_types['${cur_mod}.${node.value}'] = node.generic_params[0]
+					}
 				}
 			}
 			.global_decl {
@@ -4861,23 +4869,24 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				if block_typ.len > 0 {
 					typ = block_typ
 				}
-				} else if rhs.kind == .or_expr && rhs.children_count > 0 {
-					or_source_id := t.a.child(&rhs, 0)
-					if info := t.map_index_info(or_source_id) {
-						typ = info.value_type
-						if t.map_value_type_is_optional(info.value_type) {
-							or_body_id := if rhs.children_count > 1 {
-								t.a.child(&rhs, 1)
-							} else {
-								flat.empty_node
-							}
-							body_type := t.stmt_value_type(or_body_id)
-							if !t.or_body_is_none(or_body_id) && !t.map_value_type_is_optional(body_type) {
-								typ = t.map_optional_value_base_type(info.value_type)
-							}
+			} else if rhs.kind == .or_expr && rhs.children_count > 0 {
+				or_source_id := t.a.child(&rhs, 0)
+				if info := t.map_index_info(or_source_id) {
+					typ = info.value_type
+					if t.map_value_type_is_optional(info.value_type) {
+						or_body_id := if rhs.children_count > 1 {
+							t.a.child(&rhs, 1)
+						} else {
+							flat.empty_node
 						}
-					} else if info := t.array_index_info(or_source_id) {
-						typ = info.value_type
+						body_type := t.stmt_value_type(or_body_id)
+						if !t.or_body_is_none(or_body_id)
+							&& !t.map_value_type_is_optional(body_type) {
+							typ = t.map_optional_value_base_type(info.value_type)
+						}
+					}
+				} else if info := t.array_index_info(or_source_id) {
+					typ = info.value_type
 					if t.is_optional_type_name(info.value_type) {
 						or_body_id := if rhs.children_count > 1 {
 							t.a.child(&rhs, 1)
@@ -6518,7 +6527,9 @@ fn (mut t Transformer) transform_struct_init(id flat.NodeId, node flat.Node) fla
 		if t.is_optional_type_name(clean_value) {
 			optional_target := t.qualify_optional_type(clean_value)
 			payload_type := t.optional_base_type(optional_target)
-			_ := t.lookup_struct_info(payload_type) or { return t.transform_struct_fields(id, node) }
+			_ := t.lookup_struct_info(payload_type) or {
+				return t.transform_struct_fields(id, node)
+			}
 			if node.children_count == 0 {
 				return t.make_optional_none(optional_target)
 			}
@@ -7505,8 +7516,8 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 			if info := t.map_index_info(index_id) {
 				map_expr := t.stable_expr_for_reuse(info.base_id)
 				key_name := t.new_temp('map_key')
-				t.pending_stmts << t.make_decl_assign_typed(key_name,
-					t.transform_expr(info.key_id), info.key_type)
+				t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(info.key_id,
+					info.key_type), info.key_storage_type)
 				ptr := t.make_map_get_check_expr(map_expr, info.base_type, key_name)
 				return t.make_cast('&${info.value_type}', ptr, '&${info.value_type}')
 			}
