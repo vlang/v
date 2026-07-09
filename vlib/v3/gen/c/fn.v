@@ -2217,6 +2217,9 @@ fn (g &FlatGen) shared_local_arg_c_expr(arg_id flat.NodeId) ?string {
 	if arg.kind == .paren && arg.children_count > 0 {
 		return g.shared_local_arg_c_expr(g.a.child(&arg, 0))
 	}
+	if arg.kind == .prefix && arg.value == 'shared' && arg.children_count > 0 {
+		return g.shared_local_arg_c_expr(g.a.child(&arg, 0))
+	}
 	if arg.kind == .ident && g.local_storage_is_shared(arg.value) {
 		return g.cname(arg.value)
 	}
@@ -8567,6 +8570,9 @@ fn (mut g FlatGen) gen_shared_local_receiver_arg(base_id flat.NodeId) bool {
 	}
 	base := g.a.nodes[int(base_id)]
 	if base.kind == .paren && base.children_count > 0 {
+		return g.gen_shared_local_receiver_arg(g.a.child(&base, 0))
+	}
+	if base.kind == .prefix && base.value == 'shared' && base.children_count > 0 {
 		return g.gen_shared_local_receiver_arg(g.a.child(&base, 0))
 	}
 	if base.kind != .ident || !g.local_storage_is_shared(base.value) {
