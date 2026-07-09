@@ -18245,10 +18245,13 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			}
 			child_id := tc.a.child(&node, 0)
 			child_node := tc.a.nodes[int(child_id)]
-			spawn_ret := if child_node.kind == .call {
+			mut spawn_ret := if child_node.kind == .call {
 				tc.spawn_child_call_return_type(child_node) or { tc.resolve_type(child_id) }
 			} else {
 				tc.resolve_type(child_id)
+			}
+			if spawn_ret is Unknown && child_node.kind == .call {
+				spawn_ret = tc.resolve_type(child_id)
 			}
 			if spawn_ret is Void || spawn_ret is Unknown {
 				return tc.parse_type('thread')
