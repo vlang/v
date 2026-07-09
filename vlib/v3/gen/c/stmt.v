@@ -1293,6 +1293,9 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		}
 		if base is types.MultiReturn && node.children_count > 1 {
 			base_ct := g.value_c_type(base)
+			if g.return_children_all_none(node) {
+				return '(${ct}){.ok = false}'
+			}
 			mut parts := []string{cap: int(node.children_count)}
 			for i in 0 .. node.children_count {
 				child_id := g.a.child(&node, i)
