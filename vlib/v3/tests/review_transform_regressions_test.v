@@ -526,6 +526,20 @@ fn test_optional_nested_array_equality_guards_payload_work() {
 	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
 }
 
+fn test_wrapped_plus_minus_continuations_consume_auto_semicolon() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'wrapped_plus_minus_continuation',
+		'fn add(total int, delta int) int {\n\treturn total\n\t\t+ delta\n}\n\nfn sub(total int, delta int) int {\n\treturn total\n\t\t- delta\n}\n\nfn main() {\n\tprintln(int_str(add(3, 4)))\n\tprintln(int_str(sub(9, 2)))\n}\n')
+	assert out == '7\n7'
+}
+
+fn test_normalized_option_result_fixed_array_names_keep_outer_wrapper() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'normalized_option_result_fixed_array',
+		"struct Foo {\n\tn int\n}\n\nfn opt_values(ok bool) ?[2]int {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [1, 2]!\n}\n\nfn res_values(ok bool) ![2]Foo {\n\tif !ok {\n\t\treturn error('x')\n\t}\n\treturn [Foo{\n\t\tn: 3\n\t}, Foo{\n\t\tn: 4\n\t}]!\n}\n\nfn main() {\n\ta := opt_values(true) or { [0, 0]! }\n\tb := res_values(true) or { [Foo{\n\t\tn: 0\n\t}, Foo{\n\t\tn: 0\n\t}]! }\n\tmissing_a := opt_values(false) or { [5, 6]! }\n\tmissing_b := res_values(false) or { [Foo{\n\t\tn: 7\n\t}, Foo{\n\t\tn: 8\n\t}]! }\n\tprintln(int_str(a[0] + a[1] + b[0].n + b[1].n))\n\tprintln(int_str(missing_a[0] + missing_a[1] + missing_b[0].n + missing_b[1].n))\n}\n")
+	assert out == '10\n26'
+}
+
 fn test_hierarchical_import_runtime_inits_before_importer_init() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'hierarchical_runtime_init_order', {

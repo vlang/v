@@ -763,8 +763,8 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 		return
 	}
 	if clean_typ is types.Enum {
-		if val := g.enum_default_value_for_type(clean_typ.name) {
-			g.write('${val}')
+		if expr := g.enum_default_value_expr_for_type(clean_typ.name) {
+			g.write(expr)
 		} else {
 			g.write('0')
 		}
@@ -805,15 +805,15 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 	g.write('(${ct}){0}')
 }
 
-fn (g &FlatGen) enum_default_value_for_type(type_name string) ?int {
+fn (g &FlatGen) enum_default_value_expr_for_type(type_name string) ?string {
 	fields := g.enum_fields_for_type(type_name) or { return none }
 	if fields.len == 0 {
 		return none
 	}
-	if val := g.enum_value_for_type(type_name, fields[0]) {
-		return val
+	if expr := g.enum_value_expr_for_type(type_name, fields[0]) {
+		return expr
 	}
-	return 0
+	return '0'
 }
 
 fn (g &FlatGen) enum_fields_for_type(type_name string) ?[]string {
@@ -1112,6 +1112,10 @@ fn shared_inner_type_text(raw string) ?string {
 	return none
 }
 
+fn decl_assign_is_shared_marker(value string) bool {
+	return value == 'shared' || value.starts_with('shared:')
+}
+
 fn shared_generic_app_parts(typ string) (string, []string, bool) {
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
 		return '', []string{}, false
@@ -1241,6 +1245,117 @@ fn substitute_shared_generic_type_text(typ string, params []string, args []strin
 	return clean
 }
 
+fn shared_type_text_uses_generic_params(typ string, params []string) bool {
+	if params.len == 0 {
+		return false
+	}
+	clean := trimmed_space(typ)
+	if clean.len == 0 {
+		return false
+	}
+	for param in params {
+		if clean == param {
+			return true
+		}
+	}
+	if clean.starts_with('&') {
+		return shared_type_text_uses_generic_params(clean[1..], params)
+	}
+	if clean.starts_with('mut ') {
+		return shared_type_text_uses_generic_params(clean[4..], params)
+	}
+	if clean.starts_with('?') || clean.starts_with('!') {
+		return shared_type_text_uses_generic_params(clean[1..], params)
+	}
+	if clean.starts_with('...') {
+		return shared_type_text_uses_generic_params(clean[3..], params)
+	}
+	if clean.starts_with('shared ') {
+		return shared_type_text_uses_generic_params(clean[7..], params)
+	}
+	if clean.starts_with('atomic ') {
+		return shared_type_text_uses_generic_params(clean[7..], params)
+	}
+	if clean.starts_with('chan ') {
+		return shared_type_text_uses_generic_params(clean[5..], params)
+	}
+	if clean.starts_with('thread ') {
+		return shared_type_text_uses_generic_params(clean[7..], params)
+	}
+	if clean.starts_with('[]') {
+		return shared_type_text_uses_generic_params(clean[2..], params)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := shared_generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			return shared_type_text_uses_generic_params(clean[4..bracket_end], params)
+				|| shared_type_text_uses_generic_params(clean[bracket_end + 1..], params)
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := shared_generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return shared_type_text_uses_generic_params(clean[bracket_end + 1..], params)
+		}
+	}
+	if clean.starts_with('(') && clean.ends_with(')') {
+		for part in shared_split_generic_args(clean[1..clean.len - 1]) {
+			if shared_type_text_uses_generic_params(part, params) {
+				return true
+			}
+		}
+		return false
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		params_start := clean.index_u8(`(`) + 1
+		mut depth := 1
+		mut params_end := params_start
+		for params_end < clean.len {
+			if clean[params_end] == `(` {
+				depth++
+			} else if clean[params_end] == `)` {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			params_end++
+		}
+		if params_end < clean.len {
+			for part in shared_split_generic_args(clean[params_start..params_end]) {
+				if shared_type_text_uses_generic_params(shared_fn_param_type_text(part), params) {
+					return true
+				}
+			}
+			return shared_type_text_uses_generic_params(clean[params_end + 1..], params)
+		}
+	}
+	base, args, ok := shared_generic_app_parts(clean)
+	if ok {
+		if shared_type_text_uses_generic_params(base, params) {
+			return true
+		}
+		for arg in args {
+			if shared_type_text_uses_generic_params(arg, params) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn shared_fn_param_type_text(param string) string {
+	clean := trimmed_space(param)
+	if clean.starts_with('mut ') {
+		return clean[4..]
+	}
+	parts := clean.split(' ')
+	if parts.len > 1 {
+		return parts[parts.len - 1]
+	}
+	return clean
+}
+
 fn (g &FlatGen) shared_qualify_type_text(typ string, module_name string) string {
 	clean := trimmed_space(typ)
 	if clean.len == 0 {
@@ -1326,7 +1441,69 @@ fn (mut g FlatGen) collect_shared_type_names() {
 		}
 		g.collect_shared_type_names_from_info(info, []string{})
 	}
+	g.collect_local_shared_type_names()
 	g.tc.cur_module = old_module
+}
+
+fn (mut g FlatGen) collect_local_shared_type_names() {
+	mut cur_module := 'main'
+	for i in 0 .. g.a.nodes.len {
+		node := g.a.nodes[i]
+		if node.kind == .module_decl {
+			cur_module = if node.value.len == 0 { 'main' } else { node.value }
+			continue
+		}
+		if node.kind != .decl_assign || !decl_assign_is_shared_marker(node.value) {
+			if node.kind == .fn_decl {
+				g.collect_fn_shared_param_type_names(node, cur_module)
+			}
+			continue
+		}
+		g.tc.cur_module = cur_module
+		for j := 0; j + 1 < node.children_count; j += 2 {
+			rhs_id := g.a.child(&node, j + 1)
+			inner_type := shared_local_value_type(g.tc.resolve_type(rhs_id))
+			if inner_type is types.Unknown || inner_type is types.Void {
+				continue
+			}
+			inner := g.shared_qualify_type_text(inner_type.name(), cur_module)
+			g.register_shared_type_name(inner, cur_module)
+		}
+	}
+}
+
+fn shared_local_value_type(typ types.Type) types.Type {
+	if typ is types.Pointer {
+		return typ.base_type
+	}
+	return typ
+}
+
+fn (mut g FlatGen) collect_fn_shared_param_type_names(node flat.Node, module_name string) {
+	g.tc.cur_module = module_name
+	for i in 0 .. node.children_count {
+		param := g.a.child_node(&node, i)
+		if param.kind != .param {
+			continue
+		}
+		inner := shared_inner_type_text(param.typ) or { continue }
+		if shared_type_text_uses_generic_params(inner, node.generic_params) {
+			continue
+		}
+		g.register_shared_type_name(g.shared_qualify_type_text(inner, module_name), module_name)
+	}
+}
+
+fn (mut g FlatGen) register_shared_type_name(inner string, module_name string) {
+	if inner.len == 0 || inner == 'unknown' || inner == 'void' {
+		return
+	}
+	wrapper := g.shared_wrapper_c_name(inner)
+	g.shared_type_names[wrapper] = SharedTypeInfo{
+		inner:  inner
+		module: module_name
+	}
+	g.needs_shared_runtime = true
 }
 
 fn (mut g FlatGen) collect_generic_shared_type_names(info StructDeclInfo) {
@@ -1348,12 +1525,7 @@ fn (mut g FlatGen) collect_shared_type_names_from_info(info StructDeclInfo, args
 		inner := shared_inner_type_text(field.typ) or { continue }
 		concrete_inner := substitute_shared_generic_type_text(inner, info.node.generic_params, args)
 		qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
-		wrapper := g.shared_wrapper_c_name(qualified_inner)
-		g.shared_type_names[wrapper] = SharedTypeInfo{
-			inner:  qualified_inner
-			module: info.module
-		}
-		g.needs_shared_runtime = true
+		g.register_shared_type_name(qualified_inner, info.module)
 	}
 }
 
@@ -1438,6 +1610,9 @@ fn (mut g FlatGen) generic_shared_field_info(type_name string, field_name string
 }
 
 fn (mut g FlatGen) shared_field_info(type_name string, field_name string) ?SharedFieldInfo {
+	if wrapper := g.shared_type_names[type_name] {
+		return g.shared_field_info(wrapper.inner, field_name)
+	}
 	info := g.find_struct_decl(type_name) or {
 		return g.generic_shared_field_info(type_name, field_name)
 	}
@@ -1510,12 +1685,45 @@ fn (mut g FlatGen) gen_shared_storage_expr(id flat.NodeId) bool {
 		return false
 	}
 	node := g.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return g.gen_shared_storage_expr(g.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.value == 'shared' && node.children_count > 0 {
+		return g.gen_shared_storage_expr(g.a.child(&node, 0))
+	}
+	if node.kind == .ident && g.local_storage_is_shared(node.value) {
+		g.write(g.cname(node.value))
+		return true
+	}
 	if node.kind != .selector || node.children_count == 0 {
 		return false
 	}
 	base_id := g.a.child(&node, 0)
 	base_type0 := g.usable_expr_type(base_id)
 	return g.gen_shared_field_storage_selector(base_id, base_type0, node.value, node.op)
+}
+
+fn (mut g FlatGen) gen_local_shared_value_selector(base_id flat.NodeId, field string) bool {
+	if int(base_id) < 0 || int(base_id) >= g.a.nodes.len {
+		return false
+	}
+	base := g.a.nodes[int(base_id)]
+	if base.kind != .ident || !g.local_storage_is_shared(base.value) {
+		return false
+	}
+	g.write(g.cname(base.value))
+	g.write('->val.')
+	g.write(c_field_name(field))
+	mut base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
+	if base_type is types.Alias {
+		base_type = types.unwrap_pointer(base_type.base_type)
+	}
+	if base_type is types.Struct {
+		if _ := g.shared_field_info(base_type.name, field) {
+			g.write('->val')
+		}
+	}
+	return true
 }
 
 fn (mut g FlatGen) gen_shared_field_storage_selector(base_id flat.NodeId, base_type0 types.Type, field string, op flat.Op) bool {
@@ -1664,6 +1872,9 @@ fn (mut g FlatGen) struct_init_c_type_name(type_name string) string {
 	typ := g.tc.parse_type(init_type_name)
 	if typ is types.OptionType || typ is types.ResultType {
 		return g.optional_type_name(typ)
+	}
+	if typ is types.MultiReturn {
+		return g.value_c_type(typ)
 	}
 	if ct := g.generic_struct_init_app_ct_from_context(init_type_name) {
 		return ct
@@ -2235,10 +2446,24 @@ fn (mut g FlatGen) gen_map_init(id flat.NodeId, node flat.Node) {
 
 // write_new_map writes new map output for c.
 fn (mut g FlatGen) write_new_map(key_type types.Type, value_type types.Type) {
-	c_key := g.value_sizeof_target(key_type)
+	c_key := g.map_key_sizeof_target(key_type)
 	c_val := g.value_sizeof_target(value_type)
 	hash_fn, eq_fn, clone_fn, free_fn := g.map_callback_names(key_type)
 	g.write('new_map(sizeof(${c_key}), sizeof(${c_val}), ${hash_fn}, ${eq_fn}, ${clone_fn}, ${free_fn})')
+}
+
+fn (mut g FlatGen) map_key_sizeof_target(key_type types.Type) string {
+	if key_type is types.Enum {
+		return g.enum_storage_c_type(key_type)
+	}
+	return g.value_sizeof_target(key_type)
+}
+
+fn (mut g FlatGen) map_key_temp_c_type(key_type types.Type) string {
+	if key_type is types.Enum {
+		return g.enum_storage_c_type(key_type)
+	}
+	return g.value_c_type(key_type)
 }
 
 // map_callback_names supports map callback names handling for FlatGen.
@@ -2246,7 +2471,11 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 	if key_type is types.String {
 		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
-	c_key := g.tc.c_type(key_type)
+	c_key := if key_type is types.Enum {
+		g.enum_storage_c_type(key_type)
+	} else {
+		g.tc.c_type(key_type)
+	}
 	size_suffix := match c_key {
 		'u8', 'i8', 'bool', 'char' { '1' }
 		'u16', 'i16' { '2' }
@@ -2793,19 +3022,29 @@ fn (mut g FlatGen) preseed_fn_ptr_type(typ types.Type) {
 fn (mut g FlatGen) emit_struct_option_typedefs(fields []types.StructField) {
 	mut wrote := false
 	for f in fields {
-		if f.typ is types.OptionType || f.typ is types.ResultType {
-			opt_name := g.optional_type_name(f.typ)
-			if opt_name == 'Optional' {
-				continue
-			}
-			if val_type := g.needed_optional_types[opt_name] {
-				if g.emit_optional_typedef(opt_name, val_type) {
-					wrote = true
-				}
-			}
-		}
+		wrote = g.emit_option_typedefs_for_type(f.typ) || wrote
 	}
 	if wrote {
 		g.writeln('')
 	}
+}
+
+fn (mut g FlatGen) emit_option_typedefs_for_type(typ types.Type) bool {
+	if typ is types.OptionType || typ is types.ResultType {
+		opt_name := g.optional_type_name(typ)
+		if opt_name == 'Optional' {
+			return false
+		}
+		if val_type := g.needed_optional_types[opt_name] {
+			return g.emit_optional_typedef(opt_name, val_type)
+		}
+		return false
+	}
+	if typ is types.ArrayFixed {
+		return g.emit_option_typedefs_for_type(typ.elem_type)
+	}
+	if typ is types.Alias {
+		return g.emit_option_typedefs_for_type(typ.base_type)
+	}
+	return false
 }

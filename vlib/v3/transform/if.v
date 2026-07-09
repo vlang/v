@@ -189,10 +189,10 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	ptr_name := t.new_temp('map_ptr')
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	key_expr := t.transform_expr(info.key_id)
+	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
-	prelude << t.make_decl_assign_typed(key_name, key_expr, info.key_type)
+	prelude << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
 	prelude << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr,
 		info.base_type, key_name), 'voidptr')
 
@@ -248,8 +248,8 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 
 	idx_ident := t.make_ident(index_name)
 	lower_ok := t.make_infix(.ge, idx_ident, t.make_int_literal(0))
-	upper_ok := t.make_infix(.lt, t.make_ident(index_name), t.make_selector(array_expr, 'len',
-		'int'))
+	upper_ok := t.make_infix(.lt, t.make_ident(index_name), t.array_index_len_expr(info,
+		array_expr))
 	found_cond := t.make_infix(.logical_and, lower_ok, upper_ok)
 
 	then_id := t.a.child(&node, 1)
@@ -868,10 +868,10 @@ fn (mut t Transformer) build_map_index_if_value_guard_chain(if_node flat.Node, l
 	ptr_name := t.new_temp('map_ptr')
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	key_expr := t.transform_expr(info.key_id)
+	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
-	result << t.make_decl_assign_typed(key_name, key_expr, info.key_type)
+	result << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
 	result << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr,
 		info.base_type, key_name), 'voidptr')
 	ptr_ident := t.make_ident(ptr_name)
@@ -915,8 +915,8 @@ fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node,
 	result << t.make_decl_assign_typed(index_name, index_expr, 'int')
 	idx_ident := t.make_ident(index_name)
 	lower_ok := t.make_infix(.ge, idx_ident, t.make_int_literal(0))
-	upper_ok := t.make_infix(.lt, t.make_ident(index_name), t.make_selector(array_expr, 'len',
-		'int'))
+	upper_ok := t.make_infix(.lt, t.make_ident(index_name), t.array_index_len_expr(info,
+		array_expr))
 	found_cond := t.make_infix(.logical_and, lower_ok, upper_ok)
 
 	saved_var_types := t.var_types.clone()

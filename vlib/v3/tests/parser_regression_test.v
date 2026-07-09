@@ -425,3 +425,26 @@ fn test_multiline_keyword_infix_expressions_continue_after_semicolon() {
 	assert in_count == 1
 	assert as_count == 1
 }
+
+fn test_normalized_option_result_fixed_array_type_names_parse_as_wrapped_arrays() {
+	mut a := flat.FlatAst.new()
+	tc := types.TypeChecker.new(&a)
+	opt := tc.parse_type('?int[2]')
+	assert opt is types.OptionType
+	if opt is types.OptionType {
+		assert opt.base_type is types.ArrayFixed
+		if opt.base_type is types.ArrayFixed {
+			assert opt.base_type.elem_type.name() == 'int'
+			assert opt.base_type.len == 2
+		}
+	}
+	res := tc.parse_type('!Foo[3]')
+	assert res is types.ResultType
+	if res is types.ResultType {
+		assert res.base_type is types.ArrayFixed
+		if res.base_type is types.ArrayFixed {
+			assert res.base_type.elem_type.name() == 'Foo'
+			assert res.base_type.len == 3
+		}
+	}
+}

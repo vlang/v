@@ -114,6 +114,26 @@ pub fn free(values []int) int {
 	assert out == '5'
 }
 
+fn test_user_defined_free_method_is_preserved() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'user_defined_free_method', 'struct Handle {
+mut:
+	freed bool
+}
+
+fn (mut h Handle) free() {
+	h.freed = true
+	println("freed")
+}
+
+fn main() {
+	mut h := Handle{}
+	h.free()
+}
+')
+	assert out == 'freed'
+}
+
 fn test_pointer_receiver_on_pointer_parameter_passes_parameter_directly() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good(v3_bin, 'pointer_receiver_on_pointer_param', 'struct S {

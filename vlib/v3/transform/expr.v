@@ -38,8 +38,20 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 		return none
 	}
 
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
 	mut new_lhs := t.transform_expr(lhs_id)
+	lhs_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
 	mut new_rhs := t.transform_expr(rhs_id)
+	rhs_pending := t.pending_stmts.clone()
+	t.pending_stmts = outer_pending
+	for stmt in lhs_pending {
+		t.pending_stmts << stmt
+	}
+	for stmt in rhs_pending {
+		t.pending_stmts << stmt
+	}
 	if lhs_is_string_ptr {
 		new_lhs = t.make_prefix(.mul, new_lhs)
 	}
@@ -47,23 +59,26 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 		new_rhs = t.make_prefix(.mul, new_rhs)
 	}
 
+	mut result := flat.empty_node
+	result_type := if node.op == .plus { 'string' } else { 'bool' }
 	match node.op {
 		.plus {
 			lhs := t.a.nodes[int(new_lhs)]
 			rhs := t.a.nodes[int(new_rhs)]
 			if lhs.kind == .string_literal && rhs.kind == .string_literal {
-				return t.make_string_literal(lhs.value + rhs.value)
+				result = t.make_string_literal(lhs.value + rhs.value)
+			} else {
+				result = t.make_call('string__plus', arr2(new_lhs, new_rhs))
 			}
-			return t.make_call('string__plus', arr2(new_lhs, new_rhs))
 		}
 		.eq {
-			return t.make_call('string__eq', arr2(new_lhs, new_rhs))
+			result = t.make_call('string__eq', arr2(new_lhs, new_rhs))
 		}
 		.ne {
 			eq_call := t.make_call('string__eq', arr2(new_lhs, new_rhs))
 			start := t.a.children.len
 			t.a.children << eq_call
-			return t.a.add_node(flat.Node{
+			result = t.a.add_node(flat.Node{
 				kind:           .prefix
 				op:             .not
 				children_start: start
@@ -71,18 +86,18 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 			})
 		}
 		.lt {
-			return t.make_call('string__lt', arr2(new_lhs, new_rhs))
+			result = t.make_call('string__lt', arr2(new_lhs, new_rhs))
 		}
 		.gt {
 			// a > b  ->  string__lt(b, a)
-			return t.make_call('string__lt', arr2(new_rhs, new_lhs))
+			result = t.make_call('string__lt', arr2(new_rhs, new_lhs))
 		}
 		.le {
 			// a <= b  ->  !(b < a)  ->  !string__lt(rhs, lhs)
 			lt_call := t.make_call('string__lt', arr2(new_rhs, new_lhs))
 			start := t.a.children.len
 			t.a.children << lt_call
-			return t.a.add_node(flat.Node{
+			result = t.a.add_node(flat.Node{
 				kind:           .prefix
 				op:             .not
 				children_start: start
@@ -94,7 +109,7 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 			lt_call := t.make_call('string__lt', arr2(new_lhs, new_rhs))
 			start := t.a.children.len
 			t.a.children << lt_call
-			return t.a.add_node(flat.Node{
+			result = t.a.add_node(flat.Node{
 				kind:           .prefix
 				op:             .not
 				children_start: start
@@ -105,6 +120,13 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 			return none
 		}
 	}
+
+	if lhs_pending.len > 0 || rhs_pending.len > 0 {
+		tmp_name := t.new_temp(if result_type == 'string' { 'str_expr' } else { 'str_cmp' })
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, result, result_type)
+		return t.make_ident(tmp_name)
+	}
+	return result
 }
 
 // transform_infix_array_ops transforms transform infix array ops data for transform.
@@ -2123,7 +2145,7 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 	t.pending_stmts << t.make_decl_assign_typed(result_name, len_eq, 'bool')
 	t.pending_stmts << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type),
 		value_type)
-	t.set_var_type(key_name, key_type)
+	t.set_var_type(key_name, t.map_key_storage_type(key_type))
 	t.set_var_type(lhs_val_name, value_type)
 	key_ident := t.make_ident(key_name)
 	val_ident := t.make_ident(lhs_val_name)
