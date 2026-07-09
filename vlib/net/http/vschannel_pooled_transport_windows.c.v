@@ -190,7 +190,7 @@ fn h2_dial_probe_vschannel(req &Request, host string, port int) !H2ProbeResult {
 	}
 	return H2ProbeResult{
 		is_h2:     true
-		transport: t
-		closer:    t
+		transport: H2Transport(t)
+		closer:    H2TransportCloser(t)
 	}
 }

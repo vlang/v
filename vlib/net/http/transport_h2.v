@@ -121,11 +121,14 @@ mut:
 // H2ProbeResult carries the outcome of the ALPN-probing dial, abstracted
 // over which TLS backend performed it -- the only backend-specific step in
 // h2_dial_and_do's otherwise fully shared singleflight/dial-id/eviction
-// machinery.
+// machinery. transport/closer are option types, not bare interface fields:
+// a bare interface field must be initialized in EVERY struct literal (a
+// checker notice that CI's -N promotes to an error), and the non-h2 probe
+// outcome has nothing to initialize them with.
 struct H2ProbeResult {
 	is_h2     bool
-	transport H2Transport       // set only when is_h2
-	closer    H2TransportCloser // set only when is_h2
+	transport ?H2Transport       // set only when is_h2
+	closer    ?H2TransportCloser // set only when is_h2
 	// ssl_probe carries the still-open probe connection when ALPN did not
 	// select h2, so the caller can complete its own request over it directly
 	// instead of dialing again -- mbedTLS/OpenSSL only. On native Windows,
@@ -171,8 +174,8 @@ fn h2_dial_probe_ssl(req &Request, host string, port int) !H2ProbeResult {
 	pt := new_h2_pooled_transport(mut ssl_conn)
 	return H2ProbeResult{
 		is_h2:     true
-		transport: pt
-		closer:    pt
+		transport: H2Transport(pt)
+		closer:    H2TransportCloser(pt)
 	}
 }
 
@@ -303,6 +306,21 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 		return resp
 	}
 
+	// Unwrap the probe's h2-only fields before registering anything. is_h2
+	// guarantees both are set (every probe implementation fills them together
+	// with is_h2: true), so these branches are structurally unreachable — but
+	// they must still route through h2_dial_failed, not a bare return, so any
+	// waiters already parked on this dial call get woken rather than stranded.
+	transport := probe.transport or {
+		return t.h2_dial_failed(key, mut call,
+			error('http.transport: h2 dial probe returned no transport'))
+	}
+
+	mut closer := probe.closer or {
+		return t.h2_dial_failed(key, mut call,
+			error('http.transport: h2 dial probe returned no closer'))
+	}
+
 	t.mu.lock()
 	t.h2_dial_seq++
 	dial_id := t.h2_dial_seq
@@ -314,7 +332,6 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	// calls this closure's own close_transport, which itself takes t.mu —
 	// calling it here would self-deadlock.
 	mut orphan := t.h2_conns[key] or { &H2MuxConn(unsafe { nil }) }
-	mut closer := probe.closer
 	close_transport := fn [mut t, key, dial_id, mut closer] () {
 		t.mu.lock()
 		if t.h2_dial_id[key] or { 0 } == dial_id {
@@ -324,7 +341,7 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 		t.mu.unlock()
 		closer.close()
 	}
-	mut mux := new_h2_mux_conn(probe.transport, close_transport)
+	mut mux := new_h2_mux_conn(transport, close_transport)
 	t.h2_conns[key] = mux
 	t.h2_dial_id[key] = dial_id
 	t.key_proto[key] = 2
