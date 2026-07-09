@@ -866,13 +866,18 @@ fn (mut t Transformer) collect_types() {
 					}
 				}
 				t.enum_types[node.value] = field_names
-				if node.generic_params.len > 0 && node.generic_params[0].len > 0 {
-					t.enum_backing_types[node.value] = node.generic_params[0]
+				backing_storage_type := if node.generic_params.len > 0 && node.generic_params[0].len > 0 {
+					t.normalize_type_in_module(node.generic_params[0], cur_mod)
+				} else {
+					''
+				}
+				if backing_storage_type.len > 0 {
+					t.enum_backing_types[node.value] = backing_storage_type
 				}
 				if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
 					t.enum_types['${cur_mod}.${node.value}'] = field_names
-					if node.generic_params.len > 0 && node.generic_params[0].len > 0 {
-						t.enum_backing_types['${cur_mod}.${node.value}'] = node.generic_params[0]
+					if backing_storage_type.len > 0 {
+						t.enum_backing_types['${cur_mod}.${node.value}'] = backing_storage_type
 					}
 				}
 			}

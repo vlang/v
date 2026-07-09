@@ -23,7 +23,7 @@ fn (mut t Transformer) map_type_parts(map_type string) (string, string) {
 
 fn (t &Transformer) map_key_storage_type(key_type string) string {
 	if backing := t.map_key_backing_type(key_type) {
-		return t.normalize_type_alias(backing)
+		return backing
 	}
 	return key_type
 }
