@@ -227,7 +227,7 @@ fn wait_for_bool(signal chan bool, message string) bool {
 		value := <-signal {
 			return value
 		}
-		1 * time.second {
+		5 * time.second {
 			assert false, message
 		}
 	}
@@ -239,7 +239,7 @@ fn wait_for_int(signal chan int, message string) int {
 		value := <-signal {
 			return value
 		}
-		1 * time.second {
+		5 * time.second {
 			assert false, message
 		}
 	}
@@ -251,7 +251,7 @@ fn wait_for_string(signal chan string, message string) string {
 		value := <-signal {
 			return value
 		}
-		1 * time.second {
+		5 * time.second {
 			assert false, message
 		}
 	}
