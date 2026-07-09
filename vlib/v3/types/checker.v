@@ -16930,19 +16930,15 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.starts_with('atomic ') {
 		return tc.parse_type(typ[7..])
 	}
-	if (typ.starts_with('?') || typ.starts_with('!')) && typ.contains('[') && typ.ends_with(']') {
-		bracket := typ.last_index_u8(`[`)
-		bracket_end := typ.last_index_u8(`]`)
-		if bracket > 0 && bracket_end == typ.len - 1 {
-			len_text := typ[bracket + 1..bracket_end].trim_space()
-			if is_fixed_array_len_text(len_text) || tc.const_int_value(len_text, []string{}) != none {
-				return Type(ArrayFixed{
-					elem_type: tc.parse_type(typ[..bracket])
-					len:       if is_decimal_int_literal(len_text) { len_text.int() } else { 0 }
-					len_expr:  if is_decimal_int_literal(len_text) { '' } else { len_text }
-				})
-			}
-		}
+	if typ.starts_with('?') {
+		return Type(OptionType{
+			base_type: tc.parse_type(typ[1..])
+		})
+	}
+	if typ.starts_with('!') {
+		return Type(ResultType{
+			base_type: tc.parse_type(typ[1..])
+		})
 	}
 	if typ.starts_with('chan ') {
 		return Type(Channel{
@@ -16960,16 +16956,6 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		// `[]T`. The handle itself lowers to `void*` in C (see c_type).
 		return Type(Struct{
 			name: typ
-		})
-	}
-	if typ.starts_with('?') {
-		return Type(OptionType{
-			base_type: tc.parse_type(typ[1..])
-		})
-	}
-	if typ.starts_with('!') {
-		return Type(ResultType{
-			base_type: tc.parse_type(typ[1..])
 		})
 	}
 	if typ.starts_with('...') {
