@@ -7,9 +7,10 @@ The `fasthttp` module is a high-performance HTTP server library for V that provi
 - **High Performance**: Uses platform-specific I/O multiplexing:
   - `epoll` on Linux for efficient connection handling
   - `kqueue` on macOS and BSD for high-performance event notification
+  - IOCP on Windows for completion-based socket I/O
 - **Non-blocking I/O**: Handles multiple concurrent connections efficiently
 - **Simple API**: Easy-to-use request handler pattern
-- **Cross-platform**: Supports Linux, macOS, FreeBSD, OpenBSD, NetBSD and DragonFly
+- **Cross-platform**: Supports Linux, Windows, macOS, FreeBSD, OpenBSD, NetBSD and DragonFly
 
 ## Installation
 
@@ -26,7 +27,7 @@ Here's a minimal HTTP server example:
 ```v oksyntax
 import fasthttp
 
-fn handle_request(req fasthttp.HttpRequest) ![]u8 {
+fn handle_request(req fasthttp.HttpRequest) !fasthttp.HttpResponse {
 	path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
 
 	mut body := ''
@@ -48,7 +49,9 @@ fn handle_request(req fasthttp.HttpRequest) ![]u8 {
 	]
 	header_string := headers.join('\r\n')
 
-	return '${header_string}\r\n\r\n${body}'.bytes()
+	return fasthttp.HttpResponse{
+		content: '${header_string}\r\n\r\n${body}'.bytes()
+	}
 }
 
 fn main() {
@@ -77,7 +80,8 @@ Represents an incoming HTTP request.
 - `method: Slice` - The HTTP method (GET, POST, etc.)
 - `path: Slice` - The request path
 - `version: Slice` - The HTTP version (e.g., "HTTP/1.1")
-- `client_conn_fd: int` - Internal socket file descriptor
+- `client_conn_fd: int` - Compatibility socket descriptor/handle
+- `client_conn_handle: usize` - Pointer-sized socket handle for takeover/raw socket use
 
 ### `Slice` Struct
 
@@ -159,7 +163,7 @@ detailed server implementation with multiple routes and controllers.
 
 - **Linux**: Uses `epoll` for high-performance I/O multiplexing
 - **macOS**: Uses `kqueue` for event notification
-- **Windows**: Currently not supported
+- **Windows**: Uses IOCP for completion-based socket I/O
 
 ## Performance Considerations
 
