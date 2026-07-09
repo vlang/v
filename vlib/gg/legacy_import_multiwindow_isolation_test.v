@@ -1,3 +1,4 @@
+// vtest build: !musl? // legacy gg import needs X11/GL headers on Linux
 module gg
 
 import os

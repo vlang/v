@@ -1581,6 +1581,10 @@ fn test_default_gg_multiwindow_build_does_not_link_wayland_without_sokol_wayland
 		$if sokol_wayland ? {
 			return
 		}
+		if !multiwindow_linux_gg_graphics_headers_available() {
+			multiwindow_skip_linux_gg_graphics_probe('no_wayland_deps')
+			return
+		}
 		output := multiwindow_dump_c_flags('no_wayland_deps', '-d gg_multiwindow')
 		assert !output.contains('-lwayland-client')
 		assert !output.contains('-lwayland-egl')
@@ -1834,6 +1838,45 @@ fn test_lifecycle_and_registry_reads_work_from_foreign_thread() {
 	t.wait()
 	assert msg == 'ok'
 	app.stop()!
+}
+
+fn multiwindow_linux_gg_graphics_headers_available() bool {
+	$if linux {
+		for header in [
+			'X11/XKBlib.h',
+			'X11/Xatom.h',
+			'X11/Xcursor/Xcursor.h',
+			'X11/Xlib.h',
+			'X11/Xmd.h',
+			'X11/Xresource.h',
+			'X11/Xutil.h',
+			'X11/cursorfont.h',
+			'X11/extensions/XInput2.h',
+			'GL/gl.h',
+		] {
+			if !multiwindow_c_header_available(header) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+fn multiwindow_c_header_available(header string) bool {
+	header_label := header.replace('/', '_').replace('.', '_')
+	source_path := os.join_path(os.temp_dir(),
+		'x_multiwindow_header_${os.getpid()}_${header_label}.c')
+	os.write_file(source_path, '#include <${header}>\n') or { return false }
+	defer {
+		os.rm(source_path) or {}
+	}
+	cc := if os.getenv('CC') == '' { 'cc' } else { os.getenv('CC') }
+	result := os.execute('${cc} -fsyntax-only ${os.quoted_path(source_path)}')
+	return result.exit_code == 0
+}
+
+fn multiwindow_skip_linux_gg_graphics_probe(label string) {
+	eprintln('skip ${label}: gg multiwindow link probe requires host X11/GL headers')
 }
 
 fn multiwindow_dump_c_flags(label string, flags string) string {
