@@ -7588,12 +7588,12 @@ fn (mut g FlatGen) gen_flag_enum_from_call(fn_node flat.Node, node flat.Node) bo
 	ct := g.optional_type_name(types.Type(types.OptionType{
 		base_type: enum_type
 	}))
-	value_ct := g.tc.c_type(enum_type)
+	value_ct := g.enum_value_c_type(enum_info)
 	storage_ct := g.enum_storage_c_type(enum_info)
 	mask := g.flag_enum_mask_expr(enum_name)
 	arg := g.expr_to_string(g.a.child(&node, 1))
 	tmp := g.tmp_name()
-	g.write('({ ${value_ct} ${tmp} = (${value_ct})(${arg}); (${ct}){.ok = ((((${storage_ct})${tmp}) & ~((${storage_ct})${mask})) == 0), .value = ${tmp}}; })')
+	g.write('({ ${storage_ct} ${tmp} = (${storage_ct})(${arg}); (${ct}){.ok = ((${tmp} & ~((${storage_ct})${mask})) == 0), .value = (${value_ct})${tmp}}; })')
 	return true
 }
 
@@ -8915,11 +8915,7 @@ fn (mut g FlatGen) concrete_optional_type_name(t types.Type) string {
 	if g.type_contains_generic_placeholder(base_type) {
 		return 'Optional'
 	}
-	mut inner_ct := if base_type is types.MultiReturn {
-		g.multi_return_c_type_name(base_type)
-	} else {
-		g.tc.c_type(base_type)
-	}
+	mut inner_ct := g.value_c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = g.resolve_fn_ptr_type(inner_ct)
 	}

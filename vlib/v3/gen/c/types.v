@@ -73,11 +73,7 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	if g.type_contains_generic_placeholder(base_type) {
 		return 'Optional'
 	}
-	mut inner_ct := if base_type is types.MultiReturn {
-		g.multi_return_c_type_name(base_type)
-	} else {
-		g.tc.c_type(base_type)
-	}
+	mut inner_ct := g.value_c_type(base_type)
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = g.resolve_fn_ptr_type(inner_ct)
 	}
@@ -154,10 +150,7 @@ fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 }
 
 fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
-	if t is types.MultiReturn {
-		return g.multi_return_c_type_name(t)
-	}
-	return g.tc.c_type(t)
+	return g.value_c_type(t)
 }
 
 // optional_typedefs supports optional typedefs handling for FlatGen.
