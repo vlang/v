@@ -808,6 +808,16 @@ fn (mut g FlatGen) gen_channel_try_call(node flat.Node, fn_node flat.Node) bool 
 	arg_id := g.a.child(&node, 1)
 	if fn_node.value == 'try_push' {
 		elem_ct := g.value_c_type(channel_type.elem_type)
+		if fixed := array_fixed_type(channel_type.elem_type) {
+			tmp := g.tmp_count
+			g.tmp_count++
+			tmp_name := '_try_push_${tmp}'
+			src := g.fixed_array_copy_source_string(arg_id, types.Type(fixed))
+			g.write('({ ${elem_ct} ${tmp_name}; memmove(${tmp_name}, ${src}, sizeof(${tmp_name})); sync__Channel__try_push(')
+			g.gen_channel_try_receiver(base_id)
+			g.write(', &${tmp_name}); })')
+			return true
+		}
 		g.write('sync__Channel__try_push(')
 		g.gen_channel_try_receiver(base_id)
 		g.write(', &(${elem_ct}[]){')
@@ -7554,7 +7564,7 @@ fn (g &FlatGen) is_flag_enum_method(fn_node &flat.Node) bool {
 	base_type := g.tc.resolve_type(g.a.child(fn_node, 0))
 	clean := types.unwrap_pointer(base_type)
 	if clean is types.Enum {
-		return true
+		return clean.is_flag || clean.name in g.tc.flag_enums
 	} else if clean is types.Primitive {
 		return clean.props.has(.integer)
 	} else if clean is types.Unknown {
