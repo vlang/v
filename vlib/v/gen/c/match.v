@@ -237,8 +237,8 @@ fn (mut g Gen) match_expr_sumtype(node ast.MatchExpr, is_expr bool, cond_var str
 				ce := unsafe { &branch.exprs[sumtype_index] }
 				if ce is ast.TypeNode {
 					variant_type := g.unwrap_generic(g.recheck_concrete_type(ce.typ))
-					all_idx_exprs := g.matching_sumtype_variant_type_idx_exprs(node.cond_type,
-						variant_type)
+					all_idx_exprs := g.type_idx_exprs_for_types(g.matching_sumtype_match_branch_variant_types(node.cond_type,
+						variant_type))
 					if use_ternary {
 						// Ternary `?:` chains cannot drop an arm, so keep every tag.
 						sumtype_fresh_idx_exprs = all_idx_exprs.clone()
