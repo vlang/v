@@ -59,6 +59,8 @@ jobs:
           .\makev.bat -gcc
           .\v.exe symlink
           .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
+      - name: Legacy gg import multiwindow isolation
+        run: v -cc gcc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Test v binaries
         run: v build-vbinaries
       - name: All code is formatted
@@ -105,3 +107,49 @@ jobs:
         run: v -showcc -prod cmd/tools/vdoctor.v
       - name: compile vup.v with -prod
         run: v -showcc -prod cmd/tools/vup.v
+      - name: Setup MinGW-w64 D3D11 headers for GCC
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          path-type: minimal
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+      - name: Verify MinGW-w64 D3D11 headers and import libraries
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          which gcc
+          gcc --version
+          d3d11_header=""
+          dxgi_header=""
+          for include_dir in /ucrt64/include /ucrt64/x86_64-w64-mingw32/include; do
+            if [ -f "$include_dir/d3d11.h" ] && [ -z "$d3d11_header" ]; then
+              d3d11_header="$include_dir/d3d11.h"
+            fi
+            if [ -f "$include_dir/dxgi.h" ] && [ -z "$dxgi_header" ]; then
+              dxgi_header="$include_dir/dxgi.h"
+            fi
+          done
+          if [ -z "$d3d11_header" ]; then
+            echo "d3d11.h not found in /ucrt64/include or /ucrt64/x86_64-w64-mingw32/include" >&2
+            exit 1
+          fi
+          if [ -z "$dxgi_header" ]; then
+            echo "dxgi.h not found in /ucrt64/include or /ucrt64/x86_64-w64-mingw32/include" >&2
+            exit 1
+          fi
+          test -f /ucrt64/lib/libd3d11.a
+          test -f /ucrt64/lib/libdxgi.a
+          echo "Found $d3d11_header"
+          echo "Found $dxgi_header"
+          echo "Found /ucrt64/lib/libd3d11.a"
+          echo "Found /ucrt64/lib/libdxgi.a"
+          printf '#include <d3d11.h>\n#include <dxgi.h>\nint main(void) { return 0; }\n' > /tmp/d3d11_probe.c
+          gcc /tmp/d3d11_probe.c -ld3d11 -ldxgi -o /tmp/d3d11_probe.exe
+      - name: Multiwindow D3D11 smoke with GCC
+        shell: msys2 {0}
+        run: ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v
+      - name: Compile gg multiwindow example with D3D11 and GCC
+        shell: msys2 {0}
+        run: ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 -o gg_multiwindow_gcc.exe examples/gg/multiwindow.v

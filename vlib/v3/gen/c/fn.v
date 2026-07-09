@@ -760,6 +760,26 @@ fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_na
 	g.write(g.cname(g.method_call_name_for_call(id, node, method_name)))
 }
 
+fn (mut g FlatGen) gen_channel_close_call(base_id flat.NodeId) {
+	g.write('sync__Channel__close(')
+	if g.channel_close_receiver_needs_deref(base_id) {
+		g.write('*(')
+		g.gen_expr(base_id)
+		g.write(')')
+	} else {
+		g.write('(sync__Channel*)(')
+		g.gen_expr(base_id)
+		g.write(')')
+	}
+	g.write(', array_new(sizeof(IError), 0, 0))')
+}
+
+fn (g &FlatGen) channel_close_receiver_needs_deref(base_id flat.NodeId) bool {
+	base_type := g.tc.resolve_type(base_id)
+	return base_type is types.Pointer
+		&& cgen_is_channel_close_receiver_type(types.unwrap_pointer(base_type))
+}
+
 fn (g &FlatGen) method_call_name_for_call(id flat.NodeId, node flat.Node, method_name string) string {
 	if concrete := g.concrete_generic_method_name_from_call_receiver(node, method_name) {
 		return concrete
@@ -1159,29 +1179,43 @@ fn (g &FlatGen) resolve_concrete_generic_method_name(type_name string, method st
 	if !ok || args.len == 0 {
 		return none
 	}
-	suffix := generic_receiver_type_suffixes(args)
-	mut candidates := ['${base}_${suffix}.${method}']
-	if base.contains('.') {
-		base_mod := base.all_before_last('.')
-		base_short := base.all_after_last('.')
-		candidates << '${base_short}_${suffix}.${method}'
-		candidates << '${base_mod}.${base_short}_${suffix}.${method}'
-	}
-	for candidate in candidates {
-		if candidate in g.tc.fn_param_types || candidate in g.tc.fn_ret_types {
-			return candidate
+	for suffix in generic_receiver_type_suffix_variants(args) {
+		mut candidates := ['${base}_${suffix}.${method}']
+		if base.contains('.') {
+			base_mod := base.all_before_last('.')
+			base_short := base.all_after_last('.')
+			candidates << '${base_short}_${suffix}.${method}'
+			candidates << '${base_mod}.${base_short}_${suffix}.${method}'
+		}
+		for candidate in candidates {
+			if candidate in g.tc.fn_param_types || candidate in g.tc.fn_ret_types {
+				return candidate
+			}
 		}
 	}
 	return none
 }
 
 fn generic_receiver_type_suffixes(args []string) string {
+	variants := generic_receiver_type_suffix_variants(args)
+	if variants.len > 0 {
+		return variants[0]
+	}
+	return ''
+}
+
+fn generic_receiver_type_suffix_variants(args []string) []string {
+	mut raw_parts := []string{cap: args.len}
 	mut parts := []string{cap: args.len}
 	for arg in args {
-		parts << c_name(generic_receiver_type_arg_short(arg).replace('[]', 'Array_').replace('&',
-			'ptr_'))
+		raw := generic_receiver_type_arg_short(arg).replace('[]', 'Array_').replace('&', 'ptr_')
+		raw_parts << raw
+		parts << c_name(raw)
 	}
-	return parts.join('_')
+	mut variants := []string{}
+	codegen_push_unique(mut variants, raw_parts.join('_'))
+	codegen_push_unique(mut variants, parts.join('_'))
+	return variants
 }
 
 fn generic_receiver_type_arg_short(type_arg string) string {
@@ -2818,6 +2852,25 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		return
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
+	if node.children_count >= 2 && (fn_name == 'sync__Channel__close'
+		|| target_name == 'sync__Channel__close'
+		|| target_name == 'C.sync__Channel__close'
+		|| resolved_target_name == 'sync__Channel__close') {
+		g.write('sync__Channel__close(')
+		g.gen_expr(g.a.child(&node, 1))
+		if node.children_count > 2 {
+			g.write(', ')
+			g.gen_expr(g.a.child(&node, 2))
+		} else {
+			g.write(', array_new(sizeof(IError), 0, 0)')
+		}
+		g.write(')')
+		return
+	}
+	if resolved_target_name == 'chan.close' && fn_node.kind == .selector {
+		g.gen_channel_close_call(g.a.child(fn_node, 0))
+		return
+	}
 	if resolved_target_name in ['free', 'builtin.free'] && node.children_count == 2 {
 		arg_id := g.a.child(&node, 1)
 		arg_type := g.usable_expr_type(arg_id)
@@ -2869,8 +2922,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	if fn_node.kind == .selector && fn_node.value == 'close' {
 		base_id := g.a.child(fn_node, 0)
 		base_type := g.tc.resolve_type(base_id)
-		if base_type is types.Channel {
-			panic('channel close should be lowered by v3 transform')
+		if cgen_is_channel_close_receiver_type(base_type) {
+			g.gen_channel_close_call(base_id)
+			return
 		}
 	}
 	if g.gen_flag_enum_from_call(fn_node, node) {
@@ -2879,12 +2933,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	if target_name.starts_with('C.') {
 		g.write(g.direct_call_name_for_call(id, target_name))
 		g.write('(')
-		start := if fn_node.kind == .selector {
-			g.selector_module_call_arg_start(fn_node, node)
-		} else {
-			1
-		}
-		g.gen_call_args(target_name, node, start)
+		g.gen_call_args(target_name, node, 1)
 		g.write(')')
 		return
 	}
@@ -3265,6 +3314,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				} else {
 					base_type := g.usable_expr_type(g.a.child(fn_node, 0))
 					clean_type := concrete_receiver_type(base_type)
+					if cgen_is_channel_close_receiver_type(clean_type) && fn_node.value == 'close' {
+						g.gen_channel_close_call(g.a.child(fn_node, 0))
+						return
+					}
 					if g.gen_thread_wait_call(fn_node) {
 						return
 					}
@@ -4122,6 +4175,18 @@ fn concrete_receiver_type(base_type types.Type) types.Type {
 		return clean_type.base_type
 	}
 	return clean_type
+}
+
+fn cgen_is_channel_close_receiver_type(base_type types.Type) bool {
+	clean_type := concrete_receiver_type(base_type)
+	if clean_type is types.Channel {
+		return true
+	}
+	mut name := clean_type.name().trim_space()
+	for name.starts_with('&') {
+		name = name[1..].trim_space()
+	}
+	return name == 'chan' || name.starts_with('chan ')
 }
 
 fn (g &FlatGen) receiver_storage_type(base_id flat.NodeId) ?types.Type {
@@ -6344,14 +6409,18 @@ fn codegen_specialized_receiver_fn_candidates(mut result []string, fn_base strin
 
 fn codegen_generic_type_suffix_variants(args []string) []string {
 	mut suffixes := []string{}
+	mut short_raw_parts := []string{cap: args.len}
 	mut short_parts := []string{cap: args.len}
 	mut full_parts := []string{cap: args.len}
 	for arg in args {
 		clean := trimmed_space(arg)
-		short_parts << c_name(generic_receiver_type_arg_short(clean).replace('[]', 'Array_').replace('&',
-			'ptr_'))
+		short_raw := generic_receiver_type_arg_short(clean).replace('[]', 'Array_').replace('&',
+			'ptr_')
+		short_raw_parts << short_raw
+		short_parts << c_name(short_raw)
 		full_parts << c_name(clean.replace('[]', 'Array_').replace('&', 'ptr_'))
 	}
+	codegen_push_unique(mut suffixes, short_raw_parts.join('_'))
 	codegen_push_unique(mut suffixes, short_parts.join('_'))
 	codegen_push_unique(mut suffixes, full_parts.join('_'))
 	return suffixes
@@ -8591,14 +8660,15 @@ fn fn_ptr_typedef_generic_placeholder_struct_tag(typ string) ?string {
 	if clean.starts_with('struct ') {
 		clean = clean['struct '.len..].trim_space()
 	}
-	if !clean.contains('__') {
+	segment := if clean.contains('__') {
+		clean.all_after_last('__')
+	} else {
+		clean
+	}
+	if !segment.contains('_') {
 		return none
 	}
-	short := clean.all_after_last('__')
-	if !short.contains('_') {
-		return none
-	}
-	suffix := short.all_after_last('_')
+	suffix := segment.all_after_last('_')
 	if suffix.len == 1 && suffix[0] >= `A` && suffix[0] <= `Z` {
 		return 'struct ${clean}${ptr_suffix}'
 	}

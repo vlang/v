@@ -7,6 +7,7 @@ on:
     paths:
       - 'vlib/**'
       - '!vlib/v3/**'
+      - 'examples/gg/multiwindow.v'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - '**/gg_regressions_ci.yml'
@@ -15,6 +16,7 @@ on:
     paths:
       - 'vlib/**'
       - '!vlib/v3/**'
+      - 'examples/gg/multiwindow.v'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - '**/gg_regressions_ci.yml'
@@ -52,13 +54,47 @@ jobs:
           # libxcursor-dev libxi-dev : V gfx deps
           # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
           # freeglut3-dev            : Fixes graphic apps compilation with tcc
-          # libx11-dev               : X11 headers for clipboard and sokol (default backend on Linux)
+          # libx11-dev               : X11 headers for opt-in x.multiwindow X11/Xvfb coverage
+          # libwayland-dev           : Wayland headers for x.multiwindow Wayland compile/probe tests
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install imagemagick openimageio-tools libgl1-mesa-dri xvfb libxcursor-dev libxi-dev libxrandr-dev freeglut3-dev xsel xclip libx11-dev libegl-dev
+          ./v retry -- sudo apt install imagemagick openimageio-tools libgl1-mesa-dev libgl1-mesa-dri xvfb libxcursor-dev libxi-dev libxrandr-dev freeglut3-dev xsel xclip libx11-dev libegl-dev libwayland-dev libxkbcommon-dev libxkbcommon-x11-dev wayland-protocols
           ./v retry -- ./v download https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
           ./v retry -- git clone https://github.com/Larpon/gg-regression-images gg-regression-images
           chmod +x ./imgur.sh
+
+      - name: Legacy gg import multiwindow isolation
+        run: env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE ./v test vlib/gg/legacy_import_multiwindow_isolation_test.v
+
+      - name: Multiwindow Linux checks
+        run: |
+          set -euo pipefail
+          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE ./v -d gg_multiwindow test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE ./v -d gg_multiwindow -d sokol_wayland test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+          xvfb-run -a -s "-screen 0 1280x1024x24" env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true ./v -d gg_multiwindow -d x_multiwindow_x11 test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+          ./v -d gg_multiwindow -o /tmp/gg_multiwindow_default examples/gg/multiwindow.v
+          ./v -d gg_multiwindow -d x_multiwindow_x11 -o /tmp/gg_multiwindow_x11 examples/gg/multiwindow.v
+          ./v -d gg_multiwindow -d sokol_wayland -o /tmp/gg_multiwindow_wayland examples/gg/multiwindow.v
+          stdout="$(mktemp)"
+          stderr="$(mktemp)"
+          set +e
+          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE /tmp/gg_multiwindow_default >"$stdout" 2>"$stderr"
+          status=$?
+          set -e
+          echo "::group::gg multiwindow example stdout"
+          cat "$stdout"
+          echo "::endgroup::"
+          echo "::group::gg multiwindow example stderr"
+          cat "$stderr"
+          echo "::endgroup::"
+          grep -Fq "gg multi-window backend:" "$stdout"
+          grep -Fq "mock backend selected; stopping after initial lifecycle events" "$stdout"
+          grep -Fq "live windows:" "$stdout"
+          grep -Fq "window created:" "$stdout"
+          if [ "$status" -ne 0 ]; then
+            echo "headless gg multiwindow example failed with status $status"
+            exit "$status"
+          fi
 
       - name: Sample and compare
         id: compare

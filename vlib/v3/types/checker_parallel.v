@@ -4,7 +4,7 @@ import runtime
 import v3.flat
 
 const min_parallel_check_items = 256
-const max_parallel_check_jobs = 10
+const max_parallel_check_jobs = 26
 // Extra share of the total work (in percent of an even bucket) pre-assigned to
 // the master's bucket; see split_check_items.
 const check_master_bias_pct = i64(60)
@@ -40,21 +40,11 @@ $if !windows {
 		w.check_fn_items_serial(*items)
 		return unsafe { nil }
 	}
-
-	fn called_fns_thread(arg voidptr) voidptr {
-		mut w := unsafe { &TypeChecker(arg) }
-		w.collect_selected_file_called_fns()
-		return unsafe { nil }
-	}
 }
 
 // check_semantics_opt runs semantic checks, using worker threads for independent
 // function bodies when requested and there is enough work.
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
-	$if ownership ? {
-		tc.check_semantics()
-		return false
-	}
 	if !want_parallel {
 		tc.check_semantics()
 		return false
@@ -73,91 +63,42 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		return false
 	} $else {
 		// Freeze the warm post-collect type cache as the shared read-only base
-		// for every thread in the region (workers, called-fns collector, and
-		// the master itself via a private overlay).
+		// for every worker thread and the master itself via a private overlay.
 		tc.install_type_cache_overlay()
-		// The called-fns closure (ierror-return diagnostic gate) walks thousands
-		// of reachable fn bodies; run it on its own thread across the whole
-		// parallel region. Sites that need the set park pending candidates
-		// (defer_ierror_gating) and the master filters them after joining.
-		mut cf_worker := &TypeChecker(unsafe { nil })
-		mut cf_tid := []C.pthread_t{len: 1}
-		cf_spawned := tc.diagnostic_files.len > 0
-		if cf_spawned {
-			tc.defer_ierror_gating = true
-			cf_worker = tc.fork_for_parallel_check()
-			cf_worker.selected_file_called_fns = map[string]bool{}
-			cf_worker.selected_file_worklist = []string{}
-			// The walk calls enter_file/enter_module, which write file_modules;
-			// the master keeps writing the shared map (export attrs, item
-			// collection) while this thread runs, so the fork gets its own copy.
-			cf_worker.file_modules = tc.file_modules.clone()
-			attr_buf := [64]u8{}
-			attr := unsafe { voidptr(&attr_buf[0]) }
-			C.pthread_attr_init(attr)
-			C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
-			C.pthread_create(unsafe { &cf_tid[0] }, attr, called_fns_thread, voidptr(cf_worker))
-			C.pthread_attr_destroy(attr)
-		} else {
-			tc.selected_file_called_fns = map[string]bool{}
-			tc.selected_file_worklist = []string{}
-		}
+		// Invalid-IError-return diagnostics are gated to functions reachable
+		// from the selected files. Most successful compiles never produce a
+		// candidate, so defer the call-graph walk until after checking and only
+		// run it when there is something to filter.
+		tc.defer_ierror_gating = tc.diagnostic_files.len > 0
+		tc.selected_file_called_fns = map[string]bool{}
+		tc.selected_file_worklist = []string{}
 		tc.check_export_attrs()
 		items := tc.collect_parallel_check_items()
 		was_parallel := tc.run_parallel_check(items)
-		if cf_spawned {
-			C.pthread_join(cf_tid[0], unsafe { nil })
-			tc.selected_file_called_fns = cf_worker.selected_file_called_fns.move()
-			tc.merge_called_fns_worker(cf_worker)
-			cf_worker.free_parallel_check_worker_cache()
-			tc.filter_pending_ierror_errors()
+		if tc.defer_ierror_gating {
+			if tc.pending_ierror_errors.len > 0 {
+				tc.collect_selected_file_called_fns()
+			}
+			if tc.filter_pending_ierror_errors() {
+				tc.sort_parallel_check_errors()
+			}
 			tc.defer_ierror_gating = false
-			tc.sort_parallel_check_errors()
 		}
 		tc.restore_type_cache_base()
 		return was_parallel
 	}
 }
 
-// merge_called_fns_worker replays the collector thread's sparse cache entries
-// into the master with first-writer-loses semantics: the collector ran
-// logically FIRST (before const/decl pre-checks and the fn body checks), so
-// any slot already filled by those later phases keeps its value, exactly as
-// their direct writes would have overwritten the collector's in the old
-// serial order. Slots only the collector touched (e.g. top-level script
-// statements) take its value.
-fn (mut tc TypeChecker) merge_called_fns_worker(w &TypeChecker) {
-	tc.errors << w.errors
-	for idx, name in w.sparse_resolved_call_names {
-		if !tc.resolved_call_set[idx] {
-			tc.resolved_call_names[idx] = name
-			tc.resolved_call_set[idx] = true
-		}
-	}
-	for idx, name in w.sparse_resolved_fn_values {
-		if !tc.resolved_fn_value_set[idx] {
-			tc.resolved_fn_value_names[idx] = name
-			tc.resolved_fn_value_set[idx] = true
-		}
-	}
-	for idx, _ in w.sparse_statement_nodes {
-		tc.statement_nodes[idx] = true
-	}
-	for idx, typ in w.sparse_expr_type_values {
-		if !tc.expr_type_set[idx] {
-			tc.expr_type_values[idx] = typ
-			tc.expr_type_set[idx] = true
-		}
-	}
-}
-
-fn (mut tc TypeChecker) filter_pending_ierror_errors() {
+fn (mut tc TypeChecker) filter_pending_ierror_errors() bool {
+	mut added := false
 	for p in tc.pending_ierror_errors {
 		if p.fn_qname in tc.selected_file_called_fns {
 			tc.errors << p.err
+			added = true
 		}
 	}
 	tc.pending_ierror_errors = []PendingIerrorError{}
+	return added
 }
 
 fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
@@ -542,6 +483,9 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.smartcasts = map[string]Type{}
 	w.cur_fn_ret_type = Type(void_)
 	w.cur_fn_node_id = -1
+	$if ownership ? {
+		w.ownership_fork_for_parallel_check(tc)
+	}
 	w.type_cache = &TypeCache{
 		// The master's frozen pre-region cache (the overlay's base) is shared
 		// read-only across all forks; each fork writes to its own maps.
@@ -568,6 +512,9 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 	tc.errors << w.errors
 	tc.pending_ierror_errors << w.pending_ierror_errors
+	$if ownership ? {
+		tc.ownership_merge_parallel_check_worker(w)
+	}
 	for idx, name in w.sparse_resolved_call_names {
 		tc.resolved_call_names[idx] = name
 		tc.resolved_call_set[idx] = true

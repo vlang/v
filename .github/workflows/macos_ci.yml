@@ -48,6 +48,12 @@ jobs:
             brew-${{ matrix.os }}-
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: Legacy gg import multiwindow isolation
+        run: ./v test vlib/gg/legacy_import_multiwindow_isolation_test.v
+      - name: Multiwindow Metal smoke
+        run: ./v -d gg_multiwindow -d sokol_metal test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v
+      - name: Compile gg multiwindow example with Metal
+        run: ./v -d gg_multiwindow -d sokol_metal -o /tmp/gg_multiwindow_metal examples/gg/multiwindow.v
       - name: Test symlink
         run: v run ci/macos_ci.vsh test_symlink
       - name: v doctor

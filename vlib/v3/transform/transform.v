@@ -109,6 +109,10 @@ mut:
 	generic_unresolved_cache     &GenericUnresolvedCache = unsafe { nil }
 	struct_field_type_cache      &LookupCache            = unsafe { nil }
 	variant_short_name_cache     &LookupCache            = unsafe { nil }
+	call_param_types_decl_cache  map[string][]types.Type
+	call_param_types_decl_misses map[string]bool
+	call_param_types_decl_index  map[string]FnParamDeclRef
+	call_param_types_index_ready bool
 	used_fns                     map[string]bool
 	// sum_eq_types records sum types whose deep-equality helper fn
 	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
@@ -135,6 +139,9 @@ mut:
 	// sequences to index 0). Empty for struct-generic specialization, which keeps
 	// the legacy positional behaviour.
 	active_generic_params []string
+	// cloning_comptime_for_depth > 0 while a generic clone descends into a `$for` body: nested
+	// generic calls there must not be specialized (the loop var members are not resolved yet).
+	cloning_comptime_for_depth int
 	// escaping_amp_ptrs holds the names of pointer locals `p` declared as `p := &v`
 	// (v a value local) whose pointer escapes the function (is returned). V semantics
 	// auto-heap such a `v`; v3 otherwise takes the address of a stack local that dies
@@ -264,6 +271,12 @@ struct GenericFnDecl {
 struct GenericCallSpec {
 	decl_key string
 	args     []string
+}
+
+struct FnParamDeclRef {
+	idx    int
+	file   string
+	module string
 }
 
 // --- entry point ---
@@ -484,6 +497,9 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		generic_receiver_methods_by_name: map[string][]string{}
 		generic_call_spec_cache:          map[int]GenericCallSpec{}
 		generic_call_spec_misses:         map[int]bool{}
+		call_param_types_decl_cache:      map[string][]types.Type{}
+		call_param_types_decl_misses:     map[string]bool{}
+		call_param_types_decl_index:      map[string]FnParamDeclRef{}
 		sum_variant_names:                map[string]bool{}
 		used_fns:                         used_fns.clone()
 		interface_boxed_types:            map[string]bool{}
@@ -1442,6 +1458,10 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
 	w.generic_call_spec_misses = map[int]bool{}
+	w.call_param_types_decl_cache = map[string][]types.Type{}
+	w.call_param_types_decl_misses = map[string]bool{}
+	w.call_param_types_decl_index = map[string]FnParamDeclRef{}
+	w.call_param_types_index_ready = false
 	w.node_module_map_cache = []string{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
@@ -3054,6 +3074,9 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 		}
 		.comptime_if {
 			return t.transform_comptime_if_stmt(id, node)
+		}
+		.comptime_for {
+			return t.expand_comptime_for(id, node)
 		}
 		.if_expr {
 			return t.transform_if_stmt(id, node)
@@ -5923,6 +5946,12 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 		'$array' {
 			return normalized.starts_with('[]') || transform_type_text_is_fixed_array(normalized)
 		}
+		'$array_dynamic' {
+			return normalized.starts_with('[]')
+		}
+		'$array_fixed' {
+			return transform_type_text_is_fixed_array(normalized)
+		}
 		'$map' {
 			return normalized.starts_with('map[')
 		}
@@ -5931,6 +5960,15 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 		}
 		'$option' {
 			return normalized.starts_with('?')
+		}
+		'$shared' {
+			return normalized.starts_with('shared ')
+		}
+		'$pointer' {
+			return normalized.starts_with('&')
+		}
+		'$voidptr' {
+			return normalized == 'voidptr'
 		}
 		'$int' {
 			if typ := types.builtin_type(normalized) {
@@ -7509,6 +7547,12 @@ fn (mut t Transformer) transform_amp_optional_unwrap(node flat.Node, child flat.
 	source_id := t.a.child(&child, 0)
 	body_id := t.a.child(&child, 1)
 	mut source_type := t.optional_result_expr_type_name(source_id)
+	if !t.is_optional_type_name(source_type) {
+		source_type = t.original_expr_type(source_id)
+	}
+	if !t.is_optional_type_name(source_type) {
+		source_type = t.raw_expr_type_without_smartcast(source_id)
+	}
 	mut use_plain_source := false
 	if t.expr_has_option_unwrap_smartcast(source_id) {
 		mut raw_source_type := t.raw_expr_type_without_smartcast(source_id)
@@ -7544,6 +7588,9 @@ fn (mut t Transformer) transform_amp_optional_unwrap(node flat.Node, child flat.
 		t.make_plain_expr_for_smartcast(source_id)
 	} else {
 		t.transform_expr(source_id)
+	}
+	if use_plain_source {
+		t.set_node_typ(int(source), source_type)
 	}
 	source_actual_type := t.node_type(source)
 	if source_actual_type.len > 0 && !t.is_optional_type_name(source_actual_type) {
@@ -7660,7 +7707,8 @@ fn (t &Transformer) raw_selector_type_without_smartcast(id flat.NodeId) string {
 	if base_type.len == 0 {
 		base_type = t.original_expr_type(base_id)
 	}
-	if ftyp := t.lookup_struct_field_type(base_type, node.value) {
+	clean_base_type := t.trim_pointer_type(base_type)
+	if ftyp := t.lookup_struct_field_type(clean_base_type, node.value) {
 		return ftyp
 	}
 	return t.normalize_type_alias(node.typ)

@@ -232,6 +232,30 @@ fn main() {
 	assert run.output.trim_space() == 'ok'
 }
 
+fn test_primitive_alias_chains_stringify_without_alias_wrapper() {
+	v3_bin := string_interp_build_v3()
+	src := "type A = string
+type B = A
+type I = int
+type J = I
+type Truth = bool
+type Toggle = Truth
+
+fn main() {
+	println(B('x'))
+	println(J(7))
+	println(Toggle(true))
+}
+"
+	bin := os.join_path(os.temp_dir(), 'v3_primitive_alias_chain_str_${os.getpid()}')
+	compile := compile_v3_input(v3_bin, 'v3_primitive_alias_chain_str', src, bin)
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'x\n7\ntrue'
+}
+
 fn test_string_plus_does_not_stringify_non_strings() {
 	v3_bin := string_interp_build_v3()
 	int_bin := os.join_path(os.temp_dir(), 'v3_string_plus_int_negative_${os.getpid()}')

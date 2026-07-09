@@ -1447,6 +1447,7 @@ fn (mut t Transformer) generated_fn_used_names(decl GenericFnDecl, clone_id flat
 	qname := transform_qualified_fn_name(decl.module, clone.value)
 	mut names := [clone.value, qname, c_name(clone.value), c_name(qname)]
 	names << specialized_generic_fn_signature_aliases(decl, args)
+	t.record_generic_specialization_args_for_names(names, args)
 	old_module := t.cur_module
 	old_file := t.cur_file
 	t.cur_module = decl.module
@@ -3001,6 +3002,11 @@ fn (mut t Transformer) specialized_plain_generic_call_args(node flat.Node, decl 
 		return none
 	}
 	params := t.generic_fn_param_names(decl.node, decl.module)
+	if recorded := t.recorded_generic_specialization_args(callee.value) {
+		if recorded.len == params.len {
+			return recorded.clone()
+		}
+	}
 	if params.len != 1 {
 		return none
 	}
@@ -3105,7 +3111,7 @@ fn (t &Transformer) generic_resolved_call_decl_key(resolved string, callee flat.
 }
 
 fn (t &Transformer) resolved_generic_decl_matches_callee_receiver(callee flat.Node, node flat.Node, decl GenericFnDecl, module_name string) bool {
-	if !decl.node.value.contains('.') {
+	if !t.generic_decl_is_receiver_method(decl.node) {
 		return true
 	}
 	mut base_id := flat.empty_node
@@ -3237,7 +3243,7 @@ fn (t &Transformer) generic_call_arg_count_matches_decl(node flat.Node, decl Gen
 	// offsets the receiver param (actual == children_count). The ident-lowered form
 	// (`Type.method(recv, args)`) carries the receiver as a real child, so
 	// children = [callee, recv, args...] and actual == children_count - 1.
-	is_receiver := decl.node.value.contains('.')
+	is_receiver := t.generic_decl_is_receiver_method(decl.node)
 		&& !t.generic_call_is_static_assoc_selector(node, decl)
 	actual_args := t.generic_call_effective_arg_count(node)
 	actual := if is_receiver && t.call_is_selector_form(node) {
@@ -4298,11 +4304,40 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			}
 		}
 	}
+	// Calls nested inside a `$for` body must not be specialized during the clone: the loop
+	// variable's members are not resolved yet, so mono would infer a garbage type argument and
+	// emit an uncalled, uncompilable specialization. The comptime unroll (or its skip) handles
+	// them later against the concrete field types.
+	is_comptime_for := node.kind == .comptime_for
+	if is_comptime_for {
+		t.cloning_comptime_for_depth++
+	}
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		children << t.clone_generic_node(t.a.child(&node, i), args)
 	}
+	if is_comptime_for {
+		t.cloning_comptime_for_depth--
+	}
 	cloned_typ := t.resolve_substituted_type_text(t.subst_type(node.typ, args))
+	if t.cloning_comptime_for_depth > 0 {
+		// Inside a `$for` body: clone verbatim, no generic-call retargeting.
+		start2 := t.a.children.len
+		for child in children {
+			t.a.children << child
+		}
+		return t.a.add_node(flat.Node{
+			kind:           node.kind
+			kind_id:        node.kind_id
+			op:             node.op
+			pos:            node.pos
+			children_start: start2
+			children_count: flat.child_count(children.len)
+			typ:            cloned_typ
+			value:          t.subst_node_value(node, args)
+			is_mut:         node.is_mut
+		})
+	}
 	t.retarget_cloned_new_map_call(node, mut children, cloned_typ)
 	retargeted_typ := t.retarget_cloned_generic_call(node, mut children, args)
 	final_typ := if retargeted_typ.len > 0 { retargeted_typ } else { cloned_typ }
@@ -4871,7 +4906,24 @@ fn generic_fn_decl_base_value(value string) string {
 }
 
 fn (t &Transformer) generic_decl_is_receiver_method(node flat.Node) bool {
-	return node.value.contains('.')
+	if !node.value.contains('.') || node.children_count == 0 {
+		return false
+	}
+	first := t.a.child_node(&node, 0)
+	if first.kind != .param || first.typ.len == 0 {
+		return false
+	}
+	mut first_type := first.typ.trim_space()
+	if first_type.starts_with('mut ') {
+		first_type = first_type[4..].trim_space()
+	}
+	if first_type.starts_with('&') {
+		first_type = first_type[1..].trim_space()
+	}
+	method_name := generic_fn_decl_base_value(node.value)
+	clean_first := t.normalize_type_alias(first_type)
+	return receiver_param_matches_method_name(clean_first, method_name)
+		|| receiver_param_matches_method_name(first_type, method_name)
 }
 
 fn (mut t Transformer) generic_decl_has_method_level_params(decl GenericFnDecl) bool {
@@ -5630,6 +5682,18 @@ fn (mut t Transformer) record_generic_specialization_args_in_module(base string,
 	}
 }
 
+fn (mut t Transformer) record_generic_specialization_args_for_names(names []string, args []string) {
+	if args.len == 0 || t.generic_args_have_placeholders(args) {
+		return
+	}
+	recorded_args := t.canonical_generic_specialization_args(args)
+	for name in names {
+		if name.len > 0 && name !in t.generic_specialization_args {
+			t.generic_specialization_args[name] = recorded_args.clone()
+		}
+	}
+}
+
 fn (t &Transformer) canonical_generic_specialization_args(args []string) []string {
 	mut out := []string{cap: args.len}
 	for arg in args {
@@ -5890,6 +5954,12 @@ fn generic_type_arg_from_suffix(suffix string) string {
 	clean := suffix.trim_space()
 	if clean.len == 0 {
 		return ''
+	}
+	if clean.starts_with('ptr_') {
+		inner := generic_type_arg_from_suffix(clean['ptr_'.len..])
+		if inner.len > 0 {
+			return '&${inner}'
+		}
 	}
 	return match clean {
 		'v_int' { 'int' }
