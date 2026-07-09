@@ -680,7 +680,7 @@ fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	if !is_void {
 		ret_type := g.tc.parse_type(ret_name)
 		if ret_type is types.OptionType || ret_type is types.ResultType {
-			return g.ensure_thread_optional_arr_wait_fn(ret_name, ret_type)
+			return g.ensure_thread_optional_arr_wait_fn(ret_type)
 		}
 	}
 	// Match the ABI return type the spawn wrapper stores (gen_spawn_expr): an
@@ -704,9 +704,9 @@ fn (mut g FlatGen) ensure_thread_arr_wait_fn(ret_name string) string {
 	return name
 }
 
-fn (mut g FlatGen) ensure_thread_optional_arr_wait_fn(ret_name string, ret_type types.Type) string {
+fn (mut g FlatGen) ensure_thread_optional_arr_wait_fn(ret_type types.Type) string {
 	ret_ct := g.fn_return_type_name(ret_type)
-	key := 'threadwait_optional|${ret_ct}|${ret_name}'
+	key := 'threadwait_optional|${ret_ct}'
 	if name := g.spawn_wrapper_names[key] {
 		return name
 	}
