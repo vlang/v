@@ -4322,7 +4322,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		if is_comptime_for {
 			t.cloning_comptime_for_depth--
 		}
-		cloned_typ := t.resolve_substituted_type_text(t.subst_type(node.typ, args))
+		mut cloned_typ := t.resolve_substituted_type_text(t.subst_type(node.typ, args))
 		t.substitute_cloned_generic_call_type_args(node, mut children, args)
 		if t.cloning_comptime_for_depth > 0 {
 		// Inside a `$for` body: clone verbatim, no generic-call retargeting.
@@ -4342,6 +4342,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			is_mut:         node.is_mut
 		})
 	}
+	cloned_typ = t.retarget_cloned_map_key_storage_type(node, mut children, cloned_typ)
 	t.retarget_cloned_new_map_call(node, mut children, cloned_typ)
 	retargeted_typ := t.retarget_cloned_generic_call(node, mut children, args)
 	final_typ := if retargeted_typ.len > 0 { retargeted_typ } else { cloned_typ }
@@ -4506,11 +4507,44 @@ fn (mut t Transformer) retarget_cloned_new_map_call(node flat.Node, mut children
 	if key_type.len == 0 {
 		return
 	}
-	hash_fn, eq_fn, clone_fn, free_fn := map_callback_names(key_type)
+	key_storage_type := t.map_key_storage_type(key_type)
+	children[1] = t.make_sizeof_type(key_storage_type)
+	hash_fn, eq_fn, clone_fn, free_fn := map_callback_names(key_storage_type)
 	children[3] = t.make_ident(hash_fn)
 	children[4] = t.make_ident(eq_fn)
 	children[5] = t.make_ident(clone_fn)
 	children[6] = t.make_ident(free_fn)
+}
+
+fn (mut t Transformer) retarget_cloned_map_key_storage_type(node flat.Node, mut children []flat.NodeId, cloned_typ string) string {
+	if cloned_typ.len == 0 {
+		return cloned_typ
+	}
+	mut name := ''
+	if node.kind == .ident {
+		name = node.value
+	} else if node.kind == .decl_assign && children.len > 0 {
+		lhs := t.a.nodes[int(children[0])]
+		if lhs.kind == .ident {
+			name = lhs.value
+		}
+	}
+	if !is_lowered_map_key_temp_name(name) {
+		return cloned_typ
+	}
+	key_storage_type := t.map_key_storage_type(cloned_typ)
+	if key_storage_type.len == 0 || key_storage_type == cloned_typ {
+		return cloned_typ
+	}
+	if node.kind == .decl_assign && children.len > 0 {
+		t.set_node_typ(int(children[0]), key_storage_type)
+	}
+	t.set_var_type(name, key_storage_type)
+	return key_storage_type
+}
+
+fn is_lowered_map_key_temp_name(name string) bool {
+	return name.starts_with('__map_key_') || name.starts_with('__map_eq_key_')
 }
 
 fn (mut t Transformer) retarget_cloned_generic_call(node flat.Node, mut children []flat.NodeId, args []string) string {
