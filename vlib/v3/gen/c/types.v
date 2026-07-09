@@ -19,6 +19,13 @@ fn (g &FlatGen) enum_backing_storage_c_type(backing string) string {
 	return g.tc.c_type(g.tc.parse_type(backing))
 }
 
+fn (g &FlatGen) enum_emit_storage_c_type(enum_name string, backing string) string {
+	if info := g.enum_backing_info(enum_name) {
+		return info.storage_c_type
+	}
+	return g.enum_backing_storage_c_type(backing)
+}
+
 fn (mut g FlatGen) register_enum_backing_info(enum_name string, backing string) {
 	info := EnumBackingInfo{
 		c_name:         g.cname(enum_name)
@@ -421,7 +428,7 @@ fn (mut g FlatGen) enum_decls() {
 					emitted[cn] = true
 					is_flag := enum_decl_is_flag(node)
 					if backing := enum_decl_backing_type(node) {
-						storage_ct := g.enum_backing_storage_c_type(backing)
+						storage_ct := g.enum_emit_storage_c_type(name, backing)
 						g.writeln('typedef ${storage_ct} ${cn};')
 						if is_flag {
 							mut val := 0
@@ -541,9 +548,9 @@ fn (mut g FlatGen) enum_str_defs() {
 					// `[flag]` enum: a value can combine several bits, so build the V
 					// `Enum{.a | .b}` form by testing each field bit instead of matching a
 					// single case (which would send any combination to the integer path).
-					g.emit_flag_enum_autostr(node, cn)
+					g.emit_flag_enum_autostr(node, name, cn)
 				} else if backing := enum_decl_backing_type(node) {
-					storage_ct := g.enum_backing_storage_c_type(backing)
+					storage_ct := g.enum_emit_storage_c_type(name, backing)
 					g.writeln('string ${cn}__autostr(${cn} it) {')
 					for i in 0 .. node.children_count {
 						f := g.a.child_node(&node, i)
@@ -592,11 +599,11 @@ fn (mut g FlatGen) enum_str_defs() {
 // emit_flag_enum_autostr emits the `<Enum>__autostr` helper for a `[flag]` enum.
 // Matching V, a combined value is rendered as `Enum{.a | .b}` by testing each
 // field's bit; `Enum(0)` renders as `Enum{}`.
-fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, cn string) {
+fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, name string, cn string) {
 	short := node.value.all_after_last('.')
 	mut storage_ct := 'int'
 	if backing := enum_decl_backing_type(node) {
-		storage_ct = g.enum_backing_storage_c_type(backing)
+		storage_ct = g.enum_emit_storage_c_type(name, backing)
 	}
 	g.writeln('string ${cn}__autostr(${cn} it) {')
 	g.writeln('\t${storage_ct} __fe_v = (${storage_ct})it;')
