@@ -52,6 +52,17 @@ fn (t &Transformer) enum_from_string_members(info EnumFromStringInfo) []EnumValu
 	return fallback
 }
 
+fn (mut t Transformer) enum_from_string_member_value(info EnumFromStringInfo, member EnumValueMeta) flat.NodeId {
+	if t.is_flag_enum_type(info.enum_type) && t.flag_enum_has_backing_type(info.enum_type) {
+		return t.a.add_node(flat.Node{
+			kind:  .enum_val
+			value: '${info.enum_type}.${member.name}'
+			typ:   info.enum_type
+		})
+	}
+	return t.make_int_literal_typed(member.value.str(), info.enum_type)
+}
+
 // optional_base_type supports optional base type handling for Transformer.
 fn (t &Transformer) optional_base_type(typ string) string {
 	if typ.len > 1 && (typ[0] == `?` || typ[0] == `!`) {
@@ -571,8 +582,8 @@ fn (mut t Transformer) transform_enum_from_string_or_expr(id flat.NodeId, node f
 	for i := members.len - 1; i >= 0; i-- {
 		cond := t.make_call_typed('string__eq', arr2(t.make_ident(str_name),
 			t.make_string_literal(members[i].name)), 'bool')
-		assign := t.make_assign(t.make_ident(val_name), t.make_int_literal_typed(members[i].value.str(),
-			info.enum_type))
+		assign := t.make_assign(t.make_ident(val_name), t.enum_from_string_member_value(info,
+			members[i]))
 		then_block := t.make_block(arr1(assign))
 		else_block = t.make_if(cond, then_block, else_block)
 	}
@@ -608,8 +619,8 @@ fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _nod
 	for i := members.len - 1; i >= 0; i-- {
 		cond := t.make_call_typed('string__eq', arr2(t.make_ident(str_name),
 			t.make_string_literal(members[i].name)), 'bool')
-		assign_val := t.make_assign(t.make_ident(val_name), t.make_int_literal_typed(members[i].value.str(),
-			info.enum_type))
+		assign_val := t.make_assign(t.make_ident(val_name), t.enum_from_string_member_value(info,
+			members[i]))
 		assign_ok := t.make_assign(t.make_ident(ok_name), t.make_bool_literal(true))
 		then_block := t.make_block(arr2(assign_val, assign_ok))
 		else_block = t.make_if(cond, then_block, else_block)

@@ -4938,13 +4938,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			child_id := g.a.child(&node, 0)
 			child := g.a.nodes[int(child_id)]
 			if node.value == 'shared' {
-				if child.kind == .ident && g.local_storage_is_shared(child.value) {
-					g.write(g.cname(child.value))
-					return
-				}
-				if g.gen_shared_storage_expr(child_id) {
-					return
-				}
 				g.gen_expr(child_id)
 				return
 			}

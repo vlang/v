@@ -10916,6 +10916,17 @@ fn (tc &TypeChecker) expr_is_shared_arg(id flat.NodeId) bool {
 	return tc.cur_scope.nearest_binding_owned_by(node.value, owner)
 }
 
+fn (tc &TypeChecker) expr_is_explicit_shared_arg(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.expr_is_explicit_shared_arg(tc.a.child(&node, 0))
+	}
+	return node.kind == .prefix && node.value == 'shared' && node.children_count > 0
+}
+
 fn (tc &TypeChecker) selector_is_shared_arg(node flat.Node) bool {
 	if node.children_count == 0 || node.value.len == 0 {
 		return false
@@ -11164,10 +11175,19 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		} else {
 			actual = tc.resolve_expr(arg_id, expected)
 		}
-		if call_param_is_shared(info, param_idx) && !tc.expr_is_shared_arg(arg_id) {
+		param_is_shared := call_param_is_shared(info, param_idx)
+		if param_is_shared && !tc.expr_is_shared_arg(arg_id) {
 			if tc.should_diagnose(id) {
 				tc.record_error(.call_arg_mismatch, 'cannot use non-shared `${actual.name()}` as argument ${
 					param_idx + 1} to `${tc.call_display_name(node)}`; expected `shared ${expected.name()}`',
+					id)
+			}
+			continue
+		}
+		if !param_is_shared && tc.expr_is_explicit_shared_arg(arg_id) {
+			if tc.should_diagnose(id) {
+				tc.record_error(.call_arg_mismatch, 'cannot use explicit shared argument `${actual.name()}` as argument ${
+					param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected.name()}`',
 					id)
 			}
 			continue
