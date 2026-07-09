@@ -11192,6 +11192,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
+		if info.name == 'chan.try_pop' && param_idx == 1
+			&& !tc.chan_try_pop_destination_is_valid(arg_id, actual) {
+			if tc.should_diagnose(id) {
+				tc.record_error(.call_arg_mismatch,
+					'channel try_pop destination must be a mutable lvalue or pointer', id)
+			}
+			continue
+		}
 		if !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected) {
 			if json_encode_accepts_arg(info.name, param_idx, expected, actual) {
@@ -11217,6 +11225,27 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				id)
 		}
 	}
+}
+
+fn (tc &TypeChecker) chan_try_pop_destination_is_valid(arg_id flat.NodeId, actual Type) bool {
+	if int(arg_id) < 0 || int(arg_id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(arg_id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.chan_try_pop_destination_is_valid(tc.a.child(&node, 0), actual)
+	}
+	if node.kind == .prefix && node.op == .amp {
+		if node.children_count == 0 {
+			return false
+		}
+		child_id := tc.a.child(&node, 0)
+		return tc.expr_can_take_address(child_id) && tc.expr_root_is_mutable_lvalue(child_id)
+	}
+	if actual is Pointer {
+		return true
+	}
+	return tc.expr_can_take_address(arg_id) && tc.expr_root_is_mutable_lvalue(arg_id)
 }
 
 fn json_encode_accepts_arg(name string, param_idx int, expected Type, actual Type) bool {
