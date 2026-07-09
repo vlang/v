@@ -556,6 +556,40 @@ INT vschannel_h2_connect(TlsContext *tls_ctx, INT iport, LPWSTR host) {
 	return 0;
 }
 
+// vschannel_set_io_timeouts bounds how long vschannel_read()/vschannel_write()
+// may block in recv()/send() on the underlying socket. Independent Winsock
+// socket options, set once after connecting and never touched again -- unlike
+// mbedTLS/OpenSSL's shared read-timeout duration field (reused for both
+// directions' internal retry loops), SO_RCVTIMEO and SO_SNDTIMEO are separate
+// knobs, so no widen-then-restore dance is needed around individual calls. A
+// timed-out recv()/send() returns SOCKET_ERROR with WSAGetLastError() ==
+// WSAETIMEDOUT, exactly like any other socket error -- callers distinguish it
+// via vschannel_last_error() after a negative return, same as every other
+// vschannel_read()/vschannel_write() failure.
+void vschannel_set_io_timeouts(TlsContext *tls_ctx, DWORD recv_timeout_ms, DWORD send_timeout_ms) {
+	setsockopt(tls_ctx->socket, SOL_SOCKET, SO_RCVTIMEO, (const char *)&recv_timeout_ms, sizeof(recv_timeout_ms));
+	setsockopt(tls_ctx->socket, SOL_SOCKET, SO_SNDTIMEO, (const char *)&send_timeout_ms, sizeof(send_timeout_ms));
+}
+
+// vschannel_wait_writable waits up to timeout_ms for the underlying socket to
+// become writable. Pure raw-socket select() -- never touches TLS/SSPI state --
+// so it is safe to call without holding any lock that guards concurrent
+// access to the TLS context itself. Returns 1 if writable, 0 on timeout, -1 on
+// error.
+INT vschannel_wait_writable(TlsContext *tls_ctx, INT timeout_ms) {
+	fd_set write_set;
+	struct timeval tv;
+	FD_ZERO(&write_set);
+	FD_SET(tls_ctx->socket, &write_set);
+	tv.tv_sec = timeout_ms / 1000;
+	tv.tv_usec = (timeout_ms % 1000) * 1000;
+	int n = select(0, NULL, &write_set, NULL, &tv);
+	if(n == SOCKET_ERROR) {
+		return -1;
+	}
+	return n > 0 ? 1 : 0;
+}
+
 // vschannel_write encrypts and sends `len` application bytes over the open
 // connection, chunked to the negotiated maximum record size. Returns the number
 // of bytes consumed (== len) on success, or -1 on error.
