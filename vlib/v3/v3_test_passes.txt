@@ -922,6 +922,7 @@ vlib/v/tests/enums/enum_allow_multiple_values_match_test.v
 vlib/v/tests/enums/enum_array_field_test.v
 vlib/v/tests/enums/enum_array_init_test.v
 vlib/v/tests/enums/enum_attr_2_test.v
+vlib/v/tests/enums/enum_bitfield_64bit_test.v
 vlib/v/tests/enums/enum_bitfield_test.v
 vlib/v/tests/enums/enum_bitfield_works_with_comptime_conditional_in_the_same_scope_test.v
 vlib/v/tests/enums/enum_custom_static_from_string_test.v

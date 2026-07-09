@@ -677,7 +677,6 @@ vlib/v/tests/defer/scoped_defer_test.v
 vlib/v/tests/empty_array_push_test.v
 vlib/v/tests/enums/enum_assign_on_anon_fn_test.v
 vlib/v/tests/enums/enum_attr_test.v
-vlib/v/tests/enums/enum_bitfield_64bit_test.v
 vlib/v/tests/enums/enum_explicit_size_big_and_small_test.v
 vlib/v/tests/enums/enum_from_generic_static_call_test.v
 vlib/v/tests/enums/enum_from_generic_static_method_test.v

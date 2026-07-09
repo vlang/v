@@ -443,6 +443,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		str_lit_ids:                    g.str_lit_ids.clone()
 		global_types:                   g.global_types
 		enum_vals:                      g.enum_vals
+		enum_value_exprs:               g.enum_value_exprs
 		interfaces:                     g.interfaces
 		const_vals:                     g.const_vals
 		const_modules:                  g.const_modules

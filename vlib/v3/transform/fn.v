@@ -3271,6 +3271,29 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 				'string')
 		}
 	}
+	if base_format := zero_padded_integer_base_format(format) {
+		converted := if clean_typ in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+			arg := if clean_typ == 'u64' {
+				expr
+			} else {
+				t.make_cast('u64', expr, 'u64')
+			}
+			t.make_call_typed('strconv__format_uint', arr2(arg, t.make_int_literal(base_format.base)),
+				'string')
+		} else if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize'] {
+			arg := if clean_typ == 'i64' {
+				expr
+			} else {
+				t.make_cast('i64', expr, 'i64')
+			}
+			t.make_call_typed('strconv__format_int', arr2(arg, t.make_int_literal(base_format.base)),
+				'string')
+		} else {
+			t.wrap_string_conversion(expr, typ)
+		}
+		return t.make_call_typed('v3_string_zpad', arr2(converted, t.make_int_literal(base_format.width)),
+			'string')
+	}
 	if width := zero_padded_decimal_width(format) {
 		if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
 			'u32', 'u64'] {
@@ -3373,6 +3396,9 @@ fn fixed_decimal_format(format string) ?FixedDecimalFormat {
 
 fn integer_format_base(format string) ?int {
 	match format {
+		'b' {
+			return 2
+		}
 		'x' {
 			return 16
 		}
@@ -3390,6 +3416,7 @@ fn integer_format_base_suffix(format string) ?int {
 		return none
 	}
 	match format[format.len - 1] {
+		`b` { return 2 }
 		`x` { return 16 }
 		`o` { return 8 }
 		else {}
@@ -3422,10 +3449,43 @@ fn static_format_width(format string) ?int {
 	if i == format.len {
 		return sign * width
 	}
-	if i == format.len - 1 && format[i] in [`s`, `d`, `x`, `o`, `p`] {
+	if i == format.len - 1 && format[i] in [`s`, `d`, `b`, `x`, `o`, `p`] {
 		return sign * width
 	}
 	return none
+}
+
+struct ZeroPaddedIntegerBaseFormat {
+	width int
+	base  int
+}
+
+fn zero_padded_integer_base_format(format string) ?ZeroPaddedIntegerBaseFormat {
+	if format.len < 3 || format[0] != `0` {
+		return none
+	}
+	end := format.len - 1
+	base := match format[end] {
+		`b` { 2 }
+		`x` { 16 }
+		`o` { 8 }
+		else { return none }
+	}
+	mut width := 0
+	for i in 1 .. end {
+		ch := format[i]
+		if ch < `0` || ch > `9` {
+			return none
+		}
+		width = width * 10 + int(ch - `0`)
+	}
+	if width <= 0 {
+		return none
+	}
+	return ZeroPaddedIntegerBaseFormat{
+		width: width
+		base:  base
+	}
 }
 
 fn zero_padded_decimal_width(format string) ?int {

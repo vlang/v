@@ -763,8 +763,8 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 		return
 	}
 	if clean_typ is types.Enum {
-		if val := g.enum_default_value_for_type(clean_typ.name) {
-			g.write('${val}')
+		if expr := g.enum_default_value_expr_for_type(clean_typ.name) {
+			g.write(expr)
 		} else {
 			g.write('0')
 		}
@@ -805,15 +805,15 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 	g.write('(${ct}){0}')
 }
 
-fn (g &FlatGen) enum_default_value_for_type(type_name string) ?int {
+fn (g &FlatGen) enum_default_value_expr_for_type(type_name string) ?string {
 	fields := g.enum_fields_for_type(type_name) or { return none }
 	if fields.len == 0 {
 		return none
 	}
-	if val := g.enum_value_for_type(type_name, fields[0]) {
-		return val
+	if expr := g.enum_value_expr_for_type(type_name, fields[0]) {
+		return expr
 	}
-	return 0
+	return '0'
 }
 
 fn (g &FlatGen) enum_fields_for_type(type_name string) ?[]string {

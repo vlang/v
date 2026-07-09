@@ -46,6 +46,7 @@ mut:
 	str_lit_ids                    map[string]int
 	global_types                   map[string]types.Type
 	enum_vals                      map[string]int
+	enum_value_exprs               map[string]string
 	defers                         []flat.NodeId
 	fn_defers                      []flat.NodeId
 	fn_defer_counts                map[int]string
@@ -370,6 +371,7 @@ pub fn FlatGen.new() FlatGen {
 		str_lit_ids:                    map[string]int{}
 		global_types:                   map[string]types.Type{}
 		enum_vals:                      map[string]int{}
+		enum_value_exprs:               map[string]string{}
 		interfaces:                     map[string][]string{}
 		const_vals:                     map[string]flat.NodeId{}
 		const_modules:                  map[string]string{}
@@ -493,6 +495,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.str_lit_ids = map[string]int{}
 	g.global_types = map[string]types.Type{}
 	g.enum_vals = map[string]int{}
+	g.enum_value_exprs = map[string]string{}
 	g.interfaces = map[string][]string{}
 	g.const_vals = map[string]flat.NodeId{}
 	g.const_modules = map[string]string{}
@@ -904,26 +907,32 @@ fn (mut g FlatGen) collect_gen_info() {
 				is_flag := enum_decl_is_flag(node)
 				mut val := 0
 				enum_name := qualify_name_in_module(cur_module, node.value)
-				if backing := enum_decl_backing_type(node) {
+				backing := enum_decl_backing_type(node) or { '' }
+				if backing.len > 0 {
 					g.register_enum_backing_info(enum_name, backing)
 				}
+				is_backed_flag := is_flag && backing.len > 0
 				for i in 0 .. node.children_count {
-				f := g.a.child_node(&node, i)
-				if f.children_count > 0 {
-					if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
-						val = enum_val
+					f := g.a.child_node(&node, i)
+					if f.children_count > 0 {
+						if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
+							val = enum_val
+						}
+					}
+					key := '${enum_name}.${f.value}'
+					if is_backed_flag {
+						g.enum_value_exprs[key] = '${g.cname(enum_name)}__${g.cname(f.value)}'
+						val++
+					} else if is_flag {
+						g.enum_vals[key] = 1 << val
+						val++
+					} else {
+						g.enum_vals[key] = val
+						val++
 					}
 				}
-				if is_flag {
-					g.enum_vals['${enum_name}.${f.value}'] = 1 << val
-					val++
-				} else {
-					g.enum_vals['${enum_name}.${f.value}'] = val
-					val++
-				}
+				continue
 			}
-			continue
-		}
 		if kind_id == 70 {
 			iface_name := qualify_name_in_module(cur_module, node.value)
 			g.interfaces[iface_name] = g.tc.interface_abstract_method_names(iface_name)
@@ -2551,6 +2560,54 @@ fn (g &FlatGen) enum_value_for_type(type_name string, field_name string) ?int {
 		if ok {
 			return found
 		}
+	}
+	return none
+}
+
+fn (g &FlatGen) enum_value_expr_for_key(key string) ?string {
+	if expr := g.enum_value_exprs[key] {
+		return expr
+	}
+	if val := g.enum_vals[key] {
+		return '${val}'
+	}
+	return none
+}
+
+fn (g &FlatGen) enum_value_expr_for_type(type_name string, field_name string) ?string {
+	if type_name.len == 0 || field_name.len == 0 {
+		return none
+	}
+	key := '${type_name}.${field_name}'
+	if expr := g.enum_value_exprs[key] {
+		return expr
+	}
+	if !type_name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module != 'main'
+		&& g.tc.cur_module != 'builtin' {
+		qkey := '${g.tc.cur_module}.${type_name}.${field_name}'
+		if expr := g.enum_value_exprs[qkey] {
+			return expr
+		}
+	}
+	if !type_name.contains('.') {
+		mut found := ''
+		mut ok := false
+		for ename, expr in g.enum_value_exprs {
+			if !ename.ends_with('.${type_name}.${field_name}') {
+				continue
+			}
+			if ok {
+				return none
+			}
+			found = expr
+			ok = true
+		}
+		if ok {
+			return found
+		}
+	}
+	if val := g.enum_value_for_type(type_name, field_name) {
+		return '${val}'
 	}
 	return none
 }
@@ -4716,33 +4773,36 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.enum_val {
-			if node.value in g.enum_vals {
-				eval := g.enum_vals[node.value]
-				g.write('${eval}')
+			if expr := g.enum_value_expr_for_key(node.value) {
+				g.write(expr)
 				return
 			}
 			if node.typ.len > 0 {
 				short_name := node.value.trim_left('.').all_after_last('.')
-				if eval := g.enum_value_for_type(node.typ, short_name) {
-					g.write('${eval}')
+				if expr := g.enum_value_expr_for_type(node.typ, short_name) {
+					g.write(expr)
 					return
 				}
 			}
 			if g.expected_enum.len > 0 {
 				ekey := '${g.expected_enum}.${node.value}'
-				if ekey in g.enum_vals {
-					eval := g.enum_vals[ekey]
-					g.write('${eval}')
+				if expr := g.enum_value_expr_for_key(ekey) {
+					g.write(expr)
 					return
 				}
 				if !g.expected_enum.contains('.') && g.tc.cur_module.len > 0
 					&& g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
 					qkey := '${g.tc.cur_module}.${g.expected_enum}.${node.value}'
-					if qkey in g.enum_vals {
-						eval := g.enum_vals[qkey]
-						g.write('${eval}')
+					if expr := g.enum_value_expr_for_key(qkey) {
+						g.write(expr)
 						return
 					}
+				}
+			}
+			for ename, expr in g.enum_value_exprs {
+				if ename.ends_with('.${node.value}') {
+					g.write(expr)
+					return
 				}
 			}
 			for ename, eval in g.enum_vals {
@@ -5117,8 +5177,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(c_winapi_wide_export_name(node.value))
 			} else if enum_selector_qbase.len > 0 {
 				ekey := '${enum_selector_qbase}.${node.value}'
-				if eval := g.enum_vals[ekey] {
-					g.write('${eval}')
+				if expr := g.enum_value_expr_for_key(ekey) {
+					g.write(expr)
 				} else {
 					g.write('0')
 				}
@@ -5235,12 +5295,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				if qname in g.tc.enum_names || base.value in g.tc.enum_names {
 					ekey := '${qname}.${node.value}'
 					ekey2 := '${base.value}.${node.value}'
-					if ekey in g.enum_vals {
-						eval := g.enum_vals[ekey]
-						g.write('${eval}')
-					} else if ekey2 in g.enum_vals {
-						eval := g.enum_vals[ekey2]
-						g.write('${eval}')
+					if expr := g.enum_value_expr_for_key(ekey) {
+						g.write(expr)
+					} else if expr := g.enum_value_expr_for_key(ekey2) {
+						g.write(expr)
 					} else {
 						g.write(g.cname('${qname}.${node.value}'))
 					}
@@ -8085,6 +8143,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline string v3_int_zpad(int n, int width) { string s = int__str(n); if (n < 0) return s; while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline string v3_i64_zpad(i64 n, int width) { string s = i64__str(n); if (n < 0) return s; while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline string v3_u64_zpad(u64 n, int width) { string s = u64__str(n); while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
+	g.writeln('static inline string v3_string_zpad(string s, int width) { while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline i64 v3_map_signed(void* p, int bytes) { if (bytes == 1) return *(signed char*)p; if (bytes == 2) return *(short*)p; if (bytes == 8) return *(long long*)p; return *(int*)p; }')
 	g.writeln('static inline u64 v3_map_unsigned(void* p, int bytes) { if (bytes == 1) return *(unsigned char*)p; if (bytes == 2) return *(unsigned short*)p; if (bytes == 8) return *(unsigned long long*)p; return *(unsigned int*)p; }')
 	g.writeln('static inline string v3_f32_array_str(float* vals, int n) { string out = v3_c_lit("[", 1); for (int i = 0; i < n; ++i) { if (i > 0) out = string__plus(out, v3_c_lit(", ", 2)); out = string__plus(out, f64__str((double)vals[i])); } return string__plus(out, v3_c_lit("]", 1)); }')

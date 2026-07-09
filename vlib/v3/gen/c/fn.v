@@ -7469,7 +7469,7 @@ fn (mut g FlatGen) gen_flag_enum_call(node flat.Node) {
 		}
 		'set_all' {
 			g.gen_expr(base_id)
-			g.write(' = ${g.flag_enum_mask(base_type.name())}')
+			g.write(' = ${g.flag_enum_mask_expr(base_type.name())}')
 		}
 		'clear_all' {
 			g.gen_expr(base_id)
@@ -7505,19 +7505,38 @@ fn (mut g FlatGen) gen_flag_enum_from_call(fn_node flat.Node, node flat.Node) bo
 	if enum_name.len == 0 {
 		return false
 	}
-	enum_type := types.Type(types.Enum{
+	enum_info := types.Enum{
 		name:    enum_name
 		is_flag: true
-	})
+	}
+	enum_type := types.Type(enum_info)
 	ct := g.optional_type_name(types.Type(types.OptionType{
 		base_type: enum_type
 	}))
 	value_ct := g.tc.c_type(enum_type)
-	mask := g.flag_enum_mask(enum_name)
+	storage_ct := g.enum_storage_c_type(enum_info)
+	mask := g.flag_enum_mask_expr(enum_name)
 	arg := g.expr_to_string(g.a.child(&node, 1))
 	tmp := g.tmp_name()
-	g.write('({ ${value_ct} ${tmp} = (${value_ct})(${arg}); (${ct}){.ok = (((int)${tmp} & ~(${mask})) == 0), .value = ${tmp}}; })')
+	g.write('({ ${value_ct} ${tmp} = (${value_ct})(${arg}); (${ct}){.ok = ((((${storage_ct})${tmp}) & ~((${storage_ct})${mask})) == 0), .value = ${tmp}}; })')
 	return true
+}
+
+fn (g &FlatGen) flag_enum_mask_expr(enum_name string) string {
+	if _ := g.enum_backing_info(enum_name) {
+		fields := g.enum_fields_for_type(enum_name) or { return '0' }
+		mut parts := []string{cap: fields.len}
+		for field in fields {
+			if expr := g.enum_value_expr_for_type(enum_name, field) {
+				parts << expr
+			}
+		}
+		if parts.len == 0 {
+			return '0'
+		}
+		return '(${parts.join(' | ')})'
+	}
+	return '${g.flag_enum_mask(enum_name)}'
 }
 
 fn (g &FlatGen) flag_enum_mask(enum_name string) int {

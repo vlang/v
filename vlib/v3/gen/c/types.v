@@ -577,8 +577,12 @@ fn (mut g FlatGen) enum_str_defs() {
 // field's bit; `Enum(0)` renders as `Enum{}`.
 fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, cn string) {
 	short := node.value.all_after_last('.')
+	mut storage_ct := 'int'
+	if backing := enum_decl_backing_type(node) {
+		storage_ct = g.enum_backing_storage_c_type(backing)
+	}
 	g.writeln('string ${cn}__autostr(${cn} it) {')
-	g.writeln('\tint __fe_v = (int)it;')
+	g.writeln('\t${storage_ct} __fe_v = (${storage_ct})it;')
 	g.writeln('\tstring __fe_res = (string){.str = (u8*)"${short}{", .len = ${short.len + 1}, .is_lit = 1};')
 	g.writeln('\tbool __fe_first = true;')
 	mut val := 0
@@ -590,15 +594,16 @@ fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, cn string) {
 				val = enum_val
 			}
 		}
-		bit := 1 << val
-		val++
-		if bit in seen {
+		if val in seen {
+			val++
 			continue
 		}
-		seen[bit] = true
+		seen[val] = true
+		val++
 		fname := f.value
 		cfield := g.cname(fname)
-		g.writeln('\tif (${cn}__${cfield} != 0 && (__fe_v & ${cn}__${cfield}) == ${cn}__${cfield}) {')
+		field_expr := '${cn}__${cfield}'
+		g.writeln('\tif (${field_expr} != 0 && (__fe_v & (${storage_ct})${field_expr}) == (${storage_ct})${field_expr}) {')
 		g.writeln('\t\tif (!__fe_first) { __fe_res = string__plus(__fe_res, (string){.str = (u8*)" | ", .len = 3, .is_lit = 1}); }')
 		g.writeln('\t\t__fe_res = string__plus(__fe_res, (string){.str = (u8*)".${fname}", .len = ${
 			fname.len + 1}, .is_lit = 1});')
