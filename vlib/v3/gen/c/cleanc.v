@@ -4936,12 +4936,19 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				return
 			}
 			if node.op == .arrow {
-				child_type := g.usable_expr_type(child_id)
+				child_type0 := g.usable_expr_type(child_id)
+				child_type := concrete_receiver_type(child_type0)
 				if child_type is types.Channel {
 					elem_ct := g.tc.c_type(child_type.elem_type)
 					tmp := g.tmp_name()
 					g.write('({${elem_ct} ${tmp} = (${elem_ct}){0}; sync__Channel__pop(')
-					g.gen_expr(child_id)
+					if child_type0 is types.Pointer {
+						g.write('*(')
+						g.gen_expr(child_id)
+						g.write(')')
+					} else {
+						g.gen_expr(child_id)
+					}
 					g.write(', &${tmp}); ${tmp};})')
 					return
 				}
