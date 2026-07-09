@@ -10900,9 +10900,6 @@ fn (tc &TypeChecker) expr_is_shared_arg(id flat.NodeId) bool {
 	if node.kind == .paren && node.children_count > 0 {
 		return tc.expr_is_shared_arg(tc.a.child(&node, 0))
 	}
-	if node.kind == .prefix && node.children_count > 0 {
-		return tc.expr_is_shared_arg(tc.a.child(&node, 0))
-	}
 	if node.kind == .selector && node.children_count > 0 {
 		return tc.selector_is_shared_arg(node)
 	}
