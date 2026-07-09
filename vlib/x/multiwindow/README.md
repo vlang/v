@@ -16,12 +16,13 @@ The module provides:
 - generation-checked `WindowId` handles;
 - backend capability reporting and backend selection;
 - lifecycle events routed to a specific window;
+- backend-neutral input events routed to a specific window;
 - an owner-thread job queue for cross-thread work;
 - explicit swapchain handoff for `sokol.gfx` rendering.
 
-It does not provide high-level input handling, layout, widgets, text rendering,
-or a default event loop. The `gg` facade supplies the higher-level loop and
-drawing API.
+It does not provide layout, widgets, text rendering, high-level input semantics,
+or a default event loop. The `gg` facade supplies the higher-level loop, `gg.Event`
+mapping, and drawing API.
 
 ## Creating an App
 
@@ -83,7 +84,35 @@ the display server, graphics device, or platform API is unavailable.
 - `explicit_swapchain`: render calls can return a `gfx.Swapchain`;
 - `mock`, `native`, `x11`, `wayland`, `win32`: selected platform flags;
 - `gl`, `metal`, `d3d11`: active renderer API flags;
+- `input_events`, `mouse_events`, `keyboard_events`, `text_events`,
+  `focus_events`, `drop_events`, `touch_events`: native input classes the
+  backend can actually deliver;
+- `cursor_shapes`: native hover cursor shape updates are supported via
+  `set_window_cursor(id, shape)`. This is independent from native interactive
+  move/resize support;
+- `interactive_move_resize`: native user-driven move/resize can be requested
+  when the running backend has the required handles and current user action;
+- `native_decorations`: native/server-side decorations are effective for the
+  running backend;
 - `readback`: reserved for backends that expose readback support.
+
+Plain capability probes do not necessarily connect to the display server, so
+runtime optional globals can be unknown before startup and most of those probes
+report implementation support. For Wayland, use `app.capabilities()` after
+`new_app()` for the authoritative runtime state: `drop_events` requires a
+`wl_data_device`, `touch_events` requires `wl_touch`, and interactive
+move/resize requires a seat. Wayland cursor-shape reporting is stricter:
+`cursor_shapes` is true only after a `wp_cursor_shape_device_v1` has been
+created for the active `wl_pointer`. Wayland requests server-side decorations
+through xdg-decoration when the protocol is available; the compositor's
+`configure(mode)` decides the effective `server_side` or `client_side` mode. If
+`server_side` is refused or xdg-decoration is unavailable, apps and examples may
+draw a client-side fallback. Wayland cursor-shape feedback uses
+`wp_cursor_shape_manager_v1` when the compositor exposes it and the seat has a
+pointer; this keeps cursor theme selection compositor-side. `wl_cursor_theme`
+client-side fallback is not implemented, so `app.capabilities()` reports
+`cursor_shapes == false` on Wayland compositors that do not advertise
+cursor-shape-v1.
 
 Backend notes:
 
@@ -141,13 +170,17 @@ The simple read helpers `status()`, `capabilities()`, `window_exists()`, and
 
 ## Events
 
-Events are explicit. Native events are not delivered to user code until the
-owner thread calls:
+Events are explicit. Native lifecycle and input events are not delivered to user
+code until the owner thread calls:
 
 - `poll_events()` to collect backend/native events into the App queue;
-- `drain_events()` to retrieve and clear queued events.
+- `drain_events()` to retrieve and clear queued lifecycle events;
+- `drain_input_events()` to retrieve and clear queued input events without
+  consuming lifecycle events;
+- `drain_queued_events()` to retrieve lifecycle and input events together in the
+  exact order accepted by `App`.
 
-Event kinds are:
+Lifecycle event kinds are:
 
 - `.window_created`: emitted by `create_window()` with the actual initial size;
 - `.window_destroyed`: emitted by `destroy_window()`, `stop()`, or accepted
@@ -157,6 +190,65 @@ Event kinds are:
   notifications with the actual size.
 
 Backend events for stale or already-destroyed window handles are filtered.
+
+`InputEvent` is the low-level backend-neutral payload used by the `gg` facade to
+rebuild `gg.Event` for a specific window. Input kinds include key down/up, char,
+mouse down/up/move/scroll/enter/leave, resize, iconified/restored,
+focus/unfocus, clipboard paste, file drop, and touch families. Backends report
+which families are implemented through the capability booleans above;
+unsupported input classes must remain false rather than being partially
+emulated.
+
+Native input events that do not already carry a frame counter are stamped by
+`App.poll_events()`; all input events accepted in the same poll cycle share that
+`frame_count`. Mock/test events can provide an explicit non-zero `frame_count`,
+which is preserved.
+
+Current native input support is intentionally capability-scoped:
+
+- Mock can synthesize every input family for deterministic tests.
+- Win32 routes mouse, keyboard, text/char, focus, resize, iconified/restored,
+  clipboard paste signals, file drops via `WM_DROPFILES`, and `WM_TOUCH`
+  down/move/up touch input. `WM_TOUCH` handles are read and closed in the
+  window procedure; `WM_TOUCH` does not expose a cancelled state, so
+  `touches_cancelled` is not emitted by the Win32 backend unless a future
+  Pointer Input path owns `POINTER_FLAG_CANCELED`.
+- AppKit routes mouse, keyboard, text/char, focus, resize, iconified/restored,
+  clipboard paste signals, and file drops through `NSDraggingDestination` file
+  URLs. It also routes AppKit `NSResponder` touch phases; positions come from
+  `NSTouch.normalizedPosition` mapped into the current framebuffer, with
+  `touches_cancelled` emitted only for `touchesCancelledWithEvent:`.
+- X11 routes mouse, keyboard, text/char, focus, resize, iconified/restored, and
+  clipboard paste signal input events. Text uses Xlib XIM/XIC with
+  `Xutf8LookupString`; this covers committed UTF-8 text from the active input
+  method without exposing Xlib objects through the public API.
+- X11 receives file drops with XDND `text/uri-list` selection conversion. It
+  decodes local `file://` URIs and queues `.files_dropped` with routed
+  `dropped_files`.
+- Wayland routes pointer, keyboard, text/char through xkb keymap/state, focus,
+  clipboard paste signal, resize input events, touch when the seat exposes
+  `wl_touch`, and file drops when `wl_data_device`/`wl_data_offer`
+  `text/uri-list` is available.
+  Data-offer payloads are received through a non-blocking fd and drained from
+  the owner poll path; the backend only sends `wl_data_offer.finish` after a
+  valid `copy` or `move` action has been received. Pending drops whose source
+  never closes the transfer fd are rejected and cleaned up after a bounded
+  number of owner poll cycles.
+  Wayland text follows the existing `sapp` `xkb_state_key_get_utf8` model for
+  key presses; full IME/composed text is not implemented. Wayland synthesizes
+  key-repeat from compositor repeat_info/xkb; pointer frame batching is not
+  synthesized yet; event callbacks are
+  routed as the compositor delivers them.
+- Native drop and touch input are false unless a backend explicitly reports the
+  corresponding capability. Clipboard paste is an input signal; clipboard
+  contents are not stored on `InputEvent`.
+
+`QueuedEvent` is the ordered queue entry used when lifecycle and input events
+must be consumed as a single stream. Its `kind` field tells whether the entry
+contains a lifecycle `Event` or an `InputEvent`. Use `drain_queued_events()` when
+relative ordering matters, for example input -> close-request -> input; use the
+separate `drain_events()` and `drain_input_events()` helpers only when that
+cross-family ordering is not needed.
 
 ## Rendering
 
@@ -216,7 +308,7 @@ programmatic resize.
 - Native app creation can still fail even when plain capabilities report that a
   backend is supported, for example when a display cannot be opened.
 - The mock backend is not a renderer and cannot produce swapchains.
-- The module has no high-level input, layout, or drawing abstraction.
+- The module has no layout, widget, text rendering, or drawing abstraction.
 
 ## Validation
 

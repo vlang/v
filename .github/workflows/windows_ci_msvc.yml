@@ -60,7 +60,7 @@ jobs:
       - name: Legacy gg import multiwindow isolation
         run: v -cc msvc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Multiwindow D3D11 smoke
-        run: v -cc msvc -d gg_multiwindow -d sokol_d3d11 test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v
+        run: v -cc msvc -d gg_multiwindow -d sokol_d3d11 test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v vlib/gg/draw_rect_empty_test.v
       - name: Compile gg multiwindow example with D3D11
         run: v -cc msvc -d gg_multiwindow -d sokol_d3d11 -o "$env:TEMP\gg_multiwindow.exe" examples/gg/multiwindow.v
       - name: backend x64 regressions

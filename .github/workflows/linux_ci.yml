@@ -495,6 +495,93 @@ jobs:
         run: v run ci/linux_ci.vsh all_code_is_formatted_gcc
       - name: Install dependencies for examples and tools
         run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
+      - name: Multiwindow Linux checks
+        run: |
+          set -euo pipefail
+
+          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+            ./v test vlib/gg/legacy_import_multiwindow_isolation_test.v
+
+          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+            ./v -d gg_multiwindow test \
+              vlib/x/multiwindow \
+              vlib/gg/multiwindow_api_d_gg_multiwindow_test.v \
+              vlib/gg/frame_pacing_test.v \
+              vlib/gg/draw_fns_api_test.v \
+              vlib/gg/draw_rect_empty_test.v
+
+          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+            ./v -d gg_multiwindow -d sokol_wayland test \
+              vlib/x/multiwindow \
+              vlib/gg/multiwindow_api_d_gg_multiwindow_test.v \
+              vlib/gg/frame_pacing_test.v \
+              vlib/gg/draw_fns_api_test.v \
+              vlib/gg/draw_rect_empty_test.v
+
+          xvfb-run -a -s "-screen 0 1280x1024x24" \
+            env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
+            ./v -d gg_multiwindow -d x_multiwindow_x11 test \
+              vlib/x/multiwindow \
+              vlib/gg/multiwindow_api_d_gg_multiwindow_test.v \
+              vlib/gg/frame_pacing_test.v \
+              vlib/gg/draw_fns_api_test.v \
+              vlib/gg/draw_rect_empty_test.v
+
+          ./v -d gg_multiwindow -o /tmp/gg_multiwindow_default examples/gg/multiwindow.v
+          ./v -d gg_multiwindow -d x_multiwindow_x11 -o /tmp/gg_multiwindow_x11 examples/gg/multiwindow.v
+          ./v -d gg_multiwindow -d sokol_wayland -o /tmp/gg_multiwindow_wayland examples/gg/multiwindow.v
+
+          run_headless_example() {
+            label="$1"
+            binary="$2"
+            stdout="$(mktemp)"
+            stderr="$(mktemp)"
+            env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+              "$binary" >"$stdout" 2>"$stderr"
+            echo "::group::${label} stdout"
+            cat "$stdout"
+            echo "::endgroup::"
+            echo "::group::${label} stderr"
+            cat "$stderr"
+            echo "::endgroup::"
+            grep -Fq "gg multi-window backend: mock" "$stdout"
+            grep -Fq "capability families:" "$stdout"
+            grep -Fq "mock backend selected; stopping after initial lifecycle events" "$stdout"
+            grep -Fq "live windows:" "$stdout"
+            grep -Fq "window created:" "$stdout"
+          }
+
+          run_x11_example() {
+            label="$1"
+            binary="$2"
+            stdout="$(mktemp)"
+            stderr="$(mktemp)"
+            set +e
+            xvfb-run -a -s "-screen 0 1280x1024x24" \
+              env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
+              timeout 12s stdbuf -oL -eL "$binary" >"$stdout" 2>"$stderr"
+            status=$?
+            set -e
+            echo "::group::${label} stdout"
+            cat "$stdout"
+            echo "::endgroup::"
+            echo "::group::${label} stderr"
+            cat "$stderr"
+            echo "::endgroup::"
+            grep -Fq "gg multi-window backend:" "$stdout"
+            grep -Fq "capability families:" "$stdout"
+            grep -Fq "live windows:" "$stdout"
+            grep -Fq "window created:" "$stdout"
+            if [ "$status" -eq 124 ]; then
+              echo "X11 example reached the controlled timeout after producing expected launch logs."
+              return 0
+            fi
+            return "$status"
+          }
+
+          run_headless_example "gg multiwindow headless mock" /tmp/gg_multiwindow_default
+          run_headless_example "gg multiwindow Wayland-build headless mock" /tmp/gg_multiwindow_wayland
+          run_x11_example "gg multiwindow Xvfb/X11" /tmp/gg_multiwindow_x11
       - name: Recompile V with -cstrict and gcc
         run: v run ci/linux_ci.vsh recompile_v_with_cstrict_gcc
       - name: Valgrind v.c

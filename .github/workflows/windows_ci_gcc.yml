@@ -149,7 +149,7 @@ jobs:
           gcc /tmp/d3d11_probe.c -ld3d11 -ldxgi -o /tmp/d3d11_probe.exe
       - name: Multiwindow D3D11 smoke with GCC
         shell: msys2 {0}
-        run: ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v
+        run: ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v vlib/gg/draw_rect_empty_test.v
       - name: Compile gg multiwindow example with D3D11 and GCC
         shell: msys2 {0}
         run: ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 -o gg_multiwindow_gcc.exe examples/gg/multiwindow.v

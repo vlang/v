@@ -109,6 +109,75 @@ current. Linux X11 rendering, including under Xvfb, needs both flags:
 xvfb-run -a v -d gg_multiwindow -d x_multiwindow_x11 run examples/gg/multiwindow.v
 ```
 
+### Multi-Window Events
+
+`gg.App.run()` dispatches window lifecycle events through `event_fn` and input
+events through `input_fn`. Lifecycle events use `gg.WindowEvent` and cover
+created, resized, close-requested and destroyed windows. Input events use
+`gg.WindowInputEvent`, which adds the target `gg.WindowId` to the normal
+`gg.Event` payload so existing key, mouse, scroll, focus and window-state event
+fields keep the same gg-facing types.
+For native multi-window events, `gg.Event.frame_count` is assigned by the
+underlying multi-window owner poll cycle so events collected by the same
+`app.poll_events()` call share a frame count.
+
+`input_fn` has the `gg.AppInputFn` shape:
+
+```v ignore
+fn (event gg.WindowInputEvent, mut app gg.App) !
+```
+
+For manual owner loops, call `app.poll_events()` to collect backend events, then
+`app.drain_events()` for lifecycle events and `app.drain_input_events()` for
+window-scoped input events. `app.run()` dispatches lifecycle and input callbacks
+from the ordered backend queue; the separate drain functions are useful when the
+application wants to process the two streams independently.
+
+Input support is capability-driven. Check `app.capabilities()` before relying
+on a class of native events: `input_events`, `mouse_events`, `keyboard_events`,
+`text_events`, `focus_events`, `drop_events` and `touch_events` report what the
+selected backend can actually deliver. `cursor_shapes` reports whether
+`app.set_window_cursor(id, shape)` can update native hover cursor feedback, and
+is independent from interactive move/resize support. `interactive_move_resize`
+reports whether the runtime backend has the native handles needed for
+`app.begin_window_move(id)` and `app.begin_window_resize(id, edge)`;
+individual calls can still fail when the platform requires a recent user-action
+serial. `native_decorations` reports whether native/server-side window
+decorations are effective for the running backend. Plain capability probes do
+not necessarily open a display, so runtime globals are authoritative only after
+`gg.new_app()` via `app.capabilities()`; on Wayland that includes `wl_touch` for
+touch, `wl_data_device` for drops, seats for interactive move/resize, and
+xdg-decoration negotiation for native decorations. Wayland cursor-shape
+reporting is stricter: `cursor_shapes` is true only after a
+`wp_cursor_shape_device_v1` has been created for the active `wl_pointer`.
+Wayland requests server-side decorations through xdg-decoration when available;
+the compositor's `configure(mode)` decides the effective `server_side` or
+`client_side` mode. If `server_side` is refused or xdg-decoration is
+unavailable, apps and examples may draw a client-side fallback. Wayland cursor
+shape feedback uses `wp_cursor_shape_manager_v1` when the compositor exposes it
+and the seat has a pointer; cursor theme selection remains compositor-side.
+`wl_cursor_theme` client-side fallback is not implemented, so
+`app.capabilities()` reports `cursor_shapes == false` on Wayland compositors
+that do not advertise cursor-shape-v1.
+Backends must leave unsupported
+classes false instead of emulating partial support. Current native backends route
+window-scoped mouse, keyboard, focus, resize and iconified/restored events where
+the platform implementation supports them. `drop_events` is true on native
+backends that clone dropped file paths into `WindowInputEvent.dropped_files`;
+`touch_events` is true only where native touch input is wired. Win32 reports the
+`WM_TOUCH` began/moved/ended states; AppKit also reports cancelled touches from
+`touchesCancelledWithEvent:`. Clipboard paste is reported as an event signal;
+clipboard contents are not carried by `WindowInputEvent`. X11 text uses
+XIM/XIC with `Xutf8LookupString`, and X11 file drops use XDND `text/uri-list`.
+Wayland text uses xkb keymap/state for key-press characters, and Wayland file
+drops use `wl_data_device`/`wl_data_offer` `text/uri-list`; neither Linux text
+path implements full IME/composed text yet.
+
+The multi-window event queue is separate from legacy `gg.Context` callbacks.
+Normal single-window applications keep using the existing `event_fn`,
+`keydown_fn`, `move_fn`, `scroll_fn` and related callbacks on `gg.Context`, and
+do not import or initialize `x.multiwindow`.
+
 `gg.App` manages native windows through `x.multiwindow`. The lower-level
 `x.multiwindow` layer owns native lifetimes and the owner queue; `gg.App` owns
 `sokol.gfx`/`sokol.sgl` renderer state only after rendering is initialized.
