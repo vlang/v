@@ -18,6 +18,11 @@ struct StringSliceInfo {
 	has_end  bool
 }
 
+struct ChannelReceiveInfo {
+	channel_id flat.NodeId
+	value_type string
+}
+
 struct MultiReturnTailValues {
 	values      []flat.NodeId
 	start_index int
@@ -64,15 +69,26 @@ fn (mut t Transformer) array_index_info(index_id flat.NodeId) ?ArrayIndexInfo {
 	}
 	base_id := t.a.child(&expr, 0)
 	index_expr_id := t.a.child(&expr, 1)
-	base_type := t.resolve_expr_type(base_id)
+	mut base_type := t.resolve_expr_type(base_id)
+	for base_type.starts_with('&') {
+		base_type = base_type[1..]
+	}
+	for base_type.starts_with('shared ') {
+		base_type = base_type[7..].trim_space()
+	}
+	if t.normalize_type_alias(base_type) == 'string' {
+		return ArrayIndexInfo{
+			base_id:    base_id
+			index_id:   index_expr_id
+			base_type:  'string'
+			value_type: 'u8'
+		}
+	}
 	if !base_type.starts_with('[]') {
 		return none
 	}
 	value_type := t.normalize_type_alias(base_type[2..])
 	if value_type.len == 0 {
-		return none
-	}
-	if t.is_optional_type_name(value_type) {
 		return none
 	}
 	return ArrayIndexInfo{
@@ -121,6 +137,135 @@ fn (mut t Transformer) is_string_slice_or_expr(node flat.Node) bool {
 	return true
 }
 
+fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceiveInfo {
+	if int(expr_id) < 0 {
+		return none
+	}
+	expr := t.a.nodes[int(expr_id)]
+	if expr.kind in [.paren, .expr_stmt] && expr.children_count > 0 {
+		return t.channel_receive_info(t.a.child(&expr, 0))
+	}
+	if expr.kind == .ident {
+		if !isnil(t.tc) {
+			clean_type := types.unwrap_pointer(t.tc.resolve_type(expr_id))
+			if clean_type is types.Channel {
+				value_type := t.normalize_type_alias(clean_type.elem_type.name())
+				if value_type.len > 0 {
+					return ChannelReceiveInfo{
+						channel_id: expr_id
+						value_type: value_type
+					}
+				}
+			}
+		}
+		channel_type := t.normalize_type_alias(t.node_type(expr_id)).trim_space()
+		if channel_type.starts_with('chan ') {
+			value_type := t.normalize_type_alias(channel_type[5..].trim_space())
+			if value_type.len > 0 {
+				return ChannelReceiveInfo{
+					channel_id: expr_id
+					value_type: value_type
+				}
+			}
+		}
+	}
+	if expr.kind != .prefix || expr.op != .arrow || expr.children_count == 0 {
+		return none
+	}
+	channel_id := t.a.child(&expr, 0)
+	if !isnil(t.tc) {
+		clean_type := types.unwrap_pointer(t.tc.resolve_type(channel_id))
+		if clean_type is types.Channel {
+			value_type := t.normalize_type_alias(clean_type.elem_type.name())
+			if value_type.len > 0 {
+				return ChannelReceiveInfo{
+					channel_id: channel_id
+					value_type: value_type
+				}
+			}
+		}
+		if recv_type := t.tc.expr_type(expr_id) {
+			value_type := t.normalize_type_alias(recv_type.name())
+			if value_type.len > 0 && value_type !in ['void', 'unknown'] {
+				return ChannelReceiveInfo{
+					channel_id: channel_id
+					value_type: value_type
+				}
+			}
+		}
+	}
+	if expr.typ.len > 0 {
+		value_type := t.normalize_type_alias(expr.typ)
+		if value_type.len > 0 && value_type !in ['void', 'unknown'] {
+			return ChannelReceiveInfo{
+				channel_id: channel_id
+				value_type: value_type
+			}
+		}
+	}
+	mut channel_type := t.resolve_expr_type(channel_id)
+	if channel_type.len == 0 {
+		channel_type = t.node_type(channel_id)
+	}
+	channel_type = t.normalize_type_alias(channel_type).trim_space()
+	for channel_type.starts_with('&') {
+		channel_type = channel_type[1..].trim_space()
+	}
+	if !channel_type.starts_with('chan ') {
+		return none
+	}
+	value_type := t.normalize_type_alias(channel_type[5..].trim_space())
+	if value_type.len == 0 {
+		return none
+	}
+	return ChannelReceiveInfo{
+		channel_id: channel_id
+		value_type: value_type
+	}
+}
+
+fn (mut t Transformer) is_channel_receive_or_expr(node flat.Node) bool {
+	if node.kind != .or_expr || node.children_count < 2 {
+		return false
+	}
+	source_id := t.a.child(&node, 0)
+	_ := t.channel_receive_info(source_id) or { return false }
+	return true
+}
+
+fn (mut t Transformer) transform_channel_receive_or_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	if node.children_count < 2 {
+		return id
+	}
+	expr_id := t.a.child(&node, 0)
+	body_id := t.a.child(&node, 1)
+	info := t.channel_receive_info(expr_id) or { return id }
+	val_name := t.new_temp('chan_val')
+	ok_name := t.new_temp('chan_ok')
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	channel_expr := t.transform_expr(info.channel_id)
+	mut prelude := []flat.NodeId{}
+	t.drain_pending(mut prelude)
+		prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.value_type),
+			info.value_type)
+		channel_arg := t.make_cast('&sync.Channel', channel_expr, '&sync.Channel')
+		pop_call := t.make_call_typed('sync__Channel__pop', arr2(channel_arg,
+			t.make_prefix(.amp, t.make_ident(val_name))), 'bool')
+		prelude << t.make_decl_assign_typed(ok_name, pop_call, 'bool')
+		t.mark_fn_used('sync__Channel__closed_error')
+		err_expr := t.make_call_typed('sync__Channel__closed_error', arr1(channel_arg), 'IError')
+		else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
+			info.value_type, node.value, err_expr))
+	t.pending_stmts = outer_pending
+	for stmt in prelude {
+		t.pending_stmts << stmt
+	}
+	t.pending_stmts << t.make_if(t.make_prefix(.not, t.make_ident(ok_name)), else_block,
+		t.make_empty())
+	return t.make_ident(val_name)
+}
+
 fn (mut t Transformer) transform_string_slice_or_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
 		return id
@@ -157,8 +302,8 @@ fn (mut t Transformer) transform_string_slice_or_expr(id flat.NodeId, node flat.
 	slice_call := t.make_call_typed('string__substr', arr3(base_expr, t.make_ident(start_name),
 		t.make_ident(end_name)), 'string')
 	then_block := t.make_block(arr1(t.make_assign(t.make_ident(val_name), slice_call)))
-	else_block :=
-		t.make_block(t.lower_or_body_to_stmts(body_id, val_name, 'string', node.value, ''))
+	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
+		'string', node.value, t.make_ierror_none()))
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
@@ -183,19 +328,58 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 	index_expr := t.transform_expr(info.index_id)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
+	mut result_type := info.value_type
+	mut wrap_found_value := false
+	source_is_optional := t.is_optional_type_name(info.value_type)
+	mut source_value_type := info.value_type
+	if source_is_optional {
+		source_value_type = t.optional_base_type(t.qualify_optional_type(info.value_type))
+		result_type = source_value_type
+	}
+	if t.is_optional_type_name(node.typ) {
+		optional_target := t.qualify_optional_type(node.typ)
+		body_type := t.stmt_value_type(body_id)
+		body_keeps_optional := t.or_body_is_none(body_id) || t.is_optional_type_name(body_type)
+		if (!source_is_optional || body_keeps_optional)
+			&& t.normalize_type_alias(t.optional_base_type(optional_target)) == t.normalize_type_alias(source_value_type) {
+			result_type = optional_target
+			wrap_found_value = true
+		}
+	}
 	prelude << t.make_decl_assign_typed(index_name, index_expr, 'int')
-	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.value_type),
-		info.value_type)
+	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(result_type),
+		result_type)
 
 	idx_ident := t.make_ident(index_name)
 	lower_ok := t.make_infix(.ge, idx_ident, t.make_int_literal(0))
 	upper_ok := t.make_infix(.lt, t.make_ident(index_name),
 		t.make_selector(base_expr, 'len', 'int'))
 	found_cond := t.make_infix(.logical_and, lower_ok, upper_ok)
-	index_value := t.make_index(base_expr, t.make_ident(index_name), info.value_type)
-	then_block := t.make_block(arr1(t.make_assign(t.make_ident(val_name), index_value)))
-	else_block := t.make_block(t.lower_or_body_to_stmts(body_id, val_name, info.value_type,
-		node.value, ''))
+	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
+		result_type, node.value, t.make_ierror_none()))
+	index_value0 := t.make_index(base_expr, t.make_ident(index_name), info.value_type)
+	mut then_block := flat.empty_node
+	if source_is_optional {
+		opt_name := t.new_temp('arr_opt')
+		opt_decl := t.make_decl_assign_typed(opt_name, index_value0, info.value_type)
+		opt_value := t.make_selector(t.make_ident(opt_name), 'value', source_value_type)
+		index_value := if wrap_found_value {
+			t.make_optional_some(opt_value, result_type)
+		} else {
+			opt_value
+		}
+		assign_found := t.make_assign(t.make_ident(val_name), index_value)
+		ok_cond := t.make_selector(t.make_ident(opt_name), 'ok', 'bool')
+		then_block = t.make_block([opt_decl, t.make_if(ok_cond, t.make_block(arr1(assign_found)),
+			else_block)])
+	} else {
+		index_value := if wrap_found_value {
+			t.make_optional_some(index_value0, result_type)
+		} else {
+			index_value0
+		}
+		then_block = t.make_block(arr1(t.make_assign(t.make_ident(val_name), index_value)))
+	}
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
@@ -222,6 +406,25 @@ fn (t &Transformer) or_body_is_nil(body_id flat.NodeId) bool {
 		return t.a.nodes[int(t.a.child(&stmt, 0))].kind == .nil_literal
 	}
 	return stmt.kind == .nil_literal
+}
+
+fn (t &Transformer) or_body_is_none(body_id flat.NodeId) bool {
+	if int(body_id) < 0 {
+		return false
+	}
+	body := t.a.nodes[int(body_id)]
+	if body.kind == .none_expr {
+		return true
+	}
+	if body.kind != .block || body.children_count != 1 {
+		return false
+	}
+	stmt_id := t.a.child(&body, 0)
+	stmt := t.a.nodes[int(stmt_id)]
+	if stmt.kind == .expr_stmt && stmt.children_count == 1 {
+		return t.a.nodes[int(t.a.child(&stmt, 0))].kind == .none_expr
+	}
+	return stmt.kind == .none_expr
 }
 
 // enum_from_string_info converts enum from string info data for transform.
@@ -1035,7 +1238,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 				result << t.make_return(inner_id, t.cur_fn_ret_type)
 			} else if inner.kind == .none_expr && t.is_optional_type_name(t.cur_fn_ret_type) {
 				result << t.make_none_return_stmt()
-			} else if t.node_type(inner_id) == 'void' {
+			} else if t.node_type(inner_id) == 'void' && target_name.len == 0 {
 				expanded := t.transform_stmt(child_id)
 				t.drain_pending(mut result)
 				for eid in expanded {
@@ -1057,6 +1260,22 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 				t.drain_pending(mut result)
 				result << t.make_assign(t.make_ident(target_name), value)
 			}
+		} else if is_last && target_name.len > 0 && child.kind in [.if_expr, .match_stmt] {
+			value := if target_type in t.sum_types || t.resolve_sum_name(target_type) in t.sum_types {
+				t.wrap_sum_value(child_id, target_type)
+			} else {
+				t.transform_expr_for_type(child_id, target_type)
+			}
+			t.drain_pending(mut result)
+			result << t.make_assign(t.make_ident(target_name), value)
+		} else if is_last && target_name.len > 0 && !t.is_stmt_kind(child.kind) {
+			value := if target_type in t.sum_types || t.resolve_sum_name(target_type) in t.sum_types {
+				t.wrap_sum_value(child_id, target_type)
+			} else {
+				t.transform_expr_for_type(child_id, target_type)
+			}
+			t.drain_pending(mut result)
+			result << t.make_assign(t.make_ident(target_name), value)
 		} else {
 			expanded := t.transform_stmt(child_id)
 			t.drain_pending(mut result)

@@ -2292,10 +2292,10 @@ fn (mut tc TypeChecker) annotate_assign_expected_exprs(node flat.Node) {
 	mut i := 0
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
-		rhs_id := tc.a.child(&node, i + 1)
-		lhs_type := tc.resolve_lvalue_type(lhs_id)
-		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
-		tc.annotate_expected_expr(rhs_id, expected_type)
+			rhs_id := tc.a.child(&node, i + 1)
+			lhs_type := tc.resolve_lvalue_type(lhs_id)
+			expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
+			tc.annotate_expected_expr(rhs_id, expected_type)
 		i += 2
 	}
 }
@@ -7634,12 +7634,13 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		} $else {
 			tc.check_node(rhs_id)
 		}
-		rhs_type := tc.resolve_expr(rhs_id, expected_type)
-		if !tc.expr_compatible(rhs_id, rhs_type, expected_type)
-			&& !tc.pointer_value_compatible(rhs_type, expected_type) {
-			tc.type_mismatch(.assignment_mismatch,
-				'cannot assign `${rhs_type.name()}` to `${expected_type.name()}`', id)
-		}
+			rhs_type := tc.resolve_expr(rhs_id, expected_type)
+			if !tc.expr_compatible(rhs_id, rhs_type, expected_type)
+				&& !tc.pointer_value_compatible(rhs_type, expected_type)
+				&& !tc.pointer_arithmetic_assign_compatible(node.op, rhs_type, expected_type) {
+				tc.type_mismatch(.assignment_mismatch,
+					'cannot assign `${rhs_type.name()}` to `${expected_type.name()}`', id)
+			}
 		$if ownership ? {
 			ownership_lhs_ids << lhs_id
 			ownership_rhs_ids << rhs_id
@@ -7870,6 +7871,9 @@ fn (tc &TypeChecker) assignment_expected_type(lhs_id flat.NodeId, lhs_type Type)
 	}
 	lhs := tc.a.nodes[int(lhs_id)]
 	if lhs.kind == .ident {
+		if lhs.value == '_' {
+			return Type(Unknown{})
+		}
 		if base := tc.mut_param_base_for_current_ident(lhs.value, lhs_type) {
 			return base
 		}
@@ -7923,12 +7927,19 @@ fn (mut tc TypeChecker) resolve_lvalue_type(lhs_id flat.NodeId) Type {
 		}
 		return tc.resolve_type(lhs_id)
 	}
-	if lhs.kind == .index {
-		tc.check_index(lhs_id, lhs)
+		if lhs.kind == .index {
+			tc.check_index(lhs_id, lhs)
+			return tc.resolve_type(lhs_id)
+		}
+		if lhs.kind == .prefix && lhs.op == .mul && lhs.children_count > 0 {
+			inner := tc.resolve_type(tc.a.child(&lhs, 0))
+			if inner is Pointer {
+				return inner.base_type
+			}
+			return inner
+		}
 		return tc.resolve_type(lhs_id)
 	}
-	return tc.resolve_type(lhs_id)
-}
 
 // check_return validates check return state for types.
 fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
@@ -8321,6 +8332,18 @@ fn type_is_numeric(typ Type) bool {
 
 fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
 	return tc.type_compatible(actual, expected) || tc.zero_literal_can_be_pointer(expr_id, expected)
+}
+
+fn (tc &TypeChecker) pointer_arithmetic_assign_compatible(op flat.Op, actual Type, expected Type) bool {
+	if op !in [.plus_assign, .minus_assign] {
+		return false
+	}
+	clean_expected := if expected is Alias { expected.base_type } else { expected }
+	if clean_expected !is Pointer {
+		return false
+	}
+	clean_actual := if actual is Alias { actual.base_type } else { actual }
+	return clean_actual.is_integer()
 }
 
 fn (tc &TypeChecker) zero_literal_can_be_pointer(expr_id flat.NodeId, expected Type) bool {
@@ -9034,15 +9057,16 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		}
 		if clean is Channel {
 			match fn_node.value {
-				'close' {
-					return CallInfo{
-						name:         'chan.close'
-						params:       tarr1(base_type)
-						return_type:  Type(void_)
-						has_receiver: true
-						params_known: true
+					'close' {
+						return CallInfo{
+							name:         'chan.close'
+							params:       tarr2(base_type, tc.parse_type('IError'))
+							return_type:  Type(void_)
+							has_receiver: true
+							is_variadic:  true
+							params_known: true
+						}
 					}
-				}
 				'try_push' {
 					return CallInfo{
 						name:         'chan.try_push'
@@ -10224,6 +10248,9 @@ fn (tc &TypeChecker) fixed_array_type_from_receiver(t Type) ?ArrayFixed {
 		return tc.fixed_array_type_from_receiver(t.base_type)
 	}
 	name := t.name()
+	if name.starts_with('fn(') || name.starts_with('fn (') {
+		return none
+	}
 	if name.contains('[') && !name.starts_with('[') {
 		bracket := name.last_index_u8(`[`)
 		bracket_end := name.last_index_u8(`]`)
@@ -12789,6 +12816,12 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 			base_type := unwrap_pointer(tc.resolve_type(tc.a.child(&rhs, 0)))
 			if base_type is Map {
 				payload = base_type.value_type
+			} else if base_type is Array {
+				payload = base_type.elem_type
+			} else if base_type is ArrayFixed {
+				payload = base_type.elem_type
+			} else if base_type is String {
+				payload = Type(u8_)
 			}
 		}
 	}
@@ -16897,6 +16930,20 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.starts_with('atomic ') {
 		return tc.parse_type(typ[7..])
 	}
+	if (typ.starts_with('?') || typ.starts_with('!')) && typ.contains('[') && typ.ends_with(']') {
+		bracket := typ.last_index_u8(`[`)
+		bracket_end := typ.last_index_u8(`]`)
+		if bracket > 0 && bracket_end == typ.len - 1 {
+			len_text := typ[bracket + 1..bracket_end].trim_space()
+			if is_fixed_array_len_text(len_text) || tc.const_int_value(len_text, []string{}) != none {
+				return Type(ArrayFixed{
+					elem_type: tc.parse_type(typ[..bracket])
+					len:       if is_decimal_int_literal(len_text) { len_text.int() } else { 0 }
+					len_expr:  if is_decimal_int_literal(len_text) { '' } else { len_text }
+				})
+			}
+		}
+	}
 	if typ.starts_with('chan ') {
 		return Type(Channel{
 			elem_type: tc.parse_type(typ[5..])
@@ -17521,6 +17568,9 @@ fn is_generic_placeholder_type(typ string) bool {
 // parse_fn_type reads parse fn type input for types.
 fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 	params_start := typ.index_u8(`(`) + 1
+	if params_start <= 0 || params_start >= typ.len {
+		return unknown_type('malformed fn type `${typ}`')
+	}
 	mut depth := 1
 	mut params_end := params_start
 	for params_end < typ.len {
@@ -17533,6 +17583,9 @@ fn (tc &TypeChecker) parse_fn_type(typ string) Type {
 			}
 		}
 		params_end++
+	}
+	if params_end >= typ.len || depth != 0 {
+		return unknown_type('malformed fn type `${typ}`')
 	}
 	params_str := typ[params_start..params_end]
 	ret_str := typ[params_end + 1..].trim_left(' ')

@@ -383,6 +383,17 @@ fn (mut g FlatGen) gen_lock_expr_result_assign(tmp string, result_type types.Typ
 		g.writeln(';')
 		return
 	}
+	if node.kind == .block {
+		if node.children_count == 0 {
+			return
+		}
+		last_idx := int(node.children_count) - 1
+		for i in 0 .. last_idx {
+			g.gen_node(g.a.child(&node, i))
+		}
+		g.gen_lock_expr_result_assign(tmp, result_type, g.a.child(&node, last_idx))
+		return
+	}
 	if g.is_expr_kind(node.kind) {
 		g.write('${tmp} = ')
 		g.gen_expr_with_expected_type(id, result_type)

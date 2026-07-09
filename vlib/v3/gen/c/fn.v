@@ -1891,6 +1891,21 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	if fn_node.kind == .ident {
 		call_key := g.call_key(call_id, fn_node.value)
 		looked_up := g.tc.cur_scope.lookup(fn_node.value) or { types.Type(types.void_) }
+		if fn_type := fn_type_from(looked_up) {
+			if call_node.children_count > 1 && fn_type.params.len == int(call_node.children_count) - 1 {
+				mut packed_args := []SpawnPackedArg{}
+				for i, pt in fn_type.params {
+					arg_id := g.a.child(&call_node, i + 1)
+					mut expected_ct := g.tc.c_type(pt)
+					if expected_ct.starts_with('fn_ptr:') {
+						expected_ct = g.resolve_fn_ptr_type(expected_ct)
+					}
+					packed_args << g.spawn_packed_arg_for_param(arg_id, pt, expected_ct, i)
+				}
+				g.emit_fn_value_spawn_expr(call_id, fn_node, fn_type, packed_args, ret_ct)
+				return
+			}
+		}
 		cfn := if looked_up !is types.Void && fn_type_from(looked_up) != none {
 			g.cname(fn_node.value)
 		} else if call_key in g.tc.fn_ret_types || call_key in g.tc.fn_param_types {
@@ -1969,6 +1984,21 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 					return
 				}
 			}
+		}
+	} else if fn_type := fn_type_from(g.tc.resolve_type(g.a.child(&call_node, 0))) {
+		if call_node.children_count > 1 && fn_type.params.len == int(call_node.children_count) - 1 {
+			mut packed_args := []SpawnPackedArg{}
+			for i, pt in fn_type.params {
+				arg_id := g.a.child(&call_node, i + 1)
+				mut expected_ct := g.tc.c_type(pt)
+				if expected_ct.starts_with('fn_ptr:') {
+					expected_ct = g.resolve_fn_ptr_type(expected_ct)
+				}
+				packed_args << g.spawn_packed_arg_for_param(arg_id, pt, expected_ct, i)
+			}
+			g.emit_fn_value_spawn_expr(call_id, g.a.child_node(&call_node, 0), fn_type, packed_args,
+				ret_ct)
+			return
 		}
 	}
 	if wrapper.len == 0 {
@@ -2064,6 +2094,48 @@ fn (mut g FlatGen) emit_args_spawn_expr(cfn string, args []SpawnPackedArg, ret_c
 	g.write('pthread_attr_destroy(&_at${tmp}); (void)_r${tmp}; (void*)_t${tmp}; })')
 }
 
+fn (mut g FlatGen) ensure_fn_value_spawn_wrapper(fn_ct string, args []SpawnPackedArg, ret_ct string) (string, string) {
+	signature := spawn_packed_args_signature(args)
+	suffix := '${fn_ct}_${spawn_packed_args_name_suffix(args)}'.replace('*', 'ptr').replace(' ',
+		'_')
+	struct_name := g.cname('fn_value_thread_args_${suffix}')
+	wrapper_name := g.cname('fn_value_args_thread_wrapper_${suffix}')
+	key := 'fnvalue|${fn_ct}|${ret_ct}|${signature}'
+	if name := g.spawn_wrapper_names[key] {
+		return name, struct_name
+	}
+	g.spawn_wrapper_names[key] = wrapper_name
+	mut fields := '${fn_ct} f; '
+	mut call_args := []string{}
+	for i, arg in args {
+		fields += '${arg.field_ct} a${i}; '
+		call_args << arg.call_expr
+	}
+	g.spawn_wrapper_defs << 'typedef struct { ${fields}} ${struct_name};'
+	body := spawn_wrapper_body('p->f(${call_args.join(', ')})', ret_ct, 'free(p); ')
+	g.spawn_wrapper_defs << 'static void* ${wrapper_name}(void* arg) { ${struct_name}* p = (${struct_name}*)arg; ${body} }'
+	return wrapper_name, struct_name
+}
+
+fn (mut g FlatGen) emit_fn_value_spawn_expr(call_id flat.NodeId, fn_node flat.Node, fn_type types.FnType, args []SpawnPackedArg, ret_ct string) {
+	fn_ct := g.value_c_type(fn_type)
+	wrapper, struct_name := g.ensure_fn_value_spawn_wrapper(fn_ct, args, ret_ct)
+	tmp := g.tmp_count
+	g.tmp_count++
+	g.write('({ ${struct_name}* _sa${tmp} = (${struct_name}*)malloc(sizeof(${struct_name})); ')
+	g.write('_sa${tmp}->f = ')
+	g.gen_expr_with_expected_type(g.a.child(&g.a.nodes[int(call_id)], 0), fn_type)
+	g.write('; ')
+	for i, arg in args {
+		g.write('_sa${tmp}->a${i} = ${arg.assign_expr}; ')
+	}
+	g.write('pthread_t _t${tmp}; pthread_attr_t _at${tmp}; pthread_attr_init(&_at${tmp}); ')
+	g.write('pthread_attr_setstacksize(&_at${tmp}, 8388608); ')
+	g.write('int _r${tmp} = pthread_create(&_t${tmp}, &_at${tmp}, ${wrapper}, (void*)_sa${tmp}); ')
+	g.write('pthread_attr_destroy(&_at${tmp}); (void)_r${tmp}; (void*)_t${tmp}; })')
+	_ = fn_node
+}
+
 fn (g &FlatGen) shared_local_arg_c_expr(arg_id flat.NodeId) ?string {
 	if int(arg_id) < 0 || int(arg_id) >= g.a.nodes.len {
 		return none
@@ -2091,7 +2163,10 @@ fn (mut g FlatGen) spawn_packed_arg_for_call_param(fn_name string, arg_id flat.N
 			}
 		}
 	}
-	expected_ct := g.tc.c_type(expected)
+	mut expected_ct := g.tc.c_type(expected)
+	if expected_ct.starts_with('fn_ptr:') {
+		expected_ct = g.resolve_fn_ptr_type(expected_ct)
+	}
 	return g.spawn_packed_arg_for_param(arg_id, expected, expected_ct, field_idx)
 }
 
@@ -5958,11 +6033,10 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 		return false
 	}
 	if g.expr_is_optional_literal(arg_id, expected) {
+		collapsed := g.collapsed_optional_literal(arg_id, expected)
 		if concrete_abi {
-			if value_id := g.optional_literal_value_id(g.collapsed_optional_literal(arg_id,
-				expected))
-			{
-				ct := g.concrete_optional_type_name(expected)
+			ct := g.concrete_optional_type_name(expected)
+			if value_id := g.optional_literal_value_id(collapsed) {
 				if base_type is types.Void {
 					g.write('(${ct}){.ok = true}')
 				} else {
@@ -5972,8 +6046,15 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 				}
 				return true
 			}
+			g.write('(${ct}){.ok = false')
+			if err_id := g.optional_literal_err_id(collapsed) {
+				g.write(', .err = ')
+				g.gen_expr(err_id)
+			}
+			g.write('}')
+			return true
 		}
-		g.gen_expr_with_expected_type(g.collapsed_optional_literal(arg_id, expected), expected)
+		g.gen_expr_with_expected_type(collapsed, expected)
 		return true
 	}
 	arg_node := g.a.nodes[int(arg_id)]
@@ -6068,6 +6149,23 @@ fn (g &FlatGen) optional_literal_value_id(id flat.NodeId) ?flat.NodeId {
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
 		if field.kind == .field_init && field.value == 'value' && field.children_count > 0 {
+			return g.a.child(field, 0)
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) optional_literal_err_id(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind != .struct_init && node.kind != .cast_expr {
+		return none
+	}
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.kind == .field_init && field.value == 'err' && field.children_count > 0 {
 			return g.a.child(field, 0)
 		}
 	}

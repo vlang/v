@@ -2554,6 +2554,11 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if normalized_stringify_type != clean_typ {
 		return t.wrap_string_conversion(expr, normalized_stringify_type)
 	}
+	if t.is_fixed_array_type(clean_typ) {
+		elem_type := fixed_array_elem_type(clean_typ)
+		arr := t.fixed_array_value_to_array(expr, clean_typ, '[]${elem_type}')
+		return t.wrap_string_conversion(arr, '[]${elem_type}')
+	}
 	if t.is_optional_type_name(clean_typ) {
 		return t.wrap_optional_string_conversion(expr, clean_typ)
 	}
@@ -2602,11 +2607,19 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 	}
-	if clean_typ == 'string' {
-		return expr
-	}
-	if is_ref {
-		expr_node := t.a.nodes[int(expr)]
+		if clean_typ == 'string' {
+			return expr
+		}
+		if clean_typ == 'thread' || clean_typ.starts_with('thread ') {
+			payload := if clean_typ.starts_with('thread ') {
+				clean_typ[7..].trim_space()
+			} else {
+				'void'
+			}
+			return t.make_string_literal('thread(${payload})')
+		}
+		if is_ref {
+			expr_node := t.a.nodes[int(expr)]
 		if expr_node.kind == .ident && t.string_interp_needs_value_read(expr_node.value, typ) {
 			return t.wrap_string_conversion(t.make_prefix(.mul, expr), clean_typ)
 		}
@@ -2718,10 +2731,6 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 					return struct_str
 				}
 				return t.make_string_literal('${qualified}{}')
-			} else if t.is_fixed_array_type(clean_typ) {
-				elem_type := fixed_array_elem_type(clean_typ)
-				arr := t.fixed_array_value_to_array(expr, clean_typ, '[]${elem_type}')
-				return t.wrap_string_conversion(arr, '[]${elem_type}')
 			} else if clean_typ.len > 0 && clean_typ.starts_with('[]') {
 				return t.lower_array_str(expr, clean_typ)
 			} else if clean_typ.len > 0 && clean_typ.starts_with('map[') {
@@ -4611,12 +4620,23 @@ fn (mut t Transformer) try_lower_channel_method_call(call_id flat.NodeId, node f
 		t.mark_fn_used('sync__Channel__${fn_node.value}')
 		return none
 	}
-	return t.lower_runtime_channel_close(base_id, ptr_depth)
+	return t.lower_runtime_channel_close(base_id, node, ptr_depth)
 }
 
-fn (mut t Transformer) lower_runtime_channel_close(base_id flat.NodeId, ptr_depth int) flat.NodeId {
+fn (mut t Transformer) lower_runtime_channel_close(base_id flat.NodeId, node flat.Node, ptr_depth int) flat.NodeId {
 	t.mark_fn_used('sync__Channel__close')
-	errs := t.make_array_new_call('IError', t.make_int_literal(0), t.make_int_literal(0))
+	mut err_values := []flat.NodeId{}
+	if node.children_count > 1 {
+		for i in 1 .. node.children_count {
+			err_values << t.a.child(&node, i)
+		}
+	}
+	errs := if err_values.len > 0 {
+		lit := t.make_array_literal_typed(err_values, '[]IError')
+		t.transform_array_literal(lit, t.a.nodes[int(lit)])
+	} else {
+		t.make_array_new_call('IError', t.make_int_literal(0), t.make_int_literal(0))
+	}
 	fn_expr := t.make_selector(t.make_ident('C'), 'sync__Channel__close', '')
 	mut receiver := t.transform_expr(base_id)
 	for _ in 0 .. ptr_depth {
@@ -5325,12 +5345,12 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		}
 	}
 	if method == 'close' && (base_type == 'chan' || base_type.starts_with('chan ')) {
-		return t.lower_runtime_channel_close(base_id, if base_is_pointer { 1 } else { 0 })
+		return t.lower_runtime_channel_close(base_id, node, if base_is_pointer { 1 } else { 0 })
 	}
 	if method == 'close' && !isnil(t.tc) {
 		if resolved_method := t.tc.resolved_call_name(id) {
 			if resolved_method == 'chan.close' || resolved_method == 'sync__Channel__close' {
-				return t.lower_runtime_channel_close(base_id, if base_is_pointer { 1 } else { 0 })
+				return t.lower_runtime_channel_close(base_id, node, if base_is_pointer { 1 } else { 0 })
 			}
 		}
 	}

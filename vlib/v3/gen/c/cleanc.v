@@ -4542,7 +4542,12 @@ fn (mut g FlatGen) fixed_array_decl_parts(arr types.ArrayFixed) (string, string)
 		base_ct, suffix := g.fixed_array_decl_parts(arr.elem_type)
 		return base_ct, '[${len_expr}]${suffix}'
 	}
-	return g.tc.c_type(arr.elem_type), '[${len_expr}]'
+	elem_ct := if arr.elem_type is types.OptionType || arr.elem_type is types.ResultType {
+		g.optional_type_name(arr.elem_type)
+	} else {
+		g.tc.c_type(arr.elem_type)
+	}
+	return elem_ct, '[${len_expr}]'
 }
 
 // infix_can_skip_child_parens reports whether a child infix operand needs no
@@ -4876,6 +4881,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write(', &${tmp}); ${tmp};})')
 					return
 				}
+				g.gen_expr(child_id)
+				return
 			}
 			if node.op == .mul && child.kind == .ident {
 				if typ := g.current_param_type(child.value) {
@@ -5656,7 +5663,29 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						g.write('.${field}')
 					}
 				}
-			} else if clean is types.Interface || g.is_ierror_type_name(types.Type(clean).name()) {
+				} else if clean is types.OptionType {
+					if clean.base_type is types.Void {
+						g.gen_expr(expr_id)
+					} else {
+						g.gen_expr(expr_id)
+						if expr_type.is_pointer() {
+							g.write('->value')
+						} else {
+							g.write('.value')
+						}
+					}
+				} else if clean is types.ResultType {
+					if clean.base_type is types.Void {
+						g.gen_expr(expr_id)
+					} else {
+						g.gen_expr(expr_id)
+						if expr_type.is_pointer() {
+							g.write('->value')
+						} else {
+							g.write('.value')
+						}
+					}
+				} else if clean is types.Interface || g.is_ierror_type_name(types.Type(clean).name()) {
 				target := g.tc.parse_type(node.value)
 				if target is types.Pointer {
 					g.write('(${g.tc.c_type(target)})')

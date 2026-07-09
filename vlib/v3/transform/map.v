@@ -245,19 +245,56 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 	key_expr := t.transform_expr(info.key_id)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
+	mut result_type := info.value_type
+	mut wrap_found_value := false
+	source_is_optional := t.map_value_type_is_optional(info.value_type)
+	mut source_value_type := info.value_type
+	if source_is_optional {
+		source_value_type = t.map_optional_value_base_type(info.value_type)
+		result_type = source_value_type
+	}
+	if t.map_value_type_is_optional(node.typ) {
+		optional_target := t.map_optional_target_type(node.typ)
+		body_type := t.stmt_value_type(body_id)
+		body_keeps_optional := t.or_body_is_none(body_id) || t.map_value_type_is_optional(body_type)
+		if (!source_is_optional || body_keeps_optional)
+			&& t.normalize_type_alias(t.map_optional_value_base_type(optional_target)) == t.normalize_type_alias(source_value_type) {
+			result_type = optional_target
+			wrap_found_value = true
+		}
+	}
 	prelude << t.make_decl_assign_typed(key_name, key_expr, info.key_type)
 	prelude << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr,
 		info.base_type, key_name), 'voidptr')
-	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.value_type),
-		info.value_type)
+	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(result_type),
+		result_type)
 
 	ptr_ident := t.make_ident(ptr_name)
 	found_cond := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
+	else_block := t.make_block(t.lower_map_or_body_to_stmts(body_id, val_name, result_type,
+		node.value))
 	ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name),
 		'&${info.value_type}'))
-	then_block := t.make_block(arr1(t.make_assign(t.make_ident(val_name), ptr_value)))
-	else_block := t.make_block(t.lower_map_or_body_to_stmts(body_id, val_name, info.value_type,
-		node.value))
+	then_block := if source_is_optional {
+		opt_name := t.new_temp('map_opt')
+		opt_decl := t.make_decl_assign_typed(opt_name, ptr_value, info.value_type)
+		opt_value := t.make_selector(t.make_ident(opt_name), 'value', source_value_type)
+		found_value := if wrap_found_value {
+			t.make_optional_some(opt_value, result_type)
+		} else {
+			opt_value
+		}
+		assign_found := t.make_assign(t.make_ident(val_name), found_value)
+		ok_cond := t.make_selector(t.make_ident(opt_name), 'ok', 'bool')
+		t.make_block([opt_decl, t.make_if(ok_cond, t.make_block(arr1(assign_found)), else_block)])
+	} else {
+		found_value := if wrap_found_value {
+			t.make_optional_some(ptr_value, result_type)
+		} else {
+			ptr_value
+		}
+		t.make_block(arr1(t.make_assign(t.make_ident(val_name), found_value)))
+	}
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
@@ -279,6 +316,12 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 	}
 	body := t.a.nodes[int(body_id)]
 	if body.kind != .block {
+		if body.kind == .call && t.is_error_call(body) && t.is_optional_type_name(t.cur_fn_ret_type) {
+			return arr1(t.make_return(body_id, t.cur_fn_ret_type))
+		}
+		if body.kind == .none_expr && t.map_value_type_is_optional(target_type) {
+			return arr1(t.make_assign(t.make_ident(target_name), t.make_optional_none(target_type)))
+		}
 		if body.kind == .none_expr && !t.is_optional_type_name(target_type)
 			&& t.is_optional_type_name(t.cur_fn_ret_type) {
 			return arr1(t.make_none_return_stmt())
@@ -293,9 +336,18 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 		if is_last && child.kind == .expr_stmt && child.children_count > 0 {
 			inner_id := t.a.child(&child, 0)
 			inner := t.a.nodes[int(inner_id)]
+			if inner.kind == .none_expr && t.map_value_type_is_optional(target_type) {
+				result << t.make_assign(t.make_ident(target_name), t.make_optional_none(target_type))
+				continue
+			}
 			if inner.kind == .none_expr && !t.is_optional_type_name(target_type)
 				&& t.is_optional_type_name(t.cur_fn_ret_type) {
 				result << t.make_none_return_stmt()
+				continue
+			}
+			if inner.kind == .call && t.is_error_call(inner)
+				&& t.is_optional_type_name(t.cur_fn_ret_type) {
+				result << t.make_return(inner_id, t.cur_fn_ret_type)
 				continue
 			}
 			if t.node_type(inner_id) == 'void' {
@@ -319,6 +371,27 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 	}
 	_ = target_type
 	return result
+}
+
+fn (t &Transformer) map_value_type_is_optional(typ string) bool {
+	return t.is_optional_type_name(typ) || typ == 'Optional' || typ.starts_with('Optional_')
+}
+
+fn (t &Transformer) map_optional_target_type(typ string) string {
+	if t.is_optional_type_name(typ) {
+		return t.qualify_optional_type(typ)
+	}
+	return typ
+}
+
+fn (t &Transformer) map_optional_value_base_type(typ string) string {
+	if t.is_optional_type_name(typ) {
+		return t.optional_base_type(t.qualify_optional_type(typ))
+	}
+	if typ.starts_with('Optional_') {
+		return typ['Optional_'.len..]
+	}
+	return typ
 }
 
 // try_lower_map_index_assign supports try lower map index assign handling for Transformer.

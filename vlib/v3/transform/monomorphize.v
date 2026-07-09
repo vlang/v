@@ -2335,6 +2335,23 @@ fn (mut t Transformer) retype_generic_call_literal_arg(arg_id flat.NodeId, param
 		return arg_id
 	}
 	node := t.a.nodes[int(arg_id)]
+	if node.kind == .none_expr {
+		if t.is_optional_type_name(param_type) {
+			return t.make_optional_none(t.resolve_substituted_type_text(t.qualify_optional_type(param_type)))
+		}
+		if param_type == 'Optional' || param_type.starts_with('Optional_') {
+			return t.make_optional_none(param_type)
+		}
+	}
+	if node.kind == .struct_init && node.value == 'Optional'
+		&& (t.is_optional_type_name(param_type) || param_type.starts_with('Optional_')) {
+		optional_type := if t.is_optional_type_name(param_type) {
+			t.resolve_substituted_type_text(t.qualify_optional_type(param_type))
+		} else {
+			param_type
+		}
+		return t.make_optional_none(optional_type)
+	}
 	if node.kind == .array_literal
 		&& t.generic_call_array_literal_can_retype_inline(node, param_type) {
 		mut values := []flat.NodeId{cap: int(node.children_count)}
@@ -2501,6 +2518,7 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 	spec_name := transform_qualified_fn_name(decl.module, spec_value)
 	ret_typ := t.specialized_signature_type_text(decl, decl.node.typ, args, t.active_generic_params)
 	t.active_generic_params = old_params
+	param_types := t.specialized_generic_call_param_type_texts(decl, args)
 
 	mut children := []flat.NodeId{cap: int(node.children_count) + 1}
 	children << t.make_ident(spec_name)
@@ -2510,12 +2528,17 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 			children << recv_id
 		}
 		for i in 1 .. node.children_count {
-			children << t.a.child(&node, i)
+			arg_id := t.a.child(&node, i)
+			param_type := if i < param_types.len { param_types[i] } else { '' }
+			children << t.retype_generic_call_literal_arg(arg_id, param_type)
 		}
 	} else {
 		// Ident-lowered form: receiver and args are already explicit children 1..n.
 		for i in 1 .. node.children_count {
-			children << t.a.child(&node, i)
+			arg_id := t.a.child(&node, i)
+			param_idx := i - 1
+			param_type := if param_idx < param_types.len { param_types[param_idx] } else { '' }
+			children << t.retype_generic_call_literal_arg(arg_id, param_type)
 		}
 	}
 	start := t.a.children.len
@@ -4296,11 +4319,12 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	for i in 0 .. node.children_count {
 		children << t.clone_generic_node(t.a.child(&node, i), args)
 	}
-	if is_comptime_for {
-		t.cloning_comptime_for_depth--
-	}
-	cloned_typ := t.resolve_substituted_type_text(t.subst_type(node.typ, args))
-	if t.cloning_comptime_for_depth > 0 {
+		if is_comptime_for {
+			t.cloning_comptime_for_depth--
+		}
+		cloned_typ := t.resolve_substituted_type_text(t.subst_type(node.typ, args))
+		t.substitute_cloned_generic_call_type_args(node, mut children, args)
+		if t.cloning_comptime_for_depth > 0 {
 		// Inside a `$for` body: clone verbatim, no generic-call retargeting.
 		start2 := t.a.children.len
 		for child in children {
@@ -4366,6 +4390,24 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		t.retarget_cloned_implicit_generic_call(clone_id, node, args)
 	}
 	return clone_id
+	}
+
+fn (mut t Transformer) substitute_cloned_generic_call_type_args(node flat.Node, mut children []flat.NodeId, args []string) {
+	if node.kind != .index || node.children_count < 2 || node.value == 'range'
+		|| children.len < int(node.children_count) || t.index_callee_is_value_index(node) {
+		return
+	}
+	for i in 1 .. int(node.children_count) {
+		arg := t.generic_call_type_arg_name(t.a.child(&node, i))
+		if arg.len == 0 {
+			continue
+		}
+		substituted := t.resolve_substituted_type_text(t.subst_type(arg, args))
+		if substituted.len == 0 || substituted == arg || t.generic_args_have_placeholders([substituted]) {
+			continue
+		}
+		children[i] = t.make_ident(substituted)
+	}
 }
 
 const generic_type_name_marker_prefix = '__v3_generic_type_name:'
@@ -4561,7 +4603,9 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 	decl := decls[decl_key] or { return }
 	is_receiver := t.generic_decl_is_receiver_method(decl.node)
 		&& !t.generic_call_is_static_assoc_selector(source, decl)
-	if t.should_skip_generic_call_specialization(decl_key) || t.call_has_source_generic_args(source) {
+	source_has_explicit_args := t.call_has_source_generic_args(source)
+	if t.should_skip_generic_call_specialization(decl_key)
+		|| (source_has_explicit_args && !is_receiver) {
 		return
 	}
 	callee_id := t.a.child(&clone, 0)
@@ -4579,41 +4623,49 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 	if param_names.len == 0 {
 		return
 	}
-	mut inferred := map[string]string{}
-	mut param_idx := 0
-	for i in 0 .. decl.node.children_count {
-		child := t.a.child_node(&decl.node, i)
-		if child.kind != .param {
-			continue
-		}
-		clone_arg_id := t.generic_call_arg_id_for_param(clone, param_idx, is_receiver) or {
-			param_idx++
-			continue
-		}
-		source_arg_id := t.generic_call_arg_id_for_param(source, param_idx, is_receiver) or {
-			param_idx++
-			continue
-		}
-		source_arg := t.a.nodes[int(source_arg_id)]
-		mut arg_type := t.generic_call_arg_type_for_inference(clone_arg_id)
-		source_arg_type :=
-			t.resolve_substituted_type_text(t.subst_type(source_arg.typ, active_args))
-		if decl_type_is_usable(source_arg_type) && !t.generic_arg_is_unresolved(source_arg_type) {
-			arg_type = source_arg_type
-		}
-		if arg_type.starts_with('&') && !child.typ.starts_with('&')
-			&& !child.typ.starts_with('mut ') {
-			arg_type = arg_type[1..]
-		}
-		if arg_type.len > 0 {
-			infer_generic_type_args(child.typ, arg_type, mut inferred)
-		}
-		param_idx++
-	}
 	mut call_args := []string{cap: param_names.len}
-	for name in param_names {
-		arg := inferred[name] or { return }
-		call_args << t.generic_arg_for_decl_module(arg, decl.module)
+	if source_has_explicit_args {
+		explicit := t.explicit_generic_call_args(source, t.cur_module) or { return }
+		for arg in explicit {
+			substituted := t.resolve_substituted_type_text(t.subst_type(arg, active_args))
+			call_args << t.generic_arg_for_decl_module(substituted, decl.module)
+		}
+	} else {
+		mut inferred := map[string]string{}
+		mut param_idx := 0
+		for i in 0 .. decl.node.children_count {
+			child := t.a.child_node(&decl.node, i)
+			if child.kind != .param {
+				continue
+			}
+			clone_arg_id := t.generic_call_arg_id_for_param(clone, param_idx, is_receiver) or {
+				param_idx++
+				continue
+			}
+			source_arg_id := t.generic_call_arg_id_for_param(source, param_idx, is_receiver) or {
+				param_idx++
+				continue
+			}
+			source_arg := t.a.nodes[int(source_arg_id)]
+			mut arg_type := t.generic_call_arg_type_for_inference(clone_arg_id)
+			source_arg_type :=
+				t.resolve_substituted_type_text(t.subst_type(source_arg.typ, active_args))
+			if decl_type_is_usable(source_arg_type) && !t.generic_arg_is_unresolved(source_arg_type) {
+				arg_type = source_arg_type
+			}
+			if arg_type.starts_with('&') && !child.typ.starts_with('&')
+				&& !child.typ.starts_with('mut ') {
+				arg_type = arg_type[1..]
+			}
+			if arg_type.len > 0 {
+				infer_generic_type_args(child.typ, arg_type, mut inferred)
+			}
+			param_idx++
+		}
+		for name in param_names {
+			arg := inferred[name] or { return }
+			call_args << t.generic_arg_for_decl_module(arg, decl.module)
+		}
 	}
 	if call_args.len == 0 || t.generic_args_have_placeholders(call_args) {
 		return

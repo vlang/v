@@ -3057,10 +3057,16 @@ fn (mut p Parser) stmt() flat.NodeId {
 		}
 		.key_go, .key_spawn {
 			p.next()
-			spawn_expr := p.expr(.lowest)
+			inner := p.expr(.lowest)
 			if p.tok == .semicolon {
 				p.next()
 			}
+			spawn_start := p.add_child(inner)
+			spawn_expr := p.a.add_node(flat.Node{
+				kind:           .spawn_expr
+				children_start: spawn_start
+				children_count: 1
+			})
 			sstart := p.add_child(spawn_expr)
 			return p.a.add_node(flat.Node{
 				kind:           .expr_stmt
@@ -4409,7 +4415,8 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		// skip auto-semicolons before infix operators (multi-line expressions)
 		if p.tok == .semicolon {
 			peek_tok := p.peek()
-			if (token_is_infix(peek_tok) || peek_tok == .key_as) && int(peek_tok) != 85
+			if (token_is_infix(peek_tok) || peek_tok == .key_as) && peek_tok !in [.plus, .minus]
+				&& int(peek_tok) != 85
 				&& int(peek_tok) != 0 {
 				p.next()
 				continue
@@ -4984,6 +4991,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					children_start: cstart
 					children_count: 1
 				})
+			}
+			if p.tok == .lcbr {
+				return p.struct_init(type_name)
 			}
 			return p.a.add(flat.NodeKind.empty)
 		}
