@@ -10921,6 +10921,14 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 							param_idx + 1} to `${tc.call_display_name(node)}`; expected `${elem_type.name()}`',
 							id)
 					}
+				} else {
+					actual := tc.resolve_expr(arg_id, variadic_raw)
+					if !tc.receiver_compatible(actual, variadic_raw)
+						&& !tc.type_compatible(actual, variadic_raw) {
+						tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
+							param_idx + 1} to `${tc.call_display_name(node)}`; expected `${variadic_raw.name()}`',
+							id)
+					}
 				}
 			}
 			if has_dsl_scope {

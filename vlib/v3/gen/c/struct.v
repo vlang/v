@@ -1245,6 +1245,117 @@ fn substitute_shared_generic_type_text(typ string, params []string, args []strin
 	return clean
 }
 
+fn shared_type_text_uses_generic_params(typ string, params []string) bool {
+	if params.len == 0 {
+		return false
+	}
+	clean := trimmed_space(typ)
+	if clean.len == 0 {
+		return false
+	}
+	for param in params {
+		if clean == param {
+			return true
+		}
+	}
+	if clean.starts_with('&') {
+		return shared_type_text_uses_generic_params(clean[1..], params)
+	}
+	if clean.starts_with('mut ') {
+		return shared_type_text_uses_generic_params(clean[4..], params)
+	}
+	if clean.starts_with('?') || clean.starts_with('!') {
+		return shared_type_text_uses_generic_params(clean[1..], params)
+	}
+	if clean.starts_with('...') {
+		return shared_type_text_uses_generic_params(clean[3..], params)
+	}
+	if clean.starts_with('shared ') {
+		return shared_type_text_uses_generic_params(clean[7..], params)
+	}
+	if clean.starts_with('atomic ') {
+		return shared_type_text_uses_generic_params(clean[7..], params)
+	}
+	if clean.starts_with('chan ') {
+		return shared_type_text_uses_generic_params(clean[5..], params)
+	}
+	if clean.starts_with('thread ') {
+		return shared_type_text_uses_generic_params(clean[7..], params)
+	}
+	if clean.starts_with('[]') {
+		return shared_type_text_uses_generic_params(clean[2..], params)
+	}
+	if clean.starts_with('map[') {
+		bracket_end := shared_generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len {
+			return shared_type_text_uses_generic_params(clean[4..bracket_end], params)
+				|| shared_type_text_uses_generic_params(clean[bracket_end + 1..], params)
+		}
+	}
+	if clean.starts_with('[') {
+		bracket_end := shared_generic_matching_bracket(clean, 0)
+		if bracket_end < clean.len {
+			return shared_type_text_uses_generic_params(clean[bracket_end + 1..], params)
+		}
+	}
+	if clean.starts_with('(') && clean.ends_with(')') {
+		for part in shared_split_generic_args(clean[1..clean.len - 1]) {
+			if shared_type_text_uses_generic_params(part, params) {
+				return true
+			}
+		}
+		return false
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		params_start := clean.index_u8(`(`) + 1
+		mut depth := 1
+		mut params_end := params_start
+		for params_end < clean.len {
+			if clean[params_end] == `(` {
+				depth++
+			} else if clean[params_end] == `)` {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			params_end++
+		}
+		if params_end < clean.len {
+			for part in shared_split_generic_args(clean[params_start..params_end]) {
+				if shared_type_text_uses_generic_params(shared_fn_param_type_text(part), params) {
+					return true
+				}
+			}
+			return shared_type_text_uses_generic_params(clean[params_end + 1..], params)
+		}
+	}
+	base, args, ok := shared_generic_app_parts(clean)
+	if ok {
+		if shared_type_text_uses_generic_params(base, params) {
+			return true
+		}
+		for arg in args {
+			if shared_type_text_uses_generic_params(arg, params) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn shared_fn_param_type_text(param string) string {
+	clean := trimmed_space(param)
+	if clean.starts_with('mut ') {
+		return clean[4..]
+	}
+	parts := clean.split(' ')
+	if parts.len > 1 {
+		return parts[parts.len - 1]
+	}
+	return clean
+}
+
 fn (g &FlatGen) shared_qualify_type_text(typ string, module_name string) string {
 	clean := trimmed_space(typ)
 	if clean.len == 0 {
@@ -1376,6 +1487,9 @@ fn (mut g FlatGen) collect_fn_shared_param_type_names(node flat.Node, module_nam
 			continue
 		}
 		inner := shared_inner_type_text(param.typ) or { continue }
+		if shared_type_text_uses_generic_params(inner, node.generic_params) {
+			continue
+		}
 		g.register_shared_type_name(g.shared_qualify_type_text(inner, module_name), module_name)
 	}
 }
