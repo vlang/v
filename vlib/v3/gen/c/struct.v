@@ -1691,6 +1691,10 @@ fn (mut g FlatGen) gen_shared_storage_expr(id flat.NodeId) bool {
 	if node.kind == .prefix && node.value == 'shared' && node.children_count > 0 {
 		return g.gen_shared_storage_expr(g.a.child(&node, 0))
 	}
+	if node.kind == .ident && g.local_storage_is_shared(node.value) {
+		g.write(g.cname(node.value))
+		return true
+	}
 	if node.kind != .selector || node.children_count == 0 {
 		return false
 	}

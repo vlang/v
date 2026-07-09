@@ -2540,6 +2540,19 @@ fn (mut g FlatGen) gen_shared_local_decl(lhs_id flat.NodeId, rhs_id flat.NodeId,
 	if !lhs_is_defer_capture {
 		g.write('${decl_prefix}${wrapper}* ')
 	}
+	if fixed := array_fixed_type(value_type) {
+		lhs_str := g.decl_lhs_str(lhs_id)
+		g.gen_decl_lhs(lhs_id)
+		g.writeln(' = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}}, sizeof(${wrapper}));')
+		src := g.fixed_array_copy_source_string(rhs_id, types.Type(fixed))
+		g.writeln('memmove(${lhs_str}->val, ${src}, sizeof(${lhs_str}->val));')
+		if lhs.kind == .ident {
+			owner := g.tc.cur_scope.insert_with_owner(lhs.value, value_type)
+			g.track_local_pointer_storage_decl(lhs, owner, value_type, '${wrapper}*')
+			g.declare_local_shared_storage(owner, true)
+		}
+		return
+	}
 	g.gen_decl_lhs(lhs_id)
 	g.write(' = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = ')
 	if inner_type is types.Pointer {
