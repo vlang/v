@@ -426,47 +426,86 @@ fn (mut g FlatGen) enum_decls() {
 					node.value
 				}
 				cn := g.cname(name)
-					if emitted[cn] {
-						continue
-					}
-					emitted[cn] = true
-					is_flag := enum_decl_is_flag(node)
-					if backing := enum_decl_backing_type(node) {
-						storage_ct := g.enum_emit_storage_c_type(name, backing)
-						g.writeln('typedef ${storage_ct} ${cn};')
-						if is_flag {
-							mut val := 0
-							for i in 0 .. node.children_count {
-								f := g.a.child_node(&node, i)
-								if f.children_count > 0 {
-									if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
-										val = enum_val
+				if emitted[cn] {
+					continue
+				}
+				emitted[cn] = true
+				is_flag := enum_decl_is_flag(node)
+				if backing := enum_decl_backing_type(node) {
+					storage_ct := g.enum_emit_storage_c_type(name, backing)
+					g.writeln('typedef ${storage_ct} ${cn};')
+					if is_flag {
+						mut val := 0
+						for i in 0 .. node.children_count {
+							f := g.a.child_node(&node, i)
+							if f.children_count > 0 {
+								if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
+									val = enum_val
+								}
+							}
+							cfield := g.cname(f.value)
+							g.writeln('static const ${cn} ${cn}__${cfield} = (${cn})((${storage_ct})1 << ${val});')
+							val++
+						}
+					} else {
+						mut field_names := map[string]bool{}
+						mut field_exprs := map[string]flat.NodeId{}
+						for i in 0 .. node.children_count {
+							f := g.a.child_node(&node, i)
+							field_names[f.value] = true
+							if f.children_count > 0 {
+								field_exprs[f.value] = g.a.child(f, 0)
+							}
+						}
+						mut field_values := map[string]int{}
+						mut next_value := 0
+						mut next_value_known := true
+						mut next_value_expr := '0'
+						for i in 0 .. node.children_count {
+							f := g.a.child_node(&node, i)
+							mut value := next_value
+							mut value_known := next_value_known
+							mut value_expr := if next_value_known { value.str() } else { next_value_expr }
+							if f.children_count > 0 {
+								expr_id := g.a.child(f, 0)
+								mut resolving := map[string]bool{}
+								if enum_val := g.enum_field_expr_value_with_enum(expr_id,
+									cur_module, node.value, mut field_values, field_exprs, mut
+									resolving)
+								{
+									value = enum_val
+									value_known = true
+									value_expr = enum_val.str()
+								} else {
+									value_known = false
+									value_expr = g.enum_field_expr_to_string_with_enum(expr_id,
+										cur_module, node.value, cn, field_names) or {
+										g.expr_to_string(expr_id)
 									}
 								}
-								cfield := g.cname(f.value)
-								g.writeln('static const ${cn} ${cn}__${cfield} = (${cn})((${storage_ct})1 << ${val});')
-								val++
 							}
-						} else {
-							mut next_value_expr := '0'
-							for i in 0 .. node.children_count {
-								f := g.a.child_node(&node, i)
-								mut value_expr := next_value_expr
-								if f.children_count > 0 {
-									value_expr = g.expr_to_string(g.a.child(f, 0))
-								}
-								cfield := g.cname(f.value)
-								g.writeln('#define ${cn}__${cfield} ((${cn})(${value_expr}))')
+							if value_known {
+								field_values[f.value] = value
+							}
+							cfield := g.cname(f.value)
+							g.writeln('#define ${cn}__${cfield} ((${cn})(${value_expr}))')
+							if value_known {
+								next_value = value + 1
+								next_value_known = true
+								next_value_expr = next_value.str()
+							} else {
+								next_value_known = false
 								next_value_expr = '(${value_expr}) + 1'
 							}
 						}
-						g.writeln('')
-						continue
 					}
-					g.writeln('typedef enum {')
-					mut val := 0
-					for i in 0 .. node.children_count {
-						f := g.a.child_node(&node, i)
+					g.writeln('')
+					continue
+				}
+				g.writeln('typedef enum {')
+				mut val := 0
+				for i in 0 .. node.children_count {
+					f := g.a.child_node(&node, i)
 					if f.children_count > 0 {
 						if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
 							val = enum_val
@@ -730,6 +769,221 @@ fn (g &FlatGen) enum_field_expr_value(id flat.NodeId) ?int {
 			return none
 		}
 	}
+}
+
+fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.int_literal {
+			return node.value.int()
+		}
+		.ident, .enum_val {
+			if ev := g.enum_decl_field_ref_value(node.value, enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)
+			{
+				return ev
+			}
+			lookup_module := if enum_module.len > 0 { enum_module } else { g.tc.cur_module }
+			return g.tc.const_int_value_in_module(node.value, lookup_module, []string{})
+		}
+		.paren {
+			if node.children_count == 0 {
+				return none
+			}
+			return g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name,
+				mut field_values, field_exprs, mut resolving)
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return none
+			}
+			value := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name,
+				mut field_values, field_exprs, mut resolving)?
+			return match node.op {
+				.plus { value }
+				.minus { -value }
+				.bit_not { ~value }
+				else { none }
+			}
+		}
+		.infix {
+			if node.children_count < 2 {
+				return none
+			}
+			left := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name,
+				mut field_values, field_exprs, mut resolving)?
+			right := g.enum_field_expr_value_with_enum(g.a.child(&node, 1), enum_module, enum_name,
+				mut field_values, field_exprs, mut resolving)?
+			if (node.op == .div || node.op == .mod) && right == 0 {
+				return none
+			}
+			if (node.op == .left_shift || node.op == .right_shift
+				|| node.op == .right_shift_unsigned) && (right < 0 || right >= 64) {
+				return none
+			}
+			return match node.op {
+				.plus { left + right }
+				.minus { left - right }
+				.mul { left * right }
+				.div { left / right }
+				.mod { left % right }
+				.amp { left & right }
+				.pipe { left | right }
+				.xor { left ^ right }
+				.left_shift { int(u64(left) << right) }
+				.right_shift { left >> right }
+				.right_shift_unsigned { int(u64(left) >> right) }
+				else { none }
+			}
+		}
+		.selector {
+			if field := g.enum_decl_selector_ref_field(id, enum_module, enum_name) {
+				return g.enum_decl_field_ref_value(field, enum_module, enum_name, mut
+					field_values, field_exprs, mut resolving)
+			}
+			return none
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_module string, enum_name string, enum_c_name string, field_names map[string]bool) ?string {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.ident, .enum_val {
+			if node.value in field_names {
+				return '${enum_c_name}__${g.cname(node.value)}'
+			}
+			return g.expr_to_string(id)
+		}
+		.selector {
+			if field := g.enum_decl_selector_ref_field(id, enum_module, enum_name) {
+				if field in field_names {
+					return '${enum_c_name}__${g.cname(field)}'
+				}
+			}
+			return g.expr_to_string(id)
+		}
+		.int_literal, .bool_literal, .char_literal, .string_literal {
+			return g.expr_to_string(id)
+		}
+		.paren {
+			if node.children_count == 0 {
+				return none
+			}
+			inner := g.enum_field_expr_to_string_with_enum(g.a.child(&node, 0), enum_module,
+				enum_name, enum_c_name, field_names)?
+			return '(${inner})'
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return none
+			}
+			op := g.op_str(node.op)
+			if op.len == 0 {
+				return none
+			}
+			inner := g.enum_field_expr_to_string_with_enum(g.a.child(&node, 0), enum_module,
+				enum_name, enum_c_name, field_names)?
+			return '${op}${inner}'
+		}
+		.infix {
+			if node.children_count < 2 {
+				return none
+			}
+			op := g.op_str(node.op)
+			if op.len == 0 {
+				return none
+			}
+			left := g.enum_field_expr_to_string_with_enum(g.a.child(&node, 0), enum_module,
+				enum_name, enum_c_name, field_names)?
+			right := g.enum_field_expr_to_string_with_enum(g.a.child(&node, 1), enum_module,
+				enum_name, enum_c_name, field_names)?
+			return '${left} ${op} ${right}'
+		}
+		else {
+			return g.expr_to_string(id)
+		}
+	}
+}
+
+fn (g &FlatGen) enum_decl_field_ref_value(field_name string, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+	if field_name in field_values {
+		return field_values[field_name]
+	}
+	expr_id := field_exprs[field_name] or { return none }
+	if resolving[field_name] {
+		return none
+	}
+	resolving[field_name] = true
+	maybe_val := g.enum_field_expr_value_with_enum(expr_id, enum_module, enum_name, mut
+		field_values, field_exprs, mut resolving)
+	resolving.delete(field_name)
+	val := maybe_val?
+	field_values[field_name] = val
+	return val
+}
+
+fn (g &FlatGen) enum_decl_selector_ref_field(id flat.NodeId, enum_module string, enum_name string) ?string {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	prefix := g.enum_decl_selector_base_text(g.a.child(&node, 0))
+	if !enum_ref_prefix_matches(prefix, enum_module, enum_name) {
+		return none
+	}
+	return node.value
+}
+
+fn (g &FlatGen) enum_decl_selector_base_text(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return ''
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return node.value
+			}
+			base := g.enum_decl_selector_base_text(g.a.child(&node, 0))
+			if base.len == 0 {
+				return node.value
+			}
+			return '${base}.${node.value}'
+		}
+		else {
+			return ''
+		}
+	}
+}
+
+fn enum_ref_prefix_matches(prefix string, enum_module string, enum_name string) bool {
+	if prefix.len == 0 || enum_name.len == 0 {
+		return false
+	}
+	short := enum_name.all_after_last('.')
+	if prefix == enum_name || prefix == short {
+		return true
+	}
+	if enum_module.len > 0 && prefix == '${enum_module}.${short}' {
+		return true
+	}
+	return false
 }
 
 // type_alias_decls returns type alias decls data for FlatGen.
