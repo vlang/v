@@ -1966,8 +1966,7 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 		call_key := g.call_key(call_id, fn_node.value)
 		looked_up := g.tc.cur_scope.lookup(fn_node.value) or { types.Type(types.void_) }
 		if fn_type := fn_type_from(looked_up) {
-			if call_node.children_count > 1
-				&& fn_type.params.len == int(call_node.children_count) - 1 {
+			if fn_type.params.len == int(call_node.children_count) - 1 {
 				mut packed_args := []SpawnPackedArg{}
 				for i, pt in fn_type.params {
 					arg_id := g.a.child(&call_node, i + 1)
@@ -2060,7 +2059,7 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 			}
 		}
 	} else if fn_type := fn_type_from(g.tc.resolve_type(g.a.child(&call_node, 0))) {
-		if call_node.children_count > 1 && fn_type.params.len == int(call_node.children_count) - 1 {
+		if fn_type.params.len == int(call_node.children_count) - 1 {
 			mut packed_args := []SpawnPackedArg{}
 			for i, pt in fn_type.params {
 				arg_id := g.a.child(&call_node, i + 1)
