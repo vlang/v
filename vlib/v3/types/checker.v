@@ -10331,6 +10331,9 @@ fn (tc &TypeChecker) thread_array_wait_return_type(payload string) Type {
 }
 
 fn (tc &TypeChecker) fixed_array_dynamic_receiver_call_info(base_type Type, arr ArrayFixed, method string) ?CallInfo {
+	if method !in fixed_array_lowered_methods {
+		return none
+	}
 	array_type := Array{
 		elem_type: arr.elem_type
 	}
