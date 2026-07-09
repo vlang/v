@@ -4380,16 +4380,22 @@ fn (mut tc TypeChecker) check_backed_enum_field_value_ranges(node flat.Node, bac
 	for field_id in field_ids {
 		field := tc.a.nodes[int(field_id)]
 		mut val := next_val
+		mut has_checked_value := true
 		if expr_id := field_exprs[field.value] {
 			mut resolving := map[string]bool{}
 			if resolved := tc.comptime_static_enum_field_value(expr_id, tc.cur_module, node.value, mut
 				field_values, field_exprs, mut resolving)
 			{
 				val = resolved
+			} else {
+				tc.record_error(.assignment_mismatch,
+					'enum field `${field.value}` value must be a compile-time integer expression to fit backing type `${backing}`',
+					expr_id)
+				has_checked_value = false
 			}
 		}
 		field_values[field.value] = val
-		if !enum_backing_value_fits(val, bounds, is_flag) {
+		if has_checked_value && !enum_backing_value_fits(val, bounds, is_flag) {
 			if is_flag {
 				tc.record_error(.assignment_mismatch,
 					'enum field `${field.value}` bit ${val} does not fit backing type `${backing}`',
@@ -5750,6 +5756,17 @@ fn (tc &TypeChecker) comptime_static_enum_field_value(id flat.NodeId, enum_modul
 				return tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
 					enum_name, mut field_values, field_exprs, mut resolving)
 			}
+		}
+		.cast_expr {
+			if node.children_count == 0 {
+				return none
+			}
+			cast_type := unalias_type(tc.parse_type(node.value))
+			if !cast_type.is_integer() {
+				return none
+			}
+			return tc.comptime_static_enum_field_value(tc.a.child(&node, 0), enum_module,
+				enum_name, mut field_values, field_exprs, mut resolving)
 		}
 		.prefix {
 			if node.children_count == 0 {
