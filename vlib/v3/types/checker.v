@@ -19241,7 +19241,7 @@ fn generic_method_receiver_param(type_name string, param_text string) Type {
 // concrete argument texts `args` inside a type text, preserving the generic application
 // form so a method signature mentioning the receiver type (`Box[T]`) becomes the concrete
 // instance (`Box[int]`) when re-parsed, instead of collapsing to the bare base. Prefix and
-// container forms (`&`, `mut`, `?`, `!`, `...`, `[]`, `map[`, `[N]`) recurse into the
+// container forms (`&`, `mut`, `?`, `!`, `...`, `shared`, `[]`, `map[`, `[N]`) recurse into the
 // element type; a bare parameter name is replaced with its argument.
 fn subst_generic_text(typ string, args []string, params []string) string {
 	clean := typ.trim_space()
@@ -19262,6 +19262,9 @@ fn subst_generic_text(typ string, args []string, params []string) string {
 	}
 	if clean.starts_with('...') {
 		return '...' + subst_generic_text(clean[3..], args, params)
+	}
+	if clean.starts_with('shared ') {
+		return 'shared ' + subst_generic_text(clean[7..], args, params)
 	}
 	if clean.starts_with('[]') {
 		return '[]' + subst_generic_text(clean[2..], args, params)

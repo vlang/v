@@ -1905,6 +1905,7 @@ fn (mut t Transformer) specialized_fn_return_display_type_text(decl GenericFnDec
 fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ string, args []string, params []string) string {
 	substituted := substitute_generic_type_text_with_params(typ, args, params)
 	qualified := t.qualify_specialized_signature_type_text(substituted, decl)
+	is_shared := qualified.trim_space().starts_with('shared ')
 	if isnil(t.tc) {
 		return qualified
 	}
@@ -1922,6 +1923,9 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 	t.tc.cur_module = old_tc_module
 	t.tc.cur_file = old_tc_file
 	if parsed is types.Unknown {
+		return qualified
+	}
+	if is_shared {
 		return qualified
 	}
 	return parsed.name()
@@ -1950,6 +1954,9 @@ fn (t &Transformer) qualify_specialized_signature_type_text(typ string, decl Gen
 	}
 	if clean.starts_with('...') {
 		return '...' + t.qualify_specialized_signature_type_text(clean[3..], decl)
+	}
+	if clean.starts_with('shared ') {
+		return 'shared ' + t.qualify_specialized_signature_type_text(clean[7..], decl)
 	}
 	if clean.starts_with('[]') {
 		return '[]' + t.qualify_specialized_signature_type_text(clean[2..], decl)
@@ -5224,6 +5231,9 @@ fn substitute_generic_type_text(typ string, args []string) string {
 	if clean.starts_with('...') {
 		return '...' + substitute_generic_type_text(clean[3..], args)
 	}
+	if clean.starts_with('shared ') {
+		return 'shared ' + substitute_generic_type_text(clean[7..], args)
+	}
 	if clean.starts_with('[]') {
 		return '[]' + substitute_generic_type_text(clean[2..], args)
 	}
@@ -5294,6 +5304,9 @@ fn substitute_generic_type_text_with_params(typ string, args []string, params []
 	}
 	if clean.starts_with('...') {
 		return '...' + substitute_generic_type_text_with_params(clean[3..], args, params)
+	}
+	if clean.starts_with('shared ') {
+		return 'shared ' + substitute_generic_type_text_with_params(clean[7..], args, params)
 	}
 	if clean.starts_with('[]') {
 		return '[]' + substitute_generic_type_text_with_params(clean[2..], args, params)
