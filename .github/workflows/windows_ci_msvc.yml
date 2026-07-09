@@ -680,6 +680,8 @@ jobs:
           ./cmd/tools/test_if_v_test_system_works
       - name: Test pure V math module
         run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
+      - name: Test fasthttp module
+        run: v -silent test vlib/fasthttp/
       - name: Self tests
         run: v -silent test-self vlib
       - name: Test v->js

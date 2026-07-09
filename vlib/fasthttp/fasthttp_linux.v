@@ -4,40 +4,8 @@ import net
 import sync.stdatomic
 import time
 
-#include <sys/epoll.h>
-#include <sys/sendfile.h>
-#include <sys/stat.h>
-#include <netinet/tcp.h>
-
 const epoll_wait_timeout_ms = 100
 const status_408_response = 'HTTP/1.1 408 Request Timeout\r\nContent-Type: text/plain\r\nContent-Length: 19\r\nConnection: close\r\n\r\n408 Request Timeout'.bytes()
-
-fn C.accept4(sockfd i32, addr &net.Addr, addrlen &u32, flags i32) i32
-
-fn C.epoll_create1(__flags i32) i32
-
-fn C.epoll_ctl(__epfd i32, __op i32, __fd i32, __event &C.epoll_event) i32
-
-fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout i32) i32
-
-fn C.sendfile(out_fd i32, in_fd i32, offset &i64, count usize) i32
-
-fn C.fstat(fd i32, buf &C.stat) i32
-
-@[typedef]
-union C.epoll_data_t {
-mut:
-	ptr voidptr
-	fd  int
-	u32 u32
-	u64 u64
-}
-
-struct C.epoll_event {
-mut:
-	events u32
-	data   C.epoll_data_t
-}
 
 pub struct Server {
 pub:
@@ -489,6 +457,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		unsafe { prealloc_scope_checkpoint(c'fasthttp decoded request') }
 	}
 	decoded_http_request.client_conn_fd = client_fd
+	decoded_http_request.client_conn_handle = usize(client_fd)
 	decoded_http_request.user_data = server.user_data
 	mut response := server.request_handler(decoded_http_request) or {
 		eprintln('Error handling request ${err}')

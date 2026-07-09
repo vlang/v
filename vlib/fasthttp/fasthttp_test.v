@@ -151,7 +151,7 @@ fn test_server_ipv4_ipv6_binding() {
 }
 
 fn test_response_takeover_mode_reusable_keeps_connection() {
-	$if linux || bsd {
+	$if linux || bsd || windows {
 		mut server := new_server(ServerConfig{
 			family:                  .ip
 			port:                    reusable_takeover_port
@@ -199,7 +199,7 @@ fn reusable_takeover_handler(req HttpRequest) !HttpResponse {
 	path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
 	if path == '/reusable' {
 		body := 'manual'
-		send_raw_response(req.client_conn_fd,
+		send_raw_response(req.client_conn_handle,
 			'HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n${body.len:x}\r\n${body}\r\n0\r\n\r\n')
 		return HttpResponse{
 			takeover_mode: .reusable
@@ -210,13 +210,13 @@ fn reusable_takeover_handler(req HttpRequest) !HttpResponse {
 	}
 }
 
-fn send_raw_response(fd int, response string) {
+fn send_raw_response(handle usize, response string) {
 	$if linux {
-		C.send(fd, response.str, response.len, C.MSG_NOSIGNAL)
+		C.send(int(handle), response.str, response.len, C.MSG_NOSIGNAL)
 	} $else $if bsd {
-		C.send(fd, response.str, response.len, send_flags)
+		C.send(int(handle), response.str, response.len, send_flags)
 	} $else {
-		C.send(fd, response.str, response.len, 0)
+		C.send(C.SOCKET(handle), response.str, response.len, 0)
 	}
 }
 
