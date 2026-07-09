@@ -3960,6 +3960,29 @@ fn (t &Transformer) flag_enum_mask_for_type(typ string) int {
 	return mask
 }
 
+fn (t &Transformer) flag_enum_has_backing_type(typ string) bool {
+	mut clean := typ.trim_space()
+	for clean.starts_with('&') {
+		clean = clean[1..].trim_space()
+	}
+	normalized := t.normalize_type_alias(clean).trim_space()
+	for candidate in [normalized, clean] {
+		if candidate.len == 0 {
+			continue
+		}
+		if _ := t.enum_backing_types[candidate] {
+			return true
+		}
+		if !candidate.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+			&& t.cur_module != 'builtin' {
+			if _ := t.enum_backing_types['${t.cur_module}.${candidate}'] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // is_runtime_array_flags_selector reports is_runtime_array_flags_selector logic in transform.
 fn (t &Transformer) is_runtime_array_flags_selector(id flat.NodeId) bool {
 	if int(id) < 0 {
@@ -3998,6 +4021,9 @@ fn (mut t Transformer) try_lower_flag_enum_stmt(call_id flat.NodeId) ?flat.NodeI
 	}
 	base_type := t.node_type(base_id)
 	if !t.is_flag_enum_type(base_type) {
+		return none
+	}
+	if fn_node.value == 'set_all' && t.flag_enum_has_backing_type(base_type) {
 		return none
 	}
 	base := t.stable_expr_for_reuse(base_id)
