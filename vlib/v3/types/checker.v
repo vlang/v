@@ -2844,6 +2844,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 			}
 			.enum_decl {
+				tc.check_enum_backing_type(flat.NodeId(i), node)
 				tc.check_enum_field_values(node)
 			}
 			.const_decl {
@@ -4270,6 +4271,27 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node flat.Node) {
 				'cannot initialize field `${field.value}` with `${actual.name()}`; expected `${expected.name()}`',
 				default_id)
 		}
+	}
+}
+
+// check_enum_backing_type validates explicit enum backing storage types.
+fn (mut tc TypeChecker) check_enum_backing_type(node_id flat.NodeId, node flat.Node) {
+	if node.kind != .enum_decl || node.generic_params.len == 0 {
+		return
+	}
+	backing := node.generic_params[0].trim_space()
+	if backing.len == 0 {
+		return
+	}
+	backing_type := tc.parse_type(backing)
+	if backing_type is Unknown || type_contains_unknown(backing_type) {
+		tc.record_error(.unknown_type, 'unknown type `${backing}`', node_id)
+		return
+	}
+	clean := unalias_type(backing_type)
+	if !clean.is_integer() {
+		tc.type_mismatch(.assignment_mismatch,
+			'enum backing type `${backing}` must be integer, not `${clean.name()}`', node_id)
 	}
 }
 
@@ -10858,6 +10880,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		tc.check_node(recv_id)
 		recv_type := tc.smartcast_type(recv_id) or {
 			tc.cached_expr_type(recv_id) or { tc.resolve_type(recv_id) }
+		}
+		if call_param_is_shared(info, 0) && !tc.expr_is_shared_arg(recv_id) {
+			if tc.should_diagnose(id) {
+				tc.record_error(.call_arg_mismatch,
+					'cannot use non-shared `${recv_type.name()}` as receiver for `${tc.call_display_name(node)}`; expected `shared ${info.params[0].name()}`',
+					id)
+			}
 		}
 		if !tc.method_receiver_compatible(recv_type, info.params[0], info.name)
 			&& !tc.receiver_embeds(recv_type, info.params[0]) {
