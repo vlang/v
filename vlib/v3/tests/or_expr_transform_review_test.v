@@ -39,6 +39,17 @@ fn or_review_gen_c(v3_bin string, name string, src string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
+fn or_review_run(v3_bin string, name string, src string) string {
+	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src_path, src) or { panic(err) }
+	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
+	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
+	run := os.execute(bin_path)
+	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
+	return run.output.trim_space()
+}
+
 fn test_channel_receive_or_stabilizes_side_effectful_source() {
 	v3_bin := build_v3_or_review()
 	c_source := or_review_gen_c(v3_bin, 'channel_receive_or_source_once',
@@ -49,10 +60,48 @@ fn test_channel_receive_or_stabilizes_side_effectful_source() {
 	assert c_source.contains('sync__Channel__closed_error(__chan_src_'), 'closed_error does not use channel source temp'
 }
 
+fn test_bare_channel_or_is_not_lowered_to_receive() {
+	v3_bin := build_v3_or_review()
+	c_source := or_review_gen_c(v3_bin, 'bare_channel_or_not_receive',
+		'fn main() {\n\tch := chan int{}\n\t_ := ch or { ch }\n}\n')
+	assert !c_source.contains('sync__Channel__pop((sync__Channel*)'), 'bare channel or was lowered to a direct receive'
+	assert !c_source.contains('sync__Channel__pop(__chan_src_'), 'bare channel or was lowered to a temp receive'
+}
+
 fn test_array_optional_element_or_uses_loaded_element_error() {
 	v3_bin := build_v3_or_review()
 	c_source := or_review_gen_c(v3_bin, 'array_optional_element_error_source',
 		'fn main() {\n\tmut arr := []?int{}\n\tarr << none\n\tvalue := arr[0] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n')
 	assert c_source.contains('Optional __arr_opt_'), 'missing loaded optional temp'
 	assert c_source.contains('IError err = __arr_opt_'), 'element failure branch does not use loaded optional err'
+}
+
+fn test_map_optional_element_or_uses_loaded_element_error() {
+	v3_bin := build_v3_or_review()
+	c_source := or_review_gen_c(v3_bin, 'map_optional_element_error_source',
+		"fn main() {\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tvalue := m['x'] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n")
+	assert c_source.contains('Optional __map_opt_'), 'missing loaded map optional temp'
+	assert c_source.contains('IError err = __map_opt_'), 'map element failure branch does not use loaded optional err'
+}
+
+fn test_user_defined_free_method_is_preserved() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'user_defined_free_method',
+		'struct Hc256 {\nmut:\n\tfreed int\n}\n\nfn (mut h Hc256) free() {\n\th.freed = 7\n}\n\nfn main() {\n\tmut h := Hc256{}\n\th.free()\n\tprintln(int_str(h.freed))\n}\n')
+	assert out == '7'
+}
+
+fn test_default_free_without_user_method_stays_noop() {
+	v3_bin := build_v3_or_review()
+	c_source := or_review_gen_c(v3_bin, 'default_free_without_user_method',
+		'struct H {}\n\nfn main() {\n\tmut h := H{}\n\th.free()\n\tprintln("ok")\n}\n')
+	assert c_source.contains('((void)0);'), 'default free did not lower to no-op'
+	assert !c_source.contains('H__free('), 'default free emitted missing user method call'
+}
+
+fn test_backed_enum_map_key_uses_backing_storage_size() {
+	v3_bin := build_v3_or_review()
+	c_source := or_review_gen_c(v3_bin, 'backed_enum_map_key_size',
+		'enum Wide as u64 {\n\ta = 1\n}\n\nfn main() {\n\tmut m := map[Wide]int{}\n\tm[.a] = 3\n\tprintln(int_str(m[.a] or { 0 }))\n}\n')
+	assert c_source.contains('new_map(sizeof(u64), sizeof(int), map_hash_int_8, map_eq_int_8'), 'backed enum map key size does not match 8-byte callbacks'
 }

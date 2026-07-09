@@ -2322,10 +2322,17 @@ fn (mut g FlatGen) gen_map_init(id flat.NodeId, node flat.Node) {
 
 // write_new_map writes new map output for c.
 fn (mut g FlatGen) write_new_map(key_type types.Type, value_type types.Type) {
-	c_key := g.value_sizeof_target(key_type)
+	c_key := g.map_key_sizeof_target(key_type)
 	c_val := g.value_sizeof_target(value_type)
 	hash_fn, eq_fn, clone_fn, free_fn := g.map_callback_names(key_type)
 	g.write('new_map(sizeof(${c_key}), sizeof(${c_val}), ${hash_fn}, ${eq_fn}, ${clone_fn}, ${free_fn})')
+}
+
+fn (mut g FlatGen) map_key_sizeof_target(key_type types.Type) string {
+	if key_type is types.Enum {
+		return g.enum_storage_c_type(key_type)
+	}
+	return g.value_sizeof_target(key_type)
 }
 
 // map_callback_names supports map callback names handling for FlatGen.

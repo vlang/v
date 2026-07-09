@@ -145,30 +145,6 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 	if expr.kind in [.paren, .expr_stmt] && expr.children_count > 0 {
 		return t.channel_receive_info(t.a.child(&expr, 0))
 	}
-	if expr.kind == .ident {
-		if !isnil(t.tc) {
-			clean_type := types.unwrap_pointer(t.tc.resolve_type(expr_id))
-			if clean_type is types.Channel {
-				value_type := t.normalize_type_alias(clean_type.elem_type.name())
-				if value_type.len > 0 {
-					return ChannelReceiveInfo{
-						channel_id: expr_id
-						value_type: value_type
-					}
-				}
-			}
-		}
-		channel_type := t.normalize_type_alias(t.node_type(expr_id)).trim_space()
-		if channel_type.starts_with('chan ') {
-			value_type := t.normalize_type_alias(channel_type[5..].trim_space())
-			if value_type.len > 0 {
-				return ChannelReceiveInfo{
-					channel_id: expr_id
-					value_type: value_type
-				}
-			}
-		}
-	}
 	if expr.kind != .prefix || expr.op != .arrow || expr.children_count == 0 {
 		return none
 	}

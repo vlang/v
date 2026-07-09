@@ -266,13 +266,12 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 	prelude << t.make_decl_assign_typed(key_name, key_expr, info.key_type)
 	prelude << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr,
 		info.base_type, key_name), 'voidptr')
-	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(result_type),
-		result_type)
+	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(result_type), result_type)
 
 	ptr_ident := t.make_ident(ptr_name)
 	found_cond := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
 	else_block := t.make_block(t.lower_map_or_body_to_stmts(body_id, val_name, result_type,
-		node.value))
+		node.value, t.make_ierror_none()))
 	ptr_value := t.make_prefix(.mul, t.make_cast('&${info.value_type}', t.make_ident(ptr_name),
 		'&${info.value_type}'))
 	then_block := if source_is_optional {
@@ -286,7 +285,10 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 		}
 		assign_found := t.make_assign(t.make_ident(val_name), found_value)
 		ok_cond := t.make_selector(t.make_ident(opt_name), 'ok', 'bool')
-		t.make_block([opt_decl, t.make_if(ok_cond, t.make_block(arr1(assign_found)), else_block)])
+		opt_err_expr := t.make_selector(t.make_ident(opt_name), 'err', 'IError')
+		opt_else_block := t.make_block(t.lower_map_or_body_to_stmts(body_id, val_name, result_type,
+			node.value, opt_err_expr))
+		t.make_block([opt_decl, t.make_if(ok_cond, t.make_block(arr1(assign_found)), opt_else_block)])
 	} else {
 		found_value := if wrap_found_value {
 			t.make_optional_some(ptr_value, result_type)
@@ -304,10 +306,10 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 }
 
 // lower_map_or_body_to_stmts converts lower map or body to stmts data for transform.
-fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_name string, target_type string, mode string) []flat.NodeId {
+fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_name string, target_type string, mode string, err_expr flat.NodeId) []flat.NodeId {
 	if mode == '!' || mode == '?' {
 		if t.is_optional_type_name(t.cur_fn_ret_type) {
-			return arr1(t.make_none_return_stmt())
+			return arr1(t.make_none_return_stmt_with_err_expr(err_expr))
 		}
 		return arr1(t.make_panic_stmt('option/result propagation failed'))
 	}
@@ -329,6 +331,17 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 		return arr1(t.make_assign(t.make_ident(target_name), t.transform_expr(body_id)))
 	}
 	mut result := []flat.NodeId{}
+	if body.children_count == 0 {
+		return result
+	}
+	saved_var_types := t.var_types.clone()
+	t.set_var_type('err', 'IError')
+	err_value := if int(err_expr) >= 0 {
+		err_expr
+	} else {
+		t.make_struct_init('IError')
+	}
+	result << t.make_decl_assign_typed('err', err_value, 'IError')
 	for i in 0 .. body.children_count {
 		child_id := t.a.child(&body, i)
 		child := t.a.nodes[int(child_id)]
@@ -337,7 +350,8 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 			inner_id := t.a.child(&child, 0)
 			inner := t.a.nodes[int(inner_id)]
 			if inner.kind == .none_expr && t.map_value_type_is_optional(target_type) {
-				result << t.make_assign(t.make_ident(target_name), t.make_optional_none(target_type))
+				result << t.make_assign(t.make_ident(target_name),
+					t.make_optional_none(target_type))
 				continue
 			}
 			if inner.kind == .none_expr && !t.is_optional_type_name(target_type)
@@ -370,6 +384,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 		}
 	}
 	_ = target_type
+	t.restore_var_types(saved_var_types)
 	return result
 }
 
