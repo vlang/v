@@ -247,16 +247,19 @@ fn (mut t Transformer) transform_channel_receive_or_expr(id flat.NodeId, node fl
 	channel_expr := t.transform_expr(info.channel_id)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
-		prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.value_type),
-			info.value_type)
-		channel_arg := t.make_cast('&sync.Channel', channel_expr, '&sync.Channel')
-		pop_call := t.make_call_typed('sync__Channel__pop', arr2(channel_arg,
-			t.make_prefix(.amp, t.make_ident(val_name))), 'bool')
-		prelude << t.make_decl_assign_typed(ok_name, pop_call, 'bool')
-		t.mark_fn_used('sync__Channel__closed_error')
-		err_expr := t.make_call_typed('sync__Channel__closed_error', arr1(channel_arg), 'IError')
-		else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
-			info.value_type, node.value, err_expr))
+	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.value_type),
+		info.value_type)
+	channel_name := t.new_temp('chan_src')
+	channel_cast := t.make_cast('&sync.Channel', channel_expr, '&sync.Channel')
+	prelude << t.make_decl_assign_typed(channel_name, channel_cast, '&sync.Channel')
+	pop_call := t.make_call_typed('sync__Channel__pop', arr2(t.make_ident(channel_name), t.make_prefix(.amp,
+		t.make_ident(val_name))), 'bool')
+	prelude << t.make_decl_assign_typed(ok_name, pop_call, 'bool')
+	t.mark_fn_used('sync__Channel__closed_error')
+	err_expr := t.make_call_typed('sync__Channel__closed_error', arr1(t.make_ident(channel_name)),
+		'IError')
+	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
+		info.value_type, node.value, err_expr))
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
@@ -302,8 +305,8 @@ fn (mut t Transformer) transform_string_slice_or_expr(id flat.NodeId, node flat.
 	slice_call := t.make_call_typed('string__substr', arr3(base_expr, t.make_ident(start_name),
 		t.make_ident(end_name)), 'string')
 	then_block := t.make_block(arr1(t.make_assign(t.make_ident(val_name), slice_call)))
-	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
-		'string', node.value, t.make_ierror_none()))
+	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name, 'string',
+		node.value, t.make_ierror_none()))
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
@@ -347,8 +350,7 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 		}
 	}
 	prelude << t.make_decl_assign_typed(index_name, index_expr, 'int')
-	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(result_type),
-		result_type)
+	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(result_type), result_type)
 
 	idx_ident := t.make_ident(index_name)
 	lower_ok := t.make_infix(.ge, idx_ident, t.make_int_literal(0))
@@ -370,8 +372,11 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 		}
 		assign_found := t.make_assign(t.make_ident(val_name), index_value)
 		ok_cond := t.make_selector(t.make_ident(opt_name), 'ok', 'bool')
-		then_block = t.make_block([opt_decl, t.make_if(ok_cond, t.make_block(arr1(assign_found)),
-			else_block)])
+		opt_err_expr := t.make_selector(t.make_ident(opt_name), 'err', 'IError')
+		opt_else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
+			result_type, node.value, opt_err_expr))
+		then_block = t.make_block([opt_decl,
+			t.make_if(ok_cond, t.make_block(arr1(assign_found)), opt_else_block)])
 	} else {
 		index_value := if wrap_found_value {
 			t.make_optional_some(index_value0, result_type)
@@ -956,8 +961,8 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts(body_id flat.NodeId, 
 	} else {
 		flat.empty_node
 	}
-	return t.lower_or_body_to_multi_return_stmts_with_err_expr(body_id, target_name,
-		target_type, field_types, mode, err_expr)
+	return t.lower_or_body_to_multi_return_stmts_with_err_expr(body_id, target_name, target_type,
+		field_types, mode, err_expr)
 }
 
 fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id flat.NodeId, target_name string, target_type string, field_types []types.Type, mode string, err_expr flat.NodeId) []flat.NodeId {
@@ -968,8 +973,8 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 		return arr1(t.make_panic_stmt('option/result propagation failed'))
 	}
 	if int(body_id) < 0 || target_name.len == 0 || field_types.len == 0 {
-		return t.lower_or_body_to_stmts_with_err_expr(body_id, target_name, target_type,
-			mode, err_expr)
+		return t.lower_or_body_to_stmts_with_err_expr(body_id, target_name, target_type, mode,
+			err_expr)
 	}
 	body := t.a.nodes[int(body_id)]
 	saved_var_types := t.var_types.clone()
@@ -990,8 +995,7 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 	}
 	_ = body
 	t.restore_var_types(saved_var_types)
-	return t.lower_or_body_to_stmts_with_err_expr(body_id, target_name, target_type, mode,
-		err_expr)
+	return t.lower_or_body_to_stmts_with_err_expr(body_id, target_name, target_type, mode, err_expr)
 }
 
 fn (t &Transformer) or_tail_can_supply_multi_return(id flat.NodeId, expected_count int) bool {
