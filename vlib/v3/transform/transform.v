@@ -5242,6 +5242,10 @@ fn (t &Transformer) multi_return_types_for_expr(id flat.NodeId, expected_count i
 	if node.kind == .block {
 		return t.block_multi_return_types(node, expected_count)
 	}
+	if node.kind == .lock_expr && node.children_count > 0 {
+		return t.multi_return_types_for_expr(t.a.child(&node, node.children_count - 1),
+			expected_count)
+	}
 	mut typ_name := node.typ
 	if node.kind == .call {
 		ret := t.get_call_return_type(id, node)
@@ -5308,17 +5312,43 @@ fn (t &Transformer) expr_stmt_multi_return_types(node flat.Node, expected_count 
 }
 
 fn (t &Transformer) block_multi_return_types(node flat.Node, expected_count int) ?[]types.Type {
-	if expected_count <= 0 || node.children_count != expected_count {
+	if expected_count <= 0 || node.children_count == 0 {
+		return none
+	}
+	last_id := t.a.child(&node, node.children_count - 1)
+	if int(last_id) >= 0 {
+		last := t.a.nodes[int(last_id)]
+		if last.kind in [.block, .if_expr, .match_stmt, .expr_stmt] {
+			if types := t.multi_return_types_for_expr(last_id, expected_count) {
+				return types
+			}
+		}
+	}
+	mut values := []flat.NodeId{}
+	for i := int(node.children_count) - 1; i >= 0; i-- {
+		stmt_id := t.a.child(&node, i)
+		if int(stmt_id) < 0 {
+			break
+		}
+		stmt := t.a.nodes[int(stmt_id)]
+		if stmt.kind != .expr_stmt || stmt.children_count == 0 {
+			break
+		}
+		for j := int(stmt.children_count) - 1; j >= 0; j-- {
+			values.prepend(t.a.child(&stmt, j))
+			if values.len == expected_count {
+				break
+			}
+		}
+		if values.len == expected_count {
+			break
+		}
+	}
+	if values.len != expected_count {
 		return none
 	}
 	mut result := []types.Type{cap: expected_count}
-	for i in 0 .. node.children_count {
-		stmt_id := t.a.child(&node, i)
-		stmt := t.a.nodes[int(stmt_id)]
-		if stmt.kind != .expr_stmt || stmt.children_count != 1 {
-			return none
-		}
-		child_id := t.a.child(&stmt, 0)
+	for child_id in values {
 		mut typ_name := t.node_type(child_id)
 		if typ_name.len == 0 {
 			typ_name = t.resolve_expr_type(child_id)
@@ -8857,6 +8887,15 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 			if array_typ := t.array_call_type_name(node) {
 				return array_typ
 			}
+			if call_is_wait_selector(t.a, node) {
+				mut wait_ret := t.get_call_return_type(id, node)
+				if wait_ret.len == 0 {
+					wait_ret = t.current_call_return_type(node)
+				}
+				if wait_ret.len > 0 {
+					return wait_ret
+				}
+			}
 			if node.typ.len > 0 {
 				typ := t.normalize_type_alias(node.typ)
 				if typ !in ['array', 'map', 'unknown'] {
@@ -8883,6 +8922,14 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 				elem_type := t.node_type(t.a.child(&node, 0))
 				if t.is_fn_pointer_type_name(elem_type) {
 					return '[]${elem_type}'
+				}
+			}
+			if !isnil(t.tc) {
+				if typ := t.tc.expr_type(id) {
+					name := typ.name()
+					if name.starts_with('[]') {
+						return t.normalize_type_alias(name)
+					}
 				}
 			}
 			if node.typ.len > 0 {
@@ -9161,6 +9208,18 @@ fn is_integer_type_name(name string) bool {
 
 fn is_float_type_name(name string) bool {
 	return name == 'f32' || name == 'f64'
+}
+
+fn call_is_wait_selector(a &flat.FlatAst, node flat.Node) bool {
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	fn_id := a.children[int(node.children_start)]
+	if int(fn_id) < 0 || int(fn_id) >= a.nodes.len {
+		return false
+	}
+	fn_node := a.nodes[int(fn_id)]
+	return fn_node.kind == .selector && fn_node.value == 'wait'
 }
 
 fn (t &Transformer) current_call_return_type(node flat.Node) string {

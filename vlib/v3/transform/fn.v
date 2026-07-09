@@ -2538,6 +2538,9 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	if clean_typ.starts_with('&') {
 		clean_typ = clean_typ[1..]
 	}
+	for clean_typ.starts_with('shared ') {
+		clean_typ = clean_typ[7..].trim_space()
+	}
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ.all_after_last('.')
 	}
@@ -2699,9 +2702,13 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			if aggregate_type := t.stringify_aggregate_type_name(clean_typ) {
 				qualified := aggregate_type
 				str_fn := '${c_name(qualified)}__str'
-				known_str := str_fn in t.fn_ret_types
-					|| (!isnil(t.tc) && str_fn in t.tc.fn_ret_types)
+				v_str_fn := '${qualified}.str'
+				known_str := str_fn in t.fn_ret_types || v_str_fn in t.fn_ret_types
+					|| (!isnil(t.tc) && (str_fn in t.tc.fn_ret_types
+					|| v_str_fn in t.tc.fn_ret_types))
 				if known_str {
+					t.mark_fn_used_name(v_str_fn)
+					t.mark_fn_used_name(str_fn)
 					return t.make_call_typed(str_fn, arr1(expr), 'string')
 				}
 				if qualified in t.sum_types {
@@ -3475,6 +3482,36 @@ fn (mut t Transformer) lower_array_str(arr_expr flat.NodeId, base_type string) f
 	if recorded_elem_type := t.recorded_array_call_elem_type(arr_expr) {
 		elem_type = recorded_elem_type
 	}
+	if elem_type.len == 0 || elem_type == 'void' {
+		if selector := t.selector_expr_node(arr_expr) {
+			mut selector_type := t.resolve_selector_type(selector)
+			if selector_type.len == 0 || selector_type == '[]' || selector_type == '[]void'
+				|| selector_type == 'shared []' || selector_type == 'shared []void' {
+				if selector.children_count > 0 {
+					base_id := t.a.child(&selector, 0)
+					mut field_base_type := t.node_type(base_id)
+					if field_base_type.starts_with('&') {
+						field_base_type = field_base_type[1..]
+					}
+					for field_base_type.starts_with('shared ') {
+						field_base_type = field_base_type[7..].trim_space()
+					}
+					if raw_type := t.lookup_struct_field_raw_type(field_base_type, selector.value) {
+						selector_type = raw_type
+					} else if field_type := t.lookup_struct_field_type(field_base_type,
+						selector.value) {
+						selector_type = field_type
+					}
+				}
+			}
+			for selector_type.starts_with('shared ') {
+				selector_type = selector_type[7..].trim_space()
+			}
+			if selector_type.starts_with('[]') && selector_type.len > 2 {
+				elem_type = selector_type[2..]
+			}
+		}
+	}
 	base := t.stable_expr_for_reuse(arr_expr)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
@@ -3838,6 +3875,19 @@ fn (t &Transformer) is_flag_enum_type(typ string) bool {
 	return false
 }
 
+fn (t &Transformer) flag_enum_mask_for_type(typ string) int {
+	mut clean := typ.trim_space()
+	for clean.starts_with('&') {
+		clean = clean[1..].trim_space()
+	}
+	members := t.comptime_enum_members(clean)
+	mut mask := 0
+	for member in members {
+		mask |= member.value
+	}
+	return mask
+}
+
 // is_runtime_array_flags_selector reports is_runtime_array_flags_selector logic in transform.
 fn (t &Transformer) is_runtime_array_flags_selector(id flat.NodeId) bool {
 	if int(id) < 0 {
@@ -3858,13 +3908,16 @@ fn (mut t Transformer) try_lower_flag_enum_stmt(call_id flat.NodeId) ?flat.NodeI
 		return none
 	}
 	call := t.a.nodes[int(call_id)]
-	if call.kind != .call || call.children_count < 2 {
+	if call.kind != .call || call.children_count < 1 {
 		return none
 	}
 	fn_id := t.a.children[call.children_start]
 	fn_node := t.a.nodes[int(fn_id)]
 	if fn_node.kind != .selector || fn_node.children_count == 0
-		|| fn_node.value !in ['set', 'clear'] {
+		|| fn_node.value !in ['set', 'clear', 'toggle', 'set_all', 'clear_all'] {
+		return none
+	}
+	if fn_node.value in ['set', 'clear', 'toggle'] && call.children_count < 2 {
 		return none
 	}
 	base_id := t.a.children[fn_node.children_start]
@@ -3876,11 +3929,29 @@ fn (mut t Transformer) try_lower_flag_enum_stmt(call_id flat.NodeId) ?flat.NodeI
 		return none
 	}
 	base := t.stable_expr_for_reuse(base_id)
-	arg := t.transform_expr(t.a.children[call.children_start + 1])
-	if fn_node.value == 'set' {
-		return t.make_assign_op(base, arg, .pipe_assign)
+	match fn_node.value {
+		'set' {
+			arg := t.transform_expr(t.a.children[call.children_start + 1])
+			return t.make_assign_op(base, arg, .pipe_assign)
+		}
+		'clear' {
+			arg := t.transform_expr(t.a.children[call.children_start + 1])
+			return t.make_assign_op(base, t.make_prefix(.bit_not, arg), .amp_assign)
+		}
+		'toggle' {
+			arg := t.transform_expr(t.a.children[call.children_start + 1])
+			return t.make_assign_op(base, arg, .xor_assign)
+		}
+		'set_all' {
+			mask := t.flag_enum_mask_for_type(base_type)
+			return t.make_assign(base, t.make_int_literal_typed(mask.str(), base_type))
+		}
+		'clear_all' {
+			return t.make_assign(base, t.make_int_literal_typed('0', base_type))
+		}
+		else {}
 	}
-	return t.make_assign_op(base, t.make_prefix(.bit_not, arg), .amp_assign)
+	return none
 }
 
 // try_lower_flag_enum_call supports try lower flag enum call handling for Transformer.
@@ -3981,7 +4052,8 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	base_id := t.a.children[fn_node.children_start]
 	array_builtin_method := t.array_builtin_method_name(fn_node.value) or { '' }
 	if fn_node.value !in ['clone', 'reverse', 'contains', 'index', 'last_index', 'join', 'any',
-		'all', 'count', 'equals', 'prepend', 'insert', 'push_many', 'str', 'to_fixed_size'] {
+		'all', 'count', 'equals', 'prepend', 'insert', 'push_many', 'str', 'to_fixed_size',
+		'wait'] {
 		if fn_node.value !in ['filter', 'map', 'sort', 'sorted', 'sort_with_compare', 'sorted_with_compare']
 			&& array_builtin_method.len == 0 {
 			mut early_base_type := t.node_type(base_id)
@@ -4097,6 +4169,12 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, t.fixed_array_value_to_array(base_id,
 			clean_base_type, array_type), array_type)
 		selector := t.make_selector(t.make_ident(tmp_name), fn_node.value, '')
+		if fn_node.value == 'wait' {
+			wait_type := fixed_thread_array_wait_return_type(elem_type)
+			if wait_type.len > 0 {
+				return t.make_call_expr_typed(selector, []flat.NodeId{}, wait_type)
+			}
+		}
 		mut children := []flat.NodeId{cap: int(node.children_count)}
 		children << selector
 		for i in 1 .. node.children_count {
@@ -4353,6 +4431,32 @@ fn array_method_stays_in_cgen_needs_runtime_mark(method string) bool {
 	}
 }
 
+fn thread_array_wait_return_type(elem_type string) ?string {
+	name := elem_type.trim_space()
+	if name == 'thread' {
+		return 'void'
+	}
+	if !name.starts_with('thread ') {
+		return none
+	}
+	payload := name[7..].trim_space()
+	if payload == '?' || payload == '!' {
+		return '${payload}void'
+	}
+	if payload.starts_with('?') || payload.starts_with('!') {
+		value_type := payload[1..].trim_space()
+		if value_type.len == 0 || value_type == 'void' {
+			return '${payload[0].ascii_str()}void'
+		}
+		return '${payload[0].ascii_str()}[]${value_type}'
+	}
+	return '[]${payload}'
+}
+
+fn fixed_thread_array_wait_return_type(elem_type string) string {
+	return thread_array_wait_return_type(elem_type) or { '' }
+}
+
 fn transform_is_exact_array_receiver_method(name string) bool {
 	if !name.contains('.') {
 		return false
@@ -4464,7 +4568,8 @@ fn (mut t Transformer) try_lower_channel_method_call(call_id flat.NodeId, node f
 	}
 	fn_id := t.a.children[node.children_start]
 	fn_node := t.a.nodes[int(fn_id)]
-	if fn_node.kind != .selector || fn_node.children_count == 0 || fn_node.value != 'close' {
+	if fn_node.kind != .selector || fn_node.children_count == 0
+		|| fn_node.value !in ['close', 'try_push', 'try_pop'] {
 		return none
 	}
 	base_id := t.a.child(&fn_node, 0)
@@ -4474,12 +4579,17 @@ fn (mut t Transformer) try_lower_channel_method_call(call_id flat.NodeId, node f
 	}
 	if !isnil(t.tc) {
 		if resolved_method := t.tc.resolved_call_name(call_id) {
-			if resolved_method != 'chan.close' && resolved_method != 'sync__Channel__close' {
-				if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id,
-					'chan.close')
-				{
-					return exact_call
+			channel_method := 'chan.${fn_node.value}'
+			runtime_method := 'sync__Channel__${fn_node.value}'
+			if resolved_method != channel_method && resolved_method != runtime_method {
+				if fn_node.value == 'close' {
+					if exact_call := t.lower_checker_selected_receiver_method(call_id, node,
+						base_id, 'chan.close')
+					{
+						return exact_call
+					}
 				}
+				return none
 			}
 		}
 	}
@@ -4495,6 +4605,10 @@ fn (mut t Transformer) try_lower_channel_method_call(call_id flat.NodeId, node f
 		{
 			return exact_call
 		}
+		return none
+	}
+	if fn_node.value in ['try_push', 'try_pop'] {
+		t.mark_fn_used('sync__Channel__${fn_node.value}')
 		return none
 	}
 	return t.lower_runtime_channel_close(base_id, ptr_depth)
@@ -4799,6 +4913,9 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	}
 	if type_name_call := t.try_lower_sum_type_name_method_call(node) {
 		return type_name_call
+	}
+	if enum_call := t.try_lower_enum_from_string_call(_id, node) {
+		return enum_call
 	}
 	if receiver_call := t.try_lower_receiver_method_call(_id, node) {
 		return receiver_call
@@ -6517,11 +6634,14 @@ fn (t &Transformer) get_call_return_type(id flat.NodeId, node flat.Node) string 
 			clean_type := t.membership_container_type(base_type)
 			if clean_type.starts_with('[]') {
 				elem_type := clean_type[2..]
-				if elem_type == 'thread' {
-					return 'void'
+				if wait_type := thread_array_wait_return_type(elem_type) {
+					return wait_type
 				}
-				if elem_type.starts_with('thread ') {
-					return '[]${elem_type[7..]}'
+			}
+			if t.is_fixed_array_type(clean_type) {
+				elem_type := fixed_array_elem_type(clean_type)
+				if wait_type := thread_array_wait_return_type(elem_type) {
+					return wait_type
 				}
 			}
 			if clean_type == 'thread' {

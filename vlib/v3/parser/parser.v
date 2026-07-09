@@ -749,8 +749,10 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		is_method = true
 		p.next()
 		mut is_mut := false
+		mut is_shared := false
 		if p.tok == .key_mut || p.tok == .key_shared {
 			is_mut = p.tok == .key_mut
+			is_shared = p.tok == .key_shared
 			receiver_is_mut = is_mut
 			p.next()
 		}
@@ -758,6 +760,9 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		receiver_type = p.parse_type_name()
 		if is_mut {
 			receiver_type = '&' + receiver_type
+		}
+		if is_shared {
+			receiver_type = 'shared ' + receiver_type
 		}
 		p.check(.rpar)
 
@@ -785,7 +790,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 					name += '.' + p.expect_name_or_keyword()
 				}
 				if is_method {
-					clean_type := receiver_type.trim_left('&')
+					clean_type := method_receiver_type_name(receiver_type)
 					name = '${clean_type}.${name}'
 				}
 				return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut,
@@ -806,7 +811,7 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 	}
 
 	if is_method && receiver_type.len > 0 {
-		clean_type := receiver_type.trim_left('&')
+		clean_type := method_receiver_type_name(receiver_type)
 		name = '${clean_type}.${name}'
 	}
 
@@ -844,7 +849,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		ret_type = p.parse_type_name()
 	}
 
-	clean_type := receiver_type.trim_left('&')
+	clean_type := method_receiver_type_name(receiver_type)
 	name := '${clean_type}.${op_name}'
 
 	mut body_ids := []flat.NodeId{}
@@ -852,7 +857,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		prev_fn := p.cur_fn
 		prev_struct := p.cur_struct
 		p.cur_fn = name
-		p.cur_struct = receiver_type.trim_left('&').all_after_last('.')
+		p.cur_struct = method_receiver_type_name(receiver_type).all_after_last('.')
 		p.push_local_type_scope(name)
 		if disable_body {
 			p.mark_disabled_fn(name)
@@ -955,7 +960,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	prev_struct := p.cur_struct
 	p.cur_fn = name
 	// `@STRUCT` inside a method expands to the receiver's (dereferenced) type name.
-	p.cur_struct = if is_method { receiver_type.trim_left('&').all_after_last('.') } else { '' }
+	p.cur_struct = if is_method { method_receiver_type_name(receiver_type).all_after_last('.') } else { '' }
 	p.push_local_type_scope(name)
 	// A disabled `@[if flag ?]` function keeps its signature but gets an empty body
 	// (a no-op stub), so callers still resolve while the body is compiled out.
@@ -997,6 +1002,22 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.register_pending_export(name)
 	p.register_pending_noreturn(name)
 	return id
+}
+
+fn method_receiver_type_name(receiver_type string) string {
+	mut clean := receiver_type.trim_space()
+	for {
+		if clean.starts_with('&') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		if clean.starts_with('shared ') {
+			clean = clean[7..].trim_space()
+			continue
+		}
+		break
+	}
+	return clean
 }
 
 fn (mut p Parser) mark_disabled_fn(name string) {
@@ -1053,11 +1074,13 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	mut ids := []flat.NodeId{}
 	mut names := []string{}
 	mut is_mut := false
+	mut is_shared := false
 	if p.tok == .key_mut {
 		is_mut = true
 		p.next()
 	}
 	if p.tok == .key_shared {
+		is_shared = true
 		p.next()
 	}
 	// variadic ...Type (no param name)
@@ -1078,6 +1101,9 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		mut typ := p.parse_type_name()
 		if is_mut && !typ.starts_with('&') {
 			typ = '&' + typ
+		}
+		if is_shared {
+			typ = 'shared ' + typ
 		}
 		ids << p.a.add_node(flat.Node{
 			kind:   .param
@@ -1105,6 +1131,9 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	mut typ := p.parse_type_name()
 	if is_mut && !typ.starts_with('&') {
 		typ = '&' + typ
+	}
+	if is_shared {
+		typ = 'shared ' + typ
 	}
 	for name in names {
 		ids << p.a.add_node(flat.Node{
@@ -1567,10 +1596,11 @@ fn (mut p Parser) const_decl() flat.NodeId {
 fn (mut p Parser) enum_decl() flat.NodeId {
 	p.next() // skip 'enum'
 	name := p.expect(.name)
+	mut enum_base_type := ''
 	// `as` type
 	if p.tok == .key_as {
 		p.next()
-		p.parse_type_name()
+		enum_base_type = p.parse_type_name()
 	}
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
@@ -1620,13 +1650,17 @@ fn (mut p Parser) enum_decl() flat.NodeId {
 		typ = 'flag'
 		p.pending_flag = false
 	}
-	return p.a.add_node(flat.Node{
+	mut enum_node := flat.Node{
 		kind:           .enum_decl
 		value:          name
 		typ:            typ
 		children_start: start
 		children_count: flat.child_count(ids.len)
-	})
+	}
+	if enum_base_type.len > 0 {
+		enum_node.generic_params = [enum_base_type]
+	}
+	return p.a.add_node(enum_node)
 }
 
 fn (mut p Parser) type_decl() flat.NodeId {
@@ -2985,6 +3019,12 @@ fn (mut p Parser) stmt() flat.NodeId {
 			p.mark_node_mut(stmt_id)
 			return stmt_id
 		}
+		.key_shared {
+			p.next()
+			stmt_id := p.assign_or_expr_stmt()
+			p.mark_node_shared(stmt_id)
+			return stmt_id
+		}
 		.key_static {
 			return p.static_decl_stmt()
 		}
@@ -3069,6 +3109,19 @@ fn (mut p Parser) stmt() flat.NodeId {
 
 fn (mut p Parser) mark_node_mut(id flat.NodeId) {
 	p.a.set_node_is_mut(id, true)
+}
+
+fn (mut p Parser) mark_node_shared(id flat.NodeId) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	unsafe {
+		mut node := &p.a.nodes[int(id)]
+		if node.kind != .decl_assign {
+			return
+		}
+		node.value = if node.value.len == 0 { 'shared' } else { 'shared:${node.value}' }
+	}
 }
 
 fn (mut p Parser) static_decl_stmt() flat.NodeId {
@@ -5111,7 +5164,11 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 	for p.tok != .rpar && p.tok != .eof {
 		prev_offset := p.s.offset
 		prev_tok := p.tok
-		if p.tok == .key_mut || p.tok == .key_shared {
+		mut arg_is_shared := false
+		if p.tok == .key_shared {
+			arg_is_shared = true
+			p.next()
+		} else if p.tok == .key_mut {
 			p.next()
 		}
 		// vararg spread: ...expr
@@ -5156,7 +5213,15 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 				children_count: flat.child_count(lids.len)
 			})
 		} else {
-			arg := p.expr(.lowest)
+			mut arg := p.expr(.lowest)
+			if arg_is_shared {
+				arg = p.a.add_node(flat.Node{
+					kind:           .prefix
+					value:          'shared'
+					children_start: p.add_child(arg)
+					children_count: 1
+				})
+			}
 			// struct config syntax: name: value
 			if p.tok == .colon {
 				p.next()
@@ -5634,7 +5699,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	if p.tok == .rsbr {
 		size_end := p.tok_pos
 		p.next()
-		if p.tok == .name || p.tok == .amp || p.tok == .question
+		if p.tok == .name || p.tok == .amp || p.tok == .question || p.tok == .not
 			|| (p.tok == .lsbr && p.current_lbr_starts_array_type()) {
 			// fixed array type: [N]Type. Use the literal node value for a plain integer
 			// size, but recover the full source text for a const expression (e.g.
@@ -6386,7 +6451,8 @@ fn (mut p Parser) parse_type_name() string {
 		}
 		// chan T
 		if name == 'chan' {
-			if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question {
+			if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question
+				|| p.tok == .not {
 				elem := p.parse_type_name()
 				return 'chan ${elem}'
 			}
@@ -6394,7 +6460,8 @@ fn (mut p Parser) parse_type_name() string {
 		}
 		// thread T
 		if name == 'thread' {
-			if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question {
+			if p.tok == .name || p.tok == .amp || p.tok == .lsbr || p.tok == .question
+				|| p.tok == .not {
 				elem := p.parse_type_name()
 				return 'thread ${elem}'
 			}

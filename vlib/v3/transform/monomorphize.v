@@ -3779,23 +3779,9 @@ fn (t &Transformer) generic_arg_expr_type(id flat.NodeId) string {
 			}
 		}
 		.index {
-			if node.children_count > 0 {
-				base_type := t.normalize_type_alias(t.node_type(t.a.child(&node, 0)))
-				if base_type.starts_with('[]') {
-					return base_type[2..]
-				}
-				if base_type.starts_with('map[') {
-					bracket_end := generic_matching_bracket(base_type, 3)
-					if bracket_end < base_type.len {
-						return base_type[bracket_end + 1..]
-					}
-				}
-				if base_type.starts_with('[') {
-					bracket_end := generic_matching_bracket(base_type, 0)
-					if bracket_end < base_type.len {
-						return base_type[bracket_end + 1..]
-					}
-				}
+			typ := t.node_type(id)
+			if typ.len > 0 && !t.generic_arg_is_unresolved(typ) {
+				return typ
 			}
 		}
 		else {}

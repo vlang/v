@@ -4,6 +4,58 @@ import v3.flat
 import v3.gen.c.naming
 import v3.types
 
+fn enum_decl_is_flag(node flat.Node) bool {
+	return node.typ == 'flag'
+}
+
+fn enum_decl_backing_type(node flat.Node) ?string {
+	if node.generic_params.len > 0 && node.generic_params[0].len > 0 {
+		return node.generic_params[0]
+	}
+	return none
+}
+
+fn (g &FlatGen) enum_backing_storage_c_type(backing string) string {
+	return g.tc.c_type(g.tc.parse_type(backing))
+}
+
+fn (mut g FlatGen) register_enum_backing_info(enum_name string, backing string) {
+	info := EnumBackingInfo{
+		c_name:         g.cname(enum_name)
+		storage_c_type: g.enum_backing_storage_c_type(backing)
+	}
+	g.enum_backing_infos[enum_name] = info
+	short := enum_name.all_after_last('.')
+	if short !in g.enum_backing_infos {
+		g.enum_backing_infos[short] = info
+	}
+}
+
+fn (g &FlatGen) enum_backing_info(enum_name string) ?EnumBackingInfo {
+	if info := g.enum_backing_infos[enum_name] {
+		return info
+	}
+	short := enum_name.all_after_last('.')
+	if info := g.enum_backing_infos[short] {
+		return info
+	}
+	return none
+}
+
+fn (g &FlatGen) enum_value_c_type(enum_type types.Enum) string {
+	if info := g.enum_backing_info(enum_type.name) {
+		return info.c_name
+	}
+	return g.tc.c_type(enum_type)
+}
+
+fn (g &FlatGen) enum_storage_c_type(enum_type types.Enum) string {
+	if info := g.enum_backing_info(enum_type.name) {
+		return info.storage_c_type
+	}
+	return g.tc.c_type(enum_type)
+}
+
 // optional_type_name supports optional type name handling for FlatGen.
 fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	mut base_type := types.Type(types.void_)
@@ -21,7 +73,11 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	if g.type_contains_generic_placeholder(base_type) {
 		return 'Optional'
 	}
-	mut inner_ct := g.tc.c_type(base_type)
+	mut inner_ct := if base_type is types.MultiReturn {
+		g.multi_return_c_type_name(base_type)
+	} else {
+		g.tc.c_type(base_type)
+	}
 	if inner_ct.starts_with('fn_ptr:') {
 		inner_ct = g.resolve_fn_ptr_type(inner_ct)
 	}
@@ -45,11 +101,25 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 	if t is types.OptionType || t is types.ResultType {
 		return g.optional_type_name(t)
 	}
+	if t is types.MultiReturn {
+		return g.multi_return_c_type_name(t)
+	}
+	if t is types.Enum {
+		return g.enum_value_c_type(t)
+	}
 	mut ct := g.tc.c_type(t)
 	if ct.starts_with('fn_ptr:') {
 		ct = g.resolve_fn_ptr_type(ct)
 	}
 	return ct
+}
+
+fn (mut g FlatGen) multi_return_c_type_name(t types.MultiReturn) string {
+	mut parts := []string{cap: t.types.len}
+	for item in t.types {
+		parts << naming.type_name_part(g.value_c_type(item))
+	}
+	return 'multi_return_${parts.join('_')}'
 }
 
 fn (mut g FlatGen) value_sizeof_target(t types.Type) string {
@@ -85,11 +155,7 @@ fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
 
 fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 	if t is types.MultiReturn {
-		mut parts := []string{cap: t.types.len}
-		for item in t.types {
-			parts << naming.type_name_part(g.tc.c_type(item))
-		}
-		return 'multi_return_${parts.join('_')}'
+		return g.multi_return_c_type_name(t)
 	}
 	return g.tc.c_type(t)
 }
@@ -356,15 +422,35 @@ fn (mut g FlatGen) enum_decls() {
 					node.value
 				}
 				cn := g.cname(name)
-				if emitted[cn] {
-					continue
-				}
-				emitted[cn] = true
-				g.writeln('typedef enum {')
-				is_flag := node.typ == 'flag'
-				mut val := 0
-				for i in 0 .. node.children_count {
-					f := g.a.child_node(&node, i)
+					if emitted[cn] {
+						continue
+					}
+					emitted[cn] = true
+					is_flag := enum_decl_is_flag(node)
+					if is_flag {
+						if backing := enum_decl_backing_type(node) {
+							storage_ct := g.enum_backing_storage_c_type(backing)
+							g.writeln('typedef ${storage_ct} ${cn};')
+							mut flag_val := 0
+							for i in 0 .. node.children_count {
+								f := g.a.child_node(&node, i)
+								if f.children_count > 0 {
+									if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
+										flag_val = enum_val
+									}
+								}
+								cfield := g.cname(f.value)
+								g.writeln('static const ${cn} ${cn}__${cfield} = (${cn})((${storage_ct})1 << ${flag_val});')
+								flag_val++
+							}
+							g.writeln('')
+							continue
+						}
+					}
+					g.writeln('typedef enum {')
+					mut val := 0
+					for i in 0 .. node.children_count {
+						f := g.a.child_node(&node, i)
 					if f.children_count > 0 {
 						if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
 							val = enum_val

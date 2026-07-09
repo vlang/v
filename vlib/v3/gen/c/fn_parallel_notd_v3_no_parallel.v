@@ -448,14 +448,17 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		const_modules:                  g.const_modules
 		const_init_order:               g.const_init_order
 		fixed_storage_consts:           g.fixed_storage_consts
-		global_modules:                 g.global_modules
-		global_inits:                   g.global_inits
-		global_init_order:              g.global_init_order
-		iface_impls:                    g.iface_impls
+			global_modules:                 g.global_modules
+			global_inits:                   g.global_inits
+			global_init_order:              g.global_init_order
+			enum_backing_infos:             g.enum_backing_infos
+			iface_impls:                    g.iface_impls
 		iface_type_ids:                 g.iface_type_ids
 		ierror_method_emit_names:       g.ierror_method_emit_names
 		ierror_stack_pointer_aliases:   []map[string]bool{}
 		local_pointer_storage_by_owner: map[string]bool{}
+		local_c_type_by_owner:          map[string]string{}
+		local_shared_storage_by_owner:  map[string]bool{}
 		sum_name_lookup:                g.sum_name_lookup
 		module_init_fns:                g.module_init_fns
 		module_init_fn_modules:         g.module_init_fn_modules
@@ -470,6 +473,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		fixed_array_ret_wrappers:       g.fixed_array_ret_wrappers
 		concrete_optional_abi_fns:      g.concrete_optional_abi_fns
 		fn_decl_param_types:            g.fn_decl_param_types
+		fn_decl_shared_params:          g.fn_decl_shared_params
 		fn_decl_mut_receivers:          g.fn_decl_mut_receivers
 		fn_decl_ret_types:              g.fn_decl_ret_types
 		non_generic_fn_names_by_module: g.non_generic_fn_names_by_module

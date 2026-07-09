@@ -1112,6 +1112,10 @@ fn shared_inner_type_text(raw string) ?string {
 	return none
 }
 
+fn decl_assign_is_shared_marker(value string) bool {
+	return value == 'shared' || value.starts_with('shared:')
+}
+
 fn shared_generic_app_parts(typ string) (string, []string, bool) {
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
 		return '', []string{}, false
@@ -1326,7 +1330,66 @@ fn (mut g FlatGen) collect_shared_type_names() {
 		}
 		g.collect_shared_type_names_from_info(info, []string{})
 	}
+	g.collect_local_shared_type_names()
 	g.tc.cur_module = old_module
+}
+
+fn (mut g FlatGen) collect_local_shared_type_names() {
+	mut cur_module := 'main'
+	for i in 0 .. g.a.nodes.len {
+		node := g.a.nodes[i]
+		if node.kind == .module_decl {
+			cur_module = if node.value.len == 0 { 'main' } else { node.value }
+			continue
+		}
+		if node.kind != .decl_assign || !decl_assign_is_shared_marker(node.value) {
+			if node.kind == .fn_decl {
+				g.collect_fn_shared_param_type_names(node, cur_module)
+			}
+			continue
+		}
+		g.tc.cur_module = cur_module
+		for j := 0; j + 1 < node.children_count; j += 2 {
+			rhs_id := g.a.child(&node, j + 1)
+			inner_type := shared_local_value_type(g.tc.resolve_type(rhs_id))
+			if inner_type is types.Unknown || inner_type is types.Void {
+				continue
+			}
+			inner := g.shared_qualify_type_text(inner_type.name(), cur_module)
+			g.register_shared_type_name(inner, cur_module)
+		}
+	}
+}
+
+fn shared_local_value_type(typ types.Type) types.Type {
+	if typ is types.Pointer {
+		return typ.base_type
+	}
+	return typ
+}
+
+fn (mut g FlatGen) collect_fn_shared_param_type_names(node flat.Node, module_name string) {
+	g.tc.cur_module = module_name
+	for i in 0 .. node.children_count {
+		param := g.a.child_node(&node, i)
+		if param.kind != .param {
+			continue
+		}
+		inner := shared_inner_type_text(param.typ) or { continue }
+		g.register_shared_type_name(g.shared_qualify_type_text(inner, module_name), module_name)
+	}
+}
+
+fn (mut g FlatGen) register_shared_type_name(inner string, module_name string) {
+	if inner.len == 0 || inner == 'unknown' || inner == 'void' {
+		return
+	}
+	wrapper := g.shared_wrapper_c_name(inner)
+	g.shared_type_names[wrapper] = SharedTypeInfo{
+		inner:  inner
+		module: module_name
+	}
+	g.needs_shared_runtime = true
 }
 
 fn (mut g FlatGen) collect_generic_shared_type_names(info StructDeclInfo) {
@@ -1348,12 +1411,7 @@ fn (mut g FlatGen) collect_shared_type_names_from_info(info StructDeclInfo, args
 		inner := shared_inner_type_text(field.typ) or { continue }
 		concrete_inner := substitute_shared_generic_type_text(inner, info.node.generic_params, args)
 		qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
-		wrapper := g.shared_wrapper_c_name(qualified_inner)
-		g.shared_type_names[wrapper] = SharedTypeInfo{
-			inner:  qualified_inner
-			module: info.module
-		}
-		g.needs_shared_runtime = true
+		g.register_shared_type_name(qualified_inner, info.module)
 	}
 }
 
@@ -1438,6 +1496,9 @@ fn (mut g FlatGen) generic_shared_field_info(type_name string, field_name string
 }
 
 fn (mut g FlatGen) shared_field_info(type_name string, field_name string) ?SharedFieldInfo {
+	if wrapper := g.shared_type_names[type_name] {
+		return g.shared_field_info(wrapper.inner, field_name)
+	}
 	info := g.find_struct_decl(type_name) or {
 		return g.generic_shared_field_info(type_name, field_name)
 	}
@@ -1516,6 +1577,29 @@ fn (mut g FlatGen) gen_shared_storage_expr(id flat.NodeId) bool {
 	base_id := g.a.child(&node, 0)
 	base_type0 := g.usable_expr_type(base_id)
 	return g.gen_shared_field_storage_selector(base_id, base_type0, node.value, node.op)
+}
+
+fn (mut g FlatGen) gen_local_shared_value_selector(base_id flat.NodeId, field string) bool {
+	if int(base_id) < 0 || int(base_id) >= g.a.nodes.len {
+		return false
+	}
+	base := g.a.nodes[int(base_id)]
+	if base.kind != .ident || !g.local_storage_is_shared(base.value) {
+		return false
+	}
+	g.write(g.cname(base.value))
+	g.write('->val.')
+	g.write(c_field_name(field))
+	mut base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
+	if base_type is types.Alias {
+		base_type = types.unwrap_pointer(base_type.base_type)
+	}
+	if base_type is types.Struct {
+		if _ := g.shared_field_info(base_type.name, field) {
+			g.write('->val')
+		}
+	}
+	return true
 }
 
 fn (mut g FlatGen) gen_shared_field_storage_selector(base_id flat.NodeId, base_type0 types.Type, field string, op flat.Op) bool {
@@ -1664,6 +1748,9 @@ fn (mut g FlatGen) struct_init_c_type_name(type_name string) string {
 	typ := g.tc.parse_type(init_type_name)
 	if typ is types.OptionType || typ is types.ResultType {
 		return g.optional_type_name(typ)
+	}
+	if typ is types.MultiReturn {
+		return g.value_c_type(typ)
 	}
 	if ct := g.generic_struct_init_app_ct_from_context(init_type_name) {
 		return ct
@@ -2246,7 +2333,11 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 	if key_type is types.String {
 		return 'map_hash_string', 'map_eq_string', 'map_clone_string', 'map_free_string'
 	}
-	c_key := g.tc.c_type(key_type)
+	c_key := if key_type is types.Enum {
+		g.enum_storage_c_type(key_type)
+	} else {
+		g.tc.c_type(key_type)
+	}
 	size_suffix := match c_key {
 		'u8', 'i8', 'bool', 'char' { '1' }
 		'u16', 'i16' { '2' }
