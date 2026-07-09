@@ -1356,6 +1356,236 @@ static SECURITY_STATUS client_handshake_loop(TlsContext *tls_ctx, BOOL fDoInitia
 }
 
 
+// ---------------------------------------------------------------------------
+// One-shot HTTP/1.1 response-completion detection (https_make_request).
+//
+// A keep-alive peer is free to leave the connection open indefinitely after
+// responding (HTTP/1.1's default), so waiting for the peer to close the
+// socket (or send a TLS close_notify) is not a valid completion signal on
+// its own -- a compliant server that never does either would hang the
+// client forever (vlang/v#27705). These helpers let the read loop below
+// recognize a complete response from its own framing (Content-Length, or a
+// fully-received chunked body) and stop as soon as it has arrived, without
+// waiting on the peer. Deliberately conservative throughout: anything that
+// cannot be confidently parsed reports "incomplete", falling back to the
+// existing read-until-close/read-until-context-expired behavior, which
+// remains correct in every case -- these helpers only ever add an EARLIER
+// stopping point, never a different one.
+
+// http_ci_equal reports whether buf[0..len) case-insensitively equals name
+// (an ASCII literal of length name_len) -- HTTP header names and the
+// "chunked" token are always ASCII.
+static BOOL http_ci_equal(const CHAR *buf, int len, const CHAR *name, int name_len) {
+	if(len != name_len) {
+		return FALSE;
+	}
+	for(int i = 0; i < len; i++) {
+		CHAR a = buf[i];
+		CHAR b = name[i];
+		if(a >= 'A' && a <= 'Z') a = a - 'A' + 'a';
+		if(b >= 'A' && b <= 'Z') b = b - 'A' + 'a';
+		if(a != b) {
+			return FALSE;
+		}
+	}
+	return TRUE;
+}
+
+// http_ci_contains reports whether needle occurs case-insensitively anywhere
+// within buf[0..len).
+static BOOL http_ci_contains(const CHAR *buf, int len, const CHAR *needle, int needle_len) {
+	for(int i = 0; i + needle_len <= len; i++) {
+		if(http_ci_equal(buf + i, needle_len, needle, needle_len)) {
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+// http_find_header case-insensitively locates a "<name>: value" line within
+// buf[0..headers_end) (the response's header block) and returns a pointer to
+// the value (leading spaces/tabs trimmed), with its length in *out_len.
+// Returns NULL if the header is not present.
+static const CHAR* http_find_header(const CHAR *buf, int headers_end, const CHAR *name, int name_len, int *out_len) {
+	int i = 0;
+	while(i < headers_end) {
+		int line_end = -1;
+		for(int j = i; j + 1 < headers_end; j++) {
+			if(buf[j] == '\r' && buf[j + 1] == '\n') {
+				line_end = j;
+				break;
+			}
+		}
+		if(line_end < 0) {
+			break;
+		}
+		if(line_end - i > name_len && buf[i + name_len] == ':'
+				&& http_ci_equal(buf + i, name_len, name, name_len)) {
+			const CHAR *val = buf + i + name_len + 1;
+			int val_len = line_end - (i + name_len + 1);
+			while(val_len > 0 && (*val == ' ' || *val == '\t')) {
+				val++;
+				val_len--;
+			}
+			*out_len = val_len;
+			return val;
+		}
+		i = line_end + 2;
+	}
+	return NULL;
+}
+
+// http_parse_decimal/http_parse_hex reject a value that would overflow
+// `long` (Windows' LLP64 model keeps `long` 32-bit even in 64-bit builds)
+// rather than let the multiply-add silently wrap into a small or negative
+// number: http_response_complete compares this value against a byte count
+// to decide whether the full response has arrived, so a wrapped length
+// could make it signal "complete" after only a few real bytes -- a
+// truncation bug strictly worse than the hang this file fixes. No
+// legitimate response from this one-shot client's callers is anywhere
+// close to this bound.
+#define HTTP_MAX_PARSED_LENGTH 0x3FFFFFFFL
+
+// http_parse_decimal parses buf[0..len) as an unsigned decimal integer,
+// rejecting anything that is not entirely digits -- a lenient parse that
+// silently accepts trailing garbage is not a trustworthy length signal.
+static BOOL http_parse_decimal(const CHAR *buf, int len, long *out) {
+	if(len <= 0) {
+		return FALSE;
+	}
+	long value = 0;
+	for(int i = 0; i < len; i++) {
+		if(buf[i] < '0' || buf[i] > '9') {
+			return FALSE;
+		}
+		int digit = buf[i] - '0';
+		if(value > (HTTP_MAX_PARSED_LENGTH - digit) / 10) {
+			return FALSE;
+		}
+		value = value * 10 + digit;
+	}
+	*out = value;
+	return TRUE;
+}
+
+// http_parse_hex parses a chunk-size line's leading hex digits, stopping at
+// the first non-hex-digit byte (permitting a ";extension" suffix per
+// RFC 7230 4.1.1, read past but not interpreted here). Requires at least one
+// hex digit.
+static BOOL http_parse_hex(const CHAR *buf, int len, long *out) {
+	int i = 0;
+	long value = 0;
+	while(i < len) {
+		CHAR c = buf[i];
+		int digit;
+		if(c >= '0' && c <= '9') {
+			digit = c - '0';
+		} else if(c >= 'a' && c <= 'f') {
+			digit = c - 'a' + 10;
+		} else if(c >= 'A' && c <= 'F') {
+			digit = c - 'A' + 10;
+		} else {
+			break;
+		}
+		if(value > (HTTP_MAX_PARSED_LENGTH - digit) / 16) {
+			return FALSE;
+		}
+		value = value * 16 + digit;
+		i++;
+	}
+	if(i == 0) {
+		return FALSE;
+	}
+	*out = value;
+	return TRUE;
+}
+
+// http_chunked_body_complete reports whether buf[0..len) -- the bytes
+// immediately following the response headers -- contains a complete
+// chunked-encoded body: every chunk present through the terminating
+// zero-size chunk and its (possibly empty) trailer section (RFC 7230 4.1).
+static BOOL http_chunked_body_complete(const CHAR *buf, int len) {
+	int pos = 0;
+	BOOL in_trailers = FALSE;
+	while(TRUE) {
+		int line_end = -1;
+		for(int i = pos; i + 1 < len; i++) {
+			if(buf[i] == '\r' && buf[i + 1] == '\n') {
+				line_end = i;
+				break;
+			}
+		}
+		if(line_end < 0) {
+			return FALSE; // line not fully received yet
+		}
+		if(in_trailers) {
+			if(line_end == pos) {
+				return TRUE; // empty line: end of the trailer section
+			}
+			pos = line_end + 2;
+			continue;
+		}
+		long chunk_size = 0;
+		if(!http_parse_hex(buf + pos, line_end - pos, &chunk_size)) {
+			return FALSE; // not a valid chunk-size line -- do not trust it
+		}
+		int data_start = line_end + 2;
+		if(chunk_size == 0) {
+			in_trailers = TRUE;
+			pos = data_start;
+			continue;
+		}
+		long data_end = (long)data_start + chunk_size;
+		if(data_end + 1 >= (long)len) {
+			return FALSE; // chunk data + trailing CRLF not fully received yet
+		}
+		pos = (int)(data_end + 2);
+	}
+}
+
+// http_response_complete inspects the response bytes accumulated so far
+// (buf[0..len)) and reports whether they already contain one complete HTTP
+// response. Only Content-Length and chunked Transfer-Encoding are
+// understood; a response framed neither way (or with a malformed length)
+// reports incomplete, so the caller keeps reading until the peer closes —
+// identical to this function's behavior before these helpers existed.
+static BOOL http_response_complete(const CHAR *buf, int len) {
+	int headers_end = -1;
+	for(int i = 0; i + 3 < len; i++) {
+		if(buf[i] == '\r' && buf[i + 1] == '\n' && buf[i + 2] == '\r' && buf[i + 3] == '\n') {
+			headers_end = i + 4;
+			break;
+		}
+	}
+	if(headers_end < 0) {
+		return FALSE;
+	}
+
+	int te_len = 0;
+	const CHAR *te = http_find_header(buf, headers_end, "Transfer-Encoding", 17, &te_len);
+	if(te != NULL) {
+		// RFC 7230 3.3.3: Transfer-Encoding, when present, overrides
+		// Content-Length. Only "chunked" is understood here; anything else
+		// falls back to the existing (always-correct) read-until-close
+		// behavior.
+		if(http_ci_contains(te, te_len, "chunked", 7)) {
+			return http_chunked_body_complete(buf + headers_end, len - headers_end);
+		}
+		return FALSE;
+	}
+
+	int cl_len = 0;
+	const CHAR *cl = http_find_header(buf, headers_end, "Content-Length", 14, &cl_len);
+	if(cl == NULL) {
+		return FALSE; // no length-framing header: must read until the peer closes
+	}
+	long content_length = 0;
+	if(!http_parse_decimal(cl, cl_len, &content_length)) {
+		return FALSE; // not a clean digit string -- do not trust it
+	}
+	return (long)(len - headers_end) >= content_length;
+}
+
 static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD req_len, CHAR **out, int *length, vschannel_allocator afn) {
 	SecPkgContext_StreamSizes Sizes;
 	SECURITY_STATUS scRet;
@@ -1542,7 +1772,15 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 		// Copy the decrypted data to our output buffer
 		memcpy(*out+*length, pDataBuffer->pvBuffer, (int)pDataBuffer->cbBuffer);
 		*length += (int)pDataBuffer->cbBuffer;
-		
+
+		// Stop as soon as the response itself is fully framed (see
+		// http_response_complete's doc comment) rather than waiting for the
+		// peer to close the connection or send a TLS close_notify -- a
+		// keep-alive peer may do neither for a long time (vlang/v#27705).
+		if(http_response_complete(*out, *length)) {
+			return SEC_E_OK;
+		}
+
 		// Move any "extra" data to the input buffer.
 		if(pExtraBuffer) {
 			MoveMemory(pbIoBuffer, pExtraBuffer->pvBuffer, pExtraBuffer->cbBuffer);
