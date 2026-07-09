@@ -26,6 +26,10 @@ fn (g &FlatGen) enum_emit_storage_c_type(enum_name string, backing string) strin
 	return g.enum_backing_storage_c_type(backing)
 }
 
+fn enum_storage_c_type_is_unsigned(storage_ct string) bool {
+	return storage_ct in ['u8', 'u16', 'u32', 'u64', 'size_t']
+}
+
 fn (mut g FlatGen) register_enum_backing_info(enum_name string, backing string) {
 	info := EnumBackingInfo{
 		c_name:         g.cname(enum_name)
@@ -558,7 +562,11 @@ fn (mut g FlatGen) enum_str_defs() {
 						cfield := g.cname(fname)
 						g.writeln('\tif (it == ${cn}__${cfield}) return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
 					}
-					g.writeln('\treturn strconv__format_int((i64)(${storage_ct})it, 10);')
+					if enum_storage_c_type_is_unsigned(storage_ct) {
+						g.writeln('\treturn strconv__format_uint((u64)(${storage_ct})it, 10);')
+					} else {
+						g.writeln('\treturn strconv__format_int((i64)(${storage_ct})it, 10);')
+					}
 					g.writeln('}')
 					g.writeln('')
 				} else {
