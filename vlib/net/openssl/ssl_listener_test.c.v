@@ -119,6 +119,44 @@ fn test_ssl_listener_loads_in_memory_credentials_without_temp_files() ! {
 	}
 }
 
+fn test_ssl_listener_shutdown_is_idempotent() ! {
+	mut listener := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
+		cert:                   load_test_certificate_pem()!
+		cert_key:               load_test_private_key_pem()!
+		in_memory_verification: true
+	})!
+	listener.shutdown()!
+	listener.shutdown()!
+	assert listener.tcp_listener == unsafe { nil }
+	assert listener.sslctx == unsafe { nil }
+}
+
+fn test_ssl_listener_rejects_malformed_trailing_in_memory_cert_pem() ! {
+	malformed_cert := load_test_certificate_pem()! + '\n-----BEGIN CERTIFICATE-----\nnot valid\n'
+	if _ := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
+		cert:                   malformed_cert
+		cert_key:               load_test_private_key_pem()!
+		in_memory_verification: true
+	})
+	{
+		assert false, 'listener accepted a malformed trailing certificate PEM'
+	}
+}
+
+fn test_ssl_listener_rejects_malformed_trailing_in_memory_ca_pem() ! {
+	malformed_ca := load_test_certificate_pem()! + '\n-----BEGIN CERTIFICATE-----\nnot valid\n'
+	if _ := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
+		cert:                   load_test_certificate_pem()!
+		cert_key:               load_test_private_key_pem()!
+		verify:                 malformed_ca
+		validate:               true
+		in_memory_verification: true
+	})
+	{
+		assert false, 'listener accepted a malformed trailing CA PEM'
+	}
+}
+
 fn test_ssl_listener_file_credentials_load_full_certificate_chain() ! {
 	cert_path := os.join_path(os.temp_dir(),
 		'v_openssl_listener_fullchain_${time.now().unix_nano()}.pem')

@@ -1,6 +1,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/x509_vfy.h>
 
@@ -16,6 +17,18 @@ static int v_net_openssl_init_ssl(void) {
 	return OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS, 0);
 }
 #endif
+
+static int v_net_openssl_pem_read_reached_eof(void) {
+	unsigned long err = ERR_peek_last_error();
+	if (err == 0) {
+		return 1;
+	}
+	if (ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
+		ERR_clear_error();
+		return 1;
+	}
+	return 0;
+}
 
 static int v_net_openssl_SSL_CTX_use_certificate_chain_memory(SSL_CTX *ctx,
 		const unsigned char *data, size_t len) {
@@ -37,6 +50,7 @@ static int v_net_openssl_SSL_CTX_use_certificate_chain_memory(SSL_CTX *ctx,
 		BIO_free(bio);
 		return 0;
 	}
+	ERR_clear_error();
 	while ((cert = PEM_read_bio_X509(bio, NULL, NULL, NULL)) != NULL) {
 		// SSL_CTX_add_extra_chain_cert takes ownership of cert on success.
 		if (SSL_CTX_add_extra_chain_cert(ctx, cert) != 1) {
@@ -45,8 +59,10 @@ static int v_net_openssl_SSL_CTX_use_certificate_chain_memory(SSL_CTX *ctx,
 			return 0;
 		}
 	}
-	// Reaching the end of a PEM stream leaves PEM_R_NO_START_LINE queued.
-	ERR_clear_error();
+	if (!v_net_openssl_pem_read_reached_eof()) {
+		BIO_free(bio);
+		return 0;
+	}
 	BIO_free(bio);
 	return 1;
 }
@@ -88,6 +104,7 @@ static int v_net_openssl_SSL_CTX_load_verify_memory(SSL_CTX *ctx,
 	X509_STORE *store = SSL_CTX_get_cert_store(ctx);
 	X509 *cert = NULL;
 	int loaded = 0;
+	ERR_clear_error();
 	while ((cert = PEM_read_bio_X509_AUX(bio, NULL, NULL, NULL)) != NULL) {
 		if (X509_STORE_add_cert(store, cert) != 1) {
 			X509_free(cert);
@@ -97,7 +114,10 @@ static int v_net_openssl_SSL_CTX_load_verify_memory(SSL_CTX *ctx,
 		X509_free(cert);
 		loaded++;
 	}
-	ERR_clear_error();
+	if (!v_net_openssl_pem_read_reached_eof()) {
+		BIO_free(bio);
+		return 0;
+	}
 	BIO_free(bio);
 	return loaded > 0 ? 1 : 0;
 }

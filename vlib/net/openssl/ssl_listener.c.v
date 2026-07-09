@@ -166,7 +166,7 @@ pub fn (mut l SSLListener) accept_without_handshake() !&SSLConn {
 
 	mut conn := &SSLConn{
 		config:      l.config
-		sslctx:      unsafe { nil } // 设为 nil 避免连接关闭时意外释放共享的 sslctx
+		sslctx:      unsafe { nil } // Accepted connections must not free the listener's shared SSL context.
 		ssl:         ssl
 		handle:      tcp_conn.sock.handle
 		duration:    tcp_conn.read_timeout()
@@ -178,7 +178,6 @@ pub fn (mut l SSLListener) accept_without_handshake() !&SSLConn {
 
 // accept_handshake performs the SSL handshake on the connection.
 pub fn (mut conn SSLConn) accept_handshake() ! {
-	// 执行 SSL 握手过程
 	deadline := ssl_timeout_deadline(conn.duration)
 	for {
 		C.ERR_clear_error()
@@ -205,7 +204,6 @@ pub fn (mut conn SSLConn) accept_handshake() ! {
 			continue
 		}
 
-		// 握手失败
 		return error('net.openssl SSLListener.accept, SSL handshake failed: ${err_res}')
 	}
 }
@@ -218,5 +216,6 @@ pub fn (mut l SSLListener) shutdown() ! {
 	}
 	if l.tcp_listener != unsafe { nil } {
 		l.tcp_listener.close()!
+		l.tcp_listener = unsafe { nil }
 	}
 }
