@@ -289,6 +289,14 @@ fn (mut g FlatGen) gen_if_guard_value_bindings(lhs_ids []flat.NodeId, val_type t
 		return
 	}
 	lhs_name := g.cname(lhs.value)
+	if fixed := array_fixed_type(val_type) {
+		c_elem, dims := g.fixed_array_decl_parts(fixed)
+		g.writeln('${c_elem} ${lhs_name}${dims};')
+		g.writeln('memmove(${lhs_name}, ${tmp}.value, sizeof(${lhs_name}));')
+		owner := g.tc.cur_scope.insert_with_owner(lhs.value, val_type)
+		g.track_local_pointer_storage_decl(lhs, owner, val_type, '')
+		return
+	}
 	g.writeln('${val_ct} ${lhs_name} = ${tmp}.value;')
 	owner := g.tc.cur_scope.insert_with_owner(lhs.value, val_type)
 	g.track_local_pointer_storage_decl(lhs, owner, val_type, val_ct)
