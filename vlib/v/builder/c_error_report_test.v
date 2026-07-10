@@ -26,8 +26,9 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		trace_calls:  true
 		is_coverage:  true
 		coverage_dir: 'cov/out'
-		// build_options records `-d ...` and `-cflags ...` verbatim
-		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"', '-cc gcc']
+		// build_options records `-d ...`, `-cflags ...` and `-custom-prelude ...` verbatim
+		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"',
+			'-custom-prelude prelude.h', '-cc gcc']
 	}
 	opts := codegen_build_options(&p)
 	assert opts.contains('autofree')
@@ -49,6 +50,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('-d header=')
 	// `-cflags` is passed to the C compiler and can decide whether the error reproduces
 	assert opts.contains('-cflags "-Werror"')
+	// `-custom-prelude` replaces the prelude written into the C headers
+	assert opts.contains('-custom-prelude prelude.h')
 	// unrelated recorded options (e.g. `-cc`, covered by the ccompiler field) are not pulled in
 	assert !opts.contains('-cc gcc')
 }
