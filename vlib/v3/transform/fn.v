@@ -3531,8 +3531,9 @@ fn (mut t Transformer) generic_receiver_str_call(expr flat.NodeId, typ string) ?
 	if info.return_type.name() != 'string' {
 		return none
 	}
-	selector := t.make_selector(expr, 'str', '')
-	return t.make_call_expr_typed(selector, []flat.NodeId{}, 'string')
+	method_name := '${clean_typ}.str'
+	t.mark_fn_used_name(method_name)
+	return t.make_call_typed(method_name, arr1(expr), 'string')
 }
 
 // append_string builds `result = result + piece` using the runtime string concat helper.

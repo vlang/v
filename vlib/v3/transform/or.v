@@ -9,6 +9,8 @@ struct ArrayIndexInfo {
 	index_id       flat.NodeId
 	base_type      string
 	value_type     string
+	optional_type  string
+	base_optional  bool
 	is_fixed_array bool
 }
 
@@ -89,12 +91,24 @@ fn (mut t Transformer) array_index_info(index_id flat.NodeId) ?ArrayIndexInfo {
 	for base_type.starts_with('shared ') {
 		base_type = base_type[7..].trim_space()
 	}
+	mut optional_type := ''
+	mut base_optional := false
+	if t.is_optional_type_name(base_type) {
+		optional_type = t.qualify_optional_type(base_type)
+		inner_type := t.optional_base_type(optional_type)
+		if inner_type.starts_with('[]') {
+			base_type = inner_type
+			base_optional = true
+		}
+	}
 	if t.normalize_type_alias(base_type) == 'string' {
 		return ArrayIndexInfo{
-			base_id:    base_id
-			index_id:   index_expr_id
-			base_type:  'string'
-			value_type: 'u8'
+			base_id:       base_id
+			index_id:      index_expr_id
+			base_type:     'string'
+			value_type:    'u8'
+			optional_type: optional_type
+			base_optional: base_optional
 		}
 	}
 	if t.is_fixed_array_type(base_type) {
@@ -104,6 +118,8 @@ fn (mut t Transformer) array_index_info(index_id flat.NodeId) ?ArrayIndexInfo {
 			index_id:       index_expr_id
 			base_type:      fixed_type
 			value_type:     fixed_array_elem_type(fixed_type)
+			optional_type:  optional_type
+			base_optional:  base_optional
 			is_fixed_array: true
 		}
 	}
@@ -115,10 +131,12 @@ fn (mut t Transformer) array_index_info(index_id flat.NodeId) ?ArrayIndexInfo {
 		return none
 	}
 	return ArrayIndexInfo{
-		base_id:    base_id
-		index_id:   index_expr_id
-		base_type:  base_type
-		value_type: value_type
+		base_id:       base_id
+		index_id:      index_expr_id
+		base_type:     base_type
+		value_type:    value_type
+		optional_type: optional_type
+		base_optional: base_optional
 	}
 }
 
@@ -359,11 +377,17 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 	expr_id := t.a.child(&node, 0)
 	body_id := t.a.child(&node, 1)
 	info := t.array_index_info(expr_id) or { return id }
-	base_expr := t.stable_expr_for_reuse(info.base_id)
+	base_expr0 := t.stable_expr_for_reuse(info.base_id)
+	mut base_expr := base_expr0
 	index_name := t.new_temp('arr_idx')
 	val_name := t.new_temp('arr_val')
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
+	mut base_opt_name := ''
+	if info.base_optional {
+		base_opt_name = t.new_temp('arr_base_opt')
+		base_expr = t.make_selector(t.make_ident(base_opt_name), 'value', info.base_type)
+	}
 	index_expr := t.transform_expr(info.index_id)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
@@ -387,6 +411,9 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 	}
 	prelude << t.make_decl_assign_typed(index_name, index_expr, 'int')
 	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(result_type), result_type)
+	if info.base_optional {
+		prelude << t.make_decl_assign_typed(base_opt_name, base_expr0, info.optional_type)
+	}
 
 	idx_ident := t.make_ident(index_name)
 	lower_ok := t.make_infix(.ge, idx_ident, t.make_int_literal(0))
@@ -420,11 +447,23 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 		}
 		then_block = t.make_block(arr1(t.make_assign(t.make_ident(val_name), index_value)))
 	}
+	mut opt_else := flat.empty_node
+	if info.base_optional {
+		opt_err := t.make_selector(t.make_ident(base_opt_name), 'err', 'IError')
+		opt_else = t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, val_name,
+			result_type, node.value, opt_err))
+	}
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
 	}
-	t.pending_stmts << t.make_if(found_cond, then_block, else_block)
+	if info.base_optional {
+		opt_ok := t.make_selector(t.make_ident(base_opt_name), 'ok', 'bool')
+		t.pending_stmts << t.make_if(opt_ok, t.make_block(arr1(t.make_if(found_cond, then_block,
+			else_block))), opt_else)
+	} else {
+		t.pending_stmts << t.make_if(found_cond, then_block, else_block)
+	}
 	return t.make_ident(val_name)
 }
 
@@ -902,6 +941,11 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	}
 	expr_id := t.a.child(&node, 0)
 	body_id := t.a.child(&node, 1)
+	expr_node := if int(expr_id) >= 0 && int(expr_id) < t.a.nodes.len {
+		t.a.nodes[int(expr_id)]
+	} else {
+		flat.Node{}
+	}
 	expr_type, value_type := t.or_expr_types(expr_id, node.typ)
 	if !t.is_optional_type_name(expr_type) {
 		return t.transform_expr(expr_id)
@@ -914,7 +958,9 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	new_expr := t.transform_expr(expr_id)
+	new_expr := t.disabled_optional_call_or_none(expr_id, expr_node, expr_type) or {
+		t.transform_expr(expr_id)
+	}
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
 	new_expr_type := t.node_type(new_expr)
@@ -962,6 +1008,19 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	}
 	t.pending_stmts << if_stmt
 	return t.make_ident(val_tmp)
+}
+
+fn (mut t Transformer) disabled_optional_call_or_none(expr_id flat.NodeId, expr_node flat.Node, expr_type string) ?flat.NodeId {
+	if isnil(t.tc) || expr_node.kind != .call || !t.is_optional_type_name(expr_type) {
+		return none
+	}
+	if _ := t.json_decode_or_expr_type(expr_id, expr_node) {
+		return t.make_optional_none(expr_type)
+	}
+	if !t.is_disabled_fn_call(expr_id, expr_node) {
+		return none
+	}
+	return t.make_optional_none(expr_type)
 }
 
 fn (mut t Transformer) lower_or_expr_to_stmt(node flat.Node) {

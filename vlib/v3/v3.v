@@ -24,10 +24,7 @@ $if !skip_wasm ? {
 
 // run_compile_command supports run compile command handling for v3 entry point.
 fn run_compile_command(cmd string) os.Result {
-	exit_code := os.system(cmd)
-	return os.Result{
-		exit_code: exit_code
-	}
+	return os.execute(cmd)
 }
 
 fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
@@ -715,9 +712,6 @@ fn main() {
 			result = run_compile_command(exec_cmd)
 		}
 		if is_prod || !tried_tcc || result.exit_code != 0 {
-			if result.exit_code != 0 && result.output.len > 0 {
-				eprintln('  tcc error: ${result.output.trim_space()}')
-			}
 			stack_flag := if prefs.normalized_target_os() == 'macos' && !is_shared {
 				' -Wl,-stack_size,0x4000000'
 			} else {
