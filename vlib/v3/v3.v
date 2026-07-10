@@ -256,6 +256,299 @@ fn with_shared_library_postfix(path string) string {
 	return path + postfix
 }
 
+// should_scope_prealloc_selfhost reports whether self-host stages need disposable arenas.
+fn should_scope_prealloc_selfhost(building_v bool, cmd_v_build bool) bool {
+	$if prealloc {
+		return building_v || cmd_v_build
+	}
+	return false
+}
+
+// prealloc_scope_begin_for_v3 starts a disposable prealloc scope when available.
+fn prealloc_scope_begin_for_v3() voidptr {
+	$if prealloc {
+		return unsafe { prealloc_scope_begin() }
+	} $else {
+		return unsafe { nil }
+	}
+}
+
+// prealloc_scope_leave_for_v3 restores the previous prealloc scope after a stage.
+fn prealloc_scope_leave_for_v3(scope voidptr) {
+	$if prealloc {
+		unsafe { prealloc_scope_leave(scope) }
+	}
+}
+
+// prealloc_scope_free_for_v3 releases a disposable prealloc scope after survivors are cloned.
+fn prealloc_scope_free_for_v3(scope voidptr) {
+	$if prealloc {
+		unsafe { prealloc_scope_free_after(scope) }
+	}
+}
+
+// clone_string_list clones a string slice out of a scoped prealloc arena.
+fn clone_string_list(values []string) []string {
+	if values.len == 0 {
+		return []string{}
+	}
+	mut cloned := []string{cap: values.len}
+	for value in values {
+		cloned << value.clone()
+	}
+	return cloned
+}
+
+// clone_string_bool_map clones a string-to-bool map out of a scoped prealloc arena.
+fn clone_string_bool_map(values map[string]bool) map[string]bool {
+	mut cloned := map[string]bool{}
+	for key, value in values {
+		cloned[key.clone()] = value
+	}
+	return cloned
+}
+
+// clone_string_string_map clones a string-to-string map out of a scoped prealloc arena.
+fn clone_string_string_map(values map[string]string) map[string]string {
+	mut cloned := map[string]string{}
+	for key, value in values {
+		cloned[key.clone()] = value.clone()
+	}
+	return cloned
+}
+
+// clone_int_string_map clones an int-to-string map out of a scoped prealloc arena.
+fn clone_int_string_map(values map[int]string) map[int]string {
+	mut cloned := map[int]string{}
+	for key, value in values {
+		cloned[key] = value.clone()
+	}
+	return cloned
+}
+
+// clone_type_value clones a type value and any nested owned type metadata.
+fn clone_type_value(value types.Type) types.Type {
+	return match value {
+		types.Void {
+			types.Type(types.void_)
+		}
+		types.Unknown {
+			types.Type(types.Unknown{
+				reason: value.reason.clone()
+			})
+		}
+		types.Primitive {
+			types.Type(types.Primitive{
+				props: value.props
+				size:  value.size
+			})
+		}
+		types.String {
+			types.Type(types.string_)
+		}
+		types.Char {
+			types.Type(types.char_)
+		}
+		types.Rune {
+			types.Type(types.rune_)
+		}
+		types.ISize {
+			types.Type(types.isize_)
+		}
+		types.USize {
+			types.Type(types.usize_)
+		}
+		types.Nil {
+			types.Type(types.nil_)
+		}
+		types.None {
+			types.Type(types.none_)
+		}
+		types.Array {
+			types.Type(types.Array{
+				elem_type: clone_type_value(value.elem_type)
+			})
+		}
+		types.ArrayFixed {
+			types.Type(types.ArrayFixed{
+				elem_type: clone_type_value(value.elem_type)
+				len:       value.len
+				len_expr:  value.len_expr.clone()
+			})
+		}
+		types.Channel {
+			types.Type(types.Channel{
+				elem_type: clone_type_value(value.elem_type)
+			})
+		}
+		types.Map {
+			types.Type(types.Map{
+				key_type:   clone_type_value(value.key_type)
+				value_type: clone_type_value(value.value_type)
+			})
+		}
+		types.Pointer {
+			types.Type(types.Pointer{
+				base_type: clone_type_value(value.base_type)
+			})
+		}
+		types.FnType {
+			types.Type(types.FnType{
+				params:      clone_type_list(value.params)
+				return_type: clone_type_value(value.return_type)
+			})
+		}
+		types.OptionType {
+			types.Type(types.OptionType{
+				base_type: clone_type_value(value.base_type)
+			})
+		}
+		types.ResultType {
+			types.Type(types.ResultType{
+				base_type: clone_type_value(value.base_type)
+			})
+		}
+		types.Struct {
+			types.Type(types.Struct{
+				name: value.name.clone()
+			})
+		}
+		types.Interface {
+			types.Type(types.Interface{
+				name: value.name.clone()
+			})
+		}
+		types.Enum {
+			types.Type(types.Enum{
+				name:    value.name.clone()
+				is_flag: value.is_flag
+			})
+		}
+		types.SumType {
+			types.Type(types.SumType{
+				name: value.name.clone()
+			})
+		}
+		types.Alias {
+			types.Type(types.Alias{
+				name:      value.name.clone()
+				base_type: clone_type_value(value.base_type)
+			})
+		}
+		types.MultiReturn {
+			types.Type(types.MultiReturn{
+				types: clone_type_list(value.types)
+			})
+		}
+	}
+}
+
+// clone_type_list clones a type slice out of a scoped prealloc arena.
+fn clone_type_list(values []types.Type) []types.Type {
+	if values.len == 0 {
+		return []types.Type{}
+	}
+	mut cloned := []types.Type{cap: values.len}
+	for value in values {
+		cloned << clone_type_value(value)
+	}
+	return cloned
+}
+
+// clone_type_array clones active sparse type entries out of a scoped prealloc arena.
+fn clone_type_array(values []types.Type, set []bool) []types.Type {
+	mut cloned := []types.Type{len: values.len, init: types.Type(types.void_)}
+	for i, value in values {
+		if i < set.len && set[i] {
+			cloned[i] = clone_type_value(value)
+		}
+	}
+	return cloned
+}
+
+// clone_string_type_map clones a string-to-type map out of a scoped prealloc arena.
+fn clone_string_type_map(values map[string]types.Type) map[string]types.Type {
+	mut cloned := map[string]types.Type{}
+	for key, value in values {
+		cloned[key.clone()] = clone_type_value(value)
+	}
+	return cloned
+}
+
+// clone_string_type_list_map clones function parameter type lists by function name.
+fn clone_string_type_list_map(values map[string][]types.Type) map[string][]types.Type {
+	mut cloned := map[string][]types.Type{}
+	for key, value in values {
+		cloned[key.clone()] = clone_type_list(value)
+	}
+	return cloned
+}
+
+// clone_int_type_map clones a sparse int-to-type map out of a scoped prealloc arena.
+fn clone_int_type_map(values map[int]types.Type) map[int]types.Type {
+	mut cloned := map[int]types.Type{}
+	for key, value in values {
+		cloned[key] = clone_type_value(value)
+	}
+	return cloned
+}
+
+// clone_flat_node clones the owned fields of one flat AST node.
+fn clone_flat_node(node flat.Node) flat.Node {
+	return flat.Node{
+		value:          node.value.clone()
+		typ:            node.typ.clone()
+		generic_params: clone_string_list(node.generic_params)
+		kind_id:        node.kind_id
+		pos:            node.pos
+		children_start: node.children_start
+		children_count: node.children_count
+		kind:           node.kind
+		op:             node.op
+		is_mut:         node.is_mut
+	}
+}
+
+// clone_flat_ast clones the flat AST data that survives a disposable transform arena.
+fn clone_flat_ast(ast &flat.FlatAst) &flat.FlatAst {
+	mut nodes := []flat.Node{cap: ast.nodes.len}
+	for node in ast.nodes {
+		nodes << clone_flat_node(node)
+	}
+	mut children := []flat.NodeId{cap: ast.children.len}
+	children << ast.children
+	return &flat.FlatAst{
+		nodes:           nodes
+		children:        children
+		user_code_start: ast.user_code_start
+		disabled_fns:    clone_string_bool_map(ast.disabled_fns)
+		export_fn_names: clone_string_string_map(ast.export_fn_names)
+		noreturn_fns:    clone_string_bool_map(ast.noreturn_fns)
+	}
+}
+
+// clone_typechecker_after_scoped_transform clones checker metadata needed after transform.
+fn clone_typechecker_after_scoped_transform(mut tc types.TypeChecker, ast &flat.FlatAst) {
+	tc.a = ast
+	tc.fn_ret_types = clone_string_type_map(tc.fn_ret_types)
+	tc.fn_param_types = clone_string_type_list_map(tc.fn_param_types)
+	tc.fn_variadic = clone_string_bool_map(tc.fn_variadic)
+	tc.resolved_call_names = clone_string_list(tc.resolved_call_names)
+	tc.resolved_call_set = tc.resolved_call_set.clone()
+	tc.resolved_fn_value_names = clone_string_list(tc.resolved_fn_value_names)
+	tc.resolved_fn_value_set = tc.resolved_fn_value_set.clone()
+	tc.statement_nodes = tc.statement_nodes.clone()
+	tc.expr_type_set = tc.expr_type_set.clone()
+	tc.expr_type_values = clone_type_array(tc.expr_type_values, tc.expr_type_set)
+	tc.checking_nodes = tc.checking_nodes.clone()
+	tc.sparse_resolved_call_names = clone_int_string_map(tc.sparse_resolved_call_names)
+	tc.sparse_resolved_fn_values = clone_int_string_map(tc.sparse_resolved_fn_values)
+	tc.sparse_statement_nodes = tc.sparse_statement_nodes.clone()
+	tc.sparse_expr_type_values = clone_int_type_map(tc.sparse_expr_type_values)
+	tc.sparse_checking_nodes = tc.sparse_checking_nodes.clone()
+	tc.set_fresh_type_cache(tc.type_cache_parse_enabled())
+}
+
 // main runs the v3 entry point.
 fn main() {
 	args := os.args[1..]
@@ -373,8 +666,10 @@ fn main() {
 			i++
 		}
 	}
-	if no_parallel {
-		parallel_transform = false
+	mut current_no_parallel := no_parallel
+	mut current_parallel_transform := parallel_transform
+	if current_no_parallel {
+		current_parallel_transform = false
 	}
 
 	if input_file == '' {
@@ -388,6 +683,16 @@ fn main() {
 		building_v = true
 	}
 	cmd_v_build := input_is_cmd_v(input_file)
+	scope_prealloc_selfhost := should_scope_prealloc_selfhost(building_v, cmd_v_build)
+	if scope_prealloc_selfhost {
+		// A prealloc-built v3 compiler gets a bump arena per worker thread.
+		// During self-host builds, the parallel transform/cgen workers retain
+		// those arenas long enough to push RSS well past the memory budget. This
+		// throttles only the current build; `no_parallel` still reflects the user
+		// flag that decides whether the target compiler gets v3_no_parallel.
+		current_no_parallel = true
+		current_parallel_transform = false
+	}
 	if building_v || cmd_v_build {
 		if no_parallel {
 			user_defines = user_defines.filter(it != 'parallel')
@@ -496,7 +801,7 @@ fn main() {
 	}
 	files << pref.get_v_files_from_dir(builtin_dir, builtin_defines, prefs.target_os)
 	mut parse_was_parallel := false
-	_, builtin_parse_parallel := p.parse_files_dispatch(files, !no_parallel)
+	_, builtin_parse_parallel := p.parse_files_dispatch(files, !current_no_parallel)
 	parse_was_parallel = parse_was_parallel || builtin_parse_parallel
 	mut a := p.a
 	a.user_code_start = a.nodes.len
@@ -516,7 +821,7 @@ fn main() {
 	} else {
 		user_files << input_file
 	}
-	_, user_parse_parallel := p.parse_files_dispatch(user_files, !no_parallel)
+	_, user_parse_parallel := p.parse_files_dispatch(user_files, !current_no_parallel)
 	parse_was_parallel = parse_was_parallel || user_parse_parallel
 	test_files := test_input_files(user_files, backend)
 
@@ -524,7 +829,7 @@ fn main() {
 	seed_implicit_embed_file_import(mut a)
 
 	// Resolve imports recursively
-	import_parse_parallel := resolve_imports(mut a, mut p, prefs, user_files, !no_parallel)
+	import_parse_parallel := resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel)
 	parse_was_parallel = parse_was_parallel || import_parse_parallel
 	diagnostic_root := if is_selfhost {
 		diagnostic_root_for_input(input_file, user_files)
@@ -543,7 +848,7 @@ fn main() {
 	pre_tc.diagnose_unknown_calls = true
 	set_diagnostic_files(mut pre_tc, user_files)
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-	check_was_parallel := pre_tc.check_semantics_opt(parallel_transform)
+	check_was_parallel := pre_tc.check_semantics_opt(current_parallel_transform)
 	if pre_tc.errors.len > 0 {
 		print_type_errors(pre_tc.errors)
 		exit(1)
@@ -584,8 +889,19 @@ fn main() {
 	// and cgen.
 	mut transform_was_parallel := false
 	skip_transform_generics := building_v || cmd_v_build
-	used_fns, transform_was_parallel = transform.transform_with_used_opt_config(mut a, &pre_tc,
-		used_fns, parallel_transform, skip_transform_generics)
+	if scope_prealloc_selfhost {
+		transform_scope := prealloc_scope_begin_for_v3()
+		used_fns, transform_was_parallel = transform.transform_with_used_opt_config(mut a, &pre_tc,
+			used_fns, current_parallel_transform, skip_transform_generics)
+		prealloc_scope_leave_for_v3(transform_scope)
+		a = clone_flat_ast(a)
+		used_fns = clone_string_bool_map(used_fns)
+		clone_typechecker_after_scoped_transform(mut pre_tc, a)
+		prealloc_scope_free_for_v3(transform_scope)
+	} else {
+		used_fns, transform_was_parallel = transform.transform_with_used_opt_config(mut a, &pre_tc,
+			used_fns, current_parallel_transform, skip_transform_generics)
+	}
 	b.step_parallel('transform', transform_was_parallel)
 
 	// Reuse the pre-transform checker for metadata only. Transform does not add
@@ -650,16 +966,40 @@ fn main() {
 	} else {
 		// C backend (default)
 		c_standard := c_standard_flag(prefs.c99)
-		mut g := cgen.FlatGen.new()
-		g.set_c99_mode(prefs.c99)
-		g.set_prealloc('prealloc' in prefs.user_defines)
-		g.set_compiler_vexe(prefs.vexe)
-		c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, no_parallel, test_files)
-		if !write_text_file_raw(output_file, c_code) {
-			eprintln('error writing ${output_file}')
-			exit(1)
+		mut generated_c_flags := []string{}
+		mut cgen_was_parallel := false
+		if scope_prealloc_selfhost {
+			cgen_scope := prealloc_scope_begin_for_v3()
+			mut g := cgen.FlatGen.new()
+			g.set_c99_mode(prefs.c99)
+			g.set_prealloc('prealloc' in prefs.user_defines)
+			g.set_compiler_vexe(prefs.vexe)
+			c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, current_no_parallel,
+				test_files)
+			if !write_text_file_raw(output_file, c_code) {
+				eprintln('error writing ${output_file}')
+				exit(1)
+			}
+			cgen_was_parallel = g.was_parallel()
+			scoped_c_flags := g.c_flags()
+			prealloc_scope_leave_for_v3(cgen_scope)
+			generated_c_flags = clone_string_list(scoped_c_flags)
+			prealloc_scope_free_for_v3(cgen_scope)
+		} else {
+			mut g := cgen.FlatGen.new()
+			g.set_c99_mode(prefs.c99)
+			g.set_prealloc('prealloc' in prefs.user_defines)
+			g.set_compiler_vexe(prefs.vexe)
+			c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, current_no_parallel,
+				test_files)
+			if !write_text_file_raw(output_file, c_code) {
+				eprintln('error writing ${output_file}')
+				exit(1)
+			}
+			cgen_was_parallel = g.was_parallel()
+			generated_c_flags = g.c_flags()
 		}
-		b.step_parallel('cgen', g.was_parallel())
+		b.step_parallel('cgen', cgen_was_parallel)
 		if c_only {
 			b.print_report()
 			return
@@ -674,7 +1014,7 @@ fn main() {
 		} else {
 			'-w'
 		}
-		resolved_c_flags := prepare_c_flags_for_link(g.c_flags(), prefs.c99, pic_flag) or {
+		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag) or {
 			eprintln(err.msg())
 			exit(1)
 		}
@@ -693,8 +1033,8 @@ fn main() {
 		os.mkdir(cc_dir) or {}
 		cc_src := os.join_path_single(cc_dir, 'src.c')
 		cc_out := os.join_path_single(cc_dir, 'out')
-		if !write_text_file_raw(cc_src, c_code) {
-			eprintln('error writing ${cc_src}')
+		os.cp(output_file, cc_src) or {
+			eprintln('error writing ${cc_src}: ${err.msg()}')
 			exit(1)
 		}
 		mut cc_cmd := ''
