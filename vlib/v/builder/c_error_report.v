@@ -100,13 +100,18 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 			c_line = found_c_line
 		}
 	}
-	// Prefer the file the C error maps to; otherwise fall back to the compiled input
-	// file, so a report still carries the failing V source even without a `#line` mapping.
-	mut v_source_file := v_file
-	if v_source_file == '' && os.is_file(v.pref.path) {
-		v_source_file = v.pref.path
+	// `v_context` shows the lines of whatever file the C error maps to (which can be an
+	// included header, not V source).
+	mapped_source := if v_file != '' { os.read_file(v_file) or { '' } } else { '' }
+	// `v_source` must be the failing V program, so use the mapped file only when it is V
+	// source; otherwise (a header, or no `#line` mapping at all) fall back to the compiled input.
+	v_source := if is_v_source_file(v_file) {
+		mapped_source
+	} else if os.is_file(v.pref.path) {
+		os.read_file(v.pref.path) or { '' }
+	} else {
+		''
 	}
-	v_source := if v_source_file != '' { os.read_file(v_source_file) or { '' } } else { '' }
 	return CErrorBugReport{
 		kind:           'v-c-compiler-error'
 		v_version:      version.full_v_version(true)
@@ -121,7 +126,7 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 		c_context:      numbered_context_lines(c_lines, c_line, c_error_context_radius)
 		v_file:         v_file
 		v_line:         v_line
-		v_context:      numbered_context_lines(v_source.split_into_lines(), v_line,
+		v_context:      numbered_context_lines(mapped_source.split_into_lines(), v_line,
 			c_error_context_radius)
 		v_source:       bounded_v_source(v_source, c_error_bug_report_max_v_source_bytes)
 	}
@@ -187,6 +192,9 @@ fn codegen_build_options(p &pref.Preferences) string {
 	}
 	if p.no_preludes {
 		opts << 'no_preludes'
+	}
+	if p.is_prof {
+		opts << 'profile'
 	}
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
