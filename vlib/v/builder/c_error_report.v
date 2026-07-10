@@ -163,11 +163,17 @@ fn codegen_build_options(p &pref.Preferences) string {
 	}
 	if p.skip_unused {
 		opts << 'skip_unused'
-	} else if p.backend == .c && p.build_mode != .build_module {
+	} else if p.backend == .c && p.build_mode != .build_module && !p.output_cross_c {
 		// skip_unused defaults back to true for a normal C build, so a false value here means
 		// `-no-skip-unused` was passed; without recording it, replay would drop unused code and
-		// could compile a smaller C program that no longer hits the error.
+		// could compile a smaller C program that no longer hits the error. (`-build-module` and
+		// `-cross` also force it off, but on their own; they are reported separately.)
 		opts << 'no_skip_unused'
+	}
+	if p.output_cross_c {
+		// `-cross` / `-os cross` compiles all platform files under C guards (and forces
+		// skip_unused and the GC off), so the generated C differs from a host build.
+		opts << 'cross'
 	}
 	if p.use_coroutines {
 		opts << 'use_coroutines'
@@ -289,6 +295,11 @@ fn codegen_build_options(p &pref.Preferences) string {
 		// `-subsystem windows|console` changes the generated main function (cgen) and the
 		// linker command on Windows, so the generated/linked C differs.
 		opts << 'subsystem:${p.subsystem}'
+	}
+	if p.is_ios_simulator {
+		// `-os ios -simulator` makes cc.v emit `-miphonesimulator-version-min` (simulator SDK)
+		// instead of `-miphoneos-version-min`, so a device replay compiles differently.
+		opts << 'ios_simulator'
 	}
 	if p.thread_stack_size_set_by_flag {
 		// `spawn`/`go` embed this value in the CreateThread / pthread_attr_setstacksize call,

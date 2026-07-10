@@ -33,6 +33,7 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		relaxed_gcc14:                 false
 		assert_failure_mode:           .backtraces
 		subsystem:                     .windows
+		is_ios_simulator:              true
 		thread_stack_size:             4194304
 		thread_stack_size_set_by_flag: true
 		is_prof:                       true
@@ -72,6 +73,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('assert:backtraces')
 	// `-subsystem windows` changes the generated main function and the Windows linker command
 	assert opts.contains('subsystem:windows')
+	// `-os ios -simulator` selects the simulator SDK/clang flags
+	assert opts.split(' ').any(it == 'ios_simulator')
 	// `-div-by-zero-is-zero` makes cgen emit different safe div/mod helpers
 	assert opts.split(' ').any(it == 'div_by_zero_is_zero')
 	// `-check-overflow` inserts runtime overflow-check paths
@@ -130,6 +133,15 @@ fn test_codegen_build_options_reports_no_skip_unused_override() {
 		build_mode:  .build_module
 	})
 	assert !module_opts.split(' ').any(it == 'no_skip_unused')
+
+	// `-cross` forces skip_unused off in fill_with_defaults, so it must not be reported as the
+	// `-no-skip-unused` override; the cross mode itself is recorded instead
+	cross_opts := codegen_build_options(&pref.Preferences{
+		skip_unused:    false
+		output_cross_c: true
+	})
+	assert !cross_opts.split(' ').any(it == 'no_skip_unused')
+	assert cross_opts.split(' ').any(it == 'cross')
 }
 
 fn test_codegen_build_options_distinguishes_g_from_cg() {
