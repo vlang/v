@@ -27,6 +27,7 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		no_std:                true
 		cmain:                 'SDL_main'
 		force_bounds_checking: true
+		assert_failure_mode:   .backtraces
 		is_prof:               true
 		profile_file:          'some/file'
 		profile_no_inline:     true
@@ -57,6 +58,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('cmain:SDL_main')
 	// `-force-bounds-checking` keeps checks even in `@[direct_array_access]` functions
 	assert opts.contains('force_bounds_checking')
+	// `-assert backtraces` changes the post-failure C path cgen emits
+	assert opts.contains('assert:backtraces')
 	// the profile output path is embedded in the generated C, so keep it
 	assert opts.contains('profile:some/file')
 	assert opts.contains('profile_no_inline')

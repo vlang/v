@@ -261,6 +261,11 @@ fn codegen_build_options(p &pref.Preferences) string {
 		// one, so the generated C differs.
 		opts << 'cmain:${p.cmain}'
 	}
+	if p.assert_failure_mode != .default {
+		// `-assert aborts|backtraces|continues` makes cgen emit a different post-failure path
+		// (abort(), print_backtrace(), or none), so the generated C differs.
+		opts << 'assert:${p.assert_failure_mode}'
+	}
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
 	}
