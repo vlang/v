@@ -165,18 +165,33 @@ fn test_c_error_location_for_generated_c_parses_msvc_output() {
 	assert loc.line == 19
 }
 
-fn test_v_source_chunk_returns_only_window_around_failing_line() {
-	lines := ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']
-	// a chunk of radius 2 around line 6 keeps lines 4..8 and nothing else (not the whole file)
-	chunk := v_source_chunk(lines, 6, 2)
-	assert chunk == '4\n5\n6\n7\n8'
-	assert !chunk.contains('1')
-	assert !chunk.contains('11')
+fn test_v_source_for_report_keeps_prefix_and_failing_region() {
+	// lines 1..60; the error is on line 50, far past the 3-line prefix and 2-line radius
+	mut lines := []string{}
+	for i in 1 .. 61 {
+		lines << i.str()
+	}
+	src := v_source_for_report(lines, 50, 2, 3)
+	// leading declarations (imports/types live at the top) are kept
+	assert src.contains('1\n2\n3')
+	// the failing region (lines 48..52) is kept
+	assert src.contains('48\n49\n50\n51\n52')
+	// unrelated middle bodies are dropped, with a marker in their place
+	assert src.contains(c_error_v_source_omitted_notice)
+	assert !src.split('\n').any(it == '25')
 }
 
-fn test_v_source_chunk_is_empty_without_mapped_line() {
+fn test_v_source_for_report_is_contiguous_when_region_reaches_prefix() {
+	lines := ['1', '2', '3', '4', '5', '6', '7']
+	// error on line 3 with radius 2 => region reaches the top, so no omission marker
+	src := v_source_for_report(lines, 3, 2, 3)
+	assert src == '1\n2\n3\n4\n5'
+	assert !src.contains(c_error_v_source_omitted_notice)
+}
+
+fn test_v_source_for_report_is_empty_without_mapped_line() {
 	// no mapped V line (center <= 0) => upload no source at all
-	assert v_source_chunk(['a', 'b', 'c'], 0, 40) == ''
+	assert v_source_for_report(['a', 'b', 'c'], 0, 40, 40) == ''
 }
 
 fn test_numbered_context_lines_returns_five_lines_each_side() {

@@ -12,6 +12,10 @@ const c_error_context_radius = 5
 // how many V source lines to upload on each side of the failing line (the reproduction chunk,
 // wider than the pinpoint `c_error_context_radius` above, but still not the whole file)
 const c_error_v_source_radius = 40
+// how many leading lines of the file to keep (module/imports/top-level declarations), so the
+// uploaded chunk still has what the failing region needs to compile
+const c_error_v_source_prefix_lines = 40
+const c_error_v_source_omitted_notice = '// ... unrelated source omitted for the bug report ...'
 const c_error_bug_report_max_body_bytes = 256 * 1024
 const c_error_bug_report_max_v_source_bytes = 64 * 1024
 const c_error_bug_report_truncation_notice = '\n... report truncated before upload ...\n'
@@ -44,7 +48,7 @@ pub:
 	v_file         string
 	v_line         int
 	v_context      []CErrorReportLine
-	v_source       string // the block of V source around the failing line (bounded), so the failure can be reproduced without uploading the whole file
+	v_source       string // leading declarations + the block around the failing line (bounded), so the failure can be reproduced without uploading the whole file
 }
 
 fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) {
@@ -106,12 +110,13 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// `v_context` shows the lines of whatever file the C error maps to (which can be an
 	// included header, not V source).
 	mapped_source := if v_file != '' { os.read_file(v_file) or { '' } } else { '' }
-	// `v_source` uploads only the block of V source around the failing line, not the whole
-	// file, so unrelated or private code is not disclosed on the default auto-submit path. It
-	// is taken from the mapped file only when that is V source (a header, or no `#line`
-	// mapping at all, yields no chunk).
+	// `v_source` uploads the leading declarations (module/imports/types) plus the block of
+	// source around the failing line, not the whole file, so the failure can be reproduced
+	// without disclosing every unrelated function body. It is taken from the mapped file only
+	// when that is V source (a header, or no `#line` mapping at all, yields no chunk).
 	v_source := if is_v_source_file(v_file) {
-		v_source_chunk(mapped_source.split_into_lines(), v_line, c_error_v_source_radius)
+		v_source_for_report(mapped_source.split_into_lines(), v_line, c_error_v_source_radius,
+			c_error_v_source_prefix_lines)
 	} else {
 		''
 	}
@@ -276,14 +281,27 @@ fn codegen_build_options(p &pref.Preferences) string {
 	return opts.join(' ')
 }
 
-// v_source_chunk returns only the block of V source around the failing line (a window of
-// `radius` lines on each side), rather than the whole file, so unrelated or private source is
-// not uploaded on the default auto-submit path. It returns '' when there is no mapped V line.
-fn v_source_chunk(lines []string, center int, radius int) string {
-	if center <= 0 {
+// v_source_for_report returns the V source needed to reproduce the C error without uploading the
+// whole file: the file's leading `prefix_lines` lines (module/imports/top-level declarations) plus
+// the block of `radius` lines on each side of the failing line. Keeping the prefix means the
+// stored source usually still compiles (a bare window can start mid-function and omit imports and
+// type declarations), while unrelated function bodies in the middle are still dropped. When the
+// failing region already reaches the prefix, one contiguous block is returned. It returns '' when
+// there is no mapped V line.
+fn v_source_for_report(lines []string, center int, radius int, prefix_lines int) string {
+	if center <= 0 || lines.len == 0 {
 		return ''
 	}
-	return numbered_context_lines(lines, center, radius).map(it.text).join('\n')
+	region_start := if center - radius < 1 { 1 } else { center - radius }
+	region_end := if center + radius > lines.len { lines.len } else { center + radius }
+	// The failing region already includes (or directly follows) the prefix: keep it contiguous.
+	if region_start <= prefix_lines + 1 {
+		return lines[..region_end].join('\n')
+	}
+	prefix_end := if prefix_lines > lines.len { lines.len } else { prefix_lines }
+	prefix := lines[..prefix_end].join('\n')
+	region := lines[region_start - 1..region_end].join('\n')
+	return '${prefix}\n${c_error_v_source_omitted_notice}\n${region}'
 }
 
 // bounded_v_source keeps the V source under `max_bytes`, trimming the middle if needed so the
