@@ -5111,6 +5111,12 @@ fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, field types.Stru
 		return
 	}
 	if clean is types.Primitive {
+		if clean.props.has(.boolean) {
+			// cJSON records booleans via the node type (cJSON_True/cJSON_False),
+			// not in valuedouble, so read them with cJSON_IsTrue.
+			g.write('(${item} != NULL ? (bool)cJSON_IsTrue(${item}) : 0)')
+			return
+		}
 		g.write('(${item} != NULL ? (${g.value_c_type(clean)})${item}->valuedouble : 0)')
 		return
 	}
