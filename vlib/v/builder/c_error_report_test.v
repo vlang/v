@@ -13,26 +13,27 @@ fn restore_env_var(name string, old_value ?string) {
 
 fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	p := pref.Preferences{
-		autofree:          true
-		gc_mode:           .boehm_full
-		is_prod:           true
-		skip_unused:       true
-		prealloc:          true
-		is_bare:           true
-		no_builtin:        true
-		no_preludes:       true
-		no_prod_options:   true
-		enable_globals:    true
-		fast_math:         true
-		cmain:             'SDL_main'
-		is_prof:           true
-		profile_file:      'some/file'
-		profile_no_inline: true
-		profile_fns:       ['foo_*', 'bar']
-		trace_calls:       true
-		trace_fns:         ['baz_*']
-		is_coverage:       true
-		coverage_dir:      'cov/out'
+		autofree:              true
+		gc_mode:               .boehm_full
+		is_prod:               true
+		skip_unused:           true
+		prealloc:              true
+		is_bare:               true
+		no_builtin:            true
+		no_preludes:           true
+		no_prod_options:       true
+		enable_globals:        true
+		fast_math:             true
+		cmain:                 'SDL_main'
+		force_bounds_checking: true
+		is_prof:               true
+		profile_file:          'some/file'
+		profile_no_inline:     true
+		profile_fns:           ['foo_*', 'bar']
+		trace_calls:           true
+		trace_fns:             ['baz_*']
+		is_coverage:           true
+		coverage_dir:          'cov/out'
 		// value-carrying options are recorded verbatim in build_options
 		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"', '-ldflags "-s"',
 			'-custom-prelude prelude.h', '-bare-builtin-dir bare/dir', '-cc gcc']
@@ -52,6 +53,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	// `-fast-math` changes the C compiler command; `-cmain` changes the generated entry point
 	assert opts.contains('fast_math')
 	assert opts.contains('cmain:SDL_main')
+	// `-force-bounds-checking` keeps checks even in `@[direct_array_access]` functions
+	assert opts.contains('force_bounds_checking')
 	// the profile output path is embedded in the generated C, so keep it
 	assert opts.contains('profile:some/file')
 	assert opts.contains('profile_no_inline')
@@ -73,6 +76,26 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('-bare-builtin-dir bare/dir')
 	// unrelated recorded options (e.g. `-cc`, covered by the ccompiler field) are not pulled in
 	assert !opts.contains('-cc gcc')
+}
+
+fn test_codegen_build_options_reports_no_skip_unused_override() {
+	// a C build with skip_unused off means `-no-skip-unused` was passed (it defaults to true);
+	// replay must disable it too, or a smaller C program could miss the error
+	opts := codegen_build_options(&pref.Preferences{ skip_unused: false })
+	assert opts.split(' ').any(it == 'no_skip_unused')
+	assert !opts.split(' ').any(it == 'skip_unused')
+
+	// the default (skip_unused on) is reported as plain `skip_unused`, not the override
+	on_opts := codegen_build_options(&pref.Preferences{ skip_unused: true })
+	assert on_opts.split(' ').any(it == 'skip_unused')
+	assert !on_opts.split(' ').any(it == 'no_skip_unused')
+
+	// `-build-module` already turns skip_unused off by itself, so it is not the override
+	module_opts := codegen_build_options(&pref.Preferences{
+		skip_unused: false
+		build_mode:  .build_module
+	})
+	assert !module_opts.split(' ').any(it == 'no_skip_unused')
 }
 
 fn test_codegen_build_options_distinguishes_g_from_cg() {

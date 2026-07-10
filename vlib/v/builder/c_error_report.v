@@ -157,6 +157,11 @@ fn codegen_build_options(p &pref.Preferences) string {
 	}
 	if p.skip_unused {
 		opts << 'skip_unused'
+	} else if p.backend == .c && p.build_mode != .build_module {
+		// skip_unused defaults back to true for a normal C build, so a false value here means
+		// `-no-skip-unused` was passed; without recording it, replay would drop unused code and
+		// could compile a smaller C program that no longer hits the error.
+		opts << 'no_skip_unused'
 	}
 	if p.use_coroutines {
 		opts << 'use_coroutines'
@@ -184,6 +189,11 @@ fn codegen_build_options(p &pref.Preferences) string {
 	}
 	if p.no_bounds_checking {
 		opts << 'no_bounds_checking'
+	}
+	if p.force_bounds_checking {
+		// keeps array bounds checks even inside `@[direct_array_access]` functions, so the
+		// generated C differs from a replay that honors the attribute again.
+		opts << 'force_bounds_checking'
 	}
 	if p.translated {
 		opts << 'translated'
