@@ -4014,8 +4014,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 				receiver_wants_shared := g.fn_param_is_shared(actual_fn, 0)
 					|| g.fn_param_is_shared(method_name, 0) || g.fn_param_is_shared(fn_name, 0)
 					|| g.fn_param_is_shared(emitted_callee_name, 0)
-				if receiver_wants_shared
-					&& (g.gen_shared_local_receiver_arg(base_id) || g.gen_shared_storage_expr(base_id)) {
+				if receiver_wants_shared && (g.gen_shared_local_receiver_arg(base_id)
+					|| g.gen_shared_storage_expr(base_id)) {
 					arg_start = 1
 				} else if param_types.len > 0
 					&& g.gen_embedded_method_receiver(base_id, base_type, param_types[0], receiver_wants_ptr) {
@@ -4132,8 +4132,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						|| g.fn_param_is_shared(g.direct_call_name(target_name), arg_idx)
 						|| g.fn_param_is_shared(g.direct_call_name(fn_name), arg_idx)
 						|| g.fn_param_is_shared(g.direct_call_name(emitted_callee_name), arg_idx)
-					if arg_param_is_shared
-						&& (g.gen_shared_local_receiver_arg(arg_id) || g.gen_shared_storage_expr(arg_id)) {
+					if arg_param_is_shared && (g.gen_shared_local_receiver_arg(arg_id)
+						|| g.gen_shared_storage_expr(arg_id)) {
 						continue
 					}
 				}

@@ -471,7 +471,11 @@ fn (mut g FlatGen) enum_decls() {
 							f := g.a.child_node(&node, i)
 							mut value := next_value
 							mut value_known := next_value_known
-							mut value_expr := if next_value_known { value.str() } else { next_value_expr }
+							mut value_expr := if next_value_known {
+								value.str()
+							} else {
+								next_value_expr
+							}
 							if f.children_count > 0 {
 								expr_id := g.a.child(f, 0)
 								mut resolving := map[string]bool{}
@@ -799,15 +803,15 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			if node.children_count == 0 {
 				return none
 			}
-			return g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name,
-				mut field_values, field_exprs, mut resolving)
+			return g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
 			}
-			value := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name,
-				mut field_values, field_exprs, mut resolving)?
+			value := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)?
 			return match node.op {
 				.plus { value }
 				.minus { -value }
@@ -819,10 +823,10 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			if node.children_count < 2 {
 				return none
 			}
-			left := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name,
-				mut field_values, field_exprs, mut resolving)?
-			right := g.enum_field_expr_value_with_enum(g.a.child(&node, 1), enum_module, enum_name,
-				mut field_values, field_exprs, mut resolving)?
+			left := g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)?
+			right := g.enum_field_expr_value_with_enum(g.a.child(&node, 1), enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)?
 			if (node.op == .div || node.op == .mod) && right == 0 {
 				return none
 			}
@@ -847,8 +851,8 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 		}
 		.selector {
 			if field := g.enum_decl_selector_ref_field(id, enum_module, enum_name) {
-				return g.enum_decl_field_ref_value(field, enum_module, enum_name, mut
-					field_values, field_exprs, mut resolving)
+				return g.enum_decl_field_ref_value(field, enum_module, enum_name, mut field_values,
+					field_exprs, mut resolving)
 			}
 			return none
 		}

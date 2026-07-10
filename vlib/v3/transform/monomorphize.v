@@ -4332,12 +4332,12 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	for i in 0 .. node.children_count {
 		children << t.clone_generic_node(t.a.child(&node, i), args)
 	}
-		if is_comptime_for {
-			t.cloning_comptime_for_depth--
-		}
-		mut cloned_typ := t.resolve_substituted_type_text(t.subst_type(node.typ, args))
-		t.substitute_cloned_generic_call_type_args(node, mut children, args)
-		if t.cloning_comptime_for_depth > 0 {
+	if is_comptime_for {
+		t.cloning_comptime_for_depth--
+	}
+	mut cloned_typ := t.resolve_substituted_type_text(t.subst_type(node.typ, args))
+	t.substitute_cloned_generic_call_type_args(node, mut children, args)
+	if t.cloning_comptime_for_depth > 0 {
 		// Inside a `$for` body: clone verbatim, no generic-call retargeting.
 		start2 := t.a.children.len
 		for child in children {
@@ -4404,7 +4404,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		t.retarget_cloned_implicit_generic_call(clone_id, node, args)
 	}
 	return clone_id
-	}
+}
 
 fn (mut t Transformer) substitute_cloned_generic_call_type_args(node flat.Node, mut children []flat.NodeId, args []string) {
 	if node.kind != .index || node.children_count < 2 || node.value == 'range'
@@ -4417,7 +4417,8 @@ fn (mut t Transformer) substitute_cloned_generic_call_type_args(node flat.Node, 
 			continue
 		}
 		substituted := t.resolve_substituted_type_text(t.subst_type(arg, args))
-		if substituted.len == 0 || substituted == arg || t.generic_args_have_placeholders([substituted]) {
+		if substituted.len == 0 || substituted == arg
+			|| t.generic_args_have_placeholders([substituted]) {
 			continue
 		}
 		children[i] = t.make_ident(substituted)
@@ -4695,8 +4696,8 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 			}
 			source_arg := t.a.nodes[int(source_arg_id)]
 			mut arg_type := t.generic_call_arg_type_for_inference(clone_arg_id)
-			source_arg_type :=
-				t.resolve_substituted_type_text(t.subst_type(source_arg.typ, active_args))
+			source_arg_type := t.resolve_substituted_type_text(t.subst_type(source_arg.typ,
+				active_args))
 			if decl_type_is_usable(source_arg_type) && !t.generic_arg_is_unresolved(source_arg_type) {
 				arg_type = source_arg_type
 			}

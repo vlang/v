@@ -449,11 +449,11 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		const_modules:                  g.const_modules
 		const_init_order:               g.const_init_order
 		fixed_storage_consts:           g.fixed_storage_consts
-			global_modules:                 g.global_modules
-			global_inits:                   g.global_inits
-			global_init_order:              g.global_init_order
-			enum_backing_infos:             g.enum_backing_infos
-			iface_impls:                    g.iface_impls
+		global_modules:                 g.global_modules
+		global_inits:                   g.global_inits
+		global_init_order:              g.global_init_order
+		enum_backing_infos:             g.enum_backing_infos
+		iface_impls:                    g.iface_impls
 		iface_type_ids:                 g.iface_type_ids
 		ierror_method_emit_names:       g.ierror_method_emit_names
 		ierror_stack_pointer_aliases:   []map[string]bool{}

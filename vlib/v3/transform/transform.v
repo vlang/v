@@ -866,7 +866,8 @@ fn (mut t Transformer) collect_types() {
 					}
 				}
 				t.enum_types[node.value] = field_names
-				backing_storage_type := if node.generic_params.len > 0 && node.generic_params[0].len > 0 {
+				backing_storage_type := if node.generic_params.len > 0
+					&& node.generic_params[0].len > 0 {
 					t.normalize_type_in_module(node.generic_params[0], cur_mod)
 				} else {
 					''

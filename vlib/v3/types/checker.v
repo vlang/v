@@ -1105,8 +1105,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						ptypes << tc.parse_type(child.typ)
 					}
 				}
-				tc.register_fn_signature(node.value, ret_type, ptypes, []bool{}, is_variadic,
-					false)
+				tc.register_fn_signature(node.value, ret_type, ptypes, []bool{}, is_variadic, false)
 				if is_variadic {
 					tc.register_c_variadic_fn(node.value)
 				}
@@ -2329,10 +2328,10 @@ fn (mut tc TypeChecker) annotate_assign_expected_exprs(node flat.Node) {
 	mut i := 0
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
-			rhs_id := tc.a.child(&node, i + 1)
-			lhs_type := tc.resolve_lvalue_type(lhs_id)
-			expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
-			tc.annotate_expected_expr(rhs_id, expected_type)
+		rhs_id := tc.a.child(&node, i + 1)
+		lhs_type := tc.resolve_lvalue_type(lhs_id)
+		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
+		tc.annotate_expected_expr(rhs_id, expected_type)
 		i += 2
 	}
 }
@@ -4320,42 +4319,91 @@ fn enum_backing_value_bounds(typ Type) ?EnumBackingValueBounds {
 			64 { 64 }
 			else { 32 }
 		}
+
 		if clean.props.has(.unsigned) {
 			return match clean.size {
 				8 {
-					EnumBackingValueBounds{min: 0, max: 255, has_min: true, has_max: true, bits: bits}
+					EnumBackingValueBounds{
+						min:     0
+						max:     255
+						has_min: true
+						has_max: true
+						bits:    bits
+					}
 				}
 				16 {
-					EnumBackingValueBounds{min: 0, max: 65535, has_min: true, has_max: true, bits: bits}
+					EnumBackingValueBounds{
+						min:     0
+						max:     65535
+						has_min: true
+						has_max: true
+						bits:    bits
+					}
 				}
 				else {
-					EnumBackingValueBounds{min: 0, has_min: true, bits: bits}
+					EnumBackingValueBounds{
+						min:     0
+						has_min: true
+						bits:    bits
+					}
 				}
 			}
 		}
 		return match clean.size {
 			8 {
-				EnumBackingValueBounds{min: -128, max: 127, has_min: true, has_max: true, bits: bits}
+				EnumBackingValueBounds{
+					min:     -128
+					max:     127
+					has_min: true
+					has_max: true
+					bits:    bits
+				}
 			}
 			16 {
-				EnumBackingValueBounds{min: -32768, max: 32767, has_min: true, has_max: true, bits: bits}
+				EnumBackingValueBounds{
+					min:     -32768
+					max:     32767
+					has_min: true
+					has_max: true
+					bits:    bits
+				}
 			}
 			32, 0 {
-				EnumBackingValueBounds{min: -2147483647 - 1, max: 2147483647, has_min: true, has_max: true, bits: bits}
+				EnumBackingValueBounds{
+					min:     -2147483647 - 1
+					max:     2147483647
+					has_min: true
+					has_max: true
+					bits:    bits
+				}
 			}
 			else {
-				EnumBackingValueBounds{bits: bits}
+				EnumBackingValueBounds{
+					bits: bits
+				}
 			}
 		}
 	}
 	if clean is Rune {
-		return EnumBackingValueBounds{min: -2147483647 - 1, max: 2147483647, has_min: true, has_max: true, bits: 32}
+		return EnumBackingValueBounds{
+			min:     -2147483647 - 1
+			max:     2147483647
+			has_min: true
+			has_max: true
+			bits:    32
+		}
 	}
 	if clean is USize {
-		return EnumBackingValueBounds{min: 0, has_min: true, bits: 64}
+		return EnumBackingValueBounds{
+			min:     0
+			has_min: true
+			bits:    64
+		}
 	}
 	if clean is ISize {
-		return EnumBackingValueBounds{bits: 64}
+		return EnumBackingValueBounds{
+			bits: 64
+		}
 	}
 	return none
 }
@@ -7927,13 +7975,13 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		} $else {
 			tc.check_node(rhs_id)
 		}
-			rhs_type := tc.resolve_expr(rhs_id, expected_type)
-			if !tc.expr_compatible(rhs_id, rhs_type, expected_type)
-				&& !tc.pointer_value_compatible(rhs_type, expected_type)
-				&& !tc.pointer_arithmetic_assign_compatible(node.op, rhs_type, expected_type) {
-				tc.type_mismatch(.assignment_mismatch,
-					'cannot assign `${rhs_type.name()}` to `${expected_type.name()}`', id)
-			}
+		rhs_type := tc.resolve_expr(rhs_id, expected_type)
+		if !tc.expr_compatible(rhs_id, rhs_type, expected_type)
+			&& !tc.pointer_value_compatible(rhs_type, expected_type)
+			&& !tc.pointer_arithmetic_assign_compatible(node.op, rhs_type, expected_type) {
+			tc.type_mismatch(.assignment_mismatch,
+				'cannot assign `${rhs_type.name()}` to `${expected_type.name()}`', id)
+		}
 		$if ownership ? {
 			ownership_lhs_ids << lhs_id
 			ownership_rhs_ids << rhs_id
@@ -8220,19 +8268,19 @@ fn (mut tc TypeChecker) resolve_lvalue_type(lhs_id flat.NodeId) Type {
 		}
 		return tc.resolve_type(lhs_id)
 	}
-		if lhs.kind == .index {
-			tc.check_index(lhs_id, lhs)
-			return tc.resolve_type(lhs_id)
-		}
-		if lhs.kind == .prefix && lhs.op == .mul && lhs.children_count > 0 {
-			inner := tc.resolve_type(tc.a.child(&lhs, 0))
-			if inner is Pointer {
-				return inner.base_type
-			}
-			return inner
-		}
+	if lhs.kind == .index {
+		tc.check_index(lhs_id, lhs)
 		return tc.resolve_type(lhs_id)
 	}
+	if lhs.kind == .prefix && lhs.op == .mul && lhs.children_count > 0 {
+		inner := tc.resolve_type(tc.a.child(&lhs, 0))
+		if inner is Pointer {
+			return inner.base_type
+		}
+		return inner
+	}
+	return tc.resolve_type(lhs_id)
+}
 
 // check_return validates check return state for types.
 fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
@@ -9350,16 +9398,16 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		}
 		if clean is Channel {
 			match fn_node.value {
-					'close' {
-						return CallInfo{
-							name:         'chan.close'
-							params:       tarr2(base_type, tc.parse_type('IError'))
-							return_type:  Type(void_)
-							has_receiver: true
-							is_variadic:  true
-							params_known: true
-						}
+				'close' {
+					return CallInfo{
+						name:         'chan.close'
+						params:       tarr2(base_type, tc.parse_type('IError'))
+						return_type:  Type(void_)
+						has_receiver: true
+						is_variadic:  true
+						params_known: true
 					}
+				}
 				'try_push' {
 					return CallInfo{
 						name:         'chan.try_push'
@@ -16330,12 +16378,12 @@ fn (tc &TypeChecker) interface_receiver_method_call_info(iface_name string, meth
 	}
 	call_name := '${iface_name}.${method}'
 	return CallInfo{
-		name:         call_name
-		params:       params
+		name:          call_name
+		params:        params
 		shared_params: tc.fn_shared_params[decl_key] or { []bool{} }
-		return_type:  tc.fn_ret_types[decl_key] or { Type(void_) }
-		has_receiver: true
-		params_known: true
+		return_type:   tc.fn_ret_types[decl_key] or { Type(void_) }
+		has_receiver:  true
+		params_known:  true
 	}
 }
 
@@ -19438,13 +19486,13 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 		}
 	}
 	return CallInfo{
-		name:         generic_key
-		params:       sub_params
+		name:          generic_key
+		params:        sub_params
 		shared_params: tc.fn_shared_params[generic_key] or { []bool{} }
-		return_type:  sub_ret
-		has_receiver: true
-		is_variadic:  tc.fn_variadic[generic_key] or { false }
-		params_known: true
+		return_type:   sub_ret
+		has_receiver:  true
+		is_variadic:   tc.fn_variadic[generic_key] or { false }
+		params_known:  true
 	}
 }
 
@@ -19506,13 +19554,13 @@ pub fn (tc &TypeChecker) resolve_generic_sum_method(type_name string, method str
 		}
 	}
 	return CallInfo{
-		name:         generic_key
-		params:       sub_params
+		name:          generic_key
+		params:        sub_params
 		shared_params: tc.fn_shared_params[generic_key] or { []bool{} }
-		return_type:  sub_ret
-		has_receiver: true
-		is_variadic:  tc.fn_variadic[generic_key] or { false }
-		params_known: true
+		return_type:   sub_ret
+		has_receiver:  true
+		is_variadic:   tc.fn_variadic[generic_key] or { false }
+		params_known:  true
 	}
 }
 
