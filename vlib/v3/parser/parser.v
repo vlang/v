@@ -699,6 +699,10 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 	p.consume_decl_prefix_after_attrs()
 	if p.skip_next_decl {
 		p.pending_params = false
+		// A skipped enum (e.g. disabled by a preceding `@[if false]`) never reaches
+		// enum_decl to consume this flag, so clear it here to avoid tagging the next
+		// enum as `@[json_as_number]`.
+		p.pending_json_as_number = false
 		p.skip_next_decl = false
 		if p.cur_decl_is_fn() {
 			p.disable_fn_body = true
