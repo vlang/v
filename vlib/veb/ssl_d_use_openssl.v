@@ -56,12 +56,13 @@ fn run_at_with_ssl[A, X](mut global_app A, params RunParams) ! {
 		1
 	}))
 	for {
+		handshake_limit.wait()
 		mut ssl_conn := ssl_listener.accept_without_handshake() or {
+			handshake_limit.post()
 			eprintln('[veb] accept() failed, reason: ${err}; skipping')
 			continue
 		}
 		ssl_conn.duration = params.timeout_in_seconds * time.second
-		handshake_limit.wait()
 		spawn handle_ssl_connection[A, X](mut ssl_conn, ssl_params, mut handshake_limit)
 	}
 }

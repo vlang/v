@@ -159,7 +159,9 @@ fn C.v_net_openssl_set_alpn_protos(ssl &C.SSL, protos &u8, protos_len u32) i32
 
 fn C.v_net_openssl_get0_alpn_selected(ssl &C.SSL, data voidptr, len &u32)
 
-fn C.v_net_openssl_SSL_CTX_set_alpn_select_protos(ctx &C.SSL_CTX, protos &u8, protos_len u32) i32
+fn C.v_net_openssl_SSL_CTX_set_alpn_select_protos(ctx &C.SSL_CTX, protos &u8, protos_len u32) voidptr
+
+fn C.v_net_openssl_free_alpn_select_state(state voidptr)
 
 fn C.SSL_shutdown(&C.SSL) i32
 

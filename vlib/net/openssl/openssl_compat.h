@@ -151,12 +151,15 @@ static void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **dat
 	*data = NULL;
 	*len = 0;
 }
-static int v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
+static void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
 		const unsigned char *protos, unsigned int protos_len) {
 	(void)ctx;
 	(void)protos;
 	(void)protos_len;
-	return -1;
+	return NULL;
+}
+static void v_net_openssl_free_alpn_select_state(void *state) {
+	(void)state;
 }
 #else
 typedef struct {
@@ -164,15 +167,9 @@ typedef struct {
 	unsigned int protos_len;
 } v_net_openssl_alpn_select_state;
 
-static void v_net_openssl_free_alpn_select_state(void *parent, void *ptr,
-		CRYPTO_EX_DATA *ad, int idx, long argl, void *argp) {
-	(void)parent;
-	(void)ad;
-	(void)idx;
-	(void)argl;
-	(void)argp;
+static void v_net_openssl_free_alpn_select_state(void *state) {
 	v_net_openssl_alpn_select_state *selection =
-		(v_net_openssl_alpn_select_state *)ptr;
+		(v_net_openssl_alpn_select_state *)state;
 	if (selection != NULL) {
 		free(selection->protos);
 		free(selection);
@@ -190,32 +187,22 @@ static int v_net_openssl_alpn_select_cb(SSL *ssl, const unsigned char **out,
 	return SSL_TLSEXT_ERR_NOACK;
 }
 
-static int v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
+static void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
 		const unsigned char *protos, unsigned int protos_len) {
-	static int state_index = -1;
 	v_net_openssl_alpn_select_state *selection =
 		(v_net_openssl_alpn_select_state *)malloc(sizeof(*selection));
 	if (selection == NULL) {
-		return -1;
+		return NULL;
 	}
 	selection->protos = (unsigned char *)malloc(protos_len);
 	if (selection->protos == NULL) {
 		free(selection);
-		return -1;
+		return NULL;
 	}
 	memcpy(selection->protos, protos, protos_len);
 	selection->protos_len = protos_len;
-	if (state_index < 0) {
-		state_index = SSL_CTX_get_ex_new_index(0, NULL, NULL, NULL,
-			v_net_openssl_free_alpn_select_state);
-	}
-	if (state_index < 0 || SSL_CTX_set_ex_data(ctx, state_index, selection) != 1) {
-		free(selection->protos);
-		free(selection);
-		return -1;
-	}
 	SSL_CTX_set_alpn_select_cb(ctx, v_net_openssl_alpn_select_cb, selection);
-	return 0;
+	return selection;
 }
 
 static int v_net_openssl_set_alpn_protos(SSL *ssl, const unsigned char *protos, unsigned int protos_len) {

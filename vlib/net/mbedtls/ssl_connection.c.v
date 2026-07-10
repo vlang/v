@@ -284,13 +284,16 @@ fn (mut l SSLListener) init() ! {
 		backlog: C.MBEDTLS_NET_LISTEN_BACKLOG
 	}) or { return error('net.mbedtls SSLListener.init, listen_tcp failed for ${l.saddr}: ${err}') }
 	l.server_fd.fd = tcp_listener.sock.handle
+	l.opened = true
 	net.set_blocking(l.server_fd.fd, true) or {
+		l.shutdown() or {}
 		return error('net.mbedtls SSLListener.init, could not make listener socket blocking: ${err}')
 	}
 
 	ret = C.mbedtls_ssl_config_defaults(&l.conf, C.MBEDTLS_SSL_IS_SERVER,
 		C.MBEDTLS_SSL_TRANSPORT_STREAM, C.MBEDTLS_SSL_PRESET_DEFAULT)
 	if ret != 0 {
+		l.shutdown() or {}
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_config_defaults can't set config defaults ret: ${ret}",
 			ret)
 	}
@@ -303,6 +306,7 @@ fn (mut l SSLListener) init() ! {
 	C.mbedtls_ssl_conf_ca_chain(&l.conf, &l.certs.cacert, unsafe { nil })
 	ret = C.mbedtls_ssl_conf_own_cert(&l.conf, &l.certs.client_cert, &l.certs.client_key)
 	if ret != 0 {
+		l.shutdown() or {}
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_conf_own_cert can't load certificate ret: ${ret}",
 			ret)
 	}
@@ -313,6 +317,7 @@ fn (mut l SSLListener) init() ! {
 		n := l.config.alpn_protocols.len
 		l.alpn_list = unsafe { &&char(C.malloc(isize((n + 1) * int(sizeof(voidptr))))) }
 		if l.alpn_list == unsafe { nil } {
+			l.shutdown() or {}
 			return error('net.mbedtls SSLListener.init, failed to allocate ALPN list')
 		}
 		unsafe {
@@ -323,6 +328,7 @@ fn (mut l SSLListener) init() ! {
 		}
 		ret = C.mbedtls_ssl_conf_alpn_protocols(&l.conf, voidptr(l.alpn_list))
 		if ret != 0 {
+			l.shutdown() or {}
 			return error_with_code('net.mbedtls SSLListener.init, mbedtls_ssl_conf_alpn_protocols failed ret: ${ret}',
 				ret)
 		}
@@ -330,6 +336,7 @@ fn (mut l SSLListener) init() ! {
 
 	ret = C.mbedtls_ssl_setup(&l.ssl, &l.conf)
 	if ret != 0 {
+		l.shutdown() or {}
 		return error_with_code("net.mbedtls SSLListener.init, mbedtls_ssl_setup can't setup ssl ret: ${ret}",
 			ret)
 	}
