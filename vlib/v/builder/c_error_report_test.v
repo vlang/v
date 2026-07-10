@@ -13,15 +13,17 @@ fn restore_env_var(name string, old_value ?string) {
 
 fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	p := pref.Preferences{
-		autofree:    true
-		gc_mode:     .boehm_full
-		is_prod:     true
-		skip_unused: true
-		prealloc:    true
-		is_bare:     true
-		no_builtin:  true
-		no_preludes: true
-		is_prof:     true
+		autofree:     true
+		gc_mode:      .boehm_full
+		is_prod:      true
+		skip_unused:  true
+		prealloc:     true
+		is_bare:      true
+		no_builtin:   true
+		no_preludes:  true
+		is_prof:      true
+		profile_file: 'some/file'
+		trace_calls:  true
 		// build_options records `-d ...` verbatim (this is what parse_define stores)
 		build_options: ['-d foo', '-d pad=7', '-d header=', '-cc gcc']
 	}
@@ -34,7 +36,9 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('freestanding')
 	assert opts.contains('no_builtin')
 	assert opts.contains('no_preludes')
-	assert opts.contains('profile')
+	// the profile output path is embedded in the generated C, so keep it
+	assert opts.contains('profile:some/file')
+	assert opts.contains('trace_calls')
 	// custom `-d` defines must be recorded, since `$if foo ?` / `$d()` change codegen
 	assert opts.contains('-d foo')
 	// valued defines keep their value, including an explicitly empty one (`$d()` reads it)

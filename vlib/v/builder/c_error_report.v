@@ -194,7 +194,11 @@ fn codegen_build_options(p &pref.Preferences) string {
 		opts << 'no_preludes'
 	}
 	if p.is_prof {
-		opts << 'profile'
+		// the profile output path is embedded in the generated C (the `fopen(...)` call).
+		opts << 'profile:${p.profile_file}'
+	}
+	if p.trace_calls {
+		opts << 'trace_calls'
 	}
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
