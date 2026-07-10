@@ -5,25 +5,12 @@
 #include <openssl/pem.h>
 #include <openssl/x509_vfy.h>
 
-// Match the init API to the OpenSSL headers that are actually available.
-#if defined(LIBRESSL_VERSION_NUMBER) || !defined(OPENSSL_VERSION_NUMBER) \
-	|| OPENSSL_VERSION_NUMBER < 0x10100000L
-static int v_net_openssl_init_ssl(void) {
-	SSL_load_error_strings();
-	return SSL_library_init();
-}
-#else
-static int v_net_openssl_init_ssl(void) {
-	return OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS, 0);
-}
-#endif
-
 static int v_net_openssl_pem_read_reached_eof(void) {
 	unsigned long err = ERR_peek_last_error();
 	if (err == 0) {
 		return 1;
 	}
-	if (ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
+	if (ERR_GET_LIB(err) == ERR_LIB_PEM && ERR_GET_REASON(err) == PEM_R_NO_START_LINE) {
 		ERR_clear_error();
 		return 1;
 	}
@@ -107,6 +94,15 @@ static int v_net_openssl_SSL_CTX_load_verify_memory(SSL_CTX *ctx,
 	ERR_clear_error();
 	while ((cert = PEM_read_bio_X509_AUX(bio, NULL, NULL, NULL)) != NULL) {
 		if (X509_STORE_add_cert(store, cert) != 1) {
+#ifdef X509_R_CERT_ALREADY_IN_HASH_TABLE
+			unsigned long err = ERR_peek_last_error();
+			if (ERR_GET_LIB(err) == ERR_LIB_X509
+					&& ERR_GET_REASON(err) == X509_R_CERT_ALREADY_IN_HASH_TABLE) {
+				ERR_clear_error();
+				X509_free(cert);
+				continue;
+			}
+#endif
 			X509_free(cert);
 			BIO_free(bio);
 			return 0;
@@ -161,11 +157,16 @@ static void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
 static void v_net_openssl_free_alpn_select_state(void *state) {
 	(void)state;
 }
+static int v_net_openssl_init_alpn_select_state_index(void) {
+	return 1;
+}
 #else
 typedef struct {
 	unsigned char *protos;
 	unsigned int protos_len;
 } v_net_openssl_alpn_select_state;
+
+static int v_net_openssl_alpn_select_state_index = -1;
 
 static void v_net_openssl_free_alpn_select_state(void *state) {
 	v_net_openssl_alpn_select_state *selection =
@@ -174,6 +175,26 @@ static void v_net_openssl_free_alpn_select_state(void *state) {
 		free(selection->protos);
 		free(selection);
 	}
+}
+
+static void v_net_openssl_free_alpn_select_state_ex(void *parent, void *ptr,
+		CRYPTO_EX_DATA *ad, int idx, long argl, void *argp) {
+	(void)parent;
+	(void)ad;
+	(void)idx;
+	(void)argl;
+	(void)argp;
+	v_net_openssl_free_alpn_select_state(ptr);
+}
+
+static int v_net_openssl_init_alpn_select_state_index(void) {
+	if (v_net_openssl_alpn_select_state_index >= 0) {
+		return 1;
+	}
+	v_net_openssl_alpn_select_state_index =
+		SSL_CTX_get_ex_new_index(0, NULL, NULL, NULL,
+			v_net_openssl_free_alpn_select_state_ex);
+	return v_net_openssl_alpn_select_state_index >= 0;
 }
 
 static int v_net_openssl_alpn_select_cb(SSL *ssl, const unsigned char **out,
@@ -189,6 +210,9 @@ static int v_net_openssl_alpn_select_cb(SSL *ssl, const unsigned char **out,
 
 static void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
 		const unsigned char *protos, unsigned int protos_len) {
+	if (!v_net_openssl_init_alpn_select_state_index()) {
+		return NULL;
+	}
 	v_net_openssl_alpn_select_state *selection =
 		(v_net_openssl_alpn_select_state *)malloc(sizeof(*selection));
 	if (selection == NULL) {
@@ -201,6 +225,10 @@ static void *v_net_openssl_SSL_CTX_set_alpn_select_protos(SSL_CTX *ctx,
 	}
 	memcpy(selection->protos, protos, protos_len);
 	selection->protos_len = protos_len;
+	if (SSL_CTX_set_ex_data(ctx, v_net_openssl_alpn_select_state_index, selection) != 1) {
+		v_net_openssl_free_alpn_select_state(selection);
+		return NULL;
+	}
 	SSL_CTX_set_alpn_select_cb(ctx, v_net_openssl_alpn_select_cb, selection);
 	return selection;
 }
@@ -210,6 +238,25 @@ static int v_net_openssl_set_alpn_protos(SSL *ssl, const unsigned char *protos, 
 }
 static void v_net_openssl_get0_alpn_selected(SSL *ssl, const unsigned char **data, unsigned int *len) {
 	SSL_get0_alpn_selected(ssl, data, len);
+}
+#endif
+
+// Match the init API to the OpenSSL headers that are actually available.
+#if defined(LIBRESSL_VERSION_NUMBER) || !defined(OPENSSL_VERSION_NUMBER) \
+	|| OPENSSL_VERSION_NUMBER < 0x10100000L
+static int v_net_openssl_init_ssl(void) {
+	SSL_load_error_strings();
+	if (SSL_library_init() != 1) {
+		return 0;
+	}
+	return v_net_openssl_init_alpn_select_state_index();
+}
+#else
+static int v_net_openssl_init_ssl(void) {
+	if (OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS, 0) != 1) {
+		return 0;
+	}
+	return v_net_openssl_init_alpn_select_state_index();
 }
 #endif
 

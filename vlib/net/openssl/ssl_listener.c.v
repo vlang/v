@@ -10,7 +10,6 @@ pub struct SSLListener {
 mut:
 	tcp_listener &net.TcpListener = unsafe { nil }
 	sslctx       &C.SSL_CTX       = unsafe { nil }
-	alpn_state   voidptr
 }
 
 // SSLListenerOptions configures the TCP listener used by an SSLListener.
@@ -36,7 +35,7 @@ fn ssl_listener_family(saddr string, family net.AddrFamily) net.AddrFamily {
 		return family
 	}
 	address, _ := net.split_address(saddr) or { return .ip }
-	if address == '::' || address.contains(':') {
+	if address == '' || address == '::' || address.contains(':') {
 		return .ip6
 	}
 	return .ip
@@ -124,9 +123,7 @@ fn (mut l SSLListener) init() ! {
 			wire << u8(proto.len)
 			wire << proto.bytes()
 		}
-		l.alpn_state = C.v_net_openssl_SSL_CTX_set_alpn_select_protos(l.sslctx, wire.data,
-			u32(wire.len))
-		if l.alpn_state == unsafe { nil } {
+		if C.v_net_openssl_SSL_CTX_set_alpn_select_protos(l.sslctx, wire.data, u32(wire.len)) == unsafe { nil } {
 			l.shutdown() or {}
 			return error('net.openssl SSLListener.init, failed to configure ALPN protocols (requires OpenSSL >= 1.0.2)')
 		}
@@ -212,10 +209,6 @@ pub fn (mut conn SSLConn) accept_handshake() ! {
 
 // shutdown shuts down the SSL listener and releases the context.
 pub fn (mut l SSLListener) shutdown() ! {
-	if l.alpn_state != unsafe { nil } {
-		C.v_net_openssl_free_alpn_select_state(l.alpn_state)
-		l.alpn_state = unsafe { nil }
-	}
 	if l.sslctx != 0 {
 		C.SSL_CTX_free(l.sslctx)
 		l.sslctx = unsafe { nil }

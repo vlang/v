@@ -161,8 +161,6 @@ fn C.v_net_openssl_get0_alpn_selected(ssl &C.SSL, data voidptr, len &u32)
 
 fn C.v_net_openssl_SSL_CTX_set_alpn_select_protos(ctx &C.SSL_CTX, protos &u8, protos_len u32) voidptr
 
-fn C.v_net_openssl_free_alpn_select_state(state voidptr)
-
 fn C.SSL_shutdown(&C.SSL) i32
 
 fn C.SSL_free(&C.SSL)
@@ -182,8 +180,6 @@ fn C.TLSv1_2_method() voidptr
 fn C.SSL_CTX_check_private_key(ctx &C.SSL_CTX) i32
 
 fn C.SSL_accept(ssl &C.SSL) i32
-
-fn C.ERR_print_errors_fp(fp voidptr)
 
 fn C.v_net_openssl_init_ssl() i32
 

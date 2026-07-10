@@ -62,6 +62,19 @@ fn test_ssl_listener_infers_ipv6_family_from_address() ! {
 	}
 }
 
+fn test_ssl_listener_infers_ipv6_family_from_unspecified_address() ! {
+	$if macos || linux {
+		mut listener := new_ssl_listener(':0', SSLConnectConfig{
+			cert:     os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.crt')
+			cert_key: os.join_path(@VMODROOT, 'examples', 'ssl_server', 'cert', 'server.key')
+		})!
+		defer {
+			listener.shutdown() or {}
+		}
+		assert listener.tcp_listener.addr()!.family() == .ip6
+	}
+}
+
 fn test_ssl_listener_handshake_honors_timeout() ! {
 	mut listener := new_test_ssl_listener('127.0.0.1:0', .ip)!
 	defer {
@@ -155,6 +168,18 @@ fn test_ssl_listener_rejects_malformed_trailing_in_memory_ca_pem() ! {
 	{
 		assert false, 'listener accepted a malformed trailing CA PEM'
 	}
+}
+
+fn test_ssl_listener_allows_duplicate_in_memory_ca_pem() ! {
+	duplicate_ca := load_test_certificate_pem()! + load_test_certificate_pem()!
+	mut listener := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
+		cert:                   load_test_certificate_pem()!
+		cert_key:               load_test_private_key_pem()!
+		verify:                 duplicate_ca
+		validate:               true
+		in_memory_verification: true
+	})!
+	listener.shutdown()!
 }
 
 fn test_ssl_listener_file_credentials_load_full_certificate_chain() ! {

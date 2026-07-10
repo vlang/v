@@ -232,7 +232,7 @@ fn ssl_listener_family(saddr string, family net.AddrFamily) net.AddrFamily {
 		return family
 	}
 	address, _ := net.split_address(saddr) or { return .ip }
-	if address == '::' || address.contains(':') {
+	if address == '' || address == '::' || address.contains(':') {
 		return .ip6
 	}
 	return .ip
