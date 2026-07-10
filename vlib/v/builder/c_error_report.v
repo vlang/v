@@ -206,6 +206,10 @@ fn codegen_build_options(p &pref.Preferences) string {
 	if p.trace_calls {
 		opts << 'trace_calls'
 	}
+	if p.is_coverage {
+		// coverage adds instrumentation and stores output under coverage_dir.
+		opts << 'coverage:${p.coverage_dir}'
+	}
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
 	}

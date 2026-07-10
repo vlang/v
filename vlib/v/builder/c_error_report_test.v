@@ -24,6 +24,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		is_prof:      true
 		profile_file: 'some/file'
 		trace_calls:  true
+		is_coverage:  true
+		coverage_dir: 'cov/out'
 		// build_options records `-d ...` verbatim (this is what parse_define stores)
 		build_options: ['-d foo', '-d pad=7', '-d header=', '-cc gcc']
 	}
@@ -39,6 +41,7 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	// the profile output path is embedded in the generated C, so keep it
 	assert opts.contains('profile:some/file')
 	assert opts.contains('trace_calls')
+	assert opts.contains('coverage:cov/out')
 	// custom `-d` defines must be recorded, since `$if foo ?` / `$d()` change codegen
 	assert opts.contains('-d foo')
 	// valued defines keep their value, including an explicitly empty one (`$d()` reads it)
