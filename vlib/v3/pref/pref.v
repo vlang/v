@@ -304,6 +304,18 @@ pub fn is_test_file_for_target(path string, backend string, target_os string) bo
 			break
 		}
 	}
+	// Generic backend-suffixed tests (`foo_test.arm64.v`) are not covered by the fixed
+	// markers above; strip `_test.<backend>` so the os-suffix probe sees only the base
+	// and does not misread the backend as an incompatible os/arch suffix.
+	if probe == file && file.ends_with('.v') {
+		base := file[..file.len - 2]
+		if base.contains('.') {
+			test_base := base.all_before_last('.')
+			if test_base.ends_with('_test') {
+				probe = test_base.all_before_last('_test') + '.v'
+			}
+		}
+	}
 	return !file_has_incompatible_os_suffix(probe, target_os)
 }
 
