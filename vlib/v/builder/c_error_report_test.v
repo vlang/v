@@ -217,6 +217,22 @@ fn test_v_source_for_report_is_empty_without_mapped_line() {
 	assert v_source_for_report(['a', 'b', 'c'], 0, 40, 40) == ''
 }
 
+fn test_selected_v_source_falls_back_to_input_file_without_mapping() {
+	// no V mapping (v_file empty), but a single .v input was compiled => keep the whole input,
+	// so the report still carries the failing program instead of an empty v_source
+	whole := 'module main\nfn main() {}'
+	assert selected_v_source('', [], 0, '/tmp/prog.v', whole) == whole
+
+	// no mapping and the input is not a V source file (e.g. a directory target) => nothing
+	assert selected_v_source('', [], 0, '/tmp/outdir', 'ignored') == ''
+
+	// a real V mapping uses the failing-line chunk, not the whole input
+	lines := ['module main', 'fn a() {}', 'fn b() {}', 'fn c() {}', 'fn bad() { x }']
+	chunk := selected_v_source('/tmp/prog.v', lines, 5, '/tmp/prog.v', 'WHOLE_INPUT_IGNORED')
+	assert chunk.contains('fn bad()')
+	assert !chunk.contains('WHOLE_INPUT_IGNORED')
+}
+
 fn test_bounded_v_source_truncates_on_line_boundaries_with_comment_marker() {
 	mut lines := []string{}
 	for i in 0 .. 400 {

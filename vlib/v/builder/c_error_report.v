@@ -112,16 +112,15 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// `v_context` shows the lines of whatever file the C error maps to (which can be an
 	// included header, not V source).
 	mapped_source := if v_file != '' { os.read_file(v_file) or { '' } } else { '' }
-	// `v_source` uploads the leading declarations (module/imports/types) plus the block of
-	// source around the failing line, not the whole file, so the failure can be reproduced
-	// without disclosing every unrelated function body. It is taken from the mapped file only
-	// when that is V source (a header, or no `#line` mapping at all, yields no chunk).
-	v_source := if is_v_source_file(v_file) {
-		v_source_for_report(mapped_source.split_into_lines(), v_line, c_error_v_source_radius,
-			c_error_v_source_prefix_lines)
+	// The whole compiled input is only read when it is needed as the no-mapping fallback below,
+	// so a normal mapped error does no extra I/O.
+	input_source := if !is_v_source_file(v_file) && is_v_source_file(v.pref.path) {
+		os.read_file(v.pref.path) or { '' }
 	} else {
 		''
 	}
+	v_source := selected_v_source(v_file, mapped_source.split_into_lines(), v_line, v.pref.path,
+		input_source)
 	return CErrorBugReport{
 		kind:           'v-c-compiler-error'
 		v_version:      version.full_v_version(true)
@@ -310,6 +309,24 @@ fn codegen_build_options(p &pref.Preferences) string {
 		}
 	}
 	return opts.join(' ')
+}
+
+// selected_v_source picks the V source to upload so the failure can be reproduced. When the C
+// error maps to a V line (`v_file` is V source), it uploads just the leading declarations plus the
+// block around that line, so unrelated function bodies are not disclosed. When there is no V
+// mapping (a header error, or the vlines retry was skipped for `-parallel-cc` /
+// `-generate-c-project` / no recorded C command) but a single V file was compiled, it falls back
+// to that whole input file (`input_source`) so the report still carries the failing program.
+// It returns '' when neither is available.
+fn selected_v_source(v_file string, mapped_lines []string, v_line int, input_path string, input_source string) string {
+	if is_v_source_file(v_file) {
+		return v_source_for_report(mapped_lines, v_line, c_error_v_source_radius,
+			c_error_v_source_prefix_lines)
+	}
+	if is_v_source_file(input_path) {
+		return input_source
+	}
+	return ''
 }
 
 // v_source_for_report returns the V source needed to reproduce the C error without uploading the
