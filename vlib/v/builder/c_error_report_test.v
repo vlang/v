@@ -24,6 +24,7 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		no_prod_options:       true
 		enable_globals:        true
 		fast_math:             true
+		no_std:                true
 		cmain:                 'SDL_main'
 		force_bounds_checking: true
 		is_prof:               true
@@ -50,8 +51,9 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('no_prod_options')
 	// `-enable-globals` gates the checker (`__global`); without it a report cannot be replayed
 	assert opts.contains('enable_globals')
-	// `-fast-math` changes the C compiler command; `-cmain` changes the generated entry point
+	// `-fast-math` and `-no-std` change the C compiler command; `-cmain` changes the entry point
 	assert opts.contains('fast_math')
+	assert opts.split(' ').any(it == 'no_std')
 	assert opts.contains('cmain:SDL_main')
 	// `-force-bounds-checking` keeps checks even in `@[direct_array_access]` functions
 	assert opts.contains('force_bounds_checking')

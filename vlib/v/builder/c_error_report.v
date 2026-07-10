@@ -213,6 +213,10 @@ fn codegen_build_options(p &pref.Preferences) string {
 		// appends `-ffast-math` / `/fp:fast` to the C compiler command, changing its invocation.
 		opts << 'fast_math'
 	}
+	if p.no_std {
+		// drops the default `-std=c99` / `-D_DEFAULT_SOURCE` C flags, changing the C compiler command.
+		opts << 'no_std'
+	}
 	if p.prealloc {
 		opts << 'prealloc'
 	}
