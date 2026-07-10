@@ -9140,7 +9140,10 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 			if callee.children_count > 0 {
 				base := g.a.child_node(callee, 0)
 				if base.kind == .ident {
-					callee_module = base.value
+					// Resolve an import alias (`import some.mod as m` makes the base
+					// ident `m`) to the real module name so the module match compares
+					// against the actual `module` declaration.
+					callee_module = g.modules[base.value] or { base.value }
 				}
 			}
 		}
@@ -9172,7 +9175,8 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 				if candidate.value != callee_name && candidate.value.all_after_last('.') != short {
 					continue
 				}
-				if module_target < 0 && callee_module.len > 0 && cur_mod == callee_module {
+				if module_target < 0 && callee_module.len > 0
+					&& (cur_mod == callee_module || cur_mod == callee_module.all_after_last('.')) {
 					module_target = i
 				}
 				if exact_target < 0 && candidate.value == callee_name {
