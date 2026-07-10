@@ -5408,7 +5408,13 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 		return tc.comptime_static_metadata_expr_type(tc.a.child(&node, 0), var_name, loop_kind)
 	}
 	if node.kind == .ident && node.value == var_name {
-		return tc.parse_type(if loop_kind == 'values' { 'EnumData' } else { 'FieldData' })
+		metadata_type := match loop_kind {
+			'values' { 'EnumData' }
+			'variants' { 'VariantData' }
+			else { 'FieldData' }
+		}
+
+		return tc.parse_type(metadata_type)
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.a.child_node(&node, 0)
