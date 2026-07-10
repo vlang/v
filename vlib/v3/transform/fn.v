@@ -3366,12 +3366,24 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 	if format.len == 0 {
 		return t.wrap_string_conversion(expr, typ)
 	}
+	if format.contains('X') {
+		// Uppercase hex behaves like lowercase `x` but with A-F. Format the
+		// lowercase form first so width/zero-padding flags are honored, then
+		// upper-case the whole result.
+		lowered := t.wrap_formatted_string_conversion(expr, typ, format.replace('X', 'x'))
+		return t.make_call_typed('v3_string_upper_ascii', arr1(lowered), 'string')
+	}
 	mut clean_typ := typ
 	if clean_typ.starts_with('&') {
 		clean_typ = clean_typ[1..]
 	}
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ.all_after_last('.')
+	}
+	// An enum with a base (`x`/`b`/`o`) or decimal (`d`) verb prints its integer
+	// value, not its name; format the underlying integer.
+	if format[format.len - 1] in [`x`, `b`, `o`, `d`] && t.is_formatted_enum_type(clean_typ) {
+		return t.wrap_formatted_string_conversion(t.make_cast('i64', expr, 'i64'), 'i64', format)
 	}
 	if decimal_format := fixed_decimal_format(format) {
 		if clean_typ in ['f32', 'f64', 'float_literal'] {
@@ -3541,6 +3553,16 @@ fn fixed_decimal_format(format string) ?FixedDecimalFormat {
 		precision: precision
 		left:      left
 	}
+}
+
+fn (t &Transformer) is_formatted_enum_type(clean_typ string) bool {
+	if clean_typ in t.enum_types {
+		return true
+	}
+	if !clean_typ.contains('.') && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		return '${t.cur_module}.${clean_typ}' in t.enum_types
+	}
+	return false
 }
 
 fn integer_format_base(format string) ?int {

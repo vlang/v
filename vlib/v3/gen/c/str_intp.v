@@ -186,6 +186,13 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 			else { 16 }
 		}
 
+		zero_pad := f.zero && f.width > 0
+		space_pad := !zero_pad && f.width > 0
+		if zero_pad {
+			g.write('v3_string_zpad(')
+		} else if space_pad {
+			g.write('v3_string_pad(')
+		}
 		if f.verb == `X` {
 			g.write('v3_string_upper_ascii(')
 		}
@@ -198,6 +205,11 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		g.write('), ${base})')
 		if f.verb == `X` {
 			g.write(')')
+		}
+		if zero_pad {
+			g.write(', ${f.width})')
+		} else if space_pad {
+			g.write(', ${f.width}, ${left})')
 		}
 		return true
 	}
