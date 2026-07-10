@@ -23,6 +23,7 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		no_preludes:                   true
 		no_prod_options:               true
 		enable_globals:                true
+		experimental:                  true
 		fast_math:                     true
 		no_std:                        true
 		cmain:                         'SDL_main'
@@ -43,7 +44,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		coverage_dir:                  'cov/out'
 		// value-carrying options and explicit bare flags are recorded verbatim in build_options
 		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"', '-ldflags "-s"',
-			'-custom-prelude prelude.h', '-bare-builtin-dir bare/dir', '-musl', '-m64', '-cc gcc']
+			'-custom-prelude prelude.h', '-bare-builtin-dir bare/dir', '-macosx-version-min 10.7',
+			'-musl', '-m64', '-cc gcc']
 	}
 	opts := codegen_build_options(&p)
 	assert opts.contains('autofree')
@@ -57,6 +59,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('no_prod_options')
 	// `-enable-globals` gates the checker (`__global`); without it a report cannot be replayed
 	assert opts.contains('enable_globals')
+	// `-experimental` gates checker constructs and changes autofree C
+	assert opts.contains('experimental')
 	// `-fast-math` and `-no-std` change the C compiler command; `-cmain` changes the entry point
 	assert opts.contains('fast_math')
 	assert opts.split(' ').any(it == 'no_std')
@@ -92,6 +96,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('-ldflags "-s"')
 	assert opts.contains('-custom-prelude prelude.h')
 	assert opts.contains('-bare-builtin-dir bare/dir')
+	// `-macosx-version-min` is passed to clang and selects the SDK deployment target
+	assert opts.contains('-macosx-version-min 10.7')
 	// an explicit libc flag is kept (it changes `$if musl` and the libgc C flags)
 	assert opts.split(' ').any(it == '-musl')
 	// but a libc flag that was not passed is not invented
@@ -202,6 +208,31 @@ fn test_v_source_for_report_keeps_prefix_and_failing_region() {
 	// unrelated middle bodies are dropped, with a marker in their place
 	assert src.contains(c_error_v_source_omitted_notice)
 	assert !src.split('\n').any(it == '25')
+}
+
+fn test_v_source_for_report_includes_enclosing_declaration() {
+	mut lines := []string{}
+	lines << 'module main' // 1
+	lines << 'import os' // 2
+	for i in 0 .. 30 {
+		lines << 'const c${i} = ${i}' // 3..32 (column-0 declarations)
+	}
+	lines << 'fn big() {' // 33 (enclosing signature, column 0)
+	for i in 0 .. 30 {
+		lines << '\tx${i} := ${i}' // 34..63 (indented body)
+	}
+	lines << '\tbad := undefined_thing' // 64 (failing line, indented)
+	lines << '}' // 65
+	// error on line 64, radius 5 (window starts at 59, mid-body), prefix 3
+	src := v_source_for_report(lines, 64, 5, 3)
+	// the region is extended up to the enclosing `fn big() {` signature, not started mid-body
+	assert src.contains('fn big() {')
+	// it does not resume at an interior statement right after the omission marker
+	assert !src.contains('${c_error_v_source_omitted_notice}\n\tx25')
+	// the failing line and the leading declarations are both present
+	assert src.contains('bad := undefined_thing')
+	assert src.starts_with('module main')
+	assert src.contains(c_error_v_source_omitted_notice)
 }
 
 fn test_v_source_for_report_is_contiguous_when_region_reaches_prefix() {

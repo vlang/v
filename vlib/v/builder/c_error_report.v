@@ -222,6 +222,11 @@ fn codegen_build_options(p &pref.Preferences) string {
 		// the checker instead of reaching the C compiler error.
 		opts << 'enable_globals'
 	}
+	if p.experimental {
+		// gates checker constructs allowed only under `-experimental` and changes autofree C,
+		// so replay without it can stop in the checker or generate different C.
+		opts << 'experimental'
+	}
 	if p.use_cache {
 		opts << 'usecache'
 	}
@@ -297,11 +302,13 @@ fn codegen_build_options(p &pref.Preferences) string {
 	//   -ldflags        passed to the C compiler/linker after every other option
 	//   -custom-prelude replaces the generated prelude written into the C headers
 	//   -bare-builtin-dir selects the freestanding builtin implementation
+	//   -macosx-version-min passed to clang as `-mmacosx-version-min=...`, selects the SDK target
 	// Bare flags (kept by exact match), only present when explicitly passed (host-detected libc
 	// defaults are not recorded, so these capture the user's explicit choice):
 	//   -musl/-glibc    force the linked libc; `-musl` also enables `$if musl` and changes libgc flags
 	//   -m32/-m64       select the target machine width, appended to the C compiler command via cflags
-	verbatim_prefixes := ['-d ', '-cflags ', '-ldflags ', '-custom-prelude ', '-bare-builtin-dir ']
+	verbatim_prefixes := ['-d ', '-cflags ', '-ldflags ', '-custom-prelude ', '-bare-builtin-dir ',
+		'-macosx-version-min ']
 	verbatim_flags := ['-musl', '-glibc', '-m32', '-m64']
 	for opt in p.build_options {
 		if opt in verbatim_flags || verbatim_prefixes.any(opt.starts_with(it)) {
@@ -331,16 +338,20 @@ fn selected_v_source(v_file string, mapped_lines []string, v_line int, input_pat
 
 // v_source_for_report returns the V source needed to reproduce the C error without uploading the
 // whole file: the file's leading `prefix_lines` lines (module/imports/top-level declarations) plus
-// the block of `radius` lines on each side of the failing line. Keeping the prefix means the
-// stored source usually still compiles (a bare window can start mid-function and omit imports and
-// type declarations), while unrelated function bodies in the middle are still dropped. When the
+// the block of `radius` lines on each side of the failing line. The failing region is extended up
+// to the start of its enclosing top-level declaration, so it begins at a declaration boundary
+// instead of resuming with interior statements after the omission comment. Keeping the prefix means
+// the stored source usually still compiles (a bare window can start mid-function and omit imports
+// and type declarations), while unrelated function bodies in the middle are still dropped. When the
 // failing region already reaches the prefix, one contiguous block is returned. It returns '' when
 // there is no mapped V line.
 fn v_source_for_report(lines []string, center int, radius int, prefix_lines int) string {
 	if center <= 0 || lines.len == 0 {
 		return ''
 	}
-	region_start := if center - radius < 1 { 1 } else { center - radius }
+	window_start := if center - radius < 1 { 1 } else { center - radius }
+	// begin at the enclosing declaration so the region is not cut in the middle of a function body
+	region_start := enclosing_decl_start(lines, window_start)
 	region_end := if center + radius > lines.len { lines.len } else { center + radius }
 	// The failing region already includes (or directly follows) the prefix: keep it contiguous.
 	if region_start <= prefix_lines + 1 {
@@ -350,6 +361,23 @@ fn v_source_for_report(lines []string, center int, radius int, prefix_lines int)
 	prefix := lines[..prefix_end].join('\n')
 	region := lines[region_start - 1..region_end].join('\n')
 	return '${prefix}\n${c_error_v_source_omitted_notice}\n${region}'
+}
+
+// enclosing_decl_start scans upward from `from_line` (1-based) to the nearest line that starts a
+// top-level declaration — a non-blank line with no leading indentation (`fn`/`struct`/`const`/an
+// `@[...]` attribute/etc., whose bodies are indented). This lets the failing region begin at the
+// enclosing declaration rather than in the middle of a function body. It returns `from_line` when
+// no such line is found above it.
+fn enclosing_decl_start(lines []string, from_line int) int {
+	mut i := if from_line > lines.len { lines.len } else { from_line }
+	for i > 1 {
+		line := lines[i - 1]
+		if line.len > 0 && !line[0].is_space() {
+			break
+		}
+		i--
+	}
+	return i
 }
 
 // bounded_v_source keeps the V source under `max_bytes`, trimming the middle if needed so the
