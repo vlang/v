@@ -675,7 +675,7 @@ fn process_iocp_events(server &Server) {
 
 fn accept_loop(server &Server) {
 	for !server.is_shutting_down() {
-		client_fd := C.accept(server.listen_fd, unsafe { nil }, unsafe { nil })
+		client_fd := C.v_fasthttp_accept(server.listen_fd)
 		if client_fd == iocp_invalid_socket {
 			if server.is_shutting_down() {
 				break
