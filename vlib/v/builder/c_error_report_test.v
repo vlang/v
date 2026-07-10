@@ -30,9 +30,9 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		trace_fns:         ['baz_*']
 		is_coverage:       true
 		coverage_dir:      'cov/out'
-		// build_options records `-d ...`, `-cflags ...` and `-custom-prelude ...` verbatim
-		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"',
-			'-custom-prelude prelude.h', '-cc gcc']
+		// value-carrying options are recorded verbatim in build_options
+		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"', '-ldflags "-s"',
+			'-custom-prelude prelude.h', '-bare-builtin-dir bare/dir', '-cc gcc']
 	}
 	opts := codegen_build_options(&p)
 	assert opts.contains('autofree')
@@ -57,10 +57,12 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	// valued defines keep their value, including an explicitly empty one (`$d()` reads it)
 	assert opts.contains('-d pad=7')
 	assert opts.contains('-d header=')
-	// `-cflags` is passed to the C compiler and can decide whether the error reproduces
+	// value-carrying C/link/prelude/builtin options are passed to the compiler and can decide
+	// whether the error reproduces, so they are kept verbatim
 	assert opts.contains('-cflags "-Werror"')
-	// `-custom-prelude` replaces the prelude written into the C headers
+	assert opts.contains('-ldflags "-s"')
 	assert opts.contains('-custom-prelude prelude.h')
+	assert opts.contains('-bare-builtin-dir bare/dir')
 	// unrelated recorded options (e.g. `-cc`, covered by the ccompiler field) are not pulled in
 	assert !opts.contains('-cc gcc')
 }

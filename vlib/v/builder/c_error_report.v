@@ -228,12 +228,15 @@ fn codegen_build_options(p &pref.Preferences) string {
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
 	}
-	// Options reused verbatim from the recorded build options so their value is preserved
-	// exactly. `-d` defines (`-d foo`, `-d pad=7`, the explicitly empty `-d header=`) select
-	// source/codegen via `$if foo ?` / `$d()`; `-cflags` are passed to the C compiler and can
-	// decide whether the C error reproduces (e.g. `-Werror`); `-custom-prelude` replaces the
-	// generated prelude that is written into the C headers.
-	verbatim_prefixes := ['-d ', '-cflags ', '-custom-prelude ']
+	// Value-carrying options reused verbatim from the recorded build options so their value is
+	// preserved exactly:
+	//   -d              defines (`-d foo`, `-d pad=7`, empty `-d header=`) select source/codegen
+	//                   via `$if foo ?` / `$d()`
+	//   -cflags         passed to the C compiler, can decide whether the error reproduces (`-Werror`)
+	//   -ldflags        passed to the C compiler/linker after every other option
+	//   -custom-prelude replaces the generated prelude written into the C headers
+	//   -bare-builtin-dir selects the freestanding builtin implementation
+	verbatim_prefixes := ['-d ', '-cflags ', '-ldflags ', '-custom-prelude ', '-bare-builtin-dir ']
 	for opt in p.build_options {
 		if verbatim_prefixes.any(opt.starts_with(it)) {
 			opts << opt
