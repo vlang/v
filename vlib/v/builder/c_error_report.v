@@ -182,6 +182,12 @@ fn codegen_build_options(p &pref.Preferences) string {
 	if p.is_bare {
 		opts << 'freestanding'
 	}
+	if p.no_builtin {
+		opts << 'no_builtin'
+	}
+	if p.no_preludes {
+		opts << 'no_preludes'
+	}
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
 	}
