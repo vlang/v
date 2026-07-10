@@ -9107,24 +9107,30 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 fn (g &FlatGen) const_get_deps(val_id flat.NodeId) []string {
 	mut deps := []string{}
 	mut visited_fns := map[string]bool{}
-	g.const_collect_deps_inner(val_id, mut deps, mut visited_fns)
+	g.const_collect_deps_inner(val_id, mut deps, mut visited_fns, map[string]bool{})
 	return deps
 }
 
 fn (g &FlatGen) const_collect_deps(val_id flat.NodeId, mut deps []string) {
 	mut visited_fns := map[string]bool{}
-	g.const_collect_deps_inner(val_id, mut deps, mut visited_fns)
+	g.const_collect_deps_inner(val_id, mut deps, mut visited_fns, map[string]bool{})
 }
 
-fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, mut visited_fns map[string]bool) {
+// const_collect_deps_inner walks a const initializer (recursing into called helper
+// bodies) collecting the consts it reads. `shadowed` holds names bound by the current
+// helper's parameters/locals so an identifier that shadows a const is not mistaken for
+// a dependency (which could invent a false dependency cycle).
+fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
 	if int(val_id) < 0 || int(val_id) >= g.a.nodes.len {
 		return
 	}
 	node := g.a.nodes[int(val_id)]
 	if node.kind == .ident || node.kind == .selector {
-		const_name := g.const_ref_name_from_node(node)
-		if const_name.len > 0 {
-			deps << const_name
+		if !g.const_ref_base_shadowed(node, shadowed) {
+			const_name := g.const_ref_name_from_node(node)
+			if const_name.len > 0 {
+				deps << const_name
+			}
 		}
 	}
 	if node.kind == .call && node.children_count > 0 {
@@ -9194,12 +9200,55 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 				suffix_target
 			}
 			if target >= 0 {
-				g.const_collect_deps_inner(flat.NodeId(target), mut deps, mut visited_fns)
+				// Entering a helper body: its parameters/locals shadow any consts of
+				// the same name, so they must not be collected as dependencies.
+				mut fn_shadowed := shadowed.clone()
+				g.collect_fn_scope_names(flat.NodeId(target), mut fn_shadowed)
+				g.const_collect_deps_inner(flat.NodeId(target), mut deps, mut visited_fns,
+					fn_shadowed)
 			}
 		}
 	}
 	for i in 0 .. node.children_count {
-		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns)
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
+	}
+}
+
+// const_ref_base_shadowed reports whether `node` (an ident, or a selector whose base
+// is an ident) refers to a name bound by the current helper scope rather than a const.
+fn (g &FlatGen) const_ref_base_shadowed(node flat.Node, shadowed map[string]bool) bool {
+	if shadowed.len == 0 {
+		return false
+	}
+	if node.kind == .ident {
+		return shadowed[node.value]
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := g.a.child_node(&node, 0)
+		return base.kind == .ident && shadowed[base.value]
+	}
+	return false
+}
+
+// collect_fn_scope_names gathers the parameter and local (`:=`) names declared within
+// a helper body, so const dependency collection can skip identifiers that shadow consts.
+fn (g &FlatGen) collect_fn_scope_names(id flat.NodeId, mut names map[string]bool) {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .param {
+		if node.value.len > 0 {
+			names[node.value] = true
+		}
+	} else if node.kind == .decl_assign && node.children_count > 0 {
+		lhs := g.a.child_node(&node, 0)
+		if lhs.kind == .ident && lhs.value.len > 0 {
+			names[lhs.value] = true
+		}
+	}
+	for i in 0 .. node.children_count {
+		g.collect_fn_scope_names(g.a.child(&node, i), mut names)
 	}
 }
 
