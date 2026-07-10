@@ -10,6 +10,7 @@ const default_c_error_bug_report_url = 'https://bugs.vlang.io/bug-report'
 const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
 const c_error_context_radius = 5
 const c_error_bug_report_max_body_bytes = 256 * 1024
+const c_error_bug_report_max_v_source_bytes = 64 * 1024
 const c_error_bug_report_truncation_notice = '\n... report truncated before upload ...\n'
 
 struct CErrorReportLine {
@@ -30,7 +31,9 @@ pub:
 	v_version      string
 	target_os      string
 	target_backend string
+	arch           string
 	ccompiler      string
+	build_options  string // the codegen-affecting `v` flags (autofree, gc mode, -g, -prod, ...)
 	c_error        string
 	c_file         string
 	c_line         int
@@ -38,6 +41,7 @@ pub:
 	v_file         string
 	v_line         int
 	v_context      []CErrorReportLine
+	v_source       string // the full V source of `v_file` (bounded), so the failure can be reproduced
 }
 
 fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) {
@@ -63,6 +67,7 @@ fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) 
 	if tool_output != '' {
 		println(tool_output)
 	}
+	println('V ${report.v_version}, ${report.target_os}/${report.arch}, cc: ${report.ccompiler}, build options: ${report.build_options}')
 	print_c_error_bug_report_context(report)
 	println('='.repeat('================== C compiler bug report =============='.len))
 }
@@ -88,13 +93,21 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 			c_line = found_c_line
 		}
 	}
-	v_source := if v_file != '' { os.read_file(v_file) or { '' } } else { '' }
+	// Prefer the file the C error maps to; otherwise fall back to the compiled input
+	// file, so a report still carries the failing V source even without a `#line` mapping.
+	mut v_source_file := v_file
+	if v_source_file == '' && os.is_file(v.pref.path) {
+		v_source_file = v.pref.path
+	}
+	v_source := if v_source_file != '' { os.read_file(v_source_file) or { '' } } else { '' }
 	return CErrorBugReport{
 		kind:           'v-c-compiler-error'
 		v_version:      version.full_v_version(true)
 		target_os:      v.pref.os.str()
 		target_backend: v.pref.backend.str()
+		arch:           v.pref.arch.str()
 		ccompiler:      ccompiler
+		build_options:  codegen_build_options(v.pref)
 		c_error:        c_output
 		c_file:         c_file
 		c_line:         c_line
@@ -103,7 +116,73 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 		v_line:         v_line
 		v_context:      numbered_context_lines(v_source.split_into_lines(), v_line,
 			c_error_context_radius)
+		v_source:       bounded_v_source(v_source, c_error_bug_report_max_v_source_bytes)
 	}
+}
+
+// codegen_build_options returns a compact, space-separated list of the `v` flags that
+// affect code generation (and therefore reproduction), e.g. `autofree gc:boehm -g skip_unused`.
+fn codegen_build_options(p &pref.Preferences) string {
+	mut opts := []string{}
+	if p.autofree {
+		opts << 'autofree'
+	}
+	opts << 'gc:${p.gc_mode}'
+	if p.is_prod {
+		opts << 'prod'
+	}
+	if p.is_debug {
+		opts << '-g'
+	}
+	if p.is_vlines {
+		opts << 'vlines'
+	}
+	if p.skip_unused {
+		opts << 'skip_unused'
+	}
+	if p.use_coroutines {
+		opts << 'use_coroutines'
+	}
+	if p.parallel_cc {
+		opts << 'parallel_cc'
+	}
+	if p.is_shared {
+		opts << 'shared'
+	}
+	if p.is_o {
+		opts << 'obj'
+	}
+	if p.is_cstrict {
+		opts << 'cstrict'
+	}
+	if p.sanitize {
+		opts << 'sanitize'
+	}
+	if p.no_bounds_checking {
+		opts << 'no_bounds_checking'
+	}
+	if p.translated {
+		opts << 'translated'
+	}
+	if p.use_cache {
+		opts << 'usecache'
+	}
+	if p.nofloat {
+		opts << 'nofloat'
+	}
+	if p.build_mode != .default_mode {
+		opts << 'build_mode:${p.build_mode}'
+	}
+	return opts.join(' ')
+}
+
+// bounded_v_source keeps the V source under `max_bytes`, trimming the middle if needed so the
+// start (declarations/imports) and end (usually where the failing code lives) are both preserved.
+fn bounded_v_source(source string, max_bytes int) string {
+	if max_bytes <= 0 || source.len <= max_bytes {
+		return source
+	}
+	return truncated_report_text(source, max_bytes)
 }
 
 // new_c_error_bug_report_with_vlines regenerates the program's C source with `#line`
@@ -200,7 +279,9 @@ fn c_error_bug_report_json(report CErrorBugReport) string {
 	write_json_string_field(mut b, 'v_version', report.v_version, true)
 	write_json_string_field(mut b, 'target_os', report.target_os, true)
 	write_json_string_field(mut b, 'target_backend', report.target_backend, true)
+	write_json_string_field(mut b, 'arch', report.arch, true)
 	write_json_string_field(mut b, 'ccompiler', report.ccompiler, true)
+	write_json_string_field(mut b, 'build_options', report.build_options, true)
 	write_json_string_field(mut b, 'c_error', report.c_error, true)
 	write_json_string_field(mut b, 'c_file', report.c_file, true)
 	write_json_int_field(mut b, 'c_line', report.c_line, true)
@@ -208,6 +289,7 @@ fn c_error_bug_report_json(report CErrorBugReport) string {
 	write_json_string_field(mut b, 'v_file', report.v_file, true)
 	write_json_int_field(mut b, 'v_line', report.v_line, true)
 	write_json_report_lines_field(mut b, 'v_context', report.v_context, true)
+	write_json_string_field(mut b, 'v_source', report.v_source, true)
 	b.write_u8(`}`)
 	return b.str()
 }
