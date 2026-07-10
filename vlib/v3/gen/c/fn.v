@@ -3302,8 +3302,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		})
 		return
 	}
-	if target_name in ['json.encode', 'json2.encode']
-		|| (g.tc.cur_module == 'json2' && target_name == 'encode') {
+	if target_name == 'json.encode' || (g.tc.cur_module == 'json' && target_name == 'encode') {
+		// Old `json` module only; `json2`/`x.json2` are pure V (see
+		// is_json_decode_target_name).
 		if g.gen_json_encode_call(node) {
 			return
 		}
@@ -4915,8 +4916,11 @@ fn (g &FlatGen) call_has_selector_name(id flat.NodeId, name string) bool {
 }
 
 fn (g &FlatGen) is_json_decode_target_name(target string) bool {
-	return target in ['json.decode', 'json2.decode', 'x.json2.decode']
-		|| (target == 'decode' && g.tc.cur_module in ['json', 'json2'])
+	// Only the old C-magic `json` module uses the cgen shortcut. `json2`/`x.json2`
+	// are pure V and must compile through normal codegen, so they are not matched
+	// here (matching them would inject cJSON calls and hijack json2's own
+	// internal `encode`/`decode` functions).
+	return target == 'json.decode' || (target == 'decode' && g.tc.cur_module == 'json')
 }
 
 fn (g &FlatGen) is_json_decode_call(id flat.NodeId, target string) bool {
