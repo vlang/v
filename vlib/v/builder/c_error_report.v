@@ -285,6 +285,11 @@ fn codegen_build_options(p &pref.Preferences) string {
 		// (abort(), print_backtrace(), or none), so the generated C differs.
 		opts << 'assert:${p.assert_failure_mode}'
 	}
+	if p.subsystem != .auto {
+		// `-subsystem windows|console` changes the generated main function (cgen) and the
+		// linker command on Windows, so the generated/linked C differs.
+		opts << 'subsystem:${p.subsystem}'
+	}
 	if p.thread_stack_size_set_by_flag {
 		// `spawn`/`go` embed this value in the CreateThread / pthread_attr_setstacksize call,
 		// so it changes the generated C. Only recorded when set by flag, since the default

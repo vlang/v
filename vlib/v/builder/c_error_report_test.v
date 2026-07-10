@@ -32,6 +32,7 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		is_check_overflow:             true
 		relaxed_gcc14:                 false
 		assert_failure_mode:           .backtraces
+		subsystem:                     .windows
 		thread_stack_size:             4194304
 		thread_stack_size_set_by_flag: true
 		is_prof:                       true
@@ -69,6 +70,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('force_bounds_checking')
 	// `-assert backtraces` changes the post-failure C path cgen emits
 	assert opts.contains('assert:backtraces')
+	// `-subsystem windows` changes the generated main function and the Windows linker command
+	assert opts.contains('subsystem:windows')
 	// `-div-by-zero-is-zero` makes cgen emit different safe div/mod helpers
 	assert opts.split(' ').any(it == 'div_by_zero_is_zero')
 	// `-check-overflow` inserts runtime overflow-check paths
