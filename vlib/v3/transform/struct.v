@@ -297,6 +297,13 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 	if info := t.lookup_struct_info_preferred(name) {
 		return info
 	}
+	// A monomorphized generic instantiated from another module references the concrete
+	// type by its bare name (`BoolConfig` from main, while transforming the declaring
+	// module); the module-qualified lookup above misses those, so fall back to the
+	// direct lookup, which tries the bare name too.
+	if info := t.lookup_struct_info_direct(name) {
+		return info
+	}
 	if imported := t.resolve_imported_type_name(name) {
 		if info := t.lookup_struct_info_direct(imported) {
 			return info

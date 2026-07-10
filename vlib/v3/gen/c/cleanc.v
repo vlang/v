@@ -5859,6 +5859,12 @@ fn (g &FlatGen) typeof_type_index(node flat.Node) int {
 	if type_name.len == 0 {
 		return 0
 	}
+	// Builtin types keep V's stable ast `*_type_idx` values (int==8, string==21, ...), so
+	// comparisons against `v.ast` constants behave like the reference compiler.
+	builtin_idx := builtin_ast_type_idx(type_name)
+	if builtin_idx > 0 {
+		return builtin_idx
+	}
 	mut variants := []string{cap: 2}
 	variants << type_name
 	if !type_name.contains('.') && g.tc.cur_module.len > 0
@@ -5891,6 +5897,41 @@ fn (g &FlatGen) typeof_type_index(node flat.Node) int {
 		}
 	}
 	return 0
+}
+
+// builtin_ast_type_idx maps a builtin type name to V's stable ast `*_type_idx` value
+// (vlib/v/ast/types.v), so `typeof[T]().idx` comparisons against `v.ast` constants behave
+// like the reference compiler. Returns 0 for non-builtin types.
+fn builtin_ast_type_idx(name string) int {
+	return match name {
+		'void' { 1 }
+		'voidptr' { 2 }
+		'byteptr' { 3 }
+		'charptr' { 4 }
+		'i8' { 5 }
+		'i16' { 6 }
+		'i32' { 7 }
+		'int' { 8 }
+		'i64' { 9 }
+		'isize' { 10 }
+		'u8', 'byte' { 11 }
+		'u16' { 12 }
+		'u32' { 13 }
+		'u64' { 14 }
+		'usize' { 15 }
+		'f32' { 16 }
+		'f64' { 17 }
+		'char' { 18 }
+		'bool' { 19 }
+		'none' { 20 }
+		'string' { 21 }
+		'rune' { 22 }
+		'float literal' { 27 }
+		'int literal' { 28 }
+		'thread' { 29 }
+		'nil' { 31 }
+		else { 0 }
+	}
 }
 
 fn (mut g FlatGen) gen_string_infix_fallback(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId) bool {

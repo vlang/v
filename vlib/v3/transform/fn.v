@@ -2811,6 +2811,9 @@ fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string,
 // `Block([1, 2])` or `AEnum(red)`, but stringifies primitive aliases (int, string, bool, ...)
 // as the bare value.
 fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_type string) flat.NodeId {
+	if custom := t.alias_custom_str_call(expr, alias_name) {
+		return custom
+	}
 	resolved_base := t.alias_str_resolved_base_type(base_type)
 	inner := t.wrap_string_conversion(expr, resolved_base)
 	if t.alias_str_suppress_wrapper_for_mut_param_deref(expr) {
@@ -2822,6 +2825,53 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 	display := struct_string_display_name(alias_name)
 	return t.string_plus(t.string_plus(t.make_string_literal('${display}('), inner),
 		t.make_string_literal(')'))
+}
+
+// alias_custom_str_call builds a call to the alias's own str() method when one exists;
+// an alias-level str() overrides the base type's stringification entirely (no name wrapper).
+fn (mut t Transformer) alias_custom_str_call(expr flat.NodeId, alias_name string) ?flat.NodeId {
+	mut candidates := [alias_name]
+	if !alias_name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		candidates << '${t.cur_module}.${alias_name}'
+	}
+	for qname in candidates {
+		str_fn := '${c_name(qname)}__str'
+		v_str_fn := '${qname}.str'
+		known := str_fn in t.fn_ret_types || v_str_fn in t.fn_ret_types
+			|| (!isnil(t.tc) && (str_fn in t.tc.fn_ret_types || v_str_fn in t.tc.fn_ret_types))
+		if known {
+			t.mark_fn_used_name(v_str_fn)
+			t.mark_fn_used_name(str_fn)
+			return t.make_call_typed(str_fn, arr1(expr), 'string')
+		}
+	}
+	return none
+}
+
+// lookup_str_alias resolves a type name to `(alias_name, base_type)` when it names a type
+// alias, mirroring the direct/module-qualified/suffix lookups of wrap_string_conversion.
+fn (t &Transformer) lookup_str_alias(clean_typ string) ?(string, string) {
+	if isnil(t.tc) || clean_typ.len == 0 {
+		return none
+	}
+	if alias := t.tc.type_aliases[clean_typ] {
+		return clean_typ, alias
+	}
+	if !clean_typ.contains('.') {
+		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+			qtyp := '${t.cur_module}.${clean_typ}'
+			if alias := t.tc.type_aliases[qtyp] {
+				return clean_typ, alias
+			}
+		}
+		for aname, target in t.tc.type_aliases {
+			if aname.all_after_last('.') == clean_typ {
+				return clean_typ, target
+			}
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) alias_str_suppress_wrapper_for_mut_param_deref(expr flat.NodeId) bool {
@@ -2888,14 +2938,22 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 		if field_type.len == 0 {
 			continue
 		}
+		raw_field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field_type }
 		mut field_str := if field_type == struct_type {
 			t.make_string_literal('${struct_string_display_name(field_type)}{}')
 		} else {
-			t.wrap_string_conversion(t.make_selector(base, field.name, field_type), field_type)
+			t.struct_field_str_value(t.make_selector(base, field.name, field_type), raw_field_type,
+				field_type)
 		}
-		if t.normalize_type_alias(field_type) == 'string' {
+		if raw_field_type == 'string' || raw_field_type == 'builtin.string' {
 			field_str = t.string_plus(t.string_plus(t.make_string_literal("'"), field_str),
 				t.make_string_literal("'"))
+		}
+		if t.struct_str_field_needs_indent(raw_field_type) {
+			t.mark_fn_used_name('string.replace')
+			t.mark_fn_used_name('string__replace')
+			field_str = t.make_call_typed('string.replace', arr3(field_str, t.make_string_literal('\n'),
+				t.make_string_literal('\n    ')), 'string')
 		}
 		result = t.string_plus(result, t.make_string_literal('    ${field.name}: '))
 		result = t.string_plus(result, field_str)
@@ -2909,6 +2967,70 @@ fn struct_string_display_name(typ string) string {
 		return typ.all_after_last('.')
 	}
 	return typ
+}
+
+// struct_field_str_value stringifies one struct field for the auto-generated struct str.
+// Unlike top-level stringification, V wraps an alias-typed field as `AliasName(value)` even
+// when the alias base is primitive (`d: Duration(42)`), unless the alias defines its own
+// str() method, which is used bare.
+fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type string, field_type string) flat.NodeId {
+	mut clean := raw_field_type.trim_space()
+	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!')
+		|| clean.starts_with('shared ') {
+		return t.wrap_string_conversion(expr, field_type)
+	}
+	if clean.starts_with('builtin.') {
+		clean = clean.all_after_last('.')
+	}
+	alias_name, base_type := t.lookup_str_alias(clean) or {
+		return t.wrap_string_conversion(expr, field_type)
+	}
+	if custom := t.alias_custom_str_call(expr, alias_name) {
+		return custom
+	}
+	resolved_base := t.alias_str_resolved_base_type(base_type)
+	inner := t.wrap_string_conversion(expr, resolved_base)
+	display := struct_string_display_name(alias_name)
+	return t.string_plus(t.string_plus(t.make_string_literal('${display}('), inner),
+		t.make_string_literal(')'))
+}
+
+// struct_str_field_needs_indent reports whether a struct auto-str field value can span
+// multiple lines (nested structs, arrays of structs, options, sum types), so its stringified
+// text must be re-indented one level deeper, matching V's indent_count handling. Values that
+// are always single-line (primitives, plain strings, enums, custom str() output) keep their
+// text untouched — V does not re-indent multi-line string content or custom str() results.
+fn (mut t Transformer) struct_str_field_needs_indent(field_type string) bool {
+	mut clean := field_type.trim_space()
+	for clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
+		clean = clean[1..].trim_space()
+	}
+	for clean.starts_with('shared ') {
+		clean = clean[7..].trim_space()
+	}
+	if clean.starts_with('builtin.') {
+		clean = clean.all_after_last('.')
+	}
+	resolved := t.alias_str_resolved_base_type(clean)
+	if !t.alias_str_needs_name_wrapper(resolved) {
+		return false
+	}
+	if resolved in t.enum_types {
+		return false
+	}
+	if !resolved.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' && '${t.cur_module}.${resolved}' in t.enum_types {
+		return false
+	}
+	if aggregate := t.stringify_aggregate_type_name(resolved) {
+		str_fn := '${c_name(aggregate)}__str'
+		v_str_fn := '${aggregate}.str'
+		if str_fn in t.fn_ret_types || v_str_fn in t.fn_ret_types
+			|| (!isnil(t.tc) && (str_fn in t.tc.fn_ret_types || v_str_fn in t.tc.fn_ret_types)) {
+			return false
+		}
+	}
+	return true
 }
 
 // lower_multi_return_str formats a multi-return value as `(a, b, ...)`.

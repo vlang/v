@@ -8024,9 +8024,92 @@ fn (mut t Transformer) transform_map_init(id flat.NodeId, node flat.Node) flat.N
 }
 
 // transform_typeof_expr transforms transform typeof expr data for transform.
+// typeof_fn_type_display normalizes a fn type name for `typeof(...).name` output the way
+// the reference compiler renders it: parameter names are dropped and `fn` is separated from
+// the parameter list by one space, e.g. `fn(s string, x u32) (int, f32)` becomes
+// `fn (string, u32) (int, f32)`.
+fn typeof_fn_type_display(typ string) string {
+	clean := typ.trim_space()
+	if !clean.starts_with('fn(') && !clean.starts_with('fn (') {
+		return typ
+	}
+	open := clean.index_u8(`(`)
+	mut depth := 0
+	mut close := -1
+	for i in open .. clean.len {
+		c := clean[i]
+		if c == `(` || c == `[` {
+			depth++
+		} else if c == `)` || c == `]` {
+			depth--
+			if depth == 0 && c == `)` {
+				close = i
+				break
+			}
+		}
+	}
+	if close < 0 {
+		return typ
+	}
+	params_text := clean[open + 1..close]
+	rest := clean[close + 1..]
+	mut parts := []string{}
+	mut start := 0
+	mut d := 0
+	for i in 0 .. params_text.len {
+		c := params_text[i]
+		if c == `(` || c == `[` {
+			d++
+		} else if c == `)` || c == `]` {
+			d--
+		} else if c == `,` && d == 0 {
+			parts << params_text[start..i]
+			start = i + 1
+		}
+	}
+	parts << params_text[start..]
+	mut cleaned := []string{cap: parts.len}
+	for p0 in parts {
+		p := p0.trim_space()
+		if p.len == 0 {
+			continue
+		}
+		mut prefix := ''
+		mut body := p
+		for body.starts_with('mut ') || body.starts_with('shared ') {
+			word := body.all_before(' ')
+			prefix += word + ' '
+			body = body.all_after(' ').trim_space()
+		}
+		if space := body.index(' ') {
+			name := body[..space]
+			if typeof_display_is_param_name(name) {
+				body = body[space + 1..].trim_space()
+			}
+		}
+		cleaned << prefix + body
+	}
+	return 'fn (' + cleaned.join(', ') + ')' + rest
+}
+
+fn typeof_display_is_param_name(name string) bool {
+	if name.len == 0 || name in ['fn', 'chan', 'map', 'thread', 'atomic', 'struct'] {
+		return false
+	}
+	if !(name[0].is_letter() || name[0] == `_`) {
+		return false
+	}
+	for c in name {
+		if !(c.is_letter() || c.is_digit() || c == `_`) {
+			return false
+		}
+	}
+	return true
+}
+
 fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.value.len > 0 {
-		return t.make_string_literal(node.value)
+		return t.make_string_literal(typeof_fn_type_display(node.value))
 	}
 	if node.children_count == 0 {
 		return id
@@ -8060,7 +8143,7 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 			pos:   node.pos
 		})
 	}
-	return t.make_string_literal(generic_type_name_display(typ))
+	return t.make_string_literal(typeof_fn_type_display(generic_type_name_display(typ)))
 }
 
 fn (mut t Transformer) transform_typeof_idx_expr(node flat.Node) flat.NodeId {
@@ -8096,6 +8179,13 @@ fn (t &Transformer) typeof_type_name(node flat.Node) string {
 fn (t &Transformer) type_index_for_type_name(type_name string) int {
 	if type_name.len == 0 {
 		return 0
+	}
+	// Builtin types keep V's stable ast `*_type_idx` values (int==8, string==21, ...), so
+	// `typeof[T]().idx` comparisons against `v.ast` constants behave like the reference
+	// compiler.
+	builtin_idx := comptime_builtin_type_idx(type_name)
+	if builtin_idx > 0 {
+		return builtin_idx
 	}
 	mut variants := []string{cap: 2}
 	variants << type_name

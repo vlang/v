@@ -998,7 +998,47 @@ fn (t &Transformer) comptime_field_type_id(typ string, decl_module string) int {
 	if key.len == 0 {
 		return 0
 	}
+	builtin_idx := comptime_builtin_type_idx(key)
+	if builtin_idx > 0 {
+		return builtin_idx
+	}
 	return comptime_type_id_hash(key)
+}
+
+// comptime_builtin_type_idx maps a builtin type name to V's stable ast type index
+// (vlib/v/ast/types.v `*_type_idx` consts), so user code comparing `field.typ` /
+// `typeof[T]().idx` against `v.ast` constants (e.g. `int(ast.bool_type)` == 19) sees the
+// same values the reference compiler produces.
+fn comptime_builtin_type_idx(name string) int {
+	return match name {
+		'void' { 1 }
+		'voidptr' { 2 }
+		'byteptr' { 3 }
+		'charptr' { 4 }
+		'i8' { 5 }
+		'i16' { 6 }
+		'i32' { 7 }
+		'int' { 8 }
+		'i64' { 9 }
+		'isize' { 10 }
+		'u8', 'byte' { 11 }
+		'u16' { 12 }
+		'u32' { 13 }
+		'u64' { 14 }
+		'usize' { 15 }
+		'f32' { 16 }
+		'f64' { 17 }
+		'char' { 18 }
+		'bool' { 19 }
+		'none' { 20 }
+		'string' { 21 }
+		'rune' { 22 }
+		'float literal' { 27 }
+		'int literal' { 28 }
+		'thread' { 29 }
+		'nil' { 31 }
+		else { 0 }
+	}
 }
 
 fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) string {
@@ -1059,12 +1099,14 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 }
 
 // V3 does not have a runtime TypeInfo table yet; keep FieldData TypeIDs stable and nonzero.
+// Hashed ids start above 65536 so they can never collide with the reserved builtin
+// `*_type_idx` range returned by comptime_builtin_type_idx.
 fn comptime_type_id_hash(key string) int {
 	mut h := u64(1469598103934665603)
 	for i in 0 .. key.len {
-		h = ((h ^ u64(key[i])) * 1099511628211) % 2147483647
+		h = ((h ^ u64(key[i])) * 1099511628211) % 2147418111
 	}
-	return int(h) + 1
+	return int(h) + 65536
 }
 
 fn comptime_is_primitive_type(typ string) bool {
@@ -1130,6 +1172,20 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 	if node.kind == .ident && node.value == var_name {
 		return t.make_field_data_literal(fm)
 	}
+	// `typeof(<var>)` / `typeof(<var>).name` / `typeof(<var>).idx`: the field's own type,
+	// not the FieldData metadata struct.
+	if node.kind == .typeof_expr && t.typeof_arg_is_var(id, var_name) {
+		return t.make_string_literal(fm.typ)
+	}
+	if node.kind == .selector && node.children_count > 0
+		&& t.typeof_arg_is_var(t.a.child(&node, 0), var_name) {
+		match node.value {
+			'name' { return t.make_string_literal(fm.typ) }
+			'unaliased_typ' { return t.make_string_literal(fm.unaliased_typ) }
+			'idx' { return t.make_int_literal(fm.typ_id) }
+			else {}
+		}
+	}
 	// `<var>.member` compile-time member access.
 	if node.kind == .selector && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
@@ -1164,6 +1220,20 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 		}
 	}
 	return t.clone_field_subst_children(node, var_name, fm)
+}
+
+// typeof_arg_is_var reports whether `id` is a `typeof(<var_name>)` expression over the
+// comptime loop variable.
+fn (t &Transformer) typeof_arg_is_var(id flat.NodeId, var_name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .typeof_expr || node.children_count == 0 {
+		return false
+	}
+	arg := t.a.child_node(&node, 0)
+	return arg.kind == .ident && arg.value == var_name
 }
 
 // dollar_selector_names_var reports whether a `$(...)` selector's name expression is the current

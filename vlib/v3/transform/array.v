@@ -249,6 +249,20 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 }
 
 fn (mut t Transformer) make_struct_runtime_default_value(struct_type string) ?flat.NodeId {
+	mut visited := map[string]bool{}
+	return t.make_struct_runtime_default_value_guarded(struct_type, mut visited)
+}
+
+fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type string, mut visited map[string]bool) ?flat.NodeId {
+	// Name lookups can resolve cycles (e.g. same-named types across modules), so guard
+	// the current expansion path against re-entering a type.
+	if struct_type in visited {
+		return none
+	}
+	visited[struct_type] = true
+	defer {
+		visited.delete(struct_type)
+	}
 	info := t.lookup_struct_info(struct_type) or { return none }
 	mut field_ids := []flat.NodeId{}
 	for field in info.fields {
@@ -257,7 +271,7 @@ fn (mut t Transformer) make_struct_runtime_default_value(struct_type string) ?fl
 		mut value := flat.empty_node
 		if clean_type.starts_with('map[') || clean_type.starts_with('[]') {
 			value = t.zero_value_for_type(clean_type)
-		} else if nested := t.make_struct_runtime_default_value(clean_type) {
+		} else if nested := t.make_struct_runtime_default_value_guarded(clean_type, mut visited) {
 			value = nested
 		}
 		if int(value) < 0 {
