@@ -5046,7 +5046,14 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	g.write('; cJSON* ${root_name} = cJSON_ParseWithLength((char*)${json_name}.str, (size_t)${json_name}.len); ')
 	// A struct only decodes successfully from a JSON object; `null`, arrays,
 	// strings and numbers must remain an error rather than a zero-valued struct.
-	g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} != NULL) { if (cJSON_IsObject(${root_name})) { ')
+	// A present field must also have the expected cJSON type, otherwise the decode
+	// fails instead of silently substituting a default (e.g. `{"n":"bad"}` for int).
+	mut checks := []string{}
+	for field in fields {
+		checks << g.json_decode_field_valid_expr(root_name, field)
+	}
+	valid_cond := if checks.len > 0 { checks.join(' && ') } else { 'true' }
+	g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} != NULL) { if (cJSON_IsObject(${root_name})) { if (${valid_cond}) { ')
 	g.write('${out_name}.ok = true; ${out_name}.value = (${struct_ct}){')
 	for i, field in fields {
 		if i > 0 {
@@ -5055,8 +5062,26 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 		g.write('.${g.cname(field.name)} = ')
 		g.gen_json_decode_field_expr(root_name, field)
 	}
-	g.write('}; } cJSON_Delete(${root_name}); } ${out_name}; })')
+	g.write('}; } } cJSON_Delete(${root_name}); } ${out_name}; })')
 	return true
+}
+
+// json_decode_field_valid_expr returns a C boolean expression that is true when the
+// JSON value for `field` is absent (defaulted) or present with the cJSON type the
+// fast-path decoder can faithfully read. A present wrong-typed value fails the decode.
+fn (mut g FlatGen) json_decode_field_valid_expr(root_name string, field types.StructField) string {
+	item := 'cJSON_GetObjectItemCaseSensitive(${root_name}, "${field.name}")'
+	clean := if field.typ is types.Alias { field.typ.base_type } else { field.typ }
+	// Mirror the json module: string and bool fields must have the matching JSON type
+	// (a present mismatch is a decode error), while numeric and enum fields tolerate
+	// wrong-typed / unknown values by falling back to a default.
+	if clean is types.String {
+		return '(${item} == NULL || cJSON_IsString(${item}))'
+	}
+	if clean is types.Primitive && clean.props.has(.boolean) {
+		return '(${item} == NULL || cJSON_IsBool(${item}))'
+	}
+	return 'true'
 }
 
 // json_decode_field_supported reports whether the fast-path decoder can decode
