@@ -5028,6 +5028,12 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	if g.json_struct_has_field_attrs(struct_type.name) {
 		return false
 	}
+	// A field with a default initializer (`n int = 5`) must keep that default when the
+	// JSON omits it, but the fast path would zero it; decline such structs so the
+	// normal decoder preserves the default instead of silently changing the value.
+	if g.json_struct_has_field_default(struct_type.name) {
+		return false
+	}
 	for field in fields {
 		if !g.json_decode_field_supported(field.typ) {
 			return false
@@ -5150,6 +5156,42 @@ fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, field types.Stru
 		return
 	}
 	g.gen_default_value_for_type(field.typ)
+}
+
+// json_struct_has_field_default reports whether any field of `struct_name` declares a
+// default initializer (`n int = 5`). The default is stored as the field_decl's child
+// expression; the fast-path decoder cannot preserve it for a field omitted from the
+// JSON (it would emit the type zero), so those structs are declined.
+fn (g &FlatGen) json_struct_has_field_default(struct_name string) bool {
+	mut cur_module := ''
+	for node in g.a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .struct_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if struct_name != node.value && struct_name != qualified {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := g.a.child_node(&node, i)
+			if field.kind != .field_decl {
+				continue
+			}
+			if field.children_count > 0 {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 // json_struct_has_field_attrs reports whether any field of `struct_name` carries
