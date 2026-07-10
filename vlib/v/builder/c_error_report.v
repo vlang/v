@@ -48,6 +48,9 @@ fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) 
 	if !should_submit_c_error_bug_report(v.pref.c_error_bug_report_url) {
 		return
 	}
+	// Snapshot the user's real flags now: the vlines fallback below temporarily flips
+	// `pref.is_vlines`, so computing this after it would misreport `vlines` for plain builds.
+	build_options := codegen_build_options(v.pref)
 	mut raw_report := v.new_c_error_bug_report(ccompiler, c_output)
 	if raw_report.v_file == '' {
 		// The default `.tmp.c` has no `#line` directives, so the C error could not be
@@ -56,6 +59,10 @@ fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) 
 		if vlines_report := v.new_c_error_bug_report_with_vlines(ccompiler) {
 			raw_report = vlines_report
 		}
+	}
+	raw_report = CErrorBugReport{
+		...raw_report
+		build_options: build_options
 	}
 	report := bounded_c_error_bug_report(raw_report, c_error_bug_report_max_body_bytes)
 	report_url := c_error_bug_report_url(v.pref.c_error_bug_report_url)
@@ -172,6 +179,11 @@ fn codegen_build_options(p &pref.Preferences) string {
 	}
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
+	}
+	// custom `-d`/`-define` values, since `$if foo ?` and `$d()` can select different
+	// source and codegen (so a report from `v -d foo file.v` must record `foo`).
+	for d in p.compile_defines {
+		opts << '-d ${d}'
 	}
 	return opts.join(' ')
 }

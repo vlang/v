@@ -11,6 +11,24 @@ fn restore_env_var(name string, old_value ?string) {
 	}
 }
 
+fn test_codegen_build_options_reports_flags_and_custom_defines() {
+	p := pref.Preferences{
+		autofree:        true
+		gc_mode:         .boehm_full
+		is_prod:         true
+		skip_unused:     true
+		compile_defines: ['foo', 'bar']
+	}
+	opts := codegen_build_options(&p)
+	assert opts.contains('autofree')
+	assert opts.contains('gc:boehm_full')
+	assert opts.contains('prod')
+	assert opts.contains('skip_unused')
+	// custom `-d` defines must be recorded, since `$if foo ?` / `$d()` change codegen
+	assert opts.contains('-d foo')
+	assert opts.contains('-d bar')
+}
+
 fn restore_c_error_bug_report_url_env(old_url ?string) {
 	restore_env_var('V_C_ERROR_BUG_REPORT_URL', old_url)
 }
