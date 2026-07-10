@@ -230,11 +230,6 @@ vlib/io/io_test.v
 vlib/io/os_file_reader_test.v
 vlib/io/reader_test.v
 vlib/io/util/util_test.v
-vlib/json/tests/json_decode_embed_test.v
-vlib/json/tests/json_decode_with_option_arg_test.v
-vlib/json/tests/json_embed_test.v
-vlib/json/tests/json_encode_with_mut_test.v
-vlib/json/tests/json_omitempty_types_test.v
 vlib/log/default_test.v
 vlib/log/file_log_test.v
 vlib/maps/maps_clone_test.v
