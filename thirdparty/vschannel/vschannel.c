@@ -1431,6 +1431,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 		scRet = tls_ctx->sspi->EncryptMessage(&tls_ctx->h_context, 0, &Message, 0);
 		if(FAILED(scRet)) {
 			wprintf(L"Error 0x%x returned by EncryptMessage\n", scRet);
+			LocalFree(pbIoBuffer);
 			return scRet;
 		}
 
@@ -1442,6 +1443,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			if(cbData == SOCKET_ERROR || cbData == 0) {
 				wprintf(L"Error %d sending data to server (3)\n", WSAGetLastError());
 				tls_ctx->sspi->DeleteSecurityContext(&tls_ctx->h_context);
+				LocalFree(pbIoBuffer);
 				return SEC_E_INTERNAL_ERROR;
 			}
 			sent += (DWORD)cbData;
@@ -1467,6 +1469,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 				if(cbIoBuffer) {
 					wprintf(L"Server unexpectedly disconnected\n");
 					scRet = SEC_E_INTERNAL_ERROR;
+					LocalFree(pbIoBuffer);
 					return scRet;
 				}
 				else {
@@ -1510,6 +1513,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			scRet != SEC_I_CONTEXT_EXPIRED)
 		{
 			wprintf(L"Error 0x%x returned by DecryptMessage\n", scRet);
+			LocalFree(pbIoBuffer);
 			return scRet;
 		}
 
@@ -1534,6 +1538,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			CHAR *a = afn(*out, required_length);
 			if( a == NULL ) {
 				scRet = SEC_E_INTERNAL_ERROR;
+				LocalFree(pbIoBuffer);
 				return scRet;
 			}
 			*out = a;
@@ -1557,6 +1562,7 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			// The server wants to perform another handshake sequence.
 			scRet = client_handshake_loop(tls_ctx, FALSE, &ExtraBuffer);
 			if(scRet != SEC_E_OK) {
+				LocalFree(pbIoBuffer);
 				return scRet;
 			}
 
@@ -1565,10 +1571,12 @@ static SECURITY_STATUS https_make_request(TlsContext *tls_ctx, CHAR *req, DWORD 
 			{
 				MoveMemory(pbIoBuffer, ExtraBuffer.pvBuffer, ExtraBuffer.cbBuffer);
 				cbIoBuffer = ExtraBuffer.cbBuffer;
+				LocalFree(ExtraBuffer.pvBuffer);
 			}
 		}
 	}
 
+	LocalFree(pbIoBuffer);
 	return SEC_E_OK;
 }
 
