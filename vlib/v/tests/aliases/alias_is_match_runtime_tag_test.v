@@ -130,10 +130,13 @@ fn test_sumtype_is_alias_matches_original_variant_tag() {
 	assert v is AliasTagNullAlias
 }
 
-fn test_sumtype_match_alias_matches_original_variant_tag() {
+fn test_sumtype_match_alias_branch_prefers_alias_variant_tag_when_alias_is_variant() {
 	v := AliasTagSumWithAlias(AliasTagNull{})
 	match v {
 		AliasTagNullAlias {
+			assert false
+		}
+		AliasTagNull {
 			assert true
 		}
 		else {
@@ -147,10 +150,13 @@ fn test_sumtype_is_original_matches_alias_variant_tag() {
 	assert v is AliasTagNull
 }
 
-fn test_sumtype_match_original_matches_alias_variant_tag() {
+fn test_sumtype_match_original_branch_prefers_original_variant_tag_when_alias_is_variant() {
 	v := AliasTagSumWithAlias(AliasTagNullAlias{})
 	match v {
 		AliasTagNull {
+			assert false
+		}
+		AliasTagNullAlias {
 			assert true
 		}
 		else {
@@ -184,7 +190,7 @@ fn aggregate_branch_is_original(v AliasTagSumWithAlias) bool {
 
 fn aggregate_branch_is_alias(v AliasTagSumWithAlias) bool {
 	match v {
-		AliasTagNull, int {
+		AliasTagNullAlias, int {
 			return v is AliasTagNullAlias
 		}
 		else {
@@ -193,9 +199,32 @@ fn aggregate_branch_is_alias(v AliasTagSumWithAlias) bool {
 	}
 }
 
-fn test_sumtype_is_in_aggregate_branch_matches_alias_tags() {
-	assert aggregate_branch_is_original(AliasTagSumWithAlias(AliasTagNullAlias{}))
+fn test_sumtype_match_aggregate_branch_uses_exact_alias_tags() {
+	assert aggregate_branch_is_original(AliasTagSumWithAlias(AliasTagNull{}))
+	assert !aggregate_branch_is_alias(AliasTagSumWithAlias(AliasTagNull{}))
+	assert !aggregate_branch_is_original(AliasTagSumWithAlias(AliasTagNullAlias{}))
 	assert aggregate_branch_is_alias(AliasTagSumWithAlias(AliasTagNullAlias{}))
 	assert !aggregate_branch_is_original(AliasTagSumWithAlias(1))
 	assert !aggregate_branch_is_alias(AliasTagSumWithAlias(1))
+}
+
+type Issue27718RawOffset = i8
+type Issue27718SPOffset = Issue27718RawOffset
+type Issue27718Offset = Issue27718RawOffset | Issue27718SPOffset
+
+fn (o Issue27718Offset) str() string {
+	return match o {
+		Issue27718SPOffset {
+			sign := if i8(o) < 0 { '' } else { '+' }
+			'SP${sign}${Issue27718RawOffset(o)}'
+		}
+		Issue27718RawOffset {
+			o.str()
+		}
+	}
+}
+
+fn test_sumtype_match_uses_exact_alias_variant_tag_for_chained_aliases() {
+	assert Issue27718Offset(Issue27718SPOffset(42)).str() == 'SP+42'
+	assert Issue27718Offset(Issue27718RawOffset(42)).str() == '42'
 }

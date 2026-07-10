@@ -769,6 +769,16 @@ fn (mut g Gen) matching_sumtype_variant_types(parent_type ast.Type, target_type 
 	return [target_type]
 }
 
+fn (mut g Gen) matching_sumtype_match_branch_variant_types(parent_type ast.Type, target_type ast.Type) []ast.Type {
+	variants := g.sumtype_runtime_variants(parent_type)
+	for variant in variants {
+		if g.is_exact_sumtype_variant_match(variant, target_type) {
+			return [variant]
+		}
+	}
+	return g.matching_sumtype_variant_types(parent_type, target_type)
+}
+
 fn (mut g Gen) matching_sumtype_variant_type_idx_exprs(parent_type ast.Type, target_type ast.Type) []string {
 	return g.type_idx_exprs_for_types(g.matching_sumtype_variant_types(parent_type, target_type))
 }
