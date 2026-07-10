@@ -93,5 +93,7 @@ jobs:
         run: v build-vbinaries
       - name: Build examples
         run: v build-examples
+      - name: Compile and run the veb example (fasthttp) and check its HTML
+        run: v run .github/workflows/veb_example_windows_smoke.v
       - name: v2 self compilation
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v && .\v3.exe -o v4.exe cmd/v
