@@ -1850,18 +1850,26 @@ fn (mut g FlatGen) gen_shared_field_expr_for_field(value_id flat.NodeId, struct_
 	if g.gen_shared_storage_expr(value_id) {
 		return true
 	}
-	g.write('(${info.wrapper}*)__dup${info.wrapper}(&(${info.wrapper}){.mtx = {0}, .val = ')
 	if fixed := array_fixed_type(expected) {
 		literal := g.fixed_array_compound_literal_expr(value_id, fixed)
 		brace := literal.index_u8(`{`)
 		if brace >= 0 {
+			g.write('(${info.wrapper}*)__dup${info.wrapper}(&(${info.wrapper}){.mtx = {0}, .val = ')
 			g.write(literal[brace..])
-		} else {
-			g.gen_struct_field_expr(value_id, expected)
+			g.write('}, sizeof(${info.wrapper}))')
+			return true
 		}
-	} else {
+		// A non-literal fixed-array value cannot initialize the array member in a
+		// compound literal (`.val = arr` is invalid C), so build the wrapper in a
+		// temp and memcpy the value in, mirroring the non-shared fixed-array path.
+		tmp := g.tmp_name()
+		g.write('({ ${info.wrapper} ${tmp} = {.mtx = {0}}; memcpy(${tmp}.val, ')
 		g.gen_struct_field_expr(value_id, expected)
+		g.write(', sizeof(${tmp}.val)); (${info.wrapper}*)__dup${info.wrapper}(&${tmp}, sizeof(${info.wrapper})); })')
+		return true
 	}
+	g.write('(${info.wrapper}*)__dup${info.wrapper}(&(${info.wrapper}){.mtx = {0}, .val = ')
+	g.gen_struct_field_expr(value_id, expected)
 	g.write('}, sizeof(${info.wrapper}))')
 	return true
 }
