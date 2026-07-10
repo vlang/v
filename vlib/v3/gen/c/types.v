@@ -757,8 +757,11 @@ fn (g &FlatGen) enum_field_expr_value(id flat.NodeId) ?int {
 				.left_shift {
 					int(u64(left) << right)
 				}
-				.right_shift, .right_shift_unsigned {
+				.right_shift {
 					left >> right
+				}
+				.right_shift_unsigned {
+					int(u64(left) >> right)
 				}
 				else {
 					none
@@ -974,7 +977,8 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int) 
 				.pipe { left | right }
 				.xor { left ^ right }
 				.left_shift { int(u64(left) << right) }
-				.right_shift, .right_shift_unsigned { left >> right }
+				.right_shift { left >> right }
+				.right_shift_unsigned { int(u64(left) >> right) }
 				else { none }
 			}
 		}

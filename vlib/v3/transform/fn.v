@@ -3401,9 +3401,12 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 		clean_typ = clean_typ.all_after_last('.')
 	}
 	// An enum with a base (`x`/`b`/`o`) or decimal (`d`) verb prints its integer
-	// value, not its name; format the underlying integer.
+	// value, not its name; format the underlying integer. Unsigned-backed enums use
+	// u64 so values above i64.max are not rendered as negative.
 	if format[format.len - 1] in [`x`, `b`, `o`, `d`] && t.is_formatted_enum_type(clean_typ) {
-		return t.wrap_formatted_string_conversion(t.make_cast('i64', expr, 'i64'), 'i64', format)
+		int_type := if t.enum_backing_is_unsigned(clean_typ) { 'u64' } else { 'i64' }
+		return t.wrap_formatted_string_conversion(t.make_cast(int_type, expr, int_type), int_type,
+			format)
 	}
 	if decimal_format := fixed_decimal_format(format) {
 		if clean_typ in ['f32', 'f64', 'float_literal'] {
@@ -3573,6 +3576,15 @@ fn fixed_decimal_format(format string) ?FixedDecimalFormat {
 		precision: precision
 		left:      left
 	}
+}
+
+fn (t &Transformer) enum_backing_is_unsigned(clean_typ string) bool {
+	mut backing := t.enum_backing_types[clean_typ] or { '' }
+	if backing.len == 0 && !clean_typ.contains('.') && t.cur_module.len > 0
+		&& t.cur_module !in ['main', 'builtin'] {
+		backing = t.enum_backing_types['${t.cur_module}.${clean_typ}'] or { '' }
+	}
+	return backing in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize']
 }
 
 fn (t &Transformer) is_formatted_enum_type(clean_typ string) bool {

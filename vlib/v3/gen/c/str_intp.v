@@ -214,6 +214,18 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		return true
 	}
 	if typ is types.Enum && (f.verb == `d` || f.verb == 0) {
+		if f.zero && f.width > 0 {
+			g.write('v3_i64_zpad((i64)(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write('), ${f.width})')
+			return true
+		}
+		if f.width > 0 {
+			g.write('v3_string_pad(i64__str((i64)(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write(')), ${f.width}, ${left})')
+			return true
+		}
 		g.write('strconv__format_int((i64)(')
 		g.gen_string_interp_child_expr(child_id)
 		g.write('), 10)')
