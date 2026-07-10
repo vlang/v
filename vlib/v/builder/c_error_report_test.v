@@ -197,6 +197,29 @@ fn test_v_source_for_report_is_empty_without_mapped_line() {
 	assert v_source_for_report(['a', 'b', 'c'], 0, 40, 40) == ''
 }
 
+fn test_bounded_v_source_truncates_on_line_boundaries_with_comment_marker() {
+	mut lines := []string{}
+	for i in 0 .. 400 {
+		lines << 'line_${i} = some_value_here'
+	}
+	source := lines.join('\n')
+	max := 2000
+	out := bounded_v_source(source, max)
+	assert out.len <= max
+	// the marker is a V comment on its own line, so the kept source stays parseable
+	assert out.contains(c_error_v_source_truncation_notice)
+	// the start (declarations) and the end (failing code) are both preserved
+	assert out.starts_with('line_0 = some_value_here')
+	assert out.ends_with('line_399 = some_value_here')
+	// no original line is split across the truncation: every kept line is whole
+	for l in out.split('\n') {
+		if l == '' || l == c_error_v_source_truncation_notice {
+			continue
+		}
+		assert l.contains(' = some_value_here')
+	}
+}
+
 fn test_numbered_context_lines_returns_five_lines_each_side() {
 	lines := ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']
 	context := numbered_context_lines(lines, 6, 5)

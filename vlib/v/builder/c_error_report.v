@@ -16,6 +16,8 @@ const c_error_v_source_radius = 40
 // uploaded chunk still has what the failing region needs to compile
 const c_error_v_source_prefix_lines = 40
 const c_error_v_source_omitted_notice = '// ... unrelated source omitted for the bug report ...'
+// marker used when `v_source` itself is too large; a V comment so the kept source stays parseable
+const c_error_v_source_truncation_notice = '// ... v_source truncated for the bug report ...'
 const c_error_bug_report_max_body_bytes = 256 * 1024
 const c_error_bug_report_max_v_source_bytes = 64 * 1024
 const c_error_bug_report_truncation_notice = '\n... report truncated before upload ...\n'
@@ -311,11 +313,31 @@ fn v_source_for_report(lines []string, center int, radius int, prefix_lines int)
 
 // bounded_v_source keeps the V source under `max_bytes`, trimming the middle if needed so the
 // start (declarations/imports) and end (usually where the failing code lives) are both preserved.
+// The stored source is meant to be replayed as V, so unlike `truncated_report_text` it cuts on
+// line boundaries and drops the marker in as a V comment on its own line, keeping the kept head
+// and tail syntactically closer to valid V.
 fn bounded_v_source(source string, max_bytes int) string {
 	if max_bytes <= 0 || source.len <= max_bytes {
 		return source
 	}
-	return truncated_report_text(source, max_bytes)
+	marker := '\n${c_error_v_source_truncation_notice}\n'
+	if max_bytes <= marker.len {
+		// no room for both content and the marker: fall back to a hard prefix cut
+		return source[..max_bytes]
+	}
+	kept_bytes := max_bytes - marker.len
+	head_budget := kept_bytes / 2
+	tail_budget := kept_bytes - head_budget
+	// end the head on a whole line, so a partial statement is not left before the marker
+	mut head_end := source[..head_budget].last_index_u8(`\n`)
+	if head_end <= 0 {
+		head_end = head_budget
+	}
+	// begin the tail on a whole line, so it does not start in the middle of a statement
+	tail_region_start := source.len - tail_budget
+	next_nl := source[tail_region_start..].index_u8(`\n`)
+	tail_start := if next_nl >= 0 { tail_region_start + next_nl + 1 } else { source.len }
+	return source[..head_end] + marker + source[tail_start..]
 }
 
 // new_c_error_bug_report_with_vlines regenerates the program's C source with `#line`
