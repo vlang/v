@@ -195,6 +195,11 @@ mut:
 	item_range_lo        int = -1
 	item_range_hi        int = -1
 	deferred_base_writes []DeferredBaseWrite
+	// Prealloc self-host builds put helper-thread scratch allocations in
+	// disposable arenas. The worker's surviving AST strings are cloned by the
+	// master before that arena is released.
+	scope_parallel_workers bool
+	worker_scope           voidptr
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -304,8 +309,17 @@ pub fn transform_with_used_opt(mut a flat.FlatAst, tc &types.TypeChecker, used_f
 // transform_with_used_opt_config is transform_with_used_opt with extra pipeline
 // switches for self-host builds.
 pub fn transform_with_used_opt_config(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool) (map[string]bool, bool) {
+	return transform_with_used_opt_config_scoped_workers(mut a, tc, used_fns, want_parallel,
+		skip_generics, false)
+}
+
+// transform_with_used_opt_config_scoped_workers optionally gives parallel
+// helpers disposable prealloc arenas. It is used by prealloc self-host builds
+// to retain parallel latency without retaining every helper's scratch memory.
+pub fn transform_with_used_opt_config_scoped_workers(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool) (map[string]bool, bool) {
 	mut t := new_transformer(mut a, tc, used_fns)
 	t.skip_generics = skip_generics
+	t.scope_parallel_workers = scope_parallel_workers
 	t.prepare()
 	if want_parallel {
 		// Transform roughly grows the node/children arrays by ~75%. Reserve that capacity
@@ -1504,6 +1518,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.used_fns_log = []string{}
 	w.used_fns_log_active = false
 	w.deferred_base_writes = []DeferredBaseWrite{}
+	w.worker_scope = unsafe { nil }
 	// Workers do not record transformed fns (that would write the master's
 	// shared backing array); the master marks each worker's chunk items when it
 	// merges the worker.
@@ -1562,6 +1577,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.generic_receiver_methods_by_name = map[string][]string{}
 	w.used_fns_log = []string{}
 	w.used_fns_log_active = false
+	w.worker_scope = unsafe { nil }
 	w.transformed_fns = []bool{}
 	w.temp_counter = 0
 	w.cur_file = ''
@@ -1575,15 +1591,46 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 }
 
 fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
+	scoped := w.worker_scope != unsafe { nil }
 	for name, used in w.used_fns {
 		if used {
-			t.used_fns[name] = true
+			owned_name := if scoped { name.clone() } else { name }
+			t.used_fns[owned_name] = true
 		}
 	}
 	for name, req in w.sum_eq_types {
 		if name !in t.sum_eq_types {
-			t.sum_eq_types[name] = req
+			if scoped {
+				t.sum_eq_types[name.clone()] = SumEqRequest{
+					module: req.module.clone()
+					file:   req.file.clone()
+				}
+			} else {
+				t.sum_eq_types[name] = req
+			}
 		}
+	}
+}
+
+// clone_scoped_worker_node moves a node's owned fields from a helper arena to
+// the master's arena before the helper arena is released.
+fn (mut t Transformer) clone_scoped_worker_node(idx int) {
+	if idx < 0 || idx >= t.a.nodes.len {
+		return
+	}
+	mut node := unsafe { &t.a.nodes[idx] }
+	if node.value.len > 0 {
+		node.value = node.value.clone()
+	}
+	if node.typ.len > 0 {
+		node.typ = node.typ.clone()
+	}
+	if node.generic_params.len > 0 {
+		mut params := []string{cap: node.generic_params.len}
+		for param in node.generic_params {
+			params << param.clone()
+		}
+		node.generic_params = params
 	}
 }
 
@@ -1633,6 +1680,9 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			if t.a.nodes[k].children_start >= base_children {
 				t.a.nodes[k] = t.a.nodes[k].with_shifted_children(child_shift)
 			}
+			if w.worker_scope != unsafe { nil } {
+				t.clone_scoped_worker_node(k)
+			}
 		}
 	}
 	// Rewritten top-level function nodes keep their original index in the master.
@@ -1646,6 +1696,11 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 		if it.fn_idx >= 0 && it.fn_idx < t.transformed_fns.len {
 			t.transformed_fns[it.fn_idx] = true
 		}
+		if w.worker_scope != unsafe { nil } {
+			for idx in it.range_lo .. it.fn_idx + 1 {
+				t.clone_scoped_worker_node(idx)
+			}
+		}
 	}
 	// Replay the call/fn-value resolutions the worker recorded for its
 	// transform-created nodes (Transformer.copy_cloned_resolution writes into the
@@ -1655,16 +1710,19 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 	if !isnil(w.tc.fork_overlay) {
 		for idx, name in w.tc.fork_overlay.resolved_call_names {
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
-			t.set_resolved_call_entry(shifted, name)
+			owned_name := if w.worker_scope != unsafe { nil } { name.clone() } else { name }
+			t.set_resolved_call_entry(shifted, owned_name)
 		}
 		for idx, name in w.tc.fork_overlay.resolved_fn_values {
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
-			t.set_resolved_fn_value_entry(shifted, name)
+			owned_name := if w.worker_scope != unsafe { nil } { name.clone() } else { name }
+			t.set_resolved_fn_value_entry(shifted, owned_name)
 		}
 	}
 	for name, used in w.used_fns {
 		if used {
-			t.used_fns[name] = true
+			owned_name := if w.worker_scope != unsafe { nil } { name.clone() } else { name }
+			t.used_fns[owned_name] = true
 		}
 	}
 }

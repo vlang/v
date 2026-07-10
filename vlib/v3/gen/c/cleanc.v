@@ -168,7 +168,10 @@ mut:
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
-	prealloc bool
+	prealloc               bool
+	scope_parallel_workers bool
+	worker_scope           voidptr
+	parallel_worker_scopes []voidptr
 }
 
 struct FixedArrayTypedefInfo {
@@ -457,6 +460,26 @@ pub fn (mut g FlatGen) set_compiler_vexe(path string) {
 	g.compiler_vexe = path
 }
 
+// set_scope_parallel_workers makes cgen helpers use disposable prealloc
+// arenas. The caller must release them with free_parallel_worker_scopes after
+// consuming the generated C output and cgen metadata.
+pub fn (mut g FlatGen) set_scope_parallel_workers(enabled bool) {
+	g.scope_parallel_workers = enabled
+}
+
+// free_parallel_worker_scopes releases scratch arenas retained by joined cgen
+// helper threads.
+pub fn (mut g FlatGen) free_parallel_worker_scopes() {
+	$if prealloc {
+		for scope in g.parallel_worker_scopes {
+			if scope != unsafe { nil } {
+				unsafe { prealloc_scope_free_after(scope) }
+			}
+		}
+	}
+	g.parallel_worker_scopes = []voidptr{}
+}
+
 // gen supports gen handling for FlatGen.
 pub fn (mut g FlatGen) gen(a &flat.FlatAst) string {
 	tc := types.TypeChecker.new(a)
@@ -574,6 +597,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.const_short_index = &ConstShortIndex{}
 	g.mut_recv_facts = &FnNameFactCache{}
 	g.want_parallel_prep = false
+	g.worker_scope = unsafe { nil }
+	g.parallel_worker_scopes = []voidptr{}
 	g.tc = unsafe { tc }
 	if g.tc.a == unsafe { nil } {
 		g.tc.collect(a)
