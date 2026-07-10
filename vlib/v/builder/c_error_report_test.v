@@ -17,7 +17,12 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		gc_mode:         .boehm_full
 		is_prod:         true
 		skip_unused:     true
-		compile_defines: ['foo', 'bar']
+		compile_defines: ['foo', 'pad', 'header']
+		compile_values:  {
+			'foo':    'true'
+			'pad':    '7'
+			'header': 'false'
+		}
 	}
 	opts := codegen_build_options(&p)
 	assert opts.contains('autofree')
@@ -26,7 +31,10 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('skip_unused')
 	// custom `-d` defines must be recorded, since `$if foo ?` / `$d()` change codegen
 	assert opts.contains('-d foo')
-	assert opts.contains('-d bar')
+	assert !opts.contains('-d foo=true')
+	// valued defines must keep their value (`$d()` can change constants and generated C)
+	assert opts.contains('-d pad=7')
+	assert opts.contains('-d header=false')
 }
 
 fn restore_c_error_bug_report_url_env(old_url ?string) {

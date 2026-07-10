@@ -181,9 +181,15 @@ fn codegen_build_options(p &pref.Preferences) string {
 		opts << 'build_mode:${p.build_mode}'
 	}
 	// custom `-d`/`-define` values, since `$if foo ?` and `$d()` can select different
-	// source and codegen (so a report from `v -d foo file.v` must record `foo`).
+	// source and codegen (so a report from `v -d foo file.v` must record `foo`, and one
+	// from `v -d pad=7 file.v` must record `pad=7` — the value is kept in compile_values).
 	for d in p.compile_defines {
-		opts << '-d ${d}'
+		value := p.compile_values[d] or { '' }
+		if value == '' || value == 'true' {
+			opts << '-d ${d}'
+		} else {
+			opts << '-d ${d}=${value}'
+		}
 	}
 	return opts.join(' ')
 }
