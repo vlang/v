@@ -6,6 +6,10 @@ module fasthttp
 #include <windows.h>
 #include <ws2tcpip.h>
 
+// net also declares accept() for POSIX file descriptors. Keep this wrapper
+// module-specific so its pointer-sized Windows SOCKET return type is preserved.
+#define v_fasthttp_accept(s) accept((s), NULL, NULL)
+
 type C.DWORD = u32
 type C.ULONG_PTR = usize
 type C.SOCKET = usize
@@ -46,7 +50,7 @@ fn C.WSARecv(s C.SOCKET, lpBuffers &C.WSABUF, dwBufferCount C.DWORD, lpNumberOfB
 fn C.WSASend(s C.SOCKET, lpBuffers &C.WSABUF, dwBufferCount C.DWORD, lpNumberOfBytesSent &C.DWORD, dwFlags C.DWORD, lpOverlapped &C.OVERLAPPED, lpCompletionRoutine voidptr) i32
 fn C.WSAIoctl(s C.SOCKET, dwIoControlCode C.DWORD, lpvInBuffer voidptr, cbInBuffer C.DWORD, lpvOutBuffer voidptr, cbOutBuffer C.DWORD, lpcbBytesReturned &C.DWORD, lpOverlapped voidptr, lpCompletionRoutine voidptr) i32
 fn C.WSAGetLastError() i32
-fn C.accept(s C.SOCKET, addr voidptr, addrlen voidptr) C.SOCKET
+fn C.v_fasthttp_accept(s C.SOCKET) C.SOCKET
 fn C.bind(s C.SOCKET, addr voidptr, addrlen int) i32
 fn C.listen(s C.SOCKET, backlog int) i32
 fn C.send(s C.SOCKET, buf voidptr, len int, flags i32) i32
