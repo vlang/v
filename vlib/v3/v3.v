@@ -681,15 +681,6 @@ fn main() {
 	}
 	cmd_v_build := input_is_cmd_v(input_file)
 	scope_prealloc_selfhost := should_scope_prealloc_selfhost(building_v, cmd_v_build)
-	if scope_prealloc_selfhost {
-		// A prealloc-built v3 compiler gets a bump arena per worker thread.
-		// During self-host builds, the parallel transform/cgen workers retain
-		// those arenas long enough to push RSS well past the memory budget. This
-		// throttles only the current build; `no_parallel` still reflects the user
-		// flag that decides whether the target compiler gets v3_no_parallel.
-		current_no_parallel = true
-		current_parallel_transform = false
-	}
 	if building_v || cmd_v_build {
 		if no_parallel {
 			user_defines = user_defines.filter(it != 'parallel')
@@ -886,7 +877,11 @@ fn main() {
 	// and cgen.
 	mut transform_was_parallel := false
 	skip_transform_generics := building_v || cmd_v_build
-	if scope_prealloc_selfhost {
+	mut scope_whole_transform := !current_parallel_transform
+	$if v3_no_parallel ? {
+		scope_whole_transform = true
+	}
+	if scope_prealloc_selfhost && scope_whole_transform {
 		transform_scope := prealloc_scope_begin_for_v3()
 		used_fns, transform_was_parallel = transform.transform_with_used_opt_config(mut a, &pre_tc,
 			used_fns, current_parallel_transform, skip_transform_generics)
@@ -896,8 +891,9 @@ fn main() {
 		clone_typechecker_after_scoped_transform(mut pre_tc, a)
 		prealloc_scope_free_for_v3(transform_scope)
 	} else {
-		used_fns, transform_was_parallel = transform.transform_with_used_opt_config(mut a, &pre_tc,
-			used_fns, current_parallel_transform, skip_transform_generics)
+		used_fns, transform_was_parallel = transform.transform_with_used_opt_config_scoped_workers(mut a,
+			&pre_tc, used_fns, current_parallel_transform, skip_transform_generics,
+			scope_prealloc_selfhost)
 	}
 	b.step_parallel('transform', transform_was_parallel)
 
@@ -971,6 +967,7 @@ fn main() {
 			g.set_c99_mode(prefs.c99)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_compiler_vexe(prefs.vexe)
+			g.set_scope_parallel_workers(true)
 			c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, current_no_parallel,
 				test_files)
 			if !write_text_file_raw(output_file, c_code) {
@@ -979,6 +976,7 @@ fn main() {
 			}
 			cgen_was_parallel = g.was_parallel()
 			scoped_c_flags := g.c_flags()
+			g.free_parallel_worker_scopes()
 			prealloc_scope_leave_for_v3(cgen_scope)
 			generated_c_flags = clone_string_list(scoped_c_flags)
 			prealloc_scope_free_for_v3(cgen_scope)

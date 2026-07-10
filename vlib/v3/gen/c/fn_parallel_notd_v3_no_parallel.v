@@ -39,7 +39,10 @@ $if !windows {
 	// fn work items and pre-seeds the parallel tables.
 	fn fixed_storage_scan_thread(arg voidptr) voidptr {
 		mut w := unsafe { &FlatGen(arg) }
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 		w.collect_fixed_storage_consts()
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
 		return unsafe { nil }
 	}
 
@@ -47,13 +50,19 @@ $if !windows {
 	// groups on private FlatGen forks while the body workers run.
 	fn postamble_segments_thread_a(arg voidptr) voidptr {
 		mut w := unsafe { &FlatGen(arg) }
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 		w.emit_postamble_segments_a()
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
 		return unsafe { nil }
 	}
 
 	fn postamble_segments_thread_b(arg voidptr) voidptr {
 		mut w := unsafe { &FlatGen(arg) }
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 		w.emit_postamble_segments_b()
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
 		return unsafe { nil }
 	}
 
@@ -62,8 +71,28 @@ $if !windows {
 		a := unsafe { &FlatCgenChunkArgs(arg) }
 		mut w := unsafe { &FlatGen(a.worker) }
 		items := unsafe { &[]FlatFnGenItem(a.work_items_ptr) }
+		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 		w.gen_fn_items(*items)
+		w.worker_scope = scope
+		cgen_worker_scope_leave(scope)
 		return unsafe { nil }
+	}
+}
+
+fn cgen_worker_scope_begin(enabled bool) voidptr {
+	$if prealloc {
+		if enabled {
+			return unsafe { prealloc_scope_begin() }
+		}
+	}
+	return unsafe { nil }
+}
+
+fn cgen_worker_scope_leave(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_leave(scope) }
+		}
 	}
 }
 
@@ -140,6 +169,18 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		g.gen_fn_items(chunk_items[0])
 		for ci := 0; ci < thread_count + 2; ci++ {
 			C.pthread_join(thread_ids[ci], unsafe { nil })
+		}
+		for ci := 0; ci < thread_count; ci++ {
+			w := unsafe { &FlatGen(workers[ci]) }
+			if w.worker_scope != unsafe { nil } {
+				g.parallel_worker_scopes << w.worker_scope
+			}
+		}
+		if post_worker_a.worker_scope != unsafe { nil } {
+			g.parallel_worker_scopes << post_worker_a.worker_scope
+		}
+		if post_worker_b.worker_scope != unsafe { nil } {
+			g.parallel_worker_scopes << post_worker_b.worker_scope
 		}
 		// Adopt the postamble fork's segments and emission-dedup state FIRST
 		// (it ran logically at the start of the postamble), then merge helper
@@ -512,6 +553,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		spawn_wrapper_defs:             g.spawn_wrapper_defs.clone()
 		callback_wrapper_names:         g.callback_wrapper_names.clone()
 		callback_wrapper_defs:          g.callback_wrapper_defs.clone()
+		scope_parallel_workers:         g.scope_parallel_workers
 		c_name_cache:                   &CNameCache{}
 		// The const short-name index is read-only after its first build (the
 		// master queries it during the const precompute, before the forks);
@@ -704,6 +746,8 @@ fn (g &FlatGen) postamble_fork(worker_id int) &FlatGen {
 	w.callback_wrapper_defs = g.callback_wrapper_defs.clone()
 	w.c_extern_refs = map[string]bool{}
 	w.c_extern_refs_ready = false
+	w.worker_scope = unsafe { nil }
+	w.parallel_worker_scopes = []voidptr{}
 	// Snapshot of the interned-string table for the string_literals segment;
 	// the master's later interning appends beyond it (see
 	// string_literals_from).
@@ -778,6 +822,9 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		// read-only, so it must be complete before any fork starts.
 		_ = g.unique_const_ref_name('__v3_prewarm__') or { '' }
 		C.pthread_join(tid[0], unsafe { nil })
+		if fs_worker.worker_scope != unsafe { nil } {
+			g.parallel_worker_scopes << fs_worker.worker_scope
+		}
 		g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
 		return true
 	}

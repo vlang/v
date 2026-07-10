@@ -98,8 +98,11 @@ $if !windows {
 	fn shared_chunk_thread(arg voidptr) voidptr {
 		a := unsafe { &SharedChunkArgs(arg) }
 		mut w := unsafe { &Transformer(a.worker) }
+		scope := transform_worker_scope_begin(w.scope_parallel_workers)
 		items := unsafe { &[]FnWorkItem(a.items_ptr) }
 		w.transform_pure_items_serial(*items)
+		w.worker_scope = scope
+		transform_worker_scope_leave(scope)
 		return unsafe { nil }
 	}
 }
@@ -108,6 +111,33 @@ $if !windows {
 struct SharedChunkArgs {
 	worker    voidptr // &Transformer
 	items_ptr voidptr // &[]FnWorkItem
+}
+
+// transform_worker_scope_begin starts a helper-local disposable arena in
+// prealloc self-host builds. Ordinary builds retain their existing allocator.
+fn transform_worker_scope_begin(enabled bool) voidptr {
+	$if prealloc {
+		if enabled {
+			return unsafe { prealloc_scope_begin() }
+		}
+	}
+	return unsafe { nil }
+}
+
+fn transform_worker_scope_leave(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_leave(scope) }
+		}
+	}
+}
+
+fn transform_worker_scope_free(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(scope) }
+		}
+	}
 }
 
 // run_parallel_transform transforms the closure-free function bodies across
@@ -345,6 +375,9 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			ww := unsafe { &Transformer(args[ci].worker) }
 			t.merge_worker_used_fns(ww)
 			t.merge_worker(ww, chunks[ci + 1], node_starts[ci + 1], child_starts[ci + 1])
+			if ww.worker_scope != unsafe { nil } {
+				transform_worker_scope_free(ww.worker_scope)
+			}
 		}
 		t.base_write_intercept = false
 		t.defer_oor_writes = false
