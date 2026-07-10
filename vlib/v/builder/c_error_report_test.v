@@ -26,6 +26,7 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		experimental:                  true
 		fast_math:                     true
 		no_std:                        true
+		no_rsp:                        true
 		cmain:                         'SDL_main'
 		force_bounds_checking:         true
 		div_by_zero_is_zero:           true
@@ -63,9 +64,10 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('enable_globals')
 	// `-experimental` gates checker constructs and changes autofree C
 	assert opts.contains('experimental')
-	// `-fast-math` and `-no-std` change the C compiler command; `-cmain` changes the entry point
+	// `-fast-math`, `-no-std` and `-no-rsp` change the C compiler command; `-cmain` the entry point
 	assert opts.contains('fast_math')
 	assert opts.split(' ').any(it == 'no_std')
+	assert opts.split(' ').any(it == 'no_rsp')
 	assert opts.contains('cmain:SDL_main')
 	// `-force-bounds-checking` keeps checks even in `@[direct_array_access]` functions
 	assert opts.contains('force_bounds_checking')
@@ -246,6 +248,29 @@ fn test_v_source_for_report_does_not_cut_prefix_mid_block() {
 	assert src.contains('fn target() {')
 	assert src.contains('bad := undefined_thing')
 	assert src.contains(c_error_v_source_omitted_notice)
+}
+
+fn test_v_source_for_report_extends_to_enclosing_block_end() {
+	mut lines := []string{}
+	lines << 'module main' // 1
+	for i in 0 .. 40 {
+		lines << 'const c${i} = ${i}' // 2..41 (pushes the fn past the prefix)
+	}
+	lines << 'fn big() int {' // 42 (enclosing signature)
+	lines << '\tbad := undefined_thing' // 43 (failing, early in the function)
+	for i in 0 .. 30 {
+		lines << '\ty${i} := ${i}' // 44..73 (long tail, well past center + radius)
+	}
+	lines << '\treturn 0' // 74
+	lines << '}' // 75 (closing brace, > radius lines after the failing line)
+	// error on line 43, radius 2 => center+radius=45, but the block only closes at line 75
+	src := v_source_for_report(lines, 43, 2, 5)
+	// the whole enclosing declaration is included, through its closing brace
+	assert src.contains('fn big() int {')
+	assert src.contains('bad := undefined_thing')
+	assert src.trim_space().ends_with('}')
+	// a line far past center + radius but still inside the block is present
+	assert src.contains('y20 := 20')
 }
 
 fn test_v_source_for_report_includes_attributes_above_declaration() {

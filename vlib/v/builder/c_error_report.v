@@ -247,6 +247,11 @@ fn codegen_build_options(p &pref.Preferences) string {
 		// drops the default `-std=c99` / `-D_DEFAULT_SOURCE` C flags, changing the C compiler command.
 		opts << 'no_std'
 	}
+	if p.no_rsp {
+		// passes C backend options directly on the command line instead of via a `.rsp` response
+		// file (should_use_rsp), so the C compiler is invoked differently.
+		opts << 'no_rsp'
+	}
 	if p.prealloc {
 		opts << 'prealloc'
 	}
@@ -353,13 +358,15 @@ fn selected_v_source(v_file string, mapped_lines []string, v_line int, input_pat
 }
 
 // v_source_for_report returns the V source needed to reproduce the C error without uploading the
-// whole file: the file's leading declarations plus the failing line's enclosing top-level block and
-// up to `radius` lines after it. The region starts at the enclosing declaration (including its
-// `@[...]` attributes), so it is a whole declaration rather than statements resuming after the
-// omission comment. The prefix is trimmed to a brace-balanced boundary within `prefix_lines`, so it
-// never ends inside a half-open declaration. Unrelated declarations in the middle are dropped. When
-// the failing region already reaches the prefix, one contiguous block is returned. It returns ''
-// when there is no mapped V line.
+// whole file: the file's leading declarations plus the failing line's whole enclosing top-level
+// declaration. The region starts at the enclosing declaration (including its `@[...]` attributes)
+// and ends at that declaration's balanced closing brace, so it is a complete declaration rather
+// than a `fn ... {` cut off before its body or statements resuming after the omission comment. For
+// a single-line top-level declaration (no block) up to `radius` lines after it are kept for
+// context. The prefix is trimmed to a brace-balanced boundary within `prefix_lines`, so it never
+// ends inside a half-open declaration. Unrelated declarations in the middle are dropped. When the
+// failing region already reaches the prefix, one contiguous block is returned. It returns '' when
+// there is no mapped V line.
 fn v_source_for_report(lines []string, center int, radius int, prefix_lines int) string {
 	if center <= 0 || lines.len == 0 {
 		return ''
@@ -367,7 +374,16 @@ fn v_source_for_report(lines []string, center int, radius int, prefix_lines int)
 	// begin at the enclosing declaration of the failing line, so the region is a whole block and
 	// never starts in the middle of a function body (or on a stray closing brace).
 	region_start := enclosing_decl_start(lines, center)
-	region_end := if center + radius > lines.len { lines.len } else { center + radius }
+	// end at the enclosing declaration's balanced closing brace, so the block is not cut open; a
+	// single-line declaration (no block) keeps up to `radius` lines of context after the failure.
+	decl_end := enclosing_decl_end(lines, region_start)
+	region_end := if decl_end > region_start {
+		decl_end
+	} else if center + radius > lines.len {
+		lines.len
+	} else {
+		center + radius
+	}
 	// The failing region already includes (or directly follows) the prefix: keep it contiguous.
 	if region_start <= prefix_lines + 1 {
 		return lines[..region_end].join('\n')
@@ -407,6 +423,33 @@ fn enclosing_decl_start(lines []string, from_line int) int {
 		i--
 	}
 	return i
+}
+
+// enclosing_decl_end scans downward from `start` (1-based) to the line that closes the block opened
+// by the declaration there, by counting `{`/`}` until the depth returns to 0. It returns that line,
+// or `lines.len` if the block never closes (truncated/malformed), or `start` when the declaration
+// opens no block at all (a single-line `const`/`import`, or a one-line `fn f() { ... }`). Like the
+// prefix trimming it is a brace-counting heuristic and does not track braces inside literals.
+fn enclosing_decl_end(lines []string, start int) int {
+	if start < 1 || start > lines.len {
+		return if start < 1 { 1 } else { lines.len }
+	}
+	mut depth := 0
+	mut opened := false
+	for i := start; i <= lines.len; i++ {
+		for ch in lines[i - 1] {
+			if ch == `{` {
+				depth++
+				opened = true
+			} else if ch == `}` && depth > 0 {
+				depth--
+			}
+		}
+		if opened && depth == 0 {
+			return i
+		}
+	}
+	return if opened { lines.len } else { start }
 }
 
 // balanced_prefix_end returns how many leading lines of `lines` (at most `max_lines`) can be kept
