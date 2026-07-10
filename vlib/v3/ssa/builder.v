@@ -43,9 +43,9 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_objc_getClass', '_sel_registerName', '_objc_alloc_init', '_objc_autoreleasePoolPush',
 	'_objc_autoreleasePoolPop', '_MTLCreateSystemDefaultDevice', '_dlopen', '_dlsym']
 
-const bench_runtime_stub_names = ['current_rss_kb', 'macos_peak_rss_kb', 'linux_rss_kb',
-	'bench.current_rss_kb', 'bench.macos_peak_rss_kb', 'bench.linux_rss_kb',
-	'v3.bench.current_rss_kb', 'v3.bench.macos_peak_rss_kb', 'v3.bench.linux_rss_kb']
+const bench_runtime_stub_names = ['current_rss_kb', 'macos_rss_kb', 'linux_rss_kb',
+	'bench.current_rss_kb', 'bench.macos_rss_kb', 'bench.linux_rss_kb', 'v3.bench.current_rss_kb',
+	'v3.bench.macos_rss_kb', 'v3.bench.linux_rss_kb']
 
 // Builder stores state for SSA construction.
 pub struct Builder {

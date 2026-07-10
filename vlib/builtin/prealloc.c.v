@@ -3,6 +3,12 @@ module builtin
 
 #insert "@VEXEROOT/vlib/builtin/prealloc_atomics.h"
 
+$if !freestanding && !vinix {
+	$if !windows {
+		#include <sys/mman.h>
+	}
+}
+
 fn C.v_prealloc_atomic_add_i32(ptr &int, delta int) int
 fn C.v_prealloc_atomic_load_i32(ptr &int) int
 fn C.v_prealloc_atomic_store_i32(ptr &int, val int) int
@@ -43,6 +49,7 @@ mut:
 	scope          &VPreallocScope = 0
 	min_block_size isize
 	is_scope       bool
+	mmap_allocated bool
 	id             int // 4
 	mallocs        int // 4
 }
@@ -171,10 +178,24 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least isize, align isize, min_
 	$if windows {
 		v.start = unsafe { C._aligned_malloc(block_size, fixed_align) }
 	} $else {
-		if fixed_align == 1 {
-			v.start = unsafe { C.malloc(block_size) }
-		} else {
-			v.start = unsafe { C.aligned_alloc(fixed_align, block_size) }
+		$if !freestanding && !vinix {
+			if fixed_align <= isize(prealloc_default_align) {
+				mmap_ptr := unsafe {
+					C.mmap(0, usize(block_size), C.PROT_READ | C.PROT_WRITE,
+						C.MAP_ANONYMOUS | C.MAP_PRIVATE, -1, 0)
+				}
+				if mmap_ptr != C.MAP_FAILED {
+					v.start = &u8(mmap_ptr)
+					v.mmap_allocated = true
+				}
+			}
+		}
+		if unsafe { v.start == 0 } {
+			if fixed_align == 1 {
+				v.start = unsafe { C.malloc(block_size) }
+			} else {
+				v.start = unsafe { C.aligned_alloc(fixed_align, block_size) }
+			}
 		}
 	}
 	vmemory_abort_on_nil(v.start, block_size)
@@ -265,7 +286,15 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 		// Warning! On windows, we always use _aligned_free to free memory.
 		C._aligned_free(mb.start)
 	} $else {
-		C.free(mb.start)
+		$if !freestanding && !vinix {
+			if mb.mmap_allocated {
+				C.munmap(mb.start, usize(vmemory_block_size(mb)))
+			} else {
+				C.free(mb.start)
+			}
+		} $else {
+			C.free(mb.start)
+		}
 	}
 	C.free(mb)
 }
@@ -375,16 +404,9 @@ fn prealloc_vcleanup() {
 	}
 	unsafe {
 		for g_memory_block != 0 {
-			$if windows {
-				// Warning! On windows, we always use _aligned_free to free memory.
-				C._aligned_free(g_memory_block.start)
-			} $else {
-				C.free(g_memory_block.start)
-			}
 			tmp := g_memory_block
 			g_memory_block = g_memory_block.previous
-			// free the link node
-			C.free(tmp)
+			vmemory_block_free(tmp)
 		}
 	}
 }
