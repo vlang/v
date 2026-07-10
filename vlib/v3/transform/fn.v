@@ -1405,9 +1405,29 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		source_type := t.node_type(source_id)
 		if t.is_optional_type_name(source_type) {
 			payload_type := t.optional_base_type(source_type)
-			ok_target := t.make_selector(t.transform_expr(source_id), 'ok', 'bool')
-			t.pending_stmts << t.make_assign(ok_target, t.make_bool_literal(true))
-			payload := t.make_selector(t.transform_expr(source_id), 'value', payload_type)
+			// Evaluate the optional once, keeping it addressable so mutations
+			// through the reference still write back to the payload (a stable
+			// ident/selector is reused directly, a call is materialized once).
+			opt_expr := t.stable_transformed_expr_for_reuse(t.transform_expr(source_id),
+				source_type, 'opt_ref')
+			if t.is_optional_type_name(t.cur_fn_ret_type) {
+				// `opt?` propagates: return none/err when it is none, instead of
+				// unconditionally treating it as present.
+				not_ok := t.make_prefix(.not, t.make_selector(opt_expr, 'ok', 'bool'))
+				err_expr := t.make_selector(opt_expr, 'err', 'IError')
+				else_stmts := t.lower_or_body_to_stmts_with_err_expr(flat.empty_node, '',
+					payload_type, '?', err_expr)
+				t.pending_stmts << t.make_if(not_ok, t.make_block(else_stmts), t.make_empty())
+			} else {
+				// Comptime option-payload-mut (e.g. `decode(mut result.field?)` in a
+				// `$for` decoder): the callee fills the payload, so mark it present and
+				// expose its address. Normal `?` propagation in a non-option-returning
+				// function would have been rejected by the checker, so this is the only
+				// way we get here without an option return type.
+				ok_target := t.make_selector(opt_expr, 'ok', 'bool')
+				t.pending_stmts << t.make_assign(ok_target, t.make_bool_literal(true))
+			}
+			payload := t.make_selector(opt_expr, 'value', payload_type)
 			addr := t.make_prefix(.amp, payload)
 			t.set_node_typ(int(addr), param_type)
 			return addr
