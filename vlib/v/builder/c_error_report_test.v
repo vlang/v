@@ -34,6 +34,27 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert !opts.contains('-cc gcc')
 }
 
+fn test_codegen_build_options_distinguishes_g_from_cg() {
+	// `-g` => is_debug + is_vlines (V #line output)
+	g := pref.Preferences{
+		is_debug:  true
+		is_vlines: true
+	}
+	g_opts := codegen_build_options(&g)
+	assert g_opts.contains('-g')
+	assert !g_opts.contains('-cg')
+
+	// `-cg` => is_debug only (C-line debug mode; different generated C)
+	cg := pref.Preferences{
+		is_debug:  true
+		is_vlines: false
+	}
+	cg_opts := codegen_build_options(&cg)
+	assert cg_opts.contains('-cg')
+	// (must not be reported as plain `-g`, whose token is a substring of `-cg`)
+	assert !cg_opts.split(' ').any(it == '-g')
+}
+
 fn restore_c_error_bug_report_url_env(old_url ?string) {
 	restore_env_var('V_C_ERROR_BUG_REPORT_URL', old_url)
 }

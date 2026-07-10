@@ -139,10 +139,9 @@ fn codegen_build_options(p &pref.Preferences) string {
 		opts << 'prod'
 	}
 	if p.is_debug {
-		opts << '-g'
-	}
-	if p.is_vlines {
-		opts << 'vlines'
+		// `-g` sets is_vlines (V `#line` output), `-cg` does not (C-line debug mode);
+		// they produce different generated C, so distinguish them for reproduction.
+		opts << if p.is_vlines { '-g' } else { '-cg' }
 	}
 	if p.skip_unused {
 		opts << 'skip_unused'
