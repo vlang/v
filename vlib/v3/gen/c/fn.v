@@ -5119,9 +5119,15 @@ fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, field types.Stru
 			g.write('0')
 			return
 		}
-		mut result := g.enum_value_expr_for_type(clean.name, names[0]) or {
+		default_value := g.enum_value_expr_for_type(clean.name, names[0]) or {
 			'${g.cname(clean.name)}__${g.cname(names[0])}'
 		}
+		if _ := g.json_enum_number_cast(clean.name) {
+			// `@[json_as_number]`: the JSON value is a number, not a label string.
+			g.write('(${item} != NULL ? (${g.value_c_type(clean)})${item}->valuedouble : ${default_value})')
+			return
+		}
+		mut result := default_value
 		for i := names.len - 1; i >= 0; i-- {
 			name := names[i]
 			label := labels[name] or { name }
