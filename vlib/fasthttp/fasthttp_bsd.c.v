@@ -31,6 +31,7 @@ const buf_size = max_connection_size
 const kqueue_max_events = 128
 const backlog = max_connection_size
 const kqueue_wait_timeout_ms = 100
+const accept_batch_size = 32
 
 // send_flags is OR'd into every C.send() call in this file.  On OpenBSD,
 // which lacks the per-socket SO_NOSIGPIPE option, we pass MSG_NOSIGNAL
@@ -563,7 +564,7 @@ fn handle_read(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidpt
 }
 
 fn accept_clients(kq int, listen_fd int, mut clients map[int]voidptr) {
-	for {
+	for _ in 0 .. accept_batch_size {
 		client_fd := C.accept(listen_fd, unsafe { nil }, unsafe { nil })
 		if client_fd < 0 {
 			if C.errno == C.EAGAIN || C.errno == C.EWOULDBLOCK {
@@ -586,8 +587,12 @@ fn accept_clients(kq int, listen_fd int, mut clients map[int]voidptr) {
 			user_data: unsafe { nil }
 			file_fd:   -1
 		}
-		add_event(kq, u64(client_fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR),
-			c)
+		if add_event(kq, u64(client_fd), i16(C.EVFILT_READ),
+			u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), c) < 0 {
+			C.close(client_fd)
+			unsafe { free(c) }
+			continue
+		}
 		clients[client_fd] = c
 	}
 }
@@ -678,6 +683,7 @@ fn process_events(server &Server, kq int, listen_fd int) {
 				continue
 			}
 			C.perror(c'kevent')
+			close_all_conns(server, kq, mut clients)
 			return
 		}
 
@@ -759,10 +765,12 @@ pub fn (mut s Server) run() ! {
 			s.close_pollers()
 			return error('kqueue creation failed')
 		}
-		// Register the shared listener with each worker kqueue. Accepted client fds
-		// stay local to the worker that accepted them.
+		// Register the shared listener with each worker kqueue. Keep the listener
+		// level-triggered so accept_clients can cap each batch without losing
+		// readiness for queued connections. Accepted client fds stay local to the
+		// worker that accepted them.
 		if add_event(s.poll_fds[i], u64(s.socket_fd), i16(C.EVFILT_READ),
-			u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), unsafe { nil }) < 0 {
+			u16(C.EV_ADD | C.EV_ENABLE), unsafe { nil }) < 0 {
 			s.stop_accepting()
 			s.close_pollers()
 			return error('failed to register listener with kqueue')
