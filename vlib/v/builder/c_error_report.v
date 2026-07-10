@@ -202,6 +202,10 @@ fn codegen_build_options(p &pref.Preferences) string {
 		// generated C differs from a replay that honors the attribute again.
 		opts << 'force_bounds_checking'
 	}
+	if p.div_by_zero_is_zero {
+		// cgen emits different safe div/mod helpers (`x / 0 == 0` instead of the panic path).
+		opts << 'div_by_zero_is_zero'
+	}
 	if p.translated {
 		opts << 'translated'
 	}
@@ -271,17 +275,21 @@ fn codegen_build_options(p &pref.Preferences) string {
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
 	}
-	// Value-carrying options reused verbatim from the recorded build options so their value is
-	// preserved exactly:
+	// Options reused verbatim from the recorded build options so they are preserved exactly.
+	// Value-carrying ones (kept by prefix):
 	//   -d              defines (`-d foo`, `-d pad=7`, empty `-d header=`) select source/codegen
 	//                   via `$if foo ?` / `$d()`
 	//   -cflags         passed to the C compiler, can decide whether the error reproduces (`-Werror`)
 	//   -ldflags        passed to the C compiler/linker after every other option
 	//   -custom-prelude replaces the generated prelude written into the C headers
 	//   -bare-builtin-dir selects the freestanding builtin implementation
+	// Bare flags (kept by exact match), only present when explicitly passed (host-detected libc
+	// defaults are not recorded, so these capture the user's explicit choice):
+	//   -musl/-glibc    force the linked libc; `-musl` also enables `$if musl` and changes libgc flags
 	verbatim_prefixes := ['-d ', '-cflags ', '-ldflags ', '-custom-prelude ', '-bare-builtin-dir ']
+	verbatim_flags := ['-musl', '-glibc']
 	for opt in p.build_options {
-		if verbatim_prefixes.any(opt.starts_with(it)) {
+		if opt in verbatim_flags || verbatim_prefixes.any(opt.starts_with(it)) {
 			opts << opt
 		}
 	}

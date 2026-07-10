@@ -27,6 +27,7 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		no_std:                true
 		cmain:                 'SDL_main'
 		force_bounds_checking: true
+		div_by_zero_is_zero:   true
 		assert_failure_mode:   .backtraces
 		is_prof:               true
 		profile_file:          'some/file'
@@ -36,9 +37,9 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		trace_fns:             ['baz_*']
 		is_coverage:           true
 		coverage_dir:          'cov/out'
-		// value-carrying options are recorded verbatim in build_options
+		// value-carrying options and explicit bare flags are recorded verbatim in build_options
 		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"', '-ldflags "-s"',
-			'-custom-prelude prelude.h', '-bare-builtin-dir bare/dir', '-cc gcc']
+			'-custom-prelude prelude.h', '-bare-builtin-dir bare/dir', '-musl', '-cc gcc']
 	}
 	opts := codegen_build_options(&p)
 	assert opts.contains('autofree')
@@ -60,6 +61,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('force_bounds_checking')
 	// `-assert backtraces` changes the post-failure C path cgen emits
 	assert opts.contains('assert:backtraces')
+	// `-div-by-zero-is-zero` makes cgen emit different safe div/mod helpers
+	assert opts.split(' ').any(it == 'div_by_zero_is_zero')
 	// the profile output path is embedded in the generated C, so keep it
 	assert opts.contains('profile:some/file')
 	assert opts.contains('profile_no_inline')
@@ -79,6 +82,10 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('-ldflags "-s"')
 	assert opts.contains('-custom-prelude prelude.h')
 	assert opts.contains('-bare-builtin-dir bare/dir')
+	// an explicit libc flag is kept (it changes `$if musl` and the libgc C flags)
+	assert opts.split(' ').any(it == '-musl')
+	// but a libc flag that was not passed is not invented
+	assert !opts.split(' ').any(it == '-glibc')
 	// unrelated recorded options (e.g. `-cc`, covered by the ccompiler field) are not pulled in
 	assert !opts.contains('-cc gcc')
 }
