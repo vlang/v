@@ -18,6 +18,7 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		is_prod:     true
 		skip_unused: true
 		prealloc:    true
+		is_bare:     true
 		// build_options records `-d ...` verbatim (this is what parse_define stores)
 		build_options: ['-d foo', '-d pad=7', '-d header=', '-cc gcc']
 	}
@@ -27,6 +28,7 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('prod')
 	assert opts.contains('skip_unused')
 	assert opts.contains('prealloc')
+	assert opts.contains('freestanding')
 	// custom `-d` defines must be recorded, since `$if foo ?` / `$d()` change codegen
 	assert opts.contains('-d foo')
 	// valued defines keep their value, including an explicitly empty one (`$d()` reads it)

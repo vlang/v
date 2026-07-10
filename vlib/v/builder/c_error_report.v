@@ -179,6 +179,9 @@ fn codegen_build_options(p &pref.Preferences) string {
 	if p.prealloc {
 		opts << 'prealloc'
 	}
+	if p.is_bare {
+		opts << 'freestanding'
+	}
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
 	}
