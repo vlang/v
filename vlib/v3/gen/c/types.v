@@ -875,32 +875,50 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 	if callee.kind != .ident {
 		return none
 	}
-	// Prefer an exact declaration match; only fall back to a short-name (suffix)
-	// match so that two modules sharing a function name do not fold the call
-	// using the wrong function body.
-	mut fn_node := flat.Node{}
-	mut found := false
+	// An unqualified helper call in an enum initializer resolves to a function in the
+	// enum's own module, so prefer a candidate declared in `enum_module`. Fall back to
+	// an exact name match and then a short-name (suffix) match, so that two modules
+	// sharing a helper name do not fold the call with the wrong module's body.
+	short := callee.value.all_after_last('.')
+	mut cur_mod := ''
+	mut module_node := flat.Node{}
+	mut module_found := false
+	mut exact_node := flat.Node{}
+	mut exact_found := false
 	mut suffix_node := flat.Node{}
 	mut suffix_found := false
 	for candidate in g.a.nodes {
+		if candidate.kind == .module_decl {
+			cur_mod = candidate.value
+			continue
+		}
 		if candidate.kind != .fn_decl {
 			continue
 		}
-		if candidate.value == callee.value {
-			fn_node = candidate
-			found = true
-			break
+		if candidate.value != callee.value && candidate.value.all_after_last('.') != short {
+			continue
 		}
-		if !suffix_found && candidate.value.all_after_last('.') == callee.value.all_after_last('.') {
+		if !module_found && cur_mod == enum_module {
+			module_node = candidate
+			module_found = true
+		}
+		if !exact_found && candidate.value == callee.value {
+			exact_node = candidate
+			exact_found = true
+		}
+		if !suffix_found {
 			suffix_node = candidate
 			suffix_found = true
 		}
 	}
-	if !found {
-		if !suffix_found {
-			return none
-		}
-		fn_node = suffix_node
+	fn_node := if module_found {
+		module_node
+	} else if exact_found {
+		exact_node
+	} else if suffix_found {
+		suffix_node
+	} else {
+		return none
 	}
 	mut locals := map[string]int{}
 	mut arg_idx := 1

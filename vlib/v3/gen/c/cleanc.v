@@ -9125,29 +9125,65 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 	}
 	if node.kind == .call && node.children_count > 0 {
 		callee := g.a.child_node(&node, 0)
-		callee_name := if callee.kind in [.ident, .selector] { callee.value } else { '' }
-		if callee_name.len > 0 && !visited_fns[callee_name] {
-			visited_fns[callee_name] = true
-			// Prefer an exact declaration match; only fall back to a short-name
-			// (suffix) match so that two modules sharing a function name do not
-			// resolve to the wrong declaration.
-			mut target := -1
+		mut callee_name := ''
+		mut callee_module := ''
+		if callee.kind == .ident {
+			callee_name = callee.value
+		} else if callee.kind == .selector {
+			// A module-qualified call (`other.make()`) is a selector whose value is
+			// only the short name; the module comes from the base ident.
+			callee_name = callee.value
+			if callee.children_count > 0 {
+				base := g.a.child_node(callee, 0)
+				if base.kind == .ident {
+					callee_module = base.value
+				}
+			}
+		}
+		// Key the visited set by the qualified name so `a.foo` and `b.foo` are treated
+		// as distinct bodies rather than one being skipped.
+		visit_key := if callee_module.len > 0 {
+			'${callee_module}.${callee_name}'
+		} else {
+			callee_name
+		}
+		if callee_name.len > 0 && !visited_fns[visit_key] {
+			visited_fns[visit_key] = true
+			// Prefer a declaration in the callee's module; otherwise an exact name
+			// match, then a short-name (suffix) match, so two modules sharing a
+			// function name do not resolve to the wrong declaration.
+			short := callee_name.all_after_last('.')
+			mut cur_mod := ''
+			mut module_target := -1
+			mut exact_target := -1
 			mut suffix_target := -1
 			for i, candidate in g.a.nodes {
+				if candidate.kind == .module_decl {
+					cur_mod = candidate.value
+					continue
+				}
 				if candidate.kind != .fn_decl {
 					continue
 				}
-				if candidate.value == callee_name {
-					target = i
-					break
+				if candidate.value != callee_name && candidate.value.all_after_last('.') != short {
+					continue
 				}
-				if suffix_target < 0
-					&& candidate.value.all_after_last('.') == callee_name.all_after_last('.') {
+				if module_target < 0 && callee_module.len > 0 && cur_mod == callee_module {
+					module_target = i
+				}
+				if exact_target < 0 && candidate.value == callee_name {
+					exact_target = i
+				}
+				if suffix_target < 0 {
 					suffix_target = i
 				}
 			}
-			if target < 0 {
-				target = suffix_target
+			target := if module_target >= 0 {
+				module_target
+			} else if exact_target >= 0 {
+				exact_target
+			} else {
+				suffix_target
 			}
 			if target >= 0 {
 				g.const_collect_deps_inner(flat.NodeId(target), mut deps, mut visited_fns)
