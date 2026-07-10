@@ -178,6 +178,13 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 	f := parse_string_interp_format(format)
 	type_name := string_interp_type_name(typ)
 	left := if f.left { 1 } else { 0 }
+	// An unsigned-backed enum must format as unsigned so values >= 1<<63 are not
+	// rendered as negative; consult the enum backing type like the transformer does.
+	enum_unsigned := if typ is types.Enum {
+		enum_storage_c_type_is_unsigned(g.enum_storage_c_type(typ))
+	} else {
+		false
+	}
 	if (is_string_interp_signed_int_type(type_name) || is_string_interp_unsigned_int_type(type_name)
 		|| typ is types.Enum) && f.verb in [`b`, `o`, `x`, `X`] {
 		base := match f.verb {
@@ -196,7 +203,7 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		if f.verb == `X` {
 			g.write('v3_string_upper_ascii(')
 		}
-		if is_string_interp_unsigned_int_type(type_name) {
+		if is_string_interp_unsigned_int_type(type_name) || enum_unsigned {
 			g.write('strconv__format_uint((u64)(')
 		} else {
 			g.write('strconv__format_int((i64)(')
@@ -214,19 +221,26 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		return true
 	}
 	if typ is types.Enum && (f.verb == `d` || f.verb == 0) {
+		zpad_fn := if enum_unsigned { 'v3_u64_zpad' } else { 'v3_i64_zpad' }
+		cast := if enum_unsigned { 'u64' } else { 'i64' }
+		str_fn := if enum_unsigned { 'u64__str' } else { 'i64__str' }
 		if f.zero && f.width > 0 {
-			g.write('v3_i64_zpad((i64)(')
+			g.write('${zpad_fn}((${cast})(')
 			g.gen_string_interp_child_expr(child_id)
 			g.write('), ${f.width})')
 			return true
 		}
 		if f.width > 0 {
-			g.write('v3_string_pad(i64__str((i64)(')
+			g.write('v3_string_pad(${str_fn}((${cast})(')
 			g.gen_string_interp_child_expr(child_id)
 			g.write(')), ${f.width}, ${left})')
 			return true
 		}
-		g.write('strconv__format_int((i64)(')
+		if enum_unsigned {
+			g.write('strconv__format_uint((u64)(')
+		} else {
+			g.write('strconv__format_int((i64)(')
+		}
 		g.gen_string_interp_child_expr(child_id)
 		g.write('), 10)')
 		return true
