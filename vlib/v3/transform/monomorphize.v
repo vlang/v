@@ -4303,21 +4303,35 @@ fn (mut t Transformer) clone_generic_node(id flat.NodeId, args []string) flat.No
 }
 
 fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is_root bool) flat.NodeId {
-	if node.kind == .typeof_expr {
-		if typ := generic_type_name_from_marker(node.value) {
-			idx := t.active_generic_param_index(typ)
-			if idx < args.len {
-				return t.make_string_literal(generic_type_name_display(args[idx]))
+	if node.kind == .selector && node.children_count > 0 {
+		base_id := t.a.child(&node, 0)
+		if node.value == 'name' {
+			base := t.a.nodes[int(base_id)]
+			if base.kind == .typeof_expr {
+				if reflected := t.generic_comptime_typeof_target(base, args) {
+					return t.make_string_literal(generic_type_name_display(reflected))
+				}
+			}
+			if reflected := t.generic_comptime_base_type(base_id, args) {
+				return t.make_string_literal(generic_type_name_display(reflected))
+			}
+		}
+		if node.value in ['idx', 'key_type', 'value_type', 'element_type'] {
+			if concrete := t.generic_comptime_base_type(base_id, args) {
+				target := if node.value == 'idx' {
+					concrete
+				} else {
+					t.generic_comptime_type_member(concrete, node.value) or { '' }
+				}
+				if target.len > 0 {
+					return t.make_int_literal(t.comptime_field_type_id(target, t.cur_module))
+				}
 			}
 		}
 	}
-	if node.kind == .selector && node.value == 'name' && node.children_count > 0 {
-		base := t.a.child_node(&node, 0)
-		if base.kind == .ident && is_generic_fn_placeholder_name(base.value) {
-			idx := t.active_generic_param_index(base.value)
-			if idx < args.len {
-				return t.make_string_literal(generic_type_name_display(args[idx]))
-			}
+	if node.kind == .typeof_expr {
+		if reflected := t.generic_comptime_typeof_target(node, args) {
+			return t.make_string_literal(generic_type_name_display(reflected))
 		}
 	}
 	// Calls nested inside a `$for` body must not be specialized during the clone: the loop
@@ -4404,6 +4418,77 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		t.retarget_cloned_implicit_generic_call(clone_id, node, args)
 	}
 	return clone_id
+}
+
+fn (t &Transformer) generic_comptime_base_type(id flat.NodeId, args []string) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident && is_generic_fn_placeholder_name(node.value) {
+		idx := t.active_generic_param_index(node.value)
+		if idx < args.len {
+			return args[idx]
+		}
+	}
+	if node.kind == .typeof_expr {
+		if typ := generic_type_name_from_marker(node.value) {
+			idx := t.active_generic_param_index(typ)
+			if idx < args.len {
+				return args[idx]
+			}
+		}
+	}
+	return none
+}
+
+fn (mut t Transformer) generic_comptime_typeof_target(node flat.Node, args []string) ?string {
+	if typ := generic_type_name_from_marker(node.value) {
+		idx := t.active_generic_param_index(typ)
+		if idx < args.len {
+			return args[idx]
+		}
+	}
+	if node.children_count == 0 {
+		return none
+	}
+	child_id := t.a.child(&node, 0)
+	child := t.a.nodes[int(child_id)]
+	if child.kind == .selector && child.children_count > 0
+		&& child.value in ['idx', 'key_type', 'value_type', 'element_type'] {
+		base_id := t.a.child(&child, 0)
+		if concrete := t.generic_comptime_base_type(base_id, args) {
+			if child.value == 'idx' {
+				return 'int'
+			}
+			return t.generic_comptime_type_member(concrete, child.value)
+		}
+	}
+	return t.generic_comptime_base_type(child_id, args)
+}
+
+fn (mut t Transformer) generic_comptime_type_member(raw string, member string) ?string {
+	clean := t.comptime_normalize_type_alias_chain(raw)
+	match member {
+		'key_type', 'value_type' {
+			if !clean.starts_with('map[') {
+				return none
+			}
+			key_type, value_type := t.map_type_parts(clean)
+			return if member == 'key_type' { key_type } else { value_type }
+		}
+		'element_type' {
+			if clean.starts_with('[]') {
+				return clean[2..]
+			}
+			if t.is_fixed_array_type(clean) {
+				return fixed_array_elem_type(clean)
+			}
+		}
+		else {}
+	}
+
+	return none
 }
 
 fn (mut t Transformer) substitute_cloned_generic_call_type_args(node flat.Node, mut children []flat.NodeId, args []string) {
@@ -5560,7 +5645,26 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 		if op_idx >= 0 {
 			left := clean[..op_idx].trim_space()
 			right := clean[op_idx + op.len..].trim_space()
-			return '${t.subst_type(left, args)}${op}${t.subst_type(right, args)}'
+			return '${t.subst_comptime_type_operand(left, args)}${op}${t.subst_comptime_type_operand(right,
+				args)}'
+		}
+	}
+	for op in [' !in', ' in'] {
+		op_idx := comptime_condition_top_level_index(clean, op)
+		if op_idx >= 0 {
+			after := op_idx + op.len
+			if after >= clean.len || (clean[after] != `[` && clean[after] != ` `) {
+				continue
+			}
+			left := t.subst_comptime_type_operand(clean[..op_idx], args)
+			list := clean[after..].trim_space()
+			if list.starts_with('[') && list.ends_with(']') {
+				mut items := []string{}
+				for item in split_generic_args(list[1..list.len - 1]) {
+					items << t.subst_comptime_type_operand(item, args)
+				}
+				return '${left}${op}[${items.join(',')}]'
+			}
 		}
 	}
 	if clean.starts_with('!') {
@@ -5572,6 +5676,16 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 		return '!${inner}'
 	}
 	return clean
+}
+
+fn (t &Transformer) subst_comptime_type_operand(raw string, args []string) string {
+	clean := raw.trim_space()
+	if clean.ends_with('.unaliased_typ') {
+		base := clean[..clean.len - '.unaliased_typ'.len]
+		substituted := t.resolve_substituted_type_text(t.subst_type(base, args))
+		return t.comptime_normalize_type_alias_chain(substituted)
+	}
+	return t.resolve_substituted_type_text(t.subst_type(clean, args))
 }
 
 // active_generic_param_index returns the position of a placeholder name within the

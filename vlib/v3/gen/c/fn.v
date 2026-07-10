@@ -2327,6 +2327,14 @@ fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types
 				call_expr:   '&p->a${field_idx}'
 			}
 		}
+		if child_id := g.spawn_stack_address_value(arg_id) {
+			value_type := types.unwrap_pointer(expected)
+			return SpawnPackedArg{
+				field_ct:    g.tc.c_type(value_type)
+				assign_expr: g.expr_to_string_with_expected_type(child_id, value_type)
+				call_expr:   '&p->a${field_idx}'
+			}
+		}
 		if g.spawn_arg_expr_is_pointer_value(arg_id) {
 			return SpawnPackedArg{
 				field_ct:    expected_ct
@@ -2354,6 +2362,32 @@ fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types
 		assign_expr: g.expr_to_string_with_expected_type(arg_id, expected)
 		call_expr:   'p->a${field_idx}'
 	}
+}
+
+// spawn_stack_address_value finds `&local` (also through parentheses) when local is a value
+// binding. The spawned wrapper must own a copy in its heap argument block; storing the stack
+// address itself lets loop iterations reuse the slot before the thread reads it.
+fn (g &FlatGen) spawn_stack_address_value(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.node(id)
+	if node.kind == .paren && node.children_count > 0 {
+		return g.spawn_stack_address_value(g.a.child(node, 0))
+	}
+	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
+		return none
+	}
+	child_id := g.a.child(node, 0)
+	child := g.a.node(child_id)
+	if child.kind != .ident || node.is_mut || child.is_mut {
+		return none
+	}
+	local_type := g.local_ident_type(child.value) or { return none }
+	if local_type is types.Pointer {
+		return none
+	}
+	return child_id
 }
 
 fn spawn_packed_args_signature(args []SpawnPackedArg) string {
@@ -3260,14 +3294,19 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		}
 	}
 	if g.is_json_decode_call(id, target_name) {
-		ret_type := g.json_decode_result_type_for_call(node) or { g.call_default_return_type(id) }
-		g.gen_default_value_for_type(ret_type)
+		if target_name != 'decode' && g.gen_json_decode_call(node) {
+			return
+		}
+		g.gen_default_value_for_type(g.json_decode_result_type_for_call(node) or {
+			g.call_default_return_type(id)
+		})
 		return
 	}
 	if target_name in ['json.encode', 'json2.encode']
 		|| (g.tc.cur_module == 'json2' && target_name == 'encode') {
-		g.gen_default_value_for_type(g.call_default_return_type(id))
-		return
+		if g.gen_json_encode_call(node) {
+			return
+		}
 	}
 	if g.is_veb_json_result_call(fn_node) {
 		g.gen_default_value_for_type(g.call_default_return_type(id))
@@ -4887,6 +4926,171 @@ fn (g &FlatGen) is_json_decode_call(id flat.NodeId, target string) bool {
 		}
 	}
 	return g.is_json_decode_target_name(target)
+}
+
+fn (mut g FlatGen) gen_json_encode_call(node flat.Node) bool {
+	if node.children_count < 2 {
+		return false
+	}
+	arg_id := g.a.child(&node, 1)
+	typ := types.unwrap_pointer(g.usable_expr_type(arg_id))
+	expr := g.expr_to_string_with_expected_type(arg_id, typ)
+	encoded := g.json_encode_value_c_expr(typ, expr) or { return false }
+	g.write(encoded)
+	return true
+}
+
+fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	if clean is types.Enum {
+		names, labels := g.json_enum_labels(clean.name)
+		if names.len == 0 {
+			return none
+		}
+		mut result := ''
+		for i := names.len - 1; i >= 0; i-- {
+			name := names[i]
+			label := labels[name] or { name }
+			sid := g.intern_string('"${label}"')
+			value := g.enum_value_expr_for_type(clean.name, name) or {
+				'${g.cname(clean.name)}__${g.cname(name)}'
+			}
+			if result.len == 0 {
+				result = '_str_${sid}'
+			} else {
+				result = '((${expr}) == ${value} ? _str_${sid} : ${result})'
+			}
+		}
+		return result
+	}
+	if clean is types.String {
+		quote := g.intern_string('"')
+		return 'string__plus(string__plus(_str_${quote}, ${expr}), _str_${quote})'
+	}
+	if clean is types.Struct {
+		fields := g.tc.structs[clean.name] or { return none }
+		open := g.intern_string('{')
+		close := g.intern_string('}')
+		mut result := '_str_${open}'
+		for i, field in fields {
+			separator := if i == 0 { '' } else { ',' }
+			prefix := g.intern_string('${separator}"${field.name}":')
+			field_expr := '(${expr}).${g.cname(field.name)}'
+			encoded := g.json_encode_value_c_expr(field.typ, field_expr) or { return none }
+			result = 'string__plus(string__plus(${result}, _str_${prefix}), ${encoded})'
+		}
+		return 'string__plus(${result}, _str_${close})'
+	}
+	return none
+}
+
+fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
+	if node.children_count < 3 {
+		return false
+	}
+	ret_type := g.json_decode_result_type_for_call(node) or { return false }
+	mut result_base := types.Type(types.void_)
+	if ret_type is types.ResultType {
+		result_base = ret_type.base_type
+	} else {
+		return false
+	}
+
+	base := types.unwrap_pointer(result_base)
+	if base !is types.Struct {
+		return false
+	}
+	struct_type := base as types.Struct
+	fields := g.tc.structs[struct_type.name] or { return false }
+	json_id := g.a.child(&node, 2)
+	json_name := g.tmp_name()
+	root_name := g.tmp_name()
+	out_name := g.tmp_name()
+	opt_ct := g.optional_type_name(ret_type)
+	struct_ct := g.value_c_type(struct_type)
+	g.write('({ string ${json_name} = ')
+	g.gen_expr_with_expected_type(json_id, types.Type(types.string_))
+	g.write('; cJSON* ${root_name} = cJSON_ParseWithLength((char*)${json_name}.str, (size_t)${json_name}.len); ')
+	g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} != NULL) { ')
+	g.write('${out_name}.ok = true; ${out_name}.value = (${struct_ct}){')
+	for i, field in fields {
+		if i > 0 {
+			g.write(', ')
+		}
+		g.write('.${g.cname(field.name)} = ')
+		g.gen_json_decode_field_expr(root_name, field)
+	}
+	g.write('}; cJSON_Delete(${root_name}); } ${out_name}; })')
+	return true
+}
+
+fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, field types.StructField) {
+	item := 'cJSON_GetObjectItemCaseSensitive(${root_name}, "${field.name}")'
+	clean := if field.typ is types.Alias { field.typ.base_type } else { field.typ }
+	if clean is types.String {
+		empty := g.intern_string('')
+		g.write('(${item} != NULL && ${item}->valuestring != NULL ? tos_clone((u8*)${item}->valuestring) : _str_${empty})')
+		return
+	}
+	if clean is types.Enum {
+		names, labels := g.json_enum_labels(clean.name)
+		if names.len == 0 {
+			g.write('0')
+			return
+		}
+		mut result := g.enum_value_expr_for_type(clean.name, names[0]) or {
+			'${g.cname(clean.name)}__${g.cname(names[0])}'
+		}
+		for i := names.len - 1; i >= 0; i-- {
+			name := names[i]
+			label := labels[name] or { name }
+			value := g.enum_value_expr_for_type(clean.name, name) or {
+				'${g.cname(clean.name)}__${g.cname(name)}'
+			}
+			result = '(${item} != NULL && ${item}->valuestring != NULL && strcmp(${item}->valuestring, "${label}") == 0 ? ${value} : ${result})'
+		}
+		g.write(result)
+		return
+	}
+	if clean is types.Primitive {
+		g.write('(${item} != NULL ? (${g.value_c_type(clean)})${item}->valuedouble : 0)')
+		return
+	}
+	g.gen_default_value_for_type(field.typ)
+}
+
+fn (g &FlatGen) json_enum_labels(enum_name string) ([]string, map[string]string) {
+	mut names := []string{}
+	mut labels := map[string]string{}
+	mut cur_module := ''
+	for node in g.a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .enum_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if enum_name != node.value && enum_name != qualified {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := g.a.child_node(&node, i)
+			names << field.value
+			for attr in field.generic_params {
+				if attr.starts_with('json:') {
+					labels[field.value] = attr.all_after(':').trim_space().trim('\'"')
+				}
+			}
+		}
+		break
+	}
+	return names, labels
 }
 
 fn (g &FlatGen) is_veb_json_result_call(fn_node flat.Node) bool {

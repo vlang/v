@@ -2559,9 +2559,14 @@ fn (mut g FlatGen) gen_shared_local_decl(lhs_id flat.NodeId, rhs_id flat.NodeId,
 	g.gen_decl_lhs(lhs_id)
 	g.write(' = (${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = ')
 	if inner_type is types.Pointer {
-		g.write('*(')
-		g.gen_expr_with_expected_type(rhs_id, inner_type)
-		g.write(')')
+		if g.a.nodes[int(rhs_id)].kind == .ident {
+			g.write('*')
+			g.gen_expr_with_expected_type(rhs_id, inner_type)
+		} else {
+			g.write('*(')
+			g.gen_expr_with_expected_type(rhs_id, inner_type)
+			g.write(')')
+		}
 	} else {
 		g.gen_expr_with_expected_type(rhs_id, value_type)
 	}
@@ -2834,10 +2839,6 @@ fn (mut g FlatGen) fixed_array_zero_init_block_type(node flat.Node) ?types.Array
 
 // gen_decl_init_expr emits decl init expr output for c.
 fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type types.Type, c_type string, is_declaration bool) {
-	if g.is_json_decode_call_expr(rhs_id) {
-		g.write('(${c_type}){0}')
-		return
-	}
 	if rhs.kind == .int_literal && rhs.value == '0' && g.is_aggregate_zero_init_type(v_type, c_type) {
 		if is_declaration {
 			g.write('{0}')
@@ -3404,11 +3405,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 	owner := g.tc.cur_scope.insert_with_owner(lhs.value, val_type)
 	g.track_local_pointer_storage_decl(lhs, owner, val_type, val_ct)
 	g.write('${opt_ct} ${tmp} = ')
-	if g.is_json_decode_call_expr(expr_id) {
-		g.write('(${opt_ct}){0}')
-	} else {
-		g.gen_expr_with_expected_type(expr_id, expr_type)
-	}
+	g.gen_expr_with_expected_type(expr_id, expr_type)
 	g.writeln(';')
 	g.writeln('${val_ct} ${g.cname(lhs.value)};')
 	g.writeln('if (${tmp}.ok) {')

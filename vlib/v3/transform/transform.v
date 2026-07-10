@@ -105,6 +105,7 @@ mut:
 	in_const_init                bool
 	in_return_expr               bool
 	in_selector_base             bool
+	autolock_depth               int
 	alias_cache                  &AliasCache             = unsafe { nil }
 	sum_cache                    &AliasCache             = unsafe { nil }
 	generic_unresolved_cache     &GenericUnresolvedCache = unsafe { nil }
@@ -2132,8 +2133,8 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 				const_typ := t.const_field_type_name(cf)
 				new_val := t.transform_const_or_expr(val_id, val, const_typ)
 				t.a.children[cf.children_start] = new_val
-			} else if val.kind in [.struct_init, .cast_expr, .call, .array_literal, .fn_literal,
-				.lambda_expr] {
+			} else if val.kind in [.struct_init, .cast_expr, .call, .array_literal, .array_init,
+				.fn_literal, .lambda_expr] {
 				new_val := t.transform_const_expr_no_pending(val_id)
 				t.a.children[cf.children_start] = new_val
 			} else if val.kind == .infix && val.children_count >= 2 {
@@ -5810,6 +5811,21 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 	if child.kind == .call && t.is_disabled_fn_call(child_id, child) {
 		return []flat.NodeId{}
 	}
+	if t.autolock_depth == 0 {
+		if lock_id := t.shared_postfix_autolock_target(child_id) {
+			body := t.make_block([id])
+			start := t.a.children.len
+			t.a.children << lock_id
+			t.a.children << body
+			auto_lock := t.a.add_node(flat.Node{
+				kind:           .lock_expr
+				value:          'lock'
+				children_start: start
+				children_count: 2
+			})
+			return t.transform_lock_stmt(auto_lock, t.a.nodes[int(auto_lock)])
+		}
+	}
 	if child.kind == .or_expr && !t.is_map_index_or_expr(child) && !t.is_array_index_or_expr(child)
 		&& !t.is_string_slice_or_expr(child) && !t.is_channel_receive_or_expr(child) {
 		if lowered := t.transform_match_trailing_or_expr(child_id, child) {
@@ -5848,6 +5864,54 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 		typ:            node.typ
 	})
 	return t.with_pending_before(new_id)
+}
+
+fn (t &Transformer) shared_postfix_autolock_target(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .postfix || node.op !in [.inc, .dec] || node.children_count == 0 {
+		return none
+	}
+	index := t.a.child_node(&node, 0)
+	if index.kind != .index || index.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(index, 0)
+	base := t.a.nodes[int(base_id)]
+	if base.kind != .ident {
+		return none
+	}
+	raw_type := t.raw_var_type(base.value)
+	typ := if raw_type.len > 0 { raw_type } else { t.var_type(base.value) }
+	if typ.trim_space().starts_with('shared ') || t.local_decl_is_shared_before(base.value, id) {
+		return base_id
+	}
+	return none
+}
+
+fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId) bool {
+	mut is_shared := false
+	mut start := 0
+	limit := if int(before) < t.a.nodes.len { int(before) } else { t.a.nodes.len }
+	for i in 0 .. limit {
+		node := t.a.nodes[i]
+		if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			start = i
+		}
+	}
+	for i in start .. limit {
+		node := t.a.nodes[i]
+		if node.kind != .decl_assign || node.children_count == 0 {
+			continue
+		}
+		lhs := t.a.child_node(&node, 0)
+		if lhs.kind == .ident && lhs.value == name {
+			is_shared = node.value == 'shared' || node.value.starts_with('shared:')
+		}
+	}
+	return is_shared
 }
 
 // transform_lock_stmt transforms transform lock stmt data for transform.
@@ -5995,6 +6059,28 @@ fn (mut t Transformer) comptime_type_condition_value(cond string) ?bool {
 			return if op == ' is ' { matches } else { !matches }
 		}
 	}
+	for op in [' !in', ' in'] {
+		op_idx := comptime_condition_top_level_index(clean, op)
+		if op_idx >= 0 {
+			after := op_idx + op.len
+			if after >= clean.len || (clean[after] != `[` && clean[after] != ` `) {
+				continue
+			}
+			actual := clean[..op_idx].trim_space()
+			list := clean[after..].trim_space()
+			if !list.starts_with('[') || !list.ends_with(']') {
+				return none
+			}
+			mut found := false
+			for expected in split_generic_args(list[1..list.len - 1]) {
+				if t.comptime_type_matches(actual, expected) or { false } {
+					found = true
+					break
+				}
+			}
+			return if op == ' in' { found } else { !found }
+		}
+	}
 	if clean.starts_with('!') {
 		value := t.comptime_type_condition_value(clean[1..]) or { return none }
 		return !value
@@ -6003,7 +6089,7 @@ fn (mut t Transformer) comptime_type_condition_value(cond string) ?bool {
 }
 
 fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bool {
-	clean_actual := actual.trim_space()
+	clean_actual := t.comptime_condition_actual_type(actual)
 	clean_expected := expected.trim_space()
 	if clean_actual.len == 0 || clean_expected.len == 0
 		|| is_generic_fn_placeholder_name(clean_actual) {
@@ -6057,7 +6143,14 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 			if _ := types.builtin_type(normalized) {
 				return false
 			}
-			return !isnil(t.tc) && normalized in t.tc.structs
+			if isnil(t.tc) {
+				return false
+			}
+			if normalized in t.tc.structs {
+				return true
+			}
+			base := comptime_generic_type_base(normalized)
+			return base.len > 0 && base in t.tc.structs
 		}
 		'$enum' {
 			return !isnil(t.tc) && normalized in t.tc.enum_names
@@ -6090,6 +6183,27 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 		return true
 	}
 	return normalized == expected_normalized
+}
+
+fn (t &Transformer) comptime_condition_actual_type(raw string) string {
+	mut clean := raw.trim_space()
+	mut force_unaliased := false
+	if clean.ends_with('.unaliased_typ') {
+		clean = clean[..clean.len - '.unaliased_typ'.len].trim_space()
+		force_unaliased = true
+	}
+	contexts := t.smartcasts_for(clean)
+	if contexts.len > 0 {
+		clean = contexts.last().variant_name
+	}
+	if typ := t.comptime_for_var_source_type(clean) {
+		clean = typ
+	}
+	clean = t.comptime_resolve_selective_import_type(clean)
+	if force_unaliased {
+		return t.comptime_normalize_type_alias_chain(clean)
+	}
+	return clean
 }
 
 fn transform_type_text_is_fixed_array(typ string) bool {
@@ -6141,6 +6255,7 @@ fn (mut t Transformer) transform_lock_node(id flat.NodeId, node flat.Node) flat.
 		return id
 	}
 	body := t.a.nodes[int(body_id)]
+	t.autolock_depth++
 	new_body := if body.kind == .block {
 		mut new_block := if node.typ.len > 0 && node.typ != 'void' {
 			t.transform_block_expr_for_type(body_id, body, node.typ) or {
@@ -6164,6 +6279,7 @@ fn (mut t Transformer) transform_lock_node(id flat.NodeId, node flat.Node) flat.
 	} else {
 		t.transform_expr(body_id)
 	}
+	t.autolock_depth--
 	children << new_body
 	lock_typ := if node.typ.len > 0 {
 		node.typ
@@ -7058,6 +7174,12 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 		}
 		if node.value == 'idx' {
 			return t.transform_typeof_idx_expr(base_node0)
+		}
+		if node.value in ['key_type', 'value_type', 'element_type'] {
+			base_type := t.typeof_type_name(base_node0)
+			if member_type := t.generic_comptime_type_member(base_type, node.value) {
+				return t.make_int_literal(t.comptime_field_type_id(member_type, t.cur_module))
+			}
 		}
 	}
 	if fixed_len := t.transform_fixed_array_len(id, node) {
@@ -8116,12 +8238,27 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 	}
 	expr_id := t.a.child(&node, 0)
 	expr := t.a.nodes[int(expr_id)]
+	if expr.kind == .selector && expr.children_count > 0
+		&& expr.value in ['key_type', 'value_type', 'element_type'] {
+		base := t.a.child_node(&expr, 0)
+		if base.kind == .typeof_expr {
+			base_type := t.typeof_type_name(base)
+			if member_type := t.generic_comptime_type_member(base_type, expr.value) {
+				return t.make_string_literal(generic_type_name_display(member_type))
+			}
+		}
+	}
 	if expr.kind == .int_literal {
 		return t.make_string_literal('int literal')
 	}
 	mut typ := ''
+	if sc := t.find_smartcast(t.expr_key(expr_id)) {
+		typ = t.resolve_variant(sc.sum_type_name, sc.variant_name)
+	}
 	if expr.kind == .ident {
-		typ = t.raw_var_type(expr.value)
+		if typ.len == 0 {
+			typ = t.raw_var_type(expr.value)
+		}
 	}
 	if typ.len == 0 {
 		typ = t.node_type(expr_id)
@@ -8148,7 +8285,7 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 
 fn (mut t Transformer) transform_typeof_idx_expr(node flat.Node) flat.NodeId {
 	type_name := t.typeof_type_name(node)
-	return t.make_int_literal(t.type_index_for_type_name(type_name))
+	return t.make_int_literal(t.comptime_field_type_id(type_name, t.cur_module))
 }
 
 fn (t &Transformer) typeof_type_name(node flat.Node) string {
@@ -9561,6 +9698,9 @@ fn (t &Transformer) match_expr_type(node flat.Node) string {
 	mut concrete_type := ''
 	mut has_optional := false
 	mut has_result := false
+	mut numeric_type := ''
+	mut all_numeric := true
+	mut has_value_type := false
 	for i in 1 .. node.children_count {
 		branch := t.a.child_node(&node, i)
 		if branch.kind != .match_branch {
@@ -9579,8 +9719,23 @@ fn (t &Transformer) match_expr_type(node flat.Node) string {
 				t.stmt_value_type(stmt_id)
 			}
 			if typ.len > 0 {
+				has_value_type = true
 				if first_type.len == 0 {
 					first_type = typ
+				}
+				base_typ := if t.is_optional_type_name(typ) {
+					t.optional_base_type(typ)
+				} else {
+					typ
+				}
+				if t.is_numeric_stringify_type(base_typ) {
+					numeric_type = if numeric_type.len == 0 {
+						base_typ
+					} else {
+						promote_numeric_stringify_type(numeric_type, base_typ)
+					}
+				} else {
+					all_numeric = false
 				}
 				if t.is_optional_type_name(typ) {
 					has_optional = true
@@ -9597,6 +9752,13 @@ fn (t &Transformer) match_expr_type(node flat.Node) string {
 				break
 			}
 		}
+	}
+	if has_value_type && all_numeric && numeric_type.len > 0 {
+		if has_optional {
+			prefix := if has_result { '!' } else { '?' }
+			return '${prefix}${numeric_type}'
+		}
+		return numeric_type
 	}
 	if has_optional && concrete_type.len > 0 {
 		prefix := if has_result { '!' } else { '?' }
@@ -10136,13 +10298,7 @@ fn (mut t Transformer) make_match_eq(lhs flat.NodeId, rhs flat.NodeId) flat.Node
 		children_start: start
 		children_count: 2
 	})
-	if optional_result := t.transform_infix_optional_none_ops(eq_id, t.a.nodes[int(eq_id)]) {
-		return optional_result
-	}
-	if t.is_string_type(lhs) || t.is_string_type(rhs) {
-		return t.make_call('string__eq', arr2(lhs, rhs))
-	}
-	return eq_id
+	return t.transform_infix_expr(eq_id, t.a.nodes[int(eq_id)])
 }
 
 // make_match_range builds make match range data for transform.

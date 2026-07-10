@@ -917,10 +917,21 @@ fn (mut g FlatGen) collect_gen_info() {
 				g.register_enum_backing_info(enum_name, backing)
 			}
 			is_backed_enum := backing.len > 0
+			mut field_exprs := map[string]flat.NodeId{}
 			for i in 0 .. node.children_count {
 				f := g.a.child_node(&node, i)
 				if f.children_count > 0 {
-					if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
+					field_exprs[f.value] = g.a.child(f, 0)
+				}
+			}
+			mut field_values := map[string]int{}
+			for i in 0 .. node.children_count {
+				f := g.a.child_node(&node, i)
+				if f.children_count > 0 {
+					mut resolving := map[string]bool{}
+					if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module,
+						node.value, mut field_values, field_exprs, mut resolving)
+					{
 						val = enum_val
 					}
 				}
@@ -930,9 +941,11 @@ fn (mut g FlatGen) collect_gen_info() {
 					val++
 				} else if is_flag {
 					g.enum_vals[key] = 1 << val
+					field_values[f.value] = val
 					val++
 				} else {
 					g.enum_vals[key] = val
+					field_values[f.value] = val
 					val++
 				}
 			}
@@ -3591,6 +3604,8 @@ fn (mut g FlatGen) type_name_c_type(type_name string) string {
 	t := g.tc.parse_type(type_name)
 	ct := if t is types.OptionType || t is types.ResultType {
 		g.optional_type_name(t)
+	} else if t is types.Enum {
+		g.enum_value_c_type(t)
 	} else {
 		g.tc.c_type(t)
 	}
@@ -4886,6 +4901,25 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
+			lhs_node := g.a.nodes[int(lhs_id)]
+			rhs_node := g.a.nodes[int(rhs_id)]
+			if node.op in [.eq, .ne]
+				&& ((rhs_node.kind == .char_literal && rhs_node.value.starts_with('c:')
+				&& lhs_type !is types.Pointer)
+				|| (lhs_node.kind == .char_literal && lhs_node.value.starts_with('c:')
+				&& rhs_type !is types.Pointer)) {
+				if lhs_node.kind == .char_literal && lhs_node.value.starts_with('c:') {
+					g.write('*')
+				}
+				g.gen_expr(lhs_id)
+				g.write(' ${g.op_str(node.op)} ')
+				if rhs_node.kind == .char_literal && rhs_node.value.starts_with('c:') {
+					g.write('*')
+				}
+				g.gen_expr(rhs_id)
+				g.expected_enum = old_expected_enum
+				return
+			}
 			if lhs_type is types.Enum {
 				g.expected_enum = lhs_type.name
 			} else if rhs_type is types.Enum {
@@ -4914,8 +4948,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(' ${g.op_str(node.op)} ')
 				g.gen_expr_with_possible_enum_type(rhs_id, lhs_type)
 			} else {
-				lhs_node := g.a.nodes[int(lhs_id)]
-				rhs_node := g.a.nodes[int(rhs_id)]
 				if lhs_node.kind == .infix && !infix_can_skip_child_parens(node.op, lhs_node.op) {
 					g.write('(')
 					g.gen_expr_with_possible_enum_type(lhs_id, rhs_type)
@@ -4972,6 +5004,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						g.gen_expr(child_id)
 						return
 					}
+				}
+			}
+			if node.op == .mul && child.kind == .paren && child.children_count > 0 {
+				inner_id := g.a.child(&child, 0)
+				inner := g.a.node(inner_id)
+				if inner.kind == .ident {
+					g.write('*')
+					g.gen_expr(inner_id)
+					return
 				}
 			}
 			if node.op == .amp && g.gen_amp_c_string_literal(child_id, child) {
@@ -5116,6 +5157,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.postfix {
 			child_id := g.a.child(&node, 0)
 			child := g.a.nodes[int(child_id)]
+			if node.op in [.inc, .dec] {
+				if atomic_type := g.atomic_selector_type(child_id) {
+					op := if node.op == .inc { 'add' } else { 'sub' }
+					g.write('atomic_fetch_${op}_${g.atomic_helper_suffix(atomic_type)}(&(')
+					g.gen_expr(child_id)
+					g.write('), 1)')
+					return
+				}
+			}
 			if child.kind == .ident && g.current_param_is_mut(child.value) {
 				g.write('(*')
 				g.gen_expr(child_id)
@@ -8199,6 +8249,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
 	g.writeln('static inline string v3_c_lit(const char* s, int len) { return (string){.str = (u8*)s, .len = len, .is_lit = 1}; }')
 	g.writeln("static inline string v3_string_pad(string s, int width, int left) { if (width < 0) { left = 1; width = -width; } if (s.len >= width) return s; int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); if (left) { memcpy(out, s.str, (size_t)s.len); memset(out + s.len, ' ', (size_t)pad); } else { memset(out, ' ', (size_t)pad); memcpy(out + pad, s.str, (size_t)s.len); } out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
+	g.writeln("static inline string v3_string_upper_ascii(string s) { u8* out = malloc_noscan((ptrdiff_t)s.len + 1); for (int i = 0; i < s.len; ++i) { u8 c = s.str[i]; out[i] = c >= 'a' && c <= 'f' ? (u8)(c - ('a' - 'A')) : c; } out[s.len] = 0; return (string){.str = out, .len = s.len, .is_lit = 0}; }")
 	g.writeln('static inline string v3_char_string(int c) { return rune__str((i32)c); }')
 	g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision == 6) { double scale = 1000000.0; double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
 	g.writeln('static inline string v3_f64_fixed(double x, int precision) { if (precision > 16) { char base[128]; int b = snprintf(base, sizeof(base), "%.16g", x); if (b >= 0 && b < (int)sizeof(base)) { int dot = -1; int has_exp = 0; for (int i = 0; i < b; ++i) { if (base[i] == \'.\') dot = i; if (base[i] == \'e\' || base[i] == \'E\') has_exp = 1; } if (!has_exp) { int frac = dot >= 0 ? b - dot - 1 : 0; if (frac <= precision) { int n = b + (dot < 0 ? 1 : 0) + (precision - frac); u8* out = malloc_noscan(n + 1); memcpy(out, base, b); int pos = b; if (dot < 0) out[pos++] = \'.\'; while (frac++ < precision) out[pos++] = \'0\'; out[pos] = 0; return (string){.str = out, .len = n, .is_lit = 0}; } } } } double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')
@@ -9051,11 +9102,17 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 
 fn (g &FlatGen) const_get_deps(val_id flat.NodeId) []string {
 	mut deps := []string{}
-	g.const_collect_deps(val_id, mut deps)
+	mut visited_fns := map[string]bool{}
+	g.const_collect_deps_inner(val_id, mut deps, mut visited_fns)
 	return deps
 }
 
 fn (g &FlatGen) const_collect_deps(val_id flat.NodeId, mut deps []string) {
+	mut visited_fns := map[string]bool{}
+	g.const_collect_deps_inner(val_id, mut deps, mut visited_fns)
+}
+
+fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, mut visited_fns map[string]bool) {
 	if int(val_id) < 0 || int(val_id) >= g.a.nodes.len {
 		return
 	}
@@ -9066,8 +9123,22 @@ fn (g &FlatGen) const_collect_deps(val_id flat.NodeId, mut deps []string) {
 			deps << const_name
 		}
 	}
+	if node.kind == .call && node.children_count > 0 {
+		callee := g.a.child_node(&node, 0)
+		callee_name := if callee.kind in [.ident, .selector] { callee.value } else { '' }
+		if callee_name.len > 0 && !visited_fns[callee_name] {
+			visited_fns[callee_name] = true
+			for i, candidate in g.a.nodes {
+				if candidate.kind == .fn_decl && (candidate.value == callee_name
+					|| candidate.value.all_after_last('.') == callee_name.all_after_last('.')) {
+					g.const_collect_deps_inner(flat.NodeId(i), mut deps, mut visited_fns)
+					break
+				}
+			}
+		}
+	}
 	for i in 0 .. node.children_count {
-		g.const_collect_deps(g.a.child(&node, i), mut deps)
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns)
 	}
 }
 
@@ -9104,6 +9175,15 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	}
 	ct := g.tc.c_type(v_type)
 	qname := g.const_ident_c_name(name)
+	if qname == 'builtin__error_sentinel' {
+		type_id := g.ierror_type_id_for_pattern('MessageError')
+		object_name := '${qname}__object'
+		message := '(string){"error", 5, 1}'
+		g.writeln('MessageError ${object_name} = (MessageError){.msg = ${message}};')
+		g.writeln('IError ${qname} = (IError){._typ = ${type_id}, ._object = &${object_name}, .message = ${message}, .code = 0};')
+		g.tc.cur_module = old_module
+		return
+	}
 	expr_str := if v_type is types.Array && val_node.kind == .array_literal {
 		g.expr_to_string_with_expected_type(val_id, v_type)
 	} else if g.is_const_expr(val_id) {
@@ -9249,8 +9329,7 @@ fn (mut g FlatGen) fixed_array_compound_literal_expr(val_id flat.NodeId, fixed t
 	if trimmed_space(init).len == 0 {
 		return ''
 	}
-	c_elem, dims := g.fixed_array_decl_parts(fixed)
-	return '(${c_elem}${dims})${init}'
+	return '(${g.fixed_array_c_type(fixed)})${init}'
 }
 
 fn (mut g FlatGen) fixed_array_initializer_string(val_id flat.NodeId, fixed types.ArrayFixed) string {
@@ -9258,6 +9337,14 @@ fn (mut g FlatGen) fixed_array_initializer_string(val_id flat.NodeId, fixed type
 		return ''
 	}
 	node := g.a.nodes[int(val_id)]
+	if node.kind in [.ident, .selector] {
+		const_name := g.const_ref_name_from_node(node)
+		if const_name.len > 0 {
+			if const_id := g.const_vals[const_name] {
+				return g.fixed_array_initializer_string(const_id, fixed)
+			}
+		}
+	}
 	if node.kind == .postfix && node.children_count > 0 {
 		return g.fixed_array_initializer_string(g.a.child(&node, 0), fixed)
 	}

@@ -15729,6 +15729,10 @@ fn (tc &TypeChecker) type_has_compiler_default_clone(t Type) bool {
 // ids from this single list so they stay in sync.
 pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 	mut candidates := []string{}
+	if tc.interface_has_no_requirements(iface_name) {
+		candidates << ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
+			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune']
+	}
 	for name, _ in tc.structs {
 		candidates << name
 	}
@@ -18260,7 +18264,9 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	}
 	if kind_id == 4 {
 		if node.value.starts_with('c:') {
-			return Type(u8_)
+			return Type(Pointer{
+				base_type: Type(u8_)
+			})
 		}
 		return Type(rune_)
 	}

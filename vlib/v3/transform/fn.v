@@ -1399,6 +1399,20 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		return arg_id
 	}
 	mut arg_node := &t.a.nodes[int(arg_id)]
+	if param_type.starts_with('&') && arg_node.kind == .or_expr && arg_node.value == '?'
+		&& arg_node.children_count > 0 {
+		source_id := t.a.child(arg_node, 0)
+		source_type := t.node_type(source_id)
+		if t.is_optional_type_name(source_type) {
+			payload_type := t.optional_base_type(source_type)
+			ok_target := t.make_selector(t.transform_expr(source_id), 'ok', 'bool')
+			t.pending_stmts << t.make_assign(ok_target, t.make_bool_literal(true))
+			payload := t.make_selector(t.transform_expr(source_id), 'value', payload_type)
+			addr := t.make_prefix(.amp, payload)
+			t.set_node_typ(int(addr), param_type)
+			return addr
+		}
+	}
 	if arg_node.kind == .lambda_expr {
 		if lifted := t.lift_lambda_expr_for_fn_param(arg_id, *arg_node, param_type) {
 			return lifted
@@ -2952,8 +2966,8 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 		if t.struct_str_field_needs_indent(raw_field_type) {
 			t.mark_fn_used_name('string.replace')
 			t.mark_fn_used_name('string__replace')
-			field_str = t.make_call_typed('string.replace', arr3(field_str, t.make_string_literal('\n'),
-				t.make_string_literal('\n    ')), 'string')
+			field_str = t.make_call_typed('string.replace', arr3(field_str,
+				t.make_string_literal('\n'), t.make_string_literal('\n    ')), 'string')
 		}
 		result = t.string_plus(result, t.make_string_literal('    ${field.name}: '))
 		result = t.string_plus(result, field_str)
@@ -3010,6 +3024,9 @@ fn (mut t Transformer) struct_str_field_needs_indent(field_type string) bool {
 	}
 	if clean.starts_with('builtin.') {
 		clean = clean.all_after_last('.')
+	}
+	if _, _ := t.lookup_str_alias(clean) {
+		return false
 	}
 	resolved := t.alias_str_resolved_base_type(clean)
 	if !t.alias_str_needs_name_wrapper(resolved) {
@@ -3385,12 +3402,22 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 	}
 	if base := integer_format_base(format) {
 		if clean_typ in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
-			return t.make_call_typed('strconv__format_uint', arr2(expr, t.make_int_literal(base)),
-				'string')
+			formatted := t.make_call_typed('strconv__format_uint', arr2(expr,
+				t.make_int_literal(base)), 'string')
+			return if format == 'X' {
+				t.make_call_typed('v3_string_upper_ascii', arr1(formatted), 'string')
+			} else {
+				formatted
+			}
 		}
 		if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize'] {
-			return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(base)),
-				'string')
+			formatted := t.make_call_typed('strconv__format_int', arr2(expr,
+				t.make_int_literal(base)), 'string')
+			return if format == 'X' {
+				t.make_call_typed('v3_string_upper_ascii', arr1(formatted), 'string')
+			} else {
+				formatted
+			}
 		}
 	}
 	if base_format := zero_padded_integer_base_format(format) {
@@ -3521,7 +3548,7 @@ fn integer_format_base(format string) ?int {
 		'b' {
 			return 2
 		}
-		'x' {
+		'x', 'X' {
 			return 16
 		}
 		'o' {
@@ -4296,6 +4323,14 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 	}
 	mut base_type := t.node_type(base_id)
+	mut smartcast_container := false
+	if sc := t.find_smartcast(t.expr_key(base_id)) {
+		variant_type := t.resolve_variant(sc.sum_type_name, sc.variant_name)
+		if variant_type.starts_with('[]') || t.is_fixed_array_type(variant_type) {
+			base_type = variant_type
+			smartcast_container = true
+		}
+	}
 	base_node := t.a.nodes[int(base_id)]
 	if (array_type_has_generic_placeholder(base_type) || base_type.contains('unknown'))
 		&& base_node.kind == .call {
@@ -4416,10 +4451,12 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	if !clean_base_type.starts_with('[]') {
 		return none
 	}
-	if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id,
-		array_builtin_method)
-	{
-		return exact_call
+	if !(smartcast_container && fn_node.value == 'str') {
+		if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id,
+			array_builtin_method)
+		{
+			return exact_call
+		}
 	}
 	if fn_node.value == 'str' && stringify_type_has_generic_placeholder(clean_base_type) {
 		return none
@@ -4471,7 +4508,12 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return t.lower_array_count_call(node, fn_node, clean_base_type)
 		}
 		'str' {
-			return t.wrap_string_conversion(t.transform_expr(base_id), clean_base_type)
+			receiver := if smartcast_container {
+				t.make_plain_expr_for_smartcast(base_id)
+			} else {
+				t.transform_expr(base_id)
+			}
+			return t.wrap_string_conversion(receiver, clean_base_type)
 		}
 		'to_fixed_size' {
 			if base_node.kind != .array_literal {

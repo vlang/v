@@ -5757,7 +5757,7 @@ fn (mut tc TypeChecker) ownership_register_fn_literal_signature(fn_name string, 
 	}
 	ret_type := tc.parse_type(node.typ)
 	if !tc.parallel_check_sparse {
-		tc.register_fn_signature(fn_name, ret_type, params, false, false)
+		tc.register_fn_signature(fn_name, ret_type, params, []bool{}, false, false)
 	} else {
 		mut st := tc.ownership_state()
 		if fn_name in st.ownership_fn_literal_ret_types {

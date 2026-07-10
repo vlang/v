@@ -194,6 +194,9 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 		}
 	}
 	new_call := t.make_array_new_call(elem_type, len_expr, cap_expr)
+	if node.children_count == 0 && t.normalize_type_alias(elem_type).starts_with('&') {
+		return new_call
+	}
 	if int(init_expr_id) < 0 {
 		clean_elem_type := t.normalize_type_alias(elem_type)
 		if clean_elem_type.starts_with('[]') {
@@ -967,6 +970,14 @@ fn (t &Transformer) array_append_literal_children_match_elem(rhs_id flat.NodeId,
 			return false
 		}
 		child_type := t.normalize_type_alias(t.node_type(child_id))
+		if child.kind in [.array_literal, .array_init] && child.children_count == 0
+			&& (clean_elem.starts_with('[]') || t.is_fixed_array_type(clean_elem)) {
+			continue
+		}
+		if child.kind == .array_literal && clean_elem.starts_with('[]')
+			&& t.array_append_literal_children_match_elem(child_id, clean_elem[2..]) {
+			continue
+		}
 		if t.array_append_elem_types_match(child_type, clean_elem) {
 			continue
 		}

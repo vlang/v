@@ -57,6 +57,10 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.write('${g.cname('${typ.name()}.str')}(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
+			} else if typ is types.Enum {
+				g.write('${g.cname(typ.name)}__autostr(')
+				g.gen_string_interp_child_expr(expr_id)
+				g.write(')')
 			} else if typ is types.Interface {
 				str_key := '${typ.name}.str'
 				if str_key in g.tc.fn_ret_types {
@@ -174,6 +178,35 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 	f := parse_string_interp_format(format)
 	type_name := string_interp_type_name(typ)
 	left := if f.left { 1 } else { 0 }
+	if (is_string_interp_signed_int_type(type_name) || is_string_interp_unsigned_int_type(type_name)
+		|| typ is types.Enum) && f.verb in [`b`, `o`, `x`, `X`] {
+		base := match f.verb {
+			`b` { 2 }
+			`o` { 8 }
+			else { 16 }
+		}
+
+		if f.verb == `X` {
+			g.write('v3_string_upper_ascii(')
+		}
+		if is_string_interp_unsigned_int_type(type_name) {
+			g.write('strconv__format_uint((u64)(')
+		} else {
+			g.write('strconv__format_int((i64)(')
+		}
+		g.gen_string_interp_child_expr(child_id)
+		g.write('), ${base})')
+		if f.verb == `X` {
+			g.write(')')
+		}
+		return true
+	}
+	if typ is types.Enum && (f.verb == `d` || f.verb == 0) {
+		g.write('strconv__format_int((i64)(')
+		g.gen_string_interp_child_expr(child_id)
+		g.write('), 10)')
+		return true
+	}
 	if is_string_interp_float_type(type_name) && (f.verb == `f` || f.verb == 0) && f.has_precision {
 		precision := if f.verb == `f` {
 			f.precision

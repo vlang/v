@@ -478,20 +478,13 @@ fn (mut g FlatGen) enum_decls() {
 							}
 							if f.children_count > 0 {
 								expr_id := g.a.child(f, 0)
-								mut resolving := map[string]bool{}
-								if enum_val := g.enum_field_expr_value_with_enum(expr_id,
-									cur_module, node.value, mut field_values, field_exprs, mut
-									resolving)
-								{
-									value = enum_val
-									value_known = true
-									value_expr = enum_val.str()
-								} else {
-									value_known = false
-									value_expr = g.enum_field_expr_to_string_with_enum(expr_id,
-										cur_module, node.value, cn, field_names) or {
-										g.expr_to_string(expr_id)
-									}
+								// Preserve the source expression for backed enums. V's `int` is
+								// 32-bit, so eagerly folding u64/i64 members here truncates values
+								// before the C storage type can represent them.
+								value_known = false
+								value_expr = g.enum_field_expr_to_string_with_enum(expr_id,
+									cur_module, node.value, cn, field_names) or {
+									g.expr_to_string(expr_id)
 								}
 							}
 							if value_known {
@@ -514,13 +507,25 @@ fn (mut g FlatGen) enum_decls() {
 				}
 				g.writeln('typedef enum {')
 				mut val := 0
+				mut field_values := map[string]int{}
+				mut field_exprs := map[string]flat.NodeId{}
 				for i in 0 .. node.children_count {
 					f := g.a.child_node(&node, i)
 					if f.children_count > 0 {
-						if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
+						field_exprs[f.value] = g.a.child(f, 0)
+					}
+				}
+				for i in 0 .. node.children_count {
+					f := g.a.child_node(&node, i)
+					if f.children_count > 0 {
+						mut resolving := map[string]bool{}
+						if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0),
+							cur_module, node.value, mut field_values, field_exprs, mut resolving)
+						{
 							val = enum_val
 						}
 					}
+					field_values[f.value] = val
 					cfield := g.cname(f.value)
 					if is_flag {
 						g.writeln('\t${cn}__${cfield} = ${1 << val},')
@@ -620,29 +625,14 @@ fn (mut g FlatGen) enum_str_defs() {
 					g.writeln('')
 				} else {
 					g.writeln('string ${cn}__autostr(${cn} it) {')
-					g.writeln('\tswitch (it) {')
-					mut val := 0
-					mut seen := map[int]bool{}
 					for i in 0 .. node.children_count {
 						f := g.a.child_node(&node, i)
-						if f.children_count > 0 {
-							if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
-								val = enum_val
-							}
-						}
-						case_val := val
-						val++
-						// Duplicate field values would produce duplicate C `case` labels; keep first.
-						if case_val in seen {
-							continue
-						}
-						seen[case_val] = true
 						fname := f.value
 						cfield := g.cname(fname)
-						g.writeln('\t\tcase ${cn}__${cfield}: return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
+						// Use ordered comparisons instead of switch cases: enums may opt in
+						// to duplicate values, and the first declared name is their auto-str.
+						g.writeln('\tif (it == ${cn}__${cfield}) return (string){.str = (u8*)"${fname}", .len = ${fname.len}, .is_lit = 1};')
 					}
-					g.writeln('\t\tdefault: break;')
-					g.writeln('\t}')
 					g.writeln('\treturn strconv__format_int((i64)it, 10);')
 					g.writeln('}')
 					g.writeln('')
@@ -806,6 +796,17 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 			return g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut
 				field_values, field_exprs, mut resolving)
 		}
+		.cast_expr {
+			if node.children_count == 0 {
+				return none
+			}
+			return g.enum_field_expr_value_with_enum(g.a.child(&node, 0), enum_module, enum_name, mut
+				field_values, field_exprs, mut resolving)
+		}
+		.call {
+			return g.enum_comptime_call_value(id, enum_module, enum_name, mut field_values,
+				field_exprs, mut resolving)
+		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
@@ -855,6 +856,113 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 					field_exprs, mut resolving)
 			}
 			return none
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+	call := g.a.nodes[int(id)]
+	if call.children_count == 0 {
+		return none
+	}
+	callee := g.a.child_node(&call, 0)
+	if callee.kind != .ident {
+		return none
+	}
+	mut fn_node := flat.Node{}
+	mut found := false
+	for candidate in g.a.nodes {
+		if candidate.kind == .fn_decl && (candidate.value == callee.value
+			|| candidate.value.all_after_last('.') == callee.value.all_after_last('.')) {
+			fn_node = candidate
+			found = true
+			break
+		}
+	}
+	if !found {
+		return none
+	}
+	mut locals := map[string]int{}
+	mut arg_idx := 1
+	for i in 0 .. fn_node.children_count {
+		param := g.a.child_node(&fn_node, i)
+		if param.kind != .param {
+			continue
+		}
+		if arg_idx >= call.children_count {
+			return none
+		}
+		arg_id := g.a.child(&call, arg_idx)
+		locals[param.value] = g.enum_field_expr_value_with_enum(arg_id, enum_module, enum_name, mut
+			field_values, field_exprs, mut resolving)?
+		arg_idx++
+	}
+	for i in 0 .. fn_node.children_count {
+		stmt := g.a.child_node(&fn_node, i)
+		if stmt.kind == .return_stmt && stmt.children_count > 0 {
+			return g.enum_comptime_expr_value(g.a.child(stmt, 0), locals)
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int) ?int {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.int_literal {
+			return node.value.int()
+		}
+		.ident {
+			return locals[node.value] or { none }
+		}
+		.paren, .cast_expr {
+			if node.children_count == 0 {
+				return none
+			}
+			return g.enum_comptime_expr_value(g.a.child(&node, 0), locals)
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return none
+			}
+			value := g.enum_comptime_expr_value(g.a.child(&node, 0), locals)?
+			return match node.op {
+				.plus { value }
+				.minus { -value }
+				.bit_not { ~value }
+				else { none }
+			}
+		}
+		.infix {
+			if node.children_count < 2 {
+				return none
+			}
+			left := g.enum_comptime_expr_value(g.a.child(&node, 0), locals)?
+			right := g.enum_comptime_expr_value(g.a.child(&node, 1), locals)?
+			if (node.op in [.div, .mod] && right == 0)
+				|| (node.op in [.left_shift, .right_shift, .right_shift_unsigned] && (right < 0
+				|| right >= 32)) {
+				return none
+			}
+			return match node.op {
+				.plus { left + right }
+				.minus { left - right }
+				.mul { left * right }
+				.div { left / right }
+				.mod { left % right }
+				.amp { left & right }
+				.pipe { left | right }
+				.xor { left ^ right }
+				.left_shift { int(u64(left) << right) }
+				.right_shift, .right_shift_unsigned { left >> right }
+				else { none }
+			}
 		}
 		else {
 			return none

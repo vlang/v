@@ -89,7 +89,7 @@ fn map_callback_names(key_type string) (string, string, string, string) {
 	size_suffix := match key_type {
 		'u8', 'i8', 'bool', 'char' { '1' }
 		'u16', 'i16' { '2' }
-		'i64', 'u64', 'isize', 'usize', 'voidptr' { '8' }
+		'i64', 'u64', 'isize', 'usize', 'f64', 'voidptr' { '8' }
 		else { '4' }
 	}
 

@@ -16,6 +16,7 @@ pub mut:
 	selfhost     bool
 	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization
 	is_prod      bool
+	is_test      bool // at least one compatible user test file is being compiled
 }
 
 // new_preferences supports new preferences handling for pref.
@@ -288,6 +289,24 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 	return backend_suffix == backend
 }
 
+// is_test_file_for_target reports whether path is a test file for backend that is compatible
+// with target_os. Platform-qualified tests use names such as `foo_windows_test.v` and must not
+// be added to a non-Windows test harness.
+pub fn is_test_file_for_target(path string, backend string, target_os string) bool {
+	if !is_test_file_for_backend(path, backend) {
+		return false
+	}
+	file := os.file_name(path)
+	mut probe := file
+	for marker in ['_test.c.v', '_test.js.v', '_test.v'] {
+		if file.ends_with(marker) {
+			probe = file[..file.len - marker.len] + marker.all_after_first('_test')
+			break
+		}
+	}
+	return !file_has_incompatible_os_suffix(probe, target_os)
+}
+
 // default_file_base supports default file base handling for pref.
 fn default_file_base(file string) ?string {
 	for marker in ['_default.c.v', '_default.v'] {
@@ -467,6 +486,9 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			}
 			return false
 		}
+		'test' {
+			return p.is_test
+		}
 		'native' {
 			return p.backend == 'arm64'
 		}
@@ -491,10 +513,7 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 
 // comptime_optional_flag_value supports comptime optional flag value handling for pref.
 pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
-	if name in p.user_defines {
-		return true
-	}
-	return comptime_flag_value(p, name)
+	return name in p.user_defines
 }
 
 // comptime_pkgconfig_value supports comptime pkgconfig value handling for pref.

@@ -2416,7 +2416,8 @@ fn comptime_cond_needs_space(prev string, cur string) bool {
 }
 
 fn comptime_cond_has_type_test(cond string) bool {
-	return cond.contains(' is ') || cond.contains(' !is ')
+	return cond.contains(' is ') || cond.contains(' !is ') || cond.contains(' in[')
+		|| cond.contains(' in [') || cond.contains(' !in[') || cond.contains(' !in [')
 }
 
 // comptime_cond_needs_loop_var reports whether a `$if` condition reads any currently active
@@ -2549,8 +2550,47 @@ fn eval_comptime_cond(prefs &pref.Preferences, cond string) bool {
 	if c.starts_with('pkgconfig') {
 		return eval_pkgconfig_cond(c)
 	}
-	flag := c.trim_space().trim_right('? ')
-	return pref.comptime_flag_value(prefs, flag)
+	if value := eval_comptime_define_cond(prefs, c) {
+		return value
+	}
+	if c.ends_with('?') {
+		flag := c[..c.len - 1].trim_space()
+		return pref.comptime_optional_flag_value(prefs, flag)
+	}
+	return pref.comptime_flag_value(prefs, c.trim_space())
+}
+
+// eval_comptime_define_cond evaluates the boolean form of `$d('name', default)`. A builtin
+// comptime flag (notably `test`) is intentionally not a `-d` define, so an absent user define
+// still uses the supplied default.
+fn eval_comptime_define_cond(prefs &pref.Preferences, cond string) ?bool {
+	clean := cond.replace(' ', '')
+	if !clean.starts_with('$d(') || !clean.ends_with(')') {
+		return none
+	}
+	inner := clean[3..clean.len - 1]
+	comma := inner.index_u8(`,`)
+	if comma <= 0 || comma + 1 >= inner.len {
+		return none
+	}
+	name := inner[..comma].trim('\'"')
+	for define in prefs.user_defines {
+		if define == name || define.starts_with('${name}=') {
+			if define.contains('=') {
+				value := define.all_after_first('=').to_lower()
+				return value !in ['', '0', 'false']
+			}
+			return true
+		}
+	}
+	default_value := inner[comma + 1..].to_lower()
+	if default_value == 'true' {
+		return true
+	}
+	if default_value == 'false' {
+		return false
+	}
+	return none
 }
 
 fn comptime_cond_strip_outer_parens(cond string) string {
@@ -5178,10 +5218,12 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		prev_offset := p.s.offset
 		prev_tok := p.tok
 		mut arg_is_shared := false
+		mut arg_is_mut := false
 		if p.tok == .key_shared {
 			arg_is_shared = true
 			p.next()
 		} else if p.tok == .key_mut {
+			arg_is_mut = true
 			p.next()
 		}
 		// vararg spread: ...expr
@@ -5227,6 +5269,9 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			})
 		} else {
 			mut arg := p.expr(.lowest)
+			if arg_is_mut {
+				p.a.set_node_is_mut(arg, true)
+			}
 			if arg_is_shared {
 				arg = p.a.add_node(flat.Node{
 					kind:           .prefix

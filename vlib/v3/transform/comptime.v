@@ -55,9 +55,15 @@ struct FieldMeta {
 }
 
 struct EnumValueMeta {
-	name  string
-	value int
-	attrs []string
+	name      string
+	value     int
+	attrs     []string
+	enum_name string
+}
+
+struct VariantMeta {
+	typ    string
+	typ_id int
 }
 
 struct EnumDeclFieldValue {
@@ -182,15 +188,14 @@ fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
 	return typ
 }
 
-// expand_comptime_for unrolls a `$for` loop into concrete per-field statements. Kinds other than
-// `fields` (methods/variants/values/attributes) are not yet supported and expand to nothing,
-// preserving the pre-existing skip behavior.
-fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []flat.NodeId {
+// expand_comptime_for unrolls the supported compile-time reflection loops into concrete
+// statements. Methods/attributes/params remain unsupported and expand to nothing.
+fn (mut t Transformer) expand_comptime_for(_id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count == 0 {
 		return []flat.NodeId{}
 	}
 	var_name, kind := comptime_for_parts(node.value)
-	if kind !in ['fields', 'values'] {
+	if kind !in ['fields', 'values', 'variants'] {
 		return []flat.NodeId{}
 	}
 	base_type := t.comptime_for_base_type(node.typ)
@@ -199,6 +204,9 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 	body_stmts := t.a.children_of(&body).clone()
 	if kind == 'values' {
 		return t.expand_comptime_for_values(var_name, base_type, body_stmts)
+	}
+	if kind == 'variants' {
+		return t.expand_comptime_for_variants(var_name, base_type, body_stmts)
 	}
 	// Comptime `match field.typ { int {} ... }` (type match) is not modelled yet; skip such
 	// loops rather than mis-lower them. `typeof(receiver.$(field.name))` is checked after
@@ -215,12 +223,6 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 			}
 		}
 		if t.comptime_body_has_unsupported(cloned, var_name, true) {
-			return []flat.NodeId{}
-		}
-		// A folded body that still calls a generic function would introduce new
-		// instantiations after monomorphization. Keep the pre-existing skip behavior, but
-		// only after metadata `$if` guards have removed unreachable branches.
-		if t.comptime_body_calls_generic_fn(cloned) {
 			return []flat.NodeId{}
 		}
 		// One block per iteration so per-field temps get their own scope.
@@ -244,8 +246,25 @@ fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type str
 				cloned << cid
 			}
 		}
-		if t.comptime_body_calls_generic_fn(cloned) {
-			return []flat.NodeId{}
+		block := t.make_block(cloned)
+		for s in t.transform_stmt(block) {
+			out << s
+		}
+	}
+	return out
+}
+
+// expand_comptime_for_variants unrolls `$for variant in Sum.variants`. The loop variable is a
+// VariantData value at runtime, while its `.typ` member also carries the concrete compile-time
+// type used by `is` checks and `typeof(variant.typ)`.
+fn (mut t Transformer) expand_comptime_for_variants(var_name string, base_type string, body_stmts []flat.NodeId) []flat.NodeId {
+	mut out := []flat.NodeId{}
+	for item in t.comptime_sum_variants(base_type) {
+		mut cloned := []flat.NodeId{cap: body_stmts.len}
+		for sid in body_stmts {
+			if cid := t.clone_variant_subst(sid, var_name, item) {
+				cloned << cid
+			}
 		}
 		block := t.make_block(cloned)
 		for s in t.transform_stmt(block) {
@@ -253,6 +272,29 @@ fn (mut t Transformer) expand_comptime_for_values(var_name string, base_type str
 		}
 	}
 	return out
+}
+
+fn (t &Transformer) comptime_sum_variants(base_type string) []VariantMeta {
+	mut resolved := base_type.trim_space()
+	mut variants := t.sum_types[resolved] or { []string{} }
+	if variants.len == 0 && !resolved.contains('.') {
+		qualified := t.qualified_alias_name(resolved)
+		if got := t.sum_types[qualified] {
+			resolved = qualified
+			variants = got.clone()
+		}
+	}
+	if variants.len == 0 && !isnil(t.tc) {
+		variants = t.tc.sum_types[resolved] or { []string{} }
+	}
+	mut metas := []VariantMeta{cap: variants.len}
+	for variant in variants {
+		metas << VariantMeta{
+			typ:    variant
+			typ_id: t.comptime_field_type_id(variant, t.cur_module)
+		}
+	}
+	return metas
 }
 
 // comptime_enum_members returns the member metadata for an enum (resolving an enum alias to its
@@ -279,8 +321,9 @@ fn (t &Transformer) comptime_enum_members(base_type string) []EnumValueMeta {
 	mut fallback := []EnumValueMeta{cap: names.len}
 	for idx, name in names {
 		fallback << EnumValueMeta{
-			name:  name
-			value: idx
+			name:      name
+			value:     idx
+			enum_name: resolved
 		}
 	}
 	return fallback
@@ -343,9 +386,10 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 			}
 			field_values[f.name] = val
 			values << EnumValueMeta{
-				name:  f.name
-				value: if is_flag { 1 << val } else { val }
-				attrs: f.attrs.clone()
+				name:      f.name
+				value:     if is_flag { 1 << val } else { val }
+				attrs:     f.attrs.clone()
+				enum_name: qualified
 			}
 			next_val = val + 1
 		}
@@ -434,7 +478,7 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 					}
 				}
 				.left_shift {
-					l << r
+					int(u64(l) << r)
 				}
 				.right_shift {
 					l >> r
@@ -581,7 +625,7 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 					return t.make_string_literal(item.name)
 				}
 				'value' {
-					return t.make_int_literal(item.value)
+					return t.make_comptime_enum_value(item)
 				}
 				'attrs' {
 					return t.make_string_array_literal(item.attrs)
@@ -595,7 +639,8 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 	// unsupported `comptime_if` for the C backend.
 	if node.kind == .comptime_if {
 		cond := t.subst_value_cond(node.value, var_name, item.name, item.value)
-		if !comptime_cond_has_loop_member_ref(cond, var_name) {
+		if comptime_cond_references_ident(node.value, var_name)
+			&& !comptime_cond_has_loop_member_ref(cond, var_name) {
 			if taken := t.eval_field_cond(cond) {
 				branch_idx := if taken { 0 } else { 1 }
 				if branch_idx >= int(node.children_count) {
@@ -607,7 +652,17 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 	}
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
-		if c := t.clone_value_subst(t.a.child(&node, i), var_name, item) {
+		child_id := t.a.child(&node, i)
+		child := t.a.nodes[int(child_id)]
+		if node.kind == .string_interp && child.kind == .selector && child.value == 'value'
+			&& child.children_count > 0 {
+			base := t.a.child_node(&child, 0)
+			if base.kind == .ident && base.value == var_name {
+				children << t.make_comptime_enum_member(item)
+				continue
+			}
+		}
+		if c := t.clone_value_subst(child_id, var_name, item) {
 			children << c
 		}
 	}
@@ -628,6 +683,149 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 	})
 }
 
+fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, children []flat.NodeId, fm FieldMeta) string {
+	if node.kind != .call || node.value.len > 0 || children.len < 2 {
+		return node.value
+	}
+	callee := t.a.nodes[int(children[0])]
+	if callee.kind != .ident {
+		return node.value
+	}
+	decls := t.cached_generic_fn_decls()
+	mut decl := GenericFnDecl{}
+	mut found := false
+	for candidate in t.generic_plain_call_candidates(callee.value, t.cur_module) {
+		if got := decls[candidate] {
+			decl = got
+			found = true
+			break
+		}
+	}
+	if !found || t.generic_fn_param_names(decl.node, decl.module).len != 1 {
+		return node.value
+	}
+	mut arg_type := t.generic_call_arg_type_for_inference(children[1])
+	if arg_type.len == 0 || is_generic_fn_placeholder_name(arg_type) {
+		arg_type = fm.comptime_typ
+	}
+	args := t.canonical_generic_specialization_args([arg_type])
+	if args.len != 1 || t.generic_args_have_placeholders(args) {
+		return node.value
+	}
+	spec_value := specialized_generic_fn_value(decl.node.value, args)
+	spec_name := transform_qualified_fn_name(decl.module, spec_value)
+	if spec_name !in t.fn_ret_types {
+		clone_id := t.emit_generic_fn_specialization(decl, args)
+		t.generated_fn_used_names(decl, clone_id, args)
+	}
+	t.set_node_value(int(children[0]), spec_name)
+	return ''
+}
+
+fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId {
+	return t.make_int_literal_typed(item.value.str(), 'i64')
+}
+
+fn (mut t Transformer) make_comptime_enum_member(item EnumValueMeta) flat.NodeId {
+	if item.enum_name.len == 0 {
+		return t.make_int_literal(item.value)
+	}
+	return t.a.add_node(flat.Node{
+		kind:  .enum_val
+		value: item.name
+		typ:   item.enum_name
+	})
+}
+
+// clone_variant_subst clones a `$for variant in Sum.variants` body and gives the variant loop
+// variable its dual meaning: a VariantData value in ordinary expressions and a concrete type in
+// `is`/`$if`/`typeof(variant.typ)` compile-time positions.
+fn (mut t Transformer) clone_variant_subst(id flat.NodeId, var_name string, item VariantMeta) ?flat.NodeId {
+	if int(id) < 0 {
+		return id
+	}
+	node := t.a.nodes[int(id)]
+	if comptime_for_declares_var(node, var_name) {
+		return t.clone_node_preserving_children(node)
+	}
+	if node.kind == .ident && node.value == var_name {
+		return t.make_variant_data_literal(item)
+	}
+	if node.kind == .selector && node.value == 'name' && node.children_count > 0
+		&& t.typeof_arg_is_variant_typ(t.a.child(&node, 0), var_name) {
+		return t.make_string_literal(item.typ)
+	}
+	if node.kind == .typeof_expr && t.typeof_arg_is_variant_typ(id, var_name) {
+		return t.make_string_literal(item.typ)
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := t.a.child_node(&node, 0)
+		if base.kind == .ident && base.value == var_name && node.value == 'typ' {
+			return t.make_int_literal(item.typ_id)
+		}
+	}
+	if node.kind == .comptime_if {
+		cond := t.subst_variant_cond(node.value, var_name, item)
+		if comptime_cond_references_ident(node.value, var_name)
+			&& !comptime_cond_has_loop_member_ref(cond, var_name) {
+			if taken := t.eval_field_cond(cond) {
+				branch_idx := if taken { 0 } else { 1 }
+				if branch_idx >= int(node.children_count) {
+					return none
+				}
+				return t.clone_variant_subst(t.a.child(&node, branch_idx), var_name, item)
+			}
+		}
+	}
+	mut children := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		if child := t.clone_variant_subst(t.a.child(&node, i), var_name, item) {
+			children << child
+		}
+	}
+	start := t.a.children.len
+	for child in children {
+		t.a.children << child
+	}
+	return t.a.add_node(flat.Node{
+		kind:           node.kind
+		kind_id:        node.kind_id
+		op:             node.op
+		pos:            node.pos
+		value:          if node.kind == .is_expr && node.value == var_name {
+			item.typ
+		} else {
+			node.value
+		}
+		typ:            node.typ
+		is_mut:         node.is_mut
+		children_start: start
+		children_count: flat.child_count(children.len)
+	})
+}
+
+fn (t &Transformer) typeof_arg_is_variant_typ(id flat.NodeId, var_name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .typeof_expr || node.children_count == 0 {
+		return false
+	}
+	arg := t.a.child_node(&node, 0)
+	if arg.kind != .selector || arg.value != 'typ' || arg.children_count == 0 {
+		return false
+	}
+	base := t.a.child_node(arg, 0)
+	return base.kind == .ident && base.value == var_name
+}
+
+fn (t &Transformer) subst_variant_cond(cond string, var_name string, item VariantMeta) string {
+	mut result := cond.replace('${var_name}.typ', item.typ)
+	result = comptime_cond_replace_bare_ident(result, var_name, item.typ)
+	return result
+}
+
 // make_enum_data_literal builds `EnumData{name: '<name>', value: <value>, attrs: [...]}`.
 fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 	name_field := t.make_named_field_init('name', t.make_string_literal(item.name), 'string')
@@ -644,6 +842,19 @@ fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 		typ:            'EnumData'
 		children_start: start
 		children_count: 3
+	})
+}
+
+fn (mut t Transformer) make_variant_data_literal(item VariantMeta) flat.NodeId {
+	typ_field := t.make_named_field_init('typ', t.make_int_literal(item.typ_id), 'int')
+	start := t.a.children.len
+	t.a.children << typ_field
+	return t.a.add_node(flat.Node{
+		kind:           .struct_init
+		value:          'VariantData'
+		typ:            'VariantData'
+		children_start: start
+		children_count: 1
 	})
 }
 
@@ -1209,7 +1420,8 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 	// `$if`/`$else $if` referencing the loop variable: evaluate now, keep the taken branch.
 	if node.kind == .comptime_if {
 		cond := t.subst_field_cond(node.value, var_name, fm)
-		if !comptime_cond_has_loop_member_ref(cond, var_name) {
+		if comptime_cond_references_ident(node.value, var_name)
+			&& !comptime_cond_has_loop_member_ref(cond, var_name) {
 			if taken := t.eval_field_cond(cond) {
 				branch_idx := if taken { 0 } else { 1 }
 				if branch_idx >= int(node.children_count) {
@@ -1262,12 +1474,13 @@ fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name strin
 	for c in children {
 		t.a.children << c
 	}
+	value := t.comptime_field_call_generic_args(node, children, fm)
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
 		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
-		value:          node.value
+		value:          value
 		typ:            t.clone_field_subst_type_text(node, var_name, fm)
 		is_mut:         node.is_mut
 		children_start: start
@@ -1387,6 +1600,29 @@ fn comptime_cond_replace_bare_ident(cond string, ident string, replacement strin
 		offset++
 	}
 	return out
+}
+
+fn comptime_cond_references_ident(cond string, ident string) bool {
+	if ident.len == 0 {
+		return false
+	}
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			offset = comptime_cond_skip_string(cond, offset)
+			continue
+		}
+		if offset + ident.len <= cond.len && cond[offset..offset + ident.len] == ident {
+			before_ok := offset == 0 || !comptime_cond_name_char(cond[offset - 1])
+			after := offset + ident.len
+			after_ok := after >= cond.len || !comptime_cond_name_char(cond[after])
+			if before_ok && after_ok {
+				return true
+			}
+		}
+		offset++
+	}
+	return false
 }
 
 fn comptime_cond_has_loop_member_ref(cond string, var_name string) bool {

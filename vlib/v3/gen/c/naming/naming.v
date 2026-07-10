@@ -13,7 +13,6 @@ const reserved_words = {
 	'asm':      true
 	'const':    true
 	'continue': true
-	'copy':     true
 	'default':  true
 	'do':       true
 	'double':   true
