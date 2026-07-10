@@ -32,29 +32,30 @@ const read_source_chunk_size = 65536
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                 scanner.Scanner
-	tok               token.Token
-	lit               string
-	tok_pos           int
-	peek_tok          token.Token = .eof
-	peek_lit          string
-	peek_pos          int
-	has_peek          bool
-	cur_file          string
-	cur_module        string
-	cur_fn            string
-	cur_struct        string   // receiver type name of the current method, for `@STRUCT`
-	comptime_for_vars []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
-	pending_flag      bool
-	pending_params    bool
-	pending_export    string
-	pending_noreturn  bool
-	skip_next_decl    bool
-	disable_fn_body   bool
-	in_for_container  bool
-	local_type_names  map[string]string
-	local_type_scopes []string
-	export_records    []ExportRecord
+	s                      scanner.Scanner
+	tok                    token.Token
+	lit                    string
+	tok_pos                int
+	peek_tok               token.Token = .eof
+	peek_lit               string
+	peek_pos               int
+	has_peek               bool
+	cur_file               string
+	cur_module             string
+	cur_fn                 string
+	cur_struct             string   // receiver type name of the current method, for `@STRUCT`
+	comptime_for_vars      []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
+	pending_flag           bool
+	pending_json_as_number bool // `@[json_as_number]` seen before the next enum decl
+	pending_params         bool
+	pending_export         string
+	pending_noreturn       bool
+	skip_next_decl         bool
+	disable_fn_body        bool
+	in_for_container       bool
+	local_type_names       map[string]string
+	local_type_scopes      []string
+	export_records         []ExportRecord
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
@@ -716,6 +717,7 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 	p.pending_params = false
 	p.pending_export = ''
 	p.pending_noreturn = false
+	p.pending_json_as_number = false
 	return res
 }
 
@@ -1661,7 +1663,13 @@ fn (mut p Parser) enum_decl() flat.NodeId {
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	}
-	if enum_base_type.len > 0 {
+	// generic_params[0] is the backing type (empty when unspecified); a trailing
+	// `json_as_number` marker records the `@[json_as_number]` enum attribute so the
+	// json fast path can encode members as their numeric value.
+	if p.pending_json_as_number {
+		enum_node.generic_params = [enum_base_type, 'json_as_number']
+		p.pending_json_as_number = false
+	} else if enum_base_type.len > 0 {
 		enum_node.generic_params = [enum_base_type]
 	}
 	return p.a.add_node(enum_node)
@@ -1936,6 +1944,8 @@ fn (mut p Parser) skip_attrs() {
 			if p.tok == .name {
 				if p.lit == 'flag' {
 					p.pending_flag = true
+				} else if p.lit == 'json_as_number' {
+					p.pending_json_as_number = true
 				} else if p.lit == 'params' {
 					p.pending_params = true
 				} else if p.lit == 'noreturn' {
@@ -1957,6 +1967,8 @@ fn (mut p Parser) skip_attrs() {
 			if depth == 1 && p.tok == .name {
 				if p.lit == 'flag' {
 					p.pending_flag = true
+				} else if p.lit == 'json_as_number' {
+					p.pending_json_as_number = true
 				} else if p.lit == 'params' {
 					p.pending_params = true
 				} else if p.lit == 'noreturn' {

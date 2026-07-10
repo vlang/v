@@ -4950,6 +4950,11 @@ fn (mut g FlatGen) gen_json_encode_call(node flat.Node) bool {
 fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if clean is types.Enum {
+		if cast := g.json_enum_number_cast(clean.name) {
+			// `@[json_as_number]` enum: encode the numeric backing value, not the label.
+			num_fn := if cast == 'u64' { 'u64__str' } else { 'i64__str' }
+			return '${num_fn}((${cast})(${expr}))'
+		}
 		names, labels := g.json_enum_labels(clean.name)
 		if names.len == 0 {
 			return none
@@ -5175,6 +5180,40 @@ fn (g &FlatGen) json_struct_has_field_attrs(struct_name string) bool {
 		return false
 	}
 	return false
+}
+
+// json_enum_number_cast returns the integer cast (`i64`/`u64`) to use when an enum is
+// declared `@[json_as_number]`, so json.encode emits its numeric value rather than a
+// quoted label; returns none for a plain enum.
+fn (g &FlatGen) json_enum_number_cast(enum_name string) ?string {
+	mut cur_module := ''
+	for node in g.a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .enum_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if enum_name != node.value && enum_name != qualified {
+			continue
+		}
+		if 'json_as_number' !in node.generic_params {
+			return none
+		}
+		backing := if node.generic_params.len > 0 { node.generic_params[0] } else { '' }
+		return if backing in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+			'u64'
+		} else {
+			'i64'
+		}
+	}
+	return none
 }
 
 fn (g &FlatGen) json_enum_labels(enum_name string) ([]string, map[string]string) {
