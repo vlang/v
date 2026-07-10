@@ -273,6 +273,24 @@ fn test_v_source_for_report_extends_to_enclosing_block_end() {
 	assert src.contains('y20 := 20')
 }
 
+fn test_v_source_for_report_does_not_end_block_before_failing_line() {
+	mut lines := []string{}
+	lines << 'module main' // 1
+	for i in 0 .. 40 {
+		lines << 'const c${i} = ${i}' // 2..41 (pushes the fn past the prefix)
+	}
+	lines << 'fn render() string {' // 42 (enclosing signature)
+	lines << "\ttemplate := '}'" // 43 (a `}` inside a string literal, before the failing line)
+	lines << '\tbad := undefined_thing' // 44 (failing line)
+	lines << '\treturn template' // 45
+	lines << '}' // 46
+	src := v_source_for_report(lines, 44, 2, 5)
+	// the brace counter hits 0 on line 43, but the region end must not be accepted before the
+	// failing line, so line 44 is still present
+	assert src.contains('bad := undefined_thing')
+	assert src.contains('fn render() string {')
+}
+
 fn test_v_source_for_report_includes_attributes_above_declaration() {
 	mut lines := []string{}
 	lines << 'module main' // 1

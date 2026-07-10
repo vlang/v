@@ -374,10 +374,12 @@ fn v_source_for_report(lines []string, center int, radius int, prefix_lines int)
 	// begin at the enclosing declaration of the failing line, so the region is a whole block and
 	// never starts in the middle of a function body (or on a stray closing brace).
 	region_start := enclosing_decl_start(lines, center)
-	// end at the enclosing declaration's balanced closing brace, so the block is not cut open; a
-	// single-line declaration (no block) keeps up to `radius` lines of context after the failure.
-	decl_end := enclosing_decl_end(lines, region_start)
-	region_end := if decl_end > region_start {
+	// end at the enclosing declaration's balanced closing brace, so the block is not cut open. The
+	// close is only accepted at or after the failing line, so a `}` inside a string/comment before
+	// it cannot end the region early and drop the failing line. `0` => no such block end (a
+	// single-line declaration, or unbalanced): keep up to `radius` lines of context after it.
+	decl_end := enclosing_decl_end(lines, region_start, center)
+	region_end := if decl_end > 0 {
 		decl_end
 	} else if center + radius > lines.len {
 		lines.len
@@ -426,13 +428,15 @@ fn enclosing_decl_start(lines []string, from_line int) int {
 }
 
 // enclosing_decl_end scans downward from `start` (1-based) to the line that closes the block opened
-// by the declaration there, by counting `{`/`}` until the depth returns to 0. It returns that line,
-// or `lines.len` if the block never closes (truncated/malformed), or `start` when the declaration
-// opens no block at all (a single-line `const`/`import`, or a one-line `fn f() { ... }`). Like the
-// prefix trimming it is a brace-counting heuristic and does not track braces inside literals.
-fn enclosing_decl_end(lines []string, start int) int {
+// by the declaration there, by counting `{`/`}` until the depth returns to 0. The close is only
+// accepted at or after `min_line` (the failing line), so a `}` inside a string or comment earlier in
+// the declaration cannot end the block before the failing line and drop it from the region. It
+// returns that line, or `0` when the declaration opens no block (a single-line `const`/`import`, or
+// a one-line `fn f() { ... }`) or its braces never balance at/after `min_line` (unbalanced, or a
+// literal/comment brace miscount). Like the prefix trimming it does not track braces inside literals.
+fn enclosing_decl_end(lines []string, start int, min_line int) int {
 	if start < 1 || start > lines.len {
-		return if start < 1 { 1 } else { lines.len }
+		return 0
 	}
 	mut depth := 0
 	mut opened := false
@@ -445,11 +449,11 @@ fn enclosing_decl_end(lines []string, start int) int {
 				depth--
 			}
 		}
-		if opened && depth == 0 {
+		if opened && depth == 0 && i >= min_line {
 			return i
 		}
 	}
-	return if opened { lines.len } else { start }
+	return 0
 }
 
 // balanced_prefix_end returns how many leading lines of `lines` (at most `max_lines`) can be kept
