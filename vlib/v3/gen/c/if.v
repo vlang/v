@@ -35,7 +35,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 		} else {
 			g.writeln('{')
 		}
-		g.tc.push_scope()
+		g.push_scope()
 		defer_start := g.defers.len
 		g.indent++
 		if cond.kind == .is_expr {
@@ -54,7 +54,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 		g.gen_defers_from(defer_start)
 		g.trim_defers(defer_start)
 		g.indent--
-		g.tc.pop_scope()
+		g.pop_scope()
 		// else handling — continue the loop for a plain `else if`, recurse only for the
 		// rare guard-else (`else if x := ...`).
 		if cur.children_count <= 2 {
@@ -76,11 +76,11 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			}
 			if else_cond_is_guard {
 				g.writeln('} else {')
-				g.tc.push_scope()
+				g.push_scope()
 				g.indent++
 				g.gen_if(else_node)
 				g.indent--
-				g.tc.pop_scope()
+				g.pop_scope()
 				g.writeln('}')
 				return
 			}
@@ -89,7 +89,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			continue
 		} else if else_node.kind == .block {
 			g.writeln('} else {')
-			g.tc.push_scope()
+			g.push_scope()
 			else_defer_start := g.defers.len
 			g.indent++
 			for i in 0 .. else_node.children_count {
@@ -101,7 +101,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			g.gen_defers_from(else_defer_start)
 			g.trim_defers(else_defer_start)
 			g.indent--
-			g.tc.pop_scope()
+			g.pop_scope()
 			g.writeln('}')
 			return
 		} else {
@@ -131,7 +131,7 @@ fn (mut g FlatGen) smartcast_is_expr(cond &flat.Node) {
 			variant_ct := g.tc.c_type(variant_type)
 			field_name := g.sum_field_name(variant_name)
 			is_ptr_variant := g.variant_references_sum(variant_name, clean_sum.name)
-			var_name := c_name(expr_node.value)
+			var_name := g.cname(expr_node.value)
 			tmp := g.tmp_name()
 			if is_ptr_variant {
 				g.writeln('${variant_ct} ${tmp} = *${var_name}.${field_name};')
@@ -170,8 +170,9 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 		return
 	}
 	lhs := g.a.nodes[int(lhs_id)]
+	lhs_ids := g.if_guard_lhs_ids(cond)
 	rhs := g.a.nodes[int(rhs_id)]
-	var_name := c_name(lhs.value)
+	var_name := g.cname(lhs.value)
 	tmp := g.tmp_name()
 	defer_start := g.defers.len
 	if rhs.kind == .index {
@@ -179,42 +180,50 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 		base_type := g.usable_expr_type(base_id)
 		if base_type is types.Map {
 			c_val_type := g.tc.c_type(base_type.value_type)
-			c_key_type := g.tc.c_type(base_type.key_type)
+			c_key_type := g.map_key_temp_c_type(base_type.key_type)
 			g.write('void* ${tmp} = map__get_check(&')
 			g.gen_expr(base_id)
 			g.write(', &(${c_key_type}[]){')
 			g.gen_expr(g.a.child(rhs, 1))
 			g.writeln('});')
 			g.writeln('if (${tmp} != NULL) {')
-			g.tc.push_scope()
+			g.push_scope()
 			g.indent++
 			g.writeln('${c_val_type} ${var_name} = *(${c_val_type}*)${tmp};')
 			g.tc.cur_scope.insert(lhs.value, base_type.value_type)
 		} else {
-			rhs_type := g.tc.resolve_type(rhs_id)
-			opt_ct := g.optional_type_name(rhs_type)
-			val_ct, val_type := g.optional_value_ct(rhs_type)
+			rhs_type := g.optional_source_type_for_expr(rhs_id, g.tc.resolve_type(rhs_id))
+			opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
+			val_ct0, val_type := g.optional_value_ct(rhs_type)
+			val_ct := if val_type is types.MultiReturn {
+				g.optional_payload_c_type(val_type)
+			} else {
+				val_ct0
+			}
 			g.write('${opt_ct} ${tmp} = ')
 			g.gen_expr(rhs_id)
 			g.writeln(';')
 			g.writeln('if (${tmp}.ok) {')
-			g.tc.push_scope()
+			g.push_scope()
 			g.indent++
-			g.writeln('${val_ct} ${var_name} = ${tmp}.value;')
-			g.tc.cur_scope.insert(lhs.value, val_type)
+			g.gen_if_guard_value_bindings(lhs_ids, val_type, val_ct, tmp)
 		}
 	} else {
-		rhs_type := g.tc.resolve_type(rhs_id)
-		opt_ct := g.optional_type_name(rhs_type)
-		val_ct, val_type := g.optional_value_ct(rhs_type)
+		rhs_type := g.optional_source_type_for_expr(rhs_id, g.tc.resolve_type(rhs_id))
+		opt_ct := g.optional_type_name_for_expr(rhs_id, rhs_type)
+		val_ct0, val_type := g.optional_value_ct(rhs_type)
+		val_ct := if val_type is types.MultiReturn {
+			g.optional_payload_c_type(val_type)
+		} else {
+			val_ct0
+		}
 		g.write('${opt_ct} ${tmp} = ')
 		g.gen_expr(rhs_id)
 		g.writeln(';')
 		g.writeln('if (${tmp}.ok) {')
-		g.tc.push_scope()
+		g.push_scope()
 		g.indent++
-		g.writeln('${val_ct} ${var_name} = ${tmp}.value;')
-		g.tc.cur_scope.insert(lhs.value, val_type)
+		g.gen_if_guard_value_bindings(lhs_ids, val_type, val_ct, tmp)
 	}
 	then_id := g.a.child(&node, 1)
 	if g.valid_node_id(then_id) {
@@ -229,8 +238,68 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 	g.gen_defers_from(defer_start)
 	g.trim_defers(defer_start)
 	g.indent--
-	g.tc.pop_scope()
+	g.pop_scope()
 	g.gen_if_else(node)
+}
+
+fn (g &FlatGen) if_guard_lhs_ids(cond flat.Node) []flat.NodeId {
+	if cond.children_count < 2 {
+		return []flat.NodeId{}
+	}
+	mut lhs_ids := []flat.NodeId{cap: int(cond.children_count) - 1}
+	lhs_ids << g.a.child(&cond, 0)
+	for i in 2 .. cond.children_count {
+		lhs_ids << g.a.child(&cond, i)
+	}
+	return lhs_ids
+}
+
+fn (mut g FlatGen) gen_if_guard_value_bindings(lhs_ids []flat.NodeId, val_type types.Type, val_ct string, tmp string) {
+	if val_type is types.MultiReturn && lhs_ids.len > 1 {
+		for i, lhs_id in lhs_ids {
+			if i >= val_type.types.len || !g.valid_node_id(lhs_id) {
+				break
+			}
+			lhs := g.a.nodes[int(lhs_id)]
+			if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+				continue
+			}
+			field_type := val_type.types[i]
+			lhs_name := g.cname(lhs.value)
+			if fixed := array_fixed_type(field_type) {
+				c_elem, dims := g.fixed_array_decl_parts(fixed)
+				g.writeln('${c_elem} ${lhs_name}${dims};')
+				g.writeln('memmove(${lhs_name}, ${tmp}.value.arg${i}, sizeof(${lhs_name}));')
+				owner := g.tc.cur_scope.insert_with_owner(lhs.value, field_type)
+				g.track_local_pointer_storage_decl(lhs, owner, field_type, '')
+				continue
+			}
+			field_ct := g.value_c_type(field_type)
+			g.writeln('${field_ct} ${lhs_name} = ${tmp}.value.arg${i};')
+			owner := g.tc.cur_scope.insert_with_owner(lhs.value, field_type)
+			g.track_local_pointer_storage_decl(lhs, owner, field_type, field_ct)
+		}
+		return
+	}
+	if lhs_ids.len == 0 || !g.valid_node_id(lhs_ids[0]) {
+		return
+	}
+	lhs := g.a.nodes[int(lhs_ids[0])]
+	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+		return
+	}
+	lhs_name := g.cname(lhs.value)
+	if fixed := array_fixed_type(val_type) {
+		c_elem, dims := g.fixed_array_decl_parts(fixed)
+		g.writeln('${c_elem} ${lhs_name}${dims};')
+		g.writeln('memmove(${lhs_name}, ${tmp}.value, sizeof(${lhs_name}));')
+		owner := g.tc.cur_scope.insert_with_owner(lhs.value, val_type)
+		g.track_local_pointer_storage_decl(lhs, owner, val_type, '')
+		return
+	}
+	g.writeln('${val_ct} ${lhs_name} = ${tmp}.value;')
+	owner := g.tc.cur_scope.insert_with_owner(lhs.value, val_type)
+	g.track_local_pointer_storage_decl(lhs, owner, val_type, val_ct)
 }
 
 // gen_if_else emits if else output for c.
@@ -251,11 +320,11 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 			}
 			if else_cond_is_guard {
 				g.writeln('} else {')
-				g.tc.push_scope()
+				g.push_scope()
 				g.indent++
 				g.gen_if(else_node)
 				g.indent--
-				g.tc.pop_scope()
+				g.pop_scope()
 				g.writeln('}')
 			} else {
 				g.write('} else ')
@@ -263,7 +332,7 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 			}
 		} else if else_node.kind == .block {
 			g.writeln('} else {')
-			g.tc.push_scope()
+			g.push_scope()
 			defer_start := g.defers.len
 			g.indent++
 			for i in 0 .. else_node.children_count {
@@ -275,7 +344,7 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 			g.gen_defers_from(defer_start)
 			g.trim_defers(defer_start)
 			g.indent--
-			g.tc.pop_scope()
+			g.pop_scope()
 			g.writeln('}')
 		} else {
 			g.writeln('}')
@@ -288,7 +357,8 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 // gen_if_expr emits if expr output for c.
 fn (mut g FlatGen) gen_if_expr(node flat.Node) {
 	then_block := g.a.child_node(&node, 1)
-	mut needs_stmt_expr := then_block.children_count > 1
+	mut needs_stmt_expr := g.expected_expr_type is types.MultiReturn
+		|| then_block.children_count > 1
 	if !needs_stmt_expr && node.children_count > 2 {
 		else_node := g.a.child_node(&node, 2)
 		if else_node.kind == .block && else_node.children_count > 1 {
@@ -387,10 +457,15 @@ fn (g &FlatGen) multi_return_tail_parts(block &flat.Node, count int) ?MultiRetur
 	for i := int(block.children_count) - 1; i >= 0; i-- {
 		child_id := g.a.child(block, i)
 		child := g.a.nodes[int(child_id)]
-		if child.kind != .expr_stmt || child.children_count != 1 {
+		if child.kind != .expr_stmt || child.children_count == 0 {
 			break
 		}
-		values.prepend(g.a.child(&child, 0))
+		for j := int(child.children_count) - 1; j >= 0; j-- {
+			values.prepend(g.a.child(&child, j))
+			if values.len == count {
+				break
+			}
+		}
 		if values.len == count {
 			return MultiReturnTailParts{
 				prefix_count: i
@@ -406,16 +481,84 @@ fn (mut g FlatGen) gen_if_expr_multi_return_block(block &flat.Node, ret_type typ
 	for i in 0 .. parts.prefix_count {
 		g.gen_node(g.a.child(block, i))
 	}
-	g.write('_ifexpr = (${g.tc.c_type(types.Type(ret_type))}){')
+	ct := g.value_c_type(types.Type(ret_type))
+	if g.multi_return_types_have_fixed_array(ret_type.types) {
+		tmp := g.gen_multi_return_tail_temp(ct, ret_type.types, parts.values)
+		g.writeln('_ifexpr = ${tmp};')
+		return true
+	}
+	g.write('_ifexpr = (${ct}){')
 	for i, value_id in parts.values {
 		if i > 0 {
 			g.write(', ')
 		}
 		g.write('.arg${i} = ')
-		g.gen_expr(value_id)
+		g.gen_expr_with_expected_type(value_id, ret_type.types[i])
 	}
 	g.writeln('};')
 	return true
+}
+
+fn (mut g FlatGen) gen_multi_return_block_expr(block &flat.Node, ret_type types.MultiReturn) bool {
+	parts := g.multi_return_tail_parts(block, ret_type.types.len) or { return false }
+	ct := g.value_c_type(types.Type(ret_type))
+	if g.multi_return_types_have_fixed_array(ret_type.types) {
+		g.write('({')
+		for i in 0 .. parts.prefix_count {
+			g.gen_node(g.a.child(block, i))
+		}
+		tmp := g.gen_multi_return_tail_temp(ct, ret_type.types, parts.values)
+		g.write('${tmp};})')
+		return true
+	}
+	if parts.prefix_count == 0 {
+		g.write('(${ct}){')
+		for i, value_id in parts.values {
+			if i > 0 {
+				g.write(', ')
+			}
+			g.write('.arg${i} = ')
+			g.gen_expr_with_expected_type(value_id, ret_type.types[i])
+		}
+		g.write('}')
+		return true
+	}
+	g.write('({')
+	for i in 0 .. parts.prefix_count {
+		g.gen_node(g.a.child(block, i))
+	}
+	g.write('${ct} _multi_ret = (${ct}){')
+	for i, value_id in parts.values {
+		if i > 0 {
+			g.write(', ')
+		}
+		g.write('.arg${i} = ')
+		g.gen_expr_with_expected_type(value_id, ret_type.types[i])
+	}
+	g.write('}; _multi_ret;})')
+	return true
+}
+
+fn (mut g FlatGen) gen_multi_return_tail_temp(ct string, ret_types []types.Type, values []flat.NodeId) string {
+	tmp := g.tmp_name()
+	g.writeln('${ct} ${tmp};')
+	for i, value_id in values {
+		field := '${tmp}.arg${i}'
+		if i < ret_types.len {
+			if fixed := array_fixed_type(ret_types[i]) {
+				g.gen_fixed_array_copy_from_node(field, value_id, fixed)
+				continue
+			}
+			g.write('${field} = ')
+			g.gen_expr_with_expected_type(value_id, ret_types[i])
+			g.writeln(';')
+			continue
+		}
+		g.write('${field} = ')
+		g.gen_expr(value_id)
+		g.writeln(';')
+	}
+	return tmp
 }
 
 // is_expr_kind reports whether is expr kind applies in c.
@@ -453,17 +596,17 @@ fn (mut g FlatGen) if_expr_block_tail_type(block &flat.Node) types.Type {
 	if block.children_count == 0 {
 		return types.Type(types.void_)
 	}
-	g.tc.push_scope()
+	g.push_scope()
 	for i in 0 .. block.children_count - 1 {
 		g.seed_scope_from_decl(*g.a.child_node(block, i))
 	}
 	last := g.a.child_node(block, block.children_count - 1)
 	ret := if last.kind == .expr_stmt {
-		g.tc.resolve_type(g.a.child(last, 0))
+		g.usable_expr_type(g.a.child(last, 0))
 	} else {
-		g.tc.resolve_type(g.a.child(block, block.children_count - 1))
+		g.usable_expr_type(g.a.child(block, block.children_count - 1))
 	}
-	g.tc.pop_scope()
+	g.pop_scope()
 	return ret
 }
 
@@ -504,7 +647,7 @@ fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
 		g.if_expr_type(&node)
 	}
 	then_block := g.a.child_node(&node, 1)
-	ct := g.tc.c_type(ret_type)
+	ct := g.value_c_type(ret_type)
 	g.writeln('({${ct} _ifexpr;')
 	g.write('if (')
 	g.gen_expr(g.a.child(&node, 0))

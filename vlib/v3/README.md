@@ -208,18 +208,18 @@ Compiling `v3.v` itself in the C self-host chain:
 Commands:
 
 ```sh
-v -d parallel -gc none -prod -o v3 v3.v
+v -gc none -prod -o v3 v3.v
 ./v3 -o v4 v3.v
 ./v4 -o v5 v3.v
 ./v5 -o v6 v3.v
 ```
 
-The table uses the first v3-generated C stage, `./v3 -o v4 v3.v`. Build the
-first v3 binary with `-d parallel` to include thread support. v3 self-hosts
-parallel-capable successors by default; pass `-no-parallel` or `--no-parallel`
-to disable threaded transform/C codegen and omit parallel support from the
-self-hosted compiler output. Debug builds use bundled TCC first, then fall back
-to `cc` only when that compile fails.
+The table uses the first v3-generated C stage, `./v3 -o v4 v3.v`. The plain
+bootstrap includes thread support. v3 self-hosts parallel-capable successors by
+default; pass `-no-parallel` or `--no-parallel` to disable threaded
+transform/C codegen and omit parallel support from the self-hosted compiler
+output. Debug builds use bundled TCC first, then fall back to `cc` only when
+that compile fails.
 
 Pass `-c99` to the v3 C backend to compile generated C and support objects as
 C99 (`cc -std=c99`) instead of the default GNU11 mode. `test_all.vsh -c99`

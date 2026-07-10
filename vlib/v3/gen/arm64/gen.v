@@ -58,9 +58,28 @@ pub fn (mut g Gen) write_and_link(output string) {
 // reset_value_slots updates reset value slots state for arm64.
 fn (mut g Gen) reset_value_slots() {
 	n := g.m.values.len
-	g.stack_offsets = []int{len: n}
-	g.alloca_offsets = []int{len: n}
-	g.alloca_sizes = []int{len: n}
+	if g.stack_offsets.len != n {
+		g.stack_offsets = []int{len: n}
+		g.alloca_offsets = []int{len: n}
+		g.alloca_sizes = []int{len: n}
+		return
+	}
+	for i in 0 .. n {
+		g.stack_offsets[i] = 0
+		g.alloca_offsets[i] = 0
+		g.alloca_sizes[i] = 0
+	}
+}
+
+fn (mut g Gen) reset_block_offsets() {
+	n := g.m.blocks.len
+	if g.block_offsets.len != n {
+		g.block_offsets = []int{len: n, init: -1}
+		return
+	}
+	for i in 0 .. n {
+		g.block_offsets[i] = -1
+	}
 }
 
 // set_stack_slot updates set stack slot state for arm64.
@@ -164,8 +183,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 	g.reset_value_slots()
 	g.pending_jmps.clear()
 
-	n_blks := g.m.blocks.len
-	g.block_offsets = []int{len: n_blks, init: -1}
+	g.reset_block_offsets()
 
 	// Frame layout (all at negative offsets from fp):
 	// fp + 0: saved fp
@@ -1690,12 +1708,20 @@ fn (g &Gen) is_string_struct_type(typ_id ssa.TypeID) bool {
 		return false
 	}
 	typ := g.m.type_store.types[typ_id]
-	if typ.kind != .struct_t || typ.fields.len != 2 || g.m.type_size(typ_id) != 16 {
+	if typ.kind != .struct_t || typ.fields.len < 2 || typ.fields.len > 3
+		|| g.m.type_size(typ_id) != 16 {
 		return false
 	}
 	first := g.m.type_store.types[typ.fields[0]]
 	second := g.m.type_store.types[typ.fields[1]]
-	return first.kind == .ptr_t && second.kind == .int_t && second.width == 32
+	if first.kind != .ptr_t || second.kind != .int_t || second.width != 32 {
+		return false
+	}
+	if typ.fields.len == 3 {
+		third := g.m.type_store.types[typ.fields[2]]
+		return third.kind == .int_t && third.width == 32
+	}
+	return true
 }
 
 // emit_load_string_regs_from_ptr converts emit load string regs from ptr data for arm64.
@@ -1703,15 +1729,23 @@ fn (mut g Gen) emit_load_string_regs_from_ptr(ptr_reg int, data_reg int, len_reg
 	typ := g.m.type_store.types[typ_id]
 	g.emit_load_typed(data_reg, ptr_reg, typ.fields[0])
 	g.emit32(asm_add_imm(Reg(11), Reg(ptr_reg), 8))
-	g.emit_load_typed(len_reg, 11, typ.fields[1])
+	if typ.fields.len == 3 {
+		g.emit32(asm_ldr(Reg(len_reg), Reg(11)))
+	} else {
+		g.emit_load_typed(len_reg, 11, typ.fields[1])
+	}
 }
 
 // emit_load_string_regs_from_fp converts emit load string regs from fp data for arm64.
 fn (mut g Gen) emit_load_string_regs_from_fp(off int, data_reg int, len_reg int, typ_id ssa.TypeID) {
 	typ := g.m.type_store.types[typ_id]
 	g.emit_load_fp(data_reg, off)
-	g.emit_lea_fp(11, off + 8)
-	g.emit_load_typed(len_reg, 11, typ.fields[1])
+	if typ.fields.len == 3 {
+		g.emit_load_fp(len_reg, off + 8)
+	} else {
+		g.emit_lea_fp(11, off + 8)
+		g.emit_load_typed(len_reg, 11, typ.fields[1])
+	}
 }
 
 // emit_store_typed emits emit store typed output for arm64.

@@ -736,24 +736,91 @@ pub fn (t Time) http_header_string() string {
 	return buf.bytestr()
 }
 
-// push_to_http_header returns a date string in the format used in HTTP headers, as defined in RFC 2616.
-// e.g. "Sun, 06 Nov 1994 08:49:37 GMT"
-pub fn (t Time) push_to_http_header(mut buffer []u8) {
-	day_str := t.weekday_str()
-	month_str := t.smonth()
+// http_date_len is the byte length of an HTTP-date value (RFC 9110 IMF-fixdate),
+// e.g. "Sun, 06 Nov 1994 08:49:37 GMT".
+pub const http_date_len = 29
 
-	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, month_str[0], month_str[1],
-		month_str[2], ` `, `0`, `0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `,
-		`G`, `M`, `T`]!
+// write_http_header writes the 29-byte HTTP-date ("Sun, 06 Nov 1994 08:49:37 GMT",
+// RFC 9110 IMF-fixdate) at dst, which may point into a fixed array or a dynamic
+// array's data, at any offset. dst_len is the number of writable bytes at dst;
+// an error is returned when it is less than http_date_len, so a caller cannot
+// silently overrun its buffer. No allocation on the success path.
+@[unsafe]
+pub fn (t Time) write_http_header(dst &u8, dst_len int) ! {
+	if dst_len < http_date_len {
+		return error('time.write_http_header: dst_len must be >= 29')
+	}
+	day_str := long_days[iclamp(0, t.day_of_week() - 1, 6)] // read in place: no substr
+	// months_string is indexed in place (no smonth() substr allocation); out-of-range
+	// months keep smonth()'s historical '---' fallback.
+	mi := if t.month >= 1 && t.month <= 12 { (t.month - 1) * 3 } else { -1 }
+	m0 := if mi >= 0 { months_string[mi] } else { `-` }
+	m1 := if mi >= 0 { months_string[mi + 1] } else { `-` }
+	m2 := if mi >= 0 { months_string[mi + 2] } else { `-` }
+
+	mut buf := [day_str[0], day_str[1], day_str[2], `,`, ` `, `0`, `0`, ` `, m0, m1, m2, ` `, `0`,
+		`0`, `0`, `0`, ` `, `0`, `0`, `:`, `0`, `0`, `:`, `0`, `0`, ` `, `G`, `M`, `T`]!
 	unsafe {
 		int_to_ptr_byte_array_no_pad(t.day, &buf[5], 2)
 		int_to_ptr_byte_array_no_pad(t.year, &buf[12], 4)
 		int_to_ptr_byte_array_no_pad(t.hour, &buf[17], 2)
 		int_to_ptr_byte_array_no_pad(t.minute, &buf[20], 2)
 		int_to_ptr_byte_array_no_pad(t.second, &buf[23], 2)
+		// plain byte loop instead of vmemcpy: compiles on every backend (JS has
+		// no vmemcpy) and C compilers turn it into a memcpy at -prod anyway
+		for i in 0 .. 29 {
+			dst[i] = buf[i]
+		}
 	}
+}
+
+// update_http_header refreshes an HTTP-date previously written at dst (by
+// write_http_header) from last_unix to now_unix, rewriting ONLY the digits
+// whose value changed: within the same minute that is the 2 seconds digits;
+// minute and hour rollovers add 2 digits each; a day rollover (or
+// last_unix <= 0 / now_unix <= 0) falls back to a full write_http_header,
+// which is the only path that pays calendar math — at a 1 Hz refresh cadence,
+// once per day. The caller passes the same UTC unix seconds it will keep for
+// the next call. No allocation on the success path.
+@[unsafe]
+pub fn update_http_header(dst &u8, dst_len int, last_unix i64, now_unix i64) ! {
+	if dst_len < http_date_len {
+		return error('time.update_http_header: dst_len must be >= 29')
+	}
+	if now_unix == last_unix {
+		return
+	}
+	if last_unix <= 0 || now_unix <= 0 || now_unix / 86400 != last_unix / 86400 {
+		unsafe { unix(now_unix).write_http_header(dst, dst_len)! }
+		return
+	}
+	tod := int(now_unix % 86400)
 	unsafe {
-		buffer.push_many(&buf[0], buf.len)
+		write_2_digits(dst + 23, tod % 60)
+		if now_unix / 60 != last_unix / 60 {
+			write_2_digits(dst + 20, (tod / 60) % 60)
+			if now_unix / 3600 != last_unix / 3600 {
+				write_2_digits(dst + 17, tod / 3600)
+			}
+		}
+	}
+}
+
+@[inline]
+fn write_2_digits(dst &u8, v int) {
+	unsafe {
+		dst[0] = u8(`0` + v / 10)
+		dst[1] = u8(`0` + v % 10)
+	}
+}
+
+// push_to_http_header appends the 29-byte HTTP-date to buffer, as defined in RFC 2616.
+// e.g. "Sun, 06 Nov 1994 08:49:37 GMT"
+pub fn (t Time) push_to_http_header(mut buffer []u8) {
+	mut buf := [29]u8{}
+	unsafe {
+		t.write_http_header(&buf[0], 29) or {} // 29 >= http_date_len: cannot fail
+		buffer.push_many(&buf[0], 29)
 	}
 }
 

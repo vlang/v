@@ -609,7 +609,17 @@ fn (mut s Scanner) number() {
 			continue
 		} else if !has_decimal && c == `.` {
 			next := s.peek_byte(1)
-			if next != `.` && next >= `0` && next <= `9` {
+			mut has_dot_exponent := false
+			if next == `e` || next == `E` {
+				after_exp := s.peek_byte(2)
+				if after_exp == `+` || after_exp == `-` {
+					after_sign := s.peek_byte(3)
+					has_dot_exponent = after_sign >= `0` && after_sign <= `9`
+				} else {
+					has_dot_exponent = after_exp >= `0` && after_exp <= `9`
+				}
+			}
+			if next != `.` && ((next >= `0` && next <= `9`) || has_dot_exponent) {
 				has_decimal = true
 				s.offset++
 				continue

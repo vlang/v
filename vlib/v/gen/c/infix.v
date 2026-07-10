@@ -588,7 +588,14 @@ fn (mut g Gen) gen_struct_pointer_eq_op(node ast.InfixExpr, left_type ast.Type, 
 	mut restore_stmt := false
 	mut left_expr := ''
 	mut right_expr := ''
-	if left_type.is_ptr() && !node.left.is_lvalue() && !inside_and_rhs {
+	// An operand that itself needs statement hoisting (e.g. it contains an `or { }`
+	// block) must be evaluated once into a ctemp, not inlined via expr_string: the
+	// pointer-equality expansion references each operand up to 3 times, and an
+	// `x or { }` is (wrongly) reported as an lvalue by is_lvalue() (it only inspects
+	// the base ident), so without this it would emit the or-block statement multiple
+	// times, tangling the generated C.
+	if left_type.is_ptr() && (!node.left.is_lvalue() || g.need_tmp_var_in_expr(node.left))
+		&& !inside_and_rhs {
 		if !restore_stmt {
 			stmt_str = g.go_before_last_stmt().trim_space()
 			g.empty_line = true
@@ -600,7 +607,8 @@ fn (mut g Gen) gen_struct_pointer_eq_op(node ast.InfixExpr, left_type ast.Type, 
 	} else {
 		left_expr = g.expr_string(node.left)
 	}
-	if right_type.is_ptr() && !node.right.is_lvalue() && !inside_and_rhs {
+	if right_type.is_ptr() && (!node.right.is_lvalue() || g.need_tmp_var_in_expr(node.right))
+		&& !inside_and_rhs {
 		if !restore_stmt {
 			stmt_str = g.go_before_last_stmt().trim_space()
 			g.empty_line = true
@@ -1993,9 +2001,24 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 			}
 		}
 		// For Ident nodes that have been unwrapped by a smartcast (e.g. from a
-		// none-guard fallthrough), write the variable name directly to avoid
-		// g.expr() generating the unwrapped data access instead of the option wrapper.
-		if node.left is ast.Ident && node.left.obj is ast.Var && node.left.obj.is_unwrapped {
+		// none-guard fallthrough) or by an assignment smartcast (assigning a non-option
+		// value to an option variable elsewhere in the scope), write the variable name
+		// directly to avoid g.expr() generating the unwrapped `.data` access instead of
+		// the option wrapper. A none-check always operates on the option wrapper's
+		// `.state`. The assignment smartcast is recorded on the scope var (not on the
+		// captured node.left.obj), so it is looked up by position here.
+		mut ident_is_assignment_smartcast := false
+		if node.left is ast.Ident && node.left_type.has_flag(.option) {
+			scope := g.file.scope.innermost(node.left.pos.pos)
+			if scope != unsafe { nil } {
+				if v := scope.find_var(node.left.name) {
+					ident_is_assignment_smartcast = v.is_assignment_smartcast
+				}
+			}
+		}
+		if node.left is ast.Ident && node.left.obj is ast.Var && (node.left.obj.is_unwrapped
+			|| node.left.obj.is_assignment_smartcast
+			|| ident_is_assignment_smartcast) {
 			name := c_name(node.left.name)
 			if node.left.is_auto_heap() {
 				g.write('(*${name})')
@@ -2189,7 +2212,11 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	is_safe_div := node.op == .div && is_integer_div_mod
 	is_safe_mod := node.op == .mod && is_integer_div_mod
 	if resolved_left_type.is_ptr() && node.left.is_auto_deref_var()
-		&& !resolved_right_type.is_pointer() {
+		&& (!resolved_right_type.is_any_kind_of_pointer() || node.right.is_auto_deref_var()) {
+		// An auto-deref var is logically a value, so it must be dereferenced even
+		// when the other operand is also a pointer - but only when that operand is
+		// itself an auto-deref var (e.g. `a.sorted(|x, y| x < y)`), not a genuine
+		// pointer/nil comparison.
 		g.write('*')
 	} else if !g.inside_interface_deref && node.left is ast.Ident
 		&& g.table.is_interface_var(node.left.obj) {
@@ -2242,7 +2269,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.write('(${g.styp(resolved_right_type)})')
 	}
 	if resolved_right_type.is_ptr() && node.right.is_auto_deref_var()
-		&& !resolved_left_type.is_pointer() {
+		&& (!resolved_left_type.is_any_kind_of_pointer() || node.left.is_auto_deref_var()) {
 		g.write('*')
 		g.expr(node.right)
 	} else {

@@ -1116,6 +1116,7 @@ fn (mut g Gen) post_process_generic_fns_for_files(files []&ast.File) {
 						}
 						emitted_generic_specializations[specialization_key] = true
 						g.cur_concrete_types = concrete_specialization.clone()
+						g.clear_type_resolution_caches()
 						g.fn_decl(*generic_fn)
 						emitted_this_round = true
 					}
@@ -6363,9 +6364,27 @@ fn array_mut_arg_is_addressable(expr ast.Expr) bool {
 }
 
 fn (mut g Gen) call_args(node ast.CallExpr) {
+	// Call arguments are independent expressions: an option/result-typed argument
+	// wraps itself based on its own expected type, not on any enclosing if/match
+	// option context. Reset those flags so that a nested if/match expression used as
+	// a plain (non-option) argument is not wrongly option-wrapped with the enclosing
+	// function's return type (e.g. `return match { X { SV(create(if c { EnumA } else
+	// { EnumB })) } }` in an `?SV` fn would wrap the enum branch as `?SV`).
+	prev_inside_if_option := g.inside_if_option
+	prev_inside_match_option := g.inside_match_option
+	prev_inside_if_result := g.inside_if_result
+	prev_inside_match_result := g.inside_match_result
+	g.inside_if_option = false
+	g.inside_match_option = false
+	g.inside_if_result = false
+	g.inside_match_result = false
 	g.expected_fixed_arr = true
 	defer {
 		g.expected_fixed_arr = false
+		g.inside_if_option = prev_inside_if_option
+		g.inside_match_option = prev_inside_match_option
+		g.inside_if_result = prev_inside_if_result
+		g.inside_match_result = prev_inside_match_result
 	}
 	args := if g.is_js_call {
 		if node.args.len < 1 {

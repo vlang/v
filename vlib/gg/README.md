@@ -33,6 +33,91 @@ fn frame(mut ctx gg.Context) {
 }
 ```
 
+## Multi-Window Applications
+
+`gg.App` is an additive multi-window facade for programs that need to manage
+more than one native window from the same `gg` application. It is opt-in and is
+compiled only when the program is built with `-d gg_multiwindow`:
+
+```sh
+v -d gg_multiwindow run examples/gg/multiwindow.v
+```
+
+The existing single-window `gg.Context` API and behavior are unchanged. A normal
+`import gg` program that uses `gg.new_context()` does not load the native
+multi-window implementation. Without `-d gg_multiwindow`, the opt-in API surface
+is kept as a lightweight compatibility stub so accidental `gg.App` calls report
+a clear "compile with `-d gg_multiwindow`" error instead of pulling in
+`x.multiwindow` or native backend code.
+
+Users normally import only `gg`. [`x.multiwindow`](../x/multiwindow/README.md)
+is the lower-level lifecycle, window and render-surface layer used by the facade,
+and is available for backend or direct-control callers. Use `backend: .auto` for
+native applications. It selects the appropriate platform backend at
+runtime/build time, falling back only when a native backend is unavailable.
+On Linux, X11 native windows are opt-in with `-d x_multiwindow_x11`; Wayland
+remains opt-in with `-d sokol_wayland`. Tests and headless tools can request
+`backend: .mock` explicitly; the lower-level `.mock` path remains
+dependency-light and does not link X11/EGL/OpenGL by default.
+
+The basic lifecycle is:
+
+```v
+import gg
+
+fn main() {
+	mut app := gg.new_app(backend: .auto)!
+	defer {
+		app.stop() or {}
+	}
+
+	main_window := app.create_window(
+		title:  'Main'
+		width:  800
+		height: 600
+	)!
+
+	app.run(
+		event_fn: fn (event gg.WindowEvent, mut app gg.App) ! {
+			match event.kind {
+				.window_close_requested {
+					app.destroy_window(event.window)!
+				}
+				.window_destroyed {
+					if app.window_ids()!.len == 0 {
+						app.stop()!
+					}
+				}
+				else {}
+			}
+		}
+	)!
+
+	_ = main_window
+}
+```
+
+Lifecycle-only applications can run with just `event_fn`; they do not require a
+renderer. `frame_fn` and `draw_window()` require an already render-capable app;
+they do not re-run `.auto` backend selection. Programs that plan to render
+should use `gg.new_app(require_renderer: true)` or verify
+`app.capabilities().explicit_swapchain` before rendering. Each `draw_window()`
+call records and commits work for that window while its native surface is
+current. Linux X11 rendering, including under Xvfb, needs both flags:
+
+```sh
+xvfb-run -a v -d gg_multiwindow -d x_multiwindow_x11 run examples/gg/multiwindow.v
+```
+
+`gg.App` manages native windows through `x.multiwindow`. The lower-level
+`x.multiwindow` layer owns native lifetimes and the owner queue; `gg.App` owns
+`sokol.gfx`/`sokol.sgl` renderer state only after rendering is initialized.
+Create, run, stop and render from the owner thread. Background threads should
+schedule owner-side work with `app.post()` or `app.try_post()` and let the run
+loop drain it. A `gg.App` render owner cannot coexist with an active legacy
+`gg.Context` renderer owner in the same process, but the legacy `gg.Context` API
+remains available for normal single-window programs.
+
 ## Troubleshooting
 
 A common problem, if you draw a lot of primitive elements in the same

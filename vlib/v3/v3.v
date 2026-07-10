@@ -30,6 +30,31 @@ fn run_compile_command(cmd string) os.Result {
 	}
 }
 
+fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
+	target_os := prefs.normalized_target_os()
+	mut link_atomic_s := false
+	match target_os {
+		'macos' {
+			// atomic.S has Mach-O-compatible aarch64 symbols, but its x86_64 Unix
+			// stanza is ELF-only (`.type ... %function`). v3 does not yet track a
+			// separate target architecture, so use the compiler build architecture.
+			$if arm64 {
+				link_atomic_s = true
+			}
+		}
+		'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly' {
+			link_atomic_s = true
+		}
+		else {}
+	}
+
+	if !link_atomic_s {
+		return ''
+	}
+	atomic_s := os.join_path(prefs.vroot, 'thirdparty', 'stdatomic', 'nix', 'atomic.S')
+	return ' ${atomic_s}'
+}
+
 fn prepare_c_flags_for_link(flags []string, c99 bool) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
@@ -59,6 +84,17 @@ fn c_object_compile_support_flags(flags []string) []string {
 		}
 	}
 	return support
+}
+
+fn c_flags_need_objective_c(flags []string) bool {
+	for flag in flags {
+		clean := flag.trim_space()
+		if clean in ['-fobjc-arc', '-fobjc-gc', '-ObjC'] || clean.starts_with('-fobjc-')
+			|| clean == '-x objective-c' {
+			return true
+		}
+	}
+	return false
 }
 
 fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool) !string {
@@ -127,9 +163,47 @@ fn c_standard_flag(c99 bool) string {
 	return if c99 { '-std=c99' } else { '-std=gnu11' }
 }
 
+fn run_test_binary(bin_file string) int {
+	return run_binary(bin_file, []string{})
+}
+
+fn run_binary(bin_file string, args []string) int {
+	return run_binary_impl(bin_file, args, false)
+}
+
+fn run_binary_with_stderr_to_stdout(bin_file string, args []string) int {
+	return run_binary_impl(bin_file, args, true)
+}
+
+fn run_binary_impl(bin_file string, args []string, stderr_to_stdout bool) int {
+	mut cmd := executable_command_for_path(bin_file)
+	for arg in args {
+		cmd += ' ' + os.quoted_path(arg)
+	}
+	if stderr_to_stdout {
+		cmd += ' 2>&1'
+	}
+	return os.system(cmd)
+}
+
+fn executable_command_for_path(path string) string {
+	mut run_path := path
+	if !os.is_abs_path(path) && !path.contains('/') && !path.contains('\\') {
+		run_path = '.' + os.path_separator + path
+	}
+	return os.quoted_path(run_path)
+}
+
 fn input_implies_building_v(input_file string) bool {
 	normalized := input_file.replace('\\', '/').trim_right('/')
-	return normalized.all_after_last('/') == 'v3.v'
+	if normalized.all_after_last('/') == 'v3.v' {
+		return true
+	}
+	if os.is_dir(input_file) {
+		normalized_dir := os.real_path(input_file).replace('\\', '/').trim_right('/')
+		return normalized_dir.ends_with('/vlib/v3')
+	}
+	return false
 }
 
 fn input_is_cmd_v(input_file string) bool {
@@ -142,27 +216,45 @@ fn input_is_cmd_v(input_file string) bool {
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
-		eprintln('usage: v3 <file.v> [-o output|file.c] [-b c|arm64|eval] [-c99] [-d flag]')
+		eprintln('usage: v3 [run] <file.v> [-o output|file.c] [-b c|arm64|eval] [-c99] [-d flag]')
 		exit(1)
 	}
 
 	mut input_file := ''
 	mut output_file := ''
+	mut explicit_output := false
 	mut backend := 'c'
 	mut is_prod := false
 	mut is_strict := false
 	mut is_selfhost := false
 	mut no_parallel := false
+	mut no_prealloc := false
 	mut parallel_transform := true
 	mut building_v := false
+	mut ownership_mode := false
 	mut c99 := false
 	mut all_backends := false
 	mut compile_backends := []string{}
 	mut user_defines := []string{}
+	mut should_run := false
+	mut run_args := []string{}
 	mut i := 0
 	for i < args.len {
-		if args[i] == '-o' && i + 1 < args.len {
+		// Once `run <file>` has captured its input file, every remaining argument
+		// belongs to the program being run — including `-`-prefixed flags such as
+		// `--help`. Forward them verbatim instead of interpreting them as compiler
+		// flags (which would otherwise be silently dropped).
+		if should_run && input_file.len > 0 {
+			run_args << args[i]
+			i++
+			continue
+		}
+		if args[i] == 'run' && input_file.len == 0 && !should_run {
+			should_run = true
+			i++
+		} else if args[i] == '-o' && i + 1 < args.len {
 			output_file = args[i + 1]
+			explicit_output = true
 			i += 2
 		} else if args[i] == '-b' && i + 1 < args.len {
 			backend = args[i + 1]
@@ -187,6 +279,13 @@ fn main() {
 		} else if args[i] == '-strict' {
 			is_strict = true
 			i++
+		} else if args[i] == '-ownership' || args[i] == '--ownership' {
+			// The ownership checker itself is compiled into v3 via `-d ownership`.
+			// The runtime `-ownership` flag should only load the builtin ownership
+			// overlays; it must not expose `ownership` to target `$if` blocks or target
+			// `_d_ownership.v` files.
+			ownership_mode = true
+			i++
 		} else if args[i] == '-no-parallel' || args[i] == '--no-parallel' {
 			no_parallel = true
 			i++
@@ -207,7 +306,17 @@ fn main() {
 			i++
 		} else if args[i] in ['-gc', '-cc'] && i + 1 < args.len {
 			i += 2
-		} else if args[i] in ['-prealloc', '-enable-globals'] {
+		} else if args[i] == '-no-prealloc' || args[i] == '--no-prealloc' {
+			no_prealloc = true
+			i++
+		} else if args[i] == '-prealloc' {
+			// Same effect as `v -prealloc`: activate the `$if prealloc {` arena
+			// allocator branches in vlib/builtin (allocation.c.v, prealloc.c.v).
+			if 'prealloc' !in user_defines {
+				user_defines << 'prealloc'
+			}
+			i++
+		} else if args[i] == '-enable-globals' {
 			i++
 		} else if args[i].starts_with('-') {
 			i++
@@ -234,9 +343,23 @@ fn main() {
 	if building_v || cmd_v_build {
 		if no_parallel {
 			user_defines = user_defines.filter(it != 'parallel')
+			if 'v3_no_parallel' !in user_defines {
+				user_defines << 'v3_no_parallel'
+			}
 		} else if 'parallel' !in user_defines {
 			user_defines << 'parallel'
 		}
+		// The compiler is a single-shot batch program — exactly what the
+		// -prealloc bump arena is for (~18% less CPU across its
+		// allocation-heavy phases) — so compiler builds default to it.
+		// -no-prealloc opts out (also restores tcc linking: tcc has no
+		// thread-local storage support, so prealloc builds link with cc).
+		if !no_prealloc && 'prealloc' !in user_defines {
+			user_defines << 'prealloc'
+		}
+	}
+	if no_prealloc {
+		user_defines = user_defines.filter(it != 'prealloc')
 	}
 
 	mut bin_file := ''
@@ -305,15 +428,22 @@ fn main() {
 	prefs.backend = backend
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
-	prefs.vroot = resolve_vroot(prefs.vroot)
+	prefs.vroot = resolve_vroot_for_input(prefs.vroot, input_file)
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
+	prefs.is_prod = is_prod
 	mut p := parser.Parser.new(prefs)
 
 	mut files := []string{}
 	builtin_dir := builtin_dir_for_vroot(prefs.vroot)
-	files << pref.get_v_files_from_dir(builtin_dir, prefs.user_defines, prefs.target_os)
-	p.parse_files(files)
+	mut builtin_defines := prefs.user_defines.clone()
+	if ownership_mode && 'ownership' !in builtin_defines {
+		builtin_defines << 'ownership'
+	}
+	files << pref.get_v_files_from_dir(builtin_dir, builtin_defines, prefs.target_os)
+	mut parse_was_parallel := false
+	_, builtin_parse_parallel := p.parse_files_dispatch(files, !no_parallel)
+	parse_was_parallel = parse_was_parallel || builtin_parse_parallel
 	mut a := p.a
 	a.user_code_start = a.nodes.len
 
@@ -332,22 +462,23 @@ fn main() {
 	} else {
 		user_files << input_file
 	}
-	for uf in user_files {
-		p.parse_into(uf)
-	}
+	_, user_parse_parallel := p.parse_files_dispatch(user_files, !no_parallel)
+	parse_was_parallel = parse_was_parallel || user_parse_parallel
 	test_files := test_input_files(user_files, backend)
 
 	seed_implicit_sync_import(mut a)
+	seed_implicit_embed_file_import(mut a)
 
 	// Resolve imports recursively
-	resolve_imports(mut a, mut p, prefs, user_files)
+	import_parse_parallel := resolve_imports(mut a, mut p, prefs, user_files, !no_parallel)
+	parse_was_parallel = parse_was_parallel || import_parse_parallel
 	diagnostic_root := if is_selfhost {
 		diagnostic_root_for_input(input_file, user_files)
 	} else {
 		''
 	}
 
-	b.step('parse')
+	b.step_parallel('parse', parse_was_parallel)
 
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
@@ -358,7 +489,7 @@ fn main() {
 	pre_tc.diagnose_unknown_calls = true
 	set_diagnostic_files(mut pre_tc, user_files)
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-	pre_tc.check_semantics()
+	check_was_parallel := pre_tc.check_semantics_opt(parallel_transform)
 	if pre_tc.errors.len > 0 {
 		print_type_errors(pre_tc.errors)
 		exit(1)
@@ -370,7 +501,7 @@ fn main() {
 		}
 		exit(1)
 	}
-	b.step('check')
+	b.step_parallel('check', check_was_parallel)
 
 	if backend == 'eval' {
 		$if !skip_eval ? {
@@ -467,6 +598,8 @@ fn main() {
 		c_standard := c_standard_flag(prefs.c99)
 		mut g := cgen.FlatGen.new()
 		g.set_c99_mode(prefs.c99)
+		g.set_prealloc('prealloc' in prefs.user_defines)
+		g.set_compiler_vexe(prefs.vexe)
 		c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, no_parallel, test_files)
 		if !write_text_file_raw(output_file, c_code) {
 			eprintln('error writing ${output_file}')
@@ -489,6 +622,8 @@ fn main() {
 			exit(1)
 		}
 		c_flags := resolved_c_flags.join(' ')
+		needs_objective_c := c_flags_need_objective_c(resolved_c_flags)
+		cc_lang_flag := if needs_objective_c { '-x objective-c ' } else { '' }
 		// Compile inside a per-output build dir, using constant relative source/output basenames,
 		// then move the result to bin_file. On macOS arm64 tcc bakes the -o basename into the
 		// ad-hoc code-signature identifier and the input .c path into the symbol table, so building
@@ -508,18 +643,21 @@ fn main() {
 		mut cc_cmd := ''
 		mut exec_cmd := ''
 		mut result := os.Result{}
-		if !is_prod {
+		mut tried_tcc := false
+		if !is_prod && !needs_objective_c {
+			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			cc_cmd = '${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c ${c_flags} -lm'
+			atomic_s_arg := tcc_atomic_s_arg(prefs)
+			cc_cmd = '${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o ${bin_file} ${output_file}${atomic_s_arg} ${c_flags} -lm'
+			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${tcc_includes} ${tcc_lib} ${warn_flags} -o out src.c${atomic_s_arg} ${c_flags} -lm'
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
 		}
-		if is_prod || result.exit_code != 0 {
+		if is_prod || !tried_tcc || result.exit_code != 0 {
 			if result.exit_code != 0 && result.output.len > 0 {
 				eprintln('  tcc error: ${result.output.trim_space()}')
 			}
@@ -528,8 +666,13 @@ fn main() {
 			} else {
 				''
 			}
-			cc_cmd = 'cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o ${bin_file} ${output_file} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o out src.c ${c_flags} -lm'
+			if needs_objective_c {
+				cc_cmd = 'cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o ${bin_file} -x objective-c ${output_file} -x none ${c_flags} -lm'
+				exec_cmd = 'cd ${cc_dir} && cc ${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o out -x objective-c src.c -x none ${c_flags} -lm'
+			} else {
+				cc_cmd = 'cc ${cc_lang_flag}${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o ${bin_file} ${output_file} ${c_flags} -lm'
+				exec_cmd = 'cd ${cc_dir} && cc ${cc_lang_flag}${c_standard} ${opt_flag}${warn_flags} -Wno-int-conversion${stack_flag} -o out src.c ${c_flags} -lm'
+			}
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
 			if result.exit_code != 0 {
@@ -545,6 +688,19 @@ fn main() {
 		os.rm(cc_src) or {}
 		os.rmdir(cc_dir) or {}
 		b.step('cc')
+		if should_run {
+			run_result := run_binary_with_stderr_to_stdout(bin_file, run_args)
+			if run_result != 0 {
+				exit(run_result)
+			}
+			b.step('run')
+		} else if test_files.len > 0 && !explicit_output {
+			test_result := run_test_binary(bin_file)
+			if test_result != 0 {
+				exit(test_result)
+			}
+			b.step('test')
+		}
 	}
 
 	b.print_report()
@@ -581,7 +737,7 @@ fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) 
 	for file in user_files {
 		if pref.is_test_file_for_backend(file, prefs.backend) {
 			module_name := declared_module_in_file(file)
-			if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
+			if module_name.len > 0 && module_name != 'builtin' {
 				for module_file in same_dir_module_source_files(file, module_name, prefs) {
 					append_unique_file(mut expanded, mut seen, module_file)
 				}
@@ -693,12 +849,34 @@ fn nearest_vmod_root_for_file(path string) string {
 	return ''
 }
 
-// resolve_vroot resolves resolve vroot information for v3 entry point.
-fn resolve_vroot(initial string) string {
+// resolve_vroot_for_input resolves the V repo root for the compiler being built.
+fn resolve_vroot_for_input(initial string, input_file string) string {
+	if root := nearest_vroot_for_path(input_file) {
+		return root
+	}
+	if root := nearest_vroot_for_path(os.getwd()) {
+		return root
+	}
 	if is_valid_vroot(initial) {
 		return initial
 	}
-	mut dir := os.getwd()
+	return initial
+}
+
+fn nearest_vroot_for_path(path string) ?string {
+	if path.len == 0 {
+		return none
+	}
+	mut dir := path
+	if !os.is_abs_path(dir) {
+		cwd := os.getwd()
+		if cwd.len > 0 {
+			dir = os.join_path_single(cwd, dir)
+		}
+	}
+	if !os.is_dir(dir) {
+		dir = os.dir(dir)
+	}
 	for _ in 0 .. 8 {
 		if is_valid_vroot(dir) {
 			return dir
@@ -709,7 +887,7 @@ fn resolve_vroot(initial string) string {
 		}
 		dir = parent
 	}
-	return initial
+	return none
 }
 
 // is_valid_vroot reports whether is valid vroot applies in v3 entry point.
@@ -735,7 +913,8 @@ fn print_type_errors(errors []types.TypeError) {
 	eprintln('type checker found ${errors.len} error(s):')
 	max_errors := if errors.len < 20 { errors.len } else { 20 }
 	for ei in 0 .. max_errors {
-		eprintln('  ${errors[ei].msg}')
+		err := errors[ei]
+		eprintln('  [${err.file}] ${err.node_pos} node=${err.node} ${err.node_kind} `${err.node_value}`: ${err.msg}')
 	}
 	if errors.len > 20 {
 		eprintln('  ... and ${errors.len - 20} more')
@@ -962,30 +1141,113 @@ fn skipped_backend_modules(prefs &pref.Preferences) []string {
 }
 
 fn seed_implicit_sync_import(mut a flat.FlatAst) {
-	if !ast_needs_sync_import(a) || ast_has_import(a, 'sync') {
-		return
+	if ast_should_seed_sync_import(a, a.nodes.len, false) {
+		a.add_node(sync_import_node())
 	}
-	a.add_node(flat.Node{
+}
+
+fn seed_implicit_embed_file_import(mut a flat.FlatAst) {
+	if ast_should_seed_embed_file_import(a, a.nodes.len, false) {
+		a.add_node(embed_file_import_node())
+	}
+}
+
+// ast_should_seed_sync_import reports whether a synthetic `import sync` should be
+// seeded for the module whose parsed region ends at end_node. The need and
+// already-imported scans are both bounded to end_node — the module's serial
+// boundary — so an explicit import in a *later* module of the same wave (already
+// parsed into the array, but not yet reached in serial order) can neither suppress
+// nor be conflated with this module's seed. already_added carries the "a synthetic
+// import was already seeded for an earlier module in this wave" state the bounded
+// scan cannot see, because the wave's synthetic nodes are spliced in only after
+// every boundary has been checked; it keeps the seed global-once.
+fn ast_should_seed_sync_import(a &flat.FlatAst, end_node int, already_added bool) bool {
+	return !already_added && ast_needs_sync_import(a, end_node)
+		&& !ast_has_import_upto(a, 'sync', end_node)
+}
+
+// ast_should_seed_embed_file_import bounds its scans like
+// ast_should_seed_sync_import.
+fn ast_should_seed_embed_file_import(a &flat.FlatAst, end_node int, already_added bool) bool {
+	return !already_added && ast_needs_embed_file_import(a, end_node)
+		&& !ast_has_import_upto(a, 'v.embed_file', end_node)
+}
+
+fn sync_import_node() flat.Node {
+	return flat.Node{
 		kind:  .import_decl
 		value: 'sync'
 		typ:   'sync'
-	})
+	}
 }
 
-fn ast_needs_sync_import(a &flat.FlatAst) bool {
-	for node in a.nodes {
+fn embed_file_import_node() flat.Node {
+	return flat.Node{
+		kind:  .import_decl
+		value: 'v.embed_file'
+		typ:   'embed_file'
+	}
+}
+
+fn ast_needs_sync_import(a &flat.FlatAst, end_node int) bool {
+	for i in 0 .. end_node {
+		node := a.nodes[i]
 		if node.kind == .lock_expr {
 			return true
 		}
 		if node.kind == .field_decl && type_text_is_shared(node.typ) {
 			return true
 		}
+		if node.kind == .struct_init && node.value.starts_with('chan ') {
+			return true
+		}
+		if node.kind == .infix && node.op == .arrow {
+			return true
+		}
+		if node.kind == .prefix && node.op == .arrow {
+			return true
+		}
+		if type_text_is_channel(node.typ) {
+			return true
+		}
 	}
 	return false
 }
 
-fn ast_has_import(a &flat.FlatAst, name string) bool {
-	for node in a.nodes {
+fn type_text_is_channel(typ string) bool {
+	mut clean := typ.trim_space()
+	for {
+		if clean.starts_with('&') {
+			clean = clean[1..].trim_space()
+			continue
+		}
+		if clean.starts_with('mut ') {
+			clean = clean[4..].trim_space()
+			continue
+		}
+		break
+	}
+	return clean.starts_with('chan ') || clean == 'chan'
+}
+
+fn ast_needs_embed_file_import(a &flat.FlatAst, end_node int) bool {
+	for i in 0 .. end_node {
+		node := a.nodes[i]
+		if node.kind == .struct_init && node.value == 'embed_file.EmbedFileData' {
+			return true
+		}
+	}
+	return false
+}
+
+// ast_has_import_upto reports whether an import of name already exists among the
+// first end_node nodes. The wave seeds bound this to a module's serial boundary
+// so later modules parsed into the same wave cannot suppress an earlier module's
+// synthetic import; synthetic nodes appended past that boundary are tracked by
+// the caller's already_added flag instead.
+fn ast_has_import_upto(a &flat.FlatAst, name string, end_node int) bool {
+	for i in 0 .. end_node {
+		node := a.nodes[i]
 		if node.kind == .import_decl && node.value == name {
 			return true
 		}
@@ -997,8 +1259,69 @@ fn type_text_is_shared(raw string) bool {
 	return raw.trim_space().starts_with('shared ')
 }
 
+// SyntheticInsertion records a childless synthetic import node to splice into the
+// flat AST before an original-array node index.
+struct SyntheticInsertion {
+	pos  int // original (pre-insertion) node index to insert before
+	node flat.Node
+}
+
+// insert_synthetic_imports rebuilds a.nodes with each synthetic import spliced in
+// before its recorded original-array position, so the next resolver pass scans a
+// module's synthetic import right after that module's own region — in the same
+// order serial one-module-at-a-time resolution appended and scanned it, before
+// the later wave modules were parsed. Every absolute node index is remapped to
+// the shifted layout: an original index j moves right by the number of insertions
+// at positions <= j. The synthetic nodes are childless, so a.children keeps its
+// length and only its stored NodeIds shift. insertions must be sorted ascending
+// by pos (equal positions keep insertion order); the boundary loop produces them
+// in strictly increasing region order.
+fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion) {
+	if insertions.len == 0 {
+		return
+	}
+	old_len := a.nodes.len
+	mut new_nodes := []flat.Node{cap: old_len + insertions.len}
+	mut ins_idx := 0
+	for i in 0 .. old_len {
+		for ins_idx < insertions.len && insertions[ins_idx].pos == i {
+			new_nodes << insertions[ins_idx].node
+			ins_idx++
+		}
+		new_nodes << a.nodes[i]
+	}
+	// Insertions at pos == old_len append at the very end (the last wave module's
+	// region ends at the array tail).
+	for ins_idx < insertions.len {
+		new_nodes << insertions[ins_idx].node
+		ins_idx++
+	}
+	a.nodes = new_nodes
+	for k in 0 .. a.children.len {
+		cid := int(a.children[k])
+		if cid >= 0 {
+			a.children[k] = flat.NodeId(cid + synthetic_index_shift(insertions, cid))
+		}
+	}
+	a.user_code_start += synthetic_index_shift(insertions, a.user_code_start)
+}
+
+// synthetic_index_shift returns how far an original node index moves after the
+// insertions: the count of insertions whose position is at or before it.
+fn synthetic_index_shift(insertions []SyntheticInsertion, idx int) int {
+	mut shift := 0
+	for ins in insertions {
+		if ins.pos <= idx {
+			shift++
+		} else {
+			break
+		}
+	}
+	return shift
+}
+
 // resolve_imports resolves resolve imports information for v3 entry point.
-fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string) {
+fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool) bool {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
@@ -1023,68 +1346,137 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut module_path_cache := map[string]string{}
 	mut module_identity_cache := map[string]string{}
 
+	mut was_parallel := false
 	mut cur_file := first_file
 	mut node_idx := 0
-	for node_idx < a.nodes.len {
-		node := a.nodes[node_idx]
-		if node.kind == .file && node.value.len > 0 {
-			cur_file = node.value
-			node_idx++
-			continue
-		}
-		if node.kind != .import_decl {
-			node_idx++
-			continue
-		}
-		mod_name := node.value
-		if module_identity := parsed_module_identities[mod_name] {
+	// The implicit sync/embed_file seeds are global-once: the serial loop added
+	// each at the first module that needed it and never again. These flags carry
+	// that "already seeded" state across module boundaries and waves. Within a
+	// wave the synthetic nodes are only spliced in after every boundary has been
+	// checked, so a later module's bounded already-imported scan cannot yet see an
+	// earlier module's pending seed; the flags stand in for it.
+	mut synthetic_sync_added := false
+	mut synthetic_embed_file_added := false
+	for {
+		// Collect one wave: every not-yet-parsed module imported by the nodes
+		// scanned so far. Parsing appends at the end of the node array and the
+		// scan proceeds in node order, so batching a wave and appending its
+		// modules in discovery order reproduces the breadth-first module layout
+		// the previous parse-one-module-inline loop produced — while giving the
+		// parallel parser whole waves of files to split across threads.
+		mut wave_files := []string{}
+		mut wave_canon := []string{}
+		mut wave_module_file_ends := []int{}
+		for node_idx < a.nodes.len {
+			node := a.nodes[node_idx]
+			if node.kind == .file && node.value.len > 0 {
+				cur_file = node.value
+				node_idx++
+				continue
+			}
+			if node.kind != .import_decl {
+				node_idx++
+				continue
+			}
+			mod_name := node.value
+			if module_identity := parsed_module_identities[mod_name] {
+				if module_identity.len > 0 {
+					a.nodes[node_idx].value = module_identity
+				}
+				node_idx++
+				continue
+			}
+			if mod_name in parsed_modules {
+				node_idx++
+				continue
+			}
+
+			importing_file := if cur_file.len > 0 { cur_file } else { first_file }
+			mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
+				project_root, mut module_path_cache)
+			module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
+				project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
 			if module_identity.len > 0 {
 				a.nodes[node_idx].value = module_identity
 			}
-			node_idx++
-			continue
-		}
-		if mod_name in parsed_modules {
-			node_idx++
-			continue
-		}
-
-		importing_file := if cur_file.len > 0 { cur_file } else { first_file }
-		mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
-			project_root, mut module_path_cache)
-		module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
-			project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
-		if module_identity.len > 0 {
-			a.nodes[node_idx].value = module_identity
-		}
-		mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
-		if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
-			node_idx++
-			continue
-		}
-		parsed_modules[mod_name] = true
-		if mod_dir_exists && module_identity.len > 0 {
-			parsed_modules[module_identity] = true
-		}
-		parsed_module_identities[mod_name] = if module_identity.len > 0 {
-			module_identity
-		} else {
-			mod_name
-		}
-
-		if mod_dir_exists {
-			mod_files := pref.get_v_files_from_dir(mod_dir, prefs.user_defines, prefs.target_os)
-			for mf in mod_files {
-				first_node := a.nodes.len
-				p.parse_into(mf)
-				if module_identity == mod_name {
-					canonicalize_imported_module_name(mut a, first_node, mod_name)
-				}
+			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
+			if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
+				node_idx++
+				continue
 			}
-			seed_implicit_sync_import(mut a)
+			parsed_modules[mod_name] = true
+			if mod_dir_exists && module_identity.len > 0 {
+				parsed_modules[module_identity] = true
+			}
+			parsed_module_identities[mod_name] = if module_identity.len > 0 {
+				module_identity
+			} else {
+				mod_name
+			}
+
+			if mod_dir_exists {
+				mod_files := pref.get_v_files_from_dir(mod_dir, prefs.user_defines, prefs.target_os)
+				canon := if module_identity == mod_name { mod_name } else { '' }
+				for mf in mod_files {
+					wave_files << mf
+					wave_canon << canon
+				}
+				wave_module_file_ends << wave_files.len
+			}
+			node_idx++
 		}
-		node_idx++
+		if wave_files.len == 0 {
+			break
+		}
+		starts, wave_parallel := p.parse_files_dispatch(wave_files, allow_parallel)
+		was_parallel = was_parallel || wave_parallel
+		wave_end_nodes := a.nodes.len
+		for i, canon in wave_canon {
+			if canon.len == 0 {
+				continue
+			}
+			end_node := if i + 1 < starts.len { starts[i + 1] } else { wave_end_nodes }
+			canonicalize_imported_module_name(mut a, starts[i], end_node, canon)
+		}
+		// Re-check the implicit imports at each module boundary, in parse order,
+		// with each scan bounded to the nodes that existed at that boundary. This
+		// fires the seeds for exactly the module the serial loop's after-every-
+		// module check would have fired them for. The synthetic nodes are then
+		// spliced in right after their triggering module's region (region_end),
+		// not at the wave tail, so the next pass scans an earlier module's
+		// synthetic import before the later wave modules' imports — matching serial
+		// order — and the `.file` marker preceding each synthetic is its own
+		// module's last file, so module-path resolution uses the right context.
+		mut insertions := []SyntheticInsertion{}
+		mut module_start := 0
+		for module_file_end in wave_module_file_ends {
+			if module_file_end == module_start {
+				continue
+			}
+			region_end := if module_file_end < starts.len {
+				starts[module_file_end]
+			} else {
+				wave_end_nodes
+			}
+			if ast_should_seed_sync_import(a, region_end, synthetic_sync_added) {
+				insertions << SyntheticInsertion{
+					pos:  region_end
+					node: sync_import_node()
+				}
+				synthetic_sync_added = true
+			}
+			if ast_should_seed_embed_file_import(a, region_end, synthetic_embed_file_added) {
+				insertions << SyntheticInsertion{
+					pos:  region_end
+					node: embed_file_import_node()
+				}
+				synthetic_embed_file_added = true
+			}
+			module_start = module_file_end
+		}
+		insert_synthetic_imports(mut a, insertions)
 	}
+	return was_parallel
 }
 
 fn seed_initial_modules(a &flat.FlatAst, initial_files []string, mut parsed_modules map[string]bool) {
@@ -1107,12 +1499,12 @@ fn seed_initial_modules(a &flat.FlatAst, initial_files []string, mut parsed_modu
 	}
 }
 
-fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, import_path string) {
+fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, end_node int, import_path string) {
 	if import_path.len == 0 {
 		return
 	}
 	short_name := import_path.all_after_last('.')
-	for i in first_node .. a.nodes.len {
+	for i in first_node .. end_node {
 		if a.nodes[i].kind == .module_decl && a.nodes[i].value == short_name {
 			a.nodes[i].value = import_path
 		}
@@ -1135,6 +1527,21 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		return import_path
 	}
 	short_name := import_path.all_after_last('.')
+	if import_dir.len > 0 {
+		module_root := module_root_for_import_dir(import_path, import_dir)
+		short_sibling_dir := os.join_path_single(module_root, short_name)
+		if os.is_dir(short_sibling_dir)
+			&& os.real_path(short_sibling_dir) != os.real_path(import_dir) {
+			return import_path
+		}
+	}
+	if project_root.len > 0 && import_dir.len > 0 {
+		short_project_dir := os.join_path_single(project_root, short_name)
+		if os.is_dir(short_project_dir)
+			&& os.real_path(short_project_dir) != os.real_path(import_dir) {
+			return import_path
+		}
+	}
 	short_dir := resolve_project_or_pref_module_path_cached(prefs, short_name, importing_file,
 		project_root, mut path_cache)
 	if short_dir.len > 0 && import_dir.len > 0 && os.is_dir(short_dir)
@@ -1142,6 +1549,18 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 		return import_path
 	}
 	return short_name
+}
+
+fn module_root_for_import_dir(import_path string, import_dir string) string {
+	mut root := import_dir
+	for _ in import_path.split('.') {
+		parent := os.dir(root)
+		if parent == root {
+			return root
+		}
+		root = parent
+	}
+	return root
 }
 
 fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name string, importing_file string, project_root string, mut cache map[string]string) string {

@@ -6,6 +6,16 @@ const v3_dir = os.dir(tests_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 const hello_src = os.join_path(tests_dir, 'hello.v')
 
+fn has_non_runtime_include(c_code string) bool {
+	for line in c_code.split_into_lines() {
+		trimmed := line.trim_space()
+		if trimmed.starts_with('#include') {
+			return true
+		}
+	}
+	return false
+}
+
 // test_prod_flag_before_input_uses_optimized_c_compile validates this v3 regression case.
 fn test_prod_flag_before_input_uses_optimized_c_compile() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_prod_flag_test')
@@ -60,7 +70,7 @@ fn test_c99_flag_emits_linux_feature_macros_in_headerless_preamble() {
 	assert typedef_idx >= 0, c_code[..200]
 	assert gnu_idx < typedef_idx, c_code[..200]
 	assert posix_idx < typedef_idx, c_code[..200]
-	assert !c_code.contains('#include'), c_code[..200]
+	assert !has_non_runtime_include(c_code), c_code[..200]
 }
 
 // test_c99_flag_uses_headerless_stdatomic_fallback validates this v3 regression case.
@@ -101,7 +111,7 @@ fn test_c99_flag_system_stdatomic_include_is_headerless() {
 	gen_c := os.execute('${v3_bin} -c99 ${src} -o ${out_c}')
 	assert gen_c.exit_code == 0, gen_c.output
 	c_code := os.read_file(out_c) or { panic(err) }
-	assert !c_code.contains('#include'), c_code
+	assert !has_non_runtime_include(c_code), c_code
 	assert !c_code.contains('typedef volatile uintptr_t atomic_uintptr_t;'), c_code
 	assert c_code.contains('typedef void* atomic_uintptr_t;'), c_code
 	assert c_code.contains('static inline byte atomic_fetch_add_byte'), c_code

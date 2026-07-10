@@ -215,7 +215,7 @@ pub fn (mut g Gen) literal_to_constant_expression(typ_ ast.Type, init ast.Expr) 
 			return wasm.constexpr_value(int(init.val))
 		}
 		ast.CharLiteral {
-			return wasm.constexpr_value(int(init.val.runes()[0]))
+			return wasm.constexpr_value(int(ast.char_literal_rune_value(init.val)?))
 		}
 		ast.FloatLiteral {
 			if typ == ast.f32_type {

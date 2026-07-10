@@ -188,6 +188,277 @@ fn main() {
 	assert used['string__plus']
 }
 
+fn test_generic_struct_operator_roots_operator_dependencies() {
+	used := mark_used_source('generic_struct_operator_dependencies', '
+struct Time {
+	seconds int
+}
+
+fn (t Time) unix() int {
+	return t.seconds
+}
+
+fn (a Time) < (b Time) bool {
+	return a.unix() < b.unix()
+}
+
+fn min[T](a T, b T) T {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+fn main() {
+	a := Time{
+		seconds: 1
+	}
+	b := Time{
+		seconds: 2
+	}
+	_ := min(a, b)
+}
+')
+	assert used['Time.<']
+	assert used['Time.unix']
+}
+
+fn test_for_in_const_array_roots_receiver_method() {
+	used := mark_used_source('for_in_const_array_receiver_method', '
+enum FlagId {
+	after_context
+}
+
+struct Doc {}
+
+const flags = [FlagId.after_context]
+
+fn (id FlagId) doc_short() Doc {
+	_ := id
+	return Doc{}
+}
+
+fn (d Doc) replace(from string, to string) string {
+	_ := d
+	_ := from
+	_ := to
+	return "Show n lines after each match."
+}
+
+fn main() {
+	for flag in flags {
+		_ := flag.doc_short().replace("NUM", "n")
+	}
+}
+')
+	assert used['FlagId.doc_short']
+	assert used['Doc.replace']
+}
+
+fn test_error_argument_roots_nested_receiver_and_static_methods() {
+	used := mark_used_source('error_arg_nested_receiver_static_methods', '
+struct ErrorKind {}
+
+struct GlobError {
+	kind ErrorKind
+}
+
+struct Parser {}
+
+fn ErrorKind.unopened_alternates() ErrorKind {
+	return ErrorKind{}
+}
+
+fn (e GlobError) msg() string {
+	_ := e
+	return "unopened alternates"
+}
+
+fn (p Parser) mk_error(kind ErrorKind) GlobError {
+	return GlobError{
+		kind: kind
+	}
+}
+
+fn (mut p Parser) pop_alternate() ! {
+	return error(p.mk_error(ErrorKind.unopened_alternates()).msg())
+}
+
+fn main() {
+	mut p := Parser{}
+	p.pop_alternate() or { return }
+}
+')
+	assert used['Parser.mk_error']
+	assert used['GlobError.msg']
+	assert used['ErrorKind.unopened_alternates']
+}
+
+fn test_nested_fn_literal_roots_callback_helper_dependencies() {
+	used := mark_used_source('nested_fn_literal_callback_helpers', '
+struct Match {}
+
+fn Match.new() Match {
+	return Match{}
+}
+
+struct Caps {}
+
+fn Caps.overall(m Match) Caps {
+	_ := m
+	return Caps{}
+}
+
+fn (c Caps) get(i int) ?Match {
+	_ := c
+	_ := i
+	return Match{}
+}
+
+fn no_index(name string) ?int {
+	_ := name
+	return none
+}
+
+fn append_match(mut dst []u8, m Match) {
+	_ := m
+	dst << u8(1)
+}
+
+fn interpolate(append fn (int, mut []u8), name_to_index fn (string) ?int, mut dst []u8) {
+	_ := name_to_index
+	append(0, mut dst)
+}
+
+fn find_iter(matched fn (Match) bool) {
+	_ := matched(Match.new())
+}
+
+fn replace(mut dst []u8) {
+	find_iter(fn [mut dst] (m Match) bool {
+		caps := Caps.overall(m)
+		interpolate(fn [caps] (i int, mut out []u8) {
+			cap_match := caps.get(i) or {
+				return
+			}
+			append_match(mut out, cap_match)
+		}, no_index, mut dst)
+		return true
+	})
+}
+
+fn main() {
+	mut dst := []u8{}
+	replace(mut dst)
+}
+')
+	assert used['Caps.overall']
+	assert used['Caps.get']
+	assert used['append_match']
+	assert used['interpolate']
+	assert used['no_index']
+	assert used['Match.new']
+}
+
+fn test_imported_nested_fn_literal_roots_private_callback_helpers() {
+	a, tc := parse_checked_project('imported_nested_fn_literal_callback_helpers', {
+		'main.v':     'module main
+
+import worker
+
+fn main() {
+	mut dst := []u8{}
+	worker.replace(mut dst)
+}
+'
+		'worker/w.v': 'module worker
+
+struct Match {}
+
+fn Match.new() Match {
+	return Match{}
+}
+
+struct Caps {}
+
+fn Caps.overall(m Match) Caps {
+	_ := m
+	return Caps{}
+}
+
+fn (c Caps) get(i int) ?Match {
+	_ := c
+	_ := i
+	return Match{}
+}
+
+fn no_index(name string) ?int {
+	_ := name
+	return none
+}
+
+fn append_match(mut dst []u8, m Match) {
+	_ := m
+	dst << u8(1)
+}
+
+fn interpolate(append fn (int, mut []u8), name_to_index fn (string) ?int, mut dst []u8) {
+	_ := name_to_index
+	append(0, mut dst)
+}
+
+fn find_iter(matched fn (Match) bool) {
+	_ := matched(Match.new())
+}
+
+pub fn replace(mut dst []u8) {
+	find_iter(fn [mut dst] (m Match) bool {
+		caps := Caps.overall(m)
+		interpolate(fn [caps] (i int, mut out []u8) {
+			cap_match := caps.get(i) or {
+				return
+			}
+			append_match(mut out, cap_match)
+		}, no_index, mut dst)
+		return true
+	})
+}
+'
+	}, 'main.v')
+	used := markused.mark_used(a, tc)
+	assert used['worker.Caps.overall']
+	assert used['worker.Caps.get']
+	assert used['worker.append_match']
+	assert used['worker.interpolate']
+	assert used['worker.no_index']
+	assert used['worker.Match.new']
+}
+
+fn test_map_str_seeds_string_plus_runtime_helper() {
+	used := mark_used_source('map_str_string_plus', '
+fn render(m map[string]int) string {
+	return m.str()
+}
+
+fn main() {
+	_ := render(map[string]int{})
+}
+')
+	assert used['string__plus']
+}
+
+fn test_print_map_seeds_string_plus_runtime_helper() {
+	used := mark_used_source('print_map_string_plus', '
+fn main() {
+	m := {
+		"a": 1
+	}
+	println(m)
+}
+')
+	assert used['string__plus']
+}
+
 fn test_moduleless_export_after_module_file_is_rooted() {
 	a, tc := parse_checked_project_in_order('moduleless_export_after_module', [
 		'helper/helper.v',
@@ -294,6 +565,105 @@ fn main() {
 ')
 	assert used['Reader.read']
 	assert used['File.read']
+}
+
+fn test_module_global_interface_dispatch_keeps_dispatch_stub() {
+	mut a, mut tc := parse_checked_project('module_global_interface_dispatch', {
+		'main.v':               'module main
+
+import m
+
+fn main() {
+	m.error("x")
+}
+'
+		'm/default.c.v':        'module m
+
+__global default_logger &Logger
+
+pub fn error(s string) {
+	default_logger.error(s)
+}
+'
+		'm/logger_interface.v': 'module m
+
+pub enum Level {
+	info
+}
+
+pub interface Logger {
+	get_level() Level
+mut:
+	fatal(s string)
+	error(s string)
+	warn(s string)
+	info(s string)
+	debug(s string)
+	set_level(level Level)
+	set_always_flush(should_flush bool)
+	free()
+}
+'
+		'm/safe_log.v':         'module m
+
+pub struct BaseLog {}
+
+pub struct ThreadSafeLog {
+	BaseLog
+}
+
+pub fn (l BaseLog) get_level() Level {
+	_ := l
+	return .info
+}
+
+pub fn (mut l ThreadSafeLog) fatal(s string) {
+	_ := l
+	_ := s
+}
+
+pub fn (mut l ThreadSafeLog) error(s string) {}
+
+pub fn (mut l ThreadSafeLog) warn(s string) {
+	_ := l
+	_ := s
+}
+
+pub fn (mut l ThreadSafeLog) info(s string) {
+	_ := l
+	_ := s
+}
+
+pub fn (mut l ThreadSafeLog) debug(s string) {
+	_ := l
+	_ := s
+}
+
+pub fn (mut l ThreadSafeLog) set_level(level Level) {
+	_ := l
+	_ := level
+}
+
+pub fn (mut l ThreadSafeLog) set_always_flush(should_flush bool) {
+	_ := l
+	_ := should_flush
+}
+
+pub fn (mut l ThreadSafeLog) free() {
+	_ := l
+}
+'
+	}, 'main.v')
+	mut used := markused.mark_used(a, tc)
+	assert used['m.Logger.error']
+	assert used['m.ThreadSafeLog.error']
+	assert used['m.BaseLog.get_level'] == false
+	used = transform.transform_with_used(mut a, tc, used)
+	assert used['m.Logger.error']
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('m__Logger__error(')
+	assert c_code.contains('case 1: m__ThreadSafeLog__error')
 }
 
 fn test_unreachable_interface_dispatch_stub_is_not_emitted_after_used_filter_transform() {
@@ -575,6 +945,23 @@ fn test_reachable_main_fn_literal_is_emitted_after_used_filter_transform() {
 	assert c_code.contains('callback_value(__anon_fn_')
 }
 
+fn test_reachable_imported_fn_literal_roots_private_callback_helpers() {
+	mut a, mut tc := parse_checked_project('reachable_imported_fn_literal_helpers', {
+		'printer/printer.v': 'module printer\n\nfn helper() int {\n\treturn 41\n}\n\nfn named(name string) int {\n\treturn name.len\n}\n\nfn consume(cb fn () int, name_to_index fn (string) int) int {\n\treturn cb() + name_to_index("x")\n}\n\npub fn run() int {\n\treturn consume(fn () int {\n\t\treturn helper()\n\t}, named)\n}\n'
+		'main.v':            'module main\n\nimport printer\n\nfn main() {\n\t_ := printer.run()\n}\n'
+	}, 'main.v')
+	mut used := markused.mark_used(a, tc)
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('printer__helper('), c_code
+	assert c_code.contains('printer__named('), c_code
+	assert c_code.contains('printer__consume(printer____anon_fn_'), c_code
+}
+
 fn test_top_level_fn_value_roots_helper() {
 	mut a, mut tc := parse_checked_source('top_level_fn_value_helper_cgen',
 		'module main\n\nfn helper() int {\n\treturn 41\n}\n\nf := helper\nprintln(int_str(f() + 1))\n')
@@ -613,6 +1000,50 @@ println(int_str(f() + 1))
 	assert c_code.contains('helper('), c_code
 }
 
+fn test_same_module_unqualified_homonym_call_uses_qualified_key() {
+	a, tc := parse_checked_project('same_module_unqualified_homonym_call', {
+		'main.v': 'module main
+
+import a
+
+fn main() {
+	println(a.glob_match(false))
+}
+'
+		'a/a.v':  'module a
+
+fn helper() string {
+	return "a"
+}
+
+pub fn glob_match(flag bool) string {
+	if !flag {
+		return helper()
+	}
+	return "other"
+}
+'
+		'b/b.v':  'module b
+
+fn helper() string {
+	return "b"
+}
+
+pub fn glob_match(flag bool) string {
+	if !flag {
+		return helper()
+	}
+	return "other"
+}
+'
+	}, 'main.v')
+	used := markused.mark_used(a, tc)
+	assert used['a.glob_match']
+	assert used['a.helper']
+	assert !used['b.glob_match']
+	assert !used['b.helper']
+}
+
 fn test_top_level_fn_value_respects_prior_local_shadow() {
 	used := mark_used_source('top_level_fn_value_prior_shadow', '
 fn helper() int {
@@ -642,6 +1073,24 @@ fn main() {
 	_ = cb
 }
 ')
+	assert used['cb']
+}
+
+fn test_fn_value_call_callee_call_roots_inner_factory() {
+	used := mark_used_source('fn_value_call_callee_call', '
+fn cb() int {
+	return 7
+}
+
+fn make_cb() fn () int {
+	return cb
+}
+
+fn main() {
+	_ := make_cb()()
+}
+')
+	assert used['make_cb']
 	assert used['cb']
 }
 
@@ -850,6 +1299,27 @@ fn main() {
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
 	assert c_code.contains('bool__str(')
+}
+
+// test_f32_interpolation_lowers_to_formatter_after_used_filter_transform
+// validates this v3 regression case.
+fn test_f32_interpolation_lowers_to_formatter_after_used_filter_transform() {
+	mut a, mut tc := parse_checked_source('f32_interp_formatter_cgen', '
+fn main() {
+	value := f32(1.25)
+	_ := "\${value}"
+}
+')
+	mut used := markused.mark_used(a, tc)
+	assert used['f32.str']
+	assert used['f32__str']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('f32__str(')
 }
 
 // test_print_bool_lowers_to_formatter_after_used_filter_transform

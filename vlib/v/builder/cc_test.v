@@ -485,9 +485,43 @@ fn test_shared_windows_builds_do_not_add_subsystem_flags() {
 	assert !compile_args.contains('-mconsole')
 }
 
-fn test_windows_gcc_compile_args_force_generated_source_to_c_mode() {
-	compile_args := builder_compile_args(['-os', 'windows', '-cc', 'gcc', hello_world_example()])
-	assert compile_args.contains('-x c')
+fn test_windows_gcc_compile_args_force_generated_source_to_c_mode_then_reset() {
+	mut builder := new_test_builder(['-os', 'windows', '-cc', 'gcc', hello_world_example()])
+	compile_args := builder.get_compile_args()
+	c_language_idx := compile_args.index('-x c')
+	reset_language_idx := compile_args.index('-x none')
+	assert c_language_idx != -1, compile_args.str()
+	assert reset_language_idx != -1, compile_args.str()
+	assert reset_language_idx == c_language_idx + 2
+	generated_source := normalized_compile_arg_path(compile_args[c_language_idx + 1])
+	expected_source := normalized_test_path(builder.out_name_c)
+	expected_short_source := normalized_test_path(os.short_path(builder.out_name_c))
+	assert generated_source == expected_source || generated_source == expected_short_source, 'generated source should match ${expected_source} or ${expected_short_source}: ${compile_args}'
+}
+
+fn test_windows_gcc_sharedlive_import_archive_appears_after_generated_source_language_reset() {
+	mut builder := new_test_builder([
+		'-os',
+		'windows',
+		'-cc',
+		'gcc',
+		'-sharedlive',
+		'-shared',
+		hot_reload_graph_example(),
+	])
+	all_args := builder.all_args(builder.ccoptions)
+	reset_language_idx := all_args.index('-x none')
+	expected_import_lib := os.file_name(live_windows_import_lib_path(hot_reload_graph_example()))
+	mut import_archive_idx := -1
+	for idx, arg in all_args {
+		if arg.contains(expected_import_lib) {
+			import_archive_idx = idx
+			break
+		}
+	}
+	assert reset_language_idx != -1, all_args.str()
+	assert import_archive_idx != -1, 'all_args should contain ${expected_import_lib}: ${all_args}'
+	assert reset_language_idx < import_archive_idx
 }
 
 fn test_shared_tcc_compile_args_skip_bt25_after_late_compiler_resolution() {
@@ -645,6 +679,14 @@ fn normalized_test_path(path string) string {
 		normalized = normalized.replace('//', '/')
 	}
 	return normalized
+}
+
+fn normalized_compile_arg_path(arg string) string {
+	mut path := arg.trim_space().trim('"').trim("'")
+	if path.contains('\\\\') {
+		path = path.replace('\\\\', '\\')
+	}
+	return normalized_test_path(path)
 }
 
 fn test_c_output_suggests_missing_typedef_for_c_struct_with_issue_19050_output() {

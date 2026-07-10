@@ -45,7 +45,7 @@ pub fn (app &App) show(id int) veb.Result {
 
 fn main() {
 	mut app := &App{}
-	_ := app
+	_ := app.index()
 }
 '
 	src_file := os.join_path(os.temp_dir(), 'v3_veb_ctx.v')

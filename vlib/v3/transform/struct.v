@@ -42,7 +42,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 	mut field_types := map[string]string{}
 	mut field_order := []string{cap: info.fields.len}
 	for f in info.fields {
-		field_types[f.name] = f.typ
+		field_types[f.name] = t.lookup_struct_field_type(node.value, f.name) or { f.typ }
 		field_order << f.name
 	}
 	mut field_ids := []flat.NodeId{}
@@ -78,7 +78,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 				}
 			}
 			if val_node.kind == .array_literal && t.is_fixed_array_type(field_type) {
-				t.a.nodes[int(val_id)].typ = field_type
+				t.set_node_typ(int(val_id), field_type)
 			}
 			value_type := t.node_type(val_id)
 			sum_field_type := t.struct_field_sum_type(field_type, info.module)
@@ -159,7 +159,7 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            if node.typ.len > 0 { node.typ } else { node.value }
 	})
 	final_id := t.add_missing_struct_defaults(new_id, t.a.nodes[int(new_id)])
 	for stmt in prelude {
@@ -207,7 +207,7 @@ fn (mut t Transformer) transform_struct_children(id flat.NodeId, node flat.Node)
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            if node.typ.len > 0 { node.typ } else { node.value }
 	})
 }
 
@@ -240,17 +240,18 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		if field.name in provided || int(field.default_expr) < 0 {
 			continue
 		}
+		field_type := t.lookup_struct_field_type(node.value, field.name) or { field.typ }
 		default_node := t.a.nodes[int(field.default_expr)]
-		enum_field_type := t.enum_type_name_for_expected(field.typ, info.module)
+		enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
 		new_val := if default_node.kind == .enum_val && enum_field_type.len > 0 {
 			t.transform_enum_shorthand(field.default_expr, default_node, enum_field_type)
-		} else if t.is_sum_type_name(field.typ) {
+		} else if t.is_sum_type_name(field_type) {
 			// A sum-type field default (e.g. `typ_expr Expr = EmptyExpr{}`) must be
 			// wrapped into the sum, not emitted as the bare variant. wrap_sum_value
 			// is a no-op when the value already is the sum type.
-			t.wrap_sum_value(field.default_expr, field.typ)
+			t.wrap_sum_value(field.default_expr, field_type)
 		} else {
-			t.transform_expr_for_type(field.default_expr, field.typ)
+			t.transform_expr_for_type(field.default_expr, field_type)
 		}
 		t.drain_pending(mut prelude)
 		fi_start := t.a.children.len
@@ -260,7 +261,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 			children_start: fi_start
 			children_count: 1
 			value:          field.name
-			typ:            field.typ
+			typ:            field_type
 		})
 		provided[field.name] = true
 		added = true
@@ -283,7 +284,7 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		children_count: flat.child_count(field_ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            if node.typ.len > 0 { node.typ } else { node.value }
 	})
 	for stmt in prelude {
 		t.pending_stmts << stmt
@@ -296,9 +297,36 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 	if info := t.lookup_struct_info_preferred(name) {
 		return info
 	}
+	if imported := t.resolve_imported_type_name(name) {
+		if info := t.lookup_struct_info_direct(imported) {
+			return info
+		}
+	}
 	normalized := t.normalize_type_alias(name)
 	if normalized != name {
 		return t.lookup_struct_info_direct(normalized)
+	}
+	return none
+}
+
+fn (t &Transformer) resolve_imported_type_name(name string) ?string {
+	if isnil(t.tc) || !name.contains('.') || name.starts_with('C.') {
+		return none
+	}
+	dot := name.index_u8(`.`)
+	if dot <= 0 {
+		return none
+	}
+	alias := name[..dot]
+	if mod := t.tc.file_imports[file_import_key(t.cur_file, alias)] {
+		if mod != alias {
+			return mod + name[dot..]
+		}
+	}
+	if mod := t.tc.imports[alias] {
+		if mod != alias {
+			return mod + name[dot..]
+		}
 	}
 	return none
 }
@@ -400,7 +428,9 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 	if info := t.lookup_struct_info(assoc_type) {
 		assoc_module = info.module
 		for field in info.fields {
-			field_types[field.name] = field.typ
+			field_types[field.name] = t.lookup_struct_field_type(assoc_type, field.name) or {
+				field.typ
+			}
 		}
 	}
 
@@ -428,16 +458,17 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		value_node := t.a.nodes[int(value_id)]
 		field_type := field_types[field.value] or { '' }
 		if value_node.kind == .array_literal && t.is_fixed_array_type(field_type) {
-			t.a.nodes[int(value_id)].typ = field_type
+			t.set_node_typ(int(value_id), field_type)
 		}
 		value_type := t.node_type(value_id)
 		enum_field_type := t.enum_type_name_for_expected(field_type, assoc_module)
+		sum_field_type := t.struct_field_sum_type(field_type, assoc_module)
 		value := if value_node.kind == .enum_val && enum_field_type.len > 0 {
 			t.transform_enum_shorthand(value_id, value_node, enum_field_type)
 		} else if field_type.starts_with('[]') && t.is_fixed_array_type(value_type) {
 			t.fixed_array_value_to_array(value_id, value_type, field_type)
-		} else if t.is_sum_type_name(field_type) {
-			t.wrap_sum_value(value_id, field_type)
+		} else if sum_field_type.len > 0 {
+			t.wrap_sum_value(value_id, sum_field_type)
 		} else if field_type.len > 0 {
 			t.transform_expr_for_type(value_id, field_type)
 		} else {
@@ -453,7 +484,7 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		t.pending_stmts << stmt
 	}
 	result := t.make_ident(tmp_name)
-	t.a.nodes[int(result)].typ = assoc_type
+	t.set_node_typ(int(result), assoc_type)
 	return result
 }
 
@@ -489,12 +520,16 @@ fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node f
 		ptr_type = '&${value_type}'
 	}
 	cast := t.make_cast(ptr_type, dup, ptr_type)
-	t.a.nodes[int(cast)].typ = ptr_type
+	t.set_node_typ(int(cast), ptr_type)
 	return cast
 }
 
 // struct_field_sum_type supports struct field sum type handling for Transformer.
 fn (t &Transformer) struct_field_sum_type(field_type string, owner_module string) string {
+	if field_type.starts_with('[]') || field_type.starts_with('map[')
+		|| t.is_fixed_array_type(field_type) {
+		return ''
+	}
 	if t.is_sum_type_name(field_type) {
 		return field_type
 	}
@@ -543,13 +578,17 @@ fn (t &Transformer) sum_type_for_field_variant(field_name string, val_id flat.No
 
 // fixed_array_value_to_array converts fixed array value to array data for transform.
 fn (mut t Transformer) fixed_array_value_to_array(value_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
+	return t.fixed_array_data_to_array(t.transform_expr(value_id), fixed_type, array_type)
+}
+
+fn (mut t Transformer) fixed_array_data_to_array(data_id flat.NodeId, fixed_type string, array_type string) flat.NodeId {
 	elem_type := fixed_array_elem_type(fixed_type)
 	len_expr := t.make_fixed_array_len_expr(fixed_type)
 	return t.make_call_typed('new_array_from_c_array', [
 		len_expr,
 		len_expr,
 		t.make_sizeof_type(elem_type),
-		t.transform_expr(value_id),
+		data_id,
 	], array_type)
 }
 
@@ -589,8 +628,19 @@ fn (mut t Transformer) transform_array_init_expr(id flat.NodeId, node flat.Node)
 // transform_map_init_expr transforms .map_init nodes.
 // Recursively transforms all child key/value expressions.
 fn (mut t Transformer) transform_map_init_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	if node.value.starts_with('map[') || node.typ.starts_with('map[') {
-		return t.lower_map_init_to_runtime(id, node)
+	raw_type := if node.value.len > 0 {
+		node.value
+	} else if node.typ.len > 0 {
+		node.typ
+	} else {
+		t.node_type(id)
+	}
+	map_type := t.normalize_type_alias(raw_type)
+	if map_type.starts_with('map[') {
+		mut map_node := node
+		map_node.value = map_type
+		map_node.typ = map_type
+		return t.lower_map_init_to_runtime(id, map_node)
 	}
 	if node.children_count == 0 {
 		return id

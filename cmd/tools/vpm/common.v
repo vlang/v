@@ -6,6 +6,7 @@ import net.urllib
 import v.vmod
 import json
 import term
+import time
 
 struct ModuleVpmInfo {
 	// id           int
@@ -30,6 +31,7 @@ struct ErrorOptions {
 const vexe = os.quoted_path(os.getenv('VEXE'))
 const home_dir = os.home_dir()
 const selected_server_url_env = 'VPM_SELECTED_SERVER_URL'
+const vpm_http_timeout = 10 * time.second
 
 fn merge_server_urls(default_urls []string, custom_urls []string) []string {
 	mut server_urls := default_urls.clone()
@@ -56,9 +58,43 @@ fn selected_server_url(set bool, url string) string {
 fn active_server_urls() []string {
 	selected_url := selected_server_url(false, '')
 	if selected_url != '' {
-		return [selected_url]
+		return preferred_server_urls(selected_url, get_server_urls())
 	}
 	return get_server_urls()
+}
+
+fn preferred_server_urls(preferred_url string, fallback_urls []string) []string {
+	mut urls := []string{}
+	if preferred_url != '' {
+		urls << preferred_url
+	}
+	urls << fallback_urls
+	return unique_server_urls(urls)
+}
+
+fn vpm_http_get(url string) !http.Response {
+	return vpm_http_request(.get, url, '')
+}
+
+fn vpm_http_head(url string) !http.Response {
+	return vpm_http_request(.head, url, '')
+}
+
+fn vpm_http_post(url string, data string) !http.Response {
+	return vpm_http_request(.post, url, data)
+}
+
+fn vpm_http_request(method http.Method, url string, data string) !http.Response {
+	return http.fetch(
+		method:                   method
+		url:                      url
+		data:                     data
+		read_timeout:             vpm_http_timeout
+		write_timeout:            vpm_http_timeout
+		max_retries:              1
+		enable_http2:             false
+		disable_connection_reuse: true
+	)
 }
 
 fn get_mod_vpm_info(name string) !ModuleVpmInfo {
@@ -85,7 +121,7 @@ fn get_mod_vpm_info_with_selector(name string, mut selector VpmInstallServerSele
 		modurl := url + '/api/packages/${name}'
 		verbose_println_more(@FILE_LINE, @FN,
 			'Retrieving metadata for `${name}` from `${modurl}` by making a GET request ...')
-		r := http.get(modurl) or {
+		r := vpm_http_get(modurl) or {
 			errors << 'Http server did not respond to our request for `${modurl}`.'
 			errors << 'Error details: ${err}'
 			continue
@@ -112,11 +148,11 @@ fn get_mod_vpm_info_with_selector(name string, mut selector VpmInstallServerSele
 			errors << 'Skipping module `${name}`, since it is missing name or url information.'
 			continue
 		}
-		if selector.selected_url == '' {
+		if selector.selected_url != url {
 			selector.selected_url = url
 			verbose_println_more(@FILE_LINE, @FN, 'Using `${url}` for this installation.')
 		}
-		if is_initial_selection {
+		if is_initial_selection || selected_server_url(false, '') != url {
 			selected_server_url(true, url)
 		}
 		verbose_println_more(@FILE_LINE, @FN, 'name: ${name}; mod: ${mod}')
@@ -146,7 +182,7 @@ fn build_install_server_urls(default_urls []string, mirror_urls []string) []stri
 
 fn (selector VpmInstallServerSelector) metadata_server_urls() []string {
 	return if selector.selected_url != '' {
-		[selector.selected_url]
+		preferred_server_urls(selector.selected_url, selector.candidate_urls)
 	} else {
 		selector.candidate_urls
 	}
@@ -215,10 +251,10 @@ fn get_all_modules_for_search_with_selector(mut selector VpmInstallServerSelecto
 			errors << err.msg()
 			continue
 		}
-		if selector.selected_url == '' {
+		if selector.selected_url != url {
 			selector.selected_url = url
 		}
-		if is_initial_selection {
+		if is_initial_selection || selected_server_url(false, '') != url {
 			selected_server_url(true, url)
 		}
 		return modules
@@ -229,7 +265,7 @@ fn get_all_modules_for_search_with_selector(mut selector VpmInstallServerSelecto
 fn get_all_modules_for_search_from_server(server_url string) ![]string {
 	search_url := '${server_url}/search'
 	verbose_println_more(@FILE_LINE, @FN, 'making a GET request to search_url: ${search_url} ...')
-	r := http.get(search_url) or {
+	r := vpm_http_get(search_url) or {
 		return error('Http server did not respond to our request for `${search_url}`.\nError details: ${err}')
 	}
 	if r.status_code != 200 {
@@ -343,11 +379,11 @@ fn get_working_server_url() string {
 	is_initial_selection := selected_server_url(false, '') == ''
 	for url in active_server_urls() {
 		verbose_println('Trying server url: ${url}')
-		http.head(url) or {
+		vpm_http_head(url) or {
 			vpm_error('failed to connect to server url `${url}`.', details: err.msg())
 			continue
 		}
-		if is_initial_selection {
+		if is_initial_selection || selected_server_url(false, '') != url {
 			selected_server_url(true, url)
 		}
 		verbose_println_more(@FILE_LINE, @FN, 'found url: ${url}')
@@ -374,7 +410,7 @@ fn increment_module_download_count(name string, preferred_server_url string) ! {
 		return
 	}
 	server_urls := if preferred_server_url != '' {
-		unique_server_urls([preferred_server_url])
+		preferred_server_urls(preferred_server_url, get_server_urls())
 	} else if settings.server_urls.len > 0 {
 		settings.server_urls
 	} else {
@@ -388,7 +424,7 @@ fn increment_module_download_count(name string, preferred_server_url string) ! {
 	for url in server_urls {
 		modurl := url + '/api/packages/${name}/incr_downloads'
 		verbose_println_more(@FILE_LINE, @FN, 'making a POST request to modurl: ${modurl} ...')
-		r := http.post(modurl, '') or {
+		r := vpm_http_post(modurl, '') or {
 			errors << 'Http server did not respond to our request for `${modurl}`.'
 			errors << 'Error details: ${err}'
 			continue

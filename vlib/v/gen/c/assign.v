@@ -1871,7 +1871,8 @@ fn (mut g Gen) assign_stmt(node_ ast.AssignStmt) {
 							}
 						}
 						if !is_used_var_styp {
-							if !val_type.has_flag(.option) && left_sym.is_array_fixed() {
+							if !val_type.has_flag(.option) && left_sym.is_array_fixed()
+								&& var_type.nr_muls() == 0 {
 								if left_sym.info is ast.Alias {
 									parent_sym := g.table.final_sym(left_sym.info.parent_type)
 									styp = g.styp(left_sym.info.parent_type)

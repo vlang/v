@@ -1,8 +1,10 @@
 import os
 import v3.flat
+import v3.markused
 import v3.parser
 import v3.pref
 import v3.ssa
+import v3.transform
 import v3.types
 
 // parse_checked_source reads parse checked source input for v3 tests.
@@ -28,6 +30,18 @@ fn build_source(name string, source string) &ssa.Module {
 fn build_source_with_used(name string, source string, used_fns map[string]bool) &ssa.Module {
 	a, tc := parse_checked_source(name, source)
 	return ssa.build_with_used(a, used_fns, tc)
+}
+
+// build_transformed_source builds source after the normal used-filtered transform path.
+fn build_transformed_source(name string, source string) &ssa.Module {
+	mut a, mut tc := parse_checked_source(name, source)
+	mut used := markused.mark_used(a, tc)
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	return ssa.build_with_used(a, used, tc)
 }
 
 // find_func resolves find func information for v3 tests.
@@ -166,6 +180,107 @@ fn same(a string, b string) bool {
 ')
 	assert has_call_to(m, 'join', 'string__plus')
 	assert has_call_to(m, 'same', 'string__eq')
+}
+
+// test_formatted_interpolation_helpers_build_for_ssa validates this v3 regression case.
+fn test_formatted_interpolation_helpers_build_for_ssa() {
+	m := build_transformed_source('formatted_interpolation_helpers', '
+fn main() {
+	label := "x"
+	value := 1.25
+	n := 7
+	_ := "\${label:-4s}\${value:6.2f}\${n:04d}\${65:c}"
+}
+')
+	assert has_call_to(m, 'main', 'v3_string_pad')
+	assert has_call_to(m, 'main', 'v3_f64_fixed')
+	assert has_call_to(m, 'main', 'v3_int_zpad')
+	assert has_call_to(m, 'main', 'v3_char_string')
+	for name in ['v3_string_pad', 'v3_f64_fixed', 'v3_int_zpad', 'v3_i64_zpad', 'v3_u64_zpad',
+		'v3_char_string'] {
+		f := find_func(m, name)
+		assert f.blocks.len > 0
+	}
+}
+
+// test_array_string_equality_helper_builds_for_ssa validates this v3 regression case.
+fn test_array_string_equality_helper_builds_for_ssa() {
+	m := build_transformed_source('array_string_equality_helper', '
+fn same(left []string, right []string) bool {
+	return left == right
+}
+
+fn main() {
+	_ := same(["x"], ["x"])
+}
+')
+	assert has_call_to(m, 'same', 'array_eq_string')
+	f := find_func(m, 'array_eq_string')
+	assert f.blocks.len > 0
+}
+
+// test_u8_array_bytestr_alias_builds_for_ssa validates this v3 regression case.
+fn test_u8_array_bytestr_alias_builds_for_ssa() {
+	m := build_source('u8_array_bytestr_alias', '
+fn show(data []u8) string {
+	return data.bytestr()
+}
+')
+	assert has_call_to(m, 'show', '[]u8.bytestr')
+	f := find_func(m, '[]u8.bytestr')
+	assert f.blocks.len > 0
+}
+
+// test_enum_str_resolves_to_autostr_for_ssa validates this v3 regression case.
+fn test_enum_str_resolves_to_autostr_for_ssa() {
+	m := build_source('enum_str_autostr', '
+enum Color {
+	red
+	blue
+}
+
+fn show(color Color) string {
+	return color.str()
+}
+')
+	assert has_call_to(m, 'show', 'Color__autostr')
+	f := find_func(m, 'Color__autostr')
+	assert f.blocks.len > 0
+}
+
+// test_rand_prng_interface_stubs_are_registered_for_ssa validates this v3 regression case.
+fn test_rand_prng_interface_stubs_are_registered_for_ssa() {
+	m := build_source('rand_prng_interface_stubs', '
+fn main() {}
+')
+	for name in ['rand.new_default', 'rand.PRNG.seed', 'rand.PRNG.u8', 'rand.PRNG.u16',
+		'rand.PRNG.u32', 'rand.PRNG.u64', 'rand.PRNG.block_size', 'rand.PRNG.free'] {
+		f := find_func(m, name)
+		assert f.blocks.len > 0
+	}
+}
+
+// test_at_exit_stub_is_registered_for_ssa validates this v3 regression case.
+fn test_at_exit_stub_is_registered_for_ssa() {
+	m := build_source('at_exit_stub', '
+fn main() {}
+')
+	f := find_func(m, 'at_exit')
+	assert f.blocks.len > 0
+}
+
+// test_pthread_setkind_np_uses_local_stub_for_ssa validates this v3 regression case.
+fn test_pthread_setkind_np_uses_local_stub_for_ssa() {
+	m := build_source('pthread_setkind_np_stub', '
+fn C.pthread_rwlockattr_setkind_np(voidptr, i32) i32
+
+fn set_kind(attr voidptr) {
+	_ := C.pthread_rwlockattr_setkind_np(attr, 0)
+}
+')
+	assert has_call_to(m, 'set_kind', 'pthread_rwlockattr_setkind_np')
+	f := find_func(m, 'pthread_rwlockattr_setkind_np')
+	assert f.blocks.len > 0
 }
 
 // test_c_fn_decl_registers_extern_signature validates this v3 regression case.
@@ -358,6 +473,23 @@ fn make_array() int {
 	assert has_alloca_len_const(m, 'make_array', '4')
 }
 
+// test_const_string_membership_does_not_heap_build_array validates this v3 regression case.
+fn test_const_string_membership_does_not_heap_build_array() {
+	m := build_transformed_source('const_string_membership', '
+const names = ["malloc", "free", "puts"]
+
+fn has_name(name string) bool {
+	return name in names
+}
+
+fn main() {
+	_ := has_name("malloc")
+}
+')
+	assert has_call_to(m, 'has_name', 'fixed_array_contains_string')
+	assert !has_call_to(m, 'has_name', 'array_new')
+}
+
 // test_string_range_does_not_lower_to_array_slice validates this v3 regression case.
 fn test_string_range_does_not_lower_to_array_slice() {
 	m := build_source('string_range', '
@@ -381,4 +513,76 @@ fn last_value(values []int) int {
 ')
 	assert has_call_to(m, 'first_value', 'array_get')
 	assert has_call_to(m, 'last_value', 'array_get')
+}
+
+// test_used_filter_keeps_main validates this v3 regression case.
+fn test_used_filter_keeps_main() {
+	mut used := map[string]bool{}
+	used['println'] = true
+	m := build_source_with_used('used_filter_main', '
+fn main() {
+	println("hello")
+}
+', used)
+	main_fn := find_func(m, 'main')
+	assert main_fn.blocks.len > 0
+}
+
+// test_map_move_runtime_helper_builds_ssa validates this v3 regression case.
+fn test_map_move_runtime_helper_builds_ssa() {
+	m := build_transformed_source('map_move_runtime', '
+fn main() {
+	mut values := map[string]int{}
+	moved := values.move()
+	moved.clear()
+	moved.reserve(4)
+	moved.delete("x")
+	keys := moved.keys()
+	vals := moved.values()
+	moved.free()
+	_ := keys
+	_ := vals
+}
+')
+	assert has_call_to(m, 'main', 'map__move')
+	assert has_call_to(m, 'main', 'map__clear')
+	assert has_call_to(m, 'main', 'map__reserve')
+	assert has_call_to(m, 'main', 'map__delete')
+	assert has_call_to(m, 'main', 'map__keys')
+	assert has_call_to(m, 'main', 'map__values')
+	assert has_call_to(m, 'main', 'map__free')
+	move_fn := find_func(m, 'map__move')
+	assert move_fn.blocks.len > 0
+	keys_fn := find_func(m, 'map__keys')
+	assert keys_fn.blocks.len > 0
+	values_fn := find_func(m, 'map__values')
+	assert values_fn.blocks.len > 0
+}
+
+// test_moved_from_map_len_checks_nil_state validates this v3 regression case.
+fn test_moved_from_map_len_checks_nil_state() {
+	m := build_transformed_source('moved_from_map_len', '
+fn main() {
+	mut values := map[string]int{}
+	moved := values.move()
+	_ := moved
+	_ := values.len
+}
+')
+	assert has_call_to(m, 'main', 'map__move')
+	assert has_instr_op(m, 'main', .br)
+}
+
+// test_array_flags_set_lowers_without_receiver_collision validates this v3 regression case.
+fn test_array_flags_set_lowers_without_receiver_collision() {
+	m := build_source('array_flags_set', '
+fn main() {
+	mut values := []string{}
+	unsafe {
+		values.flags.set(.noslices | .noshrink)
+	}
+}
+')
+	assert !has_call_to(m, 'main', 'SortedMap.set')
+	assert has_instr_op(m, 'main', .or_)
 }

@@ -145,6 +145,7 @@ pub mut:
 	typ            string
 	generic_params []string
 	kind_id        int
+	is_mut         bool
 pub:
 	pos            token.Pos
 	children_start i32
@@ -162,6 +163,19 @@ pub mut:
 	user_code_start int
 	disabled_fns    map[string]bool
 	export_fn_names map[string]string
+	noreturn_fns    map[string]bool
+}
+
+// set_node_is_mut updates a node's mut declaration marker in place.
+pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return
+	}
+	// Mutate the array slot in place; copying flat.Node would duplicate managed fields.
+	unsafe {
+		mut node := &a.nodes[int(id)]
+		node.is_mut = is_mut
+	}
 }
 
 // new creates a FlatAst value for flat.
@@ -171,6 +185,7 @@ pub fn FlatAst.new() FlatAst {
 		children:        []NodeId{cap: 512}
 		disabled_fns:    map[string]bool{}
 		export_fn_names: map[string]string{}
+		noreturn_fns:    map[string]bool{}
 	}
 }
 
@@ -237,6 +252,7 @@ pub fn (n Node) with_shifted_children(shift i32) Node {
 		children_count: n.children_count
 		kind:           n.kind
 		op:             n.op
+		is_mut:         n.is_mut
 	}
 }
 

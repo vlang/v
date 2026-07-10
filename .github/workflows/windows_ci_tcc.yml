@@ -73,6 +73,8 @@ jobs:
         run: |
           v cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
+      - name: Legacy gg import multiwindow isolation
+        run: v test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Verify `v vlib/v/gen/c/coutput_test.v` works
         run: v vlib/v/gen/c/coutput_test.v
       - name: Make sure running TCC64 instead of TCC32

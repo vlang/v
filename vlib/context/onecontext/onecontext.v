@@ -94,16 +94,14 @@ pub fn (octx OneContext) value(key context.Key) ?context.Any {
 
 // run starts listening for cancellation signals from all merged contexts.
 pub fn (mut octx OneContext) run() {
-	mut wrapped_ctx := &octx.ctx
 	if octx.ctxs.len == 1 {
-		mut first_ctx := &octx.ctxs[0]
-		octx.run_two_contexts(mut wrapped_ctx, mut first_ctx)
+		octx.run_own_two_contexts()
 		return
 	}
 
-	octx.run_multiple_contexts(mut wrapped_ctx)
-	for mut ctx in octx.ctxs {
-		octx.run_multiple_contexts(mut ctx)
+	octx.run_own_context()
+	for i in 0 .. octx.ctxs.len {
+		octx.run_own_context_at(i)
 	}
 }
 
@@ -117,12 +115,66 @@ pub fn (octx OneContext) str() string {
 pub fn (mut octx OneContext) cancel(err IError) {
 	octx.cancel_fn()
 	octx.err_mutex.lock()
+	if octx.err !is none {
+		octx.err_mutex.unlock()
+		return
+	}
 	octx.err = err
+	should_close_done := !octx.done.closed
 	octx.err_mutex.unlock()
-	if !octx.done.closed {
+	if should_close_done {
 		octx.done <- 0
 		octx.done.close()
 	}
+}
+
+fn (mut octx OneContext) run_own_two_contexts() {
+	octx_cancel_done := octx.cancel_ctx.done()
+	c1done := octx.ctx.done()
+	c2done := octx.ctxs[0].done()
+	spawn fn (mut octx OneContext, octx_cancel_done chan int, c1done chan int, c2done chan int) {
+		select {
+			_ := <-octx_cancel_done {
+				octx.cancel(canceled)
+			}
+			_ := <-c1done {
+				octx.cancel(octx.ctx.err())
+			}
+			_ := <-c2done {
+				octx.cancel(octx.ctxs[0].err())
+			}
+		}
+	}(mut &octx, octx_cancel_done, c1done, c2done)
+}
+
+fn (mut octx OneContext) run_own_context() {
+	octx_cancel_done := octx.cancel_ctx.done()
+	cdone := octx.ctx.done()
+	spawn fn (mut octx OneContext, octx_cancel_done chan int, cdone chan int) {
+		select {
+			_ := <-octx_cancel_done {
+				octx.cancel(canceled)
+			}
+			_ := <-cdone {
+				octx.cancel(octx.ctx.err())
+			}
+		}
+	}(mut &octx, octx_cancel_done, cdone)
+}
+
+fn (mut octx OneContext) run_own_context_at(idx int) {
+	octx_cancel_done := octx.cancel_ctx.done()
+	cdone := octx.ctxs[idx].done()
+	spawn fn (mut octx OneContext, octx_cancel_done chan int, cdone chan int, idx int) {
+		select {
+			_ := <-octx_cancel_done {
+				octx.cancel(canceled)
+			}
+			_ := <-cdone {
+				octx.cancel(octx.ctxs[idx].err())
+			}
+		}
+	}(mut &octx, octx_cancel_done, cdone, idx)
 }
 
 // run_two_contexts spawns a listener that cancels the merged context

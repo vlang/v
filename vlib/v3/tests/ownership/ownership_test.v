@@ -4,14 +4,24 @@ import os
 
 const ownership_tests_dir = os.dir(@FILE)
 const ownership_v3_dir = os.dir(os.dir(ownership_tests_dir))
+const ownership_vlib_dir = os.dir(ownership_v3_dir)
 const ownership_v3_src = os.join_path(ownership_v3_dir, 'v3.v')
 const ownership_vexe = @VEXE
 
 fn ownership_build_v3() string {
+	cache_path := os.join_path(os.temp_dir(), 'v3_ownership_test_${os.getpid()}.path')
+	if cached := os.read_file(cache_path) {
+		cached_bin := cached.trim_space()
+		if cached_bin.len > 0 && os.exists(cached_bin) {
+			return cached_bin
+		}
+	}
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ownership_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${ownership_vexe} -d ownership -o ${v3_bin} ${ownership_v3_src}')
+	build :=
+		os.execute('${ownership_vexe} -gc none -d ownership -path "${ownership_vlib_dir}" -o ${v3_bin} ${ownership_v3_src}')
 	assert build.exit_code == 0, build.output
+	os.write_file(cache_path, v3_bin) or {}
 	return v3_bin
 }
 
@@ -22,7 +32,7 @@ fn run_ownership_check(v3_bin string, name string, code string) os.Result {
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -d ownership -b c -o ${out} ${src} 2>&1')
+	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
 }
 
 fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result {
@@ -32,7 +42,7 @@ fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out.c')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -d ownership -b c -o ${out} ${src} 2>&1')
+	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
 }
 
 fn run_ownership_check_with_module(v3_bin string, name string, main_code string, module_name string, module_code string) os.Result {
@@ -46,21 +56,12 @@ fn run_ownership_check_with_module(v3_bin string, name string, main_code string,
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, main_code) or { panic(err) }
 	os.write_file(mod_src, module_code) or { panic(err) }
-	return os.execute('${v3_bin} -d ownership -b c -o ${out} ${src} 2>&1')
+	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
 }
 
-fn run_ownership_delegate_check(name string, code string) os.Result {
-	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_delegate_${name}_${os.getpid()}')
-	os.rmdir_all(tmp_dir) or {}
-	os.mkdir_all(tmp_dir) or { panic(err) }
-	src := os.join_path(tmp_dir, 'main.v')
-	out := os.join_path(tmp_dir, 'out')
-	os.write_file(src, code) or { panic(err) }
-	return os.execute('${ownership_vexe} -ownership -b c -o ${out} ${src} 2>&1')
-}
-
-fn test_ownership_delegate_does_not_define_target_ownership() {
-	ok := run_ownership_delegate_check('target_define_not_forwarded', r'
+fn test_ownership_flag_does_not_define_target_ownership() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'target_define_not_forwarded', r'
 $if ownership ? {
 	$compile_error("ownership define leaked into target")
 }
@@ -230,8 +231,31 @@ fn main() {
 	println(g)
 	_ = h
 }
-')
+	')
 	assert ok_plain_to_owned_method.exit_code == 0, ok_plain_to_owned_method.output
+
+	ok_builtin_string_receiver := run_ownership_check(v3_bin, 'builtin_string_receiver_borrows', "
+fn main() {
+	s := 'hello'.to_owned()
+	println(s.contains('h'))
+	println(s.contains('e'))
+}
+	")
+	assert ok_builtin_string_receiver.exit_code == 0, ok_builtin_string_receiver.output
+
+	fail_user_string_receiver := run_ownership_check(v3_bin, 'user_string_receiver_moves', '
+fn (s string) consume() {
+	_ = s
+}
+
+fn main() {
+	s := "hello".to_owned()
+	s.consume()
+	println(s)
+}
+	')
+	assert fail_user_string_receiver.exit_code != 0
+	assert fail_user_string_receiver.output.contains('use of moved value: `s`'), fail_user_string_receiver.output
 
 	ok_non_owned_clone_return := run_ownership_check(v3_bin, 'owned_receiver_clone_returns_int', '
 struct Resource implements Owned {
@@ -251,6 +275,54 @@ fn main() {
 }
 	')
 	assert ok_non_owned_clone_return.exit_code == 0, ok_non_owned_clone_return.output
+
+	fail_plain_struct_clone := run_ownership_check(v3_bin, 'plain_struct_clone_unknown', '
+struct Plain {
+	id int
+}
+
+fn main() {
+	_ := Plain{id: 1}.clone()
+}
+	')
+	assert fail_plain_struct_clone.exit_code != 0
+	assert fail_plain_struct_clone.output.contains('unknown function'), fail_plain_struct_clone.output
+
+	ok_iclone_default_clone := run_ownership_check(v3_bin, 'iclone_default_clone', '
+struct Resource implements IClone {
+	id int
+}
+
+fn main() {
+	r := Resource{id: 7}
+	c := r.clone()
+	println(c.id)
+}
+	')
+	assert ok_iclone_default_clone.exit_code == 0, ok_iclone_default_clone.output
+
+	ok_iclone_if_expr_clone := run_ownership_check(v3_bin, 'iclone_if_expr_clone', '
+struct Resource implements IClone {
+	id int
+}
+
+fn pick(cond bool, left Resource, right Resource) Resource {
+	res := if cond {
+		left.clone()
+	} else {
+		right.clone()
+	}
+	return res
+}
+
+fn main() {
+	left := Resource{id: 7}
+	right := Resource{id: 9}
+	res := pick(true, left, right)
+	println(res.id)
+}
+	')
+	assert ok_iclone_if_expr_clone.exit_code == 0, ok_iclone_if_expr_clone.output
 
 	fail_inferred_owned_global := run_ownership_check(v3_bin, 'inferred_owned_global', '
 struct Resource implements Owned {
@@ -2350,6 +2422,26 @@ fn main() {
 ')
 	assert fail_array_append_unknown_len_read.exit_code != 0
 	assert fail_array_append_unknown_len_read.output.contains('use of moved value: `arr[*]`'), fail_array_append_unknown_len_read.output
+
+	ok_array_loop_dynamic_append_return := run_ownership_check(v3_bin,
+		'array_loop_dynamic_append_return', '
+fn split_parts(glob string) []string {
+	mut parts := []string{}
+	for i := 0; i < glob.len; i++ {
+		if glob[i] == `,` {
+			parts << glob[0..i].to_owned()
+		}
+	}
+	parts << glob[0..].to_owned()
+	return parts
+}
+
+fn main() {
+	parts := split_parts("a,b")
+	println(int_str(parts.len))
+}
+')
+	assert ok_array_loop_dynamic_append_return.exit_code == 0, ok_array_loop_dynamic_append_return.output
 
 	fail_array_pop_return := run_ownership_check(v3_bin, 'array_pop_returns_owned', '
 fn main() {

@@ -11,6 +11,7 @@ $if linux {
 fn C.v_brotli_open(const_name &char) voidptr
 fn C.v_brotli_sym(handle voidptr, const_name &char) voidptr
 fn C.v_brotli_close(handle voidptr) int
+fn C.v_brotli_msan_unpoison(ptr voidptr, len usize)
 
 const min_quality = 0
 const max_quality = 11
@@ -194,6 +195,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 	if ok == 0 {
 		return error('brotli: compression failed')
 	}
+	C.v_brotli_msan_unpoison(dst.data, encoded_size)
 	keep_dst = true
 	return dst[..int(encoded_size)]
 }
@@ -242,6 +244,7 @@ pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
 			&total_out)
 		produced := chunk.len - int(available_out)
 		if produced > 0 {
+			C.v_brotli_msan_unpoison(chunk.data, usize(produced))
 			out << chunk[..produced]
 		}
 		match result {

@@ -28,6 +28,79 @@ mut:
 	opt ?Inner
 }
 
+fn holder_from_inner(inner Inner) Holder {
+	return Holder{
+		opt: inner
+	}
+}
+
+struct Borrowed[^a] {
+	path &^a string
+}
+
+fn Borrowed.new[^a](path &^a string) Borrowed[^a] {
+	return Borrowed[^a]{
+		path: path
+	}
+}
+
+fn (b Borrowed[^a]) path_len[^a]() int {
+	return (*b.path).len
+}
+
+struct GenericHolder[^a, W] {
+	opt ?Borrowed[^a]
+	w   W
+}
+
+fn generic_holder_from_path[^a, W](path &^a string, w W) GenericHolder[^a, W] {
+	borrowed := Borrowed.new(path)
+	return GenericHolder[^a, W]{
+		opt: borrowed
+		w:   w
+	}
+}
+
+struct Link {
+	n int
+}
+
+struct LinkCache[^a] {
+	tag &^a string
+mut:
+	link ?Link
+}
+
+fn LinkCache.new[^a](tag &^a string) LinkCache[^a] {
+	return LinkCache[^a]{
+		tag: tag
+	}
+}
+
+fn (mut cache LinkCache[^a]) get[^a]() ?&Link {
+	if cache.link == none {
+		cache.link = Link{
+			n: 41
+		}
+	}
+	return unsafe { &cache.link? }
+}
+
+struct Stats {
+	n int
+}
+
+struct SearchResult {
+	stats ?Stats
+}
+
+fn (result &^a SearchResult) stats_ref[^a]() ?&^a Stats {
+	if result.stats != none {
+		return unsafe { &result.stats? }
+	}
+	return none
+}
+
 struct ResultHolder {
 mut:
 	res !Inner
@@ -101,6 +174,25 @@ fn main() {
 	}
 	holder.opt?.name = 'holder'
 	assert holder.opt?.name == 'holder'
+	wrapped_holder := holder_from_inner(Inner{
+		name: 'wrapped'
+	})
+	assert wrapped_holder.opt?.name == 'wrapped'
+	path_text := 'wrapped-path'
+	generic_holder := generic_holder_from_path(&path_text, 4)
+	generic_borrowed := generic_holder.opt or { panic('missing borrowed') }
+	assert generic_borrowed.path_len() == path_text.len
+	cache_tag := 'cache'
+	mut cache := LinkCache.new(&cache_tag)
+	link := cache.get() or { panic('missing link') }
+	assert link.n == 41
+	search_result := SearchResult{
+		stats: Stats{
+			n: 7
+		}
+	}
+	stats := search_result.stats_ref() or { panic('missing stats') }
+	assert stats.n == 7
 	mut outer := ?Outer(Outer{})
 	outer?.inner.name = 'deep'
 	assert outer?.inner.name == 'deep'
@@ -143,6 +235,14 @@ fn main() {
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('m.value.name ='), c_code
 	assert c_code.contains('holder.opt.value.name ='), c_code
+	assert c_code.contains('.opt = (Optional_Inner){.ok = true, .value = inner}')
+		|| c_code.contains('.opt = (Optional_main__Inner){.ok = true, .value = inner}'), c_code
+	assert c_code.contains('.opt = (Optional_Borrowed') && c_code.contains('.value = borrowed'), c_code
+	assert c_code.contains('if (!cache->link.ok)') || c_code.contains('if (!cache.link.ok)'), c_code
+	assert c_code.contains('&cache->link.value') || c_code.contains('&cache.link.value'), c_code
+	assert c_code.contains('&result->stats.value') || c_code.contains('&result.stats.value'), c_code
+	assert !c_code.contains('result->stats.value.ok'), c_code
+	assert !c_code.contains('result->stats.value.value'), c_code
 	assert c_code.contains('outer.value.inner.name ='), c_code
 	assert c_code.contains('holder->opt.value.name =') || c_code.contains('holder.opt.value.name ='), c_code
 
@@ -164,8 +264,9 @@ fn main() {
 	}]
 	assert !mutate_result_guard.contains('return (Optional){.ok = false};'), mutate_result_guard
 	for line in c_code.split_into_lines() {
-		assert !(line.contains('__or_val_') && line.contains('.name =')), line
-		assert !(line.contains('__or_val_') && line.contains('.inner.name =')), line
+		assert !(line.contains('__or_val_') && line.contains('.name =') && !line.contains('= (')), line
+		assert !(line.contains('__or_val_') && line.contains('.inner.name =')
+			&& !line.contains('= (')), line
 	}
 
 	run := os.execute(bin)

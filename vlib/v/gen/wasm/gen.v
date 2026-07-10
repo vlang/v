@@ -1264,7 +1264,7 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.set_set(v)
 		}
 		ast.CharLiteral {
-			rns := serialise.eval_escape_codes_raw(node.val) or { panic('unreachable') }.runes()[0]
+			rns := ast.char_literal_rune_value(node.val) or { panic('unreachable') }
 			g.func.i32_const(i32(rns))
 		}
 		ast.Ident {
@@ -1877,11 +1877,7 @@ fn (mut g Gen) eval_enum_field_expr(expr ast.Expr) ?i64 {
 			return expr.val.i64()
 		}
 		ast.CharLiteral {
-			runes := expr.val.runes()
-			if runes.len == 0 {
-				return none
-			}
-			return i64(runes[0])
+			return i64(ast.char_literal_rune_value(expr.val)?)
 		}
 		ast.BoolLiteral {
 			return if expr.val { i64(1) } else { i64(0) }

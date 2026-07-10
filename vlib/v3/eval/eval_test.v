@@ -134,6 +134,68 @@ fn main() {
 	assert e.stdout() == '0:0;0:1;0:2;2:0;\n'
 }
 
+fn test_eval_labeled_c_style_multi_init_flow_targets_named_loop() {
+	mut e := create()
+	e.run_text('
+fn main() {
+	mut out := ""
+	outer: for x, stop := 0, 3; x < stop; x++ {
+		for y := 0; y < 3; y++ {
+			if x == 1 && y == 0 {
+				continue outer
+			}
+			if x == 2 && y == 1 {
+				break outer
+			}
+			out += "\${x}:\${y};"
+		}
+	}
+	assert out == "0:0;0:1;0:2;2:0;"
+
+	mut gx := 0
+	mut hits := 0
+	mut guarded := ""
+	guarded_outer: for gx, hits = hits, hits + 1; gx < 3; gx++ {
+		for gy := 0; gy < 3; gy++ {
+			if gx == 1 && gy == 0 {
+				continue guarded_outer
+			}
+			if gx == 2 && gy == 1 {
+				break guarded_outer
+			}
+			guarded += "\${gx}:\${gy};"
+		}
+	}
+	assert guarded == "0:0;0:1;0:2;2:0;"
+	assert hits == 1
+	println(out)
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '0:0;0:1;0:2;2:0;\n'
+}
+
+fn test_eval_labeled_user_block_with_multi_init_shape_is_not_loop_label() {
+	mut e := create()
+	_ := e.run_text('
+fn main() {
+	mut a := 0
+	mut b := 0
+	outer: {
+		a, b = 0, 3
+		for ; a < b; a++ {
+			continue outer
+		}
+	}
+}
+	') or {
+		assert err.msg().contains('unexpected `continue_` escaped')
+		return
+	}
+	assert false
+}
+
 fn test_eval_if_expr_value() {
 	mut e := create()
 	e.run_text('
@@ -3812,8 +3874,8 @@ fn main() {
 
 fn test_v3_eval_backend_cli() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_eval_backend_test')
-	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
-	assert build.exit_code == 0
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
 	src := os.join_path(os.temp_dir(), 'v3_eval_backend_sample.v')
 	os.write_file(src, '
 fn main() {

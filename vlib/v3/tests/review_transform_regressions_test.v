@@ -6,9 +6,24 @@ const v3_dir = os.dir(tests_dir)
 const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v3.v')
 
+fn review_v3_bin_path() string {
+	return os.join_path(os.temp_dir(), 'v3_review_transform_regressions_test')
+}
+
+fn testsuite_begin() {
+	v3_bin := review_v3_bin_path()
+	if os.exists(v3_bin) {
+		os.rm(v3_bin) or {}
+	}
+}
+
 fn build_v3_review_transform() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_review_transform_regressions_test')
-	build := os.execute('${vexe} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	v3_bin := review_v3_bin_path()
+	if os.exists(v3_bin) {
+		return v3_bin
+	}
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -24,10 +39,14 @@ fn run_bad(v3_bin string, name string, src string, expected string) {
 }
 
 fn run_good(v3_bin string, name string, src string) string {
+	return run_good_with_flags(v3_bin, name, '', src)
+}
+
+fn run_good_with_flags(v3_bin string, name string, flags string, src string) string {
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${good_src} -b c -o ${good_bin}')
+	compile := os.execute('${v3_bin} ${flags} ${good_src} -b c -o ${good_bin}')
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
 	run := os.execute(good_bin)
@@ -110,6 +129,128 @@ fn test_array_equality_uses_semantic_element_comparison() {
 	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\n0'
 }
 
+fn test_array_map_fn_value_uses_callback_return_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'array_map_fn_value_return_type',
+		"fn main() {\n\ti_to_str := fn (i int) string {\n\t\treturn int_str(i)\n\t}\n\ta := [1, 2, 3].map(i_to_str)\n\tassert a == ['1', '2', '3']\n\tprintln(a[0] + a[1] + a[2])\n}\n")
+	assert out == '123'
+}
+
+fn test_const_array_allows_newline_separators_with_line_comments() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'const_array_line_comments',
+		'const xs = [\n\t1\n\t// one\n\t2\n\t// two\n\t3\n]\n\nfn main() {\n\tprintln(int_str(xs.len))\n\tprintln(int_str(xs[1]))\n}\n')
+	assert out == '3\n2'
+}
+
+fn test_mut_pointer_capture_is_not_over_dereferenced() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a
+	// genuine `&S` local: its rvalue uses must not be over-dereferenced, so a call that
+	// expects the pointer still receives it (regression for gating the pointer-value
+	// rvalue/lvalue flags on `capture_by_ref` instead of every `capture_mut`).
+	out := run_good(v3_bin, 'mut_pointer_capture',
+		'struct S {\n\tn int\n}\n\nfn takes_ptr(p &S) int {\n\treturn p.n\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut p := &S{\n\t\tn: 5\n\t}\n\tcall(fn [mut p] () {\n\t\tprintln(int_str(takes_ptr(p)))\n\t})\n}\n')
+	assert out == '5'
+}
+
+fn test_mut_value_capture_in_call_under_selector_base() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut s]` value capture used as a call argument nested inside a selector base
+	// (`wrap(s).s.n`) must still be lowered to its value; the selector-base deref
+	// suppression applies only to the direct receiver ident, not to nested expressions.
+	out := run_good(v3_bin, 'mut_capture_selector_base',
+		'struct S {\n\tn int\n}\n\nstruct Box {\n\ts S\n}\n\nfn wrap(s S) Box {\n\treturn Box{\n\t\ts: s\n\t}\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str(wrap(s).s.n))\n\t})\n}\n')
+	assert out == '7'
+}
+
+fn test_mut_value_capture_parenthesized_selector_receiver() {
+	v3_bin := build_v3_review_transform()
+	// A `[mut s]` value capture is a `&S` local; a parenthesized direct receiver
+	// (`(s).n`) is still the direct selector receiver and must keep the suppression so
+	// the selector emits arrow access. Otherwise the inner `s` is auto-dereferenced to
+	// `*s` while the selector still emits `->`, producing an invalid `(*s)->n`.
+	out := run_good(v3_bin, 'mut_capture_paren_selector_base',
+		'struct S {\n\tn int\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn main() {\n\tmut s := S{\n\t\tn: 7\n\t}\n\tcall(fn [mut s] () {\n\t\tprintln(int_str((s).n))\n\t})\n}\n')
+	assert out == '7'
+}
+
+fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
+	v3_bin := build_v3_review_transform()
+	// When a local `s` whose address escapes is moved to the heap, `s` becomes the `&S`
+	// heap pointer and the alias `p := &s` must stay that pointer (`p := s`), NOT be
+	// auto-dereferenced to `*s`. Over-dereferencing here initializes `p`'s `&S` decl from
+	// an `S` value (a stale stack copy), reviving the escape/stale-mutation bug the heap
+	// move avoids. A later `s = S{n: 2}` must be observable through the returned pointer.
+	out := run_good(v3_bin, 'heap_escaping_amp_alias',
+		'struct S {\n\tn int\n}\n\nfn leak() &S {\n\tmut s := S{\n\t\tn: 1\n\t}\n\tp := &s\n\ts = S{\n\t\tn: 2\n\t}\n\treturn p\n}\n\nfn main() {\n\tp := leak()\n\tprintln(int_str(p.n))\n}\n')
+	assert out == '2'
+}
+
+fn test_imported_result_array_return_or_preserves_success_value() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_result_array_return_or', {
+		'v.mod':     "Module { name: 'imported_result_array_return_or' }\n"
+		'main.v':    "module main\n\nimport pat\n\nfn main() {\n\tlines := pat.from_path()!\n\tassert lines == ['ok']\n\tprintln(lines[0])\n}\n"
+		'pat/pat.v': "module pat\n\nfn source() ![]string {\n\treturn ['ok']\n}\n\npub fn from_path() ![]string {\n\treturn source() or {\n\t\treturn error(err.msg())\n\t}\n}\n"
+	}, 'main.v')
+	assert out == 'ok'
+}
+
+fn test_result_multi_return_match_branch_unwraps_payload_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'result_multi_return_match_branch_unwrap',
+		"enum Kind {\n\tleft\n\tright\n}\n\nfn left_pair() !(int, string) {\n\treturn 1, 'left'\n}\n\nfn right_pair() !(int, string) {\n\treturn 2, 'right'\n}\n\nfn choose(kind Kind) !(int, string) {\n\treturn match kind {\n\t\t.left {\n\t\t\tleft_pair()!\n\t\t}\n\t\t.right {\n\t\t\tright_pair()!\n\t\t}\n\t}\n}\n\nfn main() {\n\tn, label := choose(.right)!\n\tprintln(int_str(n) + ':' + label)\n}\n")
+	assert out == '2:right'
+}
+
+fn test_result_multi_return_match_branch_unwraps_imported_payload_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'result_multi_return_match_imported_payload', {
+		'v.mod':  "Module { name: 'result_multi_return_match_imported_payload' }\n"
+		'main.v': "module main\n\nimport m\n\nenum Kind {\n\tleft\n\tright\n}\n\nstruct Wrap {\n\tkind  Kind\n\tinner m.Inner\n}\n\nfn (wrap Wrap) choose() !(m.Match, []string) {\n\treturn match wrap.kind {\n\t\t.left {\n\t\t\twrap.inner.pair('left')!\n\t\t}\n\t\t.right {\n\t\t\twrap.inner.pair('right')!\n\t\t}\n\t}\n}\n\nfn main() {\n\twrap := Wrap{\n\t\tkind:  .right\n\t\tinner: m.Inner{\n\t\t\tn: 2\n\t\t}\n\t}\n\tmat, groups := wrap.choose()!\n\tprintln(int_str(mat.n) + ':' + groups[0])\n}\n"
+		'm/m.v':  'module m\n\npub struct Match {\npub:\n\tn int\n}\n\npub struct Inner {\npub:\n\tn int\n}\n\npub fn (inner Inner) pair(label string) !(Match, []string) {\n\treturn Match{\n\t\tn: inner.n\n\t}, [label]\n}\n'
+	}, 'main.v')
+	assert out == '2:right'
+}
+
+fn test_string_to_owned_compiles_under_ownership_cgen() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'string_to_owned_ownership_cgen', '-ownership',
+		"fn main() {\n\tname := 'owned'.to_owned()\n\tcopy := name.to_owned()\n\tprintln(copy)\n}\n")
+	assert out == 'owned'
+}
+
+fn test_generic_interface_method_body_marks_log_debug_dispatch() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_with_flags(v3_bin, 'generic_interface_log_debug_dispatch', '-ownership',
+		"import log\n\ninterface Sink {\n\tbinary_data()\n}\n\nstruct Box[T] {}\n\nfn (mut b Box[T]) binary_data() {\n\t_ = b\n\tlog.debug('hidden')\n}\n\nstruct Runner {}\n\nfn (mut r Runner) run(mut s Sink) {\n\t_ = r\n\ts.binary_data()\n}\n\nstruct Worker {\nmut:\n\trunner Runner\n}\n\nfn main() {\n\tmut worker := Worker{\n\t\trunner: Runner{}\n\t}\n\tmut b := Box[int]{}\n\tworker.runner.run(mut b)\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
+}
+
+fn test_array_literal_separator_handling() {
+	v3_bin := build_v3_review_transform()
+	// Comma-, newline-, and blank-line-separated element lists parse with the
+	// expected length. This parser is permissive (it never hard-errors on
+	// malformed input), so the guarantee here is that a missing separator
+	// (`[9 10]`) or a repeated comma (`[11,,12]`) is *not* merged/collapsed into
+	// extra elements: only the leading element is kept, never `len == 2`.
+	out := run_good(v3_bin, 'array_literal_separators',
+		'const nl = [\n\t1\n\t2\n\t3\n]\nconst blank = [\n\t4\n\n\t5\n]\n\nfn main() {\n\tcommas := [6, 7, 8]\n\tmissing := [9 10]\n\tdoubled := [11,,12]\n\tprintln(int_str(nl.len) + ":" + int_str(blank.len) + ":" + int_str(commas.len) + ":" + int_str(missing.len) + ":" + int_str(doubled.len))\n}\n')
+	assert out == '3:2:3:1:1'
+}
+
+fn test_container_wrapped_import_alias_type_resolves() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'container_import_alias_types', {
+		'v.mod':     "Module { name: 'container_import_alias_types' }\n"
+		'bar/bar.v': 'module bar\n\npub struct Baz {\npub:\n\tn int\n}\n'
+		'foo/foo.v': 'module foo\n\nimport bar as b\n\npub struct Holder {\npub:\n\titems []b.Baz\n\tone   ?b.Baz\n}\n\npub fn make() Holder {\n\treturn Holder{\n\t\titems: [b.Baz{\n\t\t\tn: 1\n\t\t}, b.Baz{\n\t\t\tn: 2\n\t\t}]\n\t\tone: b.Baz{\n\t\t\tn: 7\n\t\t}\n\t}\n}\n'
+		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\th := foo.make()\n\tmut out := int_str(h.items[0].n) + int_str(h.items[1].n)\n\tif v := h.one {\n\t\tout += int_str(v.n)\n\t}\n\tprintln(out)\n}\n'
+	}, 'main.v')
+	assert out == '127'
+}
+
 fn test_nested_map_equality_uses_declared_value_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'nested_map_semantic_equality',
@@ -122,6 +263,20 @@ fn test_pointer_array_equality_uses_pointer_identity() {
 	out := run_good(v3_bin, 'pointer_array_equality',
 		'struct Node {\n\tvalue int\n}\n\nfn main() {\n\tleft_node := Node{\n\t\tvalue: 5\n\t}\n\tright_node := Node{\n\t\tvalue: 5\n\t}\n\tleft_ptr := &left_node\n\tright_ptr := &right_node\n\tleft := [left_ptr]\n\tright := [right_ptr]\n\tsame := [left_ptr]\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n\tprintln(right_ptr in left)\n\tprintln(int_str(left.index(right_ptr)))\n}\n')
 	assert out == 'false\ntrue\ntrue\nfalse\n-1'
+}
+
+fn test_struct_pointer_equality_is_semantic() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_pointer_semantic_equality',
+		"struct Person {\n\tname string\n\ttags []string\n}\n\nfn main() {\n\tleft := &Person{\n\t\tname: 'abc'.clone()\n\t\ttags: ['x'.clone()]\n\t}\n\tright := &Person{\n\t\tname: ('a' + 'bc')\n\t\ttags: [('x' + '')]\n\t}\n\tsame := left\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n}\n")
+	assert out == 'true\nfalse\ntrue'
+}
+
+fn test_struct_equality_with_interface_field_compiles() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'struct_eq_interface_field',
+		"interface Thing {\n\tvalue() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) value() int {\n\treturn i.n\n}\n\nstruct Box {\n\tthing Thing\n\tlabel string\n}\n\nfn main() {\n\titem := Item{\n\t\tn: 7\n\t}\n\tleft := Box{\n\t\tthing: item\n\t\tlabel: 'same'\n\t}\n\tright := left\n\tprintln(left == right)\n}\n")
+	assert out == 'true'
 }
 
 fn test_array_pointer_equality_uses_pointer_identity() {
@@ -173,6 +328,13 @@ fn test_negative_is_return_smartcasts_following_statements() {
 	out := run_good(v3_bin, 'negative_is_return_smartcast',
 		'struct MapKind {\n\tkey_type int\n\tvalue_type int\n}\nstruct OtherKind {}\ntype Kind = MapKind | OtherKind\n\nfn passthrough(k Kind) Kind {\n\treturn k\n}\n\nfn score(k Kind) int {\n\tclean := passthrough(k)\n\tif clean !is MapKind {\n\t\treturn 0\n\t}\n\treturn clean.key_type + clean.value_type\n}\n\nfn main() {\n\tprintln(int_str(score(Kind(MapKind{\n\t\tkey_type: 2\n\t\tvalue_type: 5\n\t}))))\n\tprintln(int_str(score(Kind(OtherKind{}))))\n}\n')
 	assert out == '7\n0'
+}
+
+fn test_if_expr_smartcast_selector_decl_does_not_smartcast_local() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'if_expr_selector_decl_smartcast_local',
+		'struct Cat {\n\tage int\n}\nstruct Dog {\n\ttricks int\n}\ntype Animal = Cat | Dog\n\nstruct Ident {\n\tobj Animal\n}\n\nfn has_age(cat Cat) bool {\n\treturn cat.age == 3\n}\n\nfn main() {\n\tleft := Ident{\n\t\tobj: Animal(Cat{\n\t\t\tage: 2\n\t\t})\n\t}\n\tmut obj := if left.obj is Cat {\n\t\tleft.obj\n\t} else {\n\t\tCat{}\n\t}\n\tif true {\n\t\tobj = Cat{\n\t\t\tage: 3\n\t\t}\n\t}\n\tprintln(has_age(obj))\n}\n')
+	assert out == 'true'
 }
 
 fn test_comptime_type_conditions_handle_logical_ops() {
@@ -267,8 +429,8 @@ fn test_string_pointer_comparisons_keep_pointer_semantics() {
 fn test_map_keys_and_values_lower_to_runtime_methods() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'map_keys_values_lowering',
-		"fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n}\n")
-	assert out == '2\n2\n3'
+		"fn make_lookup() map[string]int {\n\treturn {\n\t\t'one': 1\n\t\t'two': 2\n\t}\n}\n\nfn main() {\n\tlookup := make_lookup()\n\tkeys := lookup.keys()\n\tvalues := make_lookup().values()\n\tmut total := 0\n\tfor value in values {\n\t\ttotal += value\n\t}\n\tsingle := {\n\t\t'only': 9\n\t}\n\tprintln(int_str(keys.len))\n\tprintln(int_str(values.len))\n\tprintln(int_str(total))\n\tprintln(int_str(single.keys().len))\n\tprintln(single.keys()[0])\n\tprintln(int_str(single.values().len))\n\tprintln(int_str(single.values()[0]))\n}\n")
+	assert out == '2\n2\n3\n1\nonly\n1\n9'
 }
 
 fn test_map_str_preserves_signed_wide_entries() {
@@ -283,6 +445,13 @@ fn test_map_str_normalizes_alias_key_and_value_types() {
 	out := run_good(v3_bin, 'map_str_alias_kinds',
 		"type ID = int\n\ntype Amount = f64\n\nfn main() {\n\tids := {\n\t\tID(23): 'id'\n\t}\n\tamounts := {\n\t\t'price': Amount(1.25)\n\t}\n\tprintln('\${ids}')\n\tprintln('\${amounts}')\n}\n")
 	assert out == "{23: 'id'}\n{'price': 1.25}"
+}
+
+fn test_chained_array_alias_stringification_uses_outer_alias_only() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'chained_array_alias_str',
+		"type A = []int\n\ntype B = A\n\nfn main() {\n\tvalue := B([1, 2])\n\tprintln('\${value}')\n}\n")
+	assert out == 'B([1, 2])'
 }
 
 fn test_mut_map_param_interpolation_preserves_pointer() {
@@ -334,6 +503,41 @@ fn test_array_last_index_uses_semantic_element_comparison() {
 	out := run_good(v3_bin, 'array_last_index_semantic_equality',
 		"struct Item {\n\tname string\n\tparts []string\n}\n\nfn join(a string, b string) string {\n\treturn a + b\n}\n\nfn main() {\n\tnested := [['ab'.clone()], [join('x', 'y')], [join('a', 'b')]]\n\tnested_needle := ['ab'.clone()]\n\titems := [Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}, Item{\n\t\tname: join('a', 'b')\n\t\tparts: [join('x', 'y')]\n\t}]\n\tneedle := Item{\n\t\tname: 'ab'.clone()\n\t\tparts: ['xy'.clone()]\n\t}\n\tprintln(int_str(nested.last_index(nested_needle)))\n\tprintln(int_str(items.last_index(needle)))\n}\n")
 	assert out == '2\n1'
+}
+
+fn test_generic_string_literal_matching_typeof_marker_is_preserved() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_marker_string_literal',
+		"fn marker_and_type[T](value T) string {\n\tmarker := '__v3_generic_type_name:T'\n\treturn marker + '|' + typeof(value).name\n}\n\nfn main() {\n\tprintln(marker_and_type(7))\n}\n")
+	assert out == '__v3_generic_type_name:T|int'
+}
+
+fn test_optional_string_equality_uses_payload_equality() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_string_semantic_equality',
+		"fn maybe_text(ok bool) ?string {\n\tif !ok {\n\t\treturn none\n\t}\n\tprefix := 'a'.clone()\n\treturn prefix + 'b'\n}\n\nfn main() {\n\tleft := maybe_text(true)\n\tright := maybe_text(true)\n\tmissing_left := maybe_text(false)\n\tmissing_right := maybe_text(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n")
+	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
+}
+
+fn test_optional_nested_array_equality_guards_payload_work() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_nested_array_guarded_equality',
+		"fn maybe_nested(ok bool) ?[][]string {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [['a'.clone()], ['b'.clone()]]\n}\n\nfn main() {\n\tleft := maybe_nested(true)\n\tright := maybe_nested(true)\n\tmissing_left := maybe_nested(false)\n\tmissing_right := maybe_nested(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n")
+	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
+}
+
+fn test_wrapped_plus_minus_continuations_consume_auto_semicolon() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'wrapped_plus_minus_continuation',
+		'fn add(total int, delta int) int {\n\treturn total\n\t\t+ delta\n}\n\nfn sub(total int, delta int) int {\n\treturn total\n\t\t- delta\n}\n\nfn main() {\n\tprintln(int_str(add(3, 4)))\n\tprintln(int_str(sub(9, 2)))\n}\n')
+	assert out == '7\n7'
+}
+
+fn test_normalized_option_result_fixed_array_names_keep_outer_wrapper() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'normalized_option_result_fixed_array',
+		"struct Foo {\n\tn int\n}\n\nfn opt_values(ok bool) ?[2]int {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [1, 2]!\n}\n\nfn res_values(ok bool) ![2]Foo {\n\tif !ok {\n\t\treturn error('x')\n\t}\n\treturn [Foo{\n\t\tn: 3\n\t}, Foo{\n\t\tn: 4\n\t}]!\n}\n\nfn main() {\n\ta := opt_values(true) or { [0, 0]! }\n\tb := res_values(true) or { [Foo{\n\t\tn: 0\n\t}, Foo{\n\t\tn: 0\n\t}]! }\n\tmissing_a := opt_values(false) or { [5, 6]! }\n\tmissing_b := res_values(false) or { [Foo{\n\t\tn: 7\n\t}, Foo{\n\t\tn: 8\n\t}]! }\n\tprintln(int_str(a[0] + a[1] + b[0].n + b[1].n))\n\tprintln(int_str(missing_a[0] + missing_a[1] + missing_b[0].n + missing_b[1].n))\n}\n")
+	assert out == '10\n26'
 }
 
 fn test_hierarchical_import_runtime_inits_before_importer_init() {

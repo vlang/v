@@ -591,6 +591,37 @@ fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	assert !compilation.output.contains('case DLL_PROCESS_ATTACH')
 }
 
+fn test_boehm_gc_header_precedes_imported_module_spawn_wrappers() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_boehm_gc_spawn_include_order.vv')
+	source_lines := [
+		'module main',
+		'',
+		'import fasthttp',
+		'',
+		'fn handler(_ fasthttp.HttpRequest) !fasthttp.HttpResponse {',
+		"\treturn fasthttp.HttpResponse{content: 'HTTP/1.1 200 OK\\r\\nContent-Length: 0\\r\\n\\r\\n'.bytes()}",
+		'}',
+		'',
+		'fn main() {',
+		'\tmut server := fasthttp.new_server(handler: handler)!',
+		'\tserver.run()!',
+		'}',
+	]
+	os.write_file(test_source, source_lines.join('\n') + '\n')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -os linux -gc boehm -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	gc_include_pos := compilation.output.index('#include <gc/gc.h>') or { -1 }
+	pthread_create_pos := compilation.output.index('pthread_create(&thread_') or { -1 }
+	assert gc_include_pos >= 0
+	assert pthread_create_pos >= 0
+	assert gc_include_pos < pthread_create_pos
+}
+
 fn test_array_sort_with_compare_uses_stable_sort_adapters() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_array_sort_with_compare_stable_sort.vv')
@@ -658,15 +689,25 @@ fn test_array_sort_expression_key_avoids_sanitized_name_collisions() {
 	assert res.output.trim_space().replace('\r\n', '\n') == 'nested-ok\nflat-ok'
 }
 
-// generated_c_symbol_with_prefix extracts one generated C symbol from compiler output.
-fn generated_c_symbol_with_prefix(output string, prefix string) string {
-	idx := output.index(prefix) or { return '' }
-	rest := output[idx..]
-	mut end := 0
-	for end < rest.len && (rest[end].is_letter() || rest[end].is_digit() || rest[end] == `_`) {
-		end++
+// generated_c_symbols_with_prefix extracts generated C symbols from compiler output.
+fn generated_c_symbols_with_prefix(output string, prefix string) []string {
+	mut symbols := []string{}
+	mut start := 0
+	for start < output.len {
+		idx := output[start..].index(prefix) or { break }
+		rest := output[start + idx..]
+		mut end := 0
+		for end < rest.len && (rest[end].is_letter() || rest[end].is_digit() || rest[end] == `_`) {
+			end++
+		}
+		symbol := rest[..end]
+		if symbol !in symbols {
+			symbols << symbol
+		}
+		start += idx + end
 	}
-	return rest[..end]
+	symbols.sort()
+	return symbols
 }
 
 fn test_auxiliary_c_symbols_use_stable_type_hashes() {
@@ -711,14 +752,14 @@ fn test_auxiliary_c_symbols_use_stable_type_hashes() {
 	compilation_b := os.execute(cmd_b)
 	ensure_compilation_succeeded(compilation_a, cmd_a)
 	ensure_compilation_succeeded(compilation_b, cmd_b)
-	compare_a := generated_c_symbol_with_prefix(compilation_a.output, 'compare_')
-	compare_b := generated_c_symbol_with_prefix(compilation_b.output, 'compare_')
-	keepalive_a := generated_c_symbol_with_prefix(compilation_a.output,
+	compare_a := generated_c_symbols_with_prefix(compilation_a.output, 'compare_')
+	compare_b := generated_c_symbols_with_prefix(compilation_b.output, 'compare_')
+	keepalive_a := generated_c_symbols_with_prefix(compilation_a.output,
 		'__v_boehm_collect_keepalive_')
-	keepalive_b := generated_c_symbol_with_prefix(compilation_b.output,
+	keepalive_b := generated_c_symbols_with_prefix(compilation_b.output,
 		'__v_boehm_collect_keepalive_')
-	assert compare_a != ''
-	assert keepalive_a != ''
+	assert compare_a.len > 0
+	assert keepalive_a.len > 0
 	assert compare_a == compare_b
 	assert keepalive_a == keepalive_b
 }

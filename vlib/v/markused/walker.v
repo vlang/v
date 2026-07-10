@@ -726,6 +726,9 @@ pub fn (mut w Walker) stmt(node_ ast.Stmt) {
 			}
 		}
 		ast.AssignStmt {
+			for t in node.left_types {
+				w.mark_by_type(t)
+			}
 			w.exprs(node.left)
 			w.exprs(node.right)
 		}
