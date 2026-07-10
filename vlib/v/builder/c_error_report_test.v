@@ -26,8 +26,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		trace_calls:  true
 		is_coverage:  true
 		coverage_dir: 'cov/out'
-		// build_options records `-d ...` verbatim (this is what parse_define stores)
-		build_options: ['-d foo', '-d pad=7', '-d header=', '-cc gcc']
+		// build_options records `-d ...` and `-cflags ...` verbatim
+		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"', '-cc gcc']
 	}
 	opts := codegen_build_options(&p)
 	assert opts.contains('autofree')
@@ -47,7 +47,9 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	// valued defines keep their value, including an explicitly empty one (`$d()` reads it)
 	assert opts.contains('-d pad=7')
 	assert opts.contains('-d header=')
-	// only `-d ...` options are pulled from build_options, not unrelated ones
+	// `-cflags` is passed to the C compiler and can decide whether the error reproduces
+	assert opts.contains('-cflags "-Werror"')
+	// unrelated recorded options (e.g. `-cc`, covered by the ccompiler field) are not pulled in
 	assert !opts.contains('-cc gcc')
 }
 

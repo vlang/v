@@ -213,11 +213,12 @@ fn codegen_build_options(p &pref.Preferences) string {
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
 	}
-	// custom `-d`/`-define` options, reused verbatim from the recorded build options so the
-	// value is preserved exactly (`-d foo`, `-d pad=7`, and the explicitly empty `-d header=`).
-	// This matters because `$if foo ?` and `$d()` can select different source and codegen.
+	// Options reused verbatim from the recorded build options so their value is preserved
+	// exactly: custom `-d` defines (`-d foo`, `-d pad=7`, the explicitly empty `-d header=`),
+	// which select source/codegen via `$if foo ?` / `$d()`, and `-cflags`, which are passed
+	// through to the C compiler and can decide whether the C error reproduces (e.g. `-Werror`).
 	for opt in p.build_options {
-		if opt.starts_with('-d ') {
+		if opt.starts_with('-d ') || opt.starts_with('-cflags ') {
 			opts << opt
 		}
 	}
