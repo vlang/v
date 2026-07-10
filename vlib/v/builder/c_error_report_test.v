@@ -28,6 +28,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		cmain:                         'SDL_main'
 		force_bounds_checking:         true
 		div_by_zero_is_zero:           true
+		is_check_overflow:             true
+		relaxed_gcc14:                 false
 		assert_failure_mode:           .backtraces
 		thread_stack_size:             4194304
 		thread_stack_size_set_by_flag: true
@@ -65,6 +67,10 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('assert:backtraces')
 	// `-div-by-zero-is-zero` makes cgen emit different safe div/mod helpers
 	assert opts.split(' ').any(it == 'div_by_zero_is_zero')
+	// `-check-overflow` inserts runtime overflow-check paths
+	assert opts.split(' ').any(it == 'check_overflow')
+	// `-no-relaxed-gcc14` drops the gcc-14 diagnostic-relaxing pragmas (default on)
+	assert opts.split(' ').any(it == 'no_relaxed_gcc14')
 	// `-thread-stack-size` is embedded in the spawn/go thread creation call
 	assert opts.contains('thread_stack_size:4194304')
 	// the profile output path is embedded in the generated C, so keep it

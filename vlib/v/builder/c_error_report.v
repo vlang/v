@@ -206,6 +206,15 @@ fn codegen_build_options(p &pref.Preferences) string {
 		// cgen emits different safe div/mod helpers (`x / 0 == 0` instead of the panic path).
 		opts << 'div_by_zero_is_zero'
 	}
+	if p.is_check_overflow {
+		// cgen inserts runtime integer-overflow-check paths, changing the generated C.
+		opts << 'check_overflow'
+	}
+	if !p.relaxed_gcc14 {
+		// `-no-relaxed-gcc14` drops the gcc-14 diagnostic-relaxing pragmas (default on), so
+		// gcc 14+ can turn the original errors into warnings on replay without it.
+		opts << 'no_relaxed_gcc14'
+	}
 	if p.translated {
 		opts << 'translated'
 	}
