@@ -157,7 +157,13 @@ fn codegen_build_options(p &pref.Preferences) string {
 	if p.parallel_cc {
 		opts << 'parallel_cc'
 	}
-	if p.is_shared {
+	if p.is_livemain {
+		opts << 'live'
+	}
+	// `-sharedlive` also sets is_shared; report it as the live mode, not plain `shared`.
+	if p.is_liveshared {
+		opts << 'sharedlive'
+	} else if p.is_shared {
 		opts << 'shared'
 	}
 	if p.is_o {

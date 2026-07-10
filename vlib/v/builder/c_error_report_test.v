@@ -69,6 +69,24 @@ fn test_codegen_build_options_distinguishes_g_from_cg() {
 	assert !cg_opts.split(' ').any(it == '-g')
 }
 
+fn test_codegen_build_options_reports_live_modes() {
+	// `-live`
+	live_opts := codegen_build_options(&pref.Preferences{ is_livemain: true })
+	assert live_opts.split(' ').any(it == 'live')
+
+	// `-sharedlive` sets is_liveshared and is_shared, but must not collapse to `shared`
+	sharedlive_opts := codegen_build_options(&pref.Preferences{
+		is_liveshared: true
+		is_shared:     true
+	})
+	assert sharedlive_opts.contains('sharedlive')
+	assert !sharedlive_opts.split(' ').any(it == 'shared')
+
+	// plain `-shared`
+	shared_opts := codegen_build_options(&pref.Preferences{ is_shared: true })
+	assert shared_opts.split(' ').any(it == 'shared')
+}
+
 fn restore_c_error_bug_report_url_env(old_url ?string) {
 	restore_env_var('V_C_ERROR_BUG_REPORT_URL', old_url)
 }
