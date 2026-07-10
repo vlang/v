@@ -22,6 +22,9 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		no_builtin:        true
 		no_preludes:       true
 		no_prod_options:   true
+		enable_globals:    true
+		fast_math:         true
+		cmain:             'SDL_main'
 		is_prof:           true
 		profile_file:      'some/file'
 		profile_no_inline: true
@@ -44,6 +47,11 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('no_builtin')
 	assert opts.contains('no_preludes')
 	assert opts.contains('no_prod_options')
+	// `-enable-globals` gates the checker (`__global`); without it a report cannot be replayed
+	assert opts.contains('enable_globals')
+	// `-fast-math` changes the C compiler command; `-cmain` changes the generated entry point
+	assert opts.contains('fast_math')
+	assert opts.contains('cmain:SDL_main')
 	// the profile output path is embedded in the generated C, so keep it
 	assert opts.contains('profile:some/file')
 	assert opts.contains('profile_no_inline')
@@ -130,6 +138,20 @@ fn test_c_error_location_for_generated_c_parses_msvc_output() {
 		return
 	}
 	assert loc.line == 19
+}
+
+fn test_v_source_chunk_returns_only_window_around_failing_line() {
+	lines := ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11']
+	// a chunk of radius 2 around line 6 keeps lines 4..8 and nothing else (not the whole file)
+	chunk := v_source_chunk(lines, 6, 2)
+	assert chunk == '4\n5\n6\n7\n8'
+	assert !chunk.contains('1')
+	assert !chunk.contains('11')
+}
+
+fn test_v_source_chunk_is_empty_without_mapped_line() {
+	// no mapped V line (center <= 0) => upload no source at all
+	assert v_source_chunk(['a', 'b', 'c'], 0, 40) == ''
 }
 
 fn test_numbered_context_lines_returns_five_lines_each_side() {

@@ -9,6 +9,9 @@ import v.util.version
 const default_c_error_bug_report_url = 'https://bugs.vlang.io/bug-report'
 const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
 const c_error_context_radius = 5
+// how many V source lines to upload on each side of the failing line (the reproduction chunk,
+// wider than the pinpoint `c_error_context_radius` above, but still not the whole file)
+const c_error_v_source_radius = 40
 const c_error_bug_report_max_body_bytes = 256 * 1024
 const c_error_bug_report_max_v_source_bytes = 64 * 1024
 const c_error_bug_report_truncation_notice = '\n... report truncated before upload ...\n'
@@ -41,7 +44,7 @@ pub:
 	v_file         string
 	v_line         int
 	v_context      []CErrorReportLine
-	v_source       string // the full V source of `v_file` (bounded), so the failure can be reproduced
+	v_source       string // the block of V source around the failing line (bounded), so the failure can be reproduced without uploading the whole file
 }
 
 fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) {
@@ -103,12 +106,12 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// `v_context` shows the lines of whatever file the C error maps to (which can be an
 	// included header, not V source).
 	mapped_source := if v_file != '' { os.read_file(v_file) or { '' } } else { '' }
-	// `v_source` must be the failing V program, so use the mapped file only when it is V
-	// source; otherwise (a header, or no `#line` mapping at all) fall back to the compiled input.
+	// `v_source` uploads only the block of V source around the failing line, not the whole
+	// file, so unrelated or private code is not disclosed on the default auto-submit path. It
+	// is taken from the mapped file only when that is V source (a header, or no `#line`
+	// mapping at all, yields no chunk).
 	v_source := if is_v_source_file(v_file) {
-		mapped_source
-	} else if os.is_file(v.pref.path) {
-		os.read_file(v.pref.path) or { '' }
+		v_source_chunk(mapped_source.split_into_lines(), v_line, c_error_v_source_radius)
 	} else {
 		''
 	}
@@ -185,11 +188,20 @@ fn codegen_build_options(p &pref.Preferences) string {
 	if p.translated {
 		opts << 'translated'
 	}
+	if p.enable_globals {
+		// the checker rejects `__global` without this, so replaying the report would stop at
+		// the checker instead of reaching the C compiler error.
+		opts << 'enable_globals'
+	}
 	if p.use_cache {
 		opts << 'usecache'
 	}
 	if p.nofloat {
 		opts << 'nofloat'
+	}
+	if p.fast_math {
+		// appends `-ffast-math` / `/fp:fast` to the C compiler command, changing its invocation.
+		opts << 'fast_math'
 	}
 	if p.prealloc {
 		opts << 'prealloc'
@@ -225,6 +237,11 @@ fn codegen_build_options(p &pref.Preferences) string {
 		// coverage adds instrumentation and stores output under coverage_dir.
 		opts << 'coverage:${p.coverage_dir}'
 	}
+	if p.cmain != '' {
+		// `-cmain Foo` makes cgen emit `int Foo(...)` as the entry point instead of the normal
+		// one, so the generated C differs.
+		opts << 'cmain:${p.cmain}'
+	}
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
 	}
@@ -243,6 +260,16 @@ fn codegen_build_options(p &pref.Preferences) string {
 		}
 	}
 	return opts.join(' ')
+}
+
+// v_source_chunk returns only the block of V source around the failing line (a window of
+// `radius` lines on each side), rather than the whole file, so unrelated or private source is
+// not uploaded on the default auto-submit path. It returns '' when there is no mapped V line.
+fn v_source_chunk(lines []string, center int, radius int) string {
+	if center <= 0 {
+		return ''
+	}
+	return numbered_context_lines(lines, center, radius).map(it.text).join('\n')
 }
 
 // bounded_v_source keeps the V source under `max_bytes`, trimming the middle if needed so the

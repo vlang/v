@@ -19,7 +19,8 @@ pub:
 // The generated C context is stored in `lines`, while the corresponding V source
 // context (the V line that caused the C error and its surrounding lines) is stored
 // separately in `v_lines`. `arch`, `build_options` (the codegen-affecting `v` flags) and
-// `v_source` (the full failing V file) are stored so a report can be reproduced.
+// `v_source` (the block of failing V source around the error line) are stored so a report can
+// be reproduced.
 pub fn new_stored_c_error_report(c_file string, target_os string, ccompiler string, arch string, build_options string, c_error string, c_lines []string, v_lines []string, v_source string) StoredCErrorReport {
 	return StoredCErrorReport{
 		c_file_name:   normalized_file_name(c_file)
