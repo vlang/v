@@ -188,38 +188,34 @@ fn test_encode_child() {
 
 fn test_document_manual_construction() {
 	mut doc := kdl.Document{}
-	doc.nodes << kdl.Node{
-		name:     'config'
-		entries:  [
-			kdl.Property{
-				key:   'host'
-				value: kdl.StringVal{
-					value: 'localhost'
-					flag:  .quoted
-				}
-			},
-			kdl.Property{
-				key:   'port'
-				value: kdl.IntVal{
-					value: 8080
-				}
-			},
-		]
-		children: [
-			kdl.Node{
-				name:    'logging'
-				entries: [
-					kdl.Property{
-						key:   'level'
-						value: kdl.StringVal{
-							value: 'info'
-							flag:  .bare
-						}
-					},
-				]
-			},
-		]
+	mut config := kdl.Node{
+		name: 'config'
 	}
+	config.entries << kdl.Property{
+		key:   'host'
+		value: kdl.StringVal{
+			value: 'localhost'
+			flag:  .quoted
+		}
+	}
+	config.entries << kdl.Property{
+		key:   'port'
+		value: kdl.IntVal{
+			value: 8080
+		}
+	}
+	mut logging := kdl.Node{
+		name: 'logging'
+	}
+	logging.entries << kdl.Property{
+		key:   'level'
+		value: kdl.StringVal{
+			value: 'info'
+			flag:  .bare
+		}
+	}
+	config.children << logging
+	doc.nodes << config
 	out := kdl.format(doc)!
 	assert out.contains('config')
 	assert out.contains('host')

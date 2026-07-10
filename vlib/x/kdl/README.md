@@ -22,17 +22,17 @@ package {
 import x.kdl
 
 // Basic parsing
-doc := x.kdl.parse('name "Alice" age 30 active #true')!
+doc := kdl.parse('name "Alice" age 30 active #true')!
 println(doc.nodes[0].name) // "name"
 
 // With options
-opts := x.kdl.ParseOpts{
+opts := kdl.ParseOpts{
 	parse_comments: true
 }
-doc2 := x.kdl.parse_opts('// greeting\nhello "world"', opts)!
+doc2 := kdl.parse_opts('// greeting\nhello "world"', opts)!
 
 // From file
-doc3 := x.kdl.parse_file('config.kdl')!
+doc3 := kdl.parse_file('config.kdl')!
 ```
 
 ### Serialization
@@ -40,8 +40,8 @@ doc3 := x.kdl.parse_file('config.kdl')!
 ```v
 import x.kdl
 
-doc := x.kdl.parse('my-node 1 2 key="val"')!
-out := x.kdl.format(doc)!
+doc := kdl.parse('my-node 1 2 key="val"')!
+out := kdl.format(doc)!
 println(out)
 ```
 
@@ -60,10 +60,10 @@ person := Person{
 	name: 'Alice'
 	age:  30
 }
-println(x.kdl.encode(person))
+println(kdl.encode(person))
 
 // Decode KDL into struct
-p := x.kdl.decode[Person]('Person name=Alice age=30')!
+p := kdl.decode[Person]('Person name=Alice age=30')!
 println(p.name)
 ```
 
@@ -72,19 +72,19 @@ println(p.name)
 ```v
 import x.kdl
 
-doc := x.kdl.parse('sensor temp=22.5 name="Kitchen" online=true')!
+doc := kdl.parse('sensor temp=22.5 name="Kitchen" online=#true')!
 node := doc.nodes[0]
 
 // Property access
-temp := x.kdl.property_get(&node, 'temp') or { panic('missing') }
-println(x.kdl.as_f64(temp)) // 22.5
-println(x.kdl.as_string(temp)) // "22.5"
+temp := kdl.property_get(&node, 'temp') or { panic('missing') }
+println(kdl.as_f64(temp)) // 22.5
+println(kdl.as_string(temp)) // "22.5"
 
-name := x.kdl.property_get(&node, 'name')!
-println(x.kdl.as_string(name)) // "Kitchen"
+name := kdl.property_get(&node, 'name') or { panic('name missing') }
+println(kdl.as_string(name)) // "Kitchen"
 
-online := x.kdl.property_get(&node, 'online')!
-println(x.kdl.as_bool(online)) // true
+online := kdl.property_get(&node, 'online') or { panic('online missing') }
+println(kdl.as_bool(online)) // true
 ```
 
 ### Document Model
@@ -103,19 +103,19 @@ println(x.kdl.as_bool(online)) // true
 import x.kdl
 
 // Relaxed NGINX syntax (allows /, \, (,) in identifiers)
-mut relaxed := x.kdl.RelaxedNonCompliant{
-	flags: x.kdl.nginx_syntax
+mut relaxed := kdl.RelaxedNonCompliant{
+	flags: kdl.nginx_syntax
 }
-opts := x.kdl.ParseOpts{
+opts := kdl.ParseOpts{
 	relaxed: relaxed
 }
-doc := x.kdl.parse_opts('allow from 192.168.1.1/24', opts)!
+doc := kdl.parse_opts('allow from 192.168.1.1/24', opts)!
 
 // Parse with comment capture
-mut opts2 := x.kdl.ParseOpts{
+mut opts2 := kdl.ParseOpts{
 	parse_comments: true
 }
-doc2 := x.kdl.parse_opts('// section header\nnode "val"', opts2)!
+doc2 := kdl.parse_opts('// section header\nnode "val"', opts2)!
 ```
 
 ## Features
