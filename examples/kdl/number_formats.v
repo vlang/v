@@ -1,6 +1,6 @@
 // KDL: number formats — decimal, hex, octal, binary, scientific, underscore separators
-import kdl
-import kdl.document
+import x.kdl
+import x.kdl.document
 
 fn main() {
 	src := 'nums 42 -17 +99 0xFF 0o77 0b1010 3.14 1e10 1.5e-3 1_000_000 0xFF_FF'

@@ -1,5 +1,5 @@
 // KDL: string values — quoted, bare, raw, multiline, escapes
-import kdl
+import x.kdl
 
 fn main() {
 	// Quoted strings with escapes

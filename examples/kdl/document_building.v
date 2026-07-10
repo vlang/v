@@ -1,5 +1,5 @@
 // KDL: build documents programmatically and serialize via format()
-import kdl
+import x.kdl
 
 fn main() {
 	mut doc := kdl.Document{}

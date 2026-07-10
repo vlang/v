@@ -1,6 +1,6 @@
 // KDL: type annotations on nodes, arguments, and properties
-import kdl
-import kdl.document
+import x.kdl
+import x.kdl.document
 
 fn main() {
 	src := '

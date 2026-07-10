@@ -1,6 +1,6 @@
 // KDL: basic parse, iterate nodes, walk children, format back to text
-import kdl
-import kdl.document
+import x.kdl
+import x.kdl.document
 
 fn main() {
 	// Parse a KDL document

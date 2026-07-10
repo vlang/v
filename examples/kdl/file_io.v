@@ -1,6 +1,6 @@
 // KDL: read from and write to files — parse_file, parse_file_opts, format → os.write_file
-import kdl
-import kdl.document
+import x.kdl
+import x.kdl.document
 import os
 
 fn main() {

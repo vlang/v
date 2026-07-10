@@ -1,5 +1,5 @@
 // KDL: coercion helpers — extract typed values from document model
-import kdl
+import x.kdl
 
 fn main() {
 	src := '

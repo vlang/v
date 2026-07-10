@@ -1,6 +1,6 @@
 // KDL: relaxed mode — parse nginx-style config and other non-standard KDL
-import kdl
-import kdl.document
+import x.kdl
+import x.kdl.document
 
 fn main() {
 	// NGINX-style: / in values, \ in paths, () in names

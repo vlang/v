@@ -1,6 +1,6 @@
 // KDL: booleans, null, and keyword numbers (#inf, #-inf, #nan)
-import kdl
-import kdl.document
+import x.kdl
+import x.kdl.document
 
 fn main() {
 	src := 'flags enabled=#true debug=#false cache=#null pos-inf=#inf neg-inf=#-inf not-a-number=#nan'

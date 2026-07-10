@@ -1,5 +1,5 @@
 // KDL: marshal V structs to KDL and unmarshal KDL back into V structs
-import kdl
+import x.kdl
 
 struct Package {
 	name    string
