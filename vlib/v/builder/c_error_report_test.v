@@ -13,16 +13,12 @@ fn restore_env_var(name string, old_value ?string) {
 
 fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	p := pref.Preferences{
-		autofree:        true
-		gc_mode:         .boehm_full
-		is_prod:         true
-		skip_unused:     true
-		compile_defines: ['foo', 'pad', 'header']
-		compile_values:  {
-			'foo':    'true'
-			'pad':    '7'
-			'header': 'false'
-		}
+		autofree:    true
+		gc_mode:     .boehm_full
+		is_prod:     true
+		skip_unused: true
+		// build_options records `-d ...` verbatim (this is what parse_define stores)
+		build_options: ['-d foo', '-d pad=7', '-d header=', '-cc gcc']
 	}
 	opts := codegen_build_options(&p)
 	assert opts.contains('autofree')
@@ -31,10 +27,11 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('skip_unused')
 	// custom `-d` defines must be recorded, since `$if foo ?` / `$d()` change codegen
 	assert opts.contains('-d foo')
-	assert !opts.contains('-d foo=true')
-	// valued defines must keep their value (`$d()` can change constants and generated C)
+	// valued defines keep their value, including an explicitly empty one (`$d()` reads it)
 	assert opts.contains('-d pad=7')
-	assert opts.contains('-d header=false')
+	assert opts.contains('-d header=')
+	// only `-d ...` options are pulled from build_options, not unrelated ones
+	assert !opts.contains('-cc gcc')
 }
 
 fn restore_c_error_bug_report_url_env(old_url ?string) {
