@@ -4935,8 +4935,11 @@ fn (mut g FlatGen) gen_json_encode_call(node flat.Node) bool {
 	arg_id := g.a.child(&node, 1)
 	typ := types.unwrap_pointer(g.usable_expr_type(arg_id))
 	expr := g.expr_to_string_with_expected_type(arg_id, typ)
-	encoded := g.json_encode_value_c_expr(typ, expr) or { return false }
-	g.write(encoded)
+	// Bind the argument to a single temporary so it is evaluated exactly once,
+	// no matter how many times the field/enum expansion references it.
+	tmp := g.tmp_name()
+	encoded := g.json_encode_value_c_expr(typ, tmp) or { return false }
+	g.write('({ ${g.value_c_type(typ)} ${tmp} = ${expr}; ${encoded}; })')
 	return true
 }
 
@@ -4964,10 +4967,25 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		return result
 	}
 	if clean is types.String {
-		quote := g.intern_string('"')
-		return 'string__plus(string__plus(_str_${quote}, ${expr}), _str_${quote})'
+		// Escape the contents through cJSON so quotes, backslashes, control
+		// characters and Unicode are emitted as valid JSON. cJSON_PrintUnformatted
+		// already returns the value wrapped in double quotes.
+		node_tmp := g.tmp_name()
+		print_tmp := g.tmp_name()
+		res_tmp := g.tmp_name()
+		empty := g.intern_string('""')
+		return '({ cJSON* ${node_tmp} = cJSON_CreateString((char*)(${expr}).str); ' +
+			'char* ${print_tmp} = cJSON_PrintUnformatted(${node_tmp}); ' +
+			'string ${res_tmp} = ${print_tmp} != NULL ? tos_clone((u8*)${print_tmp}) : _str_${empty}; ' +
+			'cJSON_free(${print_tmp}); cJSON_Delete(${node_tmp}); ${res_tmp}; })'
 	}
 	if clean is types.Struct {
+		// The shortcut keys the wire format off the raw field name, so any struct
+		// carrying json field attributes (`@[json: 'x']`, `@[skip]`, ...) would be
+		// serialized with the wrong keys. Decline those and let normal codegen run.
+		if g.json_struct_has_field_attrs(clean.name) {
+			return none
+		}
 		fields := g.tc.structs[clean.name] or { return none }
 		open := g.intern_string('{')
 		close := g.intern_string('}')
@@ -5002,6 +5020,17 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	}
 	struct_type := base as types.Struct
 	fields := g.tc.structs[struct_type.name] or { return false }
+	// The shortcut can only faithfully decode a fixed set of field types and
+	// ignores json field attributes. Decline anything else so the result stays
+	// an error instead of silently succeeding with dropped/renamed/rounded data.
+	if g.json_struct_has_field_attrs(struct_type.name) {
+		return false
+	}
+	for field in fields {
+		if !g.json_decode_field_supported(field.typ) {
+			return false
+		}
+	}
 	json_id := g.a.child(&node, 2)
 	json_name := g.tmp_name()
 	root_name := g.tmp_name()
@@ -5011,7 +5040,9 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	g.write('({ string ${json_name} = ')
 	g.gen_expr_with_expected_type(json_id, types.Type(types.string_))
 	g.write('; cJSON* ${root_name} = cJSON_ParseWithLength((char*)${json_name}.str, (size_t)${json_name}.len); ')
-	g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} != NULL) { ')
+	// A struct only decodes successfully from a JSON object; `null`, arrays,
+	// strings and numbers must remain an error rather than a zero-valued struct.
+	g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} != NULL) { if (cJSON_IsObject(${root_name})) { ')
 	g.write('${out_name}.ok = true; ${out_name}.value = (${struct_ct}){')
 	for i, field in fields {
 		if i > 0 {
@@ -5020,8 +5051,31 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 		g.write('.${g.cname(field.name)} = ')
 		g.gen_json_decode_field_expr(root_name, field)
 	}
-	g.write('}; cJSON_Delete(${root_name}); } ${out_name}; })')
+	g.write('}; } cJSON_Delete(${root_name}); } ${out_name}; })')
 	return true
+}
+
+// json_decode_field_supported reports whether the fast-path decoder can decode
+// `typ` without silent data loss. Only strings, enums with known labels and
+// primitives that a cJSON `double` can represent exactly are supported; 64-bit
+// integers (which a double cannot hold exactly) and all composite/optional/
+// pointer/sumtype fields are declined so the call falls back to an error.
+fn (g &FlatGen) json_decode_field_supported(typ types.Type) bool {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	if clean is types.String {
+		return true
+	}
+	if clean is types.Enum {
+		names, _ := g.json_enum_labels(clean.name)
+		return names.len > 0
+	}
+	if clean is types.Primitive {
+		if clean.props.has(.integer) && clean.size == 64 {
+			return false
+		}
+		return true
+	}
+	return false
 }
 
 fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, field types.StructField) {
@@ -5057,6 +5111,42 @@ fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, field types.Stru
 		return
 	}
 	g.gen_default_value_for_type(field.typ)
+}
+
+// json_struct_has_field_attrs reports whether any field of `struct_name` carries
+// attributes (`@[json: 'x']`, `@[skip]`, `@[required]`, ...). Field attributes are
+// stored in `field_decl.generic_params` with index 0 holding the mut/pub flags and
+// any further entries being attributes.
+fn (g &FlatGen) json_struct_has_field_attrs(struct_name string) bool {
+	mut cur_module := ''
+	for node in g.a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .struct_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if struct_name != node.value && struct_name != qualified {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := g.a.child_node(&node, i)
+			if field.kind != .field_decl {
+				continue
+			}
+			if field.generic_params.len > 1 {
+				return true
+			}
+		}
+		return false
+	}
+	return false
 }
 
 fn (g &FlatGen) json_enum_labels(enum_name string) ([]string, map[string]string) {

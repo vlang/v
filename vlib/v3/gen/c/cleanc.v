@@ -9128,12 +9128,29 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 		callee_name := if callee.kind in [.ident, .selector] { callee.value } else { '' }
 		if callee_name.len > 0 && !visited_fns[callee_name] {
 			visited_fns[callee_name] = true
+			// Prefer an exact declaration match; only fall back to a short-name
+			// (suffix) match so that two modules sharing a function name do not
+			// resolve to the wrong declaration.
+			mut target := -1
+			mut suffix_target := -1
 			for i, candidate in g.a.nodes {
-				if candidate.kind == .fn_decl && (candidate.value == callee_name
-					|| candidate.value.all_after_last('.') == callee_name.all_after_last('.')) {
-					g.const_collect_deps_inner(flat.NodeId(i), mut deps, mut visited_fns)
+				if candidate.kind != .fn_decl {
+					continue
+				}
+				if candidate.value == callee_name {
+					target = i
 					break
 				}
+				if suffix_target < 0
+					&& candidate.value.all_after_last('.') == callee_name.all_after_last('.') {
+					suffix_target = i
+				}
+			}
+			if target < 0 {
+				target = suffix_target
+			}
+			if target >= 0 {
+				g.const_collect_deps_inner(flat.NodeId(target), mut deps, mut visited_fns)
 			}
 		}
 	}

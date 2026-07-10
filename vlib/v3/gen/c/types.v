@@ -872,18 +872,32 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 	if callee.kind != .ident {
 		return none
 	}
+	// Prefer an exact declaration match; only fall back to a short-name (suffix)
+	// match so that two modules sharing a function name do not fold the call
+	// using the wrong function body.
 	mut fn_node := flat.Node{}
 	mut found := false
+	mut suffix_node := flat.Node{}
+	mut suffix_found := false
 	for candidate in g.a.nodes {
-		if candidate.kind == .fn_decl && (candidate.value == callee.value
-			|| candidate.value.all_after_last('.') == callee.value.all_after_last('.')) {
+		if candidate.kind != .fn_decl {
+			continue
+		}
+		if candidate.value == callee.value {
 			fn_node = candidate
 			found = true
 			break
 		}
+		if !suffix_found && candidate.value.all_after_last('.') == callee.value.all_after_last('.') {
+			suffix_node = candidate
+			suffix_found = true
+		}
 	}
 	if !found {
-		return none
+		if !suffix_found {
+			return none
+		}
+		fn_node = suffix_node
 	}
 	mut locals := map[string]int{}
 	mut arg_idx := 1
