@@ -4971,17 +4971,10 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		return result
 	}
 	if clean is types.String {
-		// Escape the contents through cJSON so quotes, backslashes, control
-		// characters and Unicode are emitted as valid JSON. cJSON_PrintUnformatted
-		// already returns the value wrapped in double quotes.
-		node_tmp := g.tmp_name()
-		print_tmp := g.tmp_name()
-		res_tmp := g.tmp_name()
-		empty := g.intern_string('""')
-		return '({ cJSON* ${node_tmp} = cJSON_CreateString((char*)(${expr}).str); ' +
-			'char* ${print_tmp} = cJSON_PrintUnformatted(${node_tmp}); ' +
-			'string ${res_tmp} = ${print_tmp} != NULL ? tos_clone((u8*)${print_tmp}) : _str_${empty}; ' +
-			'cJSON_free(${print_tmp}); cJSON_Delete(${node_tmp}); ${res_tmp}; })'
+		// Escape the contents with a length-aware escaper (quotes, backslashes and
+		// control characters), preserving embedded NUL bytes; cJSON_CreateString is
+		// C-NUL-terminated and would truncate the V string.
+		return 'v3_json_encode_string(${expr})'
 	}
 	if clean is types.Struct {
 		// The shortcut keys the wire format off the raw field name, so any struct
