@@ -195,7 +195,7 @@ fn test_c_error_location_for_generated_c_parses_msvc_output() {
 }
 
 fn test_v_source_for_report_keeps_prefix_and_failing_region() {
-	// lines 1..60; the error is on line 50, far past the 3-line prefix and 2-line radius
+	// lines 1..60 (each a column-0 top-level line); the error is on line 50, far past the prefix
 	mut lines := []string{}
 	for i in 1 .. 61 {
 		lines << i.str()
@@ -203,11 +203,51 @@ fn test_v_source_for_report_keeps_prefix_and_failing_region() {
 	src := v_source_for_report(lines, 50, 2, 3)
 	// leading declarations (imports/types live at the top) are kept
 	assert src.contains('1\n2\n3')
-	// the failing region (lines 48..52) is kept
-	assert src.contains('48\n49\n50\n51\n52')
+	// the failing declaration (line 50) plus `radius` lines after it are kept
+	assert src.contains('50\n51\n52')
 	// unrelated middle bodies are dropped, with a marker in their place
 	assert src.contains(c_error_v_source_omitted_notice)
 	assert !src.split('\n').any(it == '25')
+}
+
+fn test_v_source_for_report_does_not_cut_prefix_mid_block() {
+	mut lines := []string{}
+	lines << 'module main' // 1
+	lines << 'fn helper() {' // 2 (opens a long block that runs past the prefix)
+	for i in 0 .. 40 {
+		lines << '\th${i} := ${i}' // 3..42
+	}
+	lines << '}' // 43 (closes helper)
+	lines << 'fn target() {' // 44
+	lines << '\tbad := undefined_thing' // 45 (failing)
+	lines << '}' // 46
+	// prefix_lines=5 lands inside helper's body; it must not keep a half-open `fn helper() {`
+	src := v_source_for_report(lines, 45, 2, 5)
+	assert src.starts_with('module main')
+	// only the brace-balanced leading line survives; the half-open helper body is not included
+	assert !src.contains('h0 :=')
+	assert !src.contains('fn helper() {')
+	// the enclosing block of the failing line is included whole
+	assert src.contains('fn target() {')
+	assert src.contains('bad := undefined_thing')
+	assert src.contains(c_error_v_source_omitted_notice)
+}
+
+fn test_v_source_for_report_includes_attributes_above_declaration() {
+	mut lines := []string{}
+	lines << 'module main' // 1
+	for i in 0 .. 40 {
+		lines << 'const c${i} = ${i}' // 2..41 (pushes the declaration past the prefix)
+	}
+	lines << '@[direct_array_access]' // 42 (attribute above the failing fn)
+	lines << 'fn hot(a []int) int {' // 43
+	lines << '\treturn a[0] + missing' // 44 (failing)
+	lines << '}' // 45
+	src := v_source_for_report(lines, 44, 2, 5)
+	// the attribute is included with the enclosing declaration, since it changes the generated C
+	assert src.contains('@[direct_array_access]')
+	assert src.contains('fn hot(a []int) int {')
+	assert src.contains('return a[0] + missing')
 }
 
 fn test_v_source_for_report_includes_enclosing_declaration() {

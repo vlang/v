@@ -337,39 +337,48 @@ fn selected_v_source(v_file string, mapped_lines []string, v_line int, input_pat
 }
 
 // v_source_for_report returns the V source needed to reproduce the C error without uploading the
-// whole file: the file's leading `prefix_lines` lines (module/imports/top-level declarations) plus
-// the block of `radius` lines on each side of the failing line. The failing region is extended up
-// to the start of its enclosing top-level declaration, so it begins at a declaration boundary
-// instead of resuming with interior statements after the omission comment. Keeping the prefix means
-// the stored source usually still compiles (a bare window can start mid-function and omit imports
-// and type declarations), while unrelated function bodies in the middle are still dropped. When the
-// failing region already reaches the prefix, one contiguous block is returned. It returns '' when
-// there is no mapped V line.
+// whole file: the file's leading declarations plus the failing line's enclosing top-level block and
+// up to `radius` lines after it. The region starts at the enclosing declaration (including its
+// `@[...]` attributes), so it is a whole declaration rather than statements resuming after the
+// omission comment. The prefix is trimmed to a brace-balanced boundary within `prefix_lines`, so it
+// never ends inside a half-open declaration. Unrelated declarations in the middle are dropped. When
+// the failing region already reaches the prefix, one contiguous block is returned. It returns ''
+// when there is no mapped V line.
 fn v_source_for_report(lines []string, center int, radius int, prefix_lines int) string {
 	if center <= 0 || lines.len == 0 {
 		return ''
 	}
-	window_start := if center - radius < 1 { 1 } else { center - radius }
-	// begin at the enclosing declaration so the region is not cut in the middle of a function body
-	region_start := enclosing_decl_start(lines, window_start)
+	// begin at the enclosing declaration of the failing line, so the region is a whole block and
+	// never starts in the middle of a function body (or on a stray closing brace).
+	region_start := enclosing_decl_start(lines, center)
 	region_end := if center + radius > lines.len { lines.len } else { center + radius }
 	// The failing region already includes (or directly follows) the prefix: keep it contiguous.
 	if region_start <= prefix_lines + 1 {
 		return lines[..region_end].join('\n')
 	}
-	prefix_end := if prefix_lines > lines.len { lines.len } else { prefix_lines }
-	prefix := lines[..prefix_end].join('\n')
 	region := lines[region_start - 1..region_end].join('\n')
+	// Trim the prefix so it does not end inside a half-open top-level declaration.
+	prefix_end := balanced_prefix_end(lines, prefix_lines)
+	if prefix_end == 0 {
+		return '${c_error_v_source_omitted_notice}\n${region}'
+	}
+	prefix := lines[..prefix_end].join('\n')
 	return '${prefix}\n${c_error_v_source_omitted_notice}\n${region}'
 }
 
-// enclosing_decl_start scans upward from `from_line` (1-based) to the nearest line that starts a
-// top-level declaration — a non-blank line with no leading indentation (`fn`/`struct`/`const`/an
-// `@[...]` attribute/etc., whose bodies are indented). This lets the failing region begin at the
-// enclosing declaration rather than in the middle of a function body. It returns `from_line` when
-// no such line is found above it.
+// enclosing_decl_start scans upward from `from_line` (1-based) to the start of the enclosing
+// top-level declaration: the nearest non-blank line with no leading indentation (`fn`/`struct`/
+// `const`/etc., whose bodies are indented), then any `@[...]` attribute lines directly above it,
+// since attributes such as `@[direct_array_access]` or `@[export]` change the generated C. It
+// returns `from_line` when no such line is found above it.
 fn enclosing_decl_start(lines []string, from_line int) int {
-	mut i := if from_line > lines.len { lines.len } else { from_line }
+	mut i := if from_line > lines.len {
+		lines.len
+	} else if from_line < 1 {
+		1
+	} else {
+		from_line
+	}
 	for i > 1 {
 		line := lines[i - 1]
 		if line.len > 0 && !line[0].is_space() {
@@ -377,7 +386,34 @@ fn enclosing_decl_start(lines []string, from_line int) int {
 		}
 		i--
 	}
+	// pull in attribute lines immediately above the declaration
+	for i > 1 && lines[i - 2].starts_with('@[') {
+		i--
+	}
 	return i
+}
+
+// balanced_prefix_end returns how many leading lines of `lines` (at most `max_lines`) can be kept
+// so that the kept slice has balanced `{`/`}` — i.e. it does not stop inside a half-open top-level
+// declaration. It is a brace-counting heuristic (string/rune literals with stray braces are not
+// tracked), which is enough to avoid uploading an obviously unterminated prefix.
+fn balanced_prefix_end(lines []string, max_lines int) int {
+	limit := if max_lines > lines.len { lines.len } else { max_lines }
+	mut depth := 0
+	mut last_balanced := 0
+	for k in 0 .. limit {
+		for ch in lines[k] {
+			if ch == `{` {
+				depth++
+			} else if ch == `}` && depth > 0 {
+				depth--
+			}
+		}
+		if depth == 0 {
+			last_balanced = k + 1
+		}
+	}
+	return last_balanced
 }
 
 // bounded_v_source keeps the V source under `max_bytes`, trimming the middle if needed so the
