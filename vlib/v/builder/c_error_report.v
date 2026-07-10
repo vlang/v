@@ -143,6 +143,10 @@ fn codegen_build_options(p &pref.Preferences) string {
 	if p.is_prod {
 		opts << 'prod'
 	}
+	if p.no_prod_options {
+		// suppresses the default -O3/-flto prod C flags (cc.v), changing the C compiler command.
+		opts << 'no_prod_options'
+	}
 	if p.is_debug {
 		// `-g` sets is_vlines (V `#line` output), `-cg` does not (C-line debug mode);
 		// they produce different generated C, so distinguish them for reproduction.
@@ -203,8 +207,19 @@ fn codegen_build_options(p &pref.Preferences) string {
 		// the profile output path is embedded in the generated C (the `fopen(...)` call).
 		opts << 'profile:${p.profile_file}'
 	}
+	if p.profile_no_inline {
+		opts << 'profile_no_inline'
+	}
+	if p.profile_fns.len > 0 {
+		// cgen only instruments the selected functions, so the set changes the generated C.
+		opts << 'profile_fns:${p.profile_fns.join(',')}'
+	}
 	if p.trace_calls {
 		opts << 'trace_calls'
+	}
+	if p.trace_fns.len > 0 {
+		// the transformer only injects tracing into the matching functions.
+		opts << 'trace_fns:${p.trace_fns.join(',')}'
 	}
 	if p.is_coverage {
 		// coverage adds instrumentation and stores output under coverage_dir.

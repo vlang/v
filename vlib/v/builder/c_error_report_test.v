@@ -13,19 +13,23 @@ fn restore_env_var(name string, old_value ?string) {
 
 fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	p := pref.Preferences{
-		autofree:     true
-		gc_mode:      .boehm_full
-		is_prod:      true
-		skip_unused:  true
-		prealloc:     true
-		is_bare:      true
-		no_builtin:   true
-		no_preludes:  true
-		is_prof:      true
-		profile_file: 'some/file'
-		trace_calls:  true
-		is_coverage:  true
-		coverage_dir: 'cov/out'
+		autofree:          true
+		gc_mode:           .boehm_full
+		is_prod:           true
+		skip_unused:       true
+		prealloc:          true
+		is_bare:           true
+		no_builtin:        true
+		no_preludes:       true
+		no_prod_options:   true
+		is_prof:           true
+		profile_file:      'some/file'
+		profile_no_inline: true
+		profile_fns:       ['foo_*', 'bar']
+		trace_calls:       true
+		trace_fns:         ['baz_*']
+		is_coverage:       true
+		coverage_dir:      'cov/out'
 		// build_options records `-d ...`, `-cflags ...` and `-custom-prelude ...` verbatim
 		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"',
 			'-custom-prelude prelude.h', '-cc gcc']
@@ -39,9 +43,14 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('freestanding')
 	assert opts.contains('no_builtin')
 	assert opts.contains('no_preludes')
+	assert opts.contains('no_prod_options')
 	// the profile output path is embedded in the generated C, so keep it
 	assert opts.contains('profile:some/file')
+	assert opts.contains('profile_no_inline')
+	// the profiled/traced function filters change which functions are instrumented
+	assert opts.contains('profile_fns:foo_*,bar')
 	assert opts.contains('trace_calls')
+	assert opts.contains('trace_fns:baz_*')
 	assert opts.contains('coverage:cov/out')
 	// custom `-d` defines must be recorded, since `$if foo ?` / `$d()` change codegen
 	assert opts.contains('-d foo')
