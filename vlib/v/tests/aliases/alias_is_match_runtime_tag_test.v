@@ -228,3 +228,19 @@ fn test_sumtype_match_uses_exact_alias_variant_tag_for_chained_aliases() {
 	assert Issue27718Offset(Issue27718SPOffset(42)).str() == 'SP+42'
 	assert Issue27718Offset(Issue27718RawOffset(42)).str() == '42'
 }
+
+type Issue27719RawMode = u8
+type Issue27719SpecialMode = Issue27719RawMode
+type Issue27719Mode = Issue27719RawMode | Issue27719SpecialMode
+
+fn issue27719_mode_name(mode Issue27719Mode) string {
+	return match mode {
+		Issue27719SpecialMode { 'special' }
+		Issue27719RawMode { 'raw' }
+	}
+}
+
+fn test_sumtype_match_expr_uses_exact_alias_variant_tag_for_chained_aliases() {
+	assert issue27719_mode_name(Issue27719Mode(Issue27719SpecialMode(1))) == 'special'
+	assert issue27719_mode_name(Issue27719Mode(Issue27719RawMode(1))) == 'raw'
+}
