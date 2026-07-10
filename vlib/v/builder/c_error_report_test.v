@@ -13,33 +13,35 @@ fn restore_env_var(name string, old_value ?string) {
 
 fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	p := pref.Preferences{
-		autofree:              true
-		gc_mode:               .boehm_full
-		is_prod:               true
-		skip_unused:           true
-		prealloc:              true
-		is_bare:               true
-		no_builtin:            true
-		no_preludes:           true
-		no_prod_options:       true
-		enable_globals:        true
-		fast_math:             true
-		no_std:                true
-		cmain:                 'SDL_main'
-		force_bounds_checking: true
-		div_by_zero_is_zero:   true
-		assert_failure_mode:   .backtraces
-		is_prof:               true
-		profile_file:          'some/file'
-		profile_no_inline:     true
-		profile_fns:           ['foo_*', 'bar']
-		trace_calls:           true
-		trace_fns:             ['baz_*']
-		is_coverage:           true
-		coverage_dir:          'cov/out'
+		autofree:                      true
+		gc_mode:                       .boehm_full
+		is_prod:                       true
+		skip_unused:                   true
+		prealloc:                      true
+		is_bare:                       true
+		no_builtin:                    true
+		no_preludes:                   true
+		no_prod_options:               true
+		enable_globals:                true
+		fast_math:                     true
+		no_std:                        true
+		cmain:                         'SDL_main'
+		force_bounds_checking:         true
+		div_by_zero_is_zero:           true
+		assert_failure_mode:           .backtraces
+		thread_stack_size:             4194304
+		thread_stack_size_set_by_flag: true
+		is_prof:                       true
+		profile_file:                  'some/file'
+		profile_no_inline:             true
+		profile_fns:                   ['foo_*', 'bar']
+		trace_calls:                   true
+		trace_fns:                     ['baz_*']
+		is_coverage:                   true
+		coverage_dir:                  'cov/out'
 		// value-carrying options and explicit bare flags are recorded verbatim in build_options
 		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"', '-ldflags "-s"',
-			'-custom-prelude prelude.h', '-bare-builtin-dir bare/dir', '-musl', '-cc gcc']
+			'-custom-prelude prelude.h', '-bare-builtin-dir bare/dir', '-musl', '-m64', '-cc gcc']
 	}
 	opts := codegen_build_options(&p)
 	assert opts.contains('autofree')
@@ -63,6 +65,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('assert:backtraces')
 	// `-div-by-zero-is-zero` makes cgen emit different safe div/mod helpers
 	assert opts.split(' ').any(it == 'div_by_zero_is_zero')
+	// `-thread-stack-size` is embedded in the spawn/go thread creation call
+	assert opts.contains('thread_stack_size:4194304')
 	// the profile output path is embedded in the generated C, so keep it
 	assert opts.contains('profile:some/file')
 	assert opts.contains('profile_no_inline')
@@ -86,6 +90,9 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.split(' ').any(it == '-musl')
 	// but a libc flag that was not passed is not invented
 	assert !opts.split(' ').any(it == '-glibc')
+	// an explicit machine-width flag is kept (it selects the C compiler target width)
+	assert opts.split(' ').any(it == '-m64')
+	assert !opts.split(' ').any(it == '-m32')
 	// unrelated recorded options (e.g. `-cc`, covered by the ccompiler field) are not pulled in
 	assert !opts.contains('-cc gcc')
 }

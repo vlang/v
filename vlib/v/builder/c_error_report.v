@@ -272,6 +272,12 @@ fn codegen_build_options(p &pref.Preferences) string {
 		// (abort(), print_backtrace(), or none), so the generated C differs.
 		opts << 'assert:${p.assert_failure_mode}'
 	}
+	if p.thread_stack_size_set_by_flag {
+		// `spawn`/`go` embed this value in the CreateThread / pthread_attr_setstacksize call,
+		// so it changes the generated C. Only recorded when set by flag, since the default
+		// varies by target architecture.
+		opts << 'thread_stack_size:${p.thread_stack_size}'
+	}
 	if p.build_mode != .default_mode {
 		opts << 'build_mode:${p.build_mode}'
 	}
@@ -286,8 +292,9 @@ fn codegen_build_options(p &pref.Preferences) string {
 	// Bare flags (kept by exact match), only present when explicitly passed (host-detected libc
 	// defaults are not recorded, so these capture the user's explicit choice):
 	//   -musl/-glibc    force the linked libc; `-musl` also enables `$if musl` and changes libgc flags
+	//   -m32/-m64       select the target machine width, appended to the C compiler command via cflags
 	verbatim_prefixes := ['-d ', '-cflags ', '-ldflags ', '-custom-prelude ', '-bare-builtin-dir ']
-	verbatim_flags := ['-musl', '-glibc']
+	verbatim_flags := ['-musl', '-glibc', '-m32', '-m64']
 	for opt in p.build_options {
 		if opt in verbatim_flags || verbatim_prefixes.any(opt.starts_with(it)) {
 			opts << opt
