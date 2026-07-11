@@ -3,9 +3,6 @@ module bench
 import os
 import time
 
-// C.getrusage declares the C getrusage symbol used by bench.
-fn C.getrusage(who int, usage voidptr) int
-
 // Step represents step data used by bench.
 pub struct Step {
 pub:
@@ -61,7 +58,7 @@ pub fn (b &Bench) print_report() {
 // current_rss_kb returns current rss kb data for bench.
 fn current_rss_kb() i64 {
 	$if macos {
-		return macos_peak_rss_kb()
+		return macos_rss_kb()
 	}
 	$if linux {
 		return linux_rss_kb()
@@ -69,14 +66,13 @@ fn current_rss_kb() i64 {
 	return 0
 }
 
-// macos_peak_rss_kb supports macos peak rss kb handling for bench.
-fn macos_peak_rss_kb() i64 {
-	mut usage := [256]u8{}
-	if C.getrusage(0, &usage[0]) == 0 {
-		ru_maxrss := unsafe { *(&i64(&usage[32])) }
-		return ru_maxrss / 1024
+// macos_rss_kb supports macos current rss kb handling for bench.
+fn macos_rss_kb() i64 {
+	res := os.execute('ps -o rss= -p ${os.getpid()}')
+	if res.exit_code != 0 {
+		return 0
 	}
-	return 0
+	return res.output.trim_space().i64()
 }
 
 // linux_rss_kb supports linux rss kb handling for bench.

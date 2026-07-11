@@ -7706,6 +7706,9 @@ fn (tc &TypeChecker) expr_has_tuple_tail_values(expr_id flat.NodeId, count int) 
 			return node.children_count > 2
 				&& tc.expr_has_tuple_tail_values(tc.a.child(&node, 2), count)
 		}
+		.match_stmt {
+			return tc.match_has_tuple_tail_values(expr_id, count)
+		}
 		.block, .match_branch {
 			body_start := if node.kind == .match_branch {
 				if node.value == 'else' { 0 } else { node.value.int() }
@@ -8557,6 +8560,11 @@ fn (tc &TypeChecker) tuple_tail_return_error(expr_id flat.NodeId, expected []Typ
 		.if_expr {
 			if tc.expr_has_tuple_tail_values(expr_id, count) {
 				return 'if expression branches cannot produce multiple return values'
+			}
+		}
+		.match_stmt {
+			if tc.expr_has_tuple_tail_values(expr_id, count) {
+				return 'match expression branches cannot produce multiple return values'
 			}
 		}
 		else {}
@@ -10685,9 +10693,6 @@ fn (tc &TypeChecker) thread_array_wait_return_type(payload string) Type {
 }
 
 fn (tc &TypeChecker) fixed_array_dynamic_receiver_call_info(base_type Type, arr ArrayFixed, method string) ?CallInfo {
-	if method !in fixed_array_lowered_methods {
-		return none
-	}
 	array_type := Array{
 		elem_type: arr.elem_type
 	}
@@ -13647,7 +13652,13 @@ fn (tc &TypeChecker) branch_tail_type(id flat.NodeId) Type {
 		last := tc.a.nodes[int(last_id)]
 		if last.kind == .expr_stmt && last.children_count > 0 {
 			child_id := tc.a.child(&last, 0)
+			if smart_type := tc.smartcast_type(child_id) {
+				return smart_type
+			}
 			return tc.expr_type(child_id) or { tc.resolve_type(child_id) }
+		}
+		if smart_type := tc.smartcast_type(last_id) {
+			return smart_type
 		}
 		return tc.expr_type(last_id) or { tc.resolve_type(last_id) }
 	}
@@ -13663,9 +13674,18 @@ fn (tc &TypeChecker) branch_tail_type(id flat.NodeId) Type {
 		last := tc.a.nodes[int(last_id)]
 		if last.kind == .expr_stmt && last.children_count > 0 {
 			child_id := tc.a.child(&last, 0)
+			if smart_type := tc.smartcast_type(child_id) {
+				return smart_type
+			}
 			return tc.expr_type(child_id) or { tc.resolve_type(child_id) }
 		}
+		if smart_type := tc.smartcast_type(last_id) {
+			return smart_type
+		}
 		return tc.expr_type(last_id) or { tc.resolve_type(last_id) }
+	}
+	if smart_type := tc.smartcast_type(id) {
+		return smart_type
 	}
 	return tc.expr_type(id) or { tc.resolve_type(id) }
 }
@@ -14088,6 +14108,10 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	tc.check_storage_path_base_node(base_id)
 	base_type := tc.resolve_type(base_id)
 	tc.register_synth_type(base_id, base_type)
+	if smart_type := tc.smartcast_type(id) {
+		tc.register_synth_type(id, smart_type)
+		return
+	}
 	// A value-context selector whose name is a method (not a field) of a struct
 	// receiver is a method value; record the concrete `Type.method` so it survives
 	// dead-code elimination (cgen emits a wrapper that calls it).
@@ -14346,7 +14370,10 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	base_id := tc.a.child(&node, 0)
 	tc.check_storage_path_base_node(base_id)
 	base_type_raw := tc.resolve_type(base_id)
-	base_type := unalias_and_unwrap_pointer_type(base_type_raw)
+	mut base_type := unalias_and_unwrap_pointer_type(base_type_raw)
+	if base_type is OptionType {
+		base_type = unalias_type(base_type.base_type)
+	}
 	if node.value == 'range' {
 		if !(base_type is Array || base_type is ArrayFixed || base_type is String)
 			&& tc.should_diagnose(id) {
@@ -19130,10 +19157,23 @@ fn (tc &TypeChecker) lambda_expr_type(node flat.Node) Type {
 fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 	base_type0 := tc.resolve_type(tc.a.child(&node, 0))
 	base_type := unalias_type(base_type0)
-	base_type_raw := base_type
+	if base_type is OptionType {
+		inner := unalias_type(base_type.base_type)
+		result := tc.resolve_index_base_type(inner, node)
+		if result is Unknown {
+			return result
+		}
+		return Type(OptionType{
+			base_type: result
+		})
+	}
+	return tc.resolve_index_base_type(base_type, node)
+}
+
+fn (tc &TypeChecker) resolve_index_base_type(base_type Type, node flat.Node) Type {
 	if node.value == 'range' {
 		if base_type is Array {
-			return base_type_raw
+			return base_type
 		}
 		if base_type is ArrayFixed {
 			return Type(Array{

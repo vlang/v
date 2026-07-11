@@ -74,7 +74,11 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.selected_file_worklist = []string{}
 		tc.check_export_attrs()
 		items := tc.collect_parallel_check_items()
+		final_file := tc.cur_file
+		final_module := tc.cur_module
 		was_parallel := tc.run_parallel_check(items)
+		tc.cur_file = final_file
+		tc.cur_module = final_module
 		if tc.defer_ierror_gating {
 			if tc.pending_ierror_errors.len > 0 {
 				tc.collect_selected_file_called_fns()
