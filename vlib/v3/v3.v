@@ -814,15 +814,16 @@ fn main() {
 	} else if os.is_dir(input_file) {
 		user_files = pref.get_v_files_from_dir(input_file, prefs.user_defines, prefs.target_os)
 		if is_test_command {
-			user_files << pref.get_test_v_files_from_dir(input_file, prefs.backend, prefs.target_os)
+			user_files << pref.get_test_v_files_from_dir(input_file, prefs.user_defines,
+				prefs.backend, prefs.target_os)
 		}
 		for subdir in vmod_subdirs(input_file) {
 			subdir_path := os.join_path_single(input_file, subdir)
 			user_files << pref.get_v_files_from_dir(subdir_path, prefs.user_defines,
 				prefs.target_os)
 			if is_test_command {
-				user_files << pref.get_test_v_files_from_dir(subdir_path, prefs.backend,
-					prefs.target_os)
+				user_files << pref.get_test_v_files_from_dir(subdir_path, prefs.user_defines,
+					prefs.backend, prefs.target_os)
 			}
 		}
 	} else {

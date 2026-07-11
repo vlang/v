@@ -267,8 +267,8 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 	return v_files
 }
 
-// get_test_v_files_from_dir returns backend/target-compatible test files in dir.
-pub fn get_test_v_files_from_dir(dir string, backend string, target_os string) []string {
+// get_test_v_files_from_dir returns backend/target/define-compatible test files in dir.
+pub fn get_test_v_files_from_dir(dir string, user_defines []string, backend string, target_os string) []string {
 	if dir == '' || !os.is_dir(dir) {
 		return []string{}
 	}
@@ -277,11 +277,30 @@ pub fn get_test_v_files_from_dir(dir string, backend string, target_os string) [
 	mut result := []string{}
 	for file in files {
 		path := os.join_path_single(dir, file)
-		if is_test_file_for_target(path, backend, target_os) {
-			result << path
+		if !is_test_file_for_target(path, backend, target_os) {
+			continue
 		}
+		if file.contains('_notd_') {
+			feature := extract_test_define_feature(file, '_notd_')
+			if feature.len > 0 && feature in user_defines {
+				continue
+			}
+		} else if file.contains('_d_') {
+			feature := extract_test_define_feature(file, '_d_')
+			if feature.len == 0 || feature !in user_defines {
+				continue
+			}
+		}
+		result << path
 	}
 	return result
+}
+
+fn extract_test_define_feature(file string, marker string) string {
+	idx := file.index(marker) or { return '' }
+	rest := file[idx + marker.len..]
+	test_idx := rest.last_index('_test') or { return '' }
+	return rest[..test_idx]
 }
 
 pub fn is_test_file_for_backend(path string, backend string) bool {
