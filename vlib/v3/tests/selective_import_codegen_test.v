@@ -264,6 +264,24 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 	assert !json2_generated.contains('json2__decode'), json2_generated
 }
 
+fn test_selective_import_json_encode_uses_fast_path() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run(v3_bin, 'json_encode', 'module main
+
+import json { encode }
+
+struct User {
+	name string
+}
+
+fn main() {
+	println(encode(User{name: "x"}))
+}
+')
+	assert output == '{"name":"x"}'
+	assert generated.contains('v3_json_encode_string('), generated
+}
+
 fn test_selective_import_inside_generic_clone_keeps_source_file_symbol() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run_with_extra(v3_bin,

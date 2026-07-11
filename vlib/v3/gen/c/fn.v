@@ -3303,7 +3303,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		})
 		return
 	}
-	if target_name == 'json.encode' || (g.tc.cur_module == 'json' && target_name == 'encode') {
+	if target_name == 'json.encode' || resolved_target_name == 'json.encode'
+		|| (g.tc.cur_module == 'json' && target_name == 'encode') {
 		// Old `json` module only; `json2`/`x.json2` are pure V (see
 		// is_json_decode_target_name).
 		if g.gen_json_encode_call(node) {

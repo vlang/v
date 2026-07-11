@@ -191,6 +191,32 @@ fn main() {
 		'unknown VariantData member `attrs`')
 }
 
+fn test_comptime_field_generic_helper_infers_matching_argument() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'field_generic_helper_matching_arg', 'struct S {
+	id int
+	name string
+}
+
+fn add[T](label string, value T) string {
+	return label + ":" + "\${value}"
+}
+
+fn main() {
+	value := S{
+		id: 7
+		name: "v"
+	}
+	mut rows := []string{}
+	$for field in S.fields {
+		rows << add(field.name, value.$(field.name))
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'id:7|name:v'
+}
+
 fn test_comptime_for_value_field_sources_use_value_type() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'value_field_source', "struct Inner {

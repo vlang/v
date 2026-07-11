@@ -701,13 +701,32 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, children
 			break
 		}
 	}
-	if !found || t.generic_fn_param_names(decl.node, decl.module).len != 1 {
+	if !found {
 		return node.value
 	}
-	mut arg_type := t.generic_call_arg_type_for_inference(children[1])
-	if arg_type.len == 0 || is_generic_fn_placeholder_name(arg_type) {
-		arg_type = fm.comptime_typ
+	param_names := t.generic_fn_param_names(decl.node, decl.module)
+	if param_names.len != 1 {
+		return node.value
 	}
+	mut inferred := map[string]string{}
+	mut param_idx := 0
+	for i in 0 .. decl.node.children_count {
+		param := t.a.child_node(&decl.node, i)
+		if param.kind != .param {
+			continue
+		}
+		arg_pos := param_idx + 1
+		if arg_pos >= children.len {
+			break
+		}
+		mut arg_type := t.generic_call_arg_type_for_inference(children[arg_pos])
+		if arg_type.len == 0 || is_generic_fn_placeholder_name(arg_type) {
+			arg_type = fm.comptime_typ
+		}
+		infer_generic_type_args(param.typ, arg_type, mut inferred)
+		param_idx++
+	}
+	arg_type := inferred[param_names[0]] or { return node.value }
 	args := t.canonical_generic_specialization_args([arg_type])
 	if args.len != 1 || t.generic_args_have_placeholders(args) {
 		return node.value
