@@ -480,6 +480,337 @@ fn test_runtime_inits_run_before_module_init() {
 	assert out == '5\n7'
 }
 
+fn test_const_dependencies_follow_receiver_method() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'const_deps_receiver_method', 'struct B {}
+
+fn (b B) value() int {
+	return 7
+}
+
+struct A {}
+
+fn (a A) value() int {
+	return dep + 1
+}
+
+fn seed() int {
+	return 41
+}
+
+const result = A{}.value()
+const dep = seed()
+
+fn main() {
+	println(int_str(result))
+}
+')
+	assert out == '42'
+}
+
+fn test_json_decode_generic_struct_preserves_field_default() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_decode_generic_struct_default', 'import json
+
+struct Box[T] {
+	n int = 5
+}
+
+fn main() {
+	box := json.decode(Box[int], "{}") or { Box[int]{n: 5} }
+	println(int_str(box.n))
+}
+')
+	assert out == '5'
+}
+
+fn test_json_fast_paths_handle_primitives_and_stringified_composites() {
+	v3_bin := build_v3()
+	bool_source := 'import json
+
+struct Flag {
+	ok bool
+}
+
+fn main() {
+	println(json.encode(Flag{ok: true}))
+	println(json.encode(Flag{ok: false}))
+}
+'
+	bool_encoded := run_good(v3_bin, 'json_encode_bool_without_str_helper', bool_source)
+	assert bool_encoded == '{"ok":true}\n{"ok":false}'
+	bool_c := gen_c(v3_bin, 'json_encode_bool_without_str_helper_c', bool_source)
+	main_body := c_fn_body(bool_c, 'int main(int argc, char** argv)')
+	assert !main_body.contains('bool__str(')
+
+	encoded := run_good(v3_bin, 'json_encode_primitive_struct_fields', 'import json
+
+struct User {
+	age int
+	ok bool
+	score f64
+}
+
+fn main() {
+	println(json.encode(User{
+		age: 1
+		ok: true
+		score: 1.5
+	}))
+}
+')
+	assert encoded == '{"age":1,"ok":true,"score":1.5}'
+
+	decoded := run_good(v3_bin, 'json_decode_composites_to_strings', 'import json
+
+struct Payload {
+	object string
+	array string
+}
+
+fn main() {
+	payload := json.decode(Payload, "{\\"object\\":{},\\"array\\":[1,2]}")!
+	println(payload.object)
+	println(payload.array)
+}
+')
+	assert decoded == '{}\n[1,2]'
+}
+
+fn test_enum_helper_prefers_exact_free_function_over_method_suffix() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'enum_helper_exact_free_function', 'struct Maker {}
+
+fn (m Maker) make() int {
+	return 99
+}
+
+fn make() int {
+	return 4
+}
+
+enum E {
+	a = make()
+}
+
+fn main() {
+	println(int_str(int(E.a)))
+}
+')
+	assert out == '4'
+}
+
+fn test_enum_helper_resolves_module_const() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'enum_helper_module_const', 'const base = 4
+
+fn make() int {
+	return base
+}
+
+fn from_param(base int) int {
+	return base
+}
+
+enum E {
+	a = make()
+	b = from_param(7)
+	c
+}
+
+fn main() {
+	println(int_str(int(E.a)))
+	println(int_str(int(E.b)))
+	println(int_str(int(E.c)))
+}
+')
+	assert out == '4\n7\n8'
+}
+
+fn test_backed_enum_cast_qualifies_member_reference() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'backed_enum_cast_member_reference', 'const a = 1
+
+enum E as u64 {
+	a = 1
+	b = u64(a) + 1
+}
+
+fn main() {
+	println(int_str(int(E.b)))
+}
+')
+	assert out == '2'
+}
+
+fn test_backed_enum_helper_initializer_is_folded() {
+	v3_bin := build_v3()
+	source := 'fn make() int {
+	return 4
+}
+
+fn make_wide() u64 {
+	return u64(1) << 40
+}
+
+enum E as u64 {
+	a = make()
+	b
+	wide = make_wide()
+	max = 18446744073709551615
+}
+
+fn main() {
+	println(int_str(int(E.a)))
+	println(int_str(int(E.b)))
+	println(u64(E.wide))
+	match E.a {
+		.a { println("a") }
+		else { println("other") }
+	}
+}
+'
+	out := run_good(v3_bin, 'backed_enum_helper_initializer', source)
+	assert out == '4\n5\n1099511627776\na'
+	c_source := gen_c(v3_bin, 'backed_enum_helper_initializer_c', source)
+	macro := c_source.split_into_lines().filter(it.starts_with('#define E__a '))
+	assert macro == ['#define E__a ((E)(4))']
+	shift_macro := c_source.split_into_lines().filter(it.starts_with('#define E__wide '))
+	assert shift_macro == ['#define E__wide ((E)(1099511627776))']
+	wide_macro := c_source.split_into_lines().filter(it.starts_with('#define E__max '))
+	assert wide_macro == ['#define E__max ((E)(18446744073709551615))']
+}
+
+fn test_enum_helper_folding_tracks_local_declarations() {
+	v3_bin := build_v3()
+	source := 'fn make_local() int {
+	x := 4
+	y := x + 2
+	y = y + 1
+	return y
+}
+
+enum Plain {
+	zero
+	local = make_local()
+	next
+}
+
+enum Backed as u64 {
+	local = make_local()
+}
+
+fn main() {
+	println(int_str(int(Plain.local)))
+	println(int_str(int(Plain.next)))
+	println(u64(Backed.local))
+}
+'
+	out := run_good(v3_bin, 'enum_helper_local_declarations', source)
+	assert out == '7\n8\n7'
+	c_source := gen_c(v3_bin, 'enum_helper_local_declarations_c', source)
+	macro := c_source.split_into_lines().filter(it.starts_with('#define Backed__local '))
+	assert macro == ['#define Backed__local ((Backed)(7))']
+}
+
+fn test_enum_helper_scan_resets_module_at_file_boundary() {
+	v3_bin := build_v3()
+	source := 'fn exit() int {
+	return 9
+}
+
+enum E {
+	a = exit()
+	b
+}
+
+fn main() {
+	println(E.a.str())
+	println(E.b.str())
+}
+'
+	c_source := gen_c(v3_bin, 'enum_helper_main_file_module_reset_c', source)
+	assert c_source.contains('\tE__a = 9,')
+	assert c_source.contains('\tE__b = 10,')
+}
+
+fn test_json_decode_enum_accepts_name_and_label() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_decode_enum_name_and_label', 'import json
+
+enum Kind {
+	unknown
+	field_name @[json: "wire"]
+}
+
+struct Packet {
+	kind Kind
+}
+
+fn main() {
+	by_name := json.decode(Packet, "{\\"kind\\":\\"field_name\\"}")!
+	by_label := json.decode(Packet, "{\\"kind\\":\\"wire\\"}")!
+	println(by_name.kind == .field_name)
+	println(by_label.kind == .field_name)
+}
+')
+	assert out == 'true\ntrue'
+}
+
+fn test_json_encode_escapes_enum_label() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_encode_escaped_enum_label', 'import json
+
+enum Kind {
+	quoted @[json: \'a"b\']
+}
+
+fn main() {
+	println(json.encode(Kind.quoted))
+}
+')
+	assert out == '"a\\"b"'
+}
+
+fn test_json_enum_label_preserves_edge_quote() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_enum_edge_quote_label', 'import json
+
+enum Kind {
+	fallback
+	trailing @[json: \'a"\']
+}
+
+struct Packet {
+	kind Kind
+}
+
+fn main() {
+	encoded := json.encode(Kind.trailing)
+	println(encoded)
+	packet := json.decode(Packet, "{\\"kind\\":" + encoded + "}")!
+	println(packet.kind == .trailing)
+}
+')
+	assert out == '"a\\""\ntrue'
+}
+
+fn test_flag_enum_autostr_deduplicates_member_references() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'flag_enum_autostr_member_reference', '@[flag]
+@[_allow_multiple_values]
+enum Permission {
+	a = 1
+	b = .a
+}
+
+fn main() {
+	println(Permission.b.str())
+}
+')
+	assert out == 'Permission{.a}'
+}
+
 fn test_string_index_type_is_u8() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'string_index_type_is_u8',
@@ -534,6 +865,13 @@ fn test_alias_interface_str_dispatch_marks_alias_method_used() {
 	out := run_good(v3_bin, 'alias_interface_str_dispatch',
 		"interface Printer {\n\tstr() string\n}\n\ntype Label = int\n\nfn (l Label) str() string {\n\treturn 'label:' + int_str(int(l))\n}\n\nfn make() Printer {\n\tl := Label(7)\n\treturn l\n}\n\nfn main() {\n\tp := make()\n\tprintln('\${p}')\n}\n")
 	assert out == 'label:7'
+}
+
+fn test_empty_interface_box_preserves_alias_type_id() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'empty_interface_alias_type_id',
+		'interface Any {}\n\ntype MyInt = int\n\nfn main() {\n\tvalue := MyInt(1)\n\ta := Any(value)\n\tprintln((a is MyInt).str())\n\tprintln((a is int).str())\n\tplain := int(2)\n\tb := Any(plain)\n\tprintln((b is MyInt).str())\n\tprintln((b is int).str())\n}\n')
+	assert out == 'true\nfalse\nfalse\ntrue'
 }
 
 fn test_interface_cast_rejects_pointer_shape_mismatch() {

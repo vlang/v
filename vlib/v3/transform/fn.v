@@ -1399,6 +1399,40 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		return arg_id
 	}
 	mut arg_node := &t.a.nodes[int(arg_id)]
+	if param_type.starts_with('&') && arg_node.kind == .or_expr && arg_node.value == '?'
+		&& arg_node.children_count > 0 {
+		source_id := t.a.child(arg_node, 0)
+		source_type := t.node_type(source_id)
+		if t.is_optional_type_name(source_type) {
+			payload_type := t.optional_base_type(source_type)
+			// Evaluate the optional once, keeping it addressable so mutations
+			// through the reference still write back to the payload (a stable
+			// ident/selector is reused directly, a call is materialized once).
+			opt_expr := t.stable_transformed_expr_for_reuse(t.transform_expr(source_id),
+				source_type, 'opt_ref')
+			if t.is_optional_type_name(t.cur_fn_ret_type) {
+				// `opt?` propagates: return none/err when it is none, instead of
+				// unconditionally treating it as present.
+				not_ok := t.make_prefix(.not, t.make_selector(opt_expr, 'ok', 'bool'))
+				err_expr := t.make_selector(opt_expr, 'err', 'IError')
+				else_stmts := t.lower_or_body_to_stmts_with_err_expr(flat.empty_node, '',
+					payload_type, '?', err_expr)
+				t.pending_stmts << t.make_if(not_ok, t.make_block(else_stmts), t.make_empty())
+			} else {
+				// Comptime option-payload-mut (e.g. `decode(mut result.field?)` in a
+				// `$for` decoder): the callee fills the payload, so mark it present and
+				// expose its address. Normal `?` propagation in a non-option-returning
+				// function would have been rejected by the checker, so this is the only
+				// way we get here without an option return type.
+				ok_target := t.make_selector(opt_expr, 'ok', 'bool')
+				t.pending_stmts << t.make_assign(ok_target, t.make_bool_literal(true))
+			}
+			payload := t.make_selector(opt_expr, 'value', payload_type)
+			addr := t.make_prefix(.amp, payload)
+			t.set_node_typ(int(addr), param_type)
+			return addr
+		}
+	}
 	if arg_node.kind == .lambda_expr {
 		if lifted := t.lift_lambda_expr_for_fn_param(arg_id, *arg_node, param_type) {
 			return lifted
@@ -2811,6 +2845,9 @@ fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string,
 // `Block([1, 2])` or `AEnum(red)`, but stringifies primitive aliases (int, string, bool, ...)
 // as the bare value.
 fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_type string) flat.NodeId {
+	if custom := t.alias_custom_str_call(expr, alias_name) {
+		return custom
+	}
 	resolved_base := t.alias_str_resolved_base_type(base_type)
 	inner := t.wrap_string_conversion(expr, resolved_base)
 	if t.alias_str_suppress_wrapper_for_mut_param_deref(expr) {
@@ -2822,6 +2859,66 @@ fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_
 	display := struct_string_display_name(alias_name)
 	return t.string_plus(t.string_plus(t.make_string_literal('${display}('), inner),
 		t.make_string_literal(')'))
+}
+
+// alias_custom_str_call builds a call to the alias's own str() method when one exists;
+// an alias-level str() overrides the base type's stringification entirely (no name wrapper).
+fn (mut t Transformer) alias_custom_str_call(expr flat.NodeId, alias_name string) ?flat.NodeId {
+	mut candidates := [alias_name]
+	if !alias_name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		candidates << '${t.cur_module}.${alias_name}'
+	}
+	for qname in candidates {
+		str_fn := '${c_name(qname)}__str'
+		v_str_fn := '${qname}.str'
+		known := str_fn in t.fn_ret_types || v_str_fn in t.fn_ret_types
+			|| (!isnil(t.tc) && (str_fn in t.tc.fn_ret_types || v_str_fn in t.tc.fn_ret_types))
+		if known {
+			t.mark_fn_used_name(v_str_fn)
+			t.mark_fn_used_name(str_fn)
+			mut receiver := expr
+			if t.str_method_has_pointer_receiver(str_fn)
+				|| t.str_method_has_pointer_receiver(v_str_fn) {
+				mut expr_type := t.node_type(expr)
+				if expr_type.len == 0 {
+					expr_type = t.resolve_expr_type(expr)
+				}
+				if !expr_type.starts_with('&') && !t.expr_can_take_address(expr) {
+					tmp_name := t.new_temp('alias_str')
+					t.pending_stmts << t.make_decl_assign_typed(tmp_name, expr, qname)
+					receiver = t.make_ident(tmp_name)
+				}
+			}
+			return t.make_call_typed(str_fn, arr1(receiver), 'string')
+		}
+	}
+	return none
+}
+
+// lookup_str_alias resolves a type name to `(alias_name, base_type)` when it names a type
+// alias, mirroring the direct/module-qualified/suffix lookups of wrap_string_conversion.
+fn (t &Transformer) lookup_str_alias(clean_typ string) ?(string, string) {
+	if isnil(t.tc) || clean_typ.len == 0 {
+		return none
+	}
+	if alias := t.tc.type_aliases[clean_typ] {
+		return clean_typ, alias
+	}
+	if !clean_typ.contains('.') {
+		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
+			qtyp := '${t.cur_module}.${clean_typ}'
+			if alias := t.tc.type_aliases[qtyp] {
+				return clean_typ, alias
+			}
+		}
+		for aname, target in t.tc.type_aliases {
+			if aname.all_after_last('.') == clean_typ {
+				return clean_typ, target
+			}
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) alias_str_suppress_wrapper_for_mut_param_deref(expr flat.NodeId) bool {
@@ -2888,14 +2985,22 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type string) ?f
 		if field_type.len == 0 {
 			continue
 		}
+		raw_field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field_type }
 		mut field_str := if field_type == struct_type {
 			t.make_string_literal('${struct_string_display_name(field_type)}{}')
 		} else {
-			t.wrap_string_conversion(t.make_selector(base, field.name, field_type), field_type)
+			t.struct_field_str_value(t.make_selector(base, field.name, field_type), raw_field_type,
+				field_type)
 		}
-		if t.normalize_type_alias(field_type) == 'string' {
+		if raw_field_type == 'string' || raw_field_type == 'builtin.string' {
 			field_str = t.string_plus(t.string_plus(t.make_string_literal("'"), field_str),
 				t.make_string_literal("'"))
+		}
+		if t.struct_str_field_needs_indent(raw_field_type) {
+			t.mark_fn_used_name('string.replace')
+			t.mark_fn_used_name('string__replace')
+			field_str = t.make_call_typed('string.replace', arr3(field_str,
+				t.make_string_literal('\n'), t.make_string_literal('\n    ')), 'string')
 		}
 		result = t.string_plus(result, t.make_string_literal('    ${field.name}: '))
 		result = t.string_plus(result, field_str)
@@ -2909,6 +3014,73 @@ fn struct_string_display_name(typ string) string {
 		return typ.all_after_last('.')
 	}
 	return typ
+}
+
+// struct_field_str_value stringifies one struct field for the auto-generated struct str.
+// Unlike top-level stringification, V wraps an alias-typed field as `AliasName(value)` even
+// when the alias base is primitive (`d: Duration(42)`), unless the alias defines its own
+// str() method, which is used bare.
+fn (mut t Transformer) struct_field_str_value(expr flat.NodeId, raw_field_type string, field_type string) flat.NodeId {
+	mut clean := raw_field_type.trim_space()
+	if clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!')
+		|| clean.starts_with('shared ') {
+		return t.wrap_string_conversion(expr, field_type)
+	}
+	if clean.starts_with('builtin.') {
+		clean = clean.all_after_last('.')
+	}
+	alias_name, base_type := t.lookup_str_alias(clean) or {
+		return t.wrap_string_conversion(expr, field_type)
+	}
+	if custom := t.alias_custom_str_call(expr, alias_name) {
+		return custom
+	}
+	resolved_base := t.alias_str_resolved_base_type(base_type)
+	inner := t.wrap_string_conversion(expr, resolved_base)
+	display := struct_string_display_name(alias_name)
+	return t.string_plus(t.string_plus(t.make_string_literal('${display}('), inner),
+		t.make_string_literal(')'))
+}
+
+// struct_str_field_needs_indent reports whether a struct auto-str field value can span
+// multiple lines (nested structs, arrays of structs, options, sum types), so its stringified
+// text must be re-indented one level deeper, matching V's indent_count handling. Values that
+// are always single-line (primitives, plain strings, enums, custom str() output) keep their
+// text untouched — V does not re-indent multi-line string content or custom str() results.
+fn (mut t Transformer) struct_str_field_needs_indent(field_type string) bool {
+	mut clean := field_type.trim_space()
+	for clean.starts_with('&') || clean.starts_with('?') || clean.starts_with('!') {
+		clean = clean[1..].trim_space()
+	}
+	for clean.starts_with('shared ') {
+		clean = clean[7..].trim_space()
+	}
+	if clean.starts_with('builtin.') {
+		clean = clean.all_after_last('.')
+	}
+	if _, _ := t.lookup_str_alias(clean) {
+		return false
+	}
+	resolved := t.alias_str_resolved_base_type(clean)
+	if !t.alias_str_needs_name_wrapper(resolved) {
+		return false
+	}
+	if resolved in t.enum_types {
+		return false
+	}
+	if !resolved.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' && '${t.cur_module}.${resolved}' in t.enum_types {
+		return false
+	}
+	if aggregate := t.stringify_aggregate_type_name(resolved) {
+		str_fn := '${c_name(aggregate)}__str'
+		v_str_fn := '${aggregate}.str'
+		if str_fn in t.fn_ret_types || v_str_fn in t.fn_ret_types
+			|| (!isnil(t.tc) && (str_fn in t.tc.fn_ret_types || v_str_fn in t.tc.fn_ret_types)) {
+			return false
+		}
+	}
+	return true
 }
 
 // lower_multi_return_str formats a multi-return value as `(a, b, ...)`.
@@ -3227,12 +3399,27 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 	if format.len == 0 {
 		return t.wrap_string_conversion(expr, typ)
 	}
+	if format.contains('X') {
+		// Uppercase hex behaves like lowercase `x` but with A-F. Format the
+		// lowercase form first so width/zero-padding flags are honored, then
+		// upper-case the whole result.
+		lowered := t.wrap_formatted_string_conversion(expr, typ, format.replace('X', 'x'))
+		return t.make_call_typed('v3_string_upper_ascii', arr1(lowered), 'string')
+	}
 	mut clean_typ := typ
 	if clean_typ.starts_with('&') {
 		clean_typ = clean_typ[1..]
 	}
 	if clean_typ.starts_with('builtin.') {
 		clean_typ = clean_typ.all_after_last('.')
+	}
+	// An enum with a base (`x`/`b`/`o`) or decimal (`d`) verb prints its integer
+	// value, not its name; format the underlying integer. Unsigned-backed enums use
+	// u64 so values above i64.max are not rendered as negative.
+	if format[format.len - 1] in [`x`, `b`, `o`, `d`] && t.is_formatted_enum_type(clean_typ) {
+		int_type := if t.enum_backing_is_unsigned(clean_typ) { 'u64' } else { 'i64' }
+		return t.wrap_formatted_string_conversion(t.make_cast(int_type, expr, int_type), int_type,
+			format)
 	}
 	if decimal_format := fixed_decimal_format(format) {
 		if clean_typ in ['f32', 'f64', 'float_literal'] {
@@ -3263,12 +3450,22 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 	}
 	if base := integer_format_base(format) {
 		if clean_typ in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
-			return t.make_call_typed('strconv__format_uint', arr2(expr, t.make_int_literal(base)),
-				'string')
+			formatted := t.make_call_typed('strconv__format_uint', arr2(expr,
+				t.make_int_literal(base)), 'string')
+			return if format == 'X' {
+				t.make_call_typed('v3_string_upper_ascii', arr1(formatted), 'string')
+			} else {
+				formatted
+			}
 		}
 		if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize'] {
-			return t.make_call_typed('strconv__format_int', arr2(expr, t.make_int_literal(base)),
-				'string')
+			formatted := t.make_call_typed('strconv__format_int', arr2(expr,
+				t.make_int_literal(base)), 'string')
+			return if format == 'X' {
+				t.make_call_typed('v3_string_upper_ascii', arr1(formatted), 'string')
+			} else {
+				formatted
+			}
 		}
 	}
 	if base_format := zero_padded_integer_base_format(format) {
@@ -3394,12 +3591,31 @@ fn fixed_decimal_format(format string) ?FixedDecimalFormat {
 	}
 }
 
+fn (t &Transformer) enum_backing_is_unsigned(clean_typ string) bool {
+	mut backing := t.enum_backing_types[clean_typ] or { '' }
+	if backing.len == 0 && !clean_typ.contains('.') && t.cur_module.len > 0
+		&& t.cur_module !in ['main', 'builtin'] {
+		backing = t.enum_backing_types['${t.cur_module}.${clean_typ}'] or { '' }
+	}
+	return backing in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize']
+}
+
+fn (t &Transformer) is_formatted_enum_type(clean_typ string) bool {
+	if clean_typ in t.enum_types {
+		return true
+	}
+	if !clean_typ.contains('.') && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		return '${t.cur_module}.${clean_typ}' in t.enum_types
+	}
+	return false
+}
+
 fn integer_format_base(format string) ?int {
 	match format {
 		'b' {
 			return 2
 		}
-		'x' {
+		'x', 'X' {
 			return 16
 		}
 		'o' {
@@ -3956,7 +4172,7 @@ fn (t &Transformer) flag_enum_mask_for_type(typ string) int {
 	members := t.comptime_enum_members(clean)
 	mut mask := 0
 	for member in members {
-		mask |= member.value
+		mask |= int(member.value)
 	}
 	return mask
 }
@@ -4175,6 +4391,14 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 	}
 	mut base_type := t.node_type(base_id)
+	mut smartcast_container := false
+	if sc := t.find_smartcast(t.expr_key(base_id)) {
+		variant_type := t.resolve_variant(sc.sum_type_name, sc.variant_name)
+		if variant_type.starts_with('[]') || t.is_fixed_array_type(variant_type) {
+			base_type = variant_type
+			smartcast_container = true
+		}
+	}
 	base_node := t.a.nodes[int(base_id)]
 	if (array_type_has_generic_placeholder(base_type) || base_type.contains('unknown'))
 		&& base_node.kind == .call {
@@ -4295,10 +4519,12 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 	if !clean_base_type.starts_with('[]') {
 		return none
 	}
-	if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id,
-		array_builtin_method)
-	{
-		return exact_call
+	if !(smartcast_container && fn_node.value == 'str') {
+		if exact_call := t.lower_checker_selected_receiver_method(call_id, node, base_id,
+			array_builtin_method)
+		{
+			return exact_call
+		}
 	}
 	if fn_node.value == 'str' && stringify_type_has_generic_placeholder(clean_base_type) {
 		return none
@@ -4350,7 +4576,12 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return t.lower_array_count_call(node, fn_node, clean_base_type)
 		}
 		'str' {
-			return t.wrap_string_conversion(t.transform_expr(base_id), clean_base_type)
+			receiver := if smartcast_container {
+				t.make_plain_expr_for_smartcast(base_id)
+			} else {
+				t.transform_expr(base_id)
+			}
+			return t.wrap_string_conversion(receiver, clean_base_type)
 		}
 		'to_fixed_size' {
 			if base_node.kind != .array_literal {

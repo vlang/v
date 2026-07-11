@@ -2327,6 +2327,14 @@ fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types
 				call_expr:   '&p->a${field_idx}'
 			}
 		}
+		if child_id := g.spawn_stack_address_value(arg_id) {
+			value_type := types.unwrap_pointer(expected)
+			return SpawnPackedArg{
+				field_ct:    g.tc.c_type(value_type)
+				assign_expr: g.expr_to_string_with_expected_type(child_id, value_type)
+				call_expr:   '&p->a${field_idx}'
+			}
+		}
 		if g.spawn_arg_expr_is_pointer_value(arg_id) {
 			return SpawnPackedArg{
 				field_ct:    expected_ct
@@ -2354,6 +2362,32 @@ fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types
 		assign_expr: g.expr_to_string_with_expected_type(arg_id, expected)
 		call_expr:   'p->a${field_idx}'
 	}
+}
+
+// spawn_stack_address_value finds `&local` (also through parentheses) when local is a value
+// binding. The spawned wrapper must own a copy in its heap argument block; storing the stack
+// address itself lets loop iterations reuse the slot before the thread reads it.
+fn (g &FlatGen) spawn_stack_address_value(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.node(id)
+	if node.kind == .paren && node.children_count > 0 {
+		return g.spawn_stack_address_value(g.a.child(node, 0))
+	}
+	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
+		return none
+	}
+	child_id := g.a.child(node, 0)
+	child := g.a.node(child_id)
+	if child.kind != .ident || node.is_mut || child.is_mut {
+		return none
+	}
+	local_type := g.local_ident_type(child.value) or { return none }
+	if local_type is types.Pointer {
+		return none
+	}
+	return child_id
 }
 
 fn spawn_packed_args_signature(args []SpawnPackedArg) string {
@@ -3260,14 +3294,22 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		}
 	}
 	if g.is_json_decode_call(id, target_name) {
-		ret_type := g.json_decode_result_type_for_call(node) or { g.call_default_return_type(id) }
-		g.gen_default_value_for_type(ret_type)
+		if !g.is_json_decode_self_call(target_name, resolved_target_name)
+			&& g.gen_json_decode_call(node) {
+			return
+		}
+		g.gen_default_value_for_type(g.json_decode_result_type_for_call(node) or {
+			g.call_default_return_type(id)
+		})
 		return
 	}
-	if target_name in ['json.encode', 'json2.encode']
-		|| (g.tc.cur_module == 'json2' && target_name == 'encode') {
-		g.gen_default_value_for_type(g.call_default_return_type(id))
-		return
+	if target_name == 'json.encode' || resolved_target_name == 'json.encode'
+		|| (g.tc.cur_module == 'json' && target_name == 'encode') {
+		// Old `json` module only; `json2`/`x.json2` are pure V (see
+		// is_json_decode_target_name).
+		if g.gen_json_encode_call(node) {
+			return
+		}
 	}
 	if g.is_veb_json_result_call(fn_node) {
 		g.gen_default_value_for_type(g.call_default_return_type(id))
@@ -4876,8 +4918,11 @@ fn (g &FlatGen) call_has_selector_name(id flat.NodeId, name string) bool {
 }
 
 fn (g &FlatGen) is_json_decode_target_name(target string) bool {
-	return target in ['json.decode', 'json2.decode', 'x.json2.decode']
-		|| (target == 'decode' && g.tc.cur_module in ['json', 'json2'])
+	// Only the old C-magic `json` module uses the cgen shortcut. `json2`/`x.json2`
+	// are pure V and must compile through normal codegen, so they are not matched
+	// here (matching them would inject cJSON calls and hijack json2's own
+	// internal `encode`/`decode` functions).
+	return target == 'json.decode' || (target == 'decode' && g.tc.cur_module == 'json')
 }
 
 fn (g &FlatGen) is_json_decode_call(id flat.NodeId, target string) bool {
@@ -4887,6 +4932,523 @@ fn (g &FlatGen) is_json_decode_call(id flat.NodeId, target string) bool {
 		}
 	}
 	return g.is_json_decode_target_name(target)
+}
+
+fn (g &FlatGen) is_json_decode_self_call(target string, resolved string) bool {
+	return g.tc.cur_module == 'json' && target == 'decode'
+		&& resolved in ['', 'decode', 'json.decode']
+}
+
+fn (mut g FlatGen) gen_json_encode_call(node flat.Node) bool {
+	if node.children_count < 2 {
+		return false
+	}
+	arg_id := g.a.child(&node, 1)
+	typ := types.unwrap_pointer(g.usable_expr_type(arg_id))
+	expr := g.expr_to_string_with_expected_type(arg_id, typ)
+	// Bind the argument to a single temporary so it is evaluated exactly once,
+	// no matter how many times the field/enum expansion references it.
+	tmp := g.tmp_name()
+	encoded := g.json_encode_value_c_expr(typ, tmp) or { return false }
+	g.write('({ ${g.value_c_type(typ)} ${tmp} = ${expr}; ${encoded}; })')
+	return true
+}
+
+fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	if clean is types.Enum {
+		if cast := g.json_enum_number_cast(clean.name) {
+			// `@[json_as_number]` enum: encode the numeric backing value, not the label.
+			num_fn := if cast == 'u64' { 'u64__str' } else { 'i64__str' }
+			return '${num_fn}((${cast})(${expr}))'
+		}
+		names, labels := g.json_enum_labels(clean.name)
+		if names.len == 0 {
+			return none
+		}
+		mut result := ''
+		for i := names.len - 1; i >= 0; i-- {
+			name := names[i]
+			label := labels[name] or { name }
+			sid := g.intern_string(label)
+			encoded_label := 'v3_json_encode_string(_str_${sid})'
+			value := g.enum_value_expr_for_type(clean.name, name) or {
+				'${g.cname(clean.name)}__${g.cname(name)}'
+			}
+			if result.len == 0 {
+				result = encoded_label
+			} else {
+				result = '((${expr}) == ${value} ? ${encoded_label} : ${result})'
+			}
+		}
+		return result
+	}
+	if clean is types.String {
+		// Escape the contents with a length-aware escaper (quotes, backslashes and
+		// control characters), preserving embedded NUL bytes; cJSON_CreateString is
+		// C-NUL-terminated and would truncate the V string.
+		return 'v3_json_encode_string(${expr})'
+	}
+	if clean is types.Primitive {
+		if clean.props.has(.boolean) {
+			true_sid := g.intern_string('true')
+			false_sid := g.intern_string('false')
+			return '((bool)(${expr}) ? _str_${true_sid} : _str_${false_sid})'
+		}
+		if clean.props.has(.integer) {
+			if clean.props.has(.unsigned) {
+				return 'u64__str((u64)(${expr}))'
+			}
+			return 'i64__str((i64)(${expr}))'
+		}
+		if clean.props.has(.float) {
+			return 'f64__str((double)(${expr}))'
+		}
+		return none
+	}
+	if clean is types.Struct {
+		// The shortcut keys the wire format off the raw field name, so any struct
+		// carrying json field attributes (`@[json: 'x']`, `@[skip]`, ...) would be
+		// serialized with the wrong keys. Decline those and let normal codegen run.
+		if g.json_struct_has_field_attrs(clean.name) {
+			return none
+		}
+		fields := g.tc.structs[clean.name] or { return none }
+		open := g.intern_string('{')
+		close := g.intern_string('}')
+		mut result := '_str_${open}'
+		for i, field in fields {
+			separator := if i == 0 { '' } else { ',' }
+			prefix := g.intern_string('${separator}"${field.name}":')
+			field_expr := '(${expr}).${g.cname(field.name)}'
+			encoded := g.json_encode_value_c_expr(field.typ, field_expr) or { return none }
+			result = 'string__plus(string__plus(${result}, _str_${prefix}), ${encoded})'
+		}
+		return 'string__plus(${result}, _str_${close})'
+	}
+	return none
+}
+
+fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
+	if node.children_count < 3 {
+		return false
+	}
+	ret_type := g.json_decode_result_type_for_call(node) or { return false }
+	mut result_base := types.Type(types.void_)
+	if ret_type is types.ResultType {
+		result_base = ret_type.base_type
+	} else {
+		return false
+	}
+
+	base := types.unwrap_pointer(result_base)
+	if base !is types.Struct {
+		return false
+	}
+	struct_type := base as types.Struct
+	fields := g.tc.structs[struct_type.name] or { return false }
+	// The shortcut can only faithfully decode a fixed set of field types and
+	// ignores json field attributes. Decline anything else so the result stays
+	// an error instead of silently succeeding with dropped/renamed/rounded data.
+	if g.json_struct_has_field_attrs(struct_type.name) {
+		return false
+	}
+	// A field with a default initializer (`n int = 5`) must keep that default when the
+	// JSON omits it, but the fast path would zero it; decline such structs so the
+	// normal decoder preserves the default instead of silently changing the value.
+	if g.json_struct_has_field_default(struct_type.name) {
+		return false
+	}
+	for field in fields {
+		if !g.json_decode_field_supported(field.typ) {
+			return false
+		}
+	}
+	json_id := g.a.child(&node, 2)
+	json_name := g.tmp_name()
+	root_name := g.tmp_name()
+	out_name := g.tmp_name()
+	opt_ct := g.optional_type_name(ret_type)
+	struct_ct := g.value_c_type(struct_type)
+	g.write('({ string ${json_name} = ')
+	g.gen_expr_with_expected_type(json_id, types.Type(types.string_))
+	g.write('; cJSON* ${root_name} = cJSON_ParseWithLength((char*)${json_name}.str, (size_t)${json_name}.len); ')
+	// A struct only decodes successfully from a JSON object; `null`, arrays,
+	// strings and numbers must remain an error rather than a zero-valued struct.
+	// A present field must also have the expected cJSON type, otherwise the decode
+	// fails instead of silently substituting a default (e.g. `{"n":"bad"}` for int).
+	mut checks := []string{}
+	for field in fields {
+		checks << g.json_decode_field_valid_expr(root_name, field)
+	}
+	valid_cond := if checks.len > 0 { checks.join(' && ') } else { 'true' }
+	g.write('${opt_ct} ${out_name} = (${opt_ct}){0}; if (${root_name} != NULL) { if (cJSON_IsObject(${root_name})) { if (${valid_cond}) { ')
+	g.write('${out_name}.ok = true; ${out_name}.value = (${struct_ct}){')
+	for i, field in fields {
+		if i > 0 {
+			g.write(', ')
+		}
+		g.write('.${g.cname(field.name)} = ')
+		g.gen_json_decode_field_expr(root_name, field)
+	}
+	g.write('}; } } cJSON_Delete(${root_name}); } ${out_name}; })')
+	return true
+}
+
+// json_decode_field_valid_expr returns a C boolean expression that is true when the
+// JSON value for `field` is absent (defaulted) or present with the cJSON type the
+// fast-path decoder can faithfully read. A present wrong-typed value fails the decode.
+fn (mut g FlatGen) json_decode_field_valid_expr(root_name string, field types.StructField) string {
+	item := 'cJSON_GetObjectItemCaseSensitive(${root_name}, "${field.name}")'
+	clean := if field.typ is types.Alias { field.typ.base_type } else { field.typ }
+	// Mirror the json module: string fields accept strings and stringify objects/arrays,
+	// bool fields require booleans, and numeric/enum fields tolerate wrong-typed or
+	// unknown values by falling back to a default.
+	if clean is types.String {
+		return '(${item} == NULL || cJSON_IsString(${item}) || cJSON_IsObject(${item}) || cJSON_IsArray(${item}))'
+	}
+	if clean is types.Primitive && clean.props.has(.boolean) {
+		return '(${item} == NULL || cJSON_IsBool(${item}))'
+	}
+	return 'true'
+}
+
+// json_decode_field_supported reports whether the fast-path decoder can decode
+// `typ` without silent data loss. Only strings, enums with known labels and
+// primitives that a cJSON `double` can represent exactly are supported; 64-bit
+// integers (which a double cannot hold exactly) and all composite/optional/
+// pointer/sumtype fields are declined so the call falls back to an error.
+fn (g &FlatGen) json_decode_field_supported(typ types.Type) bool {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	if clean is types.String {
+		return true
+	}
+	if clean is types.Enum {
+		names, _ := g.json_enum_labels(clean.name)
+		return names.len > 0
+	}
+	if clean is types.Primitive {
+		if clean.props.has(.integer) && clean.size == 64 {
+			return false
+		}
+		return true
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, field types.StructField) {
+	item := 'cJSON_GetObjectItemCaseSensitive(${root_name}, "${field.name}")'
+	clean := if field.typ is types.Alias { field.typ.base_type } else { field.typ }
+	if clean is types.String {
+		empty := g.intern_string('')
+		item_name := g.tmp_name()
+		out_name := g.tmp_name()
+		raw_name := g.tmp_name()
+		g.write('({ cJSON* ${item_name} = ${item}; string ${out_name} = _str_${empty}; if (${item_name} != NULL && cJSON_IsString(${item_name}) && ${item_name}->valuestring != NULL) { ${out_name} = tos_clone((u8*)${item_name}->valuestring); } else if (${item_name} != NULL && (cJSON_IsObject(${item_name}) || cJSON_IsArray(${item_name}))) { char* ${raw_name} = cJSON_PrintUnformatted(${item_name}); if (${raw_name} != NULL) { ${out_name} = tos_clone((u8*)${raw_name}); cJSON_free(${raw_name}); } } ${out_name}; })')
+		return
+	}
+	if clean is types.Enum {
+		names, labels := g.json_enum_labels(clean.name)
+		if names.len == 0 {
+			g.write('0')
+			return
+		}
+		default_value := g.enum_value_expr_for_type(clean.name, names[0]) or {
+			'${g.cname(clean.name)}__${g.cname(names[0])}'
+		}
+		if _ := g.json_enum_number_cast(clean.name) {
+			// `@[json_as_number]`: the JSON value is a number, not a label string.
+			g.write('(${item} != NULL ? (${g.value_c_type(clean)})${item}->valuedouble : ${default_value})')
+			return
+		}
+		mut result := default_value
+		for i := names.len - 1; i >= 0; i-- {
+			name := names[i]
+			label := labels[name] or { name }
+			value := g.enum_value_expr_for_type(clean.name, name) or {
+				'${g.cname(clean.name)}__${g.cname(name)}'
+			}
+			mut comparisons := [
+				'strcmp(${item}->valuestring, "${c_escape(name)}") == 0',
+			]
+			if label != name {
+				comparisons << 'strcmp(${item}->valuestring, "${c_escape(label)}") == 0'
+			}
+			matches := comparisons.join(' || ')
+			result = '(${item} != NULL && ${item}->valuestring != NULL && (${matches}) ? ${value} : ${result})'
+		}
+		g.write(result)
+		return
+	}
+	if clean is types.Primitive {
+		if clean.props.has(.boolean) {
+			// cJSON records booleans via the node type (cJSON_True/cJSON_False),
+			// not in valuedouble, so read them with cJSON_IsTrue.
+			g.write('(${item} != NULL ? (bool)cJSON_IsTrue(${item}) : 0)')
+			return
+		}
+		g.write('(${item} != NULL ? (${g.value_c_type(clean)})${item}->valuedouble : 0)')
+		return
+	}
+	g.gen_default_value_for_type(field.typ)
+}
+
+// json_struct_has_field_default reports whether any field of `struct_name` declares a
+// default initializer (`n int = 5`). The default is stored as the field_decl's child
+// expression; the fast-path decoder cannot preserve it for a field omitted from the
+// JSON (it would emit the type zero), so those structs are declined.
+fn (g &FlatGen) json_struct_has_field_default(struct_name string) bool {
+	decl_name := json_struct_decl_name(struct_name)
+	mut cur_module := ''
+	for node in g.a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .struct_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if decl_name != node.value && decl_name != qualified {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := g.a.child_node(&node, i)
+			if field.kind != .field_decl {
+				continue
+			}
+			if field.children_count > 0 {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+fn json_struct_decl_name(name string) string {
+	bracket := name.index_u8(`[`)
+	if bracket <= 0 {
+		return name
+	}
+	return name[..bracket]
+}
+
+// json_struct_has_field_attrs reports whether any field of `struct_name` carries
+// attributes (`@[json: 'x']`, `@[skip]`, `@[required]`, ...). Field attributes are
+// stored in `field_decl.generic_params` with index 0 holding the mut/pub flags and
+// any further entries being attributes.
+fn (g &FlatGen) json_struct_has_field_attrs(struct_name string) bool {
+	decl_name := json_struct_decl_name(struct_name)
+	mut cur_module := ''
+	for node in g.a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .struct_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if decl_name != node.value && decl_name != qualified {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := g.a.child_node(&node, i)
+			if field.kind != .field_decl {
+				continue
+			}
+			if field.generic_params.len > 1 {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+// json_enum_number_cast returns the integer cast (`i64`/`u64`) to use when an enum is
+// declared `@[json_as_number]`, so json.encode emits its numeric value rather than a
+// quoted label; returns none for a plain enum.
+fn (g &FlatGen) json_enum_number_cast(enum_name string) ?string {
+	mut cur_module := ''
+	for node in g.a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .enum_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if enum_name != node.value && enum_name != qualified {
+			continue
+		}
+		if 'json_as_number' !in node.generic_params {
+			return none
+		}
+		backing := if node.generic_params.len > 0 { node.generic_params[0] } else { '' }
+		return if backing in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+			'u64'
+		} else {
+			'i64'
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) json_enum_labels(enum_name string) ([]string, map[string]string) {
+	mut names := []string{}
+	mut labels := map[string]string{}
+	mut cur_module := ''
+	for node in g.a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .enum_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if enum_name != node.value && enum_name != qualified {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := g.a.child_node(&node, i)
+			names << field.value
+			for attr in field.generic_params {
+				if attr.starts_with('json:') {
+					labels[field.value] = json_enum_attr_label(attr.all_after(':'))
+				}
+			}
+		}
+		break
+	}
+	return names, labels
+}
+
+fn json_enum_attr_label(raw_value string) string {
+	mut value := raw_value.trim_space()
+	mut is_raw := false
+	if value.len >= 3 && value[0] == `r` && value[1] in [`'`, `"`]
+		&& value[value.len - 1] == value[1] {
+		is_raw = true
+		value = value[1..]
+	}
+	if value.len < 2 || value[0] !in [`'`, `"`] || value[value.len - 1] != value[0] {
+		return value
+	}
+	inner := value[1..value.len - 1]
+	if is_raw || !inner.contains('\\') {
+		return inner
+	}
+	mut out := strings.new_builder(inner.len)
+	mut i := 0
+	for i < inner.len {
+		if inner[i] != `\\` || i + 1 >= inner.len {
+			out.write_u8(inner[i])
+			i++
+			continue
+		}
+		next := inner[i + 1]
+		hex_len := match next {
+			`x` { 2 }
+			`u` { 4 }
+			`U` { 8 }
+			else { 0 }
+		}
+
+		if hex_len > 0 && i + 2 + hex_len <= inner.len {
+			if code := json_enum_attr_hex(inner, i + 2, hex_len) {
+				if next == `x` {
+					out.write_u8(u8(code))
+				} else {
+					out.write_rune(rune(code))
+				}
+				i += 2 + hex_len
+				continue
+			}
+		}
+		match next {
+			`n` {
+				out.write_u8(`\n`)
+			}
+			`t` {
+				out.write_u8(`\t`)
+			}
+			`r` {
+				out.write_u8(`\r`)
+			}
+			`\\` {
+				out.write_u8(`\\`)
+			}
+			`'` {
+				out.write_u8(`'`)
+			}
+			`"` {
+				out.write_u8(`"`)
+			}
+			`$` {
+				out.write_u8(`$`)
+			}
+			`0` {
+				out.write_u8(0)
+			}
+			`a` {
+				out.write_u8(7)
+			}
+			`b` {
+				out.write_u8(8)
+			}
+			`f` {
+				out.write_u8(12)
+			}
+			`v` {
+				out.write_u8(11)
+			}
+			else {
+				out.write_u8(`\\`)
+				out.write_u8(next)
+			}
+		}
+
+		i += 2
+	}
+	return out.str()
+}
+
+fn json_enum_attr_hex(value string, start int, count int) ?u32 {
+	mut code := u32(0)
+	for i in 0 .. count {
+		ch := value[start + i]
+		digit := if ch >= `0` && ch <= `9` {
+			int(ch - `0`)
+		} else if ch >= `a` && ch <= `f` {
+			int(ch - `a`) + 10
+		} else if ch >= `A` && ch <= `F` {
+			int(ch - `A`) + 10
+		} else {
+			return none
+		}
+		code = (code << 4) | u32(digit)
+	}
+	return code
 }
 
 fn (g &FlatGen) is_veb_json_result_call(fn_node flat.Node) bool {

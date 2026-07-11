@@ -80,16 +80,28 @@ fn (mut g FlatGen) gen_pointer_value_struct_field(value_id flat.NodeId, expected
 	}
 	if actual is types.Pointer {
 		if g.type_names_match(actual.base_type, expected0) {
-			g.write('*(')
-			g.gen_expr(value_id)
-			g.write(')')
+			value := g.a.node(value_id)
+			if value.kind == .ident {
+				g.write('*')
+				g.gen_expr(value_id)
+			} else {
+				g.write('*(')
+				g.gen_expr(value_id)
+				g.write(')')
+			}
 			return true
 		}
 	}
 	if pointer_value_type_names_match(actual.name(), expected0.name()) {
-		g.write('*(')
-		g.gen_expr(value_id)
-		g.write(')')
+		value := g.a.node(value_id)
+		if value.kind == .ident {
+			g.write('*')
+			g.gen_expr(value_id)
+		} else {
+			g.write('*(')
+			g.gen_expr(value_id)
+			g.write(')')
+		}
 		return true
 	}
 	return false
@@ -359,11 +371,16 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 		if field.value.len == 0 {
 			if sf := g.struct_field_at(lookup_name, i) {
 				if _ := array_fixed_type(sf.typ) {
-					fixed_fields << sf.name
-					fixed_values << value_id
-					fixed_field_types << sf.typ
-					set_fields[sf.name] = true
-					continue
+					if g.shared_field_info(lookup_name, sf.name) != none {
+						// A shared fixed array is pointer-backed wrapper storage, not an inline
+						// array field in the containing struct.
+					} else {
+						fixed_fields << sf.name
+						fixed_values << value_id
+						fixed_field_types << sf.typ
+						set_fields[sf.name] = true
+						continue
+					}
 				}
 				if has_field {
 					g.write(', ')
@@ -382,11 +399,15 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 		} else {
 			ftyp := g.struct_field_type(lookup_name, field.value) or { types.Type(types.void_) }
 			if _ := array_fixed_type(ftyp) {
-				fixed_fields << field.value
-				fixed_values << value_id
-				fixed_field_types << ftyp
-				set_fields[field.value] = true
-				continue
+				if g.shared_field_info(lookup_name, field.value) != none {
+					// Emit through gen_shared_field_expr_for_field below.
+				} else {
+					fixed_fields << field.value
+					fixed_values << value_id
+					fixed_field_types << ftyp
+					set_fields[field.value] = true
+					continue
+				}
 			}
 			if has_field {
 				g.write(', ')
@@ -1578,7 +1599,17 @@ fn (mut g FlatGen) shared_value_c_type(inner string) string {
 }
 
 fn (mut g FlatGen) shared_wrapper_c_name(inner string) string {
-	return '__shared__${g.shared_value_type_name(inner)}'
+	name := g.shared_value_type_name(inner)
+	typ := g.tc.parse_type(inner)
+	if typ is types.Struct {
+		struct_type := typ as types.Struct
+		if info := g.find_struct_decl(struct_type.name) {
+			if info.module == 'main' {
+				return '__shared__main__${name}'
+			}
+		}
+	}
+	return '__shared__${name}'
 }
 
 fn (mut g FlatGen) generic_shared_field_info(type_name string, field_name string) ?SharedFieldInfo {
@@ -1635,6 +1666,49 @@ fn (mut g FlatGen) shared_field_info(type_name string, field_name string) ?Share
 		}
 	}
 	return none
+}
+
+fn (mut g FlatGen) atomic_selector_type(id flat.NodeId) ?types.Type {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return none
+	}
+	node := g.a.node(id)
+	if node.kind != .selector || node.children_count == 0 {
+		return none
+	}
+	base_id := g.a.child(node, 0)
+	mut base_type := types.unwrap_pointer(g.usable_expr_type(base_id))
+	if base_type is types.Alias {
+		base_type = types.unwrap_pointer(base_type.base_type)
+	}
+	if base_type !is types.Struct {
+		return none
+	}
+	struct_type := base_type as types.Struct
+	info := g.find_struct_decl(struct_type.name) or { return none }
+	old_module := g.tc.cur_module
+	g.tc.cur_module = info.module
+	defer {
+		g.tc.cur_module = old_module
+	}
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind == .field_decl && field.value == node.value
+			&& field.typ.trim_space().starts_with('atomic ') {
+			return g.tc.parse_type(field.typ.trim_space()[7..])
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) atomic_helper_suffix(typ types.Type) string {
+	ct := g.tc.c_type(typ)
+	return match ct {
+		'i8', 'u8', 'byte', 'bool', 'char' { 'byte' }
+		'i16', 'u16' { 'u16' }
+		'i64', 'u64', 'isize', 'usize' { 'u64' }
+		else { 'u32' }
+	}
 }
 
 fn (mut g FlatGen) shared_type_forward_decls() {
@@ -1774,6 +1848,24 @@ fn (mut g FlatGen) gen_shared_field_value_selector(base_id flat.NodeId, base_typ
 fn (mut g FlatGen) gen_shared_field_expr_for_field(value_id flat.NodeId, struct_name string, field_name string, expected types.Type) bool {
 	info := g.shared_field_info(struct_name, field_name) or { return false }
 	if g.gen_shared_storage_expr(value_id) {
+		return true
+	}
+	if fixed := array_fixed_type(expected) {
+		literal := g.fixed_array_compound_literal_expr(value_id, fixed)
+		brace := literal.index_u8(`{`)
+		if brace >= 0 {
+			g.write('(${info.wrapper}*)__dup${info.wrapper}(&(${info.wrapper}){.mtx = {0}, .val = ')
+			g.write(literal[brace..])
+			g.write('}, sizeof(${info.wrapper}))')
+			return true
+		}
+		// A non-literal fixed-array value cannot initialize the array member in a
+		// compound literal (`.val = arr` is invalid C), so build the wrapper in a
+		// temp and memcpy the value in, mirroring the non-shared fixed-array path.
+		tmp := g.tmp_name()
+		g.write('({ ${info.wrapper} ${tmp} = {.mtx = {0}}; memcpy(${tmp}.val, ')
+		g.gen_struct_field_expr(value_id, expected)
+		g.write(', sizeof(${tmp}.val)); (${info.wrapper}*)__dup${info.wrapper}(&${tmp}, sizeof(${info.wrapper})); })')
 		return true
 	}
 	g.write('(${info.wrapper}*)__dup${info.wrapper}(&(${info.wrapper}){.mtx = {0}, .val = ')
@@ -2479,7 +2571,7 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 	size_suffix := match c_key {
 		'u8', 'i8', 'bool', 'char' { '1' }
 		'u16', 'i16' { '2' }
-		'i64', 'u64', 'isize', 'usize', 'voidptr' { '8' }
+		'i64', 'u64', 'isize', 'usize', 'f64', 'double', 'voidptr' { '8' }
 		else { '4' }
 	}
 
@@ -2938,6 +3030,8 @@ fn (mut g FlatGen) write_struct_field(_struct_name string, f types.StructField) 
 	} else {
 		mut ct := if f.typ is types.OptionType || f.typ is types.ResultType {
 			g.optional_type_name(f.typ)
+		} else if f.typ is types.Enum {
+			g.enum_value_c_type(f.typ)
 		} else {
 			g.tc.c_type(f.typ)
 		}

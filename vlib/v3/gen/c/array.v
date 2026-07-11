@@ -115,7 +115,15 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 		// (`Box{..}` in a `[]Box[int]` literal) otherwise sees the array type, fails the
 		// `generic_struct_init_instance_type` array skip, and is emitted as the bare `Box`
 		// while the array storage is `Box_int` — incompatible C.
-		g.gen_expr_with_expected_type(g.a.child(&node, i), elem_type)
+		child_id := g.a.child(&node, i)
+		if fixed := array_fixed_type(elem_type) {
+			initializer := g.fixed_array_initializer_string(child_id, fixed)
+			if initializer.len > 0 {
+				g.write(initializer)
+				continue
+			}
+		}
+		g.gen_expr_with_expected_type(child_id, elem_type)
 	}
 	g.write('})')
 }
@@ -136,7 +144,7 @@ fn (mut g FlatGen) gen_array_literal_ptr_arg(node flat.Node, elem_type types.Typ
 }
 
 fn (mut g FlatGen) gen_fixed_array_literal_value(node flat.Node, fixed types.ArrayFixed) {
-	g.write('(${g.tc.c_type(types.Type(fixed))}){')
+	g.write('(${g.fixed_array_c_type(fixed)}){')
 	for i in 0 .. node.children_count {
 		if i > 0 {
 			g.write(', ')

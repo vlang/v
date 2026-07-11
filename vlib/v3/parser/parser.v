@@ -32,29 +32,30 @@ const read_source_chunk_size = 65536
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                 scanner.Scanner
-	tok               token.Token
-	lit               string
-	tok_pos           int
-	peek_tok          token.Token = .eof
-	peek_lit          string
-	peek_pos          int
-	has_peek          bool
-	cur_file          string
-	cur_module        string
-	cur_fn            string
-	cur_struct        string   // receiver type name of the current method, for `@STRUCT`
-	comptime_for_vars []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
-	pending_flag      bool
-	pending_params    bool
-	pending_export    string
-	pending_noreturn  bool
-	skip_next_decl    bool
-	disable_fn_body   bool
-	in_for_container  bool
-	local_type_names  map[string]string
-	local_type_scopes []string
-	export_records    []ExportRecord
+	s                      scanner.Scanner
+	tok                    token.Token
+	lit                    string
+	tok_pos                int
+	peek_tok               token.Token = .eof
+	peek_lit               string
+	peek_pos               int
+	has_peek               bool
+	cur_file               string
+	cur_module             string
+	cur_fn                 string
+	cur_struct             string   // receiver type name of the current method, for `@STRUCT`
+	comptime_for_vars      []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
+	pending_flag           bool
+	pending_json_as_number bool // `@[json_as_number]` seen before the next enum decl
+	pending_params         bool
+	pending_export         string
+	pending_noreturn       bool
+	skip_next_decl         bool
+	disable_fn_body        bool
+	in_for_container       bool
+	local_type_names       map[string]string
+	local_type_scopes      []string
+	export_records         []ExportRecord
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
@@ -698,6 +699,10 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 	p.consume_decl_prefix_after_attrs()
 	if p.skip_next_decl {
 		p.pending_params = false
+		// A skipped enum (e.g. disabled by a preceding `@[if false]`) never reaches
+		// enum_decl to consume this flag, so clear it here to avoid tagging the next
+		// enum as `@[json_as_number]`.
+		p.pending_json_as_number = false
 		p.skip_next_decl = false
 		if p.cur_decl_is_fn() {
 			p.disable_fn_body = true
@@ -716,6 +721,7 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 	p.pending_params = false
 	p.pending_export = ''
 	p.pending_noreturn = false
+	p.pending_json_as_number = false
 	return res
 }
 
@@ -1661,7 +1667,13 @@ fn (mut p Parser) enum_decl() flat.NodeId {
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	}
-	if enum_base_type.len > 0 {
+	// generic_params[0] is the backing type (empty when unspecified); a trailing
+	// `json_as_number` marker records the `@[json_as_number]` enum attribute so the
+	// json fast path can encode members as their numeric value.
+	if p.pending_json_as_number {
+		enum_node.generic_params = [enum_base_type, 'json_as_number']
+		p.pending_json_as_number = false
+	} else if enum_base_type.len > 0 {
 		enum_node.generic_params = [enum_base_type]
 	}
 	return p.a.add_node(enum_node)
@@ -1936,6 +1948,8 @@ fn (mut p Parser) skip_attrs() {
 			if p.tok == .name {
 				if p.lit == 'flag' {
 					p.pending_flag = true
+				} else if p.lit == 'json_as_number' {
+					p.pending_json_as_number = true
 				} else if p.lit == 'params' {
 					p.pending_params = true
 				} else if p.lit == 'noreturn' {
@@ -1957,6 +1971,8 @@ fn (mut p Parser) skip_attrs() {
 			if depth == 1 && p.tok == .name {
 				if p.lit == 'flag' {
 					p.pending_flag = true
+				} else if p.lit == 'json_as_number' {
+					p.pending_json_as_number = true
 				} else if p.lit == 'params' {
 					p.pending_params = true
 				} else if p.lit == 'noreturn' {
@@ -2416,7 +2432,8 @@ fn comptime_cond_needs_space(prev string, cur string) bool {
 }
 
 fn comptime_cond_has_type_test(cond string) bool {
-	return cond.contains(' is ') || cond.contains(' !is ')
+	return cond.contains(' is ') || cond.contains(' !is ') || cond.contains(' in[')
+		|| cond.contains(' in [') || cond.contains(' !in[') || cond.contains(' !in [')
 }
 
 // comptime_cond_needs_loop_var reports whether a `$if` condition reads any currently active
@@ -2549,8 +2566,47 @@ fn eval_comptime_cond(prefs &pref.Preferences, cond string) bool {
 	if c.starts_with('pkgconfig') {
 		return eval_pkgconfig_cond(c)
 	}
-	flag := c.trim_space().trim_right('? ')
-	return pref.comptime_flag_value(prefs, flag)
+	if value := eval_comptime_define_cond(prefs, c) {
+		return value
+	}
+	if c.ends_with('?') {
+		flag := c[..c.len - 1].trim_space()
+		return pref.comptime_optional_flag_value(prefs, flag)
+	}
+	return pref.comptime_flag_value(prefs, c.trim_space())
+}
+
+// eval_comptime_define_cond evaluates the boolean form of `$d('name', default)`. A builtin
+// comptime flag (notably `test`) is intentionally not a `-d` define, so an absent user define
+// still uses the supplied default.
+fn eval_comptime_define_cond(prefs &pref.Preferences, cond string) ?bool {
+	clean := cond.replace(' ', '')
+	if !clean.starts_with('$d(') || !clean.ends_with(')') {
+		return none
+	}
+	inner := clean[3..clean.len - 1]
+	comma := inner.index_u8(`,`)
+	if comma <= 0 || comma + 1 >= inner.len {
+		return none
+	}
+	name := inner[..comma].trim('\'"')
+	for define in prefs.user_defines {
+		if define == name || define.starts_with('${name}=') {
+			if define.contains('=') {
+				value := define.all_after_first('=').to_lower()
+				return value !in ['', '0', 'false']
+			}
+			return true
+		}
+	}
+	default_value := inner[comma + 1..].to_lower()
+	if default_value == 'true' {
+		return true
+	}
+	if default_value == 'false' {
+		return false
+	}
+	return none
 }
 
 fn comptime_cond_strip_outer_parens(cond string) string {
@@ -5178,10 +5234,12 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 		prev_offset := p.s.offset
 		prev_tok := p.tok
 		mut arg_is_shared := false
+		mut arg_is_mut := false
 		if p.tok == .key_shared {
 			arg_is_shared = true
 			p.next()
 		} else if p.tok == .key_mut {
+			arg_is_mut = true
 			p.next()
 		}
 		// vararg spread: ...expr
@@ -5227,6 +5285,9 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 			})
 		} else {
 			mut arg := p.expr(.lowest)
+			if arg_is_mut {
+				p.a.set_node_is_mut(arg, true)
+			}
 			if arg_is_shared {
 				arg = p.a.add_node(flat.Node{
 					kind:           .prefix

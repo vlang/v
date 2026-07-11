@@ -297,10 +297,21 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 	if info := t.lookup_struct_info_preferred(name) {
 		return info
 	}
+	// Resolve a qualified import alias (`m.Config` -> `some.mod.Config`) before the
+	// short-name fallback below, so a same-named local type cannot shadow the imported
+	// one. `resolve_imported_type_name` only matches dotted alias names, so bare names
+	// fall through to the direct lookup unchanged.
 	if imported := t.resolve_imported_type_name(name) {
 		if info := t.lookup_struct_info_direct(imported) {
 			return info
 		}
+	}
+	// A monomorphized generic instantiated from another module references the concrete
+	// type by its bare name (`BoolConfig` from main, while transforming the declaring
+	// module); the module-qualified lookup above misses those, so fall back to the
+	// direct lookup, which tries the bare name too.
+	if info := t.lookup_struct_info_direct(name) {
+		return info
 	}
 	normalized := t.normalize_type_alias(name)
 	if normalized != name {

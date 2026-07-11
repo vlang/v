@@ -242,6 +242,21 @@ fn (t &Transformer) mut_param_address_source_type(id flat.NodeId) ?string {
 fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string, share_source bool) ?flat.NodeId {
 	fields := t.tc.interface_fields[iface_name] or { []types.StructField{} }
 	mut source_type := t.node_type(id)
+	// Type propagation normalizes aliases for operations, but interface `_typ` must
+	// retain the declared alias so `is Alias` does not become `is Base`.
+	if source_type.len > 0 {
+		node := t.a.nodes[int(id)]
+		if node.kind == .ident {
+			raw_type := t.raw_var_type(node.value)
+			if raw_type.len > 0 && t.normalize_type_alias(raw_type) == source_type {
+				raw_parsed := t.tc.parse_type(raw_type)
+				if raw_parsed is types.Alias
+					|| (raw_parsed is types.Pointer && raw_parsed.base_type is types.Alias) {
+					source_type = raw_type
+				}
+			}
+		}
+	}
 	if adjusted := t.mut_param_address_source_type(id) {
 		source_type = adjusted
 	}

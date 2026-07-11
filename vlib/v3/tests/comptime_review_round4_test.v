@@ -134,6 +134,131 @@ fn main() {
 	assert out == "id:true:true:true:true:false:|name:true:true:false:false:true:json: 'wire'|count:2"
 }
 
+fn test_comptime_variant_metadata_only_exposes_typ() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'variant_metadata_typ', 'struct A {}
+struct B {}
+
+type Value = A | B
+
+fn variant_type(item VariantData) int {
+	return item.typ
+}
+
+fn type_id(typ int) int {
+	return typ
+}
+
+fn main() {
+	mut count := 0
+	mut type_ids_match := []string{}
+	$for variant in Value.variants {
+		_ = variant_type(variant)
+		_ = type_id(variant.typ)
+		type_ids_match << (typeof(variant.typ).idx == variant.typ).str()
+		count++
+	}
+	println(type_ids_match.join(",") + "|" + int_str(count))
+}
+')
+	assert out == 'true,true|2'
+
+	round4_run_bad(v3_bin, 'bad_variant_name_member', 'struct A {}
+struct B {}
+
+type Value = A | B
+
+fn use_name(name string) {}
+
+fn main() {
+	$for variant in Value.variants {
+		use_name(variant.name)
+	}
+}
+',
+		'unknown VariantData member `name`')
+	round4_run_bad(v3_bin, 'bad_variant_attrs_member', 'struct A {}
+struct B {}
+
+type Value = A | B
+
+fn use_attrs(attrs []string) {}
+
+fn main() {
+	$for variant in Value.variants {
+		use_attrs(variant.attrs)
+	}
+}
+',
+		'unknown VariantData member `attrs`')
+}
+
+fn test_comptime_variants_prefer_local_sum_over_imported_short_name() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'variant_local_sum_precedence', {
+		'v.mod':         "Module { name: 'variant_local_sum_precedence' }\n"
+		'other/other.v': 'module other
+
+pub struct RemoteA {}
+pub struct RemoteB {}
+
+pub type Sum = RemoteA | RemoteB
+
+pub const marker = 1
+'
+		'main.v':        'module main
+
+import other
+
+struct LocalA {}
+struct LocalB {}
+
+type Sum = LocalA | LocalB
+
+fn main() {
+	mut names := []string{}
+	$for variant in Sum.variants {
+		names << typeof(variant.typ).name
+	}
+	mut remote_names := []string{}
+	$for variant in other.Sum.variants {
+		remote_names << typeof(variant.typ).name
+	}
+	println(names.join(","))
+	println(remote_names.join(","))
+	println(int_str(other.marker))
+}
+'
+	}, 'main.v')
+	assert out == 'LocalA,LocalB\nother.RemoteA,other.RemoteB\n1'
+}
+
+fn test_comptime_field_generic_helper_infers_matching_argument() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'field_generic_helper_matching_arg', 'struct S {
+	id int
+	name string
+}
+
+fn add[T](label string, value T) string {
+	return label + ":" + "\${value}"
+}
+
+fn main() {
+	value := S{
+		id: 7
+		name: "v"
+	}
+	mut rows := []string{}
+	$for field in S.fields {
+		rows << add(field.name, value.$(field.name))
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'id:7|name:v'
+}
+
 fn test_comptime_for_value_field_sources_use_value_type() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'value_field_source', "struct Inner {
@@ -674,6 +799,70 @@ fn main() {
 }
 ")
 	assert out == '4'
+}
+
+fn test_enum_value_metadata_interpolation_stays_numeric() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_value_metadata_numeric_interpolation', "enum Color {
+	red = 7
+	blue = 42
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in Color.values {
+		rows << '\${item.value}:\${item.value:4}'
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == '7:   7|42:  42'
+}
+
+fn test_enum_value_metadata_preserves_wide_backed_values() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_value_metadata_wide_backed', "enum Wide as u64 {
+	big = 1 << 40
+	next
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in Wide.values {
+		rows << '\${item.value}'
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == '1099511627776|1099511627777'
+}
+
+fn test_field_loop_specializes_multi_parameter_generic_helper() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'field_loop_multi_generic_helper', "struct Data {
+	n int
+	label string
+}
+
+fn pair[A, B](a A, b B) string {
+	_ = a
+	_ = b
+	return 'ok'
+}
+
+fn main() {
+	data := Data{
+		n: 7
+		label: 'x'
+	}
+	mut rows := []string{}
+	$for field in Data.fields {
+		rows << pair(data.$(field.name), field.name)
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'ok|ok'
 }
 
 fn test_enum_value_static_pruning_resolves_forward_refs() {

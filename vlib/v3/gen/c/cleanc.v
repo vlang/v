@@ -942,11 +942,22 @@ fn (mut g FlatGen) collect_gen_info() {
 				g.register_enum_backing_info(enum_name, backing)
 			}
 			is_backed_enum := backing.len > 0
+			mut field_exprs := map[string]flat.NodeId{}
 			for i in 0 .. node.children_count {
 				f := g.a.child_node(&node, i)
 				if f.children_count > 0 {
-					if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
-						val = enum_val
+					field_exprs[f.value] = g.a.child(f, 0)
+				}
+			}
+			mut field_values := map[string]i64{}
+			for i in 0 .. node.children_count {
+				f := g.a.child_node(&node, i)
+				if f.children_count > 0 {
+					mut resolving := map[string]bool{}
+					if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module,
+						node.value, mut field_values, field_exprs, mut resolving)
+					{
+						val = int(enum_val)
 					}
 				}
 				key := '${enum_name}.${f.value}'
@@ -955,9 +966,11 @@ fn (mut g FlatGen) collect_gen_info() {
 					val++
 				} else if is_flag {
 					g.enum_vals[key] = 1 << val
+					field_values[f.value] = i64(val)
 					val++
 				} else {
 					g.enum_vals[key] = val
+					field_values[f.value] = val
 					val++
 				}
 			}
@@ -3616,6 +3629,8 @@ fn (mut g FlatGen) type_name_c_type(type_name string) string {
 	t := g.tc.parse_type(type_name)
 	ct := if t is types.OptionType || t is types.ResultType {
 		g.optional_type_name(t)
+	} else if t is types.Enum {
+		g.enum_value_c_type(t)
 	} else {
 		g.tc.c_type(t)
 	}
@@ -4911,6 +4926,25 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
+			lhs_node := g.a.nodes[int(lhs_id)]
+			rhs_node := g.a.nodes[int(rhs_id)]
+			if node.op in [.eq, .ne]
+				&& ((rhs_node.kind == .char_literal && rhs_node.value.starts_with('c:')
+				&& lhs_type !is types.Pointer)
+				|| (lhs_node.kind == .char_literal && lhs_node.value.starts_with('c:')
+				&& rhs_type !is types.Pointer)) {
+				if lhs_node.kind == .char_literal && lhs_node.value.starts_with('c:') {
+					g.write('*')
+				}
+				g.gen_expr(lhs_id)
+				g.write(' ${g.op_str(node.op)} ')
+				if rhs_node.kind == .char_literal && rhs_node.value.starts_with('c:') {
+					g.write('*')
+				}
+				g.gen_expr(rhs_id)
+				g.expected_enum = old_expected_enum
+				return
+			}
 			if lhs_type is types.Enum {
 				g.expected_enum = lhs_type.name
 			} else if rhs_type is types.Enum {
@@ -4939,8 +4973,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(' ${g.op_str(node.op)} ')
 				g.gen_expr_with_possible_enum_type(rhs_id, lhs_type)
 			} else {
-				lhs_node := g.a.nodes[int(lhs_id)]
-				rhs_node := g.a.nodes[int(rhs_id)]
 				if lhs_node.kind == .infix && !infix_can_skip_child_parens(node.op, lhs_node.op) {
 					g.write('(')
 					g.gen_expr_with_possible_enum_type(lhs_id, rhs_type)
@@ -4997,6 +5029,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						g.gen_expr(child_id)
 						return
 					}
+				}
+			}
+			if node.op == .mul && child.kind == .paren && child.children_count > 0 {
+				inner_id := g.a.child(&child, 0)
+				inner := g.a.node(inner_id)
+				if inner.kind == .ident {
+					g.write('*')
+					g.gen_expr(inner_id)
+					return
 				}
 			}
 			if node.op == .amp && g.gen_amp_c_string_literal(child_id, child) {
@@ -5141,6 +5182,15 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.postfix {
 			child_id := g.a.child(&node, 0)
 			child := g.a.nodes[int(child_id)]
+			if node.op in [.inc, .dec] {
+				if atomic_type := g.atomic_selector_type(child_id) {
+					op := if node.op == .inc { 'add' } else { 'sub' }
+					g.write('atomic_fetch_${op}_${g.atomic_helper_suffix(atomic_type)}(&(')
+					g.gen_expr(child_id)
+					g.write('), 1)')
+					return
+				}
+			}
 			if child.kind == .ident && g.current_param_is_mut(child.value) {
 				g.write('(*')
 				g.gen_expr(child_id)
@@ -5884,6 +5934,12 @@ fn (g &FlatGen) typeof_type_index(node flat.Node) int {
 	if type_name.len == 0 {
 		return 0
 	}
+	// Builtin types keep V's stable ast `*_type_idx` values (int==8, string==21, ...), so
+	// comparisons against `v.ast` constants behave like the reference compiler.
+	builtin_idx := builtin_ast_type_idx(type_name)
+	if builtin_idx > 0 {
+		return builtin_idx
+	}
 	mut variants := []string{cap: 2}
 	variants << type_name
 	if !type_name.contains('.') && g.tc.cur_module.len > 0
@@ -5916,6 +5972,41 @@ fn (g &FlatGen) typeof_type_index(node flat.Node) int {
 		}
 	}
 	return 0
+}
+
+// builtin_ast_type_idx maps a builtin type name to V's stable ast `*_type_idx` value
+// (vlib/v/ast/types.v), so `typeof[T]().idx` comparisons against `v.ast` constants behave
+// like the reference compiler. Returns 0 for non-builtin types.
+fn builtin_ast_type_idx(name string) int {
+	return match name {
+		'void' { 1 }
+		'voidptr' { 2 }
+		'byteptr' { 3 }
+		'charptr' { 4 }
+		'i8' { 5 }
+		'i16' { 6 }
+		'i32' { 7 }
+		'int' { 8 }
+		'i64' { 9 }
+		'isize' { 10 }
+		'u8', 'byte' { 11 }
+		'u16' { 12 }
+		'u32' { 13 }
+		'u64' { 14 }
+		'usize' { 15 }
+		'f32' { 16 }
+		'f64' { 17 }
+		'char' { 18 }
+		'bool' { 19 }
+		'none' { 20 }
+		'string' { 21 }
+		'rune' { 22 }
+		'float literal' { 27 }
+		'int literal' { 28 }
+		'thread' { 29 }
+		'nil' { 31 }
+		else { 0 }
+	}
 }
 
 fn (mut g FlatGen) gen_string_infix_fallback(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId) bool {
@@ -8183,6 +8274,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
 	g.writeln('static inline string v3_c_lit(const char* s, int len) { return (string){.str = (u8*)s, .len = len, .is_lit = 1}; }')
 	g.writeln("static inline string v3_string_pad(string s, int width, int left) { if (width < 0) { left = 1; width = -width; } if (s.len >= width) return s; int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); if (left) { memcpy(out, s.str, (size_t)s.len); memset(out + s.len, ' ', (size_t)pad); } else { memset(out, ' ', (size_t)pad); memcpy(out + pad, s.str, (size_t)s.len); } out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
+	g.writeln("static inline string v3_string_upper_ascii(string s) { u8* out = malloc_noscan((ptrdiff_t)s.len + 1); for (int i = 0; i < s.len; ++i) { u8 c = s.str[i]; out[i] = c >= 'a' && c <= 'f' ? (u8)(c - ('a' - 'A')) : c; } out[s.len] = 0; return (string){.str = out, .len = s.len, .is_lit = 0}; }")
 	g.writeln('static inline string v3_char_string(int c) { return rune__str((i32)c); }')
 	g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision == 6) { double scale = 1000000.0; double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
 	g.writeln('static inline string v3_f64_fixed(double x, int precision) { if (precision > 16) { char base[128]; int b = snprintf(base, sizeof(base), "%.16g", x); if (b >= 0 && b < (int)sizeof(base)) { int dot = -1; int has_exp = 0; for (int i = 0; i < b; ++i) { if (base[i] == \'.\') dot = i; if (base[i] == \'e\' || base[i] == \'E\') has_exp = 1; } if (!has_exp) { int frac = dot >= 0 ? b - dot - 1 : 0; if (frac <= precision) { int n = b + (dot < 0 ? 1 : 0) + (precision - frac); u8* out = malloc_noscan(n + 1); memcpy(out, base, b); int pos = b; if (dot < 0) out[pos++] = \'.\'; while (frac++ < precision) out[pos++] = \'0\'; out[pos] = 0; return (string){.str = out, .len = n, .is_lit = 0}; } } } } double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')
@@ -8190,6 +8282,10 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline string v3_i64_zpad(i64 n, int width) { string s = i64__str(n); if (n < 0) return s; while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline string v3_u64_zpad(u64 n, int width) { string s = u64__str(n); while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln("static inline string v3_string_zpad(string s, int width) { if (s.len >= width) return s; int sign = s.len > 0 && s.str[0] == '-'; int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); int pos = 0; if (sign) out[pos++] = '-'; memset(out + pos, '0', (size_t)pad); pos += pad; memcpy(out + pos, s.str + sign, (size_t)(s.len - sign)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
+	// Length-aware JSON string escaper: honors string.len so embedded NUL bytes are
+	// escaped rather than truncating like a C NUL-terminated string. ASCII
+	// codes are used to avoid escaping quirks; 92=\ 34=" 98=b 102=f 110=n 114=r 116=t 117=u 48=0.
+	g.writeln('static inline string v3_json_encode_string(string s) { const char* hex = "0123456789abcdef"; u8* out = malloc_noscan((ptrdiff_t)s.len * 6 + 8); int p = 0; out[p++] = 34; for (int i = 0; i < s.len; i++) { u8 c = s.str[i]; if (c == 34) { out[p++]=92; out[p++]=34; } else if (c == 92) { out[p++]=92; out[p++]=92; } else if (c == 8) { out[p++]=92; out[p++]=98; } else if (c == 12) { out[p++]=92; out[p++]=102; } else if (c == 10) { out[p++]=92; out[p++]=110; } else if (c == 13) { out[p++]=92; out[p++]=114; } else if (c == 9) { out[p++]=92; out[p++]=116; } else if (c < 32) { out[p++]=92; out[p++]=117; out[p++]=48; out[p++]=48; out[p++]=hex[(c>>4)&15]; out[p++]=hex[c&15]; } else { out[p++]=c; } } out[p++] = 34; out[p] = 0; return (string){.str = out, .len = p, .is_lit = 0}; }')
 	g.writeln('static inline i64 v3_map_signed(void* p, int bytes) { if (bytes == 1) return *(signed char*)p; if (bytes == 2) return *(short*)p; if (bytes == 8) return *(long long*)p; return *(int*)p; }')
 	g.writeln('static inline u64 v3_map_unsigned(void* p, int bytes) { if (bytes == 1) return *(unsigned char*)p; if (bytes == 2) return *(unsigned short*)p; if (bytes == 8) return *(unsigned long long*)p; return *(unsigned int*)p; }')
 	g.writeln('static inline string v3_f32_array_str(float* vals, int n) { string out = v3_c_lit("[", 1); for (int i = 0; i < n; ++i) { if (i > 0) out = string__plus(out, v3_c_lit(", ", 2)); out = string__plus(out, f64__str((double)vals[i])); } return string__plus(out, v3_c_lit("]", 1)); }')
@@ -9035,24 +9131,353 @@ fn (g &FlatGen) is_safe_global_init(val_id flat.NodeId) bool {
 
 fn (g &FlatGen) const_get_deps(val_id flat.NodeId) []string {
 	mut deps := []string{}
-	g.const_collect_deps(val_id, mut deps)
+	mut visited_fns := map[string]bool{}
+	g.const_collect_deps_inner(val_id, mut deps, mut visited_fns, map[string]bool{})
 	return deps
 }
 
 fn (g &FlatGen) const_collect_deps(val_id flat.NodeId, mut deps []string) {
+	mut visited_fns := map[string]bool{}
+	g.const_collect_deps_inner(val_id, mut deps, mut visited_fns, map[string]bool{})
+}
+
+// const_collect_deps_inner walks a const initializer (recursing into called helper
+// bodies) collecting the consts it reads. `shadowed` holds names bound by the current
+// helper's parameters/locals so an identifier that shadows a const is not mistaken for
+// a dependency (which could invent a false dependency cycle).
+fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
 	if int(val_id) < 0 || int(val_id) >= g.a.nodes.len {
 		return
 	}
 	node := g.a.nodes[int(val_id)]
+	match node.kind {
+		.fn_literal, .lambda_expr {
+			// Nested functions have their own lexical scope and are not executed merely
+			// because the enclosing helper is called.
+			return
+		}
+		.fn_decl {
+			mut fn_shadowed := shadowed.clone()
+			for i in 0 .. node.children_count {
+				child := g.a.child_node(&node, i)
+				if child.kind == .param && child.value.len > 0 {
+					fn_shadowed[child.value] = true
+				}
+			}
+			g.const_collect_scope_children(node, 0, mut deps, mut visited_fns, mut fn_shadowed)
+			return
+		}
+		.block {
+			mut block_shadowed := shadowed.clone()
+			g.const_collect_scope_children(node, 0, mut deps, mut visited_fns, mut block_shadowed)
+			return
+		}
+		.decl_assign {
+			g.const_collect_decl_assign_deps(node, mut deps, mut visited_fns, shadowed)
+			return
+		}
+		.if_expr {
+			g.const_collect_if_deps(node, mut deps, mut visited_fns, shadowed)
+			return
+		}
+		.for_stmt {
+			g.const_collect_for_deps(node, mut deps, mut visited_fns, shadowed)
+			return
+		}
+		.for_in_stmt {
+			g.const_collect_for_in_deps(node, mut deps, mut visited_fns, shadowed)
+			return
+		}
+		.match_branch {
+			g.const_collect_match_branch_deps(node, mut deps, mut visited_fns, shadowed)
+			return
+		}
+		else {}
+	}
+
 	if node.kind == .ident || node.kind == .selector {
-		const_name := g.const_ref_name_from_node(node)
-		if const_name.len > 0 {
-			deps << const_name
+		if !g.const_ref_base_shadowed(node, shadowed) {
+			const_name := g.const_ref_name_from_node(node)
+			if const_name.len > 0 {
+				deps << const_name
+			}
+		}
+	}
+	if node.kind == .call && node.children_count > 0
+		&& !g.const_ref_base_shadowed(g.a.child_node(&node, 0), shadowed) {
+		callee := g.a.child_node(&node, 0)
+		mut callee_name := ''
+		mut callee_module := ''
+		if callee.kind == .ident {
+			callee_name = callee.value
+		} else if callee.kind == .selector {
+			callee_name = callee.value
+			if callee.children_count > 0 {
+				base_id := g.a.child(callee, 0)
+				base := g.a.nodes[int(base_id)]
+				if base.kind == .ident && base.value in g.modules {
+					// Resolve an import alias (`import some.mod as m` makes the base
+					// ident `m`) to the real module name so the module match compares
+					// against the actual `module` declaration.
+					callee_module = g.modules[base.value]
+				} else {
+					receiver := g.const_call_receiver_type_name(base_id)
+					if receiver.len > 0 {
+						callee_name = '${receiver}.${callee.value}'
+					} else if base.kind == .ident {
+						callee_module = base.value
+					}
+				}
+			}
+		}
+		if resolved := g.tc.resolved_call_name(val_id) {
+			callee_name = resolved
+		}
+		// Key the visited set by the qualified name so `a.foo` and `b.foo` are treated
+		// as distinct bodies rather than one being skipped.
+		visit_key := if callee_module.len > 0 {
+			'${callee_module}.${callee_name}'
+		} else {
+			callee_name
+		}
+		if callee_name.len > 0 && !visited_fns[visit_key] {
+			visited_fns[visit_key] = true
+			// Prefer a declaration in the callee's module; otherwise an exact name
+			// match, then a short-name (suffix) match, so two modules sharing a
+			// function name do not resolve to the wrong declaration.
+			short := callee_name.all_after_last('.')
+			mut cur_mod := ''
+			mut module_target := -1
+			mut exact_target := -1
+			mut suffix_target := -1
+			for i, candidate in g.a.nodes {
+				if candidate.kind == .module_decl {
+					cur_mod = candidate.value
+					continue
+				}
+				if candidate.kind != .fn_decl {
+					continue
+				}
+				if candidate.value != callee_name && candidate.value.all_after_last('.') != short {
+					continue
+				}
+				if module_target < 0 && callee_module.len > 0
+					&& (cur_mod == callee_module || cur_mod == callee_module.all_after_last('.')) {
+					module_target = i
+				}
+				if exact_target < 0 && (candidate.value == callee_name
+					|| callee_name.ends_with('.${candidate.value}')) {
+					exact_target = i
+				}
+				if suffix_target < 0 {
+					suffix_target = i
+				}
+			}
+			target := if module_target >= 0 {
+				module_target
+			} else if exact_target >= 0 {
+				exact_target
+			} else {
+				suffix_target
+			}
+			if target >= 0 {
+				// A callee starts a fresh lexical scope; bindings in the caller do not
+				// shadow const references inside the called helper.
+				g.const_collect_deps_inner(flat.NodeId(target), mut deps, mut visited_fns,
+					map[string]bool{})
+			}
 		}
 	}
 	for i in 0 .. node.children_count {
-		g.const_collect_deps(g.a.child(&node, i), mut deps)
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
 	}
+}
+
+fn (g &FlatGen) const_call_receiver_type_name(base_id flat.NodeId) string {
+	resolved := types.unwrap_pointer(g.tc.resolve_type(base_id))
+	name := resolved.name()
+	if name.len > 0 && name !in ['void', 'unknown'] {
+		return name
+	}
+	base := g.a.nodes[int(base_id)]
+	if base.typ.len > 0 && base.typ !in ['void', 'unknown'] {
+		return base.typ.trim_left('&')
+	}
+	if base.kind == .struct_init {
+		return base.value.trim_left('&')
+	}
+	return ''
+}
+
+fn (g &FlatGen) const_collect_scope_children(node flat.Node, start int, mut deps []string, mut visited_fns map[string]bool, mut shadowed map[string]bool) {
+	for i in start .. node.children_count {
+		child_id := g.a.child(&node, i)
+		child := g.a.nodes[int(child_id)]
+		if child.kind == .decl_assign {
+			g.const_collect_decl_assign_deps(child, mut deps, mut visited_fns, shadowed)
+			g.const_add_decl_assign_bindings(child, mut shadowed)
+		} else {
+			g.const_collect_deps_inner(child_id, mut deps, mut visited_fns, shadowed)
+		}
+	}
+}
+
+fn (g &FlatGen) const_decl_assign_is_multi_return(node flat.Node) bool {
+	if node.children_count < 3 {
+		return false
+	}
+	if _ := g.multi_return_expr_type_for_lhs_count(g.a.child(&node, 1), node.children_count - 1) {
+		return true
+	}
+	return false
+}
+
+fn (g &FlatGen) const_collect_decl_assign_deps(node flat.Node, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
+	if node.children_count < 2 {
+		return
+	}
+	if g.const_decl_assign_is_multi_return(node) {
+		g.const_collect_deps_inner(g.a.child(&node, 1), mut deps, mut visited_fns, shadowed)
+		return
+	}
+	mut i := 1
+	for i < node.children_count {
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
+		i += 2
+	}
+}
+
+fn (g &FlatGen) const_add_decl_assign_bindings(node flat.Node, mut shadowed map[string]bool) {
+	if node.children_count < 2 {
+		return
+	}
+	if g.const_decl_assign_is_multi_return(node) {
+		for i in 0 .. node.children_count {
+			if i == 1 {
+				continue
+			}
+			g.const_add_shadow_binding(g.a.child_node(&node, i), mut shadowed)
+		}
+		return
+	}
+	mut i := 0
+	for i < node.children_count {
+		g.const_add_shadow_binding(g.a.child_node(&node, i), mut shadowed)
+		i += 2
+	}
+}
+
+fn (g &FlatGen) const_add_shadow_binding(node flat.Node, mut shadowed map[string]bool) {
+	if node.kind == .ident && node.value.len > 0 && node.value != '_' {
+		shadowed[node.value] = true
+	}
+}
+
+fn (g &FlatGen) const_collect_if_deps(node flat.Node, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
+	if node.children_count == 0 {
+		return
+	}
+	cond_id := g.a.child(&node, 0)
+	cond := g.a.nodes[int(cond_id)]
+	if cond.kind == .decl_assign {
+		mut then_shadowed := shadowed.clone()
+		g.const_collect_decl_assign_deps(cond, mut deps, mut visited_fns, shadowed)
+		g.const_add_decl_assign_bindings(cond, mut then_shadowed)
+		if node.children_count > 1 {
+			g.const_collect_deps_inner(g.a.child(&node, 1), mut deps, mut visited_fns,
+				then_shadowed)
+		}
+	} else {
+		g.const_collect_deps_inner(cond_id, mut deps, mut visited_fns, shadowed)
+		if node.children_count > 1 {
+			g.const_collect_deps_inner(g.a.child(&node, 1), mut deps, mut visited_fns, shadowed)
+		}
+	}
+	for i in 2 .. node.children_count {
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
+	}
+}
+
+fn (g &FlatGen) const_collect_for_deps(node flat.Node, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
+	mut loop_shadowed := shadowed.clone()
+	if node.children_count > 0 {
+		init_id := g.a.child(&node, 0)
+		init := g.a.nodes[int(init_id)]
+		if init.kind == .decl_assign {
+			g.const_collect_decl_assign_deps(init, mut deps, mut visited_fns, shadowed)
+			g.const_add_decl_assign_bindings(init, mut loop_shadowed)
+		} else {
+			g.const_collect_deps_inner(init_id, mut deps, mut visited_fns, shadowed)
+		}
+	}
+	header_end := if node.children_count < 3 {
+		node.children_count
+	} else {
+		3
+	}
+	for i in 1 .. header_end {
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, loop_shadowed)
+	}
+	if node.children_count > 3 {
+		mut body_shadowed := loop_shadowed.clone()
+		g.const_collect_scope_children(node, 3, mut deps, mut visited_fns, mut body_shadowed)
+	}
+}
+
+fn (g &FlatGen) const_collect_for_in_deps(node flat.Node, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
+	body_start := node.value.int()
+	header_end := if body_start < node.children_count {
+		body_start
+	} else {
+		node.children_count
+	}
+	for i in 2 .. header_end {
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
+	}
+	mut body_shadowed := shadowed.clone()
+	if node.children_count > 0 {
+		g.const_add_shadow_binding(g.a.child_node(&node, 0), mut body_shadowed)
+	}
+	if node.children_count > 1 {
+		g.const_add_shadow_binding(g.a.child_node(&node, 1), mut body_shadowed)
+	}
+	if body_start < node.children_count {
+		g.const_collect_scope_children(node, body_start, mut deps, mut visited_fns, mut
+			body_shadowed)
+	}
+}
+
+fn (g &FlatGen) const_collect_match_branch_deps(node flat.Node, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
+	condition_count := if node.value == 'else' { 0 } else { node.value.int() }
+	body_start := if condition_count < node.children_count {
+		condition_count
+	} else {
+		node.children_count
+	}
+	for i in 0 .. body_start {
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
+	}
+	if condition_count < node.children_count {
+		mut branch_shadowed := shadowed.clone()
+		g.const_collect_scope_children(node, condition_count, mut deps, mut visited_fns, mut
+			branch_shadowed)
+	}
+}
+
+// const_ref_base_shadowed reports whether `node` (an ident, or a selector whose base
+// is an ident) refers to a name bound by the current helper scope rather than a const.
+fn (g &FlatGen) const_ref_base_shadowed(node flat.Node, shadowed map[string]bool) bool {
+	if shadowed.len == 0 {
+		return false
+	}
+	if node.kind == .ident {
+		return shadowed[node.value]
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		base := g.a.child_node(&node, 0)
+		return base.kind == .ident && shadowed[base.value]
+	}
+	return false
 }
 
 fn (g &FlatGen) const_refs_other_const(val_id flat.NodeId) bool {
@@ -9088,6 +9513,15 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	}
 	ct := g.tc.c_type(v_type)
 	qname := g.const_ident_c_name(name)
+	if qname == 'builtin__error_sentinel' {
+		type_id := g.ierror_type_id_for_pattern('MessageError')
+		object_name := '${qname}__object'
+		message := '(string){"error", 5, 1}'
+		g.writeln('MessageError ${object_name} = (MessageError){.msg = ${message}};')
+		g.writeln('IError ${qname} = (IError){._typ = ${type_id}, ._object = &${object_name}, .message = ${message}, .code = 0};')
+		g.tc.cur_module = old_module
+		return
+	}
 	expr_str := if v_type is types.Array && val_node.kind == .array_literal {
 		g.expr_to_string_with_expected_type(val_id, v_type)
 	} else if g.is_const_expr(val_id) {
@@ -9233,8 +9667,7 @@ fn (mut g FlatGen) fixed_array_compound_literal_expr(val_id flat.NodeId, fixed t
 	if trimmed_space(init).len == 0 {
 		return ''
 	}
-	c_elem, dims := g.fixed_array_decl_parts(fixed)
-	return '(${c_elem}${dims})${init}'
+	return '(${g.fixed_array_c_type(fixed)})${init}'
 }
 
 fn (mut g FlatGen) fixed_array_initializer_string(val_id flat.NodeId, fixed types.ArrayFixed) string {
@@ -9242,6 +9675,14 @@ fn (mut g FlatGen) fixed_array_initializer_string(val_id flat.NodeId, fixed type
 		return ''
 	}
 	node := g.a.nodes[int(val_id)]
+	if node.kind in [.ident, .selector] {
+		const_name := g.const_ref_name_from_node(node)
+		if const_name.len > 0 {
+			if const_id := g.const_vals[const_name] {
+				return g.fixed_array_initializer_string(const_id, fixed)
+			}
+		}
+	}
 	if node.kind == .postfix && node.children_count > 0 {
 		return g.fixed_array_initializer_string(g.a.child(&node, 0), fixed)
 	}

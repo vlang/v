@@ -30,6 +30,10 @@ const comptime_enum_value_members = [
 	'attrs',
 ]
 
+const comptime_variant_members = [
+	'typ',
+]
+
 const export_c_reserved_words = {
 	'auto':     true
 	'break':    true
@@ -5058,6 +5062,9 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 		'values' {
 			tc.check_comptime_members(body_id, parts[0], comptime_enum_value_members, 'EnumData')
 		}
+		'variants' {
+			tc.check_comptime_members(body_id, parts[0], comptime_variant_members, 'VariantData')
+		}
 		else {}
 	}
 
@@ -5408,7 +5415,13 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 		return tc.comptime_static_metadata_expr_type(tc.a.child(&node, 0), var_name, loop_kind)
 	}
 	if node.kind == .ident && node.value == var_name {
-		return tc.parse_type(if loop_kind == 'values' { 'EnumData' } else { 'FieldData' })
+		metadata_type := match loop_kind {
+			'values' { 'EnumData' }
+			'variants' { 'VariantData' }
+			else { 'FieldData' }
+		}
+
+		return tc.parse_type(metadata_type)
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := tc.a.child_node(&node, 0)
@@ -5420,6 +5433,16 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 }
 
 fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_kind string) ?Type {
+	if loop_kind == 'variants' {
+		return match member {
+			'typ' {
+				tc.parse_type('int')
+			}
+			else {
+				none
+			}
+		}
+	}
 	if loop_kind == 'values' {
 		return match member {
 			'name' {
@@ -10027,6 +10050,9 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			return tc.call_info(local_name, false)
 		}
 		if imported_name := tc.resolve_selective_import_symbol(fn_node.value) {
+			if info := tc.decode_call_info_from_type_arg(node, imported_name, false) {
+				return info
+			}
 			return tc.call_info(imported_name, false)
 		}
 		if fn_node.value in tc.fn_ret_types {
@@ -15755,13 +15781,20 @@ fn (tc &TypeChecker) type_has_compiler_default_clone(t Type) bool {
 // dispatch) and the transform (`iface is Concrete` checks) must both derive
 // ids from this single list so they stay in sync.
 pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
-	mut candidates := []string{}
+	mut candidate_set := map[string]bool{}
+	if tc.interface_has_no_requirements(iface_name) {
+		for name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
+			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+			candidate_set[name] = true
+		}
+	}
 	for name, _ in tc.structs {
-		candidates << name
+		candidate_set[interface_impl_candidate_name(name)] = true
 	}
 	for name, _ in tc.type_aliases {
-		candidates << name
+		candidate_set[interface_impl_candidate_name(name)] = true
 	}
+	mut candidates := candidate_set.keys()
 	candidates.sort()
 	mut impls := []string{}
 	for name in candidates {
@@ -15770,6 +15803,13 @@ pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 		}
 	}
 	return impls
+}
+
+fn interface_impl_candidate_name(name string) string {
+	if name.starts_with('builtin.') {
+		return name['builtin.'.len..]
+	}
+	return name
 }
 
 // ierror_impl_names returns the concrete struct names that can be boxed as `IError`.
@@ -18287,7 +18327,9 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 	}
 	if kind_id == 4 {
 		if node.value.starts_with('c:') {
-			return Type(u8_)
+			return Type(Pointer{
+				base_type: Type(u8_)
+			})
 		}
 		return Type(rune_)
 	}

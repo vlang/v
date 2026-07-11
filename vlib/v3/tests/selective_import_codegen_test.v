@@ -218,9 +218,9 @@ pub fn sum(values ...int) int {
 	assert !generated.contains('logger__sum(log'), generated
 }
 
-fn test_selective_import_json_decode_uses_stub() {
+fn test_selective_import_json_decode_uses_fast_path() {
 	v3_bin := selective_import_build_v3()
-	json_output, json_generated := selective_import_compile_run_with_extra(v3_bin, 'json_decode', 'module main
+	json_output, json_generated := selective_import_compile_run(v3_bin, 'json_decode', 'module main
 
 import json { decode }
 
@@ -229,31 +229,23 @@ struct Config {
 }
 
 fn main() {
-	cfg := decode[Config]("{\\"value\\":1}") or { Config{value: 9} }
+	cfg := decode(Config, "{\\"value\\":1}")!
 	println(int_str(cfg.value))
 }
-', {
-		'json/json.v': 'module json
-
-pub fn decode[T](src string) !T {
-	_ = src
-	return error("real decode should not be emitted")
-}
-'
-	})
-	assert json_output == '9'
-	assert !json_generated.contains('json__decode'), json_generated
+')
+	assert json_output == '1'
+	assert json_generated.contains('cJSON_ParseWithLength((char*)'), json_generated
 	json2_output, json2_generated := selective_import_compile_run_with_extra(v3_bin,
 		'json2_decode', 'module main
 
-import x.json2 { DecoderOptions, decode }
+import x.json2
 
 struct Config {
 	value int
 }
 
 fn main() {
-	cfg := decode[Config]("{\\"value\\":2}", DecoderOptions{}) or { Config{value: 8} }
+	cfg := json2.decode[Config]("{\\"value\\":2}", json2.DecoderOptions{}) or { Config{value: 8} }
 	println(int_str(cfg.value))
 }
 ', {
@@ -264,12 +256,60 @@ pub struct DecoderOptions {}
 pub fn decode[T](val string, params DecoderOptions) !T {
 	_ = val
 	_ = params
-	return error("real decode should not be emitted")
+	return T{}
 }
 '
 	})
-	assert json2_output == '8'
-	assert !json2_generated.contains('json2__decode'), json2_generated
+	assert json2_output == '0'
+	assert json2_generated.contains('json2__decode'), json2_generated
+}
+
+fn test_selective_import_json_encode_uses_fast_path() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run(v3_bin, 'json_encode', 'module main
+
+import json { encode }
+
+struct User {
+	name string
+}
+
+fn main() {
+	println(encode(User{name: "x"}))
+}
+')
+	assert output == '{"name":"x"}'
+	assert generated.contains('v3_json_encode_string('), generated
+}
+
+fn test_json2_encode_pure_v_is_specialized() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'json2_encode_specialized', 'module main
+
+import x.json2
+
+struct User {
+	name string
+}
+
+fn main() {
+	println(json2.encode(User{name: "x"}, json2.EncoderOptions{}))
+}
+', {
+		'x/json2/encode.v': 'module json2
+
+pub struct EncoderOptions {}
+
+pub fn encode[T](value T, options EncoderOptions) string {
+	_ = value
+	_ = options
+	return "pure-v"
+}
+'
+	})
+	assert output == 'pure-v'
+	assert generated.contains('json2__encode'), generated
 }
 
 fn test_selective_import_inside_generic_clone_keeps_source_file_symbol() {

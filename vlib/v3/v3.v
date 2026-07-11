@@ -809,9 +809,10 @@ fn main() {
 	} else {
 		user_files << input_file
 	}
+	prefs.is_test = user_files.any(pref.is_test_file_for_target(it, backend, prefs.target_os))
 	_, user_parse_parallel := p.parse_files_dispatch(user_files, !current_no_parallel)
 	parse_was_parallel = parse_was_parallel || user_parse_parallel
-	test_files := test_input_files(user_files, backend)
+	test_files := test_input_files(user_files, backend, prefs.target_os)
 
 	seed_implicit_sync_import(mut a)
 	seed_implicit_embed_file_import(mut a)
@@ -1320,10 +1321,10 @@ fn diagnostic_root_for_input(input_file string, user_files []string) string {
 	return os.real_path(os.getwd())
 }
 
-fn test_input_files(user_files []string, backend string) []string {
+fn test_input_files(user_files []string, backend string, target_os string) []string {
 	mut files := []string{}
 	for file in user_files {
-		if pref.is_test_file_for_backend(file, backend) {
+		if pref.is_test_file_for_target(file, backend, target_os) {
 			files << file
 		}
 	}
