@@ -1541,28 +1541,65 @@ fn (mut v Builder) generate_c_project() {
 	println('Generated C project in ${os.quoted_path(project_dir)}')
 }
 
+fn without_ccompiler_args(args []string) []string {
+	mut filtered := []string{cap: args.len}
+	mut i := 0
+	for i < args.len {
+		if args[i] == '-cc' {
+			i += 2
+			continue
+		}
+		if args[i].starts_with('-cc=') {
+			i++
+			continue
+		}
+		filtered << args[i]
+		i++
+	}
+	return filtered
+}
+
+fn (v &Builder) retry_command_boundary(args []string) int {
+	command := if v.pref.build_mode == .build_module {
+		'build-module'
+	} else if v.pref.is_run {
+		'run'
+	} else if v.pref.is_crun && 'crun' in args {
+		'crun'
+	} else {
+		return args.len
+	}
+	idx := args.index(command)
+	return if idx >= 0 { idx } else { args.len }
+}
+
 fn (v &Builder) retry_compilation_with(ccompiler string) os.Result {
 	// Compiler comptime branches such as `$if tinyc` are resolved before C generation,
 	// so the fallback must regenerate the program instead of reusing TCC's C output.
-	mut retry_options := v.pref.build_options.filter(!it.starts_with('-cc ')
-		&& it != '-no-retry-compilation')
-	retry_options << ['-cc ${os.quoted_path(ccompiler)}', '-no-retry-compilation']
+	all_args := util.join_env_vflags_and_os_args()
+	original_args := all_args#[1..].clone()
+	boundary := v.retry_command_boundary(original_args)
+	mut retry_args := without_ccompiler_args(original_args[..boundary])
+	retry_args << ['-cc', ccompiler, '-no-retry-compilation']
+	retry_args << original_args#[boundary..]
 	vexe := pref.vexe_path()
-	target_args := if v.pref.build_mode == .build_module {
-		'build-module ${os.quoted_path(v.pref.path)}'
-	} else {
-		'-o ${os.quoted_path(v.pref.out_name)} ${os.quoted_path(v.pref.path)}'
-	}
-	cmd := '${os.quoted_path(vexe)} ${retry_options.join(' ')} ${target_args}'
+	cmd := '${os.quoted_path(vexe)} ${util.args_quote_paths(retry_args)}'
 	old_vflags := os.getenv_opt('VFLAGS')
+	old_vosargs := os.getenv_opt('VOSARGS')
 	old_vnorun := os.getenv_opt('VNORUN')
 	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
 	os.setenv('VNORUN', '1', true)
 	defer {
 		if vflags := old_vflags {
 			os.setenv('VFLAGS', vflags, true)
 		} else {
 			os.unsetenv('VFLAGS')
+		}
+		if vosargs := old_vosargs {
+			os.setenv('VOSARGS', vosargs, true)
+		} else {
+			os.unsetenv('VOSARGS')
 		}
 		if vnorun := old_vnorun {
 			os.setenv('VNORUN', vnorun, true)

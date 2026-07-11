@@ -2,6 +2,22 @@ module builder
 
 import os
 
+fn execute_tcc_retry_test_command(cmd string) os.Result {
+	old_vflags := os.getenv_opt('VFLAGS')
+	old_vosargs := os.getenv_opt('VOSARGS')
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+	defer {
+		if vflags := old_vflags {
+			os.setenv('VFLAGS', vflags, true)
+		}
+		if vosargs := old_vosargs {
+			os.setenv('VOSARGS', vosargs, true)
+		}
+	}
+	return os.execute(cmd)
+}
+
 fn test_is_tcc_compilation_failure_detects_tcc_kind() {
 	assert is_tcc_compilation_failure('cc', .tcc, '')
 }
@@ -56,7 +72,7 @@ fn test_tcc_retry_warning_is_visible() {
 	os.chmod(fake_tcc, 0o700) or { panic(err) }
 	os.write_file(source_path, 'fn main() {}\n') or { panic(err) }
 	res :=
-		os.execute('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(fake_tcc)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
+		execute_tcc_retry_test_command('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(fake_tcc)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('warning: tcc compilation failed, falling back to cc'), res.output
 }
@@ -81,12 +97,43 @@ fn test_tcc_retry_reports_final_compiler_failure() {
 	os.write_file(header_path, '#error retry_system_compiler_failure\n') or { panic(err) }
 	os.write_file(source_path, '#include "${header_path}"\nfn test_retry() {}\n') or { panic(err) }
 	res :=
-		os.execute('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(fake_tcc)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
+		execute_tcc_retry_test_command('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(fake_tcc)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('warning: tcc compilation failed, falling back to cc'), res.output
 	assert res.output.contains('C compilation error (from cc)'), res.output
 	assert res.output.contains('retry_system_compiler_failure'), res.output
 	assert !res.output.contains('C compilation error (from tcc)'), res.output
+}
+
+fn test_tcc_retry_preserves_shared_and_enable_globals_flags() {
+	if os.user_os() == 'windows' {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_tcc_retry_shared_${os.getpid()}')
+	fake_tcc := os.join_path(test_root, 'fake-tcc')
+	source_path := os.join_path(test_root, 'library.v')
+	library_path := os.join_path(test_root, if os.user_os() == 'macos' {
+		'libretry.dylib'
+	} else {
+		'libretry.so'
+	})
+	os.mkdir_all(test_root) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	os.write_file(fake_tcc, '#!/bin/sh\necho "tcc: error: first compiler failed"\nexit 1\n') or {
+		panic(err)
+	}
+	os.chmod(fake_tcc, 0o700) or { panic(err) }
+	os.write_file(source_path,
+		'__global (\n\tretry_value = 7\n)\n\n@[export: "tcc_retry_value"]\npub fn tcc_retry_value() int {\n\treturn retry_value\n}\n') or {
+		panic(err)
+	}
+	res :=
+		execute_tcc_retry_test_command('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(fake_tcc)} -shared -enable-globals -o ${os.quoted_path(library_path)} ${os.quoted_path(source_path)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('warning: tcc compilation failed, falling back to cc'), res.output
+	assert os.is_file(library_path)
 }
 
 fn fake_windows_short_path(path string) string {
