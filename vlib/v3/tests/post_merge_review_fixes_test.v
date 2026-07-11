@@ -649,15 +649,21 @@ fn test_backed_enum_helper_initializer_is_folded() {
 	return 4
 }
 
+fn make_wide() u64 {
+	return u64(1) << 40
+}
+
 enum E as u64 {
 	a = make()
 	b
+	wide = make_wide()
 	max = 18446744073709551615
 }
 
 fn main() {
 	println(int_str(int(E.a)))
 	println(int_str(int(E.b)))
+	println(u64(E.wide))
 	match E.a {
 		.a { println("a") }
 		else { println("other") }
@@ -665,10 +671,12 @@ fn main() {
 }
 '
 	out := run_good(v3_bin, 'backed_enum_helper_initializer', source)
-	assert out == '4\n5\na'
+	assert out == '4\n5\n1099511627776\na'
 	c_source := gen_c(v3_bin, 'backed_enum_helper_initializer_c', source)
 	macro := c_source.split_into_lines().filter(it.starts_with('#define E__a '))
 	assert macro == ['#define E__a ((E)(4))']
+	shift_macro := c_source.split_into_lines().filter(it.starts_with('#define E__wide '))
+	assert shift_macro == ['#define E__wide ((E)(1099511627776))']
 	wide_macro := c_source.split_into_lines().filter(it.starts_with('#define E__max '))
 	assert wide_macro == ['#define E__max ((E)(18446744073709551615))']
 }

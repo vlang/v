@@ -949,7 +949,7 @@ fn (mut g FlatGen) collect_gen_info() {
 					field_exprs[f.value] = g.a.child(f, 0)
 				}
 			}
-			mut field_values := map[string]int{}
+			mut field_values := map[string]i64{}
 			for i in 0 .. node.children_count {
 				f := g.a.child_node(&node, i)
 				if f.children_count > 0 {
@@ -957,7 +957,7 @@ fn (mut g FlatGen) collect_gen_info() {
 					if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), cur_module,
 						node.value, mut field_values, field_exprs, mut resolving)
 					{
-						val = enum_val
+						val = int(enum_val)
 					}
 				}
 				key := '${enum_name}.${f.value}'
@@ -966,7 +966,7 @@ fn (mut g FlatGen) collect_gen_info() {
 					val++
 				} else if is_flag {
 					g.enum_vals[key] = 1 << val
-					field_values[f.value] = val
+					field_values[f.value] = i64(val)
 					val++
 				} else {
 					g.enum_vals[key] = val

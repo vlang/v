@@ -464,8 +464,8 @@ fn (mut g FlatGen) enum_decls() {
 								field_exprs[f.value] = g.a.child(f, 0)
 							}
 						}
-						mut field_values := map[string]int{}
-						mut next_value := 0
+						mut field_values := map[string]i64{}
+						mut next_value := i64(0)
 						mut next_value_known := true
 						mut next_value_expr := '0'
 						for i in 0 .. node.children_count {
@@ -517,7 +517,7 @@ fn (mut g FlatGen) enum_decls() {
 				}
 				g.writeln('typedef enum {')
 				mut val := 0
-				mut field_values := map[string]int{}
+				mut field_values := map[string]i64{}
 				mut field_exprs := map[string]flat.NodeId{}
 				for i in 0 .. node.children_count {
 					f := g.a.child_node(&node, i)
@@ -532,10 +532,10 @@ fn (mut g FlatGen) enum_decls() {
 						if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0),
 							cur_module, node.value, mut field_values, field_exprs, mut resolving)
 						{
-							val = enum_val
+							val = int(enum_val)
 						}
 					}
-					field_values[f.value] = val
+					field_values[f.value] = i64(val)
 					cfield := g.cname(f.value)
 					if is_flag {
 						g.writeln('\t${cn}__${cfield} = ${1 << val},')
@@ -784,7 +784,7 @@ fn (g &FlatGen) enum_field_expr_value(id flat.NodeId) ?int {
 	}
 }
 
-fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return none
 	}
@@ -800,7 +800,7 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 				return ev
 			}
 			lookup_module := if enum_module.len > 0 { enum_module } else { g.tc.cur_module }
-			return g.tc.const_int_value_in_module(node.value, lookup_module, []string{})
+			return i64(g.tc.const_int_value_in_module(node.value, lookup_module, []string{})?)
 		}
 		.paren {
 			if node.children_count == 0 {
@@ -857,9 +857,9 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 				.amp { left & right }
 				.pipe { left | right }
 				.xor { left ^ right }
-				.left_shift { int(u64(left) << right) }
+				.left_shift { i64(u64(left) << u64(right)) }
 				.right_shift { left >> right }
-				.right_shift_unsigned { int(u64(left) >> right) }
+				.right_shift_unsigned { i64(u64(left) >> u64(right)) }
 				else { none }
 			}
 		}
@@ -876,7 +876,7 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 	}
 }
 
-fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
 	call := g.a.nodes[int(id)]
 	if call.children_count == 0 {
 		return none
@@ -939,7 +939,7 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 	} else {
 		return none
 	}
-	mut locals := map[string]int{}
+	mut locals := map[string]i64{}
 	mut arg_idx := 1
 	for i in 0 .. fn_node.children_count {
 		param := g.a.child_node(&fn_node, i)
@@ -963,7 +963,7 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 	return none
 }
 
-fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int, enum_module string) ?int {
+fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, enum_module string) ?i64 {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return none
 	}
@@ -977,7 +977,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int, 
 				return value
 			}
 			lookup_module := if enum_module.len > 0 { enum_module } else { g.tc.cur_module }
-			return g.tc.const_int_value_in_module(node.value, lookup_module, []string{})
+			return i64(g.tc.const_int_value_in_module(node.value, lookup_module, []string{})?)
 		}
 		.paren, .cast_expr {
 			if node.children_count == 0 {
@@ -1005,7 +1005,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int, 
 			right := g.enum_comptime_expr_value(g.a.child(&node, 1), locals, enum_module)?
 			if (node.op in [.div, .mod] && right == 0)
 				|| (node.op in [.left_shift, .right_shift, .right_shift_unsigned] && (right < 0
-				|| right >= 32)) {
+				|| right >= 64)) {
 				return none
 			}
 			return match node.op {
@@ -1017,9 +1017,9 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int, 
 				.amp { left & right }
 				.pipe { left | right }
 				.xor { left ^ right }
-				.left_shift { int(u64(left) << right) }
+				.left_shift { i64(u64(left) << u64(right)) }
 				.right_shift { left >> right }
-				.right_shift_unsigned { int(u64(left) >> right) }
+				.right_shift_unsigned { i64(u64(left) >> u64(right)) }
 				else { none }
 			}
 		}
@@ -1029,10 +1029,10 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int, 
 	}
 }
 
-fn enum_foldable_int_literal(value string) ?int {
+fn enum_foldable_int_literal(value string) ?i64 {
 	clean := value.replace('_', '')
-	parsed := strconv.common_parse_int(clean, 0, 32, true, true) or { return none }
-	return int(parsed)
+	parsed := strconv.common_parse_int(clean, 0, 64, true, true) or { return none }
+	return parsed
 }
 
 fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_module string, enum_name string, enum_c_name string, field_names map[string]bool) ?string {
@@ -1111,7 +1111,7 @@ fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_modu
 	}
 }
 
-fn (g &FlatGen) enum_decl_field_ref_value(field_name string, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+fn (g &FlatGen) enum_decl_field_ref_value(field_name string, enum_module string, enum_name string, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
 	if field_name in field_values {
 		return field_values[field_name]
 	}

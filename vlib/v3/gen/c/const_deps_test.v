@@ -178,7 +178,7 @@ fn test_enum_helper_prefers_exact_free_function_over_method_suffix() {
 
 	mut g := FlatGen.new()
 	g.a = &a
-	mut field_values := map[string]int{}
+	mut field_values := map[string]i64{}
 	mut resolving := map[string]bool{}
 	value := g.enum_comptime_call_value(call, 'main', 'E', mut field_values,
 		map[string]flat.NodeId{}, mut resolving) or { -1 }
