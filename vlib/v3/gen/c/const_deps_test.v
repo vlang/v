@@ -91,6 +91,27 @@ fn test_const_helper_shadows_follow_lexical_scope_and_declaration_order() {
 	assert 'dep' in g.const_get_deps(outer_call)
 }
 
+fn test_const_helper_direct_body_carries_local_bindings() {
+	mut a := flat.FlatAst.new()
+	add_const_deps_test_node(mut a, .module_decl, 'main', [])
+	dep_value := add_const_deps_test_node(mut a, .int_literal, '41', [])
+	local_dep := const_deps_test_decl(mut a, 'dep')
+	return_ident := add_const_deps_test_node(mut a, .ident, 'dep', [])
+	return_stmt := add_const_deps_test_node(mut a, .return_stmt, '', [return_ident])
+	add_const_deps_test_node(mut a, .fn_decl, 'make', [local_dep, return_stmt])
+	call := const_deps_test_call(mut a, 'make')
+
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.const_vals['dep'] = dep_value
+	g.const_modules['dep'] = 'main'
+
+	assert 'dep' !in g.const_get_deps(call)
+}
+
 fn test_const_helper_deps_resolve_receiver_method_before_suffix_fallback() {
 	mut a := flat.FlatAst.new()
 	wrong_value := add_const_deps_test_node(mut a, .int_literal, '7', [])

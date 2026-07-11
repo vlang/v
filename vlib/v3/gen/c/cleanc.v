@@ -9164,12 +9164,7 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 					fn_shadowed[child.value] = true
 				}
 			}
-			for i in 0 .. node.children_count {
-				child_id := g.a.child(&node, i)
-				if g.a.nodes[int(child_id)].kind != .param {
-					g.const_collect_deps_inner(child_id, mut deps, mut visited_fns, fn_shadowed)
-				}
-			}
+			g.const_collect_scope_children(node, 0, mut deps, mut visited_fns, mut fn_shadowed)
 			return
 		}
 		.block {
