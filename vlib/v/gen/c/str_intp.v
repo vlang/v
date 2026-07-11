@@ -277,7 +277,13 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	if g.int_ref_interpolates_as_value(expr, typ, fmts[i]) && typ.is_ptr() {
 		typ = typ.deref()
 	}
+	was_ptr := typ.is_ptr()
 	typ = g.table.final_type(typ)
+	if was_ptr && !typ.is_ptr() {
+		// `final_type` drops the pointer for aliases (e.g. `&MyInt` -> `int`);
+		// keep it a pointer so a reference still formats as an address.
+		typ = typ.ref()
+	}
 	if typ.has_flag(.shared_f) && typ.is_ptr() {
 		typ = typ.clear_flag(.shared_f).deref()
 	}

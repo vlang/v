@@ -11,9 +11,10 @@ import v.util
 fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
 		return `s`
-	} else if typ.is_scalar_ptr() {
-		// Go-style: a reference to a scalar (int, float, bool, string, rune)
-		// is printed as its address, not `&` + the pointed-to value.
+	} else if c.table.is_scalar_ptr_type(ftyp) {
+		// Go-style: a reference to a scalar (int, float, bool, string, rune) -
+		// including aliases of them - is printed as its address, not `&` + the
+		// pointed-to value.
 		return `p`
 	} else if typ.is_float() {
 		return `g`

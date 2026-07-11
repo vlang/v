@@ -159,6 +159,17 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	// option values rather than as raw `&...` pointers.
 	is_ptr := typ.is_ptr() || (typ.has_flag(.option_mut_param_t) && !typ.has_flag(.option))
 	mut sym := g.table.sym(typ)
+	// Go-style: a reference to a scalar (int, float, bool, string, rune, or an
+	// alias of them) prints its address, while a reference to a struct/array/map
+	// prints `&` + the pointed-to value. Done before the alias rewrite below so
+	// pointer aliases keep their pointer semantics.
+	if is_ptr && !is_shared && mut_arg_option_type == 0 && !typ.has_flag(.option)
+		&& !g.expr_is_auto_deref_var(expr) && g.table.is_scalar_ptr_type(typ) {
+		g.write('${g.get_str_fn(ast.voidptr_type)}((voidptr)(')
+		g.expr(expr)
+		g.write('))')
+		return
+	}
 	// when type is non-option alias and doesn't has `str()`, print the aliased value
 	if mut sym.info is ast.Alias && !sym.has_method('str') && !expr_type.has_flag(.option) {
 		parent_sym := g.table.sym(sym.info.parent_type)
@@ -181,15 +192,6 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		&& (g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).typ)).kind == .interface
 		|| ((expr.obj as ast.Var).orig_type != 0
 		&& g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).orig_type)).kind == .interface))
-	// Go-style: a reference to a scalar (int, float, bool, string, rune) prints
-	// its address, while a reference to a struct/array/map prints `&` + the value.
-	if is_ptr && !is_shared && mut_arg_option_type == 0 && !typ.has_flag(.option)
-		&& !g.expr_is_auto_deref_var(expr) && typ.is_scalar_ptr() {
-		g.write('${g.get_str_fn(ast.voidptr_type)}((voidptr)(')
-		g.expr(expr)
-		g.write('))')
-		return
-	}
 	if typ.has_flag(.variadic) {
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')

@@ -8,6 +8,10 @@ struct Point {
 	y int
 }
 
+type BoolAlias = bool
+type StringAlias = string
+type IntAlias = int
+
 fn test_scalar_reference_prints_as_address() {
 	i := 5
 	s := 'Hello'
@@ -22,6 +26,23 @@ fn test_scalar_reference_prints_as_address() {
 	assert '${&r}' == ptr_str(&r)
 	sp := &s
 	assert '${sp}' == ptr_str(sp)
+}
+
+fn test_scalar_alias_reference_prints_as_address() {
+	// a pointer to an alias of a scalar keeps the scalar (address) behavior,
+	// instead of being mis-stringified as its aliased value
+	b := BoolAlias(false)
+	pb := &b
+	vpb := unsafe { voidptr(pb) }
+	assert '${pb}' == '${vpb}'
+	s := StringAlias('hi')
+	ps := &s
+	vps := unsafe { voidptr(ps) }
+	assert '${ps}' == '${vps}'
+	i := IntAlias(7)
+	pi := &i
+	vpi := unsafe { voidptr(pi) }
+	assert '${pi}' == '${vpi}'
 }
 
 fn test_compound_reference_prints_as_value() {

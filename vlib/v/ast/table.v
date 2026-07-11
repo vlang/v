@@ -1096,6 +1096,23 @@ pub fn (t &Table) final_type(typ Type) Type {
 	return typ
 }
 
+// is_scalar_ptr_type reports whether `typ` is a pointer whose final (alias
+// resolved) pointee is a scalar - int/float/bool/string/rune. Such references
+// are printed as their address, following Go's `%v` semantics, while pointers
+// to compound values (structs, arrays, maps) keep the `&` + value form. Enums
+// resolve to their integer backing type via `final_type`, so `final_sym` is
+// used here to keep them on the value path.
+pub fn (t &Table) is_scalar_ptr_type(typ Type) bool {
+	if typ.is_scalar_ptr() {
+		return true
+	}
+	if !typ.is_ptr() || t.sym(typ).kind != .alias {
+		return false
+	}
+	return t.final_sym(typ).kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64,
+		.usize, .f32, .f64, .char, .rune, .bool, .string, .int_literal, .float_literal]
+}
+
 @[inline]
 pub fn (t &Table) get_type_name(typ Type) string {
 	return t.sym(typ).name
