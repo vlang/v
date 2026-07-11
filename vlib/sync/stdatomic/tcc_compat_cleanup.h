@@ -3,6 +3,7 @@
 
 #undef _Atomic
 #undef atomic_thread_fence
+#undef __atomic_thread_fence
 #undef atomic_load
 #undef atomic_store
 #undef atomic_compare_exchange_weak
@@ -53,6 +54,7 @@
 
 /* Repeated module emission can reintroduce the temporary declaration rename. */
 #undef atomic_thread_fence
+#undef __atomic_thread_fence
 #undef atomic_load
 #undef atomic_store
 #undef atomic_compare_exchange_weak

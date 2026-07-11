@@ -12,6 +12,7 @@ $if windows {
 		// Keep compatibility helpers distinct from the standard API that is
 		// restored below for user and third-party headers.
 		#define atomic_thread_fence v_tcc_compat_atomic_thread_fence
+		#define __atomic_thread_fence v_tcc_compat_internal_atomic_thread_fence
 		#define atomic_load v_tcc_compat_atomic_load
 		#define atomic_store v_tcc_compat_atomic_store
 		#define atomic_compare_exchange_weak v_tcc_compat_atomic_compare_exchange_weak
