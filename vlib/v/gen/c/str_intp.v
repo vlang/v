@@ -199,6 +199,11 @@ fn (mut g Gen) resolved_if_guard_ident_str_intp_type(expr ast.Ident) ast.Type {
 fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
 		return `s`
+	} else if g.table.is_scalar_ptr_type(ftyp) {
+		// Go-style: a reference to a scalar (int, float, bool, string, rune) -
+		// including aliases of them - is printed as its address. Mirrors the
+		// checker so generic interpolation (which recomputes formats here) agrees.
+		return `p`
 	} else if typ.is_float() {
 		return `g`
 	} else if typ.is_signed() || typ.is_int_literal() {
@@ -548,7 +553,12 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			if g.gen_windows_liveshared_string_tmp(expr, exp_typ) {
 				return
 			}
+			// an explicit `${x:s}` should format the pointed-to value, not the
+			// address that a scalar reference gets by default
+			old_inside_s_fmt := g.inside_str_interp_s_fmt
+			g.inside_str_interp_s_fmt = true
 			g.gen_expr_to_string(expr, exp_typ)
+			g.inside_str_interp_s_fmt = old_inside_s_fmt
 		}
 	} else if typ.is_number() || typ.is_pointer() || fmt == `d` {
 		if typ.is_signed() && fmt in [`x`, `X`, `o`] {

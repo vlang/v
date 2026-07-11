@@ -163,8 +163,9 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	// alias of them) prints its address, while a reference to a struct/array/map
 	// prints `&` + the pointed-to value. Done before the alias rewrite below so
 	// pointer aliases keep their pointer semantics.
-	if is_ptr && !is_shared && mut_arg_option_type == 0 && !typ.has_flag(.option)
-		&& !g.expr_is_auto_deref_var(expr) && g.table.is_scalar_ptr_type(typ) {
+	if is_ptr && !is_shared && !g.inside_str_interp_s_fmt && mut_arg_option_type == 0
+		&& !typ.has_flag(.option) && !g.expr_is_auto_deref_var(expr)
+		&& g.table.is_scalar_ptr_type(typ) {
 		g.write('${g.get_str_fn(ast.voidptr_type)}((voidptr)(')
 		g.expr(expr)
 		g.write('))')

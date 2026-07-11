@@ -12,6 +12,10 @@ type BoolAlias = bool
 type StringAlias = string
 type IntAlias = int
 
+fn generic_ref_string[T](value T) string {
+	return '${value}'
+}
+
 fn test_scalar_reference_prints_as_address() {
 	i := 5
 	s := 'Hello'
@@ -26,6 +30,13 @@ fn test_scalar_reference_prints_as_address() {
 	assert '${&r}' == ptr_str(&r)
 	sp := &s
 	assert '${sp}' == ptr_str(sp)
+}
+
+fn test_generic_scalar_reference_prints_as_address() {
+	i := 5
+	u := u32(7)
+	assert generic_ref_string(&i) == ptr_str(&i)
+	assert generic_ref_string(&u) == ptr_str(&u)
 }
 
 fn test_scalar_alias_reference_prints_as_address() {
