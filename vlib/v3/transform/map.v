@@ -575,6 +575,7 @@ fn map_compound_to_infix_op(op flat.Op) ?flat.Op {
 		.xor_assign { return flat.Op.xor }
 		.left_shift_assign { return flat.Op.left_shift }
 		.right_shift_assign { return flat.Op.right_shift }
+		.right_shift_unsigned_assign { return flat.Op.right_shift_unsigned }
 		else { return none }
 	}
 }

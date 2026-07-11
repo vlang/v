@@ -1014,9 +1014,14 @@ fn main() {
 	mut signed_values := [i8(-5)]
 	signed_values[0] >>>= 1
 	println(int_str(signed_values[0]))
+	mut shifted_map := map[int]i8{}
+	shifted_map[0] = i8(-5)
+	shifted_map[next(mut calls)] >>>= 1
+	println(int_str(calls))
+	println(int_str(shifted_map[0]))
 }
 ')
-	assert shift_once == '1\n4\n16\n125'
+	assert shift_once == '1\n4\n16\n125\n2\n125'
 
 	logical_shifts := run_good(v3_bin, 'signed_logical_shift_results', 'const shifted = i64(-5) >>> 1
 
