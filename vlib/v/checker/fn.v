@@ -3610,9 +3610,7 @@ fn (mut c Checker) method_call(mut node ast.CallExpr, mut continue_check &bool) 
 			node.pos)
 	}
 	requires_mut_receiver := method.params[0].is_mut
-		&& ((method.mod == 'builtin' && method.receiver_type.idx() == ast.array_type_idx
-		&& node.kind == .reverse_in_place) || !is_used_outside_receiver_module
-		|| c.fn_has_visible_mutation_for_param(method, 0))
+		&& (!is_used_outside_receiver_module || c.fn_has_visible_mutation_for_param(method, 0))
 	if requires_mut_receiver {
 		to_lock, pos := c.check_for_mut_receiver(mut node.left)
 		// node.is_mut = true

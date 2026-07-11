@@ -18,9 +18,18 @@ fn (mut c Checker) visible_param_mutation_cache_key(func ast.Fn, param_idx int) 
 	return '${func.fkey()}|${param_idx}'
 }
 
+fn is_builtin_array_reverse_in_place(func ast.Fn) bool {
+	return func.is_method && func.mod == 'builtin' && func.receiver_type.idx() == ast.array_type_idx
+		&& func.name == 'reverse_in_place'
+}
+
 fn (mut c Checker) fn_has_visible_mutation_for_param(func ast.Fn, param_idx int) bool {
 	if param_idx < 0 || param_idx >= func.params.len || !func.params[param_idx].is_mut {
 		return false
+	}
+	if param_idx == 0 && is_builtin_array_reverse_in_place(func) {
+		// Its body mutates elements through private array storage, which is not otherwise visible.
+		return true
 	}
 	cache_key := c.visible_param_mutation_cache_key(func, param_idx)
 	if cache_key in c.visible_param_mutation_cache {
