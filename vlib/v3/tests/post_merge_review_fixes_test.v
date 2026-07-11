@@ -560,6 +560,29 @@ fn main() {
 	assert decoded == '{}\n[1,2]'
 }
 
+fn test_enum_helper_prefers_exact_free_function_over_method_suffix() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'enum_helper_exact_free_function', 'struct Maker {}
+
+fn (m Maker) make() int {
+	return 99
+}
+
+fn make() int {
+	return 4
+}
+
+enum E {
+	a = make()
+}
+
+fn main() {
+	println(int_str(int(E.a)))
+}
+')
+	assert out == '4'
+}
+
 fn test_string_index_type_is_u8() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'string_index_type_is_u8',

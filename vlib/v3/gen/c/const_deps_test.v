@@ -116,3 +116,25 @@ fn test_const_helper_deps_resolve_receiver_method_before_suffix_fallback() {
 	assert 'dep' in deps
 	assert 'wrong_dep' !in deps
 }
+
+fn test_enum_helper_prefers_exact_free_function_over_method_suffix() {
+	mut a := flat.FlatAst.new()
+	add_const_deps_test_node(mut a, .module_decl, 'main', [])
+	receiver := add_const_deps_test_node(mut a, .param, 'm', [])
+	a.nodes[int(receiver)].typ = 'Maker'
+	method_value := add_const_deps_test_node(mut a, .int_literal, '99', [])
+	method_return := add_const_deps_test_node(mut a, .return_stmt, '', [method_value])
+	add_const_deps_test_node(mut a, .fn_decl, 'Maker.make', [receiver, method_return])
+	free_value := add_const_deps_test_node(mut a, .int_literal, '4', [])
+	free_return := add_const_deps_test_node(mut a, .return_stmt, '', [free_value])
+	add_const_deps_test_node(mut a, .fn_decl, 'make', [free_return])
+	call := const_deps_test_call(mut a, 'make')
+
+	mut g := FlatGen.new()
+	g.a = &a
+	mut field_values := map[string]int{}
+	mut resolving := map[string]bool{}
+	value := g.enum_comptime_call_value(call, 'main', 'E', mut field_values,
+		map[string]flat.NodeId{}, mut resolving) or { -1 }
+	assert value == 4
+}

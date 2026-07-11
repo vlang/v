@@ -876,13 +876,15 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 		return none
 	}
 	// An unqualified helper call in an enum initializer resolves to a function in the
-	// enum's own module, so prefer a candidate declared in `enum_module`. Fall back to
-	// an exact name match and then a short-name (suffix) match, so that two modules
-	// sharing a helper name do not fold the call with the wrong module's body.
+	// enum's own module, so prefer an exact candidate declared in `enum_module` before
+	// a same-module short-name (receiver/static method) suffix match. Fall back to an
+	// exact name match and then a suffix match across modules.
 	short := callee.value.all_after_last('.')
 	mut cur_mod := ''
-	mut module_node := flat.Node{}
-	mut module_found := false
+	mut module_exact_node := flat.Node{}
+	mut module_exact_found := false
+	mut module_suffix_node := flat.Node{}
+	mut module_suffix_found := false
 	mut exact_node := flat.Node{}
 	mut exact_found := false
 	mut suffix_node := flat.Node{}
@@ -898,9 +900,14 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 		if candidate.value != callee.value && candidate.value.all_after_last('.') != short {
 			continue
 		}
-		if !module_found && cur_mod == enum_module {
-			module_node = candidate
-			module_found = true
+		if cur_mod == enum_module {
+			if !module_exact_found && candidate.value == callee.value {
+				module_exact_node = candidate
+				module_exact_found = true
+			} else if !module_suffix_found {
+				module_suffix_node = candidate
+				module_suffix_found = true
+			}
 		}
 		if !exact_found && candidate.value == callee.value {
 			exact_node = candidate
@@ -911,8 +918,10 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 			suffix_found = true
 		}
 	}
-	fn_node := if module_found {
-		module_node
+	fn_node := if module_exact_found {
+		module_exact_node
+	} else if module_suffix_found {
+		module_suffix_node
 	} else if exact_found {
 		exact_node
 	} else if suffix_found {
