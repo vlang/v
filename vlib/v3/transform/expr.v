@@ -395,15 +395,14 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 			// specifically, compare concrete type and observable identity (msg +
 			// code) via the always-emitted C helpers, matching how error values compare in
 			// practice (`assert err == other_err`). The helpers take addresses,
-			// so a non-lvalue operand (a selector on a call result) is spilled
-			// to a temporary first.
+			// so a transformed non-lvalue operand is spilled to a temporary first.
 			if iface in ['IError', 'builtin.IError'] {
-				lhs_err := if t.expr_is_plain_lvalue(lhs_id) {
+				lhs_err := if t.expr_is_plain_lvalue(lhs) {
 					lhs
 				} else {
 					t.stable_transformed_expr_for_reuse(lhs, iface, 'ierr_eq_lhs')
 				}
-				rhs_err := if t.expr_is_plain_lvalue(rhs_id) {
+				rhs_err := if t.expr_is_plain_lvalue(rhs) {
 					rhs
 				} else {
 					t.stable_transformed_expr_for_reuse(rhs, iface, 'ierr_eq_rhs')

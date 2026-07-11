@@ -999,6 +999,33 @@ fn main() {
 ')
 	assert ierror_concrete_types == 'false\ntrue\ntrue'
 
+	ierror_sum_field := run_good(v3_bin, 'ierror_shared_sum_field_equality', 'struct ErrorHolderA {
+	err IError
+}
+
+struct ErrorHolderB {
+	err IError
+}
+
+type ErrorHolder = ErrorHolderA | ErrorHolderB
+
+fn equal_error(holder ErrorHolder, other IError) bool {
+	return holder.err == other
+}
+
+fn main() {
+	left := ErrorHolder(ErrorHolderA{
+		err: error("boom")
+	})
+	right := ErrorHolder(ErrorHolderB{
+		err: error("other")
+	})
+	println(equal_error(left, error("boom")).str())
+	println(equal_error(right, error("boom")).str())
+}
+')
+	assert ierror_sum_field == 'true\nfalse'
+
 	shift_once := run_good(v3_bin, 'unsigned_shift_assign_lvalue_once', 'fn next(mut calls int) int {
 	calls++
 	return 0
