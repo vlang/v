@@ -1564,16 +1564,23 @@ fn (v &Builder) retry_command_boundary(args []string) int {
 		'build-module'
 	} else if v.pref.is_run {
 		'run'
-	} else if v.pref.is_crun && 'crun' in args {
+	} else if v.pref.is_crun {
 		'crun'
 	} else {
 		return args.len
 	}
-	if args.len < 2 {
-		return args.len
+	target_path := os.real_path(v.pref.path)
+	if args.len >= 2 {
+		for idx in 0 .. args.len - 1 {
+			if args[idx] == command && os.real_path(args[idx + 1]) == target_path {
+				return idx
+			}
+		}
 	}
-	for idx in 0 .. args.len - 1 {
-		if args[idx] == command && os.real_path(args[idx + 1]) == os.real_path(v.pref.path) {
+	if v.pref.is_crun && v.pref.is_vsh {
+		// An implicit vsh command has no `crun` token; its run arguments locate the script.
+		idx := args.len - v.pref.run_args.len - 1
+		if idx >= 0 && os.real_path(args[idx]) == target_path {
 			return idx
 		}
 	}

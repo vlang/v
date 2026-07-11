@@ -1,6 +1,7 @@
 module builder
 
 import os
+import v.pref
 
 fn execute_tcc_retry_test_command(cmd string) os.Result {
 	old_vflags := os.getenv_opt('VFLAGS')
@@ -75,6 +76,22 @@ fn test_tcc_retry_warning_is_visible() {
 		execute_tcc_retry_test_command('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(fake_tcc)} -d run -o ${os.quoted_path(exe_path)} run ${os.quoted_path(source_path)}')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('warning: tcc compilation failed, falling back to cc'), res.output
+}
+
+fn test_tcc_retry_inserts_fallback_flags_before_implicit_vsh_script() {
+	script_path := os.join_path(os.vtmp_dir(), 'implicit_retry_script.vsh')
+	builder := &Builder{
+		pref: &pref.Preferences{
+			is_crun:  true
+			is_vsh:   true
+			path:     script_path
+			run_args: ['script-argument']
+		}
+	}
+	args := ['-cc', 'tcc', script_path, 'script-argument']
+	assert builder.retry_command_boundary(args) == 2
+	assert builder.retry_command_boundary([script_path, 'script-argument']) == 0
+	assert builder.retry_command_boundary(['-d', 'crun', 'crun', script_path, 'script-argument']) == 2
 }
 
 fn test_tcc_retry_reports_final_compiler_failure() {
