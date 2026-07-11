@@ -30,6 +30,10 @@ const comptime_enum_value_members = [
 	'attrs',
 ]
 
+const comptime_variant_members = [
+	'typ',
+]
+
 const export_c_reserved_words = {
 	'auto':     true
 	'break':    true
@@ -5058,6 +5062,9 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 		'values' {
 			tc.check_comptime_members(body_id, parts[0], comptime_enum_value_members, 'EnumData')
 		}
+		'variants' {
+			tc.check_comptime_members(body_id, parts[0], comptime_variant_members, 'VariantData')
+		}
 		else {}
 	}
 
@@ -5426,6 +5433,16 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 }
 
 fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_kind string) ?Type {
+	if loop_kind == 'variants' {
+		return match member {
+			'typ' {
+				tc.parse_type('int')
+			}
+			else {
+				none
+			}
+		}
+	}
 	if loop_kind == 'values' {
 		return match member {
 			'name' {

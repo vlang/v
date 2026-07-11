@@ -134,6 +134,63 @@ fn main() {
 	assert out == "id:true:true:true:true:false:|name:true:true:false:false:true:json: 'wire'|count:2"
 }
 
+fn test_comptime_variant_metadata_only_exposes_typ() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'variant_metadata_typ', 'struct A {}
+struct B {}
+
+type Value = A | B
+
+fn variant_type(item VariantData) int {
+	return item.typ
+}
+
+fn type_id(typ int) int {
+	return typ
+}
+
+fn main() {
+	mut count := 0
+	$for variant in Value.variants {
+		_ = variant_type(variant)
+		_ = type_id(variant.typ)
+		count++
+	}
+	println(int_str(count))
+}
+')
+	assert out == '2'
+
+	round4_run_bad(v3_bin, 'bad_variant_name_member', 'struct A {}
+struct B {}
+
+type Value = A | B
+
+fn use_name(name string) {}
+
+fn main() {
+	$for variant in Value.variants {
+		use_name(variant.name)
+	}
+}
+',
+		'unknown VariantData member `name`')
+	round4_run_bad(v3_bin, 'bad_variant_attrs_member', 'struct A {}
+struct B {}
+
+type Value = A | B
+
+fn use_attrs(attrs []string) {}
+
+fn main() {
+	$for variant in Value.variants {
+		use_attrs(variant.attrs)
+	}
+}
+',
+		'unknown VariantData member `attrs`')
+}
+
 fn test_comptime_for_value_field_sources_use_value_type() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'value_field_source', "struct Inner {
