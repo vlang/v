@@ -4415,6 +4415,15 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			// and wrap (`1 << 51`); widen the lhs so the shift happens in 64 bits.
 			if node.op == .left_shift && g.shift_needs_64bit_widening(&node) {
 				'((u64)(${lhs})) << (${rhs})'
+			} else if node.op == .right_shift_unsigned {
+				// `>>>` must stay a logical shift in const initializers too;
+				// op_str would map it to a plain arithmetic `>>`. The operands
+				// are constant expressions, so repeating the rhs in the clamp
+				// is side-effect free (statement expressions are not valid in
+				// static initializers).
+				ut, bits := unsigned_shift_parts(g.value_c_type(g.usable_expr_type(g.a.child(&node,
+					0))))
+				'((u64)(${rhs}) >= ${bits} ? (${ut})0 : (${ut})((${ut})(${lhs}) >> (${rhs})))'
 			} else {
 				'(${lhs}) ${g.op_str(node.op)} (${rhs})'
 			}
@@ -10159,11 +10168,12 @@ fn (mut g FlatGen) gen_unsigned_right_shift(lhs_id flat.NodeId, rhs_id flat.Node
 // gen_unsigned_right_shift_from_text is gen_unsigned_right_shift with the lhs
 // already rendered as a C expression (used by `>>>=` to shift through a
 // pointer temp so the lvalue is evaluated exactly once).
-fn (mut g FlatGen) gen_unsigned_right_shift_from_text(lhs_text string, rhs_id flat.NodeId, lhs_type types.Type) {
-	ct := g.value_c_type(lhs_type)
-	// isize/usize lower to ptrdiff_t/size_t in C and are pointer-width, so
-	// their unsigned view and bit width come from size_t, not a fixed 64.
-	ut, bits := match ct {
+// unsigned_shift_parts maps an operand's C type to the unsigned counterpart
+// used for `>>>` logical shifts and its bit-width text. isize/usize lower to
+// ptrdiff_t/size_t in C and are pointer-width, so their unsigned view and bit
+// width come from size_t, not a fixed 64.
+fn unsigned_shift_parts(ct string) (string, string) {
+	return match ct {
 		'i8', 'u8' { 'u8', '8' }
 		'i16', 'u16' { 'u16', '16' }
 		'int', 'i32', 'u32' { 'u32', '32' }
@@ -10171,6 +10181,10 @@ fn (mut g FlatGen) gen_unsigned_right_shift_from_text(lhs_text string, rhs_id fl
 		'isize', 'usize', 'ptrdiff_t', 'size_t' { 'size_t', '(sizeof(size_t) * 8)' }
 		else { 'u64', '64' }
 	}
+}
+
+fn (mut g FlatGen) gen_unsigned_right_shift_from_text(lhs_text string, rhs_id flat.NodeId, lhs_type types.Type) {
+	ut, bits := unsigned_shift_parts(g.value_c_type(lhs_type))
 	// The result stays in the unsigned counterpart: casting back to a signed
 	// type would sign-extend under C's integer promotion, so
 	// `i8(-1) >>> 0 == u8(255)` would compare -1 against 255. A `>>>=`

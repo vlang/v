@@ -6210,6 +6210,10 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 	// `X.typ` / `X.unaliased_typ` metadata selectors compare the underlying type
 	// itself; strip the suffix so a substituted `SumtypeTimeValue.unaliased_typ`
 	// resolves to the concrete type instead of never matching anything.
+	// `.typ` preserves alias identity (only `.unaliased_typ` compares the
+	// alias target), so `MyAlias.typ is string` stays false for
+	// `type MyAlias = string`.
+	mut keep_alias := false
 	for suffix in ['.unaliased_typ', '.typ'] {
 		if clean_actual.ends_with(suffix) {
 			base := clean_actual[..clean_actual.len - suffix.len].trim_space()
@@ -6217,6 +6221,7 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 				return none
 			}
 			clean_actual = base
+			keep_alias = suffix == '.typ'
 			break
 		}
 	}
@@ -6235,7 +6240,16 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 			}
 		}
 	}
-	normalized := t.normalize_type_alias(clean_actual)
+	is_alias_actual := keep_alias && t.generic_arg_is_alias_name(clean_actual, t.cur_module)
+	normalized := if is_alias_actual {
+		clean_actual
+	} else {
+		t.normalize_type_alias(clean_actual)
+	}
+	if is_alias_actual && (clean_actual == clean_expected
+		|| t.qualify_type(clean_actual) == t.qualify_type(clean_expected)) {
+		return true
+	}
 	match clean_expected {
 		'$array' {
 			return normalized.starts_with('[]') || transform_type_text_is_fixed_array(normalized)

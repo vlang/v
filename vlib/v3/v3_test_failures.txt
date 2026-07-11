@@ -143,6 +143,7 @@ vlib/net/http/status_test.v
 vlib/net/http/transport_test.v
 vlib/net/http/vschannel_alpn_windows_test.v
 vlib/net/http/vschannel_validation_windows_test.v
+vlib/net/ipv6_test.v
 vlib/net/jsonrpc/jsonrpc_test.v
 vlib/net/jsonrpc/server_test.v
 vlib/net/mbedtls/mbedtls_compiles_test.v

@@ -265,7 +265,6 @@ vlib/net/html/parser_test.v
 vlib/net/html/tag_test.v
 vlib/net/http/chunked/dechunk_test.v
 vlib/net/http/mime/mime_test.v
-vlib/net/ipv6_test.v
 vlib/net/mbedtls/mbedtls_tcc_arm64_compiles_test.v
 vlib/net/urllib/urllib_test.v
 vlib/net/urllib/values_test.v

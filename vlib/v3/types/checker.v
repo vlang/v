@@ -9060,13 +9060,18 @@ fn (tc &TypeChecker) cur_fn_is_generic_template() bool {
 	return false
 }
 
-// call_receiver_type_is_unknown reports whether a method call's receiver has an
-// unresolvable type (e.g. a field of a generic struct instance the checker
-// cannot see through yet); such calls cannot be validated before
-// monomorphization, so unknown-function diagnostics must not fire for them.
-// The receiver expression itself IS checked here, so genuinely invalid code
-// (`missing.method()`) still reports the unknown identifier instead of
-// silently proceeding to cgen.
+// call_receiver_type_is_unknown reports whether a method call's receiver has
+// an unresolvable type, so the unknown-function diagnostic must not fire for
+// it. Besides generic templates (whose bodies the reference compiler also
+// only validates per instantiation), the checker currently fails to resolve
+// several legitimate receiver shapes — fields of generic struct instances
+// (`json.decode[S[T]](s)!.val.unix()`), option/or-unwrapped results, and
+// specialized generic call returns — so narrowing this to "provably generic"
+// chains produces false errors on valid vlib code. The receiver expression
+// itself IS checked, so `missing.method()` still reports its unknown
+// identifier. Remaining gap: a template instantiated with a type lacking the
+// method fails only in C compilation — v3 has no instantiation-time recheck
+// of cloned template bodies yet.
 fn (mut tc TypeChecker) call_receiver_type_is_unknown(node flat.Node) bool {
 	if node.children_count == 0 {
 		return false
@@ -9089,7 +9094,11 @@ fn (mut tc TypeChecker) call_receiver_type_is_unknown(node flat.Node) bool {
 // inside a generic template). Such calls can only be validated after
 // monomorphization, so unknown-function diagnostics must not fire for them.
 // Outside a generic template a bare `missing[T]()` is real invalid code, so
-// the deferral only applies within one.
+// the deferral only applies within one. This deliberately includes callees
+// with no known declaration: the reference compiler also accepts a template
+// whose body calls a missing function as long as it is never instantiated
+// (vlib code relies on this, e.g. asn1's commented-out `read_element`), and
+// only reports it at instantiation time.
 fn (tc &TypeChecker) call_generic_args_have_placeholders(node flat.Node) bool {
 	if !tc.cur_fn_is_generic_template() {
 		return false
