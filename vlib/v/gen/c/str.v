@@ -181,6 +181,15 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		&& (g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).typ)).kind == .interface
 		|| ((expr.obj as ast.Var).orig_type != 0
 		&& g.table.final_sym(g.unwrap_generic((expr.obj as ast.Var).orig_type)).kind == .interface))
+	// Go-style: a reference to a scalar (int, float, bool, string, rune) prints
+	// its address, while a reference to a struct/array/map prints `&` + the value.
+	if is_ptr && !is_shared && mut_arg_option_type == 0 && !typ.has_flag(.option)
+		&& !g.expr_is_auto_deref_var(expr) && typ.is_scalar_ptr() {
+		g.write('${g.get_str_fn(ast.voidptr_type)}((voidptr)(')
+		g.expr(expr)
+		g.write('))')
+		return
+	}
 	if typ.has_flag(.variadic) {
 		str_fn_name := g.get_str_fn(typ)
 		g.write('${str_fn_name}(')

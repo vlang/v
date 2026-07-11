@@ -11,6 +11,10 @@ import v.util
 fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
 		return `s`
+	} else if typ.is_scalar_ptr() {
+		// Go-style: a reference to a scalar (int, float, bool, string, rune)
+		// is printed as its address, not `&` + the pointed-to value.
+		return `p`
 	} else if typ.is_float() {
 		return `g`
 	} else if typ.is_signed() || typ.is_int_literal() {
@@ -40,24 +44,6 @@ fn (mut c Checker) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 			return `_`
 		}
 	}
-}
-
-fn (mut c Checker) get_string_inter_default_fmt(expr ast.Expr, ftyp ast.Type, typ ast.Type) u8 {
-	if expr is ast.Ident {
-		if expr.obj is ast.Var {
-			obj := expr.obj
-			if obj.typ.is_ptr() && !obj.is_arg {
-				pointee_typ := obj.typ.deref()
-				if c.table.final_sym(pointee_typ).kind != .enum {
-					final_pointee_typ := c.table.final_type(pointee_typ)
-					if final_pointee_typ in [ast.string_type, ast.bool_type] {
-						return `p`
-					}
-				}
-			}
-		}
-	}
-	return c.get_default_fmt(ftyp, typ)
 }
 
 fn (mut c Checker) check_string_inter_lit_format_expr(mut expr ast.Expr, what string) {
@@ -128,7 +114,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 			c.error('unknown format specifier `${fmt:c}`', node.fmt_poss[i])
 		}
 		if fmt == `_` { // set default representation for type if none has been given
-			fmt = c.get_string_inter_default_fmt(expr, ftyp, typ)
+			fmt = c.get_default_fmt(ftyp, typ)
 			if fmt == `_` {
 				if typ != ast.void_type && !(typ.has_flag(.generic) && (c.inside_lambda
 					|| c.table.cur_concrete_types.len > 0
