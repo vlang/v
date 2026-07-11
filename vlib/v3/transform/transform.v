@@ -7541,11 +7541,17 @@ fn (t &Transformer) sum_shared_field_type_name_inner(sum_type string, field stri
 	clean_sum := if sum_type.starts_with('&') { sum_type[1..] } else { sum_type }
 	resolved_sum := t.resolve_sum_name(clean_sum)
 	// A recursive sum (`Any = ... | []Any | map[string]Any`) revisits itself
-	// through its variants; treat the cycle as "no shared field".
+	// through its variants; treat the cycle as "no shared field". `visited`
+	// tracks only the current DESCENT PATH — the mark is removed on the way
+	// out so a diamond shape (two sibling variants nesting the same sum) is
+	// not mistaken for a cycle.
 	if visited[resolved_sum] {
 		return none
 	}
 	visited[resolved_sum] = true
+	defer {
+		visited.delete(resolved_sum)
+	}
 	variants := t.sum_types[resolved_sum] or { return none }
 	mut common := ''
 	for variant in variants {

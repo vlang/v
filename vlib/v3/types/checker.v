@@ -5184,10 +5184,14 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .block {
+		// Locals registered while walking this block (declarations whose RHS
+		// references the loop var) must not leak past it.
+		tc.push_scope()
 		for i in 0 .. node.children_count {
 			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
 				value_cases)
 		}
+		tc.pop_scope()
 		return
 	}
 	if node.kind == .comptime_for {
@@ -9035,13 +9039,25 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 }
 
 // cur_fn_is_generic_template reports whether the function currently being
-// checked declares generic parameters (its body is a template that will be
-// re-validated per instantiation).
+// checked is a template that will be re-validated per instantiation: it
+// declares generic parameters, or is a method on a generic receiver
+// (`fn (mut so SetOf[T]) sort()`), whose own node has no generic_params.
 fn (tc &TypeChecker) cur_fn_is_generic_template() bool {
 	if tc.cur_fn_node_id < 0 || tc.cur_fn_node_id >= tc.a.nodes.len {
 		return false
 	}
-	return tc.a.nodes[tc.cur_fn_node_id].generic_params.len > 0
+	fn_node := tc.a.nodes[tc.cur_fn_node_id]
+	if fn_node.generic_params.len > 0 {
+		return true
+	}
+	for i in 0 .. fn_node.children_count {
+		child := tc.a.child_node(&fn_node, i)
+		if child.kind == .param && child.typ.len > 0
+			&& tc.type_text_has_generic_placeholder(child.typ) {
+			return true
+		}
+	}
+	return false
 }
 
 // call_receiver_type_is_unknown reports whether a method call's receiver has an
@@ -9072,7 +9088,12 @@ fn (mut tc TypeChecker) call_receiver_type_is_unknown(node flat.Node) bool {
 // generic type args that are still uninstantiated placeholders (`p.read_element[T]()`
 // inside a generic template). Such calls can only be validated after
 // monomorphization, so unknown-function diagnostics must not fire for them.
+// Outside a generic template a bare `missing[T]()` is real invalid code, so
+// the deferral only applies within one.
 fn (tc &TypeChecker) call_generic_args_have_placeholders(node flat.Node) bool {
+	if !tc.cur_fn_is_generic_template() {
+		return false
+	}
 	if node.value.len > 0 {
 		for arg in node.value.split(',') {
 			if tc.type_text_has_generic_placeholder(arg.trim_space()) {

@@ -10171,10 +10171,14 @@ fn (mut g FlatGen) gen_unsigned_right_shift_from_text(lhs_text string, rhs_id fl
 		'isize', 'usize', 'ptrdiff_t', 'size_t' { 'size_t', '(sizeof(size_t) * 8)' }
 		else { 'u64', '64' }
 	}
+	// The result stays in the unsigned counterpart: casting back to a signed
+	// type would sign-extend under C's integer promotion, so
+	// `i8(-1) >>> 0 == u8(255)` would compare -1 against 255. A `>>>=`
+	// assignment converts back implicitly when storing into the target.
 	tmp := g.tmp_name()
 	g.write('({ u64 ${tmp} = (u64)(')
 	g.gen_expr(rhs_id)
-	g.write('); ${tmp} >= ${bits} ? (${ct})0 : (${ct})((${ut})(${lhs_text}) >> ${tmp}); })')
+	g.write('); ${tmp} >= ${bits} ? (${ut})0 : (${ut})((${ut})(${lhs_text}) >> ${tmp}); })')
 }
 
 fn (g &FlatGen) op_str(op flat.Op) string {
