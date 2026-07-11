@@ -8486,6 +8486,18 @@ fn typeof_display_type_text(name string) string {
 	if name.starts_with('&') {
 		return '&' + typeof_display_type_text(name[1..])
 	}
+	if name.starts_with('?') || name.starts_with('!') {
+		return name[..1] + typeof_display_type_text(name[1..])
+	}
+	if name.starts_with('mut ') {
+		return 'mut ' + typeof_display_type_text(name[4..])
+	}
+	if name.starts_with('shared ') {
+		return 'shared ' + typeof_display_type_text(name[7..])
+	}
+	if name.starts_with('fn(') || name.starts_with('fn (') {
+		return typeof_display_fn_type_text(name)
+	}
 	if name.ends_with(']') && !name.starts_with('[') && !name.starts_with('map[') {
 		if open_idx := name.last_index('[') {
 			if open_idx > 0 {
@@ -8497,6 +8509,81 @@ fn typeof_display_type_text(name string) string {
 		}
 	}
 	return name
+}
+
+fn typeof_display_fn_type_text(name string) string {
+	clean := name.trim_space()
+	open := clean.index_u8(`(`)
+	close := typeof_display_matching_paren(clean, open)
+	if close < 0 {
+		return name
+	}
+	params := typeof_display_type_list(clean[open + 1..close])
+	mut result := 'fn (${params})'
+	ret := clean[close + 1..].trim_space()
+	if ret.len == 0 {
+		return result
+	}
+	if ret.starts_with('(') {
+		ret_close := typeof_display_matching_paren(ret, 0)
+		if ret_close == ret.len - 1 {
+			return result + ' (' + typeof_display_type_list(ret[1..ret_close]) + ')'
+		}
+	}
+	result += ' ' + typeof_display_type_text(ret)
+	return result
+}
+
+fn typeof_display_matching_paren(text string, open int) int {
+	if open < 0 || open >= text.len || text[open] != `(` {
+		return -1
+	}
+	mut depth := 0
+	for i in open .. text.len {
+		if text[i] == `(` {
+			depth++
+		} else if text[i] == `)` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+fn typeof_display_type_list(text string) string {
+	mut parts := []string{}
+	mut start := 0
+	mut paren_depth := 0
+	mut bracket_depth := 0
+	for i in 0 .. text.len {
+		match text[i] {
+			`(` {
+				paren_depth++
+			}
+			`)` {
+				paren_depth--
+			}
+			`[` {
+				bracket_depth++
+			}
+			`]` {
+				bracket_depth--
+			}
+			`,` {
+				if paren_depth == 0 && bracket_depth == 0 {
+					parts << typeof_display_type_text(text[start..i].trim_space())
+					start = i + 1
+				}
+			}
+			else {}
+		}
+	}
+	if start < text.len {
+		parts << typeof_display_type_text(text[start..].trim_space())
+	}
+	return parts.join(', ')
 }
 
 fn (mut t Transformer) transform_typeof_idx_expr(node flat.Node) flat.NodeId {
