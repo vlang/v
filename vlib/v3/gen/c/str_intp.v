@@ -220,7 +220,23 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 		}
 		return true
 	}
-	if typ is types.Enum && (f.verb == `d` || f.verb == 0) {
+	if typ is types.Enum && f.verb == 0 {
+		if f.zero && f.width > 0 {
+			g.write('v3_string_zpad(')
+		} else if f.width > 0 {
+			g.write('v3_string_pad(')
+		}
+		g.write('${g.cname(typ.name)}__autostr(')
+		g.gen_string_interp_child_expr(child_id)
+		g.write(')')
+		if f.zero && f.width > 0 {
+			g.write(', ${f.width})')
+		} else if f.width > 0 {
+			g.write(', ${f.width}, ${left})')
+		}
+		return true
+	}
+	if typ is types.Enum && f.verb == `d` {
 		zpad_fn := if enum_unsigned { 'v3_u64_zpad' } else { 'v3_i64_zpad' }
 		cast := if enum_unsigned { 'u64' } else { 'i64' }
 		str_fn := if enum_unsigned { 'u64__str' } else { 'i64__str' }
