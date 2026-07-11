@@ -508,6 +508,22 @@ fn main() {
 	assert out == '42'
 }
 
+fn test_json_decode_generic_struct_preserves_field_default() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_decode_generic_struct_default', 'import json
+
+struct Box[T] {
+	n int = 5
+}
+
+fn main() {
+	box := json.decode(Box[int], "{}") or { Box[int]{n: 5} }
+	println(int_str(box.n))
+}
+')
+	assert out == '5'
+}
+
 fn test_string_index_type_is_u8() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'string_index_type_is_u8',

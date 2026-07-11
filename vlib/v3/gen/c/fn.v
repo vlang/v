@@ -5170,6 +5170,7 @@ fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, field types.Stru
 // expression; the fast-path decoder cannot preserve it for a field omitted from the
 // JSON (it would emit the type zero), so those structs are declined.
 fn (g &FlatGen) json_struct_has_field_default(struct_name string) bool {
+	decl_name := json_struct_decl_name(struct_name)
 	mut cur_module := ''
 	for node in g.a.nodes {
 		if node.kind == .module_decl {
@@ -5184,7 +5185,7 @@ fn (g &FlatGen) json_struct_has_field_default(struct_name string) bool {
 		} else {
 			node.value
 		}
-		if struct_name != node.value && struct_name != qualified {
+		if decl_name != node.value && decl_name != qualified {
 			continue
 		}
 		for i in 0 .. node.children_count {
@@ -5201,11 +5202,20 @@ fn (g &FlatGen) json_struct_has_field_default(struct_name string) bool {
 	return false
 }
 
+fn json_struct_decl_name(name string) string {
+	bracket := name.index_u8(`[`)
+	if bracket <= 0 {
+		return name
+	}
+	return name[..bracket]
+}
+
 // json_struct_has_field_attrs reports whether any field of `struct_name` carries
 // attributes (`@[json: 'x']`, `@[skip]`, `@[required]`, ...). Field attributes are
 // stored in `field_decl.generic_params` with index 0 holding the mut/pub flags and
 // any further entries being attributes.
 fn (g &FlatGen) json_struct_has_field_attrs(struct_name string) bool {
+	decl_name := json_struct_decl_name(struct_name)
 	mut cur_module := ''
 	for node in g.a.nodes {
 		if node.kind == .module_decl {
@@ -5220,7 +5230,7 @@ fn (g &FlatGen) json_struct_has_field_attrs(struct_name string) bool {
 		} else {
 			node.value
 		}
-		if struct_name != node.value && struct_name != qualified {
+		if decl_name != node.value && decl_name != qualified {
 			continue
 		}
 		for i in 0 .. node.children_count {
