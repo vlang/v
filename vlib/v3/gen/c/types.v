@@ -1046,6 +1046,19 @@ fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_modu
 				enum_name, enum_c_name, field_names)?
 			return '(${inner})'
 		}
+		.cast_expr {
+			if node.children_count == 0 {
+				return none
+			}
+			target_type := g.tc.parse_type(node.value)
+			mut ct := g.cast_c_type(target_type)
+			if ct.starts_with('fn_ptr:') {
+				ct = g.resolve_fn_ptr_type(ct)
+			}
+			inner := g.enum_field_expr_to_string_with_enum(g.a.child(&node, 0), enum_module,
+				enum_name, enum_c_name, field_names)?
+			return '(${ct})(${inner})'
+		}
 		.prefix {
 			if node.children_count == 0 {
 				return none

@@ -600,6 +600,22 @@ fn main() {
 	assert out == '4'
 }
 
+fn test_backed_enum_cast_qualifies_member_reference() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'backed_enum_cast_member_reference', 'const a = 1
+
+enum E as u64 {
+	a = 1
+	b = u64(a) + 1
+}
+
+fn main() {
+	println(int_str(int(E.b)))
+}
+')
+	assert out == '2'
+}
+
 fn test_string_index_type_is_u8() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'string_index_type_is_u8',
