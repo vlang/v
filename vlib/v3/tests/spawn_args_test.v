@@ -36,6 +36,9 @@ fn assert_spawn_pthread_decls(c_code string) {
 	assert c_code.contains('i32 pthread_join(void* thread, void* retval);'), c_code
 	assert !c_code.contains('i32 pthread_attr_init(void* attr);'), c_code
 	assert !c_code.contains('i32 pthread_attr_destroy(void* attr);'), c_code
+	assert c_code.contains('pthread_attr_setstacksize('), c_code
+	assert c_code.contains(', 2097152);'), c_code
+	assert !c_code.contains(', 8388608);'), c_code
 }
 
 // A `spawn` of a free function with arguments must pack the arguments into a heap
