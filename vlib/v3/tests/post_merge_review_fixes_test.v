@@ -480,6 +480,34 @@ fn test_runtime_inits_run_before_module_init() {
 	assert out == '5\n7'
 }
 
+fn test_const_dependencies_follow_receiver_method() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'const_deps_receiver_method', 'struct B {}
+
+fn (b B) value() int {
+	return 7
+}
+
+struct A {}
+
+fn (a A) value() int {
+	return dep + 1
+}
+
+fn seed() int {
+	return 41
+}
+
+const result = A{}.value()
+const dep = seed()
+
+fn main() {
+	println(int_str(result))
+}
+')
+	assert out == '42'
+}
+
 fn test_string_index_type_is_u8() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'string_index_type_is_u8',

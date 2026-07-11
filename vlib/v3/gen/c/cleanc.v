@@ -9215,18 +9215,27 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 		if callee.kind == .ident {
 			callee_name = callee.value
 		} else if callee.kind == .selector {
-			// A module-qualified call (`other.make()`) is a selector whose value is
-			// only the short name; the module comes from the base ident.
 			callee_name = callee.value
 			if callee.children_count > 0 {
-				base := g.a.child_node(callee, 0)
-				if base.kind == .ident {
+				base_id := g.a.child(callee, 0)
+				base := g.a.nodes[int(base_id)]
+				if base.kind == .ident && base.value in g.modules {
 					// Resolve an import alias (`import some.mod as m` makes the base
 					// ident `m`) to the real module name so the module match compares
 					// against the actual `module` declaration.
-					callee_module = g.modules[base.value] or { base.value }
+					callee_module = g.modules[base.value]
+				} else {
+					receiver := g.const_call_receiver_type_name(base_id)
+					if receiver.len > 0 {
+						callee_name = '${receiver}.${callee.value}'
+					} else if base.kind == .ident {
+						callee_module = base.value
+					}
 				}
 			}
+		}
+		if resolved := g.tc.resolved_call_name(val_id) {
+			callee_name = resolved
 		}
 		// Key the visited set by the qualified name so `a.foo` and `b.foo` are treated
 		// as distinct bodies rather than one being skipped.
@@ -9260,7 +9269,8 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 					&& (cur_mod == callee_module || cur_mod == callee_module.all_after_last('.')) {
 					module_target = i
 				}
-				if exact_target < 0 && candidate.value == callee_name {
+				if exact_target < 0 && (candidate.value == callee_name
+					|| callee_name.ends_with('.${candidate.value}')) {
 					exact_target = i
 				}
 				if suffix_target < 0 {
@@ -9285,6 +9295,22 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 	for i in 0 .. node.children_count {
 		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
 	}
+}
+
+fn (g &FlatGen) const_call_receiver_type_name(base_id flat.NodeId) string {
+	resolved := types.unwrap_pointer(g.tc.resolve_type(base_id))
+	name := resolved.name()
+	if name.len > 0 && name !in ['void', 'unknown'] {
+		return name
+	}
+	base := g.a.nodes[int(base_id)]
+	if base.typ.len > 0 && base.typ !in ['void', 'unknown'] {
+		return base.typ.trim_left('&')
+	}
+	if base.kind == .struct_init {
+		return base.value.trim_left('&')
+	}
+	return ''
 }
 
 fn (g &FlatGen) const_collect_scope_children(node flat.Node, start int, mut deps []string, mut visited_fns map[string]bool, mut shadowed map[string]bool) {

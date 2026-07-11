@@ -454,6 +454,13 @@ fn test_chained_array_alias_stringification_uses_outer_alias_only() {
 	assert out == 'B([1, 2])'
 }
 
+fn test_alias_pointer_receiver_str_gets_addressable_value() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'alias_pointer_receiver_str',
+		"type Number = int\n\nfn (n &Number) str() string {\n\treturn 'number:' + int_str(int(*n))\n}\n\nstruct Point {\n\tx int\n}\n\ntype NamedPoint = Point\n\nfn (p &NamedPoint) str() string {\n\treturn 'point:' + int_str(p.x)\n}\n\nfn main() {\n\tn := Number(7)\n\tp := NamedPoint(Point{\n\t\tx: 9\n\t})\n\tprintln('\${n}')\n\tprintln('\${Number(8)}')\n\tprintln('\${p}')\n\tprintln('\${NamedPoint(Point{x: 10})}')\n}\n")
+	assert out == 'number:7\nnumber:8\npoint:9\npoint:10'
+}
+
 fn test_mut_map_param_interpolation_preserves_pointer() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'mut_map_param_interpolation',

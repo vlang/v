@@ -2877,7 +2877,20 @@ fn (mut t Transformer) alias_custom_str_call(expr flat.NodeId, alias_name string
 		if known {
 			t.mark_fn_used_name(v_str_fn)
 			t.mark_fn_used_name(str_fn)
-			return t.make_call_typed(str_fn, arr1(expr), 'string')
+			mut receiver := expr
+			if t.str_method_has_pointer_receiver(str_fn)
+				|| t.str_method_has_pointer_receiver(v_str_fn) {
+				mut expr_type := t.node_type(expr)
+				if expr_type.len == 0 {
+					expr_type = t.resolve_expr_type(expr)
+				}
+				if !expr_type.starts_with('&') && !t.expr_can_take_address(expr) {
+					tmp_name := t.new_temp('alias_str')
+					t.pending_stmts << t.make_decl_assign_typed(tmp_name, expr, qname)
+					receiver = t.make_ident(tmp_name)
+				}
+			}
+			return t.make_call_typed(str_fn, arr1(receiver), 'string')
 		}
 	}
 	return none

@@ -35,6 +35,13 @@ fn const_deps_test_call(mut a flat.FlatAst, name string) flat.NodeId {
 	return add_const_deps_test_node(mut a, .call, '', [callee])
 }
 
+fn const_deps_test_method_call(mut a flat.FlatAst, receiver string, method string) flat.NodeId {
+	base := add_const_deps_test_node(mut a, .struct_init, receiver, [])
+	a.nodes[int(base)].typ = receiver
+	callee := add_const_deps_test_node(mut a, .selector, method, [base])
+	return add_const_deps_test_node(mut a, .call, '', [callee])
+}
+
 fn test_const_helper_shadows_follow_lexical_scope_and_declaration_order() {
 	mut a := flat.FlatAst.new()
 	dep_value := add_const_deps_test_node(mut a, .int_literal, '41', [])
@@ -82,4 +89,30 @@ fn test_const_helper_shadows_follow_lexical_scope_and_declaration_order() {
 	assert 'dep' !in g.const_get_deps(prior_call)
 	assert 'dep' in g.const_get_deps(lambda_call)
 	assert 'dep' in g.const_get_deps(outer_call)
+}
+
+fn test_const_helper_deps_resolve_receiver_method_before_suffix_fallback() {
+	mut a := flat.FlatAst.new()
+	wrong_value := add_const_deps_test_node(mut a, .int_literal, '7', [])
+	dep_value := add_const_deps_test_node(mut a, .int_literal, '41', [])
+
+	wrong_read := const_deps_test_read(mut a, 'wrong_dep')
+	const_deps_test_fn(mut a, 'B.value', [wrong_read])
+	dep_read := const_deps_test_read(mut a, 'dep')
+	const_deps_test_fn(mut a, 'A.value', [dep_read])
+	call := const_deps_test_method_call(mut a, 'A', 'value')
+
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.const_vals['wrong_dep'] = wrong_value
+	g.const_modules['wrong_dep'] = 'main'
+	g.const_vals['dep'] = dep_value
+	g.const_modules['dep'] = 'main'
+
+	deps := g.const_get_deps(call)
+	assert 'dep' in deps
+	assert 'wrong_dep' !in deps
 }
