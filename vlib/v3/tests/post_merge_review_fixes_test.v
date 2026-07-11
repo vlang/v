@@ -526,6 +526,23 @@ fn main() {
 
 fn test_json_fast_paths_handle_primitives_and_stringified_composites() {
 	v3_bin := build_v3()
+	bool_source := 'import json
+
+struct Flag {
+	ok bool
+}
+
+fn main() {
+	println(json.encode(Flag{ok: true}))
+	println(json.encode(Flag{ok: false}))
+}
+'
+	bool_encoded := run_good(v3_bin, 'json_encode_bool_without_str_helper', bool_source)
+	assert bool_encoded == '{"ok":true}\n{"ok":false}'
+	bool_c := gen_c(v3_bin, 'json_encode_bool_without_str_helper_c', bool_source)
+	main_body := c_fn_body(bool_c, 'int main(int argc, char** argv)')
+	assert !main_body.contains('bool__str(')
+
 	encoded := run_good(v3_bin, 'json_encode_primitive_struct_fields', 'import json
 
 struct User {

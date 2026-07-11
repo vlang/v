@@ -4990,7 +4990,9 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 	}
 	if clean is types.Primitive {
 		if clean.props.has(.boolean) {
-			return 'bool__str((bool)(${expr}))'
+			true_sid := g.intern_string('true')
+			false_sid := g.intern_string('false')
+			return '((bool)(${expr}) ? _str_${true_sid} : _str_${false_sid})'
 		}
 		if clean.props.has(.integer) {
 			if clean.props.has(.unsigned) {
