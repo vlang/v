@@ -1,6 +1,7 @@
 module c
 
 import v3.flat
+import v3.types
 
 fn add_const_deps_test_node(mut a flat.FlatAst, kind flat.NodeKind, value string, children []flat.NodeId) flat.NodeId {
 	start := a.children.len
@@ -13,32 +14,72 @@ fn add_const_deps_test_node(mut a flat.FlatAst, kind flat.NodeKind, value string
 	})
 }
 
-fn test_const_helper_shadow_collection_skips_nested_function_scopes() {
+fn const_deps_test_read(mut a flat.FlatAst, name string) flat.NodeId {
+	ident := add_const_deps_test_node(mut a, .ident, name, [])
+	return add_const_deps_test_node(mut a, .expr_stmt, '', [ident])
+}
+
+fn const_deps_test_decl(mut a flat.FlatAst, name string) flat.NodeId {
+	lhs := add_const_deps_test_node(mut a, .ident, name, [])
+	rhs := add_const_deps_test_node(mut a, .int_literal, '1', [])
+	return add_const_deps_test_node(mut a, .decl_assign, '', [lhs, rhs])
+}
+
+fn const_deps_test_fn(mut a flat.FlatAst, name string, body []flat.NodeId) flat.NodeId {
+	block := add_const_deps_test_node(mut a, .block, '', body)
+	return add_const_deps_test_node(mut a, .fn_decl, name, [block])
+}
+
+fn const_deps_test_call(mut a flat.FlatAst, name string) flat.NodeId {
+	callee := add_const_deps_test_node(mut a, .ident, name, [])
+	return add_const_deps_test_node(mut a, .call, '', [callee])
+}
+
+fn test_const_helper_shadows_follow_lexical_scope_and_declaration_order() {
 	mut a := flat.FlatAst.new()
-	outer_param := add_const_deps_test_node(mut a, .param, 'outer_param', [])
-	outer_local_lhs := add_const_deps_test_node(mut a, .ident, 'outer_local', [])
-	outer_local := add_const_deps_test_node(mut a, .decl_assign, '', [outer_local_lhs])
+	dep_value := add_const_deps_test_node(mut a, .int_literal, '41', [])
 
-	lambda_param := add_const_deps_test_node(mut a, .param, 'lambda_param', [])
-	lambda_local_lhs := add_const_deps_test_node(mut a, .ident, 'lambda_local', [])
-	lambda_local := add_const_deps_test_node(mut a, .decl_assign, '', [
-		lambda_local_lhs,
-	])
-	lambda := add_const_deps_test_node(mut a, .lambda_expr, '', [lambda_param, lambda_local])
+	later_read := const_deps_test_read(mut a, 'dep')
+	later_decl := const_deps_test_decl(mut a, 'dep')
+	const_deps_test_fn(mut a, 'later_make', [later_read, later_decl])
+	later_call := const_deps_test_call(mut a, 'later_make')
 
-	fn_param := add_const_deps_test_node(mut a, .param, 'fn_param', [])
-	fn_literal := add_const_deps_test_node(mut a, .fn_literal, '', [fn_param])
-	outer_fn := add_const_deps_test_node(mut a, .fn_decl, 'make', [outer_param, outer_local, lambda,
-		fn_literal])
+	nested_decl := const_deps_test_decl(mut a, 'dep')
+	nested_block := add_const_deps_test_node(mut a, .block, '', [nested_decl])
+	nested_read := const_deps_test_read(mut a, 'dep')
+	const_deps_test_fn(mut a, 'nested_make', [nested_block, nested_read])
+	nested_call := const_deps_test_call(mut a, 'nested_make')
 
+	prior_decl := const_deps_test_decl(mut a, 'dep')
+	prior_read := const_deps_test_read(mut a, 'dep')
+	const_deps_test_fn(mut a, 'prior_make', [prior_decl, prior_read])
+	prior_call := const_deps_test_call(mut a, 'prior_make')
+
+	lambda_param := add_const_deps_test_node(mut a, .param, 'dep', [])
+	lambda := add_const_deps_test_node(mut a, .lambda_expr, '', [lambda_param])
+	lambda_read := const_deps_test_read(mut a, 'dep')
+	const_deps_test_fn(mut a, 'lambda_make', [lambda, lambda_read])
+	lambda_call := const_deps_test_call(mut a, 'lambda_make')
+
+	inner_read := const_deps_test_read(mut a, 'dep')
+	const_deps_test_fn(mut a, 'inner_make', [inner_read])
+	outer_decl := const_deps_test_decl(mut a, 'dep')
+	inner_call := const_deps_test_call(mut a, 'inner_make')
+	inner_call_stmt := add_const_deps_test_node(mut a, .expr_stmt, '', [inner_call])
+	const_deps_test_fn(mut a, 'outer_make', [outer_decl, inner_call_stmt])
+	outer_call := const_deps_test_call(mut a, 'outer_make')
+
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
 	mut g := FlatGen.new()
 	g.a = &a
-	mut names := map[string]bool{}
-	g.collect_fn_scope_names(outer_fn, mut names)
+	g.tc = &tc
+	g.const_vals['dep'] = dep_value
+	g.const_modules['dep'] = 'main'
 
-	assert names['outer_param']
-	assert names['outer_local']
-	assert !names['lambda_param']
-	assert !names['lambda_local']
-	assert !names['fn_param']
+	assert 'dep' in g.const_get_deps(later_call)
+	assert 'dep' in g.const_get_deps(nested_call)
+	assert 'dep' !in g.const_get_deps(prior_call)
+	assert 'dep' in g.const_get_deps(lambda_call)
+	assert 'dep' in g.const_get_deps(outer_call)
 }

@@ -9150,6 +9150,56 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 		return
 	}
 	node := g.a.nodes[int(val_id)]
+	match node.kind {
+		.fn_literal, .lambda_expr {
+			// Nested functions have their own lexical scope and are not executed merely
+			// because the enclosing helper is called.
+			return
+		}
+		.fn_decl {
+			mut fn_shadowed := shadowed.clone()
+			for i in 0 .. node.children_count {
+				child := g.a.child_node(&node, i)
+				if child.kind == .param && child.value.len > 0 {
+					fn_shadowed[child.value] = true
+				}
+			}
+			for i in 0 .. node.children_count {
+				child_id := g.a.child(&node, i)
+				if g.a.nodes[int(child_id)].kind != .param {
+					g.const_collect_deps_inner(child_id, mut deps, mut visited_fns, fn_shadowed)
+				}
+			}
+			return
+		}
+		.block {
+			mut block_shadowed := shadowed.clone()
+			g.const_collect_scope_children(node, 0, mut deps, mut visited_fns, mut block_shadowed)
+			return
+		}
+		.decl_assign {
+			g.const_collect_decl_assign_deps(node, mut deps, mut visited_fns, shadowed)
+			return
+		}
+		.if_expr {
+			g.const_collect_if_deps(node, mut deps, mut visited_fns, shadowed)
+			return
+		}
+		.for_stmt {
+			g.const_collect_for_deps(node, mut deps, mut visited_fns, shadowed)
+			return
+		}
+		.for_in_stmt {
+			g.const_collect_for_in_deps(node, mut deps, mut visited_fns, shadowed)
+			return
+		}
+		.match_branch {
+			g.const_collect_match_branch_deps(node, mut deps, mut visited_fns, shadowed)
+			return
+		}
+		else {}
+	}
+
 	if node.kind == .ident || node.kind == .selector {
 		if !g.const_ref_base_shadowed(node, shadowed) {
 			const_name := g.const_ref_name_from_node(node)
@@ -9225,17 +9275,170 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 				suffix_target
 			}
 			if target >= 0 {
-				// Entering a helper body: its parameters/locals shadow any consts of
-				// the same name, so they must not be collected as dependencies.
-				mut fn_shadowed := shadowed.clone()
-				g.collect_fn_scope_names(flat.NodeId(target), mut fn_shadowed)
+				// A callee starts a fresh lexical scope; bindings in the caller do not
+				// shadow const references inside the called helper.
 				g.const_collect_deps_inner(flat.NodeId(target), mut deps, mut visited_fns,
-					fn_shadowed)
+					map[string]bool{})
 			}
 		}
 	}
 	for i in 0 .. node.children_count {
 		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
+	}
+}
+
+fn (g &FlatGen) const_collect_scope_children(node flat.Node, start int, mut deps []string, mut visited_fns map[string]bool, mut shadowed map[string]bool) {
+	for i in start .. node.children_count {
+		child_id := g.a.child(&node, i)
+		child := g.a.nodes[int(child_id)]
+		if child.kind == .decl_assign {
+			g.const_collect_decl_assign_deps(child, mut deps, mut visited_fns, shadowed)
+			g.const_add_decl_assign_bindings(child, mut shadowed)
+		} else {
+			g.const_collect_deps_inner(child_id, mut deps, mut visited_fns, shadowed)
+		}
+	}
+}
+
+fn (g &FlatGen) const_decl_assign_is_multi_return(node flat.Node) bool {
+	if node.children_count < 3 {
+		return false
+	}
+	if _ := g.multi_return_expr_type_for_lhs_count(g.a.child(&node, 1), node.children_count - 1) {
+		return true
+	}
+	return false
+}
+
+fn (g &FlatGen) const_collect_decl_assign_deps(node flat.Node, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
+	if node.children_count < 2 {
+		return
+	}
+	if g.const_decl_assign_is_multi_return(node) {
+		g.const_collect_deps_inner(g.a.child(&node, 1), mut deps, mut visited_fns, shadowed)
+		return
+	}
+	mut i := 1
+	for i < node.children_count {
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
+		i += 2
+	}
+}
+
+fn (g &FlatGen) const_add_decl_assign_bindings(node flat.Node, mut shadowed map[string]bool) {
+	if node.children_count < 2 {
+		return
+	}
+	if g.const_decl_assign_is_multi_return(node) {
+		for i in 0 .. node.children_count {
+			if i == 1 {
+				continue
+			}
+			g.const_add_shadow_binding(g.a.child_node(&node, i), mut shadowed)
+		}
+		return
+	}
+	mut i := 0
+	for i < node.children_count {
+		g.const_add_shadow_binding(g.a.child_node(&node, i), mut shadowed)
+		i += 2
+	}
+}
+
+fn (g &FlatGen) const_add_shadow_binding(node flat.Node, mut shadowed map[string]bool) {
+	if node.kind == .ident && node.value.len > 0 && node.value != '_' {
+		shadowed[node.value] = true
+	}
+}
+
+fn (g &FlatGen) const_collect_if_deps(node flat.Node, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
+	if node.children_count == 0 {
+		return
+	}
+	cond_id := g.a.child(&node, 0)
+	cond := g.a.nodes[int(cond_id)]
+	if cond.kind == .decl_assign {
+		mut then_shadowed := shadowed.clone()
+		g.const_collect_decl_assign_deps(cond, mut deps, mut visited_fns, shadowed)
+		g.const_add_decl_assign_bindings(cond, mut then_shadowed)
+		if node.children_count > 1 {
+			g.const_collect_deps_inner(g.a.child(&node, 1), mut deps, mut visited_fns,
+				then_shadowed)
+		}
+	} else {
+		g.const_collect_deps_inner(cond_id, mut deps, mut visited_fns, shadowed)
+		if node.children_count > 1 {
+			g.const_collect_deps_inner(g.a.child(&node, 1), mut deps, mut visited_fns, shadowed)
+		}
+	}
+	for i in 2 .. node.children_count {
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
+	}
+}
+
+fn (g &FlatGen) const_collect_for_deps(node flat.Node, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
+	mut loop_shadowed := shadowed.clone()
+	if node.children_count > 0 {
+		init_id := g.a.child(&node, 0)
+		init := g.a.nodes[int(init_id)]
+		if init.kind == .decl_assign {
+			g.const_collect_decl_assign_deps(init, mut deps, mut visited_fns, shadowed)
+			g.const_add_decl_assign_bindings(init, mut loop_shadowed)
+		} else {
+			g.const_collect_deps_inner(init_id, mut deps, mut visited_fns, shadowed)
+		}
+	}
+	header_end := if node.children_count < 3 {
+		node.children_count
+	} else {
+		3
+	}
+	for i in 1 .. header_end {
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, loop_shadowed)
+	}
+	if node.children_count > 3 {
+		mut body_shadowed := loop_shadowed.clone()
+		g.const_collect_scope_children(node, 3, mut deps, mut visited_fns, mut body_shadowed)
+	}
+}
+
+fn (g &FlatGen) const_collect_for_in_deps(node flat.Node, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
+	body_start := node.value.int()
+	header_end := if body_start < node.children_count {
+		body_start
+	} else {
+		node.children_count
+	}
+	for i in 2 .. header_end {
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
+	}
+	mut body_shadowed := shadowed.clone()
+	if node.children_count > 0 {
+		g.const_add_shadow_binding(g.a.child_node(&node, 0), mut body_shadowed)
+	}
+	if node.children_count > 1 {
+		g.const_add_shadow_binding(g.a.child_node(&node, 1), mut body_shadowed)
+	}
+	if body_start < node.children_count {
+		g.const_collect_scope_children(node, body_start, mut deps, mut visited_fns, mut
+			body_shadowed)
+	}
+}
+
+fn (g &FlatGen) const_collect_match_branch_deps(node flat.Node, mut deps []string, mut visited_fns map[string]bool, shadowed map[string]bool) {
+	condition_count := if node.value == 'else' { 0 } else { node.value.int() }
+	body_start := if condition_count < node.children_count {
+		condition_count
+	} else {
+		node.children_count
+	}
+	for i in 0 .. body_start {
+		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
+	}
+	if condition_count < node.children_count {
+		mut branch_shadowed := shadowed.clone()
+		g.const_collect_scope_children(node, condition_count, mut deps, mut visited_fns, mut
+			branch_shadowed)
 	}
 }
 
@@ -9253,33 +9456,6 @@ fn (g &FlatGen) const_ref_base_shadowed(node flat.Node, shadowed map[string]bool
 		return base.kind == .ident && shadowed[base.value]
 	}
 	return false
-}
-
-// collect_fn_scope_names gathers the parameter and local (`:=`) names declared within
-// a helper body, so const dependency collection can skip identifiers that shadow consts.
-fn (g &FlatGen) collect_fn_scope_names(id flat.NodeId, mut names map[string]bool) {
-	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return
-	}
-	node := g.a.nodes[int(id)]
-	// A nested function has its own lexical scope. Its bindings must not shadow
-	// const references in the enclosing helper body.
-	if node.kind in [.fn_literal, .lambda_expr] {
-		return
-	}
-	if node.kind == .param {
-		if node.value.len > 0 {
-			names[node.value] = true
-		}
-	} else if node.kind == .decl_assign && node.children_count > 0 {
-		lhs := g.a.child_node(&node, 0)
-		if lhs.kind == .ident && lhs.value.len > 0 {
-			names[lhs.value] = true
-		}
-	}
-	for i in 0 .. node.children_count {
-		g.collect_fn_scope_names(g.a.child(&node, i), mut names)
-	}
 }
 
 fn (g &FlatGen) const_refs_other_const(val_id flat.NodeId) bool {
