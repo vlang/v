@@ -112,6 +112,31 @@ fn test_const_helper_direct_body_carries_local_bindings() {
 	assert 'dep' !in g.const_get_deps(call)
 }
 
+fn test_const_helper_does_not_recurse_into_shadowed_fn_callee() {
+	mut a := flat.FlatAst.new()
+	add_const_deps_test_node(mut a, .module_decl, 'main', [])
+	wrong_value := add_const_deps_test_node(mut a, .int_literal, '41', [])
+	wrong_read := const_deps_test_read(mut a, 'wrong_dep')
+	const_deps_test_fn(mut a, 'f', [wrong_read])
+	param := add_const_deps_test_node(mut a, .param, 'f', [])
+	param_call := const_deps_test_call(mut a, 'f')
+	return_stmt := add_const_deps_test_node(mut a, .return_stmt, '', [param_call])
+	add_const_deps_test_node(mut a, .fn_decl, 'make', [param, return_stmt])
+	callee := add_const_deps_test_node(mut a, .ident, 'make', [])
+	argument := add_const_deps_test_node(mut a, .ident, 'one', [])
+	call := add_const_deps_test_node(mut a, .call, '', [callee, argument])
+
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.const_vals['wrong_dep'] = wrong_value
+	g.const_modules['wrong_dep'] = 'main'
+
+	assert 'wrong_dep' !in g.const_get_deps(call)
+}
+
 fn test_const_helper_deps_resolve_receiver_method_before_suffix_fallback() {
 	mut a := flat.FlatAst.new()
 	wrong_value := add_const_deps_test_node(mut a, .int_literal, '7', [])

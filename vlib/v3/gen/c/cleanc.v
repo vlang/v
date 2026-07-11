@@ -9203,7 +9203,8 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 			}
 		}
 	}
-	if node.kind == .call && node.children_count > 0 {
+	if node.kind == .call && node.children_count > 0
+		&& !g.const_ref_base_shadowed(g.a.child_node(&node, 0), shadowed) {
 		callee := g.a.child_node(&node, 0)
 		mut callee_name := ''
 		mut callee_module := ''
