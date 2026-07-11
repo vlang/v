@@ -217,7 +217,7 @@ fn test_v_source_for_report_keeps_prefix_and_failing_region() {
 	for i in 1 .. 61 {
 		lines << i.str()
 	}
-	src := v_source_for_report(lines, 50, 2, 3)
+	src := v_source_for_report(lines, 50, 2, 3).text
 	// leading declarations (imports/types live at the top) are kept
 	assert src.contains('1\n2\n3')
 	// the failing declaration (line 50) plus `radius` lines after it are kept
@@ -239,7 +239,7 @@ fn test_v_source_for_report_does_not_cut_prefix_mid_block() {
 	lines << '\tbad := undefined_thing' // 45 (failing)
 	lines << '}' // 46
 	// prefix_lines=5 lands inside helper's body; it must not keep a half-open `fn helper() {`
-	src := v_source_for_report(lines, 45, 2, 5)
+	src := v_source_for_report(lines, 45, 2, 5).text
 	assert src.starts_with('module main')
 	// only the brace-balanced leading line survives; the half-open helper body is not included
 	assert !src.contains('h0 :=')
@@ -264,7 +264,7 @@ fn test_v_source_for_report_extends_to_enclosing_block_end() {
 	lines << '\treturn 0' // 74
 	lines << '}' // 75 (closing brace, > radius lines after the failing line)
 	// error on line 43, radius 2 => center+radius=45, but the block only closes at line 75
-	src := v_source_for_report(lines, 43, 2, 5)
+	src := v_source_for_report(lines, 43, 2, 5).text
 	// the whole enclosing declaration is included, through its closing brace
 	assert src.contains('fn big() int {')
 	assert src.contains('bad := undefined_thing')
@@ -284,7 +284,7 @@ fn test_v_source_for_report_does_not_end_block_before_failing_line() {
 	lines << '\tbad := undefined_thing' // 44 (failing line)
 	lines << '\treturn template' // 45
 	lines << '}' // 46
-	src := v_source_for_report(lines, 44, 2, 5)
+	src := v_source_for_report(lines, 44, 2, 5).text
 	// the brace counter hits 0 on line 43, but the region end must not be accepted before the
 	// failing line, so line 44 is still present
 	assert src.contains('bad := undefined_thing')
@@ -301,7 +301,7 @@ fn test_v_source_for_report_includes_attributes_above_declaration() {
 	lines << 'fn hot(a []int) int {' // 43
 	lines << '\treturn a[0] + missing' // 44 (failing)
 	lines << '}' // 45
-	src := v_source_for_report(lines, 44, 2, 5)
+	src := v_source_for_report(lines, 44, 2, 5).text
 	// the attribute is included with the enclosing declaration, since it changes the generated C
 	assert src.contains('@[direct_array_access]')
 	assert src.contains('fn hot(a []int) int {')
@@ -322,7 +322,7 @@ fn test_v_source_for_report_includes_enclosing_declaration() {
 	lines << '\tbad := undefined_thing' // 64 (failing line, indented)
 	lines << '}' // 65
 	// error on line 64, radius 5 (window starts at 59, mid-body), prefix 3
-	src := v_source_for_report(lines, 64, 5, 3)
+	src := v_source_for_report(lines, 64, 5, 3).text
 	// the region is extended up to the enclosing `fn big() {` signature, not started mid-body
 	assert src.contains('fn big() {')
 	// it does not resume at an interior statement right after the omission marker
@@ -336,30 +336,33 @@ fn test_v_source_for_report_includes_enclosing_declaration() {
 fn test_v_source_for_report_is_contiguous_when_region_reaches_prefix() {
 	lines := ['1', '2', '3', '4', '5', '6', '7']
 	// error on line 3 with radius 2 => region reaches the top, so no omission marker
-	src := v_source_for_report(lines, 3, 2, 3)
+	src := v_source_for_report(lines, 3, 2, 3).text
 	assert src == '1\n2\n3\n4\n5'
 	assert !src.contains(c_error_v_source_omitted_notice)
 }
 
 fn test_v_source_for_report_is_empty_without_mapped_line() {
 	// no mapped V line (center <= 0) => upload no source at all
-	assert v_source_for_report(['a', 'b', 'c'], 0, 40, 40) == ''
+	assert v_source_for_report(['a', 'b', 'c'], 0, 40, 40).text == ''
 }
 
 fn test_selected_v_source_falls_back_to_input_file_without_mapping() {
 	// no V mapping (v_file empty), but a single .v input was compiled => keep the whole input,
 	// so the report still carries the failing program instead of an empty v_source
 	whole := 'module main\nfn main() {}'
-	assert selected_v_source('', [], 0, '/tmp/prog.v', whole) == whole
+	fallback := selected_v_source('', [], 0, '/tmp/prog.v', whole)
+	assert fallback.text == whole
+	// the whole-file fallback has no known failing line => head/tail bounding
+	assert fallback.focus == 0
 
 	// no mapping and the input is not a V source file (e.g. a directory target) => nothing
-	assert selected_v_source('', [], 0, '/tmp/outdir', 'ignored') == ''
+	assert selected_v_source('', [], 0, '/tmp/outdir', 'ignored').text == ''
 
 	// a real V mapping uses the failing-line chunk, not the whole input
 	lines := ['module main', 'fn a() {}', 'fn b() {}', 'fn c() {}', 'fn bad() { x }']
 	chunk := selected_v_source('/tmp/prog.v', lines, 5, '/tmp/prog.v', 'WHOLE_INPUT_IGNORED')
-	assert chunk.contains('fn bad()')
-	assert !chunk.contains('WHOLE_INPUT_IGNORED')
+	assert chunk.text.contains('fn bad()')
+	assert !chunk.text.contains('WHOLE_INPUT_IGNORED')
 }
 
 fn test_bounded_v_source_truncates_on_line_boundaries_with_comment_marker() {
@@ -369,7 +372,7 @@ fn test_bounded_v_source_truncates_on_line_boundaries_with_comment_marker() {
 	}
 	source := lines.join('\n')
 	max := 2000
-	out := bounded_v_source(source, max)
+	out := bounded_v_source(source, max, 0)
 	assert out.len <= max
 	// the marker is a V comment on its own line, so the kept source stays parseable
 	assert out.contains(c_error_v_source_truncation_notice)
@@ -383,6 +386,67 @@ fn test_bounded_v_source_truncates_on_line_boundaries_with_comment_marker() {
 		}
 		assert l.contains(' = some_value_here')
 	}
+}
+
+fn test_v_source_for_report_keeps_parenthesized_declaration() {
+	mut lines := []string{}
+	lines << 'module main' // 1
+	for i in 0 .. 40 {
+		lines << 'import mod${i}' // 2..41 (pushes the block past the prefix)
+	}
+	lines << 'const (' // 42 (parenthesized block opener, no brace)
+	for i in 0 .. 20 {
+		lines << '\tk${i} = ${i}' // 43..62
+	}
+	lines << '\tbad = undefined_thing' // 63 (failing, well before the closing paren)
+	for i in 0 .. 20 {
+		lines << '\tm${i} = ${i}' // 64..83
+	}
+	lines << ')' // 84 (parenthesized block close)
+	src := v_source_for_report(lines, 63, 2, 5).text
+	// the `const ( ... )` block is captured through its closing paren, not cut at center+radius
+	assert src.contains('const (')
+	assert src.contains('bad = undefined_thing')
+	assert src.trim_space().ends_with(')')
+	// a line well past center + radius but still inside the block is present
+	assert src.contains('m15 = 15')
+}
+
+fn test_v_source_for_report_focus_points_at_failing_line() {
+	mut lines := []string{}
+	lines << 'module main' // 1
+	for i in 0 .. 40 {
+		lines << 'const c${i} = ${i}' // 2..41
+	}
+	lines << 'fn big() {' // 42
+	for i in 0 .. 10 {
+		lines << '\ty${i} := ${i}' // 43..52
+	}
+	lines << '\tbad := missing' // 53 (failing)
+	lines << '}' // 54
+	chunk := v_source_for_report(lines, 53, 2, 5)
+	// focus is the 1-based line of the failing line within the assembled text (prefix + marker
+	// shift it), so bounding can keep a window around it
+	text_lines := chunk.text.split('\n')
+	assert chunk.focus >= 1
+	assert text_lines[chunk.focus - 1] == '\tbad := missing'
+}
+
+fn test_bounded_v_source_keeps_focus_line_window() {
+	mut lines := []string{}
+	for i in 0 .. 2000 {
+		lines << 'line_${i} = value_${i}'
+	}
+	source := lines.join('\n')
+	// the failing line is #1000 (1-based), in the middle of a block far larger than the budget
+	out := bounded_v_source(source, 2000, 1000)
+	assert out.len <= 2000
+	// the exact failing line is preserved rather than dropped as the middle
+	assert out.contains('line_999 = value_999')
+	// a window around it is kept (marker present), not the file head/tail
+	assert out.contains(c_error_v_source_truncation_notice)
+	assert !out.contains('line_0 = value_0')
+	assert !out.contains('line_1999 = value_1999')
 }
 
 fn test_numbered_context_lines_returns_five_lines_each_side() {
