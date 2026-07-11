@@ -9262,6 +9262,11 @@ fn (g &FlatGen) collect_fn_scope_names(id flat.NodeId, mut names map[string]bool
 		return
 	}
 	node := g.a.nodes[int(id)]
+	// A nested function has its own lexical scope. Its bindings must not shadow
+	// const references in the enclosing helper body.
+	if node.kind in [.fn_literal, .lambda_expr] {
+		return
+	}
 	if node.kind == .param {
 		if node.value.len > 0 {
 			names[node.value] = true
