@@ -2694,7 +2694,11 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			return t.make_call_typed('bool.str', arr1(expr), 'string')
 		}
 		'u8', 'byte', 'u16', 'u32', 'usize' {
-			return t.make_call_typed('strconv__format_uint', arr2(expr, t.make_int_literal(10)),
+			// C integer promotion would pass an untruncated `int` into the u64
+			// param (`u8(255) + u8(1)` is 256 in C); cast back to the value
+			// type first so the arithmetic wraps at the V type's width.
+			truncated := t.make_cast(clean_typ, expr, clean_typ)
+			return t.make_call_typed('strconv__format_uint', arr2(truncated, t.make_int_literal(10)),
 				'string')
 		}
 		'u64' {

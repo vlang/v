@@ -367,7 +367,32 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 	lhs := t.transform_expr_for_type(lhs_id, iface)
 	rhs := t.transform_expr_for_type(rhs_id, iface)
 	concrete_type := t.interface_box_concrete_type(lhs) or {
-		t.interface_box_concrete_type(rhs) or { return none }
+		t.interface_box_concrete_type(rhs) or {
+			// The boxed concrete type is unknown at compile time. For IError
+			// specifically, compare observable identity (msg + code) via the
+			// always-emitted C helpers, matching how error values compare in
+			// practice (`assert err == other_err`). Restricted to plain lvalue
+			// operands so no temporaries are needed.
+			lhs_orig := t.a.nodes[int(lhs_id)]
+			rhs_orig := t.a.nodes[int(rhs_id)]
+			if iface in ['IError', 'builtin.IError'] && lhs_orig.kind in [.ident, .selector]
+				&& rhs_orig.kind in [.ident, .selector] {
+				lhs_addr := t.make_prefix(.amp, lhs)
+				rhs_addr := t.make_prefix(.amp, rhs)
+				lhs_msg := t.make_call_typed('IError__msg', arr1(lhs_addr), 'string')
+				rhs_msg := t.make_call_typed('IError__msg', arr1(rhs_addr), 'string')
+				msg_eq := t.make_call_typed('string__eq', arr2(lhs_msg, rhs_msg), 'bool')
+				lhs_code := t.make_call_typed('IError__code', arr1(lhs_addr), 'int')
+				rhs_code := t.make_call_typed('IError__code', arr1(rhs_addr), 'int')
+				code_eq := t.make_infix(.eq, lhs_code, rhs_code)
+				err_eq := t.make_infix(.logical_and, msg_eq, code_eq)
+				if node.op == .ne {
+					return t.make_prefix(.not, err_eq)
+				}
+				return err_eq
+			}
+			return none
+		}
 	}
 	lhs_value := t.stable_transformed_expr_for_reuse(lhs, iface, 'iface_eq_lhs')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, iface, 'iface_eq_rhs')

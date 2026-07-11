@@ -3155,6 +3155,16 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				if lhs_type is types.Enum {
 					g.expected_enum = lhs_type.name
 				}
+				if node.op == .right_shift_unsigned_assign {
+					// `x >>>= y` -> `x = (T)((UT)(x) >> (y))` (logical shift).
+					g.gen_expr(g.a.child(&node, i))
+					g.write(' = ')
+					g.gen_unsigned_right_shift(g.a.child(&node, i), rhs_id, lhs_type)
+					g.writeln(';')
+					g.expected_enum = ''
+					i += 2
+					continue
+				}
 				if g.assign_lhs_needs_deref(g.a.child(&node, i), lhs_type, rhs_type, node.op) {
 					g.write('*')
 				}

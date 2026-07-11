@@ -101,6 +101,7 @@ mut:
 	smartcast_stack              []SmartcastContext
 	invalidated_smartcasts       map[string]bool
 	in_call_callee               bool
+	in_monomorphize_scan         bool
 	in_spawn_expr                bool
 	in_const_init                bool
 	in_return_expr               bool
@@ -6200,11 +6201,32 @@ fn (mut t Transformer) comptime_type_condition_value(cond string) ?bool {
 }
 
 fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bool {
-	clean_actual := t.comptime_condition_actual_type(actual)
+	mut clean_actual := t.comptime_condition_actual_type(actual)
 	clean_expected := expected.trim_space()
 	if clean_actual.len == 0 || clean_expected.len == 0
 		|| is_generic_fn_placeholder_name(clean_actual) {
 		return none
+	}
+	// `X.typ` / `X.unaliased_typ` metadata selectors compare the underlying type
+	// itself; strip the suffix so a substituted `SumtypeTimeValue.unaliased_typ`
+	// resolves to the concrete type instead of never matching anything.
+	for suffix in ['.unaliased_typ', '.typ'] {
+		if clean_actual.ends_with(suffix) {
+			base := clean_actual[..clean_actual.len - suffix.len].trim_space()
+			if base.len == 0 || is_generic_fn_placeholder_name(base) {
+				return none
+			}
+			clean_actual = base
+			break
+		}
+	}
+	// `$if some_var is $int` compares the VARIABLE's type; resolve the ident
+	// through the current scope before treating the text as a type name.
+	if !clean_actual.contains('.') {
+		var_typ := t.var_type(clean_actual)
+		if var_typ.len > 0 {
+			clean_actual = var_typ.trim_string_left('&')
+		}
 	}
 	normalized := t.normalize_type_alias(clean_actual)
 	match clean_expected {
@@ -7504,12 +7526,23 @@ fn (mut t Transformer) selector_base_for_field(base flat.NodeId, typ string) fla
 
 // sum_shared_field_type_name supports sum shared field type name handling for Transformer.
 fn (t &Transformer) sum_shared_field_type_name(sum_type string, field string) ?string {
+	mut visited := map[string]bool{}
+	return t.sum_shared_field_type_name_inner(sum_type, field, mut visited)
+}
+
+fn (t &Transformer) sum_shared_field_type_name_inner(sum_type string, field string, mut visited map[string]bool) ?string {
 	clean_sum := if sum_type.starts_with('&') { sum_type[1..] } else { sum_type }
 	resolved_sum := t.resolve_sum_name(clean_sum)
+	// A recursive sum (`Any = ... | []Any | map[string]Any`) revisits itself
+	// through its variants; treat the cycle as "no shared field".
+	if visited[resolved_sum] {
+		return none
+	}
+	visited[resolved_sum] = true
 	variants := t.sum_types[resolved_sum] or { return none }
 	mut common := ''
 	for variant in variants {
-		ftyp := t.sum_variant_field_type_name(variant, field) or { return none }
+		ftyp := t.sum_variant_field_type_name_inner(variant, field, mut visited) or { return none }
 		if common.len == 0 {
 			common = ftyp
 			continue
@@ -7526,10 +7559,15 @@ fn (t &Transformer) sum_shared_field_type_name(sum_type string, field string) ?s
 
 // sum_variant_field_type_name supports sum variant field type name handling for Transformer.
 fn (t &Transformer) sum_variant_field_type_name(variant string, field string) ?string {
+	mut visited := map[string]bool{}
+	return t.sum_variant_field_type_name_inner(variant, field, mut visited)
+}
+
+fn (t &Transformer) sum_variant_field_type_name_inner(variant string, field string, mut visited map[string]bool) ?string {
 	if ftyp := t.lookup_struct_field_type(variant, field) {
 		return ftyp
 	}
-	if ftyp := t.sum_shared_field_type_name(variant, field) {
+	if ftyp := t.sum_shared_field_type_name_inner(variant, field, mut visited) {
 		return ftyp
 	}
 	return none
@@ -8391,7 +8429,29 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 			pos:   node.pos
 		})
 	}
-	return t.make_string_literal(typeof_fn_type_display(generic_type_name_display(typ)))
+	return t.make_string_literal(typeof_display_type_text(typeof_fn_type_display(generic_type_name_display(typ))))
+}
+
+// typeof_display_type_text canonicalizes internal suffix-form fixed-array
+// texts (`[]int[3]`) back to V syntax (`[][3]int`) for `typeof(x).name`.
+fn typeof_display_type_text(name string) string {
+	if name.starts_with('[]') {
+		return '[]' + typeof_display_type_text(name[2..])
+	}
+	if name.starts_with('&') {
+		return '&' + typeof_display_type_text(name[1..])
+	}
+	if name.ends_with(']') && !name.starts_with('[') && !name.starts_with('map[') {
+		if open_idx := name.last_index('[') {
+			if open_idx > 0 {
+				len_text := name[open_idx + 1..name.len - 1]
+				if len_text.len > 0 && is_decimal_text(len_text) {
+					return '[${len_text}]' + typeof_display_type_text(name[..open_idx])
+				}
+			}
+		}
+	}
+	return name
 }
 
 fn (mut t Transformer) transform_typeof_idx_expr(node flat.Node) flat.NodeId {

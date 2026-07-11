@@ -667,6 +667,41 @@ fn (mut t Transformer) try_lower_map_index_append_stmt(id flat.NodeId) ?[]flat.N
 }
 
 // lower_map_init_to_runtime converts lower map init to runtime data for transform.
+// resolve_type_text_import_aliases rewrites `alias.Type` segments in a type
+// text to their canonical module (`json.Any` -> `json2.Any` under
+// `import x.json2 as json`), so texts that survive into cgen stay resolvable
+// outside the importing file's context.
+fn (t &Transformer) resolve_type_text_import_aliases(typ string) string {
+	if isnil(t.tc) || !typ.contains('.') {
+		return typ
+	}
+	if typ.starts_with('[]') {
+		return '[]' + t.resolve_type_text_import_aliases(typ[2..])
+	}
+	if typ.starts_with('&') {
+		return '&' + t.resolve_type_text_import_aliases(typ[1..])
+	}
+	if typ.starts_with('?') || typ.starts_with('!') {
+		return typ[..1] + t.resolve_type_text_import_aliases(typ[1..])
+	}
+	if typ.starts_with('map[') {
+		bracket_end := generic_matching_bracket(typ, 3)
+		if bracket_end < typ.len {
+			key := t.resolve_type_text_import_aliases(typ[4..bracket_end])
+			val := t.resolve_type_text_import_aliases(typ[bracket_end + 1..])
+			return 'map[${key}]${val}'
+		}
+		return typ
+	}
+	if typ.starts_with('[') {
+		idx := typ.index_u8(`]`)
+		if idx > 0 {
+			return typ[..idx + 1] + t.resolve_type_text_import_aliases(typ[idx + 1..])
+		}
+	}
+	return t.tc.resolve_imported_type_text_in_file(typ, t.cur_file)
+}
+
 fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node) flat.NodeId {
 	mut map_type := if node.value.len > 0 {
 		node.value
@@ -675,7 +710,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	} else {
 		t.node_type(id)
 	}
-	map_type = t.normalize_type_alias(map_type)
+	map_type = t.normalize_type_alias(t.resolve_type_text_import_aliases(map_type))
 	if !map_type.starts_with('map[') {
 		return id
 	}
