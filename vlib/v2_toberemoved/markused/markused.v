@@ -208,16 +208,23 @@ fn (mut w Walker) walk_collected() map[string]bool {
 		return all
 	}
 	mut qi := 0
-	for qi < w.queue.len {
-		idx := w.queue[qi]
-		qi++
-		info := w.fns[idx]
-		w.cur_fn_scope = w.lookup_fn_scope(info)
-		w.cur_fn_decl = info.decl
-		w.cur_fn_file = info.file
-		w.walk_stmts(info.decl.stmts, info.mod)
-		w.cur_fn_scope = unsafe { nil }
-		w.cur_fn_file = ''
+	for {
+		for qi < w.queue.len {
+			idx := w.queue[qi]
+			qi++
+			info := w.fns[idx]
+			w.cur_fn_scope = w.lookup_fn_scope(info)
+			w.cur_fn_decl = info.decl
+			w.cur_fn_file = info.file
+			w.walk_stmts(info.decl.stmts, info.mod)
+			w.cur_fn_scope = unsafe { nil }
+			w.cur_fn_file = ''
+		}
+		before := w.queue.len
+		w.seed_drop_method_roots()
+		if w.queue.len == before {
+			break
+		}
 	}
 	return w.used_keys
 }
@@ -241,20 +248,27 @@ fn (mut w Walker) walk_collected_from_flat(flat &ast.FlatAst) map[string]bool {
 		return all
 	}
 	mut qi := 0
-	for qi < w.queue.len {
-		idx := w.queue[qi]
-		qi++
-		info := w.fns[idx]
-		w.cur_fn_scope = w.lookup_fn_scope(info)
-		w.cur_fn_decl = info.decl
-		w.cur_fn_file = info.file
-		if info.decl_id >= 0 {
-			w.walk_fn_body_cursor(flat, info.decl_id, info.mod)
-		} else {
-			w.walk_stmts(info.decl.stmts, info.mod)
+	for {
+		for qi < w.queue.len {
+			idx := w.queue[qi]
+			qi++
+			info := w.fns[idx]
+			w.cur_fn_scope = w.lookup_fn_scope(info)
+			w.cur_fn_decl = info.decl
+			w.cur_fn_file = info.file
+			if info.decl_id >= 0 {
+				w.walk_fn_body_cursor(flat, info.decl_id, info.mod)
+			} else {
+				w.walk_stmts(info.decl.stmts, info.mod)
+			}
+			w.cur_fn_scope = unsafe { nil }
+			w.cur_fn_file = ''
 		}
-		w.cur_fn_scope = unsafe { nil }
-		w.cur_fn_file = ''
+		before := w.queue.len
+		w.seed_drop_method_roots()
+		if w.queue.len == before {
+			break
+		}
 	}
 	return w.used_keys
 }
@@ -1134,7 +1148,6 @@ fn (mut w Walker) seed_roots() bool {
 				}
 			}
 			w.seed_top_level_initializer_roots()
-			w.seed_drop_method_roots()
 		}
 		return true
 	}
@@ -1151,7 +1164,6 @@ fn (mut w Walker) seed_roots() bool {
 			w.seed_generic_specialization_roots()
 			w.seed_codegen_required_roots()
 			w.seed_top_level_initializer_roots()
-			w.seed_drop_method_roots()
 		}
 	}
 	return has_root
@@ -1179,7 +1191,6 @@ fn (mut w Walker) seed_roots_from_flat(flat &ast.FlatAst) bool {
 				}
 			}
 			w.seed_top_level_initializer_roots_from_flat(flat)
-			w.seed_drop_method_roots()
 		}
 		return true
 	}
@@ -1194,7 +1205,6 @@ fn (mut w Walker) seed_roots_from_flat(flat &ast.FlatAst) bool {
 			w.seed_generic_specialization_roots()
 			w.seed_codegen_required_roots()
 			w.seed_top_level_initializer_roots_from_flat(flat)
-			w.seed_drop_method_roots()
 		}
 	}
 	return has_root
@@ -1218,7 +1228,10 @@ fn (mut w Walker) seed_drop_method_roots() {
 		return
 	}
 	mut seen := map[string]bool{}
-	for _, entries in w.env.drop_at_fn_exit {
+	for fn_name, entries in w.env.drop_at_fn_exit {
+		if !drop_schedule_fn_is_used(fn_name, w.used_keys) {
+			continue
+		}
 		for entry in entries {
 			if entry.type_name.len == 0 || entry.type_name in seen {
 				continue
@@ -1227,6 +1240,84 @@ fn (mut w Walker) seed_drop_method_roots() {
 			w.mark_method_name('drop', [entry.type_name])
 		}
 	}
+	for fn_name, snapshots in w.env.drop_at_returns {
+		if !drop_schedule_fn_is_used(fn_name, w.used_keys) {
+			continue
+		}
+		for entries in snapshots {
+			for entry in entries {
+				if entry.type_name.len == 0 || entry.type_name in seen {
+					continue
+				}
+				seen[entry.type_name] = true
+				w.mark_method_name('drop', [entry.type_name])
+			}
+		}
+	}
+	// A generic receiver's concrete type is recorded in the drop schedule,
+	// while its declaration is indexed under the source-level receiver. Match
+	// only those generic drop declarations whose receiver appears in the
+	// schedule; retaining every drop method pulls unrelated generic modules
+	// into small programs.
+	for i, info in w.fns {
+		if !info.decl.is_method || info.decl.name != 'drop' {
+			continue
+		}
+		for receiver in receiver_names_from_decl(info.mod, info.decl, w.env) {
+			if drop_receiver_is_scheduled(receiver, seen) {
+				w.mark_method_name('drop', [receiver])
+				w.mark_fn(i)
+				break
+			}
+		}
+	}
+}
+
+fn drop_schedule_fn_is_used(fn_name string, used map[string]bool) bool {
+	if fn_name in used {
+		return true
+	}
+	for key, _ in used {
+		parts := key.split('|')
+		if parts.len < 3 {
+			continue
+		}
+		callable := parts[parts.len - 1]
+		if fn_name == callable || fn_name.ends_with('__${callable}') {
+			return true
+		}
+		if parts.len >= 5 && parts[1] == 'm' {
+			method_name := '${parts[2]}__${callable}'
+			if fn_name == method_name || fn_name.ends_with('__${method_name}') {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn drop_receiver_is_scheduled(receiver string, scheduled map[string]bool) bool {
+	mut receiver_base := sanitize_receiver_name(receiver)
+	if receiver_base.contains('[') {
+		receiver_base = receiver_base.all_before('[')
+	}
+	if receiver_base.contains('_T_') {
+		receiver_base = receiver_base.all_before('_T_')
+	}
+	for scheduled_name, _ in scheduled {
+		mut scheduled_base := sanitize_receiver_name(scheduled_name)
+		if scheduled_base.contains('[') {
+			scheduled_base = scheduled_base.all_before('[')
+		}
+		if scheduled_base.contains('_T_') {
+			scheduled_base = scheduled_base.all_before('_T_')
+		}
+		if receiver_base == scheduled_base
+			|| receiver_base.all_after_last('__') == scheduled_base.all_after_last('__') {
+			return true
+		}
+	}
+	return false
 }
 
 fn (w &Walker) is_codegen_required_root(info FnInfo) bool {

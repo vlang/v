@@ -8,6 +8,7 @@ fn C.GetProcAddress(handle voidptr, procname &u8) voidptr
 fn C.TerminateProcess(process HANDLE, exit_code u32) bool
 fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize i32, lpBytesRead voidptr, lpTotalBytesAvail voidptr,
 	lpBytesLeftThisMessage voidptr) bool
+fn C.CreateFileW(lpFileName &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes voidptr, dwCreationDisposition u32, dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
 type FN_NTSuspendResume = fn (voidptr) u64
 
@@ -86,12 +87,24 @@ fn (mut p Process) win_spawn_process() int {
 		sa.n_length = sizeof(C.SECURITY_ATTRIBUTES)
 		sa.b_inherit_handle = true
 
-		create_pipe_ok0 := C.CreatePipe(voidptr(&wdata.child_stdin_read),
-			voidptr(&wdata.child_stdin_write), voidptr(&sa), 65536)
-		failed_cfn_report_error(create_pipe_ok0, 'CreatePipe stdin')
-		set_handle_info_ok0 := C.SetHandleInformation(wdata.child_stdin_write,
-			C.HANDLE_FLAG_INHERIT, 0)
-		failed_cfn_report_error(set_handle_info_ok0, 'SetHandleInformation')
+		if p.has_stdin_path {
+			stdin_path_wide := p.stdin_path.to_wide()
+			to_be_freed << stdin_path_wide
+			stdin_handle := C.CreateFileW(stdin_path_wide, C.GENERIC_READ,
+				C.FILE_SHARE_READ | C.FILE_SHARE_WRITE | C.FILE_SHARE_DELETE, voidptr(&sa),
+				C.OPEN_EXISTING, C.FILE_ATTRIBUTE_NORMAL, 0)
+			if stdin_handle == C.INVALID_HANDLE_VALUE {
+				failed_cfn_report_error(false, 'CreateFileW stdin')
+			}
+			wdata.child_stdin_read = &u32(stdin_handle)
+		} else {
+			create_pipe_ok0 := C.CreatePipe(voidptr(&wdata.child_stdin_read),
+				voidptr(&wdata.child_stdin_write), voidptr(&sa), 65536)
+			failed_cfn_report_error(create_pipe_ok0, 'CreatePipe stdin')
+			set_handle_info_ok0 := C.SetHandleInformation(wdata.child_stdin_write,
+				C.HANDLE_FLAG_INHERIT, 0)
+			failed_cfn_report_error(set_handle_info_ok0, 'SetHandleInformation')
+		}
 		create_pipe_ok1 := C.CreatePipe(voidptr(&wdata.child_stdout_read),
 			voidptr(&wdata.child_stdout_write), voidptr(&sa), 65536)
 		failed_cfn_report_error(create_pipe_ok1, 'CreatePipe stdout')

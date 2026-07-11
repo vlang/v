@@ -99,6 +99,26 @@ fn main() {
 	assert c_idx >= 0 && b_idx > c_idx && a_idx > b_idx, 'drops must fire LIFO (c,b,a), got: ${output}'
 }
 
+fn test_drop_fires_for_generic_struct() {
+	code := "
+struct Box[T] implements Drop {
+	id T
+}
+
+fn (mut self Box[T]) drop() {
+	println('dropping generic')
+}
+
+fn main() {
+	value := Box[int]{id: 7}
+	_ = value.id
+}
+"
+	exit_code, output := run_drop_program(code)
+	assert exit_code == 0, 'program should exit 0, got ${exit_code}: ${output}'
+	assert output.contains('dropping generic'), 'generic Drop binding must be dropped, got: ${output}'
+}
+
 fn test_drop_skipped_for_moved_binding() {
 	code := "
 struct Foo implements Drop, Owned {

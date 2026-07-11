@@ -6529,7 +6529,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		return
 	}
 	if kind_id == 45 {
-		tc.check_block(node)
+		tc.check_block(id, node)
 		return
 	}
 	if node.kind == .comptime_if {
@@ -7515,6 +7515,11 @@ fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
 	}
 	inner_id := tc.a.child(&node, 0)
 	tc.check_node(inner_id)
+	$if ownership ? {
+		if node.value in ['!', '?'] {
+			tc.ownership_record_propagation_drops()
+		}
+	}
 	if node.children_count < 2 || node.value in ['!', '?'] {
 		return
 	}
@@ -7602,8 +7607,11 @@ fn (mut tc TypeChecker) check_lambda_expr(node flat.Node) {
 }
 
 // check_block validates check block state for types.
-fn (mut tc TypeChecker) check_block(node flat.Node) {
+fn (mut tc TypeChecker) check_block(id flat.NodeId, node flat.Node) {
 	tc.push_scope()
+	$if ownership ? {
+		tc.ownership_mark_scope_node(id)
+	}
 	tc.check_statement_sequence(node, 0, false)
 	tc.pop_scope()
 }
@@ -7660,6 +7668,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		} else {
 			tc.ownership_merge_loop_continue_snapshots()
 		}
+		tc.ownership_record_current_loop_iteration_drops()
 		if body_reaches_post {
 			tc.ownership_end_loop_branch(node, 3)
 		}
@@ -7742,6 +7751,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.check_stmt_node(tc.a.child(&node, i))
 	}
 	$if ownership ? {
+		tc.ownership_record_current_loop_iteration_drops()
 		tc.ownership_merge_loop_continue_snapshots()
 		tc.ownership_end_loop_branch(node, header)
 		tc.ownership_add_branch_group_base()
@@ -13880,6 +13890,9 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		}
 	}
 	tc.push_scope()
+	$if ownership ? {
+		tc.ownership_mark_scope_node(then_id)
+	}
 	for binding in guard_bindings {
 		$if ownership ? {
 			tc.ownership_note_binding(binding.name, binding.typ, cond_id)
@@ -14051,6 +14064,9 @@ fn (mut tc TypeChecker) check_branch_node(id flat.NodeId, value_tail bool) {
 	node := tc.a.nodes[int(id)]
 	if node.kind == .block {
 		tc.push_scope()
+		$if ownership ? {
+			tc.ownership_mark_scope_node(id)
+		}
 		tc.check_statement_sequence(node, 0, value_tail)
 		tc.pop_scope()
 		return

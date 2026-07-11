@@ -73,6 +73,7 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	}
 	g.loop_depth--
 	g.gen_defers_from(defer_start)
+	g.gen_loop_iteration_ownership_drops()
 	g.trim_defers(defer_start)
 	g.indent--
 	g.writeln('}')
@@ -256,6 +257,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			for i in body_start .. node.children_count {
 				g.gen_node(g.a.child(&node, i))
 			}
+			g.gen_loop_iteration_ownership_drops()
 			g.loop_depth--
 			g.indent--
 			g.writeln('}')
@@ -274,6 +276,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	for i in body_start .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
+	g.gen_loop_iteration_ownership_drops()
 	g.loop_depth--
 	g.indent--
 	g.writeln('}')
@@ -324,6 +327,7 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 	for i in body_start .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
+	g.gen_loop_iteration_ownership_drops()
 	g.loop_depth--
 	g.indent--
 	g.writeln('}')

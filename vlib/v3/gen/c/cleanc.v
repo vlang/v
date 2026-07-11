@@ -153,23 +153,30 @@ mut:
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
 	// but a literal in a local decl / argument elsewhere in the body does not.
-	in_return                 bool
-	expected_expr_type        types.Type = types.Type(types.void_)
-	expected_enum             string
-	needed_optional_types     map[string]string
-	emitted_optional_types    map[string]bool
-	emitted_fns               map[string]bool
-	array_method_cache        map[string]string
-	param_types_cache         map[string][]types.Type        // (name|fallback) -> resolved param types
-	embedded_fields_by_type   map[string][]types.StructField // type name -> its embedded fields (usually empty)
-	param_types_by_short      map[string][]types.Type        // method short-name suffix -> param types (fallback index)
-	generic_method_candidates map[string][]GenericMethodCandidate
-	spawn_wrapper_names       map[string]string
-	spawn_wrapper_defs        []string
-	callback_wrapper_names    map[string]string
-	callback_wrapper_defs     []string
-	parallel_used             bool
-	c_name_cache              &CNameCache = unsafe { nil }
+	in_return                      bool
+	cur_return_node_id             int = -1
+	ownership_return_index         int
+	ownership_propagation_index    int
+	ownership_loop_control_index   int
+	ownership_loop_iteration_index int
+	ownership_scope_index          int
+	cur_return_drops               []types.OwnershipDropEntry
+	expected_expr_type             types.Type = types.Type(types.void_)
+	expected_enum                  string
+	needed_optional_types          map[string]string
+	emitted_optional_types         map[string]bool
+	emitted_fns                    map[string]bool
+	array_method_cache             map[string]string
+	param_types_cache              map[string][]types.Type        // (name|fallback) -> resolved param types
+	embedded_fields_by_type        map[string][]types.StructField // type name -> its embedded fields (usually empty)
+	param_types_by_short           map[string][]types.Type        // method short-name suffix -> param types (fallback index)
+	generic_method_candidates      map[string][]GenericMethodCandidate
+	spawn_wrapper_names            map[string]string
+	spawn_wrapper_defs             []string
+	callback_wrapper_names         map[string]string
+	callback_wrapper_defs          []string
+	parallel_used                  bool
+	c_name_cache                   &CNameCache = unsafe { nil }
 	// Body-independent postamble segments emitted on helper threads while the
 	// fn-body workers run; spliced into the final output in the exact order
 	// the serial postamble produces them.
@@ -7518,6 +7525,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_timespec_struct()
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
+	g.writeln('int stat(const char* path, struct stat* buf);')
 	g.headerless_tm_struct()
 	g.writeln('struct utimbuf { time_t actime; time_t modtime; };')
 	g.writeln('time_t mktime(struct tm* timeptr);')
@@ -7600,6 +7608,7 @@ const c_headerless_libc_declared_fns = [
 	'strrchr',
 	'strstr',
 	'snprintf',
+	'stat',
 	'fcntl',
 	'pipe',
 	'close',
@@ -9981,10 +9990,26 @@ fn (mut g FlatGen) global_decls() {
 			g.tc.cur_module = old_module
 		}
 		decl_typ := g.global_storage_type(name, typ)
+		is_fn_capture := name.contains('__anon_fn_')
 		if decl_typ is types.ArrayFixed {
 			c_elem, dims := g.fixed_array_decl_parts(decl_typ)
 			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
-			g.writeln('${c_elem} ${g.cname(name)}${dims}${init};')
+			if is_fn_capture {
+				g.writeln('#if defined(__TINYC__)')
+				g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
+				g.writeln('void* pthread_getspecific(u64 key);')
+				g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
+				g.writeln('static u64 ${g.cname(name)}_key;')
+				g.writeln('static void ${g.cname(name)}_key_init(void) __attribute__((constructor));')
+				g.writeln('static void ${g.cname(name)}_key_init(void) { pthread_key_create(&${g.cname(name)}_key, free); }')
+				g.writeln('static ${c_elem} (*${g.cname(name)}_slot(void))${dims} { void* p = pthread_getspecific(${g.cname(name)}_key); if (!p) { p = calloc(1, sizeof(*${g.cname(name)}_slot())); pthread_setspecific(${g.cname(name)}_key, p); } return p; }')
+				g.writeln('#define ${g.cname(name)} (*${g.cname(name)}_slot())')
+				g.writeln('#else')
+				g.writeln('_Thread_local ${c_elem} ${g.cname(name)}${dims}${init};')
+				g.writeln('#endif')
+			} else {
+				g.writeln('${c_elem} ${g.cname(name)}${dims}${init};')
+			}
 			continue
 		}
 		mut ct := g.tc.c_type(decl_typ)
@@ -10003,6 +10028,27 @@ fn (mut g FlatGen) global_decls() {
 			continue
 		}
 		init := if g.can_use_global_brace_zero_init(decl_typ, ct) { ' = {0}' } else { '' }
+		// Capturing fn literals are immediately consumed callbacks in the V3
+		// frontend. Their lifted capture slots must nevertheless be per-thread:
+		// a process-global slot lets concurrent invocations overwrite one
+		// another before the callback runs. Native C compilers use TLS directly;
+		// TinyCC uses pthread keys because it does not implement `_Thread_local`.
+		if is_fn_capture {
+			cname := g.cname(name)
+			g.writeln('#if defined(__TINYC__)')
+			g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
+			g.writeln('void* pthread_getspecific(u64 key);')
+			g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
+			g.writeln('static u64 ${cname}_key;')
+			g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
+			g.writeln('static void ${cname}_key_init(void) { pthread_key_create(&${cname}_key, free); }')
+			g.writeln('static ${ct}* ${cname}_slot(void) { void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); pthread_setspecific(${cname}_key, p); } return (${ct}*)p; }')
+			g.writeln('#define ${cname} (*${cname}_slot())')
+			g.writeln('#else')
+			g.writeln('_Thread_local ${ct} ${cname}${init};')
+			g.writeln('#endif')
+			continue
+		}
 		// With -prealloc the arena base block is per-thread (lazily initialized
 		// on first allocation in each thread); a shared pointer would make all
 		// threads bump the same block without synchronization. cc gets real

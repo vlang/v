@@ -52,6 +52,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			}
 		}
 		g.gen_defers_from(defer_start)
+		g.gen_scope_ownership_drops()
 		g.trim_defers(defer_start)
 		g.indent--
 		g.pop_scope()
@@ -99,6 +100,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 				}
 			}
 			g.gen_defers_from(else_defer_start)
+			g.gen_scope_ownership_drops()
 			g.trim_defers(else_defer_start)
 			g.indent--
 			g.pop_scope()
@@ -342,6 +344,7 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 				}
 			}
 			g.gen_defers_from(defer_start)
+			g.gen_scope_ownership_drops()
 			g.trim_defers(defer_start)
 			g.indent--
 			g.pop_scope()

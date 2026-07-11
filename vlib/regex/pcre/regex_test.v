@@ -5,7 +5,7 @@ Copyright (c) 2026 Dario Deledda. All rights reserved.
 Use of this source code is governed by an MIT license
 that can be found in the LICENSE file.
 */
-import regex.pcre
+import regex.meta
 
 fn main() {
 	println('Running pcre tests...\n')
@@ -23,6 +23,8 @@ fn main() {
 	test_find_all()
 	test_find_from()
 	test_replace()
+	test_unicode_half_boundaries_reject_invalid_utf8_sides()
+	test_repeated_zero_width_assertions_do_not_loop()
 	// test_stress_vm()
 
 	println('\nAll tests passed!')
@@ -115,7 +117,7 @@ fn test_stress_vm() {
 	// Pattern: (a+)+b matching aaaaa....a (fails)
 	// This forces extensive backtracking.
 	short_text := 'a'.repeat(25)
-	mut r := pcre.compile(r'(a+)+b') or { panic(err) }
+	mut r := meta.compile(r'(a+)+b') or { panic(err) }
 	r.max_stack_depth = 4000 // increase the stack depth for this test
 	res := r.find(short_text)
 	assert res == none
@@ -294,7 +296,8 @@ fn test_regex() {
 	println('\n--- Testing Compilation Errors ---')
 	tst_compile_error('a++')
 	tst_compile_error('[a-z')
-	tst_compile_error('a|')
+	// Empty alternatives are valid in Rust's regex syntax.
+	tst_find('a|', 'b', '')
 }
 
 fn test_complex_quantifiers() {
@@ -364,7 +367,7 @@ fn test_named_groups() {
 
 	pattern := '(?P<year>\\d{4})-(?P<month>\\d{2})'
 	text := 'Date: 2025-01'
-	r := pcre.compile(pattern) or { panic(err) }
+	r := meta.compile(pattern) or { panic(err) }
 	m := r.find(text) or { panic('Match not found') }
 
 	assert m.groups[0] == '2025'
@@ -376,7 +379,7 @@ fn test_named_groups() {
 
 	nested_pat := '(?P<entry>key: (?P<val>\\d+))'
 	nested_txt := 'List [ key: 99 ]'
-	r_nested := pcre.compile(nested_pat) or { panic(err) }
+	r_nested := meta.compile(nested_pat) or { panic(err) }
 	m_nested := r_nested.find(nested_txt) or { panic('Match not found') }
 
 	println('Nested: entry="${r_nested.group_by_name(m_nested, 'entry')}", val="${r_nested.group_by_name(m_nested,
@@ -386,7 +389,7 @@ fn test_named_groups() {
 
 	pattern_mixed := '(?P<key>\\w+): (\\d+)'
 	text_mixed := 'Price: 100'
-	r_mixed := pcre.compile(pattern_mixed) or { panic(err) }
+	r_mixed := meta.compile(pattern_mixed) or { panic(err) }
 	m_mixed := r_mixed.find(text_mixed) or { panic('Match not found') }
 
 	assert m_mixed.groups[0] == 'Price'
@@ -395,7 +398,7 @@ fn test_named_groups() {
 
 	p_seq := '(?P<a>a)(?P<b>b)(?P<c>c)'
 	t_seq := 'abc'
-	r_seq := pcre.compile(p_seq) or { panic(err) }
+	r_seq := meta.compile(p_seq) or { panic(err) }
 	m_seq := r_seq.find(t_seq) or { panic('Match not found') }
 	assert r_seq.group_by_name(m_seq, 'a') == 'a'
 	assert r_seq.group_by_name(m_seq, 'b') == 'b'
@@ -435,7 +438,7 @@ fn test_non_capturing_groups() {
 
 fn tst_find(pattern string, text string, expected string) {
 	print('[find] Pattern: "${pattern}", Text: "${text}" -> ')
-	r := pcre.compile(pattern) or {
+	r := meta.compile(pattern) or {
 		println('Compile error: ${err}')
 		assert false, 'Unexpected compile error: ${err}'
 		return
@@ -446,7 +449,7 @@ fn tst_find(pattern string, text string, expected string) {
 
 fn tst_find_all(pattern string, text string, expected []string) {
 	print('[find_all] Pattern: "${pattern}", Text: "${text}" -> ')
-	r := pcre.compile(pattern) or { panic(err) }
+	r := meta.compile(pattern) or { panic(err) }
 	matches := r.find_all(text)
 
 	mut res_strs := []string{}
@@ -460,7 +463,7 @@ fn tst_find_all(pattern string, text string, expected []string) {
 
 fn tst_find_from(pattern string, text string, start int, expected_pos int, expected_text string) {
 	print('[find_from] Pattern: "${pattern}", Start: ${start} -> ')
-	r := pcre.compile(pattern) or { panic(err) }
+	r := meta.compile(pattern) or { panic(err) }
 	match_res := r.find_from(text, start)
 
 	if match_res != none {
@@ -475,7 +478,7 @@ fn tst_find_from(pattern string, text string, start int, expected_pos int, expec
 
 fn tst_replace(pattern string, text string, repl string, expected string) {
 	print('[replace] Pattern: "${pattern}", Repl: "${repl}" -> ')
-	r := pcre.compile(pattern) or { panic(err) }
+	r := meta.compile(pattern) or { panic(err) }
 	res := r.replace(text, repl)
 	println('Result: "${res}"')
 	assert res == expected
@@ -483,7 +486,7 @@ fn tst_replace(pattern string, text string, repl string, expected string) {
 
 fn tst_fullmatch(pattern string, text string, expected string) {
 	print('[fullmatch] Pattern: "${pattern}", Text: "${text}" -> ')
-	r := pcre.compile(pattern) or {
+	r := meta.compile(pattern) or {
 		println('Compile error: ${err}')
 		assert false, 'Unexpected compile error: ${err}'
 		return
@@ -492,7 +495,7 @@ fn tst_fullmatch(pattern string, text string, expected string) {
 	check_result(match_res, expected)
 }
 
-fn check_result(match_res ?pcre.Match, expected string) {
+fn check_result(match_res ?meta.Match, expected string) {
 	if match_res != none {
 		println('Found: "${match_res.text}" (Expected: "${expected}")')
 		assert match_res.text == expected
@@ -504,7 +507,7 @@ fn check_result(match_res ?pcre.Match, expected string) {
 
 fn tst_find_with_groups(pattern string, text string, expected_match string, expected_groups []string) {
 	print('[find+groups] Pattern: "${pattern}", Text: "${text}" -> ')
-	r := pcre.compile(pattern) or {
+	r := meta.compile(pattern) or {
 		println('Compile error: ${err}')
 		assert false, 'Unexpected compile error: ${err}'
 		return
@@ -522,7 +525,7 @@ fn tst_find_with_groups(pattern string, text string, expected_match string, expe
 
 fn tst_compile_error(pattern string) {
 	print('[compile_error] Pattern: "${pattern}" -> ')
-	_ := pcre.compile(pattern) or {
+	_ := meta.compile(pattern) or {
 		println('Caught expected error: ${err}')
 		return
 	}
@@ -584,7 +587,7 @@ fn test_compatibility_layer() {
 	// Test new_regex (alias for compile)
 	// Passing '0' as the second argument to simulate the ignored C-flag argument
 	pattern := r'(\w+)\s+(\d+)'
-	re := pcre.new_regex(pattern, 0) or {
+	re := meta.new_regex(pattern, 0) or {
 		assert false, 'new_regex failed to compile: ${err}'
 		return
 	}
@@ -669,7 +672,7 @@ fn test_duplicate_named_groups() {
 	// Compile error: same name used twice
 	tst_compile_error(r'(?P<id>\d+)-(?P<id>\w+)')
 	// Different names are fine
-	r := pcre.compile(r'(?P<a>\d+)-(?P<b>\w+)') or {
+	r := meta.compile(r'(?P<a>\d+)-(?P<b>\w+)') or {
 		assert false, 'Should compile: ${err}'
 		return
 	}
@@ -687,7 +690,7 @@ fn test_invalid_quantifier_ranges() {
 	tst_compile_error(r'a{5,2}')
 	// negative min-like patterns (parsed as 0)
 	// {0,0} should compile and match empty string
-	r := pcre.compile(r'a{0,0}b') or {
+	r := meta.compile(r'a{0,0}b') or {
 		assert false, 'Should compile: ${err}'
 		return
 	}
@@ -699,19 +702,26 @@ fn test_invalid_quantifier_ranges() {
 }
 
 fn test_find_all_utf8_safety() {
-	// find_all with an empty-matching pattern must not get stuck inside a multi-byte rune
-	r := pcre.compile(r'x*') or { panic(err) }
+	// The bytes matcher permits empty matches between the bytes of a multi-byte rune.
+	r := meta.compile(r'x*') or { panic(err) }
 	matches := r.find_all('aé') // 'é' is 2 bytes (0xC3 0xA9)
-	// Every result start/end must align on a rune boundary
-	for m in matches {
-		text_bytes := 'aé'.bytes()
-		if m.start < text_bytes.len {
-			// byte at start must not be a UTF-8 continuation byte
-			assert (text_bytes[m.start] & 0xC0) != 0x80, 'Misaligned match start at ${m.start}'
-		}
-	}
+	assert matches.map(it.start) == [0, 1, 2, 3]
 	// find_all should not infinite-loop on emoji
-	r2 := pcre.compile(r'y*') or { panic(err) }
+	r2 := meta.compile(r'y*') or { panic(err) }
 	matches2 := r2.find_all('😀!')
 	assert matches2.len > 0
+}
+
+fn test_unicode_half_boundaries_reject_invalid_utf8_sides() {
+	end_half := meta.compile(r'\b{end-half-unicode}(?-u:\xFF)') or { panic(err) }
+	assert end_half.find([u8(0xff)].bytestr()) == none
+	start_half := meta.compile(r'(?-u:\xFF)\b{start-half-unicode}') or { panic(err) }
+	assert start_half.find([u8(0xff)].bytestr()) == none
+}
+
+fn test_repeated_zero_width_assertions_do_not_loop() {
+	for pattern in [r'^*a', r'$+?', r'\b{end-half-unicode}{1,3}a'] {
+		re := meta.compile(pattern) or { panic(err) }
+		_ := re.find('a')
+	}
 }

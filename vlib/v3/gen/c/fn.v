@@ -2542,6 +2542,12 @@ fn (g &FlatGen) resolved_method_name_for_spawn(clean_type types.Type, method str
 fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.tc.cur_module = module_name
 	g.cur_fn_name = node.value
+	g.ownership_return_index = 0
+	g.ownership_propagation_index = 0
+	g.ownership_loop_control_index = 0
+	g.ownership_loop_iteration_index = 0
+	g.ownership_scope_index = 0
+	g.cur_return_drops = []types.OwnershipDropEntry{}
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
 	mut prelude_scan := g.collect_fn_prelude_scan(node)
@@ -2647,6 +2653,8 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 		}
 	}
 	g.gen_all_defers()
+	g.gen_ownership_drops(g.tc.ownership_drop_entries_at_fn_exit(qualify_name_in_module(module_name,
+		node.value)))
 	if is_entry_main {
 		g.writeln('return 0;')
 	} else if g.cur_fn_ret_is_optional {
@@ -4315,10 +4323,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					if g.c_typedef_nil_call(arg_id) {
 						g.write('NULL')
 					} else {
-						g.write('({${ct} _t${g.tmp_count} = ')
+						g.write('&((${ct}[]){')
 						g.gen_expr_with_expected_type(arg_id, types.unwrap_pointer(pt))
-						g.write('; &_t${g.tmp_count};})')
-						g.tmp_count++
+						g.write('})[0]')
 					}
 				} else if needs_addr && g.gen_mut_sum_lvalue_arg(arg_id, param_types[arg_idx]) {
 					// handled
@@ -8032,10 +8039,9 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		} else if needs_addr && is_rvalue {
 			pt := param_types[arg_idx]
 			ct := g.tc.c_type(types.unwrap_pointer(pt))
-			g.write('({${ct} _t${g.tmp_count} = ')
+			g.write('&((${ct}[]){')
 			g.gen_expr_with_expected_type(arg_id, types.unwrap_pointer(pt))
-			g.write('; &_t${g.tmp_count};})')
-			g.tmp_count++
+			g.write('})[0]')
 		} else if needs_addr && g.gen_mut_sum_lvalue_arg(arg_id, param_types[arg_idx]) {
 			// handled
 		} else {
@@ -8444,10 +8450,9 @@ fn (mut g FlatGen) gen_addressed_rvalue_arg(child_id flat.NodeId, pt types.Type)
 		return true
 	}
 	ct := g.tc.c_type(types.unwrap_pointer(pt))
-	g.write('({${ct} _t${g.tmp_count} = ')
+	g.write('&((${ct}[]){')
 	g.gen_expr_with_expected_type(child_id, types.unwrap_pointer(pt))
-	g.write('; &_t${g.tmp_count};})')
-	g.tmp_count++
+	g.write('})[0]')
 	return true
 }
 
@@ -8883,6 +8888,7 @@ const c_preamble_declared_extern_symbols = {
 	'setenv':                        true
 	'signal':                        true
 	'snprintf':                      true
+	'stat':                          true
 	'sqrt':                          true
 	'strcmp':                        true
 	'strlen':                        true
@@ -10157,7 +10163,7 @@ fn (mut g FlatGen) emit_multi_return_typedef(ret types.Type, mut emitted map[str
 			g.emit_multi_return_field_option_typedefs(ret)
 			g.writeln('struct ${name} {')
 			for i, typ in ret.types {
-				mut ct := g.value_c_type(typ)
+				mut ct := g.multi_return_field_c_type(typ)
 				if ct.starts_with('fn_ptr:') {
 					ct = g.resolve_fn_ptr_type(ct)
 				}

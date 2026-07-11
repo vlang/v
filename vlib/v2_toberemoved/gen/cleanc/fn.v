@@ -6815,10 +6815,19 @@ fn (mut g Gen) emit_scheduled_drops(stmts []ast.Stmt, fn_name string) {
 		return
 	}
 	for i := entries.len - 1; i >= 0; i-- {
-		entry := entries[i]
-		g.write_indent()
-		g.sb.writeln('${entry.type_name}__drop(&${entry.var_name});')
+		g.emit_drop_entry(entries[i])
 	}
+}
+
+fn (mut g Gen) emit_drop_entry(entry types.DropEntry) {
+	mut receiver_type := g.runtime_local_types[entry.var_name] or { entry.type_name }
+	receiver_type = normalize_signature_type_name(receiver_type, entry.type_name).trim_right('*')
+	mut method_name := '${receiver_type}__drop'
+	if resolved := g.resolve_method_on_concrete_type(receiver_type, 'drop') {
+		method_name = resolved
+	}
+	g.write_indent()
+	g.sb.writeln('${method_name}(&${entry.var_name});')
 }
 
 // emit_scheduled_drops_at_return writes destructor calls for the bindings
@@ -6837,9 +6846,7 @@ fn (mut g Gen) emit_scheduled_drops_at_return() {
 	entries := g.cur_fn_return_drops[g.cur_fn_return_index]
 	g.cur_fn_return_index++
 	for i := entries.len - 1; i >= 0; i-- {
-		entry := entries[i]
-		g.write_indent()
-		g.sb.writeln('${entry.type_name}__drop(&${entry.var_name});')
+		g.emit_drop_entry(entries[i])
 	}
 }
 

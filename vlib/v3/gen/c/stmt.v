@@ -297,6 +297,7 @@ fn (mut g FlatGen) gen_goto_lock_leaves(label string) bool {
 fn (mut g FlatGen) gen_return_cleanup() {
 	if g.active_locks.len == 0 {
 		g.gen_all_defers()
+		g.gen_current_return_ownership_drops()
 		return
 	}
 	mut defer_end := g.defers.len
@@ -308,6 +309,66 @@ fn (mut g FlatGen) gen_return_cleanup() {
 	}
 	g.gen_defers_range(0, defer_end)
 	g.gen_fn_defers()
+	g.gen_current_return_ownership_drops()
+}
+
+fn (mut g FlatGen) gen_current_return_ownership_drops() {
+	g.gen_ownership_drops(g.cur_return_drops)
+}
+
+fn (mut g FlatGen) take_return_ownership_drops() []types.OwnershipDropEntry {
+	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
+	entries := g.tc.ownership_drop_entries_at_return(fn_name, g.ownership_return_index)
+	g.ownership_return_index++
+	return entries
+}
+
+fn (mut g FlatGen) gen_propagation_return_cleanup() {
+	entries := g.take_propagation_ownership_drops()
+	old_drops := g.cur_return_drops.clone()
+	g.cur_return_drops = entries
+	g.gen_return_cleanup()
+	g.cur_return_drops = old_drops
+}
+
+fn (mut g FlatGen) take_propagation_ownership_drops() []types.OwnershipDropEntry {
+	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
+	entries := g.tc.ownership_drop_entries_at_propagation(fn_name, g.ownership_propagation_index)
+	g.ownership_propagation_index++
+	return entries
+}
+
+fn (mut g FlatGen) gen_scope_ownership_drops() {
+	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
+	entries := g.tc.ownership_drop_entries_at_scope_exit(fn_name, g.ownership_scope_index)
+	g.ownership_scope_index++
+	g.gen_ownership_drops(entries)
+}
+
+fn (mut g FlatGen) gen_loop_control_ownership_drops() {
+	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
+	entries := g.tc.ownership_drop_entries_at_loop_control(fn_name, g.ownership_loop_control_index)
+	g.ownership_loop_control_index++
+	g.gen_ownership_drops(entries)
+}
+
+fn (mut g FlatGen) gen_loop_iteration_ownership_drops() {
+	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
+	entries := g.tc.ownership_drop_entries_at_loop_iteration(fn_name,
+		g.ownership_loop_iteration_index)
+	g.ownership_loop_iteration_index++
+	g.gen_ownership_drops(entries)
+}
+
+fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
+	for entry in entries {
+		method := g.resolve_method_name(entry.type_name, 'drop')
+		if method.len == 0 {
+			g.writeln('#error missing generated Drop method for ${entry.type_name}')
+			continue
+		}
+		g.writeln('${g.cname(method)}(&${g.cname(entry.name)});')
+	}
 }
 
 fn (mut g FlatGen) gen_lock_stmt(id flat.NodeId, node flat.Node) {
@@ -1181,10 +1242,25 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		}
 		.return_stmt {
 			g.in_return = true
+			old_return_node_id := g.cur_return_node_id
+			old_return_drops := g.cur_return_drops.clone()
+			g.cur_return_node_id = int(id)
+			g.cur_return_drops = if node.typ.len == 0 {
+				g.take_return_ownership_drops()
+			} else if node.typ[0] in [`!`, `?`] {
+				g.take_propagation_ownership_drops()
+			} else {
+				[]types.OwnershipDropEntry{}
+			}
+			defer {
+				g.cur_return_node_id = old_return_node_id
+				g.cur_return_drops = old_return_drops
+			}
 			if g.cur_fn_ret is types.Enum {
 				g.expected_enum = g.cur_fn_ret.name
 			}
-			if node.children_count > 0 && (g.has_pending_defers() || g.active_locks.len > 0) {
+			if node.children_count > 0
+				&& (g.has_pending_defers() || g.active_locks.len > 0 || g.cur_return_drops.len > 0) {
 				g.gen_return_with_defers(node)
 				g.expected_enum = ''
 				return
@@ -1431,6 +1507,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		}
 		.break_stmt {
 			g.gen_branch_lock_cleanup(node.value)
+			g.gen_loop_control_ownership_drops()
 			if node.value.len > 0 {
 				g.writeln('goto ${g.cname(node.value)}_break;')
 			} else {
@@ -1439,6 +1516,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		}
 		.continue_stmt {
 			g.gen_branch_lock_cleanup(node.value)
+			g.gen_loop_control_ownership_drops()
 			if node.value.len > 0 {
 				g.writeln('goto ${g.cname(node.value)}_continue;')
 			} else {
@@ -1454,6 +1532,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				g.gen_node(g.a.child(&node, i))
 			}
 			g.gen_defers_from(defer_start)
+			g.gen_scope_ownership_drops()
 			g.trim_defers(defer_start)
 			g.indent--
 			g.pop_scope()
@@ -3490,7 +3569,7 @@ fn (mut g FlatGen) gen_multi_return_or_rhs(or_node flat.Node, rhs_multi types.Mu
 	if or_node.value == '!' || or_node.value == '?' {
 		if g.cur_fn_ret_is_optional {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-			g.gen_return_cleanup()
+			g.gen_propagation_return_cleanup()
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
 			g.writeln('panic(IError__str(err));')
@@ -3883,7 +3962,7 @@ fn (mut g FlatGen) gen_assign_or_expr(node flat.Node, lhs_idx int, or_node flat.
 	if or_node.value == '!' || or_node.value == '?' {
 		if g.cur_fn_ret_is_optional {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-			g.gen_return_cleanup()
+			g.gen_propagation_return_cleanup()
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
 			g.writeln('panic(IError__str(err));')
@@ -3942,7 +4021,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 	if or_node.value == '!' || or_node.value == '?' {
 		if g.cur_fn_ret_is_optional {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-			g.gen_return_cleanup()
+			g.gen_propagation_return_cleanup()
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
 			g.writeln('panic(IError__str(err));')
@@ -4105,7 +4184,7 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 		if node.value == '!' || node.value == '?' {
 			if g.cur_fn_ret_is_optional {
 				fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-				g.gen_return_cleanup()
+				g.gen_propagation_return_cleanup()
 				g.write('return (${fn_opt_ct}){.ok = false, .err = err};')
 			} else {
 				g.write('panic(IError__str(err));')
@@ -4306,7 +4385,7 @@ fn (mut g FlatGen) gen_or_expr_stmt(node flat.Node) {
 	if node.value == '!' || node.value == '?' {
 		if g.cur_fn_ret_is_optional {
 			fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-			g.gen_return_cleanup()
+			g.gen_propagation_return_cleanup()
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
 			g.writeln('panic(IError__str(err));')

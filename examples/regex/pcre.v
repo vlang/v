@@ -1,6 +1,6 @@
 import regex.pcre
 
-// Since 2026/02/08, regex.pcre is built-in and implemented in pure V.
+// The historical regex.pcre API is a compatibility facade over regex.pcre.
 // The same example will compile and run with the C wrapper of the PCRE library
 // too, but you will need to `import pcre` instead.
 

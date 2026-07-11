@@ -88,6 +88,7 @@ pub fn (mut t Transformer) prepare_files_for_transform(files []ast.File) []ast.F
 		if prepared_dirty {
 			t.collect_generic_call_specs(prepared)
 		}
+		t.seed_generic_drop_method_specs()
 		ts_collect1 := sw.elapsed().milliseconds()
 		before_mono := t.monomorphized_specs.len
 		prepared = t.monomorphize_pass(prepared)
@@ -149,6 +150,7 @@ pub fn (mut t Transformer) prepare_flat_for_transform(flat &ast.FlatAst) map[int
 		if prepared_dirty {
 			t.collect_generic_call_specs_from_flat(flat, extra_stmts)
 		}
+		t.seed_generic_drop_method_specs()
 		ts_collect1 := sw.elapsed().milliseconds()
 		before_mono := t.monomorphized_specs.len
 		t.monomorphize_pass_from_flat(flat, mut extra_stmts)
@@ -179,6 +181,35 @@ pub fn (mut t Transformer) prepare_flat_for_transform(flat &ast.FlatAst) map[int
 	t.collect_struct_default_decl_infos_from_flat(flat, extra_stmts)
 	t.collect_concrete_embedded_owner_names_from_flat(flat, extra_stmts)
 	return extra_stmts
+}
+
+// Drop calls are inserted by the ownership backend after transformation, so
+// they are not ordinary call sites that generic monomorphization can discover.
+// Materialize a generic `drop` method for every concrete instance of its
+// receiver that was found in the program.
+fn (mut t Transformer) seed_generic_drop_method_specs() {
+	if t.generic_struct_specs.len == 0 || t.generic_fn_decl_index.len == 0 {
+		return
+	}
+	old_file_idx := t.cur_generic_call_file_idx
+	for base_name, decl in t.generic_fn_decl_index {
+		if !decl.is_method || decl.name != 'drop' || decl.typ.params.len != 0
+			|| receiver_generic_param_names(decl).len == 0 {
+			continue
+		}
+		for _, spec in t.generic_struct_specs {
+			concrete_receiver := t.specialized_receiver_type_name(decl.receiver.typ, spec.bindings) or {
+				continue
+			}
+			if concrete_receiver != spec.concrete_c_name
+				&& concrete_receiver.all_after_last('__') != spec.concrete_short_name {
+				continue
+			}
+			t.cur_generic_call_file_idx = spec.file_idx
+			t.register_generic_bindings(base_name, spec.bindings)
+		}
+	}
+	t.cur_generic_call_file_idx = old_file_idx
 }
 
 // dump_monomorphize_specs writes a deterministic snapshot of the fixpoint's

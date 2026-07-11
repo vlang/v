@@ -1,7 +1,8 @@
-# regex.pcre Module Documentation
+# regex.pcre Compatibility Module
 
-The `regex.pcre` module is a high-performance **Virtual Machine (VM)** 
-based regular expression engine for V. 
+`regex.pcre` preserves the historical import path as a compatibility facade.
+The non-backtracking automata implementation now lives in `regex.meta`; new
+code should import that module directly.
 
 ### Key Features
 - **Non-recursive VM**: Safe execution that avoids stack overflows on complex patterns.
