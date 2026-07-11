@@ -600,6 +600,33 @@ fn main() {
 	assert out == '4'
 }
 
+fn test_enum_helper_resolves_module_const() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'enum_helper_module_const', 'const base = 4
+
+fn make() int {
+	return base
+}
+
+fn from_param(base int) int {
+	return base
+}
+
+enum E {
+	a = make()
+	b = from_param(7)
+	c
+}
+
+fn main() {
+	println(int_str(int(E.a)))
+	println(int_str(int(E.b)))
+	println(int_str(int(E.c)))
+}
+')
+	assert out == '4\n7\n8'
+}
+
 fn test_backed_enum_cast_qualifies_member_reference() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'backed_enum_cast_member_reference', 'const a = 1

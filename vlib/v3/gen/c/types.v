@@ -947,13 +947,13 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 	for i in 0 .. fn_node.children_count {
 		stmt := g.a.child_node(&fn_node, i)
 		if stmt.kind == .return_stmt && stmt.children_count > 0 {
-			return g.enum_comptime_expr_value(g.a.child(stmt, 0), locals)
+			return g.enum_comptime_expr_value(g.a.child(stmt, 0), locals, enum_module)
 		}
 	}
 	return none
 }
 
-fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int) ?int {
+fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int, enum_module string) ?int {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return none
 	}
@@ -963,19 +963,23 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int) 
 			return node.value.int()
 		}
 		.ident {
-			return locals[node.value] or { none }
+			if value := locals[node.value] {
+				return value
+			}
+			lookup_module := if enum_module.len > 0 { enum_module } else { g.tc.cur_module }
+			return g.tc.const_int_value_in_module(node.value, lookup_module, []string{})
 		}
 		.paren, .cast_expr {
 			if node.children_count == 0 {
 				return none
 			}
-			return g.enum_comptime_expr_value(g.a.child(&node, 0), locals)
+			return g.enum_comptime_expr_value(g.a.child(&node, 0), locals, enum_module)
 		}
 		.prefix {
 			if node.children_count == 0 {
 				return none
 			}
-			value := g.enum_comptime_expr_value(g.a.child(&node, 0), locals)?
+			value := g.enum_comptime_expr_value(g.a.child(&node, 0), locals, enum_module)?
 			return match node.op {
 				.plus { value }
 				.minus { -value }
@@ -987,8 +991,8 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int) 
 			if node.children_count < 2 {
 				return none
 			}
-			left := g.enum_comptime_expr_value(g.a.child(&node, 0), locals)?
-			right := g.enum_comptime_expr_value(g.a.child(&node, 1), locals)?
+			left := g.enum_comptime_expr_value(g.a.child(&node, 0), locals, enum_module)?
+			right := g.enum_comptime_expr_value(g.a.child(&node, 1), locals, enum_module)?
 			if (node.op in [.div, .mod] && right == 0)
 				|| (node.op in [.left_shift, .right_shift, .right_shift_unsigned] && (right < 0
 				|| right >= 32)) {
