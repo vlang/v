@@ -681,6 +681,38 @@ fn main() {
 	assert wide_macro == ['#define E__max ((E)(18446744073709551615))']
 }
 
+fn test_enum_helper_folding_tracks_local_declarations() {
+	v3_bin := build_v3()
+	source := 'fn make_local() int {
+	x := 4
+	y := x + 2
+	y = y + 1
+	return y
+}
+
+enum Plain {
+	zero
+	local = make_local()
+	next
+}
+
+enum Backed as u64 {
+	local = make_local()
+}
+
+fn main() {
+	println(int_str(int(Plain.local)))
+	println(int_str(int(Plain.next)))
+	println(u64(Backed.local))
+}
+'
+	out := run_good(v3_bin, 'enum_helper_local_declarations', source)
+	assert out == '7\n8\n7'
+	c_source := gen_c(v3_bin, 'enum_helper_local_declarations_c', source)
+	macro := c_source.split_into_lines().filter(it.starts_with('#define Backed__local '))
+	assert macro == ['#define Backed__local ((Backed)(7))']
+}
+
 fn test_json_decode_enum_accepts_name_and_label() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'json_decode_enum_name_and_label', 'import json

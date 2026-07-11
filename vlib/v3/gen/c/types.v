@@ -969,11 +969,38 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 	}
 	for i in 0 .. fn_node.children_count {
 		stmt := g.a.child_node(&fn_node, i)
+		if stmt.kind in [.decl_assign, .assign] {
+			g.enum_comptime_update_locals(stmt, mut locals, enum_module)
+			continue
+		}
 		if stmt.kind == .return_stmt && stmt.children_count > 0 {
 			return g.enum_comptime_expr_value(g.a.child(stmt, 0), locals, enum_module)
 		}
 	}
 	return none
+}
+
+fn (g &FlatGen) enum_comptime_update_locals(stmt flat.Node, mut locals map[string]i64, enum_module string) {
+	if stmt.children_count < 2 || stmt.children_count % 2 != 0 {
+		return
+	}
+	mut i := 0
+	for i < stmt.children_count {
+		lhs := g.a.child_node(&stmt, i)
+		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
+			if stmt.kind == .decl_assign || stmt.op == .assign {
+				rhs_id := g.a.child(&stmt, i + 1)
+				if value := g.enum_comptime_expr_value(rhs_id, locals, enum_module) {
+					locals[lhs.value] = value
+				} else {
+					locals.delete(lhs.value)
+				}
+			} else {
+				locals.delete(lhs.value)
+			}
+		}
+		i += 2
+	}
 }
 
 fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]i64, enum_module string) ?i64 {
