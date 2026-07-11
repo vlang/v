@@ -770,9 +770,13 @@ fn (mut t Transformer) clone_variant_subst(id flat.NodeId, var_name string, item
 	if node.kind == .ident && node.value == var_name {
 		return t.make_variant_data_literal(item)
 	}
-	if node.kind == .selector && node.value == 'name' && node.children_count > 0
+	if node.kind == .selector && node.children_count > 0
 		&& t.typeof_arg_is_variant_typ(t.a.child(&node, 0), var_name) {
-		return t.make_string_literal(item.typ)
+		match node.value {
+			'name' { return t.make_string_literal(item.typ) }
+			'idx' { return t.make_int_literal(item.typ_id) }
+			else {}
+		}
 	}
 	if node.kind == .typeof_expr && t.typeof_arg_is_variant_typ(id, var_name) {
 		return t.make_string_literal(item.typ)

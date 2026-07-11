@@ -151,15 +151,17 @@ fn type_id(typ int) int {
 
 fn main() {
 	mut count := 0
+	mut type_ids_match := []string{}
 	$for variant in Value.variants {
 		_ = variant_type(variant)
 		_ = type_id(variant.typ)
+		type_ids_match << (typeof(variant.typ).idx == variant.typ).str()
 		count++
 	}
-	println(int_str(count))
+	println(type_ids_match.join(",") + "|" + int_str(count))
 }
 ')
-	assert out == '2'
+	assert out == 'true,true|2'
 
 	round4_run_bad(v3_bin, 'bad_variant_name_member', 'struct A {}
 struct B {}
