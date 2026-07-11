@@ -1016,7 +1016,7 @@ fn (mut t Transformer) disabled_optional_call_or_none(expr_id flat.NodeId, expr_
 	}
 	if _ := t.json_decode_or_expr_type(expr_id, expr_node) {
 		if name := t.tc.resolved_call_name(expr_id) {
-			if name == 'json.decode' {
+			if name in ['json.decode', 'json2.decode', 'x.json2.decode'] {
 				return none
 			}
 		}

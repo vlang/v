@@ -238,14 +238,14 @@ fn main() {
 	json2_output, json2_generated := selective_import_compile_run_with_extra(v3_bin,
 		'json2_decode', 'module main
 
-import x.json2 { DecoderOptions, decode }
+import x.json2
 
 struct Config {
 	value int
 }
 
 fn main() {
-	cfg := decode[Config]("{\\"value\\":2}", DecoderOptions{}) or { Config{value: 8} }
+	cfg := json2.decode[Config]("{\\"value\\":2}", json2.DecoderOptions{}) or { Config{value: 8} }
 	println(int_str(cfg.value))
 }
 ', {
@@ -256,12 +256,12 @@ pub struct DecoderOptions {}
 pub fn decode[T](val string, params DecoderOptions) !T {
 	_ = val
 	_ = params
-	return error("real decode should not be emitted")
+	return T{}
 }
 '
 	})
-	assert json2_output == '8'
-	assert !json2_generated.contains('json2__decode'), json2_generated
+	assert json2_output == '0'
+	assert json2_generated.contains('json2__decode'), json2_generated
 }
 
 fn test_selective_import_json_encode_uses_fast_path() {

@@ -2717,8 +2717,8 @@ fn (t &Transformer) call_has_source_generic_args(node flat.Node) bool {
 }
 
 fn (t &Transformer) should_skip_generic_call_specialization(decl_key string) bool {
-	return decl_key in ['json.decode', 'json2.decode', 'x.json2.decode', 'json.encode',
-		'json2.encode', 'x.json2.encode', 'veb.run_at', 'veb.run_new']
+	return decl_key in ['json.decode', 'json.encode', 'json2.encode', 'x.json2.encode', 'veb.run_at',
+		'veb.run_new']
 }
 
 fn (mut t Transformer) generic_call_decl_key(id flat.NodeId, node flat.Node, module_name string, decls map[string]GenericFnDecl) ?string {
