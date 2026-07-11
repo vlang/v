@@ -1528,6 +1528,13 @@ fn (mut w Walker) expr(node_ ast.Expr) {
 		}
 		ast.Comment {}
 		ast.EnumVal {
+			if w.table.final_sym(node.typ).kind == .function {
+				// A forward-referenced static method value is parsed as an EnumVal,
+				// because its declaration is not known to the parser yet. The checker
+				// resolves its function type, so retain the method just like an Ident
+				// function value.
+				w.fn_by_name('${node.enum_name}__static__${node.val}')
+			}
 			if e := w.table.enum_decls[node.enum_name] {
 				filtered := e.fields.filter(it.name == node.val)
 				if filtered.len != 0 && filtered[0].expr !is ast.EmptyExpr {

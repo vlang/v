@@ -10259,6 +10259,21 @@ fn (mut g Gen) ident(node ast.Ident) {
 				} else {
 					g.table.final_sym(g.unwrap_generic(resolved_var.typ))
 				}
+				if runtime_option_type.has_flag(.option) && resolved_var.is_unwrapped
+					&& smartcast_types.len == 1 {
+					option_payload_type :=
+						g.unwrap_generic(g.recheck_concrete_type(runtime_option_type)).clear_option_and_result()
+					smartcast_payload_type :=
+						g.unwrap_generic(g.recheck_concrete_type(smartcast_types[0])).clear_option_and_result()
+					// A `none` guard on `?SumType` records the unwrapped sum type as a
+					// smartcast. It only removes the option wrapper; it does not select a
+					// sumtype variant, so bypass the variant-unwrapping loop below.
+					if g.table.final_sym(option_payload_type).kind == .sum_type
+						&& smartcast_payload_type == option_payload_type {
+						g.unwrap_option_type(runtime_option_type, ident_option_name, is_auto_heap)
+						return
+					}
+				}
 				interface_scalar_smartcast_needs_deref := interface_source_is_interface
 					&& smartcast_types.len > 0 && smartcast_types.last().is_ptr()
 					&& !g.inside_selector_lhs
