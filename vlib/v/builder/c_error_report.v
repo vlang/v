@@ -9,13 +9,10 @@ import v.util.version
 const default_c_error_bug_report_url = 'https://bugs.vlang.io/bug-report'
 const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
 const c_error_context_radius = 5
-// how many V source lines to upload on each side of the failing line (the reproduction chunk,
-// wider than the pinpoint `c_error_context_radius` above, but still not the whole file)
+// how many V source lines to upload on each side of the failing line: a small chunk local to the
+// error, wider than the pinpoint `c_error_context_radius` above, but deliberately not the whole
+// file (the failing program can hold proprietary code / secrets that should not be auto-uploaded)
 const c_error_v_source_radius = 40
-// how many leading lines of the file to keep (module/imports/top-level declarations), so the
-// uploaded chunk still has what the failing region needs to compile
-const c_error_v_source_prefix_lines = 40
-const c_error_v_source_omitted_notice = '// ... unrelated source omitted for the bug report ...'
 // marker used when `v_source` itself is too large; a V comment so the kept source stays parseable
 const c_error_v_source_truncation_notice = '// ... v_source truncated for the bug report ...'
 const c_error_bug_report_max_body_bytes = 256 * 1024
@@ -50,7 +47,7 @@ pub:
 	v_file         string
 	v_line         int
 	v_context      []CErrorReportLine
-	v_source       string // leading declarations + the block around the failing line (bounded), so the failure can be reproduced without uploading the whole file
+	v_source       string // a small chunk of V source around the failing line (bounded), never the whole file
 }
 
 fn (mut v Builder) submit_c_error_bug_report(ccompiler string, c_output string) {
@@ -112,15 +109,7 @@ fn (mut v Builder) new_c_error_bug_report(ccompiler string, c_output string) CEr
 	// `v_context` shows the lines of whatever file the C error maps to (which can be an
 	// included header, not V source).
 	mapped_source := if v_file != '' { os.read_file(v_file) or { '' } } else { '' }
-	// The whole compiled input is only read when it is needed as the no-mapping fallback below,
-	// so a normal mapped error does no extra I/O.
-	input_source := if !is_v_source_file(v_file) && is_v_source_file(v.pref.path) {
-		os.read_file(v.pref.path) or { '' }
-	} else {
-		''
-	}
-	v_chunk := selected_v_source(v_file, mapped_source.split_into_lines(), v_line, v.pref.path,
-		input_source)
+	v_chunk := selected_v_source(v_file, mapped_source.split_into_lines(), v_line)
 	return CErrorBugReport{
 		kind:           'v-c-compiler-error'
 		v_version:      version.full_v_version(true)
@@ -341,182 +330,39 @@ fn codegen_build_options(p &pref.Preferences) string {
 }
 
 // VSourceChunk is the V source selected for a report, plus `focus` — the 1-based line within
-// `text` that holds the failing line (0 when it is not known, e.g. the whole-file fallback). The
-// focus lets bounding keep a window around the failing line instead of dropping the middle.
+// `text` that holds the failing line (0 when it is not known). The focus lets bounding keep a
+// window around the failing line instead of dropping the middle.
 struct VSourceChunk {
 	text  string
 	focus int
 }
 
-// selected_v_source picks the V source to upload so the failure can be reproduced. When the C
-// error maps to a V line (`v_file` is V source), it uploads just the leading declarations plus the
-// block around that line, so unrelated function bodies are not disclosed. When there is no V
-// mapping (a header error, or the vlines retry was skipped for `-parallel-cc` /
-// `-generate-c-project` / no recorded C command) but a single V file was compiled, it falls back
-// to that whole input file (`input_source`) so the report still carries the failing program.
-// It returns an empty chunk when neither is available.
-fn selected_v_source(v_file string, mapped_lines []string, v_line int, input_path string, input_source string) VSourceChunk {
+// selected_v_source picks the V source to upload. Only a small chunk around the mapped failing
+// line is ever sent (never the whole file), so a C compiler error does not auto-upload unrelated
+// or proprietary source. It returns an empty chunk when the C error does not map to a V source
+// line (a header error, or no `#line` mapping at all).
+fn selected_v_source(v_file string, mapped_lines []string, v_line int) VSourceChunk {
 	if is_v_source_file(v_file) {
-		return v_source_for_report(mapped_lines, v_line, c_error_v_source_radius,
-			c_error_v_source_prefix_lines)
-	}
-	if is_v_source_file(input_path) {
-		// no mapped line inside the whole input file: focus 0 => head/tail bounding
-		return VSourceChunk{
-			text:  input_source
-			focus: 0
-		}
+		return v_source_for_report(mapped_lines, v_line, c_error_v_source_radius)
 	}
 	return VSourceChunk{}
 }
 
-// v_source_for_report returns the V source needed to reproduce the C error without uploading the
-// whole file: the file's leading declarations plus the failing line's whole enclosing top-level
-// declaration. The region starts at the enclosing declaration (including its `@[...]` attributes)
-// and ends at that declaration's balanced closing brace, so it is a complete declaration rather
-// than a `fn ... {` cut off before its body or statements resuming after the omission comment. For
-// a single-line top-level declaration (no block) up to `radius` lines after it are kept for
-// context. The prefix is trimmed to a brace-balanced boundary within `prefix_lines`, so it never
-// ends inside a half-open declaration. Unrelated declarations in the middle are dropped. When the
-// failing region already reaches the prefix, one contiguous block is returned. It returns an empty
-// chunk when there is no mapped V line. The returned `focus` is the failing line's position within
-// the assembled text, so bounding can keep a window around it.
-fn v_source_for_report(lines []string, center int, radius int, prefix_lines int) VSourceChunk {
+// v_source_for_report returns a small window of the mapped V file: `radius` lines on each side of
+// the failing line, clamped to the file bounds. It is deliberately local to the error and never
+// the whole file, so unrelated source is not uploaded. It returns an empty chunk when there is no
+// mapped V line. The returned `focus` is the failing line's position within the window, so bounding
+// can keep it if the window still exceeds the byte budget.
+fn v_source_for_report(lines []string, center int, radius int) VSourceChunk {
 	if center <= 0 || lines.len == 0 {
 		return VSourceChunk{}
 	}
-	// begin at the enclosing declaration of the failing line, so the region is a whole block and
-	// never starts in the middle of a function body (or on a stray closing brace).
-	region_start := enclosing_decl_start(lines, center)
-	// end at the enclosing declaration's balanced closing brace, so the block is not cut open. The
-	// close is only accepted at or after the failing line, so a `}` inside a string/comment before
-	// it cannot end the region early and drop the failing line. `0` => no such block end (a
-	// single-line declaration, or unbalanced): keep up to `radius` lines of context after it.
-	decl_end := enclosing_decl_end(lines, region_start, center)
-	region_end := if decl_end > 0 {
-		decl_end
-	} else if center + radius > lines.len {
-		lines.len
-	} else {
-		center + radius
-	}
-	// The failing region already includes (or directly follows) the prefix: keep it contiguous.
-	if region_start <= prefix_lines + 1 {
-		return VSourceChunk{
-			text:  lines[..region_end].join('\n')
-			focus: center
-		}
-	}
-	region := lines[region_start - 1..region_end].join('\n')
-	// the failing line's offset within `region` (1-based)
-	region_focus := center - region_start + 1
-	// Trim the prefix so it does not end inside a half-open top-level declaration.
-	prefix_end := balanced_prefix_end(lines, prefix_lines)
-	if prefix_end == 0 {
-		return VSourceChunk{
-			text:  '${c_error_v_source_omitted_notice}\n${region}'
-			focus: 1 + region_focus // 1 omission-marker line, then the region
-		}
-	}
-	prefix := lines[..prefix_end].join('\n')
+	start := if center - radius < 1 { 1 } else { center - radius }
+	end := if center + radius > lines.len { lines.len } else { center + radius }
 	return VSourceChunk{
-		text:  '${prefix}\n${c_error_v_source_omitted_notice}\n${region}'
-		focus: prefix_end + 1 + region_focus // prefix lines, 1 marker line, then the region
+		text:  lines[start - 1..end].join('\n')
+		focus: center - start + 1
 	}
-}
-
-// enclosing_decl_start scans upward from `from_line` (1-based) to the start of the enclosing
-// top-level declaration: the nearest non-blank line with no leading indentation (`fn`/`struct`/
-// `const`/etc., whose bodies are indented), then any `@[...]` attribute lines directly above it,
-// since attributes such as `@[direct_array_access]` or `@[export]` change the generated C. It
-// returns `from_line` when no such line is found above it.
-fn enclosing_decl_start(lines []string, from_line int) int {
-	mut i := if from_line > lines.len {
-		lines.len
-	} else if from_line < 1 {
-		1
-	} else {
-		from_line
-	}
-	for i > 1 {
-		line := lines[i - 1]
-		if line.len > 0 && !line[0].is_space() {
-			break
-		}
-		i--
-	}
-	// pull in attribute lines immediately above the declaration
-	for i > 1 && lines[i - 2].starts_with('@[') {
-		i--
-	}
-	return i
-}
-
-// is_block_open reports whether `ch` opens a declaration block: a brace `{` (fn/struct/enum/...) or
-// a paren `(` (a `const (` / `__global (` / `import (` group, or a multi-line signature).
-@[inline]
-fn is_block_open(ch u8) bool {
-	return ch == `{` || ch == `(`
-}
-
-// is_block_close reports whether `ch` closes a declaration block (`}` or `)`).
-@[inline]
-fn is_block_close(ch u8) bool {
-	return ch == `}` || ch == `)`
-}
-
-// enclosing_decl_end scans downward from `start` (1-based) to the line that closes the block opened
-// by the declaration there, by counting `{`/`(` against `}`/`)` until the depth returns to 0 (so
-// parenthesized `const (` / `__global (` groups are handled as well as `{ ... }` bodies). The close
-// is only accepted at or after `min_line` (the failing line), so a `}`/`)` inside a string or comment
-// earlier in the declaration cannot end the block before the failing line and drop it from the
-// region. It returns that line, or `0` when the declaration opens no block (a single-line
-// `const`/`import`) or its delimiters never balance at/after `min_line` (unbalanced, or a
-// literal/comment miscount). Like the prefix trimming it does not track delimiters inside literals.
-fn enclosing_decl_end(lines []string, start int, min_line int) int {
-	if start < 1 || start > lines.len {
-		return 0
-	}
-	mut depth := 0
-	mut opened := false
-	for i := start; i <= lines.len; i++ {
-		for ch in lines[i - 1] {
-			if is_block_open(ch) {
-				depth++
-				opened = true
-			} else if is_block_close(ch) && depth > 0 {
-				depth--
-			}
-		}
-		if opened && depth == 0 && i >= min_line {
-			return i
-		}
-	}
-	return 0
-}
-
-// balanced_prefix_end returns how many leading lines of `lines` (at most `max_lines`) can be kept
-// so that the kept slice has balanced `{`/`(` — i.e. it does not stop inside a half-open top-level
-// declaration (a `{ ... }` body or a `const (` / `__global (` group). It is a delimiter-counting
-// heuristic (string/rune literals with stray delimiters are not tracked), which is enough to avoid
-// uploading an obviously unterminated prefix.
-fn balanced_prefix_end(lines []string, max_lines int) int {
-	limit := if max_lines > lines.len { lines.len } else { max_lines }
-	mut depth := 0
-	mut last_balanced := 0
-	for k in 0 .. limit {
-		for ch in lines[k] {
-			if is_block_open(ch) {
-				depth++
-			} else if is_block_close(ch) && depth > 0 {
-				depth--
-			}
-		}
-		if depth == 0 {
-			last_balanced = k + 1
-		}
-	}
-	return last_balanced
 }
 
 // bounded_v_source keeps the V source under `max_bytes`. The stored source is meant to be replayed
