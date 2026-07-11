@@ -801,6 +801,24 @@ fn main() {
 	assert out == '4'
 }
 
+fn test_enum_value_metadata_interpolation_stays_numeric() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_value_metadata_numeric_interpolation', "enum Color {
+	red = 7
+	blue = 42
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in Color.values {
+		rows << '\${item.value}:\${item.value:4}'
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == '7:   7|42:  42'
+}
+
 fn test_enum_value_static_pruning_resolves_forward_refs() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_static_pruning_forward_refs', "@[_allow_multiple_values]

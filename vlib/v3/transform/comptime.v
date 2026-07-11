@@ -709,15 +709,6 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
-		child := t.a.nodes[int(child_id)]
-		if node.kind == .string_interp && child.kind == .selector && child.value == 'value'
-			&& child.children_count > 0 {
-			base := t.a.child_node(&child, 0)
-			if base.kind == .ident && base.value == var_name {
-				children << t.make_comptime_enum_member(item)
-				continue
-			}
-		}
 		if c := t.clone_value_subst(child_id, var_name, item) {
 			children << c
 		}
@@ -799,17 +790,6 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, children
 
 fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId {
 	return t.make_int_literal_typed(item.value.str(), 'i64')
-}
-
-fn (mut t Transformer) make_comptime_enum_member(item EnumValueMeta) flat.NodeId {
-	if item.enum_name.len == 0 {
-		return t.make_int_literal(item.value)
-	}
-	return t.a.add_node(flat.Node{
-		kind:  .enum_val
-		value: item.name
-		typ:   item.enum_name
-	})
 }
 
 // clone_variant_subst clones a `$for variant in Sum.variants` body and gives the variant loop
