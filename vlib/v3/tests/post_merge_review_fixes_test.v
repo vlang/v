@@ -963,6 +963,42 @@ fn main() {
 ")
 	assert ierror_selector == 'true'
 
+	ierror_concrete_types := run_good(v3_bin, 'ierror_equality_concrete_type', 'struct ErrorA {}
+
+fn (err ErrorA) msg() string {
+	return "same"
+}
+
+fn (err ErrorA) code() int {
+	return 7
+}
+
+struct ErrorB {}
+
+fn (err ErrorB) msg() string {
+	return "same"
+}
+
+fn (err ErrorB) code() int {
+	return 7
+}
+
+fn make_error_a() IError {
+	return ErrorA{}
+}
+
+fn make_error_b() IError {
+	return ErrorB{}
+}
+
+fn main() {
+	println((make_error_a() == make_error_b()).str())
+	println((make_error_a() != make_error_b()).str())
+	println((make_error_a() == make_error_a()).str())
+}
+')
+	assert ierror_concrete_types == 'false\ntrue\ntrue'
+
 	shift_once := run_good(v3_bin, 'unsigned_shift_assign_lvalue_once', 'fn next(mut calls int) int {
 	calls++
 	return 0
