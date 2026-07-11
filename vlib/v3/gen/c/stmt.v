@@ -3157,10 +3157,23 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				}
 				if node.op == .right_shift_unsigned_assign {
 					// `x >>>= y` -> `x = (T)((UT)(x) >> (y))` (logical shift).
-					g.gen_expr(g.a.child(&node, i))
-					g.write(' = ')
-					g.gen_unsigned_right_shift(g.a.child(&node, i), rhs_id, lhs_type)
-					g.writeln(';')
+					lhs_assign_id := g.a.child(&node, i)
+					if g.a.nodes[int(lhs_assign_id)].kind == .ident {
+						g.gen_expr(lhs_assign_id)
+						g.write(' = ')
+						g.gen_unsigned_right_shift(lhs_assign_id, rhs_id, lhs_type)
+						g.writeln(';')
+					} else {
+						// Compound assignment evaluates its lvalue once; spill the
+						// address so `arr[next()] >>>= 1` runs the index expr once.
+						lhs_ct := g.value_c_type(lhs_type)
+						addr_tmp := g.tmp_name()
+						g.write('{ ${lhs_ct}* ${addr_tmp} = &(')
+						g.gen_expr(lhs_assign_id)
+						g.write('); *${addr_tmp} = ')
+						g.gen_unsigned_right_shift_from_text('*${addr_tmp}', rhs_id, lhs_type)
+						g.writeln('; }')
+					}
 					g.expected_enum = ''
 					i += 2
 					continue

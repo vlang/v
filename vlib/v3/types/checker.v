@@ -9034,10 +9034,23 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	}
 }
 
+// cur_fn_is_generic_template reports whether the function currently being
+// checked declares generic parameters (its body is a template that will be
+// re-validated per instantiation).
+fn (tc &TypeChecker) cur_fn_is_generic_template() bool {
+	if tc.cur_fn_node_id < 0 || tc.cur_fn_node_id >= tc.a.nodes.len {
+		return false
+	}
+	return tc.a.nodes[tc.cur_fn_node_id].generic_params.len > 0
+}
+
 // call_receiver_type_is_unknown reports whether a method call's receiver has an
 // unresolvable type (e.g. a field of a generic struct instance the checker
 // cannot see through yet); such calls cannot be validated before
 // monomorphization, so unknown-function diagnostics must not fire for them.
+// The receiver expression itself IS checked here, so genuinely invalid code
+// (`missing.method()`) still reports the unknown identifier instead of
+// silently proceeding to cgen.
 fn (mut tc TypeChecker) call_receiver_type_is_unknown(node flat.Node) bool {
 	if node.children_count == 0 {
 		return false
@@ -9046,8 +9059,13 @@ fn (mut tc TypeChecker) call_receiver_type_is_unknown(node flat.Node) bool {
 	if callee.kind != .selector || callee.children_count == 0 {
 		return false
 	}
-	base_type := tc.resolve_type(tc.a.child(callee, 0))
-	return base_type is Unknown
+	base_id := tc.a.child(callee, 0)
+	base_type := tc.resolve_type(base_id)
+	if base_type !is Unknown {
+		return false
+	}
+	tc.check_node(base_id)
+	return true
 }
 
 // call_generic_args_have_placeholders reports whether the call carries explicit
@@ -13671,7 +13689,10 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	expr_id := tc.a.child(&node, 0)
 	tc.check_node(expr_id)
 	// `x is T` in a generic template stays undecided until monomorphization.
-	if node.value.len > 0 && tc.type_text_has_generic_placeholder(node.value) {
+	// Only defer inside an actual generic function: in a non-generic one an
+	// unknown single-letter pattern is a real error and must be validated.
+	if node.value.len > 0 && tc.type_text_has_generic_placeholder(node.value)
+		&& tc.cur_fn_is_generic_template() {
 		return
 	}
 	expr_type := unalias_type(unwrap_pointer(tc.resolve_type(expr_id)))

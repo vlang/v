@@ -1165,7 +1165,6 @@ vlib/v/tests/generics/generic_selector_field_test.v
 vlib/v/tests/generics/generic_selector_indexexpr_test.v
 vlib/v/tests/generics/generic_selector_infix_test.v
 vlib/v/tests/generics/generic_selector_len_test.v
-vlib/v/tests/generics/generic_selector_type_test.v
 vlib/v/tests/generics/generic_smartcast_test.v
 vlib/v/tests/generics/generic_sort_multi_instantiation_test.v
 vlib/v/tests/generics/generic_static_method_test.v

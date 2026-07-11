@@ -2773,7 +2773,10 @@ fn (mut g FlatGen) expr_to_string_with_expected_type(id flat.NodeId, expected ty
 
 fn (mut g FlatGen) gen_amp_c_string_literal(id flat.NodeId, node flat.Node) bool {
 	if node.kind == .char_literal && node.value.starts_with('c:') {
-		g.gen_expr(id)
+		// `&c'...'` always denotes the C string pointer; emit the literal
+		// directly so a byte-valued expected type can't deref a single-char
+		// `c'\n'` into `*"\n"` here.
+		g.write('"${node.value[2..]}"')
 		return true
 	}
 	if node.kind != .char_literal && node.kind != .string_literal {
@@ -4781,11 +4784,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			v := node.value
 			if v.starts_with('c:') {
 				cv := v[2..]
-				// A single-character `c'g'` / `c'\0'` is used as a byte value:
-				// dereference the literal (reference cgen emits `*"g"`). Longer
-				// `c'...'` literals are C strings (`c'%p\n'` passed to fprintf)
-				// and must stay pointers.
-				if cv.len == 1 || (cv.len == 2 && cv[0] == `\\`) {
+				// A `c'...'` literal is a C string pointer (`C.fputs(c'\n', f)`).
+				// Only when a single-character literal is used where a byte-sized
+				// value is expected (`data[0] = c'g'`) is it dereferenced to its
+				// first byte (reference cgen emits `*"g"` there).
+				is_single_char := cv.len == 1 || (cv.len == 2 && cv[0] == `\\`)
+				expected_ct := g.value_c_type(g.expected_expr_type)
+				if is_single_char && expected_ct in ['u8', 'i8', 'char', 'u16', 'i16', 'u32', 'i32',
+					'int', 'u64', 'i64', 'rune', 'usize', 'isize'] {
 					g.write('*"${cv}"')
 				} else {
 					g.write('"${cv}"')
@@ -10147,21 +10153,28 @@ fn (mut g FlatGen) gen_prefix_op_operand(op flat.Op, child_id flat.NodeId) {
 // so sign bits are shifted out instead of extended. Shift counts >= the type
 // width (UB in C, wrapped on ARM) yield 0, matching V semantics.
 fn (mut g FlatGen) gen_unsigned_right_shift(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type) {
+	g.gen_unsigned_right_shift_from_text(g.expr_to_string(lhs_id), rhs_id, lhs_type)
+}
+
+// gen_unsigned_right_shift_from_text is gen_unsigned_right_shift with the lhs
+// already rendered as a C expression (used by `>>>=` to shift through a
+// pointer temp so the lvalue is evaluated exactly once).
+fn (mut g FlatGen) gen_unsigned_right_shift_from_text(lhs_text string, rhs_id flat.NodeId, lhs_type types.Type) {
 	ct := g.value_c_type(lhs_type)
+	// isize/usize lower to ptrdiff_t/size_t in C and are pointer-width, so
+	// their unsigned view and bit width come from size_t, not a fixed 64.
 	ut, bits := match ct {
-		'i8', 'u8' { 'u8', 8 }
-		'i16', 'u16' { 'u16', 16 }
-		'int', 'i32', 'u32' { 'u32', 32 }
-		'isize' { 'usize', 64 }
-		'usize' { 'usize', 64 }
-		else { 'u64', 64 }
+		'i8', 'u8' { 'u8', '8' }
+		'i16', 'u16' { 'u16', '16' }
+		'int', 'i32', 'u32' { 'u32', '32' }
+		'i64', 'u64' { 'u64', '64' }
+		'isize', 'usize', 'ptrdiff_t', 'size_t' { 'size_t', '(sizeof(size_t) * 8)' }
+		else { 'u64', '64' }
 	}
 	tmp := g.tmp_name()
 	g.write('({ u64 ${tmp} = (u64)(')
 	g.gen_expr(rhs_id)
-	g.write('); ${tmp} >= ${bits} ? (${ct})0 : (${ct})((${ut})(')
-	g.gen_expr(lhs_id)
-	g.write(') >> ${tmp}); })')
+	g.write('); ${tmp} >= ${bits} ? (${ct})0 : (${ct})((${ut})(${lhs_text}) >> ${tmp}); })')
 }
 
 fn (g &FlatGen) op_str(op flat.Op) string {

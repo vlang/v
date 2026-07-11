@@ -6221,11 +6221,18 @@ fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bo
 		}
 	}
 	// `$if some_var is $int` compares the VARIABLE's type; resolve the ident
-	// through the current scope before treating the text as a type name.
+	// through the current scope before treating the text as a type name. Only
+	// a `mut` param drops its internal `&` (its language-level type is `T`);
+	// a real pointer variable keeps it so `$if p is $pointer` stays true and
+	// `$if p is $int` stays false for `p &int`.
 	if !clean_actual.contains('.') {
 		var_typ := t.var_type(clean_actual)
 		if var_typ.len > 0 {
-			clean_actual = var_typ.trim_string_left('&')
+			clean_actual = if t.mut_param_values[clean_actual] {
+				var_typ.trim_string_left('&')
+			} else {
+				var_typ
+			}
 		}
 	}
 	normalized := t.normalize_type_alias(clean_actual)

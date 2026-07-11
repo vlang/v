@@ -720,6 +720,7 @@ vlib/v/tests/generics/generic_receiver_embed_test.v
 vlib/v/tests/generics/generic_resolve_test.v
 vlib/v/tests/generics/generic_return_array_generic_test.v
 vlib/v/tests/generics/generic_selector_test.v
+vlib/v/tests/generics/generic_selector_type_test.v
 vlib/v/tests/generics/generic_spawn_test.v
 vlib/v/tests/generics/generic_static_call_test.v
 vlib/v/tests/generics/generic_struct_default_interface_field_test.v

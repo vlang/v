@@ -344,6 +344,29 @@ fn (t &Transformer) is_empty_map_init(id flat.NodeId) bool {
 	return node.kind == .map_init && node.children_count == 0
 }
 
+// expr_is_plain_lvalue reports whether the expression is an addressable chain
+// of idents/selectors — no calls, indexes or other temporaries at any level.
+fn (t &Transformer) expr_is_plain_lvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value.len > 0
+		}
+		.selector {
+			if node.children_count == 0 {
+				return false
+			}
+			return t.expr_is_plain_lvalue(t.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count < 2 || node.op !in [.eq, .ne] {
 		return none
@@ -371,14 +394,22 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 			// The boxed concrete type is unknown at compile time. For IError
 			// specifically, compare observable identity (msg + code) via the
 			// always-emitted C helpers, matching how error values compare in
-			// practice (`assert err == other_err`). Restricted to plain lvalue
-			// operands so no temporaries are needed.
-			lhs_orig := t.a.nodes[int(lhs_id)]
-			rhs_orig := t.a.nodes[int(rhs_id)]
-			if iface in ['IError', 'builtin.IError'] && lhs_orig.kind in [.ident, .selector]
-				&& rhs_orig.kind in [.ident, .selector] {
-				lhs_addr := t.make_prefix(.amp, lhs)
-				rhs_addr := t.make_prefix(.amp, rhs)
+			// practice (`assert err == other_err`). The helpers take addresses,
+			// so a non-lvalue operand (a selector on a call result) is spilled
+			// to a temporary first.
+			if iface in ['IError', 'builtin.IError'] {
+				lhs_err := if t.expr_is_plain_lvalue(lhs_id) {
+					lhs
+				} else {
+					t.stable_transformed_expr_for_reuse(lhs, iface, 'ierr_eq_lhs')
+				}
+				rhs_err := if t.expr_is_plain_lvalue(rhs_id) {
+					rhs
+				} else {
+					t.stable_transformed_expr_for_reuse(rhs, iface, 'ierr_eq_rhs')
+				}
+				lhs_addr := t.make_prefix(.amp, lhs_err)
+				rhs_addr := t.make_prefix(.amp, rhs_err)
 				lhs_msg := t.make_call_typed('IError__msg', arr1(lhs_addr), 'string')
 				rhs_msg := t.make_call_typed('IError__msg', arr1(rhs_addr), 'string')
 				msg_eq := t.make_call_typed('string__eq', arr2(lhs_msg, rhs_msg), 'bool')

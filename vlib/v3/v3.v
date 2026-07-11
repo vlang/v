@@ -794,17 +794,20 @@ fn main() {
 	mut a := p.a
 	a.user_code_start = a.nodes.len
 
+	// `$if test {` must hold when compiling a test file, matching the
+	// reference compiler's implicit `test` define (which it also only sets
+	// for test-file inputs — its test runner compiles each _test.v
+	// separately, never a directory as one program). Set before input
+	// collection so define-gated support files survive filtering.
+	if 'test' !in prefs.user_defines
+		&& pref.is_test_file_for_backend(input_file, prefs.backend) {
+		prefs.user_defines << 'test'
+	}
 	// Parse user input: single file or directory
 	mut user_files := []string{}
 	if input_file.ends_with('.v') {
 		user_files << input_file
 		user_files = expand_single_test_file_inputs(user_files, prefs)
-		// `$if test {` must hold when compiling a test file, like the
-		// reference compiler's implicit `test` define.
-		if pref.is_test_file_for_backend(input_file, prefs.backend)
-			&& 'test' !in prefs.user_defines {
-			prefs.user_defines << 'test'
-		}
 	} else if os.is_dir(input_file) {
 		user_files = pref.get_v_files_from_dir(input_file, prefs.user_defines, prefs.target_os)
 		for subdir in vmod_subdirs(input_file) {
