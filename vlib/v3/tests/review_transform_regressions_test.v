@@ -519,6 +519,35 @@ fn test_generic_string_literal_matching_typeof_marker_is_preserved() {
 	assert out == '__v3_generic_type_name:T|int'
 }
 
+fn test_typeof_idx_uses_active_smartcast() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'typeof_idx_smartcast', 'struct Foo {}
+struct Bar {}
+
+type Value = Foo | Bar
+
+fn show(value Value) {
+	if value is Foo {
+		println(typeof(value).name)
+		println((typeof(value).idx == typeof[Foo]().idx).str())
+	}
+	match value {
+		Bar {
+			println(typeof(value).name)
+			println((typeof(value).idx == typeof[Bar]().idx).str())
+		}
+		else {}
+	}
+}
+
+fn main() {
+	show(Foo{})
+	show(Bar{})
+}
+')
+	assert out == 'Foo\ntrue\nBar\ntrue'
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',

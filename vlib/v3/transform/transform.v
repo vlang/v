@@ -8356,8 +8356,13 @@ fn (t &Transformer) typeof_type_name(node flat.Node) string {
 	expr_id := t.a.child(&node, 0)
 	expr := t.a.nodes[int(expr_id)]
 	mut typ := ''
+	if sc := t.find_smartcast(t.expr_key(expr_id)) {
+		typ = t.resolve_variant(sc.sum_type_name, sc.variant_name)
+	}
 	if expr.kind == .ident {
-		typ = t.raw_var_type(expr.value)
+		if typ.len == 0 {
+			typ = t.raw_var_type(expr.value)
+		}
 	}
 	if typ.len == 0 {
 		typ = t.node_type(expr_id)
