@@ -413,30 +413,6 @@ fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	println('='.repeat(header.len))
 }
 
-struct CCompilerFailureOutput {
-	display_ccompiler string
-	display_res       os.Result
-	report_ccompiler  string
-	report_res        os.Result
-}
-
-fn c_compiler_failure_output(ccompiler string, res os.Result, tcc_output os.Result) CCompilerFailureOutput {
-	if res.exit_code != 0 && tcc_output.output != '' {
-		return CCompilerFailureOutput{
-			display_ccompiler: 'tcc'
-			display_res:       tcc_output
-			report_ccompiler:  ccompiler
-			report_res:        res
-		}
-	}
-	return CCompilerFailureOutput{
-		display_ccompiler: ccompiler
-		display_res:       res
-		report_ccompiler:  ccompiler
-		report_res:        res
-	}
-}
-
 fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Result) {
 	v.post_process_c_compiler_output_with_report(ccompiler, res, ccompiler, res)
 }
@@ -1565,6 +1541,104 @@ fn (mut v Builder) generate_c_project() {
 	println('Generated C project in ${os.quoted_path(project_dir)}')
 }
 
+fn without_ccompiler_args(args []string) []string {
+	mut filtered := []string{cap: args.len}
+	mut i := 0
+	for i < args.len {
+		if args[i] == '-cc' {
+			i += 2
+			continue
+		}
+		if args[i].starts_with('-cc=') {
+			i++
+			continue
+		}
+		filtered << args[i]
+		i++
+	}
+	return filtered
+}
+
+fn (v &Builder) retry_command_boundary(args []string) int {
+	if v.pref.is_run || v.pref.is_crun {
+		command := if v.pref.is_run { 'run' } else { 'crun' }
+		idx := args.len - v.pref.run_args.len - 2
+		if idx >= 0 && args[idx] == command {
+			return idx
+		}
+		if v.pref.is_crun && v.pref.is_vsh {
+			// An implicit vsh command has no `crun` token; its run arguments locate the script.
+			script_idx := idx + 1
+			if script_idx >= 0 && os.real_path(args[script_idx]) == os.real_path(v.pref.path) {
+				return script_idx
+			}
+		}
+		return args.len
+	}
+	if v.pref.build_mode == .build_module && args.len >= 2 {
+		target_path := os.real_path(v.pref.path)
+		for idx in 0 .. args.len - 1 {
+			if args[idx] == 'build-module' && os.real_path(args[idx + 1]) == target_path {
+				return idx
+			}
+		}
+	}
+	return args.len
+}
+
+fn (v &Builder) should_forward_retry_output() bool {
+	return v.pref.show_cc || v.pref.show_c_output || v.pref.is_verbose || v.pref.is_stats
+		|| v.pref.show_timings || v.pref.show_callgraph || v.pref.show_depgraph
+		|| v.pref.dump_c_flags == '-' || v.pref.dump_modules == '-' || v.pref.dump_files == '-'
+		|| v.pref.dump_defines == '-'
+}
+
+fn (v &Builder) retry_compilation_args(original_args []string, ccompiler string) []string {
+	boundary := v.retry_command_boundary(original_args)
+	mut retry_args := without_ccompiler_args(original_args[..boundary])
+	retry_args << ['-cc', ccompiler, '-no-retry-compilation']
+	if v.pref.build_mode == .build_module {
+		retry_args << without_ccompiler_args(original_args[boundary..])
+	} else {
+		retry_args << original_args[boundary..]
+	}
+	return retry_args
+}
+
+fn (v &Builder) retry_compilation_with(ccompiler string) os.Result {
+	// Compiler comptime branches such as `$if tinyc` are resolved before C generation,
+	// so the fallback must regenerate the program instead of reusing TCC's C output.
+	all_args := util.join_env_vflags_and_os_args()
+	original_args := all_args#[1..].clone()
+	retry_args := v.retry_compilation_args(original_args, ccompiler)
+	vexe := pref.vexe_path()
+	cmd := '${os.quoted_path(vexe)} ${util.args_quote_paths(retry_args)}'
+	old_vflags := os.getenv_opt('VFLAGS')
+	old_vosargs := os.getenv_opt('VOSARGS')
+	old_vnorun := os.getenv_opt('VNORUN')
+	os.unsetenv('VFLAGS')
+	os.unsetenv('VOSARGS')
+	os.setenv('VNORUN', '1', true)
+	defer {
+		if vflags := old_vflags {
+			os.setenv('VFLAGS', vflags, true)
+		} else {
+			os.unsetenv('VFLAGS')
+		}
+		if vosargs := old_vosargs {
+			os.setenv('VOSARGS', vosargs, true)
+		} else {
+			os.unsetenv('VOSARGS')
+		}
+		if vnorun := old_vnorun {
+			os.setenv('VNORUN', vnorun, true)
+		} else {
+			os.unsetenv('VNORUN')
+		}
+	}
+	return os.execute(cmd)
+}
+
 pub fn (mut v Builder) cc() {
 	if os.executable().contains('vfmt') {
 		return
@@ -1635,7 +1709,6 @@ pub fn (mut v Builder) cc() {
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
 	mut tried_compilation_commands := []string{}
-	mut tcc_output := os.Result{}
 	original_pwd := os.getwd()
 	for {
 		// try to compile with the chosen compiler
@@ -1754,7 +1827,6 @@ pub fn (mut v Builder) cc() {
 					exit(101)
 				}
 				if v.pref.retry_compilation {
-					tcc_output = res
 					old_ccompiler := v.pref.ccompiler
 					v.pref.default_c_compiler()
 					if v.pref.ccompiler == ccompiler || is_tcc_compiler_name(v.pref.ccompiler)
@@ -1765,12 +1837,17 @@ pub fn (mut v Builder) cc() {
 					if v.pref.ccompiler != '' && v.pref.ccompiler != ccompiler {
 						if v.pref.is_verbose {
 							eprintln('Compilation with tcc failed. Retrying with ${v.pref.ccompiler} ...')
-						} else {
-							$if macos {
-								eprintln(term.red('warning: tcc compilation failed, falling back to ${v.pref.ccompiler} (this is much slower)'))
-							}
+						} else if !v.pref.is_quiet {
+							eprintln(term.red('warning: tcc compilation failed, falling back to ${v.pref.ccompiler}'))
 						}
-						continue
+						retry_res := v.retry_compilation_with(v.pref.ccompiler)
+						if retry_res.exit_code != 0 || v.should_forward_retry_output() {
+							print(retry_res.output)
+						}
+						if retry_res.exit_code != 0 {
+							exit(retry_res.exit_code)
+						}
+						return
 					}
 				}
 			}
@@ -1783,13 +1860,7 @@ pub fn (mut v Builder) cc() {
 					missing_compiler_info())
 			}
 		}
-		// If tcc failed once, and the system C compiler has failed as well,
-		// print the tcc error instead since it may contain more useful information.
-		// Keep the uploaded bug report tied to the final compiler result.
-		// See https://discord.com/channels/592103645835821068/592115457029308427/811956304314761228
-		failure_output := c_compiler_failure_output(ccompiler, res, tcc_output)
-		v.post_process_c_compiler_output_with_report(failure_output.display_ccompiler,
-			failure_output.display_res, failure_output.report_ccompiler, failure_output.report_res)
+		v.post_process_c_compiler_output(ccompiler, res)
 		// Print the C command
 		if v.pref.is_verbose {
 			println('${ccompiler}')
