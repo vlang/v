@@ -94,6 +94,19 @@ fn test_tcc_retry_inserts_fallback_flags_before_implicit_vsh_script() {
 	assert builder.retry_command_boundary(['-d', 'crun', 'crun', script_path, 'script-argument']) == 2
 }
 
+fn test_tcc_retry_finds_run_boundary_for_executable_alias() {
+	executable_path := os.join_path(os.vtmp_dir(), 'retry_executable_alias')
+	builder := &Builder{
+		pref: &pref.Preferences{
+			is_run:   true
+			path:     '${executable_path}.v'
+			run_args: ['program-argument']
+		}
+	}
+	args := ['-d', 'run', '-cc', 'tcc', 'run', executable_path, 'program-argument']
+	assert builder.retry_command_boundary(args) == 4
+}
+
 fn test_tcc_retry_reports_final_compiler_failure() {
 	if os.user_os() == 'windows' {
 		return

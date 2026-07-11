@@ -1560,28 +1560,27 @@ fn without_ccompiler_args(args []string) []string {
 }
 
 fn (v &Builder) retry_command_boundary(args []string) int {
-	command := if v.pref.build_mode == .build_module {
-		'build-module'
-	} else if v.pref.is_run {
-		'run'
-	} else if v.pref.is_crun {
-		'crun'
-	} else {
-		return args.len
-	}
-	target_path := os.real_path(v.pref.path)
-	if args.len >= 2 {
-		for idx in 0 .. args.len - 1 {
-			if args[idx] == command && os.real_path(args[idx + 1]) == target_path {
-				return idx
+	if v.pref.is_run || v.pref.is_crun {
+		command := if v.pref.is_run { 'run' } else { 'crun' }
+		idx := args.len - v.pref.run_args.len - 2
+		if idx >= 0 && args[idx] == command {
+			return idx
+		}
+		if v.pref.is_crun && v.pref.is_vsh {
+			// An implicit vsh command has no `crun` token; its run arguments locate the script.
+			script_idx := idx + 1
+			if script_idx >= 0 && os.real_path(args[script_idx]) == os.real_path(v.pref.path) {
+				return script_idx
 			}
 		}
+		return args.len
 	}
-	if v.pref.is_crun && v.pref.is_vsh {
-		// An implicit vsh command has no `crun` token; its run arguments locate the script.
-		idx := args.len - v.pref.run_args.len - 1
-		if idx >= 0 && os.real_path(args[idx]) == target_path {
-			return idx
+	if v.pref.build_mode == .build_module && args.len >= 2 {
+		target_path := os.real_path(v.pref.path)
+		for idx in 0 .. args.len - 1 {
+			if args[idx] == 'build-module' && os.real_path(args[idx + 1]) == target_path {
+				return idx
+			}
 		}
 	}
 	return args.len
