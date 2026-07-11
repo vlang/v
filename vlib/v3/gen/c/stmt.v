@@ -3159,9 +3159,12 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					// `x >>>= y` -> `x = (T)((UT)(x) >> (y))` (logical shift).
 					lhs_assign_id := g.a.child(&node, i)
 					if g.a.nodes[int(lhs_assign_id)].kind == .ident {
-						g.gen_expr(lhs_assign_id)
-						g.write(' = ')
-						g.gen_unsigned_right_shift(lhs_assign_id, rhs_id, lhs_type)
+						mut lhs_text := g.expr_to_string(lhs_assign_id)
+						if g.assign_lhs_needs_deref(lhs_assign_id, lhs_type, rhs_type, node.op) {
+							lhs_text = '*${lhs_text}'
+						}
+						g.write('${lhs_text} = ')
+						g.gen_unsigned_right_shift_from_text(lhs_text, rhs_id, lhs_type)
 						g.writeln(';')
 					} else {
 						// Compound assignment evaluates its lvalue once; spill the
