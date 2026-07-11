@@ -10050,6 +10050,9 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			return tc.call_info(local_name, false)
 		}
 		if imported_name := tc.resolve_selective_import_symbol(fn_node.value) {
+			if info := tc.decode_call_info_from_type_arg(node, imported_name, false) {
+				return info
+			}
 			return tc.call_info(imported_name, false)
 		}
 		if fn_node.value in tc.fn_ret_types {

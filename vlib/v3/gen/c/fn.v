@@ -3294,7 +3294,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		}
 	}
 	if g.is_json_decode_call(id, target_name) {
-		if target_name != 'decode' && g.gen_json_decode_call(node) {
+		if !g.is_json_decode_self_call(target_name, resolved_target_name)
+			&& g.gen_json_decode_call(node) {
 			return
 		}
 		g.gen_default_value_for_type(g.json_decode_result_type_for_call(node) or {
@@ -4930,6 +4931,11 @@ fn (g &FlatGen) is_json_decode_call(id flat.NodeId, target string) bool {
 		}
 	}
 	return g.is_json_decode_target_name(target)
+}
+
+fn (g &FlatGen) is_json_decode_self_call(target string, resolved string) bool {
+	return g.tc.cur_module == 'json' && target == 'decode'
+		&& resolved in ['', 'decode', 'json.decode']
 }
 
 fn (mut g FlatGen) gen_json_encode_call(node flat.Node) bool {
