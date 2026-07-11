@@ -48,7 +48,7 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 		// value-carrying options and explicit bare flags are recorded verbatim in build_options
 		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"', '-ldflags "-s"',
 			'-custom-prelude prelude.h', '-bare-builtin-dir bare/dir', '-macosx-version-min 10.7',
-			'-musl', '-m64', '-cc gcc']
+			'-path "my/mods"', '-musl', '-m64', '-cc gcc']
 	}
 	opts := codegen_build_options(&p)
 	assert opts.contains('autofree')
@@ -106,6 +106,8 @@ fn test_codegen_build_options_reports_flags_and_custom_defines() {
 	assert opts.contains('-bare-builtin-dir bare/dir')
 	// `-macosx-version-min` is passed to clang and selects the SDK deployment target
 	assert opts.contains('-macosx-version-min 10.7')
+	// `-path` decides which imported module is resolved, so it is kept verbatim
+	assert opts.contains('-path "my/mods"')
 	// an explicit libc flag is kept (it changes `$if musl` and the libgc C flags)
 	assert opts.split(' ').any(it == '-musl')
 	// but a libc flag that was not passed is not invented

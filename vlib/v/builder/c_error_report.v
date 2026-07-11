@@ -314,12 +314,13 @@ fn codegen_build_options(p &pref.Preferences) string {
 	//   -custom-prelude replaces the generated prelude written into the C headers
 	//   -bare-builtin-dir selects the freestanding builtin implementation
 	//   -macosx-version-min passed to clang as `-mmacosx-version-min=...`, selects the SDK target
+	//   -path           custom module lookup path, decides which imported module is resolved
 	// Bare flags (kept by exact match), only present when explicitly passed (host-detected libc
 	// defaults are not recorded, so these capture the user's explicit choice):
 	//   -musl/-glibc    force the linked libc; `-musl` also enables `$if musl` and changes libgc flags
 	//   -m32/-m64       select the target machine width, appended to the C compiler command via cflags
 	verbatim_prefixes := ['-d ', '-cflags ', '-ldflags ', '-custom-prelude ', '-bare-builtin-dir ',
-		'-macosx-version-min ']
+		'-macosx-version-min ', '-path ']
 	verbatim_flags := ['-musl', '-glibc', '-m32', '-m64']
 	for opt in p.build_options {
 		if opt in verbatim_flags || verbatim_prefixes.any(opt.starts_with(it)) {
