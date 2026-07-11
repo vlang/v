@@ -193,6 +193,46 @@ fn main() {
 		'unknown VariantData member `attrs`')
 }
 
+fn test_comptime_variants_prefer_local_sum_over_imported_short_name() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'variant_local_sum_precedence', {
+		'v.mod':         "Module { name: 'variant_local_sum_precedence' }\n"
+		'other/other.v': 'module other
+
+pub struct RemoteA {}
+pub struct RemoteB {}
+
+pub type Sum = RemoteA | RemoteB
+
+pub const marker = 1
+'
+		'main.v':        'module main
+
+import other
+
+struct LocalA {}
+struct LocalB {}
+
+type Sum = LocalA | LocalB
+
+fn main() {
+	mut names := []string{}
+	$for variant in Sum.variants {
+		names << typeof(variant.typ).name
+	}
+	mut remote_names := []string{}
+	$for variant in other.Sum.variants {
+		remote_names << typeof(variant.typ).name
+	}
+	println(names.join(","))
+	println(remote_names.join(","))
+	println(int_str(other.marker))
+}
+'
+	}, 'main.v')
+	assert out == 'LocalA,LocalB\nother.RemoteA,other.RemoteB\n1'
+}
+
 fn test_comptime_field_generic_helper_infers_matching_argument() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_generic_helper_matching_arg', 'struct S {

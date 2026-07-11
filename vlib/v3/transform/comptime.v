@@ -275,17 +275,19 @@ fn (mut t Transformer) expand_comptime_for_variants(var_name string, base_type s
 }
 
 fn (t &Transformer) comptime_sum_variants(base_type string) []VariantMeta {
-	mut resolved := base_type.trim_space()
-	mut variants := t.sum_types[resolved] or { []string{} }
-	if variants.len == 0 && !resolved.contains('.') {
-		qualified := t.qualified_alias_name(resolved)
-		if got := t.sum_types[qualified] {
-			resolved = qualified
-			variants = got.clone()
-		}
+	resolved := t.comptime_resolve_sum_type_name(base_type)
+	mut variants := if !base_type.contains('.') {
+		t.comptime_local_sum_variants(base_type.trim_space()) or { []string{} }
+	} else if isnil(t.tc) {
+		[]string{}
+	} else {
+		t.tc.sum_types[resolved] or { []string{} }
 	}
 	if variants.len == 0 && !isnil(t.tc) {
 		variants = t.tc.sum_types[resolved] or { []string{} }
+	}
+	if variants.len == 0 {
+		variants = t.sum_types[resolved] or { []string{} }
 	}
 	mut metas := []VariantMeta{cap: variants.len}
 	for variant in variants {
@@ -295,6 +297,60 @@ fn (t &Transformer) comptime_sum_variants(base_type string) []VariantMeta {
 		}
 	}
 	return metas
+}
+
+fn (t &Transformer) comptime_resolve_sum_type_name(base_type string) string {
+	base := base_type.trim_space()
+	if base.len == 0 || isnil(t.tc) {
+		return base
+	}
+	if base.contains('.') {
+		return t.resolve_imported_type_name(base) or { base }
+	}
+	local := if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		'${t.cur_module}.${base}'
+	} else {
+		base
+	}
+	if local in t.tc.sum_types {
+		return local
+	}
+	imported := t.comptime_resolve_selective_import_type(base)
+	if imported != base {
+		return imported
+	}
+	return local
+}
+
+// collect_types keeps legacy short-name entries for imported sums, so locate a bare sum's
+// declaration in the current module before consulting that ambiguous cache.
+fn (t &Transformer) comptime_local_sum_variants(name string) ?[]string {
+	if name.len == 0 || name.contains('.') {
+		return none
+	}
+	mut module_name := ''
+	for node in t.a.nodes {
+		if node.kind == .file {
+			module_name = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			module_name = node.value
+			continue
+		}
+		if node.kind != .type_decl || node.value != name || module_name != t.cur_module
+			|| node.children_count == 0 {
+			continue
+		}
+		mut variants := []string{cap: int(node.children_count)}
+		for i in 0 .. node.children_count {
+			variant := t.a.child_node(&node, i)
+			variants << t.normalize_sum_variant_type(variant.value, module_name,
+				node.generic_params)
+		}
+		return variants
+	}
+	return none
 }
 
 // comptime_enum_members returns the member metadata for an enum (resolving an enum alias to its
