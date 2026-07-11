@@ -4797,7 +4797,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// Only when a single-character literal is used where a byte-sized
 				// value is expected (`data[0] = c'g'`) is it dereferenced to its
 				// first byte (reference cgen emits `*"g"` there).
-				is_single_char := cv.len == 1 || (cv.len == 2 && cv[0] == `\\`)
+				is_single_char := c_char_literal_is_single_byte(cv)
 				expected_ct := g.value_c_type(g.expected_expr_type)
 				if is_single_char && g.expected_expr_type !is types.Pointer
 					&& expected_ct in ['u8', 'i8', 'char', 'u16', 'i16', 'u32', 'i32', 'int', 'u64', 'i64', 'rune', 'usize', 'isize'] {
@@ -6319,6 +6319,33 @@ fn char_escape_codepoint(s string) ?int {
 		return parse_hex_codepoint(s[2..10])
 	}
 	return none
+}
+
+fn c_char_literal_is_single_byte(s string) bool {
+	if s.len == 1 {
+		return true
+	}
+	if s.len < 2 || s[0] != `\\` {
+		return false
+	}
+	if s.len == 2 {
+		return true
+	}
+	if s[1] == `x` {
+		value := parse_hex_codepoint(s[2..]) or { return false }
+		return value <= 0xff
+	}
+	if s[1] < `0` || s[1] > `7` || s.len > 4 {
+		return false
+	}
+	mut value := 0
+	for digit in s[1..].bytes() {
+		if digit < `0` || digit > `7` {
+			return false
+		}
+		value = value * 8 + int(digit - `0`)
+	}
+	return value <= 0xff
 }
 
 fn parse_hex_codepoint(hex string) ?int {
