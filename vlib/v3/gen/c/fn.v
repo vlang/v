@@ -7837,7 +7837,18 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			continue
 		}
 		if is_c_call {
-			g.gen_expr(arg_id)
+			if arg_node.kind == .char_literal && arg_node.value.starts_with('c:') {
+				if arg_idx < typed_param_count {
+					g.gen_expr_with_expected_type(arg_id, param_types[arg_idx])
+				} else {
+					old_expected := g.expected_expr_type
+					g.expected_expr_type = types.Type(types.void_)
+					g.gen_expr(arg_id)
+					g.expected_expr_type = old_expected
+				}
+			} else {
+				g.gen_expr(arg_id)
+			}
 			continue
 		}
 		if variadic_idx >= 0 && arg_idx == variadic_idx {

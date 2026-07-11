@@ -35,6 +35,35 @@ fn test_direct_test_file_run_executes_harness() {
 	assert pass.exit_code == 0, pass.output
 }
 
+fn test_directory_test_command_sets_test_define_before_collecting_inputs() {
+	v3_bin := build_v3_test_file_cli_runner()
+	tmp_dir := os.join_path(os.temp_dir(), 'v3_test_directory_define_${os.getpid()}')
+	os.rmdir_all(tmp_dir) or {}
+	os.mkdir_all(tmp_dir)!
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+
+	support_src := os.join_path(tmp_dir, 'support_d_test.v')
+	os.write_file(support_src, 'fn test_only_value() bool {
+	return true
+}
+')!
+	test_src := os.join_path(tmp_dir, 'directory_test.v')
+	os.write_file(test_src, 'fn test_test_define_and_support_file() {
+	$if test {
+		assert test_only_value()
+	} $else {
+		assert false
+	}
+}
+')!
+	bin := os.join_path(tmp_dir, 'directory_tests')
+	result :=
+		os.execute('${os.quoted_path(v3_bin)} test ${os.quoted_path(tmp_dir)} -o ${os.quoted_path(bin)}')
+	assert result.exit_code == 0, result.output
+}
+
 // test_run_forwards_all_args_after_input_file validates that `v3 run app.v ...`
 // forwards every argument after the input file to the program, including
 // `-`-prefixed flags like `--help` (which must not be swallowed as compiler flags).

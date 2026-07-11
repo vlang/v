@@ -5814,7 +5814,30 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		ret_type := t.receiver_method_return_type(sum_method, node.typ)
 		return t.make_call_typed(sum_method, args, ret_type)
 	}
+	if t.validating_generic_spec && !t.receiver_selector_is_fn_field(base_type, method) {
+		base_name := if base_node.kind == .ident && base_node.value.len > 0 {
+			base_node.value
+		} else {
+			base_type
+		}
+		t.record_monomorph_error('unknown function `${base_name}.${method}`')
+	}
 	return none
+}
+
+fn (t &Transformer) receiver_selector_is_fn_field(base_type string, field string) bool {
+	field_type := t.lookup_struct_field_type(base_type, field) or { return false }
+	clean := t.normalize_type_alias(field_type)
+	return clean.starts_with('fn(') || clean.starts_with('fn (')
+}
+
+fn (mut t Transformer) record_monomorph_error(message string) {
+	key := '${t.cur_file}:${t.cur_fn_name}:${message}'
+	if t.monomorph_error_seen[key] {
+		return
+	}
+	t.monomorph_error_seen[key] = true
+	t.monomorph_errors << message
 }
 
 fn (t &Transformer) pointer_builtin_vbytes_method(base_is_pointer bool, builtin_base_type string, method string) ?string {

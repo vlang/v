@@ -102,6 +102,9 @@ mut:
 	invalidated_smartcasts       map[string]bool
 	in_call_callee               bool
 	in_monomorphize_scan         bool
+	validating_generic_spec      bool
+	monomorph_errors             []string
+	monomorph_error_seen         map[string]bool
 	in_spawn_expr                bool
 	in_const_init                bool
 	in_return_expr               bool
@@ -475,6 +478,13 @@ fn newly_used_fn_names(before map[string]bool, after map[string]bool) []string {
 }
 
 pub fn monomorphize_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
+	result, _ := monomorphize_with_used_checked(mut a, tc, used_fns)
+	return result
+}
+
+// monomorphize_with_used_checked also reports semantic errors that can only be
+// resolved after generic parameters have concrete types.
+pub fn monomorphize_with_used_checked(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) (map[string]bool, []string) {
 	mut augmented_used_fns := used_fns.clone()
 	mut t := new_transformer(mut a, tc, augmented_used_fns)
 	t.prepare()
@@ -495,7 +505,7 @@ pub fn monomorphize_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fn
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	t.materialize_generic_structs()
 	t.run_sum_eq_synthesis_rounds(base_node_count)
-	return t.used_fns
+	return t.used_fns, t.monomorph_errors
 }
 
 fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) Transformer {
@@ -514,6 +524,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		generic_receiver_methods_by_name: map[string][]string{}
 		generic_call_spec_cache:          map[int]GenericCallSpec{}
 		generic_call_spec_misses:         map[int]bool{}
+		monomorph_error_seen:             map[string]bool{}
 		call_param_types_decl_cache:      map[string][]types.Type{}
 		call_param_types_decl_misses:     map[string]bool{}
 		call_param_types_decl_index:      map[string]FnParamDeclRef{}
@@ -6350,7 +6361,14 @@ fn (t &Transformer) comptime_condition_actual_type(raw string) string {
 	if contexts.len > 0 {
 		clean = contexts.last().variant_name
 	}
-	if typ := t.comptime_for_var_source_type(clean) {
+	raw_var_type := t.raw_var_type(clean)
+	if raw_var_type.len > 0 {
+		clean = if t.mut_param_values[clean] {
+			raw_var_type.trim_string_left('&')
+		} else {
+			raw_var_type
+		}
+	} else if typ := t.comptime_for_var_source_type(clean) {
 		clean = typ
 	}
 	clean = t.comptime_resolve_selective_import_type(clean)

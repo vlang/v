@@ -934,3 +934,110 @@ fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 		assert out == 'true\ntrue\ntrue\ntrue'
 	}
 }
+
+fn test_latest_pr_review_codegen_regressions() {
+	v3_bin := build_v3()
+	c_strings := run_good(v3_bin, 'single_char_c_string_pointer_context', "fn C.strlen(charptr) usize
+
+fn main() {
+	println(C.strlen(c'\\n'))
+	println(C.strlen(&c'\\n'))
+}
+")
+	assert c_strings == '1\n1'
+
+	ierror_selector := run_good(v3_bin, 'temporary_ierror_selector_equality', "struct ErrorHolder {
+	err IError
+}
+
+fn make_error_holder() ErrorHolder {
+	return ErrorHolder{
+		err: error('boom')
+	}
+}
+
+fn main() {
+	other := error('boom')
+	println((make_error_holder().err == other).str())
+}
+")
+	assert ierror_selector == 'true'
+
+	shift_once := run_good(v3_bin, 'unsigned_shift_assign_lvalue_once', 'fn next(mut calls int) int {
+	calls++
+	return 0
+}
+
+fn main() {
+	mut calls := 0
+	mut values := [8, 16]
+	values[next(mut calls)] >>>= 1
+	println(int_str(calls))
+	println(int_str(values[0]))
+	println(int_str(values[1]))
+}
+')
+	assert shift_once == '1\n4\n16'
+
+	logical_shifts := run_good(v3_bin, 'signed_logical_shift_results', 'const shifted = i64(-5) >>> 1
+
+fn main() {
+	println((i8(-1) >>> 0 == u8(255)).str())
+	println(shifted.str())
+}
+')
+	assert logical_shifts == 'true\n9223372036854775805'
+
+	shared_sum_field := run_good(v3_bin, 'nested_sum_shared_field_diamond', 'struct Sub1 {
+	id int
+}
+
+struct Sub2 {
+	id int
+}
+
+struct Sub3 {
+	id int
+}
+
+type Master = Sub1 | Sub2
+type Master2 = Master | Sub3
+type Outer = Master | Master2
+
+fn main() {
+	value := Outer(Master2(Sub3{
+		id: 7
+	}))
+	println(int_str(value.id))
+}
+')
+	assert shared_sum_field == '7'
+
+	comptime_types := run_good(v3_bin, 'comptime_pointer_and_alias_identity', "type MyAlias = string
+
+fn pointer_kind(p &int) string {
+	$if p is $pointer {
+		return 'pointer'
+	} $else $if p is $int {
+		return 'int'
+	} $else {
+		return 'other'
+	}
+}
+
+fn alias_kind[T](value T) string {
+	$if T.typ is string {
+		return 'string'
+	} $else {
+		return 'alias'
+	}
+}
+
+fn main() {
+	value := 1
+	println(pointer_kind(&value))
+	println(alias_kind(MyAlias('x')))
+}
+")
+	assert comptime_types == 'pointer\nalias'
+}

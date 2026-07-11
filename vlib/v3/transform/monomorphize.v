@@ -1473,9 +1473,12 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, modul
 	// The body transform establishes a real function scope (params seeded into
 	// var_types), so scope lookups are trustworthy again inside it.
 	old_in_scan := t.in_monomorphize_scan
+	old_validating_specialization := t.validating_generic_spec
 	t.in_monomorphize_scan = false
+	t.validating_generic_spec = true
 	t.transform_fn_body(int(clone_id))
 	t.in_monomorphize_scan = old_in_scan
+	t.validating_generic_spec = old_validating_specialization
 	t.cur_module = old_module
 	t.cur_file = old_file
 	if !isnil(t.tc) {

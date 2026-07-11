@@ -81,9 +81,9 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, input st
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	bad_bin := unique_temp_path(name)
 	result := os.execute('${v3_bin} ${input_path} -b c -o ${bad_bin}')
-	assert result.exit_code != 0
-	assert result.output.contains(expected)
-	assert !result.output.contains('C compilation failed')
+	assert result.exit_code != 0, '${name}: expected compile failure, got success: ${result.output}'
+	assert result.output.contains(expected), '${name}: expected `${expected}` in ${result.output}'
+	assert !result.output.contains('C compilation failed'), '${name}: C compilation failed: ${result.output}'
 }
 
 // run_good_project supports run good project handling for v3 tests.
@@ -268,7 +268,7 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'main.v':      'module main\n\nimport moda\n\nfn main() {}\n'
 		'other.v':     'module main\n\nfn use_it() int {\n\treturn moda.answer()\n}\n'
 		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
-	}, '', 'unknown function `moda.answer`')
+	}, '', 'unknown identifier `moda`')
 	alias_out := run_good(v3_bin, 'alias_method',
 		'type UserId = int\n\nfn (id UserId) str() string {\n\treturn int_str(int(id))\n}\n\nfn main() {\n\tid := UserId(1)\n\tprintln(id.str())\n}\n')
 	assert alias_out == '1'
@@ -389,6 +389,77 @@ fn test_type_checker_reports_core_semantic_errors() {
 	}, 'main.v')
 	assert !cross_module_array_append_c.contains('array_push_many(&xs')
 	assert cross_module_array_append_c.contains('array_push(&xs')
+}
+
+fn test_review_generic_call_diagnostics() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_nongeneric_unknown_is_pattern', 'fn check(err IError) bool {
+	return err is T
+}
+
+fn main() {}
+',
+		'not compatible with `IError`')
+	run_bad(v3_bin, 'bad_nongeneric_unknown_receiver_call', 'fn main() {
+	missing.method()
+}
+',
+		'unknown identifier `missing`')
+	run_bad(v3_bin, 'bad_nongeneric_placeholder_call', 'fn main() {
+	missing[T]()
+}
+',
+		'unknown function `missing[T]`')
+	run_bad(v3_bin, 'bad_generic_missing_explicit_call', 'fn invoke[T]() {
+	missing[T]()
+}
+
+fn main() {
+	invoke[int]()
+}
+',
+		'unknown function `missing[T]`')
+	run_bad(v3_bin, 'bad_generic_missing_receiver_method', 'fn invoke[T](value T) {
+	value.no_such()
+}
+
+fn main() {
+	invoke(1)
+}
+',
+		'unknown function `value.no_such`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_for_concrete_type', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+struct NoValue {}
+
+fn read[T](value T) int {
+	return value.value()
+}
+
+fn main() {
+	_ := read(NoValue{})
+}
+',
+		'unknown function `value.value`')
+	out := run_good(v3_bin, 'good_generic_receiver_method_for_concrete_type', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 7
+}
+
+fn read[T](value T) int {
+	return value.value()
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+}
+')
+	assert out == '7'
 }
 
 // Regression tests for the post-PR review fixes: fixed-array literals must match

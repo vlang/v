@@ -4799,8 +4799,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// first byte (reference cgen emits `*"g"` there).
 				is_single_char := cv.len == 1 || (cv.len == 2 && cv[0] == `\\`)
 				expected_ct := g.value_c_type(g.expected_expr_type)
-				if is_single_char && expected_ct in ['u8', 'i8', 'char', 'u16', 'i16', 'u32', 'i32',
-					'int', 'u64', 'i64', 'rune', 'usize', 'isize'] {
+				if is_single_char && g.expected_expr_type !is types.Pointer
+					&& expected_ct in ['u8', 'i8', 'char', 'u16', 'i16', 'u32', 'i32', 'int', 'u64', 'i64', 'rune', 'usize', 'isize'] {
 					g.write('*"${cv}"')
 				} else {
 					g.write('"${cv}"')

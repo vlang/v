@@ -9103,6 +9103,9 @@ fn (tc &TypeChecker) call_generic_args_have_placeholders(node flat.Node) bool {
 	if !tc.cur_fn_is_generic_template() {
 		return false
 	}
+	if !tc.explicit_generic_call_target_is_known(node) {
+		return false
+	}
 	if node.value.len > 0 {
 		for arg in node.value.split(',') {
 			if tc.type_text_has_generic_placeholder(arg.trim_space()) {
@@ -9121,6 +9124,32 @@ fn (tc &TypeChecker) call_generic_args_have_placeholders(node flat.Node) bool {
 		arg := tc.a.child_node(callee, i)
 		if arg.kind == .ident && arg.value.len > 0
 			&& tc.type_text_has_generic_placeholder(arg.value) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) explicit_generic_call_target_is_known(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind != .index || callee.children_count == 0 || callee.value == 'range' {
+		return tc.is_known_call(node)
+	}
+	base := tc.a.child_node(callee, 0)
+	if _ := tc.generic_call_base_name(base) {
+		return true
+	}
+	if base.kind != .selector || base.value.len == 0 {
+		return false
+	}
+	// A method on an unresolved generic receiver cannot be tied to a concrete
+	// receiver yet, but it still has to name a real method declaration. The
+	// concrete specialization is validated after monomorphization.
+	for name, _ in tc.fn_generic_params {
+		if name.ends_with('.${base.value}') {
 			return true
 		}
 	}
@@ -14455,7 +14484,19 @@ fn (tc &TypeChecker) lowered_sum_selector_type(sum SumType, field string) ?Type 
 
 // sum_shared_field_type supports sum shared field type handling for TypeChecker.
 fn (tc &TypeChecker) sum_shared_field_type(sum SumType, field string) ?Type {
-	base := tc.sum_base_name(sum.name)
+	mut visited := map[string]bool{}
+	return tc.sum_shared_field_type_inner(sum.name, field, mut visited)
+}
+
+fn (tc &TypeChecker) sum_shared_field_type_inner(sum_name string, field string, mut visited map[string]bool) ?Type {
+	base := tc.sum_base_name(sum_name)
+	if visited[base] {
+		return none
+	}
+	visited[base] = true
+	defer {
+		visited.delete(base)
+	}
 	variants := tc.sum_types[base] or { return none }
 	if variants.len == 0 {
 		return none
@@ -14463,8 +14504,13 @@ fn (tc &TypeChecker) sum_shared_field_type(sum SumType, field string) ?Type {
 	mut has_common := false
 	mut common_typ := Type(void_)
 	for variant in variants {
-		concrete := tc.concrete_sum_variant_name(sum.name, variant)
-		variant_field := tc.struct_field_type(concrete, field) or { return none }
+		concrete := tc.concrete_sum_variant_name(sum_name, variant)
+		variant_type := tc.parse_type(concrete)
+		variant_field := if variant_type is SumType {
+			tc.sum_shared_field_type_inner(variant_type.name, field, mut visited) or { return none }
+		} else {
+			tc.struct_field_type(concrete, field) or { return none }
+		}
 		if !has_common {
 			common_typ = variant_field
 			has_common = true
