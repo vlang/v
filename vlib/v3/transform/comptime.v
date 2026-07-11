@@ -1,6 +1,7 @@
 module transform
 
 import os
+import strconv
 import v3.flat
 
 const comptime_unsupported_late_generic_call = '__v3_comptime_unsupported_late_generic_call'
@@ -58,7 +59,7 @@ struct FieldMeta {
 
 struct EnumValueMeta {
 	name      string
-	value     int
+	value     i64
 	attrs     []string
 	enum_name string
 }
@@ -386,7 +387,7 @@ fn (t &Transformer) comptime_enum_members(base_type string) []EnumValueMeta {
 	for idx, name in names {
 		fallback << EnumValueMeta{
 			name:      name
-			value:     idx
+			value:     i64(idx)
 			enum_name: resolved
 		}
 	}
@@ -436,9 +437,9 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 			}
 		}
 		mut values := []EnumValueMeta{}
-		mut field_values := map[string]int{}
+		mut field_values := map[string]i64{}
 		mut resolving := map[string]bool{}
-		mut next_val := 0
+		mut next_val := i64(0)
 		for f in fields {
 			mut val := next_val
 			if int(f.expr_id) >= 0 {
@@ -451,7 +452,7 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 			field_values[f.name] = val
 			values << EnumValueMeta{
 				name:      f.name
-				value:     if is_flag { 1 << val } else { val }
+				value:     if is_flag { i64(u64(1) << u64(val)) } else { val }
 				attrs:     f.attrs.clone()
 				enum_name: qualified
 			}
@@ -464,30 +465,32 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 
 // enum_field_int_value evaluates an enum member's value expression using the transformer's
 // current module for any const reference.
-fn (t &Transformer) enum_field_int_value(id flat.NodeId) ?int {
+fn (t &Transformer) enum_field_int_value(id flat.NodeId) ?i64 {
 	return t.enum_field_int_value_in_module(id, t.cur_module)
 }
 
 // enum_field_int_value_in_module evaluates an enum member's value expression (`x = 1`,
-// `x = 1 << 2`, `x = SomeConst`) to an int, following the same forms as the C backend.
+// `x = 1 << 2`, `x = SomeConst`) to an i64, following the same forms as the C backend.
 // `enum_module` is the enum's declaring module, so a const referenced by a member (`a = base`)
 // resolves in that module rather than the caller's.
-fn (t &Transformer) enum_field_int_value_in_module(id flat.NodeId, enum_module string) ?int {
-	mut field_values := map[string]int{}
+fn (t &Transformer) enum_field_int_value_in_module(id flat.NodeId, enum_module string) ?i64 {
+	mut field_values := map[string]i64{}
 	field_exprs := map[string]flat.NodeId{}
 	mut resolving := map[string]bool{}
 	return t.enum_field_int_value_with_enum(id, enum_module, '', mut field_values, field_exprs, mut
 		resolving)
 }
 
-fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module string, enum_name string, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
 		.int_literal {
-			return node.value.int()
+			clean := node.value.replace('_', '')
+			parsed := strconv.common_parse_int(clean, 0, 64, true, true) or { return none }
+			return parsed
 		}
 		.paren {
 			if node.children_count == 0 {
@@ -517,6 +520,9 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 				field_values, field_exprs, mut resolving)?
 			r := t.enum_field_int_value_with_enum(t.a.child(&node, 1), enum_module, enum_name, mut
 				field_values, field_exprs, mut resolving)?
+			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] && (r < 0 || r >= 64) {
+				return none
+			}
 			return match node.op {
 				.plus {
 					l + r
@@ -542,17 +548,13 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 					}
 				}
 				.left_shift {
-					int(u64(l) << r)
+					i64(u64(l) << u64(r))
 				}
 				.right_shift {
 					l >> r
 				}
 				.right_shift_unsigned {
-					if r < 0 || r >= 64 {
-						none
-					} else {
-						int(u64(l) >> r)
-					}
+					i64(u64(l) >> u64(r))
 				}
 				.amp {
 					l & r
@@ -587,7 +589,7 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 			}
 			if !isnil(t.tc) {
 				lookup_module := if enum_module.len > 0 { enum_module } else { t.cur_module }
-				return t.tc.const_int_value_in_module(node.value, lookup_module, []string{})
+				return i64(t.tc.const_int_value_in_module(node.value, lookup_module, []string{})?)
 			}
 			return none
 		}
@@ -597,7 +599,7 @@ fn (t &Transformer) enum_field_int_value_with_enum(id flat.NodeId, enum_module s
 	}
 }
 
-fn (t &Transformer) enum_decl_field_ref_value(field_name string, enum_module string, enum_name string, mut field_values map[string]int, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?int {
+fn (t &Transformer) enum_decl_field_ref_value(field_name string, enum_module string, enum_name string, mut field_values map[string]i64, field_exprs map[string]flat.NodeId, mut resolving map[string]bool) ?i64 {
 	if val := field_values[field_name] {
 		return val
 	}
@@ -800,7 +802,8 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, children
 }
 
 fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId {
-	return t.make_int_literal_typed(item.value.str(), 'i64')
+	literal := t.make_int_literal_typed(item.value.str(), 'i64')
+	return t.make_cast('i64', literal, 'i64')
 }
 
 // clone_variant_subst clones a `$for variant in Sum.variants` body and gives the variant loop
@@ -899,7 +902,8 @@ fn (t &Transformer) subst_variant_cond(cond string, var_name string, item Varian
 // make_enum_data_literal builds `EnumData{name: '<name>', value: <value>, attrs: [...]}`.
 fn (mut t Transformer) make_enum_data_literal(item EnumValueMeta) flat.NodeId {
 	name_field := t.make_named_field_init('name', t.make_string_literal(item.name), 'string')
-	value_field := t.make_named_field_init('value', t.make_int_literal(item.value), 'i64')
+	value_field := t.make_named_field_init('value', t.make_int_literal_typed(item.value.str(),
+		'i64'), 'i64')
 	attrs_field := t.make_named_field_init('attrs', t.make_string_array_literal(item.attrs),
 		'[]string')
 	start := t.a.children.len
@@ -1600,7 +1604,7 @@ fn (mut t Transformer) make_string_array_literal(values []string) flat.NodeId {
 
 // subst_value_cond textually substitutes `<var>.name`/`<var>.value` inside a comptime condition
 // string for a `$for value in Enum.values` iteration, so `eval_field_cond` can fold it.
-fn (t &Transformer) subst_value_cond(cond string, var_name string, name string, value int) string {
+fn (t &Transformer) subst_value_cond(cond string, var_name string, name string, value i64) string {
 	mut c := cond
 	c = c.replace('${var_name}.value', value.str())
 	c = c.replace('${var_name}.name', "'${name}'")

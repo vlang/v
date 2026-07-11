@@ -819,6 +819,24 @@ fn main() {
 	assert out == '7:   7|42:  42'
 }
 
+fn test_enum_value_metadata_preserves_wide_backed_values() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'enum_value_metadata_wide_backed', "enum Wide as u64 {
+	big = 1 << 40
+	next
+}
+
+fn main() {
+	mut rows := []string{}
+	$for item in Wide.values {
+		rows << '\${item.value}'
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == '1099511627776|1099511627777'
+}
+
 fn test_field_loop_specializes_multi_parameter_generic_helper() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_loop_multi_generic_helper', "struct Data {

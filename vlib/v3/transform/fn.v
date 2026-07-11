@@ -4172,7 +4172,7 @@ fn (t &Transformer) flag_enum_mask_for_type(typ string) int {
 	members := t.comptime_enum_members(clean)
 	mut mask := 0
 	for member in members {
-		mask |= member.value
+		mask |= int(member.value)
 	}
 	return mask
 }
