@@ -15781,17 +15781,20 @@ fn (tc &TypeChecker) type_has_compiler_default_clone(t Type) bool {
 // dispatch) and the transform (`iface is Concrete` checks) must both derive
 // ids from this single list so they stay in sync.
 pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
-	mut candidates := []string{}
+	mut candidate_set := map[string]bool{}
 	if tc.interface_has_no_requirements(iface_name) {
-		candidates << ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
-			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune']
+		for name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte',
+			'u16', 'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+			candidate_set[name] = true
+		}
 	}
 	for name, _ in tc.structs {
-		candidates << name
+		candidate_set[interface_impl_candidate_name(name)] = true
 	}
 	for name, _ in tc.type_aliases {
-		candidates << name
+		candidate_set[interface_impl_candidate_name(name)] = true
 	}
+	mut candidates := candidate_set.keys()
 	candidates.sort()
 	mut impls := []string{}
 	for name in candidates {
@@ -15800,6 +15803,13 @@ pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 		}
 	}
 	return impls
+}
+
+fn interface_impl_candidate_name(name string) string {
+	if name.starts_with('builtin.') {
+		return name['builtin.'.len..]
+	}
+	return name
 }
 
 // ierror_impl_names returns the concrete struct names that can be boxed as `IError`.
