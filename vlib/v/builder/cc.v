@@ -1586,6 +1586,13 @@ fn (v &Builder) retry_command_boundary(args []string) int {
 	return args.len
 }
 
+fn (v &Builder) should_forward_retry_output() bool {
+	return v.pref.show_cc || v.pref.show_c_output || v.pref.is_verbose || v.pref.is_stats
+		|| v.pref.show_timings || v.pref.show_callgraph || v.pref.show_depgraph
+		|| v.pref.dump_c_flags == '-' || v.pref.dump_modules == '-' || v.pref.dump_files == '-'
+		|| v.pref.dump_defines == '-'
+}
+
 fn (v &Builder) retry_compilation_with(ccompiler string) os.Result {
 	// Compiler comptime branches such as `$if tinyc` are resolved before C generation,
 	// so the fallback must regenerate the program instead of reusing TCC's C output.
@@ -1825,8 +1832,7 @@ pub fn (mut v Builder) cc() {
 							eprintln(term.red('warning: tcc compilation failed, falling back to ${v.pref.ccompiler}'))
 						}
 						retry_res := v.retry_compilation_with(v.pref.ccompiler)
-						if retry_res.exit_code != 0 || v.pref.show_cc || v.pref.show_c_output
-							|| v.pref.is_verbose {
+						if retry_res.exit_code != 0 || v.should_forward_retry_output() {
 							print(retry_res.output)
 						}
 						if retry_res.exit_code != 0 {

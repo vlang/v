@@ -107,6 +107,55 @@ fn test_tcc_retry_finds_run_boundary_for_executable_alias() {
 	assert builder.retry_command_boundary(args) == 4
 }
 
+fn test_tcc_retry_forwards_stdout_producing_modes() {
+	mut preferences := &pref.Preferences{}
+	builder := &Builder{
+		pref: preferences
+	}
+	assert !builder.should_forward_retry_output()
+	preferences.dump_c_flags = '-'
+	assert builder.should_forward_retry_output()
+	preferences.dump_c_flags = ''
+	preferences.is_stats = true
+	assert builder.should_forward_retry_output()
+	preferences.is_stats = false
+	preferences.dump_modules = '-'
+	assert builder.should_forward_retry_output()
+	preferences.dump_modules = ''
+	preferences.dump_files = '-'
+	assert builder.should_forward_retry_output()
+	preferences.dump_files = ''
+	preferences.dump_defines = '-'
+	assert builder.should_forward_retry_output()
+}
+
+fn test_tcc_retry_forwards_corrected_dump_c_flags() {
+	if os.user_os() == 'windows' {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_tcc_retry_dump_flags_${os.getpid()}')
+	fake_tcc := os.join_path(test_root, 'fake-tcc')
+	source_path := os.join_path(test_root, 'main.v')
+	exe_path := os.join_path(test_root, 'main')
+	os.mkdir_all(test_root) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	os.write_file(fake_tcc, '#!/bin/sh\necho "tcc: error: first compiler failed"\nexit 1\n') or {
+		panic(err)
+	}
+	os.chmod(fake_tcc, 0o700) or { panic(err) }
+	os.write_file(source_path,
+		'$if tinyc {\n\t#flag -D V_RETRY_TINYC_CFLAGS\n} $else {\n\t#flag -D V_RETRY_SYSTEM_CFLAGS\n}\n\nfn main() {}\n') or {
+		panic(err)
+	}
+	res :=
+		execute_tcc_retry_test_command('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(fake_tcc)} -dump-c-flags - -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('V_RETRY_TINYC_CFLAGS'), res.output
+	assert res.output.contains('V_RETRY_SYSTEM_CFLAGS'), res.output
+}
+
 fn test_tcc_retry_reports_final_compiler_failure() {
 	if os.user_os() == 'windows' {
 		return
