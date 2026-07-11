@@ -428,6 +428,15 @@ fn main() {
 }
 ',
 		'unknown function `value.no_such`')
+	run_bad(v3_bin, 'bad_generic_missing_array_receiver_method', 'fn invoke[T](value T) {
+	value.no_such()
+}
+
+fn main() {
+	invoke([]int{})
+}
+',
+		'unknown function `value.no_such`')
 	run_bad(v3_bin, 'bad_generic_receiver_method_for_concrete_type', 'struct HasValue {}
 
 fn (v HasValue) value() int {

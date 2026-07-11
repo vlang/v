@@ -5763,6 +5763,16 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	if base_type.starts_with('[]') || base_type.starts_with('map[') {
 		if base_type.starts_with('[]') {
+			if t.validating_generic_spec && !array_method_stays_in_cgen(method)
+				&& t.resolve_collection_receiver_method_name(base_id, method, base_type).len == 0
+				&& !t.receiver_selector_is_fn_field(base_type, method) {
+				base_name := if base_node.kind == .ident && base_node.value.len > 0 {
+					base_node.value
+				} else {
+					base_type
+				}
+				t.record_monomorph_error('unknown function `${base_name}.${method}`')
+			}
 			return none
 		}
 	}
