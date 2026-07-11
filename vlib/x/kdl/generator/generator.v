@@ -1,5 +1,6 @@
 module generator
 
+import math
 import strings
 import x.kdl.document
 
@@ -142,7 +143,15 @@ fn (mut g Generator) gen_value(v document.Value) {
 			}
 		}
 		document.FloatVal {
-			if v.flag == .scientific {
+			if math.is_inf(v.value, 0) {
+				if v.value > 0 {
+					g.sb.write_string('#inf')
+				} else {
+					g.sb.write_string('#-inf')
+				}
+			} else if math.is_nan(v.value) {
+				g.sb.write_string('#nan')
+			} else if v.flag == .scientific {
 				g.sb.write_string(v.value.strsci(6))
 			} else {
 				g.sb.write_string(v.value.str())

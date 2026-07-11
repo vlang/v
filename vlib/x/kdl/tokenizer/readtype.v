@@ -32,16 +32,18 @@ fn (mut s Scanner) scan_string() Token {
 	s.advance()
 	mut lit := []u8{}
 	for {
-		if s.pos >= s.src.len { break
-		 }
+		if s.pos >= s.src.len {
+			return Token{.eof, 'kdl: unterminated string', l, c}
+		}
 		if s.c == 34 {
 			s.advance()
 			break
 		}
 		if s.c == 92 {
 			s.advance()
-			if s.pos >= s.src.len { break
-			 }
+			if s.pos >= s.src.len {
+				return Token{.eof, 'kdl: unterminated string', l, c}
+			}
 			if s.c == 110 {
 				lit << 10
 			} else if s.c == 114 {
@@ -67,7 +69,9 @@ fn (mut s Scanner) scan_string() Token {
 						s.advance()
 					}
 					if s.c == 125 {
-						dec := parse_unicode(hx) or { '?' }
+						dec := parse_unicode(hx) or {
+							return Token{.eof, 'kdl: invalid unicode escape \\u{${hx}}', l, c}
+						}
 						for b in dec.bytes() {
 							lit << b
 						}
@@ -90,10 +94,7 @@ fn (mut s Scanner) scan_string() Token {
 			continue
 		}
 		if is_newline_unicode(s.c, s.pos, s.src) {
-			for s.pos < s.src.len && is_newline_or_whitespace(s.c, s.pos, s.src) {
-				s.advance()
-			}
-			continue
+			return Token{.eof, 'kdl: newline in quoted string, use """ for multiline', l, c}
 		}
 		lit << s.c
 		s.advance()
@@ -128,11 +129,12 @@ fn (mut s Scanner) scan_multiline() Token {
 		if s.c == 13 { s.advance() }
 		if s.c == 10 { s.advance() }
 	}
-	if s.c == 34 {
-		s.advance()
-		s.advance()
-		s.advance()
+	if s.c != 34 {
+		return Token{.eof, 'kdl: unterminated multiline string', l, c}
 	}
+	s.advance()
+	s.advance()
+	s.advance()
 	mut indent := ''
 	if lines.len > 0 {
 		last := lines[lines.len - 1]
@@ -167,28 +169,30 @@ fn (mut s Scanner) scan_hash() Token {
 		if s.match_str('inf') && !is_ident_not_keyword(s.c, s.relaxed) {
 			return Token{.float_val, '-inf', l, c}
 		}
-		return s.ident_rest('#-', l, c)
+		return s.ident_rest('#-inf', l, c)
 	}
 	if s.match_str('inf') {
 		if !is_ident_not_keyword(s.c, s.relaxed) { return Token{.float_val, 'inf', l, c} }
-		return s.ident_rest('#', l, c)
+		return s.ident_rest('#inf', l, c)
 	}
 	if s.match_str('nan') {
 		if !is_ident_not_keyword(s.c, s.relaxed) { return Token{.float_val, 'nan', l, c} }
-		return s.ident_rest('#', l, c)
+		return s.ident_rest('#nan', l, c)
 	}
 	if s.match_str('true') {
 		if !is_ident_not_keyword(s.c, s.relaxed) { return Token{.bool_val, 'true', l, c} }
-		return s.ident_rest('#', l, c)
+		return s.ident_rest('#true', l, c)
 	}
 	if s.match_str('false') {
 		if !is_ident_not_keyword(s.c, s.relaxed) { return Token{.bool_val, 'false', l, c} }
-		return s.ident_rest('#', l, c)
+		return s.ident_rest('#false', l, c)
 	}
 	if s.match_str('null') {
 		if !is_ident_not_keyword(s.c, s.relaxed) { return Token{.null_val, 'null', l, c} }
-		return s.ident_rest('#', l, c)
+		return s.ident_rest('#null', l, c)
 	}
+	// Multi-hash raw string: ##"..."##, ###"..."###, etc.
+	if s.c == 35 { return s.scan_raw() }
 	if s.c == 34 { return s.scan_raw() }
 	return s.ident_rest('#', l, c)
 }
@@ -251,8 +255,10 @@ fn (mut s Scanner) scan_multiline_raw(hashes int, l int, c int) Token {
 	if s.c == 13 { s.advance() }
 	if s.c == 10 { s.advance() }
 
-	mut close_marker := []u8{cap: 1 + hashes}
-	close_marker << 34
+	mut close_marker := []u8{cap: 3 + hashes}
+	close_marker << 34 // "
+	close_marker << 34 // "
+	close_marker << 34 // "
 	for _ in 0 .. hashes {
 		close_marker << 35
 	}
@@ -347,9 +353,9 @@ fn (mut s Scanner) scan_number() Token {
 	first := s.c
 	s.advance()
 	if first == 48 {
-		if s.c == 120 || s.c == 88 { return s.scan_hex(l, c) }
-		if s.c == 111 || s.c == 79 { return s.scan_oct(l, c) }
-		if s.c == 98 || s.c == 66 { return s.scan_bin(l, c) }
+		if s.c == 120 || s.c == 88 { return s.scan_hex(false, l, c) }
+		if s.c == 111 || s.c == 79 { return s.scan_oct(false, l, c) }
+		if s.c == 98 || s.c == 66 { return s.scan_bin(false, l, c) }
 		if s.c == 46 || s.c == 101 || s.c == 69 { return s.scan_float('0', l, c) }
 		for s.pos < s.src.len && s.c == 95 {
 			s.advance()
@@ -368,6 +374,22 @@ fn (mut s Scanner) scan_number_or_ident() Token {
 	first := s.c
 	s.advance()
 	if first == 45 || first == 43 {
+		if s.c == 48 {
+			// Check for signed non-decimal: -0x, +0x, -0o, +0o, -0b, +0b
+			p := s.peek()
+			if p == 120 || p == 88 {
+				s.advance()
+				return s.scan_hex(true, l, c)
+			}
+			if p == 111 || p == 79 {
+				s.advance()
+				return s.scan_oct(true, l, c)
+			}
+			if p == 98 || p == 66 {
+				s.advance()
+				return s.scan_bin(true, l, c)
+			}
+		}
 		if s.c >= 48 && s.c <= 57 {
 			buf := first.ascii_str()
 			return s.scan_number_rest(buf, l, c)
@@ -389,42 +411,57 @@ fn (mut s Scanner) scan_number_or_ident() Token {
 	return s.scan_number_rest(buf, l, c)
 }
 
-fn (mut s Scanner) scan_hex(l int, c int) Token {
+fn (mut s Scanner) scan_hex(signed bool, l int, c int) Token {
 	s.advance()
 	mut buf := []u8{cap: 16}
-	buf << 48
-	buf << 120
+	if signed { buf << 45 } // '-'
+	buf << 48 // '0'
+	buf << 120 // 'x'
+	mut has_digits := false
 	for s.pos < s.src.len && (is_hex(s.c) || s.c == 95) {
-		if s.c != 95 { buf << s.c }
+		if s.c != 95 {
+			buf << s.c
+			has_digits = true
+		}
 		s.advance()
 	}
-	if buf.len <= 2 { return Token{.int_val, '0', l, c} }
+	if !has_digits { return Token{.eof, 'kdl: expected hex digits after 0x', l, c} }
 	return Token{.int_val, buf.bytestr(), l, c}
 }
 
-fn (mut s Scanner) scan_oct(l int, c int) Token {
+fn (mut s Scanner) scan_oct(signed bool, l int, c int) Token {
 	s.advance()
 	mut buf := []u8{cap: 16}
-	buf << 48
-	buf << 111
+	if signed { buf << 45 } // '-'
+	buf << 48 // '0'
+	buf << 111 // 'o'
+	mut has_digits := false
 	for s.pos < s.src.len && (is_oct(s.c) || s.c == 95) {
-		if s.c != 95 { buf << s.c }
+		if s.c != 95 {
+			buf << s.c
+			has_digits = true
+		}
 		s.advance()
 	}
-	if buf.len <= 2 { return Token{.int_val, '0', l, c} }
+	if !has_digits { return Token{.eof, 'kdl: expected octal digits after 0o', l, c} }
 	return Token{.int_val, buf.bytestr(), l, c}
 }
 
-fn (mut s Scanner) scan_bin(l int, c int) Token {
+fn (mut s Scanner) scan_bin(signed bool, l int, c int) Token {
 	s.advance()
 	mut buf := []u8{cap: 16}
-	buf << 48
-	buf << 98
+	if signed { buf << 45 } // '-'
+	buf << 48 // '0'
+	buf << 98 // 'b'
+	mut has_digits := false
 	for s.pos < s.src.len && (is_bin(s.c) || s.c == 95) {
-		if s.c != 95 { buf << s.c }
+		if s.c != 95 {
+			buf << s.c
+			has_digits = true
+		}
 		s.advance()
 	}
-	if buf.len <= 2 { return Token{.int_val, '0', l, c} }
+	if !has_digits { return Token{.eof, 'kdl: expected binary digits after 0b', l, c} }
 	return Token{.int_val, buf.bytestr(), l, c}
 }
 
@@ -434,12 +471,17 @@ fn (mut s Scanner) scan_number_rest(lit string, l int, c int) Token {
 		buf << s.c
 		s.advance()
 	}
+	// Validate underscore separators: must be digit _ digit
 	for s.pos < s.src.len && s.c == 95 {
 		s.advance()
+		if s.pos >= s.src.len || !(s.c >= 48 && s.c <= 57) {
+			return Token{.eof, 'kdl: invalid underscore separator in number', l, c}
+		}
 		for s.pos < s.src.len && s.c >= 48 && s.c <= 57 {
 			buf << s.c
 			s.advance()
 		}
+		// Save 'buf' and continue to handle multiple _ groups
 	}
 	if s.c == 46 || s.c == 101 || s.c == 69 { return s.scan_float(buf.bytestr(), l, c) }
 	if is_suffix_char(s.c) {
@@ -469,10 +511,23 @@ fn (mut s Scanner) scan_float(lit string, l int, c int) Token {
 			buf << s.c
 			s.advance()
 		}
+		mut has_exp_digits := false
 		for s.pos < s.src.len && s.c >= 48 && s.c <= 57 {
+			has_exp_digits = true
 			buf << s.c
 			s.advance()
 		}
+		if !has_exp_digits {
+			return Token{.eof, 'kdl: expected exponent digits', l, c}
+		}
+	}
+	// Keep suffix chars attached to fractional/scientific numbers
+	if is_suffix_char(s.c) {
+		for s.pos < s.src.len && is_suffix_char(s.c) {
+			buf << s.c
+			s.advance()
+		}
+		return Token{.suffixed_decimal, buf.bytestr(), l, c}
 	}
 	return Token{.float_val, buf.bytestr(), l, c}
 }

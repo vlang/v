@@ -57,10 +57,18 @@ pub fn to_value[T](val T) document.Value {
 			value: i64(val)
 			flag:  .none
 		} }
-	$if T is u64 { return document.IntVal{
+	$if T is u64 {
+		if val > u64(max_i64) {
+			return document.StringVal{
+				value: val.str()
+				flag:  .bare
+			}
+		}
+		return document.IntVal{
 			value: i64(val)
 			flag:  .none
-		} }
+		}
+	}
 	$if T is i64 { return document.IntVal{
 			value: val
 			flag:  .none
@@ -94,7 +102,7 @@ pub fn to_value[T](val T) document.Value {
 fn is_field_zero[T](val T) bool {
 	$if T is string { return val == '' }
 	$if T is int { return val == 0 }
-	$if T is bool { return false }
+	$if T is bool { return !val }
 	$if T is f64 { return val == 0.0 }
 	$if T is f32 { return val == 0.0 }
 	$if T is i64 { return val == 0 }

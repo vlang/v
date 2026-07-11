@@ -4,7 +4,13 @@ import x.kdl.document
 
 fn (mut p Parser) parse_document() !document.Document {
 	mut nodes := []document.Node{}
-	for p.tok.kind != .eof {
+	for {
+		if p.tok.kind == .eof {
+			if p.tok.lit.len > 0 && p.tok.lit.starts_with('kdl:') {
+				return kdl_err(p.tok.line, p.tok.col, p.tok.lit)
+			}
+			break
+		}
 		if p.tok.kind == .slashdash {
 			p.skip_commented_node()
 			continue
@@ -16,10 +22,6 @@ fn (mut p Parser) parse_document() !document.Document {
 		if p.tok.kind == .semicolon {
 			p.advance()
 			continue
-		}
-		// Propagate scanner errors (bare keywords, etc.) as parse errors
-		if p.tok.kind == .eof && p.tok.lit.len > 0 && p.tok.lit.starts_with('kdl:') {
-			return kdl_err(p.tok.line, p.tok.col, p.tok.lit)
 		}
 		nodes << p.parse_node()!
 		for p.tok.kind in [.newline, .semicolon] {
@@ -173,10 +175,14 @@ fn (mut p Parser) parse_entry() !document.Entry {
 		if p.peek().kind == .equals {
 			p.advance()
 			p.advance()
-			if p.tok.kind == .type_annotation { p.advance() }
+			mut val_type_ann := type_ann
+			if p.tok.kind == .type_annotation {
+				val_type_ann = p.tok.lit
+				p.advance()
+			}
 			value := p.parse_value()!
 			return document.Property{
-				type_name: type_ann
+				type_name: val_type_ann
 				key:       key_lit
 				value:     value
 			}
@@ -258,10 +264,16 @@ fn (mut p Parser) parse_value() !document.Value {
 fn parse_int(lit string) document.Value {
 	mut result := i64(0)
 	mut flag := document.ValueFlag.none
-	if lit.len > 2 && lit[0] == 48 {
-		if lit[1] == 120 || lit[1] == 88 {
+	mut neg := false
+	mut start := 0
+	if lit.len > 0 && (lit[0] == 45 || lit[0] == 43) {
+		neg = lit[0] == 45
+		start = 1
+	}
+	if lit.len > start + 1 && lit[start] == 48 {
+		if lit[start + 1] == 120 || lit[start + 1] == 88 {
 			flag = .hex
-			for i in 2 .. lit.len {
+			for i in start + 2 .. lit.len {
 				c := lit[i]
 				result <<= 4
 				if c >= 48 && c <= 57 {
@@ -272,18 +284,21 @@ fn parse_int(lit string) document.Value {
 					result |= i64(c - 65 + 10)
 				}
 			}
-		} else if lit[1] == 111 || lit[1] == 79 {
+			if neg { result = -result }
+		} else if lit[start + 1] == 111 || lit[start + 1] == 79 {
 			flag = .octal
-			for i in 2 .. lit.len {
+			for i in start + 2 .. lit.len {
 				result <<= 3
 				result |= i64(lit[i] - 48)
 			}
-		} else if lit[1] == 98 || lit[1] == 66 {
+			if neg { result = -result }
+		} else if lit[start + 1] == 98 || lit[start + 1] == 66 {
 			flag = .binary
-			for i in 2 .. lit.len {
+			for i in start + 2 .. lit.len {
 				result <<= 1
 				result |= i64(lit[i] - 48)
 			}
+			if neg { result = -result }
 		}
 	} else {
 		result = lit.i64()

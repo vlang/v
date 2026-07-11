@@ -2,6 +2,7 @@ module marshaler
 
 import strings
 import x.kdl.document
+import math
 import x.kdl.generator
 
 pub interface Marshaler {
@@ -38,9 +39,9 @@ fn append_value_to_builder(mut sb strings.Builder, v document.Value, opts Encode
 		document.StringVal {
 			match v.flag {
 				.raw {
-					sb.write_string('r#' + u8(34).ascii_str())
+					sb.write_string('#"')
 					sb.write_string(v.value)
-					sb.write_string(u8(34).ascii_str() + '#')
+					sb.write_string('"#')
 				}
 				.quoted {
 					sb.write_string(document.quote_string(v.value))
@@ -77,7 +78,15 @@ fn append_value_to_builder(mut sb strings.Builder, v document.Value, opts Encode
 			}
 		}
 		document.FloatVal {
-			if v.flag == .scientific {
+			if math.is_inf(v.value, 0) {
+				if v.value > 0 {
+					sb.write_string('#inf')
+				} else {
+					sb.write_string('#-inf')
+				}
+			} else if math.is_nan(v.value) {
+				sb.write_string('#nan')
+			} else if v.flag == .scientific {
 				sb.write_string(v.value.strsci(6))
 			} else {
 				sb.write_string(v.value.str())

@@ -79,7 +79,20 @@ fn (s &Scanner) peek() u8 {
 
 fn (mut s Scanner) advance() {
 	if s.pos < s.src.len {
-		s.col++
+		// Track line/column: \n always advances line; \r advances line unless followed by \n
+		if s.c == 10 {
+			s.line++
+			s.col = 0
+		} else if s.c == 13 {
+			if s.pos + 1 < s.src.len && s.src[s.pos + 1] == 10 {
+				s.col++
+			} else {
+				s.line++
+				s.col = 0
+			}
+		} else {
+			s.col++
+		}
 		s.pos++
 		if s.pos < s.src.len {
 			s.c = s.src[s.pos]

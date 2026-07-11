@@ -35,15 +35,16 @@ pub fn quote_string(s string) string {
 }
 
 pub fn raw_string(s string) string {
-	mut marker := '"'
-	mut hashes := 0
+	mut hashes := 1
 	for {
-		if !s.contains(marker) || hashes > 20 { break
+		if hashes > 20 { break
 		 }
-		marker = '#' + marker + '#'
+		marker := '"' + '#'.repeat(hashes)
+		if !s.contains(marker) { break
+		 }
 		hashes++
 	}
-	return 'r' + marker + s + marker
+	return '#'.repeat(hashes) + '"' + s + '"' + '#'.repeat(hashes)
 }
 
 pub fn unquote_string(s string) !string {

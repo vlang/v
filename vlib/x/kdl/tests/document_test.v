@@ -48,11 +48,11 @@ fn test_unquote_string() {
 }
 
 fn test_raw_string() {
-	// Basic raw string
-	assert kdl.raw_string('test') == 'r"test"'
+	// Basic raw string (KDL-style)
+	assert kdl.raw_string('test') == '#"test"#'
 	// Raw string with quotes inside
 	r2 := kdl.raw_string('test "quote"')
-	assert r2.contains('r#')
+	assert r2.contains('#')
 	assert r2.contains('test "quote"')
 	assert r2.contains('"#')
 }

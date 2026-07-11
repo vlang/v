@@ -138,12 +138,14 @@ fn test_unquote_string_invalid() {
 }
 
 fn test_raw_string_fn_basic() {
-	assert kdl.raw_string('test') == 'r"test"'
+	assert kdl.raw_string('test') == '#"test"#'
 }
 
 fn test_raw_string_fn_with_quote() {
 	got := kdl.raw_string('test "quote"')
-	assert got.starts_with('r#')
+	assert got.starts_with('#')
+	assert got.ends_with('#')
+	assert got.contains('test "quote"')
 	assert got.ends_with('"#')
 }
 
