@@ -5950,26 +5950,79 @@ fn (t &Transformer) shared_postfix_autolock_target(id flat.NodeId) ?flat.NodeId 
 }
 
 fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId) bool {
-	mut is_shared := false
-	mut start := 0
-	limit := if int(before) < t.a.nodes.len { int(before) } else { t.a.nodes.len }
-	for i in 0 .. limit {
-		node := t.a.nodes[i]
-		if node.kind == .fn_decl {
-			start = i
+	if name.len == 0 || int(before) < 0 || int(before) >= t.a.nodes.len {
+		return false
+	}
+	// Follow the mutation's ancestor path and inspect only declarations preceding that
+	// path in each enclosing scope; bindings inside sibling blocks must not leak out.
+	mut parents := map[int]int{}
+	for parent_id, node in t.a.nodes {
+		for i in 0 .. node.children_count {
+			child_id := int(t.a.child(&node, i))
+			if child_id >= 0 && child_id != parent_id {
+				parents[child_id] = parent_id
+			}
 		}
 	}
-	for i in start .. limit {
-		node := t.a.nodes[i]
-		if node.kind != .decl_assign || node.children_count == 0 {
+	mut path := [int(before)]
+	mut cursor := int(before)
+	mut found_fn_scope := false
+	for _ in 0 .. t.a.nodes.len {
+		parent_id := parents[cursor] or { break }
+		path << parent_id
+		parent := t.a.nodes[parent_id]
+		if parent.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+			found_fn_scope = true
+			break
+		}
+		cursor = parent_id
+	}
+	if !found_fn_scope {
+		return false
+	}
+	mut found := false
+	mut is_shared := false
+	for path_idx := path.len - 1; path_idx > 0; path_idx-- {
+		parent := t.a.nodes[path[path_idx]]
+		next_id := path[path_idx - 1]
+		for i in 0 .. parent.children_count {
+			child_id := int(t.a.child(&parent, i))
+			if child_id == next_id {
+				break
+			}
+			if child_id < 0 || child_id >= t.a.nodes.len {
+				continue
+			}
+			child := t.a.nodes[child_id]
+			if child.kind == .param && child.value == name {
+				found = true
+				is_shared = false
+			} else if child.kind == .decl_assign {
+				if binding_shared := t.local_decl_shared_binding(child, name) {
+					found = true
+					is_shared = binding_shared
+				}
+			}
+		}
+	}
+	return found && is_shared
+}
+
+fn (t &Transformer) local_decl_shared_binding(node flat.Node, name string) ?bool {
+	if node.kind != .decl_assign || node.children_count == 0 {
+		return none
+	}
+	for i := 0; i < node.children_count; i += 2 {
+		lhs_id := t.a.child(&node, i)
+		if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
 			continue
 		}
-		lhs := t.a.child_node(&node, 0)
+		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.kind == .ident && lhs.value == name {
-			is_shared = node.value == 'shared' || node.value.starts_with('shared:')
+			return node.value == 'shared' || node.value.starts_with('shared:')
 		}
 	}
-	return is_shared
+	return none
 }
 
 // transform_lock_stmt transforms transform lock stmt data for transform.
