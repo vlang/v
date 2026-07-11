@@ -1052,6 +1052,16 @@ fn main() {
 
 	logical_shifts := run_good(v3_bin, 'signed_logical_shift_results', 'const shifted = i64(-5) >>> 1
 
+fn shift_lhs(mut order []int) i64 {
+	order << 1
+	return -5
+}
+
+fn shift_rhs(mut order []int) int {
+	order << 2
+	return 64
+}
+
 fn main() {
 	println((i8(-1) >>> 0 == u8(255)).str())
 	println(shifted.str())
@@ -1063,9 +1073,13 @@ fn main() {
 	println(typeof(narrow).name)
 	println((i64(-5) >>> 1).str())
 	println("\${i64(-5) >>> 1}")
+	mut order := []int{}
+	oversized := shift_lhs(mut order) >>> shift_rhs(mut order)
+	println(int_str(order[0] * 10 + order[1]))
+	println(oversized.str())
 }
 ')
-	assert logical_shifts == 'true\n9223372036854775805\n9223372036854775805\nu64\n255\nu8\n9223372036854775805\n9223372036854775805'
+	assert logical_shifts == 'true\n9223372036854775805\n9223372036854775805\nu64\n255\nu8\n9223372036854775805\n9223372036854775805\n12\n0'
 
 	widened_left_shifts := run_good(v3_bin, 'const_count_left_shift_widening', 'const shift_count = 50 + 1
 const named_shift = u64(1 << shift_count)
