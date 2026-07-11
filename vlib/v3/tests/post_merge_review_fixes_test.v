@@ -751,6 +751,29 @@ fn main() {
 	assert out == '"a\\"b"'
 }
 
+fn test_json_enum_label_preserves_edge_quote() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_enum_edge_quote_label', 'import json
+
+enum Kind {
+	fallback
+	trailing @[json: \'a"\']
+}
+
+struct Packet {
+	kind Kind
+}
+
+fn main() {
+	encoded := json.encode(Kind.trailing)
+	println(encoded)
+	packet := json.decode(Packet, "{\\"kind\\":" + encoded + "}")!
+	println(packet.kind == .trailing)
+}
+')
+	assert out == '"a\\""\ntrue'
+}
+
 fn test_flag_enum_autostr_deduplicates_member_references() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'flag_enum_autostr_member_reference', '@[flag]

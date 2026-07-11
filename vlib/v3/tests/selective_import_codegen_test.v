@@ -282,6 +282,36 @@ fn main() {
 	assert generated.contains('v3_json_encode_string('), generated
 }
 
+fn test_json2_encode_pure_v_is_specialized() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin,
+		'json2_encode_specialized', 'module main
+
+import x.json2
+
+struct User {
+	name string
+}
+
+fn main() {
+	println(json2.encode(User{name: "x"}, json2.EncoderOptions{}))
+}
+', {
+		'x/json2/encode.v': 'module json2
+
+pub struct EncoderOptions {}
+
+pub fn encode[T](value T, options EncoderOptions) string {
+	_ = value
+	_ = options
+	return "pure-v"
+}
+'
+	})
+	assert output == 'pure-v'
+	assert generated.contains('json2__encode'), generated
+}
+
 fn test_selective_import_inside_generic_clone_keeps_source_file_symbol() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run_with_extra(v3_bin,
