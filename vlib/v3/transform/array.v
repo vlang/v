@@ -257,6 +257,12 @@ fn (mut t Transformer) make_struct_runtime_default_value(struct_type string) ?fl
 }
 
 fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type string, mut visited map[string]bool) ?flat.NodeId {
+	// A reference-typed field defaults to nil, which the zeroed element already
+	// is; expanding it would build `(T*){<struct defaults>}` — invalid C
+	// (lookup_struct_info resolves `&mod.T` texts through its direct fallback).
+	if struct_type.starts_with('&') {
+		return none
+	}
 	// Name lookups can resolve cycles (e.g. same-named types across modules), so guard
 	// the current expansion path against re-entering a type.
 	if struct_type in visited {
