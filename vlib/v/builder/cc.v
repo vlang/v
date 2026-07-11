@@ -1593,15 +1593,24 @@ fn (v &Builder) should_forward_retry_output() bool {
 		|| v.pref.dump_defines == '-'
 }
 
+fn (v &Builder) retry_compilation_args(original_args []string, ccompiler string) []string {
+	boundary := v.retry_command_boundary(original_args)
+	mut retry_args := without_ccompiler_args(original_args[..boundary])
+	retry_args << ['-cc', ccompiler, '-no-retry-compilation']
+	if v.pref.build_mode == .build_module {
+		retry_args << without_ccompiler_args(original_args[boundary..])
+	} else {
+		retry_args << original_args[boundary..]
+	}
+	return retry_args
+}
+
 fn (v &Builder) retry_compilation_with(ccompiler string) os.Result {
 	// Compiler comptime branches such as `$if tinyc` are resolved before C generation,
 	// so the fallback must regenerate the program instead of reusing TCC's C output.
 	all_args := util.join_env_vflags_and_os_args()
 	original_args := all_args#[1..].clone()
-	boundary := v.retry_command_boundary(original_args)
-	mut retry_args := without_ccompiler_args(original_args[..boundary])
-	retry_args << ['-cc', ccompiler, '-no-retry-compilation']
-	retry_args << original_args#[boundary..]
+	retry_args := v.retry_compilation_args(original_args, ccompiler)
 	vexe := pref.vexe_path()
 	cmd := '${os.quoted_path(vexe)} ${util.args_quote_paths(retry_args)}'
 	old_vflags := os.getenv_opt('VFLAGS')

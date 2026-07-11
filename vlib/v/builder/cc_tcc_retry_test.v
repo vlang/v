@@ -107,6 +107,26 @@ fn test_tcc_retry_finds_run_boundary_for_executable_alias() {
 	assert builder.retry_command_boundary(args) == 4
 }
 
+fn test_tcc_retry_filters_build_module_compilers_after_target() {
+	module_path := os.join_path(os.vtmp_dir(), 'retry_build_module')
+	builder := &Builder{
+		pref: &pref.Preferences{
+			build_mode: .build_module
+			path:       module_path
+		}
+	}
+	args := ['-cc=tcc', 'build-module', module_path, '-d', 'retry_feature', '-cc', 'tcc']
+	assert builder.retry_compilation_args(args, 'clang') == [
+		'-cc',
+		'clang',
+		'-no-retry-compilation',
+		'build-module',
+		module_path,
+		'-d',
+		'retry_feature',
+	]
+}
+
 fn test_tcc_retry_forwards_stdout_producing_modes() {
 	mut preferences := &pref.Preferences{}
 	builder := &Builder{
