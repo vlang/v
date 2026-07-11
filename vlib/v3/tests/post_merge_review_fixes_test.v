@@ -2816,6 +2816,16 @@ fn test_amp_interface_cast_heap_copies_concrete_source() {
 	assert out == '5'
 }
 
+fn test_mut_interface_argument_borrows_existing_interface_box() {
+	v3_bin := build_v3()
+	source := 'interface Visitor {\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln("ok")\n}\n'
+	c_source := gen_c(v3_bin, 'mut_interface_arg_borrows_existing_box', source)
+	assert c_source.contains('call(&visitor);')
+	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
+	out := run_good(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
+	assert out == 'ok'
+}
+
 fn test_c_atomic_pointer_load_store_preserves_pointer_width() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'c_atomic_pointer_load_store',
