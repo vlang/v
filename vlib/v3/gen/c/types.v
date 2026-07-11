@@ -1,5 +1,6 @@
 module c
 
+import strconv
 import v3.flat
 import v3.gen.c.naming
 import v3.types
@@ -478,13 +479,22 @@ fn (mut g FlatGen) enum_decls() {
 							}
 							if f.children_count > 0 {
 								expr_id := g.a.child(f, 0)
-								// Preserve the source expression for backed enums. V's `int` is
-								// 32-bit, so eagerly folding u64/i64 members here truncates values
-								// before the C storage type can represent them.
-								value_known = false
-								value_expr = g.enum_field_expr_to_string_with_enum(expr_id,
-									cur_module, node.value, cn, field_names) or {
-									g.expr_to_string(expr_id)
+								mut resolving := map[string]bool{}
+								if enum_val := g.enum_field_expr_value_with_enum(expr_id,
+									cur_module, node.value, mut field_values, field_exprs, mut
+									resolving)
+								{
+									value = enum_val
+									value_known = true
+									value_expr = enum_val.str()
+								} else {
+									// Preserve expressions outside V's 32-bit `int` range so the C
+									// storage type can represent wide backed enum values without truncation.
+									value_known = false
+									value_expr = g.enum_field_expr_to_string_with_enum(expr_id,
+										cur_module, node.value, cn, field_names) or {
+										g.expr_to_string(expr_id)
+									}
 								}
 							}
 							if value_known {
@@ -781,7 +791,7 @@ fn (g &FlatGen) enum_field_expr_value_with_enum(id flat.NodeId, enum_module stri
 	node := g.a.nodes[int(id)]
 	match node.kind {
 		.int_literal {
-			return node.value.int()
+			return enum_foldable_int_literal(node.value)
 		}
 		.ident, .enum_val {
 			if ev := g.enum_decl_field_ref_value(node.value, enum_module, enum_name, mut
@@ -960,7 +970,7 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int, 
 	node := g.a.nodes[int(id)]
 	match node.kind {
 		.int_literal {
-			return node.value.int()
+			return enum_foldable_int_literal(node.value)
 		}
 		.ident {
 			if value := locals[node.value] {
@@ -1017,6 +1027,12 @@ fn (g &FlatGen) enum_comptime_expr_value(id flat.NodeId, locals map[string]int, 
 			return none
 		}
 	}
+}
+
+fn enum_foldable_int_literal(value string) ?int {
+	clean := value.replace('_', '')
+	parsed := strconv.common_parse_int(clean, 0, 32, true, true) or { return none }
+	return int(parsed)
 }
 
 fn (mut g FlatGen) enum_field_expr_to_string_with_enum(id flat.NodeId, enum_module string, enum_name string, enum_c_name string, field_names map[string]bool) ?string {

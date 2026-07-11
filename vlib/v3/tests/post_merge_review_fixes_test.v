@@ -643,6 +643,59 @@ fn main() {
 	assert out == '2'
 }
 
+fn test_backed_enum_helper_initializer_is_folded() {
+	v3_bin := build_v3()
+	source := 'fn make() int {
+	return 4
+}
+
+enum E as u64 {
+	a = make()
+	b
+	max = 18446744073709551615
+}
+
+fn main() {
+	println(int_str(int(E.a)))
+	println(int_str(int(E.b)))
+	match E.a {
+		.a { println("a") }
+		else { println("other") }
+	}
+}
+'
+	out := run_good(v3_bin, 'backed_enum_helper_initializer', source)
+	assert out == '4\n5\na'
+	c_source := gen_c(v3_bin, 'backed_enum_helper_initializer_c', source)
+	macro := c_source.split_into_lines().filter(it.starts_with('#define E__a '))
+	assert macro == ['#define E__a ((E)(4))']
+	wide_macro := c_source.split_into_lines().filter(it.starts_with('#define E__max '))
+	assert wide_macro == ['#define E__max ((E)(18446744073709551615))']
+}
+
+fn test_json_decode_enum_accepts_name_and_label() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_decode_enum_name_and_label', 'import json
+
+enum Kind {
+	unknown
+	field_name @[json: "wire"]
+}
+
+struct Packet {
+	kind Kind
+}
+
+fn main() {
+	by_name := json.decode(Packet, "{\\"kind\\":\\"field_name\\"}")!
+	by_label := json.decode(Packet, "{\\"kind\\":\\"wire\\"}")!
+	println(by_name.kind == .field_name)
+	println(by_label.kind == .field_name)
+}
+')
+	assert out == 'true\ntrue'
+}
+
 fn test_string_index_type_is_u8() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'string_index_type_is_u8',

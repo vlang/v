@@ -5167,7 +5167,14 @@ fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, field types.Stru
 			value := g.enum_value_expr_for_type(clean.name, name) or {
 				'${g.cname(clean.name)}__${g.cname(name)}'
 			}
-			result = '(${item} != NULL && ${item}->valuestring != NULL && strcmp(${item}->valuestring, "${label}") == 0 ? ${value} : ${result})'
+			mut comparisons := [
+				'strcmp(${item}->valuestring, "${c_escape(name)}") == 0',
+			]
+			if label != name {
+				comparisons << 'strcmp(${item}->valuestring, "${c_escape(label)}") == 0'
+			}
+			matches := comparisons.join(' || ')
+			result = '(${item} != NULL && ${item}->valuestring != NULL && (${matches}) ? ${value} : ${result})'
 		}
 		g.write(result)
 		return
