@@ -988,6 +988,17 @@ fn main() {
 ')
 	assert logical_shifts == 'true\n9223372036854775805'
 
+	widened_left_shifts := run_good(v3_bin, 'const_count_left_shift_widening', 'const shift_count = 50 + 1
+const named_shift = u64(1 << shift_count)
+const parenthesized_shift = u64(1 << (51))
+
+fn main() {
+	println(named_shift.str())
+	println(parenthesized_shift.str())
+}
+')
+	assert widened_left_shifts == '2251799813685248\n2251799813685248'
+
 	shared_sum_field := run_good(v3_bin, 'nested_sum_shared_field_diamond', 'struct Sub1 {
 	id int
 }

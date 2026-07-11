@@ -10128,17 +10128,78 @@ fn (mut g FlatGen) gen_small_int_arith_operand_truncated(id flat.NodeId, node fl
 }
 
 // shift_needs_64bit_widening reports whether `lhs << rhs` has an int-literal
-// lhs and a literal shift count that overflows C's 32-bit `int` arithmetic.
+// lhs and a constant shift count that overflows C's 32-bit `int` arithmetic.
 fn (g &FlatGen) shift_needs_64bit_widening(node &flat.Node) bool {
 	if node.children_count < 2 {
 		return false
 	}
 	lhs := g.a.child_node(node, 0)
-	rhs := g.a.child_node(node, 1)
-	if lhs.kind != .int_literal || rhs.kind != .int_literal {
+	if lhs.kind != .int_literal {
 		return false
 	}
-	return rhs.value.replace('_', '').int() >= 31
+	rhs_value := g.shift_count_const_value(g.a.child(node, 1), []string{}) or { return false }
+	return rhs_value >= 31
+}
+
+fn (g &FlatGen) shift_count_const_value(id flat.NodeId, seen []string) ?int {
+	if !g.valid_node_id(id) {
+		return none
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.int_literal {
+			return g.tc.const_int_value(node.value, seen)
+		}
+		.ident, .selector {
+			name := g.const_ref_name_from_node(node)
+			if name.len == 0 || name in seen {
+				return none
+			}
+			module_name := g.const_modules[name] or { g.tc.cur_module }
+			return g.tc.const_int_value_in_module(name, module_name, seen)
+		}
+		.paren {
+			if node.children_count > 0 {
+				return g.shift_count_const_value(g.a.child(&node, 0), seen)
+			}
+		}
+		.prefix {
+			if node.children_count == 0 {
+				return none
+			}
+			value := g.shift_count_const_value(g.a.child(&node, 0), seen) or { return none }
+			return match node.op {
+				.plus { value }
+				.minus { -value }
+				.bit_not { ~value }
+				else { none }
+			}
+		}
+		.infix {
+			if node.children_count < 2 {
+				return none
+			}
+			left := g.shift_count_const_value(g.a.child(&node, 0), seen) or { return none }
+			right := g.shift_count_const_value(g.a.child(&node, 1), seen) or { return none }
+			if node.op in [.div, .mod] && right == 0 {
+				return none
+			}
+			return match node.op {
+				.plus { left + right }
+				.minus { left - right }
+				.mul { left * right }
+				.div { left / right }
+				.mod { left % right }
+				.pipe { left | right }
+				.xor { left ^ right }
+				.amp { left & right }
+				else { none }
+			}
+		}
+		else {}
+	}
+
+	return none
 }
 
 // gen_prefix_op_operand writes a prefix operator and its operand, adding
