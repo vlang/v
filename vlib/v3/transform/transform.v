@@ -5955,7 +5955,7 @@ fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId)
 	limit := if int(before) < t.a.nodes.len { int(before) } else { t.a.nodes.len }
 	for i in 0 .. limit {
 		node := t.a.nodes[i]
-		if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		if node.kind == .fn_decl {
 			start = i
 		}
 	}
