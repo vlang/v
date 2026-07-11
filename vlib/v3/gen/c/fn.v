@@ -4988,6 +4988,21 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		// C-NUL-terminated and would truncate the V string.
 		return 'v3_json_encode_string(${expr})'
 	}
+	if clean is types.Primitive {
+		if clean.props.has(.boolean) {
+			return 'bool__str((bool)(${expr}))'
+		}
+		if clean.props.has(.integer) {
+			if clean.props.has(.unsigned) {
+				return 'u64__str((u64)(${expr}))'
+			}
+			return 'i64__str((i64)(${expr}))'
+		}
+		if clean.props.has(.float) {
+			return 'f64__str((double)(${expr}))'
+		}
+		return none
+	}
 	if clean is types.Struct {
 		// The shortcut keys the wire format off the raw field name, so any struct
 		// carrying json field attributes (`@[json: 'x']`, `@[skip]`, ...) would be
@@ -5083,11 +5098,11 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 fn (mut g FlatGen) json_decode_field_valid_expr(root_name string, field types.StructField) string {
 	item := 'cJSON_GetObjectItemCaseSensitive(${root_name}, "${field.name}")'
 	clean := if field.typ is types.Alias { field.typ.base_type } else { field.typ }
-	// Mirror the json module: string and bool fields must have the matching JSON type
-	// (a present mismatch is a decode error), while numeric and enum fields tolerate
-	// wrong-typed / unknown values by falling back to a default.
+	// Mirror the json module: string fields accept strings and stringify objects/arrays,
+	// bool fields require booleans, and numeric/enum fields tolerate wrong-typed or
+	// unknown values by falling back to a default.
 	if clean is types.String {
-		return '(${item} == NULL || cJSON_IsString(${item}))'
+		return '(${item} == NULL || cJSON_IsString(${item}) || cJSON_IsObject(${item}) || cJSON_IsArray(${item}))'
 	}
 	if clean is types.Primitive && clean.props.has(.boolean) {
 		return '(${item} == NULL || cJSON_IsBool(${item}))'
@@ -5123,7 +5138,10 @@ fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, field types.Stru
 	clean := if field.typ is types.Alias { field.typ.base_type } else { field.typ }
 	if clean is types.String {
 		empty := g.intern_string('')
-		g.write('(${item} != NULL && ${item}->valuestring != NULL ? tos_clone((u8*)${item}->valuestring) : _str_${empty})')
+		item_name := g.tmp_name()
+		out_name := g.tmp_name()
+		raw_name := g.tmp_name()
+		g.write('({ cJSON* ${item_name} = ${item}; string ${out_name} = _str_${empty}; if (${item_name} != NULL && cJSON_IsString(${item_name}) && ${item_name}->valuestring != NULL) { ${out_name} = tos_clone((u8*)${item_name}->valuestring); } else if (${item_name} != NULL && (cJSON_IsObject(${item_name}) || cJSON_IsArray(${item_name}))) { char* ${raw_name} = cJSON_PrintUnformatted(${item_name}); if (${raw_name} != NULL) { ${out_name} = tos_clone((u8*)${raw_name}); cJSON_free(${raw_name}); } } ${out_name}; })')
 		return
 	}
 	if clean is types.Enum {

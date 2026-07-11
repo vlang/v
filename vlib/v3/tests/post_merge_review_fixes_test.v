@@ -524,6 +524,42 @@ fn main() {
 	assert out == '5'
 }
 
+fn test_json_fast_paths_handle_primitives_and_stringified_composites() {
+	v3_bin := build_v3()
+	encoded := run_good(v3_bin, 'json_encode_primitive_struct_fields', 'import json
+
+struct User {
+	age int
+	ok bool
+	score f64
+}
+
+fn main() {
+	println(json.encode(User{
+		age: 1
+		ok: true
+		score: 1.5
+	}))
+}
+')
+	assert encoded == '{"age":1,"ok":true,"score":1.5}'
+
+	decoded := run_good(v3_bin, 'json_decode_composites_to_strings', 'import json
+
+struct Payload {
+	object string
+	array string
+}
+
+fn main() {
+	payload := json.decode(Payload, "{\\"object\\":{},\\"array\\":[1,2]}")!
+	println(payload.object)
+	println(payload.array)
+}
+')
+	assert decoded == '{}\n[1,2]'
+}
+
 fn test_string_index_type_is_u8() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'string_index_type_is_u8',
