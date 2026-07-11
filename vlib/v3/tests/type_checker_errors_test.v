@@ -446,6 +446,52 @@ fn main() {
 }
 ',
 		'`is` can only be used with sum type or interface values, not `int`')
+	run_bad(v3_bin, 'bad_generic_is_pattern_for_sum', 'struct Cat {}
+struct Dog {}
+
+type Animal = Cat | Dog
+
+fn matches[T](value Animal) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[string](Animal(Cat{}))
+}
+',
+		'`string` is not a variant of sum type `Animal`')
+	run_bad(v3_bin, 'bad_generic_is_pattern_for_interface', 'interface Shape {
+	area() int
+}
+
+struct Rect {}
+
+fn (r Rect) area() int {
+	return 1
+}
+
+struct Other {}
+
+fn matches[T](value Shape) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[Other](Rect{})
+}
+',
+		'`Other` is not compatible with interface `Shape`')
+	run_bad(v3_bin, 'bad_generic_is_pattern_for_ierror', 'struct NotError {}
+
+fn matches[T](value IError) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[NotError](error("x"))
+}
+',
+		'`NotError` is not compatible with `IError`')
 	run_bad(v3_bin, 'bad_generic_receiver_method_for_concrete_type', 'struct HasValue {}
 
 fn (v HasValue) value() int {

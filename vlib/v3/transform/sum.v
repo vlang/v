@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.types
 
 // trim_pointer_type transforms trim pointer type data for transform.
 fn (t &Transformer) trim_pointer_type(typ string) string {
@@ -519,10 +520,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	clean_type0 := t.trim_pointer_type(expr_type)
 	concrete_expr_type := t.normalize_type_alias(clean_type0)
 	resolved_expr_sum := t.resolve_sum_name(concrete_expr_type)
-	if t.validating_generic_spec && concrete_expr_type.len > 0
-		&& !t.type_text_has_generic_placeholder(concrete_expr_type, t.cur_module)
-		&& resolved_expr_sum !in t.sum_types && !t.is_interface_type_name(concrete_expr_type) {
-		t.record_monomorph_error('`is` can only be used with sum type or interface values, not `${concrete_expr_type}`')
+	if !t.validate_specialized_is_expr(concrete_expr_type, resolved_expr_sum, node.value) {
 		return t.make_bool_literal(false)
 	}
 	clean_type := if clean_type0 in t.sum_types {
@@ -578,6 +576,60 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 		return check
 	}
 	return t.make_bool_literal(true)
+}
+
+fn (mut t Transformer) validate_specialized_is_expr(subject_type string, resolved_sum string, pattern string) bool {
+	if !t.validating_generic_spec || subject_type.len == 0
+		|| t.type_text_has_generic_placeholder(subject_type, t.cur_module) {
+		return true
+	}
+	if resolved_sum in t.sum_types {
+		if pattern.len == 0 || t.type_text_has_generic_placeholder(pattern, t.cur_module) {
+			return true
+		}
+		if _ := t.resolve_sum_variant_pattern_for_subject(subject_type, pattern) {
+			return true
+		}
+		t.record_monomorph_error('`${pattern}` is not a variant of sum type `${resolved_sum}`')
+		return false
+	}
+	if t.is_interface_type_name(subject_type) {
+		if pattern.len == 0 || t.type_text_has_generic_placeholder(pattern, t.cur_module) {
+			return true
+		}
+		if t.is_builtin_ierror_interface_name(subject_type) && pattern == 'none' {
+			return true
+		}
+		if _ := t.resolve_interface_pattern(pattern, subject_type) {
+			return true
+		}
+		if t.is_builtin_ierror_interface_name(subject_type) {
+			t.record_monomorph_error('`${pattern}` is not compatible with `IError`')
+		} else if t.specialized_is_pattern_known(pattern) {
+			t.record_monomorph_error('`${pattern}` is not compatible with interface `${subject_type}`')
+		} else {
+			t.record_monomorph_error('unknown type `${pattern}`')
+		}
+		return false
+	}
+	t.record_monomorph_error('`is` can only be used with sum type or interface values, not `${subject_type}`')
+	return false
+}
+
+fn (t &Transformer) specialized_is_pattern_known(pattern string) bool {
+	for candidate in t.interface_pattern_candidates(pattern) {
+		if types.is_builtin_type_name(candidate) || t.interface_pattern_candidate_known(candidate) {
+			return true
+		}
+		clean := candidate.trim_space()
+		if clean.starts_with('[]') || clean.starts_with('map[') || clean.starts_with('[')
+			|| clean.starts_with('fn ') || clean.starts_with('fn(') {
+			if t.tc.parse_type(clean).name() != 'unknown' {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name string) ?int {
