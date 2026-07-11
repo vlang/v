@@ -18986,6 +18986,9 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			if operator_ret := tc.infix_operator_return_type(node.op, lt, rt) {
 				return operator_ret
 			}
+			if node.op == .right_shift_unsigned {
+				return unsigned_shift_result_type(lt)
+			}
 			if lt is String {
 				return lt_raw
 			}

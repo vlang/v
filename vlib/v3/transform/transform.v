@@ -9677,6 +9677,9 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 				if ret_type.len > 0 {
 					return ret_type
 				}
+				if node.op == .right_shift_unsigned && lhs_type.len > 0 {
+					return unsigned_shift_type_text(lhs_type)
+				}
 				if node.op == .plus && lhs_type == 'string' {
 					return 'string'
 				}

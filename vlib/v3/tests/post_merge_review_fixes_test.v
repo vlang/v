@@ -1023,9 +1023,17 @@ fn main() {
 fn main() {
 	println((i8(-1) >>> 0 == u8(255)).str())
 	println(shifted.str())
+	value := i64(-5) >>> 1
+	println(value.str())
+	println(typeof(value).name)
+	narrow := i8(-1) >>> 0
+	println(narrow.str())
+	println(typeof(narrow).name)
+	println((i64(-5) >>> 1).str())
+	println("\${i64(-5) >>> 1}")
 }
 ')
-	assert logical_shifts == 'true\n9223372036854775805'
+	assert logical_shifts == 'true\n9223372036854775805\n9223372036854775805\nu64\n255\nu8\n9223372036854775805\n9223372036854775805'
 
 	widened_left_shifts := run_good(v3_bin, 'const_count_left_shift_widening', 'const shift_count = 50 + 1
 const named_shift = u64(1 << shift_count)

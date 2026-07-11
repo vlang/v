@@ -2351,7 +2351,12 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 		.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or {
 			return 'bool'
 		}
-		.left_shift, .right_shift, .right_shift_unsigned {
+		.right_shift_unsigned {
+			if lhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type) {
+				return unsigned_shift_type_text(lhs_type)
+			}
+		}
+		.left_shift, .right_shift {
 			// shifts keep the left operand's type/width
 			if lhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type) {
 				return lhs_type
@@ -2374,6 +2379,14 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 	}
 
 	return ''
+}
+
+fn unsigned_shift_type_text(typ string) string {
+	clean := typ.trim_space()
+	if types.is_builtin_type_name(clean) {
+		return types.unsigned_shift_result_type(types.builtin_type_value(clean)).name()
+	}
+	return typ
 }
 
 fn promote_numeric_literal_infix_type(lhs flat.Node, lhs_type string, rhs flat.Node, rhs_type string) ?string {
