@@ -913,6 +913,10 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 	mut suffix_node := flat.Node{}
 	mut suffix_found := false
 	for candidate in g.a.nodes {
+		if candidate.kind == .file {
+			cur_mod = ''
+			continue
+		}
 		if candidate.kind == .module_decl {
 			cur_mod = candidate.value
 			continue

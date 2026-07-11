@@ -713,6 +713,27 @@ fn main() {
 	assert macro == ['#define Backed__local ((Backed)(7))']
 }
 
+fn test_enum_helper_scan_resets_module_at_file_boundary() {
+	v3_bin := build_v3()
+	source := 'fn exit() int {
+	return 9
+}
+
+enum E {
+	a = exit()
+	b
+}
+
+fn main() {
+	println(E.a.str())
+	println(E.b.str())
+}
+'
+	c_source := gen_c(v3_bin, 'enum_helper_main_file_module_reset_c', source)
+	assert c_source.contains('\tE__a = 9,')
+	assert c_source.contains('\tE__b = 10,')
+}
+
 fn test_json_decode_enum_accepts_name_and_label() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'json_decode_enum_name_and_label', 'import json
