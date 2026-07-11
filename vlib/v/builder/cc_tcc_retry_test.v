@@ -19,34 +19,6 @@ fn test_is_tcc_compilation_failure_detects_tcc_output() {
 	assert !is_tcc_compilation_failure('cc', .unknown, 'clang: error: unsupported option')
 }
 
-fn test_c_compiler_failure_output_reports_final_compiler_after_tcc_retry_fails() {
-	tcc_res := os.Result{
-		exit_code: 1
-		output:    'tcc: stale retry failure'
-	}
-	clang_res := os.Result{
-		exit_code: 1
-		output:    'clang: final generated C failure'
-	}
-	failure_output := c_compiler_failure_output('clang', clang_res, tcc_res)
-	assert failure_output.display_ccompiler == 'tcc'
-	assert failure_output.display_res.output == tcc_res.output
-	assert failure_output.report_ccompiler == 'clang'
-	assert failure_output.report_res.output == clang_res.output
-}
-
-fn test_c_compiler_failure_output_reports_displayed_compiler_without_tcc_retry() {
-	clang_res := os.Result{
-		exit_code: 1
-		output:    'clang: final generated C failure'
-	}
-	failure_output := c_compiler_failure_output('clang', clang_res, os.Result{})
-	assert failure_output.display_ccompiler == 'clang'
-	assert failure_output.display_res.output == clang_res.output
-	assert failure_output.report_ccompiler == 'clang'
-	assert failure_output.report_res.output == clang_res.output
-}
-
 fn test_is_tcc_compilation_failure_detects_tcc_alias_compiler() {
 	if os.user_os() == 'windows' {
 		return
@@ -63,6 +35,58 @@ fn test_is_tcc_compilation_failure_detects_tcc_alias_compiler() {
 		os.rmdir_all(test_root) or {}
 	}
 	assert is_tcc_compilation_failure('cc', .unknown, '')
+}
+
+fn test_tcc_retry_warning_is_visible() {
+	if os.user_os() == 'windows' {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_tcc_retry_warning_${os.getpid()}')
+	fake_tcc := os.join_path(test_root, 'fake-tcc')
+	source_path := os.join_path(test_root, 'main.v')
+	exe_path := os.join_path(test_root, 'main')
+	os.mkdir_all(test_root) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	os.write_file(fake_tcc,
+		'#!/bin/sh\necho "tcc: error: _Thread_local is not implemented"\nexit 1\n') or {
+		panic(err)
+	}
+	os.chmod(fake_tcc, 0o700) or { panic(err) }
+	os.write_file(source_path, 'fn main() {}\n') or { panic(err) }
+	res :=
+		os.execute('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(fake_tcc)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.contains('warning: tcc compilation failed, falling back to cc'), res.output
+}
+
+fn test_tcc_retry_reports_final_compiler_failure() {
+	if os.user_os() == 'windows' {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_builder_tcc_retry_failure_${os.getpid()}')
+	fake_tcc := os.join_path(test_root, 'fake-tcc')
+	header_path := os.join_path(test_root, 'retry_failure.h')
+	source_path := os.join_path(test_root, 'retry_test.v')
+	exe_path := os.join_path(test_root, 'retry_test')
+	os.mkdir_all(test_root) or { panic(err) }
+	defer {
+		os.rmdir_all(test_root) or {}
+	}
+	os.write_file(fake_tcc, '#!/bin/sh\necho "tcc: error: first compiler failed"\nexit 1\n') or {
+		panic(err)
+	}
+	os.chmod(fake_tcc, 0o700) or { panic(err) }
+	os.write_file(header_path, '#error retry_system_compiler_failure\n') or { panic(err) }
+	os.write_file(source_path, '#include "${header_path}"\nfn test_retry() {}\n') or { panic(err) }
+	res :=
+		os.execute('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(fake_tcc)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('warning: tcc compilation failed, falling back to cc'), res.output
+	assert res.output.contains('C compilation error (from cc)'), res.output
+	assert res.output.contains('retry_system_compiler_failure'), res.output
+	assert !res.output.contains('C compilation error (from tcc)'), res.output
 }
 
 fn fake_windows_short_path(path string) string {

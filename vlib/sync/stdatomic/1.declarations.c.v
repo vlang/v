@@ -8,6 +8,12 @@ $if windows {
 	#insert "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
 } $else {
 	#flag -I @VEXEROOT/thirdparty/stdatomic/nix
+	$if tinyc {
+		// The compatibility header below provides TCC's atomic API. Prevent a
+		// later third-party include from reopening TCC's stdatomic.h after the
+		// compatibility memory_order_* macros have been defined.
+		#define _STDATOMIC_H
+	}
 	#insert "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
 }
 

@@ -413,30 +413,6 @@ fn (mut v Builder) show_c_compiler_output(ccompiler string, res os.Result) {
 	println('='.repeat(header.len))
 }
 
-struct CCompilerFailureOutput {
-	display_ccompiler string
-	display_res       os.Result
-	report_ccompiler  string
-	report_res        os.Result
-}
-
-fn c_compiler_failure_output(ccompiler string, res os.Result, tcc_output os.Result) CCompilerFailureOutput {
-	if res.exit_code != 0 && tcc_output.output != '' {
-		return CCompilerFailureOutput{
-			display_ccompiler: 'tcc'
-			display_res:       tcc_output
-			report_ccompiler:  ccompiler
-			report_res:        res
-		}
-	}
-	return CCompilerFailureOutput{
-		display_ccompiler: ccompiler
-		display_res:       res
-		report_ccompiler:  ccompiler
-		report_res:        res
-	}
-}
-
 fn (mut v Builder) post_process_c_compiler_output(ccompiler string, res os.Result) {
 	v.post_process_c_compiler_output_with_report(ccompiler, res, ccompiler, res)
 }
@@ -1565,6 +1541,38 @@ fn (mut v Builder) generate_c_project() {
 	println('Generated C project in ${os.quoted_path(project_dir)}')
 }
 
+fn (v &Builder) retry_compilation_with(ccompiler string) os.Result {
+	// Compiler comptime branches such as `$if tinyc` are resolved before C generation,
+	// so the fallback must regenerate the program instead of reusing TCC's C output.
+	mut retry_options := v.pref.build_options.filter(!it.starts_with('-cc ')
+		&& it != '-no-retry-compilation')
+	retry_options << ['-cc ${os.quoted_path(ccompiler)}', '-no-retry-compilation']
+	vexe := pref.vexe_path()
+	target_args := if v.pref.build_mode == .build_module {
+		'build-module ${os.quoted_path(v.pref.path)}'
+	} else {
+		'-o ${os.quoted_path(v.pref.out_name)} ${os.quoted_path(v.pref.path)}'
+	}
+	cmd := '${os.quoted_path(vexe)} ${retry_options.join(' ')} ${target_args}'
+	old_vflags := os.getenv_opt('VFLAGS')
+	old_vnorun := os.getenv_opt('VNORUN')
+	os.unsetenv('VFLAGS')
+	os.setenv('VNORUN', '1', true)
+	defer {
+		if vflags := old_vflags {
+			os.setenv('VFLAGS', vflags, true)
+		} else {
+			os.unsetenv('VFLAGS')
+		}
+		if vnorun := old_vnorun {
+			os.setenv('VNORUN', vnorun, true)
+		} else {
+			os.unsetenv('VNORUN')
+		}
+	}
+	return os.execute(cmd)
+}
+
 pub fn (mut v Builder) cc() {
 	if os.executable().contains('vfmt') {
 		return
@@ -1635,7 +1643,6 @@ pub fn (mut v Builder) cc() {
 	vexe := pref.vexe_path()
 	vdir := os.dir(vexe)
 	mut tried_compilation_commands := []string{}
-	mut tcc_output := os.Result{}
 	original_pwd := os.getwd()
 	for {
 		// try to compile with the chosen compiler
@@ -1754,7 +1761,6 @@ pub fn (mut v Builder) cc() {
 					exit(101)
 				}
 				if v.pref.retry_compilation {
-					tcc_output = res
 					old_ccompiler := v.pref.ccompiler
 					v.pref.default_c_compiler()
 					if v.pref.ccompiler == ccompiler || is_tcc_compiler_name(v.pref.ccompiler)
@@ -1765,12 +1771,18 @@ pub fn (mut v Builder) cc() {
 					if v.pref.ccompiler != '' && v.pref.ccompiler != ccompiler {
 						if v.pref.is_verbose {
 							eprintln('Compilation with tcc failed. Retrying with ${v.pref.ccompiler} ...')
-						} else {
-							$if macos {
-								eprintln(term.red('warning: tcc compilation failed, falling back to ${v.pref.ccompiler} (this is much slower)'))
-							}
+						} else if !v.pref.is_quiet {
+							eprintln(term.red('warning: tcc compilation failed, falling back to ${v.pref.ccompiler}'))
 						}
-						continue
+						retry_res := v.retry_compilation_with(v.pref.ccompiler)
+						if retry_res.exit_code != 0 || v.pref.show_cc || v.pref.show_c_output
+							|| v.pref.is_verbose {
+							print(retry_res.output)
+						}
+						if retry_res.exit_code != 0 {
+							exit(retry_res.exit_code)
+						}
+						return
 					}
 				}
 			}
@@ -1783,13 +1795,7 @@ pub fn (mut v Builder) cc() {
 					missing_compiler_info())
 			}
 		}
-		// If tcc failed once, and the system C compiler has failed as well,
-		// print the tcc error instead since it may contain more useful information.
-		// Keep the uploaded bug report tied to the final compiler result.
-		// See https://discord.com/channels/592103645835821068/592115457029308427/811956304314761228
-		failure_output := c_compiler_failure_output(ccompiler, res, tcc_output)
-		v.post_process_c_compiler_output_with_report(failure_output.display_ccompiler,
-			failure_output.display_res, failure_output.report_ccompiler, failure_output.report_res)
+		v.post_process_c_compiler_output(ccompiler, res)
 		// Print the C command
 		if v.pref.is_verbose {
 			println('${ccompiler}')
