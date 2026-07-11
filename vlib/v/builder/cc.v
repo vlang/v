@@ -1569,8 +1569,15 @@ fn (v &Builder) retry_command_boundary(args []string) int {
 	} else {
 		return args.len
 	}
-	idx := args.index(command)
-	return if idx >= 0 { idx } else { args.len }
+	if args.len < 2 {
+		return args.len
+	}
+	for idx in 0 .. args.len - 1 {
+		if args[idx] == command && os.real_path(args[idx + 1]) == os.real_path(v.pref.path) {
+			return idx
+		}
+	}
+	return args.len
 }
 
 fn (v &Builder) retry_compilation_with(ccompiler string) os.Result {

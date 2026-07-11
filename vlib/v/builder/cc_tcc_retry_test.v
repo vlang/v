@@ -72,7 +72,7 @@ fn test_tcc_retry_warning_is_visible() {
 	os.chmod(fake_tcc, 0o700) or { panic(err) }
 	os.write_file(source_path, 'fn main() {}\n') or { panic(err) }
 	res :=
-		execute_tcc_retry_test_command('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(fake_tcc)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
+		execute_tcc_retry_test_command('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(fake_tcc)} -d run -o ${os.quoted_path(exe_path)} run ${os.quoted_path(source_path)}')
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('warning: tcc compilation failed, falling back to cc'), res.output
 }
