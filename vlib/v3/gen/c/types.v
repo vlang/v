@@ -668,13 +668,26 @@ fn (mut g FlatGen) emit_flag_enum_autostr(node flat.Node, name string, cn string
 	g.writeln('\tbool __fe_first = true;')
 	mut val := 0
 	mut seen := map[int]bool{}
+	mut field_exprs := map[string]flat.NodeId{}
 	for i in 0 .. node.children_count {
 		f := g.a.child_node(&node, i)
 		if f.children_count > 0 {
-			if enum_val := g.enum_field_expr_value(g.a.child(f, 0)) {
-				val = enum_val
+			field_exprs[f.value] = g.a.child(f, 0)
+		}
+	}
+	mut field_values := map[string]i64{}
+	enum_module := if name.contains('.') { name.all_before_last('.') } else { '' }
+	for i in 0 .. node.children_count {
+		f := g.a.child_node(&node, i)
+		if f.children_count > 0 {
+			mut resolving := map[string]bool{}
+			if enum_val := g.enum_field_expr_value_with_enum(g.a.child(f, 0), enum_module,
+				node.value, mut field_values, field_exprs, mut resolving)
+			{
+				val = int(enum_val)
 			}
 		}
+		field_values[f.value] = i64(val)
 		if val in seen {
 			val++
 			continue

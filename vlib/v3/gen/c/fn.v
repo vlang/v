@@ -4970,14 +4970,15 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		for i := names.len - 1; i >= 0; i-- {
 			name := names[i]
 			label := labels[name] or { name }
-			sid := g.intern_string('"${label}"')
+			sid := g.intern_string(label)
+			encoded_label := 'v3_json_encode_string(_str_${sid})'
 			value := g.enum_value_expr_for_type(clean.name, name) or {
 				'${g.cname(clean.name)}__${g.cname(name)}'
 			}
 			if result.len == 0 {
-				result = '_str_${sid}'
+				result = encoded_label
 			} else {
-				result = '((${expr}) == ${value} ? _str_${sid} : ${result})'
+				result = '((${expr}) == ${value} ? ${encoded_label} : ${result})'
 			}
 		}
 		return result

@@ -819,6 +819,34 @@ fn main() {
 	assert out == '7:   7|42:  42'
 }
 
+fn test_field_loop_specializes_multi_parameter_generic_helper() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'field_loop_multi_generic_helper', "struct Data {
+	n int
+	label string
+}
+
+fn pair[A, B](a A, b B) string {
+	_ = a
+	_ = b
+	return 'ok'
+}
+
+fn main() {
+	data := Data{
+		n: 7
+		label: 'x'
+	}
+	mut rows := []string{}
+	$for field in Data.fields {
+		rows << pair(data.$(field.name), field.name)
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'ok|ok'
+}
+
 fn test_enum_value_static_pruning_resolves_forward_refs() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'enum_value_static_pruning_forward_refs', "@[_allow_multiple_values]

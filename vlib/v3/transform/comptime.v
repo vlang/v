@@ -3,6 +3,8 @@ module transform
 import os
 import v3.flat
 
+const comptime_unsupported_late_generic_call = '__v3_comptime_unsupported_late_generic_call'
+
 // vmod_root supports vmod root handling for Transformer.
 fn (t &Transformer) vmod_root() string {
 	mut dir := if t.cur_file.len > 0 { os.dir(t.cur_file) } else { os.getwd() }
@@ -223,6 +225,12 @@ fn (mut t Transformer) expand_comptime_for(_id flat.NodeId, node flat.Node) []fl
 			}
 		}
 		if t.comptime_body_has_unsupported(cloned, var_name, true) {
+			return []flat.NodeId{}
+		}
+		// Bodies are unrolled after normal monomorphization. If a generic call could
+		// not be specialized while cloning, keep the previous safe skip behaviour
+		// instead of leaving an unresolved late generic call for cgen.
+		if t.comptime_body_has_unsupported_late_generic(cloned) {
 			return []flat.NodeId{}
 		}
 		// One block per iteration so per-field temps get their own scope.
@@ -752,8 +760,8 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, children
 		return node.value
 	}
 	param_names := t.generic_fn_param_names(decl.node, decl.module)
-	if param_names.len != 1 {
-		return node.value
+	if param_names.len == 0 {
+		return comptime_unsupported_late_generic_call
 	}
 	mut inferred := map[string]string{}
 	mut param_idx := 0
@@ -773,10 +781,13 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, children
 		infer_generic_type_args(param.typ, arg_type, mut inferred)
 		param_idx++
 	}
-	arg_type := inferred[param_names[0]] or { return node.value }
-	args := t.canonical_generic_specialization_args([arg_type])
-	if args.len != 1 || t.generic_args_have_placeholders(args) {
-		return node.value
+	mut inferred_args := []string{cap: param_names.len}
+	for name in param_names {
+		inferred_args << inferred[name] or { return comptime_unsupported_late_generic_call }
+	}
+	args := t.canonical_generic_specialization_args(inferred_args)
+	if args.len != param_names.len || t.generic_args_have_placeholders(args) {
+		return comptime_unsupported_late_generic_call
 	}
 	spec_value := specialized_generic_fn_value(decl.node.value, args)
 	spec_name := transform_qualified_fn_name(decl.module, spec_value)
@@ -985,17 +996,11 @@ fn (mut t Transformer) clone_node_preserving_children_with_type(node flat.Node, 
 	})
 }
 
-// comptime_body_calls_generic_fn reports whether any statement subtree calls a resolved generic
-// function. A plain short-name match is not enough: a non-generic method can share a name with an
-// unrelated generic helper.
-fn (mut t Transformer) comptime_body_calls_generic_fn(stmts []flat.NodeId) bool {
-	decls := t.cached_generic_fn_decls()
-	if decls.len == 0 {
-		return false
-	}
-	t.ensure_node_module_map()
+// comptime_body_has_unsupported_late_generic reports whether inference marked a generic call
+// that could not be specialized after the normal monomorphization pass.
+fn (t &Transformer) comptime_body_has_unsupported_late_generic(stmts []flat.NodeId) bool {
 	for sid in stmts {
-		if t.subtree_calls_generic(sid, decls) {
+		if t.subtree_has_unsupported_late_generic(sid) {
 			return true
 		}
 	}
@@ -1073,19 +1078,16 @@ fn (t &Transformer) subtree_references_var(id flat.NodeId, var_name string) bool
 	return false
 }
 
-fn (mut t Transformer) subtree_calls_generic(id flat.NodeId, decls map[string]GenericFnDecl) bool {
+fn (t &Transformer) subtree_has_unsupported_late_generic(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .call {
-		module_name := t.node_module_or(int(id), t.cur_module)
-		if _ := t.generic_call_decl_key(id, node, module_name, decls) {
-			return true
-		}
+	if node.kind == .call && node.value == comptime_unsupported_late_generic_call {
+		return true
 	}
 	for i in 0 .. node.children_count {
-		if t.subtree_calls_generic(t.a.child(&node, i), decls) {
+		if t.subtree_has_unsupported_late_generic(t.a.child(&node, i)) {
 			return true
 		}
 	}

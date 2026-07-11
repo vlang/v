@@ -704,6 +704,37 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
+fn test_json_encode_escapes_enum_label() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_encode_escaped_enum_label', 'import json
+
+enum Kind {
+	quoted @[json: \'a"b\']
+}
+
+fn main() {
+	println(json.encode(Kind.quoted))
+}
+')
+	assert out == '"a\\"b"'
+}
+
+fn test_flag_enum_autostr_deduplicates_member_references() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'flag_enum_autostr_member_reference', '@[flag]
+@[_allow_multiple_values]
+enum Permission {
+	a = 1
+	b = .a
+}
+
+fn main() {
+	println(Permission.b.str())
+}
+')
+	assert out == 'Permission{.a}'
+}
+
 fn test_string_index_type_is_u8() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'string_index_type_is_u8',
