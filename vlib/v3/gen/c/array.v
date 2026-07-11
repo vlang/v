@@ -908,7 +908,11 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			g.write('; int _i${tmp} = ')
 			g.gen_expr(g.a.child(&lhs, 1))
 			g.write('; array__set(_a${tmp}, _i${tmp}, &(${c_elem}[]){')
-			if op := compound_assign_to_infix_op(node.op) {
+			if node.op == .right_shift_unsigned_assign {
+				lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
+				g.gen_unsigned_right_shift_from_text(lhs_text, g.a.child(&node, 1),
+					arr_type.elem_type)
+			} else if op := compound_assign_to_infix_op(node.op) {
 				if arr_type.elem_type is types.String && op == .plus {
 					g.write('string__plus(')
 					g.write('*(string*)array_get(*_a${tmp}, _i${tmp})')

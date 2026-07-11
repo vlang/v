@@ -975,9 +975,12 @@ fn main() {
 	println(int_str(calls))
 	println(int_str(values[0]))
 	println(int_str(values[1]))
+	mut signed_values := [i8(-5)]
+	signed_values[0] >>>= 1
+	println(int_str(signed_values[0]))
 }
 ')
-	assert shift_once == '1\n4\n16'
+	assert shift_once == '1\n4\n16\n125'
 
 	logical_shifts := run_good(v3_bin, 'signed_logical_shift_results', 'const shifted = i64(-5) >>> 1
 
