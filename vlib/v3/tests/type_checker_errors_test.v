@@ -437,6 +437,15 @@ fn main() {
 }
 ',
 		'unknown function `value.no_such`')
+	run_bad(v3_bin, 'bad_generic_is_on_concrete_non_sum', 'fn matches[T](value int) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[string](1)
+}
+',
+		'`is` can only be used with sum type or interface values, not `int`')
 	run_bad(v3_bin, 'bad_generic_receiver_method_for_concrete_type', 'struct HasValue {}
 
 fn (v HasValue) value() int {

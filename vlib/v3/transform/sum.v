@@ -517,6 +517,14 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	expr_id := t.a.child(&node, 0)
 	expr_type := t.node_type(expr_id)
 	clean_type0 := t.trim_pointer_type(expr_type)
+	concrete_expr_type := t.normalize_type_alias(clean_type0)
+	resolved_expr_sum := t.resolve_sum_name(concrete_expr_type)
+	if t.validating_generic_spec && concrete_expr_type.len > 0
+		&& !t.type_text_has_generic_placeholder(concrete_expr_type, t.cur_module)
+		&& resolved_expr_sum !in t.sum_types && !t.is_interface_type_name(concrete_expr_type) {
+		t.record_monomorph_error('`is` can only be used with sum type or interface values, not `${concrete_expr_type}`')
+		return t.make_bool_literal(false)
+	}
 	clean_type := if clean_type0 in t.sum_types {
 		clean_type0
 	} else if _ := t.resolve_sum_variant_pattern_for_subject(clean_type0, node.value) {
