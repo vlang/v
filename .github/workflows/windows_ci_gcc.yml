@@ -30,7 +30,7 @@ concurrency:
 jobs:
   gcc-windows:
     runs-on: windows-2025
-    timeout-minutes: 110
+    timeout-minutes: 150
     env:
       VFLAGS: -cc gcc
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3

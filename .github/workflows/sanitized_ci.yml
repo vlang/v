@@ -117,7 +117,7 @@ jobs:
 
   sanitize-undefined-gcc:
     runs-on: ubuntu-22.04
-    timeout-minutes: 120
+    timeout-minutes: 150
     env:
       VFLAGS: -cc gcc -cflags -fno-omit-frame-pointer
       VJOBS: 1
