@@ -7929,7 +7929,11 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
 		child_id := t.a.child(&node, i)
-		mut new_child := t.transform_expr(child_id)
+		mut new_child := if node.op == .not {
+			t.transform_expr_for_type(child_id, 'bool')
+		} else {
+			t.transform_expr(child_id)
+		}
 		if node.op == .not {
 			child := t.a.nodes[int(new_child)]
 			if child.kind == .infix {
@@ -8205,7 +8209,11 @@ fn (mut t Transformer) transform_paren_expr(id flat.NodeId, node flat.Node) flat
 		return id
 	}
 	child_id := t.a.child(&node, 0)
-	new_child := t.transform_expr(child_id)
+	new_child := if t.expected_expr_node == int(id) && t.expected_expr_type.len > 0 {
+		t.transform_expr_for_type(child_id, t.expected_expr_type)
+	} else {
+		t.transform_expr(child_id)
+	}
 	start := t.a.children.len
 	t.a.children << new_child
 	return t.a.add_node(flat.Node{

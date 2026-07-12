@@ -657,6 +657,36 @@ fn main() {
 }
 ',
 		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_negated_condition', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if !(value.value()) {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_logical_condition', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if true && value.value() {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
 	run_bad(v3_bin, 'bad_generic_receiver_method_assignment_context', 'struct HasValue {}
 
 fn (v HasValue) value() int {
