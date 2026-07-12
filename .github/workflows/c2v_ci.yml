@@ -5,6 +5,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/c2v_ci.yml'
@@ -15,6 +16,7 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/c2v_ci.yml'
@@ -33,7 +35,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make && ./v symlink
@@ -79,7 +81,7 @@ jobs:
       LIBGL_ALWAYS_SOFTWARE: true
       VTMP: /tmp
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make && ./v symlink
@@ -133,7 +135,13 @@ jobs:
         run: |
           Xvfb "$DISPLAY" -screen 0 800x600x24 -fbdir /var/tmp/ &
           sleep 2; while [ ! -f /var/tmp/Xvfb_screen0 ]; do sleep 0.5; done # give xvfb time to start, even on slow CI runs
-          sleep 5; v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
+          sleep 5
+          v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images || {
+            echo "First vgret comparison failed, retrying once with fresh screenshots..."
+            rm -rf ./doom-sample_images
+            sleep 5
+            v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
+          }
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'
         run: |

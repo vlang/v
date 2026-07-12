@@ -2,6 +2,7 @@ module pg
 
 import orm
 import time
+import strconv
 import net.conv
 
 // ---- ORM on Conn (single pinned connection) ----
@@ -77,6 +78,25 @@ pub fn (c &Conn) create(table orm.Table, fields []orm.TableField) ! {
 pub fn (c &Conn) drop(table orm.Table) ! {
 	query := 'DROP TABLE "${table.name}";'
 	c.exec(query)!
+}
+
+// execute runs a raw SQL query and returns result rows as driver-agnostic orm.Row values,
+// with column names populated from the result metadata.
+pub fn (c &Conn) execute(query string) ![]orm.Row {
+	res := c.exec_result(query)!
+
+	mut orm_rows := []orm.Row{}
+	for r in res.rows {
+		mut vals := []string{}
+		for i in 0 .. r.vals.len {
+			vals << r.val(i)
+		}
+		orm_rows << orm.Row{
+			vals:  vals
+			names: res.names
+		}
+	}
+	return orm_rows
 }
 
 // orm_begin starts a transaction on this conn.
@@ -170,6 +190,13 @@ pub fn (mut db DB) drop(table orm.Table) ! {
 	c.drop(table)!
 }
 
+// execute runs a raw SQL query on a pooled conn and returns result rows.
+pub fn (mut db DB) execute(query string) ![]orm.Row {
+	mut c := db.pool.acquire()!
+	defer { c.close() or {} }
+	return c.execute(query)
+}
+
 // last_id returns the id stashed by this thread's most recent `DB.insert`
 // (or 0 if there is none). LASTVAL() itself is session-scoped, so calling
 // it on a freshly-checked-out pool conn would return the wrong value or 0;
@@ -215,6 +242,12 @@ pub fn (mut tx Tx) create(table orm.Table, fields []orm.TableField) ! {
 pub fn (mut tx Tx) drop(table orm.Table) ! {
 	tx.ensure_active()!
 	tx.conn.drop(table)!
+}
+
+// execute runs a raw SQL query on the pinned transaction conn and returns result rows.
+pub fn (mut tx Tx) execute(query string) ![]orm.Row {
+	tx.ensure_active()!
+	return tx.conn.execute(query)
 }
 
 // last_id returns the last inserted id on the pinned conn.
@@ -355,7 +388,9 @@ fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []int, mut formats 
 			formats << 0
 		}
 		time.Time {
-			datetime := data.format_ss()
+			// Use a microsecond-precision representation so fractional seconds survive
+			// a write/read round-trip (relevant for TIMESTAMP/TIMESTAMPTZ columns).
+			datetime := data.format_ss_micro()
 			types << u32(0)
 			vals << &char(datetime.str)
 			lens << datetime.len
@@ -461,6 +496,158 @@ fn pg_type_from_v(typ int) !string {
 	return str
 }
 
+// pg_parse_timestamp parses a PostgreSQL `TIMESTAMP`/`TIMESTAMPTZ` text value into a
+// `time.Time`. It accepts the form `YYYY-MM-DD HH:mm:ss[.fraction][Z|±HH[:MM[:SS]]]`,
+// preserving up to nanosecond precision. When a timezone offset is present (as produced
+// by `TIMESTAMPTZ` columns, e.g. `+00`, `+02`, `+02:30`), the returned time is
+// normalized to UTC.
+fn pg_parse_timestamp(value string) !time.Time {
+	str := value.trim_space()
+	if str == 'infinity' || str == '-infinity' {
+		return error('pg: cannot decode special timestamp value `${str}` into time.Time')
+	}
+	// PostgreSQL appends ` BC` for dates before year 1. `time.Time` cannot represent
+	// those unambiguously, so reject them with a clear error instead of silently
+	// constructing the corresponding AD instant.
+	if str.ends_with(' BC') || str.ends_with(' bc') {
+		return error('pg: cannot decode BC timestamp value `${str}` into time.Time')
+	}
+	space_pos := str.index(' ') or {
+		// Fall back to the generic parser for values without a date/time separator.
+		return time.parse(str)
+	}
+	date_part := str[..space_pos]
+	mut time_part := str[space_pos + 1..]
+
+	// Detect and strip an optional timezone designator.
+	mut offset_seconds := 0
+	if time_part.ends_with('Z') || time_part.ends_with('z') {
+		time_part = time_part[..time_part.len - 1]
+	} else {
+		// PostgreSQL appends the offset sign (`+`/`-`) directly after the time part.
+		// Scan past the leading hour so a negative hour can never be mistaken for a sign.
+		mut sign_pos := -1
+		for i := 1; i < time_part.len; i++ {
+			c := time_part[i]
+			if c == `+` || c == `-` {
+				sign_pos = i
+				break
+			}
+		}
+		if sign_pos != -1 {
+			offset_seconds = pg_parse_offset(time_part[sign_pos..])!
+			time_part = time_part[..sign_pos]
+		}
+	}
+
+	// Split the optional fractional seconds off the `HH:mm:ss` part.
+	mut nanosecond := 0
+	mut hms := time_part
+	if dot_pos := time_part.index('.') {
+		hms = time_part[..dot_pos]
+		mut frac := time_part[dot_pos + 1..]
+		if frac.len > 9 {
+			frac = frac[..9]
+		}
+		// strconv.atoi is strict, so any non-digit (e.g. a stray suffix) errors out
+		// instead of being silently truncated by `string.int()`.
+		mut scaled := strconv.atoi(frac)!
+		for _ in 0 .. 9 - frac.len {
+			scaled *= 10
+		}
+		nanosecond = scaled
+	}
+
+	ymd := date_part.split('-')
+	if ymd.len != 3 {
+		return error('pg: invalid timestamp date `${date_part}`')
+	}
+	hms_parts := hms.split(':')
+	if hms_parts.len != 3 {
+		return error('pg: invalid timestamp time `${hms}`')
+	}
+
+	// Use strict numeric parsing so suffixes such as ` BC` or other malformed values
+	// are rejected rather than silently coerced (`string.int()` keeps the digit prefix).
+	year := strconv.atoi(ymd[0])!
+	month := strconv.atoi(ymd[1])!
+	day := strconv.atoi(ymd[2])!
+	hour := strconv.atoi(hms_parts[0])!
+	minute := strconv.atoi(hms_parts[1])!
+	second := strconv.atoi(hms_parts[2])!
+
+	// Validate the ranges up front: `time.new` *panics* on out-of-range fields, but
+	// PostgreSQL accepts values V cannot represent (e.g. years past 9999), so turn
+	// those into a clear error instead of aborting the process. Supported AD years are
+	// 1..9999; year 0 / negative years are BC (proleptic Gregorian) and unrepresentable,
+	// matching the explicit ` BC` rejection above.
+	if year > 9999 {
+		return error('pg: year out of range in timestamp `${str}`')
+	}
+	if year < 1 {
+		return error('pg: cannot decode BC/year-0 timestamp `${str}` into time.Time')
+	}
+	if month < 1 || month > 12 {
+		return error('pg: month out of range in timestamp `${str}`')
+	}
+	if day < 1 || day > 31 {
+		return error('pg: day out of range in timestamp `${str}`')
+	}
+	if hour < 0 || hour > 23 {
+		return error('pg: hour out of range in timestamp `${str}`')
+	}
+	if minute < 0 || minute > 59 {
+		return error('pg: minute out of range in timestamp `${str}`')
+	}
+	if second < 0 || second > 59 {
+		return error('pg: second out of range in timestamp `${str}`')
+	}
+
+	mut result := time.new(
+		year:       year
+		month:      month
+		day:        day
+		hour:       hour
+		minute:     minute
+		second:     second
+		nanosecond: nanosecond
+		is_local:   false
+	)
+	if offset_seconds != 0 {
+		// Normalize to UTC by subtracting the parsed offset.
+		result = result.add_seconds(-offset_seconds)
+		// The offset can push a boundary value past the representable range in either
+		// direction, so re-check the normalized result; otherwise offset-bearing
+		// timestamps would silently bypass the range guards above. Examples:
+		// `9999-12-31 23:30:00-01` -> year 10000, `0001-01-01 00:30:00+01` -> year 0 (BC).
+		if result.year > 9999 {
+			return error('pg: year out of range in timestamp `${str}` after UTC normalization')
+		}
+		if result.year < 1 {
+			return error('pg: timestamp `${str}` normalizes to a BC/year-0 date, which is unrepresentable')
+		}
+	}
+	return result
+}
+
+// pg_parse_offset parses a PostgreSQL timezone offset such as `+02`, `-05`, `+02:30`
+// or `+02:30:00` and returns the offset in seconds (signed).
+fn pg_parse_offset(offset string) !int {
+	if offset.len < 3 {
+		return error('pg: invalid timezone offset `${offset}`')
+	}
+	sign := if offset[0] == `-` { -1 } else { 1 }
+	parts := offset[1..].split(':')
+	mut seconds := strconv.atoi(parts[0])! * 3600
+	if parts.len > 1 {
+		seconds += strconv.atoi(parts[1])! * 60
+	}
+	if parts.len > 2 {
+		seconds += strconv.atoi(parts[2])!
+	}
+	return sign * seconds
+}
+
 fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 	if str := val {
 		match typ {
@@ -516,13 +703,14 @@ fn val_to_primitive(val ?string, typ int) !orm.Primitive {
 				return orm.Primitive(str)
 			}
 			orm.time_ {
-				if str.contains_any(' /:-') {
-					date_time_str := time.parse(str)!
-					return orm.Primitive(date_time_str)
+				// A bare (optionally signed) integer is a Unix timestamp; route every
+				// other value through the PostgreSQL-aware parser so textual timestamps
+				// and special values such as `infinity` are decoded (or rejected) there
+				// instead of silently falling through to `time.unix(0)`.
+				if timestamp := strconv.atoi64(str.trim_space()) {
+					return orm.Primitive(time.unix(timestamp))
 				}
-
-				timestamp := str.int()
-				return orm.Primitive(time.unix(timestamp))
+				return orm.Primitive(pg_parse_timestamp(str)!)
 			}
 			orm.enum_ {
 				return orm.Primitive(str.i64())

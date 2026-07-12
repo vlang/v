@@ -1,0 +1,62 @@
+# Runs the h2spec RFC 9113 / 7541 conformance suite against the net.http HTTP/2
+# server on every change to the h2 code. Uses a PINNED h2spec release binary
+# (no `go install`, no @latest) so results are reproducible. The gate compares
+# the failing cases against vlib/net/http/h2spec/h2spec_expected_failures.txt and
+# fails only on a regression (a case that newly fails).
+name: h2spec conformance
+
+on:
+  push:
+    paths: &h2paths
+      - 'vlib/net/http/h2_*.v'
+      - 'vlib/net/http/server*.v'
+      - 'vlib/net/http/http*.v'
+      - 'vlib/net/http/h2spec/**'
+      # `**` (not `*.v`): mbedtls.c.v #inserts mbedtls_helpers.h / mbedtls_threading.h,
+      # so TLS/ALPN behavior can change via the headers too (Codex P2).
+      - 'vlib/net/mbedtls/**'
+      - '.github/workflows/h2spec.yml'
+  pull_request:
+    paths: *h2paths
+
+concurrency:
+  group: h2spec-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  h2spec:
+    runs-on: ubuntu-latest
+    env:
+      H2SPEC_VERSION: v2.6.0
+      H2SPEC_SHA256: 157ee0de702e01ad40e752dbf074b366027e550c8e7504f9450da2809e279318
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build the V compiler
+        run: |
+          make
+          ./v -o vnew cmd/v
+
+      - name: Fetch pinned h2spec release
+        run: |
+          url="https://github.com/summerwind/h2spec/releases/download/${H2SPEC_VERSION}/h2spec_linux_amd64.tar.gz"
+          curl -fsSL "$url" -o h2spec.tar.gz
+          echo "${H2SPEC_SHA256}  h2spec.tar.gz" | sha256sum -c -
+          tar -xzf h2spec.tar.gz
+          sudo install -m 0755 h2spec /usr/local/bin/h2spec
+          h2spec --version
+
+      - name: Run h2spec conformance gate
+        env:
+          # VEXE: ./vnew
+          VFLAGS_CC: -cc gcc # mbedtls needs a real C compiler, not tcc
+        run: bash vlib/net/http/h2spec/run_h2spec.sh
+
+      - name: Upload h2spec report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: h2spec-report
+          path: |
+            vlib/net/http/h2spec/h2spec_report.xml
+            vlib/net/http/h2spec/h2spec_failed_now.txt

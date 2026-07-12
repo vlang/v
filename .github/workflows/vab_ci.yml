@@ -7,6 +7,7 @@ on:
       - master
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - '**/vab_ci.yml'
@@ -14,6 +15,7 @@ on:
   pull_request:
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - '**/vab_ci.yml'
@@ -35,7 +37,7 @@ jobs:
           distribution: 'temurin'
           java-version: 11
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make -j4 && ./v symlink
 
@@ -70,7 +72,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make -j4 && ./v symlink
 

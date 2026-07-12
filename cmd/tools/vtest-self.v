@@ -23,6 +23,8 @@ mut:
 
 const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
+const temporarily_disabled_self_test_vlib_dirs = ['v2_toberemoved', 'v3']
+
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
 	'cmd/tools/vdoc/document/doc_test.v',
@@ -107,10 +109,12 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/http/status_test.v',
 	'vlib/net/http/header_test.v',
 	'vlib/net/http/server_test.v',
+	'vlib/net/http/transport_test.v', // mbedtls TLS 1.3 handshake trips MSan in thirdparty bignum code
 	'vlib/net/mbedtls/mbedtls_head_with_content_length_test.v',
 	'vlib/net/ssl/ssl_read_all_test.v',
 	'vlib/net/udp_test.v',
 	'vlib/net/tcp_test.v',
+	'vlib/context/onecontext/onecontext_test.v', // spawn + channels + IError default field; tripped by MSan padding tracking
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
@@ -137,6 +141,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/orm/orm_save_test.v',
 	'vlib/orm/orm_upsert_test.v',
 	'vlib/orm/orm_func_test.v',
+	'vlib/db/driver_test.v', // MSan flags uninstrumented sqlite3BtreeOpen in libsqlite3.so
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_comptime_field_test.v',
@@ -192,8 +197,8 @@ const skip_with_fsanitize_address = [
 	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/shared_library_system_link_test.v', // ASan keeps Boehm GC symbols visible, breaking the export-symbol assertion
 	'vlib/veb/sse/sse_test.v', // long-lived event stream + sockets, ASan flake
-	'vlib/v2/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, ASan-incompatible
-	'vlib/v2/gen/x64/x64_backend_runtime_regression_manual_test.v', // V2 x64 backend runtime regression manual tests, ASan-incompatible
+	'vlib/v2_toberemoved/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, ASan-incompatible
+	'vlib/v2_toberemoved/gen/x64/x64_backend_runtime_regression_manual_test.v', // V2 x64 backend runtime regression manual tests, ASan-incompatible
 ]
 const skip_with_fsanitize_undefined = [
 	'do_not_remove',
@@ -211,9 +216,9 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 	'vlib/v/tests/shared_library_system_link_test.v', // UBSan keeps Boehm GC symbols visible, breaking the export-symbol assertion
-	'vlib/v2/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, UBSan-incompatible
-	'vlib/v2/gen/x64/x64_backend_runtime_regression_manual_test.v', // V2 x64 backend runtime regression manual tests, UBSan-incompatible
-	'vlib/v2/transformer/transformer_test.v', // v2 transformer, UBSan-incompatible
+	'vlib/v2_toberemoved/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, UBSan-incompatible
+	'vlib/v2_toberemoved/gen/x64/x64_backend_runtime_regression_manual_test.v', // V2 x64 backend runtime regression manual tests, UBSan-incompatible
+	'vlib/v2_toberemoved/transformer/transformer_test.v', // v2 transformer, UBSan-incompatible
 	'vlib/yaml/yaml_conformance_test.v', // upstream libyaml-style integer overflow flagged by UBSan
 ]
 const skip_on_ubuntu_musl = [
@@ -387,10 +392,12 @@ fn main() {
 	mut tsession := testing.new_test_session(vargs.join(' '), true)
 	tsession.exec_mode = .compile_and_run
 	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
-	// v2 has its own driver at `cmd/v2/test_all.sh` and is still under heavy
-	// development, so its tests are excluded from `v test-self`.
-	v2_dir_fragment := '${os.path_separator}vlib${os.path_separator}v2${os.path_separator}'
-	tsession.skip_files << tsession.files.filter(it.contains(v2_dir_fragment))
+	// v2 and v3 have their own drivers and are still under heavy development,
+	// so their tests are excluded from `v test-self`.
+	for test_dir in temporarily_disabled_self_test_vlib_dirs {
+		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
+		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
+	}
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'
 	}

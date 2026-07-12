@@ -122,6 +122,20 @@ fn (mut g Gen) assert_subexpression_to_ctemp(expr ast.Expr, expr_type ast.Type) 
 			return g.new_ctemp_var_then_gen(expr, expr_type)
 		}
 		ast.SelectorExpr {
+			if expr.expr is ast.AsCast {
+				mut subst_expr := expr
+				as_cast_expr := expr.expr as ast.AsCast
+				subst_expr.expr = ast.Expr(g.new_ctemp_var_then_gen(ast.Expr(as_cast_expr),
+					as_cast_expr.typ))
+				return ast.Expr(subst_expr)
+			}
+			if expr.expr is ast.ParExpr && expr.expr.expr is ast.AsCast {
+				mut subst_expr := expr
+				as_cast_expr := expr.expr.expr as ast.AsCast
+				subst_expr.expr = ast.Expr(g.new_ctemp_var_then_gen(ast.Expr(as_cast_expr),
+					as_cast_expr.typ))
+				return ast.Expr(subst_expr)
+			}
 			if expr.expr is ast.CallExpr {
 				sym := g.table.final_sym(g.unwrap_generic(expr.expr.return_type))
 				if sym.kind == .struct {

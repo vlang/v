@@ -1,0 +1,56 @@
+name: Claude Code Review
+
+# Automatic AI code review on pull requests, using Anthropic's official
+# claude-code-action with the `code-review` plugin (multi-agent review that
+# looks for logic errors, security issues and regressions, and posts findings
+# as inline PR comments). Findings never block a merge.
+#
+# Setup required (one time):
+#   1. The Claude GitHub App must be installed on the repo (already done).
+#   2. Add an `ANTHROPIC_API_KEY` repository secret:
+#        Settings -> Secrets and variables -> Actions -> New repository secret
+#   3. This file must live on the default branch (master): for `pull_request`
+#      events GitHub runs the workflow from the base branch, not the PR branch.
+#
+# Cost/coverage notes:
+#   - This reviews on PR open AND on every new commit (`synchronize`), so token
+#     cost scales with the number of pushes per PR. To review only once per PR,
+#     drop `synchronize` from `types` below.
+#   - `pull_request` runs from forks get a read-only token and NO access to
+#     secrets, so this workflow will not fire for external-contributor PRs
+#     (the majority on a public repo). For full coverage of fork PRs, use the
+#     managed Code Review service instead (claude.ai/admin-settings/claude-code),
+#     which runs on Anthropic infrastructure via webhooks.
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review, synchronize]
+
+# One review per PR at a time; cancel a superseded run.
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Skip draft PRs; the `ready_for_review` trigger picks them up later.
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}'

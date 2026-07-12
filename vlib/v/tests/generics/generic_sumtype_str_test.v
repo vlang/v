@@ -2,6 +2,14 @@ struct None {}
 
 pub type Maybe[T] = None | T
 
+struct MaybeContainer[T] {
+	value Maybe[T]
+}
+
+struct MaybeOptionalContainer[T] {
+	value ?Maybe[T]
+}
+
 pub fn (m Maybe[T]) str[T]() string {
 	return if m is T {
 		x := m as T
@@ -75,4 +83,18 @@ fn test_generic_sumtype_str_with_ref_variant() {
 fn test_generic_sumtype_match_resolves_variant_type() {
 	assert generic_match_has_value(some(123))
 	assert !generic_match_has_value(noth[int]())
+}
+
+fn test_auto_str_struct_field_with_generic_sumtype_str() {
+	c := MaybeContainer[int]{
+		value: some(456)
+	}
+	assert '${c}'.contains('value: Some(456)')
+}
+
+fn test_auto_str_optional_field_with_generic_sumtype_str() {
+	c := MaybeOptionalContainer[int]{
+		value: some(789)
+	}
+	assert '${c}'.contains('Some(789)')
 }

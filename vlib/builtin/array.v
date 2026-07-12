@@ -118,9 +118,15 @@ fn (mut a array) mark_buffer_has_slices() {
 	if !a.flags.has(.managed) || a.data == unsafe { nil } {
 		return
 	}
+	// Compute the data-header pointer inline. `data_header()` would redundantly
+	// re-check `.managed`/`nil` (already guaranteed above), so skip the call and
+	// the now-dead `header != nil` test. Only store when the flag is not already
+	// set, to avoid dirtying the buffer's header cache line on every transient
+	// slice of the same buffer in a hot loop. See issue #27507.
 	unsafe {
-		header := a.data_header()
-		if header != nil {
+		base_data := &u8(a.data) - u64(a.offset)
+		header := &ArrayDataHeader(base_data - array_data_header_size())
+		if !header.has_slices {
 			header.has_slices = true
 		}
 	}
@@ -181,7 +187,7 @@ fn __new_array(mylen int, cap int, elm_size int) array {
 	mut data := unsafe { nil }
 	if cap_ > 0 && mylen == 0 {
 		data = alloc_array_data_uninit(total_size)
-	} else {
+	} else if cap_ > 0 {
 		data = alloc_array_data(total_size)
 	}
 	arr := array{
@@ -211,7 +217,7 @@ fn __new_array_with_default(mylen int, cap int, elm_size int, val voidptr) array
 	total_size := u64(cap_) * u64(elm_size)
 	if cap_ > 0 && mylen == 0 {
 		arr.data = alloc_array_data_uninit(total_size)
-	} else {
+	} else if cap_ > 0 {
 		arr.data = alloc_array_data(total_size)
 	}
 	if val != 0 {
@@ -250,7 +256,9 @@ fn __new_array_with_multi_default(mylen int, cap int, elm_size int, val voidptr)
 	//    -> total_size == 0 -> malloc(0) -> panic;
 	//    to avoid it, just allocate a single byte
 	total_size := u64(cap_) * u64(elm_size)
-	arr.data = alloc_array_data(total_size)
+	if cap_ > 0 {
+		arr.data = alloc_array_data(total_size)
+	}
 	if val != 0 {
 		mut eptr := &u8(arr.data)
 		unsafe {
@@ -271,10 +279,12 @@ fn __new_array_with_array_default(mylen int, cap int, elm_size int, val array, d
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         alloc_array_data(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
 		flags:        .managed
+	}
+	if cap_ > 0 {
+		arr.data = alloc_array_data(u64(cap_) * u64(elm_size))
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
@@ -295,10 +305,12 @@ fn __new_array_with_map_default(mylen int, cap int, elm_size int, val map) array
 	cap_ := if cap < mylen { mylen } else { cap }
 	mut arr := array{
 		element_size: elm_size
-		data:         alloc_array_data(u64(cap_) * u64(elm_size))
 		len:          mylen
 		cap:          cap_
 		flags:        .managed
+	}
+	if cap_ > 0 {
+		arr.data = alloc_array_data(u64(cap_) * u64(elm_size))
 	}
 	mut eptr := &u8(arr.data)
 	unsafe {
@@ -1050,10 +1062,12 @@ pub fn (a &array) clone_to_depth(depth int) array {
 	source_capacity_in_bytes := u64(a.cap) * u64(a.element_size)
 	use_noscan_data := depth == 0 && a.uses_noscan_data()
 	mut data := unsafe { nil }
-	if use_noscan_data {
-		data = a.alloc_array_data_like(source_capacity_in_bytes)
-	} else {
-		data = alloc_array_data(source_capacity_in_bytes)
+	if a.cap > 0 {
+		if use_noscan_data {
+			data = a.alloc_array_data_like(source_capacity_in_bytes)
+		} else {
+			data = alloc_array_data(source_capacity_in_bytes)
+		}
 	}
 	mut arr := array{
 		element_size: a.element_size

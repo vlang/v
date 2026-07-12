@@ -6,6 +6,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - 'cmd/tools/**'
@@ -14,6 +15,7 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - 'cmd/tools/**'
@@ -29,14 +31,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Start FreeBSD VM for tcc
         id: vm-freebsd-tcc
-        uses: cross-platform-actions/action@v1.2.0
+        uses: cross-platform-actions/action@v1.3.0
         with:
           operating_system: freebsd
-          version: '15.0'
+          version: '15.1'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
@@ -70,14 +72,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Start FreeBSD VM for clang
         id: vm-freebsd-clang
-        uses: cross-platform-actions/action@v1.2.0
+        uses: cross-platform-actions/action@v1.3.0
         with:
           operating_system: freebsd
-          version: '15.0'
+          version: '15.1'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm
@@ -111,14 +113,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Start FreeBSD VM for gcc
         id: vm-freebsd-gcc
-        uses: cross-platform-actions/action@v1.2.0
+        uses: cross-platform-actions/action@v1.3.0
         with:
           operating_system: freebsd
-          version: '15.0'
+          version: '15.1'
           memory: 4G
           shell: sh
           sync_files: runner-to-vm

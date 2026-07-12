@@ -96,7 +96,6 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 		if ftyp == 0 {
 			return ast.void_type
 		}
-		c.markused_string_inter_lit(mut node, ftyp)
 		c.fail_if_unreadable(expr, ftyp, 'interpolation object')
 		node.expr_types << ftyp
 		if i < node.fwidth_exprs.len {
@@ -179,6 +178,7 @@ fn (mut c Checker) string_inter_lit(mut node ast.StringInterLiteral) ast.Type {
 			&& c.table.cur_fn.name == 'str' && c.table.cur_fn.receiver.name == '${expr}' {
 			c.error('cannot call `str()` method recursively', expr.pos())
 		}
+		c.markused_string_inter_lit(mut node, ftyp, fmt)
 	}
 	c.inside_interface_deref = inside_interface_deref_save
 	if c.pref.warn_about_allocs {

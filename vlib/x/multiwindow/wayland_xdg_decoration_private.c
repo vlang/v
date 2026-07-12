@@ -1,0 +1,9 @@
+#define xdg_toplevel_interface v_multiwindow_xdg_toplevel_interface
+#define zxdg_decoration_manager_v1_interface v_multiwindow_zxdg_decoration_manager_v1_interface
+#define zxdg_toplevel_decoration_v1_interface v_multiwindow_zxdg_toplevel_decoration_v1_interface
+
+#include "xdg-decoration-unstable-v1-protocol.c"
+
+#undef xdg_toplevel_interface
+#undef zxdg_decoration_manager_v1_interface
+#undef zxdg_toplevel_decoration_v1_interface

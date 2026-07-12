@@ -12,9 +12,11 @@ const tls_accept_poll_timeout = 100 * time.millisecond
 
 // tls_handshake_timeout is the default value for Server.tls_handshake_timeout,
 // used as the fallback handshake budget when Server.accept_timeout is zero or
-// net.infinite_timeout. The handshake runs on the accept thread, so without a
-// finite bound a client that completes the TCP connect and then stalls
-// mid-handshake would wedge the accept loop forever.
+// net.infinite_timeout. The handshake now runs on a worker thread (the accept
+// thread only does the raw TCP accept, polled at tls_accept_poll_timeout, so
+// stop() is observed promptly regardless of handshakes); without a finite bound a
+// client that completes the TCP connect and then stalls mid-handshake would tie
+// up a worker indefinitely.
 const tls_handshake_timeout = 30 * time.second
 
 fn tls_accept_timeouts(accept_timeout time.Duration, handshake_fallback time.Duration) (time.Duration, time.Duration) {
@@ -77,11 +79,14 @@ fn (mut s Server) listen_and_serve_tls() {
 	}
 	s.addr = addr
 
+	accept_poll_timeout, handshake_timeout := tls_accept_timeouts(s.accept_timeout,
+		s.tls_handshake_timeout)
 	ch := chan &mbedtls.SSLConn{cap: s.pool_channel_slots}
 	mut idle_conns := &TlsIdleConnTracker{}
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
-		ws << new_tls_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests, idle_conns)
+		ws << new_tls_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests,
+			handshake_timeout, idle_conns)
 	}
 
 	if s.show_startup_message {
@@ -94,10 +99,8 @@ fn (mut s Server) listen_and_serve_tls() {
 	if s.on_running != unsafe { nil } {
 		s.on_running(mut s)
 	}
-	accept_poll_timeout, handshake_timeout := tls_accept_timeouts(s.accept_timeout,
-		s.tls_handshake_timeout)
 	for s.state == .running {
-		mut conn := listener.accept_with_timeouts(accept_poll_timeout, handshake_timeout) or {
+		mut conn := listener.accept_raw_with_timeout(accept_poll_timeout) or {
 			if s.state != .running {
 				break
 			}
@@ -109,10 +112,32 @@ fn (mut s Server) listen_and_serve_tls() {
 			}
 			continue
 		}
-		if s.read_timeout > 0 {
-			conn.set_read_timeout(s.read_timeout)
+		// Hand the raw (not-yet-handshaked) conn to a worker. Don't use a bare
+		// blocking `ch <- conn`: the accept loop, this send, and the post-loop
+		// shutdown (ch.close + close_idle + ws.wait) all run on this one thread,
+		// while stop()/close() only flip s.state from another thread. Under a slow-
+		// handshake flood -- every worker blocked in complete_handshake and the
+		// channel buffer full of untracked conns -- a blocking send would wedge the
+		// accept thread so it never re-checks s.state nor reaches close_idle(),
+		// delaying shutdown until a worker handshake times out. Poll s.state via a
+		// select timeout so shutdown is still observed promptly.
+		mut queued := false
+		for s.state == .running && !queued {
+			select {
+				ch <- conn {
+					queued = true
+				}
+				accept_poll_timeout {
+					// channel full; loop re-checks s.state
+				}
+			}
 		}
-		ch <- conn
+		if !queued {
+			// Shutting down before this conn could be handed off. It was never
+			// mark_idle'd, so close_idle() won't see it; close it here (exactly
+			// once -- no worker ever received it) to avoid leaking the fd.
+			conn.shutdown() or {}
+		}
 	}
 	ch.close()
 	idle_conns.close_idle()
@@ -124,18 +149,20 @@ struct TlsHandlerWorker {
 	id                      int
 	ch                      chan &mbedtls.SSLConn
 	max_keep_alive_requests int
+	handshake_timeout       time.Duration
 mut:
 	idle_conns &TlsIdleConnTracker = unsafe { nil }
 pub mut:
 	handler Handler
 }
 
-fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, max_keep_alive_requests int, idle_conns &TlsIdleConnTracker) thread {
+fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, max_keep_alive_requests int, handshake_timeout time.Duration, idle_conns &TlsIdleConnTracker) thread {
 	mut w := &TlsHandlerWorker{
 		id:                      wid
 		ch:                      ch
 		handler:                 handler
 		max_keep_alive_requests: max_keep_alive_requests
+		handshake_timeout:       handshake_timeout
 		idle_conns:              idle_conns
 	}
 	return spawn w.process_requests()
@@ -149,13 +176,53 @@ fn (mut w TlsHandlerWorker) process_requests() {
 }
 
 fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
+	// For H2 connections, serve_h2_conn_with_idle_tracker's serve() owns the
+	// mark_idle/unmark_idle lifetime (it marks idle once and unmarks in its
+	// own defer). Calling unmark_idle here a second time would race: after
+	// serve()'s defer fires the OS can recycle conn.handle for a new
+	// connection that has already called mark_idle, and this stale unmark
+	// would silently evict it, preventing close_idle from ever shutting it
+	// down and leaking the reader goroutine.
+	mut is_h2 := false
 	defer {
-		w.idle_conns.unmark_idle(conn.handle)
+		if !is_h2 {
+			w.idle_conns.unmark_idle(conn.handle)
+		}
+		// close_idle may have already closed conn.handle on Windows (a forced
+		// closesocket to wake this worker from a blocked read). conn.shutdown()
+		// both frees the mbedtls TLS resources (SSL ctx, config, certs, RNG,
+		// ALPN alloc) AND closes the socket; we must always do the former but
+		// must not close the socket a second time — that would race process-wide
+		// SOCKET reuse and could close an unrelated socket. So relinquish socket
+		// ownership and still call shutdown for the TLS cleanup. On non-Windows
+		// was_force_closed is always false and the worker remains the sole closer.
+		if w.idle_conns.was_force_closed(conn.handle) {
+			conn.owns_socket = false
+		}
 		conn.shutdown() or {}
 	}
+	// Run the TLS handshake here on the worker thread (the accept thread only does
+	// the raw TCP accept), so handshakes proceed in parallel up to worker_num and a
+	// client that stalls mid-handshake can't wedge the accept loop or delay stop().
+	// mark_idle first so close_idle can interrupt a stalled handshake by force-
+	// closing the fd, and so a conn handed off while the server is shutting down is
+	// closed (mark_idle returns false) rather than handshaked. On success, unmark
+	// before the serve path does its own idle marking, keeping each handle tracked
+	// once. On any early return the defer above performs the single shutdown.
+	if !w.idle_conns.mark_idle(conn.handle) {
+		return
+	}
+	conn.complete_handshake(w.handshake_timeout) or {
+		$if debug {
+			eprintln('TLS handshake failed: ${err}')
+		}
+		return
+	}
+	w.idle_conns.unmark_idle(conn.handle)
 	// If the TLS handshake negotiated HTTP/2 via ALPN, switch to the HTTP/2
 	// driver; otherwise fall through to the existing HTTP/1.1 path unchanged.
 	if conn.negotiated_alpn() == 'h2' {
+		is_h2 = true
 		serve_h2_conn_with_idle_tracker(mut conn, mut w.handler, w.idle_conns, conn.handle) or {
 			$if debug {
 				eprintln('h2 server error: ${err}')

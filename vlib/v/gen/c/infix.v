@@ -426,28 +426,67 @@ fn (mut g Gen) infix_expr_eq_op(node ast.InfixExpr) {
 				g.write(')')
 			}
 			.struct {
-				ptr_typ := g.equality_fn(left.unaliased)
-				if left.typ.is_ptr() || right.typ.is_ptr() {
-					// `&lvalue` on either side means the user is comparing addresses; skip the deep `_struct_eq` (`&StructInit{}` still does deep eq).
-					left_is_addr_of_lvalue := node.left is ast.PrefixExpr && node.left.op == .amp
-						&& node.left.right.is_lvalue()
-					right_is_addr_of_lvalue := node.right is ast.PrefixExpr && node.right.op == .amp
-						&& node.right.right.is_lvalue()
-					if left.typ.is_ptr() && right.typ.is_ptr()
-						&& (left_is_addr_of_lvalue || right_is_addr_of_lvalue) {
-						g.gen_plain_infix_expr(node)
+				if left_is_option && right_is_option {
+					bare_typ := g.equality_fn(left.unaliased.clear_flag(.option).set_nr_muls(0))
+					old_inside_opt_or_res := g.inside_opt_or_res
+					g.inside_opt_or_res = true
+					inside_and_rhs := g.infix_left_var_name.len > 0
+					mut lv := ''
+					mut rv := ''
+					if inside_and_rhs {
+						lv = g.expr_string(node.left)
+						rv = g.expr_string(node.right)
 					} else {
-						g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+						left_tmp := g.expr_to_ctemp_before_stmt(node.left, left_type)
+						right_tmp := g.expr_to_ctemp_before_stmt(node.right, right_type)
+						lv = left_tmp.name
+						rv = right_tmp.name
 					}
+					if node.op == .eq {
+						g.write('(')
+					} else {
+						g.write('!(')
+					}
+					g.write('(${lv}.state == 2 && ${rv}.state == 2) || ')
+					g.write('(${lv}.state == ${rv}.state && ${lv}.state != 2 && ')
+					if left.typ.is_ptr() {
+						ptr_styp := g.styp(left.unaliased.clear_flag(.option))
+						nr_muls := left.typ.nr_muls()
+						deref := '*'.repeat(nr_muls)
+						lp := '*(${ptr_styp}*)&${lv}.data'
+						rp := '*(${ptr_styp}*)&${rv}.data'
+						g.write('(${lp} == ${rp} || (${lp} != 0 && ${rp} != 0 && ')
+						g.write('${bare_typ}_struct_eq(${deref}${lp}, ${deref}${rp})')
+						g.write('))')
+					} else {
+						styp := g.base_type(left_type)
+						g.write('${bare_typ}_struct_eq(*(${styp}*)&${lv}.data, *(${styp}*)&${rv}.data)')
+					}
+					g.write('))')
+					g.inside_opt_or_res = old_inside_opt_or_res
 				} else {
-					if node.op == .ne {
-						g.write('!')
+					ptr_typ := g.equality_fn(left.unaliased)
+					if left.typ.is_ptr() || right.typ.is_ptr() {
+						left_is_addr_of_lvalue := node.left is ast.PrefixExpr
+							&& node.left.op == .amp && node.left.right.is_lvalue()
+						right_is_addr_of_lvalue := node.right is ast.PrefixExpr
+							&& node.right.op == .amp && node.right.right.is_lvalue()
+						if left.typ.is_ptr() && right.typ.is_ptr()
+							&& (left_is_addr_of_lvalue || right_is_addr_of_lvalue) {
+							g.gen_plain_infix_expr(node)
+						} else {
+							g.gen_struct_pointer_eq_op(node, left_type, right_type, ptr_typ)
+						}
+					} else {
+						if node.op == .ne {
+							g.write('!')
+						}
+						g.write('${ptr_typ}_struct_eq(')
+						g.expr(node.left)
+						g.write(', ')
+						g.expr(node.right)
+						g.write(')')
 					}
-					g.write('${ptr_typ}_struct_eq(')
-					g.expr(node.left)
-					g.write(', ')
-					g.expr(node.right)
-					g.write(')')
 				}
 			}
 			.sum_type {
@@ -549,7 +588,14 @@ fn (mut g Gen) gen_struct_pointer_eq_op(node ast.InfixExpr, left_type ast.Type, 
 	mut restore_stmt := false
 	mut left_expr := ''
 	mut right_expr := ''
-	if left_type.is_ptr() && !node.left.is_lvalue() && !inside_and_rhs {
+	// An operand that itself needs statement hoisting (e.g. it contains an `or { }`
+	// block) must be evaluated once into a ctemp, not inlined via expr_string: the
+	// pointer-equality expansion references each operand up to 3 times, and an
+	// `x or { }` is (wrongly) reported as an lvalue by is_lvalue() (it only inspects
+	// the base ident), so without this it would emit the or-block statement multiple
+	// times, tangling the generated C.
+	if left_type.is_ptr() && (!node.left.is_lvalue() || g.need_tmp_var_in_expr(node.left))
+		&& !inside_and_rhs {
 		if !restore_stmt {
 			stmt_str = g.go_before_last_stmt().trim_space()
 			g.empty_line = true
@@ -561,7 +607,8 @@ fn (mut g Gen) gen_struct_pointer_eq_op(node ast.InfixExpr, left_type ast.Type, 
 	} else {
 		left_expr = g.expr_string(node.left)
 	}
-	if right_type.is_ptr() && !node.right.is_lvalue() && !inside_and_rhs {
+	if right_type.is_ptr() && (!node.right.is_lvalue() || g.need_tmp_var_in_expr(node.right))
+		&& !inside_and_rhs {
 		if !restore_stmt {
 			stmt_str = g.go_before_last_stmt().trim_space()
 			g.empty_line = true
@@ -1954,9 +2001,24 @@ fn (mut g Gen) gen_is_none_check(node ast.InfixExpr) {
 			}
 		}
 		// For Ident nodes that have been unwrapped by a smartcast (e.g. from a
-		// none-guard fallthrough), write the variable name directly to avoid
-		// g.expr() generating the unwrapped data access instead of the option wrapper.
-		if node.left is ast.Ident && node.left.obj is ast.Var && node.left.obj.is_unwrapped {
+		// none-guard fallthrough) or by an assignment smartcast (assigning a non-option
+		// value to an option variable elsewhere in the scope), write the variable name
+		// directly to avoid g.expr() generating the unwrapped `.data` access instead of
+		// the option wrapper. A none-check always operates on the option wrapper's
+		// `.state`. The assignment smartcast is recorded on the scope var (not on the
+		// captured node.left.obj), so it is looked up by position here.
+		mut ident_is_assignment_smartcast := false
+		if node.left is ast.Ident && node.left_type.has_flag(.option) {
+			scope := g.file.scope.innermost(node.left.pos.pos)
+			if scope != unsafe { nil } {
+				if v := scope.find_var(node.left.name) {
+					ident_is_assignment_smartcast = v.is_assignment_smartcast
+				}
+			}
+		}
+		if node.left is ast.Ident && node.left.obj is ast.Var && (node.left.obj.is_unwrapped
+			|| node.left.obj.is_assignment_smartcast
+			|| ident_is_assignment_smartcast) {
 			name := c_name(node.left.name)
 			if node.left.is_auto_heap() {
 				g.write('(*${name})')
@@ -2150,7 +2212,11 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 	is_safe_div := node.op == .div && is_integer_div_mod
 	is_safe_mod := node.op == .mod && is_integer_div_mod
 	if resolved_left_type.is_ptr() && node.left.is_auto_deref_var()
-		&& !resolved_right_type.is_pointer() {
+		&& (!resolved_right_type.is_any_kind_of_pointer() || node.right.is_auto_deref_var()) {
+		// An auto-deref var is logically a value, so it must be dereferenced even
+		// when the other operand is also a pointer - but only when that operand is
+		// itself an auto-deref var (e.g. `a.sorted(|x, y| x < y)`), not a genuine
+		// pointer/nil comparison.
 		g.write('*')
 	} else if !g.inside_interface_deref && node.left is ast.Ident
 		&& g.table.is_interface_var(node.left.obj) {
@@ -2203,7 +2269,7 @@ fn (mut g Gen) gen_plain_infix_expr(node ast.InfixExpr) {
 		g.write('(${g.styp(resolved_right_type)})')
 	}
 	if resolved_right_type.is_ptr() && node.right.is_auto_deref_var()
-		&& !resolved_left_type.is_pointer() {
+		&& (!resolved_left_type.is_any_kind_of_pointer() || node.left.is_auto_deref_var()) {
 		g.write('*')
 		g.expr(node.right)
 	} else {

@@ -416,7 +416,7 @@ fn (mut u Unpacker) unpack_struct_into[T](mut result T) ! {
 							u.pos++
 							result.$(field.name) = none
 						} else {
-							mut inner := create_value_from_optional(result.$(field.name))
+							mut inner := $zero(field.typ.payload_type)
 							u.unpack_into(mut inner)!
 							result.$(field.name) = inner
 						}
@@ -568,12 +568,6 @@ fn utf8_validate_slice(data []u8, start int, size int) bool {
 		i += n
 	}
 	return true
-}
-
-// create_value_from_optional returns a zero value of an Option's inner T.
-// Exists so the comptime call site can infer T from a struct field.
-fn create_value_from_optional[T](_val ?T) T {
-	return T{}
 }
 
 // unpack_into fills the target through a mutable reference. The mut

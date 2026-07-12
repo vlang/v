@@ -335,10 +335,6 @@ fn create_decoded_ptr[T](_ &T) &T {
 	}
 }
 
-fn create_decoded_option_ptr[U](_ ?&U) &U {
-	return &U{}
-}
-
 fn decoder_field_infos[T]() []DecoderFieldInfo {
 	mut field_infos := []DecoderFieldInfo{}
 	$for field in T.fields {
@@ -551,16 +547,11 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 							}
 						} else {
 							$if field.indirections == 1 {
-								mut decoded_ptr := create_decoded_option_ptr(new_val.$(field.name))
+								mut decoded_ptr := $new(field.typ.payload_type.pointee_type)
 								decoder.decode_value(mut decoded_ptr)!
 								new_val.$(field.name) = decoded_ptr
 							} $else {
-								mut unwrapped_val := create_value_from_optional(new_val.$(field.name)) or {
-									return StructKeyDecodeResult[T]{
-										matched: false
-										value:   val
-									}
-								}
+								mut unwrapped_val := $zero(field.typ.payload_type)
 								decoder.decode_value(mut unwrapped_val)!
 								new_val.$(field.name) = unwrapped_val
 							}
@@ -916,8 +907,6 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 										}
 									} else {
 										$if field.typ is $option {
-											// it would be nicer to do this at the start of the function
-											// but options cant be passed to generic functions
 											if decoder.current_node.value.value_kind == .null {
 												val.$(field.name) = none
 
@@ -926,14 +915,11 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 												}
 											} else {
 												$if field.indirections == 1 {
-													mut decoded_ptr :=
-														create_decoded_option_ptr(val.$(field.name))
+													mut decoded_ptr := $new(field.typ.payload_type.pointee_type)
 													decoder.decode_value(mut decoded_ptr)!
 													val.$(field.name) = decoded_ptr
 												} $else {
-													mut unwrapped_val := create_value_from_optional(val.$(field.name)) or {
-														return
-													}
+													mut unwrapped_val := $zero(field.typ.payload_type)
 													decoder.decode_value(mut unwrapped_val)!
 													val.$(field.name) = unwrapped_val
 												}
@@ -1305,10 +1291,6 @@ fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 			decoder.decode_error('Expected object, but got ${map_info.value_kind}')!
 		}
 	}
-}
-
-fn create_value_from_optional[T](_val ?T) ?T {
-	return T{}
 }
 
 fn (mut decoder Decoder) decode_enum[T](mut val T) ! {

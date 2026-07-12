@@ -15,8 +15,19 @@ fn (mut g Gen) spawn_and_go_expr(node ast.SpawnExpr, mode SpawnGoMode) {
 	if node.call_expr.should_be_skipped {
 		return
 	}
-	is_spawn := mode == .spawn_
-	is_go := mode == .go_
+	mut is_spawn := mode == .spawn_
+	mut is_go := mode == .go_
+	if is_go && node.is_expr {
+		// A `go expr` whose handle is used as a value (e.g. `h := go f()` or
+		// `obj.field = go f()`) needs a real, joinable thread handle. The photon
+		// coroutine wrapper (`photon_thread_create*`) returns void and exposes no
+		// such handle, so fall back to the regular `spawn` (pthread) path here,
+		// which declares and assigns the `thread_<tmp>` handle that is read back
+		// as the expression's value. Plain statement form `go f()` (no handle
+		// used) keeps using the photon work-pool path below.
+		is_spawn = true
+		is_go = false
+	}
 	if is_spawn {
 		g.writeln('/*spawn (thread) */')
 	} else {

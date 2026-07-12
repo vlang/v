@@ -17,7 +17,7 @@ fn main() {
 Compile with ownership checking:
 
 ```
-v2 -ownership -o out main.v
+v -ownership -o out main.v
 ```
 
 ## Creating owned values
@@ -203,15 +203,15 @@ fn main() {
 
 ## Enabling ownership checking
 
-Ownership checking is compiled into a separate `v2_ownership` binary using V's
-compile-time defines so there is zero overhead in the normal `v2` binary.
+Ownership checking is compiled into a separate `v3_ownership` binary using V's
+compile-time defines so there is no ownership-checking overhead in the normal compiler.
 
 ```
-v2 -ownership file.v       # check and compile
+v -ownership file.v        # check and compile
 ```
 
 To build the ownership-enabled compiler manually:
 
 ```
-v -d ownership -o v2_ownership cmd/v2/v2.v
+v -d ownership -o v3_ownership vlib/v3/v3.v
 ```

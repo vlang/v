@@ -103,7 +103,7 @@ fn C.SSL_CTX_set_options(ctx &C.SSL_CTX, options i32)
 
 fn C.SSL_CTX_set_verify_depth(s &C.SSL_CTX, depth i32)
 
-fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, ca_path &char) i32
+fn C.SSL_CTX_load_verify_locations(ctx &C.SSL_CTX, const_file &char, const_ca_path &char) i32
 
 fn C.SSL_CTX_free(ctx &C.SSL_CTX)
 
@@ -126,6 +126,10 @@ fn C.v_net_openssl_get1_peer_certificate(ssl &C.SSL) &C.X509
 fn C.X509_free(const_cert &C.X509)
 
 fn C.ERR_clear_error()
+
+fn C.ERR_get_error() u64
+
+fn C.ERR_error_string_n(e u64, buf &char, len usize)
 
 fn C.SSL_get_error(ssl &C.SSL, ret i32) i32
 
@@ -163,6 +167,27 @@ fn init() {
 	C.v_net_openssl_init_ssl()
 }
 
+// ssl_get_error_queue drains the current thread's OpenSSL error queue and
+// returns a human-readable, semicolon-separated description of every queued
+// entry (oldest first), or an empty string if the queue is empty. It always
+// leaves the queue empty afterwards: this both turns the otherwise opaque
+// `SSL_ERROR_SSL`/`SSL_ERROR_SYSCALL` codes into actionable messages, and
+// prevents a leftover entry from making a later SSL_get_error() misreport the
+// status of the next, unrelated I/O operation.
+fn ssl_get_error_queue() string {
+	mut reasons := []string{}
+	for {
+		code := C.ERR_get_error()
+		if code == 0 {
+			break
+		}
+		mut buf := [256]char{}
+		C.ERR_error_string_n(code, &buf[0], usize(buf.len))
+		reasons << unsafe { cstring_to_vstring(&buf[0]) }
+	}
+	return reasons.join('; ')
+}
+
 // ssl_error returns non error ssl code or error if unrecoverable and we should panic
 fn ssl_error(ret int, ssl voidptr) !SSLError {
 	res := C.SSL_get_error(ssl, ret)
@@ -171,10 +196,15 @@ fn ssl_error(ret int, ssl voidptr) !SSLError {
 	}
 	match unsafe { SSLError(res) } {
 		.ssl_error_syscall {
-			return error_with_code('net.openssl unrecoverable syscall (${res})', res)
+			details := ssl_get_error_queue()
+			suffix := if details == '' { '' } else { ': ${details}' }
+			return error_with_code('net.openssl unrecoverable syscall (${res})${suffix}', res)
 		}
 		.ssl_error_ssl {
-			return error_with_code('net.openssl unrecoverable ssl protocol error (${res})', res)
+			details := ssl_get_error_queue()
+			suffix := if details == '' { '' } else { ': ${details}' }
+			return error_with_code('net.openssl unrecoverable ssl protocol error (${res})${suffix}',
+				res)
 		}
 		else {
 			return unsafe { SSLError(res) }

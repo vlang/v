@@ -25,7 +25,7 @@ if [[ ! -x "${v1_compiler}" ]]; then
 fi
 
 # V1's formatter may clobber v2 source files — backup and restore.
-v2_src="${repo_root}/vlib/v2"
+v2_src="${repo_root}/vlib/v2_toberemoved"
 v2_bak="/tmp/v2_src_bak_self_test"
 rm -rf "${v2_bak}"
 cp -R "${v2_src}" "${v2_bak}"

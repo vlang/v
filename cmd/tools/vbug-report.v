@@ -24,7 +24,9 @@ pub:
 	v_version      string
 	target_os      string
 	target_backend string
+	arch           string
 	ccompiler      string
+	build_options  string
 	c_error        string
 	c_file         string
 	c_line         int
@@ -32,6 +34,7 @@ pub:
 	v_file         string
 	v_line         int
 	v_context      []ReportLine
+	v_source       string
 }
 
 struct CreateBugReportResponse {
@@ -199,11 +202,17 @@ fn init_db(db sqlite.DB) ! {
 				ccompiler text not null,
 				error_string text not null,
 				lines text not null,
-				v_lines text not null default ''
+				v_lines text not null default '',
+				arch text not null default '',
+				build_options text not null default '',
+				v_source text not null default ''
 			)")!
 	// Add columns that were introduced after the table already existed, so older
 	// databases pick them up without losing their stored reports.
 	ensure_column(db, 'bug_reports', 'v_lines', "text not null default ''")!
+	ensure_column(db, 'bug_reports', 'arch', "text not null default ''")!
+	ensure_column(db, 'bug_reports', 'build_options', "text not null default ''")!
+	ensure_column(db, 'bug_reports', 'v_source', "text not null default ''")!
 	db.exec('create index if not exists idx_bug_reports_created_at
 			on bug_reports(created_at)')!
 }
@@ -238,14 +247,15 @@ pub fn (mut app App) create(mut ctx Context) veb.Result {
 		return ctx.request_error('unsupported report kind')
 	}
 	stored_report := vbugreport.new_stored_c_error_report(report.c_file, report.target_os,
-		report.ccompiler, report.c_error, report.c_context.map(it.text),
-		report.v_context.map(it.text))
+		report.ccompiler, report.arch, report.build_options, report.c_error,
+		report.c_context.map(it.text), report.v_context.map(it.text), report.v_source)
 	id := new_report_id()
 	delete_token := rand.uuid_v4()
 	app.db.exec_param_many('insert into bug_reports (
 				id, delete_token, created_at, remote_ip, user_agent,
-				c_file_name, target_os, ccompiler, error_string, lines, v_lines
-			) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+				c_file_name, target_os, ccompiler, error_string, lines, v_lines,
+				arch, build_options, v_source
+			) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
 		id,
 		delete_token,
 		time.utc().format_rfc3339(),
@@ -257,6 +267,9 @@ pub fn (mut app App) create(mut ctx Context) veb.Result {
 		stored_report.error_string,
 		stored_report.lines,
 		stored_report.v_lines,
+		stored_report.arch,
+		stored_report.build_options,
+		stored_report.v_source,
 	]) or { return ctx.server_error('could not store report') }
 	return ctx.json(CreateBugReportResponse{
 		id:           id

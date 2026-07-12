@@ -579,12 +579,47 @@ fn test_user_defined_windows_dllmain_disables_generated_entrypoint() {
 	ensure_compilation_succeeded(compilation, cmd)
 	assert compilation.output.contains('void _vinit_caller() {')
 	assert compilation.output.contains('GC_set_pages_executable(0);')
+	// The shared-library GC tuning (issue #27555) must stay guarded, so loading
+	// the library into an already-GC-initialized host does not clobber the host's
+	// process-wide free-space divisor (its local GC_INIT() would be a no-op).
+	assert compilation.output.contains('if (!GC_is_init_called()) {')
 	assert compilation.output.contains('GC_INIT();')
 	assert compilation.output.contains('DllMain(')
 	assert compilation.output.contains('_vinit_caller();')
 	assert compilation.output.contains('_vcleanup_caller();')
 	assert !compilation.output.contains('switch (fdwReason)')
 	assert !compilation.output.contains('case DLL_PROCESS_ATTACH')
+}
+
+fn test_boehm_gc_header_precedes_imported_module_spawn_wrappers() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_boehm_gc_spawn_include_order.vv')
+	source_lines := [
+		'module main',
+		'',
+		'import fasthttp',
+		'',
+		'fn handler(_ fasthttp.HttpRequest) !fasthttp.HttpResponse {',
+		"\treturn fasthttp.HttpResponse{content: 'HTTP/1.1 200 OK\\r\\nContent-Length: 0\\r\\n\\r\\n'.bytes()}",
+		'}',
+		'',
+		'fn main() {',
+		'\tmut server := fasthttp.new_server(handler: handler)!',
+		'\tserver.run()!',
+		'}',
+	]
+	os.write_file(test_source, source_lines.join('\n') + '\n')!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -os linux -gc boehm -o - ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	gc_include_pos := compilation.output.index('#include <gc/gc.h>') or { -1 }
+	pthread_create_pos := compilation.output.index('pthread_create(&thread_') or { -1 }
+	assert gc_include_pos >= 0
+	assert pthread_create_pos >= 0
+	assert gc_include_pos < pthread_create_pos
 }
 
 fn test_array_sort_with_compare_uses_stable_sort_adapters() {
@@ -627,6 +662,106 @@ fn test_array_sort_with_compare_uses_stable_sort_adapters() {
 	assert normalized.contains('_qsort_adapter(const void* a, const void* b) { return compare_')
 	assert normalized.contains('v_stable_sort(zs.data, zs.len, zs.element_size, compare_')
 	assert normalized.contains('_qsort_adapter);')
+}
+
+fn test_array_sort_expression_key_avoids_sanitized_name_collisions() {
+	os.chdir(vroot) or {}
+	test_dir := os.join_path(os.vtmp_dir(), 'coutput_array_sort_expr_collision_${os.getpid()}')
+	os.mkdir_all(test_dir)!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	os.write_file(os.join_path(test_dir, 'main.v'),
+		['module main', '', 'struct Inner {', '\tbar int', '}', '', 'struct Item {', '\tfoo Inner', '\tfoo_bar int', '\tlabel string', '}', '', 'fn main() {', '\tprintln(sort_by_nested())', '\tprintln(sort_by_flat())', '}'].join('\n') +
+		'\n')!
+	os.write_file(os.join_path(test_dir, 'nested.v'),
+		['module main', '', 'fn sort_by_nested() string {', "\tmut items := [Item{ foo: Inner{ bar: 2 }, foo_bar: 1, label: 'nested-wrong' }, Item{ foo: Inner{ bar: 1 }, foo_bar: 2, label: 'nested-ok' }]", '\titems.sort(a.foo.bar < b.foo.bar)', '\treturn items[0].label', '}'].join('\n') +
+		'\n')!
+	os.write_file(os.join_path(test_dir, 'flat.v'),
+		['module main', '', 'fn sort_by_flat() string {', "\tmut items := [Item{ foo: Inner{ bar: 1 }, foo_bar: 2, label: 'flat-wrong' }, Item{ foo: Inner{ bar: 2 }, foo_bar: 1, label: 'flat-ok' }]", '\titems.sort(a.foo_bar < b.foo_bar)', '\treturn items[0].label', '}'].join('\n') +
+		'\n')!
+	pexe := os.join_path(test_dir, 'sort_expr_collision')
+	cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(pexe)} ${os.quoted_path(test_dir)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	res := os.execute(os.quoted_path(pexe))
+	assert res.exit_code == 0
+	assert res.output.trim_space().replace('\r\n', '\n') == 'nested-ok\nflat-ok'
+}
+
+// generated_c_symbols_with_prefix extracts generated C symbols from compiler output.
+fn generated_c_symbols_with_prefix(output string, prefix string) []string {
+	mut symbols := []string{}
+	mut start := 0
+	for start < output.len {
+		idx := output[start..].index(prefix) or { break }
+		rest := output[start + idx..]
+		mut end := 0
+		for end < rest.len && (rest[end].is_letter() || rest[end].is_digit() || rest[end] == `_`) {
+			end++
+		}
+		symbol := rest[..end]
+		if symbol !in symbols {
+			symbols << symbol
+		}
+		start += idx + end
+	}
+	symbols.sort()
+	return symbols
+}
+
+fn test_auxiliary_c_symbols_use_stable_type_hashes() {
+	$if windows {
+		$if tinyc {
+			eprintln('> skipping ${@FN} on windows-tcc, since deep GC scope pins (and thus their keepalive helpers) are intentionally not emitted there: the bundled Windows tcc libgc archive lacks GC_remove_roots()')
+			return
+		}
+	}
+	os.chdir(vroot) or {}
+	test_dir := os.join_path(os.vtmp_dir(), 'coutput_stable_type_symbol_hash_${os.getpid()}')
+	dir_a := os.join_path(test_dir, 'a')
+	dir_b := os.join_path(test_dir, 'b')
+	os.mkdir_all(dir_a)!
+	os.mkdir_all(dir_b)!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	source_lines := [
+		'module main',
+		'',
+		'struct Item {',
+		'\tname string',
+		'\trank int',
+		'}',
+		'',
+		'fn main() {',
+		"\tmut items := [Item{'b', 2}, Item{'a', 1}, Item{'c', 3}]",
+		'\titems.sort(a.rank < b.rank)',
+		'\tmut nested := [items]',
+		'\tprintln("\${nested[0][0].name}")',
+		'}',
+	]
+	source := source_lines.join('\n') + '\n'
+	path_a := os.join_path(dir_a, 'main.v')
+	path_b := os.join_path(dir_b, 'main.v')
+	os.write_file(path_a, source)!
+	os.write_file(path_b, source)!
+	cmd_a := '${os.quoted_path(vexe)} -prod -gc boehm_full_opt -o - ${os.quoted_path(path_a)}'
+	cmd_b := '${os.quoted_path(vexe)} -prod -gc boehm_full_opt -o - ${os.quoted_path(path_b)}'
+	compilation_a := os.execute(cmd_a)
+	compilation_b := os.execute(cmd_b)
+	ensure_compilation_succeeded(compilation_a, cmd_a)
+	ensure_compilation_succeeded(compilation_b, cmd_b)
+	compare_a := generated_c_symbols_with_prefix(compilation_a.output, 'compare_')
+	compare_b := generated_c_symbols_with_prefix(compilation_b.output, 'compare_')
+	keepalive_a := generated_c_symbols_with_prefix(compilation_a.output,
+		'__v_boehm_collect_keepalive_')
+	keepalive_b := generated_c_symbols_with_prefix(compilation_b.output,
+		'__v_boehm_collect_keepalive_')
+	assert compare_a.len > 0
+	assert keepalive_a.len > 0
+	assert compare_a == compare_b
+	assert keepalive_a == keepalive_b
 }
 
 fn test_veb_implicit_ctx_alias_uses_user_context_name() {

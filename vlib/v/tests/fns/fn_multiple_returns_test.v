@@ -102,6 +102,15 @@ fn if_expr_with_fn_value(x bool) (int, fn () int) {
 	return if x { 1, noop_cmd_for_multi_return_if } else { 2, noop_cmd_for_multi_return_if }
 }
 
+fn test_issue_27346_return_if_multi_return_with_bare_fn_value() {
+	true_value, true_fn := if_expr_with_fn_value(true)
+	false_value, false_fn := if_expr_with_fn_value(false)
+	assert true_value == 1
+	assert true_fn() == 0
+	assert false_value == 2
+	assert false_fn() == 0
+}
+
 fn fail_for_multi_return_if_or_block() !int {
 	return error('failed')
 }

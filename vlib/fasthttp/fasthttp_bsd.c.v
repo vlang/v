@@ -4,13 +4,27 @@ import net
 import sync.stdatomic
 import time
 
+#include <errno.h>
+#include <fcntl.h>
 #include <sys/event.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/uio.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <signal.h>
 
+fn C.socket(domain i32, typ i32, protocol i32) i32
+fn C.bind(sockfd i32, addr voidptr, addrlen u32) i32
+fn C.send(__fd i32, __buf voidptr, __n usize, __flags i32) i32
+fn C.recv(__fd i32, __buf voidptr, __n usize, __flags i32) i32
+fn C.setsockopt(__fd i32, __level i32, __optname i32, __optval voidptr, __optlen u32) i32
+fn C.listen(__fd i32, __n i32) i32
+fn C.perror(s &u8)
+fn C.close(fd i32) i32
+fn C.htons(__hostshort u16) u16
+fn C.fcntl(fd i32, cmd i32, arg i32) i32
 fn C.signal(sig int, handler voidptr) voidptr
 
 const buf_size = max_connection_size
@@ -307,6 +321,7 @@ fn complete_response(server &Server, kq int, c_ptr voidptr, mut clients map[int]
 	}
 	c.read_start = 0
 	c.should_close = false
+	add_event(kq, u64(c.fd), i16(C.EVFILT_READ), u16(C.EV_ADD | C.EV_ENABLE | C.EV_CLEAR), c)
 }
 
 // process_request handles a complete HTTP request: decodes, calls the handler,
@@ -336,6 +351,7 @@ fn process_request(server &Server, kq int, c_ptr voidptr, mut clients map[int]vo
 	server.begin_request()
 	c.request_active = true
 	decoded.client_conn_fd = c.fd
+	decoded.client_conn_handle = usize(c.fd)
 	decoded.user_data = server.user_data
 
 	mut resp := server.request_handler(decoded) or {
@@ -352,7 +368,8 @@ fn process_request(server &Server, kq int, c_ptr voidptr, mut clients map[int]vo
 	match resp.takeover_mode {
 		.manual {
 			// The handler has taken ownership of the connection.
-			// Remove from kqueue and tracking, but do NOT close the fd.
+			// Remove from kqueue and tracking before ending the request, but do
+			// NOT close the fd.
 			clients.delete(c.fd)
 			delete_event(kq, u64(c.fd), i16(C.EVFILT_READ), c)
 			delete_event(kq, u64(c.fd), i16(C.EVFILT_WRITE), c)

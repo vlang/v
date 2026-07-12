@@ -34,6 +34,10 @@ fn fixed_litlen_lengths() []int {
 	return lens
 }
 
+fn fixed_dist_lengths() []int {
+	return []int{len: 32, init: 5}
+}
+
 // HuffTree is a MSB-first Huffman lookup table for DEFLATE decoding.
 // Indexed by the next max_bits bits read LSB-first from the stream.
 struct HuffTree {
@@ -64,6 +68,21 @@ fn build_huff_tree(lengths []int) !HuffTree {
 		table:    table
 		max_bits: max_bits
 	}
+}
+
+const fixed_litlen_lens = fixed_litlen_lengths()
+const fixed_dist_lens = fixed_dist_lengths()
+const fixed_ll_tree = build_fixed_huff_tree(fixed_litlen_lens, 'lit/len')
+const fixed_d_tree = build_fixed_huff_tree(fixed_dist_lens, 'distance')
+
+fn build_fixed_huff_tree(lengths []int, name string) HuffTree {
+	return build_huff_tree(lengths) or {
+		panic('deflate: failed to build fixed ${name} Huffman tree: ${err}')
+	}
+}
+
+fn (mut t HuffTree) free() {
+	unsafe { t.table.free() }
 }
 
 struct BitReader {
@@ -170,8 +189,6 @@ fn inflate_with_consumed(data []u8) !InflateResult {
 		buf: data
 	}
 	mut out := []u8{}
-	fixed_ll := build_huff_tree(fixed_litlen_lengths())!
-	fixed_d := build_huff_tree([]int{len: 32, init: 5})!
 	for {
 		bfinal := r.read_bits(1)!
 		btype := r.read_bits(2)!
@@ -188,48 +205,10 @@ fn inflate_with_consumed(data []u8) !InflateResult {
 				}
 			}
 			1 {
-				inflate_block(mut r, mut out, fixed_ll, fixed_d)!
+				inflate_block(mut r, mut out, fixed_ll_tree, fixed_d_tree)!
 			}
 			2 {
-				hlit := int(r.read_bits(5)!) + 257
-				hdist := int(r.read_bits(5)!) + 1
-				hclen := int(r.read_bits(4)!) + 4
-				mut cl_lens := []int{len: 19}
-				for i in 0 .. hclen {
-					cl_lens[cl_order[i]] = int(r.read_bits(3)!)
-				}
-				cl_tree := build_huff_tree(cl_lens)!
-				mut all_lens := []int{}
-				for all_lens.len < hlit + hdist {
-					sym := r.huff_decode(cl_tree)!
-					if sym <= 15 {
-						all_lens << int(sym)
-					} else if sym == 16 {
-						if all_lens.len == 0 {
-							return error('inflate: repeat with empty history')
-						}
-						rep := int(r.read_bits(2)!) + 3
-						last := all_lens[all_lens.len - 1]
-						for _ in 0 .. rep {
-							all_lens << last
-						}
-					} else if sym == 17 {
-						rep := int(r.read_bits(3)!) + 3
-						for _ in 0 .. rep {
-							all_lens << 0
-						}
-					} else if sym == 18 {
-						rep := int(r.read_bits(7)!) + 11
-						for _ in 0 .. rep {
-							all_lens << 0
-						}
-					} else {
-						return error('inflate: bad code length symbol')
-					}
-				}
-				ll_tree := build_huff_tree(all_lens[..hlit])!
-				d_tree := build_huff_tree(all_lens[hlit..])!
-				inflate_block(mut r, mut out, ll_tree, d_tree)!
+				inflate_dynamic_block(mut r, mut out)!
 			}
 			else {
 				return error('inflate: reserved block type')
@@ -262,8 +241,6 @@ fn inflate_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !Inflate
 	mut out := []u8{}
 	mut state := InflateStreamState{}
 	mut aborted := false
-	fixed_ll := build_huff_tree(fixed_litlen_lengths())!
-	fixed_d := build_huff_tree([]int{len: 32, init: 5})!
 	for {
 		bfinal := r.read_bits(1)!
 		btype := r.read_bits(2)!
@@ -284,50 +261,13 @@ fn inflate_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !Inflate
 				}
 			}
 			1 {
-				if !inflate_block_stream(mut r, mut out, fixed_ll, fixed_d, cb, userdata, mut state)! {
+				if !inflate_block_stream(mut r, mut out, fixed_ll_tree, fixed_d_tree, cb, userdata, mut
+					state)! {
 					aborted = true
 				}
 			}
 			2 {
-				hlit := int(r.read_bits(5)!) + 257
-				hdist := int(r.read_bits(5)!) + 1
-				hclen := int(r.read_bits(4)!) + 4
-				mut cl_lens := []int{len: 19}
-				for i in 0 .. hclen {
-					cl_lens[cl_order[i]] = int(r.read_bits(3)!)
-				}
-				cl_tree := build_huff_tree(cl_lens)!
-				mut all_lens := []int{}
-				for all_lens.len < hlit + hdist {
-					sym := r.huff_decode(cl_tree)!
-					if sym <= 15 {
-						all_lens << int(sym)
-					} else if sym == 16 {
-						if all_lens.len == 0 {
-							return error('inflate: repeat with empty history')
-						}
-						rep := int(r.read_bits(2)!) + 3
-						last := all_lens[all_lens.len - 1]
-						for _ in 0 .. rep {
-							all_lens << last
-						}
-					} else if sym == 17 {
-						rep := int(r.read_bits(3)!) + 3
-						for _ in 0 .. rep {
-							all_lens << 0
-						}
-					} else if sym == 18 {
-						rep := int(r.read_bits(7)!) + 11
-						for _ in 0 .. rep {
-							all_lens << 0
-						}
-					} else {
-						return error('inflate: bad code length symbol')
-					}
-				}
-				ll_tree := build_huff_tree(all_lens[..hlit])!
-				d_tree := build_huff_tree(all_lens[hlit..])!
-				if !inflate_block_stream(mut r, mut out, ll_tree, d_tree, cb, userdata, mut state)! {
+				if !inflate_dynamic_block_stream(mut r, mut out, cb, userdata, mut state)! {
 					aborted = true
 				}
 			}
@@ -355,6 +295,107 @@ fn inflate_with_callback(data []u8, cb ChunkCallback, userdata voidptr) !Inflate
 		delivered: state.delivered
 		aborted:   aborted
 	}
+}
+
+@[direct_array_access]
+fn inflate_dynamic_block(mut r BitReader, mut out []u8) ! {
+	hlit := int(r.read_bits(5)!) + 257
+	hdist := int(r.read_bits(5)!) + 1
+	hclen := int(r.read_bits(4)!) + 4
+	mut cl_lens := []int{len: 19}
+	defer {
+		unsafe { cl_lens.free() }
+	}
+	for i in 0 .. hclen {
+		cl_lens[cl_order[i]] = int(r.read_bits(3)!)
+	}
+	mut cl_tree := build_huff_tree(cl_lens)!
+	defer {
+		cl_tree.free()
+	}
+	mut all_lens := read_dynamic_lengths(mut r, cl_tree, hlit, hdist)!
+	defer {
+		unsafe { all_lens.free() }
+	}
+	mut ll_tree := build_huff_tree(all_lens[..hlit])!
+	defer {
+		ll_tree.free()
+	}
+	mut d_tree := build_huff_tree(all_lens[hlit..])!
+	defer {
+		d_tree.free()
+	}
+	inflate_block(mut r, mut out, ll_tree, d_tree)!
+}
+
+@[direct_array_access]
+fn inflate_dynamic_block_stream(mut r BitReader, mut out []u8, cb ChunkCallback, userdata voidptr, mut state InflateStreamState) !bool {
+	hlit := int(r.read_bits(5)!) + 257
+	hdist := int(r.read_bits(5)!) + 1
+	hclen := int(r.read_bits(4)!) + 4
+	mut cl_lens := []int{len: 19}
+	defer {
+		unsafe { cl_lens.free() }
+	}
+	for i in 0 .. hclen {
+		cl_lens[cl_order[i]] = int(r.read_bits(3)!)
+	}
+	mut cl_tree := build_huff_tree(cl_lens)!
+	defer {
+		cl_tree.free()
+	}
+	mut all_lens := read_dynamic_lengths(mut r, cl_tree, hlit, hdist)!
+	defer {
+		unsafe { all_lens.free() }
+	}
+	mut ll_tree := build_huff_tree(all_lens[..hlit])!
+	defer {
+		ll_tree.free()
+	}
+	mut d_tree := build_huff_tree(all_lens[hlit..])!
+	defer {
+		d_tree.free()
+	}
+	return inflate_block_stream(mut r, mut out, ll_tree, d_tree, cb, userdata, mut state)!
+}
+
+fn read_dynamic_lengths(mut r BitReader, cl_tree HuffTree, hlit int, hdist int) ![]int {
+	mut all_lens := []int{cap: hlit + hdist}
+	mut keep_all_lens := false
+	defer {
+		if !keep_all_lens {
+			unsafe { all_lens.free() }
+		}
+	}
+	for all_lens.len < hlit + hdist {
+		sym := r.huff_decode(cl_tree)!
+		if sym <= 15 {
+			all_lens << int(sym)
+		} else if sym == 16 {
+			if all_lens.len == 0 {
+				return error('inflate: repeat with empty history')
+			}
+			rep := int(r.read_bits(2)!) + 3
+			last := all_lens[all_lens.len - 1]
+			for _ in 0 .. rep {
+				all_lens << last
+			}
+		} else if sym == 17 {
+			rep := int(r.read_bits(3)!) + 3
+			for _ in 0 .. rep {
+				all_lens << 0
+			}
+		} else if sym == 18 {
+			rep := int(r.read_bits(7)!) + 11
+			for _ in 0 .. rep {
+				all_lens << 0
+			}
+		} else {
+			return error('inflate: bad code length symbol')
+		}
+	}
+	keep_all_lens = true
+	return all_lens
 }
 
 @[direct_array_access]

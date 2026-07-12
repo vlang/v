@@ -9,22 +9,81 @@ const ppc64_architecture = int(11)
 
 type ClosureGetDataFn = fn () voidptr
 
+type ClosureInitFn = fn ()
+
 struct ClosurePage {
 mut:
 	next            &ClosurePage = unsafe { nil }
 	exec_page_start voidptr
 }
 
+struct ClosureLiveInfo {
+mut:
+	ctx        voidptr
+	owns_data  bool
+	generation u64
+}
+
+struct ClosureLifetimeRecord {
+mut:
+	exec_ptr   voidptr
+	generation u64
+}
+
+struct ClosureLifetimeFrame {
+mut:
+	start int
+	end   int
+}
+
+@[heap]
+struct ClosureLifetimeState {
+mut:
+	owner_thread     u64
+	active           bool
+	disposed         bool
+	suspended        int
+	frame_start      int
+	frame_gen        u64
+	generation       u64
+	frame_generation u64
+	records          []ClosureLifetimeRecord
+	frames           []ClosureLifetimeFrame
+	next_free        &ClosureLifetimeState = unsafe { nil }
+}
+
+// Lifetime owns a set of tracked closure callbacks that can be reclaimed together.
+pub struct Lifetime {
+mut:
+	state      &ClosureLifetimeState = unsafe { nil }
+	generation u64
+	disposed   bool
+}
+
+struct FrameToken {
+mut:
+	state            &ClosureLifetimeState = unsafe { nil }
+	thread_id        u64
+	state_generation u64
+	generation       u64
+}
+
 @[heap]
 struct Closure {
 	ClosureMutex
 mut:
-	closure_ptr      voidptr
-	closure_get_data ClosureGetDataFn = unsafe { nil }
-	closure_cap      int
-	free_closure_ptr voidptr
-	pages            &ClosurePage = unsafe { nil }
-	v_page_size      int          = int(0x4000)
+	closure_ptr              voidptr
+	closure_get_data         ClosureGetDataFn = unsafe { nil }
+	closure_cap              int
+	free_closure_ptr         voidptr
+	pages                    &ClosurePage = unsafe { nil }
+	v_page_size              int          = int(0x4000)
+	live                     map[voidptr]ClosureLiveInfo
+	active_lifetimes         map[u64]&ClosureLifetimeState
+	next_generation          u64
+	free_lifetime_states     &ClosureLifetimeState = unsafe { nil }
+	next_lifetime_generation u64
+	lifetime_state_allocs    u64
 }
 
 __global g_closure = Closure{}
@@ -295,6 +354,366 @@ fn closure_is_managed(exec_ptr voidptr) bool {
 	return false
 }
 
+fn closure_live_set(exec_ptr voidptr, data voidptr, owns_data bool) {
+	g_closure.next_generation++
+	g_closure.live[exec_ptr] = ClosureLiveInfo{
+		ctx:        data
+		owns_data:  owns_data
+		generation: g_closure.next_generation
+	}
+}
+
+fn closure_live_delete(exec_ptr voidptr) ClosureLiveInfo {
+	if info := g_closure.live[exec_ptr] {
+		g_closure.live[exec_ptr] = ClosureLiveInfo{}
+		g_closure.live.delete(exec_ptr)
+		return info
+	}
+	return ClosureLiveInfo{}
+}
+
+fn new_closure_lifetime_state_no_lock() &ClosureLifetimeState {
+	mut state := g_closure.free_lifetime_states
+	if !isnil(state) {
+		g_closure.free_lifetime_states = state.next_free
+	} else {
+		unsafe {
+			state = &ClosureLifetimeState(malloc(sizeof(ClosureLifetimeState)))
+		}
+		g_closure.lifetime_state_allocs++
+	}
+	g_closure.next_lifetime_generation++
+	unsafe {
+		*state = ClosureLifetimeState{
+			owner_thread: closure_current_thread_id_platform()
+			generation:   g_closure.next_lifetime_generation
+		}
+	}
+	return state
+}
+
+fn new_closure_lifetime_state() &ClosureLifetimeState {
+	closure_mtx_lock_platform()
+	state := new_closure_lifetime_state_no_lock()
+	closure_mtx_unlock_platform()
+	return state
+}
+
+fn closure_lifetime_recycle_state_no_lock(mut state &ClosureLifetimeState) {
+	state.disposed = true
+	state.active = false
+	state.suspended = 0
+	state.frame_start = 0
+	state.frame_gen = 0
+	state.frame_generation = 0
+	unsafe {
+		state.records.free()
+		state.frames.free()
+	}
+	state.records = []ClosureLifetimeRecord{}
+	state.frames = []ClosureLifetimeFrame{}
+	state.next_free = g_closure.free_lifetime_states
+	g_closure.free_lifetime_states = state
+}
+
+fn closure_lifetime_error(state &ClosureLifetimeState, generation u64, thread_id u64) string {
+	if state.disposed || state.generation != generation {
+		return 'closure lifetime used after dispose'
+	}
+	if state.owner_thread != thread_id {
+		return 'closure lifetime used from a different thread'
+	}
+	return ''
+}
+
+fn (mut lifetime Lifetime) ensure_state() !&ClosureLifetimeState {
+	closure_ensure_initialized()
+	if isnil(lifetime.state) {
+		if lifetime.disposed {
+			return error('closure lifetime used after dispose')
+		}
+		lifetime.state = new_closure_lifetime_state()
+		lifetime.generation = lifetime.state.generation
+		return lifetime.state
+	}
+	closure_mtx_lock_platform()
+	state := lifetime.state
+	if lifetime.disposed || state.disposed || state.generation != lifetime.generation {
+		closure_mtx_unlock_platform()
+		return error('closure lifetime used after dispose')
+	}
+	closure_mtx_unlock_platform()
+	return state
+}
+
+fn closure_lifetime_track_no_lock(exec_ptr voidptr) {
+	thread_id := closure_current_thread_id_platform()
+	mut state := g_closure.active_lifetimes[thread_id] or { return }
+	if state.suspended > 0 {
+		return
+	}
+	info := g_closure.live[exec_ptr] or { return }
+	state.records << ClosureLifetimeRecord{
+		exec_ptr:   exec_ptr
+		generation: info.generation
+	}
+}
+
+@[direct_array_access]
+fn closure_slot_data(exec_ptr voidptr) voidptr {
+	unsafe {
+		mut p := closure_slot_meta(exec_ptr)
+		if is_ppc64() {
+			return p[2]
+		}
+		return p[0]
+	}
+}
+
+@[direct_array_access]
+fn closure_release_no_lock(exec_ptr voidptr, generation u64) bool {
+	if !closure_is_managed(exec_ptr) {
+		return false
+	}
+	info := g_closure.live[exec_ptr] or { return false }
+	if generation != 0 && info.generation != generation {
+		return false
+	}
+	data := closure_slot_data(exec_ptr)
+	_ := closure_live_delete(exec_ptr)
+	if info.owns_data && !isnil(data) {
+		unsafe { free(data) }
+	}
+	unsafe {
+		mut p := closure_slot_meta(exec_ptr)
+		p[0] = g_closure.free_closure_ptr
+		if is_ppc64() {
+			p[1] = nil
+			p[2] = nil
+			p[3] = nil
+		} else {
+			p[1] = nil
+		}
+		g_closure.free_closure_ptr = exec_ptr
+	}
+	return true
+}
+
+fn closure_lifetime_release_records_no_lock(records []ClosureLifetimeRecord, start int, end int) {
+	for i in start .. end {
+		record := records[i]
+		closure_release_no_lock(record.exec_ptr, record.generation)
+	}
+}
+
+fn closure_lifetime_reclaim_no_lock(mut state ClosureLifetimeState, retain int) {
+	keep := if retain < 0 { 0 } else { retain }
+	if state.frames.len <= keep {
+		return
+	}
+	reclaim_count := state.frames.len - keep
+	mut cutoff := 0
+	for i in 0 .. reclaim_count {
+		frame := state.frames[i]
+		closure_lifetime_release_records_no_lock(state.records, frame.start, frame.end)
+		cutoff = frame.end
+	}
+	state.frames.delete_many(0, reclaim_count)
+	if cutoff > 0 {
+		state.records.delete_many(0, cutoff)
+		for mut frame in state.frames {
+			frame.start -= cutoff
+			frame.end -= cutoff
+		}
+	}
+}
+
+fn closure_ensure_initialized() {
+	closure_init_once_platform()
+}
+
+// new_lifetime creates a lifetime object for tracking closure callbacks created inside frames.
+pub fn new_lifetime() Lifetime {
+	closure_ensure_initialized()
+	state := new_closure_lifetime_state()
+	return Lifetime{
+		state:      state
+		generation: state.generation
+	}
+}
+
+// lifetime_state_allocs writes the number of allocated closure lifetime bookkeeping states to out.
+@[if track_heap ?]
+pub fn lifetime_state_allocs(out &u64) {
+	closure_ensure_initialized()
+	closure_mtx_lock_platform()
+	unsafe {
+		*out = g_closure.lifetime_state_allocs
+	}
+	closure_mtx_unlock_platform()
+}
+
+fn (mut lifetime Lifetime) begin_frame() !FrameToken {
+	mut state := lifetime.ensure_state()!
+	thread_id := closure_current_thread_id_platform()
+	closure_mtx_lock_platform()
+	err := closure_lifetime_error(state, lifetime.generation, thread_id)
+	if err != '' {
+		closure_mtx_unlock_platform()
+		return error(err)
+	}
+	if state.active {
+		closure_mtx_unlock_platform()
+		return error('closure lifetime frames can not be nested')
+	}
+	if state.suspended > 0 {
+		closure_mtx_unlock_platform()
+		return error('closure lifetime frame while suspended')
+	}
+	if _ := g_closure.active_lifetimes[thread_id] {
+		closure_mtx_unlock_platform()
+		return error('another closure lifetime is already active on this thread')
+	}
+	state.frame_generation++
+	state.active = true
+	state.frame_start = state.records.len
+	state.frame_gen = state.frame_generation
+	g_closure.active_lifetimes[thread_id] = state
+	closure_mtx_unlock_platform()
+	return FrameToken{
+		state:            state
+		thread_id:        thread_id
+		state_generation: lifetime.generation
+		generation:       state.frame_generation
+	}
+}
+
+fn (mut lifetime Lifetime) end_frame(token FrameToken) ! {
+	if isnil(token.state) {
+		return error('invalid closure lifetime frame token')
+	}
+	mut state := token.state
+	thread_id := closure_current_thread_id_platform()
+	closure_mtx_lock_platform()
+	err := closure_lifetime_error(state, token.state_generation, thread_id)
+	if err != '' {
+		closure_mtx_unlock_platform()
+		return error(err)
+	}
+	if token.thread_id != thread_id || token.generation != state.frame_gen || !state.active {
+		closure_mtx_unlock_platform()
+		return error('invalid closure lifetime frame token')
+	}
+	state.frames << ClosureLifetimeFrame{
+		start: state.frame_start
+		end:   state.records.len
+	}
+	state.active = false
+	state.frame_start = 0
+	state.frame_gen = 0
+	g_closure.active_lifetimes[thread_id] = unsafe { nil }
+	g_closure.active_lifetimes.delete(thread_id)
+	closure_mtx_unlock_platform()
+}
+
+// frame runs work while tracking closure callbacks created by that work in this lifetime.
+// The work callback itself is borrowed; only closures allocated while the frame is active
+// are owned by the lifetime and later released by reclaim or dispose.
+pub fn (mut lifetime Lifetime) frame(work fn ()) ! {
+	token := lifetime.begin_frame()!
+	mut ended := false
+	defer {
+		if !ended {
+			lifetime.end_frame(token) or {}
+		}
+	}
+	// Terminal panic can abort before scoped cleanup runs.
+	work()
+	lifetime.end_frame(token)!
+	ended = true
+}
+
+// reclaim releases tracked closure callbacks from old frames while retaining the newest retain frames.
+pub fn (mut lifetime Lifetime) reclaim(retain int) ! {
+	mut state := lifetime.ensure_state()!
+	thread_id := closure_current_thread_id_platform()
+	closure_mtx_lock_platform()
+	err := closure_lifetime_error(state, lifetime.generation, thread_id)
+	if err != '' {
+		closure_mtx_unlock_platform()
+		return error(err)
+	}
+	if state.active {
+		closure_mtx_unlock_platform()
+		return error('closure lifetime reclaim while a frame is active')
+	}
+	closure_lifetime_reclaim_no_lock(mut state, retain)
+	closure_mtx_unlock_platform()
+}
+
+// reclaim_all releases all tracked closure callbacks owned by this lifetime.
+pub fn (mut lifetime Lifetime) reclaim_all() ! {
+	lifetime.reclaim(0)!
+}
+
+// dispose releases all tracked closure callbacks and invalidates this lifetime.
+pub fn (mut lifetime Lifetime) dispose() ! {
+	mut state := lifetime.ensure_state()!
+	thread_id := closure_current_thread_id_platform()
+	closure_mtx_lock_platform()
+	err := closure_lifetime_error(state, lifetime.generation, thread_id)
+	if err != '' {
+		closure_mtx_unlock_platform()
+		return error(err)
+	}
+	if state.active {
+		closure_mtx_unlock_platform()
+		return error('closure lifetime dispose while a frame is active')
+	}
+	if state.suspended > 0 {
+		closure_mtx_unlock_platform()
+		return error('closure lifetime dispose while suspended')
+	}
+	closure_lifetime_reclaim_no_lock(mut state, 0)
+	lifetime.state = unsafe { nil }
+	lifetime.disposed = true
+	closure_lifetime_recycle_state_no_lock(mut state)
+	closure_mtx_unlock_platform()
+}
+
+// suspend runs work without tracking closure callbacks in the active frame of this lifetime.
+// The work callback is borrowed and is not owned or released by the lifetime.
+pub fn (mut lifetime Lifetime) suspend(work fn ()) ! {
+	mut state := lifetime.ensure_state()!
+	thread_id := closure_current_thread_id_platform()
+	closure_mtx_lock_platform()
+	err := closure_lifetime_error(state, lifetime.generation, thread_id)
+	if err != '' {
+		closure_mtx_unlock_platform()
+		return error(err)
+	}
+	if active := g_closure.active_lifetimes[thread_id] {
+		if active != state {
+			closure_mtx_unlock_platform()
+			return error('another closure lifetime is already active on this thread')
+		}
+	}
+	state.suspended++
+	closure_mtx_unlock_platform()
+	defer {
+		closure_mtx_lock_platform()
+		state.suspended--
+		closure_mtx_unlock_platform()
+	}
+	work()
+}
+
+// untracked runs work without tracking closure callbacks in this lifetime.
+// The work callback is borrowed and is not owned or released by the lifetime.
+pub fn (mut lifetime Lifetime) untracked(work fn ()) ! {
+	lifetime.suspend(work)!
+}
+
 // closure_alloc allocates executable memory pages for closures(INTERNAL COMPILER USE ONLY).
 fn closure_alloc() {
 	p := closure_alloc_platform()
@@ -321,9 +740,19 @@ fn closure_alloc() {
 
 // closure_init initializes global closure subsystem(INTERNAL COMPILER USE ONLY).
 fn closure_init() {
+	closure_ensure_initialized()
+}
+
+fn closure_init_body() {
 	// Determine system page size
 	mut page_size := get_page_size_platform()
 	g_closure.v_page_size = page_size // Store calculated size
+	g_closure.live = map[voidptr]ClosureLiveInfo{}
+	g_closure.active_lifetimes = map[u64]&ClosureLifetimeState{}
+	g_closure.next_generation = 0
+	g_closure.free_lifetime_states = unsafe { nil }
+	g_closure.next_lifetime_generation = 0
+	g_closure.lifetime_state_allocs = 0
 
 	// Initialize thread-safety lock
 	closure_mtx_lock_init_platform()
@@ -360,8 +789,14 @@ fn closure_init() {
 }
 
 // closure_create creates closure objects at compile-time(INTERNAL COMPILER USE ONLY).
-@[direct_array_access]
 fn closure_create(func voidptr, data voidptr) voidptr {
+	return closure_create_with_data(func, data, true)
+}
+
+// closure_create_with_data creates closure objects with explicit context ownership(INTERNAL COMPILER USE ONLY).
+@[direct_array_access]
+fn closure_create_with_data(func voidptr, data voidptr, owns_data bool) voidptr {
+	closure_ensure_initialized()
 	closure_mtx_lock_platform()
 
 	mut curr_closure := g_closure.free_closure_ptr
@@ -402,6 +837,8 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 			p[1] = func // Target function to execute
 		}
 	}
+	closure_live_set(curr_closure, data, owns_data)
+	closure_lifetime_track_no_lock(curr_closure)
 	closure_mtx_unlock_platform()
 
 	// Return executable closure object
@@ -421,38 +858,15 @@ fn closure_data(closure voidptr) voidptr {
 	}
 }
 
-// closure_try_destroy frees a managed closure slot and its context when the closure is known to be temporary.
+// Legacy compiler hook for one-shot local cleanup. Scoped lifetime reclaim uses generation checks.
 @[direct_array_access]
 fn closure_try_destroy(closure voidptr) {
 	if isnil(closure) {
 		return
 	}
+	closure_ensure_initialized()
 	exec_ptr := closure_exec_ptr(closure)
 	closure_mtx_lock_platform()
-	if !closure_is_managed(exec_ptr) {
-		closure_mtx_unlock_platform()
-		return
-	}
-	unsafe {
-		mut p := closure_slot_meta(exec_ptr)
-		mut data := nil
-		if is_ppc64() {
-			data = p[2]
-		} else {
-			data = p[0]
-		}
-		if !isnil(data) {
-			free(data)
-		}
-		p[0] = g_closure.free_closure_ptr
-		if is_ppc64() {
-			p[1] = nil
-			p[2] = nil
-			p[3] = nil
-		} else {
-			p[1] = nil
-		}
-		g_closure.free_closure_ptr = exec_ptr
-	}
+	closure_release_no_lock(exec_ptr, 0)
 	closure_mtx_unlock_platform()
 }

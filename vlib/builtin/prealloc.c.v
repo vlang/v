@@ -3,6 +3,12 @@ module builtin
 
 #insert "@VEXEROOT/vlib/builtin/prealloc_atomics.h"
 
+$if !freestanding && !vinix {
+	$if !windows {
+		#include <sys/mman.h>
+	}
+}
+
 fn C.v_prealloc_atomic_add_i32(ptr &int, delta int) int
 fn C.v_prealloc_atomic_load_i32(ptr &int) int
 fn C.v_prealloc_atomic_store_i32(ptr &int, val int) int
@@ -43,6 +49,7 @@ mut:
 	scope          &VPreallocScope = 0
 	min_block_size isize
 	is_scope       bool
+	mmap_allocated bool
 	id             int // 4
 	mallocs        int // 4
 }
@@ -171,10 +178,24 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least isize, align isize, min_
 	$if windows {
 		v.start = unsafe { C._aligned_malloc(block_size, fixed_align) }
 	} $else {
-		if fixed_align == 1 {
-			v.start = unsafe { C.malloc(block_size) }
-		} else {
-			v.start = unsafe { C.aligned_alloc(fixed_align, block_size) }
+		$if !freestanding && !vinix {
+			if fixed_align <= isize(prealloc_default_align) {
+				mmap_ptr := unsafe {
+					C.mmap(0, usize(block_size), C.PROT_READ | C.PROT_WRITE,
+						C.MAP_ANONYMOUS | C.MAP_PRIVATE, -1, 0)
+				}
+				if mmap_ptr != C.MAP_FAILED {
+					v.start = &u8(mmap_ptr)
+					v.mmap_allocated = true
+				}
+			}
+		}
+		if unsafe { v.start == 0 } {
+			if fixed_align == 1 {
+				v.start = unsafe { C.malloc(block_size) }
+			} else {
+				v.start = unsafe { C.aligned_alloc(fixed_align, block_size) }
+			}
 		}
 	}
 	vmemory_abort_on_nil(v.start, block_size)
@@ -196,50 +217,56 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least isize, align isize, min_
 @[unsafe]
 fn vmemory_block_malloc(n isize, align isize) &u8 {
 	unsafe {
-		// Lazy per-thread initialization: when g_memory_block is thread-local,
-		// new threads start with a null pointer and need their own arena.
-		if g_memory_block == nil {
-			g_memory_block = vmemory_block_new(nil, isize(prealloc_block_size), 0)
+		// Read the thread-local block pointer ONCE per call: it only stores
+		// which block is current, and the bump updates go through the block
+		// itself. Thread-local access can be a library call (cc -O0 TLS,
+		// pthread-key emulation), so the fast path must not repeat it.
+		mut mb := g_memory_block
+		if _unlikely_(mb == nil) {
+			// Lazy per-thread initialization: when g_memory_block is
+			// thread-local, new threads start with a null pointer and need
+			// their own arena.
+			mb = vmemory_block_new(nil, isize(prealloc_block_size), 0)
+			g_memory_block = mb
 		}
-	}
-	$if prealloc_trace_malloc ? {
-		C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, n: %lld align: %d\n',
-			g_memory_block.id, n, align)
-	}
-	unsafe {
+		$if prealloc_trace_malloc ? {
+			C.fprintf(C.stderr, c'vmemory_block_malloc g_memory_block.id: %d, n: %lld align: %d\n',
+				mb.id, n, align)
+		}
 		fixed_align := vmemory_effective_align(align)
-		mut current := vmemory_align_up(g_memory_block.current, fixed_align)
-		remaining := i64(g_memory_block.stop) - i64(current)
+		mut current := vmemory_align_up(mb.current, fixed_align)
+		remaining := i64(mb.stop) - i64(current)
 		if _unlikely_(remaining < n) {
-			was_scope := g_memory_block.is_scope
-			scope := g_memory_block.scope
-			min_block_size := if g_memory_block.min_block_size > 0 {
-				g_memory_block.min_block_size
+			was_scope := mb.is_scope
+			scope := mb.scope
+			min_block_size := if mb.min_block_size > 0 {
+				mb.min_block_size
 			} else {
 				isize(prealloc_block_size)
 			}
-			g_memory_block = vmemory_block_new_sized(g_memory_block, n, fixed_align, min_block_size)
-			g_memory_block.is_scope = was_scope
-			g_memory_block.scope = scope
-			current = vmemory_align_up(g_memory_block.current, fixed_align)
+			mb = vmemory_block_new_sized(mb, n, fixed_align, min_block_size)
+			mb.is_scope = was_scope
+			mb.scope = scope
+			g_memory_block = mb
+			current = vmemory_align_up(mb.current, fixed_align)
 		}
 		res := &u8(current)
-		g_memory_block.current = current
-		g_memory_block.current += n
+		mb.current = current
+		mb.current += n
 		$if prealloc_stats ? {
-			g_memory_block.mallocs++
+			mb.mallocs++
 		} $else {
 			$if trace_prealloc ? {
-				g_memory_block.mallocs++
+				mb.mallocs++
 			}
 		}
 		$if trace_prealloc ? {
-			if g_memory_block.is_scope {
-				used := vmemory_block_used(g_memory_block)
-				size := vmemory_block_size(g_memory_block)
+			if mb.is_scope {
+				used := vmemory_block_used(mb)
+				size := vmemory_block_size(mb)
 				C.fprintf(C.stderr,
 					c'[trace_prealloc] alloc block=%p ptr=%p size=%lld align=%lld used=%lld/%lld mallocs=%d\n',
-					g_memory_block, res, n, fixed_align, used, size, g_memory_block.mallocs)
+					mb, res, n, fixed_align, used, size, mb.mallocs)
 			}
 		}
 		return res
@@ -259,7 +286,15 @@ fn vmemory_block_free(mb &VMemoryBlock) {
 		// Warning! On windows, we always use _aligned_free to free memory.
 		C._aligned_free(mb.start)
 	} $else {
-		C.free(mb.start)
+		$if !freestanding && !vinix {
+			if mb.mmap_allocated {
+				C.munmap(mb.start, usize(vmemory_block_size(mb)))
+			} else {
+				C.free(mb.start)
+			}
+		} $else {
+			C.free(mb.start)
+		}
 	}
 	C.free(mb)
 }
@@ -369,16 +404,9 @@ fn prealloc_vcleanup() {
 	}
 	unsafe {
 		for g_memory_block != 0 {
-			$if windows {
-				// Warning! On windows, we always use _aligned_free to free memory.
-				C._aligned_free(g_memory_block.start)
-			} $else {
-				C.free(g_memory_block.start)
-			}
 			tmp := g_memory_block
 			g_memory_block = g_memory_block.previous
-			// free the link node
-			C.free(tmp)
+			vmemory_block_free(tmp)
 		}
 	}
 }

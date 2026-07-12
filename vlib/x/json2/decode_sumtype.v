@@ -11,21 +11,17 @@ fn sumtype_variant_name(type_name string) string {
 	return type_name.all_after_last('.')
 }
 
-fn copy_type[T](_t T) T {
-	return T{}
-}
-
 fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
 	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
 		resolved_sumtype := initialized_sumtype
 		$for v in T.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is time.Time {
-					mut val := copy_type(initialized_sumtype)
+					mut val := $zero(v.typ)
 					decoder.decode_sumtype_time(mut val)!
 					return T(val)
 				} $else $if initialized_sumtype !is $option {
-					mut val := copy_type(initialized_sumtype)
+					mut val := $zero(v.typ)
 					decoder.decode_value(mut val)!
 					return T(val)
 				} $else {
@@ -153,7 +149,7 @@ fn (mut decoder Decoder) get_map_type_workaround[T](initialized_sumtype T) bool 
 		$for v in T.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $map {
-					val := copy_type(initialized_sumtype)
+					val := $zero(v.typ)
 					if decoder.current_node.next != unsafe { nil } {
 						return decoder.check_map_type_valid(val, decoder.current_node.next.next)
 					} else {
@@ -237,7 +233,7 @@ fn (mut decoder Decoder) get_struct_type_workaround[T](initialized_sumtype T) bo
 		$for v in T.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is $struct {
-					val := copy_type(initialized_sumtype)
+					val := $zero(v.typ)
 					return decoder.check_struct_type_valid(val, decoder.current_node)
 				}
 			}
@@ -251,7 +247,7 @@ fn (mut decoder Decoder) get_time_type_workaround[T](initialized_sumtype T) bool
 		$for v in T.variants {
 			if initialized_sumtype is v {
 				$if initialized_sumtype is time.Time {
-					val := copy_type(initialized_sumtype)
+					val := $zero(v.typ)
 					return decoder.check_sumtype_type_valid(val, decoder.current_node)
 				}
 			}

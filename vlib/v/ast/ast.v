@@ -215,7 +215,7 @@ pub const empty_expr = Expr(EmptyExpr(0))
 pub const empty_stmt = Stmt(EmptyStmt{})
 pub const empty_node = Node(EmptyNode{})
 pub const empty_scope_object = ScopeObject(EmptyScopeObject{'empty_scope_object', 0})
-pub const empty_comptime_const_value = ComptTimeConstValue(EmptyExpr(0))
+pub const empty_comptime_const_value = ComptTimeConstValue(EmptyComptimeConstValue{})
 
 // `{stmts}` or `unsafe {stmts}`
 pub struct Block {
@@ -284,6 +284,40 @@ pub struct CharLiteral {
 pub:
 	val string
 	pos token.Pos
+}
+
+// char_literal_rune_value returns the byte-preserving rune value of a parsed char literal.
+pub fn char_literal_rune_value(value string) ?rune {
+	if value.len == 1 {
+		return rune(value[0])
+	}
+	if value.len == 2 && value[0] == `\\` {
+		return match value[1] {
+			`a` { 7 }
+			`b` { 8 }
+			`t` { 9 }
+			`n` { 10 }
+			`v` { 11 }
+			`f` { 12 }
+			`r` { 13 }
+			`e` { 27 }
+			`$` { 36 }
+			`"` { 34 }
+			`'` { 39 }
+			`?` { 63 }
+			`@` { 64 }
+			`\\` { 92 }
+			`\`` { 96 }
+			`{` { 123 }
+			`}` { 125 }
+			else { none }
+		}
+	}
+	runes := value.runes()
+	if runes.len == 1 {
+		return runes[0]
+	}
+	return none
 }
 
 pub struct BoolLiteral {

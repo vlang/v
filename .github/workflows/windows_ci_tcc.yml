@@ -5,6 +5,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**.bat'
@@ -13,6 +14,7 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**.bat'
@@ -35,7 +37,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build with makev.bat -tcc
         run: |
           .\makev.bat -tcc
@@ -71,6 +73,8 @@ jobs:
         run: |
           v cmd/tools/test_if_v_test_system_works.v
           .\cmd\tools\test_if_v_test_system_works.exe
+      - name: Legacy gg import multiwindow isolation
+        run: v test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Verify `v vlib/v/gen/c/coutput_test.v` works
         run: v vlib/v/gen/c/coutput_test.v
       - name: Make sure running TCC64 instead of TCC32
@@ -89,5 +93,7 @@ jobs:
         run: v build-vbinaries
       - name: Build examples
         run: v build-examples
+      - name: Compile and run the veb example (fasthttp) and check its HTML
+        run: v run .github/workflows/veb_example_windows_smoke.v
       - name: v2 self compilation
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v && .\v3.exe -o v4.exe cmd/v

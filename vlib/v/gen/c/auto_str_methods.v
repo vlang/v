@@ -90,12 +90,17 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 	if sym.is_builtin() && !str_fn_name.starts_with('builtin__') {
 		str_fn_name = 'builtin__${str_fn_name}'
 	}
-	if sym.has_method_with_generic_parent('str') && !g.pref.new_generic_solver {
-		match mut sym.info {
-			ast.Struct, ast.SumType, ast.Interface {
-				str_fn_name = g.generic_fn_name(sym.info.concrete_types, str_fn_name)
+	if !g.pref.new_generic_solver {
+		if str_method := sym.find_method_with_generic_parent('str') {
+			if method_has_generic_source(str_method) {
+				match mut sym.info {
+					ast.Struct, ast.SumType, ast.Interface, ast.Alias, ast.GenericInst, ast.FnType {
+						str_fn_name = g.generic_fn_name(g.str_method_concrete_types(unwrapped, sym),
+							str_fn_name)
+					}
+					else {}
+				}
 			}
-			else {}
 		}
 	}
 	if sym.language == .c && !typ.has_flag(.option) && sym.has_method('str') {
@@ -439,6 +444,15 @@ fn (mut g Gen) gen_str_for_interface(info ast.Interface, styp string, typ_str st
 	fn_builder.writeln('${g.static_non_parallel}string indent_${str_fn_name}(${styp} x, ${ast.int_type_name} indent_count) { /* gen_str_for_interface */')
 	fn_builder.writeln('\tif (x._typ == 0 && x._object == NULL) return _S("nil");')
 	for typ in info.types {
+		// Skip unresolved generic struct variants (e.g. a leftover `Text[T]`
+		// registered when a generic struct is used as the default value of an
+		// interface-typed field in a generic wrapper). Only their concrete
+		// instantiations (`Text[int]`) are real runtime variants. This mirrors
+		// the same skip in interface_table().
+		type_sym := g.table.sym(typ)
+		if type_sym.info is ast.Struct && type_sym.info.is_unresolved_generic() {
+			continue
+		}
 		sub_sym := g.table.sym(ast.mktyp(typ))
 		if g.pref.skip_unused && sub_sym.idx !in g.table.used_features.used_syms {
 			continue
@@ -659,6 +673,102 @@ fn (mut g Gen) gen_str_for_thread(info ast.Thread, styp string, str_fn_name stri
 @[inline]
 fn styp_to_str_fn_name(styp string) string {
 	return styp.replace_each(['*', '', '.', '__', ' ', '__']) + '_str'
+}
+
+fn method_has_generic_source(method ast.Fn) bool {
+	if method.generic_names.len > 0 {
+		return true
+	}
+	if method.source_fn != unsafe { nil } {
+		fndecl := unsafe { &ast.FnDecl(method.source_fn) }
+		return fndecl.generic_names.len > 0
+	}
+	return false
+}
+
+fn (mut g Gen) str_method_concrete_types(typ ast.Type, sym &ast.TypeSymbol) []ast.Type {
+	if _ := g.receiver_exact_method_for_type(typ, 'str') {
+		match sym.info {
+			ast.Struct, ast.SumType, ast.Interface {
+				return sym.info.concrete_types.clone()
+			}
+			ast.GenericInst {
+				return sym.info.concrete_types.clone()
+			}
+			ast.FnType {
+				return g.concrete_types_for_fn_type_symbol(sym)
+			}
+			ast.Alias {
+				return g.alias_parent_concrete_types(sym.info)
+			}
+			else {}
+		}
+	}
+	if structured_method := g.table.find_structured_receiver_method_with_types(typ, 'str') {
+		return structured_method.concrete_types.map(g.unwrap_generic(it))
+	}
+	match sym.info {
+		ast.Struct, ast.SumType, ast.Interface {
+			return sym.info.concrete_types.clone()
+		}
+		ast.GenericInst {
+			return sym.info.concrete_types.clone()
+		}
+		ast.FnType {
+			return g.concrete_types_for_fn_type_symbol(sym)
+		}
+		ast.Alias {
+			return g.alias_parent_concrete_types(sym.info)
+		}
+		else {}
+	}
+
+	return []ast.Type{}
+}
+
+fn (mut g Gen) concrete_types_for_fn_type_symbol(sym &ast.TypeSymbol) []ast.Type {
+	if sym.info is ast.FnType && sym.generic_types.len > 0
+		&& !sym.generic_types.any(it.has_flag(.generic)
+		|| g.table.generic_type_names(it).len > 0) {
+		return sym.generic_types.clone()
+	}
+	return []ast.Type{}
+}
+
+fn (mut g Gen) alias_parent_concrete_types(info ast.Alias) []ast.Type {
+	parent_sym := g.table.sym(info.parent_type)
+	match parent_sym.info {
+		ast.Struct, ast.SumType, ast.Interface {
+			mut concrete_types := parent_sym.info.concrete_types.clone()
+			if concrete_types.len == 0
+				&& parent_sym.generic_types.len == parent_sym.info.generic_types.len
+				&& parent_sym.generic_types != parent_sym.info.generic_types {
+				concrete_types = parent_sym.generic_types.clone()
+			}
+			return concrete_types
+		}
+		ast.GenericInst {
+			return parent_sym.info.concrete_types.clone()
+		}
+		ast.Array {
+			return [parent_sym.info.elem_type]
+		}
+		ast.ArrayFixed {
+			return [parent_sym.info.elem_type]
+		}
+		ast.Chan {
+			return [parent_sym.info.elem_type]
+		}
+		ast.Map {
+			return [parent_sym.info.key_type, parent_sym.info.value_type]
+		}
+		ast.Alias {
+			return g.alias_parent_concrete_types(parent_sym.info)
+		}
+		else {}
+	}
+
+	return []ast.Type{}
 }
 
 // deref_kind returns deref, deref_label
@@ -1150,8 +1260,19 @@ fn (mut g Gen) gen_str_for_struct(info ast.Struct, lang ast.Language, styp strin
 				left_fn_name := util.no_dots(left_cc_type)
 				'${left_fn_name}_str'
 			}
-			if sym.info is ast.Struct && !g.pref.new_generic_solver {
-				field_fn_name = g.generic_fn_name(sym.info.concrete_types, field_fn_name)
+			if !g.pref.new_generic_solver {
+				if str_method := sym.find_method_with_generic_parent('str') {
+					if method_has_generic_source(str_method) && !ftyp_noshared.has_flag(.option) {
+						match sym.info {
+							ast.Struct, ast.SumType, ast.Interface, ast.Alias, ast.GenericInst,
+							ast.FnType {
+								field_fn_name = g.generic_fn_name(g.str_method_concrete_types(ftyp_noshared, sym),
+									field_fn_name)
+							}
+							else {}
+						}
+					}
+				}
 			}
 			if sym.is_builtin() && !field_fn_name.starts_with('builtin__') {
 				field_fn_name = 'builtin__${field_fn_name}'
@@ -1348,6 +1469,9 @@ fn struct_auto_str_func(sym &ast.TypeSymbol, lang ast.Language, _field_type ast.
 		}
 		return 'indent_${fn_name}(${obj}, indent_count + 1)', true
 	} else if sym.kind == .function {
+		if has_custom_str {
+			return '${fn_name}(${prefix}it${op}${final_field_name}${sufix})', true
+		}
 		return '${fn_name}()', true
 	} else if sym.kind == .chan {
 		return '${fn_name}(${deref}it${op}${final_field_name}${sufix})', true
@@ -1442,37 +1566,21 @@ fn (mut g Gen) gen_enum_static_from_string(fn_name string, mod_enum_name string,
 	enum_styp := g.styp(enum_typ)
 	option_enum_typ := enum_typ.set_flag(.option)
 	option_enum_styp := g.styp(option_enum_typ)
-	enum_field_names := g.table.get_enum_field_names(mod_enum_name)
-	enum_field_vals := g.table.get_enum_field_vals(mod_enum_name)
+	enum_decl := g.table.enum_decls[mod_enum_name]
+	enum_prefix := g.gen_enum_prefix(enum_typ)
 
 	mut fn_builder := strings.new_builder(512)
 	g.definitions.writeln('${g.static_non_parallel}${option_enum_styp} ${fn_name}(string name);')
 
 	fn_builder.writeln('${g.static_non_parallel}${option_enum_styp} ${fn_name}(string name) {')
 	fn_builder.writeln('\t${option_enum_styp} t1;')
-	fn_builder.writeln('\tbool exists = false;')
-	fn_builder.writeln('\tint inx = 0;')
-	fn_builder.writeln('\tarray field_names = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(string)});')
-	for field_name in enum_field_names {
-		fn_builder.writeln('\tbuiltin__array_push((array*)&field_names, _MOV((string[]){ _S("${field_name}") }));')
+	for field in enum_decl.fields {
+		fn_builder.writeln('\tif (builtin__fast_string_eq(name, _S("${field.name}"))) {')
+		fn_builder.writeln('\t\tbuiltin___option_ok(&(${enum_styp}[]){ ${enum_prefix}${field.name} }, (_option*)&t1, sizeof(${enum_styp}));')
+		fn_builder.writeln('\t\treturn t1;')
+		fn_builder.writeln('\t}')
 	}
-	fn_builder.writeln('\tarray field_vals = ((array){.data = 0, .offset = 0, .len = 0, .cap = 0, .flags = 0, .element_size = sizeof(i64)});')
-	for field_val in enum_field_vals {
-		fn_builder.writeln('\tbuiltin__array_push((array*)&field_vals, _MOV((i64[]){ ${field_val} }));')
-	}
-	fn_builder.writeln('\tfor (${ast.int_type_name} i = 0; i < ${enum_field_names.len}; ++i) {')
-	fn_builder.writeln('\t\tif (builtin__fast_string_eq(name, (*(string*)builtin__array_get(field_names, i)))) {')
-	fn_builder.writeln('\t\t\texists = true;')
-	fn_builder.writeln('\t\t\tinx = i;')
-	fn_builder.writeln('\t\t\tbreak;')
-	fn_builder.writeln('\t\t}')
-	fn_builder.writeln('\t}')
-	fn_builder.writeln('\tif (exists) {')
-	fn_builder.writeln('\t\tbuiltin___option_ok(&(${enum_styp}[]){ (*(i64*)builtin__array_get(field_vals, inx)) }, (_option*)&t1, sizeof(${enum_styp}));')
-	fn_builder.writeln('\t\treturn t1;')
-	fn_builder.writeln('\t} else {')
-	fn_builder.writeln('\t\treturn (${option_enum_styp}){ .state=2, .err=_const_none__, .data={E_STRUCT} };')
-	fn_builder.writeln('\t}')
+	fn_builder.writeln('\treturn (${option_enum_styp}){ .state=2, .err=_const_none__, .data={E_STRUCT} };')
 	fn_builder.writeln('}')
 	g.auto_fn_definitions << fn_builder.str()
 }

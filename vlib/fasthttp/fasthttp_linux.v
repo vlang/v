@@ -4,40 +4,8 @@ import net
 import sync.stdatomic
 import time
 
-#include <sys/epoll.h>
-#include <sys/sendfile.h>
-#include <sys/stat.h>
-#include <netinet/tcp.h>
-
 const epoll_wait_timeout_ms = 100
 const status_408_response = 'HTTP/1.1 408 Request Timeout\r\nContent-Type: text/plain\r\nContent-Length: 19\r\nConnection: close\r\n\r\n408 Request Timeout'.bytes()
-
-fn C.accept4(sockfd i32, addr &net.Addr, addrlen &u32, flags i32) i32
-
-fn C.epoll_create1(__flags i32) i32
-
-fn C.epoll_ctl(__epfd i32, __op i32, __fd i32, __event &C.epoll_event) i32
-
-fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout i32) i32
-
-fn C.sendfile(out_fd i32, in_fd i32, offset &i64, count usize) i32
-
-fn C.fstat(fd i32, buf &C.stat) i32
-
-@[typedef]
-union C.epoll_data_t {
-mut:
-	ptr voidptr
-	fd  int
-	u32 u32
-	u64 u64
-}
-
-struct C.epoll_event {
-mut:
-	events u32
-	data   C.epoll_data_t
-}
 
 pub struct Server {
 pub:
@@ -424,7 +392,6 @@ fn arm_epollout(epoll_fd int, client_fd int) int {
 fn complete_write(server &Server, epoll_fd int, client_fd int, mut client_fds map[int]bool, mut client_buffers map[int][]u8, mut client_read_starts map[int]i64, mut closing_client_fds map[int]bool, mut client_write_states map[int]&ClientWriteState) {
 	state := client_write_states[client_fd] or { return }
 	should_close := state.should_close
-	epollout_was_armed := state.epollout_armed
 	free_write_state(server, client_fd, mut client_write_states)
 	client_buffers.delete(client_fd)
 	if server.is_shutting_down() || should_close {
@@ -432,17 +399,17 @@ fn complete_write(server &Server, epoll_fd int, client_fd int, mut client_fds ma
 			client_read_starts, mut closing_client_fds, mut client_write_states)
 		return
 	}
-	// Keep-alive: if EPOLLOUT was registered for the write, drop the fd from
-	// epoll and re-add it with the original EPOLLIN|EPOLLET mask. The re-add
-	// causes the kernel to fire a fresh edge for any pipelined request bytes
-	// that piled up in the recv buffer while we were write-blocked; a plain
-	// EPOLL_CTL_MOD would not generate that edge.
-	if epollout_was_armed {
-		remove_fd_from_epoll(epoll_fd, client_fd)
-		if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
-			handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
-				client_read_starts, mut closing_client_fds, mut client_write_states)
-		}
+	// Keep-alive: drop the fd from epoll and re-add it with the original
+	// EPOLLIN|EPOLLET mask. The re-add causes the kernel to fire a fresh edge
+	// for any pipelined request bytes that piled up in the recv buffer while the
+	// response was being written; a plain EPOLL_CTL_MOD would not generate that
+	// edge. Do this even when EPOLLOUT was never armed, because the inline write
+	// path can also consume the current EPOLLIN edge before pipelined bytes are
+	// observed by the loop again.
+	remove_fd_from_epoll(epoll_fd, client_fd)
+	if add_fd_to_epoll(epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
+		handle_client_closure(server, epoll_fd, client_fd, mut client_fds, mut client_buffers, mut
+			client_read_starts, mut closing_client_fds, mut client_write_states)
 	}
 }
 
@@ -490,6 +457,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 		unsafe { prealloc_scope_checkpoint(c'fasthttp decoded request') }
 	}
 	decoded_http_request.client_conn_fd = client_fd
+	decoded_http_request.client_conn_handle = usize(client_fd)
 	decoded_http_request.user_data = server.user_data
 	mut response := server.request_handler(decoded_http_request) or {
 		eprintln('Error handling request ${err}')
@@ -511,7 +479,8 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 	match response.takeover_mode {
 		.manual {
 			// The handler has taken ownership of the connection.
-			// Remove from epoll and tracking, but do NOT close the fd.
+			// Remove from epoll and tracking before ending the request, but do
+			// NOT close the fd.
 			client_fds.delete(client_fd)
 			client_buffers.delete(client_fd)
 			client_read_starts.delete(client_fd)
@@ -521,6 +490,7 @@ fn process_request(server &Server, epoll_fd int, client_fd int, request_buffer [
 			response.free_owned_content()
 			if request_active {
 				server.end_request()
+				request_active = false
 			}
 			return
 		}

@@ -11,6 +11,182 @@ fn restore_env_var(name string, old_value ?string) {
 	}
 }
 
+fn test_codegen_build_options_reports_flags_and_custom_defines() {
+	p := pref.Preferences{
+		autofree:                      true
+		gc_mode:                       .boehm_full
+		is_prod:                       true
+		skip_unused:                   true
+		prealloc:                      true
+		is_bare:                       true
+		no_builtin:                    true
+		no_preludes:                   true
+		no_prod_options:               true
+		enable_globals:                true
+		experimental:                  true
+		fast_math:                     true
+		no_std:                        true
+		no_rsp:                        true
+		cmain:                         'SDL_main'
+		force_bounds_checking:         true
+		div_by_zero_is_zero:           true
+		is_check_overflow:             true
+		relaxed_gcc14:                 false
+		assert_failure_mode:           .backtraces
+		subsystem:                     .windows
+		is_ios_simulator:              true
+		thread_stack_size:             4194304
+		thread_stack_size_set_by_flag: true
+		is_prof:                       true
+		profile_file:                  'some/file'
+		profile_no_inline:             true
+		profile_fns:                   ['foo_*', 'bar']
+		trace_calls:                   true
+		trace_fns:                     ['baz_*']
+		is_coverage:                   true
+		coverage_dir:                  'cov/out'
+		// value-carrying options and explicit bare flags are recorded verbatim in build_options
+		build_options: ['-d foo', '-d pad=7', '-d header=', '-cflags "-Werror"', '-ldflags "-s"',
+			'-custom-prelude prelude.h', '-bare-builtin-dir bare/dir', '-macosx-version-min 10.7',
+			'-path "my/mods"', '-musl', '-m64', '-cc gcc']
+	}
+	opts := codegen_build_options(&p)
+	assert opts.contains('autofree')
+	assert opts.contains('gc:boehm_full')
+	assert opts.contains('prod')
+	assert opts.contains('skip_unused')
+	assert opts.contains('prealloc')
+	assert opts.contains('freestanding')
+	assert opts.contains('no_builtin')
+	assert opts.contains('no_preludes')
+	assert opts.contains('no_prod_options')
+	// `-enable-globals` gates the checker (`__global`); without it a report cannot be replayed
+	assert opts.contains('enable_globals')
+	// `-experimental` gates checker constructs and changes autofree C
+	assert opts.contains('experimental')
+	// `-fast-math`, `-no-std` and `-no-rsp` change the C compiler command; `-cmain` the entry point
+	assert opts.contains('fast_math')
+	assert opts.split(' ').any(it == 'no_std')
+	assert opts.split(' ').any(it == 'no_rsp')
+	assert opts.contains('cmain:SDL_main')
+	// `-force-bounds-checking` keeps checks even in `@[direct_array_access]` functions
+	assert opts.contains('force_bounds_checking')
+	// `-assert backtraces` changes the post-failure C path cgen emits
+	assert opts.contains('assert:backtraces')
+	// `-subsystem windows` changes the generated main function and the Windows linker command
+	assert opts.contains('subsystem:windows')
+	// `-os ios -simulator` selects the simulator SDK/clang flags
+	assert opts.split(' ').any(it == 'ios_simulator')
+	// `-div-by-zero-is-zero` makes cgen emit different safe div/mod helpers
+	assert opts.split(' ').any(it == 'div_by_zero_is_zero')
+	// `-check-overflow` inserts runtime overflow-check paths
+	assert opts.split(' ').any(it == 'check_overflow')
+	// `-no-relaxed-gcc14` drops the gcc-14 diagnostic-relaxing pragmas (default on)
+	assert opts.split(' ').any(it == 'no_relaxed_gcc14')
+	// `-thread-stack-size` is embedded in the spawn/go thread creation call
+	assert opts.contains('thread_stack_size:4194304')
+	// the profile output path is embedded in the generated C, so keep it
+	assert opts.contains('profile:some/file')
+	assert opts.contains('profile_no_inline')
+	// the profiled/traced function filters change which functions are instrumented
+	assert opts.contains('profile_fns:foo_*,bar')
+	assert opts.contains('trace_calls')
+	assert opts.contains('trace_fns:baz_*')
+	assert opts.contains('coverage:cov/out')
+	// custom `-d` defines must be recorded, since `$if foo ?` / `$d()` change codegen
+	assert opts.contains('-d foo')
+	// valued defines keep their value, including an explicitly empty one (`$d()` reads it)
+	assert opts.contains('-d pad=7')
+	assert opts.contains('-d header=')
+	// value-carrying C/link/prelude/builtin options are passed to the compiler and can decide
+	// whether the error reproduces, so they are kept verbatim
+	assert opts.contains('-cflags "-Werror"')
+	assert opts.contains('-ldflags "-s"')
+	assert opts.contains('-custom-prelude prelude.h')
+	assert opts.contains('-bare-builtin-dir bare/dir')
+	// `-macosx-version-min` is passed to clang and selects the SDK deployment target
+	assert opts.contains('-macosx-version-min 10.7')
+	// `-path` decides which imported module is resolved, so it is kept verbatim
+	assert opts.contains('-path "my/mods"')
+	// an explicit libc flag is kept (it changes `$if musl` and the libgc C flags)
+	assert opts.split(' ').any(it == '-musl')
+	// but a libc flag that was not passed is not invented
+	assert !opts.split(' ').any(it == '-glibc')
+	// an explicit machine-width flag is kept (it selects the C compiler target width)
+	assert opts.split(' ').any(it == '-m64')
+	assert !opts.split(' ').any(it == '-m32')
+	// unrelated recorded options (e.g. `-cc`, covered by the ccompiler field) are not pulled in
+	assert !opts.contains('-cc gcc')
+}
+
+fn test_codegen_build_options_reports_no_skip_unused_override() {
+	// a C build with skip_unused off means `-no-skip-unused` was passed (it defaults to true);
+	// replay must disable it too, or a smaller C program could miss the error
+	opts := codegen_build_options(&pref.Preferences{ skip_unused: false })
+	assert opts.split(' ').any(it == 'no_skip_unused')
+	assert !opts.split(' ').any(it == 'skip_unused')
+
+	// the default (skip_unused on) is reported as plain `skip_unused`, not the override
+	on_opts := codegen_build_options(&pref.Preferences{ skip_unused: true })
+	assert on_opts.split(' ').any(it == 'skip_unused')
+	assert !on_opts.split(' ').any(it == 'no_skip_unused')
+
+	// `-build-module` already turns skip_unused off by itself, so it is not the override
+	module_opts := codegen_build_options(&pref.Preferences{
+		skip_unused: false
+		build_mode:  .build_module
+	})
+	assert !module_opts.split(' ').any(it == 'no_skip_unused')
+
+	// `-cross` forces skip_unused off in fill_with_defaults, so it must not be reported as the
+	// `-no-skip-unused` override; the cross mode itself is recorded instead
+	cross_opts := codegen_build_options(&pref.Preferences{
+		skip_unused:    false
+		output_cross_c: true
+	})
+	assert !cross_opts.split(' ').any(it == 'no_skip_unused')
+	assert cross_opts.split(' ').any(it == 'cross')
+}
+
+fn test_codegen_build_options_distinguishes_g_from_cg() {
+	// `-g` => is_debug + is_vlines (V #line output)
+	g := pref.Preferences{
+		is_debug:  true
+		is_vlines: true
+	}
+	g_opts := codegen_build_options(&g)
+	assert g_opts.contains('-g')
+	assert !g_opts.contains('-cg')
+
+	// `-cg` => is_debug only (C-line debug mode; different generated C)
+	cg := pref.Preferences{
+		is_debug:  true
+		is_vlines: false
+	}
+	cg_opts := codegen_build_options(&cg)
+	assert cg_opts.contains('-cg')
+	// (must not be reported as plain `-g`, whose token is a substring of `-cg`)
+	assert !cg_opts.split(' ').any(it == '-g')
+}
+
+fn test_codegen_build_options_reports_live_modes() {
+	// `-live`
+	live_opts := codegen_build_options(&pref.Preferences{ is_livemain: true })
+	assert live_opts.split(' ').any(it == 'live')
+
+	// `-sharedlive` sets is_liveshared and is_shared, but must not collapse to `shared`
+	sharedlive_opts := codegen_build_options(&pref.Preferences{
+		is_liveshared: true
+		is_shared:     true
+	})
+	assert sharedlive_opts.contains('sharedlive')
+	assert !sharedlive_opts.split(' ').any(it == 'shared')
+
+	// plain `-shared`
+	shared_opts := codegen_build_options(&pref.Preferences{ is_shared: true })
+	assert shared_opts.split(' ').any(it == 'shared')
+}
+
 fn restore_c_error_bug_report_url_env(old_url ?string) {
 	restore_env_var('V_C_ERROR_BUG_REPORT_URL', old_url)
 }
@@ -35,6 +211,104 @@ fn test_c_error_location_for_generated_c_parses_msvc_output() {
 		return
 	}
 	assert loc.line == 19
+}
+
+fn test_v_source_for_report_returns_small_window_around_failing_line() {
+	mut lines := []string{}
+	for i in 1 .. 201 {
+		lines << 'line_${i}'
+	}
+	// error on line 100, radius 3 => only lines 97..103 are uploaded, nothing else
+	chunk := v_source_for_report(lines, 100, 3)
+	assert chunk.text == 'line_97\nline_98\nline_99\nline_100\nline_101\nline_102\nline_103'
+	// the failing line sits at the reported focus position
+	assert chunk.text.split('\n')[chunk.focus - 1] == 'line_100'
+	// far-away lines are not disclosed
+	assert !chunk.text.split('\n').any(it == 'line_1')
+	assert !chunk.text.split('\n').any(it == 'line_200')
+}
+
+fn test_v_source_for_report_clamps_window_to_file_bounds() {
+	lines := ['a', 'b', 'c', 'd']
+	// near the start of the file
+	assert v_source_for_report(lines, 1, 2).text == 'a\nb\nc'
+	// near the end of the file
+	assert v_source_for_report(lines, 4, 2).text == 'b\nc\nd'
+}
+
+fn test_v_source_for_report_is_empty_without_mapped_line() {
+	// no mapped V line (center <= 0) => upload no source at all
+	assert v_source_for_report(['a', 'b', 'c'], 0, 40).text == ''
+}
+
+fn test_selected_v_source_only_uploads_mapped_v_source_chunk() {
+	// a mapped V file yields a small chunk around the failing line
+	lines := ['module main', 'fn a() {}', 'fn b() {}', 'fn c() {}', 'fn bad() { x }']
+	chunk := selected_v_source('/tmp/prog.v', lines, 5)
+	assert chunk.text.contains('fn bad()')
+	assert chunk.focus >= 1
+
+	// a non-V mapped path (an included header) => no source uploaded
+	assert selected_v_source('/tmp/foo.h', lines, 5).text == ''
+	// no mapping at all => nothing
+	assert selected_v_source('', [], 0).text == ''
+}
+
+fn test_bounded_v_source_truncates_on_line_boundaries_with_comment_marker() {
+	mut lines := []string{}
+	for i in 0 .. 400 {
+		lines << 'line_${i} = some_value_here'
+	}
+	source := lines.join('\n')
+	max := 2000
+	out := bounded_v_source(source, max, 0)
+	assert out.len <= max
+	// the marker is a V comment on its own line, so the kept source stays parseable
+	assert out.contains(c_error_v_source_truncation_notice)
+	// the start (declarations) and the end (failing code) are both preserved
+	assert out.starts_with('line_0 = some_value_here')
+	assert out.ends_with('line_399 = some_value_here')
+	// no original line is split across the truncation: every kept line is whole
+	for l in out.split('\n') {
+		if l == '' || l == c_error_v_source_truncation_notice {
+			continue
+		}
+		assert l.contains(' = some_value_here')
+	}
+}
+
+fn test_v_source_for_report_focus_points_at_failing_line() {
+	mut lines := []string{}
+	for i in 0 .. 60 {
+		lines << 'stmt_${i}'
+	}
+	lines << 'bad := missing' // line 61 (0-based index 60)
+	for i in 0 .. 20 {
+		lines << 'after_${i}'
+	}
+	chunk := v_source_for_report(lines, 61, 5)
+	// focus is the 1-based line of the failing line within the returned window, so bounding can
+	// keep a window around it
+	text_lines := chunk.text.split('\n')
+	assert chunk.focus >= 1
+	assert text_lines[chunk.focus - 1] == 'bad := missing'
+}
+
+fn test_bounded_v_source_keeps_focus_line_window() {
+	mut lines := []string{}
+	for i in 0 .. 2000 {
+		lines << 'line_${i} = value_${i}'
+	}
+	source := lines.join('\n')
+	// the failing line is #1000 (1-based), in the middle of a block far larger than the budget
+	out := bounded_v_source(source, 2000, 1000)
+	assert out.len <= 2000
+	// the exact failing line is preserved rather than dropped as the middle
+	assert out.contains('line_999 = value_999')
+	// a window around it is kept (marker present), not the file head/tail
+	assert out.contains(c_error_v_source_truncation_notice)
+	assert !out.contains('line_0 = value_0')
+	assert !out.contains('line_1999 = value_1999')
 }
 
 fn test_numbered_context_lines_returns_five_lines_each_side() {

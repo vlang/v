@@ -69,9 +69,9 @@ fn C._wstat64(&u16, voidptr) u64
 
 fn C.chown(&char, i32, i32) i32
 
-fn C.ftruncate(voidptr, u64) i32
+fn C.ftruncate(i32, u64) i32
 
-fn C._chsize_s(voidptr, u64) i32
+fn C._chsize_s(i32, u64) i32
 
 // read_bytes returns all bytes read from file in `path`.
 @[manualfree]
