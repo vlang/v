@@ -92,13 +92,13 @@ fn append_value_to_builder(mut sb strings.Builder, v document.Value, opts Encode
 		}
 		document.BoolVal {
 			if v.value {
-				sb.write_string('#' + 'true')
+				sb.write_string('#true')
 			} else {
-				sb.write_string('#' + 'false')
+				sb.write_string('#false')
 			}
 		}
 		document.NullVal {
-			sb.write_string('#' + 'null')
+			sb.write_string('#null')
 		}
 	}
 }

@@ -37,7 +37,7 @@ fn (mut g Generator) generate(doc document.Document) string {
 		if i > 0 { g.sb.write_u8(lf) }
 		g.gen_node(node)
 	}
-	g.sb.write_u8(lf)
+	if doc.nodes.len > 0 { g.sb.write_u8(lf) }
 	return g.sb.str()
 }
 

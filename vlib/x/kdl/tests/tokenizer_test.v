@@ -337,18 +337,18 @@ fn test_underscore_leading_rejected() {
 	assert doc3.nodes.len == 0
 }
 
-fn test_underscore_consecutive_rejected() {
-	doc := kdl.parse('v 0xFF__FF') or { kdl.Document{} }
-	assert doc.nodes.len == 0
+fn test_underscore_consecutive_accepted() {
+	doc := kdl.parse('v 0xFF__FF')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == 65535
 }
 
-fn test_underscore_trailing_rejected() {
-	doc := kdl.parse('v 0xFF_') or { kdl.Document{} }
-	assert doc.nodes.len == 0
-	doc2 := kdl.parse('v 0o77_') or { kdl.Document{} }
-	assert doc2.nodes.len == 0
-	doc3 := kdl.parse('v 0b10_') or { kdl.Document{} }
-	assert doc3.nodes.len == 0
+fn test_underscore_trailing_accepted() {
+	doc := kdl.parse('v 0xFF_')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == 255
+	doc2 := kdl.parse('v 0o77_')!
+	assert kdl.as_int(doc2.nodes[0].entries[0].value) == 63
+	doc3 := kdl.parse('v 0b10_')!
+	assert kdl.as_int(doc3.nodes[0].entries[0].value) == 2
 }
 
 fn test_decimal_leading_zero_rejected() {

@@ -82,8 +82,7 @@ fn (mut s Scanner) scan_string() Token {
 						}
 					}
 				} else {
-					lit << 92
-					lit << 117
+					return Token{.eof, 'kdl: unbraced \\u escape, expected \\u{...}', l, c}
 				}
 			} else if is_whitespace_unicode(s.c, s.pos, s.src)
 				|| is_newline_unicode(s.c, s.pos, s.src) {
@@ -100,7 +99,9 @@ fn (mut s Scanner) scan_string() Token {
 		if is_newline_unicode(s.c, s.pos, s.src) {
 			return Token{.eof, 'kdl: newline in quoted string, use """ for multiline', l, c}
 		}
-		if s.c < 32 { return Token{.eof, 'kdl: unescaped control character in string', l, c} }
+		if is_disallowed_literal(s.c, s.pos, s.src) {
+			return Token{.eof, 'kdl: unescaped control character in string', l, c}
+		}
 		lit << s.c
 		s.advance()
 	}
@@ -115,9 +116,9 @@ fn (mut s Scanner) scan_multiline() Token {
 	if !is_newline_unicode(s.c, s.pos, s.src) {
 		return Token{.eof, 'kdl: multiline string must start with newline after """', l, c}
 	}
-	if s.c == 13 { s.advance() }
-	if s.c == 10 {
+	if s.c == 13 {
 		s.advance()
+		if s.c == 10 { s.advance() }
 	} else {
 		s.advance()
 	}
@@ -181,9 +182,9 @@ fn (mut s Scanner) scan_multiline() Token {
 		if s.c == 34 && s.src.len >= s.pos + 3 && s.src[s.pos..s.pos + 3] == '"""' {
 			break
 		}
-		if s.c == 13 { s.advance() }
-		if s.c == 10 {
+		if s.c == 13 {
 			s.advance()
+			if s.c == 10 { s.advance() }
 		} else {
 			s.advance()
 		}
@@ -286,6 +287,9 @@ fn (mut s Scanner) scan_raw() Token {
 		if is_newline_unicode(s.c, s.pos, s.src) {
 			return Token{.eof, 'kdl: newline in raw string, use ### for multiline', l, c}
 		}
+		if is_disallowed_literal(s.c, s.pos, s.src) {
+			return Token{.eof, 'kdl: disallowed literal code point in raw string', l, c}
+		}
 		if s.c == 34 {
 			mut match_hashes := 0
 			mut peek_pos := s.pos + 1
@@ -315,9 +319,9 @@ fn (mut s Scanner) scan_multiline_raw(hashes int, l int, c int) Token {
 		return Token{.eof, 'kdl: multiline raw string must start with newline after """', l, c}
 	}
 
-	if s.c == 13 { s.advance() }
-	if s.c == 10 {
+	if s.c == 13 {
 		s.advance()
+		if s.c == 10 { s.advance() }
 	} else {
 		s.advance()
 	}
@@ -335,6 +339,9 @@ fn (mut s Scanner) scan_multiline_raw(hashes int, l int, c int) Token {
 	for s.pos < s.src.len && !found_closer {
 		mut line := ''
 		for s.pos < s.src.len && !is_newline_unicode(s.c, s.pos, s.src) {
+			if is_disallowed_literal(s.c, s.pos, s.src) {
+				return Token{.eof, 'kdl: disallowed literal code point in raw multiline string', l, c}
+			}
 			line += s.c.ascii_str()
 			s.advance()
 		}
@@ -349,9 +356,9 @@ fn (mut s Scanner) scan_multiline_raw(hashes int, l int, c int) Token {
 			break
 		}
 		lines << line
-		if s.c == 13 { s.advance() }
-		if s.c == 10 {
+		if s.c == 13 {
 			s.advance()
+			if s.c == 10 { s.advance() }
 		} else {
 			s.advance()
 		}
@@ -491,6 +498,13 @@ fn (mut s Scanner) scan_number_or_ident() Token {
 			}
 		}
 		if s.c >= 48 && s.c <= 57 {
+			// Reject signed leading zero: -07, +007, etc. (KDL 2.0 spec)
+			if s.c == 48 {
+				p := s.peek()
+				if p >= 48 && p <= 57 {
+					return Token{.eof, 'kdl: decimal numbers must not have a leading zero', l, c}
+				}
+			}
 			buf := first.ascii_str()
 			return s.scan_number_rest(buf, l, c)
 		}
@@ -528,7 +542,7 @@ fn (mut s Scanner) scan_hex(signed bool, l int, c int) Token {
 	mut after_underscore := false
 	for s.pos < s.src.len && (is_hex(s.c) || s.c == 95) {
 		if s.c == 95 {
-			if !has_digits || after_underscore {
+			if !has_digits {
 				return Token{.eof, 'kdl: invalid underscore separator in hex literal', l, c}
 			}
 			after_underscore = true
@@ -540,7 +554,6 @@ fn (mut s Scanner) scan_hex(signed bool, l int, c int) Token {
 		s.advance()
 	}
 	if after_underscore {
-		return Token{.eof, 'kdl: trailing underscore in hex literal', l, c}
 	}
 	if !has_digits { return Token{.eof, 'kdl: expected hex digits after 0x', l, c} }
 	if s.pos < s.src.len && !is_num_terminator(s.c, s.pos, s.src) {
@@ -559,7 +572,7 @@ fn (mut s Scanner) scan_oct(signed bool, l int, c int) Token {
 	mut after_underscore := false
 	for s.pos < s.src.len && (is_oct(s.c) || s.c == 95) {
 		if s.c == 95 {
-			if !has_digits || after_underscore {
+			if !has_digits {
 				return Token{.eof, 'kdl: invalid underscore separator in octal literal', l, c}
 			}
 			after_underscore = true
@@ -571,7 +584,6 @@ fn (mut s Scanner) scan_oct(signed bool, l int, c int) Token {
 		s.advance()
 	}
 	if after_underscore {
-		return Token{.eof, 'kdl: trailing underscore in octal literal', l, c}
 	}
 	if !has_digits { return Token{.eof, 'kdl: expected octal digits after 0o', l, c} }
 	if s.pos < s.src.len && !is_num_terminator(s.c, s.pos, s.src) {
@@ -590,7 +602,7 @@ fn (mut s Scanner) scan_bin(signed bool, l int, c int) Token {
 	mut after_underscore := false
 	for s.pos < s.src.len && (is_bin(s.c) || s.c == 95) {
 		if s.c == 95 {
-			if !has_digits || after_underscore {
+			if !has_digits {
 				return Token{.eof, 'kdl: invalid underscore separator in binary literal', l, c}
 			}
 			after_underscore = true
@@ -602,7 +614,6 @@ fn (mut s Scanner) scan_bin(signed bool, l int, c int) Token {
 		s.advance()
 	}
 	if after_underscore {
-		return Token{.eof, 'kdl: trailing underscore in binary literal', l, c}
 	}
 	if !has_digits { return Token{.eof, 'kdl: expected binary digits after 0b', l, c} }
 	if s.pos < s.src.len && !is_num_terminator(s.c, s.pos, s.src) {
@@ -617,17 +628,14 @@ fn (mut s Scanner) scan_number_rest(lit string, l int, c int) Token {
 		buf << s.c
 		s.advance()
 	}
-	// Validate underscore separators: must be digit _ digit
+	// Consume digit separators (underscores). Per KDL 2.0 grammar,
+	// underscores may appear between digits or after all digits.
 	for s.pos < s.src.len && s.c == 95 {
 		s.advance()
-		if s.pos >= s.src.len || !(s.c >= 48 && s.c <= 57) {
-			return Token{.eof, 'kdl: invalid underscore separator in number', l, c}
-		}
 		for s.pos < s.src.len && s.c >= 48 && s.c <= 57 {
 			buf << s.c
 			s.advance()
 		}
-		// Save 'buf' and continue to handle multiple _ groups
 	}
 	if s.c == 46 || s.c == 101 || s.c == 69 { return s.scan_float(buf.bytestr(), l, c) }
 	if is_suffix_char(s.c) {

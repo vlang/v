@@ -256,5 +256,5 @@ fn (mut s Scanner) skip_line_cont() bool {
 		}
 		break
 	}
-	return false
+	return true // per escline grammar: eof is valid terminator
 }

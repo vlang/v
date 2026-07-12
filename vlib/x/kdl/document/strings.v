@@ -35,18 +35,6 @@ pub fn quote_string(s string) string {
 }
 
 pub fn raw_string(s string) string {
-	if s.contains('\n') || s.contains('\r') {
-		mut hashes := 1
-		for {
-			if hashes > 20 { break
-			 }
-			marker := '"' + '#'.repeat(hashes)
-			if !s.contains(marker) { break
-			 }
-			hashes++
-		}
-		return '#'.repeat(hashes) + '"' + s + '"' + '#'.repeat(hashes)
-	}
 	mut hashes := 1
 	for {
 		if hashes > 20 { break

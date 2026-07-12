@@ -56,7 +56,7 @@ fn test_format_roundtrip_complex() {
 fn test_format_empty_document() {
 	doc := kdl.parse('')!
 	out := kdl.format(doc)!
-	assert out.len > 0
+	assert out == ''
 }
 
 fn test_format_children() {
