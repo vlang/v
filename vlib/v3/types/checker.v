@@ -9103,6 +9103,25 @@ fn (tc &TypeChecker) call_generic_args_have_placeholders(node flat.Node) bool {
 	if !tc.cur_fn_is_generic_template() {
 		return false
 	}
+	// An explicit generic METHOD call whose type args still carry the
+	// template's own placeholders (`p.read_element[T]()`) cannot be resolved
+	// before instantiation - defer even when the target is not a known
+	// declaration, matching v1, where an uninstantiated generic body is never
+	// checked. The monomorph validator reports it if the template ever gets
+	// specialized. A plain `missing[T]()` call still errors right away.
+	if node.children_count > 0 {
+		callee := tc.a.child_node(&node, 0)
+		if callee.kind == .index && callee.children_count >= 2 && callee.value != 'range'
+			&& tc.a.child_node(callee, 0).kind == .selector {
+			for i in 1 .. int(callee.children_count) {
+				arg := tc.a.child_node(callee, i)
+				if arg.kind == .ident && arg.value.len > 0
+					&& tc.type_text_has_generic_placeholder(arg.value) {
+					return true
+				}
+			}
+		}
+	}
 	if !tc.explicit_generic_call_target_is_known(node) {
 		return false
 	}
@@ -16760,6 +16779,11 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name stri
 		if embedded_name.len == 0 {
 			continue
 		}
+		// A `mod.Inner` embed is promoted under its short name: `o.Inner`.
+		// Same-module embeds already match `field.name == field_name` above.
+		if embedded_name != field_name && embedded_name.all_after_last('.') == field_name {
+			return embedded_type
+		}
 		if typ := tc.struct_field_type_inner(embedded_name, field_name, mut seen) {
 			return typ
 		}
@@ -17094,7 +17118,7 @@ fn (tc &TypeChecker) concrete_sum_variant_name(sum_name string, variant string) 
 	return subst_generic_text(variant, args, params)
 }
 
-fn (tc &TypeChecker) generic_type_name_matches(a string, b string) bool {
+pub fn (tc &TypeChecker) generic_type_name_matches(a string, b string) bool {
 	if a == b {
 		return true
 	}

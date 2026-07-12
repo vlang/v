@@ -54,7 +54,8 @@ pub fn (s &Scope) lookup(name string) ?Type {
 		return none
 	}
 	$if !ownership ? {
-		mut scope := s
+		// Only the local pointer is reassigned; the scopes remain read-only.
+		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
 			if i := scope.name_indexes[name] {
 				return scope.types[i]
@@ -80,7 +81,8 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 		return none
 	}
 	$if !ownership ? {
-		mut scope := s
+		// Only the local pointer is reassigned; the scopes remain read-only.
+		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
 			if i := scope.name_indexes[name] {
 				return ScopeBindingOwner{

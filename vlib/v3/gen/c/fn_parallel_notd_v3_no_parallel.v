@@ -41,6 +41,9 @@ $if !windows {
 		mut w := unsafe { &FlatGen(arg) }
 		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 		w.collect_fixed_storage_consts()
+		w.precompute_embedded_fields()
+		w.precompute_param_type_index()
+		w.precompute_concrete_optional_abi_fns()
 		w.worker_scope = scope
 		cgen_worker_scope_leave(scope)
 		return unsafe { nil }
@@ -287,7 +290,9 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		}
 		node := g.a.nodes[idx]
 		cost++
-		g.collect_c_extern_ref_from_node(node)
+		if node.kind == .selector {
+			g.collect_c_extern_ref_from_node(node)
+		}
 		for i := node.children_count - 1; i >= 0; i-- {
 			child_id := g.a.children[node.children_start + i]
 			if int(child_id) >= 0 {

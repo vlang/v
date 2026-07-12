@@ -384,7 +384,7 @@ fn generic_method_candidate_key(receiver string, method string) string {
 }
 
 fn (mut g FlatGen) precompute_generic_method_candidate_index() {
-	g.generic_method_candidates = map[string][]GenericMethodCandidate{}
+	g.generic_method_candidates.clear()
 	for name, ret in g.tc.fn_ret_types {
 		if !name.contains('[') || !name.contains('.') {
 			continue
@@ -5799,6 +5799,9 @@ fn (g &FlatGen) current_param_type(name string) ?types.Type {
 }
 
 fn (g &FlatGen) current_param_map_type(name string) ?types.Type {
+	if g.cur_param_types.len == 0 {
+		return none
+	}
 	if g.current_mut_param_binding_is_shadowed(name) {
 		return none
 	}
@@ -9416,6 +9419,22 @@ fn (mut g FlatGen) fn_node_param_types(node flat.Node, module_name string) []typ
 	for i in 0 .. node.children_count {
 		if g.a.child_node(&node, i).kind == .param {
 			explicit_params++
+		}
+	}
+	// The module-scoped key first: a method name (`Recv.method`) is dotted but
+	// not module-qualified, and two modules declaring the same receiver/method
+	// pair must not share an entry.
+	if params := g.fn_decl_param_types[fn_decl_module_key(module_name, node.value)] {
+		if params.len == explicit_params {
+			return params
+		}
+	}
+	if !node.value.contains('.') {
+		full_name := qualify_name_in_module(module_name, node.value)
+		if params := g.fn_decl_param_types[full_name] {
+			if params.len == explicit_params {
+				return params
+			}
 		}
 	}
 	if params := g.fn_node_param_types_from_signatures(node, module_name, explicit_params) {

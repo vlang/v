@@ -2396,6 +2396,11 @@ fn (g &FlatGen) embedded_field_path_for_promoted_selector(base_type types.Type, 
 	if type_name.len == 0 {
 		return none
 	}
+	// The struct's own field always shadows a same-named promoted field of an
+	// embedded struct.
+	if g.direct_struct_field_exists(type_name, field_name) {
+		return none
+	}
 	return g.embedded_field_path_for_promoted_field(type_name, field_name)
 }
 

@@ -4203,6 +4203,13 @@ fn (mut p Parser) expr(min_bp token.BindingPower) flat.NodeId {
 fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) flat.NodeId {
 	mut lhs := first
 	for {
+		// A newline (scanned as `;`) directly followed by `.` continues the
+		// expression: `expr or { ... }` / `expr` on one line, `.method()` on
+		// the next. Statements can never start with `.`, so this is unambiguous.
+		if p.tok == .semicolon && p.peek() == .dot {
+			p.next()
+			continue
+		}
 		// selector / method call
 		if p.tok == .dot {
 			lhs = p.selector_or_method(lhs)
