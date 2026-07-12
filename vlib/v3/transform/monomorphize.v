@@ -67,6 +67,10 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	mut recorded_call_sites := map[int]bool{}
 	mut changed := true
 	mut scan_start := 0
+	t.in_monomorphize_scan = true
+	defer {
+		t.in_monomorphize_scan = false
+	}
 	for changed {
 		changed = false
 		t.ensure_node_module_map()
@@ -138,6 +142,11 @@ fn (mut t Transformer) monomorphize_pass() []string {
 fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(decls map[string]GenericFnDecl, template_nodes []bool, ignored_nodes []bool, mut emitted map[string]bool, mut generated []string, mut recorded_call_sites map[int]bool) []GenericCallSite {
 	mut sites := []GenericCallSite{}
 	t.ensure_node_module_map()
+	old_in_scan := t.in_monomorphize_scan
+	t.in_monomorphize_scan = true
+	defer {
+		t.in_monomorphize_scan = old_in_scan
+	}
 	node_count := t.a.nodes.len
 	for i in 0 .. node_count {
 		if (i < template_nodes.len && template_nodes[i])
@@ -1394,7 +1403,43 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 		}
 	}
 	old_clone_var_types := t.var_types.clone()
+	// Seed the template's params (with substituted types) for the duration of
+	// the clone: nested generic calls are retargeted while cloning, and their
+	// arg-type inference must see the declared value type of a `mut val T`
+	// param, not the checker's internal `&T` annotation on the ident — the
+	// latter would bind T to `&Concrete` while the later monomorphize scan
+	// binds it to `Concrete`, leaving the call-site type and the emitted
+	// specialization in disagreement.
+	t.reset_var_types()
+	for i in 0 .. decl.node.children_count {
+		param_child := t.a.child_node(&decl.node, i)
+		if node_kind_id(param_child) != 75 || param_child.value.len == 0
+			|| param_child.typ.len == 0 {
+			continue
+		}
+		mut param_raw := param_child.typ
+		if param_raw.starts_with('mut ') {
+			param_raw = param_raw[4..]
+		}
+		if param_raw.starts_with('...') {
+			param_raw = '[]' + param_raw[3..]
+		}
+		// `mut val T` params are recorded as `&T`; the declared language-level
+		// type is `T`, and that is what a by-value use of the param must infer.
+		if param_child.is_mut && param_raw.starts_with('&') {
+			param_raw = param_raw[1..]
+		}
+		param_substituted := t.subst_type(param_raw, concrete_args)
+		if param_substituted.len > 0 {
+			t.set_var_type(param_child.value, param_substituted)
+		}
+		if param_child.is_mut || param_child.typ.starts_with('mut ') {
+			t.mut_param_values[param_child.value] = true
+		}
+	}
+	t.cloning_generic_fn_depth++
 	clone_id := t.clone_generic_fn_node(decl.node, concrete_args)
+	t.cloning_generic_fn_depth--
 	t.restore_var_types(old_clone_var_types)
 	t.specialize_cloned_fn_signature(clone_id, decl, concrete_args)
 	clone := t.a.nodes[int(clone_id)]
@@ -1427,7 +1472,15 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, modul
 	if !isnil(t.tc) {
 		t.tc.cur_file = file_name
 	}
+	// The body transform establishes a real function scope (params seeded into
+	// var_types), so scope lookups are trustworthy again inside it.
+	old_in_scan := t.in_monomorphize_scan
+	old_validating_specialization := t.validating_generic_spec
+	t.in_monomorphize_scan = false
+	t.validating_generic_spec = true
 	t.transform_fn_body(int(clone_id))
+	t.in_monomorphize_scan = old_in_scan
+	t.validating_generic_spec = old_validating_specialization
 	t.cur_module = old_module
 	t.cur_file = old_file
 	if !isnil(t.tc) {
@@ -2717,6 +2770,8 @@ fn (t &Transformer) call_has_source_generic_args(node flat.Node) bool {
 }
 
 fn (t &Transformer) should_skip_generic_call_specialization(decl_key string) bool {
+	// The old `json` module's decode/encode are C-magic (cJSON) and handled by a
+	// cgen shortcut; `json2`/`x.json2` are pure V and monomorphize normally.
 	return decl_key in ['json.decode', 'json.encode', 'veb.run_at', 'veb.run_new']
 }
 
@@ -3927,10 +3982,27 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		}
 	}
 	if node.kind == .ident {
+		// During the ordinary monomorphize node scan there is no live function
+		// scope: var_types holds bindings from whatever function was transformed
+		// last, so an unrelated local with the same name (`result`, `val`, ...)
+		// would hijack inference. While a specialization is actively cloning,
+		// emit_generic_fn_specialization has seeded a live parameter scope instead.
+		if t.in_monomorphize_scan && t.cloning_generic_fn_depth == 0 && node.typ.len > 0
+			&& node.typ != 'unknown'
+			&& !t.generic_arg_is_unresolved(t.normalize_type_alias(node.typ)) {
+			return node.typ
+		}
 		var_typ := t.var_type(node.value)
 		if var_typ.len > 0 {
 			raw_typ := t.raw_var_type(node.value)
-			return if raw_typ.len > 0 { raw_typ } else { var_typ }
+			mut resolved := if raw_typ.len > 0 { raw_typ } else { var_typ }
+			// A `mut val T` param is internally `&T`, but a by-value use of it
+			// has the declared value type — inferring `&Concrete` here would
+			// disagree with the specialization the monomorphize scan emits.
+			if resolved.starts_with('&') && t.mut_param_values[node.value] {
+				resolved = resolved[1..]
+			}
+			return resolved
 		}
 		if decl_type := t.local_decl_type_before(node.value, id) {
 			return decl_type
@@ -4328,6 +4400,21 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			}
 		}
 	}
+	// Evaluate `$if` guards that become decidable once the generic args are
+	// substituted, cloning only the taken branch. Cloning dead branches would
+	// leave their nodes in the flat arena where the monomorphize call-site scan
+	// still visits them, emitting bogus specializations for calls that only
+	// typecheck in the pruned branch (e.g. `decode_string[SomeStruct]`).
+	if node.kind == .comptime_if && t.cloning_comptime_for_depth == 0 {
+		cond := t.subst_comptime_type_condition(node.value, args)
+		if take_then := t.comptime_type_condition_value(cond) {
+			branch_index := if take_then { 0 } else { 1 }
+			if branch_index >= int(node.children_count) {
+				return t.make_empty()
+			}
+			return t.clone_generic_node(t.a.child(&node, branch_index), args)
+		}
+	}
 	if node.kind == .typeof_expr {
 		if reflected := t.generic_comptime_typeof_target(node, args) {
 			return t.make_string_literal(generic_type_name_display(reflected))
@@ -4349,6 +4436,25 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		t.cloning_comptime_for_depth--
 	}
 	mut cloned_typ := t.resolve_substituted_type_text(t.subst_type(node.typ, args))
+	// Record the local's substituted type as the body is cloned: later sibling
+	// clones (nested generic calls) infer their type args from these locals, and
+	// without a binding the lookup falls back to an arena scan that can land in
+	// an unrelated, previously cloned function with a same-named local.
+	if node.kind == .decl_assign && node.children_count == 2 && t.cloning_comptime_for_depth == 0 {
+		lhs_clone := t.a.nodes[int(children[0])]
+		if lhs_clone.kind == .ident && lhs_clone.value.len > 0 {
+			mut lhs_typ := lhs_clone.typ
+			if lhs_typ.len == 0 {
+				lhs_typ = cloned_typ
+			}
+			if lhs_typ.len == 0 {
+				lhs_typ = t.node_type(children[1])
+			}
+			if lhs_typ.len > 0 && !t.generic_arg_is_unresolved(lhs_typ) {
+				t.set_var_type(lhs_clone.value, lhs_typ)
+			}
+		}
+	}
 	t.substitute_cloned_generic_call_type_args(node, mut children, args)
 	if t.cloning_comptime_for_depth > 0 {
 		// Inside a `$for` body: clone verbatim, no generic-call retargeting.
@@ -4498,6 +4604,13 @@ fn (mut t Transformer) substitute_cloned_generic_call_type_args(node flat.Node, 
 	for i in 1 .. int(node.children_count) {
 		arg := t.generic_call_type_arg_name(t.a.child(&node, i))
 		if arg.len == 0 {
+			continue
+		}
+		// Only rewrite args that actually contain a generic placeholder. A plain
+		// value index like `attr[start]` matches the `callee[arg]` shape too, and
+		// resolve_substituted_type_text would "qualify" the local `start` into a
+		// phantom type/fn name (`json2.start`), corrupting the index expression.
+		if !t.generic_args_have_placeholders([arg]) {
 			continue
 		}
 		substituted := t.resolve_substituted_type_text(t.subst_type(arg, args))
@@ -5683,6 +5796,15 @@ fn (t &Transformer) subst_comptime_type_operand(raw string, args []string) strin
 		base := clean[..clean.len - '.unaliased_typ'.len]
 		substituted := t.resolve_substituted_type_text(t.subst_type(base, args))
 		return t.comptime_normalize_type_alias_chain(substituted)
+	}
+	if clean.ends_with('.typ') {
+		base := clean[..clean.len - '.typ'.len]
+		if base.len > 0 {
+			// Substitute the base but keep the `.typ` selector: subst_type does
+			// not recognize the selector form, and evaluation uses the suffix
+			// to preserve alias identity (`MyAlias.typ is string` is false).
+			return t.subst_type(base, args) + '.typ'
+		}
 	}
 	return t.resolve_substituted_type_text(t.subst_type(clean, args))
 }

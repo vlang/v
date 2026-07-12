@@ -50,20 +50,4 @@
 #define atomic_fetch_or_ptr v_tcc_compat_atomic_fetch_or
 #define atomic_fetch_xor_ptr v_tcc_compat_atomic_fetch_xor
 
-#else
-
-/* Repeated module emission can reintroduce the temporary declaration rename. */
-#undef atomic_thread_fence
-#undef __atomic_thread_fence
-#undef atomic_load
-#undef atomic_store
-#undef atomic_compare_exchange_weak
-#undef atomic_compare_exchange_strong
-#undef atomic_exchange
-#undef atomic_fetch_add
-#undef atomic_fetch_sub
-#undef atomic_fetch_and
-#undef atomic_fetch_or
-#undef atomic_fetch_xor
-
 #endif

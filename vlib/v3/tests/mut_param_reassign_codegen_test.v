@@ -208,6 +208,22 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_mut_param_unsigned_right_shift_assign_stores_through_pointer() {
+	v3_bin := mut_param_reassign_build_v3()
+	out := mut_param_reassign_run_good(v3_bin, 'mut_param_unsigned_right_shift_assign', 'fn shift(mut n int) {
+	n >>>= 1
+}
+
+fn main() {
+	mut x := 8
+	shift(mut x)
+	assert x == 4
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
 	v3_bin := mut_param_reassign_build_v3()
 	mut_param_reassign_run_bad(v3_bin, 'bad_same_scope_mut_string_param_redeclare', "fn shadow_read(mut s string) string {

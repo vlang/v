@@ -264,6 +264,49 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 	assert json2_generated.contains('json2__decode'), json2_generated
 }
 
+fn test_const_ref_expansion_uses_referenced_const_file_imports() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'const_ref_file_context', 'module main
+
+import y.other as json
+
+const outer = imported_value
+const local_marker = json.Any{
+	value: 1
+}
+
+fn main() {
+	println(int_str(outer.value + local_marker.value))
+}
+', {
+		'b.v':             'module main
+
+import x.json2 as json
+
+const imported_value = json.Any{
+	value: 41
+}
+'
+		'x/json2/json2.v': 'module json2
+
+pub struct Any {
+pub:
+	value int
+}
+'
+		'y/other/other.v': 'module other
+
+pub struct Any {
+pub:
+	value int
+}
+'
+	})
+	assert output == '42'
+	assert generated.contains('json2__Any'), generated
+	assert generated.contains('other__Any'), generated
+}
+
 fn test_selective_import_json_encode_uses_fast_path() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run(v3_bin, 'json_encode', 'module main

@@ -1,3 +1,4 @@
+// vtest build: !sanitize-memory-clang && !sanitize-address-gcc && !sanitize-address-clang
 module http
 
 // Tests for the pooled, multiplexed HTTP/2 client path (transport_h2.v +

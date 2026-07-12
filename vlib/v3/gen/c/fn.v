@@ -1573,6 +1573,17 @@ fn c_string_pointer_base_arg(base types.Type) bool {
 	return clean is types.Primitive && clean.name() == 'u8'
 }
 
+fn (g &FlatGen) c_char_literal_arg(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return g.c_char_literal_arg(g.a.child(&node, 0))
+	}
+	return node.kind == .char_literal && node.value.starts_with('c:')
+}
+
 fn (g &FlatGen) c_string_pointer_arg(arg_node flat.Node, expected types.Type) bool {
 	if expected !is types.Pointer {
 		return false
@@ -7837,7 +7848,18 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			continue
 		}
 		if is_c_call {
-			g.gen_expr(arg_id)
+			if g.c_char_literal_arg(arg_id) {
+				if arg_idx < typed_param_count {
+					g.gen_expr_with_expected_type(arg_id, param_types[arg_idx])
+				} else {
+					old_expected := g.expected_expr_type
+					g.expected_expr_type = types.Type(types.void_)
+					g.gen_expr(arg_id)
+					g.expected_expr_type = old_expected
+				}
+			} else {
+				g.gen_expr(arg_id)
+			}
 			continue
 		}
 		if variadic_idx >= 0 && arg_idx == variadic_idx {

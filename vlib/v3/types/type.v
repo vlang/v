@@ -224,6 +224,31 @@ pub fn (t Type) is_integer() bool {
 	return t is Rune || t is ISize || t is USize
 }
 
+// unsigned_shift_result_type returns the unsigned counterpart used as the result of `>>>`.
+pub fn unsigned_shift_result_type(t Type) Type {
+	if t is Alias {
+		return unsigned_shift_result_type(t.base_type)
+	}
+	if t is Primitive {
+		if !t.props.has(.integer) || t.props.has(.unsigned) {
+			return t
+		}
+		return match t.size {
+			8 { Type(u8_) }
+			16 { Type(u16_) }
+			64 { Type(u64_) }
+			else { Type(u32_) }
+		}
+	}
+	if t is Rune {
+		return Type(u32_)
+	}
+	if t is ISize {
+		return Type(usize_)
+	}
+	return t
+}
+
 // is_float reports whether is float applies in types.
 pub fn (t Type) is_float() bool {
 	if t is Primitive {
