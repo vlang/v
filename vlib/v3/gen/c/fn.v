@@ -9210,28 +9210,10 @@ fn (mut g FlatGen) precompute_shared_param_index() {
 	if !g.has_shared_params {
 		return
 	}
-	for name, _ in g.fn_decl_shared_params {
-		candidates := [
-			name,
-			g.cname(name),
-			name.all_after_last('.'),
-			g.cname(name.all_after_last('.')),
-		]
-		mut resolved := []bool{}
-		for candidate in candidates {
-			flags := g.fn_decl_shared_params[candidate] or { continue }
-			if flags.len > resolved.len {
-				resolved << []bool{len: flags.len - resolved.len}
-			}
-			for i, flag in flags {
-				if flag {
-					resolved[i] = true
-				}
-			}
-		}
+	for name, flags in g.fn_decl_shared_params {
 		// Store empty/all-false results too. Presence in this map is what turns
 		// the very hot call-site query into one lookup.
-		g.fn_shared_params_resolved[name] = resolved
+		g.fn_shared_params_resolved[name] = flags.clone()
 	}
 }
 
