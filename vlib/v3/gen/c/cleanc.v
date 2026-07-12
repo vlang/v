@@ -10142,24 +10142,28 @@ fn (g &FlatGen) is_runtime_assignable_call(node &flat.Node) bool {
 // evaluation would be integer-promoted (u8/u16/i8/i16). Returns false when the
 // operand does not need truncation (caller emits it normally).
 fn (mut g FlatGen) gen_small_int_arith_operand_truncated(id flat.NodeId, node flat.Node, typ types.Type) bool {
-	if node.kind != .infix {
+	mut inner := node
+	for inner.kind == .paren && inner.children_count > 0 {
+		inner = g.a.nodes[int(g.a.child(&inner, 0))]
+	}
+	if inner.kind != .infix {
 		return false
 	}
-	if node.op !in [.plus, .minus, .mul, .left_shift] {
+	if inner.op !in [.plus, .minus, .mul, .left_shift] {
 		return false
 	}
 	mut ct := g.value_c_type(typ)
 	if ct !in ['u8', 'u16', 'i8', 'i16'] {
 		// The annotated infix type is often widened; fall back to the operand
 		// types (`u8 + u8` must wrap at 8 bits even if annotated as int).
-		if node.children_count < 2 {
+		if inner.children_count < 2 {
 			return false
 		}
-		lct := g.value_c_type(g.usable_expr_type(g.a.child(&node, 0)))
+		lct := g.value_c_type(g.usable_expr_type(g.a.child(&inner, 0)))
 		if lct !in ['u8', 'u16', 'i8', 'i16'] {
 			return false
 		}
-		rct := g.value_c_type(g.usable_expr_type(g.a.child(&node, 1)))
+		rct := g.value_c_type(g.usable_expr_type(g.a.child(&inner, 1)))
 		if rct != lct {
 			return false
 		}

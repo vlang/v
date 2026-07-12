@@ -39,4 +39,11 @@ fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
 
 fn test_typeof_display_canonicalizes_fixed_array_map_values() {
 	assert typeof_display_type_text('map[string]int[3]') == 'map[string][3]int'
+	assert typeof_display_type_text('int[n]') == '[n]int'
+	assert typeof_display_type_text('map[string]int[config.size]') == 'map[string][config.size]int'
+	assert typeof_display_type_text('int[n + 1]') == '[n + 1]int'
+	assert typeof_display_type_text('int[0x10]') == '[0x10]int'
+	assert typeof_display_type_text('Box[T]') == 'Box[T]'
+	assert typeof_display_type_text('Box[int]') == 'Box[int]'
+	assert typeof_display_type_text('Box[types.Node]') == 'Box[types.Node]'
 }

@@ -937,6 +937,13 @@ fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 
 fn test_latest_pr_review_codegen_regressions() {
 	v3_bin := build_v3()
+	small_int_comparison := run_good(v3_bin, 'parenthesized_small_int_comparison', 'fn main() {
+	println(((u8(255) + u8(1)) == 0).str())
+	println((((u8(255) + u8(1))) == 0).str())
+}
+')
+	assert small_int_comparison == 'true\ntrue'
+
 	c_strings := run_good(v3_bin, 'single_char_c_string_pointer_context', "fn C.strlen(charptr) usize
 
 fn main() {

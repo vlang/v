@@ -8513,13 +8513,38 @@ fn typeof_display_type_text(name string) string {
 		if open_idx := name.last_index('[') {
 			if open_idx > 0 {
 				len_text := name[open_idx + 1..name.len - 1]
-				if len_text.len > 0 && is_decimal_text(len_text) {
+				if typeof_display_is_fixed_array_len_text(len_text) {
 					return '[${len_text}]' + typeof_display_type_text(name[..open_idx])
 				}
 			}
 		}
 	}
 	return name
+}
+
+// typeof_display_is_fixed_array_len_text distinguishes a suffix-form fixed-array
+// length from the type argument of a generic application.
+fn typeof_display_is_fixed_array_len_text(text string) bool {
+	clean := text.trim_space()
+	if clean.len == 0 || clean.contains(',') {
+		return false
+	}
+	if is_decimal_text(clean) || (clean[0] >= `0` && clean[0] <= `9`) {
+		return true
+	}
+	if clean[0] == `(` && clean.ends_with(')') {
+		return typeof_display_is_fixed_array_len_text(clean[1..clean.len - 1])
+	}
+	if types.is_builtin_type_name(clean) || is_generic_fn_placeholder_name(clean) {
+		return false
+	}
+	for i, ch in clean {
+		if ch in [`+`, `*`, `/`, `%`, `|`, `^`, `<`, `>`] || ((ch == `-` || ch == `&`) && i > 0) {
+			return true
+		}
+	}
+	name := clean.all_after_last('.')
+	return name.len > 0 && name[0] >= `a` && name[0] <= `z`
 }
 
 fn typeof_display_fn_type_text(name string) string {
