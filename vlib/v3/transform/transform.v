@@ -8527,6 +8527,9 @@ fn typeof_display_type_text(name string) string {
 	if name.starts_with('shared ') {
 		return 'shared ' + typeof_display_type_text(name[7..])
 	}
+	if name.starts_with('chan ') {
+		return 'chan ' + typeof_display_type_text(name[5..])
+	}
 	if name.starts_with('map[') {
 		close := typeof_display_matching_bracket(name, 3)
 		if close > 3 && close < name.len - 1 {
