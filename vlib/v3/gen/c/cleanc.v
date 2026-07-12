@@ -318,20 +318,24 @@ fn (mut g FlatGen) declare_local_c_type(owner types.ScopeBindingOwner, c_type st
 	}
 }
 
-fn (g &FlatGen) local_storage_c_type(name string) ?string {
-	if name.len == 0 || g.local_c_type_by_owner.len == 0 {
-		return none
-	}
-	$if !ownership ? {
-		return g.local_c_type_by_owner[name] or { none }
-	}
+fn (g &FlatGen) local_storage_owner(name string) ?types.ScopeBindingOwner {
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return none
 	}
 	owner := g.tc.cur_scope.lookup_owner(name) or { return none }
-	if !g.tc.cur_scope.nearest_binding_owned_by(name, owner) {
+	$if ownership ? {
+		if !g.tc.cur_scope.nearest_binding_owned_by(name, owner) {
+			return none
+		}
+	}
+	return owner
+}
+
+fn (g &FlatGen) local_storage_c_type(name string) ?string {
+	if name.len == 0 || g.local_c_type_by_owner.len == 0 {
 		return none
 	}
+	owner := g.local_storage_owner(name) or { return none }
 	return g.local_c_type_by_owner[owner.storage_key()] or { none }
 }
 
@@ -351,16 +355,7 @@ fn (g &FlatGen) local_storage_is_shared(name string) bool {
 	if name.len == 0 || g.local_shared_storage_by_owner.len == 0 {
 		return false
 	}
-	$if !ownership ? {
-		return g.local_shared_storage_by_owner[name] or { false }
-	}
-	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
-		return false
-	}
-	owner := g.tc.cur_scope.lookup_owner(name) or { return false }
-	if !g.tc.cur_scope.nearest_binding_owned_by(name, owner) {
-		return false
-	}
+	owner := g.local_storage_owner(name) or { return false }
 	return g.local_shared_storage_by_owner[owner.storage_key()] or { false }
 }
 
@@ -374,16 +369,7 @@ fn (g &FlatGen) local_storage_is_pointer(name string) bool {
 	if g.local_pointer_storage_by_owner.len == 0 {
 		return false
 	}
-	$if !ownership ? {
-		return g.local_pointer_storage_by_owner[name] or { false }
-	}
-	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
-		return false
-	}
-	owner := g.tc.cur_scope.lookup_owner(name) or { return false }
-	if !g.tc.cur_scope.nearest_binding_owned_by(name, owner) {
-		return false
-	}
+	owner := g.local_storage_owner(name) or { return false }
 	return g.local_pointer_storage_by_owner[owner.storage_key()] or { false }
 }
 

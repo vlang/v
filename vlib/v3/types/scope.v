@@ -8,6 +8,7 @@ pub mut:
 	names           []string
 	types           []Type
 	name_indexes    map[string]int
+	reuse_id        int
 	generations     []int
 	next_generation int
 	lifetime        int
@@ -16,9 +17,9 @@ pub mut:
 pub struct ScopeBindingOwner {
 	scope      &Scope = unsafe { nil }
 	index      int    = -1
+	reuse_id   int
 	generation int
 	lifetime   int
-	name       string
 }
 
 // new_scope returns a reusable type-checker scope with an optional parent.
@@ -40,6 +41,7 @@ pub fn (mut s Scope) reset(parent &Scope) {
 	s.types.clear()
 	$if !ownership ? {
 		s.name_indexes.clear()
+		s.reuse_id++
 	}
 	$if ownership ? {
 		s.generations.clear()
@@ -84,9 +86,9 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 		for scope != unsafe { nil } {
 			if i := scope.name_indexes[name] {
 				return ScopeBindingOwner{
-					scope: scope
-					index: i
-					name:  name
+					scope:    scope
+					index:    i
+					reuse_id: scope.reuse_id
 				}
 			}
 			scope = scope.parent
@@ -97,7 +99,7 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 		if s.names[i] == name {
 			return ScopeBindingOwner{
 				scope:      s
-				index: i
+				index:      i
 				generation: s.generations[i]
 				lifetime:   s.lifetime
 			}
@@ -115,7 +117,7 @@ pub fn (owner ScopeBindingOwner) storage_key() string {
 		return ''
 	}
 	$if !ownership ? {
-		return owner.name
+		return '${voidptr(owner.scope)}:${owner.reuse_id}:${owner.index}'
 	}
 	return '${voidptr(owner.scope)}:${owner.lifetime}:${owner.index}:${owner.generation}'
 }
@@ -128,7 +130,7 @@ pub fn (s &Scope) nearest_binding_owned_by(name string, owner ScopeBindingOwner)
 	}
 	$if !ownership ? {
 		if i := s.name_indexes[name] {
-			return s == owner.scope && i == owner.index
+			return s == owner.scope && s.reuse_id == owner.reuse_id && i == owner.index
 		}
 		if s.parent != unsafe { nil } {
 			return s.parent.nearest_binding_owned_by(name, owner)
@@ -159,18 +161,18 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 		if i := s.name_indexes[name] {
 			s.types[i] = typ
 			return ScopeBindingOwner{
-				scope: s
-				index: i
-				name:  name
+				scope:    s
+				index:    i
+				reuse_id: s.reuse_id
 			}
 		}
 		s.names << name
 		s.types << typ
 		s.name_indexes[name] = s.names.len - 1
 		return ScopeBindingOwner{
-			scope: s
-			index: s.names.len - 1
-			name:  name
+			scope:    s
+			index:    s.names.len - 1
+			reuse_id: s.reuse_id
 		}
 	}
 	for i := s.names.len - 1; i >= 0; i-- {
