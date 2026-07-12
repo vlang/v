@@ -437,6 +437,38 @@ fn main() {
 }
 ',
 		'unknown function `value.no_such`')
+	run_bad(v3_bin, 'bad_generic_array_pop_argument_count', 'fn invoke[T](mut value T) {
+	value.pop(1)
+}
+
+fn main() {
+	mut values := [1, 2]
+	invoke(mut values)
+}
+',
+		'argument count mismatch for `value.pop`: expected 0, got 1')
+	run_bad(v3_bin, 'bad_generic_array_trim_argument_type', 'fn invoke[T](mut value T) {
+	value.trim("bad")
+}
+
+fn main() {
+	mut values := [1, 2]
+	invoke(mut values)
+}
+',
+		'cannot use `string` as argument 1 to `value.trim`; expected `int`')
+	valid_array_methods := run_good(v3_bin, 'generic_cgen_array_method_arguments', 'fn invoke[T](mut value T) {
+	value.trim(1)
+	value.pop()
+}
+
+fn main() {
+	mut values := [1, 2]
+	invoke(mut values)
+	println(int_str(values.len))
+}
+')
+	assert valid_array_methods == '0'
 	run_bad(v3_bin, 'bad_generic_is_on_concrete_non_sum', 'fn matches[T](value int) bool {
 	return value is T
 }

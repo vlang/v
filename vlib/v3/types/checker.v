@@ -9082,7 +9082,7 @@ fn (mut tc TypeChecker) call_receiver_type_is_unknown(node flat.Node) bool {
 	}
 	base_id := tc.a.child(callee, 0)
 	base_type := tc.resolve_type(base_id)
-	if base_type !is Unknown {
+	if unwrap_pointer(base_type) !is Unknown {
 		return false
 	}
 	tc.check_node(base_id)

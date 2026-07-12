@@ -4728,6 +4728,10 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					t.mark_fn_used(method_name)
 					return t.make_call_typed(method_name, args, ret_type)
 				}
+				if t.validating_generic_spec
+					&& !t.validate_cgen_array_method_args(node, base_id, clean_base_type, fn_node.value) {
+					return t.make_empty()
+				}
 				if array_method_stays_in_cgen_needs_runtime_mark(fn_node.value) {
 					t.mark_fn_used('array__${fn_node.value}')
 				}
@@ -4782,6 +4786,68 @@ fn array_method_stays_in_cgen_needs_runtime_mark(method string) bool {
 		5 { method == 'clear' }
 		else { false }
 	}
+}
+
+fn (mut t Transformer) validate_cgen_array_method_args(node flat.Node, base_id flat.NodeId, base_type string, method string) bool {
+	base_node := t.a.nodes[int(base_id)]
+	base_name := if base_node.kind == .ident && base_node.value.len > 0 {
+		base_node.value
+	} else {
+		base_type
+	}
+	display_name := '${base_name}.${method}'
+	if method == 'bytestr' && base_type !in ['[]u8', '[]byte'] {
+		t.record_monomorph_error('unknown function `${display_name}`')
+		return false
+	}
+	if method == 'wait' {
+		elem_type := if base_type.starts_with('[]') { base_type[2..].trim_space() } else { '' }
+		if elem_type != 'thread' && !elem_type.starts_with('thread ') {
+			t.record_monomorph_error('unknown function `${display_name}`')
+			return false
+		}
+	}
+	mut expected_types := []string{}
+	mut has_signature := false
+	if builtin_method := t.array_builtin_method_name(method) {
+		params := t.call_param_types(builtin_method)
+		if params.len > 0 {
+			param_offset := t.receiver_method_param_offset(base_id, node, params, builtin_method)
+			for i in param_offset .. params.len {
+				expected_types << t.normalize_type_alias(params[i].name())
+			}
+			has_signature = true
+		}
+	}
+	if !has_signature {
+		expected_types = match method {
+			'trim', 'repeat', 'delete', 'ensure_cap' { ['int'] }
+			'repeat_to_depth' { ['int', 'int'] }
+			else { []string{} }
+		}
+	}
+	actual_count := int(node.children_count) - 1
+	if actual_count != expected_types.len {
+		t.record_monomorph_error('argument count mismatch for `${display_name}`: expected ${expected_types.len}, got ${actual_count}')
+		return false
+	}
+	mut valid := true
+	for i, expected in expected_types {
+		arg_id := t.a.child(&node, i + 1)
+		mut actual := t.resolve_expr_type(arg_id)
+		if actual.len == 0 {
+			actual = t.node_type(arg_id)
+		}
+		if actual.len == 0 {
+			actual = t.reliable_stringify_type(arg_id)
+		}
+		actual = t.normalize_type_alias(actual)
+		if actual != expected {
+			t.record_monomorph_error('cannot use `${actual}` as argument ${i + 1} to `${display_name}`; expected `${expected}`')
+			valid = false
+		}
+	}
+	return valid
 }
 
 fn thread_array_wait_return_type(elem_type string) ?string {
@@ -5782,15 +5848,21 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	if base_type.starts_with('[]') || base_type.starts_with('map[') {
 		if base_type.starts_with('[]') {
-			if t.validating_generic_spec && !array_method_stays_in_cgen(method)
-				&& t.resolve_collection_receiver_method_name(base_id, method, base_type).len == 0
-				&& !t.receiver_selector_is_fn_field(base_type, method) {
-				base_name := if base_node.kind == .ident && base_node.value.len > 0 {
-					base_node.value
-				} else {
-					base_type
+			if t.validating_generic_spec {
+				if array_method_stays_in_cgen(method) {
+					if !t.validate_cgen_array_method_args(node, base_id, base_type, method) {
+						return t.make_empty()
+					}
+				} else if
+					t.resolve_collection_receiver_method_name(base_id, method, base_type).len == 0
+					&& !t.receiver_selector_is_fn_field(base_type, method) {
+					base_name := if base_node.kind == .ident && base_node.value.len > 0 {
+						base_node.value
+					} else {
+						base_type
+					}
+					t.record_monomorph_error('unknown function `${base_name}.${method}`')
 				}
-				t.record_monomorph_error('unknown function `${base_name}.${method}`')
 			}
 			return none
 		}
