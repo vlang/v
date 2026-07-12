@@ -3,12 +3,178 @@
 // that can be found in the LICENSE file.
 module c
 
+import hash.fnv1a
 import v.ast
 
 const cgen_resolution_hash_prime = u64(1099511628211)
 const cgen_resolution_hash_seed = u64(14695981039346656037)
 const cgen_unwrap_generic_cache_salt = u64(0x9e3779b185ebca87)
 const cgen_scope_var_type_cache_salt = u64(0xc2b2ae3d27d4eb4f)
+
+// stable_type_symbol_hash returns a deterministic hash for generated helper names.
+fn (mut g Gen) stable_type_symbol_hash(typ ast.Type) u64 {
+	mut seen := map[string]bool{}
+	return fnv1a.sum64_string(g.stable_type_symbol_key(typ, mut seen))
+}
+
+// stable_type_symbol_key builds a stable type descriptor without using table registration ids.
+fn (mut g Gen) stable_type_symbol_key(typ ast.Type, mut seen map[string]bool) string {
+	if typ == 0 {
+		return '0'
+	}
+	mut resolved_typ := g.unwrap_generic(g.recheck_concrete_type(typ))
+	if resolved_typ == 0 {
+		resolved_typ = g.unwrap_generic(typ)
+	}
+	if resolved_typ == 0 {
+		return '0'
+	}
+	sym := g.table.final_sym(resolved_typ)
+	if sym.info is ast.Alias {
+		parent_type := sym.info.parent_type.derive(resolved_typ)
+		if parent_type.idx() != resolved_typ.idx() {
+			return g.stable_type_symbol_key(parent_type, mut seen)
+		}
+	}
+	flags := stable_type_symbol_flags(resolved_typ)
+	base := '${sym.kind}:${stable_type_symbol_nominal_name(sym)}:${flags}'
+	if seen[base] {
+		return 'recursive:${base}'
+	}
+	seen[base] = true
+	mut parts := [base]
+	match sym.info {
+		ast.Array {
+			parts << 'array:${sym.info.nr_dims}:${g.stable_type_symbol_key(sym.info.elem_type, mut seen)}'
+		}
+		ast.ArrayFixed {
+			parts << 'array_fixed:${sym.info.size}:${g.stable_type_symbol_key(sym.info.elem_type, mut seen)}'
+		}
+		ast.Chan {
+			parts << 'chan:${sym.info.is_mut}:${g.stable_type_symbol_key(sym.info.elem_type, mut seen)}'
+		}
+		ast.Enum {
+			parts << 'enum:${sym.info.vals.join(',')}:${g.stable_type_symbol_key(sym.info.typ, mut seen)}:${sym.info.is_flag}:${sym.info.is_multi_allowed}:${sym.info.is_typedef}'
+		}
+		ast.FnType {
+			parts << 'fn:${sym.info.func.is_variadic}:${g.stable_type_symbol_key(sym.info.func.return_type, mut seen)}'
+			for param in sym.info.func.params {
+				parts << 'param:${param.is_mut}:${param.is_shared}:${param.is_atomic}:${g.stable_type_symbol_key(param.typ, mut seen)}'
+			}
+		}
+		ast.GenericInst {
+			parent_sym := g.table.sym(ast.new_type(sym.info.parent_idx))
+			parts << 'generic_inst:${parent_sym.kind}:${stable_type_symbol_nominal_name(parent_sym)}'
+			for concrete_type in sym.info.concrete_types {
+				parts << g.stable_type_symbol_key(concrete_type, mut seen)
+			}
+		}
+		ast.Interface {
+			parts << 'interface:${sym.info.is_generic}'
+			for embed in sym.info.embeds {
+				parts << 'embed:${g.stable_type_symbol_key(embed, mut seen)}'
+			}
+			for field in sym.info.fields {
+				parts << stable_type_symbol_field_key(mut g, field, mut seen)
+			}
+			for method in sym.info.methods {
+				parts << stable_type_symbol_method_key(mut g, method, mut seen)
+			}
+		}
+		ast.Map {
+			parts << 'map:${g.stable_type_symbol_key(sym.info.key_type, mut seen)}:${g.stable_type_symbol_key(sym.info.value_type, mut seen)}'
+		}
+		ast.MultiReturn {
+			for return_type in sym.info.types {
+				parts << 'return:${g.stable_type_symbol_key(return_type, mut seen)}'
+			}
+		}
+		ast.Struct {
+			parts << 'struct:${sym.info.is_typedef}:${sym.info.is_union}:${sym.info.is_heap}:${sym.info.is_shared}:${sym.info.is_generic}'
+			for embed in sym.info.embeds {
+				parts << 'embed:${g.stable_type_symbol_key(embed, mut seen)}'
+			}
+			for field in sym.info.fields {
+				parts << stable_type_symbol_field_key(mut g, field, mut seen)
+			}
+		}
+		ast.SumType {
+			parts << 'sum_type:${sym.info.is_anon}:${sym.info.is_generic}'
+			for variant in sym.info.variants {
+				parts << 'variant:${g.stable_type_symbol_key(variant, mut seen)}'
+			}
+			for field in sym.info.fields {
+				parts << stable_type_symbol_field_key(mut g, field, mut seen)
+			}
+		}
+		ast.Thread {
+			parts << 'thread:${g.stable_type_symbol_key(sym.info.return_type, mut seen)}'
+		}
+		else {}
+	}
+
+	return parts.join('|')
+}
+
+// stable_type_symbol_nominal_name serializes source-level identity for named types.
+fn stable_type_symbol_nominal_name(sym &ast.TypeSymbol) string {
+	if sym.name.starts_with('_VAnonStruct') || sym.name.starts_with('_VAnonUnion') {
+		return ''
+	}
+	return match sym.kind {
+		.alias, .enum, .interface, .struct, .sum_type, .aggregate {
+			'${sym.language}:${sym.mod}:${sym.name}'
+		}
+		else {
+			''
+		}
+	}
+}
+
+// stable_type_symbol_flags serializes the type flags that affect generated helper identity.
+fn stable_type_symbol_flags(typ ast.Type) string {
+	mut flags := []string{cap: 8}
+	if typ.has_flag(.option) {
+		flags << 'option'
+	}
+	if typ.has_flag(.result) {
+		flags << 'result'
+	}
+	if typ.has_flag(.variadic) {
+		flags << 'variadic'
+	}
+	if typ.has_flag(.generic) {
+		flags << 'generic'
+	}
+	if typ.has_flag(.shared_f) {
+		flags << 'shared'
+	}
+	if typ.has_flag(.atomic_f) {
+		flags << 'atomic'
+	}
+	if typ.has_flag(.option_mut_param_t) {
+		flags << 'option_mut_param'
+	}
+	flags << 'muls:${typ.nr_muls()}'
+	return flags.join(',')
+}
+
+// stable_type_symbol_field_key adds field identity and type information to a type descriptor.
+fn stable_type_symbol_field_key(mut g Gen, field ast.StructField, mut seen map[string]bool) string {
+	return 'field:${field.name}:${field.is_embed}:${field.is_part_of_union}:${field.is_volatile}:${g.stable_type_symbol_key(field.typ, mut
+		seen)}'
+}
+
+// stable_type_symbol_method_key adds method signature information to a type descriptor.
+fn stable_type_symbol_method_key(mut g Gen, method ast.Fn, mut seen map[string]bool) string {
+	mut parts := [
+		'method:${method.name}:${method.is_variadic}:${g.stable_type_symbol_key(method.return_type, mut seen)}',
+	]
+	for param in method.params {
+		parts << 'param:${param.is_mut}:${param.is_shared}:${param.is_atomic}:${g.stable_type_symbol_key(param.typ, mut seen)}'
+	}
+	return parts.join(',')
+}
 
 @[inline]
 fn cgen_resolution_hash_mix(key u64, value u64) u64 {
@@ -509,7 +675,10 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 	if g.has_active_call_generic_context() {
 		return g.resolved_scope_var_type_uncached(expr)
 	}
-	cache_key := g.expr_resolution_cache_key(expr.pos.pos, 0, cgen_scope_var_type_cache_salt)
+	mut cache_key := g.expr_resolution_cache_key(expr.pos.pos, 0, cgen_scope_var_type_cache_salt)
+	if cache_key != 0 {
+		cache_key = cgen_resolution_hash_mix(cache_key, fnv1a.sum64_string(expr.name))
+	}
 	if cache_key != 0 {
 		if cached := g.resolved_scope_var_type_cache[cache_key] {
 			return cached
@@ -598,6 +767,16 @@ fn (mut g Gen) matching_sumtype_variant_types(parent_type ast.Type, target_type 
 		}
 	}
 	return [target_type]
+}
+
+fn (mut g Gen) matching_sumtype_match_branch_variant_types(parent_type ast.Type, target_type ast.Type) []ast.Type {
+	variants := g.sumtype_runtime_variants(parent_type)
+	for variant in variants {
+		if g.is_exact_sumtype_variant_match(variant, target_type) {
+			return [variant]
+		}
+	}
+	return g.matching_sumtype_variant_types(parent_type, target_type)
 }
 
 fn (mut g Gen) matching_sumtype_variant_type_idx_exprs(parent_type ast.Type, target_type ast.Type) []string {

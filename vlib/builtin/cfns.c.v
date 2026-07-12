@@ -38,6 +38,9 @@ fn C.realloc(a voidptr, b usize) voidptr
 fn C.free(ptr voidptr)
 
 fn C.mmap(addr_length voidptr, length usize, prot i32, flags i32, fd i32, offset isize) voidptr
+
+// C.munmap releases a memory mapping created by C.mmap.
+fn C.munmap(addr_length voidptr, len usize) i32
 fn C.mprotect(addr_length voidptr, len usize, prot i32) i32
 
 fn C.aligned_alloc(align usize, size usize) voidptr
@@ -99,7 +102,11 @@ fn C.fputs(msg &char, fstream &C.FILE) i32
 fn C.fflush(fstream &C.FILE) i32
 
 // TODO: define args in these functions
-fn C.fseek(stream &C.FILE, offset i32, whence i32) i32
+$if windows {
+	fn C.fseek(stream &C.FILE, offset i32, whence i32) i32
+} $else {
+	fn C.fseek(stream &C.FILE, offset isize, whence i32) i32
+}
 
 fn C.fopen(filename &char, mode &char) &C.FILE
 
@@ -295,7 +302,13 @@ fn C.CreateFile(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurit
 fn C.CreateFileW(lpFilename &u16, dwDesiredAccess u32, dwShareMode u32, lpSecurityAttributes &u16, dwCreationDisposition u32,
 	dwFlagsAndAttributes u32, hTemplateFile voidptr) voidptr
 
-fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
+$if windows {
+	// The TCC-only declaration is guarded with `#ifdef __TINYC__` in the
+	// header, so it survives cross compilation; GCC/MSVC use the SDK header.
+	#insert "@VEXEROOT/vlib/builtin/cfns_windows_tcc.h"
+
+	fn C.GetFinalPathNameByHandleW(hFile voidptr, lpFilePath &u16, nSize u32, dwFlags u32) u32
+}
 
 fn C.CreatePipe(hReadPipe &voidptr, hWritePipe &voidptr, lpPipeAttributes voidptr, nSize u32) bool
 
@@ -470,6 +483,17 @@ $if windows {
 
 // pthread.h
 fn C.pthread_self() usize
+
+fn C.pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32
+
+fn C.pthread_join(thread voidptr, retval voidptr) i32
+
+fn C.pthread_attr_init(attr voidptr) i32
+
+fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) i32
+
+fn C.pthread_attr_destroy(attr voidptr) i32
+
 fn C.pthread_mutex_init(voidptr, voidptr) i32
 
 fn C.pthread_mutex_lock(voidptr) i32
@@ -544,6 +568,14 @@ fn C.close(fd i32) i32
 fn C.pipe(pipefds &int) i32
 
 fn C.dup2(oldfd i32, newfd i32) i32
+
+fn C.fcntl(fd i32, cmd i32, arg ...voidptr) i32
+
+fn C.execlp(file &char, arg &char, va ...voidptr) i32
+
+fn C._exit(code i32)
+
+fn C.signal(sig i32, handler voidptr) voidptr
 
 // used by gl, stbi, freetype
 fn C.glTexImage2D()

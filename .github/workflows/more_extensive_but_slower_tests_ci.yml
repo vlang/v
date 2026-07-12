@@ -5,6 +5,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/more_extensive_but_slower_tests_ci.yml'
@@ -12,6 +13,7 @@ on:
       - 'cmd/tools/**'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/more_extensive_but_slower_tests_ci.yml'
@@ -30,7 +32,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build V
         if: runner.os != 'Windows'

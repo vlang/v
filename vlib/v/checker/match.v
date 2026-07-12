@@ -317,6 +317,14 @@ fn (mut c Checker) match_expr(mut node ast.MatchExpr) ast.Type {
 			&& (!node.is_comptime || (node.is_comptime && comptime_match_branch_result)) {
 			mut stmt := branch.stmts.last()
 			if mut stmt is ast.ExprStmt {
+				// A trailing `spawn`/`go` is the value of this match-expression branch,
+				// so it must produce a usable thread handle (waiter, no detach),
+				// like the assignment form `t := spawn f()`. See issue #27485.
+				if mut stmt.expr is ast.SpawnExpr {
+					stmt.expr.is_expr = true
+				} else if mut stmt.expr is ast.GoExpr {
+					stmt.expr.is_expr = true
+				}
 				c.expected_type = if c.expected_expr_type != ast.void_type {
 					c.expected_expr_type
 				} else {
@@ -595,33 +603,7 @@ fn (mut c Checker) check_match_branch_last_stmt(mut last_stmt ast.ExprStmt, ret_
 }
 
 fn char_literal_number_value(value string) ?i64 {
-	if value.len == 2 && value[0] == `\\` {
-		return match value[1] {
-			`a` { 7 }
-			`b` { 8 }
-			`t` { 9 }
-			`n` { 10 }
-			`v` { 11 }
-			`f` { 12 }
-			`r` { 13 }
-			`e` { 27 }
-			`$` { 36 }
-			`"` { 34 }
-			`'` { 39 }
-			`?` { 63 }
-			`@` { 64 }
-			`\\` { 92 }
-			`\`` { 96 }
-			`{` { 123 }
-			`}` { 125 }
-			else { none }
-		}
-	}
-	runes := value.runes()
-	if runes.len == 1 {
-		return runes[0]
-	}
-	return none
+	return i64(ast.char_literal_rune_value(value)?)
 }
 
 fn (mut c Checker) get_comptime_number_value(mut expr ast.Expr) ?i64 {
@@ -684,6 +666,110 @@ fn (mut c Checker) get_match_case_literal_value(mut expr ast.Expr) ?i64 {
 	return none
 }
 
+fn (mut c Checker) match_sumtype_has_variant(parent ast.Type, variant ast.Type) bool {
+	if c.table.sumtype_has_variant_recursive(parent, variant, true) {
+		return true
+	}
+	if c.table.sym(parent).kind == .sum_type {
+		return false
+	}
+	for candidate in c.match_sumtype_matchable_variants(parent) {
+		if c.match_sumtype_variant_is_handled(candidate, variant) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) match_sumtype_matchable_variants(parent ast.Type) []ast.Type {
+	if c.table.sym(parent).kind == .sum_type {
+		return c.table.sumtype_matchable_variants(parent)
+	}
+	mut variants := []ast.Type{}
+	mut seen := map[u32]bool{}
+	c.collect_match_sumtype_matchable_variants(parent, mut seen, mut variants)
+	return variants
+}
+
+fn (mut c Checker) collect_match_sumtype_matchable_variants(parent ast.Type, mut seen map[u32]bool, mut variants []ast.Type) {
+	for variant in c.concrete_sumtype_variants(parent) {
+		key := u32(variant)
+		if key in seen {
+			continue
+		}
+		seen[key] = true
+		variants << variant
+		if c.concrete_sumtype_variants(variant).len > 0 {
+			c.collect_match_sumtype_matchable_variants(variant, mut seen, mut variants)
+		}
+	}
+}
+
+fn (mut c Checker) match_sumtype_missing_variants(parent ast.Type, handled []ast.Type) []ast.Type {
+	if c.table.sym(parent).kind == .sum_type {
+		return c.table.sumtype_missing_variants(parent, handled)
+	}
+	mut missing := []ast.Type{}
+	mut seen := map[u32]bool{}
+	c.collect_match_sumtype_missing_variants(parent, handled, mut seen, mut missing)
+	return missing
+}
+
+fn (mut c Checker) collect_match_sumtype_missing_variants(parent ast.Type, handled []ast.Type, mut seen map[u32]bool, mut missing []ast.Type) {
+	if c.match_sumtype_variant_is_handled_by(parent, handled) {
+		return
+	}
+	for variant in c.concrete_sumtype_variants(parent) {
+		if c.match_sumtype_variant_is_handled_by(variant, handled) {
+			continue
+		}
+		if c.concrete_sumtype_variants(variant).len > 0 {
+			c.collect_match_sumtype_missing_variants(variant, handled, mut seen, mut missing)
+		} else {
+			key := u32(variant)
+			if key !in seen {
+				seen[key] = true
+				missing << variant
+			}
+		}
+	}
+}
+
+fn (mut c Checker) match_sumtype_variant_is_handled_by(variant ast.Type, handled []ast.Type) bool {
+	for handled_variant in handled {
+		if c.match_sumtype_variant_is_handled(variant, handled_variant) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut c Checker) match_sumtype_variant_is_handled(variant ast.Type, handled ast.Type) bool {
+	if variant.idx() == handled.idx() && variant.has_flag(.option) == handled.has_flag(.option)
+		&& variant.nr_muls() == handled.nr_muls() {
+		return true
+	}
+	handled_sym := c.table.sym(handled)
+	if handled_sym.info is ast.Alias {
+		mut parent_type := handled_sym.info.parent_type.set_nr_muls(handled.nr_muls())
+		if handled.has_flag(.option) {
+			parent_type = parent_type.set_flag(.option)
+		}
+		if handled.has_flag(.result) {
+			parent_type = parent_type.set_flag(.result)
+		}
+		return c.match_sumtype_variant_is_handled(variant, parent_type)
+	}
+	variant_sym := c.table.sym(variant)
+	if variant_sym.info is ast.FnType && handled_sym.info is ast.FnType {
+		return
+			c.table.fn_type_source_signature(variant_sym.info.func) == c.table.fn_type_source_signature(handled_sym.info.func)
+			&& variant.has_flag(.option) == handled.has_flag(.option)
+			&& variant.nr_muls() == handled.nr_muls()
+	}
+	return false
+}
+
 fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSymbol, cond_final_sym ast.TypeSymbol) {
 	c.expected_type = node.expected_type
 	if node.cond_type.idx() == 0 {
@@ -694,6 +780,8 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 	is_alias_to_matchable_type := cond_type_sym.kind == .alias
 		&& cond_final_sym.kind in [.interface, .sum_type]
 	cond_match_sym := if is_alias_to_matchable_type { cond_final_sym } else { cond_type_sym }
+	sumtype_match_variants := c.match_sumtype_matchable_variants(cond_match_type)
+	is_cond_match_sumtype := sumtype_match_variants.len > 0
 	mut enum_ref_checked := false
 	mut is_comptime_value_match := false
 	// branch_exprs is a histogram of how many times
@@ -908,12 +996,12 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 							}
 						}
 					}
-				} else if cond_match_sym.info is ast.SumType {
-					if !c.table.sumtype_has_variant_recursive(cond_match_type, expr_type, true) {
+				} else if is_cond_match_sumtype {
+					if !c.match_sumtype_has_variant(cond_match_type, expr_type) {
 						expr_str := c.table.type_to_str(expr_type)
 						expect_str := c.table.type_to_str(node.cond_type)
 						sumtype_variant_names :=
-							c.table.sumtype_matchable_variants(cond_match_type).map(c.table.type_to_str_using_aliases(it, {}))
+							sumtype_match_variants.map(c.table.type_to_str_using_aliases(it, {}))
 						suggestion := util.new_suggestion(expr_str, sumtype_variant_names)
 						c.error(suggestion.say('`${expect_str}` has no variant `${expr_str}`'),
 							expr.pos())
@@ -941,7 +1029,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 		}
 		// when match is type matching, then register smart cast for every branch
 		if expr_types.len > 0 {
-			if cond_match_sym.kind in [.sum_type, .interface] {
+			if is_cond_match_sumtype || cond_match_sym.kind == .interface {
 				mut expr_type := ast.no_type
 				if expr_types.len > 1 {
 					mut agg_name := strings.new_builder(20)
@@ -999,33 +1087,33 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 			}
 		}
 	} else {
-		match cond_match_sym.info {
-			ast.SumType {
-				for v in c.table.sumtype_missing_variants(cond_match_type, branch_expr_types) {
-					is_exhaustive = false
-					unhandled << '`${c.table.type_to_str(v)}`'
-				}
+		if is_cond_match_sumtype {
+			for v in c.match_sumtype_missing_variants(cond_match_type, branch_expr_types) {
+				is_exhaustive = false
+				unhandled << '`${c.table.type_to_str(v)}`'
 			}
-			//
-			ast.Enum {
-				for v in cond_match_sym.info.vals {
-					mut is_handled := v in branch_exprs
-					if !is_handled && is_multi_allowed_enum_match {
-						if enum_val := c.table.find_enum_field_val(cond_match_sym.name, v) {
-							is_handled = enum_val in branch_enum_values
+		} else {
+			match cond_match_sym.info {
+				ast.Enum {
+					for v in cond_match_sym.info.vals {
+						mut is_handled := v in branch_exprs
+						if !is_handled && is_multi_allowed_enum_match {
+							if enum_val := c.table.find_enum_field_val(cond_match_sym.name, v) {
+								is_handled = enum_val in branch_enum_values
+							}
+						}
+						if !is_handled {
+							is_exhaustive = false
+							unhandled << '`.${v}`'
 						}
 					}
-					if !is_handled {
+					if cond_match_sym.info.is_flag {
 						is_exhaustive = false
-						unhandled << '`.${v}`'
 					}
 				}
-				if cond_match_sym.info.is_flag {
+				else {
 					is_exhaustive = false
 				}
-			}
-			else {
-				is_exhaustive = false
 			}
 		}
 	}

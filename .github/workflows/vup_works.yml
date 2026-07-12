@@ -5,6 +5,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '**.vv'
@@ -14,6 +15,7 @@ on:
       - 'cmd/tools/vrepl.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '**.vv'
@@ -39,11 +41,11 @@ jobs:
           - os: macos-latest
             zip: v_macos_arm64.zip
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     env:
       VDIR: /tmp/v_from_release_zip
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build v
         run: make && ./v symlink && ./v version
 

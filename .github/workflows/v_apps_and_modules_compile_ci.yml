@@ -5,6 +5,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/v_apps_and_modules_compile_ci.yml'
@@ -12,6 +13,7 @@ on:
       - 'cmd/tools/vrepl.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/v_apps_and_modules_compile_ci.yml'
@@ -31,7 +33,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Cache apt packages
         if: runner.os == 'Linux'
@@ -39,7 +41,7 @@ jobs:
 
       - name: Cache Homebrew downloads
         if: runner.os == 'macOS'
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/Library/Caches/Homebrew
           key: brew-${{ matrix.os }}-v_apps-${{ hashFiles('.github/workflows/v_apps_and_modules_compile_ci.yml') }}
@@ -257,7 +259,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make && ./v symlink
       - name: Build vpm

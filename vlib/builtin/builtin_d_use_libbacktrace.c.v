@@ -10,7 +10,8 @@ $if openbsd {
 	@[noinline]
 	fn eprint_libbacktrace(frames_to_skip int) {
 	}
-} $else {
+} $else $if !tinyc {
+	// full libbacktrace implementation for gcc/clang (TCC can't compile libbacktrace's C code)
 	#flag -I@VEXEROOT/thirdparty/libbacktrace
 	#flag @VEXEROOT/thirdparty/libbacktrace/backtrace.o
 	#include <backtrace.h>
@@ -31,16 +32,13 @@ $if openbsd {
 	__global bt_state = init_bt_state()
 
 	fn init_bt_state() &C.backtrace_state {
-		$if !tinyc {
-			mut filename := &char(unsafe { nil })
-			$if windows {
-				filename = unsafe { string_from_wide(&&u16(g_main_argv)[0]).str }
-			} $else {
-				filename = unsafe { &&char(g_main_argv)[0] }
-			}
-			return C.backtrace_create_state(filename, 1, bt_error_handler, 0)
+		mut filename := &char(unsafe { nil })
+		$if windows {
+			filename = unsafe { string_from_wide(&&u16(g_main_argv)[0]).str }
+		} $else {
+			filename = unsafe { &&char(g_main_argv)[0] }
 		}
-		return &C.backtrace_state(unsafe { nil })
+		return C.backtrace_create_state(filename, 1, bt_error_handler, 0)
 	}
 
 	// for bt_error_callback
@@ -115,5 +113,14 @@ $if openbsd {
 			stdin: false
 		}
 		C.backtrace_full(bt_state, frames_to_skip, bt_print_callback, bt_error_callback, data)
+	}
+} $else {
+	// no-op stubs for TCC (TCC can't compile libbacktrace's C code, and
+	// it has its own built-in backtrace via tcc_backtrace instead)
+	fn print_libbacktrace(frames_to_skip int) {
+	}
+
+	@[noinline]
+	fn eprint_libbacktrace(frames_to_skip int) {
 	}
 }

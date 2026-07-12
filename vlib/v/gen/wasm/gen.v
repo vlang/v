@@ -46,6 +46,26 @@ mut:
 	needs_address          bool
 	defer_vars             []Var
 	is_direct_array_access bool // inside a `[direct_array_access]` function
+	// function values: fn name -> slot in the `__indirect_function_table`.
+	// Single owner of the indirect-call table population (reused by later phases).
+	fn_value_indices   map[string]int
+	pending_anon_fns   []ast.FnDecl    // non-capturing anon fns to compile after toplevel stmts
+	compiled_anon_fns  map[string]bool // dedup for pending_anon_fns
+	uses_call_indirect bool            // a `call_indirect` was emitted, so the table must exist
+}
+
+// fn_table_index returns the slot of `name` in the indirect function table,
+// registering it (and growing the table) on first use.
+pub fn (mut g Gen) fn_table_index(name string) int {
+	if idx := g.fn_value_indices[name] {
+		return idx
+	}
+	// Slot 0 is reserved as the null/trap slot, so a real function value never
+	// collides with `unsafe { nil }` (which also lowers to `i32.const 0`). Real
+	// functions therefore start at index 1.
+	idx := g.fn_value_indices.len + 1
+	g.fn_value_indices[name] = idx
+	return idx
 }
 
 struct Global {
@@ -243,6 +263,17 @@ pub fn (mut g Gen) fn_decl(node ast.FnDecl) {
 		}
 		else {
 			if rt.idx() != ast.void_type_idx {
+				// A scalar `?T`/`!T` return reaches here (it is not a MultiReturn),
+				// so the option/result guards below — which only run inside the
+				// MultiReturn arm or after the match — are dead for it. Guard before
+				// `get_wasm_type`, which would otherwise abort with an internal
+				// "unreachable type" ICE on the option/result-wrapped type.
+				if rt.has_flag(.option) {
+					g.v_error('option types are not implemented', node.return_type_pos)
+				}
+				if rt.has_flag(.result) {
+					g.v_error('result types are not implemented', node.return_type_pos)
+				}
 				wtyp := g.get_wasm_type(rt)
 				if g.is_param_type(rt) {
 					paramdbg << g.dbg_type_name('__rval(0)', rt)
@@ -745,9 +776,111 @@ fn (mut g Gen) match_branch_exprs(node ast.MatchExpr, expected ast.Type, unpacke
 	g.func.c_end(blk)
 }
 
+// fn_value_functype lowers a V function type into the wasm function type used
+// by `call_indirect`. It mirrors the parameter/return lowering done in `fn_decl`
+// (a non-pure return becomes a leading rvar pointer parameter), so the computed
+// type index matches the type the target function was committed with.
+fn (mut g Gen) fn_value_functype(fn_typ ast.Type) wasm.FuncType {
+	// final_sym unwraps any alias layer (e.g. `type Callback = fn (int) int`)
+	ts := g.table.final_sym(fn_typ)
+	if ts.info !is ast.FnType {
+		g.w_error('fn_value_functype: `${ts.name}` is not a function type')
+	}
+	func := (ts.info as ast.FnType).func
+
+	mut paraml := []wasm.ValType{}
+	mut retl := []wasm.ValType{}
+
+	rt := func.return_type
+	if g.table.sym(rt).info is ast.MultiReturn {
+		g.w_error('wasm backend: calling a function value with multiple return values is not yet supported')
+	}
+	if rt.has_flag(.option) || rt.has_flag(.result) {
+		g.w_error('wasm backend: option/result function values are not yet supported')
+	}
+	if rt.idx() != ast.void_type_idx {
+		wtyp := g.get_wasm_type(rt)
+		if g.is_param_type(rt) {
+			paraml << wtyp // non-pure return -> leading rvar pointer (i32)
+		} else {
+			retl << wtyp
+		}
+	}
+	for p in func.params {
+		paraml << g.get_wasm_type_int_literal(p.typ)
+	}
+
+	return wasm.FuncType{paraml, retl, none}
+}
+
+// push_fn_value evaluates the callee of a function-value call and leaves its
+// i32 index into the indirect function table on the stack.
+fn (mut g Gen) push_fn_value(node ast.CallExpr, fn_typ ast.Type) {
+	if node.is_method {
+		// a fn-typed struct field, e.g. `b.op` in `b.op(x)`: load the field
+		g.expr(ast.SelectorExpr{
+			expr:       node.left
+			field_name: node.name
+			expr_type:  node.left_type
+			typ:        fn_typ
+		}, fn_typ)
+	} else if node.name == '' {
+		// the callee is the expression itself, e.g. `(expr)(x)` or `make_cb()(x)`
+		g.expr(node.left, fn_typ)
+	} else if node.is_fn_a_const {
+		// a const of function type. The const is registered in the global scope
+		// under its fully-qualified name (`node.const_name`, e.g. `main.cb`), not
+		// the lexical call name, so a plain `scope.find(node.name)` misses it.
+		obj := g.table.global_scope.find(node.const_name) or {
+			g.w_error('wasm: cannot resolve function const `${node.const_name}`')
+		}
+		v := g.get_var_from_ident(ast.Ident{
+			name:  node.const_name
+			scope: node.scope
+			obj:   obj
+		})
+		g.get(v)
+	} else {
+		// a named local/param variable of function type
+		obj := node.scope.find(node.name) or {
+			g.w_error('wasm: cannot resolve function value `${node.name}`')
+		}
+		v := g.get_var_from_ident(ast.Ident{
+			name:  node.name
+			scope: node.scope
+			obj:   obj
+		})
+		g.get(v)
+	}
+}
+
 pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvars []Var) {
 	mut wasm_ns := ?string(none)
 	mut name := node.name
+
+	// Detect a call to a function value: either a fn-typed local/param/const
+	// (is_fn_var/is_fn_a_const), a fn-typed struct field, which the checker
+	// represents as a method call (`b.op()`), or an expression callee that
+	// evaluates to a function (`make_cb()(x)`, `(expr)(x)`), which the checker
+	// leaves with an empty name and a fn-typed `left_type`.
+	mut is_fn_value := false
+	mut fn_value_typ := ast.void_type
+	if node.is_fn_var || node.is_fn_a_const {
+		is_fn_value = true
+		fn_value_typ = node.fn_var_type
+	} else if node.is_method && node.left_type != 0 {
+		if field := g.table.find_field(g.table.sym(node.left_type), node.name) {
+			if g.table.final_sym(field.typ).info is ast.FnType {
+				is_fn_value = true
+				fn_value_typ = field.typ
+			}
+		}
+	} else if node.name == '' && node.left_type != 0 {
+		if g.table.final_sym(node.left_type).info is ast.FnType {
+			is_fn_value = true
+			fn_value_typ = node.left_type
+		}
+	}
 
 	is_print := name in ['panic', 'println', 'print', 'eprintln', 'eprint']
 
@@ -792,7 +925,7 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 
 	// {method self}
 	//
-	if node.is_method {
+	if node.is_method && !is_fn_value {
 		expr := if !node.left_type.is_ptr() && node.receiver_type.is_ptr() { ast.Expr(ast.PrefixExpr{
 				op:    .amp
 				right: node.left
@@ -803,6 +936,22 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 		} else {
 			g.expr(expr, node.receiver_type)
 		}
+	}
+
+	// {callee}
+	//
+	// Evaluate the callee of a function-value call *before* its arguments, so a
+	// callee with side effects (e.g. `make_box().op(next())`) keeps V's
+	// left-to-right evaluation order. `call_indirect` wants the table index on
+	// top of the stack (after the args), so stash it in a temp and reload it
+	// once the arguments are in place.
+	mut fn_value_idx := Var{}
+	if is_fn_value {
+		g.is_leaf_function = false
+		g.uses_call_indirect = true
+		fn_value_idx = g.new_local('', fn_value_typ)
+		g.push_fn_value(node, fn_value_typ)
+		g.set(fn_value_idx)
 	}
 
 	// {arguments}
@@ -837,7 +986,13 @@ pub fn (mut g Gen) call_expr(node ast.CallExpr, expected ast.Type, existing_rvar
 		}
 	}
 
-	if namespace := wasm_ns {
+	if is_fn_value {
+		// args are already on the stack; reload the callee's table index (computed
+		// before the args, above) on top, then dispatch through the indirect table
+		typeidx := g.mod.new_functype(g.fn_value_functype(fn_value_typ))
+		g.get(fn_value_idx)
+		g.func.call_indirect(typeidx, 0)
+	} else if namespace := wasm_ns {
 		// import calls won't touch `__vsp` !
 
 		g.func.call_import(namespace, name)
@@ -1016,7 +1171,13 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.get(v)
 		}
 		ast.SelectorExpr {
-			if v := g.get_var_from_expr(node) {
+			final := g.table.final_sym(node.expr_type)
+			if node.field_name == 'len' && final.info is ast.ArrayFixed {
+				// a fixed array's `.len` is a compile-time constant; the checker
+				// types it as `int` but emits no field, so resolve it here rather
+				// than aborting in get_field_offset ("could not find field len").
+				g.func.i32_const(i32(final.info.size))
+			} else if v := g.get_var_from_expr(node) {
 				if g.needs_address {
 					if !v.is_address {
 						g.v_error("cannot take the address of a value that doesn't live on the stack. this is a current limitation.",
@@ -1103,13 +1264,19 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 			g.set_set(v)
 		}
 		ast.CharLiteral {
-			rns := serialise.eval_escape_codes_raw(node.val) or { panic('unreachable') }.runes()[0]
+			rns := ast.char_literal_rune_value(node.val) or { panic('unreachable') }
 			g.func.i32_const(i32(rns))
 		}
 		ast.Ident {
-			v := g.get_var_from_ident(node)
-			g.get(v)
-			g.cast(v.typ, expected)
+			if node.kind == .function {
+				// a function used as a value: push its index into the
+				// indirect function table (an i32)
+				g.func.i32_const(i32(g.fn_table_index(node.name)))
+			} else {
+				v := g.get_var_from_ident(node)
+				g.get(v)
+				g.cast(v.typ, expected)
+			}
 		}
 		ast.IntegerLiteral, ast.FloatLiteral {
 			g.literal(node.val, expected)
@@ -1130,6 +1297,15 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 
 			g.expr(node.expr, node.expr_type)
 
+			// A cast involving a function value (e.g. `type Alias = fn (...)`) is an
+			// i32 table index on both sides, so the value passes through unchanged.
+			// Return before the numeric-cast path, which would also mis-handle a
+			// function callee (`Alias(some_fn)`) as a variable in get_var_from_ident.
+			if g.table.final_sym(node.typ).info is ast.FnType
+				|| g.table.final_sym(node.expr_type).info is ast.FnType {
+				return
+			}
+
 			// TODO: unbelievable colossal hack
 			mut typ := node.expr_type
 			if node.expr is ast.Ident {
@@ -1144,6 +1320,22 @@ pub fn (mut g Gen) expr(node ast.Expr, expected ast.Type) {
 		}
 		ast.CallExpr {
 			g.call_expr(node, expected, [])
+		}
+		ast.AnonFn {
+			if node.inherited_vars.len > 0 {
+				// closures lower to runtime-generated executable memory, which
+				// WebAssembly does not support efficiently yet; reject for now.
+				g.v_error('closures (capturing anonymous functions) are not yet supported on the `wasm` backend',
+					node.decl.pos)
+			}
+			// compile the anon fn after the current toplevel stmts (when the
+			// per-function state is clean again), then push its table index
+			idx := g.fn_table_index(node.decl.name)
+			if node.decl.name !in g.compiled_anon_fns {
+				g.compiled_anon_fns[node.decl.name] = true
+				g.pending_anon_fns << node.decl
+			}
+			g.func.i32_const(i32(idx))
 		}
 		else {
 			g.w_error('wasm.expr(): unhandled node: ' + node.type_name())
@@ -1685,11 +1877,7 @@ fn (mut g Gen) eval_enum_field_expr(expr ast.Expr) ?i64 {
 			return expr.val.i64()
 		}
 		ast.CharLiteral {
-			runes := expr.val.runes()
-			if runes.len == 0 {
-				return none
-			}
-			return i64(runes[0])
+			return i64(ast.char_literal_rune_value(expr.val)?)
 		}
 		ast.BoolLiteral {
 			return if expr.val { i64(1) } else { i64(0) }
@@ -1850,32 +2038,31 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref
 
 	if out_name != '-' {
 		os.write_file_array(out_name, mod) or { panic(err) }
+		// The enabled feature set (Safari-15 floor plus any `-d` opt-in) drives
+		// both validation and optimisation, so compute it once and share it.
+		feats := g.enabled_wasm_features()
 		if g.pref.wasm_validate {
-			exe := $if windows { 'wasm-validate.exe' } $else { 'wasm-validate' }
-			if rt := os.find_abs_path_of_executable(exe) {
-				mut p := os.new_process(rt)
-				p.set_args([out_name])
-				p.set_redirect_stdio()
-				p.run()
-				err := p.stderr_slurp()
-				p.wait()
-				if p.code != 0 {
-					eprintln(err)
-					g.w_error('validation failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
-				}
-			} else {
-				g.w_error('${exe} not found! Try installing WABT (WebAssembly Binary Toolkit). Run `./cmd/tools/install_wabt.vsh`, to download a prebuilt executable for your platform.')
-			}
+			g.validate_wasm(out_name, feats)
 		}
 		if g.pref.is_prod {
 			exe := $if windows { 'wasm-opt.exe' } $else { 'wasm-opt' }
 			if rt := os.find_abs_path_of_executable(exe) {
-				// -lmu: low memory unused, very important optimisation
+				g.check_wasm_opt_version(rt)
+				// -lmu: low memory unused, very important optimisation.
+				// Feature flags are an explicit floor-safe allowlist (never `-all`),
+				// so wasm-opt cannot silently introduce opcodes past the baseline.
+				flags := binaryen_feature_flags(feats)
 				res :=
-					os.execute('${os.quoted_path(rt)} -all -lmu -c -O4 ${os.quoted_path(out_name)} -o ${os.quoted_path(out_name)}')
+					os.execute('${os.quoted_path(rt)} ${flags} -lmu -c -O4 ${os.quoted_path(out_name)} -o ${os.quoted_path(out_name)}')
 				if res.exit_code != 0 {
 					eprintln(res.output)
 					g.w_error('${rt} failed, this should not happen. Report an issue with the above messages, the webassembly generated, and appropriate code.')
+				}
+				// Re-validate AFTER optimisation: a passing pre-opt validation is
+				// not sufficient, wasm-opt must not have introduced any opcode past
+				// the enabled feature floor.
+				if g.pref.wasm_validate {
+					g.validate_wasm(out_name, feats)
 				}
 			} else {
 				g.w_error('${exe} not found! Try installing Binaryen.
@@ -1888,5 +2075,43 @@ pub fn gen(files []&ast.File, mut table ast.Table, out_name string, w_pref &pref
 		}
 	} else if g.pref.wasm_validate || g.pref.is_prod {
 		eprintln('stdout output, cannot validate or optimise wasm')
+	}
+}
+
+// validate_wasm runs `wasm-validate` over the emitted module at `out_name`,
+// constraining it to the enabled feature set so that any opcode past the floor
+// fails validation instead of passing under WABT's permissive defaults.
+fn (mut g Gen) validate_wasm(out_name string, feats []WasmFeature) {
+	exe := $if windows { 'wasm-validate.exe' } $else { 'wasm-validate' }
+	if rt := os.find_abs_path_of_executable(exe) {
+		mut p := os.new_process(rt)
+		mut vargs := wabt_validate_args(feats)
+		vargs << out_name
+		p.set_args(vargs)
+		p.set_redirect_stdio()
+		p.run()
+		err := p.stderr_slurp()
+		p.wait()
+		if p.code != 0 {
+			eprintln(err)
+			g.w_error('validation failed, this should not happen. report an issue with the above messages, the webassembly generated, and appropriate code.')
+		}
+	} else {
+		g.w_error('${exe} not found! Try installing WABT (WebAssembly Binary Toolkit). Run `./cmd/tools/install_wabt.vsh`, to download a prebuilt executable for your platform.')
+	}
+}
+
+// check_wasm_opt_version emits a soft warning if the resolved wasm-opt is older
+// than the version the toolchain pins. It never fails the build (a hard pin with
+// checksums belongs to the build/release pipeline, not the backend).
+fn (mut g Gen) check_wasm_opt_version(exe string) {
+	res := os.execute('${os.quoted_path(exe)} --version')
+	if res.exit_code != 0 {
+		return
+	}
+	// `wasm-opt --version` prints e.g. "wasm-opt version 108"
+	ver := res.output.all_after_last(' ').trim_space().int()
+	if ver != 0 && ver < wasm_opt_min_version {
+		eprintln('warning: wasm-opt version ${ver} is older than the pinned minimum (${wasm_opt_min_version}); `-prod` output may differ. Run `./cmd/tools/install_binaryen.vsh` to update.')
 	}
 }

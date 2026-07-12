@@ -3,12 +3,28 @@
 // that can be found in the LICENSE file.
 module http
 
+import time
+
+// --- HTTP/2 (RFC 7540 / 7541) file map -----------------------------------------
+// The h2 implementation is split by layer; h2_conn.v (this file) is the lead.
+//   h2_frame.v               binary framing layer (RFC 7540 §4, §6): parse/encode
+//   h2_hpack.v               HPACK header compression (RFC 7541)
+//   h2_hpack_static.v        HPACK static table data (RFC 7541 App. A)
+//   h2_hpack_huffman*.v      HPACK Huffman code + table (generated)
+//   h2_error.v               H2ErrorCode for RST_STREAM / GOAWAY
+//   h2_conn.v                synchronous single-stream client connection (this file)
+//   h2_mux_conn.v            multiplexed client: one connection, many concurrent streams
+//   h2_server.v              server-side connection driver
+//   h2_client.v              glue: net.http Request/Response <-> the h2 layer
+//   vschannel_h2_windows.c.v HTTP/2 over the Windows SChannel TLS transport
+// Each *.v has a sibling *_test.v with hermetic in-memory-transport tests.
+
 // This file implements a minimal HTTP/2 client connection (RFC 7540) on top of
 // the framing and HPACK layers. It is intentionally synchronous and handles a
 // single request at a time: it sends one request, then reads frames until that
 // stream completes, servicing connection-level frames (SETTINGS, PING,
-// WINDOW_UPDATE, GOAWAY) inline. Stream multiplexing and a background reader
-// are a follow-up; this is the smallest useful, testable client.
+// WINDOW_UPDATE, GOAWAY) inline. Concurrent multiplexing over one connection is
+// provided separately by h2_mux_conn.v; this remains the smallest synchronous client.
 
 // h2_client_preface is the fixed sequence a client sends to start an HTTP/2
 // connection, immediately followed by a SETTINGS frame (RFC 7540 Section 3.5).
@@ -73,6 +89,15 @@ pub:
 	// once that many body bytes have been received. The callback fires for the
 	// final chunk; no further callbacks fire after that.
 	stop_receiving_limit i64 = -1
+	// read_timeout, when > 0, bounds how long H2MuxConn.do() may wait for this
+	// request's response before failing it. Ignored by the one-shot H2Conn:
+	// its blocking transport read is already bounded by the underlying
+	// connection's own read_timeout, and any timeout there fails the whole
+	// (single-stream) connection directly. H2MuxConn's background reader, by
+	// contrast, treats every transport read timeout as a benign wake-up (it
+	// must survive one to keep servicing other streams), so nothing bounds an
+	// individual request's wait unless this field does.
+	read_timeout time.Duration
 }
 
 // H2ClientResponse is the result of an HTTP/2 request.
@@ -137,6 +162,15 @@ pub fn (mut c H2Conn) do(req H2ClientRequest) !H2ClientResponse {
 	for h in req.headers {
 		fields << h
 	}
+	// RFC 9113 §6.5.2: honor the peer's advisory SETTINGS_MAX_HEADER_LIST_SIZE —
+	// refuse an over-limit request locally instead of having the server reject it
+	// after the round trip.
+	if c.peer.max_header_list_size != max_u32 {
+		size := h2_header_list_size(fields)
+		if size > u64(c.peer.max_header_list_size) {
+			return error('h2: request header list (${size} bytes) exceeds peer SETTINGS_MAX_HEADER_LIST_SIZE (${c.peer.max_header_list_size})')
+		}
+	}
 	block := c.encoder.encode(fields)
 	has_body := req.body.len > 0
 	c.send_header_block(stream_id, block, !has_body)!
@@ -172,6 +206,7 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 	mut got_headers := false
 	mut body_so_far := u64(0)
 	mut body_expected := u64(0)
+	mut has_content_length := false
 	for {
 		frame := c.next_frame()!
 		if c.handle_conn_frame(frame)! {
@@ -183,13 +218,98 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 					continue
 				}
 				fragment := c.collect_header_block(frame.fragment, frame.end_headers, stream_id)!
-				for f in c.decoder.decode(fragment)! {
-					if f.name == ':status' {
-						resp.status = f.value.int()
-					} else if !f.name.starts_with(':') {
+				// Decode once — HPACK table state is advanced here.
+				decoded := c.decoder.decode(fragment)!
+				if got_headers {
+					// A second HEADERS block carries trailers, which MUST end the
+					// stream (RFC 9113 §8.1). Without END_STREAM read_response would
+					// loop forever waiting for a stream end that never comes; the mux
+					// path resets such a stream, so the synchronous client fails too.
+					if !frame.end_stream {
+						return error('h2: trailers HEADERS frame must carry END_STREAM')
+					}
+					for f in decoded {
+						// RFC 9113 §8.1: trailers MUST NOT contain pseudo-header fields;
+						// the §8.2 field-name rules apply. A malformed field makes the
+						// response malformed — fail the request (mirrors the mux reset).
+						if f.name.starts_with(':') {
+							return error('h2: malformed trailers: pseudo-header ${f.name}')
+						}
+						reason := h2_response_field_error(f.name)
+						if reason != '' {
+							return error('h2: malformed trailers: ${reason}')
+						}
 						resp.headers << f
-						if f.name == 'content-length' {
+					}
+					break
+				}
+				// First (interim or final) response HEADERS. Find :status. A
+				// response MUST carry a valid :status (RFC 9113 §8.3.1), and 101 is
+				// forbidden in HTTP/2 (§8.1.1).
+				mut status := 0
+				mut status_seen := false
+				for f in decoded {
+					if f.name == ':status' {
+						if f.value.len == 3 && all_digits(f.value) {
+							status = f.value.int()
+						} else {
+							return error('h2: malformed :status value: ${f.value}')
+						}
+						status_seen = true
+						break
+					}
+				}
+				if !status_seen || status < 100 || status > 599 || status == 101 {
+					// Missing / out-of-range / 101 status: fail rather than latch a
+					// bogus status or (for 101 or a sub-200 interim) loop forever
+					// waiting for a "final" HEADERS. Mirrors the mux path, which
+					// resets the stream with PROTOCOL_ERROR.
+					return error('h2: response with a missing or invalid :status: ${status}')
+				}
+				if status >= 100 && status < 200 {
+					// 1xx informational: discard and continue waiting for the
+					// final HEADERS block. Do not set got_headers here.
+					// A 1xx is not a final response and must not end the stream
+					// (RFC 9113 §8.1); END_STREAM here is malformed. Fail rather
+					// than loop forever waiting for a final response the stream can
+					// no longer send. (The mux path rejects this as a stream-level
+					// PROTOCOL_ERROR; the synchronous client has no other stream to
+					// keep alive, so a connection-level error is appropriate here.)
+					if frame.end_stream {
+						return error('h2: server set END_STREAM on a 1xx informational response')
+					}
+					continue
+				}
+				// Final response (status >= 200): populate, skipping pseudo-headers.
+				resp.status = status
+				mut seen_regular := false
+				mut seen_status := false
+				for f in decoded {
+					if f.name.starts_with(':') {
+						// RFC 9113 §8.3: in a response only :status is valid; pseudo-
+						// headers MUST precede regular fields and MUST NOT be duplicated.
+						// An undefined pseudo, :status after a regular field, or a
+						// second :status is malformed.
+						if f.name != ':status' || seen_regular || seen_status {
+							return error('h2: malformed response: invalid pseudo-header ${f.name}')
+						}
+						seen_status = true
+						continue
+					}
+					seen_regular = true
+					// RFC 9113 §8.2: reject uppercase/empty names and connection-specific
+					// fields rather than delivering a malformed response to the caller.
+					reason := h2_response_field_error(f.name)
+					if reason != '' {
+						return error('h2: malformed response: ${reason}')
+					}
+					resp.headers << f
+					if f.name == 'content-length' {
+						if all_digits(f.value) {
 							body_expected = f.value.u64()
+							has_content_length = true
+						} else {
+							return error('h2: malformed Content-Length: ${f.value}')
 						}
 					}
 				}
@@ -201,6 +321,12 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 			H2DataFrame {
 				if frame.stream_id != stream_id {
 					continue
+				}
+				if !got_headers {
+					// DATA before the response HEADERS is a protocol error
+					// (RFC 9113 §8.1); the mux path rejects it. Fail rather than
+					// deliver body bytes for a response that has no status yet.
+					return error('h2: DATA frame before response HEADERS')
 				}
 				if frame.data.len > 0 {
 					body_so_far += u64(frame.data.len)
@@ -220,9 +346,15 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 					if req.on_data != unsafe { nil } {
 						req.on_data(frame.data, body_so_far, body_expected, resp.status)!
 					}
-					// Replenish flow control so the peer keeps sending.
-					c.send_window_update(0, u32(frame.data.len))!
-					c.send_window_update(stream_id, u32(frame.data.len))!
+				}
+				// Replenish flow control using flow_size (full wire payload including
+				// padding), per RFC 7540 §6.9.1. Credit unconditionally when flow_size>0:
+				// a padding-only DATA frame (data.len==0, flow_size>0) still consumes the
+				// peer's send window and must be credited back. (Formerly inside the
+				// data.len>0 block — padding-only frames leaked window silently.)
+				if frame.flow_size > 0 {
+					c.send_window_update(0, u32(frame.flow_size))!
+					c.send_window_update(stream_id, u32(frame.flow_size))!
 				}
 				if frame.end_stream {
 					break
@@ -247,13 +379,27 @@ fn (mut c H2Conn) read_response(stream_id u32, req H2ClientRequest) !H2ClientRes
 					return error('h2: stream reset by peer (${h2_error_code_name(frame.error_code)})')
 				}
 			}
+			H2PushPromiseFrame {
+				// We sent SETTINGS_ENABLE_PUSH=0 in the preface; receiving
+				// PUSH_PROMISE is a connection error (RFC 7540 §8.2 PROTOCOL_ERROR).
+				// Ignoring it without decoding the embedded HPACK block would also
+				// desync the dynamic table.
+				return error('h2: unexpected PUSH_PROMISE (server push was disabled)')
+			}
 			else {
-				// PRIORITY / PUSH_PROMISE / stray CONTINUATION / unknown: ignore.
+				// PRIORITY / stray CONTINUATION / unknown: ignore.
 			}
 		}
 	}
 	if !got_headers {
 		return error('h2: stream closed without a response')
+	}
+	// Verify body completeness when Content-Length was advertised (RFC 7230 §3.3.2).
+	// Skip HEAD responses and 204/304 which carry no body by definition.
+	// Skip early-cancelled streams where we sent RST_STREAM ourselves.
+	body_allowed := req.method != 'HEAD' && resp.status != 204 && resp.status != 304
+	if has_content_length && body_allowed && !c.aborted && body_so_far != body_expected {
+		return error('h2: response body ${body_so_far} bytes does not match Content-Length ${body_expected}')
 	}
 	return resp
 }
@@ -272,6 +418,9 @@ fn (mut c H2Conn) collect_header_block(first []u8, end_headers bool, stream_id u
 				return error('h2: CONTINUATION on the wrong stream')
 			}
 			fragment << frame.fragment
+			if fragment.len > h2_max_recv_header_block {
+				return error('h2: response header block exceeds ${h2_max_recv_header_block} bytes')
+			}
 			if frame.end_headers {
 				break
 			}
@@ -288,7 +437,7 @@ fn (mut c H2Conn) handle_conn_frame(frame H2Frame) !bool {
 	match frame {
 		H2SettingsFrame {
 			if !frame.ack {
-				c.apply_settings(frame.settings)
+				c.apply_settings(frame.settings)!
 				c.send_frame(H2SettingsFrame{
 					ack: true
 				})!
@@ -305,11 +454,34 @@ fn (mut c H2Conn) handle_conn_frame(frame H2Frame) !bool {
 			return true
 		}
 		H2WindowUpdateFrame {
+			inc := frame.window_size_increment
 			if frame.stream_id == 0 {
-				c.send_window += i64(frame.window_size_increment)
+				if inc == 0 {
+					// RFC 7540 §6.9: connection-level zero increment is a connection
+					// error (PROTOCOL_ERROR).
+					return error('h2: connection WINDOW_UPDATE with zero increment (RFC 7540 §6.9 PROTOCOL_ERROR)')
+				}
+				new_window := c.send_window + i64(inc)
+				if new_window > i64(0x7fff_ffff) {
+					// RFC 7540 §6.9.1: exceeding 2^31-1 is a FLOW_CONTROL_ERROR.
+					return error('h2: connection flow-control window exceeded 2^31-1 (RFC 7540 §6.9.1)')
+				}
+				c.send_window = new_window
 			} else if frame.stream_id == c.cur_stream_id {
-				c.stream_send_window += i64(frame.window_size_increment)
+				if inc == 0 {
+					// RFC 7540 §6.9: stream-level zero increment is a stream error
+					// (RST_STREAM). H2Conn has no multi-stream tracking so we treat
+					// it as connection-fatal to avoid accepting a broken stream state.
+					return error('h2: stream WINDOW_UPDATE with zero increment (RFC 7540 §6.9 PROTOCOL_ERROR)')
+				}
+				new_window := c.stream_send_window + i64(inc)
+				if new_window > i64(0x7fff_ffff) {
+					return error('h2: stream flow-control window exceeded 2^31-1 (RFC 7540 §6.9.1)')
+				}
+				c.stream_send_window = new_window
 			}
+			// Zero-increment on an untracked stream: silently ignore — H2Conn
+			// cannot send RST_STREAM for a stream it does not own.
 			return true
 		}
 		H2GoawayFrame {
@@ -322,11 +494,19 @@ fn (mut c H2Conn) handle_conn_frame(frame H2Frame) !bool {
 	}
 }
 
-fn (mut c H2Conn) apply_settings(settings []H2Setting) {
+fn (mut c H2Conn) apply_settings(settings []H2Setting) ! {
 	for s in settings {
 		match s.id {
 			h2_settings_header_table_size {
 				c.peer.header_table_size = s.value
+				// RFC 7541 §6.3: SETTINGS_HEADER_TABLE_SIZE from the server
+				// constrains our ENCODER's dynamic table (outgoing request headers).
+				// Evict entries exceeding the new limit immediately so we never
+				// reference indices the peer has already evicted; the pending flag
+				// causes encode() to emit the required Dynamic Table Size Update
+				// prefix at the start of the next header block.
+				c.encoder.dyn_table.set_max_size(int(s.value))
+				c.encoder.pending_max_table_size = int(s.value)
 			}
 			h2_settings_enable_push {
 				c.peer.enable_push = s.value != 0
@@ -335,20 +515,36 @@ fn (mut c H2Conn) apply_settings(settings []H2Setting) {
 				c.peer.max_concurrent_streams = s.value
 			}
 			h2_settings_initial_window_size {
-				// RFC 7540 Section 6.9.2: a change to the initial window size
-				// retroactively adjusts the active stream's send window by the
-				// delta.
+				if s.value > u32(0x7fff_ffff) {
+					// RFC 7540 §6.5.3: values above 2^31-1 are a FLOW_CONTROL_ERROR.
+					return error('h2: peer SETTINGS_INITIAL_WINDOW_SIZE ${s.value} exceeds 2^31-1')
+				}
+				// RFC 7540 §6.9.2: a change to the initial window size
+				// retroactively adjusts the active stream's send window by the delta.
+				// Validate before mutating so a rejected SETTINGS leaves state consistent.
 				delta := i64(s.value) - i64(c.peer.initial_window_size)
+				new_window := c.stream_send_window + delta
+				if new_window > i64(0x7fff_ffff) {
+					// RFC 7540 §6.9.2: if applying the delta pushes the stream
+					// window above 2^31-1 it is a FLOW_CONTROL_ERROR.
+					return error('h2: SETTINGS_INITIAL_WINDOW_SIZE delta overflows stream send window')
+				}
 				c.peer.initial_window_size = s.value
-				c.stream_send_window += delta
+				c.stream_send_window = new_window
 			}
 			h2_settings_max_frame_size {
+				if s.value < h2_default_max_frame_size || s.value > u32(0x00ff_ffff) {
+					// RFC 7540 §6.5.2: valid range is 2^14..2^24-1. Values outside
+					// this range are a connection SETTINGS_ERROR; a zero value would
+					// also make our HEADERS/DATA chunk step zero and hang senders.
+					return error('h2: peer SETTINGS_MAX_FRAME_SIZE ${s.value} out of range [16384, 16777215]')
+				}
 				c.peer.max_frame_size = s.value
 			}
 			h2_settings_max_header_list_size {
 				c.peer.max_header_list_size = s.value
 			}
-			else {} // unknown settings are ignored (RFC 7540 Section 6.5.2)
+			else {} // unknown settings are ignored (RFC 7540 §6.5.2)
 		}
 	}
 }
@@ -447,8 +643,11 @@ fn (mut c H2Conn) next_frame() !H2Frame {
 	return c.read_frame()!
 }
 
-// read_frame reads and decodes one frame from the transport, enforcing our
-// advertised max frame size.
+// read_frame reads and decodes one frame from the transport, enforcing the
+// receive limit we advertised to the peer in our own SETTINGS. This is
+// h2_default_max_frame_size, which H2Conn always sends and never renegotiates.
+// (c.peer.max_frame_size is the peer's receive limit — our outbound cap —
+// and must not be used here.)
 fn (mut c H2Conn) read_frame() !H2Frame {
 	c.fill_at_least(h2_frame_header_len)!
 	header := h2_parse_frame_header(c.rbuf)!

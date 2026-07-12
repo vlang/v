@@ -23,7 +23,16 @@ fn parse_cast(ch u8) ! {
 	}
 }
 
+fn parse_high_byte(ch u8) {
+	match ch {
+		`\xff` {}
+		255 {}
+		else {}
+	}
+}
+
 fn main() {
 	parse(`<`)!
 	parse_cast(`\n`)!
+	parse_high_byte(255)
 }

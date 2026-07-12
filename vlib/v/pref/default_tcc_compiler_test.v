@@ -134,6 +134,31 @@ fn test_try_to_use_tcc_by_default_skips_tcc_for_prealloc() {
 	assert prefs.ccompiler == ''
 }
 
+fn test_try_to_use_tcc_by_default_skips_bundled_tcc_on_macos() {
+	$if !macos {
+		return
+	}
+	test_root := os.join_path(os.vtmp_dir(), 'v_pref_default_tcc_compiler_test')
+	prepare_test_tcc_binary(test_root, 'exit 0')
+	fake_vexe := os.join_path(test_root, 'v')
+	old_vexe := os.getenv('VEXE')
+	os.setenv('VEXE', fake_vexe, true)
+	defer {
+		if old_vexe == '' {
+			os.unsetenv('VEXE')
+		} else {
+			os.setenv('VEXE', old_vexe, true)
+		}
+		os.rmdir_all(test_root) or {}
+	}
+	mut prefs := Preferences{
+		vroot:    test_root
+		out_name: os.join_path(test_root, 'v')
+	}
+	prefs.try_to_use_tcc_by_default()
+	assert prefs.ccompiler == ''
+}
+
 fn test_usable_system_tcc_compiler_prefers_termux_tcc_from_path() {
 	$if windows {
 		return

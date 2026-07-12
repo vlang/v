@@ -48,6 +48,12 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 			continue
 		}
 		for val in header.custom_values(key) {
+			// RFC 9113 §8.2.2: TE may be sent on an HTTP/2 request, but MUST NOT
+			// carry any value other than 'trailers'. Drop a non-conformant TE
+			// rather than generate a malformed request.
+			if lkey == 'te' && val.trim_space().to_lower() != 'trailers' {
+				continue
+			}
 			extra << H2HeaderField{lkey, val}
 		}
 	}

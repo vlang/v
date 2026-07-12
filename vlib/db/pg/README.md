@@ -124,6 +124,24 @@ When you use `pg.connect(pg.Config{ ... })`, empty `Config` fields are omitted f
 generated libpq connection string. That lets libpq defaults, `PGPASSWORD`, and `.pgpass`
 apply when you do not set those fields in code.
 
+`pg.Config` also exposes libpq SSL/TLS connection keywords:
+
+```v ignore
+mut db := pg.connect(pg.Config{
+	host:     'db.example.com'
+	user:     'app'
+	password: 'secret'
+	dbname:   'prod'
+	ssl_mode: .verify_full
+	ssl_ca:   '/etc/ssl/certs/root-ca.pem'
+	ssl_cert: '/etc/ssl/certs/client.pem'
+	ssl_key:  '/etc/ssl/private/client.key'
+})!
+```
+
+The SSL fields map to libpq's `sslmode`, `sslcert`, `sslkey`, `sslrootcert`, and
+`sslcrl` connection parameters.
+
 ## Thread Safety & Connection Pool
 
 `pg.connect()` returns a `&DB` that is safe to share across V threads. Internally
@@ -158,6 +176,16 @@ mut tx := db.begin()!
 tx.exec('UPDATE accounts SET balance = balance - 100 WHERE id = 1')!
 tx.exec('UPDATE accounts SET balance = balance + 100 WHERE id = 2')!
 tx.commit()!
+```
+
+If you need to manage pooling outside `db.pg`, use `pg.connect_direct()` to open one
+physical connection without the built-in pool:
+
+```v ignore
+mut conn := pg.connect_direct(pg.Config{ host: 'localhost', dbname: 'app' })!
+defer { conn.close() or {} }
+
+rows := conn.exec('select 1')!
 ```
 
 ## Using Parameterized Queries

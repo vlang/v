@@ -28,7 +28,7 @@ pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) str
 	for search_path in mod_paths {
 		try_path := os.join_path_single(search_path, mod_path)
 		if os.is_dir(try_path) {
-			if m1 := mod_path_to_full_name(pref_, mod, try_path) {
+			if m1 := import_path_to_full_name(pref_, mod, try_path) {
 				trace_qualify(@FN, mod, file_path, 'import_res 1', m1, try_path)
 				// >  qualify_import: term | file_path: /v/vls/server/diagnostics.v | => import_res 1: term  ; /v/cleanv/vlib/term
 				return m1
@@ -41,7 +41,7 @@ pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) str
 	} else {
 		os.join_path_single(os.getwd(), file_path)
 	}
-	if m1 := mod_path_to_full_name(pref_, mod, abs_file_path) {
+	if m1 := import_path_to_full_name(pref_, mod, abs_file_path) {
 		trace_qualify(@FN, mod, file_path, 'import_res 2', m1, abs_file_path)
 		// >  qualify_module: analyzer           | file_path: /v/vls/analyzer/store.v  | =>   module_res 2: analyzer           ; clean_file_path - getwd == mod
 		// >  qualify_import: analyzer.depgraph  | file_path: /v/vls/analyzer/store.v  | =>   import_res 2: analyzer.depgraph  ; /v/vls/analyzer/store.v
@@ -116,6 +116,14 @@ pub fn qualify_module(pref_ &pref.Preferences, mod string, file_path string) str
 // 2022-01-30 it leads to path differences, and the / version on windows triggers a module lookip bug,
 // 2022-01-30 leading to completely different errors)
 fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !string {
+	return mod_path_to_full_name_with_options(pref_, mod, path, false)
+}
+
+fn import_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !string {
+	return mod_path_to_full_name_with_options(pref_, mod, path, true)
+}
+
+fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path string, allow_shorter_name bool) !string {
 	// TODO: explore using `pref.lookup_path` & `os.vmodules_paths()`
 	// absolute paths instead of 'vlib' & '.vmodules'
 	mut vmod_folders := ['vlib', '.vmodules', 'modules']
@@ -169,7 +177,7 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 						relative_parts := real_try_path.all_after(prefix).split(os.path_separator)
 						mod_full_name := normalize_base_url_mod_name(relative_parts.join('.'),
 							try_path)
-						if mod_full_name.len < mod.len {
+						if !allow_shorter_name && mod_full_name.len < mod.len {
 							return mod
 						}
 						if !module_name_has_empty_part(mod_full_name) {
@@ -204,7 +212,7 @@ fn mod_path_to_full_name(pref_ &pref.Preferences, mod string, path string) !stri
 				if last_v_mod > -1 {
 					mod_full_name := normalize_base_url_mod_name(try_path_parts[last_v_mod..].join('.'),
 						try_path)
-					if mod_full_name.len < mod.len {
+					if !allow_shorter_name && mod_full_name.len < mod.len {
 						return mod
 					}
 					if !module_name_has_empty_part(mod_full_name) {
@@ -301,8 +309,10 @@ fn project_root_vmod_folder(pref_ &pref.Preferences) string {
 // in a shared temp location, not to the current compilation.
 fn is_unrelated_vmod_in_temp_dir(vmod_folder string, rel_parts []string) bool {
 	temp_dir := os.real_path(os.temp_dir())
-	is_in_temp := vmod_folder == temp_dir || vmod_folder.starts_with(temp_dir + os.path_separator)
-		|| temp_dir.starts_with(vmod_folder + os.path_separator)
+	normalized_vmod_folder := os.real_path(vmod_folder)
+	is_in_temp := normalized_vmod_folder == temp_dir
+		|| normalized_vmod_folder.starts_with(temp_dir + os.path_separator)
+		|| temp_dir.starts_with(normalized_vmod_folder + os.path_separator)
 	if !is_in_temp {
 		return false
 	}

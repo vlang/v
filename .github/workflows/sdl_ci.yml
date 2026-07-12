@@ -7,6 +7,7 @@ on:
       - master
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - 'cmd/tools/vshader.v'
@@ -15,6 +16,7 @@ on:
   pull_request:
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - 'thirdparty/**'
       - 'cmd/tools/builders/**.v'
       - 'cmd/tools/vshader.v'
@@ -32,7 +34,7 @@ jobs:
     env:
       VFLAGS: -cc tcc
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make && sudo ./v symlink

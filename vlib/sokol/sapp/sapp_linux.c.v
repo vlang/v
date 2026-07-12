@@ -461,15 +461,28 @@ const map_private = 2
 #include <X11/extensions/XInput2.h>
 #include <X11/Xcursor/Xcursor.h>
 
+// X11 C typedefs are unsigned long based. Define them locally so V1 can
+// type-check scalar operations while keeping the public aliases compatible
+// with the shared x11 modules.
+pub type C.XID = u64
+pub type C.Atom = C.XID
+pub type C.Window = C.XID
+pub type C.Colormap = C.XID
+pub type C.Cursor = C.XID
+pub type C.KeySym = C.XID
+pub type C.Time = C.XID
+pub type C.VisualID = C.XID
+
 // X11 types
-pub type XID = u64
-pub type Atom = u64
-pub type Window = u64
-pub type Colormap = u64
-pub type Cursor = u64
-pub type KeySym = u64
-pub type Time = u64
-pub type VisualID = u64
+pub type XID = C.XID
+pub type Atom = C.Atom
+pub type Window = C.Window
+pub type Colormap = C.Colormap
+pub type Cursor = C.Cursor
+pub type KeySym = C.KeySym
+pub type Time = C.Time
+pub type VisualID = C.VisualID
+pub type XlibULong = C.XID
 
 // X11 types are defined by X11 headers (#preinclude above)
 // Forward declarations for V type checking only
@@ -845,7 +858,7 @@ fn C.XSetWMProtocols(display &C.Display, window Window, protocols &Atom, count i
 fn C.XSetWMNormalHints(display &C.Display, window Window, hints &C.XSizeHints) int
 fn C.XAllocSizeHints() &C.XSizeHints
 fn C.XGetWindowAttributes(display &C.Display, window Window, attrs &C.XWindowAttributes) int
-fn C.XGetWindowProperty(display &C.Display, window Window, property Atom, long_offset i64, long_length i64, delete int, req_type Atom, actual_type &Atom, actual_format &int, nitems &u64, bytes_after &u64, prop &&&u8) int
+fn C.XGetWindowProperty(display &C.Display, window Window, property Atom, long_offset i64, long_length i64, delete int, req_type Atom, actual_type &Atom, actual_format &int, nitems &XlibULong, bytes_after &XlibULong, prop &&u8) int
 fn C.XChangeProperty(display &C.Display, window Window, property Atom, @type Atom, format int, mode int, data &u8, nelements int) int
 fn C.Xutf8SetWMProperties(display &C.Display, window Window, window_name &char, icon_name &char, argv &&char, argc int, normal_hints voidptr, wm_hints voidptr, class_hints voidptr)
 fn C.XSetSelectionOwner(display &C.Display, selection Atom, owner Window, time Time)
@@ -913,6 +926,9 @@ fn C.strncmp(s1 &char, s2 &char, n usize) int
 const x_false = 0
 const x_true = 1
 const x_none = Atom(0)
+const x_window_none = Window(0)
+const x_colormap_none = Colormap(0)
+const x_cursor_none = Cursor(0)
 const xa_atom = Atom(4)
 const xa_cardinal = Atom(6)
 const alloc_none = 0

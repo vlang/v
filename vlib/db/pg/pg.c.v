@@ -112,8 +112,21 @@ pub mut:
 
 pub struct Result {
 pub:
-	cols map[string]int
-	rows []Row
+	cols  map[string]int
+	names []string
+	rows  []Row
+}
+
+// SslMode controls PostgreSQL SSL/TLS negotiation through libpq's `sslmode`
+// connection keyword.
+pub enum SslMode {
+	unset
+	disable
+	allow
+	prefer
+	require
+	verify_ca
+	verify_full
 }
 
 // Notification represents a notification received from the server via LISTEN/NOTIFY
@@ -132,6 +145,12 @@ pub:
 	username string
 	password string
 	dbname   string
+	// SSL/TLS configuration, passed through to libpq connection keywords.
+	ssl_mode SslMode
+	ssl_key  string // client key file path, maps to sslkey
+	ssl_cert string // client certificate file path, maps to sslcert
+	ssl_ca   string // CA certificate file path, maps to sslrootcert
+	ssl_crl  string // certificate revocation list file path, maps to sslcrl
 }
 
 //
@@ -272,6 +291,18 @@ fn escape_conninfo_value(value string) string {
 	return escaped.bytestr()
 }
 
+fn (mode SslMode) conninfo_value() string {
+	return match mode {
+		.unset { '' }
+		.disable { 'disable' }
+		.allow { 'allow' }
+		.prefer { 'prefer' }
+		.require { 'require' }
+		.verify_ca { 'verify-ca' }
+		.verify_full { 'verify-full' }
+	}
+}
+
 // connection_user returns the configured username, accepting both `user` and `username`.
 pub fn (config Config) connection_user() !string {
 	if config.user != '' && config.username != '' && config.user != config.username {
@@ -284,7 +315,7 @@ pub fn (config Config) connection_user() !string {
 }
 
 fn (config Config) conninfo() !string {
-	mut parts := []string{cap: 5}
+	mut parts := []string{cap: 10}
 	if config.host != '' {
 		parts << 'host=${escape_conninfo_value(config.host)}'
 	}
@@ -300,6 +331,21 @@ fn (config Config) conninfo() !string {
 	}
 	if config.password != '' {
 		parts << 'password=${escape_conninfo_value(config.password)}'
+	}
+	if config.ssl_mode != .unset {
+		parts << 'sslmode=${config.ssl_mode.conninfo_value()}'
+	}
+	if config.ssl_cert != '' {
+		parts << 'sslcert=${escape_conninfo_value(config.ssl_cert)}'
+	}
+	if config.ssl_key != '' {
+		parts << 'sslkey=${escape_conninfo_value(config.ssl_key)}'
+	}
+	if config.ssl_ca != '' {
+		parts << 'sslrootcert=${escape_conninfo_value(config.ssl_ca)}'
+	}
+	if config.ssl_crl != '' {
+		parts << 'sslcrl=${escape_conninfo_value(config.ssl_crl)}'
 	}
 	return parts.join(' ')
 }
@@ -399,7 +445,7 @@ fn (mut c Conn) physical_close() {
 	}
 }
 
-fn res_to_rows(res voidptr) []db.pg.Row {
+fn res_to_rows(res voidptr) []Row {
 	nr_rows := C.PQntuples(res)
 	nr_cols := C.PQnfields(res)
 
@@ -443,14 +489,16 @@ fn res_to_result(res voidptr) Result {
 	nr_cols := C.PQnfields(res)
 
 	mut cols := map[string]int{}
+	mut names := []string{}
+	for j in 0 .. nr_cols {
+		field_name := unsafe { cstring_to_vstring(C.PQfname(res, j)) }
+		cols[field_name] = j
+		names << field_name
+	}
 	mut rows := []Row{}
 	for i in 0 .. nr_rows {
 		mut row := Row{}
 		for j in 0 .. nr_cols {
-			if i == 0 {
-				field_name := unsafe { cstring_to_vstring(C.PQfname(res, j)) }
-				cols[field_name] = j
-			}
 			if C.PQgetisnull(res, i, j) != 0 {
 				row.vals << none
 			} else {
@@ -462,7 +510,7 @@ fn res_to_result(res voidptr) Result {
 	}
 
 	C.PQclear(res)
-	return Result{cols, rows}
+	return Result{cols, names, rows}
 }
 
 // close releases this conn back to its pool. Safe to call more than once:
@@ -514,12 +562,12 @@ pub fn (c &Conn) q_string(query string) !string {
 
 // q_strings submit a command to the database server and
 // returns the resulting row set. Alias of `exec`
-pub fn (c &Conn) q_strings(query string) ![]db.pg.Row {
+pub fn (c &Conn) q_strings(query string) ![]Row {
 	return c.exec(query)
 }
 
 // exec submits a command to the database server and wait for the result, returning an error on failure and a row set on success
-pub fn (c &Conn) exec(query string) ![]db.pg.Row {
+pub fn (c &Conn) exec(query string) ![]Row {
 	c.ensure_active()!
 	res := C.PQexec(c.conn, &char(query.str))
 	return c.handle_error_or_rows(res, 'exec')
@@ -539,7 +587,7 @@ pub fn (c &Conn) exec_result(query string) !Result {
 	return c.handle_error_or_result(res, 'exec_result')
 }
 
-fn rows_first_or_empty(rows []db.pg.Row) !Row {
+fn rows_first_or_empty(rows []Row) !Row {
 	if rows.len == 0 {
 		return error('no row')
 	}
@@ -560,7 +608,7 @@ pub fn (c &Conn) exec_one(query string) !Row {
 }
 
 // exec_param_many executes a query with the parameters provided as ($1), ($2), ($n)
-pub fn (c &Conn) exec_param_many(query string, params []string) ![]db.pg.Row {
+pub fn (c &Conn) exec_param_many(query string, params []string) ![]Row {
 	c.ensure_active()!
 	unsafe {
 		mut param_vals := []&char{len: params.len}
@@ -588,12 +636,12 @@ pub fn (c &Conn) exec_param_many_result(query string, params []string) !Result {
 }
 
 // exec_param executes a query with 1 parameter ($1), and returns either an error on failure, or the full result set on success
-pub fn (c &Conn) exec_param(query string, param string) ![]db.pg.Row {
+pub fn (c &Conn) exec_param(query string, param string) ![]Row {
 	return c.exec_param_many(query, [param])
 }
 
 // exec_param2 executes a query with 2 parameters ($1) and ($2), and returns either an error on failure, or the full result set on success
-pub fn (c &Conn) exec_param2(query string, param string, param2 string) ![]db.pg.Row {
+pub fn (c &Conn) exec_param2(query string, param string, param2 string) ![]Row {
 	return c.exec_param_many(query, [param, param2])
 }
 
@@ -607,7 +655,7 @@ pub fn (c &Conn) prepare(name string, query string, num_params int) ! {
 }
 
 // exec_prepared sends a request to execute a prepared statement with given parameters, and waits for the result. The number of parameters must match with the parameters declared in the prepared statement.
-pub fn (c &Conn) exec_prepared(name string, params []string) ![]db.pg.Row {
+pub fn (c &Conn) exec_prepared(name string, params []string) ![]Row {
 	c.ensure_active()!
 	unsafe {
 		mut param_vals := []&char{len: params.len}
@@ -645,7 +693,7 @@ fn (c &Conn) mark_bad_if_disconnected() {
 	}
 }
 
-fn (c &Conn) handle_error_or_rows(res voidptr, elabel string) ![]db.pg.Row {
+fn (c &Conn) handle_error_or_rows(res voidptr, elabel string) ![]Row {
 	e := unsafe { C.PQerrorMessage(c.conn).vstring() }
 	if e != '' {
 		C.PQclear(res)
@@ -761,7 +809,7 @@ pub fn (c &Conn) copy_expert(query string, mut file io.ReaderWriter) !int {
 	return 0
 }
 
-fn pg_stmt_worker(c &Conn, query string, data orm.QueryData, where orm.QueryData) ![]db.pg.Row {
+fn pg_stmt_worker(c &Conn, query string, data orm.QueryData, where orm.QueryData) ![]Row {
 	mut param_types := []u32{}
 	mut param_vals := []&char{}
 	mut param_lens := []int{}

@@ -6,11 +6,13 @@ on:
       - master
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - '**/toml_ci.yml'
       - '!**.md'
   pull_request:
     paths:
       - 'vlib/**'
+      - '!vlib/v3/**'
       - '**/toml_ci.yml'
       - '!**.md'
 
@@ -23,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Build V
         run: make -j4 && ./v symlink
       - name: Install dependencies

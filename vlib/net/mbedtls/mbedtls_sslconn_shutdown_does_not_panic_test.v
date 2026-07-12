@@ -20,6 +20,20 @@ fn server() ! {
 	}
 	eprintln('[+] Accepted connection')
 	cli.shutdown()!
+	// A second shutdown must be a harmless no-op (idempotent): SSLConn.shutdown
+	// sets `opened = false` BEFORE freeing, so a second call hits the early
+	// `if !s.opened` return instead of a second pass through the mbedtls frees.
+	// The guard's real purpose is preventing the double-free that the
+	// worker-defer-vs-close_idle race would otherwise cause (a double mbedtls_*_free
+	// aborts the process — or, on a forgiving allocator, silently corrupts the heap
+	// without erroring). Asserting merely that *an* error was returned would not
+	// distinguish the idempotent no-op from a second free that happened to report
+	// something; assert the specific "connection was not open" sentinel so the test
+	// proves the early-return path was taken.
+	mut second_err := ''
+	cli.shutdown() or { second_err = err.msg() }
+	assert second_err.contains('connection was not open'), 'second shutdown must hit the idempotent !opened early-return (sentinel "connection was not open"), proving no second free; got: ${second_err}'
+	eprintln('[+] Second shutdown was a clean no-op')
 }
 
 @[if network ?]

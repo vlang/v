@@ -218,6 +218,9 @@ fn maybe_delegate_to_v2(command string, prefs &pref.Preferences) {
 		eprintln('v: `-v2`/`-ownership` currently support direct compilation only. Use `v -v2 hello.v` or `v -ownership module_dir`.')
 		exit(1)
 	}
+	if is_ownership && !prefs.use_v2 {
+		launch_v3_ownership_compiler(prefs.is_verbose, os.args[1..].filter(it != '-ownership'))
+	}
 	launch_v2_compiler(prefs.is_verbose, os.args[1..].filter(it != '-v2'), is_ownership)
 }
 
@@ -226,6 +229,48 @@ fn is_v2_relevant_command(command string, prefs &pref.Preferences) bool {
 		return false
 	}
 	return prefs.path == command && (command.ends_with('.v') || os.exists(command))
+}
+
+@[noreturn]
+fn launch_v3_ownership_compiler(is_verbose bool, args []string) {
+	vexe := pref.vexe_path()
+	vroot := os.dir(vexe)
+	util.set_vroot_folder(vroot)
+	tool_name := 'v3_ownership'
+	v3_main_source := os.join_path(vroot, 'vlib', 'v3', 'v3.v')
+	v3_src_dir := os.join_path(vroot, 'vlib', 'v3')
+	v3_exe := cached_v3_ownership_executable_path(vroot)
+	v3_exe_dir := os.dir(v3_exe)
+	os.mkdir_all(v3_exe_dir) or {
+		eprintln('cannot create `${v3_exe_dir}`: ${err}')
+		exit(1)
+	}
+	if util.should_recompile_tool(vexe, v3_src_dir, tool_name, v3_exe) {
+		compilation_command := '${os.quoted_path(vexe)} -gc none -d ownership -o ${os.quoted_path(v3_exe)} ${os.quoted_path(v3_main_source)}'
+		if is_verbose {
+			println('Compiling ${tool_name} with: "${compilation_command}"')
+		}
+		current_work_dir := os.getwd()
+		os.chdir(vroot) or {}
+		tool_compilation := os.execute(compilation_command)
+		os.chdir(current_work_dir) or {}
+		if tool_compilation.exit_code != 0 {
+			eprintln('cannot compile `${v3_main_source}`: ${tool_compilation.exit_code}\n${tool_compilation.output}')
+			exit(1)
+		}
+	}
+	mut forwarded_args := ['-ownership']
+	for arg in args {
+		forwarded_args << arg
+	}
+	quoted_args := forwarded_args.map(os.quoted_path(it)).join(' ')
+	if is_verbose {
+		println('Launching ${tool_name}: ${os.quoted_path(v3_exe)} ${quoted_args}')
+	}
+	os.setenv('VCHILD', 'true', true)
+	os.setenv('VEXE', os.real_path(vexe), true)
+	res := os.system('${os.quoted_path(v3_exe)} ${quoted_args}')
+	exit(res)
 }
 
 @[noreturn]
@@ -288,6 +333,12 @@ fn cached_v2_executable_path(vroot string, is_ownership bool) string {
 	exe_name := if is_ownership { 'v2_ownership' } else { 'v2' }
 	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v2', vroot_hash,
 		exe_name))
+}
+
+fn cached_v3_ownership_executable_path(vroot string) string {
+	vroot_hash := hash.sum64_string(os.real_path(vroot), 0).hex_full()
+	return util.path_of_executable(os.join_path(os.vtmp_dir(), 'v', 'delegated_v3', vroot_hash,
+		'v3_ownership'))
 }
 
 fn rebuild(prefs &pref.Preferences) {

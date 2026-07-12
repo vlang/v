@@ -41,6 +41,22 @@ fn test_to_h2_request_strips_hop_by_hop_and_host() {
 	assert !h2req.headers.any(it.name == 'transfer-encoding')
 }
 
+fn test_to_h2_request_te_only_trailers() {
+	// RFC 9113 §8.2.2: TE may be sent on an HTTP/2 request but only with the
+	// value 'trailers'; any other value must be dropped.
+	req := Request{}
+	mut h := new_header()
+	h.add_custom('TE', 'gzip') or {}
+	h2req := req.to_h2_request(.get, 'h.example', '/', '', h)
+	assert !h2req.headers.any(it.name == 'te'), 'a non-trailers TE must be dropped'
+
+	mut h2 := new_header()
+	h2.add_custom('TE', 'trailers') or {}
+	h2req2 := req.to_h2_request(.get, 'h.example', '/', '', h2)
+	te := h2req2.headers.filter(it.name == 'te')
+	assert te.len == 1 && te[0].value == 'trailers', 'te: trailers must be kept'
+}
+
 fn test_to_h2_request_collapses_cookies() {
 	mut h := new_header()
 	h.add(.cookie, 'a=1')

@@ -90,6 +90,9 @@ fn (mut g Gen) prepare_array_init_exprs(exprs []ast.Expr, expr_types []ast.Type,
 		g.write(' ')
 	} else {
 		g.write(stmt_str)
+		if g.pref.is_vlines && stmt_str.contains('#line') {
+			g.writeln('')
+		}
 	}
 	return prepared
 }
@@ -1226,6 +1229,17 @@ fn (mut g Gen) gen_array_sorted(node ast.CallExpr) {
 	g.writeln(';')
 }
 
+// array_sort_expr_key returns a C-identifier-safe, lossless key for a sort expression.
+fn array_sort_expr_key(expr_key string) string {
+	hex_digits := '0123456789abcdef'
+	mut b := strings.new_builder(expr_key.len * 2)
+	for ch in expr_key.bytes() {
+		b.write_u8(hex_digits[int(ch >> 4)])
+		b.write_u8(hex_digits[int(ch & 0x0f)])
+	}
+	return b.str()
+}
+
 // `users.sort(a.age < b.age)`
 fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// println('filter s="${s}"')
@@ -1248,7 +1262,8 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// `users.sort(a.age > b.age)`
 	// Generate a comparison function for a custom type
 	elem_stype := g.styp(elem_type)
-	mut compare_fn := 'compare_${g.unique_file_path_hash}_${elem_stype.replace('*', '_ptr')}'
+	mut compare_fn := 'compare_${g.stable_type_symbol_hash(elem_type)}_${elem_stype.replace('*',
+		'_ptr')}'
 	mut comparison_type := g.unwrap(ast.void_type)
 	mut left_expr, mut right_expr := '', ''
 	mut use_lambda := false
@@ -1256,13 +1271,6 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 	// the only argument can only be an infix expression like `a < b` or `b.field > a.field`
 	if node.args.len == 0 {
 		comparison_type = g.unwrap(elem_type.set_nr_muls(0))
-		rlock g.array_sort_fn {
-			if compare_fn in g.array_sort_fn {
-				g.gen_array_sort_call(node,
-					g.ensure_array_sort_qsort_adapter(compare_fn, elem_type), left_is_array)
-				return
-			}
-		}
 		left_expr = '*a'
 		right_expr = '*b'
 	} else if node.args[0].expr is ast.LambdaExpr {
@@ -1285,22 +1293,17 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 		}
 		comparison_type = g.unwrap(comparison_left_type.set_nr_muls(0))
 		left_name := infix_expr.left.str()
+		expr_key := '${left_name}\n${infix_expr.op.str()}\n${infix_expr.right.str()}'
 		if left_name.len > 1 {
 			compare_fn += '_by' +
 				left_name[1..].replace_each(['.', '_', '[', '_', ']', '_', "'", '_', '"', '_', '(', '', ')', '', ',', '', '/', '_'])
 		}
+		compare_fn += '_expr_${array_sort_expr_key(expr_key)}'
 		// is_reverse is `true` for `.sort(a > b)` and `.sort(b < a)`
 		is_reverse := (left_name.starts_with('a') && infix_expr.op == .gt)
 			|| (left_name.starts_with('b') && infix_expr.op == .lt)
 		if is_reverse {
 			compare_fn += '_reverse'
-		}
-		rlock g.array_sort_fn {
-			if compare_fn in g.array_sort_fn {
-				g.gen_array_sort_call(node,
-					g.ensure_array_sort_qsort_adapter(compare_fn, elem_type), left_is_array)
-				return
-			}
 		}
 		if left_name.starts_with('a') != is_reverse {
 			left_expr = g.expr_string(infix_expr.left)
@@ -1325,8 +1328,16 @@ fn (mut g Gen) gen_array_sort(node ast.CallExpr) {
 
 	// Register a new custom `compare_xxx` function for qsort()
 	// TODO: move to checker
+	mut already_generated := false
 	lock g.array_sort_fn {
-		g.array_sort_fn << compare_fn
+		already_generated = compare_fn in g.array_sort_fn
+		if !already_generated {
+			g.array_sort_fn << compare_fn
+		}
+	}
+	if already_generated {
+		g.gen_array_sort_call(node, '${compare_fn}_qsort_adapter', left_is_array)
+		return
 	}
 
 	stype_arg := g.styp(elem_type)
@@ -1377,13 +1388,15 @@ fn (g &Gen) array_sort_fn_visibility() string {
 
 fn (mut g Gen) ensure_array_sort_qsort_adapter(compare_fn string, elem_type ast.Type) string {
 	qsort_compare_fn := '${compare_fn}_qsort_adapter'
-	rlock g.array_sort_wrappers {
-		if qsort_compare_fn in g.array_sort_wrappers {
-			return qsort_compare_fn
+	mut already_generated := false
+	lock g.array_sort_wrappers {
+		already_generated = qsort_compare_fn in g.array_sort_wrappers
+		if !already_generated {
+			g.array_sort_wrappers << qsort_compare_fn
 		}
 	}
-	lock g.array_sort_wrappers {
-		g.array_sort_wrappers << qsort_compare_fn
+	if already_generated {
+		return qsort_compare_fn
 	}
 	elem_stype := g.styp(elem_type)
 	g.sort_fn_definitions.writeln('${g.array_sort_fn_visibility()}int ${qsort_compare_fn}(const void* a, const void* b) {')

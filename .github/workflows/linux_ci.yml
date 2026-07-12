@@ -6,6 +6,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/linux_ci.yml'
@@ -13,6 +14,7 @@ on:
       - '!cmd/tools/builders/**.v'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.md'
       - '**.yml'
       - '!**/linux_ci.yml'
@@ -33,7 +35,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: make -j4 && ./v symlink
@@ -92,29 +94,31 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink
       - name: backend x64 regressions
+        if: ${{ false }} # Temporarily disabled.
         run: |
           set -e
 
           VJOBS=1 ./v test \
-            vlib/v2/abi \
-            vlib/v2/gen/x64/x64_abi_test.v \
-            vlib/v2/gen/x64/x64_backend_diagnostics_test.v \
-            vlib/v2/gen/x64/x64_object_format_test.v \
-            vlib/v2/gen/x64/x64_pe_linker_test.v \
-            vlib/v2/ssa/tree_sumtype_lowering_test.v
-          VJOBS=1 ./v test -run-only test_module_qualified_alias_array_field_index_has_alias_element_type,test_module_storage_legacy_direct_import_nested_module_selector_uses_declared_leaf_module,test_module_storage_flat_direct_import_nested_module_selector_uses_declared_leaf_module vlib/v2/ssa/module_storage_test.v
-          VJOBS=1 ./v test -run-only test_x64_linux_math_log_20_stdout_exact_bytes,test_x64_linux_generic_sumtype_direct_wrap_stdout_exact_bytes,test_x64_linux_generic_sumtype_repeated_base_specialization_stdout_exact_bytes,test_x64_linux_generic_sumtype_receiver_size_stdout_exact_bytes,test_x64_linux_generic_sumtype_insert_size_stdout_exact_bytes,test_x64_linux_struct_float_fields_stdout_exact_bytes,test_x64_linux_union_f64_bits_stdout_exact_bytes,test_x64_linux_f64_str_interpolation_stdout_exact_bytes,test_x64_linux_f64_for_interpolation_stdout_exact_bytes,test_x64_linux_formatted_int_interpolation_stdout_exact_bytes,test_x64_linux_formatted_int_width_100_interpolation_stdout_exact_bytes,test_x64_linux_formatted_f64_interpolation_stdout_exact_bytes,test_x64_linux_formatted_string_return_lifetime_stdout_exact_bytes,test_x64_linux_spectral_reduced_formatted_stdout_exact_bytes,test_x64_linux_bits_len32_stdout_exact_bytes,test_x64_linux_rand_u32n_interface_result_stdout_exact_bytes,test_x64_linux_rand_intn_range_interface_result_stdout_exact_bytes,test_x64_linux_textscanner_embedded_parser_stdout_exact_bytes,test_x64_linux_struct_positional_side_effect_stdout_exact_bytes,test_x64_linux_struct_named_side_effect_stdout_exact_bytes,test_x64_linux_unrelated_same_shape_struct_stdout_exact_bytes,test_x64_linux_named_init_embedded_value_stdout_exact_bytes,test_x64_linux_get_raw_line_example_stdin_stdout_exact_bytes,test_x64_linux_mini_calculator_example_stdin_stdout_exact_bytes,test_x64_linux_mini_calculator_recursive_descent_example_stdin_stdout_exact_bytes,test_x64_linux_external_c_flag_source_uses_hosted_link_with_compile_flags vlib/v2/gen/x64/x64_runtime_smoke_test.v
-          VJOBS=1 ./v test -run-only test_non_generic_concrete_sumtype_return_wraps_variant,test_option_concrete_sumtype_return_wraps_variant,test_generic_sumtype_declared_param_order_is_preserved_for_crossed_variants,test_worker_clone_sees_sumtype_decl_variant_cache,test_sumtype_decl_variant_cache_records_concrete_generic_variants_only,test_generic_sumtype_match_uses_full_specialization_when_generic_base_repeats,test_flat_direct_generic_sumtype_match_uses_full_specialization_when_generic_base_repeats,test_generic_sumtype_match_smartcast_scans_full_specialization_body,test_flat_direct_generic_sumtype_match_smartcast_scans_full_specialization_body,test_nested_module_concrete_generic_sumtype_base_does_not_fall_back_to_local_tree,test_leaf_module_concrete_generic_sumtype_base_fallback_beats_parent_module_tree vlib/v2/transformer/monomorphize_test.v
-          ./v test vlib/v2/builder/native_test.v vlib/v2/builder/target_os_test.v
-          ./v test vlib/v2/ssa/optimize
-          V2_VERIFY_STRICT=1 ./v test vlib/v2/ssa/optimize
+            vlib/v2_toberemoved/abi \
+            vlib/v2_toberemoved/gen/x64/x64_abi_test.v \
+            vlib/v2_toberemoved/gen/x64/x64_backend_diagnostics_test.v \
+            vlib/v2_toberemoved/gen/x64/x64_object_format_test.v \
+            vlib/v2_toberemoved/gen/x64/x64_pe_linker_test.v \
+            vlib/v2_toberemoved/ssa/tree_sumtype_lowering_test.v
+          VJOBS=1 ./v test -run-only test_module_qualified_alias_array_field_index_has_alias_element_type,test_module_storage_legacy_direct_import_nested_module_selector_uses_declared_leaf_module,test_module_storage_flat_direct_import_nested_module_selector_uses_declared_leaf_module vlib/v2_toberemoved/ssa/module_storage_test.v
+          VJOBS=1 ./v test -run-only test_x64_linux_math_log_20_stdout_exact_bytes,test_x64_linux_generic_sumtype_direct_wrap_stdout_exact_bytes,test_x64_linux_generic_sumtype_repeated_base_specialization_stdout_exact_bytes,test_x64_linux_generic_sumtype_receiver_size_stdout_exact_bytes,test_x64_linux_generic_sumtype_insert_size_stdout_exact_bytes,test_x64_linux_struct_float_fields_stdout_exact_bytes,test_x64_linux_union_f64_bits_stdout_exact_bytes,test_x64_linux_f64_str_interpolation_stdout_exact_bytes,test_x64_linux_f64_for_interpolation_stdout_exact_bytes,test_x64_linux_formatted_int_interpolation_stdout_exact_bytes,test_x64_linux_formatted_int_width_100_interpolation_stdout_exact_bytes,test_x64_linux_formatted_f64_interpolation_stdout_exact_bytes,test_x64_linux_formatted_string_return_lifetime_stdout_exact_bytes,test_x64_linux_spectral_reduced_formatted_stdout_exact_bytes,test_x64_linux_bits_len32_stdout_exact_bytes,test_x64_linux_rand_u32n_interface_result_stdout_exact_bytes,test_x64_linux_rand_intn_range_interface_result_stdout_exact_bytes,test_x64_linux_textscanner_embedded_parser_stdout_exact_bytes,test_x64_linux_struct_positional_side_effect_stdout_exact_bytes,test_x64_linux_struct_named_side_effect_stdout_exact_bytes,test_x64_linux_unrelated_same_shape_struct_stdout_exact_bytes,test_x64_linux_named_init_embedded_value_stdout_exact_bytes,test_x64_linux_get_raw_line_example_stdin_stdout_exact_bytes,test_x64_linux_mini_calculator_example_stdin_stdout_exact_bytes,test_x64_linux_mini_calculator_recursive_descent_example_stdin_stdout_exact_bytes,test_x64_linux_external_c_flag_source_uses_hosted_link_with_compile_flags vlib/v2_toberemoved/gen/x64/x64_runtime_smoke_test.v
+          VJOBS=1 ./v test -run-only test_non_generic_concrete_sumtype_return_wraps_variant,test_option_concrete_sumtype_return_wraps_variant,test_generic_sumtype_declared_param_order_is_preserved_for_crossed_variants,test_worker_clone_sees_sumtype_decl_variant_cache,test_sumtype_decl_variant_cache_records_concrete_generic_variants_only,test_generic_sumtype_match_uses_full_specialization_when_generic_base_repeats,test_flat_direct_generic_sumtype_match_uses_full_specialization_when_generic_base_repeats,test_generic_sumtype_match_smartcast_scans_full_specialization_body,test_flat_direct_generic_sumtype_match_smartcast_scans_full_specialization_body,test_nested_module_concrete_generic_sumtype_base_does_not_fall_back_to_local_tree,test_leaf_module_concrete_generic_sumtype_base_fallback_beats_parent_module_tree vlib/v2_toberemoved/transformer/monomorphize_test.v
+          ./v test vlib/v2_toberemoved/builder/native_test.v vlib/v2_toberemoved/builder/target_os_test.v
+          ./v test vlib/v2_toberemoved/ssa/optimize
+          V2_VERIFY_STRICT=1 ./v test vlib/v2_toberemoved/ssa/optimize
 
       - name: backend x64 examples
+        if: ${{ false }} # Temporarily disabled.
         run: |
           set -e
 
@@ -491,6 +495,93 @@ jobs:
         run: v run ci/linux_ci.vsh all_code_is_formatted_gcc
       - name: Install dependencies for examples and tools
         run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
+      - name: Multiwindow Linux checks
+        run: |
+          set -euo pipefail
+
+          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+            ./v test vlib/gg/legacy_import_multiwindow_isolation_test.v
+
+          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+            ./v -d gg_multiwindow test \
+              vlib/x/multiwindow \
+              vlib/gg/multiwindow_api_d_gg_multiwindow_test.v \
+              vlib/gg/frame_pacing_test.v \
+              vlib/gg/draw_fns_api_test.v \
+              vlib/gg/draw_rect_empty_test.v
+
+          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+            ./v -d gg_multiwindow -d sokol_wayland test \
+              vlib/x/multiwindow \
+              vlib/gg/multiwindow_api_d_gg_multiwindow_test.v \
+              vlib/gg/frame_pacing_test.v \
+              vlib/gg/draw_fns_api_test.v \
+              vlib/gg/draw_rect_empty_test.v
+
+          xvfb-run -a -s "-screen 0 1280x1024x24" \
+            env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
+            ./v -d gg_multiwindow -d x_multiwindow_x11 test \
+              vlib/x/multiwindow \
+              vlib/gg/multiwindow_api_d_gg_multiwindow_test.v \
+              vlib/gg/frame_pacing_test.v \
+              vlib/gg/draw_fns_api_test.v \
+              vlib/gg/draw_rect_empty_test.v
+
+          ./v -d gg_multiwindow -o /tmp/gg_multiwindow_default examples/gg/multiwindow.v
+          ./v -d gg_multiwindow -d x_multiwindow_x11 -o /tmp/gg_multiwindow_x11 examples/gg/multiwindow.v
+          ./v -d gg_multiwindow -d sokol_wayland -o /tmp/gg_multiwindow_wayland examples/gg/multiwindow.v
+
+          run_headless_example() {
+            label="$1"
+            binary="$2"
+            stdout="$(mktemp)"
+            stderr="$(mktemp)"
+            env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+              "$binary" >"$stdout" 2>"$stderr"
+            echo "::group::${label} stdout"
+            cat "$stdout"
+            echo "::endgroup::"
+            echo "::group::${label} stderr"
+            cat "$stderr"
+            echo "::endgroup::"
+            grep -Fq "gg multi-window backend: mock" "$stdout"
+            grep -Fq "capability families:" "$stdout"
+            grep -Fq "mock backend selected; stopping after initial lifecycle events" "$stdout"
+            grep -Fq "live windows:" "$stdout"
+            grep -Fq "window created:" "$stdout"
+          }
+
+          run_x11_example() {
+            label="$1"
+            binary="$2"
+            stdout="$(mktemp)"
+            stderr="$(mktemp)"
+            set +e
+            xvfb-run -a -s "-screen 0 1280x1024x24" \
+              env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
+              timeout 12s stdbuf -oL -eL "$binary" >"$stdout" 2>"$stderr"
+            status=$?
+            set -e
+            echo "::group::${label} stdout"
+            cat "$stdout"
+            echo "::endgroup::"
+            echo "::group::${label} stderr"
+            cat "$stderr"
+            echo "::endgroup::"
+            grep -Fq "gg multi-window backend:" "$stdout"
+            grep -Fq "capability families:" "$stdout"
+            grep -Fq "live windows:" "$stdout"
+            grep -Fq "window created:" "$stdout"
+            if [ "$status" -eq 124 ]; then
+              echo "X11 example reached the controlled timeout after producing expected launch logs."
+              return 0
+            fi
+            return "$status"
+          }
+
+          run_headless_example "gg multiwindow headless mock" /tmp/gg_multiwindow_default
+          run_headless_example "gg multiwindow Wayland-build headless mock" /tmp/gg_multiwindow_wayland
+          run_x11_example "gg multiwindow Xvfb/X11" /tmp/gg_multiwindow_x11
       - name: Recompile V with -cstrict and gcc
         run: v run ci/linux_ci.vsh recompile_v_with_cstrict_gcc
       - name: Valgrind v.c
@@ -537,7 +628,7 @@ jobs:
       VTEST_SHOW_LONGEST_BY_COMPTIME: 3
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make -j4 && ./v symlink

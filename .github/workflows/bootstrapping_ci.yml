@@ -6,6 +6,7 @@ on:
     branches:
       - master
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.yml'
       - '**.md'
       - '**.vv'
@@ -16,6 +17,7 @@ on:
       - '!**/bootstrapping_ci.yml'
   pull_request:
     paths-ignore:
+      - 'vlib/v3/**'
       - '**.yml'
       - '**.md'
       - '**.vv'
@@ -41,7 +43,7 @@ jobs:
       VFLAGS: -no-parallel
       B_LFLAGS: -lm -lpthread
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Build V

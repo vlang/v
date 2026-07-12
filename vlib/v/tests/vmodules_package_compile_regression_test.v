@@ -30,32 +30,6 @@ fn issue_20147_write_file(path string, contents string) {
 	os.write_file(path, contents) or { panic(err) }
 }
 
-fn vmodules_symlink_workspace() string {
-	return os.join_path(os.vtmp_dir(), 'vmodules_symlink_import_compile')
-}
-
-fn vmodules_symlink_write_project() ! {
-	workspace := vmodules_symlink_workspace()
-	vmodules_dir := os.join_path(workspace, '.vmodules')
-	real_module_root := os.join_path(workspace, 'real_vmarkdown')
-	link_module_root := os.join_path(vmodules_dir, 'vmarkdown')
-	app_root := os.join_path(workspace, 'app')
-	os.rmdir_all(workspace) or {}
-	os.mkdir_all(vmodules_dir)!
-	os.mkdir_all(real_module_root)!
-	os.mkdir_all(app_root)!
-	os.symlink(real_module_root, link_module_root)!
-	module_contents :=
-		['module vmarkdown', '', "pub fn ok() string { return 'ok' }"].join_lines() + '\n'
-	app_vmod_contents := ['Module {', "\tname: 'app'", '}'].join_lines() + '\n'
-	app_contents :=
-		['module main', '', 'import vmarkdown', '', 'fn main() {', '\tprintln(vmarkdown.ok())', '}'].join_lines() +
-		'\n'
-	issue_20147_write_file(os.join_path(real_module_root, 'vmarkdown.v'), module_contents)
-	issue_20147_write_file(os.join_path(app_root, 'v.mod'), app_vmod_contents)
-	issue_20147_write_file(os.join_path(app_root, 'main.v'), app_contents)
-}
-
 fn issue_20147_write_project() {
 	basepath := issue_20147_module_root()
 	vmod_contents := ['Module {', "\tname: 'msgpack'", '}'].join_lines() + '\n'
@@ -102,23 +76,65 @@ fn test_issue_20147_vmodules_package_tests_compile() {
 	assert res.exit_code == 0, res.output
 }
 
-fn test_vmodules_symlinked_package_import_compiles() {
-	vmodules_symlink_write_project() or {
+// Regression test for https://github.com/vlang/v/issues/27391 :
+// modules installed as symlinks inside a `.vmodules` namespace folder
+// (e.g. `.vmodules/einar_hjortdal/luuid -> /real/luuid`) were resolved to
+// their real path via os.real_path and then rejected as belonging to a
+// different v.mod project, so `import einar_hjortdal.luuid` could not be found.
+fn issue_27391_workspace() string {
+	return os.join_path(os.vtmp_dir(), 'issue_27391_symlinked_vmodules')
+}
+
+fn issue_27391_write_project() ! {
+	workspace := issue_27391_workspace()
+	vmodules_ns := os.join_path(workspace, '.vmodules', 'einar_hjortdal')
+	real_luuid := os.join_path(workspace, 'real', 'luuid')
+	real_firebird := os.join_path(workspace, 'real', 'firebird')
+	app_root := os.join_path(workspace, 'app')
+	luuid_vmod := ['Module {', "\tname: 'luuid'", '}'].join_lines() + '\n'
+	luuid_contents :=
+		['module luuid', '', "pub fn hello() string { return 'luuid-ok' }"].join_lines() + '\n'
+	firebird_vmod := ['Module {', "\tname: 'firebird'", '}'].join_lines() + '\n'
+	firebird_contents :=
+		['module firebird', '', 'import einar_hjortdal.luuid', '', 'pub fn run() string { return luuid.hello() }'].join_lines() +
+		'\n'
+	app_vmod := ['Module {', "\tname: 'app'", '}'].join_lines() + '\n'
+	app_contents :=
+		['module main', '', 'import einar_hjortdal.luuid', 'import einar_hjortdal.firebird', '', 'fn main() {', '\tprintln(luuid.hello())', '\tprintln(firebird.run())', '}'].join_lines() +
+		'\n'
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(vmodules_ns)!
+	os.mkdir_all(real_luuid)!
+	os.mkdir_all(real_firebird)!
+	os.mkdir_all(app_root)!
+	issue_20147_write_file(os.join_path(real_luuid, 'v.mod'), luuid_vmod)
+	issue_20147_write_file(os.join_path(real_luuid, 'luuid.v'), luuid_contents)
+	issue_20147_write_file(os.join_path(real_firebird, 'v.mod'), firebird_vmod)
+	issue_20147_write_file(os.join_path(real_firebird, 'firebird.v'), firebird_contents)
+	// install both real modules as symlinks inside the `einar_hjortdal` namespace
+	os.symlink(real_luuid, os.join_path(vmodules_ns, 'luuid'))!
+	os.symlink(real_firebird, os.join_path(vmodules_ns, 'firebird'))!
+	issue_20147_write_file(os.join_path(app_root, 'v.mod'), app_vmod)
+	issue_20147_write_file(os.join_path(app_root, 'main.v'), app_contents)
+}
+
+fn test_issue_27391_symlinked_namespaced_vmodules_import_compiles() {
+	issue_27391_write_project() or {
 		$if windows {
-			eprintln('skipping symlink import regression test: ${err}')
+			eprintln('skipping symlinked vmodules import regression test: ${err}')
 			return
 		} $else {
 			panic(err)
 		}
 	}
 	old_vmodules, had_vmodules := issue_20147_env_snapshot('VMODULES')
-	os.setenv('VMODULES', os.join_path(vmodules_symlink_workspace(), '.vmodules'), true)
+	os.setenv('VMODULES', os.join_path(issue_27391_workspace(), '.vmodules'), true)
 	defer {
 		issue_20147_restore_env('VMODULES', old_vmodules, had_vmodules)
-		os.rmdir_all(vmodules_symlink_workspace()) or {}
+		os.rmdir_all(issue_27391_workspace()) or {}
 	}
-	main_file := os.join_path(vmodules_symlink_workspace(), 'app', 'main.v')
+	main_file := os.join_path(issue_27391_workspace(), 'app', 'main.v')
 	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
 	assert res.exit_code == 0, res.output
-	assert res.output.trim_space() == 'ok'
+	assert res.output.trim_space() == 'luuid-ok\nluuid-ok', res.output
 }
