@@ -297,6 +297,11 @@ jobs:
           v retry -- v install pcre
       - name: Clone gitly
         run: v retry -- git clone --depth 1 -b $env:GITLY_BRANCH $env:GITLY_REPO gitly
+      - name: Compile gitly CSS
+        uses: gha-utilities/sass-build@v0.4.11
+        with:
+          source: gitly/static/css/gitly.scss
+          destination: gitly/static/css/gitly.css
       - name: Compile and run gitly, then check that it serves the expected HTML
         run: |
           cd gitly
