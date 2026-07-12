@@ -70,15 +70,10 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut ranks := map[string]int{}
 	mut cur_module := ''
 	mut cur_file := ''
-	// When the parallel path asked for it, the per-item cost walk also does
-	// the parallel pre-seeding (string interning + fn-ptr type registration)
-	// in the same traversal, instead of prepare_parallel_items re-walking
-	// every subtree afterwards.
+	// When the parallel path asks for it, the per-item cost walk also collects
+	// C-extern references, avoiding a separate subtree traversal.
 	prep := g.want_parallel_prep
 	mut prep_stack := []flat.NodeId{cap: 256}
-	mut prep_type_cache := map[string]bool{}
-	mut prep_file := ''
-	mut prep_module := ''
 	for i in 0 .. g.a.nodes.len {
 		node := g.a.nodes[i]
 		kind_id := node_kind_id(node)
@@ -108,14 +103,9 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			}
 			mut cost := 0
 			if prep {
-				if cur_file != prep_file || cur_module != prep_module {
-					prep_type_cache.clear()
-					prep_file = cur_file
-					prep_module = cur_module
-				}
 				g.tc.cur_file = cur_file
 				g.tc.cur_module = cur_module
-				cost = g.fn_item_cost_and_prep(flat.NodeId(i), mut prep_stack, mut prep_type_cache)
+				cost = g.fn_item_cost_and_prep(flat.NodeId(i), mut prep_stack)
 			} else {
 				cost = flat_fn_gen_item_cost(g.a, flat.NodeId(i))
 			}
@@ -2605,7 +2595,9 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 				}
 				if p.is_mut {
 					g.cur_mut_params[p.value] = true
-					g.cur_mut_param_owners[p.value] = owner
+					$if ownership ? {
+						g.cur_mut_param_owners[p.value] = owner
+					}
 				}
 				if concrete_optional_params && type_is_optional_result(param_type) {
 					g.cur_concrete_optional_params[p.value] = true
@@ -5797,15 +5789,13 @@ fn (g &FlatGen) embedded_receiver_path_for_expected_name(base_name string, expec
 
 // current_param_type returns current param type data for FlatGen.
 fn (g &FlatGen) current_param_type(name string) ?types.Type {
+	if g.cur_param_types.len == 0 {
+		return none
+	}
 	if g.current_mut_param_binding_is_shadowed(name) {
 		return none
 	}
-	for i in 0 .. g.cur_param_names.len {
-		if g.cur_param_names[i] == name {
-			return g.cur_param_type_values[i]
-		}
-	}
-	return none
+	return g.cur_param_types[name] or { none }
 }
 
 fn (g &FlatGen) current_param_map_type(name string) ?types.Type {
@@ -6010,8 +6000,14 @@ fn (mut g FlatGen) optional_type_name_for_expr(id flat.NodeId, typ types.Type) s
 
 // current_param_is_mut returns true when a current param originated from `mut name T`.
 fn (g &FlatGen) current_param_is_mut(name string) bool {
+	if g.cur_mut_params.len == 0 {
+		return false
+	}
 	if !(g.cur_mut_params[name] or { false }) {
 		return false
+	}
+	$if !ownership ? {
+		return true
 	}
 	owner := g.cur_mut_param_owners[name] or { return false }
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
@@ -6021,6 +6017,12 @@ fn (g &FlatGen) current_param_is_mut(name string) bool {
 }
 
 fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
+	$if !ownership ? {
+		return false
+	}
+	if g.cur_mut_params.len == 0 {
+		return false
+	}
 	if !(g.cur_mut_params[name] or { false }) {
 		return false
 	}
@@ -8625,6 +8627,17 @@ fn (g &FlatGen) collect_c_extern_referenced_symbols_from_node(id flat.NodeId, mu
 		return
 	}
 	node := g.a.node(id)
+	g.collect_c_extern_ref_from_node_into(node, mut refs)
+	for i in 0 .. node.children_count {
+		g.collect_c_extern_referenced_symbols_from_node(g.a.child(node, i), mut refs)
+	}
+}
+
+fn (mut g FlatGen) collect_c_extern_ref_from_node(node flat.Node) {
+	g.collect_c_extern_ref_from_node_into(node, mut g.c_extern_refs)
+}
+
+fn (g &FlatGen) collect_c_extern_ref_from_node_into(node flat.Node, mut refs map[string]bool) {
 	if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
 		base_id := g.a.child(node, 0)
 		if int(base_id) >= 0 {
@@ -8637,9 +8650,6 @@ fn (g &FlatGen) collect_c_extern_referenced_symbols_from_node(id flat.NodeId, mu
 				refs[c_winapi_wide_export_name(raw_cfn)] = true
 			}
 		}
-	}
-	for i in 0 .. node.children_count {
-		g.collect_c_extern_referenced_symbols_from_node(g.a.child(node, i), mut refs)
 	}
 }
 
@@ -9174,8 +9184,11 @@ fn (mut g FlatGen) fn_shared_params_with_implicit_veb_ctx(node flat.Node, flags 
 }
 
 fn (g &FlatGen) fn_param_is_shared(fn_name string, idx int) bool {
-	if idx < 0 || fn_name.len == 0 {
+	if !g.has_shared_params || idx < 0 || fn_name.len == 0 {
 		return false
+	}
+	if flags := g.fn_shared_params_resolved[fn_name] {
+		return idx < flags.len && flags[idx]
 	}
 	candidates := [
 		fn_name,
@@ -9190,6 +9203,35 @@ fn (g &FlatGen) fn_param_is_shared(fn_name string, idx int) bool {
 		}
 	}
 	return false
+}
+
+fn (mut g FlatGen) precompute_shared_param_index() {
+	if !g.has_shared_params {
+		return
+	}
+	for name, _ in g.fn_decl_shared_params {
+		candidates := [
+			name,
+			g.cname(name),
+			name.all_after_last('.'),
+			g.cname(name.all_after_last('.')),
+		]
+		mut resolved := []bool{}
+		for candidate in candidates {
+			flags := g.fn_decl_shared_params[candidate] or { continue }
+			if flags.len > resolved.len {
+				resolved << []bool{len: flags.len - resolved.len}
+			}
+			for i, flag in flags {
+				if flag {
+					resolved[i] = true
+				}
+			}
+		}
+		// Store empty/all-false results too. Presence in this map is what turns
+		// the very hot call-site query into one lookup.
+		g.fn_shared_params_resolved[name] = resolved
+	}
 }
 
 fn (mut g FlatGen) gen_shared_local_receiver_arg(base_id flat.NodeId) bool {
@@ -9837,35 +9879,44 @@ fn (mut g FlatGen) multi_return_typedefs() {
 // Shared by the forward-declaration and full-definition passes so both see the same
 // set in the same (deterministic) order.
 fn (mut g FlatGen) walk_multi_return_typedefs(mut emitted map[string]bool, forward_only bool) {
+	if !g.multi_return_types_ready {
+		g.collect_multi_return_types()
+	}
+	for typ in g.multi_return_types {
+		g.emit_concrete_multi_return_typedef(typ, mut emitted, forward_only)
+	}
+}
+
+fn (mut g FlatGen) collect_multi_return_types() {
 	for _, ret in g.tc.fn_ret_types {
-		g.emit_concrete_multi_return_typedef(ret, mut emitted, forward_only)
+		g.collect_concrete_multi_return_type(ret)
 	}
 	for _, params in g.tc.fn_param_types {
 		for param in params {
-			g.emit_concrete_multi_return_typedef(param, mut emitted, forward_only)
+			g.collect_concrete_multi_return_type(param)
 		}
 	}
 	for _, fields in g.tc.structs {
 		for field in fields {
-			g.emit_concrete_multi_return_typedef(field.typ, mut emitted, forward_only)
+			g.collect_concrete_multi_return_type(field.typ)
 		}
 	}
 	for _, fields in g.tc.interface_fields {
 		for field in fields {
-			g.emit_concrete_multi_return_typedef(field.typ, mut emitted, forward_only)
+			g.collect_concrete_multi_return_type(field.typ)
 		}
 	}
 	for _, typ in g.tc.c_globals {
-		g.emit_concrete_multi_return_typedef(typ, mut emitted, forward_only)
+		g.collect_concrete_multi_return_type(typ)
 	}
 	for _, typ in g.tc.const_types {
-		g.emit_concrete_multi_return_typedef(typ, mut emitted, forward_only)
+		g.collect_concrete_multi_return_type(typ)
 	}
 	for idx, is_set in g.tc.expr_type_set {
 		if !is_set || idx >= g.tc.expr_type_values.len {
 			continue
 		}
-		g.emit_concrete_multi_return_typedef(g.tc.expr_type_values[idx], mut emitted, forward_only)
+		g.collect_concrete_multi_return_type(g.tc.expr_type_values[idx])
 	}
 	mut cur_module := ''
 	mut cur_file := ''
@@ -9892,7 +9943,29 @@ fn (mut g FlatGen) walk_multi_return_typedefs(mut emitted map[string]bool, forwa
 		typ := node.typ
 		if typ.len > 0 && (typ[0] == `(` || ((typ[0] == `?` || typ[0] == `!`) && typ.len > 1
 			&& typ[1] == `(`)) {
-			g.emit_concrete_multi_return_typedef(g.tc.parse_type(typ), mut emitted, forward_only)
+			g.collect_concrete_multi_return_type(g.tc.parse_type(typ))
+		}
+	}
+	g.multi_return_types_ready = true
+}
+
+fn (mut g FlatGen) collect_concrete_multi_return_type(typ types.Type) {
+	if g.type_contains_generic_placeholder(typ) {
+		return
+	}
+	if typ is types.OptionType {
+		g.collect_concrete_multi_return_type(typ.base_type)
+		return
+	}
+	if typ is types.ResultType {
+		g.collect_concrete_multi_return_type(typ.base_type)
+		return
+	}
+	if typ is types.MultiReturn {
+		name := g.multi_return_c_type_name(typ)
+		if name !in g.multi_return_type_names {
+			g.multi_return_type_names[name] = true
+			g.multi_return_types << types.Type(typ)
 		}
 	}
 }

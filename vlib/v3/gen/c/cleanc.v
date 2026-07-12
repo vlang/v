@@ -42,6 +42,7 @@ mut:
 	used_fns                       map[string]bool
 	used_fn_names                  []string
 	fn_gen_items                   []FlatFnGenItem
+	fn_segs                        []string
 	test_files                     map[string]bool
 	str_lits                       []string
 	str_lit_ids                    map[string]int
@@ -88,15 +89,25 @@ mut:
 	field_name_set                 map[string]bool   // every struct field's C name (lazy) — for const/field collision checks
 	modules                        map[string]string // alias -> full module name
 	fn_ptr_types                   map[string]string // fn_ptr:ret|params -> typedef name
-	fixed_array_ret_wrappers       map[string]bool   // bare fixed-array c_type name -> has a return wrapper struct
-	emitted_fixed_array_typedefs   map[string]bool   // bare fixed-array typedefs already written (shared across passes)
-	concrete_optional_abi_fns      map[string]bool   // emitted fn names whose option/result params use Optional_T ABI
+	multi_return_types             []types.Type
+	multi_return_type_names        map[string]bool
+	multi_return_types_ready       bool
+	fixed_array_ret_wrappers       map[string]bool // bare fixed-array c_type name -> has a return wrapper struct
+	emitted_fixed_array_typedefs   map[string]bool // bare fixed-array typedefs already written (shared across passes)
+	concrete_optional_abi_fns      map[string]bool // emitted fn names whose option/result params use Optional_T ABI
 	fixed_array_typedefs_needed    map[string]FixedArrayTypedefInfo
 	fixed_array_typedefs_ready     bool
 	fn_decl_param_types            map[string][]types.Type
 	fn_decl_shared_params          map[string][]bool
+	fn_shared_params_resolved      map[string][]bool
+	has_shared_params              bool
 	fn_decl_mut_receivers          map[string]bool
 	fn_decl_ret_types              map[string]types.Type // fn decl name (and qualified variants) -> return type
+	// Const dependency analysis follows helper calls. Keep declaration indexes so
+	// resolving each call does not scan the whole flattened AST.
+	fn_decl_nodes_by_name         map[string]flat.NodeId
+	fn_decl_nodes_by_short        map[string]flat.NodeId
+	fn_decl_nodes_by_module_short map[string]flat.NodeId
 	// set of `${module}\x01${name}` for every non-generic fn decl, built once in
 	// precompute_non_generic_fn_index. Replaces the former full-node scan in
 	// non_generic_fn_decl_exists_in_module (O(nodes) per call, hot in cgen).
@@ -311,6 +322,9 @@ fn (g &FlatGen) local_storage_c_type(name string) ?string {
 	if name.len == 0 || g.local_c_type_by_owner.len == 0 {
 		return none
 	}
+	$if !ownership ? {
+		return g.local_c_type_by_owner[name] or { none }
+	}
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return none
 	}
@@ -337,6 +351,9 @@ fn (g &FlatGen) local_storage_is_shared(name string) bool {
 	if name.len == 0 || g.local_shared_storage_by_owner.len == 0 {
 		return false
 	}
+	$if !ownership ? {
+		return g.local_shared_storage_by_owner[name] or { false }
+	}
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return false
 	}
@@ -357,6 +374,9 @@ fn (g &FlatGen) local_storage_is_pointer(name string) bool {
 	if g.local_pointer_storage_by_owner.len == 0 {
 		return false
 	}
+	$if !ownership ? {
+		return g.local_pointer_storage_by_owner[name] or { false }
+	}
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return false
 	}
@@ -373,6 +393,7 @@ pub fn FlatGen.new() FlatGen {
 		sb:                             strings.new_builder(4096)
 		used_fns:                       map[string]bool{}
 		fn_gen_items:                   []FlatFnGenItem{}
+		fn_segs:                        []string{}
 		test_files:                     map[string]bool{}
 		str_lit_ids:                    map[string]int{}
 		global_types:                   map[string]types.Type{}
@@ -408,13 +429,20 @@ pub fn FlatGen.new() FlatGen {
 		libc_compat_fns:                map[string]bool{}
 		modules:                        map[string]string{}
 		fn_ptr_types:                   map[string]string{}
+		multi_return_types:             []types.Type{}
+		multi_return_type_names:        map[string]bool{}
 		fixed_array_ret_wrappers:       map[string]bool{}
 		emitted_fixed_array_typedefs:   map[string]bool{}
 		concrete_optional_abi_fns:      map[string]bool{}
 		fixed_array_typedefs_needed:    map[string]FixedArrayTypedefInfo{}
 		fn_decl_param_types:            map[string][]types.Type{}
+		fn_decl_shared_params:          map[string][]bool{}
+		fn_shared_params_resolved:      map[string][]bool{}
 		fn_decl_mut_receivers:          map[string]bool{}
 		fn_decl_ret_types:              map[string]types.Type{}
+		fn_decl_nodes_by_name:          map[string]flat.NodeId{}
+		fn_decl_nodes_by_short:         map[string]flat.NodeId{}
+		fn_decl_nodes_by_module_short:  map[string]flat.NodeId{}
 		non_generic_fn_names_by_module: map[string]bool{}
 		generic_fn_keys_by_short:       map[string][]string{}
 		generic_fn_keys_by_cname:       map[string][]string{}
@@ -509,6 +537,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.used_fns = used_fns.clone()
 	g.used_fn_names = []string{}
 	g.fn_gen_items = []FlatFnGenItem{}
+	g.fn_segs = []string{}
 	g.str_lits = []string{}
 	g.defers = []flat.NodeId{}
 	g.fn_defers = []flat.NodeId{}
@@ -552,6 +581,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.libc_compat_fns = map[string]bool{}
 	g.modules = map[string]string{}
 	g.fn_ptr_types = map[string]string{}
+	g.multi_return_types = []types.Type{}
+	g.multi_return_type_names = map[string]bool{}
+	g.multi_return_types_ready = false
 	g.fixed_array_ret_wrappers = map[string]bool{}
 	g.emitted_fixed_array_typedefs = map[string]bool{}
 	g.concrete_optional_abi_fns = map[string]bool{}
@@ -559,8 +591,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fixed_array_typedefs_ready = false
 	g.fn_decl_param_types = map[string][]types.Type{}
 	g.fn_decl_shared_params = map[string][]bool{}
+	g.fn_shared_params_resolved = map[string][]bool{}
+	g.has_shared_params = false
 	g.fn_decl_mut_receivers = map[string]bool{}
 	g.fn_decl_ret_types = map[string]types.Type{}
+	g.fn_decl_nodes_by_name = map[string]flat.NodeId{}
+	g.fn_decl_nodes_by_short = map[string]flat.NodeId{}
+	g.fn_decl_nodes_by_module_short = map[string]flat.NodeId{}
 	g.non_generic_fn_names_by_module = map[string]bool{}
 	g.generic_fn_keys_by_short = map[string][]string{}
 	g.generic_fn_keys_by_cname = map[string][]string{}
@@ -611,6 +648,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.has_builtins = g.tc.has_builtins
 	g.collect_gen_info()
+	g.precompute_shared_param_index()
 	g.precompute_non_generic_fn_index()
 	g.precompute_generic_fn_key_index()
 	// In the parallel path the fixed-storage scan runs on a helper thread,
@@ -638,7 +676,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.sb = strings.new_builder(4096)
 	g.line_start = true
 	g.gen_fns_dispatch(no_parallel)
-	fn_code := g.sb.str()
+	fn_code := if g.fn_segs.len == 0 { g.sb.str() } else { '' }
 	// `.str()` copies out of the builder; free the emptied backing array under -gc none.
 	unsafe { g.sb.free() }
 	g.sb = orig_sb
@@ -719,9 +757,17 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('}')
 		g.writeln('')
 	}
-	g.sb.write_string(fn_code)
-	// The final builder now owns a copy of the function code.
-	unsafe { fn_code.free() }
+	if g.fn_segs.len > 0 {
+		for segment in g.fn_segs {
+			g.sb.write_string(segment)
+			unsafe { segment.free() }
+		}
+		g.fn_segs = []string{}
+	} else {
+		g.sb.write_string(fn_code)
+		// The final builder now owns a copy of the function code.
+		unsafe { fn_code.free() }
+	}
 	result := g.sb.str()
 	// Keep only the returned C string, not the builder's copied backing array.
 	unsafe { g.sb.free() }
@@ -792,9 +838,8 @@ fn (mut g FlatGen) emit_postamble_segments_b() {
 	g.sb = saved_sb
 	g.line_start = saved_line_start
 	g.post_segs = segs
-	// The C-extern reference walk only reads the AST and the item list, so it
-	// runs here too, off the critical path; the (body-dependent) filtering and
-	// emission happen after the joins.
+	// The fused item walk normally collected C-extern references already. The
+	// fallback here covers serial generation and small programs.
 	_ = g.c_extern_referenced_symbols()
 }
 
@@ -839,6 +884,7 @@ fn (mut g FlatGen) collect_gen_info() {
 		}
 		if kind_id == 61 {
 			full_name := qualify_name_in_module(cur_module, node.value)
+			g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
 			typed_params := g.fn_node_param_types(node, cur_module)
 			mut ptypes := []types.Type{}
 			mut shared_params := []bool{}
@@ -855,13 +901,20 @@ fn (mut g FlatGen) collect_gen_info() {
 					if raw_pt !is types.Pointer && param_idx < typed_params.len {
 						pt = typed_params[param_idx]
 					}
-					param_idx++
 					is_shared_param := if _ := shared_inner_type_text(child.typ) {
 						true
 					} else {
 						false
 					}
-					shared_params << is_shared_param
+					if is_shared_param {
+						for shared_params.len <= param_idx {
+							shared_params << false
+						}
+						shared_params[param_idx] = true
+					} else if shared_params.len > 0 {
+						shared_params << false
+					}
+					param_idx++
 					if !seen_param {
 						first_param_is_mut = child.is_mut || raw_pt is types.Pointer
 							|| pt is types.Pointer || child.typ.starts_with('&')
@@ -876,9 +929,13 @@ fn (mut g FlatGen) collect_gen_info() {
 				}
 			}
 			ptypes = g.fn_param_types_with_implicit_veb_ctx(node, ptypes)
-			shared_params = g.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
+			if shared_params.len > 0 {
+				shared_params = g.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
+			}
 			g.register_fn_decl_param_types(node.value, full_name, ptypes)
-			g.register_fn_decl_shared_params(node.value, full_name, shared_params)
+			if shared_params.len > 0 {
+				g.register_fn_decl_shared_params(node.value, full_name, shared_params)
+			}
 			g.register_fn_decl_mut_receiver(node.value, full_name, first_param_is_mut)
 			g.register_fn_decl_ret_type(node.value, full_name, node.typ)
 			// Module-level `init()` functions run once at startup. Collect their C
@@ -2505,6 +2562,17 @@ fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, p
 }
 
 fn (mut g FlatGen) register_fn_decl_shared_params(name string, full_name string, flags []bool) {
+	mut has_shared := false
+	for flag in flags {
+		if flag {
+			has_shared = true
+			break
+		}
+	}
+	if !has_shared {
+		return
+	}
+	g.has_shared_params = true
 	if name !in g.fn_decl_shared_params {
 		g.fn_decl_shared_params[name] = flags.clone()
 	}
@@ -2566,6 +2634,20 @@ fn (mut g FlatGen) register_fn_decl_ret_type(name string, full_name string, ret_
 	cname := g.cname(name)
 	if cname != name && cname !in g.fn_decl_ret_types {
 		g.fn_decl_ret_types[cname] = rt
+	}
+}
+
+fn (mut g FlatGen) register_fn_decl_node(name string, module_name string, id flat.NodeId) {
+	if name !in g.fn_decl_nodes_by_name {
+		g.fn_decl_nodes_by_name[name] = id
+	}
+	short := name.all_after_last('.')
+	if short !in g.fn_decl_nodes_by_short {
+		g.fn_decl_nodes_by_short[short] = id
+	}
+	module_key := '${module_name}\x01${short}'
+	if module_key !in g.fn_decl_nodes_by_module_short {
+		g.fn_decl_nodes_by_module_short[module_key] = id
 	}
 }
 
@@ -9550,55 +9632,93 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 		}
 		if callee_name.len > 0 && !visited_fns[visit_key] {
 			visited_fns[visit_key] = true
-			// Prefer a declaration in the callee's module; otherwise an exact name
-			// match, then a short-name (suffix) match, so two modules sharing a
-			// function name do not resolve to the wrong declaration.
-			short := callee_name.all_after_last('.')
-			mut cur_mod := ''
-			mut module_target := -1
-			mut exact_target := -1
-			mut suffix_target := -1
-			for i, candidate in g.a.nodes {
-				if candidate.kind == .module_decl {
-					cur_mod = candidate.value
-					continue
-				}
-				if candidate.kind != .fn_decl {
-					continue
-				}
-				if candidate.value != callee_name && candidate.value.all_after_last('.') != short {
-					continue
-				}
-				if module_target < 0 && callee_module.len > 0
-					&& (cur_mod == callee_module || cur_mod == callee_module.all_after_last('.')) {
-					module_target = i
-				}
-				if exact_target < 0 && (candidate.value == callee_name
-					|| callee_name.ends_with('.${candidate.value}')) {
-					exact_target = i
-				}
-				if suffix_target < 0 {
-					suffix_target = i
-				}
-			}
-			target := if module_target >= 0 {
-				module_target
-			} else if exact_target >= 0 {
-				exact_target
-			} else {
-				suffix_target
-			}
-			if target >= 0 {
+			if target := g.const_fn_decl_node(callee_name, callee_module) {
 				// A callee starts a fresh lexical scope; bindings in the caller do not
 				// shadow const references inside the called helper.
-				g.const_collect_deps_inner(flat.NodeId(target), mut deps, mut visited_fns,
-					map[string]bool{})
+				g.const_collect_deps_inner(target, mut deps, mut visited_fns, map[string]bool{})
 			}
 		}
 	}
 	for i in 0 .. node.children_count {
 		g.const_collect_deps_inner(g.a.child(&node, i), mut deps, mut visited_fns, shadowed)
 	}
+}
+
+fn (g &FlatGen) const_fn_decl_node(callee_name string, callee_module string) ?flat.NodeId {
+	if g.fn_decl_nodes_by_name.len == 0 && g.fn_decl_nodes_by_short.len == 0
+		&& g.fn_decl_nodes_by_module_short.len == 0 {
+		return g.const_fn_decl_node_scan(callee_name, callee_module)
+	}
+	short := callee_name.all_after_last('.')
+	if callee_module.len > 0 {
+		if id := g.fn_decl_nodes_by_module_short['${callee_module}\x01${short}'] {
+			return id
+		}
+		module_short := callee_module.all_after_last('.')
+		if module_short != callee_module {
+			if id := g.fn_decl_nodes_by_module_short['${module_short}\x01${short}'] {
+				return id
+			}
+		}
+	}
+	// A declaration value can itself be qualified (for example `Type.method`).
+	// Try the complete callee name and each dotted suffix, selecting the earliest
+	// declaration just like the former AST-order scan.
+	mut exact_target := -1
+	mut suffix := callee_name
+	for {
+		if id := g.fn_decl_nodes_by_name[suffix] {
+			if exact_target < 0 || int(id) < exact_target {
+				exact_target = int(id)
+			}
+		}
+		dot := suffix.index('.') or { break }
+		suffix = suffix[dot + 1..]
+	}
+	if exact_target >= 0 {
+		return flat.NodeId(exact_target)
+	}
+	return g.fn_decl_nodes_by_short[short] or { none }
+}
+
+fn (g &FlatGen) const_fn_decl_node_scan(callee_name string, callee_module string) ?flat.NodeId {
+	short := callee_name.all_after_last('.')
+	mut cur_module := ''
+	mut module_target := -1
+	mut exact_target := -1
+	mut suffix_target := -1
+	for i, candidate in g.a.nodes {
+		if candidate.kind == .module_decl {
+			cur_module = candidate.value
+			continue
+		}
+		if candidate.kind != .fn_decl
+			|| (candidate.value != callee_name && candidate.value.all_after_last('.') != short) {
+			continue
+		}
+		if module_target < 0 && callee_module.len > 0
+			&& (cur_module == callee_module || cur_module == callee_module.all_after_last('.')) {
+			module_target = i
+		}
+		if exact_target < 0
+			&& (candidate.value == callee_name || callee_name.ends_with('.${candidate.value}')) {
+			exact_target = i
+		}
+		if suffix_target < 0 {
+			suffix_target = i
+		}
+	}
+	target := if module_target >= 0 {
+		module_target
+	} else if exact_target >= 0 {
+		exact_target
+	} else {
+		suffix_target
+	}
+	if target >= 0 {
+		return flat.NodeId(target)
+	}
+	return none
 }
 
 fn (g &FlatGen) const_call_receiver_type_name(base_id flat.NodeId) string {
