@@ -846,6 +846,8 @@ fn (mut g FlatGen) collect_gen_info() {
 	mut cur_file := ''
 	mut seen_import_in_file := false
 	mut nonshared_fn_short_names := []string{cap: 1024}
+	mut nonshared_fn_full_names := []string{cap: 1024}
+	mut canonical_shared_fn_short_names := map[string]bool{}
 	for node_idx in 0 .. g.a.nodes.len {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
@@ -922,8 +924,12 @@ fn (mut g FlatGen) collect_gen_info() {
 			g.register_fn_decl_param_types(node.value, full_name, ptypes)
 			if shared_params.len > 0 {
 				g.register_fn_decl_shared_params(node.value, full_name, shared_params)
+				if cur_module.len == 0 || cur_module == 'main' || cur_module == 'builtin' {
+					canonical_shared_fn_short_names[node.value] = true
+				}
 			} else {
 				nonshared_fn_short_names << node.value
+				nonshared_fn_full_names << full_name
 			}
 			g.register_fn_decl_mut_receiver(node.value, full_name, first_param_is_mut)
 			g.register_fn_decl_ret_type(node.value, full_name, node.typ)
@@ -1072,12 +1078,17 @@ fn (mut g FlatGen) collect_gen_info() {
 		}
 	}
 	if g.has_shared_params {
-		for name in nonshared_fn_short_names {
+		for i, name in nonshared_fn_short_names {
 			if name in g.fn_decl_shared_params {
-				g.fn_decl_shared_params[name] = []bool{}
-				cname := g.cname(name)
-				if cname != name {
-					g.fn_decl_shared_params[cname] = []bool{}
+				full_name := nonshared_fn_full_names[i]
+				g.fn_decl_shared_params[full_name] = []bool{}
+				g.fn_decl_shared_params[g.cname(full_name)] = []bool{}
+				if !canonical_shared_fn_short_names[name] {
+					g.fn_decl_shared_params[name] = []bool{}
+					cname := g.cname(name)
+					if cname != name {
+						g.fn_decl_shared_params[cname] = []bool{}
+					}
 				}
 			}
 		}
