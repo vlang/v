@@ -327,3 +327,53 @@ fn test_nodes_separated_by_newlines() {
 	doc := kdl.parse('my-node\n--flag\n.hidden')!
 	assert doc.nodes.len == 3
 }
+
+fn test_underscore_leading_rejected() {
+	doc := kdl.parse('v 0x_FF') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+	doc2 := kdl.parse('v 0o_77') or { kdl.Document{} }
+	assert doc2.nodes.len == 0
+	doc3 := kdl.parse('v 0b_10') or { kdl.Document{} }
+	assert doc3.nodes.len == 0
+}
+
+fn test_underscore_consecutive_rejected() {
+	doc := kdl.parse('v 0xFF__FF') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+}
+
+fn test_underscore_trailing_rejected() {
+	doc := kdl.parse('v 0xFF_') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+	doc2 := kdl.parse('v 0o77_') or { kdl.Document{} }
+	assert doc2.nodes.len == 0
+	doc3 := kdl.parse('v 0b10_') or { kdl.Document{} }
+	assert doc3.nodes.len == 0
+}
+
+fn test_decimal_leading_zero_rejected() {
+	doc := kdl.parse('v 07') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+}
+
+fn test_fractional_without_integer_part_rejected() {
+	doc := kdl.parse('v .5') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+}
+
+fn test_suffixed_decimal_rejected_in_strict() {
+	doc := kdl.parse('timeout 10ms') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+	doc2 := kdl.parse('dist 3.5km') or { kdl.Document{} }
+	assert doc2.nodes.len == 0
+}
+
+fn test_inf_nan_value_types() {
+	doc := kdl.parse('v #inf #-inf #nan')!
+	e0 := doc.nodes[0].entries[0]
+	assert kdl.as_f64(e0.value) > 1e300
+	e1 := doc.nodes[0].entries[1]
+	assert kdl.as_f64(e1.value) < -1e300
+	e2 := doc.nodes[0].entries[2]
+	assert kdl.as_f64(e2.value) != kdl.as_f64(e2.value) // NaN != NaN
+}

@@ -161,3 +161,23 @@ fn test_can_be_bare_identifier_false() {
 	assert kdl.can_be_bare_identifier('') == false
 	assert kdl.can_be_bare_identifier('hello world') == false
 }
+
+fn test_multiline_raw_followed_by_node() {
+	src := 'md #"""
+  hello
+  """#
+next-node'
+	doc := kdl.parse(src)!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == 'md'
+	assert doc.nodes[0].entries.len == 2
+	assert kdl.as_string(doc.nodes[0].entries[0].value) == 'hello'
+	assert kdl.as_string(doc.nodes[0].entries[1].value) == 'next-node'
+}
+
+fn test_invalid_escape_error() {
+	doc := kdl.parse('v "\\x"') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+	doc2 := kdl.parse('v "\\y"') or { kdl.Document{} }
+	assert doc2.nodes.len == 0
+}
