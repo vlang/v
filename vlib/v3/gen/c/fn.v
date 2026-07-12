@@ -113,6 +113,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	}
 	mut items := []FlatFnGenItem{cap: candidates.len}
 	mut prep_stack := []flat.NodeId{cap: 256}
+	mut prep_type_text_cache := map[string]bool{}
 	for candidate in candidates {
 		if preferred_idx := preferred_fns[candidate.preferred_name] {
 			if preferred_idx != int(candidate.item.node_id) {
@@ -126,9 +127,12 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 		}
 		g.emitted_fns[qfn] = true
 		cost := if prep {
+			if item.file != g.tc.cur_file || item.module != g.tc.cur_module {
+				prep_type_text_cache.clear()
+			}
 			g.tc.cur_file = item.file
 			g.tc.cur_module = item.module
-			g.fn_item_cost_and_prep(item.node_id, mut prep_stack)
+			g.fn_item_cost_and_prep(item.node_id, mut prep_stack, mut prep_type_text_cache)
 		} else {
 			flat_fn_gen_item_cost(g.a, item.node_id)
 		}

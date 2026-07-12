@@ -271,11 +271,9 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 	return chunks
 }
 
-// fn_item_cost_and_prep computes the split cost and collects C-extern refs in
-// one subtree traversal. collect_gen_info already interned every string, while
-// the dedicated signature/global/C-extern passes preseed function-pointer
-// types; worker novelties are merged and emitted by the post-dispatch supplement.
-fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.NodeId) int {
+// fn_item_cost_and_prep computes the split cost, collects C-extern refs, and
+// pre-seeds function-pointer types in one subtree traversal.
+fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.NodeId, mut type_text_cache map[string]bool) int {
 	mut cost := 0
 	stack.clear()
 	stack << node_id
@@ -288,6 +286,12 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		node := g.a.nodes[idx]
 		cost++
 		g.collect_c_extern_ref_from_node(node)
+		if g.should_preseed_parallel_type_text_cached(node.typ, mut type_text_cache) {
+			g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
+		}
+		if expr_type := g.parallel_cached_expr_type(current_id, node) {
+			g.preseed_parallel_fn_ptr_type(expr_type)
+		}
 		for i := node.children_count - 1; i >= 0; i-- {
 			child_id := g.a.children[node.children_start + i]
 			if int(child_id) >= 0 {
