@@ -30,7 +30,6 @@ fn is_ident_part(b u8) bool {
 
 fn is_ident_start_relaxed(b u8, r relaxed.RelaxedNonCompliant) bool {
 	if is_ident_start(b) { return true }
-	if b >= 0x80 && b <= 0xBF { return true }
 	if r.permit(relaxed.nginx_syntax) {
 		if b in [u8(`(`), u8(`)`), u8(`/`), u8(`\\`), u8(`"`)] { return true }
 	}

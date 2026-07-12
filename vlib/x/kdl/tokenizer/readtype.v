@@ -294,10 +294,9 @@ fn (mut s Scanner) scan_multiline_raw(hashes int, l int, c int) Token {
 		return Token{.eof, 'kdl: unterminated multiline raw string', l, c}
 	}
 
-	// Advance past the closing marker at the current position
-	for _ in 0 .. close_marker.len {
-		s.advance()
-	}
+	// Consume the trailing newline after the closing marker
+	if s.c == 13 { s.advance() }
+	if s.c == 10 { s.advance() }
 
 	mut indent := ''
 	if lines.len > 0 {
