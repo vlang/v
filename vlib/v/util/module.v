@@ -205,6 +205,9 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 							last_v_mod = j
 							break
 						}
+						if has_vmod_boundary_marker(ls) {
+							break
+						}
 						continue
 					}
 					break
@@ -247,6 +250,10 @@ fn module_name_has_empty_part(name string) bool {
 		}
 	}
 	return false
+}
+
+fn has_vmod_boundary_marker(ls []string) bool {
+	return '.v.mod.stop' in ls || '.git' in ls
 }
 
 // project_root_vmod_folder returns the absolute folder of the closest
@@ -316,7 +323,24 @@ fn is_unrelated_vmod_in_temp_dir(vmod_folder string, rel_parts []string) bool {
 	if !is_in_temp {
 		return false
 	}
-	return rel_parts.filter(it.len > 0).any(contains_capital(it))
+	filtered_rel_parts := rel_parts.filter(it.len > 0)
+	if vmod_base_url_matches_rel_parts(normalized_vmod_folder, filtered_rel_parts) {
+		return false
+	}
+	return filtered_rel_parts.any(contains_capital(it))
+}
+
+fn vmod_base_url_matches_rel_parts(vmod_folder string, rel_parts []string) bool {
+	manifest := vmod.from_file(os.join_path(vmod_folder, 'v.mod')) or { return false }
+	if manifest.base_url == '' {
+		return false
+	}
+	base_parts := os.norm_path(manifest.base_url).split(os.path_separator).filter(it.len > 0
+		&& it != '.')
+	if base_parts.len == 0 || rel_parts.len < base_parts.len {
+		return false
+	}
+	return rel_parts[..base_parts.len] == base_parts
 }
 
 // normalize_base_url_mod_name strips the `base_url` prefix from `mod_full_name`

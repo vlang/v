@@ -138,3 +138,76 @@ fn test_issue_27391_symlinked_namespaced_vmodules_import_compiles() {
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'luuid-ok\nluuid-ok', res.output
 }
+
+fn issue_27281_boundary_workspace(marker string) string {
+	return os.join_path(os.vtmp_dir(), 'issue_27281_boundary_${marker.replace('.', '_')}')
+}
+
+fn issue_27281_write_boundary_project(marker string) string {
+	workspace := issue_27281_boundary_workspace(marker)
+	parent := os.join_path(workspace, 'parent')
+	repo := os.join_path(parent, 'repo')
+	foo_dir := os.join_path(repo, 'foo')
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(foo_dir) or { panic(err) }
+	parent_vmod := ['Module {', "\tname: 'parent'", '}'].join_lines() + '\n'
+	issue_20147_write_file(os.join_path(parent, 'v.mod'), parent_vmod)
+	issue_20147_write_file(os.join_path(repo, marker), '')
+	issue_20147_write_file(os.join_path(repo, 'main.v'),
+		['module main', '', 'import foo', '', 'fn main() {', '\tprintln(foo.value())', '}'].join_lines() +
+		'\n')
+	issue_20147_write_file(os.join_path(foo_dir, 'foo.v'),
+		['module foo', '', 'pub fn value() string {', "\treturn 'boundary-ok'", '}'].join_lines() +
+		'\n')
+	return workspace
+}
+
+fn issue_27281_assert_boundary_marker_stops_parent_vmod(marker string) {
+	workspace := issue_27281_write_boundary_project(marker)
+	defer {
+		os.rmdir_all(workspace) or {}
+	}
+	main_file := os.real_path(os.join_path(workspace, 'parent', 'repo', 'main.v'))
+	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'boundary-ok', res.output
+}
+
+fn test_issue_27281_git_marker_stops_fallback_parent_vmod_scan() {
+	issue_27281_assert_boundary_marker_stops_parent_vmod('.git')
+}
+
+fn test_issue_27281_vmod_stop_marker_stops_fallback_parent_vmod_scan() {
+	issue_27281_assert_boundary_marker_stops_parent_vmod('.v.mod.stop')
+}
+
+fn issue_27281_base_url_workspace() string {
+	return os.join_path(os.vtmp_dir(), 'issue_27281_uppercase_base_url')
+}
+
+fn issue_27281_write_uppercase_base_url_project() {
+	workspace := issue_27281_base_url_workspace()
+	source_dir := os.join_path(workspace, 'Source')
+	foo_dir := os.join_path(source_dir, 'foo')
+	os.rmdir_all(workspace) or {}
+	os.mkdir_all(foo_dir) or { panic(err) }
+	app_vmod := ['Module {', "\tname: 'app'", "\tbase_url: 'Source'", '}'].join_lines() + '\n'
+	issue_20147_write_file(os.join_path(workspace, 'v.mod'), app_vmod)
+	issue_20147_write_file(os.join_path(source_dir, 'main.v'),
+		['module main', '', 'import foo', '', 'fn main() {', '\tprintln(foo.value())', '}'].join_lines() +
+		'\n')
+	issue_20147_write_file(os.join_path(foo_dir, 'foo.v'),
+		['module foo', '', 'pub fn value() string {', "\treturn 'base-url-ok'", '}'].join_lines() +
+		'\n')
+}
+
+fn test_issue_27281_temp_project_allows_uppercase_base_url() {
+	issue_27281_write_uppercase_base_url_project()
+	defer {
+		os.rmdir_all(issue_27281_base_url_workspace()) or {}
+	}
+	main_file := os.real_path(os.join_path(issue_27281_base_url_workspace(), 'Source', 'main.v'))
+	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'base-url-ok', res.output
+}
