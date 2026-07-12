@@ -219,7 +219,9 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 	sorted_files.sort()
 	mut has_os_specific := map[string]bool{}
 	for file in sorted_files {
-		if !file.ends_with('.v') || file.ends_with('.js.v') || file.contains('_test.') {
+		if !file.ends_with('.v') || file.ends_with('.js.v')
+			|| (file.contains('_test.') && !file.contains('_d_test.')
+			&& !file.contains('_notd_test.')) {
 			continue
 		}
 		if file_has_incompatible_os_suffix(file, target_os) {
@@ -235,7 +237,9 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 			if file.ends_with('.c.v') != backend_specific {
 				continue
 			}
-			if !file.ends_with('.v') || file.ends_with('.js.v') || file.contains('_test.') {
+			if !file.ends_with('.v') || file.ends_with('.js.v')
+				|| (file.contains('_test.') && !file.contains('_d_test.')
+				&& !file.contains('_notd_test.')) {
 				continue
 			}
 			if file_has_incompatible_os_suffix(file, target_os) {
@@ -263,8 +267,47 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 	return v_files
 }
 
+// get_test_v_files_from_dir returns backend/target/define-compatible test files in dir.
+pub fn get_test_v_files_from_dir(dir string, user_defines []string, backend string, target_os string) []string {
+	if dir == '' || !os.is_dir(dir) {
+		return []string{}
+	}
+	mut files := os.ls(dir) or { return []string{} }
+	files.sort()
+	mut result := []string{}
+	for file in files {
+		path := os.join_path_single(dir, file)
+		if !is_test_file_for_target(path, backend, target_os) {
+			continue
+		}
+		if file.contains('_notd_') {
+			feature := extract_test_define_feature(file, '_notd_')
+			if feature.len > 0 && feature in user_defines {
+				continue
+			}
+		} else if file.contains('_d_') {
+			feature := extract_test_define_feature(file, '_d_')
+			if feature.len == 0 || feature !in user_defines {
+				continue
+			}
+		}
+		result << path
+	}
+	return result
+}
+
+fn extract_test_define_feature(file string, marker string) string {
+	idx := file.index(marker) or { return '' }
+	rest := file[idx + marker.len..]
+	test_idx := rest.last_index('_test') or { return '' }
+	return rest[..test_idx]
+}
+
 pub fn is_test_file_for_backend(path string, backend string) bool {
 	file := os.file_name(path)
+	if file.contains('_d_test.') || file.contains('_notd_test.') {
+		return false
+	}
 	if file.ends_with('_test.v') {
 		return true
 	}

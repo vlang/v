@@ -81,9 +81,9 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, input st
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	bad_bin := unique_temp_path(name)
 	result := os.execute('${v3_bin} ${input_path} -b c -o ${bad_bin}')
-	assert result.exit_code != 0
-	assert result.output.contains(expected)
-	assert !result.output.contains('C compilation failed')
+	assert result.exit_code != 0, '${name}: expected compile failure, got success: ${result.output}'
+	assert result.output.contains(expected), '${name}: expected `${expected}` in ${result.output}'
+	assert !result.output.contains('C compilation failed'), '${name}: C compilation failed: ${result.output}'
 }
 
 // run_good_project supports run good project handling for v3 tests.
@@ -268,7 +268,7 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'main.v':      'module main\n\nimport moda\n\nfn main() {}\n'
 		'other.v':     'module main\n\nfn use_it() int {\n\treturn moda.answer()\n}\n'
 		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
-	}, '', 'unknown function `moda.answer`')
+	}, '', 'unknown identifier `moda`')
 	alias_out := run_good(v3_bin, 'alias_method',
 		'type UserId = int\n\nfn (id UserId) str() string {\n\treturn int_str(int(id))\n}\n\nfn main() {\n\tid := UserId(1)\n\tprintln(id.str())\n}\n')
 	assert alias_out == '1'
@@ -389,6 +389,544 @@ fn test_type_checker_reports_core_semantic_errors() {
 	}, 'main.v')
 	assert !cross_module_array_append_c.contains('array_push_many(&xs')
 	assert cross_module_array_append_c.contains('array_push(&xs')
+}
+
+fn test_review_generic_call_diagnostics() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_nongeneric_unknown_is_pattern', 'fn check(err IError) bool {
+	return err is T
+}
+
+fn main() {}
+',
+		'not compatible with `IError`')
+	run_bad(v3_bin, 'bad_nongeneric_unknown_receiver_call', 'fn main() {
+	missing.method()
+}
+',
+		'unknown identifier `missing`')
+	run_bad(v3_bin, 'bad_nongeneric_placeholder_call', 'fn main() {
+	missing[T]()
+}
+',
+		'unknown function `missing[T]`')
+	run_bad(v3_bin, 'bad_generic_missing_explicit_call', 'fn invoke[T]() {
+	missing[T]()
+}
+
+fn main() {
+	invoke[int]()
+}
+',
+		'unknown function `missing[T]`')
+	run_bad(v3_bin, 'bad_generic_missing_receiver_method', 'fn invoke[T](value T) {
+	value.no_such()
+}
+
+fn main() {
+	invoke(1)
+}
+',
+		'unknown function `value.no_such`')
+	run_bad(v3_bin, 'bad_generic_missing_array_receiver_method', 'fn invoke[T](value T) {
+	value.no_such()
+}
+
+fn main() {
+	invoke([]int{})
+}
+',
+		'unknown function `value.no_such`')
+	run_bad(v3_bin, 'bad_generic_array_pop_argument_count', 'fn invoke[T](mut value T) {
+	value.pop(1)
+}
+
+fn main() {
+	mut values := [1, 2]
+	invoke(mut values)
+}
+',
+		'argument count mismatch for `value.pop`: expected 0, got 1')
+	run_bad(v3_bin, 'bad_generic_array_trim_argument_type', 'fn invoke[T](mut value T) {
+	value.trim("bad")
+}
+
+fn main() {
+	mut values := [1, 2]
+	invoke(mut values)
+}
+',
+		'cannot use `string` as argument 1 to `value.trim`; expected `int`')
+	valid_array_methods := run_good(v3_bin, 'generic_cgen_array_method_arguments', 'fn invoke[T](mut value T) {
+	value.trim(1)
+	value.pop()
+}
+
+fn main() {
+	mut values := [1, 2]
+	invoke(mut values)
+	println(int_str(values.len))
+}
+')
+	assert valid_array_methods == '0'
+	run_bad(v3_bin, 'bad_generic_is_on_concrete_non_sum', 'fn matches[T](value int) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[string](1)
+}
+',
+		'`is` can only be used with sum type or interface values, not `int`')
+	run_bad(v3_bin, 'bad_generic_is_pattern_for_sum', 'struct Cat {}
+struct Dog {}
+
+type Animal = Cat | Dog
+
+fn matches[T](value Animal) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[string](Animal(Cat{}))
+}
+',
+		'`string` is not a variant of sum type `Animal`')
+	run_bad(v3_bin, 'bad_generic_is_pattern_for_interface', 'interface Shape {
+	area() int
+}
+
+struct Rect {}
+
+fn (r Rect) area() int {
+	return 1
+}
+
+struct Other {}
+
+fn matches[T](value Shape) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[Other](Rect{})
+}
+',
+		'`Other` is not compatible with interface `Shape`')
+	run_bad(v3_bin, 'bad_generic_is_pattern_for_ierror', 'struct NotError {}
+
+fn matches[T](value IError) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[NotError](error("x"))
+}
+',
+		'`NotError` is not compatible with `IError`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_for_concrete_type', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+struct NoValue {}
+
+fn read[T](value T) int {
+	return value.value()
+}
+
+fn main() {
+	_ := read(NoValue{})
+}
+',
+		'unknown function `value.value`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_argument_count', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) int {
+	return value.value(1)
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'argument count mismatch for `value.value`: expected 0, got 1')
+	run_bad(v3_bin, 'bad_generic_receiver_method_argument_type', 'struct HasValue {}
+
+fn (v HasValue) value(n int) int {
+	return n
+}
+
+fn read[T](value T) int {
+	return value.value("bad")
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'cannot use `string` as argument 1 to `value.value`; expected `int`')
+	out := run_good(v3_bin, 'good_generic_receiver_method_for_concrete_type', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 7
+}
+
+fn read[T](value T) int {
+	return value.value()
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+}
+')
+	assert out == '7'
+	arg_out := run_good(v3_bin, 'good_generic_receiver_method_arguments', 'struct HasValue {}
+
+fn (v HasValue) value(n int) int {
+	return n
+}
+
+fn read[T](value T) int {
+	return value.value(8)
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+}
+')
+	assert arg_out == '8'
+	params_out := run_good(v3_bin, 'good_generic_receiver_params_struct_arguments', '@[params]
+struct ValueConfig {
+	a int
+	b int
+}
+
+struct HasValue {}
+
+fn (v HasValue) value(n int, cfg ValueConfig) int {
+	return n + cfg.a + cfg.b
+}
+
+fn read[T](value T) int {
+	return value.value(1, a: 2, b: 3)
+}
+
+fn read_defaults[T](value T) int {
+	return value.value(4)
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+	println(int_str(read_defaults(HasValue{})))
+}
+')
+	assert params_out == '6\n4'
+	run_bad(v3_bin, 'bad_generic_receiver_method_return_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value()
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'cannot return `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_condition_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if value.value() {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_negated_condition', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if !(value.value()) {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_logical_condition', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if true && value.value() {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_comparison_operand', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value() == true
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	comparison_out := run_good(v3_bin, 'good_generic_receiver_method_numeric_comparison', 'struct HasValue {}
+
+fn (v HasValue) value() u8 {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value() == 1
+}
+
+fn main() {
+	println(read(HasValue{}))
+}
+')
+	assert comparison_out == 'true'
+	run_bad(v3_bin, 'bad_generic_receiver_method_assignment_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	mut ok := false
+	ok = value.value()
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_function_field_argument', 'struct HasCallback {
+	cb fn (int)
+}
+
+fn invoke[T](value T) {
+	value.cb("bad")
+}
+
+fn main() {
+	invoke(HasCallback{
+		cb: fn (n int) {}
+	})
+}
+',
+		'cannot use `string` as argument 1 to `value.cb`; expected `int`')
+	run_bad(v3_bin, 'bad_generic_function_field_argument_count', 'struct HasCallback {
+	cb fn (int)
+}
+
+fn invoke[T](value T) {
+	value.cb()
+}
+
+fn main() {
+	invoke(HasCallback{
+		cb: fn (n int) {}
+	})
+}
+',
+		'argument count mismatch for `value.cb`: expected 1, got 0')
+	fn_field_out := run_good(v3_bin, 'good_generic_function_field_argument', 'struct HasCallback {
+	cb fn (int) int
+}
+
+fn invoke[T](value T) int {
+	return value.cb(3)
+}
+
+fn main() {
+	println(int_str(invoke(HasCallback{
+		cb: fn (n int) int {
+			return n + 1
+		}
+	})))
+}
+')
+	assert fn_field_out == '4'
+	run_bad(v3_bin, 'bad_generic_receiver_params_field_type', '@[params]
+struct OpenOptions {
+	limit int
+}
+
+struct Service {}
+
+fn (s Service) open(opts OpenOptions) {}
+
+fn invoke[T](service T) {
+	service.open(limit: "bad")
+}
+
+fn main() {
+	invoke(Service{})
+}
+',
+		'cannot initialize field `limit` with `string`; expected `int`')
+	run_bad(v3_bin, 'bad_generic_receiver_params_unknown_field', '@[params]
+struct OpenOptions {
+	limit int
+}
+
+struct Service {}
+
+fn (s Service) open(opts OpenOptions) {}
+
+fn invoke[T](service T) {
+	service.open(missing: 1)
+}
+
+fn main() {
+	invoke(Service{})
+}
+',
+		'unknown field `missing` in `OpenOptions`')
+	run_bad(v3_bin, 'bad_generic_receiver_narrow_unsigned_literal', 'struct Sink {}
+
+fn (s Sink) take(value u8) {}
+
+fn invoke[T](sink T) {
+	sink.take(300)
+}
+
+fn main() {
+	invoke(Sink{})
+}
+',
+		'cannot use `int` as argument 1 to `sink.take`; expected `u8`')
+	run_bad(v3_bin, 'bad_generic_receiver_narrow_signed_literal', 'struct Sink {}
+
+fn (s Sink) take(value i8) {}
+
+fn invoke[T](sink T) {
+	sink.take(128)
+}
+
+fn main() {
+	invoke(Sink{})
+}
+',
+		'cannot use `int` as argument 1 to `sink.take`; expected `i8`')
+	literal_out := run_good(v3_bin, 'good_generic_receiver_narrow_literal_boundaries', 'struct Sink {}
+
+fn (s Sink) take_unsigned(value u8) {}
+fn (s Sink) take_signed(value i8) {}
+
+fn invoke[T](sink T) {
+	sink.take_unsigned(255)
+	sink.take_signed(-128)
+}
+
+fn main() {
+	invoke(Sink{})
+	println("ok")
+}
+')
+	assert literal_out == 'ok'
+	run_bad(v3_bin, 'bad_generic_receiver_none_for_result', 'struct Sink {}
+
+fn (s Sink) take(value !int) {}
+
+fn invoke[T](sink T) {
+	sink.take(none)
+}
+
+fn main() {
+	invoke(Sink{})
+}
+',
+		'cannot use `none` as argument 1 to `sink.take`; expected `!int`')
+	result_error_out := run_good(v3_bin, 'good_generic_receiver_ierror_for_result', 'struct Sink {}
+
+fn (s Sink) take(value !int) {}
+
+fn invoke[T](sink T, err IError) {
+	sink.take(error("literal"))
+	sink.take(err)
+}
+
+fn main() {
+	invoke(Sink{}, error("value"))
+	println("ok")
+}
+')
+	assert result_error_out == 'ok'
+	option_out := run_good(v3_bin, 'good_generic_receiver_none_for_option', 'struct Sink {}
+
+fn (s Sink) take(value ?int) {}
+
+fn invoke[T](sink T) {
+	sink.take(none)
+}
+
+fn main() {
+	invoke(Sink{})
+	println("ok")
+}
+')
+	assert option_out == 'ok'
+	run_bad(v3_bin, 'bad_generic_receiver_variadic_spread_type', 'struct Sink {}
+
+fn (s Sink) take(values ...int) {}
+
+fn invoke[T](sink T, values []string) {
+	sink.take(...values)
+}
+
+fn main() {
+	invoke(Sink{}, ["bad"])
+}
+',
+		'cannot use `[]string` as argument 1 to `sink.take`; expected `[]int`')
+	variadic_out := run_good(v3_bin, 'good_generic_receiver_variadic_spread_type', 'struct Sink {}
+
+fn (s Sink) take(values ...int) {}
+
+fn invoke[T](sink T, values []int) {
+	sink.take(...values)
+}
+
+fn main() {
+	invoke(Sink{}, [1, 2])
+	println("ok")
+}
+')
+	assert variadic_out == 'ok'
 }
 
 // Regression tests for the post-PR review fixes: fixed-array literals must match

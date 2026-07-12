@@ -5184,10 +5184,14 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .block {
+		// Locals registered while walking this block (declarations whose RHS
+		// references the loop var) must not leak past it.
+		tc.push_scope()
 		for i in 0 .. node.children_count {
 			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases,
 				value_cases)
 		}
+		tc.pop_scope()
 		return
 	}
 	if node.kind == .comptime_for {
@@ -5218,6 +5222,21 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	if node.kind == .call {
 		tc.check_comptime_static_call(id, node, var_name, loop_kind, field_cases, value_cases)
 		return
+	}
+	// A declaration whose RHS references the loop var is not checked here, but
+	// its locals must still enter the scope: later statements in the unrolled
+	// body use them (`mut fo := ...(field.attrs); ... fo.install_default(...)`),
+	// and without a binding those uses report unknown identifiers.
+	if node.kind == .decl_assign && node.children_count >= 2 {
+		for i := 0; i + 1 < int(node.children_count); i += 2 {
+			lhs := tc.a.child_node(&node, i)
+			if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+				continue
+			}
+			rhs_typ := tc.resolve_type(tc.a.child(&node, i + 1))
+			typ := if rhs_typ is Void { Type(Unknown{}) } else { rhs_typ }
+			tc.cur_scope.insert(lhs.value, typ)
+		}
 	}
 }
 
@@ -5360,7 +5379,8 @@ fn (mut tc TypeChecker) check_comptime_static_call(id flat.NodeId, node flat.Nod
 			id)
 		return
 	}
-	if tc.should_diagnose(id) && !tc.is_known_call(node) {
+	if tc.should_diagnose(id) && !tc.is_known_call(node)
+		&& !tc.call_generic_args_have_placeholders(node) {
 		tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
 	}
 	tc.check_comptime_static_call_args(node, var_name, loop_kind, field_cases, value_cases)
@@ -9009,12 +9029,131 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			id)
 		return
 	}
-	if tc.should_diagnose(id) && !tc.is_known_call(node) {
+	if tc.should_diagnose(id) && !tc.is_known_call(node)
+		&& !tc.call_generic_args_have_placeholders(node) && !tc.call_receiver_type_is_unknown(node) {
 		tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
 	}
 	for i in 1 .. node.children_count {
 		tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 	}
+}
+
+// cur_fn_is_generic_template reports whether the function currently being
+// checked is a template that will be re-validated per instantiation: it
+// declares generic parameters, or is a method on a generic receiver
+// (`fn (mut so SetOf[T]) sort()`), whose own node has no generic_params.
+fn (tc &TypeChecker) cur_fn_is_generic_template() bool {
+	if tc.cur_fn_node_id < 0 || tc.cur_fn_node_id >= tc.a.nodes.len {
+		return false
+	}
+	fn_node := tc.a.nodes[tc.cur_fn_node_id]
+	if fn_node.generic_params.len > 0 {
+		return true
+	}
+	for i in 0 .. fn_node.children_count {
+		child := tc.a.child_node(&fn_node, i)
+		if child.kind == .param && child.typ.len > 0
+			&& tc.type_text_has_generic_placeholder(child.typ) {
+			return true
+		}
+	}
+	return false
+}
+
+// call_receiver_type_is_unknown reports whether a method call's receiver has
+// an unresolvable type, so the unknown-function diagnostic must not fire for
+// it. Besides generic templates (whose bodies the reference compiler also
+// only validates per instantiation), the checker currently fails to resolve
+// several legitimate receiver shapes — fields of generic struct instances
+// (`json.decode[S[T]](s)!.val.unix()`), option/or-unwrapped results, and
+// specialized generic call returns — so narrowing this to "provably generic"
+// chains produces false errors on valid vlib code. The receiver expression
+// itself IS checked, so `missing.method()` still reports its unknown
+// identifier. Remaining gap: a template instantiated with a type lacking the
+// method fails only in C compilation — v3 has no instantiation-time recheck
+// of cloned template bodies yet.
+fn (mut tc TypeChecker) call_receiver_type_is_unknown(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return false
+	}
+	base_id := tc.a.child(callee, 0)
+	base_type := tc.resolve_type(base_id)
+	if unwrap_pointer(base_type) !is Unknown {
+		return false
+	}
+	tc.check_node(base_id)
+	return true
+}
+
+// call_generic_args_have_placeholders reports whether the call carries explicit
+// generic type args that are still uninstantiated placeholders (`p.read_element[T]()`
+// inside a generic template). Such calls can only be validated after
+// monomorphization, so unknown-function diagnostics must not fire for them.
+// Outside a generic template a bare `missing[T]()` is real invalid code, so
+// the deferral only applies within one. This deliberately includes callees
+// with no known declaration: the reference compiler also accepts a template
+// whose body calls a missing function as long as it is never instantiated
+// (vlib code relies on this, e.g. asn1's commented-out `read_element`), and
+// only reports it at instantiation time.
+fn (tc &TypeChecker) call_generic_args_have_placeholders(node flat.Node) bool {
+	if !tc.cur_fn_is_generic_template() {
+		return false
+	}
+	if !tc.explicit_generic_call_target_is_known(node) {
+		return false
+	}
+	if node.value.len > 0 {
+		for arg in node.value.split(',') {
+			if tc.type_text_has_generic_placeholder(arg.trim_space()) {
+				return true
+			}
+		}
+	}
+	if node.children_count == 0 {
+		return false
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind != .index || callee.children_count < 2 || callee.value == 'range' {
+		return false
+	}
+	for i in 1 .. int(callee.children_count) {
+		arg := tc.a.child_node(callee, i)
+		if arg.kind == .ident && arg.value.len > 0
+			&& tc.type_text_has_generic_placeholder(arg.value) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) explicit_generic_call_target_is_known(node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind != .index || callee.children_count == 0 || callee.value == 'range' {
+		return tc.is_known_call(node)
+	}
+	base := tc.a.child_node(callee, 0)
+	if _ := tc.generic_call_base_name(base) {
+		return true
+	}
+	if base.kind != .selector || base.value.len == 0 {
+		return false
+	}
+	// A method on an unresolved generic receiver cannot be tied to a concrete
+	// receiver yet, but it still has to name a real method declaration. The
+	// concrete specialization is validated after monomorphization.
+	for name, _ in tc.fn_generic_params {
+		if name.ends_with('.${base.value}') {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) check_sum_constructor_call(id flat.NodeId, node flat.Node, sum_name string) {
@@ -13608,6 +13747,13 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	}
 	expr_id := tc.a.child(&node, 0)
 	tc.check_node(expr_id)
+	// `x is T` in a generic template stays undecided until monomorphization.
+	// Only defer inside an actual generic function: in a non-generic one an
+	// unknown single-letter pattern is a real error and must be validated.
+	if node.value.len > 0 && tc.type_text_has_generic_placeholder(node.value)
+		&& tc.cur_fn_is_generic_template() {
+		return
+	}
 	expr_type := unalias_type(unwrap_pointer(tc.resolve_type(expr_id)))
 	if expr_type is SumType {
 		if node.value.len > 0 && tc.sum_variant_type_for_pattern(expr_type.name, node.value) == none
@@ -14338,7 +14484,19 @@ fn (tc &TypeChecker) lowered_sum_selector_type(sum SumType, field string) ?Type 
 
 // sum_shared_field_type supports sum shared field type handling for TypeChecker.
 fn (tc &TypeChecker) sum_shared_field_type(sum SumType, field string) ?Type {
-	base := tc.sum_base_name(sum.name)
+	mut visited := map[string]bool{}
+	return tc.sum_shared_field_type_inner(sum.name, field, mut visited)
+}
+
+fn (tc &TypeChecker) sum_shared_field_type_inner(sum_name string, field string, mut visited map[string]bool) ?Type {
+	base := tc.sum_base_name(sum_name)
+	if visited[base] {
+		return none
+	}
+	visited[base] = true
+	defer {
+		visited.delete(base)
+	}
 	variants := tc.sum_types[base] or { return none }
 	if variants.len == 0 {
 		return none
@@ -14346,8 +14504,13 @@ fn (tc &TypeChecker) sum_shared_field_type(sum SumType, field string) ?Type {
 	mut has_common := false
 	mut common_typ := Type(void_)
 	for variant in variants {
-		concrete := tc.concrete_sum_variant_name(sum.name, variant)
-		variant_field := tc.struct_field_type(concrete, field) or { return none }
+		concrete := tc.concrete_sum_variant_name(sum_name, variant)
+		variant_type := tc.parse_type(concrete)
+		variant_field := if variant_type is SumType {
+			tc.sum_shared_field_type_inner(variant_type.name, field, mut visited) or { return none }
+		} else {
+			tc.struct_field_type(concrete, field) or { return none }
+		}
 		if !has_common {
 			common_typ = variant_field
 			has_common = true
@@ -16312,7 +16475,7 @@ fn (tc &TypeChecker) resolve_selective_import_type_symbol_in_file(name string, f
 	return none
 }
 
-fn (tc &TypeChecker) resolve_imported_type_text_in_file(typ string, file string) string {
+pub fn (tc &TypeChecker) resolve_imported_type_text_in_file(typ string, file string) string {
 	if !typ.contains('.') || typ.starts_with('C.') {
 		return typ
 	}
@@ -18822,6 +18985,9 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			}
 			if operator_ret := tc.infix_operator_return_type(node.op, lt, rt) {
 				return operator_ret
+			}
+			if node.op == .right_shift_unsigned {
+				return unsigned_shift_result_type(lt)
 			}
 			if lt is String {
 				return lt_raw

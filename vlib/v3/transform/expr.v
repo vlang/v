@@ -52,6 +52,9 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 	for stmt in rhs_pending {
 		t.pending_stmts << stmt
 	}
+	if !t.validate_specialized_comparison_operands(node, lhs_id, rhs_id, new_lhs, new_rhs) {
+		return t.make_empty()
+	}
 	if lhs_is_string_ptr {
 		new_lhs = t.make_prefix(.mul, new_lhs)
 	}
@@ -344,6 +347,29 @@ fn (t &Transformer) is_empty_map_init(id flat.NodeId) bool {
 	return node.kind == .map_init && node.children_count == 0
 }
 
+// expr_is_plain_lvalue reports whether the expression is an addressable chain
+// of idents/selectors — no calls, indexes or other temporaries at any level.
+fn (t &Transformer) expr_is_plain_lvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value.len > 0
+		}
+		.selector {
+			if node.children_count == 0 {
+				return false
+			}
+			return t.expr_is_plain_lvalue(t.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count < 2 || node.op !in [.eq, .ne] {
 		return none
@@ -367,7 +393,43 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 	lhs := t.transform_expr_for_type(lhs_id, iface)
 	rhs := t.transform_expr_for_type(rhs_id, iface)
 	concrete_type := t.interface_box_concrete_type(lhs) or {
-		t.interface_box_concrete_type(rhs) or { return none }
+		t.interface_box_concrete_type(rhs) or {
+			// The boxed concrete type is unknown at compile time. For IError
+			// specifically, compare concrete type and observable identity (msg +
+			// code) via the always-emitted C helpers, matching how error values compare in
+			// practice (`assert err == other_err`). The helpers take addresses,
+			// so a transformed non-lvalue operand is spilled to a temporary first.
+			if iface in ['IError', 'builtin.IError'] {
+				lhs_err := if t.expr_is_plain_lvalue(lhs) {
+					lhs
+				} else {
+					t.stable_transformed_expr_for_reuse(lhs, iface, 'ierr_eq_lhs')
+				}
+				rhs_err := if t.expr_is_plain_lvalue(rhs) {
+					rhs
+				} else {
+					t.stable_transformed_expr_for_reuse(rhs, iface, 'ierr_eq_rhs')
+				}
+				lhs_addr := t.make_prefix(.amp, lhs_err)
+				rhs_addr := t.make_prefix(.amp, rhs_err)
+				lhs_typ := t.make_selector(lhs_err, '_typ', 'int')
+				rhs_typ := t.make_selector(rhs_err, '_typ', 'int')
+				type_eq := t.make_infix(.eq, lhs_typ, rhs_typ)
+				lhs_msg := t.make_call_typed('IError__msg', arr1(lhs_addr), 'string')
+				rhs_msg := t.make_call_typed('IError__msg', arr1(rhs_addr), 'string')
+				msg_eq := t.make_call_typed('string__eq', arr2(lhs_msg, rhs_msg), 'bool')
+				lhs_code := t.make_call_typed('IError__code', arr1(lhs_addr), 'int')
+				rhs_code := t.make_call_typed('IError__code', arr1(rhs_addr), 'int')
+				code_eq := t.make_infix(.eq, lhs_code, rhs_code)
+				err_eq := t.make_infix(.logical_and, type_eq, t.make_infix(.logical_and, msg_eq,
+					code_eq))
+				if node.op == .ne {
+					return t.make_prefix(.not, err_eq)
+				}
+				return err_eq
+			}
+			return none
+		}
 	}
 	lhs_value := t.stable_transformed_expr_for_reuse(lhs, iface, 'iface_eq_lhs')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, iface, 'iface_eq_rhs')

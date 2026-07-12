@@ -572,6 +572,7 @@ fn main() {
 	mut compile_backends := []string{}
 	mut user_defines := []string{}
 	mut should_run := false
+	mut is_test_command := false
 	mut run_args := []string{}
 	mut i := 0
 	for i < args.len {
@@ -586,6 +587,9 @@ fn main() {
 		}
 		if args[i] == 'run' && input_file.len == 0 && !should_run {
 			should_run = true
+			i++
+		} else if args[i] == 'test' && input_file.len == 0 && !should_run {
+			is_test_command = true
 			i++
 		} else if args[i] == '-o' && i + 1 < args.len {
 			output_file = args[i + 1]
@@ -794,6 +798,14 @@ fn main() {
 	mut a := p.a
 	a.user_code_start = a.nodes.len
 
+	// Test mode is a compile-time define as well as a harness mode. Install it
+	// after parsing builtin, but before collecting and parsing user inputs, so
+	// `$if test` and `_d_test.v` apply to both file and directory test commands.
+	if 'test' !in prefs.user_defines
+		&& (is_test_command || pref.is_test_file_for_backend(input_file, backend)) {
+		prefs.user_defines << 'test'
+	}
+
 	// Parse user input: single file or directory
 	mut user_files := []string{}
 	if input_file.ends_with('.v') {
@@ -801,10 +813,18 @@ fn main() {
 		user_files = expand_single_test_file_inputs(user_files, prefs)
 	} else if os.is_dir(input_file) {
 		user_files = pref.get_v_files_from_dir(input_file, prefs.user_defines, prefs.target_os)
+		if is_test_command {
+			user_files << pref.get_test_v_files_from_dir(input_file, prefs.user_defines,
+				prefs.backend, prefs.target_os)
+		}
 		for subdir in vmod_subdirs(input_file) {
 			subdir_path := os.join_path_single(input_file, subdir)
 			user_files << pref.get_v_files_from_dir(subdir_path, prefs.user_defines,
 				prefs.target_os)
+			if is_test_command {
+				user_files << pref.get_test_v_files_from_dir(subdir_path, prefs.user_defines,
+					prefs.backend, prefs.target_os)
+			}
 		}
 	} else {
 		user_files << input_file
@@ -935,7 +955,16 @@ fn main() {
 	if building_v {
 		used_fns = transform.erase_generic_templates(mut a, &pre_tc, used_fns)
 	} else {
-		used_fns = transform.monomorphize_with_used(mut a, &pre_tc, used_fns)
+		mut monomorph_used_fns, monomorph_errors := transform.monomorphize_with_used_checked(mut a,
+			&pre_tc, used_fns)
+		used_fns = monomorph_used_fns.move()
+		if monomorph_errors.len > 0 {
+			eprintln('type checker found ${monomorph_errors.len} error(s):')
+			for message in monomorph_errors {
+				eprintln(message)
+			}
+			exit(1)
+		}
 	}
 	b.step('monomorphize')
 

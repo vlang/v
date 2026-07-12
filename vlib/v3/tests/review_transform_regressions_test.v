@@ -519,6 +519,31 @@ fn test_generic_string_literal_matching_typeof_marker_is_preserved() {
 	assert out == '__v3_generic_type_name:T|int'
 }
 
+fn test_typeof_function_fixed_array_types_keep_function_shape() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'typeof_function_fixed_array_types', 'fn values() [3]int {
+	return [1, 2, 3]!
+}
+
+fn first_two(input [3]int) [2]int {
+	return [input[0], input[1]]!
+}
+
+const values_fn_type_name = typeof(values).name
+const first_two_fn_type_name = typeof(first_two).name
+
+fn main() {
+	values_fn := values
+	first_two_fn := first_two
+	println(typeof(values_fn).name)
+	println(typeof(first_two_fn).name)
+	println(values_fn_type_name)
+	println(first_two_fn_type_name)
+}
+')
+	assert out == 'fn () [3]int\nfn ([3]int) [2]int\nfn () [3]int\nfn ([3]int) [2]int'
+}
+
 fn test_typeof_idx_uses_active_smartcast() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'typeof_idx_smartcast', 'struct Foo {}

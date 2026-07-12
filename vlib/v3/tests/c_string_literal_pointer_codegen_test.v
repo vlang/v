@@ -49,3 +49,29 @@ fn test_embedded_nul_string_literal_codegen_escapes_c_source() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
+
+fn test_c_escape_literals_are_scalar_bytes_in_scalar_contexts() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_c_escape_scalar_test')
+	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	src := os.join_path(os.temp_dir(), 'v3_c_escape_scalar_input.v')
+	os.write_file(src,
+		"fn C.putchar(int) int\nfn C.abs(int) int\n\nfn main() {\n\tC.putchar(c'\\x41')\n\tC.putchar((c'\\x41'))\n\tC.putchar(c'\\101')\n\tC.putchar(c'\\n')\n\tprintln(int_str(C.abs(c'\\xff')))\n}\n") or {
+		panic(err)
+	}
+	bin := os.join_path(os.temp_dir(), 'v3_c_escape_scalar_input')
+	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	c_code := os.read_file(bin + '.c') or { panic(err) }
+	assert c_code.contains('putchar(*"\\x41")'), c_code
+	assert c_code.contains('putchar((*"\\x41"))'), c_code
+	assert c_code.contains('putchar(*"\\101")'), c_code
+	assert c_code.contains('((u8)*"\\xff")'), c_code
+	assert !c_code.contains('abs(*"\\xff")'), c_code
+	assert !c_code.contains('putchar("\\x41")'), c_code
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'AAA\n255'
+}

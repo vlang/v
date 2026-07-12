@@ -2351,7 +2351,12 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 		.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or {
 			return 'bool'
 		}
-		.left_shift, .right_shift, .right_shift_unsigned {
+		.right_shift_unsigned {
+			if lhs_type.len > 0 {
+				return t.unsigned_shift_type_text(lhs_type)
+			}
+		}
+		.left_shift, .right_shift {
 			// shifts keep the left operand's type/width
 			if lhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type) {
 				return lhs_type
@@ -2374,6 +2379,20 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 	}
 
 	return ''
+}
+
+fn (t &Transformer) unsigned_shift_type_text(typ string) string {
+	clean := typ.trim_space()
+	if !isnil(t.tc) {
+		resolved := types.unsigned_shift_result_type(t.tc.parse_type(clean)).name()
+		if resolved in ['u8', 'u16', 'u32', 'u64', 'usize'] {
+			return resolved
+		}
+	}
+	if types.is_builtin_type_name(clean) {
+		return types.unsigned_shift_result_type(types.builtin_type_value(clean)).name()
+	}
+	return typ
 }
 
 fn promote_numeric_literal_infix_type(lhs flat.Node, lhs_type string, rhs flat.Node, rhs_type string) ?string {
@@ -2694,7 +2713,11 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			return t.make_call_typed('bool.str', arr1(expr), 'string')
 		}
 		'u8', 'byte', 'u16', 'u32', 'usize' {
-			return t.make_call_typed('strconv__format_uint', arr2(expr, t.make_int_literal(10)),
+			// C integer promotion would pass an untruncated `int` into the u64
+			// param (`u8(255) + u8(1)` is 256 in C); cast back to the value
+			// type first so the arithmetic wraps at the V type's width.
+			truncated := t.make_cast(clean_typ, expr, clean_typ)
+			return t.make_call_typed('strconv__format_uint', arr2(truncated, t.make_int_literal(10)),
 				'string')
 		}
 		'u64' {
@@ -4705,6 +4728,10 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					t.mark_fn_used(method_name)
 					return t.make_call_typed(method_name, args, ret_type)
 				}
+				if t.validating_generic_spec
+					&& !t.validate_cgen_array_method_args(node, base_id, clean_base_type, fn_node.value) {
+					return t.make_empty()
+				}
 				if array_method_stays_in_cgen_needs_runtime_mark(fn_node.value) {
 					t.mark_fn_used('array__${fn_node.value}')
 				}
@@ -4759,6 +4786,68 @@ fn array_method_stays_in_cgen_needs_runtime_mark(method string) bool {
 		5 { method == 'clear' }
 		else { false }
 	}
+}
+
+fn (mut t Transformer) validate_cgen_array_method_args(node flat.Node, base_id flat.NodeId, base_type string, method string) bool {
+	base_node := t.a.nodes[int(base_id)]
+	base_name := if base_node.kind == .ident && base_node.value.len > 0 {
+		base_node.value
+	} else {
+		base_type
+	}
+	display_name := '${base_name}.${method}'
+	if method == 'bytestr' && base_type !in ['[]u8', '[]byte'] {
+		t.record_monomorph_error('unknown function `${display_name}`')
+		return false
+	}
+	if method == 'wait' {
+		elem_type := if base_type.starts_with('[]') { base_type[2..].trim_space() } else { '' }
+		if elem_type != 'thread' && !elem_type.starts_with('thread ') {
+			t.record_monomorph_error('unknown function `${display_name}`')
+			return false
+		}
+	}
+	mut expected_types := []string{}
+	mut has_signature := false
+	if builtin_method := t.array_builtin_method_name(method) {
+		params := t.call_param_types(builtin_method)
+		if params.len > 0 {
+			param_offset := t.receiver_method_param_offset(base_id, node, params, builtin_method)
+			for i in param_offset .. params.len {
+				expected_types << t.normalize_type_alias(params[i].name())
+			}
+			has_signature = true
+		}
+	}
+	if !has_signature {
+		expected_types = match method {
+			'trim', 'repeat', 'delete', 'ensure_cap' { ['int'] }
+			'repeat_to_depth' { ['int', 'int'] }
+			else { []string{} }
+		}
+	}
+	actual_count := int(node.children_count) - 1
+	if actual_count != expected_types.len {
+		t.record_monomorph_error('argument count mismatch for `${display_name}`: expected ${expected_types.len}, got ${actual_count}')
+		return false
+	}
+	mut valid := true
+	for i, expected in expected_types {
+		arg_id := t.a.child(&node, i + 1)
+		mut actual := t.resolve_expr_type(arg_id)
+		if actual.len == 0 {
+			actual = t.node_type(arg_id)
+		}
+		if actual.len == 0 {
+			actual = t.reliable_stringify_type(arg_id)
+		}
+		actual = t.normalize_type_alias(actual)
+		if actual != expected {
+			t.record_monomorph_error('cannot use `${actual}` as argument ${i + 1} to `${display_name}`; expected `${expected}`')
+			valid = false
+		}
+	}
+	return valid
 }
 
 fn thread_array_wait_return_type(elem_type string) ?string {
@@ -5759,6 +5848,22 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	if base_type.starts_with('[]') || base_type.starts_with('map[') {
 		if base_type.starts_with('[]') {
+			if t.validating_generic_spec {
+				if array_method_stays_in_cgen(method) {
+					if !t.validate_cgen_array_method_args(node, base_id, base_type, method) {
+						return t.make_empty()
+					}
+				} else if
+					t.resolve_collection_receiver_method_name(base_id, method, base_type).len == 0
+					&& !t.receiver_selector_is_fn_field(base_type, method) {
+					base_name := if base_node.kind == .ident && base_node.value.len > 0 {
+						base_node.value
+					} else {
+						base_type
+					}
+					t.record_monomorph_error('unknown function `${base_name}.${method}`')
+				}
+			}
 			return none
 		}
 	}
@@ -5770,9 +5875,15 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			if t.is_known_fn_name(resolved_method) {
 				params := t.call_param_types(resolved_method)
 				if t.resolved_call_uses_receiver_type(base_id, base_type, params) {
+					if !t.validate_resolved_receiver_method_args(node, base_id, resolved_method) {
+						return t.make_empty()
+					}
 					args := t.transform_receiver_method_args_with_base(node, t.receiver_base_for_resolved_method(base_id,
 						resolved_method), resolved_method)
 					ret_type := t.receiver_method_return_type(resolved_method, node.typ)
+					if !t.validate_specialized_call_result(id, ret_type) {
+						return t.make_empty()
+					}
 					return t.make_call_typed(resolved_method, args, ret_type)
 				}
 			}
@@ -5783,8 +5894,14 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		if t.receiver_method_name_is_open_generic(method_name) {
 			return none
 		}
+		if !t.validate_resolved_receiver_method_args(node, base_id, method_name) {
+			return t.make_empty()
+		}
 		args := t.transform_receiver_method_args(node, base_id, method_name)
 		ret_type := t.receiver_method_return_type(method_name, node.typ)
+		if !t.validate_specialized_call_result(id, ret_type) {
+			return t.make_empty()
+		}
 		return t.make_call_typed(method_name, args, ret_type)
 	}
 	if !isnil(t.tc) {
@@ -5797,20 +5914,491 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 				if !t.resolved_call_uses_receiver_type(base_id, base_type, params) {
 					return none
 				}
+				if !t.validate_resolved_receiver_method_args(node, base_id, resolved_method) {
+					return t.make_empty()
+				}
 				args := t.transform_receiver_method_args_with_base(node, t.receiver_base_for_resolved_method(base_id,
 					resolved_method), resolved_method)
 				ret_type := t.receiver_method_return_type(resolved_method, node.typ)
+				if !t.validate_specialized_call_result(id, ret_type) {
+					return t.make_empty()
+				}
 				return t.make_call_typed(resolved_method, args, ret_type)
 			}
 		}
 	}
 	if sum_method := t.resolve_smartcast_sum_receiver_method(base_id, method) {
+		if !t.validate_resolved_receiver_method_args(node, base_id, sum_method) {
+			return t.make_empty()
+		}
 		args := t.transform_receiver_method_args_with_base(node, t.receiver_base_for_resolved_method(base_id,
 			sum_method), sum_method)
 		ret_type := t.receiver_method_return_type(sum_method, node.typ)
+		if !t.validate_specialized_call_result(id, ret_type) {
+			return t.make_empty()
+		}
 		return t.make_call_typed(sum_method, args, ret_type)
 	}
+	if t.validating_generic_spec {
+		if field_type := t.lookup_struct_field_type(base_type, method) {
+			if !t.validate_specialized_fn_field_call(id, node, base_id, field_type) {
+				return t.make_empty()
+			}
+			return none
+		}
+		base_name := if base_node.kind == .ident && base_node.value.len > 0 {
+			base_node.value
+		} else {
+			base_type
+		}
+		t.record_monomorph_error('unknown function `${base_name}.${method}`')
+	}
 	return none
+}
+
+fn (mut t Transformer) validate_resolved_receiver_method_args(node flat.Node, base_id flat.NodeId, method_name string) bool {
+	if !t.validating_generic_spec {
+		return true
+	}
+	params := t.call_param_types(method_name)
+	if params.len == 0 {
+		return true
+	}
+	param_offset := t.receiver_method_param_offset(base_id, node, params, method_name)
+	if param_offset == 0 {
+		return true
+	}
+	mut field_init_args := 0
+	for i in 1 .. node.children_count {
+		if t.a.child_node(&node, i).kind == .field_init {
+			field_init_args++
+		}
+	}
+	collapsed_fields := if field_init_args > 0 { 1 } else { 0 }
+	actual_count := int(node.children_count) - 1 - field_init_args + collapsed_fields
+	expected_count := params.len - param_offset
+	is_variadic := t.call_is_variadic(method_name) && params[params.len - 1] is types.Array
+	mut min_count := expected_count
+	mut trailing_idx := params.len - 1
+	for trailing_idx >= param_offset {
+		if is_variadic && trailing_idx == params.len - 1 {
+			min_count--
+			trailing_idx--
+			continue
+		}
+		if _ := t.params_struct_type_name(params[trailing_idx].name()) {
+			min_count--
+			trailing_idx--
+			continue
+		}
+		break
+	}
+	display_name := t.resolved_receiver_call_display_name(node, base_id, method_name)
+	if actual_count < min_count || (!is_variadic && actual_count > expected_count) {
+		t.record_monomorph_error('argument count mismatch for `${display_name}`: expected ${expected_count}, got ${actual_count}')
+		return false
+	}
+	mut valid := true
+	mut arg_idx := 0
+	mut child_idx := 1
+	for child_idx < node.children_count {
+		arg_id := t.a.child(&node, child_idx)
+		arg_node := t.a.nodes[int(arg_id)]
+		param_idx := param_offset + arg_idx
+		mut expected := params[if param_idx < params.len { param_idx } else { params.len - 1 }]
+		if arg_node.kind == .field_init {
+			struct_type := t.params_struct_type_name(expected.name()) or {
+				t.struct_arg_type_name(expected.name()) or { '' }
+			}
+			if struct_type.len == 0
+				|| !t.validate_specialized_struct_field_args(node, child_idx, struct_type) {
+				valid = false
+			}
+			child_idx = t.next_non_field_init_arg(node, child_idx)
+			arg_idx++
+			continue
+		}
+		if is_variadic && param_idx >= params.len - 1 {
+			variadic_type := params[params.len - 1]
+			if variadic_type is types.Array {
+				if arg_node.kind == .prefix && arg_node.value == '...' {
+					if arg_node.children_count > 0 {
+						spread_id := t.a.child(&arg_node, 0)
+						actual_name := t.specialized_expr_type_name(spread_id)
+						expected_name := params[params.len - 1].name()
+						if !t.resolved_receiver_arg_compatible(spread_id, actual_name,
+							expected_name) {
+							t.record_monomorph_error('cannot use `${actual_name}` as argument ${
+								arg_idx + 1} to `${display_name}`; expected `${expected_name}`')
+							valid = false
+						}
+					}
+					child_idx++
+					arg_idx++
+					continue
+				}
+				expected = variadic_type.elem_type
+			}
+		}
+		actual_name := t.specialized_expr_type_name(arg_id)
+		expected_name := expected.name()
+		if t.resolved_receiver_arg_compatible(arg_id, actual_name, expected_name) {
+			child_idx++
+			arg_idx++
+			continue
+		}
+		t.record_monomorph_error('cannot use `${actual_name}` as argument ${arg_idx + 1} to `${display_name}`; expected `${expected_name}`')
+		valid = false
+		child_idx++
+		arg_idx++
+	}
+	return valid
+}
+
+fn (mut t Transformer) validate_specialized_struct_field_args(node flat.Node, field_start int, struct_type string) bool {
+	mut valid := true
+	mut i := field_start
+	for i < node.children_count {
+		field := t.a.child_node(&node, i)
+		if field.kind != .field_init {
+			break
+		}
+		field_type := t.lookup_struct_field_type(struct_type, field.value) or {
+			t.record_monomorph_error('unknown field `${field.value}` in `${struct_type.all_after_last('.')}`')
+			valid = false
+			i++
+			continue
+		}
+		if field.children_count == 0 {
+			i++
+			continue
+		}
+		value_id := t.a.child(field, 0)
+		actual_type := t.specialized_expr_type_name(value_id)
+		if !t.resolved_receiver_arg_compatible(value_id, actual_type, field_type) {
+			t.record_monomorph_error('cannot initialize field `${field.value}` with `${actual_type}`; expected `${field_type}`')
+			valid = false
+		}
+		i++
+	}
+	return valid
+}
+
+fn (mut t Transformer) validate_specialized_fn_field_call(id flat.NodeId, node flat.Node, base_id flat.NodeId, field_type string) bool {
+	display_name := t.resolved_receiver_call_display_name(node, base_id, '')
+	if isnil(t.tc) {
+		return true
+	}
+	fn_type := transform_fn_type(t.tc.parse_type(field_type)) or {
+		t.record_monomorph_error('unknown function `${display_name}`')
+		return false
+	}
+	actual_count := int(node.children_count) - 1
+	if actual_count != fn_type.params.len {
+		t.record_monomorph_error('argument count mismatch for `${display_name}`: expected ${fn_type.params.len}, got ${actual_count}')
+		return false
+	}
+	mut valid := true
+	for i in 0 .. actual_count {
+		arg_id := t.a.child(&node, i + 1)
+		actual_type := t.specialized_expr_type_name(arg_id)
+		expected_type := fn_type.params[i].name()
+		if t.resolved_receiver_arg_compatible(arg_id, actual_type, expected_type) {
+			continue
+		}
+		t.record_monomorph_error('cannot use `${actual_type}` as argument ${i + 1} to `${display_name}`; expected `${expected_type}`')
+		valid = false
+	}
+	if !t.validate_specialized_call_result(id, fn_type.return_type.name()) {
+		valid = false
+	}
+	return valid
+}
+
+fn transform_fn_type(typ types.Type) ?types.FnType {
+	if typ is types.FnType {
+		return typ
+	}
+	if typ is types.Alias {
+		return transform_fn_type(typ.base_type)
+	}
+	return none
+}
+
+fn (mut t Transformer) validate_specialized_call_result(id flat.NodeId, actual_type string) bool {
+	if !t.validating_generic_spec || t.expected_expr_node != int(id)
+		|| t.expected_expr_type.len == 0 || t.expected_expr_type in ['unknown', 'void'] {
+		return true
+	}
+	expected_type := t.expected_expr_type
+	if t.resolved_receiver_arg_compatible(id, actual_type, expected_type) {
+		return true
+	}
+	if t.in_return_expr {
+		t.record_monomorph_error('cannot return `${actual_type}` as `${expected_type}`')
+	} else {
+		t.record_monomorph_error('cannot use `${actual_type}` as `${expected_type}`')
+	}
+	return false
+}
+
+fn (mut t Transformer) validate_specialized_comparison_operands(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, transformed_lhs flat.NodeId, transformed_rhs flat.NodeId) bool {
+	if !t.validating_generic_spec || node.op !in [.eq, .ne, .lt, .gt, .le, .ge] {
+		return true
+	}
+	lhs_is_call := t.specialized_comparison_operand_is_receiver_call(lhs_id)
+	rhs_is_call := t.specialized_comparison_operand_is_receiver_call(rhs_id)
+	if !lhs_is_call && !rhs_is_call {
+		return true
+	}
+	lhs_type := t.specialized_expr_type_name(transformed_lhs)
+	rhs_type := t.specialized_expr_type_name(transformed_rhs)
+	if t.specialized_comparison_types_compatible(transformed_lhs, lhs_type, transformed_rhs,
+		rhs_type)
+	{
+		return true
+	}
+	if lhs_is_call {
+		t.record_monomorph_error('cannot use `${lhs_type}` as `${rhs_type}`')
+	} else {
+		t.record_monomorph_error('cannot use `${rhs_type}` as `${lhs_type}`')
+	}
+	return false
+}
+
+fn (t &Transformer) specialized_comparison_operand_is_receiver_call(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return t.specialized_comparison_operand_is_receiver_call(t.a.child(&node, 0))
+	}
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	callee := t.a.child_node(&node, 0)
+	return callee.kind == .selector && callee.children_count > 0
+}
+
+fn (mut t Transformer) specialized_comparison_types_compatible(lhs_id flat.NodeId, lhs_type string, rhs_id flat.NodeId, rhs_type string) bool {
+	if lhs_type.len == 0 || rhs_type.len == 0 || lhs_type == 'unknown' || rhs_type == 'unknown' {
+		return true
+	}
+	lhs := t.normalize_type_alias(lhs_type)
+	rhs := t.normalize_type_alias(rhs_type)
+	if lhs == rhs {
+		return true
+	}
+	lhs_is_number := t.is_integer_type_name(lhs) || lhs in ['f32', 'f64']
+	rhs_is_number := t.is_integer_type_name(rhs) || rhs in ['f32', 'f64']
+	if lhs_is_number && rhs_is_number {
+		return true
+	}
+	return t.resolved_receiver_arg_compatible(lhs_id, lhs_type, rhs_type)
+		|| t.resolved_receiver_arg_compatible(rhs_id, rhs_type, lhs_type)
+}
+
+fn (mut t Transformer) specialized_expr_type_name(id flat.NodeId) string {
+	if t.specialized_expr_is_none(id) {
+		return 'none'
+	}
+	mut typ := t.resolve_expr_type(id)
+	if typ.len == 0 {
+		typ = t.node_type(id)
+	}
+	if typ.len == 0 {
+		typ = t.reliable_stringify_type(id)
+	}
+	return typ
+}
+
+fn (t &Transformer) resolved_receiver_call_display_name(node flat.Node, base_id flat.NodeId, method_name string) string {
+	base := t.a.nodes[int(base_id)]
+	base_name := if base.kind == .ident && base.value.len > 0 {
+		base.value
+	} else {
+		t.node_type(base_id)
+	}
+	if node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .selector && callee.value.len > 0 {
+			return '${base_name}.${callee.value}'
+		}
+	}
+	method := if method_name.contains('.') { method_name.all_after_last('.') } else { method_name }
+	return '${base_name}.${method}'
+}
+
+fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actual_type string, expected_type string) bool {
+	if actual_type.len == 0 || actual_type == 'unknown' || expected_type.len == 0 {
+		return true
+	}
+	actual := t.normalize_type_alias(actual_type)
+	expected := t.normalize_type_alias(expected_type)
+	if t.is_integer_type_name(expected) {
+		if literal := t.specialized_int_literal(arg_id) {
+			return specialized_int_literal_fits_type(literal, expected)
+		}
+	}
+	if actual == expected {
+		return true
+	}
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind == .float_literal && expected in ['f32', 'f64'] {
+		return true
+	}
+	if actual == 'nil'
+		&& (expected.starts_with('&') || expected in ['voidptr', 'byteptr', 'charptr']) {
+		return true
+	}
+	if expected.starts_with('?') {
+		if actual == expected[1..] || t.specialized_expr_is_none(arg_id) {
+			return true
+		}
+	}
+	if expected.starts_with('!') {
+		if actual == expected[1..] || t.is_ierror_type(actual) {
+			return true
+		}
+	}
+	if t.is_sum_type_name(expected) && t.sum_target_accepts_variant_type(expected, actual) {
+		return true
+	}
+	if !isnil(t.tc) && expected in t.tc.interface_names
+		&& t.tc.type_text_implements_interface(actual, expected) {
+		return true
+	}
+	return false
+}
+
+struct SpecializedIntLiteral {
+	negative  bool
+	magnitude u64
+}
+
+fn (t &Transformer) specialized_int_literal(id flat.NodeId) ?SpecializedIntLiteral {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return t.specialized_int_literal(t.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.children_count > 0 && node.op in [.plus, .minus] {
+		mut literal := t.specialized_int_literal(t.a.child(&node, 0)) or { return none }
+		if node.op == .minus && literal.magnitude != 0 {
+			literal = SpecializedIntLiteral{
+				negative:  !literal.negative
+				magnitude: literal.magnitude
+			}
+		}
+		return literal
+	}
+	if node.kind != .int_literal {
+		return none
+	}
+	magnitude := specialized_uint_literal_value(node.value) or { return none }
+	return SpecializedIntLiteral{
+		magnitude: magnitude
+	}
+}
+
+fn specialized_uint_literal_value(text string) ?u64 {
+	clean := text.replace('_', '')
+	if clean.len == 0 {
+		return none
+	}
+	mut base := u64(10)
+	mut start := 0
+	if clean.len >= 2 && clean[0] == `0` {
+		match clean[1] {
+			`x`, `X` {
+				base = 16
+				start = 2
+			}
+			`o`, `O` {
+				base = 8
+				start = 2
+			}
+			`b`, `B` {
+				base = 2
+				start = 2
+			}
+			else {}
+		}
+	}
+	if start >= clean.len {
+		return none
+	}
+	mut value := u64(0)
+	for i in start .. clean.len {
+		ch := clean[i]
+		digit := if ch >= `0` && ch <= `9` {
+			u64(ch - `0`)
+		} else if ch >= `a` && ch <= `f` {
+			u64(ch - `a`) + 10
+		} else if ch >= `A` && ch <= `F` {
+			u64(ch - `A`) + 10
+		} else {
+			return none
+		}
+		if digit >= base || value > (max_u64 - digit) / base {
+			return none
+		}
+		value = value * base + digit
+	}
+	return value
+}
+
+fn specialized_int_literal_fits_type(literal SpecializedIntLiteral, typ string) bool {
+	return match typ {
+		'u8', 'byte' { !literal.negative && literal.magnitude <= 255 }
+		'u16' { !literal.negative && literal.magnitude <= 65535 }
+		'u32' { !literal.negative && literal.magnitude <= u64(4294967295) }
+		'u64', 'usize' { !literal.negative }
+		'i8' { specialized_signed_literal_fits(literal, 127) }
+		'i16' { specialized_signed_literal_fits(literal, 32767) }
+		'int', 'i32', 'rune' { specialized_signed_literal_fits(literal, 2147483647) }
+		'i64', 'isize' { specialized_signed_literal_fits(literal, u64(max_i64)) }
+		else { true }
+	}
+}
+
+fn specialized_signed_literal_fits(literal SpecializedIntLiteral, max u64) bool {
+	if literal.negative {
+		return literal.magnitude <= max + 1
+	}
+	return literal.magnitude <= max
+}
+
+fn (t &Transformer) specialized_expr_is_none(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .none_expr {
+		return true
+	}
+	if node.kind == .paren && node.children_count > 0 {
+		return t.specialized_expr_is_none(t.a.child(&node, 0))
+	}
+	return false
+}
+
+fn (t &Transformer) receiver_selector_is_fn_field(base_type string, field string) bool {
+	field_type := t.lookup_struct_field_type(base_type, field) or { return false }
+	clean := t.normalize_type_alias(field_type)
+	return clean.starts_with('fn(') || clean.starts_with('fn (')
+}
+
+fn (mut t Transformer) record_monomorph_error(message string) {
+	key := '${t.cur_file}:${t.cur_fn_name}:${message}'
+	if t.monomorph_error_seen[key] {
+		return
+	}
+	t.monomorph_error_seen[key] = true
+	t.monomorph_errors << message
 }
 
 fn (t &Transformer) pointer_builtin_vbytes_method(base_is_pointer bool, builtin_base_type string, method string) ?string {
