@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.types
 
 fn test_flattened_generic_receiver_short_variants() {
 	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
@@ -52,4 +53,12 @@ fn test_typeof_display_canonicalizes_fixed_array_map_values() {
 	assert typeof_display_type_text('Box[int[3]]') == 'Box[[3]int]'
 	assert typeof_display_type_text('Pair[int[3], Box[string[2]]]') == 'Pair[[3]int, Box[[2]string]]'
 	assert typeof_display_type_text('Box[int][3]') == '[3]Box[int]'
+	fixed_maps := types.Type(types.ArrayFixed{
+		elem_type: types.Type(types.Map{
+			key_type:   types.Type(types.String{})
+			value_type: types.Type(types.int_)
+		})
+		len:       3
+	})
+	assert typeof_display_resolved_type_text(fixed_maps) == '[3]map[string]int'
 }

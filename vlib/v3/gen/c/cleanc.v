@@ -6002,13 +6002,21 @@ fn (g &FlatGen) typeof_type_name(node flat.Node) string {
 	expr_id := g.a.child(&node, 0)
 	expr_type := g.usable_expr_type(expr_id)
 	if expr_type !is types.Unknown && expr_type !is types.Void {
-		return typeof_display_type_name(expr_type.name())
+		return typeof_display_resolved_type_name(expr_type)
 	}
 	resolved := g.tc.resolve_type(expr_id)
 	if resolved !is types.Unknown && resolved !is types.Void {
-		return typeof_display_type_name(resolved.name())
+		return typeof_display_resolved_type_name(resolved)
 	}
 	return ''
+}
+
+fn typeof_display_resolved_type_name(typ types.Type) string {
+	if typ is types.ArrayFixed {
+		len_text := if typ.len_expr.len > 0 { typ.len_expr } else { typ.len.str() }
+		return '[${len_text}]' + typeof_display_type_name(typ.elem_type.name())
+	}
+	return typeof_display_type_name(typ.name())
 }
 
 // typeof_display_type_name canonicalizes internal suffix-form fixed-array

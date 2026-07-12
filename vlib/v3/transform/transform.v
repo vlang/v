@@ -8506,7 +8506,21 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 			pos:   node.pos
 		})
 	}
+	if !isnil(t.tc) {
+		resolved := t.tc.resolve_type(expr_id)
+		if resolved is types.ArrayFixed {
+			return t.make_string_literal(typeof_display_resolved_type_text(resolved))
+		}
+	}
 	return t.make_string_literal(typeof_display_type_text(typeof_fn_type_display(generic_type_name_display(typ))))
+}
+
+fn typeof_display_resolved_type_text(typ types.Type) string {
+	if typ is types.ArrayFixed {
+		len_text := if typ.len_expr.len > 0 { typ.len_expr } else { typ.len.str() }
+		return '[${len_text}]' + typeof_display_type_text(typ.elem_type.name())
+	}
+	return typeof_display_type_text(typ.name())
 }
 
 // typeof_display_type_text canonicalizes internal suffix-form fixed-array
