@@ -2595,9 +2595,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 				}
 				if p.is_mut {
 					g.cur_mut_params[p.value] = true
-					$if ownership ? {
-						g.cur_mut_param_owners[p.value] = owner
-					}
+					g.cur_mut_param_owners[p.value] = owner
 				}
 				if concrete_optional_params && type_is_optional_result(param_type) {
 					g.cur_concrete_optional_params[p.value] = true
@@ -6006,9 +6004,6 @@ fn (g &FlatGen) current_param_is_mut(name string) bool {
 	if !(g.cur_mut_params[name] or { false }) {
 		return false
 	}
-	$if !ownership ? {
-		return true
-	}
 	owner := g.cur_mut_param_owners[name] or { return false }
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return false
@@ -6017,9 +6012,6 @@ fn (g &FlatGen) current_param_is_mut(name string) bool {
 }
 
 fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
-	$if !ownership ? {
-		return false
-	}
 	if g.cur_mut_params.len == 0 {
 		return false
 	}
