@@ -95,7 +95,6 @@ println(kdl.as_bool(online)) // true
 - `Entry` — sumtype of `Argument` (positional value with optional type annotation) or `Property`
   (key=value with optional type annotation)
 - `Value` — sumtype of `StringVal`, `IntVal`, `FloatVal`, `BoolVal`, `NullVal`
-- `SuffixedDecimal` — parsed suffixed number with `number` and `suffix` fields
 
 ### Options & Relaxed Mode
 

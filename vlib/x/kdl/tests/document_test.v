@@ -82,16 +82,6 @@ fn test_node_property_helpers() {
 	assert kdl.property_has(n) == true
 }
 
-fn test_suffixed_decimal_type() {
-	// SuffixedDecimal struct exists
-	sd := kdl.SuffixedDecimal{
-		number: '10'
-		suffix: 'ms'
-	}
-	assert sd.number == '10'
-	assert sd.suffix == 'ms'
-}
-
 fn test_document_done() {
 	println('document tests done')
 }

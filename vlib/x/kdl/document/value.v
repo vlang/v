@@ -40,13 +40,6 @@ pub:
 
 pub struct NullVal {}
 
-// SuffixedDecimal represents a KDL number with a unit suffix (e.g., "10ms", "5KiB").
-pub struct SuffixedDecimal {
-pub:
-	number string // the numeric part
-	suffix string // the unit suffix
-}
-
 // str returns a display-friendly representation.
 pub fn (v Value) str() string {
 	match v {

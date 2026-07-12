@@ -222,15 +222,6 @@ fn test_document_manual_construction() {
 	assert out.contains('logging')
 }
 
-fn test_document_suffixed_decimal_type() {
-	sd := kdl.SuffixedDecimal{
-		number: '10'
-		suffix: 'ms'
-	}
-	assert sd.number == '10'
-	assert sd.suffix == 'ms'
-}
-
 fn test_document_value_flag_enum() {
 	_ := kdl.ValueFlag.none
 	_ := kdl.ValueFlag.raw

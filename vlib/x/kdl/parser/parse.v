@@ -233,13 +233,15 @@ fn (mut p Parser) parse_value() !document.Value {
 			} else {
 				document.ValueFlag.none
 			}
-			mut val := p.tok.lit.f64()
+			mut val := 0.0
 			if p.tok.lit == 'inf' || p.tok.lit == '+inf' {
 				val = math.inf(1)
 			} else if p.tok.lit == '-inf' {
 				val = math.inf(-1)
 			} else if p.tok.lit == 'nan' || p.tok.lit == '+nan' {
 				val = math.nan()
+			} else {
+				val = p.tok.lit.f64()
 			}
 			v := document.FloatVal{
 				value: val

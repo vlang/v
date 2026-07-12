@@ -20,7 +20,6 @@ pub type IntVal = document.IntVal
 pub type FloatVal = document.FloatVal
 pub type BoolVal = document.BoolVal
 pub type NullVal = document.NullVal
-pub type SuffixedDecimal = document.SuffixedDecimal
 pub type ValueFlag = document.ValueFlag
 pub type Comment = document.Comment
 pub type KdlParseError = document.KdlParseError
