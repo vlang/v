@@ -8510,6 +8510,13 @@ fn typeof_display_type_text(name string) string {
 		return typeof_display_fn_type_text(name)
 	}
 	if name.ends_with(']') && !name.starts_with('[') && !name.starts_with('map[') {
+		outer_open := name.index_u8(`[`)
+		if outer_open > 0 && typeof_display_matching_bracket(name, outer_open) == name.len - 1 {
+			args_text := name[outer_open + 1..name.len - 1]
+			if !typeof_display_is_fixed_array_len_text(args_text) {
+				return name[..outer_open] + '[' + typeof_display_type_list(args_text) + ']'
+			}
+		}
 		if open_idx := name.last_index('[') {
 			if open_idx > 0 {
 				len_text := name[open_idx + 1..name.len - 1]
@@ -8526,7 +8533,7 @@ fn typeof_display_type_text(name string) string {
 // length from the type argument of a generic application.
 fn typeof_display_is_fixed_array_len_text(text string) bool {
 	clean := text.trim_space()
-	if clean.len == 0 || clean.contains(',') {
+	if clean.len == 0 || clean.contains(',') || clean.contains('[') || clean.contains(']') {
 		return false
 	}
 	if is_decimal_text(clean) || (clean[0] >= `0` && clean[0] <= `9`) {
