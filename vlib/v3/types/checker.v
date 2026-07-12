@@ -16758,7 +16758,10 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name stri
 		return none
 	}
 	seen[lookup_name] = true
-	for field in tc.structs[lookup_name] or { []StructField{} } {
+	fields := tc.structs[lookup_name] or { []StructField{} }
+	// The struct's own fields shadow promoted/embedded ones regardless of
+	// declaration order, so scan all direct fields before any embed.
+	for field in fields {
 		if field.name == field_name {
 			if is_generic {
 				return tc.substitute_generic_type(field.typ, generic_args, tc.struct_generic_params[base_name] or {
@@ -16767,6 +16770,8 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name stri
 			}
 			return field.typ
 		}
+	}
+	for field in fields {
 		mut embedded_type := embedded_field_type(field) or { continue }
 		embedded_type = if is_generic {
 			tc.substitute_generic_type(embedded_type, generic_args, tc.struct_generic_params[base_name] or {
@@ -16780,7 +16785,7 @@ fn (tc &TypeChecker) struct_field_type_inner(struct_name string, field_name stri
 			continue
 		}
 		// A `mod.Inner` embed is promoted under its short name: `o.Inner`.
-		// Same-module embeds already match `field.name == field_name` above.
+		// Same-module embeds already match the direct-field pass above.
 		if embedded_name != field_name && embedded_name.all_after_last('.') == field_name {
 			return embedded_type
 		}
