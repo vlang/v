@@ -377,3 +377,34 @@ fn test_inf_nan_value_types() {
 	e2 := doc.nodes[0].entries[2]
 	assert kdl.as_f64(e2.value) != kdl.as_f64(e2.value) // NaN != NaN
 }
+
+fn test_negative_hex_parse() {
+	doc := kdl.parse('v -0xFF')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == -255
+}
+
+fn test_negative_octal_parse() {
+	doc := kdl.parse('v -0o10')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == -8
+}
+
+fn test_negative_binary_parse() {
+	doc := kdl.parse('v -0b1010')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == -10
+}
+
+fn test_negative_hex_roundtrip() {
+	doc := kdl.parse('v -0xFF')!
+	out := kdl.format(doc)!
+	assert out.contains('-0x')
+	doc2 := kdl.parse(out)!
+	assert kdl.as_int(doc2.nodes[0].entries[0].value) == -255
+}
+
+fn test_negative_octal_roundtrip() {
+	doc := kdl.parse('v -0o10')!
+	out := kdl.format(doc)!
+	assert out.contains('-0o')
+	doc2 := kdl.parse(out)!
+	assert kdl.as_int(doc2.nodes[0].entries[0].value) == -8
+}

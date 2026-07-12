@@ -124,8 +124,13 @@ fn (mut g Generator) gen_value(v document.Value) {
 		document.IntVal {
 			match v.flag {
 				.hex {
-					g.sb.write_string('0x')
-					g.sb.write_string(v.value.hex())
+					if v.value < 0 {
+						g.sb.write_string('-0x')
+						g.sb.write_string((-v.value).hex())
+					} else {
+						g.sb.write_string('0x')
+						g.sb.write_string(v.value.hex())
+					}
 				}
 				.octal {
 					if v.value < 0 {
