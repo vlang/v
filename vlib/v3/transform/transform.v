@@ -4551,6 +4551,9 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		target
 	}
 	optional_target = t.infer_typed_optional_target(optional_target, expr_type)
+	if optional_target.starts_with('!') && t.is_ierror_type(expr_type) {
+		return t.make_optional_none_with_err(optional_target, expr)
+	}
 	if t.is_optional_type_name(optional_target) && !t.is_optional_type_name(expr_type) {
 		source := if int(source_id) >= 0 { t.a.nodes[int(source_id)] } else { flat.Node{} }
 		if source.kind != .none_expr {

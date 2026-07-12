@@ -6257,8 +6257,10 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 			return true
 		}
 	}
-	if expected.starts_with('!') && actual == expected[1..] {
-		return true
+	if expected.starts_with('!') {
+		if actual == expected[1..] || t.is_ierror_type(actual) {
+			return true
+		}
 	}
 	if t.is_sum_type_name(expected) && t.sum_target_accepts_variant_type(expected, actual) {
 		return true

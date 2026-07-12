@@ -871,6 +871,21 @@ fn main() {
 }
 ',
 		'cannot use `none` as argument 1 to `sink.take`; expected `!int`')
+	result_error_out := run_good(v3_bin, 'good_generic_receiver_ierror_for_result', 'struct Sink {}
+
+fn (s Sink) take(value !int) {}
+
+fn invoke[T](sink T, err IError) {
+	sink.take(error("literal"))
+	sink.take(err)
+}
+
+fn main() {
+	invoke(Sink{}, error("value"))
+	println("ok")
+}
+')
+	assert result_error_out == 'ok'
 	option_out := run_good(v3_bin, 'good_generic_receiver_none_for_option', 'struct Sink {}
 
 fn (s Sink) take(value ?int) {}
