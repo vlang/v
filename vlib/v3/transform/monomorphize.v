@@ -1413,8 +1413,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.reset_var_types()
 	for i in 0 .. decl.node.children_count {
 		param_child := t.a.child_node(&decl.node, i)
-		if node_kind_id(param_child) != 75 || param_child.value.len == 0
-			|| param_child.typ.len == 0 {
+		if node_kind_id(param_child) != 75 || param_child.value.len == 0 || param_child.typ.len == 0 {
 			continue
 		}
 		mut param_raw := param_child.typ

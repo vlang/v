@@ -5045,7 +5045,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				// its V width first: C promotes `u8 + u8` to int, so
 				// `a + b == 0` would see 256 where V semantics require 0.
 				is_comparison := node.op in [.eq, .ne, .lt, .gt, .le, .ge]
-				if is_comparison && g.gen_small_int_arith_operand_truncated(lhs_id, lhs_node, lhs_type) {
+				if is_comparison
+					&& g.gen_small_int_arith_operand_truncated(lhs_id, lhs_node, lhs_type) {
 				} else if lhs_node.kind == .infix
 					&& !infix_can_skip_child_parens(node.op, lhs_node.op) {
 					g.write('(')
@@ -5055,7 +5056,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.gen_expr_with_possible_enum_type(lhs_id, rhs_type)
 				}
 				g.write(' ${g.op_str(node.op)} ')
-				if is_comparison && g.gen_small_int_arith_operand_truncated(rhs_id, rhs_node, rhs_type) {
+				if is_comparison
+					&& g.gen_small_int_arith_operand_truncated(rhs_id, rhs_node, rhs_type) {
 				} else if rhs_node.kind == .infix
 					&& !infix_can_skip_child_parens(node.op, rhs_node.op) {
 					g.write('(')
