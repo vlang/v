@@ -2063,6 +2063,27 @@ fn test_array_alias_free_uses_array_builtin_inside_alias_method() {
 	assert out == 'ok'
 }
 
+fn test_dynamic_enum_array_literal_keeps_enum_element_width() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'dynamic_enum_array_literal_width',
+		'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
+	assert c_source.contains('array_new(\tsizeof(Tiny), 0, 2)'), c_source
+	assert !c_source.contains('Array values = array_new(\tsizeof(int), 0, 2)'), c_source
+	out := run_good(v3_bin, 'dynamic_enum_array_literal_width_run',
+		'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
+	assert out == '0\n1'
+}
+
+fn test_nested_string_plus_releases_intermediate_storage() {
+	v3_bin := build_v3()
+	source := "fn concat_path(dir string, name &string) string {\n\treturn '\${dir}/\${name}'\n}\n\nfn main() {\n\tname := 'file'\n\tprintln(concat_path('root', &name))\n}\n"
+	c_source := gen_c(v3_bin, 'nested_string_plus_owned_intermediate', source)
+	assert !c_source.contains('string__plus(string__plus(dir,'), c_source
+	assert c_source.contains('string__free(&__str_plus_acc_'), c_source
+	out := run_good(v3_bin, 'nested_string_plus_owned_intermediate_run', source)
+	assert out == 'root/file'
+}
+
 fn test_for_mut_pointer_storage_receivers_do_not_get_extra_address() {
 	v3_bin := build_v3()
 	item_src := 'struct Item {

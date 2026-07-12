@@ -3366,6 +3366,10 @@ fn (mut g FlatGen) gen_expr_as_string(id flat.NodeId) {
 		if g.gen_current_mut_param_value_read(id, typ.base_type) {
 			return
 		}
+		g.write('*(')
+		g.gen_expr(id)
+		g.write(')')
+		return
 	}
 	g.gen_expr(id)
 }
@@ -4262,6 +4266,12 @@ fn (mut g FlatGen) sizeof_target(value string) string {
 	}
 	if fixed_target := c_fixed_array_typedef_sizeof_target(value) {
 		return fixed_target
+	}
+	// Values of explicitly backed enums use their declared C typedef instead of the
+	// integer ABI type. `sizeof` must therefore follow value storage semantics too.
+	parsed := g.tc.parse_type(value)
+	if parsed is types.Enum {
+		return g.value_sizeof_target(parsed)
 	}
 	if value.contains('.') {
 		parts := value.split('.')
@@ -5521,6 +5531,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			g.write('0')
 		}
 		.call {
+			if g.string_plus_call_is_nested(id, node) {
+				g.gen_owned_string_plus_chain(id)
+				return
+			}
 			// A call to a fixed-array-returning function yields the wrapper struct;
 			// unwrap `.ret_arr` so the result behaves as the array value everywhere
 			// (indexing, arg passing, memcpy into a destination).
@@ -11101,6 +11115,61 @@ fn (g &FlatGen) is_const_expr(id flat.NodeId) bool {
 			false
 		}
 	}
+}
+
+fn (g &FlatGen) is_string_plus_call(node flat.Node) bool {
+	if node.kind != .call || node.children_count != 3 {
+		return false
+	}
+	callee := g.a.child_node(&node, 0)
+	return callee.kind == .ident && callee.value == 'string__plus'
+}
+
+fn (g &FlatGen) string_plus_call_is_nested(_id flat.NodeId, node flat.Node) bool {
+	if !g.is_string_plus_call(node) {
+		return false
+	}
+	lhs := g.a.child_node(&node, 1)
+	rhs := g.a.child_node(&node, 2)
+	return g.is_string_plus_call(lhs) || g.is_string_plus_call(rhs)
+}
+
+fn (g &FlatGen) collect_string_plus_parts(id flat.NodeId, mut parts []flat.NodeId) {
+	node := g.a.nodes[int(id)]
+	if g.is_string_plus_call(node) {
+		g.collect_string_plus_parts(g.a.child(&node, 1), mut parts)
+		g.collect_string_plus_parts(g.a.child(&node, 2), mut parts)
+		return
+	}
+	parts << id
+}
+
+// Nested string concatenation owns each intermediate result. Emit the chain as
+// ordered statements and release every superseded accumulator.
+fn (mut g FlatGen) gen_owned_string_plus_chain(id flat.NodeId) {
+	mut parts := []flat.NodeId{}
+	g.collect_string_plus_parts(id, mut parts)
+	if parts.len < 3 {
+		g.gen_call(id, g.a.nodes[int(id)])
+		return
+	}
+	tmp := g.tmp_count
+	g.tmp_count++
+	g.write('({')
+	for i, part in parts {
+		g.write(' string __str_plus_part_${tmp}_${i} = ')
+		g.gen_expr_as_string(part)
+		g.write(';')
+	}
+	g.write(' string __str_plus_acc_${tmp}_1 = string__plus(__str_plus_part_${tmp}_0, __str_plus_part_${tmp}_1);')
+	mut previous := '__str_plus_acc_${tmp}_1'
+	for i := 2; i < parts.len; i++ {
+		next := '__str_plus_acc_${tmp}_${i}'
+		g.write(' string ${next} = string__plus(${previous}, __str_plus_part_${tmp}_${i});')
+		g.write(' string__free(&${previous});')
+		previous = next
+	}
+	g.write(' ${previous}; })')
 }
 
 fn (g &FlatGen) is_runtime_assignable(id flat.NodeId) bool {
