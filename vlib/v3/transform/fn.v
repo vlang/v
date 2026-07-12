@@ -5875,6 +5875,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			if t.is_known_fn_name(resolved_method) {
 				params := t.call_param_types(resolved_method)
 				if t.resolved_call_uses_receiver_type(base_id, base_type, params) {
+					if !t.validate_resolved_receiver_method_args(node, base_id, resolved_method) {
+						return t.make_empty()
+					}
 					args := t.transform_receiver_method_args_with_base(node, t.receiver_base_for_resolved_method(base_id,
 						resolved_method), resolved_method)
 					ret_type := t.receiver_method_return_type(resolved_method, node.typ)
@@ -5887,6 +5890,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	if method_name.len > 0 {
 		if t.receiver_method_name_is_open_generic(method_name) {
 			return none
+		}
+		if !t.validate_resolved_receiver_method_args(node, base_id, method_name) {
+			return t.make_empty()
 		}
 		args := t.transform_receiver_method_args(node, base_id, method_name)
 		ret_type := t.receiver_method_return_type(method_name, node.typ)
@@ -5902,6 +5908,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 				if !t.resolved_call_uses_receiver_type(base_id, base_type, params) {
 					return none
 				}
+				if !t.validate_resolved_receiver_method_args(node, base_id, resolved_method) {
+					return t.make_empty()
+				}
 				args := t.transform_receiver_method_args_with_base(node, t.receiver_base_for_resolved_method(base_id,
 					resolved_method), resolved_method)
 				ret_type := t.receiver_method_return_type(resolved_method, node.typ)
@@ -5910,6 +5919,9 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		}
 	}
 	if sum_method := t.resolve_smartcast_sum_receiver_method(base_id, method) {
+		if !t.validate_resolved_receiver_method_args(node, base_id, sum_method) {
+			return t.make_empty()
+		}
 		args := t.transform_receiver_method_args_with_base(node, t.receiver_base_for_resolved_method(base_id,
 			sum_method), sum_method)
 		ret_type := t.receiver_method_return_type(sum_method, node.typ)
@@ -5924,6 +5936,111 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		t.record_monomorph_error('unknown function `${base_name}.${method}`')
 	}
 	return none
+}
+
+fn (mut t Transformer) validate_resolved_receiver_method_args(node flat.Node, base_id flat.NodeId, method_name string) bool {
+	if !t.validating_generic_spec {
+		return true
+	}
+	params := t.call_param_types(method_name)
+	if params.len == 0 {
+		return true
+	}
+	param_offset := t.receiver_method_param_offset(base_id, node, params, method_name)
+	if param_offset == 0 {
+		return true
+	}
+	actual_count := int(node.children_count) - 1
+	expected_count := params.len - param_offset
+	is_variadic := t.call_is_variadic(method_name) && params[params.len - 1] is types.Array
+	min_count := if is_variadic { expected_count - 1 } else { expected_count }
+	display_name := t.resolved_receiver_call_display_name(node, base_id, method_name)
+	if actual_count < min_count || (!is_variadic && actual_count > expected_count) {
+		t.record_monomorph_error('argument count mismatch for `${display_name}`: expected ${expected_count}, got ${actual_count}')
+		return false
+	}
+	mut valid := true
+	for i in 0 .. actual_count {
+		arg_id := t.a.child(&node, i + 1)
+		arg_node := t.a.nodes[int(arg_id)]
+		param_idx := param_offset + i
+		mut expected := params[if param_idx < params.len { param_idx } else { params.len - 1 }]
+		if is_variadic && param_idx >= params.len - 1 {
+			variadic_type := params[params.len - 1]
+			if variadic_type is types.Array {
+				if arg_node.kind == .prefix && arg_node.value == '...' {
+					continue
+				}
+				expected = variadic_type.elem_type
+			}
+		}
+		mut actual_name := t.resolve_expr_type(arg_id)
+		if actual_name.len == 0 {
+			actual_name = t.node_type(arg_id)
+		}
+		if actual_name.len == 0 {
+			actual_name = t.reliable_stringify_type(arg_id)
+		}
+		expected_name := expected.name()
+		if t.resolved_receiver_arg_compatible(arg_id, actual_name, expected_name) {
+			continue
+		}
+		t.record_monomorph_error('cannot use `${actual_name}` as argument ${i + 1} to `${display_name}`; expected `${expected_name}`')
+		valid = false
+	}
+	return valid
+}
+
+fn (t &Transformer) resolved_receiver_call_display_name(node flat.Node, base_id flat.NodeId, method_name string) string {
+	base := t.a.nodes[int(base_id)]
+	base_name := if base.kind == .ident && base.value.len > 0 {
+		base.value
+	} else {
+		t.node_type(base_id)
+	}
+	if node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .selector && callee.value.len > 0 {
+			return '${base_name}.${callee.value}'
+		}
+	}
+	method := if method_name.contains('.') { method_name.all_after_last('.') } else { method_name }
+	return '${base_name}.${method}'
+}
+
+fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actual_type string, expected_type string) bool {
+	if actual_type.len == 0 || actual_type == 'unknown' || expected_type.len == 0 {
+		return true
+	}
+	actual := t.normalize_type_alias(actual_type)
+	expected := t.normalize_type_alias(expected_type)
+	if actual == expected {
+		return true
+	}
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind == .int_literal && t.is_integer_type_name(expected) {
+		return true
+	}
+	if arg.kind == .float_literal && expected in ['f32', 'f64'] {
+		return true
+	}
+	if actual == 'nil'
+		&& (expected.starts_with('&') || expected in ['voidptr', 'byteptr', 'charptr']) {
+		return true
+	}
+	if expected.starts_with('?') || expected.starts_with('!') {
+		if actual == expected[1..] || actual == 'none' {
+			return true
+		}
+	}
+	if t.is_sum_type_name(expected) && t.sum_target_accepts_variant_type(expected, actual) {
+		return true
+	}
+	if !isnil(t.tc) && expected in t.tc.interface_names
+		&& t.tc.type_text_implements_interface(actual, expected) {
+		return true
+	}
+	return false
 }
 
 fn (t &Transformer) receiver_selector_is_fn_field(base_type string, field string) bool {

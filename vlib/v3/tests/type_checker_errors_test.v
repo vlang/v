@@ -541,6 +541,36 @@ fn main() {
 }
 ',
 		'unknown function `value.value`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_argument_count', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) int {
+	return value.value(1)
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'argument count mismatch for `value.value`: expected 0, got 1')
+	run_bad(v3_bin, 'bad_generic_receiver_method_argument_type', 'struct HasValue {}
+
+fn (v HasValue) value(n int) int {
+	return n
+}
+
+fn read[T](value T) int {
+	return value.value("bad")
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'cannot use `string` as argument 1 to `value.value`; expected `int`')
 	out := run_good(v3_bin, 'good_generic_receiver_method_for_concrete_type', 'struct HasValue {}
 
 fn (v HasValue) value() int {
@@ -556,6 +586,21 @@ fn main() {
 }
 ')
 	assert out == '7'
+	arg_out := run_good(v3_bin, 'good_generic_receiver_method_arguments', 'struct HasValue {}
+
+fn (v HasValue) value(n int) int {
+	return n
+}
+
+fn read[T](value T) int {
+	return value.value(8)
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+}
+')
+	assert arg_out == '8'
 }
 
 // Regression tests for the post-PR review fixes: fixed-array literals must match
