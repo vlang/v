@@ -786,6 +786,75 @@ fn main() {
 }
 ',
 		'unknown field `missing` in `OpenOptions`')
+	run_bad(v3_bin, 'bad_generic_receiver_narrow_unsigned_literal', 'struct Sink {}
+
+fn (s Sink) take(value u8) {}
+
+fn invoke[T](sink T) {
+	sink.take(300)
+}
+
+fn main() {
+	invoke(Sink{})
+}
+',
+		'cannot use `int` as argument 1 to `sink.take`; expected `u8`')
+	run_bad(v3_bin, 'bad_generic_receiver_narrow_signed_literal', 'struct Sink {}
+
+fn (s Sink) take(value i8) {}
+
+fn invoke[T](sink T) {
+	sink.take(128)
+}
+
+fn main() {
+	invoke(Sink{})
+}
+',
+		'cannot use `int` as argument 1 to `sink.take`; expected `i8`')
+	literal_out := run_good(v3_bin, 'good_generic_receiver_narrow_literal_boundaries', 'struct Sink {}
+
+fn (s Sink) take_unsigned(value u8) {}
+fn (s Sink) take_signed(value i8) {}
+
+fn invoke[T](sink T) {
+	sink.take_unsigned(255)
+	sink.take_signed(-128)
+}
+
+fn main() {
+	invoke(Sink{})
+	println("ok")
+}
+')
+	assert literal_out == 'ok'
+	run_bad(v3_bin, 'bad_generic_receiver_none_for_result', 'struct Sink {}
+
+fn (s Sink) take(value !int) {}
+
+fn invoke[T](sink T) {
+	sink.take(none)
+}
+
+fn main() {
+	invoke(Sink{})
+}
+',
+		'cannot use `none` as argument 1 to `sink.take`; expected `!int`')
+	option_out := run_good(v3_bin, 'good_generic_receiver_none_for_option', 'struct Sink {}
+
+fn (s Sink) take(value ?int) {}
+
+fn invoke[T](sink T) {
+	sink.take(none)
+}
+
+fn main() {
+	invoke(Sink{})
+	println("ok")
+}
+')
+	assert option_out == 'ok'
 }
 
 // Regression tests for the post-PR review fixes: fixed-array literals must match

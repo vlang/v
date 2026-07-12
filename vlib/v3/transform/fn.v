@@ -6029,13 +6029,7 @@ fn (mut t Transformer) validate_resolved_receiver_method_args(node flat.Node, ba
 				expected = variadic_type.elem_type
 			}
 		}
-		mut actual_name := t.resolve_expr_type(arg_id)
-		if actual_name.len == 0 {
-			actual_name = t.node_type(arg_id)
-		}
-		if actual_name.len == 0 {
-			actual_name = t.reliable_stringify_type(arg_id)
-		}
+		actual_name := t.specialized_expr_type_name(arg_id)
 		expected_name := expected.name()
 		if t.resolved_receiver_arg_compatible(arg_id, actual_name, expected_name) {
 			child_idx++
@@ -6138,6 +6132,9 @@ fn (mut t Transformer) validate_specialized_call_result(id flat.NodeId, actual_t
 }
 
 fn (mut t Transformer) specialized_expr_type_name(id flat.NodeId) string {
+	if t.specialized_expr_is_none(id) {
+		return 'none'
+	}
 	mut typ := t.resolve_expr_type(id)
 	if typ.len == 0 {
 		typ = t.node_type(id)
@@ -6171,13 +6168,15 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	}
 	actual := t.normalize_type_alias(actual_type)
 	expected := t.normalize_type_alias(expected_type)
+	if t.is_integer_type_name(expected) {
+		if literal := t.specialized_int_literal(arg_id) {
+			return specialized_int_literal_fits_type(literal, expected)
+		}
+	}
 	if actual == expected {
 		return true
 	}
 	arg := t.a.nodes[int(arg_id)]
-	if arg.kind == .int_literal && t.is_integer_type_name(expected) {
-		return true
-	}
 	if arg.kind == .float_literal && expected in ['f32', 'f64'] {
 		return true
 	}
@@ -6185,10 +6184,13 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		&& (expected.starts_with('&') || expected in ['voidptr', 'byteptr', 'charptr']) {
 		return true
 	}
-	if expected.starts_with('?') || expected.starts_with('!') {
-		if actual == expected[1..] || actual == 'none' {
+	if expected.starts_with('?') {
+		if actual == expected[1..] || t.specialized_expr_is_none(arg_id) {
 			return true
 		}
+	}
+	if expected.starts_with('!') && actual == expected[1..] {
+		return true
 	}
 	if t.is_sum_type_name(expected) && t.sum_target_accepts_variant_type(expected, actual) {
 		return true
@@ -6196,6 +6198,120 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if !isnil(t.tc) && expected in t.tc.interface_names
 		&& t.tc.type_text_implements_interface(actual, expected) {
 		return true
+	}
+	return false
+}
+
+struct SpecializedIntLiteral {
+	negative  bool
+	magnitude u64
+}
+
+fn (t &Transformer) specialized_int_literal(id flat.NodeId) ?SpecializedIntLiteral {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return t.specialized_int_literal(t.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.children_count > 0 && node.op in [.plus, .minus] {
+		mut literal := t.specialized_int_literal(t.a.child(&node, 0)) or { return none }
+		if node.op == .minus && literal.magnitude != 0 {
+			literal = SpecializedIntLiteral{
+				negative:  !literal.negative
+				magnitude: literal.magnitude
+			}
+		}
+		return literal
+	}
+	if node.kind != .int_literal {
+		return none
+	}
+	magnitude := specialized_uint_literal_value(node.value) or { return none }
+	return SpecializedIntLiteral{
+		magnitude: magnitude
+	}
+}
+
+fn specialized_uint_literal_value(text string) ?u64 {
+	clean := text.replace('_', '')
+	if clean.len == 0 {
+		return none
+	}
+	mut base := u64(10)
+	mut start := 0
+	if clean.len >= 2 && clean[0] == `0` {
+		match clean[1] {
+			`x`, `X` {
+				base = 16
+				start = 2
+			}
+			`o`, `O` {
+				base = 8
+				start = 2
+			}
+			`b`, `B` {
+				base = 2
+				start = 2
+			}
+			else {}
+		}
+	}
+	if start >= clean.len {
+		return none
+	}
+	mut value := u64(0)
+	for i in start .. clean.len {
+		ch := clean[i]
+		digit := if ch >= `0` && ch <= `9` {
+			u64(ch - `0`)
+		} else if ch >= `a` && ch <= `f` {
+			u64(ch - `a`) + 10
+		} else if ch >= `A` && ch <= `F` {
+			u64(ch - `A`) + 10
+		} else {
+			return none
+		}
+		if digit >= base || value > (max_u64 - digit) / base {
+			return none
+		}
+		value = value * base + digit
+	}
+	return value
+}
+
+fn specialized_int_literal_fits_type(literal SpecializedIntLiteral, typ string) bool {
+	return match typ {
+		'u8', 'byte' { !literal.negative && literal.magnitude <= 255 }
+		'u16' { !literal.negative && literal.magnitude <= 65535 }
+		'u32' { !literal.negative && literal.magnitude <= u64(4294967295) }
+		'u64', 'usize' { !literal.negative }
+		'i8' { specialized_signed_literal_fits(literal, 127) }
+		'i16' { specialized_signed_literal_fits(literal, 32767) }
+		'int', 'i32', 'rune' { specialized_signed_literal_fits(literal, 2147483647) }
+		'i64', 'isize' { specialized_signed_literal_fits(literal, u64(max_i64)) }
+		else { true }
+	}
+}
+
+fn specialized_signed_literal_fits(literal SpecializedIntLiteral, max u64) bool {
+	if literal.negative {
+		return literal.magnitude <= max + 1
+	}
+	return literal.magnitude <= max
+}
+
+fn (t &Transformer) specialized_expr_is_none(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .none_expr {
+		return true
+	}
+	if node.kind == .paren && node.children_count > 0 {
+		return t.specialized_expr_is_none(t.a.child(&node, 0))
 	}
 	return false
 }
