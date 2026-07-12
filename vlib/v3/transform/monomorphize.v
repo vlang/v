@@ -5791,6 +5791,11 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 
 fn (t &Transformer) subst_comptime_type_operand(raw string, args []string) string {
 	clean := raw.trim_space()
+	if clean.starts_with('$') {
+		// `$int`, `$struct`, ... are metatype keywords, not type names; they must
+		// not be substituted or module-qualified (`mymod.$int` breaks matching).
+		return clean
+	}
 	if clean.ends_with('.unaliased_typ') {
 		base := clean[..clean.len - '.unaliased_typ'.len]
 		substituted := t.resolve_substituted_type_text(t.subst_type(base, args))

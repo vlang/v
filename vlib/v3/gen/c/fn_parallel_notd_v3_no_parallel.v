@@ -41,6 +41,9 @@ $if !windows {
 		mut w := unsafe { &FlatGen(arg) }
 		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 		w.collect_fixed_storage_consts()
+		w.precompute_embedded_fields()
+		w.precompute_param_type_index()
+		w.precompute_concrete_optional_abi_fns()
 		w.worker_scope = scope
 		cgen_worker_scope_leave(scope)
 		return unsafe { nil }
@@ -188,6 +191,14 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		// types, optional/fixed-array needs) then land on top, exactly like
 		// the old serial order.
 		g.adopt_postamble_worker(post_worker_a, post_worker_b)
+		master_output := g.sb.str()
+		unsafe { g.sb.free() }
+		g.sb = strings.new_builder(4096)
+		if master_output.len > 0 {
+			g.fn_segs << master_output
+		} else {
+			unsafe { master_output.free() }
+		}
 		for ci := 0; ci < thread_count; ci++ {
 			w := unsafe { &FlatGen(workers[ci]) }
 			g.merge_parallel_worker(w)
@@ -195,6 +206,14 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		g.tc.unfreeze_type_cache_after_forks()
 		// Synthetic main temps continue after the master's chunk[0] range.
 		g.gen_synthetic_main_after_fns()
+		synthetic_output := g.sb.str()
+		unsafe { g.sb.free() }
+		g.sb = strings.new_builder(0)
+		if synthetic_output.len > 0 {
+			g.fn_segs << synthetic_output
+		} else {
+			unsafe { synthetic_output.free() }
+		}
 	}
 }
 
@@ -255,10 +274,11 @@ fn split_flat_cgen_items(items []FlatFnGenItem, n_jobs int) [][]FlatFnGenItem {
 	return chunks
 }
 
-// fn_item_cost_and_prep is flat_fn_gen_item_cost fused with
-// prepare_parallel_node: one subtree traversal returns the cost AND does the
-// parallel pre-seeding (string interning, fn-ptr type registration).
-fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.NodeId, mut type_text_cache map[string]bool) int {
+// fn_item_cost_and_prep computes the split cost and collects C-extern refs in
+// one subtree traversal. collect_gen_info already interned every string, while
+// the dedicated signature/global/C-extern passes preseed function-pointer
+// types; worker novelties are merged and emitted by the post-dispatch supplement.
+fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.NodeId) int {
 	mut cost := 0
 	stack.clear()
 	stack << node_id
@@ -268,16 +288,10 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		if idx < 0 || idx >= g.a.nodes.len {
 			continue
 		}
-		cost++
 		node := g.a.nodes[idx]
-		if node.kind == .string_literal {
-			g.intern_string(node.value)
-		}
-		if g.should_preseed_parallel_type_text_cached(node.typ, mut type_text_cache) {
-			g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
-		}
-		if expr_type := g.parallel_cached_expr_type(current_id, node) {
-			g.preseed_parallel_fn_ptr_type(expr_type)
+		cost++
+		if node.kind == .selector {
+			g.collect_c_extern_ref_from_node(node)
 		}
 		for i := node.children_count - 1; i >= 0; i-- {
 			child_id := g.a.children[node.children_start + i]
@@ -325,6 +339,7 @@ fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId, mut stack []flat.NodeId
 		if node.kind == .string_literal {
 			g.intern_string(node.value)
 		}
+		g.collect_c_extern_ref_from_node(node)
 		if g.should_preseed_parallel_type_text_cached(node.typ, mut type_text_cache) {
 			g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
 		}
@@ -516,6 +531,8 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		concrete_optional_abi_fns:      g.concrete_optional_abi_fns
 		fn_decl_param_types:            g.fn_decl_param_types
 		fn_decl_shared_params:          g.fn_decl_shared_params
+		fn_shared_params_resolved:      g.fn_shared_params_resolved
+		has_shared_params:              g.has_shared_params
 		fn_decl_mut_receivers:          g.fn_decl_mut_receivers
 		fn_decl_ret_types:              g.fn_decl_ret_types
 		non_generic_fn_names_by_module: g.non_generic_fn_names_by_module
@@ -580,6 +597,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	mut fs := types.new_scope(unsafe { nil })
 	fs.names = g.tc.file_scope.names.clone()
 	fs.types = g.tc.file_scope.types.clone()
+	fs.name_indexes = g.tc.file_scope.name_indexes.clone()
 	fs.generations = g.tc.file_scope.generations.clone()
 	fs.next_generation = g.tc.file_scope.next_generation
 	fs.lifetime = g.tc.file_scope.lifetime
@@ -664,13 +682,12 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	mut ww := unsafe { w }
 	worker_output := ww.sb.str()
 	if worker_output.len > 0 {
-		g.sb.write_string(worker_output)
+		g.fn_segs << worker_output
+	} else {
+		unsafe { worker_output.free() }
 	}
-	// The master builder has copied the worker output; release the worker buffers.
-	unsafe {
-		worker_output.free()
-		ww.sb.free()
-	}
+	// The ordered segment owns the copied output; release the worker builder.
+	unsafe { ww.sb.free() }
 	for opt_name, val_type in w.needed_optional_types {
 		g.needed_optional_types[opt_name] = val_type
 	}
@@ -736,6 +753,8 @@ fn (g &FlatGen) postamble_fork(worker_id int) &FlatGen {
 	w.fixed_array_typedefs_needed = g.fixed_array_typedefs_needed.clone()
 	w.emitted_fn_ptr_typedefs = g.emitted_fn_ptr_typedefs.clone()
 	w.fn_ptr_types = g.fn_ptr_types.clone()
+	w.multi_return_types = g.multi_return_types.clone()
+	w.multi_return_type_names = g.multi_return_type_names.clone()
 	w.libc_compat_fns = g.libc_compat_fns.clone()
 	w.array_method_cache = g.array_method_cache.clone()
 	w.param_types_cache = g.param_types_cache.clone()
@@ -744,8 +763,8 @@ fn (g &FlatGen) postamble_fork(worker_id int) &FlatGen {
 	w.spawn_wrapper_defs = g.spawn_wrapper_defs.clone()
 	w.callback_wrapper_names = g.callback_wrapper_names.clone()
 	w.callback_wrapper_defs = g.callback_wrapper_defs.clone()
-	w.c_extern_refs = map[string]bool{}
-	w.c_extern_refs_ready = false
+	w.c_extern_refs = g.c_extern_refs.clone()
+	w.c_extern_refs_ready = g.c_extern_refs_ready
 	w.worker_scope = unsafe { nil }
 	w.parallel_worker_scopes = []voidptr{}
 	// Snapshot of the interned-string table for the string_literals segment;
@@ -779,8 +798,8 @@ fn (mut g FlatGen) adopt_postamble_worker(wa &FlatGen, wb &FlatGen) {
 		}
 	}
 	g.libc_compat_fns = libc.move()
-	// Fork B precomputed the C-extern reference walk and emitted the string
-	// table up to its snapshot; the post-region supplement starts there.
+	// Fork B retained the C-extern references collected by the fused item walk
+	// and emitted the string table up to its snapshot.
 	g.c_extern_refs = wb.c_extern_refs.clone()
 	g.c_extern_refs_ready = wb.c_extern_refs_ready
 	g.post_str_lits_snapshot = wb.str_lits.len
@@ -816,6 +835,12 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 				g.intern_string('')
 			}
 			g.register_interface_strings()
+			if g.test_files.len == 0 && !g.has_entry_main() {
+				for stmt in g.top_level_stmts() {
+					g.collect_c_extern_referenced_symbols_from_node(stmt.id, mut g.c_extern_refs)
+				}
+			}
+			g.c_extern_refs_ready = true
 			g.parallel_prepared = true
 		}
 		// Force the lazily-built const short-name index now: workers share it
@@ -826,6 +851,11 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			g.parallel_worker_scopes << fs_worker.worker_scope
 		}
 		g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
+		// The helper also built these precomputes; hand them to the master so
+		// later worker forks (and master-side emission) do not run with empty
+		// maps. The fork is discarded, so a move is safe.
+		g.param_types_by_short = fs_worker.param_types_by_short.move()
+		g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
 		return true
 	}
 }
