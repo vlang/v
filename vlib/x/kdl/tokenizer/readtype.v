@@ -62,11 +62,16 @@ fn (mut s Scanner) scan_string() Token {
 				lit << 92
 			} else if s.c == 117 {
 				if s.peek() == 123 {
-					s.advance()
+					s.advance() // skip past the u to {
+					s.advance() // skip { to first hex digit or }
 					mut hx := ''
-					for s.pos < s.src.len && s.c != 125 {
+					if s.c != 125 {
 						hx += s.c.ascii_str()
 						s.advance()
+						for s.pos < s.src.len && s.c != 125 {
+							hx += s.c.ascii_str()
+							s.advance()
+						}
 					}
 					if s.c == 125 {
 						dec := parse_unicode(hx) or {
@@ -87,8 +92,7 @@ fn (mut s Scanner) scan_string() Token {
 				}
 				continue
 			} else {
-				lit << 92
-				lit << s.c
+				return Token{.eof, 'kdl: invalid escape \\' + s.c.ascii_str(), l, c}
 			}
 			s.advance()
 			continue
@@ -169,7 +173,7 @@ fn (mut s Scanner) scan_hash() Token {
 		if s.match_str('inf') && !is_ident_not_keyword(s.c, s.relaxed) {
 			return Token{.float_val, '-inf', l, c}
 		}
-		return s.ident_rest('#-inf', l, c)
+		return s.ident_rest('#-', l, c)
 	}
 	if s.match_str('inf') {
 		if !is_ident_not_keyword(s.c, s.relaxed) { return Token{.float_val, 'inf', l, c} }
@@ -264,25 +268,35 @@ fn (mut s Scanner) scan_multiline_raw(hashes int, l int, c int) Token {
 	}
 
 	mut lines := []string{}
-	for s.pos < s.src.len {
-		if s.c == 34 && s.src.len >= s.pos + close_marker.len
-			&& s.src[s.pos..s.pos + close_marker.len] == close_marker.bytestr() {
-			break
-		}
+	mut found_closer := false
+	for s.pos < s.src.len && !found_closer {
 		mut line := ''
 		for s.pos < s.src.len && !is_newline_unicode(s.c, s.pos, s.src) {
 			line += s.c.ascii_str()
 			s.advance()
 		}
+		// Check if this line (after leading whitespace) consists of the closing marker
+		mut ws := 0
+		for ws < line.len && is_whitespace_unicode(line[ws], ws, line) {
+			ws++
+		}
+		if line[ws..] == close_marker.bytestr() {
+			lines << line
+			found_closer = true
+			break
+		}
+		lines << line
 		if s.c == 13 { s.advance() }
 		if s.c == 10 { s.advance() }
-		lines << line
 	}
 
-	if s.c == 34 {
-		for _ in 0 .. close_marker.len {
-			s.advance()
-		}
+	if !found_closer {
+		return Token{.eof, 'kdl: unterminated multiline raw string', l, c}
+	}
+
+	// Advance past the closing marker at the current position
+	for _ in 0 .. close_marker.len {
+		s.advance()
 	}
 
 	mut indent := ''
@@ -328,7 +342,7 @@ fn (mut s Scanner) ident_rest(prefix string, l int, c int) Token {
 			s.advance()
 		}
 	} else {
-		for s.pos < s.src.len && is_ident_part(s.c) {
+		for s.pos < s.src.len && (is_ident_part(s.c) || (s.c >= 0x80 && s.c <= 0xBF)) {
 			buf << s.c
 			s.advance()
 		}
@@ -357,6 +371,10 @@ fn (mut s Scanner) scan_number() Token {
 		if s.c == 111 || s.c == 79 { return s.scan_oct(false, l, c) }
 		if s.c == 98 || s.c == 66 { return s.scan_bin(false, l, c) }
 		if s.c == 46 || s.c == 101 || s.c == 69 { return s.scan_float('0', l, c) }
+		// Reject leading zero followed by a digit (KDL: no octal literals without 0o)
+		if s.c >= 48 && s.c <= 57 {
+			return Token{.eof, 'kdl: decimal numbers must not have a leading zero', l, c}
+		}
 		for s.pos < s.src.len && s.c == 95 {
 			s.advance()
 			if s.c >= 48 && s.c <= 57 {
@@ -375,19 +393,20 @@ fn (mut s Scanner) scan_number_or_ident() Token {
 	s.advance()
 	if first == 45 || first == 43 {
 		if s.c == 48 {
+			is_minus := first == 45
 			// Check for signed non-decimal: -0x, +0x, -0o, +0o, -0b, +0b
 			p := s.peek()
 			if p == 120 || p == 88 {
 				s.advance()
-				return s.scan_hex(true, l, c)
+				return s.scan_hex(is_minus, l, c)
 			}
 			if p == 111 || p == 79 {
 				s.advance()
-				return s.scan_oct(true, l, c)
+				return s.scan_oct(is_minus, l, c)
 			}
 			if p == 98 || p == 66 {
 				s.advance()
-				return s.scan_bin(true, l, c)
+				return s.scan_bin(is_minus, l, c)
 			}
 		}
 		if s.c >= 48 && s.c <= 57 {
@@ -402,6 +421,10 @@ fn (mut s Scanner) scan_number_or_ident() Token {
 	}
 	if first == 46 {
 		if s.c >= 48 && s.c <= 57 {
+			if s.relaxed.flags == 0 {
+				// KDL requires integer part before decimal; reject .1 style
+				return Token{.eof, 'kdl: expected digit before decimal point', l, c}
+			}
 			mut buf := '.'
 			return s.scan_number_rest(buf, l, c)
 		}
@@ -418,12 +441,22 @@ fn (mut s Scanner) scan_hex(signed bool, l int, c int) Token {
 	buf << 48 // '0'
 	buf << 120 // 'x'
 	mut has_digits := false
+	mut after_underscore := false
 	for s.pos < s.src.len && (is_hex(s.c) || s.c == 95) {
-		if s.c != 95 {
+		if s.c == 95 {
+			if !has_digits || after_underscore {
+				return Token{.eof, 'kdl: invalid underscore separator in hex literal', l, c}
+			}
+			after_underscore = true
+		} else {
 			buf << s.c
 			has_digits = true
+			after_underscore = false
 		}
 		s.advance()
+	}
+	if after_underscore {
+		return Token{.eof, 'kdl: trailing underscore in hex literal', l, c}
 	}
 	if !has_digits { return Token{.eof, 'kdl: expected hex digits after 0x', l, c} }
 	return Token{.int_val, buf.bytestr(), l, c}
@@ -436,12 +469,22 @@ fn (mut s Scanner) scan_oct(signed bool, l int, c int) Token {
 	buf << 48 // '0'
 	buf << 111 // 'o'
 	mut has_digits := false
+	mut after_underscore := false
 	for s.pos < s.src.len && (is_oct(s.c) || s.c == 95) {
-		if s.c != 95 {
+		if s.c == 95 {
+			if !has_digits || after_underscore {
+				return Token{.eof, 'kdl: invalid underscore separator in octal literal', l, c}
+			}
+			after_underscore = true
+		} else {
 			buf << s.c
 			has_digits = true
+			after_underscore = false
 		}
 		s.advance()
+	}
+	if after_underscore {
+		return Token{.eof, 'kdl: trailing underscore in octal literal', l, c}
 	}
 	if !has_digits { return Token{.eof, 'kdl: expected octal digits after 0o', l, c} }
 	return Token{.int_val, buf.bytestr(), l, c}
@@ -454,12 +497,22 @@ fn (mut s Scanner) scan_bin(signed bool, l int, c int) Token {
 	buf << 48 // '0'
 	buf << 98 // 'b'
 	mut has_digits := false
+	mut after_underscore := false
 	for s.pos < s.src.len && (is_bin(s.c) || s.c == 95) {
-		if s.c != 95 {
+		if s.c == 95 {
+			if !has_digits || after_underscore {
+				return Token{.eof, 'kdl: invalid underscore separator in binary literal', l, c}
+			}
+			after_underscore = true
+		} else {
 			buf << s.c
 			has_digits = true
+			after_underscore = false
 		}
 		s.advance()
+	}
+	if after_underscore {
+		return Token{.eof, 'kdl: trailing underscore in binary literal', l, c}
 	}
 	if !has_digits { return Token{.eof, 'kdl: expected binary digits after 0b', l, c} }
 	return Token{.int_val, buf.bytestr(), l, c}
@@ -485,11 +538,14 @@ fn (mut s Scanner) scan_number_rest(lit string, l int, c int) Token {
 	}
 	if s.c == 46 || s.c == 101 || s.c == 69 { return s.scan_float(buf.bytestr(), l, c) }
 	if is_suffix_char(s.c) {
-		for s.pos < s.src.len && is_suffix_char(s.c) {
-			buf << s.c
-			s.advance()
+		if s.relaxed.permit(relaxed.multiplier_suffixes) {
+			for s.pos < s.src.len && is_suffix_char(s.c) {
+				buf << s.c
+				s.advance()
+			}
+			return Token{.suffixed_decimal, buf.bytestr(), l, c}
 		}
-		return Token{.suffixed_decimal, buf.bytestr(), l, c}
+		return Token{.eof, 'kdl: suffixed decimals require relaxed multiplier_suffixes mode', l, c}
 	}
 	return Token{.int_val, buf.bytestr(), l, c}
 }
@@ -523,11 +579,14 @@ fn (mut s Scanner) scan_float(lit string, l int, c int) Token {
 	}
 	// Keep suffix chars attached to fractional/scientific numbers
 	if is_suffix_char(s.c) {
-		for s.pos < s.src.len && is_suffix_char(s.c) {
-			buf << s.c
-			s.advance()
+		if s.relaxed.permit(relaxed.multiplier_suffixes) {
+			for s.pos < s.src.len && is_suffix_char(s.c) {
+				buf << s.c
+				s.advance()
+			}
+			return Token{.suffixed_decimal, buf.bytestr(), l, c}
 		}
-		return Token{.suffixed_decimal, buf.bytestr(), l, c}
+		return Token{.eof, 'kdl: suffixed decimals require relaxed multiplier_suffixes mode', l, c}
 	}
 	return Token{.float_val, buf.bytestr(), l, c}
 }

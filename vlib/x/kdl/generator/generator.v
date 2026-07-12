@@ -104,9 +104,7 @@ fn (mut g Generator) gen_value(v document.Value) {
 		document.StringVal {
 			match v.flag {
 				.raw {
-					g.sb.write_string('#"')
-					g.sb.write_string(v.value)
-					g.sb.write_string('"#')
+					g.sb.write_string(document.raw_string(v.value))
 				}
 				.quoted {
 					g.write_quoted(v.value)
@@ -130,12 +128,22 @@ fn (mut g Generator) gen_value(v document.Value) {
 					g.sb.write_string(v.value.hex())
 				}
 				.octal {
-					g.sb.write_string('0o')
-					g.sb.write_string(format_oct(v.value))
+					if v.value < 0 {
+						g.sb.write_string('-0o')
+						g.sb.write_string(format_oct(-v.value))
+					} else {
+						g.sb.write_string('0o')
+						g.sb.write_string(format_oct(v.value))
+					}
 				}
 				.binary {
-					g.sb.write_string('0b')
-					g.sb.write_string(format_bin(v.value))
+					if v.value < 0 {
+						g.sb.write_string('-0b')
+						g.sb.write_string(format_bin(-v.value))
+					} else {
+						g.sb.write_string('0b')
+						g.sb.write_string(format_bin(v.value))
+					}
 				}
 				else {
 					g.sb.write_string(v.value.str())

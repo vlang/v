@@ -1,5 +1,6 @@
 module parser
 
+import math
 import x.kdl.document
 
 fn (mut p Parser) parse_document() !document.Document {
@@ -123,8 +124,8 @@ fn (mut p Parser) parse_node() !document.Node {
 		}
 		node.entries << p.parse_entry()!
 	}
-	// Propagate scanner errors from invalid tokens (bare keywords, etc.)
-	if p.tok.kind == .eof && p.tok.lit.len > 0 && p.tok.lit.starts_with('kdl:') {
+	// Propagate scanner errors from invalid tokens
+	if p.tok.kind == .eof && p.tok.lit.len > 0 {
 		return kdl_err(p.tok.line, p.tok.col, p.tok.lit)
 	}
 	if p.tok.kind == .l_brace {
@@ -232,8 +233,16 @@ fn (mut p Parser) parse_value() !document.Value {
 			} else {
 				document.ValueFlag.none
 			}
+			mut val := p.tok.lit.f64()
+			if p.tok.lit == 'inf' || p.tok.lit == '+inf' {
+				val = math.inf(1)
+			} else if p.tok.lit == '-inf' {
+				val = math.inf(-1)
+			} else if p.tok.lit == 'nan' || p.tok.lit == '+nan' {
+				val = math.nan()
+			}
 			v := document.FloatVal{
-				value: p.tok.lit.f64()
+				value: val
 				flag:  flag
 			}
 			p.advance()

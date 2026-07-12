@@ -222,14 +222,24 @@ fn test_encoder_new() {
 }
 
 fn test_parse_suffixed_decimal() {
-	doc := kdl.parse('timeout 10ms')!
+	opts := kdl.ParseOpts{
+		relaxed: kdl.RelaxedNonCompliant{
+			flags: kdl.multiplier_suffixes
+		}
+	}
+	doc := kdl.parse_opts('timeout 10ms', opts)!
 	assert doc.nodes.len == 1
 	assert doc.nodes[0].name == 'timeout'
 	assert doc.nodes[0].entries.len == 1
 }
 
 fn test_parse_suffixed_kib() {
-	doc := kdl.parse('memory 5KiB')!
+	opts := kdl.ParseOpts{
+		relaxed: kdl.RelaxedNonCompliant{
+			flags: kdl.multiplier_suffixes
+		}
+	}
+	doc := kdl.parse_opts('memory 5KiB', opts)!
 	assert doc.nodes.len == 1
 	assert doc.nodes[0].entries.len == 1
 }

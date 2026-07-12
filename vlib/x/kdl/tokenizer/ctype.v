@@ -25,11 +25,12 @@ fn is_ident_start_wsafe(b u8, pos int, src string) bool {
 }
 
 fn is_ident_part(b u8) bool {
-	return is_ident_start(b) || (b >= 48 && b <= 57)
+	return is_ident_start(b) || (b >= 48 && b <= 57) || (b >= 0x80 && b <= 0xBF)
 }
 
 fn is_ident_start_relaxed(b u8, r relaxed.RelaxedNonCompliant) bool {
 	if is_ident_start(b) { return true }
+	if b >= 0x80 && b <= 0xBF { return true }
 	if r.permit(relaxed.nginx_syntax) {
 		if b in [u8(`(`), u8(`)`), u8(`/`), u8(`\\`), u8(`"`)] { return true }
 	}
@@ -38,6 +39,7 @@ fn is_ident_start_relaxed(b u8, r relaxed.RelaxedNonCompliant) bool {
 
 fn is_ident_part_relaxed(b u8, r relaxed.RelaxedNonCompliant) bool {
 	if is_ident_part(b) { return true }
+	if b >= 0x80 && b <= 0xBF { return true }
 	if r.permit(relaxed.nginx_syntax) {
 		if b in [u8(`(`), u8(`)`), u8(`/`), u8(`\\`), u8(`"`)] { return true }
 	}

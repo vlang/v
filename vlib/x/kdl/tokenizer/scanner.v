@@ -155,8 +155,12 @@ fn (mut s Scanner) skip_gap() ?Token {
 				mut comment_start := s.pos
 				mut depth := 1
 				for {
-					if s.pos >= s.src.len { break
-					 }
+					if s.pos >= s.src.len {
+						if depth > 0 {
+							return Token{.eof, 'kdl: unterminated block comment', s.line, s.col}
+						}
+						break
+					}
 					if s.c == 42 && s.peek() == 47 {
 						depth--
 						if depth == 0 {

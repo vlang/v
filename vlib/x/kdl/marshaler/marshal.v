@@ -39,9 +39,7 @@ fn append_value_to_builder(mut sb strings.Builder, v document.Value, opts Encode
 		document.StringVal {
 			match v.flag {
 				.raw {
-					sb.write_string('#"')
-					sb.write_string(v.value)
-					sb.write_string('"#')
+					sb.write_string(document.raw_string(v.value))
 				}
 				.quoted {
 					sb.write_string(document.quote_string(v.value))
