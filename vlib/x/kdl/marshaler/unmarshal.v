@@ -131,6 +131,8 @@ fn collect_args_to_slice[T](mut val T, field_name string, args []document.Value)
 					$if field.typ is []u64 { arr << from_value_u64(a) }
 					$if field.typ is []f32 { arr << f32(from_value_f64(a)) }
 				}
+				$if field.typ is []u64 { arr << from_value_u64(a) }
+				$if field.typ is []f32 { arr << f32(from_value_f64(a)) }
 				val.$(field.name) = arr
 			}
 			$if field.typ is []u64 { arr << from_value_u64(a) }

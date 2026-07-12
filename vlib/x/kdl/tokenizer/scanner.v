@@ -97,6 +97,9 @@ fn (mut s Scanner) advance() {
 				s.line++
 				s.col = 0
 			}
+		} else if is_newline_unicode(s.c, s.pos, s.src) {
+			s.line++
+			s.col = 0
 		} else {
 			s.col++
 		}

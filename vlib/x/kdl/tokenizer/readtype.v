@@ -206,7 +206,7 @@ fn (mut s Scanner) scan_multiline() Token {
 		}
 		indent = last[..ws]
 	}
-	lc := if indent.len > 0 { lines.len - 1 } else { lines.len }
+	lc := lines.len - 1 // always exclude the closing delimiter line
 	mut result := ''
 	for i in 0 .. lc {
 		if i > 0 { result += '\n' }
@@ -257,6 +257,7 @@ fn (mut s Scanner) scan_hash() Token {
 }
 
 fn is_ident_not_keyword(b u8, r relaxed.RelaxedNonCompliant) bool {
+	if is_whitespace_unicode(b, 0, '') { return false }
 	if r.flags != 0 { return is_ident_part_relaxed(b, r) }
 	return is_ident_part(b)
 }
@@ -370,7 +371,7 @@ fn (mut s Scanner) scan_multiline_raw(hashes int, l int, c int) Token {
 		indent = last[..ws]
 	}
 
-	lc := if indent.len > 0 { lines.len - 1 } else { lines.len }
+	lc := lines.len - 1 // always exclude the closing delimiter line
 	mut result := ''
 	for i in 0 .. lc {
 		if i > 0 { result += '\n' }
@@ -650,9 +651,9 @@ fn (mut s Scanner) scan_float(lit string, l int, c int) Token {
 	if s.c == 46 {
 		buf << 46
 		s.advance()
-		mut has_frac := false
+		mut has_frac_digit := false
 		for s.pos < s.src.len && ((s.c >= 48 && s.c <= 57) || s.c == 95) {
-			if s.c >= 48 && s.c <= 57 { has_frac = true }
+			if s.c >= 48 && s.c <= 57 { has_frac_digit = true }
 			if s.c == 95 {
 				if s.pos + 1 < s.src.len && s.src[s.pos + 1] >= 48 && s.src[s.pos + 1] <= 57 {
 					s.advance()
@@ -663,7 +664,7 @@ fn (mut s Scanner) scan_float(lit string, l int, c int) Token {
 			buf << s.c
 			s.advance()
 		}
-		if !has_frac {
+		if !has_frac_digit {
 			return Token{.eof, 'kdl: expected digit after decimal point', l, c}
 		}
 	}
