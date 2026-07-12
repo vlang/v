@@ -136,6 +136,10 @@ fn (mut c Checker) markused_print_call(mut node ast.CallExpr) {
 		if arg_typ == 0 {
 			return
 		}
+		if c.table.is_scalar_ptr_type(arg_typ) {
+			c.mark_type_str_method_as_referenced(ast.voidptr_type)
+			c.table.used_features.print_types[ast.voidptr_type_idx] = true
+		}
 		c.markused_auto_str_dependencies(arg_typ)
 		if (node.args[0].expr is ast.CallExpr && node.args[0].expr.is_method
 			&& node.args[0].expr.name == 'str')

@@ -333,7 +333,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 				else { fmt_type = .si_f64 }
 			}
 		}
-	} else if typ.is_pointer() {
+	} else if typ.is_pointer() || (typ.is_ptr() && fspec in [`p`, `x`, `X`]) {
 		if fspec in [`x`, `X`] {
 			base = 16 - 2 // our base start from 2
 		}
@@ -550,13 +550,14 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			g.inside_opt_or_res = old_inside_opt_or_res
 			g.write('.data))')
 		} else {
-			if g.gen_windows_liveshared_string_tmp(expr, exp_typ) {
-				return
-			}
 			// an explicit `${x:s}` should format the pointed-to value, not the
 			// address that a scalar reference gets by default
 			old_inside_s_fmt := g.inside_str_interp_s_fmt
 			g.inside_str_interp_s_fmt = true
+			if g.gen_windows_liveshared_string_tmp(expr, exp_typ) {
+				g.inside_str_interp_s_fmt = old_inside_s_fmt
+				return
+			}
 			g.gen_expr_to_string(expr, exp_typ)
 			g.inside_str_interp_s_fmt = old_inside_s_fmt
 		}

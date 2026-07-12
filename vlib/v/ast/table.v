@@ -1099,18 +1099,25 @@ pub fn (t &Table) final_type(typ Type) Type {
 // is_scalar_ptr_type reports whether `typ` is a pointer whose final (alias
 // resolved) pointee is a scalar - int/float/bool/string/rune. Such references
 // are printed as their address, following Go's `%v` semantics, while pointers
-// to compound values (structs, arrays, maps) keep the `&` + value form. Enums
-// resolve to their integer backing type via `final_type`, so `final_sym` is
-// used here to keep them on the value path.
+// to compound values (structs, arrays, maps) keep the `&` + value form. Fully
+// resolving aliases preserves pointer indirections and option/result flags;
+// enums remain non-scalar and therefore stay on the value path.
 pub fn (t &Table) is_scalar_ptr_type(typ Type) bool {
-	if typ.is_scalar_ptr() {
-		return true
+	mut alias_typ := typ
+	for _ in 0 .. max_alias_chain_depth {
+		alias_sym := t.sym(alias_typ)
+		if alias_sym.info !is Alias {
+			break
+		}
+		if alias_sym.has_method('str') {
+			return false
+		}
+		alias_info := alias_sym.info as Alias
+		alias_typ = alias_info.parent_type
 	}
-	if !typ.is_ptr() || t.sym(typ).kind != .alias {
-		return false
-	}
-	return t.final_sym(typ).kind in [.i8, .i16, .i32, .int, .i64, .isize, .u8, .u16, .u32, .u64,
-		.usize, .f32, .f64, .char, .rune, .bool, .string, .int_literal, .float_literal]
+	resolved_typ := t.fully_unaliased_type(typ)
+	return !resolved_typ.has_option_or_result() && !resolved_typ.has_flag(.shared_f)
+		&& resolved_typ.is_scalar_ptr()
 }
 
 @[inline]
