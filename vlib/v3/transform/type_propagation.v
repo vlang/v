@@ -29,10 +29,11 @@ fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs
 	}
 	mut typ := ''
 	rhs_id := t.a.child(&node, rhs_idx)
+	rhs := t.a.nodes[int(rhs_id)]
 	rhs_authority := t.decl_rhs_type(rhs_id)
 	if t.is_fn_pointer_type_name(rhs_authority) {
 		typ = rhs_authority
-	} else if decl_type_should_override_fallback(rhs_authority, fallback_type) {
+	} else if decl_type_should_override_fallback(rhs_authority, fallback_type, rhs) {
 		typ = rhs_authority
 	} else if decl_type_is_usable(fallback_type) {
 		typ = fallback_type
@@ -48,11 +49,14 @@ fn (mut t Transformer) propagate_decl_pair_type(node flat.Node, lhs_idx int, rhs
 	}
 }
 
-fn decl_type_should_override_fallback(authority string, fallback string) bool {
+fn decl_type_should_override_fallback(authority string, fallback string, rhs flat.Node) bool {
 	if !decl_type_is_usable(authority) {
 		return false
 	}
 	if !decl_type_is_usable(fallback) {
+		return true
+	}
+	if rhs.kind == .infix && rhs.op == .right_shift_unsigned {
 		return true
 	}
 	return authority.starts_with('&') && !fallback.starts_with('&')

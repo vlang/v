@@ -2352,8 +2352,8 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 			return 'bool'
 		}
 		.right_shift_unsigned {
-			if lhs_type.len > 0 && t.is_numeric_stringify_type(lhs_type) {
-				return unsigned_shift_type_text(lhs_type)
+			if lhs_type.len > 0 {
+				return t.unsigned_shift_type_text(lhs_type)
 			}
 		}
 		.left_shift, .right_shift {
@@ -2381,8 +2381,14 @@ fn (t &Transformer) reliable_infix_stringify_type(node flat.Node) string {
 	return ''
 }
 
-fn unsigned_shift_type_text(typ string) string {
+fn (t &Transformer) unsigned_shift_type_text(typ string) string {
 	clean := typ.trim_space()
+	if !isnil(t.tc) {
+		resolved := types.unsigned_shift_result_type(t.tc.parse_type(clean)).name()
+		if resolved in ['u8', 'u16', 'u32', 'u64', 'usize'] {
+			return resolved
+		}
+	}
 	if types.is_builtin_type_name(clean) {
 		return types.unsigned_shift_result_type(types.builtin_type_value(clean)).name()
 	}

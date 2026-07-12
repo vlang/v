@@ -9418,6 +9418,16 @@ fn (t &Transformer) is_stmt_kind(kind flat.NodeKind) bool {
 
 // infer_decl_type resolves infer decl type information for transform.
 fn (t &Transformer) infer_decl_type(node &flat.Node) string {
+	if node.children_count >= 2 {
+		rhs_id := t.a.child(node, 1)
+		rhs := t.a.nodes[int(rhs_id)]
+		if rhs.kind == .infix && rhs.op == .right_shift_unsigned {
+			rhs_type := t.decl_rhs_type(rhs_id)
+			if decl_type_is_usable(rhs_type) {
+				return rhs_type
+			}
+		}
+	}
 	if decl_type_is_usable(node.typ) {
 		return node.typ
 	}
@@ -9678,7 +9688,7 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 					return ret_type
 				}
 				if node.op == .right_shift_unsigned && lhs_type.len > 0 {
-					return unsigned_shift_type_text(lhs_type)
+					return t.unsigned_shift_type_text(lhs_type)
 				}
 				if node.op == .plus && lhs_type == 'string' {
 					return 'string'
