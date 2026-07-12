@@ -74,6 +74,7 @@ pub fn can_be_bare_identifier(s string) bool {
 	if (first == 43 || first == 45 || first == 46) && s.len > 1 {
 		second := s[1]
 		if second >= 48 && second <= 57 { return false }
+		if (first == 43 || first == 45) && second == 46 { return false }
 		if first == 46 && second == 46 { return false }
 	}
 	for i := u64(1); i < s.len; i++ {

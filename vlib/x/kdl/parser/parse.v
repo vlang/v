@@ -36,6 +36,9 @@ fn (mut p Parser) parse_document() !document.Document {
 
 fn (mut p Parser) skip_commented_node() {
 	p.advance()
+	for p.tok.kind in [.newline, .semicolon] {
+		p.advance()
+	}
 	p.skip_node()
 }
 
@@ -127,6 +130,9 @@ fn (mut p Parser) parse_node() !document.Node {
 	// Propagate scanner errors from invalid tokens
 	if p.tok.kind == .eof && p.tok.lit.len > 0 {
 		return kdl_err(p.tok.line, p.tok.col, p.tok.lit)
+	}
+	if p.tok.kind == .slashdash {
+		p.skip_commented_node()
 	}
 	if p.tok.kind == .l_brace {
 		p.advance()

@@ -117,12 +117,58 @@ fn (mut s Scanner) scan_multiline() Token {
 	}
 	if s.c == 13 { s.advance() }
 	if s.c == 10 { s.advance() }
+	for s.pos < s.src.len && (s.c & 0xC0) == 0x80 {
+		s.advance()
+	}
 	mut lines := []string{}
 	for s.pos < s.src.len {
 		mut line := ''
 		for s.pos < s.src.len && !is_newline_unicode(s.c, s.pos, s.src) {
 			if s.c == 34 && s.src.len >= s.pos + 3 && s.src[s.pos..s.pos + 3] == '"""' {
 				break
+			}
+			if s.c == 92 {
+				s.advance()
+				if s.pos >= s.src.len { break
+				 }
+				if s.c == 110 {
+					line += '\n'
+				} else if s.c == 114 {
+					line += '\r'
+				} else if s.c == 116 {
+					line += '\t'
+				} else if s.c == 98 {
+					line += '\b'
+				} else if s.c == 102 {
+					line += '\f'
+				} else if s.c == 115 {
+					line += ' '
+				} else if s.c == 34 {
+					line += '"'
+				} else if s.c == 92 {
+					line += '\\'
+				} else if s.c == 117 {
+					if s.pos + 1 < s.src.len && s.src[s.pos + 1] == 123 {
+						s.advance()
+						s.advance()
+						mut hx := ''
+						for s.pos < s.src.len && s.c != 125 {
+							hx += s.c.ascii_str()
+							s.advance()
+						}
+						if s.c == 125 { s.advance() }
+						dec := parse_unicode(hx) or {
+							return Token{.eof, 'kdl: invalid unicode escape', l, c}
+						}
+						line += dec
+						continue
+					}
+					line += '\\u'
+					s.advance()
+					continue
+				}
+				s.advance()
+				continue
 			}
 			line += s.c.ascii_str()
 			s.advance()
@@ -227,6 +273,9 @@ fn (mut s Scanner) scan_raw() Token {
 	for {
 		if s.pos >= s.src.len {
 			return Token{.eof, 'kdl: unterminated raw string', l, c}
+		}
+		if is_newline_unicode(s.c, s.pos, s.src) {
+			return Token{.eof, 'kdl: newline in raw string, use ##""" for multiline', l, c}
 		}
 		if s.c == 34 {
 			mut match_hashes := 0
@@ -351,6 +400,25 @@ fn (mut s Scanner) scan_type_annotation() Token {
 	s.advance()
 	mut name := []u8{}
 	for s.pos < s.src.len && s.c != 41 {
+		if s.c == 34 {
+			name << s.c
+			s.advance()
+			for s.pos < s.src.len && s.c != 34 {
+				if s.c == 92 {
+					name << s.c
+					s.advance()
+				}
+				if s.pos < s.src.len {
+					name << s.c
+					s.advance()
+				}
+			}
+			if s.c == 34 {
+				name << s.c
+				s.advance()
+			}
+			continue
+		}
 		name << s.c
 		s.advance()
 	}
@@ -555,6 +623,9 @@ fn (mut s Scanner) scan_number_rest(lit string, l int, c int) Token {
 		}
 		return Token{.eof, 'kdl: suffixed decimals require relaxed multiplier_suffixes mode', l, c}
 	}
+	if s.pos < s.src.len && !is_num_terminator(s.c, s.pos, s.src) {
+		return Token{.eof, 'kdl: invalid trailing characters after decimal literal', l, c}
+	}
 	return Token{.int_val, buf.bytestr(), l, c}
 }
 
@@ -563,7 +634,9 @@ fn (mut s Scanner) scan_float(lit string, l int, c int) Token {
 	if s.c == 46 {
 		buf << 46
 		s.advance()
+		mut has_frac := false
 		for s.pos < s.src.len && ((s.c >= 48 && s.c <= 57) || s.c == 95) {
+			if s.c >= 48 && s.c <= 57 { has_frac = true }
 			if s.c == 95 {
 				if s.pos + 1 < s.src.len && s.src[s.pos + 1] >= 48 && s.src[s.pos + 1] <= 57 {
 					s.advance()
@@ -573,6 +646,9 @@ fn (mut s Scanner) scan_float(lit string, l int, c int) Token {
 			}
 			buf << s.c
 			s.advance()
+		}
+		if !has_frac {
+			return Token{.eof, 'kdl: expected digit after decimal point', l, c}
 		}
 	}
 	if s.c == 101 || s.c == 69 {
