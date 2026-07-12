@@ -4426,8 +4426,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				// are constant expressions, so repeating the rhs in the clamp
 				// is side-effect free (statement expressions are not valid in
 				// static initializers).
-				ut, bits := unsigned_shift_parts(g.value_c_type(g.usable_expr_type(g.a.child(&node,
-					0))))
+				ut, bits := g.unsigned_shift_type_parts(g.usable_expr_type(g.a.child(&node, 0)))
 				'((u64)(${rhs}) >= ${bits} ? (${ut})0 : (${ut})((${ut})(${lhs}) >> (${rhs})))'
 			} else {
 				'(${lhs}) ${g.op_str(node.op)} (${rhs})'
@@ -10289,8 +10288,19 @@ fn unsigned_shift_parts(ct string) (string, string) {
 	}
 }
 
+fn unsigned_shift_unalias_type(typ types.Type) types.Type {
+	if typ is types.Alias {
+		return unsigned_shift_unalias_type(typ.base_type)
+	}
+	return typ
+}
+
+fn (mut g FlatGen) unsigned_shift_type_parts(typ types.Type) (string, string) {
+	return unsigned_shift_parts(g.value_c_type(unsigned_shift_unalias_type(typ)))
+}
+
 fn (mut g FlatGen) gen_unsigned_right_shift_from_text(lhs_text string, rhs_id flat.NodeId, lhs_type types.Type) {
-	ut, bits := unsigned_shift_parts(g.value_c_type(lhs_type))
+	ut, bits := g.unsigned_shift_type_parts(lhs_type)
 	// The result stays in the unsigned counterpart: casting back to a signed
 	// type would sign-extend under C's integer promotion, so
 	// `i8(-1) >>> 0 == u8(255)` would compare -1 against 255. A `>>>=`
