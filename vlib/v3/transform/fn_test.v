@@ -47,6 +47,7 @@ fn test_typeof_display_canonicalizes_fixed_array_map_values() {
 	assert typeof_display_type_text('Box[int]') == 'Box[int]'
 	assert typeof_display_type_text('Box[types.Node]') == 'Box[types.Node]'
 	assert typeof_display_type_text('Box[fn () int]') == 'Box[fn () int]'
+	assert typeof_display_type_text('Box[chan int]') == 'Box[chan int]'
 	assert typeof_display_type_text('Box[int[3]]') == 'Box[[3]int]'
 	assert typeof_display_type_text('Pair[int[3], Box[string[2]]]') == 'Pair[[3]int, Box[[2]string]]'
 	assert typeof_display_type_text('Box[int][3]') == '[3]Box[int]'
