@@ -1437,7 +1437,9 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 			t.mut_param_values[param_child.value] = true
 		}
 	}
+	t.cloning_generic_fn_depth++
 	clone_id := t.clone_generic_fn_node(decl.node, concrete_args)
+	t.cloning_generic_fn_depth--
 	t.restore_var_types(old_clone_var_types)
 	t.specialize_cloned_fn_signature(clone_id, decl, concrete_args)
 	clone := t.a.nodes[int(clone_id)]
@@ -3980,12 +3982,13 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) strin
 		}
 	}
 	if node.kind == .ident {
-		// During the monomorphize node scan there is no live function scope:
-		// var_types holds bindings from whatever function was transformed last,
-		// so an unrelated local with the same name (`result`, `val`, ...) would
-		// hijack the inference. The ident's annotated type — substituted when
-		// the specialized body was cloned — is authoritative there.
-		if t.in_monomorphize_scan && node.typ.len > 0 && node.typ != 'unknown'
+		// During the ordinary monomorphize node scan there is no live function
+		// scope: var_types holds bindings from whatever function was transformed
+		// last, so an unrelated local with the same name (`result`, `val`, ...)
+		// would hijack inference. While a specialization is actively cloning,
+		// emit_generic_fn_specialization has seeded a live parameter scope instead.
+		if t.in_monomorphize_scan && t.cloning_generic_fn_depth == 0 && node.typ.len > 0
+			&& node.typ != 'unknown'
 			&& !t.generic_arg_is_unresolved(t.normalize_type_alias(node.typ)) {
 			return node.typ
 		}

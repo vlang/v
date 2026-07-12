@@ -148,6 +148,9 @@ mut:
 	// cloning_comptime_for_depth > 0 while a generic clone descends into a `$for` body: nested
 	// generic calls there must not be specialized (the loop var members are not resolved yet).
 	cloning_comptime_for_depth int
+	// cloning_generic_fn_depth > 0 while a generic specialization is cloned with a live,
+	// seeded parameter scope. Ident inference should use that scope rather than scan annotations.
+	cloning_generic_fn_depth int
 	// escaping_amp_ptrs holds the names of pointer locals `p` declared as `p := &v`
 	// (v a value local) whose pointer escapes the function (is returned). V semantics
 	// auto-heap such a `v`; v3 otherwise takes the address of a stack local that dies
@@ -8495,6 +8498,14 @@ fn typeof_display_type_text(name string) string {
 	if name.starts_with('shared ') {
 		return 'shared ' + typeof_display_type_text(name[7..])
 	}
+	if name.starts_with('map[') {
+		close := typeof_display_matching_bracket(name, 3)
+		if close > 3 && close < name.len - 1 {
+			key := typeof_display_type_text(name[4..close])
+			value := typeof_display_type_text(name[close + 1..])
+			return 'map[${key}]${value}'
+		}
+	}
 	if name.starts_with('fn(') || name.starts_with('fn (') {
 		return typeof_display_fn_type_text(name)
 	}
@@ -8543,6 +8554,24 @@ fn typeof_display_matching_paren(text string, open int) int {
 		if text[i] == `(` {
 			depth++
 		} else if text[i] == `)` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+fn typeof_display_matching_bracket(text string, open int) int {
+	if open < 0 || open >= text.len || text[open] != `[` {
+		return -1
+	}
+	mut depth := 0
+	for i in open .. text.len {
+		if text[i] == `[` {
+			depth++
+		} else if text[i] == `]` {
 			depth--
 			if depth == 0 {
 				return i
