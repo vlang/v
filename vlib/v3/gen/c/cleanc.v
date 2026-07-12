@@ -847,7 +847,12 @@ fn (mut g FlatGen) collect_gen_info() {
 	mut seen_import_in_file := false
 	mut nonshared_fn_short_names := []string{cap: 1024}
 	mut nonshared_fn_full_names := []string{cap: 1024}
+	mut nonshared_fn_file_ranks := []int{cap: 1024}
+	mut nonshared_fn_node_indexes := []int{cap: 1024}
 	mut canonical_shared_fn_short_names := map[string]bool{}
+	mut preferred_shared_fn_file_ranks := map[string]int{}
+	mut preferred_shared_fn_node_indexes := map[string]int{}
+	mut preferred_shared_fn_params := map[string][]bool{}
 	for node_idx in 0 .. g.a.nodes.len {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
@@ -924,12 +929,21 @@ fn (mut g FlatGen) collect_gen_info() {
 			g.register_fn_decl_param_types(node.value, full_name, ptypes)
 			if shared_params.len > 0 {
 				g.register_fn_decl_shared_params(node.value, full_name, shared_params)
+				file_rank := c_backend_fn_file_rank(cur_file)
+				if full_name !in preferred_shared_fn_file_ranks
+					|| file_rank > preferred_shared_fn_file_ranks[full_name] {
+					preferred_shared_fn_file_ranks[full_name] = file_rank
+					preferred_shared_fn_node_indexes[full_name] = node_idx
+					preferred_shared_fn_params[full_name] = shared_params.clone()
+				}
 				if cur_module.len == 0 || cur_module == 'main' || cur_module == 'builtin' {
 					canonical_shared_fn_short_names[node.value] = true
 				}
 			} else {
 				nonshared_fn_short_names << node.value
 				nonshared_fn_full_names << full_name
+				nonshared_fn_file_ranks << c_backend_fn_file_rank(cur_file)
+				nonshared_fn_node_indexes << node_idx
 			}
 			g.register_fn_decl_mut_receiver(node.value, full_name, first_param_is_mut)
 			g.register_fn_decl_ret_type(node.value, full_name, node.typ)
@@ -1078,11 +1092,25 @@ fn (mut g FlatGen) collect_gen_info() {
 		}
 	}
 	if g.has_shared_params {
+		for full_name, flags in preferred_shared_fn_params {
+			g.fn_decl_shared_params[full_name] = flags.clone()
+			g.fn_decl_shared_params[g.cname(full_name)] = flags.clone()
+		}
 		for i, name in nonshared_fn_short_names {
 			if name in g.fn_decl_shared_params {
 				full_name := nonshared_fn_full_names[i]
-				g.fn_decl_shared_params[full_name] = []bool{}
-				g.fn_decl_shared_params[g.cname(full_name)] = []bool{}
+				mut nonshared_is_preferred := full_name !in preferred_shared_fn_file_ranks
+				if !nonshared_is_preferred {
+					shared_rank := preferred_shared_fn_file_ranks[full_name]
+					nonshared_rank := nonshared_fn_file_ranks[i]
+					nonshared_is_preferred = nonshared_rank > shared_rank
+						|| (nonshared_rank == shared_rank
+						&& nonshared_fn_node_indexes[i] < preferred_shared_fn_node_indexes[full_name])
+				}
+				if nonshared_is_preferred {
+					g.fn_decl_shared_params[full_name] = []bool{}
+					g.fn_decl_shared_params[g.cname(full_name)] = []bool{}
+				}
 				if !canonical_shared_fn_short_names[name] {
 					g.fn_decl_shared_params[name] = []bool{}
 					cname := g.cname(name)
