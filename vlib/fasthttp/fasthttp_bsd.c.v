@@ -32,6 +32,7 @@ const kqueue_max_events = 128
 const backlog = max_connection_size
 const kqueue_wait_timeout_ms = 100
 const accept_batch_size = 32
+const bsd_thread_pool_size = if max_thread_pool_size < 2 { 2 } else { max_thread_pool_size }
 
 // send_flags is OR'd into every C.send() call in this file.  On OpenBSD,
 // which lacks the per-socket SO_NOSIGPIPE option, we pass MSG_NOSIGNAL
@@ -175,8 +176,8 @@ pub mut:
 	stopped                 &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
 	active_requests         &stdatomic.AtomicVal[int]  = stdatomic.new_atomic(0)
 mut:
-	poll_fds []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
-	threads  []thread = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
+	poll_fds []int    = []int{len: bsd_thread_pool_size, cap: bsd_thread_pool_size, init: -1}
+	threads  []thread = []thread{len: bsd_thread_pool_size, cap: bsd_thread_pool_size}
 }
 
 // new_server creates and initializes a new Server instance.
@@ -605,7 +606,7 @@ fn close_all_conns(server &Server, kq int, mut clients map[int]voidptr) {
 }
 
 fn (mut s Server) stop_accepting() {
-	for i := 0; i < max_thread_pool_size; i++ {
+	for i := 0; i < bsd_thread_pool_size; i++ {
 		if s.poll_fds[i] >= 0 && s.socket_fd >= 0 {
 			delete_event(s.poll_fds[i], u64(s.socket_fd), i16(C.EVFILT_READ), unsafe { nil })
 		}
@@ -617,7 +618,7 @@ fn (mut s Server) stop_accepting() {
 }
 
 fn (mut s Server) close_pollers() {
-	for i := 0; i < max_thread_pool_size; i++ {
+	for i := 0; i < bsd_thread_pool_size; i++ {
 		if s.poll_fds[i] >= 0 {
 			C.close(s.poll_fds[i])
 			s.poll_fds[i] = -1
@@ -757,7 +758,7 @@ pub fn (mut s Server) run() ! {
 	C.signal(C.SIGPIPE, C.SIG_IGN)
 
 	s.socket_fd = create_server_socket(s)!
-	for i := 0; i < max_thread_pool_size; i++ {
+	for i := 0; i < bsd_thread_pool_size; i++ {
 		s.poll_fds[i] = C.kqueue()
 		if s.poll_fds[i] < 0 {
 			C.perror(c'kqueue')
@@ -778,14 +779,14 @@ pub fn (mut s Server) run() ! {
 	}
 
 	s.poll_fd = s.poll_fds[0]
-	for i := 0; i < max_thread_pool_size; i++ {
+	for i := 0; i < bsd_thread_pool_size; i++ {
 		s.threads[i] = spawn process_events(s, s.poll_fds[i], s.socket_fd)
 	}
 
 	s.mark_running()
 	println('listening on http://0.0.0.0:${s.port}/')
 
-	for i in 0 .. max_thread_pool_size {
+	for i in 0 .. bsd_thread_pool_size {
 		s.threads[i].wait()
 	}
 	s.close_pollers()

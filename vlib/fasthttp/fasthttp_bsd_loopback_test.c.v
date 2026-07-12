@@ -8,9 +8,6 @@ const loopback_request_port = 13020
 const loopback_request_addr = '127.0.0.1:${loopback_request_port}'
 
 fn test_handler_can_make_loopback_request_to_same_server() {
-	if max_thread_pool_size < 2 {
-		return
-	}
 	mut server := new_server(ServerConfig{
 		family:                  .ip
 		port:                    loopback_request_port
