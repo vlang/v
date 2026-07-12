@@ -1,0 +1,15 @@
+#ifndef V_TCC_STDATOMIC_COMPAT_CLEANED
+/* Keep compatibility helpers distinct from the standard API restored later. */
+#define __atomic_thread_fence v_tcc_compat_internal_atomic_thread_fence
+#define atomic_thread_fence(order) __atomic_thread_fence(order)
+#define atomic_load v_tcc_compat_atomic_load
+#define atomic_store v_tcc_compat_atomic_store
+#define atomic_compare_exchange_weak v_tcc_compat_atomic_compare_exchange_weak
+#define atomic_compare_exchange_strong v_tcc_compat_atomic_compare_exchange_strong
+#define atomic_exchange v_tcc_compat_atomic_exchange
+#define atomic_fetch_add v_tcc_compat_atomic_fetch_add
+#define atomic_fetch_sub v_tcc_compat_atomic_fetch_sub
+#define atomic_fetch_and v_tcc_compat_atomic_fetch_and
+#define atomic_fetch_or v_tcc_compat_atomic_fetch_or
+#define atomic_fetch_xor v_tcc_compat_atomic_fetch_xor
+#endif
