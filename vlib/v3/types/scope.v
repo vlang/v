@@ -103,7 +103,7 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 		if s.names[i] == name {
 			return ScopeBindingOwner{
 				scope:      s
-				index: i
+				index:      i
 				generation: s.generations[i]
 				lifetime:   s.lifetime
 			}
