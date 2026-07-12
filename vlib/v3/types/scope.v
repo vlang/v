@@ -8,7 +8,6 @@ pub mut:
 	names           []string
 	types           []Type
 	name_indexes    map[string]int
-	reuse_id        int
 	generations     []int
 	next_generation int
 	lifetime        int
@@ -17,9 +16,9 @@ pub mut:
 pub struct ScopeBindingOwner {
 	scope      &Scope = unsafe { nil }
 	index      int    = -1
-	reuse_id   int
 	generation int
 	lifetime   int
+	name       string
 }
 
 // new_scope returns a reusable type-checker scope with an optional parent.
@@ -39,14 +38,16 @@ pub fn (mut s Scope) reset(parent &Scope) {
 	s.parent = parent
 	s.names.clear()
 	s.types.clear()
+	// Scopes are pooled: the lifetime distinguishes bindings of a previous
+	// occupant from the new one, so binding identity (storage_key,
+	// nearest_binding_owned_by) stays exact in every build mode.
+	s.lifetime++
 	$if !ownership ? {
 		s.name_indexes.clear()
-		s.reuse_id++
 	}
 	$if ownership ? {
 		s.generations.clear()
 		s.next_generation = 0
-		s.lifetime++
 	}
 }
 
@@ -56,7 +57,8 @@ pub fn (s &Scope) lookup(name string) ?Type {
 		return none
 	}
 	$if !ownership ? {
-		mut scope := s
+		// Only the local pointer is reassigned; the scopes remain read-only.
+		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
 			if i := scope.name_indexes[name] {
 				return scope.types[i]
@@ -82,13 +84,15 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 		return none
 	}
 	$if !ownership ? {
-		mut scope := s
+		// Only the local pointer is reassigned; the scopes remain read-only.
+		mut scope := unsafe { &Scope(s) }
 		for scope != unsafe { nil } {
 			if i := scope.name_indexes[name] {
 				return ScopeBindingOwner{
 					scope:    scope
 					index:    i
-					reuse_id: scope.reuse_id
+					lifetime: scope.lifetime
+					name:     name
 				}
 			}
 			scope = scope.parent
@@ -99,7 +103,7 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 		if s.names[i] == name {
 			return ScopeBindingOwner{
 				scope:      s
-				index:      i
+				index: i
 				generation: s.generations[i]
 				lifetime:   s.lifetime
 			}
@@ -117,7 +121,9 @@ pub fn (owner ScopeBindingOwner) storage_key() string {
 		return ''
 	}
 	$if !ownership ? {
-		return '${voidptr(owner.scope)}:${owner.reuse_id}:${owner.index}'
+		// The name alone would collapse every same-named binding in a
+		// function to one storage entry; keep the exact binding identity.
+		return '${voidptr(owner.scope)}:${owner.lifetime}:${owner.index}'
 	}
 	return '${voidptr(owner.scope)}:${owner.lifetime}:${owner.index}:${owner.generation}'
 }
@@ -130,7 +136,7 @@ pub fn (s &Scope) nearest_binding_owned_by(name string, owner ScopeBindingOwner)
 	}
 	$if !ownership ? {
 		if i := s.name_indexes[name] {
-			return s == owner.scope && s.reuse_id == owner.reuse_id && i == owner.index
+			return s == owner.scope && s.lifetime == owner.lifetime && i == owner.index
 		}
 		if s.parent != unsafe { nil } {
 			return s.parent.nearest_binding_owned_by(name, owner)
@@ -163,7 +169,8 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 			return ScopeBindingOwner{
 				scope:    s
 				index:    i
-				reuse_id: s.reuse_id
+				lifetime: s.lifetime
+				name:     name
 			}
 		}
 		s.names << name
@@ -172,7 +179,8 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 		return ScopeBindingOwner{
 			scope:    s
 			index:    s.names.len - 1
-			reuse_id: s.reuse_id
+			lifetime: s.lifetime
+			name:     name
 		}
 	}
 	for i := s.names.len - 1; i >= 0; i-- {

@@ -67,6 +67,17 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			mut field_type := field_types[field_name] or { '' }
 			mut promoted_parent := ''
 			if field_type.len == 0 {
+				// A cross-module embed (`aa.Inner`) is initialized under its
+				// short name: `Outer{ Inner: ... }`.
+				for f in info.fields {
+					if f.name.contains('.') && f.name.all_after_last('.') == field_name {
+						target_field_name = f.name
+						field_type = field_types[f.name] or { f.typ }
+						break
+					}
+				}
+			}
+			if field_type.len == 0 {
 				if embedded := t.embedded_field_for_promoted_field(info, field_name) {
 					promoted_parent = embedded.name
 					promoted_types[promoted_parent] = embedded.typ

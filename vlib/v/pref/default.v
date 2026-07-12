@@ -457,7 +457,7 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {
 	preferred_tcc := default_tcc_compiler()
-	if p.ccompiler == 'tcc' {
+	if p.ccompiler in ['tcc', 'tinyc'] {
 		p.ccompiler = if preferred_tcc != '' { preferred_tcc } else { 'tcc' }
 		return
 	}

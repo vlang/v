@@ -41,6 +41,9 @@ $if !windows {
 		mut w := unsafe { &FlatGen(arg) }
 		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
 		w.collect_fixed_storage_consts()
+		w.precompute_embedded_fields()
+		w.precompute_param_type_index()
+		w.precompute_concrete_optional_abi_fns()
 		w.worker_scope = scope
 		cgen_worker_scope_leave(scope)
 		return unsafe { nil }
@@ -285,7 +288,9 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		}
 		node := g.a.nodes[idx]
 		cost++
-		g.collect_c_extern_ref_from_node(node)
+		if node.kind == .selector {
+			g.collect_c_extern_ref_from_node(node)
+		}
 		if g.should_preseed_parallel_type_text_cached(node.typ, mut type_text_cache) {
 			g.preseed_parallel_fn_ptr_type(g.tc.parse_type(node.typ))
 		}
@@ -850,6 +855,11 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			g.parallel_worker_scopes << fs_worker.worker_scope
 		}
 		g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
+		// The helper also built these precomputes; hand them to the master so
+		// later worker forks (and master-side emission) do not run with empty
+		// maps. The fork is discarded, so a move is safe.
+		g.param_types_by_short = fs_worker.param_types_by_short.move()
+		g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
 		return true
 	}
 }

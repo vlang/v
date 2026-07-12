@@ -393,7 +393,7 @@ fn generic_method_candidate_key(receiver string, method string) string {
 }
 
 fn (mut g FlatGen) precompute_generic_method_candidate_index() {
-	g.generic_method_candidates = map[string][]GenericMethodCandidate{}
+	g.generic_method_candidates.clear()
 	for name, ret in g.tc.fn_ret_types {
 		if !name.contains('[') || !name.contains('.') {
 			continue
@@ -5797,6 +5797,9 @@ fn (g &FlatGen) current_param_type(name string) ?types.Type {
 }
 
 fn (g &FlatGen) current_param_map_type(name string) ?types.Type {
+	if g.cur_param_types.len == 0 {
+		return none
+	}
 	if g.current_mut_param_binding_is_shadowed(name) {
 		return none
 	}
@@ -5996,7 +5999,8 @@ fn (mut g FlatGen) optional_type_name_for_expr(id flat.NodeId, typ types.Type) s
 	return g.optional_type_name(typ)
 }
 
-// current_param_is_mut returns true when a current param originated from `mut name T`.
+// current_param_is_mut returns true when a current param originated from `mut name T`
+// and the identifier still resolves to that parameter (not a shadowing local).
 fn (g &FlatGen) current_param_is_mut(name string) bool {
 	if g.cur_mut_params.len == 0 {
 		return false
@@ -9186,9 +9190,10 @@ fn (g &FlatGen) fn_param_is_shared(fn_name string, idx int) bool {
 	]
 	for candidate in candidates {
 		flags := g.fn_decl_shared_params[candidate] or { continue }
-		if idx < flags.len && flags[idx] {
-			return true
-		}
+		// The first present entry is authoritative: an exact-name (possibly
+		// all-false) entry must stop the short-name fallback from matching an
+		// unrelated declaration.
+		return idx < flags.len && flags[idx]
 	}
 	return false
 }
@@ -9234,6 +9239,9 @@ fn (mut g FlatGen) precompute_shared_param_index() {
 		return
 	}
 	for name, flags in g.fn_decl_shared_params {
+		// The name's own entry is authoritative (mirrors fn_param_is_shared's
+		// first-present-candidate rule); merging short-name variants here
+		// would smear another declaration's shared flags onto this one.
 		// Store empty/all-false results too. Presence in this map is what turns
 		// the very hot call-site query into one lookup.
 		g.fn_shared_params_resolved[name] = flags.clone()
@@ -9422,6 +9430,22 @@ fn (mut g FlatGen) fn_node_param_types(node flat.Node, module_name string) []typ
 	for i in 0 .. node.children_count {
 		if g.a.child_node(&node, i).kind == .param {
 			explicit_params++
+		}
+	}
+	// The module-scoped key first: a method name (`Recv.method`) is dotted but
+	// not module-qualified, and two modules declaring the same receiver/method
+	// pair must not share an entry.
+	if params := g.fn_decl_param_types[fn_decl_module_key(module_name, node.value)] {
+		if params.len == explicit_params {
+			return params
+		}
+	}
+	if !node.value.contains('.') {
+		full_name := qualify_name_in_module(module_name, node.value)
+		if params := g.fn_decl_param_types[full_name] {
+			if params.len == explicit_params {
+				return params
+			}
 		}
 	}
 	if params := g.fn_node_param_types_from_signatures(node, module_name, explicit_params) {
