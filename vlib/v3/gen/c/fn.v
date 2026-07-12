@@ -70,10 +70,9 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut ranks := map[string]int{}
 	mut cur_module := ''
 	mut cur_file := ''
-	// When the parallel path asks for it, the per-item cost walk also collects
-	// C-extern references, avoiding a separate subtree traversal.
+	// Defer cost/prep until after preferred-file and emission filtering. When
+	// the parallel path asks for prep, that walk also collects C-extern refs.
 	prep := g.want_parallel_prep
-	mut prep_stack := []flat.NodeId{cap: 256}
 	for i in 0 .. g.a.nodes.len {
 		node := g.a.nodes[i]
 		kind_id := node_kind_id(node)
@@ -101,14 +100,6 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 				preferred_fns[preferred_name] = i
 				ranks[preferred_name] = rank
 			}
-			mut cost := 0
-			if prep {
-				g.tc.cur_file = cur_file
-				g.tc.cur_module = cur_module
-				cost = g.fn_item_cost_and_prep(flat.NodeId(i), mut prep_stack)
-			} else {
-				cost = flat_fn_gen_item_cost(g.a, flat.NodeId(i))
-			}
 			candidates << FlatFnGenCandidate{
 				preferred_name: preferred_name
 				item:           FlatFnGenItem{
@@ -116,24 +107,38 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 					file:    cur_file
 					module:  cur_module
 					c_name:  g.fn_c_name_in_module(cur_module, node.value)
-					cost:    cost
 				}
 			}
 		}
 	}
 	mut items := []FlatFnGenItem{cap: candidates.len}
+	mut prep_stack := []flat.NodeId{cap: 256}
 	for candidate in candidates {
 		if preferred_idx := preferred_fns[candidate.preferred_name] {
 			if preferred_idx != int(candidate.item.node_id) {
 				continue
 			}
 		}
-		qfn := candidate.item.c_name
+		item := candidate.item
+		qfn := item.c_name
 		if g.emitted_fn_contains(qfn) {
 			continue
 		}
 		g.emitted_fns[qfn] = true
-		items << candidate.item
+		cost := if prep {
+			g.tc.cur_file = item.file
+			g.tc.cur_module = item.module
+			g.fn_item_cost_and_prep(item.node_id, mut prep_stack)
+		} else {
+			flat_fn_gen_item_cost(g.a, item.node_id)
+		}
+		items << FlatFnGenItem{
+			node_id: item.node_id
+			file:    item.file
+			module:  item.module
+			c_name:  item.c_name
+			cost:    cost
+		}
 	}
 	return items
 }
