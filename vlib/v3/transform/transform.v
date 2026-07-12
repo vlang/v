@@ -108,6 +108,8 @@ mut:
 	in_spawn_expr                bool
 	in_const_init                bool
 	in_return_expr               bool
+	expected_expr_node           int = -1
+	expected_expr_type           string
 	in_selector_base             bool
 	autolock_depth               int
 	alias_cache                  &AliasCache             = unsafe { nil }
@@ -1547,6 +1549,8 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.in_call_callee = false
 	w.in_const_init = false
 	w.in_return_expr = false
+	w.expected_expr_node = -1
+	w.expected_expr_type = ''
 	return &w
 }
 
@@ -1603,6 +1607,8 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.in_call_callee = false
 	w.in_const_init = false
 	w.in_return_expr = false
+	w.expected_expr_node = -1
+	w.expected_expr_type = ''
 	return &w
 }
 
@@ -3557,6 +3563,11 @@ fn (mut t Transformer) return_values_with_extra(first_id flat.NodeId, extra_ids 
 }
 
 fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index int, total_children int) flat.NodeId {
+	old_in_return_expr := t.in_return_expr
+	t.in_return_expr = true
+	defer {
+		t.in_return_expr = old_in_return_expr
+	}
 	if converted := t.fixed_array_return_value(child_id) {
 		return converted
 	}
@@ -4286,6 +4297,16 @@ fn (t &Transformer) pointer_value_assign_rhs_matches(lhs_value_type_raw string, 
 
 // transform_expr_for_type transforms transform expr for type data for transform.
 fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type string) flat.NodeId {
+	old_expected_node := t.expected_expr_node
+	old_expected_type := t.expected_expr_type
+	if int(id) >= 0 && target_type.len > 0 {
+		t.expected_expr_node = int(id)
+		t.expected_expr_type = target_type
+	}
+	defer {
+		t.expected_expr_node = old_expected_node
+		t.expected_expr_type = old_expected_type
+	}
 	if int(id) >= 0 && target_type.len > 0 {
 		node := t.a.nodes[int(id)]
 		if node.kind == .none_expr && t.is_optional_type_name(target_type) {
@@ -5651,7 +5672,7 @@ fn (mut t Transformer) lower_multi_if_assign(node flat.Node, lhs_ids []flat.Node
 	cond_id := t.a.child(&node, 0)
 	then_id := t.a.child(&node, 1)
 	mut result := []flat.NodeId{}
-	new_cond := t.transform_expr(cond_id)
+	new_cond := t.transform_expr_for_type(cond_id, 'bool')
 	t.drain_pending(mut result)
 	then_block := t.multi_if_assign_block(then_id, lhs_ids)
 	mut else_block := t.make_empty()
@@ -6611,7 +6632,7 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	if node.children_count < 2 {
 		return id
 	}
-	if node.op == .logical_and {
+	if node.op in [.logical_and, .logical_or] {
 		return t.transform_and_chain_smartcasts(id)
 	}
 	if node.op == .left_shift {

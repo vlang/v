@@ -627,6 +627,135 @@ fn main() {
 }
 ')
 	assert params_out == '6\n4'
+	run_bad(v3_bin, 'bad_generic_receiver_method_return_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value()
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'cannot return `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_condition_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if value.value() {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_assignment_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	mut ok := false
+	ok = value.value()
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_function_field_argument', 'struct HasCallback {
+	cb fn (int)
+}
+
+fn invoke[T](value T) {
+	value.cb("bad")
+}
+
+fn main() {
+	invoke(HasCallback{
+		cb: fn (n int) {}
+	})
+}
+',
+		'cannot use `string` as argument 1 to `value.cb`; expected `int`')
+	run_bad(v3_bin, 'bad_generic_function_field_argument_count', 'struct HasCallback {
+	cb fn (int)
+}
+
+fn invoke[T](value T) {
+	value.cb()
+}
+
+fn main() {
+	invoke(HasCallback{
+		cb: fn (n int) {}
+	})
+}
+',
+		'argument count mismatch for `value.cb`: expected 1, got 0')
+	fn_field_out := run_good(v3_bin, 'good_generic_function_field_argument', 'struct HasCallback {
+	cb fn (int) int
+}
+
+fn invoke[T](value T) int {
+	return value.cb(3)
+}
+
+fn main() {
+	println(int_str(invoke(HasCallback{
+		cb: fn (n int) int {
+			return n + 1
+		}
+	})))
+}
+')
+	assert fn_field_out == '4'
+	run_bad(v3_bin, 'bad_generic_receiver_params_field_type', '@[params]
+struct OpenOptions {
+	limit int
+}
+
+struct Service {}
+
+fn (s Service) open(opts OpenOptions) {}
+
+fn invoke[T](service T) {
+	service.open(limit: "bad")
+}
+
+fn main() {
+	invoke(Service{})
+}
+',
+		'cannot initialize field `limit` with `string`; expected `int`')
+	run_bad(v3_bin, 'bad_generic_receiver_params_unknown_field', '@[params]
+struct OpenOptions {
+	limit int
+}
+
+struct Service {}
+
+fn (s Service) open(opts OpenOptions) {}
+
+fn invoke[T](service T) {
+	service.open(missing: 1)
+}
+
+fn main() {
+	invoke(Service{})
+}
+',
+		'unknown field `missing` in `OpenOptions`')
 }
 
 // Regression tests for the post-PR review fixes: fixed-array literals must match

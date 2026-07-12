@@ -1117,7 +1117,7 @@ fn (mut t Transformer) transform_and_chain_smartcasts(cond_id flat.NodeId) flat.
 		if cond.kind == .is_expr {
 			return t.transform_is_condition(cond_id)
 		}
-		return t.transform_expr(cond_id)
+		return t.transform_expr_for_type(cond_id, 'bool')
 	}
 	if cond.children_count < 2 {
 		return cond_id
@@ -1223,7 +1223,7 @@ fn (mut t Transformer) transform_plain_if_branches(id flat.NodeId, node flat.Nod
 	has_else := node.children_count >= 3
 	else_id := if has_else { t.a.child(&node, 2) } else { flat.empty_node }
 
-	new_cond_id := t.transform_expr(cond_id)
+	new_cond_id := t.transform_expr_for_type(cond_id, 'bool')
 	cond_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	new_then_id := t.transform_if_branch_as_block(then_id)
