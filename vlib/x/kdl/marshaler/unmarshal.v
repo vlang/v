@@ -35,11 +35,19 @@ pub fn decode_opts[T](data string, opts DecodeOpts) !T {
 fn decode_struct[T](mut val T, node document.Node, opts DecodeOpts) {
 	_ := opts
 	mut args := []document.Value{}
-	mut props := map[string]document.Value{}
+	mut props_size := 0
+	mut props_keys := []string{cap: 8}
+	mut props_vals := []document.Value{cap: 8}
 	for e in node.entries {
 		match e {
-			document.Argument { args << e.value }
-			document.Property { props[e.key] = e.value }
+			document.Argument {
+				args << e.value
+			}
+			document.Property {
+				props_keys << e.key
+				props_vals << e.value
+				props_size++
+			}
 		}
 	}
 
@@ -60,7 +68,9 @@ fn decode_struct[T](mut val T, node document.Node, opts DecodeOpts) {
 			collect_args_to_slice(mut val, field.name, args)
 		}
 	}
-	for key, value in props {
+	for pi in 0 .. props_size {
+		key := props_keys[pi]
+		value := props_vals[pi]
 		$for field in T.fields {
 			tag := kdl_tag(field.attrs)
 			tag_name, attrs := parse_kdl_tag(tag)
@@ -79,7 +89,9 @@ fn decode_struct[T](mut val T, node document.Node, opts DecodeOpts) {
 		tag := kdl_tag(field.attrs)
 		_, attrs := parse_kdl_tag(tag)
 		if 'props' in attrs {
-			for key, value in props {
+			for pi in 0 .. props_size {
+				key := props_keys[pi]
+				value := props_vals[pi]
 				decode_prop_to_map(mut val, field.name, key, value)
 			}
 		}
