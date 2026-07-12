@@ -205,6 +205,10 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 			t.transform_pure_items_serial(items)
 			return false
 		}
+		// Workers need declaration signatures while lowering calls. Snapshot them
+		// before any worker can rewrite a shared-base fn_decl; lazily scanning or
+		// reading declarations inside workers can otherwise observe a torn node.
+		t.prepare_parallel_call_param_types()
 		// Clone-free shared-base path: needs the checker's top-level index for
 		// exact per-item subtree ranges, and skip_generics (the generic passes
 		// scan and mutate arbitrary AST regions, which the shared design forbids).

@@ -62,3 +62,35 @@ fn test_typeof_display_canonicalizes_fixed_array_map_values() {
 	})
 	assert typeof_display_resolved_type_text(fixed_maps) == '[3]map[string]int'
 }
+
+fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, 'signature_index_test.v')
+	a.add_val(.module_decl, 'main')
+	param_id := a.add_node(flat.Node{
+		kind:  .param
+		value: 'value'
+		typ:   'string'
+	})
+	children_start := a.children.len
+	a.children << param_id
+	a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          'takes_string'
+		children_start: children_start
+		children_count: 1
+	})
+	mut tc := types.TypeChecker.new(a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.prepare_parallel_call_param_types()
+	mut worker := t.fork_worker(t.a, t.tc)
+	assert worker.call_param_types_index_ready
+	assert worker.call_param_types_decl_index.len == t.call_param_types_decl_index.len
+	assert worker.call_param_types_decl_cache.len == t.call_param_types_decl_cache.len
+	params := worker.call_param_types_from_decl('takes_string') or {
+		assert false
+		return
+	}
+	assert params.len == 1
+	assert params[0] is types.String
+}

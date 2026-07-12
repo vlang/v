@@ -1504,10 +1504,11 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
 	w.generic_call_spec_misses = map[int]bool{}
-	w.call_param_types_decl_cache = map[string][]types.Type{}
-	w.call_param_types_decl_misses = map[string]bool{}
-	w.call_param_types_decl_index = map[string]FnParamDeclRef{}
-	w.call_param_types_index_ready = false
+	// run_parallel_transform snapshots declaration signatures before workers
+	// start. Keep the shared read-only index and signature cache; rebuilding
+	// either would read fn_decl nodes while shared-base workers rewrite them.
+	// Misses stay private because unknown call names can still be queried.
+	w.call_param_types_decl_misses = t.call_param_types_decl_misses.clone()
 	w.node_module_map_cache = []string{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}

@@ -1213,6 +1213,14 @@ fn (mut t Transformer) ensure_call_param_types_decl_index() {
 	t.call_param_types_index_ready = true
 }
 
+fn (mut t Transformer) prepare_parallel_call_param_types() {
+	t.ensure_call_param_types_decl_index()
+	names := t.call_param_types_decl_index.keys()
+	for name in names {
+		_ = t.call_param_types_from_decl(name) or { continue }
+	}
+}
+
 fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file string, module_name string) {
 	if key.len == 0 {
 		return
