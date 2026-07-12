@@ -7793,7 +7793,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		}
 		if arg_idx < typed_param_count {
 			arg_param_is_shared :=
-				g.fn_param_is_shared_for_call(arg_idx, callee_name, fn_name, '', '')
+				g.fn_param_is_shared_for_call(arg_idx, fn_name, callee_name, '', '')
 			if arg_param_is_shared
 				&& (g.gen_shared_local_receiver_arg(arg_id) || g.gen_shared_storage_expr(arg_id)) {
 				continue
@@ -7909,7 +7909,7 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			arg_is_shared_local := arg_node.kind == .ident
 				&& g.local_storage_is_shared(arg_node.value)
 			arg_param_is_shared :=
-				g.fn_param_is_shared_for_call(arg_idx, callee_name, fn_name, '', '')
+				g.fn_param_is_shared_for_call(arg_idx, fn_name, callee_name, '', '')
 			arg_is_pointer_param := arg_node.kind == .ident && (g.current_param_type(arg_node.value) or {
 				types.Type(types.void_)
 			}) is types.Pointer
