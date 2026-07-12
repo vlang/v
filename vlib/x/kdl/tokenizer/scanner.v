@@ -31,6 +31,13 @@ pub fn (mut s Scanner) next() Token {
 			s.advance()
 			return Token{.semicolon, ';', l, c}
 		}
+		58 {
+			if s.relaxed.permit(relaxed.yaml_toml_assignments) {
+				s.advance()
+				return Token{.colon, ':', l, c}
+			}
+			return s.scan_identifier()
+		}
 		40 {
 			if s.relaxed.permit(relaxed.nginx_syntax) {
 				return s.scan_identifier()
@@ -152,7 +159,7 @@ fn (mut s Scanner) skip_gap() ?Token {
 			if s.peek() == 42 {
 				s.advance()
 				s.advance()
-				mut comment_start := s.pos
+				mut comment_start := s.pos - 2
 				mut depth := 1
 				for {
 					if s.pos >= s.src.len {
@@ -165,7 +172,7 @@ fn (mut s Scanner) skip_gap() ?Token {
 						depth--
 						if depth == 0 {
 							if s.pos > comment_start {
-								s.comment = s.src[comment_start..s.pos]
+								s.comment = s.src[comment_start..s.pos + 2]
 							}
 							s.advance()
 							s.advance()

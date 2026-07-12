@@ -100,6 +100,7 @@ fn (mut s Scanner) scan_string() Token {
 		if is_newline_unicode(s.c, s.pos, s.src) {
 			return Token{.eof, 'kdl: newline in quoted string, use """ for multiline', l, c}
 		}
+		if s.c < 32 { return Token{.eof, 'kdl: unescaped control character in string', l, c} }
 		lit << s.c
 		s.advance()
 	}
@@ -294,10 +295,6 @@ fn (mut s Scanner) scan_multiline_raw(hashes int, l int, c int) Token {
 		return Token{.eof, 'kdl: unterminated multiline raw string', l, c}
 	}
 
-	// Consume the trailing newline after the closing marker
-	if s.c == 13 { s.advance() }
-	if s.c == 10 { s.advance() }
-
 	mut indent := ''
 	if lines.len > 0 {
 		last := lines[lines.len - 1]
@@ -413,6 +410,9 @@ fn (mut s Scanner) scan_number_or_ident() Token {
 			return s.scan_number_rest(buf, l, c)
 		}
 		if s.c == 46 && s.peek() >= 48 && s.peek() <= 57 {
+			if s.relaxed.flags == 0 {
+				return Token{.eof, 'kdl: expected digit before decimal point', l, c}
+			}
 			buf := first.ascii_str()
 			return s.scan_number_rest(buf, l, c)
 		}
@@ -458,6 +458,9 @@ fn (mut s Scanner) scan_hex(signed bool, l int, c int) Token {
 		return Token{.eof, 'kdl: trailing underscore in hex literal', l, c}
 	}
 	if !has_digits { return Token{.eof, 'kdl: expected hex digits after 0x', l, c} }
+	if s.pos < s.src.len && !is_num_terminator(s.c, s.pos, s.src) {
+		return Token{.eof, 'kdl: invalid trailing characters after numeric literal', l, c}
+	}
 	return Token{.int_val, buf.bytestr(), l, c}
 }
 
@@ -486,6 +489,9 @@ fn (mut s Scanner) scan_oct(signed bool, l int, c int) Token {
 		return Token{.eof, 'kdl: trailing underscore in octal literal', l, c}
 	}
 	if !has_digits { return Token{.eof, 'kdl: expected octal digits after 0o', l, c} }
+	if s.pos < s.src.len && !is_num_terminator(s.c, s.pos, s.src) {
+		return Token{.eof, 'kdl: invalid trailing characters after numeric literal', l, c}
+	}
 	return Token{.int_val, buf.bytestr(), l, c}
 }
 
@@ -514,6 +520,9 @@ fn (mut s Scanner) scan_bin(signed bool, l int, c int) Token {
 		return Token{.eof, 'kdl: trailing underscore in binary literal', l, c}
 	}
 	if !has_digits { return Token{.eof, 'kdl: expected binary digits after 0b', l, c} }
+	if s.pos < s.src.len && !is_num_terminator(s.c, s.pos, s.src) {
+		return Token{.eof, 'kdl: invalid trailing characters after numeric literal', l, c}
+	}
 	return Token{.int_val, buf.bytestr(), l, c}
 }
 
@@ -554,7 +563,14 @@ fn (mut s Scanner) scan_float(lit string, l int, c int) Token {
 	if s.c == 46 {
 		buf << 46
 		s.advance()
-		for s.pos < s.src.len && s.c >= 48 && s.c <= 57 {
+		for s.pos < s.src.len && ((s.c >= 48 && s.c <= 57) || s.c == 95) {
+			if s.c == 95 {
+				if s.pos + 1 < s.src.len && s.src[s.pos + 1] >= 48 && s.src[s.pos + 1] <= 57 {
+					s.advance()
+					continue
+				}
+				return Token{.eof, 'kdl: invalid underscore separator in float', l, c}
+			}
 			buf << s.c
 			s.advance()
 		}
@@ -567,7 +583,14 @@ fn (mut s Scanner) scan_float(lit string, l int, c int) Token {
 			s.advance()
 		}
 		mut has_exp_digits := false
-		for s.pos < s.src.len && s.c >= 48 && s.c <= 57 {
+		for s.pos < s.src.len && ((s.c >= 48 && s.c <= 57) || s.c == 95) {
+			if s.c == 95 {
+				if s.pos + 1 < s.src.len && s.src[s.pos + 1] >= 48 && s.src[s.pos + 1] <= 57 {
+					s.advance()
+					continue
+				}
+				return Token{.eof, 'kdl: invalid underscore separator in float exponent', l, c}
+			}
 			has_exp_digits = true
 			buf << s.c
 			s.advance()
@@ -609,4 +632,9 @@ fn collect_ident(mut s Scanner, prefix string, l int, c int) Token {
 		return Token{.eof, "kdl: illegal bare keyword \"${lit}\", use #${lit} or \"\"${lit}\"\"", l, c}
 	}
 	return Token{.identifier, lit, l, c}
+}
+
+fn is_num_terminator(b u8, pos int, src string) bool {
+	return b == 0 || is_whitespace_unicode(b, pos, src) || is_newline_unicode(b, pos, src)
+		|| b == 59 || b == 123 || b == 125 || b == 40 || b == 41 || b == 47 || b == 34 || b == 35
 }

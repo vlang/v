@@ -143,6 +143,10 @@ fn (mut p Parser) parse_node() !document.Node {
 		}
 		if p.tok.kind == .r_brace {
 			p.advance()
+			if p.tok.kind !in [.newline, .semicolon, .r_brace, .eof] {
+				return kdl_err(p.tok.line, p.tok.col,
+					'kdl: expected newline, semicolon, } or EOF after children block')
+			}
 		} else {
 			return kdl_err(p.tok.line, p.tok.col, 'unterminated children block')
 		}
@@ -173,7 +177,7 @@ fn (mut p Parser) parse_entry() !document.Entry {
 	}
 	if p.tok.kind in [.identifier, .string_val] {
 		key_lit := p.tok.lit
-		if p.peek().kind == .equals {
+		if p.peek().kind in [.equals, .colon] {
 			p.advance()
 			p.advance()
 			mut val_type_ann := type_ann

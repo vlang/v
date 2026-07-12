@@ -168,11 +168,11 @@ fn test_multiline_raw_followed_by_node() {
   """#
 next-node'
 	doc := kdl.parse(src)!
-	assert doc.nodes.len == 1
+	assert doc.nodes.len == 2
 	assert doc.nodes[0].name == 'md'
-	assert doc.nodes[0].entries.len == 2
+	assert doc.nodes[0].entries.len == 1
+	assert doc.nodes[1].name == 'next-node'
 	assert kdl.as_string(doc.nodes[0].entries[0].value) == 'hello'
-	assert kdl.as_string(doc.nodes[0].entries[1].value) == 'next-node'
 }
 
 fn test_invalid_escape_error() {

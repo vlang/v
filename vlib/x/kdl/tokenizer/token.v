@@ -16,6 +16,7 @@ pub enum TokenKind {
 	r_brace
 	semicolon
 	slashdash
+	colon
 	newline
 	eof
 }

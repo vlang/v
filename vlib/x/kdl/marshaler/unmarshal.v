@@ -107,7 +107,7 @@ fn decode_value_to_field[T](mut val T, field_name string, v document.Value) {
 			$if field.typ is f64 { val.$(field.name) = from_value_f64(v) }
 			$if field.typ is i64 { val.$(field.name) = from_value_i64(v) }
 			$if field.typ is f32 { val.$(field.name) = f32(from_value_f64(v)) }
-			$if field.typ is u64 { val.$(field.name) = u64(from_value_i64(v)) }
+			$if field.typ is u64 { val.$(field.name) = from_value_u64(v) }
 			$if field.typ is i16 { val.$(field.name) = i16(from_value_int(v)) }
 			$if field.typ is u16 { val.$(field.name) = u16(from_value_int(v)) }
 			$if field.typ is i8 { val.$(field.name) = i8(from_value_int(v)) }
@@ -128,9 +128,13 @@ fn collect_args_to_slice[T](mut val T, field_name string, args []document.Value)
 					$if field.typ is []f64 { arr << from_value_f64(a) }
 					$if field.typ is []bool { arr << from_value_bool(a) }
 					$if field.typ is []i64 { arr << from_value_i64(a) }
+					$if field.typ is []u64 { arr << from_value_u64(a) }
+					$if field.typ is []f32 { arr << f32(from_value_f64(a)) }
 				}
 				val.$(field.name) = arr
 			}
+			$if field.typ is []u64 { arr << from_value_u64(a) }
+			$if field.typ is []f32 { arr << f32(from_value_f64(a)) }
 		}
 	}
 }
@@ -167,6 +171,20 @@ fn decode_child_to_field[T](mut val T, field_name string, child document.Node, o
 				}
 				val.$(field.name) = m
 			}
+			$if field.typ is $array {
+				mut arr := val.$(field.name)
+				for e in child.entries {
+					if e is document.Argument {
+						$if field.typ is []string { arr << from_value_string(e.value) }
+						$if field.typ is []int { arr << from_value_int(e.value) }
+						$if field.typ is []f64 { arr << from_value_f64(e.value) }
+						$if field.typ is []bool { arr << from_value_bool(e.value) }
+						$if field.typ is []i64 { arr << from_value_i64(e.value) }
+						$if field.typ is []u64 { arr << from_value_u64(e.value) }
+					}
+				}
+				val.$(field.name) = arr
+			}
 		}
 	}
 }
@@ -176,6 +194,7 @@ fn insert_map_entry[T](mut m T, key string, v document.Value) {
 	$if T is map[string]int { m[key] = from_value_int(v) }
 	$if T is map[string]bool { m[key] = from_value_bool(v) }
 	$if T is map[string]f64 { m[key] = from_value_f64(v) }
+	$if T is map[string]u64 { m[key] = from_value_u64(v) }
 	$if T is map[string]i64 { m[key] = from_value_i64(v) }
 }
 
@@ -225,6 +244,18 @@ fn from_value_f64(v document.Value) f64 {
 	}
 
 	return 0.0
+}
+
+fn from_value_u64(v document.Value) u64 {
+	match v {
+		document.IntVal { return u64(v.value) }
+		document.FloatVal { return u64(v.value) }
+		document.StringVal { return v.value.u64() }
+		document.BoolVal { return if v.value { u64(1) } else { u64(0) } }
+		document.NullVal { return u64(0) }
+	}
+
+	return u64(0)
 }
 
 fn from_value_i64(v document.Value) i64 {
