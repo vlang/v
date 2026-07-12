@@ -30,6 +30,8 @@ fn test_cgen_flattened_generic_receiver_short_variants() {
 }
 
 fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
+	assert typeof_display_type_name('Box[fn () int]') == 'Box[fn () int]'
+	assert typeof_display_type_name('Box[chan int]') == 'Box[chan int]'
 	assert typeof_display_type_name('Box[int[3]]') == 'Box[[3]int]'
 	assert typeof_display_type_name('Pair[int[3], Box[string[2]]]') == 'Pair[[3]int, Box[[2]string]]'
 	assert typeof_display_type_name('Box[int][3]') == '[3]Box[int]'

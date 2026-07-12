@@ -6066,6 +6066,11 @@ fn typeof_display_fixed_array_len_text(text string) bool {
 	if clean.len == 0 || clean.contains(',') || clean.contains('[') || clean.contains(']') {
 		return false
 	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') || clean.starts_with('chan ')
+		|| clean.starts_with('shared ') || clean.starts_with('atomic ') || clean.starts_with('mut ')
+		|| clean.starts_with('thread ') {
+		return false
+	}
 	if clean[0] >= `0` && clean[0] <= `9` {
 		return true
 	}
