@@ -320,6 +320,9 @@ fn parse_int(lit string) document.Value {
 				result |= i64(lit[i] - 48)
 			}
 			if neg { result = -result }
+		} else {
+			result = lit[start..].i64()
+			if neg { result = -result }
 		}
 	} else {
 		result = lit.i64()

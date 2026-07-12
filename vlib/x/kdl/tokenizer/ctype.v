@@ -92,6 +92,7 @@ fn is_newline_or_whitespace(b u8, pos int, src string) bool {
 
 fn parse_unicode(hex string) !string {
 	if hex.len == 0 || hex.len > 6 { return error('kdl: unicode escape must have 1-6 hex digits') }
+	if hex.len == 0 || hex.len > 6 { return error('kdl: unicode escape must have 1-6 hex digits') }
 	mut val := u64(0)
 	for i in 0 .. hex.len {
 		c := hex[i]
@@ -107,6 +108,7 @@ fn parse_unicode(hex string) !string {
 		}
 	}
 	if val > 0x10FFFF { return error('invalid unicode') }
+	if val >= 0xD800 && val <= 0xDFFF { return error('kdl: unicode escape must not be a surrogate') }
 	if val >= 0xD800 && val <= 0xDFFF { return error('kdl: unicode escape must not be a surrogate') }
 	mut buf := []u8{}
 	if val < 0x80 {

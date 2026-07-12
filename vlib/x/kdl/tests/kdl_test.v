@@ -364,3 +364,23 @@ fn test_raw_string_empty() {
 	e := doc.nodes[0].entries[0]
 	assert kdl.as_string(e.value) == ''
 }
+
+fn test_decimal_with_leading_zero_and_separator() {
+	doc := kdl.parse('v 0_1')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == 1
+}
+
+fn test_negative_decimal_with_leading_zero_and_separator() {
+	doc := kdl.parse('v -0_2')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == -2
+}
+
+fn test_type_annotation_with_quoted_string() {
+	doc := kdl.parse('("content type")node "val"')!
+	assert doc.nodes[0].type_name == '"content type"'
+}
+
+fn test_type_annotation_with_embedded_paren() {
+	doc := kdl.parse('("a)b")node "val"')!
+	assert doc.nodes[0].type_name == '"a)b"'
+}

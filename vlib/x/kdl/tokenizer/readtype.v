@@ -116,7 +116,11 @@ fn (mut s Scanner) scan_multiline() Token {
 		return Token{.eof, 'kdl: multiline string must start with newline after """', l, c}
 	}
 	if s.c == 13 { s.advance() }
-	if s.c == 10 { s.advance() }
+	if s.c == 10 {
+		s.advance()
+	} else {
+		s.advance()
+	}
 	for s.pos < s.src.len && (s.c & 0xC0) == 0x80 {
 		s.advance()
 	}
@@ -178,7 +182,11 @@ fn (mut s Scanner) scan_multiline() Token {
 			break
 		}
 		if s.c == 13 { s.advance() }
-		if s.c == 10 { s.advance() }
+		if s.c == 10 {
+			s.advance()
+		} else {
+			s.advance()
+		}
 	}
 	if s.c != 34 {
 		return Token{.eof, 'kdl: unterminated multiline string', l, c}
@@ -275,7 +283,7 @@ fn (mut s Scanner) scan_raw() Token {
 			return Token{.eof, 'kdl: unterminated raw string', l, c}
 		}
 		if is_newline_unicode(s.c, s.pos, s.src) {
-			return Token{.eof, 'kdl: newline in raw string, use ##""" for multiline', l, c}
+			return Token{.eof, 'kdl: newline in raw string, use ### for multiline', l, c}
 		}
 		if s.c == 34 {
 			mut match_hashes := 0
@@ -307,7 +315,11 @@ fn (mut s Scanner) scan_multiline_raw(hashes int, l int, c int) Token {
 	}
 
 	if s.c == 13 { s.advance() }
-	if s.c == 10 { s.advance() }
+	if s.c == 10 {
+		s.advance()
+	} else {
+		s.advance()
+	}
 
 	mut close_marker := []u8{cap: 3 + hashes}
 	close_marker << 34 // "
@@ -337,7 +349,11 @@ fn (mut s Scanner) scan_multiline_raw(hashes int, l int, c int) Token {
 		}
 		lines << line
 		if s.c == 13 { s.advance() }
-		if s.c == 10 { s.advance() }
+		if s.c == 10 {
+			s.advance()
+		} else {
+			s.advance()
+		}
 	}
 
 	if !found_closer {
