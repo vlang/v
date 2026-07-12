@@ -322,9 +322,6 @@ fn (g &FlatGen) local_storage_c_type(name string) ?string {
 	if name.len == 0 || g.local_c_type_by_owner.len == 0 {
 		return none
 	}
-	$if !ownership ? {
-		return g.local_c_type_by_owner[name] or { none }
-	}
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return none
 	}
@@ -351,9 +348,6 @@ fn (g &FlatGen) local_storage_is_shared(name string) bool {
 	if name.len == 0 || g.local_shared_storage_by_owner.len == 0 {
 		return false
 	}
-	$if !ownership ? {
-		return g.local_shared_storage_by_owner[name] or { false }
-	}
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return false
 	}
@@ -373,9 +367,6 @@ fn (g &FlatGen) local_storage_is_pointer(name string) bool {
 	// call-emission path).
 	if g.local_pointer_storage_by_owner.len == 0 {
 		return false
-	}
-	$if !ownership ? {
-		return g.local_pointer_storage_by_owner[name] or { false }
 	}
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return false

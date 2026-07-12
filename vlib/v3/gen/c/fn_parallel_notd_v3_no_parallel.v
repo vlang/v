@@ -851,6 +851,11 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			g.parallel_worker_scopes << fs_worker.worker_scope
 		}
 		g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
+		// The helper also built these precomputes; hand them to the master so
+		// later worker forks (and master-side emission) do not run with empty
+		// maps. The fork is discarded, so a move is safe.
+		g.param_types_by_short = fs_worker.param_types_by_short.move()
+		g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
 		return true
 	}
 }

@@ -38,13 +38,16 @@ pub fn (mut s Scope) reset(parent &Scope) {
 	s.parent = parent
 	s.names.clear()
 	s.types.clear()
+	// Scopes are pooled: the lifetime distinguishes bindings of a previous
+	// occupant from the new one, so binding identity (storage_key,
+	// nearest_binding_owned_by) stays exact in every build mode.
+	s.lifetime++
 	$if !ownership ? {
 		s.name_indexes.clear()
 	}
 	$if ownership ? {
 		s.generations.clear()
 		s.next_generation = 0
-		s.lifetime++
 	}
 }
 
@@ -86,9 +89,10 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 		for scope != unsafe { nil } {
 			if i := scope.name_indexes[name] {
 				return ScopeBindingOwner{
-					scope: scope
-					index: i
-					name:  name
+					scope:    scope
+					index:    i
+					lifetime: scope.lifetime
+					name:     name
 				}
 			}
 			scope = scope.parent
@@ -117,7 +121,9 @@ pub fn (owner ScopeBindingOwner) storage_key() string {
 		return ''
 	}
 	$if !ownership ? {
-		return owner.name
+		// The name alone would collapse every same-named binding in a
+		// function to one storage entry; keep the exact binding identity.
+		return '${voidptr(owner.scope)}:${owner.lifetime}:${owner.index}'
 	}
 	return '${voidptr(owner.scope)}:${owner.lifetime}:${owner.index}:${owner.generation}'
 }
@@ -130,7 +136,7 @@ pub fn (s &Scope) nearest_binding_owned_by(name string, owner ScopeBindingOwner)
 	}
 	$if !ownership ? {
 		if i := s.name_indexes[name] {
-			return s == owner.scope && i == owner.index
+			return s == owner.scope && s.lifetime == owner.lifetime && i == owner.index
 		}
 		if s.parent != unsafe { nil } {
 			return s.parent.nearest_binding_owned_by(name, owner)
@@ -161,18 +167,20 @@ pub fn (mut s Scope) insert_with_owner(name string, typ Type) ScopeBindingOwner 
 		if i := s.name_indexes[name] {
 			s.types[i] = typ
 			return ScopeBindingOwner{
-				scope: s
-				index: i
-				name:  name
+				scope:    s
+				index:    i
+				lifetime: s.lifetime
+				name:     name
 			}
 		}
 		s.names << name
 		s.types << typ
 		s.name_indexes[name] = s.names.len - 1
 		return ScopeBindingOwner{
-			scope: s
-			index: s.names.len - 1
-			name:  name
+			scope:    s
+			index:    s.names.len - 1
+			lifetime: s.lifetime
+			name:     name
 		}
 	}
 	for i := s.names.len - 1; i >= 0; i-- {
