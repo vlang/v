@@ -6142,6 +6142,63 @@ fn (mut t Transformer) validate_specialized_call_result(id flat.NodeId, actual_t
 	return false
 }
 
+fn (mut t Transformer) validate_specialized_comparison_operands(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, transformed_lhs flat.NodeId, transformed_rhs flat.NodeId) bool {
+	if !t.validating_generic_spec || node.op !in [.eq, .ne, .lt, .gt, .le, .ge] {
+		return true
+	}
+	lhs_is_call := t.specialized_comparison_operand_is_receiver_call(lhs_id)
+	rhs_is_call := t.specialized_comparison_operand_is_receiver_call(rhs_id)
+	if !lhs_is_call && !rhs_is_call {
+		return true
+	}
+	lhs_type := t.specialized_expr_type_name(transformed_lhs)
+	rhs_type := t.specialized_expr_type_name(transformed_rhs)
+	if t.specialized_comparison_types_compatible(transformed_lhs, lhs_type, transformed_rhs,
+		rhs_type)
+	{
+		return true
+	}
+	if lhs_is_call {
+		t.record_monomorph_error('cannot use `${lhs_type}` as `${rhs_type}`')
+	} else {
+		t.record_monomorph_error('cannot use `${rhs_type}` as `${lhs_type}`')
+	}
+	return false
+}
+
+fn (t &Transformer) specialized_comparison_operand_is_receiver_call(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return t.specialized_comparison_operand_is_receiver_call(t.a.child(&node, 0))
+	}
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	callee := t.a.child_node(&node, 0)
+	return callee.kind == .selector && callee.children_count > 0
+}
+
+fn (mut t Transformer) specialized_comparison_types_compatible(lhs_id flat.NodeId, lhs_type string, rhs_id flat.NodeId, rhs_type string) bool {
+	if lhs_type.len == 0 || rhs_type.len == 0 || lhs_type == 'unknown' || rhs_type == 'unknown' {
+		return true
+	}
+	lhs := t.normalize_type_alias(lhs_type)
+	rhs := t.normalize_type_alias(rhs_type)
+	if lhs == rhs {
+		return true
+	}
+	lhs_is_number := t.is_integer_type_name(lhs) || lhs in ['f32', 'f64']
+	rhs_is_number := t.is_integer_type_name(rhs) || rhs in ['f32', 'f64']
+	if lhs_is_number && rhs_is_number {
+		return true
+	}
+	return t.resolved_receiver_arg_compatible(lhs_id, lhs_type, rhs_type)
+		|| t.resolved_receiver_arg_compatible(rhs_id, rhs_type, lhs_type)
+}
+
 fn (mut t Transformer) specialized_expr_type_name(id flat.NodeId) string {
 	if t.specialized_expr_is_none(id) {
 		return 'none'

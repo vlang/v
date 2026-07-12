@@ -52,6 +52,9 @@ fn (mut t Transformer) transform_infix_string_ops(_id flat.NodeId, node flat.Nod
 	for stmt in rhs_pending {
 		t.pending_stmts << stmt
 	}
+	if !t.validate_specialized_comparison_operands(node, lhs_id, rhs_id, new_lhs, new_rhs) {
+		return t.make_empty()
+	}
 	if lhs_is_string_ptr {
 		new_lhs = t.make_prefix(.mul, new_lhs)
 	}

@@ -687,6 +687,36 @@ fn main() {
 }
 ',
 		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_comparison_operand', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value() == true
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	comparison_out := run_good(v3_bin, 'good_generic_receiver_method_numeric_comparison', 'struct HasValue {}
+
+fn (v HasValue) value() u8 {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value() == 1
+}
+
+fn main() {
+	println(read(HasValue{}))
+}
+')
+	assert comparison_out == 'true'
 	run_bad(v3_bin, 'bad_generic_receiver_method_assignment_context', 'struct HasValue {}
 
 fn (v HasValue) value() int {

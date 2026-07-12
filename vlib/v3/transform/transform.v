@@ -6680,6 +6680,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 	rhs_id := t.a.children[node.children_start + 1]
 	new_lhs := t.transform_expr(lhs_id)
 	new_rhs := t.transform_expr(rhs_id)
+	if !t.validate_specialized_comparison_operands(node, lhs_id, rhs_id, new_lhs, new_rhs) {
+		return t.make_empty()
+	}
 	if struct_result := t.transform_transformed_struct_eq(node, new_lhs, new_rhs) {
 		return struct_result
 	}
