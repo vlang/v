@@ -318,17 +318,24 @@ fn (mut g FlatGen) declare_local_c_type(owner types.ScopeBindingOwner, c_type st
 	}
 }
 
-fn (g &FlatGen) local_storage_c_type(name string) ?string {
-	if name.len == 0 || g.local_c_type_by_owner.len == 0 {
-		return none
-	}
+fn (g &FlatGen) local_storage_owner(name string) ?types.ScopeBindingOwner {
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return none
 	}
 	owner := g.tc.cur_scope.lookup_owner(name) or { return none }
-	if !g.tc.cur_scope.nearest_binding_owned_by(name, owner) {
+	$if ownership ? {
+		if !g.tc.cur_scope.nearest_binding_owned_by(name, owner) {
+			return none
+		}
+	}
+	return owner
+}
+
+fn (g &FlatGen) local_storage_c_type(name string) ?string {
+	if name.len == 0 || g.local_c_type_by_owner.len == 0 {
 		return none
 	}
+	owner := g.local_storage_owner(name) or { return none }
 	return g.local_c_type_by_owner[owner.storage_key()] or { none }
 }
 
@@ -348,13 +355,7 @@ fn (g &FlatGen) local_storage_is_shared(name string) bool {
 	if name.len == 0 || g.local_shared_storage_by_owner.len == 0 {
 		return false
 	}
-	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
-		return false
-	}
-	owner := g.tc.cur_scope.lookup_owner(name) or { return false }
-	if !g.tc.cur_scope.nearest_binding_owned_by(name, owner) {
-		return false
-	}
+	owner := g.local_storage_owner(name) or { return false }
 	return g.local_shared_storage_by_owner[owner.storage_key()] or { false }
 }
 
@@ -368,13 +369,7 @@ fn (g &FlatGen) local_storage_is_pointer(name string) bool {
 	if g.local_pointer_storage_by_owner.len == 0 {
 		return false
 	}
-	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
-		return false
-	}
-	owner := g.tc.cur_scope.lookup_owner(name) or { return false }
-	if !g.tc.cur_scope.nearest_binding_owned_by(name, owner) {
-		return false
-	}
+	owner := g.local_storage_owner(name) or { return false }
 	return g.local_pointer_storage_by_owner[owner.storage_key()] or { false }
 }
 
@@ -865,6 +860,14 @@ fn (mut g FlatGen) collect_gen_info() {
 	mut cur_module := 'main'
 	mut cur_file := ''
 	mut seen_import_in_file := false
+	mut nonshared_fn_short_names := []string{cap: 1024}
+	mut nonshared_fn_full_names := []string{cap: 1024}
+	mut nonshared_fn_file_ranks := []int{cap: 1024}
+	mut nonshared_fn_node_indexes := []int{cap: 1024}
+	mut canonical_shared_fn_short_names := map[string]bool{}
+	mut preferred_shared_fn_file_ranks := map[string]int{}
+	mut preferred_shared_fn_node_indexes := map[string]int{}
+	mut preferred_shared_fn_params := map[string][]bool{}
 	for node_idx in 0 .. g.a.nodes.len {
 		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
@@ -942,6 +945,21 @@ fn (mut g FlatGen) collect_gen_info() {
 			g.register_fn_decl_param_types(node.value, full_name, ptypes)
 			if shared_params.len > 0 {
 				g.register_fn_decl_shared_params(node.value, full_name, shared_params)
+				file_rank := c_backend_fn_file_rank(cur_file)
+				if full_name !in preferred_shared_fn_file_ranks
+					|| file_rank > preferred_shared_fn_file_ranks[full_name] {
+					preferred_shared_fn_file_ranks[full_name] = file_rank
+					preferred_shared_fn_node_indexes[full_name] = node_idx
+					preferred_shared_fn_params[full_name] = shared_params.clone()
+				}
+				if cur_module.len == 0 || cur_module == 'main' || cur_module == 'builtin' {
+					canonical_shared_fn_short_names[node.value] = true
+				}
+			} else {
+				nonshared_fn_short_names << node.value
+				nonshared_fn_full_names << full_name
+				nonshared_fn_file_ranks << c_backend_fn_file_rank(cur_file)
+				nonshared_fn_node_indexes << node_idx
 			}
 			g.register_fn_decl_mut_receiver(node.value, full_name, first_param_is_mut)
 			g.register_fn_decl_ret_type(node.value, full_name, node.typ)
@@ -1087,6 +1105,36 @@ fn (mut g FlatGen) collect_gen_info() {
 				}
 			}
 			continue
+		}
+	}
+	if g.has_shared_params {
+		for full_name, flags in preferred_shared_fn_params {
+			g.fn_decl_shared_params[full_name] = flags.clone()
+			g.fn_decl_shared_params[g.cname(full_name)] = flags.clone()
+		}
+		for i, name in nonshared_fn_short_names {
+			if name in g.fn_decl_shared_params {
+				full_name := nonshared_fn_full_names[i]
+				mut nonshared_is_preferred := full_name !in preferred_shared_fn_file_ranks
+				if !nonshared_is_preferred {
+					shared_rank := preferred_shared_fn_file_ranks[full_name]
+					nonshared_rank := nonshared_fn_file_ranks[i]
+					nonshared_is_preferred = nonshared_rank > shared_rank
+						|| (nonshared_rank == shared_rank
+						&& nonshared_fn_node_indexes[i] < preferred_shared_fn_node_indexes[full_name])
+				}
+				if nonshared_is_preferred {
+					g.fn_decl_shared_params[full_name] = []bool{}
+					g.fn_decl_shared_params[g.cname(full_name)] = []bool{}
+				}
+				if !canonical_shared_fn_short_names[name] {
+					g.fn_decl_shared_params[name] = []bool{}
+					cname := g.cname(name)
+					if cname != name {
+						g.fn_decl_shared_params[cname] = []bool{}
+					}
+				}
+			}
 		}
 	}
 	g.modules['strings'] = 'strings'
