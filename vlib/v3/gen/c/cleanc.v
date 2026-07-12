@@ -4388,10 +4388,15 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				mut next_seen := seen.clone()
 				next_seen << const_name
 				old_module := g.tc.cur_module
+				old_file := g.tc.cur_file
 				if mod := g.const_modules[const_name] {
 					g.tc.cur_module = mod
 				}
+				if file := g.const_files[const_name] {
+					g.tc.cur_file = file
+				}
 				dep_expr := g.const_expr_to_string(g.const_vals[const_name], next_seen)
+				g.tc.cur_file = old_file
 				g.tc.cur_module = old_module
 				if trimmed_space(dep_expr).len > 0 {
 					return dep_expr
