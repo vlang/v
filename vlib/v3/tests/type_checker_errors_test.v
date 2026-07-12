@@ -855,6 +855,33 @@ fn main() {
 }
 ')
 	assert option_out == 'ok'
+	run_bad(v3_bin, 'bad_generic_receiver_variadic_spread_type', 'struct Sink {}
+
+fn (s Sink) take(values ...int) {}
+
+fn invoke[T](sink T, values []string) {
+	sink.take(...values)
+}
+
+fn main() {
+	invoke(Sink{}, ["bad"])
+}
+',
+		'cannot use `[]string` as argument 1 to `sink.take`; expected `[]int`')
+	variadic_out := run_good(v3_bin, 'good_generic_receiver_variadic_spread_type', 'struct Sink {}
+
+fn (s Sink) take(values ...int) {}
+
+fn invoke[T](sink T, values []int) {
+	sink.take(...values)
+}
+
+fn main() {
+	invoke(Sink{}, [1, 2])
+	println("ok")
+}
+')
+	assert variadic_out == 'ok'
 }
 
 // Regression tests for the post-PR review fixes: fixed-array literals must match

@@ -6022,6 +6022,17 @@ fn (mut t Transformer) validate_resolved_receiver_method_args(node flat.Node, ba
 			variadic_type := params[params.len - 1]
 			if variadic_type is types.Array {
 				if arg_node.kind == .prefix && arg_node.value == '...' {
+					if arg_node.children_count > 0 {
+						spread_id := t.a.child(&arg_node, 0)
+						actual_name := t.specialized_expr_type_name(spread_id)
+						expected_name := params[params.len - 1].name()
+						if !t.resolved_receiver_arg_compatible(spread_id, actual_name,
+							expected_name) {
+							t.record_monomorph_error('cannot use `${actual_name}` as argument ${
+								arg_idx + 1} to `${display_name}`; expected `${expected_name}`')
+							valid = false
+						}
+					}
 					child_idx++
 					arg_idx++
 					continue
