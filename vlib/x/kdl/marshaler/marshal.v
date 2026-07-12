@@ -1,8 +1,8 @@
 module marshaler
 
+import math
 import strings
 import x.kdl.document
-import math
 import x.kdl.generator
 
 pub interface Marshaler {
