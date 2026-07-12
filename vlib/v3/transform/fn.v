@@ -5950,25 +5950,55 @@ fn (mut t Transformer) validate_resolved_receiver_method_args(node flat.Node, ba
 	if param_offset == 0 {
 		return true
 	}
-	actual_count := int(node.children_count) - 1
+	mut field_init_args := 0
+	for i in 1 .. node.children_count {
+		if t.a.child_node(&node, i).kind == .field_init {
+			field_init_args++
+		}
+	}
+	collapsed_fields := if field_init_args > 0 { 1 } else { 0 }
+	actual_count := int(node.children_count) - 1 - field_init_args + collapsed_fields
 	expected_count := params.len - param_offset
 	is_variadic := t.call_is_variadic(method_name) && params[params.len - 1] is types.Array
-	min_count := if is_variadic { expected_count - 1 } else { expected_count }
+	mut min_count := expected_count
+	mut trailing_idx := params.len - 1
+	for trailing_idx >= param_offset {
+		if is_variadic && trailing_idx == params.len - 1 {
+			min_count--
+			trailing_idx--
+			continue
+		}
+		if _ := t.params_struct_type_name(params[trailing_idx].name()) {
+			min_count--
+			trailing_idx--
+			continue
+		}
+		break
+	}
 	display_name := t.resolved_receiver_call_display_name(node, base_id, method_name)
 	if actual_count < min_count || (!is_variadic && actual_count > expected_count) {
 		t.record_monomorph_error('argument count mismatch for `${display_name}`: expected ${expected_count}, got ${actual_count}')
 		return false
 	}
 	mut valid := true
-	for i in 0 .. actual_count {
-		arg_id := t.a.child(&node, i + 1)
+	mut arg_idx := 0
+	mut child_idx := 1
+	for child_idx < node.children_count {
+		arg_id := t.a.child(&node, child_idx)
 		arg_node := t.a.nodes[int(arg_id)]
-		param_idx := param_offset + i
+		if arg_node.kind == .field_init {
+			child_idx = t.next_non_field_init_arg(node, child_idx)
+			arg_idx++
+			continue
+		}
+		param_idx := param_offset + arg_idx
 		mut expected := params[if param_idx < params.len { param_idx } else { params.len - 1 }]
 		if is_variadic && param_idx >= params.len - 1 {
 			variadic_type := params[params.len - 1]
 			if variadic_type is types.Array {
 				if arg_node.kind == .prefix && arg_node.value == '...' {
+					child_idx++
+					arg_idx++
 					continue
 				}
 				expected = variadic_type.elem_type
@@ -5983,10 +6013,14 @@ fn (mut t Transformer) validate_resolved_receiver_method_args(node flat.Node, ba
 		}
 		expected_name := expected.name()
 		if t.resolved_receiver_arg_compatible(arg_id, actual_name, expected_name) {
+			child_idx++
+			arg_idx++
 			continue
 		}
-		t.record_monomorph_error('cannot use `${actual_name}` as argument ${i + 1} to `${display_name}`; expected `${expected_name}`')
+		t.record_monomorph_error('cannot use `${actual_name}` as argument ${arg_idx + 1} to `${display_name}`; expected `${expected_name}`')
 		valid = false
+		child_idx++
+		arg_idx++
 	}
 	return valid
 }

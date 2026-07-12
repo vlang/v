@@ -601,6 +601,32 @@ fn main() {
 }
 ')
 	assert arg_out == '8'
+	params_out := run_good(v3_bin, 'good_generic_receiver_params_struct_arguments', '@[params]
+struct ValueConfig {
+	a int
+	b int
+}
+
+struct HasValue {}
+
+fn (v HasValue) value(n int, cfg ValueConfig) int {
+	return n + cfg.a + cfg.b
+}
+
+fn read[T](value T) int {
+	return value.value(1, a: 2, b: 3)
+}
+
+fn read_defaults[T](value T) int {
+	return value.value(4)
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+	println(int_str(read_defaults(HasValue{})))
+}
+')
+	assert params_out == '6\n4'
 }
 
 // Regression tests for the post-PR review fixes: fixed-array literals must match
