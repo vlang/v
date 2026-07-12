@@ -2354,6 +2354,16 @@ fn (g &FlatGen) direct_embedded_field_for_selector(base_type types.Type, field_n
 	if type_name.len == 0 {
 		return none
 	}
+	// A direct (non-embed) field with this exact name shadows the embedded
+	// struct itself: in `struct Outer { aa.Inner; Inner int }`, `o.Inner` is
+	// the int field - matching the checker's resolution.
+	if fields := g.struct_fields_for_type(type_name) {
+		for field in fields {
+			if field.name == field_name && g.embedded_field_type_name(field).len == 0 {
+				return none
+			}
+		}
+	}
 	// Only the embedded fields (precomputed) can match — no need to scan every field.
 	for field in g.struct_embedded_fields(type_name) {
 		embedded_type_name := g.embedded_field_type_name(field)

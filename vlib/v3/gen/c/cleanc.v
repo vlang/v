@@ -2808,10 +2808,12 @@ fn (mut g FlatGen) register_fn_decl_shared_params(name string, full_name string,
 			break
 		}
 	}
-	if !has_shared {
-		return
+	if has_shared {
+		g.has_shared_params = true
 	}
-	g.has_shared_params = true
+	// All-false declarations are registered too: their exact-name entry is what
+	// stops fn_param_is_shared's short-name fallback from borrowing the shared
+	// flags of an unrelated same-named declaration in another module.
 	if name !in g.fn_decl_shared_params {
 		g.fn_decl_shared_params[name] = flags.clone()
 	}
