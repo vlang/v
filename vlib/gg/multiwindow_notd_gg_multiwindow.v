@@ -21,6 +21,40 @@ pub enum WindowEventKind {
 	window_resized
 }
 
+// WindowResizeEdge identifies the edge or corner used for an interactive,
+// user-driven native resize operation.
+pub enum WindowResizeEdge {
+	top
+	bottom
+	left
+	right
+	top_left
+	top_right
+	bottom_left
+	bottom_right
+}
+
+// WindowCursorShape identifies a native cursor image for hover feedback.
+pub enum WindowCursorShape {
+	default
+	pointer
+	move
+	n_resize
+	s_resize
+	e_resize
+	w_resize
+	ne_resize
+	nw_resize
+	se_resize
+	sw_resize
+	ew_resize
+	ns_resize
+	nesw_resize
+	nwse_resize
+	grab
+	grabbing
+}
+
 // WindowId identifies a window managed by gg.App.
 pub struct WindowId {}
 
@@ -58,35 +92,46 @@ pub:
 // WindowInfo is a snapshot of a live gg.App window.
 pub struct WindowInfo {
 pub:
-	id         WindowId
-	title      string
-	width      int
-	height     int
-	min_width  int
-	min_height int
-	resizable  bool
-	visible    bool
-	high_dpi   bool
-	borderless bool
-	fullscreen bool
+	id                 WindowId
+	title              string
+	width              int
+	height             int
+	min_width          int
+	min_height         int
+	resizable          bool
+	visible            bool
+	high_dpi           bool
+	borderless         bool
+	fullscreen         bool
+	native_decorations bool
 }
 
 // Capabilities reports the active gg.App backend contract.
 pub struct Capabilities {
 pub:
-	backend            MultiWindowBackend
-	mock               bool
-	native             bool
-	multi_window       bool
-	owner_queue        bool
-	explicit_swapchain bool
-	readback           bool
-	d3d11              bool
-	metal              bool
-	x11                bool
-	wayland            bool
-	win32              bool
-	gl                 bool
+	backend                 MultiWindowBackend
+	mock                    bool
+	native                  bool
+	multi_window            bool
+	owner_queue             bool
+	explicit_swapchain      bool
+	readback                bool
+	d3d11                   bool
+	metal                   bool
+	x11                     bool
+	wayland                 bool
+	win32                   bool
+	gl                      bool
+	input_events            bool
+	mouse_events            bool
+	keyboard_events         bool
+	text_events             bool
+	focus_events            bool
+	drop_events             bool
+	touch_events            bool
+	cursor_shapes           bool
+	interactive_move_resize bool
+	native_decorations      bool
 }
 
 // WindowEvent is the multi-window event wrapper. The existing gg.Event remains
@@ -100,6 +145,14 @@ pub:
 	height int
 }
 
+// WindowInputEvent routes a normal gg.Event to a specific gg.App window.
+pub struct WindowInputEvent {
+pub:
+	window        WindowId
+	event         Event
+	dropped_files []string
+}
+
 // AppJobFn is executed later by app.drain_pending() on the owner side.
 pub type AppJobFn = fn (mut app App) !
 
@@ -109,6 +162,9 @@ pub type AppFrameFn = fn (mut app App) !
 
 // AppEventFn is called by App.run() for each drained multi-window event.
 pub type AppEventFn = fn (event WindowEvent, mut app App) !
+
+// AppInputFn is called by App.run() for each drained multi-window input event.
+pub type AppInputFn = fn (event WindowInputEvent, mut app App) !
 
 // WindowDrawFn records drawing commands for one WindowContext.
 pub type WindowDrawFn = fn (mut window WindowContext) !
@@ -120,6 +176,7 @@ pub struct RunConfig {
 pub:
 	frame_fn         AppFrameFn = unsafe { nil }
 	event_fn         AppEventFn = unsafe { nil }
+	input_fn         AppInputFn = unsafe { nil }
 	max_pending_jobs int        = 64
 }
 
@@ -178,6 +235,29 @@ pub fn (mut app App) resize_window(id WindowId, width int, height int) ! {
 	return error(err_multiwindow_not_enabled)
 }
 
+// set_window_cursor updates the native hover cursor for a live window.
+pub fn (mut app App) set_window_cursor(id WindowId, shape WindowCursorShape) ! {
+	_ = app
+	_ = id
+	_ = shape
+	return error(err_multiwindow_not_enabled)
+}
+
+// begin_window_move starts a user-driven native move for a live window.
+pub fn (mut app App) begin_window_move(id WindowId) ! {
+	_ = app
+	_ = id
+	return error(err_multiwindow_not_enabled)
+}
+
+// begin_window_resize starts a user-driven native resize for a live resizable window.
+pub fn (mut app App) begin_window_resize(id WindowId, edge WindowResizeEdge) ! {
+	_ = app
+	_ = id
+	_ = edge
+	return error(err_multiwindow_not_enabled)
+}
+
 // window_info returns a snapshot of a live window.
 pub fn (app &App) window_info(id WindowId) !WindowInfo {
 	_ = app
@@ -231,7 +311,13 @@ pub fn (mut app App) drain_events() ![]WindowEvent {
 	return error(err_multiwindow_not_enabled)
 }
 
-// poll_events lets the backend route native lifecycle events into the gg.App queue.
+// drain_input_events returns and clears pending window-scoped input events.
+pub fn (mut app App) drain_input_events() ![]WindowInputEvent {
+	_ = app
+	return error(err_multiwindow_not_enabled)
+}
+
+// poll_events lets the backend route native lifecycle/input events into the gg.App queue.
 pub fn (mut app App) poll_events() !int {
 	_ = app
 	return error(err_multiwindow_not_enabled)
@@ -307,4 +393,24 @@ pub fn (context &WindowContext) framebuffer_size() Size {
 // size returns the current draw size. Logical scaling will be added with native DPI routing.
 pub fn (context &WindowContext) size() Size {
 	return context.framebuffer_size()
+}
+
+// draw_rect_filled is available when compiling with `-d gg_multiwindow`.
+pub fn (context &WindowContext) draw_rect_filled(x f32, y f32, w f32, h f32, color Color) {
+	_ = context
+	_ = x
+	_ = y
+	_ = w
+	_ = h
+	_ = color
+}
+
+// draw_rect_empty is available when compiling with `-d gg_multiwindow`.
+pub fn (context &WindowContext) draw_rect_empty(x f32, y f32, w f32, h f32, color Color) {
+	_ = context
+	_ = x
+	_ = y
+	_ = w
+	_ = h
+	_ = color
 }

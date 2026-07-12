@@ -9,26 +9,43 @@ $if windows {
 	#flag windows -D_UNICODE
 	#flag windows -luser32
 	#flag windows -lgdi32
+	#flag windows -lshell32
 	#include <windows.h>
 	#insert "@VMODROOT/vlib/x/multiwindow/win32_backend_helpers.h"
+}
+
+@[markused]
+struct Win32NativeQueuedEvent {
+	sequence u64
+	event    QueuedEvent
 }
 
 @[heap; markused]
 struct Win32WindowRecord {
 	id WindowId
 mut:
-	hwnd                  voidptr
-	config                WindowConfig
-	width                 int
-	height                int
-	close_requested       bool
-	destroyed             bool
-	resize_event_pending  bool
-	render_resize_pending bool
-	swapchain             voidptr
-	render_view           voidptr
-	depth_texture         voidptr
-	depth_stencil_view    voidptr
+	hwnd                   voidptr
+	config                 WindowConfig
+	width                  int
+	height                 int
+	destroyed              bool
+	render_resize_pending  bool
+	suppress_resize_event  bool
+	queued_events          []Win32NativeQueuedEvent
+	mouse_x                f32
+	mouse_y                f32
+	mouse_dx               f32
+	mouse_dy               f32
+	mouse_pos_valid        bool
+	iconified              bool
+	pending_dropped_files  []string
+	pending_drop_modifiers u32
+	pending_high_surrogate u32
+	suppress_control_char  u32
+	swapchain              voidptr
+	render_view            voidptr
+	depth_texture          voidptr
+	depth_stencil_view     voidptr
 }
 
 struct Win32Backend {
@@ -45,6 +62,7 @@ $if windows {
 	fn C.v_multiwindow_win32_create_window(title &u16, width int, height int, min_width int, min_height int, resizable int, borderless int, fullscreen int, visible int, data voidptr) voidptr
 	fn C.v_multiwindow_win32_destroy_window(hwnd voidptr) int
 	fn C.v_multiwindow_win32_set_window_text(hwnd voidptr, title &u16) int
+	fn C.v_multiwindow_win32_set_cursor_shape(hwnd voidptr, shape int) int
 	fn C.v_multiwindow_win32_set_client_size(hwnd voidptr, width int, height int, min_width int, min_height int, resizable int, borderless int, fullscreen int) int
 	fn C.v_multiwindow_win32_client_width(hwnd voidptr) int
 	fn C.v_multiwindow_win32_client_height(hwnd voidptr) int
@@ -54,28 +72,35 @@ $if windows {
 $if windows {
 	@[export: 'v_multiwindow_win32_window_close_requested']
 	@[markused]
-	fn win32_window_close_requested(data voidptr) {
+	fn win32_window_close_requested(data voidptr, sequence u64) {
 		if data == unsafe { nil } {
 			return
 		}
 		mut record := unsafe { &Win32WindowRecord(data) }
-		record.close_requested = true
+		record.enqueue_native_event(sequence, queued_lifecycle_event(Event{
+			kind:      .window_close_requested
+			window_id: record.id
+		}))
 	}
 
 	@[export: 'v_multiwindow_win32_window_destroyed']
 	@[markused]
-	fn win32_window_destroyed(data voidptr) {
+	fn win32_window_destroyed(data voidptr, sequence u64) {
 		if data == unsafe { nil } {
 			return
 		}
 		mut record := unsafe { &Win32WindowRecord(data) }
 		record.destroyed = true
 		record.hwnd = unsafe { nil }
+		record.enqueue_native_event(sequence, queued_lifecycle_event(Event{
+			kind:      .window_destroyed
+			window_id: record.id
+		}))
 	}
 
 	@[export: 'v_multiwindow_win32_window_resized']
 	@[markused]
-	fn win32_window_resized(data voidptr, width int, height int) {
+	fn win32_window_resized(data voidptr, sequence u64, width int, height int) {
 		if data == unsafe { nil } || width <= 0 || height <= 0 {
 			return
 		}
@@ -85,8 +110,413 @@ $if windows {
 		}
 		record.width = width
 		record.height = height
-		record.resize_event_pending = true
 		record.render_resize_pending = true
+		if record.suppress_resize_event {
+			return
+		}
+		record.enqueue_native_event(sequence, queued_lifecycle_event(Event{
+			kind:      .window_resized
+			window_id: record.id
+			width:     width
+			height:    height
+		}))
+		record.enqueue_native_event(sequence, queued_input_event(record.input_event(.resized)))
+	}
+
+	@[export: 'v_multiwindow_win32_window_input_event']
+	@[markused]
+	fn win32_window_input_event(data voidptr, sequence u64, kind int, key_code int, char_code u32, key_repeat int, modifiers u32, mouse_button int, mouse_x int, mouse_y int, wheel_delta_x int, wheel_delta_y int) {
+		if data == unsafe { nil } {
+			return
+		}
+		mut record := unsafe { &Win32WindowRecord(data) }
+		input_kind := win32_input_kind(kind)
+		if input_kind == .invalid {
+			return
+		}
+		if input_kind == .char {
+			if key_repeat != 0 {
+				record.enqueue_char_event_with_repeat(sequence, char_code, modifiers, true)
+			} else {
+				record.enqueue_char_event(sequence, char_code, modifiers)
+			}
+			return
+		}
+		mut input := record.input_event(input_kind)
+		match input_kind {
+			.key_down, .key_up {
+				if key_code == 0 {
+					return
+				}
+				input = InputEvent{
+					kind:               input_kind
+					window_id:          record.id
+					key_code:           key_code
+					key_repeat:         key_repeat != 0
+					modifiers:          modifiers
+					mouse_x:            record.mouse_x
+					mouse_y:            record.mouse_y
+					mouse_dx:           record.mouse_dx
+					mouse_dy:           record.mouse_dy
+					window_width:       record.width
+					window_height:      record.height
+					framebuffer_width:  record.width
+					framebuffer_height: record.height
+					mouse_button:       256
+				}
+			}
+			.mouse_down, .mouse_up {
+				if mouse_button == 256 {
+					return
+				}
+				record.update_mouse_position(mouse_x, mouse_y, false)
+				input = InputEvent{
+					kind:               input_kind
+					window_id:          record.id
+					modifiers:          modifiers
+					mouse_button:       mouse_button
+					mouse_x:            record.mouse_x
+					mouse_y:            record.mouse_y
+					mouse_dx:           record.mouse_dx
+					mouse_dy:           record.mouse_dy
+					window_width:       record.width
+					window_height:      record.height
+					framebuffer_width:  record.width
+					framebuffer_height: record.height
+				}
+			}
+			.mouse_move {
+				record.update_mouse_position(mouse_x, mouse_y, false)
+				input = InputEvent{
+					kind:               input_kind
+					window_id:          record.id
+					modifiers:          modifiers
+					mouse_x:            record.mouse_x
+					mouse_y:            record.mouse_y
+					mouse_dx:           record.mouse_dx
+					mouse_dy:           record.mouse_dy
+					window_width:       record.width
+					window_height:      record.height
+					framebuffer_width:  record.width
+					framebuffer_height: record.height
+					mouse_button:       256
+				}
+			}
+			.mouse_enter, .mouse_leave {
+				record.update_mouse_position(mouse_x, mouse_y, true)
+				input = InputEvent{
+					kind:               input_kind
+					window_id:          record.id
+					modifiers:          modifiers
+					mouse_x:            record.mouse_x
+					mouse_y:            record.mouse_y
+					window_width:       record.width
+					window_height:      record.height
+					framebuffer_width:  record.width
+					framebuffer_height: record.height
+					mouse_button:       256
+				}
+			}
+			.mouse_scroll {
+				record.update_mouse_position(mouse_x, mouse_y, true)
+				input = InputEvent{
+					kind:               input_kind
+					window_id:          record.id
+					modifiers:          modifiers
+					mouse_x:            record.mouse_x
+					mouse_y:            record.mouse_y
+					scroll_x:           -f32(wheel_delta_x) / f32(30.0)
+					scroll_y:           f32(wheel_delta_y) / f32(30.0)
+					window_width:       record.width
+					window_height:      record.height
+					framebuffer_width:  record.width
+					framebuffer_height: record.height
+					mouse_button:       256
+				}
+			}
+			.focused, .unfocused {}
+			.clipboard_pasted {
+				input = InputEvent{
+					kind:               input_kind
+					window_id:          record.id
+					modifiers:          modifiers
+					mouse_x:            record.mouse_x
+					mouse_y:            record.mouse_y
+					mouse_dx:           record.mouse_dx
+					mouse_dy:           record.mouse_dy
+					window_width:       record.width
+					window_height:      record.height
+					framebuffer_width:  record.width
+					framebuffer_height: record.height
+					mouse_button:       256
+				}
+			}
+			.iconified {
+				if record.iconified {
+					return
+				}
+				record.iconified = true
+			}
+			.restored {
+				if !record.iconified {
+					return
+				}
+				record.iconified = false
+			}
+			else {
+				return
+			}
+		}
+
+		record.enqueue_native_event(sequence, queued_input_event(input))
+		if input_kind == .key_down {
+			control_char := win32_control_char_for_key(key_code)
+			if control_char != 0 {
+				if key_repeat != 0 {
+					record.enqueue_char_event_with_repeat(sequence, control_char, modifiers, true)
+				} else {
+					record.enqueue_char_event(sequence, control_char, modifiers)
+				}
+				record.suppress_control_char = control_char
+			}
+		}
+	}
+
+	@[export: 'v_multiwindow_win32_window_drop_begin']
+	@[markused]
+	fn win32_window_drop_begin(data voidptr, sequence u64, mouse_x int, mouse_y int, modifiers u32) {
+		_ = sequence
+		if data == unsafe { nil } {
+			return
+		}
+		mut record := unsafe { &Win32WindowRecord(data) }
+		record.pending_dropped_files.clear()
+		record.pending_drop_modifiers = modifiers
+		record.update_mouse_position(mouse_x, mouse_y, true)
+	}
+
+	@[export: 'v_multiwindow_win32_window_drop_file']
+	@[markused]
+	fn win32_window_drop_file(data voidptr, sequence u64, path &char) {
+		_ = sequence
+		if data == unsafe { nil } || path == unsafe { nil } {
+			return
+		}
+		mut record := unsafe { &Win32WindowRecord(data) }
+		record.pending_dropped_files << unsafe { tos_clone(&u8(path)) }
+	}
+
+	@[export: 'v_multiwindow_win32_window_drop_end']
+	@[markused]
+	fn win32_window_drop_end(data voidptr, sequence u64) {
+		if data == unsafe { nil } {
+			return
+		}
+		mut record := unsafe { &Win32WindowRecord(data) }
+		if record.pending_dropped_files.len == 0 {
+			return
+		}
+		input := InputEvent{
+			kind:               .files_dropped
+			window_id:          record.id
+			modifiers:          record.pending_drop_modifiers
+			mouse_x:            record.mouse_x
+			mouse_y:            record.mouse_y
+			mouse_dx:           record.mouse_dx
+			mouse_dy:           record.mouse_dy
+			window_width:       record.width
+			window_height:      record.height
+			framebuffer_width:  record.width
+			framebuffer_height: record.height
+			mouse_button:       256
+			dropped_files:      record.pending_dropped_files.clone()
+		}
+		record.pending_dropped_files.clear()
+		record.enqueue_native_event(sequence, queued_input_event(input))
+	}
+
+	@[export: 'v_multiwindow_win32_window_touch_event']
+	@[markused]
+	fn win32_window_touch_event(data voidptr, sequence u64, kind int, modifiers u32, count int, ids &u64, xs &int, ys &int, changed &int) {
+		if data == unsafe { nil } || count <= 0 || ids == unsafe { nil } || xs == unsafe { nil }
+			|| ys == unsafe { nil } || changed == unsafe { nil } {
+			return
+		}
+		input_kind := win32_input_kind(kind)
+		if input_kind == .invalid {
+			return
+		}
+		mut record := unsafe { &Win32WindowRecord(data) }
+		touch_count := if count > 8 { 8 } else { count }
+		mut touches := [8]InputTouchPoint{}
+		for i in 0 .. touch_count {
+			x := unsafe { xs[i] }
+			y := unsafe { ys[i] }
+			touches[i] = InputTouchPoint{
+				identifier: unsafe { ids[i] }
+				pos_x:      f32(x)
+				pos_y:      f32(y)
+				changed:    unsafe { changed[i] } != 0
+			}
+		}
+		first_x := unsafe { xs[0] }
+		first_y := unsafe { ys[0] }
+		input := InputEvent{
+			kind:               input_kind
+			window_id:          record.id
+			modifiers:          modifiers
+			mouse_x:            f32(first_x)
+			mouse_y:            f32(first_y)
+			num_touches:        touch_count
+			touches:            touches
+			window_width:       record.width
+			window_height:      record.height
+			framebuffer_width:  record.width
+			framebuffer_height: record.height
+			mouse_button:       256
+		}
+		record.enqueue_native_event(sequence, queued_input_event(input))
+	}
+}
+
+@[markused]
+fn (mut record Win32WindowRecord) enqueue_native_event(sequence u64, event QueuedEvent) {
+	record.queued_events << Win32NativeQueuedEvent{
+		sequence: sequence
+		event:    event
+	}
+}
+
+@[markused]
+fn (record &Win32WindowRecord) input_event(kind InputEventKind) InputEvent {
+	return InputEvent{
+		kind:               kind
+		window_id:          record.id
+		mouse_x:            record.mouse_x
+		mouse_y:            record.mouse_y
+		mouse_dx:           record.mouse_dx
+		mouse_dy:           record.mouse_dy
+		window_width:       record.width
+		window_height:      record.height
+		framebuffer_width:  record.width
+		framebuffer_height: record.height
+		mouse_button:       256
+	}
+}
+
+@[markused]
+fn (mut record Win32WindowRecord) update_mouse_position(x int, y int, clear_delta bool) {
+	new_x := f32(x)
+	new_y := f32(y)
+	if clear_delta || !record.mouse_pos_valid {
+		record.mouse_x = new_x
+		record.mouse_y = new_y
+		record.mouse_dx = 0
+		record.mouse_dy = 0
+		record.mouse_pos_valid = true
+		return
+	}
+	record.mouse_dx = new_x - record.mouse_x
+	record.mouse_dy = new_y - record.mouse_y
+	record.mouse_x = new_x
+	record.mouse_y = new_y
+}
+
+@[markused]
+fn (mut record Win32WindowRecord) enqueue_char_event(sequence u64, char_code u32, modifiers u32) {
+	record.enqueue_char_event_with_repeat(sequence, char_code, modifiers, false)
+}
+
+@[markused]
+fn (mut record Win32WindowRecord) enqueue_char_event_with_repeat(sequence u64, char_code u32, modifiers u32, key_repeat bool) {
+	mut codepoint := char_code
+	if record.suppress_control_char != 0 {
+		if char_code == record.suppress_control_char {
+			record.suppress_control_char = 0
+			return
+		}
+		record.suppress_control_char = 0
+	}
+	if char_code >= 0xd800 && char_code <= 0xdbff {
+		record.pending_high_surrogate = char_code
+		return
+	}
+	if char_code >= 0xdc00 && char_code <= 0xdfff {
+		if record.pending_high_surrogate == 0 {
+			return
+		}
+		codepoint = 0x10000 + ((record.pending_high_surrogate - 0xd800) << 10) +
+			(char_code - 0xdc00)
+		record.pending_high_surrogate = 0
+	} else {
+		record.pending_high_surrogate = 0
+	}
+	if codepoint < 32 && !win32_is_useful_control_char(codepoint) {
+		return
+	}
+	input := InputEvent{
+		kind:               .char
+		window_id:          record.id
+		char_code:          codepoint
+		key_repeat:         key_repeat
+		modifiers:          modifiers
+		window_width:       record.width
+		window_height:      record.height
+		framebuffer_width:  record.width
+		framebuffer_height: record.height
+	}
+	record.enqueue_native_event(sequence, queued_input_event(input))
+}
+
+@[markused]
+fn win32_input_kind(kind int) InputEventKind {
+	return match kind {
+		1 { InputEventKind.key_down }
+		2 { InputEventKind.key_up }
+		3 { InputEventKind.char }
+		4 { InputEventKind.mouse_down }
+		5 { InputEventKind.mouse_up }
+		6 { InputEventKind.mouse_scroll }
+		7 { InputEventKind.mouse_move }
+		8 { InputEventKind.mouse_enter }
+		9 { InputEventKind.mouse_leave }
+		10 { InputEventKind.focused }
+		11 { InputEventKind.unfocused }
+		12 { InputEventKind.iconified }
+		13 { InputEventKind.restored }
+		14 { InputEventKind.clipboard_pasted }
+		15 { InputEventKind.touches_began }
+		16 { InputEventKind.touches_moved }
+		17 { InputEventKind.touches_ended }
+		else { InputEventKind.invalid }
+	}
+}
+
+@[markused]
+fn win32_control_char_for_key(key_code int) u32 {
+	return match key_code {
+		259 { u32(8) }
+		258 { u32(9) }
+		257, 335 { u32(13) }
+		261 { u32(127) }
+		else { u32(0) }
+	}
+}
+
+@[markused]
+fn win32_is_useful_control_char(char_code u32) bool {
+	return char_code == 8 || char_code == 9 || char_code == 13 || char_code == 127
+}
+
+fn win32_sort_native_events(mut events []Win32NativeQueuedEvent) {
+	for i in 1 .. events.len {
+		mut j := i
+		for j > 0 && events[j - 1].sequence > events[j].sequence {
+			event := events[j]
+			events[j] = events[j - 1]
+			events[j - 1] = event
+			j--
+		}
 	}
 }
 
@@ -112,6 +542,15 @@ fn (backend &Win32Backend) capabilities() Capabilities {
 		explicit_swapchain: backend.renderer_ready()
 		d3d11:              backend.renderer_ready()
 		win32:              true
+		input_events:       true
+		mouse_events:       true
+		keyboard_events:    true
+		text_events:        true
+		focus_events:       true
+		drop_events:        true
+		touch_events:       true
+		cursor_shapes:      true
+		native_decorations: true
 	}
 }
 
@@ -164,7 +603,6 @@ fn (mut backend Win32Backend) create_window(id WindowId, config WindowConfig) !W
 			record.height = actual_height
 		}
 		record.config = window_config_with_size(record.config, record.width, record.height)
-		record.resize_event_pending = false
 		record.render_resize_pending = false
 		backend.windows << record
 		return WindowSize{
@@ -224,11 +662,14 @@ fn (mut backend Win32Backend) resize_window(id WindowId, width int, height int) 
 		if record.hwnd == unsafe { nil } {
 			return error(err_window_not_found)
 		}
-		if C.v_multiwindow_win32_set_client_size(record.hwnd, width, height,
+		record.suppress_resize_event = true
+		resize_ok := C.v_multiwindow_win32_set_client_size(record.hwnd, width, height,
 			record.config.min_width, record.config.min_height,
 			win32_bool_to_int(record.config.resizable),
 			win32_bool_to_int(record.config.borderless),
-			win32_bool_to_int(record.config.fullscreen)) == 0 {
+			win32_bool_to_int(record.config.fullscreen)) != 0
+		record.suppress_resize_event = false
+		if !resize_ok {
 			return error(err_win32_resize_window_failed)
 		}
 		mut actual_width := C.v_multiwindow_win32_client_width(record.hwnd)
@@ -242,7 +683,6 @@ fn (mut backend Win32Backend) resize_window(id WindowId, width int, height int) 
 		record.width = actual_width
 		record.height = actual_height
 		record.config = window_config_with_size(record.config, actual_width, actual_height)
-		record.resize_event_pending = false
 		record.render_resize_pending = true
 		return WindowSize{
 			width:  actual_width
@@ -256,46 +696,61 @@ fn (mut backend Win32Backend) resize_window(id WindowId, width int, height int) 
 	}
 }
 
+fn (mut backend Win32Backend) set_window_cursor(id WindowId, shape CursorShape) ! {
+	$if windows {
+		index := backend.window_record_index(id) or { return error(err_window_not_found) }
+		record := backend.windows[index]
+		if record.hwnd == unsafe { nil } {
+			return error(err_window_not_found)
+		}
+		if C.v_multiwindow_win32_set_cursor_shape(record.hwnd, int(shape)) == 0 {
+			return error(err_capability_unsupported)
+		}
+		return
+	} $else {
+		_ = id
+		_ = shape
+		return error(err_backend_unsupported)
+	}
+}
+
 fn (mut backend Win32Backend) poll_events() ![]Event {
-	mut events := []Event{}
+	queued_events := backend.poll_queued_events()!
+	mut events := []Event{cap: queued_events.len}
+	for event in queued_events {
+		if event.kind == .lifecycle {
+			events << event.lifecycle
+		}
+	}
+	return events
+}
+
+fn (mut backend Win32Backend) poll_queued_events() ![]QueuedEvent {
+	mut native_events := []Win32NativeQueuedEvent{}
 	$if windows {
 		if !backend.started {
-			return events
+			return []QueuedEvent{}
 		}
 		C.v_multiwindow_win32_pump_messages()
 		mut i := 0
 		for i < backend.windows.len {
 			mut record := backend.windows[i]
-			if record.close_requested {
-				record.close_requested = false
-				events << Event{
-					kind:      .window_close_requested
-					window_id: record.id
-				}
+			for event in record.queued_events {
+				native_events << event
 			}
-			if record.resize_event_pending {
-				record.resize_event_pending = false
-				if record.width > 0 && record.height > 0 {
-					events << Event{
-						kind:      .window_resized
-						window_id: record.id
-						width:     record.width
-						height:    record.height
-					}
-				}
-			}
+			record.queued_events.clear()
 			if record.destroyed {
-				id := record.id
 				backend.release_window_render_resources(mut record)
 				backend.windows.delete(i)
-				events << Event{
-					kind:      .window_destroyed
-					window_id: id
-				}
 				continue
 			}
 			i++
 		}
+	}
+	win32_sort_native_events(mut native_events)
+	mut events := []QueuedEvent{cap: native_events.len}
+	for native_event in native_events {
+		events << native_event.event
 	}
 	return events
 }

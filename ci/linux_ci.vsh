@@ -186,6 +186,7 @@ fn install_dependencies_for_examples_and_tools_gcc() {
 	exec('v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev')
 	// Wayland development libraries for sokol Wayland support
 	exec('v retry -- sudo apt install --quiet -y libwayland-dev libxkbcommon-dev libwayland-egl1-mesa libxkbcommon-x11-dev wayland-protocols libegl-dev')
+	exec('v retry -- sudo apt install --quiet -y libx11-dev libgl1-mesa-dri xauth xvfb')
 }
 
 fn recompile_v_with_cstrict_gcc() {
