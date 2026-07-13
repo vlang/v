@@ -703,13 +703,8 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		}
 	}
 	params := t.tc.fn_param_types_for_name(call_name)
-	if params.len == 0 || !params.any(t.interface_box_call_param_maybe(it)) {
+	if params.len == 0 {
 		return
-	}
-	param_offset := if callee.kind == .selector {
-		t.call_param_offset(call_name, node, params)
-	} else {
-		0
 	}
 	explicit_args := int(node.children_count) - 1
 	mut field_init_args := 0
@@ -717,6 +712,30 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		if t.a.child_node(&node, arg_idx + 1).kind == .field_init {
 			field_init_args++
 		}
+	}
+	params_may_box := params.any(t.interface_box_call_param_maybe(it))
+	last_param := params[params.len - 1]
+	variadic_elem_may_box := if field_init_args > 0 && last_param is types.Array {
+		t.interface_box_call_param_maybe(last_param.elem_type)
+	} else {
+		false
+	}
+	if !params_may_box && !variadic_elem_may_box {
+		return
+	}
+	is_variadic := t.call_is_variadic(call_name)
+	variadic_idx := if is_variadic && params[params.len - 1] is types.Array {
+		params.len - 1
+	} else {
+		-1
+	}
+	if !params_may_box && variadic_idx < 0 {
+		return
+	}
+	param_offset := if callee.kind == .selector {
+		t.call_param_offset(call_name, node, params)
+	} else {
+		0
 	}
 	logical_args := explicit_args - field_init_args + if field_init_args > 0 { 1 } else { 0 }
 	hidden_ctx_offset := if t.tc.fn_implicit_veb_ctx[call_name]
@@ -726,12 +745,6 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		0
 	}
 	logical_params := params.len - param_offset - hidden_ctx_offset
-	is_variadic := t.call_is_variadic(call_name)
-	variadic_idx := if is_variadic && params[params.len - 1] is types.Array {
-		params.len - 1
-	} else {
-		-1
-	}
 	mut omitted_params_struct := ''
 	if variadic_idx < 0 && logical_params != logical_args {
 		if logical_params == logical_args + 1 {
@@ -751,7 +764,13 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		arg := t.a.nodes[int(arg_id)]
 		if arg.kind == .field_init {
 			if param_idx < params.len {
-				param_type := params[param_idx].name()
+				mut param_type := params[param_idx].name()
+				if param_idx == variadic_idx {
+					variadic_type := params[param_idx]
+					if variadic_type is types.Array {
+						param_type = variadic_type.elem_type.name()
+					}
+				}
 				struct_type := t.params_struct_type_name(param_type) or {
 					t.struct_arg_type_name(param_type) or { '' }
 				}

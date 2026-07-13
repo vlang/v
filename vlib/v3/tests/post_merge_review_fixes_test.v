@@ -1115,6 +1115,36 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
+fn test_interface_equality_includes_variadic_struct_call_field_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_variadic_struct_call_field_boxes', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Holder {
+	value IValue
+	n     int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(items ...Holder) bool {
+	return items.len == 1 && items[0].n == 7 && same(items[0].value)
+}
+
+fn main() {
+	println(sink(value: Value{
+		n: 3
+	}, n: 7).str())
+}
+')
+	assert out == 'true'
+}
+
 fn test_interface_equality_includes_params_call_field_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_params_call_field_boxes', 'interface IValue {}
