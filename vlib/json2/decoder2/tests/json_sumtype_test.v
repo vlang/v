@@ -86,6 +86,15 @@ fn test_sum_type_struct() {
 	assert json.decode[Animal]('{"dog_name": "Rex", "_type": "Dog"}')! == Animal(Dog{'Rex'})
 }
 
+fn test_unknown_sum_type_struct_tag_returns_error() {
+	mut failed := false
+	json.decode[Animal]('{"_type":"Bird","dog_name":"Rex"}') or {
+		failed = true
+		assert err.msg().contains('Bird')
+	}
+	assert failed
+}
+
 fn test_imported_sum_type_struct_uses_short_variant_name() {
 	dog := models.Animal(models.Dog{
 		dog_name: 'Rex'

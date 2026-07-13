@@ -101,8 +101,10 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 							variant_name := sumtype_variant_name(typeof(v.typ).name)
 							if decoded_type == variant_name {
 								val = T(v)
+								return
 							}
 						}
+						return error('could not resolve sumtype `${T.name}` from `_type` value `${decoded_type}`')
 					}
 				}
 
