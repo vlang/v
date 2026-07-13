@@ -163,3 +163,27 @@ fn test_qualify_import_stops_at_nearest_vmod_issue_26828() {
 	assert qualify_import(p, 'sub', main_file) == 'sub'
 	assert qualify_import(p, 'sub', 'cli004.v') == 'sub'
 }
+
+fn test_qualify_import_resolves_module_alias_and_submodule() {
+	root := os.join_path(os.vtmp_dir(), 'v_module_alias_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	vlib_dir := os.join_path(root, 'vlib')
+	canonical_dir := os.join_path(vlib_dir, 'canonical')
+	os.mkdir_all(os.join_path(canonical_dir, 'sub'))!
+	os.mkdir_all(os.join_path(vlib_dir, 'legacy'))!
+	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'alias_test'\n}\n")!
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical\n')!
+	os.write_file(os.join_path(canonical_dir, 'sub', 'sub.v'), 'module sub\n')!
+	os.write_file(os.join_path(vlib_dir, 'legacy', 'alias.v'),
+		"@[alias: '@VMODROOT/vlib/canonical'] module legacy\n")!
+
+	mut p := pref.new_preferences()
+	p.lookup_path = [vlib_dir]
+	p.path = os.join_path(root, 'main.v')
+
+	assert qualify_import(p, 'legacy', p.path) == 'canonical'
+	assert qualify_import(p, 'legacy.sub', p.path) == 'canonical.sub'
+}
