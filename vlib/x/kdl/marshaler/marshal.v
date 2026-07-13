@@ -59,16 +59,31 @@ fn append_value_to_builder(mut sb strings.Builder, v document.Value, opts Encode
 		document.IntVal {
 			match v.flag {
 				.hex {
-					sb.write_string('0x')
-					sb.write_string(v.value.hex())
+					if v.value < 0 {
+						sb.write_string('-0x')
+						sb.write_string((-v.value).hex())
+					} else {
+						sb.write_string('0x')
+						sb.write_string(v.value.hex())
+					}
 				}
 				.octal {
-					sb.write_string('0o')
-					sb.write_string(format_oct(v.value))
+					if v.value < 0 {
+						sb.write_string('-0o')
+						sb.write_string(format_oct(-v.value))
+					} else {
+						sb.write_string('0o')
+						sb.write_string(format_oct(v.value))
+					}
 				}
 				.binary {
-					sb.write_string('0b')
-					sb.write_string(format_bin(v.value))
+					if v.value < 0 {
+						sb.write_string('-0b')
+						sb.write_string(format_bin(-v.value))
+					} else {
+						sb.write_string('0b')
+						sb.write_string(format_bin(v.value))
+					}
 				}
 				else {
 					sb.write_string(v.value.str())
@@ -85,7 +100,7 @@ fn append_value_to_builder(mut sb strings.Builder, v document.Value, opts Encode
 			} else if math.is_nan(v.value) {
 				sb.write_string('#nan')
 			} else if v.flag == .scientific {
-				sb.write_string(v.value.strsci(6))
+				sb.write_string(v.value.str())
 			} else {
 				sb.write_string(v.value.str())
 			}

@@ -10,7 +10,7 @@ fn test_relaxed_nginx_slash() {
 	opts := kdl.ParseOpts{
 		relaxed: relaxed
 	}
-	doc := kdl.parse_opts('allow from 192.168.1.1/24', opts)!
+	doc := kdl.parse_opts('allow from "192.168.1.1/24"', opts)!
 	assert doc.nodes[0].name == 'allow'
 	assert doc.nodes[0].entries.len > 0
 }
@@ -39,6 +39,22 @@ fn test_relaxed_permit() {
 	}
 	r.flags = r.flags | kdl.yaml_toml_assignments
 	assert true
+}
+
+fn test_relaxed_yaml_toml_colon_assignment() {
+	opts := kdl.ParseOpts{
+		relaxed: kdl.RelaxedNonCompliant{
+			flags: kdl.yaml_toml_assignments
+		}
+	}
+	doc := kdl.parse_opts('node key:value', opts)!
+	assert doc.nodes.len == 1
+	assert kdl.property_exists(&doc.nodes[0], 'key')
+	val := kdl.property_get(&doc.nodes[0], 'key') or {
+		assert false
+		return
+	}
+	assert kdl.as_string(val) == 'value'
 }
 
 fn test_parse_opts_default() {

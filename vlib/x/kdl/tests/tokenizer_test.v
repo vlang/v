@@ -3,6 +3,11 @@ module main
 import x.kdl
 import x.kdl.document
 
+fn assert_parse_fails(src string) {
+	kdl.parse(src) or { return }
+	assert false, 'expected parse error for ${src}'
+}
+
 fn test_parse_single_node() {
 	doc := kdl.parse('my-node')!
 	assert doc.nodes.len == 1
@@ -247,8 +252,7 @@ fn test_type_annotation_on_argument() {
 }
 
 fn test_error_unexpected_char() {
-	doc := kdl.parse('@invalid') or { kdl.Document{} }
-	assert doc.nodes.len == 0
+	assert_parse_fails('[')
 }
 
 fn test_error_empty_document_no_error() {
@@ -351,9 +355,10 @@ fn test_underscore_trailing_accepted() {
 	assert kdl.as_int(doc3.nodes[0].entries[0].value) == 2
 }
 
-fn test_decimal_leading_zero_rejected() {
-	doc := kdl.parse('v 07') or { kdl.Document{} }
-	assert doc.nodes.len == 0
+fn test_decimal_leading_zero_valid() {
+	doc := kdl.parse('v 07')!
+	assert doc.nodes.len == 1
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == 7
 }
 
 fn test_fractional_without_integer_part_rejected() {
@@ -407,4 +412,275 @@ fn test_negative_octal_roundtrip() {
 	assert out.contains('-0o')
 	doc2 := kdl.parse(out)!
 	assert kdl.as_int(doc2.nodes[0].entries[0].value) == -8
+}
+
+fn test_colon_in_strict_is_valid_token() {
+	doc := kdl.parse('node key:value')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == 'node'
+}
+
+fn test_bare_keyword_error_single_quotes() {
+	mut msg := ''
+	kdl.parse('v true') or { msg = err.msg() }
+	assert msg.contains('"true"')
+	assert !msg.contains('""true""')
+}
+
+fn test_ident_dot_alone() {
+	doc := kdl.parse('.')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == '.'
+}
+
+fn test_ident_dot_dot() {
+	doc := kdl.parse('..')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == '..'
+}
+
+fn test_ident_plus_dot_dot() {
+	doc := kdl.parse('+..')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == '+..'
+}
+
+fn test_ident_plus_dot_alpha() {
+	doc := kdl.parse('+.foo')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == '+.foo'
+}
+
+fn test_ident_minus_dot_alpha() {
+	doc := kdl.parse('-.foo')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == '-.foo'
+}
+
+fn test_ident_special_chars_tilde_bang() {
+	assert kdl.parse('~tilde')!.nodes[0].name == '~tilde'
+	assert kdl.parse('!bang')!.nodes[0].name == '!bang'
+	assert kdl.parse('%percent')!.nodes[0].name == '%percent'
+	assert kdl.parse('^caret')!.nodes[0].name == '^caret'
+	assert kdl.parse('&amp')!.nodes[0].name == '&amp'
+	assert kdl.parse('*star')!.nodes[0].name == '*star'
+}
+
+fn test_ident_angle_brackets_valid() {
+	doc := kdl.parse('<angle')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == '<angle'
+	doc2 := kdl.parse('>angle')!
+	assert doc2.nodes.len == 1
+	assert doc2.nodes[0].name == '>angle'
+}
+
+fn test_ident_keyword_case_sensitive_upper_valid() {
+	doc := kdl.parse('True')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == 'True'
+	doc2 := kdl.parse('Null')!
+	assert doc2.nodes.len == 1
+	assert doc2.nodes[0].name == 'Null'
+}
+
+fn test_ident_bare_plus_inf_valid() {
+	doc := kdl.parse('node +inf')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].entries.len == 1
+}
+
+fn test_ident_bare_plus_nan_valid() {
+	doc := kdl.parse('node +nan')!
+	assert doc.nodes.len == 1
+}
+
+fn test_signed_positive_hex() {
+	doc := kdl.parse('v +0xFF')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == 255
+}
+
+fn test_signed_positive_octal() {
+	doc := kdl.parse('v +0o77')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == 63
+}
+
+fn test_decimal_zero_with_positive_exponent() {
+	doc := kdl.parse('v 0e+5')!
+	assert kdl.as_f64(doc.nodes[0].entries[0].value) == 0.0
+}
+
+fn test_decimal_point_no_fraction_rejected() {
+	doc := kdl.parse('v 1.') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+}
+
+fn test_exponent_no_digits_after_sign_rejected() {
+	doc := kdl.parse('v 1e+') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+}
+
+fn test_escline_multiple_in_sequence() {
+	doc := kdl.parse('node \\\n\\\n  arg')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].entries.len == 1
+}
+
+fn test_quoted_node_name() {
+	doc := kdl.parse('"my node" 8080')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == 'my node'
+	assert doc.nodes[0].entries.len == 1
+}
+
+fn test_quoted_node_name_mixed_props() {
+	doc := kdl.parse('"server config" port=8080 host="localhost"')!
+	assert doc.nodes[0].name == 'server config'
+	assert kdl.property_exists(&doc.nodes[0], 'port')
+	assert kdl.property_exists(&doc.nodes[0], 'host')
+}
+
+fn test_ident_plus_dot_digit_rejected() {
+	doc := kdl.parse('+.5') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+}
+
+fn test_ident_minus_dot_digit_rejected() {
+	doc := kdl.parse('-.5') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+}
+
+fn test_float_scientific_with_explicit_plus() {
+	doc := kdl.parse('v 1.5e+10')!
+	assert kdl.as_f64(doc.nodes[0].entries[0].value) == 1.5e10
+	doc2 := kdl.parse('v 1e+3')!
+	assert kdl.as_f64(doc2.nodes[0].entries[0].value) == 1000.0
+}
+
+fn test_hex_leading_underscore_no_digits_rejected() {
+	doc := kdl.parse('v 0x_') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+	doc2 := kdl.parse('v 0o_') or { kdl.Document{} }
+	assert doc2.nodes.len == 0
+	doc3 := kdl.parse('v 0b_') or { kdl.Document{} }
+	assert doc3.nodes.len == 0
+}
+
+fn test_type_annotation_whitespace_only_rejected() {
+	assert_parse_fails('(   )node "val"')
+}
+
+fn test_underscore_after_decimal_point() {
+	assert_parse_fails('v 1._0')
+}
+
+fn test_negative_hex_with_underscores() {
+	doc := kdl.parse('v -0xFF_FF')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == -65535
+}
+
+fn test_negative_octal_with_underscores() {
+	doc := kdl.parse('v -0o7_7')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == -63
+}
+
+fn test_negative_binary_with_underscores() {
+	doc := kdl.parse('v -0b1_0')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == -2
+}
+
+fn test_positive_hex_with_underscores() {
+	doc := kdl.parse('v +0xFF_FF')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == 65535
+}
+
+fn test_decimal_exponent_only() {
+	doc := kdl.parse('v 1e0')!
+	assert kdl.as_f64(doc.nodes[0].entries[0].value) == 1.0
+	doc2 := kdl.parse('v 1E0')!
+	assert kdl.as_f64(doc2.nodes[0].entries[0].value) == 1.0
+}
+
+fn test_decimal_neg_zero_exponent() {
+	doc := kdl.parse('v 1e-0')!
+	assert kdl.as_f64(doc.nodes[0].entries[0].value) == 1.0
+}
+
+fn test_decimal_pos_zero_exponent() {
+	doc := kdl.parse('v 1e+0')!
+	assert kdl.as_f64(doc.nodes[0].entries[0].value) == 1.0
+}
+
+fn test_zero_with_exponent() {
+	doc := kdl.parse('v 0e10')!
+	assert kdl.as_f64(doc.nodes[0].entries[0].value) == 0.0
+}
+
+fn test_ident_contains_hash() {
+	assert_parse_fails('a#b')
+}
+
+fn test_ident_contains_backslash() {
+	assert_parse_fails('a\\b')
+}
+
+fn test_keyword_number_inf_uppercase_rejected() {
+	assert_parse_fails('v #Inf')
+}
+
+fn test_positive_number_leading_zero_valid() {
+	doc := kdl.parse('v +07')!
+	assert doc.nodes.len == 1
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == 7
+}
+
+fn test_deep_nested_block_comments() {
+	doc := kdl.parse('/* /* /* inner */ still */ out */ node "val"')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == 'node'
+}
+
+fn test_ident_underscore_digits() {
+	doc := kdl.parse('_12')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == '_12'
+}
+
+fn test_ident_comma_valid() {
+	doc := kdl.parse('a,b')!
+	assert doc.nodes.len == 1
+	assert doc.nodes[0].name == 'a,b'
+}
+
+fn test_hash_plus_inf_rejected() {
+	assert_parse_fails('v #+inf')
+}
+
+fn test_hash_plus_nan_rejected() {
+	assert_parse_fails('v #+nan')
+}
+
+fn test_positive_decimal_with_underscore() {
+	doc := kdl.parse('v +1_000')!
+	assert kdl.as_int(doc.nodes[0].entries[0].value) == 1000
+}
+
+fn test_positive_float_with_exponent() {
+	doc := kdl.parse('v +1e5')!
+	assert kdl.as_f64(doc.nodes[0].entries[0].value) == 100000.0
+}
+
+fn test_underscore_after_radix_prefix_with_trailing_digit_rejected_2() {
+	doc := kdl.parse('v 0x_1a') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+}
+
+fn test_underscore_after_oct_prefix_with_trailing_digit_rejected_2() {
+	doc := kdl.parse('v 0o_17') or { kdl.Document{} }
+	assert doc.nodes.len == 0
+}
+
+fn test_underscore_after_bin_prefix_with_trailing_digit_rejected_2() {
+	doc := kdl.parse('v 0b_10') or { kdl.Document{} }
+	assert doc.nodes.len == 0
 }

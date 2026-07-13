@@ -252,3 +252,112 @@ fn test_document_parse_error() {
 	}
 	assert e.msg == 'error'
 }
+
+fn test_write_quoted_escapes_c0_controls() {
+	mut doc := kdl.Document{}
+	mut node := kdl.Node{
+		name: 'x'
+	}
+	node.entries << kdl.Property{
+		key:   'v'
+		value: kdl.StringVal{
+			value: '\x01'
+			flag:  .quoted
+		}
+	}
+	doc.nodes << node
+	out := kdl.format(doc)!
+	assert out.len > 4
+	assert !out.contains('\x01')
+}
+
+fn test_write_quoted_escapes_del_once() {
+	mut doc := kdl.Document{}
+	mut node := kdl.Node{
+		name: 'x'
+	}
+	node.entries << kdl.Property{
+		key:   'v'
+		value: kdl.StringVal{
+			value: '\x7f'
+			flag:  .quoted
+		}
+	}
+	doc.nodes << node
+	out := kdl.format(doc)!
+	assert out.len > 4
+	assert !out.contains('\x7f')
+}
+
+fn test_write_quoted_c1_control_roundtrip() {
+	mut doc := kdl.Document{}
+	mut node := kdl.Node{
+		name: 'x'
+	}
+	node.entries << kdl.Property{
+		key:   'v'
+		value: kdl.StringVal{
+			value: [u8(0xc2), 0x80].bytestr()
+			flag:  .quoted
+		}
+	}
+	doc.nodes << node
+	out := kdl.format(doc)!
+	doc2 := kdl.parse(out)!
+	if val := kdl.property_get(&doc2.nodes[0], 'v') {
+		s := kdl.as_string(val)
+		assert s.len == 2
+		assert s[0] == 0xc2
+		assert s[1] == 0x80
+	} else {
+		assert false
+	}
+}
+
+fn test_negative_hex_intval_roundtrip() {
+	mut doc := kdl.Document{}
+	mut node := kdl.Node{
+		name: 'v'
+	}
+	node.entries << kdl.Argument{
+		value: kdl.IntVal{
+			value: -255
+			flag:  .hex
+		}
+	}
+	doc.nodes << node
+	out := kdl.format(doc)!
+	assert out.contains('-0x')
+}
+
+fn test_negative_octal_intval_roundtrip() {
+	mut doc := kdl.Document{}
+	mut node := kdl.Node{
+		name: 'v'
+	}
+	node.entries << kdl.Argument{
+		value: kdl.IntVal{
+			value: -8
+			flag:  .octal
+		}
+	}
+	doc.nodes << node
+	out := kdl.format(doc)!
+	assert out.contains('-0o')
+}
+
+fn test_negative_binary_intval_roundtrip() {
+	mut doc := kdl.Document{}
+	mut node := kdl.Node{
+		name: 'v'
+	}
+	node.entries << kdl.Argument{
+		value: kdl.IntVal{
+			value: -10
+			flag:  .binary
+		}
+	}
+	doc.nodes << node
+	out := kdl.format(doc)!
+	assert out.contains('-0b')
+}

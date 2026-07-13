@@ -1,5 +1,6 @@
 module parser
 
+import encoding.utf8.validate
 import x.kdl.tokenizer
 import x.kdl.document
 import x.kdl.relaxed
@@ -54,6 +55,9 @@ pub fn parse(text string) !document.Document {
 
 // parse_opts parses KDL text into a Document with the given options.
 pub fn parse_opts(text string, opts relaxed.RelaxedNonCompliant, parse_comments bool) !document.Document {
+	if !validate.utf8_string(text) {
+		return kdl_err(0, 0, 'kdl: document must be valid UTF-8')
+	}
 	mut p := new_parser(text, opts, parse_comments)
 	return p.parse_document()
 }

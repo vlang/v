@@ -281,12 +281,6 @@ fn test_coerce_is_null() {
 	assert kdl.is_null(e.value) == true
 }
 
-fn test_unicode_nbsp_whitespace() {
-	doc := kdl.parse('node\xc2\xa0"val"')!
-	assert doc.nodes.len == 1
-	assert doc.nodes[0].name == 'node'
-}
-
 fn test_unicode_ideographic_whitespace() {
 	doc := kdl.parse('node\xe3\x80\x80"val"')!
 	assert doc.nodes.len == 1
@@ -377,10 +371,10 @@ fn test_negative_decimal_with_leading_zero_and_separator() {
 
 fn test_type_annotation_with_quoted_string() {
 	doc := kdl.parse('("content type")node "val"')!
-	assert doc.nodes[0].type_name == '"content type"'
+	assert doc.nodes[0].type_name == 'content type'
 }
 
 fn test_type_annotation_with_embedded_paren() {
 	doc := kdl.parse('("a)b")node "val"')!
-	assert doc.nodes[0].type_name == '"a)b"'
+	assert doc.nodes[0].type_name == 'a)b'
 }

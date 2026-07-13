@@ -24,27 +24,34 @@ fn test_quote_string() {
 }
 
 struct UnquoteCase {
-	name         string
-	input        string
-	expected     string
-	expect_error bool
+	name     string
+	input    string
+	expected string
 }
 
 fn test_unquote_string() {
-	tests := [
-		UnquoteCase{'basic', '"This is a test"', 'This is a test', false},
-		UnquoteCase{'empty', '""', '', false},
-		UnquoteCase{'single char', '"x"', 'x', false},
-		UnquoteCase{'with tab', '"x\\t"', 'x\t', false},
-		UnquoteCase{'leading tab', '"\\tx"', '\tx', false},
-		UnquoteCase{'tab only', '"\\t"', '\t', false},
-		UnquoteCase{'trailing backslash', '"This is a test\\"', '', true},
-		UnquoteCase{'unterminated', '"', '', true},
+	success_tests := [
+		UnquoteCase{'basic', '"This is a test"', 'This is a test'},
+		UnquoteCase{'empty', '""', ''},
+		UnquoteCase{'single char', '"x"', 'x'},
+		UnquoteCase{'with tab', '"x\\t"', 'x\t'},
+		UnquoteCase{'leading tab', '"\\tx"', '\tx'},
+		UnquoteCase{'tab only', '"\\t"', '\t'},
 	]
-	for tc in tests {
-		result := kdl.unquote_string(tc.input) or { '' }
-		assert result == tc.expected || tc.expect_error
+	for tc in success_tests {
+		result := kdl.unquote_string(tc.input)!
+		assert result == tc.expected
 	}
+
+	// Error cases: these should return an error, not silently succeed
+	kdl.unquote_string('"This is a test\\"') or {
+		assert err.msg().contains('invalid')
+		return
+	}
+	assert false, 'trailing backslash should error'
+
+	kdl.unquote_string('"') or { return }
+	assert false, 'unterminated quote should error'
 }
 
 fn test_raw_string() {

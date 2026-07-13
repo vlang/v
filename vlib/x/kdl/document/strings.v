@@ -3,35 +3,46 @@ module document
 pub fn quote_string(s string) string {
 	mut b := []u8{cap: s.len * 5 / 4 + 2}
 	b << 34
-	for c in s.bytes() {
-		if c == 34 || c == 92 { b << 92 }
-		if c == 10 {
+	for r in s.runes() {
+		if r == `"` || r == `\\` { b << 92 }
+		if r == `\n` {
 			b << 92
 			b << 110
-		} else if c == 13 {
+		} else if r == `\r` {
 			b << 92
 			b << 114
-		} else if c == 9 {
+		} else if r == `\t` {
 			b << 92
 			b << 116
-		} else if c == 8 {
+		} else if r == `\b` {
 			b << 92
 			b << 98
-		} else if c == 12 {
+		} else if r == `\f` {
 			b << 92
 			b << 102
-		} else if c < 32 {
+		} else if needs_unicode_escape(r) {
 			b << 92
 			b << 117
 			b << 123
-			hex4(c, mut b)
+			for c in r.hex().bytes() {
+				b << c
+			}
 			b << 125
 		} else {
-			b << c
+			for c in r.bytes() {
+				b << c
+			}
 		}
 	}
 	b << 34
 	return b.bytestr()
+}
+
+fn needs_unicode_escape(r rune) bool {
+	return (r >= 0 && r <= 0x07) || r == 0x0b || (r >= 0x0e && r <= 0x1f)
+		|| r == 0x7f || r == 0x85 || r == 0x2028 || r == 0x2029
+		|| (r >= 0x200e && r <= 0x200f) || (r >= 0x202a && r <= 0x202e)
+		|| (r >= 0x2066 && r <= 0x2069) || r == 0xfeff
 }
 
 pub fn raw_string(s string) string {
@@ -59,6 +70,10 @@ pub fn unquote_string(s string) !string {
 		if c == 92 {
 			i++
 			if i >= inner.len { return error('kdl: invalid escape at end of string') }
+			if is_kdl_ws_or_newline_at(inner, i) {
+				i = skip_kdl_ws_or_newline(inner, i)
+				continue
+			}
 			next := inner[i]
 			match next {
 				110 {
@@ -101,16 +116,8 @@ pub fn unquote_string(s string) !string {
 				92 {
 					b << 92
 				}
-				10, 13 {
-					for i < inner.len
-						&& (inner[i] == 32 || inner[i] == 9 || inner[i] == 10 || inner[i] == 13) {
-						i++
-					}
-					continue
-				}
 				else {
-					b << 92
-					b << next
+					return error('kdl: invalid escape \\' + next.ascii_str())
 				}
 			}
 		} else {
@@ -122,6 +129,7 @@ pub fn unquote_string(s string) !string {
 }
 
 fn parse_hex4_unicode(hx string) !string {
+	if hx.len == 0 || hx.len > 6 { return error('kdl: unicode escape must have 1-6 hex digits') }
 	mut val := u32(0)
 	for c in hx.bytes() {
 		val <<= 4
@@ -136,6 +144,7 @@ fn parse_hex4_unicode(hx string) !string {
 		}
 	}
 	if val > 0x10FFFF { return error('kdl: invalid unicode codepoint') }
+	if val >= 0xD800 && val <= 0xDFFF { return error('kdl: unicode escape must not be a surrogate') }
 	mut b := []u8{}
 	if val < 0x80 {
 		b << u8(val)
@@ -155,8 +164,49 @@ fn parse_hex4_unicode(hx string) !string {
 	return b.bytestr()
 }
 
-fn hex4(v u8, mut b []u8) {
-	hx := [u8(48), 49, 50, 51, 52, 53, 54, 55, 56, 57, 97, 98, 99, 100, 101, 102]
-	b << hx[(v >> 4) & 0xF]
-	b << hx[v & 0xF]
+fn is_kdl_ws_or_newline_at(s string, pos int) bool {
+	if pos >= s.len {
+		return false
+	}
+	b := s[pos]
+	if b in [u8(0x09), 0x0a, 0x0b, 0x0c, 0x0d, 0x20] {
+		return true
+	}
+	if b == 0xc2 && pos + 1 < s.len {
+		return s[pos + 1] == 0x85 || s[pos + 1] == 0xa0
+	}
+	if b == 0xe1 && pos + 2 < s.len && s[pos + 1] == 0x9a && s[pos + 2] == 0x80 {
+		return true
+	}
+	if b == 0xe2 && pos + 2 < s.len && s[pos + 1] == 0x80 {
+		third := s[pos + 2]
+		if (third >= 0x80 && third <= 0x8a) || third == 0xa8 || third == 0xa9 || third == 0xaf {
+			return true
+		}
+	}
+	if b == 0xe2 && pos + 2 < s.len && s[pos + 1] == 0x81 && s[pos + 2] == 0x9f {
+		return true
+	}
+	return b == 0xe3 && pos + 2 < s.len && s[pos + 1] == 0x80 && s[pos + 2] == 0x80
+}
+
+fn skip_kdl_ws_or_newline(s string, start int) int {
+	mut i := start
+	for i < s.len && is_kdl_ws_or_newline_at(s, i) {
+		i += utf8_len_from_start_byte(s[i])
+	}
+	return i
+}
+
+fn utf8_len_from_start_byte(b u8) int {
+	if b < 0x80 {
+		return 1
+	}
+	if b < 0xe0 {
+		return 2
+	}
+	if b < 0xf0 {
+		return 3
+	}
+	return 4
 }

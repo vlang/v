@@ -4,6 +4,11 @@ import x.kdl.relaxed
 
 pub fn (mut s Scanner) next() Token {
 	if tok := s.skip_gap() {
+		if tok.kind == .newline {
+			s.last_tok_kind = .eof
+		} else {
+			s.last_tok_kind = tok.kind
+		}
 		return tok
 	}
 	if s.pos >= s.src.len {
@@ -17,66 +22,95 @@ pub fn (mut s Scanner) next() Token {
 	match s.c {
 		61 {
 			s.advance()
-			return Token{.equals, '=', l, c}
+			return s.finish_token(Token{.equals, '=', l, c})
 		}
 		123 {
 			s.advance()
-			return Token{.l_brace, '{', l, c}
+			return s.finish_token(Token{.l_brace, '{', l, c})
 		}
 		125 {
 			s.advance()
-			return Token{.r_brace, '}', l, c}
+			return s.finish_token(Token{.r_brace, '}', l, c})
 		}
 		59 {
 			s.advance()
-			return Token{.semicolon, ';', l, c}
+			return s.finish_token(Token{.semicolon, ';', l, c})
 		}
 		58 {
 			if s.relaxed.permit(relaxed.yaml_toml_assignments) {
 				s.advance()
-				return Token{.colon, ':', l, c}
+				return s.finish_token(Token{.colon, ':', l, c})
 			}
-			return s.scan_identifier()
+			return s.finish_token(s.scan_identifier())
 		}
 		40 {
 			if s.relaxed.permit(relaxed.nginx_syntax) {
-				return s.scan_identifier()
+				return s.finish_token(s.scan_identifier())
 			}
-			return s.scan_type_annotation()
+			return s.finish_token(s.scan_type_annotation())
 		}
 		47 {
 			if s.peek() == 45 {
+				if s.last_tok_kind == .slashdash {
+					s.last_tok_kind = .eof
+					return Token{.eof, 'kdl: slashdash may not be followed by another slashdash', l, c}
+				}
 				s.advance()
 				s.advance()
-				return Token{.slashdash, '/-', l, c}
+				return s.finish_token(Token{.slashdash, '/-', l, c})
 			}
 			if s.relaxed.permit(relaxed.nginx_syntax) {
-				return s.scan_identifier()
+				return s.finish_token(s.scan_identifier())
 			}
+			s.last_tok_kind = .eof
 			return s.error_token('unexpected /')
 		}
 		34 {
-			return s.scan_string()
+			return s.finish_token(s.scan_string())
 		}
 		35 {
-			return s.scan_hash()
+			return s.finish_token(s.scan_hash())
 		}
 		48, 49, 50, 51, 52, 53, 54, 55, 56, 57 {
-			return s.scan_number()
+			return s.finish_token(s.scan_number())
 		}
 		else {
-			if s.c == 45 || s.c == 43 || s.c == 46 { return s.scan_number_or_ident() }
-			if is_ident_start_relaxed(s.c, s.relaxed) { return s.scan_identifier() }
+			if s.c == 45 || s.c == 43 || s.c == 46 {
+				return s.finish_token(s.scan_number_or_ident())
+			}
+			if is_ident_start_relaxed(s.c, s.relaxed) {
+				return s.finish_token(s.scan_identifier())
+			}
 			if s.c == 114 {
 				p := s.peek()
-				if p == 35 || p == 34 { return s.scan_hash() }
+				if p == 35 || p == 34 { return s.finish_token(s.scan_hash()) }
 			}
 			if s.c == 41 && s.relaxed.permit(relaxed.nginx_syntax) {
-				return s.scan_identifier()
+				return s.finish_token(s.scan_identifier())
 			}
+			s.last_tok_kind = .eof
 			return s.error_token('unexpected char ' + s.c.str())
 		}
 	}
+}
+
+fn (mut s Scanner) finish_token(tok Token) Token {
+	if tok.kind == .eof {
+		s.last_tok_kind = .eof
+		return tok
+	}
+	if requires_node_space_between(s.last_tok_kind, tok.kind) {
+		s.last_tok_kind = .eof
+		return Token{.eof, 'kdl: expected whitespace before node entry', tok.line, tok.col}
+	}
+	s.last_tok_kind = tok.kind
+	return tok
+}
+
+fn requires_node_space_between(left TokenKind, right TokenKind) bool {
+	return
+		left in [.identifier, .string_val, .int_val, .float_val, .bool_val, .null_val, .suffixed_decimal]
+		&& right in [.identifier, .string_val, .int_val, .float_val, .bool_val, .null_val, .type_annotation, .suffixed_decimal]
 }
 
 fn (s &Scanner) peek() u8 {
@@ -100,6 +134,17 @@ fn (mut s Scanner) advance() {
 		} else if is_newline_unicode(s.c, s.pos, s.src) {
 			s.line++
 			s.col = 0
+			// Skip all bytes of a multi-byte Unicode newline
+			s.pos++
+			for s.pos < s.src.len && (s.src[s.pos] & 0xC0) == 0x80 {
+				s.pos++
+			}
+			if s.pos < s.src.len {
+				s.c = s.src[s.pos]
+			} else {
+				s.c = 0
+			}
+			return
 		} else {
 			s.col++
 		}
@@ -142,11 +187,15 @@ fn (mut s Scanner) skip_gap() ?Token {
 			continue
 		}
 		if is_whitespace_unicode(s.c, s.pos, s.src) {
+			s.last_tok_kind = .eof
 			s.advance()
 			for s.pos < s.src.len && (s.c & 0xC0) == 0x80 {
 				s.advance()
 			}
 			continue
+		}
+		if is_disallowed_literal(s.c, s.pos, s.src) {
+			return Token{.eof, 'kdl: disallowed literal code point', s.line, s.col}
 		}
 		if s.c == 47 {
 			if s.peek() == 47 {
@@ -160,6 +209,7 @@ fn (mut s Scanner) skip_gap() ?Token {
 				continue
 			}
 			if s.peek() == 42 {
+				s.last_tok_kind = .eof
 				s.advance()
 				s.advance()
 				mut comment_start := s.pos - 2
@@ -188,7 +238,6 @@ fn (mut s Scanner) skip_gap() ?Token {
 						s.advance()
 						continue
 					}
-					if is_newline_unicode(s.c, s.pos, s.src) { saw_nl = true }
 					s.advance()
 				}
 				continue
@@ -198,8 +247,18 @@ fn (mut s Scanner) skip_gap() ?Token {
 		if s.c == 92 {
 			if s.relaxed.permit(relaxed.nginx_syntax) { break
 			 }
-			if s.skip_line_cont() { continue
-			 }
+			pos := s.pos
+			line := s.line
+			col := s.col
+			ch := s.c
+			if s.skip_line_cont() {
+				s.last_tok_kind = .eof
+				continue
+			}
+			s.pos = pos
+			s.line = line
+			s.col = col
+			s.c = ch
 			break
 		}
 		break
@@ -234,11 +293,19 @@ fn (mut s Scanner) skip_line_cont() bool {
 			if s.peek() == 42 {
 				s.advance()
 				s.advance()
-				for s.pos < s.src.len {
+				mut depth := 1
+				for s.pos < s.src.len && depth > 0 {
 					if s.c == 42 && s.peek() == 47 {
+						depth--
 						s.advance()
 						s.advance()
-						break
+						continue
+					}
+					if s.c == 47 && s.peek() == 42 {
+						depth++
+						s.advance()
+						s.advance()
+						continue
 					}
 					s.advance()
 				}
@@ -256,5 +323,5 @@ fn (mut s Scanner) skip_line_cont() bool {
 		}
 		break
 	}
-	return true // per escline grammar: eof is valid terminator
+	return s.pos >= s.src.len // valid if reached eof, not if hit invalid char
 }

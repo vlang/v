@@ -39,6 +39,7 @@ pub mut:
 	comment        string
 	relaxed        relaxed.RelaxedNonCompliant
 	parse_comments bool
+	last_tok_kind  TokenKind = .eof
 }
 
 pub fn new_scanner(src string, relaxed_opts relaxed.RelaxedNonCompliant, parse_comments bool) Scanner {

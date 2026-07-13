@@ -7,13 +7,13 @@ fn (mut p Parser) parse_document() !document.Document {
 	mut nodes := []document.Node{}
 	for {
 		if p.tok.kind == .eof {
-			if p.tok.lit.len > 0 && p.tok.lit.starts_with('kdl:') {
+			if p.tok.lit.len > 0 {
 				return kdl_err(p.tok.line, p.tok.col, p.tok.lit)
 			}
 			break
 		}
 		if p.tok.kind == .slashdash {
-			p.skip_commented_node()
+			p.skip_commented_node()!
 			continue
 		}
 		if p.tok.kind == .newline {
@@ -34,63 +34,130 @@ fn (mut p Parser) parse_document() !document.Document {
 	}
 }
 
-fn (mut p Parser) skip_commented_node() {
+fn (mut p Parser) skip_commented_node() ! {
+	p.advance_after_slashdash()!
+	p.skip_node()!
+}
+
+fn (mut p Parser) advance_after_slashdash() ! {
 	p.advance()
-	for p.tok.kind in [.newline, .semicolon] {
+	for p.tok.kind == .newline {
 		p.advance()
 	}
-	p.skip_node()
-}
-
-fn (mut p Parser) skip_commented_entry() {
-	p.advance()
-	p.skip_entry()
-}
-
-fn (mut p Parser) skip_node() {
-	if p.tok.kind == .type_annotation { p.advance() }
-	if p.tok.kind in [.identifier, .string_val] { p.advance() }
-	for p.tok.kind in [.identifier, .string_val, .int_val, .float_val, .bool_val, .null_val,
-		.type_annotation, .slashdash, .suffixed_decimal] {
-		if p.tok.kind == .slashdash {
-			p.skip_commented_entry()
-			continue
-		}
-		p.skip_entry()
+	if p.tok.kind == .slashdash {
+		return kdl_err(p.tok.line, p.tok.col,
+			'kdl: slashdash may not be followed by another slashdash')
 	}
+}
+
+fn (mut p Parser) skip_commented_entry_or_child() !bool {
+	p.advance_after_slashdash()!
 	if p.tok.kind == .l_brace {
-		p.advance()
-		for p.tok.kind != .r_brace && p.tok.kind != .eof {
-			if p.tok.kind == .slashdash {
-				p.skip_commented_node()
-				continue
-			}
-			if p.tok.kind in [.newline, .semicolon] {
-				p.advance()
-				continue
-			}
-			p.skip_node()
-		}
-		if p.tok.kind == .r_brace { p.advance() }
+		p.skip_children_block()!
+		return true
 	}
+	if p.skip_entry()! {
+		return false
+	}
+	return kdl_err(p.tok.line, p.tok.col,
+		'kdl: expected argument, property, or children block after slashdash')
 }
 
-fn (mut p Parser) skip_entry() {
+fn (mut p Parser) skip_commented_child() ! {
+	p.advance_after_slashdash()!
+	if p.tok.kind != .l_brace {
+		return kdl_err(p.tok.line, p.tok.col,
+			'kdl: only children blocks may follow a children block')
+	}
+	p.skip_children_block()!
+}
+
+fn (mut p Parser) skip_node() ! {
 	if p.tok.kind == .type_annotation { p.advance() }
 	if p.tok.kind in [.identifier, .string_val] {
 		p.advance()
+	} else {
+		return kdl_err(p.tok.line, p.tok.col, 'kdl: expected node name after slashdash')
+	}
+	for p.tok.kind in [.identifier, .string_val, .int_val, .float_val, .bool_val, .null_val,
+		.type_annotation, .slashdash, .suffixed_decimal] {
+		if p.tok.kind == .slashdash {
+			is_child := p.skip_commented_entry_or_child()!
+			if is_child {
+				break
+			}
+			continue
+		}
+		if !p.skip_entry()! {
+			return kdl_err(p.tok.line, p.tok.col, 'kdl: expected entry after slashdash')
+		}
+	}
+	for p.tok.kind == .slashdash {
+		p.skip_commented_child()!
+	}
+	if p.tok.kind == .l_brace {
+		p.skip_children_block()!
+	}
+	for p.tok.kind == .slashdash {
+		p.skip_commented_child()!
+	}
+}
+
+fn (mut p Parser) skip_children_block() ! {
+	p.advance()
+	for p.tok.kind != .r_brace && p.tok.kind != .eof {
+		if p.tok.kind == .slashdash {
+			p.skip_commented_node()!
+			continue
+		}
+		if p.tok.kind in [.newline, .semicolon] {
+			p.advance()
+			continue
+		}
+		p.skip_node()!
+	}
+	if p.tok.kind == .eof {
+		return kdl_err(p.tok.line, p.tok.col, 'unterminated children block')
+	}
+	p.advance()
+}
+
+fn (mut p Parser) skip_entry() !bool {
+	mut has_type_ann := false
+	if p.tok.kind == .type_annotation {
+		has_type_ann = true
+		p.advance()
+	}
+	if p.tok.kind in [.identifier, .string_val] {
+		p.advance()
 		if p.tok.kind == .equals {
+			if has_type_ann {
+				return kdl_err(p.tok.line, p.tok.col,
+					'kdl: type annotation before property key is not allowed')
+			}
 			p.advance()
 			if p.tok.kind == .type_annotation { p.advance() }
 			if p.tok.kind in [.identifier, .string_val, .int_val, .float_val, .bool_val, .null_val,
 				.suffixed_decimal] {
 				p.advance()
+				return true
 			}
-			return
+			return kdl_err(p.tok.line, p.tok.col, 'kdl: expected property value after slashdash')
 		}
-		return
+		return true
 	}
-	if p.tok.kind in [.int_val, .float_val, .bool_val, .null_val, .suffixed_decimal] { p.advance() }
+	if has_type_ann {
+		if p.tok.kind in [.int_val, .float_val, .bool_val, .null_val, .suffixed_decimal] {
+			p.advance()
+			return true
+		}
+		return kdl_err(p.tok.line, p.tok.col, 'kdl: expected entry after slashdash')
+	}
+	if p.tok.kind in [.int_val, .float_val, .bool_val, .null_val, .suffixed_decimal] {
+		p.advance()
+		return true
+	}
+	return false
 }
 
 fn (mut p Parser) parse_node() !document.Node {
@@ -119,10 +186,15 @@ fn (mut p Parser) parse_node() !document.Node {
 	} else {
 		return kdl_err(p.tok.line, p.tok.col, 'expected node name')
 	}
+	mut saw_slashdashed_child := false
 	for p.tok.kind in [.identifier, .string_val, .int_val, .float_val, .bool_val, .null_val,
 		.type_annotation, .slashdash, .suffixed_decimal] {
 		if p.tok.kind == .slashdash {
-			p.skip_commented_entry()
+			is_child := p.skip_commented_entry_or_child()!
+			if is_child {
+				saw_slashdashed_child = true
+				break
+			}
 			continue
 		}
 		node.entries << p.parse_entry()!
@@ -131,14 +203,16 @@ fn (mut p Parser) parse_node() !document.Node {
 	if p.tok.kind == .eof && p.tok.lit.len > 0 {
 		return kdl_err(p.tok.line, p.tok.col, p.tok.lit)
 	}
-	if p.tok.kind == .slashdash {
-		p.skip_commented_node()
+	if saw_slashdashed_child {
+		for p.tok.kind == .slashdash {
+			p.skip_commented_child()!
+		}
 	}
 	if p.tok.kind == .l_brace {
 		p.advance()
 		for p.tok.kind != .r_brace && p.tok.kind != .eof {
 			if p.tok.kind == .slashdash {
-				p.skip_commented_node()
+				p.skip_commented_node()!
 				continue
 			}
 			if p.tok.kind in [.newline, .semicolon] {
@@ -149,6 +223,9 @@ fn (mut p Parser) parse_node() !document.Node {
 		}
 		if p.tok.kind == .r_brace {
 			p.advance()
+			for p.tok.kind == .slashdash {
+				p.skip_commented_child()!
+			}
 			if p.tok.kind !in [.newline, .semicolon, .r_brace, .eof] {
 				return kdl_err(p.tok.line, p.tok.col,
 					'kdl: expected newline, semicolon, } or EOF after children block')
@@ -156,6 +233,10 @@ fn (mut p Parser) parse_node() !document.Node {
 		} else {
 			return kdl_err(p.tok.line, p.tok.col, 'unterminated children block')
 		}
+	}
+	if saw_slashdashed_child && p.tok.kind !in [.newline, .semicolon, .r_brace, .eof] {
+		return kdl_err(p.tok.line, p.tok.col,
+			'kdl: expected newline, semicolon, } or EOF after slashdashed children block')
 	}
 
 	// Capture after-comment if parse_comments is enabled
@@ -184,9 +265,13 @@ fn (mut p Parser) parse_entry() !document.Entry {
 	if p.tok.kind in [.identifier, .string_val] {
 		key_lit := p.tok.lit
 		if p.peek().kind in [.equals, .colon] {
+			if type_ann.len > 0 {
+				return kdl_err(p.tok.line, p.tok.col,
+					'kdl: type annotation before property key is not allowed')
+			}
 			p.advance()
 			p.advance()
-			mut val_type_ann := type_ann
+			mut val_type_ann := ''
 			if p.tok.kind == .type_annotation {
 				val_type_ann = p.tok.lit
 				p.advance()
@@ -233,7 +318,7 @@ fn (mut p Parser) parse_value() !document.Value {
 			return v
 		}
 		.int_val {
-			v := parse_int(p.tok.lit)
+			v := parse_int(p.tok.lit) or { return kdl_err(p.tok.line, p.tok.col, err.msg()) }
 			p.advance()
 			return v
 		}
@@ -282,8 +367,7 @@ fn (mut p Parser) parse_value() !document.Value {
 	}
 }
 
-fn parse_int(lit string) document.Value {
-	mut result := i64(0)
+fn parse_int(lit string) !document.Value {
 	mut flag := document.ValueFlag.none
 	mut neg := false
 	mut start := 0
@@ -291,54 +375,67 @@ fn parse_int(lit string) document.Value {
 		neg = lit[0] == 45
 		start = 1
 	}
+	mut base := u64(10)
+	mut digit_start := start
 	if lit.len > start + 1 && lit[start] == 48 {
 		if lit[start + 1] == 120 || lit[start + 1] == 88 {
 			flag = .hex
-			for i in start + 2 .. lit.len {
-				c := lit[i]
-				result <<= 4
-				if c >= 48 && c <= 57 {
-					result |= i64(c - 48)
-				} else if c >= 97 && c <= 102 {
-					result |= i64(c - 97 + 10)
-				} else if c >= 65 && c <= 70 {
-					result |= i64(c - 65 + 10)
-				}
-			}
-			if neg { result = -result }
+			base = 16
+			digit_start = start + 2
 		} else if lit[start + 1] == 111 || lit[start + 1] == 79 {
 			flag = .octal
-			for i in start + 2 .. lit.len {
-				result <<= 3
-				result |= i64(lit[i] - 48)
-			}
-			if neg { result = -result }
+			base = 8
+			digit_start = start + 2
 		} else if lit[start + 1] == 98 || lit[start + 1] == 66 {
 			flag = .binary
-			for i in start + 2 .. lit.len {
-				result <<= 1
-				result |= i64(lit[i] - 48)
-			}
-			if neg { result = -result }
-		} else {
-			result = lit[start..].i64()
-			if neg { result = -result }
+			base = 2
+			digit_start = start + 2
 		}
-	} else {
-		result = lit.i64()
 	}
+	result := parse_i64_digits(lit, digit_start, base, neg)!
 	return document.IntVal{
 		value: result
 		flag:  flag
 	}
 }
 
-fn parse_suffixed(lit string) document.Value {
-	mut i := 0
-	for i < lit.len && ((lit[i] >= 48 && lit[i] <= 57) || lit[i] == 46
-		|| lit[i] == 101 || lit[i] == 69 || lit[i] == 43 || lit[i] == 45) {
-		i++
+fn parse_i64_digits(lit string, start int, base u64, neg bool) !i64 {
+	i64_min_abs := u64(1) << 63
+	max_abs := if neg { i64_min_abs } else { i64_min_abs - 1 }
+	mut acc := u64(0)
+	for i in start .. lit.len {
+		digit := digit_value(lit[i])
+		if digit >= base {
+			return error('kdl: invalid digit in integer literal')
+		}
+		if acc > (max_abs - digit) / base {
+			return error('kdl: integer literal out of i64 range')
+		}
+		acc = acc * base + digit
 	}
+	if neg {
+		if acc == i64_min_abs {
+			return -9223372036854775807 - 1
+		}
+		return -i64(acc)
+	}
+	return i64(acc)
+}
+
+fn digit_value(c u8) u64 {
+	if c >= 48 && c <= 57 {
+		return u64(c - 48)
+	}
+	if c >= 97 && c <= 102 {
+		return u64(c - 97 + 10)
+	}
+	if c >= 65 && c <= 70 {
+		return u64(c - 65 + 10)
+	}
+	return u64(255)
+}
+
+fn parse_suffixed(lit string) document.Value {
 	return document.StringVal{
 		value: lit
 		flag:  .bare

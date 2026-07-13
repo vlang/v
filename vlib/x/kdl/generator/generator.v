@@ -50,38 +50,24 @@ fn (mut g Generator) gen_node(node document.Node) {
 		}
 	}
 	if node.type_name.len > 0 {
-		g.sb.write_u8(lp)
-		g.sb.write_string(node.type_name)
-		g.sb.write_u8(rp)
+		g.gen_type_annotation(node.type_name)
 	}
-	if document.can_be_bare_identifier(node.name) {
-		g.sb.write_string(node.name)
-	} else {
-		g.write_quoted(node.name)
-	}
+	g.gen_string(node.name)
 	for entry in node.entries {
 		g.sb.write_u8(sp)
 		match entry {
 			document.Argument {
 				if entry.type_name.len > 0 {
-					g.sb.write_u8(lp)
-					g.sb.write_string(entry.type_name)
-					g.sb.write_u8(rp)
+					g.gen_type_annotation(entry.type_name)
 				}
 				g.gen_value(entry.value)
 			}
 			document.Property {
-				if entry.type_name.len > 0 {
-					g.sb.write_u8(lp)
-					g.sb.write_string(entry.type_name)
-					g.sb.write_u8(rp)
-				}
-				if document.can_be_bare_identifier(entry.key) {
-					g.sb.write_string(entry.key)
-				} else {
-					g.write_quoted(entry.key)
-				}
+				g.gen_string(entry.key)
 				g.sb.write_u8(eq)
+				if entry.type_name.len > 0 {
+					g.gen_type_annotation(entry.type_name)
+				}
 				g.gen_value(entry.value)
 			}
 		}
@@ -96,6 +82,20 @@ fn (mut g Generator) gen_node(node document.Node) {
 			g.sb.write_u8(lf)
 		}
 		g.sb.write_string('}')
+	}
+}
+
+fn (mut g Generator) gen_type_annotation(type_name string) {
+	g.sb.write_u8(lp)
+	g.gen_string(type_name)
+	g.sb.write_u8(rp)
+}
+
+fn (mut g Generator) gen_string(s string) {
+	if document.can_be_bare_identifier(s) {
+		g.sb.write_string(s)
+	} else {
+		g.write_quoted(s)
 	}
 }
 
@@ -126,28 +126,28 @@ fn (mut g Generator) gen_value(v document.Value) {
 				.hex {
 					if v.value < 0 {
 						g.sb.write_string('-0x')
-						g.sb.write_string((-v.value).hex())
+						g.sb.write_string(abs_i64_as_u64(v.value).hex())
 					} else {
 						g.sb.write_string('0x')
-						g.sb.write_string(v.value.hex())
+						g.sb.write_string(u64(v.value).hex())
 					}
 				}
 				.octal {
 					if v.value < 0 {
 						g.sb.write_string('-0o')
-						g.sb.write_string(format_oct(-v.value))
+						g.sb.write_string(format_oct(abs_i64_as_u64(v.value)))
 					} else {
 						g.sb.write_string('0o')
-						g.sb.write_string(format_oct(v.value))
+						g.sb.write_string(format_oct(u64(v.value)))
 					}
 				}
 				.binary {
 					if v.value < 0 {
 						g.sb.write_string('-0b')
-						g.sb.write_string(format_bin(-v.value))
+						g.sb.write_string(format_bin(abs_i64_as_u64(v.value)))
 					} else {
 						g.sb.write_string('0b')
-						g.sb.write_string(format_bin(v.value))
+						g.sb.write_string(format_bin(u64(v.value)))
 					}
 				}
 				else {
@@ -165,7 +165,7 @@ fn (mut g Generator) gen_value(v document.Value) {
 			} else if math.is_nan(v.value) {
 				g.sb.write_string('#nan')
 			} else if v.flag == .scientific {
-				g.sb.write_string(v.value.strsci(6))
+				g.sb.write_string(v.value.str())
 			} else {
 				g.sb.write_string(v.value.str())
 			}
@@ -185,31 +185,50 @@ fn (mut g Generator) gen_value(v document.Value) {
 
 fn (mut g Generator) write_quoted(s string) {
 	g.sb.write_u8(qt)
-	for c in s.bytes() {
-		if c == lf {
+	for r in s.runes() {
+		if r == `\n` {
 			g.sb.write_string('\\n')
-		} else if c == cr {
+		} else if r == `\r` {
 			g.sb.write_string('\\r')
-		} else if c == tab {
+		} else if r == `\t` {
 			g.sb.write_string('\\t')
-		} else if c == qt {
+		} else if r == `"` {
 			g.sb.write_string('\\"')
-		} else if c == bs {
+		} else if r == `\\` {
 			g.sb.write_string('\\\\')
-		} else if c == 8 {
+		} else if r == `\b` {
 			g.sb.write_string('\\b')
-		} else if c == 12 {
+		} else if r == `\f` {
 			g.sb.write_string('\\f')
-		} else if c < 32 {
-			g.sb.write_string('\\u{${c.hex()}}')
+		} else if needs_unicode_escape(r) {
+			g.sb.write_string('\\u{')
+			g.sb.write_string(r.hex())
+			g.sb.write_u8(125)
 		} else {
-			g.sb.write_u8(c)
+			g.sb.write_rune(r)
 		}
 	}
 	g.sb.write_u8(qt)
 }
 
-fn format_oct(val i64) string {
+fn needs_unicode_escape(r rune) bool {
+	return (r >= 0 && r <= 0x07) || r == 0x0b || (r >= 0x0e && r <= 0x1f)
+		|| r == 0x7f || r == 0x85 || r == 0x2028 || r == 0x2029
+		|| (r >= 0x200e && r <= 0x200f) || (r >= 0x202a && r <= 0x202e)
+		|| (r >= 0x2066 && r <= 0x2069) || r == 0xfeff
+}
+
+fn abs_i64_as_u64(val i64) u64 {
+	if val == -9223372036854775807 - 1 {
+		return u64(1) << 63
+	}
+	if val < 0 {
+		return u64(-val)
+	}
+	return u64(val)
+}
+
+fn format_oct(val u64) string {
 	if val == 0 { return '0' }
 	mut v := val
 	mut buf := []u8{}
@@ -221,7 +240,7 @@ fn format_oct(val i64) string {
 	return buf.bytestr()
 }
 
-fn format_bin(val i64) string {
+fn format_bin(val u64) string {
 	if val == 0 { return '0' }
 	mut v := val
 	mut buf := []u8{}

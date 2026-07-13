@@ -22,6 +22,12 @@ fn test_unicode_em_space() {
 	assert doc.nodes[0].name == 'node'
 }
 
+fn test_unicode_figure_space() {
+	// U+2007 Figure Space
+	doc := kdl.parse('node\xe2\x80\x87"val"')!
+	assert doc.nodes[0].name == 'node'
+}
+
 fn test_unicode_bom() {
 	doc := kdl.parse('\xef\xbb\xbfnode "val"')!
 	assert doc.nodes[0].name == 'node'
