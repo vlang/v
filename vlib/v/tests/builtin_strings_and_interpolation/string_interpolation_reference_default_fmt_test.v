@@ -19,6 +19,9 @@ type CustomLabelPointer = &CustomLabel
 type RefCustomLabel = int
 type RefCustomLabelPointer = &RefCustomLabel
 type CustomIntPointer = &int
+type WrappedCustomIntPointer = CustomIntPointer
+type NestedIntAlias = int
+type NestedIntPointerAlias = &NestedIntAlias
 
 fn (label CustomLabel) str() string {
 	return 'Label(${int(label)})'
@@ -81,6 +84,14 @@ fn test_named_scalar_pointer_alias_prints_as_address() {
 	assert '${sp:s}' == '&hi'
 }
 
+fn test_nested_scalar_pointer_alias_prints_as_address() {
+	i := NestedIntAlias(43)
+	p := NestedIntPointerAlias(&i)
+	assert '${p}' == ptr_str(p)
+	assert 'pointer=${p}' == 'pointer=${ptr_str(p)}'
+	println(p)
+}
+
 fn test_scalar_alias_reference_honors_custom_str() {
 	label := CustomLabel(7)
 	assert '${&label}' == '&Label(7)'
@@ -104,6 +115,13 @@ fn test_scalar_alias_reference_honors_custom_ptr_str() {
 fn test_scalar_pointer_alias_honors_custom_str() {
 	i := 9
 	p := CustomIntPointer(&i)
+	assert '${p}' == 'IntPointer'
+	println(p)
+}
+
+fn test_wrapped_scalar_pointer_alias_honors_parent_custom_str() {
+	i := 10
+	p := WrappedCustomIntPointer(&i)
 	assert '${p}' == 'IntPointer'
 	println(p)
 }

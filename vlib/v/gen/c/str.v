@@ -163,8 +163,6 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	resolved_typ := g.table.fully_unaliased_type(typ)
 	is_ptr := resolved_typ.is_ptr() || (typ.has_flag(.option_mut_param_t) && !typ.has_flag(.option))
 	mut sym := g.table.sym(typ)
-	is_ptr_alias_with_str := !typ.is_ptr() && resolved_typ.is_ptr() && sym.kind == .alias
-		&& sym.has_method('str')
 	// Go-style: a reference to a scalar (int, float, bool, string, rune, or an
 	// alias of them) prints its address, while a reference to a struct/array/map
 	// prints `&` + the pointed-to value. Done before the alias rewrite below so
@@ -190,6 +188,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			sym = unsafe { parent_sym }
 		}
 	}
+	is_ptr_alias_with_str := !typ.is_ptr() && resolved_typ.is_ptr() && sym.kind == .alias
+		&& sym.has_method('str')
 	if is_ptr && typ.has_option_or_result() && expr is ast.PrefixExpr && expr.op == .amp {
 		// `&option_value` is not materialized as the option-pointer wrapper that a
 		// pointer variable uses. Stringify the option value directly and retain the
