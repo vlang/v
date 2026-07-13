@@ -352,6 +352,10 @@ pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 	return os.system(cmd)
 }
 
+fn should_retry_execution(result os.Result) bool {
+	return result.output.trim_space().len == 0 || result.exit_code < 0
+}
+
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	os.setenv(c_error_bug_report_disabled_env, '1', true)
 	mut skip_files := []string{}
@@ -803,8 +807,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		if r.exit_code != 0 {
 			mut trimmed_output := r.output.trim_space()
-			if trimmed_output.len == 0 {
-				// retry running at least 1 more time, to avoid CI false positives as much as possible
+			if should_retry_execution(r) {
+				// Retry at least once when the process produced no output or could not be started.
+				// Both can be transient under load on CI runners.
 				details.retry++
 			}
 			if details.retry != 0 {
