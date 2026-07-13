@@ -1715,6 +1715,25 @@ fn main() {
 	assert out == 'threads'
 }
 
+fn test_comptime_if_threads_counts_spawns_in_mixed_deferred_conditions() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'threads_mixed_deferred_condition_spawn', 'fn work() {}
+
+fn activate[T]() {
+	$if T is int || threads {
+		spawn work()
+	}
+}
+
+fn main() {
+	activate[int]()
+	mode := $if threads { "threads" } $else { "single" }
+	println(mode)
+}
+')
+	assert out == 'threads'
+}
+
 fn test_comptime_if_threads_mixed_conditions_keep_normal_flag_evaluation() {
 	v3_bin := build_v3()
 	out := run_good_with_flags(v3_bin, 'comptime_threads_mixed_conditions',
