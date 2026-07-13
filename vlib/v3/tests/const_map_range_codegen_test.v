@@ -36,6 +36,9 @@ fn test_const_map_initializer_and_range_high_bound_review_fixes() {
 	const_map := run_v3_const_map_range_program(v3_bin, 'const_map_initializer',
 		"const m = map[string]int{\n\t'a': 1\n}\n\nfn main() {\n\tprintln(int_str(m['a']))\n}\n")
 	assert const_map == '1'
+	const_array_interp := run_v3_const_map_range_program(v3_bin, 'const_array_interpolation',
+		"const values = [1, 2, 3]\nconst rendered_values = '\${values}'\n\nfn main() {\n\tprintln(rendered_values)\n}\n")
+	assert const_array_interp == '[1, 2, 3]'
 	range_high := run_v3_const_map_range_program(v3_bin, 'range_high_once',
 		"__global calls int\n\nfn next_limit() int {\n\tcalls++\n\treturn 3\n}\n\nfn main() {\n\tmut total := 0\n\tfor i in 0 .. next_limit() {\n\t\ttotal += i\n\t}\n\tprintln(int_str(calls) + ':' + int_str(total))\n}\n")
 	assert range_high == '1:3'

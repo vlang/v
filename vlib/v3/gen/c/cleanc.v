@@ -3183,7 +3183,13 @@ fn (mut g FlatGen) const_block_init_to_string(qname string, val_node flat.Node) 
 		g.gen_node(g.a.child(&val_node, i))
 	}
 	g.write('${qname} = ')
-	g.gen_expr(g.a.child(&val_node, int(val_node.children_count) - 1))
+	last_id := g.a.child(&val_node, int(val_node.children_count) - 1)
+	last := g.a.nodes[int(last_id)]
+	if last.kind == .expr_stmt && last.children_count > 0 {
+		g.gen_expr(g.a.child(&last, 0))
+	} else {
+		g.gen_expr(last_id)
+	}
 	g.writeln(';')
 	g.indent--
 	g.pop_scope()
