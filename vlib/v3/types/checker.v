@@ -6846,7 +6846,7 @@ fn (tc &TypeChecker) subtree_has_spawn_expr(id flat.NodeId) bool {
 		return false
 	}
 	node := tc.a.nodes[int(id)]
-	if node.kind == .comptime_if && comptime_condition_references_ident(node.value, 'threads') {
+	if node.kind == .comptime_if && comptime_condition_has_builtin_threads(node.value) {
 		return false
 	}
 	if node_kind_id(node) == int(flat.NodeKind.spawn_expr) {
@@ -6860,25 +6860,22 @@ fn (tc &TypeChecker) subtree_has_spawn_expr(id flat.NodeId) bool {
 	return false
 }
 
-fn comptime_condition_references_ident(cond string, ident string) bool {
-	if ident.len == 0 {
-		return false
+fn comptime_condition_has_builtin_threads(cond string) bool {
+	clean := comptime_condition_strip_outer_parens(cond)
+	or_idx := comptime_condition_top_level_index(clean, '||')
+	if or_idx >= 0 {
+		return comptime_condition_has_builtin_threads(clean[..or_idx])
+			|| comptime_condition_has_builtin_threads(clean[or_idx + 2..])
 	}
-	mut i := 0
-	for i < cond.len {
-		if cond[i].is_letter() || cond[i] == `_` {
-			start := i
-			for i < cond.len && (cond[i].is_letter() || cond[i].is_digit() || cond[i] == `_`) {
-				i++
-			}
-			if cond[start..i] == ident {
-				return true
-			}
-		} else {
-			i++
-		}
+	and_idx := comptime_condition_top_level_index(clean, '&&')
+	if and_idx >= 0 {
+		return comptime_condition_has_builtin_threads(clean[..and_idx])
+			|| comptime_condition_has_builtin_threads(clean[and_idx + 2..])
 	}
-	return false
+	if clean.starts_with('!') {
+		return comptime_condition_has_builtin_threads(clean[1..])
+	}
+	return clean == 'threads'
 }
 
 fn module_file_matches_import_path(file string, imported_module string) bool {
@@ -6896,8 +6893,7 @@ fn (tc &TypeChecker) scan_has_spawn_expr() bool {
 		start := if tc.a.user_code_start > 0 { tc.a.user_code_start } else { 0 }
 		mut ignored := []bool{}
 		for node in tc.a.nodes[start..] {
-			if node.kind == .comptime_if
-				&& comptime_condition_references_ident(node.value, 'threads') {
+			if node.kind == .comptime_if && comptime_condition_has_builtin_threads(node.value) {
 				for i in 0 .. node.children_count {
 					tc.mark_inactive_comptime_subtree(tc.a.child(&node, i), mut ignored)
 				}

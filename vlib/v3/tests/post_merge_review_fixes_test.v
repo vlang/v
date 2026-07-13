@@ -1631,6 +1631,31 @@ fn main() {
 	assert import_out == 'single'
 }
 
+fn test_comptime_if_threads_counts_spawns_in_non_builtin_threads_conditions() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'threads_data_condition_spawn', 'struct Config {
+	threads int
+}
+
+fn work() {}
+
+fn inspect[T]() {
+	$for field in T.fields {
+		$if field.name == "threads" {
+			spawn work()
+		}
+	}
+	mode := $if threads { "threads" } $else { "single" }
+	println(mode)
+}
+
+fn main() {
+	inspect[Config]()
+}
+')
+	assert out == 'threads'
+}
+
 fn test_comptime_if_threads_mixed_conditions_keep_normal_flag_evaluation() {
 	v3_bin := build_v3()
 	out := run_good_with_flags(v3_bin, 'comptime_threads_mixed_conditions',
