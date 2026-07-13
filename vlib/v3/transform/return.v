@@ -187,6 +187,40 @@ fn (t &Transformer) return_expr_is_optional_result(id flat.NodeId) bool {
 	return t.is_optional_type_name(node.typ)
 }
 
+fn (mut t Transformer) try_expand_forwarded_multi_return(node flat.Node) ?[]flat.NodeId {
+	if node.children_count != 1 || isnil(t.tc) || t.is_optional_type_name(t.cur_fn_ret_type) {
+		return none
+	}
+	expected_types := multi_return_types_from_type(t.tc.parse_type(t.cur_fn_ret_type), 0) or {
+		return none
+	}
+	value_id := t.a.child(&node, 0)
+	actual_types := t.multi_return_types_for_expr(value_id, expected_types.len) or { return none }
+	mut needs_conversion := false
+	for i, actual_type in actual_types {
+		if actual_type.name() != expected_types[i].name() {
+			needs_conversion = true
+			break
+		}
+	}
+	if !needs_conversion {
+		return none
+	}
+	mut result := []flat.NodeId{}
+	value := t.transform_expr(value_id)
+	t.drain_pending(mut result)
+	tmp_name := t.new_temp('return_multi')
+	result << t.make_decl_assign_typed(tmp_name, value, t.multi_return_type_name(actual_types))
+	mut return_values := []flat.NodeId{cap: expected_types.len}
+	for i, actual_type in actual_types {
+		field := t.make_selector(t.make_ident(tmp_name), 'arg${i}', actual_type.name())
+		return_values << t.transform_expr_for_type(field, expected_types[i].name())
+	}
+	t.drain_pending(mut result)
+	result << t.make_return_values(return_values, t.cur_fn_ret_type)
+	return result
+}
+
 // return_block_from_branch builds a block that keeps leading statements
 // (transformed) and turns the tail expression of the branch into a `return`.
 fn (mut t Transformer) return_block_from_branch(branch_id flat.NodeId, ret_typ string, extra_return_vals []flat.NodeId) flat.NodeId {

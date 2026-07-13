@@ -3545,6 +3545,9 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 	if expanded := t.try_expand_return_optional_expr(node) {
 		return expanded
 	}
+	if expanded := t.try_expand_forwarded_multi_return(node) {
+		return expanded
+	}
 	if node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		if t.is_optional_type_name(t.cur_fn_ret_type) && t.return_expr_is_err(child_id) {

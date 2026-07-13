@@ -7268,10 +7268,48 @@ fn type_is_string_like(typ Type) bool {
 	return false
 }
 
+fn (tc &TypeChecker) select_branch_is_timeout(branch flat.Node) bool {
+	if branch.kind != .select_branch || branch.value == 'else' || branch.children_count == 0
+		|| branch.value in ['recv', 'recv_assign'] || branch.value.starts_with('recv_compound:') {
+		return false
+	}
+	first := tc.a.child_node(&branch, 0)
+	return !((first.kind == .infix && first.op == .arrow)
+		|| (first.kind == .prefix && first.op == .arrow))
+}
+
 // check_select_stmt validates a `select { ... }` statement. A receive declaration
 // binds the channel element type in the branch scope, while a receive assignment
 // is checked against its existing lvalue type before the branch body.
 fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
+	mut has_else := false
+	mut has_timeout := false
+	mut conflict_id := flat.empty_node
+	for i in 0 .. node.children_count {
+		branch_id := tc.a.child(&node, i)
+		if !tc.valid_node_id(branch_id) {
+			continue
+		}
+		branch := tc.a.nodes[int(branch_id)]
+		if branch.kind != .select_branch {
+			continue
+		}
+		if branch.value == 'else' {
+			if has_timeout && int(conflict_id) < 0 {
+				conflict_id = branch_id
+			}
+			has_else = true
+		} else if tc.select_branch_is_timeout(branch) {
+			if has_else && int(conflict_id) < 0 {
+				conflict_id = branch_id
+			}
+			has_timeout = true
+		}
+	}
+	if tc.valid_node_id(conflict_id) {
+		tc.record_error(.condition_mismatch,
+			'`else` and timeout value are mutually exclusive `select` keys', conflict_id)
+	}
 	$if ownership ? {
 		tc.ownership_begin_branch_group()
 	}
@@ -8885,6 +8923,27 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 					tc.ownership_after_return(id, node)
 				}
 				return
+			}
+			if actual_multi := multi_return_payload_type(actual) {
+				if actual_multi.types.len == multi.types.len {
+					mut slots_compatible := true
+					for i, actual_type in actual_multi.types {
+						if !tc.type_compatible(actual_type, multi.types[i]) {
+							slots_compatible = false
+							if tc.should_diagnose(id) {
+								tc.type_mismatch(.return_mismatch,
+									'cannot return `${actual_type.name()}` as `${multi.types[i].name()}`',
+									id)
+							}
+						}
+					}
+					if slots_compatible {
+						$if ownership ? {
+							tc.ownership_after_return(id, node)
+						}
+					}
+					return
+				}
 			}
 			if ok := tc.multi_expr_tail_return_compatible(id, child_id, multi.types) {
 				if ok {

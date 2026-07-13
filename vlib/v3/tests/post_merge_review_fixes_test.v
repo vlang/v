@@ -391,6 +391,37 @@ fn main() {
 	assert out == 'true\n7'
 }
 
+fn test_interface_equality_includes_forwarded_multi_return_slot_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_forwarded_multi_return_slot_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn make_value() (Value, int) {
+	return Value{
+		n: 3
+	}, 7
+}
+
+fn forward_value() (IValue, int) {
+	return make_value()
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	value, n := forward_value()
+	println(same(value).str())
+	println(int_str(n))
+}
+')
+	assert out == 'true\n7'
+}
+
 fn test_interface_equality_includes_appended_element_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_appended_element_box', 'interface IValue {}
@@ -821,6 +852,30 @@ fn test_select_assignment_cases_require_receive_rhs() {
 ',
 			'select assignment case requires a channel receive on the right side')
 	}
+}
+
+fn test_select_rejects_else_and_timeout_in_either_order() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'select_else_before_timeout', 'import time
+
+fn main() {
+	select {
+		else {}
+		10 * time.millisecond {}
+	}
+}
+',
+		'`else` and timeout value are mutually exclusive `select` keys')
+	run_bad(v3_bin, 'select_timeout_before_else', 'import time
+
+fn main() {
+	select {
+		10 * time.millisecond {}
+		else {}
+	}
+}
+',
+		'`else` and timeout value are mutually exclusive `select` keys')
 }
 
 fn test_select_receive_declaration_requires_identifier() {

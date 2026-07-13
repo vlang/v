@@ -767,6 +767,19 @@ fn (mut t Transformer) collect_interface_return_boxes(id flat.NodeId, return_typ
 		return
 	}
 	if node.kind == .return_stmt {
+		if node.children_count == 1 {
+			if expected_types := multi_return_types_from_type(return_type, 0) {
+				value_id := t.a.child(&node, 0)
+				if actual_types := t.multi_return_types_for_expr(value_id, expected_types.len) {
+					for i, expected in expected_types {
+						if interface_box_expected_type(expected) {
+							t.collect_interface_boxed_type(actual_types[i], expected)
+						}
+					}
+					return
+				}
+			}
+		}
 		if return_types := multi_return_types_from_type(return_type, int(node.children_count)) {
 			for i, expected in return_types {
 				t.collect_interface_boxed_value(t.a.child(&node, i), expected)
