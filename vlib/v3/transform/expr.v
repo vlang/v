@@ -2285,14 +2285,26 @@ fn (mut t Transformer) make_interface_semantic_eq_expr(lhs flat.NodeId, rhs flat
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, iface, 'iface_eq_rhs')
 	lhs_typ := t.make_selector(lhs_value, '_typ', 'int')
 	rhs_typ := t.make_selector(rhs_value, '_typ', 'int')
-	lhs_empty := t.make_infix(.eq, t.make_selector(lhs_value, '_object', 'voidptr'),
-		t.make_int_literal(0))
-	rhs_empty := t.make_infix(.eq, t.make_selector(rhs_value, '_object', 'voidptr'),
-		t.make_int_literal(0))
 	lhs_zero_tag := t.make_infix(.eq, lhs_typ, t.make_int_literal(0))
 	rhs_zero_tag := t.make_infix(.eq, rhs_typ, t.make_int_literal(0))
-	empty_eq := t.make_infix(.logical_and, lhs_zero_tag, t.make_infix(.logical_and, rhs_zero_tag, t.make_infix(.logical_and,
-		lhs_empty, rhs_empty)))
+	zero_tags := t.make_infix(.logical_and, lhs_zero_tag, rhs_zero_tag)
+	empty_eq := if t.is_builtin_ierror_interface_name(iface) {
+		lhs_addr := t.make_prefix(.amp, lhs_value)
+		rhs_addr := t.make_prefix(.amp, rhs_value)
+		lhs_msg := t.make_call_typed('IError__msg', arr1(lhs_addr), 'string')
+		rhs_msg := t.make_call_typed('IError__msg', arr1(rhs_addr), 'string')
+		msg_eq := t.make_call_typed('string__eq', arr2(lhs_msg, rhs_msg), 'bool')
+		lhs_code := t.make_call_typed('IError__code', arr1(lhs_addr), 'int')
+		rhs_code := t.make_call_typed('IError__code', arr1(rhs_addr), 'int')
+		code_eq := t.make_infix(.eq, lhs_code, rhs_code)
+		t.make_infix(.logical_and, zero_tags, t.make_infix(.logical_and, msg_eq, code_eq))
+	} else {
+		lhs_empty := t.make_infix(.eq, t.make_selector(lhs_value, '_object', 'voidptr'),
+			t.make_int_literal(0))
+		rhs_empty := t.make_infix(.eq, t.make_selector(rhs_value, '_object', 'voidptr'),
+			t.make_int_literal(0))
+		t.make_infix(.logical_and, zero_tags, t.make_infix(.logical_and, lhs_empty, rhs_empty))
+	}
 	result_name := t.new_temp('iface_eq_payload')
 	t.pending_stmts << t.make_decl_assign_typed(result_name, empty_eq, 'bool')
 	impl_names := if t.is_builtin_ierror_interface_name(iface) {

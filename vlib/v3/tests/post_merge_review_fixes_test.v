@@ -655,6 +655,33 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
+fn test_ierror_aggregate_equality_preserves_message_and_code() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'ierror_aggregate_equality_message_code', 'struct Box {
+	err IError
+}
+
+fn main() {
+	first := Box{
+		err: error_with_code("same", 1)
+	}
+	different_message := Box{
+		err: error_with_code("different", 1)
+	}
+	different_code := Box{
+		err: error_with_code("same", 2)
+	}
+	equal := Box{
+		err: error_with_code("same", 1)
+	}
+	println((first == different_message).str())
+	println((first == different_code).str())
+	println((first == equal).str())
+}
+')
+	assert out == 'false\nfalse\ntrue'
+}
+
 fn test_interface_equality_includes_receiver_method_call_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_receiver_method_call_box', 'interface IValue {}
@@ -737,6 +764,38 @@ fn main() {
 }
 ')
 	assert out == 'true'
+}
+
+fn test_interface_equality_includes_omitted_params_default_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_omitted_params_default_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+@[params]
+struct SinkConfig {
+	value IValue = Value{
+		n: 3
+	}
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(config SinkConfig) bool {
+	return same(config.value)
+}
+
+fn main() {
+	println(sink().str())
+	println(sink(n: 7).str())
+}
+')
+	assert out == 'true\ntrue'
 }
 
 fn test_empty_interface_equality_does_not_accept_unregistered_payloads() {

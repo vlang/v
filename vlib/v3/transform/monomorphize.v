@@ -619,7 +619,7 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 				t.collect_interface_boxed_value(t.a.child(&node, 0), expected)
 			}
 		}
-		if node.kind == .call && node.children_count > 1 {
+		if node.kind == .call && node.children_count > 0 {
 			t.collect_interface_call_boxes(flat.NodeId(idx), node)
 		}
 		if node.kind != .struct_init {
@@ -669,8 +669,15 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 	} else {
 		-1
 	}
+	mut omitted_params_struct := ''
 	if variadic_idx < 0 && params.len - param_offset != logical_args {
-		return
+		if params.len - param_offset == logical_args + 1 {
+			omitted_params_struct = t.params_struct_type_name(params[params.len - 1].name()) or {
+				return
+			}
+		} else {
+			return
+		}
 	}
 	if variadic_idx >= 0 && logical_args < variadic_idx - param_offset {
 		return
@@ -709,6 +716,9 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 			t.collect_interface_boxed_value(value_id, expected)
 		}
 	}
+	if omitted_params_struct.len > 0 {
+		t.collect_interface_params_default_boxes(omitted_params_struct, []string{})
+	}
 }
 
 fn (t &Transformer) interface_box_call_param_maybe(param types.Type) bool {
@@ -732,20 +742,22 @@ fn (t &Transformer) interface_box_call_param_maybe(param types.Type) bool {
 fn (mut t Transformer) collect_interface_params_call_fields(node flat.Node, field_start int, struct_type string) {
 	info := t.lookup_struct_info(struct_type) or { return }
 	mut field_index := 0
+	mut provided := []string{}
 	for i in field_start .. node.children_count {
 		field := t.a.child_node(&node, i)
 		if field.kind != .field_init {
 			break
-		}
-		if field.children_count == 0 {
-			field_index++
-			continue
 		}
 		field_name := if field.value.len > 0 {
 			field.value
 		} else if field_index < info.fields.len {
 			info.fields[field_index].name
 		} else {
+			field_index++
+			continue
+		}
+		provided << field_name
+		if field.children_count == 0 {
 			field_index++
 			continue
 		}
@@ -758,6 +770,21 @@ fn (mut t Transformer) collect_interface_params_call_fields(node flat.Node, fiel
 			t.collect_interface_boxed_value(t.a.child(field, 0), field_type)
 		}
 		field_index++
+	}
+	t.collect_interface_params_default_boxes(struct_type, provided)
+}
+
+fn (mut t Transformer) collect_interface_params_default_boxes(struct_type string, provided []string) {
+	info := t.lookup_struct_info(struct_type) or { return }
+	for field in info.fields {
+		if field.name in provided || int(field.default_expr) < 0 {
+			continue
+		}
+		field_type_text := t.lookup_struct_field_type(struct_type, field.name) or { field.typ }
+		field_type := t.tc.parse_type(field_type_text)
+		if interface_box_expected_type(field_type) {
+			t.collect_interface_boxed_value(field.default_expr, field_type)
+		}
 	}
 }
 
