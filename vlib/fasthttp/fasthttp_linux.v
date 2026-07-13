@@ -286,7 +286,12 @@ fn close_conn(mut w Worker, fd int) {
 		mut cs := w.conns[fd]
 		if unsafe { cs != nil } {
 			clear_active(mut w, mut cs)
-			if cs.read_start_ns != 0 || cs.write_start_ns != 0 {
+			// A connection can have BOTH deadlines armed (leftover read bytes while a
+			// write is parked); decrement once per armed deadline so w.parked stays exact.
+			if cs.read_start_ns != 0 {
+				w.parked--
+			}
+			if cs.write_start_ns != 0 {
 				w.parked--
 			}
 			if cs.file_fd != -1 {
@@ -330,7 +335,10 @@ fn detach_conn(mut w Worker, fd int) {
 		return
 	}
 	clear_active(mut w, mut cs)
-	if cs.read_start_ns != 0 || cs.write_start_ns != 0 {
+	if cs.read_start_ns != 0 {
+		w.parked--
+	}
+	if cs.write_start_ns != 0 {
 		w.parked--
 	}
 	// A takeover handler owns the connection and its allocation lifetime; abandon
@@ -579,6 +587,11 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 			step := w.server.append_handler(decoded, mut cs.write_buf, w.worker_state, mut ctl)
 			match ctl.takeover_mode {
 				.manual {
+					// The handler owns the fd from here (SSE/WebSocket): it must be the
+					// sole response in this read burst — any bytes still buffered for a
+					// request pipelined ahead of it are dropped, since the handler now
+					// writes to the socket directly. In practice a takeover is always the
+					// first request on a connection, so write_buf is empty here.
 					detach_conn(mut w, fd)
 					return false
 				}
@@ -693,10 +706,22 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 		}
 
 		if cs.should_close || cs.file_remaining > 0 {
-			// Batch boundary: a close or a file body ends the batch.
+			// Batch boundary: a close or a file body ends the batch. Flush now, then
+			// keep draining any requests pipelined behind it — otherwise a request
+			// buffered after a file response would be stranded (no new edge fires for
+			// bytes already in read_buf) until it spuriously times out.
 			compact_read_buf(mut cs, pos)
 			mark_active(mut w, mut cs)
-			return flush_batch(mut w, fd, mut cs)
+			if !flush_batch(mut w, fd, mut cs) {
+				return false // connection closed (should_close, or a write error)
+			}
+			// If the flush parked on EPOLLOUT (still pending), stop; handle_writable
+			// resumes and re-drains. Otherwise it fully drained (keep-alive) — carry on.
+			if cs.write_off < cs.write_buf.len || cs.file_remaining > 0 {
+				return true
+			}
+			pos = 0
+			continue
 		}
 		// Guard against a peer that pipelines without reading responses.
 		if cs.write_buf.len - cs.write_off > max_pending_write {
@@ -754,8 +779,12 @@ fn serve_conn(mut w Worker, fd int, mut cs ConnState) {
 			too_large := (hl < 0 && cs.read_buf.len >= w.server.max_request_buffer_size)
 				|| hl > w.server.max_request_buffer_size
 			if too_large {
-				C.send(fd, status_413_response.data, status_413_response.len, C.MSG_NOSIGNAL)
-				close_conn(mut w, fd)
+				// Append the 413 after any responses already buffered for earlier
+				// pipelined requests, then flush in order and close (should_close).
+				cs.write_buf << status_413_response
+				cs.should_close = true
+				mark_active(mut w, mut cs)
+				flush_batch(mut w, fd, mut cs)
 				return
 			}
 		}
@@ -782,7 +811,20 @@ fn handle_writable(mut w Worker, fd int) {
 		mod_fd_in_epoll(w.epoll_fd, fd, u32(C.EPOLLIN | C.EPOLLET))
 		return
 	}
-	flush_batch(mut w, fd, mut cs)
+	if !flush_batch(mut w, fd, mut cs) {
+		return
+	}
+	// If the parked batch fully drained (keep-alive) and requests were pipelined
+	// behind it, drain them now: their bytes are already in read_buf, so no new
+	// EPOLLIN edge will fire for them.
+	if cs.write_off >= cs.write_buf.len && cs.file_remaining <= 0 && cs.read_buf.len > 0 {
+		if !drain_requests(mut w, fd, mut cs) {
+			return
+		}
+		if cs.write_buf.len > cs.write_off || cs.file_remaining > 0 {
+			flush_batch(mut w, fd, mut cs)
+		}
+	}
 }
 
 // handle_accept_loop accepts every pending connection (edge-triggered) and

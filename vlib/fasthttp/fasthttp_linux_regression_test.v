@@ -6,6 +6,7 @@ module fasthttp
 // TCP-fragmented request reassembly, and keep-alive re-arm after a consumed edge.
 // They drive the internal serve_conn / flush / pooling paths directly over a real
 // socketpair, so no listener or port is needed.
+import os
 
 fn C.socketpair(domain i32, typ i32, protocol i32, sockets &i32) i32
 
@@ -297,6 +298,58 @@ fn test_worker_state_reaches_handler() ! {
 	assert recv_available(client_fd).count('HTTP/1.1 200 OK') == 2
 	// Both requests saw the SAME per-worker state instance.
 	assert wc.n == 2
+
+	C.close(server_fd)
+	C.close(client_fd)
+}
+
+fn test_pipelined_request_behind_file_response_is_served() ! {
+	tmp := os.join_path(os.vtmp_dir(), 'fasthttp_pipe_file_test.txt')
+	os.write_file(tmp, 'FILEBODY')!
+	defer {
+		os.rm(tmp) or {}
+	}
+	file_handler := fn [tmp] (req HttpRequest) !HttpResponse {
+		path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
+		if path == '/file' {
+			return HttpResponse{
+				content:       'HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: keep-alive\r\n\r\n'.bytes()
+				content_owned: true
+				file_path:     tmp
+			}
+		}
+		return HttpResponse{
+			content:       'HTTP/1.1 200 OK\r\nContent-Length: 5\r\nConnection: keep-alive\r\n\r\nafter'.bytes()
+			content_owned: true
+		}
+	}
+	server := new_server(ServerConfig{
+		family:  .ip
+		port:    0
+		handler: file_handler
+	})!
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer { C.close(epoll_fd) }
+	mut sockets := [2]int{}
+	assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+	server_fd := sockets[0]
+	client_fd := sockets[1]
+	set_blocking(server_fd, false)
+	set_blocking(client_fd, false)
+
+	mut w := new_regression_worker(server, epoll_fd)
+	assert add_fd_to_epoll(epoll_fd, server_fd, u32(C.EPOLLIN | C.EPOLLET)) == 0
+	mut cs := state_for(mut w, server_fd)
+
+	// A file response with a normal request pipelined right behind it.
+	req := 'GET /file HTTP/1.1\r\nHost: x\r\n\r\nGET /next HTTP/1.1\r\nHost: x\r\n\r\n'
+	assert C.send(client_fd, req.str, req.len, C.MSG_NOSIGNAL) == req.len
+	serve_conn(mut w, server_fd, mut cs)
+	resp := recv_available(client_fd)
+	// The file body was streamed AND the request pipelined behind it was served.
+	assert resp.contains('FILEBODY'), resp
+	assert resp.contains('after'), resp
 
 	C.close(server_fd)
 	C.close(client_fd)
