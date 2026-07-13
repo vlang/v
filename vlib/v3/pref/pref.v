@@ -94,7 +94,7 @@ pub fn (p &Preferences) get_vlib_module_path(mod string) string {
 
 // get_module_path returns get module path data for Preferences.
 pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) string {
-	mod_path := vlib_module_path(mod)
+	mod_path := mod.replace('.', os.path_separator)
 	// Absolutize the importer like V1's Builder.find_module_path does
 	// (`os.real_path(fpath)`). When the input is given as a relative path (e.g.
 	// `v3 -o out .`), the parsed file paths are relative too (`./doka.v`), and a
@@ -131,6 +131,12 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 			break
 		}
 		current_dir = parent_dir
+	}
+	// 5. temporary compatibility path for the in-tree v2 modules. Keep this last
+	// so a project or dependency named `v2` is not shadowed by the vlib shim.
+	vlib_compat_path := p.get_vlib_module_path(mod)
+	if vlib_compat_path != vlib_path && dir_is_module(vlib_compat_path) {
+		return vlib_compat_path
 	}
 	return ''
 }

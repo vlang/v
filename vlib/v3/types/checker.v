@@ -13515,18 +13515,8 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 		payload = rhs_type.base_type
 	} else {
 		rhs := tc.a.nodes[int(rhs_id)]
-		mut source_id := rhs_id
-		if rhs.kind == .or_expr && rhs.children_count > 0 {
-			source_id = tc.a.child(&rhs, 0)
-		}
-		source := tc.a.nodes[int(source_id)]
-		source_type := tc.resolve_type(source_id)
-		if source_type is OptionType {
-			payload = source_type.base_type
-		} else if source_type is ResultType {
-			payload = source_type.base_type
-		} else if source.kind == .index && source.children_count > 0 {
-			base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&source, 0)))
+		if rhs.kind == .index && rhs.children_count > 0 {
+			base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&rhs, 0)))
 			if base_type is Map {
 				payload = base_type.value_type
 			} else if base_type is Array {

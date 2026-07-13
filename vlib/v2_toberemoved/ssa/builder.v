@@ -3112,13 +3112,10 @@ fn (mut b Builder) embedded_type_id_from_expr(emb ast.Expr) ?TypeID {
 				return type_id
 			}
 		}
-		if resolved_mod := b.module_import_aliases[lhs_name] or {
+		resolved_mod := b.module_import_aliases[lhs_name] or {
 			b.selector_module_name_for_ident(lhs_name) or { '' }
 		}
-		{
-			if resolved_mod == '' {
-				return none
-			}
+		if resolved_mod != '' {
 			qualified := imported_symbol_fn_name(resolved_mod, emb.rhs.name)
 			if type_id := b.struct_types[qualified] {
 				return type_id
@@ -3152,13 +3149,10 @@ fn (mut b Builder) embedded_type_id_from_flat(emb ast.Cursor) ?TypeID {
 				return type_id
 			}
 		}
-		if resolved_mod := b.module_import_aliases[lhs_name] or {
+		resolved_mod := b.module_import_aliases[lhs_name] or {
 			b.selector_module_name_for_ident(lhs_name) or { '' }
 		}
-		{
-			if resolved_mod == '' {
-				return none
-			}
+		if resolved_mod != '' {
 			qualified := imported_symbol_fn_name(resolved_mod, rhs_name)
 			if type_id := b.struct_types[qualified] {
 				return type_id
