@@ -660,6 +660,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		if struct_info.value_kind == .object {
 			struct_position := struct_info.position
 			struct_end := struct_position + struct_info.length
+			mut seen_required := []string{}
 
 			decoder.current_node = decoder.current_node.next
 			for {
@@ -680,6 +681,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				$for field in T.fields {
 					mut json_field_name := field.name
 					mut is_json_skip := field.attrs.contains('skip')
+					is_required := field.attrs.contains('required')
+					is_raw := field.attrs.contains('raw')
 					for attr in field.attrs {
 						if json_name := json_attr_value(attr) {
 							if json_name == '-' {
@@ -690,24 +693,50 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 							break
 						}
 					}
-					if !is_json_skip && key == json_field_name {
+					if (!is_json_skip || is_required) && key == json_field_name {
 						field_matched = true
-						$if field.typ is $option {
-							if decoder.current_node.value.value_kind == .null {
-								val.$(field.name) = none
-								decoder.skip_value()
-							} else {
-								mut unwrapped_val := create_value_from_optional(val.$(field.name))
-								decoder.decode_value(mut unwrapped_val)!
-								val.$(field.name) = unwrapped_val
+						if is_required {
+							seen_required << field.name
+						}
+						if is_json_skip {
+							decoder.skip_value()
+						} else if is_raw {
+							value_info := decoder.current_node.value
+							raw_value := decoder.json[value_info.position..value_info.position +
+								value_info.length]
+							$if field.typ is ?string {
+								val.$(field.name) = raw_value
+							} $else $if field.typ is string {
+								val.$(field.name) = raw_value
+							} $else {
+								return error('`raw` attribute can only be used with string fields')
 							}
-						} $else {
-							decoder.decode_value(mut val.$(field.name))!
+							decoder.skip_value()
+						} else {
+							$if field.typ is $option {
+								if decoder.current_node.value.value_kind == .null {
+									val.$(field.name) = none
+									decoder.skip_value()
+								} else {
+									mut unwrapped_val :=
+										create_value_from_optional(val.$(field.name))
+									decoder.decode_value(mut unwrapped_val)!
+									val.$(field.name) = unwrapped_val
+								}
+							} $else {
+								decoder.decode_value(mut val.$(field.name))!
+							}
 						}
 					}
 				}
 				if !field_matched {
 					decoder.skip_value()
+				}
+			}
+
+			$for field in T.fields {
+				if field.attrs.contains('required') && field.name !in seen_required {
+					return error('missing required field `${field.name}`')
 				}
 			}
 		}

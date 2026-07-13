@@ -77,6 +77,18 @@ struct StructWithCollectionDefaults {
 	}
 }
 
+struct StructWithRequiredFields {
+	name                string  @[required]
+	skip_if_present     ?string @[required; skip]
+	not_required_number int
+}
+
+struct StructWithRawFields {
+	id      string  @[raw]
+	object  string  @[raw]
+	payload ?string @[raw]
+}
+
 fn test_types() {
 	assert json.decode[StructType[string]]('{"val": ""}')!.val == ''
 
@@ -206,4 +218,26 @@ fn test_absent_collections_preserve_struct_defaults() {
 	assert decoded.m == {
 		'old': 1
 	}
+}
+
+fn test_required_struct_fields() {
+	decoded := json.decode[StructWithRequiredFields]('{"name":"Ada","skip_if_present":42}')!
+	assert decoded == StructWithRequiredFields{
+		name:            'Ada'
+		skip_if_present: none
+	}
+
+	for input in ['{}', '{"name":"Ada"}', '{"skip_if_present":42}'] {
+		mut failed := false
+		json.decode[StructWithRequiredFields](input) or { failed = true }
+		assert failed, 'Expected `${input}` to fail because a required field is missing'
+	}
+}
+
+fn test_raw_struct_fields_preserve_json_source() {
+	decoded :=
+		json.decode[StructWithRawFields]('{"id":1,"object":{"a":[1,true]},"payload":[null,2]}')!
+	assert decoded.id == '1'
+	assert decoded.object == '{"a":[1,true]}'
+	assert decoded.payload? == '[null,2]'
 }
