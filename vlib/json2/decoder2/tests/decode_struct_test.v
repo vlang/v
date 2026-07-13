@@ -43,6 +43,10 @@ mut:
 	val &T
 }
 
+struct StructWithID {
+	id int
+}
+
 fn test_types() {
 	assert json.decode[StructType[string]]('{"val": ""}')!.val == ''
 
@@ -84,4 +88,19 @@ fn test_option_types() {
 	} else {
 		assert false, 'Should not return none'
 	}
+
+	if x := json.decode[StructTypeOption[int]]('{"val": null}')!.val {
+		assert false, 'Should return none, got ${x}'
+	}
+
+	if x := json.decode[StructTypeOption[int]]('{"val": 0}')!.val {
+		assert x == 0
+	} else {
+		assert false, 'Should preserve a present zero value'
+	}
+}
+
+fn test_unknown_nested_struct_values_are_skipped() {
+	assert json.decode[StructWithID]('{"ignored": {"id": 1}}')!.id == 0
+	assert json.decode[StructWithID]('{"ignored": [1, 2], "id": 3}')!.id == 3
 }

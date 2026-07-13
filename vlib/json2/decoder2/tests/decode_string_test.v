@@ -12,6 +12,12 @@ fn test_json_string() {
 	// assert json.decode[string]('te✔st')! == 'te✔st'
 }
 
+fn test_json_string_simple_escapes_continue_scanning() {
+	assert json.decode[string](r'"line\nend"')! == 'line\nend'
+	assert json.decode[string](r'"say \"hello\" after"')! == 'say "hello" after'
+	assert json.decode[string](r'"left\\right after"')! == 'left\\right after'
+}
+
 fn test_json_string_emoji() {
 	assert json.decode[string](r'"🐈"')! == '🐈'
 	assert json.decode[string](r'"💀"')! == '💀'

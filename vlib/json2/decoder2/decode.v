@@ -201,7 +201,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			}
 
 			is_not_ok := unsafe {
-				vmemcmp(checker.json.str + checker.checker_idx, 'null'.str, 4)
+				vmemcmp(checker.json.str + checker.checker_idx, c'null', 4)
 			}
 
 			if is_not_ok != 0 {
@@ -395,38 +395,39 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			checker.checker_idx++
 
 			// check if the JSON string is a valid escape sequence
-			for val[checker.checker_idx] != `"` && val[checker.checker_idx - 1] != `\\` {
+			for {
+				if checker.checker_idx >= checker_end {
+					return checker.error('EOF error: string not closed')
+				}
+				if val[checker.checker_idx] == `"` {
+					break
+				}
 				if val[checker.checker_idx] == `\\` {
-					if checker.checker_idx + 1 >= checker_end - 1 {
+					if checker.checker_idx + 1 >= checker_end {
 						return checker.error('invalid escape sequence')
 					}
 					escaped_char := val[checker.checker_idx + 1]
 					match escaped_char {
-						`/`, `b`, `f`, `n`, `r`, `t`, `"`, `\\` {}
+						`/`, `b`, `f`, `n`, `r`, `t`, `"`, `\\` {
+							checker.checker_idx += 2
+							continue
+						}
 						`u` {
 							// check if the JSON string is a valid unicode escape sequence
-							escaped_char_last_index := checker.checker_idx + 5
-
-							if escaped_char_last_index < checker_end - 1 {
-								// 2 bytes for the unicode escape sequence `\u`
-								checker.checker_idx += 2
-
-								for checker.checker_idx < escaped_char_last_index {
-									match val[checker.checker_idx] {
-										`0`...`9`, `a`...`f`, `A`...`F` {
-											checker.checker_idx++
-										}
-										else {
-											return checker.error('invalid unicode escape sequence')
-										}
+							escape_end := checker.checker_idx + 6
+							if escape_end > checker_end {
+								return checker.error('short unicode escape sequence')
+							}
+							for escape_idx in checker.checker_idx + 2 .. escape_end {
+								match val[escape_idx] {
+									`0`...`9`, `a`...`f`, `A`...`F` {}
+									else {
+										return checker.error('invalid unicode escape sequence')
 									}
 								}
-								// REVIEW: Should we increment the index here?
-								continue
-							} else {
-								return checker.error('short unicode escape sequence ${checker.json[checker.checker_idx..
-									escaped_char_last_index + 1]}')
 							}
+							checker.checker_idx = escape_end
+							continue
 						}
 						else {
 							return checker.error('unknown escape sequence')
@@ -485,7 +486,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					}
 
 					is_not_ok := unsafe {
-						vmemcmp(checker.json.str + checker.checker_idx, 'true'.str, 4)
+						vmemcmp(checker.json.str + checker.checker_idx, c'true', 4)
 					}
 
 					if is_not_ok != 0 {
@@ -500,7 +501,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					}
 
 					is_not_ok := unsafe {
-						vmemcmp(checker.json.str + checker.checker_idx, 'false'.str, 5)
+						vmemcmp(checker.json.str + checker.checker_idx, c'false', 5)
 					}
 
 					if is_not_ok != 0 {
@@ -559,52 +560,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		string_info := decoder.current_node.value
 
 		if string_info.value_kind == .string_ {
-			buffer_lenght, escape_positions := decoder.calculate_string_space_and_escapes()!
-
-			string_buffer := []u8{cap: buffer_lenght}
-
-			if escape_positions.len == 0 {
-				if string_info.length != 0 {
-					unsafe {
-						string_buffer.push_many(decoder.json.str + string_info.position + 1,
-							buffer_lenght)
-					}
-				}
-			} else {
-				for i := 0; i < escape_positions.len; i++ {
-					escape_position := escape_positions[i]
-					if i == 0 {
-						// Pushes a substring from the JSON string into the string buffer.
-						// The substring starts at the position of the value in the JSON string plus one,
-						// and ends at the escape position minus one.
-						// This is used to handle escaped characters within the JSON string.
-						unsafe {
-							string_buffer.push_many(decoder.json.str + string_info.position + 1,
-								escape_position - string_info.position - 1)
-						}
-					} else {
-						// Pushes a substring from the JSON string into the string buffer, starting after the previous escape position
-						// and ending just before the current escape position. This handles the characters between escape sequences.
-						unsafe {
-							string_buffer.push_many(decoder.json.str + escape_positions[i - 1] + 6,
-								escape_position - escape_positions[i - 1] - 6)
-						}
-					}
-
-					unescaped_buffer := generate_unicode_escape_sequence(unsafe {
-						(decoder.json.str + escape_positions[i] + 2).vbytes(4)
-					})!
-
-					unsafe { string_buffer.push_many(&unescaped_buffer[0], unescaped_buffer.len) }
-				}
-				end_of_last_escape_position := escape_positions[escape_positions.len - 1] + 6
-				unsafe {
-					string_buffer.push_many(decoder.json.str + end_of_last_escape_position,
-						string_info.length - end_of_last_escape_position - 1)
-				}
-			}
-
-			val = string_buffer.bytestr()
+			val = decoder.decode_string(string_info)!
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		decoder.decode_sumtype(mut val)!
@@ -647,6 +603,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				}
 
 				decoder.current_node = decoder.current_node.next
+				mut field_matched := false
 
 				$for field in T.fields {
 					if key_info.length - 2 == field.name.len {
@@ -655,15 +612,25 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 							vmemcmp(decoder.json.str + key_info.position + 1, field.name.str,
 								field.name.len) == 0
 						} {
+							field_matched = true
 							$if field.typ is $option {
-								mut unwrapped_val := create_value_from_optional(val.$(field.name))
-								decoder.decode_value(mut unwrapped_val)!
-								val.$(field.name) = unwrapped_val
+								if decoder.current_node.value.value_kind == .null {
+									val.$(field.name) = none
+									decoder.skip_value()
+								} else {
+									mut unwrapped_val :=
+										create_value_from_optional(val.$(field.name))
+									decoder.decode_value(mut unwrapped_val)!
+									val.$(field.name) = unwrapped_val
+								}
 							} $else {
 								decoder.decode_value(mut val.$(field.name))!
 							}
 						}
 					}
+				}
+				if !field_matched {
+					decoder.skip_value()
 				}
 			}
 		}
@@ -671,7 +638,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		value_info := decoder.current_node.value
 
 		unsafe {
-			val = vmemcmp(decoder.json.str + value_info.position, 'true'.str, 4) == 0
+			val = vmemcmp(decoder.json.str + value_info.position, c'true', 4) == 0
 		}
 	} $else $if T.unaliased_typ in [$float, $int, $enum] {
 		value_info := decoder.current_node.value
@@ -688,6 +655,69 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	}
 
 	if decoder.current_node != unsafe { nil } {
+		decoder.current_node = decoder.current_node.next
+	}
+}
+
+fn (decoder &Decoder) decode_string(value_info ValueInfo) !string {
+	mut result := []u8{cap: value_info.length - 2}
+	mut idx := value_info.position + 1
+	end := value_info.position + value_info.length - 1
+	for idx < end {
+		current_byte := decoder.json[idx]
+		if current_byte != `\\` {
+			result << current_byte
+			idx++
+			continue
+		}
+		if idx + 1 >= end {
+			return error('Invalid escape sequence at the end of string')
+		}
+		escaped_char := decoder.json[idx + 1]
+		match escaped_char {
+			`"`, `\\`, `/` {
+				result << escaped_char
+			}
+			`b` {
+				result << u8(8)
+			}
+			`f` {
+				result << u8(12)
+			}
+			`n` {
+				result << `\n`
+			}
+			`r` {
+				result << `\r`
+			}
+			`t` {
+				result << `\t`
+			}
+			`u` {
+				if idx + 5 >= end {
+					return error('Invalid unicode escape sequence')
+				}
+				result << generate_unicode_escape_sequence(decoder.json[idx + 2..idx + 6].bytes())!
+				idx += 6
+				continue
+			}
+			else {
+				return error('Unknown escape sequence')
+			}
+		}
+
+		idx += 2
+	}
+	return result.bytestr()
+}
+
+fn (mut decoder Decoder) skip_value() {
+	if decoder.current_node == unsafe { nil } {
+		return
+	}
+	value_end := decoder.current_node.value.position + decoder.current_node.value.length
+	decoder.current_node = decoder.current_node.next
+	for decoder.current_node != unsafe { nil } && decoder.current_node.value.position < value_end {
 		decoder.current_node = decoder.current_node.next
 	}
 }
