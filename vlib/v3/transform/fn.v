@@ -1213,6 +1213,14 @@ fn (mut t Transformer) ensure_call_param_types_decl_index() {
 	t.call_param_types_index_ready = true
 }
 
+fn (mut t Transformer) prepare_parallel_call_param_types() {
+	t.ensure_call_param_types_decl_index()
+	names := t.call_param_types_decl_index.keys()
+	for name in names {
+		_ = t.call_param_types_from_decl(name) or { continue }
+	}
+}
+
 fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file string, module_name string) {
 	if key.len == 0 {
 		return
@@ -2717,8 +2725,8 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			// param (`u8(255) + u8(1)` is 256 in C); cast back to the value
 			// type first so the arithmetic wraps at the V type's width.
 			truncated := t.make_cast(clean_typ, expr, clean_typ)
-			return t.make_call_typed('strconv__format_uint', arr2(truncated, t.make_int_literal(10)),
-				'string')
+			return t.make_call_typed('strconv__format_uint',
+				arr2(truncated, t.make_int_literal(10)), 'string')
 		}
 		'u64' {
 			return t.make_call_typed('u64.str', arr1(expr), 'string')
@@ -5867,7 +5875,12 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			return none
 		}
 	}
-	if !isnil(t.tc) {
+	// An active smartcast rebinds the receiver: inside `match v { A {...} }`,
+	// `v.m()` must dispatch to `A.m` even when the sum type itself also
+	// declares `m` (both the checker resolution and the static resolution
+	// below would pick the sum's method).
+	smartcast_method := t.resolve_smartcast_sum_receiver_method(base_id, method) or { '' }
+	if !isnil(t.tc) && smartcast_method.len == 0 {
 		if resolved_method := t.tc.resolved_call_name(id) {
 			if t.receiver_method_name_is_open_generic(resolved_method) {
 				return none
@@ -5889,7 +5902,10 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			}
 		}
 	}
-	method_name := t.resolve_receiver_method_name(base_id, method)
+	mut method_name := smartcast_method
+	if method_name.len == 0 {
+		method_name = t.resolve_receiver_method_name(base_id, method)
+	}
 	if method_name.len > 0 {
 		if t.receiver_method_name_is_open_generic(method_name) {
 			return none
@@ -6234,6 +6250,11 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if actual_type.len == 0 || actual_type == 'unknown' || expected_type.len == 0 {
 		return true
 	}
+	// An `unknown` expected type means the callee signature still carries an
+	// unresolved generic parameter here - nothing can be validated against it.
+	if expected_type.trim_string_left('&') == 'unknown' {
+		return true
+	}
 	actual := t.normalize_type_alias(actual_type)
 	expected := t.normalize_type_alias(expected_type)
 	if t.is_integer_type_name(expected) {
@@ -6267,6 +6288,18 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	}
 	if !isnil(t.tc) && expected in t.tc.interface_names
 		&& t.tc.type_text_implements_interface(actual, expected) {
+		return true
+	}
+	// Generic applications may differ only in module qualification of their
+	// type arguments (`json2.Node[ValueInfo]` vs `json2.Node[json2.ValueInfo]`).
+	mut a_app := actual
+	mut e_app := expected
+	for a_app.starts_with('&') && e_app.starts_with('&') {
+		a_app = a_app[1..]
+		e_app = e_app[1..]
+	}
+	if !isnil(t.tc) && a_app.contains('[') && e_app.contains('[')
+		&& t.tc.generic_type_name_matches(a_app, e_app) {
 		return true
 	}
 	return false

@@ -1413,8 +1413,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.reset_var_types()
 	for i in 0 .. decl.node.children_count {
 		param_child := t.a.child_node(&decl.node, i)
-		if node_kind_id(param_child) != 75 || param_child.value.len == 0
-			|| param_child.typ.len == 0 {
+		if node_kind_id(param_child) != 75 || param_child.value.len == 0 || param_child.typ.len == 0 {
 			continue
 		}
 		mut param_raw := param_child.typ
@@ -5792,6 +5791,11 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 
 fn (t &Transformer) subst_comptime_type_operand(raw string, args []string) string {
 	clean := raw.trim_space()
+	if clean.starts_with('$') {
+		// `$int`, `$struct`, ... are metatype keywords, not type names; they must
+		// not be substituted or module-qualified (`mymod.$int` breaks matching).
+		return clean
+	}
 	if clean.ends_with('.unaliased_typ') {
 		base := clean[..clean.len - '.unaliased_typ'.len]
 		substituted := t.resolve_substituted_type_text(t.subst_type(base, args))

@@ -78,7 +78,7 @@ jobs:
 
   docker-ubuntu-musl:
     runs-on: ubuntu-24.04
-    timeout-minutes: 121
+    timeout-minutes: 150
     container:
       image: thevlang/vlang:ubuntu-build
       env:

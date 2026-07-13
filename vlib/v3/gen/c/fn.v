@@ -70,15 +70,9 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut ranks := map[string]int{}
 	mut cur_module := ''
 	mut cur_file := ''
-	// When the parallel path asked for it, the per-item cost walk also does
-	// the parallel pre-seeding (string interning + fn-ptr type registration)
-	// in the same traversal, instead of prepare_parallel_items re-walking
-	// every subtree afterwards.
+	// Defer cost/prep until after preferred-file and emission filtering. When
+	// the parallel path asks for prep, that walk also collects C-extern refs.
 	prep := g.want_parallel_prep
-	mut prep_stack := []flat.NodeId{cap: 256}
-	mut prep_type_cache := map[string]bool{}
-	mut prep_file := ''
-	mut prep_module := ''
 	for i in 0 .. g.a.nodes.len {
 		node := g.a.nodes[i]
 		kind_id := node_kind_id(node)
@@ -106,19 +100,6 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 				preferred_fns[preferred_name] = i
 				ranks[preferred_name] = rank
 			}
-			mut cost := 0
-			if prep {
-				if cur_file != prep_file || cur_module != prep_module {
-					prep_type_cache.clear()
-					prep_file = cur_file
-					prep_module = cur_module
-				}
-				g.tc.cur_file = cur_file
-				g.tc.cur_module = cur_module
-				cost = g.fn_item_cost_and_prep(flat.NodeId(i), mut prep_stack, mut prep_type_cache)
-			} else {
-				cost = flat_fn_gen_item_cost(g.a, flat.NodeId(i))
-			}
 			candidates << FlatFnGenCandidate{
 				preferred_name: preferred_name
 				item:           FlatFnGenItem{
@@ -126,24 +107,42 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 					file:    cur_file
 					module:  cur_module
 					c_name:  g.fn_c_name_in_module(cur_module, node.value)
-					cost:    cost
 				}
 			}
 		}
 	}
 	mut items := []FlatFnGenItem{cap: candidates.len}
+	mut prep_stack := []flat.NodeId{cap: 256}
+	mut prep_type_text_cache := map[string]bool{}
 	for candidate in candidates {
 		if preferred_idx := preferred_fns[candidate.preferred_name] {
 			if preferred_idx != int(candidate.item.node_id) {
 				continue
 			}
 		}
-		qfn := candidate.item.c_name
+		item := candidate.item
+		qfn := item.c_name
 		if g.emitted_fn_contains(qfn) {
 			continue
 		}
 		g.emitted_fns[qfn] = true
-		items << candidate.item
+		cost := if prep {
+			if item.file != g.tc.cur_file || item.module != g.tc.cur_module {
+				prep_type_text_cache.clear()
+			}
+			g.tc.cur_file = item.file
+			g.tc.cur_module = item.module
+			g.fn_item_cost_and_prep(item.node_id, mut prep_stack, mut prep_type_text_cache)
+		} else {
+			flat_fn_gen_item_cost(g.a, item.node_id)
+		}
+		items << FlatFnGenItem{
+			node_id: item.node_id
+			file:    item.file
+			module:  item.module
+			c_name:  item.c_name
+			cost:    cost
+		}
 	}
 	return items
 }
@@ -394,7 +393,7 @@ fn generic_method_candidate_key(receiver string, method string) string {
 }
 
 fn (mut g FlatGen) precompute_generic_method_candidate_index() {
-	g.generic_method_candidates = map[string][]GenericMethodCandidate{}
+	g.generic_method_candidates.clear()
 	for name, ret in g.tc.fn_ret_types {
 		if !name.contains('[') || !name.contains('.') {
 			continue
@@ -2291,8 +2290,7 @@ fn (mut g FlatGen) shared_arg_storage_c_expr(arg_id flat.NodeId) ?string {
 }
 
 fn (mut g FlatGen) spawn_packed_arg_for_call_param(fn_name string, arg_id flat.NodeId, expected types.Type, field_idx int) SpawnPackedArg {
-	if g.fn_param_is_shared(fn_name, field_idx)
-		|| g.fn_param_is_shared(g.direct_call_name(fn_name), field_idx) {
+	if g.fn_param_is_shared_for_call(field_idx, fn_name, '', '', '') {
 		if expr := g.shared_arg_storage_c_expr(arg_id) {
 			inner := g.shared_qualify_type_text(expected.name(), g.tc.cur_module)
 			wrapper_ct := '${g.shared_wrapper_c_name(inner)}*'
@@ -4064,9 +4062,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					&& method_short in ['load', 'store', 'add', 'sub', 'swap', 'compare_and_swap'])
 				receiver_wants_ptr := wants_ptr || atomic_receiver_wants_ptr
 					|| g.method_receiver_is_mut(method_name)
-				receiver_wants_shared := g.fn_param_is_shared(actual_fn, 0)
-					|| g.fn_param_is_shared(method_name, 0) || g.fn_param_is_shared(fn_name, 0)
-					|| g.fn_param_is_shared(emitted_callee_name, 0)
+				receiver_wants_shared := g.fn_param_is_shared_for_call(0, actual_fn,
+					emitted_callee_name, method_name, fn_name)
 				if receiver_wants_shared && (g.gen_shared_local_receiver_arg(base_id)
 					|| g.gen_shared_storage_expr(base_id)) {
 					arg_start = 1
@@ -4177,14 +4174,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					continue
 				}
 				if !is_c_call && arg_idx < typed_param_count {
-					arg_param_is_shared := g.fn_param_is_shared(actual_fn, arg_idx)
-						|| g.fn_param_is_shared(target_name, arg_idx)
-						|| g.fn_param_is_shared(fn_name, arg_idx)
-						|| g.fn_param_is_shared(emitted_callee_name, arg_idx)
-						|| g.fn_param_is_shared(g.direct_call_name(actual_fn), arg_idx)
-						|| g.fn_param_is_shared(g.direct_call_name(target_name), arg_idx)
-						|| g.fn_param_is_shared(g.direct_call_name(fn_name), arg_idx)
-						|| g.fn_param_is_shared(g.direct_call_name(emitted_callee_name), arg_idx)
+					arg_param_is_shared := g.fn_param_is_shared_for_call(arg_idx, actual_fn,
+						target_name, emitted_callee_name, fn_name)
 					if arg_param_is_shared && (g.gen_shared_local_receiver_arg(arg_id)
 						|| g.gen_shared_storage_expr(arg_id)) {
 						continue
@@ -4528,8 +4519,7 @@ fn (mut g FlatGen) mut_receiver_arg_wants_addr(fn_name string, arg_id flat.NodeI
 		return false
 	}
 	if g.local_storage_is_shared(arg_node.value) {
-		return !g.fn_param_is_shared(fn_name, 0)
-			&& !g.fn_param_is_shared(g.direct_call_name(fn_name), 0)
+		return !g.fn_param_is_shared_for_call(0, fn_name, '', '', '')
 			&& g.fn_first_param_is_mut_receiver(fn_name)
 	}
 	if g.local_storage_is_pointer(arg_node.value) {
@@ -5797,18 +5787,19 @@ fn (g &FlatGen) embedded_receiver_path_for_expected_name(base_name string, expec
 
 // current_param_type returns current param type data for FlatGen.
 fn (g &FlatGen) current_param_type(name string) ?types.Type {
+	if g.cur_param_types.len == 0 {
+		return none
+	}
 	if g.current_mut_param_binding_is_shadowed(name) {
 		return none
 	}
-	for i in 0 .. g.cur_param_names.len {
-		if g.cur_param_names[i] == name {
-			return g.cur_param_type_values[i]
-		}
-	}
-	return none
+	return g.cur_param_types[name] or { none }
 }
 
 fn (g &FlatGen) current_param_map_type(name string) ?types.Type {
+	if g.cur_param_types.len == 0 {
+		return none
+	}
 	if g.current_mut_param_binding_is_shadowed(name) {
 		return none
 	}
@@ -6008,8 +5999,12 @@ fn (mut g FlatGen) optional_type_name_for_expr(id flat.NodeId, typ types.Type) s
 	return g.optional_type_name(typ)
 }
 
-// current_param_is_mut returns true when a current param originated from `mut name T`.
+// current_param_is_mut returns true when a current param originated from `mut name T`
+// and the identifier still resolves to that parameter (not a shadowing local).
 fn (g &FlatGen) current_param_is_mut(name string) bool {
+	if g.cur_mut_params.len == 0 {
+		return false
+	}
 	if !(g.cur_mut_params[name] or { false }) {
 		return false
 	}
@@ -6021,6 +6016,9 @@ fn (g &FlatGen) current_param_is_mut(name string) bool {
 }
 
 fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
+	if g.cur_mut_params.len == 0 {
+		return false
+	}
 	if !(g.cur_mut_params[name] or { false }) {
 		return false
 	}
@@ -7798,10 +7796,8 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			continue
 		}
 		if arg_idx < typed_param_count {
-			arg_param_is_shared := g.fn_param_is_shared(fn_name, arg_idx)
-				|| g.fn_param_is_shared(callee_name, arg_idx)
-				|| g.fn_param_is_shared(g.direct_call_name(fn_name), arg_idx)
-				|| g.fn_param_is_shared(g.direct_call_name(callee_name), arg_idx)
+			arg_param_is_shared :=
+				g.fn_param_is_shared_for_call(arg_idx, fn_name, callee_name, '', '')
 			if arg_param_is_shared
 				&& (g.gen_shared_local_receiver_arg(arg_id) || g.gen_shared_storage_expr(arg_id)) {
 				continue
@@ -7916,10 +7912,8 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			arg_type := g.usable_expr_type(arg_id)
 			arg_is_shared_local := arg_node.kind == .ident
 				&& g.local_storage_is_shared(arg_node.value)
-			arg_param_is_shared := g.fn_param_is_shared(fn_name, arg_idx)
-				|| g.fn_param_is_shared(callee_name, arg_idx)
-				|| g.fn_param_is_shared(g.direct_call_name(fn_name), arg_idx)
-				|| g.fn_param_is_shared(g.direct_call_name(callee_name), arg_idx)
+			arg_param_is_shared :=
+				g.fn_param_is_shared_for_call(arg_idx, fn_name, callee_name, '', '')
 			arg_is_pointer_param := arg_node.kind == .ident && (g.current_param_type(arg_node.value) or {
 				types.Type(types.void_)
 			}) is types.Pointer
@@ -8625,6 +8619,17 @@ fn (g &FlatGen) collect_c_extern_referenced_symbols_from_node(id flat.NodeId, mu
 		return
 	}
 	node := g.a.node(id)
+	g.collect_c_extern_ref_from_node_into(node, mut refs)
+	for i in 0 .. node.children_count {
+		g.collect_c_extern_referenced_symbols_from_node(g.a.child(node, i), mut refs)
+	}
+}
+
+fn (mut g FlatGen) collect_c_extern_ref_from_node(node flat.Node) {
+	g.collect_c_extern_ref_from_node_into(node, mut g.c_extern_refs)
+}
+
+fn (g &FlatGen) collect_c_extern_ref_from_node_into(node flat.Node, mut refs map[string]bool) {
 	if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
 		base_id := g.a.child(node, 0)
 		if int(base_id) >= 0 {
@@ -8637,9 +8642,6 @@ fn (g &FlatGen) collect_c_extern_referenced_symbols_from_node(id flat.NodeId, mu
 				refs[c_winapi_wide_export_name(raw_cfn)] = true
 			}
 		}
-	}
-	for i in 0 .. node.children_count {
-		g.collect_c_extern_referenced_symbols_from_node(g.a.child(node, i), mut refs)
 	}
 }
 
@@ -9174,8 +9176,11 @@ fn (mut g FlatGen) fn_shared_params_with_implicit_veb_ctx(node flat.Node, flags 
 }
 
 fn (g &FlatGen) fn_param_is_shared(fn_name string, idx int) bool {
-	if idx < 0 || fn_name.len == 0 {
+	if !g.has_shared_params || idx < 0 || fn_name.len == 0 {
 		return false
+	}
+	if flags := g.fn_shared_params_resolved[fn_name] {
+		return idx < flags.len && flags[idx]
 	}
 	candidates := [
 		fn_name,
@@ -9185,11 +9190,62 @@ fn (g &FlatGen) fn_param_is_shared(fn_name string, idx int) bool {
 	]
 	for candidate in candidates {
 		flags := g.fn_decl_shared_params[candidate] or { continue }
-		if idx < flags.len && flags[idx] {
-			return true
-		}
+		// The first present entry is authoritative: an exact-name (possibly
+		// all-false) entry must stop the short-name fallback from matching an
+		// unrelated declaration.
+		return idx < flags.len && flags[idx]
 	}
 	return false
+}
+
+fn (g &FlatGen) fn_param_shared_exact(fn_name string, idx int) ?bool {
+	if fn_name.len == 0 {
+		return none
+	}
+	if flags := g.fn_shared_params_resolved[fn_name] {
+		return idx < flags.len && flags[idx]
+	}
+	cname := g.cname(fn_name)
+	if cname != fn_name {
+		if flags := g.fn_shared_params_resolved[cname] {
+			return idx < flags.len && flags[idx]
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) fn_param_is_shared_for_call(idx int, name1 string, name2 string, name3 string, name4 string) bool {
+	if !g.has_shared_params || idx < 0 {
+		return false
+	}
+	if flag := g.fn_param_shared_exact(name1, idx) {
+		return flag
+	}
+	if flag := g.fn_param_shared_exact(name2, idx) {
+		return flag
+	}
+	if flag := g.fn_param_shared_exact(name3, idx) {
+		return flag
+	}
+	if flag := g.fn_param_shared_exact(name4, idx) {
+		return flag
+	}
+	return g.fn_param_is_shared(name1, idx) || g.fn_param_is_shared(name2, idx)
+		|| g.fn_param_is_shared(name3, idx) || g.fn_param_is_shared(name4, idx)
+}
+
+fn (mut g FlatGen) precompute_shared_param_index() {
+	if !g.has_shared_params {
+		return
+	}
+	for name, flags in g.fn_decl_shared_params {
+		// The name's own entry is authoritative (mirrors fn_param_is_shared's
+		// first-present-candidate rule); merging short-name variants here
+		// would smear another declaration's shared flags onto this one.
+		// Store empty/all-false results too. Presence in this map is what turns
+		// the very hot call-site query into one lookup.
+		g.fn_shared_params_resolved[name] = flags.clone()
+	}
 }
 
 fn (mut g FlatGen) gen_shared_local_receiver_arg(base_id flat.NodeId) bool {
@@ -9374,6 +9430,22 @@ fn (mut g FlatGen) fn_node_param_types(node flat.Node, module_name string) []typ
 	for i in 0 .. node.children_count {
 		if g.a.child_node(&node, i).kind == .param {
 			explicit_params++
+		}
+	}
+	// The module-scoped key first: a method name (`Recv.method`) is dotted but
+	// not module-qualified, and two modules declaring the same receiver/method
+	// pair must not share an entry.
+	if params := g.fn_decl_param_types[fn_decl_module_key(module_name, node.value)] {
+		if params.len == explicit_params {
+			return params
+		}
+	}
+	if !node.value.contains('.') {
+		full_name := qualify_name_in_module(module_name, node.value)
+		if params := g.fn_decl_param_types[full_name] {
+			if params.len == explicit_params {
+				return params
+			}
 		}
 	}
 	if params := g.fn_node_param_types_from_signatures(node, module_name, explicit_params) {
@@ -9837,35 +9909,44 @@ fn (mut g FlatGen) multi_return_typedefs() {
 // Shared by the forward-declaration and full-definition passes so both see the same
 // set in the same (deterministic) order.
 fn (mut g FlatGen) walk_multi_return_typedefs(mut emitted map[string]bool, forward_only bool) {
+	if !g.multi_return_types_ready {
+		g.collect_multi_return_types()
+	}
+	for typ in g.multi_return_types {
+		g.emit_concrete_multi_return_typedef(typ, mut emitted, forward_only)
+	}
+}
+
+fn (mut g FlatGen) collect_multi_return_types() {
 	for _, ret in g.tc.fn_ret_types {
-		g.emit_concrete_multi_return_typedef(ret, mut emitted, forward_only)
+		g.collect_concrete_multi_return_type(ret)
 	}
 	for _, params in g.tc.fn_param_types {
 		for param in params {
-			g.emit_concrete_multi_return_typedef(param, mut emitted, forward_only)
+			g.collect_concrete_multi_return_type(param)
 		}
 	}
 	for _, fields in g.tc.structs {
 		for field in fields {
-			g.emit_concrete_multi_return_typedef(field.typ, mut emitted, forward_only)
+			g.collect_concrete_multi_return_type(field.typ)
 		}
 	}
 	for _, fields in g.tc.interface_fields {
 		for field in fields {
-			g.emit_concrete_multi_return_typedef(field.typ, mut emitted, forward_only)
+			g.collect_concrete_multi_return_type(field.typ)
 		}
 	}
 	for _, typ in g.tc.c_globals {
-		g.emit_concrete_multi_return_typedef(typ, mut emitted, forward_only)
+		g.collect_concrete_multi_return_type(typ)
 	}
 	for _, typ in g.tc.const_types {
-		g.emit_concrete_multi_return_typedef(typ, mut emitted, forward_only)
+		g.collect_concrete_multi_return_type(typ)
 	}
 	for idx, is_set in g.tc.expr_type_set {
 		if !is_set || idx >= g.tc.expr_type_values.len {
 			continue
 		}
-		g.emit_concrete_multi_return_typedef(g.tc.expr_type_values[idx], mut emitted, forward_only)
+		g.collect_concrete_multi_return_type(g.tc.expr_type_values[idx])
 	}
 	mut cur_module := ''
 	mut cur_file := ''
@@ -9892,7 +9973,29 @@ fn (mut g FlatGen) walk_multi_return_typedefs(mut emitted map[string]bool, forwa
 		typ := node.typ
 		if typ.len > 0 && (typ[0] == `(` || ((typ[0] == `?` || typ[0] == `!`) && typ.len > 1
 			&& typ[1] == `(`)) {
-			g.emit_concrete_multi_return_typedef(g.tc.parse_type(typ), mut emitted, forward_only)
+			g.collect_concrete_multi_return_type(g.tc.parse_type(typ))
+		}
+	}
+	g.multi_return_types_ready = true
+}
+
+fn (mut g FlatGen) collect_concrete_multi_return_type(typ types.Type) {
+	if g.type_contains_generic_placeholder(typ) {
+		return
+	}
+	if typ is types.OptionType {
+		g.collect_concrete_multi_return_type(typ.base_type)
+		return
+	}
+	if typ is types.ResultType {
+		g.collect_concrete_multi_return_type(typ.base_type)
+		return
+	}
+	if typ is types.MultiReturn {
+		name := g.multi_return_c_type_name(typ)
+		if name !in g.multi_return_type_names {
+			g.multi_return_type_names[name] = true
+			g.multi_return_types << types.Type(typ)
 		}
 	}
 }
