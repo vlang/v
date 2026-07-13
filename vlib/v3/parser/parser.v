@@ -5795,36 +5795,16 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	if p.tok == .dotdot && p.peek() == .rsbr {
 		p.next()
 		p.next()
-		elem_type := p.parse_type_name()
-		p.check(.lsbr)
-		mut vals := []flat.NodeId{}
-		for p.tok != .rsbr && p.tok != .eof {
-			if p.tok == .semicolon {
-				p.next()
-				continue
-			}
-			vals << p.expr(.lowest)
-			if p.tok == .comma {
-				p.next()
-			}
+		mut dimensions := 1
+		for p.tok == .lsbr && p.peek() == .dotdot {
+			p.next()
+			p.next()
+			p.check(.rsbr)
+			dimensions++
 		}
-		p.check(.rsbr)
-		fixed_type := '[${vals.len}]${elem_type}'
-		start := p.add_children(vals)
-		lit := p.a.add_node(flat.Node{
-			kind:           .array_literal
-			typ:            fixed_type
-			children_start: start
-			children_count: flat.child_count(vals.len)
-		})
-		pstart := p.add_child(lit)
-		return p.a.add_node(flat.Node{
-			kind:           .postfix
-			op:             .not
-			typ:            fixed_type
-			children_start: pstart
-			children_count: 1
-		})
+		elem_type := p.parse_type_name()
+		lit, _ := p.inferred_fixed_array_literal_values(elem_type, dimensions)
+		return lit
 	}
 	// empty array or fixed array type: []Type{} or [N]Type{}
 	if p.tok == .rsbr {
@@ -6021,6 +6001,48 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		})
 	}
 	return lit
+}
+
+fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dimensions int) (flat.NodeId, string) {
+	p.check(.lsbr)
+	mut vals := []flat.NodeId{}
+	mut elem_type := base_elem_type
+	for p.tok != .rsbr && p.tok != .eof {
+		if p.tok == .semicolon {
+			p.next()
+			continue
+		}
+		if dimensions > 1 {
+			val, nested_type := p.inferred_fixed_array_literal_values(base_elem_type,
+				dimensions - 1)
+			vals << val
+			if vals.len == 1 {
+				elem_type = nested_type
+			}
+		} else {
+			vals << p.expr(.lowest)
+		}
+		if p.tok == .comma {
+			p.next()
+		}
+	}
+	p.check(.rsbr)
+	fixed_type := '[${vals.len}]${elem_type}'
+	start := p.add_children(vals)
+	lit := p.a.add_node(flat.Node{
+		kind:           .array_literal
+		typ:            fixed_type
+		children_start: start
+		children_count: flat.child_count(vals.len)
+	})
+	pstart := p.add_child(lit)
+	return p.a.add_node(flat.Node{
+		kind:           .postfix
+		op:             .not
+		typ:            fixed_type
+		children_start: pstart
+		children_count: 1
+	}), fixed_type
 }
 
 // fn_literal supports fn literal handling for Parser.

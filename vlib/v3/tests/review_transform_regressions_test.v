@@ -104,6 +104,13 @@ fn test_import_aliased_variadic_call_uses_exact_module() {
 	assert out == '3'
 }
 
+fn test_nested_inferred_fixed_array_literal_parses() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_inferred_fixed_array_literal',
+		'fn main() {\n\tvalues := [..][..]int[[1, 2], [3, 4]]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
+	assert out == '10'
+}
+
 fn test_shared_field_without_sync_import_compiles_and_locks() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'shared_field_without_sync_import',
