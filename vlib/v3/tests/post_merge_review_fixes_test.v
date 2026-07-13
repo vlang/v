@@ -594,6 +594,37 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
+fn test_interface_equality_includes_params_call_field_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_params_call_field_boxes', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+@[params]
+struct SinkConfig {
+	value IValue
+	n     int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(config SinkConfig) bool {
+	return config.n == 7 && same(config.value)
+}
+
+fn main() {
+	println(sink(value: Value{
+		n: 3
+	}, n: 7).str())
+}
+')
+	assert out == 'true'
+}
+
 fn test_select_receive_assignment_checks_lhs_type() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'select_receive_assign_bool_mismatch', 'fn main() {

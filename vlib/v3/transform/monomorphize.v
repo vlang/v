@@ -640,7 +640,7 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		}
 	}
 	params := t.tc.fn_param_types_for_name(call_name)
-	if params.len == 0 || !params.any(interface_box_expected_type(it)) {
+	if params.len == 0 || !params.any(t.interface_box_call_param_maybe(it)) {
 		return
 	}
 	param_offset := if callee.kind == .selector {
@@ -649,21 +649,37 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		0
 	}
 	explicit_args := int(node.children_count) - 1
+	mut field_init_args := 0
+	for arg_idx in 0 .. explicit_args {
+		if t.a.child_node(&node, arg_idx + 1).kind == .field_init {
+			field_init_args++
+		}
+	}
+	logical_args := explicit_args - field_init_args + if field_init_args > 0 { 1 } else { 0 }
 	is_variadic := t.call_is_variadic(call_name)
 	variadic_idx := if is_variadic && params[params.len - 1] is types.Array {
 		params.len - 1
 	} else {
 		-1
 	}
-	if variadic_idx < 0 && params.len - param_offset != explicit_args {
+	if variadic_idx < 0 && params.len - param_offset != logical_args {
 		return
 	}
-	if variadic_idx >= 0 && explicit_args < variadic_idx - param_offset {
+	if variadic_idx >= 0 && logical_args < variadic_idx - param_offset {
 		return
 	}
 	for arg_idx in 0 .. explicit_args {
 		arg_id := t.a.child(&node, arg_idx + 1)
 		param_idx := arg_idx + param_offset
+		arg := t.a.nodes[int(arg_id)]
+		if arg.kind == .field_init {
+			if param_idx < params.len {
+				if struct_type := t.params_struct_type_name(params[param_idx].name()) {
+					t.collect_interface_params_call_fields(node, arg_idx + 1, struct_type)
+				}
+			}
+			break
+		}
 		mut expected := if variadic_idx >= 0 && param_idx >= variadic_idx {
 			variadic_type := params[variadic_idx]
 			if variadic_type is types.Array {
@@ -676,7 +692,6 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		} else {
 			continue
 		}
-		arg := t.a.nodes[int(arg_id)]
 		mut value_id := arg_id
 		if variadic_idx >= 0 && param_idx >= variadic_idx && arg.kind == .prefix
 			&& arg.value == '...' && arg.children_count > 0 {
@@ -686,6 +701,56 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		if interface_box_expected_type(expected) {
 			t.collect_interface_boxed_value(value_id, expected)
 		}
+	}
+}
+
+fn (t &Transformer) interface_box_call_param_maybe(param types.Type) bool {
+	if interface_box_expected_type(param) {
+		return true
+	}
+	if param !is types.Struct && param !is types.Alias {
+		return false
+	}
+	struct_type := t.params_struct_type_name(param.name()) or { return false }
+	info := t.lookup_struct_info(struct_type) or { return false }
+	for field in info.fields {
+		field_type_text := t.lookup_struct_field_type(struct_type, field.name) or { field.typ }
+		if interface_box_expected_type(t.tc.parse_type(field_type_text)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut t Transformer) collect_interface_params_call_fields(node flat.Node, field_start int, struct_type string) {
+	info := t.lookup_struct_info(struct_type) or { return }
+	mut field_index := 0
+	for i in field_start .. node.children_count {
+		field := t.a.child_node(&node, i)
+		if field.kind != .field_init {
+			break
+		}
+		if field.children_count == 0 {
+			field_index++
+			continue
+		}
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if field_index < info.fields.len {
+			info.fields[field_index].name
+		} else {
+			field_index++
+			continue
+		}
+		field_type_text := t.lookup_struct_field_type(struct_type, field_name) or {
+			field_index++
+			continue
+		}
+		field_type := t.tc.parse_type(field_type_text)
+		if interface_box_expected_type(field_type) {
+			t.collect_interface_boxed_value(t.a.child(field, 0), field_type)
+		}
+		field_index++
 	}
 }
 
