@@ -164,6 +164,15 @@ fn int_ref_string(n &int) string {
 	return '${n}'
 }
 
+fn option_ref_string(val ?int) string {
+	return '${&val}'
+}
+
+fn test_string_interpolation_reference_to_option_value() {
+	assert option_ref_string(?int(42)).contains('Option(')
+	assert option_ref_string(?int(none)).contains('Option(')
+}
+
 fn test_int_ref_string_interpolation() {
 	mut count := 10
 	count_ref := &count
