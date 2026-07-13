@@ -128,6 +128,10 @@ import foo
 pub fn doubled() int {
 	return foo.value() * 2
 }
+
+pub fn item_size() int {
+	return int(sizeof(foo.Item))
+}
 ')
 	write_module_cache_file(root, 'genericmod/genericmod.v', 'module genericmod
 
@@ -158,6 +162,7 @@ import sumcache
 
 fn main() {
 	println(bar.doubled())
+	println(bar.item_size())
 	println(genericmod.identity[int](17))
 	println(genericmod.internal_value())
 	println(sumcache.equal_ints())
@@ -167,7 +172,7 @@ fn main() {
 	cache_dir := os.join_path(root, 'cache')
 	first_bin := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_bin)
-	assert run_module_cache_binary(first_bin) == '42\n17\n23\ntrue'
+	assert run_module_cache_binary(first_bin) == '42\n4\n17\n23\ntrue'
 
 	first_hashes := module_cache_object_hashes(cache_dir)
 	assert first_hashes.keys().any(it.starts_with('foo_'))
@@ -208,11 +213,51 @@ pub fn unused_but_cached() int {
 ')
 	second_bin := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_bin)
-	assert run_module_cache_binary(second_bin) == '44\n17\n23\ntrue'
+	assert run_module_cache_binary(second_bin) == '44\n4\n17\n23\ntrue'
 	second_hashes := module_cache_object_hashes(cache_dir)
 	changed_after_foo := changed_module_cache_objects(first_hashes, second_hashes)
 	assert changed_after_foo.len == 1, changed_after_foo.str()
 	assert changed_after_foo[0].starts_with('foo_'), changed_after_foo.str()
+
+	write_module_cache_file(root, 'foo/foo.v', 'module foo
+
+pub struct Item {
+pub:
+	value int
+	extra i64
+}
+
+pub const answer = 21
+
+pub fn value() int {
+	return 22
+}
+
+pub fn unused_but_cached() int {
+	return 900
+}
+')
+	layout_bin := os.join_path(root, 'layout')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, layout_bin)
+	assert run_module_cache_binary(layout_bin) == '44\n16\n17\n23\ntrue'
+	layout_hashes := module_cache_object_hashes(cache_dir)
+	changed_after_layout := changed_module_cache_objects(second_hashes, layout_hashes)
+	assert changed_after_layout.len == 1, changed_after_layout.str()
+	assert changed_after_layout[0].starts_with('bar_'), changed_after_layout.str()
+
+	bar_stamp_path := module_cache_artifact(cache_dir, 'bar_', '.o.stamp')
+	assert bar_stamp_path.len > 0
+	bar_stamp_before := module_cache_object_hash(bar_stamp_path)
+	current_foo_header := os.read_file(foo_header_path) or { panic(err) }
+	os.write_file(foo_header_path, current_foo_header + '\n// dependency signature probe\n') or {
+		panic(err)
+	}
+	signature_bin := os.join_path(root, 'signature')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, signature_bin)
+	assert run_module_cache_binary(signature_bin) == '44\n16\n17\n23\ntrue'
+	assert module_cache_object_hash(bar_stamp_path) != bar_stamp_before
+	signature_hashes := module_cache_object_hashes(cache_dir)
+	assert changed_module_cache_objects(layout_hashes, signature_hashes).len == 0
 
 	alternate_main_file := os.join_path(root, 'alternate_main.v')
 	write_module_cache_file(root, 'alternate_main.v', 'module main
@@ -230,7 +275,7 @@ fn main() {
 	compile_module_cache_project(v3_bin, cache_dir, alternate_main_file, alternate_bin)
 	assert run_module_cache_binary(alternate_bin) == '900\n6\na-b'
 	alternate_hashes := module_cache_object_hashes(cache_dir)
-	assert changed_module_cache_objects(second_hashes, alternate_hashes).len == 0
+	assert changed_module_cache_objects(signature_hashes, alternate_hashes).len == 0
 
 	write_module_cache_file(root, 'main.v', "module main
 
@@ -247,4 +292,76 @@ fn main() {
 	assert run_module_cache_binary(third_bin) == '900\nnew'
 	third_hashes := module_cache_object_hashes(cache_dir)
 	assert changed_module_cache_objects(alternate_hashes, third_hashes).len == 0
+}
+
+fn test_cached_bundle_imports_do_not_leak_into_user_scope() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_import_scope_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn main() {
+	_ := strings.new_builder(16)
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'out')
+	result :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(output)} ${os.quoted_path(main_file)}')
+	assert result.exit_code != 0, result.output
+	assert result.output.contains('strings'), result.output
+}
+
+fn test_interface_type_id_hash_collision_is_resolved() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_interface_type_id_collision_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+interface CollisionValue {
+	value() int
+}
+
+struct TZjXQlDs6 {}
+struct T2nAMbYQH {}
+
+fn (v TZjXQlDs6) value() int {
+	_ = v
+	return 1
+}
+
+fn (v T2nAMbYQH) value() int {
+	_ = v
+	return 2
+}
+
+fn interface_value(value CollisionValue) int {
+	return value.value()
+}
+
+fn main() {
+	println(interface_value(TZjXQlDs6{}))
+	println(interface_value(T2nAMbYQH{}))
+	first := CollisionValue(TZjXQlDs6{})
+	second := CollisionValue(T2nAMbYQH{})
+	println(first is TZjXQlDs6)
+	println(first is T2nAMbYQH)
+	println(second is TZjXQlDs6)
+	println(second is T2nAMbYQH)
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'out')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == '1\n2\ntrue\nfalse\nfalse\ntrue'
 }

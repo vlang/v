@@ -8,7 +8,7 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-22'
+const cache_format = 'v3-module-cache-23'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -110,7 +110,7 @@ pub fn (m &Manager) valid_entry(module_name string, source_files []string) ?Entr
 		return none
 	}
 	object_stamp := os.read_file(entry.object_stamp) or { return none }
-	if object_stamp != expected {
+	if !object_stamp_valid(object_stamp, expected) {
 		return none
 	}
 	return entry
@@ -149,7 +149,7 @@ pub fn (m &Manager) valid_object(cache_name string, source_files []string) ?Entr
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
-	if stamp != entry_stamp(m.salt, source_signature(source_files)) {
+	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_signature(source_files))) {
 		return none
 	}
 	return entry
@@ -178,9 +178,12 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 }
 
 // write_stamp refreshes a cache stamp after the object and header are durable.
-pub fn (m &Manager) write_stamp(module_name string, source_files []string) ! {
+// dependency_headers maps every transitive imported header path to the signature
+// that the object was compiled against.
+pub fn (m &Manager) write_stamp(module_name string, source_files []string, dependency_headers map[string]string) ! {
 	entry := m.entry(module_name, source_files)
-	write_atomic(entry.object_stamp, entry_stamp(m.salt, source_signature(source_files)))!
+	write_atomic(entry.object_stamp, object_entry_stamp(m.salt, source_signature(source_files),
+		dependency_headers))!
 }
 
 fn write_atomic(path string, content string) ! {
@@ -194,6 +197,49 @@ fn write_atomic(path string, content string) ! {
 
 fn entry_stamp(salt string, source_hash string) string {
 	return 'format=${cache_format}\nconfig=${hash_text(salt)}\nsource=${source_hash}\n'
+}
+
+fn object_entry_stamp(salt string, source_hash string, dependency_headers map[string]string) string {
+	mut out := strings.new_builder(256 + dependency_headers.len * 96)
+	out.write_string(entry_stamp(salt, source_hash))
+	mut paths := dependency_headers.keys()
+	paths.sort()
+	for path in paths {
+		out.writeln('dependency=${path}\t${dependency_headers[path]}')
+	}
+	return out.str()
+}
+
+fn object_stamp_valid(stamp string, expected_entry string) bool {
+	if !stamp.starts_with(expected_entry) {
+		return false
+	}
+	for line in stamp[expected_entry.len..].split_into_lines() {
+		if line.len == 0 {
+			continue
+		}
+		if !line.starts_with('dependency=') {
+			return false
+		}
+		value := line['dependency='.len..]
+		tab := value.last_index_u8(`\t`)
+		if tab <= 0 || tab + 1 >= value.len {
+			return false
+		}
+		path := value[..tab]
+		expected_signature := value[tab + 1..]
+		content := os.read_file(path) or { return false }
+		if header_signature(content) != expected_signature {
+			return false
+		}
+	}
+	return true
+}
+
+// header_signature returns the stable content signature stored in dependent
+// object stamps for a declaration-only module header.
+pub fn header_signature(header string) string {
+	return hash_text(header)
 }
 
 fn sanitize_name(name string) string {

@@ -197,7 +197,7 @@ fn (mut g FlatGen) register_interface_strings() {
 }
 
 // collect_interface_impls discovers, for every interface, the concrete struct
-// types that implement it (structural typing), and assigns each a stable 1-based
+// types that implement it (structural typing), and assigns each a stable nonzero
 // type id. The id is stored in the boxed interface value's `_typ` field and is
 // what the generated method-dispatch switch matches on.
 fn (mut g FlatGen) collect_interface_impls() {
@@ -218,25 +218,14 @@ fn (mut g FlatGen) collect_interface_impls() {
 			impls = g.tc.interface_impl_names(iface)
 		}
 		g.iface_impls[iface] = impls
+		type_ids := types.stable_interface_type_ids(impls)
 		for concrete in impls {
-			g.iface_type_ids['${iface}::${concrete}'] = stable_interface_type_id(concrete)
+			g.iface_type_ids['${iface}::${concrete}'] = type_ids[concrete]
 		}
 		if g.is_ierror_type_name(iface) {
 			g.collect_ierror_method_emit_names(impls)
 		}
 	}
-}
-
-fn stable_interface_type_id(name string) int {
-	if name.len == 0 {
-		return 0
-	}
-	mut hash := u32(2166136261)
-	for c in name.bytes() {
-		hash = (hash ^ u32(c)) * u32(16777619)
-	}
-	type_id := int(hash & u32(0x7fffffff))
-	return if type_id == 0 { 1 } else { type_id }
 }
 
 fn (mut g FlatGen) collect_ierror_method_emit_names(impls []string) {

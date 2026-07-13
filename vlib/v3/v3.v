@@ -31,6 +31,7 @@ mut:
 	bundle_valid        bool
 	module_sources      map[string][]string
 	module_import_paths map[string]string
+	module_dependencies map[string][]string
 	parsed_from_source  map[string]bool
 	source_body_modules map[string]bool
 	objects             map[string]string
@@ -855,6 +856,7 @@ fn main() {
 		bundle_sources:      bundle_sources
 		module_sources:      map[string][]string{}
 		module_import_paths: map[string]string{}
+		module_dependencies: map[string][]string{}
 		parsed_from_source:  map[string]bool{}
 		source_body_modules: map[string]bool{}
 		objects:             map[string]string{}
@@ -924,7 +926,7 @@ fn main() {
 	parse_was_parallel = parse_was_parallel || user_parse_parallel
 	test_files := test_input_files(user_files, backend, prefs.target_os)
 
-	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled)
+	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 	seed_implicit_sync_import(mut a)
 	seed_implicit_embed_file_import(mut a)
 
@@ -971,6 +973,9 @@ fn main() {
 			if header.len > 0 {
 				cache_state.headers[module_name] = header
 			}
+		}
+		if invalidate_changed_cache_dependents(mut cache_state) {
+			restart_v3_after_cache_invalidation()
 		}
 	}
 	b.step_parallel('check', check_was_parallel)
@@ -1357,7 +1362,9 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 		module_source := declarations + bundle_body.str()
 		compile_v3_cached_object(entry, module_source, c_standard, opt_flag, pic_flag,
 			generated_c_flags, objective_c)!
-		state.manager.write_stamp('builtin', state.bundle_sources)!
+		bundle_dependencies := cache_dependency_header_signatures(state,
+			cache_builtin_bundle_roots(state))
+		state.manager.write_stamp('builtin', state.bundle_sources, bundle_dependencies)!
 		object_paths['builtin'] = entry.object
 		state.bundle_valid = true
 		for module_name, header in state.headers {
@@ -1387,7 +1394,8 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 		if header := state.headers[module_name] {
 			state.manager.write_header(module_name, source_files, header)!
 		}
-		state.manager.write_stamp(module_name, source_files)!
+		dependency_headers := cache_dependency_header_signatures(state, [module_name])
+		state.manager.write_stamp(module_name, source_files, dependency_headers)!
 		object_paths[module_name] = entry.object
 	}
 
@@ -1409,6 +1417,141 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 fn module_is_builtin_bundle(module_name string) bool {
 	return module_name in modulecache.builtin_bundle_modules
 		|| module_name.all_after_last('.') in modulecache.builtin_bundle_modules
+}
+
+fn cache_builtin_bundle_roots(state &V3ModuleCacheState) []string {
+	mut roots := []string{}
+	for module_name in state.module_sources.keys() {
+		if module_is_builtin_bundle(module_name) {
+			roots << module_name
+		}
+	}
+	roots.sort()
+	return roots
+}
+
+fn cache_state_module_name(state &V3ModuleCacheState, name string) ?string {
+	if name in state.module_sources {
+		return name
+	}
+	short_name := name.all_after_last('.')
+	mut found := ''
+	for candidate in state.module_sources.keys() {
+		if candidate.all_after_last('.') != short_name {
+			continue
+		}
+		if found.len > 0 && found != candidate {
+			return none
+		}
+		found = candidate
+	}
+	if found.len == 0 {
+		return none
+	}
+	return found
+}
+
+fn cache_dependency_modules(state &V3ModuleCacheState, roots []string) []string {
+	mut root_set := map[string]bool{}
+	mut seen := map[string]bool{}
+	mut pending := []string{}
+	for root in roots {
+		canonical := cache_state_module_name(state, root) or { continue }
+		if seen[canonical] {
+			continue
+		}
+		root_set[canonical] = true
+		seen[canonical] = true
+		pending << canonical
+	}
+	mut dependencies := []string{}
+	mut index := 0
+	for index < pending.len {
+		owner := pending[index]
+		index++
+		mut imported := state.module_dependencies[owner]
+		if imported.len == 0 {
+			imported = state.module_dependencies[owner.all_after_last('.')]
+		}
+		for dependency in imported {
+			canonical := cache_state_module_name(state, dependency) or { continue }
+			if seen[canonical] {
+				continue
+			}
+			seen[canonical] = true
+			pending << canonical
+			if !root_set[canonical] {
+				dependencies << canonical
+			}
+		}
+	}
+	dependencies.sort()
+	return dependencies
+}
+
+fn cache_dependency_header_signatures(state &V3ModuleCacheState, roots []string) map[string]string {
+	mut signatures := map[string]string{}
+	for module_name in cache_dependency_modules(state, roots) {
+		source_files := state.module_sources[module_name] or { continue }
+		entry := state.manager.entry(module_name, source_files)
+		if header := state.headers[module_name] {
+			signatures[entry.header] = modulecache.header_signature(header)
+			continue
+		}
+		header := os.read_file(entry.header) or { continue }
+		signatures[entry.header] = modulecache.header_signature(header)
+	}
+	return signatures
+}
+
+fn invalidate_changed_cache_dependents(mut state V3ModuleCacheState) bool {
+	mut changed_headers := map[string]bool{}
+	for module_name, header in state.headers {
+		source_files := state.module_sources[module_name] or { continue }
+		entry := state.manager.entry(module_name, source_files)
+		old_header := os.read_file(entry.header) or { continue }
+		if modulecache.header_signature(old_header) != modulecache.header_signature(header) {
+			changed_headers[module_name] = true
+		}
+	}
+	if changed_headers.len == 0 {
+		return false
+	}
+	mut invalidated := false
+	for object_name in state.objects.keys() {
+		roots := if object_name == 'builtin' {
+			cache_builtin_bundle_roots(state)
+		} else {
+			[object_name]
+		}
+		dependencies := cache_dependency_modules(state, roots)
+		if !dependencies.any(it in changed_headers) {
+			continue
+		}
+		source_files := if object_name == 'builtin' {
+			state.bundle_sources
+		} else {
+			state.module_sources[object_name] or { continue }
+		}
+		stamp := state.manager.entry(object_name, source_files).object_stamp
+		if os.is_file(stamp) {
+			os.rm(stamp) or { continue }
+			invalidated = true
+		}
+	}
+	return invalidated
+}
+
+fn restart_v3_after_cache_invalidation() {
+	mut command := [os.quoted_path(os.executable())]
+	for arg in os.args[1..] {
+		command << os.quoted_path(arg)
+	}
+	result := os.execute(command.join(' '))
+	if result.output.len > 0 {
+		print(result.output)
+	}
+	exit(result.exit_code)
 }
 
 fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, generated_c_flags []string, objective_c bool) ! {
@@ -1915,9 +2058,19 @@ fn embed_file_import_node() flat.Node {
 	}
 }
 
-fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool) {
+fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool, builtin_dir string) {
 	if !enabled {
 		return
+	}
+	// Put cache warm-up imports in a private synthetic file/module scope. Without
+	// these boundaries the checker assigns them to the last parsed user file.
+	a.nodes << flat.Node{
+		kind:  .file
+		value: os.join_path(builtin_dir, '.v3_cache_bundle_imports.vh')
+	}
+	a.nodes << flat.Node{
+		kind:  .module_decl
+		value: 'builtin'
 	}
 	for import_path in modulecache.builtin_bundle_imports {
 		if ast_has_import_upto(a, import_path, a.nodes.len) {
@@ -2090,6 +2243,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 
 	mut was_parallel := false
 	mut cur_file := first_file
+	mut cur_module := 'main'
 	mut node_idx := 0
 	// The implicit sync/embed_file seeds are global-once: the serial loop added
 	// each at the first module that needed it and never again. These flags carry
@@ -2113,6 +2267,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			node := a.nodes[node_idx]
 			if node.kind == .file && node.value.len > 0 {
 				cur_file = node.value
+				cur_module = ''
+				node_idx++
+				continue
+			}
+			if node.kind == .module_decl {
+				cur_module = node.value
 				node_idx++
 				continue
 			}
@@ -2125,10 +2285,12 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				if module_identity.len > 0 {
 					a.nodes[node_idx].value = module_identity
 				}
+				record_cache_module_dependency(mut cache_state, cur_module, module_identity)
 				node_idx++
 				continue
 			}
 			if mod_name in parsed_modules {
+				record_cache_module_dependency(mut cache_state, cur_module, mod_name)
 				node_idx++
 				continue
 			}
@@ -2141,6 +2303,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			if module_identity.len > 0 {
 				a.nodes[node_idx].value = module_identity
 			}
+			cache_module := if module_identity.len > 0 { module_identity } else { mod_name }
+			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
 			mod_dir_exists := mod_dir.len > 0 && os.is_dir(mod_dir)
 			if mod_name in parsed_modules || (mod_dir_exists && module_identity in parsed_modules) {
 				node_idx++
@@ -2158,7 +2322,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 
 			if mod_dir_exists {
 				mod_files := pref.get_v_files_from_dir(mod_dir, prefs.user_defines, prefs.target_os)
-				cache_module := if module_identity.len > 0 { module_identity } else { mod_name }
 				if cache_module !in cache_state.module_import_paths {
 					cache_state.module_import_paths[cache_module] = mod_name
 				}
@@ -2258,6 +2421,17 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		insert_synthetic_imports(mut a, insertions)
 	}
 	return was_parallel
+}
+
+fn record_cache_module_dependency(mut state V3ModuleCacheState, owner string, dependency string) {
+	if owner.len == 0 || dependency.len == 0 || owner == dependency {
+		return
+	}
+	mut dependencies := state.module_dependencies[owner]
+	if dependency !in dependencies {
+		dependencies << dependency
+		state.module_dependencies[owner] = dependencies
+	}
 }
 
 fn seed_initial_modules(a &flat.FlatAst, initial_files []string, mut parsed_modules map[string]bool) {

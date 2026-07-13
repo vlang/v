@@ -16173,10 +16173,7 @@ fn (tc &TypeChecker) type_has_compiler_default_clone(t Type) bool {
 }
 
 // interface_impl_names returns the concrete type names (structs and type
-// aliases) that implement `iface_name`, sorted by name. The 1-based position
-// in this list is the interface's `_typ` dispatch id; cgen (boxing, method
-// dispatch) and the transform (`iface is Concrete` checks) must both derive
-// ids from this single list so they stay in sync.
+// aliases) that implement `iface_name`, sorted by name.
 pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 	mut candidate_set := map[string]bool{}
 	if tc.interface_has_no_requirements(iface_name) {
@@ -16200,6 +16197,41 @@ pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 		}
 	}
 	return impls
+}
+
+// stable_interface_type_ids assigns deterministic nonzero `_typ` dispatch IDs
+// to interface implementers. Hash collisions are resolved in sorted name order
+// with linear probing, so cgen and transformed `is` checks share one mapping.
+pub fn stable_interface_type_ids(impl_names []string) map[string]int {
+	mut names := impl_names.clone()
+	names.sort()
+	mut ids := map[string]int{}
+	mut used := map[int]bool{}
+	for name in names {
+		if name in ids {
+			continue
+		}
+		mut id := stable_interface_type_id_hash(name)
+		for used[id] {
+			if id == 0x7fffffff {
+				id = 1
+			} else {
+				id++
+			}
+		}
+		used[id] = true
+		ids[name] = id
+	}
+	return ids
+}
+
+fn stable_interface_type_id_hash(name string) int {
+	mut hash := u32(2166136261)
+	for c in name.bytes() {
+		hash = (hash ^ u32(c)) * u32(16777619)
+	}
+	id := int(hash & u32(0x7fffffff))
+	return if id == 0 { 1 } else { id }
 }
 
 fn interface_impl_candidate_name(name string) string {

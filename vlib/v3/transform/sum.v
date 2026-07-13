@@ -687,24 +687,14 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	} else {
 		t.tc.interface_impl_names(iface)
 	}
+	type_ids := types.stable_interface_type_ids(impl_names)
 	for impl_name in impl_names {
 		if impl_name == concrete || (!requested_qualified
 			&& impl_name.all_after_last('.') == concrete.all_after_last('.')) {
-			return stable_interface_impl_type_id(impl_name)
+			return type_ids[impl_name]
 		}
 	}
 	return none
-}
-
-// stable_interface_impl_type_id returns the program-independent `_typ` id used
-// by interface boxes, dispatch, and lowered `is` expressions.
-fn stable_interface_impl_type_id(name string) int {
-	mut hash := u32(2166136261)
-	for c in name.bytes() {
-		hash = (hash ^ u32(c)) * u32(16777619)
-	}
-	type_id := int(hash & u32(0x7fffffff))
-	return if type_id == 0 { 1 } else { type_id }
 }
 
 fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
