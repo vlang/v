@@ -301,6 +301,31 @@ fn main() {
 	assert same_body.contains('ResultValue*'), same_body
 }
 
+fn test_interface_equality_includes_receiver_method_call_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_receiver_method_call_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Comparator {}
+
+fn (c Comparator) same(value IValue) bool {
+	_ = c
+	return value == value
+}
+
+fn main() {
+	comparator := Comparator{}
+	println(comparator.same(Value{
+		n: 3
+	}).str())
+}
+')
+	assert out == 'true'
+}
+
 fn test_select_receive_assignment_checks_lhs_type() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'select_receive_assign_bool_mismatch', 'fn main() {
@@ -374,6 +399,38 @@ fn test_comptime_if_threads_mixed_conditions_keep_normal_flag_evaluation() {
 }
 ')
 	assert out == 'statement or\n41\nstatement and\n7'
+}
+
+fn test_top_level_comptime_if_threads_prunes_inactive_declarations_before_collect() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'top_level_threads_prunes_inactive_decl', '$if threads {
+	fn selected_value() int {
+		return 41
+	}
+} $else {
+	fn selected_value() string {
+		return "wrong"
+	}
+}
+
+fn work() {}
+
+fn main() {
+	spawn work()
+	println(int_str(selected_value()))
+}
+')
+	assert out == '41'
+}
+
+fn test_comptime_if_threads_counts_spawns_in_imported_modules() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'threads_spawn_in_imported_module', {
+		'v.mod':           "Module { name: 'threads_spawn_in_imported_module' }\n"
+		'worker/worker.v': 'module worker\n\nfn work() {}\n\npub fn start() {\n\tspawn work()\n}\n'
+		'main.v':          'module main\n\nimport worker\n\nfn main() {\n\tworker.start()\n\tmode := $if threads { "threads" } $else { "single" }\n\tprintln(mode)\n}\n'
+	}, 'main.v')
+	assert out == 'threads'
 }
 
 fn test_select_receive_assignment_invalidates_smartcast_before_branch_body() {

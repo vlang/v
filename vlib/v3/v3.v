@@ -853,9 +853,9 @@ fn main() {
 	// per-expression types for type-dependent lowering.
 	mut pre_tc := types.TypeChecker.new(a)
 	pre_tc.reject_unsupported_generics = is_selfhost
+	set_diagnostic_files(mut pre_tc, user_files)
 	pre_tc.collect(a)
 	pre_tc.diagnose_unknown_calls = true
-	set_diagnostic_files(mut pre_tc, user_files)
 	pre_tc.prepare_threads_condition()
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 	check_was_parallel := pre_tc.check_semantics_opt(current_parallel_transform)

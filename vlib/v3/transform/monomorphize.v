@@ -618,12 +618,32 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 				}
 			}
 			params := t.tc.fn_param_types_for_name(call_name)
-			if params.len == int(node.children_count) - 1 {
-				for i, expected in params {
+			explicit_args := int(node.children_count) - 1
+			mut param_offset := 0
+			if params.len != explicit_args {
+				if params.len != explicit_args + 1 {
+					continue
+				}
+				mut receiver_call_has_interface_arg := false
+				for i in 1 .. params.len {
+					if interface_box_expected_type(params[i]) {
+						receiver_call_has_interface_arg = true
+						break
+					}
+				}
+				if !receiver_call_has_interface_arg {
+					continue
+				}
+				param_offset = t.call_param_offset(call_name, node, params)
+			}
+			if params.len - param_offset == explicit_args {
+				for i in param_offset .. params.len {
+					expected := params[i]
 					if !interface_box_expected_type(expected) {
 						continue
 					}
-					t.collect_interface_boxed_value(t.a.child(&node, i + 1), expected)
+					t.collect_interface_boxed_value(t.a.child(&node, i - param_offset + 1),
+						expected)
 				}
 			}
 		}

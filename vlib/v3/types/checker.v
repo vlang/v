@@ -809,6 +809,7 @@ fn split_sum_variant_texts(text string) []string {
 // collect supports collect handling for TypeChecker.
 pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.a = a
+	tc.has_spawn_expr = -1
 	tc.file_scope = new_scope(unsafe { nil })
 	tc.cur_scope = tc.file_scope
 	tc.scope_pool_index = 0
@@ -824,7 +825,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		ierror_compat_entries:      map[string]int{}
 		source_error_embed_entries: map[string]int{}
 	}
-	// Single full node scan: build the top-level declaration index that every
+	// One full declaration scan: build the top-level declaration index that every
 	// later pass of the check step iterates instead of re-streaming all nodes,
 	// detect builtins, and index every source-level type declaration by
 	// (file, module, name) so `source_declares_type_in_scope` is an O(1) map
@@ -834,9 +835,14 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	// whole compile.
 	tc.declared_type_scope_keys = map[string]bool{}
 	tc.top_level_idx = []int{cap: 65536}
+	tc.prepare_threads_condition()
+	inactive_comptime_nodes := tc.inactive_top_level_comptime_nodes()
 	mut idx_file := ''
 	mut idx_module := ''
 	for i, node in a.nodes {
+		if inactive_comptime_nodes.len > 0 && inactive_comptime_nodes[i] {
+			continue
+		}
 		match node.kind {
 			.file {
 				idx_file = node.value
@@ -6723,6 +6729,59 @@ fn (mut tc TypeChecker) check_comptime_if(_id flat.NodeId, node flat.Node) {
 	tc.check_node(tc.a.child(&node, branch_index))
 }
 
+fn (tc &TypeChecker) mark_inactive_comptime_subtree(id flat.NodeId, mut inactive []bool) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	if inactive.len == 0 {
+		inactive = []bool{len: tc.a.nodes.len}
+	}
+	inactive[int(id)] = true
+	node := tc.a.nodes[int(id)]
+	for i in 0 .. node.children_count {
+		tc.mark_inactive_comptime_subtree(tc.a.child(&node, i), mut inactive)
+	}
+}
+
+fn (tc &TypeChecker) mark_inactive_top_level_comptime(id flat.NodeId, mut inactive []bool) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .comptime_if {
+		take_then := tc.comptime_threads_condition_value(node.value) or { return }
+		active_branch := if take_then { 0 } else { 1 }
+		for i in 0 .. node.children_count {
+			child_id := tc.a.child(&node, i)
+			if i == active_branch {
+				tc.mark_inactive_top_level_comptime(child_id, mut inactive)
+			} else {
+				tc.mark_inactive_comptime_subtree(child_id, mut inactive)
+			}
+		}
+		return
+	}
+	if node.kind != .block {
+		return
+	}
+	for i in 0 .. node.children_count {
+		tc.mark_inactive_top_level_comptime(tc.a.child(&node, i), mut inactive)
+	}
+}
+
+fn (tc &TypeChecker) inactive_top_level_comptime_nodes() []bool {
+	mut inactive := []bool{}
+	for node in tc.a.nodes {
+		if node.kind != .file || node.children_count == 0 {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			tc.mark_inactive_top_level_comptime(tc.a.child(&node, i), mut inactive)
+		}
+	}
+	return inactive
+}
+
 fn (tc &TypeChecker) subtree_has_spawn_expr(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
@@ -6741,27 +6800,69 @@ fn (tc &TypeChecker) subtree_has_spawn_expr(id flat.NodeId) bool {
 
 fn (tc &TypeChecker) scan_has_spawn_expr() bool {
 	if tc.diagnostic_files.len == 0 {
-		for node in tc.a.nodes {
+		start := if tc.a.user_code_start > 0 { tc.a.user_code_start } else { 0 }
+		for node in tc.a.nodes[start..] {
 			if node_kind_id(node) == int(flat.NodeKind.spawn_expr) {
 				return true
 			}
 		}
 		return false
 	}
-	for node in tc.a.nodes {
-		if node.kind != .file || !tc.diagnostic_files[node.value] {
+	mut file_nodes := map[string]flat.NodeId{}
+	mut file_imports := map[string][]string{}
+	mut module_files := map[string][]string{}
+	for idx, node in tc.a.nodes {
+		if node.kind != .file || node.children_count == 0 || node.value.len == 0 {
 			continue
 		}
+		file_nodes[node.value] = flat.NodeId(idx)
+		mut imports := []string{}
+		mut module_name := ''
 		for i in 0 .. node.children_count {
-			if tc.subtree_has_spawn_expr(tc.a.child(&node, i)) {
+			child := tc.a.child_node(&node, i)
+			if child.kind == .module_decl {
+				module_name = child.value
+			} else if child.kind == .import_decl && child.value.len > 0 {
+				imports << child.value
+			}
+		}
+		file_imports[node.value] = imports
+		if module_name.len > 0 {
+			mut files := module_files[module_name] or { []string{} }
+			files << node.value
+			module_files[module_name] = files
+		}
+	}
+	mut reachable_files := []string{}
+	mut seen_files := map[string]bool{}
+	for file, selected in tc.diagnostic_files {
+		if selected && !file.starts_with('generic:') {
+			reachable_files << file
+			seen_files[file] = true
+		}
+	}
+	mut pos := 0
+	for pos < reachable_files.len {
+		file := reachable_files[pos]
+		pos++
+		if file_id := file_nodes[file] {
+			if tc.subtree_has_spawn_expr(file_id) {
 				return true
+			}
+		}
+		for imported_module in file_imports[file] or { []string{} } {
+			for imported_file in module_files[imported_module] or { []string{} } {
+				if !seen_files[imported_file] {
+					seen_files[imported_file] = true
+					reachable_files << imported_file
+				}
 			}
 		}
 	}
 	return false
 }
 
-// prepare_threads_condition caches whether selected input files use spawn expressions.
+// prepare_threads_condition caches whether selected inputs or their reachable imports use spawn.
 pub fn (mut tc TypeChecker) prepare_threads_condition() {
 	if tc.has_spawn_expr < 0 {
 		tc.has_spawn_expr = if tc.scan_has_spawn_expr() { 1 } else { 0 }
