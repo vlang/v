@@ -4103,9 +4103,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			}
 			num_call_args := node.children_count - arg_start
 			is_c_variadic_fn := is_c_call && (g.tc.c_variadic_fns[actual_fn] or { false })
-			is_variadic_fn := !is_method && !is_c_variadic_fn && (g.tc.fn_variadic[actual_fn] or {
+			is_variadic_fn := !is_method && !is_c_variadic_fn && ((g.tc.fn_variadic[actual_fn] or {
 				false
-			})
+			}) || g.fn_decl_is_variadic(actual_fn, fn_name))
 			variadic_idx := if is_variadic_fn && param_types.len > 0
 				&& param_types[param_types.len - 1] is types.Array {
 				param_types.len - 1
@@ -4239,7 +4239,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							break
 						}
 						arg_type := g.tc.resolve_type(arg_id)
-						if arg_type !is types.Array {
+						if arg_type !is types.Array || arg_node.kind == .struct_init {
 							c_elem := g.tc.c_type(variadic_type.elem_type)
 							g.write('new_array_from_c_array(1, 1, sizeof(${c_elem}), (${c_elem}[]){')
 							if variadic_elem_is_voidptr(variadic_type.elem_type) {
@@ -6200,6 +6200,90 @@ fn (g &FlatGen) selective_import_call_key(name string) ?string {
 // per call site during codegen, and the slow path below scans every known function, so
 // results are memoized: without this, generic/monomorphized call names that miss the
 // direct lookups re-scan (and copy) the whole function table on every call (O(n^2)).
+// fn_decl_is_variadic resolves the variadic flag for a call target using the
+// same key candidates as param_types_for, so import-alias and C-name call
+// sites (e.g. `http.new_header` for module `net.http`) resolve consistently.
+fn (g &FlatGen) fn_decl_is_variadic(name string, fallback string) bool {
+	if name.contains('__') {
+		dotted_name := name.replace('__', '.')
+		if v := g.fn_decl_variadic[dotted_name] {
+			return v
+		}
+		if v := g.import_resolved_fn_decl_variadic(dotted_name) {
+			return v
+		}
+		if v := g.unique_short_fn_decl_variadic(dotted_name) {
+			return v
+		}
+	}
+	for candidate in [name, fallback] {
+		if !candidate.contains('.') && !candidate.contains('__') {
+			if v := g.local_or_unique_short_fn_decl_variadic(candidate) {
+				return v
+			}
+			continue
+		}
+		if v := g.import_resolved_fn_decl_variadic(candidate) {
+			return v
+		}
+		if v := g.fn_decl_variadic[candidate] {
+			return v
+		}
+		if candidate.starts_with('main.') {
+			if v := g.unique_short_fn_decl_variadic(candidate) {
+				return v
+			}
+		}
+	}
+	if name.contains('.') {
+		if v := g.unique_short_fn_decl_variadic(name) {
+			return v
+		}
+	}
+	return false
+}
+
+fn (g &FlatGen) import_resolved_fn_decl_variadic(name string) ?bool {
+	if !name.contains('.') {
+		return none
+	}
+	alias := name.all_before('.')
+	module_name := if g.tc != unsafe { nil } {
+		if g.tc.cur_file.len == 0 {
+			return none
+		}
+		g.tc.file_imports['${g.tc.cur_file}\n${alias}'] or { return none }
+	} else {
+		g.import_alias_module(alias) or { return none }
+	}
+	resolved_name := '${module_name}.${name.all_after('.')}'
+	if v := g.fn_decl_variadic[resolved_name] {
+		return v
+	}
+	return none
+}
+
+fn (g &FlatGen) local_or_unique_short_fn_decl_variadic(name string) ?bool {
+	if g.tc != unsafe { nil } {
+		module_key := fn_decl_module_key(g.tc.cur_module, name)
+		if v := g.fn_decl_variadic[module_key] {
+			return v
+		}
+	}
+	return g.unique_short_fn_decl_variadic(name)
+}
+
+fn (g &FlatGen) unique_short_fn_decl_variadic(name string) ?bool {
+	short_name := name.all_after_last('.')
+	if g.fn_decl_variadic_short_counts[short_name] != 1 {
+		return none
+	}
+	if v := g.fn_decl_variadic[short_name] {
+		return v
+	}
+	return none
+}
+
 fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
 	cache_key := '${name}\x01${fallback}'
 	if cached := g.param_types_cache[cache_key] {
@@ -7740,7 +7824,8 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		|| g.call_uses_concrete_optional_params(g.direct_call_name(callee_name))
 		|| (callee_uses_specialized_generic_abi && params_have_optional_result(param_types))
 	is_c_variadic_fn := g.tc.c_variadic_fns[fn_name] or { false }
-	is_variadic_fn := !is_c_variadic_fn && (g.tc.fn_variadic[fn_name] or { false })
+	is_variadic_fn := !is_c_variadic_fn && ((g.tc.fn_variadic[fn_name] or { false })
+		|| g.fn_decl_is_variadic(fn_name, callee_name))
 	variadic_idx := if is_variadic_fn && param_types.len > 0
 		&& param_types[param_types.len - 1] is types.Array {
 		param_types.len - 1
@@ -7890,7 +7975,9 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		}
 		if variadic_idx >= 0 && arg_idx == variadic_idx && num_args == param_types.len {
 			arg_type := g.tc.resolve_type(arg_id)
-			if arg_type !is types.Array {
+			// A struct literal can never itself be the variadic array; the checker
+			// propagates the expected `[]T` onto the node, masking its own type.
+			if arg_type !is types.Array || arg_node.kind == .struct_init {
 				variadic_type := param_types[variadic_idx]
 				if variadic_type is types.Array {
 					c_elem := g.tc.c_type(variadic_type.elem_type)
@@ -8745,10 +8832,42 @@ const c_preamble_declared_extern_symbols = {
 	'pow':                           true
 	'pthread_attr_destroy':          true
 	'pthread_attr_init':             true
+	'pthread_cond_broadcast':        true
+	'pthread_cond_destroy':          true
+	'pthread_cond_init':             true
+	'pthread_cond_signal':           true
+	'pthread_cond_wait':             true
+	'pthread_create':                true
+	'pthread_detach':                true
+	'pthread_join':                  true
 	'pthread_mutex_destroy':         true
 	'pthread_mutex_init':            true
 	'pthread_mutex_lock':            true
 	'pthread_mutex_unlock':          true
+	'malloc':                        true
+	'calloc':                        true
+	'realloc':                       true
+	'free':                          true
+	'clock':                         true
+	'fprintf':                       true
+	'fflush':                        true
+	'qsort_r':                       true
+	'mktime':                        true
+	'localtime':                     true
+	'utime':                         true
+	'stat':                          true
+	'fopen':                         true
+	'freopen':                       true
+	'fclose':                        true
+	'fread':                         true
+	'fwrite':                        true
+	'fseek':                         true
+	'ftell':                         true
+	'remove':                        true
+	'rename':                        true
+	'time':                          true
+	'fileno':                        true
+	'ftruncate':                     true
 	'pthread_rwlock_destroy':        true
 	'pthread_rwlock_init':           true
 	'pthread_rwlock_rdlock':         true

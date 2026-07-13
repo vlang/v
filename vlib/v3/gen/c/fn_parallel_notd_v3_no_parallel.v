@@ -534,6 +534,8 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		fixed_array_ret_wrappers:       g.fixed_array_ret_wrappers
 		concrete_optional_abi_fns:      g.concrete_optional_abi_fns
 		fn_decl_param_types:            g.fn_decl_param_types
+		fn_decl_variadic:               g.fn_decl_variadic
+		fn_decl_variadic_short_counts:  g.fn_decl_variadic_short_counts
 		fn_decl_shared_params:          g.fn_decl_shared_params
 		fn_shared_params_resolved:      g.fn_shared_params_resolved
 		has_shared_params:              g.has_shared_params

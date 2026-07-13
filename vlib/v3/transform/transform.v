@@ -2247,10 +2247,26 @@ fn (mut t Transformer) transform_const_expr_no_pending(id flat.NodeId) flat.Node
 	old_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	transformed := t.transform_expr(id)
-	has_pending := t.pending_stmts.len > 0
+	pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	t.pending_stmts = old_pending
-	return if has_pending { id } else { transformed }
+	if pending.len == 0 {
+		return transformed
+	}
+	// A lowering left prerequisite statements (`.map()` chain temps); the
+	// expression is unusable without them, so pack them into a block value
+	// the const emitter renders as a braced runtime init.
+	start := t.a.children.len
+	for stmt in pending {
+		t.a.children << stmt
+	}
+	t.a.children << transformed
+	return t.a.add_node(flat.Node{
+		kind:           .block
+		children_start: start
+		children_count: flat.child_count(pending.len + 1)
+		typ:            t.node_type(transformed)
+	})
 }
 
 // transform_const_or_expr transforms transform const or expr data for transform.
@@ -3448,6 +3464,9 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 			if node.children_count == 0 {
 				return id
 			}
+			if lowered := t.lower_gated_scalar_index(node) {
+				return lowered
+			}
 			mut new_children := []flat.NodeId{cap: int(node.children_count)}
 			new_children << t.transform_expr(t.a.child(&node, 0))
 			for i in 1 .. node.children_count {
@@ -3859,6 +3878,12 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			// type `T`, not `&T`. Otherwise a heaped-local RHS (`v = w`, both `&T`) is copied as a
 			// pointer — aliasing `w`'s object — instead of dereferenced to its value.
 			if lhs.kind == .ident && lhs.value in t.heaped_amp_locals && lhs_type.starts_with('&') {
+				lhs_type = lhs_type[1..]
+			}
+			// A `mut val T` value param resolves to `&T`; cgen writes assignments
+			// through the pointer (`*val = ...`), so coerce the RHS to `T`, not `&T`.
+			if lhs.kind == .ident && lhs_type.starts_with('&') && t.mut_param_values[lhs.value]
+				&& !lhs_type.starts_with('&&') {
 				lhs_type = lhs_type[1..]
 			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
@@ -5022,6 +5047,11 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 					typ = '[]${fixed_array_elem_type(typ)}'
 					t.set_node_typ(int(rhs_id), typ)
 				}
+			}
+			if amp_vt := t.mut_param_amp_decl_type(rhs_id) {
+				// `mut t := &table` where table is a `mut` value param: the RHS
+				// IS the caller's pointer, so the local is single-`&`, not `&&`.
+				typ = amp_vt
 			}
 			if typ.len > 0 {
 				mut raw_typ := t.raw_decl_type_for_rhs(rhs, typ)
@@ -6509,6 +6539,24 @@ fn (mut t Transformer) transform_if_stmt(id flat.NodeId, node flat.Node) []flat.
 	if expanded := t.try_expand_if_guard(id, node) {
 		return expanded
 	}
+	// A condition made entirely of literal string comparisons is decided now
+	// (`if T.name in ['x.json2.Any', ...]` after `T.name` became a literal in
+	// a specialization); the dead branch may not even typecheck for this
+	// instantiation.
+	if node.children_count >= 2 {
+		if take_then := t.generic_const_string_cond(t.a.child(&node, 0), []) {
+			branch_index := if take_then { 1 } else { 2 }
+			if branch_index >= int(node.children_count) {
+				return []flat.NodeId{}
+			}
+			branch_id := t.a.child(&node, branch_index)
+			branch := t.a.nodes[int(branch_id)]
+			if branch.kind == .block {
+				return arr1(t.transform_block_expr(branch_id, branch))
+			}
+			return t.transform_stmt(branch_id)
+		}
+	}
 	new_id := t.transform_if_branches_with_smartcast(id, node)
 	return t.with_pending_before(new_id)
 }
@@ -6875,11 +6923,63 @@ fn (mut t Transformer) transform_struct_init(id flat.NodeId, node flat.Node) fla
 }
 
 // transform_index_expr transforms transform index expr data for transform.
+// lower_gated_scalar_index rewrites a scalar gated index `base#[i]` into a
+// plain index whose position wraps negative values from the end:
+// `base[if i < 0 { i + base.len } else { i }]`. Range forms lower in cgen
+// (slice_ni/substr_ni); the `or {}` form wraps in the index-or lowering.
+fn (mut t Transformer) lower_gated_scalar_index(node flat.Node) ?flat.NodeId {
+	if node.op != .gated_index || node.value == 'range' || node.children_count != 2 {
+		return none
+	}
+	base_child := t.a.child(&node, 0)
+	base := t.stable_expr_for_reuse(base_child)
+	idx := t.stable_expr_for_reuse(t.a.child(&node, 1))
+	mut base_type := t.node_type(base)
+	if base_type.len == 0 {
+		base_type = t.node_type(base_child)
+	}
+	if base_type.len == 0 {
+		base_type = t.resolve_expr_type(base_child)
+	}
+	base_type = t.normalize_type_alias(t.trim_pointer_type(base_type))
+	// A fixed-array base has no runtime `len` member; fold the length here
+	// (cgen only folds fixed `.len` for ident bases, not selectors).
+	len_sel := if t.is_fixed_array_type(base_type) {
+		t.make_fixed_array_len_expr(base_type)
+	} else {
+		t.make_selector(base, 'len', 'int')
+	}
+	cond := t.make_infix(.lt, idx, t.make_int_literal(0))
+	t.set_node_typ(int(cond), 'bool')
+	wrapped := t.make_infix(.plus, idx, len_sel)
+	t.set_node_typ(int(wrapped), 'int')
+	then_block := t.make_block(arr1(t.make_expr_stmt(wrapped)))
+	else_block := t.make_block(arr1(t.make_expr_stmt(idx)))
+	if_start := t.a.children.len
+	t.a.children << cond
+	t.a.children << then_block
+	t.a.children << else_block
+	pos_expr := t.a.add_node(flat.Node{
+		kind:           .if_expr
+		children_start: if_start
+		children_count: 3
+		typ:            'int'
+	})
+	mut index_typ := node.typ
+	if index_typ.len == 0 {
+		index_typ = node.value
+	}
+	return t.make_index(base, pos_expr, index_typ)
+}
+
 fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return id
 	}
 	if lowered := t.try_lower_map_index_expr(id, node) {
+		return lowered
+	}
+	if lowered := t.lower_gated_scalar_index(node) {
 		return lowered
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
@@ -7784,6 +7884,45 @@ fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node fl
 }
 
 // transform_prefix_expr transforms transform prefix expr data for transform.
+// mut_param_amp_decl_type detects `&param` (possibly as an unsafe-block tail)
+// over a `mut` value param and returns the param's pointer type for the decl.
+fn (t &Transformer) mut_param_amp_decl_type(rhs_id flat.NodeId) ?string {
+	if int(rhs_id) < 0 {
+		return none
+	}
+	mut node := t.a.nodes[int(rhs_id)]
+	if node.kind == .block && node.children_count > 0 {
+		tail_id := t.a.child(&node, int(node.children_count) - 1)
+		if int(tail_id) < 0 {
+			return none
+		}
+		mut tail := t.a.nodes[int(tail_id)]
+		if tail.kind == .expr_stmt && tail.children_count > 0 {
+			inner := t.a.child(&tail, 0)
+			if int(inner) < 0 {
+				return none
+			}
+			tail = t.a.nodes[int(inner)]
+		}
+		node = tail
+	}
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return none
+	}
+	child := t.a.child_node(&node, 0)
+	if child.kind != .ident || !t.mut_param_values[child.value] {
+		return none
+	}
+	mut vt := t.var_type(child.value)
+	if vt.starts_with('mut ') {
+		vt = '&' + vt[4..].trim_space()
+	}
+	if !vt.starts_with('&') {
+		return none
+	}
+	return vt
+}
+
 fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return id
@@ -7808,6 +7947,20 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	if node.op == .amp && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
+		// `&param` where `param` is a `mut` value param IS the pointer the
+		// caller passed; adding another `&` would take the address of the
+		// parameter slot (`map** t = table` + `*t = ...` clobbers the caller).
+		if child.kind == .ident && t.mut_param_values[child.value] {
+			mut vt := t.var_type(child.value)
+			if vt.starts_with('mut ') {
+				vt = '&' + vt[4..].trim_space()
+			}
+			if vt.starts_with('&') {
+				new_id := t.transform_expr(child_id)
+				t.set_node_typ(int(new_id), vt)
+				return new_id
+			}
+		}
 		if child.kind == .struct_init {
 			// `&T{...}` (address of a struct literal) is ALWAYS a heap allocation in V,
 			// in any context — not just in a return. Keeping it as a `.prefix .amp`

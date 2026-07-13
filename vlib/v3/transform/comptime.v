@@ -820,6 +820,15 @@ fn (mut t Transformer) clone_variant_subst(id flat.NodeId, var_name string, item
 	if node.kind == .ident && node.value == var_name {
 		return t.make_variant_data_literal(item)
 	}
+	if node.kind == .cast_expr && node.children_count > 0 {
+		operand := t.a.child_node(&node, 0)
+		if operand.kind == .ident && operand.value == var_name {
+			// `T(v)` wraps a zero value of the variant's type in the sum type
+			// (the VariantData literal is only the loop var's runtime carrier).
+			zero_id := t.zero_value_for_type(item.typ)
+			return t.make_cast(node.value, zero_id, node.value)
+		}
+	}
 	if node.kind == .selector && node.children_count > 0
 		&& t.typeof_arg_is_variant_typ(t.a.child(&node, 0), var_name) {
 		match node.value {

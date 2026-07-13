@@ -78,9 +78,11 @@ mut:
 	module_imports                 map[string][]string // module -> imported modules
 	c_directives                   []CDirective
 	inlined_c_structs              map[string]bool
+	inlined_c_typedef_names        map[string]bool
 	inlined_c_fns                  map[string]bool
 	inlined_c_declared_fns         map[string]bool
 	c_flags                        []string
+	use_system_stdint              bool
 	libc_compat_fns                map[string]bool
 	tc                             &types.TypeChecker = unsafe { nil }
 	has_builtins                   bool
@@ -98,6 +100,8 @@ mut:
 	fixed_array_typedefs_needed    map[string]FixedArrayTypedefInfo
 	fixed_array_typedefs_ready     bool
 	fn_decl_param_types            map[string][]types.Type
+	fn_decl_variadic               map[string]bool
+	fn_decl_variadic_short_counts  map[string]int
 	fn_decl_shared_params          map[string][]bool
 	fn_shared_params_resolved      map[string][]bool
 	has_shared_params              bool
@@ -411,6 +415,7 @@ pub fn FlatGen.new() FlatGen {
 		inlined_c_structs:              map[string]bool{}
 		inlined_c_fns:                  map[string]bool{}
 		inlined_c_declared_fns:         map[string]bool{}
+		inlined_c_typedef_names:        map[string]bool{}
 		c_flags:                        []string{}
 		libc_compat_fns:                map[string]bool{}
 		modules:                        map[string]string{}
@@ -422,6 +427,8 @@ pub fn FlatGen.new() FlatGen {
 		concrete_optional_abi_fns:      map[string]bool{}
 		fixed_array_typedefs_needed:    map[string]FixedArrayTypedefInfo{}
 		fn_decl_param_types:            map[string][]types.Type{}
+		fn_decl_variadic:               map[string]bool{}
+		fn_decl_variadic_short_counts:  map[string]int{}
 		fn_decl_shared_params:          map[string][]bool{}
 		fn_shared_params_resolved:      map[string][]bool{}
 		fn_decl_mut_receivers:          map[string]bool{}
@@ -565,7 +572,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.inlined_c_structs.clear()
 	g.inlined_c_fns.clear()
 	g.inlined_c_declared_fns.clear()
+	g.inlined_c_typedef_names.clear()
 	g.c_flags = []string{}
+	g.use_system_stdint = false
 	g.libc_compat_fns.clear()
 	g.modules.clear()
 	g.fn_ptr_types.clear()
@@ -578,6 +587,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fixed_array_typedefs_needed.clear()
 	g.fixed_array_typedefs_ready = false
 	g.fn_decl_param_types.clear()
+	g.fn_decl_variadic.clear()
+	g.fn_decl_variadic_short_counts.clear()
 	g.fn_decl_shared_params.clear()
 	g.fn_shared_params_resolved.clear()
 	g.has_shared_params = false
@@ -857,6 +868,7 @@ fn node_kind_id(node flat.Node) int {
 // collect_gen_info updates collect gen info state for c.
 fn (mut g FlatGen) collect_gen_info() {
 	g.collect_c_flags_from_directives()
+	g.use_system_stdint = g.translation_unit_uses_inttypes()
 	mut cur_module := 'main'
 	mut cur_file := ''
 	mut seen_import_in_file := false
@@ -897,6 +909,7 @@ fn (mut g FlatGen) collect_gen_info() {
 			typed_params := g.fn_node_param_types(node, cur_module)
 			mut ptypes := []types.Type{cap: int(node.children_count)}
 			mut shared_params := []bool{}
+			mut decl_is_variadic := false
 			mut first_param_is_mut := false
 			mut seen_param := false
 			mut param_idx := 0
@@ -905,6 +918,9 @@ fn (mut g FlatGen) collect_gen_info() {
 			for i in 0 .. node.children_count {
 				child := g.a.child_node(&node, i)
 				if node_kind_id(child) == 75 {
+					if child.typ.starts_with('...') {
+						decl_is_variadic = true
+					}
 					raw_pt := g.tc.parse_type(child.typ)
 					mut pt := raw_pt
 					if raw_pt !is types.Pointer && param_idx < typed_params.len {
@@ -942,7 +958,7 @@ fn (mut g FlatGen) collect_gen_info() {
 			if shared_params.len > 0 {
 				shared_params = g.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
 			}
-			g.register_fn_decl_param_types(node.value, full_name, ptypes)
+			g.register_fn_decl_param_types(node.value, full_name, ptypes, decl_is_variadic)
 			if shared_params.len > 0 {
 				g.register_fn_decl_shared_params(node.value, full_name, shared_params)
 				file_rank := c_backend_fn_file_rank(cur_file)
@@ -1170,6 +1186,31 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 	}
 }
 
+fn (g &FlatGen) translation_unit_uses_inttypes() bool {
+	mut cur_file := ''
+	include_dirs := c_flag_include_dirs(g.c_flags)
+	for node in g.a.nodes {
+		if node_kind_id(node) == 77 {
+			cur_file = node.value
+			continue
+		}
+		if node.kind != .directive || node.value !in ['include', 'insert'] || node.typ.len == 0 {
+			continue
+		}
+		include_arg := c_include_arg(node.typ, g.compiler_vroot, cur_file)
+		if trimmed_space(include_arg) == '<inttypes.h>' {
+			return true
+		}
+		mut seen := map[string]bool{}
+		for path in c_include_file_paths(include_arg, g.compiler_vroot, cur_file, include_dirs) {
+			if c_inline_header_tree_uses_inttypes(path, g.compiler_vroot, include_dirs, mut seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, source_file string, before_import bool) bool {
 	if node.kind != .directive {
 		return false
@@ -1189,7 +1230,9 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			return true
 		}
 		include_dirs := c_flag_include_dirs(g.c_flags)
-		if header := c_inline_header_text(include_arg, g.compiler_vroot, source_file, include_dirs) {
+		if header := c_inline_header_text(include_arg, g.compiler_vroot, source_file, include_dirs,
+			g.use_system_stdint)
+		{
 			header_text := header.text
 			g.collect_inlined_c_structs(header_text)
 			g.collect_inlined_c_fns(header_text)
@@ -1218,8 +1261,8 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	return false
 }
 
-fn c_inline_header_text(include_arg string, vroot string, source_file string, include_dirs []string) ?CInlineHeader {
-	if replacement := c_system_include_replacement(include_arg) {
+fn c_inline_header_text(include_arg string, vroot string, source_file string, include_dirs []string, translation_unit_uses_inttypes bool) ?CInlineHeader {
+	if replacement := c_system_include_replacement(include_arg, translation_unit_uses_inttypes) {
 		return CInlineHeader{
 			text: replacement
 		}
@@ -1227,14 +1270,19 @@ fn c_inline_header_text(include_arg string, vroot string, source_file string, in
 	mut seen := map[string]bool{}
 	mut inlining := map[string]bool{}
 	for path in c_include_file_paths(include_arg, vroot, source_file, include_dirs) {
-		if header := c_inline_header_file(path, vroot, include_dirs, false, mut seen, mut inlining) {
+		mut scan_seen := map[string]bool{}
+		use_system_stdint := translation_unit_uses_inttypes
+			|| c_inline_header_tree_uses_inttypes(path, vroot, include_dirs, mut scan_seen)
+		if header := c_inline_header_file(path, vroot, include_dirs, false, use_system_stdint, mut
+			seen, mut inlining)
+		{
 			return header
 		}
 	}
 	return none
 }
 
-fn c_inline_header_file(path string, vroot string, include_dirs []string, conditional bool, mut seen map[string]bool, mut inlining map[string]bool) ?CInlineHeader {
+fn c_inline_header_file(path string, vroot string, include_dirs []string, conditional bool, use_system_stdint bool, mut seen map[string]bool, mut inlining map[string]bool) ?CInlineHeader {
 	if path.len == 0 || !os.exists(path) {
 		return none
 	}
@@ -1250,13 +1298,13 @@ fn c_inline_header_file(path string, vroot string, include_dirs []string, condit
 	}
 	text := os.read_file(real_path) or { return none }
 	inlining[real_path] = true
-	header := c_inline_header_file_text(text, vroot, real_path, include_dirs, conditional, mut
-		seen, mut inlining)
+	header := c_inline_header_file_text(text, vroot, real_path, include_dirs, conditional,
+		use_system_stdint, mut seen, mut inlining)
 	inlining.delete(real_path)
 	return header
 }
 
-fn c_inline_header_file_text(text string, vroot string, source_file string, include_dirs []string, conditional bool, mut seen map[string]bool, mut inlining map[string]bool) CInlineHeader {
+fn c_inline_header_file_text(text string, vroot string, source_file string, include_dirs []string, conditional bool, use_system_stdint bool, mut seen map[string]bool, mut inlining map[string]bool) CInlineHeader {
 	guard_name := c_header_guard_name(text)
 	mut lines := []string{}
 	mut preserved_directives := []string{}
@@ -1270,7 +1318,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 		in_block_comment = next_in_block_comment
 		if c_directive_name(clean) == 'include' {
 			include_arg := c_include_arg(c_directive_arg(clean), vroot, source_file)
-			if replacement := c_system_include_replacement(include_arg) {
+			if replacement := c_system_include_replacement(include_arg, use_system_stdint) {
 				lines << replacement
 				continue
 			}
@@ -1278,8 +1326,8 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 				|| !c_include_context_is_guard_only(include_context, guard_name)
 			mut inlined := false
 			for path in c_include_file_paths(include_arg, vroot, source_file, include_dirs) {
-				if nested := c_inline_header_file(path, vroot, include_dirs, nested_conditional, mut
-					seen, mut inlining)
+				if nested := c_inline_header_file(path, vroot, include_dirs, nested_conditional,
+					use_system_stdint, mut seen, mut inlining)
 				{
 					if nested.text.len > 0 {
 						lines << nested.text
@@ -1316,6 +1364,39 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 		preserved_c_fns:      preserved_c_fns
 		preserved_c_structs:  preserved_c_structs
 	}
+}
+
+// c_inline_header_tree_uses_inttypes detects whether an inlined include tree needs the real
+// inttypes/stdint pair. Mixing the synthetic stdint typedefs with libc's inttypes header can
+// redefine exact-width types with a different underlying C type on LP64 targets.
+fn c_inline_header_tree_uses_inttypes(path string, vroot string, include_dirs []string, mut seen map[string]bool) bool {
+	if path.len == 0 || !os.exists(path) {
+		return false
+	}
+	real_path := os.real_path(path)
+	if seen[real_path] {
+		return false
+	}
+	seen[real_path] = true
+	text := os.read_file(real_path) or { return false }
+	mut in_block_comment := false
+	for line in text.split_into_lines() {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		if c_directive_name(clean) != 'include' {
+			continue
+		}
+		include_arg := c_include_arg(c_directive_arg(clean), vroot, real_path)
+		if trimmed_space(include_arg) == '<inttypes.h>' {
+			return true
+		}
+		for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
+			if c_inline_header_tree_uses_inttypes(nested_path, vroot, include_dirs, mut seen) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn c_preprocessor_directive_scan_line(line string, in_block_comment bool) (string, bool) {
@@ -1497,10 +1578,22 @@ fn c_flag_include_dirs(flags []string) []string {
 	return dirs
 }
 
-fn c_system_include_replacement(include_arg string) ?string {
+fn c_system_include_replacement(include_arg string, use_system_stdint bool) ?string {
 	match trimmed_space(include_arg) {
 		'<stdint.h>' {
+			if use_system_stdint {
+				return '#include <stdint.h>'
+			}
 			return c_stdint_header_text()
+		}
+		'<inttypes.h>' {
+			// PRI*/SCN* format macros are implementation-specific; keep the real
+			// standard header when it is referenced by an inlined C header.
+			return '#include <inttypes.h>'
+		}
+		'<assert.h>' {
+			// headerless build has no runtime assert support; NDEBUG semantics
+			return '#ifndef assert\n#define assert(e) ((void)0)\n#endif'
 		}
 		else {
 			return none
@@ -1530,7 +1623,7 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 	// System headers whose macros have per-OS values (RTLD_*, CHAR_BIT) cannot be
 	// replaced by inline declarations; keep the include in place inside its #if
 	// context.
-	return clean in ['<dlfcn.h>', '<limits.h>']
+	return clean in ['<dlfcn.h>', '<limits.h>', '<arm_neon.h>']
 }
 
 fn c_preserved_system_include_declared_fns(_include_arg string) []string {
@@ -1552,6 +1645,28 @@ typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
 typedef unsigned int uint32_t;
 typedef unsigned long long uint64_t;
+#ifndef _INTMAX_T
+#define _INTMAX_T
+#if defined(__APPLE__) && defined(__LP64__)
+typedef long intmax_t;
+#else
+typedef long long intmax_t;
+#endif
+#endif
+#ifndef _UINTMAX_T
+#define _UINTMAX_T
+#if defined(__APPLE__) && defined(__LP64__)
+typedef unsigned long uintmax_t;
+#else
+typedef unsigned long long uintmax_t;
+#endif
+#endif
+#ifndef INTMAX_MAX
+#define INTMAX_MAX 9223372036854775807LL
+#endif
+#ifndef UINTMAX_MAX
+#define UINTMAX_MAX 18446744073709551615ULL
+#endif
 #ifndef INT8_MIN
 #define INT8_MIN (-128)
 #endif
@@ -1639,12 +1754,15 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 	}
 	for alias in c_typedef_struct_aliases(text) {
 		g.inlined_c_structs[alias] = true
+		g.inlined_c_typedef_names[alias] = true
 	}
 	for alias in c_typedef_union_aliases(text) {
 		g.inlined_c_structs[alias] = true
+		g.inlined_c_typedef_names[alias] = true
 	}
 	for alias in c_typedef_fn_aliases(text) {
 		g.inlined_c_structs[alias] = true
+		g.inlined_c_typedef_names[alias] = true
 	}
 }
 
@@ -1793,6 +1911,19 @@ fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
 	mut pending := ''
 	for line in c_strip_comments(text).split_into_lines() {
 		clean := line.trim_space()
+		if clean.len > 0 && clean[0] == `#` && c_directive_name(clean) == 'define' {
+			// Any macro (object- or function-like) named like a `fn C.x` makes
+			// an emitted extern prototype wrong after preprocessing; the
+			// header's definition is authoritative.
+			arg := c_directive_arg(clean)
+			mut name_end := 0
+			for name_end < arg.len && c_ident_char(arg[name_end]) {
+				name_end++
+			}
+			if name_end > 0 {
+				g.inlined_c_declared_fns[arg[..name_end]] = true
+			}
+		}
 		if pending.len > 0 {
 			if clean.len == 0 || clean[0] == `#` || clean.contains('{') || clean.contains('}')
 				|| pending.len > 4096 {
@@ -1894,18 +2025,32 @@ fn c_typedef_aggregate_aliases(text string, kind string) []string {
 		for pos < text.len && text[pos].is_space() {
 			pos++
 		}
+		mut had_tag := false
 		if pos < text.len && text[pos] != `{` {
 			tag := c_header_struct_tag(text[pos..])
 			if tag.len == 0 {
 				start = pos + 1
 				continue
 			}
+			had_tag = true
 			pos += tag.len
 			for pos < text.len && text[pos].is_space() {
 				pos++
 			}
 		}
 		if pos >= text.len || text[pos] != `{` {
+			// Bodyless alias form: `typedef struct tag Alias;` also names the
+			// alias, so a `struct C.Alias {}` guess typedef must be suppressed.
+			if had_tag {
+				semi_rel := text[pos..].index_u8(`;`)
+				if semi_rel >= 0 {
+					for alias in c_typedef_declarator_aliases(text[pos..pos + semi_rel]) {
+						aliases << alias
+					}
+					start = pos + semi_rel + 1
+					continue
+				}
+			}
 			start = pos + 1
 			continue
 		}
@@ -2820,31 +2965,41 @@ fn fn_decl_module_key(module_name string, name string) string {
 }
 
 // register_fn_decl_param_types updates register fn decl param types state for c.
-fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, ptypes []types.Type) {
-	g.fn_decl_param_types[fn_decl_module_key(g.tc.cur_module, name)] = ptypes.clone()
+fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, ptypes []types.Type, is_variadic bool) {
+	module_key := fn_decl_module_key(g.tc.cur_module, name)
+	g.fn_decl_param_types[module_key] = ptypes.clone()
+	g.fn_decl_variadic[module_key] = is_variadic
+	short_name := name.all_after_last('.')
+	g.fn_decl_variadic_short_counts[short_name] = g.fn_decl_variadic_short_counts[short_name] + 1
 	if name !in g.fn_decl_param_types {
 		g.fn_decl_param_types[name] = ptypes.clone()
+		g.fn_decl_variadic[name] = is_variadic
 	}
 	cname := g.cname(name)
 	if cname !in g.fn_decl_param_types {
 		g.fn_decl_param_types[cname] = ptypes.clone()
+		g.fn_decl_variadic[cname] = is_variadic
 	}
 	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
 		dotted_name := '${g.tc.cur_module}.${name}'
 		if dotted_name !in g.fn_decl_param_types {
 			g.fn_decl_param_types[dotted_name] = ptypes.clone()
+			g.fn_decl_variadic[dotted_name] = is_variadic
 		}
 		cdotted_name := g.cname(dotted_name)
 		if cdotted_name !in g.fn_decl_param_types {
 			g.fn_decl_param_types[cdotted_name] = ptypes.clone()
+			g.fn_decl_variadic[cdotted_name] = is_variadic
 		}
 	}
 	if full_name !in g.fn_decl_param_types {
 		g.fn_decl_param_types[full_name] = ptypes.clone()
+		g.fn_decl_variadic[full_name] = is_variadic
 	}
 	cfull_name := g.cname(full_name)
 	if cfull_name !in g.fn_decl_param_types {
 		g.fn_decl_param_types[cfull_name] = ptypes.clone()
+		g.fn_decl_variadic[cfull_name] = is_variadic
 	}
 }
 
@@ -3092,6 +3247,40 @@ fn (mut g FlatGen) expr_to_string(id flat.NodeId) string {
 	result := g.sb.str()
 	g.sb = orig
 	g.line_start = orig_line_start
+	return result
+}
+
+// const_block_init_to_string renders a lowered const initializer block as a
+// braced statement sequence assigning the final expression to the const.
+fn (mut g FlatGen) const_block_init_to_string(qname string, val_node flat.Node) string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	orig_indent := g.indent
+	g.sb = strings.new_builder(256)
+	g.line_start = true
+	g.indent = 1
+	g.writeln('{')
+	g.push_scope()
+	g.indent++
+	for i in 0 .. int(val_node.children_count) - 1 {
+		g.gen_node(g.a.child(&val_node, i))
+	}
+	g.write('${qname} = ')
+	last_id := g.a.child(&val_node, int(val_node.children_count) - 1)
+	last := g.a.nodes[int(last_id)]
+	if last.kind == .expr_stmt && last.children_count > 0 {
+		g.gen_expr(g.a.child(&last, 0))
+	} else {
+		g.gen_expr(last_id)
+	}
+	g.writeln(';')
+	g.indent--
+	g.pop_scope()
+	g.writeln('}')
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	g.indent = orig_indent
 	return result
 }
 
@@ -3714,6 +3903,31 @@ fn (g &FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 		}
 		if param_type := g.current_param_map_type(node.value) {
 			return param_type
+		}
+		// The local's declared type wins over checker expected-type
+		// propagation (`return bare` in a `!Sum` fn annotates `bare` as the
+		// sum itself, hiding that it still needs wrapping). Only consulted
+		// when the propagated type is a sum - the case that miswraps.
+		clean_resolved := if actual_type is types.Alias {
+			actual_type.base_type
+		} else {
+			actual_type
+		}
+		if clean_resolved is types.SumType && g.tc != unsafe { nil }
+			&& g.tc.cur_scope != unsafe { nil } {
+			if scope_type := g.tc.cur_scope.lookup(node.value) {
+				if scope_type !is types.Void && scope_type !is types.Unknown {
+					return scope_type
+				}
+			}
+		}
+	}
+	if node.kind == .struct_init && node.value.len > 0 {
+		// A variant literal (`SNull{}`) may carry the checker's expected-type
+		// propagation (the sum type itself); the literal names its own type.
+		lit_type := g.tc.parse_type(node.value)
+		if lit_type !is types.Unknown {
+			return lit_type
 		}
 	}
 	return actual_type
@@ -6169,7 +6383,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				last := g.a.nodes[int(last_id)]
 				if last.kind == .expr_stmt {
 					g.gen_expr(g.a.child(&last, 0))
-				} else if last.kind == .if_expr {
+				} else if int(last.kind) >= int(flat.NodeKind.int_literal)
+					&& int(last.kind) <= int(flat.NodeKind.in_expr) {
+					// A bare expression value (lowered const initializers end the
+					// block with one); gen_node would emit nothing for it.
 					g.gen_expr(last_id)
 				} else {
 					g.gen_node(last_id)
@@ -7211,6 +7428,8 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef union { unsigned char _opaque[256]; long long _align; } pthread_rwlock_t;')
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_rwlockattr_t;')
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_condattr_t;')
+	g.writeln('typedef union { unsigned char _opaque[16]; long long _align; } pthread_once_t;')
+	g.writeln('typedef unsigned long pthread_key_t;')
 	g.writeln('#endif')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sem_t;')
 	g.writeln('#if !defined(__sigset_t_defined) && !defined(_SIGSET_T_DECLARED) && !defined(_SIGSET_T_DEFINED) && !defined(_SIGSET_T)')
@@ -7239,6 +7458,23 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int pthread_rwlock_trywrlock(void* rwlock);')
 	g.writeln('int pthread_rwlock_unlock(void* rwlock);')
 	g.writeln('int pthread_rwlock_destroy(void* rwlock);')
+	g.writeln('int pthread_create(void* thread, void* attr, void* start_routine, void* arg);')
+	g.writeln('int pthread_join(void* thread, void** retval);')
+	g.writeln('int pthread_detach(void* thread);')
+	g.writeln('int pthread_cond_init(void* cond, void* attr);')
+	g.writeln('int pthread_cond_destroy(void* cond);')
+	g.writeln('int pthread_cond_wait(void* cond, void* mutex);')
+	g.writeln('int pthread_cond_signal(void* cond);')
+	g.writeln('int pthread_cond_broadcast(void* cond);')
+	g.writeln('void* malloc(size_t size);')
+	g.writeln('void* calloc(size_t count, size_t size);')
+	g.writeln('void* realloc(void* ptr, size_t size);')
+	g.writeln('void free(void* ptr);')
+	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
+	g.writeln('int fflush(FILE* stream);')
+	// Signature shape covers both the BSD (thunk before compar) and GNU
+	// (compar before arg) qsort_r orders; callers pass fn pointers as void*.
+	g.writeln('void qsort_r(void* base, size_t nel, size_t width, void* a, void* b);')
 	g.writeln('#ifdef __linux__')
 	g.writeln('int pthread_rwlockattr_setkind_np(void* attr, int kind);')
 	g.writeln('#endif')
@@ -7274,6 +7510,35 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
 	g.headerless_tm_struct()
+	g.writeln('struct utimbuf { time_t actime; time_t modtime; };')
+	g.writeln('time_t mktime(struct tm* timeptr);')
+	g.writeln('struct tm* localtime(time_t* timer);')
+	g.writeln('int utime(char* filename, struct utimbuf* times);')
+	g.writeln('int stat(char* path, struct stat* buf);')
+	g.writeln('FILE* fopen(const char* path, const char* mode);')
+	g.writeln('FILE* freopen(const char* path, const char* mode, FILE* stream);')
+	g.writeln('int fclose(FILE* stream);')
+	g.writeln('size_t fread(void* ptr, size_t size, size_t nitems, FILE* stream);')
+	g.writeln('size_t fwrite(const void* ptr, size_t size, size_t nitems, FILE* stream);')
+	g.writeln('int fseek(FILE* stream, long offset, int whence);')
+	g.writeln('long ftell(FILE* stream);')
+	g.writeln('#if !defined(_WIN32)')
+	g.writeln('int fseeko(FILE* stream, long long offset, int whence);')
+	g.writeln('long long ftello(FILE* stream);')
+	g.writeln('#endif')
+	g.writeln('int remove(const char* path);')
+	g.writeln('int rename(const char* from, const char* to);')
+	g.writeln('#if !defined(_MODE_T) && !defined(__mode_t_defined) && !defined(_MODE_T_DECLARED)')
+	g.writeln('typedef u32 mode_t;')
+	g.writeln('#endif')
+	g.writeln('time_t time(time_t* tloc);')
+	g.writeln('i32 fileno(FILE* stream);')
+	g.writeln('i32 ftruncate(i32 fd, u64 length);')
+	g.writeln('#if !defined(_WIN32)')
+	g.writeln('i32 mkdir(char* path, u32 mode);')
+	g.writeln('i32 chmod(char* path, u32 mode);')
+	g.writeln('i32 symlink(char* target, char* linkpath);')
+	g.writeln('#endif')
 	g.headerless_termios_struct()
 	g.headerless_platform_constants()
 }
@@ -7340,6 +7605,22 @@ const c_headerless_libc_declared_fns = [
 	'pthread_mutex_lock',
 	'pthread_mutex_unlock',
 	'pthread_mutex_destroy',
+	'pthread_create',
+	'pthread_join',
+	'pthread_detach',
+	'pthread_cond_init',
+	'pthread_cond_destroy',
+	'pthread_cond_wait',
+	'pthread_cond_signal',
+	'pthread_cond_broadcast',
+	'malloc',
+	'calloc',
+	'realloc',
+	'free',
+	'clock',
+	'fprintf',
+	'fflush',
+	'qsort_r',
 ]
 
 fn (mut g FlatGen) headerless_windows_sdk_types() {
@@ -7531,6 +7812,13 @@ fn (mut g FlatGen) headerless_timespec_struct() {
 		g.writeln('#endif')
 	}
 	g.writeln('typedef struct timespec timespec;')
+	g.writeln('#if !defined(_CLOCK_T) && !defined(__clock_t_defined) && !defined(_CLOCK_T_DECLARED) && !defined(_CLOCK_T_DEFINED)')
+	g.writeln('typedef long clock_t;')
+	g.writeln('#endif')
+	g.writeln('#ifndef CLOCKS_PER_SEC')
+	g.writeln('#define CLOCKS_PER_SEC 1000000')
+	g.writeln('#endif')
+	g.writeln('clock_t clock(void);')
 }
 
 fn (mut g FlatGen) headerless_tm_struct() {
@@ -7899,6 +8187,24 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 	g.writeln('#define S_IROTH 0000004')
 	g.writeln('#define S_IWOTH 0000002')
 	g.writeln('#define S_IXOTH 0000001')
+	g.writeln('#define S_IRWXU 0000700')
+	g.writeln('#define S_IRWXG 0000070')
+	g.writeln('#define S_IRWXO 0000007')
+	g.writeln('#define S_ISUID 0004000')
+	g.writeln('#define S_ISGID 0002000')
+	g.writeln('#define S_ISVTX 0001000')
+	g.writeln('#ifndef EEXIST')
+	g.writeln('#define EEXIST 17')
+	g.writeln('#endif')
+	g.writeln('#ifndef S_ISDIR')
+	g.writeln('#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)')
+	g.writeln('#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)')
+	g.writeln('#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)')
+	g.writeln('#define S_ISCHR(m) (((m) & S_IFMT) == S_IFCHR)')
+	g.writeln('#define S_ISBLK(m) (((m) & S_IFMT) == S_IFBLK)')
+	g.writeln('#define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)')
+	g.writeln('#define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)')
+	g.writeln('#endif')
 	g.headerless_darwin_net_constants()
 	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
 	g.writeln('struct flock { off_t l_start; off_t l_len; pid_t l_pid; short l_type; short l_whence; };')
@@ -7985,6 +8291,24 @@ fn (mut g FlatGen) headerless_bsd_constants(o_cloexec string, f_setlk string, f_
 	g.writeln('#define S_IROTH 0000004')
 	g.writeln('#define S_IWOTH 0000002')
 	g.writeln('#define S_IXOTH 0000001')
+	g.writeln('#define S_IRWXU 0000700')
+	g.writeln('#define S_IRWXG 0000070')
+	g.writeln('#define S_IRWXO 0000007')
+	g.writeln('#define S_ISUID 0004000')
+	g.writeln('#define S_ISGID 0002000')
+	g.writeln('#define S_ISVTX 0001000')
+	g.writeln('#ifndef EEXIST')
+	g.writeln('#define EEXIST 17')
+	g.writeln('#endif')
+	g.writeln('#ifndef S_ISDIR')
+	g.writeln('#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)')
+	g.writeln('#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)')
+	g.writeln('#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)')
+	g.writeln('#define S_ISCHR(m) (((m) & S_IFMT) == S_IFCHR)')
+	g.writeln('#define S_ISBLK(m) (((m) & S_IFMT) == S_IFBLK)')
+	g.writeln('#define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)')
+	g.writeln('#define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)')
+	g.writeln('#endif')
 	g.headerless_bsd_net_constants(af_inet6, msg_nosignal, so_nosigpipe)
 	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
 	if flock_sysid {
@@ -8072,6 +8396,24 @@ fn (mut g FlatGen) headerless_solaris_constants() {
 	g.writeln('#define S_IROTH 0000004')
 	g.writeln('#define S_IWOTH 0000002')
 	g.writeln('#define S_IXOTH 0000001')
+	g.writeln('#define S_IRWXU 0000700')
+	g.writeln('#define S_IRWXG 0000070')
+	g.writeln('#define S_IRWXO 0000007')
+	g.writeln('#define S_ISUID 0004000')
+	g.writeln('#define S_ISGID 0002000')
+	g.writeln('#define S_ISVTX 0001000')
+	g.writeln('#ifndef EEXIST')
+	g.writeln('#define EEXIST 17')
+	g.writeln('#endif')
+	g.writeln('#ifndef S_ISDIR')
+	g.writeln('#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)')
+	g.writeln('#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)')
+	g.writeln('#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)')
+	g.writeln('#define S_ISCHR(m) (((m) & S_IFMT) == S_IFCHR)')
+	g.writeln('#define S_ISBLK(m) (((m) & S_IFMT) == S_IFBLK)')
+	g.writeln('#define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)')
+	g.writeln('#define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)')
+	g.writeln('#endif')
 	g.headerless_solaris_net_constants()
 	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
 	g.writeln('struct flock { short l_type; short l_whence; off_t l_start; off_t l_len; int l_sysid; pid_t l_pid; long l_pad[4]; };')
@@ -8155,6 +8497,24 @@ fn (mut g FlatGen) headerless_qnx_constants() {
 	g.writeln('#define S_IROTH 0000004')
 	g.writeln('#define S_IWOTH 0000002')
 	g.writeln('#define S_IXOTH 0000001')
+	g.writeln('#define S_IRWXU 0000700')
+	g.writeln('#define S_IRWXG 0000070')
+	g.writeln('#define S_IRWXO 0000007')
+	g.writeln('#define S_ISUID 0004000')
+	g.writeln('#define S_ISGID 0002000')
+	g.writeln('#define S_ISVTX 0001000')
+	g.writeln('#ifndef EEXIST')
+	g.writeln('#define EEXIST 17')
+	g.writeln('#endif')
+	g.writeln('#ifndef S_ISDIR')
+	g.writeln('#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)')
+	g.writeln('#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)')
+	g.writeln('#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)')
+	g.writeln('#define S_ISCHR(m) (((m) & S_IFMT) == S_IFCHR)')
+	g.writeln('#define S_ISBLK(m) (((m) & S_IFMT) == S_IFBLK)')
+	g.writeln('#define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)')
+	g.writeln('#define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)')
+	g.writeln('#endif')
 	g.headerless_qnx_net_constants()
 	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
 	g.writeln('struct flock { short l_type; short l_whence; int l_zero1; off_t l_start; off_t l_len; pid_t l_pid; unsigned int l_sysid; };')
@@ -8380,6 +8740,24 @@ fn (mut g FlatGen) headerless_linux_constants() {
 	g.writeln('#define S_IROTH 0000004')
 	g.writeln('#define S_IWOTH 0000002')
 	g.writeln('#define S_IXOTH 0000001')
+	g.writeln('#define S_IRWXU 0000700')
+	g.writeln('#define S_IRWXG 0000070')
+	g.writeln('#define S_IRWXO 0000007')
+	g.writeln('#define S_ISUID 0004000')
+	g.writeln('#define S_ISGID 0002000')
+	g.writeln('#define S_ISVTX 0001000')
+	g.writeln('#ifndef EEXIST')
+	g.writeln('#define EEXIST 17')
+	g.writeln('#endif')
+	g.writeln('#ifndef S_ISDIR')
+	g.writeln('#define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)')
+	g.writeln('#define S_ISREG(m) (((m) & S_IFMT) == S_IFREG)')
+	g.writeln('#define S_ISLNK(m) (((m) & S_IFMT) == S_IFLNK)')
+	g.writeln('#define S_ISCHR(m) (((m) & S_IFMT) == S_IFCHR)')
+	g.writeln('#define S_ISBLK(m) (((m) & S_IFMT) == S_IFBLK)')
+	g.writeln('#define S_ISFIFO(m) (((m) & S_IFMT) == S_IFIFO)')
+	g.writeln('#define S_ISSOCK(m) (((m) & S_IFMT) == S_IFSOCK)')
+	g.writeln('#endif')
 	g.headerless_linux_net_constants()
 	g.writeln('#define SIG_ERR ((void (*)(int))-1)')
 	g.writeln('struct flock { short l_type; short l_whence; off_t l_start; off_t l_len; pid_t l_pid; };')
@@ -10250,6 +10628,16 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		g.tc.cur_module = old_module
 		return
 	}
+	if val_node.kind == .block && val_node.children_count > 0 {
+		// A lowered const initializer (`.map()` chains): leading statements
+		// compute temps, the last child is the value expression.
+		if ct != 'void' {
+			g.writeln('${ct} ${qname};')
+			g.queue_const_runtime_init(g.const_block_init_to_string(qname, val_node))
+		}
+		g.tc.cur_module = old_module
+		return
+	}
 	expr_str := if v_type is types.Array && val_node.kind == .array_literal {
 		g.expr_to_string_with_expected_type(val_id, v_type)
 	} else if g.is_const_expr(val_id) {
@@ -10926,6 +11314,7 @@ fn (g &FlatGen) op_str(op flat.Op) string {
 		.dot { '.' }
 		.arrow { '->' }
 		.none { '' }
+		.gated_index { '' }
 	}
 }
 

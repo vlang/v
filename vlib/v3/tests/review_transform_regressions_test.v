@@ -86,6 +86,45 @@ fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
 	assert out == '7'
 }
 
+fn test_folded_string_constant_ifs_keep_branch_scopes() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'folded_string_constant_if_branch_scopes',
+		"fn main() {\n\tif 'left' == 'left' {\n\t\tx := 20\n\t\tprintln(int_str(x))\n\t}\n\tif 'right' == 'right' {\n\t\tx := 22\n\t\tprintln(int_str(x))\n\t}\n}\n")
+	assert out == '20\n22'
+}
+
+fn test_import_aliased_variadic_call_uses_exact_module() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'import_aliased_variadic_call', {
+		'v.mod':         "Module { name: 'import_aliased_variadic_call' }\n"
+		'a/http/http.v': 'module http\n\npub fn total(values []int) int {\n\treturn values.len\n}\n'
+		'b/http/http.v': 'module http\n\npub fn total(values ...int) int {\n\treturn values.len\n}\n'
+		'main.v':        'module main\n\nimport a.http as other_http\nimport b.http as http\n\nfn main() {\n\t_ := other_http.total([1, 2])\n\tprintln(int_str(http.total(3, 4, 5)))\n}\n'
+	}, 'main.v')
+	assert out == '3'
+}
+
+fn test_generic_specializations_keep_full_aliased_import_paths() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_specialization_aliased_import_paths', {
+		'v.mod':          "Module { name: 'generic_specialization_aliased_import_paths' }\n"
+		'a/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'b/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\ttext string\n}\n'
+		'main.v':         "module main\n\nimport a.tast as left\nimport b.tast as tast\n\nfn keep[T](value T) T {\n\treturn value\n}\n\nfn main() {\n\tleft_value := keep(left.Value{\n\t\tn: 41\n\t})\n\tright_value := keep(tast.Value{\n\t\ttext: 'ok'\n\t})\n\tprintln(int_str(left_value.n))\n\tprintln(right_value.text)\n}\n"
+	}, 'main.v')
+	assert out == '41\nok'
+}
+
+fn test_nested_inferred_fixed_array_literal_parses() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_inferred_fixed_array_literal',
+		'fn main() {\n\tvalues := [..][..]int[[1, 2], [3, 4]]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
+	assert out == '10'
+	run_bad(v3_bin, 'ragged_nested_inferred_fixed_array_literal',
+		'fn main() {\n\t_ := [..][..]int[[1], [2, 3]]\n}\n',
+		'inferred fixed-array literal rows must have the same size')
+}
+
 fn test_shared_field_without_sync_import_compiles_and_locks() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'shared_field_without_sync_import',
@@ -592,6 +631,13 @@ fn test_wrapped_plus_minus_continuations_consume_auto_semicolon() {
 	out := run_good(v3_bin, 'wrapped_plus_minus_continuation',
 		'fn add(total int, delta int) int {\n\treturn total\n\t\t+ delta\n}\n\nfn sub(total int, delta int) int {\n\treturn total\n\t\t- delta\n}\n\nfn main() {\n\tprintln(int_str(add(3, 4)))\n\tprintln(int_str(sub(9, 2)))\n}\n')
 	assert out == '7\n7'
+}
+
+fn test_gated_optional_array_index_materializes_base_before_wrap() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'gated_optional_array_index_base_order',
+		"fn get_arr(ok bool) ?[]int {\n\tprintln('get')\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [3, 7, 11]\n}\n\nfn main() {\n\tprintln(int_str(get_arr(true)#[-1] or { 40 }))\n\tprintln(int_str(get_arr(true)#[9] or { 41 }))\n\tprintln(int_str(get_arr(false)#[-1] or { 42 }))\n}\n")
+	assert out == 'get\n11\nget\n41\nget\n42'
 }
 
 fn test_normalized_option_result_fixed_array_names_keep_outer_wrapper() {

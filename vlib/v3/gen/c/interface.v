@@ -1055,10 +1055,63 @@ fn (g &FlatGen) interface_dispatch_target_short_name_is_unambiguous(short_name s
 
 // sum_type_index supports sum type index handling for FlatGen.
 fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
+	mut resolved_sum := sum_name
+	if resolved_sum !in g.tc.sum_types && resolved_sum.contains('.') {
+		// Resolve an import-aliased sum name (`tast.Value` for module `sub.tast`)
+		// exactly first. Use suffix and bare-name fallbacks only when unique.
+		aliased_sum := g.tc.qualify_name(resolved_sum)
+		if aliased_sum in g.tc.sum_types {
+			resolved_sum = aliased_sum
+		} else {
+			suffix := '.' + resolved_sum
+			mut suffix_match := ''
+			mut suffix_ambiguous := false
+			for key, _ in g.tc.sum_types {
+				if key.ends_with(suffix) {
+					if suffix_match.len > 0 && suffix_match != key {
+						suffix_ambiguous = true
+						break
+					}
+					suffix_match = key
+				}
+			}
+			if !suffix_ambiguous && suffix_match.len > 0 {
+				resolved_sum = suffix_match
+			} else if suffix_match.len == 0 {
+				short_sum := resolved_sum.all_after_last('.')
+				mut short_match := ''
+				mut ambiguous := false
+				for key, _ in g.tc.sum_types {
+					if key == short_sum || key.all_after_last('.') == short_sum {
+						if short_match.len > 0 && short_match != key {
+							ambiguous = true
+							break
+						}
+						short_match = key
+					}
+				}
+				if !ambiguous && short_match.len > 0 {
+					resolved_sum = short_match
+				}
+			}
+		}
+	}
+	return g.sum_type_index_resolved(resolved_sum, variant)
+}
+
+fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
 	if sum_name in g.tc.sum_types {
 		for i, v in g.tc.sum_types[sum_name] {
 			if v == variant {
 				return i + 1
+			}
+		}
+		resolved_variant := g.tc.qualify_name(variant)
+		if resolved_variant != variant {
+			for i, v in g.tc.sum_types[sum_name] {
+				if v == resolved_variant {
+					return i + 1
+				}
 			}
 		}
 		for i, v in g.tc.sum_types[sum_name] {
@@ -1066,6 +1119,50 @@ fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
 				return i + 1
 			}
 		}
+		// Container variants written through an import alias (`map[string]ast.Value`
+		// vs the registered `map[string]toml.ast.Value`) match on the
+		// module-stripped spelling only when that spelling is unambiguous.
+		if variant.contains('.') || variant.contains('[') {
+			short_variant := short_module_type_text(variant)
+			mut short_match := 0
+			for i, v in g.tc.sum_types[sum_name] {
+				if short_module_type_text(v) == short_variant {
+					if short_match != 0 {
+						return 0
+					}
+					short_match = i + 1
+				}
+			}
+			return short_match
+		}
 	}
 	return 0
+}
+
+// short_module_type_text strips module qualifiers from every identifier in a
+// type text: `map[string]toml.ast.Value` -> `map[string]Value`.
+fn short_module_type_text(text string) string {
+	mut out := []u8{cap: text.len}
+	mut i := 0
+	for i < text.len {
+		c := text[i]
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_` {
+			start := i
+			for i < text.len {
+				c2 := text[i]
+				if (c2 >= `a` && c2 <= `z`) || (c2 >= `A` && c2 <= `Z`)
+					|| (c2 >= `0` && c2 <= `9`) || c2 == `_` || c2 == `.` {
+					i++
+				} else {
+					break
+				}
+			}
+			token := text[start..i]
+			unsafe { out.push_many(token.all_after_last('.').str, token.all_after_last('.').len) }
+			continue
+		}
+		out << c
+		i++
+	}
+	return out.bytestr()
 }

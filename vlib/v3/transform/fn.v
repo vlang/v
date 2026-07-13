@@ -710,12 +710,21 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		arg_node := t.a.nodes[int(arg_id)]
 		param_type := if param_idx < params.len { params[param_idx].name() } else { '' }
 		if arg_node.kind == .field_init {
-			if packed_arg := t.transform_params_struct_call_arg(node, i, param_type) {
+			// Trailing `key: value` args against the variadic `...Struct` slot
+			// (surfacing as `[]Struct`) desugar to one element of the elem
+			// struct type; a non-variadic `[]Struct` param must not collapse.
+			struct_param_type := if variadic_idx >= 0 && param_idx == variadic_idx
+				&& param_type.starts_with('[]') {
+				param_type[2..]
+			} else {
+				param_type
+			}
+			if packed_arg := t.transform_params_struct_call_arg(node, i, struct_param_type) {
 				new_children << packed_arg
 				i = t.next_non_field_init_arg(node, i)
 				continue
 			}
-			if packed_arg := t.transform_struct_call_arg(node, i, param_type) {
+			if packed_arg := t.transform_struct_call_arg(node, i, struct_param_type) {
 				new_children << packed_arg
 				i = t.next_non_field_init_arg(node, i)
 				continue
@@ -1386,7 +1395,38 @@ fn (t &Transformer) call_is_variadic(call_name string) bool {
 	if t.tc.c_variadic_fns[call_name] {
 		return false
 	}
-	return t.tc.fn_variadic[call_name] or { false }
+	if is_variadic := t.tc.fn_variadic[call_name] {
+		return is_variadic
+	}
+	// Import-aliased call names (`http.new_header` for module `net.http`)
+	// register under the full module path; resolve the alias exactly first.
+	if call_name.contains('.') {
+		resolved_call := t.tc.resolve_imported_type_text_in_file(call_name, t.cur_file)
+		if resolved_call != call_name {
+			if t.tc.c_variadic_fns[resolved_call] {
+				return false
+			}
+			if is_variadic := t.tc.fn_variadic[resolved_call] {
+				return is_variadic
+			}
+		}
+		suffix := '.' + call_name
+		mut suffix_match := false
+		mut suffix_variadic := false
+		for key, is_variadic in t.tc.fn_variadic {
+			if key.ends_with(suffix) {
+				if suffix_match {
+					return false
+				}
+				suffix_match = true
+				suffix_variadic = is_variadic
+			}
+		}
+		if suffix_match {
+			return suffix_variadic
+		}
+	}
+	return false
 }
 
 // call_param_type_name updates call param type name state for Transformer.
@@ -5956,6 +5996,10 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		return t.make_call_typed(sum_method, args, ret_type)
 	}
 	if t.validating_generic_spec {
+		if base_node.kind == .ident && base_node.value in ['C', 'JS'] {
+			// `C.fn(...)` is an extern call, not a method on an ident.
+			return none
+		}
 		if field_type := t.lookup_struct_field_type(base_type, method) {
 			if !t.validate_specialized_fn_field_call(id, node, base_id, field_type) {
 				return t.make_empty()
@@ -6251,8 +6295,9 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	// An `unknown` expected type means the callee signature still carries an
-	// unresolved generic parameter here - nothing can be validated against it.
-	if expected_type.trim_string_left('&') == 'unknown' {
+	// unresolved generic parameter here - nothing can be validated against it
+	// (including container forms such as `[]unknown`).
+	if expected_type.contains('unknown') {
 		return true
 	}
 	actual := t.normalize_type_alias(actual_type)
@@ -6265,8 +6310,27 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if actual == expected {
 		return true
 	}
+	// A `mut`/pointer parameter is called with the value form (`r.read(mut
+	// buf)` with `buf []u8` against `&[]u8`); cgen auto-refs such args.
+	if expected.starts_with('&') && actual == expected[1..] {
+		return true
+	}
+	// Any pointer converts to voidptr.
+	if expected in ['voidptr', 'byteptr', 'charptr']
+		&& (actual.starts_with('&') || actual in ['voidptr', 'byteptr', 'charptr', 'nil']) {
+		return true
+	}
+	// An empty array literal (`[]`) types as `[]void` and adopts the
+	// parameter's element type.
+	if actual == '[]void' && expected.starts_with('[]') {
+		return true
+	}
 	arg := t.a.nodes[int(arg_id)]
 	if arg.kind == .float_literal && expected in ['f32', 'f64'] {
+		return true
+	}
+	// A char literal (`\`x\``) types as rune but coerces to u8 params.
+	if arg.kind == .char_literal && expected in ['u8', 'rune', 'char', 'int', 'u32'] {
 		return true
 	}
 	if actual == 'nil'
@@ -6284,6 +6348,12 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		}
 	}
 	if t.is_sum_type_name(expected) && t.sum_target_accepts_variant_type(expected, actual) {
+		return true
+	}
+	// The reverse also passes validation: a sum-typed value flows into a
+	// variant-typed parameter under an `is`-guard (smartcast) that a not-yet
+	// unrolled `$for v in T.variants` body cannot expose to this check.
+	if t.is_sum_type_name(actual) && t.sum_target_accepts_variant_type(actual, expected) {
 		return true
 	}
 	if !isnil(t.tc) && expected in t.tc.interface_names
@@ -7326,12 +7396,18 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 		arg_node := t.a.nodes[int(arg_id)]
 		param_type := if param_idx < params.len { params[param_idx].name() } else { '' }
 		if arg_node.kind == .field_init {
-			if packed_arg := t.transform_params_struct_call_arg(node, i, param_type) {
+			struct_param_type := if variadic_idx >= 0 && param_idx == variadic_idx
+				&& param_type.starts_with('[]') {
+				param_type[2..]
+			} else {
+				param_type
+			}
+			if packed_arg := t.transform_params_struct_call_arg(node, i, struct_param_type) {
 				args << packed_arg
 				i = t.next_non_field_init_arg(node, i)
 				continue
 			}
-			if packed_arg := t.transform_struct_call_arg(node, i, param_type) {
+			if packed_arg := t.transform_struct_call_arg(node, i, struct_param_type) {
 				args << packed_arg
 				i = t.next_non_field_init_arg(node, i)
 				continue

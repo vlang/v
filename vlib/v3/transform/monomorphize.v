@@ -60,13 +60,14 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	struct_decls := t.collect_generic_struct_decls()
 	t.seed_generic_specialization_args(struct_decls)
 	template_nodes := t.generic_decl_template_nodes(decls)
-	ignored_nodes := t.unused_fn_subtree_nodes()
+	mut ignored_nodes := t.unused_fn_subtree_nodes()
 	mut emitted := map[string]bool{}
 	mut generated := []string{}
 	mut generic_call_sites := []GenericCallSite{}
 	mut recorded_call_sites := map[int]bool{}
 	mut changed := true
 	mut scan_start := 0
+	mut used_fns_at_scan := t.used_fns.len
 	t.in_monomorphize_scan = true
 	defer {
 		t.in_monomorphize_scan = false
@@ -75,7 +76,27 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		changed = false
 		t.ensure_node_module_map()
 		node_count := t.a.nodes.len
-		for i in scan_start .. node_count {
+		// A previous round can mark an until-then unused fn as used (a clone
+		// or comptime unroll now calls it); its subtree left the ignore set
+		// and must be scanned too, or its generic calls stay unspecialized.
+		mut rescan := []int{}
+		if scan_start > 0 && t.used_fns.len != used_fns_at_scan {
+			new_ignored := t.unused_fn_subtree_nodes()
+			for i in 0 .. scan_start {
+				if i < ignored_nodes.len && ignored_nodes[i] && !(i < new_ignored.len
+					&& new_ignored[i]) {
+					rescan << i
+				}
+			}
+			ignored_nodes = unsafe { new_ignored }
+		}
+		used_fns_at_scan = t.used_fns.len
+		for scan_idx in 0 .. rescan.len + (node_count - scan_start) {
+			i := if scan_idx < rescan.len {
+				rescan[scan_idx]
+			} else {
+				scan_start + (scan_idx - rescan.len)
+			}
 			if (i < template_nodes.len && template_nodes[i])
 				|| (i < ignored_nodes.len && ignored_nodes[i]) {
 				continue
@@ -4358,6 +4379,83 @@ fn generic_fn_type_param_payload(param string) string {
 	return text
 }
 
+// generic_const_string_cond evaluates an if condition made purely of
+// comptime-known string facts (`T.name in ['x.json2.Any', ...]`,
+// `T.name == 'X'`, combined with &&/||/!) once the generic args are bound.
+fn (mut t Transformer) generic_const_string_cond(id flat.NodeId, args []string) ?bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return t.generic_const_string_cond(t.a.child(&node, 0), args)
+	}
+	if node.kind == .prefix && node.op == .not && node.children_count > 0 {
+		v := t.generic_const_string_cond(t.a.child(&node, 0), args) or { return none }
+		return !v
+	}
+	if node.kind == .infix && node.children_count == 2 {
+		if node.op == .logical_and {
+			l := t.generic_const_string_cond(t.a.child(&node, 0), args) or { return none }
+			if !l {
+				return false
+			}
+			return t.generic_const_string_cond(t.a.child(&node, 1), args)
+		}
+		if node.op == .logical_or {
+			l := t.generic_const_string_cond(t.a.child(&node, 0), args) or { return none }
+			if l {
+				return true
+			}
+			return t.generic_const_string_cond(t.a.child(&node, 1), args)
+		}
+		if node.op in [.eq, .ne] {
+			l := t.generic_const_string_value(t.a.child(&node, 0), args) or { return none }
+			r := t.generic_const_string_value(t.a.child(&node, 1), args) or { return none }
+			return if node.op == .eq { l == r } else { l != r }
+		}
+		return none
+	}
+	if node.kind == .in_expr && node.children_count == 2 {
+		l := t.generic_const_string_value(t.a.child(&node, 0), args) or { return none }
+		rhs := t.a.nodes[int(t.a.child(&node, 1))]
+		if rhs.kind != .array_literal {
+			return none
+		}
+		for i in 0 .. rhs.children_count {
+			item := t.generic_const_string_value(t.a.child(&rhs, i), args) or { return none }
+			if item == l {
+				return true
+			}
+		}
+		return false
+	}
+	return none
+}
+
+fn (mut t Transformer) generic_const_string_value(id flat.NodeId, args []string) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .string_literal {
+		return node.value
+	}
+	if node.kind == .selector && node.value == 'name' && node.children_count > 0 {
+		base_id := t.a.child(&node, 0)
+		base := t.a.nodes[int(base_id)]
+		if base.kind == .typeof_expr {
+			if reflected := t.generic_comptime_typeof_target(base, args) {
+				return generic_type_name_display(reflected)
+			}
+		}
+		if reflected := t.generic_comptime_base_type(base_id, args) {
+			return generic_type_name_display(reflected)
+		}
+	}
+	return none
+}
+
 fn (mut t Transformer) clone_generic_fn_node(node flat.Node, args []string) flat.NodeId {
 	return t.clone_generic_node_from(node, args, true)
 }
@@ -4404,6 +4502,19 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	// leave their nodes in the flat arena where the monomorphize call-site scan
 	// still visits them, emitting bogus specializations for calls that only
 	// typecheck in the pruned branch (e.g. `decode_string[SomeStruct]`).
+	// A runtime `if` whose condition is entirely comptime-known strings
+	// (`if T.name in [...] { } else { <only valid for arrays> }`) keeps only
+	// its taken branch, like the reference compiler; the dead branch may not
+	// even typecheck for this specialization.
+	if node.kind == .if_expr && t.cloning_comptime_for_depth == 0 && node.children_count >= 2 {
+		if take_then := t.generic_const_string_cond(t.a.child(&node, 0), args) {
+			branch_index := if take_then { 1 } else { 2 }
+			if branch_index >= int(node.children_count) {
+				return t.make_empty()
+			}
+			return t.clone_generic_node(t.a.child(&node, branch_index), args)
+		}
+	}
 	if node.kind == .comptime_if && t.cloning_comptime_for_depth == 0 {
 		cond := t.subst_comptime_type_condition(node.value, args)
 		if take_then := t.comptime_type_condition_value(cond) {
@@ -6052,6 +6163,21 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg string) string {
 	}
 	if t.generic_arg_is_alias_name(clean, '') {
 		return clean
+	}
+	// Resolve an import-alias module prefix (`import x.json2 as json` makes
+	// `json.Any` mean `json2.Any`); the alias text must not leak into
+	// specialization keys/typedef names parsed later without file context.
+	if clean.contains('.') {
+		alias := clean.all_before('.')
+		resolved_mod := t.import_alias_module(alias)
+		if resolved_mod != alias && resolved_mod.len > 0 {
+			resolved := '${resolved_mod}.${clean.all_after('.')}'
+			normalized_resolved := t.normalize_type_alias(resolved)
+			if normalized_resolved != resolved {
+				return t.canonical_generic_specialization_arg(normalized_resolved)
+			}
+			return resolved
+		}
 	}
 	normalized := t.normalize_type_alias(clean)
 	if normalized != clean {

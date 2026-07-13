@@ -104,6 +104,28 @@ fn main() {
 	assert out == "private:false:false:|public:false:true:|mutable:true:false:|pub_mut:true:true:|attr:true:true:json: 'wire'"
 }
 
+fn test_comptime_match_accepts_type_group_patterns() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'comptime_match_type_group_patterns', 'struct S {}
+
+fn classify[T](value T) string {
+	_ = value
+	$match T {
+		$int { return "int" }
+		$struct { return "struct" }
+		$else { return "other" }
+	}
+	return "unreachable"
+}
+
+fn main() {
+	println(classify(1))
+	println(classify(S{}))
+}
+')
+	assert out == 'int\nstruct'
+}
+
 fn test_bare_comptime_field_materializes_fielddata() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'bare_fielddata', "type WireName = string
@@ -1270,6 +1292,42 @@ fn main() {
 }
 	',
 		'unknown EnumData member `nmae`')
+}
+
+fn test_non_variant_comptime_loop_variables_are_rejected_as_is_patterns() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_sum_is_field_loop_variable', 'struct A {}
+struct B {}
+struct Holder {
+	n int
+}
+type Value = A | B
+
+fn check(value Value) {
+	$for field in Holder.fields {
+		if value is field {}
+	}
+}
+
+fn main() {}
+',
+		'`field` is not a variant of sum type `Value`')
+	round4_run_bad(v3_bin, 'bad_sum_is_enum_value_loop_variable', 'enum E {
+	one
+}
+struct A {}
+struct B {}
+type Value = A | B
+
+fn check(value Value) {
+	$for item in E.values {
+		if value is item {}
+	}
+}
+
+fn main() {}
+',
+		'`item` is not a variant of sum type `Value`')
 }
 
 fn test_nested_comptime_for_validates_inner_members() {

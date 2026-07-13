@@ -50,6 +50,15 @@ fn test_imported_generic_arg_uses_qualified_local_type_in_specialized_signature(
 	assert out == '7'
 }
 
+fn test_imported_generic_application_arg_keeps_caller_base_module() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_cross_module_application_arg', {
+		'wrap/wrap.v': 'module wrap\n\npub struct Wrapper[T] {\npub:\n\tvalues []T\n}\n\npub fn make[T]() Wrapper[T] {\n\treturn Wrapper[T]{}\n}\n'
+		'main.v':      'module main\n\nimport wrap\n\nstruct User {\n\tn int\n}\n\nstruct Box[T] {\n\tvalue T\n}\n\nfn main() {\n\twrapped := wrap.make[Box[User]]()\n\tprintln(int_str(wrapped.values.len))\n}\n'
+	})
+	assert out == '0'
+}
+
 fn test_nested_generic_return_infers_outer_static_method_arg() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_nested_return_arg', {

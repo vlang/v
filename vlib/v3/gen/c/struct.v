@@ -2610,6 +2610,7 @@ const c_preamble_defined_structs = {
 	'C.addrinfo':                   true
 	'C.atomic_uintptr_t':           true
 	'C.dirent':                     true
+	'C.utimbuf':                    true
 	'C.epoll_data':                 true
 	'C.epoll_data_t':               true
 	'C.epoll_event':                true
@@ -2708,6 +2709,15 @@ fn (mut g FlatGen) struct_decls() {
 	fixed_array_needed := g.collect_fixed_array_typedefs_needed()
 	for name, _ in g.tc.structs {
 		if g.skip_builtin_struct(name) {
+			// An inlined header that defines `struct zip_t` without a typedef
+			// leaves V references to the bare name dangling; supply the alias
+			// (skipped when the header already typedefs it).
+			if name.starts_with('C.') && name !in c_preamble_defined_structs
+				&& c_struct_needs_typedef(name) && g.inlined_c_structs[name[2..]]
+				&& !g.inlined_c_typedef_names[name[2..]] {
+				ityp := if name in g.tc.unions { 'union' } else { 'struct' }
+				g.writeln('typedef ${ityp} ${g.cname(name)} ${g.cname(name)};')
+			}
 			continue
 		}
 		if !c_struct_needs_typedef(name) {
