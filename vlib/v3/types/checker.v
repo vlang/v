@@ -346,7 +346,7 @@ pub mut:
 	cur_fn_mut_param_binding_owners map[string]ScopeBindingOwner
 	cur_fn_mut_local_binding_owners map[string]ScopeBindingOwner
 	cur_fn_shared_binding_owners    map[string]ScopeBindingOwner
-	cur_comptime_loop_vars          []string
+	cur_comptime_variant_loop_vars  []string
 	expr_type_values                []Type // node_id -> complex/contextual resolved type
 	expr_type_set                   []bool
 	checking_nodes                  []bool
@@ -5091,9 +5091,14 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	if parts.len != 2 || parts[0].len == 0 || node.children_count == 0 {
 		return
 	}
-	tc.cur_comptime_loop_vars << parts[0]
+	is_variant_loop := parts[1] == 'variants'
+	if is_variant_loop {
+		tc.cur_comptime_variant_loop_vars << parts[0]
+	}
 	defer {
-		tc.cur_comptime_loop_vars.pop()
+		if is_variant_loop {
+			tc.cur_comptime_variant_loop_vars.pop()
+		}
 	}
 	body_id := tc.a.child(&node, 0)
 	match parts[1] {
@@ -13882,8 +13887,8 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	}
 	// A `$for v in T.variants` loop variable is substituted by the comptime
 	// unroll; `val is v` cannot be validated against the raw name.
-	if node.value in tc.cur_comptime_loop_vars
-		|| (node.value.contains('.') && node.value.all_after_last('.') in tc.cur_comptime_loop_vars) {
+	if node.value in tc.cur_comptime_variant_loop_vars || (node.value.contains('.')
+		&& node.value.all_after_last('.') in tc.cur_comptime_variant_loop_vars) {
 		return
 	}
 	expr_type := unalias_type(unwrap_pointer(tc.resolve_type(expr_id)))

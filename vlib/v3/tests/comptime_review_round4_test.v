@@ -1272,6 +1272,42 @@ fn main() {
 		'unknown EnumData member `nmae`')
 }
 
+fn test_non_variant_comptime_loop_variables_are_rejected_as_is_patterns() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_sum_is_field_loop_variable', 'struct A {}
+struct B {}
+struct Holder {
+	n int
+}
+type Value = A | B
+
+fn check(value Value) {
+	$for field in Holder.fields {
+		if value is field {}
+	}
+}
+
+fn main() {}
+',
+		'`field` is not a variant of sum type `Value`')
+	round4_run_bad(v3_bin, 'bad_sum_is_enum_value_loop_variable', 'enum E {
+	one
+}
+struct A {}
+struct B {}
+type Value = A | B
+
+fn check(value Value) {
+	$for item in E.values {
+		if value is item {}
+	}
+}
+
+fn main() {}
+',
+		'`item` is not a variant of sum type `Value`')
+}
+
 fn test_nested_comptime_for_validates_inner_members() {
 	v3_bin := round4_build_v3()
 	round4_run_bad(v3_bin, 'bad_nested_enum_value_member', 'struct S {

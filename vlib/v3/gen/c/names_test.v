@@ -1,5 +1,6 @@
 module c
 
+import v3.flat
 import v3.types
 
 // test_c_name_sanitize_operator_overloads validates this v3 regression case.
@@ -46,4 +47,14 @@ fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
 		len:       3
 	})
 	assert typeof_display_resolved_type_name(fixed_maps) == '[3]map[string]int'
+}
+
+fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types['a.tast.Value'] = ['a.tast.First', 'a.tast.Target']
+	tc.sum_types['b.tast.Value'] = ['b.tast.Target', 'b.tast.Second']
+	mut g := FlatGen.new()
+	g.tc = &tc
+	assert g.sum_type_index('tast.Value', 'b.tast.Target') == 0
 }

@@ -125,6 +125,17 @@ fn test_sum_container_variant_import_alias_collision_uses_exact_tag() {
 	assert out == '71'
 }
 
+fn test_sum_name_import_alias_collision_uses_exact_sum() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good_project(v3_bin, 'sum_name_import_alias_collision', {
+		'v.mod':         'Module { name: "sum_name_import_alias_collision" }\n'
+		'a/tast/tast.v': 'module tast\n\npub struct Target {}\npub struct Second {}\npub type Value = Target | Second\n'
+		'b/tast/tast.v': 'module tast\n\npub struct First {}\npub struct Target {\npub:\n\tn int\n}\npub type Value = First | Target\n'
+		'main.v':        'module main\n\nimport a.tast as other_tast\nimport b.tast as tast\n\nfn score(value tast.Value) int {\n\tif value is tast.Target {\n\t\ttarget := value as tast.Target\n\t\treturn target.n\n\t}\n\treturn -1\n}\n\nfn main() {\n\t_ := other_tast.Value(other_tast.Target{})\n\tvalue := tast.Value(tast.Target{\n\t\tn: 79\n\t})\n\tprintln(int_str(score(value)))\n}\n'
+	}, 'main.v')
+	assert out == '79'
+}
+
 fn test_user_defined_free_method_is_preserved() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good(v3_bin, 'user_defined_free_method', 'struct Handle {
