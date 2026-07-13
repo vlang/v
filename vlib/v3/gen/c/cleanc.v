@@ -1181,7 +1181,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 }
 
 fn c_inline_header_text(include_arg string, vroot string, source_file string, include_dirs []string) ?CInlineHeader {
-	if replacement := c_system_include_replacement(include_arg) {
+	if replacement := c_system_include_replacement(include_arg, false) {
 		return CInlineHeader{
 			text: replacement
 		}
@@ -1189,14 +1189,19 @@ fn c_inline_header_text(include_arg string, vroot string, source_file string, in
 	mut seen := map[string]bool{}
 	mut inlining := map[string]bool{}
 	for path in c_include_file_paths(include_arg, vroot, source_file, include_dirs) {
-		if header := c_inline_header_file(path, vroot, include_dirs, false, mut seen, mut inlining) {
+		mut scan_seen := map[string]bool{}
+		use_system_stdint := c_inline_header_tree_uses_inttypes(path, vroot, include_dirs, mut
+			scan_seen)
+		if header := c_inline_header_file(path, vroot, include_dirs, false, use_system_stdint, mut
+			seen, mut inlining)
+		{
 			return header
 		}
 	}
 	return none
 }
 
-fn c_inline_header_file(path string, vroot string, include_dirs []string, conditional bool, mut seen map[string]bool, mut inlining map[string]bool) ?CInlineHeader {
+fn c_inline_header_file(path string, vroot string, include_dirs []string, conditional bool, use_system_stdint bool, mut seen map[string]bool, mut inlining map[string]bool) ?CInlineHeader {
 	if path.len == 0 || !os.exists(path) {
 		return none
 	}
@@ -1212,13 +1217,13 @@ fn c_inline_header_file(path string, vroot string, include_dirs []string, condit
 	}
 	text := os.read_file(real_path) or { return none }
 	inlining[real_path] = true
-	header := c_inline_header_file_text(text, vroot, real_path, include_dirs, conditional, mut
-		seen, mut inlining)
+	header := c_inline_header_file_text(text, vroot, real_path, include_dirs, conditional,
+		use_system_stdint, mut seen, mut inlining)
 	inlining.delete(real_path)
 	return header
 }
 
-fn c_inline_header_file_text(text string, vroot string, source_file string, include_dirs []string, conditional bool, mut seen map[string]bool, mut inlining map[string]bool) CInlineHeader {
+fn c_inline_header_file_text(text string, vroot string, source_file string, include_dirs []string, conditional bool, use_system_stdint bool, mut seen map[string]bool, mut inlining map[string]bool) CInlineHeader {
 	guard_name := c_header_guard_name(text)
 	mut lines := []string{}
 	mut preserved_directives := []string{}
@@ -1232,7 +1237,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 		in_block_comment = next_in_block_comment
 		if c_directive_name(clean) == 'include' {
 			include_arg := c_include_arg(c_directive_arg(clean), vroot, source_file)
-			if replacement := c_system_include_replacement(include_arg) {
+			if replacement := c_system_include_replacement(include_arg, use_system_stdint) {
 				lines << replacement
 				continue
 			}
@@ -1240,8 +1245,8 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 				|| !c_include_context_is_guard_only(include_context, guard_name)
 			mut inlined := false
 			for path in c_include_file_paths(include_arg, vroot, source_file, include_dirs) {
-				if nested := c_inline_header_file(path, vroot, include_dirs, nested_conditional, mut
-					seen, mut inlining)
+				if nested := c_inline_header_file(path, vroot, include_dirs, nested_conditional,
+					use_system_stdint, mut seen, mut inlining)
 				{
 					if nested.text.len > 0 {
 						lines << nested.text
@@ -1278,6 +1283,39 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 		preserved_c_fns:      preserved_c_fns
 		preserved_c_structs:  preserved_c_structs
 	}
+}
+
+// c_inline_header_tree_uses_inttypes detects whether an inlined include tree needs the real
+// inttypes/stdint pair. Mixing the synthetic stdint typedefs with libc's inttypes header can
+// redefine exact-width types with a different underlying C type on LP64 targets.
+fn c_inline_header_tree_uses_inttypes(path string, vroot string, include_dirs []string, mut seen map[string]bool) bool {
+	if path.len == 0 || !os.exists(path) {
+		return false
+	}
+	real_path := os.real_path(path)
+	if seen[real_path] {
+		return false
+	}
+	seen[real_path] = true
+	text := os.read_file(real_path) or { return false }
+	mut in_block_comment := false
+	for line in text.split_into_lines() {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		if c_directive_name(clean) != 'include' {
+			continue
+		}
+		include_arg := c_include_arg(c_directive_arg(clean), vroot, real_path)
+		if trimmed_space(include_arg) == '<inttypes.h>' {
+			return true
+		}
+		for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
+			if c_inline_header_tree_uses_inttypes(nested_path, vroot, include_dirs, mut seen) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn c_preprocessor_directive_scan_line(line string, in_block_comment bool) (string, bool) {
@@ -1459,9 +1497,12 @@ fn c_flag_include_dirs(flags []string) []string {
 	return dirs
 }
 
-fn c_system_include_replacement(include_arg string) ?string {
+fn c_system_include_replacement(include_arg string, use_system_stdint bool) ?string {
 	match trimmed_space(include_arg) {
 		'<stdint.h>' {
+			if use_system_stdint {
+				return '#include <stdint.h>'
+			}
 			return c_stdint_header_text()
 		}
 		'<inttypes.h>' {

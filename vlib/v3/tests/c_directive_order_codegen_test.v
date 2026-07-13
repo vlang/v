@@ -823,7 +823,10 @@ fn main() {
 	println(C.inttypes_macro_widths().str())
 }
 ')
-	directive_order_write_file(root, 'inttypes_user.h', '#include <inttypes.h>
+	directive_order_write_file(root, 'inttypes_macros.h', '#include <inttypes.h>
+')
+	directive_order_write_file(root, 'inttypes_user.h', '#include <stdint.h>
+#include "inttypes_macros.h"
 
 static inline int inttypes_macro_widths(void) {
 	return (int) (sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64));
@@ -1214,7 +1217,9 @@ fn test_stdarg_in_inlined_header_uses_headerless_va_defs() {
 
 fn test_inttypes_in_inlined_header_keeps_format_macros() {
 	c_code := directive_order_gen_and_run_inttypes_header(directive_order_build_v3())
+	assert c_code.contains('#include <stdint.h>'), c_code
 	assert c_code.contains('#include <inttypes.h>'), c_code
+	assert !c_code.contains('__V_HEADERLESS_STDINT_H'), c_code
 	assert c_code.contains('sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64)'), c_code
 }
 

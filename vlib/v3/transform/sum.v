@@ -630,17 +630,6 @@ fn (mut t Transformer) validate_specialized_is_expr(subject_type string, resolve
 		if _ := t.resolve_sum_variant_pattern_for_subject(subject_type, pattern) {
 			return true
 		}
-		short_pattern := pattern.all_after_last('.')
-		mut pattern_is_builtin := false
-		if _ := types.builtin_type(short_pattern) {
-			pattern_is_builtin = true
-		}
-		if !t.is_known_type_name(pattern) && !t.is_known_type_name(short_pattern)
-			&& !pattern_is_builtin {
-			// Not a type at all - a `$for variant in T.variants` loop variable;
-			// the comptime unroll substitutes it before anything is emitted.
-			return true
-		}
 		t.record_monomorph_error('`${pattern}` is not a variant of sum type `${resolved_sum}`')
 		return false
 	}
