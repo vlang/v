@@ -2285,14 +2285,16 @@ fn (mut t Transformer) make_interface_semantic_eq_expr(lhs flat.NodeId, rhs flat
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, iface, 'iface_eq_rhs')
 	lhs_typ := t.make_selector(lhs_value, '_typ', 'int')
 	rhs_typ := t.make_selector(rhs_value, '_typ', 'int')
-	type_eq := t.make_infix(.eq, lhs_typ, rhs_typ)
 	lhs_empty := t.make_infix(.eq, t.make_selector(lhs_value, '_object', 'voidptr'),
 		t.make_int_literal(0))
 	rhs_empty := t.make_infix(.eq, t.make_selector(rhs_value, '_object', 'voidptr'),
 		t.make_int_literal(0))
-	zero_tag := t.make_infix(.eq, lhs_typ, t.make_int_literal(0))
-	mut payload_eq := t.make_infix(.logical_and, zero_tag, t.make_infix(.logical_and, lhs_empty,
-		rhs_empty))
+	lhs_zero_tag := t.make_infix(.eq, lhs_typ, t.make_int_literal(0))
+	rhs_zero_tag := t.make_infix(.eq, rhs_typ, t.make_int_literal(0))
+	empty_eq := t.make_infix(.logical_and, lhs_zero_tag, t.make_infix(.logical_and, rhs_zero_tag, t.make_infix(.logical_and,
+		lhs_empty, rhs_empty)))
+	result_name := t.new_temp('iface_eq_payload')
+	t.pending_stmts << t.make_decl_assign_typed(result_name, empty_eq, 'bool')
 	impl_names := if t.is_builtin_ierror_interface_name(iface) {
 		t.tc.ierror_impl_names()
 	} else {
@@ -2311,12 +2313,21 @@ fn (mut t Transformer) make_interface_semantic_eq_expr(lhs flat.NodeId, rhs flat
 		rhs_concrete := t.make_prefix(.mul, rhs_object)
 		t.set_node_typ(int(lhs_concrete), impl_name)
 		t.set_node_typ(int(rhs_concrete), impl_name)
+		saved := t.pending_stmts.clone()
+		t.pending_stmts.clear()
 		value_eq := t.make_membership_eq_expr_with_seen(lhs_concrete, rhs_concrete, impl_name, seen)
-		case_eq := t.make_infix(.logical_and, t.make_infix(.eq, lhs_typ,
-			t.make_int_literal(type_id)), value_eq)
-		payload_eq = t.make_infix(.logical_or, payload_eq, case_eq)
+		mut then_body := []flat.NodeId{}
+		t.drain_pending(mut then_body)
+		t.pending_stmts = saved
+		then_body << t.make_assign(t.make_ident(result_name), value_eq)
+		lhs_case := t.make_infix(.eq, lhs_typ, t.make_int_literal(type_id))
+		rhs_case := t.make_infix(.eq, rhs_typ, t.make_int_literal(type_id))
+		cond := t.make_infix(.logical_and, lhs_case, rhs_case)
+		t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
 	}
-	return t.make_infix(.logical_and, type_eq, payload_eq)
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), 'bool')
+	return result
 }
 
 // selector_field_type supports selector field type handling for Transformer.

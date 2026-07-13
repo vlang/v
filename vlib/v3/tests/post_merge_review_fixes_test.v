@@ -618,6 +618,43 @@ fn main() {
 	assert out.contains('Wide'), out
 }
 
+fn test_interface_equality_preludes_stay_inside_tag_guards() {
+	v3_bin := build_v3()
+	source := 'interface IValue {}
+
+struct WithArray {
+	values []int
+}
+
+struct Other {
+	n int
+}
+
+fn same(left IValue, right IValue) bool {
+	return left == right
+}
+
+fn main() {
+	array_value := IValue(WithArray{
+		values: [1, 2]
+	})
+	println(same(array_value, array_value).str())
+	other := IValue(Other{
+		n: 7
+	})
+	println(same(other, other).str())
+}
+'
+	c_source := gen_c(v3_bin, 'interface_equality_guarded_preludes', source)
+	same_body := c_fn_body(c_source, 'bool same(IValue left, IValue right) {')
+	guard_pos := same_body.index('if (') or { -1 }
+	array_cast_pos := same_body.index('WithArray*') or { -1 }
+	assert guard_pos >= 0, same_body
+	assert array_cast_pos > guard_pos, same_body
+	out := run_good(v3_bin, 'interface_equality_guarded_preludes_run', source)
+	assert out == 'true\ntrue'
+}
+
 fn test_interface_equality_includes_receiver_method_call_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_receiver_method_call_box', 'interface IValue {}
