@@ -1085,6 +1085,9 @@ fn test_match_multi_return_tails_require_explicit_tuple() {
 	match_tuple_assign := run_good(v3_bin, 'good_multi_return_match_tuple_assign',
 		'fn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n')
 	assert match_tuple_assign == '3'
+	run_bad(v3_bin, 'bad_multi_return_match_overlong_tuple_tail_decl_assign',
+		'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue { 1, 2, 3 }\n\t\tfalse { 4, 5 }\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'match expression branches cannot produce multiple assignment values')
 	run_bad(v3_bin, 'bad_multi_return_match_call_non_exhaustive_decl_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
 		'match expression must be exhaustive')

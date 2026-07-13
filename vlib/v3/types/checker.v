@@ -7933,30 +7933,37 @@ fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int, exp
 			return [][]flat.NodeId{}
 		}
 	}
-	if explicit_comma_tail && body.value != 'comma_exprs' {
+	is_comma_tail := body.value == 'comma_exprs'
+	if explicit_comma_tail && !is_comma_tail {
 		return none
 	}
 	mut values := []flat.NodeId{}
 	for i := int(body.children_count) - 1; i >= body_start; i-- {
 		child_id := tc.a.child(&body, i)
 		if !tc.valid_node_id(child_id) {
-			break
+			return none
 		}
 		child := tc.a.nodes[int(child_id)]
 		if child.kind != .expr_stmt || child.children_count == 0 {
+			if is_comma_tail {
+				return none
+			}
 			break
 		}
 		for j := int(child.children_count) - 1; j >= 0; j-- {
 			values.prepend(tc.a.child(&child, j))
-			if values.len == count {
+			if !is_comma_tail && values.len == count {
 				break
 			}
 		}
-		if values.len == count {
+		if !is_comma_tail && values.len == count {
 			mut groups := [][]flat.NodeId{}
 			groups << values
 			return groups
 		}
+	}
+	if is_comma_tail && values.len == count {
+		return [values]
 	}
 	return none
 }
