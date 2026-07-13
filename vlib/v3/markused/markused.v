@@ -1293,6 +1293,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut needs_new_map := false
 	mut needs_map_iteration_snapshot := false
 	mut needs_channel_helpers := false
+	mut needs_channel_select_helpers := false
 	mut needs_f32_eq_epsilon := false
 	mut needs_shared_runtime := false
 	mut cur_module := ''
@@ -1366,6 +1367,10 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 							used, mut queue)
 					}
 				}
+			}
+			.select_stmt {
+				needs_channel_helpers = true
+				needs_channel_select_helpers = true
 			}
 			.struct_init {
 				if node.value.starts_with('chan ') {
@@ -1479,6 +1484,12 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 		for helper in ['sync.new_channel_st', 'sync.Channel.push', 'sync.Channel.pop',
 			'sync.Channel.close', 'sync.Channel.len', 'sync.Channel.closed', 'new_channel_st',
 			'Channel.push', 'Channel.pop', 'Channel.close', 'Channel.len', 'Channel.closed'] {
+			enqueue(helper, mut used, mut queue)
+		}
+	}
+	if needs_channel_select_helpers {
+		for helper in ['sync.channel_select', 'sync.channel_select_lang', 'channel_select',
+			'channel_select_lang', 'rand.init'] {
 			enqueue(helper, mut used, mut queue)
 		}
 	}

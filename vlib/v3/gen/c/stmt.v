@@ -557,6 +557,220 @@ fn (mut g FlatGen) gen_lock_expr(id flat.NodeId, node flat.Node) {
 	g.write('${tmp};})')
 }
 
+struct FlatSelectCase {
+	branch_id  flat.NodeId
+	channel_id flat.NodeId
+	value_id   flat.NodeId = flat.empty_node
+	lhs_id     flat.NodeId = flat.empty_node
+	body_start int
+	is_push    bool
+	is_decl    bool
+}
+
+fn (g &FlatGen) select_channel_elem_type(channel_id flat.NodeId, value_id flat.NodeId) types.Type {
+	channel_type := concrete_receiver_type(g.usable_expr_type(channel_id))
+	if channel_type is types.Channel {
+		return channel_type.elem_type
+	}
+	if int(value_id) >= 0 {
+		return g.usable_expr_type(value_id)
+	}
+	return types.Unknown{}
+}
+
+fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
+	mut cases := []FlatSelectCase{}
+	mut exception_branch := flat.empty_node
+	mut timeout_id := flat.empty_node
+	for i in 0 .. node.children_count {
+		branch_id := g.a.child(&node, i)
+		if int(branch_id) < 0 || int(branch_id) >= g.a.nodes.len {
+			continue
+		}
+		branch := g.a.nodes[int(branch_id)]
+		if branch.kind != .select_branch || branch.children_count == 0 {
+			if branch.value == 'else' {
+				exception_branch = branch_id
+			}
+			continue
+		}
+		if branch.value == 'else' {
+			exception_branch = branch_id
+			continue
+		}
+		first_id := g.a.child(&branch, 0)
+		first := g.a.nodes[int(first_id)]
+		if first.kind == .infix && first.op == .arrow && first.children_count >= 2 {
+			cases << FlatSelectCase{
+				branch_id:  branch_id
+				channel_id: g.a.child(&first, 0)
+				value_id:   g.a.child(&first, 1)
+				body_start: 1
+				is_push:    true
+			}
+			continue
+		}
+		if branch.children_count >= 2 {
+			second_id := g.a.child(&branch, 1)
+			second := g.a.nodes[int(second_id)]
+			if second.kind == .prefix && second.op == .arrow && second.children_count > 0 {
+				cases << FlatSelectCase{
+					branch_id:  branch_id
+					channel_id: g.a.child(&second, 0)
+					value_id:   second_id
+					lhs_id:     first_id
+					body_start: 2
+					is_decl:    branch.value == 'recv'
+				}
+				continue
+			}
+		}
+		if first.kind == .prefix && first.op == .arrow && first.children_count > 0 {
+			cases << FlatSelectCase{
+				branch_id:  branch_id
+				channel_id: g.a.child(&first, 0)
+				value_id:   first_id
+				body_start: 1
+			}
+			continue
+		}
+		exception_branch = branch_id
+		timeout_id = first_id
+	}
+
+	if is_expr {
+		g.write('({')
+		g.writeln('')
+	}
+	mut temps := []string{cap: cases.len}
+	mut elem_types := []types.Type{cap: cases.len}
+	for select_case in cases {
+		elem_type := g.select_channel_elem_type(select_case.channel_id, select_case.value_id)
+		elem_types << elem_type
+		ct := g.value_c_type(elem_type)
+		tmp := g.tmp_name()
+		temps << tmp
+		if select_case.is_push {
+			g.write('${ct} ${tmp} = ')
+			g.gen_expr_with_expected_type(select_case.value_id, elem_type)
+			g.writeln(';')
+		} else {
+			g.writeln('${ct} ${tmp} = (${ct}){0};')
+		}
+	}
+	channels := g.tmp_name()
+	directions := g.tmp_name()
+	objects := g.tmp_name()
+	if cases.len == 0 {
+		g.writeln('Array ${channels} = array_new(sizeof(sync__Channel*), 0, 0);')
+		g.writeln('Array ${directions} = array_new(sizeof(int), 0, 0);')
+		g.writeln('Array ${objects} = array_new(sizeof(void*), 0, 0);')
+	} else {
+		g.write('Array ${channels} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(sync__Channel*), (sync__Channel*[]){')
+		for i, select_case in cases {
+			if i > 0 {
+				g.write(', ')
+			}
+			g.write('(sync__Channel*)(')
+			g.gen_expr(select_case.channel_id)
+			g.write(')')
+		}
+		g.writeln('});')
+		g.write('Array ${directions} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(int), (int[]){')
+		for i, select_case in cases {
+			if i > 0 {
+				g.write(', ')
+			}
+			g.write(if select_case.is_push { '1' } else { '0' })
+		}
+		g.writeln('});')
+		g.write('Array ${objects} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(void*), (void*[]){')
+		for i, tmp in temps {
+			if i > 0 {
+				g.write(', ')
+			}
+			g.write('(void*)&${tmp}')
+		}
+		g.writeln('});')
+	}
+	select_result := g.tmp_name()
+	select_fn := if is_expr { 'sync__channel_select' } else { 'sync__channel_select_lang' }
+	g.write('int ${select_result} = ${select_fn}(&${channels}, ${directions}, &${objects}, ')
+	if int(timeout_id) >= 0 {
+		g.gen_expr(timeout_id)
+	} else if int(exception_branch) >= 0 {
+		g.write('-1')
+	} else {
+		g.write('((i64)9223372036854775807LL)')
+	}
+	g.writeln(');')
+	g.writeln('array__free(&${objects});')
+	g.writeln('array__free(&${directions});')
+	g.writeln('array__free(&${channels});')
+
+	for i, select_case in cases {
+		if i == 0 {
+			g.writeln('if (${select_result} == ${i}) {')
+		} else {
+			g.writeln('else if (${select_result} == ${i}) {')
+		}
+		g.indent++
+		g.push_scope()
+		defer_start := g.defers.len
+		if !select_case.is_push && int(select_case.lhs_id) >= 0 {
+			lhs := g.a.nodes[int(select_case.lhs_id)]
+			if lhs.kind != .ident || lhs.value != '_' {
+				if select_case.is_decl {
+					ct := g.value_c_type(elem_types[i])
+					g.write('${ct} ')
+					gen_expr_lvalue(mut g, select_case.lhs_id)
+					g.writeln(' = ${temps[i]};')
+					if lhs.kind == .ident {
+						owner := g.tc.cur_scope.insert_with_owner(lhs.value, elem_types[i])
+						g.track_local_pointer_storage_decl(lhs, owner, elem_types[i], ct)
+					}
+				} else {
+					gen_expr_lvalue(mut g, select_case.lhs_id)
+					g.writeln(' = ${temps[i]};')
+				}
+			}
+		}
+		branch := g.a.nodes[int(select_case.branch_id)]
+		for j in select_case.body_start .. branch.children_count {
+			g.gen_node(g.a.child(&branch, j))
+		}
+		g.gen_defers_from(defer_start)
+		g.trim_defers(defer_start)
+		g.pop_scope()
+		g.indent--
+		g.writeln('}')
+	}
+	if int(exception_branch) >= 0 {
+		exception_test := if int(timeout_id) < 0 && !is_expr {
+			'${select_result} == -1 || ${select_result} == -2'
+		} else {
+			'${select_result} == -1'
+		}
+		if cases.len == 0 {
+			g.writeln('if (${exception_test}) {')
+		} else {
+			g.writeln('else if (${exception_test}) {')
+		}
+		g.indent++
+		branch := g.a.nodes[int(exception_branch)]
+		body_start := if branch.value == 'else' { 0 } else { 1 }
+		for j in body_start .. branch.children_count {
+			g.gen_node(g.a.child(&branch, j))
+		}
+		g.indent--
+		g.writeln('}')
+	}
+	if is_expr {
+		g.writeln('${select_result} != -2; })')
+	}
+	_ = id
+}
+
 // gen_node emits node output for c.
 fn (mut g FlatGen) gen_node(id flat.NodeId) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
@@ -577,6 +791,10 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				return
 			}
 			child := g.a.nodes[int(child_id)]
+			if child.kind == .select_stmt {
+				g.gen_select(child_id, child, false)
+				return
+			}
 			if g.is_runtime_array_flags_stmt(child_id) {
 				return
 			}
@@ -936,6 +1154,9 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		}
 		.lock_expr {
 			g.gen_lock_stmt(id, node)
+		}
+		.select_stmt {
+			g.gen_select(id, node, false)
 		}
 		.break_stmt {
 			g.gen_branch_lock_cleanup(node.value)
@@ -3721,7 +3942,7 @@ fn (mut g FlatGen) gen_or_body_value(or_body flat.Node, value_name string, value
 				g.write('return ')
 				g.gen_optional_error_from_call(fn_opt_ct, g.a.nodes[int(expr_id)])
 				g.write(';')
-			} else if g.tc.resolve_type(expr_id) is types.Void {
+			} else if g.is_noreturn_call(expr_id) || g.tc.resolve_type(expr_id) is types.Void {
 				// A diverging/void or-body tail (e.g. `panic(..)`/`exit(..)`) yields no
 				// value; emit it as a bare statement instead of assigning void.
 				g.gen_expr(expr_id)

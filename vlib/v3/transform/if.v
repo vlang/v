@@ -1226,16 +1226,41 @@ fn (mut t Transformer) transform_plain_if_branches(id flat.NodeId, node flat.Nod
 	new_cond_id := t.transform_expr_for_type(cond_id, 'bool')
 	cond_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	new_then_id := t.transform_if_branch_as_block(then_id)
-
+	mut new_then_id := flat.empty_node
 	mut new_else_id := flat.empty_node
-	if has_else {
-		else_node := t.a.nodes[int(else_id)]
-		if else_node.kind == .if_expr {
-			new_else_id = t.transform_else_if_expr(else_id, else_node)
-		} else {
-			new_else_id = t.transform_if_branch_as_block(else_id)
+	if t.smartcast_stack.len == 0 {
+		new_then_id = t.transform_if_branch_as_block(then_id)
+		if has_else {
+			else_node := t.a.nodes[int(else_id)]
+			new_else_id = if else_node.kind == .if_expr {
+				t.transform_else_if_expr(else_id, else_node)
+			} else {
+				t.transform_if_branch_as_block(else_id)
+			}
 		}
+	} else {
+		base_smartcasts := t.smartcast_stack.clone()
+		base_invalidated := t.invalidated_smartcasts.clone()
+		new_then_id = t.transform_if_branch_as_block(then_id)
+		mut then_invalidated := t.invalidated_smartcasts.clone()
+		t.smartcast_stack = base_smartcasts.clone()
+		t.invalidated_smartcasts = base_invalidated.clone()
+		if has_else {
+			else_node := t.a.nodes[int(else_id)]
+			new_else_id = if else_node.kind == .if_expr {
+				t.transform_else_if_expr(else_id, else_node)
+			} else {
+				t.transform_if_branch_as_block(else_id)
+			}
+		}
+		else_invalidated := t.invalidated_smartcasts.clone()
+		for key, value in else_invalidated {
+			if value {
+				then_invalidated[key] = true
+			}
+		}
+		t.invalidated_smartcasts = then_invalidated.move()
+		t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 	}
 
 	if_start := t.a.children.len
@@ -1284,19 +1309,22 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 
 	// Transform then-block children under the smartcast context.
 	saved_var_types := t.var_types.clone()
+	then_base_smartcasts := t.smartcast_stack.clone()
+	base_invalidated := t.invalidated_smartcasts.clone()
 	for info in all_is {
 		t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 	}
 	new_then_id := t.transform_if_branch_as_block(then_id)
-	for _ in all_is {
-		t.pop_smartcast()
-	}
+	mut then_invalidated := t.invalidated_smartcasts.clone()
+	t.smartcast_stack = then_base_smartcasts.clone()
+	t.invalidated_smartcasts = base_invalidated.clone()
 	t.restore_var_types(saved_var_types)
 
 	// Transform else-block (no is-smartcast -- the is_expr was false here; a
 	// `x == none` condition unwraps x in the else branch instead).
 	mut new_else_id := flat.empty_node
 	if has_else {
+		else_base_smartcasts := t.smartcast_stack.clone()
 		for info in all_none_eq {
 			t.push_smartcast(info.expr_name, info.variant_name, info.sum_type_name)
 		}
@@ -1307,11 +1335,17 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 		} else {
 			new_else_id = t.transform_if_branch_as_block(else_id)
 		}
-		for _ in all_none_eq {
-			t.pop_smartcast()
-		}
+		t.smartcast_stack = else_base_smartcasts
 		t.restore_var_types(saved_var_types)
 	}
+	else_invalidated := t.invalidated_smartcasts.clone()
+	for key, value in else_invalidated {
+		if value {
+			then_invalidated[key] = true
+		}
+	}
+	t.invalidated_smartcasts = then_invalidated.move()
+	t.smartcast_stack = t.non_invalidated_smartcasts(then_base_smartcasts)
 
 	// Rebuild the if_expr with (possibly) new children.
 	if_start := t.a.children.len

@@ -2648,6 +2648,28 @@ pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 	return tc.cached_resolved_call(id)
 }
 
+// fn_param_types_for_name returns the collected parameter types for a resolved call name.
+pub fn (tc &TypeChecker) fn_param_types_for_name(name string) []Type {
+	if params := tc.fn_param_types[name] {
+		return params
+	}
+	if name.len == 0 {
+		return []Type{}
+	}
+	mut found := []Type{}
+	mut matches := 0
+	for candidate, params in tc.fn_param_types {
+		if candidate.ends_with('.${name}') {
+			found = params.clone()
+			matches++
+			if matches > 1 {
+				return []Type{}
+			}
+		}
+	}
+	return found
+}
+
 // resolved_call_never_returns reports whether a call node resolved to a known no-return function.
 pub fn (tc &TypeChecker) resolved_call_never_returns(id flat.NodeId) bool {
 	name := tc.resolved_call_name(id) or { return false }
@@ -6964,6 +6986,7 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 				var_node := tc.a.nodes[int(var_id)]
 				if var_node.kind == .ident && var_node.value.len > 0 {
 					tc.cur_scope.insert(var_node.value, elem_type)
+					tc.remember_expr_type(var_id, elem_type)
 					$if ownership ? {
 						tc.ownership_note_binding(var_node.value, elem_type, var_id)
 					}
@@ -8063,6 +8086,13 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			}
 			tc.reject_stored_capturing_fn_literal(rhs_id)
 		}
+		// A write invalidates a narrowing established by an enclosing condition.
+		// Keep this after checking the RHS so `x = x` can still use the old value's
+		// narrowed type while resolving the assignment.
+		lhs_key := tc.expr_key(lhs_id)
+		if lhs_key.len > 0 {
+			tc.smartcasts.delete(lhs_key)
+		}
 		i += 2
 	}
 	$if ownership ? {
@@ -8877,6 +8907,12 @@ fn (mut tc TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, exp
 	if !tc.valid_node_id(id) {
 		return none
 	}
+	node := tc.a.nodes[int(id)]
+	// An explicit return in a match/if branch is checked against the enclosing
+	// function independently; it is not a value tail of the outer result expr.
+	if node.kind == .return_stmt {
+		return none
+	}
 	raw_type := tc.resolve_type(id)
 	if tc.type_compatible(raw_type, expected) {
 		return none
@@ -8890,7 +8926,6 @@ fn (mut tc TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, exp
 	if tc.pointer_value_compatible(raw_type, expected.base_type) {
 		return none
 	}
-	node := tc.a.nodes[int(id)]
 	payload_type := tc.resolve_expr(id, expected.base_type)
 	if tc.type_compatible(payload_type, expected.base_type) {
 		return none
@@ -8920,12 +8955,31 @@ fn (mut tc TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, exp
 			}
 		}
 		.match_stmt {
+			subject_id := tc.a.child(&node, 0)
+			subject_key := tc.expr_key(subject_id)
+			subject_type := unalias_type(unwrap_pointer(tc.resolve_type(subject_id)))
 			for i in 1 .. node.children_count {
 				branch_id := tc.a.child(&node, i)
-				if !tc.valid_node_id(branch_id) || tc.a.nodes[int(branch_id)].kind != .match_branch {
+				if !tc.valid_node_id(branch_id) {
+					continue
+				}
+				branch := tc.a.nodes[int(branch_id)]
+				if branch.kind != .match_branch {
 					continue
 				}
 				tail := tc.branch_tail_expr_id(branch_id)
+				if subject_key.len > 0 && tc.expr_key(tail) == subject_key && branch.value != 'else'
+					&& branch.value.int() == 1 && subject_type is SumType {
+					cond := tc.a.node(tc.a.child(&branch, 0))
+					if pattern := tc.match_type_pattern(cond) {
+						variant := tc.sum_variant_type_for_pattern(subject_type.name, pattern) or {
+							pattern
+						}
+						if tc.type_compatible(tc.parse_type(variant), expected.base_type) {
+							continue
+						}
+					}
+				}
 				if bad_type := tc.invalid_ierror_return_expr_type_name(tail, expected) {
 					return bad_type
 				}
@@ -13272,6 +13326,12 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 			&& !tc.if_branch_types_compatible(then_type, else_type, tc.branch_tail_is_array_literal(then_id), tc.branch_tail_is_array_literal(else_id)) {
 			then_tail := tc.branch_tail_expr_id(then_id)
 			else_tail := tc.branch_tail_expr_id(else_id)
+			if tc.if_branch_none_compatible(then_type, then_tail, else_type, else_tail) {
+				return
+			}
+			if tc.if_branch_enum_shorthand_compatible(then_type, then_tail, else_type, else_tail) {
+				return
+			}
 			if expected := tc.expr_type(id) {
 				branches_match_expected := tc.if_branch_types_compatible_with_expected(then_type,
 					then_tail, else_type, else_tail, expected)
@@ -13286,6 +13346,26 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 			}
 		}
 	}
+}
+
+fn (tc &TypeChecker) if_branch_none_compatible(a Type, a_tail flat.NodeId, b Type, b_tail flat.NodeId) bool {
+	if (a is None || is_option_void_type(a)) && tc.branch_tail_is_none_literal(a_tail) {
+		return b !is Void && b !is Unknown
+	}
+	if (b is None || is_option_void_type(b)) && tc.branch_tail_is_none_literal(b_tail) {
+		return a !is Void && a !is Unknown
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) if_branch_enum_shorthand_compatible(a Type, a_tail flat.NodeId, b Type, b_tail flat.NodeId) bool {
+	if a is Enum && tc.valid_node_id(b_tail) && tc.a.nodes[int(b_tail)].kind == .enum_val {
+		return tc.type_compatible(tc.resolve_expr(b_tail, a), a)
+	}
+	if b is Enum && tc.valid_node_id(a_tail) && tc.a.nodes[int(a_tail)].kind == .enum_val {
+		return tc.type_compatible(tc.resolve_expr(a_tail, b), b)
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) check_stmt_node(id flat.NodeId) {
@@ -13836,12 +13916,32 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 		&& tc.cur_fn_is_generic_template() {
 		return
 	}
-	expr_type := unalias_type(unwrap_pointer(tc.resolve_type(expr_id)))
+	mut expr_type := unalias_type(unwrap_pointer(tc.resolve_type(expr_id)))
+	// A previous branch can narrow a variable to one variant and then assign it
+	// another value. A later `is` still applies to the variable's declared sum
+	// type, not only to the stale narrowed variant.
+	if expr_type !is SumType && expr_type !is Interface {
+		expr_node := tc.a.nodes[int(expr_id)]
+		mut declared_type := Type(Unknown{})
+		if expr_node.kind == .ident {
+			declared_type = tc.cur_scope.lookup(expr_node.value) or { Type(Unknown{}) }
+		} else if expr_node.kind == .selector {
+			declared_type = tc.selector_type(expr_id, expr_node) or { Type(Unknown{}) }
+		}
+		declared_type = unalias_type(unwrap_pointer(declared_type))
+		if declared_type is SumType || declared_type is Interface {
+			expr_type = declared_type
+		}
+	}
 	if expr_type is SumType {
-		if node.value.len > 0 && tc.sum_variant_type_for_pattern(expr_type.name, node.value) == none
-			&& tc.should_diagnose(id) {
-			tc.record_error(.condition_mismatch,
-				'`${node.value}` is not a variant of sum type `${expr_type.name}`', id)
+		if node.value.len > 0 {
+			pattern := node.value.trim_left('&')
+			if tc.sum_variant_type_for_pattern(expr_type.name, pattern) == none {
+				if tc.should_diagnose(id) {
+					tc.record_error(.condition_mismatch,
+						'`${node.value}` is not a variant of sum type `${expr_type.name}`', id)
+				}
+			}
 		}
 		return
 	}

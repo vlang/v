@@ -55,11 +55,16 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 			}
 		}
 	}
-	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
-		&& t.cur_module != 'builtin' {
+	if !clean.contains('.') && t.cur_module.len > 0 {
 		qname := '${t.cur_module}.${clean}'
 		if qname in t.tc.interface_names {
 			return qname
+		}
+	}
+	if !clean.contains('.') {
+		main_name := 'main.${clean}'
+		if main_name in t.tc.interface_names {
+			return main_name
 		}
 	}
 	return ''
@@ -267,6 +272,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	mut source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
 	is_ptr := source_type.starts_with('&')
 	concrete_type := if is_ptr { source_type[1..] } else { source_type }
+	t.mark_interface_boxed_type(iface_name, concrete_type)
 	if !is_ptr && !t.expr_can_take_address(source) {
 		tmp_name := t.new_temp('iface_src')
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, source_type)

@@ -330,6 +330,16 @@ fn (p &Parser) line_nr_for_pos(pos int) int {
 	return line
 }
 
+fn (p &Parser) column_for_pos(pos int) int {
+	mut column := 0
+	mut i := if pos < p.s.src.len { pos } else { p.s.src.len }
+	for i > 0 && p.s.src[i - 1] != `\n` {
+		i--
+		column++
+	}
+	return column
+}
+
 // peek supports peek handling for Parser.
 @[inline]
 fn (mut p Parser) peek() token.Token {
@@ -2158,7 +2168,8 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 	// type test (`T is int`), known after monomorphization. Ordinary platform/custom flags
 	// (`$if linux`) must still be evaluated here — the transformer only folds loop-var/type
 	// conditions and the C backend drops any `.comptime_if` that survives.
-	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond) {
+	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
+		|| comptime_cond_references_var(cond, 'threads') {
 		then_block := p.block_stmt()
 		else_block := p.parse_comptime_else()
 		return p.comptime_if_node(cond, then_block, else_block)
@@ -2228,7 +2239,7 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 	}
 	p.next() // skip 'if'
 	cond := p.parse_comptime_cond()
-	if comptime_cond_has_type_test(cond) {
+	if comptime_cond_has_type_test(cond) || comptime_cond_references_var(cond, 'threads') {
 		then_block := p.top_level_block_stmt()
 		else_block := p.parse_top_level_comptime_else()
 		return p.comptime_if_node(cond, then_block, else_block)
@@ -3226,8 +3237,19 @@ fn (mut p Parser) static_decl_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) return_stmt() flat.NodeId {
+	return_pos := p.tok_pos
 	p.next() // skip 'return'
 	mut ids := []flat.NodeId{}
+	// vfmt wraps long return expressions after the keyword. The following token
+	// remains part of the return only when it is indented beyond `return` itself;
+	// an ordinary next statement stays at the same block indentation.
+	if p.tok == .semicolon {
+		_ = p.peek()
+		if p.peek_tok !in [.eof, .rcbr]
+			&& p.column_for_pos(p.peek_pos) > p.column_for_pos(return_pos) {
+			p.next()
+		}
+	}
 	if p.tok != .semicolon && p.tok != .rcbr && p.tok != .eof {
 		ids << p.expr(.lowest)
 		for p.tok == .comma {
