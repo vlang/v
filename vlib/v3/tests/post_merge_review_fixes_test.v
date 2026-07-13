@@ -414,6 +414,52 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_interface_equality_includes_channel_send_and_default_field_boxes() {
+	v3_bin := build_v3()
+	channel_out := run_good(v3_bin, 'interface_eq_channel_send_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	ch := chan IValue{cap: 1}
+	ch <- Value{
+		n: 3
+	}
+	value := <-ch
+	println(same(value).str())
+}
+')
+	assert channel_out == 'true'
+	default_out := run_good(v3_bin, 'interface_eq_default_field_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Holder {
+	value IValue = Value{
+		n: 3
+	}
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	holder := Holder{}
+	println(same(holder.value).str())
+}
+')
+	assert default_out == 'true'
+}
+
 fn test_interface_equality_includes_struct_field_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_struct_field_box', 'interface IValue {}
