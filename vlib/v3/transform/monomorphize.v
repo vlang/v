@@ -939,6 +939,25 @@ fn (mut t Transformer) collect_interface_boxed_type(actual types.Type, expected 
 				t.mark_interface_boxed_type(iface_name, t.trim_pointer_type(actual_name))
 			}
 		}
+		types.Array {
+			actual_base := interface_box_unalias_type(actual)
+			if actual_base is types.Array {
+				t.collect_interface_boxed_type(actual_base.elem_type, expected.elem_type)
+			}
+		}
+		types.ArrayFixed {
+			actual_base := interface_box_unalias_type(actual)
+			if actual_base is types.ArrayFixed {
+				t.collect_interface_boxed_type(actual_base.elem_type, expected.elem_type)
+			}
+		}
+		types.Map {
+			actual_base := interface_box_unalias_type(actual)
+			if actual_base is types.Map {
+				t.collect_interface_boxed_type(actual_base.key_type, expected.key_type)
+				t.collect_interface_boxed_type(actual_base.value_type, expected.value_type)
+			}
+		}
 		else {}
 	}
 }

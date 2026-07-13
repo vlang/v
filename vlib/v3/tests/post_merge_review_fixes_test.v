@@ -453,6 +453,53 @@ fn main() {
 	assert out == 'true\n7'
 }
 
+fn test_interface_equality_includes_forwarded_multi_return_container_slot_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_forwarded_multi_return_container_slot_box', 'interface IValue {}
+
+struct ArrayValue {
+	n int
+}
+
+struct MapValue {
+	n int
+}
+
+struct FixedValue {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn make_values() ([]ArrayValue, map[string]MapValue, [1]FixedValue, int) {
+	return [ArrayValue{
+		n: 3
+	}], {
+		"item": MapValue{
+			n: 5
+		}
+	}, [FixedValue{
+		n: 11
+	}]!, 7
+}
+
+fn forward_values() ([]IValue, map[string]IValue, [1]IValue, int) {
+	return make_values()
+}
+
+fn main() {
+	values, indexed, fixed, n := forward_values()
+	println(same(values[0]).str())
+	println(same(indexed["item"]).str())
+	println(same(fixed[0]).str())
+	println(int_str(n))
+}
+')
+	assert out == 'true\ntrue\ntrue\n7'
+}
+
 fn test_forwarded_multi_return_container_slots_are_converted() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'forwarded_multi_return_container_slots', 'interface IValue {
