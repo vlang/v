@@ -129,7 +129,11 @@ fn check_value_kind_match[T](value_kind ValueKind) ! {
 		if value_kind != .object {
 			return error('Expected object, but got ${value_kind}')
 		}
-	} $else $if T.unaliased_typ in [$enum, $int, $float] {
+	} $else $if T.unaliased_typ is $enum {
+		if value_kind !in [.number, .string_] {
+			return error('Expected number or string, but got ${value_kind}')
+		}
+	} $else $if T.unaliased_typ in [$int, $float] {
 		if value_kind != .number {
 			return error('Expected number, but got ${value_kind}')
 		}
@@ -675,7 +679,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 				$for field in T.fields {
 					mut json_field_name := field.name
-					mut is_json_skip := false
+					mut is_json_skip := field.attrs.contains('skip')
 					for attr in field.attrs {
 						if json_name := json_attr_value(attr) {
 							if json_name == '-' {
@@ -714,7 +718,47 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		unsafe {
 			val = vmemcmp(decoder.json.str + value_info.position, c'true', 4) == 0
 		}
-	} $else $if T.unaliased_typ in [$float, $int, $enum] {
+	} $else $if T.unaliased_typ is $enum {
+		enum_info := decoder.current_node.value
+		if enum_info.value_kind == .string_ {
+			decoded_value := decoder.decode_string(enum_info)!
+			mut matched := false
+			$for value in T.values {
+				if !matched {
+					for attr in value.attrs {
+						if json_name := json_attr_value(attr) {
+							if decoded_value == json_name {
+								val = value.value
+								matched = true
+								break
+							}
+						}
+					}
+					if !matched && decoded_value == value.name {
+						val = value.value
+						matched = true
+					}
+				}
+			}
+			if !matched {
+				return error('string value `${decoded_value}` does not match any field in enum ${typeof(val).name}')
+			}
+		} else {
+			bytes := unsafe { (decoder.json.str + enum_info.position).vbytes(enum_info.length) }
+			integer_string := integer_number_string(bytes)!
+			decoded_value := parse_integer_value[int](integer_string)!
+			mut matched := false
+			$for value in T.values {
+				if !matched && decoded_value == int(value.value) {
+					val = value.value
+					matched = true
+				}
+			}
+			if !matched {
+				return error('number value `${decoded_value}` does not match any field in enum ${typeof(val).name}')
+			}
+		}
+	} $else $if T.unaliased_typ in [$float, $int] {
 		value_info := decoder.current_node.value
 
 		if value_info.value_kind == .number {

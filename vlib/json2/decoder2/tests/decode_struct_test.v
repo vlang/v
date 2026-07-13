@@ -65,6 +65,11 @@ struct StructWithJsonAliases {
 	last_name  string @[json: 'lastName']
 }
 
+struct StructWithSkippedField {
+	name   string
+	secret int @[skip]
+}
+
 fn test_types() {
 	assert json.decode[StructType[string]]('{"val": ""}')!.val == ''
 
@@ -163,4 +168,15 @@ fn test_struct_json_field_aliases() {
 
 	escaped_key := json.decode[StructWithJsonAliases](r'{"first\u004eame":"Grace"}')!
 	assert escaped_key.first_name == 'Grace'
+}
+
+fn test_struct_skip_field() {
+	with_numeric_value := json.decode[StructWithSkippedField]('{"name":"Ada","secret":42}')!
+	assert with_numeric_value == StructWithSkippedField{
+		name: 'Ada'
+	}
+
+	with_wrong_value_kind :=
+		json.decode[StructWithSkippedField]('{"name":"Ada","secret":"ignored"}')!
+	assert with_wrong_value_kind.secret == 0
 }

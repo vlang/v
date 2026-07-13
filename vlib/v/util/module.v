@@ -119,6 +119,9 @@ fn resolve_module_alias_from_importer_path(pref_ &pref.Preferences, file_path st
 		if alias_mod := resolve_module_alias_from_search_path(pref_, modules_dir, mod) {
 			return alias_mod
 		}
+		if os.is_file(os.join_path(current_dir, 'v.mod')) {
+			break
+		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {
 			break
