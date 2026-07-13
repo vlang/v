@@ -34,6 +34,7 @@ mut:
 	epoll_fds       []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
 	threads         []thread = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
 	request_handler fn (HttpRequest) !HttpResponse @[required]
+	make_state      fn () voidptr              = unsafe { nil }
 	running         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
 	shutting_down   &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
 	stopped         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
@@ -52,6 +53,7 @@ pub fn new_server(config ServerConfig) !&Server {
 		timeout_in_seconds:      config.timeout_in_seconds
 		user_data:               config.user_data
 		request_handler:         config.handler
+		make_state:              config.make_state
 		running:                 stdatomic.new_atomic(false)
 		shutting_down:           stdatomic.new_atomic(false)
 		stopped:                 stdatomic.new_atomic(true)
@@ -112,12 +114,13 @@ mut:
 // table plus the free-list of retired ConnStates (each keeping its buffers).
 struct Worker {
 mut:
-	server     &Server = unsafe { nil }
-	epoll_fd   int
-	listen_fd  int
-	conns      []&ConnState
-	free_conns []&ConnState
-	parked     int // connections with an armed read/write deadline (gates the sweep)
+	server       &Server = unsafe { nil }
+	epoll_fd     int
+	listen_fd    int
+	conns        []&ConnState
+	free_conns   []&ConnState
+	parked       int     // connections with an armed read/write deadline (gates the sweep)
+	worker_state voidptr // this worker thread's ServerConfig.make_state value (nil if unset)
 }
 
 fn close_socket(fd int) bool {
@@ -541,6 +544,7 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 		decoded.client_conn_fd = fd
 		decoded.client_conn_handle = usize(fd)
 		decoded.user_data = w.server.user_data
+		decoded.worker_state = w.worker_state
 		mut resp := w.server.request_handler(decoded) or {
 			eprintln('Error handling request ${err}')
 			$if prealloc {
@@ -785,6 +789,10 @@ fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	}
 	unsafe {
 		w.server = server
+	}
+	// Build this worker thread's lock-free per-worker state exactly once.
+	if server.make_state != unsafe { nil } {
+		w.worker_state = server.make_state()
 	}
 	mut events := [max_connection_size]C.epoll_event{}
 	for {

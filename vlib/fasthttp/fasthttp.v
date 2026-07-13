@@ -32,7 +32,13 @@ pub mut:
 	body               Slice
 	client_conn_fd     int
 	client_conn_handle usize
-	user_data          voidptr // User-defined context data
+	user_data          voidptr // User-defined context data (shared, set from ServerConfig.user_data)
+	// worker_state is the value ServerConfig.make_state returned on THIS worker
+	// thread (nil when no make_state is configured). It is thread-local by
+	// construction — one instance per worker thread — so a handler can keep
+	// per-worker resources (a DB connection, a reused render scratch buffer)
+	// without any locking: `unsafe { &MyState(req.worker_state) }`.
+	worker_state voidptr
 }
 
 pub enum ResponseTakeoverMode {
@@ -124,6 +130,11 @@ pub:
 	timeout_in_seconds      int            = 30
 	handler                 fn (HttpRequest) !HttpResponse @[required]
 	user_data               voidptr
+	// make_state, when set, is called ONCE per worker thread at startup; the value
+	// it returns reaches every request on that worker as HttpRequest.worker_state.
+	// It is the lock-free per-worker state hook: each worker gets its own instance
+	// (a DB connection, a reused scratch buffer) with no shared pool and no mutex.
+	make_state fn () voidptr = unsafe { nil }
 }
 
 // ShutdownParams configures how long graceful shutdown should wait for in-flight requests.

@@ -163,6 +163,56 @@ fn test_keep_alive_rearms_after_consumed_edge() ! {
 	C.close(client_fd)
 }
 
+struct WorkerCounter {
+mut:
+	n int
+}
+
+fn test_worker_state_reaches_handler() ! {
+	wc := &WorkerCounter{}
+	make_state := fn [wc] () voidptr {
+		return wc
+	}
+	handler := fn (req HttpRequest) !HttpResponse {
+		mut c := unsafe { &WorkerCounter(req.worker_state) }
+		c.n++
+		return HttpResponse{
+			content: 'HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n'.bytes()
+		}
+	}
+	server := new_server(ServerConfig{
+		family:     .ip
+		port:       0
+		handler:    handler
+		make_state: make_state
+	})!
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer { C.close(epoll_fd) }
+	mut sockets := [2]int{}
+	assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+	server_fd := sockets[0]
+	client_fd := sockets[1]
+	set_blocking(server_fd, false)
+	set_blocking(client_fd, false)
+
+	mut w := new_regression_worker(server, epoll_fd)
+	// Mirror what process_events does once per worker thread.
+	w.worker_state = server.make_state()
+	assert add_fd_to_epoll(epoll_fd, server_fd, u32(C.EPOLLIN | C.EPOLLET)) == 0
+	mut cs := state_for(mut w, server_fd)
+
+	req := 'GET /a HTTP/1.1\r\nHost: x\r\n\r\nGET /b HTTP/1.1\r\nHost: x\r\n\r\n'
+	assert C.send(client_fd, req.str, req.len, C.MSG_NOSIGNAL) == req.len
+	serve_conn(mut w, server_fd, mut cs)
+	assert recv_available(client_fd).count('HTTP/1.1 200 OK') == 2
+	// Both requests saw the SAME per-worker state instance.
+	assert wc.n == 2
+
+	C.close(server_fd)
+	C.close(client_fd)
+}
+
 fn test_conn_state_is_pooled_with_buffers_retained() ! {
 	server := new_server(ServerConfig{
 		family:  .ip
