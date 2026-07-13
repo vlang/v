@@ -27,6 +27,11 @@ mut:
 	current_node &Node = unsafe { nil } // The current node in the linked list.
 }
 
+interface NullDecoder {
+mut:
+	from_json_null()
+}
+
 // LinkedList represents a linked list to store ValueInfo.
 struct LinkedList {
 mut:
@@ -115,6 +120,10 @@ fn check_value_kind_match[T](value_kind ValueKind) ! {
 	} $else $if T.unaliased_typ is $array {
 		if value_kind != .array {
 			return error('Expected array, but got ${value_kind}')
+		}
+	} $else $if T is NullDecoder {
+		if value_kind != .null {
+			return error('Expected null, but got ${value_kind}')
 		}
 	} $else $if T.unaliased_typ is $struct {
 		if value_kind != .object {
@@ -639,6 +648,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		// remove this line will cause the current node to be incremented twice
 		// and bug recursive array decoding like `[][]int{}`
 		return
+	} $else $if T is NullDecoder {
+		val.from_json_null()
 	} $else $if T.unaliased_typ is $struct {
 		struct_info := decoder.current_node.value
 
@@ -684,6 +695,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				}
 			}
 		}
+		return
 	} $else $if T.unaliased_typ is bool {
 		value_info := decoder.current_node.value
 

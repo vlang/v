@@ -39,6 +39,8 @@ fn test_simple_sum_type() {
 }
 
 fn test_any_sum_type() {
+	assert json.decode[json2.Any]('null')! == json2.Any(json2.null)
+
 	assert json.decode[json2.Any]('1')! == json2.Any(f64(1))
 	assert json.decode[json2.Any]('123321')! == json2.Any(f64(123321))
 
@@ -65,6 +67,9 @@ fn test_any_sum_type() {
 
 	assert json.decode[map[string]json2.Any]('{"hello": "world"}')! == {
 		'hello': json2.Any('world')
+	}
+	assert json.decode[map[string]json2.Any]('{"value": null}')! == {
+		'value': json2.Any(json2.null)
 	}
 
 	// assert json.decode[json2.Any]('{"hello1": {"hello2": "world"}}')! == json2.Any({

@@ -41,6 +41,11 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 				val = T(v)
 				return
 			}
+		} else if value_info.value_kind == .null {
+			$if v.typ is NullDecoder {
+				val = T(v)
+				return
+			}
 		} else if value_info.value_kind == .object {
 			$if v.typ is $map {
 				val = T(v)

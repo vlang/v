@@ -51,6 +51,15 @@ struct StructWithNumber {
 	n f64
 }
 
+struct NestedChild {
+	id int
+}
+
+struct StructWithNestedChild {
+	child NestedChild
+	name  string
+}
+
 fn test_types() {
 	assert json.decode[StructType[string]]('{"val": ""}')!.val == ''
 
@@ -121,4 +130,21 @@ fn test_invalid_time_strings_return_errors() {
 	failed = false
 	json.decode[StructType[time.Time]]('{"val": "not-a-date"}') or { failed = true }
 	assert failed
+}
+
+fn test_nested_struct_does_not_skip_next_sibling() {
+	parent := json.decode[StructWithNestedChild]('{"child":{"id":1},"name":"bob"}')!
+	assert parent == StructWithNestedChild{
+		child: NestedChild{
+			id: 1
+		}
+		name:  'bob'
+	}
+
+	children := json.decode[[]NestedChild]('[{"id":1},{"id":2}]')!
+	assert children == [NestedChild{
+		id: 1
+	}, NestedChild{
+		id: 2
+	}]
 }
