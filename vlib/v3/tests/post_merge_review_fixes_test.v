@@ -271,6 +271,37 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
+fn test_interface_equality_includes_function_literal_return_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_function_literal_return_boxes', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn use(make fn () IValue) IValue {
+	return make()
+}
+
+fn main() {
+	make := fn () IValue {
+		return Value{
+			n: 3
+		}
+	}
+	println(same(make()).str())
+	println(same(use(|| IValue(Value{
+		n: 4
+	}))).str())
+}
+')
+	assert out == 'true\ntrue'
+}
+
 fn test_interface_equality_includes_container_literal_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_container_literal_box', 'interface IValue {}
@@ -1042,6 +1073,20 @@ fn main() {
 }
 ',
 		'`else` and timeout value are mutually exclusive `select` keys')
+}
+
+fn test_select_rejects_duplicate_timeouts() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'select_duplicate_timeouts', 'import time
+
+fn main() {
+	select {
+		10 * time.millisecond {}
+		20 * time.millisecond {}
+	}
+}
+',
+		'at most one timeout branch allowed in `select` block')
 }
 
 fn test_select_receive_declaration_requires_identifier() {

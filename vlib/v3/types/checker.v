@@ -7285,6 +7285,7 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 	mut has_else := false
 	mut has_timeout := false
 	mut conflict_id := flat.empty_node
+	mut duplicate_timeout_id := flat.empty_node
 	for i in 0 .. node.children_count {
 		branch_id := tc.a.child(&node, i)
 		if !tc.valid_node_id(branch_id) {
@@ -7303,12 +7304,19 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 			if has_else && int(conflict_id) < 0 {
 				conflict_id = branch_id
 			}
+			if has_timeout && int(duplicate_timeout_id) < 0 {
+				duplicate_timeout_id = branch_id
+			}
 			has_timeout = true
 		}
 	}
 	if tc.valid_node_id(conflict_id) {
 		tc.record_error(.condition_mismatch,
 			'`else` and timeout value are mutually exclusive `select` keys', conflict_id)
+	}
+	if tc.valid_node_id(duplicate_timeout_id) {
+		tc.record_error(.condition_mismatch,
+			'at most one timeout branch allowed in `select` block', duplicate_timeout_id)
 	}
 	$if ownership ? {
 		tc.ownership_begin_branch_group()
