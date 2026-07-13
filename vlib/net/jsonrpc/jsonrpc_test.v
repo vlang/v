@@ -1,6 +1,6 @@
 module jsonrpc
 
-import json
+import json2 as json
 
 fn test_try_decode_encode() {
 	obj_data := {

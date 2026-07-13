@@ -1,6 +1,6 @@
 // vtest retry: 3
 import db.sqlite
-import x.json2 as json
+import json2 as json
 import os
 import time
 import x.sessions

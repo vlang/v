@@ -26,6 +26,10 @@ pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) str
 	mod_paths << os.vmodules_paths()
 	mod_path := mod.replace('.', os.path_separator)
 	for search_path in mod_paths {
+		if alias_mod := resolve_module_alias_from_search_path(pref_, search_path, mod) {
+			trace_qualify(@FN, mod, file_path, 'import_alias', alias_mod, search_path)
+			return alias_mod
+		}
 		try_path := os.join_path_single(search_path, mod_path)
 		if os.is_dir(try_path) {
 			if m1 := import_path_to_full_name(pref_, mod, try_path) {
@@ -40,6 +44,10 @@ pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) str
 		file_path
 	} else {
 		os.join_path_single(os.getwd(), file_path)
+	}
+	if alias_mod := resolve_module_alias_from_importer_path(pref_, abs_file_path, mod) {
+		trace_qualify(@FN, mod, file_path, 'import_alias', alias_mod, abs_file_path)
+		return alias_mod
 	}
 	if m1 := import_path_to_full_name(pref_, mod, abs_file_path) {
 		trace_qualify(@FN, mod, file_path, 'import_res 2', m1, abs_file_path)
@@ -56,6 +64,108 @@ pub fn qualify_import(pref_ &pref.Preferences, mod string, file_path string) str
 	// >  qualify_import: server | file_path: cmd/vls/main.v | =>   import_res 3: server ; ---
 	// >  qualify_import: os     | file_path: cmd/vls/main.v | =>   import_res 1: os     ; /v/cleanv/vlib/os
 	return mod
+}
+
+// resolve_module_alias_from_search_path resolves `@[alias: 'path'] module name`
+// declarations stored in `alias.v`. An alias applies to its submodules too, so an
+// alias from `old.name` to `new_name` also maps `old.name.sub` to `new_name.sub`.
+fn resolve_module_alias_from_search_path(pref_ &pref.Preferences, search_path string, mod string) ?string {
+	parts := mod.split('.')
+	for part_count := parts.len; part_count > 0; part_count-- {
+		alias_dir := os.join_path_single(search_path, parts[..part_count].join(os.path_separator))
+		alias_file := os.join_path(alias_dir, 'alias.v')
+		if !os.is_file(alias_file) {
+			continue
+		}
+		source := os.read_file(alias_file) or { continue }
+		target_value := module_alias_target_from_source(source) or { continue }
+		mut target_dir := target_value
+		if target_dir.contains('@VMODROOT') {
+			target_dir = resolve_vmodroot(target_dir, alias_dir) or { continue }
+		}
+		if !os.is_abs_path(target_dir) {
+			target_dir = os.join_path(alias_dir, target_dir)
+		}
+		target_dir = os.real_path(target_dir)
+		if !os.is_dir(target_dir) {
+			continue
+		}
+		target_base := os.base(target_dir)
+		mut target_mod := import_path_to_full_name(pref_, target_base, target_dir) or {
+			target_base
+		}
+		if part_count < parts.len {
+			tail_parts := parts[part_count..]
+			target_subdir := os.join_path_single(target_dir, tail_parts.join(os.path_separator))
+			if !os.is_dir(target_subdir) {
+				continue
+			}
+			target_mod += '.' + tail_parts.join('.')
+		}
+		if target_mod != mod {
+			return target_mod
+		}
+	}
+	return none
+}
+
+fn resolve_module_alias_from_importer_path(pref_ &pref.Preferences, file_path string, mod string) ?string {
+	mut current_dir := os.dir(file_path)
+	for {
+		if alias_mod := resolve_module_alias_from_search_path(pref_, current_dir, mod) {
+			return alias_mod
+		}
+		modules_dir := os.join_path(current_dir, 'modules')
+		if alias_mod := resolve_module_alias_from_search_path(pref_, modules_dir, mod) {
+			return alias_mod
+		}
+		if os.is_file(os.join_path(current_dir, 'v.mod')) {
+			break
+		}
+		parent_dir := os.dir(current_dir)
+		if parent_dir == current_dir {
+			break
+		}
+		current_dir = parent_dir
+	}
+	return none
+}
+
+// module_alias_target_from_source reads the deliberately small alias module header.
+// Keeping aliases in a conventional `alias.v` file avoids opening every source file
+// of every imported module while resolving imports.
+fn module_alias_target_from_source(source string) ?string {
+	marker := '@[alias'
+	marker_pos := source.index(marker) or { return none }
+	mut rest := source[marker_pos + marker.len..].trim_space()
+	if !rest.starts_with(':') {
+		return none
+	}
+	rest = rest[1..].trim_space()
+	if rest.len < 2 || rest[0] !in [`'`, `"`] {
+		return none
+	}
+	quote := rest[0]
+	mut end := 1
+	for end < rest.len && rest[end] != quote {
+		end++
+	}
+	if end >= rest.len {
+		return none
+	}
+	target := rest[1..end]
+	if target == '' {
+		return none
+	}
+	rest = rest[end + 1..].trim_space()
+	if !rest.starts_with(']') {
+		return none
+	}
+	rest = rest[1..].trim_space()
+	if !rest.starts_with('module ') {
+		return none
+	}
+	return target
 }
 
 // 2022-01-30 qualify_module - used by V's parser to find the full module name

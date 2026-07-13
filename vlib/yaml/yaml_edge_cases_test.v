@@ -1,7 +1,7 @@
 module yaml
 
 import os
-import x.json2
+import json2
 
 // Edge-case coverage for parse_text + scalar parsing + serialization.
 // Complements yaml_test.v which covers the happy path. Each fn targets one

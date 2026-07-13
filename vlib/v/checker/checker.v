@@ -499,18 +499,19 @@ pub fn (mut c Checker) check(mut ast_file ast.File) {
 	c.reset_checker_state_at_start_of_new_file()
 	c.change_current_file(ast_file)
 	for i, ast_import in ast_file.imports {
+		import_name := ast_import.source_name
 		// Imports with the same path and name (self-imports and module name conflicts with builtin module imports)
 		if c.mod == ast_import.mod {
-			c.error('cannot import `${ast_import.mod}` into a module with the same name',
+			c.error('cannot import `${import_name}` into a module with the same name',
 				ast_import.mod_pos)
 		}
 		// Duplicates of regular imports with the default alias (modname) and `as` imports with a custom alias
 		if c.mod == ast_import.alias {
 			if c.mod == ast_import.mod.all_after_last('.') {
-				c.error('cannot import `${ast_import.mod}` into a module with the same name',
+				c.error('cannot import `${import_name}` into a module with the same name',
 					ast_import.mod_pos)
 			}
-			c.error('cannot import `${ast_import.mod}` as `${ast_import.alias}` into a module with the same name',
+			c.error('cannot import `${import_name}` as `${ast_import.alias}` into a module with the same name',
 				ast_import.alias_pos)
 		}
 		for sym in ast_import.syms {
