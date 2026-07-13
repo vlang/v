@@ -411,7 +411,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	container_type := t.node_type(container)
 	if container_type.len > 0 && container_type !in ['array', 'map', 'unknown']
 		&& for_iter_type_is_container(container_type)
-		&& !for_iter_type_has_generic_placeholder(actual_iter_type)
+		&& (actual_iter_type.len == 0 || for_iter_type_has_generic_placeholder(actual_iter_type))
 		&& !(t.is_fixed_array_type(actual_iter_type) && !t.is_fixed_array_type(container_type)) {
 		actual_iter_type = container_type
 	}
@@ -509,6 +509,11 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		iter_id := t.a.child(&node, container_idx)
 		if fixed_array_type := t.detect_for_in_global_fixed_array_type(iter_id) {
 			return fixed_array_type
+		}
+		checker_type := t.raw_checker_node_type(iter_id)
+		if checker_type.len > 0 && for_iter_type_is_container(checker_type) {
+			t.set_node_typ(int(iter_id), checker_type)
+			return checker_type
 		}
 		iter_type := t.node_type(iter_id)
 		if iter_type.len > 0

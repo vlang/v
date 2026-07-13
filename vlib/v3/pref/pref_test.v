@@ -15,3 +15,9 @@ fn test_detect_vroot_from_binary_path() {
 	v3_bin := os.join_path(vroot, 'vlib', 'v3', 'v3')
 	assert detect_vroot_from(v3_bin) == vroot
 }
+
+fn test_vlib_module_path_maps_temporary_v2_directory() {
+	expected := os.join_path('v2_toberemoved', 'ast')
+	assert vlib_module_path('v2.ast') == expected
+	assert vlib_module_path('v.ast') == os.join_path('v', 'ast')
+}

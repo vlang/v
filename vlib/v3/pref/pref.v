@@ -88,13 +88,13 @@ fn detect_vroot_from(start string) string {
 
 // get_vlib_module_path returns get vlib module path data for Preferences.
 pub fn (p &Preferences) get_vlib_module_path(mod string) string {
-	mod_path := mod.replace('.', os.path_separator)
+	mod_path := vlib_module_path(mod)
 	return os.join_path_single(os.join_path_single(p.vroot, 'vlib'), mod_path)
 }
 
 // get_module_path returns get module path data for Preferences.
 pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) string {
-	mod_path := mod.replace('.', os.path_separator)
+	mod_path := vlib_module_path(mod)
 	// Absolutize the importer like V1's Builder.find_module_path does
 	// (`os.real_path(fpath)`). When the input is given as a relative path (e.g.
 	// `v3 -o out .`), the parsed file paths are relative too (`./doka.v`), and a
@@ -133,6 +133,15 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		current_dir = parent_dir
 	}
 	return ''
+}
+
+// vlib_module_path maps an import name to its directory below vlib.
+fn vlib_module_path(mod string) string {
+	mut parts := mod.split('.')
+	if parts.len > 0 && parts[0] == 'v2' {
+		parts[0] = 'v2_toberemoved'
+	}
+	return parts.join(os.path_separator)
 }
 
 // dir_is_module reports whether `dir` is a usable module directory: it must exist

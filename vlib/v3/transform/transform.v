@@ -8864,23 +8864,31 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 			current_type = qv
 			continue
 		}
-		qv := t.resolve_variant(sc.sum_type_name, sc.variant_name)
-		if t.expr_is_variant_access(current, qv) {
-			current_type = qv
-			continue
+		mut path := t.sum_variant_path(sc.sum_type_name, sc.variant_name)
+		if path.len == 0 {
+			path = [t.resolve_variant(sc.sum_type_name, sc.variant_name)]
 		}
-		field := t.sum_field_name(qv)
-		use_ptr := t.variant_references_sum(qv, sc.sum_type_name)
-		field_typ := if use_ptr { '&${qv}' } else { qv }
-		field_op := if current_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
-		field_sel := t.make_selector_op(current, field, field_typ, field_op)
-		if use_ptr && i == contexts.len - 1 {
-			current = t.make_prefix(.mul, field_sel)
-			t.set_node_typ(int(current), qv)
-			current_type = qv
-		} else {
-			current = field_sel
-			current_type = field_typ
+		mut current_sum := sc.sum_type_name
+		for j, qv in path {
+			if t.expr_is_variant_access(current, qv) {
+				current_type = qv
+				current_sum = qv
+				continue
+			}
+			field := t.sum_field_name(qv)
+			use_ptr := t.variant_references_sum(qv, current_sum)
+			field_typ := if use_ptr { '&${qv}' } else { qv }
+			field_op := if current_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
+			field_sel := t.make_selector_op(current, field, field_typ, field_op)
+			if use_ptr && i == contexts.len - 1 && j == path.len - 1 {
+				current = t.make_prefix(.mul, field_sel)
+				t.set_node_typ(int(current), qv)
+				current_type = qv
+			} else {
+				current = field_sel
+				current_type = field_typ
+			}
+			current_sum = qv
 		}
 	}
 	return current
