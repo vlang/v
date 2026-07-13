@@ -785,7 +785,28 @@ fn (mut g FlatGen) gen_select_receive_value(expr string, actual types.Type, expe
 	actual_base := select_receive_unalias_type(actual)
 	if expected_base is types.OptionType || expected_base is types.ResultType {
 		if actual_base is types.OptionType || actual_base is types.ResultType {
-			g.write(expr)
+			expected_payload := if expected_base is types.OptionType {
+				expected_base.base_type
+			} else {
+				(expected_base as types.ResultType).base_type
+			}
+			actual_payload := if actual_base is types.OptionType {
+				actual_base.base_type
+			} else {
+				(actual_base as types.ResultType).base_type
+			}
+			expected_ct := g.optional_type_name(expected)
+			actual_ct := g.optional_type_name(actual)
+			if expected_ct == actual_ct {
+				g.write(expr)
+				return
+			}
+			g.write('((${expr}).ok ? (${expected_ct}){.ok = true')
+			if expected_payload !is types.Void {
+				g.write(', .value = ')
+				g.gen_select_receive_value('(${expr}).value', actual_payload, expected_payload)
+			}
+			g.write('} : (${expected_ct}){.ok = false, .err = (${expr}).err})')
 			return
 		}
 		base_type := if expected_base is types.OptionType {

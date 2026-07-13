@@ -1212,6 +1212,59 @@ fn main() {
 	assert out == '3\n5\n7\n9'
 }
 
+fn test_select_receive_assignment_reboxes_option_result_payloads() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_reboxes_option_result_payloads', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_option() ?Value {
+	return Value{
+		n: 3
+	}
+}
+
+fn make_result() !Value {
+	return Value{
+		n: 7
+	}
+}
+
+fn initial_result() !IValue {
+	return error("initial")
+}
+
+fn main() {
+	option_ch := chan ?Value{cap: 1}
+	option_ch <- make_option()
+	mut option_value := ?IValue(none)
+	select {
+		option_value = <-option_ch {}
+	}
+	option_payload := option_value or { panic("missing option") }
+	println(int_str(option_payload.get()))
+
+	result_ch := chan !Value{cap: 1}
+	result_ch <- make_result()
+	mut result_value := initial_result()
+	select {
+		result_value = <-result_ch {}
+	}
+	result_payload := result_value or { panic(err) }
+	println(int_str(result_payload.get()))
+}
+')
+	assert out == '3\n7'
+}
+
 fn test_interface_equality_includes_select_receive_assignment_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_select_receive_assignment_box', 'interface IValue {}
