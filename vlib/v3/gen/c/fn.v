@@ -39,11 +39,12 @@ struct SpawnPackedArg {
 
 // FlatFnGenItem represents one top-level function selected for C emission.
 struct FlatFnGenItem {
-	node_id flat.NodeId
-	file    string
-	module  string
-	c_name  string
-	cost    int
+	node_id                   flat.NodeId
+	file                      string
+	module                    string
+	c_name                    string
+	cost                      int
+	is_program_specialization bool
 }
 
 struct FlatFnGenCandidate {
@@ -68,6 +69,8 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut candidates := []FlatFnGenCandidate{}
 	mut preferred_fns := map[string]int{}
 	mut ranks := map[string]int{}
+	mut program_specializations := map[string]bool{}
+	mut preferred_program_specializations := map[string]bool{}
 	mut cur_module := ''
 	mut cur_file := ''
 	// Defer cost/prep until after preferred-file and emission filtering. When
@@ -95,10 +98,17 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 				continue
 			}
 			preferred_name := g.qualified_fn_name_in_module_c(cur_module, node.value)
+			if g.is_program_specialization_fn_node(node, i, cur_module) {
+				program_specializations[preferred_name] = true
+			}
 			rank := c_backend_fn_file_rank(cur_file)
-			if preferred_name !in preferred_fns || rank > ranks[preferred_name] {
+			is_program_specialization := program_specializations[preferred_name]
+			if preferred_name !in preferred_fns || rank > ranks[preferred_name]
+				|| (rank == ranks[preferred_name] && is_program_specialization
+				&& !preferred_program_specializations[preferred_name]) {
 				preferred_fns[preferred_name] = i
 				ranks[preferred_name] = rank
+				preferred_program_specializations[preferred_name] = is_program_specialization
 			}
 			candidates << FlatFnGenCandidate{
 				preferred_name: preferred_name
@@ -137,11 +147,12 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			flat_fn_gen_item_cost(g.a, item.node_id)
 		}
 		items << FlatFnGenItem{
-			node_id: item.node_id
-			file:    item.file
-			module:  item.module
-			c_name:  item.c_name
-			cost:    cost
+			node_id:                   item.node_id
+			file:                      item.file
+			module:                    item.module
+			c_name:                    item.c_name
+			cost:                      cost
+			is_program_specialization: program_specializations[candidate.preferred_name]
 		}
 	}
 	return items
@@ -178,7 +189,8 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		g.tc.cur_module = item.module
 		node := g.a.nodes[int(item.node_id)]
 		is_anon_fn := node.value.starts_with('__anon_fn_') || node.value.contains('.__anon_fn_')
-		is_program_fn := g.a.specialized_fn_nodes[int(item.node_id)]
+		is_program_fn := item.is_program_specialization
+			|| g.is_program_specialization_fn_node(node, int(item.node_id), item.module)
 			|| (is_anon_fn && item.module in ['', 'main']) || g.test_files[item.file]
 			|| g.cache_program_files[item.file]
 		if node.is_mut && item.file.ends_with('.vh') && !is_program_fn {
@@ -351,18 +363,23 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 	}
 	// Every specialization materialized from the combined program/module-cache
 	// graph is a concrete body needed by either main or one of the cached objects.
-	if g.a.specialized_fn_nodes[node_index] {
-		return true
-	}
-	if node.value in g.tc.specialized_generic_fns || qfn in g.tc.specialized_generic_fns
-		|| g.cname(node.value) in g.tc.specialized_generic_fns
-		|| g.cname(qfn) in g.tc.specialized_generic_fns {
+	if g.is_program_specialization_fn_node(node, node_index, module_name) {
 		return true
 	}
 	if g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, module_name) {
 		return false
 	}
 	return true
+}
+
+fn (g &FlatGen) is_program_specialization_fn_node(node flat.Node, node_index int, module_name string) bool {
+	if g.a.specialized_fn_nodes[node_index] {
+		return true
+	}
+	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
+	return node.value in g.tc.specialized_generic_fns || qfn in g.tc.specialized_generic_fns
+		|| g.cname(node.value) in g.tc.specialized_generic_fns
+		|| g.cname(qfn) in g.tc.specialized_generic_fns
 }
 
 fn cgen_is_operator_overload_fn(name string) bool {

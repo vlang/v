@@ -225,6 +225,79 @@ pub fn value() int {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
+fn test_program_generic_specializations_stay_out_of_builtin_object() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_program_generics_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+struct First {
+	id int
+	name string
+}
+
+fn render[T](value T) string {
+	return "\${value}"
+}
+
+fn main() {
+	value := First{
+		id: 7
+		name: "v"
+	}
+	mut rows := []string{}
+	$for field in First.fields {
+		rows << render(value.$(field.name))
+	}
+	println(rows.join("|"))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '7|v'
+	first_hashes := module_cache_object_hashes(cache_dir)
+	builtin_names := first_hashes.keys().filter(it.starts_with('builtin_'))
+	assert builtin_names.len == 1
+	builtin_name := builtin_names[0]
+	builtin_hash := first_hashes[builtin_name]
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+struct Second {
+	count int
+	label string
+}
+
+fn combine[A, B](a A, b B) string {
+	_ = a
+	return "\${b}"
+}
+
+fn main() {
+	value := Second{
+		count: 2
+		label: "x"
+	}
+	mut rows := []string{}
+	$for field in Second.fields {
+		rows << combine(value.$(field.name), field.name)
+	}
+	println(rows.join("|"))
+}
+')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == 'count|label'
+	second_hashes := module_cache_object_hashes(cache_dir)
+	assert second_hashes[builtin_name] == builtin_hash
+}
+
 fn test_module_cache_reuses_headers_and_rebuilds_only_changed_module() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_project_${os.getpid()}')
