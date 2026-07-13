@@ -1472,10 +1472,11 @@ fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.Flat
 	mut children := []flat.NodeId{cap: base_children + base_children / 4}
 	children << t.a.children[0..base_children]
 	return &flat.FlatAst{
-		nodes:           nodes
-		children:        children
-		user_code_start: t.a.user_code_start
-		disabled_fns:    t.a.disabled_fns
+		nodes:                nodes
+		children:             children
+		user_code_start:      t.a.user_code_start
+		disabled_fns:         t.a.disabled_fns
+		specialized_fn_nodes: t.a.specialized_fn_nodes
 	}
 }
 

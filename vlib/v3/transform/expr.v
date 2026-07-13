@@ -1988,10 +1988,16 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 	t.a.nodes[int(ret_result)].typ = 'bool'
 	stmts << t.make_return(ret_result, 'bool')
 	t.pending_stmts = saved_pending
-	// place the helper in the main module so its C name is the plain helper name
+	// Keep the helper with the module that owns the sum type so module-cache objects
+	// retain its definition. Cgen preserves the globally unique plain helper name.
+	helper_module := if clean_sum.contains('.') {
+		clean_sum.all_before_last('.')
+	} else {
+		t.cur_module
+	}
 	t.a.add_node(flat.Node{
 		kind:  .module_decl
-		value: 'main'
+		value: helper_module
 	})
 	start := t.a.children.len
 	t.a.children << param_a

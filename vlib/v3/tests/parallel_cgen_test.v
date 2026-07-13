@@ -218,7 +218,7 @@ fn test_parallel_cgen_worker_resolves_generic_struct_method_signature() {
 	v3_bin := build_parallel_v3()
 	main_path := write_parallel_generic_struct_method_project('parallel_generic_struct_method')
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_generic_struct_method_out')
-	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -b c -o ${bin_out}')
+	compile := os.execute('VJOBS=2 ${v3_bin} -nocache ${main_path} -b c -o ${bin_out}')
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
 	run := os.execute(bin_out)
@@ -298,7 +298,7 @@ fn test_parallel_cgen_worker_preserves_ierror_payload_success_with_builtin_error
 	main_path :=
 		write_parallel_ierror_payload_success_project('parallel_ierror_payload_success_${os.getpid()}')
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_ierror_payload_success_out_${os.getpid()}')
-	compile := os.execute('VJOBS=2 ${v3_bin} ${main_path} -b c -o ${bin_out}')
+	compile := os.execute('VJOBS=2 ${v3_bin} -nocache ${main_path} -b c -o ${bin_out}')
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output
 	run := os.execute(bin_out)
@@ -354,7 +354,7 @@ fn test_parallel_transform_selfhost_builds_v3() {
 	bin_out := os.join_path(os.temp_dir(), 'v3_parallel_selfhost_out_${os.getpid()}')
 	os.rm(bin_out) or {}
 	os.rm(bin_out + '.c') or {}
-	compile := os.execute('VJOBS=2 ${v3_bin} -building-v -o ${bin_out} ${parallel_v3_src}')
+	compile := os.execute('VJOBS=2 ${v3_bin} -nocache -building-v -o ${bin_out} ${parallel_v3_src}')
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('transform'), compile.output
 	assert compile.output.contains('cgen (parallel)'), compile.output

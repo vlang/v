@@ -348,7 +348,8 @@ fn (mut g FlatGen) string_literals_from(start int) {
 	for i := start; i < g.str_lits.len; i++ {
 		s := g.str_lits[i]
 		escaped := c_escape(s)
-		g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
+		storage := if g.cache_split { 'static ' } else { '' }
+		g.writeln('${storage}string _str_${i} = {"${escaped}", ${s.len}, 1};')
 	}
 	if g.str_lits.len > start {
 		g.writeln('')

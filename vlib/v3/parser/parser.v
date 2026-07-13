@@ -78,10 +78,11 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		s:                scanner.new_scanner(prefs, .normal)
 		local_type_names: map[string]string{}
 		a:                &flat.FlatAst{
-			nodes:           []flat.Node{cap: 256}
-			children:        []flat.NodeId{cap: 512}
-			disabled_fns:    map[string]bool{}
-			export_fn_names: map[string]string{}
+			nodes:                []flat.Node{cap: 256}
+			children:             []flat.NodeId{cap: 512}
+			disabled_fns:         map[string]bool{}
+			export_fn_names:      map[string]string{}
+			specialized_fn_nodes: map[int]bool{}
 		}
 	}
 }
@@ -947,13 +948,17 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			p.next()
 		}
 		start := p.add_children(param_ids)
+		is_v_header_decl := !is_c_decl && p.cur_file.ends_with('.vh')
 		id := p.a.add_node(flat.Node{
-			kind:           .c_fn_decl
+			kind:           if is_v_header_decl { .fn_decl } else { .c_fn_decl }
 			value:          name
 			typ:            ret_type
 			generic_params: generic_params
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
+			// Function nodes do not otherwise use is_mut. On a .vh declaration it
+			// records that the body lives in a cached object and must not be emitted.
+			is_mut: is_v_header_decl
 		})
 		p.pending_export = ''
 		p.register_pending_noreturn(name)

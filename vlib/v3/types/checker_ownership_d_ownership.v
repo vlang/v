@@ -9565,5 +9565,8 @@ fn (mut tc TypeChecker) ownership_string_builtin_keeps_receiver(recv_id flat.Nod
 fn (tc &TypeChecker) ownership_fn_declared_in_builtin(fn_name string) bool {
 	file := tc.fn_type_files[fn_name] or { return false }
 	normalized := file.replace('\\', '/')
-	return normalized.starts_with('vlib/builtin/') || normalized.contains('/vlib/builtin/')
+	return normalized.starts_with('vlib/builtin/')
+		|| normalized.contains('/vlib/builtin/')
+		|| (normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
+		&& normalized.all_after_last('/').starts_with('builtin_'))
 }

@@ -218,13 +218,25 @@ fn (mut g FlatGen) collect_interface_impls() {
 			impls = g.tc.interface_impl_names(iface)
 		}
 		g.iface_impls[iface] = impls
-		for idx, concrete in impls {
-			g.iface_type_ids['${iface}::${concrete}'] = idx + 1
+		for concrete in impls {
+			g.iface_type_ids['${iface}::${concrete}'] = stable_interface_type_id(concrete)
 		}
 		if g.is_ierror_type_name(iface) {
 			g.collect_ierror_method_emit_names(impls)
 		}
 	}
+}
+
+fn stable_interface_type_id(name string) int {
+	if name.len == 0 {
+		return 0
+	}
+	mut hash := u32(2166136261)
+	for c in name.bytes() {
+		hash = (hash ^ u32(c)) * u32(16777619)
+	}
+	type_id := int(hash & u32(0x7fffffff))
+	return if type_id == 0 { 1 } else { type_id }
 }
 
 fn (mut g FlatGen) collect_ierror_method_emit_names(impls []string) {
@@ -779,6 +791,12 @@ fn (mut g FlatGen) interface_method_stubs() {
 			if !g.should_emit_interface_dispatch(iface_name, method) {
 				continue
 			}
+			if g.cache_split {
+				// Dispatch tables depend on the concrete implementations in the
+				// current program, so they belong beside main instead of in the
+				// source-stable object that owns the interface declaration.
+				g.writeln('/* V3CACHE_MODULE main */')
+			}
 			g.gen_interface_dispatch(iface_name, cn, method)
 		}
 	}
@@ -787,7 +805,90 @@ fn (mut g FlatGen) interface_method_stubs() {
 	}
 }
 
+fn (mut g FlatGen) interface_method_forward_decls() {
+	for iface_name, methods in g.interfaces {
+		cn := g.cname(iface_name)
+		for method in methods {
+			if !g.should_emit_interface_dispatch(iface_name, method) {
+				continue
+			}
+			if cn == 'IError' {
+				ret_ct := if method == 'code' { 'int' } else { 'string' }
+				g.writeln('${ret_ct} ${cn}__${method}(${cn}* i);')
+				if g.cache_split {
+					g.ierror_dispatch_target_forward_decls(iface_name, method, ret_ct)
+				}
+				continue
+			}
+			mname := '${iface_name}.${method}'
+			decl_key := g.interface_method_signature_key(iface_name, method) or { mname }
+			impls := g.iface_impls[iface_name] or { []string{} }
+			mut sig_key := ''
+			for concrete in impls {
+				candidate := '${concrete}.${method}'
+				if candidate in g.tc.fn_param_types {
+					sig_key = candidate
+					break
+				}
+			}
+			ret_type := g.tc.fn_ret_types[decl_key] or {
+				if sig_key.len > 0 {
+					g.tc.fn_ret_types[sig_key] or { types.Type(types.void_) }
+				} else {
+					types.Type(types.void_)
+				}
+			}
+			decl_params := g.tc.fn_param_types[decl_key] or { []types.Type{} }
+			concrete_params := if sig_key.len > 0 {
+				g.tc.fn_param_types[sig_key] or { []types.Type{} }
+			} else {
+				[]types.Type{}
+			}
+			sig_params := if decl_params.len > 0
+				&& (concrete_params.len == 0 || decl_params.len == concrete_params.len) {
+				decl_params
+			} else {
+				concrete_params
+			}
+			g.write('${g.fn_return_type_name(ret_type)} ${cn}__${method}(${cn}* i')
+			for pi := 1; pi < sig_params.len; pi++ {
+				pt := sig_params[pi]
+				pct := if pt is types.OptionType || pt is types.ResultType {
+					g.optional_type_name(pt)
+				} else {
+					g.tc.c_type(pt)
+				}
+				g.write(', ${pct} _a${pi - 1}')
+			}
+			g.writeln(');')
+		}
+	}
+	if g.interfaces.len > 0 {
+		g.writeln('')
+	}
+}
+
+fn (mut g FlatGen) ierror_dispatch_target_forward_decls(iface_name string, method string, ret_ct string) {
+	mut forwarded := map[string]bool{}
+	for concrete in g.iface_impls[iface_name] or { []string{} } {
+		call := g.ierror_method_call(concrete, method) or { continue }
+		target_c_name := g.cname(call.method_name)
+		if forwarded[target_c_name] {
+			continue
+		}
+		params := g.tc.fn_param_types[call.method_name] or { continue }
+		if params.len != 1 {
+			continue
+		}
+		forwarded[target_c_name] = true
+		g.writeln('${ret_ct} ${target_c_name}(${g.tc.c_type(params[0])} _recv);')
+	}
+}
+
 fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string) bool {
+	if g.cache_split {
+		return true
+	}
 	if !g.has_used_fn_filter() {
 		return true
 	}

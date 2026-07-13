@@ -44,6 +44,7 @@ mut:
 	fn_gen_items                   []FlatFnGenItem
 	fn_segs                        []string
 	test_files                     map[string]bool
+	cache_program_files            map[string]bool
 	str_lits                       []string
 	str_lit_ids                    map[string]int
 	global_types                   map[string]types.Type
@@ -182,6 +183,7 @@ mut:
 	const_short_index       &ConstShortIndex = unsafe { nil }
 	mut_recv_facts          &FnNameFactCache = unsafe { nil }
 	want_parallel_prep      bool
+	cache_split             bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
@@ -385,6 +387,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_gen_items:                   []FlatFnGenItem{}
 		fn_segs:                        []string{}
 		test_files:                     map[string]bool{}
+		cache_program_files:            map[string]bool{}
 		str_lit_ids:                    map[string]int{}
 		global_types:                   map[string]types.Type{}
 		enum_vals:                      map[string]int{}
@@ -483,6 +486,22 @@ pub fn FlatGen.new() FlatGen {
 // set_compiler_vexe sets the V executable path baked into generated test/runtime helpers.
 pub fn (mut g FlatGen) set_compiler_vexe(path string) {
 	g.compiler_vexe = path
+}
+
+// set_cache_split enables stable cache markers and string symbols in generated C.
+// The v3 driver uses them to split one checked program into independently cached
+// module objects without changing regular `-o file.c` output.
+pub fn (mut g FlatGen) set_cache_split(enabled bool) {
+	g.cache_split = enabled
+}
+
+// set_cache_program_files assigns entry-module source files to the program
+// translation unit rather than an imported module cache object.
+pub fn (mut g FlatGen) set_cache_program_files(files []string) {
+	g.cache_program_files = map[string]bool{}
+	for file in files {
+		g.cache_program_files[file] = true
+	}
 }
 
 // set_scope_parallel_workers makes cgen helpers use disposable prealloc
@@ -667,6 +686,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_sum_name_lookup()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
+	g.preseed_fn_signature_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
 	g.preseed_libc_compat_fns()
 	g.precompute_generic_method_candidate_index()
@@ -741,18 +761,28 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.test_failure_helpers()
 		g.global_decls()
 		g.forward_decls()
+		g.cached_header_forward_decls()
+		g.interface_method_forward_decls()
 		g.shared_dup_fns()
 		g.enum_str_forward_decls()
 		g.callback_wrapper_decls()
 		g.spawn_wrapper_decls()
 		g.register_interface_strings()
 		g.string_literals()
-		g.interface_method_stubs()
+		if !g.cache_split {
+			g.interface_method_stubs()
+		}
 		g.enum_str_defs()
 	}
 	g.sb.write_string(const_code)
 	// The final builder now owns a copy of the const code.
 	unsafe { const_code.free() }
+	if g.cache_split {
+		g.writeln('/* V3CACHE_BODY_BEGIN */')
+		// `_vinit` aggregates module and global initialization for the current
+		// entry program, so it must never be retained in a reusable module object.
+		g.writeln('/* V3CACHE_MODULE main */')
+	}
 	if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 		|| g.global_inits.len > 0 {
 		g.writeln('void _vinit() {')
@@ -769,6 +799,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('}')
 		g.writeln('')
 	}
+	if g.cache_split {
+		g.interface_method_stubs()
+	}
 	if g.fn_segs.len > 0 {
 		for segment in g.fn_segs {
 			g.sb.write_string(segment)
@@ -780,10 +813,53 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// The final builder now owns a copy of the function code.
 		unsafe { fn_code.free() }
 	}
-	result := g.sb.str()
+	if g.cache_split {
+		g.writeln('/* V3CACHE_BODY_END */')
+	}
+	mut result := g.sb.str()
 	// Keep only the returned C string, not the builder's copied backing array.
 	unsafe { g.sb.free() }
+	if g.cache_split {
+		result = g.rewrite_cache_string_symbols(result)
+	}
 	return result
+}
+
+fn (g &FlatGen) rewrite_cache_string_symbols(source string) string {
+	mut symbols := []string{cap: g.str_lits.len}
+	for value in g.str_lits {
+		symbols << cache_string_symbol(value)
+	}
+	mut out := strings.new_builder(source.len + g.str_lits.len * 8)
+	mut i := 0
+	for i < source.len {
+		if i + 5 < source.len && source[i] == `_` && source[i + 1] == `s` && source[i + 2] == `t`
+			&& source[i + 3] == `r` && source[i + 4] == `_` && source[i + 5] >= `0`
+			&& source[i + 5] <= `9` {
+			mut end := i + 5
+			mut id := 0
+			for end < source.len && source[end] >= `0` && source[end] <= `9` {
+				id = id * 10 + int(source[end] - `0`)
+				end++
+			}
+			if id >= 0 && id < symbols.len {
+				out.write_string(symbols[id])
+				i = end
+				continue
+			}
+		}
+		out.write_u8(source[i])
+		i++
+	}
+	return out.str()
+}
+
+fn cache_string_symbol(value string) string {
+	mut hash := u64(1469598103934665603)
+	for c in value.bytes() {
+		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
+	return '_v3_lit_${value.len}_${hash.hex()}'
 }
 
 // emit_overlap_postamble_segments emits the body-independent postamble groups
@@ -831,6 +907,8 @@ fn (mut g FlatGen) emit_postamble_segments_b() {
 	g.test_failure_helpers()
 	g.global_decls()
 	g.forward_decls()
+	g.cached_header_forward_decls()
+	g.interface_method_forward_decls()
 	g.shared_dup_fns()
 	g.enum_str_forward_decls()
 	segs << g.sb.str()
@@ -840,10 +918,12 @@ fn (mut g FlatGen) emit_postamble_segments_b() {
 	g.line_start = true
 	g.string_literals()
 	segs << g.sb.str()
-	// Segment 3: interface method stubs and enum str defs.
+	// Segment 3: interface dispatch and enum string definitions.
 	g.sb = strings.new_builder(65536)
 	g.line_start = true
-	g.interface_method_stubs()
+	if !g.cache_split {
+		g.interface_method_stubs()
+	}
 	g.enum_str_defs()
 	segs << g.sb.str()
 	unsafe { g.sb.free() }
@@ -1245,7 +1325,8 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			if header_text.len > 0 {
 				g.add_c_directive(module_name, header_text, before_import)
 			}
-		} else if c_should_preserve_uninlined_include(include_arg) {
+		} else if c_should_preserve_uninlined_include(include_arg) || (g.cache_split
+			&& include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>']) {
 			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
@@ -1626,12 +1707,54 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 	return clean in ['<dlfcn.h>', '<limits.h>', '<arm_neon.h>']
 }
 
-fn c_preserved_system_include_declared_fns(_include_arg string) []string {
+fn c_preserved_system_include_declared_fns(include_arg string) []string {
+	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
+		return [
+			'host_page_size',
+			'host_statistics64',
+			'mach_absolute_time',
+			'mach_host_self',
+			'mach_port_deallocate',
+			'mach_task_self',
+			'mach_timebase_info',
+			'task_info',
+		]
+	}
 	return []string{}
 }
 
-fn c_preserved_system_include_struct_names(_include_arg string) []string {
+fn c_preserved_system_include_struct_names(include_arg string) []string {
+	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
+		return [
+			'host_t',
+			'mach_timebase_info_data_t',
+			'task_basic_info',
+			'task_t',
+			'vm_size_t',
+			'vm_statistics64_data_t',
+		]
+	}
 	return []string{}
+}
+
+const c_cache_system_header_declared_fns = {
+	'host_page_size':       true
+	'host_statistics64':    true
+	'mach_absolute_time':   true
+	'mach_host_self':       true
+	'mach_port_deallocate': true
+	'mach_task_self':       true
+	'mach_timebase_info':   true
+	'task_info':            true
+}
+
+const c_cache_system_header_struct_names = {
+	'host_t':                    true
+	'mach_timebase_info_data_t': true
+	'task_basic_info':           true
+	'task_t':                    true
+	'vm_size_t':                 true
+	'vm_statistics64_data_t':    true
 }
 
 fn c_stdint_header_text() string {
@@ -2143,6 +2266,9 @@ fn c_header_declared_fn_name(line string) string {
 		|| line.contains('}') {
 		return ''
 	}
+	if macro_name := c_header_macro_wrapped_declared_fn_name(line) {
+		return macro_name
+	}
 	// Reject function-pointer variable declarations (`int (*fp)(void);`) and
 	// functions returning function pointers, where the identifier before the
 	// first `(` is not the declared name. A `(*` later in the parameter list
@@ -2174,6 +2300,35 @@ fn c_header_declared_fn_name(line string) string {
 		return ''
 	}
 	return c_header_fn_name(line)
+}
+
+fn c_header_macro_wrapped_declared_fn_name(line string) ?string {
+	open := line.index_u8(`(`)
+	if open <= 0 {
+		return none
+	}
+	macro_name := line[..open].trim_space()
+	if macro_name.len == 0 || macro_name.contains(' ') || macro_name.contains('\t') {
+		return none
+	}
+	for c in macro_name.bytes() {
+		if !((c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`) {
+			return none
+		}
+	}
+	close := typeof_display_type_name_matching_paren(line, open)
+	if close < 0 || close + 1 >= line.len {
+		return none
+	}
+	declarator := line[close + 1..].trim_space()
+	if !declarator.ends_with(';') || !declarator.contains('(') {
+		return none
+	}
+	name := c_header_fn_name(declarator)
+	if name.len == 0 {
+		return none
+	}
+	return name
 }
 
 fn c_header_defined_fn_name(line string) string {
@@ -7314,6 +7469,12 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef intptr_t ssize_t;')
 	g.writeln('#endif')
 	g.writeln('extern char** environ;')
+	g.writeln('void* malloc(size_t size);')
+	g.writeln('void* calloc(size_t count, size_t size);')
+	g.writeln('void* realloc(void* ptr, size_t size);')
+	g.writeln('void free(void* ptr);')
+	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
+	g.writeln('int fseek(FILE* stream, long offset, int whence);')
 	g.writeln('char* getenv(const char* name);')
 	g.writeln('int setenv(const char* name, const char* value, int overwrite);')
 	g.writeln('void abort(void);')
@@ -7557,6 +7718,12 @@ fn c_function_like_macro_decl_names() []string {
 }
 
 const c_headerless_libc_declared_fns = [
+	'malloc',
+	'calloc',
+	'realloc',
+	'free',
+	'fprintf',
+	'fseek',
 	'getenv',
 	'setenv',
 	'abort',

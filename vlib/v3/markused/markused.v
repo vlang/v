@@ -8,7 +8,7 @@ const trace_markused = false
 
 // mark_used updates mark used state for markused.
 pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
-	return mark_used_with_test_files(a, tc, map[string]bool{})
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false)
 }
 
 pub fn mark_used_for_tests(a &flat.FlatAst, tc &types.TypeChecker, test_files []string) map[string]bool {
@@ -16,10 +16,19 @@ pub fn mark_used_for_tests(a &flat.FlatAst, tc &types.TypeChecker, test_files []
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map)
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false)
 }
 
-fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool) map[string]bool {
+// mark_used_for_cache roots every concrete function in modules being built for the object cache.
+pub fn mark_used_for_cache(a &flat.FlatAst, tc &types.TypeChecker, test_files []string, source_modules map[string]bool) map[string]bool {
+	mut file_map := map[string]bool{}
+	for file in test_files {
+		file_map[file] = true
+	}
+	return mark_used_with_test_files(a, tc, file_map, source_modules, true)
+}
+
+fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool) map[string]bool {
 	mut cur_module := ''
 	mut imports := map[string]string{}
 	mut fn_decls := map[string]FnDeclInfo{}
@@ -36,6 +45,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// for the parallel body-call precollection below.
 	mut body_ids := []int{cap: 8192}
 	mut body_modules := []string{cap: 8192}
+	mut cache_roots := []string{}
 
 	mut fn_count := 0
 	mut fn_with_dot := 0
@@ -116,6 +126,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			qname := qualify_fn(cur_module, node.value)
+			if cache_mode && node.kind == .fn_decl && node.generic_params.len == 0
+				&& cache_modules[cur_module] {
+				cache_roots << qname
+			}
 			if qname != node.value {
 				add_fn_decl_info(mut fn_decls, mut fn_decl_lists, qname, info)
 				if can_suffix_match {
@@ -197,6 +211,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	for seed in ['i8.str', 'i16.str', 'i32.str', 'i64.str'] {
 		queue << seed
 		used[seed] = true
+	}
+	for name in cache_roots {
+		enqueue(name, mut used, mut queue)
 	}
 
 	if trace_markused {

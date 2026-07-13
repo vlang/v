@@ -1460,6 +1460,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.cloning_generic_fn_depth++
 	clone_id := t.clone_generic_fn_node(decl.node, concrete_args)
 	t.cloning_generic_fn_depth--
+	t.a.specialized_fn_nodes[int(clone_id)] = true
 	t.restore_var_types(old_clone_var_types)
 	t.specialize_cloned_fn_signature(clone_id, decl, concrete_args)
 	clone := t.a.nodes[int(clone_id)]

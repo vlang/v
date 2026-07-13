@@ -58,6 +58,15 @@ Imports are resolved recursively: after parsing the input file, the driver
 collects `import_decl` nodes, resolves module paths, parses module files, and
 repeats until no new imports are found.
 
+For C executable and library builds, v3 caches each imported module as a
+declaration-only `.vh` file and a compiled `.o` file. A module object is rebuilt
+when its source content, compiler implementation, target, or relevant build
+configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
+`math.bits` share one `builtin.o`, matching the v2 core-cache layout. Cache files live under
+the V temporary directory by default; set `V3CACHE` to select another root, or
+pass `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c`
+builds do not use the object cache.
+
 ## Architecture
 
 ```

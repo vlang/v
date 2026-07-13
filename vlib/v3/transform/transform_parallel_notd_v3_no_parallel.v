@@ -327,10 +327,11 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 		children.flags.set(.nogrow)
 	}
 	return &flat.FlatAst{
-		nodes:           nodes
-		children:        children
-		user_code_start: a.user_code_start
-		disabled_fns:    a.disabled_fns
+		nodes:                nodes
+		children:             children
+		user_code_start:      a.user_code_start
+		disabled_fns:         a.disabled_fns
+		specialized_fn_nodes: a.specialized_fn_nodes
 	}
 }
 

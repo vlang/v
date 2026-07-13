@@ -5273,12 +5273,15 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	for body_id in new_body {
 		all_ids << body_id
 	}
-	if t.cur_module.len > 0 {
-		t.a.add_node(flat.Node{
-			kind:  .module_decl
-			value: t.cur_module
-		})
-	}
+	// Generated declarations are appended after all parsed files. Emit an explicit
+	// main context too, otherwise a main-module literal can inherit the preceding
+	// cached module's context during the later flat AST scan.
+	file_module := t.current_source_module()
+	generated_module := if file_module.len > 0 { file_module } else { 'main' }
+	t.a.add_node(flat.Node{
+		kind:  .module_decl
+		value: generated_module
+	})
 	start := t.a.children.len
 	for child_id in all_ids {
 		t.a.children << child_id
@@ -5304,10 +5307,24 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			t.add_receiver_method_suffix_index(qname)
 		}
 	}
-	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		return t.make_ident('${t.cur_module}.${name}')
+	if file_module.len > 0 && file_module != 'main' && file_module != 'builtin' {
+		return t.make_ident('${file_module}.${name}')
 	}
 	return t.make_ident(name)
+}
+
+fn (t &Transformer) current_source_module() string {
+	if t.cur_fn_name == 'main' {
+		return 'main'
+	}
+	if !isnil(t.tc) {
+		if entry_file := t.tc.fn_type_files['main'] {
+			if entry_file == t.cur_file {
+				return 'main'
+			}
+		}
+	}
+	return if t.cur_module.len > 0 { t.cur_module } else { 'main' }
 }
 
 fn (mut t Transformer) new_fn_literal_name() string {
@@ -5769,6 +5786,12 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	method := fn_node.value
 	base_id := t.a.child(&fn_node, 0)
 	base_node := t.a.nodes[int(base_id)]
+	// `C.fn(...)` is a namespaced C call, not a receiver method. In particular,
+	// generic specialization must not diagnose the `C` namespace as a value
+	// whose method is missing.
+	if base_node.kind == .ident && base_node.value == 'C' {
+		return none
+	}
 	if t.is_import_alias_ident(base_id) {
 		return none
 	}

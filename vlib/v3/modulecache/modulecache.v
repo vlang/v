@@ -1,0 +1,1161 @@
+module modulecache
+
+import os
+import strings
+import v3.flat
+import v3.types
+
+pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
+pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
+
+const cache_format = 'v3-module-cache-22'
+const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
+const c_body_end = '/* V3CACHE_BODY_END */'
+const c_module_prefix = '/* V3CACHE_MODULE '
+const generic_template_marker = '// v3cache: source generic templates'
+
+// Manager owns persistent v3 module cache paths for one compiler configuration.
+pub struct Manager {
+pub:
+	dir     string
+	enabled bool
+	salt    string
+}
+
+// Entry contains the persistent artifacts for one V module.
+pub struct Entry {
+pub:
+	header       string
+	object       string
+	header_stamp string
+	object_stamp string
+	c_source     string
+}
+
+// CSplit contains the declaration/runtime prefix and per-module C function bodies.
+pub struct CSplit {
+pub:
+	prefix  string
+	modules map[string]string
+}
+
+// new_manager creates a configuration-scoped persistent module cache manager.
+pub fn new_manager(vroot string, salt string, enabled bool) Manager {
+	root_key := hash_text(os.real_path(vroot))
+	config_key := hash_text(cache_format + '\n' + salt)
+	base_dir := os.getenv_opt('V3CACHE') or { os.vtmp_dir() }
+	return Manager{
+		dir:     os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
+		enabled: enabled
+		salt:    salt
+	}
+}
+
+// ensure_dir creates the manager's private cache directory.
+pub fn (m &Manager) ensure_dir() bool {
+	if !m.enabled {
+		return false
+	}
+	if !os.exists(m.dir) {
+		os.mkdir_all(m.dir, mode: 0o700) or { return false }
+	}
+	return os.is_dir(m.dir) && os.is_readable(m.dir) && os.is_writable(m.dir)
+}
+
+// entry returns collision-resistant artifact paths for a module and source root.
+pub fn (m &Manager) entry(module_name string, source_files []string) Entry {
+	mut source_root := module_name
+	if source_files.len > 0 {
+		source_root = os.dir(os.real_path(source_files[0]))
+	}
+	id := '${sanitize_name(module_name)}_${hash_text(source_root)}'
+	return Entry{
+		header:       os.join_path(m.dir, '${id}.vh')
+		object:       os.join_path(m.dir, '${id}.o')
+		header_stamp: os.join_path(m.dir, '${id}.vh.stamp')
+		object_stamp: os.join_path(m.dir, '${id}.o.stamp')
+		c_source:     os.join_path(m.dir, '${id}.c')
+	}
+}
+
+// source_signature hashes selected source paths and contents in stable path order.
+pub fn source_signature(source_files []string) string {
+	mut files := source_files.clone()
+	files.sort()
+	mut hash := u64(1469598103934665603)
+	for file in files {
+		path := os.real_path(file)
+		hash = hash_bytes(hash, path.bytes())
+		hash = hash_bytes(hash, [u8(0)])
+		content := os.read_bytes(file) or { return '' }
+		hash = hash_bytes(hash, content)
+		hash = hash_bytes(hash, [u8(0xff)])
+	}
+	return hash.hex()
+}
+
+// valid_entry reports whether both interface and object artifacts match their sources.
+pub fn (m &Manager) valid_entry(module_name string, source_files []string) ?Entry {
+	if !m.enabled || source_files.len == 0 {
+		return none
+	}
+	entry := m.entry(module_name, source_files)
+	if !os.is_file(entry.header) || !os.is_file(entry.object) || !os.is_file(entry.header_stamp)
+		|| !os.is_file(entry.object_stamp) {
+		return none
+	}
+	stamp := os.read_file(entry.header_stamp) or { return none }
+	expected := entry_stamp(m.salt, source_signature(source_files))
+	if stamp != expected {
+		return none
+	}
+	object_stamp := os.read_file(entry.object_stamp) or { return none }
+	if object_stamp != expected {
+		return none
+	}
+	return entry
+}
+
+// valid_header reports whether a declaration header matches its module sources.
+pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Entry {
+	if !m.enabled || source_files.len == 0 {
+		return none
+	}
+	entry := m.entry(module_name, source_files)
+	if !os.is_file(entry.header) || !os.is_file(entry.header_stamp) {
+		return none
+	}
+	stamp := os.read_file(entry.header_stamp) or { return none }
+	if stamp != entry_stamp(m.salt, source_signature(source_files)) {
+		return none
+	}
+	return entry
+}
+
+// header_needs_source reports whether a declaration header represents generic
+// templates whose bodies must remain available to per-program monomorphization.
+pub fn header_needs_source(entry Entry) bool {
+	header := os.read_file(entry.header) or { return true }
+	return header.contains(generic_template_marker)
+}
+
+// valid_object reports whether a cached object matches the supplied sources.
+pub fn (m &Manager) valid_object(cache_name string, source_files []string) ?Entry {
+	if !m.enabled || source_files.len == 0 {
+		return none
+	}
+	entry := m.entry(cache_name, source_files)
+	if !os.is_file(entry.object) || !os.is_file(entry.object_stamp) {
+		return none
+	}
+	stamp := os.read_file(entry.object_stamp) or { return none }
+	if stamp != entry_stamp(m.salt, source_signature(source_files)) {
+		return none
+	}
+	return entry
+}
+
+// write_entry commits a module interface and stamp after its object was built.
+pub fn (m &Manager) write_entry(module_name string, source_files []string, header string) !Entry {
+	if !m.ensure_dir() {
+		return error('v3 module cache directory is unavailable')
+	}
+	entry := m.entry(module_name, source_files)
+	write_atomic(entry.header, header)!
+	write_atomic(entry.header_stamp, entry_stamp(m.salt, source_signature(source_files)))!
+	return entry
+}
+
+// write_header commits one declaration-only module header and its source stamp.
+pub fn (m &Manager) write_header(module_name string, source_files []string, header string) !Entry {
+	if !m.ensure_dir() {
+		return error('v3 module cache directory is unavailable')
+	}
+	entry := m.entry(module_name, source_files)
+	write_atomic(entry.header, header)!
+	write_atomic(entry.header_stamp, entry_stamp(m.salt, source_signature(source_files)))!
+	return entry
+}
+
+// write_stamp refreshes a cache stamp after the object and header are durable.
+pub fn (m &Manager) write_stamp(module_name string, source_files []string) ! {
+	entry := m.entry(module_name, source_files)
+	write_atomic(entry.object_stamp, entry_stamp(m.salt, source_signature(source_files)))!
+}
+
+fn write_atomic(path string, content string) ! {
+	tmp := '${path}.tmp.${os.getpid()}'
+	defer {
+		os.rm(tmp) or {}
+	}
+	os.write_file(tmp, content)!
+	os.mv(tmp, path)!
+}
+
+fn entry_stamp(salt string, source_hash string) string {
+	return 'format=${cache_format}\nconfig=${hash_text(salt)}\nsource=${source_hash}\n'
+}
+
+fn sanitize_name(name string) string {
+	mut out := strings.new_builder(name.len + 8)
+	for c in name.bytes() {
+		if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`)
+			|| c == `_` || c == `-` {
+			out.write_u8(c)
+		} else {
+			out.write_u8(`_`)
+		}
+	}
+	return out.str()
+}
+
+fn hash_text(value string) string {
+	return hash_bytes(u64(1469598103934665603), value.bytes()).hex()
+}
+
+fn hash_bytes(initial u64, bytes []u8) u64 {
+	mut hash := initial
+	for c in bytes {
+		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
+	return hash
+}
+
+// split_generated_c separates a cache-marked monolithic translation unit.
+pub fn split_generated_c(source string) !CSplit {
+	begin_line := '${c_body_begin}\n'
+	mut begin := 0
+	if !source.starts_with(begin_line) {
+		begin = source.index('\n${begin_line}') or { return error('missing v3 cache body marker') }
+		begin++
+	}
+	body_start := begin + begin_line.len
+	end := source.index_after('\n${c_body_end}', body_start) or {
+		return error('missing v3 cache body end marker')
+	}
+	prefix := source[..begin]
+	body := source[body_start..end]
+	mut module_segments := map[string][]string{}
+	mut current := ''
+	mut segment_start := 0
+	mut pos := 0
+	for {
+		marker_start := body.index_after(c_module_prefix, pos) or { break }
+		if current.len > 0 {
+			module_segments[current] << body[segment_start..marker_start]
+		}
+		name_start := marker_start + c_module_prefix.len
+		name_end := body.index_after(' */', name_start) or {
+			return error('invalid v3 cache module marker')
+		}
+		current = body[name_start..name_end].trim_space()
+		segment_start = name_end + 3
+		pos = segment_start
+	}
+	if current.len > 0 && segment_start < body.len {
+		module_segments[current] << body[segment_start..]
+	}
+	mut modules := map[string]string{}
+	for name, segments in module_segments {
+		modules[name] = segments.join('')
+	}
+	return CSplit{
+		prefix:  prefix
+		modules: modules
+	}
+}
+
+// declaration_header converts the generated owner prefix into a C header for
+// cached module translation units. Type definitions and static helpers stay
+// local; owner functions and storage become declarations resolved from main.o.
+pub fn declaration_header(prefix string) string {
+	mut out := strings.new_builder(prefix.len / 2)
+	mut item := strings.new_builder(512)
+	mut brace_depth := 0
+	mut has_brace := false
+	mut in_block_comment := false
+	for raw_line in prefix.split_into_lines() {
+		line := raw_line + '\n'
+		trimmed := raw_line.trim_space()
+		if brace_depth == 0 && trimmed.starts_with('#') && item.len > 0 {
+			pending := item.str()
+			item = strings.new_builder(512)
+			if trim_leading_c_comments(pending).len == 0 {
+				out.write_string(pending)
+				has_brace = false
+			} else {
+				item.write_string(pending)
+			}
+		}
+		if brace_depth == 0 && item.len == 0
+			&& (trimmed.starts_with('#') || trimmed.len == 0 || trimmed.starts_with('//')) {
+			out.write_string(line)
+			continue
+		}
+		item.write_string(line)
+		delta, saw_brace, next_comment := c_line_braces(raw_line, in_block_comment)
+		in_block_comment = next_comment
+		brace_depth += delta
+		has_brace = has_brace || saw_brace
+		if brace_depth > 0 {
+			continue
+		}
+		if has_brace {
+			// Function and type blocks emitted by v3 finish at depth zero. A
+			// typedef/global initializer may carry its semicolon on the same line.
+			if !trimmed.ends_with('}') && !trimmed.ends_with(';') {
+				continue
+			}
+		} else if !trimmed.ends_with(';') {
+			continue
+		}
+		out.write_string(c_declaration_item(item.str(), has_brace))
+		item = strings.new_builder(512)
+		has_brace = false
+	}
+	if item.len > 0 {
+		out.write_string(c_declaration_item(item.str(), has_brace))
+	}
+	return out.str()
+}
+
+fn c_declaration_item(item string, has_brace bool) string {
+	trimmed := item.trim_space()
+	if trimmed.len == 0 {
+		return item
+	}
+	clean := trim_leading_c_comments(trimmed)
+	if clean.starts_with('extern "C"') {
+		rest := clean['extern "C"'.len..].trim_space()
+		if rest.starts_with('{') {
+			return item
+		}
+	}
+	if clean.starts_with('static ') || clean.starts_with('static\t')
+		|| clean.starts_with('typedef ') || clean.starts_with('struct ')
+		|| clean.starts_with('union ') || clean.starts_with('enum ') {
+		return item
+	}
+	if has_brace {
+		brace := clean.index_u8(`{`)
+		if brace > 0 {
+			head := clean[..brace].trim_space()
+			if head.contains('(') && !c_has_top_level_assign(head) {
+				return '${head};\n'
+			}
+			return c_extern_storage_decl(head)
+		}
+	}
+	if clean.starts_with('extern ') || clean.starts_with('_Static_assert')
+		|| (clean.contains('(') && !c_has_top_level_assign(clean)) {
+		return item
+	}
+	return c_extern_storage_decl(clean.trim_right(';'))
+}
+
+fn c_extern_storage_decl(head string) string {
+	mut left := head.trim_space()
+	if eq := c_top_level_assign_index(left) {
+		left = left[..eq].trim_space()
+	}
+	if left.len == 0 {
+		return ''
+	}
+	return 'extern ${left};\n'
+}
+
+fn c_has_top_level_assign(value string) bool {
+	return c_top_level_assign_index(value) != none
+}
+
+fn c_top_level_assign_index(value string) ?int {
+	mut paren := 0
+	mut bracket := 0
+	mut quote := u8(0)
+	mut escaped := false
+	for i, c in value.bytes() {
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c == `'` || c == `"` {
+			quote = c
+			continue
+		}
+		match c {
+			`(` {
+				paren++
+			}
+			`)` {
+				paren--
+			}
+			`[` {
+				bracket++
+			}
+			`]` {
+				bracket--
+			}
+			`=` {
+				if paren == 0 && bracket == 0 {
+					prev := if i > 0 { value[i - 1] } else { u8(0) }
+					next := if i + 1 < value.len { value[i + 1] } else { u8(0) }
+					if prev !in [`=`, `!`, `<`, `>`] && next != `=` {
+						return i
+					}
+				}
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+fn trim_leading_c_comments(value string) string {
+	mut clean := value.trim_space()
+	for {
+		if clean.starts_with('//') {
+			newline := clean.index_u8(`\n`)
+			if newline < 0 {
+				return ''
+			}
+			clean = clean[newline + 1..].trim_space()
+			continue
+		}
+		if clean.starts_with('/*') {
+			end := clean.index('*/') or { return '' }
+			clean = clean[end + 2..].trim_space()
+			continue
+		}
+		return clean
+	}
+	return clean
+}
+
+fn c_line_braces(line string, initial_block_comment bool) (int, bool, bool) {
+	mut depth := 0
+	mut saw := false
+	mut quote := u8(0)
+	mut escaped := false
+	mut block_comment := initial_block_comment
+	mut i := 0
+	bytes := line.bytes()
+	for i < bytes.len {
+		c := bytes[i]
+		next := if i + 1 < bytes.len { bytes[i + 1] } else { u8(0) }
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+				i += 2
+				continue
+			}
+			i++
+			continue
+		}
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c == `/` && next == `/` {
+			break
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			i += 2
+			continue
+		}
+		if c == `'` || c == `"` {
+			quote = c
+			i++
+			continue
+		}
+		if c == `{` {
+			depth++
+			saw = true
+		} else if c == `}` {
+			depth--
+			saw = true
+		}
+		i++
+	}
+	return depth, saw, block_comment
+}
+
+// module_header serializes the declaration-only interface for one flat-AST module.
+pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string) string {
+	mut out := strings.new_builder(4096)
+	out.writeln('module ${module_name.all_after_last('.')}')
+	if module_has_generic_templates(a, module_name) {
+		out.writeln(generic_template_marker)
+	}
+	out.writeln('')
+	mut seen := map[string]bool{}
+	for file_node in a.nodes {
+		if file_node.kind != .file || file_node.children_count == 0 {
+			continue
+		}
+		file_module := file_module_name(a, file_node)
+		if file_module != module_name
+			&& file_module.all_after_last('.') != module_name.all_after_last('.') {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			mut decl_ids := []flat.NodeId{}
+			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			for id in decl_ids {
+				node := a.nodes[int(id)]
+				if node.kind == .module_decl {
+					continue
+				}
+				key := decl_key(node)
+				if key.len > 0 && seen[key] {
+					continue
+				}
+				text := decl_text(a, tc, module_name, node, vroot, file_node.value, import_paths)
+				if text.len == 0 {
+					continue
+				}
+				if key.len > 0 {
+					seen[key] = true
+				}
+				out.writeln(text)
+				out.writeln('')
+			}
+		}
+	}
+	// Implicit imports are spliced into the flat top-level stream after parsing
+	// (`sync` for locks and `v.embed_file` for `$embed_file`). They are not file
+	// children, so preserve them separately or a warm header would omit the
+	// cached object's link dependencies.
+	mut stream_module := ''
+	for node in a.nodes {
+		if node.kind == .file {
+			stream_module = file_module_name(a, node)
+			continue
+		}
+		if node.kind != .import_decl || (stream_module != module_name
+			&& stream_module.all_after_last('.') != module_name.all_after_last('.')) {
+			continue
+		}
+		key := decl_key(node)
+		if seen[key] {
+			continue
+		}
+		text := import_text(a, node, import_paths)
+		if text.len == 0 {
+			continue
+		}
+		seen[key] = true
+		out.writeln(text)
+		out.writeln('')
+	}
+	return out.str()
+}
+
+fn append_declaration_nodes(a &flat.FlatAst, id flat.NodeId, mut declarations []flat.NodeId) {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return
+	}
+	node := a.nodes[int(id)]
+	if node.kind == .block {
+		for i in 0 .. node.children_count {
+			append_declaration_nodes(a, a.child(&node, i), mut declarations)
+		}
+		return
+	}
+	declarations << id
+}
+
+fn module_has_generic_templates(a &flat.FlatAst, module_name string) bool {
+	for file_node in a.nodes {
+		if file_node.kind != .file || file_node.children_count == 0 {
+			continue
+		}
+		file_module := file_module_name(a, file_node)
+		if file_module != module_name
+			&& file_module.all_after_last('.') != module_name.all_after_last('.') {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			if declaration_node_needs_source(a, a.child(&file_node, i)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return false
+	}
+	node := a.nodes[int(id)]
+	if node.generic_params.len > 0 || node.kind == .comptime_if {
+		return true
+	}
+	if node.kind == .block {
+		for i in 0 .. node.children_count {
+			if declaration_node_needs_source(a, a.child(&node, i)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn file_module_name(a &flat.FlatAst, file_node flat.Node) string {
+	for i in 0 .. file_node.children_count {
+		child := a.child_node(&file_node, i)
+		if child.kind == .module_decl {
+			return child.value
+		}
+	}
+	return ''
+}
+
+fn decl_key(node flat.Node) string {
+	return match node.kind {
+		.import_decl {
+			'import:${node.value}:${node.typ}'
+		}
+		.fn_decl, .c_fn_decl, .struct_decl, .enum_decl, .type_decl, .interface_decl {
+			'${int(node.kind)}:${node.value}'
+		}
+		.directive {
+			'directive:${node.value}:${node.typ}'
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn decl_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node flat.Node, vroot string, source_file string, import_paths map[string]string) string {
+	return match node.kind {
+		.import_decl {
+			import_text(a, node, import_paths)
+		}
+		.fn_decl {
+			fn_text(a, node, false)
+		}
+		.c_fn_decl {
+			fn_text(a, node, true)
+		}
+		.struct_decl {
+			struct_text(a, node)
+		}
+		.global_decl {
+			global_text(a, tc, module_name, node)
+		}
+		.const_decl {
+			const_text(a, node)
+		}
+		.enum_decl {
+			enum_text(a, node)
+		}
+		.type_decl {
+			type_text(a, node)
+		}
+		.interface_decl {
+			interface_text(a, node)
+		}
+		.directive {
+			if node.value in ['include', 'insert', 'flag', 'pkgconfig'] {
+				'#${node.value} ${cached_directive_value(node.typ, vroot, source_file)}'
+			} else {
+				''
+			}
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn cached_directive_value(value string, vroot string, source_file string) string {
+	mut result := value.replace('@VEXEROOT', vroot)
+	result = result.replace('@VROOT', '@VMODROOT')
+	if result.contains('@VMODROOT') {
+		result = result.replace('@VMODROOT', cached_vmod_root(source_file))
+	}
+	if result.contains('@DIR') {
+		result = result.replace('@DIR', os.real_path(os.dir(source_file)))
+	}
+	return result
+}
+
+fn cached_vmod_root(source_file string) string {
+	mut dir := os.dir(os.real_path(source_file))
+	for dir.len > 0 {
+		if os.is_file(os.join_path_single(dir, 'v.mod')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return os.dir(os.real_path(source_file))
+}
+
+fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) string {
+	import_path := import_paths[node.value] or { node.value }
+	mut text := 'import ${import_path}'
+	default_alias := import_path.all_after_last('.')
+	if node.typ.len > 0 && node.typ != default_alias {
+		text += ' as ${node.typ}'
+	}
+	if node.children_count > 0 {
+		mut names := []string{}
+		for i in 0 .. node.children_count {
+			names << a.child_node(&node, i).value
+		}
+		text += ' { ${names.join(', ')} }'
+	}
+	return text
+}
+
+fn fn_text(a &flat.FlatAst, node flat.Node, is_c bool) string {
+	mut params := []flat.Node{}
+	for i in 0 .. node.children_count {
+		child := a.child_node(&node, i)
+		if child.kind == .param {
+			params << child
+		}
+	}
+	mut name := node.value
+	mut head := if is_c { 'fn C.${name}' } else { 'fn ${name}' }
+	mut param_start := 0
+	if !is_c && name.contains('.') && params.len > 0 {
+		receiver_type := name.all_before_last('.')
+		first_type := clean_receiver_type(params[0].typ)
+		if first_type == receiver_type
+			|| first_type.all_after_last('.') == receiver_type.all_after_last('.') {
+			receiver := params[0]
+			receiver_name := if receiver.value.len > 0 { receiver.value } else { 'it' }
+			mut receiver_decl_type := receiver.typ
+			mut receiver_prefix := ''
+			if receiver_decl_type.starts_with('&') || receiver.is_mut {
+				receiver_prefix = 'mut '
+				receiver_decl_type = receiver_decl_type.trim_left('&').trim_space()
+			} else if receiver_decl_type.starts_with('shared ') {
+				receiver_prefix = 'shared '
+				receiver_decl_type = receiver_decl_type['shared '.len..].trim_space()
+			}
+			head = 'fn (${receiver_prefix}${receiver_name} ${receiver_decl_type}) ${name.all_after_last('.')}'
+			param_start = 1
+		}
+	}
+	if node.generic_params.len > 0 {
+		head += '[${node.generic_params.join(', ')}]'
+	}
+	mut ptexts := []string{}
+	for i := param_start; i < params.len; i++ {
+		p := params[i]
+		mut pname := p.value
+		if pname.len == 0 {
+			pname = 'arg${i - param_start}'
+		}
+		mut ptype := p.typ
+		mut prefix := ''
+		if ptype.starts_with('&') && p.is_mut {
+			prefix = 'mut '
+			ptype = ptype[1..].trim_space()
+		}
+		ptexts << '${prefix}${pname} ${ptype}'
+	}
+	head += '(${ptexts.join(', ')})'
+	if node.typ.len > 0 && node.typ != 'void' {
+		head += ' ${node.typ}'
+	}
+	return head
+}
+
+fn clean_receiver_type(value string) string {
+	mut typ := value.trim_space()
+	for typ.starts_with('&') {
+		typ = typ[1..].trim_space()
+	}
+	if typ.starts_with('shared ') {
+		typ = typ['shared '.len..].trim_space()
+	}
+	return typ
+}
+
+fn generic_suffix(params []string) string {
+	return if params.len > 0 { '[${params.join(', ')}]' } else { '' }
+}
+
+fn struct_text(a &flat.FlatAst, node flat.Node) string {
+	kind := if node.typ.split(',').contains('union') { 'union' } else { 'struct' }
+	mut head := '${kind} ${node.value}${generic_suffix(node.generic_params)}'
+	for part in node.typ.split(',') {
+		if part.starts_with('implements=') {
+			head += ' implements ' + part.all_after('=').replace('|', ', ')
+		}
+	}
+	if node.typ.split(',').contains('params') {
+		head = '@[params]\n${head}'
+	}
+	if node.children_count == 0 {
+		return head
+	}
+	mut out := strings.new_builder(256)
+	out.writeln('${head} {')
+	mut section := ''
+	for i in 0 .. node.children_count {
+		field := a.child_node(&node, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		flags := if field.generic_params.len > 0 { field.generic_params[0] } else { '' }
+		wanted := if flags.contains('p') && flags.contains('m') {
+			'pub mut'
+		} else if flags.contains('p') {
+			'pub'
+		} else if flags.contains('m') {
+			'mut'
+		} else {
+			''
+		}
+		if wanted != section && wanted.len > 0 {
+			out.writeln('${wanted}:')
+			section = wanted
+		}
+		for ai := 1; ai < field.generic_params.len; ai++ {
+			out.writeln('\t@[${field.generic_params[ai]}]')
+		}
+		mut line := '\t${field.value}'
+		if field.typ.len > 0 && field.typ != field.value {
+			line += ' ${field.typ}'
+		}
+		if field.children_count > 0 {
+			value := expr_text(a, a.child(field, 0))
+			if value.len > 0 {
+				line += ' = ${value}'
+			}
+		}
+		out.writeln(line)
+	}
+	out.write_string('}')
+	return out.str()
+}
+
+fn global_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node flat.Node) string {
+	mut out := strings.new_builder(128)
+	out.writeln('__global (')
+	for i in 0 .. node.children_count {
+		field := a.child_node(&node, i)
+		mut line := '\t${field.value}'
+		mut field_type := field.typ
+		if field_type.len == 0 {
+			field_type = cached_global_type_name(tc, module_name, field.value)
+		}
+		if field_type.len > 0 {
+			line += ' ${field_type}'
+		}
+		if field.children_count > 0 {
+			value := expr_text(a, a.child(field, 0))
+			if value.len > 0 {
+				line += ' = ${value}'
+			}
+		}
+		out.writeln(line)
+	}
+	out.write_string(')')
+	return out.str()
+}
+
+fn cached_global_type_name(tc &types.TypeChecker, module_name string, name string) string {
+	for candidate in [name, '${module_name}.${name}', '${module_name.all_after_last('.')}.${name}'] {
+		if typ := tc.file_scope.lookup(candidate) {
+			mut type_name := typ.name()
+			if type_name == 'nil' || type_name == 'none' || type_name == 'unknown' {
+				return 'voidptr'
+			}
+			if type_name.starts_with('&void[') {
+				type_name = 'voidptr' + type_name['&void'.len..]
+			}
+			return type_name
+		}
+	}
+	return ''
+}
+
+fn const_text(a &flat.FlatAst, node flat.Node) string {
+	mut out := strings.new_builder(128)
+	out.writeln('const (')
+	for i in 0 .. node.children_count {
+		field := a.child_node(&node, i)
+		mut line := '\t${field.value}'
+		if field.children_count > 0 {
+			value := expr_text(a, a.child(field, 0))
+			if value.len > 0 {
+				line += ' = ${value}'
+			} else {
+				line += ' int'
+			}
+		} else if field.typ.len > 0 {
+			line += ' ${field.typ}'
+		} else {
+			line += ' int'
+		}
+		out.writeln(line)
+	}
+	out.write_string(')')
+	return out.str()
+}
+
+fn enum_text(a &flat.FlatAst, node flat.Node) string {
+	mut out := strings.new_builder(128)
+	if node.typ == 'flag' {
+		out.writeln('@[flag]')
+	}
+	if node.generic_params.contains('json_as_number') {
+		out.writeln('@[json_as_number]')
+	}
+	mut head := 'enum ${node.value}'
+	if node.generic_params.len > 0 && node.generic_params[0].len > 0 {
+		head += ' as ${node.generic_params[0]}'
+	}
+	out.writeln('${head} {')
+	for i in 0 .. node.children_count {
+		field := a.child_node(&node, i)
+		mut line := '\t${field.value}'
+		if field.children_count > 0 {
+			value := expr_text(a, a.child(field, 0))
+			if value.len > 0 {
+				line += ' = ${value}'
+			}
+		}
+		out.writeln(line)
+	}
+	out.write_string('}')
+	return out.str()
+}
+
+fn type_text(a &flat.FlatAst, node flat.Node) string {
+	head := 'type ${node.value}${generic_suffix(node.generic_params)} = '
+	if node.children_count == 0 {
+		return head + node.typ
+	}
+	mut variants := []string{}
+	for i in 0 .. node.children_count {
+		variants << a.child_node(&node, i).value
+	}
+	return head + variants.join(' | ')
+}
+
+fn interface_text(a &flat.FlatAst, node flat.Node) string {
+	mut out := strings.new_builder(128)
+	out.writeln('interface ${node.value}${generic_suffix(node.generic_params)} {')
+	for i in 0 .. node.children_count {
+		field := a.child_node(&node, i)
+		if field.op == .dot {
+			mut params := []string{}
+			for pi in 0 .. field.children_count {
+				param := a.child_node(field, pi)
+				prefix := if param.op == .amp || param.typ.starts_with('&') { 'mut ' } else { '' }
+				params << '${prefix}arg${pi} ${param.typ.trim_left('&')}'
+			}
+			ret := if field.typ.len > 0 { ' ${field.typ}' } else { '' }
+			out.writeln('\t${field.value}(${params.join(', ')})${ret}')
+		} else if field.typ.len > 0 {
+			out.writeln('\t${field.value} ${field.typ}')
+		} else {
+			out.writeln('\t${field.value}')
+		}
+	}
+	out.write_string('}')
+	return out.str()
+}
+
+fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return ''
+	}
+	node := a.nodes[int(id)]
+	return match node.kind {
+		.int_literal, .float_literal, .bool_literal, .ident {
+			node.value
+		}
+		.char_literal {
+			'`${escape_v_char(node.value)}`'
+		}
+		.string_literal {
+			"'${escape_v_string(node.value)}'"
+		}
+		.nil_literal {
+			'nil'
+		}
+		.none_expr {
+			'none'
+		}
+		.paren {
+			'(${expr_text(a, a.child(&node, 0))})'
+		}
+		.prefix {
+			'${op_text(node.op)}${expr_text(a, a.child(&node, 0))}'
+		}
+		.postfix {
+			'${expr_text(a, a.child(&node, 0))}${op_text(node.op)}'
+		}
+		.infix {
+			'${expr_text(a, a.child(&node, 0))} ${op_text(node.op)} ${expr_text(a,
+				a.child(&node, 1))}'
+		}
+		.selector {
+			if node.children_count > 0 {
+				'${expr_text(a, a.child(&node, 0))}.${node.value}'
+			} else {
+				node.value
+			}
+		}
+		.enum_val {
+			if node.value.starts_with('.') {
+				node.value
+			} else {
+				'.${node.value}'
+			}
+		}
+		.call {
+			call_expr_text(a, node)
+		}
+		.cast_expr, .as_expr {
+			target := if node.typ.len > 0 { node.typ } else { node.value }
+			'${target}(${expr_text(a, a.child(&node, 0))})'
+		}
+		.sizeof_expr {
+			'sizeof(${node.value})'
+		}
+		.typeof_expr {
+			'typeof(${expr_text(a, a.child(&node, 0))})'
+		}
+		.array_literal {
+			list_expr_text(a, node, '[', ']')
+		}
+		.array_init {
+			array_init_expr_text(a, node)
+		}
+		.map_init {
+			map_expr_text(a, node)
+		}
+		.struct_init {
+			struct_init_expr_text(a, node)
+		}
+		.field_init {
+			if node.children_count > 0 {
+				'${node.value}: ${expr_text(a, a.child(&node, 0))}'
+			} else {
+				node.value
+			}
+		}
+		.block {
+			if node.children_count == 1 {
+				expr_text(a, a.child(&node, 0))
+			} else {
+				''
+			}
+		}
+		else {
+			''
+		}
+	}
+}
+
+fn array_init_expr_text(a &flat.FlatAst, node flat.Node) string {
+	mut values := []string{}
+	for i in 0 .. node.children_count {
+		values << expr_text(a, a.child(&node, i))
+	}
+	typ := if node.typ.len > 0 { node.typ } else { node.value }
+	return '${typ}{${values.join(', ')}}'
+}
+
+fn call_expr_text(a &flat.FlatAst, node flat.Node) string {
+	if node.children_count == 0 {
+		return '${node.value}()'
+	}
+	callee := expr_text(a, a.child(&node, 0))
+	mut args := []string{}
+	for i in 1 .. node.children_count {
+		args << expr_text(a, a.child(&node, i))
+	}
+	return '${callee}(${args.join(', ')})'
+}
+
+fn list_expr_text(a &flat.FlatAst, node flat.Node, open string, close string) string {
+	mut values := []string{}
+	for i in 0 .. node.children_count {
+		values << expr_text(a, a.child(&node, i))
+	}
+	prefix := if node.typ.len > 0 { node.typ } else { '' }
+	return '${prefix}${open}${values.join(', ')}${close}'
+}
+
+fn map_expr_text(a &flat.FlatAst, node flat.Node) string {
+	mut values := []string{}
+	for i := 0; i + 1 < node.children_count; i += 2 {
+		values << '${expr_text(a, a.child(&node, i))}: ${expr_text(a, a.child(&node, i + 1))}'
+	}
+	prefix := if node.typ.len > 0 { node.typ } else { 'map[string]string' }
+	return '${prefix}{${values.join(', ')}}'
+}
+
+fn struct_init_expr_text(a &flat.FlatAst, node flat.Node) string {
+	mut values := []string{}
+	for i in 0 .. node.children_count {
+		values << expr_text(a, a.child(&node, i))
+	}
+	return '${node.value}{${values.join(', ')}}'
+}
+
+fn op_text(op flat.Op) string {
+	return match op {
+		.plus { '+' }
+		.minus { '-' }
+		.mul { '*' }
+		.div { '/' }
+		.mod { '%' }
+		.eq { '==' }
+		.ne { '!=' }
+		.lt { '<' }
+		.gt { '>' }
+		.le { '<=' }
+		.ge { '>=' }
+		.amp { '&' }
+		.pipe { '|' }
+		.xor { '^' }
+		.left_shift { '<<' }
+		.right_shift { '>>' }
+		.right_shift_unsigned { '>>>' }
+		.logical_and { '&&' }
+		.logical_or { '||' }
+		.not { '!' }
+		.bit_not { '~' }
+		else { '' }
+	}
+}
+
+fn escape_v_string(value string) string {
+	return value.replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n').replace('\r', '\\r').replace('\t',
+		'\\t')
+}
+
+fn escape_v_char(value string) string {
+	return value.replace('\\', '\\\\').replace('`', '\\`').replace('\n', '\\n').replace('\r', '\\r').replace('\t',
+		'\\t')
+}
