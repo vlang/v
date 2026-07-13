@@ -1,6 +1,6 @@
 module sessions
 
-import json
+import json2 as json
 import orm
 import time
 
@@ -37,7 +37,7 @@ pub fn (mut store DBStore[T]) all() ![]T {
 	}!
 
 	// decode should never fail
-	return rows.map(json.decode(T, it.data)!)
+	return rows.map(json.decode[T](it.data)!)
 }
 
 // get session for session id `sid`. The session can be `max_age` old.
@@ -55,7 +55,7 @@ pub fn (mut store DBStore[T]) get(sid string, max_age time.Duration) !T {
 			return error('session is expired')
 		}
 
-		return json.decode(T, record.data)!
+		return json.decode[T](record.data)!
 	} else {
 		return error('session does not exist')
 	}

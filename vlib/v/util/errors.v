@@ -234,7 +234,7 @@ pub:
 }
 
 pub fn print_json_errors(errs []JsonError) {
-	// Can't import x.json2 or json, so have to manually generate json
+	// Can't import json2 or json, so have to manually generate json
 	eprintln('[')
 	for i, e in errs {
 		msg := e.message.replace('"', '\\"').replace('\n', '\\n')

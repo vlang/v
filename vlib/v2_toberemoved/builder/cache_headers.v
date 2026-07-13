@@ -90,7 +90,7 @@ const veb_cached_module_paths = [
 	'math.big',
 	'sync',
 	'sync.stdatomic',
-	'x.json2',
+	'json2',
 	'runtime',
 	'arrays',
 	'encoding.html',
@@ -2255,7 +2255,7 @@ fn (b &Builder) module_name_to_path(module_name string) string {
 		'crc32' { 'hash.crc32' }
 		'big' { 'math.big' }
 		'stdatomic' { 'sync.stdatomic' }
-		'json2' { 'x.json2' }
+		'json2' { 'json2' }
 		'html' { 'encoding.html' }
 		'ast' { 'v2.ast' }
 		'abi' { 'v2.abi' }

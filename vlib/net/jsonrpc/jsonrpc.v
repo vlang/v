@@ -1,6 +1,6 @@
 module jsonrpc
 
-import json
+import json2 as json
 
 pub const version = '2.0'
 
@@ -154,14 +154,14 @@ pub fn (req Request) decode_params[T]() !T {
 
 // decode_request decodes raw request into JSONRPC Request by reading after \r\n\r\n.
 pub fn decode_request(raw string) !Request {
-	json_payload := raw.all_after('\r\n\r\n')
-	return json.decode(Request, json_payload) or { return err }
+	json_payload := raw.all_after('\r\n\r\n').trim_right('\0')
+	return json.decode[Request](json_payload) or { return err }
 }
 
 // decode_batch_request decodes raw batch request into []jsonrpc.Request by reading after \r\n\r\n.
 pub fn decode_batch_request(raw string) ![]Request {
-	json_payload := raw.all_after('\r\n\r\n')
-	return json.decode([]Request, json_payload) or { return err }
+	json_payload := raw.all_after('\r\n\r\n').trim_right('\0')
+	return json.decode[[]Request](json_payload) or { return err }
 }
 
 pub struct Response {
@@ -224,14 +224,14 @@ pub fn (resp Response) decode_result[T]() !T {
 
 // decode_response decodes raw response into JSONRPC Response by reading after \r\n\r\n.
 pub fn decode_response(raw string) !Response {
-	json_payload := raw.all_after('\r\n\r\n')
-	return json.decode(Response, json_payload) or { return err }
+	json_payload := raw.all_after('\r\n\r\n').trim_right('\0')
+	return json.decode[Response](json_payload) or { return err }
 }
 
 // decode_batch_response decodes raw batch request into []jsonrpc.Request by reading after \r\n\r\n.
 pub fn decode_batch_response(raw string) ![]Response {
-	json_payload := raw.all_after('\r\n\r\n')
-	return json.decode([]Response, json_payload) or { return err }
+	json_payload := raw.all_after('\r\n\r\n').trim_right('\0')
+	return json.decode[[]Response](json_payload) or { return err }
 }
 
 // try_encode tries to encode passed value to json object, array or primitive
@@ -283,6 +283,6 @@ fn try_decode[T](s string) !T {
 		}
 		return error('Params not empty: data=${s}')
 	} $else {
-		return json.decode(T, s) or { return err }
+		return json.decode[T](s) or { return err }
 	}
 }
