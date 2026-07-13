@@ -981,6 +981,36 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_interface_equality_includes_regular_struct_call_field_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_regular_struct_call_field_boxes', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Holder {
+	value IValue
+	n     int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(holder Holder) bool {
+	return holder.n == 7 && same(holder.value)
+}
+
+fn main() {
+	println(sink(value: Value{
+		n: 3
+	}, n: 7).str())
+}
+')
+	assert out == 'true'
+}
+
 fn test_interface_equality_includes_omitted_params_default_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_omitted_params_default_box', 'interface IValue {}

@@ -730,8 +730,12 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		arg := t.a.nodes[int(arg_id)]
 		if arg.kind == .field_init {
 			if param_idx < params.len {
-				if struct_type := t.params_struct_type_name(params[param_idx].name()) {
-					t.collect_interface_params_call_fields(node, arg_idx + 1, struct_type)
+				param_type := params[param_idx].name()
+				struct_type := t.params_struct_type_name(param_type) or {
+					t.struct_arg_type_name(param_type) or { '' }
+				}
+				if struct_type.len > 0 {
+					t.collect_interface_struct_call_fields(node, arg_idx + 1, struct_type)
 				}
 			}
 			break
@@ -759,7 +763,7 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		}
 	}
 	if omitted_params_struct.len > 0 {
-		t.collect_interface_params_default_boxes(omitted_params_struct, []string{})
+		t.collect_interface_struct_default_boxes(omitted_params_struct, []string{})
 	}
 }
 
@@ -770,7 +774,9 @@ fn (t &Transformer) interface_box_call_param_maybe(param types.Type) bool {
 	if param !is types.Struct && param !is types.Alias {
 		return false
 	}
-	struct_type := t.params_struct_type_name(param.name()) or { return false }
+	struct_type := t.params_struct_type_name(param.name()) or {
+		t.struct_arg_type_name(param.name()) or { return false }
+	}
 	info := t.lookup_struct_info(struct_type) or { return false }
 	for field in info.fields {
 		field_type_text := t.lookup_struct_field_type(struct_type, field.name) or { field.typ }
@@ -781,7 +787,7 @@ fn (t &Transformer) interface_box_call_param_maybe(param types.Type) bool {
 	return false
 }
 
-fn (mut t Transformer) collect_interface_params_call_fields(node flat.Node, field_start int, struct_type string) {
+fn (mut t Transformer) collect_interface_struct_call_fields(node flat.Node, field_start int, struct_type string) {
 	info := t.lookup_struct_info(struct_type) or { return }
 	mut field_index := 0
 	mut provided := []string{}
@@ -813,10 +819,10 @@ fn (mut t Transformer) collect_interface_params_call_fields(node flat.Node, fiel
 		}
 		field_index++
 	}
-	t.collect_interface_params_default_boxes(struct_type, provided)
+	t.collect_interface_struct_default_boxes(struct_type, provided)
 }
 
-fn (mut t Transformer) collect_interface_params_default_boxes(struct_type string, provided []string) {
+fn (mut t Transformer) collect_interface_struct_default_boxes(struct_type string, provided []string) {
 	info := t.lookup_struct_info(struct_type) or { return }
 	for field in info.fields {
 		if field.name in provided || int(field.default_expr) < 0 {
