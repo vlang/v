@@ -101,6 +101,7 @@ mut:
 	fixed_array_typedefs_ready     bool
 	fn_decl_param_types            map[string][]types.Type
 	fn_decl_variadic               map[string]bool
+	fn_decl_variadic_short_counts  map[string]int
 	fn_decl_shared_params          map[string][]bool
 	fn_shared_params_resolved      map[string][]bool
 	has_shared_params              bool
@@ -432,6 +433,7 @@ pub fn FlatGen.new() FlatGen {
 		fixed_array_typedefs_needed:    map[string]FixedArrayTypedefInfo{}
 		fn_decl_param_types:            map[string][]types.Type{}
 		fn_decl_variadic:               map[string]bool{}
+		fn_decl_variadic_short_counts:  map[string]int{}
 		fn_decl_shared_params:          map[string][]bool{}
 		fn_shared_params_resolved:      map[string][]bool{}
 		fn_decl_mut_receivers:          map[string]bool{}
@@ -591,6 +593,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fixed_array_typedefs_ready = false
 	g.fn_decl_param_types.clear()
 	g.fn_decl_variadic.clear()
+	g.fn_decl_variadic_short_counts.clear()
 	g.fn_decl_shared_params.clear()
 	g.fn_shared_params_resolved.clear()
 	g.has_shared_params = false
@@ -2918,6 +2921,8 @@ fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, p
 	module_key := fn_decl_module_key(g.tc.cur_module, name)
 	g.fn_decl_param_types[module_key] = ptypes.clone()
 	g.fn_decl_variadic[module_key] = is_variadic
+	short_name := name.all_after_last('.')
+	g.fn_decl_variadic_short_counts[short_name] = g.fn_decl_variadic_short_counts[short_name] + 1
 	if name !in g.fn_decl_param_types {
 		g.fn_decl_param_types[name] = ptypes.clone()
 		g.fn_decl_variadic[name] = is_variadic

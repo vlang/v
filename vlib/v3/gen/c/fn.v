@@ -6206,28 +6206,82 @@ fn (g &FlatGen) selective_import_call_key(name string) ?string {
 fn (g &FlatGen) fn_decl_is_variadic(name string, fallback string) bool {
 	if name.contains('__') {
 		dotted_name := name.replace('__', '.')
-		for candidate in [dotted_name, dotted_name.all_after_last('.')] {
-			if v := g.fn_decl_variadic[candidate] {
-				return v
-			}
+		if v := g.fn_decl_variadic[dotted_name] {
+			return v
+		}
+		if v := g.import_resolved_fn_decl_variadic(dotted_name) {
+			return v
+		}
+		if v := g.unique_short_fn_decl_variadic(dotted_name) {
+			return v
 		}
 	}
 	for candidate in [name, fallback] {
+		if !candidate.contains('.') && !candidate.contains('__') {
+			if v := g.local_or_unique_short_fn_decl_variadic(candidate) {
+				return v
+			}
+			continue
+		}
+		if v := g.import_resolved_fn_decl_variadic(candidate) {
+			return v
+		}
 		if v := g.fn_decl_variadic[candidate] {
 			return v
 		}
 		if candidate.starts_with('main.') {
-			if v := g.fn_decl_variadic[candidate.all_after_last('.')] {
+			if v := g.unique_short_fn_decl_variadic(candidate) {
 				return v
 			}
 		}
 	}
 	if name.contains('.') {
-		if v := g.fn_decl_variadic[name.all_after_last('.')] {
+		if v := g.unique_short_fn_decl_variadic(name) {
 			return v
 		}
 	}
 	return false
+}
+
+fn (g &FlatGen) import_resolved_fn_decl_variadic(name string) ?bool {
+	if !name.contains('.') {
+		return none
+	}
+	alias := name.all_before('.')
+	module_name := if g.tc != unsafe { nil } {
+		if g.tc.cur_file.len == 0 {
+			return none
+		}
+		g.tc.file_imports['${g.tc.cur_file}\n${alias}'] or { return none }
+	} else {
+		g.import_alias_module(alias) or { return none }
+	}
+	resolved_name := '${module_name}.${name.all_after('.')}'
+	if v := g.fn_decl_variadic[resolved_name] {
+		return v
+	}
+	return none
+}
+
+fn (g &FlatGen) local_or_unique_short_fn_decl_variadic(name string) ?bool {
+	if g.tc != unsafe { nil } {
+		module_key := fn_decl_module_key(g.tc.cur_module, name)
+		if v := g.fn_decl_variadic[module_key] {
+			return v
+		}
+	}
+	return g.unique_short_fn_decl_variadic(name)
+}
+
+fn (g &FlatGen) unique_short_fn_decl_variadic(name string) ?bool {
+	short_name := name.all_after_last('.')
+	if g.fn_decl_variadic_short_counts[short_name] != 1 {
+		return none
+	}
+	if v := g.fn_decl_variadic[short_name] {
+		return v
+	}
+	return none
 }
 
 fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
@@ -8820,9 +8874,6 @@ const c_preamble_declared_extern_symbols = {
 	'time':                          true
 	'fileno':                        true
 	'ftruncate':                     true
-	'mkdir':                         true
-	'chmod':                         true
-	'symlink':                       true
 	'pthread_rwlock_destroy':        true
 	'pthread_rwlock_init':           true
 	'pthread_rwlock_rdlock':         true
