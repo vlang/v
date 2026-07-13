@@ -8,7 +8,7 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-26'
+const cache_format = 'v3-module-cache-27'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -763,10 +763,10 @@ fn decl_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node fl
 			import_text(a, node, import_paths)
 		}
 		.fn_decl {
-			fn_text(a, node, false)
+			fn_text(a, module_name, node, false)
 		}
 		.c_fn_decl {
-			fn_text(a, node, true)
+			fn_text(a, module_name, node, true)
 		}
 		.struct_decl {
 			struct_text(a, node)
@@ -843,7 +843,7 @@ fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) 
 	return text
 }
 
-fn fn_text(a &flat.FlatAst, node flat.Node, is_c bool) string {
+fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool) string {
 	mut params := []flat.Node{}
 	for i in 0 .. node.children_count {
 		child := a.child_node(&node, i)
@@ -896,7 +896,31 @@ fn fn_text(a &flat.FlatAst, node flat.Node, is_c bool) string {
 	if node.typ.len > 0 && node.typ != 'void' {
 		head += ' ${node.typ}'
 	}
+	if fn_is_noreturn(a, module_name, name) {
+		return '@[noreturn]\n${head}'
+	}
 	return head
+}
+
+fn fn_is_noreturn(a &flat.FlatAst, module_name string, name string) bool {
+	if module_name.len == 0 || module_name in ['main', 'builtin'] {
+		return name in a.noreturn_fns
+	}
+	qualified_name := if name.starts_with('${module_name}.') {
+		name
+	} else {
+		'${module_name}.${name}'
+	}
+	if qualified_name in a.noreturn_fns {
+		return true
+	}
+	short_module := module_name.all_after_last('.')
+	short_qualified_name := if name.starts_with('${short_module}.') {
+		name
+	} else {
+		'${short_module}.${name}'
+	}
+	return short_qualified_name in a.noreturn_fns
 }
 
 fn clean_receiver_type(value string) string {
