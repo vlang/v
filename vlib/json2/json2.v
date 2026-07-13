@@ -274,6 +274,7 @@ pub fn (f Any) as_map() map[string]Any {
 	}
 }
 
+// as_map_of_strings converts `Any` maps and arrays into maps of string values.
 pub fn (f Any) as_map_of_strings() map[string]string {
 	if f is map[string]Any {
 		mut ms := map[string]string{}

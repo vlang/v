@@ -1,6 +1,5 @@
 import json2.decoder2 as json
 import json2
-import time
 
 type Prices = Price | []Price
 

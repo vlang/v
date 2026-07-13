@@ -3,22 +3,12 @@ module decoder2
 import time
 
 fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
-	$if initialized_sumtype is $sumtype {
-		$for v in initialized_sumtype.variants {
+	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
+		$for v in T.variants {
 			if initialized_sumtype is v {
-				$if v.typ is $map {
-					mut val := unsafe { initialized_sumtype }
-					decoder.decode_value(mut val)!
-					return T(val)
-				} $else $if v.typ is $array {
-					mut val := unsafe { initialized_sumtype }
-					decoder.decode_value(mut val)!
-					return T(val)
-				} $else {
-					mut val := initialized_sumtype
-					decoder.decode_value(mut val)!
-					return T(val)
-				}
+				mut val := $zero(v.typ)
+				decoder.decode_value(mut val)!
+				return T(val)
 			}
 		}
 	}
@@ -26,7 +16,7 @@ fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T
 }
 
 fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info ValueInfo) ! {
-	$for v in val.variants {
+	$for v in T.variants {
 		if value_info.value_kind == .string_ {
 			$if v.typ is string {
 				val = T(v)
@@ -98,7 +88,7 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 				if type_field_node != unsafe { nil } {
 					if type_field_node.value.value_kind == .string_ {
 						decoded_type := decoder.decode_string(type_field_node.value)!
-						$for v in val.variants {
+						$for v in T.variants {
 							variant_name := typeof(v.typ).name
 							if decoded_type == variant_name {
 								val = T(v)
