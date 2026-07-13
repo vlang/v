@@ -814,6 +814,12 @@ fn (mut t Transformer) collect_interface_boxed_value(id flat.NodeId, expected ty
 			}
 			return
 		}
+		.or_expr {
+			if node.children_count >= 2 {
+				t.collect_interface_boxed_value(t.a.child(&node, 1), expected)
+			}
+			return
+		}
 		.block, .match_branch {
 			if node.children_count > 0 {
 				t.collect_interface_boxed_value(t.a.child(&node, node.children_count - 1), expected)

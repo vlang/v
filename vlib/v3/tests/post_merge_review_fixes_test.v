@@ -411,6 +411,76 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_interface_equality_includes_or_fallback_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_or_fallback_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn maybe_value() ?IValue {
+	return none
+}
+
+fn main() {
+	value := maybe_value() or {
+		Value{
+			n: 3
+		}
+	}
+	println(same(value).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_auto_str_preludes_stay_inside_tag_guards() {
+	v3_bin := build_v3()
+	source := 'interface IValue {}
+
+struct Wide {
+	a string
+	b string
+}
+
+struct Narrow {
+	n int
+}
+
+fn render(value IValue) string {
+	return "\${value}"
+}
+
+fn main() {
+	wide := IValue(Wide{
+		a: "a"
+		b: "b"
+	})
+	narrow := IValue(Narrow{
+		n: 7
+	})
+	println(render(narrow))
+	println(render(wide))
+}
+'
+	c_source := gen_c(v3_bin, 'interface_auto_str_guarded_preludes', source)
+	render_body := c_fn_body(c_source, 'string render(IValue value) {')
+	assert render_body.len > 0, c_source
+	first_tag_guard := render_body.index('._typ') or { -1 }
+	first_object_read := render_body.index('._object') or { -1 }
+	assert first_tag_guard >= 0, render_body
+	assert first_object_read > first_tag_guard, render_body
+	out := run_good(v3_bin, 'interface_auto_str_guarded_preludes_run', source)
+	assert out.contains('Narrow'), out
+	assert out.contains('7'), out
+	assert out.contains('Wide'), out
+}
+
 fn test_interface_equality_includes_receiver_method_call_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_receiver_method_call_box', 'interface IValue {}

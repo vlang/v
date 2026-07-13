@@ -2837,12 +2837,18 @@ fn (mut t Transformer) lower_interface_auto_str(expr flat.NodeId, iface_name str
 			'&${impl_name}')
 		concrete := t.make_prefix(.mul, object)
 		t.set_node_typ(int(concrete), impl_name)
+		saved := t.pending_stmts.clone()
+		t.pending_stmts.clear()
 		inner := t.wrap_string_conversion(concrete, impl_name)
 		wrapped := t.string_plus(t.string_plus(t.make_string_literal('${display_name}('), inner),
 			t.make_string_literal(')'))
+		mut then_body := []flat.NodeId{}
+		t.drain_pending(mut then_body)
+		t.pending_stmts = saved
 		assign := t.make_assign(t.make_ident(result_name), wrapped)
+		then_body << assign
 		cond := t.make_infix(.eq, tag, t.make_int_literal(type_id))
-		t.pending_stmts << t.make_if(cond, t.make_block(arr1(assign)), t.make_empty())
+		t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
 	}
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), 'string')
