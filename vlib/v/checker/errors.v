@@ -35,7 +35,8 @@ pub:
 }
 
 fn (mut c Checker) warn(s string, pos token.Pos, options MessageOptions) {
-	allow_warnings := !(c.pref.is_prod || c.pref.warns_are_errors) // allow warnings only in dev builds
+	// `-w` suppresses warnings even when `-prod` or `-W` would otherwise promote them.
+	allow_warnings := c.pref.skip_warnings || !(c.pref.is_prod || c.pref.warns_are_errors)
 	c.warn_or_error(s, pos, allow_warnings, options)
 }
 
