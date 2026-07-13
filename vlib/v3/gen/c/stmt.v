@@ -829,10 +829,10 @@ fn (mut g FlatGen) gen_select_receive_value(expr string, actual types.Type, expe
 		g.write('*${expr}')
 		return
 	}
-	if g.gen_select_receive_interface_value(expr, actual, expected) {
+	if g.gen_select_receive_interface_value(expr, actual_base, expected_base) {
 		return
 	}
-	if g.gen_select_receive_sum_value(expr, actual, expected) {
+	if g.gen_select_receive_sum_value(expr, actual_base, expected_base) {
 		return
 	}
 	g.write(expr)

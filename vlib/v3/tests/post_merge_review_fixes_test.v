@@ -1186,6 +1186,11 @@ struct Initial {}
 
 type Item = Value | int
 type MaybeValue = ?Value
+type InterfaceAlias = IValue
+type NestedInterfaceAlias = InterfaceAlias
+type ItemAlias = Item
+type NestedItemAlias = ItemAlias
+type ValueAlias = Value
 
 fn (value Value) get() int {
 	return value.n
@@ -1249,13 +1254,43 @@ fn main() {
 		aliased_option_value = <-aliased_option_ch {}
 	}
 
+	aliased_interface_ch := chan ValueAlias{cap: 1}
+	aliased_interface_ch <- ValueAlias{
+		n: 11
+	}
+	mut aliased_interface_value := NestedInterfaceAlias(Initial{})
+	select {
+		aliased_interface_value = <-aliased_interface_ch {}
+	}
+
+	aliased_sum_ch := chan ValueAlias{cap: 1}
+	aliased_sum_ch <- ValueAlias{
+		n: 13
+	}
+	mut aliased_sum_value := NestedItemAlias(0)
+	select {
+		aliased_sum_value = <-aliased_sum_ch {}
+	}
+
+	interface_source_ch := chan InterfaceAlias{cap: 1}
+	interface_source_ch <- Value{
+		n: 15
+	}
+	mut interface_source_value := IValue(Initial{})
+	select {
+		interface_source_value = <-interface_source_ch {}
+	}
+
 	println(int_str(interface_n(interface_value)))
 	println(int_str(sum_n(sum_value)))
 	println(int_str(option_n(option_value)))
 	println(int_str(option_n(aliased_option_value)))
+	println(int_str(interface_n(aliased_interface_value)))
+	println(int_str(sum_n(aliased_sum_value)))
+	println(int_str(interface_n(interface_source_value)))
 }
 ')
-	assert out == '3\n5\n7\n9'
+	assert out == '3\n5\n7\n9\n11\n13\n15'
 }
 
 fn test_select_receive_assignment_reboxes_option_result_payloads() {
