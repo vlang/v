@@ -348,6 +348,57 @@ fn main() {
 	assert out == 'true\n7'
 }
 
+fn test_interface_equality_includes_appended_element_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_appended_element_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	mut values := []IValue{}
+	values << Value{
+		n: 3
+	}
+	println(same(values[0]).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_equality_includes_struct_field_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_struct_field_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Holder {
+	value IValue
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	holder := Holder{
+		value: Value{
+			n: 3
+		}
+	}
+	println(same(holder.value).str())
+}
+')
+	assert out == 'true'
+}
+
 fn test_interface_equality_includes_receiver_method_call_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_receiver_method_call_box', 'interface IValue {}
