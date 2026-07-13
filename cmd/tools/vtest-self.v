@@ -93,7 +93,7 @@ const essential_list = [
 	'vlib/v/gen/js/program_test.v',
 	'vlib/v/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
-	'vlib/x/json2/tests/json2_test.v',
+	'vlib/json2/tests/json2_test.v',
 ]
 const skip_with_fsanitize_memory = [
 	'do_not_remove',

@@ -659,7 +659,7 @@ fn test_generate_c_project_creates_build_files() {
 	normalized_build_command := normalized_build_path(build_command)
 	assert normalized_build_command.contains(normalized_build_path(generated_c_path))
 		|| normalized_build_command.contains(normalized_build_path(os.short_path(generated_c_path)))
-	assert build_command.contains('cJSON.c')
+	assert !build_command.contains('cJSON.c')
 	assert !build_command.contains('.tmp.c')
 	assert !build_command.contains('.module.')
 }

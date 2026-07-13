@@ -12,7 +12,7 @@
 // command above for stdio, or POST to `http://127.0.0.1:8080/mcp` for HTTP.
 module main
 
-import json
+import json2 as json
 import mcp
 import os
 import time
@@ -92,7 +92,7 @@ fn register_tools(mut server mcp.Server) ! {
 		description:  'Count up to N with progress notifications. Cooperatively cancellable.'
 		input_schema: '{"type":"object","required":["n"],"properties":{"n":{"type":"integer","minimum":1,"maximum":50}}}'
 	}, fn (ctx mcp.Context, arguments string) !mcp.ToolResult {
-		args := json.decode(CountArgs, arguments) or {
+		args := json.decode[CountArgs](arguments) or {
 			return mcp.tool_text_result('invalid arguments: ${err.msg()}')
 		}
 		if args.n < 1 || args.n > 50 {

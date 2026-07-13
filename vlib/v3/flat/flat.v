@@ -136,6 +136,7 @@ pub enum Op {
 	dec
 	dot
 	arrow
+	gated_index
 }
 
 // Node represents node data used by flat.

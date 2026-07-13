@@ -81,6 +81,13 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 	if sum_name in t.sum_types {
 		return sum_name
 	}
+	// A container of a sum type is not itself a sum type: `[]ast.Value` must
+	// not resolve to `ast.Value` (the short-name and generic-application
+	// fallbacks below would), or an or/assign lowering boxes the whole array
+	// into one sum value.
+	if sum_name.starts_with('[]') || sum_name.starts_with('map[') || sum_name.starts_with('[') {
+		return ''
+	}
 	if !isnil(t.tc) && sum_name in t.tc.sum_types {
 		return sum_name
 	}
@@ -99,6 +106,36 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		}
 	}
 	if sum_name.contains('.') {
+		// Import-aliased module path: `tast.Value` names `sub.tast.Value`.
+		// The full-suffix match runs before the bare short-name fallback so an
+		// unrelated short `Value` sum cannot shadow the aliased one; ambiguous
+		// suffix matches resolve nothing.
+		suffix := '.' + sum_name
+		mut suffix_match := ''
+		mut suffix_ambiguous := false
+		for key, _ in t.sum_types {
+			if key.ends_with(suffix) {
+				if suffix_match.len > 0 && suffix_match != key {
+					suffix_ambiguous = true
+					break
+				}
+				suffix_match = key
+			}
+		}
+		if !suffix_ambiguous && !isnil(t.tc) {
+			for key, _ in t.tc.sum_types {
+				if key.ends_with(suffix) {
+					if suffix_match.len > 0 && suffix_match != key {
+						suffix_ambiguous = true
+						break
+					}
+					suffix_match = key
+				}
+			}
+		}
+		if !suffix_ambiguous && suffix_match.len > 0 {
+			return suffix_match
+		}
 		short_sum := sum_name.all_after_last('.')
 		if short_sum in t.sum_types {
 			return short_sum
@@ -520,7 +557,10 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	clean_type0 := t.trim_pointer_type(expr_type)
 	concrete_expr_type := t.normalize_type_alias(clean_type0)
 	resolved_expr_sum := t.resolve_sum_name(concrete_expr_type)
-	if !t.validate_specialized_is_expr(concrete_expr_type, resolved_expr_sum, node.value) {
+	// Inside a `$for v in T.variants` body the pattern is the loop variable;
+	// the unroll substitutes it later, so there is nothing to validate yet.
+	if t.cloning_comptime_for_depth == 0
+		&& !t.validate_specialized_is_expr(concrete_expr_type, resolved_expr_sum, node.value) {
 		return t.make_bool_literal(false)
 	}
 	clean_type := if clean_type0 in t.sum_types {

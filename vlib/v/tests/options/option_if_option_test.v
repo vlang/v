@@ -1,5 +1,5 @@
 import maps
-import x.json2
+import json2
 
 pub type Locale = string
 

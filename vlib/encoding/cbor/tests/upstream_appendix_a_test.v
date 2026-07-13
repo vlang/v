@@ -16,7 +16,7 @@ import encoding.cbor
 import encoding.hex
 import math
 import os
-import x.json2
+import json2
 
 fn h(s string) []u8 {
 	return hex.decode(s) or { panic('bad hex ${s}') }

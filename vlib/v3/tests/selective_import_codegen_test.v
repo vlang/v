@@ -238,7 +238,7 @@ fn main() {
 	json2_output, json2_generated := selective_import_compile_run_with_extra(v3_bin,
 		'json2_decode', 'module main
 
-import x.json2
+import json2
 
 struct Config {
 	value int
@@ -249,7 +249,7 @@ fn main() {
 	println(int_str(cfg.value))
 }
 ', {
-		'x/json2/decode.v': 'module json2
+		'json2/decode.v': 'module json2
 
 pub struct DecoderOptions {}
 
@@ -281,13 +281,13 @@ fn main() {
 ', {
 		'b.v':             'module main
 
-import x.json2 as json
+import json2 as json
 
 const imported_value = json.Any{
 	value: 41
 }
 '
-		'x/json2/json2.v': 'module json2
+		'json2/json2.v':   'module json2
 
 pub struct Any {
 pub:
@@ -330,7 +330,7 @@ fn test_json2_encode_pure_v_is_specialized() {
 	output, generated := selective_import_compile_run_with_extra(v3_bin,
 		'json2_encode_specialized', 'module main
 
-import x.json2
+import json2
 
 struct User {
 	name string
@@ -340,7 +340,7 @@ fn main() {
 	println(json2.encode(User{name: "x"}, json2.EncoderOptions{}))
 }
 ', {
-		'x/json2/encode.v': 'module json2
+		'json2/encode.v': 'module json2
 
 pub struct EncoderOptions {}
 

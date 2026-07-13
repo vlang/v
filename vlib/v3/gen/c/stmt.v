@@ -2755,12 +2755,14 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					g.writeln('for (int _ai = 0; _ai < ${lhs_str}.len; _ai++) ((${c_elem}*)${lhs_str}.data)[_ai] = ${init_val};')
 				}
 				if lhs.kind == .ident {
-					arr_type := if resolved_init_type is types.Array {
-						types.Type(resolved_init_type)
-					} else {
-						types.Type(types.Array{
-							elem_type: init_type
-						})
+					// Assign (not cast-in-if-expr): `types.Type(smartcast_mut)` in an
+					// if-expression arm is miscompiled by the bootstrap compiler and
+					// boxes the value with a wrong sum tag.
+					mut arr_type := types.Type(types.Array{
+						elem_type: init_type
+					})
+					if resolved_init_type is types.Array {
+						arr_type = resolved_init_type
 					}
 					owner := g.tc.cur_scope.insert_with_owner(lhs.value, arr_type)
 					g.track_local_pointer_storage_decl(lhs, owner, arr_type, 'Array')

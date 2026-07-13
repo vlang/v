@@ -133,7 +133,7 @@ fn test_skip_unused_keeps_json2_embedded_struct_decode_helpers() {
 		'module main',
 		'',
 		'import time',
-		'import x.json2',
+		'import json2',
 		'',
 		'struct Meta {',
 		'\tcreated_at ?time.Time',
@@ -153,13 +153,13 @@ fn test_skip_unused_keeps_json2_embedded_struct_decode_helpers() {
 	if res.exit_code != 0 {
 		panic(res.output)
 	}
-	assert res.output.contains('x__json2__decode_struct_key_T_main__Req')
-	assert res.output.contains('x__json2__check_required_struct_fields_T_main__Req')
+	assert res.output.contains('json2__decode_struct_key_T_main__Req')
+	assert res.output.contains('json2__check_required_struct_fields_T_main__Req')
 	// the `?time.Time` payload of the embedded `Meta` is decoded through a generic
 	// instantiation reachable only via comptime `$for field` codegen; skip-unused
 	// must keep it. Assert the payload decoder itself rather than a specific json2
 	// helper name, so the test does not break when those helpers are refactored.
-	assert res.output.contains('x__json2__Decoder_decode_value_T_time__Time')
+	assert res.output.contains('json2__Decoder_decode_value_T_time__Time')
 }
 
 fn test_skip_unused_marks_dependencies_inside_generic_anon_fns() {

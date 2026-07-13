@@ -280,7 +280,7 @@ fn (mut w Walker) mark_json2_optional_field_helpers(concrete_typ ast.Type) {
 		return
 	}
 	struct_info := concrete_sym.info as ast.Struct
-	if mut create_value_from_optional_fn := w.all_fns['x.json2.create_value_from_optional'] {
+	if mut create_value_from_optional_fn := w.all_fns['json2.create_value_from_optional'] {
 		for field in struct_info.fields {
 			if field.typ.has_flag(.option) {
 				w.fn_decl_with_concrete_types(mut create_value_from_optional_fn, [
@@ -318,9 +318,9 @@ fn (mut w Walker) mark_json2_encode_field_helpers(receiver_typ ast.Type, concret
 	} else {
 		ast.FnDecl{}
 	}
-	mut struct_field_is_none_fn := w.all_fns['x.json2.struct_field_is_none'] or { ast.FnDecl{} }
-	mut struct_field_is_nil_fn := w.all_fns['x.json2.struct_field_is_nil'] or { ast.FnDecl{} }
-	mut check_not_empty_fn := w.all_fns['x.json2.check_not_empty'] or { ast.FnDecl{} }
+	mut struct_field_is_none_fn := w.all_fns['json2.struct_field_is_none'] or { ast.FnDecl{} }
+	mut struct_field_is_nil_fn := w.all_fns['json2.struct_field_is_nil'] or { ast.FnDecl{} }
+	mut check_not_empty_fn := w.all_fns['json2.check_not_empty'] or { ast.FnDecl{} }
 	for field in struct_info.fields {
 		if field.is_embed {
 			continue
@@ -1606,7 +1606,7 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 		return
 	}
 	w.mark_fn_as_used(fkey)
-	if node.mod == 'x.json2' {
+	if node.mod == 'json2' {
 		w.mark_by_sym_name('EnumData')
 		w.mark_by_sym_name('time.Time')
 	}
@@ -1688,15 +1688,15 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 	prev_cur_fn := w.cur_fn
 	w.cur_fn = fkey
 	w.cur_fn_concrete_types = resolved_concrete_types
-	if node.mod == 'x.json2' && node.name == 'get_decoded_sumtype_workaround'
+	if node.mod == 'json2' && node.name == 'get_decoded_sumtype_workaround'
 		&& w.has_sumtype_generic_context(resolved_concrete_types) {
-		if mut copy_fn := w.all_fns['x.json2.copy_type'] {
+		if mut copy_fn := w.all_fns['json2.copy_type'] {
 			for concrete_type_list in w.sumtype_variant_concrete_types(resolved_concrete_types) {
 				w.fn_decl_with_concrete_types(mut copy_fn, concrete_type_list)
 			}
 		}
 	}
-	if node.mod == 'x.json2' && node.name == 'get_struct_type_workaround'
+	if node.mod == 'json2' && node.name == 'get_struct_type_workaround'
 		&& w.has_sumtype_generic_context(resolved_concrete_types) {
 		check_struct_type_valid_fkey, _ := w.resolve_method_fkey_for_type(node.receiver.typ,
 			'check_struct_type_valid')
@@ -1716,7 +1716,7 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 			}
 		}
 	}
-	if node.mod == 'x.json2' && node.name == 'decode_value' && node.is_method
+	if node.mod == 'json2' && node.name == 'decode_value' && node.is_method
 		&& resolved_concrete_types.len == 1 {
 		concrete_typ := w.table.unaliased_type(resolved_concrete_types[0])
 		concrete_sym := w.table.final_sym(concrete_typ)
@@ -1730,24 +1730,24 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 			}
 		}
 		if concrete_sym.kind == .struct && concrete_sym.name != 'time.Time' {
-			if mut decode_struct_key_fn := w.all_fns['x.json2.decode_struct_key'] {
+			if mut decode_struct_key_fn := w.all_fns['json2.decode_struct_key'] {
 				w.fn_decl_with_concrete_types(mut decode_struct_key_fn, resolved_concrete_types)
 			}
-			if mut check_required_struct_fields_fn := w.all_fns['x.json2.check_required_struct_fields'] {
+			if mut check_required_struct_fields_fn := w.all_fns['json2.check_required_struct_fields'] {
 				w.fn_decl_with_concrete_types(mut check_required_struct_fields_fn,
 					resolved_concrete_types)
 			}
 			w.mark_json2_optional_field_helpers(concrete_typ)
 		}
 	}
-	if node.mod == 'x.json2' && node.name == 'decode_struct_key' && resolved_concrete_types.len == 1 {
+	if node.mod == 'json2' && node.name == 'decode_struct_key' && resolved_concrete_types.len == 1 {
 		w.mark_json2_optional_field_helpers(resolved_concrete_types[0])
 	}
-	if node.mod == 'x.json2' && node.name == 'decode_enum' {
+	if node.mod == 'json2' && node.name == 'decode_enum' {
 		w.uses_ct_values = true
 		w.mark_by_sym_name('EnumData')
 	}
-	if node.mod == 'x.json2' && node.name == 'encode_value' && node.is_method
+	if node.mod == 'json2' && node.name == 'encode_value' && node.is_method
 		&& resolved_concrete_types.len == 1 {
 		concrete_typ := w.table.unaliased_type(resolved_concrete_types[0])
 		concrete_sym := w.table.final_sym(concrete_typ)
@@ -1778,7 +1778,7 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 		if concrete_sym.kind == .struct {
 			w.mark_json2_encode_field_helpers(node.receiver.typ, concrete_typ)
 		}
-		json_encoder_typ := w.table.find_type('x.json2.JsonEncoder')
+		json_encoder_typ := w.table.find_type('json2.JsonEncoder')
 		if json_encoder_typ != 0
 			&& w.table.does_type_implement_interface(concrete_typ, json_encoder_typ) {
 			to_json_fkey, _ := w.resolve_method_fkey_for_type(concrete_typ, 'to_json')
@@ -1786,7 +1786,7 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 				w.fn_by_name(to_json_fkey)
 			}
 		}
-		encodable_typ := w.table.find_type('x.json2.Encodable')
+		encodable_typ := w.table.find_type('json2.Encodable')
 		if encodable_typ != 0 && w.table.does_type_implement_interface(concrete_typ, encodable_typ) {
 			json_str_fkey, _ := w.resolve_method_fkey_for_type(concrete_typ, 'json_str')
 			if json_str_fkey != '' {
@@ -1794,7 +1794,7 @@ fn (mut w Walker) fn_decl_with_concrete_types(mut node ast.FnDecl, concrete_type
 			}
 		}
 	}
-	if node.mod == 'x.json2' && node.name == 'encode_struct_fields'
+	if node.mod == 'json2' && node.name == 'encode_struct_fields'
 		&& resolved_concrete_types.len == 1 {
 		w.mark_json2_encode_field_helpers(node.receiver.typ, resolved_concrete_types[0])
 	}
@@ -2191,7 +2191,7 @@ pub fn (mut w Walker) call_expr(mut node ast.CallExpr) {
 					w.fn_decl_with_concrete_types(mut stmt, call_concrete_types)
 					if node.raw_concrete_types.len == 0 && w.inside_comptime > 0
 						&& w.has_sumtype_generic_context(caller_concrete_types)
-						&& stmt.mod == 'x.json2' && stmt.name in ['copy_type', 'decode_value'] {
+						&& stmt.mod == 'json2' && stmt.name in ['copy_type', 'decode_value'] {
 						for concrete_type_list in w.sumtype_variant_concrete_types(caller_concrete_types) {
 							if concrete_type_list != call_concrete_types {
 								w.fn_decl_with_concrete_types(mut stmt, concrete_type_list)

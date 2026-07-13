@@ -2152,6 +2152,9 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 		if p.tok == .key_for {
 			return p.parse_comptime_for()
 		}
+		if p.tok == .key_match {
+			return p.parse_comptime_match()
+		}
 		// other comptime — skip
 		for p.tok != .semicolon && p.tok != .eof {
 			p.next()
@@ -2259,6 +2262,65 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 	}
 	p.skip_block()
 	return p.parse_top_level_comptime_else()
+}
+
+// parse_comptime_match desugars `$match subj { pat1 { ... } pat2, pat3 { ... } $else { ... } }`
+// into the equivalent `$if subj is pat1 { ... } $else $if ... $else { ... }` chain, reusing
+// the comptime-if machinery (deferral, monomorph-time folding).
+fn (mut p Parser) parse_comptime_match() flat.NodeId {
+	p.next() // skip 'match'
+	mut segs := [p.expect_name()]
+	for p.tok == .dot {
+		p.next()
+		segs << p.expect_name()
+	}
+	subject := segs.join('.')
+	p.check(.lcbr)
+	mut conds := []string{}
+	mut blocks := []flat.NodeId{}
+	mut else_block := flat.empty_node
+	for p.tok != .rcbr && p.tok != .eof {
+		if p.tok == .semicolon {
+			p.next()
+			continue
+		}
+		if (p.tok == .dollar && p.peek() == .key_else) || p.tok == .key_else {
+			if p.tok == .dollar {
+				p.next()
+			}
+			p.next() // skip 'else'
+			else_block = p.block_stmt()
+			continue
+		}
+		mut pats := [p.parse_comptime_match_pattern()]
+		for p.tok == .comma {
+			p.next()
+			pats << p.parse_comptime_match_pattern()
+		}
+		mut cond_parts := []string{cap: pats.len}
+		for pat in pats {
+			cond_parts << '${subject} is ${pat}'
+		}
+		conds << cond_parts.join(' || ')
+		blocks << p.block_stmt()
+	}
+	p.check(.rcbr)
+	mut result := else_block
+	for i := conds.len - 1; i >= 0; i-- {
+		result = p.comptime_if_node(conds[i], blocks[i], result)
+	}
+	if int(result) < 0 {
+		return flat.empty_node
+	}
+	return result
+}
+
+fn (mut p Parser) parse_comptime_match_pattern() string {
+	if p.tok == .dollar {
+		p.next()
+		return '$' + p.expect_name_or_keyword()
+	}
+	return p.parse_type_name()
 }
 
 fn (mut p Parser) comptime_if_node(cond string, then_block flat.NodeId, else_block flat.NodeId) flat.NodeId {
@@ -3243,7 +3305,8 @@ fn (mut p Parser) stmt() flat.NodeId {
 		}
 		.dollar {
 			pk := p.peek()
-			if pk == .key_if || pk == .key_for || (pk == .name && p.peek_lit in ['if', 'for']) {
+			if pk == .key_if || pk == .key_for || pk == .key_match
+				|| (pk == .name && p.peek_lit in ['if', 'for', 'match']) {
 				return p.parse_comptime_if()
 			}
 			return p.assign_or_expr_stmt()
@@ -4154,8 +4217,10 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			})
 		}
 		bstart := p.add_children(stmt_ids)
+		// Preserve comma grouping so match tails do not absorb preceding statements.
 		return p.a.add_node(flat.Node{
 			kind:           .block
+			value:          'comma_exprs'
 			children_start: bstart
 			children_count: flat.child_count(stmt_ids.len)
 		})
@@ -5068,7 +5133,8 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						children_count: 1
 					})
 				}
-			} else if p.tok == .name && is_builtin_type(p.lit) {
+			} else if p.tok == .name && is_builtin_type(p.lit) && !(p.lit == 'map'
+				&& p.peek() == .lsbr) {
 				name := p.lit
 				type_name := '&${name}'
 				p.next()
@@ -5457,6 +5523,8 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 }
 
 fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
+	// `a#[..]` gated slice: clamped, non-panicking (lowers to slice_ni/substr_ni)
+	gated_op := if p.lit == '#' { flat.Op.gated_index } else { flat.Op.none }
 	p.check(.lsbr)
 	// range index: arr[..b]
 	if p.tok == .dotdot {
@@ -5476,6 +5544,7 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 		istart := p.add_children(ids)
 		return p.a.add_node(flat.Node{
 			kind:           .index
+			op:             gated_op
 			value:          'range'
 			children_start: istart
 			children_count: flat.child_count(ids.len)
@@ -5489,6 +5558,7 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 		istart := p.add_children2(lhs, type_arg)
 		return p.a.add_node(flat.Node{
 			kind:           .index
+			op:             gated_op
 			children_start: istart
 			children_count: 2
 		})
@@ -5517,6 +5587,7 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 		istart := p.add_children(range_ids)
 		return p.a.add_node(flat.Node{
 			kind:           .index
+			op:             gated_op
 			value:          'range'
 			children_start: istart
 			children_count: flat.child_count(range_ids.len)
@@ -5531,6 +5602,7 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 	istart := p.add_children(ids)
 	return p.a.add_node(flat.Node{
 		kind:           .index
+		op:             gated_op
 		children_start: istart
 		children_count: flat.child_count(ids.len)
 	})
@@ -5829,7 +5901,29 @@ fn (mut p Parser) string_interp(first_part string, quote u8) flat.NodeId {
 
 // array_literal supports array literal handling for Parser.
 fn (mut p Parser) array_literal() flat.NodeId {
+	// Inside `[...]` a `{` cannot be the for-loop body, so struct inits stay
+	// unambiguous even when this literal is a for-in container expression.
+	was_in_for_container := p.in_for_container
+	p.in_for_container = false
+	defer {
+		p.in_for_container = was_in_for_container
+	}
 	p.next() // skip '['
+	// inferred-size fixed array literal: [..]u32[0x1, 0x2, ...]
+	if p.tok == .dotdot && p.peek() == .rsbr {
+		p.next()
+		p.next()
+		mut dimensions := 1
+		for p.tok == .lsbr && p.peek() == .dotdot {
+			p.next()
+			p.next()
+			p.check(.rsbr)
+			dimensions++
+		}
+		elem_type := p.parse_type_name()
+		lit, _ := p.inferred_fixed_array_literal_values(elem_type, dimensions)
+		return lit
+	}
 	// empty array or fixed array type: []Type{} or [N]Type{}
 	if p.tok == .rsbr {
 		p.next()
@@ -6025,6 +6119,52 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		})
 	}
 	return lit
+}
+
+fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dimensions int) (flat.NodeId, string) {
+	p.check(.lsbr)
+	mut vals := []flat.NodeId{}
+	mut elem_type := base_elem_type
+	mut has_ragged_rows := false
+	for p.tok != .rsbr && p.tok != .eof {
+		if p.tok == .semicolon {
+			p.next()
+			continue
+		}
+		if dimensions > 1 {
+			val, nested_type := p.inferred_fixed_array_literal_values(base_elem_type,
+				dimensions - 1)
+			vals << val
+			if vals.len == 1 {
+				elem_type = nested_type
+			} else if nested_type != elem_type {
+				has_ragged_rows = true
+			}
+		} else {
+			vals << p.expr(.lowest)
+		}
+		if p.tok == .comma {
+			p.next()
+		}
+	}
+	p.check(.rsbr)
+	fixed_type := '[${vals.len}]${elem_type}'
+	start := p.add_children(vals)
+	lit := p.a.add_node(flat.Node{
+		kind:           .array_literal
+		typ:            fixed_type
+		children_start: start
+		children_count: flat.child_count(vals.len)
+	})
+	pstart := p.add_child(lit)
+	return p.a.add_node(flat.Node{
+		kind:           .postfix
+		op:             .not
+		value:          if has_ragged_rows { 'ragged_inferred_fixed_array' } else { '' }
+		typ:            fixed_type
+		children_start: pstart
+		children_count: 1
+	}), fixed_type
 }
 
 // fn_literal supports fn literal handling for Parser.

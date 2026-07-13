@@ -1,5 +1,6 @@
 module c
 
+import v3.flat
 import v3.types
 
 // test_c_name_sanitize_operator_overloads validates this v3 regression case.
@@ -46,4 +47,37 @@ fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
 		len:       3
 	})
 	assert typeof_display_resolved_type_name(fixed_maps) == '[3]map[string]int'
+}
+
+fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types['a.tast.Value'] = ['a.tast.First', 'a.tast.Target']
+	tc.sum_types['b.tast.Value'] = ['b.tast.Target', 'b.tast.Second']
+	mut g := FlatGen.new()
+	g.tc = &tc
+	assert g.sum_type_index('tast.Value', 'b.tast.Target') == 0
+}
+
+fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {
+	mut g := FlatGen.new()
+	g.modules['http'] = 'b.http'
+	g.fn_decl_variadic['b.http.total'] = true
+	g.fn_decl_variadic['total'] = false
+	g.fn_decl_variadic_short_counts['total'] = 2
+	assert g.fn_decl_is_variadic('http.total', 'http.total')
+	assert !g.fn_decl_is_variadic('missing.total', 'missing.total')
+	assert !g.fn_decl_is_variadic('missing__total', 'total')
+	g.fn_decl_variadic_short_counts['total'] = 1
+	g.fn_decl_variadic['total'] = true
+	assert g.fn_decl_is_variadic('missing.total', 'missing.total')
+}
+
+fn test_guarded_preamble_externs_keep_explicit_declarations() {
+	g := FlatGen.new()
+	assert g.should_emit_c_extern_decl('fseeko')
+	assert g.should_emit_c_extern_decl('ftello')
+	assert g.should_emit_c_extern_decl('mkdir')
+	assert g.should_emit_c_extern_decl('chmod')
+	assert g.should_emit_c_extern_decl('symlink')
 }

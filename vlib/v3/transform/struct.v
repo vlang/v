@@ -282,6 +282,11 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 		for stmt in prelude {
 			t.pending_stmts << stmt
 		}
+		// The node passes through untouched, but downstream consumers (e.g.
+		// the sum-wrap decision for `return SNull{}`) need its type text.
+		if node.typ.len == 0 && node.value.len > 0 {
+			t.set_node_typ(int(id), node.value)
+		}
 		return id
 	}
 	start := t.a.children.len

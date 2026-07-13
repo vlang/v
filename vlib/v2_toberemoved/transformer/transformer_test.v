@@ -727,7 +727,7 @@ fn check(value Primitive) {
 fn test_transform_generic_receiver_methods_use_concrete_specializations() {
 	files := transform_sources_for_test([
 		TestSource{
-			rel:  'x/json2/decode.v'
+			rel:  'json2/decode.v'
 			code: '
 module json2
 
@@ -763,7 +763,7 @@ fn (list &LinkedList[T]) last() &T {
 '
 		},
 		TestSource{
-			rel:  'x/json2/check.v'
+			rel:  'json2/check.v'
 			code: '
 module json2
 
@@ -790,7 +790,7 @@ fn (mut checker Decoder) check() {
 fn test_transform_nested_generic_receiver_method_call_in_monomorphized_clone() {
 	files := transform_sources_for_test([
 		TestSource{
-			rel:  'x/json2/encode.v'
+			rel:  'json2/encode.v'
 			code: '
 module json2
 
@@ -2884,7 +2884,7 @@ fn test_transform_generic_module_call_uses_specialized_name() {
 	mut t := create_test_transformer()
 	mut scope := types.new_scope(unsafe { nil })
 	scope.insert('json', types.Module{
-		name: 'x.json2'
+		name: 'json2'
 	})
 	t.scope = scope
 
@@ -2920,7 +2920,7 @@ fn test_transform_generic_module_call_or_cast_uses_specialized_name() {
 	mut t := create_test_transformer()
 	mut scope := types.new_scope(unsafe { nil })
 	scope.insert('json', types.Module{
-		name: 'x.json2'
+		name: 'json2'
 	})
 	t.scope = scope
 
@@ -2959,7 +2959,7 @@ fn test_transform_generic_module_call_or_cast_uses_array_specialized_name() {
 	mut t := create_test_transformer()
 	mut scope := types.new_scope(unsafe { nil })
 	scope.insert('json', types.Module{
-		name: 'x.json2'
+		name: 'json2'
 	})
 	t.scope = scope
 
@@ -2999,7 +2999,7 @@ fn test_transform_generic_module_call_or_cast_uses_array_specialized_name() {
 fn test_transform_monomorphizes_imported_generic_module_call() {
 	files := transform_sources_for_test([
 		TestSource{
-			rel:  'x/json2/decode.v'
+			rel:  'json2/decode.v'
 			code: '
 module json2
 
@@ -3022,7 +3022,7 @@ pub fn decode[T]() !T {
 			code: '
 module main
 
-import x.json2
+import json2
 
 struct Payload {
 	value int

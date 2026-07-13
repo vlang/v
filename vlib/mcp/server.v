@@ -1,6 +1,6 @@
 module mcp
 
-import json
+import json2 as json
 import io
 import net.http
 import os
@@ -2078,11 +2078,15 @@ fn (s &Server) context_from_session(req Request, session Session) Context {
 	}
 }
 
-struct MetaParams {
+// MetaParams wraps the optional MCP `_meta` request field for JSON decoding.
+pub struct MetaParams {
+pub:
 	meta MetaPayload @[json: '_meta']
 }
 
-struct MetaPayload {
+// MetaPayload contains metadata extracted from an MCP request.
+pub struct MetaPayload {
+pub:
 	progress_token string @[json: progressToken; raw]
 }
 
@@ -2091,7 +2095,7 @@ fn extract_progress_token(params string) string {
 	if trimmed.len == 0 || trimmed == null.str() {
 		return ''
 	}
-	wrapper := json.decode(MetaParams, trimmed) or { return '' }
+	wrapper := json.decode[MetaParams](trimmed) or { return '' }
 	return wrapper.meta.progress_token.trim_space()
 }
 
