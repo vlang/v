@@ -201,6 +201,9 @@ fn (mut s Scanner) skip_gap() ?Token {
 			if s.peek() == 47 {
 				mut comment_start := s.pos
 				for s.pos < s.src.len && !is_newline_unicode(s.c, s.pos, s.src) {
+					if is_disallowed_literal(s.c, s.pos, s.src) {
+						return Token{.eof, 'kdl: disallowed literal code point', s.line, s.col}
+					}
 					s.advance()
 				}
 				if s.pos > comment_start {
@@ -237,6 +240,9 @@ fn (mut s Scanner) skip_gap() ?Token {
 						s.advance()
 						s.advance()
 						continue
+					}
+					if is_disallowed_literal(s.c, s.pos, s.src) {
+						return Token{.eof, 'kdl: disallowed literal code point', s.line, s.col}
 					}
 					s.advance()
 				}
@@ -308,6 +314,9 @@ fn (mut s Scanner) skip_line_cont() bool {
 						continue
 					}
 					s.advance()
+				}
+				if depth > 0 {
+					return false // unterminated block comment, not a valid continuation
 				}
 				continue
 			}

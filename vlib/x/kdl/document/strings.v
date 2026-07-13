@@ -48,7 +48,10 @@ fn needs_unicode_escape(r rune) bool {
 pub fn raw_string(s string) string {
 	mut hashes := 1
 	for {
-		if hashes > 20 { break
+		// hashes > s.len is a safe upper bound: a marker longer than s
+		// can never be a substring of s (the old limit of 20 was too low
+		// for content containing " followed by 21+ # characters).
+		if hashes > s.len { break
 		 }
 		marker := '"' + '#'.repeat(hashes)
 		if !s.contains(marker) { break

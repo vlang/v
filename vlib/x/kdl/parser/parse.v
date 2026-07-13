@@ -101,6 +101,10 @@ fn (mut p Parser) skip_node() ! {
 	for p.tok.kind == .slashdash {
 		p.skip_commented_child()!
 	}
+	if p.tok.kind !in [.newline, .semicolon, .r_brace, .eof] {
+		return kdl_err(p.tok.line, p.tok.col,
+			'kdl: expected newline, semicolon, } or EOF after slashdashed node')
+	}
 }
 
 fn (mut p Parser) skip_children_block() ! {
@@ -130,7 +134,7 @@ fn (mut p Parser) skip_entry() !bool {
 	}
 	if p.tok.kind in [.identifier, .string_val] {
 		p.advance()
-		if p.tok.kind == .equals {
+		if p.tok.kind in [.equals, .colon] {
 			if has_type_ann {
 				return kdl_err(p.tok.line, p.tok.col,
 					'kdl: type annotation before property key is not allowed')

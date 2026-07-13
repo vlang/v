@@ -195,6 +195,12 @@ fn decode_child_to_field[T](mut val T, field_name string, child document.Node, o
 				}
 				val.$(field.name) = arr
 			}
+			// Scalar child fields (string, int, bool, f64, etc.): encoder emits name <value>
+			if child.entries.len > 0 {
+				if child.entries[0] is document.Argument {
+					decode_value_to_field(mut val, field.name, child.entries[0].value)
+				}
+			}
 		}
 	}
 }

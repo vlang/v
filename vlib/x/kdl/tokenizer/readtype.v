@@ -654,6 +654,9 @@ fn (mut s Scanner) scan_number() Token {
 			if s.c >= 48 && s.c <= 57 {
 				return s.scan_number_rest('0', l, c)
 			}
+			if s.c == 46 || s.c == 101 || s.c == 69 {
+				return s.scan_float('0', l, c)
+			}
 		}
 		if s.pos < s.src.len && !is_num_terminator(s.c, s.pos, s.src) {
 			return Token{.eof, 'kdl: invalid trailing characters after decimal literal', l, c}
