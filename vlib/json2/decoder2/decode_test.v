@@ -1,5 +1,14 @@
 module decoder2
 
+fn assert_invalid_json(input string) {
+	mut checker := Decoder{
+		json: input
+	}
+	mut failed := false
+	checker.check_json_format(input) or { failed = true }
+	assert failed, 'Expected invalid JSON: `${input}`'
+}
+
 fn test_check_if_json_match() {
 	// /* Test wrong string values */
 	mut has_error := false
@@ -177,6 +186,34 @@ fn test_check_json_format() {
 			has_error = true
 		}
 		assert has_error, 'Expected error ${json_and_error['error']}'
+	}
+}
+
+fn test_rejects_trailing_root_bytes() {
+	for input in ['truex', '{}x', '[]x', 'nullx', '"value"x', '0x', 'true}', '{}]'] {
+		assert_invalid_json(input)
+	}
+}
+
+fn test_accepts_trailing_root_whitespace() {
+	for input in ['true ', '{}\n', '[]\t', 'null\r\n', '"value" \t\r\n', '0\n'] {
+		mut checker := Decoder{
+			json: input
+		}
+		checker.check_json_format(input) or { assert false, err.str() }
+	}
+}
+
+fn test_rejects_unescaped_control_bytes_in_strings() {
+	for input in ['"line\nbreak"', '"tab\tcharacter"', '"carriage\rreturn"'] {
+		assert_invalid_json(input)
+	}
+}
+
+fn test_truncated_objects_return_errors() {
+	for input in ['{', '{ ', '{\n\t', '{"key"', '{"key":', '{"key": ', '{"key": 1 ', '{"key": null\n',
+		'{"key": {}, '] {
+		assert_invalid_json(input)
 	}
 }
 

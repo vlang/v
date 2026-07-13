@@ -176,6 +176,7 @@ fn (mut checker Decoder) error(message string) ! {
 // check_json_format checks if the JSON string is valid and updates the decoder state.
 fn (mut checker Decoder) check_json_format(val string) ! {
 	checker_end := checker.json.len
+	is_root_value := checker.values_info.len == 0
 	// check if the JSON string is empty
 	if val == '' {
 		return checker.error('empty string')
@@ -212,26 +213,18 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 		}
 		.object {
 			checker.checker_idx++
-			for val[checker.checker_idx] != `}` {
-				// check if the JSON string is an empty object
-				if checker_end - checker.checker_idx <= 2 {
-					continue
-				}
-
-				if val[checker.checker_idx] != `"` {
-					checker.checker_idx++
-				}
-
+			for {
 				// skip whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
-					if checker.checker_idx >= checker_end - 1 {
-						break
-					}
+				for checker.checker_idx < checker_end
+					&& val[checker.checker_idx] in [` `, `\t`, `\n`, `\r`] {
 					checker.checker_idx++
 				}
-
+				if checker.checker_idx >= checker_end {
+					checker.checker_idx = checker_end - 1
+					return checker.error('EOF error: object not closed')
+				}
 				if val[checker.checker_idx] == `}` {
-					continue
+					break
 				}
 
 				match val[checker.checker_idx] {
@@ -239,14 +232,15 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 						// Object key
 						checker.check_json_format(val)!
 
-						for val[checker.checker_idx] != `:` {
-							if checker.checker_idx >= checker_end - 1 {
-								return checker.error('EOF error: key colon not found')
-							}
-							if val[checker.checker_idx] !in [` `, `\t`, `\n`] {
+						for checker.checker_idx < checker_end && val[checker.checker_idx] != `:` {
+							if val[checker.checker_idx] !in [` `, `\t`, `\n`, `\r`] {
 								return checker.error('invalid value after object key')
 							}
 							checker.checker_idx++
+						}
+						if checker.checker_idx >= checker_end {
+							checker.checker_idx = checker_end - 1
+							return checker.error('EOF error: key colon not found')
 						}
 					}
 					`[`, `{`, `0`...`9`, `-`, `n`, `t`, `f` {
@@ -276,8 +270,13 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				checker.checker_idx++
 
 				// skip whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+				for checker.checker_idx < checker_end
+					&& val[checker.checker_idx] in [` `, `\t`, `\n`, `\r`] {
 					checker.checker_idx++
+				}
+				if checker.checker_idx >= checker_end {
+					checker.checker_idx = checker_end - 1
+					return checker.error('EOF error: object value not found')
 				}
 
 				match val[checker.checker_idx] {
@@ -288,8 +287,13 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 							}
 							checker.check_json_format(val)!
 							// whitespace
-							for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+							for checker.checker_idx < checker_end
+								&& val[checker.checker_idx] in [` `, `\t`, `\n`, `\r`] {
 								checker.checker_idx++
+							}
+							if checker.checker_idx >= checker_end {
+								checker.checker_idx = checker_end - 1
+								return checker.error('EOF error: braces are not closed')
 							}
 							if val[checker.checker_idx] == `}` {
 								break
@@ -300,8 +304,13 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 							if val[checker.checker_idx] == `,` {
 								checker.checker_idx++
-								for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+								for checker.checker_idx < checker_end
+									&& val[checker.checker_idx] in [` `, `\t`, `\n`, `\r`] {
 									checker.checker_idx++
+								}
+								if checker.checker_idx >= checker_end {
+									checker.checker_idx = checker_end - 1
+									return checker.error('EOF error: object key not found')
 								}
 								if val[checker.checker_idx] != `"` {
 									return checker.error('Expecting object key')
@@ -322,17 +331,11 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 					}
 				}
 			}
-			if checker.checker_idx < checker_end - 1 {
-				checker.checker_idx++
-			}
 		}
 		.array {
 			// check if the JSON string is an empty array
 			if checker_end >= checker.checker_idx + 2 {
 				checker.checker_idx++
-				if val[checker.checker_idx] == `]` {
-					return
-				}
 			} else {
 				return checker.error('EOF error: There are not enough length for an array')
 			}
@@ -347,7 +350,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				}
 
 				if val[checker.checker_idx] == `]` {
-					return
+					break
 				}
 
 				if checker.checker_idx >= checker_end - 1 {
@@ -401,6 +404,9 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				}
 				if val[checker.checker_idx] == `"` {
 					break
+				}
+				if val[checker.checker_idx] < 0x20 {
+					return checker.error('unescaped control character in string')
 				}
 				if val[checker.checker_idx] == `\\` {
 					if checker.checker_idx + 1 >= checker_end {
@@ -540,18 +546,21 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 	actual_value_info_pointer.length = checker.checker_idx + 1 - start_idx_position
 
-	if checker.checker_idx < checker_end - 1 {
-		checker.checker_idx++
+	if checker.checker_idx >= checker_end - 1 {
+		return
 	}
+	checker.checker_idx++
 
-	for checker.checker_idx < checker_end - 1 && val[checker.checker_idx] !in [`,`, `:`, `}`, `]`] {
+	for checker.checker_idx < checker_end
+		&& (is_root_value || val[checker.checker_idx] !in [`,`, `:`, `}`, `]`]) {
 		// get trash characters after the value
-		if val[checker.checker_idx] !in [` `, `\t`, `\n`] {
+		if val[checker.checker_idx] !in [` `, `\t`, `\n`, `\r`] {
 			checker.error('invalid value. Unexpected character after ${value_kind} end')!
-		} else {
-			// whitespace
 		}
 		checker.checker_idx++
+	}
+	if checker.checker_idx >= checker_end {
+		checker.checker_idx = checker_end - 1
 	}
 }
 

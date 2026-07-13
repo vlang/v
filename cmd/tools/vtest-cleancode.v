@@ -24,7 +24,7 @@ const vet_known_failing_windows = [
 
 const vet_folders = [
 	'vlib/v',
-	'vlib/x/json2',
+	'vlib/json2',
 	'vlib/x/ttf',
 	'cmd/v',
 	'cmd/tools',
