@@ -356,13 +356,15 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				return checker.error('EOF error: There are not enough length for an array')
 			}
 
-			for val[checker.checker_idx] != `]` {
+			for {
 				// skip whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
-					if checker.checker_idx >= checker_end - 1 {
-						break
-					}
+				for checker.checker_idx < checker_end
+					&& val[checker.checker_idx] in [` `, `\t`, `\n`, `\r`] {
 					checker.checker_idx++
+				}
+				if checker.checker_idx >= checker_end {
+					checker.checker_idx = checker_end - 1
+					return checker.error('EOF error: array not closed')
 				}
 
 				if val[checker.checker_idx] == `]` {
@@ -376,8 +378,13 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 				checker.check_json_format(val)!
 
 				// whitespace
-				for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+				for checker.checker_idx < checker_end
+					&& val[checker.checker_idx] in [` `, `\t`, `\n`, `\r`] {
 					checker.checker_idx++
+				}
+				if checker.checker_idx >= checker_end {
+					checker.checker_idx = checker_end - 1
+					return checker.error('EOF error: array not closed')
 				}
 				if val[checker.checker_idx] == `]` {
 					break
@@ -388,8 +395,13 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 
 				if val[checker.checker_idx] == `,` {
 					checker.checker_idx++
-					for val[checker.checker_idx] in [` `, `\t`, `\n`] {
+					for checker.checker_idx < checker_end
+						&& val[checker.checker_idx] in [` `, `\t`, `\n`, `\r`] {
 						checker.checker_idx++
+					}
+					if checker.checker_idx >= checker_end {
+						checker.checker_idx = checker_end - 1
+						return checker.error('EOF error: array value not found')
 					}
 					if val[checker.checker_idx] == `]` {
 						return checker.error('Cannot use `,`, before `]`')
@@ -647,31 +659,25 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				if key_info.position >= struct_end {
 					break
 				}
+				key := decoder.decode_string(key_info)!
 
 				decoder.current_node = decoder.current_node.next
 				mut field_matched := false
 
 				$for field in T.fields {
-					if key_info.length - 2 == field.name.len {
-						// This `vmemcmp` compares the name of a key in a JSON with a given struct field.
-						if unsafe {
-							vmemcmp(decoder.json.str + key_info.position + 1, field.name.str,
-								field.name.len) == 0
-						} {
-							field_matched = true
-							$if field.typ is $option {
-								if decoder.current_node.value.value_kind == .null {
-									val.$(field.name) = none
-									decoder.skip_value()
-								} else {
-									mut unwrapped_val :=
-										create_value_from_optional(val.$(field.name))
-									decoder.decode_value(mut unwrapped_val)!
-									val.$(field.name) = unwrapped_val
-								}
-							} $else {
-								decoder.decode_value(mut val.$(field.name))!
+					if key == field.name {
+						field_matched = true
+						$if field.typ is $option {
+							if decoder.current_node.value.value_kind == .null {
+								val.$(field.name) = none
+								decoder.skip_value()
+							} else {
+								mut unwrapped_val := create_value_from_optional(val.$(field.name))
+								decoder.decode_value(mut unwrapped_val)!
+								val.$(field.name) = unwrapped_val
 							}
+						} $else {
+							decoder.decode_value(mut val.$(field.name))!
 						}
 					}
 				}

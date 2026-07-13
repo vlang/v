@@ -5,6 +5,20 @@ struct NestedValueKinds {
 	active bool
 }
 
+struct EscapedStructKey {
+	name string
+}
+
+type DiscriminatorAnimal = DiscriminatorCat | DiscriminatorDog
+
+struct DiscriminatorCat {
+	cat_name string
+}
+
+struct DiscriminatorDog {
+	dog_name string
+}
+
 fn assert_invalid_json(input string) {
 	mut checker := Decoder{
 		json: input
@@ -256,6 +270,32 @@ fn test_truncated_objects_return_errors() {
 	for input in ['{', '{ ', '{\n\t', '{"key"', '{"key":', '{"key": ', '{"key": 1 ', '{"key": null\n',
 		'{"key": {}, '] {
 		assert_invalid_json(input)
+	}
+}
+
+fn test_truncated_arrays_return_errors() {
+	for input in ['[', '[ ', '[1', '[1 ', '[1,', '[1, ', '[1,\n\t'] {
+		assert_invalid_json(input)
+		mut failed := false
+		decode[[]int](input) or { failed = true }
+		assert failed, 'Expected `${input}` to fail array decoding'
+	}
+}
+
+fn test_decode_unescapes_struct_keys() {
+	assert decode[EscapedStructKey](r'{"na\u006de": "Ada"}')! == EscapedStructKey{
+		name: 'Ada'
+	}
+}
+
+fn test_sumtype_discriminator_ignores_nested_values() {
+	for input in [
+		r'{"meta": {"_type": "DiscriminatorDog"}, "_type": "DiscriminatorCat", "cat_name": "Tom"}',
+		r'{"meta": [{"_type": "DiscriminatorDog"}], "_type": "DiscriminatorCat", "cat_name": "Tom"}',
+	] {
+		assert decode[DiscriminatorAnimal](input)! == DiscriminatorAnimal(DiscriminatorCat{
+			cat_name: 'Tom'
+		})
 	}
 }
 

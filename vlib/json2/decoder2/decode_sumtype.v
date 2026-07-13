@@ -61,7 +61,7 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 				map_position := value_info.position
 				map_end := map_position + value_info.length
 
-				type_field := '"_type"'
+				type_field := '_type'
 
 				for {
 					if type_field_node == unsafe { nil } {
@@ -75,29 +75,32 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 						break
 					}
 
-					if unsafe {
-						vmemcmp(decoder.json.str + key_info.position, type_field.str,
-							type_field.len) == 0
-					} {
-						// find type field
-						type_field_node = type_field_node.next
-
+					mut value_node := type_field_node.next
+					if value_node == unsafe { nil } {
+						type_field_node = unsafe { nil }
 						break
-					} else {
+					}
+
+					if decoder.decode_string(key_info)! == type_field {
+						// find type field
+						type_field_node = value_node
+						break
+					}
+
+					value_end := value_node.value.position + value_node.value.length
+					type_field_node = value_node.next
+					for type_field_node != unsafe { nil }
+						&& type_field_node.value.position < value_end {
 						type_field_node = type_field_node.next
 					}
 				}
 
 				if type_field_node != unsafe { nil } {
-					$for v in val.variants {
-						variant_name := typeof(v.typ).name
-						if type_field_node.value.length - 2 == variant_name.len {
-							unsafe {
-							}
-							if unsafe {
-								vmemcmp(decoder.json.str + type_field_node.value.position + 1,
-									variant_name.str, variant_name.len) == 0
-							} {
+					if type_field_node.value.value_kind == .string_ {
+						decoded_type := decoder.decode_string(type_field_node.value)!
+						$for v in val.variants {
+							variant_name := typeof(v.typ).name
+							if decoded_type == variant_name {
 								val = T(v)
 							}
 						}
