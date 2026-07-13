@@ -23,6 +23,8 @@ fn (mut c Checker) markused_assertstmt_auto_str(mut node ast.AssertStmt) {
 	if !c.is_builtin_mod && mut node.expr is ast.InfixExpr {
 		left_type := c.unwrap_generic(node.expr.left_type)
 		right_type := c.unwrap_generic(node.expr.right_type)
+		c.markused_scalar_ptr_str(left_type)
+		c.markused_scalar_ptr_str(right_type)
 		c.markused_auto_str_dependencies(left_type)
 		c.markused_auto_str_dependencies(right_type)
 		if !c.table.used_features.auto_str && !c.table.sym(left_type).has_method('str') {
@@ -40,6 +42,7 @@ fn (mut c Checker) markused_dumpexpr(mut node ast.DumpExpr) {
 		return
 	}
 	unwrapped_type := c.unwrap_generic(node.expr_type)
+	c.markused_scalar_ptr_str(unwrapped_type)
 	if node.expr_type.has_flag(.generic) {
 		c.table.used_features.comptime_syms[unwrapped_type] = true
 	}
@@ -121,6 +124,9 @@ fn (mut c Checker) markused_comptimefor(mut _ ast.ComptimeFor, unwrapped_expr_ty
 }
 
 fn (mut c Checker) markused_call_expr(left_type ast.Type, mut node ast.CallExpr) {
+	if left_type != 0 && node.name == 'str' {
+		c.markused_scalar_ptr_str(left_type)
+	}
 	if left_type != 0 && left_type.is_ptr() && !c.table.used_features.auto_str_ptr
 		&& node.name == 'str' {
 		c.table.used_features.auto_str_ptr = true
@@ -136,10 +142,7 @@ fn (mut c Checker) markused_print_call(mut node ast.CallExpr) {
 		if arg_typ == 0 {
 			return
 		}
-		if c.table.is_scalar_ptr_type(arg_typ) {
-			c.mark_type_str_method_as_referenced(ast.voidptr_type)
-			c.table.used_features.print_types[ast.voidptr_type_idx] = true
-		}
+		c.markused_scalar_ptr_str(arg_typ)
 		c.markused_auto_str_dependencies(arg_typ)
 		if (node.args[0].expr is ast.CallExpr && node.args[0].expr.is_method
 			&& node.args[0].expr.name == 'str')
@@ -183,6 +186,14 @@ fn (mut c Checker) markused_print_call(mut node ast.CallExpr) {
 			}
 		}
 	}
+}
+
+fn (mut c Checker) markused_scalar_ptr_str(typ ast.Type) {
+	if c.is_builtin_mod || typ == 0 || !c.table.is_scalar_ptr_type(c.unwrap_generic(typ)) {
+		return
+	}
+	c.mark_type_str_method_as_referenced(ast.voidptr_type)
+	c.table.used_features.print_types[ast.voidptr_type_idx] = true
 }
 
 fn (mut c Checker) markused_method_call(mut node ast.CallExpr, mut left_expr ast.Expr, left_type ast.Type) {
