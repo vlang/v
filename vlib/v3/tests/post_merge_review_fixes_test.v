@@ -566,6 +566,34 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_interface_equality_includes_variadic_call_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_variadic_call_boxes', 'interface IValue {}
+
+struct Single {}
+struct First {}
+struct Second {}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn all_same(values ...IValue) bool {
+	mut ok := true
+	for value in values {
+		ok = ok && same(value)
+	}
+	return ok
+}
+
+fn main() {
+	println(all_same(Single{}).str())
+	println(all_same(First{}, Second{}).str())
+}
+')
+	assert out == 'true\ntrue'
+}
+
 fn test_select_receive_assignment_checks_lhs_type() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'select_receive_assign_bool_mismatch', 'fn main() {

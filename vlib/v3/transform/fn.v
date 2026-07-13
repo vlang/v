@@ -2168,7 +2168,11 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 			}
 			t.pending_stmts << t.make_decl_assign_typed(value_name, value_arg, expected_enum)
 		} else {
-			t.pending_stmts << t.make_decl_assign_typed(value_name, value, expected_enum)
+			// Keep the explicit interface storage type visible to cgen. A direct interface
+			// literal is a struct init, whose concrete payload name would otherwise override
+			// the declaration annotation.
+			storage_value := if elem_type is types.Interface { t.make_paren(value) } else { value }
+			t.pending_stmts << t.make_decl_assign_typed(value_name, storage_value, expected_enum)
 		}
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.make_prefix(.amp,
 			t.make_ident(tmp_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void'))

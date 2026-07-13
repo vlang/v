@@ -613,42 +613,7 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 			}
 		}
 		if node.kind == .call && node.children_count > 1 {
-			mut call_name := t.tc.resolved_call_name(flat.NodeId(idx)) or { '' }
-			if call_name.len == 0 {
-				callee := t.a.child_node(&node, 0)
-				if callee.kind == .ident {
-					call_name = callee.value
-				}
-			}
-			params := t.tc.fn_param_types_for_name(call_name)
-			explicit_args := int(node.children_count) - 1
-			mut param_offset := 0
-			if params.len != explicit_args {
-				if params.len != explicit_args + 1 {
-					continue
-				}
-				mut receiver_call_has_interface_arg := false
-				for i in 1 .. params.len {
-					if interface_box_expected_type(params[i]) {
-						receiver_call_has_interface_arg = true
-						break
-					}
-				}
-				if !receiver_call_has_interface_arg {
-					continue
-				}
-				param_offset = t.call_param_offset(call_name, node, params)
-			}
-			if params.len - param_offset == explicit_args {
-				for i in param_offset .. params.len {
-					expected := params[i]
-					if !interface_box_expected_type(expected) {
-						continue
-					}
-					t.collect_interface_boxed_value(t.a.child(&node, i - param_offset + 1),
-						expected)
-				}
-			}
+			t.collect_interface_call_boxes(flat.NodeId(idx), node)
 		}
 		if node.kind != .struct_init || node.children_count == 0 {
 			continue
@@ -662,6 +627,64 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 			}
 			concrete_type := if field.typ.starts_with('&') { field.typ[1..] } else { field.typ }
 			t.mark_interface_boxed_type(iface_name, concrete_type)
+		}
+	}
+}
+
+fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node flat.Node) {
+	mut call_name := t.tc.resolved_call_name(call_id) or { '' }
+	callee := t.a.child_node(&node, 0)
+	if call_name.len == 0 {
+		if callee.kind == .ident {
+			call_name = callee.value
+		}
+	}
+	params := t.tc.fn_param_types_for_name(call_name)
+	if params.len == 0 || !params.any(interface_box_expected_type(it)) {
+		return
+	}
+	param_offset := if callee.kind == .selector {
+		t.call_param_offset(call_name, node, params)
+	} else {
+		0
+	}
+	explicit_args := int(node.children_count) - 1
+	is_variadic := t.call_is_variadic(call_name)
+	variadic_idx := if is_variadic && params[params.len - 1] is types.Array {
+		params.len - 1
+	} else {
+		-1
+	}
+	if variadic_idx < 0 && params.len - param_offset != explicit_args {
+		return
+	}
+	if variadic_idx >= 0 && explicit_args < variadic_idx - param_offset {
+		return
+	}
+	for arg_idx in 0 .. explicit_args {
+		arg_id := t.a.child(&node, arg_idx + 1)
+		param_idx := arg_idx + param_offset
+		mut expected := if variadic_idx >= 0 && param_idx >= variadic_idx {
+			variadic_type := params[variadic_idx]
+			if variadic_type is types.Array {
+				variadic_type.elem_type
+			} else {
+				variadic_type
+			}
+		} else if param_idx < params.len {
+			params[param_idx]
+		} else {
+			continue
+		}
+		arg := t.a.nodes[int(arg_id)]
+		mut value_id := arg_id
+		if variadic_idx >= 0 && param_idx >= variadic_idx && arg.kind == .prefix
+			&& arg.value == '...' && arg.children_count > 0 {
+			expected = params[variadic_idx]
+			value_id = t.a.child(&arg, 0)
+		}
+		if interface_box_expected_type(expected) {
+			t.collect_interface_boxed_value(value_id, expected)
 		}
 	}
 }
