@@ -6798,6 +6798,16 @@ fn (tc &TypeChecker) subtree_has_spawn_expr(id flat.NodeId) bool {
 	return false
 }
 
+fn module_file_matches_import_path(file string, imported_module string) bool {
+	if !imported_module.contains('.') {
+		return false
+	}
+	normalized_file := file.replace('\\', '/')
+	module_dir := imported_module.replace('.', '/')
+	file_dir := normalized_file.all_before_last('/')
+	return file_dir == module_dir || file_dir.ends_with('/${module_dir}')
+}
+
 fn (tc &TypeChecker) scan_has_spawn_expr() bool {
 	if tc.diagnostic_files.len == 0 {
 		start := if tc.a.user_code_start > 0 { tc.a.user_code_start } else { 0 }
@@ -6851,7 +6861,16 @@ fn (tc &TypeChecker) scan_has_spawn_expr() bool {
 			}
 		}
 		for imported_module in file_imports[file] or { []string{} } {
-			for imported_file in module_files[imported_module] or { []string{} } {
+			mut imported_files := module_files[imported_module] or { []string{} }
+			if imported_files.len == 0 && imported_module.contains('.') {
+				short_name := imported_module.all_after_last('.')
+				for candidate in module_files[short_name] or { []string{} } {
+					if module_file_matches_import_path(candidate, imported_module) {
+						imported_files << candidate
+					}
+				}
+			}
+			for imported_file in imported_files {
 				if !seen_files[imported_file] {
 					seen_files[imported_file] = true
 					reachable_files << imported_file
@@ -7258,6 +7277,10 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 						$if ownership ? {
 							tc.ownership_note_binding(var_node.value, elem_type, var_id)
 						}
+					} else {
+						tc.record_error(.assignment_mismatch,
+							'select receive declaration requires a plain identifier on the left side',
+							var_id)
 					}
 				}
 			} else {

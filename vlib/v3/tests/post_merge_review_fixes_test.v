@@ -359,6 +359,20 @@ fn test_select_compound_receive_assignment_is_rejected() {
 		'compound receive assignment `+=` is not supported in `select`')
 }
 
+fn test_select_receive_declaration_requires_identifier() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'select_receive_decl_index_lhs', 'fn main() {
+	ch := chan int{}
+	mut values := [0]
+	select {
+		values[0] := <-ch {}
+		else {}
+	}
+}
+',
+		'select receive declaration requires a plain identifier on the left side')
+}
+
 fn test_comptime_if_threads_expression_is_deferred() {
 	v3_bin := build_v3()
 	without_spawn := run_good(v3_bin, 'comptime_threads_expr_without_spawn', 'fn main() {
@@ -431,6 +445,12 @@ fn test_comptime_if_threads_counts_spawns_in_imported_modules() {
 		'main.v':          'module main\n\nimport worker\n\nfn main() {\n\tworker.start()\n\tmode := $if threads { "threads" } $else { "single" }\n\tprintln(mode)\n}\n'
 	}, 'main.v')
 	assert out == 'threads'
+	nested_out := run_good_project(v3_bin, 'threads_spawn_in_nested_imported_module', {
+		'v.mod':         "Module { name: 'threads_spawn_in_nested_imported_module' }\n"
+		'foo/bar/bar.v': 'module bar\n\nfn work() {}\n\npub fn start() {\n\tspawn work()\n}\n'
+		'main.v':        'module main\n\nimport foo.bar\n\nfn main() {\n\tbar.start()\n\tmode := $if threads { "threads" } $else { "single" }\n\tprintln(mode)\n}\n'
+	}, 'main.v')
+	assert nested_out == 'threads'
 }
 
 fn test_select_receive_assignment_invalidates_smartcast_before_branch_body() {
