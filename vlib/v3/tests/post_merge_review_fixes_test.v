@@ -744,6 +744,22 @@ fn test_select_compound_receive_assignment_is_rejected() {
 		'compound receive assignment `+=` is not supported in `select`')
 }
 
+fn test_select_assignment_cases_require_receive_rhs() {
+	v3_bin := build_v3()
+	for op in [':=', '=', '+='] {
+		run_bad(v3_bin, 'select_non_receive_${op.replace('=', 'eq').replace(':', 'decl').replace('+',
+			'plus')}', 'fn main() {
+	mut value := 0
+	select {
+		value ${op} 1 {}
+	}
+	println(int_str(value))
+}
+',
+			'select assignment case requires a channel receive on the right side')
+	}
+}
+
 fn test_select_receive_declaration_requires_identifier() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'select_receive_decl_index_lhs', 'fn main() {
@@ -775,6 +791,50 @@ fn main() {
 }
 ')
 	assert with_spawn == '41'
+}
+
+fn test_comptime_if_threads_does_not_count_spawns_in_its_own_branches() {
+	v3_bin := build_v3()
+	statement_out := run_good(v3_bin, 'threads_statement_spawn_does_not_self_enable', 'fn work() {}
+
+fn main() {
+	$if threads {
+		spawn work()
+		println("threads")
+	} $else {
+		println("single")
+	}
+	value := $if threads { 41 } $else { 7 }
+	println(int_str(value))
+}
+')
+	assert statement_out == 'single\n7'
+
+	top_level_out := run_good(v3_bin, 'threads_top_level_spawn_does_not_self_enable', '$if threads {
+	fn selected_value() int {
+		spawn work()
+		return 41
+	}
+} $else {
+	fn selected_value() int {
+		return 7
+	}
+}
+
+fn work() {}
+
+fn main() {
+	println(int_str(selected_value()))
+}
+')
+	assert top_level_out == '7'
+
+	import_out := run_good_project(v3_bin, 'threads_import_spawn_does_not_self_enable', {
+		'v.mod':           "Module { name: 'threads_import_spawn_does_not_self_enable' }\n"
+		'worker/worker.v': 'module worker\n\n$if threads {\n\tpub fn mode() string {\n\t\tspawn work()\n\t\treturn "threads"\n\t}\n} $else {\n\tpub fn mode() string {\n\t\treturn "single"\n\t}\n}\n\nfn work() {}\n'
+		'main.v':          'module main\n\nimport worker\n\nfn main() {\n\tprintln(worker.mode())\n}\n'
+	}, 'main.v')
+	assert import_out == 'single'
 }
 
 fn test_comptime_if_threads_mixed_conditions_keep_normal_flag_evaluation() {

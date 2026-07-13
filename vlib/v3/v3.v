@@ -863,6 +863,7 @@ fn main() {
 		print_type_errors(pre_tc.errors)
 		exit(1)
 	}
+	pre_tc.prune_inactive_top_level_comptime(mut a)
 	test_harness_errors := validate_test_file_harness_inputs(a, pre_tc, test_files)
 	if test_harness_errors.len > 0 {
 		for msg in test_harness_errors {

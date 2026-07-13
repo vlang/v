@@ -369,6 +369,7 @@ pub mut:
 	reject_unsupported_generics   bool
 	diagnostic_files              map[string]bool
 	has_spawn_expr                int = -1
+	inactive_top_level_node_ids   []int
 	selected_file_called_fns      map[string]bool
 	// Names newly inserted into selected_file_called_fns and not yet chased by
 	// the transitive closure in collect_selected_file_called_fns_transitively.
@@ -837,10 +838,12 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.top_level_idx = []int{cap: 65536}
 	tc.prepare_threads_condition()
 	inactive_comptime_nodes := tc.inactive_top_level_comptime_nodes()
+	tc.inactive_top_level_node_ids.clear()
 	mut idx_file := ''
 	mut idx_module := ''
 	for i, node in a.nodes {
 		if inactive_comptime_nodes.len > 0 && inactive_comptime_nodes[i] {
+			tc.inactive_top_level_node_ids << i
 			continue
 		}
 		match node.kind {
@@ -6782,17 +6785,51 @@ fn (tc &TypeChecker) inactive_top_level_comptime_nodes() []bool {
 	return inactive
 }
 
+// prune_inactive_top_level_comptime removes declarations and expressions from inactive
+// top-level compile-time branches after semantic checking and before later compiler stages.
+pub fn (tc &TypeChecker) prune_inactive_top_level_comptime(mut a flat.FlatAst) {
+	for i in tc.inactive_top_level_node_ids {
+		if i < a.nodes.len {
+			a.nodes[i] = flat.Node{}
+		}
+	}
+}
+
 fn (tc &TypeChecker) subtree_has_spawn_expr(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
 	node := tc.a.nodes[int(id)]
+	if node.kind == .comptime_if && comptime_condition_references_ident(node.value, 'threads') {
+		return false
+	}
 	if node_kind_id(node) == int(flat.NodeKind.spawn_expr) {
 		return true
 	}
 	for i in 0 .. node.children_count {
 		if tc.subtree_has_spawn_expr(tc.a.child(&node, i)) {
 			return true
+		}
+	}
+	return false
+}
+
+fn comptime_condition_references_ident(cond string, ident string) bool {
+	if ident.len == 0 {
+		return false
+	}
+	mut i := 0
+	for i < cond.len {
+		if cond[i].is_letter() || cond[i] == `_` {
+			start := i
+			for i < cond.len && (cond[i].is_letter() || cond[i].is_digit() || cond[i] == `_`) {
+				i++
+			}
+			if cond[start..i] == ident {
+				return true
+			}
+		} else {
+			i++
 		}
 	}
 	return false
@@ -6811,8 +6848,19 @@ fn module_file_matches_import_path(file string, imported_module string) bool {
 fn (tc &TypeChecker) scan_has_spawn_expr() bool {
 	if tc.diagnostic_files.len == 0 {
 		start := if tc.a.user_code_start > 0 { tc.a.user_code_start } else { 0 }
+		mut ignored := []bool{}
 		for node in tc.a.nodes[start..] {
-			if node_kind_id(node) == int(flat.NodeKind.spawn_expr) {
+			if node.kind == .comptime_if
+				&& comptime_condition_references_ident(node.value, 'threads') {
+				for i in 0 .. node.children_count {
+					tc.mark_inactive_comptime_subtree(tc.a.child(&node, i), mut ignored)
+				}
+			}
+		}
+		for idx, node in tc.a.nodes[start..] {
+			absolute_idx := start + idx
+			if (ignored.len == 0 || !ignored[absolute_idx])
+				&& node_kind_id(node) == int(flat.NodeKind.spawn_expr) {
 				return true
 			}
 		}
@@ -7255,23 +7303,28 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		}
 		tc.push_scope()
 		mut body_start := 0
-		if branch.value.starts_with('recv_compound:') && branch.children_count >= 2 {
-			recv_id := tc.a.child(&branch, 1)
-			recv := tc.a.nodes[int(recv_id)]
-			if recv.kind == .prefix && recv.op == .arrow {
-				tc.check_node(recv_id)
-				op := branch.value.all_after('recv_compound:')
-				tc.record_error(.assignment_mismatch,
-					'compound receive assignment `${op}` is not supported in `select`; use `=` or `:=`',
-					branch_id)
-				body_start = 2
-			}
-		}
-		mut receive_assignment := false
-		if branch.value in ['recv', 'recv_assign'] && branch.children_count >= 2 {
+		is_assignment_case := branch.value in ['recv', 'recv_assign']
+			|| branch.value.starts_with('recv_compound:')
+		mut has_receive_rhs := false
+		if is_assignment_case && branch.children_count >= 2 {
 			second := tc.a.child_node(&branch, 1)
-			receive_assignment = second.kind == .prefix && second.op == .arrow
+			has_receive_rhs = second.kind == .prefix && second.op == .arrow
 		}
+		if is_assignment_case && !has_receive_rhs {
+			tc.record_error(.assignment_mismatch,
+				'select assignment case requires a channel receive on the right side', branch_id)
+			body_start = if branch.children_count >= 2 { 2 } else { int(branch.children_count) }
+		}
+		if branch.value.starts_with('recv_compound:') && has_receive_rhs {
+			recv_id := tc.a.child(&branch, 1)
+			tc.check_node(recv_id)
+			op := branch.value.all_after('recv_compound:')
+			tc.record_error(.assignment_mismatch,
+				'compound receive assignment `${op}` is not supported in `select`; use `=` or `:=`',
+				branch_id)
+			body_start = 2
+		}
+		receive_assignment := branch.value in ['recv', 'recv_assign'] && has_receive_rhs
 		if receive_assignment {
 			// children[0] = bound/assigned lvalue, children[1] = `<-ch` receive expr.
 			var_id := tc.a.child(&branch, 0)
