@@ -1522,7 +1522,8 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	}
 	if needs_channel_select_helpers {
 		for helper in ['sync.channel_select', 'sync.channel_select_lang', 'channel_select',
-			'channel_select_lang', 'rand.init', 'array.free', 'array__free'] {
+			'channel_select_lang', 'rand.init', 'array.free', 'array__free', 'time.sleep',
+			'time__sleep'] {
 			enqueue(helper, mut used, mut queue)
 		}
 	}

@@ -1509,6 +1509,23 @@ fn main() {
 		'at most one timeout branch allowed in `select` block')
 }
 
+fn test_select_timeout_only_waits_and_runs_branch() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_timeout_only', 'import time
+
+fn main() {
+	mut fired := false
+	select {
+		time.millisecond {
+			fired = true
+		}
+	}
+	println(fired.str())
+}
+')
+	assert out == 'true'
+}
+
 fn test_select_receive_declaration_requires_identifier() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'select_receive_decl_index_lhs', 'fn main() {

@@ -658,55 +658,62 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 			g.writeln('${ct} ${tmp} = (${ct}){0};')
 		}
 	}
-	channels := g.tmp_name()
-	directions := g.tmp_name()
-	objects := g.tmp_name()
-	if cases.len == 0 {
-		g.writeln('Array ${channels} = array_new(sizeof(sync__Channel*), 0, 0);')
-		g.writeln('Array ${directions} = array_new(sizeof(int), 0, 0);')
-		g.writeln('Array ${objects} = array_new(sizeof(void*), 0, 0);')
-	} else {
-		g.write('Array ${channels} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(sync__Channel*), (sync__Channel*[]){')
-		for i, select_case in cases {
-			if i > 0 {
-				g.write(', ')
-			}
-			g.write('(sync__Channel*)(')
-			g.gen_expr(select_case.channel_id)
-			g.write(')')
-		}
-		g.writeln('});')
-		g.write('Array ${directions} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(int), (int[]){')
-		for i, select_case in cases {
-			if i > 0 {
-				g.write(', ')
-			}
-			g.write(if select_case.is_push { '1' } else { '0' })
-		}
-		g.writeln('});')
-		g.write('Array ${objects} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(void*), (void*[]){')
-		for i, tmp in temps {
-			if i > 0 {
-				g.write(', ')
-			}
-			g.write('(void*)&${tmp}')
-		}
-		g.writeln('});')
-	}
 	select_result := g.tmp_name()
-	select_fn := if is_expr { 'sync__channel_select' } else { 'sync__channel_select_lang' }
-	g.write('int ${select_result} = ${select_fn}(&${channels}, ${directions}, &${objects}, ')
-	if int(timeout_id) >= 0 {
+	if cases.len == 0 && int(timeout_id) >= 0 {
+		g.write('time__sleep(')
 		g.gen_expr(timeout_id)
-	} else if int(exception_branch) >= 0 {
-		g.write('-1')
+		g.writeln(');')
+		g.writeln('int ${select_result} = -1;')
 	} else {
-		g.write('((i64)9223372036854775807LL)')
+		channels := g.tmp_name()
+		directions := g.tmp_name()
+		objects := g.tmp_name()
+		if cases.len == 0 {
+			g.writeln('Array ${channels} = array_new(sizeof(sync__Channel*), 0, 0);')
+			g.writeln('Array ${directions} = array_new(sizeof(int), 0, 0);')
+			g.writeln('Array ${objects} = array_new(sizeof(void*), 0, 0);')
+		} else {
+			g.write('Array ${channels} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(sync__Channel*), (sync__Channel*[]){')
+			for i, select_case in cases {
+				if i > 0 {
+					g.write(', ')
+				}
+				g.write('(sync__Channel*)(')
+				g.gen_expr(select_case.channel_id)
+				g.write(')')
+			}
+			g.writeln('});')
+			g.write('Array ${directions} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(int), (int[]){')
+			for i, select_case in cases {
+				if i > 0 {
+					g.write(', ')
+				}
+				g.write(if select_case.is_push { '1' } else { '0' })
+			}
+			g.writeln('});')
+			g.write('Array ${objects} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(void*), (void*[]){')
+			for i, tmp in temps {
+				if i > 0 {
+					g.write(', ')
+				}
+				g.write('(void*)&${tmp}')
+			}
+			g.writeln('});')
+		}
+		select_fn := if is_expr { 'sync__channel_select' } else { 'sync__channel_select_lang' }
+		g.write('int ${select_result} = ${select_fn}(&${channels}, ${directions}, &${objects}, ')
+		if int(timeout_id) >= 0 {
+			g.gen_expr(timeout_id)
+		} else if int(exception_branch) >= 0 {
+			g.write('-1')
+		} else {
+			g.write('((i64)9223372036854775807LL)')
+		}
+		g.writeln(');')
+		g.writeln('array__free(&${objects});')
+		g.writeln('array__free(&${directions});')
+		g.writeln('array__free(&${channels});')
 	}
-	g.writeln(');')
-	g.writeln('array__free(&${objects});')
-	g.writeln('array__free(&${directions});')
-	g.writeln('array__free(&${channels});')
 
 	for i, select_case in cases {
 		if i == 0 {
