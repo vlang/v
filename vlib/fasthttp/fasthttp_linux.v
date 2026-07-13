@@ -30,21 +30,30 @@ pub:
 	timeout_in_seconds      int            = 30
 	user_data               voidptr
 mut:
-	listen_fds      []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
-	epoll_fds       []int    = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
-	threads         []thread = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
-	request_handler fn (HttpRequest) !HttpResponse @[required]
-	make_state      fn () voidptr              = unsafe { nil }
-	running         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	shutting_down   &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	stopped         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
-	active_requests &stdatomic.AtomicVal[int]  = stdatomic.new_atomic(0)
+	listen_fds      []int                          = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
+	epoll_fds       []int                          = []int{len: max_thread_pool_size, cap: max_thread_pool_size, init: -1}
+	threads         []thread                       = []thread{len: max_thread_pool_size, cap: max_thread_pool_size}
+	request_handler fn (HttpRequest) !HttpResponse = unsafe { nil }
+	append_handler  AppendHandler                  = unsafe { nil }
+	make_state      fn () voidptr                  = unsafe { nil }
+	running         &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	shutting_down   &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	stopped         &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(true)
+	active_requests &stdatomic.AtomicVal[int]      = stdatomic.new_atomic(0)
 }
 
 // new_server creates and initializes a new Server instance.
 pub fn new_server(config ServerConfig) !&Server {
 	if config.max_request_buffer_size <= 0 {
 		return error('max_request_buffer_size must be greater than 0')
+	}
+	has_handler := config.handler != unsafe { nil }
+	has_append := config.append_handler != unsafe { nil }
+	if !has_handler && !has_append {
+		return error('a handler is required: set exactly one of `handler` or `append_handler`')
+	}
+	if has_handler && has_append {
+		return error('set only one of `handler` or `append_handler`, not both')
 	}
 	mut server := &Server{
 		family:                  config.family
@@ -53,6 +62,7 @@ pub fn new_server(config ServerConfig) !&Server {
 		timeout_in_seconds:      config.timeout_in_seconds
 		user_data:               config.user_data
 		request_handler:         config.handler
+		append_handler:          config.append_handler
 		make_state:              config.make_state
 		running:                 stdatomic.new_atomic(false)
 		shutting_down:           stdatomic.new_atomic(false)
@@ -484,6 +494,27 @@ fn compact_read_buf(mut cs ConnState, pos int) {
 	}
 }
 
+// open_deferred_file opens response.file_path for a sendfile(2) body streamed by
+// flush_batch after the buffered bytes, or marks the connection to close on error.
+fn open_deferred_file(mut cs ConnState, file_path string) {
+	file_fd := C.open(file_path.str, C.O_RDONLY, 0)
+	if file_fd == -1 {
+		eprintln('ERROR: open file failed: ${file_path}')
+		cs.should_close = true
+		return
+	}
+	mut st := C.stat{}
+	if C.fstat(file_fd, &st) != 0 {
+		eprintln('ERROR: fstat failed: ${file_path}')
+		C.close(file_fd)
+		cs.should_close = true
+		return
+	}
+	cs.file_fd = file_fd
+	cs.file_off = 0
+	cs.file_remaining = i64(st.st_size)
+}
+
 // drain_requests answers every complete request currently buffered in read_buf,
 // appending each response to write_buf so the whole burst goes out in one send.
 // Returns false if the connection was closed (the caller must not touch it).
@@ -526,104 +557,138 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 		req_view := buf_view(cs.read_buf, pos, total)
 		pos += total
 
-		mut arena := unsafe { voidptr(nil) }
-		$if prealloc {
-			arena = unsafe { prealloc_scope_begin() }
-		}
-		mut decoded := decode_http_request(req_view) or {
-			eprintln('Error decoding request ${err}')
-			$if prealloc {
-				end_request_arena_current_thread(arena)
+		if w.server.append_handler != unsafe { nil } {
+			// Zero-copy path: the handler appends its response directly into the
+			// reused write buffer. The reactor opens NO -prealloc scope here (growing
+			// write_buf inside a scope would free it out from under us); a handler
+			// that wants request-scoped arenas manages its own and must leave it
+			// before writing into `out`.
+			mut decoded := decode_http_request(req_view) or {
+				eprintln('Error decoding request ${err}')
+				cs.write_buf << tiny_bad_request_response
+				cs.should_close = true
+				compact_read_buf(mut cs, pos)
+				mark_active(mut w, mut cs)
+				return flush_batch(mut w, fd, mut cs)
 			}
-			cs.write_buf << tiny_bad_request_response
-			cs.should_close = true
-			compact_read_buf(mut cs, pos)
-			mark_active(mut w, mut cs)
-			return flush_batch(mut w, fd, mut cs)
-		}
-		decoded.client_conn_fd = fd
-		decoded.client_conn_handle = usize(fd)
-		decoded.user_data = w.server.user_data
-		decoded.worker_state = w.worker_state
-		mut resp := w.server.request_handler(decoded) or {
-			eprintln('Error handling request ${err}')
-			$if prealloc {
-				end_request_arena_current_thread(arena)
+			decoded.client_conn_fd = fd
+			decoded.client_conn_handle = usize(fd)
+			decoded.user_data = w.server.user_data
+			decoded.worker_state = w.worker_state
+			mut ctl := ResponseControl{}
+			step := w.server.append_handler(decoded, mut cs.write_buf, w.worker_state, mut ctl)
+			match ctl.takeover_mode {
+				.manual {
+					detach_conn(mut w, fd)
+					return false
+				}
+				.reusable {
+					set_blocking(fd, false)
+					if ctl.should_close || step != .done {
+						cs.should_close = true
+						compact_read_buf(mut cs, pos)
+						mark_active(mut w, mut cs)
+						return flush_batch(mut w, fd, mut cs)
+					}
+					continue
+				}
+				.none {}
 			}
-			cs.write_buf << tiny_bad_request_response
-			cs.should_close = true
-			compact_read_buf(mut cs, pos)
-			mark_active(mut w, mut cs)
-			return flush_batch(mut w, fd, mut cs)
-		}
 
-		match resp.takeover_mode {
-			.manual {
-				// The handler has taken ownership of the connection: hand off the fd
-				// without closing it. Its arena is abandoned to the handler.
-				resp.attach_request_arena_if_empty(arena)
-				resp.free_owned_content()
-				resp.abandon_request_arena_current_thread()
-				detach_conn(mut w, fd)
-				return false
+			// step != .done (.close, or .suspend with no watch reactor yet) closes.
+			if ctl.should_close || step != .done {
+				cs.should_close = true
 			}
-			.reusable {
-				// The handler wrote the response directly to the socket; keep the
-				// connection alive (unless it asked to close) with nothing to send.
-				// A takeover handler may have wrapped the fd in a blocking net.TcpConn
-				// for its synchronous write, so restore non-blocking mode before the
-				// edge-triggered loop reads from it again.
-				set_blocking(fd, false)
-				resp.free_owned_content()
+			if ctl.file_path != '' {
+				open_deferred_file(mut cs, ctl.file_path)
+			}
+		} else {
+			// Legacy path: the handler returns a full HttpResponse and the reactor
+			// copies it into the shared write buffer. This path keeps the -prealloc
+			// request arena.
+			mut arena := unsafe { voidptr(nil) }
+			$if prealloc {
+				arena = unsafe { prealloc_scope_begin() }
+			}
+			mut decoded := decode_http_request(req_view) or {
+				eprintln('Error decoding request ${err}')
 				$if prealloc {
 					end_request_arena_current_thread(arena)
 				}
-				if resp.should_close {
-					cs.should_close = true
-					compact_read_buf(mut cs, pos)
-					mark_active(mut w, mut cs)
-					return flush_batch(mut w, fd, mut cs)
-				}
-				continue
-			}
-			.none {}
-		}
-
-		// Normal response: copy its bytes into the shared write buffer. Under
-		// -prealloc, leave the request arena first so growing write_buf allocates on
-		// the normal heap, not in the (about-to-be-freed) scope.
-		$if prealloc {
-			leave_request_arena_current_thread(arena)
-		}
-		if resp.content.len > 0 {
-			unsafe { cs.write_buf.push_many(resp.content.data, resp.content.len) }
-		}
-		if resp.should_close {
-			cs.should_close = true
-		}
-		// Open a deferred file body (if any) so flush_batch can sendfile(2) it.
-		if resp.file_path != '' {
-			file_fd := C.open(resp.file_path.str, C.O_RDONLY, 0)
-			if file_fd == -1 {
-				eprintln('ERROR: open file failed: ${resp.file_path}')
+				cs.write_buf << tiny_bad_request_response
 				cs.should_close = true
-			} else {
-				mut st := C.stat{}
-				if C.fstat(file_fd, &st) != 0 {
-					eprintln('ERROR: fstat failed: ${resp.file_path}')
-					C.close(file_fd)
-					cs.should_close = true
-				} else {
-					cs.file_fd = file_fd
-					cs.file_off = 0
-					cs.file_remaining = i64(st.st_size)
-				}
+				compact_read_buf(mut cs, pos)
+				mark_active(mut w, mut cs)
+				return flush_batch(mut w, fd, mut cs)
 			}
-		}
-		resp.free_owned_content()
-		$if prealloc {
-			if arena != unsafe { nil } {
-				unsafe { prealloc_scope_free_after(arena) }
+			decoded.client_conn_fd = fd
+			decoded.client_conn_handle = usize(fd)
+			decoded.user_data = w.server.user_data
+			decoded.worker_state = w.worker_state
+			mut resp := w.server.request_handler(decoded) or {
+				eprintln('Error handling request ${err}')
+				$if prealloc {
+					end_request_arena_current_thread(arena)
+				}
+				cs.write_buf << tiny_bad_request_response
+				cs.should_close = true
+				compact_read_buf(mut cs, pos)
+				mark_active(mut w, mut cs)
+				return flush_batch(mut w, fd, mut cs)
+			}
+
+			match resp.takeover_mode {
+				.manual {
+					// The handler took ownership of the connection: hand off the fd
+					// without closing it. Its arena is abandoned to the handler.
+					resp.attach_request_arena_if_empty(arena)
+					resp.free_owned_content()
+					resp.abandon_request_arena_current_thread()
+					detach_conn(mut w, fd)
+					return false
+				}
+				.reusable {
+					// The handler wrote the response directly to the socket; keep the
+					// connection alive (unless it asked to close). A takeover handler may
+					// have wrapped the fd in a blocking net.TcpConn for its synchronous
+					// write, so restore non-blocking mode before the edge-triggered loop
+					// reads from it again.
+					set_blocking(fd, false)
+					resp.free_owned_content()
+					$if prealloc {
+						end_request_arena_current_thread(arena)
+					}
+					if resp.should_close {
+						cs.should_close = true
+						compact_read_buf(mut cs, pos)
+						mark_active(mut w, mut cs)
+						return flush_batch(mut w, fd, mut cs)
+					}
+					continue
+				}
+				.none {}
+			}
+
+			// Normal response: copy its bytes into the shared write buffer. Under
+			// -prealloc, leave the request arena first so growing write_buf allocates
+			// on the normal heap, not in the (about-to-be-freed) scope.
+			$if prealloc {
+				leave_request_arena_current_thread(arena)
+			}
+			if resp.content.len > 0 {
+				unsafe { cs.write_buf.push_many(resp.content.data, resp.content.len) }
+			}
+			if resp.should_close {
+				cs.should_close = true
+			}
+			if resp.file_path != '' {
+				open_deferred_file(mut cs, resp.file_path)
+			}
+			resp.free_owned_content()
+			$if prealloc {
+				if arena != unsafe { nil } {
+					unsafe { prealloc_scope_free_after(arena) }
+				}
 			}
 		}
 

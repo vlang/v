@@ -47,6 +47,48 @@ pub enum ResponseTakeoverMode {
 	reusable
 }
 
+// Step is what an append-style handler (see ServerConfig.append_handler) returns
+// to the reactor, mirroring vanilla's handler contract:
+//   .done    — the response is complete in `out`; the reactor sends it and keeps
+//              the connection alive (unless ResponseControl.should_close is set).
+//   .close   — the reactor sends whatever is in `out`, then closes the connection.
+//   .suspend — reserved for async handlers that park on an external fd. There is
+//              no watch reactor yet, so a .suspend currently drops the connection
+//              (like vanilla's reactorless backends); it is defined now so the
+//              contract is stable when async support lands.
+pub enum Step {
+	done
+	close
+	suspend
+}
+
+// ResponseControl is the out-of-band channel for an append-style handler: the
+// handler appends the raw HTTP response bytes (status line + headers + body)
+// directly into the reused `out` buffer and sets these fields to influence how
+// the reactor treats the connection.
+pub struct ResponseControl {
+pub mut:
+	// takeover_mode lets the handler take over the socket instead of having the
+	// reactor send `out`: .manual hands the fd off entirely (SSE/WebSocket), and
+	// .reusable means the handler wrote the response itself but wants the reactor
+	// to keep serving the (kept-alive) connection.
+	takeover_mode ResponseTakeoverMode
+	// should_close asks the reactor to close the connection after this response.
+	should_close bool
+	// file_path, when set, is streamed (sendfile) after the bytes appended to
+	// `out` — the zero-copy static-file path.
+	file_path string
+}
+
+// AppendHandler is the zero-copy request handler contract: it appends the raw
+// HTTP response into the connection's reused write buffer `out` (rather than
+// allocating and returning a response), reads per-worker state via `worker_state`
+// (see ServerConfig.make_state), signals connection handling through `ctl`, and
+// returns a Step. Appending into `out` — which the reactor reuses across requests
+// and flushes for every pipelined request in one send — removes the per-request
+// response allocation that the return-a-response `handler` contract requires.
+pub type AppendHandler = fn (req HttpRequest, mut out []u8, worker_state voidptr, mut ctl ResponseControl) Step
+
 pub struct HttpResponse {
 pub mut:
 	content       []u8
@@ -128,13 +170,19 @@ pub:
 	port                    int            = 3000
 	max_request_buffer_size int            = 8192
 	timeout_in_seconds      int            = 30
-	handler                 fn (HttpRequest) !HttpResponse @[required]
-	user_data               voidptr
+	// handler is the classic contract: it builds and returns a full HttpResponse.
+	// Set exactly ONE of `handler` or `append_handler`.
+	handler   fn (HttpRequest) !HttpResponse = unsafe { nil }
+	user_data voidptr
 	// make_state, when set, is called ONCE per worker thread at startup; the value
 	// it returns reaches every request on that worker as HttpRequest.worker_state.
 	// It is the lock-free per-worker state hook: each worker gets its own instance
 	// (a DB connection, a reused scratch buffer) with no shared pool and no mutex.
 	make_state fn () voidptr = unsafe { nil }
+	// append_handler is the zero-copy contract (see AppendHandler): it appends the
+	// raw response into the connection's reused write buffer instead of returning
+	// one. When set, it is used instead of `handler`. Set exactly one of the two.
+	append_handler AppendHandler = unsafe { nil }
 }
 
 // ShutdownParams configures how long graceful shutdown should wait for in-flight requests.

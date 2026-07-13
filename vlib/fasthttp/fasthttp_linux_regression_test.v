@@ -168,6 +168,95 @@ mut:
 	n int
 }
 
+fn append_ok_handler(req HttpRequest, mut out []u8, worker_state voidptr, mut ctl ResponseControl) Step {
+	out << 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nok'.bytes()
+	return .done
+}
+
+fn append_close_handler(req HttpRequest, mut out []u8, worker_state voidptr, mut ctl ResponseControl) Step {
+	out << 'HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nbye'.bytes()
+	ctl.should_close = true
+	return .done
+}
+
+fn test_append_handler_pipelining_zero_copy() ! {
+	server := new_server(ServerConfig{
+		family:         .ip
+		port:           0
+		append_handler: append_ok_handler
+	})!
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer { C.close(epoll_fd) }
+	mut sockets := [2]int{}
+	assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+	server_fd := sockets[0]
+	client_fd := sockets[1]
+	set_blocking(server_fd, false)
+	set_blocking(client_fd, false)
+
+	mut w := new_regression_worker(server, epoll_fd)
+	assert add_fd_to_epoll(epoll_fd, server_fd, u32(C.EPOLLIN | C.EPOLLET)) == 0
+	mut cs := state_for(mut w, server_fd)
+
+	req := 'GET /a HTTP/1.1\r\nHost: x\r\n\r\nGET /b HTTP/1.1\r\nHost: x\r\n\r\n'
+	assert C.send(client_fd, req.str, req.len, C.MSG_NOSIGNAL) == req.len
+	serve_conn(mut w, server_fd, mut cs)
+	resp := recv_available(client_fd)
+	assert resp.count('HTTP/1.1 200 OK') == 2, resp
+	// keep-alive: connection stays open
+	assert unsafe { w.conns[server_fd] != nil }
+
+	C.close(server_fd)
+	C.close(client_fd)
+}
+
+fn test_append_handler_should_close() ! {
+	server := new_server(ServerConfig{
+		family:         .ip
+		port:           0
+		append_handler: append_close_handler
+	})!
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer { C.close(epoll_fd) }
+	mut sockets := [2]int{}
+	assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+	server_fd := sockets[0]
+	client_fd := sockets[1]
+	set_blocking(server_fd, false)
+	set_blocking(client_fd, false)
+
+	mut w := new_regression_worker(server, epoll_fd)
+	assert add_fd_to_epoll(epoll_fd, server_fd, u32(C.EPOLLIN | C.EPOLLET)) == 0
+	mut cs := state_for(mut w, server_fd)
+
+	req := 'GET /a HTTP/1.1\r\nHost: x\r\n\r\n'
+	assert C.send(client_fd, req.str, req.len, C.MSG_NOSIGNAL) == req.len
+	serve_conn(mut w, server_fd, mut cs)
+	assert recv_available(client_fd).contains('bye')
+	// should_close: the connection was closed and its slot freed.
+	assert unsafe { w.conns[server_fd] == nil }
+
+	C.close(client_fd)
+}
+
+fn test_new_server_requires_exactly_one_handler() {
+	// Neither handler set → error.
+	if _ := new_server(ServerConfig{ port: 0 }) {
+		assert false, 'expected an error when no handler is set'
+	}
+	// Both set → error.
+	if _ := new_server(ServerConfig{
+		port:           0
+		handler:        regression_handler
+		append_handler: append_ok_handler
+	})
+	{
+		assert false, 'expected an error when both handlers are set'
+	}
+}
+
 fn test_worker_state_reaches_handler() ! {
 	wc := &WorkerCounter{}
 	make_state := fn [wc] () voidptr {
