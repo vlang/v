@@ -6646,8 +6646,26 @@ fn (mut t Transformer) transform_select_stmt(node flat.Node) []flat.NodeId {
 
 fn (mut t Transformer) transform_select_expr(node flat.Node) flat.NodeId {
 	mut branches := []flat.NodeId{cap: int(node.children_count)}
-	for i in 0 .. node.children_count {
-		branches << t.transform_select_branch(t.a.child(&node, i))
+	if t.smartcast_stack.len == 0 {
+		for i in 0 .. node.children_count {
+			branches << t.transform_select_branch(t.a.child(&node, i))
+		}
+	} else {
+		base_smartcasts := t.smartcast_stack.clone()
+		base_invalidated := t.invalidated_smartcasts.clone()
+		mut merged_invalidated := base_invalidated.clone()
+		for i in 0 .. node.children_count {
+			t.smartcast_stack = base_smartcasts.clone()
+			t.invalidated_smartcasts = base_invalidated.clone()
+			branches << t.transform_select_branch(t.a.child(&node, i))
+			for key, invalidated in t.invalidated_smartcasts {
+				if invalidated {
+					merged_invalidated[key] = true
+				}
+			}
+		}
+		t.invalidated_smartcasts = merged_invalidated.move()
+		t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 	}
 	start := t.a.children.len
 	for branch in branches {

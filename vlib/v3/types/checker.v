@@ -7227,7 +7227,12 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 	$if ownership ? {
 		tc.ownership_begin_branch_group()
 	}
+	base_smartcasts := clone_smartcasts(tc.smartcasts)
+	mut invalidated_smartcasts := map[string]bool{}
 	for i in 0 .. node.children_count {
+		if base_smartcasts.len > 0 {
+			tc.smartcasts = clone_smartcasts(base_smartcasts)
+		}
 		branch_id := tc.a.child(&node, i)
 		if !tc.valid_node_id(branch_id) {
 			continue
@@ -7235,6 +7240,11 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		branch := tc.a.nodes[int(branch_id)]
 		if branch.kind != .select_branch {
 			tc.check_node(branch_id)
+			for key, _ in base_smartcasts {
+				if key !in tc.smartcasts {
+					invalidated_smartcasts[key] = true
+				}
+			}
 			continue
 		}
 		$if ownership ? {
@@ -7307,6 +7317,15 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		$if ownership ? {
 			tc.ownership_end_branch(branch_id)
 		}
+		for key, _ in base_smartcasts {
+			if key !in tc.smartcasts {
+				invalidated_smartcasts[key] = true
+			}
+		}
+	}
+	tc.smartcasts = clone_smartcasts(base_smartcasts)
+	for key, _ in invalidated_smartcasts {
+		tc.smartcasts.delete(key)
 	}
 	$if ownership ? {
 		tc.ownership_end_branch_group()
@@ -14274,12 +14293,7 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	}
 	if expr_type is SumType {
 		if node.value.len > 0 {
-			mut has_variant := tc.sum_variant_type_for_pattern(expr_type.name, node.value) != none
-			if !has_variant && node.value.starts_with('&') {
-				has_variant = tc.sum_variant_type_for_pattern(expr_type.name,
-					node.value.trim_left('&')) != none
-			}
-			if !has_variant {
+			if tc.sum_variant_type_for_pattern(expr_type.name, node.value) == none {
 				if tc.should_diagnose(id) {
 					tc.record_error(.condition_mismatch,
 						'`${node.value}` is not a variant of sum type `${expr_type.name}`', id)

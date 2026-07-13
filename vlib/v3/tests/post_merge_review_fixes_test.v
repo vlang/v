@@ -217,6 +217,18 @@ fn main() {
 }
 ')
 	assert out == 'ok'
+	run_bad(v3_bin, 'is_pointer_value_variant_rejected', 'struct Foo {}
+
+type Item = Foo | int
+
+fn main() {
+	item := Item(Foo{})
+	if item is &Foo {
+		println("wrong")
+	}
+}
+',
+		'`&Foo` is not a variant of sum type `Item`')
 }
 
 fn test_interface_equality_includes_implicit_return_boxes() {
@@ -583,6 +595,34 @@ fn main() {
 }
 ')
 	assert out == '2'
+}
+
+fn test_select_receive_assignment_does_not_invalidate_sibling_smartcasts() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_assign_sibling_smartcast', 'struct Foo {
+	value int
+}
+
+struct Bar {}
+
+type Item = Bar | Foo
+
+fn main() {
+	mut item := Item(Foo{
+		value: 7
+	})
+	ch := chan Item{}
+	if item is Foo {
+		select {
+			item = <-ch {}
+			else {
+				println(int_str(item.value))
+			}
+		}
+	}
+}
+')
+	assert out == '7'
 }
 
 fn test_select_exception_branches_flush_defers() {
