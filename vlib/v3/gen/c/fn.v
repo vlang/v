@@ -8867,8 +8867,6 @@ const c_preamble_declared_extern_symbols = {
 	'fwrite':                        true
 	'fseek':                         true
 	'ftell':                         true
-	'fseeko':                        true
-	'ftello':                        true
 	'remove':                        true
 	'rename':                        true
 	'time':                          true

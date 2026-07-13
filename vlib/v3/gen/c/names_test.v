@@ -75,6 +75,8 @@ fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {
 
 fn test_guarded_preamble_externs_keep_explicit_declarations() {
 	g := FlatGen.new()
+	assert g.should_emit_c_extern_decl('fseeko')
+	assert g.should_emit_c_extern_decl('ftello')
 	assert g.should_emit_c_extern_decl('mkdir')
 	assert g.should_emit_c_extern_decl('chmod')
 	assert g.should_emit_c_extern_decl('symlink')
