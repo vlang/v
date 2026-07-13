@@ -812,6 +812,35 @@ fn main() {
 	assert out == '3\n5\n7'
 }
 
+fn test_interface_equality_includes_select_receive_assignment_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_select_receive_assignment_box', 'interface IValue {}
+
+struct Initial {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	ch := chan Value{cap: 1}
+	ch <- Value{
+		n: 3
+	}
+	mut value := IValue(Initial{})
+	select {
+		value = <-ch {}
+	}
+	println(same(value).str())
+}
+')
+	assert out == 'true'
+}
+
 fn test_select_lowering_roots_array_free() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'select_roots_array_free', 'fn main() {

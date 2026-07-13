@@ -602,6 +602,9 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 		if node.kind in [.assign, .decl_assign, .selector_assign, .index_assign] {
 			t.collect_interface_assign_boxes(node)
 		}
+		if node.kind == .select_branch && node.value == 'recv_assign' {
+			t.collect_interface_select_receive_boxes(node)
+		}
 		if node.kind == .infix && node.children_count >= 2 {
 			if node.op == .left_shift {
 				t.collect_interface_append_boxes(node)
@@ -889,6 +892,28 @@ fn (mut t Transformer) collect_interface_channel_send_boxes(node flat.Node) {
 	})
 	if channel_type is types.Channel && interface_box_expected_type(channel_type.elem_type) {
 		t.collect_interface_boxed_value(value_id, channel_type.elem_type)
+	}
+}
+
+fn (mut t Transformer) collect_interface_select_receive_boxes(node flat.Node) {
+	if node.children_count < 2 {
+		return
+	}
+	lhs_id := t.a.child(&node, 0)
+	recv := t.a.child_node(&node, 1)
+	if recv.kind != .prefix || recv.op != .arrow || recv.children_count == 0 {
+		return
+	}
+	expected := t.interface_box_lhs_type(lhs_id)
+	if !interface_box_expected_type(expected) {
+		return
+	}
+	channel_id := t.a.child(recv, 0)
+	channel_type := interface_box_unalias_type(t.tc.expr_type(channel_id) or {
+		t.tc.resolve_type(channel_id)
+	})
+	if channel_type is types.Channel {
+		t.collect_interface_boxed_type(channel_type.elem_type, expected)
 	}
 }
 
