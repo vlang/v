@@ -66,19 +66,29 @@ pub:
 mut:
 	listen_fd       C.SOCKET = iocp_invalid_socket
 	iocp            voidptr
-	threads         []thread          = []thread{len: iocp_thread_count, cap: iocp_thread_count}
-	registry        &IocpConnRegistry = &IocpConnRegistry{}
-	request_handler fn (HttpRequest) !HttpResponse @[required]
-	running         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	shutting_down   &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	stopped         &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(true)
-	active_requests &stdatomic.AtomicVal[int]  = stdatomic.new_atomic(0)
+	threads         []thread                       = []thread{len: iocp_thread_count, cap: iocp_thread_count}
+	registry        &IocpConnRegistry              = &IocpConnRegistry{}
+	request_handler fn (HttpRequest) !HttpResponse = unsafe { nil }
+	append_handler  AppendHandler                  = unsafe { nil }
+	make_state      fn () voidptr                  = unsafe { nil }
+	running         &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	shutting_down   &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(false)
+	stopped         &stdatomic.AtomicVal[bool]     = stdatomic.new_atomic(true)
+	active_requests &stdatomic.AtomicVal[int]      = stdatomic.new_atomic(0)
 }
 
 // new_server creates and initializes a new Server instance.
 pub fn new_server(config ServerConfig) !&Server {
 	if config.max_request_buffer_size <= 0 {
 		return error('max_request_buffer_size must be greater than 0')
+	}
+	has_handler := config.handler != unsafe { nil }
+	has_append := config.append_handler != unsafe { nil }
+	if !has_handler && !has_append {
+		return error('a handler is required: set exactly one of `handler` or `append_handler`')
+	}
+	if has_handler && has_append {
+		return error('set only one of `handler` or `append_handler`, not both')
 	}
 	mut server := &Server{
 		family:                  config.family
@@ -87,6 +97,8 @@ pub fn new_server(config ServerConfig) !&Server {
 		timeout_in_seconds:      config.timeout_in_seconds
 		user_data:               config.user_data
 		request_handler:         config.handler
+		append_handler:          config.append_handler
+		make_state:              config.make_state
 		running:                 stdatomic.new_atomic(false)
 		shutting_down:           stdatomic.new_atomic(false)
 		stopped:                 stdatomic.new_atomic(true)
@@ -512,9 +524,14 @@ fn send_terminal_response(mut conn IocpConn, response []u8) {
 
 fn process_request(mut conn IocpConn) {
 	conn.begin_active_request()
+	// The append handler manages its own -prealloc scope; only the legacy path
+	// uses the reactor arena.
+	using_append := conn.server.append_handler != unsafe { nil }
 	mut request_arena := voidptr(unsafe { nil })
 	$if prealloc {
-		request_arena = unsafe { prealloc_scope_begin() }
+		if !using_append {
+			request_arena = unsafe { prealloc_scope_begin() }
+		}
 	}
 
 	mut decoded := decode_http_request(conn.request_buf) or {
@@ -522,21 +539,32 @@ fn process_request(mut conn IocpConn) {
 		send_terminal_response(mut conn, tiny_bad_request_response)
 		return
 	}
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'fasthttp decoded request') }
-	}
 	// Keep legacy int fd consumers working; client_conn_handle preserves the full SOCKET.
 	decoded.client_conn_fd = int(conn.fd)
 	decoded.client_conn_handle = usize(conn.fd)
 	decoded.user_data = conn.server.user_data
+	// NOTE: per-worker make_state is not yet wired on the IOCP thread pool (it
+	// would need thread-local storage); worker_state stays nil on Windows.
 
-	mut response := conn.server.request_handler(decoded) or {
-		end_request_arena_current_thread(request_arena)
-		send_terminal_response(mut conn, tiny_bad_request_response)
-		return
-	}
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'fasthttp handler returned') }
+	mut response := if using_append {
+		// Zero-copy contract: the handler appends its response into `out`; wrap it
+		// into the existing response-sending path.
+		mut out := []u8{}
+		mut ctl := ResponseControl{}
+		step := conn.server.append_handler(decoded, mut out, unsafe { nil }, mut ctl)
+		HttpResponse{
+			content:       out
+			content_owned: true
+			takeover_mode: ctl.takeover_mode
+			should_close:  ctl.should_close || step != .done
+			file_path:     ctl.file_path
+		}
+	} else {
+		conn.server.request_handler(decoded) or {
+			end_request_arena_current_thread(request_arena)
+			send_terminal_response(mut conn, tiny_bad_request_response)
+			return
+		}
 	}
 	response.attach_request_arena_if_empty(request_arena)
 
