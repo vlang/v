@@ -8328,6 +8328,10 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 	child_id := tc.a.child(&node, 0)
 	tc.check_node(child_id)
 	child := tc.a.nodes[int(child_id)]
+	if node.op == .not && node.value == 'ragged_inferred_fixed_array' && tc.should_diagnose(id) {
+		tc.record_error(.assignment_mismatch,
+			'inferred fixed-array literal rows must have the same size', id)
+	}
 	if child.kind == .index && child.children_count >= 2 {
 		base_type := unwrap_pointer(tc.resolve_type(tc.a.child(&child, 0)))
 		if base_type is Map && node.op in [.inc, .dec] && tc.reject_unlowered_map_mutation

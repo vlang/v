@@ -109,6 +109,9 @@ fn test_nested_inferred_fixed_array_literal_parses() {
 	out := run_good(v3_bin, 'nested_inferred_fixed_array_literal',
 		'fn main() {\n\tvalues := [..][..]int[[1, 2], [3, 4]]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
 	assert out == '10'
+	run_bad(v3_bin, 'ragged_nested_inferred_fixed_array_literal',
+		'fn main() {\n\t_ := [..][..]int[[1], [2, 3]]\n}\n',
+		'inferred fixed-array literal rows must have the same size')
 }
 
 fn test_shared_field_without_sync_import_compiles_and_locks() {

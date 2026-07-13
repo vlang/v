@@ -6007,6 +6007,7 @@ fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dim
 	p.check(.lsbr)
 	mut vals := []flat.NodeId{}
 	mut elem_type := base_elem_type
+	mut has_ragged_rows := false
 	for p.tok != .rsbr && p.tok != .eof {
 		if p.tok == .semicolon {
 			p.next()
@@ -6018,6 +6019,8 @@ fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dim
 			vals << val
 			if vals.len == 1 {
 				elem_type = nested_type
+			} else if nested_type != elem_type {
+				has_ragged_rows = true
 			}
 		} else {
 			vals << p.expr(.lowest)
@@ -6039,6 +6042,7 @@ fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dim
 	return p.a.add_node(flat.Node{
 		kind:           .postfix
 		op:             .not
+		value:          if has_ragged_rows { 'ragged_inferred_fixed_array' } else { '' }
 		typ:            fixed_type
 		children_start: pstart
 		children_count: 1
