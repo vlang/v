@@ -679,7 +679,7 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 					g.write(', ')
 				}
 				g.write('(sync__Channel*)(')
-				g.gen_expr(select_case.channel_id)
+				g.gen_channel_try_receiver(select_case.channel_id)
 				g.write(')')
 			}
 			g.writeln('});')

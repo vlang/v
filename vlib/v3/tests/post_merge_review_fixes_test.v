@@ -1347,6 +1347,34 @@ fn main() {
 	assert out == '3\n5\n7\n9\n11\n13\n15'
 }
 
+fn test_select_dereferences_pointer_channels() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_pointer_channels', 'fn receive(ch &chan int) int {
+	select {
+		value := <-ch {
+			return value
+		}
+	}
+	return -1
+}
+
+fn send(ch &chan int, value int) {
+	select {
+		ch <- value {}
+	}
+}
+
+fn main() {
+	ch := chan int{cap: 1}
+	ch <- 3
+	println(int_str(receive(&ch)))
+	send(&ch, 5)
+	println(int_str(<-ch))
+}
+')
+	assert out == '3\n5'
+}
+
 fn test_select_receive_assignment_reboxes_option_result_payloads() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'select_receive_reboxes_option_result_payloads', 'interface IValue {
