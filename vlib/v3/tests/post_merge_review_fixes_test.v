@@ -515,6 +515,10 @@ struct FixedValue {
 	n int
 }
 
+struct FixedDynamicValue {
+	n int
+}
+
 fn same(value IValue) bool {
 	return value == value
 }
@@ -535,15 +539,28 @@ fn forward_values() ([]IValue, map[string]IValue, [1]IValue, int) {
 	return make_values()
 }
 
+fn make_fixed_dynamic() ([1]FixedDynamicValue, int) {
+	return [FixedDynamicValue{
+		n: 13
+	}]!, 17
+}
+
+fn forward_fixed_dynamic() ([]IValue, int) {
+	return make_fixed_dynamic()
+}
+
 fn main() {
 	values, indexed, fixed, n := forward_values()
+	fixed_dynamic, fixed_dynamic_n := forward_fixed_dynamic()
 	println(same(values[0]).str())
 	println(same(indexed["item"]).str())
 	println(same(fixed[0]).str())
 	println(int_str(n))
+	println(same(fixed_dynamic[0]).str())
+	println(int_str(fixed_dynamic_n))
 }
 ')
-	assert out == 'true\ntrue\ntrue\n7'
+	assert out == 'true\ntrue\ntrue\n7\ntrue\n17'
 }
 
 fn test_forwarded_multi_return_container_slots_are_converted() {

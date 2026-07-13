@@ -970,6 +970,8 @@ fn (mut t Transformer) collect_interface_boxed_type(actual types.Type, expected 
 			actual_base := interface_box_unalias_type(actual)
 			if actual_base is types.Array {
 				t.collect_interface_boxed_type(actual_base.elem_type, expected.elem_type)
+			} else if actual_base is types.ArrayFixed {
+				t.collect_interface_boxed_type(actual_base.elem_type, expected.elem_type)
 			}
 		}
 		types.ArrayFixed {
