@@ -353,7 +353,9 @@ pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 }
 
 fn should_retry_execution(result os.Result) bool {
-	return result.output.trim_space().len == 0 || result.exit_code < 0
+	output := result.output.trim_space()
+	return output.len == 0 || output.starts_with('exec failed')
+		|| (output.starts_with('exec(') && output.ends_with(') failed'))
 }
 
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
