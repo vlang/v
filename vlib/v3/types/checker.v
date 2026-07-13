@@ -4222,12 +4222,13 @@ fn generic_placeholder_from_unknown(typ Unknown) ?string {
 
 fn (tc &TypeChecker) resolve_known_field_type(type_name string, fallback Type) Type {
 	qname := tc.qualify_name(type_name)
+	allow_bare_symbol := qname == type_name
 	if qname in tc.structs {
 		return Type(Struct{
 			name: qname
 		})
 	}
-	if type_name in tc.structs {
+	if allow_bare_symbol && type_name in tc.structs {
 		return Type(Struct{
 			name: type_name
 		})
@@ -4237,7 +4238,7 @@ fn (tc &TypeChecker) resolve_known_field_type(type_name string, fallback Type) T
 			name: qname
 		})
 	}
-	if type_name in tc.interface_names {
+	if allow_bare_symbol && type_name in tc.interface_names {
 		return Type(Interface{
 			name: type_name
 		})
@@ -4248,7 +4249,7 @@ fn (tc &TypeChecker) resolve_known_field_type(type_name string, fallback Type) T
 			base_type: tc.parse_type(tc.type_aliases[qname])
 		})
 	}
-	if type_name in tc.type_aliases {
+	if allow_bare_symbol && type_name in tc.type_aliases {
 		return Type(Alias{
 			name:      type_name
 			base_type: tc.parse_type(tc.type_aliases[type_name])
@@ -4268,10 +4269,8 @@ fn (tc &TypeChecker) type_name_known(typ string) bool {
 			return tc.type_symbol_known(resolved)
 		}
 	}
-	return typ in tc.type_aliases || qtyp in tc.type_aliases || typ in tc.structs
-		|| qtyp in tc.structs || typ in tc.interface_names || qtyp in tc.interface_names
-		|| typ in tc.enum_names || qtyp in tc.enum_names || typ in tc.sum_types
-		|| qtyp in tc.sum_types
+	return qtyp in tc.type_aliases || qtyp in tc.structs || qtyp in tc.interface_names
+		|| qtyp in tc.enum_names || qtyp in tc.sum_types
 }
 
 fn (tc &TypeChecker) type_name_known_in_current_module(typ string) bool {
@@ -7654,7 +7653,7 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 }
 
 fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Type {
-	groups := tc.multi_expr_tail_value_groups(expr_id, count) or { return none }
+	groups := tc.multi_expr_tail_value_groups(expr_id, count, false) or { return none }
 	if groups.len == 0 {
 		return none
 	}
@@ -7684,7 +7683,7 @@ fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Ty
 }
 
 fn (mut tc TypeChecker) multi_expr_tail_assign_types(id flat.NodeId, expr_id flat.NodeId, lhs_ids []flat.NodeId) ?[]Type {
-	groups := tc.multi_expr_tail_value_groups(expr_id, lhs_ids.len) or { return none }
+	groups := tc.multi_expr_tail_value_groups(expr_id, lhs_ids.len, false) or { return none }
 	if groups.len == 0 {
 		return none
 	}
@@ -7773,7 +7772,7 @@ fn (tc &TypeChecker) match_has_tuple_tail_values(expr_id flat.NodeId, count int)
 	}
 	for i in 1 .. node.children_count {
 		branch_id := tc.a.child(&node, i)
-		if groups := tc.tuple_tail_value_groups(branch_id, count) {
+		if groups := tc.tuple_tail_value_groups(branch_id, count, false) {
 			if groups.len > 0 {
 				return true
 			}
@@ -7786,7 +7785,7 @@ fn (tc &TypeChecker) expr_has_tuple_tail_values(expr_id flat.NodeId, count int) 
 	if count <= 0 || !tc.valid_node_id(expr_id) {
 		return false
 	}
-	if groups := tc.tuple_tail_value_groups(expr_id, count) {
+	if groups := tc.tuple_tail_value_groups(expr_id, count, false) {
 		if groups.len > 0 {
 			return true
 		}
@@ -7840,7 +7839,7 @@ fn (tc &TypeChecker) promoted_multi_tail_type(current Type, actual Type) ?Type {
 	return none
 }
 
-fn (tc &TypeChecker) multi_expr_tail_value_groups(expr_id flat.NodeId, count int) ?[][]flat.NodeId {
+fn (tc &TypeChecker) multi_expr_tail_value_groups(expr_id flat.NodeId, count int, explicit_comma_tail bool) ?[][]flat.NodeId {
 	if count <= 0 || !tc.valid_node_id(expr_id) {
 		return none
 	}
@@ -7851,14 +7850,15 @@ fn (tc &TypeChecker) multi_expr_tail_value_groups(expr_id flat.NodeId, count int
 				return none
 			}
 			mut groups := [][]flat.NodeId{}
-			then_groups := tc.tuple_tail_value_groups(tc.a.child(&node, 1), count) or {
-				return none
-			}
+			then_groups := tc.tuple_tail_value_groups(tc.a.child(&node, 1), count,
+				explicit_comma_tail) or { return none }
 			for group in then_groups {
 				groups << group
 			}
 			else_id := tc.a.child(&node, 2)
-			else_groups := tc.multi_expr_tail_value_groups(else_id, count) or { return none }
+			else_groups := tc.multi_expr_tail_value_groups(else_id, count, explicit_comma_tail) or {
+				return none
+			}
 			for group in else_groups {
 				groups << group
 			}
@@ -7871,7 +7871,10 @@ fn (tc &TypeChecker) multi_expr_tail_value_groups(expr_id flat.NodeId, count int
 			mut groups := [][]flat.NodeId{}
 			for i in 1 .. node.children_count {
 				branch_id := tc.a.child(&node, i)
-				branch_groups := tc.tuple_tail_value_groups(branch_id, count) or { return none }
+				// Match multi-value tails must be comma expressions, not adjacent statements.
+				branch_groups := tc.tuple_tail_value_groups(branch_id, count, true) or {
+					return none
+				}
 				for group in branch_groups {
 					groups << group
 				}
@@ -7879,17 +7882,18 @@ fn (tc &TypeChecker) multi_expr_tail_value_groups(expr_id flat.NodeId, count int
 			return groups
 		}
 		.block, .match_branch {
-			return tc.tuple_tail_value_groups(expr_id, count)
+			return tc.tuple_tail_value_groups(expr_id, count, explicit_comma_tail)
 		}
 		.lock_expr {
 			if node.children_count > 0 {
 				return tc.multi_expr_tail_value_groups(tc.a.child(&node, node.children_count - 1),
-					count)
+					count, explicit_comma_tail)
 			}
 		}
 		.expr_stmt {
 			if node.children_count > 0 {
-				return tc.multi_expr_tail_value_groups(tc.a.child(&node, 0), count)
+				return tc.multi_expr_tail_value_groups(tc.a.child(&node, 0), count,
+					explicit_comma_tail)
 			}
 		}
 		else {}
@@ -7898,7 +7902,7 @@ fn (tc &TypeChecker) multi_expr_tail_value_groups(expr_id flat.NodeId, count int
 	return none
 }
 
-fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int) ?[][]flat.NodeId {
+fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int, explicit_comma_tail bool) ?[][]flat.NodeId {
 	if count <= 0 || !tc.valid_node_id(body_id) {
 		return none
 	}
@@ -7915,7 +7919,7 @@ fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int) ?[]
 	if tc.valid_node_id(last_id) {
 		last := tc.a.nodes[int(last_id)]
 		if last.kind in [.block, .match_branch, .if_expr, .match_stmt] {
-			return tc.multi_expr_tail_value_groups(last_id, count)
+			return tc.multi_expr_tail_value_groups(last_id, count, explicit_comma_tail)
 		}
 		if last.kind == .return_stmt {
 			return [][]flat.NodeId{}
@@ -7923,6 +7927,9 @@ fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int) ?[]
 		if tc.expr_never_returns(last_id) {
 			return [][]flat.NodeId{}
 		}
+	}
+	if explicit_comma_tail && body.value != 'comma_exprs' {
+		return none
 	}
 	mut values := []flat.NodeId{}
 	for i := int(body.children_count) - 1; i >= body_start; i-- {
@@ -8584,7 +8591,7 @@ fn (mut tc TypeChecker) multi_expr_tail_return_compatible(return_id flat.NodeId,
 	if !tc.multi_expr_tail_return_compat_supported(expr_id) {
 		return none
 	}
-	groups := tc.multi_expr_tail_value_groups(expr_id, expected.len) or { return none }
+	groups := tc.multi_expr_tail_value_groups(expr_id, expected.len, false) or { return none }
 	if groups.len == 0 {
 		return none
 	}
@@ -17880,6 +17887,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		return tc.parse_fn_type(typ)
 	}
 	qtyp := tc.qualify_name(typ)
+	allow_bare_symbol := qtyp == typ
 	if typ == 'array' && tc.has_builtins && typ in tc.structs {
 		return Type(Struct{
 			name: typ
@@ -17931,7 +17939,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			base_type: tc.parse_type(tc.type_aliases[qtyp])
 		})
 	}
-	if typ in tc.type_aliases {
+	if allow_bare_symbol && typ in tc.type_aliases {
 		return Type(Alias{
 			name:      typ
 			base_type: tc.parse_type(tc.type_aliases[typ])
@@ -17942,7 +17950,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			name: qtyp
 		})
 	}
-	if typ in tc.interface_names {
+	if allow_bare_symbol && typ in tc.interface_names {
 		return Type(Interface{
 			name: typ
 		})
@@ -17952,7 +17960,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			name: qtyp
 		})
 	}
-	if typ in tc.structs {
+	if allow_bare_symbol && typ in tc.structs {
 		return Type(Struct{
 			name: typ
 		})
@@ -17963,7 +17971,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			is_flag: true
 		})
 	}
-	if typ in tc.flag_enums {
+	if allow_bare_symbol && typ in tc.flag_enums {
 		return Type(Enum{
 			name:    typ
 			is_flag: true
@@ -17983,7 +17991,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			name: qtyp
 		})
 	}
-	if typ in tc.enum_names {
+	if allow_bare_symbol && typ in tc.enum_names {
 		return Type(Enum{
 			name: typ
 		})
@@ -18001,7 +18009,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			name: qtyp
 		})
 	}
-	if typ in tc.sum_types {
+	if allow_bare_symbol && typ in tc.sum_types {
 		return Type(SumType{
 			name: typ
 		})
@@ -18013,7 +18021,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			}
 		}
 	}
-	if !typ.contains('.') {
+	if allow_bare_symbol && !typ.contains('.') {
 		if resolved := tc.unique_qualified_type_name(typ) {
 			if resolved in tc.type_aliases {
 				return Type(Alias{
@@ -18070,6 +18078,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		if qbase == resolved_base && resolved_base.contains('.') {
 			qbase = tc.resolve_imported_type_text(resolved_base)
 		}
+		allow_bare_generic_base := qbase == resolved_base
 		if qbase in tc.type_aliases {
 			return Type(Alias{
 				name:      qbase
@@ -18116,23 +18125,23 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 				}
 			}
 		}
-		if resolved_base in tc.type_aliases {
+		if allow_bare_generic_base && resolved_base in tc.type_aliases {
 			return Type(Alias{
 				name:      resolved_base
 				base_type: tc.parse_type(tc.type_aliases[resolved_base])
 			})
 		}
-		if resolved_base in tc.structs {
+		if allow_bare_generic_base && resolved_base in tc.structs {
 			return Type(Struct{
 				name: resolved_base + struct_generic_suffix
 			})
 		}
-		if resolved_base in tc.interface_names {
+		if allow_bare_generic_base && resolved_base in tc.interface_names {
 			return Type(Interface{
 				name: resolved_base
 			})
 		}
-		if resolved_base in tc.sum_types {
+		if allow_bare_generic_base && resolved_base in tc.sum_types {
 			return Type(SumType{
 				name: resolved_base + sum_generic_suffix
 			})
@@ -18145,13 +18154,11 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			// materialized struct (`vec__Vec4_f32`) everywhere it appears. A builtin base
 			// (`int[seg_count]`) cannot be a generic application, so let it fall through to
 			// the fixed-array handler — its bracket is a const/expression length.
-			mut full := resolved_base + generic_suffix
-			if !resolved_base.contains('.') {
+			mut full := qbase + generic_suffix
+			if allow_bare_generic_base && !resolved_base.contains('.') {
 				if resolved := tc.unique_qualified_type_name(resolved_base) {
 					full = resolved + generic_suffix
 				}
-			} else if qbase != base {
-				full = qbase + generic_suffix
 			}
 			return Type(Struct{
 				name: full
@@ -18291,10 +18298,8 @@ fn (tc &TypeChecker) is_known_type_text(typ string) bool {
 			return tc.type_symbol_known(resolved)
 		}
 	}
-	return typ in tc.structs || qtyp in tc.structs || typ in tc.interface_names
-		|| qtyp in tc.interface_names || typ in tc.enum_names || qtyp in tc.enum_names
-		|| typ in tc.sum_types || qtyp in tc.sum_types || typ in tc.type_aliases
-		|| qtyp in tc.type_aliases
+	return qtyp in tc.structs || qtyp in tc.interface_names || qtyp in tc.enum_names
+		|| qtyp in tc.sum_types || qtyp in tc.type_aliases
 }
 
 // unique_qualified_type_name supports unique qualified type name handling for TypeChecker.

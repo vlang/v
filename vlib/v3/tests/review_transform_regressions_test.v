@@ -594,6 +594,13 @@ fn test_wrapped_plus_minus_continuations_consume_auto_semicolon() {
 	assert out == '7\n7'
 }
 
+fn test_gated_optional_array_index_materializes_base_before_wrap() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'gated_optional_array_index_base_order',
+		"fn get_arr(ok bool) ?[]int {\n\tprintln('get')\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [3, 7, 11]\n}\n\nfn main() {\n\tprintln(int_str(get_arr(true)#[-1] or { 40 }))\n\tprintln(int_str(get_arr(true)#[9] or { 41 }))\n\tprintln(int_str(get_arr(false)#[-1] or { 42 }))\n}\n")
+	assert out == 'get\n11\nget\n41\nget\n42'
+}
+
 fn test_normalized_option_result_fixed_array_names_keep_outer_wrapper() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'normalized_option_result_fixed_array',

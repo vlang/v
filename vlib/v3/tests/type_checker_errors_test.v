@@ -1068,7 +1068,7 @@ fn test_multi_rhs_if_expr_is_not_multi_return() {
 	assert assign_out == '5'
 }
 
-fn test_match_tuple_tail_multi_return_is_rejected() {
+fn test_match_multi_return_tails_require_explicit_tuple() {
 	v3_bin := build_v3()
 	match_call := run_good(v3_bin, 'good_multi_return_match_call_return',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn pick(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a + b))\n}\n')
@@ -1079,6 +1079,12 @@ fn test_match_tuple_tail_multi_return_is_rejected() {
 	match_assign := run_good(v3_bin, 'good_multi_return_match_call_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n')
 	assert match_assign == '7'
+	match_tuple_decl_assign := run_good(v3_bin, 'good_multi_return_match_tuple_decl_assign',
+		'fn main() {\n\tflag := false\n\ta, b := match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n')
+	assert match_tuple_decl_assign == '7'
+	match_tuple_assign := run_good(v3_bin, 'good_multi_return_match_tuple_assign',
+		'fn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n')
+	assert match_tuple_assign == '3'
 	run_bad(v3_bin, 'bad_multi_return_match_call_non_exhaustive_decl_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
 		'match expression must be exhaustive')
@@ -1094,6 +1100,12 @@ fn test_match_tuple_tail_multi_return_is_rejected() {
 	run_bad(v3_bin, 'bad_multi_return_match_call_mixed_tuple_tail_decl_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
 		'match expression branches cannot produce multiple assignment values')
+	run_bad(v3_bin, 'bad_multi_return_match_preceding_expr_decl_assign',
+		"fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n",
+		'match expression branches cannot produce multiple assignment values')
+	run_bad(v3_bin, 'bad_multi_return_match_preceding_expr_assign',
+		"fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n",
+		'match expression branches cannot produce multiple assignment values')
 	run_bad(v3_bin, 'bad_multi_return_match_tail_return',
 		'fn pair(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n',
 		'match expression branches cannot produce multiple return values')
@@ -1104,6 +1116,31 @@ fn test_return_if_tuple_tail_multi_return_is_rejected() {
 	run_bad(v3_bin, 'bad_multi_return_if_tail_return',
 		'fn pair(flag bool) (int, int) {\n\treturn if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\t3\n\t\t4\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n',
 		'if expression branches cannot produce multiple return values')
+}
+
+fn test_pr_review_struct_sum_scope_and_gated_regressions() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_non_variadic_array_struct_field_args',
+		'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points []Point) int {\n\treturn points.len\n}\n\nfn main() {\n\t_ := total(x: 1, y: 2)\n}\n',
+		'cannot use `key: value` arguments as `[]Point`')
+	variadic_struct := run_good(v3_bin, 'good_variadic_struct_field_args',
+		'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points ...Point) int {\n\treturn points[0].x + points[0].y\n}\n\nfn main() {\n\tprintln(int_str(total(x: 3, y: 4)))\n}\n')
+	assert variadic_struct == '7'
+	run_bad_project(v3_bin, 'bad_module_type_does_not_bind_main_type', {
+		'v.mod':  "Module { name: 'module_unknown_scope' }\n"
+		'main.v': 'module main\n\nimport m\n\nstruct Foo {}\n\nfn main() {\n\t_ = m.consume(Foo{})\n}\n'
+		'm/m.v':  'module m\n\npub const value = 1\n\npub fn consume(x Foo) int {\n\treturn value\n}\n'
+	}, 'main.v', 'expected `m.Foo`')
+	aliased_sum := run_good_project(v3_bin, 'good_aliased_sum_uses_full_suffix', {
+		'v.mod':           "Module { name: 'aliased_sum_full_suffix' }\n"
+		'main.v':          'module main\n\nimport other as _\nimport sub.tast as tast\n\nfn main() {\n\tvalue := tast.make_beta()\n\tif value is tast.Beta {\n\t\tprintln(int_str(value.n))\n\t} else {\n\t\tprintln("wrong")\n\t}\n}\n'
+		'other/other.v':   'module other\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Beta | Alpha\n'
+		'sub/tast/tast.v': 'module tast\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Alpha | Beta\n\npub fn make_beta() Value {\n\treturn Beta{\n\t\tn: 9\n\t}\n}\n'
+	}, 'main.v')
+	assert aliased_sum == '9'
+	gated := run_good(v3_bin, 'good_gated_scalar_and_fixed_array_indexes',
+		'struct Box {\n\titems [10]int\n}\n\nfn main() {\n\ta := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\n\tprintln(int_str(a#[-1]))\n\tprintln(int_str(a#[-11] or { 42 }))\n\tprintln(a#[-2..].str())\n\tprintln("0123456789"#[-1].ascii_str())\n\tfixed := [10]int{init: index}\n\tprintln(int_str(fixed#[-1]))\n\tprintln(fixed#[-2..].str())\n\tbox := Box{\n\t\titems: fixed\n\t}\n\tprintln(int_str(box.items#[-1]))\n}\n')
+	assert gated == '9\n42\n[8, 9]\n9\n9\n[8, 9]\n9'
 }
 
 fn test_local_type_names_include_nested_block_scope() {

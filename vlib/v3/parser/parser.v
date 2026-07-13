@@ -4091,8 +4091,10 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 			})
 		}
 		bstart := p.add_children(stmt_ids)
+		// Preserve comma grouping so match tails do not absorb preceding statements.
 		return p.a.add_node(flat.Node{
 			kind:           .block
+			value:          'comma_exprs'
 			children_start: bstart
 			children_count: flat.child_count(stmt_ids.len)
 		})

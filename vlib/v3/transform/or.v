@@ -409,6 +409,11 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 			wrap_found_value = true
 		}
 	}
+	if info.base_optional {
+		// The gated negative-index wrap reads `base_opt.value.len`, so the
+		// optional base must exist before that wrap is evaluated.
+		prelude << t.make_decl_assign_typed(base_opt_name, base_expr0, info.optional_type)
+	}
 	prelude << t.make_decl_assign_typed(index_name, index_expr, 'int')
 	if t.a.nodes[int(expr_id)].op == .gated_index {
 		// `base#[i] or {}`: a negative index counts from the end before the
@@ -419,9 +424,6 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 		prelude << t.make_if(neg_cond, t.make_block(arr1(wrap_assign)), t.make_empty())
 	}
 	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(result_type), result_type)
-	if info.base_optional {
-		prelude << t.make_decl_assign_typed(base_opt_name, base_expr0, info.optional_type)
-	}
 
 	idx_ident := t.make_ident(index_name)
 	lower_ok := t.make_infix(.ge, idx_ident, t.make_int_literal(0))

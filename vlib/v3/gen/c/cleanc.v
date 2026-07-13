@@ -1461,10 +1461,13 @@ fn c_flag_include_dirs(flags []string) []string {
 
 fn c_system_include_replacement(include_arg string) ?string {
 	match trimmed_space(include_arg) {
-		// inttypes.h includes stdint.h per the C standard; inlined vlib
-		// headers only need the integer typedefs/limits from it.
-		'<stdint.h>', '<inttypes.h>' {
+		'<stdint.h>' {
 			return c_stdint_header_text()
+		}
+		'<inttypes.h>' {
+			// PRI*/SCN* format macros are implementation-specific; keep the real
+			// standard header when it is referenced by an inlined C header.
+			return '#include <inttypes.h>'
 		}
 		'<assert.h>' {
 			// headerless build has no runtime assert support; NDEBUG semantics

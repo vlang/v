@@ -808,6 +808,38 @@ static inline int stdarg_sum(int count, ...) {
 	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
+fn directive_order_gen_and_run_inttypes_header(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_inttypes_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_inttypes' }\n")
+	directive_order_write_file(root, 'main.v', 'module main
+
+#include "inttypes_user.h"
+
+fn C.inttypes_macro_widths() int
+
+fn main() {
+	println(C.inttypes_macro_widths().str())
+}
+')
+	directive_order_write_file(root, 'inttypes_user.h', '#include <inttypes.h>
+
+static inline int inttypes_macro_widths(void) {
+	return (int) (sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64));
+}
+')
+	bin_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_inttypes')
+	os.rm(bin_out) or {}
+	os.rm(bin_out + '.c') or {}
+	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin_out}')
+	assert result.exit_code == 0, result.output
+	run := os.execute(bin_out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space().int() > 0, run.output
+	return os.read_file(bin_out + '.c') or { panic(err) }
+}
+
 fn directive_order_gen_c_nested_poll_header(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_poll_project')
 	os.rmdir_all(root) or {}
@@ -1178,6 +1210,12 @@ fn test_stdarg_in_inlined_header_uses_headerless_va_defs() {
 	assert c_code.contains('#define offsetof(type, member) __builtin_offsetof(type, member)'), c_code
 	assert c_code.contains('offsetof(struct StdargThing, value)'), c_code
 	assert c_code.contains('static inline int stdarg_sum(int count, ...)'), c_code
+}
+
+fn test_inttypes_in_inlined_header_keeps_format_macros() {
+	c_code := directive_order_gen_and_run_inttypes_header(directive_order_build_v3())
+	assert c_code.contains('#include <inttypes.h>'), c_code
+	assert c_code.contains('sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64)'), c_code
 }
 
 fn test_poll_in_inlined_header_uses_headerless_struct() {
