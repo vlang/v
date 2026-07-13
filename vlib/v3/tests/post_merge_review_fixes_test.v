@@ -159,6 +159,74 @@ fn test_multi_return_assignment_requires_option_result_handling() {
 	assert out == '5ok'
 }
 
+fn test_multi_assignment_checks_all_rhs_before_invalidating_smartcasts() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'multi_assign_smartcast_rhs', 'struct Foo {
+	field int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+fn replacement() Value {
+	return Bar{}
+}
+
+fn main() {
+	mut x := Value(Foo{
+		field: 7
+	})
+	mut y := 0
+	if x is Foo {
+		x, y = replacement(), x.field
+	}
+	println(int_str(y))
+}
+')
+	assert out == '7'
+}
+
+fn test_interface_equality_includes_implicit_return_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_implicit_return_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct OtherValue {
+	n int
+}
+
+fn make_value() IValue {
+	return Value{
+		n: 3
+	}
+}
+
+fn make_assigned_value() IValue {
+	mut value := IValue(Value{
+		n: 3
+	})
+	value = OtherValue{
+		n: 4
+	}
+	return value
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	println(same(make_value()).str())
+	println(same(make_assigned_value()).str())
+}
+')
+	assert out == 'true\ntrue'
+}
+
 fn test_context_dependent_if_branches_infer_wrapper_types() {
 	v3_bin := build_v3()
 	opt_out := run_good(v3_bin, 'if_none_branch_infers_option',

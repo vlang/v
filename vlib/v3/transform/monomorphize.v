@@ -591,20 +591,21 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 	}
 	t.interface_boxed_types_done = true
 	for idx, node in t.a.nodes {
+		if node.kind == .fn_decl {
+			return_iface := t.resolve_interface_type_name(node.typ)
+			if return_iface.len > 0 {
+				for i in 0 .. node.children_count {
+					t.collect_interface_return_boxes(t.a.child(&node, i), return_iface)
+				}
+			}
+		}
+		if node.kind in [.assign, .decl_assign, .selector_assign, .index_assign] {
+			t.collect_interface_assign_boxes(node)
+		}
 		if node.kind == .cast_expr && node.children_count == 1 {
 			iface_name := t.resolve_interface_type_name(node.value)
 			if iface_name.len > 0 {
-				arg_id := t.a.child(&node, 0)
-				actual := t.tc.expr_type(arg_id) or { t.tc.resolve_type(arg_id) }
-				arg := t.a.nodes[int(arg_id)]
-				actual_name := if actual.name() in ['', 'unknown'] && arg.kind == .struct_init {
-					arg.value
-				} else {
-					actual.name()
-				}
-				if actual_name.len > 0 && t.resolve_interface_type_name(actual_name).len == 0 {
-					t.mark_interface_boxed_type(iface_name, t.trim_pointer_type(actual_name))
-				}
+				t.collect_interface_boxed_value(t.a.child(&node, 0), iface_name)
 			}
 		}
 		if node.kind == .call && node.children_count > 1 {
@@ -622,17 +623,7 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 					if iface_name.len == 0 {
 						continue
 					}
-					arg_id := t.a.child(&node, i + 1)
-					actual := t.tc.expr_type(arg_id) or { t.tc.resolve_type(arg_id) }
-					arg := t.a.nodes[int(arg_id)]
-					actual_name := if actual.name() in ['', 'unknown'] && arg.kind == .struct_init {
-						arg.value
-					} else {
-						actual.name()
-					}
-					if actual_name.len > 0 && t.resolve_interface_type_name(actual_name).len == 0 {
-						t.mark_interface_boxed_type(iface_name, t.trim_pointer_type(actual_name))
-					}
+					t.collect_interface_boxed_value(t.a.child(&node, i + 1), iface_name)
 				}
 			}
 		}
@@ -648,6 +639,84 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 			concrete_type := if field.typ.starts_with('&') { field.typ[1..] } else { field.typ }
 			t.mark_interface_boxed_type(iface_name, concrete_type)
 		}
+	}
+}
+
+fn (mut t Transformer) collect_interface_return_boxes(id flat.NodeId, return_iface string) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return
+	}
+	if node.kind == .return_stmt {
+		if return_iface.len > 0 {
+			for i in 0 .. node.children_count {
+				t.collect_interface_boxed_value(t.a.child(&node, i), return_iface)
+			}
+		}
+		return
+	}
+	for i in 0 .. node.children_count {
+		t.collect_interface_return_boxes(t.a.child(&node, i), return_iface)
+	}
+}
+
+fn (mut t Transformer) collect_interface_assign_boxes(node flat.Node) {
+	for i := 0; i + 1 < node.children_count; i += 2 {
+		lhs_id := t.a.child(&node, i)
+		rhs_id := t.a.child(&node, i + 1)
+		lhs := t.a.nodes[int(lhs_id)]
+		mut iface_name := if lhs.typ.len > 0 {
+			t.resolve_interface_type_name(lhs.typ)
+		} else {
+			''
+		}
+		if iface_name.len == 0 {
+			lhs_type := t.tc.expr_type(lhs_id) or { t.tc.resolve_type(lhs_id) }
+			iface_name = t.resolve_interface_type_name(lhs_type.name())
+		}
+		if iface_name.len > 0 {
+			t.collect_interface_boxed_value(rhs_id, iface_name)
+		}
+	}
+}
+
+fn (mut t Transformer) collect_interface_boxed_value(id flat.NodeId, iface_name string) {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return
+	}
+	node := t.a.nodes[int(id)]
+	actual := t.tc.expr_type(id) or { t.tc.resolve_type(id) }
+	actual_name := if actual.name() in ['', 'unknown'] && node.kind == .struct_init {
+		node.value
+	} else {
+		actual.name()
+	}
+	if actual_name !in ['', 'unknown', 'void']
+		&& t.resolve_interface_type_name(actual_name).len == 0 {
+		t.mark_interface_boxed_type(iface_name, t.trim_pointer_type(actual_name))
+		return
+	}
+	match node.kind {
+		.paren, .expr_stmt {
+			if node.children_count > 0 {
+				t.collect_interface_boxed_value(t.a.child(&node, 0), iface_name)
+			}
+		}
+		.if_expr, .match_stmt {
+			for i in 1 .. node.children_count {
+				t.collect_interface_boxed_value(t.a.child(&node, i), iface_name)
+			}
+		}
+		.block, .match_branch {
+			if node.children_count > 0 {
+				t.collect_interface_boxed_value(t.a.child(&node, node.children_count - 1),
+					iface_name)
+			}
+		}
+		else {}
 	}
 }
 

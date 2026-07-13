@@ -8044,10 +8044,12 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	mut ownership_rhs_ids := []flat.NodeId{}
 	mut ownership_lhs_types := []Type{}
 	mut ownership_rhs_types := []Type{}
+	mut smartcast_write_keys := []string{cap: int(node.children_count) / 2}
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
 		lhs_type := tc.resolve_lvalue_type(lhs_id)
+		tc.remember_expr_type(lhs_id, lhs_type)
 		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
 		tc.annotate_expected_expr(rhs_id, expected_type)
 		$if ownership ? {
@@ -8086,14 +8088,16 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			}
 			tc.reject_stored_capturing_fn_literal(rhs_id)
 		}
-		// A write invalidates a narrowing established by an enclosing condition.
-		// Keep this after checking the RHS so `x = x` can still use the old value's
-		// narrowed type while resolving the assignment.
 		lhs_key := tc.expr_key(lhs_id)
 		if lhs_key.len > 0 {
-			tc.smartcasts.delete(lhs_key)
+			smartcast_write_keys << lhs_key
 		}
 		i += 2
+	}
+	// All RHS expressions observe the pre-assignment values. Invalidate written
+	// smartcasts only after every pair has been checked.
+	for key in smartcast_write_keys {
+		tc.smartcasts.delete(key)
 	}
 	$if ownership ? {
 		tc.ownership_after_assign_pairs(ownership_lhs_ids, ownership_rhs_ids, ownership_lhs_types,

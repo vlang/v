@@ -5402,7 +5402,15 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		lhs_id := t.multi_assign_lhs_id(node, i)
 		rhs_id := t.multi_assign_rhs_id(node, i)
 		lhs_ids << lhs_id
-		lhs_type := t.lvalue_type(lhs_id)
+		lhs := t.a.nodes[int(lhs_id)]
+		mut lhs_type := if lhs.kind in [.selector, .index] {
+			t.lvalue_type(lhs_id)
+		} else {
+			t.original_expr_type(lhs_id)
+		}
+		if lhs_type.len == 0 {
+			lhs_type = t.lvalue_type(lhs_id)
+		}
 		rhs := if lhs_type.len > 0 {
 			t.transform_expr_for_type(rhs_id, lhs_type)
 		} else {
@@ -5419,7 +5427,11 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		if lhs.kind == .ident && lhs.value == '_' {
 			continue
 		}
-		result << t.make_assign(t.transform_lvalue(lhs_id), t.make_ident(tmp_names[i]))
+		result << t.make_assign(t.transform_lvalue_without_smartcast(lhs_id),
+			t.make_ident(tmp_names[i]))
+	}
+	for lhs_id in lhs_ids {
+		t.invalidate_smartcast_for_lvalue(lhs_id)
 	}
 	return result
 }
