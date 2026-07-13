@@ -352,6 +352,19 @@ pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 	return os.system(cmd)
 }
 
+fn should_retry_execution(result os.Result) bool {
+	output := result.output.trim_space()
+	return output.len == 0 || output.starts_with('exec failed')
+		|| (output.starts_with('exec(') && output.ends_with(') failed'))
+}
+
+fn add_automatic_execution_retry(mut details TestDetails, result os.Result) {
+	if should_retry_execution(result) {
+		// Empty output and process-start failures can both be transient under load on CI runners.
+		details.retry++
+	}
+}
+
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	os.setenv(c_error_bug_report_disabled_env, '1', true)
 	mut skip_files := []string{}
@@ -712,6 +725,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
 		if status != 0 {
+			add_automatic_execution_retry(mut details, res)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
 				if !details.hide_retries {
@@ -803,10 +817,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		if r.exit_code != 0 {
 			mut trimmed_output := r.output.trim_space()
-			if trimmed_output.len == 0 {
-				// retry running at least 1 more time, to avoid CI false positives as much as possible
-				details.retry++
-			}
+			add_automatic_execution_retry(mut details, r)
 			if details.retry != 0 {
 				failure_output.write_string(separator)
 				failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
