@@ -259,6 +259,7 @@ vlib/hash/huffman/huffman_test.v
 vlib/io/custom_string_reading_test.v
 vlib/io/io_cp_test.v
 vlib/io/io_test.v
+vlib/io/multi_writer_test.v
 vlib/io/os_file_reader_test.v
 vlib/io/reader_test.v
 vlib/io/util/util_test.v
@@ -837,6 +838,7 @@ vlib/v/tests/comptime/comptime_match_fntype_test.v
 vlib/v/tests/comptime/comptime_match_generic_inside_if_test.v
 vlib/v/tests/comptime/comptime_match_generic_type_test.v
 vlib/v/tests/comptime/comptime_match_type_2_test.v
+vlib/v/tests/comptime/comptime_match_type_check_test.v
 vlib/v/tests/comptime/comptime_match_type_test.v
 vlib/v/tests/comptime/comptime_match_unaliased_typ_test.v
 vlib/v/tests/comptime/comptime_multiline_attr_test.v
@@ -1304,6 +1306,7 @@ vlib/v/tests/generics/generics_call_with_reference_arg_test.v
 vlib/v/tests/generics/generics_fixed_array_assign_test.v
 vlib/v/tests/generics/generics_fn_field_multi_instance_test.v
 vlib/v/tests/generics/generics_fn_return_result_test.v
+vlib/v/tests/generics/generics_fn_return_types_with_generic_struct_test.v
 vlib/v/tests/generics/generics_from_modules/inference_test.v
 vlib/v/tests/generics/generics_in_big_struct_method_test.v
 vlib/v/tests/generics/generics_in_generics_test.v
@@ -1661,6 +1664,8 @@ vlib/v/tests/orm_create_several_tables_test.v
 vlib/v/tests/orm_handle_error_for_select_from_not_created_table_test.v
 vlib/v/tests/orm_if_expr_value_test.v
 vlib/v/tests/orm_joined_tables_select_test.v
+vlib/v/tests/orm_or_test.v
+vlib/v/tests/orm_table_name_test.v
 vlib/v/tests/panic_on_match_branch_test.v
 vlib/v/tests/parse_invalid_map_type_test.v
 vlib/v/tests/parse_thread_type_test.v
@@ -1956,6 +1961,16 @@ vlib/v2_toberemoved/ssa/register_types_pass1_from_flat_test.v
 vlib/v2_toberemoved/ssa/register_types_pass2_from_flat_test.v
 vlib/v2_toberemoved/ssa/resolve_forward_const_refs_from_flat_test.v
 vlib/v2_toberemoved/ssa/skip_modules_test.v
+vlib/v2_toberemoved/transformer/explicit_str_method_fn_names_from_flat_test.v
+vlib/v2_toberemoved/transformer/generated_fn_module_from_flat_test.v
+vlib/v2_toberemoved/transformer/generated_fns_parts_from_flat_test.v
+vlib/v2_toberemoved/transformer/import_alias_test.v
+vlib/v2_toberemoved/transformer/inject_embed_file_helper_to_flat_test.v
+vlib/v2_toberemoved/transformer/inject_generated_fns_to_flat_test.v
+vlib/v2_toberemoved/transformer/inject_live_reload_to_flat_test.v
+vlib/v2_toberemoved/transformer/inject_main_runtime_const_init_to_flat_test.v
+vlib/v2_toberemoved/transformer/inject_test_main_to_flat_test.v
+vlib/v2_toberemoved/transformer/minimal_runtime_init_test.v
 vlib/v2_toberemoved/types/comptime_test.v
 vlib/v3/eval/eval_test.v
 vlib/v3/gen/c/names_test.v
@@ -2067,10 +2082,6 @@ vlib/x/encoding/asn1/util_test.v
 vlib/x/encoding/asn1/visiblestring_test.v
 vlib/x/executor/config_test.v
 vlib/x/executor/owner_test.v
-vlib/x/json2/tests/decode_map_of_map_test.v
-vlib/x/json2/tests/decode_string_test.v
-vlib/x/json2/tests/json_module_compatibility_test/json_decode_with_option_arg_test.v
-vlib/x/json2/tests/scanner_test.v
 vlib/x/markdown/markdown_test.v
 vlib/x/sessions/tests/memory_store_test.v
 vlib/x/sessions/tests/session_test.v
