@@ -1,5 +1,10 @@
 module decoder2
 
+struct NestedValueKinds {
+	id     int
+	active bool
+}
+
 fn assert_invalid_json(input string) {
 	mut checker := Decoder{
 		json: input
@@ -7,6 +12,15 @@ fn assert_invalid_json(input string) {
 	mut failed := false
 	checker.check_json_format(input) or { failed = true }
 	assert failed, 'Expected invalid JSON: `${input}`'
+}
+
+fn assert_decode_error[T](input string, expected_error string) {
+	mut failed := false
+	decode[T](input) or {
+		failed = true
+		assert err.msg() == expected_error
+	}
+	assert failed, 'Expected `${input}` to fail decoding'
 }
 
 fn test_check_if_json_match() {
@@ -201,6 +215,34 @@ fn test_accepts_trailing_root_whitespace() {
 			json: input
 		}
 		checker.check_json_format(input) or { assert false, err.str() }
+	}
+}
+
+fn test_decode_skips_leading_root_whitespace() {
+	assert decode[int](' \t\n\r1')! == 1
+	assert decode[bool]('\n true')! == true
+	assert decode[[]int]('\r\n [1, 2]')! == [1, 2]
+	assert decode[NestedValueKinds]('\n {"id": 1, "active": true}')! == NestedValueKinds{
+		id:     1
+		active: true
+	}
+}
+
+fn test_decode_rejects_nested_value_kind_mismatches() {
+	assert_decode_error[NestedValueKinds]('{"id": "1", "active": true}',
+		'Expected number, but got string_')
+	assert_decode_error[NestedValueKinds]('{"id": 1, "active": "yes"}',
+		'Expected boolean, but got string_')
+	assert_decode_error[[]int]('[1, "2"]', 'Expected number, but got string_')
+	assert_decode_error[map[string]int]('{"id": "1"}', 'Expected number, but got string_')
+}
+
+fn test_decode_unescapes_map_keys() {
+	decoded := decode[map[string]int](r'{"a\nb": 1, "quote\"key": 2, "unicode\u2714": 3}')!
+	assert decoded == {
+		'a\nb':      1
+		'quote"key': 2
+		'unicode✔':  3
 	}
 }
 

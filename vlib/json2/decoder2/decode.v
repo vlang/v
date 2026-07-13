@@ -94,53 +94,60 @@ pub enum ValueKind {
 	null
 }
 
-// check_if_json_match checks if the JSON string matches the expected type T.
-fn check_if_json_match[T](val string) ! {
-	// check if the JSON string is empty
-	if val == '' {
-		return error('empty string')
-	}
-
-	// check if generic type matches the JSON type
-	value_kind := get_value_kind(val[0])
-
-	$if T is $option {
+// check_value_kind_match checks if a JSON value kind matches the expected type T.
+fn check_value_kind_match[T](value_kind ValueKind) ! {
+	$if T.unaliased_typ is $option {
 		// TODO
-	} $else $if T is $sumtype {
+	} $else $if T.unaliased_typ is $sumtype {
 		// TODO
-	} $else $if T is $alias {
-		// TODO
-	} $else $if T is $string {
+	} $else $if T.unaliased_typ is $string {
 		if value_kind != .string_ {
 			return error('Expected string, but got ${value_kind}')
 		}
-	} $else $if T is time.Time {
+	} $else $if T.unaliased_typ is time.Time {
 		if value_kind != .string_ {
 			return error('Expected string, but got ${value_kind}')
 		}
-	} $else $if T is $map {
+	} $else $if T.unaliased_typ is $map {
 		if value_kind != .object {
 			return error('Expected object, but got ${value_kind}')
 		}
-	} $else $if T is $array {
+	} $else $if T.unaliased_typ is $array {
 		if value_kind != .array {
 			return error('Expected array, but got ${value_kind}')
 		}
-	} $else $if T is $struct {
+	} $else $if T.unaliased_typ is $struct {
 		if value_kind != .object {
 			return error('Expected object, but got ${value_kind}')
 		}
-	} $else $if T in [$enum, $int, $float] {
+	} $else $if T.unaliased_typ in [$enum, $int, $float] {
 		if value_kind != .number {
 			return error('Expected number, but got ${value_kind}')
 		}
-	} $else $if T is bool {
+	} $else $if T.unaliased_typ is bool {
 		if value_kind != .boolean {
 			return error('Expected boolean, but got ${value_kind}')
 		}
 	} $else {
 		return error('cannot encode value with ${value_kind} type')
 	}
+}
+
+// check_if_json_match checks if the JSON string matches the expected type T.
+fn check_if_json_match[T](val string) ! {
+	if val == '' {
+		return error('empty string')
+	}
+
+	mut value_idx := 0
+	for value_idx < val.len && val[value_idx] in [` `, `\t`, `\n`, `\r`] {
+		value_idx++
+	}
+	if value_idx >= val.len {
+		return error('empty string')
+	}
+
+	check_value_kind_match[T](get_value_kind(val[value_idx]))!
 }
 
 // error generates an error message with context from the JSON string.
@@ -179,7 +186,16 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 	is_root_value := checker.values_info.len == 0
 	// check if the JSON string is empty
 	if val == '' {
-		return checker.error('empty string')
+		return error('empty string')
+	}
+	if is_root_value {
+		for checker.checker_idx < checker_end && val[checker.checker_idx] in [` `, `\t`, `\n`, `\r`] {
+			checker.checker_idx++
+		}
+		if checker.checker_idx >= checker_end {
+			checker.checker_idx = checker_end - 1
+			return checker.error('empty string')
+		}
 	}
 
 	// check if generic type matches the JSON type
@@ -581,6 +597,11 @@ pub fn decode[T](val string) !T {
 
 // decode_value decodes a value from the JSON nodes.
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
+	if decoder.current_node == unsafe { nil } {
+		return error('unexpected end of JSON values')
+	}
+	check_value_kind_match[T](decoder.current_node.value.value_kind)!
+
 	$if T.unaliased_typ is string {
 		string_info := decoder.current_node.value
 
@@ -798,7 +819,7 @@ fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
 				break
 			}
 
-			key := decoder.json[key_info.position + 1..key_info.position + key_info.length - 1]
+			key := decoder.decode_string(key_info)!
 
 			decoder.current_node = decoder.current_node.next
 
