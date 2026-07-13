@@ -1,5 +1,9 @@
 import json2.decoder2 as json
 
+struct IntegerField {
+	n int
+}
+
 fn test_number() {
 	// Test u8
 	assert json.decode[u8]('0')! == 0
@@ -95,6 +99,21 @@ fn test_number() {
 	assert json.decode[f64]('1E+3')! == 1000.0
 	assert json.decode[f64]('-2.5e-2')! == -0.025
 	assert json.decode[int]('1e3')! == 1000
+	assert json.decode[int]('123.0')! == 123
+	assert json.decode[int]('1.2e1')! == 12
+	assert json.decode[int]('10e-1')! == 1
+}
+
+fn test_fractional_numbers_are_rejected_for_integer_targets() {
+	for input in ['123.45', '-123.45', '1e-1', '1.2e0'] {
+		mut failed := false
+		json.decode[int](input) or { failed = true }
+		assert failed, 'expected `${input}` to be rejected for an integer target'
+	}
+
+	mut failed := false
+	json.decode[IntegerField]('{"n":123.45}') or { failed = true }
+	assert failed
 }
 
 fn test_boolean() {

@@ -711,6 +711,9 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				val = T(strconv.atof64(bytes.bytestr())!)
 			} $else $if T.unaliased_typ is $int {
 				if bytes.contains(`.`) || bytes.contains(`e`) || bytes.contains(`E`) {
+					if number_has_fractional_part(bytes) {
+						return error('cannot decode fractional number `${bytes.bytestr()}` into ${typeof(val).name}')
+					}
 					val = T(strconv.atof64(bytes.bytestr())!)
 				} else {
 					unsafe { string_buffer_to_generic_number(val, bytes) }
@@ -895,6 +898,66 @@ fn get_value_kind(value u8) ValueKind {
 
 fn create_value_from_optional[T](val ?T) T {
 	return T{}
+}
+
+fn number_has_fractional_part(data []u8) bool {
+	mut exponent_position := data.len
+	mut decimal_position := -1
+	for idx, digit in data {
+		if digit == `.` {
+			decimal_position = idx
+		} else if digit == `e` || digit == `E` {
+			exponent_position = idx
+			break
+		}
+	}
+
+	mut exponent := 0
+	if exponent_position < data.len {
+		mut idx := exponent_position + 1
+		mut exponent_is_negative := false
+		if data[idx] == `+` || data[idx] == `-` {
+			exponent_is_negative = data[idx] == `-`
+			idx++
+		}
+		for idx < data.len {
+			// The significand is limited to 64 digits, so larger exponents have
+			// the same integrality result and do not need to be accumulated.
+			if exponent < 128 {
+				exponent = exponent * 10 + int(data[idx] - `0`)
+			}
+			idx++
+		}
+		if exponent_is_negative {
+			exponent = -exponent
+		}
+	}
+
+	fractional_digits := if decimal_position >= 0 {
+		exponent_position - decimal_position - 1
+	} else {
+		0
+	}
+	required_trailing_zeros := fractional_digits - exponent
+	if required_trailing_zeros <= 0 {
+		return false
+	}
+
+	mut has_nonzero_digit := false
+	mut trailing_zeros := 0
+	for idx in 0 .. exponent_position {
+		digit := data[idx]
+		if digit < `0` || digit > `9` {
+			continue
+		}
+		if digit == `0` {
+			trailing_zeros++
+		} else {
+			has_nonzero_digit = true
+			trailing_zeros = 0
+		}
+	}
+	return has_nonzero_digit && trailing_zeros < required_trailing_zeros
 }
 
 fn utf8_byte_length(unicode_value u32) int {
