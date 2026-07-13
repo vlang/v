@@ -3464,6 +3464,9 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 			if node.children_count == 0 {
 				return id
 			}
+			if lowered := t.lower_gated_scalar_index(node) {
+				return lowered
+			}
 			mut new_children := []flat.NodeId{cap: int(node.children_count)}
 			new_children << t.transform_expr(t.a.child(&node, 0))
 			for i in 1 .. node.children_count {
@@ -6920,11 +6923,48 @@ fn (mut t Transformer) transform_struct_init(id flat.NodeId, node flat.Node) fla
 }
 
 // transform_index_expr transforms transform index expr data for transform.
+// lower_gated_scalar_index rewrites a scalar gated index `base#[i]` into a
+// plain index whose position wraps negative values from the end:
+// `base[if i < 0 { i + base.len } else { i }]`. Range forms lower in cgen
+// (slice_ni/substr_ni); the `or {}` form wraps in the index-or lowering.
+fn (mut t Transformer) lower_gated_scalar_index(node flat.Node) ?flat.NodeId {
+	if node.op != .gated_index || node.value == 'range' || node.children_count != 2 {
+		return none
+	}
+	base := t.stable_expr_for_reuse(t.a.child(&node, 0))
+	idx := t.stable_expr_for_reuse(t.a.child(&node, 1))
+	len_sel := t.make_selector(base, 'len', 'int')
+	cond := t.make_infix(.lt, idx, t.make_int_literal(0))
+	t.set_node_typ(int(cond), 'bool')
+	wrapped := t.make_infix(.plus, idx, len_sel)
+	t.set_node_typ(int(wrapped), 'int')
+	then_block := t.make_block(arr1(t.make_expr_stmt(wrapped)))
+	else_block := t.make_block(arr1(t.make_expr_stmt(idx)))
+	if_start := t.a.children.len
+	t.a.children << cond
+	t.a.children << then_block
+	t.a.children << else_block
+	pos_expr := t.a.add_node(flat.Node{
+		kind:           .if_expr
+		children_start: if_start
+		children_count: 3
+		typ:            'int'
+	})
+	mut index_typ := node.typ
+	if index_typ.len == 0 {
+		index_typ = node.value
+	}
+	return t.make_index(base, pos_expr, index_typ)
+}
+
 fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return id
 	}
 	if lowered := t.try_lower_map_index_expr(id, node) {
+		return lowered
+	}
+	if lowered := t.lower_gated_scalar_index(node) {
 		return lowered
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}

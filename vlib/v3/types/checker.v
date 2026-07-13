@@ -1768,58 +1768,72 @@ fn (tc &TypeChecker) qualify_sum_variant_name(name string, generic_params []stri
 	return tc.qualify_name(clean)
 }
 
-// qualify_type_text supports qualify type text handling for TypeChecker.
+// qualify_type_text qualifies a type text for registration: bare names always
+// get the current module prefix (order-independent during collect).
 fn (tc &TypeChecker) qualify_type_text(typ string) string {
+	return tc.qualify_type_text_impl(typ, false)
+}
+
+// qualify_resolution_type_text qualifies a type text in a resolution-only
+// context (generic application args): a bare name substituted from another
+// module's caller may stay bare when the module-qualified spelling does not
+// exist. Never use for registration.
+fn (tc &TypeChecker) qualify_resolution_type_text(typ string) string {
+	return tc.qualify_type_text_impl(typ, true)
+}
+
+fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return typ
 	}
 	if clean.starts_with('&') {
-		return '&' + tc.qualify_type_text(clean[1..])
+		return '&' + tc.qualify_type_text_impl(clean[1..], resolution)
 	}
 	if clean.starts_with('mut ') {
-		inner := tc.qualify_type_text(clean[4..])
+		inner := tc.qualify_type_text_impl(clean[4..], resolution)
 		if inner.starts_with('&') {
 			return inner
 		}
 		return '&' + inner
 	}
 	if clean.starts_with('shared ') {
-		return 'shared ' + tc.qualify_type_text(clean[7..])
+		return 'shared ' + tc.qualify_type_text_impl(clean[7..], resolution)
 	}
 	if clean.starts_with('atomic ') {
-		return 'atomic ' + tc.qualify_type_text(clean[7..])
+		return 'atomic ' + tc.qualify_type_text_impl(clean[7..], resolution)
 	}
 	if clean.starts_with('?') {
-		return '?' + tc.qualify_type_text(clean[1..])
+		return '?' + tc.qualify_type_text_impl(clean[1..], resolution)
 	}
 	if clean.starts_with('!') {
-		return '!' + tc.qualify_type_text(clean[1..])
+		return '!' + tc.qualify_type_text_impl(clean[1..], resolution)
 	}
 	if clean.starts_with('...') {
-		return '...' + tc.qualify_type_text(clean[3..])
+		return '...' + tc.qualify_type_text_impl(clean[3..], resolution)
 	}
 	if clean.starts_with('[]') {
-		return '[]' + tc.qualify_type_text(clean[2..])
+		return '[]' + tc.qualify_type_text_impl(clean[2..], resolution)
 	}
 	if clean.starts_with('map[') {
 		bracket_end := find_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			key := tc.qualify_type_text(clean[4..bracket_end])
-			val := tc.qualify_type_text(clean[bracket_end + 1..])
+			key := tc.qualify_type_text_impl(clean[4..bracket_end], resolution)
+			val := tc.qualify_type_text_impl(clean[bracket_end + 1..], resolution)
 			return 'map[${key}]${val}'
 		}
 	}
 	if clean.starts_with('[') {
 		bracket_end := find_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
-			return clean[..bracket_end + 1] + tc.qualify_type_text(clean[bracket_end + 1..])
+			return clean[..bracket_end + 1] + tc.qualify_type_text_impl(clean[bracket_end +
+				1..], resolution)
 		}
 	}
 	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
 		mut parts := []string{}
 		for part in split_params(clean[1..clean.len - 1]) {
-			parts << tc.qualify_type_text(part)
+			parts << tc.qualify_type_text_impl(part, resolution)
 		}
 		return '(' + parts.join(', ') + ')'
 	}
@@ -1832,7 +1846,7 @@ fn (tc &TypeChecker) qualify_type_text(typ string) string {
 		if bracket_end < clean.len {
 			mut parts := []string{}
 			for part in split_params(clean[bracket + 1..bracket_end]) {
-				parts << tc.qualify_type_text(part)
+				parts << tc.qualify_type_text_impl(part, resolution)
 			}
 			return tc.qualify_name(clean[..bracket]) + '[' + parts.join(', ') + ']' +
 				clean[bracket_end + 1..]
@@ -1843,7 +1857,10 @@ fn (tc &TypeChecker) qualify_type_text(typ string) string {
 			return resolved
 		}
 	}
-	return tc.qualify_resolution_type_name(clean)
+	if resolution {
+		return tc.qualify_resolution_type_name(clean)
+	}
+	return tc.qualify_name(clean)
 }
 
 // qualify_fn_type_text supports qualify fn type text handling for TypeChecker.
@@ -17862,7 +17879,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
 		return tc.parse_fn_type(typ)
 	}
-	qtyp := tc.qualify_resolution_type_name(typ)
+	qtyp := tc.qualify_name(typ)
 	if typ == 'array' && tc.has_builtins && typ in tc.structs {
 		return Type(Struct{
 			name: typ
@@ -18175,7 +18192,9 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 fn (tc &TypeChecker) qualified_generic_suffix(args []string) string {
 	mut qualified_args := []string{cap: args.len}
 	for arg in args {
-		qualified_args << tc.qualify_type_text(arg)
+		// Generic application args may name types from the instantiating
+		// module (main's `Foo` inside a json2 specialization).
+		qualified_args << tc.qualify_resolution_type_text(arg)
 	}
 	return '[' + qualified_args.join(', ') + ']'
 }

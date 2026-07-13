@@ -304,6 +304,13 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 		if trimmed_space(literal).len > 0 {
 			data_str = literal
 		}
+		if gated {
+			// Route gated fixed-array slices through the clamped slice_ni on a
+			// heap copy of the fixed data, matching dynamic-array semantics.
+			len_val := g.fixed_array_len_value(fixed)
+			g.write('array__slice_ni(new_array_from_c_array(${len_val}, ${len_val}, sizeof(${c_elem}), &(${data_str})[0]), ${start_str}, ${end_str})')
+			return
+		}
 		// Evaluate the slice bounds once so side-effecting expressions such as
 		// `arr[i++..limit()]` are not run multiple times in the generated C.
 		start_tmp := g.tmp_name()

@@ -5430,6 +5430,7 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 		istart := p.add_children2(lhs, type_arg)
 		return p.a.add_node(flat.Node{
 			kind:           .index
+			op:             gated_op
 			children_start: istart
 			children_count: 2
 		})
@@ -5473,6 +5474,7 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 	istart := p.add_children(ids)
 	return p.a.add_node(flat.Node{
 		kind:           .index
+		op:             gated_op
 		children_start: istart
 		children_count: flat.child_count(ids.len)
 	})
