@@ -82,6 +82,7 @@ mut:
 	inlined_c_fns                  map[string]bool
 	inlined_c_declared_fns         map[string]bool
 	c_flags                        []string
+	use_system_stdint              bool
 	libc_compat_fns                map[string]bool
 	tc                             &types.TypeChecker = unsafe { nil }
 	has_builtins                   bool
@@ -576,6 +577,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.inlined_c_declared_fns.clear()
 	g.inlined_c_typedef_names.clear()
 	g.c_flags = []string{}
+	g.use_system_stdint = false
 	g.libc_compat_fns.clear()
 	g.modules.clear()
 	g.fn_ptr_types.clear()
@@ -868,6 +870,7 @@ fn node_kind_id(node flat.Node) int {
 // collect_gen_info updates collect gen info state for c.
 fn (mut g FlatGen) collect_gen_info() {
 	g.collect_c_flags_from_directives()
+	g.use_system_stdint = g.translation_unit_uses_inttypes()
 	mut cur_module := 'main'
 	mut cur_file := ''
 	mut seen_import_in_file := false
@@ -1132,6 +1135,31 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 	}
 }
 
+fn (g &FlatGen) translation_unit_uses_inttypes() bool {
+	mut cur_file := ''
+	include_dirs := c_flag_include_dirs(g.c_flags)
+	for node in g.a.nodes {
+		if node_kind_id(node) == 77 {
+			cur_file = node.value
+			continue
+		}
+		if node.kind != .directive || node.value !in ['include', 'insert'] || node.typ.len == 0 {
+			continue
+		}
+		include_arg := c_include_arg(node.typ, g.compiler_vroot, cur_file)
+		if trimmed_space(include_arg) == '<inttypes.h>' {
+			return true
+		}
+		mut seen := map[string]bool{}
+		for path in c_include_file_paths(include_arg, g.compiler_vroot, cur_file, include_dirs) {
+			if c_inline_header_tree_uses_inttypes(path, g.compiler_vroot, include_dirs, mut seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, source_file string, before_import bool) bool {
 	if node.kind != .directive {
 		return false
@@ -1151,7 +1179,9 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			return true
 		}
 		include_dirs := c_flag_include_dirs(g.c_flags)
-		if header := c_inline_header_text(include_arg, g.compiler_vroot, source_file, include_dirs) {
+		if header := c_inline_header_text(include_arg, g.compiler_vroot, source_file, include_dirs,
+			g.use_system_stdint)
+		{
 			header_text := header.text
 			g.collect_inlined_c_structs(header_text)
 			g.collect_inlined_c_fns(header_text)
@@ -1180,8 +1210,8 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	return false
 }
 
-fn c_inline_header_text(include_arg string, vroot string, source_file string, include_dirs []string) ?CInlineHeader {
-	if replacement := c_system_include_replacement(include_arg, false) {
+fn c_inline_header_text(include_arg string, vroot string, source_file string, include_dirs []string, translation_unit_uses_inttypes bool) ?CInlineHeader {
+	if replacement := c_system_include_replacement(include_arg, translation_unit_uses_inttypes) {
 		return CInlineHeader{
 			text: replacement
 		}
@@ -1190,8 +1220,8 @@ fn c_inline_header_text(include_arg string, vroot string, source_file string, in
 	mut inlining := map[string]bool{}
 	for path in c_include_file_paths(include_arg, vroot, source_file, include_dirs) {
 		mut scan_seen := map[string]bool{}
-		use_system_stdint := c_inline_header_tree_uses_inttypes(path, vroot, include_dirs, mut
-			scan_seen)
+		use_system_stdint := translation_unit_uses_inttypes
+			|| c_inline_header_tree_uses_inttypes(path, vroot, include_dirs, mut scan_seen)
 		if header := c_inline_header_file(path, vroot, include_dirs, false, use_system_stdint, mut
 			seen, mut inlining)
 		{

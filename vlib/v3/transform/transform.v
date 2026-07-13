@@ -6552,7 +6552,7 @@ fn (mut t Transformer) transform_if_stmt(id flat.NodeId, node flat.Node) []flat.
 			branch_id := t.a.child(&node, branch_index)
 			branch := t.a.nodes[int(branch_id)]
 			if branch.kind == .block {
-				return t.transform_stmts(t.a.children_of(&branch).clone())
+				return arr1(t.transform_block_expr(branch_id, branch))
 			}
 			return t.transform_stmt(branch_id)
 		}

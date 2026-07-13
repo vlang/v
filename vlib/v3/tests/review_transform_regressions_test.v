@@ -86,6 +86,13 @@ fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
 	assert out == '7'
 }
 
+fn test_folded_string_constant_ifs_keep_branch_scopes() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'folded_string_constant_if_branch_scopes',
+		"fn main() {\n\tif 'left' == 'left' {\n\t\tx := 20\n\t\tprintln(int_str(x))\n\t}\n\tif 'right' == 'right' {\n\t\tx := 22\n\t\tprintln(int_str(x))\n\t}\n}\n")
+	assert out == '20\n22'
+}
+
 fn test_shared_field_without_sync_import_compiles_and_locks() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'shared_field_without_sync_import',

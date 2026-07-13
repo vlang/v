@@ -815,6 +815,7 @@ fn directive_order_gen_and_run_inttypes_header(v3_bin string) string {
 	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_inttypes' }\n")
 	directive_order_write_file(root, 'main.v', 'module main
 
+#include <stdint.h>
 #include "inttypes_user.h"
 
 fn C.inttypes_macro_widths() int
@@ -825,8 +826,7 @@ fn main() {
 ')
 	directive_order_write_file(root, 'inttypes_macros.h', '#include <inttypes.h>
 ')
-	directive_order_write_file(root, 'inttypes_user.h', '#include <stdint.h>
-#include "inttypes_macros.h"
+	directive_order_write_file(root, 'inttypes_user.h', '#include "inttypes_macros.h"
 
 static inline int inttypes_macro_widths(void) {
 	return (int) (sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64));
