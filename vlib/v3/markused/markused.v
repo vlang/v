@@ -1296,8 +1296,10 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut needs_channel_select_helpers := false
 	mut needs_channel_str_helpers := false
 	mut needs_f32_eq_epsilon := false
+	mut needs_ierror_equality_dispatch := false
 	mut needs_shared_runtime := false
 	mut channel_stringify_cache := map[string]int{}
+	mut ierror_equality_cache := map[string]int{}
 	mut cur_module := ''
 	mut imports := map[string]string{}
 	for node in a.nodes {
@@ -1395,8 +1397,17 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 				if node.op == .arrow {
 					needs_channel_helpers = true
 				}
-				if node.op in [.eq, .ne] && markused_infix_needs_f32_eq_epsilon(a, tc, node) {
-					needs_f32_eq_epsilon = true
+				if node.op in [.eq, .ne] {
+					if markused_infix_needs_f32_eq_epsilon(a, tc, node) {
+						needs_f32_eq_epsilon = true
+					}
+					if !needs_ierror_equality_dispatch && node.children_count >= 2 {
+						lhs_type := tc.resolve_type(a.child(&node, 0))
+						rhs_type := tc.resolve_type(a.child(&node, 1))
+						needs_ierror_equality_dispatch =
+							markused_type_equality_uses_ierror(lhs_type, tc, mut ierror_equality_cache)
+							|| markused_type_equality_uses_ierror(rhs_type, tc, mut ierror_equality_cache)
+					}
 				}
 			}
 			.prefix {
@@ -1432,6 +1443,11 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			}
 			.in_expr {
 				if node.children_count >= 2 {
+					lhs_id := a.child(&node, 0)
+					if !needs_ierror_equality_dispatch {
+						needs_ierror_equality_dispatch = markused_type_equality_uses_ierror(tc.resolve_type(lhs_id),
+							tc, mut ierror_equality_cache)
+					}
 					rhs_id := a.child(&node, 1)
 					rhs_type := markused_membership_container_type(tc, tc.resolve_type(rhs_id))
 					if rhs_type == 'string' {
@@ -1518,6 +1534,9 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 		enqueue('f32.eq_epsilon', mut used, mut queue)
 		enqueue('f32__eq_epsilon', mut used, mut queue)
 	}
+	if needs_ierror_equality_dispatch {
+		enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue)
+	}
 	if needs_shared_runtime {
 		for helper in ['sync.cpanic', 'sync.cpanic_errno', 'sync.should_be_zero', 'sync.RwMutex.init',
 			'sync.RwMutex.lazy_init', 'sync.RwMutex.lock', 'sync.RwMutex.unlock',
@@ -1527,6 +1546,89 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			enqueue(helper, mut used, mut queue)
 		}
 	}
+}
+
+fn enqueue_ierror_equality_dispatch_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	for iface_name in tc.interface_names.keys() {
+		if !markused_is_ierror_interface_name(iface_name) {
+			continue
+		}
+		for method in ['msg', 'code'] {
+			dispatch_key := '${iface_name}.${method}'
+			enqueue(dispatch_key, mut used, mut queue)
+			enqueue(markused_c_name(dispatch_key), mut used, mut queue)
+		}
+	}
+	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue)
+}
+
+fn markused_type_equality_uses_ierror(typ types.Type, tc &types.TypeChecker, mut cache map[string]int) bool {
+	key := typ.name()
+	if cached := cache[key] {
+		return cached == 1
+	}
+	cache[key] = 2
+	result := markused_type_equality_uses_ierror_uncached(typ, tc, mut cache)
+	cache[key] = if result { 1 } else { -1 }
+	return result
+}
+
+fn markused_type_equality_uses_ierror_uncached(typ types.Type, tc &types.TypeChecker, mut cache map[string]int) bool {
+	match typ {
+		types.Alias {
+			return markused_type_equality_uses_ierror(typ.base_type, tc, mut cache)
+		}
+		types.OptionType {
+			return markused_type_equality_uses_ierror(typ.base_type, tc, mut cache)
+		}
+		types.ResultType {
+			return markused_type_equality_uses_ierror(typ.base_type, tc, mut cache)
+		}
+		types.Array {
+			return markused_type_equality_uses_ierror(typ.elem_type, tc, mut cache)
+		}
+		types.ArrayFixed {
+			return markused_type_equality_uses_ierror(typ.elem_type, tc, mut cache)
+		}
+		types.Map {
+			return markused_type_equality_uses_ierror(typ.key_type, tc, mut cache)
+				|| markused_type_equality_uses_ierror(typ.value_type, tc, mut cache)
+		}
+		types.Struct {
+			for field in markused_struct_fields(typ.name, tc) {
+				if markused_type_equality_uses_ierror(field.typ, tc, mut cache) {
+					return true
+				}
+			}
+		}
+		types.SumType {
+			for variant in markused_sum_variants(typ.name, tc) {
+				if markused_type_equality_uses_ierror(tc.parse_type(variant), tc, mut cache) {
+					return true
+				}
+			}
+		}
+		types.Interface {
+			if markused_is_ierror_interface_name(typ.name) {
+				return true
+			}
+			for concrete in tc.interface_impl_names(typ.name) {
+				if markused_type_equality_uses_ierror(tc.parse_type(concrete), tc, mut cache) {
+					return true
+				}
+			}
+		}
+		types.MultiReturn {
+			for item in typ.types {
+				if markused_type_equality_uses_ierror(item, tc, mut cache) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
 }
 
 fn markused_type_text_needs_shared_runtime(typ string) bool {

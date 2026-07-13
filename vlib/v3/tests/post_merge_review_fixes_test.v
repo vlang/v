@@ -811,6 +811,51 @@ fn main() {
 	assert out == 'false\nfalse\ntrue'
 }
 
+fn test_ierror_aggregate_equality_roots_custom_dispatch_methods() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'ierror_aggregate_equality_custom_dispatch_roots', 'struct CustomError {
+	message string
+	n       int
+}
+
+fn (err CustomError) msg() string {
+	return err.message
+}
+
+fn (err CustomError) code() int {
+	return err.n
+}
+
+struct Box {
+	err IError
+}
+
+fn main() {
+	first := Box{
+		err: CustomError{
+			message: "first"
+			n: 1
+		}
+	}
+	different := Box{
+		err: CustomError{
+			message: "different"
+			n: 2
+		}
+	}
+	equal := Box{
+		err: CustomError{
+			message: "first"
+			n: 1
+		}
+	}
+	println((first == different).str())
+	println((first == equal).str())
+}
+')
+	assert out == 'false\ntrue'
+}
+
 fn test_interface_equality_includes_receiver_method_call_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_receiver_method_call_box', 'interface IValue {}
