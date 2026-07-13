@@ -163,6 +163,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 	resolved_typ := g.table.fully_unaliased_type(typ)
 	is_ptr := resolved_typ.is_ptr() || (typ.has_flag(.option_mut_param_t) && !typ.has_flag(.option))
 	mut sym := g.table.sym(typ)
+	is_ptr_alias_with_str := !typ.is_ptr() && resolved_typ.is_ptr() && sym.kind == .alias
+		&& sym.has_method('str')
 	// Go-style: a reference to a scalar (int, float, bool, string, rune, or an
 	// alias of them) prints its address, while a reference to a struct/array/map
 	// prints `&` + the pointed-to value. Done before the alias rewrite below so
@@ -302,7 +304,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.writeln(';')
 			g.write(line)
 		}
-		if is_ptr && !is_var_mut {
+		if is_ptr && !is_ptr_alias_with_str && !is_var_mut {
 			ref_str := '&'.repeat(typ.nr_muls())
 			g.write('builtin__str_intp(1, _MOV((StrIntpData[]){{_S("${ref_str}"), ${si_s_code}, {.d_s = builtin__isnil(')
 			if typ.has_flag(.option) || mut_arg_option_type != 0 {
@@ -342,7 +344,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			}
 		}
 		g.write2(str_fn_name, '(')
-		if str_method_expects_ptr && !is_ptr {
+		if str_method_expects_ptr && (!is_ptr || is_ptr_alias_with_str) {
 			if is_dump_expr || (g.pref.ccompiler_type != .tinyc && expr is ast.CallExpr) {
 				g.write('ADDR(${g.styp(typ)}, ')
 				defer(fn) {
@@ -359,7 +361,8 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			} else {
 				g.write('*(${g.styp(typ)}*)&')
 			}
-		} else if !str_method_expects_ptr && !is_shared && (is_ptr || is_var_mut) {
+		} else if !str_method_expects_ptr && !is_shared && ((is_ptr && !is_ptr_alias_with_str)
+			|| is_var_mut) {
 			if sym.is_c_struct() {
 				g.write(c_struct_ptr(sym, typ, str_method_expects_ptr))
 			} else {
@@ -397,7 +400,7 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 			g.write('->val')
 		}
 		g.write(')')
-		if is_ptr && !is_var_mut {
+		if is_ptr && !is_ptr_alias_with_str && !is_var_mut {
 			g.write('}, 0, 0, 0}}))')
 		}
 	} else {

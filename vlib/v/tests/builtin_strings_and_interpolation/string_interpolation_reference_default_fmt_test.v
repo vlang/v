@@ -18,6 +18,7 @@ type CustomLabel = int
 type CustomLabelPointer = &CustomLabel
 type RefCustomLabel = int
 type RefCustomLabelPointer = &RefCustomLabel
+type CustomIntPointer = &int
 
 fn (label CustomLabel) str() string {
 	return 'Label(${int(label)})'
@@ -25,6 +26,11 @@ fn (label CustomLabel) str() string {
 
 fn (label &RefCustomLabel) str() string {
 	return 'RefLabel(${int(*label)})'
+}
+
+fn (p CustomIntPointer) str() string {
+	_ = p
+	return 'IntPointer'
 }
 
 fn generic_ref_string[T](value T) string {
@@ -92,6 +98,13 @@ fn test_scalar_alias_reference_honors_custom_ptr_str() {
 
 	p := RefCustomLabelPointer(&label)
 	assert '${p}' == '&RefLabel(8)'
+	println(p)
+}
+
+fn test_scalar_pointer_alias_honors_custom_str() {
+	i := 9
+	p := CustomIntPointer(&i)
+	assert '${p}' == 'IntPointer'
 	println(p)
 }
 
