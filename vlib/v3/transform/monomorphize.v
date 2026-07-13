@@ -734,6 +734,14 @@ fn (t &Transformer) interface_box_lhs_type(lhs_id flat.NodeId) types.Type {
 }
 
 fn (mut t Transformer) collect_interface_boxed_type(actual types.Type, expected types.Type) {
+	if actual is types.OptionType {
+		t.collect_interface_boxed_type(actual.base_type, expected)
+		return
+	}
+	if actual is types.ResultType {
+		t.collect_interface_boxed_type(actual.base_type, expected)
+		return
+	}
 	match expected {
 		types.Alias {
 			t.collect_interface_boxed_type(actual, expected.base_type)
@@ -859,6 +867,11 @@ fn (mut t Transformer) collect_interface_boxed_value(id flat.NodeId, expected ty
 			return
 		}
 		.or_expr {
+			if node.children_count > 0 {
+				source_id := t.a.child(&node, 0)
+				source_type := t.tc.expr_type(source_id) or { t.tc.resolve_type(source_id) }
+				t.collect_interface_boxed_type(source_type, expected)
+			}
 			if node.children_count >= 2 {
 				t.collect_interface_boxed_value(t.a.child(&node, 1), expected)
 			}

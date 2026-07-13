@@ -470,6 +470,35 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_interface_equality_includes_or_success_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_or_success_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn maybe_value() ?Value {
+	return Value{
+		n: 3
+	}
+}
+
+fn make_value() IValue {
+	return maybe_value() or { panic("missing value") }
+}
+
+fn main() {
+	println(same(make_value()).str())
+}
+')
+	assert out == 'true'
+}
+
 fn test_interface_auto_str_preludes_stay_inside_tag_guards() {
 	v3_bin := build_v3()
 	source := 'interface IValue {}
@@ -928,6 +957,16 @@ fn test_channel_alias_close_method_wins_over_builtin() {
 	pointer_c := gen_c(v3_bin, 'pointer_channel_close_lowers_to_runtime',
 		'fn main() {\n\tmut ch := chan bool{cap: 1}\n\tp := &ch\n\tp.close()\n}\n')
 	assert pointer_c.contains('sync__Channel__close(*p,')
+}
+
+fn test_channel_reference_auto_str_reads_channel_value() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'channel_reference_auto_str', 'fn main() {
+	ch := chan int{cap: 2}
+	println(&ch)
+}
+')
+	assert out == 'chan int{\n    cap: 2, closed: false\n}'
 }
 
 fn test_qualified_enum_str_requires_exact_receiver() {

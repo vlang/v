@@ -2680,7 +2680,8 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		return t.make_string_literal('thread(${payload})')
 	}
 	if clean_typ.starts_with('chan ') {
-		return t.make_call_typed('v3_chan_str', arr2(expr,
+		channel_value := if is_ref { t.make_prefix(.mul, expr) } else { expr }
+		return t.make_call_typed('v3_chan_str', arr2(channel_value,
 			t.make_string_literal(clean_typ[5..].trim_space())), 'string')
 	}
 	if is_ref {
