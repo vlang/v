@@ -1848,8 +1848,8 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string 
 			for part in split_params(clean[bracket + 1..bracket_end]) {
 				parts << tc.qualify_type_text_impl(part, resolution)
 			}
-			return tc.qualify_name(clean[..bracket]) + '[' + parts.join(', ') + ']' +
-				clean[bracket_end + 1..]
+			return tc.qualify_type_text_impl(clean[..bracket], resolution) + '[' +
+				parts.join(', ') + ']' + clean[bracket_end + 1..]
 		}
 	}
 	if !clean.contains('.') {

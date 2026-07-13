@@ -114,6 +114,17 @@ pub fn free(values []int) int {
 	assert out == '5'
 }
 
+fn test_sum_container_variant_import_alias_collision_uses_exact_tag() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good_project(v3_bin, 'sum_container_variant_alias_collision', {
+		'v.mod':            'Module { name: "sum_container_variant_alias_collision" }\n'
+		'other/value.v':    'module other\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'sub/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'main.v':           'module main\n\nimport other\nimport sub.tast as tast\n\ntype Mixed = map[string]other.Value | map[string]tast.Value\n\nfn score(value Mixed) int {\n\tif value is map[string]tast.Value {\n\t\titems := value as map[string]tast.Value\n\t\treturn items["x"].n\n\t}\n\treturn -1\n}\n\nfn main() {\n\tvalue := Mixed(map[string]tast.Value{\n\t\t"x": tast.Value{\n\t\t\tn: 71\n\t\t}\n\t})\n\tprintln(int_str(score(value)))\n}\n'
+	}, 'main.v')
+	assert out == '71'
+}
+
 fn test_user_defined_free_method_is_preserved() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good(v3_bin, 'user_defined_free_method', 'struct Handle {

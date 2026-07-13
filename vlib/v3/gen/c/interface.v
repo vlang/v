@@ -1098,6 +1098,14 @@ fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
 				return i + 1
 			}
 		}
+		resolved_variant := g.tc.qualify_name(variant)
+		if resolved_variant != variant {
+			for i, v in g.tc.sum_types[sum_name] {
+				if v == resolved_variant {
+					return i + 1
+				}
+			}
+		}
 		for i, v in g.tc.sum_types[sum_name] {
 			if v.all_after_last('.') == variant {
 				return i + 1
@@ -1105,14 +1113,19 @@ fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
 		}
 		// Container variants written through an import alias (`map[string]ast.Value`
 		// vs the registered `map[string]toml.ast.Value`) match on the
-		// module-stripped spelling.
+		// module-stripped spelling only when that spelling is unambiguous.
 		if variant.contains('.') || variant.contains('[') {
 			short_variant := short_module_type_text(variant)
+			mut short_match := 0
 			for i, v in g.tc.sum_types[sum_name] {
 				if short_module_type_text(v) == short_variant {
-					return i + 1
+					if short_match != 0 {
+						return 0
+					}
+					short_match = i + 1
 				}
 			}
+			return short_match
 		}
 	}
 	return 0
