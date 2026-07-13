@@ -368,6 +368,7 @@ pub mut:
 	reject_unlowered_map_mutation bool
 	reject_unsupported_generics   bool
 	diagnostic_files              map[string]bool
+	has_spawn_expr                int = -1
 	selected_file_called_fns      map[string]bool
 	// Names newly inserted into selected_file_called_fns and not yet chased by
 	// the transitive closure in collect_selected_file_called_fns_transitively.
@@ -6665,8 +6666,99 @@ fn (mut tc TypeChecker) check_comptime_if(_id flat.NodeId, node flat.Node) {
 	tc.check_node(tc.a.child(&node, branch_index))
 }
 
+fn (tc &TypeChecker) subtree_has_spawn_expr(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node_kind_id(node) == int(flat.NodeKind.spawn_expr) {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if tc.subtree_has_spawn_expr(tc.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) scan_has_spawn_expr() bool {
+	if tc.diagnostic_files.len == 0 {
+		for node in tc.a.nodes {
+			if node_kind_id(node) == int(flat.NodeKind.spawn_expr) {
+				return true
+			}
+		}
+		return false
+	}
+	for node in tc.a.nodes {
+		if node.kind != .file || !tc.diagnostic_files[node.value] {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			if tc.subtree_has_spawn_expr(tc.a.child(&node, i)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// prepare_threads_condition caches whether selected input files use spawn expressions.
+pub fn (mut tc TypeChecker) prepare_threads_condition() {
+	if tc.has_spawn_expr < 0 {
+		tc.has_spawn_expr = if tc.scan_has_spawn_expr() { 1 } else { 0 }
+	}
+}
+
+// threads_condition_value reports the cached `$if threads` condition, scanning lazily for
+// direct TypeChecker users that do not run the regular compiler setup.
+pub fn (tc &TypeChecker) threads_condition_value() bool {
+	if tc.has_spawn_expr >= 0 {
+		return tc.has_spawn_expr == 1
+	}
+	return tc.scan_has_spawn_expr()
+}
+
+fn (tc &TypeChecker) comptime_threads_condition_value(cond string) ?bool {
+	clean := comptime_condition_strip_outer_parens(cond)
+	if clean == 'threads' {
+		return tc.threads_condition_value()
+	}
+	if clean == 'true' {
+		return true
+	}
+	if clean == 'false' {
+		return false
+	}
+	or_idx := comptime_condition_top_level_index(clean, '||')
+	if or_idx >= 0 {
+		left := tc.comptime_threads_condition_value(clean[..or_idx]) or { return none }
+		if left {
+			return true
+		}
+		return tc.comptime_threads_condition_value(clean[or_idx + 2..])
+	}
+	and_idx := comptime_condition_top_level_index(clean, '&&')
+	if and_idx >= 0 {
+		left := tc.comptime_threads_condition_value(clean[..and_idx]) or { return none }
+		if !left {
+			return false
+		}
+		return tc.comptime_threads_condition_value(clean[and_idx + 2..])
+	}
+	if clean.starts_with('!') {
+		value := tc.comptime_threads_condition_value(clean[1..]) or { return none }
+		return !value
+	}
+	return none
+}
+
 fn (mut tc TypeChecker) comptime_type_condition_value(cond string) ?bool {
 	clean := comptime_condition_strip_outer_parens(cond)
+	if clean == 'threads' {
+		return tc.threads_condition_value()
+	}
 	if clean == 'true' {
 		return true
 	}
@@ -6976,6 +7068,18 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		}
 		tc.push_scope()
 		mut body_start := 0
+		if branch.value.starts_with('recv_compound:') && branch.children_count >= 2 {
+			recv_id := tc.a.child(&branch, 1)
+			recv := tc.a.nodes[int(recv_id)]
+			if recv.kind == .prefix && recv.op == .arrow {
+				tc.check_node(recv_id)
+				op := branch.value.all_after('recv_compound:')
+				tc.record_error(.assignment_mismatch,
+					'compound receive assignment `${op}` is not supported in `select`; use `=` or `:=`',
+					branch_id)
+				body_start = 2
+			}
+		}
 		mut receive_assignment := false
 		if branch.value in ['recv', 'recv_assign'] && branch.children_count >= 2 {
 			second := tc.a.child_node(&branch, 1)
@@ -19497,6 +19601,16 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 				key_type:   Type(string_)
 				value_type: Type(int_)
 			})
+		}
+		.comptime_if {
+			take_then := tc.comptime_threads_condition_value(node.value) or {
+				return unknown_type('unresolved compile-time expression condition `${node.value}`')
+			}
+			branch_index := if take_then { 0 } else { 1 }
+			if branch_index >= node.children_count {
+				return Type(void_)
+			}
+			return tc.resolve_type(tc.a.child(&node, branch_index))
 		}
 		.if_expr {
 			return tc.if_expr_tail_type(id)

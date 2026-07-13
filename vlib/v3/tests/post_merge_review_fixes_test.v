@@ -245,6 +245,40 @@ fn test_select_receive_assignment_checks_lhs_type() {
 		'cannot assign `int` to `string`')
 }
 
+fn test_select_compound_receive_assignment_is_rejected() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'select_compound_receive_assign', 'fn main() {
+	ch := chan int{}
+	mut value := 1
+	select {
+		value += <-ch {}
+		else {}
+	}
+	println(int_str(value))
+}
+',
+		'compound receive assignment `+=` is not supported in `select`')
+}
+
+fn test_comptime_if_threads_expression_is_deferred() {
+	v3_bin := build_v3()
+	without_spawn := run_good(v3_bin, 'comptime_threads_expr_without_spawn', 'fn main() {
+	value := $if threads { 41 } $else { 7 }
+	println(int_str(value))
+}
+')
+	assert without_spawn == '7'
+	with_spawn := run_good(v3_bin, 'comptime_threads_expr_with_spawn', 'fn work() {}
+
+fn main() {
+	value := $if threads { 41 } $else { 7 }
+	spawn work()
+	println(int_str(value))
+}
+')
+	assert with_spawn == '41'
+}
+
 fn test_select_exception_branches_flush_defers() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'select_exception_branch_defers', 'import time

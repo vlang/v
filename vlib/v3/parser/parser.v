@@ -2988,6 +2988,13 @@ fn (mut p Parser) parse_comptime_if_expr() flat.NodeId {
 fn (mut p Parser) parse_comptime_if_expr_after_if() flat.NodeId {
 	p.next() // skip if
 	cond := p.parse_comptime_cond()
+	// Whether `threads` is enabled depends on spawn expressions in the completed AST,
+	// so expression branches must be retained for the checker/transformer to select.
+	if comptime_cond_references_var(cond, 'threads') {
+		then_expr := p.parse_comptime_expr_block()
+		else_expr := p.parse_comptime_else_expr()
+		return p.comptime_if_node(cond, then_expr, else_expr)
+	}
 	taken := eval_comptime_cond(p.prefs, cond)
 	if taken {
 		result := p.parse_comptime_expr_block()
@@ -6061,6 +6068,7 @@ fn (mut p Parser) select_branch() flat.NodeId {
 	mut is_else := false
 	mut is_recv_decl := false
 	mut is_recv_assign := false
+	mut recv_compound_op := ''
 	mut cond_ids := []flat.NodeId{}
 	if p.tok == .key_else {
 		is_else = true
@@ -6074,8 +6082,10 @@ fn (mut p Parser) select_branch() flat.NodeId {
 			// stores the lvalue and receive expression as separate branch children.
 			if op == .decl_assign {
 				is_recv_decl = true
-			} else {
+			} else if op == .assign {
 				is_recv_assign = true
+			} else {
+				recv_compound_op = op.str()
 			}
 			p.next()
 			cond_ids << p.expr(.lowest)
@@ -6096,6 +6106,8 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		'recv'
 	} else if is_recv_assign {
 		'recv_assign'
+	} else if recv_compound_op.len > 0 {
+		'recv_compound:${recv_compound_op}'
 	} else {
 		''
 	}

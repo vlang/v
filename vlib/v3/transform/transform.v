@@ -518,7 +518,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 	return Transformer{
 		a:                                a
 		tc:                               unsafe { tc }
-		has_spawn_expr:                   flat_ast_has_spawn(a, tc)
+		has_spawn_expr:                   tc.threads_condition_value()
 		mut_param_values:                 map[string]bool{}
 		pointer_value_lvalues:            map[string]bool{}
 		pointer_value_rvalues:            map[string]bool{}
@@ -541,44 +541,6 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		interface_boxed_types:            map[string]bool{}
 		interface_var_concrete_types:     map[string]string{}
 	}
-}
-
-fn flat_ast_has_spawn(a &flat.FlatAst, tc &types.TypeChecker) bool {
-	if tc.diagnostic_files.len == 0 {
-		for node in a.nodes {
-			if node_kind_id(node) == int(flat.NodeKind.spawn_expr) {
-				return true
-			}
-		}
-		return false
-	}
-	for node in a.nodes {
-		if node.kind != .file || !tc.diagnostic_files[node.value] {
-			continue
-		}
-		for i in 0 .. node.children_count {
-			if flat_subtree_has_spawn(a, a.child(&node, i)) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-fn flat_subtree_has_spawn(a &flat.FlatAst, id flat.NodeId) bool {
-	if int(id) < 0 || int(id) >= a.nodes.len {
-		return false
-	}
-	node := a.nodes[int(id)]
-	if node_kind_id(node) == int(flat.NodeKind.spawn_expr) {
-		return true
-	}
-	for i in 0 .. node.children_count {
-		if flat_subtree_has_spawn(a, a.child(&node, i)) {
-			return true
-		}
-	}
-	return false
 }
 
 fn (mut t Transformer) mark_fn_used_name(name string) {
@@ -3404,6 +3366,9 @@ pub fn (mut t Transformer) transform_expr(id flat.NodeId) flat.NodeId {
 		.block {
 			return t.transform_block_expr(id, node)
 		}
+		.comptime_if {
+			return t.transform_comptime_if_expr(id, node)
+		}
 		.lock_expr {
 			return t.transform_lock_expr(id, node)
 		}
@@ -6223,6 +6188,15 @@ fn (mut t Transformer) transform_comptime_if_stmt(_id flat.NodeId, node flat.Nod
 		return t.transform_stmts(t.a.children_of(&branch))
 	}
 	return t.transform_stmt(branch_id)
+}
+
+fn (mut t Transformer) transform_comptime_if_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	take_then := t.comptime_type_condition_value(node.value) or { return id }
+	branch_index := if take_then { 0 } else { 1 }
+	if branch_index >= node.children_count {
+		return t.make_empty()
+	}
+	return t.transform_expr(t.a.child(&node, branch_index))
 }
 
 fn comptime_condition_matching_paren(s string, start int) int {
