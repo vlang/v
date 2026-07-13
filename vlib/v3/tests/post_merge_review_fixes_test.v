@@ -1990,10 +1990,12 @@ fn main() {
 	println(Holder{
 		ch: ch
 	})
+	println(Holder{})
 }
 ')
 	assert out.contains('chan int{\n    cap: 2, closed: false\n}')
 	assert out.contains('Holder{')
+	assert out.contains('chan int(nil)')
 }
 
 fn test_explicit_return_semicolon_ends_void_return() {
