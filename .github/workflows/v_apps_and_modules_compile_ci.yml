@@ -298,7 +298,7 @@ jobs:
       - name: Clone gitly
         run: v retry -- git clone --depth 1 -b $env:GITLY_BRANCH $env:GITLY_REPO gitly
       - name: Compile gitly CSS
-        uses: gha-utilities/sass-build@v0.4.11
+        uses: gha-utilities/sass-build@v0.6.1
         with:
           source: gitly/static/css/gitly.scss
           destination: gitly/static/css/gitly.css
