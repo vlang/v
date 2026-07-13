@@ -199,6 +199,26 @@ fn main() {
 	assert out == '7'
 }
 
+fn test_is_check_preserves_pointer_sum_variants() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'is_pointer_sum_variant', 'struct Foo {
+	value int
+}
+
+type Item = &Foo | int
+
+fn main() {
+	item := Item(7)
+	if item is &Foo {
+		println("wrong")
+	} else {
+		println("ok")
+	}
+}
+')
+	assert out == 'ok'
+}
+
 fn test_interface_equality_includes_implicit_return_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_implicit_return_box', 'interface IValue {}
@@ -299,6 +319,33 @@ fn main() {
 	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
 	assert same_body.contains('OptionValue*'), same_body
 	assert same_body.contains('ResultValue*'), same_body
+}
+
+fn test_interface_equality_includes_multi_return_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_multi_return_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn make_value() (IValue, int) {
+	return Value{
+		n: 3
+	}, 7
+}
+
+fn main() {
+	value, n := make_value()
+	println(same(value).str())
+	println(int_str(n))
+}
+')
+	assert out == 'true\n7'
 }
 
 fn test_interface_equality_includes_receiver_method_call_boxes() {

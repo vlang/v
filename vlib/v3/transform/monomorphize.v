@@ -671,6 +671,12 @@ fn (mut t Transformer) collect_interface_return_boxes(id flat.NodeId, return_typ
 		return
 	}
 	if node.kind == .return_stmt {
+		if return_types := multi_return_types_from_type(return_type, int(node.children_count)) {
+			for i, expected in return_types {
+				t.collect_interface_boxed_value(t.a.child(&node, i), expected)
+			}
+			return
+		}
 		for i in 0 .. node.children_count {
 			t.collect_interface_boxed_value(t.a.child(&node, i), return_type)
 		}
@@ -708,6 +714,14 @@ fn (t &Transformer) interface_box_type_text_maybe(raw_type string) bool {
 	if clean.starts_with('?') || clean.starts_with('!') {
 		return t.interface_box_type_text_maybe(clean[1..])
 	}
+	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
+		for part in split_generic_args(clean[1..clean.len - 1]) {
+			if t.interface_box_type_text_maybe(part) {
+				return true
+			}
+		}
+		return false
+	}
 	return t.resolve_interface_type_name(clean).len > 0 || clean.starts_with('[]')
 		|| clean.starts_with('[') || clean.starts_with('map[')
 }
@@ -725,6 +739,9 @@ fn interface_box_expected_type(expected types.Type) bool {
 		}
 		types.ResultType {
 			interface_box_expected_type(expected.base_type)
+		}
+		types.MultiReturn {
+			expected.types.any(interface_box_expected_type(it))
 		}
 		types.Array {
 			interface_box_expected_type(expected.elem_type)

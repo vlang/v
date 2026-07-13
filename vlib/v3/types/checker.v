@@ -14274,8 +14274,12 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	}
 	if expr_type is SumType {
 		if node.value.len > 0 {
-			pattern := node.value.trim_left('&')
-			if tc.sum_variant_type_for_pattern(expr_type.name, pattern) == none {
+			mut has_variant := tc.sum_variant_type_for_pattern(expr_type.name, node.value) != none
+			if !has_variant && node.value.starts_with('&') {
+				has_variant = tc.sum_variant_type_for_pattern(expr_type.name,
+					node.value.trim_left('&')) != none
+			}
+			if !has_variant {
 				if tc.should_diagnose(id) {
 					tc.record_error(.condition_mismatch,
 						'`${node.value}` is not a variant of sum type `${expr_type.name}`', id)
