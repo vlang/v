@@ -23,3 +23,19 @@ fn test_should_retry_execution() {
 		output:    'child crashed'
 	})
 }
+
+fn test_add_automatic_execution_retry() {
+	mut details := TestDetails{
+		retry: 2
+	}
+	add_automatic_execution_retry(mut details, os.Result{
+		exit_code: -1
+		output:    'exec("test") failed'
+	})
+	assert details.retry == 3
+	add_automatic_execution_retry(mut details, os.Result{
+		exit_code: 1
+		output:    'test assertion failed'
+	})
+	assert details.retry == 3
+}
