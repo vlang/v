@@ -663,6 +663,13 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		}
 	}
 	logical_args := explicit_args - field_init_args + if field_init_args > 0 { 1 } else { 0 }
+	hidden_ctx_offset := if t.tc.fn_implicit_veb_ctx[call_name]
+		&& params.len - param_offset > logical_args {
+		1
+	} else {
+		0
+	}
+	logical_params := params.len - param_offset - hidden_ctx_offset
 	is_variadic := t.call_is_variadic(call_name)
 	variadic_idx := if is_variadic && params[params.len - 1] is types.Array {
 		params.len - 1
@@ -670,8 +677,8 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 		-1
 	}
 	mut omitted_params_struct := ''
-	if variadic_idx < 0 && params.len - param_offset != logical_args {
-		if params.len - param_offset == logical_args + 1 {
+	if variadic_idx < 0 && logical_params != logical_args {
+		if logical_params == logical_args + 1 {
 			omitted_params_struct = t.params_struct_type_name(params[params.len - 1].name()) or {
 				return
 			}
@@ -679,12 +686,12 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 			return
 		}
 	}
-	if variadic_idx >= 0 && logical_args < variadic_idx - param_offset {
+	if variadic_idx >= 0 && logical_args < variadic_idx - param_offset - hidden_ctx_offset {
 		return
 	}
 	for arg_idx in 0 .. explicit_args {
 		arg_id := t.a.child(&node, arg_idx + 1)
-		param_idx := arg_idx + param_offset
+		param_idx := arg_idx + param_offset + hidden_ctx_offset
 		arg := t.a.nodes[int(arg_id)]
 		if arg.kind == .field_init {
 			if param_idx < params.len {

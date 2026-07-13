@@ -707,6 +707,47 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_interface_equality_includes_veb_handler_call_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_veb_handler_call_box', 'import veb
+
+interface IValue {}
+
+struct Value {
+	n int
+}
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+pub fn (app &App) handler(value IValue) veb.Result {
+	_ = app
+	println(same(value).str())
+	return veb.Result{}
+}
+
+pub fn (app &App) index() veb.Result {
+	app.handler(Value{
+		n: 3
+	})
+	return veb.Result{}
+}
+
+fn main() {
+	mut app := &App{}
+	_ = app.index()
+}
+')
+	assert out == 'true'
+}
+
 fn test_interface_equality_includes_variadic_call_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_variadic_call_boxes', 'interface IValue {}

@@ -1294,6 +1294,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut needs_map_iteration_snapshot := false
 	mut needs_channel_helpers := false
 	mut needs_channel_select_helpers := false
+	mut needs_channel_str_helpers := false
 	mut needs_f32_eq_epsilon := false
 	mut needs_shared_runtime := false
 	mut cur_module := ''
@@ -1342,6 +1343,11 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			.call {
 				if node.children_count > 0 {
 					fn_node := a.child_node(&node, 0)
+					if fn_node.kind == .selector && fn_node.value == 'str'
+						&& fn_node.children_count > 0
+						&& markused_expr_is_channel(a, tc, a.child(fn_node, 0)) {
+						needs_channel_str_helpers = true
+					}
 					if fn_node.kind == .ident
 						&& (fn_node.value == 'error' || fn_node.value == 'error_with_code') {
 						needs_optional_helpers = true
@@ -1363,6 +1369,9 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					if fn_node.kind == .ident
 						&& fn_node.value in ['print', 'println', 'eprint', 'eprintln']
 						&& node.children_count >= 2 {
+						if markused_expr_is_channel(a, tc, a.child(&node, 1)) {
+							needs_channel_str_helpers = true
+						}
 						enqueue_stringified_custom_str_method(a.child(&node, 1), cur_module, tc, mut
 							used, mut queue)
 					}
@@ -1397,8 +1406,12 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 				needs_string_interp_helpers = true
 				needs_string_plus_helper = true
 				for i in 0 .. node.children_count {
-					enqueue_stringified_custom_str_method(a.child(&node, i), cur_module, tc, mut
-						used, mut queue)
+					part_id := a.child(&node, i)
+					if markused_expr_is_channel(a, tc, part_id) {
+						needs_channel_str_helpers = true
+					}
+					enqueue_stringified_custom_str_method(part_id, cur_module, tc, mut used, mut
+						queue)
 				}
 			}
 			.assign {
@@ -1493,6 +1506,11 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			enqueue(helper, mut used, mut queue)
 		}
 	}
+	if needs_channel_str_helpers {
+		for helper in ['string__plus', 'int.str', 'int__str'] {
+			enqueue(helper, mut used, mut queue)
+		}
+	}
 	if needs_f32_eq_epsilon {
 		enqueue('f32.eq_epsilon', mut used, mut queue)
 		enqueue('f32__eq_epsilon', mut used, mut queue)
@@ -1526,6 +1544,21 @@ fn markused_type_is_f32(typ types.Type) bool {
 		return markused_type_is_f32(typ.base_type)
 	}
 	return typ.name() == 'f32'
+}
+
+fn markused_expr_is_channel(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId) bool {
+	typ := tc.expr_type(id) or { tc.resolve_type(id) }
+	return markused_type_is_channel(typ)
+}
+
+fn markused_type_is_channel(typ types.Type) bool {
+	if typ is types.Alias {
+		return markused_type_is_channel(typ.base_type)
+	}
+	if typ is types.Pointer {
+		return markused_type_is_channel(typ.base_type)
+	}
+	return typ is types.Channel
 }
 
 fn markused_type_text_is_channel(raw string) bool {
