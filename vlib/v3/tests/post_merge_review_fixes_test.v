@@ -227,6 +227,28 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
+fn test_interface_equality_includes_container_literal_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_container_literal_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(values []IValue) bool {
+	return values == values
+}
+
+fn main() {
+	values := []IValue{Value{
+		n: 3
+	}}
+	println(same(values).str())
+}
+')
+	assert out == 'true'
+}
+
 fn test_select_receive_assignment_checks_lhs_type() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'select_receive_assign_bool_mismatch', 'fn main() {
@@ -321,6 +343,9 @@ fn test_context_dependent_if_branches_infer_wrapper_types() {
 	opt_out := run_good(v3_bin, 'if_none_branch_infers_option',
 		'fn maybe(flag bool) ?int {\n\treturn if flag { none } else { 3 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n')
 	assert opt_out == '3\n-1'
+	opt_assign_out := run_good(v3_bin, 'if_none_branch_uses_option_assignment_context',
+		'fn main() {\n\tflag := false\n\tmut value := ?int(none)\n\tvalue = if flag { none } else { 8 }\n\tprintln(int_str(value or { -1 }))\n}\n')
+	assert opt_assign_out == '8'
 	res_out := run_good(v3_bin, 'if_error_branch_infers_result',
 		"fn maybe(flag bool) !int {\n\treturn if flag { error('bad') } else { 4 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
 	assert res_out == '4\n-1'

@@ -390,6 +390,8 @@ pub mut:
 	top_level_idx           []int
 	top_level_idx_nodes_len int
 	cur_fn_ret_type         Type = Type(void_)
+	expected_expr_id        int  = -1
+	expected_expr_type      Type = Type(void_)
 	smartcasts              map[string]Type
 	ownership               &OwnershipState = unsafe { nil }
 	selfhost                bool
@@ -2324,6 +2326,61 @@ fn (mut tc TypeChecker) annotate_expected_expr(id flat.NodeId, expected Type) {
 	if _ := fn_type_from_type(expected) {
 		_ = tc.resolve_expr(id, expected)
 	}
+}
+
+fn (mut tc TypeChecker) check_node_with_expected_context(id flat.NodeId, expected Type) {
+	saved_id := tc.expected_expr_id
+	saved_type := tc.expected_expr_type
+	tc.expected_expr_id = int(id)
+	tc.expected_expr_type = expected
+	tc.check_node(id)
+	tc.expected_expr_id = saved_id
+	tc.expected_expr_type = saved_type
+}
+
+fn (tc &TypeChecker) expected_context_for_expr(id flat.NodeId) ?Type {
+	if tc.expected_expr_id >= 0 && tc.expr_is_value_tail_of(flat.NodeId(tc.expected_expr_id), id)
+		&& tc.expected_expr_type !is Void && tc.expected_expr_type !is Unknown {
+		return tc.expected_expr_type
+	}
+	return tc.expr_type(id)
+}
+
+fn (tc &TypeChecker) expr_is_value_tail_of(root_id flat.NodeId, target_id flat.NodeId) bool {
+	if root_id == target_id {
+		return true
+	}
+	if !tc.valid_node_id(root_id) {
+		return false
+	}
+	node := tc.a.nodes[int(root_id)]
+	match node.kind {
+		.paren, .expr_stmt {
+			return node.children_count > 0
+				&& tc.expr_is_value_tail_of(tc.a.child(&node, 0), target_id)
+		}
+		.block, .match_branch, .lock_expr {
+			return node.children_count > 0
+				&& tc.expr_is_value_tail_of(tc.a.child(&node, node.children_count - 1), target_id)
+		}
+		.if_expr, .match_stmt {
+			for i in 1 .. node.children_count {
+				if tc.expr_is_value_tail_of(tc.a.child(&node, i), target_id) {
+					return true
+				}
+			}
+		}
+		.comptime_if {
+			for i in 0 .. node.children_count {
+				if tc.expr_is_value_tail_of(tc.a.child(&node, i), target_id) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
 }
 
 fn (mut tc TypeChecker) annotate_assign_expected_exprs(node flat.Node) {
@@ -7427,6 +7484,17 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
+		explicit_expected := if node.children_count == 2 && node.typ.len > 0 {
+			tc.parse_type(node.typ)
+		} else {
+			Type(void_)
+		}
+		saved_expected_expr_id := tc.expected_expr_id
+		saved_expected_expr_type := tc.expected_expr_type
+		if explicit_expected !is Void {
+			tc.expected_expr_id = int(rhs_id)
+			tc.expected_expr_type = explicit_expected
+		}
 		$if ownership ? {
 			if tc.ownership_should_defer_aggregate_consumption(lhs_id, .assign) {
 				tc.ownership_begin_defer_aggregate_consumption(rhs_id)
@@ -7438,10 +7506,12 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		} $else {
 			tc.check_node(rhs_id)
 		}
+		tc.expected_expr_id = saved_expected_expr_id
+		tc.expected_expr_type = saved_expected_expr_type
 		mut rhs_type := tc.decl_assign_inferred_type(rhs_id)
 		mut expected := rhs_type
-		if node.children_count == 2 && node.typ.len > 0 {
-			expected = tc.parse_type(node.typ)
+		if explicit_expected !is Void {
+			expected = explicit_expected
 			rhs_type = tc.resolve_expr(rhs_id, expected)
 			if !tc.expr_compatible(rhs_id, rhs_type, expected)
 				&& !tc.pointer_value_compatible(rhs_type, expected) {
@@ -8182,13 +8252,13 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		$if ownership ? {
 			if tc.ownership_should_defer_aggregate_consumption(lhs_id, node.op) {
 				tc.ownership_begin_defer_aggregate_consumption(rhs_id)
-				tc.check_node(rhs_id)
+				tc.check_node_with_expected_context(rhs_id, expected_type)
 				tc.ownership_end_defer_aggregate_consumption(rhs_id)
 			} else {
-				tc.check_node(rhs_id)
+				tc.check_node_with_expected_context(rhs_id, expected_type)
 			}
 		} $else {
-			tc.check_node(rhs_id)
+			tc.check_node_with_expected_context(rhs_id, expected_type)
 		}
 		rhs_type := tc.resolve_expr(rhs_id, expected_type)
 		if !tc.assignment_types_compatible(rhs_id, rhs_type, expected_type, node.op) {
@@ -8520,6 +8590,16 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		tc.reject_stored_capturing_fn_literal(tc.a.child(&node, i))
 	}
 	expected := tc.cur_fn_ret_type
+	saved_expected_expr_id := tc.expected_expr_id
+	saved_expected_expr_type := tc.expected_expr_type
+	if node.children_count == 1 {
+		tc.expected_expr_id = int(tc.a.child(&node, 0))
+		tc.expected_expr_type = expected
+	}
+	defer {
+		tc.expected_expr_id = saved_expected_expr_id
+		tc.expected_expr_type = saved_expected_expr_type
+	}
 	if expected is Void {
 		if node.children_count > 0 && tc.should_diagnose(id) {
 			tc.record_error(.return_mismatch, 'void function should not return a value', id)
@@ -13461,13 +13541,13 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 			&& !tc.if_branch_types_compatible(then_type, else_type, tc.branch_tail_is_array_literal(then_id), tc.branch_tail_is_array_literal(else_id)) {
 			then_tail := tc.branch_tail_expr_id(then_id)
 			else_tail := tc.branch_tail_expr_id(else_id)
-			if tc.if_branch_none_compatible(then_type, then_tail, else_type, else_tail) {
+			if tc.if_branch_none_has_option_context(then_type, then_tail, else_type, else_tail) {
 				return
 			}
 			if tc.if_branch_enum_shorthand_compatible(then_type, then_tail, else_type, else_tail) {
 				return
 			}
-			if expected := tc.expr_type(id) {
+			if expected := tc.expected_context_for_expr(id) {
 				branches_match_expected := tc.if_branch_types_compatible_with_expected(then_type,
 					then_tail, else_type, else_tail, expected)
 				if branches_match_expected {
@@ -13483,12 +13563,12 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	}
 }
 
-fn (tc &TypeChecker) if_branch_none_compatible(a Type, a_tail flat.NodeId, b Type, b_tail flat.NodeId) bool {
+fn (tc &TypeChecker) if_branch_none_has_option_context(a Type, a_tail flat.NodeId, b Type, b_tail flat.NodeId) bool {
 	if (a is None || is_option_void_type(a)) && tc.branch_tail_is_none_literal(a_tail) {
-		return b !is Void && b !is Unknown
+		return b is OptionType && b.base_type !is Void
 	}
 	if (b is None || is_option_void_type(b)) && tc.branch_tail_is_none_literal(b_tail) {
-		return a !is Void && a !is Unknown
+		return a is OptionType && a.base_type !is Void
 	}
 	return false
 }
