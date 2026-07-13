@@ -708,6 +708,10 @@ fn (mut t Transformer) make_sum_is_check(expr flat.NodeId, expr_type string, sum
 
 // sum_variant_path supports sum variant path handling for Transformer.
 fn (t &Transformer) sum_variant_path(sum_name string, variant string) []string {
+	resolved_sum := t.resolve_sum_name(t.trim_pointer_type(sum_name))
+	if direct := t.sum_variant_name(resolved_sum, variant) {
+		return [direct]
+	}
 	mut visited := map[string]bool{}
 	return t.sum_variant_path_inner(sum_name, variant, mut visited)
 }
@@ -715,13 +719,6 @@ fn (t &Transformer) sum_variant_path(sum_name string, variant string) []string {
 // sum_variant_path_inner supports sum variant path inner handling for Transformer.
 fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut visited map[string]bool) []string {
 	clean_sum := t.trim_pointer_type(sum_name)
-	for candidate in t.sum_subject_type_candidates(clean_sum) {
-		if !isnil(t.tc) {
-			if resolved := t.tc.sum_variant_type_for_pattern(candidate, variant) {
-				return [resolved]
-			}
-		}
-	}
 	resolved_sum := t.resolve_sum_name(clean_sum)
 	if resolved_sum.len == 0 || resolved_sum in visited {
 		return []string{}

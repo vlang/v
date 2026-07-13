@@ -3675,14 +3675,14 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 			return false
 		}
 	}
-	actual0 := raw_actual0
-	actual_type := if actual0 is types.Alias { actual0.base_type } else { actual0 }
-	if actual_type is types.SumType {
-		return false
-	}
 	sum_name := g.resolve_sum_name(sum_type.name)
-	variant := g.resolve_variant(sum_name, actual_type.name())
 	variants := g.tc.sum_types[sum_name] or { return false }
+	mut actual_type := raw_actual0
+	mut variant := g.resolve_variant(sum_name, actual_type.name())
+	if variant !in variants {
+		actual_type = raw_actual_type
+		variant = g.resolve_variant(sum_name, actual_type.name())
+	}
 	if variant !in variants {
 		return false
 	}

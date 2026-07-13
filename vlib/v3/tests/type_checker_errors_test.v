@@ -1837,3 +1837,10 @@ fn test_pr_review_codegen_batch_twentyeight() {
 		'struct Row__local_make {\n\tglobal int\n}\nfn make() int {\n\tstruct Row {\n\t\tlocal int\n\t}\n\tlocal := Row{\n\t\tlocal: 3\n\t}\n\tglobal := Row__local_make{\n\t\tglobal: 4\n\t}\n\treturn local.local + global.global\n}\nfn main() {\n\tprintln(int_str(make()))\n}\n')
 	assert local_collision == '7'
 }
+
+fn test_if_guard_rejects_or_handled_value() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_if_guard_or_handled_value',
+		'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\tif value := maybe() or { return } {\n\t\tprintln(int_str(value))\n\t}\n}\n',
+		'if guard expression must be optional or result')
+}

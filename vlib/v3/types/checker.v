@@ -6527,6 +6527,23 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, 1))
 		}
 	}
+	if node.kind == .infix && node.op == .logical_and && node.children_count >= 2 {
+		lhs_id := tc.a.child(&node, 0)
+		rhs_id := tc.a.child(&node, 1)
+		smartcasts := tc.extract_smartcasts(lhs_id)
+		if smartcasts.len > 0 {
+			tc.check_node(lhs_id)
+			saved_smartcasts := clone_smartcasts(tc.smartcasts)
+			for sc in smartcasts {
+				if valid_string_data(sc.name) {
+					tc.smartcasts[sc.name] = sc.typ
+				}
+			}
+			tc.check_node(rhs_id)
+			tc.smartcasts = clone_smartcasts(saved_smartcasts)
+			return
+		}
+	}
 
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
@@ -13456,7 +13473,7 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 	if cond.kind == .infix && cond.op == .logical_and && cond.children_count >= 2 {
 		lhs_id := tc.a.child(&cond, 0)
 		rhs_id := tc.a.child(&cond, 1)
-		tc.check_bool_condition(lhs_id)
+		mut bindings := tc.check_condition(lhs_id)
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
 		for sc in tc.extract_smartcasts(lhs_id) {
 			if valid_string_data(sc.name) {
@@ -13464,8 +13481,9 @@ fn (mut tc TypeChecker) check_condition(cond_id flat.NodeId) []LocalBinding {
 			}
 		}
 		rhs_bindings := tc.check_condition(rhs_id)
+		bindings << rhs_bindings
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)
-		return rhs_bindings
+		return bindings
 	}
 	tc.check_bool_condition(cond_id)
 	return []LocalBinding{}
@@ -13498,7 +13516,7 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 	} else {
 		rhs := tc.a.nodes[int(rhs_id)]
 		if rhs.kind == .index && rhs.children_count > 0 {
-			base_type := unwrap_pointer(tc.resolve_type(tc.a.child(&rhs, 0)))
+			base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&rhs, 0)))
 			if base_type is Map {
 				payload = base_type.value_type
 			} else if base_type is Array {
@@ -13655,6 +13673,12 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 				}
 				tc.smartcasts[subject_key] = tc.parse_type(smartcast_type)
 			}
+		} else if subject_key.len > 0 && valid_string_data(subject_key) && n_conds > 1
+			&& subject_type is SumType {
+			for sc in tc.multi_match_common_field_smartcasts(subject_type, branch, n_conds,
+				subject_key) {
+				tc.smartcasts[sc.name] = sc.typ
+			}
 		}
 		tc.push_scope()
 		tc.check_statement_sequence(branch, n_conds, value_context)
@@ -13670,6 +13694,45 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 		}
 		tc.ownership_end_branch_group()
 	}
+}
+
+fn (tc &TypeChecker) multi_match_common_field_smartcasts(subject SumType, branch &flat.Node, n_conds int, subject_key string) []LocalBinding {
+	mut common := []LocalBinding{}
+	for i in 0 .. n_conds {
+		cond := tc.a.node(tc.a.child(branch, i))
+		pattern := tc.match_type_pattern(cond) or { return []LocalBinding{} }
+		variant_name := tc.sum_variant_type_for_pattern(subject.name, pattern) or {
+			return []LocalBinding{}
+		}
+		variant_type := unalias_type(tc.parse_type(variant_name))
+		if variant_type !is Struct {
+			return []LocalBinding{}
+		}
+		variant := variant_type as Struct
+		if i == 0 {
+			for field in tc.structs[variant.name] or { return []LocalBinding{} } {
+				common << LocalBinding{
+					name: '${subject_key}.${field.name}'
+					typ:  field.typ
+				}
+			}
+			continue
+		}
+		mut intersection := []LocalBinding{cap: common.len}
+		for candidate in common {
+			field_name := candidate.name.all_after_last('.')
+			field_type := tc.struct_field_type(variant.name, field_name) or { continue }
+			if tc.type_compatible(field_type, candidate.typ)
+				&& tc.type_compatible(candidate.typ, field_type) {
+				intersection << candidate
+			}
+		}
+		common = intersection.clone()
+		if common.len == 0 {
+			break
+		}
+	}
+	return common
 }
 
 fn (tc &TypeChecker) resolve_interface_match_pattern(pattern string) ?string {
@@ -14589,7 +14652,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 					continue
 				}
 				tc.check_node(bound_id)
-				bound_type := tc.resolve_type(bound_id)
+				bound_type := unalias_type(tc.resolve_type(bound_id))
 				if bound_type !is Unknown && !bound_type.is_integer() {
 					tc.type_mismatch(.cannot_index,
 						'slice bound must be integer, not `${bound_type.name()}`', bound_id)
@@ -14621,7 +14684,7 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 			tc.register_synth_type(id, base_type.value_type)
 			return
 		}
-		index_type := tc.resolve_type(index_id)
+		index_type := unalias_type(tc.resolve_type(index_id))
 		if index_type !is Unknown && !index_type.is_integer() {
 			tc.type_mismatch(.cannot_index, 'index must be integer, not `${index_type.name()}`',
 				index_id)
@@ -17318,6 +17381,13 @@ fn (tc &TypeChecker) sum_has_variant(sum_name string, variant_name string) bool 
 }
 
 pub fn (tc &TypeChecker) sum_variant_type_for_pattern(sum_name string, variant_name string) ?string {
+	return tc.sum_variant_type_for_pattern_depth(sum_name, variant_name, 0)
+}
+
+fn (tc &TypeChecker) sum_variant_type_for_pattern_depth(sum_name string, variant_name string, depth int) ?string {
+	if depth >= 16 {
+		return none
+	}
 	base := tc.sum_base_name(sum_name)
 	variants := tc.sum_types[base] or { return none }
 	mut candidates := [variant_name]
@@ -17354,7 +17424,7 @@ pub fn (tc &TypeChecker) sum_variant_type_for_pattern(sum_name string, variant_n
 				return candidate
 			}
 		}
-		if nested := tc.nested_sum_variant_type_for_pattern(concrete, candidates) {
+		if nested := tc.nested_sum_variant_type_for_pattern(concrete, candidates, depth) {
 			return nested
 		}
 	}
@@ -17399,7 +17469,7 @@ fn (tc &TypeChecker) alias_target_type_text(name string) ?string {
 	return none
 }
 
-fn (tc &TypeChecker) nested_sum_variant_type_for_pattern(concrete string, candidates []string) ?string {
+fn (tc &TypeChecker) nested_sum_variant_type_for_pattern(concrete string, candidates []string, depth int) ?string {
 	typ := tc.parse_type(concrete)
 	nested_name := if typ is SumType {
 		typ.name
@@ -17408,11 +17478,11 @@ fn (tc &TypeChecker) nested_sum_variant_type_for_pattern(concrete string, candid
 	} else {
 		''
 	}
-	if nested_name.len == 0 || nested_name == concrete {
+	if nested_name.len == 0 {
 		return none
 	}
 	for candidate in candidates {
-		if nested := tc.sum_variant_type_for_pattern(nested_name, candidate) {
+		if nested := tc.sum_variant_type_for_pattern_depth(nested_name, candidate, depth + 1) {
 			return nested
 		}
 	}

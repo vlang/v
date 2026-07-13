@@ -88,7 +88,7 @@ fn detect_vroot_from(start string) string {
 
 // get_vlib_module_path returns get vlib module path data for Preferences.
 pub fn (p &Preferences) get_vlib_module_path(mod string) string {
-	mod_path := mod.replace('.', os.path_separator)
+	mod_path := vlib_module_path(mod)
 	return os.join_path_single(os.join_path_single(p.vroot, 'vlib'), mod_path)
 }
 
@@ -132,7 +132,22 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		}
 		current_dir = parent_dir
 	}
+	// 5. temporary compatibility path for the in-tree v2 modules. Keep this last
+	// so a project or dependency named `v2` is not shadowed by the vlib shim.
+	vlib_compat_path := p.get_vlib_module_path(mod)
+	if vlib_compat_path != vlib_path && dir_is_module(vlib_compat_path) {
+		return vlib_compat_path
+	}
 	return ''
+}
+
+// vlib_module_path maps an import name to its directory below vlib.
+fn vlib_module_path(mod string) string {
+	mut parts := mod.split('.')
+	if parts.len > 0 && parts[0] == 'v2' {
+		parts[0] = 'v2_toberemoved'
+	}
+	return parts.join(os.path_separator)
 }
 
 // dir_is_module reports whether `dir` is a usable module directory: it must exist
