@@ -563,8 +563,26 @@ fn (t &Transformer) interface_dispatch_short_name_allowed(iface_name string) boo
 
 fn (mut t Transformer) interface_boxed_type_used(iface_name string, concrete_type string) bool {
 	t.collect_interface_boxed_types()
-	return t.interface_boxed_types[interface_boxed_type_key(iface_name, concrete_type)]
-		|| t.interface_boxed_types[interface_boxed_type_key(iface_name, c_name(concrete_type))]
+	return t.interface_boxed_type_marked(iface_name, concrete_type)
+}
+
+fn (t &Transformer) interface_boxed_type_marked(iface_name string, concrete_type string) bool {
+	mut iface_names := [iface_name]
+	short_name := iface_name.all_after_last('.')
+	if short_name != iface_name {
+		iface_names << short_name
+	}
+	resolved := t.resolve_interface_type_name(iface_name)
+	if resolved.len > 0 && resolved != iface_name {
+		iface_names << resolved
+	}
+	for iface in iface_names {
+		if t.interface_boxed_types[interface_boxed_type_key(iface, concrete_type)]
+			|| t.interface_boxed_types[interface_boxed_type_key(iface, c_name(concrete_type))] {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) collect_interface_boxed_types() {
@@ -572,7 +590,52 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 		return
 	}
 	t.interface_boxed_types_done = true
-	for node in t.a.nodes {
+	for idx, node in t.a.nodes {
+		if node.kind == .cast_expr && node.children_count == 1 {
+			iface_name := t.resolve_interface_type_name(node.value)
+			if iface_name.len > 0 {
+				arg_id := t.a.child(&node, 0)
+				actual := t.tc.expr_type(arg_id) or { t.tc.resolve_type(arg_id) }
+				arg := t.a.nodes[int(arg_id)]
+				actual_name := if actual.name() in ['', 'unknown'] && arg.kind == .struct_init {
+					arg.value
+				} else {
+					actual.name()
+				}
+				if actual_name.len > 0 && t.resolve_interface_type_name(actual_name).len == 0 {
+					t.mark_interface_boxed_type(iface_name, t.trim_pointer_type(actual_name))
+				}
+			}
+		}
+		if node.kind == .call && node.children_count > 1 {
+			mut call_name := t.tc.resolved_call_name(flat.NodeId(idx)) or { '' }
+			if call_name.len == 0 {
+				callee := t.a.child_node(&node, 0)
+				if callee.kind == .ident {
+					call_name = callee.value
+				}
+			}
+			params := t.tc.fn_param_types_for_name(call_name)
+			if params.len == int(node.children_count) - 1 {
+				for i, expected in params {
+					iface_name := t.resolve_interface_type_name(expected.name())
+					if iface_name.len == 0 {
+						continue
+					}
+					arg_id := t.a.child(&node, i + 1)
+					actual := t.tc.expr_type(arg_id) or { t.tc.resolve_type(arg_id) }
+					arg := t.a.nodes[int(arg_id)]
+					actual_name := if actual.name() in ['', 'unknown'] && arg.kind == .struct_init {
+						arg.value
+					} else {
+						actual.name()
+					}
+					if actual_name.len > 0 && t.resolve_interface_type_name(actual_name).len == 0 {
+						t.mark_interface_boxed_type(iface_name, t.trim_pointer_type(actual_name))
+					}
+				}
+			}
+		}
 		if node.kind != .struct_init || node.children_count == 0 {
 			continue
 		}
@@ -603,8 +666,15 @@ fn (mut t Transformer) mark_interface_boxed_type(iface_name string, concrete_typ
 	if iface_name.len == 0 || concrete_type.len == 0 {
 		return
 	}
-	t.interface_boxed_types[interface_boxed_type_key(iface_name, concrete_type)] = true
-	t.interface_boxed_types[interface_boxed_type_key(iface_name, c_name(concrete_type))] = true
+	mut iface_names := [iface_name]
+	resolved := t.resolve_interface_type_name(iface_name)
+	if resolved.len > 0 && resolved != iface_name {
+		iface_names << resolved
+	}
+	for iface in iface_names {
+		t.interface_boxed_types[interface_boxed_type_key(iface, concrete_type)] = true
+		t.interface_boxed_types[interface_boxed_type_key(iface, c_name(concrete_type))] = true
+	}
 }
 
 fn interface_boxed_type_key(iface_name string, concrete_type string) string {

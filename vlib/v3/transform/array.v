@@ -194,7 +194,7 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 		}
 	}
 	new_call := t.make_array_new_call(elem_type, len_expr, cap_expr)
-	if node.children_count == 0 && t.normalize_type_alias(elem_type).starts_with('&') {
+	if node.children_count == 0 {
 		return new_call
 	}
 	if int(init_expr_id) < 0 {
@@ -261,6 +261,9 @@ fn (mut t Transformer) make_struct_runtime_default_value_guarded(struct_type str
 	// is; expanding it would build `(T*){<struct defaults>}` — invalid C
 	// (lookup_struct_info resolves `&mod.T` texts through its direct fallback).
 	if struct_type.starts_with('&') {
+		return none
+	}
+	if t.resolve_sum_name(struct_type) in t.sum_types {
 		return none
 	}
 	// Name lookups can resolve cycles (e.g. same-named types across modules), so guard

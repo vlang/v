@@ -2679,6 +2679,10 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		}
 		return t.make_string_literal('thread(${payload})')
 	}
+	if clean_typ.starts_with('chan ') {
+		return t.make_call_typed('v3_chan_str', arr2(expr,
+			t.make_string_literal(clean_typ[5..].trim_space())), 'string')
+	}
 	if is_ref {
 		expr_node := t.a.nodes[int(expr)]
 		if expr_node.kind == .ident && t.string_interp_needs_value_read(expr_node.value, typ) {
@@ -2714,7 +2718,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		if known_str {
 			return t.make_call_typed(str_key, arr1(expr), 'string')
 		}
-		return t.make_string_literal('${iface_name.all_after_last('.')}{}')
+		return t.lower_interface_auto_str(expr, iface_name)
 	}
 	match clean_typ {
 		'bool' {
@@ -2807,6 +2811,42 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			}
 		}
 	}
+}
+
+fn (mut t Transformer) lower_interface_auto_str(expr flat.NodeId, iface_name string) flat.NodeId {
+	display_name := iface_name.all_after_last('.')
+	if isnil(t.tc) {
+		return t.make_string_literal('${display_name}{}')
+	}
+	value := t.stable_transformed_expr_for_reuse(expr, iface_name, 'iface_str')
+	result_name := t.new_temp('iface_str')
+	t.pending_stmts << t.make_decl_assign_typed(result_name,
+		t.make_string_literal('${display_name}{}'), 'string')
+	tag := t.make_selector(value, '_typ', 'int')
+	impl_names := if t.is_builtin_ierror_interface_name(iface_name) {
+		t.tc.ierror_impl_names()
+	} else {
+		t.tc.interface_impl_names(iface_name)
+	}
+	for impl_name in impl_names {
+		if !t.interface_boxed_type_marked(iface_name, impl_name) {
+			continue
+		}
+		type_id := t.interface_impl_type_id(iface_name, impl_name) or { continue }
+		object := t.make_cast('&${impl_name}', t.make_selector(value, '_object', 'voidptr'),
+			'&${impl_name}')
+		concrete := t.make_prefix(.mul, object)
+		t.set_node_typ(int(concrete), impl_name)
+		inner := t.wrap_string_conversion(concrete, impl_name)
+		wrapped := t.string_plus(t.string_plus(t.make_string_literal('${display_name}('), inner),
+			t.make_string_literal(')'))
+		assign := t.make_assign(t.make_ident(result_name), wrapped)
+		cond := t.make_infix(.eq, tag, t.make_int_literal(type_id))
+		t.pending_stmts << t.make_if(cond, t.make_block(arr1(assign)), t.make_empty())
+	}
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), 'string')
+	return result
 }
 
 // lower_ref_str stringifies a `&Struct`/`&SumType` pointer with the same semantics V uses

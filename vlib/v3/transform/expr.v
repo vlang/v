@@ -428,7 +428,11 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 				}
 				return err_eq
 			}
-			return none
+			eq := t.make_interface_semantic_eq_expr(lhs, rhs, iface, []string{})
+			if node.op == .ne {
+				return t.make_prefix(.not, eq)
+			}
+			return eq
 		}
 	}
 	lhs_value := t.stable_transformed_expr_for_reuse(lhs, iface, 'iface_eq_lhs')
@@ -1799,7 +1803,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		return t.make_sum_semantic_eq_expr(lhs, rhs, clean, seen)
 	}
 	if t.is_interface_type(clean) {
-		return t.make_memcmp_eq_expr(lhs, rhs, clean, 'iface_eq')
+		return t.make_interface_semantic_eq_expr(lhs, rhs, clean, seen)
 	}
 	struct_type := t.struct_lookup_name(clean)
 	if struct_type.len > 0 {
@@ -2106,6 +2110,9 @@ fn (t &Transformer) type_needs_semantic_eq(typ string) bool {
 	if t.is_optional_type_name(clean) {
 		return true
 	}
+	if t.is_interface_type(clean) {
+		return true
+	}
 	if t.struct_lookup_name(clean).len > 0 {
 		return true
 	}
@@ -2249,12 +2256,6 @@ fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 
 fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, struct_type string, seen []string) ?flat.NodeId {
 	info := t.lookup_struct_info(struct_type) or { return none }
-	for field in info.fields {
-		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
-		if t.struct_field_eq_type_has_interface_value(field_type) {
-			return none
-		}
-	}
 	mut next_seen := seen.clone()
 	next_seen << struct_type
 	mut eq := flat.empty_node
@@ -2275,15 +2276,41 @@ fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs 
 	return eq
 }
 
-fn (t &Transformer) struct_field_eq_type_has_interface_value(typ string) bool {
-	mut clean := t.normalize_type_alias(typ).trim_space()
-	if clean.len == 0 || clean.starts_with('&') {
-		return false
+fn (mut t Transformer) make_interface_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, interface_type string, seen []string) flat.NodeId {
+	iface := t.resolve_interface_type_name(interface_type)
+	if iface.len == 0 || isnil(t.tc) {
+		return t.make_memcmp_eq_expr(lhs, rhs, interface_type, 'iface_eq')
 	}
-	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {
-		return t.struct_field_eq_type_has_interface_value(clean[1..])
+	lhs_value := t.stable_transformed_expr_for_reuse(lhs, iface, 'iface_eq_lhs')
+	rhs_value := t.stable_transformed_expr_for_reuse(rhs, iface, 'iface_eq_rhs')
+	lhs_typ := t.make_selector(lhs_value, '_typ', 'int')
+	rhs_typ := t.make_selector(rhs_value, '_typ', 'int')
+	type_eq := t.make_infix(.eq, lhs_typ, rhs_typ)
+	mut payload_eq := t.make_infix(.eq, lhs_typ, t.make_int_literal(0))
+	impl_names := if t.is_builtin_ierror_interface_name(iface) {
+		t.tc.ierror_impl_names()
+	} else {
+		t.tc.interface_impl_names(iface)
 	}
-	return t.resolve_interface_type_name(clean).len > 0
+	for impl_name in impl_names {
+		if !t.interface_boxed_type_marked(iface, impl_name) {
+			continue
+		}
+		type_id := t.interface_impl_type_id(iface, impl_name) or { continue }
+		lhs_object := t.make_cast('&${impl_name}',
+			t.make_selector(lhs_value, '_object', 'voidptr'), '&${impl_name}')
+		rhs_object := t.make_cast('&${impl_name}',
+			t.make_selector(rhs_value, '_object', 'voidptr'), '&${impl_name}')
+		lhs_concrete := t.make_prefix(.mul, lhs_object)
+		rhs_concrete := t.make_prefix(.mul, rhs_object)
+		t.set_node_typ(int(lhs_concrete), impl_name)
+		t.set_node_typ(int(rhs_concrete), impl_name)
+		value_eq := t.make_membership_eq_expr_with_seen(lhs_concrete, rhs_concrete, impl_name, seen)
+		case_eq := t.make_infix(.logical_and, t.make_infix(.eq, lhs_typ,
+			t.make_int_literal(type_id)), value_eq)
+		payload_eq = t.make_infix(.logical_or, payload_eq, case_eq)
+	}
+	return t.make_infix(.logical_and, type_eq, payload_eq)
 }
 
 // selector_field_type supports selector field type handling for Transformer.
