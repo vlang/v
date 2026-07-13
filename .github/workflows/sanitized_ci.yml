@@ -287,12 +287,38 @@ jobs:
         run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=memory)
         run: ./v -cflags -fsanitize=memory -silent test-self -msan-compiler vlib
+
+  sanitize-memory-clang-compiler:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 300
+    env:
+      VFLAGS: -cc clang -gc none -cflags -fno-omit-frame-pointer
+      VJOBS: 1
+      VNATIVE_SKIP_LIBC_VV: 1
+      VTEST_SHOW_LONGEST_BY_RUNTIME: 3
+      VTEST_SHOW_LONGEST_BY_COMPTIME: 3
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/cache-apt-packages-action
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
+          ./v retry -- sudo apt install clang
+      - name: Recompile V with clang and -cstrict
+        run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Test vlib/v/tests/ (V compiled with -fsanitize=memory)
         run: |
-          ./v -cflags -fsanitize=memory -o v cmd/v
-          ./v -cc tcc -silent test-self -msan-compiler vlib/v/tests/
+          # Preserve existing `// vtest build: !sanitize-memory-clang` exclusions.
+          GITHUB_JOB=sanitize-memory-clang ./v -cflags -fsanitize=memory -o v cmd/v
+          GITHUB_JOB=sanitize-memory-clang ./v -cc tcc -silent test-self -msan-compiler vlib/v/tests/
       - name: Build examples (V compiled with -fsanitize=memory)
-        run: ./v -silent build-examples
+        run: GITHUB_JOB=sanitize-memory-clang ./v -silent build-examples
 
   sanitize-address-clang-without-gc:
     runs-on: ubuntu-22.04
