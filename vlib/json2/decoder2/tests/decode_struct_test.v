@@ -60,6 +60,11 @@ struct StructWithNestedChild {
 	name  string
 }
 
+struct StructWithJsonAliases {
+	first_name string @[json: firstName]
+	last_name  string @[json: 'lastName']
+}
+
 fn test_types() {
 	assert json.decode[StructType[string]]('{"val": ""}')!.val == ''
 
@@ -147,4 +152,15 @@ fn test_nested_struct_does_not_skip_next_sibling() {
 	}, NestedChild{
 		id: 2
 	}]
+}
+
+fn test_struct_json_field_aliases() {
+	user := json.decode[StructWithJsonAliases]('{"firstName":"Ada","lastName":"Lovelace"}')!
+	assert user == StructWithJsonAliases{
+		first_name: 'Ada'
+		last_name:  'Lovelace'
+	}
+
+	escaped_key := json.decode[StructWithJsonAliases](r'{"first\u004eame":"Grace"}')!
+	assert escaped_key.first_name == 'Grace'
 }

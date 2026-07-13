@@ -674,7 +674,19 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 				mut field_matched := false
 
 				$for field in T.fields {
-					if key == field.name {
+					mut json_field_name := field.name
+					mut is_json_skip := false
+					for attr in field.attrs {
+						if json_name := json_attr_value(attr) {
+							if json_name == '-' {
+								is_json_skip = true
+							} else if json_name != '' {
+								json_field_name = json_name
+							}
+							break
+						}
+					}
+					if !is_json_skip && key == json_field_name {
 						field_matched = true
 						$if field.typ is $option {
 							if decoder.current_node.value.value_kind == .null {
@@ -892,6 +904,18 @@ fn get_value_kind(value u8) ValueKind {
 
 fn create_value_from_optional[T](val ?T) T {
 	return T{}
+}
+
+fn json_attr_value(attr string) ?string {
+	if !attr.starts_with('json:') {
+		return none
+	}
+	mut value := attr[5..].trim_space()
+	if value.len > 1 && ((value[0] == `'` && value[value.len - 1] == `'`)
+		|| (value[0] == `"` && value[value.len - 1] == `"`)) {
+		value = value[1..value.len - 1]
+	}
+	return value
 }
 
 const max_integer_number_digits = 20
