@@ -11348,6 +11348,38 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	// with the ctx (route dispatch) and without it (handler delegation).
 	ctx_count := if info.has_implicit_veb_ctx { 1 } else { 0 }
 	ctx_omitted := ctx_count > 0 && actual_count < info.params.len
+	if field_init_args > 0 && tc.should_diagnose(id) {
+		// Trailing `key: value` args collapse into one struct argument; reject
+		// them against a parameter that cannot take a struct literal (e.g. a
+		// non-variadic `[]Point`), which cgen would otherwise zero-initialize.
+		mut first_field := -1
+		for i in 1 + info.arg_offset .. node.children_count {
+			if tc.a.child_node(&node, i).kind == .field_init {
+				first_field = i
+				break
+			}
+		}
+		if first_field >= 0 {
+			arg_shift := if ctx_omitted { ctx_count } else { 0 }
+			param_idx := first_field - 1 - info.arg_offset + recv_extra + arg_shift
+			if param_idx >= 0 && param_idx < info.params.len {
+				is_variadic_slot := info.is_variadic && param_idx == info.params.len - 1
+				mut target := info.params[param_idx]
+				if is_variadic_slot {
+					if target is Array {
+						target = target.elem_type
+					}
+				}
+				clean_target := if target is Alias { target.base_type } else { target }
+				if clean_target is Array || clean_target is ArrayFixed || clean_target is Map
+					|| clean_target is String || clean_target is Primitive {
+					tc.record_error(.call_arg_mismatch,
+						'cannot use `key: value` arguments as `${info.params[param_idx].name()}` in call to `${tc.call_display_name(node)}`',
+						id)
+				}
+			}
+		}
+	}
 	min_count := tc.min_required_arg_count(info) - ctx_count
 	if actual_count < min_count || (!info.is_variadic && actual_count > info.params.len) {
 		if tc.should_diagnose(id) {

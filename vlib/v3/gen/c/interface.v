@@ -1057,13 +1057,34 @@ fn (g &FlatGen) interface_dispatch_target_short_name_is_unambiguous(short_name s
 fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
 	mut resolved_sum := sum_name
 	if resolved_sum !in g.tc.sum_types && resolved_sum.contains('.') {
-		// Import-aliased sum name (`tast.Value` for module `sub.tast`): match
-		// the registered key by short name.
-		short_sum := resolved_sum.all_after_last('.')
+		// Import-aliased sum name (`tast.Value` for module `sub.tast`):
+		// prefer a full-suffix match; fall back to the bare short name only
+		// when it identifies exactly one sum type.
+		suffix := '.' + resolved_sum
+		mut suffix_match := ''
 		for key, _ in g.tc.sum_types {
-			if key == short_sum || key.all_after_last('.') == short_sum {
-				resolved_sum = key
+			if key.ends_with(suffix) {
+				suffix_match = key
 				break
+			}
+		}
+		if suffix_match.len > 0 {
+			resolved_sum = suffix_match
+		} else {
+			short_sum := resolved_sum.all_after_last('.')
+			mut short_match := ''
+			mut ambiguous := false
+			for key, _ in g.tc.sum_types {
+				if key == short_sum || key.all_after_last('.') == short_sum {
+					if short_match.len > 0 && short_match != key {
+						ambiguous = true
+						break
+					}
+					short_match = key
+				}
+			}
+			if !ambiguous && short_match.len > 0 {
+				resolved_sum = short_match
 			}
 		}
 	}

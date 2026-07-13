@@ -710,12 +710,21 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		arg_node := t.a.nodes[int(arg_id)]
 		param_type := if param_idx < params.len { params[param_idx].name() } else { '' }
 		if arg_node.kind == .field_init {
-			if packed_arg := t.transform_params_struct_call_arg(node, i, param_type) {
+			// Trailing `key: value` args against the variadic `...Struct` slot
+			// (surfacing as `[]Struct`) desugar to one element of the elem
+			// struct type; a non-variadic `[]Struct` param must not collapse.
+			struct_param_type := if variadic_idx >= 0 && param_idx == variadic_idx
+				&& param_type.starts_with('[]') {
+				param_type[2..]
+			} else {
+				param_type
+			}
+			if packed_arg := t.transform_params_struct_call_arg(node, i, struct_param_type) {
 				new_children << packed_arg
 				i = t.next_non_field_init_arg(node, i)
 				continue
 			}
-			if packed_arg := t.transform_struct_call_arg(node, i, param_type) {
+			if packed_arg := t.transform_struct_call_arg(node, i, struct_param_type) {
 				new_children << packed_arg
 				i = t.next_non_field_init_arg(node, i)
 				continue
@@ -868,14 +877,6 @@ fn (t &Transformer) struct_arg_type_name(param_type string) ?string {
 	if typ.starts_with('&') {
 		return none
 	}
-	// Trailing `key: value` args against a variadic `...Struct` param (surfacing
-	// here as `[]Struct`) desugar to one element of the elem struct type.
-	if typ.starts_with('...') {
-		typ = typ[3..]
-	}
-	if typ.starts_with('[]') {
-		typ = typ[2..]
-	}
 	typ = t.normalize_type_alias(typ)
 	if _ := t.lookup_struct_info(typ) {
 		return typ
@@ -904,12 +905,6 @@ fn (t &Transformer) params_struct_type_name(param_type string) ?string {
 	mut typ := param_type
 	if typ.starts_with('&') {
 		typ = typ[1..]
-	}
-	if typ.starts_with('...') {
-		typ = typ[3..]
-	}
-	if typ.starts_with('[]') {
-		typ = typ[2..]
 	}
 	if info := t.lookup_struct_info(typ) {
 		if info.is_params {
@@ -1400,7 +1395,20 @@ fn (t &Transformer) call_is_variadic(call_name string) bool {
 	if t.tc.c_variadic_fns[call_name] {
 		return false
 	}
-	return t.tc.fn_variadic[call_name] or { false }
+	if is_variadic := t.tc.fn_variadic[call_name] {
+		return is_variadic
+	}
+	// Import-aliased call names (`http.new_header` for module `net.http`)
+	// register under the full module path; match by suffix.
+	if call_name.contains('.') {
+		suffix := '.' + call_name
+		for key, is_variadic in t.tc.fn_variadic {
+			if key.ends_with(suffix) {
+				return is_variadic
+			}
+		}
+	}
+	return false
 }
 
 // call_param_type_name updates call param type name state for Transformer.
@@ -7370,12 +7378,18 @@ fn (mut t Transformer) transform_receiver_method_args_with_base(node flat.Node, 
 		arg_node := t.a.nodes[int(arg_id)]
 		param_type := if param_idx < params.len { params[param_idx].name() } else { '' }
 		if arg_node.kind == .field_init {
-			if packed_arg := t.transform_params_struct_call_arg(node, i, param_type) {
+			struct_param_type := if variadic_idx >= 0 && param_idx == variadic_idx
+				&& param_type.starts_with('[]') {
+				param_type[2..]
+			} else {
+				param_type
+			}
+			if packed_arg := t.transform_params_struct_call_arg(node, i, struct_param_type) {
 				args << packed_arg
 				i = t.next_non_field_init_arg(node, i)
 				continue
 			}
-			if packed_arg := t.transform_struct_call_arg(node, i, param_type) {
+			if packed_arg := t.transform_struct_call_arg(node, i, struct_param_type) {
 				args << packed_arg
 				i = t.next_non_field_init_arg(node, i)
 				continue
