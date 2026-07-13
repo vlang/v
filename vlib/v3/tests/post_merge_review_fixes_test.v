@@ -1875,6 +1875,41 @@ fn main() {
 	assert out == '7'
 }
 
+fn test_select_receive_declaration_shadows_outer_smartcast_only_in_branch() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_decl_shadows_smartcast', 'struct Foo {
+	value int
+}
+
+struct Bar {
+	value int
+}
+
+type Item = Bar | Foo
+
+fn main() {
+	item := Item(Foo{
+		value: 1
+	})
+	ch := chan Item{cap: 1}
+	ch <- Item(Bar{
+		value: 2
+	})
+	if item is Foo {
+		select {
+			item := <-ch {
+				if item is Bar {
+					println(int_str(item.value))
+				}
+			}
+		}
+		println(int_str(item.value))
+	}
+}
+')
+	assert out == '2\n1'
+}
+
 fn test_select_exception_branches_flush_defers() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'select_exception_branch_defers', 'import time

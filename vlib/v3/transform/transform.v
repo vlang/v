@@ -6746,6 +6746,26 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId) flat.NodeId {
 			body_start = 2
 		}
 	}
+	mut bound_name := ''
+	mut saved_var_types := []VarTypeBinding{}
+	mut saved_smartcasts := []SmartcastContext{}
+	mut saved_invalidated := map[string]bool{}
+	if branch.value == 'recv' && body_start == 2 {
+		lhs_id := t.a.child(&branch, 0)
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
+			bound_name = lhs.value
+			saved_var_types = t.var_types.clone()
+			if t.smartcast_stack.len > 0 {
+				remaining_smartcasts := smartcasts_without_binding(t.smartcast_stack, bound_name)
+				if remaining_smartcasts.len < t.smartcast_stack.len {
+					saved_smartcasts = t.smartcast_stack.clone()
+					saved_invalidated = t.invalidated_smartcasts.clone()
+					t.smartcast_stack = remaining_smartcasts
+				}
+			}
+		}
+	}
 	mut children := []flat.NodeId{cap: int(branch.children_count)}
 	for i in 0 .. body_start {
 		child_id := t.a.child(&branch, i)
@@ -6760,14 +6780,10 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId) flat.NodeId {
 	if branch.value == 'recv_assign' && body_start == 2 {
 		t.invalidate_smartcast_for_lvalue(t.a.child(&branch, 0))
 	}
-	mut bound_name := ''
-	mut saved_var_types := []VarTypeBinding{}
-	if branch.value == 'recv' && branch.children_count >= 2 {
+	if bound_name.len > 0 {
 		lhs_id := t.a.child(&branch, 0)
 		lhs := t.a.nodes[int(lhs_id)]
-		if lhs.kind == .ident && lhs.value.len > 0 {
-			bound_name = lhs.value
-			saved_var_types = t.var_types.clone()
+		if lhs.kind == .ident {
 			recv_id := t.a.child(&branch, 1)
 			mut recv_type := t.node_type(recv_id)
 			if recv_type.len == 0 {
@@ -6807,6 +6823,9 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId) flat.NodeId {
 	}
 	if bound_name.len > 0 {
 		t.restore_var_types(saved_var_types)
+		if saved_smartcasts.len > 0 {
+			t.restore_shadowed_smartcast_state(bound_name, saved_smartcasts, saved_invalidated)
+		}
 	}
 	start := t.a.children.len
 	for child in children {
@@ -6820,6 +6839,37 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId) flat.NodeId {
 		value:          branch.value
 		typ:            branch.typ
 	})
+}
+
+fn smartcasts_without_binding(contexts []SmartcastContext, name string) []SmartcastContext {
+	mut keep := []SmartcastContext{cap: contexts.len}
+	for sc in contexts {
+		if smartcast_key_is_within_binding(sc.expr_name, name) {
+			continue
+		}
+		keep << sc
+	}
+	return keep
+}
+
+fn smartcast_key_is_within_binding(key string, name string) bool {
+	return key == name || key.starts_with('${name}.')
+}
+
+fn (mut t Transformer) restore_shadowed_smartcast_state(name string, base_smartcasts []SmartcastContext, base_invalidated map[string]bool) {
+	mut restored_invalidated := map[string]bool{}
+	for key, invalidated in t.invalidated_smartcasts {
+		if !smartcast_key_is_within_binding(key, name) {
+			restored_invalidated[key] = invalidated
+		}
+	}
+	for key, invalidated in base_invalidated {
+		if smartcast_key_is_within_binding(key, name) {
+			restored_invalidated[key] = invalidated
+		}
+	}
+	t.invalidated_smartcasts = restored_invalidated.move()
+	t.smartcast_stack = t.non_invalidated_smartcasts(base_smartcasts)
 }
 
 // Generic handler: rebuild a node with all children recursively transformed.
