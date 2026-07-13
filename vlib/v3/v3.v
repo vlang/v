@@ -28,6 +28,7 @@ struct V3ModuleCacheState {
 	manager        modulecache.Manager
 	bundle_sources []string
 mut:
+	force_source        bool
 	bundle_valid        bool
 	module_sources      map[string][]string
 	module_import_paths map[string]string
@@ -838,6 +839,7 @@ fn main() {
 		'defines=${prefs.user_defines.join(',')}',
 	].join('\n')
 	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled)
+	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
 	// The cache generator emits complete module bodies, including late generic
 	// specializations that are not reachable from the entry program. Its split output
 	// currently relies on the serial function-item walk to retain those definitions.
@@ -854,6 +856,7 @@ fn main() {
 	mut cache_state := V3ModuleCacheState{
 		manager:             cache_manager
 		bundle_sources:      bundle_sources
+		force_source:        force_cache_source
 		module_sources:      map[string][]string{}
 		module_import_paths: map[string]string{}
 		module_dependencies: map[string][]string{}
@@ -864,22 +867,23 @@ fn main() {
 	}
 	cache_state.module_sources['builtin'] = builtin_files
 	mut files := []string{}
-	if bundle_object := cache_manager.valid_object('builtin', bundle_sources) {
-		if builtin_header := cache_manager.valid_header('builtin', builtin_files) {
-			cache_state.bundle_valid = true
-			cache_state.objects['builtin'] = bundle_object.object
-			if modulecache.header_needs_source(builtin_header) {
-				cache_state.source_body_modules['builtin'] = true
-				files << builtin_files
-			} else {
-				files << builtin_header.header
+	mut loaded_cached_bundle := false
+	if !force_cache_source {
+		if bundle_object := cache_manager.valid_object('builtin', bundle_sources) {
+			if builtin_header := cache_manager.valid_header('builtin', builtin_files) {
+				cache_state.bundle_valid = true
+				cache_state.objects['builtin'] = bundle_object.object
+				if modulecache.header_needs_source(builtin_header) {
+					cache_state.source_body_modules['builtin'] = true
+					files << builtin_files
+				} else {
+					files << builtin_header.header
+				}
+				loaded_cached_bundle = true
 			}
-		} else {
-			cache_state.parsed_from_source['builtin'] = true
-			cache_state.source_body_modules['builtin'] = true
-			files << builtin_files
 		}
-	} else {
+	}
+	if !loaded_cached_bundle {
 		cache_state.parsed_from_source['builtin'] = true
 		cache_state.source_body_modules['builtin'] = true
 		files << builtin_files
@@ -1344,6 +1348,12 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 	if !state.manager.ensure_dir() {
 		return error('v3 module cache directory is unavailable')
 	}
+	compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag,
+		generated_c_flags, objective_c)
+	if resolve_flag_specific_cache_objects(mut state, compile_signature) {
+		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+		restart_v3_after_cache_invalidation()
+	}
 	split := modulecache.split_generated_c(generated_source)!
 	declarations := modulecache.declaration_header(split.prefix)
 	main_body := split.modules['main'] or { '' }
@@ -1358,13 +1368,14 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 		}
 	}
 	if !state.bundle_valid {
-		entry := state.manager.entry('builtin', state.bundle_sources)
+		entry := state.manager.object_entry('builtin', state.bundle_sources, compile_signature)
 		module_source := declarations + bundle_body.str()
 		compile_v3_cached_object(entry, module_source, c_standard, opt_flag, pic_flag,
 			generated_c_flags, objective_c)!
 		bundle_dependencies := cache_dependency_header_signatures(state,
 			cache_builtin_bundle_roots(state))
-		state.manager.write_stamp('builtin', state.bundle_sources, bundle_dependencies)!
+		state.manager.write_stamp('builtin', state.bundle_sources, bundle_dependencies,
+			compile_signature)!
 		object_paths['builtin'] = entry.object
 		state.bundle_valid = true
 		for module_name, header in state.headers {
@@ -1385,7 +1396,7 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 			continue
 		}
 		source_files := state.module_sources[module_name] or { continue }
-		entry := state.manager.entry(module_name, source_files)
+		entry := state.manager.object_entry(module_name, source_files, compile_signature)
 		body := split.modules[module_name] or {
 			split.modules[module_name.all_after_last('.')] or { '' }
 		}
@@ -1395,7 +1406,7 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 			state.manager.write_header(module_name, source_files, header)!
 		}
 		dependency_headers := cache_dependency_header_signatures(state, [module_name])
-		state.manager.write_stamp(module_name, source_files, dependency_headers)!
+		state.manager.write_stamp(module_name, source_files, dependency_headers, compile_signature)!
 		object_paths[module_name] = entry.object
 	}
 
@@ -1552,6 +1563,36 @@ fn restart_v3_after_cache_invalidation() {
 		print(result.output)
 	}
 	exit(result.exit_code)
+}
+
+fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, generated_c_flags []string, objective_c bool) string {
+	mut flags := c_object_compile_support_flags(generated_c_flags)
+	flags = flags.filter(!c_flag_is_object_file(it))
+	return [
+		'objective_c=${objective_c}',
+		'c_standard=${c_standard.trim_space()}',
+		'optimization=${opt_flag.trim_space()}',
+		'pic=${pic_flag.trim_space()}',
+		'flags=${flags.join('\\n')}',
+	].join('\n')
+}
+
+fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, compile_signature string) bool {
+	for object_name in state.objects.keys() {
+		source_files := if object_name == 'builtin' {
+			state.bundle_sources
+		} else {
+			state.module_sources[object_name] or { continue }
+		}
+		if entry := state.manager.valid_object_for_compile_signature(object_name, source_files,
+			compile_signature)
+		{
+			state.objects[object_name] = entry.object
+		} else {
+			return true
+		}
+	}
+	return false
 }
 
 fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, generated_c_flags []string, objective_c bool) ! {
@@ -2240,6 +2281,13 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut parsed_module_identities := map[string]string{}
 	mut module_path_cache := map[string]string{}
 	mut module_identity_cache := map[string]string{}
+	mut cached_header_source_contexts := map[string]string{}
+	if builtin_sources := cache_state.module_sources['builtin'] {
+		if builtin_sources.len > 0 {
+			builtin_header := cache_state.manager.entry('builtin', builtin_sources).header
+			cached_header_source_contexts[builtin_header] = builtin_sources[0]
+		}
+	}
 
 	mut was_parallel := false
 	mut cur_file := first_file
@@ -2295,7 +2343,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				continue
 			}
 
-			importing_file := if cur_file.len > 0 { cur_file } else { first_file }
+			importing_file := cached_header_source_contexts[cur_file] or {
+				if cur_file.len > 0 { cur_file } else { first_file }
+			}
 			mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
 				project_root, mut module_path_cache)
 			module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
@@ -2334,6 +2384,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						if header := cache_state.manager.valid_header(cache_module, mod_files) {
 							if !modulecache.header_needs_source(header) {
 								parse_files = [header.header]
+								if mod_files.len > 0 {
+									cached_header_source_contexts[header.header] = mod_files[0]
+								}
 							} else {
 								cache_state.source_body_modules[cache_module] = true
 							}
@@ -2349,13 +2402,21 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						cache_state.parsed_from_source[cache_module] = true
 						cache_state.source_body_modules[cache_module] = true
 					}
-				} else if cached := cache_state.manager.valid_entry(cache_module, mod_files) {
-					if !modulecache.header_needs_source(cached) {
-						parse_files = [cached.header]
+				} else if !cache_state.force_source {
+					if cached := cache_state.manager.valid_entry(cache_module, mod_files) {
+						if !modulecache.header_needs_source(cached) {
+							parse_files = [cached.header]
+							if mod_files.len > 0 {
+								cached_header_source_contexts[cached.header] = mod_files[0]
+							}
+						} else {
+							cache_state.source_body_modules[cache_module] = true
+						}
+						cache_state.objects[cache_module] = cached.object
 					} else {
+						cache_state.parsed_from_source[cache_module] = true
 						cache_state.source_body_modules[cache_module] = true
 					}
-					cache_state.objects[cache_module] = cached.object
 				} else {
 					cache_state.parsed_from_source[cache_module] = true
 					cache_state.source_body_modules[cache_module] = true

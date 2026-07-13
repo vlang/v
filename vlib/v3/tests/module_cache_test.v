@@ -95,6 +95,136 @@ fn test_module_cache_declaration_header_preserves_preprocessor_after_comment() {
 	assert !header.contains('extern #ifndef')
 }
 
+fn test_module_cache_string_symbol_rewrite_preserves_literal_bytes() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_string_literal_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', "module main
+
+fn main() {
+	println('_str_0')
+}
+")
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'out')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == '_str_0'
+}
+
+fn test_module_cache_rebuilds_objects_when_c_flags_change() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_c_flags_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+#insert "@DIR/flag_value.h"
+
+fn C.cached_flag_value() int
+
+pub fn value() int {
+	return C.cached_flag_value()
+}
+')
+	write_module_cache_file(root, 'wrapper/flag_value.h', 'static inline int cached_flag_value(void) {
+#ifdef V3_CACHE_FLAG_PROBE
+	return 2;
+#else
+	return 1;
+#endif
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '1'
+	first_wrapper_stamps :=
+		os.walk_ext(cache_dir, '.o.stamp').filter(os.file_name(it).starts_with('wrapper_'))
+	assert first_wrapper_stamps.len == 1
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+#flag -DV3_CACHE_FLAG_PROBE
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '2'
+	second_wrapper_stamps :=
+		os.walk_ext(cache_dir, '.o.stamp').filter(os.file_name(it).starts_with('wrapper_'))
+	assert second_wrapper_stamps.len == 2
+	assert second_wrapper_stamps.any(it !in first_wrapper_stamps)
+}
+
+fn test_cached_header_imports_use_original_source_context() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_import_context_${os.getpid()}')
+	cache_dir := os.join_path(os.temp_dir(), 'v3_module_cache_import_context_store_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.rmdir_all(cache_dir) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+		os.rmdir_all(cache_dir) or {}
+	}
+	write_module_cache_file(root, 'app/v.mod', "Module { name: 'cache_import_context' }\n")
+	write_module_cache_file(root, 'app/main.v', 'module main
+
+import outer
+
+fn main() {
+	println(outer.value())
+}
+')
+	write_module_cache_file(root, 'outer/outer.v', 'module outer
+
+import sibling
+
+pub fn value() int {
+	return sibling.value() + 1
+}
+')
+	write_module_cache_file(root, 'sibling/sibling.v', 'module sibling
+
+pub fn value() int {
+	return 41
+}
+')
+	main_file := os.join_path(root, 'app/main.v')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	outer_header := module_cache_artifact(cache_dir, 'outer_', '.vh')
+	assert outer_header.len > 0
+	assert (os.read_file(outer_header) or { panic(err) }).contains('import sibling')
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_module_cache_reuses_headers_and_rebuilds_only_changed_module() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_project_${os.getpid()}')

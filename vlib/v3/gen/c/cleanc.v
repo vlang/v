@@ -833,25 +833,79 @@ fn (g &FlatGen) rewrite_cache_string_symbols(source string) string {
 	mut out := strings.new_builder(source.len + g.str_lits.len * 8)
 	mut i := 0
 	for i < source.len {
-		if i + 5 < source.len && source[i] == `_` && source[i + 1] == `s` && source[i + 2] == `t`
-			&& source[i + 3] == `r` && source[i + 4] == `_` && source[i + 5] >= `0`
-			&& source[i + 5] <= `9` {
-			mut end := i + 5
-			mut id := 0
-			for end < source.len && source[end] >= `0` && source[end] <= `9` {
-				id = id * 10 + int(source[end] - `0`)
-				end++
+		if source[i] in [`"`, `'`] {
+			quote := source[i]
+			start := i
+			i++
+			for i < source.len {
+				if source[i] == `\\` && i + 1 < source.len {
+					i += 2
+					continue
+				}
+				i++
+				if source[i - 1] == quote {
+					break
+				}
 			}
-			if id >= 0 && id < symbols.len {
-				out.write_string(symbols[id])
-				i = end
-				continue
+			out.write_string(source[start..i])
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+			start := i
+			i += 2
+			for i < source.len && source[i] != `\n` {
+				i++
 			}
+			out.write_string(source[start..i])
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+			start := i
+			i += 2
+			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 < source.len {
+				i += 2
+			} else {
+				i = source.len
+			}
+			out.write_string(source[start..i])
+			continue
+		}
+		if c_identifier_start(source[i]) {
+			start := i
+			i++
+			for i < source.len && c_identifier_continue(source[i]) {
+				i++
+			}
+			identifier := source[start..i]
+			if identifier.len > 5 && identifier.starts_with('_str_')
+				&& identifier[5..].bytes().all(it >= `0` && it <= `9`) {
+				mut id := 0
+				for digit in identifier[5..].bytes() {
+					id = id * 10 + int(digit - `0`)
+				}
+				if id >= 0 && id < symbols.len {
+					out.write_string(symbols[id])
+					continue
+				}
+			}
+			out.write_string(identifier)
+			continue
 		}
 		out.write_u8(source[i])
 		i++
 	}
 	return out.str()
+}
+
+fn c_identifier_start(c u8) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
+}
+
+fn c_identifier_continue(c u8) bool {
+	return c_identifier_start(c) || (c >= `0` && c <= `9`)
 }
 
 fn cache_string_symbol(value string) string {
