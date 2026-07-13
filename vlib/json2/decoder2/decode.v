@@ -438,44 +438,64 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 			}
 		}
 		.number {
-			// check if the JSON string is a valid float or integer
-			mut is_negative := val[0] == `-`
-			mut has_dot := false
-
-			mut digits_count := 1
-
-			if is_negative {
-				checker.checker_idx++
+			// Validate the JSON number grammar:
+			// -?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?
+			mut idx := checker.checker_idx
+			mut digits_count := 0
+			if val[idx] == `-` {
+				idx++
+				if idx >= checker_end {
+					return checker.error('invalid number')
+				}
 			}
-
-			for checker.checker_idx < checker_end - 1
-				&& val[checker.checker_idx + 1] !in [`,`, `}`, `]`, ` `, `\t`, `\n`]
-				&& checker.checker_idx < checker_end - 1 {
-				if val[checker.checker_idx] == `.` {
-					if has_dot {
-						return checker.error('invalid float. Multiple dots')
-					}
-					has_dot = true
-					checker.checker_idx++
-					continue
-				} else if val[checker.checker_idx] == `-` {
-					if is_negative {
-						return checker.error('invalid float. Multiple negative signs')
-					}
-					checker.checker_idx++
-					continue
-				} else {
-					if val[checker.checker_idx] < `0` || val[checker.checker_idx] > `9` {
-						return checker.error('invalid number')
-					}
-				}
-
-				if digits_count >= 64 {
-					return checker.error('number exceeds 64 digits')
-				}
+			if val[idx] == `0` {
+				idx++
 				digits_count++
-				checker.checker_idx++
+			} else if val[idx] >= `1` && val[idx] <= `9` {
+				for idx < checker_end && val[idx] >= `0` && val[idx] <= `9` {
+					idx++
+					digits_count++
+					if digits_count > 64 {
+						return checker.error('number exceeds 64 digits')
+					}
+				}
+			} else {
+				return checker.error('invalid number')
 			}
+			if idx < checker_end && val[idx] == `.` {
+				idx++
+				if idx >= checker_end || val[idx] < `0` || val[idx] > `9` {
+					return checker.error('invalid number')
+				}
+				for idx < checker_end && val[idx] >= `0` && val[idx] <= `9` {
+					idx++
+					digits_count++
+					if digits_count > 64 {
+						return checker.error('number exceeds 64 digits')
+					}
+				}
+			}
+			if idx < checker_end && val[idx] in [`e`, `E`] {
+				idx++
+				if idx < checker_end && val[idx] in [`+`, `-`] {
+					idx++
+				}
+				if idx >= checker_end || val[idx] < `0` || val[idx] > `9` {
+					return checker.error('invalid number')
+				}
+				for idx < checker_end && val[idx] >= `0` && val[idx] <= `9` {
+					idx++
+					digits_count++
+					if digits_count > 64 {
+						return checker.error('number exceeds 64 digits')
+					}
+				}
+			}
+			if idx < checker_end && val[idx] !in [`,`, `}`, `]`, ` `, `\t`, `\n`, `\r`] {
+				checker.checker_idx = idx
+				return checker.error('invalid number')
+			}
+			checker.checker_idx = idx - 1
 		}
 		.boolean {
 			// check if the JSON string is a valid boolean
@@ -546,17 +566,13 @@ pub fn decode[T](val string) !T {
 
 	mut result := T{}
 	decoder.current_node = decoder.values_info.head
-	decoder.decode_value(mut &result)!
+	decoder.decode_value(mut result)!
 	return result
 }
 
 // decode_value decodes a value from the JSON nodes.
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
-	$if T is $option {
-		mut unwrapped_val := create_value_from_optional(val.$(field.name))
-		decoder.decode_value(mut unwrapped_val)!
-		val.$(field.name) = unwrapped_val
-	} $else $if T.unaliased_typ is string {
+	$if T.unaliased_typ is string {
 		string_info := decoder.current_node.value
 
 		if string_info.value_kind == .string_ {
@@ -645,9 +661,16 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 
 		if value_info.value_kind == .number {
 			bytes := unsafe { (decoder.json.str + value_info.position).vbytes(value_info.length) }
-
-			unsafe {
-				string_buffer_to_generic_number(val, bytes)
+			$if T.unaliased_typ is $float {
+				val = T(strconv.atof64(bytes.bytestr())!)
+			} $else $if T.unaliased_typ is $int {
+				if bytes.contains(`.`) || bytes.contains(`e`) || bytes.contains(`E`) {
+					val = T(strconv.atof64(bytes.bytestr())!)
+				} else {
+					unsafe { string_buffer_to_generic_number(val, bytes) }
+				}
+			} $else {
+				unsafe { string_buffer_to_generic_number(val, bytes) }
 			}
 		}
 	} $else {

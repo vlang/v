@@ -47,6 +47,10 @@ struct StructWithID {
 	id int
 }
 
+struct StructWithNumber {
+	n f64
+}
+
 fn test_types() {
 	assert json.decode[StructType[string]]('{"val": ""}')!.val == ''
 
@@ -103,4 +107,8 @@ fn test_option_types() {
 fn test_unknown_nested_struct_values_are_skipped() {
 	assert json.decode[StructWithID]('{"ignored": {"id": 1}}')!.id == 0
 	assert json.decode[StructWithID]('{"ignored": [1, 2], "id": 3}')!.id == 3
+}
+
+fn test_struct_field_with_exponent_notation() {
+	assert json.decode[StructWithNumber]('{"n": 1e3}')!.n == 1000.0
 }

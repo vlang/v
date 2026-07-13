@@ -90,6 +90,11 @@ fn test_number() {
 
 	assert json.decode[f64]('1234567890')! == 1234567890.0
 	assert json.decode[f64]('-1234567890')! == -1234567890.0
+
+	assert json.decode[f64]('1e3')! == 1000.0
+	assert json.decode[f64]('1E+3')! == 1000.0
+	assert json.decode[f64]('-2.5e-2')! == -0.025
+	assert json.decode[int]('1e3')! == 1000
 }
 
 fn test_boolean() {
