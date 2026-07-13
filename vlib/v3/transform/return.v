@@ -225,6 +225,16 @@ fn (mut t Transformer) try_expand_forwarded_multi_return(node flat.Node) ?[]flat
 fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, actual types.Type, expected types.Type) flat.NodeId {
 	actual_base := forwarded_return_unalias_type(actual)
 	expected_base := forwarded_return_unalias_type(expected)
+	if actual_base is types.OptionType && expected_base is types.OptionType
+		&& actual_base.base_type.name() != expected_base.base_type.name() {
+		return t.convert_forwarded_optional_result(value_id, actual, actual_base.base_type,
+			expected, expected_base, expected_base.base_type)
+	}
+	if actual_base is types.ResultType && expected_base is types.ResultType
+		&& actual_base.base_type.name() != expected_base.base_type.name() {
+		return t.convert_forwarded_optional_result(value_id, actual, actual_base.base_type,
+			expected, expected_base, expected_base.base_type)
+	}
 	if expected_base is types.Array {
 		if actual_base is types.Array
 			&& actual_base.elem_type.name() != expected_base.elem_type.name() {
@@ -247,6 +257,27 @@ fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, act
 		return t.convert_forwarded_map(value_id, actual, actual_base, expected, expected_base)
 	}
 	return t.transform_expr_for_type(value_id, expected.name())
+}
+
+fn (mut t Transformer) convert_forwarded_optional_result(value_id flat.NodeId, actual_type types.Type, actual_payload types.Type, expected_type types.Type, expected_wrapper types.Type, expected_payload types.Type) flat.NodeId {
+	source := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id), actual_type.name(),
+		'return_optional')
+	result_name := t.new_temp('return_optional')
+	err := t.make_selector(source, 'err', 'IError')
+	initial := t.make_optional_none_with_err(expected_wrapper.name(), err)
+	t.pending_stmts << t.make_decl_assign_typed(result_name, initial, expected_type.name())
+	pending_start := t.pending_stmts.len
+	payload := t.make_selector(source, 'value', actual_payload.name())
+	converted := t.transform_forwarded_return_slot(payload, actual_payload, expected_payload)
+	mut then_body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	wrapped := t.make_optional_some(converted, expected_wrapper.name())
+	then_body << t.make_assign(t.make_ident(result_name), wrapped)
+	t.pending_stmts << t.make_if(t.make_selector(source, 'ok', 'bool'), t.make_block(then_body),
+		t.make_empty())
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), expected_type.name())
+	return result
 }
 
 fn forwarded_return_unalias_type(typ types.Type) types.Type {

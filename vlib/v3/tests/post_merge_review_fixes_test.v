@@ -551,6 +551,54 @@ fn main() {
 	assert out == '3\n5\n7\n11\n13'
 }
 
+fn test_forwarded_multi_return_option_result_payloads_are_converted() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'forwarded_multi_return_option_result_payloads', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_option() (?Value, int) {
+	return Value{
+		n: 3
+	}, 5
+}
+
+fn forward_option() (?IValue, int) {
+	return make_option()
+}
+
+fn make_result() (!Value, int) {
+	return Value{
+		n: 7
+	}, 11
+}
+
+fn forward_result() (!IValue, int) {
+	return make_result()
+}
+
+fn main() {
+	option_value, option_n := forward_option()
+	option_payload := option_value or { panic("missing option") }
+	println(int_str(option_payload.get()))
+	println(int_str(option_n))
+	result_value, result_n := forward_result()
+	result_payload := result_value or { panic(err) }
+	println(int_str(result_payload.get()))
+	println(int_str(result_n))
+}
+')
+	assert out == '3\n5\n7\n11'
+}
+
 fn test_interface_equality_includes_appended_element_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_appended_element_box', 'interface IValue {}
