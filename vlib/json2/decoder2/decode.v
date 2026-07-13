@@ -337,7 +337,7 @@ fn (mut checker Decoder) check_json_format(val string) ! {
 								if val[checker.checker_idx] == `}` {
 									break
 								} else {
-									return
+									return checker.error('invalid delimiter after object value')
 								}
 							}
 						}

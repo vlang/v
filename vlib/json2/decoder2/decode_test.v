@@ -273,6 +273,15 @@ fn test_truncated_objects_return_errors() {
 	}
 }
 
+fn test_rejects_invalid_delimiters_after_object_values() {
+	for input in ['{"a": 1: "b"}', '{"a": true]', '{"a": []: "b"}', '{"a": {}: "b"}'] {
+		assert_invalid_json(input)
+		mut failed := false
+		decode[map[string]int](input) or { failed = true }
+		assert failed, 'Expected `${input}` to fail object decoding'
+	}
+}
+
 fn test_truncated_arrays_return_errors() {
 	for input in ['[', '[ ', '[1', '[1 ', '[1,', '[1, ', '[1,\n\t'] {
 		assert_invalid_json(input)
