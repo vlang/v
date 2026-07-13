@@ -610,7 +610,7 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 			}
 			continue
 		}
-		if branch.children_count >= 2 {
+		if branch.value in ['recv', 'recv_assign'] && branch.children_count >= 2 {
 			second_id := g.a.child(&branch, 1)
 			second := g.a.nodes[int(second_id)]
 			if second.kind == .prefix && second.op == .arrow && second.children_count > 0 {
@@ -757,11 +757,16 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 			g.writeln('else if (${exception_test}) {')
 		}
 		g.indent++
+		g.push_scope()
+		defer_start := g.defers.len
 		branch := g.a.nodes[int(exception_branch)]
 		body_start := if branch.value == 'else' { 0 } else { 1 }
 		for j in body_start .. branch.children_count {
 			g.gen_node(g.a.child(&branch, j))
 		}
+		g.gen_defers_from(defer_start)
+		g.trim_defers(defer_start)
+		g.pop_scope()
 		g.indent--
 		g.writeln('}')
 	}

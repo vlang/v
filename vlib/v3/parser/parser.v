@@ -6060,19 +6060,22 @@ fn (mut p Parser) select_expr() flat.NodeId {
 fn (mut p Parser) select_branch() flat.NodeId {
 	mut is_else := false
 	mut is_recv_decl := false
+	mut is_recv_assign := false
 	mut cond_ids := []flat.NodeId{}
 	if p.tok == .key_else {
 		is_else = true
 		p.next()
 	} else {
 		cond_ids << p.expr(.lowest)
-		// could be assignment: ch <- val or val := <-ch
+		// could be assignment: ch <- val, val := <-ch, or val = <-ch
 		if token_is_assignment(p.tok) || p.tok == .decl_assign {
 			op := p.tok
-			// Record `val := <-ch` so the type checker can bind `val` (the
-			// channel's element type) in the branch body's scope.
+			// Preserve receive declaration/assignment shape even though the parser
+			// stores the lvalue and receive expression as separate branch children.
 			if op == .decl_assign {
 				is_recv_decl = true
+			} else {
+				is_recv_assign = true
 			}
 			p.next()
 			cond_ids << p.expr(.lowest)
@@ -6091,6 +6094,8 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		'else'
 	} else if is_recv_decl {
 		'recv'
+	} else if is_recv_assign {
+		'recv_assign'
 	} else {
 		''
 	}

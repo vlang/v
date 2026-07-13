@@ -227,6 +227,61 @@ fn main() {
 	assert out == 'true\ntrue'
 }
 
+fn test_select_receive_assignment_checks_lhs_type() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'select_receive_assign_bool_mismatch', 'fn main() {
+	ch := chan int{}
+	mut value := false
+	select {
+		value = <-ch {}
+		else {}
+	}
+	println(value.str())
+}
+',
+		'cannot assign `int` to `bool`')
+	run_bad(v3_bin, 'select_receive_assign_string_mismatch',
+		"fn main() {\n\tch := chan int{}\n\tmut value := ''\n\tselect {\n\t\tvalue = <-ch {}\n\t\telse {}\n\t}\n\tprintln(value)\n}\n",
+		'cannot assign `int` to `string`')
+}
+
+fn test_select_exception_branches_flush_defers() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_exception_branch_defers', 'import time
+
+__global trace int
+
+fn cleanup() {
+	trace = trace * 10 + 2
+}
+
+fn main() {
+	select {
+		else {
+			defer {
+				cleanup()
+			}
+			trace = 1
+		}
+	}
+	println(int_str(trace))
+	trace = 0
+	ch := chan int{}
+	select {
+		_ := <-ch {}
+		1 * time.nanosecond {
+			defer {
+				cleanup()
+			}
+			trace = 3
+		}
+	}
+	println(int_str(trace))
+}
+')
+	assert out == '12\n32'
+}
+
 fn test_context_dependent_if_branches_infer_wrapper_types() {
 	v3_bin := build_v3()
 	opt_out := run_good(v3_bin, 'if_none_branch_infers_option',

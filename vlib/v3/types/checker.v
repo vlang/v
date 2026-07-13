@@ -6951,9 +6951,9 @@ fn type_is_string_like(typ Type) bool {
 	return false
 }
 
-// check_select_stmt validates a `select { ... }` statement. A receive branch
-// `val := <-ch` binds `val` (the channel's element type) in the branch body's
-// scope; other branches (sends, bare conditions, `else`) are checked as-is.
+// check_select_stmt validates a `select { ... }` statement. A receive declaration
+// binds the channel element type in the branch scope, while a receive assignment
+// is checked against its existing lvalue type before the branch body.
 fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 	$if ownership ? {
 		tc.ownership_begin_branch_group()
@@ -6976,20 +6976,43 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 		}
 		tc.push_scope()
 		mut body_start := 0
-		if branch.value == 'recv' && branch.children_count >= 2 {
-			// children[0] = bound var ident, children[1] = `<-ch` receive expr.
+		mut receive_assignment := false
+		if branch.value in ['recv', 'recv_assign'] && branch.children_count >= 2 {
+			second := tc.a.child_node(&branch, 1)
+			receive_assignment = second.kind == .prefix && second.op == .arrow
+		}
+		if receive_assignment {
+			// children[0] = bound/assigned lvalue, children[1] = `<-ch` receive expr.
 			var_id := tc.a.child(&branch, 0)
 			recv_id := tc.a.child(&branch, 1)
-			tc.check_node(recv_id)
-			elem_type := tc.resolve_type(recv_id)
-			if tc.valid_node_id(var_id) {
-				var_node := tc.a.nodes[int(var_id)]
-				if var_node.kind == .ident && var_node.value.len > 0 {
-					tc.cur_scope.insert(var_node.value, elem_type)
-					tc.remember_expr_type(var_id, elem_type)
-					$if ownership ? {
-						tc.ownership_note_binding(var_node.value, elem_type, var_id)
+			if branch.value == 'recv' {
+				tc.check_node(recv_id)
+				elem_type := tc.resolve_type(recv_id)
+				if tc.valid_node_id(var_id) {
+					var_node := tc.a.nodes[int(var_id)]
+					if var_node.kind == .ident && var_node.value.len > 0 {
+						tc.cur_scope.insert(var_node.value, elem_type)
+						tc.remember_expr_type(var_id, elem_type)
+						$if ownership ? {
+							tc.ownership_note_binding(var_node.value, elem_type, var_id)
+						}
 					}
+				}
+			} else {
+				lhs_type := tc.resolve_lvalue_type(var_id)
+				tc.remember_expr_type(var_id, lhs_type)
+				expected_type := tc.assignment_expected_type(var_id, lhs_type)
+				tc.annotate_expected_expr(recv_id, expected_type)
+				tc.check_node(recv_id)
+				rhs_type := tc.resolve_expr(recv_id, expected_type)
+				if !tc.assignment_types_compatible(recv_id, rhs_type, expected_type, .assign) {
+					tc.type_mismatch(.assignment_mismatch,
+						'cannot assign `${rhs_type.name()}` to `${expected_type.name()}`',
+						branch_id)
+				}
+				lhs_key := tc.expr_key(var_id)
+				if lhs_key.len > 0 {
+					tc.smartcasts.delete(lhs_key)
 				}
 			}
 			body_start = 2
@@ -8064,9 +8087,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			tc.check_node(rhs_id)
 		}
 		rhs_type := tc.resolve_expr(rhs_id, expected_type)
-		if !tc.expr_compatible(rhs_id, rhs_type, expected_type)
-			&& !tc.pointer_value_compatible(rhs_type, expected_type)
-			&& !tc.pointer_arithmetic_assign_compatible(node.op, rhs_type, expected_type) {
+		if !tc.assignment_types_compatible(rhs_id, rhs_type, expected_type, node.op) {
 			tc.type_mismatch(.assignment_mismatch,
 				'cannot assign `${rhs_type.name()}` to `${expected_type.name()}`', id)
 		}
@@ -8108,6 +8129,12 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		_ = ownership_lhs_types
 		_ = ownership_rhs_types
 	}
+}
+
+fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Type, expected_type Type, op flat.Op) bool {
+	return tc.expr_compatible(rhs_id, rhs_type, expected_type)
+		|| tc.pointer_value_compatible(rhs_type, expected_type)
+		|| tc.pointer_arithmetic_assign_compatible(op, rhs_type, expected_type)
 }
 
 fn (mut tc TypeChecker) check_assignment_marker(id flat.NodeId, node flat.Node) bool {
