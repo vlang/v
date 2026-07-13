@@ -30,10 +30,13 @@ mut:
 	request_arena  voidptr
 	should_close   bool
 	closing        &stdatomic.AtomicVal[bool] = stdatomic.new_atomic(false)
-	file_handle    voidptr
-	has_file       bool
-	file_len       i64
-	file_pos       i64
+	// The registry keeps the connection reachable, and this pointer keeps the one
+	// outstanding kernel-owned operation reachable until IOCP completes it.
+	pending_op  &stdatomic.AtomicVal[voidptr] = stdatomic.new_atomic(voidptr(unsafe { nil }))
+	file_handle voidptr
+	has_file    bool
+	file_len    i64
+	file_pos    i64
 }
 
 struct IocpConnRegistry {
@@ -42,6 +45,7 @@ mut:
 	conns map[voidptr]&IocpConn
 }
 
+@[heap]
 struct IocpOperation {
 mut:
 	overlapped C.OVERLAPPED
@@ -175,6 +179,26 @@ fn (mut conn IocpConn) mark_closing() bool {
 fn (conn &IocpConn) is_closing() bool {
 	mut closing := conn.closing
 	return closing.load()
+}
+
+fn (mut conn IocpConn) register_op(op &IocpOperation) {
+	mut pending_op := conn.pending_op
+	if !pending_op.compare_and_swap(voidptr(unsafe { nil }), voidptr(op)) {
+		panic('fasthttp: attempted to post concurrent operations on one IOCP connection')
+	}
+}
+
+fn (mut conn IocpConn) unregister_op(op &IocpOperation) {
+	mut pending_op := conn.pending_op
+	if !pending_op.compare_and_swap(voidptr(op), voidptr(unsafe { nil })) {
+		panic('fasthttp: pending IOCP operation changed before submission failed')
+	}
+}
+
+fn (mut conn IocpConn) take_op(overlapped &C.OVERLAPPED) bool {
+	mut pending_op := conn.pending_op
+	raw_op := voidptr(overlapped)
+	return pending_op.compare_and_swap(raw_op, voidptr(unsafe { nil }))
 }
 
 fn close_conn_socket(fd C.SOCKET) {
@@ -311,6 +335,14 @@ fn free_conn_storage(mut conn IocpConn) {
 		unsafe { free(conn.closing) }
 		conn.closing = unsafe { nil }
 	}
+	if conn.pending_op != unsafe { nil } {
+		mut pending_op := conn.pending_op
+		if pending_op.load() != unsafe { nil } {
+			panic('fasthttp: freeing an IOCP connection with a pending operation')
+		}
+		unsafe { free(conn.pending_op) }
+		conn.pending_op = unsafe { nil }
+	}
 	unsafe { free(conn) }
 }
 
@@ -354,10 +386,12 @@ fn post_recv(mut conn IocpConn) bool {
 	}
 	mut flags := C.DWORD(0)
 	mut bytes_read := C.DWORD(0)
+	conn.register_op(op)
 	ret := C.WSARecv(conn.fd, &op.wsabuf, 1, &bytes_read, &flags, &op.overlapped, unsafe { nil })
 	if ret == C.SOCKET_ERROR {
 		code := C.WSAGetLastError()
 		if code != C.WSA_IO_PENDING {
+			conn.unregister_op(op)
 			op.free()
 			return false
 		}
@@ -377,10 +411,12 @@ fn post_write_op(mut op IocpOperation) bool {
 	}
 	mut bytes_sent := C.DWORD(0)
 	op.conn.write_start = time.sys_mono_now()
+	op.conn.register_op(op)
 	ret := C.WSASend(op.conn.fd, &op.wsabuf, 1, &bytes_sent, 0, &op.overlapped, unsafe { nil })
 	if ret == C.SOCKET_ERROR {
 		code := C.WSAGetLastError()
 		if code != C.WSA_IO_PENDING {
+			op.conn.unregister_op(op)
 			return false
 		}
 	}
@@ -411,11 +447,13 @@ fn post_transmit_file(mut conn IocpConn) bool {
 		op.free()
 		return false
 	}
+	conn.register_op(op)
 	ret := transmit_file(conn.fd, conn.file_handle, C.DWORD(chunk_size), 0, &op.overlapped,
 		unsafe { nil }, 0)
 	if ret == 0 {
 		code := C.WSAGetLastError()
 		if code != C.WSA_IO_PENDING {
+			conn.unregister_op(op)
 			op.free()
 			return false
 		}
@@ -650,6 +688,9 @@ fn process_iocp_events(server &Server) {
 
 		mut op := unsafe { &IocpOperation(overlapped) }
 		mut conn := op.conn
+		if !conn.take_op(overlapped) {
+			continue
+		}
 		if !ok {
 			op.free()
 			close_conn(mut conn)
@@ -685,15 +726,17 @@ fn accept_loop(server &Server) {
 		}
 		opt := 1
 		C.setsockopt(client_fd, C.IPPROTO_TCP, C.TCP_NODELAY, voidptr(&opt), sizeof(opt))
-		if !associate_socket_with_iocp(server.iocp, client_fd) {
-			close_socket(client_fd)
-			continue
-		}
 		mut conn := &IocpConn{
 			server:      server
 			fd:          client_fd
 			request_buf: []u8{cap: server.max_request_buffer_size}
 			closing:     stdatomic.new_atomic(false)
+			pending_op:  stdatomic.new_atomic(voidptr(unsafe { nil }))
+		}
+		if !associate_socket_with_iocp(server.iocp, client_fd) {
+			close_socket(client_fd)
+			free_conn_storage(mut conn)
+			continue
 		}
 		mut registry := server.registry
 		registry.add(conn)
