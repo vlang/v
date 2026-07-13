@@ -1447,6 +1447,18 @@ fn test_channel_reference_auto_str_reads_channel_value() {
 	assert out == 'chan int{\n    cap: 2, closed: false\n}'
 }
 
+fn test_channel_alias_reference_auto_str_reads_channel_value() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'channel_alias_reference_auto_str', 'type MyChan = chan int
+
+fn main() {
+	ch := MyChan(chan int{cap: 2})
+	println(&ch)
+}
+')
+	assert out == 'MyChan(chan int{\n    cap: 2, closed: false\n})'
+}
+
 fn test_qualified_enum_str_requires_exact_receiver() {
 	v3_bin := build_v3()
 	out := run_good_project(v3_bin, 'qualified_enum_str_exact_receiver', {

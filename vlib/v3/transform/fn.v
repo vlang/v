@@ -2635,7 +2635,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	}
 	if !isnil(t.tc) {
 		if alias := t.tc.type_aliases[clean_typ] {
-			return t.alias_str_wrap(expr, clean_typ, alias)
+			return t.alias_str_wrap(expr, clean_typ, alias, is_ref)
 		}
 		mut qtyp := clean_typ
 		if !qtyp.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
@@ -2643,12 +2643,12 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			qtyp = '${t.cur_module}.${clean_typ}'
 		}
 		if alias := t.tc.type_aliases[qtyp] {
-			return t.alias_str_wrap(expr, clean_typ, alias)
+			return t.alias_str_wrap(expr, clean_typ, alias, is_ref)
 		}
 		if !clean_typ.contains('.') {
 			for aname, target in t.tc.type_aliases {
 				if aname.all_after_last('.') == clean_typ {
-					return t.alias_str_wrap(expr, clean_typ, target)
+					return t.alias_str_wrap(expr, clean_typ, target, is_ref)
 				}
 			}
 		}
@@ -2926,12 +2926,13 @@ fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string,
 // aliases of non-primitive types (arrays, maps, structs, sum types, enums), e.g.
 // `Block([1, 2])` or `AEnum(red)`, but stringifies primitive aliases (int, string, bool, ...)
 // as the bare value.
-fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_type string) flat.NodeId {
+fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_type string, is_ref bool) flat.NodeId {
 	if custom := t.alias_custom_str_call(expr, alias_name) {
 		return custom
 	}
 	resolved_base := t.alias_str_resolved_base_type(base_type)
-	inner := t.wrap_string_conversion(expr, resolved_base)
+	inner_type := if is_ref { '&${resolved_base}' } else { resolved_base }
+	inner := t.wrap_string_conversion(expr, inner_type)
 	if t.alias_str_suppress_wrapper_for_mut_param_deref(expr) {
 		return inner
 	}
