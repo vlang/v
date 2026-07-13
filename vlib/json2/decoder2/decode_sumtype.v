@@ -2,6 +2,10 @@ module decoder2
 
 import time
 
+fn sumtype_variant_name(type_name string) string {
+	return type_name.all_after_last('.')
+}
+
 fn (mut decoder Decoder) get_decoded_sumtype_workaround[T](initialized_sumtype T) !T {
 	$if initialized_sumtype is $sumtype || (T is $alias && T.unaliased_typ is $sumtype) {
 		$for v in T.variants {
@@ -94,7 +98,7 @@ fn (mut decoder Decoder) init_sumtype_by_value_kind[T](mut val T, value_info Val
 					if type_field_node.value.value_kind == .string_ {
 						decoded_type := decoder.decode_string(type_field_node.value)!
 						$for v in T.variants {
-							variant_name := typeof(v.typ).name
+							variant_name := sumtype_variant_name(typeof(v.typ).name)
 							if decoded_type == variant_name {
 								val = T(v)
 							}

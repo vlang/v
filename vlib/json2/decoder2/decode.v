@@ -710,14 +710,9 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 			$if T.unaliased_typ is $float {
 				val = T(strconv.atof64(bytes.bytestr())!)
 			} $else $if T.unaliased_typ is $int {
-				if bytes.contains(`.`) || bytes.contains(`e`) || bytes.contains(`E`) {
-					if number_has_fractional_part(bytes) {
-						return error('cannot decode fractional number `${bytes.bytestr()}` into ${typeof(val).name}')
-					}
-					val = T(strconv.atof64(bytes.bytestr())!)
-				} else {
-					unsafe { string_buffer_to_generic_number(val, bytes) }
-				}
+				integer_string := integer_number_string(bytes)!
+				val = T(0)
+				unsafe { string_buffer_to_generic_number(val, integer_string.bytes()) }
 			} $else {
 				unsafe { string_buffer_to_generic_number(val, bytes) }
 			}
@@ -900,30 +895,42 @@ fn create_value_from_optional[T](val ?T) T {
 	return T{}
 }
 
-fn number_has_fractional_part(data []u8) bool {
-	mut exponent_position := data.len
-	mut decimal_position := -1
-	for idx, digit in data {
-		if digit == `.` {
-			decimal_position = idx
-		} else if digit == `e` || digit == `E` {
-			exponent_position = idx
-			break
+const max_integer_number_digits = 20
+
+fn integer_number_string(data []u8) !string {
+	mut idx := 0
+	mut is_negative := false
+	if data[idx] == `-` {
+		is_negative = true
+		idx++
+	}
+
+	mut digits := []u8{cap: data.len}
+	mut fractional_digits := 0
+	mut seen_decimal := false
+	for idx < data.len && data[idx] !in [`e`, `E`] {
+		if data[idx] == `.` {
+			seen_decimal = true
+		} else {
+			digits << data[idx]
+			if seen_decimal {
+				fractional_digits++
+			}
 		}
+		idx++
 	}
 
 	mut exponent := 0
-	if exponent_position < data.len {
-		mut idx := exponent_position + 1
+	if idx < data.len {
+		idx++
 		mut exponent_is_negative := false
 		if data[idx] == `+` || data[idx] == `-` {
 			exponent_is_negative = data[idx] == `-`
 			idx++
 		}
+		exponent_cap := max_integer_number_digits + fractional_digits + 1
 		for idx < data.len {
-			// The significand is limited to 64 digits, so larger exponents have
-			// the same integrality result and do not need to be accumulated.
-			if exponent < 128 {
+			if exponent < exponent_cap {
 				exponent = exponent * 10 + int(data[idx] - `0`)
 			}
 			idx++
@@ -933,31 +940,42 @@ fn number_has_fractional_part(data []u8) bool {
 		}
 	}
 
-	fractional_digits := if decimal_position >= 0 {
-		exponent_position - decimal_position - 1
-	} else {
-		0
+	mut first_nonzero := 0
+	for first_nonzero < digits.len && digits[first_nonzero] == `0` {
+		first_nonzero++
 	}
-	required_trailing_zeros := fractional_digits - exponent
-	if required_trailing_zeros <= 0 {
-		return false
+	if first_nonzero == digits.len {
+		return '0'
+	}
+	digits = digits[first_nonzero..].clone()
+
+	scale := exponent - fractional_digits
+	if scale < 0 {
+		removed_digits := -scale
+		if removed_digits >= digits.len {
+			return error('cannot decode fractional number `${data.bytestr()}` into an integer')
+		}
+		for digit in digits[digits.len - removed_digits..] {
+			if digit != `0` {
+				return error('cannot decode fractional number `${data.bytestr()}` into an integer')
+			}
+		}
+		digits = digits[..digits.len - removed_digits].clone()
 	}
 
-	mut has_nonzero_digit := false
-	mut trailing_zeros := 0
-	for idx in 0 .. exponent_position {
-		digit := data[idx]
-		if digit < `0` || digit > `9` {
-			continue
-		}
-		if digit == `0` {
-			trailing_zeros++
-		} else {
-			has_nonzero_digit = true
-			trailing_zeros = 0
-		}
+	appended_zeros := if scale > 0 { scale } else { 0 }
+	if digits.len + appended_zeros > max_integer_number_digits {
+		return error('number `${data.bytestr()}` exceeds 64-bit integer range')
 	}
-	return has_nonzero_digit && trailing_zeros < required_trailing_zeros
+	mut result := []u8{cap: digits.len + appended_zeros + if is_negative { 1 } else { 0 }}
+	if is_negative {
+		result << `-`
+	}
+	result << digits
+	for _ in 0 .. appended_zeros {
+		result << `0`
+	}
+	return result.bytestr()
 }
 
 fn utf8_byte_length(unicode_value u32) int {

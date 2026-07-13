@@ -102,6 +102,9 @@ fn test_number() {
 	assert json.decode[int]('123.0')! == 123
 	assert json.decode[int]('1.2e1')! == 12
 	assert json.decode[int]('10e-1')! == 1
+	assert json.decode[i64]('9007199254740993e0')! == i64(9007199254740993)
+	assert json.decode[i64]('900719925474099.3e1')! == i64(9007199254740993)
+	assert json.decode[u64]('18446744073709551615e0')! == u64(18446744073709551615)
 }
 
 fn test_fractional_numbers_are_rejected_for_integer_targets() {

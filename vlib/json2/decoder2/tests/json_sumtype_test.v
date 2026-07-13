@@ -1,5 +1,6 @@
 import json2.decoder2 as json
 import json2
+import json2.decoder2.tests.models
 
 type Prices = Price | []Price
 
@@ -83,4 +84,13 @@ fn test_sum_type_struct() {
 	assert json.decode[Animal]('{"cat_name": "Tom"}')! == Animal(Cat{'Tom'})
 	assert json.decode[Animal]('{"dog_name": "Rex"}')! == Animal(Cat{''})
 	assert json.decode[Animal]('{"dog_name": "Rex", "_type": "Dog"}')! == Animal(Dog{'Rex'})
+}
+
+fn test_imported_sum_type_struct_uses_short_variant_name() {
+	dog := models.Animal(models.Dog{
+		dog_name: 'Rex'
+	})
+	encoded := json2.encode(dog)
+	assert encoded == '{"dog_name":"Rex","_type":"Dog"}'
+	assert json.decode[models.Animal](encoded)! == dog
 }
