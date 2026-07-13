@@ -93,6 +93,17 @@ fn test_folded_string_constant_ifs_keep_branch_scopes() {
 	assert out == '20\n22'
 }
 
+fn test_import_aliased_variadic_call_uses_exact_module() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'import_aliased_variadic_call', {
+		'v.mod':         "Module { name: 'import_aliased_variadic_call' }\n"
+		'a/http/http.v': 'module http\n\npub fn total(values []int) int {\n\treturn values.len\n}\n'
+		'b/http/http.v': 'module http\n\npub fn total(values ...int) int {\n\treturn values.len\n}\n'
+		'main.v':        'module main\n\nimport a.http as other_http\nimport b.http as http\n\nfn main() {\n\t_ := other_http.total([1, 2])\n\tprintln(int_str(http.total(3, 4, 5)))\n}\n'
+	}, 'main.v')
+	assert out == '3'
+}
+
 fn test_shared_field_without_sync_import_compiles_and_locks() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'shared_field_without_sync_import',

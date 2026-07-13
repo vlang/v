@@ -104,6 +104,28 @@ fn main() {
 	assert out == "private:false:false:|public:false:true:|mutable:true:false:|pub_mut:true:true:|attr:true:true:json: 'wire'"
 }
 
+fn test_comptime_match_accepts_type_group_patterns() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'comptime_match_type_group_patterns', 'struct S {}
+
+fn classify[T](value T) string {
+	_ = value
+	$match T {
+		$int { return "int" }
+		$struct { return "struct" }
+		$else { return "other" }
+	}
+	return "unreachable"
+}
+
+fn main() {
+	println(classify(1))
+	println(classify(S{}))
+}
+')
+	assert out == 'int\nstruct'
+}
+
 fn test_bare_comptime_field_materializes_fielddata() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'bare_fielddata', "type WireName = string

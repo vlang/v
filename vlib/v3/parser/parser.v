@@ -2274,10 +2274,10 @@ fn (mut p Parser) parse_comptime_match() flat.NodeId {
 			else_block = p.block_stmt()
 			continue
 		}
-		mut pats := [p.parse_type_name()]
+		mut pats := [p.parse_comptime_match_pattern()]
 		for p.tok == .comma {
 			p.next()
-			pats << p.parse_type_name()
+			pats << p.parse_comptime_match_pattern()
 		}
 		mut cond_parts := []string{cap: pats.len}
 		for pat in pats {
@@ -2295,6 +2295,14 @@ fn (mut p Parser) parse_comptime_match() flat.NodeId {
 		return flat.empty_node
 	}
 	return result
+}
+
+fn (mut p Parser) parse_comptime_match_pattern() string {
+	if p.tok == .dollar {
+		p.next()
+		return '$' + p.expect_name_or_keyword()
+	}
+	return p.parse_type_name()
 }
 
 fn (mut p Parser) comptime_if_node(cond string, then_block flat.NodeId, else_block flat.NodeId) flat.NodeId {

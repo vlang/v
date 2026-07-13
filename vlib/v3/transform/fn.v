@@ -1399,13 +1399,31 @@ fn (t &Transformer) call_is_variadic(call_name string) bool {
 		return is_variadic
 	}
 	// Import-aliased call names (`http.new_header` for module `net.http`)
-	// register under the full module path; match by suffix.
+	// register under the full module path; resolve the alias exactly first.
 	if call_name.contains('.') {
-		suffix := '.' + call_name
-		for key, is_variadic in t.tc.fn_variadic {
-			if key.ends_with(suffix) {
+		resolved_call := t.tc.resolve_imported_type_text_in_file(call_name, t.cur_file)
+		if resolved_call != call_name {
+			if t.tc.c_variadic_fns[resolved_call] {
+				return false
+			}
+			if is_variadic := t.tc.fn_variadic[resolved_call] {
 				return is_variadic
 			}
+		}
+		suffix := '.' + call_name
+		mut suffix_match := false
+		mut suffix_variadic := false
+		for key, is_variadic in t.tc.fn_variadic {
+			if key.ends_with(suffix) {
+				if suffix_match {
+					return false
+				}
+				suffix_match = true
+				suffix_variadic = is_variadic
+			}
+		}
+		if suffix_match {
+			return suffix_variadic
 		}
 	}
 	return false
