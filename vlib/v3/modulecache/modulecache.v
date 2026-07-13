@@ -8,11 +8,11 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-25'
+const cache_format = 'v3-module-cache-26'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
-const generic_template_marker = '// v3cache: source generic templates'
+const source_body_marker = '// v3cache: source bodies required'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -146,11 +146,11 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 	return entry
 }
 
-// header_needs_source reports whether a declaration header represents generic
-// templates whose bodies must remain available to per-program monomorphization.
+// header_needs_source reports whether a declaration header has bodies that must
+// remain available to per-program monomorphization.
 pub fn header_needs_source(entry Entry) bool {
 	header := os.read_file(entry.header) or { return true }
-	return header.contains(generic_template_marker)
+	return header.contains(source_body_marker)
 }
 
 // valid_object reports whether a cached object matches the supplied sources.
@@ -587,8 +587,8 @@ fn c_line_braces(line string, initial_block_comment bool) (int, bool, bool) {
 pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string) string {
 	mut out := strings.new_builder(4096)
 	out.writeln('module ${module_name.all_after_last('.')}')
-	if module_has_generic_templates(a, module_name) {
-		out.writeln(generic_template_marker)
+	if module_needs_source_bodies(a, tc, module_name) {
+		out.writeln(source_body_marker)
 	}
 	out.writeln('')
 	mut seen := map[string]bool{}
@@ -668,7 +668,7 @@ fn append_declaration_nodes(a &flat.FlatAst, id flat.NodeId, mut declarations []
 	declarations << id
 }
 
-fn module_has_generic_templates(a &flat.FlatAst, module_name string) bool {
+fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, module_name string) bool {
 	for file_node in a.nodes {
 		if file_node.kind != .file || file_node.children_count == 0 {
 			continue
@@ -679,9 +679,34 @@ fn module_has_generic_templates(a &flat.FlatAst, module_name string) bool {
 			continue
 		}
 		for i in 0 .. file_node.children_count {
-			if declaration_node_needs_source(a, a.child(&file_node, i)) {
+			id := a.child(&file_node, i)
+			if declaration_node_needs_source(a, id)
+				|| node_creates_generic_specialization(a, tc, id) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return false
+	}
+	if name := tc.resolved_call_name(id) {
+		if name in tc.fn_generic_params {
+			return true
+		}
+	}
+	if name := tc.resolved_fn_value_name(id) {
+		if name in tc.fn_generic_params {
+			return true
+		}
+	}
+	node := a.nodes[int(id)]
+	for i in 0 .. node.children_count {
+		if node_creates_generic_specialization(a, tc, a.child(&node, i)) {
+			return true
 		}
 	}
 	return false
