@@ -121,3 +121,42 @@ fn test_frame_public_result_wrappers() {
 	assert frame_request_length(req)! == req.len
 	assert frame_request_length('GET / HTTP/1.1\r\nHost:'.bytes())! == -1
 }
+
+fn test_frame_content_length_overflow_rejected() {
+	// A Content-Length far beyond i32 must be rejected (400), not wrapped to a
+	// negative int that frames the request as body-less (a smuggling primitive).
+	req := 'POST /a HTTP/1.1\r\nContent-Length: 99999999999\r\n\r\n'.bytes()
+	assert frame_request_length_lim_idx(req, 0, 0) == frame_err_malformed
+	mut code := 0
+	frame_request_length_lim(req, 0, 0) or { code = err.code() }
+	assert code == 400
+}
+
+fn test_frame_chunked_size_overflow_rejected() {
+	// A hex chunk size beyond i32 must be rejected, not wrapped negative (which
+	// would make the next offset negative and read out of bounds).
+	req := 'POST /c HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\nffffffffff\r\nx'.bytes()
+	assert frame_request_length_lim_idx(req, 0, 0) == frame_err_malformed
+}
+
+fn test_frame_chunked_with_trailers() {
+	// A trailing header line after the terminating zero chunk must still frame.
+	req :=
+		'POST /c HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nWiki\r\n0\r\nX-Trailer: v\r\n\r\n'.bytes()
+	assert_frames_at(req, req.len)
+}
+
+fn test_frame_bare_lf_content_length() {
+	// Headers terminated with bare LF (no CR): Content-Length must be measured
+	// correctly so the body is framed at its true end, not one byte short.
+	body := 'abcdef'
+	req := ('POST /a HTTP/1.1\nContent-Length: ${body.len}\n\n' + body).bytes()
+	assert frame_request_length_lim_idx(req, 0, 0) == req.len
+}
+
+fn test_frame_content_length_trailing_ows() {
+	// Trailing whitespace around a Content-Length value must be tolerated.
+	body := 'hello'
+	req := 'POST /a HTTP/1.1\r\nContent-Length: ${body.len}  \r\n\r\n${body}'.bytes()
+	assert frame_request_length_lim_idx(req, 0, 0) == req.len
+}
