@@ -781,15 +781,17 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 }
 
 fn (mut g FlatGen) gen_select_receive_value(expr string, actual types.Type, expected types.Type) {
-	if expected is types.OptionType || expected is types.ResultType {
-		if actual is types.OptionType || actual is types.ResultType {
+	expected_base := select_receive_unalias_type(expected)
+	actual_base := select_receive_unalias_type(actual)
+	if expected_base is types.OptionType || expected_base is types.ResultType {
+		if actual_base is types.OptionType || actual_base is types.ResultType {
 			g.write(expr)
 			return
 		}
-		base_type := if expected is types.OptionType {
-			expected.base_type
+		base_type := if expected_base is types.OptionType {
+			expected_base.base_type
 		} else {
-			(expected as types.ResultType).base_type
+			(expected_base as types.ResultType).base_type
 		}
 		ct := g.optional_type_name(expected)
 		if base_type is types.Void {
@@ -813,6 +815,13 @@ fn (mut g FlatGen) gen_select_receive_value(expr string, actual types.Type, expe
 		return
 	}
 	g.write(expr)
+}
+
+fn select_receive_unalias_type(typ types.Type) types.Type {
+	if typ is types.Alias {
+		return select_receive_unalias_type(typ.base_type)
+	}
+	return typ
 }
 
 fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.Type, expected types.Type) bool {

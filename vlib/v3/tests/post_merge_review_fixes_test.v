@@ -918,6 +918,7 @@ struct Value {
 struct Initial {}
 
 type Item = Value | int
+type MaybeValue = ?Value
 
 fn (value Value) get() int {
 	return value.n
@@ -972,12 +973,22 @@ fn main() {
 		option_value = <-option_ch {}
 	}
 
+	aliased_option_ch := chan Value{cap: 1}
+	aliased_option_ch <- Value{
+		n: 9
+	}
+	mut aliased_option_value := MaybeValue(none)
+	select {
+		aliased_option_value = <-aliased_option_ch {}
+	}
+
 	println(int_str(interface_n(interface_value)))
 	println(int_str(sum_n(sum_value)))
 	println(int_str(option_n(option_value)))
+	println(int_str(option_n(aliased_option_value)))
 }
 ')
-	assert out == '3\n5\n7'
+	assert out == '3\n5\n7\n9'
 }
 
 fn test_interface_equality_includes_select_receive_assignment_boxes() {
@@ -1502,6 +1513,39 @@ fn main() {
 }
 ')
 	assert out == 'MyChan(chan int{\n    cap: 2, closed: false\n})'
+}
+
+fn test_channel_auto_str_helpers_are_rooted_for_aggregates() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'channel_aggregate_auto_str_helpers', 'struct Holder {
+	ch chan int
+}
+
+fn main() {
+	ch := chan int{cap: 2}
+	println([ch])
+	println(Holder{
+		ch: ch
+	})
+}
+')
+	assert out.contains('chan int{\n    cap: 2, closed: false\n}')
+	assert out.contains('Holder{')
+}
+
+fn test_explicit_return_semicolon_ends_void_return() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'explicit_return_semicolon_boundary', 'fn stop() {
+	return;
+		println("unreachable")
+}
+
+fn main() {
+	stop()
+	println("done")
+}
+')
+	assert out == 'done'
 }
 
 fn test_qualified_enum_str_requires_exact_receiver() {

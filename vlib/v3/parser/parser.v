@@ -3314,8 +3314,11 @@ fn (mut p Parser) return_stmt() flat.NodeId {
 	mut ids := []flat.NodeId{}
 	// vfmt wraps long return expressions after the keyword. The following token
 	// remains part of the return only when it is indented beyond `return` itself;
-	// an ordinary next statement stays at the same block indentation.
-	if p.tok == .semicolon {
+	// an ordinary next statement stays at the same block indentation. Only a
+	// newline inserted by the scanner can continue the expression; `return;`
+	// always ends the statement.
+	if p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
+		&& p.s.src[p.tok_pos] == `\n` {
 		_ = p.peek()
 		if p.peek_tok !in [.eof, .rcbr]
 			&& p.column_for_pos(p.peek_pos) > p.column_for_pos(return_pos) {
