@@ -685,6 +685,9 @@ fn (t &Transformer) interface_box_type_text_maybe(raw_type string) bool {
 		return false
 	}
 	clean := t.normalize_type_alias(raw_type).trim_space()
+	if clean.starts_with('?') || clean.starts_with('!') {
+		return t.interface_box_type_text_maybe(clean[1..])
+	}
 	return t.resolve_interface_type_name(clean).len > 0 || clean.starts_with('[]')
 		|| clean.starts_with('[') || clean.starts_with('map[')
 }
@@ -695,6 +698,12 @@ fn interface_box_expected_type(expected types.Type) bool {
 			true
 		}
 		types.Alias {
+			interface_box_expected_type(expected.base_type)
+		}
+		types.OptionType {
+			interface_box_expected_type(expected.base_type)
+		}
+		types.ResultType {
 			interface_box_expected_type(expected.base_type)
 		}
 		types.Array {
@@ -742,6 +751,12 @@ fn (mut t Transformer) collect_interface_boxed_value(id flat.NodeId, expected ty
 
 	match expected {
 		types.Alias {
+			t.collect_interface_boxed_value(id, expected.base_type)
+		}
+		types.OptionType {
+			t.collect_interface_boxed_value(id, expected.base_type)
+		}
+		types.ResultType {
 			t.collect_interface_boxed_value(id, expected.base_type)
 		}
 		types.Interface {

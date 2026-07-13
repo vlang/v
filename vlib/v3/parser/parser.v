@@ -2162,7 +2162,7 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 		return flat.empty_node
 	}
 	p.next() // skip 'if'
-	cond := p.parse_comptime_cond()
+	mut cond := p.parse_comptime_cond()
 	// Only defer conditions that need information unavailable at parse time: a `$for` loop var
 	// (`field.typ`, `field.indirections`, `value.value`), known once the loop is unrolled, or a
 	// type test (`T is int`), known after monomorphization. Ordinary platform/custom flags
@@ -2170,9 +2170,13 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 	// conditions and the C backend drops any `.comptime_if` that survives.
 	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
 		|| comptime_cond_references_var(cond, 'threads') {
-		then_block := p.block_stmt()
-		else_block := p.parse_comptime_else()
-		return p.comptime_if_node(cond, then_block, else_block)
+		cond = p.simplify_deferred_comptime_cond(cond)
+		if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
+			|| comptime_cond_references_var(cond, 'threads') {
+			then_block := p.block_stmt()
+			else_block := p.parse_comptime_else()
+			return p.comptime_if_node(cond, then_block, else_block)
+		}
 	}
 	taken := eval_comptime_cond(p.prefs, cond)
 	if taken {
@@ -2238,11 +2242,14 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 		return flat.empty_node
 	}
 	p.next() // skip 'if'
-	cond := p.parse_comptime_cond()
+	mut cond := p.parse_comptime_cond()
 	if comptime_cond_has_type_test(cond) || comptime_cond_references_var(cond, 'threads') {
-		then_block := p.top_level_block_stmt()
-		else_block := p.parse_top_level_comptime_else()
-		return p.comptime_if_node(cond, then_block, else_block)
+		cond = p.simplify_deferred_comptime_cond(cond)
+		if comptime_cond_has_type_test(cond) || comptime_cond_references_var(cond, 'threads') {
+			then_block := p.top_level_block_stmt()
+			else_block := p.parse_top_level_comptime_else()
+			return p.comptime_if_node(cond, then_block, else_block)
+		}
 	}
 	taken := eval_comptime_cond(p.prefs, cond)
 	if taken {
@@ -2456,6 +2463,61 @@ fn (p &Parser) comptime_cond_needs_loop_var(cond string) bool {
 		}
 	}
 	return false
+}
+
+fn (p &Parser) simplify_deferred_comptime_cond(cond string) string {
+	c := comptime_cond_strip_outer_parens(cond.trim_space())
+	if !p.comptime_cond_needs_loop_var(c) && !comptime_cond_has_type_test(c)
+		&& !comptime_cond_references_var(c, 'threads') {
+		return if eval_comptime_cond(p.prefs, c) { 'true' } else { 'false' }
+	}
+	left_or, right_or, has_or := comptime_cond_split_top_level(c, '||')
+	if has_or {
+		left := p.simplify_deferred_comptime_cond(left_or)
+		if left == 'true' {
+			return 'true'
+		}
+		right := p.simplify_deferred_comptime_cond(right_or)
+		if right == 'true' {
+			return 'true'
+		}
+		if left == 'false' {
+			return right
+		}
+		if right == 'false' {
+			return left
+		}
+		return '(${left}) || (${right})'
+	}
+	left_and, right_and, has_and := comptime_cond_split_top_level(c, '&&')
+	if has_and {
+		left := p.simplify_deferred_comptime_cond(left_and)
+		if left == 'false' {
+			return 'false'
+		}
+		right := p.simplify_deferred_comptime_cond(right_and)
+		if right == 'false' {
+			return 'false'
+		}
+		if left == 'true' {
+			return right
+		}
+		if right == 'true' {
+			return left
+		}
+		return '(${left}) && (${right})'
+	}
+	if c.starts_with('!') {
+		inner := p.simplify_deferred_comptime_cond(c[1..])
+		if inner == 'true' {
+			return 'false'
+		}
+		if inner == 'false' {
+			return 'true'
+		}
+		return '!(${inner})'
+	}
+	return c
 }
 
 // comptime_cond_references_var reports whether `cond` reads `var_name` as a whole identifier
@@ -2987,13 +3049,16 @@ fn (mut p Parser) parse_comptime_if_expr() flat.NodeId {
 
 fn (mut p Parser) parse_comptime_if_expr_after_if() flat.NodeId {
 	p.next() // skip if
-	cond := p.parse_comptime_cond()
+	mut cond := p.parse_comptime_cond()
 	// Whether `threads` is enabled depends on spawn expressions in the completed AST,
 	// so expression branches must be retained for the checker/transformer to select.
 	if comptime_cond_references_var(cond, 'threads') {
-		then_expr := p.parse_comptime_expr_block()
-		else_expr := p.parse_comptime_else_expr()
-		return p.comptime_if_node(cond, then_expr, else_expr)
+		cond = p.simplify_deferred_comptime_cond(cond)
+		if comptime_cond_references_var(cond, 'threads') {
+			then_expr := p.parse_comptime_expr_block()
+			else_expr := p.parse_comptime_else_expr()
+			return p.comptime_if_node(cond, then_expr, else_expr)
+		}
 	}
 	taken := eval_comptime_cond(p.prefs, cond)
 	if taken {

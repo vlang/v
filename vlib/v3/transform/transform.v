@@ -6680,11 +6680,16 @@ fn (mut t Transformer) transform_select_branch(id flat.NodeId) flat.NodeId {
 	mut children := []flat.NodeId{cap: int(branch.children_count)}
 	for i in 0 .. body_start {
 		child_id := t.a.child(&branch, i)
-		children << if body_start == 2 && i == 0 {
+		children << if branch.value == 'recv_assign' && body_start == 2 && i == 0 {
+			t.transform_lvalue_without_smartcast(child_id)
+		} else if body_start == 2 && i == 0 {
 			t.transform_lvalue(child_id)
 		} else {
 			t.transform_expr(child_id)
 		}
+	}
+	if branch.value == 'recv_assign' && body_start == 2 {
+		t.invalidate_smartcast_for_lvalue(t.a.child(&branch, 0))
 	}
 	mut bound_name := ''
 	mut saved_var_types := []VarTypeBinding{}

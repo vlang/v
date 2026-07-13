@@ -24,6 +24,18 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run_good_backend(v3_bin, name, 'c', src)
 }
 
+fn run_good_with_flags(v3_bin string, name string, flags string, src string) string {
+	good_src := '${tmp_test_path(name)}.v'
+	os.write_file(good_src, src) or { panic(err) }
+	good_bin := tmp_test_path(name)
+	compile := os.execute('${v3_bin} ${flags} ${good_src} -b c -o ${good_bin}')
+	assert compile.exit_code == 0, '${name}: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, '${name}: ${run.output}'
+	return run.output.trim_space()
+}
+
 fn run_good_backend(v3_bin string, name string, backend string, src string) string {
 	good_src := '${tmp_test_path(name)}.v'
 	os.write_file(good_src, src) or { panic(err) }
@@ -249,6 +261,46 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_interface_equality_includes_option_result_return_boxes() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'interface_eq_option_result_return_boxes', 'interface IValue {}
+
+struct OptionValue {
+	n int
+}
+
+struct ResultValue {
+	n int
+}
+
+fn make_option() ?IValue {
+	return OptionValue{
+		n: 3
+	}
+}
+
+fn make_result() !IValue {
+	return ResultValue{
+		n: 4
+	}
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	option_value := make_option() or { panic("missing option") }
+	result_value := make_result() or { panic(err) }
+	println(same(option_value).str())
+	println(same(result_value).str())
+}
+')
+	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
+	assert same_body.contains('OptionValue*'), same_body
+	assert same_body.contains('ResultValue*'), same_body
+}
+
 fn test_select_receive_assignment_checks_lhs_type() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'select_receive_assign_bool_mismatch', 'fn main() {
@@ -299,6 +351,63 @@ fn main() {
 }
 ')
 	assert with_spawn == '41'
+}
+
+fn test_comptime_if_threads_mixed_conditions_keep_normal_flag_evaluation() {
+	v3_bin := build_v3()
+	out := run_good_with_flags(v3_bin, 'comptime_threads_mixed_conditions',
+		'-d mixed_threads_flag', 'fn main() {
+	$if mixed_threads_flag ? || threads {
+		println("statement or")
+	} $else {
+		println("wrong statement or")
+	}
+	or_value := $if mixed_threads_flag ? || threads { 41 } $else { 7 }
+	println(int_str(or_value))
+	$if mixed_threads_flag ? && threads {
+		println("wrong statement and")
+	} $else {
+		println("statement and")
+	}
+	and_value := $if mixed_threads_flag ? && threads { 41 } $else { 7 }
+	println(int_str(and_value))
+}
+')
+	assert out == 'statement or\n41\nstatement and\n7'
+}
+
+fn test_select_receive_assignment_invalidates_smartcast_before_branch_body() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_assign_invalidates_smartcast', 'struct Foo {
+	value int
+}
+
+struct Bar {
+	value int
+}
+
+type Item = Bar | Foo
+
+fn main() {
+	mut item := Item(Foo{
+		value: 1
+	})
+	ch := chan Item{cap: 1}
+	ch <- Item(Bar{
+		value: 2
+	})
+	if item is Foo {
+		select {
+			item = <-ch {
+				if item is Bar {
+					println(int_str(item.value))
+				}
+			}
+		}
+	}
+}
+')
+	assert out == '2'
 }
 
 fn test_select_exception_branches_flush_defers() {
