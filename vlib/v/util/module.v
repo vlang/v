@@ -231,9 +231,15 @@ fn mod_path_to_full_name_with_options(pref_ &pref.Preferences, mod string, path 
 		} else {
 			os.join_path_single(os.getwd(), pref_.path)
 		}
-		rel_mod_path := path.replace(abs_pref_path.all_before_last(os.path_separator) +
-			os.path_separator, '')
-		if rel_mod_path != path {
+		normalized_abs_pref_path := os.real_path(abs_pref_path)
+		abs_pref_base := if os.is_dir(normalized_abs_pref_path) {
+			normalized_abs_pref_path
+		} else {
+			os.dir(normalized_abs_pref_path)
+		}
+		prefix := abs_pref_base + os.path_separator
+		if path.starts_with(prefix) {
+			rel_mod_path := path.all_after(prefix)
 			return normalize_base_url_mod_name(rel_mod_path.replace(os.path_separator, '.'), path)
 		}
 	}

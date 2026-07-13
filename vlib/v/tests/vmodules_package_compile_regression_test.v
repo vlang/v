@@ -137,14 +137,24 @@ fn test_issue_27391_symlinked_namespaced_vmodules_import_compiles() {
 	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'luuid-ok\nluuid-ok', res.output
+	app_dir := os.join_path(issue_27391_workspace(), 'app')
+	dir_res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(app_dir)}')
+	assert dir_res.exit_code == 0, dir_res.output
+	assert dir_res.output.trim_space() == 'luuid-ok\nluuid-ok', dir_res.output
+	old_wd := os.getwd()
+	os.chdir(app_dir) or { panic(err) }
+	dot_res := os.execute('${os.quoted_path(issue_20147_vexe)} run .')
+	os.chdir(old_wd) or { panic(err) }
+	assert dot_res.exit_code == 0, dot_res.output
+	assert dot_res.output.trim_space() == 'luuid-ok\nluuid-ok', dot_res.output
 }
 
-fn issue_27281_boundary_workspace(marker string) string {
-	return os.join_path(os.vtmp_dir(), 'issue_27281_boundary_${marker.replace('.', '_')}')
+fn issue_27281_boundary_workspace(case_name string) string {
+	return os.join_path(os.vtmp_dir(), 'issue_27281_boundary_${case_name}')
 }
 
-fn issue_27281_write_boundary_project(marker string) string {
-	workspace := issue_27281_boundary_workspace(marker)
+fn issue_27281_write_boundary_project(case_name string, marker string, marker_is_dir bool) string {
+	workspace := issue_27281_boundary_workspace(case_name)
 	parent := os.join_path(workspace, 'parent')
 	repo := os.join_path(parent, 'repo')
 	foo_dir := os.join_path(repo, 'foo')
@@ -152,9 +162,16 @@ fn issue_27281_write_boundary_project(marker string) string {
 	os.mkdir_all(foo_dir) or { panic(err) }
 	parent_vmod := ['Module {', "\tname: 'parent'", '}'].join_lines() + '\n'
 	issue_20147_write_file(os.join_path(parent, 'v.mod'), parent_vmod)
-	issue_20147_write_file(os.join_path(repo, marker), '')
+	if marker_is_dir {
+		os.mkdir_all(os.join_path(repo, marker)) or { panic(err) }
+	} else {
+		issue_20147_write_file(os.join_path(repo, marker), '')
+	}
 	issue_20147_write_file(os.join_path(repo, 'main.v'),
 		['module main', '', 'import foo', '', 'fn main() {', '\tprintln(foo.value())', '}'].join_lines() +
+		'\n')
+	issue_20147_write_file(os.join_path(repo, 'main_test.v'),
+		['module main', '', 'import foo', '', 'fn test_foo_value() {', "\tassert foo.value() == 'boundary-ok'", '}'].join_lines() +
 		'\n')
 	issue_20147_write_file(os.join_path(foo_dir, 'foo.v'),
 		['module foo', '', 'pub fn value() string {', "\treturn 'boundary-ok'", '}'].join_lines() +
@@ -162,8 +179,8 @@ fn issue_27281_write_boundary_project(marker string) string {
 	return workspace
 }
 
-fn issue_27281_assert_boundary_marker_stops_parent_vmod(marker string) {
-	workspace := issue_27281_write_boundary_project(marker)
+fn issue_27281_assert_boundary_marker_stops_parent_vmod(case_name string, marker string, marker_is_dir bool) {
+	workspace := issue_27281_write_boundary_project(case_name, marker, marker_is_dir)
 	defer {
 		os.rmdir_all(workspace) or {}
 	}
@@ -171,14 +188,32 @@ fn issue_27281_assert_boundary_marker_stops_parent_vmod(marker string) {
 	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'boundary-ok', res.output
+	repo_dir := os.real_path(os.join_path(workspace, 'parent', 'repo'))
+	dir_res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(repo_dir)}')
+	assert dir_res.exit_code == 0, dir_res.output
+	assert dir_res.output.trim_space() == 'boundary-ok', dir_res.output
+	test_res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(repo_dir)}')
+	assert test_res.exit_code == 0, test_res.output
+	old_wd := os.getwd()
+	os.chdir(repo_dir) or { panic(err) }
+	dot_run_res := os.execute('${os.quoted_path(issue_20147_vexe)} run .')
+	dot_test_res := os.execute('${os.quoted_path(issue_20147_vexe)} test .')
+	os.chdir(old_wd) or { panic(err) }
+	assert dot_run_res.exit_code == 0, dot_run_res.output
+	assert dot_run_res.output.trim_space() == 'boundary-ok', dot_run_res.output
+	assert dot_test_res.exit_code == 0, dot_test_res.output
 }
 
-fn test_issue_27281_git_marker_stops_fallback_parent_vmod_scan() {
-	issue_27281_assert_boundary_marker_stops_parent_vmod('.git')
+fn test_issue_27281_git_file_marker_stops_fallback_parent_vmod_scan() {
+	issue_27281_assert_boundary_marker_stops_parent_vmod('git_file', '.git', false)
+}
+
+fn test_issue_27281_git_dir_marker_stops_fallback_parent_vmod_scan() {
+	issue_27281_assert_boundary_marker_stops_parent_vmod('git_dir', '.git', true)
 }
 
 fn test_issue_27281_vmod_stop_marker_stops_fallback_parent_vmod_scan() {
-	issue_27281_assert_boundary_marker_stops_parent_vmod('.v.mod.stop')
+	issue_27281_assert_boundary_marker_stops_parent_vmod('vmod_stop', '.v.mod.stop', false)
 }
 
 fn issue_27281_base_url_workspace() string {
@@ -196,6 +231,9 @@ fn issue_27281_write_uppercase_base_url_project() {
 	issue_20147_write_file(os.join_path(source_dir, 'main.v'),
 		['module main', '', 'import foo', '', 'fn main() {', '\tprintln(foo.value())', '}'].join_lines() +
 		'\n')
+	issue_20147_write_file(os.join_path(source_dir, 'main_test.v'),
+		['module main', '', 'import foo', '', 'fn test_foo_value() {', "\tassert foo.value() == 'base-url-ok'", '}'].join_lines() +
+		'\n')
 	issue_20147_write_file(os.join_path(foo_dir, 'foo.v'),
 		['module foo', '', 'pub fn value() string {', "\treturn 'base-url-ok'", '}'].join_lines() +
 		'\n')
@@ -210,4 +248,18 @@ fn test_issue_27281_temp_project_allows_uppercase_base_url() {
 	res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(main_file)}')
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'base-url-ok', res.output
+	source_dir := os.real_path(os.join_path(issue_27281_base_url_workspace(), 'Source'))
+	dir_res := os.execute('${os.quoted_path(issue_20147_vexe)} run ${os.quoted_path(source_dir)}')
+	assert dir_res.exit_code == 0, dir_res.output
+	assert dir_res.output.trim_space() == 'base-url-ok', dir_res.output
+	test_res := os.execute('${os.quoted_path(issue_20147_vexe)} test ${os.quoted_path(source_dir)}')
+	assert test_res.exit_code == 0, test_res.output
+	old_wd := os.getwd()
+	os.chdir(source_dir) or { panic(err) }
+	dot_run_res := os.execute('${os.quoted_path(issue_20147_vexe)} run .')
+	dot_test_res := os.execute('${os.quoted_path(issue_20147_vexe)} test .')
+	os.chdir(old_wd) or { panic(err) }
+	assert dot_run_res.exit_code == 0, dot_run_res.output
+	assert dot_run_res.output.trim_space() == 'base-url-ok', dot_run_res.output
+	assert dot_test_res.exit_code == 0, dot_test_res.output
 }
