@@ -731,7 +731,11 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 					}
 				} else {
 					gen_expr_lvalue(mut g, select_case.lhs_id)
-					g.writeln(' = ${temps[i]};')
+					g.write(' = ')
+					lhs_type := g.usable_expr_type(select_case.lhs_id)
+					expected := g.assign_rhs_expected_type(select_case.lhs_id, lhs_type)
+					g.gen_select_receive_value(temps[i], elem_types[i], expected)
+					g.writeln(';')
 				}
 			}
 		}
@@ -774,6 +778,134 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 		g.writeln('${select_result} != -2; })')
 	}
 	_ = id
+}
+
+fn (mut g FlatGen) gen_select_receive_value(expr string, actual types.Type, expected types.Type) {
+	if expected is types.OptionType || expected is types.ResultType {
+		if actual is types.OptionType || actual is types.ResultType {
+			g.write(expr)
+			return
+		}
+		base_type := if expected is types.OptionType {
+			expected.base_type
+		} else {
+			(expected as types.ResultType).base_type
+		}
+		ct := g.optional_type_name(expected)
+		if base_type is types.Void {
+			g.write('(${ct}){.ok = true}')
+			return
+		}
+		g.write('(${ct}){.ok = true, .value = ')
+		g.gen_select_receive_value(expr, actual, base_type)
+		g.write('}')
+		return
+	}
+	if expected !is types.Pointer && actual is types.Pointer
+		&& g.type_names_match(actual.base_type, expected) {
+		g.write('*${expr}')
+		return
+	}
+	if g.gen_select_receive_interface_value(expr, actual, expected) {
+		return
+	}
+	if g.gen_select_receive_sum_value(expr, actual, expected) {
+		return
+	}
+	g.write(expr)
+}
+
+fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.Type, expected types.Type) bool {
+	iface_type := if expected is types.Alias { expected.base_type } else { expected }
+	if iface_type !is types.Interface {
+		return false
+	}
+	iface := iface_type as types.Interface
+	actual_clean := if actual is types.Pointer { actual.base_type } else { actual }
+	actual_base := actual_clean
+	if actual_base is types.Interface {
+		return false
+	}
+	concrete_name := actual_base.name()
+	if concrete_name.len == 0 {
+		return false
+	}
+	type_id := g.iface_type_id_for_concrete(iface.name, actual_clean)
+	ct := g.tc.c_type(iface)
+	concrete_ct := g.tc.c_type(actual_base)
+	if g.is_ierror_type_name(iface.name) {
+		empty_sid := g.intern_string('')
+		object := if actual is types.Pointer {
+			expr
+		} else {
+			'memdup(&${expr}, sizeof(${concrete_ct}))'
+		}
+		g.write('(${ct}){._typ = ${type_id}, ._object = ${object}, .message = _str_${empty_sid}, .code = 0}')
+		return true
+	}
+	fields := g.tc.interface_fields[iface.name] or { []types.StructField{} }
+	if fields.len > 0 {
+		tmp := g.tmp_count
+		g.tmp_count++
+		if actual is types.Pointer {
+			g.write('({ ${concrete_ct}* _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}')
+			for field in fields {
+				g.write(', .${g.cname(field.name)} = _iface${tmp}->${g.cname(field.name)}')
+			}
+		} else {
+			g.write('({ ${concrete_ct} _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = memdup(&_iface${tmp}, sizeof(${concrete_ct}))')
+			for field in fields {
+				g.write(', .${g.cname(field.name)} = _iface${tmp}.${g.cname(field.name)}')
+			}
+		}
+		g.write('}; })')
+		return true
+	}
+	g.write('(${ct}){._typ = ${type_id}, ._object = ')
+	if actual is types.Pointer {
+		g.write(expr)
+	} else {
+		g.write('memdup(&${expr}, sizeof(${concrete_ct}))')
+	}
+	g.write('}')
+	return true
+}
+
+fn (mut g FlatGen) gen_select_receive_sum_value(expr string, actual types.Type, expected types.Type) bool {
+	sum_type0 := if expected is types.Alias { expected.base_type } else { expected }
+	if sum_type0 !is types.SumType {
+		return false
+	}
+	raw_actual := actual
+	actual_base := if raw_actual is types.Alias { raw_actual.base_type } else { raw_actual }
+	if actual_base is types.SumType {
+		return false
+	}
+	sum_type := sum_type0 as types.SumType
+	sum_name := g.resolve_sum_name(sum_type.name)
+	variants := g.tc.sum_types[sum_name] or { return false }
+	mut actual_type := raw_actual
+	mut variant := g.resolve_variant(sum_name, actual_type.name())
+	if variant !in variants {
+		actual_type = actual_base
+		variant = g.resolve_variant(sum_name, actual_type.name())
+	}
+	if variant !in variants {
+		return false
+	}
+	variant_type := g.tc.parse_type(variant)
+	inner_ct := g.value_c_type(variant_type)
+	ct := g.tc.c_type(sum_type0)
+	idx := g.sum_type_index(sum_name, variant)
+	field := g.sum_field_name(variant)
+	g.write('(${ct}){.typ = ${idx}, .${field} = ')
+	if actual_type is types.Pointer && g.type_names_match(actual_type.base_type, variant_type) {
+		g.write(expr)
+	} else {
+		g.write('(${inner_ct}*)memdup(&${expr}, sizeof(${inner_ct}))')
+	}
+	g.write('}')
+	return true
 }
 
 // gen_node emits node output for c.

@@ -643,6 +643,81 @@ fn test_select_receive_assignment_checks_lhs_type() {
 		'cannot assign `int` to `string`')
 }
 
+fn test_select_receive_assignment_applies_destination_conversions() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_assign_conversions', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+struct Initial {}
+
+type Item = Value | int
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn (initial Initial) get() int {
+	_ = initial
+	return -1
+}
+
+fn interface_n(value IValue) int {
+	return value.get()
+}
+
+fn sum_n(item Item) int {
+	if item is Value {
+		return item.n
+	}
+	return -1
+}
+
+fn option_n(value ?Value) int {
+	unwrapped := value or { return -1 }
+	return unwrapped.n
+}
+
+fn main() {
+	interface_ch := chan Value{cap: 1}
+	interface_ch <- Value{
+		n: 3
+	}
+	mut interface_value := IValue(Initial{})
+	select {
+		interface_value = <-interface_ch {}
+	}
+
+	sum_ch := chan Value{cap: 1}
+	sum_ch <- Value{
+		n: 5
+	}
+	mut sum_value := Item(0)
+	select {
+		sum_value = <-sum_ch {}
+	}
+
+	option_ch := chan Value{cap: 1}
+	option_ch <- Value{
+		n: 7
+	}
+	mut option_value := ?Value(none)
+	select {
+		option_value = <-option_ch {}
+	}
+
+	println(int_str(interface_n(interface_value)))
+	println(int_str(sum_n(sum_value)))
+	println(int_str(option_n(option_value)))
+}
+')
+	assert out == '3\n5\n7'
+}
+
 fn test_select_lowering_roots_array_free() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'select_roots_array_free', 'fn main() {
