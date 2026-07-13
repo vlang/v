@@ -557,6 +557,491 @@ fn (mut g FlatGen) gen_lock_expr(id flat.NodeId, node flat.Node) {
 	g.write('${tmp};})')
 }
 
+struct FlatSelectCase {
+	branch_id  flat.NodeId
+	channel_id flat.NodeId
+	value_id   flat.NodeId = flat.empty_node
+	lhs_id     flat.NodeId = flat.empty_node
+	body_start int
+	is_push    bool
+	is_decl    bool
+}
+
+fn (g &FlatGen) select_channel_elem_type(channel_id flat.NodeId, value_id flat.NodeId) types.Type {
+	channel_type := concrete_receiver_type(g.usable_expr_type(channel_id))
+	if channel_type is types.Channel {
+		return channel_type.elem_type
+	}
+	if int(value_id) >= 0 {
+		return g.usable_expr_type(value_id)
+	}
+	return types.Unknown{}
+}
+
+fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
+	mut cases := []FlatSelectCase{}
+	mut exception_branch := flat.empty_node
+	mut timeout_id := flat.empty_node
+	for i in 0 .. node.children_count {
+		branch_id := g.a.child(&node, i)
+		if int(branch_id) < 0 || int(branch_id) >= g.a.nodes.len {
+			continue
+		}
+		branch := g.a.nodes[int(branch_id)]
+		if branch.kind != .select_branch || branch.children_count == 0 {
+			if branch.value == 'else' {
+				exception_branch = branch_id
+			}
+			continue
+		}
+		if branch.value == 'else' {
+			exception_branch = branch_id
+			continue
+		}
+		first_id := g.a.child(&branch, 0)
+		first := g.a.nodes[int(first_id)]
+		if first.kind == .infix && first.op == .arrow && first.children_count >= 2 {
+			cases << FlatSelectCase{
+				branch_id:  branch_id
+				channel_id: g.a.child(&first, 0)
+				value_id:   g.a.child(&first, 1)
+				body_start: 1
+				is_push:    true
+			}
+			continue
+		}
+		if branch.value in ['recv', 'recv_assign'] && branch.children_count >= 2 {
+			second_id := g.a.child(&branch, 1)
+			second := g.a.nodes[int(second_id)]
+			if second.kind == .prefix && second.op == .arrow && second.children_count > 0 {
+				cases << FlatSelectCase{
+					branch_id:  branch_id
+					channel_id: g.a.child(&second, 0)
+					value_id:   second_id
+					lhs_id:     first_id
+					body_start: 2
+					is_decl:    branch.value == 'recv'
+				}
+				continue
+			}
+		}
+		if first.kind == .prefix && first.op == .arrow && first.children_count > 0 {
+			cases << FlatSelectCase{
+				branch_id:  branch_id
+				channel_id: g.a.child(&first, 0)
+				value_id:   first_id
+				body_start: 1
+			}
+			continue
+		}
+		exception_branch = branch_id
+		timeout_id = first_id
+	}
+
+	if is_expr {
+		g.write('({')
+		g.writeln('')
+	}
+	mut temps := []string{cap: cases.len}
+	mut elem_types := []types.Type{cap: cases.len}
+	for select_case in cases {
+		elem_type := g.select_channel_elem_type(select_case.channel_id, select_case.value_id)
+		elem_types << elem_type
+		ct := g.value_c_type(elem_type)
+		tmp := g.tmp_name()
+		temps << tmp
+		if select_case.is_push {
+			g.write('${ct} ${tmp} = ')
+			g.gen_expr_with_expected_type(select_case.value_id, elem_type)
+			g.writeln(';')
+		} else {
+			g.writeln('${ct} ${tmp} = (${ct}){0};')
+		}
+	}
+	select_result := g.tmp_name()
+	if cases.len == 0 && int(timeout_id) >= 0 {
+		g.write('time__sleep(')
+		g.gen_expr(timeout_id)
+		g.writeln(');')
+		g.writeln('int ${select_result} = -1;')
+	} else {
+		channels := g.tmp_name()
+		directions := g.tmp_name()
+		objects := g.tmp_name()
+		if cases.len == 0 {
+			g.writeln('Array ${channels} = array_new(sizeof(sync__Channel*), 0, 0);')
+			g.writeln('Array ${directions} = array_new(sizeof(int), 0, 0);')
+			g.writeln('Array ${objects} = array_new(sizeof(void*), 0, 0);')
+		} else {
+			g.write('Array ${channels} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(sync__Channel*), (sync__Channel*[]){')
+			for i, select_case in cases {
+				if i > 0 {
+					g.write(', ')
+				}
+				g.write('(sync__Channel*)(')
+				g.gen_channel_try_receiver(select_case.channel_id)
+				g.write(')')
+			}
+			g.writeln('});')
+			g.write('Array ${directions} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(int), (int[]){')
+			for i, select_case in cases {
+				if i > 0 {
+					g.write(', ')
+				}
+				g.write(if select_case.is_push { '1' } else { '0' })
+			}
+			g.writeln('});')
+			g.write('Array ${objects} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(void*), (void*[]){')
+			for i, tmp in temps {
+				if i > 0 {
+					g.write(', ')
+				}
+				g.write('(void*)&${tmp}')
+			}
+			g.writeln('});')
+		}
+		select_fn := if is_expr { 'sync__channel_select' } else { 'sync__channel_select_lang' }
+		g.write('int ${select_result} = ${select_fn}(&${channels}, ${directions}, &${objects}, ')
+		if int(timeout_id) >= 0 {
+			g.gen_expr(timeout_id)
+		} else if int(exception_branch) >= 0 {
+			g.write('-1')
+		} else {
+			g.write('((i64)9223372036854775807LL)')
+		}
+		g.writeln(');')
+		g.writeln('array__free(&${objects});')
+		g.writeln('array__free(&${directions});')
+		g.writeln('array__free(&${channels});')
+	}
+
+	for i, select_case in cases {
+		if i == 0 {
+			g.writeln('if (${select_result} == ${i}) {')
+		} else {
+			g.writeln('else if (${select_result} == ${i}) {')
+		}
+		g.indent++
+		g.push_scope()
+		defer_start := g.defers.len
+		if !select_case.is_push && int(select_case.lhs_id) >= 0 {
+			lhs := g.a.nodes[int(select_case.lhs_id)]
+			if lhs.kind != .ident || lhs.value != '_' {
+				if select_case.is_decl {
+					ct := g.value_c_type(elem_types[i])
+					g.write('${ct} ')
+					gen_expr_lvalue(mut g, select_case.lhs_id)
+					g.writeln(' = ${temps[i]};')
+					if lhs.kind == .ident {
+						owner := g.tc.cur_scope.insert_with_owner(lhs.value, elem_types[i])
+						g.track_local_pointer_storage_decl(lhs, owner, elem_types[i], ct)
+					}
+				} else {
+					gen_expr_lvalue(mut g, select_case.lhs_id)
+					g.write(' = ')
+					lhs_type := g.usable_expr_type(select_case.lhs_id)
+					expected := g.assign_rhs_expected_type(select_case.lhs_id, lhs_type)
+					g.gen_select_receive_value(temps[i], elem_types[i], expected)
+					g.writeln(';')
+				}
+			}
+		}
+		branch := g.a.nodes[int(select_case.branch_id)]
+		for j in select_case.body_start .. branch.children_count {
+			g.gen_node(g.a.child(&branch, j))
+		}
+		g.gen_defers_from(defer_start)
+		g.trim_defers(defer_start)
+		g.pop_scope()
+		g.indent--
+		g.writeln('}')
+	}
+	if int(exception_branch) >= 0 {
+		exception_test := if int(timeout_id) < 0 && !is_expr {
+			'${select_result} == -1 || ${select_result} == -2'
+		} else {
+			'${select_result} == -1'
+		}
+		if cases.len == 0 {
+			g.writeln('if (${exception_test}) {')
+		} else {
+			g.writeln('else if (${exception_test}) {')
+		}
+		g.indent++
+		g.push_scope()
+		defer_start := g.defers.len
+		branch := g.a.nodes[int(exception_branch)]
+		body_start := if branch.value == 'else' { 0 } else { 1 }
+		for j in body_start .. branch.children_count {
+			g.gen_node(g.a.child(&branch, j))
+		}
+		g.gen_defers_from(defer_start)
+		g.trim_defers(defer_start)
+		g.pop_scope()
+		g.indent--
+		g.writeln('}')
+	}
+	if is_expr {
+		g.writeln('${select_result} != -2; })')
+	}
+	_ = id
+}
+
+fn (mut g FlatGen) gen_select_receive_value(expr string, actual types.Type, expected types.Type) {
+	expected_base := select_receive_unalias_type(expected)
+	actual_base := select_receive_unalias_type(actual)
+	if expected_base is types.OptionType || expected_base is types.ResultType {
+		if actual_base is types.OptionType || actual_base is types.ResultType {
+			expected_payload := if expected_base is types.OptionType {
+				expected_base.base_type
+			} else {
+				(expected_base as types.ResultType).base_type
+			}
+			actual_payload := if actual_base is types.OptionType {
+				actual_base.base_type
+			} else {
+				(actual_base as types.ResultType).base_type
+			}
+			expected_ct := g.optional_type_name(expected)
+			actual_ct := g.optional_type_name(actual)
+			if expected_ct == actual_ct {
+				g.write(expr)
+				return
+			}
+			g.write('((${expr}).ok ? (${expected_ct}){.ok = true')
+			if expected_payload !is types.Void {
+				g.write(', .value = ')
+				g.gen_select_receive_value('(${expr}).value', actual_payload, expected_payload)
+			}
+			g.write('} : (${expected_ct}){.ok = false, .err = (${expr}).err})')
+			return
+		}
+		base_type := if expected_base is types.OptionType {
+			expected_base.base_type
+		} else {
+			(expected_base as types.ResultType).base_type
+		}
+		ct := g.optional_type_name(expected)
+		if base_type is types.Void {
+			g.write('(${ct}){.ok = true}')
+			return
+		}
+		g.write('(${ct}){.ok = true, .value = ')
+		g.gen_select_receive_value(expr, actual, base_type)
+		g.write('}')
+		return
+	}
+	if expected !is types.Pointer && actual is types.Pointer
+		&& g.type_names_match(actual.base_type, expected) {
+		g.write('*${expr}')
+		return
+	}
+	if g.gen_select_receive_array_value(expr, actual_base, expected_base) {
+		return
+	}
+	if g.gen_select_receive_map_value(expr, actual_base, expected_base) {
+		return
+	}
+	if g.gen_select_receive_interface_value(expr, actual_base, expected_base) {
+		return
+	}
+	if g.gen_select_receive_sum_value(expr, actual_base, expected_base) {
+		return
+	}
+	g.write(expr)
+}
+
+fn select_receive_unalias_type(typ types.Type) types.Type {
+	if typ is types.Alias {
+		return select_receive_unalias_type(typ.base_type)
+	}
+	return typ
+}
+
+fn (mut g FlatGen) gen_select_receive_array_value(expr string, actual types.Type, expected types.Type) bool {
+	if expected !is types.Array {
+		return false
+	}
+	expected_array := expected as types.Array
+	expected_elem := select_receive_unalias_type(expected_array.elem_type)
+	mut actual_elem := types.Type(types.void_)
+	mut source := ''
+	mut source_len := ''
+	mut source_value := ''
+	mut free_source := false
+	if actual is types.Array {
+		actual_elem = select_receive_unalias_type(actual.elem_type)
+		if actual_elem.name() == expected_elem.name() {
+			return false
+		}
+		source = g.tmp_name()
+		source_len = '${source}.len'
+		actual_elem_ct := g.value_c_type(actual_elem)
+		source_value = '*(${actual_elem_ct}*)array_get(${source}, '
+		free_source = true
+	} else if actual is types.ArrayFixed {
+		actual_elem = select_receive_unalias_type(actual.elem_type)
+		source_len = g.fixed_array_len_value(actual)
+		source_value = '${expr}['
+	} else {
+		return false
+	}
+	out := g.tmp_name()
+	idx := g.tmp_name()
+	expected_elem_ct := g.value_c_type(expected_elem)
+	if free_source {
+		g.write('({ Array ${source} = ${expr}; ')
+	} else {
+		g.write('({ ')
+	}
+	g.write('Array ${out} = __new_array(${source_len}, ${source_len}, sizeof(${expected_elem_ct})); ')
+	g.write('for (int ${idx} = 0; ${idx} < ${source_len}; ${idx}++) { ((${expected_elem_ct}*)${out}.data)[${idx}] = ')
+	if free_source {
+		g.gen_select_receive_value('${source_value}${idx})', actual_elem, expected_elem)
+	} else {
+		g.gen_select_receive_value('${source_value}${idx}]', actual_elem, expected_elem)
+	}
+	g.write('; } ')
+	if free_source {
+		g.write('array__free(&${source}); ')
+	}
+	g.write('${out}; })')
+	return true
+}
+
+fn (mut g FlatGen) gen_select_receive_map_value(expr string, actual types.Type, expected types.Type) bool {
+	if actual !is types.Map || expected !is types.Map {
+		return false
+	}
+	actual_map := actual as types.Map
+	expected_map := expected as types.Map
+	actual_key := select_receive_unalias_type(actual_map.key_type)
+	expected_key := select_receive_unalias_type(expected_map.key_type)
+	actual_value := select_receive_unalias_type(actual_map.value_type)
+	expected_value := select_receive_unalias_type(expected_map.value_type)
+	if actual_key.name() == expected_key.name() && actual_value.name() == expected_value.name() {
+		return false
+	}
+	source := g.tmp_name()
+	out := g.tmp_name()
+	keys := g.tmp_name()
+	idx := g.tmp_name()
+	source_key := g.tmp_name()
+	key := g.tmp_name()
+	source_value := g.tmp_name()
+	value := g.tmp_name()
+	actual_key_ct := g.map_key_temp_c_type(actual_key)
+	expected_key_ct := g.map_key_temp_c_type(expected_key)
+	actual_value_ct := g.value_c_type(actual_value)
+	expected_value_ct := g.value_c_type(expected_value)
+	g.write('({ map ${source} = ${expr}; map ${out} = ')
+	g.write_new_map(expected_key, expected_value)
+	g.write('; Array ${keys} = map__keys(&${source}); ')
+	g.write('for (int ${idx} = 0; ${idx} < ${keys}.len; ${idx}++) { ')
+	g.write('${actual_key_ct} ${source_key} = *(${actual_key_ct}*)array_get(${keys}, ${idx}); ')
+	g.write('${actual_value_ct} ${source_value} = *(${actual_value_ct}*)map__get_check(&${source}, &${source_key}); ')
+	g.write('${expected_key_ct} ${key} = ')
+	g.gen_select_receive_value(source_key, actual_key, expected_key)
+	g.write('; ${expected_value_ct} ${value} = ')
+	g.gen_select_receive_value(source_value, actual_value, expected_value)
+	g.write('; map__set(&${out}, &${key}, &${value}); ${source}.free_fn(&${source_key}); } ')
+	g.write('array__free(&${keys}); map__free(&${source}); ${out}; })')
+	return true
+}
+
+fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.Type, expected types.Type) bool {
+	iface_type := if expected is types.Alias { expected.base_type } else { expected }
+	if iface_type !is types.Interface {
+		return false
+	}
+	iface := iface_type as types.Interface
+	actual_clean := if actual is types.Pointer { actual.base_type } else { actual }
+	actual_base := actual_clean
+	if actual_base is types.Interface {
+		return false
+	}
+	concrete_name := actual_base.name()
+	if concrete_name.len == 0 {
+		return false
+	}
+	type_id := g.iface_type_id_for_concrete(iface.name, actual_clean)
+	ct := g.tc.c_type(iface)
+	concrete_ct := g.tc.c_type(actual_base)
+	if g.is_ierror_type_name(iface.name) {
+		empty_sid := g.intern_string('')
+		object := if actual is types.Pointer {
+			expr
+		} else {
+			'memdup(&${expr}, sizeof(${concrete_ct}))'
+		}
+		g.write('(${ct}){._typ = ${type_id}, ._object = ${object}, .message = _str_${empty_sid}, .code = 0}')
+		return true
+	}
+	fields := g.tc.interface_fields[iface.name] or { []types.StructField{} }
+	if fields.len > 0 {
+		tmp := g.tmp_count
+		g.tmp_count++
+		if actual is types.Pointer {
+			g.write('({ ${concrete_ct}* _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}')
+			for field in fields {
+				g.write(', .${g.cname(field.name)} = _iface${tmp}->${g.cname(field.name)}')
+			}
+		} else {
+			g.write('({ ${concrete_ct} _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = memdup(&_iface${tmp}, sizeof(${concrete_ct}))')
+			for field in fields {
+				g.write(', .${g.cname(field.name)} = _iface${tmp}.${g.cname(field.name)}')
+			}
+		}
+		g.write('}; })')
+		return true
+	}
+	g.write('(${ct}){._typ = ${type_id}, ._object = ')
+	if actual is types.Pointer {
+		g.write(expr)
+	} else {
+		g.write('memdup(&${expr}, sizeof(${concrete_ct}))')
+	}
+	g.write('}')
+	return true
+}
+
+fn (mut g FlatGen) gen_select_receive_sum_value(expr string, actual types.Type, expected types.Type) bool {
+	sum_type0 := if expected is types.Alias { expected.base_type } else { expected }
+	if sum_type0 !is types.SumType {
+		return false
+	}
+	raw_actual := actual
+	actual_base := if raw_actual is types.Alias { raw_actual.base_type } else { raw_actual }
+	if actual_base is types.SumType {
+		return false
+	}
+	sum_type := sum_type0 as types.SumType
+	sum_name := g.resolve_sum_name(sum_type.name)
+	variants := g.tc.sum_types[sum_name] or { return false }
+	mut actual_type := raw_actual
+	mut variant := g.resolve_variant(sum_name, actual_type.name())
+	if variant !in variants {
+		actual_type = actual_base
+		variant = g.resolve_variant(sum_name, actual_type.name())
+	}
+	if variant !in variants {
+		return false
+	}
+	variant_type := g.tc.parse_type(variant)
+	inner_ct := g.value_c_type(variant_type)
+	ct := g.tc.c_type(sum_type0)
+	idx := g.sum_type_index(sum_name, variant)
+	field := g.sum_field_name(variant)
+	g.write('(${ct}){.typ = ${idx}, .${field} = ')
+	if actual_type is types.Pointer && g.type_names_match(actual_type.base_type, variant_type) {
+		g.write(expr)
+	} else {
+		g.write('(${inner_ct}*)memdup(&${expr}, sizeof(${inner_ct}))')
+	}
+	g.write('}')
+	return true
+}
+
 // gen_node emits node output for c.
 fn (mut g FlatGen) gen_node(id flat.NodeId) {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
@@ -577,6 +1062,10 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				return
 			}
 			child := g.a.nodes[int(child_id)]
+			if child.kind == .select_stmt {
+				g.gen_select(child_id, child, false)
+				return
+			}
 			if g.is_runtime_array_flags_stmt(child_id) {
 				return
 			}
@@ -936,6 +1425,9 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		}
 		.lock_expr {
 			g.gen_lock_stmt(id, node)
+		}
+		.select_stmt {
+			g.gen_select(id, node, false)
 		}
 		.break_stmt {
 			g.gen_branch_lock_cleanup(node.value)
@@ -3723,7 +4215,7 @@ fn (mut g FlatGen) gen_or_body_value(or_body flat.Node, value_name string, value
 				g.write('return ')
 				g.gen_optional_error_from_call(fn_opt_ct, g.a.nodes[int(expr_id)])
 				g.write(';')
-			} else if g.tc.resolve_type(expr_id) is types.Void {
+			} else if g.is_noreturn_call(expr_id) || g.tc.resolve_type(expr_id) is types.Void {
 				// A diverging/void or-body tail (e.g. `panic(..)`/`exit(..)`) yields no
 				// value; emit it as a bare statement instead of assigning void.
 				g.gen_expr(expr_id)

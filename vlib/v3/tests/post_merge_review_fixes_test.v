@@ -24,6 +24,18 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run_good_backend(v3_bin, name, 'c', src)
 }
 
+fn run_good_with_flags(v3_bin string, name string, flags string, src string) string {
+	good_src := '${tmp_test_path(name)}.v'
+	os.write_file(good_src, src) or { panic(err) }
+	good_bin := tmp_test_path(name)
+	compile := os.execute('${v3_bin} ${flags} ${good_src} -b c -o ${good_bin}')
+	assert compile.exit_code == 0, '${name}: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, '${name}: ${run.output}'
+	return run.output.trim_space()
+}
+
 fn run_good_backend(v3_bin string, name string, backend string, src string) string {
 	good_src := '${tmp_test_path(name)}.v'
 	os.write_file(good_src, src) or { panic(err) }
@@ -159,11 +171,1839 @@ fn test_multi_return_assignment_requires_option_result_handling() {
 	assert out == '5ok'
 }
 
+fn test_multi_assignment_checks_all_rhs_before_invalidating_smartcasts() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'multi_assign_smartcast_rhs', 'struct Foo {
+	field int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+
+fn replacement() Value {
+	return Bar{}
+}
+
+fn main() {
+	mut x := Value(Foo{
+		field: 7
+	})
+	mut y := 0
+	if x is Foo {
+		x, y = replacement(), x.field
+	}
+	println(int_str(y))
+}
+')
+	assert out == '7'
+}
+
+fn test_is_check_preserves_pointer_sum_variants() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'is_pointer_sum_variant', 'struct Foo {
+	value int
+}
+
+type Item = &Foo | int
+
+fn main() {
+	item := Item(7)
+	if item is &Foo {
+		println("wrong")
+	} else {
+		println("ok")
+	}
+}
+')
+	assert out == 'ok'
+	run_bad(v3_bin, 'is_pointer_value_variant_rejected', 'struct Foo {}
+
+type Item = Foo | int
+
+fn main() {
+	item := Item(Foo{})
+	if item is &Foo {
+		println("wrong")
+	}
+}
+',
+		'`&Foo` is not a variant of sum type `Item`')
+}
+
+fn test_interface_equality_includes_implicit_return_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_implicit_return_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct OtherValue {
+	n int
+}
+
+fn make_value() IValue {
+	return Value{
+		n: 3
+	}
+}
+
+fn make_assigned_value() IValue {
+	mut value := IValue(Value{
+		n: 3
+	})
+	value = OtherValue{
+		n: 4
+	}
+	return value
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	println(same(make_value()).str())
+	println(same(make_assigned_value()).str())
+}
+')
+	assert out == 'true\ntrue'
+}
+
+fn test_interface_equality_includes_function_literal_return_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_function_literal_return_boxes', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn use(make fn () IValue) IValue {
+	return make()
+}
+
+fn main() {
+	make := fn () IValue {
+		return Value{
+			n: 3
+		}
+	}
+	println(same(make()).str())
+	println(same(use(|| IValue(Value{
+		n: 4
+	}))).str())
+}
+')
+	assert out == 'true\ntrue'
+}
+
+fn test_interface_equality_includes_container_literal_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_container_literal_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(values []IValue) bool {
+	return values == values
+}
+
+fn main() {
+	values := []IValue{Value{
+		n: 3
+	}}
+	println(same(values).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_equality_includes_option_result_return_boxes() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'interface_eq_option_result_return_boxes', 'interface IValue {}
+
+struct OptionValue {
+	n int
+}
+
+struct ResultValue {
+	n int
+}
+
+fn make_option() ?IValue {
+	return OptionValue{
+		n: 3
+	}
+}
+
+fn make_result() !IValue {
+	return ResultValue{
+		n: 4
+	}
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	option_value := make_option() or { panic("missing option") }
+	result_value := make_result() or { panic(err) }
+	println(same(option_value).str())
+	println(same(result_value).str())
+}
+')
+	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
+	assert same_body.contains('OptionValue*'), same_body
+	assert same_body.contains('ResultValue*'), same_body
+}
+
+fn test_interface_equality_includes_wrapped_option_result_boxes() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'interface_eq_wrapped_option_result_boxes', 'interface IValue {}
+
+struct OptionValue {
+	n int
+}
+
+struct ResultValue {
+	n int
+}
+
+fn make_option() ?OptionValue {
+	return OptionValue{
+		n: 3
+	}
+}
+
+fn make_result() !ResultValue {
+	return ResultValue{
+		n: 4
+	}
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn consume_result(value !IValue) bool {
+	payload := value or { return false }
+	return same(payload)
+}
+
+fn main() {
+	mut option_value := ?IValue(none)
+	option_value = make_option()
+	option_payload := option_value or { panic("missing option") }
+	println(same(option_payload).str())
+	println(consume_result(make_result()).str())
+}
+')
+	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
+	assert same_body.contains('OptionValue*'), same_body
+	assert same_body.contains('ResultValue*'), same_body
+}
+
+fn test_interface_equality_includes_multi_return_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_multi_return_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn make_value() (IValue, int) {
+	return Value{
+		n: 3
+	}, 7
+}
+
+fn main() {
+	value, n := make_value()
+	println(same(value).str())
+	println(int_str(n))
+}
+')
+	assert out == 'true\n7'
+}
+
+fn test_interface_equality_includes_multi_return_assignment_slot_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_multi_return_assignment_slot_box', 'interface IValue {}
+
+struct Initial {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn make_value() (Value, int) {
+	return Value{
+		n: 3
+	}, 7
+}
+
+fn main() {
+	mut value := IValue(Initial{})
+	mut n := 0
+	value, n = make_value()
+	println(same(value).str())
+	println(int_str(n))
+}
+')
+	assert out == 'true\n7'
+}
+
+fn test_interface_equality_includes_forwarded_multi_return_slot_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_forwarded_multi_return_slot_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn make_value() (Value, int) {
+	return Value{
+		n: 3
+	}, 7
+}
+
+fn forward_value() (IValue, int) {
+	return make_value()
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	value, n := forward_value()
+	println(same(value).str())
+	println(int_str(n))
+}
+')
+	assert out == 'true\n7'
+}
+
+fn test_interface_equality_includes_forwarded_multi_return_container_slot_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_forwarded_multi_return_container_slot_box', 'interface IValue {}
+
+struct ArrayValue {
+	n int
+}
+
+struct MapValue {
+	n int
+}
+
+struct FixedValue {
+	n int
+}
+
+struct FixedDynamicValue {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn make_values() ([]ArrayValue, map[string]MapValue, [1]FixedValue, int) {
+	return [ArrayValue{
+		n: 3
+	}], {
+		"item": MapValue{
+			n: 5
+		}
+	}, [FixedValue{
+		n: 11
+	}]!, 7
+}
+
+fn forward_values() ([]IValue, map[string]IValue, [1]IValue, int) {
+	return make_values()
+}
+
+fn make_fixed_dynamic() ([1]FixedDynamicValue, int) {
+	return [FixedDynamicValue{
+		n: 13
+	}]!, 17
+}
+
+fn forward_fixed_dynamic() ([]IValue, int) {
+	return make_fixed_dynamic()
+}
+
+fn main() {
+	values, indexed, fixed, n := forward_values()
+	fixed_dynamic, fixed_dynamic_n := forward_fixed_dynamic()
+	println(same(values[0]).str())
+	println(same(indexed["item"]).str())
+	println(same(fixed[0]).str())
+	println(int_str(n))
+	println(same(fixed_dynamic[0]).str())
+	println(int_str(fixed_dynamic_n))
+}
+')
+	assert out == 'true\ntrue\ntrue\n7\ntrue\n17'
+}
+
+fn test_forwarded_multi_return_container_slots_are_converted() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'forwarded_multi_return_container_slots', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_values() ([]Value, map[string]Value, int) {
+	return [Value{
+		n: 3
+	}], {
+		"item": Value{
+			n: 5
+		}
+	}, 7
+}
+
+fn forward_values() ([]IValue, map[string]IValue, int) {
+	return make_values()
+}
+
+fn make_fixed() ([1]Value, int) {
+	return [Value{
+		n: 11
+	}]!, 13
+}
+
+fn forward_fixed() ([1]IValue, int) {
+	return make_fixed()
+}
+
+fn main() {
+	values, indexed, n := forward_values()
+	fixed, fixed_n := forward_fixed()
+	println(int_str(values[0].get()))
+	println(int_str(indexed["item"].get()))
+	println(int_str(n))
+	println(int_str(fixed[0].get()))
+	println(int_str(fixed_n))
+}
+')
+	assert out == '3\n5\n7\n11\n13'
+}
+
+fn test_forwarded_multi_return_option_result_payloads_are_converted() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'forwarded_multi_return_option_result_payloads', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_option() (?Value, int) {
+	return Value{
+		n: 3
+	}, 5
+}
+
+fn forward_option() (?IValue, int) {
+	return make_option()
+}
+
+fn make_result() (!Value, int) {
+	return Value{
+		n: 7
+	}, 11
+}
+
+fn forward_result() (!IValue, int) {
+	return make_result()
+}
+
+fn main() {
+	option_value, option_n := forward_option()
+	option_payload := option_value or { panic("missing option") }
+	println(int_str(option_payload.get()))
+	println(int_str(option_n))
+	result_value, result_n := forward_result()
+	result_payload := result_value or { panic(err) }
+	println(int_str(result_payload.get()))
+	println(int_str(result_n))
+}
+')
+	assert out == '3\n5\n7\n11'
+}
+
+fn test_forwarded_wrapped_multi_return_slots_are_converted() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'forwarded_wrapped_multi_return_slots', 'interface IValue {
+	get() int
+}
+
+struct OptionValue {
+	n int
+}
+
+struct ResultValue {
+	n int
+}
+
+fn (value OptionValue) get() int {
+	return value.n
+}
+
+fn (value ResultValue) get() int {
+	return value.n
+}
+
+fn make_option() ?(OptionValue, int) {
+	return OptionValue{
+		n: 3
+	}, 5
+}
+
+fn forward_option() ?(IValue, int) {
+	return make_option()
+}
+
+fn make_result() !(ResultValue, int) {
+	return ResultValue{
+		n: 7
+	}, 11
+}
+
+fn forward_result() !(IValue, int) {
+	return make_result()
+}
+
+fn main() {
+	option_value, option_n := forward_option() or { panic("missing option") }
+	println(int_str(option_value.get()))
+	println(int_str(option_n))
+	result_value, result_n := forward_result() or { panic(err) }
+	println(int_str(result_value.get()))
+	println(int_str(result_n))
+}
+')
+	assert out == '3\n5\n7\n11'
+}
+
+fn test_interface_equality_includes_appended_element_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_appended_element_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	mut values := []IValue{}
+	values << Value{
+		n: 3
+	}
+	println(same(values[0]).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_equality_includes_channel_send_and_default_field_boxes() {
+	v3_bin := build_v3()
+	channel_out := run_good(v3_bin, 'interface_eq_channel_send_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	ch := chan IValue{cap: 1}
+	ch <- Value{
+		n: 3
+	}
+	value := <-ch
+	println(same(value).str())
+}
+')
+	assert channel_out == 'true'
+	default_out := run_good(v3_bin, 'interface_eq_default_field_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Holder {
+	value IValue = Value{
+		n: 3
+	}
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	holder := Holder{}
+	println(same(holder.value).str())
+}
+')
+	assert default_out == 'true'
+}
+
+fn test_interface_equality_includes_struct_field_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_struct_field_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Holder {
+	value IValue
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	holder := Holder{
+		value: Value{
+			n: 3
+		}
+	}
+	println(same(holder.value).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_equality_includes_or_fallback_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_or_fallback_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn maybe_value() ?IValue {
+	return none
+}
+
+fn main() {
+	value := maybe_value() or {
+		Value{
+			n: 3
+		}
+	}
+	println(same(value).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_equality_includes_or_success_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_or_success_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn maybe_value() ?Value {
+	return Value{
+		n: 3
+	}
+}
+
+fn make_value() IValue {
+	return maybe_value() or { panic("missing value") }
+}
+
+fn main() {
+	println(same(make_value()).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_auto_str_preludes_stay_inside_tag_guards() {
+	v3_bin := build_v3()
+	source := 'interface IValue {}
+
+struct Wide {
+	a string
+	b string
+}
+
+struct Narrow {
+	n int
+}
+
+fn render(value IValue) string {
+	return "\${value}"
+}
+
+fn main() {
+	wide := IValue(Wide{
+		a: "a"
+		b: "b"
+	})
+	narrow := IValue(Narrow{
+		n: 7
+	})
+	println(render(narrow))
+	println(render(wide))
+}
+'
+	c_source := gen_c(v3_bin, 'interface_auto_str_guarded_preludes', source)
+	render_body := c_fn_body(c_source, 'string render(IValue value) {')
+	assert render_body.len > 0, c_source
+	first_tag_guard := render_body.index('._typ') or { -1 }
+	first_object_read := render_body.index('._object') or { -1 }
+	assert first_tag_guard >= 0, render_body
+	assert first_object_read > first_tag_guard, render_body
+	out := run_good(v3_bin, 'interface_auto_str_guarded_preludes_run', source)
+	assert out.contains('Narrow'), out
+	assert out.contains('7'), out
+	assert out.contains('Wide'), out
+}
+
+fn test_interface_equality_preludes_stay_inside_tag_guards() {
+	v3_bin := build_v3()
+	source := 'interface IValue {}
+
+struct WithArray {
+	values []int
+}
+
+struct Other {
+	n int
+}
+
+fn same(left IValue, right IValue) bool {
+	return left == right
+}
+
+fn main() {
+	array_value := IValue(WithArray{
+		values: [1, 2]
+	})
+	println(same(array_value, array_value).str())
+	other := IValue(Other{
+		n: 7
+	})
+	println(same(other, other).str())
+}
+'
+	c_source := gen_c(v3_bin, 'interface_equality_guarded_preludes', source)
+	same_body := c_fn_body(c_source, 'bool same(IValue left, IValue right) {')
+	guard_pos := same_body.index('if (') or { -1 }
+	array_cast_pos := same_body.index('WithArray*') or { -1 }
+	assert guard_pos >= 0, same_body
+	assert array_cast_pos > guard_pos, same_body
+	out := run_good(v3_bin, 'interface_equality_guarded_preludes_run', source)
+	assert out == 'true\ntrue'
+}
+
+fn test_ierror_aggregate_equality_preserves_message_and_code() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'ierror_aggregate_equality_message_code', 'struct Box {
+	err IError
+}
+
+fn main() {
+	first := Box{
+		err: error_with_code("same", 1)
+	}
+	different_message := Box{
+		err: error_with_code("different", 1)
+	}
+	different_code := Box{
+		err: error_with_code("same", 2)
+	}
+	equal := Box{
+		err: error_with_code("same", 1)
+	}
+	println((first == different_message).str())
+	println((first == different_code).str())
+	println((first == equal).str())
+}
+')
+	assert out == 'false\nfalse\ntrue'
+}
+
+fn test_ierror_aggregate_equality_roots_custom_dispatch_methods() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'ierror_aggregate_equality_custom_dispatch_roots', 'struct CustomError {
+	message string
+	n       int
+}
+
+fn (err CustomError) msg() string {
+	return err.message
+}
+
+fn (err CustomError) code() int {
+	return err.n
+}
+
+struct Box {
+	err IError
+}
+
+fn main() {
+	first := Box{
+		err: CustomError{
+			message: "first"
+			n: 1
+		}
+	}
+	different := Box{
+		err: CustomError{
+			message: "different"
+			n: 2
+		}
+	}
+	equal := Box{
+		err: CustomError{
+			message: "first"
+			n: 1
+		}
+	}
+	println((first == different).str())
+	println((first == equal).str())
+}
+')
+	assert out == 'false\ntrue'
+}
+
+fn test_interface_equality_includes_receiver_method_call_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_receiver_method_call_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Comparator {}
+
+fn (c Comparator) same(value IValue) bool {
+	_ = c
+	return value == value
+}
+
+fn main() {
+	comparator := Comparator{}
+	println(comparator.same(Value{
+		n: 3
+	}).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_equality_includes_veb_handler_call_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_veb_handler_call_box', 'import veb
+
+interface IValue {}
+
+struct Value {
+	n int
+}
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+pub fn (app &App) handler(value IValue) veb.Result {
+	_ = app
+	println(same(value).str())
+	return veb.Result{}
+}
+
+pub fn (app &App) index() veb.Result {
+	app.handler(Value{
+		n: 3
+	})
+	return veb.Result{}
+}
+
+fn main() {
+	mut app := &App{}
+	_ = app.index()
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_equality_includes_variadic_call_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_variadic_call_boxes', 'interface IValue {}
+
+struct Single {}
+struct First {}
+struct Second {}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn all_same(values ...IValue) bool {
+	mut ok := true
+	for value in values {
+		ok = ok && same(value)
+	}
+	return ok
+}
+
+fn main() {
+	println(all_same(Single{}).str())
+	println(all_same(First{}, Second{}).str())
+}
+')
+	assert out == 'true\ntrue'
+}
+
+fn test_interface_equality_includes_variadic_struct_call_field_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_variadic_struct_call_field_boxes', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Holder {
+	value IValue
+	n     int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(items ...Holder) bool {
+	return items.len == 1 && items[0].n == 7 && same(items[0].value)
+}
+
+fn main() {
+	println(sink(value: Value{
+		n: 3
+	}, n: 7).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_equality_includes_params_call_field_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_params_call_field_boxes', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+@[params]
+struct SinkConfig {
+	value IValue
+	n     int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(config SinkConfig) bool {
+	return config.n == 7 && same(config.value)
+}
+
+fn main() {
+	println(sink(value: Value{
+		n: 3
+	}, n: 7).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_equality_includes_regular_struct_call_field_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_regular_struct_call_field_boxes', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+struct Holder {
+	value IValue
+	n     int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(holder Holder) bool {
+	return holder.n == 7 && same(holder.value)
+}
+
+fn main() {
+	println(sink(value: Value{
+		n: 3
+	}, n: 7).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_interface_equality_includes_omitted_params_default_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_omitted_params_default_box', 'interface IValue {}
+
+struct Value {
+	n int
+}
+
+@[params]
+struct SinkConfig {
+	value IValue = Value{
+		n: 3
+	}
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn sink(config SinkConfig) bool {
+	return same(config.value)
+}
+
+fn main() {
+	println(sink().str())
+	println(sink(n: 7).str())
+}
+')
+	assert out == 'true\ntrue'
+}
+
+fn test_empty_interface_equality_does_not_accept_unregistered_payloads() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'empty_interface_unregistered_payload_equality', 'interface Any {}
+
+fn same(left Any, right Any) bool {
+	return left == right
+}
+
+fn main() {
+	println(same(Any([1]), Any([2])).str())
+	println(same(Any(1), Any(1)).str())
+	println(same(Any{}, Any{}).str())
+}
+')
+	assert out == 'false\ntrue\ntrue'
+}
+
+fn test_select_receive_assignment_checks_lhs_type() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'select_receive_assign_bool_mismatch', 'fn main() {
+	ch := chan int{}
+	mut value := false
+	select {
+		value = <-ch {}
+		else {}
+	}
+	println(value.str())
+}
+',
+		'cannot assign `int` to `bool`')
+	run_bad(v3_bin, 'select_receive_assign_string_mismatch',
+		"fn main() {\n\tch := chan int{}\n\tmut value := ''\n\tselect {\n\t\tvalue = <-ch {}\n\t\telse {}\n\t}\n\tprintln(value)\n}\n",
+		'cannot assign `int` to `string`')
+}
+
+fn test_select_receive_assignment_applies_destination_conversions() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_assign_conversions', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+struct Initial {}
+
+type Item = Value | int
+type MaybeValue = ?Value
+type InterfaceAlias = IValue
+type NestedInterfaceAlias = InterfaceAlias
+type ItemAlias = Item
+type NestedItemAlias = ItemAlias
+type ValueAlias = Value
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn (initial Initial) get() int {
+	_ = initial
+	return -1
+}
+
+fn interface_n(value IValue) int {
+	return value.get()
+}
+
+fn sum_n(item Item) int {
+	if item is Value {
+		return item.n
+	}
+	return -1
+}
+
+fn option_n(value ?Value) int {
+	unwrapped := value or { return -1 }
+	return unwrapped.n
+}
+
+fn main() {
+	interface_ch := chan Value{cap: 1}
+	interface_ch <- Value{
+		n: 3
+	}
+	mut interface_value := IValue(Initial{})
+	select {
+		interface_value = <-interface_ch {}
+	}
+
+	sum_ch := chan Value{cap: 1}
+	sum_ch <- Value{
+		n: 5
+	}
+	mut sum_value := Item(0)
+	select {
+		sum_value = <-sum_ch {}
+	}
+
+	option_ch := chan Value{cap: 1}
+	option_ch <- Value{
+		n: 7
+	}
+	mut option_value := ?Value(none)
+	select {
+		option_value = <-option_ch {}
+	}
+
+	aliased_option_ch := chan Value{cap: 1}
+	aliased_option_ch <- Value{
+		n: 9
+	}
+	mut aliased_option_value := MaybeValue(none)
+	select {
+		aliased_option_value = <-aliased_option_ch {}
+	}
+
+	aliased_interface_ch := chan ValueAlias{cap: 1}
+	aliased_interface_ch <- ValueAlias{
+		n: 11
+	}
+	mut aliased_interface_value := NestedInterfaceAlias(Initial{})
+	select {
+		aliased_interface_value = <-aliased_interface_ch {}
+	}
+
+	aliased_sum_ch := chan ValueAlias{cap: 1}
+	aliased_sum_ch <- ValueAlias{
+		n: 13
+	}
+	mut aliased_sum_value := NestedItemAlias(0)
+	select {
+		aliased_sum_value = <-aliased_sum_ch {}
+	}
+
+	interface_source_ch := chan InterfaceAlias{cap: 1}
+	interface_source_ch <- Value{
+		n: 15
+	}
+	mut interface_source_value := IValue(Initial{})
+	select {
+		interface_source_value = <-interface_source_ch {}
+	}
+
+	println(int_str(interface_n(interface_value)))
+	println(int_str(sum_n(sum_value)))
+	println(int_str(option_n(option_value)))
+	println(int_str(option_n(aliased_option_value)))
+	println(int_str(interface_n(aliased_interface_value)))
+	println(int_str(sum_n(aliased_sum_value)))
+	println(int_str(interface_n(interface_source_value)))
+}
+')
+	assert out == '3\n5\n7\n9\n11\n13\n15'
+}
+
+fn test_select_receive_assignment_converts_container_elements() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_assign_container_conversions', "interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn main() {
+	array_ch := chan []Value{cap: 1}
+	array_ch <- [Value{
+		n: 3
+	}]
+	mut values := []IValue{}
+	select {
+		values = <-array_ch {}
+	}
+
+	map_ch := chan map[string]Value{cap: 1}
+	map_ch <- {
+		'item': Value{
+			n: 5
+		}
+	}
+	mut indexed := map[string]IValue{}
+	select {
+		indexed = <-map_ch {}
+	}
+
+	println(int_str(values[0].get()))
+	println(int_str(indexed['item'].get()))
+}
+")
+	assert out == '3\n5'
+}
+
+fn test_select_dereferences_pointer_channels() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_pointer_channels', 'fn receive(ch &chan int) int {
+	select {
+		value := <-ch {
+			return value
+		}
+	}
+	return -1
+}
+
+fn send(ch &chan int, value int) {
+	select {
+		ch <- value {}
+	}
+}
+
+fn main() {
+	ch := chan int{cap: 1}
+	ch <- 3
+	println(int_str(receive(&ch)))
+	send(&ch, 5)
+	println(int_str(<-ch))
+}
+')
+	assert out == '3\n5'
+}
+
+fn test_select_receive_assignment_reboxes_option_result_payloads() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_reboxes_option_result_payloads', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_option() ?Value {
+	return Value{
+		n: 3
+	}
+}
+
+fn make_result() !Value {
+	return Value{
+		n: 7
+	}
+}
+
+fn initial_result() !IValue {
+	return error("initial")
+}
+
+fn main() {
+	option_ch := chan ?Value{cap: 1}
+	option_ch <- make_option()
+	mut option_value := ?IValue(none)
+	select {
+		option_value = <-option_ch {}
+	}
+	option_payload := option_value or { panic("missing option") }
+	println(int_str(option_payload.get()))
+
+	result_ch := chan !Value{cap: 1}
+	result_ch <- make_result()
+	mut result_value := initial_result()
+	select {
+		result_value = <-result_ch {}
+	}
+	result_payload := result_value or { panic(err) }
+	println(int_str(result_payload.get()))
+}
+')
+	assert out == '3\n7'
+}
+
+fn test_interface_equality_includes_select_receive_assignment_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_select_receive_assignment_box', 'interface IValue {}
+
+struct Initial {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn main() {
+	ch := chan Value{cap: 1}
+	ch <- Value{
+		n: 3
+	}
+	mut value := IValue(Initial{})
+	select {
+		value = <-ch {}
+	}
+	println(same(value).str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_select_lowering_roots_array_free() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_roots_array_free', 'fn main() {
+	select {
+		else {}
+	}
+}
+')
+	assert out == ''
+}
+
+fn test_select_compound_receive_assignment_is_rejected() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'select_compound_receive_assign', 'fn main() {
+	ch := chan int{}
+	mut value := 1
+	select {
+		value += <-ch {}
+		else {}
+	}
+	println(int_str(value))
+}
+',
+		'compound receive assignment `+=` is not supported in `select`')
+}
+
+fn test_select_assignment_cases_require_receive_rhs() {
+	v3_bin := build_v3()
+	for op in [':=', '=', '+='] {
+		run_bad(v3_bin, 'select_non_receive_${op.replace('=', 'eq').replace(':', 'decl').replace('+',
+			'plus')}', 'fn main() {
+	mut value := 0
+	select {
+		value ${op} 1 {}
+	}
+	println(int_str(value))
+}
+',
+			'select assignment case requires a channel receive on the right side')
+	}
+}
+
+fn test_select_rejects_else_and_timeout_in_either_order() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'select_else_before_timeout', 'import time
+
+fn main() {
+	select {
+		else {}
+		10 * time.millisecond {}
+	}
+}
+',
+		'`else` and timeout value are mutually exclusive `select` keys')
+	run_bad(v3_bin, 'select_timeout_before_else', 'import time
+
+fn main() {
+	select {
+		10 * time.millisecond {}
+		else {}
+	}
+}
+',
+		'`else` and timeout value are mutually exclusive `select` keys')
+}
+
+fn test_select_rejects_duplicate_timeouts() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'select_duplicate_timeouts', 'import time
+
+fn main() {
+	select {
+		10 * time.millisecond {}
+		20 * time.millisecond {}
+	}
+}
+',
+		'at most one timeout branch allowed in `select` block')
+}
+
+fn test_select_timeout_only_waits_and_runs_branch() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_timeout_only', 'import time
+
+fn main() {
+	mut fired := false
+	select {
+		time.millisecond {
+			fired = true
+		}
+	}
+	println(fired.str())
+}
+')
+	assert out == 'true'
+}
+
+fn test_select_receive_declaration_requires_identifier() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'select_receive_decl_index_lhs', 'fn main() {
+	ch := chan int{}
+	mut values := [0]
+	select {
+		values[0] := <-ch {}
+		else {}
+	}
+}
+',
+		'select receive declaration requires a plain identifier on the left side')
+}
+
+fn test_comptime_if_threads_expression_is_deferred() {
+	v3_bin := build_v3()
+	without_spawn := run_good(v3_bin, 'comptime_threads_expr_without_spawn', 'fn main() {
+	value := $if threads { 41 } $else { 7 }
+	println(int_str(value))
+}
+')
+	assert without_spawn == '7'
+	with_spawn := run_good(v3_bin, 'comptime_threads_expr_with_spawn', 'fn work() {}
+
+fn main() {
+	value := $if threads { 41 } $else { 7 }
+	spawn work()
+	println(int_str(value))
+}
+')
+	assert with_spawn == '41'
+}
+
+fn test_comptime_if_threads_does_not_count_spawns_in_its_own_branches() {
+	v3_bin := build_v3()
+	statement_out := run_good(v3_bin, 'threads_statement_spawn_does_not_self_enable', 'fn work() {}
+
+fn main() {
+	$if threads {
+		spawn work()
+		println("threads")
+	} $else {
+		println("single")
+	}
+	value := $if threads { 41 } $else { 7 }
+	println(int_str(value))
+}
+')
+	assert statement_out == 'single\n7'
+
+	top_level_out := run_good(v3_bin, 'threads_top_level_spawn_does_not_self_enable', '$if threads {
+	fn selected_value() int {
+		spawn work()
+		return 41
+	}
+} $else {
+	fn selected_value() int {
+		return 7
+	}
+}
+
+fn work() {}
+
+fn main() {
+	println(int_str(selected_value()))
+}
+')
+	assert top_level_out == '7'
+
+	import_out := run_good_project(v3_bin, 'threads_import_spawn_does_not_self_enable', {
+		'v.mod':           "Module { name: 'threads_import_spawn_does_not_self_enable' }\n"
+		'worker/worker.v': 'module worker\n\n$if threads {\n\tpub fn mode() string {\n\t\tspawn work()\n\t\treturn "threads"\n\t}\n} $else {\n\tpub fn mode() string {\n\t\treturn "single"\n\t}\n}\n\nfn work() {}\n'
+		'main.v':          'module main\n\nimport worker\n\nfn main() {\n\tprintln(worker.mode())\n}\n'
+	}, 'main.v')
+	assert import_out == 'single'
+}
+
+fn test_comptime_if_threads_counts_spawns_in_non_builtin_threads_conditions() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'threads_data_condition_spawn', 'struct Config {
+	threads int
+}
+
+fn work() {}
+
+fn inspect[T]() {
+	$for field in T.fields {
+		$if field.name == "threads" {
+			spawn work()
+		}
+	}
+	mode := $if threads { "threads" } $else { "single" }
+	println(mode)
+}
+
+fn main() {
+	inspect[Config]()
+}
+')
+	assert out == 'threads'
+}
+
+fn test_comptime_if_threads_counts_spawns_in_mixed_deferred_conditions() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'threads_mixed_deferred_condition_spawn', 'fn work() {}
+
+fn activate[T]() {
+	$if T is int || threads {
+		spawn work()
+	}
+}
+
+fn main() {
+	activate[int]()
+	mode := $if threads { "threads" } $else { "single" }
+	println(mode)
+}
+')
+	assert out == 'threads'
+}
+
+fn test_comptime_if_threads_mixed_conditions_keep_normal_flag_evaluation() {
+	v3_bin := build_v3()
+	out := run_good_with_flags(v3_bin, 'comptime_threads_mixed_conditions',
+		'-d mixed_threads_flag', 'fn main() {
+	$if mixed_threads_flag ? || threads {
+		println("statement or")
+	} $else {
+		println("wrong statement or")
+	}
+	or_value := $if mixed_threads_flag ? || threads { 41 } $else { 7 }
+	println(int_str(or_value))
+	$if mixed_threads_flag ? && threads {
+		println("wrong statement and")
+	} $else {
+		println("statement and")
+	}
+	and_value := $if mixed_threads_flag ? && threads { 41 } $else { 7 }
+	println(int_str(and_value))
+}
+')
+	assert out == 'statement or\n41\nstatement and\n7'
+}
+
+fn test_comptime_if_custom_threads_flags_are_not_deferred() {
+	v3_bin := build_v3()
+	source := '$if threads ? {
+	fn top_level_value() int {
+		return 41
+	}
+} $else {
+	fn top_level_value() int {
+		return 7
+	}
+}
+
+fn main() {
+	$if threads ? {
+		println("optional enabled")
+	} $else {
+		println("optional disabled")
+	}
+	optional_value := $if threads ? { 41 } $else { 7 }
+	println(int_str(optional_value))
+	$if $d("threads", true) {
+		println("define enabled")
+	} $else {
+		println("define disabled")
+	}
+	define_value := $if $d("threads", true) { 41 } $else { 7 }
+	println(int_str(define_value))
+	println(int_str(top_level_value()))
+}
+'
+	without_define := run_good(v3_bin, 'comptime_custom_threads_default', source)
+	assert without_define == 'optional disabled\n7\ndefine enabled\n41\n7'
+	with_define := run_good_with_flags(v3_bin, 'comptime_custom_threads_enabled', '-d threads',
+		source)
+	assert with_define == 'optional enabled\n41\ndefine enabled\n41\n41'
+}
+
+fn test_top_level_comptime_if_threads_prunes_inactive_declarations_before_collect() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'top_level_threads_prunes_inactive_decl', '$if threads {
+	fn selected_value() int {
+		return 41
+	}
+} $else {
+	fn selected_value() string {
+		return "wrong"
+	}
+}
+
+fn work() {}
+
+fn main() {
+	spawn work()
+	println(int_str(selected_value()))
+}
+')
+	assert out == '41'
+}
+
+fn test_comptime_if_threads_counts_spawns_in_imported_modules() {
+	v3_bin := build_v3()
+	out := run_good_project(v3_bin, 'threads_spawn_in_imported_module', {
+		'v.mod':           "Module { name: 'threads_spawn_in_imported_module' }\n"
+		'worker/worker.v': 'module worker\n\nfn work() {}\n\npub fn start() {\n\tspawn work()\n}\n'
+		'main.v':          'module main\n\nimport worker\n\nfn main() {\n\tworker.start()\n\tmode := $if threads { "threads" } $else { "single" }\n\tprintln(mode)\n}\n'
+	}, 'main.v')
+	assert out == 'threads'
+	nested_out := run_good_project(v3_bin, 'threads_spawn_in_nested_imported_module', {
+		'v.mod':         "Module { name: 'threads_spawn_in_nested_imported_module' }\n"
+		'foo/bar/bar.v': 'module bar\n\nfn work() {}\n\npub fn start() {\n\tspawn work()\n}\n'
+		'main.v':        'module main\n\nimport foo.bar\n\nfn main() {\n\tbar.start()\n\tmode := $if threads { "threads" } $else { "single" }\n\tprintln(mode)\n}\n'
+	}, 'main.v')
+	assert nested_out == 'threads'
+}
+
+fn test_select_receive_assignment_invalidates_smartcast_before_branch_body() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_assign_invalidates_smartcast', 'struct Foo {
+	value int
+}
+
+struct Bar {
+	value int
+}
+
+type Item = Bar | Foo
+
+fn main() {
+	mut item := Item(Foo{
+		value: 1
+	})
+	ch := chan Item{cap: 1}
+	ch <- Item(Bar{
+		value: 2
+	})
+	if item is Foo {
+		select {
+			item = <-ch {
+				if item is Bar {
+					println(int_str(item.value))
+				}
+			}
+		}
+	}
+}
+')
+	assert out == '2'
+}
+
+fn test_select_receive_assignment_does_not_invalidate_sibling_smartcasts() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_assign_sibling_smartcast', 'struct Foo {
+	value int
+}
+
+struct Bar {}
+
+type Item = Bar | Foo
+
+fn main() {
+	mut item := Item(Foo{
+		value: 7
+	})
+	ch := chan Item{}
+	if item is Foo {
+		select {
+			item = <-ch {}
+			else {
+				println(int_str(item.value))
+			}
+		}
+	}
+}
+')
+	assert out == '7'
+}
+
+fn test_select_receive_declaration_shadows_outer_smartcast_only_in_branch() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_decl_shadows_smartcast', 'struct Foo {
+	value int
+}
+
+struct Bar {
+	value int
+}
+
+type Item = Bar | Foo
+
+fn main() {
+	item := Item(Foo{
+		value: 1
+	})
+	ch := chan Item{cap: 1}
+	ch <- Item(Bar{
+		value: 2
+	})
+	if item is Foo {
+		select {
+			item := <-ch {
+				if item is Bar {
+					println(int_str(item.value))
+				}
+			}
+		}
+		println(int_str(item.value))
+	}
+}
+')
+	assert out == '2\n1'
+}
+
+fn test_select_exception_branches_flush_defers() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_exception_branch_defers', 'import time
+
+__global trace int
+
+fn cleanup() {
+	trace = trace * 10 + 2
+}
+
+fn main() {
+	select {
+		else {
+			defer {
+				cleanup()
+			}
+			trace = 1
+		}
+	}
+	println(int_str(trace))
+	trace = 0
+	ch := chan int{}
+	select {
+		_ := <-ch {}
+		1 * time.nanosecond {
+			defer {
+				cleanup()
+			}
+			trace = 3
+		}
+	}
+	println(int_str(trace))
+}
+')
+	assert out == '12\n32'
+}
+
 fn test_context_dependent_if_branches_infer_wrapper_types() {
 	v3_bin := build_v3()
 	opt_out := run_good(v3_bin, 'if_none_branch_infers_option',
 		'fn maybe(flag bool) ?int {\n\treturn if flag { none } else { 3 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n')
 	assert opt_out == '3\n-1'
+	opt_assign_out := run_good(v3_bin, 'if_none_branch_uses_option_assignment_context',
+		'fn main() {\n\tflag := false\n\tmut value := ?int(none)\n\tvalue = if flag { none } else { 8 }\n\tprintln(int_str(value or { -1 }))\n}\n')
+	assert opt_assign_out == '8'
 	res_out := run_good(v3_bin, 'if_error_branch_infers_result',
 		"fn maybe(flag bool) !int {\n\treturn if flag { error('bad') } else { 4 }\n}\n\nfn main() {\n\tprintln(int_str(maybe(false) or { -1 }))\n\tprintln(int_str(maybe(true) or { -1 }))\n}\n")
 	assert res_out == '4\n-1'
@@ -310,6 +2150,63 @@ fn test_channel_alias_close_method_wins_over_builtin() {
 	pointer_c := gen_c(v3_bin, 'pointer_channel_close_lowers_to_runtime',
 		'fn main() {\n\tmut ch := chan bool{cap: 1}\n\tp := &ch\n\tp.close()\n}\n')
 	assert pointer_c.contains('sync__Channel__close(*p,')
+}
+
+fn test_channel_reference_auto_str_reads_channel_value() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'channel_reference_auto_str', 'fn main() {
+	ch := chan int{cap: 2}
+	println(&ch)
+}
+')
+	assert out == 'chan int{\n    cap: 2, closed: false\n}'
+}
+
+fn test_channel_alias_reference_auto_str_reads_channel_value() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'channel_alias_reference_auto_str', 'type MyChan = chan int
+
+fn main() {
+	ch := MyChan(chan int{cap: 2})
+	println(&ch)
+}
+')
+	assert out == 'MyChan(chan int{\n    cap: 2, closed: false\n})'
+}
+
+fn test_channel_auto_str_helpers_are_rooted_for_aggregates() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'channel_aggregate_auto_str_helpers', 'struct Holder {
+	ch chan int
+}
+
+fn main() {
+	ch := chan int{cap: 2}
+	println([ch])
+	println(Holder{
+		ch: ch
+	})
+	println(Holder{})
+}
+')
+	assert out.contains('chan int{\n    cap: 2, closed: false\n}')
+	assert out.contains('Holder{')
+	assert out.contains('chan int(nil)')
+}
+
+fn test_explicit_return_semicolon_ends_void_return() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'explicit_return_semicolon_boundary', 'fn stop() {
+	return;
+		println("unreachable")
+}
+
+fn main() {
+	stop()
+	println("done")
+}
+')
+	assert out == 'done'
 }
 
 fn test_qualified_enum_str_requires_exact_receiver() {

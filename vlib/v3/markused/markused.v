@@ -1294,8 +1294,13 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut needs_new_map := false
 	mut needs_map_iteration_snapshot := false
 	mut needs_channel_helpers := false
+	mut needs_channel_select_helpers := false
+	mut needs_channel_str_helpers := false
 	mut needs_f32_eq_epsilon := false
+	mut needs_ierror_equality_dispatch := false
 	mut needs_shared_runtime := false
+	mut channel_stringify_cache := map[string]int{}
+	mut ierror_equality_cache := map[string]int{}
 	mut cur_module := ''
 	mut imports := map[string]string{}
 	for node in a.nodes {
@@ -1342,6 +1347,11 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			.call {
 				if node.children_count > 0 {
 					fn_node := a.child_node(&node, 0)
+					if !needs_channel_str_helpers && fn_node.kind == .selector
+						&& fn_node.value == 'str' && fn_node.children_count > 0
+						&& markused_expr_stringifies_channel(a, tc, a.child(fn_node, 0), cur_module, mut channel_stringify_cache) {
+						needs_channel_str_helpers = true
+					}
 					if fn_node.kind == .ident
 						&& (fn_node.value == 'error' || fn_node.value == 'error_with_code') {
 						needs_optional_helpers = true
@@ -1363,10 +1373,18 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					if fn_node.kind == .ident
 						&& fn_node.value in ['print', 'println', 'eprint', 'eprintln']
 						&& node.children_count >= 2 {
+						if !needs_channel_str_helpers
+							&& markused_expr_stringifies_channel(a, tc, a.child(&node, 1), cur_module, mut channel_stringify_cache) {
+							needs_channel_str_helpers = true
+						}
 						enqueue_stringified_custom_str_method(a.child(&node, 1), cur_module, tc, mut
 							used, mut queue)
 					}
 				}
+			}
+			.select_stmt {
+				needs_channel_helpers = true
+				needs_channel_select_helpers = true
 			}
 			.struct_init {
 				if node.value.starts_with('chan ') {
@@ -1380,8 +1398,17 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 				if node.op == .arrow {
 					needs_channel_helpers = true
 				}
-				if node.op in [.eq, .ne] && markused_infix_needs_f32_eq_epsilon(a, tc, node) {
-					needs_f32_eq_epsilon = true
+				if node.op in [.eq, .ne] {
+					if markused_infix_needs_f32_eq_epsilon(a, tc, node) {
+						needs_f32_eq_epsilon = true
+					}
+					if !needs_ierror_equality_dispatch && node.children_count >= 2 {
+						lhs_type := tc.resolve_type(a.child(&node, 0))
+						rhs_type := tc.resolve_type(a.child(&node, 1))
+						needs_ierror_equality_dispatch =
+							markused_type_equality_uses_ierror(lhs_type, tc, mut ierror_equality_cache)
+							|| markused_type_equality_uses_ierror(rhs_type, tc, mut ierror_equality_cache)
+					}
 				}
 			}
 			.prefix {
@@ -1393,8 +1420,13 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 				needs_string_interp_helpers = true
 				needs_string_plus_helper = true
 				for i in 0 .. node.children_count {
-					enqueue_stringified_custom_str_method(a.child(&node, i), cur_module, tc, mut
-						used, mut queue)
+					part_id := a.child(&node, i)
+					if !needs_channel_str_helpers
+						&& markused_expr_stringifies_channel(a, tc, part_id, cur_module, mut channel_stringify_cache) {
+						needs_channel_str_helpers = true
+					}
+					enqueue_stringified_custom_str_method(part_id, cur_module, tc, mut used, mut
+						queue)
 				}
 			}
 			.assign {
@@ -1412,6 +1444,11 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			}
 			.in_expr {
 				if node.children_count >= 2 {
+					lhs_id := a.child(&node, 0)
+					if !needs_ierror_equality_dispatch {
+						needs_ierror_equality_dispatch = markused_type_equality_uses_ierror(tc.resolve_type(lhs_id),
+							tc, mut ierror_equality_cache)
+					}
 					rhs_id := a.child(&node, 1)
 					rhs_type := markused_membership_container_type(tc, tc.resolve_type(rhs_id))
 					if rhs_type == 'string' {
@@ -1483,9 +1520,24 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			enqueue(helper, mut used, mut queue)
 		}
 	}
+	if needs_channel_select_helpers {
+		for helper in ['sync.channel_select', 'sync.channel_select_lang', 'channel_select',
+			'channel_select_lang', 'rand.init', 'array.free', 'array__free', 'time.sleep',
+			'time__sleep'] {
+			enqueue(helper, mut used, mut queue)
+		}
+	}
+	if needs_channel_str_helpers {
+		for helper in ['string__plus', 'int.str', 'int__str'] {
+			enqueue(helper, mut used, mut queue)
+		}
+	}
 	if needs_f32_eq_epsilon {
 		enqueue('f32.eq_epsilon', mut used, mut queue)
 		enqueue('f32__eq_epsilon', mut used, mut queue)
+	}
+	if needs_ierror_equality_dispatch {
+		enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue)
 	}
 	if needs_shared_runtime {
 		for helper in ['sync.cpanic', 'sync.cpanic_errno', 'sync.should_be_zero', 'sync.RwMutex.init',
@@ -1496,6 +1548,89 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			enqueue(helper, mut used, mut queue)
 		}
 	}
+}
+
+fn enqueue_ierror_equality_dispatch_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	for iface_name in tc.interface_names.keys() {
+		if !markused_is_ierror_interface_name(iface_name) {
+			continue
+		}
+		for method in ['msg', 'code'] {
+			dispatch_key := '${iface_name}.${method}'
+			enqueue(dispatch_key, mut used, mut queue)
+			enqueue(markused_c_name(dispatch_key), mut used, mut queue)
+		}
+	}
+	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue)
+}
+
+fn markused_type_equality_uses_ierror(typ types.Type, tc &types.TypeChecker, mut cache map[string]int) bool {
+	key := typ.name()
+	if cached := cache[key] {
+		return cached == 1
+	}
+	cache[key] = 2
+	result := markused_type_equality_uses_ierror_uncached(typ, tc, mut cache)
+	cache[key] = if result { 1 } else { -1 }
+	return result
+}
+
+fn markused_type_equality_uses_ierror_uncached(typ types.Type, tc &types.TypeChecker, mut cache map[string]int) bool {
+	match typ {
+		types.Alias {
+			return markused_type_equality_uses_ierror(typ.base_type, tc, mut cache)
+		}
+		types.OptionType {
+			return markused_type_equality_uses_ierror(typ.base_type, tc, mut cache)
+		}
+		types.ResultType {
+			return markused_type_equality_uses_ierror(typ.base_type, tc, mut cache)
+		}
+		types.Array {
+			return markused_type_equality_uses_ierror(typ.elem_type, tc, mut cache)
+		}
+		types.ArrayFixed {
+			return markused_type_equality_uses_ierror(typ.elem_type, tc, mut cache)
+		}
+		types.Map {
+			return markused_type_equality_uses_ierror(typ.key_type, tc, mut cache)
+				|| markused_type_equality_uses_ierror(typ.value_type, tc, mut cache)
+		}
+		types.Struct {
+			for field in markused_struct_fields(typ.name, tc) {
+				if markused_type_equality_uses_ierror(field.typ, tc, mut cache) {
+					return true
+				}
+			}
+		}
+		types.SumType {
+			for variant in markused_sum_variants(typ.name, tc) {
+				if markused_type_equality_uses_ierror(tc.parse_type(variant), tc, mut cache) {
+					return true
+				}
+			}
+		}
+		types.Interface {
+			if markused_is_ierror_interface_name(typ.name) {
+				return true
+			}
+			for concrete in tc.interface_impl_names(typ.name) {
+				if markused_type_equality_uses_ierror(tc.parse_type(concrete), tc, mut cache) {
+					return true
+				}
+			}
+		}
+		types.MultiReturn {
+			for item in typ.types {
+				if markused_type_equality_uses_ierror(item, tc, mut cache) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
 }
 
 fn markused_type_text_needs_shared_runtime(typ string) bool {
@@ -1516,6 +1651,162 @@ fn markused_type_is_f32(typ types.Type) bool {
 		return markused_type_is_f32(typ.base_type)
 	}
 	return typ.name() == 'f32'
+}
+
+fn markused_expr_stringifies_channel(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, cur_module string, mut cache map[string]int) bool {
+	typ := tc.expr_type(id) or { tc.resolve_type(id) }
+	return markused_type_stringifies_channel(typ, cur_module, tc, mut cache)
+}
+
+fn markused_type_stringifies_channel(typ types.Type, cur_module string, tc &types.TypeChecker, mut cache map[string]int) bool {
+	key := '${cur_module}\x01${typ.name()}'
+	if cached := cache[key] {
+		return cached == 1
+	}
+	cache[key] = 2
+	result := markused_type_stringifies_channel_uncached(typ, cur_module, tc, mut cache)
+	cache[key] = if result { 1 } else { -1 }
+	return result
+}
+
+fn markused_type_stringifies_channel_uncached(typ types.Type, cur_module string, tc &types.TypeChecker, mut cache map[string]int) bool {
+	match typ {
+		types.Channel {
+			return true
+		}
+		types.Alias {
+			if markused_type_has_custom_str(typ.name, cur_module, tc) {
+				return false
+			}
+			return markused_type_stringifies_channel(typ.base_type, cur_module, tc, mut cache)
+		}
+		types.Pointer {
+			return markused_type_stringifies_channel(typ.base_type, cur_module, tc, mut cache)
+		}
+		types.OptionType {
+			return markused_type_stringifies_channel(typ.base_type, cur_module, tc, mut cache)
+		}
+		types.ResultType {
+			return markused_type_stringifies_channel(typ.base_type, cur_module, tc, mut cache)
+		}
+		types.Array {
+			return markused_type_stringifies_channel(typ.elem_type, cur_module, tc, mut cache)
+		}
+		types.ArrayFixed {
+			return markused_type_stringifies_channel(typ.elem_type, cur_module, tc, mut cache)
+		}
+		types.Map {
+			return markused_type_stringifies_channel(typ.key_type, cur_module, tc, mut cache)
+				|| markused_type_stringifies_channel(typ.value_type, cur_module, tc, mut cache)
+		}
+		types.Struct {
+			if markused_type_has_custom_str(typ.name, cur_module, tc) {
+				return false
+			}
+			if typ.name.contains('chan ') {
+				return true
+			}
+			for field in markused_struct_fields(typ.name, tc) {
+				if markused_type_stringifies_channel(field.typ, cur_module, tc, mut cache) {
+					return true
+				}
+			}
+		}
+		types.SumType {
+			if markused_type_has_custom_str(typ.name, cur_module, tc) {
+				return false
+			}
+			for variant in markused_sum_variants(typ.name, tc) {
+				if markused_type_stringifies_channel(tc.parse_type(variant), cur_module, tc, mut
+					cache)
+				{
+					return true
+				}
+			}
+		}
+		types.Interface {
+			if 'str' in tc.interface_abstract_method_names(typ.name) {
+				return false
+			}
+			for concrete in tc.interface_impl_names(typ.name) {
+				if markused_type_stringifies_channel(tc.parse_type(concrete), cur_module, tc, mut
+					cache)
+				{
+					return true
+				}
+			}
+		}
+		types.MultiReturn {
+			for item in typ.types {
+				if markused_type_stringifies_channel(item, cur_module, tc, mut cache) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn markused_type_has_custom_str(name string, cur_module string, tc &types.TypeChecker) bool {
+	for candidate in stringification_type_candidates(name, cur_module) {
+		if '${candidate}.str' in tc.fn_ret_types
+			|| '${markused_c_name(candidate)}__str' in tc.fn_ret_types {
+			return true
+		}
+	}
+	for candidate in generic_stringification_type_candidates(name, cur_module, tc) {
+		if '${candidate}.str' in tc.fn_ret_types
+			|| '${markused_c_name(candidate)}__str' in tc.fn_ret_types {
+			return true
+		}
+	}
+	return false
+}
+
+fn markused_struct_fields(name string, tc &types.TypeChecker) []types.StructField {
+	mut candidates := [name]
+	base_name := types.generic_base_name(name)
+	if base_name != name {
+		candidates << base_name
+	}
+	qualified := tc.qualify_name(name)
+	if qualified !in candidates {
+		candidates << qualified
+	}
+	if name.contains('.') {
+		short_name := name.all_after_last('.')
+		if short_name !in candidates {
+			candidates << short_name
+		}
+	}
+	for candidate in candidates {
+		if fields := tc.structs[candidate] {
+			return fields
+		}
+	}
+	return []types.StructField{}
+}
+
+fn markused_sum_variants(name string, tc &types.TypeChecker) []string {
+	mut candidates := [name]
+	qualified := tc.qualify_name(name)
+	if qualified !in candidates {
+		candidates << qualified
+	}
+	if name.contains('.') {
+		short_name := name.all_after_last('.')
+		if short_name !in candidates {
+			candidates << short_name
+		}
+	}
+	for candidate in candidates {
+		if variants := tc.sum_types[candidate] {
+			return variants
+		}
+	}
+	return []string{}
 }
 
 fn markused_type_text_is_channel(raw string) bool {

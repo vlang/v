@@ -330,6 +330,16 @@ fn (p &Parser) line_nr_for_pos(pos int) int {
 	return line
 }
 
+fn (p &Parser) column_for_pos(pos int) int {
+	mut column := 0
+	mut i := if pos < p.s.src.len { pos } else { p.s.src.len }
+	for i > 0 && p.s.src[i - 1] != `\n` {
+		i--
+		column++
+	}
+	return column
+}
+
 // peek supports peek handling for Parser.
 @[inline]
 fn (mut p Parser) peek() token.Token {
@@ -2155,16 +2165,21 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 		return flat.empty_node
 	}
 	p.next() // skip 'if'
-	cond := p.parse_comptime_cond()
+	mut cond := p.parse_comptime_cond()
 	// Only defer conditions that need information unavailable at parse time: a `$for` loop var
 	// (`field.typ`, `field.indirections`, `value.value`), known once the loop is unrolled, or a
 	// type test (`T is int`), known after monomorphization. Ordinary platform/custom flags
 	// (`$if linux`) must still be evaluated here — the transformer only folds loop-var/type
 	// conditions and the C backend drops any `.comptime_if` that survives.
-	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond) {
-		then_block := p.block_stmt()
-		else_block := p.parse_comptime_else()
-		return p.comptime_if_node(cond, then_block, else_block)
+	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
+		|| comptime_cond_has_builtin_threads(cond) {
+		cond = p.simplify_deferred_comptime_cond(cond)
+		if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
+			|| comptime_cond_has_builtin_threads(cond) {
+			then_block := p.block_stmt()
+			else_block := p.parse_comptime_else()
+			return p.comptime_if_node(cond, then_block, else_block)
+		}
 	}
 	taken := eval_comptime_cond(p.prefs, cond)
 	if taken {
@@ -2230,11 +2245,14 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 		return flat.empty_node
 	}
 	p.next() // skip 'if'
-	cond := p.parse_comptime_cond()
-	if comptime_cond_has_type_test(cond) {
-		then_block := p.top_level_block_stmt()
-		else_block := p.parse_top_level_comptime_else()
-		return p.comptime_if_node(cond, then_block, else_block)
+	mut cond := p.parse_comptime_cond()
+	if comptime_cond_has_type_test(cond) || comptime_cond_has_builtin_threads(cond) {
+		cond = p.simplify_deferred_comptime_cond(cond)
+		if comptime_cond_has_type_test(cond) || comptime_cond_has_builtin_threads(cond) {
+			then_block := p.top_level_block_stmt()
+			else_block := p.parse_top_level_comptime_else()
+			return p.comptime_if_node(cond, then_block, else_block)
+		}
 	}
 	taken := eval_comptime_cond(p.prefs, cond)
 	if taken {
@@ -2498,6 +2516,27 @@ fn comptime_cond_has_type_test(cond string) bool {
 		|| cond.contains(' in [') || cond.contains(' !in[') || cond.contains(' !in [')
 }
 
+// comptime_cond_has_builtin_threads reports whether a condition contains the bare builtin
+// `threads` flag. Optional `threads?` flags and `$d('threads', ...)` defines are evaluated
+// normally at parse time.
+fn comptime_cond_has_builtin_threads(cond string) bool {
+	c := comptime_cond_strip_outer_parens(cond.trim_space())
+	left_or, right_or, has_or := comptime_cond_split_top_level(c, '||')
+	if has_or {
+		return comptime_cond_has_builtin_threads(left_or)
+			|| comptime_cond_has_builtin_threads(right_or)
+	}
+	left_and, right_and, has_and := comptime_cond_split_top_level(c, '&&')
+	if has_and {
+		return comptime_cond_has_builtin_threads(left_and)
+			|| comptime_cond_has_builtin_threads(right_and)
+	}
+	if c.starts_with('!') {
+		return comptime_cond_has_builtin_threads(c[1..])
+	}
+	return c == 'threads'
+}
+
 // comptime_cond_needs_loop_var reports whether a `$if` condition reads any currently active
 // `$for` loop variable, meaning it can only be evaluated once the loop is unrolled.
 fn (p &Parser) comptime_cond_needs_loop_var(cond string) bool {
@@ -2507,6 +2546,61 @@ fn (p &Parser) comptime_cond_needs_loop_var(cond string) bool {
 		}
 	}
 	return false
+}
+
+fn (p &Parser) simplify_deferred_comptime_cond(cond string) string {
+	c := comptime_cond_strip_outer_parens(cond.trim_space())
+	if !p.comptime_cond_needs_loop_var(c) && !comptime_cond_has_type_test(c)
+		&& !comptime_cond_has_builtin_threads(c) {
+		return if eval_comptime_cond(p.prefs, c) { 'true' } else { 'false' }
+	}
+	left_or, right_or, has_or := comptime_cond_split_top_level(c, '||')
+	if has_or {
+		left := p.simplify_deferred_comptime_cond(left_or)
+		if left == 'true' {
+			return 'true'
+		}
+		right := p.simplify_deferred_comptime_cond(right_or)
+		if right == 'true' {
+			return 'true'
+		}
+		if left == 'false' {
+			return right
+		}
+		if right == 'false' {
+			return left
+		}
+		return '(${left}) || (${right})'
+	}
+	left_and, right_and, has_and := comptime_cond_split_top_level(c, '&&')
+	if has_and {
+		left := p.simplify_deferred_comptime_cond(left_and)
+		if left == 'false' {
+			return 'false'
+		}
+		right := p.simplify_deferred_comptime_cond(right_and)
+		if right == 'false' {
+			return 'false'
+		}
+		if left == 'true' {
+			return right
+		}
+		if right == 'true' {
+			return left
+		}
+		return '(${left}) && (${right})'
+	}
+	if c.starts_with('!') {
+		inner := p.simplify_deferred_comptime_cond(c[1..])
+		if inner == 'true' {
+			return 'false'
+		}
+		if inner == 'false' {
+			return 'true'
+		}
+		return '!(${inner})'
+	}
+	return c
 }
 
 // comptime_cond_references_var reports whether `cond` reads `var_name` as a whole identifier
@@ -3038,7 +3132,17 @@ fn (mut p Parser) parse_comptime_if_expr() flat.NodeId {
 
 fn (mut p Parser) parse_comptime_if_expr_after_if() flat.NodeId {
 	p.next() // skip if
-	cond := p.parse_comptime_cond()
+	mut cond := p.parse_comptime_cond()
+	// Whether `threads` is enabled depends on spawn expressions in the completed AST,
+	// so expression branches must be retained for the checker/transformer to select.
+	if comptime_cond_has_builtin_threads(cond) {
+		cond = p.simplify_deferred_comptime_cond(cond)
+		if comptime_cond_has_builtin_threads(cond) {
+			then_expr := p.parse_comptime_expr_block()
+			else_expr := p.parse_comptime_else_expr()
+			return p.comptime_if_node(cond, then_expr, else_expr)
+		}
+	}
 	taken := eval_comptime_cond(p.prefs, cond)
 	if taken {
 		result := p.parse_comptime_expr_block()
@@ -3289,8 +3393,22 @@ fn (mut p Parser) static_decl_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) return_stmt() flat.NodeId {
+	return_pos := p.tok_pos
 	p.next() // skip 'return'
 	mut ids := []flat.NodeId{}
+	// vfmt wraps long return expressions after the keyword. The following token
+	// remains part of the return only when it is indented beyond `return` itself;
+	// an ordinary next statement stays at the same block indentation. Only a
+	// newline inserted by the scanner can continue the expression; `return;`
+	// always ends the statement.
+	if p.tok == .semicolon && p.tok_pos >= 0 && p.tok_pos < p.s.src.len
+		&& p.s.src[p.tok_pos] == `\n` {
+		_ = p.peek()
+		if p.peek_tok !in [.eof, .rcbr]
+			&& p.column_for_pos(p.peek_pos) > p.column_for_pos(return_pos) {
+			p.next()
+		}
+	}
 	if p.tok != .semicolon && p.tok != .rcbr && p.tok != .eof {
 		ids << p.expr(.lowest)
 		for p.tok == .comma {
@@ -6178,19 +6296,25 @@ fn (mut p Parser) select_expr() flat.NodeId {
 fn (mut p Parser) select_branch() flat.NodeId {
 	mut is_else := false
 	mut is_recv_decl := false
+	mut is_recv_assign := false
+	mut recv_compound_op := ''
 	mut cond_ids := []flat.NodeId{}
 	if p.tok == .key_else {
 		is_else = true
 		p.next()
 	} else {
 		cond_ids << p.expr(.lowest)
-		// could be assignment: ch <- val or val := <-ch
+		// could be assignment: ch <- val, val := <-ch, or val = <-ch
 		if token_is_assignment(p.tok) || p.tok == .decl_assign {
 			op := p.tok
-			// Record `val := <-ch` so the type checker can bind `val` (the
-			// channel's element type) in the branch body's scope.
+			// Preserve receive declaration/assignment shape even though the parser
+			// stores the lvalue and receive expression as separate branch children.
 			if op == .decl_assign {
 				is_recv_decl = true
+			} else if op == .assign {
+				is_recv_assign = true
+			} else {
+				recv_compound_op = op.str()
 			}
 			p.next()
 			cond_ids << p.expr(.lowest)
@@ -6209,6 +6333,10 @@ fn (mut p Parser) select_branch() flat.NodeId {
 		'else'
 	} else if is_recv_decl {
 		'recv'
+	} else if is_recv_assign {
+		'recv_assign'
+	} else if recv_compound_op.len > 0 {
+		'recv_compound:${recv_compound_op}'
 	} else {
 		''
 	}
