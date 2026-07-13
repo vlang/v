@@ -692,18 +692,28 @@ fn (mut t Transformer) collect_interface_return_boxes(id flat.NodeId, return_typ
 }
 
 fn (mut t Transformer) collect_interface_assign_boxes(node flat.Node) {
-	for i := 0; i + 1 < node.children_count; i += 2 {
-		lhs_id := t.a.child(&node, i)
-		rhs_id := t.a.child(&node, i + 1)
+	lhs_ids := t.multi_assign_lhs_ids(node)
+	rhs_count := t.multi_assign_rhs_count(node)
+	if lhs_ids.len > 1 && rhs_count == 1 {
+		rhs_id := t.multi_assign_rhs_id(node, 0)
+		if rhs_types := t.multi_return_types_for_expr(rhs_id, lhs_ids.len) {
+			for i, lhs_id in lhs_ids {
+				expected := t.interface_box_lhs_type(lhs_id)
+				if interface_box_expected_type(expected) {
+					t.collect_interface_boxed_type(rhs_types[i], expected)
+				}
+			}
+			return
+		}
+	}
+	for i in 0 .. rhs_count {
+		lhs_id := t.multi_assign_lhs_id(node, i)
+		rhs_id := t.multi_assign_rhs_id(node, i)
 		lhs := t.a.nodes[int(lhs_id)]
 		if lhs.typ.len > 0 && !t.interface_box_type_text_maybe(lhs.typ) {
 			continue
 		}
-		lhs_type := if lhs.typ.len > 0 {
-			t.tc.parse_type(lhs.typ)
-		} else {
-			t.tc.expr_type(lhs_id) or { t.tc.resolve_type(lhs_id) }
-		}
+		lhs_type := t.interface_box_lhs_type(lhs_id)
 		mut expected := lhs_type
 		if node.op == .left_shift_assign {
 			expected = t.interface_box_append_expected_type(lhs_type, lhs_id, rhs_id)
@@ -711,6 +721,40 @@ fn (mut t Transformer) collect_interface_assign_boxes(node flat.Node) {
 		if interface_box_expected_type(expected) {
 			t.collect_interface_boxed_value(rhs_id, expected)
 		}
+	}
+}
+
+fn (t &Transformer) interface_box_lhs_type(lhs_id flat.NodeId) types.Type {
+	lhs := t.a.nodes[int(lhs_id)]
+	return if lhs.typ.len > 0 {
+		t.tc.parse_type(lhs.typ)
+	} else {
+		t.tc.expr_type(lhs_id) or { t.tc.resolve_type(lhs_id) }
+	}
+}
+
+fn (mut t Transformer) collect_interface_boxed_type(actual types.Type, expected types.Type) {
+	match expected {
+		types.Alias {
+			t.collect_interface_boxed_type(actual, expected.base_type)
+		}
+		types.OptionType {
+			actual_base := if actual is types.OptionType { actual.base_type } else { actual }
+			t.collect_interface_boxed_type(actual_base, expected.base_type)
+		}
+		types.ResultType {
+			actual_base := if actual is types.ResultType { actual.base_type } else { actual }
+			t.collect_interface_boxed_type(actual_base, expected.base_type)
+		}
+		types.Interface {
+			iface_name := t.resolve_interface_type_name(expected.name)
+			actual_name := actual.name()
+			if iface_name.len > 0 && actual_name !in ['', 'unknown', 'void']
+				&& t.resolve_interface_type_name(actual_name).len == 0 {
+				t.mark_interface_boxed_type(iface_name, t.trim_pointer_type(actual_name))
+			}
+		}
+		else {}
 	}
 }
 

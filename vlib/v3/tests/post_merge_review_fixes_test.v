@@ -360,6 +360,37 @@ fn main() {
 	assert out == 'true\n7'
 }
 
+fn test_interface_equality_includes_multi_return_assignment_slot_boxes() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_eq_multi_return_assignment_slot_box', 'interface IValue {}
+
+struct Initial {}
+
+struct Value {
+	n int
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn make_value() (Value, int) {
+	return Value{
+		n: 3
+	}, 7
+}
+
+fn main() {
+	mut value := IValue(Initial{})
+	mut n := 0
+	value, n = make_value()
+	println(same(value).str())
+	println(int_str(n))
+}
+')
+	assert out == 'true\n7'
+}
+
 fn test_interface_equality_includes_appended_element_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_appended_element_box', 'interface IValue {}
@@ -522,6 +553,17 @@ fn test_select_receive_assignment_checks_lhs_type() {
 	run_bad(v3_bin, 'select_receive_assign_string_mismatch',
 		"fn main() {\n\tch := chan int{}\n\tmut value := ''\n\tselect {\n\t\tvalue = <-ch {}\n\t\telse {}\n\t}\n\tprintln(value)\n}\n",
 		'cannot assign `int` to `string`')
+}
+
+fn test_select_lowering_roots_array_free() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_roots_array_free', 'fn main() {
+	select {
+		else {}
+	}
+}
+')
+	assert out == ''
 }
 
 fn test_select_compound_receive_assignment_is_rejected() {

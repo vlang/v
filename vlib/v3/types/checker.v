@@ -8490,6 +8490,9 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 	if tc.multi_assign_rhs_count(node) != 1 {
 		return false
 	}
+	for lhs_id in lhs_ids {
+		tc.remember_expr_type(lhs_id, tc.resolve_lvalue_type(lhs_id))
+	}
 	if rhs.kind == .match_stmt {
 		tc.check_node(rhs_id)
 		if !tc.match_has_else_or_exhaustive_coverage(rhs) {
