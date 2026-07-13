@@ -104,6 +104,17 @@ fn test_import_aliased_variadic_call_uses_exact_module() {
 	assert out == '3'
 }
 
+fn test_generic_specializations_keep_full_aliased_import_paths() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_specialization_aliased_import_paths', {
+		'v.mod':          "Module { name: 'generic_specialization_aliased_import_paths' }\n"
+		'a/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'b/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\ttext string\n}\n'
+		'main.v':         "module main\n\nimport a.tast as left\nimport b.tast as tast\n\nfn keep[T](value T) T {\n\treturn value\n}\n\nfn main() {\n\tleft_value := keep(left.Value{\n\t\tn: 41\n\t})\n\tright_value := keep(tast.Value{\n\t\ttext: 'ok'\n\t})\n\tprintln(int_str(left_value.n))\n\tprintln(right_value.text)\n}\n"
+	}, 'main.v')
+	assert out == '41\nok'
+}
+
 fn test_nested_inferred_fixed_array_literal_parses() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'nested_inferred_fixed_array_literal',

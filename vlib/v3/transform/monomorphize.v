@@ -6171,10 +6171,12 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg string) string {
 		alias := clean.all_before('.')
 		resolved_mod := t.import_alias_module(alias)
 		if resolved_mod != alias && resolved_mod.len > 0 {
-			short_mod := resolved_mod.all_after_last('.')
-			if short_mod != alias {
-				return t.canonical_generic_specialization_arg('${short_mod}.${clean.all_after('.')}')
+			resolved := '${resolved_mod}.${clean.all_after('.')}'
+			normalized_resolved := t.normalize_type_alias(resolved)
+			if normalized_resolved != resolved {
+				return t.canonical_generic_specialization_arg(normalized_resolved)
 			}
+			return resolved
 		}
 	}
 	normalized := t.normalize_type_alias(clean)
