@@ -2286,7 +2286,13 @@ fn (mut t Transformer) make_interface_semantic_eq_expr(lhs flat.NodeId, rhs flat
 	lhs_typ := t.make_selector(lhs_value, '_typ', 'int')
 	rhs_typ := t.make_selector(rhs_value, '_typ', 'int')
 	type_eq := t.make_infix(.eq, lhs_typ, rhs_typ)
-	mut payload_eq := t.make_infix(.eq, lhs_typ, t.make_int_literal(0))
+	lhs_empty := t.make_infix(.eq, t.make_selector(lhs_value, '_object', 'voidptr'),
+		t.make_int_literal(0))
+	rhs_empty := t.make_infix(.eq, t.make_selector(rhs_value, '_object', 'voidptr'),
+		t.make_int_literal(0))
+	zero_tag := t.make_infix(.eq, lhs_typ, t.make_int_literal(0))
+	mut payload_eq := t.make_infix(.logical_and, zero_tag, t.make_infix(.logical_and, lhs_empty,
+		rhs_empty))
 	impl_names := if t.is_builtin_ierror_interface_name(iface) {
 		t.tc.ierror_impl_names()
 	} else {

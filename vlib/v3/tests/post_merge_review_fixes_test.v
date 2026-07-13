@@ -671,6 +671,23 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_empty_interface_equality_does_not_accept_unregistered_payloads() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'empty_interface_unregistered_payload_equality', 'interface Any {}
+
+fn same(left Any, right Any) bool {
+	return left == right
+}
+
+fn main() {
+	println(same(Any([1]), Any([2])).str())
+	println(same(Any(1), Any(1)).str())
+	println(same(Any{}, Any{}).str())
+}
+')
+	assert out == 'false\ntrue\ntrue'
+}
+
 fn test_select_receive_assignment_checks_lhs_type() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'select_receive_assign_bool_mismatch', 'fn main() {
