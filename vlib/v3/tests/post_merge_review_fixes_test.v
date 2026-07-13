@@ -645,6 +645,60 @@ fn main() {
 	assert out == '3\n5\n7\n11'
 }
 
+fn test_forwarded_wrapped_multi_return_slots_are_converted() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'forwarded_wrapped_multi_return_slots', 'interface IValue {
+	get() int
+}
+
+struct OptionValue {
+	n int
+}
+
+struct ResultValue {
+	n int
+}
+
+fn (value OptionValue) get() int {
+	return value.n
+}
+
+fn (value ResultValue) get() int {
+	return value.n
+}
+
+fn make_option() ?(OptionValue, int) {
+	return OptionValue{
+		n: 3
+	}, 5
+}
+
+fn forward_option() ?(IValue, int) {
+	return make_option()
+}
+
+fn make_result() !(ResultValue, int) {
+	return ResultValue{
+		n: 7
+	}, 11
+}
+
+fn forward_result() !(IValue, int) {
+	return make_result()
+}
+
+fn main() {
+	option_value, option_n := forward_option() or { panic("missing option") }
+	println(int_str(option_value.get()))
+	println(int_str(option_n))
+	result_value, result_n := forward_result() or { panic(err) }
+	println(int_str(result_value.get()))
+	println(int_str(result_n))
+}
+')
+	assert out == '3\n5\n7\n11'
+}
+
 fn test_interface_equality_includes_appended_element_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_appended_element_box', 'interface IValue {}

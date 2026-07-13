@@ -157,11 +157,48 @@ fn (mut t Transformer) try_expand_return_optional_expr(node flat.Node) ?[]flat.N
 	tmp_ident := t.make_ident(tmp_name)
 	ok_cond := t.make_selector(tmp_ident, 'ok', 'bool')
 	value := t.make_selector(t.make_ident(tmp_name), 'value', t.optional_base_type(expr_type))
-	then_block := t.make_block(arr1(t.make_return(value, ret_type)))
+	then_block := t.try_convert_forwarded_wrapped_multi_return(value, expr_type, ret_type) or {
+		t.make_block(arr1(t.make_return(value, ret_type)))
+	}
 	err_expr := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
 	else_block := t.make_block(arr1(t.make_none_return_stmt_with_err_expr(err_expr)))
 	result << t.make_if(ok_cond, then_block, else_block)
 	return result
+}
+
+fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.NodeId, actual_wrapper string, expected_wrapper string) ?flat.NodeId {
+	if isnil(t.tc) {
+		return none
+	}
+	actual_types := multi_return_types_from_type(t.tc.parse_type(actual_wrapper), 0) or {
+		return none
+	}
+	expected_types := multi_return_types_from_type(t.tc.parse_type(expected_wrapper), 0) or {
+		return none
+	}
+	if actual_types.len != expected_types.len {
+		return none
+	}
+	mut needs_conversion := false
+	for i, actual_type in actual_types {
+		if actual_type.name() != expected_types[i].name() {
+			needs_conversion = true
+			break
+		}
+	}
+	if !needs_conversion {
+		return none
+	}
+	pending_start := t.pending_stmts.len
+	mut return_values := []flat.NodeId{cap: expected_types.len}
+	for i, actual_type in actual_types {
+		field := t.make_selector(value_id, 'arg${i}', actual_type.name())
+		return_values << t.transform_forwarded_return_slot(field, actual_type, expected_types[i])
+	}
+	mut then_body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	then_body << t.make_return_values(return_values, expected_wrapper)
+	return t.make_block(then_body)
 }
 
 // return_expr_is_optional_result supports return expr is optional result handling for Transformer.
