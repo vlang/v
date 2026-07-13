@@ -70,6 +70,13 @@ struct StructWithSkippedField {
 	secret int @[skip]
 }
 
+struct StructWithCollectionDefaults {
+	xs []int          = [9]
+	m  map[string]int = {
+		'old': 1
+	}
+}
+
 fn test_types() {
 	assert json.decode[StructType[string]]('{"val": ""}')!.val == ''
 
@@ -179,4 +186,24 @@ fn test_struct_skip_field() {
 	with_wrong_value_kind :=
 		json.decode[StructWithSkippedField]('{"name":"Ada","secret":"ignored"}')!
 	assert with_wrong_value_kind.secret == 0
+}
+
+fn test_present_collections_replace_struct_defaults() {
+	decoded := json.decode[StructWithCollectionDefaults]('{"xs":[1],"m":{"new":2}}')!
+	assert decoded.xs == [1]
+	assert decoded.m == {
+		'new': 2
+	}
+
+	empty := json.decode[StructWithCollectionDefaults]('{"xs":[],"m":{}}')!
+	assert empty.xs == []
+	assert empty.m == {}
+}
+
+fn test_absent_collections_preserve_struct_defaults() {
+	decoded := json.decode[StructWithCollectionDefaults]('{}')!
+	assert decoded.xs == [9]
+	assert decoded.m == {
+		'old': 1
+	}
 }

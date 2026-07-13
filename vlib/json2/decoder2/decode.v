@@ -869,6 +869,7 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 	array_info := decoder.current_node.value
 
 	if array_info.value_kind == .array {
+		val.clear()
 		decoder.current_node = decoder.current_node.next
 
 		array_position := array_info.position
@@ -889,10 +890,11 @@ fn (mut decoder Decoder) decode_array[T](mut val []T) ! {
 	}
 }
 
-fn (mut decoder Decoder) decode_map[K, V](mut val map[K]V) ! {
+fn (mut decoder Decoder) decode_map[V](mut val map[string]V) ! {
 	map_info := decoder.current_node.value
 
 	if map_info.value_kind == .object {
+		val.clear()
 		map_position := map_info.position
 		map_end := map_position + map_info.length
 
