@@ -335,6 +335,21 @@ fn test_windows_sharedlive_string_interpolation_in_ternary_does_not_emit_inline_
 	assert compilation.output.contains('builtin__str_intp')
 }
 
+fn test_windows_sharedlive_explicit_string_format_scalar_reference_uses_pointee() {
+	os.chdir(vroot) or {}
+	test_source := os.join_path(os.vtmp_dir(), 'coutput_live_windows_scalar_ref_s_fmt.vv')
+	os.write_file(test_source,
+		"module main\n\n@[live]\nfn format_scalar_ref(p &string) string {\n\treturn '\${p:s}'\n}\n\nfn main() {\n\ts := 'hi'\n\tprintln(format_scalar_ref(&s))\n}\n")!
+	defer {
+		os.rm(test_source) or {}
+	}
+	cmd := '${os.quoted_path(vexe)} -o - -os windows -sharedlive ${os.quoted_path(test_source)}'
+	compilation := os.execute(cmd)
+	ensure_compilation_succeeded(compilation, cmd)
+	assert compilation.output.contains('builtin__string_str(*p)')
+	assert !compilation.output.contains('builtin__voidptr_str((voidptr)(p))')
+}
+
 fn test_simple_string_interpolation_does_not_emit_str_intp_runtime() {
 	os.chdir(vroot) or {}
 	test_source := os.join_path(os.vtmp_dir(), 'coutput_simple_interpolation_no_str_intp.vv')

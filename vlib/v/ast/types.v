@@ -718,6 +718,16 @@ pub fn (typ Type) is_float_valptr() bool {
 	return typ.is_ptr() && typ.idx() in float_type_idxs
 }
 
+// is_scalar_ptr returns `true` if `typ` is a pointer to a scalar value
+// (an integer, float, rune, bool or string). Following Go's `%v` semantics,
+// such references are printed as their address, while pointers to compound
+// values (structs, arrays, maps) are printed as `&` + the pointed-to value.
+@[inline]
+pub fn (typ Type) is_scalar_ptr() bool {
+	return typ.is_ptr()
+		&& (typ.idx() in number_type_idxs || typ.idx() in [string_type_idx, bool_type_idx])
+}
+
 // is_pure_int return `true` if `typ` is a pure int
 @[inline]
 pub fn (typ Type) is_pure_int() bool {

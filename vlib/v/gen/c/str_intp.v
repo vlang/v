@@ -199,6 +199,11 @@ fn (mut g Gen) resolved_if_guard_ident_str_intp_type(expr ast.Ident) ast.Type {
 fn (mut g Gen) get_default_fmt(ftyp ast.Type, typ ast.Type) u8 {
 	if ftyp.has_option_or_result() {
 		return `s`
+	} else if g.table.is_scalar_ptr_type(ftyp) {
+		// Go-style: a reference to a scalar (int, float, bool, string, rune) -
+		// including aliases of them - is printed as its address. Mirrors the
+		// checker so generic interpolation (which recomputes formats here) agrees.
+		return `p`
 	} else if typ.is_float() {
 		return `g`
 	} else if typ.is_signed() || typ.is_int_literal() {
@@ -277,7 +282,13 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 	if g.int_ref_interpolates_as_value(expr, typ, fmts[i]) && typ.is_ptr() {
 		typ = typ.deref()
 	}
+	was_ptr := g.table.fully_unaliased_type(typ).is_ptr()
 	typ = g.table.final_type(typ)
+	if was_ptr && !typ.is_ptr() {
+		// `final_type` drops the pointer for aliases (e.g. `&MyInt` -> `int`);
+		// keep it a pointer so a reference still formats as an address.
+		typ = typ.ref()
+	}
 	if typ.has_flag(.shared_f) && typ.is_ptr() {
 		typ = typ.clear_flag(.shared_f).deref()
 	}
@@ -322,7 +333,7 @@ fn (mut g Gen) str_format(node ast.StringInterLiteral, i int, fmts []u8) (u64, s
 				else { fmt_type = .si_f64 }
 			}
 		}
-	} else if typ.is_pointer() {
+	} else if typ.is_pointer() || (typ.is_ptr() && fspec in [`p`, `x`, `X`]) {
 		if fspec in [`x`, `X`] {
 			base = 16 - 2 // our base start from 2
 		}
@@ -539,10 +550,16 @@ fn (mut g Gen) str_val(node ast.StringInterLiteral, i int, fmts []u8) {
 			g.inside_opt_or_res = old_inside_opt_or_res
 			g.write('.data))')
 		} else {
+			// an explicit `${x:s}` should format the pointed-to value, not the
+			// address that a scalar reference gets by default
+			old_inside_s_fmt := g.inside_str_interp_s_fmt
+			g.inside_str_interp_s_fmt = true
 			if g.gen_windows_liveshared_string_tmp(expr, exp_typ) {
+				g.inside_str_interp_s_fmt = old_inside_s_fmt
 				return
 			}
 			g.gen_expr_to_string(expr, exp_typ)
+			g.inside_str_interp_s_fmt = old_inside_s_fmt
 		}
 	} else if typ.is_number() || typ.is_pointer() || fmt == `d` {
 		if typ.is_signed() && fmt in [`x`, `X`, `o`] {
