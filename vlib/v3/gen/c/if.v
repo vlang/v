@@ -587,6 +587,16 @@ fn (mut g FlatGen) seed_scope_from_decl(node flat.Node) {
 	if lhs.kind != .ident || lhs.value.len == 0 {
 		return
 	}
+	// The declared type annotation is authoritative; resolving the RHS can
+	// disagree for lowered temps (`__or_val := <zero []Val>` resolving to the
+	// element sum type) and would poison every later use of the binding.
+	if node.typ.len > 0 {
+		typ := g.tc.parse_type(node.typ)
+		if !decl_annotation_is_unusable(typ, node.typ) {
+			g.tc.cur_scope.insert(lhs.value, typ)
+			return
+		}
+	}
 	rhs_id := g.a.child(&node, 1)
 	g.tc.cur_scope.insert(lhs.value, g.tc.resolve_type(rhs_id))
 }

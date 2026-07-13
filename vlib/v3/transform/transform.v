@@ -2247,10 +2247,26 @@ fn (mut t Transformer) transform_const_expr_no_pending(id flat.NodeId) flat.Node
 	old_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	transformed := t.transform_expr(id)
-	has_pending := t.pending_stmts.len > 0
+	pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	t.pending_stmts = old_pending
-	return if has_pending { id } else { transformed }
+	if pending.len == 0 {
+		return transformed
+	}
+	// A lowering left prerequisite statements (`.map()` chain temps); the
+	// expression is unusable without them, so pack them into a block value
+	// the const emitter renders as a braced runtime init.
+	start := t.a.children.len
+	for stmt in pending {
+		t.a.children << stmt
+	}
+	t.a.children << transformed
+	return t.a.add_node(flat.Node{
+		kind:           .block
+		children_start: start
+		children_count: flat.child_count(pending.len + 1)
+		typ:            t.node_type(transformed)
+	})
 }
 
 // transform_const_or_expr transforms transform const or expr data for transform.
@@ -3861,6 +3877,12 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			if lhs.kind == .ident && lhs.value in t.heaped_amp_locals && lhs_type.starts_with('&') {
 				lhs_type = lhs_type[1..]
 			}
+			// A `mut val T` value param resolves to `&T`; cgen writes assignments
+			// through the pointer (`*val = ...`), so coerce the RHS to `T`, not `&T`.
+			if lhs.kind == .ident && lhs_type.starts_with('&') && t.mut_param_values[lhs.value]
+				&& !lhs_type.starts_with('&&') {
+				lhs_type = lhs_type[1..]
+			}
 			sum_target := t.assignment_sum_target(lhs_id, child_id, lhs_type)
 			if node.op == .assign && sum_target.len > 0 {
 				new_children << t.wrap_sum_value(child_id, sum_target)
@@ -5022,6 +5044,11 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 					typ = '[]${fixed_array_elem_type(typ)}'
 					t.set_node_typ(int(rhs_id), typ)
 				}
+			}
+			if amp_vt := t.mut_param_amp_decl_type(rhs_id) {
+				// `mut t := &table` where table is a `mut` value param: the RHS
+				// IS the caller's pointer, so the local is single-`&`, not `&&`.
+				typ = amp_vt
 			}
 			if typ.len > 0 {
 				mut raw_typ := t.raw_decl_type_for_rhs(rhs, typ)
@@ -6509,6 +6536,24 @@ fn (mut t Transformer) transform_if_stmt(id flat.NodeId, node flat.Node) []flat.
 	if expanded := t.try_expand_if_guard(id, node) {
 		return expanded
 	}
+	// A condition made entirely of literal string comparisons is decided now
+	// (`if T.name in ['x.json2.Any', ...]` after `T.name` became a literal in
+	// a specialization); the dead branch may not even typecheck for this
+	// instantiation.
+	if node.children_count >= 2 {
+		if take_then := t.generic_const_string_cond(t.a.child(&node, 0), []) {
+			branch_index := if take_then { 1 } else { 2 }
+			if branch_index >= int(node.children_count) {
+				return []flat.NodeId{}
+			}
+			branch_id := t.a.child(&node, branch_index)
+			branch := t.a.nodes[int(branch_id)]
+			if branch.kind == .block {
+				return t.transform_stmts(t.a.children_of(&branch).clone())
+			}
+			return t.transform_stmt(branch_id)
+		}
+	}
 	new_id := t.transform_if_branches_with_smartcast(id, node)
 	return t.with_pending_before(new_id)
 }
@@ -7784,6 +7829,45 @@ fn (mut t Transformer) transform_match_trailing_or_expr(_id flat.NodeId, node fl
 }
 
 // transform_prefix_expr transforms transform prefix expr data for transform.
+// mut_param_amp_decl_type detects `&param` (possibly as an unsafe-block tail)
+// over a `mut` value param and returns the param's pointer type for the decl.
+fn (t &Transformer) mut_param_amp_decl_type(rhs_id flat.NodeId) ?string {
+	if int(rhs_id) < 0 {
+		return none
+	}
+	mut node := t.a.nodes[int(rhs_id)]
+	if node.kind == .block && node.children_count > 0 {
+		tail_id := t.a.child(&node, int(node.children_count) - 1)
+		if int(tail_id) < 0 {
+			return none
+		}
+		mut tail := t.a.nodes[int(tail_id)]
+		if tail.kind == .expr_stmt && tail.children_count > 0 {
+			inner := t.a.child(&tail, 0)
+			if int(inner) < 0 {
+				return none
+			}
+			tail = t.a.nodes[int(inner)]
+		}
+		node = tail
+	}
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return none
+	}
+	child := t.a.child_node(&node, 0)
+	if child.kind != .ident || !t.mut_param_values[child.value] {
+		return none
+	}
+	mut vt := t.var_type(child.value)
+	if vt.starts_with('mut ') {
+		vt = '&' + vt[4..].trim_space()
+	}
+	if !vt.starts_with('&') {
+		return none
+	}
+	return vt
+}
+
 fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count == 0 {
 		return id
@@ -7808,6 +7892,20 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	if node.op == .amp && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
+		// `&param` where `param` is a `mut` value param IS the pointer the
+		// caller passed; adding another `&` would take the address of the
+		// parameter slot (`map** t = table` + `*t = ...` clobbers the caller).
+		if child.kind == .ident && t.mut_param_values[child.value] {
+			mut vt := t.var_type(child.value)
+			if vt.starts_with('mut ') {
+				vt = '&' + vt[4..].trim_space()
+			}
+			if vt.starts_with('&') {
+				new_id := t.transform_expr(child_id)
+				t.set_node_typ(int(new_id), vt)
+				return new_id
+			}
+		}
 		if child.kind == .struct_init {
 			// `&T{...}` (address of a struct literal) is ALWAYS a heap allocation in V,
 			// in any context — not just in a return. Keeping it as a `.prefix .amp`

@@ -290,8 +290,13 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 	} else {
 		'(${base_str}).len'
 	}
+	gated := node.op == .gated_index
 	if base_type is types.String {
-		g.write('string__substr(${base_str}, ${start_str}, ${end_str})')
+		if gated {
+			g.write('string__substr_ni(${base_str}, ${start_str}, ${end_str})')
+		} else {
+			g.write('string__substr(${base_str}, ${start_str}, ${end_str})')
+		}
 	} else if is_fixed_array {
 		c_elem := g.fixed_array_elem_c_type(fixed.elem_type)
 		mut data_str := if fixed_is_ptr { '(*${base_str})' } else { base_str }
@@ -306,9 +311,17 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 		g.write('({ int ${start_tmp} = (${start_str}); int ${count_tmp} = (${end_str}) - ${start_tmp}; new_array_from_c_array(${count_tmp}, ${count_tmp}, sizeof(${c_elem}), &(${data_str})[${start_tmp}]); })')
 	} else if is_array {
 		arr_str := if is_ptr { '*${base_str}' } else { base_str }
-		g.write('array_slice(${arr_str}, ${start_str}, ${end_str})')
+		if gated {
+			g.write('array__slice_ni(${arr_str}, ${start_str}, ${end_str})')
+		} else {
+			g.write('array_slice(${arr_str}, ${start_str}, ${end_str})')
+		}
 	} else {
-		g.write('string__substr(${base_str}, ${start_str}, ${end_str})')
+		if gated {
+			g.write('string__substr_ni(${base_str}, ${start_str}, ${end_str})')
+		} else {
+			g.write('string__substr(${base_str}, ${start_str}, ${end_str})')
+		}
 	}
 }
 

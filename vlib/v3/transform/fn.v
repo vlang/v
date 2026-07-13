@@ -868,6 +868,14 @@ fn (t &Transformer) struct_arg_type_name(param_type string) ?string {
 	if typ.starts_with('&') {
 		return none
 	}
+	// Trailing `key: value` args against a variadic `...Struct` param (surfacing
+	// here as `[]Struct`) desugar to one element of the elem struct type.
+	if typ.starts_with('...') {
+		typ = typ[3..]
+	}
+	if typ.starts_with('[]') {
+		typ = typ[2..]
+	}
 	typ = t.normalize_type_alias(typ)
 	if _ := t.lookup_struct_info(typ) {
 		return typ
@@ -896,6 +904,12 @@ fn (t &Transformer) params_struct_type_name(param_type string) ?string {
 	mut typ := param_type
 	if typ.starts_with('&') {
 		typ = typ[1..]
+	}
+	if typ.starts_with('...') {
+		typ = typ[3..]
+	}
+	if typ.starts_with('[]') {
+		typ = typ[2..]
 	}
 	if info := t.lookup_struct_info(typ) {
 		if info.is_params {
@@ -5956,6 +5970,10 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		return t.make_call_typed(sum_method, args, ret_type)
 	}
 	if t.validating_generic_spec {
+		if base_node.kind == .ident && base_node.value in ['C', 'JS'] {
+			// `C.fn(...)` is an extern call, not a method on an ident.
+			return none
+		}
 		if field_type := t.lookup_struct_field_type(base_type, method) {
 			if !t.validate_specialized_fn_field_call(id, node, base_id, field_type) {
 				return t.make_empty()
@@ -6251,8 +6269,9 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		return true
 	}
 	// An `unknown` expected type means the callee signature still carries an
-	// unresolved generic parameter here - nothing can be validated against it.
-	if expected_type.trim_string_left('&') == 'unknown' {
+	// unresolved generic parameter here - nothing can be validated against it
+	// (including container forms such as `[]unknown`).
+	if expected_type.contains('unknown') {
 		return true
 	}
 	actual := t.normalize_type_alias(actual_type)
@@ -6265,8 +6284,27 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 	if actual == expected {
 		return true
 	}
+	// A `mut`/pointer parameter is called with the value form (`r.read(mut
+	// buf)` with `buf []u8` against `&[]u8`); cgen auto-refs such args.
+	if expected.starts_with('&') && actual == expected[1..] {
+		return true
+	}
+	// Any pointer converts to voidptr.
+	if expected in ['voidptr', 'byteptr', 'charptr']
+		&& (actual.starts_with('&') || actual in ['voidptr', 'byteptr', 'charptr', 'nil']) {
+		return true
+	}
+	// An empty array literal (`[]`) types as `[]void` and adopts the
+	// parameter's element type.
+	if actual == '[]void' && expected.starts_with('[]') {
+		return true
+	}
 	arg := t.a.nodes[int(arg_id)]
 	if arg.kind == .float_literal && expected in ['f32', 'f64'] {
+		return true
+	}
+	// A char literal (`\`x\``) types as rune but coerces to u8 params.
+	if arg.kind == .char_literal && expected in ['u8', 'rune', 'char', 'int', 'u32'] {
 		return true
 	}
 	if actual == 'nil'
@@ -6284,6 +6322,12 @@ fn (mut t Transformer) resolved_receiver_arg_compatible(arg_id flat.NodeId, actu
 		}
 	}
 	if t.is_sum_type_name(expected) && t.sum_target_accepts_variant_type(expected, actual) {
+		return true
+	}
+	// The reverse also passes validation: a sum-typed value flows into a
+	// variant-typed parameter under an `is`-guard (smartcast) that a not-yet
+	// unrolled `$for v in T.variants` body cannot expose to this check.
+	if t.is_sum_type_name(actual) && t.sum_target_accepts_variant_type(actual, expected) {
 		return true
 	}
 	if !isnil(t.tc) && expected in t.tc.interface_names

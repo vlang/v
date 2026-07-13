@@ -379,6 +379,8 @@ pub fn (mut s Scanner) scan() token.Token {
 		`#` {
 			if s.peek_byte(0) == `[` {
 				s.offset++
+				// gated index `a#[..]`; the parser reads the marker from lit
+				s.lit = '#'
 				return .lsbr
 			}
 			start := s.offset
@@ -426,6 +428,7 @@ pub fn (mut s Scanner) scan() token.Token {
 			return .rpar
 		}
 		`[` {
+			s.lit = ''
 			return .lsbr
 		}
 		`]` {

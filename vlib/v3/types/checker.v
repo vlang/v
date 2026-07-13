@@ -346,6 +346,7 @@ pub mut:
 	cur_fn_mut_param_binding_owners map[string]ScopeBindingOwner
 	cur_fn_mut_local_binding_owners map[string]ScopeBindingOwner
 	cur_fn_shared_binding_owners    map[string]ScopeBindingOwner
+	cur_comptime_loop_vars          []string
 	expr_type_values                []Type // node_id -> complex/contextual resolved type
 	expr_type_set                   []bool
 	checking_nodes                  []bool
@@ -1691,6 +1692,26 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 	return tc.cur_module + '.' + name
 }
 
+// qualify_resolution_type_name qualifies a type name for RESOLUTION (not
+// registration): a bare capitalized name that does not exist under the current
+// module but does exist globally (a generic arg substituted from another
+// module's caller, e.g. main's `Foo` inside a json2 specialization) stays bare
+// instead of becoming a nonexistent `json2.Foo`. Registration must never use
+// this - it is order-dependent during collect.
+fn (tc &TypeChecker) qualify_resolution_type_name(name string) string {
+	qualified := tc.qualify_name(name)
+	if qualified != name && name.len > 0 && name[0] >= `A` && name[0] <= `Z`
+		&& !tc.qualify_candidate_type_exists(qualified) && tc.qualify_candidate_type_exists(name) {
+		return name
+	}
+	return qualified
+}
+
+fn (tc &TypeChecker) qualify_candidate_type_exists(name string) bool {
+	return name in tc.structs || name in tc.sum_types || name in tc.interface_names
+		|| name in tc.enum_names || name in tc.type_aliases || name in tc.struct_generic_params
+}
+
 fn (tc &TypeChecker) qualify_sum_variant_name(name string, generic_params []string) string {
 	if generic_params.len == 0 {
 		return tc.qualify_name(name)
@@ -1822,7 +1843,7 @@ fn (tc &TypeChecker) qualify_type_text(typ string) string {
 			return resolved
 		}
 	}
-	return tc.qualify_name(clean)
+	return tc.qualify_resolution_type_name(clean)
 }
 
 // qualify_fn_type_text supports qualify fn type text handling for TypeChecker.
@@ -5054,6 +5075,10 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	if parts.len != 2 || parts[0].len == 0 || node.children_count == 0 {
 		return
 	}
+	tc.cur_comptime_loop_vars << parts[0]
+	defer {
+		tc.cur_comptime_loop_vars.pop()
+	}
 	body_id := tc.a.child(&node, 0)
 	match parts[1] {
 		'fields' {
@@ -7484,6 +7509,21 @@ fn (mut tc TypeChecker) check_multi_return_decl_assign(id flat.NodeId, node flat
 			}
 			return true
 		}
+		// Tuple tails (`.a { c, '.zst', 'zstd' }`) resolve like if-expr branches.
+		if rhs_types := tc.multi_expr_tail_types(rhs_id, lhs_ids.len) {
+			tc.register_synth_type(rhs_id, MultiReturn{
+				types: rhs_types
+			})
+			for i, lhs_id in lhs_ids {
+				tc.insert_decl_lhs(lhs_id, rhs_types[i], tc.decl_lhs_is_mut(node, lhs_id))
+			}
+			$if ownership ? {
+				tc.ownership_after_multi_return_decl_assign(lhs_ids, rhs_id, MultiReturn{
+					types: rhs_types
+				}, id)
+			}
+			return true
+		}
 		if tc.should_diagnose(id) {
 			if tc.match_has_tuple_tail_values(rhs_id, lhs_ids.len) {
 				tc.record_error(.assignment_mismatch,
@@ -8115,6 +8155,17 @@ fn (mut tc TypeChecker) check_multi_return_assign(id flat.NodeId, node flat.Node
 						'cannot assign `${rhs_types[i].name()}` to `${lhs_type.name()}`', id)
 				}
 			}
+			$if ownership ? {
+				tc.ownership_after_multi_return_assign(lhs_ids, rhs_id, MultiReturn{
+					types: rhs_types
+				}, id)
+			}
+			return true
+		}
+		if rhs_types := tc.multi_expr_tail_assign_types(id, rhs_id, lhs_ids) {
+			tc.register_synth_type(rhs_id, MultiReturn{
+				types: rhs_types
+			})
 			$if ownership ? {
 				tc.ownership_after_multi_return_assign(lhs_ids, rhs_id, MultiReturn{
 					types: rhs_types
@@ -13773,6 +13824,12 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 		&& tc.cur_fn_is_generic_template() {
 		return
 	}
+	// A `$for v in T.variants` loop variable is substituted by the comptime
+	// unroll; `val is v` cannot be validated against the raw name.
+	if node.value in tc.cur_comptime_loop_vars
+		|| (node.value.contains('.') && node.value.all_after_last('.') in tc.cur_comptime_loop_vars) {
+		return
+	}
 	expr_type := unalias_type(unwrap_pointer(tc.resolve_type(expr_id)))
 	if expr_type is SumType {
 		if node.value.len > 0 && tc.sum_variant_type_for_pattern(expr_type.name, node.value) == none
@@ -15310,6 +15367,11 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 				return true
 			}
 			if expected.base_type is Void || actual.base_type is Void {
+				return true
+			}
+			// C interop: `&char` and `&u8` share representation (`tos_clone(C.strdup(s))`).
+			if (actual.base_type is Char && expected.base_type.name() == 'u8')
+				|| (actual.base_type.name() == 'u8' && expected.base_type is Char) {
 				return true
 			}
 			return tc.type_compatible(actual.base_type, expected.base_type)
@@ -17330,8 +17392,12 @@ pub fn (tc &TypeChecker) sum_variant_type_for_pattern(sum_name string, variant_n
 		if resolved != variant_name {
 			candidates << resolved
 		}
-		if unique := tc.unique_qualified_type_name(variant_name.all_after_last('.')) {
-			candidates << unique
+		// `all_after_last('.')` on a container pattern (`map[string]ast.Value`)
+		// strips the container and would resolve to the sum type itself.
+		if !variant_name.contains('[') && !variant_name.contains(']') {
+			if unique := tc.unique_qualified_type_name(variant_name.all_after_last('.')) {
+				candidates << unique
+			}
 		}
 	}
 	for candidate in candidates.clone() {
@@ -17764,7 +17830,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
 		return tc.parse_fn_type(typ)
 	}
-	qtyp := tc.qualify_name(typ)
+	qtyp := tc.qualify_resolution_type_name(typ)
 	if typ == 'array' && tc.has_builtins && typ in tc.structs {
 		return Type(Struct{
 			name: typ
@@ -19558,6 +19624,13 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 				return 'struct ${raw}'
 			}
 			return raw
+		}
+		if t.name.contains('.') && t.name !in tc.structs && t.name !in tc.type_aliases {
+			// An import-alias prefix (`json.Any` for `import x.json2 as json`)
+			// can survive in recorded types; resolve by unique short name.
+			if resolved := tc.unique_qualified_type_name(t.name.all_after_last('.')) {
+				return tc.c_struct_type_name(resolved)
+			}
 		}
 		return tc.c_struct_type_name(t.name)
 	}

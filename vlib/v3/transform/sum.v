@@ -81,6 +81,13 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 	if sum_name in t.sum_types {
 		return sum_name
 	}
+	// A container of a sum type is not itself a sum type: `[]ast.Value` must
+	// not resolve to `ast.Value` (the short-name and generic-application
+	// fallbacks below would), or an or/assign lowering boxes the whole array
+	// into one sum value.
+	if sum_name.starts_with('[]') || sum_name.starts_with('map[') || sum_name.starts_with('[') {
+		return ''
+	}
 	if !isnil(t.tc) && sum_name in t.tc.sum_types {
 		return sum_name
 	}
@@ -102,6 +109,20 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		short_sum := sum_name.all_after_last('.')
 		if short_sum in t.sum_types {
 			return short_sum
+		}
+		// Import-aliased module path: `tast.Value` names `sub.tast.Value`.
+		suffix := '.' + sum_name
+		for key, _ in t.sum_types {
+			if key.ends_with(suffix) {
+				return key
+			}
+		}
+		if !isnil(t.tc) {
+			for key, _ in t.tc.sum_types {
+				if key.ends_with(suffix) {
+					return key
+				}
+			}
 		}
 	}
 	if !sum_name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
@@ -520,7 +541,10 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 	clean_type0 := t.trim_pointer_type(expr_type)
 	concrete_expr_type := t.normalize_type_alias(clean_type0)
 	resolved_expr_sum := t.resolve_sum_name(concrete_expr_type)
-	if !t.validate_specialized_is_expr(concrete_expr_type, resolved_expr_sum, node.value) {
+	// Inside a `$for v in T.variants` body the pattern is the loop variable;
+	// the unroll substitutes it later, so there is nothing to validate yet.
+	if t.cloning_comptime_for_depth == 0
+		&& !t.validate_specialized_is_expr(concrete_expr_type, resolved_expr_sum, node.value) {
 		return t.make_bool_literal(false)
 	}
 	clean_type := if clean_type0 in t.sum_types {
@@ -588,6 +612,17 @@ fn (mut t Transformer) validate_specialized_is_expr(subject_type string, resolve
 			return true
 		}
 		if _ := t.resolve_sum_variant_pattern_for_subject(subject_type, pattern) {
+			return true
+		}
+		short_pattern := pattern.all_after_last('.')
+		mut pattern_is_builtin := false
+		if _ := types.builtin_type(short_pattern) {
+			pattern_is_builtin = true
+		}
+		if !t.is_known_type_name(pattern) && !t.is_known_type_name(short_pattern)
+			&& !pattern_is_builtin {
+			// Not a type at all - a `$for variant in T.variants` loop variable;
+			// the comptime unroll substitutes it before anything is emitted.
 			return true
 		}
 		t.record_monomorph_error('`${pattern}` is not a variant of sum type `${resolved_sum}`')
