@@ -9,17 +9,13 @@ fn test_number() {
 	assert json.decode[u8]('0')! == 0
 	assert json.decode[u8]('1')! == 1
 	assert json.decode[u8]('201')! == 201
-
-	assert json.decode[u8]('-1')! == u8(-1)
-	assert json.decode[u8]('-127')! == u8(-127)
+	assert json.decode[u8]('255')! == max_u8
 
 	// Test u16
 	assert json.decode[u16]('0')! == 0
 	assert json.decode[u16]('1')! == 1
 	assert json.decode[u16]('201')! == 201
-
-	assert json.decode[u16]('-1')! == u16(-1)
-	assert json.decode[u16]('-201')! == u16(-201)
+	assert json.decode[u16]('65535')! == max_u16
 
 	// Test u32
 	assert json.decode[u32]('0')! == 0
@@ -38,6 +34,7 @@ fn test_number() {
 
 	assert json.decode[i8]('-1')! == -1
 	assert json.decode[i8]('-127')! == -127
+	assert json.decode[i8]('-128')! == min_i8
 
 	// Test i16
 	assert json.decode[i16]('0')! == 0
@@ -46,6 +43,7 @@ fn test_number() {
 
 	assert json.decode[i16]('-1')! == -1
 	assert json.decode[i16]('-201')! == -201
+	assert json.decode[i16]('-32768')! == min_i16
 
 	// Test int
 	assert json.decode[int]('0')! == 0
@@ -68,6 +66,7 @@ fn test_number() {
 
 	assert json.decode[i64]('1234567890')! == 1234567890
 	assert json.decode[i64]('-1234567890')! == -1234567890
+	assert json.decode[i64]('-9223372036854775808')! == min_i64
 
 	// Test f32
 	assert json.decode[f32]('0')! == 0.0
@@ -117,6 +116,32 @@ fn test_fractional_numbers_are_rejected_for_integer_targets() {
 	mut failed := false
 	json.decode[IntegerField]('{"n":123.45}') or { failed = true }
 	assert failed
+}
+
+fn assert_integer_decode_fails[T](input string) {
+	json.decode[T](input) or { return }
+	assert false, 'expected `${input}` to be rejected for ${typeof(T{}).name}'
+}
+
+fn test_out_of_range_integers_are_rejected() {
+	assert_integer_decode_fails[u8]('-1')
+	assert_integer_decode_fails[u8]('256')
+	assert_integer_decode_fails[u16]('-1')
+	assert_integer_decode_fails[u16]('65536')
+	assert_integer_decode_fails[u32]('-1')
+	assert_integer_decode_fails[u32]('4294967296')
+	assert_integer_decode_fails[u64]('-1')
+	assert_integer_decode_fails[u64]('18446744073709551616')
+
+	assert_integer_decode_fails[i8]('-129')
+	assert_integer_decode_fails[i8]('128')
+	assert_integer_decode_fails[i8]('128e0')
+	assert_integer_decode_fails[i16]('-32769')
+	assert_integer_decode_fails[i16]('32768')
+	assert_integer_decode_fails[i32]('-2147483649')
+	assert_integer_decode_fails[i32]('2147483648')
+	assert_integer_decode_fails[i64]('-9223372036854775809')
+	assert_integer_decode_fails[i64]('9223372036854775808')
 }
 
 fn test_boolean() {
