@@ -836,6 +836,12 @@ fn (mut g FlatGen) gen_select_receive_value(expr string, actual types.Type, expe
 		g.write('*${expr}')
 		return
 	}
+	if g.gen_select_receive_array_value(expr, actual_base, expected_base) {
+		return
+	}
+	if g.gen_select_receive_map_value(expr, actual_base, expected_base) {
+		return
+	}
 	if g.gen_select_receive_interface_value(expr, actual_base, expected_base) {
 		return
 	}
@@ -850,6 +856,97 @@ fn select_receive_unalias_type(typ types.Type) types.Type {
 		return select_receive_unalias_type(typ.base_type)
 	}
 	return typ
+}
+
+fn (mut g FlatGen) gen_select_receive_array_value(expr string, actual types.Type, expected types.Type) bool {
+	if expected !is types.Array {
+		return false
+	}
+	expected_array := expected as types.Array
+	expected_elem := select_receive_unalias_type(expected_array.elem_type)
+	mut actual_elem := types.Type(types.void_)
+	mut source := ''
+	mut source_len := ''
+	mut source_value := ''
+	mut free_source := false
+	if actual is types.Array {
+		actual_elem = select_receive_unalias_type(actual.elem_type)
+		if actual_elem.name() == expected_elem.name() {
+			return false
+		}
+		source = g.tmp_name()
+		source_len = '${source}.len'
+		actual_elem_ct := g.value_c_type(actual_elem)
+		source_value = '*(${actual_elem_ct}*)array_get(${source}, '
+		free_source = true
+	} else if actual is types.ArrayFixed {
+		actual_elem = select_receive_unalias_type(actual.elem_type)
+		source_len = g.fixed_array_len_value(actual)
+		source_value = '${expr}['
+	} else {
+		return false
+	}
+	out := g.tmp_name()
+	idx := g.tmp_name()
+	expected_elem_ct := g.value_c_type(expected_elem)
+	if free_source {
+		g.write('({ Array ${source} = ${expr}; ')
+	} else {
+		g.write('({ ')
+	}
+	g.write('Array ${out} = __new_array(${source_len}, ${source_len}, sizeof(${expected_elem_ct})); ')
+	g.write('for (int ${idx} = 0; ${idx} < ${source_len}; ${idx}++) { ((${expected_elem_ct}*)${out}.data)[${idx}] = ')
+	if free_source {
+		g.gen_select_receive_value('${source_value}${idx})', actual_elem, expected_elem)
+	} else {
+		g.gen_select_receive_value('${source_value}${idx}]', actual_elem, expected_elem)
+	}
+	g.write('; } ')
+	if free_source {
+		g.write('array__free(&${source}); ')
+	}
+	g.write('${out}; })')
+	return true
+}
+
+fn (mut g FlatGen) gen_select_receive_map_value(expr string, actual types.Type, expected types.Type) bool {
+	if actual !is types.Map || expected !is types.Map {
+		return false
+	}
+	actual_map := actual as types.Map
+	expected_map := expected as types.Map
+	actual_key := select_receive_unalias_type(actual_map.key_type)
+	expected_key := select_receive_unalias_type(expected_map.key_type)
+	actual_value := select_receive_unalias_type(actual_map.value_type)
+	expected_value := select_receive_unalias_type(expected_map.value_type)
+	if actual_key.name() == expected_key.name() && actual_value.name() == expected_value.name() {
+		return false
+	}
+	source := g.tmp_name()
+	out := g.tmp_name()
+	keys := g.tmp_name()
+	idx := g.tmp_name()
+	source_key := g.tmp_name()
+	key := g.tmp_name()
+	source_value := g.tmp_name()
+	value := g.tmp_name()
+	actual_key_ct := g.map_key_temp_c_type(actual_key)
+	expected_key_ct := g.map_key_temp_c_type(expected_key)
+	actual_value_ct := g.value_c_type(actual_value)
+	expected_value_ct := g.value_c_type(expected_value)
+	g.write('({ map ${source} = ${expr}; map ${out} = ')
+	g.write_new_map(expected_key, expected_value)
+	g.write('; Array ${keys} = map__keys(&${source}); ')
+	g.write('for (int ${idx} = 0; ${idx} < ${keys}.len; ${idx}++) { ')
+	g.write('${actual_key_ct} ${source_key} = *(${actual_key_ct}*)array_get(${keys}, ${idx}); ')
+	g.write('${actual_value_ct} ${source_value} = *(${actual_value_ct}*)map__get_check(&${source}, &${source_key}); ')
+	g.write('${expected_key_ct} ${key} = ')
+	g.gen_select_receive_value(source_key, actual_key, expected_key)
+	g.write('; ${expected_value_ct} ${value} = ')
+	g.gen_select_receive_value(source_value, actual_value, expected_value)
+	g.write('; map__set(&${out}, &${key}, &${value}); ${source}.free_fn(&${source_key}); } ')
+	g.write('array__free(&${keys}); map__free(&${source}); ${out}; })')
+	return true
 }
 
 fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.Type, expected types.Type) bool {

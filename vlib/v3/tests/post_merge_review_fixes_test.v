@@ -1364,6 +1364,48 @@ fn main() {
 	assert out == '3\n5\n7\n9\n11\n13\n15'
 }
 
+fn test_select_receive_assignment_converts_container_elements() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'select_receive_assign_container_conversions', "interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn main() {
+	array_ch := chan []Value{cap: 1}
+	array_ch <- [Value{
+		n: 3
+	}]
+	mut values := []IValue{}
+	select {
+		values = <-array_ch {}
+	}
+
+	map_ch := chan map[string]Value{cap: 1}
+	map_ch <- {
+		'item': Value{
+			n: 5
+		}
+	}
+	mut indexed := map[string]IValue{}
+	select {
+		indexed = <-map_ch {}
+	}
+
+	println(int_str(values[0].get()))
+	println(int_str(indexed['item'].get()))
+}
+")
+	assert out == '3\n5'
+}
+
 fn test_select_dereferences_pointer_channels() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'select_pointer_channels', 'fn receive(ch &chan int) int {
