@@ -1251,6 +1251,43 @@ fn test_comptime_if_threads_mixed_conditions_keep_normal_flag_evaluation() {
 	assert out == 'statement or\n41\nstatement and\n7'
 }
 
+fn test_comptime_if_custom_threads_flags_are_not_deferred() {
+	v3_bin := build_v3()
+	source := '$if threads ? {
+	fn top_level_value() int {
+		return 41
+	}
+} $else {
+	fn top_level_value() int {
+		return 7
+	}
+}
+
+fn main() {
+	$if threads ? {
+		println("optional enabled")
+	} $else {
+		println("optional disabled")
+	}
+	optional_value := $if threads ? { 41 } $else { 7 }
+	println(int_str(optional_value))
+	$if $d("threads", true) {
+		println("define enabled")
+	} $else {
+		println("define disabled")
+	}
+	define_value := $if $d("threads", true) { 41 } $else { 7 }
+	println(int_str(define_value))
+	println(int_str(top_level_value()))
+}
+'
+	without_define := run_good(v3_bin, 'comptime_custom_threads_default', source)
+	assert without_define == 'optional disabled\n7\ndefine enabled\n41\n7'
+	with_define := run_good_with_flags(v3_bin, 'comptime_custom_threads_enabled', '-d threads',
+		source)
+	assert with_define == 'optional enabled\n41\ndefine enabled\n41\n41'
+}
+
 fn test_top_level_comptime_if_threads_prunes_inactive_declarations_before_collect() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'top_level_threads_prunes_inactive_decl', '$if threads {

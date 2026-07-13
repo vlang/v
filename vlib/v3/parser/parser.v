@@ -2169,10 +2169,10 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 	// (`$if linux`) must still be evaluated here — the transformer only folds loop-var/type
 	// conditions and the C backend drops any `.comptime_if` that survives.
 	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
-		|| comptime_cond_references_var(cond, 'threads') {
+		|| comptime_cond_has_builtin_threads(cond) {
 		cond = p.simplify_deferred_comptime_cond(cond)
 		if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
-			|| comptime_cond_references_var(cond, 'threads') {
+			|| comptime_cond_has_builtin_threads(cond) {
 			then_block := p.block_stmt()
 			else_block := p.parse_comptime_else()
 			return p.comptime_if_node(cond, then_block, else_block)
@@ -2243,9 +2243,9 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 	}
 	p.next() // skip 'if'
 	mut cond := p.parse_comptime_cond()
-	if comptime_cond_has_type_test(cond) || comptime_cond_references_var(cond, 'threads') {
+	if comptime_cond_has_type_test(cond) || comptime_cond_has_builtin_threads(cond) {
 		cond = p.simplify_deferred_comptime_cond(cond)
-		if comptime_cond_has_type_test(cond) || comptime_cond_references_var(cond, 'threads') {
+		if comptime_cond_has_type_test(cond) || comptime_cond_has_builtin_threads(cond) {
 			then_block := p.top_level_block_stmt()
 			else_block := p.parse_top_level_comptime_else()
 			return p.comptime_if_node(cond, then_block, else_block)
@@ -2454,6 +2454,27 @@ fn comptime_cond_has_type_test(cond string) bool {
 		|| cond.contains(' in [') || cond.contains(' !in[') || cond.contains(' !in [')
 }
 
+// comptime_cond_has_builtin_threads reports whether a condition contains the bare builtin
+// `threads` flag. Optional `threads?` flags and `$d('threads', ...)` defines are evaluated
+// normally at parse time.
+fn comptime_cond_has_builtin_threads(cond string) bool {
+	c := comptime_cond_strip_outer_parens(cond.trim_space())
+	left_or, right_or, has_or := comptime_cond_split_top_level(c, '||')
+	if has_or {
+		return comptime_cond_has_builtin_threads(left_or)
+			|| comptime_cond_has_builtin_threads(right_or)
+	}
+	left_and, right_and, has_and := comptime_cond_split_top_level(c, '&&')
+	if has_and {
+		return comptime_cond_has_builtin_threads(left_and)
+			|| comptime_cond_has_builtin_threads(right_and)
+	}
+	if c.starts_with('!') {
+		return comptime_cond_has_builtin_threads(c[1..])
+	}
+	return c == 'threads'
+}
+
 // comptime_cond_needs_loop_var reports whether a `$if` condition reads any currently active
 // `$for` loop variable, meaning it can only be evaluated once the loop is unrolled.
 fn (p &Parser) comptime_cond_needs_loop_var(cond string) bool {
@@ -2468,7 +2489,7 @@ fn (p &Parser) comptime_cond_needs_loop_var(cond string) bool {
 fn (p &Parser) simplify_deferred_comptime_cond(cond string) string {
 	c := comptime_cond_strip_outer_parens(cond.trim_space())
 	if !p.comptime_cond_needs_loop_var(c) && !comptime_cond_has_type_test(c)
-		&& !comptime_cond_references_var(c, 'threads') {
+		&& !comptime_cond_has_builtin_threads(c) {
 		return if eval_comptime_cond(p.prefs, c) { 'true' } else { 'false' }
 	}
 	left_or, right_or, has_or := comptime_cond_split_top_level(c, '||')
@@ -3052,9 +3073,9 @@ fn (mut p Parser) parse_comptime_if_expr_after_if() flat.NodeId {
 	mut cond := p.parse_comptime_cond()
 	// Whether `threads` is enabled depends on spawn expressions in the completed AST,
 	// so expression branches must be retained for the checker/transformer to select.
-	if comptime_cond_references_var(cond, 'threads') {
+	if comptime_cond_has_builtin_threads(cond) {
 		cond = p.simplify_deferred_comptime_cond(cond)
-		if comptime_cond_references_var(cond, 'threads') {
+		if comptime_cond_has_builtin_threads(cond) {
 			then_expr := p.parse_comptime_expr_block()
 			else_expr := p.parse_comptime_else_expr()
 			return p.comptime_if_node(cond, then_expr, else_expr)
