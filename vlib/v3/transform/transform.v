@@ -6931,9 +6931,24 @@ fn (mut t Transformer) lower_gated_scalar_index(node flat.Node) ?flat.NodeId {
 	if node.op != .gated_index || node.value == 'range' || node.children_count != 2 {
 		return none
 	}
-	base := t.stable_expr_for_reuse(t.a.child(&node, 0))
+	base_child := t.a.child(&node, 0)
+	base := t.stable_expr_for_reuse(base_child)
 	idx := t.stable_expr_for_reuse(t.a.child(&node, 1))
-	len_sel := t.make_selector(base, 'len', 'int')
+	mut base_type := t.node_type(base)
+	if base_type.len == 0 {
+		base_type = t.node_type(base_child)
+	}
+	if base_type.len == 0 {
+		base_type = t.resolve_expr_type(base_child)
+	}
+	base_type = t.normalize_type_alias(t.trim_pointer_type(base_type))
+	// A fixed-array base has no runtime `len` member; fold the length here
+	// (cgen only folds fixed `.len` for ident bases, not selectors).
+	len_sel := if t.is_fixed_array_type(base_type) {
+		t.make_fixed_array_len_expr(base_type)
+	} else {
+		t.make_selector(base, 'len', 'int')
+	}
 	cond := t.make_infix(.lt, idx, t.make_int_literal(0))
 	t.set_node_typ(int(cond), 'bool')
 	wrapped := t.make_infix(.plus, idx, len_sel)

@@ -106,23 +106,39 @@ fn (t &Transformer) resolve_sum_name_uncached(sum_name string) string {
 		}
 	}
 	if sum_name.contains('.') {
+		// Import-aliased module path: `tast.Value` names `sub.tast.Value`.
+		// The full-suffix match runs before the bare short-name fallback so an
+		// unrelated short `Value` sum cannot shadow the aliased one; ambiguous
+		// suffix matches resolve nothing.
+		suffix := '.' + sum_name
+		mut suffix_match := ''
+		mut suffix_ambiguous := false
+		for key, _ in t.sum_types {
+			if key.ends_with(suffix) {
+				if suffix_match.len > 0 && suffix_match != key {
+					suffix_ambiguous = true
+					break
+				}
+				suffix_match = key
+			}
+		}
+		if !suffix_ambiguous && !isnil(t.tc) {
+			for key, _ in t.tc.sum_types {
+				if key.ends_with(suffix) {
+					if suffix_match.len > 0 && suffix_match != key {
+						suffix_ambiguous = true
+						break
+					}
+					suffix_match = key
+				}
+			}
+		}
+		if !suffix_ambiguous && suffix_match.len > 0 {
+			return suffix_match
+		}
 		short_sum := sum_name.all_after_last('.')
 		if short_sum in t.sum_types {
 			return short_sum
-		}
-		// Import-aliased module path: `tast.Value` names `sub.tast.Value`.
-		suffix := '.' + sum_name
-		for key, _ in t.sum_types {
-			if key.ends_with(suffix) {
-				return key
-			}
-		}
-		if !isnil(t.tc) {
-			for key, _ in t.tc.sum_types {
-				if key.ends_with(suffix) {
-					return key
-				}
-			}
 		}
 	}
 	if !sum_name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
