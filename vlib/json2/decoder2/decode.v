@@ -626,10 +626,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 		time_info := decoder.current_node.value
 
 		if time_info.value_kind == .string_ {
-			string_time := decoder.json.substr_unsafe(time_info.position + 1, time_info.position +
-				time_info.length - 1)
-
-			val = time.parse_rfc3339(string_time) or { time.Time{} }
+			string_time := decoder.decode_string(time_info)!
+			val = time.parse_rfc3339(string_time)!
 		}
 	} $else $if T.unaliased_typ is $map {
 		decoder.decode_map(mut val)!
@@ -756,7 +754,28 @@ fn (decoder &Decoder) decode_string(value_info ValueInfo) !string {
 				if idx + 5 >= end {
 					return error('Invalid unicode escape sequence')
 				}
-				result << generate_unicode_escape_sequence(decoder.json[idx + 2..idx + 6].bytes())!
+				unicode_value :=
+					parse_unicode_escape_sequence(decoder.json[idx + 2..idx + 6].bytes())!
+				if unicode_value >= 0xD800 && unicode_value <= 0xDBFF {
+					if idx + 11 >= end || decoder.json[idx + 6] != `\\`
+						|| decoder.json[idx + 7] != `u` {
+						return error('High unicode surrogate must be followed by a low surrogate')
+					}
+					low_surrogate :=
+						parse_unicode_escape_sequence(decoder.json[idx + 8..idx + 12].bytes())!
+					if low_surrogate < 0xDC00 || low_surrogate > 0xDFFF {
+						return error('Invalid low unicode surrogate')
+					}
+					codepoint := u32(0x10000) + ((unicode_value - 0xD800) << 10) +
+						(low_surrogate - 0xDC00)
+					result << encode_unicode_codepoint(codepoint)!
+					idx += 12
+					continue
+				}
+				if unicode_value >= 0xDC00 && unicode_value <= 0xDFFF {
+					return error('Low unicode surrogate must follow a high surrogate')
+				}
+				result << encode_unicode_codepoint(unicode_value)!
 				idx += 6
 				continue
 			}
@@ -938,13 +957,19 @@ fn (mut decoder Decoder) calculate_string_space_and_escapes() !(int, []int) {
 	return space_required, escape_positions
 }
 
-// \uXXXX to unicode with 4 hex digits
-fn generate_unicode_escape_sequence(escape_sequence_byte []u8) ![]u8 {
+// parse_unicode_escape_sequence parses the four hexadecimal digits in a JSON Unicode escape.
+fn parse_unicode_escape_sequence(escape_sequence_byte []u8) !u32 {
 	if escape_sequence_byte.len != 4 {
 		return error('Invalid unicode escape sequence')
 	}
+	return u32(strconv.parse_int(escape_sequence_byte.bytestr(), 16, 32)!)
+}
 
-	unicode_value := u32(strconv.parse_int(escape_sequence_byte.bytestr(), 16, 32)!)
+// encode_unicode_codepoint encodes a Unicode code point as UTF-8.
+fn encode_unicode_codepoint(unicode_value u32) ![]u8 {
+	if unicode_value > 0x10FFFF || (unicode_value >= 0xD800 && unicode_value <= 0xDFFF) {
+		return error('Invalid unicode code point')
+	}
 	mut utf8_bytes := []u8{cap: utf8_byte_length(unicode_value)}
 
 	if unicode_value <= 0x7F {

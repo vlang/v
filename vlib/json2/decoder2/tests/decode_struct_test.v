@@ -112,3 +112,13 @@ fn test_unknown_nested_struct_values_are_skipped() {
 fn test_struct_field_with_exponent_notation() {
 	assert json.decode[StructWithNumber]('{"n": 1e3}')!.n == 1000.0
 }
+
+fn test_invalid_time_strings_return_errors() {
+	mut failed := false
+	json.decode[time.Time]('"not-a-date"') or { failed = true }
+	assert failed
+
+	failed = false
+	json.decode[StructType[time.Time]]('{"val": "not-a-date"}') or { failed = true }
+	assert failed
+}
