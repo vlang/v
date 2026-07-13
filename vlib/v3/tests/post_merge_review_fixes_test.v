@@ -364,6 +364,52 @@ fn main() {
 	assert same_body.contains('ResultValue*'), same_body
 }
 
+fn test_interface_equality_includes_wrapped_option_result_boxes() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'interface_eq_wrapped_option_result_boxes', 'interface IValue {}
+
+struct OptionValue {
+	n int
+}
+
+struct ResultValue {
+	n int
+}
+
+fn make_option() ?OptionValue {
+	return OptionValue{
+		n: 3
+	}
+}
+
+fn make_result() !ResultValue {
+	return ResultValue{
+		n: 4
+	}
+}
+
+fn same(value IValue) bool {
+	return value == value
+}
+
+fn consume_result(value !IValue) bool {
+	payload := value or { return false }
+	return same(payload)
+}
+
+fn main() {
+	mut option_value := ?IValue(none)
+	option_value = make_option()
+	option_payload := option_value or { panic("missing option") }
+	println(same(option_payload).str())
+	println(consume_result(make_result()).str())
+}
+')
+	same_body := c_fn_body(c_source, 'bool same(IValue value) {')
+	assert same_body.contains('OptionValue*'), same_body
+	assert same_body.contains('ResultValue*'), same_body
+}
+
 fn test_interface_equality_includes_multi_return_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_multi_return_box', 'interface IValue {}

@@ -1147,10 +1147,20 @@ fn (mut t Transformer) collect_interface_boxed_value(id flat.NodeId, expected ty
 			t.collect_interface_boxed_value(id, expected.base_type)
 		}
 		types.OptionType {
-			t.collect_interface_boxed_value(id, expected.base_type)
+			actual := interface_box_unalias_type(t.tc.expr_type(id) or { t.tc.resolve_type(id) })
+			if actual is types.OptionType {
+				t.collect_interface_boxed_type(actual.base_type, expected.base_type)
+			} else {
+				t.collect_interface_boxed_value(id, expected.base_type)
+			}
 		}
 		types.ResultType {
-			t.collect_interface_boxed_value(id, expected.base_type)
+			actual := interface_box_unalias_type(t.tc.expr_type(id) or { t.tc.resolve_type(id) })
+			if actual is types.ResultType {
+				t.collect_interface_boxed_type(actual.base_type, expected.base_type)
+			} else {
+				t.collect_interface_boxed_value(id, expected.base_type)
+			}
 		}
 		types.Interface {
 			iface_name := t.resolve_interface_type_name(expected.name)
