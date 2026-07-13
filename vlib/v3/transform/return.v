@@ -1,6 +1,7 @@
 module transform
 
 import v3.flat
+import v3.types
 
 // transform_return_with_sumtype_wrap checks if a return statement returns a
 // variant value where the function's return type is a sum type. In that case,
@@ -214,10 +215,171 @@ fn (mut t Transformer) try_expand_forwarded_multi_return(node flat.Node) ?[]flat
 	mut return_values := []flat.NodeId{cap: expected_types.len}
 	for i, actual_type in actual_types {
 		field := t.make_selector(t.make_ident(tmp_name), 'arg${i}', actual_type.name())
-		return_values << t.transform_expr_for_type(field, expected_types[i].name())
+		return_values << t.transform_forwarded_return_slot(field, actual_type, expected_types[i])
 	}
 	t.drain_pending(mut result)
 	result << t.make_return_values(return_values, t.cur_fn_ret_type)
+	return result
+}
+
+fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, actual types.Type, expected types.Type) flat.NodeId {
+	actual_base := forwarded_return_unalias_type(actual)
+	expected_base := forwarded_return_unalias_type(expected)
+	if expected_base is types.Array {
+		if actual_base is types.Array
+			&& actual_base.elem_type.name() != expected_base.elem_type.name() {
+			return t.convert_forwarded_array_to_dynamic(value_id, actual, actual_base.elem_type,
+				expected, expected_base.elem_type, false)
+		}
+		if actual_base is types.ArrayFixed {
+			return t.convert_forwarded_array_to_dynamic(value_id, actual, actual_base.elem_type,
+				expected, expected_base.elem_type, true)
+		}
+	}
+	if actual_base is types.ArrayFixed && expected_base is types.ArrayFixed
+		&& actual_base.elem_type.name() != expected_base.elem_type.name() {
+		return t.convert_forwarded_fixed_array(value_id, actual, actual_base, expected,
+			expected_base)
+	}
+	if actual_base is types.Map && expected_base is types.Map
+		&& (actual_base.key_type.name() != expected_base.key_type.name()
+		|| actual_base.value_type.name() != expected_base.value_type.name()) {
+		return t.convert_forwarded_map(value_id, actual, actual_base, expected, expected_base)
+	}
+	return t.transform_expr_for_type(value_id, expected.name())
+}
+
+fn forwarded_return_unalias_type(typ types.Type) types.Type {
+	if typ is types.Alias {
+		return forwarded_return_unalias_type(typ.base_type)
+	}
+	return typ
+}
+
+fn (mut t Transformer) convert_forwarded_array_to_dynamic(value_id flat.NodeId, actual_type types.Type, actual_elem types.Type, expected_type types.Type, expected_elem types.Type, actual_is_fixed bool) flat.NodeId {
+	src := t.a.nodes[int(value_id)]
+	pending_start := t.pending_stmts.len
+	base := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id), actual_type.name(),
+		'return_array')
+	mut prefix := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	out_name := t.new_temp('return_array')
+	idx_name := t.new_temp('return_array_idx')
+	len_expr := if actual_is_fixed {
+		t.make_fixed_array_len_expr(forwarded_return_unalias_type(actual_type).name())
+	} else {
+		t.make_selector(base, 'len', 'int')
+	}
+	prefix << t.make_decl_assign_typed(out_name, t.make_array_new_call(expected_elem.name(),
+		t.make_int_literal(0), len_expr), expected_type.name())
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	elem := if actual_is_fixed {
+		t.make_index(base, t.make_ident(idx_name), actual_elem.name())
+	} else {
+		t.array_get_value(base, t.make_ident(idx_name), actual_elem.name())
+	}
+	body_pending_start := t.pending_stmts.len
+	converted := t.transform_forwarded_return_slot(elem, actual_elem, expected_elem)
+	mut body := t.pending_stmts[body_pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..body_pending_start].clone()
+	value_name := t.new_temp('return_array_value')
+	body << t.make_decl_assign_typed(value_name, converted, expected_elem.name())
+	body << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.make_prefix(.amp,
+		t.make_ident(out_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void'))
+	prefix << t.make_for_stmt(init, cond, post, body, src)
+	for stmt in prefix {
+		t.pending_stmts << stmt
+	}
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), expected_type.name())
+	return result
+}
+
+fn (mut t Transformer) convert_forwarded_fixed_array(value_id flat.NodeId, actual_type types.Type, actual types.ArrayFixed, expected_type types.Type, expected types.ArrayFixed) flat.NodeId {
+	if isnil(t.tc) {
+		return t.transform_expr_for_type(value_id, expected_type.name())
+	}
+	len := t.tc.fixed_array_len_value(expected) or {
+		return t.transform_expr_for_type(value_id, expected_type.name())
+	}
+	base := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id), actual_type.name(),
+		'return_fixed_array')
+	mut values := []flat.NodeId{cap: len}
+	for i in 0 .. len {
+		elem := t.make_index(base, t.make_int_literal(i), actual.elem_type.name())
+		values << t.transform_forwarded_return_slot(elem, actual.elem_type, expected.elem_type)
+	}
+	return t.make_array_literal_typed(values, expected_type.name())
+}
+
+fn (mut t Transformer) convert_forwarded_map(value_id flat.NodeId, actual_type types.Type, actual types.Map, expected_type types.Type, expected types.Map) flat.NodeId {
+	src := t.a.nodes[int(value_id)]
+	pending_start := t.pending_stmts.len
+	base := t.stable_transformed_expr_for_reuse(t.transform_expr(value_id), actual_type.name(),
+		'return_map')
+	mut prefix := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	actual_map_type := actual.name()
+	expected_map_type := expected.name()
+	actual_key_type := actual.key_type.name()
+	expected_key_type := expected.key_type.name()
+	actual_value_type := actual.value_type.name()
+	expected_value_type := expected.value_type.name()
+	actual_key_storage := t.map_key_storage_type(actual_key_type)
+	expected_key_storage := t.map_key_storage_type(expected_key_type)
+	out_name := t.new_temp('return_map')
+	keys_name := t.new_temp('return_map_keys')
+	idx_name := t.new_temp('return_map_idx')
+	source_key_name := t.new_temp('return_map_source_key')
+	key_name := t.new_temp('return_map_key')
+	zero_name := t.new_temp('return_map_zero')
+	source_value_name := t.new_temp('return_map_source_value')
+	value_name := t.new_temp('return_map_value')
+	keys_type := '[]${actual_key_storage}'
+	prefix << t.make_decl_assign_typed(out_name, t.make_new_map_call(expected_map_type),
+		expected_type.name())
+	keys_call := t.make_call_typed('map__keys', arr1(t.runtime_addr(base, actual_map_type)),
+		keys_type)
+	prefix << t.make_decl_assign_typed(keys_name, keys_call, keys_type)
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(t.make_ident(keys_name),
+		'len', 'int'))
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	source_key := t.array_get_value(t.make_ident(keys_name), t.make_ident(idx_name),
+		actual_key_storage)
+	mut body := []flat.NodeId{}
+	body << t.make_decl_assign_typed(source_key_name, source_key, actual_key_storage)
+	body << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(actual_value_type),
+		actual_value_type)
+	source_value := t.make_map_get_expr(base, actual_map_type, source_key_name, zero_name,
+		actual_value_type)
+	body << t.make_decl_assign_typed(source_value_name, source_value, actual_value_type)
+	body_pending_start := t.pending_stmts.len
+	logical_source_key := if actual_key_storage == actual_key_type {
+		t.make_ident(source_key_name)
+	} else {
+		t.make_cast(actual_key_type, t.make_ident(source_key_name), actual_key_type)
+	}
+	converted_key := t.transform_forwarded_return_slot(logical_source_key, actual.key_type,
+		expected.key_type)
+	converted_value := t.transform_forwarded_return_slot(t.make_ident(source_value_name),
+		actual.value_type, expected.value_type)
+	body_pending := t.pending_stmts[body_pending_start..].clone()
+	for stmt in body_pending {
+		body << stmt
+	}
+	t.pending_stmts = t.pending_stmts[..body_pending_start].clone()
+	body << t.make_decl_assign_typed(key_name, converted_key, expected_key_storage)
+	body << t.make_decl_assign_typed(value_name, converted_value, expected_value_type)
+	body << t.make_map_set_stmt(t.make_ident(out_name), expected_map_type, key_name, value_name)
+	prefix << t.make_for_stmt(init, cond, post, body, src)
+	for stmt in prefix {
+		t.pending_stmts << stmt
+	}
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), expected_type.name())
 	return result
 }
 

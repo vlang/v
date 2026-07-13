@@ -453,6 +453,57 @@ fn main() {
 	assert out == 'true\n7'
 }
 
+fn test_forwarded_multi_return_container_slots_are_converted() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'forwarded_multi_return_container_slots', 'interface IValue {
+	get() int
+}
+
+struct Value {
+	n int
+}
+
+fn (value Value) get() int {
+	return value.n
+}
+
+fn make_values() ([]Value, map[string]Value, int) {
+	return [Value{
+		n: 3
+	}], {
+		"item": Value{
+			n: 5
+		}
+	}, 7
+}
+
+fn forward_values() ([]IValue, map[string]IValue, int) {
+	return make_values()
+}
+
+fn make_fixed() ([1]Value, int) {
+	return [Value{
+		n: 11
+	}]!, 13
+}
+
+fn forward_fixed() ([1]IValue, int) {
+	return make_fixed()
+}
+
+fn main() {
+	values, indexed, n := forward_values()
+	fixed, fixed_n := forward_fixed()
+	println(int_str(values[0].get()))
+	println(int_str(indexed["item"].get()))
+	println(int_str(n))
+	println(int_str(fixed[0].get()))
+	println(int_str(fixed_n))
+}
+')
+	assert out == '3\n5\n7\n11\n13'
+}
+
 fn test_interface_equality_includes_appended_element_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_appended_element_box', 'interface IValue {}
