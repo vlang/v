@@ -2950,21 +2950,6 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				owner := g.tc.cur_scope.insert_with_owner(lhs.value, v_type)
 				g.track_local_pointer_storage_decl(lhs, owner, v_type, c_typ)
 			}
-			if rhs.children_count > 0 {
-				if v_type is types.Map {
-					c_key := g.map_key_temp_c_type(v_type.key_type)
-					c_val := g.value_c_type(v_type.value_type)
-					for j := 0; j < rhs.children_count; j += 2 {
-						g.write('map__set(&')
-						g.gen_decl_lhs(lhs_id)
-						g.write(', &(${c_key}[]){')
-						g.gen_expr(g.a.child(&rhs, j))
-						g.write('}, &(${c_val}[]){')
-						g.gen_expr(g.a.child(&rhs, j + 1))
-						g.writeln('});')
-					}
-				}
-			}
 		} else {
 			mut v_type := if node.typ.len > 0 {
 				decl_type := g.tc.parse_type(node.typ)
