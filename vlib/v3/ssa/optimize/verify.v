@@ -252,7 +252,10 @@ fn verify_instruction(m &ssa.Module, func_id int, blk_id int, val_id int, instr 
 	mut errors := []VerifyError{}
 	// Only value operands are validated as value ids; block ids (branch/phi/switch
 	// targets) are validated by the op-specific checks below.
-	for i, op_id in instr.value_operands() {
+	for i, op_id in instr.operands {
+		if !instr.is_value_operand(i) {
+			continue
+		}
 		if op_id < 0 || op_id >= m.values.len {
 			errors << VerifyError{
 				msg:      'operand ${i} has invalid value id ${op_id}'
@@ -710,7 +713,10 @@ fn verify_dominance(m &ssa.Module, func ssa.Function) []VerifyError {
 			if instr.op == .phi {
 				continue
 			}
-			for i, op_id in instr.value_operands() {
+			for i, op_id in instr.operands {
+				if !instr.is_value_operand(i) {
+					continue
+				}
 				if op_id >= m.values.len {
 					continue
 				}
@@ -778,7 +784,10 @@ fn verify_use_def_chains(m &ssa.Module) []VerifyError {
 					continue
 				}
 				instr := m.instrs[m.values[val_id].index]
-				for op_id in instr.value_operands() {
+				for oi, op_id in instr.operands {
+					if !instr.is_value_operand(oi) {
+						continue
+					}
 					if op_id >= 0 && op_id < m.values.len {
 						if op_id !in expected_uses {
 							expected_uses[op_id] = map[int]bool{}

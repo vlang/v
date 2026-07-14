@@ -273,9 +273,7 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 					alloc_id := ctx.phi_placements[blk_id][pai]
 					if pai < ctx.phi_vals[blk_id].len {
 						phi_val_id := ctx.phi_vals[blk_id][pai]
-						mut new_stack := ctx.stacks[alloc_id].clone()
-						new_stack << phi_val_id
-						ctx.stacks[alloc_id] = new_stack
+						array2d_append(mut ctx.stacks, alloc_id, phi_val_id)
 						mut wf := work[fi]
 						wf.pushed_allocs << alloc_id
 						work[fi] = wf
@@ -295,9 +293,7 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 				if instr.op == .store {
 					ptr := instr.operands[1]
 					if ptr < ctx.is_promotable.len && ctx.is_promotable[ptr] {
-						mut new_stack := ctx.stacks[ptr].clone()
-						new_stack << instr.operands[0]
-						ctx.stacks[ptr] = new_stack
+						array2d_append(mut ctx.stacks, ptr, instr.operands[0])
 						mut wf := work[fi]
 						wf.pushed_allocs << ptr
 						work[fi] = wf
@@ -338,7 +334,6 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 						alloc_id := ctx.phi_placements[succ_id][spai]
 						if spai < ctx.phi_vals[succ_id].len {
 							vid := ctx.phi_vals[succ_id][spai]
-							phi_v := m.values[vid]
 							phi_val := if ctx.stacks[alloc_id].len > 0 {
 								ctx.stacks[alloc_id].last()
 							} else {
@@ -346,7 +341,7 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 								alloc_typ := m.type_store.types[alloc_v.typ]
 								m.get_or_add_const(alloc_typ.elem_type, 'undef')
 							}
-							m.append_phi_operands(phi_v.index, phi_val, blk_id)
+							m.append_phi_operands(vid, phi_val, blk_id)
 						}
 					}
 				}
@@ -369,7 +364,7 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 			pushed := work[fi].pushed_allocs.clone()
 			work.pop()
 			for i := pushed.len - 1; i >= 0; i-- {
-				mut s := ctx.stacks[pushed[i]].clone()
+				mut s := ctx.stacks[pushed[i]]
 				s.pop()
 				ctx.stacks[pushed[i]] = s
 			}

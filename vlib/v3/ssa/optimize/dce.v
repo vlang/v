@@ -34,7 +34,10 @@ fn dead_code_elimination(mut m ssa.Module) {
 					for val_id, _ in dead_instrs {
 						instr := m.instrs[m.values[val_id].index]
 
-						for op_id in instr.value_operands() {
+						for oi, op_id in instr.operands {
+							if !instr.is_value_operand(oi) {
+								continue
+							}
 							remove_use(mut m, op_id, val_id)
 						}
 					}

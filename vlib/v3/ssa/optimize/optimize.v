@@ -136,7 +136,10 @@ fn rebuild_use_lists(mut m ssa.Module) {
 				}
 				instr := m.instrs[instr_idx]
 
-				for op_id in instr.value_operands() {
+				for oi, op_id in instr.operands {
+					if !instr.is_value_operand(oi) {
+						continue
+					}
 					if op_id >= 0 && op_id < m.values.len && val_id !in m.values[op_id].uses {
 						mut op_val := m.values[op_id]
 						op_val.uses << val_id

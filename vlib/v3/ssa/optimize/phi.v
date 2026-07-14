@@ -171,7 +171,7 @@ fn split_critical_edges(mut m ssa.Module) {
 					idx := m.values[term_val_id].index
 					mut term := m.instrs[idx]
 					for i in 0 .. term.operands.len {
-						if int(term.operands[i]) == succ_id {
+						if term.is_successor_operand(i) && int(term.operands[i]) == succ_id {
 							term.operands[i] = ssa.ValueID(split_blk)
 						}
 					}
@@ -314,8 +314,10 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 	}
 
 	mut alive := []int{len: np}
+	mut dest_to_copy := map[int]int{}
 	for i in 0 .. np {
 		alive[i] = 1
+		dest_to_copy[p_dest[i]] = i
 	}
 
 	mut worklist := []int{}
@@ -327,6 +329,7 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 
 	mut s_dest := []int{}
 	mut s_src := []int{}
+	mut pending_instrs := []int{cap: np + 1}
 	mut remaining := np
 
 	for remaining > 0 {
@@ -345,8 +348,8 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 				src_ref_count[s]--
 			}
 			if src_ref_count[s] == 0 {
-				for j in 0 .. np {
-					if alive[j] == 1 && p_dest[j] == s {
+				if j := dest_to_copy[s] {
+					if alive[j] == 1 {
 						worklist << j
 					}
 				}
@@ -373,7 +376,8 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 		if typ == 0 && p_dest[ci] >= 0 && p_dest[ci] < m.values.len {
 			typ = m.values[p_dest[ci]].typ
 		}
-		temp := insert_temp_in_block(mut m, blk_id, cycle_src, typ)
+		temp := add_temp_value(mut m, blk_id, cycle_src, typ)
+		pending_instrs << temp
 		for temp >= src_ref_count.len {
 			src_ref_count << 0
 		}
@@ -385,20 +389,21 @@ fn resolve_parallel_copies(mut m ssa.Module, blk_id int, dests []int, srcs []int
 			}
 		}
 		src_ref_count[cycle_src] = 0
-		for j in 0 .. np {
-			if alive[j] == 1 && p_dest[j] == cycle_src {
+		if j := dest_to_copy[cycle_src] {
+			if alive[j] == 1 {
 				worklist << j
 			}
 		}
 	}
 
 	for si in 0 .. s_dest.len {
-		insert_copy_in_block(mut m, blk_id, s_dest[si], s_src[si])
+		pending_instrs << add_copy_value(mut m, blk_id, s_dest[si], s_src[si])
 	}
+	insert_before_terminator(mut m, blk_id, pending_instrs)
 }
 
-// insert_temp_in_block updates insert temp in block state for optimize.
-fn insert_temp_in_block(mut m ssa.Module, blk_id int, src int, typ int) int {
+// add_temp_value creates a temporary copy value for later block insertion.
+fn add_temp_value(mut m ssa.Module, blk_id int, src int, typ int) int {
 	m.instrs << ssa.Instruction{
 		op:       .bitcast
 		block:    blk_id
@@ -406,12 +411,11 @@ fn insert_temp_in_block(mut m ssa.Module, blk_id int, src int, typ int) int {
 		operands: [ssa.ValueID(src)]
 	}
 	temp_id := m.add_value(.instruction, typ, 'phi_tmp_${m.values.len}', m.instrs.len - 1)
-	insert_before_terminator(mut m, blk_id, temp_id)
 	return temp_id
 }
 
-// insert_copy_in_block updates insert copy in block state for optimize.
-fn insert_copy_in_block(mut m ssa.Module, blk_id int, dest int, src int) {
+// add_copy_value creates a phi-elimination copy for later block insertion.
+fn add_copy_value(mut m ssa.Module, blk_id int, dest int, src int) int {
 	typ := m.values[dest].typ
 	m.instrs << ssa.Instruction{
 		op:       .assign
@@ -419,12 +423,14 @@ fn insert_copy_in_block(mut m ssa.Module, blk_id int, dest int, src int) {
 		typ:      typ
 		operands: [ssa.ValueID(dest), ssa.ValueID(src)]
 	}
-	val_id := m.add_value(.instruction, typ, 'copy', m.instrs.len - 1)
-	insert_before_terminator(mut m, blk_id, val_id)
+	return m.add_value(.instruction, typ, 'copy', m.instrs.len - 1)
 }
 
-// insert_before_terminator updates insert before terminator state for optimize.
-fn insert_before_terminator(mut m ssa.Module, blk_id int, new_val int) {
+// insert_before_terminator inserts all pending values with one block-array copy.
+fn insert_before_terminator(mut m ssa.Module, blk_id int, new_values []int) {
+	if new_values.len == 0 {
+		return
+	}
 	mut blk := m.blocks[blk_id]
 	mut insert_idx := blk.instrs.len
 	if insert_idx > 0 {
@@ -435,11 +441,13 @@ fn insert_before_terminator(mut m ssa.Module, blk_id int, new_val int) {
 			insert_idx = blk.instrs.len - 1
 		}
 	}
-	mut new_instrs := []ssa.ValueID{cap: blk.instrs.len + 1}
+	mut new_instrs := []ssa.ValueID{cap: blk.instrs.len + new_values.len}
 	for ii in 0 .. insert_idx {
 		new_instrs << blk.instrs[ii]
 	}
-	new_instrs << ssa.ValueID(new_val)
+	for val_id in new_values {
+		new_instrs << ssa.ValueID(val_id)
+	}
 	for ii in insert_idx .. blk.instrs.len {
 		new_instrs << blk.instrs[ii]
 	}

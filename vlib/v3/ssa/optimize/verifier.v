@@ -93,7 +93,10 @@ fn verify_block_instrs(m &ssa.Module, stage string, fi int, blk_id int, func_blo
 
 // verify_instruction_operands validates verify instruction operands state for optimize.
 fn verify_instruction_operands(m &ssa.Module, stage string, fi int, blk_id int, val_id int, instr ssa.Instruction, func_blocks map[int]bool, is_final bool) {
-	for op_id in instr.value_operands() {
+	for oi, op_id in instr.operands {
+		if !instr.is_value_operand(oi) {
+			continue
+		}
 		if op_id <= 0 || op_id >= m.values.len {
 			verify_fail(stage,
 				'instruction value ${val_id} in block ${blk_id} uses invalid value ${op_id}')
@@ -168,21 +171,10 @@ fn verify_cfg_edges(m &ssa.Module, stage string, fi int, blk_id int, func_blocks
 	if blk.instrs.len > 0 {
 		term_val_id := blk.instrs.last()
 		term := m.instrs[m.values[term_val_id].index]
-		match term.op {
-			.jmp {
-				if term.operands.len == 1 {
-					expected_succs << int(term.operands[0])
-				}
+		for oi, operand in term.operands {
+			if term.is_successor_operand(oi) && int(operand) !in expected_succs {
+				expected_succs << int(operand)
 			}
-			.br {
-				if term.operands.len == 3 {
-					expected_succs << int(term.operands[1])
-					if term.operands[2] != term.operands[1] {
-						expected_succs << int(term.operands[2])
-					}
-				}
-			}
-			else {}
 		}
 	}
 	verify_same_blocks(stage, 'successors for block ${blk_id}', expected_succs, blk.succs)
@@ -224,7 +216,10 @@ fn verify_uses(m &ssa.Module, stage string) {
 					continue
 				}
 				instr := m.instrs[m.values[val_id].index]
-				for op_id in instr.value_operands() {
+				for oi, op_id in instr.operands {
+					if !instr.is_value_operand(oi) {
+						continue
+					}
 					if op_id > 0 && op_id < m.values.len {
 						if !arr_contains(expected_uses[op_id], val_id) {
 							expected_uses[op_id] << val_id
