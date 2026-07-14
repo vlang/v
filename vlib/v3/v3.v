@@ -1339,6 +1339,11 @@ fn main() {
 	b.step_parallel('check', check_was_parallel)
 	b.metric('functions collected', pre_tc.fn_ret_types.len, 'symbols')
 	b.metric('structs collected', pre_tc.structs.len, 'types')
+	type_cache_stats := pre_tc.type_cache_stats()
+	b.metric('type parse cache hits', type_cache_stats.parse_hits, 'lookups')
+	b.metric('type parse cache misses', type_cache_stats.parse_misses, 'lookups')
+	b.metric('C type cache hits', type_cache_stats.c_hits, 'lookups')
+	b.metric('C type cache misses', type_cache_stats.c_misses, 'lookups')
 
 	if backend == 'eval' {
 		$if !skip_eval ? {

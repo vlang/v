@@ -214,6 +214,10 @@ mut:
 	// cold and re-derive every memoized type/index.
 	base                       &TypeCache = unsafe { nil }
 	parse_enabled              bool
+	parse_hits                 i64
+	parse_misses               i64
+	c_hits                     i64
+	c_misses                   i64
 	parse_entries              map[u64]ParseTypeCacheEntry
 	c_entries                  map[string]string
 	c_name_entries             map[string]string
@@ -234,6 +238,15 @@ mut:
 	local_fn_decl_index       map[string]bool
 	local_fn_decl_indexed_len int
 	local_fn_decl_last_module string
+}
+
+// TypeCacheStats reports semantic cache effectiveness for compiler telemetry.
+pub struct TypeCacheStats {
+pub:
+	parse_hits   i64
+	parse_misses i64
+	c_hits       i64
+	c_misses     i64
 }
 
 @[heap]
@@ -18377,13 +18390,28 @@ pub fn (tc &TypeChecker) parse_type(typ string) Type {
 	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
 		mut cache := unsafe { tc.type_cache }
 		if cached := parse_type_cache_get(cache, tc.cur_file, tc.cur_module, typ) {
+			cache.parse_hits++
 			return cached
 		}
+		cache.parse_misses++
 		result := tc.parse_type_uncached(typ)
 		parse_type_cache_put(mut cache, tc.cur_file, tc.cur_module, typ, result)
 		return result
 	}
 	return tc.parse_type_uncached(typ)
+}
+
+// type_cache_stats returns cache counters accumulated by this checker.
+pub fn (tc &TypeChecker) type_cache_stats() TypeCacheStats {
+	if isnil(tc.type_cache) {
+		return TypeCacheStats{}
+	}
+	return TypeCacheStats{
+		parse_hits:   tc.type_cache.parse_hits
+		parse_misses: tc.type_cache.parse_misses
+		c_hits:       tc.type_cache.c_hits
+		c_misses:     tc.type_cache.c_misses
+	}
 }
 
 fn parse_type_cache_hash(file string, module_name string, text string) u64 {
@@ -20381,12 +20409,15 @@ pub fn (tc &TypeChecker) c_type(t Type) string {
 		mut cache := unsafe { tc.type_cache }
 		if !isnil(cache.base) {
 			if cached := cache.base.c_entries[key] {
+				cache.c_hits++
 				return cached
 			}
 		}
 		if cached := cache.c_entries[key] {
+			cache.c_hits++
 			return cached
 		}
+		cache.c_misses++
 		result := tc.c_type_uncached(t)
 		cache.c_entries[key] = result
 		return result

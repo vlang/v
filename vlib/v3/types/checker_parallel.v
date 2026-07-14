@@ -422,6 +422,10 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 		return
 	}
 	mut base := overlay.base
+	base.parse_hits += overlay.parse_hits
+	base.parse_misses += overlay.parse_misses
+	base.c_hits += overlay.c_hits
+	base.c_misses += overlay.c_misses
 	for k, v in overlay.parse_entries {
 		base.parse_entries[k] = v
 	}
@@ -514,6 +518,12 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 	tc.errors << w.errors
 	tc.pending_ierror_errors << w.pending_ierror_errors
+	if !isnil(tc.type_cache) && !isnil(w.type_cache) {
+		tc.type_cache.parse_hits += w.type_cache.parse_hits
+		tc.type_cache.parse_misses += w.type_cache.parse_misses
+		tc.type_cache.c_hits += w.type_cache.c_hits
+		tc.type_cache.c_misses += w.type_cache.c_misses
+	}
 	$if ownership ? {
 		tc.ownership_merge_parallel_check_worker(w)
 	}
