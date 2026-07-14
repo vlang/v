@@ -796,9 +796,13 @@ fn (mut t Transformer) clone_param_subst_children(node flat.Node, var_name strin
 }
 
 fn (mut t Transformer) make_param_data_literal(param ParamMeta) flat.NodeId {
+	return t.make_param_data_literal_in_module(param, t.cur_module)
+}
+
+fn (mut t Transformer) make_param_data_literal_in_module(param ParamMeta, module_name string) flat.NodeId {
 	name_field := t.make_named_field_init('name', t.make_string_literal(param.name), 'string')
 	typ_field := t.make_named_field_init('typ', t.make_int_literal(t.comptime_field_type_id(param.typ,
-		t.cur_module)), 'int')
+		module_name)), 'int')
 	start := t.a.children.len
 	t.a.children << name_field
 	t.a.children << typ_field
@@ -808,6 +812,34 @@ fn (mut t Transformer) make_param_data_literal(param ParamMeta) flat.NodeId {
 		typ:            'FunctionParam'
 		children_start: start
 		children_count: 2
+	})
+}
+
+// make_method_data_literal builds a runtime `FunctionData` value for a bare methods loop variable.
+fn (mut t Transformer) make_method_data_literal(method MethodMeta) flat.NodeId {
+	fields := [
+		t.make_named_field_init('name', t.make_string_literal(method.name), 'string'),
+		t.make_named_field_init('location', t.make_string_literal(''), 'string'),
+		t.make_named_field_init('attrs', t.make_string_array_literal(method.attrs), '[]string'),
+		t.make_named_field_init('attributes', t.make_attribute_array_literal(method.attributes),
+			'[]VAttribute'),
+		t.make_named_field_init('args', t.make_param_array_literal(method.params,
+			method.module_name), '[]FunctionParam'),
+		t.make_named_field_init('return_type', t.make_int_literal(t.comptime_field_type_id(method.return_type,
+			method.module_name)), 'int'),
+		t.make_named_field_init('typ', t.make_int_literal(t.comptime_field_type_id(comptime_method_type_text(method),
+			method.module_name)), 'int'),
+	]
+	start := t.a.children.len
+	for field in fields {
+		t.a.children << field
+	}
+	return t.a.add_node(flat.Node{
+		kind:           .struct_init
+		value:          'FunctionData'
+		typ:            'FunctionData'
+		children_start: start
+		children_count: flat.child_count(fields.len)
 	})
 }
 
@@ -922,9 +954,12 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 	if comptime_for_declares_var(node, var_name) {
 		return t.clone_node_preserving_children(node)
 	}
+	if node.kind == .ident && node.value == var_name {
+		return t.make_method_data_literal(method)
+	}
 	if idx := t.comptime_method_param_index(id, var_name) {
 		if idx >= 0 && idx < method.params.len {
-			return t.make_param_data_literal(method.params[idx])
+			return t.make_param_data_literal_in_module(method.params[idx], method.module_name)
 		}
 	}
 	if node.kind == .selector && node.value == '$' && node.children_count >= 2
@@ -945,14 +980,15 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 					t.make_bool_literal(method.is_pub)
 				}
 				'return_type' {
-					t.make_int_literal(t.comptime_field_type_id(method.return_type, t.cur_module))
+					t.make_int_literal(t.comptime_field_type_id(method.return_type,
+						method.module_name))
 				}
 				'typ' {
 					t.make_int_literal(t.comptime_field_type_id(comptime_method_type_text(method),
 						method.module_name))
 				}
 				'args', 'params' {
-					t.make_param_array_literal(method.params)
+					t.make_param_array_literal(method.params, method.module_name)
 				}
 				'attrs' {
 					t.make_string_array_literal(method.attrs)
@@ -993,13 +1029,13 @@ fn (mut t Transformer) make_attribute_array_literal(attrs []AttributeMeta) flat.
 	return t.make_array_literal_typed(ids, '[]VAttribute')
 }
 
-fn (mut t Transformer) make_param_array_literal(params []ParamMeta) flat.NodeId {
+fn (mut t Transformer) make_param_array_literal(params []ParamMeta, module_name string) flat.NodeId {
 	if params.len == 0 {
 		return t.zero_value_for_type('[]FunctionParam')
 	}
 	mut ids := []flat.NodeId{cap: params.len}
 	for param in params {
-		ids << t.make_param_data_literal(param)
+		ids << t.make_param_data_literal_in_module(param, module_name)
 	}
 	return t.make_array_literal_typed(ids, '[]FunctionParam')
 }

@@ -1952,6 +1952,44 @@ fn main() {
 	assert out == 'const-if|local-match'
 }
 
+fn test_bare_method_data_and_imported_return_type_are_materialized() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'bare_method_data_imported_return', {
+		'v.mod':     "Module { name: 'bare_method_data_imported_return' }\n"
+		'pkg/pkg.v': 'module pkg
+
+pub struct Foo {}
+
+pub struct Ret {}
+
+pub fn (f Foo) make(value Ret) Ret {
+	_ = f
+	return value
+}
+'
+		'main.v':    'module main
+
+import pkg
+
+fn main() {
+	mut items := []FunctionData{}
+	mut rows := []string{}
+	$for method in pkg.Foo.methods {
+		items << method
+		rows << typeof(method).name
+		rows << method.name
+		rows << (method.return_type == typeof[pkg.Ret]().idx).str()
+	}
+	rows << items[0].name
+	rows << (items[0].return_type == typeof[pkg.Ret]().idx).str()
+	rows << (items[0].args[0].typ == typeof[pkg.Ret]().idx).str()
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'FunctionData|make|true|make|true|true'
+}
+
 fn test_nested_method_reflection_respects_shadowed_loop_variable() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_shadowing', 'struct OuterMethods {}
