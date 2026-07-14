@@ -849,6 +849,7 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 			g.gen_node(g.a.child(&branch, j))
 		}
 		g.gen_defers_from(defer_start)
+		g.gen_scope_ownership_drops()
 		g.trim_defers(defer_start)
 		g.pop_scope()
 		g.indent--
@@ -874,6 +875,7 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 			g.gen_node(g.a.child(&branch, j))
 		}
 		g.gen_defers_from(defer_start)
+		g.gen_scope_ownership_drops()
 		g.trim_defers(defer_start)
 		g.pop_scope()
 		g.indent--

@@ -7403,6 +7403,9 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 			}
 		}
 		tc.push_scope()
+		$if ownership ? {
+			tc.ownership_mark_scope_node(branch_id)
+		}
 		mut body_start := 0
 		is_assignment_case := branch.value in ['recv', 'recv_assign']
 			|| branch.value.starts_with('recv_compound:')
@@ -14394,6 +14397,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.push_scope()
+		$if ownership ? {
+			tc.ownership_mark_scope_node(branch_id)
+		}
 		tc.check_statement_sequence(branch, n_conds, value_context)
 		tc.pop_scope()
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)

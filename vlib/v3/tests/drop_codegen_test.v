@@ -156,6 +156,27 @@ fn if_guard_binding_drop() {
 	}
 }
 
+fn match_branch_drop(n int) {
+	match n {
+		0 {
+			r := Resource{23}
+			println('match \${r.id}')
+		}
+		else {}
+	}
+}
+
+fn select_branch_drop() {
+	ch := chan int{cap: 1}
+	ch <- 24
+	select {
+		value := <-ch {
+			r := Resource{value}
+			println('select \${r.id}')
+		}
+	}
+}
+
 fn loop_exits() {
 	for {
 		r := Resource{6}
@@ -200,6 +221,8 @@ fn main() {
 	println(converted_optional_success() or { i64(-1) })
 	labelled_continue_drop_once()
 	if_guard_binding_drop()
+	match_branch_drop(0)
+	select_branch_drop()
 	loop_exits()
 }
 ") or {
@@ -209,5 +232,5 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\nelse branch\ndrop 14\ndrop 15\n15\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 21\ndrop 20\nguard 22\ndrop 22\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
+	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\nelse branch\ndrop 14\ndrop 15\n15\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 21\ndrop 20\nguard 22\ndrop 22\nmatch 23\ndrop 23\nselect 24\ndrop 24\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
 }
