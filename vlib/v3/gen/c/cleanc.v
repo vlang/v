@@ -1006,11 +1006,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	return result
 }
 
-fn (g &FlatGen) rewrite_cache_string_symbols(source string) string {
+fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
 	mut symbols := []string{cap: g.str_lits.len}
 	for value in g.str_lits {
 		symbols << cache_string_symbol(value)
 	}
+	user_c_symbols := g.cache_user_c_string_symbols()
 	mut out := strings.new_builder(source.len + g.str_lits.len * 8)
 	mut i := 0
 	for i < source.len {
@@ -1061,8 +1062,7 @@ fn (g &FlatGen) rewrite_cache_string_symbols(source string) string {
 				i++
 			}
 			identifier := source[start..i]
-			if identifier.len > 5 && identifier.starts_with('_str_')
-				&& identifier[5..].bytes().all(it >= `0` && it <= `9`) {
+			if cache_numbered_string_symbol(identifier) && !user_c_symbols[identifier] {
 				mut id := 0
 				for digit in identifier[5..].bytes() {
 					id = id * 10 + int(digit - `0`)
@@ -1079,6 +1079,48 @@ fn (g &FlatGen) rewrite_cache_string_symbols(source string) string {
 		i++
 	}
 	return out.str()
+}
+
+fn (mut g FlatGen) cache_user_c_string_symbols() map[string]bool {
+	mut symbols := map[string]bool{}
+	for directive in g.c_directives {
+		collect_cache_numbered_string_symbols(directive.text, mut symbols)
+	}
+	for name in g.inlined_c_fns.keys() {
+		collect_cache_numbered_string_symbols(name, mut symbols)
+	}
+	for name in g.inlined_c_declared_fns.keys() {
+		collect_cache_numbered_string_symbols(name, mut symbols)
+	}
+	referenced_symbols := g.c_extern_referenced_symbols()
+	for name in referenced_symbols.keys() {
+		collect_cache_numbered_string_symbols(name, mut symbols)
+	}
+	return symbols
+}
+
+fn collect_cache_numbered_string_symbols(source string, mut symbols map[string]bool) {
+	mut i := 0
+	for i < source.len {
+		if !c_identifier_start(source[i]) {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < source.len && c_identifier_continue(source[i]) {
+			i++
+		}
+		identifier := source[start..i]
+		if cache_numbered_string_symbol(identifier) {
+			symbols[identifier] = true
+		}
+	}
+}
+
+fn cache_numbered_string_symbol(identifier string) bool {
+	return identifier.len > 5 && identifier.starts_with('_str_')
+		&& identifier[5..].bytes().all(it >= `0` && it <= `9`)
 }
 
 fn c_identifier_start(c u8) bool {
