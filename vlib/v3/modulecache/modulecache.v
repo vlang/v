@@ -1616,10 +1616,38 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool) strin
 	if node.typ.len > 0 && node.typ != 'void' {
 		head += ' ${node.typ}'
 	}
+	mut attrs := []string{}
+	if export_name := fn_export_name(a, module_name, name) {
+		attrs << "export: '${escape_v_string(export_name)}'"
+	}
 	if fn_is_noreturn(a, module_name, name) {
-		return '@[noreturn]\n${head}'
+		attrs << 'noreturn'
+	}
+	if attrs.len > 0 {
+		return '@[${attrs.join('; ')}]\n${head}'
 	}
 	return head
+}
+
+fn fn_export_name(a &flat.FlatAst, module_name string, name string) ?string {
+	if module_name.len == 0 || module_name in ['main', 'builtin'] {
+		return a.export_fn_names[name] or { none }
+	}
+	qualified_name := if name.starts_with('${module_name}.') {
+		name
+	} else {
+		'${module_name}.${name}'
+	}
+	if export_name := a.export_fn_names[qualified_name] {
+		return export_name
+	}
+	short_module := module_name.all_after_last('.')
+	short_qualified_name := if name.starts_with('${short_module}.') {
+		name
+	} else {
+		'${short_module}.${name}'
+	}
+	return a.export_fn_names[short_qualified_name] or { none }
 }
 
 fn fn_is_noreturn(a &flat.FlatAst, module_name string, name string) bool {
