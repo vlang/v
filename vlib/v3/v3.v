@@ -955,6 +955,7 @@ fn main() {
 	cache_enabled := backend == 'c' && !c_only && !no_cache
 	cache_salt := [
 		'compiler=${v3_cache_compiler_signature(prefs.vroot)}',
+		'vexe=${prefs.vexe}',
 		'backend=${backend}',
 		'target=${prefs.normalized_target_os()}',
 		'prod=${is_prod}',
