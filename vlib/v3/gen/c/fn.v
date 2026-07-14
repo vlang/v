@@ -5060,9 +5060,13 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	if g.json_struct_has_field_default(struct_type.name) {
 		return false
 	}
+	mut needs_exact_integer := false
 	for field in fields {
 		if !g.json_decode_value_supported(field.typ, 0) {
 			return false
+		}
+		if g.json_decode_value_needs_exact_integer(field.typ, 0) {
+			needs_exact_integer = true
 		}
 	}
 	json_id := g.a.child(&node, 2)
@@ -5074,6 +5078,9 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 	g.write('({ string ${json_name} = ')
 	g.gen_expr_with_expected_type(json_id, types.Type(types.string_))
 	g.write('; cJSON* ${root_name} = cJSON_ParseWithLength((char*)${json_name}.str, (size_t)${json_name}.len); ')
+	if needs_exact_integer {
+		g.write('v3_json_preserve_number_tokens(${json_name}.str, ${json_name}.len, ${root_name}); ')
+	}
 	// A struct only decodes successfully from a JSON object; `null`, arrays,
 	// strings and numbers must remain an error rather than a zero-valued struct.
 	// A present field must also have the expected cJSON type, otherwise the decode
@@ -5118,11 +5125,6 @@ fn (mut g FlatGen) json_decode_value_valid_expr(item string, typ types.Type) str
 	}
 	if clean is types.Primitive && clean.props.has(.boolean) {
 		return '(${item} == NULL || cJSON_IsBool(${item}))'
-	}
-	if clean is types.Primitive && clean.props.has(.integer) && clean.size == 64 {
-		// cJSON stores numbers as doubles. Accept 64-bit integer fields only when the
-		// concrete value is integral and inside the exact IEEE-754 integer range.
-		return '(${item} == NULL || (cJSON_IsNumber(${item}) && ${item}->valuedouble >= -9007199254740991.0 && ${item}->valuedouble <= 9007199254740991.0 && floor(${item}->valuedouble) == ${item}->valuedouble))'
 	}
 	if clean is types.Array {
 		item_name := g.tmp_name()
@@ -5187,6 +5189,31 @@ fn (g &FlatGen) json_decode_value_supported(typ types.Type, depth int) bool {
 			}
 		}
 		return true
+	}
+	return false
+}
+
+fn (g &FlatGen) json_decode_value_needs_exact_integer(typ types.Type, depth int) bool {
+	if depth > 12 {
+		return false
+	}
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	if clean is types.Primitive {
+		return clean.props.has(.integer) && clean.size == 64
+	}
+	if clean is types.Array {
+		return g.json_decode_value_needs_exact_integer(clean.elem_type, depth + 1)
+	}
+	if clean is types.Pointer {
+		return g.json_decode_value_needs_exact_integer(clean.base_type, depth + 1)
+	}
+	if clean is types.Struct {
+		fields := g.tc.structs[clean.name] or { return false }
+		for field in fields {
+			if g.json_decode_value_needs_exact_integer(field.typ, depth + 1) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -5282,6 +5309,33 @@ fn (mut g FlatGen) gen_json_decode_value_expr(item string, typ types.Type) {
 			// cJSON records booleans via the node type (cJSON_True/cJSON_False),
 			// not in valuedouble, so read them with cJSON_IsTrue.
 			g.write('(${item} != NULL ? (bool)cJSON_IsTrue(${item}) : 0)')
+			return
+		}
+		if clean.props.has(.integer) && clean.size == 64 {
+			// cJSON's double cannot exactly represent every i64/u64. The fast-path
+			// setup preserves the original number token in valuestring; use it for
+			// decimal integers and retain valuedouble for fractional/exponent forms.
+			item_name := g.tmp_name()
+			raw_name := g.tmp_name()
+			scan_name := g.tmp_name()
+			is_decimal_name := g.tmp_name()
+			is_negative_name := g.tmp_name()
+			magnitude_name := g.tmp_name()
+			limit_name := g.tmp_name()
+			digit_name := g.tmp_name()
+			out_name := g.tmp_name()
+			ct := g.value_c_type(clean)
+			limit_expr := if clean.props.has(.unsigned) {
+				'18446744073709551615ULL'
+			} else {
+				'(${is_negative_name} ? 9223372036854775808ULL : 9223372036854775807ULL)'
+			}
+			value_expr := if clean.props.has(.unsigned) {
+				'(${is_negative_name} ? (u64)0 - ${magnitude_name} : ${magnitude_name})'
+			} else {
+				'(${is_negative_name} ? (${magnitude_name} == 9223372036854775808ULL ? (i64)(-9223372036854775807LL - 1LL) : -(i64)${magnitude_name}) : (i64)${magnitude_name})'
+			}
+			g.write('({ cJSON* ${item_name} = ${item}; const char* ${raw_name} = ${item_name} != NULL ? ${item_name}->valuestring : NULL; const char* ${scan_name} = ${raw_name}; bool ${is_decimal_name} = ${scan_name} != NULL; bool ${is_negative_name} = false; if (${is_decimal_name} && (*${scan_name} == \'-\' || *${scan_name} == \'+\')) { ${is_negative_name} = *${scan_name} == \'-\'; ${scan_name}++; } if (${is_decimal_name} && *${scan_name} == \'\\0\') { ${is_decimal_name} = false; } u64 ${magnitude_name} = 0; u64 ${limit_name} = ${limit_expr}; while (${is_decimal_name} && *${scan_name} != \'\\0\') { if (*${scan_name} < \'0\' || *${scan_name} > \'9\') { ${is_decimal_name} = false; break; } u64 ${digit_name} = (u64)(*${scan_name} - \'0\'); if (${magnitude_name} > (${limit_name} - ${digit_name}) / 10) { ${is_decimal_name} = false; break; } ${magnitude_name} = ${magnitude_name} * 10 + ${digit_name}; ${scan_name}++; } ${ct} ${out_name} = ${item_name} != NULL ? (${ct})${item_name}->valuedouble : 0; if (${is_decimal_name}) { ${out_name} = (${ct})${value_expr}; } ${out_name}; })')
 			return
 		}
 		g.write('(${item} != NULL ? (${g.value_c_type(clean)})${item}->valuedouble : 0)')

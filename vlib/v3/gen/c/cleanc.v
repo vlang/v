@@ -9468,6 +9468,9 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	// escaped rather than truncating like a C NUL-terminated string. ASCII
 	// codes are used to avoid escaping quirks; 92=\ 34=" 98=b 102=f 110=n 114=r 116=t 117=u 48=0.
 	g.writeln('static inline string v3_json_encode_string(string s) { const char* hex = "0123456789abcdef"; u8* out = malloc_noscan((ptrdiff_t)s.len * 6 + 8); int p = 0; out[p++] = 34; for (int i = 0; i < s.len; i++) { u8 c = s.str[i]; if (c == 34) { out[p++]=92; out[p++]=34; } else if (c == 92) { out[p++]=92; out[p++]=92; } else if (c == 8) { out[p++]=92; out[p++]=98; } else if (c == 12) { out[p++]=92; out[p++]=102; } else if (c == 10) { out[p++]=92; out[p++]=110; } else if (c == 13) { out[p++]=92; out[p++]=114; } else if (c == 9) { out[p++]=92; out[p++]=116; } else if (c < 32) { out[p++]=92; out[p++]=117; out[p++]=48; out[p++]=48; out[p++]=hex[(c>>4)&15]; out[p++]=hex[c&15]; } else { out[p++]=c; } } out[p++] = 34; out[p] = 0; return (string){.str = out, .len = p, .is_lit = 0}; }')
+	if g.has_cjson() {
+		g.json_number_token_helpers()
+	}
 	g.writeln('static inline i64 v3_map_signed(void* p, int bytes) { if (bytes == 1) return *(signed char*)p; if (bytes == 2) return *(short*)p; if (bytes == 8) return *(long long*)p; return *(int*)p; }')
 	g.writeln('static inline u64 v3_map_unsigned(void* p, int bytes) { if (bytes == 1) return *(unsigned char*)p; if (bytes == 2) return *(unsigned short*)p; if (bytes == 8) return *(unsigned long long*)p; return *(unsigned int*)p; }')
 	g.writeln('static inline string v3_f32_array_str(float* vals, int n) { string out = v3_c_lit("[", 1); for (int i = 0; i < n; ++i) { if (i > 0) out = string__plus(out, v3_c_lit(", ", 2)); out = string__plus(out, f64__str((double)vals[i])); } return string__plus(out, v3_c_lit("]", 1)); }')
@@ -9525,6 +9528,29 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#define min_int min_i32')
 	g.writeln('#endif')
 	g.writeln('')
+}
+
+fn (g &FlatGen) has_cjson() bool {
+	for flag in g.c_flags {
+		if flag.contains('cJSON') {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g FlatGen) json_number_token_helpers() {
+	g.writeln('static inline const u8* v3_json_skip_space(const u8* p, const u8* end) { while (p < end && (*p == 32 || *p == 9 || *p == 10 || *p == 13)) p++; return p; }')
+	g.writeln('static inline const u8* v3_json_skip_string(const u8* p, const u8* end) { if (p >= end || *p != 34) return p; p++; while (p < end) { if (*p == 92) { p++; if (p < end) p++; continue; } if (*p == 34) return p + 1; p++; } return p; }')
+	g.writeln('static const u8* v3_json_preserve_number_tokens_inner(const u8* p, const u8* end, cJSON* item);')
+	g.writeln('static const u8* v3_json_preserve_number_tokens_inner(const u8* p, const u8* end, cJSON* item) {')
+	g.writeln('\tp = v3_json_skip_space(p, end); if (p >= end) return p;')
+	g.writeln('\tif (*p == 123) { cJSON* child = item != NULL ? item->child : NULL; p++; p = v3_json_skip_space(p, end); while (p < end && *p != 125) { p = v3_json_skip_string(p, end); p = v3_json_skip_space(p, end); if (p < end && *p == 58) p++; p = v3_json_preserve_number_tokens_inner(p, end, child); if (child != NULL) child = child->next; p = v3_json_skip_space(p, end); if (p < end && *p == 44) { p++; p = v3_json_skip_space(p, end); } else { break; } } return p < end && *p == 125 ? p + 1 : p; }')
+	g.writeln('\tif (*p == 91) { cJSON* child = item != NULL ? item->child : NULL; p++; p = v3_json_skip_space(p, end); while (p < end && *p != 93) { p = v3_json_preserve_number_tokens_inner(p, end, child); if (child != NULL) child = child->next; p = v3_json_skip_space(p, end); if (p < end && *p == 44) { p++; p = v3_json_skip_space(p, end); } else { break; } } return p < end && *p == 93 ? p + 1 : p; }')
+	g.writeln('\tif (*p == 34) return v3_json_skip_string(p, end);')
+	g.writeln('\tconst u8* start = p; while (p < end && *p != 44 && *p != 93 && *p != 125 && *p != 32 && *p != 9 && *p != 10 && *p != 13) p++; if (item != NULL && cJSON_IsNumber(item) && item->valuestring == NULL) { size_t len = (size_t)(p - start); char* raw = (char*)cJSON_malloc(len + 1); if (raw != NULL) { memcpy(raw, start, len); raw[len] = 0; item->valuestring = raw; } } return p;')
+	g.writeln('}')
+	g.writeln('static inline void v3_json_preserve_number_tokens(const u8* json, int len, cJSON* root) { if (json != NULL && len > 0 && root != NULL) v3_json_preserve_number_tokens_inner(json, json + len, root); }')
 }
 
 fn (mut g FlatGen) filelock_compat_decls() {

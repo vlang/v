@@ -2461,6 +2461,13 @@ struct I64List {
 	values []i64
 }
 
+struct WideInts {
+	min             i64
+	max             u64
+	signed_values   []i64
+	unsigned_values []u64
+}
+
 struct StrictChild {
 	ok bool
 }
@@ -2485,12 +2492,8 @@ fn main() {
 		BoolList{}
 	}
 	println(array_failed)
-	mut i64_array_failed := false
-	_ := json.decode(I64List, "{\\"values\\":[9007199254740992]}") or {
-		i64_array_failed = true
-		I64List{}
-	}
-	println(i64_array_failed)
+	i64_values := json.decode(I64List, "{\\"values\\":[9007199254740993]}")!
+	println(i64_values.values[0].str())
 	mut struct_array_failed := false
 	_ := json.decode(ChildList, "{\\"values\\":[{\\"ok\\":1}]}") or {
 		struct_array_failed = true
@@ -2512,9 +2515,15 @@ fn main() {
 	nested_defaults := json.decode(NestedPointerDefaults, "{\\"values\\":[{}]}")!
 	println(int_str(nested_defaults.nested.value.value))
 	println(int_str(nested_defaults.values[0].value.value))
+
+	wide := json.decode(WideInts, "{\\"min\\":-9223372036854775808,\\"max\\":18446744073709551615,\\"signed_values\\":[9007199254740993],\\"unsigned_values\\":[9007199254740993]}")!
+	println(wide.min.str())
+	println(wide.max.str())
+	println(wide.signed_values[0].str())
+	println(wide.unsigned_values[0].str())
 }
 ')
-	assert out == 'true\ntrue\ntrue\ntrue\n0\n7\n7\n7'
+	assert out == 'true\n9007199254740993\ntrue\ntrue\n0\n7\n7\n7\n-9223372036854775808\n18446744073709551615\n9007199254740993\n9007199254740993'
 }
 
 fn test_unimported_main_types_are_not_visible_in_modules() {
