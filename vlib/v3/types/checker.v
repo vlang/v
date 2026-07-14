@@ -172,6 +172,7 @@ pub enum TypeErrorKind {
 	duplicate_decl
 	unhandled_node
 	unsupported_generic
+	compile_error
 }
 
 // CallInfo stores call info metadata used by types.
@@ -9678,6 +9679,20 @@ fn (tc &TypeChecker) expr_has_option_result_handler(id flat.NodeId) bool {
 fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	if node.children_count > 0 {
 		callee := tc.a.child_node(&node, 0)
+		if callee.kind == .ident && callee.value == '__v_compile_error' {
+			message := if node.children_count > 1 {
+				arg := tc.a.child_node(&node, 1)
+				if arg.value.len > 0 {
+					arg.value
+				} else {
+					'compile-time error'
+				}
+			} else {
+				'compile-time error'
+			}
+			tc.record_error(.compile_error, 'compile-time error: ${message}', id)
+			return
+		}
 		if callee.kind == .selector && callee.value == '$' {
 			for i in 1 .. node.children_count {
 				tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
@@ -9703,6 +9718,9 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		return
 	}
+	if tc.check_c_voidptr_call_args(id, node) {
+		return
+	}
 	if tc.is_unsupported_hex_call(node) {
 		if tc.should_diagnose(id) {
 			tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
@@ -9721,6 +9739,38 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	for i in 1 .. node.children_count {
 		tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 	}
+}
+
+fn (mut tc TypeChecker) check_c_voidptr_call_args(id flat.NodeId, node flat.Node) bool {
+	if node.children_count == 0 {
+		return false
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return false
+	}
+	base := tc.a.child_node(callee, 0)
+	if base.kind != .ident || base.value != 'C' {
+		return false
+	}
+	params := tc.fn_param_types['C.${callee.value}'] or { return false }
+	for i in 1 .. node.children_count {
+		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		tc.check_node(arg_id)
+		param_idx := i - 1
+		if param_idx >= params.len || !fn_param_is_voidptr_type(params[param_idx]) {
+			continue
+		}
+		expected := params[param_idx]
+		actual := tc.resolve_type(arg_id)
+		if !tc.expr_receiver_compatible(arg_id, actual, expected)
+			&& !tc.expr_compatible(arg_id, actual, expected)
+			&& !voidptr_arg_compatible(expected, actual) {
+			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
+				param_idx + 1} to `C.${callee.value}`; expected `${expected.name()}`', id)
+		}
+	}
+	return true
 }
 
 // cur_fn_is_generic_template reports whether the function currently being
@@ -12285,7 +12335,7 @@ fn voidptr_arg_compatible(expected Type, actual Type) bool {
 
 fn voidptr_arg_type_passes_direct(typ Type) bool {
 	clean := fn_param_unalias_type(typ)
-	return clean is Pointer || clean is Nil || type_has_runtime_value(clean)
+	return clean is Pointer || clean is Nil
 }
 
 fn variadic_elem_accepts_any(typ Type) bool {

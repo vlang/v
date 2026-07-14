@@ -5180,6 +5180,22 @@ fn (mut t Transformer) clone_generic_node(id flat.NodeId, args []string) flat.No
 }
 
 fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is_root bool) flat.NodeId {
+	if node.kind == .call && node.children_count > 0 {
+		callee := t.a.child_node(&node, 0)
+		if callee.kind == .ident && callee.value == '__v_compile_error' {
+			message := if node.children_count > 1 {
+				arg := t.a.child_node(&node, 1)
+				if arg.value.len > 0 {
+					arg.value
+				} else {
+					'compile-time error'
+				}
+			} else {
+				'compile-time error'
+			}
+			t.record_monomorph_error('compile-time error: ${message}')
+		}
+	}
 	if node.kind == .selector && node.children_count > 0 {
 		base_id := t.a.child(&node, 0)
 		if node.value == 'name' {

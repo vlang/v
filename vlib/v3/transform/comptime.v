@@ -524,6 +524,8 @@ fn (t &Transformer) comptime_param_metas(fn_name string) []ParamMeta {
 		} else {
 			node.value
 		}
+		is_scoped_match := qualified == wanted
+			|| (module_name == t.cur_module && node.value == wanted)
 		mut params := []ParamMeta{}
 		for i in 0 .. node.children_count {
 			param := t.a.child_node(&node, i)
@@ -538,22 +540,21 @@ fn (t &Transformer) comptime_param_metas(fn_name string) []ParamMeta {
 				typ:  param.typ
 			}
 		}
-		if node.value != wanted && qualified != wanted {
-			if wanted.contains('.') || node.value.all_after_last('.') != wanted.all_after_last('.') {
-				if wanted_params, wanted_ret := fn_type_text_parts(wanted) {
-					if !comptime_params_match_signature(params, node.typ, wanted_params, wanted_ret) {
-						continue
-					}
-					if file_name != t.cur_file {
-						if signature_fallback.len == 0 {
-							signature_fallback = params.clone()
-						}
-						continue
-					}
-				} else {
-					continue
-				}
+		if is_scoped_match {
+			return params
+		}
+		if wanted_params, wanted_ret := fn_type_text_parts(wanted) {
+			if !comptime_params_match_signature(params, node.typ, wanted_params, wanted_ret) {
+				continue
 			}
+			if file_name != t.cur_file {
+				if signature_fallback.len == 0 {
+					signature_fallback = params.clone()
+				}
+				continue
+			}
+		} else {
+			continue
 		}
 		return params
 	}

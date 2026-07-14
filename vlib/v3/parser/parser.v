@@ -2334,7 +2334,10 @@ fn (mut p Parser) parse_compile_error_stmt() flat.NodeId {
 	if p.tok == .semicolon {
 		p.next()
 	}
-	callee := p.a.add_val(.ident, 'panic')
+	// Keep this as a compiler-only sentinel call. The checker reports it immediately for a
+	// selected concrete branch, while a deferred generic branch keeps it until specialization;
+	// if that branch is selected, generic validation rejects the sentinel as well.
+	callee := p.a.add_val(.ident, '__v_compile_error')
 	start := p.add_children2(callee, message)
 	call := p.a.add_node(flat.Node{
 		kind:           .call
