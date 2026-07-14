@@ -448,6 +448,61 @@ fn main() {
 	assert changed.any(it.starts_with('wrapper_')), changed.str()
 }
 
+fn test_cached_dependents_rebuild_when_imported_external_inputs_change() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_dependency_inputs_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'foo/foo.v', 'module foo
+
+#insert "@DIR/api.h"
+
+fn C.cached_transitive_value() int
+
+pub fn touch() {}
+')
+	write_module_cache_file(root, 'foo/api.h', 'static inline int cached_transitive_value(void) {
+	return 41;
+}
+')
+	write_module_cache_file(root, 'bar/bar.v', 'module bar
+
+import foo
+
+pub fn value() int {
+	foo.touch()
+	return C.cached_transitive_value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import bar
+
+fn main() {
+	println(bar.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '41'
+	first_hashes := module_cache_object_hashes(cache_dir)
+
+	write_module_cache_file(root, 'foo/api.h', 'static inline int cached_transitive_value(void) {
+	return 42;
+}
+')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+	changed := changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir))
+	assert changed.any(it.starts_with('bar_')), changed.str()
+}
+
 fn test_cached_objects_precede_static_libraries_on_link_command() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_link_order_${os.getpid()}')
@@ -626,6 +681,65 @@ fn main() {
 	assert run_module_cache_binary(second_output) == 'count|label'
 	second_hashes := module_cache_object_hashes(cache_dir)
 	assert second_hashes[builtin_name] == builtin_hash
+}
+
+fn test_dotted_user_module_stays_out_of_builtin_bundle() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_dotted_hash_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'v.mod', "Module { name: 'dotted_hash_cache' }\n")
+	write_module_cache_file(root, 'foo/hash/hash.v', 'module hash
+
+fn internal_value() int {
+	return 40
+}
+
+pub fn value() int {
+	return internal_value() + 1
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import foo.hash
+
+fn main() {
+	println(hash.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '41'
+	first_hashes := module_cache_object_hashes(cache_dir)
+	user_objects := first_hashes.keys().filter(it.starts_with('foo_hash_'))
+	assert user_objects.len == 1, first_hashes.keys().str()
+	builtin_objects := first_hashes.keys().filter(it.starts_with('builtin_'))
+	assert builtin_objects.len == 1
+	builtin_name := builtin_objects[0]
+
+	write_module_cache_file(root, 'foo/hash/hash.v', 'module hash
+
+fn internal_value() int {
+	return 41
+}
+
+pub fn value() int {
+	return internal_value() + 1
+}
+')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+	second_hashes := module_cache_object_hashes(cache_dir)
+	assert second_hashes[builtin_name] == first_hashes[builtin_name]
+	changed := changed_module_cache_objects(first_hashes, second_hashes)
+	assert changed.any(it.starts_with('foo_hash_')), changed.str()
+	assert !changed.any(it.starts_with('builtin_')), changed.str()
 }
 
 fn test_cached_module_body_recreates_cross_module_generic_specializations() {

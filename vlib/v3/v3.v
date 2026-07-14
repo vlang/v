@@ -991,8 +991,12 @@ fn main() {
 		exit(1)
 	}
 	if cache_state.manager.enabled {
+		mut cache_input_modules := map[string]bool{}
+		for module_name in cache_state.module_sources.keys() {
+			cache_input_modules[module_name] = true
+		}
 		cache_state.module_external_inputs = cgen.cache_external_input_files(a, prefs.vroot,
-			cache_state.parsed_from_source)
+			cache_input_modules)
 		for module_name, parsed in cache_state.parsed_from_source {
 			if !parsed {
 				continue
@@ -1453,7 +1457,6 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 
 fn module_is_builtin_bundle(module_name string) bool {
 	return module_name in modulecache.builtin_bundle_modules
-		|| module_name.all_after_last('.') in modulecache.builtin_bundle_modules
 }
 
 fn cache_builtin_bundle_roots(state &V3ModuleCacheState) []string {
@@ -1543,10 +1546,19 @@ fn cache_dependency_header_signatures(state &V3ModuleCacheState, roots []string)
 
 fn cache_object_dependency_signatures(state &V3ModuleCacheState, roots []string) map[string]string {
 	mut signatures := cache_dependency_header_signatures(state, roots)
+	mut input_modules := cache_dependency_modules(state, roots)
 	for root in roots {
-		mut inputs := state.module_external_inputs[root]
-		if inputs.len == 0 {
-			inputs = state.module_external_inputs[root.all_after_last('.')]
+		canonical := cache_state_module_name(state, root) or { continue }
+		if canonical !in input_modules {
+			input_modules << canonical
+		}
+	}
+	input_modules.sort()
+	for module_name in input_modules {
+		inputs := if module_name in state.module_external_inputs {
+			state.module_external_inputs[module_name]
+		} else {
+			state.module_external_inputs[module_name.all_after_last('.')]
 		}
 		for path in inputs {
 			signature := modulecache.file_signature(path)
@@ -2426,8 +2438,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 				cache_state.module_sources[cache_module] = mod_files
 				mut parse_files := mod_files.clone()
-				is_builtin_bundle := cache_module in modulecache.builtin_bundle_modules
-					|| cache_module.all_after_last('.') in modulecache.builtin_bundle_modules
+				is_builtin_bundle := module_is_builtin_bundle(cache_module)
 				if is_builtin_bundle {
 					if cache_state.bundle_valid {
 						if header := cache_state.manager.valid_header(cache_module, mod_files) {
