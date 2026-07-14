@@ -325,3 +325,58 @@ fn test_empty_quoted_property_key() {
 		assert false
 	}
 }
+
+// Per KDL 2.0 formal grammar §4, node-space and node-terminators
+// (including single-line comments) are valid after the closing """ of
+// a multiline string on the same line.
+fn test_multiline_trailing_comment_on_close_line() {
+	src := 'md """
+  hello
+  """ // trailing comment'
+	doc := kdl.parse(src)!
+	assert kdl.as_string(doc.nodes[0].entries[0].value) == 'hello'
+}
+
+fn test_multiline_raw_trailing_comment_on_close_line() {
+	src := 'md #"""
+  hello
+  """# // trailing comment'
+	doc := kdl.parse(src)!
+	assert kdl.as_string(doc.nodes[0].entries[0].value) == 'hello'
+}
+
+fn test_multiline_raw_trailing_whitespace_on_close_line() {
+	src := 'md #"""
+  hello
+  """#   '
+	doc := kdl.parse(src)!
+	assert kdl.as_string(doc.nodes[0].entries[0].value) == 'hello'
+}
+
+fn test_multiline_raw_with_comment_not_mistaken_for_content() {
+	// Verify that a comment after the close marker doesn't cause
+	// the scanner to continue looking for a closer in subsequent lines.
+	src := 'md #"""
+  hello
+  """# // this is a comment, not content
+extra-node'
+	doc := kdl.parse(src)!
+	assert doc.nodes.len == 2
+	assert doc.nodes[0].name == 'md'
+	assert kdl.as_string(doc.nodes[0].entries[0].value) == 'hello'
+	assert doc.nodes[1].name == 'extra-node'
+}
+
+fn test_multiline_raw_double_slash_not_content() {
+	// """# // x should close the raw multiline, not include // as content,
+	// and a following node should parse correctly.
+	src := 'md #"""
+  hello
+  """# // comment
+world'
+	doc := kdl.parse(src)!
+	assert doc.nodes.len == 2
+	assert doc.nodes[0].name == 'md'
+	assert kdl.as_string(doc.nodes[0].entries[0].value) == 'hello'
+	assert doc.nodes[1].name == 'world'
+}

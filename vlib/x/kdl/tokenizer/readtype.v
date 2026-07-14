@@ -489,9 +489,9 @@ fn (mut s Scanner) scan_multiline_raw(hashes int, l int, c int) Token {
 			}
 			line += s.take_current_char()
 		}
-		// Check if this line (after leading whitespace) consists of the closing marker
+		// Check if this line (after leading whitespace) contains the closing marker
 		ws := kdl_ws_prefix_len(line)
-		if line[ws..] == close_marker.bytestr() {
+		if line[ws..].starts_with(close_marker.bytestr()) {
 			lines << line
 			found_closer = true
 			break
