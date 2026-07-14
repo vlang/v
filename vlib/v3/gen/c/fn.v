@@ -3296,9 +3296,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		return
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
-	if node.children_count == 2
-		&& (ownership_drop_intrinsic_name(target_name) || ownership_drop_intrinsic_name(fn_name)
-		|| ownership_drop_intrinsic_name(resolved_target_name)) {
+	drop_target_name := if resolved_target_name.len > 0 {
+		resolved_target_name
+	} else {
+		target_name
+	}
+	if node.children_count == 2 && g.ownership_drop_intrinsic_name(drop_target_name) {
 		arg_id := g.a.child(&node, 1)
 		arg_type := g.usable_expr_type(arg_id)
 		expr := g.expr_to_string(arg_id)
@@ -4422,13 +4425,16 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	}
 }
 
-fn ownership_drop_intrinsic_name(name string) bool {
-	if name.len == 0 {
+fn (g &FlatGen) ownership_drop_intrinsic_name(name string) bool {
+	if name in ['builtin.drop_owned', 'builtin__drop_owned']
+		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_') {
+		return true
+	}
+	if name != 'drop_owned' && !name.starts_with('drop_owned_T_') {
 		return false
 	}
-	short := name.all_after_last('.')
-	return short == 'drop_owned' || short.ends_with('__drop_owned')
-		|| short.starts_with('drop_owned_T_') || short.contains('__drop_owned_T_')
+	module_name := g.tc.fn_type_modules['drop_owned'] or { return false }
+	return module_name == 'builtin'
 }
 
 // receiver_base_type supports receiver base type handling for FlatGen.
