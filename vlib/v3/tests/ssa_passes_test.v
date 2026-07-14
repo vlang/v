@@ -173,8 +173,8 @@ fn test_structured_verifier_accepts_prototype_declaration() {
 
 // --- mem2reg + phi elimination (IR level) ---------------------------------
 
-// test_mem2reg_promotes_diamond_slot validates this v3 regression case.
-fn test_mem2reg_promotes_diamond_slot() {
+// test_default_pipeline_promotes_diamond_slot validates this v3 regression case.
+fn test_default_pipeline_promotes_diamond_slot() {
 	mut m := ssa.Module.new()
 	i64t := m.type_store.get_int(64)
 	i1 := m.type_store.get_int(1)
@@ -202,10 +202,7 @@ fn test_mem2reg_promotes_diamond_slot() {
 	loaded := m.add_instr(.load, merge, i64t, [slot])
 	m.add_instr(.ret, merge, ssa.TypeID(0), [loaded])
 
-	optimize.optimize_with_options(mut m, optimize.OptimizeOptions{
-		mem2reg:        true
-		eliminate_phis: true
-	})
+	optimize.optimize(mut m)
 
 	// The scalar slot is fully promoted: no alloca/load/store remain.
 	assert count_op(m, func_id, .alloca) == 0

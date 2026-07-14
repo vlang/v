@@ -90,8 +90,9 @@ fn promote_memory_to_register(mut m ssa.Module, dom DomInfo, cfg &CfgData) {
 				}
 				for d in df[b] {
 					if !has_phi[d] {
+						first_phi_in_block := ctx.phi_placements[d].len == 0
 						array2d_append(mut ctx.phi_placements, d, alloc_id)
-						if d !in ctx.phi_blocks {
+						if first_phi_in_block {
 							ctx.phi_blocks << d
 						}
 						has_phi[d] = true
@@ -218,8 +219,9 @@ fn compute_dominance_frontier_flat(m &ssa.Module, func_idx int, dom &DomInfo, cf
 						break
 					}
 					if blk_id !in df[runner] {
+						first_frontier_for_block := df[runner].len == 0
 						array2d_append(mut df, runner, blk_id)
-						if runner !in df_blocks {
+						if first_frontier_for_block {
 							df_blocks << runner
 						}
 					}
@@ -361,13 +363,13 @@ fn rename_blocks(mut m ssa.Module, root_blk int, mut ctx Mem2RegCtx, dom DomInfo
 			}
 		} else {
 			// 5. Pop reaching definitions pushed in this block.
-			pushed := work[fi].pushed_allocs.clone()
-			work.pop()
-			for i := pushed.len - 1; i >= 0; i-- {
-				mut s := ctx.stacks[pushed[i]]
+			for i := work[fi].pushed_allocs.len - 1; i >= 0; i-- {
+				alloc_id := work[fi].pushed_allocs[i]
+				mut s := ctx.stacks[alloc_id]
 				s.pop()
-				ctx.stacks[pushed[i]] = s
+				ctx.stacks[alloc_id] = s
 			}
+			work.pop()
 		}
 	}
 }

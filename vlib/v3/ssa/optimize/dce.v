@@ -4,57 +4,81 @@ import v3.ssa
 
 // dead_code_elimination supports dead code elimination handling for optimize.
 fn dead_code_elimination(mut m ssa.Module) {
-	mut changed := true
-	for changed {
-		changed = false
+	for {
+		mut worklist := []int{}
 		for fi in 0 .. m.funcs.len {
 			dead_stores := find_dead_stores(m, m.funcs[fi])
-
 			for blk_id in m.funcs[fi].blocks {
-				mut dead_instrs := map[int]bool{}
 				for val_id in m.blocks[blk_id].instrs {
 					val := m.values[val_id]
 					if val.kind != .instruction {
 						continue
 					}
 					instr := m.instrs[val.index]
-					if instr.op == .store && val_id in dead_stores {
-						dead_instrs[val_id] = true
-						continue
+					if (instr.op == .store && val_id in dead_stores)
+						|| (!instruction_has_side_effects(instr.op) && val.uses.len == 0) {
+						worklist << val_id
 					}
-					has_side_effects := instr.op in [.store, .call, .call_indirect, .call_sret,
-						.ret, .br, .jmp, .switch_, .unreachable, .assign, .fence, .cmpxchg,
-						.atomicrmw, .go_call, .spawn_call]
-					if !has_side_effects && val.uses.len == 0 {
-						dead_instrs[val_id] = true
-					}
-				}
-
-				if dead_instrs.len > 0 {
-					for val_id, _ in dead_instrs {
-						instr := m.instrs[m.values[val_id].index]
-
-						for oi, op_id in instr.operands {
-							if !instr.is_value_operand(oi) {
-								continue
-							}
-							remove_use(mut m, op_id, val_id)
-						}
-					}
-					mut new_instrs := []int{cap: m.blocks[blk_id].instrs.len}
-					for val_id in m.blocks[blk_id].instrs {
-						if val_id !in dead_instrs {
-							new_instrs << val_id
-						}
-					}
-					mut blk := m.blocks[blk_id]
-					blk.instrs = new_instrs
-					m.blocks[blk_id] = blk
-					changed = true
 				}
 			}
 		}
+		if worklist.len == 0 {
+			return
+		}
+
+		mut dead := []bool{len: m.values.len}
+		for worklist.len > 0 {
+			val_id := worklist.pop()
+			if val_id <= 0 || val_id >= m.values.len || dead[val_id]
+				|| m.values[val_id].kind != .instruction {
+				continue
+			}
+			dead[val_id] = true
+			instr := m.instrs[m.values[val_id].index]
+			for oi, op_id in instr.operands {
+				if !instr.is_value_operand(oi) {
+					continue
+				}
+				remove_use(mut m, op_id, val_id)
+				if op_id > 0 && op_id < m.values.len && m.values[op_id].kind == .instruction
+					&& m.values[op_id].uses.len == 0 {
+					op_instr := m.instrs[m.values[op_id].index]
+					if !instruction_has_side_effects(op_instr.op) {
+						worklist << op_id
+					}
+				}
+			}
+		}
+
+		for fi in 0 .. m.funcs.len {
+			for blk_id in m.funcs[fi].blocks {
+				blk := m.blocks[blk_id]
+				mut removed := 0
+				for val_id in blk.instrs {
+					if val_id > 0 && val_id < dead.len && dead[val_id] {
+						removed++
+					}
+				}
+				if removed == 0 {
+					continue
+				}
+				mut kept := []ssa.ValueID{cap: blk.instrs.len - removed}
+				for val_id in blk.instrs {
+					if val_id <= 0 || val_id >= dead.len || !dead[val_id] {
+						kept << val_id
+					}
+				}
+				mut compacted := blk
+				compacted.instrs = kept
+				m.blocks[blk_id] = compacted
+			}
+		}
 	}
+}
+
+fn instruction_has_side_effects(op ssa.OpCode) bool {
+	return op in [.store, .call, .call_indirect, .call_sret, .ret, .br, .jmp, .switch_, .unreachable,
+		.assign, .fence, .cmpxchg, .atomicrmw, .go_call, .spawn_call]
 }
 
 // remove_use updates remove use state for optimize.
