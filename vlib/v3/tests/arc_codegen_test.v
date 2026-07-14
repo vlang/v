@@ -140,6 +140,14 @@ fn replace_indexed_resources() {
 	assert by_name["resource"].strong_count() == 1
 }
 
+fn exercise_array_clone() {
+	original := [arc.new(Resource{id: 17})]
+	cloned := original.clone()
+	assert original[0].strong_count() == 2
+	assert cloned[0].strong_count() == 2
+	assert arc.ptr_eq(&original[0], &cloned[0])
+}
+
 fn main() {
 	exercise_resource()
 	replace_resource()
@@ -150,6 +158,7 @@ fn main() {
 	exercise_container_clone()
 	exercise_unstable_clone_receiver()
 	replace_indexed_resources()
+	exercise_array_clone()
 	original := Config{
 		replacement: arc.new(?[]u8([u8(1), 2, 3]))
 	}
@@ -172,10 +181,10 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	lines := run.output.trim_space().split_into_lines()
 	assert lines.count(it == 'make factory') == 1, run.output
-	for id in 1 .. 17 {
+	for id in 1 .. 18 {
 		assert lines.count(it == 'drop ${id}') == 1, run.output
 	}
-	assert lines.len == 17, run.output
+	assert lines.len == 18, run.output
 	os.write_file(nonownership_src, 'module main
 
 import sync.arc

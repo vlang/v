@@ -145,7 +145,15 @@ fn (mut t Transformer) make_array_insert_many_call(lhs_addr flat.NodeId, index f
 
 fn (mut t Transformer) make_array_clone_call(base_id flat.NodeId, base_type string) flat.NodeId {
 	t.mark_fn_used('array__clone')
-	receiver := t.transform_expr(base_id)
+	mut receiver := t.transform_expr(base_id)
+	clean_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	if clean_type.starts_with('[]') && t.compiler_default_clone_type_needs_work(clean_type[2..]) {
+		if base_type.starts_with('&') {
+			receiver = t.make_prefix(.mul, receiver)
+			t.set_node_typ(int(receiver), clean_type)
+		}
+		return t.make_compiler_default_array_clone_value(receiver, clean_type)
+	}
 	return t.make_array_clone_value(receiver, base_type)
 }
 
