@@ -1318,10 +1318,9 @@ fn main() {
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_target(prefs.target)
 			g.set_scope_parallel_workers(true)
-			c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, current_no_parallel,
-				test_files)
-			if !write_text_file_raw(cc_src, c_code) {
-				eprintln('error writing ${cc_src}')
+			g.gen_to_file_with_used_test_options(cc_src, a, used_fns, &pre_tc, current_no_parallel,
+				test_files) or {
+				eprintln('error writing ${cc_src}: ${err}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
@@ -1338,10 +1337,9 @@ fn main() {
 			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_target(prefs.target)
-			c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, current_no_parallel,
-				test_files)
-			if !write_text_file_raw(cc_src, c_code) {
-				eprintln('error writing ${cc_src}')
+			g.gen_to_file_with_used_test_options(cc_src, a, used_fns, &pre_tc, current_no_parallel,
+				test_files) or {
+				eprintln('error writing ${cc_src}: ${err}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
@@ -1656,14 +1654,6 @@ fn is_valid_vroot(root string) bool {
 // builtin_dir_for_vroot supports builtin dir for vroot handling for v3 entry point.
 fn builtin_dir_for_vroot(root string) string {
 	return os.join_path_single(os.join_path_single(root, 'vlib'), 'builtin')
-}
-
-// write_text_file_raw writes text file raw output for v3 entry point.
-fn write_text_file_raw(path string, data string) bool {
-	// Delegate to the stdlib writer so the open flags (O_CREAT/O_TRUNC, binary mode)
-	// are correct on every platform, instead of hardcoding per-OS bit values.
-	os.write_file(path, data) or { return false }
-	return true
 }
 
 // print_type_errors updates print type errors state for v3 entry point.

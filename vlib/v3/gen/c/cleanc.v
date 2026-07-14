@@ -137,6 +137,8 @@ mut:
 	compiler_vroot               string
 	compiler_vexe                string
 	target                       pref.Target
+	output_path                  string
+	output_error                 string
 	c99_mode                     bool
 	skip_generics                bool
 	cur_fn_name                  string
@@ -544,6 +546,18 @@ pub fn (mut g FlatGen) gen_with_used_test_options(a &flat.FlatAst, used_fns map[
 	return g.gen_with_used_options(a, used_fns, tc, no_parallel)
 }
 
+// gen_to_file_with_used_test_options writes the completed translation unit by transferring the
+// builder buffer to the file writer, avoiding a second full-size string allocation.
+pub fn (mut g FlatGen) gen_to_file_with_used_test_options(path string, a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool, test_files []string) ! {
+	g.output_path = path
+	g.output_error = ''
+	_ = g.gen_with_used_test_options(a, used_fns, tc, no_parallel, test_files)
+	g.output_path = ''
+	if g.output_error.len > 0 {
+		return error(g.output_error)
+	}
+}
+
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	g.a = a
@@ -805,6 +819,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.sb.write_string(fn_code)
 		// The final builder now owns a copy of the function code.
 		unsafe { fn_code.free() }
+	}
+	if g.output_path.len > 0 {
+		mut output := unsafe { g.sb.reuse_as_plain_u8_array() }
+		os.write_file_array(g.output_path, output) or { g.output_error = err.msg() }
+		unsafe { output.free() }
+		g.sb = strings.new_builder(4096)
+		return ''
 	}
 	result := g.sb.str()
 	// Keep only the returned C string, not the builder's copied backing array.
