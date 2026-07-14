@@ -1507,12 +1507,6 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 		module_source := declarations + bundle_body.str()
 		compile_v3_cached_object(entry, module_source, c_standard, opt_flag, pic_flag,
 			warning_flags, generated_c_flags, objective_c)!
-		bundle_dependencies := cache_object_dependency_signatures(state,
-			cache_builtin_bundle_roots(state))
-		state.manager.write_stamp('builtin', state.bundle_sources, bundle_dependencies,
-			compile_signature)!
-		object_paths['builtin'] = entry.object
-		state.bundle_valid = true
 		for module_name, header in state.headers {
 			if !module_is_builtin_bundle(state, module_name) {
 				continue
@@ -1521,6 +1515,12 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 				state.manager.write_header(module_name, source_files, header)!
 			}
 		}
+		bundle_dependencies := cache_object_dependency_signatures(state,
+			cache_builtin_bundle_roots(state))
+		state.manager.write_stamp('builtin', state.bundle_sources, bundle_dependencies,
+			compile_signature)!
+		object_paths['builtin'] = entry.object
+		state.bundle_valid = true
 	}
 	unsafe { bundle_body.free() }
 
@@ -1657,20 +1657,29 @@ fn cache_dependency_modules(state &V3ModuleCacheState, roots []string) []string 
 fn cache_dependency_header_signatures(state &V3ModuleCacheState, roots []string) map[string]string {
 	mut signatures := map[string]string{}
 	for module_name in cache_dependency_modules(state, roots) {
-		source_files := state.module_sources[module_name] or { continue }
-		entry := state.manager.entry(module_name, source_files)
-		if header := state.headers[module_name] {
-			signatures[entry.header] = modulecache.header_signature(header)
-			continue
-		}
-		header := os.read_file(entry.header) or { continue }
-		signatures[entry.header] = modulecache.header_signature(header)
+		cache_add_module_header_signature(state, module_name, mut signatures)
 	}
 	return signatures
 }
 
+fn cache_add_module_header_signature(state &V3ModuleCacheState, module_name string, mut signatures map[string]string) {
+	source_files := state.module_sources[module_name] or { return }
+	entry := state.manager.entry(module_name, source_files)
+	if header := state.headers[module_name] {
+		signatures[entry.header] = modulecache.header_signature(header)
+		return
+	}
+	header := os.read_file(entry.header) or { return }
+	signatures[entry.header] = modulecache.header_signature(header)
+}
+
 fn cache_object_dependency_signatures(state &V3ModuleCacheState, roots []string) map[string]string {
 	mut signatures := cache_dependency_header_signatures(state, roots)
+	// Every cached translation unit is compiled with the builtin bundle's declarations
+	// prefix, even when its V module has no explicit builtin import.
+	for module_name in cache_builtin_bundle_roots(state) {
+		cache_add_module_header_signature(state, module_name, mut signatures)
+	}
 	mut input_modules := cache_dependency_modules(state, roots)
 	for root in roots {
 		canonical := cache_state_module_name(state, root) or { continue }

@@ -1,5 +1,7 @@
 import os
+import v3.flat
 import v3.modulecache
+import v3.types
 
 const module_cache_tests_dir = os.dir(@FILE)
 const module_cache_v3_dir = os.dir(module_cache_tests_dir)
@@ -21,6 +23,25 @@ fn write_module_cache_file(root string, relative_path string, source string) {
 	path := os.join_path(root, relative_path)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
 	os.write_file(path, source) or { panic(err) }
+}
+
+fn create_module_cache_vroot(root string) {
+	vlib_dir := os.join_path(root, 'vlib')
+	os.mkdir_all(vlib_dir) or { panic(err) }
+	entries := os.ls(module_cache_vlib_dir) or { panic(err) }
+	for entry in entries {
+		source := os.join_path(module_cache_vlib_dir, entry)
+		destination := os.join_path(vlib_dir, entry)
+		if entry == 'builtin' {
+			os.cp_all(source, destination, true) or { panic(err) }
+		} else {
+			os.symlink(source, destination) or { panic(err) }
+		}
+	}
+	repo_dir := os.dir(module_cache_vlib_dir)
+	os.symlink(os.join_path(repo_dir, 'thirdparty'), os.join_path(root, 'thirdparty')) or {
+		panic(err)
+	}
 }
 
 fn compile_module_cache_project(v3_bin string, cache_dir string, main_file string, output string) {
@@ -506,6 +527,43 @@ fn main() {
 	changed := changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir))
 	assert changed.any(it.starts_with('assets_')), changed.str()
 	assert changed.any(it.starts_with('wrapper_')), changed.str()
+}
+
+fn test_module_cache_rebuilds_modules_when_comptime_env_changes() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_comptime_env_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/wrapper.v', "module wrapper
+
+pub fn value() string {
+	return \$env('V3_MODULE_CACHE_ENV_PROBE')
+}
+")
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	first :=
+		os.execute('V3_MODULE_CACHE_ENV_PROBE=first V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(first_output)} ${os.quoted_path(main_file)}')
+	assert first.exit_code == 0, first.output
+	assert run_module_cache_binary(first_output) == 'first'
+
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3_MODULE_CACHE_ENV_PROBE=second V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert run_module_cache_binary(second_output) == 'second'
 }
 
 fn test_cached_dependents_rebuild_when_imported_external_inputs_change() {
@@ -1185,6 +1243,56 @@ fn main() {
 	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
+fn test_cached_header_preserves_comptime_struct_fields() {
+	mut a := flat.FlatAst.new()
+	module_id := a.add_node(flat.Node{
+		kind:  .module_decl
+		value: 'config'
+	})
+	direct_field := a.add_node(flat.Node{
+		kind:           .field_decl
+		value:          'value'
+		typ:            'int'
+		generic_params: ['p']
+	})
+	comptime_field := a.add_node(flat.Node{
+		kind:           .field_decl
+		value:          'enabled'
+		typ:            'bool'
+		generic_params: ['p']
+	})
+	block_children := a.begin_children()
+	a.add_child(comptime_field)
+	comptime_block := a.add_node(flat.Node{
+		kind:           .block
+		children_start: block_children
+		children_count: 1
+	})
+	struct_children := a.begin_children()
+	a.add_child(direct_field)
+	a.add_child(comptime_block)
+	struct_id := a.add_node(flat.Node{
+		kind:           .struct_decl
+		value:          'Config'
+		children_start: struct_children
+		children_count: 2
+	})
+	file_children := a.begin_children()
+	a.add_child(module_id)
+	a.add_child(struct_id)
+	a.add_node(flat.Node{
+		kind:           .file
+		value:          'config.v'
+		children_start: file_children
+		children_count: 2
+	})
+	tc := types.TypeChecker.new(a)
+	header := modulecache.module_header(a, tc, 'config', '', map[string]string{})
+	assert !header.contains('source bodies required')
+	assert header.contains('\tvalue int')
+	assert header.contains('\tenabled bool')
+}
+
 fn test_cached_struct_default_with_unsupported_initializer_keeps_source() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_struct_default_index_${os.getpid()}')
@@ -1357,6 +1465,64 @@ fn main() {}
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
 	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
+}
+
+fn test_module_cache_rebuilds_modules_when_builtin_layout_changes() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_builtin_layout_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	create_module_cache_vroot(root)
+	write_module_cache_file(root, 'vlib/builtin/cache_probe.v', 'module builtin
+
+pub struct CacheProbe {
+pub:
+	value int
+}
+')
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+pub fn cached_size() int {
+	return int(sizeof(CacheProbe))
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println("\${wrapper.cached_size()}:\${int(sizeof(CacheProbe))}")
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	first_sizes := run_module_cache_binary(first_output).split(':')
+	assert first_sizes.len == 2
+	assert first_sizes[0] == first_sizes[1]
+	wrapper_stamp := module_cache_artifact(cache_dir, 'wrapper_', '.o.stamp')
+	assert wrapper_stamp.len > 0
+	stamp := os.read_file(wrapper_stamp) or { panic(err) }
+	assert stamp.contains('dependency=') && stamp.contains('builtin_'), stamp
+
+	write_module_cache_file(root, 'vlib/builtin/cache_probe.v', 'module builtin
+
+pub struct CacheProbe {
+pub:
+	value int
+	extra i64
+}
+')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	second_sizes := run_module_cache_binary(second_output).split(':')
+	assert second_sizes.len == 2
+	assert second_sizes[0] == second_sizes[1]
+	assert second_sizes[0] != first_sizes[0]
 }
 
 fn test_module_cache_reuses_headers_and_rebuilds_only_changed_module() {

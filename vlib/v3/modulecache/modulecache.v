@@ -8,7 +8,7 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-28'
+const cache_format = 'v3-module-cache-29'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -92,11 +92,13 @@ pub fn (m &Manager) object_entry(module_name string, source_files []string, comp
 	}
 }
 
-// source_signature hashes selected source paths and contents in stable path order.
+// source_signature hashes selected source paths, contents, and compile-time environment
+// values in stable order.
 pub fn source_signature(source_files []string) string {
 	mut files := source_files.clone()
 	files.sort()
 	mut hash := u64(1469598103934665603)
+	mut env_names := map[string]bool{}
 	for file in files {
 		path := os.real_path(file)
 		hash = hash_bytes(hash, path.bytes())
@@ -104,8 +106,122 @@ pub fn source_signature(source_files []string) string {
 		content := os.read_bytes(file) or { return '' }
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
+		for name in compile_time_env_names(content.bytestr()) {
+			env_names[name] = true
+		}
+	}
+	mut names := env_names.keys()
+	names.sort()
+	for name in names {
+		hash = hash_bytes(hash, [u8(0xfe)])
+		hash = hash_bytes(hash, name.bytes())
+		hash = hash_bytes(hash, [u8(0)])
+		hash = hash_bytes(hash, os.getenv(name).bytes())
+		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	return hash.hex()
+}
+
+fn compile_time_env_names(source string) []string {
+	mut names := map[string]bool{}
+	mut pos := 0
+	for pos < source.len {
+		if source[pos] == `/` && pos + 1 < source.len
+			&& (source[pos + 1] == `/` || source[pos + 1] == `*`) {
+			pos = skip_signature_space_and_comments(source, pos)
+			continue
+		}
+		if source[pos] in [`'`, `"`, `\``] {
+			pos = skip_signature_quoted_text(source, pos, false)
+			continue
+		}
+		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
+			pos = skip_signature_quoted_text(source, pos + 1, true)
+			continue
+		}
+		if pos + 4 > source.len || source[pos..pos + 4] != '\$env' {
+			pos++
+			continue
+		}
+		mut arg_pos := skip_signature_space_and_comments(source, pos + 4)
+		if arg_pos >= source.len || source[arg_pos] != `(` {
+			pos += 4
+			continue
+		}
+		arg_pos = skip_signature_space_and_comments(source, arg_pos + 1)
+		mut is_raw := false
+		if arg_pos + 1 < source.len && source[arg_pos] == `r` && source[arg_pos + 1] in [`'`, `"`] {
+			is_raw = true
+			arg_pos++
+		}
+		if arg_pos >= source.len || source[arg_pos] !in [`'`, `"`] {
+			pos += 4
+			continue
+		}
+		quote := source[arg_pos]
+		name_start := arg_pos + 1
+		mut name_end := name_start
+		for name_end < source.len {
+			if !is_raw && source[name_end] == `\\` && name_end + 1 < source.len {
+				name_end += 2
+				continue
+			}
+			if source[name_end] == quote {
+				names[source[name_start..name_end]] = true
+				break
+			}
+			name_end++
+		}
+		pos = if name_end < source.len { name_end + 1 } else { source.len }
+	}
+	mut result := names.keys()
+	result.sort()
+	return result
+}
+
+fn skip_signature_space_and_comments(source string, start int) int {
+	mut pos := start
+	for pos < source.len {
+		for pos < source.len && source[pos] in [` `, `\t`, `\r`, `\n`] {
+			pos++
+		}
+		if pos + 1 >= source.len || source[pos] != `/` {
+			break
+		}
+		if source[pos + 1] == `/` {
+			pos += 2
+			for pos < source.len && source[pos] != `\n` {
+				pos++
+			}
+			continue
+		}
+		if source[pos + 1] == `*` {
+			pos += 2
+			for pos + 1 < source.len && !(source[pos] == `*` && source[pos + 1] == `/`) {
+				pos++
+			}
+			pos = if pos + 1 < source.len { pos + 2 } else { source.len }
+			continue
+		}
+		break
+	}
+	return pos
+}
+
+fn skip_signature_quoted_text(source string, quote_pos int, is_raw bool) int {
+	quote := source[quote_pos]
+	mut pos := quote_pos + 1
+	for pos < source.len {
+		if !is_raw && source[pos] == `\\` && pos + 1 < source.len {
+			pos += 2
+			continue
+		}
+		if source[pos] == quote {
+			return pos + 1
+		}
+		pos++
+	}
+	return source.len
 }
 
 // valid_entry reports whether both interface and object artifacts match their sources.
@@ -759,7 +875,8 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 	if node.generic_params.len > 0 || fn_decl_has_generic_receiver(a, node)
 		|| (node.kind in [.const_decl, .struct_decl, .global_decl]
 		&& declaration_has_unserializable_initializer(a, node))
-		|| node.kind == .comptime_if {
+		|| node.kind == .comptime_if
+		|| (node.kind == .struct_decl && struct_has_unserializable_children(a, node)) {
 		return true
 	}
 	if node.kind == .block {
@@ -772,9 +889,34 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 	return false
 }
 
+fn struct_has_unserializable_children(a &flat.FlatAst, node flat.Node) bool {
+	for i in 0 .. node.children_count {
+		child := a.child_node(&node, i)
+		if child.kind == .field_decl {
+			continue
+		}
+		if child.kind == .block {
+			if struct_has_unserializable_children(a, *child) {
+				return true
+			}
+			continue
+		}
+		if child.kind != .empty {
+			return true
+		}
+	}
+	return false
+}
+
 fn declaration_has_unserializable_initializer(a &flat.FlatAst, node flat.Node) bool {
 	for i in 0 .. node.children_count {
 		field := a.child_node(&node, i)
+		if field.kind == .block {
+			if declaration_has_unserializable_initializer(a, *field) {
+				return true
+			}
+			continue
+		}
 		if field.children_count > 0 && !expr_can_serialize(a, a.child(field, 0)) {
 			return true
 		}
@@ -1014,6 +1156,23 @@ fn generic_suffix(params []string) string {
 	return if params.len > 0 { '[${params.join(', ')}]' } else { '' }
 }
 
+fn append_struct_field_nodes(a &flat.FlatAst, id flat.NodeId, mut fields []flat.NodeId) {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return
+	}
+	node := a.nodes[int(id)]
+	if node.kind == .field_decl {
+		fields << id
+		return
+	}
+	if node.kind != .block {
+		return
+	}
+	for i in 0 .. node.children_count {
+		append_struct_field_nodes(a, a.child(&node, i), mut fields)
+	}
+}
+
 fn struct_text(a &flat.FlatAst, node flat.Node) string {
 	kind := if node.typ.split(',').contains('union') { 'union' } else { 'struct' }
 	mut head := '${kind} ${node.value}${generic_suffix(node.generic_params)}'
@@ -1031,11 +1190,12 @@ fn struct_text(a &flat.FlatAst, node flat.Node) string {
 	mut out := strings.new_builder(256)
 	out.writeln('${head} {')
 	mut section := ''
+	mut field_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
-		field := a.child_node(&node, i)
-		if field.kind != .field_decl {
-			continue
-		}
+		append_struct_field_nodes(a, a.child(&node, i), mut field_ids)
+	}
+	for field_id in field_ids {
+		field := a.node(field_id)
 		flags := if field.generic_params.len > 0 { field.generic_params[0] } else { '' }
 		wanted := if flags.contains('p') && flags.contains('m') {
 			'pub mut'
