@@ -4641,6 +4641,7 @@ fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeI
 	if !t.compiler_default_clone_type_needs_work(elem_type) {
 		return t.make_array_clone_value(source, array_type)
 	}
+	source_is_owned_temporary := !t.expr_can_take_address(source)
 	stable_source := t.stable_transformed_expr_for_reuse(source, array_type,
 		'derived_clone_array_source')
 	out_name := t.new_temp('derived_clone_array')
@@ -4661,6 +4662,10 @@ fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeI
 	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
 		cloned_elem)
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{})
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+	}
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), array_type)
 	return result
@@ -4675,6 +4680,7 @@ fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat
 	if !t.compiler_default_clone_type_needs_work(elem_type) {
 		return source
 	}
+	source_is_owned_temporary := !t.expr_can_take_address(source)
 	stable_source := t.stable_transformed_expr_for_reuse(source, fixed_type,
 		'derived_clone_fixed_array_source')
 	out_name := t.new_temp('derived_clone_fixed_array')
@@ -4691,6 +4697,10 @@ fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat
 	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
 		cloned_elem)
 	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{})
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+	}
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), fixed_type)
 	return result
@@ -4708,6 +4718,7 @@ fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId,
 		t.mark_fn_used('map__clone')
 		return t.make_call_typed('map__clone', arr1(t.runtime_addr(source, map_type)), map_type)
 	}
+	source_is_owned_temporary := !t.expr_can_take_address(source)
 	stable_source := t.stable_transformed_expr_for_reuse(source, map_type,
 		'derived_clone_map_source')
 	out_name := t.new_temp('derived_clone_map')
@@ -4751,6 +4762,10 @@ fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId,
 		children_count: flat.child_count(3 + body.len)
 		value:          '3'
 	})
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+	}
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), map_type)
 	return result

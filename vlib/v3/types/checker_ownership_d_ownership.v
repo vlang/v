@@ -9655,12 +9655,80 @@ fn (tc &TypeChecker) ownership_expr_ident_name(id flat.NodeId) string {
 	return ''
 }
 
-// ownership_expr_moves_storage reports whether `source_id` names storage that overlaps the
-// assignment target and is therefore staged as a move by multi-assignment checking.
+// ownership_expr_moves_storage reports whether evaluating `source_id` moves storage that
+// overlaps the assignment target.
 pub fn (tc &TypeChecker) ownership_expr_moves_storage(source_id flat.NodeId, target_id flat.NodeId) bool {
-	source := tc.ownership_expr_ident_name(source_id)
 	target := tc.ownership_expr_ident_name(target_id)
-	return source.len > 0 && target.len > 0 && ownership_storage_keys_overlap(source, target)
+	if target.len == 0 {
+		return false
+	}
+	return tc.ownership_expr_moves_named_storage(source_id, target)
+}
+
+fn (tc &TypeChecker) ownership_expr_moves_named_storage(source_id flat.NodeId, target string) bool {
+	if !tc.valid_node_id(source_id) {
+		return false
+	}
+	node := tc.a.nodes[int(source_id)]
+	if node.kind in [.paren, .expr_stmt, .cast_expr] && node.children_count > 0 {
+		return tc.ownership_expr_moves_named_storage(tc.a.child(&node, 0), target)
+	}
+	if node.kind == .prefix && node.op == .amp {
+		return false
+	}
+	source := tc.ownership_expr_ident_name(source_id)
+	if source.len > 0 && ownership_storage_keys_overlap(source, target) {
+		return true
+	}
+	if node.kind != .call || node.children_count == 0 {
+		return false
+	}
+	fn_node := tc.a.child_node(&node, 0)
+	call_name := tc.ownership_call_name(source_id)
+	params := tc.fn_param_types_for_name(call_name)
+	has_receiver := tc.ownership_call_has_receiver(node, fn_node, params)
+	if has_receiver && fn_node.kind == .selector && fn_node.children_count > 0 {
+		receiver_id := tc.a.child(fn_node, 0)
+		receiver_type := if params.len > 0 { params[0] } else { Type(void_) }
+		if receiver_type !is Pointer && !tc.ownership_method_keeps_receiver(fn_node.value)
+			&& !tc.ownership_array_builtin_keeps_receiver(receiver_id, fn_node.value)
+			&& !tc.ownership_string_builtin_keeps_receiver(receiver_id, fn_node.value)
+			&& tc.ownership_expr_moves_named_storage(receiver_id, target) {
+			return true
+		}
+	}
+	for i in 1 .. node.children_count {
+		arg_id := tc.call_arg_value(tc.a.child(&node, i))
+		param_idx := if has_receiver { i } else { i - 1 }
+		if param_idx >= 0 && param_idx < params.len && params[param_idx] is Pointer {
+			continue
+		}
+		if tc.ownership_expr_moves_named_storage(arg_id, target) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) ownership_call_has_receiver(node flat.Node, fn_node flat.Node, params []Type) bool {
+	if fn_node.kind != .selector || fn_node.children_count == 0 {
+		return false
+	}
+	base_node := tc.a.child_node(&fn_node, 0)
+	if base_node.kind == .ident && !tc.ident_resolves_to_value(base_node.value) {
+		if base_node.value == 'C' || base_node.value == tc.cur_module {
+			return false
+		}
+		if _ := tc.resolve_import_alias(base_node.value) {
+			return false
+		}
+		qbase := tc.qualify_name(base_node.value)
+		if qbase in tc.structs || qbase in tc.enum_names || qbase in tc.sum_types
+			|| qbase in tc.interface_names || qbase in tc.type_aliases {
+			return false
+		}
+	}
+	return params.len == 0 || params.len >= int(node.children_count)
 }
 
 fn (tc &TypeChecker) ownership_index_key_part(id flat.NodeId) string {
@@ -10346,7 +10414,7 @@ fn (tc &TypeChecker) ownership_method_keeps_receiver(method_name string) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) ownership_array_builtin_keeps_receiver(recv_id flat.NodeId, method_name string) bool {
+fn (tc &TypeChecker) ownership_array_builtin_keeps_receiver(recv_id flat.NodeId, method_name string) bool {
 	if method_name !in ['first', 'last', 'pop', 'pop_left', 'insert', 'prepend'] {
 		return false
 	}
@@ -10358,7 +10426,7 @@ fn (mut tc TypeChecker) ownership_array_builtin_keeps_receiver(recv_id flat.Node
 // (`contains`, `starts_with`, `split`, `to_upper`, ...) only read the receiver; none consume
 // the string's heap buffer, so a `string` receiver passed by value borrows just like Rust's
 // `&self` string methods. User-defined by-value string methods still move the receiver.
-fn (mut tc TypeChecker) ownership_string_builtin_keeps_receiver(recv_id flat.NodeId, method_name string) bool {
+fn (tc &TypeChecker) ownership_string_builtin_keeps_receiver(recv_id flat.NodeId, method_name string) bool {
 	if unwrap_pointer(tc.resolve_type(recv_id)) !is String {
 		return false
 	}

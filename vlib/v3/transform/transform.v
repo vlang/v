@@ -4047,6 +4047,8 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	})
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
 		&& node.children_count == 2 && !isnil(t.tc) {
+		lhs_id := t.a.child(&node, 0)
+		rhs_id := t.a.child(&node, 1)
 		mut lhs_type_name := t.lvalue_type(t.a.child(&node, 0))
 		if lhs_type_name.len == 0 {
 			lhs_type_name = t.lvalue_type(new_children[0])
@@ -4056,6 +4058,7 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		}
 		lhs_type := t.tc.parse_type(lhs_type_name)
 		if t.tc.ownership_type_requires_drop(lhs_type)
+			&& !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id)
 			&& t.drop_before_assign_has_stable_lvalue(new_children[0]) {
 			mut result := []flat.NodeId{}
 			t.drain_pending(mut result)
