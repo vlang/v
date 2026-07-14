@@ -5402,8 +5402,9 @@ fn (mut t Transformer) append_owned_array_drop_range(array_value flat.NodeId, el
 }
 
 // try_lower_ignored_owned_array_pop_stmt destroys an owned array element result when the
-// source program ignores it. Pop methods transfer the removed element, while first/last
-// produce the independent clone supplied by lower_owned_array_accessor_call.
+// source program ignores it. Pop methods transfer the removed element from owning arrays,
+// while slice results still alias backing storage. First/last produce the independent clone
+// supplied by lower_owned_array_accessor_call.
 fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
 	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
 		return none
@@ -5435,12 +5436,50 @@ fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeI
 		return none
 	}
 	mut result := []flat.NodeId{}
-	popped := t.transform_expr(call_id)
-	t.drain_pending(mut result)
+	mut popped := flat.empty_node
+	mut array_value := flat.empty_node
+	if fn_node.value in ['pop', 'pop_left'] {
+		base := t.stable_expr_for_reuse(base_id)
+		t.drain_pending(mut result)
+		array_value = base
+		if base_type.starts_with('&') {
+			array_value = t.make_prefix(.mul, base)
+			t.set_node_typ(int(array_value), clean_base_type)
+		}
+		popped = t.make_method_call(array_value, fn_node.value, []flat.NodeId{})
+		t.set_node_typ(int(popped), elem_type)
+		if fn_node.value == 'pop' {
+			t.mark_fn_used('array__pop')
+		}
+	} else {
+		popped = t.transform_expr(call_id)
+		t.drain_pending(mut result)
+	}
 	popped_name := t.new_temp('ignored_array_pop')
 	result << t.make_decl_assign_typed(popped_name, popped, elem_type)
-	result << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(popped_name)),
-		'void'))
+	drop_result := t.make_expr_stmt(t.make_call_typed('drop_owned',
+		arr1(t.make_ident(popped_name)), 'void'))
+	if fn_node.value in ['pop', 'pop_left'] {
+		flags := t.make_selector(array_value, 'flags', 'ArrayFlags')
+		is_slice_flag := t.a.add_node(flat.Node{
+			kind:  .enum_val
+			value: 'ArrayFlags.is_slice'
+			typ:   'ArrayFlags'
+		})
+		is_slice := t.make_method_call(flags, 'has', arr1(is_slice_flag))
+		t.set_node_typ(int(is_slice), 'bool')
+		start := t.a.children.len
+		t.a.children << t.make_prefix(.not, is_slice)
+		t.a.children << t.make_block(arr1(drop_result))
+		result << t.a.add_node(flat.Node{
+			kind:                 .if_expr
+			children_start:       start
+			children_count:       2
+			skip_ownership_drops: true
+		})
+	} else {
+		result << drop_result
+	}
 	return result
 }
 

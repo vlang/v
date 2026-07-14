@@ -516,7 +516,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		t.make_index(container, t.make_ident(idx_name), elem_type)
 	}
 	mut binding_clones := []flat.NodeId{}
-	if !elem_needs_ref && t.ownership_for_in_type_needs_clone(elem_type) {
+	if elem_name != '_' && !elem_needs_ref && t.ownership_for_in_type_needs_clone(elem_type) {
 		pending_start := t.pending_stmts.len
 		elem_expr = t.make_compiler_default_clone_value(elem_expr, elem_type, true)
 		binding_clones = t.pending_stmts[pending_start..].clone()
