@@ -5587,6 +5587,18 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 	mut result := []flat.NodeId{}
 	mut lhs_ids := []flat.NodeId{}
 	mut tmp_names := []string{}
+	mut lhs_was_moved := []bool{len: lhs_count}
+	if !isnil(t.tc) {
+		for i in 0 .. lhs_count {
+			lhs_id := t.multi_assign_lhs_id(node, i)
+			for j in 0 .. rhs_count {
+				if t.tc.ownership_expr_moves_storage(t.multi_assign_rhs_id(node, j), lhs_id) {
+					lhs_was_moved[i] = true
+					break
+				}
+			}
+		}
+	}
 	for i in 0 .. lhs_count {
 		lhs_id := t.multi_assign_lhs_id(node, i)
 		rhs_id := t.multi_assign_rhs_id(node, i)
@@ -5622,7 +5634,9 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		if lhs_type.len == 0 {
 			lhs_type = t.original_expr_type(lhs_id)
 		}
-		t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut result)
+		if !lhs_was_moved[i] {
+			t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut result)
+		}
 		result << t.make_assign(lvalue, t.make_ident(tmp_names[i]))
 	}
 	for lhs_id in lhs_ids {

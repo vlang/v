@@ -1139,10 +1139,57 @@ pub fn (tc &TypeChecker) ownership_type_requires_drop(typ Type) bool {
 	return names.len > 0
 }
 
-// ownership_default_clone_missing_method returns the first Drop-requiring type that a
+// ownership_type_requires_destruction reports whether dropping `typ` must release either
+// builtin storage or a user-defined Drop value.
+pub fn (tc &TypeChecker) ownership_type_requires_destruction(typ Type) bool {
+	mut seen := map[string]bool{}
+	return tc.ownership_type_requires_destruction_inner(typ, 0, mut seen)
+}
+
+fn (tc &TypeChecker) ownership_type_requires_destruction_inner(typ Type, depth int, mut seen map[string]bool) bool {
+	if tc.ownership == unsafe { nil } || depth > 64 {
+		return false
+	}
+	match typ {
+		String, Array, Map, SumType {
+			return true
+		}
+		Alias {
+			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
+		}
+		OptionType {
+			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
+		}
+		ResultType {
+			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
+		}
+		ArrayFixed {
+			return tc.ownership_type_requires_destruction_inner(typ.elem_type, depth + 1, mut seen)
+		}
+		Struct {
+			if tc.ownership_type_has_explicit_drop(typ.name) {
+				return true
+			}
+			if seen[typ.name] {
+				return false
+			}
+			seen[typ.name] = true
+			for field in tc.struct_fields_for_type(typ.name) {
+				if tc.ownership_type_requires_destruction_inner(field.typ, depth + 1, mut seen) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+// ownership_default_clone_missing_method returns the first ownership-bearing type that a
 // compiler-provided IClone implementation cannot clone safely.
 pub fn (tc &TypeChecker) ownership_default_clone_missing_method(typ Type) ?string {
-	if tc.ownership == unsafe { nil } || !tc.ownership_type_requires_drop(typ) {
+	if tc.ownership == unsafe { nil } || !tc.ownership_type_requires_destruction(typ) {
 		return none
 	}
 	mut seen := map[string]bool{}
@@ -1191,7 +1238,7 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			}
 			seen[name] = true
 			for field in tc.struct_fields_for_type(name) {
-				if !tc.ownership_type_requires_drop(field.typ) {
+				if !tc.ownership_type_requires_destruction(field.typ) {
 					continue
 				}
 				if bad := tc.ownership_default_clone_missing_method_inner(field.typ, mut seen) {
@@ -9606,6 +9653,14 @@ fn (tc &TypeChecker) ownership_expr_ident_name(id flat.NodeId) string {
 	}
 
 	return ''
+}
+
+// ownership_expr_moves_storage reports whether `source_id` names storage that overlaps the
+// assignment target and is therefore staged as a move by multi-assignment checking.
+pub fn (tc &TypeChecker) ownership_expr_moves_storage(source_id flat.NodeId, target_id flat.NodeId) bool {
+	source := tc.ownership_expr_ident_name(source_id)
+	target := tc.ownership_expr_ident_name(target_id)
+	return source.len > 0 && target.len > 0 && ownership_storage_keys_overlap(source, target)
 }
 
 fn (tc &TypeChecker) ownership_index_key_part(id flat.NodeId) string {

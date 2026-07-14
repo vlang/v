@@ -494,7 +494,7 @@ fn (mut t Transformer) append_map_value_drop_before_set(map_expr flat.NodeId, ma
 		return
 	}
 	value_type := t.tc.parse_type(value_type_name)
-	if !t.tc.ownership_type_requires_drop(value_type) {
+	if !t.tc.ownership_type_requires_destruction(value_type) {
 		return
 	}
 	ptr_name := t.new_temp('map_old_value')

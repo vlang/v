@@ -10448,6 +10448,11 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		}
 		if clean_map := map_type_from_receiver(clean) {
 			if fn_node.value == 'keys' {
+				if bad_type := tc.ownership_default_clone_missing_method(clean_map.key_type) {
+					tc.record_error(.call_arg_mismatch,
+						'cannot return independent map keys: `${bad_type}` requires ownership destruction but has no `clone()` method',
+						id)
+				}
 				return CallInfo{
 					name:         'map.keys'
 					params:       tarr1(base_type)
@@ -10459,6 +10464,11 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				}
 			}
 			if fn_node.value == 'values' {
+				if bad_type := tc.ownership_default_clone_missing_method(clean_map.value_type) {
+					tc.record_error(.call_arg_mismatch,
+						'cannot return independent map values: `${bad_type}` requires ownership destruction but has no `clone()` method',
+						id)
+				}
 				return CallInfo{
 					name:         'map.values'
 					params:       tarr1(base_type)
@@ -10884,7 +10894,7 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		if fn_node.value == 'clone' && tc.type_has_compiler_default_clone(clean) {
 			if bad_type := tc.ownership_default_clone_missing_method(clean) {
 				tc.record_error(.call_arg_mismatch,
-					'cannot generate default clone for `${clean.name()}`: `${bad_type}` requires `Drop` but has no `clone()` method',
+					'cannot generate default clone for `${clean.name()}`: `${bad_type}` requires ownership destruction but has no `clone()` method',
 					id)
 			}
 			// `#[derive(Clone)]` in Rust maps to `implements IClone` in the ownership
