@@ -717,7 +717,7 @@ fn c_declaration_item(item string, has_brace bool) string {
 		if brace > 0 {
 			head := clean[..brace].trim_space()
 			if head.contains('(') && !c_contains_parenthesized_pointer_declarator(head)
-				&& !c_has_top_level_assign(head) {
+				&& !c_contains_declaration_attribute(head) && !c_has_top_level_assign(head) {
 				return '${head};\n'
 			}
 			if c_tag_declaration_keyword_len(clean) > 0 {
@@ -728,7 +728,7 @@ fn c_declaration_item(item string, has_brace bool) string {
 	}
 	if clean.starts_with('extern ') || clean.starts_with('_Static_assert')
 		|| (clean.contains('(') && !c_contains_parenthesized_pointer_declarator(clean)
-		&& !c_has_top_level_assign(clean)) {
+		&& !c_contains_declaration_attribute(clean) && !c_has_top_level_assign(clean)) {
 		return item
 	}
 	return c_extern_storage_decl(clean.trim_right(';'))
@@ -748,6 +748,11 @@ fn c_contains_parenthesized_pointer_declarator(value string) bool {
 		}
 	}
 	return false
+}
+
+fn c_contains_declaration_attribute(value string) bool {
+	return value.contains('__attribute__') || value.contains('__declspec')
+		|| value.contains('_Alignas(') || value.contains('alignas(')
 }
 
 fn c_tag_declaration_is_type_only(value string, has_brace bool) bool {
@@ -825,6 +830,8 @@ fn c_top_level_assign_index(value string) ?int {
 	mut brace := 0
 	mut quote := u8(0)
 	mut escaped := false
+	mut block_comment := false
+	mut line_comment := false
 	for i, c in value.bytes() {
 		if quote != 0 {
 			if escaped {
@@ -834,6 +841,27 @@ fn c_top_level_assign_index(value string) ?int {
 			} else if c == quote {
 				quote = 0
 			}
+			continue
+		}
+		next := if i + 1 < value.len { value[i + 1] } else { u8(0) }
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+			}
+			continue
+		}
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			continue
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
 			continue
 		}
 		if c == `'` || c == `"` {
@@ -862,7 +890,6 @@ fn c_top_level_assign_index(value string) ?int {
 			`=` {
 				if paren == 0 && bracket == 0 && brace == 0 {
 					prev := if i > 0 { value[i - 1] } else { u8(0) }
-					next := if i + 1 < value.len { value[i + 1] } else { u8(0) }
 					if prev !in [`=`, `!`, `<`, `>`] && next != `=` {
 						return i
 					}
