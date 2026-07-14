@@ -160,7 +160,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		if !target_is_ptr || source_type.starts_with('&') {
 			return expr
 		}
-		if share_source && node.kind in [.ident, .selector, .index] {
+		if share_source && t.expr_can_take_address(id) {
 			addr := t.make_prefix(.amp, expr)
 			t.set_node_typ(int(addr), target_type)
 			return addr

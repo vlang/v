@@ -2847,6 +2847,15 @@ fn test_mut_interface_argument_borrows_existing_interface_box() {
 	assert out == 'ok'
 }
 
+fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
+	v3_bin := build_v3()
+	source := 'interface Value {\n\tget() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nstruct Holder {\n\titem Value\n}\n\nfn make_holder() Holder {\n\treturn Holder{\n\t\titem: Value(Item{\n\t\t\tn: 7\n\t\t})\n\t}\n}\n\nfn make_items() []Value {\n\treturn [Value(Item{\n\t\tn: 9\n\t})]\n}\n\nfn use(value &Value) int {\n\treturn value.get()\n}\n\nfn main() {\n\tprintln(int_str(use(make_holder().item)))\n\tprintln(int_str(use(make_items()[0])))\n}\n'
+	c_source := gen_c(v3_bin, 'pointer_interface_rvalue_sources', source)
+	assert c_source.contains('memdup(&__iface_box_')
+	out := run_good(v3_bin, 'pointer_interface_rvalue_sources_run', source)
+	assert out == '7\n9'
+}
+
 fn test_c_atomic_pointer_load_store_preserves_pointer_width() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'c_atomic_pointer_load_store',

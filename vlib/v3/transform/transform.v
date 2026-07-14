@@ -4913,12 +4913,15 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 		.index {
 			// `a[lo..hi]` (an index node tagged `range`) yields a fresh array value, not an
 			// addressable element, so its address can't be taken in place — runtime_addr
-			// must materialize it to a temp first. Only plain element indexing `a[i]` is an
-			// addressable lvalue.
+			// must materialize it to a temp first. Plain element indexing is addressable only
+			// when the indexed storage is addressable too.
 			if node.value == 'range' {
 				return false
 			}
-			return true
+			if node.children_count == 0 {
+				return false
+			}
+			return t.expr_can_take_address(t.a.child(&node, 0))
 		}
 		.selector {
 			if node.children_count == 0 {
