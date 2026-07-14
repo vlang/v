@@ -2845,7 +2845,7 @@ fn test_latest_pr_review_codegen_regressions() {
 
 fn main() {
 	println(C.strlen(c'\\n'))
-	println(C.strlen(&c'\\n'))
+	println(C.strlen((c'\\n')))
 }
 ")
 	assert c_strings == '1\n1'

@@ -12320,9 +12320,6 @@ fn (tc &TypeChecker) c_string_pointer_arg(id flat.NodeId) bool {
 	if node.kind == .paren && node.children_count > 0 {
 		return tc.c_string_pointer_arg(tc.a.child(&node, 0))
 	}
-	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
-		return tc.c_string_pointer_arg(tc.a.child(&node, 0))
-	}
 	return false
 }
 
