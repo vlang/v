@@ -1,14 +1,21 @@
 module types
 
+import v3.flat
+
 struct OwnershipState {}
 
 pub struct OwnershipDropEntry {
 pub:
-	name      string
-	type_name string
+	name             string
+	type_name        string
+	optional_wrapper bool
 }
 
 pub fn (tc &TypeChecker) ownership_drop_entries_at_return(_ string, _ int) []OwnershipDropEntry {
+	return []OwnershipDropEntry{}
+}
+
+pub fn (tc &TypeChecker) ownership_drop_entries_at_return_node(_ string, _ flat.NodeId) []OwnershipDropEntry {
 	return []OwnershipDropEntry{}
 }
 
