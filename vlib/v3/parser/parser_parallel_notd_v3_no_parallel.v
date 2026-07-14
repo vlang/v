@@ -87,6 +87,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		}
 		bounds := parse_chunk_bounds(sizes, n_jobs)
 		thread_count := n_jobs - 1
+		dispatch_file_id_start := p.next_file_id
 		mut starts := []int{len: paths.len}
 		// Worker parsers are cheap to build (no AST clone: parse output is
 		// per-file independent), so all of them are created up front. Each
@@ -94,6 +95,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		mut workers := []&Parser{cap: thread_count}
 		for ci in 0 .. thread_count {
 			mut w := Parser.new(p.prefs)
+			w.next_file_id = dispatch_file_id_start + bounds[ci + 1]
 			mut chunk_bytes := i64(0)
 			for i in bounds[ci + 1] .. bounds[ci + 2] {
 				chunk_bytes += sizes[i]
@@ -135,6 +137,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			C.pthread_join(thread_ids[ci], unsafe { nil })
 			p.merge_parsed_worker(workers[ci], mut starts, bounds[ci + 1], bounds[ci + 2])
 		}
+		p.next_file_id = dispatch_file_id_start + paths.len
 		return starts, true
 	}
 }
@@ -203,6 +206,15 @@ fn (mut p Parser) merge_parsed_worker(w &Parser, mut starts []int, chunk_start i
 		if is_noreturn {
 			p.a.noreturn_fns[name] = true
 		}
+	}
+	for source in w.source_buffers {
+		p.source_buffers << source
+	}
+	for diagnostic in w.diagnostics {
+		p.diagnostics << diagnostic
+	}
+	for file_id, file in w.a.source_files {
+		p.a.source_files[file_id] = file
 	}
 	p.parsed_v_files += w.parsed_v_files
 }

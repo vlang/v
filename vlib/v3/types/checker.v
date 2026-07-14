@@ -734,11 +734,7 @@ fn (mut tc TypeChecker) record_error(kind TypeErrorKind, msg string, node flat.N
 		} else {
 			''
 		}
-		node_pos:   if int(node) >= 0 && int(node) < tc.a.nodes.len {
-			tc.a.nodes[int(node)].pos.str()
-		} else {
-			''
-		}
+		node_pos:   tc.node_position_string(node)
 	}
 }
 
@@ -762,12 +758,19 @@ fn (tc &TypeChecker) make_type_error(kind TypeErrorKind, msg string, node flat.N
 		} else {
 			''
 		}
-		node_pos:   if int(node) >= 0 && int(node) < tc.a.nodes.len {
-			tc.a.nodes[int(node)].pos.str()
-		} else {
-			''
-		}
+		node_pos:   tc.node_position_string(node)
 	}
+}
+
+fn (tc &TypeChecker) node_position_string(node flat.NodeId) string {
+	if int(node) < 0 || int(node) >= tc.a.nodes.len {
+		return ''
+	}
+	pos := tc.a.nodes[int(node)].pos
+	if source_pos := tc.a.source_position(pos) {
+		return source_pos.str()
+	}
+	return pos.str()
 }
 
 fn (mut tc TypeChecker) record_unsupported_generic(msg string, node flat.NodeId) {
@@ -6569,11 +6572,11 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		return
 	}
 	if kind_id == 21 {
-		tc.check_fn_literal(node)
+		tc.check_fn_literal(id, node)
 		return
 	}
 	if kind_id == 32 {
-		tc.check_lambda_expr(node)
+		tc.check_lambda_expr(id, node)
 		return
 	}
 	if kind_id == 15 {
@@ -7541,7 +7544,7 @@ fn (mut tc TypeChecker) check_defer_stmt(node flat.Node) {
 }
 
 // check_fn_literal validates check fn literal state for types.
-fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
+fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	saved_ret := tc.cur_fn_ret_type
 	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
 	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
@@ -7553,7 +7556,7 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	tc.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
 	$if ownership ? {
-		tc.ownership_begin_fn_literal(node)
+		tc.ownership_begin_fn_literal(id, node)
 	}
 	tc.push_scope()
 	for i in 0 .. node.children_count {
@@ -7580,12 +7583,12 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 }
 
 // check_lambda_expr validates check lambda expr state for types.
-fn (mut tc TypeChecker) check_lambda_expr(node flat.Node) {
+fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
 	$if ownership ? {
-		tc.ownership_begin_lambda_expr(node)
+		tc.ownership_begin_lambda_expr(id, node)
 	}
 	tc.push_scope()
 	for i in 0 .. node.children_count - 1 {

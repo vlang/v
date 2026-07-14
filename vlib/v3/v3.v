@@ -522,6 +522,7 @@ fn clone_flat_ast(ast &flat.FlatAst) &flat.FlatAst {
 		disabled_fns:    clone_string_bool_map(ast.disabled_fns)
 		export_fn_names: clone_string_string_map(ast.export_fn_names)
 		noreturn_fns:    clone_string_bool_map(ast.noreturn_fns)
+		source_files:    ast.source_files.clone()
 	}
 }
 
@@ -982,6 +983,12 @@ fn main() {
 	// Resolve imports recursively
 	import_parse_parallel := resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel)
 	parse_was_parallel = parse_was_parallel || import_parse_parallel
+	if p.diagnostics.len > 0 {
+		for diagnostic in p.diagnostics {
+			eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: error: ${diagnostic.message}')
+		}
+		exit(1)
+	}
 	diagnostic_root := if is_selfhost {
 		diagnostic_root_for_input(input_file, user_files)
 	} else {

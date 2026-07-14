@@ -165,6 +165,7 @@ pub mut:
 	disabled_fns    map[string]bool
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
+	source_files    map[int]&token.File
 }
 
 // set_node_is_mut updates a node's mut declaration marker in place.
@@ -187,7 +188,20 @@ pub fn FlatAst.new() FlatAst {
 		disabled_fns:    map[string]bool{}
 		export_fn_names: map[string]string{}
 		noreturn_fns:    map[string]bool{}
+		source_files:    map[int]&token.File{}
 	}
+}
+
+// source_position resolves an AST source position to file/line/column metadata.
+pub fn (a &FlatAst) source_position(pos token.Pos) ?token.Position {
+	if !pos.is_valid() {
+		return none
+	}
+	file := a.source_files[pos.id] or { return none }
+	if pos.offset < 0 || pos.offset > file.size {
+		return none
+	}
+	return file.position_at(pos.offset)
 }
 
 // add updates add state for FlatAst.
@@ -250,6 +264,22 @@ pub fn (n Node) with_shifted_children(shift i32) Node {
 		kind_id:        n.kind_id
 		pos:            n.pos
 		children_start: n.children_start + shift
+		children_count: n.children_count
+		kind:           n.kind
+		op:             n.op
+		is_mut:         n.is_mut
+	}
+}
+
+// with_pos returns a copy of the node with source position `pos`.
+pub fn (n Node) with_pos(pos token.Pos) Node {
+	return Node{
+		value:          n.value
+		typ:            n.typ
+		generic_params: n.generic_params
+		kind_id:        n.kind_id
+		pos:            pos
+		children_start: n.children_start
 		children_count: n.children_count
 		kind:           n.kind
 		op:             n.op

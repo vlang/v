@@ -7,6 +7,14 @@ pub:
 	id     int
 }
 
+// new_pos creates a source position from a stable file id and byte offset.
+pub fn new_pos(file_id int, offset int) Pos {
+	return Pos{
+		id:     file_id
+		offset: offset
+	}
+}
+
 // str returns the string form for Pos.
 pub fn (p Pos) str() string {
 	return '{ offset: ${p.offset}, id: ${p.id} }'
@@ -32,6 +40,7 @@ pub fn (p Position) str() string {
 }
 
 // File represents file data used by token.
+@[heap]
 pub struct File {
 pub:
 	name string
@@ -112,6 +121,16 @@ pub fn (mut f File) add_line(offset int) {
 	f.line_offsets << offset
 }
 
+// index_lines records every source-line start for logarithmic position lookup.
+pub fn (mut f File) index_lines(src string) {
+	f.line_offsets = [0]
+	for i, ch in src {
+		if ch == `\n` {
+			f.line_offsets << i + 1
+		}
+	}
+}
+
 // line_count supports line count handling for File.
 @[inline]
 pub fn (f &File) line_count() int {
@@ -155,6 +174,11 @@ pub fn (mut f File) pos(offset int) Pos {
 // position supports position handling for File.
 pub fn (f &File) position(pos Pos) Position {
 	offset := pos.offset - f.base
+	return f.position_at(offset)
+}
+
+// position_at resolves a file-local byte offset to a presentation position.
+pub fn (f &File) position_at(offset int) Position {
 	line, column := f.find_line_and_column(offset)
 	return Position{
 		filename: f.name
