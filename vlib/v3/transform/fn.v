@@ -5639,7 +5639,11 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		key_storage_type := t.map_key_storage_type(key_type)
 		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(t.a.child(&node, 1),
 			key_type), key_storage_type)
-		t.append_owned_map_entry_drop_before_delete(base, base_type, key_name, key_type, value_type)
+		handled_delete := t.append_owned_map_entry_delete_with_drops(base, base_type, key_name,
+			key_type, value_type)
+		if handled_delete {
+			return t.make_empty()
+		}
 		return t.make_call_typed('map__delete', arr2(t.runtime_addr(base, base_type), t.make_prefix(.amp,
 			t.make_ident(key_name))), 'void')
 	}
@@ -5766,11 +5770,12 @@ fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.
 	})
 }
 
-// append_owned_map_entry_drop_before_delete destroys the stored ownership-bearing key and
-// value before map__delete turns the entry into a tombstone.
-fn (mut t Transformer) append_owned_map_entry_drop_before_delete(map_expr flat.NodeId, map_type string, key_name string, key_type_name string, value_type_name string) {
+// append_owned_map_entry_delete_with_drops snapshots ownership-bearing stored values,
+// removes the entry, and only then destroys the snapshots so key mutation cannot prevent
+// map__delete from finding the entry.
+fn (mut t Transformer) append_owned_map_entry_delete_with_drops(map_expr flat.NodeId, map_type string, key_name string, key_type_name string, value_type_name string) bool {
 	if isnil(t.tc) {
-		return
+		return false
 	}
 	clean_key_type := t.normalize_type_alias(key_type_name).trim_space()
 	key_requires_drop := clean_key_type != 'string'
@@ -5778,12 +5783,13 @@ fn (mut t Transformer) append_owned_map_entry_drop_before_delete(map_expr flat.N
 	value_requires_drop :=
 		t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type_name))
 	if !key_requires_drop && !value_requires_drop {
-		return
+		return false
 	}
 	value_ptr_name := t.new_temp('map_delete_value')
 	value_ptr := t.make_map_get_check_expr(map_expr, map_type, key_name)
 	t.pending_stmts << t.make_decl_assign_typed(value_ptr_name, value_ptr, 'voidptr')
 	mut body := []flat.NodeId{}
+	mut saved_key_name := ''
 	if key_requires_drop {
 		t.mark_fn_used('map__get_key_check')
 		key_ptr_name := t.new_temp('map_delete_key')
@@ -5792,17 +5798,39 @@ fn (mut t Transformer) append_owned_map_entry_drop_before_delete(map_expr flat.N
 		key_ptr := t.make_cast('&${key_type_name}', t.make_ident(key_ptr_name), '&${key_type_name}')
 		stored_key := t.make_prefix(.mul, key_ptr)
 		t.set_node_typ(int(stored_key), key_type_name)
-		body << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stored_key), 'void'))
+		saved_key_name = t.new_temp('map_deleted_key')
+		body << t.make_decl_assign_typed(saved_key_name, stored_key, key_type_name)
 	}
+	mut saved_value_name := ''
 	if value_requires_drop {
 		stored_value_ptr := t.make_cast('&${value_type_name}', t.make_ident(value_ptr_name),
 			'&${value_type_name}')
 		stored_value := t.make_prefix(.mul, stored_value_ptr)
 		t.set_node_typ(int(stored_value), value_type_name)
-		body << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stored_value), 'void'))
+		saved_value_name = t.new_temp('map_deleted_value')
+		body << t.make_decl_assign_typed(saved_value_name, stored_value, value_type_name)
+	}
+	body << t.make_expr_stmt(t.make_call_typed('map__delete', arr2(t.runtime_addr(map_expr,
+		map_type), t.make_prefix(.amp, t.make_ident(key_name))), 'void'))
+	if key_requires_drop {
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned',
+			arr1(t.make_ident(saved_key_name)), 'void'))
+	}
+	if value_requires_drop {
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned',
+			arr1(t.make_ident(saved_value_name)), 'void'))
 	}
 	found := t.make_infix(.ne, t.make_ident(value_ptr_name), t.a.add(.nil_literal))
-	t.pending_stmts << t.make_if(found, t.make_block(body), t.make_empty())
+	start := t.a.children.len
+	t.a.children << found
+	t.a.children << t.make_block(body)
+	t.pending_stmts << t.a.add_node(flat.Node{
+		kind:                 .if_expr
+		children_start:       start
+		children_count:       2
+		skip_ownership_drops: true
+	})
+	return true
 }
 
 fn map_method_is_lowered_by_transform(method string) bool {
