@@ -478,6 +478,19 @@ fn (mut t Transformer) clone_attribute_subst(id flat.NodeId, var_name string, at
 		return id
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .comptime_if {
+		cond := t.subst_attribute_cond(node.value, var_name, attr)
+		if comptime_cond_references_ident(node.value, var_name)
+			&& !comptime_cond_has_loop_member_ref(cond, var_name) {
+			if taken := t.eval_field_cond(cond) {
+				branch_idx := if taken { 0 } else { 1 }
+				if branch_idx >= int(node.children_count) {
+					return t.make_block([]flat.NodeId{})
+				}
+				return t.clone_attribute_subst(t.a.child(&node, branch_idx), var_name, attr)
+			}
+		}
+	}
 	if node.kind == .ident && node.value == var_name {
 		return t.make_attribute_literal(attr)
 	}
@@ -494,6 +507,27 @@ fn (mut t Transformer) clone_attribute_subst(id flat.NodeId, var_name string, at
 		}
 	}
 	return t.clone_attribute_subst_children(node, var_name, attr)
+}
+
+fn (t &Transformer) subst_attribute_cond(cond string, var_name string, attr AttributeMeta) string {
+	mut result := cond.replace('${var_name}.has_arg', attr.has_arg.str())
+	result = result.replace('${var_name}.name', "'${attr.name}'")
+	result = result.replace('${var_name}.arg', "'${attr.arg}'")
+	kind_value := comptime_attribute_kind_cond_value(attr.kind)
+	result = result.replace('${var_name}.kind ==.', '${kind_value} == .')
+	result = result.replace('${var_name}.kind !=.', '${kind_value} != .')
+	result = result.replace('${var_name}.kind', kind_value)
+	return result
+}
+
+fn comptime_attribute_kind_cond_value(kind int) string {
+	return match kind {
+		1 { '.string' }
+		2 { '.number' }
+		3 { '.bool' }
+		4 { '.comptime_define' }
+		else { '.plain' }
+	}
 }
 
 fn (mut t Transformer) clone_attribute_subst_children(node flat.Node, var_name string, attr AttributeMeta) flat.NodeId {

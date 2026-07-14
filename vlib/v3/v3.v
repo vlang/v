@@ -550,7 +550,7 @@ fn clone_typechecker_after_scoped_transform(mut tc types.TypeChecker, ast &flat.
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
-		eprintln('usage: v3 [run] <file.v> [-o output|file.c] [-b c|arm64|eval] [-c99] [-d flag]')
+		eprintln('usage: v3 [run] <file.v> [-o output|file.c] [-b c|arm64|eval] [-os target] [-c99] [-d flag]')
 		exit(1)
 	}
 
@@ -558,6 +558,7 @@ fn main() {
 	mut output_file := ''
 	mut explicit_output := false
 	mut backend := 'c'
+	mut target_os := os.user_os()
 	mut is_prod := false
 	mut is_shared := false
 	mut is_strict := false
@@ -597,6 +598,9 @@ fn main() {
 			i += 2
 		} else if args[i] == '-b' && i + 1 < args.len {
 			backend = args[i + 1]
+			i += 2
+		} else if args[i] == '-os' && i + 1 < args.len {
+			target_os = args[i + 1]
 			i += 2
 		} else if args[i] == '-prod' {
 			is_prod = true
@@ -777,6 +781,7 @@ fn main() {
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
 	prefs.backend = backend
+	prefs.target_os = target_os
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
 	prefs.vroot = resolve_vroot_for_input(prefs.vroot, input_file)

@@ -2673,8 +2673,8 @@ fn (p &Parser) resolve_comptime_at_values(cond string) string {
 	fn_name := p.cur_fn.all_after_last('.')
 	method_name := if p.cur_struct.len > 0 { '${p.cur_struct}.${fn_name}' } else { fn_name }
 	return cond.replace('@METHOD', method_name).replace('@STRUCT', p.cur_struct).replace('@MOD',
-		module_name).replace('@FN', fn_name).replace('@OS', @OS).replace('@CCOMPILER', @CCOMPILER).replace('@BACKEND',
-		p.prefs.backend).replace('@PLATFORM', @PLATFORM)
+		module_name).replace('@FN', fn_name).replace('@OS', p.prefs.normalized_target_os()).replace('@CCOMPILER',
+		@CCOMPILER).replace('@BACKEND', p.prefs.backend).replace('@PLATFORM', @PLATFORM)
 }
 
 // comptime_char_is_name_cont reports whether the byte at `pos` continues an identifier. Used
@@ -4590,6 +4590,7 @@ fn (mut p Parser) match_branch() flat.NodeId {
 	p.check(.lcbr)
 	block_scope := p.block_local_type_scope(branch_block_start)
 	p.push_local_type_scope(block_scope)
+	p.begin_comptime_value_scope()
 	p.predeclare_local_type_names_in_block(branch_block_start)
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.looks_like_match_branch_start() {
@@ -4601,6 +4602,7 @@ fn (mut p Parser) match_branch() flat.NodeId {
 		}
 	}
 	p.check(.rcbr)
+	p.end_comptime_value_scope()
 	if block_scope.len > 0 {
 		p.pop_local_type_scope()
 	}
@@ -5541,7 +5543,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.a.add_val_id(5, p.prefs.build_timestamp)
 			}
 			if name == '@OS' {
-				return p.a.add_val_id(5, @OS)
+				return p.a.add_val_id(5, p.prefs.normalized_target_os())
 			}
 			if name == '@CCOMPILER' {
 				return p.a.add_val_id(5, @CCOMPILER)
