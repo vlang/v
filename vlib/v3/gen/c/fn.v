@@ -1734,6 +1734,22 @@ fn (mut g FlatGen) spawn_wrapper_decls() {
 	}
 }
 
+fn (mut g FlatGen) add_spawn_wrapper_def(def string) {
+	if g.spawn_wrapper_defs_seen[def] {
+		return
+	}
+	g.spawn_wrapper_defs_seen[def] = true
+	g.spawn_wrapper_defs << def
+}
+
+fn (mut g FlatGen) add_callback_wrapper_def(def string) {
+	if g.callback_wrapper_defs_seen[def] {
+		return
+	}
+	g.callback_wrapper_defs_seen[def] = true
+	g.callback_wrapper_defs << def
+}
+
 // expr_is_addressable reports whether an expression denotes a stable lvalue whose address
 // outlives the enclosing statement expression — a variable, a field/index access reaching one,
 // or a dereference. Rvalues (struct literals, calls, ...) only have temporary storage, so their
@@ -1929,9 +1945,9 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 		call_args << 'a${i}'
 	}
 	wparam_str := if wparams.len == 0 { 'void' } else { wparams.join(', ') }
-	g.spawn_wrapper_defs << 'static ${recv_ct} ${ctx_name};'
+	g.add_spawn_wrapper_def('static ${recv_ct} ${ctx_name};')
 	ret_prefix := if ret_ct == 'void' { '' } else { 'return ' }
-	g.spawn_wrapper_defs << 'static ${ret_ct} ${wrap_name}(${wparam_str}) { ${ret_prefix}${cname}(${call_args.join(', ')}); }'
+	g.add_spawn_wrapper_def('static ${ret_ct} ${wrap_name}(${wparam_str}) { ${ret_prefix}${cname}(${call_args.join(', ')}); }')
 	base_is_ptr := base_type is types.Pointer
 	// Set the context global to the receiver, then yield the wrapper as the value.
 	if recv_is_ptr && !base_is_ptr && !g.expr_is_addressable(base_id) {
@@ -1939,7 +1955,7 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 		// `&(rvalue)` captures a temporary that dies with the enclosing statement expression,
 		// before the callback runs. Copy the receiver into a durable static slot and point at it.
 		val_ct := g.tc.c_type(types.unwrap_pointer(params[0]))
-		g.spawn_wrapper_defs << 'static ${val_ct} ${ctx_name}_recv;'
+		g.add_spawn_wrapper_def('static ${val_ct} ${ctx_name}_recv;')
 		g.write('({ ${ctx_name}_recv = ')
 		g.gen_expr(base_id)
 		g.write('; ${ctx_name} = &${ctx_name}_recv')
@@ -2137,7 +2153,7 @@ fn (mut g FlatGen) ensure_noarg_spawn_wrapper(cfn string, ret_ct string) string 
 	name := g.cname('${cfn}_thread_wrapper')
 	g.spawn_wrapper_names[key] = name
 	body := spawn_wrapper_body('${cfn}()', ret_ct, '')
-	g.spawn_wrapper_defs << 'static void* ${name}(void* arg) { (void)arg; ${body} }'
+	g.add_spawn_wrapper_def('static void* ${name}(void* arg) { (void)arg; ${body} }')
 	return name
 }
 
@@ -2149,7 +2165,7 @@ fn (mut g FlatGen) ensure_receiver_spawn_wrapper(cfn string, receiver_ct string,
 	name := g.cname('${cfn}_thread_wrapper')
 	g.spawn_wrapper_names[key] = name
 	body := spawn_wrapper_body('${cfn}((${receiver_ct})arg)', ret_ct, '')
-	g.spawn_wrapper_defs << 'static void* ${name}(void* arg) { ${body} }'
+	g.add_spawn_wrapper_def('static void* ${name}(void* arg) { ${body} }')
 	return name
 }
 
@@ -2177,9 +2193,9 @@ fn (mut g FlatGen) ensure_args_spawn_wrapper(cfn string, args []SpawnPackedArg, 
 		fields += '${arg.field_ct} a${i}; '
 		call_args << arg.call_expr
 	}
-	g.spawn_wrapper_defs << 'typedef struct { ${fields}} ${struct_name};'
+	g.add_spawn_wrapper_def('typedef struct { ${fields}} ${struct_name};')
 	body := spawn_wrapper_body('${cfn}(${call_args.join(', ')})', ret_ct, 'free(p); ')
-	g.spawn_wrapper_defs << 'static void* ${wrapper_name}(void* arg) { ${struct_name}* p = (${struct_name}*)arg; ${body} }'
+	g.add_spawn_wrapper_def('static void* ${wrapper_name}(void* arg) { ${struct_name}* p = (${struct_name}*)arg; ${body} }')
 	return wrapper_name, struct_name
 }
 
@@ -2213,9 +2229,9 @@ fn (mut g FlatGen) ensure_fn_value_spawn_wrapper(fn_ct string, args []SpawnPacke
 		fields += '${arg.field_ct} a${i}; '
 		call_args << arg.call_expr
 	}
-	g.spawn_wrapper_defs << 'typedef struct { ${fields}} ${struct_name};'
+	g.add_spawn_wrapper_def('typedef struct { ${fields}} ${struct_name};')
 	body := spawn_wrapper_body('p->f(${call_args.join(', ')})', ret_ct, 'free(p); ')
-	g.spawn_wrapper_defs << 'static void* ${wrapper_name}(void* arg) { ${struct_name}* p = (${struct_name}*)arg; ${body} }'
+	g.add_spawn_wrapper_def('static void* ${wrapper_name}(void* arg) { ${struct_name}* p = (${struct_name}*)arg; ${body} }')
 	return wrapper_name, struct_name
 }
 
@@ -6693,7 +6709,7 @@ fn (mut g FlatGen) ensure_callback_userdata_wrapper(actual_name string, actual t
 	} else {
 		'static ${expected_ret_ct} ${name}(${params}) { return ${call}; }'
 	}
-	g.callback_wrapper_defs << body
+	g.add_callback_wrapper_def(body)
 	return name
 }
 

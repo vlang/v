@@ -595,8 +595,10 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		generic_method_candidates:      g.generic_method_candidates
 		spawn_wrapper_names:            g.spawn_wrapper_names.clone()
 		spawn_wrapper_defs:             g.spawn_wrapper_defs.clone()
+		spawn_wrapper_defs_seen:        g.spawn_wrapper_defs_seen.clone()
 		callback_wrapper_names:         g.callback_wrapper_names.clone()
 		callback_wrapper_defs:          g.callback_wrapper_defs.clone()
+		callback_wrapper_defs_seen:     g.callback_wrapper_defs_seen.clone()
 		scope_parallel_workers:         g.scope_parallel_workers
 		c_name_cache:                   &CNameCache{}
 		// The const short-name index is read-only after its first build (the
@@ -737,9 +739,7 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 		}
 	}
 	for def in w.spawn_wrapper_defs {
-		if def !in g.spawn_wrapper_defs {
-			g.spawn_wrapper_defs << def
-		}
+		g.add_spawn_wrapper_def(def)
 	}
 	for key, name in w.callback_wrapper_names {
 		if key !in g.callback_wrapper_names {
@@ -747,9 +747,7 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 		}
 	}
 	for def in w.callback_wrapper_defs {
-		if def !in g.callback_wrapper_defs {
-			g.callback_wrapper_defs << def
-		}
+		g.add_callback_wrapper_def(def)
 	}
 }
 
@@ -788,8 +786,10 @@ fn (g &FlatGen) postamble_fork(worker_id int) &FlatGen {
 	w.embedded_fields_by_type = g.embedded_fields_by_type.clone()
 	w.spawn_wrapper_names = g.spawn_wrapper_names.clone()
 	w.spawn_wrapper_defs = g.spawn_wrapper_defs.clone()
+	w.spawn_wrapper_defs_seen = g.spawn_wrapper_defs_seen.clone()
 	w.callback_wrapper_names = g.callback_wrapper_names.clone()
 	w.callback_wrapper_defs = g.callback_wrapper_defs.clone()
+	w.callback_wrapper_defs_seen = g.callback_wrapper_defs_seen.clone()
 	w.c_extern_refs = g.c_extern_refs.clone()
 	w.c_extern_refs_ready = g.c_extern_refs_ready
 	w.worker_scope = unsafe { nil }

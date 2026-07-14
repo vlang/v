@@ -157,23 +157,25 @@ mut:
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
 	// but a literal in a local decl / argument elsewhere in the body does not.
-	in_return                 bool
-	expected_expr_type        types.Type = types.Type(types.void_)
-	expected_enum             string
-	needed_optional_types     map[string]string
-	emitted_optional_types    map[string]bool
-	emitted_fns               map[string]bool
-	array_method_cache        map[string]string
-	param_types_cache         map[string][]types.Type        // (name|fallback) -> resolved param types
-	embedded_fields_by_type   map[string][]types.StructField // type name -> its embedded fields (usually empty)
-	param_types_by_short      map[string][]types.Type        // method short-name suffix -> param types (fallback index)
-	generic_method_candidates map[string][]GenericMethodCandidate
-	spawn_wrapper_names       map[string]string
-	spawn_wrapper_defs        []string
-	callback_wrapper_names    map[string]string
-	callback_wrapper_defs     []string
-	parallel_used             bool
-	c_name_cache              &CNameCache = unsafe { nil }
+	in_return                  bool
+	expected_expr_type         types.Type = types.Type(types.void_)
+	expected_enum              string
+	needed_optional_types      map[string]string
+	emitted_optional_types     map[string]bool
+	emitted_fns                map[string]bool
+	array_method_cache         map[string]string
+	param_types_cache          map[string][]types.Type        // (name|fallback) -> resolved param types
+	embedded_fields_by_type    map[string][]types.StructField // type name -> its embedded fields (usually empty)
+	param_types_by_short       map[string][]types.Type        // method short-name suffix -> param types (fallback index)
+	generic_method_candidates  map[string][]GenericMethodCandidate
+	spawn_wrapper_names        map[string]string
+	spawn_wrapper_defs         []string
+	spawn_wrapper_defs_seen    map[string]bool
+	callback_wrapper_names     map[string]string
+	callback_wrapper_defs      []string
+	callback_wrapper_defs_seen map[string]bool
+	parallel_used              bool
+	c_name_cache               &CNameCache = unsafe { nil }
 	// Body-independent postamble segments emitted on helper threads while the
 	// fn-body workers run; spliced into the final output in the exact order
 	// the serial postamble produces them.
@@ -472,8 +474,10 @@ pub fn FlatGen.new() FlatGen {
 		generic_method_candidates:      map[string][]GenericMethodCandidate{}
 		spawn_wrapper_names:            map[string]string{}
 		spawn_wrapper_defs:             []string{}
+		spawn_wrapper_defs_seen:        map[string]bool{}
 		callback_wrapper_names:         map[string]string{}
 		callback_wrapper_defs:          []string{}
+		callback_wrapper_defs_seen:     map[string]bool{}
 		str_lits:                       []string{}
 		defers:                         []flat.NodeId{}
 		fn_defers:                      []flat.NodeId{}
@@ -642,8 +646,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.generic_method_candidates.clear()
 	g.spawn_wrapper_names.clear()
 	g.spawn_wrapper_defs = []string{}
+	g.spawn_wrapper_defs_seen.clear()
 	g.callback_wrapper_names.clear()
 	g.callback_wrapper_defs = []string{}
+	g.callback_wrapper_defs_seen.clear()
 	g.parallel_used = false
 	g.c_name_cache = &CNameCache{}
 	g.post_segs = []string{}
