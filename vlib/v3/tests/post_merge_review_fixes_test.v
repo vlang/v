@@ -2969,10 +2969,17 @@ fn take_i64(value struct {
 	return value.x
 }
 
+fn take_grouped(value struct {
+	x, y int
+}) int {
+	return value.x * 10 + value.y
+}
+
 fn main() {
 	println(int_str(take_int(struct { x: 7 })))
 	println(take_string(struct { x: "right" }))
 	println(take_i64(struct { x: 9 }))
+	println(int_str(take_grouped(struct { x: 2, y: 3 })))
 	mut values := []struct {
 		x int
 	}{}
@@ -2980,7 +2987,7 @@ fn main() {
 	println(int_str(values[0].x))
 }
 ')
-	assert out == '7\nright\n9\n13'
+	assert out == '7\nright\n9\n23\n13'
 }
 
 fn test_latest_pr_review_codegen_regressions() {

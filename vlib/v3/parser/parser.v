@@ -6919,6 +6919,35 @@ fn (mut p Parser) parse_anonymous_struct_type() string {
 			continue
 		}
 		field_name := p.expect_name_or_keyword()
+		// Grouped fields use one trailing type for every preceding name:
+		// `struct { x, y int }`.
+		if p.tok == .comma {
+			mut names := []string{cap: 2}
+			names << field_name
+			for p.tok == .comma {
+				p.next()
+				names << p.expect_name_or_keyword()
+			}
+			field_type := p.parse_type_name()
+			mut attrs := []string{}
+			if p.tok == .attribute || p.tok == .lsbr {
+				attrs << p.parse_field_attrs()
+			}
+			for name in names {
+				fid := p.a.add_node(flat.Node{
+					kind:  .field_decl
+					value: name
+					typ:   field_type
+				})
+				p.apply_field_meta(fid, false, false, attrs)
+				ids << fid
+				field_names << name
+			}
+			if p.tok == .semicolon || p.tok == .comma {
+				p.next()
+			}
+			continue
+		}
 		field_type := p.parse_type_name()
 		mut default_id := flat.empty_node
 		if p.tok == .assign {
