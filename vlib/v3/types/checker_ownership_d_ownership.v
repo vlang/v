@@ -574,6 +574,21 @@ fn ownership_merge_drop_lists_by_name(mut dst map[string][]OwnershipDropEntry, s
 	}
 }
 
+fn ownership_merge_drop_entries(existing []OwnershipDropEntry, extra []OwnershipDropEntry) []OwnershipDropEntry {
+	mut merged := existing.clone()
+	mut names := map[string]bool{}
+	for entry in merged {
+		names[entry.name] = true
+	}
+	for entry in extra {
+		if entry.name !in names {
+			merged << entry
+			names[entry.name] = true
+		}
+	}
+	return merged
+}
+
 fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	if tc.ownership == unsafe { nil } || w.ownership == unsafe { nil } {
 		return
@@ -4551,8 +4566,10 @@ fn (mut tc TypeChecker) ownership_end_fn() {
 	if st.cur_fn.len > 0 {
 		entries := tc.ownership_live_drop_entries()
 		if entries.len > 0 {
-			st.drop_at_fn_exit[st.cur_fn] = entries
-			tc.ownership_note_drop_types(st.cur_fn, entries)
+			existing := st.drop_at_fn_exit[st.cur_fn] or { []OwnershipDropEntry{} }
+			merged := ownership_merge_drop_entries(existing, entries)
+			st.drop_at_fn_exit[st.cur_fn] = merged
+			tc.ownership_note_drop_types(st.cur_fn, merged)
 		}
 	}
 	frame := st.frames.pop()

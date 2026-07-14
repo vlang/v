@@ -412,6 +412,7 @@ fn (mut g FlatGen) gen_if_expr(node flat.Node) {
 fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
 	if ret_type is types.MultiReturn {
 		if g.gen_if_expr_multi_return_block(block, ret_type) {
+			g.gen_scope_ownership_drops()
 			return
 		}
 	}
@@ -438,6 +439,7 @@ fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
 			g.gen_node(child_id)
 		}
 	}
+	g.gen_scope_ownership_drops()
 }
 
 fn (g &FlatGen) multi_return_tail_parts(block &flat.Node, count int) ?MultiReturnTailParts {

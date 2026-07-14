@@ -3605,6 +3605,7 @@ fn (mut g FlatGen) gen_multi_return_or_rhs(or_node flat.Node, rhs_multi types.Mu
 		}
 	} else {
 		g.gen_or_body_value(or_body, tmp, types.Type(rhs_multi))
+		g.gen_scope_ownership_drops()
 	}
 	g.indent--
 	g.pop_scope()
@@ -4001,6 +4002,7 @@ fn (mut g FlatGen) gen_assign_or_expr(node flat.Node, lhs_idx int, or_node flat.
 			child_id := g.a.child(&or_body, j)
 			g.gen_node(child_id)
 		}
+		g.gen_scope_ownership_drops()
 	}
 	g.indent--
 	g.pop_scope()
@@ -4055,23 +4057,26 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 		} else {
 			g.writeln('panic(IError__str(err));')
 		}
-	} else if or_body.children_count > 0 {
-		for i in 0 .. or_body.children_count {
-			child_id := g.a.child(&or_body, i)
-			child := g.a.nodes[int(child_id)]
-			if i == or_body.children_count - 1 && child.kind == .expr_stmt {
-				inner_id := g.a.child(&child, 0)
-				if g.is_noreturn_call(inner_id) {
-					g.gen_node(child_id)
+	} else {
+		if or_body.children_count > 0 {
+			for i in 0 .. or_body.children_count {
+				child_id := g.a.child(&or_body, i)
+				child := g.a.nodes[int(child_id)]
+				if i == or_body.children_count - 1 && child.kind == .expr_stmt {
+					inner_id := g.a.child(&child, 0)
+					if g.is_noreturn_call(inner_id) {
+						g.gen_node(child_id)
+					} else {
+						g.write('${g.cname(lhs.value)} = ')
+						g.gen_expr(g.a.child(&child, 0))
+						g.writeln(';')
+					}
 				} else {
-					g.write('${g.cname(lhs.value)} = ')
-					g.gen_expr(g.a.child(&child, 0))
-					g.writeln(';')
+					g.gen_node(child_id)
 				}
-			} else {
-				g.gen_node(child_id)
 			}
 		}
+		g.gen_scope_ownership_drops()
 	}
 	g.indent--
 	g.pop_scope()
@@ -4115,6 +4120,7 @@ fn (mut g FlatGen) gen_decl_or_map_index(lhs flat.Node, expr_node flat.Node, m t
 			}
 		}
 	}
+	g.gen_scope_ownership_drops()
 	g.indent--
 	g.writeln('}')
 }
@@ -4222,6 +4228,7 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 			for i in 0 .. or_body.children_count {
 				g.gen_node(g.a.child(&or_body, i))
 			}
+			g.gen_scope_ownership_drops()
 		}
 		g.pop_scope()
 		g.write(' } 0;})')
@@ -4239,6 +4246,7 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 	g.push_scope()
 	g.tc.cur_scope.insert('err', g.tc.parse_type('IError'))
 	g.gen_or_body_value(or_body, val, val_type)
+	g.gen_scope_ownership_drops()
 	g.pop_scope()
 	g.write(' } ${val};})')
 }
@@ -4390,6 +4398,7 @@ fn (mut g FlatGen) gen_or_map_index(expr_node flat.Node, m types.Map, or_body fl
 	g.gen_expr(g.a.child(&expr_node, 1))
 	g.write('}); ${c_val} ${val}; if (${tmp}) { ${val} = *(${c_val}*)${tmp}; } else { ')
 	g.gen_or_body_value(or_body, val, m.value_type)
+	g.gen_scope_ownership_drops()
 	g.write(' } ${val};})')
 }
 
@@ -4423,6 +4432,7 @@ fn (mut g FlatGen) gen_or_expr_stmt(node flat.Node) {
 		for i in 0 .. or_body.children_count {
 			g.gen_node(g.a.child(&or_body, i))
 		}
+		g.gen_scope_ownership_drops()
 	}
 	g.indent--
 	g.pop_scope()
