@@ -7622,6 +7622,11 @@ fn (mut tc TypeChecker) check_block(id flat.NodeId, node flat.Node) {
 // check_for_stmt validates check for stmt state for types.
 fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	tc.push_scope()
+	$if ownership ? {
+		if node.children_count > 0 {
+			tc.ownership_mark_scope_node(tc.a.child(&node, 0))
+		}
+	}
 	if node.children_count > 0 {
 		init_id := tc.a.child(&node, 0)
 		if int(init_id) >= 0 {

@@ -68,6 +68,13 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	cond_id := g.a.child(&node, 1)
 	cond_node := g.a.nodes[int(cond_id)]
 	post_node := g.a.child_node(&node, 2)
+	wrap_init := init_node.kind != .empty
+
+	if wrap_init {
+		g.writeln('{')
+		g.indent++
+		g.gen_node(g.a.child(&node, 0))
+	}
 
 	if init_node.kind == .empty && cond_node.kind == .empty && post_node.kind == .empty {
 		g.writeln('for (;;) {')
@@ -76,11 +83,7 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 		g.gen_expr(cond_id)
 		g.writeln(') {')
 	} else {
-		g.write('for (')
-		if init_node.kind != .empty {
-			g.gen_node_inline(g.a.child(&node, 0))
-		}
-		g.write('; ')
+		g.write('for (; ')
 		if cond_node.kind != .empty {
 			g.gen_expr(cond_id)
 		}
@@ -102,6 +105,11 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.trim_defers(defer_start)
 	g.indent--
 	g.writeln('}')
+	g.gen_scope_ownership_drops()
+	if wrap_init {
+		g.indent--
+		g.writeln('}')
+	}
 	g.pop_scope()
 	g.pop_loop_label_depth(label_state)
 }

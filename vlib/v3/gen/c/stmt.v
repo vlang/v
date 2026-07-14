@@ -404,7 +404,16 @@ fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 			g.writeln('#error missing generated Drop method for ${entry.type_name}')
 			continue
 		}
-		g.writeln('${g.cname(method)}(&${g.cname(entry.name)});')
+		cname := g.cname(entry.name)
+		if entry.optional_wrapper {
+			g.writeln('if (${cname}.ok) {')
+			g.indent++
+			g.writeln('${g.cname(method)}(&${cname}.value);')
+			g.indent--
+			g.writeln('}')
+			continue
+		}
+		g.writeln('${g.cname(method)}(&${cname});')
 	}
 }
 

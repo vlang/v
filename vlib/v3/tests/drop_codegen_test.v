@@ -150,6 +150,10 @@ fn maybe_resource() ?Resource {
 	return Resource{22}
 }
 
+fn maybe_resource_id(id int) ?Resource {
+	return Resource{id}
+}
+
 fn if_guard_binding_drop() {
 	if r := maybe_resource() {
 		println('guard ${r.id}')
@@ -173,6 +177,36 @@ fn select_branch_drop() {
 		value := <-ch {
 			r := Resource{value}
 			println('select \${r.id}')
+		}
+	}
+}
+
+fn optional_wrapper_local_drop() {
+	x := maybe_resource_id(25)
+	if x != none {
+		println('optional wrapper')
+	}
+}
+
+fn c_for_init_normal_drop() {
+	mut keep_going := true
+	for r := Resource{26}; keep_going; keep_going = false {
+		println('for init ${r.id}')
+	}
+}
+
+fn c_for_init_break_drop() {
+	for r := Resource{27}; true; {
+		println('for break ${r.id}')
+		break
+	}
+}
+
+fn c_for_init_labelled_break_drop() {
+	outer: for r := Resource{28}; true; {
+		for {
+			println('for labelled break ${r.id}')
+			break outer
 		}
 	}
 }
@@ -223,6 +257,10 @@ fn main() {
 	if_guard_binding_drop()
 	match_branch_drop(0)
 	select_branch_drop()
+	optional_wrapper_local_drop()
+	c_for_init_normal_drop()
+	c_for_init_break_drop()
+	c_for_init_labelled_break_drop()
 	loop_exits()
 }
 ") or {
@@ -232,5 +270,5 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\nelse branch\ndrop 14\ndrop 15\n15\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 21\ndrop 20\nguard 22\ndrop 22\nmatch 23\ndrop 23\nselect 24\ndrop 24\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
+	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\nelse branch\ndrop 14\ndrop 15\n15\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 21\ndrop 20\nguard 22\ndrop 22\nmatch 23\ndrop 23\nselect 24\ndrop 24\noptional wrapper\ndrop 25\nfor init 26\ndrop 26\nfor break 27\ndrop 27\nfor labelled break 28\ndrop 28\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
 }

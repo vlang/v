@@ -100,17 +100,23 @@ struct OwnershipCaptureBinding {
 }
 
 // OwnershipDropEntry identifies one still-owned local whose concrete type
-// implements Drop. Code generators consume these snapshots at lexical and
-// function exits.
+// implements Drop, or an optional/result wrapper whose payload does. Code
+// generators consume these snapshots at lexical and function exits.
 pub struct OwnershipDropEntry {
 pub:
-	name      string
-	type_name string
+	name             string
+	type_name        string
+	optional_wrapper bool
 }
 
 struct OwnershipDropCandidate {
 	name string
 	pos  int
+}
+
+struct OwnershipDropTarget {
+	type_name        string
+	optional_wrapper bool
 }
 
 struct OwnershipMethodValueReceiverResult {
@@ -1044,22 +1050,50 @@ fn (mut tc TypeChecker) ownership_live_drop_entry(name string) ?OwnershipDropEnt
 		return none
 	}
 	type_name := st.owned_var_types[name] or { return none }
-	if !tc.ownership_type_name_has_drop(type_name) {
-		return none
-	}
+	target := tc.ownership_drop_target_for_type_name(type_name) or { return none }
 	return OwnershipDropEntry{
-		name:      name
-		type_name: type_name
+		name:             name
+		type_name:        target.type_name
+		optional_wrapper: target.optional_wrapper
 	}
 }
 
 fn (tc &TypeChecker) ownership_type_name_has_drop(type_name string) bool {
+	if _ := tc.ownership_drop_target_for_type_name(type_name) {
+		return true
+	}
+	return false
+}
+
+fn (tc &TypeChecker) ownership_drop_target_for_type_name(type_name string) ?OwnershipDropTarget {
+	if tc.ownership == unsafe { nil } || type_name.len == 0 {
+		return none
+	}
+	clean := type_name.trim_left('&')
+	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {
+		payload := clean[1..]
+		if tc.ownership_type_name_has_direct_drop(payload) {
+			return OwnershipDropTarget{
+				type_name:        payload
+				optional_wrapper: true
+			}
+		}
+		return none
+	}
+	if tc.ownership_type_name_has_direct_drop(clean) {
+		return OwnershipDropTarget{
+			type_name: clean
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) ownership_type_name_has_direct_drop(type_name string) bool {
 	if tc.ownership == unsafe { nil } || type_name.len == 0 {
 		return false
 	}
-	clean := type_name.trim_left('&?')
-	base := generic_base_name(clean)
-	return clean in tc.ownership.drop_structs || base in tc.ownership.drop_structs
+	base := generic_base_name(type_name)
+	return type_name in tc.ownership.drop_structs || base in tc.ownership.drop_structs
 }
 
 fn (mut tc TypeChecker) ownership_live_drop_entries() []OwnershipDropEntry {
@@ -4829,7 +4863,11 @@ fn (mut tc TypeChecker) ownership_add_loop_branch_frame(frame OwnershipFrame, la
 		group_idx := i - 1
 		if ownership_loop_group_matches(st.branch_groups[group_idx], label) {
 			base := st.branch_groups[group_idx].base
-			tc.ownership_record_loop_control_drops(base, frame)
+			if label.len > 0 {
+				tc.ownership_record_labelled_loop_break_drops(base, frame)
+			} else {
+				tc.ownership_record_loop_control_drops(base, frame)
+			}
 			st.branch_groups[group_idx].branches << ownership_frame_without_loop_locals(base, frame)
 			return
 		}
@@ -4882,11 +4920,46 @@ fn (mut tc TypeChecker) ownership_record_current_loop_iteration_drops() {
 
 fn (mut tc TypeChecker) ownership_record_loop_control_drops(base OwnershipFrame, snapshot OwnershipFrame) {
 	entries := tc.ownership_drop_entries_since_frame(base, snapshot)
+	tc.ownership_record_loop_control_entries(entries)
+}
+
+fn (mut tc TypeChecker) ownership_record_labelled_loop_break_drops(base OwnershipFrame, snapshot OwnershipFrame) {
+	mut entries := tc.ownership_drop_entries_since_frame(base, snapshot)
+	entries << tc.ownership_drop_entries_for_loop_base_scope(base, snapshot)
+	tc.ownership_record_loop_control_entries(entries)
+}
+
+fn (mut tc TypeChecker) ownership_record_loop_control_entries(entries []OwnershipDropEntry) {
 	mut st := tc.ownership_state()
 	index := st.drop_loop_control_counts[st.cur_fn] or { 0 }
 	st.drop_loop_control_counts[st.cur_fn] = index + 1
 	st.drop_at_loop_controls['${st.cur_fn}\x01${index}'] = entries
 	tc.ownership_note_drop_types(st.cur_fn, entries)
+}
+
+fn (mut tc TypeChecker) ownership_drop_entries_for_loop_base_scope(base OwnershipFrame, snapshot OwnershipFrame) []OwnershipDropEntry {
+	if base.scope_frames.len == 0 {
+		return []OwnershipDropEntry{}
+	}
+	scope := base.scope_frames[base.scope_frames.len - 1]
+	mut entries := []OwnershipDropEntry{}
+	for i := scope.decl_order.len; i > 0; i-- {
+		name := scope.decl_order[i - 1]
+		base_pos := base.owned_vars[name] or { continue }
+		snapshot_pos := snapshot.owned_vars[name] or { continue }
+		if snapshot_pos != base_pos || name in snapshot.moved_vars {
+			continue
+		}
+		type_name := snapshot.owned_var_types[name] or { continue }
+		if target := tc.ownership_drop_target_for_type_name(type_name) {
+			entries << OwnershipDropEntry{
+				name:             name
+				type_name:        target.type_name
+				optional_wrapper: target.optional_wrapper
+			}
+		}
+	}
+	return entries
 }
 
 fn (mut tc TypeChecker) ownership_drop_entries_since_frame(base OwnershipFrame, snapshot OwnershipFrame) []OwnershipDropEntry {
@@ -4905,10 +4978,11 @@ fn (mut tc TypeChecker) ownership_drop_entries_since_frame(base OwnershipFrame, 
 	mut entries := []OwnershipDropEntry{}
 	for candidate in candidates {
 		type_name := snapshot.owned_var_types[candidate.name] or { continue }
-		if tc.ownership_type_name_has_drop(type_name) {
+		if target := tc.ownership_drop_target_for_type_name(type_name) {
 			entries << OwnershipDropEntry{
-				name:      candidate.name
-				type_name: type_name
+				name:             candidate.name
+				type_name:        target.type_name
+				optional_wrapper: target.optional_wrapper
 			}
 		}
 	}
