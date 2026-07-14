@@ -112,6 +112,26 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run.output.trim_space()
 }
 
+fn run_bad_project(v3_bin string, name string, files map[string]string, inputs []string, expected string) {
+	root := '${tmp_test_path(name)}_project'
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	mut input_paths := []string{cap: inputs.len}
+	for input in inputs {
+		input_paths << os.quoted_path(os.join_path(root, input))
+	}
+	bad_bin := tmp_test_path(name)
+	compile := os.execute('${v3_bin} ${input_paths.join(' ')} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, '${name}: ${compile.output}'
+	assert compile.output.contains(expected), '${name}: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
+}
+
 fn test_compiler_vexe_env_uses_running_executable() {
 	v3_bin := build_v3()
 	c_out := os.join_path(os.temp_dir(), 'v3_review_vexe.c')
@@ -2453,6 +2473,11 @@ struct PointerDefault {
 	value &Inner = &Inner{value: 7}
 }
 
+struct NestedPointerDefaults {
+	nested PointerDefault
+	values []PointerDefault
+}
+
 fn main() {
 	mut array_failed := false
 	_ := json.decode(BoolList, "{\\"values\\":[1]}") or {
@@ -2483,9 +2508,25 @@ fn main() {
 
 	pointer_default := json.decode(PointerDefault, "{}")!
 	println(int_str(pointer_default.value.value))
+
+	nested_defaults := json.decode(NestedPointerDefaults, "{\\"values\\":[{}]}")!
+	println(int_str(nested_defaults.nested.value.value))
+	println(int_str(nested_defaults.values[0].value.value))
 }
 ')
-	assert out == 'true\ntrue\ntrue\ntrue\n0\n7'
+	assert out == 'true\ntrue\ntrue\ntrue\n0\n7\n7\n7'
+}
+
+fn test_unimported_main_types_are_not_visible_in_modules() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'unimported_plain_main_type', {
+		'main.v':      'module main\n\nimport moda\n\nstruct Foo {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
+		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Foo\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
+	}, ['main.v', 'moda/moda.v'], 'unknown type `Foo`')
+	run_bad_project(v3_bin, 'unimported_generic_main_type', {
+		'main.v':      'module main\n\nimport moda\n\nstruct Box[T] {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
+		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Box[int]\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
+	}, ['main.v', 'moda/moda.v'], 'unknown type `Box`')
 }
 
 fn test_json_fast_paths_handle_primitives_and_stringified_composites() {

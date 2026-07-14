@@ -397,6 +397,10 @@ pub mut:
 	smartcasts              map[string]Type
 	ownership               &OwnershipState = unsafe { nil }
 	selfhost                bool
+	// resolution_type_mode is enabled only after semantic checking, while transform
+	// and codegen read synthesized generic-specialization type text. Source annotations
+	// must keep normal module scoping and never enable this fallback.
+	resolution_type_mode bool
 	// fork_overlay is non-nil only on parallel-transform worker forks; see
 	// TransformForkOverlay and fork_for_parallel_transform.
 	fork_overlay &TransformForkOverlay = unsafe { nil }
@@ -1800,6 +1804,7 @@ pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 	qualified := tc.qualify_resolution_type_text(typ)
 	mut unscoped := *tc
 	unscoped.cur_module = ''
+	unscoped.resolution_type_mode = false
 	return unscoped.parse_type(qualified)
 }
 
@@ -2962,6 +2967,7 @@ fn should_cache_expr_type(kind flat.NodeKind, typ Type) bool {
 
 // check_semantics validates check semantics state for types.
 pub fn (mut tc TypeChecker) check_semantics() {
+	tc.resolution_type_mode = false
 	tc.collect_selected_file_called_fns()
 	tc.check_export_attrs()
 	tc.cur_module = ''
@@ -3015,6 +3021,10 @@ pub fn (mut tc TypeChecker) check_semantics() {
 
 		_ = i
 	}
+	// All ordinary source annotations have now been validated with module-strict
+	// lookup. Later transform/codegen stages also parse synthesized generic type
+	// text, where concrete arguments can legitimately come from another module.
+	tc.resolution_type_mode = true
 }
 
 fn (mut tc TypeChecker) collect_selected_file_called_fns() {
@@ -4361,7 +4371,7 @@ fn (tc &TypeChecker) type_name_known(typ string) bool {
 	if is_builtin_type_name(typ) || typ == 'unknown' || typ.starts_with('C.') {
 		return true
 	}
-	qtyp := tc.qualify_resolution_type_name(typ)
+	qtyp := tc.qualify_name(typ)
 	if !typ.contains('.') {
 		if resolved := tc.resolve_selective_import_type_symbol(typ) {
 			return tc.type_symbol_known(resolved)
@@ -18404,7 +18414,8 @@ pub fn (tc &TypeChecker) cached_c_name(name string) string {
 // parse_type converts a V type string (from parser) to a structured Type.
 pub fn (tc &TypeChecker) parse_type(typ string) Type {
 	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
-		key := tc.cur_file + '\n' + tc.cur_module + '\n' + typ
+		mode := if tc.resolution_type_mode { 'resolution' } else { 'source' }
+		key := mode + '\n' + tc.cur_file + '\n' + tc.cur_module + '\n' + typ
 		mut cache := unsafe { tc.type_cache }
 		// The frozen base holds the warm pre-region entries — check it first
 		// (values are deterministic, so shadowing order does not matter).
@@ -18629,7 +18640,11 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
 		return tc.parse_fn_type(typ)
 	}
-	qtyp := tc.qualify_resolution_type_name(typ)
+	qtyp := if tc.resolution_type_mode {
+		tc.qualify_resolution_type_name(typ)
+	} else {
+		tc.qualify_name(typ)
+	}
 	allow_bare_symbol := qtyp == typ
 	if typ == 'array' && tc.has_builtins && typ in tc.structs {
 		return Type(Struct{
@@ -18817,7 +18832,11 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		} else {
 			generic_suffix
 		}
-		mut qbase := tc.qualify_resolution_type_name(resolved_base)
+		mut qbase := if tc.resolution_type_mode {
+			tc.qualify_resolution_type_name(resolved_base)
+		} else {
+			tc.qualify_name(resolved_base)
+		}
 		if qbase == resolved_base && resolved_base.contains('.') {
 			qbase = tc.resolve_imported_type_text(resolved_base)
 		}

@@ -5319,12 +5319,7 @@ fn (mut g FlatGen) gen_json_decode_value_expr(item string, typ types.Type) {
 				g.write(', ')
 			}
 			g.write('.${g.cname(field.name)} = ')
-			field_item := if g.json_decode_struct_field_is_embedded(field) {
-				item
-			} else {
-				'cJSON_GetObjectItemCaseSensitive(${item}, "${field.name}")'
-			}
-			g.gen_json_decode_value_expr(field_item, field.typ)
+			g.gen_json_decode_field_expr(item, clean.name, field)
 		}
 		g.write('}')
 		return

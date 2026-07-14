@@ -62,6 +62,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.check_semantics()
 		return false
 	} $else {
+		tc.resolution_type_mode = false
 		// Freeze the warm post-collect type cache as the shared read-only base
 		// for every worker thread and the master itself via a private overlay.
 		tc.install_type_cache_overlay()
@@ -89,6 +90,9 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 			tc.defer_ierror_gating = false
 		}
 		tc.restore_type_cache_base()
+		// Match the serial checker: only generated post-check type text may use the
+		// cross-module generic-argument fallback.
+		tc.resolution_type_mode = true
 		return was_parallel
 	}
 }
