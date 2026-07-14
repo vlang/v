@@ -1102,6 +1102,7 @@ fn main() {
 		for module_name in cache_state.module_sources.keys() {
 			cache_input_modules[module_name] = true
 		}
+		cache_input_modules['main'] = true
 		cache_state.module_external_inputs = cgen.cache_external_input_files(a, prefs.vroot,
 			cache_input_modules)
 		for module_name, parsed in cache_state.parsed_from_source {
@@ -1487,14 +1488,15 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 	if !state.manager.ensure_dir() {
 		return error('v3 module cache directory is unavailable')
 	}
+	split := modulecache.split_generated_c(generated_source)!
+	declarations := modulecache.declaration_header(split.prefix)
 	compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag,
-		warning_flags, generated_c_flags, objective_c, interface_impl_signature)
+		warning_flags, generated_c_flags, objective_c, interface_impl_signature,
+		modulecache.header_signature(declarations))
 	if resolve_flag_specific_cache_objects(mut state, compile_signature) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()
 	}
-	split := modulecache.split_generated_c(generated_source)!
-	declarations := modulecache.declaration_header(split.prefix)
 	main_body := split.modules['main'] or { '' }
 	main_source := split.prefix + main_body
 	mut object_paths := state.objects.clone()
@@ -1684,21 +1686,10 @@ fn cache_object_dependency_signatures(state &V3ModuleCacheState, roots []string)
 	for module_name in cache_builtin_bundle_roots(state) {
 		cache_add_module_header_signature(state, module_name, mut signatures)
 	}
-	mut input_modules := cache_dependency_modules(state, roots)
-	for root in roots {
-		canonical := cache_state_module_name(state, root) or { continue }
-		if canonical !in input_modules {
-			input_modules << canonical
-		}
-	}
+	mut input_modules := state.module_external_inputs.keys()
 	input_modules.sort()
 	for module_name in input_modules {
-		inputs := if module_name in state.module_external_inputs {
-			state.module_external_inputs[module_name]
-		} else {
-			state.module_external_inputs[module_name.all_after_last('.')]
-		}
-		for path in inputs {
+		for path in state.module_external_inputs[module_name] {
 			signature := modulecache.file_signature(path)
 			if signature.len > 0 {
 				signatures[path] = signature
@@ -1754,7 +1745,7 @@ fn restart_v3_after_cache_invalidation() {
 	exit(os.system(command.join(' ')))
 }
 
-fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string) string {
+fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string, declarations_signature string) string {
 	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
 	mut inputs := []string{}
@@ -1768,6 +1759,7 @@ fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_fl
 		'pic=${pic_flag.trim_space()}',
 		'warnings=${warning_flags.trim_space()}',
 		'interfaces=${interface_impl_signature}',
+		'declarations=${declarations_signature}',
 		'flags=${flags.join('\\n')}',
 		'inputs=${inputs.join('\\n')}',
 	].join('\n')

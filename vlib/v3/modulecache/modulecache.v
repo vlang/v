@@ -92,13 +92,14 @@ pub fn (m &Manager) object_entry(module_name string, source_files []string, comp
 	}
 }
 
-// source_signature hashes selected source paths, contents, and compile-time environment
-// values in stable order.
+// source_signature hashes selected source paths, contents, compile-time environment values,
+// and pkg-config probe results in stable order.
 pub fn source_signature(source_files []string) string {
 	mut files := source_files.clone()
 	files.sort()
 	mut hash := u64(1469598103934665603)
 	mut env_names := map[string]bool{}
+	mut pkgconfig_names := map[string]bool{}
 	for file in files {
 		path := os.real_path(file)
 		hash = hash_bytes(hash, path.bytes())
@@ -106,8 +107,12 @@ pub fn source_signature(source_files []string) string {
 		content := os.read_bytes(file) or { return '' }
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
-		for name in compile_time_env_names(content.bytestr()) {
+		source := content.bytestr()
+		for name in compile_time_env_names(source) {
 			env_names[name] = true
+		}
+		for name in compile_time_pkgconfig_names(source) {
+			pkgconfig_names[name] = true
 		}
 	}
 	mut names := env_names.keys()
@@ -117,6 +122,16 @@ pub fn source_signature(source_files []string) string {
 		hash = hash_bytes(hash, name.bytes())
 		hash = hash_bytes(hash, [u8(0)])
 		hash = hash_bytes(hash, os.getenv(name).bytes())
+		hash = hash_bytes(hash, [u8(0xff)])
+	}
+	mut packages := pkgconfig_names.keys()
+	packages.sort()
+	for name in packages {
+		available := os.execute('pkg-config --exists ${name}').exit_code == 0
+		hash = hash_bytes(hash, [u8(0xfd)])
+		hash = hash_bytes(hash, name.bytes())
+		hash = hash_bytes(hash, [u8(0)])
+		hash = hash_bytes(hash, [u8(if available { 1 } else { 0 })])
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	return hash.hex()
@@ -177,6 +192,87 @@ fn compile_time_env_names(source string) []string {
 	mut result := names.keys()
 	result.sort()
 	return result
+}
+
+fn compile_time_pkgconfig_names(source string) []string {
+	mut names := map[string]bool{}
+	mut pos := 0
+	for pos < source.len {
+		if source[pos] == `/` && pos + 1 < source.len
+			&& (source[pos + 1] == `/` || source[pos + 1] == `*`) {
+			pos = skip_signature_space_and_comments(source, pos)
+			continue
+		}
+		if source[pos] in [`'`, `"`, `\``] {
+			pos = skip_signature_quoted_text(source, pos, false)
+			continue
+		}
+		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
+			pos = skip_signature_quoted_text(source, pos + 1, true)
+			continue
+		}
+		if pos + 9 > source.len || source[pos..pos + 9] != 'pkgconfig'
+			|| (pos > 0 && signature_name_char(source[pos - 1]))
+			|| (pos + 9 < source.len && signature_name_char(source[pos + 9])) {
+			pos++
+			continue
+		}
+		name, next_pos, ok := signature_string_call_arg(source, pos + 9)
+		if ok && signature_pkgconfig_name_is_safe(name) {
+			names[name] = true
+		}
+		pos = if next_pos > pos { next_pos } else { pos + 9 }
+	}
+	mut result := names.keys()
+	result.sort()
+	return result
+}
+
+fn signature_string_call_arg(source string, start int) (string, int, bool) {
+	mut pos := skip_signature_space_and_comments(source, start)
+	if pos >= source.len || source[pos] != `(` {
+		return '', start, false
+	}
+	pos = skip_signature_space_and_comments(source, pos + 1)
+	mut is_raw := false
+	if pos + 1 < source.len && source[pos] == `r` && source[pos + 1] in [`'`, `"`] {
+		is_raw = true
+		pos++
+	}
+	if pos >= source.len || source[pos] !in [`'`, `"`] {
+		return '', start, false
+	}
+	quote := source[pos]
+	value_start := pos + 1
+	mut value_end := value_start
+	for value_end < source.len {
+		if !is_raw && source[value_end] == `\\` && value_end + 1 < source.len {
+			value_end += 2
+			continue
+		}
+		if source[value_end] == quote {
+			return source[value_start..value_end], value_end + 1, true
+		}
+		value_end++
+	}
+	return '', source.len, false
+}
+
+fn signature_name_char(c u8) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`
+}
+
+fn signature_pkgconfig_name_is_safe(name string) bool {
+	if name.len == 0 || !signature_name_char(name[0]) {
+		return false
+	}
+	for c in name.bytes() {
+		if signature_name_char(c) || c in [`-`, `.`, `+`] {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 fn skip_signature_space_and_comments(source string, start int) int {
