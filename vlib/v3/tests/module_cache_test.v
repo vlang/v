@@ -983,6 +983,54 @@ fn main() {
 	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
+fn test_cached_struct_default_with_unsupported_initializer_keeps_source() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_struct_default_index_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'defaulted/defaulted.v', 'module defaulted
+
+const values = [41, 42]
+
+pub struct Config {
+pub:
+	first int = values[0]
+}
+
+pub fn cached_value() int {
+	return Config{}.first
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import defaulted
+
+fn main() {
+	println(defaulted.Config{}.first)
+	println(defaulted.cached_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '41\n41'
+	header_path := module_cache_artifact(cache_dir, 'defaulted_', '.vh')
+	assert header_path.len > 0
+	assert modulecache.header_needs_source(modulecache.Entry{
+		header: header_path
+	})
+	first_hashes := module_cache_object_hashes(cache_dir)
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '41\n41'
+	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
+}
+
 fn test_cached_const_with_unsupported_initializer_keeps_source() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_const_index_${os.getpid()}')
@@ -1023,6 +1071,50 @@ fn main() {
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
 	assert run_module_cache_binary(second_output) == '41\n41'
+}
+
+fn test_cached_global_with_unsupported_initializer_keeps_source() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_global_index_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'initialized/initialized.v', 'module initialized
+
+const values = [41, 42]
+
+__global first = values[0]
+
+pub fn cached_value() int {
+	return first
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import initialized
+
+fn main() {
+	println(initialized.cached_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '41'
+	header_path := module_cache_artifact(cache_dir, 'initialized_', '.vh')
+	assert header_path.len > 0
+	assert modulecache.header_needs_source(modulecache.Entry{
+		header: header_path
+	})
+	first_hashes := module_cache_object_hashes(cache_dir)
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '41'
+	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
 fn test_cached_header_preserves_noreturn_attribute() {

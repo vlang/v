@@ -723,7 +723,8 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 	}
 	node := a.nodes[int(id)]
 	if node.generic_params.len > 0 || fn_decl_has_generic_receiver(a, node)
-		|| (node.kind == .const_decl && const_decl_has_unserializable_initializer(a, node))
+		|| (node.kind in [.const_decl, .struct_decl, .global_decl]
+		&& declaration_has_unserializable_initializer(a, node))
 		|| node.kind == .comptime_if {
 		return true
 	}
@@ -737,7 +738,7 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 	return false
 }
 
-fn const_decl_has_unserializable_initializer(a &flat.FlatAst, node flat.Node) bool {
+fn declaration_has_unserializable_initializer(a &flat.FlatAst, node flat.Node) bool {
 	for i in 0 .. node.children_count {
 		field := a.child_node(&node, i)
 		if field.children_count > 0 && !expr_can_serialize(a, a.child(field, 0)) {
