@@ -220,8 +220,7 @@ fn (mut p Parser) add(kind flat.NodeKind) flat.NodeId {
 
 fn (mut p Parser) add_id(kind_id int) flat.NodeId {
 	return p.add_node(flat.Node{
-		kind:    flat.node_kind_from_id(kind_id)
-		kind_id: kind_id
+		kind: flat.node_kind_from_id(kind_id)
 	})
 }
 
@@ -234,9 +233,8 @@ fn (mut p Parser) add_val(kind flat.NodeKind, value string) flat.NodeId {
 
 fn (mut p Parser) add_val_id(kind_id int, value string) flat.NodeId {
 	return p.add_node(flat.Node{
-		kind:    flat.node_kind_from_id(kind_id)
-		kind_id: kind_id
-		value:   value
+		kind:  flat.node_kind_from_id(kind_id)
+		value: value
 	})
 }
 

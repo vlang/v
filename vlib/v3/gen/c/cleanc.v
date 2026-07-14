@@ -905,11 +905,7 @@ fn (mut g FlatGen) emit_postamble_segments_b() {
 // node_kind_id supports node kind id handling for c.
 @[inline]
 fn node_kind_id(node flat.Node) int {
-	mut kind_id := node.kind_id
-	if kind_id == 0 && int(node.kind) != 0 {
-		kind_id = int(node.kind)
-	}
-	return kind_id
+	return int(node.kind)
 }
 
 // collect_gen_info updates collect gen info state for c.
@@ -4786,10 +4782,7 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 	}
 	for idx := 0; idx < g.a.nodes.len; idx++ {
 		node := unsafe { &g.a.nodes[idx] }
-		mut kind_id := node.kind_id
-		if kind_id == 0 && int(node.kind) != 0 {
-			kind_id = int(node.kind)
-		}
+		kind_id := int(node.kind)
 		if kind_id == 77 {
 			cur_file = node.value
 			cur_module = 'main'

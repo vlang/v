@@ -729,7 +729,6 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		value:          node.value
@@ -871,7 +870,6 @@ fn (mut t Transformer) clone_variant_subst(id flat.NodeId, var_name string, item
 	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		value:          if node.kind == .is_expr && node.value == var_name {
@@ -998,7 +996,6 @@ fn (mut t Transformer) clone_node_preserving_children_with_type(node flat.Node, 
 	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		value:          node.value
@@ -1551,7 +1548,6 @@ fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name strin
 	value := t.comptime_field_call_generic_args(node, children, fm)
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		value:          value

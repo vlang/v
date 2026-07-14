@@ -5291,7 +5291,6 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		}
 		return t.a.add_node(flat.Node{
 			kind:           node.kind
-			kind_id:        node.kind_id
 			op:             node.op
 			pos:            node.pos
 			children_start: start2
@@ -5334,7 +5333,6 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	}
 	clone_id := t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		children_start: start

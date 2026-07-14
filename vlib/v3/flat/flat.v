@@ -145,12 +145,11 @@ pub mut:
 	value          string
 	typ            string
 	generic_params []string
-	kind_id        int
 	is_mut         bool
 pub:
 	pos            token.Pos
 	children_start i32
-	children_count i16
+	children_count i32
 	kind           NodeKind
 	op             Op
 }
@@ -208,8 +207,7 @@ pub fn (a &FlatAst) source_position(pos token.Pos) ?token.Position {
 pub fn (mut a FlatAst) add(kind NodeKind) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind:    kind
-		kind_id: int(kind)
+		kind: kind
 	}
 	return id
 }
@@ -218,8 +216,7 @@ pub fn (mut a FlatAst) add(kind NodeKind) NodeId {
 pub fn (mut a FlatAst) add_id(kind_id int) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind:    node_kind_from_id(kind_id)
-		kind_id: kind_id
+		kind: node_kind_from_id(kind_id)
 	}
 	return id
 }
@@ -234,9 +231,8 @@ pub fn node_kind_from_id(id int) NodeKind {
 pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind:    kind
-		kind_id: int(kind)
-		value:   value
+		kind:  kind
+		value: value
 	}
 	return id
 }
@@ -245,9 +241,8 @@ pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind:    node_kind_from_id(kind_id)
-		kind_id: kind_id
-		value:   value
+		kind:  node_kind_from_id(kind_id)
+		value: value
 	}
 	return id
 }
@@ -261,7 +256,6 @@ pub fn (n Node) with_shifted_children(shift i32) Node {
 		value:          n.value
 		typ:            n.typ
 		generic_params: n.generic_params
-		kind_id:        n.kind_id
 		pos:            n.pos
 		children_start: n.children_start + shift
 		children_count: n.children_count
@@ -277,7 +271,6 @@ pub fn (n Node) with_pos(pos token.Pos) Node {
 		value:          n.value
 		typ:            n.typ
 		generic_params: n.generic_params
-		kind_id:        n.kind_id
 		pos:            pos
 		children_start: n.children_start
 		children_count: n.children_count
@@ -290,20 +283,16 @@ pub fn (n Node) with_pos(pos token.Pos) Node {
 // add_node updates add node state for FlatAst.
 pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	id := NodeId(a.nodes.len)
-	mut n := node
-	if n.kind_id == 0 && int(n.kind) != 0 {
-		n.kind_id = int(n.kind)
-	}
-	a.nodes << n
+	a.nodes << node
 	return id
 }
 
 // child_count converts a dynamic child count to Node's compact storage type.
-pub fn child_count(count int) i16 {
-	if count > 32767 {
-		panic('flat node has too many children')
+pub fn child_count(count int) i32 {
+	if count < 0 {
+		panic('flat node cannot have a negative child count')
 	}
-	return i16(count)
+	return i32(count)
 }
 
 // begin_children supports begin children handling for FlatAst.

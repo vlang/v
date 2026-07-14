@@ -574,7 +574,6 @@ fn clone_flat_node(node flat.Node) flat.Node {
 		value:          node.value.clone()
 		typ:            node.typ.clone()
 		generic_params: clone_string_list(node.generic_params)
-		kind_id:        node.kind_id
 		pos:            node.pos
 		children_start: node.children_start
 		children_count: node.children_count

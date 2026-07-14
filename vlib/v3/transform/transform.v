@@ -39,11 +39,7 @@ fn arr4(a flat.NodeId, b flat.NodeId, c flat.NodeId, d flat.NodeId) []flat.NodeI
 
 // node_kind_id supports node kind id handling for transform.
 fn node_kind_id(node flat.Node) int {
-	mut kind_id := node.kind_id
-	if kind_id == 0 && int(node.kind) != 0 {
-		kind_id = int(node.kind)
-	}
-	return kind_id
+	return int(node.kind)
 }
 
 // option_unwrap_marker tags a SmartcastContext produced by an `x != none`
@@ -1264,7 +1260,6 @@ fn (mut t Transformer) transform_top_level_file(file_idx int, file_node flat.Nod
 	}
 	t.set_node(file_idx, flat.Node{
 		kind:           .file
-		kind_id:        file_node.kind_id
 		op:             file_node.op
 		children_start: start
 		children_count: flat.child_count(new_children.len)
@@ -2834,7 +2829,6 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	count := t.a.children.len - start
 	t.set_node(fn_idx, flat.Node{
 		kind:           .fn_decl
-		kind_id:        61
 		op:             fn_node.op
 		children_start: start
 		children_count: flat.child_count(count)

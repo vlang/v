@@ -55,7 +55,7 @@ fn test_parallel_parse_matches_serial() {
 		s := ps.a.nodes[i]
 		q := pp.a.nodes[i]
 		assert q.kind == s.kind, 'node ${i} kind differs'
-		assert q.kind_id == s.kind_id, 'node ${i} kind_id differs'
+		assert q.kind == s.kind, 'node ${i} kind differs'
 		assert q.value == s.value, 'node ${i} value differs'
 		assert q.typ == s.typ, 'node ${i} typ differs'
 		assert q.op == s.op, 'node ${i} op differs'

@@ -172,7 +172,6 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 						value:          write.node.value.clone()
 						typ:            write.node.typ.clone()
 						generic_params: params
-						kind_id:        write.node.kind_id
 						pos:            write.node.pos
 						children_start: write.node.children_start
 						children_count: write.node.children_count
