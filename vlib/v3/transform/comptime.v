@@ -72,6 +72,7 @@ struct VariantMeta {
 struct MethodMeta {
 	name        string
 	receiver    string
+	module_name string
 	return_type string
 	is_pub      bool
 	params      []ParamMeta
@@ -313,7 +314,7 @@ fn (t &Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId)
 		} else {
 			node.value
 		}
-		if node.value == name || qualified == name {
+		if qualified == name || (module_name == t.cur_module && node.value == name) {
 			return t.comptime_node_attribute_metas(idx)
 		}
 	}
@@ -839,6 +840,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		methods << MethodMeta{
 			name:        name
 			receiver:    first.typ
+			module_name: module_name
 			return_type: if node.typ.len > 0 { node.typ } else { 'void' }
 			is_pub:      node.op == .arrow
 			params:      params
@@ -861,11 +863,8 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 	if node.kind == .selector && node.value == '$' && node.children_count >= 2
 		&& t.comptime_method_name_expr_matches(t.a.child(&node, 1), var_name) {
 		receiver := t.clone_method_subst(t.a.child(&node, 0), var_name, method) or { return none }
-		receiver_name := comptime_method_receiver_base(method.receiver)
+		receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
 		t.mark_fn_used('${receiver_name}.${method.name}')
-		if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
-			t.mark_fn_used('${t.cur_module}.${receiver_name}.${method.name}')
-		}
 		return t.make_selector(receiver, method.name, method.return_type)
 	}
 	if node.kind == .selector && node.children_count > 0 {
