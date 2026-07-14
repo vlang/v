@@ -2433,12 +2433,26 @@ struct Box[T] {
 	n int = 5
 }
 
+struct GenericChild {
+	n int
+}
+
+struct PointerBox[T] {
+	p     &GenericChild = &GenericChild{n: 7}
+	value T
+}
+
 fn main() {
 	box := json.decode(Box[int], "{}") or { Box[int]{n: 5} }
 	println(int_str(box.n))
+	pointer_box := json.decode(PointerBox[int], "{\\"value\\":3}") or {
+		PointerBox[int]{value: 3}
+	}
+	println(int_str(pointer_box.p.n))
+	println(int_str(pointer_box.value))
 }
 ')
-	assert out == '5'
+	assert out == '5\n7\n3'
 }
 
 fn test_json_decode_fast_path_validates_arrays_and_preserves_defaults() {

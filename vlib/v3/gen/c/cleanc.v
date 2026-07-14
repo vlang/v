@@ -677,7 +677,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
-	g.preseed_required_system_header_decls()
 	g.preseed_libc_compat_fns()
 	if !g.skip_generics {
 		g.precompute_generic_method_candidate_index()
@@ -796,15 +795,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Keep only the returned C string, not the builder's copied backing array.
 	unsafe { g.sb.free() }
 	return result
-}
-
-fn (mut g FlatGen) preseed_required_system_header_decls() {
-	refs := g.c_extern_referenced_symbols()
-	if refs['C.task_info'] || refs['task_info'] || refs['C.mach_task_self']
-		|| refs['mach_task_self'] {
-		g.inlined_c_declared_fns['task_info'] = true
-		g.inlined_c_declared_fns['mach_task_self'] = true
-	}
 }
 
 // emit_overlap_postamble_segments emits the body-independent postamble groups

@@ -5251,7 +5251,7 @@ fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, struct_name stri
 }
 
 fn (g &FlatGen) json_struct_field_default_expr(struct_name string, field_name string) ?(StructDeclInfo, flat.NodeId) {
-	info := g.find_struct_decl(struct_name) or { return none }
+	info := g.find_struct_decl(json_struct_decl_name(struct_name)) or { return none }
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
 		if field.kind == .field_decl && field.value == field_name && field.children_count > 0 {
@@ -8909,7 +8909,13 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 	}
 	names.sort()
 	for name in names {
-		g.writeln(decls[name])
+		if name == 'task_info' || name == 'mach_task_self' {
+			g.writeln('#ifndef __APPLE__')
+			g.writeln(decls[name])
+			g.writeln('#endif')
+		} else {
+			g.writeln(decls[name])
+		}
 	}
 	if names.len > 0 {
 		g.writeln('')
