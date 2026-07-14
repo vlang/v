@@ -7576,6 +7576,24 @@ fn generic_type_arg_from_suffix(suffix string) string {
 			return '&${inner}'
 		}
 	}
+	if clean.starts_with('Option_') {
+		inner := generic_type_arg_from_suffix(clean['Option_'.len..])
+		if inner.len > 0 {
+			return '?${inner}'
+		}
+	}
+	if clean.starts_with('Optional_') {
+		inner := generic_type_arg_from_suffix(clean['Optional_'.len..])
+		if inner.len > 0 {
+			return '?${inner}'
+		}
+	}
+	if clean.starts_with('Result_') {
+		inner := generic_type_arg_from_suffix(clean['Result_'.len..])
+		if inner.len > 0 {
+			return '!${inner}'
+		}
+	}
 	return match clean {
 		'v_int' { 'int' }
 		'v_u8' { 'u8' }

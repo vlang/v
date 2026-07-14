@@ -441,22 +441,224 @@ fn (mut g FlatGen) gen_loop_iteration_ownership_drops() {
 
 fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 	for entry in entries {
-		method := g.resolve_method_name(entry.type_name, 'drop')
-		if method.len == 0 {
-			g.writeln('#error missing generated Drop method for ${entry.type_name}')
-			continue
-		}
 		cname := g.cname(entry.name)
 		if entry.optional_wrapper {
 			g.writeln('if (${cname}.ok) {')
 			g.indent++
-			g.writeln('${g.cname(method)}(&${cname}.value);')
+			g.gen_ownership_drop_value(g.tc.parse_type(entry.type_name), '${cname}.value', 0)
 			g.indent--
 			g.writeln('}')
 			continue
 		}
-		g.writeln('${g.cname(method)}(&${cname});')
+		g.gen_ownership_drop_value(g.tc.parse_type(entry.type_name), cname, 0)
 	}
+}
+
+fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth int) {
+	if depth > 64 || expr.len == 0 {
+		return
+	}
+	match typ {
+		types.Alias {
+			g.gen_ownership_drop_value(typ.base_type, expr, depth + 1)
+		}
+		types.OptionType {
+			if g.ownership_type_requires_destruction(typ.base_type, depth + 1) {
+				g.writeln('if ((${expr}).ok) {')
+				g.indent++
+				g.gen_ownership_drop_value(typ.base_type, '(${expr}).value', depth + 1)
+				g.indent--
+				g.writeln('}')
+			}
+		}
+		types.ResultType {
+			if g.ownership_type_requires_destruction(typ.base_type, depth + 1) {
+				g.writeln('if ((${expr}).ok) {')
+				g.indent++
+				g.gen_ownership_drop_value(typ.base_type, '(${expr}).value', depth + 1)
+				g.indent--
+				g.writeln('}')
+			}
+		}
+		types.String {
+			g.writeln('string__free(&(${expr}));')
+		}
+		types.Array {
+			if g.ownership_type_requires_destruction(typ.elem_type, depth + 1) {
+				idx := g.tmp_count
+				g.tmp_count++
+				elem_ct := g.value_c_type(typ.elem_type)
+				g.writeln('for (int _drop_i${idx} = 0; _drop_i${idx} < (${expr}).len; _drop_i${idx}++) {')
+				g.indent++
+				g.gen_ownership_drop_value(typ.elem_type,
+					'*((${elem_ct}*)array_get(${expr}, _drop_i${idx}))', depth + 1)
+				g.indent--
+				g.writeln('}')
+			}
+			g.writeln('array__free(&(${expr}));')
+		}
+		types.ArrayFixed {
+			if g.ownership_type_requires_destruction(typ.elem_type, depth + 1) {
+				idx := g.tmp_count
+				g.tmp_count++
+				g.writeln('for (int _drop_i${idx} = 0; _drop_i${idx} < ${typ.len}; _drop_i${idx}++) {')
+				g.indent++
+				g.gen_ownership_drop_value(typ.elem_type, '(${expr})[_drop_i${idx}]', depth + 1)
+				g.indent--
+				g.writeln('}')
+			}
+		}
+		types.Map {
+			key_values := '(${expr}).key_values'
+			if g.ownership_type_requires_destruction(typ.key_type, depth + 1)
+				|| g.ownership_type_requires_destruction(typ.value_type, depth + 1) {
+				idx := g.tmp_count
+				g.tmp_count++
+				g.writeln('for (int _drop_i${idx} = 0; _drop_i${idx} < ${key_values}.len; _drop_i${idx}++) {')
+				g.indent++
+				g.writeln('if (${key_values}.all_deleted && ${key_values}.all_deleted[_drop_i${idx}]) continue;')
+				if g.ownership_type_requires_destruction(typ.key_type, depth + 1)
+					&& typ.key_type !is types.String {
+					key_ct := g.map_key_temp_c_type(typ.key_type)
+					key_slot := '${key_values}.keys + _drop_i${idx} * ${key_values}.key_bytes'
+					g.gen_ownership_drop_value(typ.key_type, '*(${key_ct}*)(${key_slot})',
+						depth + 1)
+				}
+				if g.ownership_type_requires_destruction(typ.value_type, depth + 1) {
+					value_ct := g.value_c_type(typ.value_type)
+					value_slot := '${key_values}.values + _drop_i${idx} * ${key_values}.value_bytes'
+					g.gen_ownership_drop_value(typ.value_type, '*(${value_ct}*)(${value_slot})',
+
+						depth + 1)
+				}
+				g.indent--
+				g.writeln('}')
+			}
+			g.writeln('map__free(&(${expr}));')
+		}
+		types.Struct {
+			method := g.resolve_method_name(typ.name, 'drop')
+			if method.len > 0 {
+				g.writeln('${g.cname(method)}(&(${expr}));')
+				return
+			}
+			for field in g.tc.struct_fields_for_type(typ.name) {
+				if g.ownership_type_needs_drop(field.typ, depth + 1) {
+					g.gen_ownership_drop_value(field.typ, '(${expr}).${g.cname(field.name)}',
+
+						depth + 1)
+				}
+			}
+		}
+		types.SumType {
+			sum_name := g.resolve_sum_name(typ.name)
+			variants := g.tc.sum_types[sum_name] or { []string{} }
+			g.writeln('switch ((${expr}).typ) {')
+			for variant in variants {
+				resolved_variant := g.resolve_variant(sum_name, variant)
+				variant_type := g.tc.parse_type(resolved_variant)
+				idx := g.sum_type_index(sum_name, resolved_variant)
+				field := g.sum_field_name(resolved_variant)
+				payload := '((${expr}).${field})'
+				g.writeln('case ${idx}:')
+				g.indent++
+				g.writeln('if (${payload} != NULL) {')
+				g.indent++
+				g.gen_ownership_drop_value(variant_type, '*${payload}', depth + 1)
+				g.writeln('free(${payload});')
+				g.indent--
+				g.writeln('}')
+				g.writeln('break;')
+				g.indent--
+			}
+			g.writeln('default: break;')
+			g.writeln('}')
+		}
+		else {}
+	}
+}
+
+fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) bool {
+	if depth > 64 {
+		return false
+	}
+	match typ {
+		types.String, types.Array, types.Map, types.SumType {
+			return true
+		}
+		types.Alias {
+			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
+		}
+		types.OptionType {
+			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
+		}
+		types.ResultType {
+			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
+		}
+		types.ArrayFixed {
+			return g.ownership_type_requires_destruction(typ.elem_type, depth + 1)
+		}
+		types.Struct {
+			if g.resolve_method_name(typ.name, 'drop').len > 0 {
+				return true
+			}
+			for field in g.tc.struct_fields_for_type(typ.name) {
+				if g.ownership_type_requires_destruction(field.typ, depth + 1) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (g &FlatGen) ownership_type_needs_drop(typ types.Type, depth int) bool {
+	if depth > 64 {
+		return false
+	}
+	match typ {
+		types.Alias {
+			return g.ownership_type_needs_drop(typ.base_type, depth + 1)
+		}
+		types.OptionType {
+			return g.ownership_type_needs_drop(typ.base_type, depth + 1)
+		}
+		types.ResultType {
+			return g.ownership_type_needs_drop(typ.base_type, depth + 1)
+		}
+		types.Array {
+			return g.ownership_type_needs_drop(typ.elem_type, depth + 1)
+		}
+		types.ArrayFixed {
+			return g.ownership_type_needs_drop(typ.elem_type, depth + 1)
+		}
+		types.Map {
+			return g.ownership_type_needs_drop(typ.key_type, depth + 1)
+				|| g.ownership_type_needs_drop(typ.value_type, depth + 1)
+		}
+		types.SumType {
+			for variant in g.tc.sum_types[g.resolve_sum_name(typ.name)] or { []string{} } {
+				if g.ownership_type_needs_drop(g.tc.parse_type(variant), depth + 1) {
+					return true
+				}
+			}
+		}
+		types.Struct {
+			if g.resolve_method_name(typ.name, 'drop').len > 0 {
+				return true
+			}
+			for field in g.tc.struct_fields_for_type(typ.name) {
+				if g.ownership_type_needs_drop(field.typ, depth + 1) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
 }
 
 fn (mut g FlatGen) gen_lock_stmt(id flat.NodeId, node flat.Node) {

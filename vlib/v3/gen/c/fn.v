@@ -1429,6 +1429,26 @@ fn generic_receiver_type_suffix_variants(args []string) []string {
 
 fn generic_receiver_type_arg_short(type_arg string) string {
 	clean := trimmed_space(type_arg)
+	if clean.starts_with('[]') {
+		return 'Array_${generic_receiver_type_arg_short(clean[2..])}'
+	}
+	if clean.starts_with('&') {
+		return 'ptr_${generic_receiver_type_arg_short(clean[1..])}'
+	}
+	if clean.starts_with('map[') {
+		bracket_end := shared_generic_matching_bracket(clean, 3)
+		if bracket_end < clean.len - 1 {
+			key := generic_receiver_type_arg_short(clean[4..bracket_end])
+			value := generic_receiver_type_arg_short(clean[bracket_end + 1..])
+			return 'Map_${key}_${value}'
+		}
+	}
+	if clean.starts_with('?') {
+		return 'Option_${generic_receiver_type_arg_short(clean[1..])}'
+	}
+	if clean.starts_with('!') {
+		return 'Result_${generic_receiver_type_arg_short(clean[1..])}'
+	}
 	if fixed := generic_receiver_fixed_array_type_arg_short(clean) {
 		return fixed
 	}
@@ -3276,6 +3296,19 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		return
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
+	if node.children_count == 2
+		&& (ownership_drop_intrinsic_name(target_name) || ownership_drop_intrinsic_name(fn_name)
+		|| ownership_drop_intrinsic_name(resolved_target_name)) {
+		arg_id := g.a.child(&node, 1)
+		arg_type := g.usable_expr_type(arg_id)
+		expr := g.expr_to_string(arg_id)
+		g.writeln('({')
+		g.indent++
+		g.gen_ownership_drop_value(arg_type, expr, 0)
+		g.indent--
+		g.write('})')
+		return
+	}
 	if node.children_count >= 2 && (fn_name == 'sync__Channel__close'
 		|| target_name == 'sync__Channel__close'
 		|| target_name == 'C.sync__Channel__close'
@@ -4387,6 +4420,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			g.write(')')
 		}
 	}
+}
+
+fn ownership_drop_intrinsic_name(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	short := name.all_after_last('.')
+	return short == 'drop_owned' || short.ends_with('__drop_owned')
+		|| short.starts_with('drop_owned_T_') || short.contains('__drop_owned_T_')
 }
 
 // receiver_base_type supports receiver base type handling for FlatGen.

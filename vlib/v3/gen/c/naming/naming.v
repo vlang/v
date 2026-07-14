@@ -247,6 +247,10 @@ pub fn sanitize(name string) string {
 			b.write_string('__')
 		} else if c == `&` {
 			b.write_string('ptr')
+		} else if c == `?` {
+			b.write_string('Optional_')
+		} else if c == `!` {
+			b.write_string('Result_')
 		} else if c == `@` {
 			b.write_string('_v_')
 		} else if c == `,` || c == ` ` {

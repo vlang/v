@@ -70,6 +70,11 @@ fn (g &FlatGen) enum_storage_c_type(enum_type types.Enum) string {
 
 // optional_type_name supports optional type name handling for FlatGen.
 fn (mut g FlatGen) optional_type_name(t types.Type) string {
+	if t is types.Pointer {
+		if t.base_type is types.OptionType || t.base_type is types.ResultType {
+			return g.optional_type_name(t.base_type) + '*'
+		}
+	}
 	mut base_type := types.Type(types.void_)
 	if t is types.OptionType {
 		base_type = t.base_type
@@ -113,6 +118,11 @@ fn (mut g FlatGen) optional_type_name_for_context(t types.Type, concrete_optiona
 fn (mut g FlatGen) value_c_type(t types.Type) string {
 	if t is types.OptionType || t is types.ResultType {
 		return g.optional_type_name(t)
+	}
+	if t is types.Pointer {
+		if t.base_type is types.OptionType || t.base_type is types.ResultType {
+			return g.optional_type_name(t.base_type) + '*'
+		}
 	}
 	if t is types.MultiReturn {
 		return g.multi_return_c_type_name(t)

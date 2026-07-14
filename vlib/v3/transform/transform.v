@@ -4045,6 +4045,30 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		value:          node.value
 		typ:            node.typ
 	})
+	if node.kind in [.assign, .selector_assign] && node.op == .assign && node.children_count == 2
+		&& !isnil(t.tc) {
+		mut lhs_type_name := t.lvalue_type(t.a.child(&node, 0))
+		if lhs_type_name.len == 0 {
+			lhs_type_name = t.lvalue_type(new_children[0])
+		}
+		if lhs_type_name.len == 0 {
+			lhs_type_name = t.original_expr_type(t.a.child(&node, 0))
+		}
+		lhs_type := t.tc.parse_type(lhs_type_name)
+		if t.tc.ownership_type_requires_drop(lhs_type)
+			&& t.drop_before_assign_has_stable_lvalue(new_children[0]) {
+			mut result := []flat.NodeId{}
+			t.drain_pending(mut result)
+			tmp_name := t.new_temp('drop_assign')
+			tmp_type := lhs_type.name()
+			result << t.make_decl_assign_typed(tmp_name, new_children[1], tmp_type)
+			drop_call := t.make_call_typed('drop_owned', arr1(new_children[0]), 'void')
+			result << t.make_expr_stmt(drop_call)
+			result << t.make_assign(new_children[0], t.make_ident(tmp_name))
+			t.invalidate_smartcast_for_lvalue(t.a.child(&node, 0))
+			return result
+		}
+	}
 	if node.kind == .assign && node.op == .left_shift_assign {
 		t.annotate_left_shift_assign(new_id)
 	}
@@ -4102,6 +4126,29 @@ fn (t &Transformer) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id fl
 	payload_type := t.node_type(t.a.child(&rhs, 0))
 	target_variant := t.smartcast_target_type(sc)
 	return t.variant_names_match(payload_type, target_variant)
+}
+
+fn (t &Transformer) drop_before_assign_has_stable_lvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value.len > 0 && node.value != '_'
+		}
+		.selector {
+			return node.children_count > 0
+				&& t.drop_before_assign_has_stable_lvalue(t.a.child(&node, 0))
+		}
+		.paren {
+			return node.children_count > 0
+				&& t.drop_before_assign_has_stable_lvalue(t.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {

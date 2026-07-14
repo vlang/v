@@ -4517,7 +4517,15 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	if isnil(t.tc) || !t.tc.named_type_implements_marker(base_type, 'IClone') {
 		return none
 	}
-	// A user-defined clone() would have been lowered already; only supply the default copy.
+	// A concrete generic receiver can have a handwritten clone() on its open
+	// generic declaration. Leave that call intact for monomorphization instead
+	// of replacing it with the compiler-provided field clone.
+	if base_type.contains('[') && base_type.ends_with(']') {
+		if _ := t.tc.resolve_generic_struct_method(base_type, 'clone') {
+			return none
+		}
+	}
+	// A user-defined clone() would have been lowered already; only supply the default clone.
 	if t.resolve_receiver_method_name(base_id, 'clone').len > 0 {
 		return none
 	}
@@ -4526,7 +4534,115 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 		receiver = t.make_prefix(.mul, receiver)
 		t.set_node_typ(int(receiver), base_type)
 	}
-	return receiver
+	return t.make_compiler_default_clone_value(receiver, base_type, false)
+}
+
+// make_compiler_default_clone_value recursively clones the storage-owning fields of a
+// compiler-provided IClone value. The initial aggregate copy preserves scalar/reference
+// fields, and each owning field is then replaced with its independent clone.
+fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ string, allow_method bool) flat.NodeId {
+	clean := t.normalize_type_alias(typ).trim_space()
+	if clean.len == 0 || clean.starts_with('&') {
+		return source
+	}
+	if t.is_optional_type_name(clean) {
+		inner := t.optional_base_type(t.qualify_optional_type(clean))
+		if !t.compiler_default_clone_type_needs_work(inner) {
+			return source
+		}
+		tmp_name := t.new_temp('derived_clone_opt')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, clean)
+		tmp := t.make_ident(tmp_name)
+		source_value := t.make_selector(source, 'value', inner)
+		cloned_value := t.make_compiler_default_clone_value(source_value, inner, true)
+		assign := t.make_assign(t.make_selector(t.make_ident(tmp_name), 'value', inner),
+			cloned_value)
+		t.pending_stmts << t.make_if(t.make_selector(tmp, 'ok', 'bool'),
+			t.make_block(arr1(assign)), t.make_empty())
+		return t.make_ident(tmp_name)
+	}
+	if clean == 'string' {
+		t.mark_fn_used('string__clone')
+		return t.make_call_typed('string__clone', arr1(source), 'string')
+	}
+	if clean.starts_with('[]') {
+		return t.make_array_clone_value(source, clean)
+	}
+	if clean.starts_with('map[') {
+		t.mark_fn_used('map__clone')
+		return t.make_call_typed('map__clone', arr1(t.runtime_addr(source, clean)), clean)
+	}
+	if allow_method {
+		if !isnil(t.tc) && clean.contains('[') && clean.ends_with(']') {
+			if _ := t.tc.resolve_generic_struct_method(clean, 'clone') {
+				call := t.make_method_call(source, 'clone', []flat.NodeId{})
+				t.set_node_typ(int(call), clean)
+				return call
+			}
+		}
+		method_name := t.resolve_receiver_method_name(source, 'clone')
+		if method_name.len > 0 {
+			params := t.call_param_types(method_name)
+			mut receiver := source
+			if params.len > 0 && params[0].name().starts_with('&') {
+				receiver = t.runtime_addr(source, clean)
+			}
+			t.mark_fn_used_name(method_name)
+			return t.make_call_typed(method_name, arr1(receiver), t.receiver_method_return_type(method_name,
+				clean))
+		}
+	}
+	if isnil(t.tc) || !t.tc.named_type_implements_marker(clean, 'IClone') {
+		return source
+	}
+	info := t.lookup_struct_info(clean) or { return source }
+	mut owning_fields := []FieldInfo{}
+	for field in info.fields {
+		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
+		if t.compiler_default_clone_type_needs_work(field_type) {
+			owning_fields << field
+		}
+	}
+	if owning_fields.len == 0 {
+		return source
+	}
+	tmp_name := t.new_temp('derived_clone')
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, clean)
+	for field in owning_fields {
+		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
+		source_field := t.make_selector(source, field.name, field_type)
+		cloned_field := t.make_compiler_default_clone_value(source_field, field_type, true)
+		t.pending_stmts << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.name,
+			field_type), cloned_field)
+	}
+	return t.make_ident(tmp_name)
+}
+
+fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
+	clean := t.normalize_type_alias(typ).trim_space()
+	if clean.len == 0 || clean.starts_with('&') {
+		return false
+	}
+	if t.is_optional_type_name(clean) {
+		return t.compiler_default_clone_type_needs_work(t.optional_base_type(t.qualify_optional_type(clean)))
+	}
+	if clean == 'string' || clean.starts_with('[]') || clean.starts_with('map[') {
+		return true
+	}
+	if !isnil(t.tc) && t.tc.named_type_implements_marker(clean, 'IClone') {
+		return true
+	}
+	if clean in t.structs {
+		for name, _ in t.fn_ret_types {
+			if name == '${clean}.clone' {
+				return true
+			}
+		}
+		if !isnil(t.tc) && '${clean}.clone' in t.tc.fn_ret_types {
+			return true
+		}
+	}
+	return false
 }
 
 // try_lower_array_method_call supports try lower array method call handling for Transformer.

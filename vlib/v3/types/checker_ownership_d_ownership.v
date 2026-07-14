@@ -1121,8 +1121,85 @@ fn (tc &TypeChecker) ownership_type_name_has_direct_drop(type_name string) bool 
 	if tc.ownership == unsafe { nil } || type_name.len == 0 {
 		return false
 	}
-	base := generic_base_name(type_name)
-	return type_name in tc.ownership.drop_structs || base in tc.ownership.drop_structs
+	mut names := []string{}
+	mut seen := map[string]bool{}
+	tc.ownership_collect_drop_type_names(tc.parse_type(type_name), mut names, mut seen)
+	return names.len > 0
+}
+
+// ownership_type_requires_drop reports whether `typ` has an explicit Drop
+// implementation or contains a field that does.
+pub fn (tc &TypeChecker) ownership_type_requires_drop(typ Type) bool {
+	if tc.ownership == unsafe { nil } {
+		return false
+	}
+	mut names := []string{}
+	mut seen := map[string]bool{}
+	tc.ownership_collect_drop_type_names(typ, mut names, mut seen)
+	return names.len > 0
+}
+
+fn (tc &TypeChecker) ownership_type_has_explicit_drop(type_name string) bool {
+	clean := type_name.trim_left('&?')
+	base := generic_base_name(clean)
+	return clean in tc.ownership.drop_structs || base in tc.ownership.drop_structs
+}
+
+fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []string, mut seen map[string]bool) {
+	match typ {
+		Alias {
+			tc.ownership_collect_drop_type_names(typ.base_type, mut names, mut seen)
+		}
+		OptionType {
+			tc.ownership_collect_drop_type_names(typ.base_type, mut names, mut seen)
+		}
+		ResultType {
+			tc.ownership_collect_drop_type_names(typ.base_type, mut names, mut seen)
+		}
+		Array {
+			tc.ownership_collect_drop_type_names(typ.elem_type, mut names, mut seen)
+		}
+		ArrayFixed {
+			tc.ownership_collect_drop_type_names(typ.elem_type, mut names, mut seen)
+		}
+		Map {
+			tc.ownership_collect_drop_type_names(typ.key_type, mut names, mut seen)
+			tc.ownership_collect_drop_type_names(typ.value_type, mut names, mut seen)
+		}
+		Struct {
+			name := typ.name
+			if tc.ownership_type_has_explicit_drop(name) {
+				if name !in names {
+					names << name
+				}
+				base, args, is_generic := generic_type_application_parts(name)
+				if is_generic && base.all_after_last('.') == 'Arc' {
+					for arg in args {
+						tc.ownership_collect_drop_type_names(tc.parse_type(arg), mut names, mut
+							seen)
+					}
+				}
+				return
+			}
+			if seen[name] {
+				return
+			}
+			seen[name] = true
+			for field in tc.struct_fields_for_type(name) {
+				tc.ownership_collect_drop_type_names(field.typ, mut names, mut seen)
+			}
+		}
+		SumType {
+			if seen[typ.name] {
+				return
+			}
+			seen[typ.name] = true
+			for variant in tc.sum_types[generic_base_name(typ.name)] or { []string{} } {
+				tc.ownership_collect_drop_type_names(tc.parse_type(variant), mut names, mut seen)
+			}
+		}
+		else {}
+	}
 }
 
 fn (mut tc TypeChecker) ownership_live_drop_entries() []OwnershipDropEntry {
@@ -1149,8 +1226,13 @@ fn (mut tc TypeChecker) ownership_live_drop_entries() []OwnershipDropEntry {
 fn (mut tc TypeChecker) ownership_note_drop_types(fn_name string, entries []OwnershipDropEntry) {
 	mut st := tc.ownership_state()
 	for entry in entries {
-		st.drop_type_names[entry.type_name] = true
-		st.drop_type_names['${fn_name}\x01${entry.type_name}'] = true
+		mut names := []string{}
+		mut seen := map[string]bool{}
+		tc.ownership_collect_drop_type_names(tc.parse_type(entry.type_name), mut names, mut seen)
+		for name in names {
+			st.drop_type_names[name] = true
+			st.drop_type_names['${fn_name}\x01${name}'] = true
+		}
 	}
 }
 
@@ -9932,6 +10014,9 @@ fn (tc &TypeChecker) ownership_type_is_owned(typ Type) bool {
 		}
 		if typ.name in tc.ownership.owned_structs
 			|| (base != typ.name && base in tc.ownership.owned_structs) {
+			return true
+		}
+		if tc.ownership_type_name_has_drop(typ.name) {
 			return true
 		}
 	}

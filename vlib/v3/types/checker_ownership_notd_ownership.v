@@ -43,4 +43,8 @@ pub fn (tc &TypeChecker) ownership_drop_type_names() []string {
 	return []string{}
 }
 
+pub fn (tc &TypeChecker) ownership_type_requires_drop(_ Type) bool {
+	return false
+}
+
 pub fn (mut tc TypeChecker) inherit_ownership_codegen_metadata_from(_ &TypeChecker) {}

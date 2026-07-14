@@ -22,6 +22,18 @@ pub fn sub_u64(ptr &u64, delta int) u64 {
 	return *ptr
 }
 
+// fetch_add_u64 atomically adds `delta` and returns the previous value.
+@[inline]
+pub fn fetch_add_u64(ptr &u64, delta u64) u64 {
+	return C.atomic_fetch_add_u64(voidptr(ptr), delta)
+}
+
+// fetch_sub_u64 atomically subtracts `delta` and returns the previous value.
+@[inline]
+pub fn fetch_sub_u64(ptr &u64, delta u64) u64 {
+	return C.atomic_fetch_sub_u64(voidptr(ptr), delta)
+}
+
 // add_i64 adds provided delta as an atomic operation
 @[inline]
 pub fn add_i64(ptr &i64, delta int) i64 {

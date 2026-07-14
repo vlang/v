@@ -1713,7 +1713,20 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 	if tc.unqualified_type_symbol_is_builtin(name) {
 		return name
 	}
-	return tc.cur_module + '.' + name
+	qualified := tc.cur_module + '.' + name
+	if qualified in tc.structs || qualified in tc.interface_names || qualified in tc.sum_types
+		|| qualified in tc.enum_names || qualified in tc.flag_enums || qualified in tc.type_aliases {
+		return qualified
+	}
+	// A concrete generic argument can originate in another module and then be
+	// substituted into a generic declaration while that declaration's module is
+	// active. Preserve an already-known unqualified symbol (notably a `main`
+	// type) instead of incorrectly rebasing it into the generic's module.
+	if name in tc.structs || name in tc.interface_names || name in tc.sum_types
+		|| name in tc.enum_names || name in tc.flag_enums || name in tc.type_aliases {
+		return name
+	}
+	return qualified
 }
 
 // qualify_resolution_type_name qualifies a type name for RESOLUTION (not
@@ -17080,6 +17093,26 @@ fn generic_type_suffix_for_signature(args []string) string {
 
 fn generic_type_arg_short_for_signature(type_arg string) string {
 	clean := type_arg.trim_space()
+	if clean.starts_with('[]') {
+		return 'Array_${generic_type_arg_short_for_signature(clean[2..])}'
+	}
+	if clean.starts_with('&') {
+		return 'ptr_${generic_type_arg_short_for_signature(clean[1..])}'
+	}
+	if clean.starts_with('map[') {
+		bracket_end := find_matching_bracket(clean, 3)
+		if bracket_end < clean.len - 1 {
+			key := generic_type_arg_short_for_signature(clean[4..bracket_end])
+			value := generic_type_arg_short_for_signature(clean[bracket_end + 1..])
+			return 'Map_${key}_${value}'
+		}
+	}
+	if clean.starts_with('?') {
+		return 'Option_${generic_type_arg_short_for_signature(clean[1..])}'
+	}
+	if clean.starts_with('!') {
+		return 'Result_${generic_type_arg_short_for_signature(clean[1..])}'
+	}
 	if clean.contains('.') {
 		return clean
 	}
@@ -17696,6 +17729,12 @@ fn (tc &TypeChecker) struct_fields_for_init(struct_name string) []StructField {
 		}
 	}
 	return concrete_fields
+}
+
+// struct_fields_for_type returns the fields of `struct_name`, with generic
+// parameters substituted when `struct_name` is a concrete generic instance.
+pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructField {
+	return tc.struct_fields_for_init(struct_name)
 }
 
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {
