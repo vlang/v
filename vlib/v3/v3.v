@@ -1355,8 +1355,10 @@ fn main() {
 				eprintln('error reading cache-marked C source ${cache_plan_file}: ${err.msg()}')
 				exit(1)
 			}
+			interface_impl_signature := pre_tc.interface_impl_set_signature()
 			prepared_cache := prepare_v3_module_cache(generated_source, c_standard, opt_flag,
-				pic_flag, warn_flags, resolved_c_flags, needs_objective_c, mut cache_state) or {
+				pic_flag, warn_flags, resolved_c_flags, needs_objective_c,
+				interface_impl_signature, mut cache_state) or {
 				eprintln(err.msg())
 				exit(1)
 			}
@@ -1480,12 +1482,12 @@ fn builtin_bundle_source_files(prefs &pref.Preferences, builtin_files []string) 
 	return files
 }
 
-fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, mut state V3ModuleCacheState) !V3PreparedModuleCache {
+fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string, mut state V3ModuleCacheState) !V3PreparedModuleCache {
 	if !state.manager.ensure_dir() {
 		return error('v3 module cache directory is unavailable')
 	}
 	compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag,
-		warning_flags, generated_c_flags, objective_c)
+		warning_flags, generated_c_flags, objective_c, interface_impl_signature)
 	if resolve_flag_specific_cache_objects(mut state, compile_signature) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()
@@ -1751,7 +1753,7 @@ fn restart_v3_after_cache_invalidation() {
 	exit(os.system(command.join(' ')))
 }
 
-fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool) string {
+fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string) string {
 	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
 	mut inputs := []string{}
@@ -1764,6 +1766,7 @@ fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_fl
 		'optimization=${opt_flag.trim_space()}',
 		'pic=${pic_flag.trim_space()}',
 		'warnings=${warning_flags.trim_space()}',
+		'interfaces=${interface_impl_signature}',
 		'flags=${flags.join('\\n')}',
 		'inputs=${inputs.join('\\n')}',
 	].join('\n')

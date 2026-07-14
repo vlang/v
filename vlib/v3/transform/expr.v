@@ -1988,13 +1988,10 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 	t.a.nodes[int(ret_result)].typ = 'bool'
 	stmts << t.make_return(ret_result, 'bool')
 	t.pending_stmts = saved_pending
-	// Keep the helper with the module that owns the sum type so module-cache objects
-	// retain its definition. Cgen preserves the globally unique plain helper name.
-	helper_module := if clean_sum.contains('.') {
-		clean_sum.all_before_last('.')
-	} else {
-		t.cur_module
-	}
+	// Keep the helper with the module that requested it. A comparison introduced by
+	// main for a cached imported sum must stay in main, while a helper requested by a
+	// source-parsed cached module remains available in that module's object.
+	helper_module := if t.cur_module.len > 0 { t.cur_module } else { 'main' }
 	t.a.add_node(flat.Node{
 		kind:  .module_decl
 		value: helper_module

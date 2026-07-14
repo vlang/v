@@ -16225,6 +16225,23 @@ pub fn stable_interface_type_ids(impl_names []string) map[string]int {
 	return ids
 }
 
+// interface_impl_set_signature returns the complete deterministic interface implementer set
+// that controls collision-resolved dispatch IDs for the current program.
+pub fn (tc &TypeChecker) interface_impl_set_signature() string {
+	mut iface_names := tc.interface_names.keys()
+	iface_names.sort()
+	mut lines := []string{cap: iface_names.len}
+	for iface_name in iface_names {
+		impl_names := if iface_name in ['IError', 'builtin.IError'] {
+			tc.ierror_impl_names()
+		} else {
+			tc.interface_impl_names(iface_name)
+		}
+		lines << '${iface_name}=${impl_names.join(',')}'
+	}
+	return lines.join('\n')
+}
+
 fn stable_interface_type_id_hash(name string) int {
 	mut hash := u32(2166136261)
 	for c in name.bytes() {
