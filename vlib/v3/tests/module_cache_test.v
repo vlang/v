@@ -742,6 +742,57 @@ pub fn value() int {
 	assert !changed.any(it.starts_with('builtin_')), changed.str()
 }
 
+fn test_top_level_user_module_stays_out_of_builtin_bundle() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_top_level_hash_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	first_project := os.join_path(root, 'first_project')
+	write_module_cache_file(first_project, 'v.mod', "Module { name: 'first_project' }\n")
+	write_module_cache_file(first_project, 'hash/hash.v', 'module hash
+
+pub fn value() int {
+	return 41
+}
+')
+	first_main := os.join_path(first_project, 'main.v')
+	write_module_cache_file(first_project, 'main.v', 'module main
+
+import hash
+
+fn main() {
+	println(hash.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, first_main, first_output)
+	assert run_module_cache_binary(first_output) == '41'
+	first_hashes := module_cache_object_hashes(cache_dir)
+	user_objects := first_hashes.keys().filter(it.starts_with('hash_'))
+	assert user_objects.len == 1, first_hashes.keys().str()
+	builtin_objects := first_hashes.keys().filter(it.starts_with('builtin_'))
+	assert builtin_objects.len == 1
+
+	second_project := os.join_path(root, 'second_project')
+	write_module_cache_file(second_project, 'v.mod', "Module { name: 'second_project' }\n")
+	second_main := os.join_path(second_project, 'main.v')
+	write_module_cache_file(second_project, 'main.v', 'module main
+
+fn main() {
+	println(42)
+}
+')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, second_main, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+	second_hashes := module_cache_object_hashes(cache_dir)
+	assert second_hashes.keys().filter(it.starts_with('builtin_')).len == 1
+}
+
 fn test_cached_module_body_recreates_cross_module_generic_specializations() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_cross_module_generics_${os.getpid()}')

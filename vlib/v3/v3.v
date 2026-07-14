@@ -25,8 +25,9 @@ $if !skip_wasm ? {
 }
 
 struct V3ModuleCacheState {
-	manager        modulecache.Manager
-	bundle_sources []string
+	manager             modulecache.Manager
+	bundle_sources      []string
+	bundle_source_paths map[string]bool
 mut:
 	force_source           bool
 	bundle_valid           bool
@@ -878,6 +879,7 @@ fn main() {
 	mut cache_state := V3ModuleCacheState{
 		manager:                cache_manager
 		bundle_sources:         bundle_sources
+		bundle_source_paths:    module_cache_source_path_set(bundle_sources)
 		force_source:           force_cache_source
 		module_sources:         map[string][]string{}
 		module_import_paths:    map[string]string{}
@@ -1393,7 +1395,7 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 	mut split_modules := split.modules.keys()
 	split_modules.sort()
 	for module_name in split_modules {
-		if module_is_builtin_bundle(module_name) {
+		if module_is_builtin_bundle(state, module_name) {
 			bundle_body.write_string(split.modules[module_name])
 		}
 	}
@@ -1409,7 +1411,7 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 		object_paths['builtin'] = entry.object
 		state.bundle_valid = true
 		for module_name, header in state.headers {
-			if !module_is_builtin_bundle(module_name) {
+			if !module_is_builtin_bundle(state, module_name) {
 				continue
 			}
 			if source_files := state.module_sources[module_name] {
@@ -1422,7 +1424,7 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 	mut parsed_modules := state.parsed_from_source.keys()
 	parsed_modules.sort()
 	for module_name in parsed_modules {
-		if module_is_builtin_bundle(module_name) {
+		if module_is_builtin_bundle(state, module_name) {
 			continue
 		}
 		source_files := state.module_sources[module_name] or { continue }
@@ -1455,14 +1457,34 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 	}
 }
 
-fn module_is_builtin_bundle(module_name string) bool {
-	return module_name in modulecache.builtin_bundle_modules
+fn module_cache_source_path_set(source_files []string) map[string]bool {
+	mut paths := map[string]bool{}
+	for source_file in source_files {
+		paths[os.real_path(source_file)] = true
+	}
+	return paths
+}
+
+fn module_is_builtin_bundle(state &V3ModuleCacheState, module_name string) bool {
+	if module_name !in modulecache.builtin_bundle_modules {
+		return false
+	}
+	source_files := state.module_sources[module_name] or { return false }
+	if source_files.len == 0 {
+		return false
+	}
+	for source_file in source_files {
+		if !state.bundle_source_paths[os.real_path(source_file)] {
+			return false
+		}
+	}
+	return true
 }
 
 fn cache_builtin_bundle_roots(state &V3ModuleCacheState) []string {
 	mut roots := []string{}
 	for module_name in state.module_sources.keys() {
-		if module_is_builtin_bundle(module_name) {
+		if module_is_builtin_bundle(state, module_name) {
 			roots << module_name
 		}
 	}
@@ -2438,7 +2460,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 				cache_state.module_sources[cache_module] = mod_files
 				mut parse_files := mod_files.clone()
-				is_builtin_bundle := module_is_builtin_bundle(cache_module)
+				is_builtin_bundle := module_is_builtin_bundle(cache_state, cache_module)
 				if is_builtin_bundle {
 					if cache_state.bundle_valid {
 						if header := cache_state.manager.valid_header(cache_module, mod_files) {
@@ -2452,7 +2474,11 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 							}
 						} else {
 							// A bundle is rebuilt as a unit. If one interface is stale,
-							// retain all bundle source bodies for the replacement object.
+							// restart with all bundle source bodies for the replacement object.
+							if !cache_state.force_source {
+								os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+								restart_v3_after_cache_invalidation()
+							}
 							cache_state.bundle_valid = false
 							cache_state.objects.delete('builtin')
 							cache_state.parsed_from_source[cache_module] = true
