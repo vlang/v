@@ -12599,16 +12599,19 @@ fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expe
 		return false
 	}
 	clean := fn_param_unalias_type(expected)
+	if clean.is_integer() {
+		return tc.c_literal_arg(arg_id)
+	}
 	if clean is Pointer {
 		base := fn_param_unalias_type(clean.base_type)
 		if base is Char || (base is Primitive && base.name() == 'u8') {
-			return tc.c_string_pointer_arg(arg_id)
+			return tc.c_literal_arg(arg_id)
 		}
 	}
 	return false
 }
 
-fn (tc &TypeChecker) c_string_pointer_arg(id flat.NodeId) bool {
+fn (tc &TypeChecker) c_literal_arg(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return false
 	}
@@ -12617,7 +12620,7 @@ fn (tc &TypeChecker) c_string_pointer_arg(id flat.NodeId) bool {
 		return node.value.starts_with('c:')
 	}
 	if node.kind == .paren && node.children_count > 0 {
-		return tc.c_string_pointer_arg(tc.a.child(&node, 0))
+		return tc.c_literal_arg(tc.a.child(&node, 0))
 	}
 	return false
 }
