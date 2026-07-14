@@ -7576,9 +7576,13 @@ fn (mut tc TypeChecker) ownership_collect_conditional_result(lhs_name string, if
 			if node.children_count < 2 || node.value in ['!', '?'] {
 				return false
 			}
+			mut marked := tc.ownership_collect_expr_result(lhs_name, tc.a.child(&node, 0),
+				lhs_type, pos, mut moved_sources)
 			tail := tc.branch_tail_expr_id(tc.a.child(&node, 1))
-			return tc.ownership_collect_expr_result(lhs_name, tail, lhs_type, pos, mut
-				moved_sources)
+			if tc.ownership_collect_expr_result(lhs_name, tail, lhs_type, pos, mut moved_sources) {
+				marked = true
+			}
+			return marked
 		}
 		else {}
 	}
@@ -7603,8 +7607,16 @@ fn (mut tc TypeChecker) ownership_collect_expr_result(lhs_name string, expr_id f
 		return true
 	}
 	name := tc.ownership_expr_ident_name(id)
-	if name.len > 0 && tc.ownership_collect_named_conditional_move_sources(name, mut moved_sources) {
-		return true
+	if name.len > 0 {
+		if tc.ownership_collect_named_conditional_move_sources(name, mut moved_sources) {
+			return true
+		}
+		source_type := tc.resolve_type(id)
+		if node.kind == .index && tc.ownership_type_requires_destruction(source_type) {
+			tc.ownership_mark_owned(name, source_type, pos)
+			ownership_add_conditional_move_source(mut moved_sources, name, '')
+			return true
+		}
 	}
 	if tc.ownership_mark_from_call(lhs_name, id, pos) {
 		return true
