@@ -2481,6 +2481,23 @@ fn embed_file_import_node() flat.Node {
 	}
 }
 
+fn ast_has_import_upto(a &flat.FlatAst, import_path string, end_node int) bool {
+	mut end := end_node
+	if end > a.nodes.len {
+		end = a.nodes.len
+	}
+	if end <= 0 {
+		return false
+	}
+	for i in 0 .. end {
+		node := a.nodes[i]
+		if node.kind == .import_decl && node.value == import_path {
+			return true
+		}
+	}
+	return false
+}
+
 fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool, builtin_dir string) {
 	if !enabled {
 		return
