@@ -1794,6 +1794,15 @@ fn (tc &TypeChecker) qualify_resolution_type_text(typ string) string {
 	return tc.qualify_type_text_impl(typ, true)
 }
 
+// parse_resolution_type parses type text that can mix declaration-local names with concrete
+// generic arguments from another module.
+pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
+	qualified := tc.qualify_resolution_type_text(typ)
+	mut unscoped := *tc
+	unscoped.cur_module = ''
+	return unscoped.parse_type(qualified)
+}
+
 fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
@@ -4352,7 +4361,7 @@ fn (tc &TypeChecker) type_name_known(typ string) bool {
 	if is_builtin_type_name(typ) || typ == 'unknown' || typ.starts_with('C.') {
 		return true
 	}
-	qtyp := tc.qualify_name(typ)
+	qtyp := tc.qualify_resolution_type_name(typ)
 	if !typ.contains('.') {
 		if resolved := tc.resolve_selective_import_type_symbol(typ) {
 			return tc.type_symbol_known(resolved)
@@ -5554,6 +5563,9 @@ fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.No
 		actual := tc.comptime_static_metadata_expr_type(arg_id, var_name, loop_kind) or { continue }
 		expected := tc.call_arg_expected_type(info, param_idx)
 		if !tc.receiver_compatible(actual, expected) && !tc.type_compatible(actual, expected) {
+			if expected is Pointer && tc.expr_tail_is_nil(arg_id) {
+				continue
+			}
 			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
 				param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected.name()}`',
 				id)
@@ -7180,7 +7192,7 @@ fn (mut tc TypeChecker) comptime_type_match_type(type_text string) Type {
 // type_text_implements_interface reports whether a concrete type expression
 // satisfies an interface type expression in the current checker module context.
 pub fn (mut tc TypeChecker) type_text_implements_interface(actual_text string, iface_text string) bool {
-	actual := tc.comptime_type_match_type(actual_text)
+	actual := tc.parse_type(actual_text)
 	expected := tc.comptime_type_match_type(iface_text)
 	if expected is Interface {
 		return tc.type_implements_interface(actual, expected)
@@ -9685,8 +9697,15 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		&& !tc.call_generic_args_have_placeholders(node) && !tc.call_receiver_type_is_unknown(node) {
 		tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
 	}
+	dsl_name := tc.unresolved_array_dsl_call_name(node)
+	if dsl_name.len > 0 {
+		tc.push_array_dsl_scope(node, dsl_name)
+	}
 	for i in 1 .. node.children_count {
 		tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
+	}
+	if dsl_name.len > 0 {
+		tc.pop_scope()
 	}
 }
 
@@ -11927,8 +11946,15 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		return
 	}
 	if !info.params_known {
+		dsl_name := tc.unresolved_array_dsl_call_name(node)
+		if dsl_name.len > 0 {
+			tc.push_array_dsl_scope(node, dsl_name)
+		}
 		for i in 1 .. node.children_count {
 			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
+		}
+		if dsl_name.len > 0 {
+			tc.pop_scope()
 		}
 		return
 	}
@@ -12174,6 +12200,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected) {
+			if expected is Pointer && tc.expr_tail_is_nil(arg_id) {
+				continue
+			}
 			if json_encode_accepts_arg(info.name, param_idx, expected, actual) {
 				continue
 			}
@@ -12197,6 +12226,18 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				id)
 		}
 	}
+}
+
+fn (tc &TypeChecker) unresolved_array_dsl_call_name(node flat.Node) string {
+	if node.children_count == 0 {
+		return ''
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return ''
+	}
+	name := 'array.${callee.value}'
+	return if is_array_dsl_call_name(name) { name } else { '' }
 }
 
 fn (tc &TypeChecker) chan_try_pop_destination_is_valid(arg_id flat.NodeId, actual Type) bool {
@@ -12389,7 +12430,7 @@ fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
 		ierror_compat_entries:      map[string]int{}
 		source_error_embed_entries: map[string]int{}
 	}
-	return scoped.parse_type(typ)
+	return scoped.parse_resolution_type(typ)
 }
 
 fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]string) {
@@ -12918,17 +12959,44 @@ fn (tc &TypeChecker) call_receiver_array_type(node flat.Node) ?Array {
 	if fn_node.kind != .selector || fn_node.children_count == 0 {
 		return none
 	}
-	base_type0 := unwrap_pointer(tc.resolve_type(tc.a.child(fn_node, 0)))
-	base_type := if base_type0 is Alias { base_type0.base_type } else { base_type0 }
-	if base_type is Array {
-		return base_type
-	}
-	if base_type is ArrayFixed {
-		return Array{
-			elem_type: base_type.elem_type
+	base_id := tc.a.child(fn_node, 0)
+	if resolved := tc.expr_type(base_id) {
+		if arr := call_receiver_array_from_type(resolved) {
+			return arr
 		}
 	}
+	base_node := tc.a.nodes[int(base_id)]
+	if base_node.typ.len > 0 {
+		if arr := call_receiver_array_from_type(tc.parse_resolution_type(base_node.typ)) {
+			return arr
+		}
+	}
+	if arr := call_receiver_array_from_type(tc.resolve_type(base_id)) {
+		return arr
+	}
 	return none
+}
+
+fn call_receiver_array_from_type(typ Type) ?Array {
+	return match typ {
+		Array {
+			typ
+		}
+		ArrayFixed {
+			Array{
+				elem_type: typ.elem_type
+			}
+		}
+		Alias {
+			call_receiver_array_from_type(typ.base_type)
+		}
+		Pointer {
+			call_receiver_array_from_type(typ.base_type)
+		}
+		else {
+			none
+		}
+	}
 }
 
 // call_arg_value updates call arg value state for TypeChecker.
@@ -15674,6 +15742,10 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			tc.register_synth_type(id, expected_raw)
 			return expected_raw
 		}
+		if expected is Pointer {
+			tc.register_synth_type(id, expected_raw)
+			return expected_raw
+		}
 	}
 	actual := tc.resolve_type(id)
 	if tc.type_compatible(actual, expected) {
@@ -16877,11 +16949,7 @@ fn generic_type_suffix_for_signature(args []string) string {
 fn generic_type_arg_short_for_signature(type_arg string) string {
 	clean := type_arg.trim_space()
 	if clean.contains('.') {
-		short := clean.all_after_last('.')
-		if short.starts_with('Array_') {
-			return clean
-		}
-		return short
+		return clean
 	}
 	return clean
 }
@@ -18561,7 +18629,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
 		return tc.parse_fn_type(typ)
 	}
-	qtyp := tc.qualify_name(typ)
+	qtyp := tc.qualify_resolution_type_name(typ)
 	allow_bare_symbol := qtyp == typ
 	if typ == 'array' && tc.has_builtins && typ in tc.structs {
 		return Type(Struct{
@@ -18749,7 +18817,7 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		} else {
 			generic_suffix
 		}
-		mut qbase := tc.qualify_name(resolved_base)
+		mut qbase := tc.qualify_resolution_type_name(resolved_base)
 		if qbase == resolved_base && resolved_base.contains('.') {
 			qbase = tc.resolve_imported_type_text(resolved_base)
 		}
@@ -20307,7 +20375,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'char'
 	}
 	if t is Rune {
-		return 'i32'
+		return 'u32'
 	}
 	if t is ISize {
 		return 'ptrdiff_t'
