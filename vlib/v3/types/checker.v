@@ -20359,7 +20359,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 	}
 	if t is Struct {
 		if t.name == 'thread' || t.name.ends_with('.thread') || t.name.starts_with('thread ') {
-			return 'void*'
+			return '__v_thread'
 		}
 		if t.name.starts_with('C.') {
 			raw := t.name[2..]

@@ -34,6 +34,11 @@ suffixes, and third-party object-cache keys. Common aliases such as `darwin`, `x
 `amd64`/`arm64` cross-architecture builds through Clang's `-arch`; other cross targets can be
 emitted as C with `-o file.c` for compilation by an external target toolchain.
 
+Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` uses the
+platform's default thread stack and checks allocation, thread creation, and join failures. Since
+V's `spawn` expression has no error return, these runtime failures print a diagnostic and abort;
+packed arguments are released if thread creation fails.
+
 The type system (`types/`) uses a `Type` sum type with 20 variants instead of
 string-based type checks. Primitive types use a `Properties` flag enum with
 `boolean`, `float`, `integer`, `unsigned` flags and a `size` field. The parser
