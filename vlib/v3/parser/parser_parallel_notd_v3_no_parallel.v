@@ -242,8 +242,14 @@ fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src 
 		}
 		if tok == .dollar {
 			saved_s := s
-			if s.scan() == .key_if {
+			comptime_kind := s.scan()
+			if comptime_kind == .key_if {
 				current_module = p.precollect_parallel_comptime_if(mut s, src, path,
+					current_module, mut values, mut decls)
+				continue
+			}
+			if comptime_kind == .key_match {
+				current_module = p.precollect_parallel_comptime_match(mut s, src, path,
 					current_module, mut values, mut decls)
 				continue
 			}
@@ -369,14 +375,146 @@ fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src st
 			cond += s.lit
 		}
 	}
+	resolved := p.resolve_parallel_comptime_prepass_text(cond, cond_start, src, path, module_name,
+		values)
+	return eval_comptime_cond(p.prefs, resolved)
+}
+
+fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src string, path string, module_name string, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) string {
+	mut current_module := module_name
+	mut subject := ''
+	mut subject_start := s.offset
+	mut subject_is_literal := false
+	mut prev := ''
+	for {
+		tok := s.scan()
+		if tok == .eof {
+			return current_module
+		}
+		if tok == .lcbr {
+			break
+		}
+		if tok == .semicolon {
+			continue
+		}
+		piece := parallel_comptime_prepass_token_text(s, src)
+		if subject.len == 0 {
+			subject_start = s.pos
+			subject_is_literal = tok in [.string, .char, .number, .key_true, .key_false]
+		} else if comptime_cond_needs_space(prev, piece) {
+			subject += ' '
+		}
+		subject += piece
+		prev = piece
+	}
+	resolved_subject := p.resolve_parallel_comptime_prepass_text(subject, subject_start, src, path,
+		current_module, values)
+	subject_known := subject_is_literal || subject.starts_with('@') || resolved_subject != subject
+	mut matched := false
+	for {
+		mut tok := s.scan()
+		for tok == .semicolon {
+			tok = s.scan()
+		}
+		if tok == .eof || tok == .rcbr {
+			return current_module
+		}
+
+		mut is_else := tok == .key_else
+		if tok == .dollar {
+			saved_s := s
+			if s.scan() == .key_else {
+				is_else = true
+				tok = s.scan()
+				for tok == .semicolon {
+					tok = s.scan()
+				}
+			} else {
+				s = saved_s
+			}
+		} else if is_else {
+			tok = s.scan()
+			for tok == .semicolon {
+				tok = s.scan()
+			}
+		}
+
+		mut pattern_matches := false
+		if !is_else {
+			mut pattern := ''
+			mut pattern_start := s.pos
+			mut pattern_prev := ''
+			mut nested_depth := 0
+			for {
+				if tok == .lcbr && nested_depth == 0 {
+					if pattern.len > 0 {
+						resolved_pattern := p.resolve_parallel_comptime_prepass_text(pattern,
+							pattern_start, src, path, current_module, values)
+						if comptime_cond_value(resolved_pattern) == comptime_cond_value(resolved_subject) {
+							pattern_matches = true
+						}
+					}
+					break
+				}
+				if tok == .comma && nested_depth == 0 {
+					resolved_pattern := p.resolve_parallel_comptime_prepass_text(pattern,
+						pattern_start, src, path, current_module, values)
+					if comptime_cond_value(resolved_pattern) == comptime_cond_value(resolved_subject) {
+						pattern_matches = true
+					}
+					pattern = ''
+					pattern_prev = ''
+					tok = s.scan()
+					pattern_start = s.pos
+					continue
+				}
+				piece := parallel_comptime_prepass_token_text(s, src)
+				if pattern.len > 0 && comptime_cond_needs_space(pattern_prev, piece) {
+					pattern += ' '
+				}
+				pattern += piece
+				pattern_prev = piece
+				if tok == .lpar || tok == .lsbr {
+					nested_depth++
+				} else if (tok == .rpar || tok == .rsbr) && nested_depth > 0 {
+					nested_depth--
+				}
+				tok = s.scan()
+				if tok == .eof {
+					return current_module
+				}
+			}
+		} else if tok != .lcbr {
+			return current_module
+		}
+
+		take_arm := subject_known && !matched && (is_else || pattern_matches)
+		if take_arm {
+			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module,
+				true, mut values, mut decls)
+			matched = true
+		} else {
+			skip_parallel_comptime_block(mut s)
+		}
+	}
+	return current_module
+}
+
+fn (mut p Parser) resolve_parallel_comptime_prepass_text(text string, pos int, src string, path string, module_name string, values map[string]string) string {
 	mut resolver := Parser.new(p.prefs)
 	resolver.cur_file = path
 	resolver.cur_module = module_name
-	resolver.tok_pos = cond_start
+	resolver.tok_pos = pos
 	resolver.s.src = src
 	resolver.comptime_const_values = values.clone()
-	resolved := resolver.resolve_comptime_const_values(resolver.resolve_comptime_at_values(cond))
-	return eval_comptime_cond(p.prefs, resolved)
+	return resolver.resolve_comptime_const_values(resolver.resolve_comptime_at_values(text))
+}
+
+fn parallel_comptime_prepass_token_text(s &scanner.Scanner, src string) string {
+	if s.pos >= 0 && s.offset <= src.len && s.pos < s.offset {
+		return src[s.pos..s.offset]
+	}
+	return s.lit
 }
 
 fn skip_parallel_comptime_block(mut s scanner.Scanner) {
@@ -483,9 +621,17 @@ fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_n
 		mut bracket_depth := 0
 		mut brace_depth := 0
 		mut closed_group := false
-		tok = s.scan()
-		for tok != .eof {
+		for {
+			before_tok := s
+			tok = s.scan()
+			if tok == .eof {
+				break
+			}
 			if tok == .semicolon && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
+				break
+			}
+			if tok == .rcbr && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
+				s = before_tok
 				break
 			}
 			if tok == .rpar {
@@ -511,7 +657,6 @@ fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_n
 				tok: tok
 				lit: s.lit
 			}
-			tok = s.scan()
 		}
 		if value := parallel_comptime_const_value(value_tokens) {
 			decls << ComptimeConstPrepassDecl{
