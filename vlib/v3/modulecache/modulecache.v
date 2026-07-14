@@ -810,14 +810,98 @@ fn c_tag_definition_head_is_type_only(head string, keyword_len int) bool {
 }
 
 fn c_extern_storage_decl(head string) string {
-	mut left := head.trim_space()
-	if eq := c_top_level_assign_index(left) {
-		left = left[..eq].trim_space()
+	mut declarators := []string{}
+	for part in c_split_top_level_declarators(head.trim_space()) {
+		mut declaration := part.trim_space()
+		if eq := c_top_level_assign_index(declaration) {
+			declaration = declaration[..eq].trim_space()
+		}
+		if declaration.len > 0 {
+			declarators << declaration
+		}
 	}
-	if left.len == 0 {
+	if declarators.len == 0 {
 		return ''
 	}
-	return 'extern ${left};\n'
+	return 'extern ${declarators.join(', ')};\n'
+}
+
+fn c_split_top_level_declarators(value string) []string {
+	mut parts := []string{}
+	mut start := 0
+	mut paren := 0
+	mut bracket := 0
+	mut brace := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut block_comment := false
+	mut line_comment := false
+	for i, c in value.bytes() {
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		next := if i + 1 < value.len { value[i + 1] } else { u8(0) }
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+			}
+			continue
+		}
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			continue
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			continue
+		}
+		if c == `'` || c == `"` {
+			quote = c
+			continue
+		}
+		match c {
+			`(` {
+				paren++
+			}
+			`)` {
+				paren--
+			}
+			`[` {
+				bracket++
+			}
+			`]` {
+				bracket--
+			}
+			`{` {
+				brace++
+			}
+			`}` {
+				brace--
+			}
+			`,` {
+				if paren == 0 && bracket == 0 && brace == 0 {
+					parts << value[start..i]
+					start = i + 1
+				}
+			}
+			else {}
+		}
+	}
+	parts << value[start..]
+	return parts
 }
 
 fn c_has_top_level_assign(value string) bool {
