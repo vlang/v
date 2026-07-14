@@ -1277,6 +1277,23 @@ fn main() {
 }
 	',
 		'unknown FieldData member `nmae`')
+	round4_run_bad(v3_bin, 'bad_outer_field_member_in_nested_loop', 'struct Foo {
+	id int
+}
+
+struct Bar {
+	name string
+}
+
+fn main() {
+	$for field in Foo.fields {
+		$for other in Bar.fields {
+			println(field.nmae + other.name)
+		}
+	}
+}
+	',
+		'unknown FieldData member `nmae`')
 }
 
 fn test_unknown_comptime_enum_value_member_is_rejected() {
@@ -1625,4 +1642,47 @@ fn main() {
 }
 ")
 	assert out == 'id:x\nid:x'
+}
+
+fn test_method_metadata_arrays_attrs_and_type_guards_are_materialized() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'method_metadata_materialized', "struct App {}
+
+@[get]
+@[host: 'example.com']
+fn (app App) handle(value string, count int) string {
+	return value + int_str(count)
+}
+
+fn (app App) empty() {}
+
+fn attrs_text(attrs []string) string {
+	return attrs.join(',')
+}
+
+fn attribute_names(attrs []VAttribute) string {
+	mut names := []string{}
+	for attr in attrs {
+		names << attr.name
+	}
+	return names.join(',')
+}
+
+fn main() {
+	mut rows := []string{}
+	$for method in App.methods {
+		if method.name == 'handle' {
+			rows << method.args.len.str()
+			rows << method.params.len.str()
+			rows << attrs_text(method.attrs)
+			rows << attribute_names(method.attributes)
+		}
+		$if method.typ is fn (string, int) string {
+			rows << 'typed:' + method.name
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == "2|2|get,host: 'example.com'|get,host|typed:handle"
 }

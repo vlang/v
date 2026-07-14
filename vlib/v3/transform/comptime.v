@@ -76,7 +76,8 @@ struct MethodMeta {
 	return_type string
 	is_pub      bool
 	params      []ParamMeta
-	attrs       []AttributeMeta
+	attrs       []string
+	attributes  []AttributeMeta
 }
 
 struct ParamMeta {
@@ -423,16 +424,18 @@ fn (t &Transformer) comptime_attribute_decl_rhs(id flat.NodeId, name string) ?fl
 	return none
 }
 
-fn (t &Transformer) comptime_node_attribute_metas(node_id int) []AttributeMeta {
-	mut attrs := []AttributeMeta{}
-	mut raw_attrs := []string{}
+fn (t &Transformer) comptime_node_raw_attributes(node_id int) []string {
 	marker := '@attributes:${node_id}'
 	for node in t.a.nodes {
 		if node.kind == .directive && node.value == marker {
-			raw_attrs = node.generic_params.clone()
-			break
+			return node.generic_params.clone()
 		}
 	}
+	return []string{}
+}
+
+fn comptime_attribute_metas_from_raw(raw_attrs []string) []AttributeMeta {
+	mut attrs := []AttributeMeta{}
 	for raw in raw_attrs {
 		clean := raw.trim_space()
 		if clean.len == 0 {
@@ -464,6 +467,10 @@ fn (t &Transformer) comptime_node_attribute_metas(node_id int) []AttributeMeta {
 		}
 	}
 	return attrs
+}
+
+fn (t &Transformer) comptime_node_attribute_metas(node_id int) []AttributeMeta {
+	return comptime_attribute_metas_from_raw(t.comptime_node_raw_attributes(node_id))
 }
 
 fn comptime_attr_unquote(s string) string {
@@ -871,6 +878,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 				}
 			}
 		}
+		raw_attrs := t.comptime_node_raw_attributes(node_id)
 		methods << MethodMeta{
 			name:        name
 			receiver:    first.typ
@@ -878,7 +886,8 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			return_type: if node.typ.len > 0 { node.typ } else { 'void' }
 			is_pub:      node.op == .arrow
 			params:      params
-			attrs:       t.comptime_node_attribute_metas(node_id)
+			attrs:       raw_attrs
+			attributes:  comptime_attribute_metas_from_raw(raw_attrs)
 		}
 	}
 	return methods
@@ -914,8 +923,14 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 				'return_type' {
 					t.make_int_literal(t.comptime_field_type_id(method.return_type, t.cur_module))
 				}
-				'attrs', 'attributes' {
-					t.make_attribute_array_literal(method.attrs)
+				'args', 'params' {
+					t.make_param_array_literal(method.params)
+				}
+				'attrs' {
+					t.make_string_array_literal(method.attrs)
+				}
+				'attributes' {
+					t.make_attribute_array_literal(method.attributes)
 				}
 				else {
 					t.clone_method_subst_children(node, var_name, method)
@@ -948,6 +963,17 @@ fn (mut t Transformer) make_attribute_array_literal(attrs []AttributeMeta) flat.
 		ids << t.make_attribute_literal(attr)
 	}
 	return t.make_array_literal_typed(ids, '[]VAttribute')
+}
+
+fn (mut t Transformer) make_param_array_literal(params []ParamMeta) flat.NodeId {
+	if params.len == 0 {
+		return t.zero_value_for_type('[]FunctionParam')
+	}
+	mut ids := []flat.NodeId{cap: params.len}
+	for param in params {
+		ids << t.make_param_data_literal(param)
+	}
+	return t.make_array_literal_typed(ids, '[]FunctionParam')
 }
 
 fn (t &Transformer) comptime_method_param_index(id flat.NodeId, var_name string) ?int {
@@ -1028,9 +1054,6 @@ fn (mut t Transformer) clone_method_subst_children(node flat.Node, var_name stri
 }
 
 fn (t &Transformer) subst_method_cond(cond string, var_name string, method MethodMeta) string {
-	mut result := cond.replace('${var_name}.return_type', method.return_type)
-	result = result.replace('${var_name}.is_pub', method.is_pub.str())
-	result = result.replace('${var_name}.name', "'${method.name}'")
 	mut param_types := []string{cap: method.params.len}
 	for param in method.params {
 		param_types << param.typ
@@ -1040,12 +1063,21 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 	} else {
 		''
 	}
-	result = comptime_cond_replace_bare_ident(result, var_name,
-		'fn(${param_types.join(', ')})${ret}')
+	method_type := 'fn(${param_types.join(', ')})${ret}'
+	mut result := cond.replace('${var_name}.return_type', method.return_type)
+	result = result.replace('${var_name}.typ', method_type)
+	result = result.replace('${var_name}.is_pub', method.is_pub.str())
+	result = result.replace('${var_name}.name', "'${method.name}'")
+	result = comptime_cond_replace_bare_ident(result, var_name, method_type)
 	for op in [' !is ', ' is '] {
 		if idx := comptime_top_index(result, op) {
 			expected := result[idx + op.len..].trim_space()
-			normalized := t.comptime_normalize_type_alias_chain(expected)
+			normalized := if !isnil(t.tc)
+				&& (expected.starts_with('fn(') || expected.starts_with('fn (')) {
+				t.tc.parse_type(expected).name()
+			} else {
+				t.comptime_normalize_type_alias_chain(expected)
+			}
 			if normalized != expected {
 				result = result[..idx + op.len] + normalized
 			}

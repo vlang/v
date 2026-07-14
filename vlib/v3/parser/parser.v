@@ -2672,9 +2672,54 @@ fn (p &Parser) resolve_comptime_at_values(cond string) string {
 	module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
 	fn_name := p.cur_fn.all_after_last('.')
 	method_name := if p.cur_struct.len > 0 { '${p.cur_struct}.${fn_name}' } else { fn_name }
-	return cond.replace('@METHOD', method_name).replace('@STRUCT', p.cur_struct).replace('@MOD',
-		module_name).replace('@FN', fn_name).replace('@OS', p.prefs.normalized_target_os()).replace('@CCOMPILER',
-		@CCOMPILER).replace('@BACKEND', p.prefs.backend).replace('@PLATFORM', @PLATFORM)
+	mut out := strings.new_builder(cond.len)
+	mut i := 0
+	mut quote := u8(0)
+	for i < cond.len {
+		c := cond[i]
+		if quote != 0 {
+			out.write_u8(c)
+			if c == `\\` && i + 1 < cond.len {
+				i++
+				out.write_u8(cond[i])
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c == `'` || c == `"` {
+			quote = c
+			out.write_u8(c)
+			i++
+			continue
+		}
+		if c == `@` {
+			start := i
+			i++
+			for i < cond.len && (cond[i].is_letter() || cond[i].is_digit() || cond[i] == `_`) {
+				i++
+			}
+			name := cond[start..i]
+			value := match name {
+				'@METHOD' { method_name }
+				'@STRUCT' { p.cur_struct }
+				'@MOD' { module_name }
+				'@FN' { fn_name }
+				'@OS' { p.prefs.normalized_target_os() }
+				'@CCOMPILER' { @CCOMPILER }
+				'@BACKEND' { p.prefs.backend }
+				'@PLATFORM' { @PLATFORM }
+				else { name }
+			}
+
+			out.write_string(value)
+			continue
+		}
+		out.write_u8(c)
+		i++
+	}
+	return out.str()
 }
 
 // comptime_char_is_name_cont reports whether the byte at `pos` continues an identifier. Used

@@ -5250,7 +5250,9 @@ fn (mut tc TypeChecker) check_comptime_members(id flat.NodeId, var_name string, 
 	node := tc.a.nodes[int(id)]
 	if node.kind == .comptime_for {
 		tc.check_comptime_for_members(id, node)
-		return
+		if comptime_for_declares_var_in_value(node.value, var_name) {
+			return
+		}
 	}
 	if node.kind == .comptime_if {
 		if member := comptime_cond_unknown_member(node.value, var_name, members) {
