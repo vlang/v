@@ -1076,17 +1076,42 @@ fn (tc &TypeChecker) ownership_drop_target_for_type_name(type_name string) ?Owne
 	clean := type_name.trim_left('&')
 	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {
 		payload := clean[1..]
-		if tc.ownership_type_name_has_direct_drop(payload) {
-			return OwnershipDropTarget{
-				type_name:        payload
-				optional_wrapper: true
-			}
+		if target := tc.ownership_drop_target_for_direct_type_name(payload, true) {
+			return target
 		}
 		return none
 	}
-	if tc.ownership_type_name_has_direct_drop(clean) {
+	if target := tc.ownership_drop_target_for_direct_type_name(clean, false) {
+		return target
+	}
+	return none
+}
+
+fn (tc &TypeChecker) ownership_drop_target_for_direct_type_name(type_name string, optional_wrapper bool) ?OwnershipDropTarget {
+	if tc.ownership_type_name_has_direct_drop(type_name) {
 		return OwnershipDropTarget{
-			type_name: clean
+			type_name:        type_name
+			optional_wrapper: optional_wrapper
+		}
+	}
+	return tc.ownership_drop_target_for_resolved_type(tc.parse_type(type_name), optional_wrapper)
+}
+
+fn (tc &TypeChecker) ownership_drop_target_for_resolved_type(typ Type, optional_wrapper bool) ?OwnershipDropTarget {
+	if typ is Alias {
+		return tc.ownership_drop_target_for_resolved_type(typ.base_type, optional_wrapper)
+	}
+	if typ is OptionType {
+		return tc.ownership_drop_target_for_resolved_type(typ.base_type, true)
+	}
+	if typ is ResultType {
+		return tc.ownership_drop_target_for_resolved_type(typ.base_type, true)
+	}
+	type_name := typ.name()
+	if tc.ownership_type_name_has_direct_drop(type_name) {
+		return OwnershipDropTarget{
+			type_name:        type_name
+			optional_wrapper: optional_wrapper
 		}
 	}
 	return none
