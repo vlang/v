@@ -919,6 +919,9 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 		return id
 	}
 	node := t.a.nodes[int(id)]
+	if comptime_for_declares_var(node, var_name) {
+		return t.clone_node_preserving_children(node)
+	}
 	if idx := t.comptime_method_param_index(id, var_name) {
 		if idx >= 0 && idx < method.params.len {
 			return t.make_param_data_literal(method.params[idx])

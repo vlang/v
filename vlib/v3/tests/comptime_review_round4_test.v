@@ -1875,3 +1875,41 @@ fn main() {
 ')
 	assert out == 'empty-type:true|text-type:true|args:text|params:text'
 }
+
+fn test_nested_method_reflection_respects_shadowed_loop_variable() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'nested_method_shadowing', 'struct OuterMethods {}
+
+fn (o OuterMethods) outer(value string) string {
+	_ = o
+	return "outer:" + value
+}
+
+struct InnerMethods {}
+
+fn (i InnerMethods) alpha(value string) string {
+	_ = i
+	return "alpha:" + value
+}
+
+fn (i InnerMethods) beta(value string) string {
+	_ = i
+	return "beta:" + value
+}
+
+fn main() {
+	inner := InnerMethods{}
+	mut rows := []string{}
+	$for method in OuterMethods.methods {
+		rows << "outer:" + method.name
+		$for method in InnerMethods.methods {
+			$if method.args[0].typ is string {
+				rows << method.name + "=" + inner.$method(method.name)
+			}
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'outer:outer|alpha=alpha:alpha|beta=beta:beta'
+}
