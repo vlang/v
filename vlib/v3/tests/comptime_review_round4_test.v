@@ -2705,3 +2705,46 @@ fn main() {
 ')
 	assert out == 'return|param|signature'
 }
+
+fn test_generic_reflection_compile_error_waits_for_selected_branch() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'generic_reflection_unselected_compile_error', "struct App {}
+
+fn (app App) present() {
+	_ = app
+}
+
+fn validate[T]() {
+	\$for method in T.methods {
+		\$if method.name == 'missing' {
+			\$compile_error('missing method selected')
+		}
+	}
+}
+
+fn main() {
+	validate[App]()
+	println('ok')
+}
+")
+	assert out == 'ok'
+	round4_run_bad(v3_bin, 'generic_reflection_selected_compile_error', "struct App {}
+
+fn (app App) present() {
+	_ = app
+}
+
+fn validate[T]() {
+	\$for method in T.methods {
+		\$if method.name == 'present' {
+			\$compile_error('present method selected')
+		}
+	}
+}
+
+fn main() {
+	validate[App]()
+}
+",
+		'compile-time error: present method selected')
+}

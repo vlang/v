@@ -7281,6 +7281,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 
 // transform_call_expr transforms transform call expr data for transform.
 fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	if t.validating_generic_spec {
+		t.record_selected_compile_error_call(node)
+	}
 	call_id := t.normalize_generic_call_expr(id, node)
 	mut call_node := t.a.nodes[int(call_id)]
 	mut resolved_typ := t.concrete_generic_call_return_type(call_id, call_node)
@@ -7324,6 +7327,27 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		return lowered
 	}
 	return t.transform_call_args(call_id, call_node)
+}
+
+fn (mut t Transformer) record_selected_compile_error_call(node flat.Node) {
+	if node.kind != .call || node.children_count == 0 {
+		return
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .ident || callee.value != '__v_compile_error' {
+		return
+	}
+	message := if node.children_count > 1 {
+		arg := t.a.child_node(&node, 1)
+		if arg.value.len > 0 {
+			arg.value
+		} else {
+			'compile-time error'
+		}
+	} else {
+		'compile-time error'
+	}
+	t.record_monomorph_error('compile-time error: ${message}')
 }
 
 fn (t &Transformer) is_cgen_magic_json_call(id flat.NodeId, node flat.Node) bool {
