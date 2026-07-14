@@ -2323,6 +2323,15 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 }
 
 fn (mut p Parser) parse_compile_error_stmt() flat.NodeId {
+	call := p.parse_compile_error_call()
+	return p.a.add_node(flat.Node{
+		kind:           .return_stmt
+		children_start: p.add_child(call)
+		children_count: 1
+	})
+}
+
+fn (mut p Parser) parse_compile_error_call() flat.NodeId {
 	p.next() // skip `compile_error`
 	p.check(.lpar)
 	message := if p.tok == .rpar {
@@ -2337,19 +2346,35 @@ fn (mut p Parser) parse_compile_error_stmt() flat.NodeId {
 	if p.tok == .semicolon {
 		p.next()
 	}
+	return p.make_compile_error_call(message)
+}
+
+fn (mut p Parser) make_compile_error_call(message flat.NodeId) flat.NodeId {
 	// Keep this as a compiler-only sentinel call. The checker reports it immediately for a
 	// selected concrete branch, while a deferred generic branch keeps it until specialization;
 	// if that branch is selected, generic validation rejects the sentinel as well.
 	callee := p.a.add_val(.ident, '__v_compile_error')
 	start := p.add_children2(callee, message)
-	call := p.a.add_node(flat.Node{
+	return p.a.add_node(flat.Node{
 		kind:           .call
 		children_start: start
 		children_count: 2
 	})
-	return p.a.add_node(flat.Node{
-		kind:           .return_stmt
+}
+
+fn (mut p Parser) parse_top_level_compile_error() flat.NodeId {
+	call := p.parse_compile_error_call()
+	stmt := p.a.add_node(flat.Node{
+		kind:           .expr_stmt
 		children_start: p.add_child(call)
+		children_count: 1
+	})
+	start := p.add_child(stmt)
+	return p.a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          '__v_top_level_compile_error_${p.a.nodes.len}'
+		typ:            'void'
+		children_start: start
 		children_count: 1
 	})
 }
@@ -2396,6 +2421,9 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 	if p.tok != .key_if {
 		if p.tok == .key_match {
 			return p.parse_comptime_match(true)
+		}
+		if p.tok == .name && p.lit == 'compile_error' {
+			return p.parse_top_level_compile_error()
 		}
 		// $for or other comptime - skip
 		if p.tok == .key_for {
@@ -5446,7 +5474,11 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			if name == '@VMOD_FILE' {
 				vmod_file := os.join_path_single(vmod_root_for_file(p.cur_file), 'v.mod')
-				content := os.read_file(vmod_file) or { '' }
+				content := os.read_file(vmod_file) or {
+					message := p.a.add_val_id(5,
+						'@VMOD_FILE can only be used in projects that have a v.mod file')
+					return p.make_compile_error_call(message)
+				}
 				return p.a.add_val_id(5, content.replace('\r\n', '\n'))
 			}
 			if name == '@VEXEROOT' {

@@ -9690,7 +9690,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			} else {
 				'compile-time error'
 			}
-			tc.record_error(.compile_error, 'compile-time error: ${message}', id)
+			tc.record_error_unfiltered(.compile_error, 'compile-time error: ${message}', id)
 			return
 		}
 		if callee.kind == .selector && callee.value == '$' {
