@@ -43,7 +43,7 @@ pub:
 pub fn new_manager(vroot string, salt string, enabled bool) Manager {
 	root_key := hash_text(os.real_path(vroot))
 	config_key := hash_text(cache_format + '\n' + salt)
-	base_dir := os.getenv_opt('V3CACHE') or { os.vtmp_dir() }
+	base_dir := os.abs_path(os.getenv_opt('V3CACHE') or { os.vtmp_dir() })
 	return Manager{
 		dir:     os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
 		enabled: enabled

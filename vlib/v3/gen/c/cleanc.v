@@ -512,7 +512,8 @@ pub fn (mut g FlatGen) set_cache_program_files(files []string) {
 }
 
 // cache_external_input_files returns local include/embed inputs grouped by the
-// module whose cached object incorporates their contents.
+// module whose cached object incorporates their contents. Forced-include inputs
+// affect every object and are kept in a configuration-wide group.
 pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool) map[string][]string {
 	mut c_flags := []string{}
 	mut cur_file := ''
@@ -572,6 +573,9 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 		if path := c_embed_external_input_path(a, node) {
 			c_add_cache_external_input(mut inputs, cur_module, path)
 		}
+	}
+	for path in cache_c_flag_input_files(c_flags) {
+		c_add_cache_external_input(mut inputs, '__v3_c_flags__', path)
 	}
 	for module_name, paths in inputs {
 		mut sorted := paths.clone()
