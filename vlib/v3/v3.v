@@ -1205,8 +1205,8 @@ fn main() {
 	parse_was_parallel = parse_was_parallel || user_parse_parallel
 	test_files := test_input_files(user_files, backend, prefs.target_os)
 
-	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 	seed_implicit_imports(mut a)
+	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
 	// Resolve imports recursively
 	import_parse_parallel := resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, mut
@@ -1251,6 +1251,9 @@ fn main() {
 		cache_input_modules['main'] = true
 		cache_state.module_external_inputs = cgen.cache_external_input_files(a, prefs.vroot,
 			cache_input_modules)
+		if cache_external_inputs_have_static_storage(cache_state.module_external_inputs) {
+			restart_v3_without_cache()
+		}
 		for module_name, parsed in cache_state.parsed_from_source {
 			if !parsed {
 				continue
@@ -1900,11 +1903,34 @@ fn invalidate_changed_cache_dependents(mut state V3ModuleCacheState) bool {
 }
 
 fn restart_v3_after_cache_invalidation() {
+	restart_v3_with_args([])
+}
+
+fn restart_v3_without_cache() {
+	restart_v3_with_args(['-nocache'])
+}
+
+fn restart_v3_with_args(extra_args []string) {
 	mut command := [os.quoted_path(os.executable())]
+	for arg in extra_args {
+		command << os.quoted_path(arg)
+	}
 	for arg in os.args[1..] {
 		command << os.quoted_path(arg)
 	}
 	exit(os.system(command.join(' ')))
+}
+
+fn cache_external_inputs_have_static_storage(inputs map[string][]string) bool {
+	for paths in inputs.values() {
+		for path in paths {
+			source := os.read_file(path) or { continue }
+			if modulecache.c_source_has_static_storage(source) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, interface_impl_signature string, declarations_signature string) string {

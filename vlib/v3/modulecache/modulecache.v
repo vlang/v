@@ -646,10 +646,23 @@ pub fn split_generated_c(source string) !CSplit {
 // cached module translation units. Type definitions and static helpers stay
 // local; owner functions and storage become declarations resolved from main.o.
 pub fn declaration_header(prefix string) string {
+	header, _ := c_declaration_header(prefix)
+	return header
+}
+
+// c_source_has_static_storage reports whether a local C input would give cached
+// translation units separate copies of static storage.
+pub fn c_source_has_static_storage(source string) bool {
+	_, has_static_storage := c_declaration_header(source)
+	return has_static_storage
+}
+
+fn c_declaration_header(prefix string) (string, bool) {
 	mut out := strings.new_builder(prefix.len / 2)
 	mut item := strings.new_builder(512)
 	mut brace_depth := 0
 	mut has_brace := false
+	mut has_static_storage := false
 	mut in_block_comment := false
 	mut in_preprocessor_directive := false
 	for raw_line in prefix.split_into_lines() {
@@ -695,14 +708,20 @@ pub fn declaration_header(prefix string) string {
 		} else if !trimmed.ends_with(';') {
 			continue
 		}
-		out.write_string(c_declaration_item(item.str(), has_brace))
+		declaration := item.str()
+		has_static_storage = has_static_storage
+			|| c_declaration_item_has_static_storage(declaration, has_brace)
+		out.write_string(c_declaration_item(declaration, has_brace))
 		item = strings.new_builder(512)
 		has_brace = false
 	}
 	if item.len > 0 {
-		out.write_string(c_declaration_item(item.str(), has_brace))
+		declaration := item.str()
+		has_static_storage = has_static_storage
+			|| c_declaration_item_has_static_storage(declaration, has_brace)
+		out.write_string(c_declaration_item(declaration, has_brace))
 	}
-	return out.str()
+	return out.str(), has_static_storage
 }
 
 fn c_preprocessor_line_continues(line string) bool {
@@ -721,16 +740,15 @@ fn c_declaration_item(item string, has_brace bool) string {
 			return item
 		}
 	}
-	if clean.starts_with('static ') || clean.starts_with('static\t')
-		|| clean.starts_with('typedef ') || c_tag_declaration_is_type_only(clean, has_brace) {
+	if c_starts_with_static_storage_class(clean) || clean.starts_with('typedef ')
+		|| c_tag_declaration_is_type_only(clean, has_brace) {
 		return item
 	}
 	if has_brace {
 		brace := clean.index_u8(`{`)
 		if brace > 0 {
 			head := clean[..brace].trim_space()
-			if head.contains('(') && !c_contains_parenthesized_pointer_declarator(head)
-				&& !c_contains_declaration_attribute(head) && !c_has_top_level_assign(head) {
+			if c_declaration_head_is_function(head) {
 				return '${head};\n'
 			}
 			if c_tag_declaration_keyword_len(clean) > 0 {
@@ -740,11 +758,91 @@ fn c_declaration_item(item string, has_brace bool) string {
 		}
 	}
 	if clean.starts_with('extern ') || clean.starts_with('_Static_assert')
-		|| (clean.contains('(') && !c_contains_parenthesized_pointer_declarator(clean)
-		&& !c_contains_declaration_attribute(clean) && !c_has_top_level_assign(clean)) {
+		|| c_declaration_head_is_function(clean) {
 		return item
 	}
 	return c_extern_storage_decl(clean.trim_right(';'))
+}
+
+fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {
+	clean := trim_leading_c_comments(item.trim_space())
+	if !c_starts_with_static_storage_class(clean) {
+		return false
+	}
+	if !has_brace {
+		return !c_declaration_head_is_function(clean.trim_right(';'))
+	}
+	brace := clean.index_u8(`{`)
+	if brace <= 0 || !c_declaration_head_is_function(clean[..brace].trim_space()) {
+		return true
+	}
+	return c_code_contains_identifier(clean[brace + 1..], 'static')
+}
+
+fn c_starts_with_static_storage_class(value string) bool {
+	return value.len > 'static'.len && value[..'static'.len] == 'static'
+		&& value['static'.len] in [` `, `\t`, `\r`, `\n`]
+}
+
+fn c_declaration_head_is_function(value string) bool {
+	return value.contains('(') && !c_contains_parenthesized_pointer_declarator(value)
+		&& !c_contains_declaration_attribute(value) && !c_has_top_level_assign(value)
+}
+
+fn c_code_contains_identifier(value string, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	mut quote := u8(0)
+	mut escaped := false
+	mut block_comment := false
+	mut line_comment := false
+	for i, c in value.bytes() {
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		next := if i + 1 < value.len { value[i + 1] } else { u8(0) }
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+			}
+			continue
+		}
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			continue
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			continue
+		}
+		if c == `'` || c == `"` {
+			quote = c
+			continue
+		}
+		if c != name[0] || i + name.len > value.len || value[i..i + name.len] != name {
+			continue
+		}
+		prev := if i > 0 { value[i - 1] } else { u8(0) }
+		after := if i + name.len < value.len { value[i + name.len] } else { u8(0) }
+		if !signature_name_char(prev) && !signature_name_char(after) {
+			return true
+		}
+	}
+	return false
 }
 
 fn c_contains_parenthesized_pointer_declarator(value string) bool {
