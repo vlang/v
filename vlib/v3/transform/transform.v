@@ -5668,6 +5668,27 @@ fn (t &Transformer) find_multi_return_call_types(node flat.Node, expected_count 
 			}
 		}
 	}
+	mut has_ambiguous_candidate := false
+	for candidate in candidates {
+		index_key := if candidate.starts_with('.') { candidate[1..] } else { candidate }
+		if indexed := t.receiver_method_suffix_index[index_key] {
+			if indexed == receiver_method_suffix_ambiguous {
+				has_ambiguous_candidate = true
+				continue
+			}
+			if candidate.starts_with('.') && !indexed.ends_with(candidate) {
+				continue
+			}
+			if ret := t.tc.fn_ret_types[indexed] {
+				if items := multi_return_types_from_type(ret, expected_count) {
+					return items
+				}
+			}
+		}
+	}
+	if !has_ambiguous_candidate {
+		return none
+	}
 	for candidate in candidates {
 		for key, ret in t.tc.fn_ret_types {
 			matches := if candidate.starts_with('.') {
