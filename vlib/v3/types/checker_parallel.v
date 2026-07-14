@@ -1,5 +1,6 @@
 module types
 
+import os
 import runtime
 import v3.flat
 
@@ -29,9 +30,14 @@ $if !windows {
 
 	fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
 	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
-	fn C.pthread_attr_init(attr voidptr) int
-	fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
-	fn C.pthread_attr_destroy(attr voidptr) int
+
+	fn create_checker_thread(index int, thread_id &C.pthread_t, arg voidptr) int {
+		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+		if fail == 'checker:all' || fail == 'checker:${index}' {
+			return 11
+		}
+		return C.pthread_create(thread_id, unsafe { nil }, check_chunk_thread, arg)
+	}
 
 	fn check_chunk_thread(arg voidptr) voidptr {
 		a := unsafe { &CheckChunkArgs(arg) }
@@ -187,15 +193,18 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		}
 
 		mut thread_ids := []C.pthread_t{len: thread_count}
-		attr_buf := [64]u8{}
-		attr := unsafe { voidptr(&attr_buf[0]) }
-		C.pthread_attr_init(attr)
-		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+		mut started := []bool{len: thread_count}
+		mut any_started := false
 		for ci in 0 .. thread_count {
-			C.pthread_create(unsafe { &thread_ids[ci] }, attr, check_chunk_thread,
+			res := create_checker_thread(ci, unsafe { &thread_ids[ci] },
 				unsafe { voidptr(&args[ci]) })
+			if res == 0 {
+				started[ci] = true
+				any_started = true
+			} else {
+				check_chunk_thread(unsafe { voidptr(&args[ci]) })
+			}
 		}
-		C.pthread_attr_destroy(attr)
 		// The master checks its own chunk under the same range discipline as the
 		// workers: in-range cache writes go straight into the shared arrays (the
 		// master owns those slots), out-of-range ones into its sparse maps, which
@@ -204,7 +213,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		tc.parallel_check_sparse = true
 		tc.check_fn_items_serial(chunks[0])
 		for ci in 0 .. thread_count {
-			C.pthread_join(thread_ids[ci], unsafe { nil })
+			if started[ci] && C.pthread_join(thread_ids[ci], unsafe { nil }) != 0 {
+				panic('failed to join checker worker ${ci}')
+			}
 		}
 		tc.merge_own_sparse_caches()
 		tc.parallel_check_sparse = false
@@ -214,7 +225,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 			w.free_parallel_check_worker_cache()
 		}
 		tc.sort_parallel_check_errors()
-		return true
+		return any_started
 	}
 }
 
@@ -342,9 +353,11 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
 	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
+	mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
 	tc.cur_fn_mut_param_base_types = map[string]Type{}
 	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
+	tc.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_file = file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope
@@ -379,6 +392,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
+	tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
 }
 
 // prewarm_shared_type_cache forces the lazily-built type_cache indexes that
@@ -483,6 +497,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.cur_fn_mut_param_base_types = map[string]Type{}
 	w.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	w.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
+	w.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
 	w.generic_method_value_info = map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
 	w.cur_fn_ret_type = Type(void_)

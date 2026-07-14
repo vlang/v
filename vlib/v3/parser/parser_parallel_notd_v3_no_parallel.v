@@ -37,14 +37,13 @@ $if !windows {
 	// C.pthread_join declares the C pthread_join symbol used by parser.
 	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
 
-	// C.pthread_attr_init declares the C pthread_attr_init symbol used by parser.
-	fn C.pthread_attr_init(attr voidptr) int
-
-	// C.pthread_attr_setstacksize declares the C pthread_attr_setstacksize symbol used by parser.
-	fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
-
-	// C.pthread_attr_destroy declares the C pthread_attr_destroy symbol used by parser.
-	fn C.pthread_attr_destroy(attr voidptr) int
+	fn create_parser_thread(index int, thread_id &C.pthread_t, arg voidptr) int {
+		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+		if fail == 'parser:all' || fail == 'parser:${index}' {
+			return 11
+		}
+		return C.pthread_create(thread_id, unsafe { nil }, parse_chunk_thread, arg)
+	}
 
 	// parse_chunk_thread parses one worker's contiguous range of files into the
 	// worker's private FlatAst, recording each file's worker-local first node id
@@ -114,17 +113,18 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			}
 		}
 		mut thread_ids := []C.pthread_t{len: thread_count}
-		attr_buf := [64]u8{}
-		attr := unsafe { voidptr(&attr_buf[0]) }
-		C.pthread_attr_init(attr)
-		// The parser recurses deeply on nested expressions; give workers a
-		// roomy stack, like the transform and cgen workers.
-		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+		mut started := []bool{len: thread_count}
+		mut any_started := false
 		for ci in 0 .. thread_count {
-			C.pthread_create(unsafe { &thread_ids[ci] }, attr, parse_chunk_thread,
+			res := create_parser_thread(ci, unsafe { &thread_ids[ci] },
 				unsafe { voidptr(&args[ci]) })
+			if res == 0 {
+				started[ci] = true
+				any_started = true
+			} else {
+				parse_chunk_thread(unsafe { voidptr(&args[ci]) })
+			}
 		}
-		C.pthread_attr_destroy(attr)
 		// The master parses chunk 0 straight into p.a while the helpers run —
 		// no merge needed for it, and its layout matches a serial parse.
 		for i in bounds[0] .. bounds[1] {
@@ -134,11 +134,13 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		// Join and merge each helper in fixed chunk order (input file order),
 		// so node numbering stays deterministic and byte-identical to serial.
 		for ci in 0 .. thread_count {
-			C.pthread_join(thread_ids[ci], unsafe { nil })
-			p.merge_parsed_worker(workers[ci], mut starts, bounds[ci + 1], bounds[ci + 2])
+			if started[ci] && C.pthread_join(thread_ids[ci], unsafe { nil }) != 0 {
+				panic('failed to join parser worker ${ci}')
+			}
+			p.merge_parsed_worker(mut workers[ci], mut starts, bounds[ci + 1], bounds[ci + 2])
 		}
 		p.next_file_id = dispatch_file_id_start + paths.len
-		return starts, true
+		return starts, any_started
 	}
 }
 
@@ -147,7 +149,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 // from an empty FlatAst), so every node-id reference moves by the master's
 // node count and every children_start by the master's children count at merge
 // time. Negative child slots (flat.empty_node sentinels) are left untouched.
-fn (mut p Parser) merge_parsed_worker(w &Parser, mut starts []int, chunk_start int, chunk_end int) {
+fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_start int, chunk_end int) {
 	node_shift := p.a.nodes.len
 	child_shift := i32(p.a.children.len)
 	new_children := w.a.children.len
@@ -157,6 +159,8 @@ fn (mut p Parser) merge_parsed_worker(w &Parser, mut starts []int, chunk_start i
 			p.a.children.grow_len(new_children)
 			vmemcpy(&p.a.children[old_len], &w.a.children[0],
 				new_children * int(sizeof(flat.NodeId)))
+			// Ownership of the copied elements moved to the master.
+			w.a.children.len = 0
 		}
 		for k in old_len .. p.a.children.len {
 			cid := p.a.children[k]
@@ -167,18 +171,18 @@ fn (mut p Parser) merge_parsed_worker(w &Parser, mut starts []int, chunk_start i
 	}
 	new_nodes := w.a.nodes.len
 	if new_nodes > 0 {
+		for k in 0 .. new_nodes {
+			if w.a.nodes[k].children_count != 0 {
+				w.a.nodes[k] = w.a.nodes[k].with_shifted_children(child_shift)
+			}
+		}
 		nodes_old_len := p.a.nodes.len
 		unsafe {
 			p.a.nodes.grow_len(new_nodes)
 			vmemcpy(&p.a.nodes[nodes_old_len], &w.a.nodes[0], new_nodes * int(sizeof(flat.Node)))
-		}
-		for k in nodes_old_len .. p.a.nodes.len {
-			// Only nodes with children carry a live children_start; leaving
-			// childless nodes untouched keeps their zero-value fields
-			// byte-identical to a serial parse.
-			if p.a.nodes[k].children_count != 0 {
-				p.a.nodes[k] = p.a.nodes[k].with_shifted_children(child_shift)
-			}
+			// flat.Node owns strings/slices. Zero the source length after the raw
+			// move so only the master owns and eventually releases those payloads.
+			w.a.nodes.len = 0
 		}
 	}
 	// Per-file region starts move by the merge offset.

@@ -1,5 +1,6 @@
 module transform
 
+import os
 import runtime
 import v3.flat
 
@@ -30,6 +31,7 @@ $if !windows {
 		chunks_ptr     voidptr // &[][]FnWorkItem
 		args_ptr       voidptr // &[]TransformChunkArgs
 		thread_ids_ptr voidptr // &[]C.pthread_t
+		started_ptr    voidptr // &[]bool
 	}
 
 	// C.pthread_t declares C pthread t data used by transform.
@@ -42,14 +44,13 @@ $if !windows {
 	// C.pthread_join declares the C pthread_join symbol used by transform.
 	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
 
-	// C.pthread_attr_init declares the C pthread_attr_init symbol used by transform.
-	fn C.pthread_attr_init(attr voidptr) int
-
-	// C.pthread_attr_setstacksize declares the C pthread_attr_setstacksize symbol used by transform.
-	fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
-
-	// C.pthread_attr_destroy declares the C pthread_attr_destroy symbol used by transform.
-	fn C.pthread_attr_destroy(attr voidptr) int
+	fn create_transform_thread(index int, thread_id &C.pthread_t, start_routine fn (voidptr) voidptr, arg voidptr) int {
+		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+		if fail == 'transform:all' || fail == 'transform:${index}' {
+			return 11
+		}
+		return C.pthread_create(thread_id, unsafe { nil }, start_routine, arg)
+	}
 
 	// transform_chunk_thread runs one worker's chunk of function bodies, after
 	// building and spawning the next worker in the chain (if any). The clone for
@@ -64,6 +65,7 @@ $if !windows {
 			chunks := unsafe { &[][]FnWorkItem(a.chunks_ptr) }
 			mut chain_args := unsafe { &[]TransformChunkArgs(a.args_ptr) }
 			mut thread_ids := unsafe { &[]C.pthread_t(a.thread_ids_ptr) }
+			mut started := unsafe { &[]bool(a.started_ptr) }
 			wast := w.clone_ast_base(a.base_nodes, a.base_children)
 			wtc := w.tc.fork_for_parallel_transform(wast)
 			ww := w.fork_worker(wast, wtc)
@@ -78,15 +80,18 @@ $if !windows {
 					chunks_ptr:     a.chunks_ptr
 					args_ptr:       a.args_ptr
 					thread_ids_ptr: a.thread_ids_ptr
+					started_ptr:    a.started_ptr
 				}
 			}
-			attr_buf := [64]u8{}
-			attr := unsafe { voidptr(&attr_buf[0]) }
-			C.pthread_attr_init(attr)
-			C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
-			C.pthread_create(unsafe { &(*thread_ids)[next] }, attr, transform_chunk_thread,
-				unsafe { voidptr(&(*chain_args)[next]) })
-			C.pthread_attr_destroy(attr)
+			res := create_transform_thread(next, unsafe { &(*thread_ids)[next] },
+				transform_chunk_thread, unsafe { voidptr(&(*chain_args)[next]) })
+			if res == 0 {
+				unsafe {
+					(*started)[next] = true
+				}
+			} else {
+				transform_chunk_thread(unsafe { voidptr(&(*chain_args)[next]) })
+			}
 		}
 		items := unsafe { &[]FnWorkItem(a.items_ptr) }
 		w.transform_pure_items_serial(*items)
@@ -236,11 +241,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		thread_count := chunk_count - 1
 		mut args := []TransformChunkArgs{len: thread_count}
 		mut thread_ids := []C.pthread_t{len: thread_count}
-		attr_buf := [64]u8{}
-		attr := unsafe { voidptr(&attr_buf[0]) }
-		C.pthread_attr_init(attr)
-		// Transform recurses deeply on large expressions; give workers a roomy stack.
-		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+		mut started := []bool{len: thread_count}
 		// The master builds and spawns only the FIRST worker; each worker then
 		// builds and spawns its successor from its own (still pristine) AST copy
 		// before transforming its chunk (see transform_chunk_thread). This frees
@@ -263,10 +264,15 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 			chunks_ptr:     unsafe { voidptr(&chunks) }
 			args_ptr:       unsafe { voidptr(&args) }
 			thread_ids_ptr: unsafe { voidptr(&thread_ids) }
+			started_ptr:    unsafe { voidptr(&started) }
 		}
-		C.pthread_create(unsafe { &thread_ids[0] }, attr, transform_chunk_thread,
+		first_res := create_transform_thread(0, unsafe { &thread_ids[0] }, transform_chunk_thread,
 			unsafe { voidptr(&args[0]) })
-		C.pthread_attr_destroy(attr)
+		if first_res == 0 {
+			started[0] = true
+		} else {
+			transform_chunk_thread(unsafe { voidptr(&args[0]) })
+		}
 		// Master transforms chunk[0] in place while the helper threads run. It only
 		// touches its own functions' nodes and the master AST/TypeChecker, all disjoint
 		// from the workers' clones, and never writes the shared (read-only) type tables.
@@ -281,13 +287,15 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// merging worker N's results only touches the master AST and worker N's
 		// (finished) clone, never the still-running workers' state.
 		for ci in 0 .. thread_count {
-			C.pthread_join(thread_ids[ci], unsafe { nil })
+			if started[ci] && C.pthread_join(thread_ids[ci], unsafe { nil }) != 0 {
+				panic('failed to join transform worker ${ci}')
+			}
 			ww := unsafe { &Transformer(args[ci].worker) }
 			t.merge_worker_used_fns(ww)
 			t.merge_worker(ww, chunks[ci + 1], base_nodes, base_children)
 		}
 		t.tc.unfreeze_type_cache_after_forks()
-		return true
+		return started.any(it)
 	}
 }
 
@@ -385,10 +393,8 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.shared_base_nodes = base_nodes
 		mut args := []SharedChunkArgs{len: thread_count}
 		mut thread_ids := []C.pthread_t{len: thread_count}
-		attr_buf := [64]u8{}
-		attr := unsafe { voidptr(&attr_buf[0]) }
-		C.pthread_attr_init(attr)
-		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+		mut started := []bool{len: thread_count}
+		mut any_started := false
 		for ci in 0 .. thread_count {
 			view := shared_region_view(t.a, node_starts[ci + 1], node_starts[ci + 2], child_starts[
 				ci + 1], child_starts[ci + 2])
@@ -399,10 +405,15 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 				worker:    voidptr(ww)
 				items_ptr: unsafe { voidptr(&chunks[ci + 1]) }
 			}
-			C.pthread_create(unsafe { &thread_ids[ci] }, attr, shared_chunk_thread,
+			res := create_transform_thread(ci, unsafe { &thread_ids[ci] }, shared_chunk_thread,
 				unsafe { voidptr(&args[ci]) })
+			if res == 0 {
+				started[ci] = true
+				any_started = true
+			} else {
+				shared_chunk_thread(unsafe { voidptr(&args[ci]) })
+			}
 		}
-		C.pthread_attr_destroy(attr)
 		// The master takes region 0, which is [base, node_starts[1]) — exactly
 		// where compaction wants its output, so its appends need no shifting
 		// and its checker-cache writes use final node ids. Bound its arrays so
@@ -429,7 +440,9 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		// clone's base offset; compaction always moves content left, so the
 		// copies never collide with unmerged regions.
 		for ci in 0 .. thread_count {
-			C.pthread_join(thread_ids[ci], unsafe { nil })
+			if started[ci] && C.pthread_join(thread_ids[ci], unsafe { nil }) != 0 {
+				panic('failed to join shared transform worker ${ci}')
+			}
 			ww := unsafe { &Transformer(args[ci].worker) }
 			t.merge_worker_used_fns(ww)
 			deferred_start := t.deferred_base_writes.len
@@ -444,7 +457,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.shared_base_nodes = -1
 		t.flush_deferred_base_writes()
 		t.tc.unfreeze_type_cache_after_forks()
-		return true
+		return any_started
 	}
 }
 
@@ -502,10 +515,7 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 		mut workers := []voidptr{len: thread_count, init: unsafe { nil }}
 		mut args := []LateScanChunkArgs{len: thread_count}
 		mut thread_ids := []C.pthread_t{len: thread_count}
-		attr_buf := [64]u8{}
-		attr := unsafe { voidptr(&attr_buf[0]) }
-		C.pthread_attr_init(attr)
-		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+		mut started := []bool{len: thread_count}
 		for ci in 0 .. thread_count {
 			// No AST clone: the scan never appends nodes. Only the checker is
 			// forked (private type_cache) and the Transformer's per-function
@@ -522,13 +532,19 @@ fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, us
 				start:       bounds[ci + 1]
 				end:         bounds[ci + 2]
 			}
-			C.pthread_create(unsafe { &thread_ids[ci] }, attr, late_scan_chunk_thread,
+			res := create_transform_thread(ci, unsafe { &thread_ids[ci] }, late_scan_chunk_thread,
 				unsafe { voidptr(&args[ci]) })
+			if res == 0 {
+				started[ci] = true
+			} else {
+				late_scan_chunk_thread(unsafe { voidptr(&args[ci]) })
+			}
 		}
-		C.pthread_attr_destroy(attr)
 		results[0] = t.scan_late_call_names_range(cands, used, bounds[0], bounds[1])
 		for ci in 0 .. thread_count {
-			C.pthread_join(thread_ids[ci], unsafe { nil })
+			if started[ci] && C.pthread_join(thread_ids[ci], unsafe { nil }) != 0 {
+				panic('failed to join late transform scan worker ${ci}')
+			}
 		}
 		t.tc.unfreeze_type_cache_after_forks()
 		mut names := []string{}

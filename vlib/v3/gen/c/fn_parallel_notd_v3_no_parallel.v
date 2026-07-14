@@ -1,12 +1,16 @@
 module c
 
+import os
 import runtime
 import strings
 import v3.flat
 import v3.types
 
+#include "@VEXEROOT/vlib/v3/pthread_helper.h"
+
 const max_flat_cgen_jobs = 10
 const min_flat_cgen_parallel_items = 1024
+const flat_cgen_worker_stack_size = 8 * 1024 * 1024
 
 $if !windows {
 	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
@@ -24,15 +28,15 @@ $if !windows {
 
 	// C.pthread_join declares the C pthread_join symbol used by c.
 	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
+	fn C.v3_pthread_create(thread &C.pthread_t, stack_size usize, start_routine fn (voidptr) voidptr, arg voidptr) int
 
-	// C.pthread_attr_init declares the C pthread_attr_init symbol used by c.
-	fn C.pthread_attr_init(attr voidptr) int
-
-	// C.pthread_attr_setstacksize declares the C pthread_attr_setstacksize symbol used by c.
-	fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
-
-	// C.pthread_attr_destroy declares the C pthread_attr_destroy symbol used by c.
-	fn C.pthread_attr_destroy(attr voidptr) int
+	fn create_cgen_thread(stage string, index int, thread_id &C.pthread_t, start_routine fn (voidptr) voidptr, arg voidptr) int {
+		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+		if fail == 'cgen:all' || fail == 'cgen:${stage}:all' || fail == 'cgen:${stage}:${index}' {
+			return 11
+		}
+		return C.v3_pthread_create(thread_id, flat_cgen_worker_stack_size, start_routine, arg)
+	}
 
 	// fixed_storage_scan_thread runs the fixed-storage-const use scan (a full
 	// post-transform AST pass) on a private fork while the master collects the
@@ -119,7 +123,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			g.gen_synthetic_main_after_fns()
 			return
 		}
-		g.parallel_used = true
 		// Freeze the checker's warm type cache (fully populated by the check and
 		// transform phases) as the shared read-only base for every worker's
 		// fresh cache; the master's own memoization writes go to a private
@@ -153,25 +156,43 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			}
 		}
 
-		attr_buf := [64]u8{}
-		attr := unsafe { voidptr(&attr_buf[0]) }
-		C.pthread_attr_init(attr)
-		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+		mut started := []bool{len: thread_count + 2}
+		mut any_started := false
 		for ci := 0; ci < thread_count; ci++ {
-			C.pthread_create(unsafe { &thread_ids[ci] }, attr, flat_cgen_chunk_thread,
-				unsafe { voidptr(&args[ci]) })
+			res := create_cgen_thread('body', ci, unsafe { &thread_ids[ci] },
+				flat_cgen_chunk_thread, unsafe { voidptr(&args[ci]) })
+			if res == 0 {
+				started[ci] = true
+				any_started = true
+			} else {
+				flat_cgen_chunk_thread(unsafe { voidptr(&args[ci]) })
+			}
 		}
-		C.pthread_create(unsafe { &thread_ids[thread_count] }, attr, postamble_segments_thread_a,
-			voidptr(post_worker_a))
-		C.pthread_create(unsafe { &thread_ids[thread_count + 1] }, attr,
+		post_a_res := create_cgen_thread('post', 0, unsafe { &thread_ids[thread_count] },
+			postamble_segments_thread_a, voidptr(post_worker_a))
+		if post_a_res == 0 {
+			started[thread_count] = true
+			any_started = true
+		} else {
+			postamble_segments_thread_a(voidptr(post_worker_a))
+		}
+		post_b_res := create_cgen_thread('post', 1, unsafe { &thread_ids[thread_count + 1] },
 			postamble_segments_thread_b, voidptr(post_worker_b))
-		C.pthread_attr_destroy(attr)
+		if post_b_res == 0 {
+			started[thread_count + 1] = true
+			any_started = true
+		} else {
+			postamble_segments_thread_b(voidptr(post_worker_b))
+		}
+		g.parallel_used = any_started
 		// Master emits chunk[0] into g.sb while the helper threads run, using
 		// worker 0's temp base so its temps stay in their own range.
 		g.tmp_count = 100_000
 		g.gen_fn_items(chunk_items[0])
 		for ci := 0; ci < thread_count + 2; ci++ {
-			C.pthread_join(thread_ids[ci], unsafe { nil })
+			if started[ci] && C.pthread_join(thread_ids[ci], unsafe { nil }) != 0 {
+				panic('failed to join C generation worker ${ci}')
+			}
 		}
 		for ci := 0; ci < thread_count; ci++ {
 			w := unsafe { &FlatGen(workers[ci]) }
@@ -825,12 +846,11 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		}
 		mut fs_worker := g.new_parallel_worker(0)
 		mut tid := []C.pthread_t{len: 1}
-		attr_buf := [64]u8{}
-		attr := unsafe { voidptr(&attr_buf[0]) }
-		C.pthread_attr_init(attr)
-		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
-		C.pthread_create(unsafe { &tid[0] }, attr, fixed_storage_scan_thread, voidptr(fs_worker))
-		C.pthread_attr_destroy(attr)
+		pre_started := create_cgen_thread('pre', 0, unsafe { &tid[0] }, fixed_storage_scan_thread,
+			voidptr(fs_worker)) == 0
+		if !pre_started {
+			fixed_storage_scan_thread(voidptr(fs_worker))
+		}
 		g.want_parallel_prep = true
 		items := g.ensure_fn_gen_items()
 		g.want_parallel_prep = false
@@ -852,7 +872,9 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		// Force the lazily-built const short-name index now: workers share it
 		// read-only, so it must be complete before any fork starts.
 		_ = g.unique_const_ref_name('__v3_prewarm__') or { '' }
-		C.pthread_join(tid[0], unsafe { nil })
+		if pre_started && C.pthread_join(tid[0], unsafe { nil }) != 0 {
+			panic('failed to join C generation pre-dispatch worker')
+		}
 		if fs_worker.worker_scope != unsafe { nil } {
 			g.parallel_worker_scopes << fs_worker.worker_scope
 		}

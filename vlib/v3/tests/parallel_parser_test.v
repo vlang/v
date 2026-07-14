@@ -76,6 +76,43 @@ fn test_parallel_parse_matches_serial() {
 	}
 }
 
+// test_parallel_parse_falls_back_when_workers_cannot_start ensures every helper
+// chunk is parsed synchronously instead of being silently omitted.
+fn test_parallel_parse_falls_back_when_workers_cannot_start() {
+	$if !windows {
+		files := parallel_parse_input_files()
+		prefs := pref.new_preferences()
+		mut serial := parser.Parser.new(prefs)
+		serial_starts := serial.parse_files_with_starts(files)
+		old_failure := os.getenv_opt('V3_TEST_PTHREAD_CREATE_FAIL')
+		os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', 'parser:all', true)
+		defer {
+			if value := old_failure {
+				os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', value, true)
+			} else {
+				os.unsetenv('V3_TEST_PTHREAD_CREATE_FAIL')
+			}
+		}
+		mut fallback := parser.Parser.new(prefs)
+		fallback_starts, was_parallel := fallback.parse_files_dispatch(files, true)
+		assert !was_parallel
+		assert fallback_starts == serial_starts
+		assert fallback.a.children == serial.a.children
+		assert fallback.a.nodes.len == serial.a.nodes.len
+		for i, node in serial.a.nodes {
+			got := fallback.a.nodes[i]
+			assert got.kind == node.kind
+			assert got.value == node.value
+			assert got.typ == node.typ
+			assert got.pos == node.pos
+			assert got.children_count == node.children_count
+			if node.children_count != 0 {
+				assert got.children_start == node.children_start
+			}
+		}
+	}
+}
+
 // build_parallel_parser_v3 builds parallel parser v3 data for v3 tests.
 fn build_parallel_parser_v3() string {
 	vexe := @VEXE

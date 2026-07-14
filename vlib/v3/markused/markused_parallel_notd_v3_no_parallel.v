@@ -6,6 +6,7 @@ module markused
 // slots of a preallocated results array. The result content per body is a pure
 // function of the (read-only) AST and checker tables, so the outcome is
 // identical to the serial fallback.
+import os
 import runtime
 import v3.flat
 import v3.types
@@ -37,14 +38,13 @@ $if !windows {
 	// C.pthread_join declares the C pthread_join symbol used by markused.
 	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
 
-	// C.pthread_attr_init declares the C pthread_attr_init symbol used by markused.
-	fn C.pthread_attr_init(attr voidptr) int
-
-	// C.pthread_attr_setstacksize declares the C pthread_attr_setstacksize symbol used by markused.
-	fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
-
-	// C.pthread_attr_destroy declares the C pthread_attr_destroy symbol used by markused.
-	fn C.pthread_attr_destroy(attr voidptr) int
+	fn create_markused_thread(index int, thread_id &C.pthread_t, arg voidptr) int {
+		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+		if fail == 'markused:all' || fail == 'markused:${index}' {
+			return 11
+		}
+		return C.pthread_create(thread_id, unsafe { nil }, markused_chunk_thread, arg)
+	}
 
 	// markused_chunk_thread runs one worker's range of bodies.
 	fn markused_chunk_thread(arg voidptr) voidptr {
@@ -100,22 +100,23 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 			}
 		}
 		mut thread_ids := []C.pthread_t{len: thread_count}
-		attr_buf := [64]u8{}
-		attr := unsafe { voidptr(&attr_buf[0]) }
-		C.pthread_attr_init(attr)
-		// The collectors recurse on deeply nested expressions; give workers a
-		// roomy stack, like the transform and cgen workers.
-		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+		mut started := []bool{len: thread_count}
 		for ci in 0 .. thread_count {
-			C.pthread_create(unsafe { &thread_ids[ci] }, attr, markused_chunk_thread,
+			res := create_markused_thread(ci, unsafe { &thread_ids[ci] },
 				unsafe { voidptr(&args[ci]) })
+			if res == 0 {
+				started[ci] = true
+			} else {
+				markused_chunk_thread(unsafe { voidptr(&args[ci]) })
+			}
 		}
-		C.pthread_attr_destroy(attr)
 		// The master analyzes chunk 0 on this thread while the helpers run.
 		collector.collect_bodies_range(body_ids, body_modules, imports, bounds[0], bounds[1], mut
 			results)
 		for ci in 0 .. thread_count {
-			C.pthread_join(thread_ids[ci], unsafe { nil })
+			if started[ci] && C.pthread_join(thread_ids[ci], unsafe { nil }) != 0 {
+				panic('failed to join mark-used worker ${ci}')
+			}
 		}
 		return results
 	}
