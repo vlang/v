@@ -396,7 +396,7 @@ fn (p &Parser) parallel_comptime_const_value(module_name string, tokens []Compti
 			'`${t.lit}`'
 		}
 		.string {
-			"'${strip_quotes(t.lit).replace("'", "\\\\'")}'"
+			comptime_cond_quoted_string(strip_quotes(t.lit))
 		}
 		.name {
 			module_key := comptime_const_value_key(module_name, t.lit)

@@ -2748,3 +2748,44 @@ fn main() {
 ",
 		'compile-time error: present method selected')
 }
+
+fn test_selected_comptime_if_expression_keeps_setup_statements() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'comptime_if_expr_setup_statements', "fn main() {
+	x := \$if true {
+		println('then setup')
+		tmp := 1
+		tmp + 1
+	} \$else {
+		0
+	}
+	y := \$if false {
+		0
+	} \$else {
+		println('else setup')
+		tmp := 3
+		tmp
+	}
+	println(int_str(x) + ':' + int_str(y))
+}
+")
+	assert out == 'then setup\nelse setup\n2:3'
+}
+
+fn test_comptime_string_comparisons_normalize_escapes() {
+	v3_bin := round4_build_v3()
+	src := [
+		'const quote = "\'"',
+		"const slash = '\\\\'",
+		'fn main() {',
+		'\t\$if "\'" == \'\\\'\' { println(\'if quote\') } \$else { println(\'bad if quote\') }',
+		"\t\$if quote == '\\'' { println('const quote') } \$else { println('bad const quote') }",
+		"\t\$if '\\\\' == '\\x5c' { println('if slash') } \$else { println('bad if slash') }",
+		"\t\$if slash == '\\x5c' { println('const slash') } \$else { println('bad const slash') }",
+		'\t\$match "\'" { \'\\\'\' { println(\'match quote\') } \$else { println(\'bad match quote\') } }',
+		"\t\$match '\\\\' { '\\x5c' { println('match slash') } \$else { println('bad match slash') } }",
+		'}',
+	].join('\n')
+	out := round4_run_good(v3_bin, 'comptime_escaped_string_comparisons', src)
+	assert out == 'if quote\nconst quote\nif slash\nconst slash\nmatch quote\nmatch slash'
+}

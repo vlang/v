@@ -3010,10 +3010,14 @@ fn comptime_cond_string_token_text(lit string) string {
 		return lit
 	}
 	if lit.len >= 3 && lit[0] == `r` && lit[1] in [`'`, `"`] && lit[lit.len - 1] == lit[1] {
-		return lit[1..]
+		return comptime_cond_quoted_string(lit[2..lit.len - 1])
 	}
-	mut out := strings.new_builder(lit.len + 2)
-	write_comptime_cond_string(mut out, lit)
+	return comptime_cond_quoted_string(lit)
+}
+
+fn comptime_cond_quoted_string(value string) string {
+	mut out := strings.new_builder(value.len + 2)
+	write_comptime_cond_string(mut out, value)
 	return out.str()
 }
 
@@ -3347,7 +3351,7 @@ fn (p &Parser) comptime_node_value(id flat.NodeId) ?string {
 			'`${node.value}`'
 		}
 		.string_literal {
-			"'${node.value.replace("'", "\\\\'")}'"
+			comptime_cond_quoted_string(node.value)
 		}
 		.ident {
 			p.comptime_value(node.value)
@@ -3448,9 +3452,11 @@ fn (mut p Parser) forget_comptime_lhs_value(lhs flat.NodeId) {
 fn comptime_cond_value(value string) string {
 	clean := value.trim_space()
 	if clean.len >= 2 && ((clean[0] == `'` && clean[clean.len - 1] == `'`)
-		|| (clean[0] == `"` && clean[clean.len - 1] == `"`)
-		|| (clean[0] == `\`` && clean[clean.len - 1] == `\``)) {
-		return clean[1..clean.len - 1]
+		|| (clean[0] == `"` && clean[clean.len - 1] == `"`)) {
+		return unescape_string(clean[1..clean.len - 1])
+	}
+	if clean.len >= 2 && clean[0] == `\`` && clean[clean.len - 1] == `\`` {
+		return unescape_string(clean[1..clean.len - 1])
 	}
 	return clean
 }
@@ -3493,10 +3499,19 @@ fn comptime_cond_strip_outer_parens(cond string) string {
 	for c.len >= 2 && c[0] == `(` && c[c.len - 1] == `)` {
 		mut depth := 0
 		mut quote := u8(0)
+		mut escaped := false
 		mut wraps := true
 		for i in 0 .. c.len {
 			ch := c[i]
 			if quote != 0 {
+				if escaped {
+					escaped = false
+					continue
+				}
+				if ch == `\\` {
+					escaped = true
+					continue
+				}
 				if ch == quote {
 					quote = 0
 				}
@@ -3531,6 +3546,10 @@ fn comptime_cond_split_top_level(cond string, op string) (string, string, bool) 
 	for i < cond.len {
 		ch := cond[i]
 		if quote != 0 {
+			if ch == `\\` && i + 1 < cond.len {
+				i += 2
+				continue
+			}
 			if ch == quote {
 				quote = 0
 			}
@@ -3921,6 +3940,14 @@ fn (mut p Parser) parse_comptime_expr_block() flat.NodeId {
 	ids := p.parse_block_body()
 	if ids.len == 0 {
 		return flat.empty_node
+	}
+	if ids.len > 1 {
+		start := p.add_children(ids)
+		return p.a.add_node(flat.Node{
+			kind:           .block
+			children_start: start
+			children_count: flat.child_count(ids.len)
+		})
 	}
 	last_id := ids.last()
 	last := p.a.nodes[int(last_id)]
