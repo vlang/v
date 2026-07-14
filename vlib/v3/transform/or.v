@@ -702,6 +702,11 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
+			if current_ret := t.current_generic_receiver_call_return_type(expr_node) {
+				if t.is_optional_type_name(current_ret) {
+					return t.canonical_or_expr_types(current_ret)
+				}
+			}
 			if decode_ret := t.json_decode_or_expr_type(expr_id, expr_node) {
 				return t.canonical_or_expr_types(decode_ret)
 			}
@@ -913,6 +918,9 @@ fn (mut t Transformer) zero_value_for_type(typ string) flat.NodeId {
 		|| clean in t.enum_types {
 		return t.make_int_literal(0)
 	}
+	if default_sum := t.make_default_sum_value(clean) {
+		return default_sum
+	}
 	return t.make_struct_init(clean)
 }
 
@@ -1022,6 +1030,9 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 
 fn (mut t Transformer) disabled_optional_call_or_none(expr_id flat.NodeId, expr_node flat.Node, expr_type string) ?flat.NodeId {
 	if isnil(t.tc) || expr_node.kind != .call || !t.is_optional_type_name(expr_type) {
+		return none
+	}
+	if t.is_cgen_magic_json_call(expr_id, expr_node) {
 		return none
 	}
 	if _ := t.json_decode_or_expr_type(expr_id, expr_node) {

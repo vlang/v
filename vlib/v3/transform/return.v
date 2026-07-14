@@ -93,7 +93,11 @@ fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	return node.kind == .ident && node.value == 'err'
+	if node.kind != .ident || node.value != 'err' {
+		return false
+	}
+	typ := node.typ
+	return typ == 'IError' || typ.ends_with('.IError')
 }
 
 fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.NodeId {

@@ -1,6 +1,6 @@
 module bench
 
-import os
+import runtime
 import time
 
 // Step represents step data used by bench.
@@ -57,34 +57,6 @@ pub fn (b &Bench) print_report() {
 
 // current_rss_kb returns current rss kb data for bench.
 fn current_rss_kb() i64 {
-	$if macos {
-		return macos_rss_kb()
-	}
-	$if linux {
-		return linux_rss_kb()
-	}
-	return 0
-}
-
-// macos_rss_kb supports macos current rss kb handling for bench.
-fn macos_rss_kb() i64 {
-	res := os.execute('ps -o rss= -p ${os.getpid()}')
-	if res.exit_code != 0 {
-		return 0
-	}
-	return res.output.trim_space().i64()
-}
-
-// linux_rss_kb supports linux rss kb handling for bench.
-fn linux_rss_kb() i64 {
-	content := os.read_file('/proc/self/status') or { return 0 }
-	for line in content.split('\n') {
-		if line.starts_with('VmRSS:') {
-			parts := line.split_any(' \t').filter(it.len > 0)
-			if parts.len >= 2 {
-				return parts[1].i64()
-			}
-		}
-	}
-	return 0
+	bytes := runtime.used_memory() or { return 0 }
+	return i64(bytes / 1024)
 }

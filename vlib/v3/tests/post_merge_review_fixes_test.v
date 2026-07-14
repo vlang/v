@@ -69,6 +69,29 @@ fn gen_c(v3_bin string, name string, src string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
+fn test_amp_array_literal_uses_scanned_heap_header() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'amp_array_literal_scanned_header', 'struct Holder {
+	values &[]int
+}
+
+fn make_holder() Holder {
+	return Holder{
+		values: &[1, 2, 3]
+	}
+}
+
+fn main() {
+	holder := make_holder()
+	println(holder.values[1])
+}
+')
+	assert c_source.contains('void* memdup(void* src, ptrdiff_t sz);\nstatic inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }'), c_source
+
+	assert c_source.count('v3_heap_array(') >= 2, c_source
+	assert !c_source.contains('malloc_noscan(sizeof(Array))'), c_source
+}
+
 fn c_fn_body(c_source string, signature string) string {
 	start := c_source.index(signature) or { return '' }
 	open_rel := c_source[start..].index('{') or { return '' }
@@ -110,6 +133,26 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	run := os.execute(good_bin)
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
+}
+
+fn run_bad_project(v3_bin string, name string, files map[string]string, inputs []string, expected string) {
+	root := '${tmp_test_path(name)}_project'
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	mut input_paths := []string{cap: inputs.len}
+	for input in inputs {
+		input_paths << os.quoted_path(os.join_path(root, input))
+	}
+	bad_bin := tmp_test_path(name)
+	compile := os.execute('${v3_bin} ${input_paths.join(' ')} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, '${name}: ${compile.output}'
+	assert compile.output.contains(expected), '${name}: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
 }
 
 fn test_compiler_vexe_env_uses_running_executable() {
@@ -2413,12 +2456,123 @@ struct Box[T] {
 	n int = 5
 }
 
+struct GenericChild {
+	n int
+}
+
+struct PointerBox[T] {
+	p     &GenericChild = &GenericChild{n: 7}
+	value T
+}
+
 fn main() {
 	box := json.decode(Box[int], "{}") or { Box[int]{n: 5} }
 	println(int_str(box.n))
+	pointer_box := json.decode(PointerBox[int], "{\\"value\\":3}") or {
+		PointerBox[int]{value: 3}
+	}
+	println(int_str(pointer_box.p.n))
+	println(int_str(pointer_box.value))
 }
 ')
-	assert out == '5'
+	assert out == '5\n7\n3'
+}
+
+fn test_json_decode_fast_path_validates_arrays_and_preserves_defaults() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_decode_fast_path_nested_values', 'import json
+
+struct Inner {
+	value int
+}
+
+struct Outer {
+	inner Inner
+}
+
+struct BoolList {
+	values []bool
+}
+
+struct I64List {
+	values []i64
+}
+
+struct WideInts {
+	min             i64
+	max             u64
+	signed_values   []i64
+	unsigned_values []u64
+}
+
+struct StrictChild {
+	ok bool
+}
+
+struct ChildList {
+	values []StrictChild
+}
+
+struct PointerDefault {
+	value &Inner = &Inner{value: 7}
+}
+
+struct NestedPointerDefaults {
+	nested PointerDefault
+	values []PointerDefault
+}
+
+fn main() {
+	mut array_failed := false
+	_ := json.decode(BoolList, "{\\"values\\":[1]}") or {
+		array_failed = true
+		BoolList{}
+	}
+	println(array_failed)
+	i64_values := json.decode(I64List, "{\\"values\\":[9007199254740993]}")!
+	println(i64_values.values[0].str())
+	mut struct_array_failed := false
+	_ := json.decode(ChildList, "{\\"values\\":[{\\"ok\\":1}]}") or {
+		struct_array_failed = true
+		ChildList{}
+	}
+	println(struct_array_failed)
+
+	mut nested_failed := false
+	outer := json.decode(Outer, "{}") or {
+		nested_failed = true
+		Outer{}
+	}
+	println(!nested_failed)
+	println(int_str(outer.inner.value))
+
+	pointer_default := json.decode(PointerDefault, "{}")!
+	println(int_str(pointer_default.value.value))
+
+	nested_defaults := json.decode(NestedPointerDefaults, "{\\"values\\":[{}]}")!
+	println(int_str(nested_defaults.nested.value.value))
+	println(int_str(nested_defaults.values[0].value.value))
+
+	wide := json.decode(WideInts, "{\\"min\\":-9223372036854775808,\\"max\\":18446744073709551615,\\"signed_values\\":[9007199254740993],\\"unsigned_values\\":[9007199254740993]}")!
+	println(wide.min.str())
+	println(wide.max.str())
+	println(wide.signed_values[0].str())
+	println(wide.unsigned_values[0].str())
+}
+')
+	assert out == 'true\n9007199254740993\ntrue\ntrue\n0\n7\n7\n7\n-9223372036854775808\n18446744073709551615\n9007199254740993\n9007199254740993'
+}
+
+fn test_unimported_main_types_are_not_visible_in_modules() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'unimported_plain_main_type', {
+		'main.v':      'module main\n\nimport moda\n\nstruct Foo {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
+		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Foo\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
+	}, ['main.v', 'moda/moda.v'], 'unknown type `Foo`')
+	run_bad_project(v3_bin, 'unimported_generic_main_type', {
+		'main.v':      'module main\n\nimport moda\n\nstruct Box[T] {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
+		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Box[int]\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
+	}, ['main.v', 'moda/moda.v'], 'unknown type `Box`')
 }
 
 fn test_json_fast_paths_handle_primitives_and_stringified_composites() {
@@ -2830,6 +2984,47 @@ fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 			'fn C.atomic_fetch_add_ptr(voidptr, voidptr) voidptr\nfn C.atomic_fetch_sub_ptr(voidptr, voidptr) voidptr\n\nfn main() {\n\tmut vals := [10, 20, 30]!\n\tmut p := voidptr(&vals[0])\n\told := C.atomic_fetch_add_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old == voidptr(&vals[0]))\n\tprintln(p == voidptr(&vals[1]))\n\told2 := C.atomic_fetch_sub_ptr(voidptr(&p), voidptr(sizeof(int)))\n\tprintln(old2 == voidptr(&vals[1]))\n\tprintln(p == voidptr(&vals[0]))\n}\n')
 		assert out == 'true\ntrue\ntrue\ntrue'
 	}
+}
+
+fn test_anonymous_struct_literals_use_typed_shape() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'anonymous_struct_literal_typed_shape', 'fn take_int(value struct {
+	x int
+}) int {
+	return value.x
+}
+
+fn take_string(value struct {
+	x string
+}) string {
+	return value.x
+}
+
+fn take_i64(value struct {
+	x i64
+}) i64 {
+	return value.x
+}
+
+fn take_grouped(value struct {
+	x, y int
+}) int {
+	return value.x * 10 + value.y
+}
+
+fn main() {
+	println(int_str(take_int(struct { x: 7 })))
+	println(take_string(struct { x: "right" }))
+	println(take_i64(struct { x: 9 }))
+	println(int_str(take_grouped(struct { x: 2, y: 3 })))
+	mut values := []struct {
+		x int
+	}{}
+	values << struct { x: 13 }
+	println(int_str(values[0].x))
+}
+')
+	assert out == '7\nright\n9\n23\n13'
 }
 
 fn test_latest_pr_review_codegen_regressions() {

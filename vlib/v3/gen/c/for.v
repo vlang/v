@@ -127,7 +127,11 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			} else {
 				var_name
 			}
-			clean_container_type := types.unwrap_pointer(container_type)
+			mut clean_container_type := types.unwrap_pointer(container_type)
+			for clean_container_type is types.Alias {
+				clean_container_type =
+					types.unwrap_pointer((clean_container_type as types.Alias).base_type)
+			}
 			mut map_snapshot_var := ''
 			if clean_container_type is types.Map {
 				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
