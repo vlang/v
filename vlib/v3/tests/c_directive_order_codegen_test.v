@@ -1186,6 +1186,11 @@ fn test_mach_headers_are_emitted_headerlessly() {
 	assert !c_code.contains('#include <mach/mach.h>'), c_code
 	assert !c_code.contains('#include <mach/mach_time.h>'), c_code
 	assert !c_code.contains('#define panic mach_panic'), c_code
+	assert c_code.contains('typedef unsigned int task_t;'), c_code
+	assert c_code.contains('struct task_basic_info {'), c_code
+	assert c_code.contains('#define KERN_SUCCESS 0'), c_code
+	assert c_code.contains('#define MACH_TASK_BASIC_INFO_COUNT 12'), c_code
+	assert c_code.contains('#define TASK_BASIC_INFO 18'), c_code
 	assert c_code.contains('typedef struct mach_timebase_info_data_t mach_timebase_info_data_t;'), c_code
 	assert c_code.contains('struct mach_timebase_info_data_t {'), c_code
 	assert c_code.contains('void mach_timebase_info('), c_code

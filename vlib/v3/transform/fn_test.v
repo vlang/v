@@ -94,3 +94,50 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	assert params.len == 1
 	assert params[0] is types.String
 }
+
+fn test_multi_return_selector_suffix_does_not_match_free_fn() {
+	mut a := flat.FlatAst.new()
+	receiver_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'value'
+	})
+	selector_children_start := a.children.len
+	a.children << receiver_id
+	selector_id := a.add_node(flat.Node{
+		kind:           .selector
+		value:          'pair'
+		children_start: i32(selector_children_start)
+		children_count: 1
+	})
+	call_children_start := a.children.len
+	a.children << selector_id
+	call_id := a.add_node(flat.Node{
+		kind:           .call
+		children_start: i32(call_children_start)
+		children_count: 1
+	})
+	multi_return := types.Type(types.MultiReturn{
+		types: [types.Type(types.int_), types.Type(types.string_)]
+	})
+	mut tc := types.TypeChecker.new(a)
+	tc.fn_ret_types['pair'] = multi_return
+	mut t := Transformer{
+		a:                            &a
+		tc:                           &tc
+		receiver_method_suffix_index: {
+			'pair': 'pair'
+		}
+	}
+	call := a.nodes[int(call_id)]
+	if _ := t.find_multi_return_call_types(call, 2) {
+		assert false, 'selector suffix lookup matched the free pair function'
+	}
+
+	tc.fn_ret_types['Container.pair'] = multi_return
+	t.receiver_method_suffix_index['pair'] = 'Container.pair'
+	items := t.find_multi_return_call_types(call, 2) or {
+		assert false, 'selector suffix lookup did not match the receiver method'
+		return
+	}
+	assert items.len == 2
+}

@@ -51,19 +51,12 @@ fn setup_symlink(custom_link_dir string) {
 	// defer {
 	// C.RegCloseKey(reg_sys_env_handle)
 	// }
-	// if the above succeeded, and we cannot get the value, it may simply be empty
-	sys_env_path := get_reg_value(reg_sys_env_handle, 'Path') or { '' }
-	current_sys_paths := sys_env_path.split(os.path_delimiter).map(it.trim('/${os.path_separator}'))
-	mut new_paths := [vsymlinkdir]
-	for p in current_sys_paths {
-		if p == '' {
-			continue
-		}
-		if p !in new_paths {
-			new_paths << p
-		}
+	sys_env_path := get_reg_value(reg_sys_env_handle, 'Path') or {
+		C.RegCloseKey(reg_sys_env_handle)
+		warn_and_exit(err.msg())
+		return
 	}
-	new_sys_env_path := new_paths.join(os.path_delimiter)
+	new_sys_env_path := append_path_entry(sys_env_path, vsymlinkdir, os.path_delimiter, true)
 	if new_sys_env_path == sys_env_path {
 		println('System %PATH% was already configured.')
 	} else {
@@ -110,6 +103,27 @@ fn symlink_path(link_dir string) string {
 	return os.join_path(link_dir, 'v.exe')
 }
 
+fn append_path_entry(path_value string, entry string, delimiter string, case_insensitive bool) string {
+	target := normalized_path_entry(entry, case_insensitive)
+	for current_entry in path_value.split(delimiter) {
+		if normalized_path_entry(current_entry, case_insensitive) == target {
+			return path_value
+		}
+	}
+	if path_value == '' || path_value.ends_with(delimiter) {
+		return path_value + entry
+	}
+	return path_value + delimiter + entry
+}
+
+fn normalized_path_entry(entry string, case_insensitive bool) string {
+	normalized := entry.trim_space().trim_right('/\\')
+	if case_insensitive {
+		return normalized.to_lower_ascii()
+	}
+	return normalized
+}
+
 fn warn_and_exit(err string) {
 	eprintln(err)
 	exit(1)
@@ -128,19 +142,34 @@ fn get_reg_sys_env_handle() !voidptr {
 
 // get a value from a given $key
 fn get_reg_value(reg_env_key voidptr, key string) !string {
-	// query the value (shortcut the sizing step)
-	reg_value_size := u32(4095) // this is the max length (not for the registry, but for the system %PATH%)
-	reg_value_cap := int(reg_value_size / u32(sizeof(u16))) + 1
-	mut reg_value := []u16{len: reg_value_cap}
-	if C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, &u8(reg_value.data), &reg_value_size) != 0 {
-		return error('Unable to get registry value for "${key}".')
+	mut reg_value_size := u32(0)
+	query_result := C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, 0,
+		voidptr(&reg_value_size))
+	if query_result == C.ERROR_FILE_NOT_FOUND {
+		return ''
+	}
+	if query_result != 0 {
+		return error('Unable to get registry value for "${key}" (error ${query_result}).')
+	}
+	if reg_value_size == 0 {
+		return ''
+	}
+	reg_value_cap := int((reg_value_size + u32(sizeof(u16)) - 1) / u32(sizeof(u16)))
+	mut reg_value := []u16{len: reg_value_cap + 1}
+	read_result := C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, &u8(reg_value.data),
+		voidptr(&reg_value_size))
+	if read_result != 0 {
+		return error('Unable to get registry value for "${key}" (error ${read_result}).')
 	}
 	return unsafe { string_from_wide(reg_value.data) }
 }
 
 // sets the value for the given $key to the given  $value
 fn set_reg_value(reg_key voidptr, key string, value string) !bool {
-	if C.RegSetValueExW(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, value.to_wide(), value.len * 2) != 0 {
+	wide_value := value.to_wide()
+	wide_value_size := u32((C.wcslen(wide_value) + 1) * sizeof(u16))
+	if C.RegSetValueExW(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, voidptr(wide_value),
+		wide_value_size) != 0 {
 		return error('Unable to set registry value for "${key}". %PATH% may be too long.')
 	}
 	return true

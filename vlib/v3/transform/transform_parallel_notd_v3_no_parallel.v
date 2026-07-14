@@ -331,6 +331,7 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 		children:             children
 		user_code_start:      a.user_code_start
 		disabled_fns:         a.disabled_fns
+		noreturn_fns:         a.noreturn_fns
 		specialized_fn_nodes: a.specialized_fn_nodes
 	}
 }

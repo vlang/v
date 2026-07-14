@@ -2208,7 +2208,11 @@ fn (mut t Transformer) pack_variadic_args(node flat.Node, first_arg int, elem_ty
 			}
 			t.pending_stmts << t.make_decl_assign_typed(value_name, value_arg, expected_enum)
 		} else {
-			t.pending_stmts << t.make_decl_assign_typed(value_name, value, expected_enum)
+			// Keep the explicit interface storage type visible to cgen. A direct interface
+			// literal is a struct init, whose concrete payload name would otherwise override
+			// the declaration annotation.
+			storage_value := if elem_type is types.Interface { t.make_paren(value) } else { value }
+			t.pending_stmts << t.make_decl_assign_typed(value_name, storage_value, expected_enum)
 		}
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.make_prefix(.amp,
 			t.make_ident(tmp_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void'))
@@ -2671,7 +2675,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	}
 	if !isnil(t.tc) {
 		if alias := t.tc.type_aliases[clean_typ] {
-			return t.alias_str_wrap(expr, clean_typ, alias)
+			return t.alias_str_wrap(expr, clean_typ, alias, is_ref)
 		}
 		mut qtyp := clean_typ
 		if !qtyp.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
@@ -2679,12 +2683,12 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			qtyp = '${t.cur_module}.${clean_typ}'
 		}
 		if alias := t.tc.type_aliases[qtyp] {
-			return t.alias_str_wrap(expr, clean_typ, alias)
+			return t.alias_str_wrap(expr, clean_typ, alias, is_ref)
 		}
 		if !clean_typ.contains('.') {
 			for aname, target in t.tc.type_aliases {
 				if aname.all_after_last('.') == clean_typ {
-					return t.alias_str_wrap(expr, clean_typ, target)
+					return t.alias_str_wrap(expr, clean_typ, target, is_ref)
 				}
 			}
 		}
@@ -2718,6 +2722,11 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 			'void'
 		}
 		return t.make_string_literal('thread(${payload})')
+	}
+	if clean_typ.starts_with('chan ') {
+		channel_value := if is_ref { t.make_prefix(.mul, expr) } else { expr }
+		return t.make_call_typed('v3_chan_str', arr2(channel_value,
+			t.make_string_literal(clean_typ[5..].trim_space())), 'string')
 	}
 	if is_ref {
 		expr_node := t.a.nodes[int(expr)]
@@ -2754,7 +2763,7 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 		if known_str {
 			return t.make_call_typed(str_key, arr1(expr), 'string')
 		}
-		return t.make_string_literal('${iface_name.all_after_last('.')}{}')
+		return t.lower_interface_auto_str(expr, iface_name)
 	}
 	match clean_typ {
 		'bool' {
@@ -2849,6 +2858,48 @@ fn (mut t Transformer) wrap_string_conversion(expr flat.NodeId, typ string) flat
 	}
 }
 
+fn (mut t Transformer) lower_interface_auto_str(expr flat.NodeId, iface_name string) flat.NodeId {
+	display_name := iface_name.all_after_last('.')
+	if isnil(t.tc) {
+		return t.make_string_literal('${display_name}{}')
+	}
+	value := t.stable_transformed_expr_for_reuse(expr, iface_name, 'iface_str')
+	result_name := t.new_temp('iface_str')
+	t.pending_stmts << t.make_decl_assign_typed(result_name,
+		t.make_string_literal('${display_name}{}'), 'string')
+	tag := t.make_selector(value, '_typ', 'int')
+	impl_names := if t.is_builtin_ierror_interface_name(iface_name) {
+		t.tc.ierror_impl_names()
+	} else {
+		t.tc.interface_impl_names(iface_name)
+	}
+	for impl_name in impl_names {
+		if !t.interface_boxed_type_marked(iface_name, impl_name) {
+			continue
+		}
+		type_id := t.interface_impl_type_id(iface_name, impl_name) or { continue }
+		object := t.make_cast('&${impl_name}', t.make_selector(value, '_object', 'voidptr'),
+			'&${impl_name}')
+		concrete := t.make_prefix(.mul, object)
+		t.set_node_typ(int(concrete), impl_name)
+		saved := t.pending_stmts.clone()
+		t.pending_stmts.clear()
+		inner := t.wrap_string_conversion(concrete, impl_name)
+		wrapped := t.string_plus(t.string_plus(t.make_string_literal('${display_name}('), inner),
+			t.make_string_literal(')'))
+		mut then_body := []flat.NodeId{}
+		t.drain_pending(mut then_body)
+		t.pending_stmts = saved
+		assign := t.make_assign(t.make_ident(result_name), wrapped)
+		then_body << assign
+		cond := t.make_infix(.eq, tag, t.make_int_literal(type_id))
+		t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
+	}
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), 'string')
+	return result
+}
+
 // lower_ref_str stringifies a `&Struct`/`&SumType` pointer with the same semantics V uses
 // for `.str()` and for map/array elements: when the pointee type defines a custom `str()`,
 // call it (no `&` prefix); otherwise emit `&nil` for a null pointer and `&` + the value's
@@ -2915,12 +2966,13 @@ fn (mut t Transformer) lower_ref_str_guarded(expr flat.NodeId, aggregate string,
 // aliases of non-primitive types (arrays, maps, structs, sum types, enums), e.g.
 // `Block([1, 2])` or `AEnum(red)`, but stringifies primitive aliases (int, string, bool, ...)
 // as the bare value.
-fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_type string) flat.NodeId {
+fn (mut t Transformer) alias_str_wrap(expr flat.NodeId, alias_name string, base_type string, is_ref bool) flat.NodeId {
 	if custom := t.alias_custom_str_call(expr, alias_name) {
 		return custom
 	}
 	resolved_base := t.alias_str_resolved_base_type(base_type)
-	inner := t.wrap_string_conversion(expr, resolved_base)
+	inner_type := if is_ref { '&${resolved_base}' } else { resolved_base }
+	inner := t.wrap_string_conversion(expr, inner_type)
 	if t.alias_str_suppress_wrapper_for_mut_param_deref(expr) {
 		return inner
 	}

@@ -698,6 +698,10 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 }
 
 fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
+	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
+		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
+		return name
+	}
 	if !name.contains('.') {
 		if t.cur_file.len > 0 {
 			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
