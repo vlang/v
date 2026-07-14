@@ -374,228 +374,47 @@ fn (mut p Parser) expect_name_or_keyword() string {
 }
 
 @[inline]
-fn token_id_is_infix(tv int) bool {
-	return tv == 0 || tv == 1 || tv == 3 || tv == 13 || tv == 20 || tv == 21 || tv == 22 || tv == 44
-		|| tv == 46 || tv == 74 || tv == 75 || tv == 77 || tv == 80 || tv == 81 || tv == 83
-		|| tv == 85 || tv == 88 || tv == 90 || tv == 91 || tv == 94 || tv == 95 || tv == 99
-		|| tv == 101 || tv == 109
-}
-
-@[inline]
 fn token_is_infix(tok token.Token) bool {
-	return token_id_is_infix(int(tok))
-}
-
-@[inline]
-fn token_id_is_postfix(tv int) bool {
-	return tv == 11 || tv == 24
+	return tok.is_infix()
 }
 
 @[inline]
 fn token_is_postfix(tok token.Token) bool {
-	return token_id_is_postfix(int(tok))
-}
-
-@[inline]
-fn token_id_is_assignment(tv int) bool {
-	return tv == 2 || tv == 4 || tv == 12 || tv == 14 || tv == 76 || tv == 82 || tv == 84
-		|| tv == 86 || tv == 93 || tv == 96 || tv == 100 || tv == 102 || tv == 110
+	return tok.is_postfix()
 }
 
 @[inline]
 fn token_is_assignment(tok token.Token) bool {
-	return token_id_is_assignment(int(tok))
+	return tok.is_assignment()
 }
 
 @[inline]
 fn token_id_left_binding_power(tv int) token.BindingPower {
-	if tv == 77 {
-		return token.BindingPower.logical_or
-	}
-	if tv == 1 {
-		return token.BindingPower.logical_and
-	}
-	if tv == 20 || tv == 88 || tv == 80 || tv == 74 || tv == 22 || tv == 21 || tv == 44 || tv == 90
-		|| tv == 46 || tv == 91 {
-		return token.BindingPower.compare
-	}
-	if tv == 94 {
-		return token.BindingPower.bit_or
-	}
-	if tv == 109 {
-		return token.BindingPower.bit_xor
-	}
-	if tv == 75 || tv == 99 || tv == 101 {
-		return token.BindingPower.shift
-	}
-	if tv == 95 || tv == 81 {
-		return token.BindingPower.add
-	}
-	if tv == 85 || tv == 13 || tv == 83 || tv == 0 {
-		return token.BindingPower.product
-	}
-	return token.BindingPower.lowest
+	return unsafe { token.Token(tv) }.left_binding_power()
 }
 
 @[inline]
 fn token_left_binding_power(tok token.Token) token.BindingPower {
-	return token_id_left_binding_power(int(tok))
+	return tok.left_binding_power()
 }
 
 @[inline]
 fn token_id_right_binding_power(tv int) token.BindingPower {
-	bp := token_id_left_binding_power(tv)
-	if bp == .logical_or {
-		return token.BindingPower.logical_and
-	}
-	if bp == .logical_and {
-		return token.BindingPower.compare
-	}
-	if bp == .compare {
-		return token.BindingPower.bit_or
-	}
-	if bp == .bit_or {
-		return token.BindingPower.bit_xor
-	}
-	if bp == .bit_xor {
-		return token.BindingPower.shift
-	}
-	if bp == .shift {
-		return token.BindingPower.add
-	}
-	if bp == .add {
-		return token.BindingPower.product
-	}
-	if bp == .product {
-		return token.BindingPower.highest
-	}
-	return token.BindingPower.lowest
+	return unsafe { token.Token(tv) }.right_binding_power()
 }
 
 @[inline]
 fn token_right_binding_power(tok token.Token) token.BindingPower {
-	return token_id_right_binding_power(int(tok))
+	return tok.right_binding_power()
 }
 
 @[inline]
 fn token_id_to_op(tv int) flat.Op {
-	if tv == 95 {
-		return flat.Op.plus
-	}
-	if tv == 81 {
-		return flat.Op.minus
-	}
-	if tv == 85 {
-		return flat.Op.mul
-	}
-	if tv == 13 {
-		return flat.Op.div
-	}
-	if tv == 83 {
-		return flat.Op.mod
-	}
-	if tv == 20 {
-		return flat.Op.eq
-	}
-	if tv == 88 {
-		return flat.Op.ne
-	}
-	if tv == 80 {
-		return flat.Op.lt
-	}
-	if tv == 22 {
-		return flat.Op.gt
-	}
-	if tv == 74 {
-		return flat.Op.le
-	}
-	if tv == 21 {
-		return flat.Op.ge
-	}
-	if tv == 0 {
-		return flat.Op.amp
-	}
-	if tv == 94 {
-		return flat.Op.pipe
-	}
-	if tv == 109 {
-		return flat.Op.xor
-	}
-	if tv == 75 {
-		return flat.Op.left_shift
-	}
-	if tv == 99 {
-		return flat.Op.right_shift
-	}
-	if tv == 101 {
-		return flat.Op.right_shift_unsigned
-	}
-	if tv == 1 {
-		return flat.Op.logical_and
-	}
-	if tv == 77 {
-		return flat.Op.logical_or
-	}
-	if tv == 89 {
-		return flat.Op.not
-	}
-	if tv == 6 {
-		return flat.Op.bit_not
-	}
-	if tv == 4 {
-		return flat.Op.assign
-	}
-	if tv == 96 {
-		return flat.Op.plus_assign
-	}
-	if tv == 82 {
-		return flat.Op.minus_assign
-	}
-	if tv == 86 {
-		return flat.Op.mul_assign
-	}
-	if tv == 14 {
-		return flat.Op.div_assign
-	}
-	if tv == 84 {
-		return flat.Op.mod_assign
-	}
-	if tv == 2 {
-		return flat.Op.amp_assign
-	}
-	if tv == 93 {
-		return flat.Op.pipe_assign
-	}
-	if tv == 110 {
-		return flat.Op.xor_assign
-	}
-	if tv == 76 {
-		return flat.Op.left_shift_assign
-	}
-	if tv == 100 {
-		return flat.Op.right_shift_assign
-	}
-	if tv == 102 {
-		return flat.Op.right_shift_unsigned_assign
-	}
-	if tv == 24 {
-		return flat.Op.inc
-	}
-	if tv == 11 {
-		return flat.Op.dec
-	}
-	if tv == 16 {
-		return flat.Op.dot
-	}
-	if tv == 3 {
-		return flat.Op.arrow
-	}
-	return flat.Op.none
+	return token_to_op(unsafe { token.Token(tv) })
 }
 
 fn (p &Parser) tok_can_be_decl_name() bool {
-	return p.tok == .name || (int(p.tok) >= int(token.Token.key_as)
-		&& int(p.tok) <= int(token.Token.key_unsafe))
+	return p.tok == .name || (p.tok.is_keyword() && p.tok != .key_volatile)
 }
 
 fn (mut p Parser) add_children(ids []flat.NodeId) int {
@@ -2076,7 +1895,7 @@ fn (mut p Parser) try_parse_export_attr() {
 		return
 	}
 	p.next()
-	if int(p.tok) != int(token.Token.string) {
+	if p.tok != .string {
 		return
 	}
 	p.pending_export = strip_quotes(p.lit)
@@ -4655,8 +4474,8 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		// skip auto-semicolons before infix operators (multi-line expressions)
 		if p.tok == .semicolon {
 			peek_tok := p.peek()
-			if (token_is_infix(peek_tok) || peek_tok == .key_as) && int(peek_tok) != 85
-				&& int(peek_tok) != 0 {
+			if (token_is_infix(peek_tok) || peek_tok == .key_as) && peek_tok != .mul
+				&& peek_tok != .amp {
 				p.next()
 				continue
 			}
@@ -5830,7 +5649,7 @@ fn (mut p Parser) string_literal() flat.NodeId {
 		}
 	}
 	p.next()
-	if int(p.tok) != 106 {
+	if p.tok != .str_dollar {
 		val := strip_quotes(lit)
 		return p.add_val_id(5, val)
 	}
@@ -5845,7 +5664,7 @@ fn (mut p Parser) string_interp(first_part string, quote u8) flat.NodeId {
 	if first_part.len > 0 {
 		ids << p.add_val_id(5, first_part)
 	}
-	for int(p.tok) == 106 {
+	for p.tok == .str_dollar {
 		p.next() // skip $
 		p.check(.lcbr) // skip {
 		expr_id := p.expr(.lowest)
@@ -5871,7 +5690,7 @@ fn (mut p Parser) string_interp(first_part string, quote u8) flat.NodeId {
 		}
 		ids << part_id
 		p.check(.rcbr) // skip }
-		if int(p.tok) == 107 {
+		if p.tok == .string {
 			part := strip_interp_quotes(p.lit, quote)
 			p.next()
 			if part.len > 0 {
@@ -7189,161 +7008,51 @@ fn is_all_upper_ident(s string) bool {
 }
 
 fn token_to_op(tok token.Token) flat.Op {
-	tv := int(tok)
-	if tv == 95 {
-		return flat.Op.plus
+	return match tok {
+		.plus { .plus }
+		.minus { .minus }
+		.mul { .mul }
+		.div { .div }
+		.mod { .mod }
+		.eq { .eq }
+		.ne { .ne }
+		.lt { .lt }
+		.gt { .gt }
+		.le { .le }
+		.ge { .ge }
+		.amp { .amp }
+		.pipe { .pipe }
+		.xor { .xor }
+		.left_shift { .left_shift }
+		.right_shift { .right_shift }
+		.right_shift_unsigned { .right_shift_unsigned }
+		.and { .logical_and }
+		.logical_or { .logical_or }
+		.not { .not }
+		.bit_not { .bit_not }
+		.assign, .decl_assign { .assign }
+		.plus_assign { .plus_assign }
+		.minus_assign { .minus_assign }
+		.mul_assign { .mul_assign }
+		.div_assign { .div_assign }
+		.mod_assign { .mod_assign }
+		.and_assign { .amp_assign }
+		.or_assign { .pipe_assign }
+		.xor_assign { .xor_assign }
+		.left_shift_assign { .left_shift_assign }
+		.right_shift_assign { .right_shift_assign }
+		.right_shift_unsigned_assign { .right_shift_unsigned_assign }
+		.inc { .inc }
+		.dec { .dec }
+		.dot { .dot }
+		.arrow { .arrow }
+		else { .none }
 	}
-	if tv == 81 {
-		return flat.Op.minus
-	}
-	if tv == 85 {
-		return flat.Op.mul
-	}
-	if tv == 13 {
-		return flat.Op.div
-	}
-	if tv == 83 {
-		return flat.Op.mod
-	}
-	if tv == 20 {
-		return flat.Op.eq
-	}
-	if tv == 88 {
-		return flat.Op.ne
-	}
-	if tv == 80 {
-		return flat.Op.lt
-	}
-	if tv == 22 {
-		return flat.Op.gt
-	}
-	if tv == 74 {
-		return flat.Op.le
-	}
-	if tv == 21 {
-		return flat.Op.ge
-	}
-	if tv == 0 {
-		return flat.Op.amp
-	}
-	if tv == 94 {
-		return flat.Op.pipe
-	}
-	if tv == 109 {
-		return flat.Op.xor
-	}
-	if tv == 75 {
-		return flat.Op.left_shift
-	}
-	if tv == 99 {
-		return flat.Op.right_shift
-	}
-	if tv == 101 {
-		return flat.Op.right_shift_unsigned
-	}
-	if tv == 1 {
-		return flat.Op.logical_and
-	}
-	if tv == 77 {
-		return flat.Op.logical_or
-	}
-	if tv == 89 {
-		return flat.Op.not
-	}
-	if tv == 6 {
-		return flat.Op.bit_not
-	}
-	if tv == 4 {
-		return flat.Op.assign
-	}
-	if tv == 96 {
-		return flat.Op.plus_assign
-	}
-	if tv == 82 {
-		return flat.Op.minus_assign
-	}
-	if tv == 86 {
-		return flat.Op.mul_assign
-	}
-	if tv == 14 {
-		return flat.Op.div_assign
-	}
-	if tv == 84 {
-		return flat.Op.mod_assign
-	}
-	if tv == 2 {
-		return flat.Op.amp_assign
-	}
-	if tv == 93 {
-		return flat.Op.pipe_assign
-	}
-	if tv == 110 {
-		return flat.Op.xor_assign
-	}
-	if tv == 76 {
-		return flat.Op.left_shift_assign
-	}
-	if tv == 100 {
-		return flat.Op.right_shift_assign
-	}
-	if tv == 102 {
-		return flat.Op.right_shift_unsigned_assign
-	}
-	if tv == 24 {
-		return flat.Op.inc
-	}
-	if tv == 11 {
-		return flat.Op.dec
-	}
-	if tv == 3 {
-		return flat.Op.arrow
-	}
-	if tv == 12 {
-		return flat.Op.assign
-	}
-	return flat.Op.none
 }
 
 fn overload_token_name(tok token.Token) string {
-	tv := int(tok)
-	if tv == 95 {
-		return '+'
-	}
-	if tv == 81 {
-		return '-'
-	}
-	if tv == 85 {
-		return '*'
-	}
-	if tv == 13 {
-		return '/'
-	}
-	if tv == 83 {
-		return '%'
-	}
-	if tv == 20 {
-		return '=='
-	}
-	if tv == 88 {
-		return '!='
-	}
-	if tv == 80 {
-		return '<'
-	}
-	if tv == 22 {
-		return '>'
-	}
-	if tv == 74 {
-		return '<='
-	}
-	if tv == 21 {
-		return '>='
-	}
-	if tv == 94 {
-		return '|'
-	}
-	if tv == 109 {
-		return '^'
+	if tok.is_overloadable() {
+		return tok.str()
 	}
 	return ''
 }
