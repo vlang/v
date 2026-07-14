@@ -338,6 +338,38 @@ fn (mut g FlatGen) take_propagation_ownership_drops() []types.OwnershipDropEntry
 	return entries
 }
 
+fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node) []types.OwnershipDropEntry {
+	if node.typ.len == 0 {
+		return g.take_return_ownership_drops()
+	}
+	if node.typ[0] !in [`!`, `?`] {
+		return []types.OwnershipDropEntry{}
+	}
+	if g.return_stmt_is_explicit_optional_failure(node) {
+		return g.take_return_ownership_drops()
+	}
+	return g.take_propagation_ownership_drops()
+}
+
+fn (g &FlatGen) return_stmt_is_explicit_optional_failure(node flat.Node) bool {
+	if node.children_count != 1 {
+		return false
+	}
+	ret_id := g.a.child(&node, 0)
+	if int(ret_id) < 0 || int(ret_id) >= g.a.nodes.len {
+		return false
+	}
+	ret_node := g.a.nodes[int(ret_id)]
+	if ret_node.kind == .none_expr {
+		return true
+	}
+	if ret_node.kind != .call || ret_node.children_count == 0 {
+		return false
+	}
+	fn_n := g.a.child_node(&ret_node, 0)
+	return fn_n.value == 'error' || fn_n.value == 'error_with_code'
+}
+
 fn (mut g FlatGen) gen_scope_ownership_drops() {
 	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
 	entries := g.tc.ownership_drop_entries_at_scope_exit(fn_name, g.ownership_scope_index)
@@ -1245,13 +1277,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			old_return_node_id := g.cur_return_node_id
 			old_return_drops := g.cur_return_drops.clone()
 			g.cur_return_node_id = int(id)
-			g.cur_return_drops = if node.typ.len == 0 {
-				g.take_return_ownership_drops()
-			} else if node.typ[0] in [`!`, `?`] {
-				g.take_propagation_ownership_drops()
-			} else {
-				[]types.OwnershipDropEntry{}
-			}
+			g.cur_return_drops = g.take_return_stmt_ownership_drops(node)
 			defer {
 				g.cur_return_node_id = old_return_node_id
 				g.cur_return_drops = old_return_drops

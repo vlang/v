@@ -72,6 +72,16 @@ fn propagated() ! {
 	println(r.id)
 }
 
+fn explicit_error() ! {
+	r := Resource{11}
+	return error('explicit')
+}
+
+fn explicit_none() ?int {
+	r := Resource{12}
+	return none
+}
+
 fn loop_exits() {
 	for {
 		r := Resource{6}
@@ -106,6 +116,8 @@ fn main() {
 	r := moved()
 	println(r.id)
 	propagated() or { println(err.msg()) }
+	explicit_error() or { println(err.msg()) }
+	explicit_none() or { println('none') }
 	loop_exits()
 }
 ") or {
@@ -115,5 +127,5 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
+	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
 }
