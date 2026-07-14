@@ -1979,15 +1979,17 @@ fn main() {
 		rows << typeof(method).name
 		rows << method.name
 		rows << (method.return_type == typeof[pkg.Ret]().idx).str()
+		rows << (method.typ == typeof[fn (pkg.Ret) pkg.Ret]().idx).str()
 	}
 	rows << items[0].name
 	rows << (items[0].return_type == typeof[pkg.Ret]().idx).str()
 	rows << (items[0].args[0].typ == typeof[pkg.Ret]().idx).str()
+	rows << (items[0].typ == typeof[fn (pkg.Ret) pkg.Ret]().idx).str()
 	println(rows.join("|"))
 }
 '
 	}, 'main.v')
-	assert out == 'FunctionData|make|true|make|true|true'
+	assert out == 'FunctionData|make|true|true|make|true|true|true'
 }
 
 fn test_imported_function_param_types_use_declaring_module() {
@@ -2085,6 +2087,36 @@ fn main() {
 }
 ")
 	assert out == 'index:get'
+}
+
+fn test_nested_attribute_method_guard_preserves_inner_selector() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'nested_attribute_method_guard', "@[route]
+struct Routes {}
+
+struct App {}
+
+fn (a App) index() {
+	_ = a
+}
+
+fn (a App) submit() {
+	_ = a
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for attr in Routes.attributes {
+		\$for method in App.methods {
+			\$if attr.name == 'route' && method.name == 'index' {
+				rows << attr.name + ':' + method.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'route:index'
 }
 
 fn test_nested_method_reflection_respects_shadowed_loop_variable() {
