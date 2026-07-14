@@ -75,6 +75,56 @@ fn test_parallel_parse_matches_serial() {
 	}
 }
 
+fn test_parallel_parse_seeds_cross_file_comptime_consts() {
+	dir := os.join_path(os.temp_dir(), 'v3_parallel_const_seed_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	mut files := []string{cap: 4}
+	for file_index in 0 .. 4 {
+		mut src := strings.new_builder(64_000)
+		src.writeln('module main')
+		src.writeln('')
+		if file_index == 0 {
+			src.writeln('const enabled = true')
+			src.writeln("const flavor = 'vanilla'")
+			src.writeln('')
+		}
+		if file_index == 3 {
+			src.writeln('\$if enabled {')
+			src.writeln('\tfn enabled_branch() {}')
+			src.writeln('} \$else {')
+			src.writeln('\tfn disabled_branch() {}')
+			src.writeln('}')
+			src.writeln('\$match flavor {')
+			src.writeln("\t'vanilla' { fn matched_branch() {} }")
+			src.writeln('\t\$else { fn unmatched_branch() {} }')
+			src.writeln('}')
+			src.writeln('')
+		}
+		for i in 0 .. 1000 {
+			src.writeln('fn padding_${file_index}_${i}() int { return ${i} }')
+		}
+		path := os.join_path(dir, '${file_index}.v')
+		os.write_file(path, src.str()) or { panic(err) }
+		files << path
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	_, was_parallel := p.parse_files_dispatch(files, true)
+	$if !windows {
+		if runtime.nr_jobs() > 1 {
+			assert was_parallel
+		}
+	}
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'enabled_branch')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'disabled_branch')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'matched_branch')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'unmatched_branch')
+}
+
 // build_parallel_parser_v3 builds parallel parser v3 data for v3 tests.
 fn build_parallel_parser_v3() string {
 	vexe := @VEXE

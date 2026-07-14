@@ -2338,6 +2338,48 @@ pub fn value() string {
 	assert out == 'if|match|pkg'
 }
 
+fn test_soa_attribute_and_static_method_reflection_distinction() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'soa_and_static_method_distinction', "@[soa]
+struct SoaItem {
+	value int
+}
+
+@[typedef]
+struct C.SoaItem_SOA {
+	len   int
+	cap   int
+	value &int
+}
+
+fn C.SoaItem_SOA_new(int, int) C.SoaItem_SOA
+fn C.SoaItem_SOA_free(&C.SoaItem_SOA)
+
+struct Foo {}
+
+fn Foo.make(value Foo) {
+	_ = value
+}
+
+fn (foo Foo) run(value int) {
+	_ = foo
+	_ = value
+}
+
+fn main() {
+	mut rows := []string{}
+	mut soa := C.SoaItem_SOA_new(0, 3)
+	rows << soa.cap.str()
+	C.SoaItem_SOA_free(&soa)
+	\$for method in Foo.methods {
+		rows << method.name + ':' + method.params.len.str()
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == '3|run:1'
+}
+
 fn test_nested_param_and_attribute_reflection_respects_shadowing() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_param_attribute_shadowing', "@[outer]

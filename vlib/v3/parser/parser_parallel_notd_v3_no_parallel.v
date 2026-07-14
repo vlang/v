@@ -3,6 +3,8 @@ module parser
 import os
 import runtime
 import v3.flat
+import v3.scanner
+import v3.token
 
 // Parallel file parsing. The input file list is split into contiguous,
 // size-balanced chunks; each worker parses its chunk into a private Parser +
@@ -16,6 +18,11 @@ import v3.flat
 const min_parallel_parse_files = 4
 const min_parallel_parse_bytes = 131072
 const max_parallel_parse_jobs = 8
+
+struct ComptimeConstPrepassToken {
+	tok token.Token
+	lit string
+}
 
 $if !windows {
 	// ParseChunkArgs is the payload handed to each worker thread.
@@ -59,6 +66,16 @@ $if !windows {
 				(*starts)[i] = w.a.nodes.len
 			}
 			w.parse_into((*paths)[i])
+		}
+		return unsafe { nil }
+	}
+
+	fn precollect_const_chunk_thread(arg voidptr) voidptr {
+		a := unsafe { &ParseChunkArgs(arg) }
+		mut w := unsafe { &Parser(a.worker) }
+		paths := unsafe { &[]string(a.paths_ptr) }
+		unsafe {
+			w.precollect_parallel_comptime_consts(*paths, a.start, a.end)
 		}
 		return unsafe { nil }
 	}
@@ -119,6 +136,25 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		// The parser recurses deeply on nested expressions; give workers a
 		// roomy stack, like the transform and cgen workers.
 		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
+		// Collect foldable constants across all chunks before any chunk parses
+		// comptime guards. The prepass itself stays parallel, so large modules do
+		// not give up the parser's wall-time benefit.
+		for ci in 0 .. thread_count {
+			C.pthread_create(unsafe { &thread_ids[ci] }, attr, precollect_const_chunk_thread,
+				unsafe { voidptr(&args[ci]) })
+		}
+		p.precollect_parallel_comptime_consts(paths, bounds[0], bounds[1])
+		for ci in 0 .. thread_count {
+			C.pthread_join(thread_ids[ci], unsafe { nil })
+			for key, value in workers[ci].comptime_const_values {
+				if key !in p.comptime_const_values {
+					p.comptime_const_values[key] = value
+				}
+			}
+		}
+		for mut w in workers {
+			w.comptime_const_values = p.comptime_const_values.clone()
+		}
 		for ci in 0 .. thread_count {
 			C.pthread_create(unsafe { &thread_ids[ci] }, attr, parse_chunk_thread,
 				unsafe { voidptr(&args[ci]) })
@@ -137,6 +173,159 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			p.merge_parsed_worker(workers[ci], mut starts, bounds[ci + 1], bounds[ci + 2])
 		}
 		return starts, true
+	}
+}
+
+fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int, end int) {
+	for path in paths[start..end] {
+		src := read_source_file_raw(path)
+		if src.len == 0 {
+			continue
+		}
+		mut file_set := token.FileSet.new()
+		file := file_set.add_file(path, -1, src.len)
+		mut s := scanner.new_scanner(p.prefs, .normal)
+		s.init(file, src)
+		mut module_name := ''
+		mut brace_depth := 0
+		for {
+			tok := s.scan()
+			if tok == .eof {
+				break
+			}
+			if tok == .lcbr {
+				brace_depth++
+				continue
+			}
+			if tok == .rcbr {
+				if brace_depth > 0 {
+					brace_depth--
+				}
+				continue
+			}
+			if brace_depth != 0 {
+				continue
+			}
+			if tok == .key_module {
+				if s.scan() == .name {
+					module_name = s.lit
+				}
+				continue
+			}
+			if tok == .key_const {
+				p.precollect_parallel_const_decl(mut s, module_name)
+			}
+		}
+	}
+}
+
+fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_name string) {
+	mut tok := s.scan()
+	grouped := tok == .lpar
+	if grouped {
+		tok = s.scan()
+	}
+	for tok != .eof {
+		for tok == .semicolon {
+			tok = s.scan()
+		}
+		if grouped && tok == .rpar {
+			return
+		}
+		if tok != .name {
+			return
+		}
+		name := s.lit
+		tok = s.scan()
+		if tok != .assign {
+			return
+		}
+		mut value_tokens := []ComptimeConstPrepassToken{cap: 3}
+		mut paren_depth := 0
+		mut bracket_depth := 0
+		mut brace_depth := 0
+		mut closed_group := false
+		tok = s.scan()
+		for tok != .eof {
+			if tok == .semicolon && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
+				break
+			}
+			if tok == .rpar {
+				if paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 && grouped {
+					closed_group = true
+					break
+				}
+				if paren_depth > 0 {
+					paren_depth--
+				}
+			} else if tok == .lpar {
+				paren_depth++
+			} else if tok == .lsbr {
+				bracket_depth++
+			} else if tok == .rsbr && bracket_depth > 0 {
+				bracket_depth--
+			} else if tok == .lcbr {
+				brace_depth++
+			} else if tok == .rcbr && brace_depth > 0 {
+				brace_depth--
+			}
+			value_tokens << ComptimeConstPrepassToken{
+				tok: tok
+				lit: s.lit
+			}
+			tok = s.scan()
+		}
+		if value := p.parallel_comptime_const_value(module_name, value_tokens) {
+			p.comptime_const_values[comptime_const_value_key(module_name, name)] = value
+		}
+		if !grouped || closed_group || tok == .eof {
+			return
+		}
+		tok = s.scan()
+	}
+}
+
+fn (p &Parser) parallel_comptime_const_value(module_name string, tokens []ComptimeConstPrepassToken) ?string {
+	mut start := 0
+	mut end := tokens.len
+	for end - start >= 2 && tokens[start].tok == .lpar && tokens[end - 1].tok == .rpar {
+		start++
+		end--
+	}
+	if end - start != 1 {
+		return none
+	}
+	t := tokens[start]
+	return match t.tok {
+		.number {
+			t.lit
+		}
+		.key_true {
+			'true'
+		}
+		.key_false {
+			'false'
+		}
+		.char {
+			'`${t.lit}`'
+		}
+		.string {
+			"'${strip_quotes(t.lit).replace("'", "\\\\'")}'"
+		}
+		.name {
+			module_key := comptime_const_value_key(module_name, t.lit)
+			builtin_key := comptime_const_value_key('builtin', t.lit)
+			if module_key in p.comptime_const_values {
+				p.comptime_const_values[module_key]
+			} else if builtin_key in p.comptime_const_values {
+				p.comptime_const_values[builtin_key]
+			} else {
+				none
+			}
+		}
+		else {
+			none
+		}
 	}
 }
 

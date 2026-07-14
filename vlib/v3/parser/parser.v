@@ -828,6 +828,9 @@ fn (mut p Parser) apply_decl_attr_flags(attrs []string) {
 			'noreturn' {
 				p.pending_noreturn = true
 			}
+			'soa' {
+				p.pending_soa = true
+			}
 			'export' {
 				p.pending_export = attr_unquote(attr.all_after(':').trim_space())
 			}

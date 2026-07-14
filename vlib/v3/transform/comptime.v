@@ -1049,7 +1049,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			continue
 		}
 		first := t.a.child_node(&node, 0)
-		if first.kind != .param || first.value.len == 0
+		if first.kind != .param || first.op != .dot || first.value.len == 0
 			|| !comptime_method_receiver_matches(first.typ, base_type, normalized, module_name, t.cur_module) {
 			continue
 		}
