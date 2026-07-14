@@ -214,7 +214,7 @@ fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
 
 // expand_comptime_for unrolls the supported compile-time reflection loops into concrete
 // statements.
-fn (mut t Transformer) expand_comptime_for(_id flat.NodeId, node flat.Node) []flat.NodeId {
+fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []flat.NodeId {
 	if node.children_count == 0 {
 		return []flat.NodeId{}
 	}
@@ -244,7 +244,7 @@ fn (mut t Transformer) expand_comptime_for(_id flat.NodeId, node flat.Node) []fl
 		return t.expand_comptime_for_params(var_name, node.typ, body_stmts)
 	}
 	if kind == 'attributes' {
-		return t.expand_comptime_for_attributes(var_name, node.typ, body_stmts)
+		return t.expand_comptime_for_attributes(var_name, node.typ, body_stmts, id)
 	}
 	// Comptime `match field.typ { int {} ... }` (type match) is not modelled yet; skip such
 	// loops rather than mis-lower them. `typeof(receiver.$(field.name))` is checked after
@@ -278,9 +278,9 @@ fn (mut t Transformer) expand_comptime_for(_id flat.NodeId, node flat.Node) []fl
 	return out
 }
 
-fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source string, body_stmts []flat.NodeId) []flat.NodeId {
+fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source string, body_stmts []flat.NodeId, loop_id flat.NodeId) []flat.NodeId {
 	mut out := []flat.NodeId{}
-	for attr in t.comptime_attribute_metas(source) {
+	for attr in t.comptime_attribute_metas(source, loop_id) {
 		mut cloned := []flat.NodeId{cap: body_stmts.len}
 		for sid in body_stmts {
 			cloned << t.clone_attribute_subst(sid, var_name, attr)
@@ -293,8 +293,8 @@ fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source st
 	return out
 }
 
-fn (t &Transformer) comptime_attribute_metas(source string) []AttributeMeta {
-	name := t.comptime_attribute_source(source)
+fn (t &Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId) []AttributeMeta {
+	name := t.comptime_attribute_source(source, loop_id)
 	mut module_name := ''
 	for idx, node in t.a.nodes {
 		if node.kind == .file {
@@ -320,51 +320,106 @@ fn (t &Transformer) comptime_attribute_metas(source string) []AttributeMeta {
 	return []AttributeMeta{}
 }
 
-fn (t &Transformer) comptime_attribute_source(source string) string {
+fn (t &Transformer) comptime_attribute_source(source string, loop_id flat.NodeId) string {
 	clean := source.trim_space()
-	mut file_name := ''
-	for node in t.a.nodes {
-		if node.kind == .file {
-			file_name = node.value
-			continue
+	rhs_id := t.comptime_attribute_local_rhs(loop_id, clean) or { return clean }
+	rhs := t.a.nodes[int(rhs_id)]
+	if rhs.kind == .ident {
+		return rhs.value
+	}
+	if rhs.kind == .selector && rhs.children_count > 0 {
+		base := t.a.child_node(&rhs, 0)
+		if base.kind == .ident {
+			return '${base.value}.${rhs.value}'
 		}
-		if t.cur_file.len > 0 && file_name != t.cur_file {
-			continue
-		}
-		if node.kind != .decl_assign || node.children_count < 2 {
-			continue
-		}
-		for i := 0; i + 1 < int(node.children_count); i += 2 {
-			lhs := t.a.child_node(&node, i)
-			if lhs.kind != .ident || lhs.value != clean {
-				continue
-			}
-			rhs := t.a.child_node(&node, i + 1)
-			if rhs.kind == .ident {
-				return rhs.value
-			}
-			if rhs.kind == .selector && rhs.children_count > 0 {
-				base := t.a.child_node(rhs, 0)
-				if base.kind == .ident {
-					return '${base.value}.${rhs.value}'
-				}
-				mut found := ''
-				for candidate in t.a.nodes {
-					if candidate.kind == .fn_decl && candidate.value.contains('.')
-						&& candidate.value.all_after_last('.') == rhs.value {
-						if found.len > 0 {
-							return clean
-						}
-						found = candidate.value
-					}
-				}
+		mut found := ''
+		for candidate in t.a.nodes {
+			if candidate.kind == .fn_decl && candidate.value.contains('.')
+				&& candidate.value.all_after_last('.') == rhs.value {
 				if found.len > 0 {
-					return found
+					return clean
 				}
+				found = candidate.value
 			}
+		}
+		if found.len > 0 {
+			return found
 		}
 	}
 	return clean
+}
+
+fn (t &Transformer) comptime_attribute_local_rhs(loop_id flat.NodeId, name string) ?flat.NodeId {
+	if int(loop_id) < 0 || int(loop_id) >= t.a.nodes.len {
+		return none
+	}
+	for idx, node in t.a.nodes {
+		if node.kind != .fn_decl || (t.cur_fn_name.len > 0 && node.value != t.cur_fn_name) {
+			continue
+		}
+		mut path := []flat.NodeId{}
+		if !t.comptime_attribute_node_path(flat.NodeId(idx), loop_id, mut path) {
+			continue
+		}
+		mut rhs_id := flat.empty_node
+		for depth in 0 .. path.len - 1 {
+			scope := t.a.nodes[int(path[depth])]
+			if scope.kind !in [.fn_decl, .block, .for_stmt, .for_in_stmt, .match_branch,
+				.select_branch] {
+				continue
+			}
+			child_on_path := path[depth + 1]
+			for i in 0 .. scope.children_count {
+				child_id := t.a.child(&scope, i)
+				if child_id == child_on_path {
+					break
+				}
+				if candidate := t.comptime_attribute_decl_rhs(child_id, name) {
+					rhs_id = candidate
+				}
+			}
+		}
+		if rhs_id != flat.empty_node {
+			return rhs_id
+		}
+		return none
+	}
+	return none
+}
+
+fn (t &Transformer) comptime_attribute_node_path(id flat.NodeId, target flat.NodeId, mut path []flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	path << id
+	if id == target {
+		return true
+	}
+	node := t.a.nodes[int(id)]
+	for i in 0 .. node.children_count {
+		if t.comptime_attribute_node_path(t.a.child(&node, i), target, mut path) {
+			return true
+		}
+	}
+	path.pop()
+	return false
+}
+
+fn (t &Transformer) comptime_attribute_decl_rhs(id flat.NodeId, name string) ?flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .decl_assign || node.children_count < 2 {
+		return none
+	}
+	for i := 0; i + 1 < int(node.children_count); i += 2 {
+		lhs := t.a.child_node(&node, i)
+		if lhs.kind == .ident && lhs.value == name {
+			return t.a.child(&node, i + 1)
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) comptime_node_attribute_metas(node_id int) []AttributeMeta {

@@ -5427,17 +5427,8 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				return p.a.add_val_id(5, p.prefs.vroot)
 			}
 			if name == '@VEXE' {
-				mut vexe := p.prefs.vexe
-				if vexe.len > 0 && p.prefs.vroot.len > 0 {
-					clean_root := p.prefs.vroot.replace('\\', '/').trim_right('/')
-					clean_vexe := vexe.replace('\\', '/')
-					if clean_root.len > 0 && !(clean_vexe == '${clean_root}/v'
-						|| clean_vexe.starts_with('${clean_root}/')) {
-						vexe = os.join_path_single(p.prefs.vroot, 'v')
-					}
-				}
-				if vexe.len > 0 {
-					return p.a.add_val_id(5, vexe)
+				if p.prefs.vexe.len > 0 {
+					return p.a.add_val_id(5, p.prefs.vexe)
 				}
 				return p.a.add_val_id(5, p.prefs.vroot + '/v')
 			}

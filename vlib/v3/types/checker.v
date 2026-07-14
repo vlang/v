@@ -9718,9 +9718,6 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		}
 		return
 	}
-	if tc.check_c_voidptr_call_args(id, node) {
-		return
-	}
 	if tc.is_unsupported_hex_call(node) {
 		if tc.should_diagnose(id) {
 			tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
@@ -9739,38 +9736,6 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	for i in 1 .. node.children_count {
 		tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
 	}
-}
-
-fn (mut tc TypeChecker) check_c_voidptr_call_args(id flat.NodeId, node flat.Node) bool {
-	if node.children_count == 0 {
-		return false
-	}
-	callee := tc.a.child_node(&node, 0)
-	if callee.kind != .selector || callee.children_count == 0 {
-		return false
-	}
-	base := tc.a.child_node(callee, 0)
-	if base.kind != .ident || base.value != 'C' {
-		return false
-	}
-	params := tc.fn_param_types['C.${callee.value}'] or { return false }
-	for i in 1 .. node.children_count {
-		arg_id := tc.call_arg_value(tc.a.child(&node, i))
-		tc.check_node(arg_id)
-		param_idx := i - 1
-		if param_idx >= params.len || !fn_param_is_voidptr_type(params[param_idx]) {
-			continue
-		}
-		expected := params[param_idx]
-		actual := tc.resolve_type(arg_id)
-		if !tc.expr_receiver_compatible(arg_id, actual, expected)
-			&& !tc.expr_compatible(arg_id, actual, expected)
-			&& !voidptr_arg_compatible(expected, actual) {
-			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
-				param_idx + 1} to `C.${callee.value}`; expected `${expected.name()}`', id)
-		}
-	}
-	return true
 }
 
 // cur_fn_is_generic_template reports whether the function currently being
@@ -10175,8 +10140,9 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		base_id := tc.a.child(fn_node, 0)
 		base_node := tc.a.nodes[int(base_id)]
 		if base_node.kind == .ident && base_node.value == 'C' {
-			if fn_node.value == 'exit' && 'C.exit' in tc.fn_ret_types {
-				return tc.call_info('C.exit', false)
+			c_name := 'C.${fn_node.value}'
+			if c_name in tc.fn_ret_types {
+				return tc.call_info(c_name, false)
 			}
 			return none
 		}
@@ -12257,6 +12223,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected) {
+			if tc.c_call_arg_compatible(info.name, arg_id, expected) {
+				continue
+			}
 			if json_encode_accepts_arg(info.name, param_idx, expected, actual) {
 				continue
 			}
@@ -12324,6 +12293,37 @@ fn free_array_arg_compatible(name string, param_idx int, expected Type, actual T
 		clean = clean.base_type
 	}
 	return clean is Array
+}
+
+fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expected Type) bool {
+	if !name.starts_with('C.') {
+		return false
+	}
+	clean := fn_param_unalias_type(expected)
+	if clean is Pointer {
+		base := fn_param_unalias_type(clean.base_type)
+		if base is Char || (base is Primitive && base.name() == 'u8') {
+			return tc.c_string_pointer_arg(arg_id)
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) c_string_pointer_arg(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .char_literal {
+		return node.value.starts_with('c:')
+	}
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.c_string_pointer_arg(tc.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
+		return tc.c_string_pointer_arg(tc.a.child(&node, 0))
+	}
+	return false
 }
 
 fn voidptr_arg_compatible(expected Type, actual Type) bool {
