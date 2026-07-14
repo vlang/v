@@ -1840,6 +1840,41 @@ fn main() {
 	assert out == 'direct:endpoint|local:endpoint'
 }
 
+fn test_attribute_reflection_resolves_selective_import_sources() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'attribute_reflection_selective_import', {
+		'v.mod':           "Module { name: 'attribute_reflection_selective_import' }\n"
+		'routes/routes.v': 'module routes
+
+@[endpoint]
+pub fn handler() {}
+
+@[group]
+pub struct Controller {}
+'
+		'main.v':          'module main
+
+import routes { Controller, handler }
+
+fn main() {
+	mut rows := []string{}
+	$for attr in handler.attributes {
+		rows << "direct:" + attr.name
+	}
+	h := handler
+	$for attr in h.attributes {
+		rows << "local:" + attr.name
+	}
+	$for attr in Controller.attributes {
+		rows << "type:" + attr.name
+	}
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'direct:endpoint|local:endpoint|type:group'
+}
+
 fn test_method_type_value_and_indexed_param_type_guards_are_materialized() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'method_type_and_indexed_param_guards', 'struct MethodTypes {}
@@ -2344,6 +2379,36 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == 'item'
+}
+
+fn test_params_reflection_resolves_selective_import_source() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'params_reflection_selective_import', {
+		'v.mod':     "Module { name: 'params_reflection_selective_import' }\n"
+		'pkg/pkg.v': 'module pkg
+
+pub fn consume(item string) {
+	_ = item
+}
+'
+		'main.v':    'module main
+
+import pkg { consume }
+
+fn main() {
+	mut rows := []string{}
+	$for param in consume.params {
+		rows << "direct:" + param.name
+	}
+	h := consume
+	$for param in h.params {
+		rows << "local:" + param.name
+	}
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'direct:item|local:item'
 }
 
 fn test_nested_field_method_guard_preserves_inner_selector() {

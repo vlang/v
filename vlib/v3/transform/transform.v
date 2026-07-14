@@ -124,6 +124,7 @@ mut:
 	call_param_types_decl_index  map[string]FnParamDeclRef
 	call_param_types_index_ready bool
 	used_fns                     map[string]bool
+	comptime_reflected_params    map[string][]ParamMeta
 	// sum_eq_types records sum types whose deep-equality helper fn
 	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
 	// module/file context of the requesting call site (type resolution inside
@@ -338,6 +339,7 @@ pub fn transform_with_used_opt_config_scoped_workers(mut a flat.FlatAst, tc &typ
 	t.skip_generics = skip_generics
 	t.scope_parallel_workers = scope_parallel_workers
 	t.prepare()
+	t.cache_comptime_param_reflection_metadata()
 	if want_parallel {
 		// Transform roughly grows the node/children arrays by ~75%. Reserve that capacity
 		// up front so they don't double past it (the parsed AST already overshoots to the
@@ -556,6 +558,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		enum_backing_types:               map[string]string{}
 		sum_variant_names:                map[string]bool{}
 		used_fns:                         used_fns.clone()
+		comptime_reflected_params:        map[string][]ParamMeta{}
 		interface_boxed_types:            map[string]bool{}
 		interface_var_concrete_types:     map[string]string{}
 	}
@@ -1570,6 +1573,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.a = ast
 	w.tc = wtc
 	w.used_fns = t.used_fns.clone()
+	w.comptime_reflected_params = t.comptime_reflected_params.clone()
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}

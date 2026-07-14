@@ -206,6 +206,75 @@ fn (t &Transformer) comptime_resolve_selective_import_type(raw string) string {
 	return clean
 }
 
+fn (t &Transformer) comptime_resolve_selective_import_reflection_source(raw string) string {
+	clean := raw.trim_space()
+	if clean.len == 0 || isnil(t.tc) || t.cur_file.len == 0 {
+		return clean
+	}
+	if clean.contains('.') {
+		return t.resolve_imported_type_name(clean) or { clean }
+	}
+	resolved_type := t.comptime_resolve_selective_import_type(clean)
+	if resolved_type != clean {
+		return resolved_type
+	}
+	for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, clean)] or {
+		[]string{}
+	} {
+		if candidate in t.tc.fn_ret_types || candidate in t.tc.fn_param_types {
+			return candidate
+		}
+	}
+	return clean
+}
+
+fn (mut t Transformer) cache_comptime_param_reflection_metadata() {
+	if !t.has_used_fn_filter() || isnil(t.tc) || t.tc.top_level_idx.len == 0 {
+		return
+	}
+	old_file := t.cur_file
+	old_module := t.cur_module
+	old_fn_name := t.cur_fn_name
+	mut cur_file := ''
+	mut cur_module := ''
+	mut previous_top_level := -1
+	for top_level_idx in t.tc.top_level_idx {
+		node := t.a.nodes[top_level_idx]
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = ''
+		} else if node.kind == .module_decl {
+			cur_module = node.value
+		} else if node.kind == .fn_decl {
+			t.cur_file = cur_file
+			t.cur_module = cur_module
+			t.cur_fn_name = node.value
+			if t.should_transform_fn(node) {
+				for idx in previous_top_level + 1 .. top_level_idx {
+					candidate := t.a.nodes[idx]
+					if candidate.kind != .comptime_for {
+						continue
+					}
+					_, kind := comptime_for_parts(candidate.value)
+					if kind != 'params' {
+						continue
+					}
+					source := t.comptime_reflection_source(candidate.typ, flat.NodeId(idx))
+					resolved := t.comptime_resolve_selective_import_reflection_source(source)
+					if resolved != source && resolved !in t.comptime_reflected_params {
+						params := t.comptime_param_metas(resolved)
+						t.comptime_reflected_params[resolved] = params
+					}
+				}
+			}
+		}
+		previous_top_level = top_level_idx
+	}
+	t.cur_file = old_file
+	t.cur_module = old_module
+	t.cur_fn_name = old_fn_name
+}
+
 fn (t &Transformer) comptime_normalize_type_alias_chain(raw string) string {
 	mut typ := raw.trim_space()
 	mut seen := map[string]bool{}
@@ -311,7 +380,7 @@ fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source st
 
 fn (t &Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId) []AttributeMeta {
 	raw_name := t.comptime_reflection_source(source, loop_id)
-	name := t.resolve_imported_type_name(raw_name) or { raw_name }
+	name := t.comptime_resolve_selective_import_reflection_source(raw_name)
 	mut module_name := ''
 	for idx, node in t.a.nodes {
 		if node.kind == .file {
@@ -647,7 +716,10 @@ fn (mut t Transformer) expand_comptime_for_params(var_name string, fn_name strin
 
 fn (t &Transformer) comptime_param_metas(fn_name string) []ParamMeta {
 	raw_wanted := fn_name.trim_space()
-	wanted := t.resolve_imported_type_name(raw_wanted) or { raw_wanted }
+	wanted := t.comptime_resolve_selective_import_reflection_source(raw_wanted)
+	if params := t.comptime_reflected_params[wanted] {
+		return params.clone()
+	}
 	mut module_name := ''
 	mut file_name := ''
 	mut signature_fallback := []ParamMeta{}
