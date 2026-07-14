@@ -369,21 +369,29 @@ fn (mut g FlatGen) take_propagation_ownership_drops() []types.OwnershipDropEntry
 }
 
 fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node) []types.OwnershipDropEntry {
+	mut entries := []types.OwnershipDropEntry{}
 	if source_id := transformed_return_source_id(node.value) {
-		return g.take_transformed_return_ownership_drops(source_id)
-	}
-	if node.typ.len == 0 {
-		return g.take_return_ownership_drops()
-	}
-	if node.typ[0] !in [`!`, `?`] {
-		return []types.OwnershipDropEntry{}
-	}
-	if node.value == direct_optional_forward_return_value
+		entries = g.take_transformed_return_ownership_drops(source_id)
+	} else if node.typ.len == 0 {
+		entries = g.take_return_ownership_drops()
+	} else if node.typ[0] !in [`!`, `?`] {
+		entries = []types.OwnershipDropEntry{}
+	} else if node.value == direct_optional_forward_return_value
 		|| node.value == optional_success_return_value
 		|| g.return_stmt_is_explicit_optional_failure(node) {
-		return g.take_return_ownership_drops()
+		entries = g.take_return_ownership_drops()
+	} else {
+		entries = g.take_propagation_ownership_drops()
 	}
-	return g.take_propagation_ownership_drops()
+	if g.pending_return_scope_drops.len == 0 {
+		return entries
+	}
+	mut combined := g.pending_return_scope_drops.clone()
+	for entry in entries {
+		combined << entry
+	}
+	g.pending_return_scope_drops = []types.OwnershipDropEntry{}
+	return combined
 }
 
 fn (g &FlatGen) return_stmt_is_explicit_optional_failure(node flat.Node) bool {
@@ -406,10 +414,14 @@ fn (g &FlatGen) return_stmt_is_explicit_optional_failure(node flat.Node) bool {
 }
 
 fn (mut g FlatGen) gen_scope_ownership_drops() {
+	g.gen_ownership_drops(g.take_scope_ownership_drops())
+}
+
+fn (mut g FlatGen) take_scope_ownership_drops() []types.OwnershipDropEntry {
 	fn_name := qualify_name_in_module(g.tc.cur_module, g.cur_fn_name)
 	entries := g.tc.ownership_drop_entries_at_scope_exit(fn_name, g.ownership_scope_index)
 	g.ownership_scope_index++
-	g.gen_ownership_drops(entries)
+	return entries
 }
 
 fn (mut g FlatGen) gen_loop_control_ownership_drops() {

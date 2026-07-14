@@ -162,6 +162,7 @@ mut:
 	ownership_loop_iteration_index int
 	ownership_scope_index          int
 	cur_return_drops               []types.OwnershipDropEntry
+	pending_return_scope_drops     []types.OwnershipDropEntry
 	expected_expr_type             types.Type = types.Type(types.void_)
 	expected_enum                  string
 	needed_optional_types          map[string]string
