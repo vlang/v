@@ -916,16 +916,21 @@ fn (mut t Transformer) expand_comptime_for_methods(var_name string, base_type st
 }
 
 fn comptime_method_receiver_base(raw string) string {
+	mut name := comptime_method_receiver_type(raw)
+	bracket := name.index_u8(`[`)
+	if bracket >= 0 {
+		name = name[..bracket]
+	}
+	return name
+}
+
+fn comptime_method_receiver_type(raw string) string {
 	mut name := raw.trim_space()
 	if name.starts_with('mut ') {
 		name = name[4..].trim_space()
 	}
 	for name.starts_with('&') {
 		name = name[1..].trim_space()
-	}
-	bracket := name.index_u8(`[`)
-	if bracket >= 0 {
-		name = name[..bracket]
 	}
 	return name
 }
@@ -976,23 +981,31 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			continue
 		}
 		seen[name] = true
+		generic_args, generic_params := t.comptime_method_receiver_generic_args(first.typ,
+			base_type, normalized)
 		mut params := []ParamMeta{}
 		for i in 1 .. node.children_count {
 			param := t.a.child_node(&node, i)
 			if param.kind == .param {
 				params << ParamMeta{
 					name:        param.value
-					typ:         param.typ
+					typ:         substitute_generic_type_text_with_params(param.typ, generic_args,
+						generic_params)
 					module_name: module_name
 				}
 			}
 		}
+		return_type := substitute_generic_type_text_with_params(if node.typ.len > 0 {
+			node.typ
+		} else {
+			'void'
+		}, generic_args, generic_params)
 		raw_attr_data := t.comptime_node_raw_attribute_data(node_id)
 		methods << MethodMeta{
 			name:        name
 			receiver:    first.typ
 			module_name: module_name
-			return_type: if node.typ.len > 0 { node.typ } else { 'void' }
+			return_type: return_type
 			is_pub:      node.op == .arrow
 			params:      params
 			attrs:       raw_attr_data.attrs
@@ -1000,6 +1013,26 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		}
 	}
 	return methods
+}
+
+fn (t &Transformer) comptime_method_receiver_generic_args(receiver string, requested string, normalized string) ([]string, []string) {
+	_, params, is_generic := generic_app_parts(comptime_method_receiver_type(receiver))
+	if !is_generic || params.len == 0 {
+		return []string{}, []string{}
+	}
+	mut candidates := [requested, normalized]
+	for candidate in [requested, normalized] {
+		if source := t.generic_specialized_source_type_name(comptime_method_receiver_type(candidate)) {
+			candidates << source
+		}
+	}
+	for candidate in candidates {
+		_, args, ok := generic_app_parts(comptime_method_receiver_type(candidate))
+		if ok && args.len == params.len && !t.generic_args_have_placeholders(args) {
+			return args, params
+		}
+	}
+	return []string{}, []string{}
 }
 
 fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, method MethodMeta) ?flat.NodeId {

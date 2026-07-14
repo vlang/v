@@ -2289,3 +2289,37 @@ fn main() {
 ')
 	assert out == 'outer:outer|alpha=alpha:alpha|beta=beta:beta'
 }
+
+fn test_generic_receiver_method_metadata_uses_concrete_args() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'generic_receiver_method_metadata', 'struct Box[T] {
+	value T
+}
+
+fn (b Box[T]) get(value T) T {
+	_ = b
+	return value
+}
+
+fn reflected_method_metadata[T]() string {
+	mut rows := []string{}
+	$for method in T.methods {
+		$if method.return_type is int {
+			rows << "return"
+		}
+		$if method.params[0].typ is int {
+			rows << "param"
+		}
+		if method.typ == typeof[fn (int) int]().idx {
+			rows << "signature"
+		}
+	}
+	return rows.join("|")
+}
+
+fn main() {
+	println(reflected_method_metadata[Box[int]]())
+}
+')
+	assert out == 'return|param|signature'
+}
