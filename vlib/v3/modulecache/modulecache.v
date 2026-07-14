@@ -1449,11 +1449,11 @@ fn cached_directive_text(node flat.Node, vroot string, source_file string) strin
 		'if', 'elif', 'else', 'endif', 'pragma', 'error', 'warning'] {
 		return ''
 	}
-	value := cached_directive_value(node.typ, vroot, source_file)
+	value := cached_directive_value(node.value, node.typ, vroot, source_file)
 	return if value.len > 0 { '#${node.value} ${value}' } else { '#${node.value}' }
 }
 
-fn cached_directive_value(value string, vroot string, source_file string) string {
+fn cached_directive_value(directive string, value string, vroot string, source_file string) string {
 	mut result := value.replace('@VEXEROOT', vroot)
 	result = result.replace('@VROOT', '@VMODROOT')
 	if result.contains('@VMODROOT') {
@@ -1462,7 +1462,73 @@ fn cached_directive_value(value string, vroot string, source_file string) string
 	if result.contains('@DIR') {
 		result = result.replace('@DIR', os.real_path(os.dir(source_file)))
 	}
+	if directive in ['include', 'insert'] {
+		return cached_resolve_relative_include_path(result, source_file)
+	}
+	if directive == 'flag' {
+		return cached_resolve_relative_flag_paths(result, source_file)
+	}
 	return result
+}
+
+fn cached_resolve_relative_include_path(value string, source_file string) string {
+	if source_file.len == 0 {
+		return value
+	}
+	quote_start := value.index_u8(`"`)
+	if quote_start < 0 {
+		return value
+	}
+	rest := value[quote_start + 1..]
+	quote_end_offset := rest.index_u8(`"`)
+	if quote_end_offset < 0 {
+		return value
+	}
+	path := rest[..quote_end_offset]
+	if path.len == 0 || os.is_abs_path(path) {
+		return value
+	}
+	resolved := os.real_path(os.join_path_single(os.dir(source_file), path))
+	quote_end := quote_start + 1 + quote_end_offset
+	return value[..quote_start + 1] + resolved + value[quote_end..]
+}
+
+fn cached_resolve_relative_flag_paths(value string, source_file string) string {
+	if source_file.len == 0 || !value.contains('/') {
+		return value
+	}
+	base_dir := os.dir(source_file)
+	if base_dir.len == 0 {
+		return value
+	}
+	mut resolved := []string{}
+	for token in value.fields() {
+		resolved << cached_resolve_relative_flag_path_token(token, base_dir)
+	}
+	return resolved.join(' ')
+}
+
+fn cached_resolve_relative_flag_path_token(token string, base_dir string) string {
+	for prefix in ['-I', '-L'] {
+		if token.starts_with(prefix) && token.len > prefix.len {
+			path := token[prefix.len..]
+			if cached_flag_path_is_relative(path) {
+				return prefix + os.real_path(os.join_path_single(base_dir, path))
+			}
+			return token
+		}
+	}
+	if !token.starts_with('-') && cached_flag_path_is_relative(token) {
+		return os.real_path(os.join_path_single(base_dir, token))
+	}
+	return token
+}
+
+fn cached_flag_path_is_relative(path string) bool {
+	if path.len == 0 || os.is_abs_path(path) {
+		return false
+	}
+	return path.starts_with('./') || path.starts_with('../') || path.contains('/')
 }
 
 fn cached_vmod_root(source_file string) string {
