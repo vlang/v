@@ -58,7 +58,25 @@ pub fn raw_string(s string) string {
 		 }
 		hashes++
 	}
-	return '#'.repeat(hashes) + '"' + s + '"' + '#'.repeat(hashes)
+	hash_prefix := '#'.repeat(hashes)
+
+	// Use multi-line raw form for content with newlines (§3.11, §3.12)
+	if has_kdl_newline(s) {
+		return hash_prefix + '"""\n' + s + '\n"""' + hash_prefix
+	}
+
+	return hash_prefix + '"' + s + '"' + hash_prefix
+}
+
+// has_kdl_newline returns true if s contains any KDL newline codepoint (§3.18).
+fn has_kdl_newline(s string) bool {
+	for r in s.runes() {
+		if r == `\n` || r == `\r` || r == 0x0b || r == 0x0c || r == 0x85 || r == 0x2028
+			|| r == 0x2029 {
+			return true
+		}
+	}
+	return false
 }
 
 pub fn unquote_string(s string) !string {

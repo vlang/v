@@ -577,7 +577,8 @@ fn (mut s Scanner) skip_type_space(l int, c int) ?Token {
 			continue
 		}
 		if s.c == 92 {
-			if s.skip_line_cont() { continue
+			cont := s.skip_line_cont() or { return Token{.eof, err.msg(), l, c} }
+			if cont { continue
 			 }
 			return Token{.eof, 'kdl: invalid line continuation in type annotation', l, c}
 		}

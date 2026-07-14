@@ -257,7 +257,8 @@ fn (mut s Scanner) skip_gap() ?Token {
 			line := s.line
 			col := s.col
 			ch := s.c
-			if s.skip_line_cont() {
+			cont := s.skip_line_cont() or { return Token{.eof, err.msg(), s.line, s.col} }
+			if cont {
 				s.last_tok_kind = .eof
 				continue
 			}
@@ -273,7 +274,7 @@ fn (mut s Scanner) skip_gap() ?Token {
 	return none
 }
 
-fn (mut s Scanner) skip_line_cont() bool {
+fn (mut s Scanner) skip_line_cont() !bool {
 	s.advance()
 	for s.pos < s.src.len {
 		if is_whitespace_unicode(s.c, s.pos, s.src) {
@@ -286,6 +287,9 @@ fn (mut s Scanner) skip_line_cont() bool {
 		if s.c == 47 {
 			if s.peek() == 47 {
 				for s.pos < s.src.len && !is_newline_unicode(s.c, s.pos, s.src) {
+					if is_disallowed_literal(s.c, s.pos, s.src) {
+						return error('kdl: disallowed literal code point')
+					}
 					s.advance()
 				}
 				if is_newline_unicode(s.c, s.pos, s.src) {
@@ -312,6 +316,9 @@ fn (mut s Scanner) skip_line_cont() bool {
 						s.advance()
 						s.advance()
 						continue
+					}
+					if is_disallowed_literal(s.c, s.pos, s.src) {
+						return error('kdl: disallowed literal code point')
 					}
 					s.advance()
 				}
