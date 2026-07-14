@@ -2480,6 +2480,10 @@ fn (t &Transformer) qualified_alias_name(name string) string {
 // clone_field_subst deep-clones a body node, substituting `<var>.member` references and folding
 // `$if` conditions that reference the loop variable. Returns none when a folded branch is empty.
 fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm FieldMeta) ?flat.NodeId {
+	return t.clone_field_subst_scoped(id, var_name, fm, []string{})
+}
+
+fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string, fm FieldMeta, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
 	}
@@ -2512,7 +2516,9 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 		&& t.direct_reflected_field_selector(t.a.child(&node, 2), var_name) {
 		mut children := []flat.NodeId{cap: int(node.children_count)}
 		for i in 0 .. node.children_count {
-			child := t.clone_field_subst(t.a.child(&node, i), var_name, fm) or { flat.empty_node }
+			child := t.clone_field_subst_scoped(t.a.child(&node, i), var_name, fm, inner_vars) or {
+				flat.empty_node
+			}
 			if i == 2 {
 				children << t.make_selector(child, 'value', fm.comptime_typ[1..])
 			} else {
@@ -2567,14 +2573,16 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 			}
 			// Unknown FieldData member (e.g. a typo): leave the selector unresolved so it
 			// surfaces as an error instead of silently becoming the field name.
-			return t.clone_field_subst_children(node, var_name, fm)
+			return t.clone_field_subst_children(node, var_name, fm, inner_vars)
 		}
 		// `receiver.$(<var>.name)` compile-time field selector - only fold when the name
 		// expression is *this* loop variable's `.name`. A nested loop's `$(inner.name)` is left
 		// untouched so its own unroll pass resolves it against the right field.
 		if node.value == '$' && node.children_count >= 2
 			&& t.dollar_selector_names_var(t.a.child(&node, 1), var_name) {
-			receiver := t.clone_field_subst(t.a.child(&node, 0), var_name, fm) or { return none }
+			receiver := t.clone_field_subst_scoped(t.a.child(&node, 0), var_name, fm, inner_vars) or {
+				return none
+			}
 			return t.make_selector(receiver, fm.name, fm.comptime_typ)
 		}
 	}
@@ -2583,17 +2591,20 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 		substituted := t.subst_field_cond(node.value, var_name, fm)
 		cond := t.subst_reflected_field_selector_cond(node.value, substituted, var_name, fm)
 		if (comptime_cond_references_ident(node.value, var_name)
-			|| cond != node.value) && !comptime_cond_has_loop_member_ref(cond, var_name) {
+			|| cond != node.value) && !comptime_cond_has_loop_member_ref(cond, var_name)
+			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if taken := t.eval_field_cond(cond) {
 				branch_idx := if taken { 0 } else { 1 }
 				if branch_idx >= int(node.children_count) {
 					return none
 				}
-				return t.clone_field_subst(t.a.child(&node, branch_idx), var_name, fm)
+				return t.clone_field_subst_scoped(t.a.child(&node, branch_idx), var_name, fm,
+					inner_vars)
 			}
 		}
+		return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, cond)
 	}
-	return t.clone_field_subst_children(node, var_name, fm)
+	return t.clone_field_subst_children(node, var_name, fm, inner_vars)
 }
 
 // direct_reflected_field_selector reports whether an iterable is exactly
@@ -2712,10 +2723,15 @@ fn (t &Transformer) dollar_selector_names_var(name_id flat.NodeId, var_name stri
 	return base.kind == .ident && base.value == var_name
 }
 
-fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name string, fm FieldMeta) ?flat.NodeId {
+fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name string, fm FieldMeta, inner_vars []string) ?flat.NodeId {
+	return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, node.value)
+}
+
+fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var_name string, fm FieldMeta, inner_vars []string, value string) ?flat.NodeId {
+	child_inner_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
-		if c := t.clone_field_subst(t.a.child(&node, i), var_name, fm) {
+		if c := t.clone_field_subst_scoped(t.a.child(&node, i), var_name, fm, child_inner_vars) {
 			children << c
 		}
 	}
@@ -2723,13 +2739,17 @@ fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name strin
 	for c in children {
 		t.a.children << c
 	}
-	value := t.comptime_field_call_generic_args(node, children, fm)
+	cloned_value := if node.kind == .comptime_if {
+		value
+	} else {
+		t.comptime_field_call_generic_args(node, children, fm)
+	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
 		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
-		value:          value
+		value:          cloned_value
 		typ:            t.clone_field_subst_type_text(node, var_name, fm)
 		is_mut:         node.is_mut
 		children_start: start

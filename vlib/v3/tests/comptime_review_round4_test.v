@@ -2187,6 +2187,38 @@ fn main() {
 	assert out == 'item'
 }
 
+fn test_nested_field_method_guard_preserves_inner_selector() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'nested_field_method_guard', "struct Row {
+	id int
+	name string
+}
+
+struct App {}
+
+fn (a App) index() {
+	_ = a
+}
+
+fn (a App) submit() {
+	_ = a
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for field in Row.fields {
+		\$for method in App.methods {
+			\$if field.name == 'id' && method.name == 'index' {
+				rows << field.name + ':' + method.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'id:index'
+}
+
 fn test_nested_method_reflection_respects_shadowed_loop_variable() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_shadowing', 'struct OuterMethods {}
