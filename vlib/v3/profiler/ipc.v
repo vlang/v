@@ -7,7 +7,7 @@ import os
 import time
 
 // Default path for profiler data exchange
-pub const profiler_data_path = '/tmp/v3_profiler.dat'
+pub const profiler_data_path = os.join_path(os.temp_dir(), 'v3_profiler.dat')
 
 // Snapshot represents a point-in-time view of profiler state for IPC
 pub struct Snapshot {
