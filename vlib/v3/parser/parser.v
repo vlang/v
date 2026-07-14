@@ -22,33 +22,34 @@ pub:
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                      scanner.Scanner
-	tok                    token.Token
-	lit                    string
-	tok_pos                int
-	peek_tok               token.Token = .eof
-	peek_lit               string
-	peek_pos               int
-	has_peek               bool
-	cur_file               string
-	cur_file_id            int
-	next_file_id           int = 1
-	cur_module             string
-	cur_fn                 string
-	cur_struct             string   // receiver type name of the current method, for `@STRUCT`
-	comptime_for_vars      []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
-	pending_flag           bool
-	pending_json_as_number bool // `@[json_as_number]` seen before the next enum decl
-	pending_params         bool
-	pending_export         string
-	pending_noreturn       bool
-	skip_next_decl         bool
-	disable_fn_body        bool
-	in_for_container       bool
-	local_type_names       map[string]string
-	local_type_scopes      []string
-	export_records         []ExportRecord
-	source_buffers         []string
+	s                                 scanner.Scanner
+	tok                               token.Token
+	lit                               string
+	tok_pos                           int
+	peek_tok                          token.Token = .eof
+	peek_lit                          string
+	peek_pos                          int
+	has_peek                          bool
+	cur_file                          string
+	cur_file_id                       int
+	next_file_id                      int = 1
+	cur_module                        string
+	cur_fn                            string
+	cur_struct                        string   // receiver type name of the current method, for `@STRUCT`
+	comptime_for_vars                 []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
+	pending_flag                      bool
+	pending_json_as_number            bool // `@[json_as_number]` seen before the next enum decl
+	pending_params                    bool
+	pending_export                    string
+	pending_noreturn                  bool
+	skip_next_decl                    bool
+	disable_fn_body                   bool
+	in_for_container                  bool
+	disable_source_arch_optimizations bool
+	local_type_names                  map[string]string
+	local_type_scopes                 []string
+	export_records                    []ExportRecord
+	source_buffers                    []string
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
@@ -138,6 +139,8 @@ pub fn (mut p Parser) parse_into(path string) {
 	// source buffer for the Parser/AST lifetime so those views stay valid.
 	p.source_buffers << src
 	stable_src := p.source_buffers.last()
+	p.disable_source_arch_optimizations = !p.prefs.supports_inline_asm
+		&& source_contains_target_inline_asm(stable_src, p.prefs.target.arch)
 	if path.ends_with('.v') {
 		p.parsed_v_files++
 	}
@@ -1753,7 +1756,7 @@ fn (mut p Parser) skip_attrs() {
 				cond.write_string(tok_str)
 				p.next()
 			}
-			if !eval_comptime_cond(p.prefs, cond.str()) {
+			if !p.eval_comptime_cond(cond.str()) {
 				p.skip_next_decl = true
 			}
 		}
@@ -1861,7 +1864,7 @@ fn (mut p Parser) parse_field_attrs() []string {
 				cond.write_string(tok_str)
 				p.next()
 			}
-			if !eval_comptime_cond(p.prefs, cond.str()) {
+			if !p.eval_comptime_cond(cond.str()) {
 				p.skip_next_decl = true
 			}
 			p.check(.rsbr)
@@ -1984,7 +1987,7 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 			return p.comptime_if_node(cond, then_block, else_block)
 		}
 	}
-	taken := eval_comptime_cond(p.prefs, cond)
+	taken := p.eval_comptime_cond(cond)
 	if taken {
 		result := p.block_stmt()
 		p.skip_comptime_else()
@@ -2057,7 +2060,7 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 			return p.comptime_if_node(cond, then_block, else_block)
 		}
 	}
-	taken := eval_comptime_cond(p.prefs, cond)
+	taken := p.eval_comptime_cond(cond)
 	if taken {
 		result := p.top_level_block_stmt()
 		p.skip_comptime_else()
@@ -2355,7 +2358,7 @@ fn (p &Parser) simplify_deferred_comptime_cond(cond string) string {
 	c := comptime_cond_strip_outer_parens(cond.trim_space())
 	if !p.comptime_cond_needs_loop_var(c) && !comptime_cond_has_type_test(c)
 		&& !comptime_cond_has_builtin_threads(c) {
-		return if eval_comptime_cond(p.prefs, c) { 'true' } else { 'false' }
+		return if p.eval_comptime_cond(c) { 'true' } else { 'false' }
 	}
 	left_or, right_or, has_or := comptime_cond_split_top_level(c, '||')
 	if has_or {
@@ -2503,18 +2506,18 @@ fn (mut p Parser) parse_top_level_comptime_else() flat.NodeId {
 	return p.top_level_block_stmt()
 }
 
-fn eval_comptime_cond(prefs &pref.Preferences, cond string) bool {
+fn (p &Parser) eval_comptime_cond(cond string) bool {
 	c := comptime_cond_strip_outer_parens(cond.trim_space())
 	left_or, right_or, has_or := comptime_cond_split_top_level(c, '||')
 	if has_or {
-		return eval_comptime_cond(prefs, left_or) || eval_comptime_cond(prefs, right_or)
+		return p.eval_comptime_cond(left_or) || p.eval_comptime_cond(right_or)
 	}
 	left_and, right_and, has_and := comptime_cond_split_top_level(c, '&&')
 	if has_and {
-		return eval_comptime_cond(prefs, left_and) && eval_comptime_cond(prefs, right_and)
+		return p.eval_comptime_cond(left_and) && p.eval_comptime_cond(right_and)
 	}
 	if c.starts_with('!') {
-		return !eval_comptime_cond(prefs, c[1..])
+		return !p.eval_comptime_cond(c[1..])
 	}
 	if c == 'true' {
 		return true
@@ -2525,14 +2528,59 @@ fn eval_comptime_cond(prefs &pref.Preferences, cond string) bool {
 	if c.starts_with('pkgconfig') {
 		return eval_pkgconfig_cond(c)
 	}
-	if value := eval_comptime_define_cond(prefs, c) {
+	if value := eval_comptime_define_cond(p.prefs, c) {
 		return value
 	}
 	if c.ends_with('?') {
 		flag := c[..c.len - 1].trim_space()
-		return pref.comptime_optional_flag_value(prefs, flag)
+		return pref.comptime_optional_flag_value(p.prefs, flag)
 	}
-	return pref.comptime_flag_value(prefs, c.trim_space())
+	name := c.trim_space()
+	if p.disable_source_arch_optimizations
+		&& comptime_flag_is_target_arch(name, p.prefs.target.arch) {
+		return false
+	}
+	return pref.comptime_flag_value(p.prefs, name)
+}
+
+fn source_contains_target_inline_asm(source string, target_arch string) bool {
+	if source.len < 3 {
+		return false
+	}
+	for offset in 0 .. source.len - 2 {
+		if source[offset] != `a` || source[offset + 1] != `s` || source[offset + 2] != `m` {
+			continue
+		}
+		mut arch_start := offset + 3
+		for arch_start < source.len && source[arch_start] in [` `, `\t`, `\r`, `\n`] {
+			arch_start++
+		}
+		mut arch_end := arch_start
+		for arch_end < source.len && (source[arch_end].is_letter() || source[arch_end].is_digit()
+			|| source[arch_end] == `_`) {
+			arch_end++
+		}
+		if arch_end == arch_start
+			|| !comptime_flag_is_target_arch(source[arch_start..arch_end], target_arch) {
+			continue
+		}
+		for arch_end < source.len && source[arch_end] in [` `, `\t`, `\r`, `\n`] {
+			arch_end++
+		}
+		if arch_end < source.len && source[arch_end] == `{` {
+			return true
+		}
+	}
+	return false
+}
+
+fn comptime_flag_is_target_arch(name string, target_arch string) bool {
+	return match target_arch {
+		'amd64' { name in ['amd64', 'x64', 'x86_64'] }
+		'arm64' { name in ['arm64', 'aarch64'] }
+		'x86' { name in ['x86', 'i386'] }
+		else { name == target_arch }
+	}
 }
 
 // eval_comptime_define_cond evaluates the boolean form of `$d('name', default)`. A builtin
@@ -2946,7 +2994,7 @@ fn (mut p Parser) parse_comptime_if_expr_after_if() flat.NodeId {
 			return p.comptime_if_node(cond, then_expr, else_expr)
 		}
 	}
-	taken := eval_comptime_cond(p.prefs, cond)
+	taken := p.eval_comptime_cond(cond)
 	if taken {
 		result := p.parse_comptime_expr_block()
 		p.skip_comptime_else()
@@ -4164,6 +4212,7 @@ fn (mut p Parser) goto_stmt() flat.NodeId {
 }
 
 fn (mut p Parser) asm_stmt() flat.NodeId {
+	asm_pos := p.tok_pos
 	p.next() // skip 'asm'
 	// consume optional volatile keyword
 	if p.tok == .name && p.lit == 'volatile' {
@@ -4181,6 +4230,9 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	}
 	if p.tok == .semicolon {
 		p.next()
+	}
+	if !p.prefs.supports_inline_asm {
+		p.record_diagnostic('inline assembly is not supported by the selected V3 backend', asm_pos)
 	}
 	return p.add(flat.NodeKind.asm_stmt)
 }

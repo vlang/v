@@ -87,7 +87,8 @@ fn cast_expr_values(a &flat.FlatAst) []string {
 }
 
 fn test_architecture_qualified_asm_is_consumed_as_one_statement() {
-	a := parse_parser_regression_source('architecture_asm', 'fn mul(x u64, y u64) u64 {
+	src := os.join_path(os.temp_dir(), 'v3_architecture_asm.v')
+	os.write_file(src, 'fn mul(x u64, y u64) u64 {
 	asm arm64 {
 		mul x, x, y
 		; =&r (x)
@@ -97,9 +98,38 @@ fn test_architecture_qualified_asm_is_consumed_as_one_statement() {
 	}
 	return x * y
 }
-')
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(src)
 	assert a.nodes.count(it.kind == .asm_stmt) == 1
 	assert !a.nodes.any(it.kind == .ident && it.value in ['arm64', 'mul', 'cc'])
+	assert p.diagnostics.len == 1
+	assert p.diagnostics[0].message.contains('inline assembly is not supported')
+}
+
+fn test_guarded_inline_asm_selects_software_fallback() {
+	src := os.join_path(os.temp_dir(), 'v3_guarded_architecture_asm.v')
+	os.write_file(src, '$if arm64 && !tinyc {
+	fn mul() int {
+		asm arm64 { nop }
+		return 0
+	}
+} $else {
+	fn mul() int { return 42 }
+}
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(src)
+	assert p.diagnostics.len == 0
+	assert a.nodes.count(it.kind == .asm_stmt) == 0
+	assert a.nodes.any(it.kind == .int_literal && it.value == '42')
 }
 
 // test_interface_method_generic_type_only_param_is_not_parsed_as_name

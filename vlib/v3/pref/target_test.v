@@ -29,6 +29,7 @@ fn test_comptime_flags_use_target_instead_of_host() {
 	assert comptime_flag_value(prefs, 'big_endian')
 	assert !comptime_flag_value(prefs, 'macos')
 	assert !comptime_flag_value(prefs, 'arm64')
+	assert !comptime_flag_value(prefs, 'tinyc')
 }
 
 fn test_source_selection_uses_target_os_and_arch() {

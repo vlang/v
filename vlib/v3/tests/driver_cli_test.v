@@ -39,6 +39,22 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	c_source := os.read_file(c_output)!
 	assert c_source.len > 100
 	assert c_source.contains('typedef signed char i8;')
+	bits_source := os.join_path(root, 'bits_fallback.v')
+	os.write_file(bits_source, 'import math.bits
+
+fn main() {
+	hi, lo := bits.mul_64(u64(0xffffffffffffffff), u64(2))
+	println(hi.str() + ":" + lo.str())
+}
+') or {
+		panic(err)
+	}
+	bits_output := os.join_path(root, 'bits_fallback')
+	bits_compile := cmdexec.run(v3_bin, ['-prod', '-o', bits_output, bits_source])
+	assert bits_compile.exit_code == 0, bits_compile.output
+	bits_run := cmdexec.run(bits_output, [])
+	assert bits_run.exit_code == 0, bits_run.output
+	assert bits_run.output.trim_space() == '1:18446744073709551614'
 	assert_driver_cli_failure(v3_bin, ['--bogus'], 'unknown option `--bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o'], 'option `-o` requires a value')
 	assert_driver_cli_failure(v3_bin, ['-b', 'bogus', source], 'unknown backend `bogus`')
