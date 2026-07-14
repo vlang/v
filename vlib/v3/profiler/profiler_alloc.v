@@ -168,6 +168,13 @@ fn profiler_realloc(ptr voidptr, new_size int, ctx voidptr) voidptr {
 			if profiler_state.live_bytes >= u64(old_size) {
 				profiler_state.live_bytes -= u64(old_size)
 			}
+			profiler_state.total_frees++
+
+			if profiler_state.frames.len > 0 {
+				frame_idx := profiler_state.frames.len - 1
+				profiler_state.frames[frame_idx].freed_idxs << idx
+				profiler_state.frames[frame_idx].freed_bytes += u64(old_size)
+			}
 			profiler_state.alloc_map.delete(ptr)
 		}
 
@@ -184,6 +191,13 @@ fn profiler_realloc(ptr voidptr, new_size int, ctx voidptr) voidptr {
 		}
 		profiler_state.alloc_map[new_ptr] = new_idx
 		profiler_state.live_bytes += u64(new_size)
+		profiler_state.total_allocs++
+
+		if profiler_state.frames.len > 0 {
+			frame_idx := profiler_state.frames.len - 1
+			profiler_state.frames[frame_idx].new_allocs << new_idx
+			profiler_state.frames[frame_idx].new_bytes += u64(new_size)
+		}
 
 		if profiler_state.live_bytes > profiler_state.peak_bytes {
 			profiler_state.peak_bytes = profiler_state.live_bytes
