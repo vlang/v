@@ -2119,6 +2119,33 @@ fn main() {
 	assert out == 'route:index'
 }
 
+fn test_nested_param_field_guard_preserves_inner_selector() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'nested_param_field_guard', "struct Row {
+	id int
+	name string
+}
+
+fn consume(x string, y int) {
+	_ = x
+	_ = y
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for param in consume.params {
+		\$for field in Row.fields {
+			\$if param.name == 'x' && field.name == 'id' {
+				rows << param.name + ':' + field.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'x:id'
+}
+
 fn test_nested_method_reflection_respects_shadowed_loop_variable() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_shadowing', 'struct OuterMethods {}

@@ -712,6 +712,10 @@ fn comptime_params_match_signature(params []ParamMeta, return_type string, wante
 }
 
 fn (mut t Transformer) clone_param_subst(id flat.NodeId, var_name string, param ParamMeta) ?flat.NodeId {
+	return t.clone_param_subst_scoped(id, var_name, param, []string{})
+}
+
+fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string, param ParamMeta, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
 	}
@@ -733,7 +737,7 @@ fn (mut t Transformer) clone_param_subst(id flat.NodeId, var_name string, param 
 					t.make_int_literal(t.comptime_field_type_id(param.typ, param.module_name))
 				}
 				else {
-					t.clone_param_subst_children(node, var_name, param)
+					t.clone_param_subst_children(node, var_name, param, inner_vars)
 				}
 			}
 		}
@@ -746,7 +750,7 @@ fn (mut t Transformer) clone_param_subst(id flat.NodeId, var_name string, param 
 					t.make_int_literal(t.comptime_field_type_id(param.typ, param.module_name))
 				}
 				else {
-					t.clone_param_subst_children(node, var_name, param)
+					t.clone_param_subst_children(node, var_name, param, inner_vars)
 				}
 			}
 		}
@@ -760,17 +764,20 @@ fn (mut t Transformer) clone_param_subst(id flat.NodeId, var_name string, param 
 			"'${param.name}'").replace(' is &void', ' is voidptr').replace(' !is &void',
 			' !is voidptr')
 		if comptime_cond_references_ident(node.value, var_name)
-			&& !comptime_cond_has_loop_member_ref(cond, var_name) {
+			&& !comptime_cond_has_loop_member_ref(cond, var_name)
+			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if taken := t.eval_field_cond(cond) {
 				branch_idx := if taken { 0 } else { 1 }
 				if branch_idx >= int(node.children_count) {
 					return none
 				}
-				return t.clone_param_subst(t.a.child(&node, branch_idx), var_name, param)
+				return t.clone_param_subst_scoped(t.a.child(&node, branch_idx), var_name, param,
+					inner_vars)
 			}
 		}
+		return t.clone_param_subst_children_with_value(node, var_name, param, inner_vars, cond)
 	}
-	return t.clone_param_subst_children(node, var_name, param)
+	return t.clone_param_subst_children(node, var_name, param, inner_vars)
 }
 
 fn (t &Transformer) typeof_arg_is_param_typ(id flat.NodeId, var_name string) bool {
@@ -803,10 +810,17 @@ fn (t &Transformer) param_typ_expr_references(id flat.NodeId, var_name string) b
 	return false
 }
 
-fn (mut t Transformer) clone_param_subst_children(node flat.Node, var_name string, param ParamMeta) flat.NodeId {
+fn (mut t Transformer) clone_param_subst_children(node flat.Node, var_name string, param ParamMeta, inner_vars []string) flat.NodeId {
+	return t.clone_param_subst_children_with_value(node, var_name, param, inner_vars, node.value)
+}
+
+fn (mut t Transformer) clone_param_subst_children_with_value(node flat.Node, var_name string, param ParamMeta, inner_vars []string, value string) flat.NodeId {
+	child_inner_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
-		if child := t.clone_param_subst(t.a.child(&node, i), var_name, param) {
+		if child := t.clone_param_subst_scoped(t.a.child(&node, i), var_name, param,
+			child_inner_vars)
+		{
 			children << child
 		}
 	}
@@ -819,7 +833,7 @@ fn (mut t Transformer) clone_param_subst_children(node flat.Node, var_name strin
 		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
-		value:          node.value
+		value:          value
 		typ:            node.typ
 		generic_params: node.generic_params.clone()
 		is_mut:         node.is_mut
