@@ -148,11 +148,12 @@ pub mut:
 	kind_id        int
 	is_mut         bool
 pub:
-	pos            token.Pos
-	children_start i32
-	children_count i16
-	kind           NodeKind
-	op             Op
+	pos                  token.Pos
+	children_start       i32
+	children_count       i16
+	kind                 NodeKind
+	op                   Op
+	skip_ownership_drops bool
 }
 
 // FlatAst represents flat ast data used by flat.

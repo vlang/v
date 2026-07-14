@@ -5569,7 +5569,9 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 			field := t.make_selector(t.make_ident(tmp_name), field_name, field_type_name)
 			lvalue := t.transform_lvalue(lhs_id)
 			t.drain_pending(mut result)
-			t.append_owned_lvalue_drop_before_assign(lvalue, field_type_name, mut result)
+			if !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
+				t.append_owned_lvalue_drop_before_assign(lvalue, field_type_name, mut result)
+			}
 			result << t.make_assign(lvalue, field)
 		}
 		return result

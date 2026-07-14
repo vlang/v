@@ -75,13 +75,14 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 	}
 	count := t.a.children.len - start
 	new_id := t.a.add_node(flat.Node{
-		kind:           .for_stmt
-		op:             node.op
-		children_start: start
-		children_count: flat.child_count(count)
-		pos:            node.pos
-		value:          node.value
-		typ:            node.typ
+		kind:                 .for_stmt
+		op:                   node.op
+		children_start:       start
+		children_count:       flat.child_count(count)
+		pos:                  node.pos
+		value:                node.value
+		typ:                  node.typ
+		skip_ownership_drops: node.skip_ownership_drops
 	})
 	return arr1(new_id)
 }
@@ -270,13 +271,14 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		t.a.children << cid
 	}
 	prefix << t.a.add_node(flat.Node{
-		kind:           .for_in_stmt
-		op:             node.op
-		children_start: start
-		children_count: flat.child_count(ids.len)
-		pos:            node.pos
-		value:          node.value
-		typ:            if iter_type.len > 0 { iter_type } else { node.typ }
+		kind:                 .for_in_stmt
+		op:                   node.op
+		children_start:       start
+		children_count:       flat.child_count(ids.len)
+		pos:                  node.pos
+		value:                node.value
+		typ:                  if iter_type.len > 0 { iter_type } else { node.typ }
+		skip_ownership_drops: node.skip_ownership_drops
 	})
 	return prefix
 }
@@ -498,12 +500,13 @@ fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post fl
 		t.a.children << id
 	}
 	return t.a.add_node(flat.Node{
-		kind:           .for_stmt
-		op:             src.op
-		children_start: start
-		children_count: flat.child_count(3 + body.len)
-		pos:            src.pos
-		typ:            src.typ
+		kind:                 .for_stmt
+		op:                   src.op
+		children_start:       start
+		children_count:       flat.child_count(3 + body.len)
+		pos:                  src.pos
+		typ:                  src.typ
+		skip_ownership_drops: src.skip_ownership_drops || src.kind == .empty
 	})
 }
 

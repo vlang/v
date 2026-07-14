@@ -4757,10 +4757,11 @@ fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId,
 		t.a.children << stmt
 	}
 	t.pending_stmts << t.a.add_node(flat.Node{
-		kind:           .for_in_stmt
-		children_start: start
-		children_count: flat.child_count(3 + body.len)
-		value:          '3'
+		kind:                 .for_in_stmt
+		children_start:       start
+		children_count:       flat.child_count(3 + body.len)
+		value:                '3'
+		skip_ownership_drops: true
 	})
 	if source_is_owned_temporary {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
@@ -5618,10 +5619,11 @@ fn (mut t Transformer) make_owned_map_items_value(source flat.NodeId, map_type s
 		t.a.children << stmt
 	}
 	t.pending_stmts << t.a.add_node(flat.Node{
-		kind:           .for_in_stmt
-		children_start: start
-		children_count: flat.child_count(3 + body.len)
-		value:          '3'
+		kind:                 .for_in_stmt
+		children_start:       start
+		children_count:       flat.child_count(3 + body.len)
+		value:                '3'
+		skip_ownership_drops: true
 	})
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), '[]${item_type}')
@@ -5679,10 +5681,11 @@ fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.
 		t.a.children << stmt
 	}
 	t.pending_stmts << t.a.add_node(flat.Node{
-		kind:           .for_in_stmt
-		children_start: start
-		children_count: flat.child_count(3 + body.len)
-		value:          '3'
+		kind:                 .for_in_stmt
+		children_start:       start
+		children_count:       flat.child_count(3 + body.len)
+		value:                '3'
+		skip_ownership_drops: true
 	})
 }
 

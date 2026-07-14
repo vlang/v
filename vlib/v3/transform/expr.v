@@ -2277,11 +2277,12 @@ fn (mut t Transformer) make_map_elementwise_eq_call_with_seen(lhs flat.NodeId, r
 		t.a.children << stmt
 	}
 	t.pending_stmts << t.a.add_node(flat.Node{
-		kind:           .for_in_stmt
-		children_start: start
-		children_count: flat.child_count(3 + body.len)
-		pos:            src.pos
-		value:          '3'
+		kind:                 .for_in_stmt
+		children_start:       start
+		children_count:       flat.child_count(3 + body.len)
+		pos:                  src.pos
+		value:                '3'
+		skip_ownership_drops: true
 	})
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), 'bool')

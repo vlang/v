@@ -101,12 +101,16 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	}
 	g.loop_depth--
 	g.gen_defers_from(defer_start)
-	g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
+	if !node.skip_ownership_drops {
+		g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
+	}
 	g.trim_defers(defer_start)
 	g.indent--
 	g.writeln('}')
 	if wrap_init {
-		g.gen_scope_ownership_drops()
+		if !node.skip_ownership_drops {
+			g.gen_scope_ownership_drops()
+		}
 		g.indent--
 		g.writeln('}')
 	}
@@ -299,7 +303,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			for i in body_start .. node.children_count {
 				g.gen_node(g.a.child(&node, i))
 			}
-			g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
+			if !node.skip_ownership_drops {
+				g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
+			}
 			g.loop_depth--
 			g.indent--
 			g.writeln('}')
@@ -319,7 +325,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	for i in body_start .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
-	g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
+	if !node.skip_ownership_drops {
+		g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
+	}
 	g.loop_depth--
 	g.indent--
 	g.writeln('}')
@@ -375,7 +383,9 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 	for i in body_start .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
-	g.gen_loop_iteration_ownership_drops_for_label(label)
+	if !node.skip_ownership_drops {
+		g.gen_loop_iteration_ownership_drops_for_label(label)
+	}
 	g.loop_depth--
 	g.indent--
 	g.writeln('}')
