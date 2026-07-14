@@ -55,6 +55,10 @@ struct FactoryConfig implements IClone {
 	second arc.Arc[Resource]
 }
 
+struct FixedArrayConfig implements IClone {
+	resources [2]arc.Arc[Resource]
+}
+
 type ResourceSum = Resource | int
 
 fn exercise_resource() {
@@ -148,6 +152,18 @@ fn exercise_array_clone() {
 	assert arc.ptr_eq(&original[0], &cloned[0])
 }
 
+fn exercise_fixed_array_field_clone() {
+	original := FixedArrayConfig{
+		resources: [arc.new(Resource{id: 18}), arc.new(Resource{id: 19})]!
+	}
+	cloned := original.clone()
+	for i in 0 .. 2 {
+		assert original.resources[i].strong_count() == 2
+		assert cloned.resources[i].strong_count() == 2
+		assert arc.ptr_eq(&original.resources[i], &cloned.resources[i])
+	}
+}
+
 fn main() {
 	exercise_resource()
 	replace_resource()
@@ -159,6 +175,7 @@ fn main() {
 	exercise_unstable_clone_receiver()
 	replace_indexed_resources()
 	exercise_array_clone()
+	exercise_fixed_array_field_clone()
 	original := Config{
 		replacement: arc.new(?[]u8([u8(1), 2, 3]))
 	}
@@ -181,10 +198,10 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	lines := run.output.trim_space().split_into_lines()
 	assert lines.count(it == 'make factory') == 1, run.output
-	for id in 1 .. 18 {
+	for id in 1 .. 20 {
 		assert lines.count(it == 'drop ${id}') == 1, run.output
 	}
-	assert lines.len == 18, run.output
+	assert lines.len == 20, run.output
 	os.write_file(nonownership_src, 'module main
 
 import sync.arc

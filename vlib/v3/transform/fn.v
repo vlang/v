@@ -4568,6 +4568,9 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 	if clean.starts_with('[]') {
 		return t.make_compiler_default_array_clone_value(source, clean)
 	}
+	if t.is_fixed_array_type(clean) {
+		return t.make_compiler_default_fixed_array_clone_value(source, clean)
+	}
 	if clean.starts_with('map[') {
 		return t.make_compiler_default_map_clone_value(source, clean)
 	}
@@ -4661,6 +4664,36 @@ fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeI
 	return result
 }
 
+// make_compiler_default_fixed_array_clone_value copies the fixed-array storage and
+// replaces each owning element with an independent clone. The initial element copies
+// are non-owning and are overwritten without being dropped.
+fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat.NodeId, raw_fixed_type string) flat.NodeId {
+	fixed_type := t.resolved_fixed_array_canonical_type(raw_fixed_type)
+	elem_type := fixed_array_elem_type(fixed_type)
+	if !t.compiler_default_clone_type_needs_work(elem_type) {
+		return source
+	}
+	stable_source := t.stable_transformed_expr_for_reuse(source, fixed_type,
+		'derived_clone_fixed_array_source')
+	out_name := t.new_temp('derived_clone_fixed_array')
+	idx_name := t.new_temp('derived_clone_fixed_array_idx')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, stable_source, fixed_type)
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_fixed_array_len_expr(fixed_type))
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	source_elem := t.make_index(stable_source, t.make_ident(idx_name), elem_type)
+	pending_start := t.pending_stmts.len
+	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
+	mut body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
+		cloned_elem)
+	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{})
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), fixed_type)
+	return result
+}
+
 // make_compiler_default_map_clone_value constructs a fresh map so map key callbacks
 // clone keys and recursively clones each owning value before inserting it.
 fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId, map_type string) flat.NodeId {
@@ -4712,6 +4745,9 @@ fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
 	}
 	if t.is_optional_type_name(clean) {
 		return t.compiler_default_clone_type_needs_work(t.optional_base_type(t.qualify_optional_type(clean)))
+	}
+	if t.is_fixed_array_type(clean) {
+		return t.compiler_default_clone_type_needs_work(fixed_array_elem_type(clean))
 	}
 	if clean == 'string' || clean.starts_with('[]') || clean.starts_with('map[') {
 		return true
