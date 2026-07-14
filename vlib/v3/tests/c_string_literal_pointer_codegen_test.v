@@ -84,4 +84,14 @@ fn test_c_escape_literals_are_scalar_bytes_in_scalar_contexts() {
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'AAA\n255'
+
+	bad_src := os.join_path(os.temp_dir(), 'v3_c_multi_byte_scalar_input.v')
+	os.write_file(bad_src, "fn C.putchar(int) int\n\nfn main() {\n\tC.putchar(c'AB')\n}\n") or {
+		panic(err)
+	}
+	bad_bin := os.join_path(os.temp_dir(), 'v3_c_multi_byte_scalar_input')
+	bad_compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert bad_compile.exit_code != 0, bad_compile.output
+	assert bad_compile.output.contains('cannot use `&u8`'), bad_compile.output
+	assert !bad_compile.output.contains('C compilation failed'), bad_compile.output
 }

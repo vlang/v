@@ -195,6 +195,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 }
 
 fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int, end int, mut decls []ComptimeConstPrepassDecl) {
+	mut values := p.comptime_const_values.clone()
 	for path in paths[start..end] {
 		src := read_source_file_raw(path)
 		if src.len == 0 {
@@ -205,57 +206,190 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 		mut s := scanner.new_scanner(p.prefs, .normal)
 		s.init(file, src)
 		mut module_name := ''
-		mut brace_depth := 0
-		mut has_pending_attrs := false
-		mut pending_decl_disabled := false
-		for {
-			tok := s.scan()
-			if tok == .eof {
-				break
-			}
-			if tok == .lcbr {
-				brace_depth++
+		module_name = p.precollect_parallel_comptime_scope(mut s, src, path, module_name, false, mut
+			values, mut decls)
+	}
+}
+
+// Follow declaration-level comptime branches so only consts from the selected branch enter
+// the ordered worker-prefix snapshots.
+fn (mut p Parser) precollect_parallel_comptime_scope(mut s scanner.Scanner, src string, path string, module_name string, stop_at_rcbr bool, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) string {
+	mut current_module := module_name
+	mut brace_depth := 0
+	mut has_pending_attrs := false
+	mut pending_decl_disabled := false
+	for {
+		tok := s.scan()
+		if tok == .eof {
+			return current_module
+		}
+		if tok == .lcbr {
+			brace_depth++
+			continue
+		}
+		if tok == .rcbr {
+			if brace_depth > 0 {
+				brace_depth--
 				continue
 			}
-			if tok == .rcbr {
-				if brace_depth > 0 {
-					brace_depth--
-				}
+			if stop_at_rcbr {
+				return current_module
+			}
+			continue
+		}
+		if brace_depth != 0 {
+			continue
+		}
+		if tok == .dollar {
+			saved_s := s
+			if s.scan() == .key_if {
+				current_module = p.precollect_parallel_comptime_if(mut s, src, path,
+					current_module, mut values, mut decls)
 				continue
 			}
-			if brace_depth != 0 {
+			s = saved_s
+			continue
+		}
+		if tok == .attribute || tok == .lsbr {
+			has_pending_attrs = true
+			if !p.parallel_decl_attr_enabled(mut s, src, path, current_module) {
+				pending_decl_disabled = true
+			}
+			continue
+		}
+		if has_pending_attrs {
+			if tok == .semicolon || tok == .key_pub {
 				continue
 			}
-			if tok == .attribute || tok == .lsbr {
-				has_pending_attrs = true
-				if !p.parallel_decl_attr_enabled(mut s, src, path, module_name) {
-					pending_decl_disabled = true
-				}
-				continue
-			}
-			if has_pending_attrs {
-				if tok == .semicolon || tok == .key_pub {
-					continue
-				}
-				disabled := pending_decl_disabled
-				has_pending_attrs = false
-				pending_decl_disabled = false
-				if tok == .key_const {
-					if !disabled {
-						p.precollect_parallel_const_decl(mut s, module_name, mut decls)
-					}
-					continue
-				}
-			}
-			if tok == .key_module {
-				if s.scan() == .name {
-					module_name = s.lit
-				}
-				continue
-			}
+			disabled := pending_decl_disabled
+			has_pending_attrs = false
+			pending_decl_disabled = false
 			if tok == .key_const {
-				p.precollect_parallel_const_decl(mut s, module_name, mut decls)
+				if !disabled {
+					p.precollect_parallel_const_decl_and_apply(mut s, current_module, mut values, mut
+						decls)
+				}
+				continue
 			}
+		}
+		if tok == .key_module {
+			if s.scan() == .name {
+				current_module = s.lit
+			}
+			continue
+		}
+		if tok == .key_const {
+			p.precollect_parallel_const_decl_and_apply(mut s, current_module, mut values, mut decls)
+		}
+	}
+	return current_module
+}
+
+fn (mut p Parser) precollect_parallel_const_decl_and_apply(mut s scanner.Scanner, module_name string, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) {
+	start := decls.len
+	p.precollect_parallel_const_decl(mut s, module_name, mut decls)
+	if decls.len > start {
+		apply_parallel_comptime_const_decls(mut values, decls[start..])
+	}
+}
+
+fn (mut p Parser) precollect_parallel_comptime_if(mut s scanner.Scanner, src string, path string, module_name string, mut values map[string]string, mut decls []ComptimeConstPrepassDecl) string {
+	mut current_module := module_name
+	mut any_taken := false
+	mut has_condition := true
+	for {
+		mut is_enabled := true
+		if has_condition {
+			is_enabled = p.parallel_comptime_branch_enabled(mut s, src, path, current_module,
+				values)
+		}
+		take_branch := !any_taken && is_enabled
+		if take_branch {
+			current_module = p.precollect_parallel_comptime_scope(mut s, src, path, current_module,
+				true, mut values, mut decls)
+			any_taken = true
+		} else {
+			skip_parallel_comptime_block(mut s)
+		}
+
+		saved_s := s
+		mut tok := s.scan()
+		for tok == .semicolon {
+			tok = s.scan()
+		}
+		if tok != .dollar || s.scan() != .key_else {
+			s = saved_s
+			return current_module
+		}
+		tok = s.scan()
+		for tok == .semicolon {
+			tok = s.scan()
+		}
+		if tok == .dollar {
+			if s.scan() != .key_if {
+				return current_module
+			}
+			has_condition = true
+			continue
+		}
+		if tok == .key_if {
+			has_condition = true
+			continue
+		}
+		if tok != .lcbr {
+			return current_module
+		}
+		has_condition = false
+	}
+	return current_module
+}
+
+fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src string, path string, module_name string, values map[string]string) bool {
+	mut cond := ''
+	mut cond_start := s.offset
+	for {
+		tok := s.scan()
+		if tok == .eof {
+			return false
+		}
+		if tok == .lcbr {
+			break
+		}
+		if tok == .semicolon {
+			continue
+		}
+		if cond.len == 0 {
+			cond_start = s.pos
+		} else {
+			cond += ' '
+		}
+		if s.pos >= 0 && s.offset <= src.len && s.pos < s.offset {
+			cond += src[s.pos..s.offset]
+		} else {
+			cond += s.lit
+		}
+	}
+	mut resolver := Parser.new(p.prefs)
+	resolver.cur_file = path
+	resolver.cur_module = module_name
+	resolver.tok_pos = cond_start
+	resolver.s.src = src
+	resolver.comptime_const_values = values.clone()
+	resolved := resolver.resolve_comptime_const_values(resolver.resolve_comptime_at_values(cond))
+	return eval_comptime_cond(p.prefs, resolved)
+}
+
+fn skip_parallel_comptime_block(mut s scanner.Scanner) {
+	mut depth := 1
+	for depth > 0 {
+		tok := s.scan()
+		if tok == .eof {
+			return
+		}
+		if tok == .lcbr {
+			depth++
+		} else if tok == .rcbr {
+			depth--
 		}
 	}
 }

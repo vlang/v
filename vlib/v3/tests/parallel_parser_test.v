@@ -90,6 +90,16 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 		if file_index == 0 {
 			src.writeln('const enabled = true')
 			src.writeln("const flavor = 'vanilla'")
+			src.writeln('\$if v3_parallel_taken_const ? {')
+			src.writeln('\tconst branch_enabled = true')
+			src.writeln('} \$else {')
+			src.writeln('\tconst branch_enabled = false')
+			src.writeln('}')
+			src.writeln('\$if v3_parallel_untaken_const ? {')
+			src.writeln('\tconst branch_leak = true')
+			src.writeln('} \$else {')
+			src.writeln('\tconst branch_fallback = true')
+			src.writeln('}')
 			src.writeln('@[if never ?]')
 			src.writeln('const disabled = true')
 			src.writeln('\$if future_enabled {')
@@ -109,6 +119,17 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 		}
 		if file_index == 3 {
 			src.writeln('const future_enabled = true')
+			src.writeln('\$if branch_enabled {')
+			src.writeln('\tfn branch_const_enabled() {}')
+			src.writeln('} \$else {')
+			src.writeln('\tfn branch_const_disabled() {}')
+			src.writeln('}')
+			src.writeln('\$if branch_leak {')
+			src.writeln('\tfn leaked_untaken_branch_const() {}')
+			src.writeln('}')
+			src.writeln('\$if branch_fallback {')
+			src.writeln('\tfn fallback_branch_const_enabled() {}')
+			src.writeln('}')
 			src.writeln('\$if enabled {')
 			src.writeln('\tfn enabled_branch() {}')
 			src.writeln('} \$else {')
@@ -137,7 +158,8 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 		os.write_file(path, src.str()) or { panic(err) }
 		files << path
 	}
-	prefs := pref.new_preferences()
+	mut prefs := pref.new_preferences()
+	prefs.user_defines << 'v3_parallel_taken_const'
 	mut p := parser.Parser.new(prefs)
 	_, was_parallel := p.parse_files_dispatch(files, true)
 	$if !windows {
@@ -155,6 +177,10 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'absent_future_const')
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'alias_enabled_branch')
 	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'alias_disabled_branch')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'branch_const_enabled')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'branch_const_disabled')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'leaked_untaken_branch_const')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'fallback_branch_const_enabled')
 }
 
 // build_parallel_parser_v3 builds parallel parser v3 data for v3 tests.

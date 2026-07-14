@@ -12505,6 +12505,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
+		if info.name.starts_with('C.') && fn_param_unalias_type(expected).is_integer()
+			&& tc.c_literal_arg(arg_id) && !tc.c_scalar_byte_literal_arg(arg_id) {
+			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
+				param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected.name()}`',
+				id)
+			continue
+		}
 		if !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected) {
 			if tc.c_call_arg_compatible(info.name, arg_id, expected) {
@@ -12600,7 +12607,7 @@ fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expe
 	}
 	clean := fn_param_unalias_type(expected)
 	if clean.is_integer() {
-		return tc.c_literal_arg(arg_id)
+		return tc.c_scalar_byte_literal_arg(arg_id)
 	}
 	if clean is Pointer {
 		base := fn_param_unalias_type(clean.base_type)
@@ -12609,6 +12616,66 @@ fn (tc &TypeChecker) c_call_arg_compatible(name string, arg_id flat.NodeId, expe
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) c_scalar_byte_literal_arg(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .char_literal {
+		return c_literal_is_single_byte(node.value)
+	}
+	if node.kind == .paren && node.children_count > 0 {
+		return tc.c_scalar_byte_literal_arg(tc.a.child(&node, 0))
+	}
+	return false
+}
+
+fn c_literal_is_single_byte(value string) bool {
+	if !value.starts_with('c:') {
+		return false
+	}
+	literal := value[2..]
+	if literal.len == 1 {
+		return true
+	}
+	if literal.len < 2 || literal[0] != `\\` {
+		return false
+	}
+	if literal.len == 2 {
+		return true
+	}
+	if literal[1] == `x` {
+		mut decoded := 0
+		for ch in literal[2..].bytes() {
+			digit := if ch >= `0` && ch <= `9` {
+				int(ch - `0`)
+			} else if ch >= `a` && ch <= `f` {
+				int(ch - `a`) + 10
+			} else if ch >= `A` && ch <= `F` {
+				int(ch - `A`) + 10
+			} else {
+				return false
+			}
+			decoded = decoded * 16 + digit
+			if decoded > 0xff {
+				return false
+			}
+		}
+		return true
+	}
+	if literal[1] < `0` || literal[1] > `7` || literal.len > 4 {
+		return false
+	}
+	mut decoded := 0
+	for digit in literal[1..].bytes() {
+		if digit < `0` || digit > `7` {
+			return false
+		}
+		decoded = decoded * 8 + int(digit - `0`)
+	}
+	return decoded <= 0xff
 }
 
 fn (tc &TypeChecker) c_literal_arg(id flat.NodeId) bool {
