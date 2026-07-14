@@ -1116,6 +1116,7 @@ struct StructDeclInfo {
 
 struct SoaFieldInfo {
 	name           string
+	soa_name       string
 	c_type         string
 	is_fixed_array bool
 }
@@ -3113,9 +3114,9 @@ fn (mut g FlatGen) write_soa_struct_return(base_name string, fields []SoaFieldIn
 		g.writeln('\t${base_name} val = (${base_name}){0};')
 		for field in fields {
 			if field.is_fixed_array {
-				g.writeln('\tmemmove(val.${field.name}, ${prefix}${field.name}[${index}], sizeof(val.${field.name}));')
+				g.writeln('\tmemmove(val.${field.name}, ${prefix}${field.soa_name}[${index}], sizeof(val.${field.name}));')
 			} else {
-				g.writeln('\tval.${field.name} = ${prefix}${field.name}[${index}];')
+				g.writeln('\tval.${field.name} = ${prefix}${field.soa_name}[${index}];')
 			}
 		}
 		g.writeln('\treturn val;')
@@ -3123,17 +3124,32 @@ fn (mut g FlatGen) write_soa_struct_return(base_name string, fields []SoaFieldIn
 	}
 	g.writeln('\treturn (${base_name}){')
 	for field in fields {
-		g.writeln('\t\t.${field.name} = ${prefix}${field.name}[${index}],')
+		g.writeln('\t\t.${field.name} = ${prefix}${field.soa_name}[${index}],')
 	}
 	g.writeln('\t};')
 }
 
 fn (mut g FlatGen) write_soa_field_value_copy(field SoaFieldInfo, prefix string, index string) {
 	if field.is_fixed_array {
-		g.writeln('\tmemmove(${prefix}${field.name}[${index}], val.${field.name}, sizeof(${prefix}${field.name}[${index}]));')
+		g.writeln('\tmemmove(${prefix}${field.soa_name}[${index}], val.${field.name}, sizeof(${prefix}${field.soa_name}[${index}]));')
 		return
 	}
-	g.writeln('\t${prefix}${field.name}[${index}] = val.${field.name};')
+	g.writeln('\t${prefix}${field.soa_name}[${index}] = val.${field.name};')
+}
+
+fn soa_companion_field_name(name string, mut used map[string]bool) string {
+	mut candidate := name
+	if candidate in used {
+		base := '__soa_field_${name}'
+		candidate = base
+		mut suffix := 2
+		for (candidate in used) {
+			candidate = '${base}_${suffix}'
+			suffix++
+		}
+	}
+	used[candidate] = true
+	return candidate
 }
 
 fn (mut g FlatGen) emit_soa_companion(struct_name string) {
@@ -3143,10 +3159,16 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 	}))
 	soa_name := g.soa_companion_name(struct_name)
 	mut soa_fields := []SoaFieldInfo{cap: fields.len}
+	mut used_soa_names := {
+		'len': true
+		'cap': true
+	}
 	for f in fields {
+		field_name := g.cname(f.name)
 		is_fixed_array := if _ := array_fixed_type(f.typ) { true } else { false }
 		soa_fields << SoaFieldInfo{
-			name:           g.cname(f.name)
+			name:           field_name
+			soa_name:       soa_companion_field_name(field_name, mut used_soa_names)
 			c_type:         g.soa_field_c_type(struct_name, f)
 			is_fixed_array: is_fixed_array
 		}
@@ -3157,7 +3179,7 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 		g.writeln('\tint len;')
 		g.writeln('\tint cap;')
 		for field in soa_fields {
-			g.writeln('\t${field.c_type}* ${field.name};')
+			g.writeln('\t${field.c_type}* ${field.soa_name};')
 		}
 		g.writeln('} ${soa_name};')
 		g.writeln('')
@@ -3170,7 +3192,7 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 	g.writeln('\tsoa.len = len;')
 	g.writeln('\tsoa.cap = cap;')
 	for field in soa_fields {
-		g.writeln('\tsoa.${field.name} = (${field.c_type}*)calloc((size_t)cap, sizeof(${field.c_type}));')
+		g.writeln('\tsoa.${field.soa_name} = (${field.c_type}*)calloc((size_t)cap, sizeof(${field.c_type}));')
 	}
 	g.writeln('\treturn soa;')
 	g.writeln('}')
@@ -3189,7 +3211,7 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 	g.writeln('\tif (soa->len >= soa->cap) {')
 	g.writeln('\t\tint new_cap = soa->cap < 8 ? 8 : soa->cap * 2;')
 	for field in soa_fields {
-		g.writeln('\t\tsoa->${field.name} = (${field.c_type}*)realloc(soa->${field.name}, (size_t)new_cap * sizeof(${field.c_type}));')
+		g.writeln('\t\tsoa->${field.soa_name} = (${field.c_type}*)realloc(soa->${field.soa_name}, (size_t)new_cap * sizeof(${field.c_type}));')
 	}
 	g.writeln('\t\tsoa->cap = new_cap;')
 	g.writeln('\t}')
@@ -3210,8 +3232,8 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 	g.writeln('')
 	g.writeln('void ${soa_name}_free(${soa_name}* soa) {')
 	for field in soa_fields {
-		g.writeln('\tfree(soa->${field.name});')
-		g.writeln('\tsoa->${field.name} = NULL;')
+		g.writeln('\tfree(soa->${field.soa_name});')
+		g.writeln('\tsoa->${field.soa_name} = NULL;')
 	}
 	g.writeln('\tsoa->len = 0;')
 	g.writeln('\tsoa->cap = 0;')
