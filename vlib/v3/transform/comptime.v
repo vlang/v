@@ -626,13 +626,13 @@ fn (mut t Transformer) clone_attribute_subst_scoped(id flat.NodeId, var_name str
 }
 
 fn (t &Transformer) subst_attribute_cond(cond string, var_name string, attr AttributeMeta) string {
-	mut result := cond.replace('${var_name}.has_arg', attr.has_arg.str())
-	result = result.replace('${var_name}.name', "'${attr.name}'")
-	result = result.replace('${var_name}.arg', "'${attr.arg}'")
+	mut result := comptime_cond_replace_unquoted(cond, '${var_name}.has_arg', attr.has_arg.str())
+	result = comptime_cond_replace_unquoted(result, '${var_name}.name', "'${attr.name}'")
+	result = comptime_cond_replace_unquoted(result, '${var_name}.arg', "'${attr.arg}'")
 	kind_value := comptime_attribute_kind_cond_value(attr.kind)
-	result = result.replace('${var_name}.kind ==.', '${kind_value} == .')
-	result = result.replace('${var_name}.kind !=.', '${kind_value} != .')
-	result = result.replace('${var_name}.kind', kind_value)
+	result = comptime_cond_replace_unquoted(result, '${var_name}.kind ==.', '${kind_value} == .')
+	result = comptime_cond_replace_unquoted(result, '${var_name}.kind !=.', '${kind_value} != .')
+	result = comptime_cond_replace_unquoted(result, '${var_name}.kind', kind_value)
 	return result
 }
 
@@ -846,9 +846,10 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 		} else {
 			t.comptime_field_type_id_key(param.typ, param.module_name)
 		}
-		cond := node.value.replace('${var_name}.typ', param_typ).replace('${var_name}.name',
-			"'${param.name}'").replace(' is &void', ' is voidptr').replace(' !is &void',
-			' !is voidptr')
+		mut cond := comptime_cond_replace_unquoted(node.value, '${var_name}.typ', param_typ)
+		cond = comptime_cond_replace_unquoted(cond, '${var_name}.name', "'${param.name}'")
+		cond = comptime_cond_replace_unquoted(cond, ' is &void', ' is voidptr')
+		cond = comptime_cond_replace_unquoted(cond, ' !is &void', ' !is voidptr')
 		if comptime_cond_references_ident(node.value, var_name)
 			&& !comptime_cond_has_loop_member_ref(cond, var_name)
 			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {

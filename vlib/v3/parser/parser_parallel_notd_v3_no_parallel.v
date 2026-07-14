@@ -188,6 +188,8 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 		s.init(file, src)
 		mut module_name := ''
 		mut brace_depth := 0
+		mut has_pending_attrs := false
+		mut pending_decl_disabled := false
 		for {
 			tok := s.scan()
 			if tok == .eof {
@@ -206,6 +208,27 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 			if brace_depth != 0 {
 				continue
 			}
+			if tok == .attribute || tok == .lsbr {
+				has_pending_attrs = true
+				if !p.parallel_decl_attr_enabled(mut s, src, path, module_name) {
+					pending_decl_disabled = true
+				}
+				continue
+			}
+			if has_pending_attrs {
+				if tok == .semicolon || tok == .key_pub {
+					continue
+				}
+				disabled := pending_decl_disabled
+				has_pending_attrs = false
+				pending_decl_disabled = false
+				if tok == .key_const {
+					if !disabled {
+						p.precollect_parallel_const_decl(mut s, module_name)
+					}
+					continue
+				}
+			}
 			if tok == .key_module {
 				if s.scan() == .name {
 					module_name = s.lit
@@ -217,6 +240,69 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 			}
 		}
 	}
+}
+
+fn (mut p Parser) parallel_decl_attr_enabled(mut s scanner.Scanner, src string, path string, module_name string) bool {
+	first := s.scan()
+	if first != .key_if {
+		mut bracket_depth := if first == .lsbr || first == .attribute { 1 } else { 0 }
+		if first == .rsbr || first == .eof {
+			return true
+		}
+		for {
+			tok := s.scan()
+			if tok == .eof {
+				return true
+			}
+			if tok == .lsbr || tok == .attribute {
+				bracket_depth++
+			} else if tok == .rsbr {
+				if bracket_depth == 0 {
+					return true
+				}
+				bracket_depth--
+			}
+		}
+	}
+	mut cond := ''
+	mut cond_start := s.offset
+	mut bracket_depth := 0
+	for {
+		tok := s.scan()
+		if tok == .eof {
+			break
+		}
+		if tok == .lsbr || tok == .attribute {
+			bracket_depth++
+		} else if tok == .rsbr {
+			if bracket_depth == 0 {
+				break
+			}
+			bracket_depth--
+		}
+		if tok == .semicolon {
+			continue
+		}
+		if cond.len == 0 {
+			cond_start = s.pos
+		} else {
+			cond += ' '
+		}
+		if s.pos >= 0 && s.offset <= src.len && s.pos < s.offset {
+			cond += src[s.pos..s.offset]
+		} else {
+			cond += s.lit
+		}
+	}
+	if !cond.contains('@') {
+		return eval_comptime_cond(p.prefs, cond)
+	}
+	mut resolver := Parser.new(p.prefs)
+	resolver.cur_file = path
+	resolver.cur_module = module_name
+	resolver.tok_pos = cond_start
+	resolver.s.src = src
+	return eval_comptime_cond(p.prefs, resolver.resolve_comptime_at_values(cond))
 }
 
 fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_name string) {

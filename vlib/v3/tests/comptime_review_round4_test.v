@@ -2380,6 +2380,35 @@ fn main() {
 	assert out == '3|run:1'
 }
 
+fn test_param_and_attribute_guards_preserve_quoted_member_text() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'quoted_param_attribute_guards', "@[route]
+@[timeout: 5]
+struct GuardAttrs {}
+
+fn inspect(target string, other int) {
+	_ = target
+	_ = other
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for param in inspect.params {
+		\$if param.name == 'target' || 'param.typ' == 'int' {
+			rows << param.name
+		}
+	}
+	\$for attr in GuardAttrs.attributes {
+		\$if attr.name == 'route' || 'attr.has_arg' == 'true' {
+			rows << attr.name
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'target|route'
+}
+
 fn test_nested_param_and_attribute_reflection_respects_shadowing() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_param_attribute_shadowing', "@[outer]
