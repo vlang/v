@@ -3066,3 +3066,15 @@ fn main() {
 ")
 	assert comptime_types == 'pointer\nalias'
 }
+
+fn test_selected_compile_error_in_void_fn_has_clean_diagnostic() {
+	v3_bin := build_v3()
+	bad_src := '${tmp_test_path('selected_compile_error_void_fn')}.v'
+	os.write_file(bad_src, "fn main() {\n\t\$compile_error('bad')\n}\n") or { panic(err) }
+	bad_bin := tmp_test_path('selected_compile_error_void_fn')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('compile-time error: bad'), compile.output
+	assert !compile.output.contains('void function should not return a value'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}

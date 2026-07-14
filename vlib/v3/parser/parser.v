@@ -2325,7 +2325,7 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 fn (mut p Parser) parse_compile_error_stmt() flat.NodeId {
 	call := p.parse_compile_error_call()
 	return p.a.add_node(flat.Node{
-		kind:           .return_stmt
+		kind:           .expr_stmt
 		children_start: p.add_child(call)
 		children_count: 1
 	})
@@ -3064,11 +3064,18 @@ fn (p &Parser) resolve_comptime_const_values(cond string) string {
 				i++
 			}
 			name := cond[start..i]
-			if value := p.comptime_value(name) {
-				out.write_string(value)
-			} else {
-				out.write_string(name)
+			mut prev := start
+			for prev > 0 && cond[prev - 1].is_space() {
+				prev--
 			}
+			is_selector_member := prev > 0 && cond[prev - 1] == `.`
+			if !is_selector_member && name !in p.comptime_for_vars {
+				if value := p.comptime_value(name) {
+					out.write_string(value)
+					continue
+				}
+			}
+			out.write_string(name)
 			continue
 		}
 		out.write_u8(c)
@@ -5498,7 +5505,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			}
 			if name == '@FILE_LINE' {
 				return p.a.add_val_id(5,
-					'${os.file_name(p.cur_file)}:${p.line_nr_for_pos(name_pos)}')
+					'${os.real_path(p.cur_file)}:${p.line_nr_for_pos(name_pos)}')
 			}
 			if name == '@MOD' {
 				if p.cur_module.len == 0 {

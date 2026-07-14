@@ -1589,3 +1589,40 @@ fn test_comptime_voidptr_type_group_is_checked_like_transformer() {
 ")
 	assert out == 'voidptr'
 }
+
+fn test_cached_values_do_not_replace_reflection_guard_identifiers() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'cached_reflection_guard_identifiers', "struct Foo {
+	id    int
+	title string
+}
+
+fn selector_member_collision() string {
+	name := 'x'
+	mut found := ''
+	$for field in Foo.fields {
+		$if field.name == 'id' {
+			found = field.name
+		}
+	}
+	return found + ':' + name
+}
+
+fn loop_var_collision() string {
+	field := 'x'
+	mut found := ''
+	$for field in Foo.fields {
+		$if field.name == 'id' {
+			found = field.name
+		}
+	}
+	return found + ':' + field
+}
+
+fn main() {
+	println(selector_member_collision())
+	println(loop_var_collision())
+}
+")
+	assert out == 'id:x\nid:x'
+}
