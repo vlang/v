@@ -8893,7 +8893,6 @@ const c_preamble_declared_extern_symbols = {
 	'setenv':                        true
 	'signal':                        true
 	'snprintf':                      true
-	'stat':                          true
 	'sqrt':                          true
 	'strcmp':                        true
 	'strlen':                        true

@@ -7475,6 +7475,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	g.writeln('int pthread_attr_init(pthread_attr_t* attr);')
 	g.writeln('int pthread_attr_destroy(pthread_attr_t* attr);')
+	g.writeln('int pthread_attr_setstacksize(void* attr, size_t stacksize);')
 	g.writeln('int pthread_mutex_init(void* mutex, void* attr);')
 	g.writeln('int pthread_mutex_lock(void* mutex);')
 	g.writeln('int pthread_mutex_unlock(void* mutex);')
@@ -7539,7 +7540,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_timespec_struct()
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
-	g.writeln('int stat(const char* path, struct stat* buf);')
+	g.writeln('int stat(char* path, struct stat* buf);')
 	g.headerless_tm_struct()
 	g.writeln('struct utimbuf { time_t actime; time_t modtime; };')
 	g.writeln('time_t mktime(struct tm* timeptr);')
@@ -7633,6 +7634,9 @@ const c_headerless_libc_declared_fns = [
 	'__errno',
 	'__errno_location',
 	'_errno',
+	'pthread_attr_init',
+	'pthread_attr_destroy',
+	'pthread_attr_setstacksize',
 	'pthread_mutex_init',
 	'pthread_mutex_lock',
 	'pthread_mutex_unlock',
