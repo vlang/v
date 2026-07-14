@@ -709,8 +709,7 @@ fn c_declaration_item(item string, has_brace bool) string {
 		}
 	}
 	if clean.starts_with('static ') || clean.starts_with('static\t')
-		|| clean.starts_with('typedef ') || clean.starts_with('struct ')
-		|| clean.starts_with('union ') || clean.starts_with('enum ') {
+		|| clean.starts_with('typedef ') || c_tag_declaration_is_type_only(clean, has_brace) {
 		return item
 	}
 	if has_brace {
@@ -720,6 +719,9 @@ fn c_declaration_item(item string, has_brace bool) string {
 			if head.contains('(') && !c_has_top_level_assign(head) {
 				return '${head};\n'
 			}
+			if c_tag_declaration_keyword_len(clean) > 0 {
+				return c_extern_storage_decl(clean.trim_right(';'))
+			}
 			return c_extern_storage_decl(head)
 		}
 	}
@@ -728,6 +730,60 @@ fn c_declaration_item(item string, has_brace bool) string {
 		return item
 	}
 	return c_extern_storage_decl(clean.trim_right(';'))
+}
+
+fn c_tag_declaration_is_type_only(value string, has_brace bool) bool {
+	keyword_len := c_tag_declaration_keyword_len(value)
+	if keyword_len == 0 {
+		return false
+	}
+	if !has_brace {
+		head := value.trim_right(';').trim_space()
+		return c_tag_definition_head_is_type_only(head, keyword_len)
+	}
+	open := value.index_u8(`{`)
+	close := value.last_index_u8(`}`)
+	if open < 0 || close <= open {
+		return false
+	}
+	head := value[..open].trim_space()
+	if c_has_top_level_assign(head) || !c_tag_definition_head_is_type_only(head, keyword_len) {
+		return false
+	}
+	tail := value[close + 1..].trim_space().trim_right(';').trim_space()
+	return tail.len == 0
+		|| ((tail.starts_with('__attribute__') || tail.starts_with('__declspec'))
+		&& tail.ends_with(')'))
+}
+
+fn c_tag_declaration_keyword_len(value string) int {
+	for keyword in ['struct', 'union', 'enum'] {
+		if value.len > keyword.len && value[..keyword.len] == keyword
+			&& value[keyword.len] in [` `, `\t`, `\r`, `\n`] {
+			return keyword.len
+		}
+	}
+	return 0
+}
+
+fn c_tag_definition_head_is_type_only(head string, keyword_len int) bool {
+	mut tail := head[keyword_len..].trim_space()
+	if tail.len == 0 {
+		return true
+	}
+	if tail.starts_with('__attribute__') || tail.starts_with('__declspec') {
+		return true
+	}
+	mut name_end := 0
+	for name_end < tail.len && (signature_name_char(tail[name_end]) || tail[name_end] == `$`) {
+		name_end++
+	}
+	if name_end == 0 {
+		return false
+	}
+	tail = tail[name_end..].trim_space()
+	return tail.len == 0 || tail.starts_with(':') || tail.starts_with('__attribute__')
+		|| tail.starts_with('__declspec')
 }
 
 fn c_extern_storage_decl(head string) string {
@@ -748,6 +804,7 @@ fn c_has_top_level_assign(value string) bool {
 fn c_top_level_assign_index(value string) ?int {
 	mut paren := 0
 	mut bracket := 0
+	mut brace := 0
 	mut quote := u8(0)
 	mut escaped := false
 	for i, c in value.bytes() {
@@ -778,8 +835,14 @@ fn c_top_level_assign_index(value string) ?int {
 			`]` {
 				bracket--
 			}
+			`{` {
+				brace++
+			}
+			`}` {
+				brace--
+			}
 			`=` {
-				if paren == 0 && bracket == 0 {
+				if paren == 0 && bracket == 0 && brace == 0 {
 					prev := if i > 0 { value[i - 1] } else { u8(0) }
 					next := if i + 1 < value.len { value[i + 1] } else { u8(0) }
 					if prev !in [`=`, `!`, `<`, `>`] && next != `=` {
@@ -895,7 +958,7 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 				if node.kind == .module_decl {
 					continue
 				}
-				key := decl_key(node)
+				key := decl_key(a, node)
 				if key.len > 0 && seen[key] {
 					continue
 				}
@@ -924,7 +987,7 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 		if node.kind != .import_decl || stream_module != module_name {
 			continue
 		}
-		key := decl_key(node)
+		key := decl_key(a, node)
 		if seen[key] {
 			continue
 		}
@@ -1080,10 +1143,14 @@ fn file_module_name(a &flat.FlatAst, file_node flat.Node) string {
 	return ''
 }
 
-fn decl_key(node flat.Node) string {
+fn decl_key(a &flat.FlatAst, node flat.Node) string {
 	return match node.kind {
 		.import_decl {
-			'import:${node.value}:${node.typ}'
+			mut selected := []string{}
+			for i in 0 .. node.children_count {
+				selected << a.child_node(&node, i).value
+			}
+			'import:${node.value}:${node.typ}:${selected.join(',')}'
 		}
 		.fn_decl, .c_fn_decl, .struct_decl, .enum_decl, .type_decl, .interface_decl {
 			'${int(node.kind)}:${node.value}'
@@ -1438,6 +1505,9 @@ fn enum_text(a &flat.FlatAst, node flat.Node) string {
 	out.writeln('${head} {')
 	for i in 0 .. node.children_count {
 		field := a.child_node(&node, i)
+		for attr in field.generic_params {
+			out.writeln('\t@[${attr}]')
+		}
 		mut line := '\t${field.value}'
 		if field.children_count > 0 {
 			value := expr_text(a, a.child(field, 0))
@@ -1707,8 +1777,38 @@ fn op_text(op flat.Op) string {
 }
 
 fn escape_v_string(value string) string {
-	return value.replace('\\', '\\\\').replace("'", "\\'").replace('\n', '\\n').replace('\r', '\\r').replace('\t',
-		'\\t')
+	mut out := strings.new_builder(value.len)
+	for i, c in value.bytes() {
+		match c {
+			`\\` {
+				out.write_u8(`\\`)
+				out.write_u8(`\\`)
+			}
+			`'` {
+				out.write_u8(`\\`)
+				out.write_u8(`'`)
+			}
+			`\n` {
+				out.write_string('\\n')
+			}
+			`\r` {
+				out.write_string('\\r')
+			}
+			`\t` {
+				out.write_string('\\t')
+			}
+			`$` {
+				if i + 1 < value.len && value[i + 1] == `{` {
+					out.write_u8(`\\`)
+				}
+				out.write_u8(c)
+			}
+			else {
+				out.write_u8(c)
+			}
+		}
+	}
+	return out.str()
 }
 
 fn escape_v_char(value string) string {
