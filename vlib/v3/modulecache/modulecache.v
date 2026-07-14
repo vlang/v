@@ -651,9 +651,15 @@ pub fn declaration_header(prefix string) string {
 	mut brace_depth := 0
 	mut has_brace := false
 	mut in_block_comment := false
+	mut in_preprocessor_directive := false
 	for raw_line in prefix.split_into_lines() {
 		line := raw_line + '\n'
 		trimmed := raw_line.trim_space()
+		if in_preprocessor_directive {
+			out.write_string(line)
+			in_preprocessor_directive = c_preprocessor_line_continues(raw_line)
+			continue
+		}
 		if brace_depth == 0 && trimmed.starts_with('#') && item.len > 0 {
 			pending := item.str()
 			item = strings.new_builder(512)
@@ -667,6 +673,9 @@ pub fn declaration_header(prefix string) string {
 		if brace_depth == 0 && item.len == 0
 			&& (trimmed.starts_with('#') || trimmed.len == 0 || trimmed.starts_with('//')) {
 			out.write_string(line)
+			if trimmed.starts_with('#') {
+				in_preprocessor_directive = c_preprocessor_line_continues(raw_line)
+			}
 			continue
 		}
 		item.write_string(line)
@@ -694,6 +703,10 @@ pub fn declaration_header(prefix string) string {
 		out.write_string(c_declaration_item(item.str(), has_brace))
 	}
 	return out.str()
+}
+
+fn c_preprocessor_line_continues(line string) bool {
+	return line.trim_right('\r').ends_with('\\')
 }
 
 fn c_declaration_item(item string, has_brace bool) string {
