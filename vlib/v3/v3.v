@@ -959,6 +959,7 @@ fn main() {
 		'target=${prefs.normalized_target_os()}',
 		'prod=${is_prod}',
 		'shared=${is_shared}',
+		'selfhost=${is_selfhost}',
 		'c99=${c99}',
 		'ownership=${ownership_mode}',
 		'test=${is_test_command || pref.is_test_file_for_backend(input_file, backend)}',
