@@ -8,7 +8,7 @@ pub struct Preferences {
 pub mut:
 	verbose      bool
 	output_file  string
-	target_os    string = os.user_os()
+	target       Target = host_target()
 	user_defines []string
 	backend      string = 'c'
 	c99          bool
@@ -18,6 +18,80 @@ pub mut:
 	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization
 	is_prod      bool
 	is_test      bool // at least one compatible user test file is being compiled
+}
+
+// Target is the canonical description of the platform for which code is generated.
+// Host properties must not be used for target-dependent source selection or semantics.
+pub struct Target {
+pub:
+	os            string
+	arch          string
+	abi           string
+	endian        string
+	pointer_bits  int
+	object_format string
+}
+
+// host_arch returns the normalized architecture of the compiler process.
+pub fn host_arch() string {
+	$if arm64 {
+		return 'arm64'
+	} $else $if amd64 {
+		return 'amd64'
+	} $else $if x32 {
+		return 'x86'
+	} $else {
+		return 'unknown'
+	}
+}
+
+// host_target returns the platform on which the compiler process is running.
+pub fn host_target() Target {
+	return target_from(os.user_os(), host_arch()) or {
+		panic('unsupported compiler host target ${os.user_os()}/${host_arch()}')
+	}
+}
+
+// target_from validates and canonicalizes an OS/architecture pair.
+pub fn target_from(os_name string, arch_name string) !Target {
+	target_os := normalized_os(os_name.trim_space().to_lower())
+	target_arch := normalized_arch(arch_name.trim_space().to_lower())
+	if target_os !in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
+		'android', 'ios', 'solaris', 'wasm32_emscripten'] {
+		return error('unsupported target OS `${os_name}`')
+	}
+	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv64', 'ppc64', 'ppc64le', 's390x',
+		'loongarch64', 'wasm32'] {
+		return error('unsupported target architecture `${arch_name}`')
+	}
+	if target_os == 'wasm32_emscripten' && target_arch != 'wasm32' {
+		return error('target OS `wasm32_emscripten` requires architecture `wasm32`')
+	}
+	endian := if target_arch in ['ppc64', 's390x'] { 'big' } else { 'little' }
+	pointer_bits := if target_arch in ['x86', 'arm32', 'wasm32'] { 32 } else { 64 }
+	abi := match target_os {
+		'windows' { 'windows' }
+		'macos', 'ios' { 'darwin' }
+		'android' { 'android' }
+		'wasm32_emscripten' { 'emscripten' }
+		else { 'gnu' }
+	}
+
+	object_format := match target_os {
+		'windows' { 'coff' }
+		'macos', 'ios' { 'macho' }
+		'wasm32_emscripten' { 'wasm' }
+		else { 'elf' }
+	}
+
+	return Target{
+		os:            target_os
+		arch:          target_arch
+		abi:           abi
+		endian:        endian
+		pointer_bits:  pointer_bits
+		object_format: object_format
+	}
 }
 
 // new_preferences supports new preferences handling for pref.
@@ -180,6 +254,28 @@ fn vmodules_dir() string {
 
 // file_has_incompatible_os_suffix converts file has incompatible os suffix data for pref.
 pub fn file_has_incompatible_os_suffix(file string, current_os string) bool {
+	return file_has_incompatible_target_suffix(file, target_from(current_os, host_arch()) or {
+		host_target()
+	})
+}
+
+// file_has_incompatible_target_suffix reports whether an OS or architecture suffix excludes
+// file from target.
+pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
+	if file_has_incompatible_os_only_suffix(file, target.os) {
+		return true
+	}
+	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'arm32', 'riscv64', 'ppc64',
+		'ppc64le', 's390x', 'loongarch64', 'wasm32'] {
+		if normalized_arch(arch) != target.arch
+			&& (file.contains('.${arch}.') || file.contains('_${arch}.')) {
+			return true
+		}
+	}
+	return false
+}
+
+fn file_has_incompatible_os_only_suffix(file string, current_os string) bool {
 	os_name := normalized_os(current_os)
 	if os_name == 'windows' && file.contains('_nix.') {
 		return true
@@ -218,15 +314,18 @@ pub fn file_has_incompatible_os_suffix(file string, current_os string) bool {
 	if os_name != 'solaris' && file.contains('_solaris.') {
 		return true
 	}
-	if file.contains('.amd64.') || file.contains('_amd64.') || file.contains('.arm64.')
-		|| file.contains('_arm64.') {
-		return true
-	}
 	return false
 }
 
 // get_v_files_from_dir returns get v files from dir data for pref.
 pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string) []string {
+	return get_v_files_from_dir_for_target(dir, user_defines, target_from(target_os, host_arch()) or {
+		host_target()
+	})
+}
+
+// get_v_files_from_dir_for_target returns sources compatible with the complete target.
+pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target Target) []string {
 	if dir == '' || !os.is_dir(dir) {
 		return []string{}
 	}
@@ -240,10 +339,10 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 			&& !file.contains('_notd_test.')) {
 			continue
 		}
-		if file_has_incompatible_os_suffix(file, target_os) {
+		if file_has_incompatible_target_suffix(file, target) {
 			continue
 		}
-		if base := os_specific_base(file, target_os) {
+		if base := os_specific_base(file, target.os) {
 			has_os_specific[base] = true
 		}
 	}
@@ -258,7 +357,7 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 				&& !file.contains('_notd_test.')) {
 				continue
 			}
-			if file_has_incompatible_os_suffix(file, target_os) {
+			if file_has_incompatible_target_suffix(file, target) {
 				continue
 			}
 			if base := default_file_base(file) {
@@ -285,6 +384,12 @@ pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string)
 
 // get_test_v_files_from_dir returns backend/target/define-compatible test files in dir.
 pub fn get_test_v_files_from_dir(dir string, user_defines []string, backend string, target_os string) []string {
+	return get_test_v_files_from_dir_for_target(dir, user_defines, backend, target_from(target_os,
+		host_arch()) or { host_target() })
+}
+
+// get_test_v_files_from_dir_for_target returns tests compatible with the complete target.
+pub fn get_test_v_files_from_dir_for_target(dir string, user_defines []string, backend string, target Target) []string {
 	if dir == '' || !os.is_dir(dir) {
 		return []string{}
 	}
@@ -293,7 +398,7 @@ pub fn get_test_v_files_from_dir(dir string, user_defines []string, backend stri
 	mut result := []string{}
 	for file in files {
 		path := os.join_path_single(dir, file)
-		if !is_test_file_for_target(path, backend, target_os) {
+		if !is_test_file_for_platform(path, backend, target) {
 			continue
 		}
 		if file.contains('_notd_') {
@@ -352,6 +457,13 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 // with target_os. Platform-qualified tests use names such as `foo_windows_test.v` and must not
 // be added to a non-Windows test harness.
 pub fn is_test_file_for_target(path string, backend string, target_os string) bool {
+	return is_test_file_for_platform(path, backend, target_from(target_os, host_arch()) or {
+		host_target()
+	})
+}
+
+// is_test_file_for_platform reports whether path is a test for backend and target.
+pub fn is_test_file_for_platform(path string, backend string, target Target) bool {
 	if !is_test_file_for_backend(path, backend) {
 		return false
 	}
@@ -375,7 +487,7 @@ pub fn is_test_file_for_target(path string, backend string, target_os string) bo
 			}
 		}
 	}
-	return !file_has_incompatible_os_suffix(probe, target_os)
+	return !file_has_incompatible_target_suffix(probe, target)
 }
 
 // default_file_base supports default file base handling for pref.
@@ -466,18 +578,37 @@ pub fn normalized_os(target_os string) string {
 	return match target_os {
 		'darwin' { 'macos' }
 		'mac' { 'macos' }
+		'win32' { 'windows' }
+		'emscripten' { 'wasm32_emscripten' }
 		else { target_os }
+	}
+}
+
+// normalized_arch canonicalizes common architecture aliases.
+pub fn normalized_arch(target_arch string) string {
+	return match target_arch {
+		'x64', 'x86_64' { 'amd64' }
+		'aarch64' { 'arm64' }
+		'i386', 'i486', 'i586', 'i686', 'x32' { 'x86' }
+		'arm', 'armv7', 'armv7l' { 'arm32' }
+		else { target_arch }
 	}
 }
 
 // normalized_target_os supports normalized target os handling for Preferences.
 pub fn (p &Preferences) normalized_target_os() string {
-	return normalized_os(p.target_os)
+	return p.target.os
+}
+
+// normalized_target_arch returns the canonical target architecture.
+pub fn (p &Preferences) normalized_target_arch() string {
+	return p.target.arch
 }
 
 // is_cross_target reports whether is cross target applies in pref.
 pub fn (p &Preferences) is_cross_target() bool {
-	return p.normalized_target_os() != normalized_os(os.user_os())
+	host := host_target()
+	return p.target.os != host.os || p.target.arch != host.arch
 }
 
 // comptime_flag_value supports comptime flag value handling for pref.
@@ -516,40 +647,28 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 				|| tos == 'dragonfly'
 		}
 		'x64' {
-			$if x64 {
-				return true
-			}
-			return false
+			return p.target.arch == 'amd64'
 		}
 		'x32' {
-			$if x32 {
-				return true
-			}
-			return false
+			return p.target.pointer_bits == 32
 		}
 		'amd64' {
-			$if amd64 {
-				return true
-			}
-			return false
+			return p.target.arch == 'amd64'
 		}
 		'arm64', 'aarch64' {
-			$if arm64 {
-				return true
-			}
-			return false
+			return p.target.arch == 'arm64'
+		}
+		'arm32' {
+			return p.target.arch == 'arm32'
+		}
+		'riscv64', 's390x', 'ppc64', 'ppc64le', 'loongarch64', 'wasm32' {
+			return p.target.arch == name
 		}
 		'little_endian' {
-			$if little_endian {
-				return true
-			}
-			return false
+			return p.target.endian == 'little'
 		}
 		'big_endian' {
-			$if big_endian {
-				return true
-			}
-			return false
+			return p.target.endian == 'big'
 		}
 		'debug' {
 			$if debug {

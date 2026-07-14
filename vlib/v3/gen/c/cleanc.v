@@ -5,6 +5,7 @@ import strings
 import v3.cmdexec
 import v3.flat
 import v3.gen.c.naming
+import v3.pref
 import v3.types
 
 struct ActiveLock {
@@ -135,6 +136,7 @@ mut:
 	runtime_init_modules         []string
 	compiler_vroot               string
 	compiler_vexe                string
+	target                       pref.Target
 	c99_mode                     bool
 	skip_generics                bool
 	cur_fn_name                  string
@@ -484,6 +486,7 @@ pub fn FlatGen.new() FlatGen {
 		runtime_init_modules:           []string{}
 		compiler_vroot:                 ''
 		compiler_vexe:                  ''
+		target:                         pref.host_target()
 		line_start:                     true
 	}
 }
@@ -491,6 +494,11 @@ pub fn FlatGen.new() FlatGen {
 // set_compiler_vexe sets the V executable path baked into generated test/runtime helpers.
 pub fn (mut g FlatGen) set_compiler_vexe(path string) {
 	g.compiler_vexe = path
+}
+
+// set_target sets the canonical code-generation target.
+pub fn (mut g FlatGen) set_target(target pref.Target) {
+	g.target = target
 }
 
 // set_scope_parallel_workers makes cgen helpers use disposable prealloc
@@ -1219,7 +1227,7 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			continue
 		}
 		if node.value == 'flag' {
-			flags := c_flag_args(node.typ, g.compiler_vroot, cur_file)
+			flags := c_flag_args(node.typ, g.compiler_vroot, cur_file, g.target)
 			key := flags.join('\x00')
 			if flags.len > 0 && key !in seen_groups {
 				seen_groups[key] = true
@@ -1249,7 +1257,7 @@ fn (g &FlatGen) translation_unit_uses_inttypes() bool {
 		if node.kind != .directive || node.value !in ['include', 'insert'] || node.typ.len == 0 {
 			continue
 		}
-		include_arg := c_include_arg(node.typ, g.compiler_vroot, cur_file)
+		include_arg := c_include_arg_for_target(node.typ, g.compiler_vroot, cur_file, g.target)
 		if trimmed_space(include_arg) == '<inttypes.h>' {
 			return true
 		}
@@ -1271,7 +1279,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		if node.typ.len == 0 {
 			return true
 		}
-		include_arg := c_include_arg(node.typ, g.compiler_vroot, source_file)
+		include_arg := c_include_arg_for_target(node.typ, g.compiler_vroot, source_file, g.target)
 		if include_arg.len == 0 {
 			return true
 		}
@@ -2778,7 +2786,11 @@ fn c_directive_arg(text string) string {
 }
 
 fn c_include_arg(raw string, vroot string, source_file string) string {
-	mut clean := c_directive_arg_for_target(raw.trim_space()) or { return '' }
+	return c_include_arg_for_target(raw, vroot, source_file, pref.host_target())
+}
+
+fn c_include_arg_for_target(raw string, vroot string, source_file string, target pref.Target) string {
+	mut clean := c_directive_arg_for_target(raw.trim_space(), target) or { return '' }
 	clean = c_resolve_pseudo_paths(clean.trim_space(), vroot, source_file)
 	if clean.len == 0 {
 		return ''
@@ -2806,13 +2818,13 @@ fn c_include_arg(raw string, vroot string, source_file string) string {
 	return clean
 }
 
-fn c_flag_args(raw string, vroot string, source_file string) []string {
+fn c_flag_args(raw string, vroot string, source_file string, target pref.Target) []string {
 	mut args := cmdexec.split_args(raw.trim_space()) or { return []string{} }
 	if args.len == 0 {
 		return []string{}
 	}
 	if c_flag_has_target_prefix(args[0]) {
-		if !c_flag_target_enabled(args[0]) || args.len < 2 {
+		if !c_flag_target_enabled(args[0], target) || args.len < 2 {
 			return []string{}
 		}
 		args = args[1..].clone()
@@ -2853,13 +2865,13 @@ fn c_flag_path_is_relative(p string) bool {
 	return p.starts_with('./') || p.starts_with('../') || p.contains('/')
 }
 
-fn c_directive_arg_for_target(raw string) ?string {
+fn c_directive_arg_for_target(raw string, target pref.Target) ?string {
 	parts := raw.fields()
 	if parts.len == 0 {
 		return none
 	}
 	if c_flag_has_target_prefix(parts[0]) {
-		if !c_flag_target_enabled(parts[0]) || parts.len < 2 {
+		if !c_flag_target_enabled(parts[0], target) || parts.len < 2 {
 			return none
 		}
 		return parts[1..].join(' ')
@@ -2919,64 +2931,42 @@ fn c_pkgconfig_flags(raw string) []string {
 
 fn c_flag_has_target_prefix(target string) bool {
 	return target in ['darwin', 'macos', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd',
-		'solaris', 'termux', 'wasm32_emscripten']
+		'solaris', 'termux', 'wasm32_emscripten', 'amd64', 'x64', 'x86_64', 'arm64', 'aarch64',
+		'x86', 'arm32', 'riscv64', 'ppc64', 'ppc64le', 's390x', 'loongarch64', 'wasm32']
 }
 
-fn c_flag_target_enabled(target string) bool {
+fn c_flag_target_enabled(target string, platform pref.Target) bool {
 	match target {
 		'darwin', 'macos' {
-			$if macos {
-				return true
-			}
-			return false
+			return platform.os == 'macos'
 		}
 		'linux' {
-			$if linux {
-				return true
-			}
-			return false
+			return platform.os == 'linux'
 		}
 		'windows' {
-			$if windows {
-				return true
-			}
-			return false
+			return platform.os == 'windows'
 		}
 		'freebsd' {
-			$if freebsd {
-				return true
-			}
-			return false
+			return platform.os == 'freebsd'
 		}
 		'openbsd' {
-			$if openbsd {
-				return true
-			}
-			return false
+			return platform.os == 'openbsd'
 		}
 		'netbsd' {
-			$if netbsd {
-				return true
-			}
-			return false
+			return platform.os == 'netbsd'
 		}
 		'solaris' {
-			$if solaris {
-				return true
-			}
-			return false
+			return platform.os == 'solaris'
 		}
 		'termux' {
-			$if termux {
-				return true
-			}
-			return false
+			return platform.os == 'android'
 		}
 		'wasm32_emscripten' {
-			$if wasm32_emscripten {
-				return true
-			}
-			return false
+			return platform.os == 'wasm32_emscripten'
+		}
+		'amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'arm32', 'riscv64', 'ppc64',
+		'ppc64le', 's390x', 'loongarch64', 'wasm32' {
+			return pref.normalized_arch(target) == platform.arch
 		}
 		else {
 			return true

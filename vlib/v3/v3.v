@@ -31,9 +31,8 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	match target_os {
 		'macos' {
 			// atomic.S has Mach-O-compatible aarch64 symbols, but its x86_64 Unix
-			// stanza is ELF-only (`.type ... %function`). v3 does not yet track a
-			// separate target architecture, so use the compiler build architecture.
-			$if arm64 {
+			// stanza is ELF-only (`.type ... %function`).
+			if prefs.target.arch == 'arm64' {
 				link_atomic_s = true
 			}
 		}
@@ -50,13 +49,14 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	return atomic_s
 }
 
-fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string) ![]string {
+fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
 	for flag in flags {
 		clean := flag.trim_space()
 		if c_flag_is_object_file(clean) {
-			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag)!
+			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag, target_args,
+				target)!
 		} else {
 			prepared << flag
 		}
@@ -106,7 +106,7 @@ fn c_flags_need_objective_c(flags []string) bool {
 	return false
 }
 
-fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string) !string {
+fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target) !string {
 	if os.exists(obj_path) {
 		return obj_path
 	}
@@ -118,6 +118,7 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { c_standard_flag(c99) }
 	compiler := if source_file.ends_with('.cpp') { 'c++' } else { 'cc' }
 	mut args := [std_flag]
+	args << target_args
 	if pic_flag.len > 0 {
 		args << pic_flag
 	}
@@ -125,7 +126,7 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	args << support_flags
 	dependencies := c_object_dependencies(compiler, args, source_file)
 	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, compiler, args,
-		dependencies))
+		dependencies, target))
 	if os.exists(cached_obj) {
 		return cached_obj
 	}
@@ -173,13 +174,13 @@ fn c_source_from_object_file(obj_path string) ?string {
 	return none
 }
 
-fn c_object_cache_name(path string, compiler string, compile_args []string, dependencies []string) string {
+fn c_object_cache_name(path string, compiler string, compile_args []string, dependencies []string, target pref.Target) string {
 	base := os.base(path).replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_'])
 	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
 	compiler_version := cmdexec.run(compiler, ['--version']).output
 	mut hash := u64(1469598103934665603)
-	for identity in [os.real_path(path), compiler_path, compiler_version, @OS, @PLATFORM,
-		compile_args.join('\x00')] {
+	for identity in [os.real_path(path), compiler_path, compiler_version, target.os, target.arch,
+		target.abi, target.endian, target.pointer_bits.str(), target.object_format, compile_args.join('\x00')] {
 		hash = c_hash_bytes(hash, identity.bytes())
 	}
 	for dependency in dependencies {
@@ -216,6 +217,18 @@ fn shared_pic_flag(is_shared bool, target_os string) string {
 		return '-fPIC'
 	}
 	return ''
+}
+
+fn c_compiler_target_args(target pref.Target) ![]string {
+	host := pref.host_target()
+	if target.os == host.os && target.arch == host.arch {
+		return []string{}
+	}
+	if target.os == 'macos' && host.os == 'macos' && target.arch in ['amd64', 'arm64'] {
+		arch := if target.arch == 'amd64' { 'x86_64' } else { 'arm64' }
+		return ['-arch', arch]
+	}
+	return error('linking target ${target.os}/${target.arch} from host ${host.os}/${host.arch} is not supported by the default C compiler; use -o file.c and compile it with a target toolchain')
 }
 
 fn cleanup_c_build_dir(dir string) {
@@ -291,18 +304,16 @@ fn default_bin_file_for_input(input_file string) string {
 	return input_file
 }
 
-fn shared_library_postfix() string {
-	$if windows {
-		return '.dll'
-	} $else $if macos {
-		return '.dylib'
-	} $else {
-		return '.so'
+fn shared_library_postfix(target_os string) string {
+	return match pref.normalized_os(target_os) {
+		'windows' { '.dll' }
+		'macos', 'ios' { '.dylib' }
+		else { '.so' }
 	}
 }
 
-fn with_shared_library_postfix(path string) string {
-	postfix := shared_library_postfix()
+fn with_shared_library_postfix(path string, target_os string) string {
+	postfix := shared_library_postfix(target_os)
 	if path.ends_with(postfix) {
 		return path
 	}
@@ -757,6 +768,8 @@ fn main() {
 	mut output_file := ''
 	mut explicit_output := false
 	mut backend := 'c'
+	mut target_os := os.user_os()
+	mut target_arch := pref.host_arch()
 	mut is_prod := false
 	mut is_shared := false
 	mut is_strict := false
@@ -796,6 +809,12 @@ fn main() {
 			i += 2
 		} else if args[i] == '-b' && i + 1 < args.len {
 			backend = args[i + 1]
+			i += 2
+		} else if args[i] == '-os' && i + 1 < args.len {
+			target_os = args[i + 1]
+			i += 2
+		} else if args[i] == '-arch' && i + 1 < args.len {
+			target_arch = args[i + 1]
 			i += 2
 		} else if args[i] == '-prod' {
 			is_prod = true
@@ -876,6 +895,10 @@ fn main() {
 		eprintln('no input file')
 		exit(1)
 	}
+	target := pref.target_from(target_os, target_arch) or {
+		eprintln(err.msg())
+		exit(1)
+	}
 
 	// Compiling v3 itself implies building_v: it uses no generics, so the monomorphization
 	// pass is pure overhead. -building-v can force this for any input.
@@ -911,7 +934,7 @@ fn main() {
 	if output_file == '' {
 		bin_file = default_bin_file_for_input(input_file)
 		if is_shared {
-			bin_file = with_shared_library_postfix(bin_file)
+			bin_file = with_shared_library_postfix(bin_file, target.os)
 		}
 		// The wasm backend writes the binary itself; default to <name>.wasm.
 		output_file = if backend == 'wasm' { bin_file + '.wasm' } else { bin_file + '.c' }
@@ -924,7 +947,7 @@ fn main() {
 	} else {
 		bin_file = output_file
 		if is_shared {
-			bin_file = with_shared_library_postfix(bin_file)
+			bin_file = with_shared_library_postfix(bin_file, target.os)
 		}
 		output_file = bin_file + '.c'
 	}
@@ -975,6 +998,7 @@ fn main() {
 
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
+	prefs.target = target
 	prefs.backend = backend
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
@@ -990,7 +1014,7 @@ fn main() {
 	if ownership_mode && 'ownership' !in builtin_defines {
 		builtin_defines << 'ownership'
 	}
-	files << pref.get_v_files_from_dir(builtin_dir, builtin_defines, prefs.target_os)
+	files << pref.get_v_files_from_dir_for_target(builtin_dir, builtin_defines, prefs.target)
 	mut parse_was_parallel := false
 	_, builtin_parse_parallel := p.parse_files_dispatch(files, !current_no_parallel)
 	parse_was_parallel = parse_was_parallel || builtin_parse_parallel
@@ -1011,27 +1035,28 @@ fn main() {
 		user_files << input_file
 		user_files = expand_single_test_file_inputs(user_files, prefs)
 	} else if os.is_dir(input_file) {
-		user_files = pref.get_v_files_from_dir(input_file, prefs.user_defines, prefs.target_os)
+		user_files = pref.get_v_files_from_dir_for_target(input_file, prefs.user_defines,
+			prefs.target)
 		if is_test_command {
-			user_files << pref.get_test_v_files_from_dir(input_file, prefs.user_defines,
-				prefs.backend, prefs.target_os)
+			user_files << pref.get_test_v_files_from_dir_for_target(input_file, prefs.user_defines,
+				prefs.backend, prefs.target)
 		}
 		for subdir in vmod_subdirs(input_file) {
 			subdir_path := os.join_path_single(input_file, subdir)
-			user_files << pref.get_v_files_from_dir(subdir_path, prefs.user_defines,
-				prefs.target_os)
+			user_files << pref.get_v_files_from_dir_for_target(subdir_path, prefs.user_defines,
+				prefs.target)
 			if is_test_command {
-				user_files << pref.get_test_v_files_from_dir(subdir_path, prefs.user_defines,
-					prefs.backend, prefs.target_os)
+				user_files << pref.get_test_v_files_from_dir_for_target(subdir_path,
+					prefs.user_defines, prefs.backend, prefs.target)
 			}
 		}
 	} else {
 		user_files << input_file
 	}
-	prefs.is_test = user_files.any(pref.is_test_file_for_target(it, backend, prefs.target_os))
+	prefs.is_test = user_files.any(pref.is_test_file_for_platform(it, backend, prefs.target))
 	_, user_parse_parallel := p.parse_files_dispatch(user_files, !current_no_parallel)
 	parse_was_parallel = parse_was_parallel || user_parse_parallel
-	test_files := test_input_files(user_files, backend, prefs.target_os)
+	test_files := test_input_files(user_files, backend, prefs.target)
 
 	seed_implicit_imports(mut a)
 
@@ -1234,6 +1259,7 @@ fn main() {
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
+			g.set_target(prefs.target)
 			g.set_scope_parallel_workers(true)
 			c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, current_no_parallel,
 				test_files)
@@ -1254,6 +1280,7 @@ fn main() {
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
+			g.set_target(prefs.target)
 			c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, current_no_parallel,
 				test_files)
 			if !write_text_file_raw(cc_src, c_code) {
@@ -1282,13 +1309,19 @@ fn main() {
 		}
 
 		pic_flag := shared_pic_flag(is_shared, prefs.normalized_target_os())
+		target_args := c_compiler_target_args(prefs.target) or {
+			eprintln(err.msg())
+			cleanup_c_build_dir(cc_dir)
+			exit(1)
+		}
 		warn_args := if is_strict {
 			['-Wall', '-Wextra', '-Werror=implicit-function-declaration', '-Wno-unused-variable',
 				'-Wno-unused-parameter', '-Wno-int-conversion', '-Wno-missing-braces']
 		} else {
 			['-w']
 		}
-		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag) or {
+		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
+			target_args, prefs.target) or {
 			eprintln(err.msg())
 			exit(1)
 		}
@@ -1303,7 +1336,7 @@ fn main() {
 		// concurrent compilers targeting the same path from sharing partial files.
 		mut result := os.Result{}
 		mut tried_tcc := false
-		if !is_prod && !needs_objective_c {
+		if !is_prod && !needs_objective_c && target_args.len == 0 {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -1331,6 +1364,7 @@ fn main() {
 		}
 		if is_prod || !tried_tcc || result.exit_code != 0 {
 			mut cc_args := []string{}
+			cc_args << target_args
 			cc_args << c_standard
 			if is_prod {
 				cc_args << '-O2'
@@ -1434,7 +1468,7 @@ fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) 
 fn same_dir_module_source_files(test_file string, module_name string, prefs &pref.Preferences) []string {
 	dir := os.dir(test_file)
 	mut files := []string{}
-	for file in pref.get_v_files_from_dir(dir, prefs.user_defines, prefs.target_os) {
+	for file in pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target) {
 		if declared_module_in_file(file) == module_name {
 			files << file
 		}
@@ -1614,10 +1648,10 @@ fn diagnostic_root_for_input(input_file string, user_files []string) string {
 	return os.real_path(os.getwd())
 }
 
-fn test_input_files(user_files []string, backend string, target_os string) []string {
+fn test_input_files(user_files []string, backend string, target pref.Target) []string {
 	mut files := []string{}
 	for file in user_files {
-		if pref.is_test_file_for_target(file, backend, target_os) {
+		if pref.is_test_file_for_platform(file, backend, target) {
 			files << file
 		}
 	}
@@ -2078,7 +2112,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 
 			if mod_dir_exists {
-				mod_files := pref.get_v_files_from_dir(mod_dir, prefs.user_defines, prefs.target_os)
+				mod_files := pref.get_v_files_from_dir_for_target(mod_dir, prefs.user_defines,
+					prefs.target)
 				canon := if module_identity == mod_name { mod_name } else { '' }
 				for mf in mod_files {
 					wave_files << mf
