@@ -238,6 +238,9 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 		}
 	}
 	g.gen_defers_from(defer_start)
+	// The checker records the then block scope, then the outer guard-binding scope.
+	g.gen_scope_ownership_drops()
+	g.gen_scope_ownership_drops()
 	g.trim_defers(defer_start)
 	g.indent--
 	g.pop_scope()
