@@ -59,6 +59,19 @@ struct FixedArrayConfig implements IClone {
 	resources [2]arc.Arc[Resource]
 }
 
+struct OptionalConfig implements IClone {
+	resources ?[]arc.Arc[Resource]
+}
+
+struct MapKeyConfig implements IClone {
+	values map[arc.Arc[Resource]]int
+}
+
+struct MapResource {
+mut:
+	resource arc.Arc[Resource]
+}
+
 type ResourceSum = Resource | int
 
 fn exercise_resource() {
@@ -164,6 +177,43 @@ fn exercise_fixed_array_field_clone() {
 	}
 }
 
+fn exercise_none_optional_clone() {
+	original := OptionalConfig{}
+	cloned := original.clone()
+	if _ := cloned.resources {
+		assert false
+	}
+}
+
+fn exercise_map_key_clone() {
+	key := arc.new(Resource{id: 20})
+	original := MapKeyConfig{
+		values: {
+			key.clone(): 1
+		}
+	}
+	cloned := original.clone()
+	assert key.strong_count() == 3
+	assert cloned.values.len == 1
+}
+
+fn replace_map_nested_resources() {
+	mut values := {
+		"resource": MapResource{
+			resource: arc.new(Resource{id: 21})
+		}
+	}
+	values["resource"].resource = arc.new(Resource{id: 22})
+	assert values["resource"].resource.strong_count() == 1
+	mut nested := {
+		"outer": {
+			"inner": arc.new(Resource{id: 23})
+		}
+	}
+	nested["outer"]["inner"] = arc.new(Resource{id: 24})
+	assert nested["outer"]["inner"].strong_count() == 1
+}
+
 fn main() {
 	exercise_resource()
 	replace_resource()
@@ -176,6 +226,9 @@ fn main() {
 	replace_indexed_resources()
 	exercise_array_clone()
 	exercise_fixed_array_field_clone()
+	exercise_none_optional_clone()
+	exercise_map_key_clone()
+	replace_map_nested_resources()
 	original := Config{
 		replacement: arc.new(?[]u8([u8(1), 2, 3]))
 	}
@@ -198,10 +251,10 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	lines := run.output.trim_space().split_into_lines()
 	assert lines.count(it == 'make factory') == 1, run.output
-	for id in 1 .. 20 {
+	for id in 1 .. 25 {
 		assert lines.count(it == 'drop ${id}') == 1, run.output
 	}
-	assert lines.len == 20, run.output
+	assert lines.len == 25, run.output
 	os.write_file(nonownership_src, 'module main
 
 import sync.arc

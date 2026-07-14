@@ -467,7 +467,8 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 		}
 		t.drain_pending(mut result)
 		result << t.make_decl_assign_typed(value_name, value, info.value_type)
-		t.append_map_value_drop_before_set(info, map_expr, key_name, mut result)
+		t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
+			result)
 		result << t.make_map_set_stmt(map_expr, info.base_type, key_name, value_name)
 		return result
 	}
@@ -483,21 +484,21 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 // append_map_value_drop_before_set destroys an existing owned map value before
 // map__set overwrites its storage. The replacement has already been saved by the
 // caller, so cloning from the old value remains valid.
-fn (mut t Transformer) append_map_value_drop_before_set(info MapIndexInfo, map_expr flat.NodeId, key_name string, mut result []flat.NodeId) {
+fn (mut t Transformer) append_map_value_drop_before_set(map_expr flat.NodeId, map_type string, key_name string, value_type_name string, mut result []flat.NodeId) {
 	if isnil(t.tc) {
 		return
 	}
-	value_type := t.tc.parse_type(info.value_type)
+	value_type := t.tc.parse_type(value_type_name)
 	if !t.tc.ownership_type_requires_drop(value_type) {
 		return
 	}
 	ptr_name := t.new_temp('map_old_value')
-	ptr := t.make_map_get_check_expr(map_expr, info.base_type, key_name)
+	ptr := t.make_map_get_check_expr(map_expr, map_type, key_name)
 	result << t.make_decl_assign_typed(ptr_name, ptr, 'voidptr')
 	ptr_ident := t.make_ident(ptr_name)
-	old_value_ptr := t.make_cast('&${info.value_type}', ptr_ident, '&${info.value_type}')
+	old_value_ptr := t.make_cast('&${value_type_name}', ptr_ident, '&${value_type_name}')
 	old_value := t.make_prefix(.mul, old_value_ptr)
-	t.set_node_typ(int(old_value), info.value_type)
+	t.set_node_typ(int(old_value), value_type_name)
 	drop_call := t.make_call_typed('drop_owned', arr1(old_value), 'void')
 	found := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
 	result << t.make_if(found, t.make_block(arr1(t.make_expr_stmt(drop_call))), t.make_empty())
@@ -548,7 +549,10 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 	} else {
 		t.transform_expr_for_type(rhs_id, inner_value_type)
 	}
+	t.drain_pending(mut result)
 	result << t.make_decl_assign_typed(inner_value_name, inner_value, inner_value_type)
+	t.append_map_value_drop_before_set(t.make_ident(inner_name), inner_map_type, inner_key_name,
+		inner_value_type, mut result)
 	result << t.make_map_set_stmt(t.make_ident(inner_name), inner_map_type, inner_key_name,
 		inner_value_name)
 	result << t.make_map_set_stmt(map_expr, outer_info.base_type, outer_key_name, inner_name)
@@ -582,9 +586,24 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
 	field := t.make_selector(t.make_ident(current_name), lhs.value, field_type)
 	rhs_id := t.a.child(&node, 1)
-	result << t.make_assign(field, t.transform_expr_for_type(rhs_id, field_type))
+	rhs := t.transform_expr_for_type(rhs_id, field_type)
+	t.drain_pending(mut result)
+	rhs_name := t.new_temp('map_field_value')
+	result << t.make_decl_assign_typed(rhs_name, rhs, field_type)
+	t.append_owned_lvalue_drop_before_assign(field, field_type, mut result)
+	result << t.make_assign(field, t.make_ident(rhs_name))
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 	return result
+}
+
+// append_owned_lvalue_drop_before_assign destroys an owned value after its
+// replacement has been saved and before its storage is overwritten.
+fn (mut t Transformer) append_owned_lvalue_drop_before_assign(lvalue flat.NodeId, type_name string, mut result []flat.NodeId) {
+	if isnil(t.tc) || !t.tc.ownership_type_requires_drop(t.tc.parse_type(type_name)) {
+		return
+	}
+	drop_call := t.make_call_typed('drop_owned', arr1(lvalue), 'void')
+	result << t.make_expr_stmt(drop_call)
 }
 
 // map_compound_to_infix_op converts map compound to infix op data for transform.

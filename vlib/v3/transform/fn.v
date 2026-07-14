@@ -4554,11 +4554,13 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, clean)
 		tmp := t.make_ident(tmp_name)
 		source_value := t.make_selector(tmp, 'value', inner)
+		pending_start := t.pending_stmts.len
 		cloned_value := t.make_compiler_default_clone_value(source_value, inner, true)
-		assign := t.make_assign(t.make_selector(t.make_ident(tmp_name), 'value', inner),
-			cloned_value)
-		t.pending_stmts << t.make_if(t.make_selector(tmp, 'ok', 'bool'),
-			t.make_block(arr1(assign)), t.make_empty())
+		mut body := t.pending_stmts[pending_start..].clone()
+		t.pending_stmts = t.pending_stmts[..pending_start].clone()
+		body << t.make_assign(t.make_selector(t.make_ident(tmp_name), 'value', inner), cloned_value)
+		t.pending_stmts << t.make_if(t.make_selector(tmp, 'ok', 'bool'), t.make_block(body),
+			t.make_empty())
 		return t.make_ident(tmp_name)
 	}
 	if clean == 'string' {
@@ -4694,12 +4696,15 @@ fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat
 	return result
 }
 
-// make_compiler_default_map_clone_value constructs a fresh map so map key callbacks
-// clone keys and recursively clones each owning value before inserting it.
+// make_compiler_default_map_clone_value constructs a fresh map, recursively clones
+// owning non-string keys and values, and lets map key callbacks clone string keys.
 fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId, map_type string) flat.NodeId {
 	key_type, value_type := t.map_type_parts(map_type)
-	if key_type.len == 0 || value_type.len == 0
-		|| !t.compiler_default_clone_type_needs_work(value_type) {
+	clean_key_type := t.normalize_type_alias(key_type).trim_space()
+	key_needs_clone := clean_key_type != 'string'
+		&& t.compiler_default_clone_type_needs_work(key_type)
+	value_needs_clone := t.compiler_default_clone_type_needs_work(value_type)
+	if key_type.len == 0 || value_type.len == 0 || (!key_needs_clone && !value_needs_clone) {
 		t.mark_fn_used('map__clone')
 		return t.make_call_typed('map__clone', arr1(t.runtime_addr(source, map_type)), map_type)
 	}
@@ -4708,18 +4713,31 @@ fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId,
 	out_name := t.new_temp('derived_clone_map')
 	key_name := t.new_temp('derived_clone_map_key')
 	source_value_name := t.new_temp('derived_clone_map_source_value')
+	cloned_key_name := t.new_temp('derived_clone_map_cloned_key')
 	value_name := t.new_temp('derived_clone_map_value')
 	t.pending_stmts << t.make_decl_assign_typed(out_name, t.make_new_map_call(map_type), map_type)
 	key_storage_type := t.map_key_storage_type(key_type)
 	t.set_var_type(key_name, key_storage_type)
 	t.set_var_type(source_value_name, value_type)
 	pending_start := t.pending_stmts.len
-	cloned_value := t.make_compiler_default_clone_value(t.make_ident(source_value_name),
-		value_type, true)
+	cloned_key := if key_needs_clone {
+		t.make_compiler_default_clone_value(t.make_ident(key_name), key_type, true)
+	} else {
+		t.make_ident(key_name)
+	}
+	cloned_value := if value_needs_clone {
+		t.make_compiler_default_clone_value(t.make_ident(source_value_name), value_type, true)
+	} else {
+		t.make_ident(source_value_name)
+	}
 	mut body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	map_key_name := if key_needs_clone { cloned_key_name } else { key_name }
+	if key_needs_clone {
+		body << t.make_decl_assign_typed(cloned_key_name, cloned_key, key_storage_type)
+	}
 	body << t.make_decl_assign_typed(value_name, cloned_value, value_type)
-	body << t.make_map_set_stmt(t.make_ident(out_name), map_type, key_name, value_name)
+	body << t.make_map_set_stmt(t.make_ident(out_name), map_type, map_key_name, value_name)
 	start := t.a.children.len
 	t.a.children << t.make_ident(key_name)
 	t.a.children << t.make_ident(source_value_name)
