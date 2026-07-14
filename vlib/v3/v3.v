@@ -12,6 +12,7 @@ import v3.parser
 import v3.pref
 import v3.transform
 import v3.types
+import v.vmod
 
 $if !skip_eval ? {
 	import v3.eval
@@ -49,14 +50,14 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	return atomic_s
 }
 
-fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target) ![]string {
+fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
 	for flag in flags {
 		clean := flag.trim_space()
 		if c_flag_is_object_file(clean) {
 			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag, target_args,
-				target)!
+				target, c_compiler)!
 		} else {
 			prepared << flag
 		}
@@ -106,7 +107,7 @@ fn c_flags_need_objective_c(flags []string) bool {
 	return false
 }
 
-fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target) !string {
+fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string) !string {
 	if os.exists(obj_path) {
 		return obj_path
 	}
@@ -116,7 +117,7 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
 	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { c_standard_flag(c99) }
-	compiler := if source_file.ends_with('.cpp') { 'c++' } else { 'cc' }
+	compiler := if source_file.ends_with('.cpp') && c_compiler == 'cc' { 'c++' } else { c_compiler }
 	mut args := [std_flag]
 	args << target_args
 	if pic_flag.len > 0 {
@@ -219,7 +220,7 @@ fn shared_pic_flag(is_shared bool, target_os string) string {
 	return ''
 }
 
-fn c_compiler_target_args(target pref.Target) ![]string {
+fn c_compiler_target_args(target pref.Target, compiler_explicit bool) ![]string {
 	host := pref.host_target()
 	if target.os == host.os && target.arch == host.arch {
 		return []string{}
@@ -227,6 +228,10 @@ fn c_compiler_target_args(target pref.Target) ![]string {
 	if target.os == 'macos' && host.os == 'macos' && target.arch in ['amd64', 'arm64'] {
 		arch := if target.arch == 'amd64' { 'x86_64' } else { 'arm64' }
 		return ['-arch', arch]
+	}
+	if compiler_explicit {
+		// An explicitly selected compiler may already encode its target in its name or defaults.
+		return []string{}
 	}
 	return error('linking target ${target.os}/${target.arch} from host ${host.os}/${host.arch} is not supported by the default C compiler; use -o file.c and compile it with a target toolchain')
 }
@@ -292,16 +297,22 @@ fn input_is_cmd_v(input_file string) bool {
 
 fn default_bin_file_for_input(input_file string) string {
 	if os.is_dir(input_file) {
-		base := os.base(os.real_path(input_file))
-		if base.contains('.') {
-			return base.all_before('.')
-		}
-		return base
+		return os.base(os.real_path(input_file))
 	}
 	if input_file.ends_with('.v') {
 		return input_file.all_before_last('.v')
 	}
 	return input_file
+}
+
+fn cli_usage() string {
+	return 'usage: v3 [run|test] <file.v|directory> [options]\n' +
+		'  -o <output>                 output binary or C file\n' +
+		'  -b <c|arm64|wasm|eval>      backend\n' +
+		'  -os <name> -arch <name>     target platform\n' +
+		'  -cc <compiler>               C compiler executable\n' +
+		'  -prod -c99 -shared -strict  C build modes\n' +
+		'  -d <name>                    compile-time define'
 }
 
 fn shared_library_postfix(target_os string) string {
@@ -760,7 +771,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
-		eprintln('usage: v3 [run] <file.v> [-o output|file.c] [-b c|arm64|eval] [-c99] [-d flag]')
+		eprintln(cli_usage())
 		exit(1)
 	}
 
@@ -770,6 +781,10 @@ fn main() {
 	mut backend := 'c'
 	mut target_os := os.user_os()
 	mut target_arch := pref.host_arch()
+	mut c_compiler := 'cc'
+	mut c_compiler_explicit := false
+	mut gc_mode := 'none'
+	mut enable_globals_compat := false
 	mut is_prod := false
 	mut is_shared := false
 	mut is_strict := false
@@ -796,6 +811,11 @@ fn main() {
 			run_args << args[i]
 			i++
 			continue
+		}
+		if args[i] in ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc', '-cc']
+			&& (i + 1 >= args.len || args[i + 1].starts_with('-')) {
+			eprintln('option `${args[i]}` requires a value')
+			exit(1)
 		}
 		if args[i] == 'run' && input_file.len == 0 && !should_run {
 			should_run = true
@@ -864,7 +884,12 @@ fn main() {
 		} else if args[i].starts_with('-d') && args[i].len > 2 {
 			user_defines << args[i][2..]
 			i++
-		} else if args[i] in ['-gc', '-cc'] && i + 1 < args.len {
+		} else if args[i] == '-gc' && i + 1 < args.len {
+			gc_mode = args[i + 1]
+			i += 2
+		} else if args[i] == '-cc' && i + 1 < args.len {
+			c_compiler = args[i + 1]
+			c_compiler_explicit = true
 			i += 2
 		} else if args[i] == '-no-prealloc' || args[i] == '--no-prealloc' {
 			no_prealloc = true
@@ -877,10 +902,19 @@ fn main() {
 			}
 			i++
 		} else if args[i] == '-enable-globals' {
+			enable_globals_compat = true
 			i++
+		} else if args[i] in ['-h', '--help'] {
+			println(cli_usage())
+			return
 		} else if args[i].starts_with('-') {
-			i++
+			eprintln('unknown option `${args[i]}`')
+			exit(1)
 		} else {
+			if input_file.len > 0 {
+				eprintln('multiple input paths are not supported: `${input_file}` and `${args[i]}`')
+				exit(1)
+			}
 			input_file = args[i]
 			i++
 		}
@@ -894,6 +928,25 @@ fn main() {
 	if input_file == '' {
 		eprintln('no input file')
 		exit(1)
+	}
+	if gc_mode != 'none' {
+		eprintln('unsupported garbage collector `${gc_mode}`; v3 currently supports only `-gc none`')
+		exit(1)
+	}
+	if enable_globals_compat {
+		eprintln('warning: `-enable-globals` is unnecessary; globals are always enabled in v3')
+	}
+	if backend !in ['c', 'arm64', 'wasm', 'eval'] {
+		eprintln('unknown backend `${backend}`; expected c, arm64, wasm, or eval')
+		exit(1)
+	}
+	for requested in compile_backends {
+		for name in requested.split(',') {
+			if name.trim_space() !in ['c', 'arm64', 'aarch64', 'wasm', 'wasm32', 'eval'] {
+				eprintln('unknown compile backend `${name.trim_space()}`')
+				exit(1)
+			}
+		}
 	}
 	target := pref.target_from(target_os, target_arch) or {
 		eprintln(err.msg())
@@ -1041,7 +1094,11 @@ fn main() {
 			user_files << pref.get_test_v_files_from_dir_for_target(input_file, prefs.user_defines,
 				prefs.backend, prefs.target)
 		}
-		for subdir in vmod_subdirs(input_file) {
+		subdirs := vmod_subdirs(input_file) or {
+			eprintln(err.msg())
+			exit(1)
+		}
+		for subdir in subdirs {
 			subdir_path := os.join_path_single(input_file, subdir)
 			user_files << pref.get_v_files_from_dir_for_target(subdir_path, prefs.user_defines,
 				prefs.target)
@@ -1309,7 +1366,7 @@ fn main() {
 		}
 
 		pic_flag := shared_pic_flag(is_shared, prefs.normalized_target_os())
-		target_args := c_compiler_target_args(prefs.target) or {
+		target_args := c_compiler_target_args(prefs.target, c_compiler_explicit) or {
 			eprintln(err.msg())
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
@@ -1321,7 +1378,7 @@ fn main() {
 			['-w']
 		}
 		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
-			target_args, prefs.target) or {
+			target_args, prefs.target, c_compiler) or {
 			eprintln(err.msg())
 			exit(1)
 		}
@@ -1336,7 +1393,7 @@ fn main() {
 		// concurrent compilers targeting the same path from sharing partial files.
 		mut result := os.Result{}
 		mut tried_tcc := false
-		if !is_prod && !needs_objective_c && target_args.len == 0 {
+		if !is_prod && !needs_objective_c && target_args.len == 0 && !c_compiler_explicit {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
@@ -1388,8 +1445,8 @@ fn main() {
 			}
 			cc_args << resolved_c_flags
 			cc_args << '-lm'
-			println('  > ${cmdexec.display('cc', cc_args)}')
-			result = cmdexec.run_in('cc', cc_args, cc_dir)
+			println('  > ${cmdexec.display(c_compiler, cc_args)}')
+			result = cmdexec.run_in(c_compiler, cc_args, cc_dir)
 			if result.exit_code != 0 {
 				eprintln('C compilation failed:')
 				eprintln(result.output)
@@ -1423,29 +1480,13 @@ fn main() {
 	b.print_report()
 }
 
-fn vmod_subdirs(dir string) []string {
+fn vmod_subdirs(dir string) ![]string {
 	vmod_path := os.join_path_single(dir, 'v.mod')
-	content := os.read_file(vmod_path) or { return []string{} }
-	subdirs_pos := content.index('subdirs:') or { return []string{} }
-	after_subdirs := content[subdirs_pos..]
-	lb_rel := after_subdirs.index_u8(`[`)
-	if lb_rel < 0 {
+	if !os.exists(vmod_path) {
 		return []string{}
 	}
-	after_lb := after_subdirs[lb_rel + 1..]
-	rb_rel := after_lb.index_u8(`]`)
-	if rb_rel < 0 {
-		return []string{}
-	}
-	raw_items := after_lb[..rb_rel].split(',')
-	mut subdirs := []string{}
-	for raw in raw_items {
-		item := raw.trim_space().trim('\'"')
-		if item.len > 0 {
-			subdirs << item
-		}
-	}
-	return subdirs
+	manifest := vmod.from_file(vmod_path)!
+	return manifest.unknown['subdirs'] or { []string{} }
 }
 
 fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) []string {
