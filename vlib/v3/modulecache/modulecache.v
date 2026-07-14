@@ -716,7 +716,8 @@ fn c_declaration_item(item string, has_brace bool) string {
 		brace := clean.index_u8(`{`)
 		if brace > 0 {
 			head := clean[..brace].trim_space()
-			if head.contains('(') && !c_has_top_level_assign(head) {
+			if head.contains('(') && !c_contains_parenthesized_pointer_declarator(head)
+				&& !c_has_top_level_assign(head) {
 				return '${head};\n'
 			}
 			if c_tag_declaration_keyword_len(clean) > 0 {
@@ -726,10 +727,27 @@ fn c_declaration_item(item string, has_brace bool) string {
 		}
 	}
 	if clean.starts_with('extern ') || clean.starts_with('_Static_assert')
-		|| (clean.contains('(') && !c_has_top_level_assign(clean)) {
+		|| (clean.contains('(') && !c_contains_parenthesized_pointer_declarator(clean)
+		&& !c_has_top_level_assign(clean)) {
 		return item
 	}
 	return c_extern_storage_decl(clean.trim_right(';'))
+}
+
+fn c_contains_parenthesized_pointer_declarator(value string) bool {
+	for i, c in value.bytes() {
+		if c != `(` {
+			continue
+		}
+		mut pos := i + 1
+		for pos < value.len && value[pos] in [` `, `\t`, `\r`, `\n`] {
+			pos++
+		}
+		if pos < value.len && value[pos] == `*` {
+			return true
+		}
+	}
+	return false
 }
 
 fn c_tag_declaration_is_type_only(value string, has_brace bool) bool {
