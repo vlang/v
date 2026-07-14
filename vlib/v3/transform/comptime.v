@@ -1010,8 +1010,8 @@ fn (mut t Transformer) clone_method_subst_children(node flat.Node, var_name stri
 	}
 	mut typ := node.typ
 	if node.kind == .comptime_for {
-		typ = comptime_cond_replace_bare_ident(typ, var_name,
-			'${comptime_method_receiver_base(method.receiver)}.${method.name}')
+		receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
+		typ = comptime_cond_replace_bare_ident(typ, var_name, '${receiver_name}.${method.name}')
 	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind

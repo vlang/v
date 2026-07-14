@@ -176,6 +176,16 @@ fn (mut p Parser) merge_parsed_worker(w &Parser, mut starts []int, chunk_start i
 			if p.a.nodes[k].children_count != 0 {
 				p.a.nodes[k] = p.a.nodes[k].with_shifted_children(child_shift)
 			}
+			// Declaration attributes are linked by an internal directive whose value embeds the
+			// worker-local declaration id. Relocate that id just like child NodeId references.
+			if p.a.nodes[k].kind == .directive && p.a.nodes[k].value.starts_with('@attributes:') {
+				local_id := p.a.nodes[k].value['@attributes:'.len..].int()
+				shifted_marker := '@attributes:${local_id + node_shift}'
+				unsafe {
+					mut node := &p.a.nodes[k]
+					node.value = shifted_marker
+				}
+			}
 		}
 	}
 	// Per-file region starts move by the merge offset.
