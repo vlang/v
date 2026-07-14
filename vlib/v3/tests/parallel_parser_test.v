@@ -94,6 +94,14 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 			src.writeln('const disabled = true')
 			src.writeln('')
 		}
+		if file_index == 1 {
+			src.writeln('const enabled_alias = enabled')
+			src.writeln('')
+		}
+		if file_index == 2 {
+			src.writeln('const enabled_alias_2 = enabled_alias')
+			src.writeln('')
+		}
 		if file_index == 3 {
 			src.writeln('\$if enabled {')
 			src.writeln('\tfn enabled_branch() {}')
@@ -108,6 +116,11 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 			src.writeln('\tfn leaked_disabled_const() {}')
 			src.writeln('} \$else {')
 			src.writeln('\tfn absent_disabled_const() {}')
+			src.writeln('}')
+			src.writeln('\$if enabled_alias_2 {')
+			src.writeln('\tfn alias_enabled_branch() {}')
+			src.writeln('} \$else {')
+			src.writeln('\tfn alias_disabled_branch() {}')
 			src.writeln('}')
 			src.writeln('')
 		}
@@ -132,6 +145,8 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'unmatched_branch')
 	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'leaked_disabled_const')
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'absent_disabled_const')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'alias_enabled_branch')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'alias_disabled_branch')
 }
 
 // build_parallel_parser_v3 builds parallel parser v3 data for v3 tests.

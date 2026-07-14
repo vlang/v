@@ -5216,6 +5216,11 @@ mut:
 	indirections int
 }
 
+struct ComptimeDeferredDeclSource {
+	module_name string
+	decl_name   string
+}
+
 fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.Node) {
 	parts := node.value.split('|')
 	if parts.len != 2 || parts[0].len == 0 || node.children_count == 0 {
@@ -5248,6 +5253,12 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	// Their bodies can also reference metadata from an enclosing reflection loop, which does
 	// not exist as a runtime local while checking the original generic body.
 	if parts[1] in ['methods', 'params', 'attributes'] {
+		if has_items := tc.comptime_deferred_loop_has_items(node.typ, parts[1]) {
+			if !has_items {
+				return
+			}
+		}
+		tc.check_comptime_static_body(body_id, parts[0], parts[1], ComptimeStaticFieldCases{}, ComptimeStaticValueCases{})
 		return
 	}
 
@@ -5268,6 +5279,174 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 		return
 	}
 	tc.check_comptime_static_body(body_id, parts[0], parts[1], field_cases, value_cases)
+}
+
+fn (tc &TypeChecker) comptime_deferred_loop_has_items(source string, loop_kind string) ?bool {
+	if loop_kind == 'methods' {
+		return tc.comptime_method_loop_has_items(source)
+	}
+	if loop_kind == 'params' {
+		return tc.comptime_param_loop_has_items(source)
+	}
+	if loop_kind == 'attributes' {
+		return tc.comptime_attribute_loop_has_items(source)
+	}
+	return none
+}
+
+fn (tc &TypeChecker) comptime_method_loop_has_items(source string) ?bool {
+	base_type := tc.comptime_static_for_base_type(source)
+	struct_name := tc.comptime_static_struct_name(base_type) or { return none }
+	mut wanted_module := tc.struct_modules[struct_name] or { '' }
+	if wanted_module.len == 0 {
+		if decl_file := tc.struct_files[struct_name] {
+			wanted_module = tc.file_modules[decl_file] or { '' }
+		}
+	}
+	if wanted_module.len == 0 {
+		wanted_module = if struct_name.contains('.') {
+			struct_name.all_before_last('.')
+		} else if tc.cur_module.len > 0 {
+			tc.cur_module
+		} else {
+			'main'
+		}
+	}
+	wanted_receiver := struct_name.all_after_last('.').all_before('[')
+	mut module_name := ''
+	for idx in tc.top_level_idx {
+		candidate := tc.a.nodes[idx]
+		if candidate.kind == .file {
+			module_name = 'main'
+			continue
+		}
+		if candidate.kind == .module_decl {
+			module_name = candidate.value
+			continue
+		}
+		if candidate.kind != .fn_decl || !tc.fn_has_receiver_param(candidate) {
+			continue
+		}
+		receiver := candidate.value.all_before_last('.').all_after_last('.').all_before('[')
+		candidate_module := if module_name.len > 0 { module_name } else { 'main' }
+		if candidate_module == wanted_module && receiver == wanted_receiver {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) comptime_param_loop_has_items(source string) ?bool {
+	wanted := tc.comptime_deferred_decl_source(source, false) or { return none }
+	mut module_name := ''
+	for idx in tc.top_level_idx {
+		candidate := tc.a.nodes[idx]
+		if candidate.kind == .file {
+			module_name = 'main'
+			continue
+		}
+		if candidate.kind == .module_decl {
+			module_name = candidate.value
+			continue
+		}
+		if candidate.kind != .fn_decl {
+			continue
+		}
+		candidate_module := if module_name.len > 0 { module_name } else { 'main' }
+		if candidate_module != wanted.module_name || candidate.value != wanted.decl_name {
+			continue
+		}
+		param_start := if tc.fn_has_receiver_param(candidate) { 1 } else { 0 }
+		mut count := 0
+		for i in param_start .. candidate.children_count {
+			if tc.a.child_node(&candidate, i).kind == .param {
+				count++
+			}
+		}
+		return count > 0
+	}
+	return none
+}
+
+fn (tc &TypeChecker) comptime_attribute_loop_has_items(source string) ?bool {
+	wanted := tc.comptime_deferred_decl_source(source, true) or { return none }
+	mut module_name := ''
+	mut decl_id := -1
+	for idx in tc.top_level_idx {
+		candidate := tc.a.nodes[idx]
+		if candidate.kind == .file {
+			module_name = 'main'
+			continue
+		}
+		if candidate.kind == .module_decl {
+			module_name = candidate.value
+			continue
+		}
+		if candidate.kind !in [.struct_decl, .enum_decl, .fn_decl, .type_decl] {
+			continue
+		}
+		candidate_module := if module_name.len > 0 { module_name } else { 'main' }
+		if candidate_module == wanted.module_name && candidate.value == wanted.decl_name {
+			decl_id = idx
+			break
+		}
+	}
+	if decl_id < 0 {
+		return none
+	}
+	marker := '@attributes:${decl_id}'
+	for candidate in tc.a.nodes {
+		if candidate.kind == .directive && candidate.value == marker {
+			return candidate.generic_params.len > 0
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) comptime_deferred_decl_source(source string, allow_type bool) ?ComptimeDeferredDeclSource {
+	clean := source.trim_space()
+	if clean.len == 0 {
+		return none
+	}
+	if !clean.contains('.') {
+		if allow_type {
+			if resolved := tc.resolve_selective_import_type_symbol(clean) {
+				return comptime_deferred_qualified_source(resolved)
+			}
+		}
+		if resolved := tc.resolve_selective_import_symbol(clean) {
+			return comptime_deferred_qualified_source(resolved)
+		}
+		return ComptimeDeferredDeclSource{
+			module_name: if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+			decl_name:   clean
+		}
+	}
+	dot := clean.index_u8(`.`)
+	first := clean[..dot]
+	if resolved := tc.resolve_import_alias(first) {
+		return ComptimeDeferredDeclSource{
+			module_name: resolved
+			decl_name:   clean[dot + 1..]
+		}
+	}
+	if first == tc.cur_module {
+		return ComptimeDeferredDeclSource{
+			module_name: first
+			decl_name:   clean[dot + 1..]
+		}
+	}
+	return ComptimeDeferredDeclSource{
+		module_name: if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
+		decl_name:   clean
+	}
+}
+
+fn comptime_deferred_qualified_source(source string) ComptimeDeferredDeclSource {
+	return ComptimeDeferredDeclSource{
+		module_name: source.all_before_last('.')
+		decl_name:   source.all_after_last('.')
+	}
 }
 
 fn (mut tc TypeChecker) check_comptime_members(id flat.NodeId, var_name string, members []string, meta_name string) {
@@ -5395,6 +5574,9 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		return
 	}
 	if node.kind == .comptime_if && comptime_text_references_var(node.value, var_name) {
+		if loop_kind in ['methods', 'params', 'attributes'] {
+			return
+		}
 		tc.check_comptime_static_metadata_if(node, var_name, loop_kind, field_cases, value_cases)
 		return
 	}
@@ -5614,6 +5796,9 @@ fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.No
 
 fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name string, loop_kind string) ?Type {
 	if !tc.valid_node_id(id) {
+		return none
+	}
+	if loop_kind in ['methods', 'params', 'attributes'] {
 		return none
 	}
 	node := tc.a.nodes[int(id)]

@@ -2789,3 +2789,130 @@ fn test_comptime_string_comparisons_normalize_escapes() {
 	out := round4_run_good(v3_bin, 'comptime_escaped_string_comparisons', src)
 	assert out == 'if quote\nconst quote\nif slash\nconst slash\nmatch quote\nmatch slash'
 }
+
+fn test_deferred_reflection_loops_check_static_body_code() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'method_loop_static_body_error', 'struct App {}
+
+fn (app App) run(value int) {
+	_ = app
+	_ = value
+}
+
+fn main() {
+	$for method in App.methods {
+		missing_method_loop_fn()
+	}
+}
+',
+		'unknown function `missing_method_loop_fn`')
+	round4_run_bad(v3_bin, 'param_loop_static_body_error', 'fn consume(value int) {
+	_ = value
+}
+
+fn main() {
+	$for param in consume.params {
+		missing_param_loop_fn()
+	}
+}
+',
+		'unknown function `missing_param_loop_fn`')
+	round4_run_bad(v3_bin, 'attribute_loop_static_body_error', '@[route]
+struct App {}
+
+fn main() {
+	$for attr in App.attributes {
+		missing_attribute_loop_fn()
+	}
+}
+',
+		'unknown function `missing_attribute_loop_fn`')
+}
+
+fn test_deferred_method_loop_skips_unselected_metadata_branch() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'method_loop_unselected_metadata_branch', 'struct App {}
+
+fn (app App) run() {
+	_ = app
+}
+
+fn main() {
+	mut rows := []string{}
+	$for method in App.methods {
+		$if method.name == "missing" {
+			missing_unselected_method_fn()
+		} $else {
+			rows << method.name
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'run'
+}
+
+fn test_empty_deferred_reflection_loops_skip_static_body_checks() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'empty_deferred_reflection_loops', 'struct Empty {}
+
+fn no_params() {}
+
+fn main() {
+	$for method in Empty.methods {
+		missing_empty_method_fn()
+	}
+	$for param in no_params.params {
+		missing_empty_param_fn()
+	}
+	$for attr in Empty.attributes {
+		missing_empty_attribute_fn()
+	}
+	println("ok")
+}
+')
+	assert out == 'ok'
+	imported_out := round4_run_good_project(v3_bin, 'empty_imported_deferred_reflection_loops', {
+		'v.mod':            "Module { name: 'empty_imported_deferred_reflection_loops' }\n"
+		'pkg/pkg.v':        'module pkg
+
+pub struct Empty {}
+
+pub fn no_params() {}
+'
+		'selected/types.v': 'module selected
+
+pub struct EmptySelected {}
+
+pub fn no_params_selected() {}
+'
+		'main.v':           'module main
+
+import pkg as p
+import selected { EmptySelected, no_params_selected }
+
+fn main() {
+	$for method in p.Empty.methods {
+		missing_empty_imported_method_fn()
+	}
+	$for param in p.no_params.params {
+		missing_empty_imported_param_fn()
+	}
+	$for attr in p.Empty.attributes {
+		missing_empty_imported_attribute_fn()
+	}
+	$for method in EmptySelected.methods {
+		missing_empty_selected_method_fn()
+	}
+	$for param in no_params_selected.params {
+		missing_empty_selected_param_fn()
+	}
+	$for attr in EmptySelected.attributes {
+		missing_empty_selected_attribute_fn()
+	}
+	println("imported ok")
+}
+'
+	}, '')
+	assert imported_out == 'imported ok'
+}

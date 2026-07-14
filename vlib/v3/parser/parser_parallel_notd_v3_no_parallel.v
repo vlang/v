@@ -18,6 +18,7 @@ import v3.token
 const min_parallel_parse_files = 4
 const min_parallel_parse_bytes = 131072
 const max_parallel_parse_jobs = 8
+const comptime_const_prepass_alias_prefix = '\x00v3-comptime-alias:'
 
 struct ComptimeConstPrepassToken {
 	tok token.Token
@@ -152,6 +153,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 				}
 			}
 		}
+		p.resolve_parallel_comptime_const_aliases()
 		for mut w in workers {
 			w.comptime_const_values = p.comptime_const_values.clone()
 		}
@@ -361,7 +363,7 @@ fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_n
 			}
 			tok = s.scan()
 		}
-		if value := p.parallel_comptime_const_value(module_name, value_tokens) {
+		if value := parallel_comptime_const_value(value_tokens) {
 			p.comptime_const_values[comptime_const_value_key(module_name, name)] = value
 		}
 		if !grouped || closed_group || tok == .eof {
@@ -371,7 +373,7 @@ fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_n
 	}
 }
 
-fn (p &Parser) parallel_comptime_const_value(module_name string, tokens []ComptimeConstPrepassToken) ?string {
+fn parallel_comptime_const_value(tokens []ComptimeConstPrepassToken) ?string {
 	mut start := 0
 	mut end := tokens.len
 	for end - start >= 2 && tokens[start].tok == .lpar && tokens[end - 1].tok == .rpar {
@@ -399,19 +401,51 @@ fn (p &Parser) parallel_comptime_const_value(module_name string, tokens []Compti
 			comptime_cond_quoted_string(strip_quotes(t.lit))
 		}
 		.name {
-			module_key := comptime_const_value_key(module_name, t.lit)
-			builtin_key := comptime_const_value_key('builtin', t.lit)
-			if module_key in p.comptime_const_values {
-				p.comptime_const_values[module_key]
-			} else if builtin_key in p.comptime_const_values {
-				p.comptime_const_values[builtin_key]
-			} else {
-				none
-			}
+			comptime_const_prepass_alias_prefix + t.lit
 		}
 		else {
 			none
 		}
+	}
+}
+
+fn (mut p Parser) resolve_parallel_comptime_const_aliases() {
+	for _ in 0 .. p.comptime_const_values.len {
+		mut updates := map[string]string{}
+		for key, value in p.comptime_const_values {
+			if !value.starts_with(comptime_const_prepass_alias_prefix) {
+				continue
+			}
+			alias_name := value[comptime_const_prepass_alias_prefix.len..]
+			module_name := key.all_before('\n')
+			module_key := comptime_const_value_key(module_name, alias_name)
+			builtin_key := comptime_const_value_key('builtin', alias_name)
+			alias_value := if resolved := p.comptime_const_values[module_key] {
+				resolved
+			} else if resolved := p.comptime_const_values[builtin_key] {
+				resolved
+			} else {
+				continue
+			}
+			if !alias_value.starts_with(comptime_const_prepass_alias_prefix) {
+				updates[key] = alias_value
+			}
+		}
+		if updates.len == 0 {
+			break
+		}
+		for key, value in updates {
+			p.comptime_const_values[key] = value
+		}
+	}
+	mut unresolved := []string{}
+	for key, value in p.comptime_const_values {
+		if value.starts_with(comptime_const_prepass_alias_prefix) {
+			unresolved << key
+		}
+	}
+	for key in unresolved {
+		p.comptime_const_values.delete(key)
 	}
 }
 
