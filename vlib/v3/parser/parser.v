@@ -2585,7 +2585,12 @@ fn (mut p Parser) parse_comptime_match_subject() (string, bool) {
 		p.next()
 		return '$' + p.expect_name_or_keyword(), false
 	}
-	if p.tok == .number || p.tok == .string || p.tok == .char {
+	if p.tok == .string || p.tok == .char {
+		value := p.comptime_cond_token_text()
+		p.next()
+		return value, true
+	}
+	if p.tok == .number {
 		value := p.lit
 		p.next()
 		return value, true
@@ -2657,7 +2662,12 @@ fn (mut p Parser) parse_comptime_match_pattern() string {
 		p.next()
 		return '$' + p.expect_name_or_keyword()
 	}
-	if p.tok == .number || p.tok == .string || p.tok == .char {
+	if p.tok == .string || p.tok == .char {
+		value := p.comptime_cond_token_text()
+		p.next()
+		return value
+	}
+	if p.tok == .number {
 		value := p.lit
 		p.next()
 		return value

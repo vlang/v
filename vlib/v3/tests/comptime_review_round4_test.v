@@ -2193,6 +2193,22 @@ fn test_raw_string_operand_is_normalized_before_comptime_folding() {
 	assert out == 'ok'
 }
 
+fn test_raw_string_comptime_match_literals_are_normalized() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'raw_string_comptime_match_literals', "fn main() {
+	\$match r'abc' {
+		'abc' { println('subject') }
+		\$else { println('wrong-subject') }
+	}
+	\$match 'def' {
+		r'def' { println('pattern') }
+		\$else { println('wrong-pattern') }
+	}
+}
+")
+	assert out == 'subject\npattern'
+}
+
 fn test_field_condition_substitution_skips_string_literals() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_condition_string_literal', "struct QuotedFields {
