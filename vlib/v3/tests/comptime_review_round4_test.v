@@ -1990,6 +1990,74 @@ fn main() {
 	assert out == 'FunctionData|make|true|make|true|true'
 }
 
+fn test_imported_function_param_types_use_declaring_module() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'imported_function_param_module', {
+		'v.mod':     "Module { name: 'imported_function_param_module' }\n"
+		'pkg/pkg.v': 'module pkg
+
+pub struct Item {}
+
+pub fn consume(item Item) {
+	_ = item
+}
+'
+		'main.v':    'module main
+
+import pkg
+
+fn main() {
+	mut params := []FunctionParam{}
+	mut rows := []string{}
+	$for param in pkg.consume.params {
+		params << param
+		rows << param.name
+		rows << (param.typ == typeof[pkg.Item]().idx).str()
+	}
+	rows << (params[0].typ == typeof[pkg.Item]().idx).str()
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'item|true|true'
+}
+
+fn test_nested_param_and_attribute_reflection_respects_shadowing() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'nested_param_attribute_shadowing', "@[outer]
+struct OuterAttrs {}
+
+@[inner]
+struct InnerAttrs {}
+
+fn outer(first string) {
+	_ = first
+}
+
+fn inner(second int) {
+	_ = second
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for param in outer.params {
+		rows << 'outer-param:' + param.name
+		\$for param in inner.params {
+			rows << 'inner-param:' + param.name
+		}
+	}
+	\$for attr in OuterAttrs.attributes {
+		rows << 'outer-attr:' + attr.name
+		\$for attr in InnerAttrs.attributes {
+			rows << 'inner-attr:' + attr.name
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'outer-param:first|inner-param:second|outer-attr:outer|inner-attr:inner'
+}
+
 fn test_nested_method_reflection_respects_shadowed_loop_variable() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_shadowing', 'struct OuterMethods {}

@@ -81,8 +81,9 @@ struct MethodMeta {
 }
 
 struct ParamMeta {
-	name string
-	typ  string
+	name        string
+	typ         string
+	module_name string
 }
 
 struct AttributeMeta {
@@ -506,6 +507,9 @@ fn (mut t Transformer) clone_attribute_subst(id flat.NodeId, var_name string, at
 		return id
 	}
 	node := t.a.nodes[int(id)]
+	if comptime_for_declares_var(node, var_name) {
+		return t.clone_node_preserving_children(node)
+	}
 	if node.kind == .comptime_if {
 		cond := t.subst_attribute_cond(node.value, var_name, attr)
 		if comptime_cond_references_ident(node.value, var_name)
@@ -654,8 +658,9 @@ fn (t &Transformer) comptime_param_metas(fn_name string) []ParamMeta {
 				continue
 			}
 			params << ParamMeta{
-				name: param.value
-				typ:  param.typ
+				name:        param.value
+				typ:         param.typ
+				module_name: module_name
 			}
 		}
 		if is_scoped_match {
@@ -698,6 +703,9 @@ fn (mut t Transformer) clone_param_subst(id flat.NodeId, var_name string, param 
 		return id
 	}
 	node := t.a.nodes[int(id)]
+	if comptime_for_declares_var(node, var_name) {
+		return t.clone_node_preserving_children(node)
+	}
 	if node.kind == .ident && node.value == var_name {
 		return t.make_param_data_literal(param)
 	}
@@ -705,16 +713,28 @@ fn (mut t Transformer) clone_param_subst(id flat.NodeId, var_name string, param 
 		base := t.a.child_node(&node, 0)
 		if base.kind == .ident && base.value == var_name {
 			return match node.value {
-				'name' { t.make_string_literal(param.name) }
-				'typ' { t.make_int_literal(t.comptime_field_type_id(param.typ, t.cur_module)) }
-				else { t.clone_param_subst_children(node, var_name, param) }
+				'name' {
+					t.make_string_literal(param.name)
+				}
+				'typ' {
+					t.make_int_literal(t.comptime_field_type_id(param.typ, param.module_name))
+				}
+				else {
+					t.clone_param_subst_children(node, var_name, param)
+				}
 			}
 		}
 		if base.kind == .typeof_expr && t.typeof_arg_is_param_typ(t.a.child(&node, 0), var_name) {
 			return match node.value {
-				'name' { t.make_string_literal(param.typ) }
-				'idx' { t.make_int_literal(t.comptime_field_type_id(param.typ, t.cur_module)) }
-				else { t.clone_param_subst_children(node, var_name, param) }
+				'name' {
+					t.make_string_literal(param.typ)
+				}
+				'idx' {
+					t.make_int_literal(t.comptime_field_type_id(param.typ, param.module_name))
+				}
+				else {
+					t.clone_param_subst_children(node, var_name, param)
+				}
 			}
 		}
 	}
@@ -796,7 +816,7 @@ fn (mut t Transformer) clone_param_subst_children(node flat.Node, var_name strin
 }
 
 fn (mut t Transformer) make_param_data_literal(param ParamMeta) flat.NodeId {
-	return t.make_param_data_literal_in_module(param, t.cur_module)
+	return t.make_param_data_literal_in_module(param, param.module_name)
 }
 
 fn (mut t Transformer) make_param_data_literal_in_module(param ParamMeta, module_name string) flat.NodeId {
@@ -926,8 +946,9 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			param := t.a.child_node(&node, i)
 			if param.kind == .param {
 				params << ParamMeta{
-					name: param.value
-					typ:  param.typ
+					name:        param.value
+					typ:         param.typ
+					module_name: module_name
 				}
 			}
 		}
