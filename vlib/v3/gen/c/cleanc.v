@@ -1959,14 +1959,17 @@ fn c_flag_include_dirs(flags []string) []string {
 		for i < tokens.len {
 			tok := tokens[i]
 			mut dir := ''
-			if tok == '-I' {
+			if tok in ['-I', '-isystem'] {
 				if i + 1 < tokens.len {
 					dir = tokens[i + 1]
 					i++
 				}
 			} else if tok.starts_with('-I') && tok.len > 2 {
 				dir = tok[2..]
+			} else if tok.starts_with('-isystem') && tok.len > '-isystem'.len {
+				dir = tok['-isystem'.len..].trim_left('=')
 			}
+			dir = dir.trim('"\'')
 			if dir.len > 0 && dir !in dirs {
 				dirs << dir
 			}
