@@ -1115,8 +1115,9 @@ struct StructDeclInfo {
 }
 
 struct SoaFieldInfo {
-	name   string
-	c_type string
+	name           string
+	c_type         string
+	is_fixed_array bool
 }
 
 struct SharedFieldInfo {
@@ -3101,11 +3102,38 @@ fn (mut g FlatGen) write_soa_struct_return(base_name string, fields []SoaFieldIn
 		g.writeln('\treturn (${base_name}){0};')
 		return
 	}
+	mut has_fixed_array := false
+	for field in fields {
+		if field.is_fixed_array {
+			has_fixed_array = true
+			break
+		}
+	}
+	if has_fixed_array {
+		g.writeln('\t${base_name} val = (${base_name}){0};')
+		for field in fields {
+			if field.is_fixed_array {
+				g.writeln('\tmemmove(val.${field.name}, ${prefix}${field.name}[${index}], sizeof(val.${field.name}));')
+			} else {
+				g.writeln('\tval.${field.name} = ${prefix}${field.name}[${index}];')
+			}
+		}
+		g.writeln('\treturn val;')
+		return
+	}
 	g.writeln('\treturn (${base_name}){')
 	for field in fields {
 		g.writeln('\t\t.${field.name} = ${prefix}${field.name}[${index}],')
 	}
 	g.writeln('\t};')
+}
+
+fn (mut g FlatGen) write_soa_field_value_copy(field SoaFieldInfo, prefix string, index string) {
+	if field.is_fixed_array {
+		g.writeln('\tmemmove(${prefix}${field.name}[${index}], val.${field.name}, sizeof(${prefix}${field.name}[${index}]));')
+		return
+	}
+	g.writeln('\t${prefix}${field.name}[${index}] = val.${field.name};')
 }
 
 fn (mut g FlatGen) emit_soa_companion(struct_name string) {
@@ -3116,9 +3144,11 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 	soa_name := g.soa_companion_name(struct_name)
 	mut soa_fields := []SoaFieldInfo{cap: fields.len}
 	for f in fields {
+		is_fixed_array := if _ := array_fixed_type(f.typ) { true } else { false }
 		soa_fields << SoaFieldInfo{
-			name:   g.cname(f.name)
-			c_type: g.soa_field_c_type(struct_name, f)
+			name:           g.cname(f.name)
+			c_type:         g.soa_field_c_type(struct_name, f)
+			is_fixed_array: is_fixed_array
 		}
 	}
 	g.writeln('/* SoA companion for ${base_name}. */')
@@ -3151,7 +3181,7 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 	g.writeln('')
 	g.writeln('void ${soa_name}_set(${soa_name}* soa, int i, ${base_name} val) {')
 	for field in soa_fields {
-		g.writeln('\tsoa->${field.name}[i] = val.${field.name};')
+		g.write_soa_field_value_copy(field, 'soa->', 'i')
 	}
 	g.writeln('}')
 	g.writeln('')
@@ -3165,7 +3195,7 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 	g.writeln('\t}')
 	g.writeln('\tint i = soa->len;')
 	for field in soa_fields {
-		g.writeln('\tsoa->${field.name}[i] = val.${field.name};')
+		g.write_soa_field_value_copy(field, 'soa->', 'i')
 	}
 	g.writeln('\tsoa->len++;')
 	g.writeln('}')
