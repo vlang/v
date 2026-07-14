@@ -55,6 +55,10 @@ pub fn (tc &TypeChecker) ownership_expr_moves_storage(_ flat.NodeId, _ flat.Node
 	return false
 }
 
+pub fn (tc &TypeChecker) ownership_expr_creates_owned_value(_ flat.NodeId) bool {
+	return false
+}
+
 pub fn (tc &TypeChecker) ownership_default_clone_missing_method(_ Type) ?string {
 	return none
 }

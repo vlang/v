@@ -5191,6 +5191,11 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					&& !t.validate_cgen_array_method_args(node, base_id, clean_base_type, fn_node.value) {
 					return t.make_empty()
 				}
+				if lowered := t.lower_owned_array_accessor_call(base_id, base_type, elem_type,
+					fn_node.value)
+				{
+					return lowered
+				}
 				if lowered := t.lower_owned_array_removal_call(node, base_id, base_type, elem_type,
 					fn_node.value)
 				{
@@ -5211,6 +5216,11 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					t.mark_fn_used(method_name)
 					return t.make_call_typed(method_name, args, ret_type)
 				}
+				if lowered := t.lower_owned_array_accessor_call(base_id, base_type, elem_type,
+					fn_node.value)
+				{
+					return lowered
+				}
 				if lowered := t.lower_owned_array_removal_call(node, base_id, base_type, elem_type,
 					fn_node.value)
 				{
@@ -5223,6 +5233,43 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return none
 		}
 	}
+}
+
+// lower_owned_array_accessor_call returns an independent clone for a non-removing array
+// accessor. The stored element remains owned by the array and will be destroyed with it.
+fn (mut t Transformer) lower_owned_array_accessor_call(base_id flat.NodeId, base_type string, elem_type string, method string) ?flat.NodeId {
+	if method !in ['first', 'last'] || isnil(t.tc) {
+		return none
+	}
+	elem := t.tc.parse_type(elem_type)
+	if !t.tc.ownership_type_requires_destruction(elem) {
+		return none
+	}
+	if _ := t.tc.ownership_default_clone_missing_method(elem) {
+		return none
+	}
+	source_is_owned_temporary := !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
+	base := t.stable_expr_for_reuse(base_id)
+	clean_base_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	mut array_value := base
+	if base_type.starts_with('&') {
+		array_value = t.make_prefix(.mul, base)
+		t.set_node_typ(int(array_value), clean_base_type)
+	}
+	index := if method == 'first' {
+		t.make_int_literal(0)
+	} else {
+		t.make_infix(.minus, t.make_selector(array_value, 'len', 'int'), t.make_int_literal(1))
+	}
+	stored := t.make_index(array_value, index, elem_type)
+	cloned := t.make_compiler_default_clone_value(stored, elem_type, true)
+	if !source_is_owned_temporary {
+		return cloned
+	}
+	result_name := t.new_temp('array_accessor_result')
+	t.pending_stmts << t.make_decl_assign_typed(result_name, cloned, elem_type)
+	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(array_value), 'void'))
+	return t.make_ident(result_name)
 }
 
 // lower_owned_array_removal_call drops ownership-bearing elements before a raw array
@@ -5329,14 +5376,15 @@ fn (mut t Transformer) append_owned_array_drop_range(array_value flat.NodeId, el
 	t.pending_stmts << t.make_for_stmt(init, cond, post, arr1(drop_stmt), flat.Node{})
 }
 
-// try_lower_ignored_owned_array_pop_stmt consumes and destroys a popped owner when the
-// source program ignores the value returned by pop/pop_left.
+// try_lower_ignored_owned_array_pop_stmt destroys an owned array element result when the
+// source program ignores it. Pop methods transfer the removed element, while first/last
+// produce the independent clone supplied by lower_owned_array_accessor_call.
 fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
 	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
 		return none
 	}
 	fn_node := t.a.child_node(&node, 0)
-	if fn_node.kind != .selector || fn_node.value !in ['pop', 'pop_left']
+	if fn_node.kind != .selector || fn_node.value !in ['first', 'last', 'pop', 'pop_left']
 		|| fn_node.children_count == 0 {
 		return none
 	}

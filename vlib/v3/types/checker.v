@@ -10552,6 +10552,13 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		if clean_array := array_like_type_for_method(clean, fn_node.value) {
 			match fn_node.value {
 				'first', 'last', 'pop', 'pop_left' {
+					if fn_node.value in ['first', 'last'] {
+						if bad_type := tc.ownership_default_clone_missing_method(clean_array.elem_type) {
+							tc.record_error(.call_arg_mismatch,
+								'cannot return an independent array element: `${bad_type}` requires ownership destruction but has no `clone()` method',
+								id)
+						}
+					}
 					return CallInfo{
 						name:         ''
 						params:       tarr1(base_type)

@@ -4103,6 +4103,9 @@ fn (mut tc TypeChecker) ownership_prescan_array_element_method_for_owned_calls(i
 		return false
 	}
 	recv_id := tc.a.child(fn_node, 0)
+	if _ := tc.ownership_cloned_array_accessor_elem_type(recv_id, method) {
+		return true
+	}
 	array_name := tc.ownership_expr_ident_name(recv_id)
 	if array_name.len == 0 {
 		return false
@@ -8508,6 +8511,14 @@ fn (mut tc TypeChecker) ownership_mark_return_from_array_element_method(fn_name 
 		return false
 	}
 	recv_id := tc.a.child(fn_node, 0)
+	if _ := tc.ownership_cloned_array_accessor_elem_type(recv_id, method) {
+		mut st := tc.ownership_state()
+		for return_slot in tc.ownership_return_slot_indices(expr_id, slot_idx, '') {
+			tc.ownership_add_fn_return_slot(fn_name, return_slot)
+		}
+		st.mark_fn_return_owned(fn_name)
+		return true
+	}
 	if unwrap_pointer(tc.resolve_type(recv_id)) !is Array {
 		return false
 	}
@@ -8708,6 +8719,9 @@ fn (mut tc TypeChecker) ownership_consume_array_element_method_result(expr_id fl
 		return false
 	}
 	recv_id := tc.a.child(fn_node, 0)
+	if _ := tc.ownership_cloned_array_accessor_elem_type(recv_id, method) {
+		return true
+	}
 	if unwrap_pointer(tc.resolve_type(recv_id)) !is Array {
 		return false
 	}
@@ -9208,6 +9222,10 @@ fn (mut tc TypeChecker) ownership_mark_from_array_element_method(lhs_name string
 		return false
 	}
 	recv_id := tc.a.child(fn_node, 0)
+	if elem_type := tc.ownership_cloned_array_accessor_elem_type(recv_id, method) {
+		tc.ownership_mark_owned(lhs_name, elem_type, pos)
+		return true
+	}
 	if unwrap_pointer(tc.resolve_type(recv_id)) !is Array {
 		return false
 	}
@@ -9238,6 +9256,22 @@ fn (mut tc TypeChecker) ownership_mark_from_array_element_method(lhs_name string
 	tc.ownership_update_array_length_after_element_method(array_name, method)
 	tc.ownership_clear_removed_array_element_after_method(array_name, source_key, method)
 	return marked
+}
+
+// ownership_cloned_array_accessor_elem_type reports an ownership-bearing first/last result
+// that is independently cloned instead of transferred out of its array storage.
+fn (tc &TypeChecker) ownership_cloned_array_accessor_elem_type(recv_id flat.NodeId, method string) ?Type {
+	if method !in ['first', 'last'] {
+		return none
+	}
+	array_type := unwrap_pointer(tc.resolve_type(recv_id))
+	if array_type is Array && tc.ownership_type_requires_destruction(array_type.elem_type) {
+		if _ := tc.ownership_default_clone_missing_method(array_type.elem_type) {
+			return none
+		}
+		return array_type.elem_type
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) ownership_array_element_method_source_key(array_name string, method string) string {
@@ -9563,6 +9597,18 @@ fn (mut tc TypeChecker) ownership_expr_produces_owned_value(id flat.NodeId) bool
 	return tc.ownership_expr_is_to_owned_call(id) || tc.ownership_expr_is_owned_clone_call(id)
 		|| tc.ownership_expr_is_ownership_call(id)
 		|| tc.ownership_type_is_owned(tc.resolve_type(id))
+}
+
+// ownership_expr_creates_owned_value reports whether evaluating an expression creates a
+// fresh owner rather than merely naming ownership-bearing storage.
+pub fn (tc &TypeChecker) ownership_expr_creates_owned_value(id flat.NodeId) bool {
+	if tc.ownership_expr_is_to_owned_call(id) || tc.ownership_expr_is_ownership_call(id) {
+		return true
+	}
+	call_id := tc.ownership_unwrap_expr(id)
+	clone_receiver := tc.ownership_clone_receiver_id(call_id)
+	return tc.valid_node_id(clone_receiver)
+		&& tc.ownership_type_requires_destruction(tc.resolve_type(call_id))
 }
 
 fn (mut tc TypeChecker) ownership_clone_result_is_owned(call_id flat.NodeId, recv_type Type) bool {
