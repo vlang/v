@@ -11,11 +11,16 @@ fn test_arc_clone_shares_payload_and_drops_it_once() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_arc_codegen_${pid}')
 	src := os.join_path(os.temp_dir(), 'v3_arc_codegen_${pid}.v')
 	out := os.join_path(os.temp_dir(), 'v3_arc_codegen_program_${pid}')
+	nonownership_src := os.join_path(os.temp_dir(), 'v3_arc_codegen_nonownership_${pid}.v')
+	nonownership_out := os.join_path(os.temp_dir(), 'v3_arc_codegen_nonownership_program_${pid}')
 	defer {
 		os.rm(v3_bin) or {}
 		os.rm(src) or {}
 		os.rm(out) or {}
 		os.rm(out + '.c') or {}
+		os.rm(nonownership_src) or {}
+		os.rm(nonownership_out) or {}
+		os.rm(nonownership_out + '.c') or {}
 	}
 	build :=
 		os.execute('${arc_codegen_vexe} -gc none -d ownership -path "${arc_codegen_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${arc_codegen_v3_src}')
@@ -38,6 +43,16 @@ fn (mut resource Resource) drop() {
 
 struct ResourceConfig implements IClone {
 	resource arc.Arc[Resource]
+}
+
+struct ContainerConfig implements IClone {
+	resources []arc.Arc[Resource]
+	by_name map[string]arc.Arc[Resource]
+}
+
+struct FactoryConfig implements IClone {
+	first string
+	second string
 }
 
 type ResourceSum = Resource | int
@@ -83,6 +98,35 @@ fn exercise_map_resource() {
 	assert value.strong_count() == 1
 }
 
+fn exercise_container_clone() {
+	original := ContainerConfig{
+		resources: [arc.new(Resource{id: 9})]
+		by_name: {
+			"resource": arc.new(Resource{id: 10})
+		}
+	}
+	cloned := original.clone()
+	assert original.resources[0].strong_count() == 2
+	assert cloned.resources[0].strong_count() == 2
+	assert original.by_name["resource"].strong_count() == 2
+	assert cloned.by_name["resource"].strong_count() == 2
+	assert arc.ptr_eq(&original.resources[0], &cloned.resources[0])
+}
+
+fn make_factory_config() FactoryConfig {
+	println("make factory")
+	return FactoryConfig{
+		first: "first".to_owned()
+		second: "second".to_owned()
+	}
+}
+
+fn exercise_unstable_clone_receiver() {
+	cloned := make_factory_config().clone()
+	assert cloned.first == "first"
+	assert cloned.second == "second"
+}
+
 fn main() {
 	exercise_resource()
 	replace_resource()
@@ -90,6 +134,8 @@ fn main() {
 	clone_assign_resource()
 	exercise_sum_resource()
 	exercise_map_resource()
+	exercise_container_clone()
+	exercise_unstable_clone_receiver()
 	original := Config{
 		replacement: arc.new(?[]u8([u8(1), 2, 3]))
 	}
@@ -110,5 +156,26 @@ fn main() {
 	assert c_source.contains('__clone')
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output == 'drop 7\ndrop 1\ndrop 2\ndrop 3\ndrop 4\ndrop 5\ndrop 6\ndrop 8\n', run.output
+	lines := run.output.trim_space().split_into_lines()
+	assert lines.count(it == 'make factory') == 1, run.output
+	for id in 1 .. 11 {
+		assert lines.count(it == 'drop ${id}') == 1, run.output
+	}
+	assert lines.len == 11, run.output
+	os.write_file(nonownership_src, 'module main
+
+import sync.arc
+
+fn main() {
+	value := arc.new(7)
+	cloned := value.clone()
+	assert cloned.strong_count() == 2
+}
+') or {
+		panic(err)
+	}
+	nonownership_compile := os.execute('${v3_bin} ${nonownership_src} -b c -o ${nonownership_out}')
+	assert nonownership_compile.exit_code == 0, nonownership_compile.output
+	nonownership_run := os.execute(nonownership_out)
+	assert nonownership_run.exit_code == 0, nonownership_run.output
 }
