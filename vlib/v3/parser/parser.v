@@ -46,6 +46,7 @@ mut:
 	cur_struct             string   // receiver type name of the current method, for `@STRUCT`
 	cur_method_is_static   bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
 	comptime_for_vars      []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
+	comptime_method_var    string   // innermost active `$for method in Type.methods` loop variable
 	comptime_const_values  map[string]string
 	comptime_local_values  map[string]string
 	comptime_value_undos   []ComptimeValueUndo
@@ -2371,7 +2372,12 @@ fn (mut p Parser) parse_comptime_for() flat.NodeId {
 	kind := if segs.len > 1 { segs.last() } else { 'fields' }
 	base := if segs.len > 1 { segs[..segs.len - 1].join('.') } else { segs.last() }
 	p.comptime_for_vars << val_var
+	previous_method_var := p.comptime_method_var
+	if kind == 'methods' {
+		p.comptime_method_var = val_var
+	}
 	body := p.block_stmt()
+	p.comptime_method_var = previous_method_var
 	p.comptime_for_vars.pop()
 	start := p.add_children([body])
 	return p.a.add_node(flat.Node{
@@ -3783,8 +3789,25 @@ fn (mut p Parser) mark_node_mut(id flat.NodeId) {
 		return
 	}
 	node := p.a.nodes[int(id)]
-	if node.kind == .decl_assign && node.children_count > 0 {
-		p.forget_comptime_lhs_value(p.a.children[int(node.children_start)])
+	if node.kind == .decl_assign {
+		p.forget_comptime_decl_lhs_values(node)
+	}
+}
+
+fn (mut p Parser) forget_comptime_decl_lhs_values(node flat.Node) {
+	lhs_count_value := node.value.int()
+	lhs_count := if lhs_count_value > 0 { lhs_count_value } else { 1 }
+	rhs_count := int(node.children_count) - lhs_count
+	mut child_offset := 0
+	for i in 0 .. lhs_count {
+		if child_offset >= int(node.children_count) {
+			break
+		}
+		p.forget_comptime_lhs_value(p.a.children[int(node.children_start) + child_offset])
+		child_offset++
+		if i < rhs_count {
+			child_offset++
+		}
 	}
 }
 
@@ -3792,15 +3815,14 @@ fn (mut p Parser) mark_node_shared(id flat.NodeId) {
 	if int(id) < 0 || int(id) >= p.a.nodes.len {
 		return
 	}
+	node := p.a.nodes[int(id)]
+	if node.kind != .decl_assign {
+		return
+	}
+	p.forget_comptime_decl_lhs_values(node)
 	unsafe {
-		mut node := &p.a.nodes[int(id)]
-		if node.kind != .decl_assign {
-			return
-		}
-		if node.children_count > 0 {
-			p.forget_comptime_lhs_value(p.a.children[int(node.children_start)])
-		}
-		node.value = if node.value.len == 0 { 'shared' } else { 'shared:${node.value}' }
+		mut node_ptr := &p.a.nodes[int(id)]
+		node_ptr.value = if node_ptr.value.len == 0 { 'shared' } else { 'shared:${node_ptr.value}' }
 	}
 }
 
@@ -5880,8 +5902,8 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 	p.next() // skip '.'
 	if p.tok == .dollar {
 		// Compile-time field selector `receiver.$(field.name)`: the field name is resolved when
-		// the enclosing `$for` loop is unrolled. `receiver.$method()` uses the same marker with
-		// an identifier name expression. Marker value `$`; child 1 is the name expr.
+		// the enclosing `$for` loop is unrolled. `receiver.$method()` binds its identifier to the
+		// innermost methods loop. Marker value `$`; child 1 is the name expr.
 		p.next() // skip $
 		inner := if p.tok == .lpar {
 			p.next()
@@ -5889,7 +5911,13 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 			p.check(.rpar)
 			name_expr
 		} else {
-			p.a.add_val(.ident, p.expect_name_or_keyword())
+			name := p.expect_name_or_keyword()
+			resolved_name := if name == 'method' && p.comptime_method_var.len > 0 {
+				p.comptime_method_var
+			} else {
+				name
+			}
+			p.a.add_val(.ident, resolved_name)
 		}
 		sel_start := p.add_children2(lhs, inner)
 		sel := p.a.add_node(flat.Node{

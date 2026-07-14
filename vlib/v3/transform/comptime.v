@@ -954,7 +954,7 @@ fn (t &Transformer) comptime_method_name_expr_matches(id flat.NodeId, var_name s
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .ident {
-		return node.value == var_name || node.value == 'method'
+		return node.value == var_name
 	}
 	if node.kind == .selector && node.value == 'name' && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
