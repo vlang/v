@@ -13125,6 +13125,39 @@ fn (tc &TypeChecker) bare_generic_literal_adopts(lit_value string, expected Type
 		|| e_base.all_after_last('.') in tc.struct_generic_params
 }
 
+fn is_anonymous_struct_name(name string) bool {
+	return name.all_after_last('.').starts_with('AnonStruct_')
+}
+
+fn (mut tc TypeChecker) anonymous_struct_literal_compatible(node flat.Node, expected Type) bool {
+	struct_type := struct_type_from_type(expected) or { return false }
+	if !is_anonymous_struct_name(struct_type.name) {
+		return false
+	}
+	fields := tc.struct_fields_for_init(struct_type.name)
+	for i in 0 .. node.children_count {
+		field := tc.a.child_node(&node, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			return false
+		}
+		mut field_type := Type(void_)
+		if field.value.len > 0 {
+			field_type = tc.struct_field_type(struct_type.name, field.value) or { return false }
+		} else if i < fields.len {
+			field_type = fields[i].typ
+		} else {
+			return false
+		}
+		value_id := tc.a.child(field, 0)
+		actual := tc.resolve_expr(value_id, field_type)
+		if !tc.expr_compatible(value_id, actual, field_type)
+			&& !tc.pointer_value_compatible(actual, field_type) {
+			return false
+		}
+	}
+	return true
+}
+
 // generic_literal_fields_compatible checks a bare generic struct literal's named
 // field initializers against the expected concrete instantiation (`Box[int]`),
 // substituting the struct's type parameters into each field's declared type. It
@@ -15601,6 +15634,14 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			return Type(int_)
 		}
 	}
+	// When several anonymous structs share the same field names, the parser leaves
+	// the literal unresolved instead of choosing the most recently declared shape.
+	// Its call/assignment/return context supplies the exact anonymous struct here.
+	if node.kind == .struct_init && node.value == 'struct' && expected !is Pointer
+		&& tc.anonymous_struct_literal_compatible(node, expected) {
+		tc.register_synth_type(id, expected_raw)
+		return expected_raw
+	}
 	// A bare generic struct literal (`Box{...}` / `&Box{...}`) adopts a matching concrete
 	// expected instance (`Box[int]` / `&Box[int]`), so `fn make() Box[int] { return
 	// Box{...} }` and bare literals passed/assigned where a concrete instance is expected
@@ -15616,7 +15657,14 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		return expected_raw
 	}
 	if node.kind == .prefix && node.op == .amp && node.children_count == 1 && expected is Pointer {
-		child := tc.a.nodes[int(tc.a.child(&node, 0))]
+		child_id := tc.a.child(&node, 0)
+		child := tc.a.nodes[int(child_id)]
+		if child.kind == .struct_init && child.value == 'struct'
+			&& tc.anonymous_struct_literal_compatible(child, expected.base_type) {
+			tc.register_synth_type(child_id, expected.base_type)
+			tc.register_synth_type(id, expected_raw)
+			return expected_raw
+		}
 		if child.kind == .struct_init && tc.bare_generic_literal_adopts(child.value, expected)
 			&& tc.generic_literal_fields_compatible(child, expected) {
 			tc.register_synth_type(id, expected_raw)

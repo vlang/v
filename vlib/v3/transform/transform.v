@@ -7347,8 +7347,25 @@ fn (mut t Transformer) transform_if_expr(id flat.NodeId, node flat.Node) flat.No
 	return t.transform_if_branches_with_smartcast(id, node)
 }
 
+fn transform_is_anonymous_struct_name(name string) bool {
+	return name.all_after_last('.').starts_with('AnonStruct_')
+}
+
 // transform_struct_init transforms transform struct init data for transform.
 fn (mut t Transformer) transform_struct_init(id flat.NodeId, node flat.Node) flat.NodeId {
+	if node.value == 'struct' {
+		mut concrete_type := t.raw_checker_node_type(id)
+		if !transform_is_anonymous_struct_name(concrete_type) && t.expected_expr_node == int(id)
+			&& transform_is_anonymous_struct_name(t.expected_expr_type) {
+			concrete_type = t.expected_expr_type
+		}
+		if transform_is_anonymous_struct_name(concrete_type) {
+			mut concrete := node
+			concrete.value = concrete_type
+			concrete.typ = concrete_type
+			return t.transform_struct_fields(id, concrete)
+		}
+	}
 	if node.value.len > 0 {
 		clean_value := t.normalize_type_alias(node.value)
 		if node.children_count == 0 {

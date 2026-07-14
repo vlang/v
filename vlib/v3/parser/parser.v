@@ -55,7 +55,7 @@ mut:
 	in_for_container       bool
 	local_type_names       map[string]string
 	local_type_scopes      []string
-	anonymous_struct_types map[string]string
+	anonymous_struct_types map[string][]string
 	anonymous_struct_count int
 	export_records         []ExportRecord
 pub mut:
@@ -79,7 +79,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		prefs:                  unsafe { prefs }
 		s:                      scanner.new_scanner(prefs, .normal)
 		local_type_names:       map[string]string{}
-		anonymous_struct_types: map[string]string{}
+		anonymous_struct_types: map[string][]string{}
 		a:                      &flat.FlatAst{
 			nodes:           []flat.Node{cap: 256}
 			children:        []flat.NodeId{cap: 512}
@@ -130,7 +130,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.disable_fn_body = false
 	p.in_for_container = false
 	p.local_type_scopes = []string{}
-	p.anonymous_struct_types = map[string]string{}
+	p.anonymous_struct_types = map[string][]string{}
 	p.anonymous_struct_count = 0
 	// File marker before content so import resolver can track source files
 	p.a.add_node(flat.Node{
@@ -5300,12 +5300,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			p.next()
 			init_id := p.struct_init('struct')
 			init := p.a.nodes[int(init_id)]
-			mut field_names := []string{cap: int(init.children_count)}
-			for i in 0 .. init.children_count {
-				field := p.a.child_node(&init, i)
-				field_names << field.value
-			}
-			if name := p.anonymous_struct_types[anonymous_struct_shape(field_names)] {
+			if name := p.anonymous_struct_type_for_literal(init) {
 				p.a.nodes[int(init_id)].value = name
 			}
 			return init_id
@@ -6889,6 +6884,23 @@ fn anonymous_struct_shape(fields []string) string {
 	return fields.join(',')
 }
 
+fn (p &Parser) anonymous_struct_type_for_literal(init flat.Node) ?string {
+	mut field_names := []string{cap: int(init.children_count)}
+	for i in 0 .. init.children_count {
+		field := p.a.child_node(&init, i)
+		if field.value.len == 0 {
+			return none
+		}
+		field_names << field.value
+	}
+	if candidates := p.anonymous_struct_types[anonymous_struct_shape(field_names)] {
+		if candidates.len == 1 {
+			return candidates[0]
+		}
+	}
+	return none
+}
+
 fn (mut p Parser) parse_anonymous_struct_type() string {
 	p.next() // skip `struct`
 	if p.tok != .lcbr {
@@ -6945,7 +6957,10 @@ fn (mut p Parser) parse_anonymous_struct_type() string {
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
-	p.anonymous_struct_types[anonymous_struct_shape(field_names)] = name
+	shape := anonymous_struct_shape(field_names)
+	mut candidates := p.anonymous_struct_types[shape] or { []string{} }
+	candidates << name
+	p.anonymous_struct_types[shape] = candidates
 	return name
 }
 

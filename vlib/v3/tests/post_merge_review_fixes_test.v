@@ -2940,6 +2940,40 @@ fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 	}
 }
 
+fn test_anonymous_struct_literals_use_typed_shape() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'anonymous_struct_literal_typed_shape', 'fn take_int(value struct {
+	x int
+}) int {
+	return value.x
+}
+
+fn take_string(value struct {
+	x string
+}) string {
+	return value.x
+}
+
+fn take_i64(value struct {
+	x i64
+}) i64 {
+	return value.x
+}
+
+fn main() {
+	println(int_str(take_int(struct { x: 7 })))
+	println(take_string(struct { x: "right" }))
+	println(take_i64(struct { x: 9 }))
+	mut values := []struct {
+		x int
+	}{}
+	values << struct { x: 13 }
+	println(int_str(values[0].x))
+}
+')
+	assert out == '7\nright\n9\n13'
+}
+
 fn test_latest_pr_review_codegen_regressions() {
 	v3_bin := build_v3()
 	small_int_comparison := run_good(v3_bin, 'parenthesized_small_int_comparison', 'fn main() {
