@@ -2929,7 +2929,7 @@ fn comptime_cond_string_token_text(lit string) string {
 		return lit
 	}
 	if lit.len >= 3 && lit[0] == `r` && lit[1] in [`'`, `"`] && lit[lit.len - 1] == lit[1] {
-		return lit
+		return lit[1..]
 	}
 	mut out := strings.new_builder(lit.len + 2)
 	write_comptime_cond_string(mut out, lit)

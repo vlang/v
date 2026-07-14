@@ -263,7 +263,7 @@ fn (mut t Transformer) expand_comptime_for(id flat.NodeId, node flat.Node) []fla
 		return t.expand_comptime_for_methods(var_name, base_type, body_stmts)
 	}
 	if kind == 'params' {
-		return t.expand_comptime_for_params(var_name, node.typ, body_stmts)
+		return t.expand_comptime_for_params(var_name, node.typ, body_stmts, id)
 	}
 	if kind == 'attributes' {
 		return t.expand_comptime_for_attributes(var_name, node.typ, body_stmts, id)
@@ -310,7 +310,7 @@ fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source st
 }
 
 fn (t &Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId) []AttributeMeta {
-	raw_name := t.comptime_attribute_source(source, loop_id)
+	raw_name := t.comptime_reflection_source(source, loop_id)
 	name := t.resolve_imported_type_name(raw_name) or { raw_name }
 	mut module_name := ''
 	for idx, node in t.a.nodes {
@@ -337,9 +337,9 @@ fn (t &Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId)
 	return []AttributeMeta{}
 }
 
-fn (t &Transformer) comptime_attribute_source(source string, loop_id flat.NodeId) string {
+fn (t &Transformer) comptime_reflection_source(source string, loop_id flat.NodeId) string {
 	clean := source.trim_space()
-	rhs_id := t.comptime_attribute_local_rhs(loop_id, clean) or { return clean }
+	rhs_id := t.comptime_reflection_local_rhs(loop_id, clean) or { return clean }
 	rhs := t.a.nodes[int(rhs_id)]
 	if rhs.kind == .ident {
 		return rhs.value
@@ -366,7 +366,7 @@ fn (t &Transformer) comptime_attribute_source(source string, loop_id flat.NodeId
 	return clean
 }
 
-fn (t &Transformer) comptime_attribute_local_rhs(loop_id flat.NodeId, name string) ?flat.NodeId {
+fn (t &Transformer) comptime_reflection_local_rhs(loop_id flat.NodeId, name string) ?flat.NodeId {
 	if int(loop_id) < 0 || int(loop_id) >= t.a.nodes.len {
 		return none
 	}
@@ -375,7 +375,7 @@ fn (t &Transformer) comptime_attribute_local_rhs(loop_id flat.NodeId, name strin
 			continue
 		}
 		mut path := []flat.NodeId{}
-		if !t.comptime_attribute_node_path(flat.NodeId(idx), loop_id, mut path) {
+		if !t.comptime_reflection_node_path(flat.NodeId(idx), loop_id, mut path) {
 			continue
 		}
 		mut rhs_id := flat.empty_node
@@ -391,7 +391,7 @@ fn (t &Transformer) comptime_attribute_local_rhs(loop_id flat.NodeId, name strin
 				if child_id == child_on_path {
 					break
 				}
-				if candidate := t.comptime_attribute_decl_rhs(child_id, name) {
+				if candidate := t.comptime_reflection_decl_rhs(child_id, name) {
 					rhs_id = candidate
 				}
 			}
@@ -404,7 +404,7 @@ fn (t &Transformer) comptime_attribute_local_rhs(loop_id flat.NodeId, name strin
 	return none
 }
 
-fn (t &Transformer) comptime_attribute_node_path(id flat.NodeId, target flat.NodeId, mut path []flat.NodeId) bool {
+fn (t &Transformer) comptime_reflection_node_path(id flat.NodeId, target flat.NodeId, mut path []flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
@@ -414,7 +414,7 @@ fn (t &Transformer) comptime_attribute_node_path(id flat.NodeId, target flat.Nod
 	}
 	node := t.a.nodes[int(id)]
 	for i in 0 .. node.children_count {
-		if t.comptime_attribute_node_path(t.a.child(&node, i), target, mut path) {
+		if t.comptime_reflection_node_path(t.a.child(&node, i), target, mut path) {
 			return true
 		}
 	}
@@ -422,7 +422,7 @@ fn (t &Transformer) comptime_attribute_node_path(id flat.NodeId, target flat.Nod
 	return false
 }
 
-fn (t &Transformer) comptime_attribute_decl_rhs(id flat.NodeId, name string) ?flat.NodeId {
+fn (t &Transformer) comptime_reflection_decl_rhs(id flat.NodeId, name string) ?flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return none
 	}
@@ -627,9 +627,10 @@ fn (mut t Transformer) make_attribute_literal(attr AttributeMeta) flat.NodeId {
 	})
 }
 
-fn (mut t Transformer) expand_comptime_for_params(var_name string, fn_name string, body_stmts []flat.NodeId) []flat.NodeId {
+fn (mut t Transformer) expand_comptime_for_params(var_name string, fn_name string, body_stmts []flat.NodeId, loop_id flat.NodeId) []flat.NodeId {
 	mut out := []flat.NodeId{}
-	for param in t.comptime_param_metas(fn_name) {
+	source := t.comptime_reflection_source(fn_name, loop_id)
+	for param in t.comptime_param_metas(source) {
 		mut cloned := []flat.NodeId{cap: body_stmts.len}
 		for sid in body_stmts {
 			if cid := t.clone_param_subst(sid, var_name, param) {

@@ -2083,7 +2083,8 @@ import pkg
 fn main() {
 	mut params := []FunctionParam{}
 	mut rows := []string{}
-	$for param in pkg.consume.params {
+	h := pkg.consume
+	$for param in h.params {
 		params << param
 		rows << param.name
 		$if param.typ is pkg.Item {
@@ -2099,6 +2100,21 @@ fn main() {
 '
 	}, 'main.v')
 	assert out == 'item|guard|true|true'
+}
+
+fn test_raw_string_operand_is_normalized_before_comptime_folding() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'raw_string_comptime_local_collision', "fn main() {
+	r := 'wrong'
+	_ = r
+	\$if r'abc' == 'abc' {
+		println('ok')
+	} \$else {
+		println('wrong')
+	}
+}
+")
+	assert out == 'ok'
 }
 
 fn test_nested_param_and_attribute_reflection_respects_shadowing() {
