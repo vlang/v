@@ -2539,6 +2539,24 @@ fn main() {
 	assert out == 'route:/path'
 }
 
+fn test_attribute_guard_escapes_reflected_string_arguments() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'attribute_guard_escaped_argument', '@[label: "O\'Reilly"]
+fn handler() {}
+
+fn main() {
+	mut matched := false
+	\$for attr in handler.attributes {
+		\$if attr.arg == "O\'Reilly" {
+			matched = true
+		}
+	}
+	println(matched)
+}
+')
+	assert out == 'true'
+}
+
 fn test_nested_method_attribute_guard_preserves_inner_selector() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_attribute_guard', "struct App {}

@@ -2,6 +2,7 @@ module transform
 
 import os
 import strconv
+import strings
 import v3.flat
 
 const comptime_unsupported_late_generic_call = '__v3_comptime_unsupported_late_generic_call'
@@ -630,13 +631,28 @@ fn (mut t Transformer) clone_attribute_subst_scoped(id flat.NodeId, var_name str
 
 fn (t &Transformer) subst_attribute_cond(cond string, var_name string, attr AttributeMeta) string {
 	mut result := comptime_cond_replace_unquoted(cond, '${var_name}.has_arg', attr.has_arg.str())
-	result = comptime_cond_replace_unquoted(result, '${var_name}.name', "'${attr.name}'")
-	result = comptime_cond_replace_unquoted(result, '${var_name}.arg', "'${attr.arg}'")
+	result = comptime_cond_replace_unquoted(result, '${var_name}.name',
+		comptime_cond_string_literal(attr.name))
+	result = comptime_cond_replace_unquoted(result, '${var_name}.arg',
+		comptime_cond_string_literal(attr.arg))
 	kind_value := comptime_attribute_kind_cond_value(attr.kind)
 	result = comptime_cond_replace_unquoted(result, '${var_name}.kind ==.', '${kind_value} == .')
 	result = comptime_cond_replace_unquoted(result, '${var_name}.kind !=.', '${kind_value} != .')
 	result = comptime_cond_replace_unquoted(result, '${var_name}.kind', kind_value)
 	return result
+}
+
+fn comptime_cond_string_literal(value string) string {
+	mut out := strings.new_builder(value.len + 2)
+	out.write_u8(`'`)
+	for i := 0; i < value.len; i++ {
+		if value[i] == `\\` || value[i] == `'` {
+			out.write_u8(`\\`)
+		}
+		out.write_u8(value[i])
+	}
+	out.write_u8(`'`)
+	return out.str()
 }
 
 fn comptime_attribute_kind_cond_value(kind int) string {
@@ -3508,9 +3524,33 @@ fn comptime_is_int(s string) bool {
 
 fn comptime_unquote(s string) string {
 	if s.len >= 2 && (s[0] == `'` || s[0] == `"`) && s[s.len - 1] == s[0] {
-		return s[1..s.len - 1]
+		return comptime_cond_unescape(s[1..s.len - 1])
 	}
 	return s
+}
+
+fn comptime_cond_unescape(value string) string {
+	if !value.contains('\\') {
+		return value
+	}
+	mut out := strings.new_builder(value.len)
+	mut i := 0
+	for i < value.len {
+		if value[i] != `\\` || i + 1 >= value.len {
+			out.write_u8(value[i])
+			i++
+			continue
+		}
+		next := value[i + 1]
+		if next in [`\\`, `'`, `"`] {
+			out.write_u8(next)
+			i += 2
+			continue
+		}
+		out.write_u8(`\\`)
+		i++
+	}
+	return out.str()
 }
 
 fn comptime_top_index(s string, op string) ?int {
