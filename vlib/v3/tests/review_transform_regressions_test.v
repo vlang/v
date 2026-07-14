@@ -514,6 +514,13 @@ fn test_map_literal_stringification_evaluates_entries_once() {
 	assert out == "{'k1': 10}\n1,1"
 }
 
+fn test_map_literal_declaration_evaluates_entries_once() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'map_literal_decl_side_effects',
+		"__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'key'\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tvalues := {\n\t\tnext_key(): next_val()\n\t}\n\tprintln(int_str(values['key']))\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
+	assert out == '10\n1,1'
+}
+
 fn test_fn_literal_preserves_mut_param_string_interpolation() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'fn_literal_mut_param_interp',

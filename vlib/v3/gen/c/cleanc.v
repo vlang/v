@@ -2562,10 +2562,14 @@ fn (mut g FlatGen) emit_c_directives() {
 fn (mut g FlatGen) emit_preserved_c_directives() {
 	mut emitted := false
 	mut emitted_includes := map[string]bool{}
+	mut has_mach_headers := false
 	directives := g.ordered_c_directives()
 	for i, directive in directives {
 		if !c_contains_preserved_system_include_directive(directive) {
 			continue
+		}
+		if directive.contains('<mach/mach.h>') {
+			has_mach_headers = true
 		}
 		clean := trimmed_space(directive)
 		if directive.contains('\n') {
@@ -2599,6 +2603,15 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 		for _ in 0 .. c_lifted_include_context_depth(prefix) {
 			g.writeln('#endif')
 		}
+	}
+	refs := g.c_extern_referenced_symbols()
+	if !has_mach_headers && (refs['C.task_info'] || refs['task_info']
+		|| refs['C.mach_task_self'] || refs['mach_task_self']) {
+		g.writeln('#ifdef __APPLE__')
+		g.emit_preserved_c_directive('#include <mach/mach.h>')
+		g.emit_preserved_c_directive('#include <mach/task.h>')
+		g.writeln('#endif')
+		emitted = true
 	}
 	if emitted {
 		g.writeln('')
@@ -3642,7 +3655,8 @@ fn (mut g FlatGen) gen_current_mut_param_value_read(id flat.NodeId, expected typ
 	}
 	param_type := g.current_param_type(node.value) or { return false }
 	if param_type is types.Pointer {
-		if !g.type_names_match(param_type.base_type, expected) {
+		if !g.type_names_match(select_receive_unalias_type(param_type.base_type),
+			select_receive_unalias_type(expected)) {
 			return false
 		}
 	} else {
@@ -3709,6 +3723,13 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		return
 	}
 	if g.gen_current_mut_param_value_read(id, expected) {
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
+	if node.kind == .cast_expr && node.children_count > 0
+		&& g.cast_alias_matches_expected_storage(node.value, expected) {
+		g.gen_expr_with_expected_type(g.a.child(&node, 0), expected)
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
@@ -3797,9 +3818,49 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = old_expected_enum
 		return
 	}
+	clean_expected := select_receive_unalias_type(expected)
+	if node.kind == .prefix && node.op in [.minus, .plus] && node.children_count > 0
+		&& clean_expected is types.Primitive && clean_expected.props.has(.float)
+		&& clean_expected.size == 32 {
+		child_id := g.a.child(&node, 0)
+		child := g.a.nodes[int(child_id)]
+		if child.kind == .float_literal {
+			g.write(g.op_str(node.op))
+			g.gen_expr_with_expected_type(child_id, expected)
+			g.expected_expr_type = old_expected
+			g.expected_enum = old_expected_enum
+			return
+		}
+	}
+	if node.kind == .float_literal && clean_expected is types.Primitive
+		&& clean_expected.props.has(.float) && clean_expected.size == 32 {
+		g.write('(float)(')
+		g.gen_expr(id)
+		g.write(')')
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
 	g.gen_expr(id)
 	g.expected_expr_type = old_expected
 	g.expected_enum = old_expected_enum
+}
+
+fn (g &FlatGen) cast_alias_matches_expected_storage(alias_name string, expected types.Type) bool {
+	if alias_name.len == 0 {
+		return false
+	}
+	mut target_name := g.tc.type_aliases[alias_name] or { '' }
+	if target_name.len == 0 {
+		target_name = g.tc.type_aliases[g.tc.qualify_name(alias_name)] or { '' }
+	}
+	if target_name.len == 0 {
+		return false
+	}
+	target := select_receive_unalias_type(g.tc.parse_type(target_name))
+	expected_base := select_receive_unalias_type(expected)
+	return g.type_names_match(target, expected_base)
+		|| g.tc.c_type(target) == g.tc.c_type(expected_base)
 }
 
 fn (mut g FlatGen) gen_sum_pointer_value_expr(id flat.NodeId, expected types.Type) bool {
@@ -4062,7 +4123,7 @@ fn (mut g FlatGen) gen_sum_variant_memdup_source(value_id flat.NodeId, inner_typ
 			return
 		}
 	}
-	inner_ct := g.tc.c_type(inner_type)
+	inner_ct := g.value_c_type(inner_type)
 	g.write('(${inner_ct}[]){')
 	g.gen_expr_with_expected_type(value_id, inner_type)
 	g.write('}')
@@ -4259,7 +4320,14 @@ fn (g &FlatGen) c_typedef_cast_call_name(node flat.Node) string {
 
 // gen_expr_with_possible_enum_type emits expr with possible enum type output for c.
 fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected types.Type) {
-	if expected is types.Enum {
+	node := g.a.nodes[int(id)]
+	mut is_signed_numeric_literal := false
+	if node.kind == .prefix && node.op in [.minus, .plus] && node.children_count > 0 {
+		child := g.a.child_node(&node, 0)
+		is_signed_numeric_literal = child.kind in [.int_literal, .float_literal]
+	}
+	if expected is types.Enum || node.kind in [.int_literal, .float_literal]
+		|| is_signed_numeric_literal {
 		g.gen_expr_with_expected_type(id, expected)
 		return
 	}
@@ -9393,12 +9461,14 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('string i64__str(i64 n);')
 	g.writeln('string u64__str(u64 nn);')
 	g.writeln('string f64__str(double x);')
-	g.writeln('string rune__str(i32 c);')
+	g.writeln('string rune__str(u32 c);')
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
+	g.writeln('void* memdup(void* src, ptrdiff_t sz);')
+	g.writeln('static inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }')
 	g.writeln('static inline string v3_c_lit(const char* s, int len) { return (string){.str = (u8*)s, .len = len, .is_lit = 1}; }')
 	g.writeln("static inline string v3_string_pad(string s, int width, int left) { if (width < 0) { left = 1; width = -width; } if (s.len >= width) return s; int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); if (left) { memcpy(out, s.str, (size_t)s.len); memset(out + s.len, ' ', (size_t)pad); } else { memset(out, ' ', (size_t)pad); memcpy(out + pad, s.str, (size_t)s.len); } out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
 	g.writeln("static inline string v3_string_upper_ascii(string s) { u8* out = malloc_noscan((ptrdiff_t)s.len + 1); for (int i = 0; i < s.len; ++i) { u8 c = s.str[i]; out[i] = c >= 'a' && c <= 'f' ? (u8)(c - ('a' - 'A')) : c; } out[s.len] = 0; return (string){.str = out, .len = s.len, .is_lit = 0}; }")
-	g.writeln('static inline string v3_char_string(int c) { return rune__str((i32)c); }')
+	g.writeln('static inline string v3_char_string(int c) { return rune__str((u32)c); }')
 	g.writeln('static inline string v3_chan_str(chan ch, string elem) { if (ch == NULL) return string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("(nil)", 5)); string out = string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("{\\n    cap: ", 11)); out = string__plus(out, int__str(ch->cap)); out = string__plus(out, ch->closed != 0 ? v3_c_lit(", closed: true\\n}", 16) : v3_c_lit(", closed: false\\n}", 17)); return out; }')
 	g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision == 6) { double scale = 1000000.0; double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
 	g.writeln('static inline string v3_f64_fixed(double x, int precision) { if (precision > 16) { char base[128]; int b = snprintf(base, sizeof(base), "%.16g", x); if (b >= 0 && b < (int)sizeof(base)) { int dot = -1; int has_exp = 0; for (int i = 0; i < b; ++i) { if (base[i] == \'.\') dot = i; if (base[i] == \'e\' || base[i] == \'E\') has_exp = 1; } if (!has_exp) { int frac = dot >= 0 ? b - dot - 1 : 0; if (frac <= precision) { int n = b + (dot < 0 ? 1 : 0) + (precision - frac); u8* out = malloc_noscan(n + 1); memcpy(out, base, b); int pos = b; if (dot < 0) out[pos++] = \'.\'; while (frac++ < precision) out[pos++] = \'0\'; out[pos] = 0; return (string){.str = out, .len = n, .is_lit = 0}; } } } } double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')
@@ -9410,6 +9480,9 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	// escaped rather than truncating like a C NUL-terminated string. ASCII
 	// codes are used to avoid escaping quirks; 92=\ 34=" 98=b 102=f 110=n 114=r 116=t 117=u 48=0.
 	g.writeln('static inline string v3_json_encode_string(string s) { const char* hex = "0123456789abcdef"; u8* out = malloc_noscan((ptrdiff_t)s.len * 6 + 8); int p = 0; out[p++] = 34; for (int i = 0; i < s.len; i++) { u8 c = s.str[i]; if (c == 34) { out[p++]=92; out[p++]=34; } else if (c == 92) { out[p++]=92; out[p++]=92; } else if (c == 8) { out[p++]=92; out[p++]=98; } else if (c == 12) { out[p++]=92; out[p++]=102; } else if (c == 10) { out[p++]=92; out[p++]=110; } else if (c == 13) { out[p++]=92; out[p++]=114; } else if (c == 9) { out[p++]=92; out[p++]=116; } else if (c < 32) { out[p++]=92; out[p++]=117; out[p++]=48; out[p++]=48; out[p++]=hex[(c>>4)&15]; out[p++]=hex[c&15]; } else { out[p++]=c; } } out[p++] = 34; out[p] = 0; return (string){.str = out, .len = p, .is_lit = 0}; }')
+	if g.has_cjson() {
+		g.json_number_token_helpers()
+	}
 	g.writeln('static inline i64 v3_map_signed(void* p, int bytes) { if (bytes == 1) return *(signed char*)p; if (bytes == 2) return *(short*)p; if (bytes == 8) return *(long long*)p; return *(int*)p; }')
 	g.writeln('static inline u64 v3_map_unsigned(void* p, int bytes) { if (bytes == 1) return *(unsigned char*)p; if (bytes == 2) return *(unsigned short*)p; if (bytes == 8) return *(unsigned long long*)p; return *(unsigned int*)p; }')
 	g.writeln('static inline string v3_f32_array_str(float* vals, int n) { string out = v3_c_lit("[", 1); for (int i = 0; i < n; ++i) { if (i > 0) out = string__plus(out, v3_c_lit(", ", 2)); out = string__plus(out, f64__str((double)vals[i])); } return string__plus(out, v3_c_lit("]", 1)); }')
@@ -9418,7 +9491,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('\tif (kind == 1) { return string__plus(string__plus(v3_c_lit("\'", 1), *(string*)p), v3_c_lit("\'", 1)); }')
 	g.writeln('\tif (kind == 2) { return v3_i64_zpad(v3_map_signed(p, bytes), 0); }')
 	g.writeln('\tif (kind == 3) { return u64__str(v3_map_unsigned(p, bytes)); }')
-	g.writeln('\tif (kind == 4) { i32 r = bytes == 1 ? (i32)(*(u8*)p) : *(i32*)p; return string__plus(string__plus(v3_c_lit("`", 1), rune__str(r)), v3_c_lit("`", 1)); }')
+	g.writeln('\tif (kind == 4) { u32 r = bytes == 1 ? (u32)(*(u8*)p) : *(u32*)p; return string__plus(string__plus(v3_c_lit("`", 1), rune__str(r)), v3_c_lit("`", 1)); }')
 	g.writeln('\tif (kind == 5) { if (bytes == (int)sizeof(float)) return f64__str((double)*(float*)p); return f64__str(*(double*)p); }')
 	g.writeln('\tif (kind == 6) { if (fixed_len == 0 && bytes == (int)sizeof(Array)) { Array a = *(Array*)p; if (a.element_size == (int)sizeof(float)) return v3_f32_array_str((float*)a.data, a.len); if (a.element_size == (int)sizeof(double)) return v3_f64_array_str((double*)a.data, a.len); } if (fixed_len > 0 && bytes == fixed_len * (int)sizeof(float)) return v3_f32_array_str((float*)p, fixed_len); int n = fixed_len > 0 ? fixed_len : bytes / (int)sizeof(double); return v3_f64_array_str((double*)p, n); }')
 	g.writeln('\tif (kind == 8) { return f64__str((double)*(float*)p); }')
@@ -9467,6 +9540,29 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#define min_int min_i32')
 	g.writeln('#endif')
 	g.writeln('')
+}
+
+fn (g &FlatGen) has_cjson() bool {
+	for flag in g.c_flags {
+		if flag.contains('cJSON') {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g FlatGen) json_number_token_helpers() {
+	g.writeln('static inline const u8* v3_json_skip_space(const u8* p, const u8* end) { while (p < end && (*p == 32 || *p == 9 || *p == 10 || *p == 13)) p++; return p; }')
+	g.writeln('static inline const u8* v3_json_skip_string(const u8* p, const u8* end) { if (p >= end || *p != 34) return p; p++; while (p < end) { if (*p == 92) { p++; if (p < end) p++; continue; } if (*p == 34) return p + 1; p++; } return p; }')
+	g.writeln('static const u8* v3_json_preserve_number_tokens_inner(const u8* p, const u8* end, cJSON* item);')
+	g.writeln('static const u8* v3_json_preserve_number_tokens_inner(const u8* p, const u8* end, cJSON* item) {')
+	g.writeln('\tp = v3_json_skip_space(p, end); if (p >= end) return p;')
+	g.writeln('\tif (*p == 123) { cJSON* child = item != NULL ? item->child : NULL; p++; p = v3_json_skip_space(p, end); while (p < end && *p != 125) { p = v3_json_skip_string(p, end); p = v3_json_skip_space(p, end); if (p < end && *p == 58) p++; p = v3_json_preserve_number_tokens_inner(p, end, child); if (child != NULL) child = child->next; p = v3_json_skip_space(p, end); if (p < end && *p == 44) { p++; p = v3_json_skip_space(p, end); } else { break; } } return p < end && *p == 125 ? p + 1 : p; }')
+	g.writeln('\tif (*p == 91) { cJSON* child = item != NULL ? item->child : NULL; p++; p = v3_json_skip_space(p, end); while (p < end && *p != 93) { p = v3_json_preserve_number_tokens_inner(p, end, child); if (child != NULL) child = child->next; p = v3_json_skip_space(p, end); if (p < end && *p == 44) { p++; p = v3_json_skip_space(p, end); } else { break; } } return p < end && *p == 93 ? p + 1 : p; }')
+	g.writeln('\tif (*p == 34) return v3_json_skip_string(p, end);')
+	g.writeln('\tconst u8* start = p; while (p < end && *p != 44 && *p != 93 && *p != 125 && *p != 32 && *p != 9 && *p != 10 && *p != 13) p++; if (item != NULL && cJSON_IsNumber(item) && item->valuestring == NULL) { size_t len = (size_t)(p - start); char* raw = (char*)cJSON_malloc(len + 1); if (raw != NULL) { memcpy(raw, start, len); raw[len] = 0; item->valuestring = raw; } } return p;')
+	g.writeln('}')
+	g.writeln('static inline void v3_json_preserve_number_tokens(const u8* json, int len, cJSON* root) { if (json != NULL && len > 0 && root != NULL) v3_json_preserve_number_tokens_inner(json, json + len, root); }')
 }
 
 fn (mut g FlatGen) filelock_compat_decls() {

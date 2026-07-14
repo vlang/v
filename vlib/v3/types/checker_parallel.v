@@ -62,6 +62,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 		tc.check_semantics()
 		return false
 	} $else {
+		tc.resolution_type_mode = false
 		// Freeze the warm post-collect type cache as the shared read-only base
 		// for every worker thread and the master itself via a private overlay.
 		tc.install_type_cache_overlay()
@@ -89,6 +90,9 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 			tc.defer_ierror_gating = false
 		}
 		tc.restore_type_cache_base()
+		// Match the serial checker: only generated post-check type text may use the
+		// cross-module generic-argument fallback.
+		tc.resolution_type_mode = true
 		return was_parallel
 	}
 }
@@ -361,7 +365,14 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		tc.insert_fn_param_binding(p)
 	}
 	tc.insert_implicit_veb_ctx(node)
-	tc.check_fn_body(node)
+	// Open generic declarations are checked when they are instantiated.  Walking every
+	// template in a selected module diagnoses names that only exist after comptime
+	// expansion (and even dead generic helpers), unlike the reference compiler.
+	generic_params := tc.infer_decl_generic_params(node)
+	qname := checker_qualified_fn_name(module_name, node.value)
+	if generic_params.len == 0 || qname in tc.selected_file_called_fns {
+		tc.check_fn_body(node)
+	}
 	tc.cur_fn_node_id = -1
 	is_disabled_stub := node.value in tc.a.disabled_fns
 	if tc.cur_fn_ret_type !is Unknown && !type_allows_implicit_return(tc.cur_fn_ret_type)

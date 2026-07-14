@@ -55,6 +55,8 @@ mut:
 	in_for_container       bool
 	local_type_names       map[string]string
 	local_type_scopes      []string
+	anonymous_struct_types map[string][]string
+	anonymous_struct_count int
 	export_records         []ExportRecord
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
@@ -74,10 +76,11 @@ struct ExportRecord {
 // new creates a Parser value for parser.
 pub fn Parser.new(prefs &pref.Preferences) &Parser {
 	return &Parser{
-		prefs:            unsafe { prefs }
-		s:                scanner.new_scanner(prefs, .normal)
-		local_type_names: map[string]string{}
-		a:                &flat.FlatAst{
+		prefs:                  unsafe { prefs }
+		s:                      scanner.new_scanner(prefs, .normal)
+		local_type_names:       map[string]string{}
+		anonymous_struct_types: map[string][]string{}
+		a:                      &flat.FlatAst{
 			nodes:           []flat.Node{cap: 256}
 			children:        []flat.NodeId{cap: 512}
 			disabled_fns:    map[string]bool{}
@@ -127,6 +130,8 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.disable_fn_body = false
 	p.in_for_container = false
 	p.local_type_scopes = []string{}
+	p.anonymous_struct_types = map[string][]string{}
+	p.anonymous_struct_count = 0
 	// File marker before content so import resolver can track source files
 	p.a.add_node(flat.Node{
 		kind:  .file
@@ -2172,10 +2177,10 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 	// (`$if linux`) must still be evaluated here — the transformer only folds loop-var/type
 	// conditions and the C backend drops any `.comptime_if` that survives.
 	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
-		|| comptime_cond_has_builtin_threads(cond) {
+		|| comptime_cond_has_type_metadata(cond) || comptime_cond_has_builtin_threads(cond) {
 		cond = p.simplify_deferred_comptime_cond(cond)
 		if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
-			|| comptime_cond_has_builtin_threads(cond) {
+			|| comptime_cond_has_type_metadata(cond) || comptime_cond_has_builtin_threads(cond) {
 			then_block := p.block_stmt()
 			else_block := p.parse_comptime_else()
 			return p.comptime_if_node(cond, then_block, else_block)
@@ -2246,9 +2251,11 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 	}
 	p.next() // skip 'if'
 	mut cond := p.parse_comptime_cond()
-	if comptime_cond_has_type_test(cond) || comptime_cond_has_builtin_threads(cond) {
+	if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
+		|| comptime_cond_has_builtin_threads(cond) {
 		cond = p.simplify_deferred_comptime_cond(cond)
-		if comptime_cond_has_type_test(cond) || comptime_cond_has_builtin_threads(cond) {
+		if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
+			|| comptime_cond_has_builtin_threads(cond) {
 			then_block := p.top_level_block_stmt()
 			else_block := p.parse_top_level_comptime_else()
 			return p.comptime_if_node(cond, then_block, else_block)
@@ -2516,6 +2523,10 @@ fn comptime_cond_has_type_test(cond string) bool {
 		|| cond.contains(' in [') || cond.contains(' !in[') || cond.contains(' !in [')
 }
 
+fn comptime_cond_has_type_metadata(cond string) bool {
+	return cond.contains('.indirections')
+}
+
 // comptime_cond_has_builtin_threads reports whether a condition contains the bare builtin
 // `threads` flag. Optional `threads?` flags and `$d('threads', ...)` defines are evaluated
 // normally at parse time.
@@ -2551,7 +2562,7 @@ fn (p &Parser) comptime_cond_needs_loop_var(cond string) bool {
 fn (p &Parser) simplify_deferred_comptime_cond(cond string) string {
 	c := comptime_cond_strip_outer_parens(cond.trim_space())
 	if !p.comptime_cond_needs_loop_var(c) && !comptime_cond_has_type_test(c)
-		&& !comptime_cond_has_builtin_threads(c) {
+		&& !comptime_cond_has_type_metadata(c) && !comptime_cond_has_builtin_threads(c) {
 		return if eval_comptime_cond(p.prefs, c) { 'true' } else { 'false' }
 	}
 	left_or, right_or, has_or := comptime_cond_split_top_level(c, '||')
@@ -3025,6 +3036,23 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 	if p.tok == .name && p.lit == 'embed_file' {
 		return p.parse_embed_file_expr()
 	}
+	if p.tok == .name && p.lit in ['zero', 'new'] {
+		name := p.lit
+		p.next()
+		if p.tok != .lpar {
+			return flat.empty_node
+		}
+		p.next()
+		type_expr := p.expr(.lowest)
+		p.check(.rpar)
+		return p.a.add_node(flat.Node{
+			kind:           .string_literal
+			value:          '__v3_comptime_${name}'
+			typ:            'string'
+			children_start: p.add_child(type_expr)
+			children_count: 1
+		})
+	}
 	for p.tok != .semicolon && p.tok != .eof {
 		p.next()
 	}
@@ -3135,9 +3163,11 @@ fn (mut p Parser) parse_comptime_if_expr_after_if() flat.NodeId {
 	mut cond := p.parse_comptime_cond()
 	// Whether `threads` is enabled depends on spawn expressions in the completed AST,
 	// so expression branches must be retained for the checker/transformer to select.
-	if comptime_cond_has_builtin_threads(cond) {
+	if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
+		|| comptime_cond_has_builtin_threads(cond) {
 		cond = p.simplify_deferred_comptime_cond(cond)
-		if comptime_cond_has_builtin_threads(cond) {
+		if comptime_cond_has_type_test(cond) || comptime_cond_has_type_metadata(cond)
+			|| comptime_cond_has_builtin_threads(cond) {
 			then_expr := p.parse_comptime_expr_block()
 			else_expr := p.parse_comptime_else_expr()
 			return p.comptime_if_node(cond, then_expr, else_expr)
@@ -5184,6 +5214,16 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						children_count: 1
 					})
 				}
+				if p.tok == .lcbr && type_name.starts_with('&[]') {
+					inner := p.array_init_after_element_type(type_name[3..])
+					return p.a.add_node(flat.Node{
+						kind:           .prefix
+						op:             .amp
+						typ:            type_name
+						children_start: p.add_child(inner)
+						children_count: 1
+					})
+				}
 			}
 			operand := p.expr(.highest)
 			pstart := p.add_child(operand)
@@ -5255,6 +5295,15 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.key_fn {
 			return p.fn_literal()
+		}
+		.key_struct {
+			p.next()
+			init_id := p.struct_init('struct')
+			init := p.a.nodes[int(init_id)]
+			if name := p.anonymous_struct_type_for_literal(init) {
+				p.a.nodes[int(init_id)].value = name
+			}
+			return init_id
 		}
 		.key_go, .key_spawn {
 			p.next()
@@ -5942,40 +5991,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		}
 		// array init: []Type{len: n, cap: c, init: v}
 		if p.tok == .lcbr {
-			p.next()
-			mut ids := []flat.NodeId{}
-			for p.tok != .rcbr && p.tok != .eof {
-				if p.tok == .semicolon {
-					p.next()
-					continue
-				}
-				if p.tok == .name && p.peek() == .colon {
-					fname := p.expect_name()
-					p.check(.colon)
-					val := p.expr(.lowest)
-					vstart := p.add_child(val)
-					ids << p.a.add_node(flat.Node{
-						kind:           .field_init
-						value:          fname
-						children_start: vstart
-						children_count: 1
-					})
-				} else {
-					ids << p.expr(.lowest)
-				}
-				if p.tok == .comma {
-					p.next()
-				}
-			}
-			p.check(.rcbr)
-			start := p.add_children(ids)
-			return p.a.add_node(flat.Node{
-				kind:           .array_init
-				value:          elem_type
-				typ:            '[]${elem_type}'
-				children_start: start
-				children_count: flat.child_count(ids.len)
-			})
+			return p.array_init_after_element_type(elem_type)
 		}
 		return p.a.add_node(flat.Node{
 			kind:  .array_init
@@ -6119,6 +6135,41 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		})
 	}
 	return lit
+}
+
+fn (mut p Parser) array_init_after_element_type(elem_type string) flat.NodeId {
+	p.check(.lcbr)
+	mut ids := []flat.NodeId{}
+	for p.tok != .rcbr && p.tok != .eof {
+		if p.tok == .semicolon {
+			p.next()
+			continue
+		}
+		if p.tok == .name && p.peek() == .colon {
+			fname := p.expect_name()
+			p.check(.colon)
+			val := p.expr(.lowest)
+			ids << p.a.add_node(flat.Node{
+				kind:           .field_init
+				value:          fname
+				children_start: p.add_child(val)
+				children_count: 1
+			})
+		} else {
+			ids << p.expr(.lowest)
+		}
+		if p.tok == .comma {
+			p.next()
+		}
+	}
+	p.check(.rcbr)
+	return p.a.add_node(flat.Node{
+		kind:           .array_init
+		value:          elem_type
+		typ:            '[]${elem_type}'
+		children_start: p.add_children(ids)
+		children_count: flat.child_count(ids.len)
+	})
 }
 
 fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dimensions int) (flat.NodeId, string) {
@@ -6779,11 +6830,7 @@ fn (mut p Parser) parse_type_name() string {
 	}
 	// struct type (inline/anonymous)
 	if p.tok == .key_struct {
-		p.next()
-		if p.tok == .lcbr {
-			p.skip_block()
-		}
-		return 'struct'
+		return p.parse_anonymous_struct_type()
 	}
 	// name
 	mut name := ''
@@ -6830,6 +6877,119 @@ fn (mut p Parser) parse_type_name() string {
 		name += p.parse_type_generic_suffix()
 		name = p.resolve_local_type_name(name)
 	}
+	return name
+}
+
+fn anonymous_struct_shape(fields []string) string {
+	return fields.join(',')
+}
+
+fn (p &Parser) anonymous_struct_type_for_literal(init flat.Node) ?string {
+	mut field_names := []string{cap: int(init.children_count)}
+	for i in 0 .. init.children_count {
+		field := p.a.child_node(&init, i)
+		if field.value.len == 0 {
+			return none
+		}
+		field_names << field.value
+	}
+	if candidates := p.anonymous_struct_types[anonymous_struct_shape(field_names)] {
+		if candidates.len == 1 {
+			return candidates[0]
+		}
+	}
+	return none
+}
+
+fn (mut p Parser) parse_anonymous_struct_type() string {
+	p.next() // skip `struct`
+	if p.tok != .lcbr {
+		return 'struct'
+	}
+	p.next()
+	mut ids := []flat.NodeId{}
+	mut field_names := []string{}
+	for p.tok != .rcbr && p.tok != .eof {
+		if p.tok == .semicolon || p.tok == .comma {
+			p.next()
+			continue
+		}
+		if p.tok != .name && !p.tok.is_keyword() {
+			p.next()
+			continue
+		}
+		field_name := p.expect_name_or_keyword()
+		// Grouped fields use one trailing type for every preceding name:
+		// `struct { x, y int }`.
+		if p.tok == .comma {
+			mut names := []string{cap: 2}
+			names << field_name
+			for p.tok == .comma {
+				p.next()
+				names << p.expect_name_or_keyword()
+			}
+			field_type := p.parse_type_name()
+			mut attrs := []string{}
+			if p.tok == .attribute || p.tok == .lsbr {
+				attrs << p.parse_field_attrs()
+			}
+			for name in names {
+				fid := p.a.add_node(flat.Node{
+					kind:  .field_decl
+					value: name
+					typ:   field_type
+				})
+				p.apply_field_meta(fid, false, false, attrs)
+				ids << fid
+				field_names << name
+			}
+			if p.tok == .semicolon || p.tok == .comma {
+				p.next()
+			}
+			continue
+		}
+		field_type := p.parse_type_name()
+		mut default_id := flat.empty_node
+		if p.tok == .assign {
+			p.next()
+			default_id = p.expr(.lowest)
+		}
+		mut children_start := 0
+		mut children_count := 0
+		if int(default_id) >= 0 {
+			children_start = p.add_child(default_id)
+			children_count = 1
+		}
+		fid := p.a.add_node(flat.Node{
+			kind:           .field_decl
+			value:          field_name
+			typ:            field_type
+			children_start: children_start
+			children_count: flat.child_count(children_count)
+		})
+		if p.tok == .attribute || p.tok == .lsbr {
+			p.apply_field_meta(fid, false, false, p.parse_field_attrs())
+		}
+		ids << fid
+		field_names << field_name
+		if p.tok == .semicolon || p.tok == .comma {
+			p.next()
+		}
+	}
+	p.check(.rcbr)
+	p.anonymous_struct_count++
+	name := 'AnonStruct_${local_type_scope_part(p.cur_file)}_${p.anonymous_struct_count}'
+	start := p.add_children(ids)
+	p.a.add_node(flat.Node{
+		kind:           .struct_decl
+		value:          name
+		children_start: start
+		children_count: flat.child_count(ids.len)
+	})
+	shape := anonymous_struct_shape(field_names)
+	mut candidates := p.anonymous_struct_types[shape] or { []string{} }
+	candidates << name
+	p.anonymous_struct_types[shape] = candidates
 	return name
 }
 
