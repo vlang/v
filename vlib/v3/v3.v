@@ -362,6 +362,13 @@ fn prealloc_scope_free_for_v3(scope voidptr) {
 	}
 }
 
+fn prealloc_scope_owns_for_v3(scope voidptr, ptr voidptr) bool {
+	$if prealloc {
+		return unsafe { prealloc_scope_owns(scope, ptr) }
+	}
+	return false
+}
+
 // clone_string_list clones a string slice out of a scoped prealloc arena.
 fn clone_string_list(values []string) []string {
 	if values.len == 0 {
@@ -568,6 +575,123 @@ fn clone_int_type_map(values map[int]types.Type) map[int]types.Type {
 	return cloned
 }
 
+fn string_is_in_prealloc_scope(value string, scope voidptr) bool {
+	return value.len > 0 && prealloc_scope_owns_for_v3(scope, voidptr(value.str))
+}
+
+fn string_list_is_in_prealloc_scope(values []string, scope voidptr) bool {
+	if values.len > 0 && prealloc_scope_owns_for_v3(scope, values.data) {
+		return true
+	}
+	for value in values {
+		if string_is_in_prealloc_scope(value, scope) {
+			return true
+		}
+	}
+	return false
+}
+
+fn promote_string_list_from_scope(values []string, scope voidptr) []string {
+	if !string_list_is_in_prealloc_scope(values, scope) {
+		return values
+	}
+	mut promoted := []string{cap: values.len}
+	for value in values {
+		promoted << if string_is_in_prealloc_scope(value, scope) { value.clone() } else { value }
+	}
+	return promoted
+}
+
+fn type_is_in_prealloc_scope(value types.Type, scope voidptr) bool {
+	return match value {
+		types.Unknown {
+			string_is_in_prealloc_scope(value.reason, scope)
+		}
+		types.Array {
+			type_is_in_prealloc_scope(value.elem_type, scope)
+		}
+		types.ArrayFixed {
+			string_is_in_prealloc_scope(value.len_expr, scope)
+				|| type_is_in_prealloc_scope(value.elem_type, scope)
+		}
+		types.Channel {
+			type_is_in_prealloc_scope(value.elem_type, scope)
+		}
+		types.Map {
+			type_is_in_prealloc_scope(value.key_type, scope)
+				|| type_is_in_prealloc_scope(value.value_type, scope)
+		}
+		types.Pointer {
+			type_is_in_prealloc_scope(value.base_type, scope)
+		}
+		types.FnType {
+			if value.params.len > 0 && prealloc_scope_owns_for_v3(scope, value.params.data) {
+				true
+			} else if type_is_in_prealloc_scope(value.return_type, scope) {
+				true
+			} else {
+				value.params.any(type_is_in_prealloc_scope(it, scope))
+			}
+		}
+		types.OptionType {
+			type_is_in_prealloc_scope(value.base_type, scope)
+		}
+		types.ResultType {
+			type_is_in_prealloc_scope(value.base_type, scope)
+		}
+		types.Struct {
+			string_is_in_prealloc_scope(value.name, scope)
+		}
+		types.Interface {
+			string_is_in_prealloc_scope(value.name, scope)
+		}
+		types.Enum {
+			string_is_in_prealloc_scope(value.name, scope)
+		}
+		types.SumType {
+			string_is_in_prealloc_scope(value.name, scope)
+		}
+		types.Alias {
+			string_is_in_prealloc_scope(value.name, scope)
+				|| type_is_in_prealloc_scope(value.base_type, scope)
+		}
+		types.MultiReturn {
+			if value.types.len > 0 && prealloc_scope_owns_for_v3(scope, value.types.data) {
+				true
+			} else {
+				value.types.any(type_is_in_prealloc_scope(it, scope))
+			}
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn promote_string_array_from_scope(mut values []string, scope voidptr) []string {
+	if values.len > 0 && prealloc_scope_owns_for_v3(scope, values.data) {
+		return clone_string_list(values)
+	}
+	for i, value in values {
+		if string_is_in_prealloc_scope(value, scope) {
+			values[i] = value.clone()
+		}
+	}
+	return values
+}
+
+fn promote_type_array_from_scope(mut values []types.Type, set []bool, scope voidptr) []types.Type {
+	if values.len > 0 && prealloc_scope_owns_for_v3(scope, values.data) {
+		return clone_type_array(values, set)
+	}
+	for i, value in values {
+		if i < set.len && set[i] && type_is_in_prealloc_scope(value, scope) {
+			values[i] = clone_type_value(value)
+		}
+	}
+	return values
+}
+
 // clone_flat_node clones the owned fields of one flat AST node.
 fn clone_flat_node(node flat.Node) flat.Node {
 	return flat.Node{
@@ -602,20 +726,74 @@ fn clone_flat_ast(ast &flat.FlatAst) &flat.FlatAst {
 	}
 }
 
-// clone_typechecker_after_scoped_transform clones checker metadata needed after transform.
-fn clone_typechecker_after_scoped_transform(mut tc types.TypeChecker, ast &flat.FlatAst) {
+fn reserve_scoped_transform_storage(mut ast flat.FlatAst, mut tc types.TypeChecker, skip_generics bool) {
+	nodes_factor_num, nodes_factor_den := if skip_generics { 7, 3 } else { 5, 3 }
+	children_factor_num, children_factor_den := if skip_generics { 5, 2 } else { 7, 4 }
+	target_nodes := ast.nodes.len * nodes_factor_num / nodes_factor_den
+	target_children := ast.children.len * children_factor_num / children_factor_den
+	if target_nodes > ast.nodes.cap {
+		unsafe { ast.nodes.grow_cap(target_nodes - ast.nodes.cap) }
+	}
+	if target_children > ast.children.cap {
+		unsafe { ast.children.grow_cap(target_children - ast.children.cap) }
+	}
+	tc.reserve_transform_node_caches(target_nodes)
+}
+
+fn promote_flat_ast_after_scoped_transform(ast &flat.FlatAst, scope voidptr) &flat.FlatAst {
+	if (ast.nodes.len > 0 && prealloc_scope_owns_for_v3(scope, ast.nodes.data))
+		|| (ast.children.len > 0 && prealloc_scope_owns_for_v3(scope, ast.children.data)) {
+		return clone_flat_ast(ast)
+	}
+	mut promoted := unsafe { ast }
+	for i in 0 .. promoted.nodes.len {
+		unsafe {
+			mut node := &promoted.nodes[i]
+			if string_is_in_prealloc_scope(node.value, scope) {
+				node.value = node.value.clone()
+			}
+			if string_is_in_prealloc_scope(node.typ, scope) {
+				node.typ = node.typ.clone()
+			}
+			node.generic_params = promote_string_list_from_scope(node.generic_params, scope)
+		}
+	}
+	promoted.disabled_fns = clone_string_bool_map(promoted.disabled_fns)
+	promoted.export_fn_names = clone_string_string_map(promoted.export_fn_names)
+	promoted.noreturn_fns = clone_string_bool_map(promoted.noreturn_fns)
+	return promoted
+}
+
+// promote_typechecker_after_scoped_transform copies only semantic fields whose
+// storage came from the disposable transform arena.
+fn promote_typechecker_after_scoped_transform(mut tc types.TypeChecker, ast &flat.FlatAst, scope voidptr) {
 	tc.a = ast
+	// Transform can extend these maps even in generic-erasure self-host mode;
+	// clone them as compact semantic tables rather than cloning the full checker.
 	tc.fn_ret_types = clone_string_type_map(tc.fn_ret_types)
 	tc.fn_param_types = clone_string_type_list_map(tc.fn_param_types)
 	tc.fn_variadic = clone_string_bool_map(tc.fn_variadic)
-	tc.resolved_call_names = clone_string_list(tc.resolved_call_names)
-	tc.resolved_call_set = tc.resolved_call_set.clone()
-	tc.resolved_fn_value_names = clone_string_list(tc.resolved_fn_value_names)
-	tc.resolved_fn_value_set = tc.resolved_fn_value_set.clone()
-	tc.statement_nodes = tc.statement_nodes.clone()
-	tc.expr_type_set = tc.expr_type_set.clone()
-	tc.expr_type_values = clone_type_array(tc.expr_type_values, tc.expr_type_set)
-	tc.checking_nodes = tc.checking_nodes.clone()
+	tc.resolved_call_names = promote_string_array_from_scope(mut tc.resolved_call_names, scope)
+	if tc.resolved_call_set.len > 0 && prealloc_scope_owns_for_v3(scope, tc.resolved_call_set.data) {
+		tc.resolved_call_set = tc.resolved_call_set.clone()
+	}
+	tc.resolved_fn_value_names = promote_string_array_from_scope(mut tc.resolved_fn_value_names,
+		scope)
+	if tc.resolved_fn_value_set.len > 0
+		&& prealloc_scope_owns_for_v3(scope, tc.resolved_fn_value_set.data) {
+		tc.resolved_fn_value_set = tc.resolved_fn_value_set.clone()
+	}
+	if tc.statement_nodes.len > 0 && prealloc_scope_owns_for_v3(scope, tc.statement_nodes.data) {
+		tc.statement_nodes = tc.statement_nodes.clone()
+	}
+	if tc.expr_type_set.len > 0 && prealloc_scope_owns_for_v3(scope, tc.expr_type_set.data) {
+		tc.expr_type_set = tc.expr_type_set.clone()
+	}
+	tc.expr_type_values = promote_type_array_from_scope(mut tc.expr_type_values, tc.expr_type_set,
+		scope)
+	if tc.checking_nodes.len > 0 && prealloc_scope_owns_for_v3(scope, tc.checking_nodes.data) {
+		tc.checking_nodes = tc.checking_nodes.clone()
+	}
 	tc.sparse_resolved_call_names = clone_int_string_map(tc.sparse_resolved_call_names)
 	tc.sparse_resolved_fn_values = clone_int_string_map(tc.sparse_resolved_fn_values)
 	tc.sparse_statement_nodes = tc.sparse_statement_nodes.clone()
@@ -1200,13 +1378,17 @@ fn main() {
 		scope_whole_transform = true
 	}
 	if scope_prealloc_selfhost && scope_whole_transform {
+		// Reserve the escaping slabs in the compilation arena. The scoped
+		// transform can then use a disposable scratch arena without forcing a
+		// second full AST/checker copy at the end.
+		reserve_scoped_transform_storage(mut a, mut pre_tc, skip_transform_generics)
 		transform_scope := prealloc_scope_begin_for_v3()
 		used_fns, transform_was_parallel = transform.transform_with_used_opt_config(mut a, &pre_tc,
 			used_fns, current_parallel_transform, skip_transform_generics)
 		prealloc_scope_leave_for_v3(transform_scope)
-		a = clone_flat_ast(a)
+		a = promote_flat_ast_after_scoped_transform(a, transform_scope)
 		used_fns = clone_string_bool_map(used_fns)
-		clone_typechecker_after_scoped_transform(mut pre_tc, a)
+		promote_typechecker_after_scoped_transform(mut pre_tc, a, transform_scope)
 		prealloc_scope_free_for_v3(transform_scope)
 	} else {
 		used_fns, transform_was_parallel = transform.transform_with_used_opt_config_scoped_workers(mut a,

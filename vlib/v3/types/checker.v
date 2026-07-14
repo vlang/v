@@ -685,6 +685,37 @@ fn (mut tc TypeChecker) extend_node_caches(n int) {
 	extend_bool_cache(mut tc.checking_nodes, n)
 }
 
+// reserve_transform_node_caches reserves node-indexed semantic storage before
+// a scoped transform starts, keeping the escaping slabs in the compilation arena.
+pub fn (mut tc TypeChecker) reserve_transform_node_caches(n int) {
+	reserve_string_cache(mut tc.resolved_call_names, n)
+	reserve_bool_cache(mut tc.resolved_call_set, n)
+	reserve_string_cache(mut tc.resolved_fn_value_names, n)
+	reserve_bool_cache(mut tc.resolved_fn_value_set, n)
+	reserve_bool_cache(mut tc.statement_nodes, n)
+	reserve_type_cache(mut tc.expr_type_values, n)
+	reserve_bool_cache(mut tc.expr_type_set, n)
+	reserve_bool_cache(mut tc.checking_nodes, n)
+}
+
+fn reserve_string_cache(mut values []string, n int) {
+	if n > values.cap {
+		unsafe { values.grow_cap(n - values.cap) }
+	}
+}
+
+fn reserve_bool_cache(mut values []bool, n int) {
+	if n > values.cap {
+		unsafe { values.grow_cap(n - values.cap) }
+	}
+}
+
+fn reserve_type_cache(mut values []Type, n int) {
+	if n > values.cap {
+		unsafe { values.grow_cap(n - values.cap) }
+	}
+}
+
 fn extend_string_cache(mut values []string, n int) {
 	if n > values.len {
 		values << []string{len: n - values.len}
