@@ -720,6 +720,26 @@ fn main() {
 	return os.read_file(c_out) or { panic(err) }
 }
 
+fn directive_order_gen_c_task_info_reference(v3_bin string) string {
+	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_task_info_project')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	directive_order_write_file(root, 'v.mod', "Module { name: 'directive_order_task_info' }\n")
+	directive_order_write_file(root, 'main.v', 'module main
+
+fn C.task_info() int
+
+fn main() {
+	_ := C.task_info()
+}
+')
+	c_out := os.join_path(os.temp_dir(), 'v3_c_directive_order_task_info.c')
+	os.rm(c_out) or {}
+	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
+	assert result.exit_code == 0, result.output
+	return os.read_file(c_out) or { panic(err) }
+}
+
 fn directive_order_gen_c_headerless_timerfd_header(v3_bin string) string {
 	root := os.join_path(os.temp_dir(), 'v3_c_directive_order_timerfd_project')
 	os.rmdir_all(root) or {}
@@ -1189,6 +1209,11 @@ fn test_mach_headers_are_emitted_headerlessly() {
 	assert c_code.contains('typedef struct mach_timebase_info_data_t mach_timebase_info_data_t;'), c_code
 	assert c_code.contains('struct mach_timebase_info_data_t {'), c_code
 	assert c_code.contains('void mach_timebase_info('), c_code
+}
+
+fn test_inferred_mach_headers_are_target_guarded() {
+	c_code := directive_order_gen_c_task_info_reference(directive_order_build_v3())
+	assert c_code.contains('#ifdef __APPLE__\n#define panic mach_panic\n#include <mach/mach.h>\n#undef panic\n#include <mach/task.h>\n#endif'), c_code
 }
 
 fn test_timerfd_header_uses_headerless_decls() {
