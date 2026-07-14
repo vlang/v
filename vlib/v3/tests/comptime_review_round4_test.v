@@ -2117,6 +2117,31 @@ fn test_raw_string_operand_is_normalized_before_comptime_folding() {
 	assert out == 'ok'
 }
 
+fn test_field_condition_substitution_skips_string_literals() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'field_condition_string_literal', "struct QuotedFields {
+pub:
+	id int
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for field in QuotedFields.fields {
+		\$if 'field.is_pub' == 'true' {
+			rows << 'wrong'
+		} \$else {
+			rows << field.name
+		}
+		\$if field.name == 'id' {
+			rows << 'real-selector'
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'id|real-selector'
+}
+
 fn test_nested_param_and_attribute_reflection_respects_shadowing() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_param_attribute_shadowing', "@[outer]

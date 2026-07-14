@@ -2785,7 +2785,8 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		substituted := t.subst_field_cond(node.value, var_name, fm)
 		cond := t.subst_reflected_field_selector_cond(node.value, substituted, var_name, fm)
 		if (comptime_cond_references_ident(node.value, var_name)
-			|| cond != node.value) && !comptime_cond_has_loop_member_ref(cond, var_name)
+			|| cond != node.value || comptime_cond_is_static_literal_expr(cond))
+			&& !comptime_cond_has_loop_member_ref(cond, var_name)
 			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if taken := t.eval_field_cond(cond) {
 				branch_idx := if taken { 0 } else { 1 }
@@ -3087,6 +3088,28 @@ fn (t &Transformer) subst_value_cond(cond string, var_name string, name string, 
 // inside a comptime condition string. Longer members are replaced first so `.typ` does not
 // clobber `.unaliased_typ`.
 fn (t &Transformer) subst_field_cond(cond string, var_name string, fm FieldMeta) string {
+	if !cond.contains("'") && !cond.contains('"') {
+		return t.subst_unquoted_field_cond(cond, var_name, fm)
+	}
+	mut result := ''
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			end := comptime_cond_skip_string(cond, offset)
+			result += cond[offset..end]
+			offset = end
+			continue
+		}
+		start := offset
+		for offset < cond.len && cond[offset] !in [`'`, `"`] {
+			offset++
+		}
+		result += t.subst_unquoted_field_cond(cond[start..offset], var_name, fm)
+	}
+	return result
+}
+
+fn (t &Transformer) subst_unquoted_field_cond(cond string, var_name string, fm FieldMeta) string {
 	mut c := cond
 	if t.cur_module.len > 0 {
 		c = c.replace('${t.cur_module}.${var_name}', var_name)
@@ -3230,6 +3253,34 @@ fn comptime_cond_skip_string(cond string, start int) int {
 
 fn comptime_cond_name_char(ch u8) bool {
 	return ch.is_letter() || ch.is_digit() || ch == `_`
+}
+
+fn comptime_cond_is_static_literal_expr(cond string) bool {
+	clean := comptime_condition_strip_outer_parens(cond.trim_space())
+	for op in ['||', '&&'] {
+		if op_idx := comptime_top_index(clean, op) {
+			return comptime_cond_is_static_literal_expr(clean[..op_idx])
+				&& comptime_cond_is_static_literal_expr(clean[op_idx + op.len..])
+		}
+	}
+	if clean.starts_with('!') {
+		return comptime_cond_is_static_literal_expr(clean[1..])
+	}
+	if clean in ['true', 'false'] {
+		return true
+	}
+	for op in ['!=', '=='] {
+		if op_idx := comptime_top_index(clean, op) {
+			return comptime_cond_is_quoted_literal(clean[..op_idx])
+				&& comptime_cond_is_quoted_literal(clean[op_idx + op.len..])
+		}
+	}
+	return false
+}
+
+fn comptime_cond_is_quoted_literal(value string) bool {
+	clean := value.trim_space()
+	return clean.len >= 2 && clean[0] in [`'`, `"`, `\``] && clean[clean.len - 1] == clean[0]
 }
 
 // eval_field_cond evaluates a fully-substituted comptime condition (`is`/`!is`, `==`/`!=`,
