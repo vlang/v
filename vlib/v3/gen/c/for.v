@@ -337,7 +337,11 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 		g.pop_scope()
 		return
 	}
-	key_name := g.c_loop_local_name(key.value)
+	key_name := if key.value == '_' {
+		'__discard_${int(key_id)}'
+	} else {
+		g.c_loop_local_name(key.value)
+	}
 	low_type := g.usable_expr_type(low_id)
 	range_type := if low_type is types.Primitive || low_type is types.ISize
 		|| low_type is types.USize {

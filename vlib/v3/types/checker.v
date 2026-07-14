@@ -274,6 +274,7 @@ pub mut:
 	structs                      map[string][]StructField
 	struct_modules               map[string]string
 	struct_files                 map[string]string
+	soa_structs                  map[string]bool
 	// set of `${file}\x01${module}\x01${name}` keys for every source-level
 	// struct/type/interface/enum declaration, built once in `collect`. Replaces
 	// the former full-node scan in `source_declares_type_in_scope`, which was
@@ -425,6 +426,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		structs:                            map[string][]StructField{}
 		struct_modules:                     map[string]string{}
 		struct_files:                       map[string]string{}
+		soa_structs:                        map[string]bool{}
 		declared_type_scope_keys:           map[string]bool{}
 		struct_error_embeds_shadow_builtin: map[string]bool{}
 		struct_generic_params:              map[string][]string{}
@@ -928,6 +930,9 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				if 'params' in node.typ.split(',') {
 					tc.params_structs[qname] = true
 				}
+				if 'soa' in node.typ.split(',') {
+					tc.soa_structs[qname] = true
+				}
 			}
 			.type_decl {
 				if node.children_count > 0 {
@@ -1107,6 +1112,9 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 				if 'params' in node.typ.split(',') {
 					tc.params_structs[qname] = true
+				}
+				if 'soa' in node.typ.split(',') {
+					tc.soa_structs[qname] = true
 				}
 			}
 			.c_fn_decl {

@@ -623,6 +623,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		structs:                            g.tc.structs
 		struct_modules:                     g.tc.struct_modules
 		struct_files:                       g.tc.struct_files
+		soa_structs:                        g.tc.soa_structs
 		struct_error_embeds_shadow_builtin: g.tc.struct_error_embeds_shadow_builtin
 		struct_generic_params:              g.tc.struct_generic_params
 		struct_field_c_abi_fns:             g.tc.struct_field_c_abi_fns
