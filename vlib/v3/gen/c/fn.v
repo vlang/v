@@ -5090,7 +5090,7 @@ fn (mut g FlatGen) gen_json_decode_call(node flat.Node) bool {
 			g.write(', ')
 		}
 		g.write('.${g.cname(field.name)} = ')
-		g.gen_json_decode_field_expr(root_name, field)
+		g.gen_json_decode_field_expr(root_name, struct_type.name, field)
 	}
 	g.write('}; } } cJSON_Delete(${root_name}); } ${out_name}; })')
 	return true
@@ -5125,7 +5125,11 @@ fn (mut g FlatGen) json_decode_value_valid_expr(item string, typ types.Type) str
 		return '(${item} == NULL || (cJSON_IsNumber(${item}) && ${item}->valuedouble >= -9007199254740991.0 && ${item}->valuedouble <= 9007199254740991.0 && floor(${item}->valuedouble) == ${item}->valuedouble))'
 	}
 	if clean is types.Array {
-		return '(${item} == NULL || cJSON_IsArray(${item}))'
+		item_name := g.tmp_name()
+		elem_name := g.tmp_name()
+		valid_name := g.tmp_name()
+		elem_valid := g.json_decode_value_valid_expr(elem_name, clean.elem_type)
+		return '({ cJSON* ${item_name} = ${item}; bool ${valid_name} = (${item_name} == NULL || cJSON_IsArray(${item_name})); if (${valid_name} && ${item_name} != NULL) { cJSON* ${elem_name} = NULL; cJSON_ArrayForEach(${elem_name}, ${item_name}) { if (!(${elem_valid})) { ${valid_name} = false; break; } } } ${valid_name}; })'
 	}
 	if clean is types.Pointer {
 		inner := g.json_decode_value_valid_expr(item, clean.base_type)
@@ -5143,7 +5147,7 @@ fn (mut g FlatGen) json_decode_value_valid_expr(item string, typ types.Type) str
 			checks << g.json_decode_value_valid_expr(field_item, field.typ)
 		}
 		children_valid := if checks.len > 0 { checks.join(' && ') } else { 'true' }
-		return '(${item} != NULL && cJSON_IsObject(${item}) && ${children_valid})'
+		return '(${item} == NULL || (cJSON_IsObject(${item}) && ${children_valid}))'
 	}
 	return 'true'
 }
@@ -5187,13 +5191,47 @@ fn (g &FlatGen) json_decode_value_supported(typ types.Type, depth int) bool {
 	return false
 }
 
-fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, field types.StructField) {
+fn (mut g FlatGen) gen_json_decode_field_expr(root_name string, struct_name string, field types.StructField) {
 	item := if g.json_decode_struct_field_is_embedded(field) {
 		root_name
 	} else {
 		'cJSON_GetObjectItemCaseSensitive(${root_name}, "${field.name}")'
 	}
+	clean := if field.typ is types.Alias { field.typ.base_type } else { field.typ }
+	if clean is types.Pointer {
+		if info, default_id := g.json_struct_field_default_expr(struct_name, field.name) {
+			default_node := g.a.node(default_id)
+			if default_node.kind != .nil_literal {
+				item_name := g.tmp_name()
+				out_name := g.tmp_name()
+				field_ct := g.value_c_type(field.typ)
+				g.write('({ cJSON* ${item_name} = ${item}; ${field_ct} ${out_name}; if (${item_name} == NULL) { ${out_name} = ')
+				old_module := g.tc.cur_module
+				old_file := g.tc.cur_file
+				g.tc.cur_module = info.module
+				g.tc.cur_file = info.file
+				g.gen_struct_field_expr_for_field(default_id, info.full_name, field.name, field.typ)
+				g.tc.cur_module = old_module
+				g.tc.cur_file = old_file
+				g.write('; } else { ${out_name} = ')
+				g.gen_json_decode_value_expr(item_name, field.typ)
+				g.write('; } ${out_name}; })')
+				return
+			}
+		}
+	}
 	g.gen_json_decode_value_expr(item, field.typ)
+}
+
+fn (g &FlatGen) json_struct_field_default_expr(struct_name string, field_name string) ?(StructDeclInfo, flat.NodeId) {
+	info := g.find_struct_decl(struct_name) or { return none }
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind == .field_decl && field.value == field_name && field.children_count > 0 {
+			return info, g.a.child(field, 0)
+		}
+	}
+	return none
 }
 
 fn (mut g FlatGen) gen_json_decode_value_expr(item string, typ types.Type) {
@@ -5306,10 +5344,9 @@ fn (g &FlatGen) json_decode_struct_field_is_embedded(field types.StructField) bo
 	return false
 }
 
-// json_struct_has_field_default reports whether any field of `struct_name` declares a
-// default initializer (`n int = 5`). The default is stored as the field_decl's child
-// expression; the fast-path decoder cannot preserve it for a field omitted from the
-// JSON (it would emit the type zero), so those structs are declined.
+// json_struct_has_field_default reports whether `struct_name` has a default initializer
+// that the fast-path decoder cannot preserve. Pointer defaults are handled separately
+// by gen_json_decode_field_expr; other defaults still require the full decoder.
 fn (g &FlatGen) json_struct_has_field_default(struct_name string) bool {
 	decl_name := json_struct_decl_name(struct_name)
 	mut cur_module := ''
@@ -5331,15 +5368,16 @@ fn (g &FlatGen) json_struct_has_field_default(struct_name string) bool {
 		}
 		for i in 0 .. node.children_count {
 			field := g.a.child_node(&node, i)
-			if field.kind != .field_decl {
+			if field.kind != .field_decl || field.children_count == 0 {
 				continue
 			}
-			// A pointer field whose default is `nil` has the same representation as its
-			// zero value, so the shortcut can preserve it. Other defaults still require
-			// the full decoder.
-			if field.children_count > 0 && !field.typ.trim_space().starts_with('&') {
-				return true
+			if field.typ.trim_space().starts_with('&') {
+				// Explicit nil defaults use the pointer zero value. Non-nil pointer
+				// defaults are emitted by gen_json_decode_field_expr when the key is
+				// absent, so both pointer forms remain safe on the shortcut.
+				continue
 			}
+			return true
 		}
 		return false
 	}

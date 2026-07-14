@@ -2421,6 +2421,73 @@ fn main() {
 	assert out == '5'
 }
 
+fn test_json_decode_fast_path_validates_arrays_and_preserves_defaults() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_decode_fast_path_nested_values', 'import json
+
+struct Inner {
+	value int
+}
+
+struct Outer {
+	inner Inner
+}
+
+struct BoolList {
+	values []bool
+}
+
+struct I64List {
+	values []i64
+}
+
+struct StrictChild {
+	ok bool
+}
+
+struct ChildList {
+	values []StrictChild
+}
+
+struct PointerDefault {
+	value &Inner = &Inner{value: 7}
+}
+
+fn main() {
+	mut array_failed := false
+	_ := json.decode(BoolList, "{\\"values\\":[1]}") or {
+		array_failed = true
+		BoolList{}
+	}
+	println(array_failed)
+	mut i64_array_failed := false
+	_ := json.decode(I64List, "{\\"values\\":[9007199254740992]}") or {
+		i64_array_failed = true
+		I64List{}
+	}
+	println(i64_array_failed)
+	mut struct_array_failed := false
+	_ := json.decode(ChildList, "{\\"values\\":[{\\"ok\\":1}]}") or {
+		struct_array_failed = true
+		ChildList{}
+	}
+	println(struct_array_failed)
+
+	mut nested_failed := false
+	outer := json.decode(Outer, "{}") or {
+		nested_failed = true
+		Outer{}
+	}
+	println(!nested_failed)
+	println(int_str(outer.inner.value))
+
+	pointer_default := json.decode(PointerDefault, "{}")!
+	println(int_str(pointer_default.value.value))
+}
+')
+	assert out == 'true\ntrue\ntrue\ntrue\n0\n7'
+}
+
 fn test_json_fast_paths_handle_primitives_and_stringified_composites() {
 	v3_bin := build_v3()
 	bool_source := 'import json
