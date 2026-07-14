@@ -20,6 +20,7 @@ const comptime_field_members = [
 	'is_pub',
 	'indirections',
 	'attrs',
+	'str',
 	'typ',
 	'unaliased_typ',
 ]
@@ -995,7 +996,12 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			}
 			.fn_decl {
 				qname := tc.qualify_fn_name(node.value)
-				ret_type := tc.parse_type(node.typ)
+				is_open_generic := node.generic_params.len > 0 || node.value.contains('[')
+				ret_type := if is_open_generic {
+					tc.parse_scope_param_type(node.typ)
+				} else {
+					tc.parse_type(node.typ)
+				}
 				mut ptypes := []Type{}
 				mut param_texts := []string{}
 				mut shared_params := []bool{}
@@ -1006,7 +1012,11 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						if child.typ.starts_with('...') {
 							is_variadic = true
 						}
-						ptypes << tc.parse_type(child.typ)
+						ptypes << if is_open_generic {
+							tc.parse_scope_param_type(child.typ)
+						} else {
+							tc.parse_type(child.typ)
+						}
 						param_texts << child.typ
 						shared_params << param_type_text_is_shared(child.typ)
 					}
@@ -4115,6 +4125,9 @@ fn (tc &TypeChecker) type_text_has_generic_placeholder(typ string) bool {
 	if is_bare_generic_param(clean) {
 		return !tc.is_known_type_text(clean)
 	}
+	if clean.contains('.') && is_bare_generic_param(clean.all_after_last('.')) {
+		return true
+	}
 	if clean.starts_with('&') {
 		return tc.type_text_has_generic_placeholder(clean[1..])
 	}
@@ -5203,6 +5216,13 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 		else {}
 	}
 
+	// Method and parameter loops are resolved to concrete declarations by the transformer.
+	// Their bodies can also reference metadata from an enclosing reflection loop, which does
+	// not exist as a runtime local while checking the original generic body.
+	if parts[1] in ['methods', 'params', 'attributes'] {
+		return
+	}
+
 	field_cases := if parts[1] == 'fields' {
 		tc.comptime_static_field_cases(node.typ)
 	} else {
@@ -5229,9 +5249,7 @@ fn (mut tc TypeChecker) check_comptime_members(id flat.NodeId, var_name string, 
 	node := tc.a.nodes[int(id)]
 	if node.kind == .comptime_for {
 		tc.check_comptime_for_members(id, node)
-		if comptime_for_declares_var_in_value(node.value, var_name) {
-			return
-		}
+		return
 	}
 	if node.kind == .comptime_if {
 		if member := comptime_cond_unknown_member(node.value, var_name, members) {
@@ -8899,6 +8917,12 @@ fn (mut tc TypeChecker) resolve_lvalue_type(lhs_id flat.NodeId) Type {
 		if typ := tc.file_scope.lookup(lhs.value) {
 			return typ
 		}
+		qname := tc.qualify_name(lhs.value)
+		if qname != lhs.value {
+			if typ := tc.file_scope.lookup(qname) {
+				return typ
+			}
+		}
 		if tc.should_diagnose(lhs_id) && lhs.value != '_' {
 			tc.record_error(.unknown_ident, 'unknown identifier `${lhs.value}`', lhs_id)
 		}
@@ -9652,6 +9676,15 @@ fn (tc &TypeChecker) expr_has_option_result_handler(id flat.NodeId) bool {
 
 // check_call validates check call state for types.
 fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
+	if node.children_count > 0 {
+		callee := tc.a.child_node(&node, 0)
+		if callee.kind == .selector && callee.value == '$' {
+			for i in 1 .. node.children_count {
+				tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
+			}
+			return
+		}
+	}
 	if sum_name := tc.sum_constructor_call_name(node) {
 		tc.check_sum_constructor_call(id, node, sum_name)
 		return
@@ -11106,7 +11139,7 @@ fn (mut tc TypeChecker) explicit_generic_call_info(name string, has_receiver boo
 	}
 	mut concrete_args := []string{cap: generic_params.len}
 	for i in 0 .. generic_params.len {
-		concrete_args << tc.qualify_type_text(type_args[i])
+		concrete_args << tc.qualify_resolution_type_text(type_args[i])
 	}
 	mut sub_params := []Type{}
 	for param_text in param_texts {
@@ -12252,7 +12285,7 @@ fn voidptr_arg_compatible(expected Type, actual Type) bool {
 
 fn voidptr_arg_type_passes_direct(typ Type) bool {
 	clean := fn_param_unalias_type(typ)
-	return clean is Pointer || clean is Nil
+	return clean is Pointer || clean is Nil || type_has_runtime_value(clean)
 }
 
 fn variadic_elem_accepts_any(typ Type) bool {
@@ -12376,6 +12409,12 @@ fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
 	scoped.cur_module = tc.fn_type_modules[name] or {
 		tc.file_modules[decl_file] or { tc.cur_module }
 	}
+	// Fully qualify symbols owned by the declaration module before parsing the
+	// substituted signature. A bare concrete type can belong to the generic
+	// call site (notably a type from `main`), so resolution deliberately leaves
+	// that spelling bare and the neutral parse context preserves its authority.
+	resolved_typ := scoped.qualify_resolution_type_text(typ)
+	scoped.cur_module = ''
 	scoped.type_cache = &TypeCache{
 		parse_enabled:              if tc.type_cache != unsafe { nil } {
 			tc.type_cache.parse_enabled
@@ -12389,7 +12428,7 @@ fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
 		ierror_compat_entries:      map[string]int{}
 		source_error_embed_entries: map[string]int{}
 	}
-	return scoped.parse_type(typ)
+	return scoped.parse_type(resolved_typ)
 }
 
 fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]string) {
@@ -14333,7 +14372,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 				cond := tc.a.node(cond_id)
 				if pattern := tc.match_type_pattern(cond) {
 					if concrete := tc.resolve_interface_match_pattern(pattern) {
-						if !tc.named_type_implements_interface(concrete, subject_type.name)
+						concrete_type := unalias_type(unwrap_pointer(tc.parse_type(concrete)))
+						if concrete_type !is Interface
+							&& !tc.named_type_implements_interface(concrete, subject_type.name)
 							&& tc.should_diagnose(cond_id) {
 							tc.record_error(.condition_mismatch,
 								'`${pattern}` is not compatible with interface `${subject_type.name}`',
@@ -14577,7 +14618,9 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	if expr_type is Interface {
 		if node.value.len > 0 {
 			if concrete := tc.resolve_interface_match_pattern(node.value) {
-				if !tc.named_type_implements_interface(concrete, expr_type.name)
+				concrete_type := unalias_type(unwrap_pointer(tc.parse_type(concrete)))
+				if concrete_type !is Interface
+					&& !tc.named_type_implements_interface(concrete, expr_type.name)
 					&& tc.should_diagnose(id) {
 					tc.record_error(.condition_mismatch,
 						'`${node.value}` is not compatible with interface `${expr_type.name}`', id)
@@ -15061,6 +15104,14 @@ fn (mut tc TypeChecker) reject_stored_capturing_fn_literal(id flat.NodeId) {
 // check_selector validates check selector state for types.
 fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
+		return
+	}
+	// Compile-time selectors are resolved while their enclosing `$for` reflection loop is
+	// unrolled. Their synthetic second child names the field or method metadata variable.
+	if node.value == '$' {
+		for i in 0 .. node.children_count {
+			tc.check_node(tc.a.child(&node, i))
+		}
 		return
 	}
 	base_id := tc.a.child(&node, 0)
@@ -15549,8 +15600,15 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		child_id := tc.a.child(&node, 0)
 		child := tc.a.nodes[int(child_id)]
 		if node.op == .not && child.kind == .array_literal {
-			actual := tc.resolve_expr(child_id, expected)
-			if tc.receiver_compatible(actual, expected) {
+			array_expected := if expected is OptionType {
+				expected.base_type
+			} else if expected is ResultType {
+				expected.base_type
+			} else {
+				expected
+			}
+			actual := tc.resolve_expr(child_id, array_expected)
+			if tc.receiver_compatible(actual, array_expected) {
 				tc.register_synth_type(id, expected_raw)
 				return expected_raw
 			}
@@ -18451,7 +18509,16 @@ fn (tc &TypeChecker) parse_open_generic_struct_type(typ string) ?Type {
 		&& base !in tc.struct_generic_params {
 		return none
 	}
-	suffix := clean[base.len..]
+	mut preserved_args := []string{cap: args.len}
+	for arg in args {
+		trimmed := arg.trim_space()
+		preserved_args << if is_generic_placeholder_type(trimmed) {
+			trimmed.all_after_last('.')
+		} else {
+			trimmed
+		}
+	}
+	suffix := '[${preserved_args.join(', ')}]'
 	return Type(Struct{
 		name: qbase + suffix
 	})
@@ -18461,6 +18528,12 @@ fn (tc &TypeChecker) parse_open_generic_struct_type(typ string) ?Type {
 fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.len == 0 {
 		return Type(void_)
+	}
+	// Preserve open generic struct applications wherever they occur in a signature or
+	// expression type. Qualifying their placeholder (`T` -> `module.T`) makes it look
+	// concrete to later stages and can emit invalid C types such as `Box_module__T`.
+	if preserved := tc.parse_open_generic_struct_type(typ) {
+		return preserved
 	}
 	if typ.ends_with('.typ') {
 		return tc.parse_type(typ[..typ.len - 4])
