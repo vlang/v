@@ -4569,7 +4569,7 @@ fn markused_is_runtime_collection_helper_name(name string) bool {
 	return name in ['array__clone', 'array__reverse', 'array__prepend', 'array__insert',
 		'array__push_many', 'array__needs_unique_shift', 'map__delete', 'map__move', 'map__reserve',
 		'map__keys', 'map__values', 'map__clear', 'map__free', 'map__get', 'map__get_check',
-		'map__exists', 'map__set']
+		'map__get_key_check', 'map__exists', 'map__set']
 }
 
 fn (c &CallCollector) collect_top_level_selector_fallback(base &flat.Node, method string, cur_module string, imports map[string]string, local_values map[string]bool, mut calls []string) {

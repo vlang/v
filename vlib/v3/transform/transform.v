@@ -5564,7 +5564,10 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 			field_name := 'arg${j}'
 			field_type_name := field_type.name()
 			field := t.make_selector(t.make_ident(tmp_name), field_name, field_type_name)
-			result << t.make_assign(t.transform_lvalue(lhs_id), field)
+			lvalue := t.transform_lvalue(lhs_id)
+			t.drain_pending(mut result)
+			t.append_owned_lvalue_drop_before_assign(lvalue, field_type_name, mut result)
+			result << t.make_assign(lvalue, field)
 		}
 		return result
 	}
@@ -5613,8 +5616,14 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		if lhs.kind == .ident && lhs.value == '_' {
 			continue
 		}
-		result << t.make_assign(t.transform_lvalue_without_smartcast(lhs_id),
-			t.make_ident(tmp_names[i]))
+		lvalue := t.transform_lvalue_without_smartcast(lhs_id)
+		t.drain_pending(mut result)
+		mut lhs_type := t.lvalue_type(lhs_id)
+		if lhs_type.len == 0 {
+			lhs_type = t.original_expr_type(lhs_id)
+		}
+		t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut result)
+		result << t.make_assign(lvalue, t.make_ident(tmp_names[i]))
 	}
 	for lhs_id in lhs_ids {
 		t.invalidate_smartcast_for_lvalue(lhs_id)
@@ -6058,7 +6067,14 @@ fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []fl
 		if lhs.kind == .ident && lhs.value == '_' {
 			continue
 		}
-		stmts << t.make_assign(t.transform_lvalue(lhs_id), t.make_ident(tmp_name))
+		lvalue := t.transform_lvalue(lhs_id)
+		t.drain_pending(mut stmts)
+		mut lhs_type := t.lvalue_type(lhs_id)
+		if lhs_type.len == 0 {
+			lhs_type = t.original_expr_type(lhs_id)
+		}
+		t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut stmts)
+		stmts << t.make_assign(lvalue, t.make_ident(tmp_name))
 	}
 	return stmts
 }
@@ -6271,6 +6287,9 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 		return lowered
 	}
 	if lowered := t.try_lower_array_append_stmt(child_id) {
+		return lowered
+	}
+	if lowered := t.try_lower_ignored_owned_array_pop_stmt(child_id, child) {
 		return lowered
 	}
 	if lowered := t.try_lower_flag_enum_stmt(child_id) {

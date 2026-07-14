@@ -47,4 +47,8 @@ pub fn (tc &TypeChecker) ownership_type_requires_drop(_ Type) bool {
 	return false
 }
 
+pub fn (tc &TypeChecker) ownership_default_clone_missing_method(_ Type) ?string {
+	return none
+}
+
 pub fn (mut tc TypeChecker) inherit_ownership_codegen_metadata_from(_ &TypeChecker) {}

@@ -156,6 +156,11 @@ fn (mut t Transformer) make_map_get_check_expr(map_expr flat.NodeId, base_type s
 		t.make_ident(key_name))), 'voidptr')
 }
 
+fn (mut t Transformer) make_map_get_key_check_expr(map_expr flat.NodeId, base_type string, key_name string) flat.NodeId {
+	return t.make_call_typed('map__get_key_check', arr2(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,
+		t.make_ident(key_name))), 'voidptr')
+}
+
 // make_map_exists_expr builds make map exists expr data for transform.
 fn (mut t Transformer) make_map_exists_expr(map_expr flat.NodeId, base_type string, key_name string) flat.NodeId {
 	return t.make_call_typed('map__exists', arr2(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,

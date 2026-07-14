@@ -1139,6 +1139,95 @@ pub fn (tc &TypeChecker) ownership_type_requires_drop(typ Type) bool {
 	return names.len > 0
 }
 
+// ownership_default_clone_missing_method returns the first Drop-requiring type that a
+// compiler-provided IClone implementation cannot clone safely.
+pub fn (tc &TypeChecker) ownership_default_clone_missing_method(typ Type) ?string {
+	if tc.ownership == unsafe { nil } || !tc.ownership_type_requires_drop(typ) {
+		return none
+	}
+	mut seen := map[string]bool{}
+	return tc.ownership_default_clone_missing_method_inner(typ, mut seen)
+}
+
+fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut seen map[string]bool) ?string {
+	match typ {
+		Alias {
+			if tc.ownership_type_has_clone_method(typ) {
+				return none
+			}
+			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
+		}
+		OptionType {
+			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
+		}
+		ResultType {
+			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
+		}
+		Array {
+			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, mut seen)
+		}
+		ArrayFixed {
+			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, mut seen)
+		}
+		Map {
+			if bad := tc.ownership_default_clone_missing_method_inner(typ.key_type, mut seen) {
+				return bad
+			}
+			return tc.ownership_default_clone_missing_method_inner(typ.value_type, mut seen)
+		}
+		Struct {
+			name := typ.name
+			if tc.ownership_type_has_clone_method(typ) {
+				return none
+			}
+			if tc.ownership_type_has_explicit_drop(name) {
+				return name
+			}
+			if !tc.named_type_implements_marker(name, 'IClone') {
+				return name
+			}
+			if seen[name] {
+				return none
+			}
+			seen[name] = true
+			for field in tc.struct_fields_for_type(name) {
+				if !tc.ownership_type_requires_drop(field.typ) {
+					continue
+				}
+				if bad := tc.ownership_default_clone_missing_method_inner(field.typ, mut seen) {
+					return bad
+				}
+			}
+			return none
+		}
+		SumType {
+			if tc.ownership_type_has_clone_method(typ) {
+				return none
+			}
+			return typ.name
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
+	name := resolve_type_name_for_method(typ)
+	if name.len == 0 {
+		return false
+	}
+	if _ := tc.resolve_generic_struct_method(name, 'clone') {
+		return true
+	}
+	for method_name in receiver_method_name_candidates(typ, 'clone', tc.cur_module) {
+		if method_name in tc.fn_ret_types {
+			return true
+		}
+	}
+	return false
+}
+
 fn (tc &TypeChecker) ownership_type_has_explicit_drop(type_name string) bool {
 	clean := type_name.trim_left('&?')
 	base := generic_base_name(clean)

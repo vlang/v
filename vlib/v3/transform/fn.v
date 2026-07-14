@@ -5171,6 +5171,11 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					&& !t.validate_cgen_array_method_args(node, base_id, clean_base_type, fn_node.value) {
 					return t.make_empty()
 				}
+				if lowered := t.lower_owned_array_removal_call(node, base_id, base_type, elem_type,
+					fn_node.value)
+				{
+					return lowered
+				}
 				if array_method_stays_in_cgen_needs_runtime_mark(fn_node.value) {
 					t.mark_fn_used('array__${fn_node.value}')
 				}
@@ -5186,6 +5191,11 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					t.mark_fn_used(method_name)
 					return t.make_call_typed(method_name, args, ret_type)
 				}
+				if lowered := t.lower_owned_array_removal_call(node, base_id, base_type, elem_type,
+					fn_node.value)
+				{
+					return lowered
+				}
 				args := t.transform_receiver_method_args(node, base_id, array_builtin_method)
 				ret_type := t.receiver_method_return_type(array_builtin_method, node.typ)
 				return t.make_call_typed(array_builtin_method, args, ret_type)
@@ -5193,6 +5203,152 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return none
 		}
 	}
+}
+
+// lower_owned_array_removal_call drops ownership-bearing elements before a raw array
+// operation removes them from the range visited by the scope-exit destructor.
+fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id flat.NodeId, base_type string, elem_type string, method string) ?flat.NodeId {
+	if method !in ['delete', 'delete_many', 'clear', 'trim', 'drop', 'delete_last'] || isnil(t.tc)
+		|| !t.tc.ownership_type_requires_drop(t.tc.parse_type(elem_type)) {
+		return none
+	}
+	base := t.stable_expr_for_reuse(base_id)
+	clean_base_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	mut array_value := base
+	if base_type.starts_with('&') {
+		array_value = t.make_prefix(.mul, base)
+		t.set_node_typ(int(array_value), clean_base_type)
+	}
+	mut args := []flat.NodeId{}
+	match method {
+		'delete' {
+			if node.children_count < 2 {
+				return none
+			}
+			index := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 1),
+				'int'), 'int', 'array_delete_index')
+			args << index
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_index(array_value,
+				index, elem_type)), 'void'))
+		}
+		'delete_many' {
+			if node.children_count < 3 {
+				return none
+			}
+			index := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 1),
+				'int'), 'int', 'array_delete_index')
+			size := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 2),
+				'int'), 'int', 'array_delete_size')
+			args << index
+			args << size
+			t.append_owned_array_drop_range(array_value, elem_type, index, t.make_infix(.plus,
+				index, size))
+		}
+		'clear' {
+			t.append_owned_array_drop_range(array_value, elem_type, t.make_int_literal(0), t.make_selector(array_value,
+				'len', 'int'))
+		}
+		'trim' {
+			if node.children_count < 2 {
+				return none
+			}
+			index := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 1),
+				'int'), 'int', 'array_trim_index')
+			args << index
+			t.append_owned_array_drop_range(array_value, elem_type, index, t.make_selector(array_value,
+				'len', 'int'))
+		}
+		'drop' {
+			if node.children_count < 2 {
+				return none
+			}
+			count := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 1),
+				'int'), 'int', 'array_drop_count')
+			args << count
+			t.append_owned_array_drop_prefix(array_value, elem_type, count)
+		}
+		'delete_last' {
+			last := t.make_infix(.minus, t.make_selector(array_value, 'len', 'int'),
+				t.make_int_literal(1))
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_index(array_value,
+				last, elem_type)), 'void'))
+		}
+		else {
+			return none
+		}
+	}
+
+	if array_method_stays_in_cgen_needs_runtime_mark(method) {
+		t.mark_fn_used('array__${method}')
+	}
+	call := t.make_method_call(base, method, args)
+	t.set_node_typ(int(call), node.typ)
+	return call
+}
+
+fn (mut t Transformer) append_owned_array_drop_prefix(array_value flat.NodeId, elem_type string, count flat.NodeId) {
+	idx_name := t.new_temp('array_drop_index')
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	below_count := t.make_infix(.lt, t.make_ident(idx_name), count)
+	below_len := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(array_value, 'len',
+		'int'))
+	cond := t.make_infix(.logical_and, below_count, below_len)
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	elem := t.make_index(array_value, t.make_ident(idx_name), elem_type)
+	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(elem), 'void'))
+	t.pending_stmts << t.make_for_stmt(init, cond, post, arr1(drop_stmt), flat.Node{})
+}
+
+fn (mut t Transformer) append_owned_array_drop_range(array_value flat.NodeId, elem_type string, start flat.NodeId, end flat.NodeId) {
+	idx_name := t.new_temp('array_drop_index')
+	init := t.make_decl_assign_typed(idx_name, start, 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), end)
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	elem := t.make_index(array_value, t.make_ident(idx_name), elem_type)
+	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(elem), 'void'))
+	t.pending_stmts << t.make_for_stmt(init, cond, post, arr1(drop_stmt), flat.Node{})
+}
+
+// try_lower_ignored_owned_array_pop_stmt consumes and destroys a popped owner when the
+// source program ignores the value returned by pop/pop_left.
+fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
+	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
+		return none
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value !in ['pop', 'pop_left']
+		|| fn_node.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(&fn_node, 0)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	clean_base_type := t.normalize_type_alias(base_type.trim_left('&'))
+	if !clean_base_type.starts_with('[]') {
+		return none
+	}
+	elem_type := clean_base_type[2..]
+	if !t.tc.ownership_type_requires_drop(t.tc.parse_type(elem_type)) {
+		return none
+	}
+	array_builtin_method := t.array_builtin_method_name(fn_node.value) or { '' }
+	method_name := t.resolve_collection_receiver_method_name(base_id, fn_node.value,
+		clean_base_type)
+	if method_name.len > 0 && method_name != array_builtin_method
+		&& t.call_resolved_to_method(call_id, method_name)
+		&& !t.receiver_method_name_is_open_generic(method_name) {
+		return none
+	}
+	mut result := []flat.NodeId{}
+	popped := t.transform_expr(call_id)
+	t.drain_pending(mut result)
+	popped_name := t.new_temp('ignored_array_pop')
+	result << t.make_decl_assign_typed(popped_name, popped, elem_type)
+	result << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(popped_name)),
+		'void'))
+	return result
 }
 
 fn (t &Transformer) array_builtin_method_name(method string) ?string {
@@ -5376,8 +5532,8 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		if node.children_count < 2 {
 			return none
 		}
-		key_type := t.map_key_type(clean_type)
-		if key_type.len == 0 {
+		key_type, value_type := t.map_type_parts(clean_type)
+		if key_type.len == 0 || value_type.len == 0 {
 			return none
 		}
 		t.mark_fn_used('map__delete')
@@ -5385,6 +5541,7 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		key_storage_type := t.map_key_storage_type(key_type)
 		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(t.a.child(&node, 1),
 			key_type), key_storage_type)
+		t.append_owned_map_entry_drop_before_delete(base, base_type, key_name, key_type, value_type)
 		return t.make_call_typed('map__delete', arr2(t.runtime_addr(base, base_type), t.make_prefix(.amp,
 			t.make_ident(key_name))), 'void')
 	}
@@ -5399,6 +5556,44 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 	t.mark_fn_used('map__${fn_node.value}')
 	return t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
 		'[]${elem_type}')
+}
+
+// append_owned_map_entry_drop_before_delete destroys the stored ownership-bearing key and
+// value before map__delete turns the entry into a tombstone.
+fn (mut t Transformer) append_owned_map_entry_drop_before_delete(map_expr flat.NodeId, map_type string, key_name string, key_type_name string, value_type_name string) {
+	if isnil(t.tc) {
+		return
+	}
+	clean_key_type := t.normalize_type_alias(key_type_name).trim_space()
+	key_requires_drop := clean_key_type != 'string'
+		&& t.tc.ownership_type_requires_drop(t.tc.parse_type(key_type_name))
+	value_requires_drop := t.tc.ownership_type_requires_drop(t.tc.parse_type(value_type_name))
+	if !key_requires_drop && !value_requires_drop {
+		return
+	}
+	value_ptr_name := t.new_temp('map_delete_value')
+	value_ptr := t.make_map_get_check_expr(map_expr, map_type, key_name)
+	t.pending_stmts << t.make_decl_assign_typed(value_ptr_name, value_ptr, 'voidptr')
+	mut body := []flat.NodeId{}
+	if key_requires_drop {
+		t.mark_fn_used('map__get_key_check')
+		key_ptr_name := t.new_temp('map_delete_key')
+		body << t.make_decl_assign_typed(key_ptr_name, t.make_map_get_key_check_expr(map_expr,
+			map_type, key_name), 'voidptr')
+		key_ptr := t.make_cast('&${key_type_name}', t.make_ident(key_ptr_name), '&${key_type_name}')
+		stored_key := t.make_prefix(.mul, key_ptr)
+		t.set_node_typ(int(stored_key), key_type_name)
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stored_key), 'void'))
+	}
+	if value_requires_drop {
+		stored_value_ptr := t.make_cast('&${value_type_name}', t.make_ident(value_ptr_name),
+			'&${value_type_name}')
+		stored_value := t.make_prefix(.mul, stored_value_ptr)
+		t.set_node_typ(int(stored_value), value_type_name)
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stored_value), 'void'))
+	}
+	found := t.make_infix(.ne, t.make_ident(value_ptr_name), t.a.add(.nil_literal))
+	t.pending_stmts << t.make_if(found, t.make_block(body), t.make_empty())
 }
 
 fn map_method_is_lowered_by_transform(method string) bool {
