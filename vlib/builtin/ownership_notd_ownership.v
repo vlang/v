@@ -17,8 +17,8 @@ pub fn drop_owned[T](value T) {
 	} $else $if T.unaliased_typ is string {
 		unsafe { owned.free() }
 	} $else $if T.unaliased_typ is $option {
-		if owned != none {
-			drop_owned(owned)
+		if payload := owned {
+			drop_owned(payload)
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		$for variant in T.variants {

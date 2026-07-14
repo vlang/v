@@ -6064,6 +6064,17 @@ fn (mut t Transformer) multi_if_assign_block(block_id flat.NodeId, lhs_ids []fla
 fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []flat.NodeId) []flat.NodeId {
 	mut stmts := t.transform_stmts(parts.prefix)
 	mut tmp_names := []string{cap: parts.values.len}
+	mut lhs_was_moved := []bool{len: lhs_ids.len}
+	if !isnil(t.tc) {
+		for i, lhs_id in lhs_ids {
+			for value_id in parts.values {
+				if t.tc.ownership_expr_moves_storage(value_id, lhs_id) {
+					lhs_was_moved[i] = true
+					break
+				}
+			}
+		}
+	}
 	for i, value_id in parts.values {
 		target_type := if i < lhs_ids.len { t.lvalue_type(lhs_ids[i]) } else { '' }
 		value := if target_type.len > 0 {
@@ -6092,7 +6103,9 @@ fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []fl
 		if lhs_type.len == 0 {
 			lhs_type = t.original_expr_type(lhs_id)
 		}
-		t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut stmts)
+		if !lhs_was_moved[i] {
+			t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut stmts)
+		}
 		stmts << t.make_assign(lvalue, t.make_ident(tmp_name))
 	}
 	return stmts

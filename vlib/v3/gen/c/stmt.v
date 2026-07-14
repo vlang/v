@@ -488,10 +488,14 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 				idx := g.tmp_count
 				g.tmp_count++
 				elem_ct := g.value_c_type(typ.elem_type)
+				g.writeln('if (((${expr}).flags & ArrayFlags__is_slice) == 0) {')
+				g.indent++
 				g.writeln('for (int _drop_i${idx} = 0; _drop_i${idx} < (${expr}).len; _drop_i${idx}++) {')
 				g.indent++
 				g.gen_ownership_drop_value(typ.elem_type,
 					'*((${elem_ct}*)array_get(${expr}, _drop_i${idx}))', depth + 1)
+				g.indent--
+				g.writeln('}')
 				g.indent--
 				g.writeln('}')
 			}
