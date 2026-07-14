@@ -3,6 +3,8 @@ module transform
 import v3.flat
 import v3.types
 
+const direct_optional_forward_return_value = '__direct_optional_forward'
+
 // transform_return_with_sumtype_wrap checks if a return statement returns a
 // variant value where the function's return type is a sum type. In that case,
 // the variant value may need to be wrapped in the sum type's tagged union.
@@ -56,6 +58,12 @@ fn (t &Transformer) branch_tail_expr(block_id flat.NodeId) flat.NodeId {
 // make_return builds a `return <val>` statement node with the given type.
 fn (mut t Transformer) make_return(val flat.NodeId, ret_typ string) flat.NodeId {
 	return t.make_return_values(arr1(val), ret_typ)
+}
+
+fn (mut t Transformer) make_direct_optional_forward_return(val flat.NodeId, ret_typ string) flat.NodeId {
+	ret := t.make_return(val, ret_typ)
+	t.set_node_value(int(ret), direct_optional_forward_return_value)
+	return ret
 }
 
 fn (mut t Transformer) make_return_values(vals []flat.NodeId, ret_typ string) flat.NodeId {
@@ -113,7 +121,7 @@ fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.N
 	new_expr := t.transform_expr(child_id)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
-	result << t.make_return(new_expr, ret_type)
+	result << t.make_direct_optional_forward_return(new_expr, ret_type)
 	return result
 }
 

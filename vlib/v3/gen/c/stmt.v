@@ -4,6 +4,8 @@ import strings
 import v3.flat
 import v3.types
 
+const direct_optional_forward_return_value = '__direct_optional_forward'
+
 // gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
 	node := g.a.nodes[int(id)]
@@ -345,7 +347,8 @@ fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node) []types.Owne
 	if node.typ[0] !in [`!`, `?`] {
 		return []types.OwnershipDropEntry{}
 	}
-	if g.return_stmt_is_explicit_optional_failure(node) {
+	if node.value == direct_optional_forward_return_value
+		|| g.return_stmt_is_explicit_optional_failure(node) {
 		return g.take_return_ownership_drops()
 	}
 	return g.take_propagation_ownership_drops()

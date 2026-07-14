@@ -13876,6 +13876,8 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	guard_bindings := tc.check_condition(cond_id)
 	smartcasts := tc.extract_smartcasts(cond_id)
 	then_id := tc.a.child(&node, 1)
+	then_uses_block_scope := guard_bindings.len == 0 && tc.valid_node_id(then_id)
+		&& tc.a.nodes[int(then_id)].kind == .block
 	saved_smartcasts := clone_smartcasts(tc.smartcasts)
 	for sc in smartcasts {
 		if valid_string_data(sc.name) {
@@ -13891,7 +13893,9 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	}
 	tc.push_scope()
 	$if ownership ? {
-		tc.ownership_mark_scope_node(then_id)
+		if !then_uses_block_scope {
+			tc.ownership_mark_scope_node(then_id)
+		}
 	}
 	for binding in guard_bindings {
 		$if ownership ? {

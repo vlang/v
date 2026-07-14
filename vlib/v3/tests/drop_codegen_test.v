@@ -82,6 +82,24 @@ fn explicit_none() ?int {
 	return none
 }
 
+fn maybe_number() ?int {
+	return none
+}
+
+fn direct_optional_forward() ?int {
+	r := Resource{13}
+	return maybe_number()
+}
+
+fn if_else_branch_drop(cond bool) {
+	if cond {
+		println('then branch')
+	} else {
+		r := Resource{14}
+		println('else branch')
+	}
+}
+
 fn loop_exits() {
 	for {
 		r := Resource{6}
@@ -118,6 +136,8 @@ fn main() {
 	propagated() or { println(err.msg()) }
 	explicit_error() or { println(err.msg()) }
 	explicit_none() or { println('none') }
+	direct_optional_forward() or { println('forward none') }
+	if_else_branch_drop(false)
 	loop_exits()
 }
 ") or {
@@ -127,5 +147,5 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
+	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\nelse branch\ndrop 14\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
 }
