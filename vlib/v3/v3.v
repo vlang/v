@@ -146,23 +146,126 @@ fn ensure_c_object_file(obj_path string, compile_flags []string, c99 bool, pic_f
 	source_file := c_source_from_object_file(obj_path) or {
 		return error('missing C object ${obj_path}, and no adjacent .c/.cpp/.S source was found')
 	}
+	resolved_source_file := os.real_path(source_file)
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
-	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { c_standard_flag(c99) }
-	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, compile_flags, std_flag,
-		pic_flag))
-	if os.exists(cached_obj)
-		&& os.file_last_mod_unix(cached_obj) >= os.file_last_mod_unix(source_file) {
+	std_flag := if resolved_source_file.ends_with('.cpp') {
+		'-std=c++11'
+	} else {
+		c_standard_flag(c99)
+	}
+	cached_obj := os.join_path(cache_dir, c_object_cache_name(resolved_source_file, compile_flags,
+		std_flag, pic_flag))
+	dependency_manifest := cached_obj + '.deps'
+	dependency_stamp := dependency_manifest + '.stamp'
+	cache_is_valid := c_object_dependency_cache_is_valid(cached_obj, dependency_manifest,
+		dependency_stamp, resolved_source_file)
+	if cache_is_valid {
 		return cached_obj
 	}
-	compiler := if source_file.ends_with('.cpp') { 'c++' } else { 'cc' }
+	os.rm(dependency_stamp) or {}
+	compiler := if resolved_source_file.ends_with('.cpp') { 'c++' } else { 'cc' }
 	pic_arg := if pic_flag.len > 0 { '${pic_flag} ' } else { '' }
-	cmd := '${compiler} ${std_flag} ${pic_arg}-w ${compile_flags.join(' ')} -o ${os.quoted_path(cached_obj)} -c ${os.quoted_path(source_file)}'
+	dependency_output := '${dependency_manifest}.${os.getpid()}.tmp'
+	cmd := '${compiler} ${std_flag} ${pic_arg}-w ${compile_flags.join(' ')} -MMD -MF ${os.quoted_path(dependency_output)} -MT v3_cached_object -o ${os.quoted_path(cached_obj)} -c ${os.quoted_path(resolved_source_file)}'
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
-		return error('failed to build C object ${obj_path} from ${source_file}:\n${res.output}')
+		os.rm(dependency_output) or {}
+		return error('failed to build C object ${obj_path} from ${resolved_source_file}:\n${res.output}')
 	}
+	cache_c_object_dependencies(dependency_output, dependency_manifest, dependency_stamp,
+		resolved_source_file)
+	os.rm(dependency_output) or {}
 	return cached_obj
+}
+
+fn c_object_dependency_cache_is_valid(cached_obj string, manifest string, stamp string, source_file string) bool {
+	if !os.is_file(cached_obj) || !os.is_file(manifest) || !os.is_file(stamp) {
+		return false
+	}
+	manifest_contents := os.read_file(manifest) or { return false }
+	dependencies := manifest_contents.split_into_lines().filter(it.len > 0)
+	if dependencies.len == 0 || os.real_path(source_file) !in dependencies {
+		return false
+	}
+	expected := os.read_file(stamp) or { return false }
+	actual := modulecache.source_signature(dependencies)
+	return actual.len > 0 && actual == expected
+}
+
+fn cache_c_object_dependencies(dependency_output string, manifest string, stamp string, source_file string) {
+	dependencies := c_object_dependency_files(dependency_output)
+	if dependencies.len == 0 {
+		os.rm(manifest) or {}
+		os.rm(stamp) or {}
+		return
+	}
+	mut seen := map[string]bool{}
+	mut resolved_dependencies := []string{}
+	for dependency in dependencies {
+		resolved := os.real_path(dependency)
+		if !os.is_file(resolved) {
+			os.rm(manifest) or {}
+			os.rm(stamp) or {}
+			return
+		}
+		if seen[resolved] {
+			continue
+		}
+		seen[resolved] = true
+		resolved_dependencies << resolved
+	}
+	resolved_source_file := os.real_path(source_file)
+	if resolved_source_file !in resolved_dependencies {
+		os.rm(manifest) or {}
+		os.rm(stamp) or {}
+		return
+	}
+	resolved_dependencies.sort()
+	signature := modulecache.source_signature(resolved_dependencies)
+	if signature.len == 0 {
+		os.rm(manifest) or {}
+		os.rm(stamp) or {}
+		return
+	}
+	os.write_file(manifest, resolved_dependencies.join('\n')) or {
+		os.rm(stamp) or {}
+		return
+	}
+	os.write_file(stamp, signature) or { os.rm(manifest) or {} }
+}
+
+fn c_object_dependency_files(path string) []string {
+	contents := os.read_file(path) or { return [] }
+	separator := contents.index(':') or { return [] }
+	mut files := []string{}
+	mut current := []u8{}
+	mut escaped := false
+	for c in contents[separator + 1..].bytes() {
+		if escaped {
+			escaped = false
+			if c != `\n` && c != `\r` {
+				current << c
+			}
+			continue
+		}
+		if c == `\\` {
+			escaped = true
+			continue
+		}
+		if c in [` `, `\t`, `\r`, `\n`] {
+			if current.len > 0 {
+				files << current.bytestr()
+				current.clear()
+			}
+			continue
+		}
+		current << c
+	}
+	if current.len > 0 {
+		files << current.bytestr()
+	}
+	return files
 }
 
 fn c_source_from_object_file(obj_path string) ?string {
