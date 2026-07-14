@@ -772,7 +772,9 @@ fn decl_key(node flat.Node) string {
 			'${int(node.kind)}:${node.value}'
 		}
 		.directive {
-			'directive:${node.value}:${node.typ}'
+			// C preprocessor directives are stateful and order-sensitive. Do not
+			// deduplicate repeated branches, includes, or matching `#endif`s.
+			''
 		}
 		else {
 			''
@@ -810,16 +812,21 @@ fn decl_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node fl
 			interface_text(a, node)
 		}
 		.directive {
-			if node.value in ['include', 'insert', 'flag', 'pkgconfig'] {
-				'#${node.value} ${cached_directive_value(node.typ, vroot, source_file)}'
-			} else {
-				''
-			}
+			cached_directive_text(node, vroot, source_file)
 		}
 		else {
 			''
 		}
 	}
+}
+
+fn cached_directive_text(node flat.Node, vroot string, source_file string) string {
+	if node.value !in ['include', 'insert', 'flag', 'pkgconfig', 'define', 'undef', 'ifdef', 'ifndef',
+		'if', 'elif', 'else', 'endif', 'pragma', 'error', 'warning'] {
+		return ''
+	}
+	value := cached_directive_value(node.typ, vroot, source_file)
+	return if value.len > 0 { '#${node.value} ${value}' } else { '#${node.value}' }
 }
 
 fn cached_directive_value(value string, vroot string, source_file string) string {

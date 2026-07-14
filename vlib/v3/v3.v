@@ -1246,7 +1246,7 @@ fn main() {
 				exit(1)
 			}
 			prepared_cache := prepare_v3_module_cache(generated_source, c_standard, opt_flag,
-				pic_flag, resolved_c_flags, needs_objective_c, mut cache_state) or {
+				pic_flag, warn_flags, resolved_c_flags, needs_objective_c, mut cache_state) or {
 				eprintln(err.msg())
 				exit(1)
 			}
@@ -1370,12 +1370,12 @@ fn builtin_bundle_source_files(prefs &pref.Preferences, builtin_files []string) 
 	return files
 }
 
-fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag string, pic_flag string, generated_c_flags []string, objective_c bool, mut state V3ModuleCacheState) !V3PreparedModuleCache {
+fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, mut state V3ModuleCacheState) !V3PreparedModuleCache {
 	if !state.manager.ensure_dir() {
 		return error('v3 module cache directory is unavailable')
 	}
 	compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag,
-		generated_c_flags, objective_c)
+		warning_flags, generated_c_flags, objective_c)
 	if resolve_flag_specific_cache_objects(mut state, compile_signature) {
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()
@@ -1397,7 +1397,7 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 		entry := state.manager.object_entry('builtin', state.bundle_sources, compile_signature)
 		module_source := declarations + bundle_body.str()
 		compile_v3_cached_object(entry, module_source, c_standard, opt_flag, pic_flag,
-			generated_c_flags, objective_c)!
+			warning_flags, generated_c_flags, objective_c)!
 		bundle_dependencies := cache_object_dependency_signatures(state,
 			cache_builtin_bundle_roots(state))
 		state.manager.write_stamp('builtin', state.bundle_sources, bundle_dependencies,
@@ -1427,7 +1427,7 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 			split.modules[module_name.all_after_last('.')] or { '' }
 		}
 		compile_v3_cached_object(entry, declarations + body, c_standard, opt_flag, pic_flag,
-			generated_c_flags, objective_c)!
+			warning_flags, generated_c_flags, objective_c)!
 		if header := state.headers[module_name] {
 			state.manager.write_header(module_name, source_files, header)!
 		}
@@ -1608,7 +1608,7 @@ fn restart_v3_after_cache_invalidation() {
 	exit(result.exit_code)
 }
 
-fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, generated_c_flags []string, objective_c bool) string {
+fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool) string {
 	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
 	mut inputs := []string{}
@@ -1620,6 +1620,7 @@ fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_fl
 		'c_standard=${c_standard.trim_space()}',
 		'optimization=${opt_flag.trim_space()}',
 		'pic=${pic_flag.trim_space()}',
+		'warnings=${warning_flags.trim_space()}',
 		'flags=${flags.join('\\n')}',
 		'inputs=${inputs.join('\\n')}',
 	].join('\n')
@@ -1643,7 +1644,7 @@ fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, compile_sig
 	return false
 }
 
-fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, generated_c_flags []string, objective_c bool) ! {
+fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool) ! {
 	tmp_source := '${entry.c_source}.tmp.${os.getpid()}.c'
 	defer {
 		os.rm(tmp_source) or {}
@@ -1654,7 +1655,7 @@ fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard s
 	lang_flag := if objective_c { '-x objective-c ' } else { '' }
 	pic_arg := if pic_flag.len > 0 { '${pic_flag} ' } else { '' }
 	tmp_object := '${entry.object}.tmp.${os.getpid()}'
-	cmd := 'cc ${lang_flag}${c_standard} ${opt_flag}${pic_arg}-w -Wno-int-conversion -c -o ${os.quoted_path(tmp_object)} ${os.quoted_path(tmp_source)} ${flags.join(' ')}'
+	cmd := 'cc ${lang_flag}${c_standard} ${opt_flag}${pic_arg}${warning_flags} -Wno-int-conversion -c -o ${os.quoted_path(tmp_object)} ${os.quoted_path(tmp_source)} ${flags.join(' ')}'
 	result := run_compile_command(cmd)
 	if result.exit_code != 0 {
 		os.rm(tmp_object) or {}

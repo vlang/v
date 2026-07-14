@@ -231,6 +231,162 @@ fn main() {
 	assert changed.any(it.starts_with('wrapper_')), changed.str()
 }
 
+fn test_cached_header_preserves_c_preprocessor_state() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_preprocessor_state_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+#define V3_CACHE_USE_FEATURE 1
+#if defined(V3_CACHE_USE_FEATURE)
+#endif
+#if defined(V3_CACHE_USE_FEATURE)
+#pragma GCC diagnostic push
+#insert "@DIR/api.h"
+#pragma GCC diagnostic pop
+#endif
+
+fn C.cached_preprocessor_value() int
+
+pub fn value() int {
+	return C.cached_preprocessor_value()
+}
+')
+	write_module_cache_file(root, 'wrapper/api.h', '#ifndef V3_CACHE_USE_FEATURE
+#error "V3_CACHE_USE_FEATURE must be defined before api.h"
+#endif
+
+static inline int cached_preprocessor_value(void) {
+	return 73;
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '73'
+	header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	define_pos := header.index('#define V3_CACHE_USE_FEATURE 1') or { -1 }
+	if_pos := header.index('#if defined(V3_CACHE_USE_FEATURE)') or { -1 }
+	pragma_pos := header.index('#pragma GCC diagnostic push') or { -1 }
+	insert_pos := header.index('#insert ') or { -1 }
+	endif_pos := header.last_index('#endif') or { -1 }
+	assert define_pos >= 0, header
+	assert header.count('#if defined(V3_CACHE_USE_FEATURE)') == 2, header
+	assert header.count('#endif') == 2, header
+	assert define_pos < if_pos && if_pos < pragma_pos && pragma_pos < insert_pos, header
+	assert insert_pos < endif_pos, header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '73'
+}
+
+fn test_cached_objects_honor_strict_c_warnings() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_strict_c_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	library_dir := os.join_path(root, 'wrapper')
+	write_module_cache_file(root, 'wrapper/strict_helper.c', 'int cached_strict_implicit_helper(void) {
+	return 91;
+}
+')
+	library_object := os.join_path(library_dir, 'strict_helper.o')
+	library := os.join_path(library_dir, 'libstrictcache.a')
+	cc_result := os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(os.join_path(library_dir,
+		'strict_helper.c'))}')
+	assert cc_result.exit_code == 0, cc_result.output
+	ar_result := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
+	assert ar_result.exit_code == 0, ar_result.output
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+#flag -L@DIR
+#flag -lstrictcache
+#insert "@DIR/strict_probe.h"
+
+fn C.cached_strict_call() int
+
+pub fn value() int {
+	return C.cached_strict_call()
+}
+')
+	write_module_cache_file(root, 'wrapper/strict_probe.h', 'int cached_strict_implicit_helper(void);
+
+static inline int cached_strict_call(void) {
+	return cached_strict_implicit_helper();
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '91'
+	first_wrapper_stamps :=
+		os.walk_ext(cache_dir, '.o.stamp').filter(os.file_name(it).starts_with('wrapper_'))
+	assert first_wrapper_stamps.len == 1
+
+	strict_output := os.join_path(root, 'strict')
+	strict_result :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -strict -o ${os.quoted_path(strict_output)} ${os.quoted_path(main_file)}')
+	assert strict_result.exit_code == 0, strict_result.output
+	assert run_module_cache_binary(strict_output) == '91'
+	strict_wrapper_stamps :=
+		os.walk_ext(cache_dir, '.o.stamp').filter(os.file_name(it).starts_with('wrapper_'))
+	assert strict_wrapper_stamps.len == 2, strict_wrapper_stamps.str()
+	assert strict_wrapper_stamps.any(it !in first_wrapper_stamps)
+
+	write_module_cache_file(root, 'wrapper/strict_probe.h', 'static inline int cached_strict_call(void) {
+	return cached_strict_implicit_helper();
+}
+')
+	warning_cache_dir := os.join_path(root, 'warning_cache')
+	warning_output := os.join_path(root, 'warning_nonstrict')
+	warning_result :=
+		os.execute('V3CACHE=${os.quoted_path(warning_cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(warning_output)} ${os.quoted_path(main_file)}')
+
+	no_cache_output := os.join_path(root, 'strict_nocache')
+	no_cache_result :=
+		os.execute('${os.quoted_path(v3_bin)} -strict -nocache -o ${os.quoted_path(no_cache_output)} ${os.quoted_path(main_file)}')
+	assert no_cache_result.exit_code != 0, no_cache_result.output
+	assert no_cache_result.output.contains('cached_strict_implicit_helper'), no_cache_result.output
+	if warning_result.exit_code == 0 {
+		assert run_module_cache_binary(warning_output) == '91'
+		warning_strict_output := os.join_path(root, 'warning_strict')
+		warning_strict_result :=
+			os.execute('V3CACHE=${os.quoted_path(warning_cache_dir)} ${os.quoted_path(v3_bin)} -strict -o ${os.quoted_path(warning_strict_output)} ${os.quoted_path(main_file)}')
+		assert warning_strict_result.exit_code != 0, warning_strict_result.output
+		assert warning_strict_result.output.contains('cached_strict_implicit_helper'), warning_strict_result.output
+	} else {
+		assert warning_result.output.contains('cached_strict_implicit_helper'), warning_result.output
+	}
+}
+
 fn test_module_cache_rebuilds_objects_when_external_inputs_change() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_external_inputs_${os.getpid()}')
