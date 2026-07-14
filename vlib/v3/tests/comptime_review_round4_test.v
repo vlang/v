@@ -1839,3 +1839,39 @@ fn main() {
 	}, 'main.v')
 	assert out == 'direct:endpoint|local:endpoint'
 }
+
+fn test_method_type_value_and_indexed_param_type_guards_are_materialized() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'method_type_and_indexed_param_guards', 'struct MethodTypes {}
+
+fn (m MethodTypes) empty() {
+	_ = m
+}
+
+fn (m MethodTypes) text(value string, count int) {
+	_ = m
+	_ = value
+	_ = count
+}
+
+fn main() {
+	mut rows := []string{}
+	$for method in MethodTypes.methods {
+		if method.name == "empty" {
+			rows << "empty-type:" + (method.typ == typeof[fn ()]().idx).str()
+		}
+		if method.name == "text" {
+			rows << "text-type:" + (method.typ == typeof[fn (string, int)]().idx).str()
+		}
+		$if method.args[0].typ is string {
+			rows << "args:" + method.name
+		}
+		$if method.params[1].typ is int {
+			rows << "params:" + method.name
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'empty-type:true|text-type:true|args:text|params:text'
+}

@@ -944,6 +944,10 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 				'return_type' {
 					t.make_int_literal(t.comptime_field_type_id(method.return_type, t.cur_module))
 				}
+				'typ' {
+					t.make_int_literal(t.comptime_field_type_id(comptime_method_type_text(method),
+						method.module_name))
+				}
 				'args', 'params' {
 					t.make_param_array_literal(method.params)
 				}
@@ -1075,17 +1079,9 @@ fn (mut t Transformer) clone_method_subst_children(node flat.Node, var_name stri
 }
 
 fn (t &Transformer) subst_method_cond(cond string, var_name string, method MethodMeta) string {
-	mut param_types := []string{cap: method.params.len}
-	for param in method.params {
-		param_types << param.typ
-	}
-	ret := if method.return_type.len > 0 && method.return_type != 'void' {
-		' ${method.return_type}'
-	} else {
-		''
-	}
-	method_type := 'fn(${param_types.join(', ')})${ret}'
-	mut result := cond.replace('${var_name}.return_type', method.return_type)
+	mut result := subst_method_param_cond(cond, var_name, method)
+	method_type := comptime_method_type_text(method)
+	result = result.replace('${var_name}.return_type', method.return_type)
 	result = result.replace('${var_name}.typ', method_type)
 	result = result.replace('${var_name}.is_pub', method.is_pub.str())
 	result = result.replace('${var_name}.name', "'${method.name}'")
@@ -1103,6 +1099,72 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 				result = result[..idx + op.len] + normalized
 			}
 			break
+		}
+	}
+	return result
+}
+
+fn comptime_method_type_text(method MethodMeta) string {
+	mut param_types := []string{cap: method.params.len}
+	for param in method.params {
+		param_types << param.typ
+	}
+	ret := if method.return_type.len > 0 && method.return_type != 'void' {
+		' ${method.return_type}'
+	} else {
+		''
+	}
+	return 'fn(${param_types.join(', ')})${ret}'
+}
+
+// subst_method_param_cond materializes indexed FunctionParam types in serialized `$if` guards.
+fn subst_method_param_cond(cond string, var_name string, method MethodMeta) string {
+	mut result := cond
+	for collection in ['args', 'params'] {
+		prefix := '${var_name}.${collection}['
+		mut offset := 0
+		for offset < result.len {
+			if result[offset] == `'` || result[offset] == `"` {
+				offset = comptime_cond_skip_string(result, offset)
+				continue
+			}
+			if !result[offset..].starts_with(prefix)
+				|| (offset > 0 && comptime_cond_name_char(result[offset - 1])) {
+				offset++
+				continue
+			}
+			start := offset
+			index_start := start + prefix.len
+			rel_end := result[index_start..].index_u8(`]`)
+			if rel_end < 0 {
+				break
+			}
+			index_end := index_start + rel_end
+			member_start := index_end + 1
+			member_end := member_start + '.typ'.len
+			if member_end > result.len || result[member_start..member_end] != '.typ'
+				|| (member_end < result.len && comptime_cond_name_char(result[member_end])) {
+				offset = member_start
+				continue
+			}
+			index_text := result[index_start..index_end].trim_space()
+			if !comptime_is_int(index_text) || index_text.starts_with('-') {
+				offset = member_end
+				continue
+			}
+			index := index_text.int()
+			param_type := if index >= 0 && index < method.params.len {
+				if method.params[index].typ == '&void' {
+					'voidptr'
+				} else {
+					method.params[index].typ
+				}
+			} else {
+				// Missing slots must not accidentally match a real type such as `void`.
+				'__v3_missing_method_param_type'
+			}
+			result = result[..start] + param_type + result[member_end..]
+			offset = start + param_type.len
 		}
 	}
 	return result
