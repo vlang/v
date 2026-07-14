@@ -76,12 +76,12 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 }
 
 fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string) ![]string {
-	support_flags := c_object_compile_support_flags(flags)
+	compile_flags := c_object_compile_flags(flags)
 	mut prepared := []string{}
 	for flag in flags {
 		clean := flag.trim_space()
 		if c_flag_is_object_file(clean) {
-			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag)!
+			prepared << ensure_c_object_file(clean, compile_flags, c99, pic_flag)!
 		} else {
 			prepared << flag
 		}
@@ -89,21 +89,42 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string) ![]string
 	return prepared
 }
 
-fn c_object_compile_support_flags(flags []string) []string {
-	mut support := []string{}
+fn c_object_compile_flags(flags []string) []string {
+	mut compile_flags := []string{}
 	for flag in flags {
-		clean := flag.trim_space()
-		if clean.len == 0 || c_flag_is_object_file(clean) || c_flag_is_c_source_file(clean)
-			|| clean.starts_with('-l') {
-			continue
+		mut compile_parts := []string{}
+		parts := flag.trim_space().fields()
+		mut i := 0
+		for i < parts.len {
+			part := parts[i]
+			if part in ['-l', '-L', '-Xlinker', '-framework', '-weak_framework', '-force_load'] {
+				i += 2
+				continue
+			}
+			if c_flag_token_is_link_only(part) || c_flag_is_object_file(part)
+				|| c_flag_is_c_source_file(part) {
+				i++
+				continue
+			}
+			compile_parts << part
+			i++
 		}
-		if clean.starts_with('-I') || clean.starts_with('-D') || clean.starts_with('-U')
-			|| clean.starts_with('-std') || clean.starts_with('-f') || clean.starts_with('-W')
-			|| clean == '-pthread' {
-			support << clean
+		if compile_parts.len > 0 {
+			compile_flags << compile_parts.join(' ')
 		}
 	}
-	return support
+	return compile_flags
+}
+
+fn c_flag_token_is_link_only(token string) bool {
+	clean := token.trim(' \t\r\n"\'')
+	if clean.starts_with('-l') || clean.starts_with('-L') || clean.starts_with('-Wl,')
+		|| clean in ['-ObjC', '-all_load', '-bundle', '-dynamiclib', '-shared', '-static', '-rdynamic', '-pie', '-no-pie'] {
+		return true
+	}
+	return clean.ends_with('.a') || clean.ends_with('.so') || clean.contains('.so.')
+		|| clean.ends_with('.dylib') || clean.ends_with('.dll') || clean.ends_with('.lib')
+		|| clean.ends_with('.tbd')
 }
 
 fn c_flags_need_objective_c(flags []string) bool {
@@ -117,7 +138,7 @@ fn c_flags_need_objective_c(flags []string) bool {
 	return false
 }
 
-fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string) !string {
+fn ensure_c_object_file(obj_path string, compile_flags []string, c99 bool, pic_flag string) !string {
 	if os.exists(obj_path) {
 		return obj_path
 	}
@@ -127,7 +148,7 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
 	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { c_standard_flag(c99) }
-	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, support_flags, std_flag,
+	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, compile_flags, std_flag,
 		pic_flag))
 	if os.exists(cached_obj)
 		&& os.file_last_mod_unix(cached_obj) >= os.file_last_mod_unix(source_file) {
@@ -135,7 +156,7 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	}
 	compiler := if source_file.ends_with('.cpp') { 'c++' } else { 'cc' }
 	pic_arg := if pic_flag.len > 0 { '${pic_flag} ' } else { '' }
-	cmd := '${compiler} ${std_flag} ${pic_arg}-w ${support_flags.join(' ')} -o ${os.quoted_path(cached_obj)} -c ${os.quoted_path(source_file)}'
+	cmd := '${compiler} ${std_flag} ${pic_arg}-w ${compile_flags.join(' ')} -o ${os.quoted_path(cached_obj)} -c ${os.quoted_path(source_file)}'
 	res := os.execute(cmd)
 	if res.exit_code != 0 {
 		return error('failed to build C object ${obj_path} from ${source_file}:\n${res.output}')
@@ -154,7 +175,7 @@ fn c_source_from_object_file(obj_path string) ?string {
 	return none
 }
 
-fn c_object_cache_name(path string, support_flags []string, std_flag string, pic_flag string) string {
+fn c_object_cache_name(path string, compile_flags []string, std_flag string, pic_flag string) string {
 	base := path.replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_'])
 	// The compile flags (`-D`/`-I`/...) change the object contents, so they must
 	// be part of the cache key; otherwise a rebuild with different `#flag` defines
@@ -163,7 +184,7 @@ fn c_object_cache_name(path string, support_flags []string, std_flag string, pic
 	if pic_flag.len > 0 {
 		cache_flags << pic_flag
 	}
-	cache_flags << support_flags
+	cache_flags << compile_flags
 	return '${base}_${c_flags_hash(cache_flags)}.o'
 }
 
@@ -1588,14 +1609,19 @@ fn restart_v3_after_cache_invalidation() {
 }
 
 fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, generated_c_flags []string, objective_c bool) string {
-	mut flags := c_object_compile_support_flags(generated_c_flags)
+	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
+	mut inputs := []string{}
+	for path in cgen.cache_c_flag_input_files(generated_c_flags) {
+		inputs << '${path}\t${modulecache.file_signature(path)}'
+	}
 	return [
 		'objective_c=${objective_c}',
 		'c_standard=${c_standard.trim_space()}',
 		'optimization=${opt_flag.trim_space()}',
 		'pic=${pic_flag.trim_space()}',
 		'flags=${flags.join('\\n')}',
+		'inputs=${inputs.join('\\n')}',
 	].join('\n')
 }
 
@@ -1623,7 +1649,7 @@ fn compile_v3_cached_object(entry modulecache.Entry, source string, c_standard s
 		os.rm(tmp_source) or {}
 	}
 	os.write_file(tmp_source, source)!
-	mut flags := c_object_compile_support_flags(generated_c_flags)
+	mut flags := c_object_compile_flags(generated_c_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
 	lang_flag := if objective_c { '-x objective-c ' } else { '' }
 	pic_arg := if pic_flag.len > 0 { '${pic_flag} ' } else { '' }

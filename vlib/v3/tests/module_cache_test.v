@@ -178,6 +178,59 @@ fn main() {
 	assert second_wrapper_stamps.any(it !in first_wrapper_stamps)
 }
 
+fn test_cached_objects_receive_forced_include_flags() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_forced_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+#flag -L@DIR -include @DIR/probe.h
+
+fn C.cached_forced_include_value() int
+
+pub fn value() int {
+	return C.cached_forced_include_value()
+}
+')
+	write_module_cache_file(root, 'wrapper/probe.h', 'static inline int cached_forced_include_value(void) {
+	return 55;
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '55'
+	first_hashes := module_cache_object_hashes(cache_dir)
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '55'
+	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
+
+	write_module_cache_file(root, 'wrapper/probe.h', 'static inline int cached_forced_include_value(void) {
+	return 66;
+}
+')
+	third_output := os.join_path(root, 'third')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, third_output)
+	assert run_module_cache_binary(third_output) == '66'
+	changed := changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir))
+	assert changed.any(it.starts_with('wrapper_')), changed.str()
+}
+
 fn test_module_cache_rebuilds_objects_when_external_inputs_change() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_external_inputs_${os.getpid()}')
@@ -455,6 +508,54 @@ fn main() {
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '42'
 	first_hashes := module_cache_object_hashes(cache_dir)
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
+}
+
+fn test_cached_generic_receiver_method_keeps_its_body() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_generic_receiver_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'genericbox/genericbox.v', 'module genericbox
+
+pub struct Box[T] {
+pub:
+	value T
+}
+
+pub fn (box Box[T]) get() T {
+	return box.value
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import genericbox
+
+fn main() {
+	box := genericbox.Box[int]{
+		value: 42
+	}
+	println(box.get())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	first_hashes := module_cache_object_hashes(cache_dir)
+	header_path := module_cache_artifact(cache_dir, 'genericbox_', '.vh')
+	assert header_path.len > 0
+	assert modulecache.header_needs_source(modulecache.Entry{
+		header: header_path
+	})
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)

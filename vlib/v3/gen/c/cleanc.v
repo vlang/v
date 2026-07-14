@@ -574,6 +574,48 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 	return inputs
 }
 
+// cache_c_flag_input_files returns forced include/macro files whose contents
+// affect every cached object compiled with the supplied C flags.
+pub fn cache_c_flag_input_files(flags []string) []string {
+	include_dirs := c_flag_include_dirs(flags)
+	mut seen := map[string]bool{}
+	mut files := []string{}
+	for flag in flags {
+		for forced_input in c_forced_include_inputs(flag) {
+			for path in c_include_file_paths('"${forced_input}"', '', '', include_dirs) {
+				if !os.is_file(path) {
+					continue
+				}
+				c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files)
+				break
+			}
+		}
+	}
+	files.sort()
+	return files
+}
+
+fn c_forced_include_inputs(flag string) []string {
+	mut inputs := []string{}
+	tokens := flag.fields()
+	mut i := 0
+	for i < tokens.len {
+		token := tokens[i]
+		if token in ['-include', '-imacros'] && i + 1 < tokens.len {
+			inputs << tokens[i + 1].trim('"\'')
+			i += 2
+			continue
+		}
+		for prefix in ['-include=', '-imacros='] {
+			if token.starts_with(prefix) && token.len > prefix.len {
+				inputs << token[prefix.len..].trim('"\'')
+			}
+		}
+		i++
+	}
+	return inputs
+}
+
 fn c_add_cache_external_input(mut inputs map[string][]string, module_name string, path string) {
 	if module_name.len == 0 || path.len == 0 || !os.is_file(path) {
 		return

@@ -722,7 +722,8 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 		return false
 	}
 	node := a.nodes[int(id)]
-	if node.generic_params.len > 0 || node.kind == .comptime_if {
+	if node.generic_params.len > 0 || fn_decl_has_generic_receiver(a, node)
+		|| node.kind == .comptime_if {
 		return true
 	}
 	if node.kind == .block {
@@ -733,6 +734,23 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 		}
 	}
 	return false
+}
+
+fn fn_decl_has_generic_receiver(a &flat.FlatAst, node flat.Node) bool {
+	if node.kind != .fn_decl || !node.value.contains('.') || node.children_count == 0 {
+		return false
+	}
+	receiver := a.child_node(&node, 0)
+	if receiver.kind != .param {
+		return false
+	}
+	receiver_type := clean_receiver_type(receiver.typ)
+	declared_receiver := node.value.all_before_last('.')
+	if receiver_type != declared_receiver
+		&& receiver_type.all_after_last('.') != declared_receiver.all_after_last('.') {
+		return false
+	}
+	return receiver_type.contains('[') && receiver_type.contains(']')
 }
 
 fn file_module_name(a &flat.FlatAst, file_node flat.Node) string {
