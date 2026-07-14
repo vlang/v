@@ -749,6 +749,9 @@ fn c_declaration_item(item string, has_brace bool) string {
 		if brace > 0 {
 			head := clean[..brace].trim_space()
 			if c_declaration_head_is_function(head) {
+				if c_declaration_head_keeps_definition(head) {
+					return item
+				}
 				return '${head};\n'
 			}
 			if c_tag_declaration_keyword_len(clean) > 0 {
@@ -766,17 +769,23 @@ fn c_declaration_item(item string, has_brace bool) string {
 
 fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {
 	clean := trim_leading_c_comments(item.trim_space())
+	if has_brace {
+		brace := clean.index_u8(`{`)
+		if brace > 0 {
+			head := clean[..brace].trim_space()
+			if c_declaration_head_is_function(head) {
+				return c_declaration_head_keeps_definition(head)
+					&& c_code_contains_identifier(clean[brace + 1..], 'static')
+			}
+		}
+	}
 	if !c_starts_with_static_storage_class(clean) {
 		return false
 	}
 	if !has_brace {
 		return !c_declaration_head_is_function(clean.trim_right(';'))
 	}
-	brace := clean.index_u8(`{`)
-	if brace <= 0 || !c_declaration_head_is_function(clean[..brace].trim_space()) {
-		return true
-	}
-	return c_code_contains_identifier(clean[brace + 1..], 'static')
+	return true
 }
 
 fn c_starts_with_static_storage_class(value string) bool {
@@ -787,6 +796,16 @@ fn c_starts_with_static_storage_class(value string) bool {
 fn c_declaration_head_is_function(value string) bool {
 	return value.contains('(') && !c_contains_parenthesized_pointer_declarator(value)
 		&& !c_contains_declaration_attribute(value) && !c_has_top_level_assign(value)
+}
+
+fn c_declaration_head_keeps_definition(value string) bool {
+	if c_starts_with_static_storage_class(value) {
+		return true
+	}
+	return !c_code_contains_identifier(value, 'extern')
+		&& (c_code_contains_identifier(value, 'inline')
+		|| c_code_contains_identifier(value, '__inline')
+		|| c_code_contains_identifier(value, '__inline__'))
 }
 
 fn c_code_contains_identifier(value string, name string) bool {
@@ -1616,6 +1635,10 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool) strin
 	if node.typ.len > 0 && node.typ != 'void' {
 		head += ' ${node.typ}'
 	}
+	mut attr_lines := []string{}
+	if fn_is_disabled(a, module_name, name) {
+		attr_lines << '@[if false]'
+	}
 	mut attrs := []string{}
 	if export_name := fn_export_name(a, module_name, name) {
 		attrs << "export: '${escape_v_string(export_name)}'"
@@ -1624,9 +1647,33 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool) strin
 		attrs << 'noreturn'
 	}
 	if attrs.len > 0 {
-		return '@[${attrs.join('; ')}]\n${head}'
+		attr_lines << '@[${attrs.join('; ')}]'
+	}
+	if attr_lines.len > 0 {
+		return '${attr_lines.join('\n')}\n${head}'
 	}
 	return head
+}
+
+fn fn_is_disabled(a &flat.FlatAst, module_name string, name string) bool {
+	if module_name.len == 0 || module_name in ['main', 'builtin'] {
+		return name in a.disabled_fns
+	}
+	qualified_name := if name.starts_with('${module_name}.') {
+		name
+	} else {
+		'${module_name}.${name}'
+	}
+	if qualified_name in a.disabled_fns {
+		return true
+	}
+	short_module := module_name.all_after_last('.')
+	short_qualified_name := if name.starts_with('${short_module}.') {
+		name
+	} else {
+		'${short_module}.${name}'
+	}
+	return short_qualified_name in a.disabled_fns
 }
 
 fn fn_export_name(a &flat.FlatAst, module_name string, name string) ?string {

@@ -959,6 +959,9 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		}
 		start := p.add_children(param_ids)
 		is_v_header_decl := !is_c_decl && p.cur_file.ends_with('.vh')
+		if disable_body && is_v_header_decl {
+			p.mark_disabled_fn(name)
+		}
 		id := p.a.add_node(flat.Node{
 			kind:           if is_v_header_decl { .fn_decl } else { .c_fn_decl }
 			value:          name
