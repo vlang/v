@@ -193,7 +193,7 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 
 // valid_object_for_compile_signature reports whether the flag-specific object
 // matches its sources, dependency headers, and effective C compilation flags.
-pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source_files []string, compile_signature string) ?Entry {
+pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) ?Entry {
 	entry := m.object_entry(cache_name, source_files, compile_signature)
 	if !os.is_file(entry.object) || !os.is_file(entry.object_stamp) {
 		return none
@@ -204,6 +204,9 @@ pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source
 	}
 	expected := 'compile=${hash_text(compile_signature)}'
 	if !stamp.split_into_lines().any(it == expected) {
+		return none
+	}
+	if !object_stamp_dependencies_match(stamp, dependency_inputs) {
 		return none
 	}
 	return entry
@@ -277,6 +280,34 @@ fn object_stamp_valid(stamp string, expected_entry string) bool {
 		}
 	}
 	return has_compile_signature
+}
+
+fn object_stamp_dependencies_match(stamp string, expected map[string]string) bool {
+	mut actual := map[string]string{}
+	for line in stamp.split_into_lines() {
+		if !line.starts_with('dependency=') {
+			continue
+		}
+		value := line['dependency='.len..]
+		tab := value.last_index_u8(`\t`)
+		if tab <= 0 || tab + 1 >= value.len {
+			return false
+		}
+		path := value[..tab]
+		if path in actual {
+			return false
+		}
+		actual[path] = value[tab + 1..]
+	}
+	if actual.len != expected.len {
+		return false
+	}
+	for path, signature in expected {
+		if actual[path] != signature {
+			return false
+		}
+	}
+	return true
 }
 
 // header_signature returns the stable content signature stored in dependent

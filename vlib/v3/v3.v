@@ -1765,13 +1765,19 @@ fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_fl
 
 fn resolve_flag_specific_cache_objects(mut state V3ModuleCacheState, compile_signature string) bool {
 	for object_name in state.objects.keys() {
+		roots := if object_name == 'builtin' {
+			cache_builtin_bundle_roots(state)
+		} else {
+			[object_name]
+		}
 		source_files := if object_name == 'builtin' {
 			state.bundle_sources
 		} else {
 			state.module_sources[object_name] or { continue }
 		}
+		dependency_inputs := cache_object_dependency_signatures(state, roots)
 		if entry := state.manager.valid_object_for_compile_signature(object_name, source_files,
-			compile_signature)
+			compile_signature, dependency_inputs)
 		{
 			state.objects[object_name] = entry.object
 		} else {

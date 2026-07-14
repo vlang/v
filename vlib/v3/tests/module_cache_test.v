@@ -503,6 +503,74 @@ fn main() {
 	assert changed.any(it.starts_with('bar_')), changed.str()
 }
 
+fn test_cached_object_rebuilds_when_import_resolves_to_new_header() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_import_shadow_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'foo/foo.v', 'module foo
+
+pub struct Item {
+pub:
+	value int
+}
+
+pub fn marker() int {
+	return 1
+}
+')
+	project := os.join_path(root, 'project')
+	write_module_cache_file(project, 'v.mod', "Module { name: 'import_shadow' }\n")
+	write_module_cache_file(project, 'bar/bar.v', 'module bar
+
+import foo
+
+pub fn item_size() int {
+	return int(sizeof(foo.Item))
+}
+
+pub fn marker() int {
+	return foo.marker()
+}
+')
+	main_file := os.join_path(project, 'main.v')
+	write_module_cache_file(project, 'main.v', 'module main
+
+import bar
+
+fn main() {
+	println(bar.item_size())
+	println(bar.marker())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '4\n1'
+	first_hashes := module_cache_object_hashes(cache_dir)
+
+	write_module_cache_file(project, 'foo/foo.v', 'module foo
+
+pub struct Item {
+pub:
+	left i64
+	right i64
+}
+
+pub fn marker() int {
+	return 2
+}
+')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '16\n2'
+	changed := changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir))
+	assert changed.any(it.starts_with('bar_')), changed.str()
+}
+
 fn test_cached_objects_precede_static_libraries_on_link_command() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_link_order_${os.getpid()}')
