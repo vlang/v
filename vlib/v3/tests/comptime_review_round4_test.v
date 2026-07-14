@@ -1686,3 +1686,79 @@ fn main() {
 ")
 	assert out == "2|2|get,host: 'example.com'|get,host|typed:handle"
 }
+
+fn test_field_type_membership_uses_the_selected_receiver_type() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'field_type_membership_receiver', 'struct ReflectedFields {
+	id int
+}
+
+struct GuardConfig {
+	id string
+}
+
+fn main() {
+	cfg := GuardConfig{
+		id: "text"
+	}
+	value := ReflectedFields{
+		id: 7
+	}
+	mut rows := []string{}
+	$for field in ReflectedFields.fields {
+		$if cfg.id in [string] {
+			rows << "config:string"
+		} $else {
+			rows << "config:wrong"
+		}
+		$if value.$(field.name) in [int] {
+			rows << "reflected:int"
+		} $else {
+			rows << "reflected:wrong"
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'config:string|reflected:int'
+}
+
+fn test_optional_reflected_for_iterable_with_fallback_is_not_unwrapped_twice() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'optional_reflected_for_fallback', 'struct OptionalRows {
+	values ?[]int
+}
+
+fn main() {
+	rows := OptionalRows{}
+	mut total := 0
+	$for field in OptionalRows.fields {
+		for value in rows.$(field.name) or { [4, 5] } {
+			total += value
+		}
+	}
+	println(total)
+}
+')
+	assert out == '9'
+}
+
+fn test_quoted_attribute_preserves_structured_kind() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'quoted_attribute_kind', "@['route'; plain]
+struct Tagged {}
+
+fn describe_attribute(attr VAttribute) string {
+	return attr.name + ':' + attr.kind.str() + ':' + attr.has_arg.str()
+}
+
+fn main() {
+	mut rows := []string{}
+	$for attr in Tagged.attributes {
+		rows << describe_attribute(attr)
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'route:string:false|plain:plain:false'
+}

@@ -32,38 +32,39 @@ const read_source_chunk_size = 65536
 pub struct Parser {
 	prefs &pref.Preferences
 mut:
-	s                      scanner.Scanner
-	tok                    token.Token
-	lit                    string
-	tok_pos                int
-	peek_tok               token.Token = .eof
-	peek_lit               string
-	peek_pos               int
-	has_peek               bool
-	cur_file               string
-	cur_module             string
-	cur_fn                 string
-	cur_struct             string   // receiver type name of the current method, for `@STRUCT`
-	cur_method_is_static   bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
-	comptime_for_vars      []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
-	comptime_method_var    string   // innermost active `$for method in Type.methods` loop variable
-	comptime_const_values  map[string]string
-	comptime_local_values  map[string]string
-	comptime_value_undos   []ComptimeValueUndo
-	comptime_value_scopes  []int
-	pending_flag           bool
-	pending_json_as_number bool // `@[json_as_number]` seen before the next enum decl
-	pending_params         bool
-	pending_export         string
-	pending_noreturn       bool
-	skip_next_decl         bool
-	disable_fn_body        bool
-	pending_fn_pub         bool
-	pending_decl_attrs     []string
-	in_for_container       bool
-	local_type_names       map[string]string
-	local_type_scopes      []string
-	export_records         []ExportRecord
+	s                       scanner.Scanner
+	tok                     token.Token
+	lit                     string
+	tok_pos                 int
+	peek_tok                token.Token = .eof
+	peek_lit                string
+	peek_pos                int
+	has_peek                bool
+	cur_file                string
+	cur_module              string
+	cur_fn                  string
+	cur_struct              string   // receiver type name of the current method, for `@STRUCT`
+	cur_method_is_static    bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
+	comptime_for_vars       []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
+	comptime_method_var     string   // innermost active `$for method in Type.methods` loop variable
+	comptime_const_values   map[string]string
+	comptime_local_values   map[string]string
+	comptime_value_undos    []ComptimeValueUndo
+	comptime_value_scopes   []int
+	pending_flag            bool
+	pending_json_as_number  bool // `@[json_as_number]` seen before the next enum decl
+	pending_params          bool
+	pending_export          string
+	pending_noreturn        bool
+	skip_next_decl          bool
+	disable_fn_body         bool
+	pending_fn_pub          bool
+	pending_decl_attrs      []string
+	pending_decl_attr_kinds []int
+	in_for_container        bool
+	local_type_names        map[string]string
+	local_type_scopes       []string
+	export_records          []ExportRecord
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
@@ -83,6 +84,11 @@ struct ComptimeValueUndo {
 	name      string
 	old_value string
 	had_value bool
+}
+
+struct ParsedFieldAttrs {
+	attrs []string
+	kinds []int
 }
 
 // new creates a Parser value for parser.
@@ -143,6 +149,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.disable_fn_body = false
 	p.pending_fn_pub = false
 	p.pending_decl_attrs.clear()
+	p.pending_decl_attr_kinds.clear()
 	p.comptime_const_values.clear()
 	p.comptime_local_values.clear()
 	p.comptime_value_undos.clear()
@@ -698,15 +705,11 @@ fn (mut p Parser) top_level_stmt() flat.NodeId {
 			return p.module_stmt()
 		}
 		.attribute {
-			attrs := p.parse_field_attrs()
-			p.apply_decl_attr_flags(attrs)
-			p.pending_decl_attrs << attrs
+			p.parse_pending_decl_attrs()
 			return p.parse_decl_after_attrs()
 		}
 		.lsbr {
-			attrs := p.parse_field_attrs()
-			p.apply_decl_attr_flags(attrs)
-			p.pending_decl_attrs << attrs
+			p.parse_pending_decl_attrs()
 			return p.parse_decl_after_attrs()
 		}
 		.dollar {
@@ -744,6 +747,7 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 		p.pending_json_as_number = false
 		p.skip_next_decl = false
 		p.pending_decl_attrs.clear()
+		p.pending_decl_attr_kinds.clear()
 		if p.cur_decl_is_fn() {
 			p.disable_fn_body = true
 			res := p.top_level_stmt()
@@ -772,23 +776,31 @@ fn (mut p Parser) consume_decl_prefix_after_attrs() {
 			p.next()
 			continue
 		}
-		attrs := p.parse_field_attrs()
-		p.apply_decl_attr_flags(attrs)
-		p.pending_decl_attrs << attrs
+		p.parse_pending_decl_attrs()
 	}
+}
+
+fn (mut p Parser) parse_pending_decl_attrs() {
+	parsed := p.parse_field_attrs_with_kinds()
+	p.apply_decl_attr_flags(parsed.attrs)
+	p.pending_decl_attrs << parsed.attrs
+	p.pending_decl_attr_kinds << parsed.kinds
 }
 
 fn (mut p Parser) apply_decl_attrs(id flat.NodeId) {
 	if p.pending_decl_attrs.len == 0 || int(id) < 0 || int(id) >= p.a.nodes.len {
 		p.pending_decl_attrs.clear()
+		p.pending_decl_attr_kinds.clear()
 		return
 	}
 	p.a.add_node(flat.Node{
 		kind:           .directive
 		value:          '@attributes:${int(id)}'
+		typ:            p.pending_decl_attr_kinds.map(it.str()).join(',')
 		generic_params: p.pending_decl_attrs.clone()
 	})
 	p.pending_decl_attrs.clear()
+	p.pending_decl_attr_kinds.clear()
 }
 
 fn (mut p Parser) apply_decl_attr_flags(attrs []string) {
@@ -2134,13 +2146,29 @@ fn attr_unquote(s string) string {
 	return s
 }
 
+fn parsed_attribute_kind(tok token.Token) int {
+	return match tok {
+		.string { 1 }
+		.number { 2 }
+		.key_true, .key_false { 3 }
+		else { 0 }
+	}
+}
+
 // parse_field_attrs captures the attributes on a struct field (`@[json: 'x']`, `@[required]`,
 // `@[sql: serial]`) as their `key` / `key: value` string forms, mirroring V's `FieldData.attrs`.
+fn (mut p Parser) parse_field_attrs() []string {
+	return p.parse_field_attrs_with_kinds().attrs
+}
+
+// parse_field_attrs_with_kinds also retains the structured VAttribute kind. Declaration
+// reflection needs this sidecar because the legacy string form intentionally unquotes `@['x']`.
 // A comptime `@[if cond]` guard keeps its existing evaluation semantics and is not exposed as an
 // attribute. Regardless of how the content splits, the loop always consumes through the closing
 // `]`, so parsing stays correct even for attribute forms it does not fully model.
-fn (mut p Parser) parse_field_attrs() []string {
+fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
 	mut attrs := []string{}
+	mut kinds := []int{}
 	for p.tok == .attribute || p.tok == .lsbr {
 		p.next() // consume `@[` / `[`
 		if p.tok == .key_if {
@@ -2165,6 +2193,7 @@ fn (mut p Parser) parse_field_attrs() []string {
 				p.next()
 				continue
 			}
+			piece_kind := parsed_attribute_kind(p.tok)
 			mut piece := attr_unquote(p.lit)
 			p.next()
 			if p.tok == .lpar {
@@ -2182,34 +2211,44 @@ fn (mut p Parser) parse_field_attrs() []string {
 						p.next()
 						p.check(.colon)
 					}
+					arg_kind := parsed_attribute_kind(p.tok)
 					arg := p.lit.trim_space()
 					p.next()
 					if arg_name.len == 0 || arg_name == 'msg' {
 						attrs << '${attr_name}: ${arg}'
+						kinds << arg_kind
 						has_base_arg = true
 					} else {
 						attrs << '${attr_name}_${arg_name}: ${arg}'
+						kinds << arg_kind
 					}
 				}
 				p.check(.rpar)
 				if !has_base_arg {
 					attrs << attr_name
+					kinds << piece_kind
 				}
 				continue
 			}
+			mut kind := piece_kind
 			if p.tok == .colon {
 				p.next()
+				kind = parsed_attribute_kind(p.tok)
 				piece += ': ' + p.lit.trim_space()
 				p.next()
 			}
 			piece = piece.trim_space()
 			if piece.len > 0 {
 				attrs << piece
+				kinds << kind
 			}
 		}
 		p.check(.rsbr)
 	}
-	return attrs
+	return ParsedFieldAttrs{
+		attrs: attrs
+		kinds: kinds
+	}
 }
 
 fn (mut p Parser) try_parse_export_attr() {

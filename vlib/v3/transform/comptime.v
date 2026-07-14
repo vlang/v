@@ -92,6 +92,11 @@ struct AttributeMeta {
 	kind    int
 }
 
+struct RawAttributeData {
+	attrs []string
+	kinds []int
+}
+
 struct EnumDeclFieldValue {
 	name    string
 	expr_id flat.NodeId
@@ -425,18 +430,29 @@ fn (t &Transformer) comptime_attribute_decl_rhs(id flat.NodeId, name string) ?fl
 }
 
 fn (t &Transformer) comptime_node_raw_attributes(node_id int) []string {
+	return t.comptime_node_raw_attribute_data(node_id).attrs
+}
+
+fn (t &Transformer) comptime_node_raw_attribute_data(node_id int) RawAttributeData {
 	marker := '@attributes:${node_id}'
 	for node in t.a.nodes {
 		if node.kind == .directive && node.value == marker {
-			return node.generic_params.clone()
+			return RawAttributeData{
+				attrs: node.generic_params.clone()
+				kinds: if node.typ.len > 0 {
+					node.typ.split(',').map(it.int())
+				} else {
+					[]int{}
+				}
+			}
 		}
 	}
-	return []string{}
+	return RawAttributeData{}
 }
 
-fn comptime_attribute_metas_from_raw(raw_attrs []string) []AttributeMeta {
+fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []AttributeMeta {
 	mut attrs := []AttributeMeta{}
-	for raw in raw_attrs {
+	for attr_idx, raw in raw_attrs {
 		clean := raw.trim_space()
 		if clean.len == 0 {
 			continue
@@ -445,7 +461,9 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string) []AttributeMeta {
 			name := clean[..idx].trim_space()
 			raw_arg := clean[idx + 1..].trim_space()
 			arg := comptime_attr_unquote(raw_arg)
-			kind := if raw_arg.len >= 2 && raw_arg[0] in [`'`, `\"`] {
+			kind := if attr_idx < raw_kinds.len {
+				raw_kinds[attr_idx]
+			} else if raw_arg.len >= 2 && raw_arg[0] in [`'`, `\"`] {
 				1
 			} else if raw_arg == 'true' || raw_arg == 'false' {
 				3
@@ -463,6 +481,7 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string) []AttributeMeta {
 		} else {
 			attrs << AttributeMeta{
 				name: clean
+				kind: if attr_idx < raw_kinds.len { raw_kinds[attr_idx] } else { 0 }
 			}
 		}
 	}
@@ -470,7 +489,8 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string) []AttributeMeta {
 }
 
 fn (t &Transformer) comptime_node_attribute_metas(node_id int) []AttributeMeta {
-	return comptime_attribute_metas_from_raw(t.comptime_node_raw_attributes(node_id))
+	data := t.comptime_node_raw_attribute_data(node_id)
+	return comptime_attribute_metas_from_raw(data.attrs, data.kinds)
 }
 
 fn comptime_attr_unquote(s string) string {
@@ -878,7 +898,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 				}
 			}
 		}
-		raw_attrs := t.comptime_node_raw_attributes(node_id)
+		raw_attr_data := t.comptime_node_raw_attribute_data(node_id)
 		methods << MethodMeta{
 			name:        name
 			receiver:    first.typ
@@ -886,8 +906,8 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			return_type: if node.typ.len > 0 { node.typ } else { 'void' }
 			is_pub:      node.op == .arrow
 			params:      params
-			attrs:       raw_attrs
-			attributes:  comptime_attribute_metas_from_raw(raw_attrs)
+			attrs:       raw_attr_data.attrs
+			attributes:  comptime_attribute_metas_from_raw(raw_attr_data.attrs, raw_attr_data.kinds)
 		}
 	}
 	return methods
@@ -2309,7 +2329,7 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 	}
 	if node.kind == .for_in_stmt && node.children_count >= 3 && fm.is_option
 		&& fm.comptime_typ.starts_with('?')
-		&& t.subtree_references_var(t.a.child(&node, 2), var_name) {
+		&& t.direct_reflected_field_selector(t.a.child(&node, 2), var_name) {
 		mut children := []flat.NodeId{cap: int(node.children_count)}
 		for i in 0 .. node.children_count {
 			child := t.clone_field_subst(t.a.child(&node, i), var_name, fm) or { flat.empty_node }
@@ -2380,8 +2400,8 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 	}
 	// `$if`/`$else $if` referencing the loop variable: evaluate now, keep the taken branch.
 	if node.kind == .comptime_if {
-		cond :=
-			t.subst_reflected_field_selector_cond(t.subst_field_cond(node.value, var_name, fm), fm)
+		substituted := t.subst_field_cond(node.value, var_name, fm)
+		cond := t.subst_reflected_field_selector_cond(node.value, substituted, var_name, fm)
 		if (comptime_cond_references_ident(node.value, var_name)
 			|| cond != node.value) && !comptime_cond_has_loop_member_ref(cond, var_name) {
 			if taken := t.eval_field_cond(cond) {
@@ -2394,6 +2414,21 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 		}
 	}
 	return t.clone_field_subst_children(node, var_name, fm)
+}
+
+// direct_reflected_field_selector reports whether an iterable is exactly
+// `receiver.$(<var>.name)` (with optional parentheses). Expressions that merely contain that
+// selector, such as `receiver.$(<var>.name) or { fallback }`, already produce an unwrapped value.
+fn (t &Transformer) direct_reflected_field_selector(id flat.NodeId, var_name string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count == 1 {
+		return t.direct_reflected_field_selector(t.a.child(&node, 0), var_name)
+	}
+	return node.kind == .selector && node.value == '$' && node.children_count >= 2
+		&& t.dollar_selector_names_var(t.a.child(&node, 1), var_name)
 }
 
 fn (t &Transformer) subtree_has_reflected_typeof_idx(id flat.NodeId, var_name string) bool {
@@ -2415,21 +2450,57 @@ fn (t &Transformer) subtree_has_reflected_typeof_idx(id flat.NodeId, var_name st
 	return false
 }
 
-// subst_reflected_field_selector_cond resolves a type-membership check on the concrete field
-// selected by the current reflection iteration, for example `val.test in [u32, i32]` while
-// iterating the `test` field. The outer `field.name` guard has already selected this iteration.
-fn (t &Transformer) subst_reflected_field_selector_cond(cond string, fm FieldMeta) string {
-	clean := cond.trim_space()
+// subst_reflected_field_selector_cond resolves type membership for an actual dynamic reflected
+// selector. For the legacy static form (`val.test in [...]` inside the `test` iteration), it
+// resolves the receiver's field type instead of assuming that every `.test` belongs to `fm`.
+fn (t &Transformer) subst_reflected_field_selector_cond(original string, substituted string, var_name string, fm FieldMeta) string {
+	clean := original.trim_space()
 	for op in [' !in', ' in'] {
 		if op_idx := comptime_top_index(clean, op) {
 			left := clean[..op_idx].trim_space()
-			suffix := '.${fm.name}'
-			if left.len >= suffix.len && left[left.len - suffix.len..] == suffix {
-				return fm.comptime_typ + clean[op_idx..]
+			mut selector_type := ''
+			if comptime_reflected_selector_left(left, var_name) {
+				selector_type = fm.comptime_typ
+			} else {
+				static_suffix := '.${fm.name}'
+				if !left.ends_with(static_suffix) {
+					continue
+				}
+				receiver := left[..left.len - static_suffix.len].trim_space()
+				if !comptime_plain_ident(receiver) {
+					continue
+				}
+				receiver_type := t.var_type(receiver).trim_space().trim_left('&')
+				selector_type = t.lookup_struct_field_type(receiver_type, fm.name) or { continue }
+			}
+			resolved := substituted.trim_space()
+			if resolved_op_idx := comptime_top_index(resolved, op) {
+				return selector_type + resolved[resolved_op_idx..]
 			}
 		}
 	}
-	return cond
+	return substituted
+}
+
+fn comptime_reflected_selector_left(left string, var_name string) bool {
+	if !left.ends_with(')') {
+		return false
+	}
+	open_idx := left.last_index('.$(') or { return false }
+	return comptime_cond_references_ident(left, var_name)
+		&& left[open_idx + 3..left.len - 1].trim_space() == '${var_name}.name'
+}
+
+fn comptime_plain_ident(value string) bool {
+	if value.len == 0 || !(value[0].is_letter() || value[0] == `_`) {
+		return false
+	}
+	for c in value {
+		if !(c.is_letter() || c.is_digit() || c == `_`) {
+			return false
+		}
+	}
+	return true
 }
 
 // typeof_arg_is_var reports whether `id` is a `typeof(<var_name>)` expression over the
