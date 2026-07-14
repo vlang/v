@@ -2058,6 +2058,35 @@ fn main() {
 	assert out == 'outer-param:first|inner-param:second|outer-attr:outer|inner-attr:inner'
 }
 
+fn test_nested_method_attribute_guard_preserves_inner_selector() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'nested_method_attribute_guard', "struct App {}
+
+@[get]
+fn (a App) index() {
+	_ = a
+}
+
+@[post]
+fn (a App) submit() {
+	_ = a
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for method in App.methods {
+		\$for attr in method.attributes {
+			\$if method.name == 'index' && attr.name == 'get' {
+				rows << method.name + ':' + attr.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'index:get'
+}
+
 fn test_nested_method_reflection_respects_shadowed_loop_variable() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_shadowing', 'struct OuterMethods {}

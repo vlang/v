@@ -968,6 +968,10 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 }
 
 fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, method MethodMeta) ?flat.NodeId {
+	return t.clone_method_subst_scoped(id, var_name, method, []string{})
+}
+
+fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string, method MethodMeta, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
 	}
@@ -985,7 +989,9 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 	}
 	if node.kind == .selector && node.value == '$' && node.children_count >= 2
 		&& t.comptime_method_name_expr_matches(t.a.child(&node, 1), var_name) {
-		receiver := t.clone_method_subst(t.a.child(&node, 0), var_name, method) or { return none }
+		receiver := t.clone_method_subst_scoped(t.a.child(&node, 0), var_name, method, inner_vars) or {
+			return none
+		}
 		receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
 		t.mark_fn_used('${receiver_name}.${method.name}')
 		return t.make_selector(receiver, method.name, method.return_type)
@@ -1018,7 +1024,7 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 					t.make_attribute_array_literal(method.attributes)
 				}
 				else {
-					t.clone_method_subst_children(node, var_name, method)
+					t.clone_method_subst_children(node, var_name, method, inner_vars)
 				}
 			}
 		}
@@ -1026,17 +1032,20 @@ fn (mut t Transformer) clone_method_subst(id flat.NodeId, var_name string, metho
 	if node.kind == .comptime_if {
 		cond := t.subst_method_cond(node.value, var_name, method)
 		if comptime_cond_references_ident(node.value, var_name)
-			&& !comptime_cond_has_loop_member_ref(cond, var_name) {
+			&& !comptime_cond_has_loop_member_ref(cond, var_name)
+			&& !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if taken := t.eval_field_cond(cond) {
 				branch_idx := if taken { 0 } else { 1 }
 				if branch_idx >= int(node.children_count) {
 					return none
 				}
-				return t.clone_method_subst(t.a.child(&node, branch_idx), var_name, method)
+				return t.clone_method_subst_scoped(t.a.child(&node, branch_idx), var_name, method,
+					inner_vars)
 			}
 		}
+		return t.clone_method_subst_children_with_value(node, var_name, method, inner_vars, cond)
 	}
-	return t.clone_method_subst_children(node, var_name, method)
+	return t.clone_method_subst_children(node, var_name, method, inner_vars)
 }
 
 fn (mut t Transformer) make_attribute_array_literal(attrs []AttributeMeta) flat.NodeId {
@@ -1108,10 +1117,28 @@ fn (t &Transformer) comptime_method_name_expr_matches(id flat.NodeId, var_name s
 	return false
 }
 
-fn (mut t Transformer) clone_method_subst_children(node flat.Node, var_name string, method MethodMeta) flat.NodeId {
+fn (mut t Transformer) clone_method_subst_children(node flat.Node, var_name string, method MethodMeta, inner_vars []string) flat.NodeId {
+	return t.clone_method_subst_children_with_value(node, var_name, method, inner_vars, node.value)
+}
+
+fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, var_name string, method MethodMeta, inner_vars []string, value string) flat.NodeId {
+	child_inner_vars := if node.kind == .comptime_for {
+		loop_var, _ := comptime_for_parts(node.value)
+		if loop_var != var_name && loop_var !in inner_vars {
+			mut scoped_vars := inner_vars.clone()
+			scoped_vars << loop_var
+			scoped_vars
+		} else {
+			inner_vars
+		}
+	} else {
+		inner_vars
+	}
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
-		if child := t.clone_method_subst(t.a.child(&node, i), var_name, method) {
+		if child := t.clone_method_subst_scoped(t.a.child(&node, i), var_name, method,
+			child_inner_vars)
+		{
 			children << child
 		}
 	}
@@ -1129,7 +1156,7 @@ fn (mut t Transformer) clone_method_subst_children(node flat.Node, var_name stri
 		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
-		value:          node.value
+		value:          value
 		typ:            typ
 		generic_params: node.generic_params.clone()
 		is_mut:         node.is_mut
@@ -2849,6 +2876,15 @@ fn comptime_cond_has_loop_member_ref(cond string, var_name string) bool {
 			return true
 		}
 		offset = member_start
+	}
+	return false
+}
+
+fn comptime_cond_has_any_loop_member_ref(cond string, var_names []string) bool {
+	for var_name in var_names {
+		if comptime_cond_has_loop_member_ref(cond, var_name) {
+			return true
+		}
 	}
 	return false
 }
