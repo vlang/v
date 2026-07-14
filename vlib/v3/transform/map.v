@@ -465,7 +465,9 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 		} else {
 			t.transform_expr_for_type(rhs_id, info.value_type)
 		}
+		t.drain_pending(mut result)
 		result << t.make_decl_assign_typed(value_name, value, info.value_type)
+		t.append_map_value_drop_before_set(info, map_expr, key_name, mut result)
 		result << t.make_map_set_stmt(map_expr, info.base_type, key_name, value_name)
 		return result
 	}
@@ -476,6 +478,29 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 	op := map_compound_to_infix_op(node.op) or { return none }
 	t.lower_map_index_compound_with_info(info, map_expr, key_name, op, rhs_id, mut result)
 	return result
+}
+
+// append_map_value_drop_before_set destroys an existing owned map value before
+// map__set overwrites its storage. The replacement has already been saved by the
+// caller, so cloning from the old value remains valid.
+fn (mut t Transformer) append_map_value_drop_before_set(info MapIndexInfo, map_expr flat.NodeId, key_name string, mut result []flat.NodeId) {
+	if isnil(t.tc) {
+		return
+	}
+	value_type := t.tc.parse_type(info.value_type)
+	if !t.tc.ownership_type_requires_drop(value_type) {
+		return
+	}
+	ptr_name := t.new_temp('map_old_value')
+	ptr := t.make_map_get_check_expr(map_expr, info.base_type, key_name)
+	result << t.make_decl_assign_typed(ptr_name, ptr, 'voidptr')
+	ptr_ident := t.make_ident(ptr_name)
+	old_value_ptr := t.make_cast('&${info.value_type}', ptr_ident, '&${info.value_type}')
+	old_value := t.make_prefix(.mul, old_value_ptr)
+	t.set_node_typ(int(old_value), info.value_type)
+	drop_call := t.make_call_typed('drop_owned', arr1(old_value), 'void')
+	found := t.make_infix(.ne, ptr_ident, t.a.add(.nil_literal))
+	result << t.make_if(found, t.make_block(arr1(t.make_expr_stmt(drop_call))), t.make_empty())
 }
 
 // try_lower_nested_map_index_assign lowers `m[k1][k2] = value` by updating the

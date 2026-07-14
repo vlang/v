@@ -4045,8 +4045,8 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		value:          node.value
 		typ:            node.typ
 	})
-	if node.kind in [.assign, .selector_assign] && node.op == .assign && node.children_count == 2
-		&& !isnil(t.tc) {
+	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
+		&& node.children_count == 2 && !isnil(t.tc) {
 		mut lhs_type_name := t.lvalue_type(t.a.child(&node, 0))
 		if lhs_type_name.len == 0 {
 			lhs_type_name = t.lvalue_type(new_children[0])
@@ -4140,6 +4140,22 @@ fn (t &Transformer) drop_before_assign_has_stable_lvalue(id flat.NodeId) bool {
 		.selector {
 			return node.children_count > 0
 				&& t.drop_before_assign_has_stable_lvalue(t.a.child(&node, 0))
+		}
+		.index {
+			if node.children_count < 2
+				|| !t.drop_before_assign_has_stable_lvalue(t.a.child(&node, 0)) {
+				return false
+			}
+			for i in 1 .. node.children_count {
+				if !t.is_stable_expr_for_reuse(t.a.child(&node, i)) {
+					return false
+				}
+			}
+			return true
+		}
+		.prefix {
+			return node.op == .mul && node.children_count > 0
+				&& t.is_stable_expr_for_reuse(t.a.child(&node, 0))
 		}
 		.paren {
 			return node.children_count > 0

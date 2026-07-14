@@ -4605,12 +4605,23 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 	if owning_fields.len == 0 {
 		return source
 	}
+	// An addressable source keeps owning its fields, so the aggregate copy below is
+	// only a non-owning template. A temporary source transfers its fields into the
+	// aggregate and those originals must be destroyed after their clones are saved.
+	source_fields_are_owned := !t.expr_can_take_address(source)
 	tmp_name := t.new_temp('derived_clone')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, clean)
 	for field in owning_fields {
 		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
 		source_field := t.make_selector(t.make_ident(tmp_name), field.name, field_type)
-		cloned_field := t.make_compiler_default_clone_value(source_field, field_type, true)
+		mut cloned_field := t.make_compiler_default_clone_value(source_field, field_type, true)
+		if source_fields_are_owned {
+			cloned_name := t.new_temp('derived_clone_field')
+			t.pending_stmts << t.make_decl_assign_typed(cloned_name, cloned_field, field_type)
+			drop_call := t.make_call_typed('drop_owned', arr1(source_field), 'void')
+			t.pending_stmts << t.make_expr_stmt(drop_call)
+			cloned_field = t.make_ident(cloned_name)
+		}
 		t.pending_stmts << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.name,
 			field_type), cloned_field)
 	}

@@ -51,8 +51,8 @@ struct ContainerConfig implements IClone {
 }
 
 struct FactoryConfig implements IClone {
-	first string
-	second string
+	first arc.Arc[Resource]
+	second arc.Arc[Resource]
 }
 
 type ResourceSum = Resource | int
@@ -116,15 +116,28 @@ fn exercise_container_clone() {
 fn make_factory_config() FactoryConfig {
 	println("make factory")
 	return FactoryConfig{
-		first: "first".to_owned()
-		second: "second".to_owned()
+		first: arc.new(Resource{id: 11})
+		second: arc.new(Resource{id: 12})
 	}
 }
 
 fn exercise_unstable_clone_receiver() {
 	cloned := make_factory_config().clone()
-	assert cloned.first == "first"
-	assert cloned.second == "second"
+	assert cloned.first.strong_count() == 1
+	assert cloned.second.strong_count() == 1
+	assert cloned.first.get().id == 11
+	assert cloned.second.get().id == 12
+}
+
+fn replace_indexed_resources() {
+	mut resources := [arc.new(Resource{id: 13})]
+	resources[0] = arc.new(Resource{id: 14})
+	assert resources[0].strong_count() == 1
+	mut by_name := {
+		"resource": arc.new(Resource{id: 15})
+	}
+	by_name["resource"] = arc.new(Resource{id: 16})
+	assert by_name["resource"].strong_count() == 1
 }
 
 fn main() {
@@ -136,6 +149,7 @@ fn main() {
 	exercise_map_resource()
 	exercise_container_clone()
 	exercise_unstable_clone_receiver()
+	replace_indexed_resources()
 	original := Config{
 		replacement: arc.new(?[]u8([u8(1), 2, 3]))
 	}
@@ -158,10 +172,10 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	lines := run.output.trim_space().split_into_lines()
 	assert lines.count(it == 'make factory') == 1, run.output
-	for id in 1 .. 11 {
+	for id in 1 .. 17 {
 		assert lines.count(it == 'drop ${id}') == 1, run.output
 	}
-	assert lines.len == 11, run.output
+	assert lines.len == 17, run.output
 	os.write_file(nonownership_src, 'module main
 
 import sync.arc
