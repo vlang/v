@@ -155,7 +155,6 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.pending_fn_pub = false
 	p.pending_decl_attrs.clear()
 	p.pending_decl_attr_kinds.clear()
-	p.comptime_const_values.clear()
 	p.comptime_local_values.clear()
 	p.comptime_value_undos.clear()
 	p.comptime_value_scopes.clear()
@@ -1681,7 +1680,7 @@ fn (mut p Parser) const_decl() flat.NodeId {
 				p.next()
 				val_id := p.expr(.lowest)
 				if value := p.comptime_node_value(val_id) {
-					p.comptime_const_values[full_name] = value
+					p.comptime_const_values[comptime_const_value_key(p.cur_module, full_name)] = value
 				}
 				vstart := p.add_child(val_id)
 				ids << p.a.add_node(flat.Node{
@@ -3317,10 +3316,19 @@ fn (p &Parser) comptime_value(name string) ?string {
 	if value := p.comptime_local_values[name] {
 		return value
 	}
-	if value := p.comptime_const_values[name] {
+	if value := p.comptime_const_values[comptime_const_value_key(p.cur_module, name)] {
 		return value
 	}
+	if p.cur_module != 'builtin' {
+		if value := p.comptime_const_values[comptime_const_value_key('builtin', name)] {
+			return value
+		}
+	}
 	return none
+}
+
+fn comptime_const_value_key(module_name string, name string) string {
+	return '${module_name}\n${name}'
 }
 
 fn (p &Parser) comptime_node_value(id flat.NodeId) ?string {

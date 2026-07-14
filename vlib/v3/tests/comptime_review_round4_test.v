@@ -2297,6 +2297,47 @@ fn test_vmod_file_comptime_condition_without_project_is_compile_error() {
 		'@VMOD_FILE can only be used in projects that have a v.mod file')
 }
 
+fn test_comptime_const_values_persist_across_module_files_without_leaking() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'comptime_const_values_across_files', {
+		'v.mod':      "Module { name: 'comptime_const_values_across_files' }\n"
+		'a_consts.v': "module main
+
+const enabled = true
+const flavor = 'vanilla'
+"
+		'b_main.v':   "module main
+
+import pkg
+
+fn main() {
+	mut rows := []string{}
+	\$if enabled {
+		rows << 'if'
+	} \$else {
+		rows << 'wrong-if'
+	}
+	\$match flavor {
+		'vanilla' { rows << 'match' }
+		\$else { rows << 'wrong-match' }
+	}
+	rows << pkg.value()
+	println(rows.join('|'))
+}
+"
+		'pkg/pkg.v':  "module pkg
+
+pub fn value() string {
+	\$if enabled {
+		return 'wrong-leak'
+	}
+	return 'pkg'
+}
+"
+	}, '')
+	assert out == 'if|match|pkg'
+}
+
 fn test_nested_param_and_attribute_reflection_respects_shadowing() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_param_attribute_shadowing', "@[outer]

@@ -94,6 +94,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		mut workers := []&Parser{cap: thread_count}
 		for ci in 0 .. thread_count {
 			mut w := Parser.new(p.prefs)
+			w.comptime_const_values = p.comptime_const_values.clone()
 			mut chunk_bytes := i64(0)
 			for i in bounds[ci + 1] .. bounds[ci + 2] {
 				chunk_bytes += sizes[i]
@@ -212,6 +213,11 @@ fn (mut p Parser) merge_parsed_worker(w &Parser, mut starts []int, chunk_start i
 	for name, is_noreturn in w.a.noreturn_fns {
 		if is_noreturn {
 			p.a.noreturn_fns[name] = true
+		}
+	}
+	for key, value in w.comptime_const_values {
+		if key !in p.comptime_const_values {
+			p.comptime_const_values[key] = value
 		}
 	}
 	p.parsed_v_files += w.parsed_v_files
