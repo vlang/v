@@ -105,8 +105,8 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.trim_defers(defer_start)
 	g.indent--
 	g.writeln('}')
-	g.gen_scope_ownership_drops()
 	if wrap_init {
+		g.gen_scope_ownership_drops()
 		g.indent--
 		g.writeln('}')
 	}

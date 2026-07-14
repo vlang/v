@@ -7664,7 +7664,10 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	tc.push_scope()
 	$if ownership ? {
 		if node.children_count > 0 {
-			tc.ownership_mark_scope_node(tc.a.child(&node, 0))
+			init_id := tc.a.child(&node, 0)
+			if int(init_id) >= 0 && tc.a.nodes[int(init_id)].kind != .empty {
+				tc.ownership_mark_scope_node(init_id)
+			}
 		}
 	}
 	if node.children_count > 0 {
