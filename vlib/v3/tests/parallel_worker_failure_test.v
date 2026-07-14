@@ -17,12 +17,14 @@ fn build_parallel_failure_v3() string {
 
 fn write_parallel_failure_source() string {
 	path := os.join_path(os.temp_dir(), 'v3_parallel_failure_${os.getpid()}_${rand.ulid()}.v')
-	mut src := strings.new_builder(160_000)
+	mut src := strings.new_builder(320_000)
 	src.writeln('module main')
 	src.writeln('')
 	// Reusing the same shared parameter name across independently checked
 	// functions exposes accidental sharing of per-function checker maps.
-	for i in 0 .. 270 {
+	// Exceed mark-used's eager-precollection threshold as well as the checker's
+	// parallel threshold, so failure injection reaches both worker pools.
+	for i in 0 .. 3100 {
 		src.writeln('fn shared_helper_${i}(shared value int) int {')
 		src.writeln('\treturn ${i}')
 		src.writeln('}')

@@ -15,17 +15,15 @@ const max_markused_jobs = 8
 const min_markused_parallel_bodies = 512
 
 $if !windows {
-	// MarkusedChunkArgs is the payload handed to each worker thread. `imports`
-	// is a map-header copy (shared, read-only backing) rather than a pointer:
-	// the v3 self-host cgen cannot compile a `&map[K]V(ptr)` cast yet.
+	// MarkusedChunkArgs is the payload handed to each worker thread.
 	struct MarkusedChunkArgs {
-		collector    voidptr // &CallCollector
-		body_ids_ptr voidptr // &[]int
-		modules_ptr  voidptr // &[]string
-		imports      map[string]string
-		results_ptr  voidptr // &[]BodyCalls
-		start        int
-		end          int
+		collector          voidptr // &CallCollector
+		body_ids_ptr       voidptr // &[]int
+		modules_ptr        voidptr // &[]string
+		import_context_ptr voidptr // &[]int
+		results_ptr        voidptr // &[]BodyCalls
+		start              int
+		end                int
 	}
 
 	// C.pthread_t declares C pthread t data used by markused.
@@ -52,8 +50,9 @@ $if !windows {
 		c := unsafe { &CallCollector(args.collector) }
 		body_ids := unsafe { &[]int(args.body_ids_ptr) }
 		modules := unsafe { &[]string(args.modules_ptr) }
+		import_contexts := unsafe { &[]int(args.import_context_ptr) }
 		mut results := unsafe { &[]BodyCalls(args.results_ptr) }
-		c.collect_bodies_range(*body_ids, *modules, args.imports, args.start, args.end, mut
+		c.collect_bodies_range(*body_ids, *modules, *import_contexts, args.start, args.end, mut
 			*results)
 		return unsafe { nil }
 	}
@@ -61,11 +60,11 @@ $if !windows {
 
 // precollect_body_calls analyzes every fn_decl body, across threads when there
 // is enough work.
-fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules []string, imports map[string]string) []BodyCalls {
+fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules []string, body_import_contexts []int) []BodyCalls {
 	mut results := []BodyCalls{len: body_ids.len}
 	$if windows {
-		collector.collect_bodies_range(body_ids, body_modules, imports, 0, body_ids.len, mut
-			results)
+		collector.collect_bodies_range(body_ids, body_modules, body_import_contexts, 0,
+			body_ids.len, mut results)
 		return results
 	} $else {
 		mut n_jobs := runtime.nr_jobs()
@@ -73,8 +72,8 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 			n_jobs = max_markused_jobs
 		}
 		if body_ids.len < min_markused_parallel_bodies || n_jobs <= 1 {
-			collector.collect_bodies_range(body_ids, body_modules, imports, 0, body_ids.len, mut
-				results)
+			collector.collect_bodies_range(body_ids, body_modules, body_import_contexts, 0,
+				body_ids.len, mut results)
 			return results
 		}
 		bounds := markused_chunk_bounds(collector.a, body_ids, n_jobs)
@@ -90,13 +89,13 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 		mut args := []MarkusedChunkArgs{cap: thread_count}
 		for ci in 0 .. thread_count {
 			args << MarkusedChunkArgs{
-				collector:    unsafe { voidptr(&worker_collectors[ci]) }
-				body_ids_ptr: unsafe { voidptr(&body_ids) }
-				modules_ptr:  unsafe { voidptr(&body_modules) }
-				imports:      imports
-				results_ptr:  unsafe { voidptr(&results) }
-				start:        bounds[ci + 1]
-				end:          bounds[ci + 2]
+				collector:          unsafe { voidptr(&worker_collectors[ci]) }
+				body_ids_ptr:       unsafe { voidptr(&body_ids) }
+				modules_ptr:        unsafe { voidptr(&body_modules) }
+				import_context_ptr: unsafe { voidptr(&body_import_contexts) }
+				results_ptr:        unsafe { voidptr(&results) }
+				start:              bounds[ci + 1]
+				end:                bounds[ci + 2]
 			}
 		}
 		mut thread_ids := []C.pthread_t{len: thread_count}
@@ -111,8 +110,8 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 			}
 		}
 		// The master analyzes chunk 0 on this thread while the helpers run.
-		collector.collect_bodies_range(body_ids, body_modules, imports, bounds[0], bounds[1], mut
-			results)
+		collector.collect_bodies_range(body_ids, body_modules, body_import_contexts, bounds[0],
+			bounds[1], mut results)
 		for ci in 0 .. thread_count {
 			if started[ci] && C.pthread_join(thread_ids[ci], unsafe { nil }) != 0 {
 				panic('failed to join mark-used worker ${ci}')
