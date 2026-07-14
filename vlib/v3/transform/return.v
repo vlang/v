@@ -192,7 +192,7 @@ fn (t &Transformer) optional_types_match(a string, b string) bool {
 
 // try_expand_return_optional_expr
 // supports helper handling in transform.
-fn (mut t Transformer) try_expand_return_optional_expr(node flat.Node) ?[]flat.NodeId {
+fn (mut t Transformer) try_expand_return_optional_expr(source_return_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
 	if node.children_count != 1 || !t.is_optional_type_name(t.cur_fn_ret_type) {
 		return none
 	}
@@ -218,16 +218,19 @@ fn (mut t Transformer) try_expand_return_optional_expr(node flat.Node) ?[]flat.N
 	tmp_ident := t.make_ident(tmp_name)
 	ok_cond := t.make_selector(tmp_ident, 'ok', 'bool')
 	value := t.make_selector(t.make_ident(tmp_name), 'value', t.optional_base_type(expr_type))
-	then_block := t.try_convert_forwarded_wrapped_multi_return(value, expr_type, ret_type) or {
-		t.make_block(arr1(t.make_optional_success_return(value, ret_type)))
+	then_block := t.try_convert_forwarded_wrapped_multi_return(value, expr_type, ret_type,
+		source_return_id) or {
+		t.make_block(arr1(t.make_transformed_return(value, ret_type, source_return_id)))
 	}
 	err_expr := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
-	else_block := t.make_block(arr1(t.make_none_return_stmt_with_err_expr(err_expr)))
+	err_return := t.make_none_return_stmt_with_err_expr(err_expr)
+	t.mark_transformed_return(err_return, source_return_id)
+	else_block := t.make_block(arr1(err_return))
 	result << t.make_if(ok_cond, then_block, else_block)
 	return result
 }
 
-fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.NodeId, actual_wrapper string, expected_wrapper string) ?flat.NodeId {
+fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.NodeId, actual_wrapper string, expected_wrapper string, source_return_id flat.NodeId) ?flat.NodeId {
 	if isnil(t.tc) {
 		return none
 	}
@@ -258,7 +261,7 @@ fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.
 	}
 	mut then_body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
-	then_body << t.make_optional_success_return_values(return_values, expected_wrapper)
+	then_body << t.make_transformed_return_values(return_values, expected_wrapper, source_return_id)
 	return t.make_block(then_body)
 }
 

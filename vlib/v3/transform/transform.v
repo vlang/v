@@ -3562,7 +3562,7 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 	if direct := t.try_return_direct_optional_expr(node) {
 		return direct
 	}
-	if expanded := t.try_expand_return_optional_expr(node) {
+	if expanded := t.try_expand_return_optional_expr(source_return_id, node) {
 		return expanded
 	}
 	if expanded := t.try_expand_forwarded_multi_return(source_return_id, node) {

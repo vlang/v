@@ -127,9 +127,18 @@ fn maybe_small_number() ?int {
 	return 20
 }
 
+fn maybe_small_number_none() ?int {
+	return none
+}
+
 fn converted_optional_success() ?i64 {
 	r := Resource{19}
 	return maybe_small_number()
+}
+
+fn converted_optional_failure() ?i64 {
+	r := Resource{32}
+	return maybe_small_number_none()
 }
 
 fn small_pair() (i8, i16) {
@@ -269,6 +278,7 @@ fn main() {
 	println(value_or_branch_drop())
 	implicit_fn_exit_param_and_local(Resource{18})
 	println(converted_optional_success() or { i64(-1) })
+	converted_optional_failure() or { println('converted none') }
 	a, b := forwarded_multi_return_drop()
 	println('${a}:${b}')
 	labelled_continue_drop_once()
@@ -288,5 +298,5 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\nelse branch\ndrop 14\ndrop 15\n15\ndrop 29\n31\ndrop 30\n32\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 31\n33:34\ndrop 21\ndrop 20\nguard 22\ndrop 22\nmatch 23\ndrop 23\nselect 24\ndrop 24\noptional wrapper\ndrop 25\nfor init 26\ndrop 26\nfor break 27\ndrop 27\nfor labelled break 28\ndrop 28\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
+	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\nelse branch\ndrop 14\ndrop 15\n15\ndrop 29\n31\ndrop 30\n32\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 32\nconverted none\ndrop 31\n33:34\ndrop 21\ndrop 20\nguard 22\ndrop 22\nmatch 23\ndrop 23\nselect 24\ndrop 24\noptional wrapper\ndrop 25\nfor init 26\ndrop 26\nfor break 27\ndrop 27\nfor labelled break 28\ndrop 28\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
 }

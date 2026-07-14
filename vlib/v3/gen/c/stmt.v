@@ -367,14 +367,14 @@ fn (mut g FlatGen) take_propagation_ownership_drops() []types.OwnershipDropEntry
 	return entries
 }
 
-fn (mut g FlatGen) take_return_stmt_ownership_drops(id flat.NodeId, node flat.Node) []types.OwnershipDropEntry {
+fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node) []types.OwnershipDropEntry {
+	if source_id := transformed_return_source_id(node.value) {
+		return g.take_transformed_return_ownership_drops(source_id)
+	}
 	if node.typ.len == 0 {
 		return g.take_return_ownership_drops()
 	}
 	if node.typ[0] !in [`!`, `?`] {
-		if source_id := transformed_return_source_id(node.value) {
-			return g.take_transformed_return_ownership_drops(source_id)
-		}
 		return []types.OwnershipDropEntry{}
 	}
 	if node.value == direct_optional_forward_return_value
@@ -1322,7 +1322,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			old_return_node_id := g.cur_return_node_id
 			old_return_drops := g.cur_return_drops.clone()
 			g.cur_return_node_id = int(id)
-			g.cur_return_drops = g.take_return_stmt_ownership_drops(id, node)
+			g.cur_return_drops = g.take_return_stmt_ownership_drops(node)
 			defer {
 				g.cur_return_node_id = old_return_node_id
 				g.cur_return_drops = old_return_drops
