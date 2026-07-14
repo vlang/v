@@ -7,6 +7,7 @@ import v3.types
 const direct_optional_forward_return_value = '__direct_optional_forward'
 const optional_success_return_value = '__optional_success_return'
 const transformed_return_value_prefix = '__transformed_return:'
+const pending_loop_label_marker = '__v_pending_loop_label:'
 
 // gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
@@ -1629,6 +1630,10 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			}
 		}
 		.label_stmt {
+			if node.value.starts_with(pending_loop_label_marker) {
+				g.pending_loop_label = node.value[pending_loop_label_marker.len..]
+				return
+			}
 			old_indent := g.indent
 			g.indent = 0
 			g.writeln('${g.cname(node.value)}: ;')

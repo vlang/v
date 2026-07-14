@@ -288,6 +288,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					types.Type(types.int_))
 				g.declare_local_pointer_storage(idx_owner, false)
 			}
+			if clean_container_type !is types.Map {
+				g.gen_labelled_continue_skip_drops_var(label_state.label)
+			}
 			g.loop_depth++
 			for i in body_start .. node.children_count {
 				g.gen_node(g.a.child(&node, i))

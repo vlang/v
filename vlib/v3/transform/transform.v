@@ -696,6 +696,7 @@ fn (mut t Transformer) clear_struct_field_type_cache() {
 
 const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__'
 const sum_type_tag_selector_field = '__v_sum_type_tag__'
+const pending_loop_label_marker = '__v_pending_loop_label:'
 
 fn (mut t Transformer) rebuild_receiver_method_suffix_index() {
 	t.receiver_method_suffix_index.clear()
@@ -3099,7 +3100,15 @@ fn (mut t Transformer) transform_labeled_loop(label string, loop_id flat.NodeId,
 	})
 	mut result := []flat.NodeId{}
 	result << t.a.add_val(.label_stmt, label)
-	result << t.transform_stmt(new_loop)
+	transformed_loop := t.transform_stmt(new_loop)
+	mut marked_loop := false
+	for item_id in transformed_loop {
+		if !marked_loop && t.a.nodes[int(item_id)].kind in [.for_stmt, .for_in_stmt] {
+			result << t.a.add_val(.label_stmt, pending_loop_label_marker + label)
+			marked_loop = true
+		}
+		result << item_id
+	}
 	result << t.a.add_val(.label_stmt, break_label)
 	return result
 }
