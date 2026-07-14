@@ -5347,16 +5347,12 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 	}
 
 	if drop_stmts.len > 0 {
-		flags := t.make_selector(array_value, 'flags', 'ArrayFlags')
-		is_slice_flag := t.a.add_node(flat.Node{
-			kind:  .enum_val
-			value: 'ArrayFlags.is_slice'
-			typ:   'ArrayFlags'
-		})
-		is_slice := t.make_method_call(flags, 'has', arr1(is_slice_flag))
-		t.set_node_typ(int(is_slice), 'bool')
+		needs_unique_shrink := t.make_method_call(array_value, 'needs_unique_shrink',
+			[]flat.NodeId{})
+		t.set_node_typ(int(needs_unique_shrink), 'bool')
+		t.mark_fn_used('array.needs_unique_shrink')
 		start := t.a.children.len
-		t.a.children << t.make_prefix(.not, is_slice)
+		t.a.children << t.make_prefix(.not, needs_unique_shrink)
 		t.a.children << t.make_block(drop_stmts)
 		t.pending_stmts << t.a.add_node(flat.Node{
 			kind:                 .if_expr

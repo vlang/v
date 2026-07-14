@@ -7084,7 +7084,21 @@ fn (mut tc TypeChecker) ownership_mark_map_literal_entries_with_mode(lhs_name st
 		return false
 	}
 	mut marked := false
-	for i := 0; i < node.children_count; i += 2 {
+	mut start_i := 0
+	if node.children_count > 0 {
+		first := tc.a.child_node(&node, 0)
+		if first.kind == .prefix && first.value == '...' && first.children_count > 0 {
+			spread_type := unwrap_pointer(tc.resolve_type(tc.a.child(&first, 0)))
+			if map_type := map_type_from_receiver(spread_type) {
+				if tc.ownership_type_requires_destruction(map_type.key_type)
+					|| tc.ownership_type_requires_destruction(map_type.value_type) {
+					marked = true
+				}
+			}
+			start_i = 2
+		}
+	}
+	for i := start_i; i < node.children_count; i += 2 {
 		key_id := tc.a.child(&node, i)
 		key_entry := ownership_map_key_storage_name(lhs_name)
 		key_type := tc.resolve_type(key_id)
