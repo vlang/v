@@ -201,6 +201,7 @@ mut:
 	drop_structs                     map[string]bool
 	drop_at_fn_exit                  map[string][]OwnershipDropEntry
 	drop_at_returns                  map[string][]OwnershipDropEntry
+	drop_at_return_nodes             map[string][]OwnershipDropEntry
 	drop_at_propagations             map[string][]OwnershipDropEntry
 	drop_at_loop_controls            map[string][]OwnershipDropEntry
 	drop_at_loop_iterations          map[string][]OwnershipDropEntry
@@ -284,6 +285,7 @@ fn new_ownership_state() &OwnershipState {
 		drop_structs:                     map[string]bool{}
 		drop_at_fn_exit:                  map[string][]OwnershipDropEntry{}
 		drop_at_returns:                  map[string][]OwnershipDropEntry{}
+		drop_at_return_nodes:             map[string][]OwnershipDropEntry{}
 		drop_at_propagations:             map[string][]OwnershipDropEntry{}
 		drop_at_loop_controls:            map[string][]OwnershipDropEntry{}
 		drop_at_loop_iterations:          map[string][]OwnershipDropEntry{}
@@ -388,6 +390,7 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		drop_structs:                     src.drop_structs.clone()
 		drop_at_fn_exit:                  map[string][]OwnershipDropEntry{}
 		drop_at_returns:                  map[string][]OwnershipDropEntry{}
+		drop_at_return_nodes:             map[string][]OwnershipDropEntry{}
 		drop_at_propagations:             map[string][]OwnershipDropEntry{}
 		drop_at_loop_controls:            map[string][]OwnershipDropEntry{}
 		drop_at_loop_iterations:          map[string][]OwnershipDropEntry{}
@@ -624,6 +627,7 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	ownership_merge_bool_map(mut dst.drop_structs, src.drop_structs)
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_fn_exit, src.drop_at_fn_exit)
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_returns, src.drop_at_returns)
+	ownership_merge_drop_lists_by_name(mut dst.drop_at_return_nodes, src.drop_at_return_nodes)
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_propagations, src.drop_at_propagations)
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_loop_controls, src.drop_at_loop_controls)
 	ownership_merge_drop_lists_by_name(mut dst.drop_at_loop_iterations, src.drop_at_loop_iterations)
@@ -8204,6 +8208,7 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 	st.drop_return_counts[st.cur_fn] = return_index + 1
 	if entries.len > 0 {
 		st.drop_at_returns['${st.cur_fn}\x01${return_index}'] = entries
+		st.drop_at_return_nodes['${st.cur_fn}\x01${int(id)}'] = entries
 		tc.ownership_note_drop_types(st.cur_fn, entries)
 	}
 	tc.ownership_check_return_defers()
@@ -9926,6 +9931,17 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_return(fn_name string, index 
 		return []OwnershipDropEntry{}
 	}
 	return (tc.ownership.drop_at_returns['${fn_name}\x01${index}'] or { []OwnershipDropEntry{} }).clone()
+}
+
+// ownership_drop_entries_at_return_node returns the destructor snapshot recorded
+// for the original return node, used by transformer-expanded return paths.
+pub fn (tc &TypeChecker) ownership_drop_entries_at_return_node(fn_name string, id flat.NodeId) []OwnershipDropEntry {
+	if tc.ownership == unsafe { nil } {
+		return []OwnershipDropEntry{}
+	}
+	return (tc.ownership.drop_at_return_nodes['${fn_name}\x01${int(id)}'] or {
+		[]OwnershipDropEntry{}
+	}).clone()
 }
 
 pub fn (tc &TypeChecker) ownership_drop_entries_at_propagation(fn_name string, index int) []OwnershipDropEntry {

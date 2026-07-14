@@ -156,6 +156,7 @@ mut:
 	in_return                      bool
 	cur_return_node_id             int = -1
 	ownership_return_index         int
+	ownership_seen_return_sources  map[string]bool
 	ownership_propagation_index    int
 	ownership_loop_control_index   int
 	ownership_loop_iteration_index int
@@ -459,6 +460,7 @@ pub fn FlatGen.new() FlatGen {
 		active_locks:                   []ActiveLock{}
 		loop_label_depths:              map[string]int{}
 		goto_label_lock_scopes:         map[string][]int{}
+		ownership_seen_return_sources:  map[string]bool{}
 		needed_optional_types:          map[string]string{}
 		emitted_optional_types:         map[string]bool{}
 		emitted_fns:                    map[string]bool{}

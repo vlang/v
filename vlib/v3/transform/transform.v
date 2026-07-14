@@ -3552,10 +3552,11 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 	if node.children_count == 0 {
 		return arr1(id)
 	}
-	if expanded := t.try_expand_return_if(id, node) {
+	source_return_id := t.return_drop_source_id(id, node)
+	if expanded := t.try_expand_return_if(source_return_id, node) {
 		return expanded
 	}
-	if expanded := t.try_expand_return_match(id, node) {
+	if expanded := t.try_expand_return_match(source_return_id, node) {
 		return expanded
 	}
 	if direct := t.try_return_direct_optional_expr(node) {
@@ -3564,7 +3565,7 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 	if expanded := t.try_expand_return_optional_expr(node) {
 		return expanded
 	}
-	if expanded := t.try_expand_forwarded_multi_return(node) {
+	if expanded := t.try_expand_forwarded_multi_return(source_return_id, node) {
 		return expanded
 	}
 	if node.children_count == 1 {
