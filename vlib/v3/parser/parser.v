@@ -2423,6 +2423,10 @@ fn (mut p Parser) make_compile_error_call(message flat.NodeId) flat.NodeId {
 
 fn (mut p Parser) parse_top_level_compile_error() flat.NodeId {
 	call := p.parse_compile_error_call()
+	return p.make_top_level_compile_error(call)
+}
+
+fn (mut p Parser) make_top_level_compile_error(call flat.NodeId) flat.NodeId {
 	stmt := p.a.add_node(flat.Node{
 		kind:           .expr_stmt
 		children_start: p.add_child(call)
@@ -2739,7 +2743,7 @@ fn (mut p Parser) parse_comptime_cond() string {
 	return cond.str()
 }
 
-fn (p &Parser) resolve_comptime_at_values(cond string) string {
+fn (mut p Parser) resolve_comptime_at_values(cond string) string {
 	module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
 	fn_name := p.cur_fn.all_after_last('.')
 	method_name := if p.cur_struct.len > 0 { '${p.cur_struct}.${fn_name}' } else { fn_name }
@@ -2782,6 +2786,17 @@ fn (p &Parser) resolve_comptime_at_values(cond string) string {
 				'@VMODROOT' {
 					write_comptime_cond_string(mut out,
 						os.real_path(vmod_root_for_file(p.cur_file)))
+				}
+				'@VMOD_FILE' {
+					vmod_file := os.join_path_single(vmod_root_for_file(p.cur_file), 'v.mod')
+					content := os.read_file(vmod_file) or {
+						message := p.a.add_val_id(5,
+							'@VMOD_FILE can only be used in projects that have a v.mod file')
+						call := p.make_compile_error_call(message)
+						_ = p.make_top_level_compile_error(call)
+						''
+					}
+					write_comptime_cond_string(mut out, content.replace('\r\n', '\n'))
 				}
 				'@VEXEROOT' {
 					write_comptime_cond_string(mut out, p.prefs.vroot)

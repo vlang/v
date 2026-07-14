@@ -1301,11 +1301,11 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 fn (t &Transformer) subst_method_cond(cond string, var_name string, method MethodMeta) string {
 	mut result := t.subst_method_param_cond(cond, var_name, method)
 	method_type := t.comptime_method_type_text(method)
-	result = result.replace('${var_name}.return_type', t.comptime_field_type_id_key(method.return_type,
+	result = comptime_cond_replace_unquoted(result, '${var_name}.return_type', t.comptime_field_type_id_key(method.return_type,
 		method.module_name))
-	result = result.replace('${var_name}.typ', method_type)
-	result = result.replace('${var_name}.is_pub', method.is_pub.str())
-	result = result.replace('${var_name}.name', "'${method.name}'")
+	result = comptime_cond_replace_unquoted(result, '${var_name}.typ', method_type)
+	result = comptime_cond_replace_unquoted(result, '${var_name}.is_pub', method.is_pub.str())
+	result = comptime_cond_replace_unquoted(result, '${var_name}.name', "'${method.name}'")
 	result = comptime_cond_replace_bare_ident(result, var_name, method_type)
 	for op in [' !is ', ' is '] {
 		if idx := comptime_top_index(result, op) {
@@ -3205,6 +3205,30 @@ fn (t &Transformer) subst_unquoted_field_cond(cond string, var_name string, fm F
 	c = c.replace('${var_name}.name', "'${fm.name}'")
 	c = comptime_cond_replace_bare_ident(c, var_name, fm.comptime_typ)
 	return c
+}
+
+fn comptime_cond_replace_unquoted(cond string, needle string, replacement string) string {
+	if needle.len == 0 || !cond.contains(needle) {
+		return cond
+	}
+	mut out := ''
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			end := comptime_cond_skip_string(cond, offset)
+			out += cond[offset..end]
+			offset = end
+			continue
+		}
+		if offset + needle.len <= cond.len && cond[offset..offset + needle.len] == needle {
+			out += replacement
+			offset += needle.len
+			continue
+		}
+		out += cond[offset].ascii_str()
+		offset++
+	}
+	return out
 }
 
 fn comptime_cond_replace_bare_ident(cond string, ident string, replacement string) string {

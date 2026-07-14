@@ -2234,6 +2234,69 @@ fn main() {
 	assert out == 'id|real-selector'
 }
 
+fn test_method_condition_substitution_skips_string_literals() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'method_condition_string_literal', "struct QuotedMethods {}
+
+pub fn (q QuotedMethods) target() {
+	_ = q
+}
+
+pub fn (q QuotedMethods) other() {
+	_ = q
+}
+
+fn main() {
+	mut rows := []string{}
+	keep_serial := fn () {}
+	keep_serial()
+	value := QuotedMethods{}
+	value.target()
+	value.other()
+	\$for method in QuotedMethods.methods {
+		\$if method.name == 'target' || 'method.is_pub' == 'true' {
+			rows << method.name
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'target'
+}
+
+fn test_vmod_file_expands_in_comptime_conditions() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'vmod_file_comptime_conditions', {
+		'v.mod':  "Module { name: 'vmod_file_comptime_conditions' }\n"
+		'main.v': "module main
+
+fn main() {
+	mut rows := []string{}
+	\$if @VMOD_FILE != '@VMOD_FILE' {
+		rows << 'if'
+	} \$else {
+		rows << 'wrong-if'
+	}
+	\$match @VMOD_FILE {
+		'@VMOD_FILE' { rows << 'wrong-match' }
+		\$else { rows << 'match' }
+	}
+	println(rows.join('|'))
+}
+"
+	}, 'main.v')
+	assert out == 'if|match'
+}
+
+fn test_vmod_file_comptime_condition_without_project_is_compile_error() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'vmod_file_comptime_condition_without_project', "fn main() {
+	\$if @VMOD_FILE == '' {}
+}
+",
+		'@VMOD_FILE can only be used in projects that have a v.mod file')
+}
+
 fn test_nested_param_and_attribute_reflection_respects_shadowing() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_param_attribute_shadowing', "@[outer]
