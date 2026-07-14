@@ -724,23 +724,20 @@ fn comptime_method_receiver_base(raw string) string {
 	return name
 }
 
-fn comptime_method_receiver_matches(receiver string, requested string, normalized string, receiver_module string) bool {
-	recv := comptime_method_receiver_base(receiver)
-	mut receiver_names := [recv]
-	if receiver_module.len > 0 && receiver_module !in ['main', 'builtin'] && !recv.contains('.') {
-		receiver_names << '${receiver_module}.${recv}'
+fn comptime_method_receiver_name(raw string, module_name string) string {
+	name := comptime_method_receiver_base(raw)
+	if name.len == 0 || name.contains('.') || module_name.len == 0
+		|| module_name in ['main', 'builtin'] {
+		return name
 	}
-	candidates := [comptime_method_receiver_base(requested),
-		comptime_method_receiver_base(normalized)]
-	for candidate in candidates {
-		if candidate.len == 0 {
-			continue
-		}
-		for receiver_name in receiver_names {
-			if receiver_name == candidate
-				|| receiver_name.all_after_last('.') == candidate.all_after_last('.') {
-				return true
-			}
+	return '${module_name}.${name}'
+}
+
+fn comptime_method_receiver_matches(receiver string, requested string, normalized string, receiver_module string, requested_module string) bool {
+	receiver_name := comptime_method_receiver_name(receiver, receiver_module)
+	for candidate in [requested, normalized] {
+		if receiver_name == comptime_method_receiver_name(candidate, requested_module) {
+			return true
 		}
 	}
 	return false
@@ -765,7 +762,7 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 		}
 		first := t.a.child_node(&node, 0)
 		if first.kind != .param || first.value.len == 0
-			|| !comptime_method_receiver_matches(first.typ, base_type, normalized, module_name) {
+			|| !comptime_method_receiver_matches(first.typ, base_type, normalized, module_name, t.cur_module) {
 			continue
 		}
 		name := node.value.all_after_last('.')
@@ -864,23 +861,36 @@ fn (mut t Transformer) make_attribute_array_literal(attrs []AttributeMeta) flat.
 	return t.make_array_literal_typed(ids, '[]VAttribute')
 }
 
-fn (t &Transformer) comptime_method_param_index(id flat.NodeId, _var_name string) ?int {
+fn (t &Transformer) comptime_method_param_index(id flat.NodeId, var_name string) ?int {
 	if int(id) < 0 {
 		return none
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .paren && node.children_count > 0 {
-		return t.comptime_method_param_index(t.a.child(&node, 0), _var_name)
+		return t.comptime_method_param_index(t.a.child(&node, 0), var_name)
 	}
 	if node.kind != .index || node.children_count < 2 {
 		return none
 	}
 	base := t.a.child_node(&node, 0)
 	index := t.a.child_node(&node, 1)
-	if base.kind != .selector || base.value !in ['args', 'params'] || index.kind != .int_literal {
+	if base.kind != .selector || base.value !in ['args', 'params'] || base.children_count == 0
+		|| index.kind != .int_literal
+		|| !t.comptime_method_param_owner_matches(t.a.child(base, 0), var_name) {
 		return none
 	}
 	return index.value.int()
+}
+
+fn (t &Transformer) comptime_method_param_owner_matches(id flat.NodeId, var_name string) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return t.comptime_method_param_owner_matches(t.a.child(&node, 0), var_name)
+	}
+	return node.kind == .ident && node.value == var_name
 }
 
 fn (t &Transformer) comptime_method_name_expr_matches(id flat.NodeId, var_name string) bool {
