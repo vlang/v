@@ -5288,6 +5288,7 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 	}
 	mut args := []flat.NodeId{}
 	mut drop_stmts := []flat.NodeId{}
+	mut valid_drop_range := flat.empty_node
 	match method {
 		'delete' {
 			if node.children_count < 2 {
@@ -5298,6 +5299,9 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 			args << index
 			drop_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_index(array_value,
 				index, elem_type)), 'void'))
+			valid_drop_range = t.make_infix(.logical_and, t.make_infix(.ge, index,
+				t.make_int_literal(0)), t.make_infix(.lt, index, t.make_selector(array_value,
+				'len', 'int')))
 		}
 		'delete_many' {
 			if node.children_count < 3 {
@@ -5311,6 +5315,11 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 			args << size
 			t.append_owned_array_drop_range(array_value, elem_type, index, t.make_infix(.plus,
 				index, size), mut drop_stmts)
+			end := t.make_infix(.plus, t.make_cast('i64', index, 'i64'), t.make_cast('i64', size,
+				'i64'))
+			valid_drop_range = t.make_infix(.logical_and, t.make_infix(.ge, index,
+				t.make_int_literal(0)), t.make_infix(.le, end, t.make_cast('i64', t.make_selector(array_value,
+				'len', 'int'), 'i64')))
 		}
 		'clear' {
 			t.append_owned_array_drop_range(array_value, elem_type, t.make_int_literal(0), t.make_selector(array_value,
@@ -5340,6 +5349,8 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 				t.make_int_literal(1))
 			drop_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_index(array_value,
 				last, elem_type)), 'void'))
+			valid_drop_range = t.make_infix(.gt, t.make_selector(array_value, 'len', 'int'),
+				t.make_int_literal(0))
 		}
 		else {
 			return none
@@ -5351,8 +5362,12 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 			[]flat.NodeId{})
 		t.set_node_typ(int(needs_unique_shrink), 'bool')
 		t.mark_fn_used('array.needs_unique_shrink')
+		mut should_drop := t.make_prefix(.not, needs_unique_shrink)
+		if int(valid_drop_range) >= 0 {
+			should_drop = t.make_infix(.logical_and, valid_drop_range, should_drop)
+		}
 		start := t.a.children.len
-		t.a.children << t.make_prefix(.not, needs_unique_shrink)
+		t.a.children << should_drop
 		t.a.children << t.make_block(drop_stmts)
 		t.pending_stmts << t.a.add_node(flat.Node{
 			kind:                 .if_expr
