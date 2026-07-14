@@ -194,6 +194,16 @@ struct LocalBinding {
 	typ  Type
 }
 
+// ParseTypeCacheEntry keeps the three identity components separate. The old
+// cache built `${file}\n${module}\n${type}` for every lookup, allocating and
+// hashing a temporary string before it could discover a cache hit.
+struct ParseTypeCacheEntry {
+	file   string
+	module string
+	text   string
+	typ    Type
+}
+
 // TypeCache represents type cache data used by types.
 struct TypeCache {
 mut:
@@ -204,7 +214,7 @@ mut:
 	// cold and re-derive every memoized type/index.
 	base                       &TypeCache = unsafe { nil }
 	parse_enabled              bool
-	parse_entries              map[string]Type
+	parse_entries              map[u64]ParseTypeCacheEntry
 	c_entries                  map[string]string
 	c_name_entries             map[string]string
 	struct_field_entries       map[string]Type
@@ -486,7 +496,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		selected_file_called_fns:        map[string]bool{}
 		smartcasts:                      map[string]Type{}
 		type_cache:                      &TypeCache{
-			parse_entries:              map[string]Type{}
+			parse_entries:              map[u64]ParseTypeCacheEntry{}
 			c_entries:                  map[string]string{}
 			struct_field_entries:       map[string]Type{}
 			struct_field_misses:        map[string]bool{}
@@ -528,7 +538,7 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 		} else {
 			false
 		}
-		parse_entries:              map[string]Type{}
+		parse_entries:              map[u64]ParseTypeCacheEntry{}
 		c_entries:                  map[string]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
@@ -570,7 +580,13 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 // parallel-cgen workers start with every type memoized by the check/transform
 // phases instead of re-deriving them from a cold cache.
 pub fn (mut tc TypeChecker) set_fresh_type_cache_based_on(src &TypeChecker, parse_enabled bool) {
-	base := if !isnil(src.type_cache) { src.type_cache.base } else { &TypeCache(unsafe { nil }) }
+	base := if isnil(src.type_cache) {
+		&TypeCache(unsafe { nil })
+	} else if !isnil(src.type_cache.base) {
+		src.type_cache.base
+	} else {
+		src.type_cache
+	}
 	tc.type_cache = &TypeCache{
 		parse_enabled: parse_enabled
 		base:          base
@@ -612,7 +628,7 @@ pub fn (mut tc TypeChecker) free_parallel_transform_caches() {
 	}
 	tc.type_cache = &TypeCache{
 		parse_enabled:              parse_enabled
-		parse_entries:              map[string]Type{}
+		parse_entries:              map[u64]ParseTypeCacheEntry{}
 		c_entries:                  map[string]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
@@ -823,7 +839,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 		tc.ownership_reset()
 	}
 	tc.type_cache = &TypeCache{
-		parse_entries:              map[string]Type{}
+		parse_entries:              map[u64]ParseTypeCacheEntry{}
 		c_entries:                  map[string]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
@@ -12375,19 +12391,7 @@ fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
 	scoped.cur_module = tc.fn_type_modules[name] or {
 		tc.file_modules[decl_file] or { tc.cur_module }
 	}
-	scoped.type_cache = &TypeCache{
-		parse_enabled:              if tc.type_cache != unsafe { nil } {
-			tc.type_cache.parse_enabled
-		} else {
-			false
-		}
-		parse_entries:              map[string]Type{}
-		c_entries:                  map[string]string{}
-		struct_field_entries:       map[string]Type{}
-		struct_field_misses:        map[string]bool{}
-		ierror_compat_entries:      map[string]int{}
-		source_error_embed_entries: map[string]int{}
-	}
+	scoped.set_fresh_type_cache_based_on(tc, tc.type_cache_parse_enabled())
 	return scoped.parse_type(typ)
 }
 
@@ -18335,23 +18339,93 @@ pub fn (tc &TypeChecker) cached_c_name(name string) string {
 // parse_type converts a V type string (from parser) to a structured Type.
 pub fn (tc &TypeChecker) parse_type(typ string) Type {
 	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
-		key := tc.cur_file + '\n' + tc.cur_module + '\n' + typ
 		mut cache := unsafe { tc.type_cache }
-		// The frozen base holds the warm pre-region entries — check it first
-		// (values are deterministic, so shadowing order does not matter).
-		if !isnil(cache.base) {
-			if cached := cache.base.parse_entries[key] {
-				return cached
-			}
-		}
-		if cached := cache.parse_entries[key] {
+		if cached := parse_type_cache_get(cache, tc.cur_file, tc.cur_module, typ) {
 			return cached
 		}
 		result := tc.parse_type_uncached(typ)
-		cache.parse_entries[key] = result
+		parse_type_cache_put(mut cache, tc.cur_file, tc.cur_module, typ, result)
 		return result
 	}
 	return tc.parse_type_uncached(typ)
+}
+
+fn parse_type_cache_hash(file string, module_name string, text string) u64 {
+	mut hash := u64(14_695_981_039_346_656_037)
+	hash = parse_type_cache_hash_part(hash, file)
+	hash = parse_type_cache_hash_part(hash, module_name)
+	return parse_type_cache_hash_part(hash, text)
+}
+
+fn parse_type_cache_hash_part(initial u64, part string) u64 {
+	mut hash := initial ^ u64(part.len)
+	hash *= u64(1_099_511_628_211)
+	for i in 0 .. part.len {
+		hash ^= u64(part[i])
+		hash *= u64(1_099_511_628_211)
+	}
+	return hash
+}
+
+fn parse_type_cache_next_key(key u64) u64 {
+	return key * u64(2_862_933_555_777_941_757) + u64(3_037_000_493)
+}
+
+fn parse_type_cache_entry_matches(entry ParseTypeCacheEntry, file string, module_name string, text string) bool {
+	return entry.file == file && entry.module == module_name && entry.text == text
+}
+
+fn parse_type_cache_get(cache &TypeCache, file string, module_name string, text string) ?Type {
+	mut key := parse_type_cache_hash(file, module_name, text)
+	for {
+		if entry := cache.parse_entries[key] {
+			if parse_type_cache_entry_matches(entry, file, module_name, text) {
+				return entry.typ
+			}
+			key = parse_type_cache_next_key(key)
+			continue
+		}
+		if !isnil(cache.base) {
+			if entry := cache.base.parse_entries[key] {
+				if parse_type_cache_entry_matches(entry, file, module_name, text) {
+					return entry.typ
+				}
+				key = parse_type_cache_next_key(key)
+				continue
+			}
+		}
+		return none
+	}
+	return none
+}
+
+fn parse_type_cache_put(mut cache TypeCache, file string, module_name string, text string, typ Type) {
+	mut key := parse_type_cache_hash(file, module_name, text)
+	for {
+		if entry := cache.parse_entries[key] {
+			if parse_type_cache_entry_matches(entry, file, module_name, text) {
+				return
+			}
+			key = parse_type_cache_next_key(key)
+			continue
+		}
+		if !isnil(cache.base) {
+			if entry := cache.base.parse_entries[key] {
+				if parse_type_cache_entry_matches(entry, file, module_name, text) {
+					return
+				}
+				key = parse_type_cache_next_key(key)
+				continue
+			}
+		}
+		cache.parse_entries[key] = ParseTypeCacheEntry{
+			file:   file
+			module: module_name
+			text:   text
+			typ:    typ
+		}
+		return
+	}
 }
 
 // parse_scope_param_type preserves open generic struct applications for local parameter
@@ -20264,25 +20338,40 @@ fn (tc &TypeChecker) resolve_index_base_type(base_type Type, node flat.Node) Typ
 
 // c_type supports c type handling for TypeChecker.
 pub fn (tc &TypeChecker) c_type(t Type) string {
-	if t is Pointer || t is FnType || t is Struct || t is Interface || t is SumType || t is Alias
-		|| t is MultiReturn || t is ArrayFixed {
-		if tc.type_cache != unsafe { nil } {
-			key := t.name()
-			mut cache := unsafe { tc.type_cache }
-			if !isnil(cache.base) {
-				if cached := cache.base.c_entries[key] {
-					return cached
-				}
-			}
-			if cached := cache.c_entries[key] {
+	if key := named_type_c_cache_key(t) {
+		if tc.type_cache == unsafe { nil } {
+			return tc.c_type_uncached(t)
+		}
+		mut cache := unsafe { tc.type_cache }
+		if !isnil(cache.base) {
+			if cached := cache.base.c_entries[key] {
 				return cached
 			}
-			result := tc.c_type_uncached(t)
-			cache.c_entries[key] = result
-			return result
 		}
+		if cached := cache.c_entries[key] {
+			return cached
+		}
+		result := tc.c_type_uncached(t)
+		cache.c_entries[key] = result
+		return result
 	}
 	return tc.c_type_uncached(t)
+}
+
+fn named_type_c_cache_key(t Type) ?string {
+	if t is Struct {
+		return t.name
+	}
+	if t is Interface {
+		return t.name
+	}
+	if t is SumType {
+		return t.name
+	}
+	if t is Alias {
+		return t.name
+	}
+	return none
 }
 
 // c_type_uncached supports c type uncached handling for TypeChecker.
