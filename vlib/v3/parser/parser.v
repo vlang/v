@@ -2748,15 +2748,42 @@ fn (p &Parser) resolve_comptime_at_values(cond string) string {
 			}
 			name := cond[start..i]
 			match name {
-				'@METHOD' { write_comptime_cond_string(mut out, method_name) }
-				'@STRUCT' { write_comptime_cond_string(mut out, p.cur_struct) }
-				'@MOD' { write_comptime_cond_string(mut out, module_name) }
-				'@FN' { write_comptime_cond_string(mut out, fn_name) }
-				'@OS' { write_comptime_cond_string(mut out, p.prefs.normalized_target_os()) }
-				'@CCOMPILER' { write_comptime_cond_string(mut out, @CCOMPILER) }
-				'@BACKEND' { write_comptime_cond_string(mut out, p.prefs.backend) }
-				'@PLATFORM' { write_comptime_cond_string(mut out, @PLATFORM) }
-				else { out.write_string(name) }
+				'@METHOD' {
+					write_comptime_cond_string(mut out, method_name)
+				}
+				'@STRUCT' {
+					write_comptime_cond_string(mut out, p.cur_struct)
+				}
+				'@MOD' {
+					write_comptime_cond_string(mut out, module_name)
+				}
+				'@FN' {
+					write_comptime_cond_string(mut out, fn_name)
+				}
+				'@BUILD_DATE' {
+					write_comptime_cond_string(mut out, p.prefs.build_date)
+				}
+				'@BUILD_TIME' {
+					write_comptime_cond_string(mut out, p.prefs.build_time)
+				}
+				'@BUILD_TIMESTAMP' {
+					write_comptime_cond_string(mut out, p.prefs.build_timestamp)
+				}
+				'@OS' {
+					write_comptime_cond_string(mut out, p.prefs.normalized_target_os())
+				}
+				'@CCOMPILER' {
+					write_comptime_cond_string(mut out, @CCOMPILER)
+				}
+				'@BACKEND' {
+					write_comptime_cond_string(mut out, p.prefs.backend)
+				}
+				'@PLATFORM' {
+					write_comptime_cond_string(mut out, @PLATFORM)
+				}
+				else {
+					out.write_string(name)
+				}
 			}
 
 			continue
