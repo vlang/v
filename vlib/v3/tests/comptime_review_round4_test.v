@@ -2040,6 +2040,16 @@ fn main() {
 		items << method
 		rows << typeof(method).name
 		rows << method.name
+		$if method.return_type is pkg.Ret {
+			rows << "return-guard"
+		} $else {
+			missing_imported_method_return_guard()
+		}
+		$if method.params[0].typ is pkg.Ret {
+			rows << "param-guard"
+		} $else {
+			missing_imported_method_param_guard()
+		}
 		rows << (method.return_type == typeof[pkg.Ret]().idx).str()
 		rows << (method.typ == typeof[fn (pkg.Ret) pkg.Ret]().idx).str()
 	}
@@ -2051,7 +2061,7 @@ fn main() {
 }
 '
 	}, 'main.v')
-	assert out == 'FunctionData|make|true|true|make|true|true|true'
+	assert out == 'FunctionData|make|return-guard|param-guard|true|true|make|true|true|true'
 }
 
 fn test_imported_function_param_types_use_declaring_module() {
@@ -2076,6 +2086,11 @@ fn main() {
 	$for param in pkg.consume.params {
 		params << param
 		rows << param.name
+		$if param.typ is pkg.Item {
+			rows << "guard"
+		} $else {
+			missing_imported_function_param_guard()
+		}
 		rows << (param.typ == typeof[pkg.Item]().idx).str()
 	}
 	rows << (params[0].typ == typeof[pkg.Item]().idx).str()
@@ -2083,7 +2098,7 @@ fn main() {
 }
 '
 	}, 'main.v')
-	assert out == 'item|true|true'
+	assert out == 'item|guard|true|true'
 }
 
 fn test_nested_param_and_attribute_reflection_respects_shadowing() {

@@ -768,7 +768,11 @@ fn (mut t Transformer) clone_param_subst_scoped(id flat.NodeId, var_name string,
 		return t.make_string_literal(param.typ)
 	}
 	if node.kind == .comptime_if {
-		param_typ := if param.typ == '&void' { 'voidptr' } else { param.typ }
+		param_typ := if param.typ == '&void' {
+			'voidptr'
+		} else {
+			t.comptime_field_type_id_key(param.typ, param.module_name)
+		}
 		cond := node.value.replace('${var_name}.typ', param_typ).replace('${var_name}.name',
 			"'${param.name}'").replace(' is &void', ' is voidptr').replace(' !is &void',
 			' !is voidptr')
@@ -1222,9 +1226,10 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 }
 
 fn (t &Transformer) subst_method_cond(cond string, var_name string, method MethodMeta) string {
-	mut result := subst_method_param_cond(cond, var_name, method)
+	mut result := t.subst_method_param_cond(cond, var_name, method)
 	method_type := t.comptime_method_type_text(method)
-	result = result.replace('${var_name}.return_type', method.return_type)
+	result = result.replace('${var_name}.return_type', t.comptime_field_type_id_key(method.return_type,
+		method.module_name))
 	result = result.replace('${var_name}.typ', method_type)
 	result = result.replace('${var_name}.is_pub', method.is_pub.str())
 	result = result.replace('${var_name}.name', "'${method.name}'")
@@ -1265,7 +1270,7 @@ fn (t &Transformer) comptime_method_type_id(method MethodMeta) int {
 }
 
 // subst_method_param_cond materializes indexed FunctionParam members in serialized `$if` guards.
-fn subst_method_param_cond(cond string, var_name string, method MethodMeta) string {
+fn (t &Transformer) subst_method_param_cond(cond string, var_name string, method MethodMeta) string {
 	mut result := cond
 	for collection in ['args', 'params'] {
 		prefix := '${var_name}.${collection}['
@@ -1313,7 +1318,7 @@ fn subst_method_param_cond(cond string, var_name string, method MethodMeta) stri
 				} else if method.params[index].typ == '&void' {
 					'voidptr'
 				} else {
-					method.params[index].typ
+					t.comptime_field_type_id_key(method.params[index].typ, method.module_name)
 				}
 			} else if member == 'name' {
 				"''"
