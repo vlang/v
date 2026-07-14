@@ -90,6 +90,11 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 		if file_index == 0 {
 			src.writeln('const enabled = true')
 			src.writeln("const flavor = 'vanilla'")
+			src.writeln("\$if r'enabled' == 'enabled' {")
+			src.writeln('\tconst raw_string_gate = true')
+			src.writeln('} \$else {')
+			src.writeln('\tconst raw_string_gate_leak = true')
+			src.writeln('}')
 			src.writeln('\$if v3_parallel_taken_const ? {')
 			src.writeln('\tconst branch_enabled = true')
 			src.writeln('} \$else {')
@@ -128,6 +133,12 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 		}
 		if file_index == 3 {
 			src.writeln('const future_enabled = true')
+			src.writeln('\$if raw_string_gate {')
+			src.writeln('\tfn raw_string_gate_enabled() {}')
+			src.writeln('}')
+			src.writeln('\$if raw_string_gate_leak {')
+			src.writeln('\tfn leaked_raw_string_gate() {}')
+			src.writeln('}')
 			src.writeln('\$if branch_enabled {')
 			src.writeln('\tfn branch_const_enabled() {}')
 			src.writeln('} \$else {')
@@ -186,6 +197,8 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 		}
 	}
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'enabled_branch')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'raw_string_gate_enabled')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'leaked_raw_string_gate')
 	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'disabled_branch')
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'matched_branch')
 	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'unmatched_branch')

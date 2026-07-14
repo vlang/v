@@ -353,6 +353,7 @@ fn (mut p Parser) precollect_parallel_comptime_if(mut s scanner.Scanner, src str
 fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src string, path string, module_name string, values map[string]string) bool {
 	mut cond := ''
 	mut cond_start := s.offset
+	mut prev := ''
 	for {
 		tok := s.scan()
 		if tok == .eof {
@@ -366,14 +367,13 @@ fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src st
 		}
 		if cond.len == 0 {
 			cond_start = s.pos
-		} else {
+		}
+		piece := parallel_comptime_prepass_token_text(tok, s, src)
+		if cond.len > 0 && comptime_cond_needs_space(prev, piece) {
 			cond += ' '
 		}
-		if s.pos >= 0 && s.offset <= src.len && s.pos < s.offset {
-			cond += src[s.pos..s.offset]
-		} else {
-			cond += s.lit
-		}
+		cond += piece
+		prev = piece
 	}
 	resolved := p.resolve_parallel_comptime_prepass_text(cond, cond_start, src, path, module_name,
 		values, true)
@@ -397,7 +397,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 		if tok == .semicolon {
 			continue
 		}
-		piece := parallel_comptime_prepass_token_text(s, src)
+		piece := parallel_comptime_prepass_token_text(tok, s, src)
 		if subject.len == 0 {
 			subject_start = s.pos
 			subject_is_literal = tok in [.string, .char, .number, .key_true, .key_false]
@@ -468,7 +468,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 					pattern_start = s.pos
 					continue
 				}
-				piece := parallel_comptime_prepass_token_text(s, src)
+				piece := parallel_comptime_prepass_token_text(tok, s, src)
 				if pattern.len > 0 && comptime_cond_needs_space(pattern_prev, piece) {
 					pattern += ' '
 				}
@@ -511,7 +511,10 @@ fn (mut p Parser) resolve_parallel_comptime_prepass_text(text string, pos int, s
 		preserve_flags)
 }
 
-fn parallel_comptime_prepass_token_text(s &scanner.Scanner, src string) string {
+fn parallel_comptime_prepass_token_text(tok token.Token, s &scanner.Scanner, src string) string {
+	if tok == .string || tok == .char {
+		return comptime_cond_string_token_text(s.lit)
+	}
 	if s.pos >= 0 && s.offset <= src.len && s.pos < s.offset {
 		return src[s.pos..s.offset]
 	}
