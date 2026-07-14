@@ -3302,7 +3302,8 @@ fn (mut p Parser) forget_comptime_lhs_value(lhs flat.NodeId) {
 fn comptime_cond_value(value string) string {
 	clean := value.trim_space()
 	if clean.len >= 2 && ((clean[0] == `'` && clean[clean.len - 1] == `'`)
-		|| (clean[0] == `"` && clean[clean.len - 1] == `"`)) {
+		|| (clean[0] == `"` && clean[clean.len - 1] == `"`)
+		|| (clean[0] == `\`` && clean[clean.len - 1] == `\``)) {
 		return clean[1..clean.len - 1]
 	}
 	return clean

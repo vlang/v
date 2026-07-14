@@ -1930,6 +1930,28 @@ fn test_fn_literal_comptime_values_do_not_leak_to_outer_scope() {
 	assert out == 'ok'
 }
 
+fn test_cached_char_literals_match_scanner_values() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'cached_char_literals', "const cached_char = `a`
+
+fn main() {
+	local_char := `b`
+	mut rows := []string{}
+	\$if cached_char == `a` {
+		rows << 'const-if'
+	} \$else {
+		rows << 'wrong-const'
+	}
+	\$match local_char {
+		`b` { rows << 'local-match' }
+		\$else { rows << 'wrong-local' }
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'const-if|local-match'
+}
+
 fn test_nested_method_reflection_respects_shadowed_loop_variable() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_shadowing', 'struct OuterMethods {}
