@@ -2,6 +2,7 @@ module os
 
 $if js_node {
 	#const $child_process = require('child_process')
+	#const $fs = require('fs')
 }
 
 // new_process - create a new process descriptor.
@@ -17,12 +18,19 @@ pub fn new_process(filename string) &Process {
 }
 
 fn (mut p Process) spawn_internal() {
+	#let v_stdin_fd = null;
+	#try {
+	#if (p.val.has_stdin_path) v_stdin_fd = $fs.openSync(p.val.stdin_path+'', 'r');
 	#p.val.pid = $child_process.spawn(
 	#p.val.filename+'',
 	#p.val.args.arr.map((x) => x.valueOf() + ''),
 	#{
 	#env: (p.val.env_is_custom ? p.val.env : $process.env),
+	#stdio: [v_stdin_fd === null ? 'pipe' : v_stdin_fd, 'pipe', 'pipe'],
 	#})
+	#} finally {
+	#if (v_stdin_fd !== null) $fs.closeSync(v_stdin_fd);
+	#}
 	#p.val.pid.on('error', function (err) { builtin.panic('Failed to start subprocess') })
 
 	p.status = .running
