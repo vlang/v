@@ -23,7 +23,7 @@ mut:
 
 const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
-const temporarily_disabled_self_test_vlib_dirs = ['v2_toberemoved', 'v3']
+const temporarily_disabled_self_test_vlib_dirs = ['v3']
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
@@ -197,8 +197,6 @@ const skip_with_fsanitize_address = [
 	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/shared_library_system_link_test.v', // ASan keeps Boehm GC symbols visible, breaking the export-symbol assertion
 	'vlib/veb/sse/sse_test.v', // long-lived event stream + sockets, ASan flake
-	'vlib/v2_toberemoved/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, ASan-incompatible
-	'vlib/v2_toberemoved/gen/x64/x64_backend_runtime_regression_manual_test.v', // V2 x64 backend runtime regression manual tests, ASan-incompatible
 ]
 const skip_with_fsanitize_undefined = [
 	'do_not_remove',
@@ -216,9 +214,6 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 	'vlib/v/tests/shared_library_system_link_test.v', // UBSan keeps Boehm GC symbols visible, breaking the export-symbol assertion
-	'vlib/v2_toberemoved/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, UBSan-incompatible
-	'vlib/v2_toberemoved/gen/x64/x64_backend_runtime_regression_manual_test.v', // V2 x64 backend runtime regression manual tests, UBSan-incompatible
-	'vlib/v2_toberemoved/transformer/transformer_test.v', // v2 transformer, UBSan-incompatible
 	'vlib/yaml/yaml_conformance_test.v', // upstream libyaml-style integer overflow flagged by UBSan
 ]
 const skip_on_ubuntu_musl = [

@@ -623,6 +623,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		structs:                            g.tc.structs
 		struct_modules:                     g.tc.struct_modules
 		struct_files:                       g.tc.struct_files
+		soa_structs:                        g.tc.soa_structs
 		struct_error_embeds_shadow_builtin: g.tc.struct_error_embeds_shadow_builtin
 		struct_generic_params:              g.tc.struct_generic_params
 		struct_field_c_abi_fns:             g.tc.struct_field_c_abi_fns
@@ -676,6 +677,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		generic_method_value_info: g.tc.generic_method_value_info
 		params_structs:            g.tc.params_structs
 	}
+	wtc.inherit_ownership_codegen_metadata_from(g.tc)
 	// A private empty TypeCache lets the worker use the lazily-built lookup
 	// indexes (short type names, local fn decls) and the field/IError
 	// memoizations instead of their uncached full-scan fallbacks. It shares no

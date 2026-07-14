@@ -133,9 +133,18 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 fn (mut g FlatGen) multi_return_c_type_name(t types.MultiReturn) string {
 	mut parts := []string{cap: t.types.len}
 	for item in t.types {
-		parts << naming.type_name_part(g.value_c_type(item))
+		parts << naming.type_name_part(g.multi_return_field_c_type(item))
 	}
 	return 'multi_return_${parts.join('_')}'
+}
+
+fn (mut g FlatGen) multi_return_field_c_type(t types.Type) string {
+	// Plain enums use integer storage in the C ABI, while backed enums use
+	// their emitted typedef so wide values keep the declared storage width.
+	if t is types.Enum {
+		return g.enum_value_c_type(t)
+	}
+	return g.value_c_type(t)
 }
 
 fn (mut g FlatGen) value_sizeof_target(t types.Type) string {

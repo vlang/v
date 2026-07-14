@@ -180,6 +180,8 @@ fn main() {
 	assert with_os.c_code.contains('struct stat { u64 st_ino; i64 st_size; u64 st_dev; u64 st_rdev;'), with_os.c_code
 	assert with_os.c_code.contains('#elif defined(__BIGENDIAN__)'), with_os.c_code
 	assert with_os.c_code.contains('#error unsupported headerless Unix struct stat layout for this platform'), with_os.c_code
+	assert with_os.c_code.contains('int stat(const char* path, struct stat* buf);'), with_os.c_code
+	assert !with_os.c_code.contains('i32 stat(char*, void*);'), with_os.c_code
 	assert with_os.c_code.contains('i64 st_birthtime;'), with_os.c_code
 	assert with_os.c_code.contains('struct rusage { struct timeval ru_utime; struct timeval ru_stime; long ru_maxrss; long ru_ixrss; long ru_idrss;'), with_os.c_code
 	assert with_os.c_code.contains('#if !defined(_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(_TIMESPEC_DECLARED) && !defined(__timespec_defined)'), with_os.c_code

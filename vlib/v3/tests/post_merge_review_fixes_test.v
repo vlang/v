@@ -2106,6 +2106,27 @@ fn test_array_alias_free_uses_array_builtin_inside_alias_method() {
 	assert out == 'ok'
 }
 
+fn test_dynamic_enum_array_literal_keeps_enum_element_width() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'dynamic_enum_array_literal_width',
+		'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
+	assert c_source.contains('array_new(\tsizeof(Tiny), 0, 2)'), c_source
+	assert !c_source.contains('Array values = array_new(\tsizeof(int), 0, 2)'), c_source
+	out := run_good(v3_bin, 'dynamic_enum_array_literal_width_run',
+		'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
+	assert out == '0\n1'
+}
+
+fn test_nested_string_plus_releases_intermediate_storage() {
+	v3_bin := build_v3()
+	source := "fn concat_path(dir string, name &string) string {\n\treturn '\${dir}/\${name}'\n}\n\nfn main() {\n\tname := 'file'\n\tprintln(concat_path('root', &name))\n}\n"
+	c_source := gen_c(v3_bin, 'nested_string_plus_owned_intermediate', source)
+	assert !c_source.contains('string__plus(string__plus(dir,'), c_source
+	assert c_source.contains('string__free(&__str_plus_acc_'), c_source
+	out := run_good(v3_bin, 'nested_string_plus_owned_intermediate_run', source)
+	assert out == 'root/file'
+}
+
 fn test_for_mut_pointer_storage_receivers_do_not_get_extra_address() {
 	v3_bin := build_v3()
 	item_src := 'struct Item {
@@ -2968,6 +2989,25 @@ fn test_amp_interface_cast_heap_copies_concrete_source() {
 	assert c_source.contains('memdup(&__iface_box_')
 	out := run_good(v3_bin, 'amp_interface_cast_heap_copy_run', source)
 	assert out == '5'
+}
+
+fn test_mut_interface_argument_borrows_existing_interface_box() {
+	v3_bin := build_v3()
+	source := 'interface Visitor {\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln("ok")\n}\n'
+	c_source := gen_c(v3_bin, 'mut_interface_arg_borrows_existing_box', source)
+	assert c_source.contains('call(&visitor);')
+	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
+	out := run_good(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
+	assert out == 'ok'
+}
+
+fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
+	v3_bin := build_v3()
+	source := 'interface Value {\n\tget() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nstruct Holder {\n\titem Value\n}\n\nfn make_holder() Holder {\n\treturn Holder{\n\t\titem: Value(Item{\n\t\t\tn: 7\n\t\t})\n\t}\n}\n\nfn make_items() []Value {\n\treturn [Value(Item{\n\t\tn: 9\n\t})]\n}\n\nfn use(value &Value) int {\n\treturn value.get()\n}\n\nfn main() {\n\tprintln(int_str(use(make_holder().item)))\n\tprintln(int_str(use(make_items()[0])))\n}\n'
+	c_source := gen_c(v3_bin, 'pointer_interface_rvalue_sources', source)
+	assert c_source.contains('memdup(&__iface_box_')
+	out := run_good(v3_bin, 'pointer_interface_rvalue_sources_run', source)
+	assert out == '7\n9'
 }
 
 fn test_c_atomic_pointer_load_store_preserves_pointer_width() {

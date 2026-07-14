@@ -4502,7 +4502,10 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 		return none
 	}
 	base_id := t.a.children[fn_node.children_start]
-	raw_base_type := t.node_type(base_id)
+	mut raw_base_type := t.node_type(base_id)
+	if raw_base_type.len == 0 {
+		raw_base_type = t.lvalue_type(base_id)
+	}
 	mut base_type := raw_base_type
 	if base_type.starts_with('&') {
 		base_type = base_type[1..]

@@ -323,12 +323,13 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	range_type := t.range_loop_var_type_name(low_id)
 	low := t.stable_expr_for_reuse(low_id)
 	high := t.stable_expr_for_reuse(high_id)
-	t.set_var_type(key.value, range_type)
+	loop_name := if key.value == '_' { '__discard_${int(key_id)}' } else { key.value }
+	t.set_var_type(loop_name, range_type)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
-	init := t.make_decl_assign_typed(key.value, low, range_type)
-	cond := t.make_infix(.lt, t.make_ident(key.value), high)
-	post := t.make_expr_stmt(t.make_postfix(t.make_ident(key.value), .inc))
+	init := t.make_decl_assign_typed(loop_name, low, range_type)
+	cond := t.make_infix(.lt, t.make_ident(loop_name), high)
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(loop_name), .inc))
 	new_body := t.transform_stmts(body_ids)
 	prefix << t.make_for_stmt(init, cond, post, new_body, node)
 	return prefix

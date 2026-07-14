@@ -28,6 +28,8 @@ pub mut:
 	env_is_custom    bool     // true, when the environment was customized with .set_environment
 	env              []string // the environment with which the process was started  (list of 'var=val')
 	use_stdio_ctl    bool     // when true, then you can use p.stdin_write(), p.stdout_slurp() and p.stderr_slurp()
+	stdin_path       string   // when non-empty, use this file as the child process's standard input
+	has_stdin_path   bool     // true after set_stdin_path is called
 	use_pgroup       bool     // when true, the process will create a new process group, enabling .signal_pgkill()
 	stdio_fd         [3]int   // the stdio file descriptors for the child process, used only by the nix implementation
 	wdata            voidptr  // the WProcess; used only by the windows implementation
@@ -76,4 +78,14 @@ pub fn (mut p Process) set_environment(envs map[string]string) {
 		p.env << '${k}=${v}'
 	}
 	return
+}
+
+// set_stdin_path configures the new process to inherit an open file as its
+// standard input instead of creating a writable parent-side stdin pipe.
+pub fn (mut p Process) set_stdin_path(path string) {
+	if p.status != .not_started {
+		return
+	}
+	p.stdin_path = path
+	p.has_stdin_path = true
 }

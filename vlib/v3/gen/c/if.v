@@ -42,16 +42,15 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			g.smartcast_is_expr(&cond)
 		}
 		then_id := g.a.child(&cur, 1)
+		mut then_scope_drops_consumed := false
 		if g.valid_node_id(then_id) {
 			then_block := g.a.nodes[int(then_id)]
-			for i in 0 .. then_block.children_count {
-				child_id := g.a.child(&then_block, i)
-				if g.valid_node_id(child_id) {
-					g.gen_node(child_id)
-				}
-			}
+			then_scope_drops_consumed = g.gen_branch_block_children(then_block, 1)
 		}
 		g.gen_defers_from(defer_start)
+		if !then_scope_drops_consumed {
+			g.gen_scope_ownership_drops()
+		}
 		g.trim_defers(defer_start)
 		g.indent--
 		g.pop_scope()
@@ -92,13 +91,12 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			g.push_scope()
 			else_defer_start := g.defers.len
 			g.indent++
-			for i in 0 .. else_node.children_count {
-				child_id := g.a.child(&else_node, i)
-				if g.valid_node_id(child_id) {
-					g.gen_node(child_id)
-				}
-			}
+			mut else_scope_drops_consumed := false
+			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1)
 			g.gen_defers_from(else_defer_start)
+			if !else_scope_drops_consumed {
+				g.gen_scope_ownership_drops()
+			}
 			g.trim_defers(else_defer_start)
 			g.indent--
 			g.pop_scope()
@@ -109,6 +107,56 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			return
 		}
 	}
+}
+
+fn (g &FlatGen) is_transformed_return_stmt(id flat.NodeId) bool {
+	if !g.valid_node_id(id) {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind != .return_stmt {
+		return false
+	}
+	if _ := transformed_return_source_id(node.value) {
+		return true
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_branch_block_children(block flat.Node, tail_scope_drop_count int) bool {
+	for i in 0 .. block.children_count {
+		child_id := g.a.child(&block, i)
+		if !g.valid_node_id(child_id) {
+			continue
+		}
+		if i == block.children_count - 1
+			&& g.gen_transformed_tail_return_with_scope_drop_count(child_id, tail_scope_drop_count) {
+			return true
+		}
+		g.gen_node(child_id)
+	}
+	return false
+}
+
+fn (mut g FlatGen) gen_transformed_tail_return_with_scope_drop_count(id flat.NodeId, count int) bool {
+	if !g.is_transformed_return_stmt(id) {
+		return false
+	}
+	old_pending := g.pending_return_scope_drops.clone()
+	g.pending_return_scope_drops = g.take_scope_ownership_drop_count(count)
+	g.gen_node(id)
+	g.pending_return_scope_drops = old_pending
+	return true
+}
+
+fn (mut g FlatGen) take_scope_ownership_drop_count(count int) []types.OwnershipDropEntry {
+	mut entries := []types.OwnershipDropEntry{}
+	for _ in 0 .. count {
+		for entry in g.take_scope_ownership_drops() {
+			entries << entry
+		}
+	}
+	return entries
 }
 
 // smartcast_is_expr supports smartcast is expr handling for FlatGen.
@@ -226,16 +274,17 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 		g.gen_if_guard_value_bindings(lhs_ids, val_type, val_ct, tmp)
 	}
 	then_id := g.a.child(&node, 1)
+	mut then_scope_drops_consumed := false
 	if g.valid_node_id(then_id) {
 		then_block := g.a.nodes[int(then_id)]
-		for i in 0 .. then_block.children_count {
-			child_id := g.a.child(&then_block, i)
-			if g.valid_node_id(child_id) {
-				g.gen_node(child_id)
-			}
-		}
+		then_scope_drops_consumed = g.gen_branch_block_children(then_block, 2)
 	}
 	g.gen_defers_from(defer_start)
+	// The checker records the then block scope, then the outer guard-binding scope.
+	if !then_scope_drops_consumed {
+		g.gen_scope_ownership_drops()
+		g.gen_scope_ownership_drops()
+	}
 	g.trim_defers(defer_start)
 	g.indent--
 	g.pop_scope()
@@ -335,13 +384,12 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 			g.push_scope()
 			defer_start := g.defers.len
 			g.indent++
-			for i in 0 .. else_node.children_count {
-				child_id := g.a.child(&else_node, i)
-				if g.valid_node_id(child_id) {
-					g.gen_node(child_id)
-				}
-			}
+			mut else_scope_drops_consumed := false
+			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1)
 			g.gen_defers_from(defer_start)
+			if !else_scope_drops_consumed {
+				g.gen_scope_ownership_drops()
+			}
 			g.trim_defers(defer_start)
 			g.indent--
 			g.pop_scope()
@@ -409,6 +457,7 @@ fn (mut g FlatGen) gen_if_expr(node flat.Node) {
 fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
 	if ret_type is types.MultiReturn {
 		if g.gen_if_expr_multi_return_block(block, ret_type) {
+			g.gen_scope_ownership_drops()
 			return
 		}
 	}
@@ -435,6 +484,7 @@ fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
 			g.gen_node(child_id)
 		}
 	}
+	g.gen_scope_ownership_drops()
 }
 
 fn (g &FlatGen) multi_return_tail_parts(block &flat.Node, count int) ?MultiReturnTailParts {
