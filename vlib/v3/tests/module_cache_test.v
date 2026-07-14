@@ -861,6 +861,80 @@ fn main() {
 	assert second_hashes.keys().filter(it.starts_with('builtin_')).len == 1
 }
 
+fn test_cached_headers_keep_full_module_identity() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_full_identity_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'v.mod', "Module { name: 'full_identity' }\n")
+	write_module_cache_file(root, 'bar/bar.v', 'module bar
+
+pub fn unused() int {
+	return 0
+}
+')
+	write_module_cache_file(root, 'foo/bar/bar.v', 'module bar
+
+pub struct FooValue {
+pub:
+	n int
+}
+
+pub fn make() FooValue {
+	return FooValue{
+		n: 41
+	}
+}
+')
+	write_module_cache_file(root, 'baz/bar/bar.v', "module bar
+
+pub struct BazValue {
+pub:
+	text string
+}
+
+pub fn make() BazValue {
+	return BazValue{
+		text: 'ok'
+	}
+}
+")
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import foo.bar as foo_bar
+import baz.bar as baz_bar
+
+fn main() {
+	println(foo_bar.make().n)
+	println(baz_bar.make().text)
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '41\nok'
+	foo_header_path := module_cache_artifact(cache_dir, 'foo_bar_', '.vh')
+	baz_header_path := module_cache_artifact(cache_dir, 'baz_bar_', '.vh')
+	assert foo_header_path.len > 0
+	assert baz_header_path.len > 0
+	foo_header := os.read_file(foo_header_path) or { panic(err) }
+	baz_header := os.read_file(baz_header_path) or { panic(err) }
+	assert foo_header.contains('struct FooValue'), foo_header
+	assert !foo_header.contains('struct BazValue'), foo_header
+	assert baz_header.contains('struct BazValue'), baz_header
+	assert !baz_header.contains('struct FooValue'), baz_header
+	first_hashes := module_cache_object_hashes(cache_dir)
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '41\nok'
+	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
+}
+
 fn test_cached_module_body_recreates_cross_module_generic_specializations() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_cross_module_generics_${os.getpid()}')

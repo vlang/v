@@ -633,8 +633,7 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 			continue
 		}
 		file_module := file_module_name(a, file_node)
-		if file_module != module_name
-			&& file_module.all_after_last('.') != module_name.all_after_last('.') {
+		if file_module != module_name {
 			continue
 		}
 		for i in 0 .. file_node.children_count {
@@ -671,8 +670,7 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 			stream_module = file_module_name(a, node)
 			continue
 		}
-		if node.kind != .import_decl || (stream_module != module_name
-			&& stream_module.all_after_last('.') != module_name.all_after_last('.')) {
+		if node.kind != .import_decl || stream_module != module_name {
 			continue
 		}
 		key := decl_key(node)
@@ -710,8 +708,7 @@ fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, module_nam
 			continue
 		}
 		file_module := file_module_name(a, file_node)
-		if file_module != module_name
-			&& file_module.all_after_last('.') != module_name.all_after_last('.') {
+		if file_module != module_name {
 			continue
 		}
 		for i in 0 .. file_node.children_count {
