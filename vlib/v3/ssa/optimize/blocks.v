@@ -4,7 +4,6 @@ import v3.ssa
 
 // remove_unreachable_blocks updates remove unreachable blocks state for optimize.
 fn remove_unreachable_blocks(mut m ssa.Module) {
-	build_cfg(mut m)
 	for fi in 0 .. m.funcs.len {
 		if m.funcs[fi].blocks.len == 0 {
 			continue

@@ -48,12 +48,13 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 		// function afterwards. Block-removing passes must not run once phis
 		// exist, or their predecessor operands would dangle.
 		dead_code_elimination(mut m)
-		rebuild_use_lists(mut m)
-		build_cfg(mut m)
+		// DCE updates use lists as it removes instructions and cannot alter
+		// terminators, so the current uses and CFG remain valid here.
 		remove_unreachable_blocks(mut m)
 		merge_blocks(mut m)
+		// Dropping unreachable blocks invalidates uses; merge_blocks leaves its
+		// final CFG current after batching all block edits.
 		rebuild_use_lists(mut m)
-		build_cfg(mut m)
 
 		// Structural SSA construction: dominators -> mem2reg -> simplify phis.
 		cfg := cfg_data_from_module(m)
@@ -64,7 +65,6 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 		verify_pipeline_checkpoint(m, opts, 'mem2reg')
 		simplify_phi_nodes(mut m)
 		rebuild_use_lists(mut m)
-		build_cfg(mut m)
 		verify_pipeline_checkpoint(m, opts, 'simplify_phi')
 	}
 
@@ -74,13 +74,10 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 	if opts.eliminate_phis {
 		eliminate_phi_nodes(mut m)
 		rebuild_use_lists(mut m)
-		build_cfg(mut m)
 		verify_pipeline_checkpoint(m, opts, 'eliminate_phi')
 	}
 
 	dead_code_elimination(mut m)
-	rebuild_use_lists(mut m)
-	build_cfg(mut m)
 
 	remove_unreachable_blocks(mut m)
 	if !opts.mem2reg {
@@ -88,12 +85,14 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 		merge_blocks(mut m)
 	}
 	rebuild_use_lists(mut m)
-	build_cfg(mut m)
+	if opts.mem2reg {
+		// No merge ran after unreachable-block removal in this mode.
+		build_cfg(mut m)
+	}
 
 	// Final phi-consistency pass: any phi still present must match the final CFG.
 	prune_phi_operands(mut m)
 	rebuild_use_lists(mut m)
-	build_cfg(mut m)
 
 	verify_ssa(m, 'optimization')
 	verify_pipeline_checkpoint(m, opts, 'final')

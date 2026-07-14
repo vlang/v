@@ -134,7 +134,6 @@ fn prune_phi_operands(mut m ssa.Module) {
 // whose target has multiple predecessors, so phi-elimination copies have a unique
 // home. Operands here are raw block ids (v3 convention).
 fn split_critical_edges(mut m ssa.Module) {
-	build_cfg(mut m)
 	for fi in 0 .. m.funcs.len {
 		mut edges_to_split := [][]int{}
 		func := m.funcs[fi]
