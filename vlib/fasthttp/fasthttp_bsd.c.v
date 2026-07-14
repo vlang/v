@@ -383,6 +383,11 @@ fn process_request(server &Server, kq int, c_ptr voidptr, mut clients map[int]vo
 		// Zero-copy contract: the handler appends its response into `out` and
 		// signals connection handling through `ctl`; wrap that into the existing
 		// response-sending path (BSD serves one request per read, no batching).
+		// NOTE: `out` is a fresh per-request buffer here. Under the default GC it is
+		// reclaimed after the send; under -prealloc the append path opens no request
+		// scope, so this buffer is not reclaimed per request (known limitation —
+		// unlike the Linux backend, kqueue does not yet reuse a persistent per-
+		// connection write buffer). Use the classic handler with -prealloc on BSD.
 		mut out := []u8{}
 		mut ctl := ResponseControl{}
 		step := server.append_handler(decoded, mut out, c.worker_state, mut ctl)

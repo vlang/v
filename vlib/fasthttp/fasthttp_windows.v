@@ -549,6 +549,11 @@ fn process_request(mut conn IocpConn) {
 	mut response := if using_append {
 		// Zero-copy contract: the handler appends its response into `out`; wrap it
 		// into the existing response-sending path.
+		// NOTE: `out` is a fresh per-request buffer. Under the default GC it is
+		// reclaimed after the send; under -prealloc the append path opens no request
+		// scope, so it is not reclaimed per request (known limitation — IOCP does not
+		// yet reuse a persistent per-connection write buffer). Server.run is also not
+		// implemented on Windows yet.
 		mut out := []u8{}
 		mut ctl := ResponseControl{}
 		step := conn.server.append_handler(decoded, mut out, unsafe { nil }, mut ctl)

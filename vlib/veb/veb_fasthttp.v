@@ -190,13 +190,16 @@ fn parallel_append_handler[A, X](req fasthttp.HttpRequest, mut out []u8, worker_
 
 	ctl.should_close = should_close_connection(completed_context.req, completed_context.res,
 		completed_context.client_wants_to_close)
-	if completed_context.return_type == .file {
-		ctl.file_path = completed_context.return_file
-	}
 	// Serialize the response head + body straight into the reused write buffer.
-	// Leave the arena first so the buffer growth allocates on the normal heap, not
-	// in the (about-to-be-freed) request scope.
+	// Leave the arena first so the buffer growth (and the file_path clone below)
+	// allocate on the normal heap, not in the (about-to-be-freed) request scope.
 	va_scope_leave(arena)
+	if completed_context.return_type == .file {
+		// return_file is arena-allocated and the arena is freed below, but the
+		// reactor opens the file only AFTER this handler returns — clone it off the
+		// arena so the reactor never reads freed memory.
+		ctl.file_path = completed_context.return_file.clone()
+	}
 	// strings.Builder is a `[]u8`, so the reused write buffer can be the builder
 	// target directly — write_to appends into `out` with no intermediate buffer.
 	completed_context.res.write_to(mut out)
