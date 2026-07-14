@@ -5,6 +5,7 @@ import v3.flat
 import v3.types
 
 const direct_optional_forward_return_value = '__direct_optional_forward'
+const optional_success_return_value = '__optional_success_return'
 
 // gen_expr_lvalue emits expr lvalue output for c.
 fn gen_expr_lvalue(mut g FlatGen, id flat.NodeId) {
@@ -348,6 +349,7 @@ fn (mut g FlatGen) take_return_stmt_ownership_drops(node flat.Node) []types.Owne
 		return []types.OwnershipDropEntry{}
 	}
 	if node.value == direct_optional_forward_return_value
+		|| node.value == optional_success_return_value
 		|| g.return_stmt_is_explicit_optional_failure(node) {
 		return g.take_return_ownership_drops()
 	}
@@ -1547,6 +1549,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_branch_lock_cleanup(node.value)
 			g.gen_loop_control_ownership_drops()
 			if node.value.len > 0 {
+				g.writeln('${g.labelled_continue_skip_drops_var(node.value)} = true;')
 				g.writeln('goto ${g.cname(node.value)}_continue;')
 			} else {
 				g.writeln('continue;')

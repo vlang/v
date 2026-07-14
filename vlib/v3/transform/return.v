@@ -4,6 +4,7 @@ import v3.flat
 import v3.types
 
 const direct_optional_forward_return_value = '__direct_optional_forward'
+const optional_success_return_value = '__optional_success_return'
 
 // transform_return_with_sumtype_wrap checks if a return statement returns a
 // variant value where the function's return type is a sum type. In that case,
@@ -63,6 +64,18 @@ fn (mut t Transformer) make_return(val flat.NodeId, ret_typ string) flat.NodeId 
 fn (mut t Transformer) make_direct_optional_forward_return(val flat.NodeId, ret_typ string) flat.NodeId {
 	ret := t.make_return(val, ret_typ)
 	t.set_node_value(int(ret), direct_optional_forward_return_value)
+	return ret
+}
+
+fn (mut t Transformer) make_optional_success_return(val flat.NodeId, ret_typ string) flat.NodeId {
+	ret := t.make_return(val, ret_typ)
+	t.set_node_value(int(ret), optional_success_return_value)
+	return ret
+}
+
+fn (mut t Transformer) make_optional_success_return_values(vals []flat.NodeId, ret_typ string) flat.NodeId {
+	ret := t.make_return_values(vals, ret_typ)
+	t.set_node_value(int(ret), optional_success_return_value)
 	return ret
 }
 
@@ -166,7 +179,7 @@ fn (mut t Transformer) try_expand_return_optional_expr(node flat.Node) ?[]flat.N
 	ok_cond := t.make_selector(tmp_ident, 'ok', 'bool')
 	value := t.make_selector(t.make_ident(tmp_name), 'value', t.optional_base_type(expr_type))
 	then_block := t.try_convert_forwarded_wrapped_multi_return(value, expr_type, ret_type) or {
-		t.make_block(arr1(t.make_return(value, ret_type)))
+		t.make_block(arr1(t.make_optional_success_return(value, ret_type)))
 	}
 	err_expr := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
 	else_block := t.make_block(arr1(t.make_none_return_stmt_with_err_expr(err_expr)))
@@ -205,7 +218,7 @@ fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.
 	}
 	mut then_body := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
-	then_body << t.make_return_values(return_values, expected_wrapper)
+	then_body << t.make_optional_success_return_values(return_values, expected_wrapper)
 	return t.make_block(then_body)
 }
 

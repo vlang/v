@@ -118,9 +118,32 @@ fn value_or_branch_drop() int {
 	return n
 }
 
+fn maybe_small_number() ?int {
+	return 20
+}
+
+fn converted_optional_success() ?i64 {
+	r := Resource{19}
+	return maybe_small_number()
+}
+
 fn implicit_fn_exit_param_and_local(p Resource) {
 	r := Resource{17}
 	println('implicit ${p.id}:${r.id}')
+}
+
+fn labelled_continue_drop_once() {
+	mut i := 0
+	outer: for i < 1 {
+		outer_r := Resource{20}
+		i++
+		for {
+			inner_r := Resource{21}
+			continue outer
+			println(inner_r.id)
+		}
+		println(outer_r.id)
+	}
 }
 
 fn loop_exits() {
@@ -164,6 +187,8 @@ fn main() {
 	println(value_if_branch_drop(true))
 	println(value_or_branch_drop())
 	implicit_fn_exit_param_and_local(Resource{18})
+	println(converted_optional_success() or { i64(-1) })
+	labelled_continue_drop_once()
 	loop_exits()
 }
 ") or {
@@ -173,5 +198,5 @@ fn main() {
 	assert compile.exit_code == 0, compile.output
 	run := os.execute(out)
 	assert run.exit_code == 0, run.output
-	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\nelse branch\ndrop 14\ndrop 15\n15\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
+	assert run.output == 'drop 1\n1\n3\nbox 4\ndrop 3\nnested end\n2\ndrop 5\nfailed\ndrop 11\nexplicit\ndrop 12\nnone\ndrop 13\nforward none\nelse branch\ndrop 14\ndrop 15\n15\ndrop 16\n16\nimplicit 18:17\ndrop 17\ndrop 18\ndrop 19\n20\ndrop 21\ndrop 20\ndrop 6\ndrop 7\ndrop 9\ndrop 8\n10\ndrop 10\ndrop 2\n', run.output
 }
