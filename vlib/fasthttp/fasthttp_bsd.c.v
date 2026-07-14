@@ -366,6 +366,21 @@ fn process_request(server &Server, kq int, c_ptr voidptr, mut clients map[int]vo
 		c.read_extra = []u8{}
 	}
 
+	// Frame the request to its exact declared length (RFC 9112 §6), mirroring the
+	// Linux reactor's `buf_view(read_buf, pos, total)`: the body is trimmed to
+	// Content-Length so `decoded.body` sees exactly the declared bytes, not any
+	// surplus the peer sent (which would otherwise be mis-attributed to this
+	// request — a request-smuggling gap). BSD serves one request per read, so a
+	// trailing pipelined request is dropped; a valid `total` here is <= req_buf.len
+	// because has_complete_body already gated on it. On a framing sentinel (< 0)
+	// the buffer is left intact and decode_http_request handles the error path.
+	frame_total := frame_request_length_lim_idx(req_buf, server.max_request_buffer_size, 0)
+	if frame_total >= 0 && frame_total < req_buf.len {
+		// Reslice in place (no copy): req_buf is a freshly-owned buffer and only its
+		// prefix is handed to decode_http_request, so trimming the length is safe.
+		req_buf = unsafe { req_buf[..frame_total] }
+	}
+
 	mut decoded := decode_http_request(req_buf) or {
 		send_bad_request(c.fd)
 		end_request_arena_current_thread(request_arena)

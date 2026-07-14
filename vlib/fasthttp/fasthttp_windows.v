@@ -534,7 +534,20 @@ fn process_request(mut conn IocpConn) {
 		}
 	}
 
-	mut decoded := decode_http_request(conn.request_buf) or {
+	// Frame the request to its exact declared length (RFC 9112 §6), like the Linux
+	// reactor: trim the body to Content-Length so `decoded.body` sees exactly the
+	// declared bytes and any surplus is not mis-attributed to this request. IOCP
+	// serves one request per read; a valid `total` is <= request_buf.len because
+	// has_complete_body already gated on it. Pass a view without mutating the
+	// persistent request_buf (which is cleared/freed on its own lifecycle).
+	frame_total := frame_request_length_lim_idx(conn.request_buf,
+		conn.server.max_request_buffer_size, 0)
+	req_view := if frame_total >= 0 && frame_total < conn.request_buf.len {
+		conn.request_buf[..frame_total]
+	} else {
+		conn.request_buf
+	}
+	mut decoded := decode_http_request(req_view) or {
 		end_request_arena_current_thread(request_arena)
 		send_terminal_response(mut conn, tiny_bad_request_response)
 		return
