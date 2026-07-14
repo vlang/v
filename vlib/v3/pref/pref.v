@@ -1,6 +1,7 @@
 module pref
 
 import os
+import v3.cmdexec
 
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
@@ -588,6 +589,12 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 
 // comptime_pkgconfig_value supports comptime pkgconfig value handling for pref.
 pub fn comptime_pkgconfig_value(name string) bool {
-	result := os.execute('pkg-config --exists ${name}')
+	packages := cmdexec.split_args(name) or { return false }
+	if packages.len == 0 {
+		return false
+	}
+	mut args := ['--exists']
+	args << packages
+	result := cmdexec.run('pkg-config', args)
 	return result.exit_code == 0
 }

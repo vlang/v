@@ -2,6 +2,7 @@ module parser
 
 import os
 import strings
+import v3.cmdexec
 import v3.flat
 import v3.pref
 import v3.scanner
@@ -2820,7 +2821,7 @@ fn eval_pkgconfig_cond(cond string) bool {
 	if !is_safe_pkgconfig_name(name) {
 		return false
 	}
-	return os.system('pkg-config --exists ${name}') == 0
+	return cmdexec.run('pkg-config', ['--exists', name]).exit_code == 0
 }
 
 fn is_safe_pkgconfig_name(name string) bool {

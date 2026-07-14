@@ -2,6 +2,7 @@ module c
 
 import os
 import strings
+import v3.cmdexec
 import v3.flat
 import v3.gen.c.naming
 import v3.types
@@ -1206,6 +1207,7 @@ fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name
 
 fn (mut g FlatGen) collect_c_flags_from_directives() {
 	mut cur_file := ''
+	mut seen_groups := map[string]bool{}
 	for node in g.a.nodes {
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
@@ -1217,17 +1219,20 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 			continue
 		}
 		if node.value == 'flag' {
-			flag := c_flag_arg(node.typ, g.compiler_vroot, cur_file)
-			if flag.len > 0 && flag !in g.c_flags {
-				g.c_flags << flag
+			flags := c_flag_args(node.typ, g.compiler_vroot, cur_file)
+			key := flags.join('\x00')
+			if flags.len > 0 && key !in seen_groups {
+				seen_groups[key] = true
+				g.c_flags << flags
 			}
 			continue
 		}
 		if node.value == 'pkgconfig' {
-			for flag in c_pkgconfig_flags(node.typ) {
-				if flag.len > 0 && flag !in g.c_flags {
-					g.c_flags << flag
-				}
+			flags := c_pkgconfig_flags(node.typ)
+			key := flags.join('\x00')
+			if flags.len > 0 && key !in seen_groups {
+				seen_groups[key] = true
+				g.c_flags << flags
 			}
 		}
 	}
@@ -1602,25 +1607,22 @@ fn c_nested_include_context_depth(context []string) int {
 
 fn c_flag_include_dirs(flags []string) []string {
 	mut dirs := []string{}
-	for flag in flags {
-		tokens := flag.fields()
-		mut i := 0
-		for i < tokens.len {
-			tok := tokens[i]
-			mut dir := ''
-			if tok == '-I' {
-				if i + 1 < tokens.len {
-					dir = tokens[i + 1]
-					i++
-				}
-			} else if tok.starts_with('-I') && tok.len > 2 {
-				dir = tok[2..]
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
+		mut dir := ''
+		if flag == '-I' {
+			if i + 1 < flags.len {
+				i++
+				dir = flags[i]
 			}
-			if dir.len > 0 && dir !in dirs {
-				dirs << dir
-			}
-			i++
+		} else if flag.starts_with('-I') && flag.len > 2 {
+			dir = flag[2..]
 		}
+		if dir.len > 0 && dir !in dirs {
+			dirs << dir
+		}
+		i++
 	}
 	return dirs
 }
@@ -2804,33 +2806,28 @@ fn c_include_arg(raw string, vroot string, source_file string) string {
 	return clean
 }
 
-fn c_flag_arg(raw string, vroot string, source_file string) string {
-	clean := c_directive_arg_for_target(raw.trim_space()) or { return '' }
-	if clean.len == 0 {
-		return ''
+fn c_flag_args(raw string, vroot string, source_file string) []string {
+	mut args := cmdexec.split_args(raw.trim_space()) or { return []string{} }
+	if args.len == 0 {
+		return []string{}
 	}
-	resolved := c_resolve_pseudo_paths(clean, vroot, source_file)
-	return c_resolve_relative_flag_paths(resolved, source_file)
-}
-
-// c_resolve_relative_flag_paths rewrites relative path arguments in a `#flag`
-// directive (e.g. `-I ./thirdparty`, or a bare `./foo.c`) to absolute paths,
-// resolved against the directory of the source file that carried the directive.
-// V1 does the same: a project's `#flag` paths are relative to its own module dir,
-// not to the compiler's build/working directory.
-fn c_resolve_relative_flag_paths(flag string, source_file string) string {
-	if source_file.len == 0 || !flag.contains('/') {
-		return flag
+	if c_flag_has_target_prefix(args[0]) {
+		if !c_flag_target_enabled(args[0]) || args.len < 2 {
+			return []string{}
+		}
+		args = args[1..].clone()
 	}
-	base_dir := os.dir(source_file)
-	if base_dir.len == 0 {
-		return flag
+	base_dir := if source_file.len > 0 { os.dir(source_file) } else { '' }
+	mut resolved := []string{cap: args.len}
+	for arg in args {
+		with_pseudo_paths := c_resolve_pseudo_paths(arg, vroot, source_file)
+		if base_dir.len > 0 {
+			resolved << c_resolve_flag_path_token(with_pseudo_paths, base_dir)
+		} else {
+			resolved << with_pseudo_paths
+		}
 	}
-	mut out := []string{}
-	for tok in flag.fields() {
-		out << c_resolve_flag_path_token(tok, base_dir)
-	}
-	return out.join(' ')
+	return resolved
 }
 
 fn c_resolve_flag_path_token(tok string, base_dir string) string {
@@ -2907,34 +2904,17 @@ fn c_vmod_root_for_file(source_file string) string {
 }
 
 fn c_pkgconfig_flags(raw string) []string {
-	name := trimmed_space(raw)
-	if name.len == 0 {
+	packages := cmdexec.split_args(trimmed_space(raw)) or { return []string{} }
+	if packages.len == 0 {
 		return []string{}
 	}
-	// The package name comes straight from source text and is interpolated into a
-	// shell command, so reject anything that is not a plain pkg-config name/flag to
-	// avoid command injection (e.g. `#pkgconfig foo; touch /tmp/pwned`).
-	if !c_pkgconfig_arg_is_safe(name) {
-		return []string{}
-	}
-	result := os.execute('pkg-config --cflags --libs ${name}')
+	mut args := ['--cflags', '--libs']
+	args << packages
+	result := cmdexec.run('pkg-config', args)
 	if result.exit_code != 0 {
 		return []string{}
 	}
-	return trimmed_space(result.output).fields()
-}
-
-fn c_pkgconfig_arg_is_safe(raw string) bool {
-	for ch in raw {
-		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || (ch >= `0` && ch <= `9`) {
-			continue
-		}
-		if ch in [` `, `\t`, `_`, `-`, `.`, `+`, `:`, `/`] {
-			continue
-		}
-		return false
-	}
-	return true
+	return cmdexec.split_args(trimmed_space(result.output)) or { []string{} }
 }
 
 fn c_flag_has_target_prefix(target string) bool {

@@ -1,7 +1,9 @@
 module main
 
 import os
+import rand
 import v3.bench
+import v3.cmdexec
 import v3.flat
 import v3.gen.c as cgen
 import v3.gen.c.naming
@@ -21,11 +23,6 @@ $if !skip_arm64 ? {
 }
 $if !skip_wasm ? {
 	import v3.gen.wasm
-}
-
-// run_compile_command supports run compile command handling for v3 entry point.
-fn run_compile_command(cmd string) os.Result {
-	return os.execute(cmd)
 }
 
 fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
@@ -50,7 +47,7 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 		return ''
 	}
 	atomic_s := os.join_path(prefs.vroot, 'thirdparty', 'stdatomic', 'nix', 'atomic.S')
-	return ' ${atomic_s}'
+	return atomic_s
 }
 
 fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string) ![]string {
@@ -69,10 +66,22 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string) ![]string
 
 fn c_object_compile_support_flags(flags []string) []string {
 	mut support := []string{}
-	for flag in flags {
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
 		clean := flag.trim_space()
 		if clean.len == 0 || c_flag_is_object_file(clean) || c_flag_is_c_source_file(clean)
 			|| clean.starts_with('-l') {
+			i++
+			continue
+		}
+		if clean in ['-I', '-D', '-U', '-isystem', '-include', '-iquote', '-x'] {
+			support << clean
+			if i + 1 < flags.len {
+				i++
+				support << flags[i]
+			}
+			i++
 			continue
 		}
 		if clean.starts_with('-I') || clean.starts_with('-D') || clean.starts_with('-U')
@@ -80,15 +89,17 @@ fn c_object_compile_support_flags(flags []string) []string {
 			|| clean == '-pthread' {
 			support << clean
 		}
+		i++
 	}
 	return support
 }
 
 fn c_flags_need_objective_c(flags []string) bool {
-	for flag in flags {
+	for i, flag in flags {
 		clean := flag.trim_space()
-		if clean in ['-fobjc-arc', '-fobjc-gc', '-ObjC'] || clean.starts_with('-fobjc-')
-			|| clean == '-x objective-c' {
+		if clean in ['-fobjc-arc', '-fobjc-gc', '-ObjC']
+			|| clean.starts_with('-fobjc-')
+			|| (clean == '-x' && i + 1 < flags.len && flags[i + 1] == 'objective-c') {
 			return true
 		}
 	}
@@ -105,20 +116,50 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
 	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { c_standard_flag(c99) }
-	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, support_flags, std_flag,
-		pic_flag))
-	if os.exists(cached_obj)
-		&& os.file_last_mod_unix(cached_obj) >= os.file_last_mod_unix(source_file) {
+	compiler := if source_file.ends_with('.cpp') { 'c++' } else { 'cc' }
+	mut args := [std_flag]
+	if pic_flag.len > 0 {
+		args << pic_flag
+	}
+	args << '-w'
+	args << support_flags
+	dependencies := c_object_dependencies(compiler, args, source_file)
+	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, compiler, args,
+		dependencies))
+	if os.exists(cached_obj) {
 		return cached_obj
 	}
-	compiler := if source_file.ends_with('.cpp') { 'c++' } else { 'cc' }
-	pic_arg := if pic_flag.len > 0 { '${pic_flag} ' } else { '' }
-	cmd := '${compiler} ${std_flag} ${pic_arg}-w ${support_flags.join(' ')} -o ${os.quoted_path(cached_obj)} -c ${os.quoted_path(source_file)}'
-	res := os.execute(cmd)
+	temp_obj := '${cached_obj}.tmp.${os.getpid()}.${rand.ulid()}'
+	args << ['-o', temp_obj, '-c', source_file]
+	res := cmdexec.run(compiler, args)
 	if res.exit_code != 0 {
+		os.rm(temp_obj) or {}
 		return error('failed to build C object ${obj_path} from ${source_file}:\n${res.output}')
 	}
+	os.mv(temp_obj, cached_obj) or {
+		os.rm(temp_obj) or {}
+		if !os.exists(cached_obj) {
+			return error('failed to publish cached C object ${cached_obj}: ${err}')
+		}
+	}
 	return cached_obj
+}
+
+fn c_object_dependencies(compiler string, compile_args []string, source_file string) []string {
+	mut args := compile_args.clone()
+	args << ['-M', '-MT', 'v3cache', source_file]
+	result := cmdexec.run(compiler, args)
+	if result.exit_code != 0 {
+		return [source_file]
+	}
+	continuation := '\\' + '\n'
+	dep_text := result.output.replace(continuation, ' ').all_after('v3cache:')
+	mut dependencies := cmdexec.split_args(dep_text) or { []string{} }
+	if source_file !in dependencies {
+		dependencies << source_file
+	}
+	dependencies.sort()
+	return dependencies
 }
 
 fn c_source_from_object_file(obj_path string) ?string {
@@ -132,26 +173,30 @@ fn c_source_from_object_file(obj_path string) ?string {
 	return none
 }
 
-fn c_object_cache_name(path string, support_flags []string, std_flag string, pic_flag string) string {
-	base := path.replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_'])
-	// The compile flags (`-D`/`-I`/...) change the object contents, so they must
-	// be part of the cache key; otherwise a rebuild with different `#flag` defines
-	// silently links the stale object built with the previous configuration.
-	mut cache_flags := [std_flag]
-	if pic_flag.len > 0 {
-		cache_flags << pic_flag
+fn c_object_cache_name(path string, compiler string, compile_args []string, dependencies []string) string {
+	base := os.base(path).replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_'])
+	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
+	compiler_version := cmdexec.run(compiler, ['--version']).output
+	mut hash := u64(1469598103934665603)
+	for identity in [os.real_path(path), compiler_path, compiler_version, @OS, @PLATFORM,
+		compile_args.join('\x00')] {
+		hash = c_hash_bytes(hash, identity.bytes())
 	}
-	cache_flags << support_flags
-	return '${base}_${c_flags_hash(cache_flags)}.o'
+	for dependency in dependencies {
+		canonical := os.real_path(dependency)
+		hash = c_hash_bytes(hash, canonical.bytes())
+		content := os.read_bytes(canonical) or { []u8{} }
+		hash = c_hash_bytes(hash, content)
+	}
+	return '${base}_${hash.hex()}.o'
 }
 
-fn c_flags_hash(flags []string) string {
-	mut h := u64(1469598103934665603)
-	joined := flags.join(' ')
-	for c in joined.bytes() {
-		h = (h ^ u64(c)) * u64(1099511628211)
+fn c_hash_bytes(initial u64, data []u8) u64 {
+	mut hash := initial
+	for byte in data {
+		hash = (hash ^ u64(byte)) * u64(1099511628211)
 	}
-	return h.hex()
+	return hash
 }
 
 fn c_flag_is_object_file(flag string) bool {
@@ -173,6 +218,12 @@ fn shared_pic_flag(is_shared bool, target_os string) string {
 	return ''
 }
 
+fn cleanup_c_build_dir(dir string) {
+	if dir.len > 0 {
+		os.rmdir_all(dir) or {}
+	}
+}
+
 fn run_test_binary(bin_file string) int {
 	return run_binary(bin_file, []string{})
 }
@@ -186,22 +237,26 @@ fn run_binary_with_stderr_to_stdout(bin_file string, args []string) int {
 }
 
 fn run_binary_impl(bin_file string, args []string, stderr_to_stdout bool) int {
-	mut cmd := executable_command_for_path(bin_file)
-	for arg in args {
-		cmd += ' ' + os.quoted_path(arg)
-	}
+	run_path := executable_path_for_run(bin_file)
 	if stderr_to_stdout {
-		cmd += ' 2>&1'
+		result := cmdexec.run(run_path, args)
+		print(result.output)
+		return result.exit_code
 	}
-	return os.system(cmd)
+	mut process := os.new_process(run_path)
+	process.set_args(args)
+	process.wait()
+	exit_code := if process.code >= 0 { process.code } else { 1 }
+	process.close()
+	return exit_code
 }
 
-fn executable_command_for_path(path string) string {
+fn executable_path_for_run(path string) string {
 	mut run_path := path
 	if !os.is_abs_path(path) && !path.contains('/') && !path.contains('\\') {
 		run_path = '.' + os.path_separator + path
 	}
-	return os.quoted_path(run_path)
+	return run_path
 }
 
 fn input_implies_building_v(input_file string) bool {
@@ -1152,6 +1207,24 @@ fn main() {
 	} else {
 		// C backend (default)
 		c_standard := c_standard_flag(prefs.c99)
+		mut cc_dir := ''
+		mut cc_src := output_file
+		mut cc_out := ''
+		if !c_only {
+			bin_dir := if os.dir(bin_file).len > 0 {
+				os.real_path(os.dir(bin_file))
+			} else {
+				os.getwd()
+			}
+			cc_dir = os.join_path_single(bin_dir,
+				'.${os.base(bin_file)}.v3cc.${os.getpid()}.${rand.ulid()}')
+			os.mkdir(cc_dir) or {
+				eprintln('failed to create C build directory ${cc_dir}: ${err}')
+				exit(1)
+			}
+			cc_src = os.join_path_single(cc_dir, 'src.c')
+			cc_out = os.join_path_single(cc_dir, 'out')
+		}
 		mut generated_c_flags := []string{}
 		mut cgen_was_parallel := false
 		if scope_prealloc_selfhost {
@@ -1164,8 +1237,9 @@ fn main() {
 			g.set_scope_parallel_workers(true)
 			c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, current_no_parallel,
 				test_files)
-			if !write_text_file_raw(output_file, c_code) {
-				eprintln('error writing ${output_file}')
+			if !write_text_file_raw(cc_src, c_code) {
+				eprintln('error writing ${cc_src}')
+				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
 			cgen_was_parallel = g.was_parallel()
@@ -1182,8 +1256,9 @@ fn main() {
 			g.set_compiler_vexe(prefs.vexe)
 			c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, current_no_parallel,
 				test_files)
-			if !write_text_file_raw(output_file, c_code) {
-				eprintln('error writing ${output_file}')
+			if !write_text_file_raw(cc_src, c_code) {
+				eprintln('error writing ${cc_src}')
+				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
 			cgen_was_parallel = g.was_parallel()
@@ -1194,41 +1269,38 @@ fn main() {
 			b.print_report()
 			return
 		}
+		published_c := '${output_file}.tmp.${os.getpid()}.${rand.ulid()}'
+		os.cp(cc_src, published_c) or {
+			eprintln('failed to stage generated C output ${output_file}: ${err}')
+			cleanup_c_build_dir(cc_dir)
+			exit(1)
+		}
+		os.mv(published_c, output_file) or {
+			eprintln('failed to publish generated C output ${output_file}: ${err}')
+			cleanup_c_build_dir(cc_dir)
+			exit(1)
+		}
 
-		opt_flag := if is_prod { '-O2 ' } else { '' }
-		shared_link_flag := if is_shared { '-shared ' } else { '' }
 		pic_flag := shared_pic_flag(is_shared, prefs.normalized_target_os())
-		pic_arg := if pic_flag.len > 0 { '${pic_flag} ' } else { '' }
-		warn_flags := if is_strict {
-			'-Wall -Wextra -Werror=implicit-function-declaration -Wno-unused-variable -Wno-unused-parameter -Wno-int-conversion -Wno-missing-braces'
+		warn_args := if is_strict {
+			['-Wall', '-Wextra', '-Werror=implicit-function-declaration', '-Wno-unused-variable',
+				'-Wno-unused-parameter', '-Wno-int-conversion', '-Wno-missing-braces']
 		} else {
-			'-w'
+			['-w']
 		}
 		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag) or {
 			eprintln(err.msg())
 			exit(1)
 		}
-		c_flags := resolved_c_flags.join(' ')
 		needs_objective_c := c_flags_need_objective_c(resolved_c_flags)
-		cc_lang_flag := if needs_objective_c { '-x objective-c ' } else { '' }
 		// Compile inside a per-output build dir, using constant relative source/output basenames,
 		// then move the result to bin_file. On macOS arm64 tcc bakes the -o basename into the
 		// ad-hoc code-signature identifier and the input .c path into the symbol table, so building
 		// `v5.c`->`v5` vs `v6.c`->`v6` directly would make the binaries differ only by those embedded
 		// names (plus the code-directory hashes covering them). Compiling fixed `src.c`->`out` keeps
 		// those embedded names identical, so the self-host chain is byte-for-byte reproducible
-		// (v5 == v6). The build dir is unique per output and never embedded (we cd into it), so
-		// parallel compilations into a shared directory never clobber each other.
-		cc_dir := '${bin_file}.v3cc'
-		os.mkdir(cc_dir) or {}
-		cc_src := os.join_path_single(cc_dir, 'src.c')
-		cc_out := os.join_path_single(cc_dir, 'out')
-		os.cp(output_file, cc_src) or {
-			eprintln('error writing ${cc_src}: ${err.msg()}')
-			exit(1)
-		}
-		mut cc_cmd := ''
-		mut exec_cmd := ''
+		// (v5 == v6). A random per-invocation directory beside the final output prevents
+		// concurrent compilers targeting the same path from sharing partial files.
 		mut result := os.Result{}
 		mut tried_tcc := false
 		if !is_prod && !needs_objective_c {
@@ -1238,35 +1310,62 @@ fn main() {
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			atomic_s_arg := tcc_atomic_s_arg(prefs)
-			cc_cmd = '${tcc_path} ${c_standard} ${pic_arg}${tcc_includes} ${tcc_lib} ${warn_flags} ${shared_link_flag}-o ${bin_file} ${output_file}${atomic_s_arg} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${pic_arg}${tcc_includes} ${tcc_lib} ${warn_flags} ${shared_link_flag}-o out src.c${atomic_s_arg} ${c_flags} -lm'
-			println('  > ${cc_cmd}')
-			result = run_compile_command(exec_cmd)
+			mut tcc_args := [c_standard]
+			if pic_flag.len > 0 {
+				tcc_args << pic_flag
+			}
+			tcc_args << [tcc_includes, tcc_lib]
+			tcc_args << warn_args
+			if is_shared {
+				tcc_args << '-shared'
+			}
+			tcc_args << ['-o', 'out', 'src.c']
+			atomic_s := tcc_atomic_s_arg(prefs)
+			if atomic_s.len > 0 {
+				tcc_args << atomic_s
+			}
+			tcc_args << resolved_c_flags
+			tcc_args << '-lm'
+			println('  > ${cmdexec.display(tcc_path, tcc_args)}')
+			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 		}
 		if is_prod || !tried_tcc || result.exit_code != 0 {
-			stack_flag := if prefs.normalized_target_os() == 'macos' && !is_shared {
-				' -Wl,-stack_size,0x4000000'
-			} else {
-				''
+			mut cc_args := []string{}
+			cc_args << c_standard
+			if is_prod {
+				cc_args << '-O2'
 			}
+			if pic_flag.len > 0 {
+				cc_args << pic_flag
+			}
+			cc_args << warn_args
+			cc_args << '-Wno-int-conversion'
+			if prefs.normalized_target_os() == 'macos' && !is_shared {
+				cc_args << '-Wl,-stack_size,0x4000000'
+			}
+			if is_shared {
+				cc_args << '-shared'
+			}
+			cc_args << ['-o', 'out']
 			if needs_objective_c {
-				cc_cmd = 'cc ${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o ${bin_file} -x objective-c ${output_file} -x none ${c_flags} -lm'
-				exec_cmd = 'cd ${cc_dir} && cc ${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o out -x objective-c src.c -x none ${c_flags} -lm'
+				cc_args << ['-x', 'objective-c', 'src.c', '-x', 'none']
 			} else {
-				cc_cmd = 'cc ${cc_lang_flag}${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o ${bin_file} ${output_file} ${c_flags} -lm'
-				exec_cmd = 'cd ${cc_dir} && cc ${cc_lang_flag}${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o out src.c ${c_flags} -lm'
+				cc_args << 'src.c'
 			}
-			println('  > ${cc_cmd}')
-			result = run_compile_command(exec_cmd)
+			cc_args << resolved_c_flags
+			cc_args << '-lm'
+			println('  > ${cmdexec.display('cc', cc_args)}')
+			result = cmdexec.run_in('cc', cc_args, cc_dir)
 			if result.exit_code != 0 {
 				eprintln('C compilation failed:')
 				eprintln(result.output)
+				cleanup_c_build_dir(cc_dir)
 				exit(1)
 			}
 		}
 		os.mv(cc_out, bin_file) or {
 			eprintln('failed to finalize ${bin_file}: ${err}')
+			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
 		os.rm(cc_src) or {}
