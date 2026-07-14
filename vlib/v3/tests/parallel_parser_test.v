@@ -92,6 +92,11 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 			src.writeln("const flavor = 'vanilla'")
 			src.writeln('@[if never ?]')
 			src.writeln('const disabled = true')
+			src.writeln('\$if future_enabled {')
+			src.writeln('\tfn leaked_future_const() {}')
+			src.writeln('} \$else {')
+			src.writeln('\tfn absent_future_const() {}')
+			src.writeln('}')
 			src.writeln('')
 		}
 		if file_index == 1 {
@@ -103,6 +108,7 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 			src.writeln('')
 		}
 		if file_index == 3 {
+			src.writeln('const future_enabled = true')
 			src.writeln('\$if enabled {')
 			src.writeln('\tfn enabled_branch() {}')
 			src.writeln('} \$else {')
@@ -145,6 +151,8 @@ fn test_parallel_parse_seeds_cross_file_comptime_consts() {
 	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'unmatched_branch')
 	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'leaked_disabled_const')
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'absent_disabled_const')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'leaked_future_const')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'absent_future_const')
 	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'alias_enabled_branch')
 	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'alias_disabled_branch')
 }

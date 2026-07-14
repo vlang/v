@@ -25,14 +25,25 @@ struct ComptimeConstPrepassToken {
 	lit string
 }
 
+struct ComptimeConstPrepassDecl {
+	key   string
+	value string
+}
+
+struct ComptimeConstPrepassChunk {
+mut:
+	decls []ComptimeConstPrepassDecl
+}
+
 $if !windows {
 	// ParseChunkArgs is the payload handed to each worker thread.
 	struct ParseChunkArgs {
-		worker     voidptr // &Parser
-		paths_ptr  voidptr // &[]string
-		starts_ptr voidptr // &[]int (worker-local starts; the master shifts them on merge)
-		start      int
-		end        int
+		worker        voidptr // &Parser
+		paths_ptr     voidptr // &[]string
+		starts_ptr    voidptr // &[]int (worker-local starts; the master shifts them on merge)
+		prepass_chunk voidptr // &ComptimeConstPrepassChunk
+		start         int
+		end           int
 	}
 
 	// C.pthread_t declares C pthread t data used by parser.
@@ -75,8 +86,9 @@ $if !windows {
 		a := unsafe { &ParseChunkArgs(arg) }
 		mut w := unsafe { &Parser(a.worker) }
 		paths := unsafe { &[]string(a.paths_ptr) }
+		mut chunk := unsafe { &ComptimeConstPrepassChunk(a.prepass_chunk) }
 		unsafe {
-			w.precollect_parallel_comptime_consts(*paths, a.start, a.end)
+			w.precollect_parallel_comptime_consts(*paths, a.start, a.end, mut chunk.decls)
 		}
 		return unsafe { nil }
 	}
@@ -106,13 +118,16 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		bounds := parse_chunk_bounds(sizes, n_jobs)
 		thread_count := n_jobs - 1
 		mut starts := []int{len: paths.len}
+		mut prepass_chunks := []&ComptimeConstPrepassChunk{cap: n_jobs}
+		for _ in 0 .. n_jobs {
+			prepass_chunks << &ComptimeConstPrepassChunk{}
+		}
 		// Worker parsers are cheap to build (no AST clone: parse output is
 		// per-file independent), so all of them are created up front. Each
 		// pre-reserves for its chunk's source bytes to avoid growth doubling.
 		mut workers := []&Parser{cap: thread_count}
 		for ci in 0 .. thread_count {
 			mut w := Parser.new(p.prefs)
-			w.comptime_const_values = p.comptime_const_values.clone()
 			mut chunk_bytes := i64(0)
 			for i in bounds[ci + 1] .. bounds[ci + 2] {
 				chunk_bytes += sizes[i]
@@ -123,11 +138,12 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		mut args := []ParseChunkArgs{cap: thread_count}
 		for ci in 0 .. thread_count {
 			args << ParseChunkArgs{
-				worker:     voidptr(workers[ci])
-				paths_ptr:  unsafe { voidptr(&paths) }
-				starts_ptr: unsafe { voidptr(&starts) }
-				start:      bounds[ci + 1]
-				end:        bounds[ci + 2]
+				worker:        voidptr(workers[ci])
+				paths_ptr:     unsafe { voidptr(&paths) }
+				starts_ptr:    unsafe { voidptr(&starts) }
+				prepass_chunk: voidptr(prepass_chunks[ci + 1])
+				start:         bounds[ci + 1]
+				end:           bounds[ci + 2]
 			}
 		}
 		mut thread_ids := []C.pthread_t{len: thread_count}
@@ -137,25 +153,25 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		// The parser recurses deeply on nested expressions; give workers a
 		// roomy stack, like the transform and cgen workers.
 		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
-		// Collect foldable constants across all chunks before any chunk parses
-		// comptime guards. The prepass itself stays parallel, so large modules do
-		// not give up the parser's wall-time benefit.
+		// Collect ordered foldable-const declarations in parallel. Once every
+		// chunk is scanned, replay the declarations in input order to make a
+		// prefix snapshot for each worker: later chunks inherit earlier consts,
+		// while no chunk can see declarations from its own or a later range.
 		for ci in 0 .. thread_count {
 			C.pthread_create(unsafe { &thread_ids[ci] }, attr, precollect_const_chunk_thread,
 				unsafe { voidptr(&args[ci]) })
 		}
-		p.precollect_parallel_comptime_consts(paths, bounds[0], bounds[1])
+		p.precollect_parallel_comptime_consts(paths, bounds[0], bounds[1], mut
+			prepass_chunks[0].decls)
 		for ci in 0 .. thread_count {
 			C.pthread_join(thread_ids[ci], unsafe { nil })
-			for key, value in workers[ci].comptime_const_values {
-				if key !in p.comptime_const_values {
-					p.comptime_const_values[key] = value
-				}
-			}
 		}
-		p.resolve_parallel_comptime_const_aliases()
-		for mut w in workers {
-			w.comptime_const_values = p.comptime_const_values.clone()
+		mut prefix_values := p.comptime_const_values.clone()
+		for chunk_idx in 0 .. n_jobs {
+			if chunk_idx > 0 {
+				workers[chunk_idx - 1].comptime_const_values = prefix_values.clone()
+			}
+			apply_parallel_comptime_const_decls(mut prefix_values, prepass_chunks[chunk_idx].decls)
 		}
 		for ci in 0 .. thread_count {
 			C.pthread_create(unsafe { &thread_ids[ci] }, attr, parse_chunk_thread,
@@ -178,7 +194,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 	}
 }
 
-fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int, end int) {
+fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int, end int, mut decls []ComptimeConstPrepassDecl) {
 	for path in paths[start..end] {
 		src := read_source_file_raw(path)
 		if src.len == 0 {
@@ -226,7 +242,7 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 				pending_decl_disabled = false
 				if tok == .key_const {
 					if !disabled {
-						p.precollect_parallel_const_decl(mut s, module_name)
+						p.precollect_parallel_const_decl(mut s, module_name, mut decls)
 					}
 					continue
 				}
@@ -238,7 +254,7 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 				continue
 			}
 			if tok == .key_const {
-				p.precollect_parallel_const_decl(mut s, module_name)
+				p.precollect_parallel_const_decl(mut s, module_name, mut decls)
 			}
 		}
 	}
@@ -307,7 +323,7 @@ fn (mut p Parser) parallel_decl_attr_enabled(mut s scanner.Scanner, src string, 
 	return eval_comptime_cond(p.prefs, resolver.resolve_comptime_at_values(cond))
 }
 
-fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_name string) {
+fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_name string, mut decls []ComptimeConstPrepassDecl) {
 	mut tok := s.scan()
 	grouped := tok == .lpar
 	if grouped {
@@ -364,7 +380,10 @@ fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_n
 			tok = s.scan()
 		}
 		if value := parallel_comptime_const_value(value_tokens) {
-			p.comptime_const_values[comptime_const_value_key(module_name, name)] = value
+			decls << ComptimeConstPrepassDecl{
+				key:   comptime_const_value_key(module_name, name)
+				value: value
+			}
 		}
 		if !grouped || closed_group || tok == .eof {
 			return
@@ -409,43 +428,21 @@ fn parallel_comptime_const_value(tokens []ComptimeConstPrepassToken) ?string {
 	}
 }
 
-fn (mut p Parser) resolve_parallel_comptime_const_aliases() {
-	for _ in 0 .. p.comptime_const_values.len {
-		mut updates := map[string]string{}
-		for key, value in p.comptime_const_values {
-			if !value.starts_with(comptime_const_prepass_alias_prefix) {
-				continue
-			}
-			alias_name := value[comptime_const_prepass_alias_prefix.len..]
-			module_name := key.all_before('\n')
-			module_key := comptime_const_value_key(module_name, alias_name)
-			builtin_key := comptime_const_value_key('builtin', alias_name)
-			alias_value := if resolved := p.comptime_const_values[module_key] {
-				resolved
-			} else if resolved := p.comptime_const_values[builtin_key] {
-				resolved
-			} else {
-				continue
-			}
-			if !alias_value.starts_with(comptime_const_prepass_alias_prefix) {
-				updates[key] = alias_value
-			}
+fn apply_parallel_comptime_const_decls(mut values map[string]string, decls []ComptimeConstPrepassDecl) {
+	for decl in decls {
+		if !decl.value.starts_with(comptime_const_prepass_alias_prefix) {
+			values[decl.key] = decl.value
+			continue
 		}
-		if updates.len == 0 {
-			break
+		alias_name := decl.value[comptime_const_prepass_alias_prefix.len..]
+		module_name := decl.key.all_before('\n')
+		module_key := comptime_const_value_key(module_name, alias_name)
+		builtin_key := comptime_const_value_key('builtin', alias_name)
+		if resolved := values[module_key] {
+			values[decl.key] = resolved
+		} else if resolved := values[builtin_key] {
+			values[decl.key] = resolved
 		}
-		for key, value in updates {
-			p.comptime_const_values[key] = value
-		}
-	}
-	mut unresolved := []string{}
-	for key, value in p.comptime_const_values {
-		if value.starts_with(comptime_const_prepass_alias_prefix) {
-			unresolved << key
-		}
-	}
-	for key in unresolved {
-		p.comptime_const_values.delete(key)
 	}
 }
 
