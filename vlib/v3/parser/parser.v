@@ -3162,8 +3162,8 @@ fn (p &Parser) resolve_comptime_const_values(cond string) string {
 			for prev > 0 && cond[prev - 1].is_space() {
 				prev--
 			}
-			is_selector_member := prev > 0 && cond[prev - 1] == `.`
-			if !is_selector_member && name !in p.comptime_for_vars {
+			is_protected_name := prev > 0 && (cond[prev - 1] == `.` || cond[prev - 1] == `$`)
+			if !is_protected_name && name !in p.comptime_for_vars {
 				if value := p.comptime_value(name) {
 					out.write_string(value)
 					continue
@@ -6896,6 +6896,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 	if p.tok == .lcbr {
 		body_start := p.tok_pos
 		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
+		p.begin_comptime_value_scope()
 		p.check(.lcbr)
 		p.predeclare_local_type_names_in_block(body_start)
 		for p.tok != .rcbr && p.tok != .eof {
@@ -6905,6 +6906,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 			}
 		}
 		p.check(.rcbr)
+		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
 	}
 	mut all_ids := []flat.NodeId{cap: capture_ids.len + param_ids.len + body_ids.len}

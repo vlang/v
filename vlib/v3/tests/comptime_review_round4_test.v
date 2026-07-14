@@ -1897,6 +1897,39 @@ fn test_comptime_pseudo_value_is_not_resolved_as_cached_local() {
 	assert out == 'ok'
 }
 
+fn test_comptime_define_builtin_is_not_resolved_as_cached_local() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'define_builtin_cached_local', "fn main() {
+	d := false
+	_ = d
+	\$if \$d('v3_parser_cached_d_regression', true) {
+		println('ok')
+	} \$else {
+		println('wrong')
+	}
+}
+")
+	assert out == 'ok'
+}
+
+fn test_fn_literal_comptime_values_do_not_leak_to_outer_scope() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'fn_literal_comptime_value_scope', "fn main() {
+	f := fn () {
+		x := 'inside'
+		_ = x
+	}
+	_ = f
+	\$if x == 'inside' {
+		println('wrong')
+	} \$else {
+		println('ok')
+	}
+}
+")
+	assert out == 'ok'
+}
+
 fn test_nested_method_reflection_respects_shadowed_loop_variable() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_shadowing', 'struct OuterMethods {}
