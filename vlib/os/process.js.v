@@ -36,7 +36,9 @@ fn (mut p Process) spawn_internal() {
 	p.status = .running
 	if p.use_stdio_ctl {
 		#p.val.pid.stdout.pipe(process.stdout)
-		#p.val.pid.stdin.pipe(process.stdin)
+		if !p.has_stdin_path {
+			#p.val.pid.stdin.pipe(process.stdin)
+		}
 		#p.val.pid.stderr.pipe(process.stderr)
 	}
 }
