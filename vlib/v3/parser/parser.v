@@ -4643,6 +4643,8 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 					} else {
 						p.forget_comptime_lhs_value(lhs_ids[i])
 					}
+				} else {
+					p.forget_comptime_lhs_value(lhs_ids[i])
 				}
 			}
 			istart := p.add_children(all_ids)
@@ -5474,13 +5476,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					'${p.cur_file}:${p.line_nr_for_pos(name_pos)}, ${method_name}')
 			}
 			if name == '@BUILD_DATE' {
-				return p.a.add_val_id(5, @BUILD_DATE)
+				return p.a.add_val_id(5, p.prefs.build_date)
 			}
 			if name == '@BUILD_TIME' {
-				return p.a.add_val_id(5, @BUILD_TIME)
+				return p.a.add_val_id(5, p.prefs.build_time)
 			}
 			if name == '@BUILD_TIMESTAMP' {
-				return p.a.add_val_id(5, @BUILD_TIMESTAMP)
+				return p.a.add_val_id(5, p.prefs.build_timestamp)
 			}
 			if name == '@OS' {
 				return p.a.add_val_id(5, @OS)
