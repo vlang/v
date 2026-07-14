@@ -2481,23 +2481,6 @@ fn embed_file_import_node() flat.Node {
 	}
 }
 
-fn ast_has_import_upto(a &flat.FlatAst, import_path string, end_node int) bool {
-	mut end := end_node
-	if end > a.nodes.len {
-		end = a.nodes.len
-	}
-	if end <= 0 {
-		return false
-	}
-	for i in 0 .. end {
-		node := a.nodes[i]
-		if node.kind == .import_decl && node.value == import_path {
-			return true
-		}
-	}
-	return false
-}
-
 fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool, builtin_dir string) {
 	if !enabled {
 		return
@@ -2513,9 +2496,6 @@ fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool, builtin_
 		value: 'builtin'
 	}
 	for import_path in modulecache.builtin_bundle_imports {
-		if ast_has_import_upto(a, import_path, a.nodes.len) {
-			continue
-		}
 		a.nodes << flat.Node{
 			kind:  .import_decl
 			value: import_path
@@ -2713,6 +2693,13 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				continue
 			}
 			mod_name := node.value
+			is_bundle_warmup_import := cur_module == 'builtin' && cur_file == bundle_import_file
+				&& mod_name in modulecache.builtin_bundle_imports
+			if is_bundle_warmup_import
+				&& (mod_name in parsed_module_identities || mod_name in parsed_modules)
+				&& !module_is_builtin_bundle(cache_state, mod_name) {
+				restart_v3_without_cache()
+			}
 			if module_identity := parsed_module_identities[mod_name] {
 				if module_identity.len > 0 {
 					a.nodes[node_idx].value = module_identity
@@ -2730,8 +2717,6 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			importing_file := cached_header_source_contexts[cur_file] or {
 				if cur_file.len > 0 { cur_file } else { first_file }
 			}
-			is_bundle_warmup_import := cur_module == 'builtin' && cur_file == bundle_import_file
-				&& mod_name in modulecache.builtin_bundle_imports
 			mod_dir := if is_bundle_warmup_import {
 				prefs.get_vlib_module_path(mod_name)
 			} else {
