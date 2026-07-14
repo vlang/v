@@ -6281,7 +6281,10 @@ fn (mut g Gen) asm_arg(arg ast.AsmArg, stmt ast.AsmStmt) {
 		}
 		ast.AsmAddressing {
 			if arg.segment != '' {
-				g.write('%%${arg.segment}:')
+				if !stmt.is_basic {
+					g.write('%') // escape percent with percent in extended assembly
+				}
+				g.write('%${arg.segment}:')
 			}
 			base := arg.base
 			index := arg.index

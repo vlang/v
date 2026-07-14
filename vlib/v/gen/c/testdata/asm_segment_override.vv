@@ -1,0 +1,30 @@
+fn basic_asm() {
+	// basic assembly (no operand lists) is passed through verbatim by the C
+	// compiler, so segment overrides must use a single, unescaped `%`
+	asm volatile amd64 {
+		mov gs:[24], rsp
+		mov rsp, gs:[16]
+	}
+}
+
+fn extended_asm() u64 {
+	// extended assembly templates are processed by the C compiler, so
+	// segment overrides need the escaped `%%` form there
+	mut a := u64(0)
+	asm amd64 {
+		mov rax, fs:[8]
+		mov a, rax
+		; =r (a)
+		; ; rax
+	}
+	return a
+}
+
+fn main() {
+	// guard the calls behind a runtime condition, so that running the
+	// program does not actually dereference the segmented addresses
+	if arguments().len > 1000 {
+		basic_asm()
+		println(extended_asm())
+	}
+}
