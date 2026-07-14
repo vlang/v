@@ -5382,7 +5382,7 @@ fn (tc &TypeChecker) comptime_attribute_loop_has_items(source string) ?bool {
 			module_name = candidate.value
 			continue
 		}
-		if candidate.kind !in [.struct_decl, .enum_decl, .fn_decl, .type_decl] {
+		if candidate.kind !in [.struct_decl, .enum_decl, .fn_decl, .type_decl, .interface_decl] {
 			continue
 		}
 		candidate_module := if module_name.len > 0 { module_name } else { 'main' }

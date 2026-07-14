@@ -576,6 +576,9 @@ fn comptime_attr_unquote(s string) string {
 	if s.len >= 2 && s[0] in [`'`, `\"`] && s[s.len - 1] == s[0] {
 		return s[1..s.len - 1]
 	}
+	if s.len >= 3 && s[0] == `r` && s[1] in [`'`, `\"`] && s[s.len - 1] == s[1] {
+		return s[2..s.len - 1]
+	}
 	return s
 }
 
@@ -3222,9 +3225,16 @@ fn comptime_cond_replace_unquoted(cond string, needle string, replacement string
 			continue
 		}
 		if offset + needle.len <= cond.len && cond[offset..offset + needle.len] == needle {
-			out += replacement
-			offset += needle.len
-			continue
+			before_ok := !comptime_cond_name_char(needle[0]) || offset == 0
+				|| !comptime_cond_name_char(cond[offset - 1])
+			after := offset + needle.len
+			after_ok := !comptime_cond_name_char(needle[needle.len - 1]) || after >= cond.len
+				|| !comptime_cond_name_char(cond[after])
+			if before_ok && after_ok {
+				out += replacement
+				offset = after
+				continue
+			}
 		}
 		out += cond[offset].ascii_str()
 		offset++

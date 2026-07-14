@@ -2496,6 +2496,49 @@ fn main() {
 	assert out == 'outer-param:first|inner-param:second|outer-attr:outer|inner-attr:inner'
 }
 
+fn test_nested_param_guards_respect_identifier_boundaries() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'nested_param_guard_identifier_boundaries', "fn outer(y string, z int) {
+	_ = y
+	_ = z
+}
+
+fn inner(x string, q int) {
+	_ = x
+	_ = q
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for outer_param in outer.params {
+		\$for param in inner.params {
+			\$if param.name == 'x' || outer_param.name == 'y' {
+				rows << outer_param.name + ':' + param.name
+			}
+		}
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'y:x|y:q|z:x'
+}
+
+fn test_raw_string_attribute_arguments_are_normalized() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'raw_string_attribute_argument', "@[route: r'/path']
+fn handler() {}
+
+fn main() {
+	mut rows := []string{}
+	\$for attr in handler.attributes {
+		rows << attr.name + ':' + attr.arg
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'route:/path'
+}
+
 fn test_nested_method_attribute_guard_preserves_inner_selector() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_attribute_guard', "struct App {}
@@ -2966,4 +3009,19 @@ fn main() {
 '
 	}, '')
 	assert imported_out == 'imported ok'
+}
+
+fn test_empty_interface_attribute_loop_skips_static_body_checks() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'empty_interface_attribute_loop', 'interface EmptyInterface {}
+
+fn main() {
+	$for attr in EmptyInterface.attributes {
+		missing_empty_interface_attribute_fn()
+		$compile_error("empty interface attribute loop should not run")
+	}
+	println("ok")
+}
+')
+	assert out == 'ok'
 }
