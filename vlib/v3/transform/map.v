@@ -462,7 +462,7 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 	rhs_id := t.a.child(&node, 1)
 	if node.op == .assign {
 		value_name := t.new_temp('map_val')
-		value := if info.value_type.starts_with('&') && t.is_sum_type_name(info.value_type[1..]) {
+		mut value := if info.value_type.starts_with('&') && t.is_sum_type_name(info.value_type[1..]) {
 			t.transform_expr_for_type(rhs_id, info.value_type)
 		} else if info.value_type in t.sum_types
 			|| t.resolve_sum_name(info.value_type) in t.sum_types {
@@ -470,10 +470,15 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 		} else {
 			t.transform_expr_for_type(rhs_id, info.value_type)
 		}
+		mut drop_old_value := true
+		value, drop_old_value = t.clone_map_assignment_rhs_if_overlapping(value, rhs_id,
+			t.a.child(&node, 0), info.value_type)
 		t.drain_pending(mut result)
 		result << t.make_decl_assign_typed(value_name, value, info.value_type)
-		t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
-			result)
+		if drop_old_value {
+			t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
+				result)
+		}
 		result << t.make_map_set_stmt(map_expr, info.base_type, key_name, value_name)
 		return result
 	}
@@ -484,6 +489,23 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 	op := map_compound_to_infix_op(node.op) or { return none }
 	t.lower_map_index_compound_with_info(info, map_expr, key_name, op, rhs_id, mut result)
 	return result
+}
+
+// clone_map_assignment_rhs_if_overlapping makes a map-derived replacement independent
+// before the stored owner is destroyed. If the value cannot be cloned, keep the old owner
+// alive rather than invalidating the shallow replacement.
+fn (mut t Transformer) clone_map_assignment_rhs_if_overlapping(value flat.NodeId, rhs_id flat.NodeId, lhs_id flat.NodeId, value_type_name string) (flat.NodeId, bool) {
+	if isnil(t.tc) || !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
+		return value, true
+	}
+	value_type := t.tc.parse_type(value_type_name)
+	if !t.tc.ownership_type_requires_destruction(value_type) {
+		return value, true
+	}
+	if _ := t.tc.ownership_default_clone_missing_method(value_type) {
+		return value, false
+	}
+	return t.make_compiler_default_clone_value(value, value_type_name, true), true
 }
 
 // append_map_value_drop_before_set destroys an existing owned map value before
@@ -547,17 +569,23 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 	result << t.make_decl_assign_typed(inner_key_name, t.transform_expr_for_type(t.a.child(&lhs, 1),
 		inner_key_type), inner_key_storage_type)
 	rhs_id := t.a.child(&node, 1)
-	inner_value := if inner_value_type.starts_with('&') && t.is_sum_type_name(inner_value_type[1..]) {
+	mut inner_value := if inner_value_type.starts_with('&')
+		&& t.is_sum_type_name(inner_value_type[1..]) {
 		t.transform_expr_for_type(rhs_id, inner_value_type)
 	} else if inner_value_type in t.sum_types || t.resolve_sum_name(inner_value_type) in t.sum_types {
 		t.wrap_sum_value(rhs_id, inner_value_type)
 	} else {
 		t.transform_expr_for_type(rhs_id, inner_value_type)
 	}
+	mut drop_old_value := true
+	inner_value, drop_old_value = t.clone_map_assignment_rhs_if_overlapping(inner_value, rhs_id,
+		lhs_id, inner_value_type)
 	t.drain_pending(mut result)
 	result << t.make_decl_assign_typed(inner_value_name, inner_value, inner_value_type)
-	t.append_map_value_drop_before_set(t.make_ident(inner_name), inner_map_type, inner_key_name,
-		inner_value_type, mut result)
+	if drop_old_value {
+		t.append_map_value_drop_before_set(t.make_ident(inner_name), inner_map_type,
+			inner_key_name, inner_value_type, mut result)
+	}
 	result << t.make_map_set_stmt(t.make_ident(inner_name), inner_map_type, inner_key_name,
 		inner_value_name)
 	result << t.make_map_set_stmt(map_expr, outer_info.base_type, outer_key_name, inner_name)
@@ -591,11 +619,15 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
 	field := t.make_selector(t.make_ident(current_name), lhs.value, field_type)
 	rhs_id := t.a.child(&node, 1)
-	rhs := t.transform_expr_for_type(rhs_id, field_type)
+	mut rhs := t.transform_expr_for_type(rhs_id, field_type)
+	mut drop_old_field := true
+	rhs, drop_old_field = t.clone_map_assignment_rhs_if_overlapping(rhs, rhs_id, lhs_id, field_type)
 	t.drain_pending(mut result)
 	rhs_name := t.new_temp('map_field_value')
 	result << t.make_decl_assign_typed(rhs_name, rhs, field_type)
-	t.append_owned_lvalue_drop_before_assign(field, field_type, mut result)
+	if drop_old_field {
+		t.append_owned_lvalue_drop_before_assign(field, field_type, mut result)
+	}
 	result << t.make_assign(field, t.make_ident(rhs_name))
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 	return result
@@ -773,11 +805,8 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	first := t.a.nodes[int(first_id)]
 	if first.kind == .prefix && first.value == '...' && first.children_count > 0 {
 		source_id := t.a.child(&first, 0)
-		source_type := if t.node_type(source_id).len > 0 { t.node_type(source_id) } else { map_type }
-		source_expr := t.stable_expr_for_reuse(source_id)
-		t.mark_fn_used('map__clone')
-		init_call = t.make_call_typed('map__clone', arr1(t.runtime_addr(source_expr, source_type)),
-			map_type)
+		source_expr := t.transform_expr(source_id)
+		init_call = t.make_compiler_default_map_clone_value(source_expr, map_type)
 		start_i = 2
 	}
 	tmp_name := t.new_temp('map_lit')

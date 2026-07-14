@@ -24,6 +24,13 @@ fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.No
 	if expanded := t.try_expand_interface_array_literal_repeat(base_id, count_id, base_type) {
 		return expanded
 	}
+	clean_base_type := t.normalize_type_alias(base_type.trim_left('&'))
+	if !isnil(t.tc) && clean_base_type.starts_with('[]') {
+		elem_type := clean_base_type[2..]
+		if t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+			return t.make_owned_array_repeat_value(base_id, count_id, clean_base_type)
+		}
+	}
 	depth := array_repeat_clone_depth(base_type)
 	if depth == 0 {
 		return none
@@ -32,6 +39,46 @@ fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.No
 	count := t.transform_expr(count_id)
 	selector := t.make_selector(base, 'repeat_to_depth', '')
 	return t.make_call_expr_typed(selector, arr2(count, t.make_int_literal(depth)), node.typ)
+}
+
+// make_owned_array_repeat_value replaces every byte-copied element in the runtime repeat
+// result with an independent clone before ownership destruction can observe the array.
+fn (mut t Transformer) make_owned_array_repeat_value(base_id flat.NodeId, count_id flat.NodeId, array_type string) flat.NodeId {
+	elem_type := array_type[2..]
+	mut source := t.transform_expr(base_id)
+	if t.node_type(base_id).starts_with('&') {
+		source = t.make_prefix(.mul, source)
+		t.set_node_typ(int(source), array_type)
+	}
+	source_is_owned_temporary := !t.expr_can_take_address(source)
+	stable_source := t.stable_transformed_expr_for_reuse(source, array_type,
+		'owned_array_repeat_source')
+	count := t.transform_expr_for_type(count_id, 'int')
+	repeat_selector := t.make_selector(stable_source, 'repeat_to_depth', '')
+	storage_repeat := t.make_call_expr_typed(repeat_selector, arr2(count, t.make_int_literal(0)),
+		array_type)
+	out_name := t.new_temp('owned_array_repeat')
+	idx_name := t.new_temp('owned_array_repeat_idx')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, storage_repeat, array_type)
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(t.make_ident(out_name),
+		'len', 'int'))
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	shallow_elem := t.array_get_value(t.make_ident(out_name), t.make_ident(idx_name), elem_type)
+	pending_start := t.pending_stmts.len
+	cloned_elem := t.make_compiler_default_clone_value(shallow_elem, elem_type, true)
+	mut body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
+		cloned_elem)
+	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{})
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+	}
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), array_type)
+	return result
 }
 
 fn (mut t Transformer) try_expand_interface_array_literal_repeat(base_id flat.NodeId, count_id flat.NodeId, base_type string) ?flat.NodeId {

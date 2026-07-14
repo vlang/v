@@ -6699,6 +6699,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.reject_stored_method_value(tc.a.child(&node, j))
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, j))
 		}
+		tc.check_ownership_map_spread_clone(id, node)
 	} else if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
 		if unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array {
 			tc.reject_stored_method_value(tc.a.child(&node, 1))
@@ -6765,6 +6766,27 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			value_id := tc.a.child(&node, 1)
 			tc.ownership_consume_expr(value_id, 'channel send', id)
 		}
+	}
+}
+
+fn (mut tc TypeChecker) check_ownership_map_spread_clone(id flat.NodeId, node flat.Node) {
+	if node.children_count == 0 {
+		return
+	}
+	first := tc.a.child_node(&node, 0)
+	if first.kind != .prefix || first.value != '...' || first.children_count == 0 {
+		return
+	}
+	map_type := map_type_from_receiver(tc.resolve_type(id)) or { return }
+	if bad_type := tc.ownership_default_clone_missing_method(map_type.key_type) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot clone map spread keys: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			id)
+	}
+	if bad_type := tc.ownership_default_clone_missing_method(map_type.value_type) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot clone map spread values: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			id)
 	}
 }
 
@@ -10538,6 +10560,11 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'repeat' {
+					if bad_type := tc.ownership_default_clone_missing_method(clean_array.elem_type) {
+						tc.record_error(.call_arg_mismatch,
+							'cannot repeat array elements: `${bad_type}` requires ownership destruction but has no `clone()` method',
+							id)
+					}
 					return CallInfo{
 						name:         'array.repeat_to_depth'
 						params:       tarr2(base_type, Type(int_))
