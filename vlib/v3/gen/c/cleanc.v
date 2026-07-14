@@ -7564,6 +7564,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_timeval_struct()
 	g.headerless_rusage_struct()
 	g.headerless_timespec_struct()
+	g.headerless_darwin_task_info_struct()
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
 	g.headerless_tm_struct()
@@ -7876,6 +7877,15 @@ fn (mut g FlatGen) headerless_timespec_struct() {
 	g.writeln('#define CLOCKS_PER_SEC 1000000')
 	g.writeln('#endif')
 	g.writeln('clock_t clock(void);')
+}
+
+fn (mut g FlatGen) headerless_darwin_task_info_struct() {
+	g.writeln('#ifdef __APPLE__')
+	g.writeln('typedef unsigned int task_t;')
+	g.writeln('#pragma pack(push, 4)')
+	g.writeln('struct task_basic_info { i32 suspend_count; u64 virtual_size; u64 resident_size; struct { i32 seconds; i32 microseconds; } user_time; struct { i32 seconds; i32 microseconds; } system_time; i32 policy; };')
+	g.writeln('#pragma pack(pop)')
+	g.writeln('#endif')
 }
 
 fn (mut g FlatGen) headerless_tm_struct() {
@@ -8202,6 +8212,15 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 	g.writeln('#define _SC_PAGESIZE 29')
 	g.writeln('#define _SC_NPROCESSORS_ONLN 58')
 	g.writeln('#define _SC_PHYS_PAGES 200')
+	g.writeln('#define KERN_SUCCESS 0')
+	g.writeln('#define MACH_TASK_BASIC_INFO_COUNT 12')
+	g.writeln('#if defined(__arm__) || defined(__arm64__)')
+	g.writeln('#define TASK_BASIC_INFO 18')
+	g.writeln('#elif defined(__LP64__)')
+	g.writeln('#define TASK_BASIC_INFO 5')
+	g.writeln('#else')
+	g.writeln('#define TASK_BASIC_INFO 4')
+	g.writeln('#endif')
 	g.headerless_mmap_constants('0x1000')
 	g.headerless_darwin_kqueue_constants()
 	g.writeln('#define FIONREAD 0x4004667f')
