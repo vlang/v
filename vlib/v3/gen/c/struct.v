@@ -3058,8 +3058,72 @@ fn (g &FlatGen) soa_companion_name(struct_name string) string {
 }
 
 fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
-	return soa_name in g.inlined_c_typedef_names || 'C.${soa_name}' in g.tc.structs
-		|| soa_name in g.tc.structs
+	return 'C.${soa_name}' in g.tc.structs
+}
+
+fn (g &FlatGen) soa_companion_collision(struct_name string, soa_name string, fields []SoaFieldInfo) ?string {
+	c_name := 'C.${soa_name}'
+	has_matching_c_decl := c_name in g.tc.structs && g.soa_companion_c_decl_matches(c_name, fields)
+	if c_name in g.tc.structs && !has_matching_c_decl {
+		return c_name
+	}
+	for name, _ in g.tc.structs {
+		if name == struct_name || name == c_name {
+			continue
+		}
+		if g.cname(name) == soa_name {
+			return name
+		}
+	}
+	for name, _ in g.tc.type_aliases {
+		if g.cname(name) == soa_name {
+			return name
+		}
+	}
+	for name, _ in g.tc.enum_names {
+		if g.cname(name) == soa_name {
+			return name
+		}
+	}
+	for name, _ in g.tc.sum_types {
+		if g.cname(name) == soa_name {
+			return name
+		}
+	}
+	for name, _ in g.tc.interface_names {
+		if g.cname(name) == soa_name {
+			return name
+		}
+	}
+	if !has_matching_c_decl
+		&& (soa_name in g.inlined_c_typedef_names || soa_name in g.inlined_c_structs) {
+		return c_name
+	}
+	return none
+}
+
+fn (g &FlatGen) soa_companion_c_decl_matches(c_name string, fields []SoaFieldInfo) bool {
+	decl_fields := g.tc.structs[c_name] or { return false }
+	if decl_fields.len != fields.len + 2 {
+		return false
+	}
+	if !g.soa_companion_c_decl_field_matches(decl_fields[0], 'len', 'int') {
+		return false
+	}
+	if !g.soa_companion_c_decl_field_matches(decl_fields[1], 'cap', 'int') {
+		return false
+	}
+	for i, field in fields {
+		if !g.soa_companion_c_decl_field_matches(decl_fields[i + 2], field.soa_name,
+			'${field.c_type}*') {
+			return false
+		}
+	}
+	return true
+}
+
+fn (g &FlatGen) soa_companion_c_decl_field_matches(field types.StructField, name string, c_type string) bool {
+	return g.cname(field.name) == name && g.tc.c_type(field.typ) == c_type
 }
 
 fn (mut g FlatGen) soa_field_c_type(struct_name string, f types.StructField) string {
@@ -3174,6 +3238,10 @@ fn (mut g FlatGen) emit_soa_companion(struct_name string) {
 		}
 	}
 	g.writeln('/* SoA companion for ${base_name}. */')
+	if conflict := g.soa_companion_collision(struct_name, soa_name, soa_fields) {
+		g.writeln('#error SoA companion ${soa_name} for ${base_name} collides with existing type ${conflict}')
+		return
+	}
 	if !g.soa_companion_has_c_typedef(soa_name) {
 		g.writeln('typedef struct ${soa_name} {')
 		g.writeln('\tint len;')
