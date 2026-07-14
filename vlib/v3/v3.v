@@ -1132,6 +1132,8 @@ fn main() {
 	}
 
 	b.step_parallel('parse', parse_was_parallel)
+	b.metric('AST nodes after parse', a.nodes.len, 'nodes')
+	b.metric('AST children after parse', a.children.len, 'edges')
 
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
@@ -1157,6 +1159,8 @@ fn main() {
 		exit(1)
 	}
 	b.step_parallel('check', check_was_parallel)
+	b.metric('functions collected', pre_tc.fn_ret_types.len, 'symbols')
+	b.metric('structs collected', pre_tc.structs.len, 'types')
 
 	if backend == 'eval' {
 		$if !skip_eval ? {
@@ -1182,6 +1186,7 @@ fn main() {
 		used_fns, uses_generics = markused.mark_used_with_generic_usage(a, pre_tc)
 	}
 	b.step('markused')
+	b.metric('reachable symbols', used_fns.len, 'symbols')
 
 	// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
 	// by default for compatible builds, and `-no-parallel` disables both threaded transform
@@ -1209,6 +1214,8 @@ fn main() {
 			scope_prealloc_selfhost)
 	}
 	b.step_parallel('transform', transform_was_parallel)
+	b.metric('AST nodes after transform', a.nodes.len, 'nodes')
+	b.metric('AST children after transform', a.children.len, 'edges')
 
 	// Reuse the pre-transform checker for metadata only. Transform does not add
 	// declarations, and v1/v2 do not run a second semantic checker after lowering.
@@ -1272,10 +1279,16 @@ fn main() {
 			// SSA + ARM64 native backend
 			mut m := ssa.build_with_used(a, used_fns, pre_tc)
 			b.step('ssa build')
+			b.metric('SSA values before optimize', m.values.len, 'values')
+			b.metric('SSA instructions before optimize', m.instrs.len, 'instructions')
+			b.metric('SSA blocks before optimize', m.blocks.len, 'blocks')
 
 			if is_prod {
 				optimize.optimize(mut m)
 				b.step('optimize')
+				b.metric('SSA values after optimize', m.values.len, 'values')
+				b.metric('SSA instructions after optimize', m.instrs.len, 'instructions')
+				b.metric('SSA blocks after optimize', m.blocks.len, 'blocks')
 			}
 
 			mut g := arm64.Gen.new(m)
@@ -1346,6 +1359,7 @@ fn main() {
 			generated_c_flags = g.c_flags()
 		}
 		b.step_parallel('cgen', cgen_was_parallel)
+		b.metric('generated C size', os.file_size(cc_src), 'bytes')
 		if c_only {
 			b.print_report()
 			return
