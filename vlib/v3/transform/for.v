@@ -254,6 +254,22 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		}
 	}
 
+	mut binding_clones := []flat.NodeId{}
+	if iter_type.starts_with('map[') {
+		key_type, value_type := t.map_type_parts(iter_type)
+		if has_index {
+			key_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+			if t.normalize_type_alias(key_type).trim_space() != 'string' {
+				binding_clones << t.make_for_in_binding_clone(key_name, key_type)
+			}
+			value_name := if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
+			binding_clones << t.make_for_in_binding_clone(value_name, value_type)
+		} else {
+			value_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+			binding_clones << t.make_for_in_binding_clone(value_name, value_type)
+		}
+	}
+
 	mut ids := []flat.NodeId{}
 	ids << key_id
 	ids << val_id
@@ -262,7 +278,8 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		ids << new_range_end
 	}
 	body_ids := t.a.children_of(&node)[header_count..].clone()
-	new_body := t.transform_stmts(body_ids)
+	mut new_body := binding_clones
+	new_body << t.transform_stmts(body_ids)
 	for bid in new_body {
 		ids << bid
 	}
@@ -281,6 +298,35 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		skip_ownership_drops: node.skip_ownership_drops
 	})
 	return prefix
+}
+
+// make_for_in_binding_clone turns a shallow container iteration copy into an independent
+// owner before the user loop body runs. The ownership checker records that cloned binding
+// for the iteration-tail drop.
+fn (mut t Transformer) make_for_in_binding_clone(name string, typ string) []flat.NodeId {
+	if name.len == 0 || name == '_' || !t.ownership_for_in_type_needs_clone(typ) {
+		return []flat.NodeId{}
+	}
+	pending_start := t.pending_stmts.len
+	cloned := t.make_compiler_default_clone_value(t.make_ident(name), typ, true)
+	mut stmts := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	stmts << t.make_assign(t.make_ident(name), cloned)
+	return stmts
+}
+
+fn (t &Transformer) ownership_for_in_type_needs_clone(typ string) bool {
+	if isnil(t.tc) || typ.len == 0 {
+		return false
+	}
+	parsed := t.tc.parse_type(typ)
+	if !t.tc.ownership_type_requires_destruction(parsed) {
+		return false
+	}
+	if _ := t.tc.ownership_default_clone_missing_method(parsed) {
+		return false
+	}
+	return t.compiler_default_clone_type_needs_work(typ)
 }
 
 fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
@@ -460,7 +506,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	elem_expr := if elem_needs_ref && actual_iter_type.starts_with('[]') {
+	mut elem_expr := if elem_needs_ref && actual_iter_type.starts_with('[]') {
 		t.array_get_ptr(container, t.make_ident(idx_name), elem_type)
 	} else if elem_needs_ref {
 		t.make_prefix(.amp, t.make_index(container, t.make_ident(idx_name), elem_type))
@@ -468,6 +514,13 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		t.array_get_value(container, t.make_ident(idx_name), elem_type)
 	} else {
 		t.make_index(container, t.make_ident(idx_name), elem_type)
+	}
+	mut binding_clones := []flat.NodeId{}
+	if !elem_needs_ref && t.ownership_for_in_type_needs_clone(elem_type) {
+		pending_start := t.pending_stmts.len
+		elem_expr = t.make_compiler_default_clone_value(elem_expr, elem_type, true)
+		binding_clones = t.pending_stmts[pending_start..].clone()
+		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	}
 	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_var_type)
 	mut transformed_body := []flat.NodeId{}
@@ -484,6 +537,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		transformed_body = t.transform_stmts(body_ids)
 	}
 	mut new_body := []flat.NodeId{}
+	new_body << binding_clones
 	new_body << elem_decl
 	new_body << transformed_body
 	prefix << t.make_for_stmt(init, cond, post, new_body, node)

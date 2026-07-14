@@ -7850,10 +7850,17 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 					container_id)
 			}
 		}
+		$if ownership ? {
+			if node.op != .amp {
+				tc.check_for_in_binding_clones(clean, key_id, val_id, has_val)
+			}
+		}
 	}
 	$if ownership ? {
 		tc.ownership_begin_loop_branch_group()
-		tc.ownership_bind_for_in_vars(key_id, val_id, container_id, has_val)
+		if node.op != .amp {
+			tc.ownership_bind_for_in_vars(key_id, val_id, container_id, has_val)
+		}
 	}
 	for i in header .. node.children_count {
 		tc.check_stmt_node(tc.a.child(&node, i))
@@ -7866,6 +7873,39 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.ownership_end_branch_group()
 	}
 	tc.pop_scope()
+}
+
+fn (mut tc TypeChecker) check_for_in_binding_clones(container Type, key_id flat.NodeId, val_id flat.NodeId, has_val bool) {
+	match container {
+		Array {
+			target_id := if has_val { val_id } else { key_id }
+			tc.check_for_in_binding_clone(target_id, container.elem_type, 'array element')
+		}
+		ArrayFixed {
+			target_id := if has_val { val_id } else { key_id }
+			tc.check_for_in_binding_clone(target_id, container.elem_type, 'fixed-array element')
+		}
+		Map {
+			if has_val {
+				tc.check_for_in_binding_clone(key_id, container.key_type, 'map key')
+				tc.check_for_in_binding_clone(val_id, container.value_type, 'map value')
+			} else {
+				tc.check_for_in_binding_clone(key_id, container.value_type, 'map value')
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut tc TypeChecker) check_for_in_binding_clone(target_id flat.NodeId, typ Type, role string) {
+	if !tc.valid_node_id(target_id) || tc.a.nodes[int(target_id)].value == '_' {
+		return
+	}
+	if bad_type := tc.ownership_default_clone_missing_method(typ) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot iterate over ownership-bearing ${role}: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			target_id)
+	}
 }
 
 fn (mut tc TypeChecker) check_storage_path_base_node(id flat.NodeId) {

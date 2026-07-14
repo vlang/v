@@ -5646,6 +5646,7 @@ fn (mut tc TypeChecker) ownership_bind_for_in_vars(key_id flat.NodeId, val_id fl
 	}
 	container_name := tc.ownership_expr_ident_name(container_id)
 	clean := unwrap_pointer(tc.resolve_type(container_id))
+	clones_storage_binding := clean is Array || clean is ArrayFixed || clean is Map
 	if clean is Map && has_val {
 		key_name := tc.ownership_lhs_name(key_id)
 		key_source := if container_name.len > 0 {
@@ -5653,25 +5654,36 @@ fn (mut tc TypeChecker) ownership_bind_for_in_vars(key_id flat.NodeId, val_id fl
 		} else {
 			''
 		}
-		tc.ownership_bind_for_in_var_from_storage(key_name, key_source, key_id)
+		tc.ownership_bind_for_in_var_from_storage(key_name, key_source, key_id,
+			clones_storage_binding)
 	}
 	target_id := if has_val { val_id } else { key_id }
 	target_name := tc.ownership_lhs_name(target_id)
 	source_name := if container_name.len > 0 { '${container_name}[*]' } else { '' }
-	tc.ownership_bind_for_in_var_from_storage(target_name, source_name, target_id)
+	tc.ownership_bind_for_in_var_from_storage(target_name, source_name, target_id,
+		clones_storage_binding)
 }
 
-fn (mut tc TypeChecker) ownership_bind_for_in_var_from_storage(target_name string, source_name string, target_id flat.NodeId) bool {
+fn (mut tc TypeChecker) ownership_bind_for_in_var_from_storage(target_name string, source_name string, target_id flat.NodeId, clones_storage_binding bool) bool {
 	if target_name.len == 0 || target_name == '_' {
 		return false
 	}
 	tc.ownership_note_decl(target_name)
 	tc.ownership_release_borrower(target_name)
-	moved_types := if source_name.len > 0 {
-		tc.ownership_move_overlapping_dynamic_storage(source_name, target_name, target_id, false,
-			'', true)
-	} else {
-		[]string{}
+	mut moved_types := []string{}
+	if clones_storage_binding {
+		target_type := tc.resolve_type(target_id)
+		if tc.ownership_type_requires_destruction(target_type) {
+			if _ := tc.ownership_default_clone_missing_method(target_type) {
+				// The checker has already rejected this loop binding. Keep the shallow
+				// recovery value non-owning so error recovery cannot drop container storage.
+			} else {
+				moved_types << target_type.name()
+			}
+		}
+	} else if source_name.len > 0 {
+		moved_types = tc.ownership_move_overlapping_dynamic_storage(source_name, target_name,
+			target_id, false, '', true)
 	}
 	tc.ownership_clear_descendant_state(target_name)
 	{
