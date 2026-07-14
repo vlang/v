@@ -4126,9 +4126,6 @@ fn (tc &TypeChecker) type_text_has_generic_placeholder(typ string) bool {
 	if is_bare_generic_param(clean) {
 		return !tc.is_known_type_text(clean)
 	}
-	if clean.contains('.') && is_bare_generic_param(clean.all_after_last('.')) {
-		return true
-	}
 	if clean.starts_with('&') {
 		return tc.type_text_has_generic_placeholder(clean[1..])
 	}
@@ -4164,6 +4161,9 @@ fn (tc &TypeChecker) type_text_has_generic_placeholder(typ string) bool {
 				return true
 			}
 		}
+	}
+	if clean.contains('.') && is_bare_generic_param(clean.all_after_last('.')) {
+		return !tc.is_known_type_text(clean)
 	}
 	return false
 }

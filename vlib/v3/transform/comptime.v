@@ -301,7 +301,8 @@ fn (mut t Transformer) expand_comptime_for_attributes(var_name string, source st
 }
 
 fn (t &Transformer) comptime_attribute_metas(source string, loop_id flat.NodeId) []AttributeMeta {
-	name := t.comptime_attribute_source(source, loop_id)
+	raw_name := t.comptime_attribute_source(source, loop_id)
+	name := t.resolve_imported_type_name(raw_name) or { raw_name }
 	mut module_name := ''
 	for idx, node in t.a.nodes {
 		if node.kind == .file {

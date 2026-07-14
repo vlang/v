@@ -1762,3 +1762,80 @@ fn main() {
 ")
 	assert out == 'route:string:false|plain:plain:false'
 }
+
+fn test_qualified_single_letter_type_is_a_concrete_generic_argument() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'qualified_single_letter_generic_arg', {
+		'v.mod':           "Module { name: 'qualified_single_letter_generic_arg' }\n"
+		'letter/letter.v': 'module letter
+
+pub struct T {
+pub:
+	n int
+}
+'
+		'main.v':          'module main
+
+import letter
+
+struct Box[X] {
+	value X
+}
+
+fn decode[X](value X) Box[X] {
+	return Box[X]{
+		value: value
+	}
+}
+
+fn read(box Box[letter.T]) int {
+	return box.value.n
+}
+
+fn main() {
+	value := letter.T{
+		n: 7
+	}
+	direct := Box[letter.T]{
+		value: value
+	}
+	decoded := decode[letter.T](value)
+	println(int_str(read(direct) + read(decoded)))
+}
+'
+	}, 'main.v')
+	assert out == '14'
+}
+
+fn test_attribute_reflection_resolves_import_alias_sources() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'attribute_reflection_import_alias', {
+		'v.mod':           "Module { name: 'attribute_reflection_import_alias' }\n"
+		'routes/routes.v': 'module routes
+
+@[endpoint]
+pub fn handler() {}
+'
+		'main.v':          'module main
+
+import routes as r
+
+fn attribute_name(attr VAttribute) string {
+	return attr.name
+}
+
+fn main() {
+	mut rows := []string{}
+	$for attr in r.handler.attributes {
+		rows << "direct:" + attribute_name(attr)
+	}
+	h := r.handler
+	$for attr in h.attributes {
+		rows << "local:" + attribute_name(attr)
+	}
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'direct:endpoint|local:endpoint'
+}
