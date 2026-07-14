@@ -59,8 +59,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	}
 	struct_decls := t.collect_generic_struct_decls()
 	t.seed_generic_specialization_args(struct_decls)
-	template_nodes := t.generic_decl_template_nodes(decls)
-	mut ignored_nodes := t.unused_fn_subtree_nodes()
+	mut ignored_nodes := t.monomorphize_ignored_nodes(decls)
 	mut emitted := map[string]bool{}
 	mut generated := []string{}
 	mut generic_call_sites := []GenericCallSite{}
@@ -81,7 +80,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		// and must be scanned too, or its generic calls stay unspecialized.
 		mut rescan := []int{}
 		if scan_start > 0 && t.used_fns.len != used_fns_at_scan {
-			new_ignored := t.unused_fn_subtree_nodes()
+			new_ignored := t.monomorphize_ignored_nodes(decls)
 			for i in 0 .. scan_start {
 				if i < ignored_nodes.len && ignored_nodes[i] && !(i < new_ignored.len
 					&& new_ignored[i]) {
@@ -97,8 +96,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			} else {
 				scan_start + (scan_idx - rescan.len)
 			}
-			if (i < template_nodes.len && template_nodes[i])
-				|| (i < ignored_nodes.len && ignored_nodes[i]) {
+			if i < ignored_nodes.len && ignored_nodes[i] {
 				continue
 			}
 			node := t.a.nodes[i]
@@ -149,8 +147,8 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	if t.refresh_decl_assign_types_after_generic_rewrite() {
 		t.generic_call_spec_cache = map[int]GenericCallSpec{}
 		t.generic_call_spec_misses = map[int]bool{}
-		extra_call_sites := t.collect_generic_call_sites_after_type_refresh(decls, template_nodes,
-			ignored_nodes, mut emitted, mut generated, mut recorded_call_sites)
+		extra_call_sites := t.collect_generic_call_sites_after_type_refresh(decls, ignored_nodes, mut
+			emitted, mut generated, mut recorded_call_sites)
 		if extra_call_sites.len > 0 {
 			t.rewrite_generic_call_sites(decls, extra_call_sites)
 			t.refresh_decl_assign_types_after_generic_rewrite()
@@ -160,7 +158,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	return generated
 }
 
-fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(decls map[string]GenericFnDecl, template_nodes []bool, ignored_nodes []bool, mut emitted map[string]bool, mut generated []string, mut recorded_call_sites map[int]bool) []GenericCallSite {
+fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(decls map[string]GenericFnDecl, ignored_nodes []bool, mut emitted map[string]bool, mut generated []string, mut recorded_call_sites map[int]bool) []GenericCallSite {
 	mut sites := []GenericCallSite{}
 	t.ensure_node_module_map()
 	old_in_scan := t.in_monomorphize_scan
@@ -170,8 +168,7 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(decls map[s
 	}
 	node_count := t.a.nodes.len
 	for i in 0 .. node_count {
-		if (i < template_nodes.len && template_nodes[i])
-			|| (i < ignored_nodes.len && ignored_nodes[i]) {
+		if i < ignored_nodes.len && ignored_nodes[i] {
 			continue
 		}
 		node := t.a.nodes[i]
@@ -1976,16 +1973,12 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 	return decls
 }
 
-fn (mut t Transformer) generic_decl_template_nodes(decls map[string]GenericFnDecl) []bool {
+fn (mut t Transformer) monomorphize_ignored_nodes(decls map[string]GenericFnDecl) []bool {
 	mut nodes := []bool{len: t.a.nodes.len}
+	mut stack := []flat.NodeId{cap: 256}
 	for _, decl in decls {
-		t.collect_node_subtree_flags(decl.id, mut nodes)
+		t.collect_node_subtree_flags(decl.id, mut nodes, mut stack)
 	}
-	return nodes
-}
-
-fn (mut t Transformer) unused_fn_subtree_nodes() []bool {
-	mut nodes := []bool{len: t.a.nodes.len}
 	if !t.has_used_fn_filter() {
 		return nodes
 	}
@@ -2001,7 +1994,7 @@ fn (mut t Transformer) unused_fn_subtree_nodes() []bool {
 					continue
 				}
 				if !t.should_transform_fn(node) {
-					t.collect_node_subtree_flags(flat.NodeId(i), mut nodes)
+					t.collect_node_subtree_flags(flat.NodeId(i), mut nodes, mut stack)
 				}
 			}
 			else {}
@@ -2087,14 +2080,29 @@ fn (mut t Transformer) collect_node_subtree_ids(id flat.NodeId, mut nodes map[in
 	}
 }
 
-fn (mut t Transformer) collect_node_subtree_flags(id flat.NodeId, mut nodes []bool) {
-	if int(id) < 0 || int(id) >= t.a.nodes.len || int(id) >= nodes.len || nodes[int(id)] {
-		return
-	}
-	nodes[int(id)] = true
-	node := t.a.nodes[int(id)]
-	for i in 0 .. node.children_count {
-		t.collect_node_subtree_flags(t.a.child(&node, i), mut nodes)
+fn (mut t Transformer) collect_node_subtree_flags(id flat.NodeId, mut nodes []bool, mut stack []flat.NodeId) {
+	stack.clear()
+	stack << id
+	for stack.len > 0 {
+		current := stack.pop()
+		idx := int(current)
+		if idx < 0 || idx >= t.a.nodes.len || idx >= nodes.len || nodes[idx] {
+			continue
+		}
+		nodes[idx] = true
+		node := t.a.nodes[idx]
+		start := node.children_start
+		end := start + int(node.children_count)
+		if start < 0 || end > t.a.children.len {
+			continue
+		}
+		for i in start .. end {
+			// The child range is checked above; avoid bounds checks in this hot walk.
+			child_id := unsafe { t.a.children[i] }
+			if int(child_id) >= 0 {
+				stack << child_id
+			}
+		}
 	}
 }
 
@@ -5830,7 +5838,7 @@ fn (mut t Transformer) copy_cloned_resolution_forked(src_idx int, dst_idx int) {
 }
 
 fn (t &Transformer) resolved_call_is_generic_fn(name string) bool {
-	if name.len == 0 || isnil(t.tc) {
+	if t.skip_generics || name.len == 0 || isnil(t.tc) {
 		return false
 	}
 	if name.contains('[') && name.contains(']') {
@@ -5867,6 +5875,9 @@ fn substitute_generic_node_value(node flat.Node, args []string) string {
 fn (mut t Transformer) fn_decl_has_unresolved_generics(node flat.Node, module_name string) bool {
 	if generic_params_have_runtime_type_param(node.generic_params) {
 		return true
+	}
+	if t.skip_generics {
+		return false
 	}
 	if t.type_text_has_generic_placeholder(node.typ, module_name)
 		|| t.type_text_has_generic_placeholder(node.value, module_name) {
@@ -5912,6 +5923,9 @@ fn (mut t Transformer) node_subtree_has_generic_placeholder(id flat.NodeId, modu
 }
 
 fn (mut t Transformer) type_text_has_generic_placeholder(typ string, module_name string) bool {
+	if t.skip_generics {
+		return false
+	}
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return false
@@ -6136,11 +6150,11 @@ fn (mut t Transformer) collect_generic_param_names_from_type(typ string, module_
 }
 
 fn generic_app_parts(typ string) (string, []string, bool) {
-	if typ.starts_with('fn(') || typ.starts_with('fn (') {
-		return '', []string{}, false
-	}
 	bracket := typ.index_u8(`[`)
 	if bracket <= 0 {
+		return '', []string{}, false
+	}
+	if typ.starts_with('fn(') || typ.starts_with('fn (') {
 		return '', []string{}, false
 	}
 	bracket_end := generic_matching_bracket(typ, bracket)
@@ -6972,6 +6986,9 @@ fn is_generic_fn_placeholder_name(typ string) bool {
 }
 
 fn (t &Transformer) generic_args_have_placeholders(args []string) bool {
+	if t.skip_generics {
+		return false
+	}
 	for arg in args {
 		if t.generic_arg_is_unresolved(arg) {
 			return true
@@ -6981,6 +6998,9 @@ fn (t &Transformer) generic_args_have_placeholders(args []string) bool {
 }
 
 fn (t &Transformer) generic_arg_is_unresolved(arg string) bool {
+	if t.skip_generics {
+		return false
+	}
 	// Hot: called for every call/assign type text during body transforms, with
 	// heavy repetition (a few thousand distinct texts per build). The result is
 	// a pure function of the text plus the declared-type tables and cur_module

@@ -4,6 +4,7 @@ import os
 import v3.bench
 import v3.flat
 import v3.gen.c as cgen
+import v3.gen.c.naming
 import v3.markused
 import v3.parser
 import v3.pref
@@ -546,6 +547,148 @@ fn clone_typechecker_after_scoped_transform(mut tc types.TypeChecker, ast &flat.
 	tc.set_fresh_type_cache(tc.type_cache_parse_enabled())
 }
 
+fn restored_fn_c_name(name string) string {
+	if name.starts_with('C.') {
+		return name[2..]
+	}
+	if name == 'malloc' {
+		return 'v_malloc'
+	}
+	if name == 'exit' {
+		return 'v_exit'
+	}
+	return naming.sanitize(name)
+}
+
+fn transformed_fn_is_used(name string, module_name string, used_fns map[string]bool) bool {
+	if used_fns.len == 0 || !used_fns['main'] || name.starts_with('__anon_fn_') {
+		return true
+	}
+	if used_fns[name] || used_fns[restored_fn_c_name(name)] {
+		return true
+	}
+	if module_name.len == 0 || module_name in ['main', 'builtin'] {
+		return module_name == 'builtin' && name == 'free' && used_fns['v_free']
+	}
+	qname := '${module_name}.${name}'
+	return used_fns[qname] || used_fns[restored_fn_c_name(qname)]
+}
+
+fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst, used_fns map[string]bool) {
+	for tc.expr_type_values.len < a.nodes.len {
+		tc.expr_type_values << types.Type(types.void_)
+		tc.expr_type_set << false
+	}
+	limit := if tc.resolved_fn_value_names.len < a.nodes.len {
+		tc.resolved_fn_value_names.len
+	} else {
+		a.nodes.len
+	}
+	for idx in 0 .. limit {
+		if idx >= tc.resolved_fn_value_set.len || !tc.resolved_fn_value_set[idx] {
+			continue
+		}
+		name := tc.resolved_fn_value_names[idx]
+		params := tc.fn_param_types[name] or { continue }
+		ret := tc.fn_ret_types[name] or { continue }
+		tc.expr_type_values[idx] = types.FnType{
+			params:      params
+			return_type: ret
+		}
+		tc.expr_type_set[idx] = true
+	}
+	mut cur_module := ''
+	mut stack := []flat.NodeId{cap: 256}
+	for top_idx in tc.top_level_idx {
+		top := a.nodes[top_idx]
+		if top.kind == .file {
+			cur_module = ''
+			continue
+		}
+		if top.kind == .module_decl {
+			cur_module = top.value
+			continue
+		}
+		if top.kind != .fn_decl {
+			continue
+		}
+		if !transformed_fn_is_used(top.value, cur_module, used_fns) {
+			continue
+		}
+		stack.clear()
+		stack << flat.NodeId(top_idx)
+		for stack.len > 0 {
+			id := stack.pop()
+			idx := int(id)
+			if idx < 0 || idx >= a.nodes.len {
+				continue
+			}
+			node := a.nodes[idx]
+			if node.kind == .call && node.children_count > 0 {
+				callee_id := a.children[node.children_start]
+				callee_idx := int(callee_id)
+				if callee_idx >= 0 && callee_idx < a.nodes.len {
+					callee := a.nodes[callee_idx]
+					if callee.kind == .ident && callee.value.len > 0 {
+						mut name := tc.resolved_call_name(id) or { callee.value }
+						if name !in tc.fn_param_types || name !in tc.fn_ret_types {
+							qname := if cur_module.len == 0 || cur_module in ['main', 'builtin'] {
+								callee.value
+							} else {
+								'${cur_module}.${callee.value}'
+							}
+							if qname in tc.fn_param_types && qname in tc.fn_ret_types {
+								name = qname
+							} else {
+								cname := 'C.${callee.value}'
+								if cname in tc.fn_param_types && cname in tc.fn_ret_types {
+									name = cname
+								} else {
+									name = ''
+								}
+							}
+						}
+						if name.len > 0 {
+							params := tc.fn_param_types[name] or { []types.Type{} }
+							if ret := tc.fn_ret_types[name] {
+								tc.expr_type_values[callee_idx] = types.FnType{
+									params:      params
+									return_type: ret
+								}
+								tc.expr_type_set[callee_idx] = true
+							}
+						}
+					}
+				}
+			}
+			if node.kind == .selector && node.children_count > 0 {
+				base_id := a.children[node.children_start]
+				base_idx := int(base_id)
+				if base_idx >= 0 && base_idx < a.nodes.len {
+					base := a.nodes[base_idx]
+					cname := 'C.${base.value}'
+					if base.kind == .ident && cname in tc.fn_param_types && cname in tc.fn_ret_types {
+						params := tc.fn_param_types[cname] or { []types.Type{} }
+						if ret := tc.fn_ret_types[cname] {
+							tc.expr_type_values[base_idx] = types.FnType{
+								params:      params
+								return_type: ret
+							}
+							tc.expr_type_set[base_idx] = true
+						}
+					}
+				}
+			}
+			for i := node.children_count - 1; i >= 0; i-- {
+				child_id := a.children[node.children_start + i]
+				if int(child_id) >= 0 {
+					stack << child_id
+				}
+			}
+		}
+	}
+}
+
 // main runs the v3 entry point.
 fn main() {
 	args := os.args[1..]
@@ -834,8 +977,7 @@ fn main() {
 	parse_was_parallel = parse_was_parallel || user_parse_parallel
 	test_files := test_input_files(user_files, backend, prefs.target_os)
 
-	seed_implicit_sync_import(mut a)
-	seed_implicit_embed_file_import(mut a)
+	seed_implicit_imports(mut a)
 
 	// Resolve imports recursively
 	import_parse_parallel := resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel)
@@ -888,10 +1030,13 @@ fn main() {
 
 	// Mark used functions (dead-code elimination). This is done before transform
 	// so the transformer can skip function bodies that the C backend will prune.
-	mut used_fns := if test_files.len > 0 {
-		markused.mark_used_for_tests(a, pre_tc, test_files)
+	mut used_fns := map[string]bool{}
+	mut uses_generics := false
+	if test_files.len > 0 {
+		used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a, pre_tc,
+			test_files)
 	} else {
-		markused.mark_used(a, pre_tc)
+		used_fns, uses_generics = markused.mark_used_with_generic_usage(a, pre_tc)
 	}
 	b.step('markused')
 
@@ -899,7 +1044,9 @@ fn main() {
 	// by default for compatible builds, and `-no-parallel` disables both threaded transform
 	// and cgen.
 	mut transform_was_parallel := false
-	skip_transform_generics := building_v || cmd_v_build
+	// Markused distinguishes reachable generic calls/types from generic templates
+	// that merely came along with an imported module (notably sync and rand).
+	skip_transform_generics := building_v || cmd_v_build || !uses_generics
 	mut scope_whole_transform := !current_parallel_transform
 	$if v3_no_parallel ? {
 		scope_whole_transform = true
@@ -927,7 +1074,11 @@ fn main() {
 	set_diagnostic_files(mut pre_tc, user_files)
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 	if !building_v && !cmd_v_build {
-		pre_tc.annotate_types_with_used(used_fns)
+		if uses_generics {
+			pre_tc.annotate_types_with_used(used_fns)
+		} else {
+			restore_transformed_fn_value_types(mut pre_tc, a, used_fns)
+		}
 	}
 	b.step('annotate types')
 
@@ -951,12 +1102,13 @@ fn main() {
 		}
 	}
 
-	// Monomorphization only adds specialized generic instantiations to `used_fns`. The V
-	// compiler sources use no generics, so when building V we skip specialization and
-	// only erase generic templates that otherwise generate invalid raw C declarations.
+	// Monomorphization only adds specialized generic instantiations to `used_fns`. Skip
+	// it when markused found no reachable generic use; the small metadata cleanup keeps
+	// unreachable generic templates out of C without walking or rewriting their ASTs.
+	// Self-host builds retain their dedicated generic-function erasure pass.
 	if building_v {
 		used_fns = transform.erase_generic_templates(mut a, &pre_tc, used_fns)
-	} else {
+	} else if uses_generics {
 		mut monomorph_used_fns, monomorph_errors := transform.monomorphize_with_used_checked(mut a,
 			&pre_tc, used_fns)
 		used_fns = monomorph_used_fns.move()
@@ -967,6 +1119,8 @@ fn main() {
 			}
 			exit(1)
 		}
+	} else {
+		erase_unreachable_generic_type_templates(mut pre_tc)
 	}
 	b.step('monomorphize')
 
@@ -998,6 +1152,7 @@ fn main() {
 			mut g := cgen.FlatGen.new()
 			g.set_c99_mode(prefs.c99)
 			g.set_prealloc('prealloc' in prefs.user_defines)
+			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
 			g.set_scope_parallel_workers(true)
 			c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, current_no_parallel,
@@ -1016,6 +1171,7 @@ fn main() {
 			mut g := cgen.FlatGen.new()
 			g.set_c99_mode(prefs.c99)
 			g.set_prealloc('prealloc' in prefs.user_defines)
+			g.set_skip_generics(skip_transform_generics)
 			g.set_compiler_vexe(prefs.vexe)
 			c_code := g.gen_with_used_test_options(a, used_fns, &pre_tc, current_no_parallel,
 				test_files)
@@ -1521,6 +1677,19 @@ fn set_diagnostic_files(mut tc types.TypeChecker, user_files []string) {
 	}
 }
 
+fn erase_unreachable_generic_type_templates(mut tc types.TypeChecker) {
+	for name in tc.struct_generic_params.keys() {
+		tc.structs.delete(name)
+		tc.unions.delete(name)
+		tc.params_structs.delete(name)
+	}
+	for name in tc.sum_generic_params.keys() {
+		tc.sum_types.delete(name)
+		tc.sum_generic_params.delete(name)
+	}
+	tc.invalidate_short_type_name_index()
+}
+
 fn set_unsupported_generic_files(mut tc types.TypeChecker, a &flat.FlatAst, include_imports bool, diagnostic_root string) {
 	if !include_imports {
 		return
@@ -1561,37 +1730,24 @@ fn skipped_backend_modules(prefs &pref.Preferences) []string {
 	return skipped
 }
 
-fn seed_implicit_sync_import(mut a flat.FlatAst) {
-	if ast_should_seed_sync_import(a, a.nodes.len, false) {
+struct ImplicitImportScan {
+mut:
+	node_idx         int
+	needs_sync       bool
+	has_sync         bool
+	needs_embed      bool
+	has_embed_import bool
+}
+
+fn seed_implicit_imports(mut a flat.FlatAst) {
+	mut scan := ImplicitImportScan{}
+	scan_implicit_imports(a, a.nodes.len, mut scan)
+	if scan.needs_sync && !scan.has_sync {
 		a.add_node(sync_import_node())
 	}
-}
-
-fn seed_implicit_embed_file_import(mut a flat.FlatAst) {
-	if ast_should_seed_embed_file_import(a, a.nodes.len, false) {
+	if scan.needs_embed && !scan.has_embed_import {
 		a.add_node(embed_file_import_node())
 	}
-}
-
-// ast_should_seed_sync_import reports whether a synthetic `import sync` should be
-// seeded for the module whose parsed region ends at end_node. The need and
-// already-imported scans are both bounded to end_node — the module's serial
-// boundary — so an explicit import in a *later* module of the same wave (already
-// parsed into the array, but not yet reached in serial order) can neither suppress
-// nor be conflated with this module's seed. already_added carries the "a synthetic
-// import was already seeded for an earlier module in this wave" state the bounded
-// scan cannot see, because the wave's synthetic nodes are spliced in only after
-// every boundary has been checked; it keeps the seed global-once.
-fn ast_should_seed_sync_import(a &flat.FlatAst, end_node int, already_added bool) bool {
-	return !already_added && ast_needs_sync_import(a, end_node)
-		&& !ast_has_import_upto(a, 'sync', end_node)
-}
-
-// ast_should_seed_embed_file_import bounds its scans like
-// ast_should_seed_sync_import.
-fn ast_should_seed_embed_file_import(a &flat.FlatAst, end_node int, already_added bool) bool {
-	return !already_added && ast_needs_embed_file_import(a, end_node)
-		&& !ast_has_import_upto(a, 'v.embed_file', end_node)
 }
 
 fn sync_import_node() flat.Node {
@@ -1610,29 +1766,32 @@ fn embed_file_import_node() flat.Node {
 	}
 }
 
-fn ast_needs_sync_import(a &flat.FlatAst, end_node int) bool {
-	for i in 0 .. end_node {
+fn scan_implicit_imports(a &flat.FlatAst, end_node int, mut scan ImplicitImportScan) {
+	for i in scan.node_idx .. end_node {
 		node := a.nodes[i]
-		if node.kind == .lock_expr {
-			return true
+		if node.kind == .import_decl {
+			if node.value == 'sync' {
+				scan.has_sync = true
+			} else if node.value == 'v.embed_file' {
+				scan.has_embed_import = true
+			}
 		}
-		if node.kind == .field_decl && type_text_is_shared(node.typ) {
-			return true
+		if !scan.needs_sync {
+			if node.kind == .lock_expr
+				|| (node.kind == .field_decl && type_text_is_shared(node.typ))
+				|| (node.kind == .struct_init && node.value.starts_with('chan '))
+				|| (node.kind == .infix && node.op == .arrow)
+				|| (node.kind == .prefix && node.op == .arrow)
+				|| (node.typ.len > 0 && type_text_is_channel(node.typ)) {
+				scan.needs_sync = true
+			}
 		}
-		if node.kind == .struct_init && node.value.starts_with('chan ') {
-			return true
-		}
-		if node.kind == .infix && node.op == .arrow {
-			return true
-		}
-		if node.kind == .prefix && node.op == .arrow {
-			return true
-		}
-		if type_text_is_channel(node.typ) {
-			return true
+		if !scan.needs_embed && node.kind == .struct_init
+			&& node.value == 'embed_file.EmbedFileData' {
+			scan.needs_embed = true
 		}
 	}
-	return false
+	scan.node_idx = end_node
 }
 
 fn type_text_is_channel(typ string) bool {
@@ -1649,31 +1808,6 @@ fn type_text_is_channel(typ string) bool {
 		break
 	}
 	return clean.starts_with('chan ') || clean == 'chan'
-}
-
-fn ast_needs_embed_file_import(a &flat.FlatAst, end_node int) bool {
-	for i in 0 .. end_node {
-		node := a.nodes[i]
-		if node.kind == .struct_init && node.value == 'embed_file.EmbedFileData' {
-			return true
-		}
-	}
-	return false
-}
-
-// ast_has_import_upto reports whether an import of name already exists among the
-// first end_node nodes. The wave seeds bound this to a module's serial boundary
-// so later modules parsed into the same wave cannot suppress an earlier module's
-// synthetic import; synthetic nodes appended past that boundary are tracked by
-// the caller's already_added flag instead.
-fn ast_has_import_upto(a &flat.FlatAst, name string, end_node int) bool {
-	for i in 0 .. end_node {
-		node := a.nodes[i]
-		if node.kind == .import_decl && node.value == name {
-			return true
-		}
-	}
-	return false
 }
 
 fn type_text_is_shared(raw string) bool {
@@ -1776,8 +1910,10 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	// wave the synthetic nodes are only spliced in after every boundary has been
 	// checked, so a later module's bounded already-imported scan cannot yet see an
 	// earlier module's pending seed; the flags stand in for it.
-	mut synthetic_sync_added := false
-	mut synthetic_embed_file_added := false
+	mut implicit_imports := ImplicitImportScan{}
+	scan_implicit_imports(a, a.nodes.len, mut implicit_imports)
+	mut synthetic_sync_added := implicit_imports.has_sync
+	mut synthetic_embed_file_added := implicit_imports.has_embed_import
 	for {
 		// Collect one wave: every not-yet-parsed module imported by the nodes
 		// scanned so far. Parsing appends at the end of the node array and the
@@ -1879,14 +2015,16 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			} else {
 				wave_end_nodes
 			}
-			if ast_should_seed_sync_import(a, region_end, synthetic_sync_added) {
+			scan_implicit_imports(a, region_end, mut implicit_imports)
+			if !synthetic_sync_added && implicit_imports.needs_sync && !implicit_imports.has_sync {
 				insertions << SyntheticInsertion{
 					pos:  region_end
 					node: sync_import_node()
 				}
 				synthetic_sync_added = true
 			}
-			if ast_should_seed_embed_file_import(a, region_end, synthetic_embed_file_added) {
+			if !synthetic_embed_file_added && implicit_imports.needs_embed
+				&& !implicit_imports.has_embed_import {
 				insertions << SyntheticInsertion{
 					pos:  region_end
 					node: embed_file_import_node()
@@ -1896,6 +2034,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			module_start = module_file_end
 		}
 		insert_synthetic_imports(mut a, insertions)
+		implicit_imports.node_idx += insertions.len
 	}
 	return was_parallel
 }

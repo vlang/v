@@ -135,6 +135,7 @@ mut:
 	compiler_vroot               string
 	compiler_vexe                string
 	c99_mode                     bool
+	skip_generics                bool
 	cur_fn_name                  string
 	cur_param_names              []string
 	cur_param_type_values        []types.Type
@@ -226,6 +227,12 @@ pub fn (mut g FlatGen) set_c99_mode(enabled bool) {
 // set_prealloc marks the build as using the -prealloc bump arena.
 pub fn (mut g FlatGen) set_prealloc(on bool) {
 	g.prealloc = on
+}
+
+// set_skip_generics removes generic-only metadata work when reachability proved
+// that the generated program has no generic instantiations.
+pub fn (mut g FlatGen) set_skip_generics(on bool) {
+	g.skip_generics = on
 }
 
 fn (mut g FlatGen) push_scope() {
@@ -648,8 +655,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.has_builtins = g.tc.has_builtins
 	g.collect_gen_info()
 	g.precompute_shared_param_index()
-	g.precompute_non_generic_fn_index()
-	g.precompute_generic_fn_key_index()
+	if !g.skip_generics {
+		g.precompute_non_generic_fn_index()
+		g.precompute_generic_fn_key_index()
+	}
 	// In the parallel path the fixed-storage scan runs on a helper thread,
 	// overlapped with the fn-item collection and parallel pre-seeding.
 	// The master emits selectors/inits itself (serial regions, postamble), so
@@ -669,7 +678,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.preseed_global_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
 	g.preseed_libc_compat_fns()
-	g.precompute_generic_method_candidate_index()
+	if !g.skip_generics {
+		g.precompute_generic_method_candidate_index()
+	}
 	// Decide fixed-array return wrappers before generating function bodies, so
 	// signatures, returns and call sites all agree on the wrapped types.
 	g.populate_fixed_array_ret_wrappers()
@@ -882,12 +893,20 @@ fn (mut g FlatGen) collect_gen_info() {
 	mut preferred_shared_fn_params := map[string][]bool{}
 	for node_idx in 0 .. g.a.nodes.len {
 		node := g.a.nodes[node_idx]
-		kind_id := node_kind_id(node)
 		if node.kind == .string_literal {
 			g.intern_string(node.value)
 		} else if node.kind == .string_interp && node.children_count == 0 {
 			g.intern_string('')
 		}
+		match node.kind {
+			.file, .module_decl, .fn_decl, .struct_decl, .global_decl, .const_decl, .enum_decl,
+			.interface_decl, .import_decl, .directive {}
+			else {
+				continue
+			}
+		}
+
+		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_file = node.value
 			g.note_compiler_source_file(node.value)
@@ -905,6 +924,11 @@ fn (mut g FlatGen) collect_gen_info() {
 		}
 		if kind_id == 61 {
 			full_name := qualify_name_in_module(cur_module, node.value)
+			if g.skip_generics && g.has_used_fn_filter()
+				&& !g.used_fn_contains_in_module(node.value, cur_module) {
+				g.preseed_unused_fn_ptr_param_types(node, cur_module, cur_file)
+				continue
+			}
 			g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
 			typed_params := g.fn_node_param_types(node, cur_module)
 			mut ptypes := []types.Type{cap: int(node.children_count)}
@@ -1155,6 +1179,29 @@ fn (mut g FlatGen) collect_gen_info() {
 	}
 	g.modules['strings'] = 'strings'
 	g.collect_const_init_order_from_files()
+}
+
+fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name string, file string) {
+	typed_params := g.fn_node_param_types(node, module_name)
+	g.tc.cur_module = module_name
+	g.tc.cur_file = file
+	mut param_idx := 0
+	for i in 0 .. node.children_count {
+		child := g.a.child_node(&node, i)
+		if node_kind_id(child) != 75 {
+			continue
+		}
+		raw_type := g.tc.parse_type(child.typ)
+		param_type := if raw_type !is types.Pointer && param_idx < typed_params.len {
+			typed_params[param_idx]
+		} else {
+			raw_type
+		}
+		param_idx++
+		if param_type is types.FnType {
+			g.resolve_fn_ptr_type(g.tc.c_type(param_type))
+		}
+	}
 }
 
 fn (mut g FlatGen) collect_c_flags_from_directives() {
@@ -2303,7 +2350,8 @@ fn (mut g FlatGen) note_compiler_source_file(path string) {
 fn (mut g FlatGen) collect_const_init_order_from_files() {
 	mut seen := map[string]bool{}
 	g.const_init_order = []string{}
-	for node in g.a.nodes {
+	for node_idx in g.tc.top_level_idx {
+		node := g.a.nodes[node_idx]
 		if node_kind_id(node) != 77 || node.children_count == 0 {
 			continue
 		}
@@ -10797,58 +10845,77 @@ fn (mut g FlatGen) fixed_array_compound_literal_expr(val_id flat.NodeId, fixed t
 }
 
 fn (mut g FlatGen) fixed_array_initializer_string(val_id flat.NodeId, fixed types.ArrayFixed) string {
-	if int(val_id) < 0 || int(val_id) >= g.a.nodes.len {
+	mut builder := strings.new_builder(64)
+	if !g.write_fixed_array_initializer(mut builder, val_id, fixed) {
+		unsafe { builder.free() }
 		return ''
+	}
+	result := builder.str()
+	unsafe { builder.free() }
+	return result
+}
+
+fn (mut g FlatGen) write_fixed_array_initializer(mut builder strings.Builder, val_id flat.NodeId, fixed types.ArrayFixed) bool {
+	if int(val_id) < 0 || int(val_id) >= g.a.nodes.len {
+		return false
 	}
 	node := g.a.nodes[int(val_id)]
 	if node.kind in [.ident, .selector] {
 		const_name := g.const_ref_name_from_node(node)
 		if const_name.len > 0 {
 			if const_id := g.const_vals[const_name] {
-				return g.fixed_array_initializer_string(const_id, fixed)
+				return g.write_fixed_array_initializer(mut builder, const_id, fixed)
 			}
 		}
 	}
 	if node.kind == .postfix && node.children_count > 0 {
-		return g.fixed_array_initializer_string(g.a.child(&node, 0), fixed)
+		return g.write_fixed_array_initializer(mut builder, g.a.child(&node, 0), fixed)
 	}
 	if node.kind == .cast_expr && node.children_count > 0 {
-		return g.fixed_array_initializer_string(g.a.child(&node, 0), fixed)
+		return g.write_fixed_array_initializer(mut builder, g.a.child(&node, 0), fixed)
 	}
 	if node.kind == .array_init && node.children_count == 0 {
-		return '{0}'
+		builder.write_string('{0}')
+		return true
 	}
 	if node.kind != .array_literal {
-		return ''
+		return false
 	}
-	mut parts := []string{}
+	builder.write_u8(`{`)
 	for i in 0 .. node.children_count {
+		if i > 0 {
+			builder.write_string(', ')
+		}
 		child_id := g.a.child(&node, i)
 		if fixed.elem_type is types.ArrayFixed {
-			parts << g.fixed_array_initializer_string(child_id, fixed.elem_type)
+			g.write_fixed_array_initializer(mut builder, child_id, fixed.elem_type)
 		} else {
-			parts << g.fixed_array_elem_initializer_string(child_id, fixed.elem_type)
+			g.write_fixed_array_elem_initializer(mut builder, child_id, fixed.elem_type)
 		}
 	}
-	return '{${parts.join(', ')}}'
+	builder.write_u8(`}`)
+	return true
 }
 
-fn (mut g FlatGen) fixed_array_elem_initializer_string(val_id flat.NodeId, elem_type types.Type) string {
+fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builder, val_id flat.NodeId, elem_type types.Type) {
 	if int(val_id) < 0 || int(val_id) >= g.a.nodes.len {
-		return '0'
+		builder.write_u8(`0`)
+		return
 	}
 	node := g.a.nodes[int(val_id)]
 	if g.is_const_expr(val_id) && !(node.kind == .prefix && node.op == .amp) {
 		const_val := g.const_expr_to_string(val_id, []string{})
 		if trimmed_space(const_val).len > 0 {
-			return const_val
+			builder.write_string(const_val)
+			return
 		}
 	}
 	expr := g.expr_to_string_with_expected_type(val_id, elem_type)
 	if trimmed_space(expr).len > 0 {
-		return expr
+		builder.write_string(expr)
+		return
 	}
-	return '0'
+	builder.write_u8(`0`)
 }
 
 fn (mut g FlatGen) precompute_consts() string {
