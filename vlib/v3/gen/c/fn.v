@@ -4,10 +4,9 @@ import strings
 import v3.flat
 import v3.types
 
-// Keep spawned pthread stacks compact for worker-heavy ownership programs.
-// The old 8 MiB setting multiplied resident memory without being exercised by
-// the translated search and compiler workloads.
-const spawn_thread_stack_size = 512 * 1024
+// Match the previous spawned pthread stack size so recursive workers and
+// functions with large stack locals do not regress at spawn sites.
+const spawn_thread_stack_size = 8 * 1024 * 1024
 
 struct TestHarnessFn {
 	name   string
