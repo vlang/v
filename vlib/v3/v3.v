@@ -24,6 +24,8 @@ $if !skip_wasm ? {
 	import v3.gen.wasm
 }
 
+const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
+
 struct V3ModuleCacheState {
 	manager             modulecache.Manager
 	bundle_sources      []string
@@ -2301,7 +2303,7 @@ fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool, builtin_
 	// these boundaries the checker assigns them to the last parsed user file.
 	a.nodes << flat.Node{
 		kind:  .file
-		value: os.join_path(builtin_dir, '.v3_cache_bundle_imports.vh')
+		value: cache_bundle_import_file(builtin_dir)
 	}
 	a.nodes << flat.Node{
 		kind:  .module_decl
@@ -2317,6 +2319,10 @@ fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool, builtin_
 			typ:   import_path.all_after_last('.')
 		}
 	}
+}
+
+fn cache_bundle_import_file(builtin_dir string) string {
+	return os.join_path_single(builtin_dir, cache_bundle_import_file_name)
 }
 
 fn ast_needs_sync_import(a &flat.FlatAst, end_node int) bool {
@@ -2476,6 +2482,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut module_path_cache := map[string]string{}
 	mut module_identity_cache := map[string]string{}
 	mut cached_header_source_contexts := map[string]string{}
+	bundle_import_file := cache_bundle_import_file(prefs.get_vlib_module_path('builtin'))
 	if builtin_sources := cache_state.module_sources['builtin'] {
 		if builtin_sources.len > 0 {
 			builtin_header := cache_state.manager.entry('builtin', builtin_sources).header
@@ -2540,8 +2547,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			importing_file := cached_header_source_contexts[cur_file] or {
 				if cur_file.len > 0 { cur_file } else { first_file }
 			}
-			mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
-				project_root, mut module_path_cache)
+			is_bundle_warmup_import := cur_module == 'builtin' && cur_file == bundle_import_file
+				&& mod_name in modulecache.builtin_bundle_imports
+			mod_dir := if is_bundle_warmup_import {
+				prefs.get_vlib_module_path(mod_name)
+			} else {
+				resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
+					project_root, mut module_path_cache)
+			}
 			module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
 				project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
 			if module_identity.len > 0 {

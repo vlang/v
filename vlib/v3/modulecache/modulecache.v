@@ -92,8 +92,8 @@ pub fn (m &Manager) object_entry(module_name string, source_files []string, comp
 	}
 }
 
-// source_signature hashes selected source paths, contents, compile-time environment values,
-// and pkg-config probe results in stable order.
+// source_signature hashes selected source paths, contents, resolved module roots,
+// compile-time environment values, and pkg-config probe results in stable order.
 pub fn source_signature(source_files []string) string {
 	mut files := source_files.clone()
 	files.sort()
@@ -108,6 +108,22 @@ pub fn source_signature(source_files []string) string {
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
+		if source.contains('@VMODROOT') || source.contains('@VROOT') {
+			root, vmod_file := signature_vmod_root(file)
+			hash = hash_bytes(hash, [u8(0xfc)])
+			hash = hash_bytes(hash, root.bytes())
+			hash = hash_bytes(hash, [u8(0)])
+			if vmod_file.len > 0 {
+				vmod_content := os.read_bytes(vmod_file) or { return '' }
+				hash = hash_bytes(hash, [u8(1)])
+				hash = hash_bytes(hash, vmod_file.bytes())
+				hash = hash_bytes(hash, [u8(0)])
+				hash = hash_bytes(hash, vmod_content)
+			} else {
+				hash = hash_bytes(hash, [u8(0)])
+			}
+			hash = hash_bytes(hash, [u8(0xff)])
+		}
 		for name in compile_time_env_names(source) {
 			env_names[name] = true
 		}
@@ -135,6 +151,23 @@ pub fn source_signature(source_files []string) string {
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	return hash.hex()
+}
+
+fn signature_vmod_root(source_file string) (string, string) {
+	mut dir := os.dir(os.real_path(source_file))
+	original_dir := dir
+	for dir.len > 0 {
+		vmod_file := os.join_path_single(dir, 'v.mod')
+		if os.exists(vmod_file) {
+			return os.real_path(dir), os.real_path(vmod_file)
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return os.real_path(original_dir), ''
 }
 
 fn compile_time_env_names(source string) []string {
