@@ -226,7 +226,7 @@ fn (mut t Transformer) lower_map_membership_expr(map_id flat.NodeId, key_id flat
 }
 
 // try_lower_map_index_expr supports try lower map index expr handling for Transformer.
-fn (mut t Transformer) try_lower_map_index_expr(_id flat.NodeId, node flat.Node) ?flat.NodeId {
+fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.kind != .index || node.children_count < 2 || node.value == 'range' {
 		return none
 	}
@@ -244,12 +244,55 @@ fn (mut t Transformer) try_lower_map_index_expr(_id flat.NodeId, node flat.Node)
 	map_source_id := t.const_expr_for_ident(base_id) or { base_id }
 	map_expr := t.stable_expr_for_reuse(map_source_id)
 	key_name := t.new_temp('map_key')
-	zero_name := t.new_temp('map_zero')
 	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
 		key_type), t.map_key_storage_type(key_type))
+	if !isnil(t.tc) && t.tc.ownership_index_read_moves_value(id)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type)) {
+		return t.lower_owned_map_index_move(map_source_id, map_expr, base_type, key_name,
+			value_type)
+	}
+	zero_name := t.new_temp('map_zero')
 	t.pending_stmts << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type),
 		value_type)
 	return t.make_map_get_expr(map_expr, base_type, key_name, zero_name, value_type)
+}
+
+// lower_owned_map_index_move materializes an indexed value that ownership analysis
+// consumed, then clears the stored value so the map destructor cannot destroy it again.
+fn (mut t Transformer) lower_owned_map_index_move(source_id flat.NodeId, map_expr flat.NodeId, map_type string, key_name string, value_type string) flat.NodeId {
+	ptr_name := t.new_temp('owned_index_map_ptr')
+	result_name := t.new_temp('owned_index_map_value')
+	ptr := t.make_map_get_check_expr(map_expr, map_type, key_name)
+	t.pending_stmts << t.make_decl_assign_typed(ptr_name, ptr, 'voidptr')
+	t.pending_stmts << t.make_decl_assign_typed(result_name, t.zero_value_for_type(value_type),
+		value_type)
+	clean_value_type := if t.is_fixed_array_type(value_type) {
+		fixed_array_canonical_type(value_type)
+	} else {
+		value_type
+	}
+	stored_read := t.make_prefix(.mul, t.make_cast('&${clean_value_type}', t.make_ident(ptr_name),
+		'&${clean_value_type}'))
+	stored_write := t.make_prefix(.mul, t.make_cast('&${clean_value_type}', t.make_ident(ptr_name),
+		'&${clean_value_type}'))
+	body := [t.make_assign(t.make_ident(result_name), stored_read),
+		t.make_assign(stored_write, t.zero_value_for_type(value_type))]
+	cond := t.make_infix(.ne, t.make_ident(ptr_name), t.a.add(.nil_literal))
+	start := t.a.children.len
+	t.a.children << cond
+	t.a.children << t.make_block(body)
+	t.pending_stmts << t.a.add_node(flat.Node{
+		kind:                 .if_expr
+		children_start:       start
+		children_count:       2
+		skip_ownership_drops: true
+	})
+	if !map_type.starts_with('&') && !t.expr_can_take_address(source_id) {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(map_expr), 'void'))
+	}
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), value_type)
+	return result
 }
 
 // is_map_index_or_expr reports whether is map index or expr applies in transform.

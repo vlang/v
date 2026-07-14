@@ -7654,7 +7654,7 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		return lowered
 	}
 	if lowered := t.lower_gated_scalar_index(node) {
-		return lowered
+		return t.lower_owned_array_index_move(id, lowered)
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count)}
 	mut changed := false
@@ -7689,7 +7689,7 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		if index_typ.len > 0 {
 			t.set_node_typ(int(id), index_typ)
 		}
-		return id
+		return t.lower_owned_array_index_move(id, id)
 	}
 	start := t.a.children.len
 	for nc in new_children {
@@ -7704,7 +7704,56 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 		value:          node.value
 		typ:            index_typ
 	})
-	return new_id
+	return t.lower_owned_array_index_move(id, new_id)
+}
+
+// lower_owned_array_index_move materializes an indexed value that ownership analysis
+// consumed, then clears the source slot so the enclosing container cannot destroy it again.
+fn (mut t Transformer) lower_owned_array_index_move(source_id flat.NodeId, index_id flat.NodeId) flat.NodeId {
+	if isnil(t.tc) || !t.tc.ownership_index_read_moves_value(source_id) || int(index_id) < 0 {
+		return index_id
+	}
+	index_node := t.a.nodes[int(index_id)]
+	if index_node.kind != .index || index_node.value == 'range' || index_node.children_count < 2 {
+		return index_id
+	}
+	base_id := t.a.child(&index_node, 0)
+	index_value_id := t.a.child(&index_node, 1)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.original_expr_type(base_id)
+	}
+	is_pointer := base_type.starts_with('&')
+	clean_base_type := t.normalize_type_alias(base_type.trim_left('&'))
+	if !clean_base_type.starts_with('[]') && !t.is_fixed_array_type(clean_base_type) {
+		return index_id
+	}
+	elem_type := t.node_type(index_id)
+	if elem_type.len == 0 || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+		return index_id
+	}
+	source_is_owned_temporary := !is_pointer && !t.expr_can_take_address(base_id)
+	stable_base := t.stable_transformed_expr_for_reuse(base_id, base_type,
+		'owned_index_array_source')
+	mut array_value := stable_base
+	if is_pointer {
+		array_value = t.make_prefix(.mul, stable_base)
+		t.set_node_typ(int(array_value), clean_base_type)
+	}
+	index_value := t.stable_transformed_expr_for_reuse(index_value_id, 'int',
+		'owned_index_array_index')
+	slot := t.make_index(array_value, index_value, elem_type)
+	result_name := t.new_temp('owned_index_value')
+	t.pending_stmts << t.make_decl_assign_typed(result_name, slot, elem_type)
+	t.pending_stmts << t.make_index_assign(t.make_index(array_value, index_value, elem_type),
+		t.zero_value_for_type(elem_type))
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(array_value),
+			'void'))
+	}
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), elem_type)
+	return result
 }
 
 // transform_string_interp transforms transform string interp data for transform.

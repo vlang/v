@@ -27,10 +27,12 @@ pub fn drop_owned[T](value T) {
 			}
 		}
 	} $else $if T.unaliased_typ is $array_dynamic {
-		for i in 0 .. owned.len {
-			drop_owned(owned[i])
-		}
 		mut raw_array := unsafe { &array(owned) }
+		if !raw_array.flags.has(.is_slice) {
+			for i in 0 .. owned.len {
+				drop_owned(owned[i])
+			}
+		}
 		unsafe { raw_array.free() }
 	} $else $if T.unaliased_typ is $array_fixed {
 		for i in 0 .. owned.len {

@@ -222,6 +222,7 @@ mut:
 	pending_value_branch_groups      []OwnershipBranchGroup
 	pending_loop_label               string
 	deferred_aggregate_consumption   map[int]int
+	index_move_reads                 map[int]bool
 	scope_frames                     []OwnershipScopeFrame
 	suppressed_checks                int
 	path_active                      bool
@@ -305,6 +306,7 @@ fn new_ownership_state() &OwnershipState {
 		pending_value_branch_groups:      []OwnershipBranchGroup{}
 		pending_loop_label:               ''
 		deferred_aggregate_consumption:   map[int]int{}
+		index_move_reads:                 map[int]bool{}
 		scope_frames:                     []OwnershipScopeFrame{}
 		suppressed_checks:                0
 		path_active:                      true
@@ -410,6 +412,7 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 		pending_value_branch_groups:      []OwnershipBranchGroup{}
 		pending_loop_label:               ''
 		deferred_aggregate_consumption:   map[int]int{}
+		index_move_reads:                 map[int]bool{}
 		scope_frames:                     []OwnershipScopeFrame{}
 		suppressed_checks:                0
 		path_active:                      true
@@ -635,6 +638,11 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	ownership_merge_bool_map(mut dst.drop_type_names, src.drop_type_names)
 	ownership_merge_bool_map(mut dst.value_receiver_methods, src.value_receiver_methods)
 	ownership_merge_string_map(mut dst.owned_globals, src.owned_globals)
+	for id, moved in src.index_move_reads {
+		if moved {
+			dst.index_move_reads[id] = true
+		}
+	}
 }
 
 fn (mut tc TypeChecker) ownership_state() &OwnershipState {
@@ -9914,6 +9922,7 @@ fn (mut tc TypeChecker) ownership_move_var_result(name string, target string, po
 		return false
 	}
 	tname := st.owned_var_types[name] or { 'string' }
+	tc.ownership_mark_index_move_read(name, pos)
 	st.owned_vars.delete(name)
 	st.owned_var_types.delete(name)
 	st.moved_vars[name] = MovedVar{
@@ -9957,7 +9966,39 @@ fn (mut tc TypeChecker) ownership_move_overlapping_dynamic_storage(source_name s
 			moved_types << type_name
 		}
 	}
+	if moved_types.len > 0 {
+		tc.ownership_mark_index_move_read(source_name, pos)
+	}
 	return moved_types
+}
+
+fn (mut tc TypeChecker) ownership_mark_index_move_read(name string, pos flat.NodeId) {
+	if name.len == 0 || !name.contains('[') || !tc.valid_node_id(pos) {
+		return
+	}
+	tc.ownership_mark_index_move_read_in(pos, name)
+}
+
+fn (mut tc TypeChecker) ownership_mark_index_move_read_in(id flat.NodeId, name string) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .index && node.value != 'range' && tc.ownership_expr_ident_name(id) == name
+		&& tc.ownership_type_requires_destruction(tc.resolve_type(id)) {
+		tc.ownership_state().index_move_reads[int(id)] = true
+		return
+	}
+	for i in 0 .. node.children_count {
+		tc.ownership_mark_index_move_read_in(tc.a.child(&node, i), name)
+	}
+}
+
+// ownership_index_read_moves_value reports whether ownership analysis consumed the
+// indexed storage at `id`. The transformer uses this to clear the source slot after
+// materializing the moved value.
+pub fn (tc &TypeChecker) ownership_index_read_moves_value(id flat.NodeId) bool {
+	return int(id) >= 0 && tc.ownership != unsafe { nil } && tc.ownership.index_move_reads[int(id)]
 }
 
 fn (mut tc TypeChecker) ownership_owned_dynamic_overlap_names(source_name string) []string {
