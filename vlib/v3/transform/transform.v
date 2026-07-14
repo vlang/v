@@ -5676,6 +5676,9 @@ fn (t &Transformer) find_multi_return_call_types(node flat.Node, expected_count 
 				has_ambiguous_candidate = true
 				continue
 			}
+			if candidate.starts_with('.') && !indexed.ends_with(candidate) {
+				continue
+			}
 			if ret := t.tc.fn_ret_types[indexed] {
 				if items := multi_return_types_from_type(ret, expected_count) {
 					return items
