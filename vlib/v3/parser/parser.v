@@ -2748,6 +2748,30 @@ fn (p &Parser) resolve_comptime_at_values(cond string) string {
 			}
 			name := cond[start..i]
 			match name {
+				'@FILE' {
+					write_comptime_cond_string(mut out, os.real_path(p.cur_file))
+				}
+				'@DIR' {
+					write_comptime_cond_string(mut out, os.real_path(os.dir(p.cur_file)))
+				}
+				'@VMODROOT' {
+					write_comptime_cond_string(mut out,
+						os.real_path(vmod_root_for_file(p.cur_file)))
+				}
+				'@VEXEROOT' {
+					write_comptime_cond_string(mut out, p.prefs.vroot)
+				}
+				'@VEXE' {
+					vexe := if p.prefs.vexe.len > 0 { p.prefs.vexe } else { p.prefs.vroot + '/v' }
+					write_comptime_cond_string(mut out, vexe)
+				}
+				'@LINE' {
+					write_comptime_cond_string(mut out, p.line_nr_for_pos(p.tok_pos).str())
+				}
+				'@FILE_LINE' {
+					write_comptime_cond_string(mut out,
+						'${os.real_path(p.cur_file)}:${p.line_nr_for_pos(p.tok_pos)}')
+				}
 				'@METHOD' {
 					write_comptime_cond_string(mut out, method_name)
 				}
@@ -2759,6 +2783,18 @@ fn (p &Parser) resolve_comptime_at_values(cond string) string {
 				}
 				'@FN' {
 					write_comptime_cond_string(mut out, fn_name)
+				}
+				'@LOCATION' {
+					mut location_method := '${module_name}.${fn_name}'
+					if p.cur_struct.len > 0 {
+						if p.cur_method_is_static {
+							location_method = '${module_name}.${p.cur_struct}.${fn_name} (static)'
+						} else {
+							location_method = '${module_name}.${p.cur_struct}{}.${fn_name}'
+						}
+					}
+					write_comptime_cond_string(mut out,
+						'${p.cur_file}:${p.line_nr_for_pos(p.tok_pos)}, ${location_method}')
 				}
 				'@BUILD_DATE' {
 					write_comptime_cond_string(mut out, p.prefs.build_date)
@@ -2780,6 +2816,9 @@ fn (p &Parser) resolve_comptime_at_values(cond string) string {
 				}
 				'@PLATFORM' {
 					write_comptime_cond_string(mut out, @PLATFORM)
+				}
+				'@VCURRENTHASH', '@VHASH' {
+					write_comptime_cond_string(mut out, '')
 				}
 				else {
 					out.write_string(name)

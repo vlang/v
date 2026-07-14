@@ -1926,6 +1926,47 @@ fn test_build_pseudo_values_expand_in_comptime_conditions() {
 	assert out == 'timestamp|date|time'
 }
 
+fn test_path_pseudo_values_expand_in_comptime_conditions() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'path_pseudo_values_in_comptime_conditions', "fn main() {
+	mut rows := []string{}
+	\$if @FILE != '@FILE' {
+		rows << 'file'
+	}
+	\$if @DIR != '@DIR' {
+		rows << 'dir'
+	}
+	\$if @LINE != '@LINE' {
+		rows << 'line'
+	}
+	\$if @FILE_LINE != '@FILE_LINE' {
+		rows << 'file-line'
+	}
+	\$if @VEXE != '@VEXE' {
+		rows << 'vexe'
+	}
+	\$if @VEXEROOT != '@VEXEROOT' {
+		rows << 'vexeroot'
+	}
+	\$if @VMODROOT != '@VMODROOT' {
+		rows << 'vmodroot'
+	}
+	\$if @LOCATION != '@LOCATION' {
+		rows << 'location'
+	}
+	\$if @VHASH == '' && @VCURRENTHASH == '' {
+		rows << 'hashes'
+	}
+	\$match @FILE {
+		'@FILE' { rows << 'wrong-match' }
+		\$else { rows << 'match' }
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'file|dir|line|file-line|vexe|vexeroot|vmodroot|location|hashes|match'
+}
+
 fn test_comptime_define_builtin_is_not_resolved_as_cached_local() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'define_builtin_cached_local', "fn main() {
