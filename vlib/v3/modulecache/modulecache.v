@@ -723,6 +723,7 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 	}
 	node := a.nodes[int(id)]
 	if node.generic_params.len > 0 || fn_decl_has_generic_receiver(a, node)
+		|| (node.kind == .const_decl && const_decl_has_unserializable_initializer(a, node))
 		|| node.kind == .comptime_if {
 		return true
 	}
@@ -731,6 +732,16 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 			if declaration_node_needs_source(a, a.child(&node, i)) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+fn const_decl_has_unserializable_initializer(a &flat.FlatAst, node flat.Node) bool {
+	for i in 0 .. node.children_count {
+		field := a.child_node(&node, i)
+		if field.children_count > 0 && !expr_can_serialize(a, a.child(field, 0)) {
+			return true
 		}
 	}
 	return false
@@ -893,7 +904,7 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool) strin
 			receiver_name := if receiver.value.len > 0 { receiver.value } else { 'it' }
 			mut receiver_decl_type := receiver.typ
 			mut receiver_prefix := ''
-			if receiver_decl_type.starts_with('&') || receiver.is_mut {
+			if receiver.is_mut {
 				receiver_prefix = 'mut '
 				receiver_decl_type = receiver_decl_type.trim_left('&').trim_space()
 			} else if receiver_decl_type.starts_with('shared ') {
@@ -1243,6 +1254,57 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 			''
 		}
 	}
+}
+
+fn expr_can_serialize(a &flat.FlatAst, id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return false
+	}
+	node := a.nodes[int(id)]
+	return match node.kind {
+		.int_literal, .float_literal, .bool_literal, .ident, .char_literal, .string_literal,
+		.nil_literal, .none_expr, .enum_val, .sizeof_expr {
+			true
+		}
+		.paren, .prefix, .postfix, .typeof_expr {
+			node.children_count == 1 && expr_can_serialize(a, a.child(&node, 0))
+		}
+		.infix {
+			node.children_count == 2 && expr_children_can_serialize(a, node)
+		}
+		.selector {
+			node.children_count == 0
+				|| (node.children_count == 1 && expr_can_serialize(a, a.child(&node, 0)))
+		}
+		.call, .array_literal, .array_init, .struct_init {
+			expr_children_can_serialize(a, node)
+		}
+		.map_init {
+			node.children_count % 2 == 0 && expr_children_can_serialize(a, node)
+		}
+		.cast_expr, .as_expr {
+			node.children_count == 1 && expr_can_serialize(a, a.child(&node, 0))
+		}
+		.field_init {
+			node.children_count == 0
+				|| (node.children_count == 1 && expr_can_serialize(a, a.child(&node, 0)))
+		}
+		.block {
+			node.children_count == 1 && expr_can_serialize(a, a.child(&node, 0))
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn expr_children_can_serialize(a &flat.FlatAst, node flat.Node) bool {
+	for i in 0 .. node.children_count {
+		if !expr_can_serialize(a, a.child(&node, i)) {
+			return false
+		}
+	}
+	return true
 }
 
 fn array_init_expr_text(a &flat.FlatAst, node flat.Node) string {
