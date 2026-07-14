@@ -1148,8 +1148,9 @@ fn interface_text(a &flat.FlatAst, node flat.Node) string {
 			mut params := []string{}
 			for pi in 0 .. field.children_count {
 				param := a.child_node(field, pi)
-				prefix := if param.op == .amp || param.typ.starts_with('&') { 'mut ' } else { '' }
-				params << '${prefix}arg${pi} ${param.typ.trim_left('&')}'
+				prefix := if param.op == .amp { 'mut ' } else { '' }
+				param_type := if param.op == .amp { param.typ.trim_left('&') } else { param.typ }
+				params << '${prefix}arg${pi} ${param_type}'
 			}
 			ret := if field.typ.len > 0 { ' ${field.typ}' } else { '' }
 			out.writeln('\t${field.value}(${params.join(', ')})${ret}')
