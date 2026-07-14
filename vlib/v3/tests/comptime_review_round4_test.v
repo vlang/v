@@ -2002,6 +2002,57 @@ fn test_path_pseudo_values_expand_in_comptime_conditions() {
 	assert out == 'file|dir|line|file-line|vexe|vexeroot|vmodroot|location|hashes|match'
 }
 
+fn test_comptime_line_pseudo_values_use_their_token_positions() {
+	v3_bin := round4_build_v3()
+	if_name := 'comptime_line_pseudo_token_positions_if'
+	src_path := '${round4_tmp_path(if_name)}.v'
+	real_src_path := os.join_path(os.real_path(os.dir(src_path)), os.file_name(src_path))
+	mut lines := ['fn main() {', '\tmut rows := []string{}']
+	if_line := lines.len + 1
+	lines << "\t\$if @LINE == '${if_line}'"
+	lines << '\t{'
+	lines << "\t\trows << 'if-line'"
+	lines << '\t}'
+	file_line := lines.len + 1
+	lines << "\t\$if @FILE_LINE == '${real_src_path}:${file_line}'"
+	lines << '\t{'
+	lines << "\t\trows << 'if-file-line'"
+	lines << '\t}'
+	lines << "\tprintln(rows.join('|'))"
+	lines << '}'
+	out := round4_run_good(v3_bin, if_name, lines.join('\n') + '\n')
+	assert out == 'if-line|if-file-line'
+
+	match_name := 'comptime_line_pseudo_token_positions_match'
+	mut match_lines := ['fn main() {', '\tmut rows := []string{}']
+	match_line := match_lines.len + 1
+	match_lines << '\t\$match @LINE'
+	match_lines << '\t{'
+	match_lines << "\t\t'${match_line}' { rows << 'match-line' }"
+	match_lines << "\t\t\$else { rows << 'wrong-match-line' }"
+	match_lines << '\t}'
+	match_lines << "\tprintln(rows.join('|'))"
+	match_lines << '}'
+	match_out := round4_run_good(v3_bin, match_name, match_lines.join('\n') + '\n')
+	assert match_out == 'match-line'
+
+	match_file_name := 'comptime_line_pseudo_token_positions_match_file'
+	match_file_src_path := '${round4_tmp_path(match_file_name)}.v'
+	match_file_real_src_path := os.join_path(os.real_path(os.dir(match_file_src_path)),
+		os.file_name(match_file_src_path))
+	mut match_file_lines := ['fn main() {', '\tmut rows := []string{}']
+	match_file_line := match_file_lines.len + 1
+	match_file_lines << '\t\$match @FILE_LINE'
+	match_file_lines << '\t{'
+	match_file_lines << "\t\t'${match_file_real_src_path}:${match_file_line}' { rows << 'match-file-line' }"
+	match_file_lines << "\t\t\$else { rows << 'wrong-match-file-line' }"
+	match_file_lines << '\t}'
+	match_file_lines << "\tprintln(rows.join('|'))"
+	match_file_lines << '}'
+	match_file_out := round4_run_good(v3_bin, match_file_name, match_file_lines.join('\n') + '\n')
+	assert match_file_out == 'match-file-line'
+}
+
 fn test_comptime_define_builtin_is_not_resolved_as_cached_local() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'define_builtin_cached_local', "fn main() {

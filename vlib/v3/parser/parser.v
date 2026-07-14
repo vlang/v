@@ -2536,6 +2536,9 @@ fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
 fn (mut p Parser) parse_comptime_match(is_top_level bool) flat.NodeId {
 	p.next() // skip 'match'
 	subject, subject_is_literal := p.parse_comptime_match_subject()
+	for p.tok == .semicolon {
+		p.next()
+	}
 	p.check(.lcbr)
 	if subject_is_literal {
 		return p.parse_known_comptime_match_value(subject, is_top_level)
@@ -2590,6 +2593,11 @@ fn (mut p Parser) parse_comptime_match_subject() (string, bool) {
 	if p.tok == .dollar {
 		p.next()
 		return '$' + p.expect_name_or_keyword(), false
+	}
+	if p.tok == .name && p.lit.starts_with('@') {
+		name_pos := p.tok_pos
+		name := p.expect_name()
+		return p.resolve_comptime_at_values_at(name, name_pos), true
 	}
 	if p.tok == .string || p.tok == .char {
 		value := p.comptime_cond_token_text()
@@ -2668,6 +2676,11 @@ fn (mut p Parser) parse_comptime_match_pattern() string {
 		p.next()
 		return '$' + p.expect_name_or_keyword()
 	}
+	if p.tok == .name && p.lit.starts_with('@') {
+		name_pos := p.tok_pos
+		name := p.expect_name()
+		return p.resolve_comptime_at_values_at(name, name_pos)
+	}
 	if p.tok == .string || p.tok == .char {
 		value := p.comptime_cond_token_text()
 		p.next()
@@ -2734,7 +2747,12 @@ fn (mut p Parser) parse_comptime_cond() string {
 	mut cond := strings.new_builder(64)
 	mut prev_tok_str := ''
 	for p.tok != .lcbr && p.tok != .eof {
-		tok_str := p.comptime_cond_token_text()
+		raw_tok_str := p.comptime_cond_token_text()
+		tok_str := if raw_tok_str.starts_with('@') {
+			p.resolve_comptime_at_values_at(raw_tok_str, p.tok_pos)
+		} else {
+			raw_tok_str
+		}
 		if cond.len > 0 && comptime_cond_needs_space(prev_tok_str, tok_str) {
 			cond.write_string(' ')
 		}
@@ -2746,6 +2764,10 @@ fn (mut p Parser) parse_comptime_cond() string {
 }
 
 fn (mut p Parser) resolve_comptime_at_values(cond string) string {
+	return p.resolve_comptime_at_values_at(cond, p.tok_pos)
+}
+
+fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) string {
 	module_name := if p.cur_module.len > 0 { p.cur_module } else { 'main' }
 	fn_name := p.cur_fn.all_after_last('.')
 	method_name := if p.cur_struct.len > 0 { '${p.cur_struct}.${fn_name}' } else { fn_name }
@@ -2808,11 +2830,11 @@ fn (mut p Parser) resolve_comptime_at_values(cond string) string {
 					write_comptime_cond_string(mut out, vexe)
 				}
 				'@LINE' {
-					write_comptime_cond_string(mut out, p.line_nr_for_pos(p.tok_pos).str())
+					write_comptime_cond_string(mut out, p.line_nr_for_pos(pseudo_pos).str())
 				}
 				'@FILE_LINE' {
 					write_comptime_cond_string(mut out,
-						'${os.real_path(p.cur_file)}:${p.line_nr_for_pos(p.tok_pos)}')
+						'${os.real_path(p.cur_file)}:${p.line_nr_for_pos(pseudo_pos)}')
 				}
 				'@METHOD' {
 					write_comptime_cond_string(mut out, method_name)
@@ -2836,7 +2858,7 @@ fn (mut p Parser) resolve_comptime_at_values(cond string) string {
 						}
 					}
 					write_comptime_cond_string(mut out,
-						'${p.cur_file}:${p.line_nr_for_pos(p.tok_pos)}, ${location_method}')
+						'${p.cur_file}:${p.line_nr_for_pos(pseudo_pos)}, ${location_method}')
 				}
 				'@BUILD_DATE' {
 					write_comptime_cond_string(mut out, p.prefs.build_date)
