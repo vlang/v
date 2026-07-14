@@ -2816,6 +2816,9 @@ fn (p &Parser) comptime_cond_token_text() string {
 		}
 	}
 	tok := p.tok
+	if tok == .char {
+		return comptime_cond_string_token_text(p.lit)
+	}
 	if tok == .string {
 		return comptime_cond_string_token_text(p.lit)
 	}

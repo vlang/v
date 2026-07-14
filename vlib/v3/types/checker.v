@@ -15266,14 +15266,6 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
-	// Compile-time selectors are resolved while their enclosing `$for` reflection loop is
-	// unrolled. Their synthetic second child names the field or method metadata variable.
-	if node.value == '$' {
-		for i in 0 .. node.children_count {
-			tc.check_node(tc.a.child(&node, i))
-		}
-		return
-	}
 	base_id := tc.a.child(&node, 0)
 	base := tc.a.nodes[int(base_id)]
 	if tc.is_namespace_selector(node, base) {

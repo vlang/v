@@ -1952,6 +1952,39 @@ fn main() {
 	assert out == 'const-if|local-match'
 }
 
+fn test_comptime_char_literal_operand_is_not_replaced_by_cached_local() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'char_literal_cached_local_collision', "fn main() {
+	a := `b`
+	ch := `a`
+	_ = a
+	\$if ch == `a` {
+		println('ok')
+	} \$else {
+		println('wrong')
+	}
+}
+")
+	assert out == 'ok'
+}
+
+fn test_dynamic_selector_outside_reflection_loop_is_rejected() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'dynamic_selector_outside_reflection_loop', 'struct Item {
+	name string
+}
+
+fn main() {
+	item := Item{
+		name: "Ada"
+	}
+	name := "name"
+	println(item.$(name))
+}
+',
+		'unknown field `$` on `Item`')
+}
+
 fn test_bare_method_data_and_imported_return_type_are_materialized() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'bare_method_data_imported_return', {
