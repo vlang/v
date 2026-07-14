@@ -350,21 +350,13 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 }
 
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
-	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
-	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
-	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
-	mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
-	tc.cur_fn_mut_param_base_types = map[string]Type{}
-	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
-	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
-	tc.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
+	saved_fn_context := tc.fn_context
+	tc.fn_context = new_function_check_context()
 	tc.cur_file = file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope
-	tc.cur_fn_ret_type = tc.parse_type(node.typ)
-	tc.cur_fn_node_id = fn_idx
-	tc.method_value_locals = map[string]bool{}
-	tc.method_value_local_depth = map[string]int{}
+	tc.fn_context.return_type = tc.parse_type(node.typ)
+	tc.fn_context.node_id = fn_idx
 	$if ownership ? {
 		tc.ownership_begin_fn(node)
 	}
@@ -375,24 +367,21 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	}
 	tc.insert_implicit_veb_ctx(node)
 	tc.check_fn_body(node)
-	tc.cur_fn_node_id = -1
+	tc.fn_context.node_id = -1
 	is_disabled_stub := node.value in tc.a.disabled_fns
-	if tc.cur_fn_ret_type !is Unknown && !type_allows_implicit_return(tc.cur_fn_ret_type)
+	if tc.fn_context.return_type !is Unknown
+		&& !type_allows_implicit_return(tc.fn_context.return_type)
 		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.record_error(.return_mismatch,
-			'missing return at end of function `${node.value}`; expected `${tc.cur_fn_ret_type.name()}`',
+			'missing return at end of function `${node.value}`; expected `${tc.fn_context.return_type.name()}`',
 			flat.NodeId(fn_idx))
 	}
 	tc.pop_scope()
 	$if ownership ? {
 		tc.ownership_end_fn()
 	}
-	tc.cur_fn_ret_type = Type(void_)
-	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
-	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
-	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
-	tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
+	tc.fn_context = saved_fn_context
 }
 
 // prewarm_shared_type_cache forces the lazily-built type_cache indexes that
@@ -493,16 +482,9 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.sparse_checking_nodes = map[int]bool{}
 	w.direct_dependencies_by_fn = map[int][]string{}
 	w.method_values_by_fn = map[int][]string{}
-	w.method_value_locals = map[string]bool{}
-	w.method_value_local_depth = map[string]int{}
-	w.cur_fn_mut_param_base_types = map[string]Type{}
-	w.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
-	w.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
-	w.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
+	w.fn_context = new_function_check_context()
 	w.generic_method_value_info = map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
-	w.cur_fn_ret_type = Type(void_)
-	w.cur_fn_node_id = -1
 	$if ownership ? {
 		w.ownership_fork_for_parallel_check(tc)
 	}

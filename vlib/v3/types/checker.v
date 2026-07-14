@@ -263,6 +263,32 @@ struct PendingIerrorError {
 	fn_qname string
 }
 
+// FunctionCheckContext owns all semantic state whose lifetime is one function
+// body. Parallel checker forks replace this value wholesale, so adding a new
+// per-function cache cannot accidentally share its backing storage.
+struct FunctionCheckContext {
+mut:
+	method_value_locals      map[string]bool
+	method_value_local_depth map[string]int
+	node_id                  int = -1
+	mut_param_base_types     map[string]Type
+	mut_param_owners         map[string]ScopeBindingOwner
+	mut_local_owners         map[string]ScopeBindingOwner
+	shared_owners            map[string]ScopeBindingOwner
+	return_type              Type = Type(void_)
+}
+
+fn new_function_check_context() FunctionCheckContext {
+	return FunctionCheckContext{
+		method_value_locals:      map[string]bool{}
+		method_value_local_depth: map[string]int{}
+		mut_param_base_types:     map[string]Type{}
+		mut_param_owners:         map[string]ScopeBindingOwner{}
+		mut_local_owners:         map[string]ScopeBindingOwner{}
+		shared_owners:            map[string]ScopeBindingOwner{}
+	}
+}
+
 // TypeChecker represents type checker data used by types.
 @[heap]
 pub struct TypeChecker {
@@ -345,26 +371,12 @@ pub mut:
 	// markused, and (unlike a call) routes a value-context selector through check_selector.
 	// markused seeds these (keeping the wrapper-only method out of the dead-code pruner)
 	// only when their enclosing function is reachable.
-	method_values_by_fn map[int][]string // enclosing fn node id -> method-value `Type.method` keys
-	// Local variables bound to a method value (`cb := c.report`) in the current function.
-	// Such an alias shares the same per-site static receiver slot as the bare selector, so it
-	// escapes (and corrupts other live callbacks) just like `return c.report`; the escape
-	// checks below treat a reference to one of these locals as a method value. Reset per fn.
-	method_value_locals map[string]bool
-	// Scope depth at which each method-value local was marked, so a reassignment to a
-	// non-method value only clears the marker when it dominates later uses (same-or-shallower
-	// scope); a reassignment in a deeper conditional/loop scope keeps the maybe-method marker.
-	method_value_local_depth        map[string]int
-	cur_fn_node_id                  int = -1
-	cur_fn_mut_param_base_types     map[string]Type
-	cur_fn_mut_param_binding_owners map[string]ScopeBindingOwner
-	cur_fn_mut_local_binding_owners map[string]ScopeBindingOwner
-	cur_fn_shared_binding_owners    map[string]ScopeBindingOwner
-	cur_comptime_variant_loop_vars  []string
-	expr_type_values                []Type // node_id -> complex/contextual resolved type
-	expr_type_set                   []bool
-	checking_nodes                  []bool
-	parallel_check_sparse           bool
+	method_values_by_fn            map[int][]string // enclosing fn node id -> method-value `Type.method` keys
+	cur_comptime_variant_loop_vars []string
+	expr_type_values               []Type // node_id -> complex/contextual resolved type
+	expr_type_set                  []bool
+	checking_nodes                 []bool
+	parallel_check_sparse          bool
 	// Node id range [check_range_lo, check_range_hi] of the fn item currently
 	// being checked. Fn subtrees are disjoint contiguous ranges (each fn_decl at
 	// index i owns (prev_top_level_idx, i]), so while parallel_check_sparse is
@@ -405,7 +417,6 @@ pub mut:
 	// records the node count the index covers.
 	top_level_idx           []int
 	top_level_idx_nodes_len int
-	cur_fn_ret_type         Type = Type(void_)
 	expected_expr_id        int  = -1
 	expected_expr_type      Type = Type(void_)
 	smartcasts              map[string]Type
@@ -415,6 +426,9 @@ pub mut:
 	// TransformForkOverlay and fork_for_parallel_transform.
 	fork_overlay &TransformForkOverlay = unsafe { nil }
 mut:
+	// Includes method-value aliases and binding-owner maps; all backing maps are
+	// replaced together at every function/worker boundary.
+	fn_context FunctionCheckContext
 	type_cache &TypeCache = unsafe { nil }
 }
 
@@ -476,31 +490,26 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		// reset_node_caches (allocating them here too paid for everything
 		// twice), and extend_node_caches grows them on demand for any checker
 		// used without a collect() call.
-		resolved_call_names:             []string{}
-		resolved_call_set:               []bool{}
-		resolved_fn_value_names:         []string{}
-		resolved_fn_value_set:           []bool{}
-		statement_nodes:                 []bool{}
-		direct_dependencies_by_fn:       map[int][]string{}
-		method_values_by_fn:             map[int][]string{}
-		method_value_locals:             map[string]bool{}
-		method_value_local_depth:        map[string]int{}
-		cur_fn_mut_param_base_types:     map[string]Type{}
-		cur_fn_mut_param_binding_owners: map[string]ScopeBindingOwner{}
-		cur_fn_mut_local_binding_owners: map[string]ScopeBindingOwner{}
-		cur_fn_shared_binding_owners:    map[string]ScopeBindingOwner{}
-		expr_type_values:                []Type{}
-		expr_type_set:                   []bool{}
-		checking_nodes:                  []bool{}
-		sparse_resolved_call_names:      map[int]string{}
-		sparse_resolved_fn_values:       map[int]string{}
-		sparse_statement_nodes:          map[int]bool{}
-		sparse_expr_type_values:         map[int]Type{}
-		sparse_checking_nodes:           map[int]bool{}
-		diagnostic_files:                map[string]bool{}
-		selected_file_called_fns:        map[string]bool{}
-		smartcasts:                      map[string]Type{}
-		type_cache:                      &TypeCache{
+		resolved_call_names:        []string{}
+		resolved_call_set:          []bool{}
+		resolved_fn_value_names:    []string{}
+		resolved_fn_value_set:      []bool{}
+		statement_nodes:            []bool{}
+		direct_dependencies_by_fn:  map[int][]string{}
+		method_values_by_fn:        map[int][]string{}
+		fn_context:                 new_function_check_context()
+		expr_type_values:           []Type{}
+		expr_type_set:              []bool{}
+		checking_nodes:             []bool{}
+		sparse_resolved_call_names: map[int]string{}
+		sparse_resolved_fn_values:  map[int]string{}
+		sparse_statement_nodes:     map[int]bool{}
+		sparse_expr_type_values:    map[int]Type{}
+		sparse_checking_nodes:      map[int]bool{}
+		diagnostic_files:           map[string]bool{}
+		selected_file_called_fns:   map[string]bool{}
+		smartcasts:                 map[string]Type{}
+		type_cache:                 &TypeCache{
 			parse_entries:              map[u64]ParseTypeCacheEntry{}
 			c_entries:                  map[string]string{}
 			struct_field_entries:       map[string]Type{}
@@ -2227,11 +2236,11 @@ fn (mut tc TypeChecker) insert_fn_param_binding(p flat.Node) {
 	typ := tc.parse_scope_param_type(p.typ)
 	owner := tc.cur_scope.insert_with_owner(p.value, typ)
 	if p.is_mut {
-		tc.cur_fn_mut_param_base_types[p.value] = mut_param_base_type(typ)
-		tc.cur_fn_mut_param_binding_owners[p.value] = owner
+		tc.fn_context.mut_param_base_types[p.value] = mut_param_base_type(typ)
+		tc.fn_context.mut_param_owners[p.value] = owner
 	}
 	if param_type_text_is_shared(p.typ) {
-		tc.cur_fn_shared_binding_owners[p.value] = owner
+		tc.fn_context.shared_owners[p.value] = owner
 	}
 }
 
@@ -2271,14 +2280,8 @@ pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 			if !tc.should_annotate_fn(node, used_fns) {
 				continue
 			}
-			mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
-			mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
-			mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
-			mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
-			tc.cur_fn_mut_param_base_types = map[string]Type{}
-			tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
-			tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
-			tc.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
+			saved_fn_context := tc.fn_context
+			tc.fn_context = new_function_check_context()
 			tc.cur_scope = tc.file_scope
 			tc.push_scope()
 			for pi in 0 .. node.children_count {
@@ -2293,10 +2296,7 @@ pub fn (mut tc TypeChecker) annotate_types_with_used(used_fns map[string]bool) {
 				}
 			}
 			tc.pop_scope()
-			tc.cur_fn_mut_param_base_types = saved_mut_params.move()
-			tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
-			tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
-			tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
+			tc.fn_context = saved_fn_context
 		}
 	}
 }
@@ -2849,13 +2849,13 @@ pub fn (tc &TypeChecker) direct_dependencies(fn_node_id int) []string {
 }
 
 fn (mut tc TypeChecker) record_direct_dependency(name string) {
-	if tc.cur_fn_node_id < 0 || name.len == 0 {
+	if tc.fn_context.node_id < 0 || name.len == 0 {
 		return
 	}
-	mut dependencies := tc.direct_dependencies_by_fn[tc.cur_fn_node_id] or { []string{} }
+	mut dependencies := tc.direct_dependencies_by_fn[tc.fn_context.node_id] or { []string{} }
 	if name !in dependencies {
 		dependencies << name
-		tc.direct_dependencies_by_fn[tc.cur_fn_node_id] = dependencies
+		tc.direct_dependencies_by_fn[tc.fn_context.node_id] = dependencies
 	}
 }
 
@@ -3025,20 +3025,8 @@ pub fn (mut tc TypeChecker) check_semantics() {
 				tc.check_const_field_values(node)
 			}
 			.fn_decl {
-				mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
-				mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
-				mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
-				mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
-				tc.cur_fn_mut_param_base_types = map[string]Type{}
-				tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
-				tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
-				tc.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 				tc.check_fn_decl_semantics(i, node, tc.cur_file, tc.cur_module)
-				tc.cur_fn_mut_param_base_types = saved_mut_params.move()
-				tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
-				tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
-				tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
 			}
 			.c_fn_decl {
 				if tc.reject_unsupported_generics {
@@ -7343,7 +7331,7 @@ fn (tc &TypeChecker) infix_read_type(id flat.NodeId) Type {
 }
 
 fn (tc &TypeChecker) mut_param_base_for_current_ident(name string, typ Type) ?Type {
-	base := tc.cur_fn_mut_param_base_types[name] or { return none }
+	base := tc.fn_context.mut_param_base_types[name] or { return none }
 	if !tc.lvalue_matches_mut_param(typ, base) {
 		return none
 	}
@@ -7582,16 +7570,12 @@ fn (mut tc TypeChecker) check_defer_stmt(node flat.Node) {
 
 // check_fn_literal validates check fn literal state for types.
 fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
-	saved_ret := tc.cur_fn_ret_type
-	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
-	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
-	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
-	mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
-	tc.cur_fn_mut_param_base_types = map[string]Type{}
-	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
-	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
-	tc.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
-	tc.cur_fn_ret_type = tc.parse_type(node.typ)
+	saved_fn_context := tc.fn_context
+	// Keep the enclosing function id so lambda dependencies are attributed to
+	// the declaration that owns the generated closure.
+	tc.fn_context = new_function_check_context()
+	tc.fn_context.node_id = saved_fn_context.node_id
+	tc.fn_context.return_type = tc.parse_type(node.typ)
 	$if ownership ? {
 		tc.ownership_begin_fn_literal(id, node)
 	}
@@ -7612,11 +7596,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	$if ownership ? {
 		tc.ownership_end_fn()
 	}
-	tc.cur_fn_ret_type = saved_ret
-	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
-	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
-	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
-	tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
+	tc.fn_context = saved_fn_context
 }
 
 // check_lambda_expr validates check lambda expr state for types.
@@ -7860,7 +7840,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		if owner.storage_key().len > 0 && decl_assign_is_shared_marker(node.value) {
 			lhs := tc.a.nodes[int(lhs_id)]
 			if lhs.kind == .ident && lhs.value.len > 0 {
-				tc.cur_fn_shared_binding_owners[lhs.value] = owner
+				tc.fn_context.shared_owners[lhs.value] = owner
 			}
 		}
 		$if ownership ? {
@@ -7896,18 +7876,18 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 		return
 	}
 	if tc.expr_is_method_value(rhs_id) {
-		tc.method_value_locals[lhs.value] = true
-		tc.method_value_local_depth[lhs.value] = tc.cur_scope_depth()
-	} else if lhs.value in tc.method_value_locals {
+		tc.fn_context.method_value_locals[lhs.value] = true
+		tc.fn_context.method_value_local_depth[lhs.value] = tc.cur_scope_depth()
+	} else if lhs.value in tc.fn_context.method_value_locals {
 		// Reassigned to a non-method-value. Only clear the marker when this reassignment
 		// dominates later uses — at the same or a shallower scope than where the local was
 		// marked. A reassignment in a deeper conditional/loop scope does not run on every path
 		// (`mut cb := c.report; if x { cb = plain }; return cb`), so the local may still hold the
 		// method value; keep the maybe-method marker and let the later escape be rejected.
-		marked_depth := tc.method_value_local_depth[lhs.value] or { 0 }
+		marked_depth := tc.fn_context.method_value_local_depth[lhs.value] or { 0 }
 		if tc.cur_scope_depth() <= marked_depth {
-			tc.method_value_locals.delete(lhs.value)
-			tc.method_value_local_depth.delete(lhs.value)
+			tc.fn_context.method_value_locals.delete(lhs.value)
+			tc.fn_context.method_value_local_depth.delete(lhs.value)
 		}
 	}
 }
@@ -8559,7 +8539,7 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 		}
 		owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
 		if is_mut && lhs.value != '_' {
-			tc.cur_fn_mut_local_binding_owners[lhs.value] = owner
+			tc.fn_context.mut_local_owners[lhs.value] = owner
 		}
 		tc.register_synth_type(lhs_id, typ)
 		return owner
@@ -8917,7 +8897,7 @@ fn (tc &TypeChecker) mut_param_binding_matches_lvalue(name string) bool {
 	if tc.cur_scope == unsafe { nil } {
 		return false
 	}
-	if param_owner := tc.cur_fn_mut_param_binding_owners[name] {
+	if param_owner := tc.fn_context.mut_param_owners[name] {
 		if owner := tc.cur_scope.lookup_owner(name) {
 			return owner.scope == param_owner.scope && owner.index == param_owner.index
 				&& owner.generation == param_owner.generation
@@ -8974,7 +8954,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 		tc.reject_stored_method_value(tc.a.child(&node, i))
 		tc.reject_stored_capturing_fn_literal(tc.a.child(&node, i))
 	}
-	expected := tc.cur_fn_ret_type
+	expected := tc.fn_context.return_type
 	saved_expected_expr_id := tc.expected_expr_id
 	saved_expected_expr_type := tc.expected_expr_type
 	if node.children_count == 1 {
@@ -9463,7 +9443,7 @@ fn (tc &TypeChecker) mut_param_expr_base(expr_id flat.NodeId, typ Type) ?Type {
 	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
 		child := tc.a.nodes[int(tc.a.child(&node, 0))]
 		if child.kind == .ident && child.value.len > 0 {
-			base := tc.cur_fn_mut_param_base_types[child.value] or { return none }
+			base := tc.fn_context.mut_param_base_types[child.value] or { return none }
 			if !tc.mut_param_binding_matches_lvalue(child.value) {
 				return none
 			}
@@ -9476,10 +9456,10 @@ fn (tc &TypeChecker) mut_param_expr_base(expr_id flat.NodeId, typ Type) ?Type {
 }
 
 fn (tc &TypeChecker) current_checked_fn_qname() ?string {
-	if tc.cur_fn_node_id < 0 || tc.cur_fn_node_id >= tc.a.nodes.len {
+	if tc.fn_context.node_id < 0 || tc.fn_context.node_id >= tc.a.nodes.len {
 		return none
 	}
-	fn_node := tc.a.nodes[tc.cur_fn_node_id]
+	fn_node := tc.a.nodes[tc.fn_context.node_id]
 	if fn_node.kind != .fn_decl || fn_node.value.len == 0 {
 		return none
 	}
@@ -9735,10 +9715,10 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 // declares generic parameters, or is a method on a generic receiver
 // (`fn (mut so SetOf[T]) sort()`), whose own node has no generic_params.
 fn (tc &TypeChecker) cur_fn_is_generic_template() bool {
-	if tc.cur_fn_node_id < 0 || tc.cur_fn_node_id >= tc.a.nodes.len {
+	if tc.fn_context.node_id < 0 || tc.fn_context.node_id >= tc.a.nodes.len {
 		return false
 	}
-	fn_node := tc.a.nodes[tc.cur_fn_node_id]
+	fn_node := tc.a.nodes[tc.fn_context.node_id]
 	if fn_node.generic_params.len > 0 {
 		return true
 	}
@@ -10942,14 +10922,14 @@ fn (tc &TypeChecker) is_builtin_hex_receiver(typ Type) bool {
 }
 
 fn (tc &TypeChecker) current_receiver_param_method_call_info(base_id flat.NodeId, method string) ?CallInfo {
-	if tc.cur_fn_node_id < 0 || int(base_id) < 0 || int(base_id) >= tc.a.nodes.len {
+	if tc.fn_context.node_id < 0 || int(base_id) < 0 || int(base_id) >= tc.a.nodes.len {
 		return none
 	}
 	base := tc.a.nodes[int(base_id)]
 	if base.kind != .ident {
 		return none
 	}
-	fn_node := tc.a.nodes[tc.cur_fn_node_id]
+	fn_node := tc.a.nodes[tc.fn_context.node_id]
 	if fn_node.kind != .fn_decl || !fn_node.value.contains('.') {
 		return none
 	}
@@ -11699,7 +11679,7 @@ fn (tc &TypeChecker) ident_is_mutable_lvalue(name string) bool {
 	if tc.mut_param_binding_matches_lvalue(name) {
 		return true
 	}
-	owner := tc.cur_fn_mut_local_binding_owners[name] or { return false }
+	owner := tc.fn_context.mut_local_owners[name] or { return false }
 	if tc.cur_scope == unsafe { nil } {
 		return false
 	}
@@ -11889,7 +11869,7 @@ fn (tc &TypeChecker) expr_is_shared_arg(id flat.NodeId) bool {
 	if node.kind != .ident || node.value.len == 0 {
 		return false
 	}
-	owner := tc.cur_fn_shared_binding_owners[node.value] or { return false }
+	owner := tc.fn_context.shared_owners[node.value] or { return false }
 	if tc.cur_scope == unsafe { nil } {
 		return false
 	}
@@ -15007,7 +14987,7 @@ fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 	// A local bound to a method value (`cb := c.report`) carries the same escape hazard as the
 	// bare selector, so a reference to it counts as a method value here too.
 	if node.kind == .ident {
-		return node.value in tc.method_value_locals
+		return node.value in tc.fn_context.method_value_locals
 	}
 	if node.kind != .selector || node.children_count == 0 {
 		return false
@@ -15122,20 +15102,20 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 					mkey = ci.name
 				}
 			}
-			if mkey in tc.fn_param_types && tc.cur_fn_node_id >= 0 {
+			if mkey in tc.fn_param_types && tc.fn_context.node_id >= 0 {
 				// Record per enclosing function so markused marks it only when that
 				// function is reachable; over-marking an unreachable method value can pull
 				// in (and fail to compile) an otherwise-unused specialization. A method
 				// value can only appear inside a function body — escaping to a const/global
 				// is rejected elsewhere — so a non-fn context needs no recording here.
-				tc.method_values_by_fn[tc.cur_fn_node_id] << mkey
+				tc.method_values_by_fn[tc.fn_context.node_id] << mkey
 				// Also record the concrete instance key (`Box[int].report`) — distinct from the
 				// open key (`Box[T].report`) above — so monomorphize can gate a generic method's
 				// specialization on *this* instance's method value being reachable (it shares the
 				// open key with every other instance, e.g. `Box[Pair]`).
 				concrete_mkey := '${clean_recv.name}.${node.value}'
 				if concrete_mkey != mkey {
-					tc.method_values_by_fn[tc.cur_fn_node_id] << concrete_mkey
+					tc.method_values_by_fn[tc.fn_context.node_id] << concrete_mkey
 				}
 			}
 		}
@@ -19946,7 +19926,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 				child_id := tc.a.child(&node, 0)
 				child := tc.a.nodes[int(child_id)]
 				if child.kind == .ident && child.value.len > 0 {
-					if base := tc.cur_fn_mut_param_base_types[child.value] {
+					if base := tc.fn_context.mut_param_base_types[child.value] {
 						if tc.mut_param_binding_matches_lvalue(child.value) {
 							return Type(Pointer{
 								base_type: base

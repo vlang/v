@@ -690,7 +690,6 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		reject_unlowered_map_mutation:      g.tc.reject_unlowered_map_mutation
 		diagnostic_files:                   g.tc.diagnostic_files
 		selected_file_called_fns:           g.tc.selected_file_called_fns
-		cur_fn_ret_type:                    g.tc.cur_fn_ret_type
 		smartcasts:                         g.tc.smartcasts
 		// Read-only map cgen uses to recover substituted signatures for generic-receiver
 		// method values (`Box[int].method` as a callback); without it a parallel worker
