@@ -88,6 +88,15 @@ fn test_module_cache_split_uses_marker_lines() {
 	assert !header.contains('extern extern "C"')
 }
 
+fn test_module_cache_split_ignores_module_marker_text() {
+	source := '/* V3CACHE_BODY_BEGIN */\n/* V3CACHE_MODULE main */\nstatic string marker = {"/* V3CACHE_MODULE fake */", 25};\nint main(void) { return 0; }\n/* V3CACHE_BODY_END */\n'
+	split := modulecache.split_generated_c(source) or { panic(err) }
+	assert split.modules.len == 1
+	assert 'fake' !in split.modules
+	assert split.modules['main'].contains('"/* V3CACHE_MODULE fake */"')
+	assert split.modules['main'].contains('int main(void)')
+}
+
 fn test_module_cache_declaration_header_preserves_preprocessor_after_comment() {
 	prefix := '/* embedded header */\n#ifndef CACHED_HEADER\n#define CACHED_HEADER\ntypedef struct Cached { int value; } Cached;\n#endif\n'
 	header := modulecache.declaration_header(prefix)

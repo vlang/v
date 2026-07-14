@@ -367,16 +367,22 @@ pub fn split_generated_c(source string) !CSplit {
 	mut pos := 0
 	for {
 		marker_start := body.index_after(c_module_prefix, pos) or { break }
+		if marker_start > 0 && body[marker_start - 1] != `\n` {
+			pos = marker_start + c_module_prefix.len
+			continue
+		}
+		line_end := body.index_after('\n', marker_start) or { body.len }
+		marker_line := body[marker_start..line_end]
+		if !marker_line.ends_with(' */') {
+			pos = if line_end < body.len { line_end + 1 } else { body.len }
+			continue
+		}
 		if current.len > 0 {
 			module_segments[current] << body[segment_start..marker_start]
 		}
-		name_start := marker_start + c_module_prefix.len
-		name_end := body.index_after(' */', name_start) or {
-			return error('invalid v3 cache module marker')
-		}
-		current = body[name_start..name_end].trim_space()
-		segment_start = name_end + 3
-		pos = segment_start
+		current = marker_line[c_module_prefix.len..marker_line.len - 3].trim_space()
+		segment_start = line_end
+		pos = if line_end < body.len { line_end + 1 } else { body.len }
 	}
 	if current.len > 0 && segment_start < body.len {
 		module_segments[current] << body[segment_start..]
