@@ -5,6 +5,11 @@ mut:
 	drop()
 }
 
+// OwnershipSumPayload matches the leading active-variant pointer in the runtime sum layout.
+struct OwnershipSumPayload {
+	payload voidptr
+}
+
 // drop_owned destroys an owned value outside ownership mode.
 //
 // Ownership builds replace this generic fallback with the compiler intrinsic that
@@ -21,10 +26,14 @@ pub fn drop_owned[T](value T) {
 			drop_owned(payload)
 		}
 	} $else $if T.unaliased_typ is $sumtype {
+		payload := unsafe { (&OwnershipSumPayload(&owned)).payload }
 		$for variant in T.variants {
 			if owned is variant {
 				drop_owned(owned)
 			}
+		}
+		if payload != unsafe { nil } {
+			unsafe { free(payload) }
 		}
 	} $else $if T.unaliased_typ is $array_dynamic {
 		mut raw_array := unsafe { &array(owned) }

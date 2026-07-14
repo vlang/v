@@ -5641,6 +5641,7 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		t.mark_fn_used(method_name)
 		return t.make_call_typed(method_name, args, ret_type)
 	}
+	source_is_owned_temporary := !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
 	base := t.stable_expr_for_reuse(base_id)
 	if map_method_needs_runtime_addr_only(fn_node.value) {
 		key_type, value_type := t.map_type_parts(clean_type)
@@ -5697,7 +5698,8 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 	if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type))
 		&& t.compiler_default_clone_type_needs_work(elem_type)
 		&& (fn_node.value == 'values' || t.normalize_type_alias(elem_type).trim_space() != 'string') {
-		return t.make_owned_map_items_value(base, clean_type, elem_type, fn_node.value == 'keys')
+		return t.make_owned_map_items_value(base, clean_type, elem_type, fn_node.value == 'keys',
+			source_is_owned_temporary)
 	}
 	t.mark_fn_used('map__${fn_node.value}')
 	return t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
@@ -5706,7 +5708,7 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 
 // make_owned_map_items_value builds an independent keys()/values() array by cloning every
 // ownership-bearing item instead of accepting map__values' shallow byte copies.
-fn (mut t Transformer) make_owned_map_items_value(source flat.NodeId, map_type string, item_type string, take_keys bool) flat.NodeId {
+fn (mut t Transformer) make_owned_map_items_value(source flat.NodeId, map_type string, item_type string, take_keys bool, source_is_owned_temporary bool) flat.NodeId {
 	key_type, value_type := t.map_type_parts(map_type)
 	stable_source := t.stable_transformed_expr_for_reuse(source, map_type, 'map_items_source')
 	out_name := t.new_temp('map_items')
@@ -5745,6 +5747,10 @@ fn (mut t Transformer) make_owned_map_items_value(source flat.NodeId, map_type s
 		value:                '3'
 		skip_ownership_drops: true
 	})
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+	}
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), '[]${item_type}')
 	return result

@@ -458,6 +458,13 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	if key.kind != .ident || key.value.len == 0 {
 		return arr1(id)
 	}
+	raw_container_type := if t.node_type(container_id).len > 0 {
+		t.node_type(container_id)
+	} else {
+		iter_type
+	}
+	source_is_owned_temporary := !raw_container_type.starts_with('&')
+		&& !t.expr_can_take_address(container_id)
 	mut container := t.stable_expr_for_reuse(container_id)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
@@ -541,6 +548,12 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	new_body << elem_decl
 	new_body << transformed_body
 	prefix << t.make_for_stmt(init, cond, post, new_body, node)
+	container_needs_drop :=
+		(actual_iter_type.starts_with('[]') || t.is_fixed_array_type(actual_iter_type))
+		&& !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type))
+	if source_is_owned_temporary && container_needs_drop {
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(container), 'void'))
+	}
 	return prefix
 }
 
