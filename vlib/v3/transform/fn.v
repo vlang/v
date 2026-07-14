@@ -4749,6 +4749,10 @@ fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId,
 	}
 	body << t.make_decl_assign_typed(value_name, cloned_value, value_type)
 	body << t.make_map_set_stmt(t.make_ident(out_name), map_type, map_key_name, value_name)
+	if clean_key_type == 'string' {
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(key_name)),
+			'void'))
+	}
 	start := t.a.children.len
 	t.a.children << t.make_ident(key_name)
 	t.a.children << t.make_ident(source_value_name)
