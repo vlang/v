@@ -1268,12 +1268,6 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 						g.writeln('return (${ct}){.ok = false};')
 						return
 					}
-					if g.cur_fn_ret is types.ResultType {
-						if result_err := g.result_error_from_expr_string(ret_id) {
-							g.writeln('return (${ct}){.ok = false, .err = ${result_err}};')
-							return
-						}
-					}
 					if base is types.Void {
 						raw_expr_type := g.tc.resolve_type(ret_id)
 						expr_type := g.usable_expr_type(ret_id)
@@ -1296,6 +1290,12 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 						}
 						g.writeln('return (${ct}){.ok = false};')
 					} else if fixed := array_fixed_type(base) {
+						if g.cur_fn_ret is types.ResultType {
+							if result_err := g.result_error_from_expr_string(ret_id) {
+								g.writeln('return (${ct}){.ok = false, .err = ${result_err}};')
+								return
+							}
+						}
 						// The optional's `.value` is a fixed-array member, which can't be set
 						// in the compound literal; build via a temp + memcpy.
 						g.write('return ({ ${ct} __opt = {.ok = true}; memcpy(__opt.value, ')
