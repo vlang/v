@@ -8,7 +8,7 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-27'
+const cache_format = 'v3-module-cache-28'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -210,12 +210,12 @@ pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source
 }
 
 // write_stamp refreshes a cache stamp after the object and header are durable.
-// dependency_headers maps every transitive imported header path to the signature
-// that the object was compiled against.
-pub fn (m &Manager) write_stamp(module_name string, source_files []string, dependency_headers map[string]string, compile_signature string) ! {
+// dependency_inputs maps every transitive imported `.vh` and non-V input path
+// to the content signature that the object was compiled against.
+pub fn (m &Manager) write_stamp(module_name string, source_files []string, dependency_inputs map[string]string, compile_signature string) ! {
 	entry := m.entry(module_name, source_files)
 	object_entry := m.object_entry(module_name, source_files, compile_signature)
-	stamp := object_entry_stamp(m.salt, source_signature(source_files), dependency_headers,
+	stamp := object_entry_stamp(m.salt, source_signature(source_files), dependency_inputs,
 		compile_signature)
 	write_atomic(object_entry.object_stamp, stamp)!
 	write_atomic(entry.object_stamp, stamp)!
@@ -234,14 +234,14 @@ fn entry_stamp(salt string, source_hash string) string {
 	return 'format=${cache_format}\nconfig=${hash_text(salt)}\nsource=${source_hash}\n'
 }
 
-fn object_entry_stamp(salt string, source_hash string, dependency_headers map[string]string, compile_signature string) string {
-	mut out := strings.new_builder(256 + dependency_headers.len * 96)
+fn object_entry_stamp(salt string, source_hash string, dependency_inputs map[string]string, compile_signature string) string {
+	mut out := strings.new_builder(256 + dependency_inputs.len * 96)
 	out.write_string(entry_stamp(salt, source_hash))
 	out.writeln('compile=${hash_text(compile_signature)}')
-	mut paths := dependency_headers.keys()
+	mut paths := dependency_inputs.keys()
 	paths.sort()
 	for path in paths {
-		out.writeln('dependency=${path}\t${dependency_headers[path]}')
+		out.writeln('dependency=${path}\t${dependency_inputs[path]}')
 	}
 	return out.str()
 }
@@ -272,8 +272,7 @@ fn object_stamp_valid(stamp string, expected_entry string) bool {
 		}
 		path := value[..tab]
 		expected_signature := value[tab + 1..]
-		content := os.read_file(path) or { return false }
-		if header_signature(content) != expected_signature {
+		if file_signature(path) != expected_signature {
 			return false
 		}
 	}
@@ -284,6 +283,12 @@ fn object_stamp_valid(stamp string, expected_entry string) bool {
 // object stamps for a declaration-only module header.
 pub fn header_signature(header string) string {
 	return hash_text(header)
+}
+
+// file_signature returns a stable content signature for a cache input file.
+pub fn file_signature(path string) string {
+	content := os.read_bytes(path) or { return '' }
+	return hash_bytes(u64(1469598103934665603), content).hex()
 }
 
 fn sanitize_name(name string) string {

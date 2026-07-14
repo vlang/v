@@ -28,15 +28,16 @@ struct V3ModuleCacheState {
 	manager        modulecache.Manager
 	bundle_sources []string
 mut:
-	force_source        bool
-	bundle_valid        bool
-	module_sources      map[string][]string
-	module_import_paths map[string]string
-	module_dependencies map[string][]string
-	parsed_from_source  map[string]bool
-	source_body_modules map[string]bool
-	objects             map[string]string
-	headers             map[string]string
+	force_source           bool
+	bundle_valid           bool
+	module_sources         map[string][]string
+	module_import_paths    map[string]string
+	module_dependencies    map[string][]string
+	module_external_inputs map[string][]string
+	parsed_from_source     map[string]bool
+	source_body_modules    map[string]bool
+	objects                map[string]string
+	headers                map[string]string
 }
 
 struct V3PreparedModuleCache {
@@ -854,16 +855,17 @@ fn main() {
 	builtin_files := pref.get_v_files_from_dir(builtin_dir, builtin_defines, prefs.target_os)
 	bundle_sources := builtin_bundle_source_files(prefs, builtin_files)
 	mut cache_state := V3ModuleCacheState{
-		manager:             cache_manager
-		bundle_sources:      bundle_sources
-		force_source:        force_cache_source
-		module_sources:      map[string][]string{}
-		module_import_paths: map[string]string{}
-		module_dependencies: map[string][]string{}
-		parsed_from_source:  map[string]bool{}
-		source_body_modules: map[string]bool{}
-		objects:             map[string]string{}
-		headers:             map[string]string{}
+		manager:                cache_manager
+		bundle_sources:         bundle_sources
+		force_source:           force_cache_source
+		module_sources:         map[string][]string{}
+		module_import_paths:    map[string]string{}
+		module_dependencies:    map[string][]string{}
+		module_external_inputs: map[string][]string{}
+		parsed_from_source:     map[string]bool{}
+		source_body_modules:    map[string]bool{}
+		objects:                map[string]string{}
+		headers:                map[string]string{}
 	}
 	cache_state.module_sources['builtin'] = builtin_files
 	mut files := []string{}
@@ -968,6 +970,8 @@ fn main() {
 		exit(1)
 	}
 	if cache_state.manager.enabled {
+		cache_state.module_external_inputs = cgen.cache_external_input_files(a, prefs.vroot,
+			cache_state.parsed_from_source)
 		for module_name, parsed in cache_state.parsed_from_source {
 			if !parsed {
 				continue
@@ -1214,6 +1218,7 @@ fn main() {
 		}
 		needs_objective_c := c_flags_need_objective_c(resolved_c_flags)
 		mut cached_main_c := ''
+		mut cached_objects_arg := ''
 		if cache_state.manager.enabled {
 			generated_source := os.read_file(cache_plan_file) or {
 				eprintln('error reading cache-marked C source ${cache_plan_file}: ${err.msg()}')
@@ -1225,7 +1230,7 @@ fn main() {
 				exit(1)
 			}
 			cached_main_c = prepared_cache.main_source
-			resolved_c_flags << prepared_cache.objects
+			cached_objects_arg = prepared_cache.objects.map(os.quoted_path(it)).join(' ')
 			os.rm(cache_plan_file) or {}
 		}
 		c_flags := resolved_c_flags.join(' ')
@@ -1269,8 +1274,8 @@ fn main() {
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
 			atomic_s_arg := tcc_atomic_s_arg(prefs)
-			cc_cmd = '${tcc_path} ${c_standard} ${pic_arg}${tcc_includes} ${tcc_lib} ${warn_flags} ${shared_link_flag}-o ${bin_file} ${output_file}${atomic_s_arg} ${c_flags} -lm'
-			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${pic_arg}${tcc_includes} ${tcc_lib} ${warn_flags} ${shared_link_flag}-o out src.c${atomic_s_arg} ${c_flags} -lm'
+			cc_cmd = '${tcc_path} ${c_standard} ${pic_arg}${tcc_includes} ${tcc_lib} ${warn_flags} ${shared_link_flag}-o ${bin_file} ${output_file}${atomic_s_arg} ${cached_objects_arg} ${c_flags} -lm'
+			exec_cmd = 'cd ${cc_dir} && ${tcc_path} ${c_standard} ${pic_arg}${tcc_includes} ${tcc_lib} ${warn_flags} ${shared_link_flag}-o out src.c${atomic_s_arg} ${cached_objects_arg} ${c_flags} -lm'
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
 		}
@@ -1281,11 +1286,11 @@ fn main() {
 				''
 			}
 			if needs_objective_c {
-				cc_cmd = 'cc ${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o ${bin_file} -x objective-c ${output_file} -x none ${c_flags} -lm'
-				exec_cmd = 'cd ${cc_dir} && cc ${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o out -x objective-c src.c -x none ${c_flags} -lm'
+				cc_cmd = 'cc ${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o ${bin_file} -x objective-c ${output_file} -x none ${cached_objects_arg} ${c_flags} -lm'
+				exec_cmd = 'cd ${cc_dir} && cc ${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o out -x objective-c src.c -x none ${cached_objects_arg} ${c_flags} -lm'
 			} else {
-				cc_cmd = 'cc ${cc_lang_flag}${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o ${bin_file} ${output_file} ${c_flags} -lm'
-				exec_cmd = 'cd ${cc_dir} && cc ${cc_lang_flag}${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o out src.c ${c_flags} -lm'
+				cc_cmd = 'cc ${cc_lang_flag}${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o ${bin_file} ${output_file} ${cached_objects_arg} ${c_flags} -lm'
+				exec_cmd = 'cd ${cc_dir} && cc ${cc_lang_flag}${c_standard} ${opt_flag}${pic_arg}${warn_flags} -Wno-int-conversion${stack_flag} ${shared_link_flag}-o out src.c ${cached_objects_arg} ${c_flags} -lm'
 			}
 			println('  > ${cc_cmd}')
 			result = run_compile_command(exec_cmd)
@@ -1372,7 +1377,7 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 		module_source := declarations + bundle_body.str()
 		compile_v3_cached_object(entry, module_source, c_standard, opt_flag, pic_flag,
 			generated_c_flags, objective_c)!
-		bundle_dependencies := cache_dependency_header_signatures(state,
+		bundle_dependencies := cache_object_dependency_signatures(state,
 			cache_builtin_bundle_roots(state))
 		state.manager.write_stamp('builtin', state.bundle_sources, bundle_dependencies,
 			compile_signature)!
@@ -1405,8 +1410,8 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 		if header := state.headers[module_name] {
 			state.manager.write_header(module_name, source_files, header)!
 		}
-		dependency_headers := cache_dependency_header_signatures(state, [module_name])
-		state.manager.write_stamp(module_name, source_files, dependency_headers, compile_signature)!
+		dependencies := cache_object_dependency_signatures(state, [module_name])
+		state.manager.write_stamp(module_name, source_files, dependencies, compile_signature)!
 		object_paths[module_name] = entry.object
 	}
 
@@ -1511,6 +1516,23 @@ fn cache_dependency_header_signatures(state &V3ModuleCacheState, roots []string)
 		}
 		header := os.read_file(entry.header) or { continue }
 		signatures[entry.header] = modulecache.header_signature(header)
+	}
+	return signatures
+}
+
+fn cache_object_dependency_signatures(state &V3ModuleCacheState, roots []string) map[string]string {
+	mut signatures := cache_dependency_header_signatures(state, roots)
+	for root in roots {
+		mut inputs := state.module_external_inputs[root]
+		if inputs.len == 0 {
+			inputs = state.module_external_inputs[root.all_after_last('.')]
+		}
+		for path in inputs {
+			signature := modulecache.file_signature(path)
+			if signature.len > 0 {
+				signatures[path] = signature
+			}
+		}
 	}
 	return signatures
 }

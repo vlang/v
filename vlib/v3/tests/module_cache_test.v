@@ -178,6 +178,127 @@ fn main() {
 	assert second_wrapper_stamps.any(it !in first_wrapper_stamps)
 }
 
+fn test_module_cache_rebuilds_objects_when_external_inputs_change() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_external_inputs_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+#insert "@DIR/value.h"
+
+fn C.cached_external_value() int
+
+pub fn value() int {
+	return C.cached_external_value()
+}
+')
+	write_module_cache_file(root, 'wrapper/value.h', '#include "nested_value.h"
+
+static inline int cached_external_value(void) {
+	return CACHED_EXTERNAL_VALUE;
+}
+')
+	write_module_cache_file(root, 'wrapper/nested_value.h', '#define CACHED_EXTERNAL_VALUE 1
+')
+	write_module_cache_file(root, 'assets/assets.v', 'module assets
+
+pub fn size() int {
+	return $embed_file("payload.bin").len
+}
+')
+	write_module_cache_file(root, 'assets/payload.bin', 'abc')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import assets
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+	println(assets.size())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '1\n3'
+	first_hashes := module_cache_object_hashes(cache_dir)
+
+	write_module_cache_file(root, 'wrapper/nested_value.h', '#define CACHED_EXTERNAL_VALUE 2
+')
+	write_module_cache_file(root, 'assets/payload.bin', 'abcdef')
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '2\n6'
+	changed := changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir))
+	assert changed.any(it.starts_with('assets_')), changed.str()
+	assert changed.any(it.starts_with('wrapper_')), changed.str()
+}
+
+fn test_cached_objects_precede_static_libraries_on_link_command() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_link_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	library_dir := os.join_path(root, 'archiveuser')
+	write_module_cache_file(root, 'archiveuser/cache_order.c', 'int cache_order_value(void) {
+	return 77;
+}
+')
+	library_object := os.join_path(library_dir, 'cache_order.o')
+	library := os.join_path(library_dir, 'libcacheorder.a')
+	cc_result := os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(os.join_path(library_dir,
+		'cache_order.c'))}')
+	assert cc_result.exit_code == 0, cc_result.output
+	ar_result := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
+	assert ar_result.exit_code == 0, ar_result.output
+	write_module_cache_file(root, 'archiveuser/archiveuser.v', 'module archiveuser
+
+#flag -L@DIR
+#flag -lcacheorder
+
+fn C.cache_order_value() int
+
+pub fn value() int {
+	return C.cache_order_value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import archiveuser
+
+fn main() {
+	println(archiveuser.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '77'
+
+	second_output := os.join_path(root, 'second')
+	result :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert result.exit_code == 0, result.output
+	assert run_module_cache_binary(second_output) == '77'
+	link_lines := result.output.split_into_lines().filter(it.contains('> cc '))
+	assert link_lines.len > 0, result.output
+	link_line := link_lines.last()
+	object_pos := link_line.index(cache_dir) or { -1 }
+	library_pos := link_line.index('-lcacheorder') or { -1 }
+	assert object_pos >= 0, link_line
+	assert library_pos >= 0, link_line
+	assert object_pos < library_pos, link_line
+}
+
 fn test_cached_header_imports_use_original_source_context() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_import_context_${os.getpid()}')

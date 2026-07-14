@@ -504,6 +504,134 @@ pub fn (mut g FlatGen) set_cache_program_files(files []string) {
 	}
 }
 
+// cache_external_input_files returns local include/embed inputs grouped by the
+// module whose cached object incorporates their contents.
+pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool) map[string][]string {
+	mut c_flags := []string{}
+	mut cur_file := ''
+	for node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			continue
+		}
+		if node.kind != .directive || node.value != 'flag' || node.typ.len == 0 {
+			continue
+		}
+		flag := c_flag_arg(node.typ, vroot, cur_file)
+		if flag.len > 0 && flag !in c_flags {
+			c_flags << flag
+		}
+	}
+	include_dirs := c_flag_include_dirs(c_flags)
+	mut collect_modules := map[string]bool{}
+	for module_name, enabled in source_modules {
+		if enabled {
+			collect_modules[module_name] = true
+			collect_modules[module_name.all_after_last('.')] = true
+		}
+	}
+	mut inputs := map[string][]string{}
+	mut cur_module := ''
+	cur_file = ''
+	for node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if !collect_modules[cur_module] {
+			continue
+		}
+		if node.kind == .directive && node.value in ['include', 'insert'] && node.typ.len > 0 {
+			include_arg := c_include_arg(node.typ, vroot, cur_file)
+			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
+				if !os.is_file(path) {
+					continue
+				}
+				mut seen := map[string]bool{}
+				mut files := []string{}
+				c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files)
+				for file in files {
+					c_add_cache_external_input(mut inputs, cur_module, file)
+				}
+				break
+			}
+			continue
+		}
+		if path := c_embed_external_input_path(a, node) {
+			c_add_cache_external_input(mut inputs, cur_module, path)
+		}
+	}
+	for module_name, paths in inputs {
+		mut sorted := paths.clone()
+		sorted.sort()
+		inputs[module_name] = sorted
+	}
+	return inputs
+}
+
+fn c_add_cache_external_input(mut inputs map[string][]string, module_name string, path string) {
+	if module_name.len == 0 || path.len == 0 || !os.is_file(path) {
+		return
+	}
+	real_path := os.real_path(path)
+	mut paths := inputs[module_name]
+	if real_path !in paths {
+		paths << real_path
+		inputs[module_name] = paths
+	}
+}
+
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string) {
+	if path.len == 0 || !os.is_file(path) {
+		return
+	}
+	real_path := os.real_path(path)
+	if seen[real_path] {
+		return
+	}
+	seen[real_path] = true
+	files << real_path
+	text := os.read_file(real_path) or { return }
+	mut in_block_comment := false
+	for line in text.split_into_lines() {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		if c_directive_name(clean) != 'include' {
+			continue
+		}
+		include_arg := c_include_arg(c_directive_arg(clean), vroot, real_path)
+		for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
+			if !os.is_file(nested_path) {
+				continue
+			}
+			c_collect_external_input_tree(nested_path, vroot, include_dirs, mut seen, mut files)
+			break
+		}
+	}
+}
+
+fn c_embed_external_input_path(a &flat.FlatAst, node flat.Node) ?string {
+	if node.kind != .struct_init || node.value != 'embed_file.EmbedFileData' {
+		return none
+	}
+	for i in 0 .. node.children_count {
+		field := a.child_node(&node, i)
+		if field.kind != .field_init || field.value != 'apath' || field.children_count == 0 {
+			continue
+		}
+		value := a.child_node(field, 0)
+		if value.kind == .string_literal && value.value.len > 0 && os.is_file(value.value) {
+			return os.real_path(value.value)
+		}
+	}
+	return none
+}
+
 // set_scope_parallel_workers makes cgen helpers use disposable prealloc
 // arenas. The caller must release them with free_parallel_worker_scopes after
 // consuming the generated C output and cgen metadata.
