@@ -335,6 +335,14 @@ pub fn transform_with_used_opt_config(mut a flat.FlatAst, tc &types.TypeChecker,
 // helpers disposable prealloc arenas. It is used by prealloc self-host builds
 // to retain parallel latency without retaining every helper's scratch memory.
 pub fn transform_with_used_opt_config_scoped_workers(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool) (map[string]bool, bool) {
+	augmented, was_parallel, _ := transform_with_used_opt_config_scoped_workers_checked(mut a, tc,
+		used_fns, want_parallel, skip_generics, scope_parallel_workers)
+	return augmented, was_parallel
+}
+
+// transform_with_used_opt_config_scoped_workers_checked also returns diagnostics selected while
+// normal comptime reflection loops are unrolled.
+pub fn transform_with_used_opt_config_scoped_workers_checked(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool) (map[string]bool, bool, []string) {
 	mut t := new_transformer(mut a, tc, used_fns)
 	t.skip_generics = skip_generics
 	t.scope_parallel_workers = scope_parallel_workers
@@ -382,7 +390,7 @@ pub fn transform_with_used_opt_config_scoped_workers(mut a flat.FlatAst, tc &typ
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	t.run_sum_eq_synthesis_rounds(base_node_count)
 	t.apply_ignored_comptime_for_nodes()
-	return t.used_fns, was_parallel
+	return t.used_fns, was_parallel, t.monomorph_errors
 }
 
 // run_sum_eq_synthesis_rounds alternates sum-eq helper synthesis with the
@@ -1608,6 +1616,8 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.heaped_amp_locals = map[string]bool{}
 	w.generic_specialization_args = t.generic_specialization_args.clone()
 	w.generic_fn_specs_in_progress = map[string]bool{}
+	w.monomorph_errors = []string{}
+	w.monomorph_error_seen = map[string]bool{}
 	w.used_fns = t.used_fns.clone()
 	// Fields added after the fork/merge machinery was first written. They are
 	// mutated during body transforms (or lazily built), so each worker needs
@@ -1833,6 +1843,10 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			owned_name := if w.worker_scope != unsafe { nil } { name.clone() } else { name }
 			t.used_fns[owned_name] = true
 		}
+	}
+	for message in w.monomorph_errors {
+		owned_message := if w.worker_scope != unsafe { nil } { message.clone() } else { message }
+		t.record_monomorph_error(owned_message)
 	}
 	if w.ignored_comptime_for_nodes.len > 0 {
 		if t.ignored_comptime_for_nodes.len < t.a.nodes.len {
@@ -7281,7 +7295,7 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 
 // transform_call_expr transforms transform call expr data for transform.
 fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.NodeId {
-	if t.validating_generic_spec {
+	if node.value.len > 0 && node.value == '__v_compile_error' {
 		t.record_selected_compile_error_call(node)
 	}
 	call_id := t.normalize_generic_call_expr(id, node)

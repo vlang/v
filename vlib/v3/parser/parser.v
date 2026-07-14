@@ -2418,6 +2418,7 @@ fn (mut p Parser) make_compile_error_call(message flat.NodeId) flat.NodeId {
 	start := p.add_children2(callee, message)
 	return p.a.add_node(flat.Node{
 		kind:           .call
+		value:          '__v_compile_error'
 		children_start: start
 		children_count: 2
 	})
@@ -3293,6 +3294,10 @@ fn eval_comptime_cond(prefs &pref.Preferences, cond string) bool {
 }
 
 fn (p &Parser) resolve_comptime_const_values(cond string) string {
+	return p.resolve_comptime_cached_values(cond, true)
+}
+
+fn (p &Parser) resolve_comptime_cached_values(cond string, preserve_flags bool) string {
 	mut out := strings.new_builder(cond.len)
 	mut i := 0
 	mut quote := u8(0)
@@ -3326,7 +3331,8 @@ fn (p &Parser) resolve_comptime_const_values(cond string) string {
 				prev--
 			}
 			is_protected_name := prev > 0 && (cond[prev - 1] == `.` || cond[prev - 1] == `$`)
-			if !is_protected_name && name !in p.comptime_for_vars {
+			is_comptime_flag := preserve_flags && p.comptime_cond_name_is_flag(cond, name, i)
+			if !is_protected_name && !is_comptime_flag && name !in p.comptime_for_vars {
 				if value := p.comptime_value(name) {
 					out.write_string(value)
 					continue
@@ -3339,6 +3345,34 @@ fn (p &Parser) resolve_comptime_const_values(cond string) string {
 		i++
 	}
 	return out.str()
+}
+
+fn (p &Parser) comptime_cond_name_is_flag(cond string, name string, end int) bool {
+	mut next := end
+	for next < cond.len && cond[next].is_space() {
+		next++
+	}
+	if next < cond.len && cond[next] == `?` {
+		return true
+	}
+	match name {
+		'macos', 'darwin', 'mac', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
+		'android', 'posix', 'unix', 'bsd', 'x64', 'x32', 'amd64', 'arm64', 'aarch64',
+		'little_endian', 'big_endian', 'debug', 'test', 'native',
+		'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm',
+		'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding', 'nofloat',
+		'threads' {
+			return true
+		}
+		else {}
+	}
+
+	for define in p.prefs.user_defines {
+		if define == name || define.starts_with('${name}=') {
+			return true
+		}
+	}
+	return false
 }
 
 fn (p &Parser) comptime_value(name string) ?string {

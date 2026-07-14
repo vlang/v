@@ -376,7 +376,7 @@ fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src st
 		}
 	}
 	resolved := p.resolve_parallel_comptime_prepass_text(cond, cond_start, src, path, module_name,
-		values)
+		values, true)
 	return eval_comptime_cond(p.prefs, resolved)
 }
 
@@ -408,7 +408,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 		prev = piece
 	}
 	resolved_subject := p.resolve_parallel_comptime_prepass_text(subject, subject_start, src, path,
-		current_module, values)
+		current_module, values, false)
 	subject_known := subject_is_literal || subject.starts_with('@') || resolved_subject != subject
 	mut matched := false
 	for {
@@ -449,7 +449,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 				if tok == .lcbr && nested_depth == 0 {
 					if pattern.len > 0 {
 						resolved_pattern := p.resolve_parallel_comptime_prepass_text(pattern,
-							pattern_start, src, path, current_module, values)
+							pattern_start, src, path, current_module, values, false)
 						if comptime_cond_value(resolved_pattern) == comptime_cond_value(resolved_subject) {
 							pattern_matches = true
 						}
@@ -458,7 +458,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 				}
 				if tok == .comma && nested_depth == 0 {
 					resolved_pattern := p.resolve_parallel_comptime_prepass_text(pattern,
-						pattern_start, src, path, current_module, values)
+						pattern_start, src, path, current_module, values, false)
 					if comptime_cond_value(resolved_pattern) == comptime_cond_value(resolved_subject) {
 						pattern_matches = true
 					}
@@ -500,14 +500,15 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 	return current_module
 }
 
-fn (mut p Parser) resolve_parallel_comptime_prepass_text(text string, pos int, src string, path string, module_name string, values map[string]string) string {
+fn (mut p Parser) resolve_parallel_comptime_prepass_text(text string, pos int, src string, path string, module_name string, values map[string]string, preserve_flags bool) string {
 	mut resolver := Parser.new(p.prefs)
 	resolver.cur_file = path
 	resolver.cur_module = module_name
 	resolver.tok_pos = pos
 	resolver.s.src = src
 	resolver.comptime_const_values = values.clone()
-	return resolver.resolve_comptime_const_values(resolver.resolve_comptime_at_values(text))
+	return resolver.resolve_comptime_cached_values(resolver.resolve_comptime_at_values(text),
+		preserve_flags)
 }
 
 fn parallel_comptime_prepass_token_text(s &scanner.Scanner, src string) string {
