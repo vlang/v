@@ -2809,6 +2809,9 @@ fn (p &Parser) comptime_cond_token_text() string {
 		}
 	}
 	tok := p.tok
+	if tok == .string {
+		return comptime_cond_string_token_text(p.lit)
+	}
 	if tok == .and {
 		return '&&'
 	}
@@ -2882,6 +2885,18 @@ fn (p &Parser) comptime_cond_token_text() string {
 		return p.lit
 	}
 	return ''
+}
+
+fn comptime_cond_string_token_text(lit string) string {
+	if lit.len >= 2 && lit[0] in [`'`, `"`] && lit[lit.len - 1] == lit[0] {
+		return lit
+	}
+	if lit.len >= 3 && lit[0] == `r` && lit[1] in [`'`, `"`] && lit[lit.len - 1] == lit[1] {
+		return lit
+	}
+	mut out := strings.new_builder(lit.len + 2)
+	write_comptime_cond_string(mut out, lit)
+	return out.str()
 }
 
 fn comptime_cond_needs_space(prev string, cur string) bool {

@@ -2146,6 +2146,47 @@ fn main() {
 	assert out == 'x:id'
 }
 
+fn test_comptime_string_literal_text_is_not_resolved_as_cached_local() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'comptime_string_literal_cached_local', "fn main() {
+	x := 'y'
+	_ = x
+	\$if 'x' == 'y' {
+		println('wrong')
+	} \$else {
+		println('ok')
+	}
+}
+")
+	assert out == 'ok'
+}
+
+fn test_params_reflection_resolves_import_alias_source() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'params_reflection_import_alias', {
+		'v.mod':     "Module { name: 'params_reflection_import_alias' }\n"
+		'pkg/pkg.v': 'module pkg
+
+pub fn consume(item string) {
+	_ = item
+}
+'
+		'main.v':    'module main
+
+import pkg as p
+
+fn main() {
+	mut rows := []string{}
+	$for param in p.consume.params {
+		rows << param.name
+	}
+	println(rows.join("|"))
+}
+'
+	}, 'main.v')
+	assert out == 'item'
+}
+
 fn test_nested_method_reflection_respects_shadowed_loop_variable() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_method_shadowing', 'struct OuterMethods {}

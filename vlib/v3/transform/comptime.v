@@ -637,7 +637,8 @@ fn (mut t Transformer) expand_comptime_for_params(var_name string, fn_name strin
 }
 
 fn (t &Transformer) comptime_param_metas(fn_name string) []ParamMeta {
-	wanted := fn_name.trim_space()
+	raw_wanted := fn_name.trim_space()
+	wanted := t.resolve_imported_type_name(raw_wanted) or { raw_wanted }
 	mut module_name := ''
 	mut file_name := ''
 	mut signature_fallback := []ParamMeta{}
