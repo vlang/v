@@ -2740,25 +2740,35 @@ fn (p &Parser) resolve_comptime_at_values(cond string) string {
 				i++
 			}
 			name := cond[start..i]
-			value := match name {
-				'@METHOD' { method_name }
-				'@STRUCT' { p.cur_struct }
-				'@MOD' { module_name }
-				'@FN' { fn_name }
-				'@OS' { p.prefs.normalized_target_os() }
-				'@CCOMPILER' { @CCOMPILER }
-				'@BACKEND' { p.prefs.backend }
-				'@PLATFORM' { @PLATFORM }
-				else { name }
+			match name {
+				'@METHOD' { write_comptime_cond_string(mut out, method_name) }
+				'@STRUCT' { write_comptime_cond_string(mut out, p.cur_struct) }
+				'@MOD' { write_comptime_cond_string(mut out, module_name) }
+				'@FN' { write_comptime_cond_string(mut out, fn_name) }
+				'@OS' { write_comptime_cond_string(mut out, p.prefs.normalized_target_os()) }
+				'@CCOMPILER' { write_comptime_cond_string(mut out, @CCOMPILER) }
+				'@BACKEND' { write_comptime_cond_string(mut out, p.prefs.backend) }
+				'@PLATFORM' { write_comptime_cond_string(mut out, @PLATFORM) }
+				else { out.write_string(name) }
 			}
 
-			out.write_string(value)
 			continue
 		}
 		out.write_u8(c)
 		i++
 	}
 	return out.str()
+}
+
+fn write_comptime_cond_string(mut out strings.Builder, value string) {
+	out.write_u8(`'`)
+	for i := 0; i < value.len; i++ {
+		if value[i] == `\\` || value[i] == `'` {
+			out.write_u8(`\\`)
+		}
+		out.write_u8(value[i])
+	}
+	out.write_u8(`'`)
 }
 
 // comptime_char_is_name_cont reports whether the byte at `pos` continues an identifier. Used

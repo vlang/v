@@ -1869,11 +1869,32 @@ fn main() {
 		$if method.params[1].typ is int {
 			rows << "params:" + method.name
 		}
+		$if method.args[0].name == "value" {
+			rows << "args-name:" + method.name
+		}
+		$if method.params[1].name == "count" {
+			rows << "params-name:" + method.name
+		}
 	}
 	println(rows.join("|"))
 }
 ')
-	assert out == 'empty-type:true|text-type:true|args:text|params:text'
+	assert out == 'empty-type:true|text-type:true|args:text|params:text|args-name:text|params-name:text'
+}
+
+fn test_comptime_pseudo_value_is_not_resolved_as_cached_local() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'pseudo_value_cached_local', "fn main() {
+	c := 'js'
+	_ = c
+	\$if @BACKEND == 'c' {
+		println('ok')
+	} \$else {
+		println('wrong')
+	}
+}
+")
+	assert out == 'ok'
 }
 
 fn test_nested_method_reflection_respects_shadowed_loop_variable() {

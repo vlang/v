@@ -1120,7 +1120,7 @@ fn comptime_method_type_text(method MethodMeta) string {
 	return 'fn(${param_types.join(', ')})${ret}'
 }
 
-// subst_method_param_cond materializes indexed FunctionParam types in serialized `$if` guards.
+// subst_method_param_cond materializes indexed FunctionParam members in serialized `$if` guards.
 fn subst_method_param_cond(cond string, var_name string, method MethodMeta) string {
 	mut result := cond
 	for collection in ['args', 'params'] {
@@ -1144,8 +1144,15 @@ fn subst_method_param_cond(cond string, var_name string, method MethodMeta) stri
 			}
 			index_end := index_start + rel_end
 			member_start := index_end + 1
-			member_end := member_start + '.typ'.len
-			if member_end > result.len || result[member_start..member_end] != '.typ'
+			member := if result[member_start..].starts_with('.typ') {
+				'typ'
+			} else if result[member_start..].starts_with('.name') {
+				'name'
+			} else {
+				''
+			}
+			member_end := member_start + member.len + 1
+			if member.len == 0
 				|| (member_end < result.len && comptime_cond_name_char(result[member_end])) {
 				offset = member_start
 				continue
@@ -1156,18 +1163,22 @@ fn subst_method_param_cond(cond string, var_name string, method MethodMeta) stri
 				continue
 			}
 			index := index_text.int()
-			param_type := if index >= 0 && index < method.params.len {
-				if method.params[index].typ == '&void' {
+			replacement := if index >= 0 && index < method.params.len {
+				if member == 'name' {
+					"'${method.params[index].name}'"
+				} else if method.params[index].typ == '&void' {
 					'voidptr'
 				} else {
 					method.params[index].typ
 				}
+			} else if member == 'name' {
+				"''"
 			} else {
 				// Missing slots must not accidentally match a real type such as `void`.
 				'__v3_missing_method_param_type'
 			}
-			result = result[..start] + param_type + result[member_end..]
-			offset = start + param_type.len
+			result = result[..start] + replacement + result[member_end..]
+			offset = start + replacement.len
 		}
 	}
 	return result
