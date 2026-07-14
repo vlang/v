@@ -918,6 +918,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		value:  receiver_name
 		typ:    receiver_type
 		is_mut: receiver_is_mut
+		op:     .dot // receiver marker; ordinary declared parameters use `.none`
 	})
 	// operator param
 	if p.tok == .key_mut {
@@ -1014,6 +1015,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			value:  receiver_name
 			typ:    receiver_type
 			is_mut: receiver_is_mut
+			op:     .dot // receiver marker; static methods do not inject this parameter
 		})
 	}
 	for p.tok != .rpar && p.tok != .eof {

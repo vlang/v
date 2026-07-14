@@ -588,7 +588,7 @@ fn (t &Transformer) comptime_param_metas(fn_name string) []ParamMeta {
 			if param.kind != .param {
 				continue
 			}
-			if node.value.contains('.') && i == 0 {
+			if i == 0 && param.op == .dot {
 				continue
 			}
 			params << ParamMeta{
