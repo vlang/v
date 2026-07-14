@@ -14,7 +14,7 @@ fn test_multi_return_with_enum_keeps_one_concrete_c_type() {
 		panic(err)
 	}
 	os.write_file(os.join_path(dir, 'choice', 'choice.v'),
-		'module choice\n\nenum Kind as u8 { first second }\n\nfn choose() (Kind, bool, int) {\n\treturn .second, true, 7\n}\n\npub fn verify() bool {\n\tkind, ok, number := choose()\n\treturn kind == .second && ok && number == 7\n}\n') or {
+		'module choice\n\nenum Kind as u8 { first second }\n\nenum Big as u64 {\n\tlarge = u64(1) << 40\n}\n\nfn choose() (Kind, bool, int) {\n\treturn .second, true, 7\n}\n\nfn choose_big() (Big, bool) {\n\treturn .large, true\n}\n\npub fn verify() bool {\n\tkind, ok, number := choose()\n\tbig, big_ok := choose_big()\n\treturn kind == .second && ok && number == 7 && big_ok && big == .large && u64(big) == (u64(1) << 40)\n}\n') or {
 		panic(err)
 	}
 	os.write_file(os.join_path(dir, 'main.v'),

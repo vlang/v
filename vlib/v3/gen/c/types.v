@@ -139,11 +139,10 @@ fn (mut g FlatGen) multi_return_c_type_name(t types.MultiReturn) string {
 }
 
 fn (mut g FlatGen) multi_return_field_c_type(t types.Type) string {
-	// Enums use integer storage in the C ABI. Multi-return declarations,
-	// definitions and destructuring must therefore all name the storage type,
-	// including for enums with an explicit backing type.
+	// Plain enums use integer storage in the C ABI, while backed enums use
+	// their emitted typedef so wide values keep the declared storage width.
 	if t is types.Enum {
-		return g.tc.c_type(t)
+		return g.enum_value_c_type(t)
 	}
 	return g.value_c_type(t)
 }
