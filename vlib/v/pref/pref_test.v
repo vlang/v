@@ -52,34 +52,6 @@ fn test_cross_compile_keeps_explicit_cc() {
 	assert second.ccompiler == custom_cc
 }
 
-fn test_v2_only_flags_are_forwarded_by_v1_wrapper() {
-	target := os.join_path(vroot, 'examples', 'hello_world.v')
-	prefs, command := pref.parse_args_and_show_errors(['help'], [
-		'',
-		'-v2',
-		'-freestanding',
-		'-os',
-		'none',
-		'--skip-builtin',
-		'--skip-type-check',
-		'--debug',
-		'--showcc',
-		'--stats',
-		'-print-parsed-files',
-		'--profile-alloc',
-		'--single-backend',
-		'-O0',
-		'-fhooks',
-		'output,panic,alloc',
-		target,
-	], false)
-	assert command == target
-	assert prefs.use_v2
-	assert prefs.is_bare
-	assert prefs.build_options.contains('-os none')
-	assert prefs.build_options.contains('-fhooks output,panic,alloc')
-}
-
 fn test_vexe_path_normalizes_relative_env_path() {
 	old_wd := os.getwd()
 	old_vexe := os.getenv_opt('VEXE')
@@ -287,9 +259,6 @@ fn test_v_compiler_targets_default_to_no_gc() {
 		os.join_path(vroot, 'cmd', 'v'),
 		os.join_path(vroot, 'cmd', 'v') + os.path_separator,
 		os.join_path(vroot, 'cmd', 'v', 'v.v'),
-		os.join_path(vroot, 'cmd', 'v2'),
-		os.join_path(vroot, 'cmd', 'v2') + os.path_separator,
-		os.join_path(vroot, 'cmd', 'v2', 'v2.v'),
 		os.join_path(vroot, 'cmd', 'tools', 'vfmt.v'),
 	] {
 		prefs, _ := pref.parse_args_and_show_errors([], ['', target], false)
@@ -299,7 +268,7 @@ fn test_v_compiler_targets_default_to_no_gc() {
 }
 
 fn test_v_compiler_targets_keep_explicit_gc_selection() {
-	target := os.join_path(vroot, 'cmd', 'v2', 'v2.v')
+	target := os.join_path(vroot, 'cmd', 'v', 'v.v')
 	prefs, _ := pref.parse_args_and_show_errors([], ['', '-gc', 'boehm', target], false)
 	assert prefs.gc_mode == .boehm_full_opt
 	assert prefs.build_options.contains('-gc boehm')
@@ -493,30 +462,20 @@ fn test_v_cmds_and_flags() {
 	unknown_arg_for_cmd_res := os.execute('${vexe} build-module -xyz ${vroot}/vlib/math')
 	assert unknown_arg_for_cmd_res.output.trim_space() == 'Unknown argument `-xyz` for command `build-module`'
 
-	v2_only_flag_without_v2_res :=
+	unsupported_skip_builtin_res :=
 		os.execute('${vexe} --skip-builtin ${vroot}/examples/hello_world.v')
-	assert v2_only_flag_without_v2_res.exit_code == 1
-	assert v2_only_flag_without_v2_res.output.trim_space() == 'Unknown argument `--skip-builtin`'
+	assert unsupported_skip_builtin_res.exit_code == 1
+	assert unsupported_skip_builtin_res.output.trim_space() == 'Unknown argument `--skip-builtin`'
 
-	v2_hooks_without_v2_res := os.execute('${vexe} -fhooks output ${vroot}/examples/hello_world.v')
-	assert v2_hooks_without_v2_res.exit_code == 1
-	assert v2_hooks_without_v2_res.output.trim_space() == 'Unknown argument `-fhooks`'
+	unsupported_hooks_res := os.execute('${vexe} -fhooks output ${vroot}/examples/hello_world.v')
+	assert unsupported_hooks_res.exit_code == 1
+	assert unsupported_hooks_res.output.trim_space() == 'Unknown argument `-fhooks`'
 
-	v2_os_none_without_v2_res := os.execute('${vexe} -os none ${vroot}/examples/hello_world.v')
-	assert v2_os_none_without_v2_res.exit_code == 1
-	assert v2_os_none_without_v2_res.output.trim_space() == 'unknown operating system target `none`'
+	unsupported_os_none_res := os.execute('${vexe} -os none ${vroot}/examples/hello_world.v')
+	assert unsupported_os_none_res.exit_code == 1
+	assert unsupported_os_none_res.output.trim_space() == 'unknown operating system target `none`'
 
-	late_v2_skip_builtin_res :=
-		os.execute('${vexe} --skip-builtin run ${vroot}/examples/hello_world.v -v2')
-	assert late_v2_skip_builtin_res.exit_code == 1
-	assert late_v2_skip_builtin_res.output.trim_space() == 'Unknown argument `--skip-builtin`'
-
-	late_v2_hooks_res :=
-		os.execute('${vexe} -fhooks output run ${vroot}/examples/hello_world.v -v2')
-	assert late_v2_hooks_res.exit_code == 1
-	assert late_v2_hooks_res.output.trim_space() == 'Unknown argument `-fhooks`'
-
-	eval_removed_message := 'use v -v2 -eval file.v'
+	eval_removed_message := 'The eval backend has been removed.'
 	eval_flag_res := os.execute('${vexe} -eval ${vroot}/examples/hello_world.v')
 	assert eval_flag_res.exit_code == 1
 	assert eval_flag_res.output.trim_space() == eval_removed_message

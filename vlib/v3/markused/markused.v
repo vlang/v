@@ -210,6 +210,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	queue << 'array.delete_last'
 	used['array.delete_last'] = true
+	for type_name in tc.ownership_drop_type_names() {
+		method := '${type_name}.drop'
+		enqueue(method, mut used, mut queue)
+		lowered := markused_c_name(method)
+		if lowered != method {
+			enqueue(lowered, mut used, mut queue)
+		}
+	}
 	for seed in ['i8.str', 'i16.str', 'i32.str', 'i64.str'] {
 		queue << seed
 		used[seed] = true

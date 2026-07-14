@@ -56,6 +56,7 @@ mut:
 	pending_params          bool
 	pending_export          string
 	pending_noreturn        bool
+	pending_soa             bool
 	skip_next_decl          bool
 	disable_fn_body         bool
 	pending_fn_pub          bool
@@ -148,6 +149,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.pending_params = false
 	p.pending_export = ''
 	p.pending_noreturn = false
+	p.pending_soa = false
 	p.skip_next_decl = false
 	p.disable_fn_body = false
 	p.pending_fn_pub = false
@@ -758,12 +760,14 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 			res := p.top_level_stmt()
 			p.disable_fn_body = false
 			p.skip_next_decl = false
+			p.pending_soa = false
 			return res
 		}
 		p.skip_top_level_stmt()
 		p.skip_next_decl = false
 		p.pending_export = ''
 		p.pending_noreturn = false
+		p.pending_soa = false
 		return flat.empty_node
 	}
 	res := p.top_level_stmt()
@@ -772,6 +776,7 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 	p.pending_export = ''
 	p.pending_noreturn = false
 	p.pending_json_as_number = false
+	p.pending_soa = false
 	return res
 }
 
@@ -1297,7 +1302,9 @@ fn (mut p Parser) c_anon_param_starts_type() bool {
 fn (mut p Parser) struct_decl() flat.NodeId {
 	is_union := p.tok == .key_union
 	is_params := p.pending_params
+	is_soa := p.pending_soa
 	p.pending_params = false
+	p.pending_soa = false
 	p.next() // skip 'struct' or 'union'
 	mut name := p.expect(.name)
 	if (name == 'C' || name == 'JS') && p.tok == .dot {
@@ -1335,7 +1342,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		return p.a.add_node(flat.Node{
 			kind:           .struct_decl
 			value:          name
-			typ:            struct_decl_typ(is_union, is_generic, is_params, implements_types)
+			typ:            struct_decl_typ(is_union, is_generic, is_params, is_soa,
+				implements_types)
 			generic_params: generic_params
 		})
 	}
@@ -1514,14 +1522,14 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	return p.a.add_node(flat.Node{
 		kind:           .struct_decl
 		value:          name
-		typ:            struct_decl_typ(is_union, is_generic, is_params, implements_types)
+		typ:            struct_decl_typ(is_union, is_generic, is_params, is_soa, implements_types)
 		generic_params: generic_params
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
 }
 
-fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, implements_types []string) string {
+fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, is_soa bool, implements_types []string) string {
 	mut parts := []string{}
 	if is_union {
 		parts << 'union'
@@ -1531,6 +1539,9 @@ fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, implements_ty
 	}
 	if is_params {
 		parts << 'params'
+	}
+	if is_soa {
+		parts << 'soa'
 	}
 	$if ownership ? {
 		if implements_types.len > 0 {
@@ -2077,6 +2088,8 @@ fn (mut p Parser) skip_attrs() {
 					p.pending_params = true
 				} else if p.lit == 'noreturn' {
 					p.pending_noreturn = true
+				} else if p.lit == 'soa' {
+					p.pending_soa = true
 				} else if p.lit == 'export' {
 					p.try_parse_export_attr()
 					continue
@@ -2100,6 +2113,8 @@ fn (mut p Parser) skip_attrs() {
 					p.pending_params = true
 				} else if p.lit == 'noreturn' {
 					p.pending_noreturn = true
+				} else if p.lit == 'soa' {
+					p.pending_soa = true
 				} else if p.lit == 'export' {
 					p.try_parse_export_attr()
 					continue

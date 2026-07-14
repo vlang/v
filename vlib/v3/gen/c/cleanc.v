@@ -154,23 +154,32 @@ mut:
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
 	// but a literal in a local decl / argument elsewhere in the body does not.
-	in_return                 bool
-	expected_expr_type        types.Type = types.Type(types.void_)
-	expected_enum             string
-	needed_optional_types     map[string]string
-	emitted_optional_types    map[string]bool
-	emitted_fns               map[string]bool
-	array_method_cache        map[string]string
-	param_types_cache         map[string][]types.Type        // (name|fallback) -> resolved param types
-	embedded_fields_by_type   map[string][]types.StructField // type name -> its embedded fields (usually empty)
-	param_types_by_short      map[string][]types.Type        // method short-name suffix -> param types (fallback index)
-	generic_method_candidates map[string][]GenericMethodCandidate
-	spawn_wrapper_names       map[string]string
-	spawn_wrapper_defs        []string
-	callback_wrapper_names    map[string]string
-	callback_wrapper_defs     []string
-	parallel_used             bool
-	c_name_cache              &CNameCache = unsafe { nil }
+	in_return                      bool
+	cur_return_node_id             int = -1
+	ownership_return_index         int
+	ownership_seen_return_sources  map[string]bool
+	ownership_propagation_index    int
+	ownership_loop_control_index   int
+	ownership_loop_iteration_index int
+	ownership_scope_index          int
+	cur_return_drops               []types.OwnershipDropEntry
+	pending_return_scope_drops     []types.OwnershipDropEntry
+	expected_expr_type             types.Type = types.Type(types.void_)
+	expected_enum                  string
+	needed_optional_types          map[string]string
+	emitted_optional_types         map[string]bool
+	emitted_fns                    map[string]bool
+	array_method_cache             map[string]string
+	param_types_cache              map[string][]types.Type        // (name|fallback) -> resolved param types
+	embedded_fields_by_type        map[string][]types.StructField // type name -> its embedded fields (usually empty)
+	param_types_by_short           map[string][]types.Type        // method short-name suffix -> param types (fallback index)
+	generic_method_candidates      map[string][]GenericMethodCandidate
+	spawn_wrapper_names            map[string]string
+	spawn_wrapper_defs             []string
+	callback_wrapper_names         map[string]string
+	callback_wrapper_defs          []string
+	parallel_used                  bool
+	c_name_cache                   &CNameCache = unsafe { nil }
 	// Body-independent postamble segments emitted on helper threads while the
 	// fn-body workers run; spliced into the final output in the exact order
 	// the serial postamble produces them.
@@ -459,6 +468,7 @@ pub fn FlatGen.new() FlatGen {
 		active_locks:                   []ActiveLock{}
 		loop_label_depths:              map[string]int{}
 		goto_label_lock_scopes:         map[string][]int{}
+		ownership_seen_return_sources:  map[string]bool{}
 		needed_optional_types:          map[string]string{}
 		emitted_optional_types:         map[string]bool{}
 		emitted_fns:                    map[string]bool{}
@@ -3420,6 +3430,10 @@ fn (mut g FlatGen) gen_expr_as_string(id flat.NodeId) {
 		if g.gen_current_mut_param_value_read(id, typ.base_type) {
 			return
 		}
+		g.write('*(')
+		g.gen_expr(id)
+		g.write(')')
+		return
 	}
 	g.gen_expr(id)
 }
@@ -4371,6 +4385,12 @@ fn (mut g FlatGen) sizeof_target(value string) string {
 	}
 	if fixed_target := c_fixed_array_typedef_sizeof_target(value) {
 		return fixed_target
+	}
+	// Values of explicitly backed enums use their declared C typedef instead of the
+	// integer ABI type. `sizeof` must therefore follow value storage semantics too.
+	parsed := g.tc.parse_type(value)
+	if parsed is types.Enum {
+		return g.value_sizeof_target(parsed)
 	}
 	if value.contains('.') {
 		parts := value.split('.')
@@ -5630,6 +5650,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			g.write('0')
 		}
 		.call {
+			if g.string_plus_call_is_nested(id, node) {
+				g.gen_owned_string_plus_chain(id)
+				return
+			}
 			// A call to a fixed-array-returning function yields the wrapper struct;
 			// unwrap `.ret_arr` so the result behaves as the array value everywhere
 			// (indexing, arg passing, memcpy into a destination).
@@ -7570,6 +7594,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	g.writeln('int pthread_attr_init(pthread_attr_t* attr);')
 	g.writeln('int pthread_attr_destroy(pthread_attr_t* attr);')
+	g.writeln('int pthread_attr_setstacksize(void* attr, size_t stacksize);')
 	g.writeln('int pthread_mutex_init(void* mutex, void* attr);')
 	g.writeln('int pthread_mutex_lock(void* mutex);')
 	g.writeln('int pthread_mutex_unlock(void* mutex);')
@@ -7635,6 +7660,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_darwin_task_info_struct()
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
+	g.writeln('int stat(char* path, struct stat* buf);')
 	g.headerless_tm_struct()
 	g.writeln('struct utimbuf { time_t actime; time_t modtime; };')
 	g.writeln('time_t mktime(struct tm* timeptr);')
@@ -7717,6 +7743,7 @@ const c_headerless_libc_declared_fns = [
 	'strrchr',
 	'strstr',
 	'snprintf',
+	'stat',
 	'fcntl',
 	'pipe',
 	'close',
@@ -7727,6 +7754,9 @@ const c_headerless_libc_declared_fns = [
 	'__errno',
 	'__errno_location',
 	'_errno',
+	'pthread_attr_init',
+	'pthread_attr_destroy',
+	'pthread_attr_setstacksize',
 	'pthread_mutex_init',
 	'pthread_mutex_lock',
 	'pthread_mutex_unlock',
@@ -10146,10 +10176,26 @@ fn (mut g FlatGen) global_decls() {
 			g.tc.cur_module = old_module
 		}
 		decl_typ := g.global_storage_type(name, typ)
+		is_fn_capture := name.contains('__anon_fn_')
 		if decl_typ is types.ArrayFixed {
 			c_elem, dims := g.fixed_array_decl_parts(decl_typ)
 			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
-			g.writeln('${c_elem} ${g.cname(name)}${dims}${init};')
+			if is_fn_capture {
+				g.writeln('#if defined(__TINYC__)')
+				g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
+				g.writeln('void* pthread_getspecific(u64 key);')
+				g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
+				g.writeln('static u64 ${g.cname(name)}_key;')
+				g.writeln('static void ${g.cname(name)}_key_init(void) __attribute__((constructor));')
+				g.writeln('static void ${g.cname(name)}_key_init(void) { pthread_key_create(&${g.cname(name)}_key, free); }')
+				g.writeln('static ${c_elem} (*${g.cname(name)}_slot(void))${dims} { void* p = pthread_getspecific(${g.cname(name)}_key); if (!p) { p = calloc(1, sizeof(*${g.cname(name)}_slot())); pthread_setspecific(${g.cname(name)}_key, p); } return p; }')
+				g.writeln('#define ${g.cname(name)} (*${g.cname(name)}_slot())')
+				g.writeln('#else')
+				g.writeln('_Thread_local ${c_elem} ${g.cname(name)}${dims}${init};')
+				g.writeln('#endif')
+			} else {
+				g.writeln('${c_elem} ${g.cname(name)}${dims}${init};')
+			}
 			continue
 		}
 		mut ct := g.tc.c_type(decl_typ)
@@ -10168,6 +10214,27 @@ fn (mut g FlatGen) global_decls() {
 			continue
 		}
 		init := if g.can_use_global_brace_zero_init(decl_typ, ct) { ' = {0}' } else { '' }
+		// Capturing fn literals are immediately consumed callbacks in the V3
+		// frontend. Their lifted capture slots must nevertheless be per-thread:
+		// a process-global slot lets concurrent invocations overwrite one
+		// another before the callback runs. Native C compilers use TLS directly;
+		// TinyCC uses pthread keys because it does not implement `_Thread_local`.
+		if is_fn_capture {
+			cname := g.cname(name)
+			g.writeln('#if defined(__TINYC__)')
+			g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
+			g.writeln('void* pthread_getspecific(u64 key);')
+			g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
+			g.writeln('static u64 ${cname}_key;')
+			g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
+			g.writeln('static void ${cname}_key_init(void) { pthread_key_create(&${cname}_key, free); }')
+			g.writeln('static ${ct}* ${cname}_slot(void) { void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); pthread_setspecific(${cname}_key, p); } return (${ct}*)p; }')
+			g.writeln('#define ${cname} (*${cname}_slot())')
+			g.writeln('#else')
+			g.writeln('_Thread_local ${ct} ${cname}${init};')
+			g.writeln('#endif')
+			continue
+		}
 		// With -prealloc the arena base block is per-thread (lazily initialized
 		// on first allocation in each thread); a shared pointer would make all
 		// threads bump the same block without synchronization. cc gets real
@@ -11239,6 +11306,61 @@ fn (g &FlatGen) is_const_expr(id flat.NodeId) bool {
 			false
 		}
 	}
+}
+
+fn (g &FlatGen) is_string_plus_call(node flat.Node) bool {
+	if node.kind != .call || node.children_count != 3 {
+		return false
+	}
+	callee := g.a.child_node(&node, 0)
+	return callee.kind == .ident && callee.value == 'string__plus'
+}
+
+fn (g &FlatGen) string_plus_call_is_nested(_id flat.NodeId, node flat.Node) bool {
+	if !g.is_string_plus_call(node) {
+		return false
+	}
+	lhs := g.a.child_node(&node, 1)
+	rhs := g.a.child_node(&node, 2)
+	return g.is_string_plus_call(lhs) || g.is_string_plus_call(rhs)
+}
+
+fn (g &FlatGen) collect_string_plus_parts(id flat.NodeId, mut parts []flat.NodeId) {
+	node := g.a.nodes[int(id)]
+	if g.is_string_plus_call(node) {
+		g.collect_string_plus_parts(g.a.child(&node, 1), mut parts)
+		g.collect_string_plus_parts(g.a.child(&node, 2), mut parts)
+		return
+	}
+	parts << id
+}
+
+// Nested string concatenation owns each intermediate result. Emit the chain as
+// ordered statements and release every superseded accumulator.
+fn (mut g FlatGen) gen_owned_string_plus_chain(id flat.NodeId) {
+	mut parts := []flat.NodeId{}
+	g.collect_string_plus_parts(id, mut parts)
+	if parts.len < 3 {
+		g.gen_call(id, g.a.nodes[int(id)])
+		return
+	}
+	tmp := g.tmp_count
+	g.tmp_count++
+	g.write('({')
+	for i, part in parts {
+		g.write(' string __str_plus_part_${tmp}_${i} = ')
+		g.gen_expr_as_string(part)
+		g.write(';')
+	}
+	g.write(' string __str_plus_acc_${tmp}_1 = string__plus(__str_plus_part_${tmp}_0, __str_plus_part_${tmp}_1);')
+	mut previous := '__str_plus_acc_${tmp}_1'
+	for i := 2; i < parts.len; i++ {
+		next := '__str_plus_acc_${tmp}_${i}'
+		g.write(' string ${next} = string__plus(${previous}, __str_plus_part_${tmp}_${i});')
+		g.write(' string__free(&${previous});')
+		previous = next
+	}
+	g.write(' ${previous}; })')
 }
 
 fn (g &FlatGen) is_runtime_assignable(id flat.NodeId) bool {

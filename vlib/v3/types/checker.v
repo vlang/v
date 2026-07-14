@@ -276,6 +276,7 @@ pub mut:
 	structs                      map[string][]StructField
 	struct_modules               map[string]string
 	struct_files                 map[string]string
+	soa_structs                  map[string]bool
 	// set of `${file}\x01${module}\x01${name}` keys for every source-level
 	// struct/type/interface/enum declaration, built once in `collect`. Replaces
 	// the former full-node scan in `source_declares_type_in_scope`, which was
@@ -431,6 +432,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		structs:                            map[string][]StructField{}
 		struct_modules:                     map[string]string{}
 		struct_files:                       map[string]string{}
+		soa_structs:                        map[string]bool{}
 		declared_type_scope_keys:           map[string]bool{}
 		struct_error_embeds_shadow_builtin: map[string]bool{}
 		struct_generic_params:              map[string][]string{}
@@ -934,6 +936,9 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				if 'params' in node.typ.split(',') {
 					tc.params_structs[qname] = true
 				}
+				if 'soa' in node.typ.split(',') {
+					tc.soa_structs[qname] = true
+				}
 			}
 			.type_decl {
 				if node.children_count > 0 {
@@ -1122,6 +1127,9 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 				if 'params' in node.typ.split(',') {
 					tc.params_structs[qname] = true
+				}
+				if 'soa' in node.typ.split(',') {
+					tc.soa_structs[qname] = true
 				}
 			}
 			.c_fn_decl {
@@ -6572,7 +6580,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		return
 	}
 	if kind_id == 45 {
-		tc.check_block(node)
+		tc.check_block(id, node)
 		return
 	}
 	if node.kind == .comptime_if {
@@ -7446,6 +7454,9 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 			}
 		}
 		tc.push_scope()
+		$if ownership ? {
+			tc.ownership_mark_scope_node(branch_id)
+		}
 		mut body_start := 0
 		is_assignment_case := branch.value in ['recv', 'recv_assign']
 			|| branch.value.starts_with('recv_compound:')
@@ -7558,6 +7569,11 @@ fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
 	}
 	inner_id := tc.a.child(&node, 0)
 	tc.check_node(inner_id)
+	$if ownership ? {
+		if node.value in ['!', '?'] {
+			tc.ownership_record_propagation_drops()
+		}
+	}
 	if node.children_count < 2 || node.value in ['!', '?'] {
 		return
 	}
@@ -7568,12 +7584,44 @@ fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
 	fallback_id := tc.a.child(&node, 1)
 	tc.push_scope()
 	tc.cur_scope.insert('err', tc.parse_type('IError'))
-	tc.check_branch_node(fallback_id, true)
+	tc.check_or_fallback_branch_node(fallback_id)
 	tc.pop_scope()
 	$if ownership ? {
 		tc.ownership_end_branch(fallback_id)
 		tc.ownership_add_branch_group_base()
 		tc.ownership_end_branch_group()
+	}
+}
+
+fn (mut tc TypeChecker) check_or_fallback_branch_node(id flat.NodeId) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .block {
+		tc.push_scope()
+		$if ownership ? {
+			tc.ownership_mark_scope_node(id)
+		}
+		tc.check_statement_sequence(node, 0, true)
+		tc.ownership_record_or_fallback_error_return_drops(id)
+		tc.pop_scope()
+		return
+	}
+	tc.check_node(id)
+	tc.ownership_record_or_fallback_error_return_drops(id)
+}
+
+fn (mut tc TypeChecker) ownership_record_or_fallback_error_return_drops(id flat.NodeId) {
+	$if ownership ? {
+		if tc.cur_fn_ret_type !is OptionType && tc.cur_fn_ret_type !is ResultType {
+			return
+		}
+		tail_id := tc.branch_tail_expr_id(id)
+		if !tc.branch_tail_is_error_literal(tail_id) {
+			return
+		}
+		tc.ownership_record_propagation_drops()
 	}
 }
 
@@ -7645,8 +7693,11 @@ fn (mut tc TypeChecker) check_lambda_expr(node flat.Node) {
 }
 
 // check_block validates check block state for types.
-fn (mut tc TypeChecker) check_block(node flat.Node) {
+fn (mut tc TypeChecker) check_block(id flat.NodeId, node flat.Node) {
 	tc.push_scope()
+	$if ownership ? {
+		tc.ownership_mark_scope_node(id)
+	}
 	tc.check_statement_sequence(node, 0, false)
 	tc.pop_scope()
 }
@@ -7654,6 +7705,14 @@ fn (mut tc TypeChecker) check_block(node flat.Node) {
 // check_for_stmt validates check for stmt state for types.
 fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	tc.push_scope()
+	$if ownership ? {
+		if node.children_count > 0 {
+			init_id := tc.a.child(&node, 0)
+			if int(init_id) >= 0 && tc.a.nodes[int(init_id)].kind != .empty {
+				tc.ownership_mark_scope_node(init_id)
+			}
+		}
+	}
 	if node.children_count > 0 {
 		init_id := tc.a.child(&node, 0)
 		if int(init_id) >= 0 {
@@ -7703,6 +7762,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		} else {
 			tc.ownership_merge_loop_continue_snapshots()
 		}
+		tc.ownership_record_current_loop_iteration_drops()
 		if body_reaches_post {
 			tc.ownership_end_loop_branch(node, 3)
 		}
@@ -7785,6 +7845,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.check_stmt_node(tc.a.child(&node, i))
 	}
 	$if ownership ? {
+		tc.ownership_record_current_loop_iteration_drops()
 		tc.ownership_merge_loop_continue_snapshots()
 		tc.ownership_end_loop_branch(node, header)
 		tc.ownership_add_branch_group_base()
@@ -14065,6 +14126,8 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 	guard_bindings := tc.check_condition(cond_id)
 	smartcasts := tc.extract_smartcasts(cond_id)
 	then_id := tc.a.child(&node, 1)
+	then_uses_block_scope := guard_bindings.len == 0 && tc.valid_node_id(then_id)
+		&& tc.a.nodes[int(then_id)].kind == .block
 	saved_smartcasts := clone_smartcasts(tc.smartcasts)
 	for sc in smartcasts {
 		if valid_string_data(sc.name) {
@@ -14079,6 +14142,11 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		}
 	}
 	tc.push_scope()
+	$if ownership ? {
+		if !then_uses_block_scope {
+			tc.ownership_mark_scope_node(then_id)
+		}
+	}
 	for binding in guard_bindings {
 		$if ownership ? {
 			tc.ownership_note_binding(binding.name, binding.typ, cond_id)
@@ -14250,6 +14318,9 @@ fn (mut tc TypeChecker) check_branch_node(id flat.NodeId, value_tail bool) {
 	node := tc.a.nodes[int(id)]
 	if node.kind == .block {
 		tc.push_scope()
+		$if ownership ? {
+			tc.ownership_mark_scope_node(id)
+		}
 		tc.check_statement_sequence(node, 0, value_tail)
 		tc.pop_scope()
 		return
@@ -14575,6 +14646,9 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.push_scope()
+		$if ownership ? {
+			tc.ownership_mark_scope_node(branch_id)
+		}
 		tc.check_statement_sequence(branch, n_conds, value_context)
 		tc.pop_scope()
 		tc.smartcasts = clone_smartcasts(saved_smartcasts)

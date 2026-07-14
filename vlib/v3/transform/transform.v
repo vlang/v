@@ -747,6 +747,7 @@ fn (mut t Transformer) clear_struct_field_type_cache() {
 
 const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__'
 const sum_type_tag_selector_field = '__v_sum_type_tag__'
+const pending_loop_label_marker = '__v_pending_loop_label:'
 
 fn (mut t Transformer) rebuild_receiver_method_suffix_index() {
 	t.receiver_method_suffix_index.clear()
@@ -3192,7 +3193,15 @@ fn (mut t Transformer) transform_labeled_loop(label string, loop_id flat.NodeId,
 	})
 	mut result := []flat.NodeId{}
 	result << t.a.add_val(.label_stmt, label)
-	result << t.transform_stmt(new_loop)
+	transformed_loop := t.transform_stmt(new_loop)
+	mut marked_loop := false
+	for item_id in transformed_loop {
+		if !marked_loop && t.a.nodes[int(item_id)].kind in [.for_stmt, .for_in_stmt] {
+			result << t.a.add_val(.label_stmt, pending_loop_label_marker + label)
+			marked_loop = true
+		}
+		result << item_id
+	}
 	result << t.a.add_val(.label_stmt, break_label)
 	return result
 }
@@ -3645,19 +3654,20 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 	if node.children_count == 0 {
 		return arr1(id)
 	}
-	if expanded := t.try_expand_return_if(id, node) {
+	source_return_id := t.return_drop_source_id(id, node)
+	if expanded := t.try_expand_return_if(source_return_id, node) {
 		return expanded
 	}
-	if expanded := t.try_expand_return_match(id, node) {
+	if expanded := t.try_expand_return_match(source_return_id, node) {
 		return expanded
 	}
 	if direct := t.try_return_direct_optional_expr(node) {
 		return direct
 	}
-	if expanded := t.try_expand_return_optional_expr(node) {
+	if expanded := t.try_expand_return_optional_expr(source_return_id, node) {
 		return expanded
 	}
-	if expanded := t.try_expand_forwarded_multi_return(node) {
+	if expanded := t.try_expand_forwarded_multi_return(source_return_id, node) {
 		return expanded
 	}
 	if node.children_count == 1 {
@@ -3871,7 +3881,7 @@ fn (t &Transformer) const_array_literal_storage_elem_excluded(raw_type types.Typ
 
 fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool {
 	mut fixed_safe_refs := map[int]bool{}
-	for _, node in t.a.nodes {
+	for node in t.a.nodes {
 		if node.kind == .index && node.children_count > 0 {
 			t.mark_const_ref_descendants(mut fixed_safe_refs, t.a.child(&node, 0))
 		}
@@ -5013,12 +5023,15 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 		.index {
 			// `a[lo..hi]` (an index node tagged `range`) yields a fresh array value, not an
 			// addressable element, so its address can't be taken in place — runtime_addr
-			// must materialize it to a temp first. Only plain element indexing `a[i]` is an
-			// addressable lvalue.
+			// must materialize it to a temp first. Plain element indexing is addressable only
+			// when the indexed storage is addressable too.
 			if node.value == 'range' {
 				return false
 			}
-			return true
+			if node.children_count == 0 {
+				return false
+			}
+			return t.expr_can_take_address(t.a.child(&node, 0))
 		}
 		.selector {
 			if node.children_count == 0 {
