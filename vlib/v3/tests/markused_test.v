@@ -96,6 +96,15 @@ fn mark_used_source(name string, source string) map[string]bool {
 	return markused.mark_used(a, tc)
 }
 
+fn find_fn_node_id(a &flat.FlatAst, name string) int {
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == name {
+			return i
+		}
+	}
+	return -1
+}
+
 // test_import_alias_context_is_file_local verifies that declarations retain
 // the imports of their own file even when later files reuse or omit an alias.
 fn test_import_alias_context_is_file_local() {
@@ -153,6 +162,11 @@ pub fn make() Box {
 }
 ',
 	])
+	selected_id := find_fn_node_id(a, 'selected')
+	assert selected_id >= 0
+	selected_dependencies := tc.direct_dependencies(selected_id)
+	assert 'left.make' in selected_dependencies
+	assert 'right.make' !in selected_dependencies
 	used, uses_generics := markused.mark_used_with_generic_usage(a, tc)
 	assert used['left.make']
 	assert !used['right.make']

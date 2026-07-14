@@ -491,6 +491,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.sparse_statement_nodes = map[int]bool{}
 	w.sparse_expr_type_values = map[int]Type{}
 	w.sparse_checking_nodes = map[int]bool{}
+	w.direct_dependencies_by_fn = map[int][]string{}
 	w.method_values_by_fn = map[int][]string{}
 	w.method_value_locals = map[string]bool{}
 	w.method_value_local_depth = map[string]int{}
@@ -548,6 +549,11 @@ fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 	for idx, typ in w.sparse_expr_type_values {
 		tc.expr_type_values[idx] = typ
 		tc.expr_type_set[idx] = true
+	}
+	for fn_idx, dependencies in w.direct_dependencies_by_fn {
+		if dependencies.len > 0 {
+			tc.direct_dependencies_by_fn[fn_idx] = dependencies.clone()
+		}
 	}
 	for fn_idx, values in w.method_values_by_fn {
 		if values.len == 0 {

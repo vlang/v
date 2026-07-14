@@ -336,6 +336,10 @@ pub mut:
 	resolved_fn_value_names []string // node_id -> resolved function value name
 	resolved_fn_value_set   []bool
 	statement_nodes         []bool
+	// Exact call/function-value dependencies recorded while each function is
+	// checked. Consumers such as markused can walk these resolved Symbol-like
+	// names instead of reconstructing import and receiver resolution from syntax.
+	direct_dependencies_by_fn map[int][]string // enclosing fn node id -> resolved function names
 	// Methods used as *values* (`recv.method` passed as a callback), recorded per enclosing
 	// function during semantic checking — which has full scope/type info, runs before
 	// markused, and (unlike a call) routes a value-context selector through check_selector.
@@ -477,6 +481,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		resolved_fn_value_names:         []string{}
 		resolved_fn_value_set:           []bool{}
 		statement_nodes:                 []bool{}
+		direct_dependencies_by_fn:       map[int][]string{}
 		method_values_by_fn:             map[int][]string{}
 		method_value_locals:             map[string]bool{}
 		method_value_local_depth:        map[string]int{}
@@ -831,6 +836,7 @@ fn split_sum_variant_texts(text string) []string {
 pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.a = a
 	tc.has_spawn_expr = -1
+	tc.direct_dependencies_by_fn = map[int][]string{}
 	tc.file_scope = new_scope(unsafe { nil })
 	tc.cur_scope = tc.file_scope
 	tc.scope_pool_index = 0
@@ -2836,6 +2842,23 @@ pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 	return none
 }
 
+// direct_dependencies returns the checker-resolved function dependencies of a
+// function declaration node. The returned slice must be treated as read-only.
+pub fn (tc &TypeChecker) direct_dependencies(fn_node_id int) []string {
+	return tc.direct_dependencies_by_fn[fn_node_id] or { []string{} }
+}
+
+fn (mut tc TypeChecker) record_direct_dependency(name string) {
+	if tc.cur_fn_node_id < 0 || name.len == 0 {
+		return
+	}
+	mut dependencies := tc.direct_dependencies_by_fn[tc.cur_fn_node_id] or { []string{} }
+	if name !in dependencies {
+		dependencies << name
+		tc.direct_dependencies_by_fn[tc.cur_fn_node_id] = dependencies
+	}
+}
+
 // copy_cloned_resolution copies checker-owned call/function-value resolution metadata
 // from an original node to a transform-created clone.
 pub fn (mut tc TypeChecker) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.NodeId) {
@@ -2870,6 +2893,7 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 	if idx < 0 {
 		return
 	}
+	tc.record_direct_dependency(name)
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.resolved_call_names.len {
 			tc.resolved_call_names[idx] = name
@@ -2894,6 +2918,7 @@ fn (mut tc TypeChecker) remember_resolved_fn_value(id flat.NodeId, name string) 
 	if idx < 0 {
 		return
 	}
+	tc.record_direct_dependency(name)
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.resolved_fn_value_names.len {
 			tc.resolved_fn_value_names[idx] = name

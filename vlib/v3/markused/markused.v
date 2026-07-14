@@ -350,6 +350,11 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 			calls.clear()
 			initializer_refs.clear()
+			// Direct source-level call and function-value edges are authoritative:
+			// the checker recorded them with the exact file/import/type context.
+			// The body collector below remains responsible for implicit helpers
+			// introduced by lowering and for unresolved compatibility fallbacks.
+			calls << tc.direct_dependencies(node_key)
 			if body_i := body_index[node_key] {
 				body := body_results[body_i]
 				calls << body.calls
