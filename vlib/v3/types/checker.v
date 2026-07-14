@@ -7541,12 +7541,44 @@ fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
 	fallback_id := tc.a.child(&node, 1)
 	tc.push_scope()
 	tc.cur_scope.insert('err', tc.parse_type('IError'))
-	tc.check_branch_node(fallback_id, true)
+	tc.check_or_fallback_branch_node(fallback_id)
 	tc.pop_scope()
 	$if ownership ? {
 		tc.ownership_end_branch(fallback_id)
 		tc.ownership_add_branch_group_base()
 		tc.ownership_end_branch_group()
+	}
+}
+
+fn (mut tc TypeChecker) check_or_fallback_branch_node(id flat.NodeId) {
+	if !tc.valid_node_id(id) {
+		return
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .block {
+		tc.push_scope()
+		$if ownership ? {
+			tc.ownership_mark_scope_node(id)
+		}
+		tc.check_statement_sequence(node, 0, true)
+		tc.ownership_record_or_fallback_error_return_drops(id)
+		tc.pop_scope()
+		return
+	}
+	tc.check_node(id)
+	tc.ownership_record_or_fallback_error_return_drops(id)
+}
+
+fn (mut tc TypeChecker) ownership_record_or_fallback_error_return_drops(id flat.NodeId) {
+	$if ownership ? {
+		if tc.cur_fn_ret_type !is OptionType && tc.cur_fn_ret_type !is ResultType {
+			return
+		}
+		tail_id := tc.branch_tail_expr_id(id)
+		if !tc.branch_tail_is_error_literal(tail_id) {
+			return
+		}
+		tc.ownership_record_propagation_drops()
 	}
 }
 

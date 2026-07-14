@@ -4370,7 +4370,7 @@ fn (mut g FlatGen) gen_or_body_value(or_body flat.Node, value_name string, value
 			expr_id := g.a.child(&child, 0)
 			if g.expr_is_error_call(expr_id) && g.cur_fn_ret_is_optional {
 				fn_opt_ct := g.optional_type_name(g.cur_fn_ret)
-				g.gen_return_cleanup()
+				g.gen_propagation_return_cleanup()
 				g.write('return ')
 				g.gen_optional_error_from_call(fn_opt_ct, g.a.nodes[int(expr_id)])
 				g.write(';')
