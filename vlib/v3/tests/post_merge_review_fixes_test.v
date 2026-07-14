@@ -69,6 +69,29 @@ fn gen_c(v3_bin string, name string, src string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
+fn test_amp_array_literal_uses_scanned_heap_header() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'amp_array_literal_scanned_header', 'struct Holder {
+	values &[]int
+}
+
+fn make_holder() Holder {
+	return Holder{
+		values: &[1, 2, 3]
+	}
+}
+
+fn main() {
+	holder := make_holder()
+	println(holder.values[1])
+}
+')
+	assert c_source.contains('void* memdup(void* src, ptrdiff_t sz);\nstatic inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }'), c_source
+
+	assert c_source.count('v3_heap_array(') >= 2, c_source
+	assert !c_source.contains('malloc_noscan(sizeof(Array))'), c_source
+}
+
 fn c_fn_body(c_source string, signature string) string {
 	start := c_source.index(signature) or { return '' }
 	open_rel := c_source[start..].index('{') or { return '' }
