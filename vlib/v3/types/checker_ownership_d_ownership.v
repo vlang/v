@@ -6238,9 +6238,13 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	}
 	tc.ownership_update_array_length(lhs_name, rhs_id)
 	tc.ownership_mark_struct_literal_fields(lhs_name, rhs_id, assign_id)
-	tc.ownership_mark_array_literal_elements(lhs_name, rhs_id, assign_id)
-	tc.ownership_mark_array_init_elements(lhs_name, rhs_id, assign_id)
-	tc.ownership_mark_map_literal_entries(lhs_name, rhs_id, assign_id)
+	array_literal_owned := tc.ownership_mark_array_literal_elements(lhs_name, rhs_id, assign_id)
+	array_init_owned := tc.ownership_mark_array_init_elements(lhs_name, rhs_id, assign_id)
+	map_literal_owned := tc.ownership_mark_map_literal_entries(lhs_name, rhs_id, assign_id)
+	if array_literal_owned || array_init_owned || map_literal_owned {
+		tc.ownership_mark_owned(lhs_name, tc.resolve_type(rhs_id), assign_id)
+		return
+	}
 	if tc.ownership_mark_from_conditional_expr(lhs_name, rhs_id, lhs_type, assign_id) {
 		return
 	}

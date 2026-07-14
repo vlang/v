@@ -5287,6 +5287,7 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 		t.set_node_typ(int(array_value), clean_base_type)
 	}
 	mut args := []flat.NodeId{}
+	mut drop_stmts := []flat.NodeId{}
 	match method {
 		'delete' {
 			if node.children_count < 2 {
@@ -5295,7 +5296,7 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 			index := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 1),
 				'int'), 'int', 'array_delete_index')
 			args << index
-			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_index(array_value,
+			drop_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_index(array_value,
 				index, elem_type)), 'void'))
 		}
 		'delete_many' {
@@ -5309,11 +5310,11 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 			args << index
 			args << size
 			t.append_owned_array_drop_range(array_value, elem_type, index, t.make_infix(.plus,
-				index, size))
+				index, size), mut drop_stmts)
 		}
 		'clear' {
 			t.append_owned_array_drop_range(array_value, elem_type, t.make_int_literal(0), t.make_selector(array_value,
-				'len', 'int'))
+				'len', 'int'), mut drop_stmts)
 		}
 		'trim' {
 			if node.children_count < 2 {
@@ -5323,7 +5324,7 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 				'int'), 'int', 'array_trim_index')
 			args << index
 			t.append_owned_array_drop_range(array_value, elem_type, index, t.make_selector(array_value,
-				'len', 'int'))
+				'len', 'int'), mut drop_stmts)
 		}
 		'drop' {
 			if node.children_count < 2 {
@@ -5332,17 +5333,37 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 			count := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 1),
 				'int'), 'int', 'array_drop_count')
 			args << count
-			t.append_owned_array_drop_prefix(array_value, elem_type, count)
+			t.append_owned_array_drop_prefix(array_value, elem_type, count, mut drop_stmts)
 		}
 		'delete_last' {
 			last := t.make_infix(.minus, t.make_selector(array_value, 'len', 'int'),
 				t.make_int_literal(1))
-			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_index(array_value,
+			drop_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_index(array_value,
 				last, elem_type)), 'void'))
 		}
 		else {
 			return none
 		}
+	}
+
+	if drop_stmts.len > 0 {
+		flags := t.make_selector(array_value, 'flags', 'ArrayFlags')
+		is_slice_flag := t.a.add_node(flat.Node{
+			kind:  .enum_val
+			value: 'ArrayFlags.is_slice'
+			typ:   'ArrayFlags'
+		})
+		is_slice := t.make_method_call(flags, 'has', arr1(is_slice_flag))
+		t.set_node_typ(int(is_slice), 'bool')
+		start := t.a.children.len
+		t.a.children << t.make_prefix(.not, is_slice)
+		t.a.children << t.make_block(drop_stmts)
+		t.pending_stmts << t.a.add_node(flat.Node{
+			kind:                 .if_expr
+			children_start:       start
+			children_count:       2
+			skip_ownership_drops: true
+		})
 	}
 
 	if array_method_stays_in_cgen_needs_runtime_mark(method) {
@@ -5353,7 +5374,7 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 	return call
 }
 
-fn (mut t Transformer) append_owned_array_drop_prefix(array_value flat.NodeId, elem_type string, count flat.NodeId) {
+fn (mut t Transformer) append_owned_array_drop_prefix(array_value flat.NodeId, elem_type string, count flat.NodeId, mut stmts []flat.NodeId) {
 	idx_name := t.new_temp('array_drop_index')
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	below_count := t.make_infix(.lt, t.make_ident(idx_name), count)
@@ -5363,17 +5384,21 @@ fn (mut t Transformer) append_owned_array_drop_prefix(array_value flat.NodeId, e
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	elem := t.make_index(array_value, t.make_ident(idx_name), elem_type)
 	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(elem), 'void'))
-	t.pending_stmts << t.make_for_stmt(init, cond, post, arr1(drop_stmt), flat.Node{})
+	stmts << t.make_for_stmt(init, cond, post, arr1(drop_stmt), flat.Node{
+		skip_ownership_drops: true
+	})
 }
 
-fn (mut t Transformer) append_owned_array_drop_range(array_value flat.NodeId, elem_type string, start flat.NodeId, end flat.NodeId) {
+fn (mut t Transformer) append_owned_array_drop_range(array_value flat.NodeId, elem_type string, start flat.NodeId, end flat.NodeId, mut stmts []flat.NodeId) {
 	idx_name := t.new_temp('array_drop_index')
 	init := t.make_decl_assign_typed(idx_name, start, 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), end)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
 	elem := t.make_index(array_value, t.make_ident(idx_name), elem_type)
 	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(elem), 'void'))
-	t.pending_stmts << t.make_for_stmt(init, cond, post, arr1(drop_stmt), flat.Node{})
+	stmts << t.make_for_stmt(init, cond, post, arr1(drop_stmt), flat.Node{
+		skip_ownership_drops: true
+	})
 }
 
 // try_lower_ignored_owned_array_pop_stmt destroys an owned array element result when the
