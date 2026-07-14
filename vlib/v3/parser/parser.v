@@ -4350,6 +4350,12 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	if p.tok == .name && p.lit == 'volatile' {
 		p.next()
 	}
+	// V assembly blocks name their instruction set before `{` (`asm arm64 { ... }`).
+	// The C backend intentionally ignores the block and uses the source fallback, so the
+	// architecture token must be consumed with the block instead of becoming stray statements.
+	if p.tok == .name {
+		p.next()
+	}
 	// consume the asm block
 	if p.tok == .lcbr {
 		p.skip_block()

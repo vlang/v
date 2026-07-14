@@ -86,6 +86,22 @@ fn cast_expr_values(a &flat.FlatAst) []string {
 	return values
 }
 
+fn test_architecture_qualified_asm_is_consumed_as_one_statement() {
+	a := parse_parser_regression_source('architecture_asm', 'fn mul(x u64, y u64) u64 {
+	asm arm64 {
+		mul x, x, y
+		; =&r (x)
+		; r (x)
+		  r (y)
+		; cc
+	}
+	return x * y
+}
+')
+	assert a.nodes.count(it.kind == .asm_stmt) == 1
+	assert !a.nodes.any(it.kind == .ident && it.value in ['arm64', 'mul', 'cc'])
+}
+
 // test_interface_method_generic_type_only_param_is_not_parsed_as_name
 // validates this v3 regression case.
 fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
