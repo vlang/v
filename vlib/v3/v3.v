@@ -1738,11 +1738,7 @@ fn restart_v3_after_cache_invalidation() {
 	for arg in os.args[1..] {
 		command << os.quoted_path(arg)
 	}
-	result := os.execute(command.join(' '))
-	if result.output.len > 0 {
-		print(result.output)
-	}
-	exit(result.exit_code)
+	exit(os.system(command.join(' ')))
 }
 
 fn v3_cached_object_compile_signature(c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool) string {

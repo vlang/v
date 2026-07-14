@@ -178,6 +178,57 @@ fn main() {
 	assert second_wrapper_stamps.any(it !in first_wrapper_stamps)
 }
 
+fn test_module_cache_restart_preserves_compiler_stderr() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_restart_stdio_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+pub fn value() int {
+	return 41
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+#flag -DV3_CACHE_RESTART_STDIO_PROBE
+
+import wrapper
+
+fn C.v3_missing_restart_stdio_symbol() int
+
+fn main() {
+	println(wrapper.value() + C.v3_missing_restart_stdio_symbol())
+}
+')
+	second_output := os.join_path(root, 'second')
+	stdout_file := os.join_path(root, 'stdout.txt')
+	stderr_file := os.join_path(root, 'stderr.txt')
+	result :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)} > ${os.quoted_path(stdout_file)} 2> ${os.quoted_path(stderr_file)}')
+	assert result.exit_code != 0
+	stdout := os.read_file(stdout_file) or { panic(err) }
+	stderr := os.read_file(stderr_file) or { panic(err) }
+	assert stderr.contains('C compilation failed:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
+	assert !stdout.contains('C compilation failed:'), 'stdout:\n${stdout}\nstderr:\n${stderr}'
+}
+
 fn test_cached_objects_receive_forced_include_flags() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_forced_include_${os.getpid()}')
