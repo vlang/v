@@ -653,6 +653,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		cur_scope:                          fs
 		scope_pool:                         []&types.Scope{}
 		has_builtins:                       g.tc.has_builtins
+		resolution_type_mode:               g.tc.resolution_type_mode
 		cur_module:                         g.tc.cur_module
 		cur_file:                           g.tc.cur_file
 		errors:                             g.tc.errors.clone()

@@ -197,6 +197,14 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name
 		g.gen_default_value_for_type(clean_type)
 		return true
 	}
+	if clean_type is types.SumType {
+		if has {
+			g.write(', ')
+		}
+		g.write('.${field_c_name} = ')
+		g.gen_default_value_for_type(clean_type)
+		return true
+	}
 	if g.field_needs_default_init(clean_type) {
 		if has {
 			g.write(', ')
@@ -222,14 +230,37 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	// A bare generic struct literal (`Vec4{..}`) carries no type args; when the
 	// surrounding expected type fixes them (e.g. a `Vec4[f32]` return), emit the
 	// concrete instance name so it matches the materialized struct.
-	if inst := g.generic_struct_init_instance_ct(node.value) {
+	if inst := g.generic_struct_init_instance_ct_for_node(node) {
 		name = inst
+	}
+	init_type := g.tc.parse_type(node.value)
+	is_optional_init := node.value == 'Optional' || init_type is types.OptionType
+		|| init_type is types.ResultType
+	has_expected_optional := g.expected_expr_type is types.OptionType
+		|| g.expected_expr_type is types.ResultType || g.expected_expr_is_optional_struct()
+	if node.value == 'Optional'
+		&& (g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType) {
+		name = g.optional_type_name(g.expected_expr_type)
+	} else if node.value == 'Optional' && g.expected_expr_is_optional_struct() {
+		name = g.value_c_type(g.expected_expr_type)
+	}
+	if is_optional_init && !has_expected_optional
+		&& g.name_uses_specialized_generic_abi(g.cur_fn_name) {
+		name = g.fn_return_type_name(g.cur_fn_ret)
 	}
 	// A bare generic literal stores its fields under the concrete instance key (`Box[int]`);
 	// the bare `node.value` (`Box`) entry is removed by monomorphization, so resolve the
 	// instance for the fixed-array-field test, field-type lookups, and omitted-default emission.
-	lookup_source_name := g.struct_init_lookup_type_name(node.value)
-	lookup_name := g.struct_init_fields_key(lookup_source_name, lookup_source_name)
+	lookup_source_name := if is_optional_init {
+		''
+	} else {
+		g.struct_init_lookup_type_name(node.value)
+	}
+	lookup_name := if is_optional_init {
+		''
+	} else {
+		g.struct_init_fields_key(lookup_source_name, lookup_source_name)
+	}
 	if node.children_count == 0 && g.is_scalar_zero_init_type(lookup_source_name, name) {
 		g.write(g.scalar_zero_init(name))
 		return
@@ -302,6 +333,10 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 			set_fields[field.value] = true
 		}
 		has_field = true
+	}
+	if is_optional_init {
+		g.write('}')
+		return
 	}
 	after_fields_module := g.tc.cur_module
 	g.tc.cur_module = init_module
@@ -610,7 +645,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	// A bare generic heap literal (`&Vec4{..}`) carries no type args; when the
 	// surrounding expected type fixes them (e.g. a `&Vec4[f32]` return), emit the
 	// concrete instance name so the materialized struct matches the value path.
-	if inst := g.generic_struct_init_instance_ct(node.value) {
+	if inst := g.generic_struct_init_instance_ct_for_node(node) {
 		name = inst
 	}
 	sum_name := g.resolve_sum_name(node.value)
@@ -798,6 +833,20 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 			g.write('0')
 		}
 		return
+	}
+	if clean_typ is types.SumType {
+		sum_name := g.resolve_sum_name(clean_typ.name)
+		variants := g.tc.sum_types[sum_name] or { []string{} }
+		if variants.len > 0 {
+			variant := variants[0]
+			variant_type := g.tc.parse_type(variant)
+			ct := g.value_c_type(clean_typ)
+			inner_ct := g.value_c_type(variant_type)
+			g.write('(${ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = (${inner_ct}*)memdup(&(${inner_ct}[]){')
+			g.gen_default_value_for_type(variant_type)
+			g.write('}, sizeof(${inner_ct}))}')
+			return
+		}
 	}
 	raw_typ := clean_typ
 	if clean_typ is types.OptionType || clean_typ is types.ResultType {
@@ -1912,6 +1961,21 @@ fn (g &FlatGen) generic_struct_init_instance_ct(type_name string) ?string {
 	return g.tc.c_type(g.generic_struct_init_instance_type(type_name)?)
 }
 
+fn (g &FlatGen) generic_struct_init_instance_ct_for_node(node flat.Node) ?string {
+	if node.typ.len > 0 {
+		candidate := g.tc.parse_type(node.typ)
+		base := types.unwrap_pointer(candidate)
+		if base !is types.Array && base !is types.ArrayFixed {
+			name := base.name()
+			if name.contains('[')
+				&& name.all_before('[').all_after_last('.') == node.value.all_after_last('.') {
+				return g.tc.c_type(base)
+			}
+		}
+	}
+	return g.generic_struct_init_instance_ct(node.value)
+}
+
 // generic_struct_init_instance_name is the concrete-instance V type name (`Box[int]`)
 // for a bare generic struct literal, so field and default lookups use the materialized
 // key under which the struct's fields are stored (the bare `Box` entry is removed by
@@ -2021,7 +2085,14 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?strin
 	base_short := base.all_after_last('.')
 	arg_suffix := generic_receiver_type_suffixes(args)
 	for candidate in [g.expected_expr_type, g.cur_fn_ret] {
-		candidate_type := types.unwrap_pointer(candidate)
+		candidate_type0 := types.unwrap_pointer(candidate)
+		candidate_type := if candidate_type0 is types.OptionType {
+			candidate_type0.base_type
+		} else if candidate_type0 is types.ResultType {
+			candidate_type0.base_type
+		} else {
+			candidate_type0
+		}
 		if candidate_type is types.Void || candidate_type is types.Unknown {
 			continue
 		}
@@ -2536,27 +2607,48 @@ fn (mut g FlatGen) gen_map_init(id flat.NodeId, node flat.Node) {
 	if node.value.len > 0 {
 		map_type := g.tc.parse_type(node.value)
 		if map_type is types.Map {
-			g.write_new_map(map_type.key_type, map_type.value_type)
+			g.gen_map_init_for_type(node, map_type)
 			return
 		}
 	}
 	if node.typ.len > 0 {
 		map_type := g.tc.parse_type(node.typ)
 		if map_type is types.Map {
-			g.write_new_map(map_type.key_type, map_type.value_type)
+			g.gen_map_init_for_type(node, map_type)
 			return
 		}
 	}
 	if g.expected_expr_type is types.Map {
-		g.write_new_map(g.expected_expr_type.key_type, g.expected_expr_type.value_type)
+		g.gen_map_init_for_type(node, g.expected_expr_type)
 		return
 	}
 	resolved_type := g.tc.resolve_type(id)
 	if resolved_type is types.Map {
-		g.write_new_map(resolved_type.key_type, resolved_type.value_type)
+		g.gen_map_init_for_type(node, resolved_type)
 		return
 	}
 	g.write('new_map(sizeof(int), sizeof(int), 0, 0, 0, 0)')
+}
+
+fn (mut g FlatGen) gen_map_init_for_type(node flat.Node, map_type types.Map) {
+	if node.children_count < 2 {
+		g.write_new_map(map_type.key_type, map_type.value_type)
+		return
+	}
+	tmp := g.tmp_name()
+	c_key := g.map_key_temp_c_type(map_type.key_type)
+	c_val := g.value_c_type(map_type.value_type)
+	g.write('({ map ${tmp} = ')
+	g.write_new_map(map_type.key_type, map_type.value_type)
+	g.write(';')
+	for i := 0; i + 1 < node.children_count; i += 2 {
+		g.write(' map__set(&${tmp}, &(${c_key}[]){')
+		g.gen_expr_with_expected_type(g.a.child(&node, i), map_type.key_type)
+		g.write('}, &(${c_val}[]){')
+		g.gen_expr_with_expected_type(g.a.child(&node, i + 1), map_type.value_type)
+		g.write('});')
+	}
+	g.write(' ${tmp}; })')
 }
 
 // write_new_map writes new map output for c.

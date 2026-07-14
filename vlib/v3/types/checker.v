@@ -397,6 +397,10 @@ pub mut:
 	smartcasts              map[string]Type
 	ownership               &OwnershipState = unsafe { nil }
 	selfhost                bool
+	// resolution_type_mode is enabled only after semantic checking, while transform
+	// and codegen read synthesized generic-specialization type text. Source annotations
+	// must keep normal module scoping and never enable this fallback.
+	resolution_type_mode bool
 	// fork_overlay is non-nil only on parallel-transform worker forks; see
 	// TransformForkOverlay and fork_for_parallel_transform.
 	fork_overlay &TransformForkOverlay = unsafe { nil }
@@ -1812,6 +1816,16 @@ fn (tc &TypeChecker) qualify_resolution_type_text(typ string) string {
 	return tc.qualify_type_text_impl(typ, true)
 }
 
+// parse_resolution_type parses type text that can mix declaration-local names with concrete
+// generic arguments from another module.
+pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
+	qualified := tc.qualify_resolution_type_text(typ)
+	mut unscoped := *tc
+	unscoped.cur_module = ''
+	unscoped.resolution_type_mode = false
+	return unscoped.parse_type(qualified)
+}
+
 fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
@@ -2971,6 +2985,7 @@ fn should_cache_expr_type(kind flat.NodeKind, typ Type) bool {
 
 // check_semantics validates check semantics state for types.
 pub fn (mut tc TypeChecker) check_semantics() {
+	tc.resolution_type_mode = false
 	tc.collect_selected_file_called_fns()
 	tc.check_export_attrs()
 	tc.cur_module = ''
@@ -3024,6 +3039,10 @@ pub fn (mut tc TypeChecker) check_semantics() {
 
 		_ = i
 	}
+	// All ordinary source annotations have now been validated with module-strict
+	// lookup. Later transform/codegen stages also parse synthesized generic type
+	// text, where concrete arguments can legitimately come from another module.
+	tc.resolution_type_mode = true
 }
 
 fn (mut tc TypeChecker) collect_selected_file_called_fns() {
@@ -5572,6 +5591,9 @@ fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.No
 		actual := tc.comptime_static_metadata_expr_type(arg_id, var_name, loop_kind) or { continue }
 		expected := tc.call_arg_expected_type(info, param_idx)
 		if !tc.receiver_compatible(actual, expected) && !tc.type_compatible(actual, expected) {
+			if expected is Pointer && tc.expr_tail_is_nil(arg_id) {
+				continue
+			}
 			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
 				param_idx + 1} to `${tc.call_display_name(node)}`; expected `${expected.name()}`',
 				id)
@@ -7198,7 +7220,7 @@ fn (mut tc TypeChecker) comptime_type_match_type(type_text string) Type {
 // type_text_implements_interface reports whether a concrete type expression
 // satisfies an interface type expression in the current checker module context.
 pub fn (mut tc TypeChecker) type_text_implements_interface(actual_text string, iface_text string) bool {
-	actual := tc.comptime_type_match_type(actual_text)
+	actual := tc.parse_type(actual_text)
 	expected := tc.comptime_type_match_type(iface_text)
 	if expected is Interface {
 		return tc.type_implements_interface(actual, expected)
@@ -9703,8 +9725,15 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		&& !tc.call_generic_args_have_placeholders(node) && !tc.call_receiver_type_is_unknown(node) {
 		tc.record_error(.unknown_fn, 'unknown function `${tc.call_display_name(node)}`', id)
 	}
+	dsl_name := tc.unresolved_array_dsl_call_name(node)
+	if dsl_name.len > 0 {
+		tc.push_array_dsl_scope(node, dsl_name)
+	}
 	for i in 1 .. node.children_count {
 		tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
+	}
+	if dsl_name.len > 0 {
+		tc.pop_scope()
 	}
 }
 
@@ -11945,8 +11974,15 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		return
 	}
 	if !info.params_known {
+		dsl_name := tc.unresolved_array_dsl_call_name(node)
+		if dsl_name.len > 0 {
+			tc.push_array_dsl_scope(node, dsl_name)
+		}
 		for i in 1 .. node.children_count {
 			tc.check_node(tc.call_arg_value(tc.a.child(&node, i)))
+		}
+		if dsl_name.len > 0 {
+			tc.pop_scope()
 		}
 		return
 	}
@@ -12192,6 +12228,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected) {
+			if expected is Pointer && tc.expr_tail_is_nil(arg_id) {
+				continue
+			}
 			if json_encode_accepts_arg(info.name, param_idx, expected, actual) {
 				continue
 			}
@@ -12215,6 +12254,18 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				id)
 		}
 	}
+}
+
+fn (tc &TypeChecker) unresolved_array_dsl_call_name(node flat.Node) string {
+	if node.children_count == 0 {
+		return ''
+	}
+	callee := tc.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.children_count == 0 {
+		return ''
+	}
+	name := 'array.${callee.value}'
+	return if is_array_dsl_call_name(name) { name } else { '' }
 }
 
 fn (tc &TypeChecker) chan_try_pop_destination_is_valid(arg_id flat.NodeId, actual Type) bool {
@@ -12407,7 +12458,7 @@ fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
 		ierror_compat_entries:      map[string]int{}
 		source_error_embed_entries: map[string]int{}
 	}
-	return scoped.parse_type(typ)
+	return scoped.parse_resolution_type(typ)
 }
 
 fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]string) {
@@ -12936,17 +12987,44 @@ fn (tc &TypeChecker) call_receiver_array_type(node flat.Node) ?Array {
 	if fn_node.kind != .selector || fn_node.children_count == 0 {
 		return none
 	}
-	base_type0 := unwrap_pointer(tc.resolve_type(tc.a.child(fn_node, 0)))
-	base_type := if base_type0 is Alias { base_type0.base_type } else { base_type0 }
-	if base_type is Array {
-		return base_type
-	}
-	if base_type is ArrayFixed {
-		return Array{
-			elem_type: base_type.elem_type
+	base_id := tc.a.child(fn_node, 0)
+	if resolved := tc.expr_type(base_id) {
+		if arr := call_receiver_array_from_type(resolved) {
+			return arr
 		}
 	}
+	base_node := tc.a.nodes[int(base_id)]
+	if base_node.typ.len > 0 {
+		if arr := call_receiver_array_from_type(tc.parse_resolution_type(base_node.typ)) {
+			return arr
+		}
+	}
+	if arr := call_receiver_array_from_type(tc.resolve_type(base_id)) {
+		return arr
+	}
 	return none
+}
+
+fn call_receiver_array_from_type(typ Type) ?Array {
+	return match typ {
+		Array {
+			typ
+		}
+		ArrayFixed {
+			Array{
+				elem_type: typ.elem_type
+			}
+		}
+		Alias {
+			call_receiver_array_from_type(typ.base_type)
+		}
+		Pointer {
+			call_receiver_array_from_type(typ.base_type)
+		}
+		else {
+			none
+		}
+	}
 }
 
 // call_arg_value updates call arg value state for TypeChecker.
@@ -13063,6 +13141,39 @@ fn (tc &TypeChecker) bare_generic_literal_adopts(lit_value string, expected Type
 	}
 	return e_base in tc.struct_generic_params
 		|| e_base.all_after_last('.') in tc.struct_generic_params
+}
+
+fn is_anonymous_struct_name(name string) bool {
+	return name.all_after_last('.').starts_with('AnonStruct_')
+}
+
+fn (mut tc TypeChecker) anonymous_struct_literal_compatible(node flat.Node, expected Type) bool {
+	struct_type := struct_type_from_type(expected) or { return false }
+	if !is_anonymous_struct_name(struct_type.name) {
+		return false
+	}
+	fields := tc.struct_fields_for_init(struct_type.name)
+	for i in 0 .. node.children_count {
+		field := tc.a.child_node(&node, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			return false
+		}
+		mut field_type := Type(void_)
+		if field.value.len > 0 {
+			field_type = tc.struct_field_type(struct_type.name, field.value) or { return false }
+		} else if i < fields.len {
+			field_type = fields[i].typ
+		} else {
+			return false
+		}
+		value_id := tc.a.child(field, 0)
+		actual := tc.resolve_expr(value_id, field_type)
+		if !tc.expr_compatible(value_id, actual, field_type)
+			&& !tc.pointer_value_compatible(actual, field_type) {
+			return false
+		}
+	}
+	return true
 }
 
 // generic_literal_fields_compatible checks a bare generic struct literal's named
@@ -15541,6 +15652,14 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			return Type(int_)
 		}
 	}
+	// When several anonymous structs share the same field names, the parser leaves
+	// the literal unresolved instead of choosing the most recently declared shape.
+	// Its call/assignment/return context supplies the exact anonymous struct here.
+	if node.kind == .struct_init && node.value == 'struct' && expected !is Pointer
+		&& tc.anonymous_struct_literal_compatible(node, expected) {
+		tc.register_synth_type(id, expected_raw)
+		return expected_raw
+	}
 	// A bare generic struct literal (`Box{...}` / `&Box{...}`) adopts a matching concrete
 	// expected instance (`Box[int]` / `&Box[int]`), so `fn make() Box[int] { return
 	// Box{...} }` and bare literals passed/assigned where a concrete instance is expected
@@ -15556,7 +15675,14 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 		return expected_raw
 	}
 	if node.kind == .prefix && node.op == .amp && node.children_count == 1 && expected is Pointer {
-		child := tc.a.nodes[int(tc.a.child(&node, 0))]
+		child_id := tc.a.child(&node, 0)
+		child := tc.a.nodes[int(child_id)]
+		if child.kind == .struct_init && child.value == 'struct'
+			&& tc.anonymous_struct_literal_compatible(child, expected.base_type) {
+			tc.register_synth_type(child_id, expected.base_type)
+			tc.register_synth_type(id, expected_raw)
+			return expected_raw
+		}
 		if child.kind == .struct_init && tc.bare_generic_literal_adopts(child.value, expected)
 			&& tc.generic_literal_fields_compatible(child, expected) {
 			tc.register_synth_type(id, expected_raw)
@@ -15689,6 +15815,10 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	}
 	if tc.expr_is_unsafe_nil(id) {
 		if _ := fn_type_from_type(expected) {
+			tc.register_synth_type(id, expected_raw)
+			return expected_raw
+		}
+		if expected is Pointer {
 			tc.register_synth_type(id, expected_raw)
 			return expected_raw
 		}
@@ -16944,11 +17074,7 @@ fn generic_type_suffix_for_signature(args []string) string {
 fn generic_type_arg_short_for_signature(type_arg string) string {
 	clean := type_arg.trim_space()
 	if clean.contains('.') {
-		short := clean.all_after_last('.')
-		if short.starts_with('Array_') {
-			return clean
-		}
-		return short
+		return clean
 	}
 	return clean
 }
@@ -18403,7 +18529,8 @@ pub fn (tc &TypeChecker) cached_c_name(name string) string {
 // parse_type converts a V type string (from parser) to a structured Type.
 pub fn (tc &TypeChecker) parse_type(typ string) Type {
 	if tc.type_cache != unsafe { nil } && tc.type_cache.parse_enabled {
-		key := tc.cur_file + '\n' + tc.cur_module + '\n' + typ
+		mode := if tc.resolution_type_mode { 'resolution' } else { 'source' }
+		key := mode + '\n' + tc.cur_file + '\n' + tc.cur_module + '\n' + typ
 		mut cache := unsafe { tc.type_cache }
 		// The frozen base holds the warm pre-region entries — check it first
 		// (values are deterministic, so shadowing order does not matter).
@@ -18628,7 +18755,11 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
 		return tc.parse_fn_type(typ)
 	}
-	qtyp := tc.qualify_name(typ)
+	qtyp := if tc.resolution_type_mode {
+		tc.qualify_resolution_type_name(typ)
+	} else {
+		tc.qualify_name(typ)
+	}
 	allow_bare_symbol := qtyp == typ
 	if typ == 'array' && tc.has_builtins && typ in tc.structs {
 		return Type(Struct{
@@ -18816,7 +18947,11 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		} else {
 			generic_suffix
 		}
-		mut qbase := tc.qualify_name(resolved_base)
+		mut qbase := if tc.resolution_type_mode {
+			tc.qualify_resolution_type_name(resolved_base)
+		} else {
+			tc.qualify_name(resolved_base)
+		}
 		if qbase == resolved_base && resolved_base.contains('.') {
 			qbase = tc.resolve_imported_type_text(resolved_base)
 		}
@@ -20374,7 +20509,7 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		return 'char'
 	}
 	if t is Rune {
-		return 'i32'
+		return 'u32'
 	}
 	if t is ISize {
 		return 'ptrdiff_t'

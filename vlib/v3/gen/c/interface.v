@@ -157,6 +157,12 @@ fn (g &FlatGen) sum_field_name(variant string) string {
 	if variant.starts_with('&') {
 		return g.sum_field_name(variant[1..])
 	}
+	if variant.starts_with('?') {
+		return '_Option_${g.cname(variant[1..])}'
+	}
+	if variant.starts_with('!') {
+		return '_Result_${g.cname(variant[1..])}'
+	}
 	if variant.starts_with('ptr') && variant.len > 3 && variant[3..].contains('.') {
 		return g.sum_field_name(variant[3..])
 	}
@@ -481,7 +487,12 @@ fn (mut g FlatGen) ierror_none_literal_string() string {
 fn (mut g FlatGen) ierror_from_expr_string(id flat.NodeId) ?string {
 	node := g.a.nodes[int(id)]
 	mut actual := g.usable_expr_type(id)
-	if node.kind == .ident {
+	if node.kind == .struct_init && node.value.len > 0 {
+		// A concrete error returned from a result function can carry the surrounding
+		// result type as its node annotation. The literal name still identifies the
+		// concrete IError implementation that must be boxed.
+		actual = g.tc.parse_type(node.value)
+	} else if node.kind == .ident {
 		if param_type := g.current_param_type(node.value) {
 			actual = param_type
 		} else if param_type := g.cur_param_types[node.value] {
