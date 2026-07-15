@@ -934,11 +934,22 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	if node.children_count == 0 {
 		return init_call
 	}
+	key_type, value_type := t.map_type_parts(map_type)
 	mut start_i := 0
 	mut has_spread := false
 	first_id := t.a.child(&node, 0)
 	first := t.a.nodes[int(first_id)]
 	if first.kind == .prefix && first.value == '...' && first.children_count > 0 {
+		if !isnil(t.tc) {
+			// The checker reports these errors. Do not lower a rejected spread to a
+			// map containing shallow ownership-bearing entries.
+			if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(key_type)) {
+				return t.make_empty()
+			}
+			if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(value_type)) {
+				return t.make_empty()
+			}
+		}
 		source_id := t.a.child(&first, 0)
 		source_is_owned_temporary := !t.expr_can_take_address(source_id)
 		source_expr := t.transform_expr(source_id)
@@ -949,7 +960,6 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	}
 	tmp_name := t.new_temp('map_lit')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, init_call, map_type)
-	key_type, value_type := t.map_type_parts(map_type)
 	key_storage_type := t.map_key_storage_type(key_type)
 	needs_entry_cleanup := has_spread || (!isnil(t.tc)
 		&& (t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))

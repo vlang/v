@@ -21,15 +21,21 @@ fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.No
 	base_id := t.a.child(&fn_node, 0)
 	base_type := t.node_type(base_id)
 	count_id := t.a.child(&node, 1)
-	if expanded := t.try_expand_interface_array_literal_repeat(base_id, count_id, base_type) {
-		return expanded
-	}
 	clean_base_type := t.normalize_type_alias(base_type.trim_left('&'))
 	if !isnil(t.tc) && clean_base_type.starts_with('[]') {
 		elem_type := clean_base_type[2..]
-		if t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+		elem := t.tc.parse_type(elem_type)
+		if t.tc.ownership_type_requires_destruction(elem) {
+			// The checker reports the missing clone method. Do not lower the rejected
+			// repeat to byte copies while processing the invalid program.
+			if _ := t.tc.ownership_default_clone_missing_method(elem) {
+				return t.make_empty()
+			}
 			return t.make_owned_array_repeat_value(base_id, count_id, clean_base_type)
 		}
+	}
+	if expanded := t.try_expand_interface_array_literal_repeat(base_id, count_id, base_type) {
+		return expanded
 	}
 	depth := array_repeat_clone_depth(base_type)
 	if depth == 0 {
@@ -465,8 +471,20 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 // array will own and destroy its elements. Plain-data spreads keep the runtime bulk copy.
 fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id flat.NodeId, array_type string, elem_type string) {
 	source_is_owned_temporary := !t.expr_can_take_address(spread_id)
+	mut needs_element_clone := false
+	if !isnil(t.tc) {
+		elem := t.tc.parse_type(elem_type)
+		needs_element_clone = t.tc.ownership_type_requires_destruction(elem)
+		if needs_element_clone {
+			// The checker reports the missing clone method. Do not append shallow element
+			// copies while processing the invalid spread.
+			if _ := t.tc.ownership_default_clone_missing_method(elem) {
+				return
+			}
+		}
+	}
 	spread := t.transform_expr_for_type(spread_id, array_type)
-	if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+	if !needs_element_clone {
 		call := t.make_array_push_many_call(t.make_prefix(.amp, t.make_ident(out_name)), spread,
 			array_type)
 		t.pending_stmts << t.make_expr_stmt(call)
