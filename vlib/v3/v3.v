@@ -614,6 +614,7 @@ fn main() {
 	mut backend := 'c'
 	mut target_os := os.user_os()
 	mut target_arch := pref.host_arch()
+	mut target_arch_explicit := false
 	mut c_compiler := 'cc'
 	mut c_compiler_explicit := false
 	mut gc_mode := 'none'
@@ -669,6 +670,7 @@ fn main() {
 			i += 2
 		} else if args[i] == '-arch' && i + 1 < args.len {
 			target_arch = args[i + 1]
+			target_arch_explicit = true
 			i += 2
 		} else if args[i] == '-prod' {
 			is_prod = true
@@ -784,6 +786,10 @@ fn main() {
 				exit(1)
 			}
 		}
+	}
+	if !target_arch_explicit
+		&& pref.normalized_os(target_os.trim_space().to_lower()) == 'wasm32_emscripten' {
+		target_arch = 'wasm32'
 	}
 	target := pref.target_from(target_os, target_arch) or {
 		eprintln(err.msg())

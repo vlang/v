@@ -46,6 +46,22 @@ pub fn host_arch() string {
 		return 'arm64'
 	} $else $if amd64 {
 		return 'amd64'
+	} $else $if arm32 {
+		return 'arm32'
+	} $else $if rv64 {
+		return 'riscv64'
+	} $else $if s390x {
+		return 's390x'
+	} $else $if ppc64le {
+		return 'ppc64le'
+	} $else $if ppc64 {
+		return 'ppc64'
+	} $else $if loongarch64 {
+		return 'loongarch64'
+	} $else $if wasm32 {
+		return 'wasm32'
+	} $else $if i386 {
+		return 'x86'
 	} $else $if x32 {
 		return 'x86'
 	} $else {
@@ -619,8 +635,10 @@ pub fn normalized_arch(target_arch string) string {
 	return match target_arch {
 		'x64', 'x86_64' { 'amd64' }
 		'aarch64' { 'arm64' }
-		'i386', 'i486', 'i586', 'i686', 'x32' { 'x86' }
-		'arm', 'armv7', 'armv7l' { 'arm32' }
+		'i386', 'i486', 'i586', 'i686', 'x32', 'x86_32', 'ia-32', 'ia32' { 'x86' }
+		'aarch32', 'arm', 'armv7', 'armv7l' { 'arm32' }
+		'rv64', 'risc-v64', 'riscv', 'risc-v' { 'riscv64' }
+		'wasm' { 'wasm32' }
 		else { target_arch }
 	}
 }
@@ -697,7 +715,13 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		'arm32' {
 			return p.target.arch == 'arm32'
 		}
-		'riscv64', 's390x', 'ppc64', 'ppc64le', 'loongarch64', 'wasm32' {
+		'i386', 'x86' {
+			return p.target.arch == 'x86'
+		}
+		'rv64', 'riscv64' {
+			return p.target.arch == 'riscv64'
+		}
+		's390x', 'ppc64', 'ppc64le', 'loongarch64', 'wasm32' {
 			return p.target.arch == name
 		}
 		'little_endian' {

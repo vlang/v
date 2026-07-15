@@ -27,6 +27,18 @@ fn test_target_from_normalizes_and_derives_platform_properties() {
 	assert termux_target.object_format == 'elf'
 }
 
+fn test_native_arch_aliases_normalize_to_supported_targets() {
+	assert target_from('linux', 'i386')!.arch == 'x86'
+	assert target_from('linux', 'aarch32')!.arch == 'arm32'
+	assert target_from('linux', 'rv64')!.arch == 'riscv64'
+	assert target_from('linux', 'risc-v64')!.arch == 'riscv64'
+	assert target_from('linux', 's390x')!.arch == 's390x'
+	assert target_from('linux', 'ppc64')!.arch == 'ppc64'
+	assert target_from('linux', 'ppc64le')!.arch == 'ppc64le'
+	assert target_from('linux', 'loongarch64')!.arch == 'loongarch64'
+	assert target_from('wasm32_emscripten', 'wasm')!.arch == 'wasm32'
+}
+
 fn test_comptime_flags_use_target_instead_of_host() {
 	mut prefs := new_preferences()
 	prefs.target = target_from('linux', 's390x') or { panic(err) }
@@ -46,6 +58,13 @@ fn test_comptime_flags_use_target_instead_of_host() {
 	assert comptime_flag_value(prefs, 'wasm32_emscripten')
 	assert comptime_flag_value(prefs, 'wasm32')
 	assert !comptime_flag_value(prefs, 'linux')
+
+	prefs.target = target_from('linux', 'rv64') or { panic(err) }
+	assert comptime_flag_value(prefs, 'rv64')
+	assert comptime_flag_value(prefs, 'riscv64')
+	prefs.target = target_from('linux', 'i386') or { panic(err) }
+	assert comptime_flag_value(prefs, 'i386')
+	assert comptime_flag_value(prefs, 'x86')
 }
 
 fn test_source_selection_uses_target_os_and_arch() {

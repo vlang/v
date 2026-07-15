@@ -77,6 +77,12 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	c_source := os.read_file(c_output)!
 	assert c_source.len > 100
 	assert c_source.contains('typedef signed char i8;')
+	wasm_c_output := os.join_path(root, 'hello_emscripten.c')
+	wasm_compile := cmdexec.run(v3_bin, ['-os', 'wasm32_emscripten', '-o', wasm_c_output, source])
+	assert wasm_compile.exit_code == 0, wasm_compile.output
+	assert os.is_file(wasm_c_output)
+	assert_driver_cli_failure(v3_bin, ['-os', 'wasm32_emscripten', '-arch', 'arm64', '-o',
+		wasm_c_output, source], 'target OS `wasm32_emscripten` requires architecture `wasm32`')
 	bits_source := os.join_path(root, 'bits_fallback.v')
 	os.write_file(bits_source, 'import math.bits
 
