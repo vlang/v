@@ -1591,7 +1591,8 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool) strin
 		}
 	}
 	mut name := node.value
-	mut head := if is_c { 'fn C.${name}' } else { 'fn ${name}' }
+	visibility := if !is_c && node.op == .arrow { 'pub ' } else { '' }
+	mut head := if is_c { 'fn C.${name}' } else { '${visibility}fn ${name}' }
 	mut param_start := 0
 	if !is_c && name.contains('.') && params.len > 0 {
 		receiver_type := name.all_before_last('.')
@@ -1609,7 +1610,7 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool) strin
 				receiver_prefix = 'shared '
 				receiver_decl_type = receiver_decl_type['shared '.len..].trim_space()
 			}
-			head = 'fn (${receiver_prefix}${receiver_name} ${receiver_decl_type}) ${name.all_after_last('.')}'
+			head = '${visibility}fn (${receiver_prefix}${receiver_name} ${receiver_decl_type}) ${name.all_after_last('.')}'
 			param_start = 1
 		}
 	}
