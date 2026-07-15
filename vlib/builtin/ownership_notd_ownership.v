@@ -20,6 +20,14 @@ fn drop_owned_result_error(err IError) {
 	drop_owned_result_error_interface(err)
 }
 
+fn drop_owned_map_key[K](key K) {
+	$if K.unaliased_typ is string {
+		_ = key
+	} $else {
+		drop_owned(key)
+	}
+}
+
 // drop_owned destroys an owned value outside ownership mode.
 //
 // Ownership builds replace this generic fallback with the compiler intrinsic that
@@ -70,7 +78,7 @@ pub fn drop_owned[T](value T) {
 		}
 	} $else $if T.unaliased_typ is $map {
 		for key, item in owned {
-			drop_owned(key)
+			drop_owned_map_key(key)
 			drop_owned(item)
 		}
 		unsafe { owned.free() }
