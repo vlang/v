@@ -33,6 +33,10 @@ fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.No
 			}
 			return t.make_owned_array_repeat_value(base_id, count_id, clean_base_type)
 		}
+		base_is_owned_temporary := !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
+		if base_is_owned_temporary {
+			return t.make_plain_array_repeat_value(base_id, count_id, clean_base_type)
+		}
 	}
 	if expanded := t.try_expand_interface_array_literal_repeat(base_id, count_id, base_type) {
 		return expanded
@@ -45,6 +49,25 @@ fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.No
 	count := t.transform_expr(count_id)
 	selector := t.make_selector(base, 'repeat_to_depth', '')
 	return t.make_call_expr_typed(selector, arr2(count, t.make_int_literal(depth)), node.typ)
+}
+
+// make_plain_array_repeat_value preserves the repeated result before destroying a
+// non-addressable source array whose backing storage was materialized after ownership
+// analysis.
+fn (mut t Transformer) make_plain_array_repeat_value(base_id flat.NodeId, count_id flat.NodeId, array_type string) flat.NodeId {
+	source := t.transform_expr(base_id)
+	stable_source := t.stable_transformed_expr_for_reuse(source, array_type,
+		'plain_array_repeat_source')
+	count := t.transform_expr_for_type(count_id, 'int')
+	repeat_selector := t.make_selector(stable_source, 'repeat_to_depth', '')
+	repeated := t.make_call_expr_typed(repeat_selector, arr2(count, t.make_int_literal(0)),
+		array_type)
+	out_name := t.new_temp('plain_array_repeat')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, repeated, array_type)
+	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source), 'void'))
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), array_type)
+	return result
 }
 
 // make_owned_array_repeat_value replaces every byte-copied element in the runtime repeat
@@ -244,8 +267,8 @@ fn (mut t Transformer) make_array_clone_from_owned_temporary(source flat.NodeId,
 	return result
 }
 
-// make_array_reverse_call clones ownership-bearing elements before reversing the new array
-// in place, so the source and result never share element ownership.
+// make_array_reverse_call clones array storage and ownership-bearing elements before
+// reversing the new array in place, so the source and result never share ownership.
 fn (mut t Transformer) make_array_reverse_call(base_id flat.NodeId, base_type string) flat.NodeId {
 	clean_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
 	if clean_type.starts_with('[]') && !isnil(t.tc) {
@@ -261,14 +284,14 @@ fn (mut t Transformer) make_array_reverse_call(base_id flat.NodeId, base_type st
 				}
 				return receiver
 			}
-			clone := t.make_array_clone_call(base_id, base_type)
-			stable_clone := t.stable_transformed_expr_for_reuse(clone, clean_type, 'owned_reverse')
-			t.mark_fn_used('array__reverse_in_place')
-			reverse := t.make_call_typed('array__reverse_in_place', arr1(t.runtime_addr(stable_clone,
-				clean_type)), 'void')
-			t.pending_stmts << t.make_expr_stmt(reverse)
-			return stable_clone
 		}
+		clone := t.make_array_clone_call(base_id, base_type)
+		stable_clone := t.stable_transformed_expr_for_reuse(clone, clean_type, 'owned_reverse')
+		t.mark_fn_used('array__reverse_in_place')
+		reverse := t.make_call_typed('array__reverse_in_place', arr1(t.runtime_addr(stable_clone,
+			clean_type)), 'void')
+		t.pending_stmts << t.make_expr_stmt(reverse)
+		return stable_clone
 	}
 	mut receiver := t.transform_expr(base_id)
 	if base_type.starts_with('&') {

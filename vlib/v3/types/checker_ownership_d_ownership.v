@@ -1167,8 +1167,8 @@ pub fn (tc &TypeChecker) ownership_type_requires_destruction(typ Type) bool {
 
 // check_ownership_map_assignment_key rejects borrowed map keys that cannot be cloned
 // before map storage takes an independent ownership-bearing copy.
-fn (mut tc TypeChecker) check_ownership_map_assignment_key(lhs_id flat.NodeId, op flat.Op) {
-	if tc.ownership == unsafe { nil } || op != .assign || !tc.valid_node_id(lhs_id) {
+fn (mut tc TypeChecker) check_ownership_map_assignment_key(lhs_id flat.NodeId, _op flat.Op) {
+	if tc.ownership == unsafe { nil } || !tc.valid_node_id(lhs_id) {
 		return
 	}
 	mut index_id := lhs_id
@@ -1207,9 +1207,18 @@ fn (mut tc TypeChecker) check_ownership_map_assignment_key(lhs_id flat.NodeId, o
 // whose dynamic storage may differ from the target at runtime. Without an independent clone,
 // lowering cannot both preserve same-slot moves and destroy a distinct overwritten target.
 fn (mut tc TypeChecker) check_ownership_uncloneable_overlapping_map_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, op flat.Op, pos flat.NodeId) {
-	if tc.ownership == unsafe { nil } || op != .assign
-		|| !tc.ownership_lvalue_contains_map_index(lhs_id)
-		|| !tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
+	if tc.ownership == unsafe { nil } || !tc.ownership_lvalue_contains_map_index(lhs_id) {
+		return
+	}
+	if op == .left_shift_assign && unalias_type(lhs_type) is Array {
+		if bad_type := tc.ownership_default_clone_missing_method(lhs_type) {
+			tc.record_error(.assignment_mismatch,
+				'cannot update owned map array value: `${bad_type}` requires ownership destruction but has no `clone()` method',
+				pos)
+		}
+		return
+	}
+	if op != .assign || !tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
 		return
 	}
 	if bad_type := tc.ownership_default_clone_missing_method(lhs_type) {
