@@ -5680,6 +5680,37 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		t.mark_fn_used(method_name)
 		return t.make_call_typed(method_name, args, ret_type)
 	}
+	if fn_node.value == 'clone' {
+		key_type, value_type := t.map_type_parts(clean_type)
+		if key_type.len == 0 || value_type.len == 0 {
+			return none
+		}
+		mut source := t.transform_expr(base_id)
+		mut clean_base_type := t.normalize_type_alias(base_type).trim_space()
+		for clean_base_type.starts_with('shared ') {
+			clean_base_type = clean_base_type[7..].trim_space()
+		}
+		if clean_base_type.starts_with('&') {
+			source = t.make_prefix(.mul, source)
+			t.set_node_typ(int(source), clean_type)
+		}
+		if isnil(t.tc)
+			|| (!t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
+			&& !t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type))) {
+			t.mark_fn_used('map__clone')
+			return t.make_call_typed('map__clone', arr1(t.runtime_addr(source, clean_type)),
+				clean_type)
+		}
+		// The checker rejects this call. Do not lower it to the unsafe raw clone while
+		// processing the invalid program.
+		if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(key_type)) {
+			return source
+		}
+		if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(value_type)) {
+			return source
+		}
+		return t.make_compiler_default_map_clone_value(source, clean_type)
+	}
 	source_is_owned_temporary := !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
 	base := t.stable_expr_for_reuse(base_id)
 	if map_method_needs_runtime_addr_only(fn_node.value) {
@@ -5937,7 +5968,7 @@ fn (mut t Transformer) append_owned_map_entry_delete_with_drops(map_expr flat.No
 fn map_method_is_lowered_by_transform(method string) bool {
 	return match method.len {
 		4 { method == 'keys' || method == 'free' || method == 'move' }
-		5 { method == 'clear' }
+		5 { method == 'clear' || method == 'clone' }
 		6 { method == 'values' || method == 'delete' }
 		7 { method == 'reserve' }
 		else { false }

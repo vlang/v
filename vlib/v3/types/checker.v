@@ -10514,7 +10514,6 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			}
 		}
 		if clean_map := map_type_from_receiver(clean) {
-			_ = clean_map
 			for mname in receiver_method_name_candidates(clean, fn_node.value, tc.cur_module) {
 				if checker_is_raw_collection_method_name(mname, 'map.') || mname !in tc.fn_ret_types {
 					continue
@@ -10526,6 +10525,16 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			}
 			match fn_node.value {
 				'clone' {
+					if bad_type := tc.ownership_default_clone_missing_method(clean_map.key_type) {
+						tc.record_error(.call_arg_mismatch,
+							'cannot clone map keys: `${bad_type}` requires ownership destruction but has no `clone()` method',
+							id)
+					}
+					if bad_type := tc.ownership_default_clone_missing_method(clean_map.value_type) {
+						tc.record_error(.call_arg_mismatch,
+							'cannot clone map values: `${bad_type}` requires ownership destruction but has no `clone()` method',
+							id)
+					}
 					return CallInfo{
 						name:         ''
 						params:       tarr1(base_type)
