@@ -632,32 +632,33 @@ fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool) {
 	mut seen := map[string]bool{}
 	mut files := []string{}
 	mut has_untracked_include := false
-	for flag in flags {
-		for forced_input in c_forced_include_inputs(flag) {
-			for path in c_include_file_paths('"${forced_input}"', '', '', include_dirs) {
-				if !os.is_file(path) {
-					continue
-				}
-				if c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files) {
-					has_untracked_include = true
-				}
-				break
+	for forced_input in c_forced_include_inputs(flags) {
+		for path in c_include_file_paths('"${forced_input}"', '', '', include_dirs) {
+			if !os.is_file(path) {
+				continue
 			}
+			if c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files) {
+				has_untracked_include = true
+			}
+			break
 		}
 	}
 	files.sort()
 	return files, has_untracked_include
 }
 
-fn c_forced_include_inputs(flag string) []string {
+fn c_forced_include_inputs(flags []string) []string {
 	mut inputs := []string{}
-	tokens := tokenize_c_flag(flag)
-	mut i := 0
-	for i < tokens.len {
-		token := tokens[i]
-		if token in ['-include', '-imacros'] && i + 1 < tokens.len {
-			inputs << tokens[i + 1].trim('"\'')
-			i += 2
+	mut expect_input := false
+	for flag in flags {
+		token := flag.trim_space()
+		if expect_input {
+			inputs << token.trim('"\'')
+			expect_input = false
+			continue
+		}
+		if token in ['-include', '-imacros'] {
+			expect_input = true
 			continue
 		}
 		for prefix in ['-include=', '-imacros='] {
@@ -665,7 +666,6 @@ fn c_forced_include_inputs(flag string) []string {
 				inputs << token[prefix.len..].trim('"\'')
 			}
 		}
-		i++
 	}
 	return inputs
 }

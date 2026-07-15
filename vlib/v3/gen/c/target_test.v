@@ -47,6 +47,25 @@ fn test_split_relative_c_flag_paths_resolve_from_source_directory() {
 	assert c_flag_include_dirs(flags) == [include_dir]
 }
 
+fn test_split_forced_include_flags_are_cache_inputs() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_split_forced_include_flags')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	cfg := os.join_path(dir, 'cfg header.h')
+	defs := os.join_path(dir, 'defs.h')
+	os.write_file(cfg, '#define CFG_VALUE 1\n') or { panic(err) }
+	os.write_file(defs, '#define DEFS_VALUE 2\n') or { panic(err) }
+	flags := c_flag_args('-include "./cfg header.h" -imacros ./defs.h', '', os.join_path(dir,
+		'main.v'), pref.host_target())
+	assert flags == ['-include', os.real_path(cfg), '-imacros', os.real_path(defs)]
+	mut expected := [os.real_path(cfg), os.real_path(defs)]
+	expected.sort()
+	assert cache_c_flag_input_files(flags) == expected
+}
+
 fn test_termux_comptime_branch_uses_canonical_target() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_termux_comptime_${os.getpid()}')
 	os.rmdir_all(dir) or {}
