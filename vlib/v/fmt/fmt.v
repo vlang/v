@@ -185,11 +185,11 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			}
 		}
 	}
-	// Some `json` calls cannot be rewritten to `json2` without changing or losing
-	// source: `json.encode_pretty` (json2 cannot reproduce cJSON's exact formatting)
-	// and `json.decode` with comments on its type argument (a comment cannot be
-	// re-parsed inside the migrated `[T]` generic bracket). When the file has any
-	// such call, leave its whole `json` usage unmigrated (see call_expr /
+	// Some `json` usage cannot be rewritten to `json2` without changing or losing
+	// source (see file_has_unmigratable_json_usage): `json.encode_pretty`, a
+	// `json.decode` with comments on its type argument, or a struct field whose JSON
+	// shape differs between the modules (`time.Time`, `@[raw]`). When the file has any
+	// such usage, leave its whole `json` usage unmigrated (see call_expr /
 	// imp_stmt_str), so calls and the `import json` stay byte-identical. Only scan
 	// when the file actually imports `json`, to avoid walking unrelated files.
 	// `file.imports` includes branch-local (`$if { import json }`) imports, so those
@@ -203,7 +203,7 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 		}
 	}
 	if imports_json {
-		f.keep_json_unmigrated = json2_alias_is_blank || file_has_unmigratable_json_call(file)
+		f.keep_json_unmigrated = json2_alias_is_blank || f.file_has_unmigratable_json_usage(file)
 	}
 
 	for imp in file.imports {
@@ -220,29 +220,53 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	}
 }
 
-// file_has_unmigratable_json_call reports whether the file contains a `json` call
-// the json->json2 migration cannot rewrite losslessly: a `json.encode_pretty`
-// (json2 cannot reproduce its exact output) or a `json.decode` whose type argument
-// carries comments (which cannot survive inside the migrated `[T]` bracket). Such a
-// file is left entirely unmigrated (see process_file_imports).
-fn file_has_unmigratable_json_call(file &ast.File) bool {
-	mut found := false
-	walker.inspect(file, &found, fn (node &ast.Node, data voidptr) bool {
-		if node is ast.Expr && node is ast.CallExpr {
-			call := node as ast.CallExpr
-			is_unmigratable := call.kind == .json_encode_pretty
-				|| (call.kind == .json_decode && call.args.len >= 1
-				&& call.args[0].comments.len > 0)
-			if is_unmigratable {
-				mut fp := unsafe { &bool(data) }
-				unsafe {
-					*fp = true
-				}
+// JsonUnmigratableScan is the walker state for file_has_unmigratable_json_usage:
+// it detects `json` usage the json->json2 migration cannot rewrite losslessly, so
+// the file is left entirely unmigrated (see process_file_imports and the visitor).
+struct JsonUnmigratableScan {
+	table &ast.Table = unsafe { nil }
+mut:
+	found bool
+}
+
+fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
+	mut s := unsafe { &JsonUnmigratableScan(data) }
+	if s.found {
+		return false
+	}
+	if node is ast.Expr && node is ast.CallExpr {
+		call := node as ast.CallExpr
+		// json.encode_pretty output cannot be reproduced by json2, and a json.decode
+		// with comments on its type argument cannot be re-parsed after migration.
+		if call.kind == .json_encode_pretty
+			|| (call.kind == .json_decode && call.args.len >= 1 && call.args[0].comments.len > 0) {
+			s.found = true
+		}
+	} else if node is ast.Stmt && node is ast.StructDecl {
+		decl := node as ast.StructDecl
+		// Some field kinds serialise differently in json2, with no option to restore
+		// the legacy bytes: a `time.Time` field is a unix number in json but an RFC3339
+		// string in json2, and a `@[raw]` field keeps the normalized subtree in json
+		// but the raw source slice in json2. vfmt has no type info for encode/decode
+		// payloads, so as a conservative proxy any struct declared in the file with
+		// such a field leaves the file unmigrated. Only file-local structs are visible.
+		for field in decl.fields {
+			if field.attrs.any(it.name == 'raw')
+				|| (field.typ != 0 && s.table.sym(field.typ).name.contains('time.Time')) {
+				s.found = true
+				break
 			}
 		}
-		return true
-	})
-	return found
+	}
+	return true
+}
+
+fn (f &Fmt) file_has_unmigratable_json_usage(file &ast.File) bool {
+	mut scan := JsonUnmigratableScan{
+		table: f.table
+	}
+	walker.inspect(file, &scan, json_unmigratable_scan_visit)
+	return scan.found
 }
 
 //=== Basic buffer write operations ===//
