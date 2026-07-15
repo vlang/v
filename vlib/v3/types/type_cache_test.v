@@ -90,3 +90,13 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 	assert first == 'map[string][]int'
 	assert first.str == second.str
 }
+
+fn test_resolved_symbols_have_stable_ids_and_storage() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	first := tc.canonical_symbol('sample.run')
+	second := tc.canonical_symbol('sample.' + 'run')
+	assert first == second
+	assert first.str == second.str
+	assert tc.symbol_count() == 1
+}

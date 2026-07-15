@@ -484,7 +484,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.sparse_statement_nodes = map[int]bool{}
 	w.sparse_expr_type_values = map[int]Type{}
 	w.sparse_checking_nodes = map[int]bool{}
-	w.direct_dependencies_by_fn = map[int][]string{}
+	w.direct_dependencies_by_fn = map[int][]SymbolId{}
 	w.method_values_by_fn = map[int][]string{}
 	w.fn_context = new_function_check_context()
 	w.generic_method_value_info = map[string]CallInfo{}

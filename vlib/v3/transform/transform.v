@@ -1761,7 +1761,7 @@ fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
 		t.tc.resolved_call_names << ''
 		t.tc.resolved_call_set << false
 	}
-	t.tc.resolved_call_names[idx] = name
+	t.tc.resolved_call_names[idx] = t.tc.canonical_symbol(name)
 	t.tc.resolved_call_set[idx] = true
 }
 
@@ -1770,7 +1770,7 @@ fn (mut t Transformer) set_resolved_fn_value_entry(idx int, name string) {
 		t.tc.resolved_fn_value_names << ''
 		t.tc.resolved_fn_value_set << false
 	}
-	t.tc.resolved_fn_value_names[idx] = name
+	t.tc.resolved_fn_value_names[idx] = t.tc.canonical_symbol(name)
 	t.tc.resolved_fn_value_set[idx] = true
 }
 

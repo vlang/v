@@ -354,7 +354,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			// the checker recorded them with the exact file/import/type context.
 			// The body collector below remains responsible for implicit helpers
 			// introduced by lowering and for unresolved compatibility fallbacks.
-			calls << tc.direct_dependencies(node_key)
+			for dependency in tc.direct_dependency_ids(node_key) {
+				calls << tc.symbol_name(dependency)
+			}
 			if body_i := body_index[node_key] {
 				body := body_results[body_i]
 				calls << body.calls

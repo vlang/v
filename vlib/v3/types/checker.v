@@ -378,7 +378,7 @@ pub mut:
 	// Exact call/function-value dependencies recorded while each function is
 	// checked. Consumers such as markused can walk these resolved Symbol-like
 	// names instead of reconstructing import and receiver resolution from syntax.
-	direct_dependencies_by_fn map[int][]string // enclosing fn node id -> resolved function names
+	direct_dependencies_by_fn map[int][]SymbolId // enclosing fn node id -> resolved function identities
 	// Methods used as *values* (`recv.method` passed as a callback), recorded per enclosing
 	// function during semantic checking — which has full scope/type info, runs before
 	// markused, and (unlike a call) routes a value-context selector through check_selector.
@@ -442,14 +442,16 @@ mut:
 	// Includes method-value aliases and binding-owner maps; all backing maps are
 	// replaced together at every function/worker boundary.
 	fn_context    FunctionCheckContext
-	type_cache    &TypeCache    = unsafe { nil }
-	type_interner &TypeInterner = unsafe { nil }
+	type_cache    &TypeCache      = unsafe { nil }
+	type_interner &TypeInterner   = unsafe { nil }
+	symbols       &SymbolInterner = unsafe { nil }
 }
 
 // new creates a TypeChecker value for types.
 pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	fs := new_scope(unsafe { nil })
 	type_interner := new_type_interner()
+	symbols := new_symbol_interner()
 	return TypeChecker{
 		a:                                  a
 		fn_ret_types:                       map[string]Type{}
@@ -510,7 +512,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		resolved_fn_value_names:    []string{}
 		resolved_fn_value_set:      []bool{}
 		statement_nodes:            []bool{}
-		direct_dependencies_by_fn:  map[int][]string{}
+		direct_dependencies_by_fn:  map[int][]SymbolId{}
 		method_values_by_fn:        map[int][]string{}
 		fn_context:                 new_function_check_context()
 		expr_type_values:           []Type{}
@@ -533,6 +535,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 			source_error_embed_entries: map[string]int{}
 		}
 		type_interner:              type_interner
+		symbols:                    symbols
 	}
 }
 
@@ -560,6 +563,7 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	// helper therefore gets a private canonical table; semantic Type values are
 	// still compatible across tables, while TypeIds stay local to its cache.
 	forked.type_interner = new_type_interner()
+	forked.symbols = new_symbol_interner()
 	forked.type_cache = &TypeCache{
 		// When the master froze its warm cache behind an overlay (see
 		// freeze_type_cache_for_forks), every fork shares that frozen cache as
@@ -609,6 +613,9 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 	if isnil(tc.type_interner) {
 		tc.type_interner = new_type_interner()
 	}
+	if isnil(tc.symbols) {
+		tc.symbols = new_symbol_interner()
+	}
 	tc.type_cache = &TypeCache{
 		parse_enabled: parse_enabled
 	}
@@ -633,6 +640,7 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache_based_on(src &TypeChecker, pars
 	// C-generation workers can also use disposable arenas. Keep their TypeIds
 	// private instead of publishing arena-backed interner storage globally.
 	tc.type_interner = new_type_interner()
+	tc.symbols = new_symbol_interner()
 }
 
 // type_cache_parse_enabled reports whether parse_type memoization is enabled
@@ -904,7 +912,7 @@ fn split_sum_variant_texts(text string) []string {
 pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.a = a
 	tc.has_spawn_expr = -1
-	tc.direct_dependencies_by_fn = map[int][]string{}
+	tc.direct_dependencies_by_fn = map[int][]SymbolId{}
 	tc.file_scope = new_scope(unsafe { nil })
 	tc.cur_scope = tc.file_scope
 	tc.scope_pool_index = 0
@@ -2901,21 +2909,64 @@ pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 	return none
 }
 
-// direct_dependencies returns the checker-resolved function dependencies of a
-// function declaration node. The returned slice must be treated as read-only.
+// direct_dependency_ids returns the checker-resolved function dependency
+// identities of a function declaration node. The slice is read-only.
+pub fn (tc &TypeChecker) direct_dependency_ids(fn_node_id int) []SymbolId {
+	return tc.direct_dependencies_by_fn[fn_node_id] or { []SymbolId{} }
+}
+
+// direct_dependencies returns canonical dependency names for compatibility.
 pub fn (tc &TypeChecker) direct_dependencies(fn_node_id int) []string {
-	return tc.direct_dependencies_by_fn[fn_node_id] or { []string{} }
+	ids := tc.direct_dependency_ids(fn_node_id)
+	mut names := []string{cap: ids.len}
+	for id in ids {
+		names << tc.symbol_name(id)
+	}
+	return names
 }
 
 fn (mut tc TypeChecker) record_direct_dependency(name string) {
 	if tc.fn_context.node_id < 0 || name.len == 0 {
 		return
 	}
-	mut dependencies := tc.direct_dependencies_by_fn[tc.fn_context.node_id] or { []string{} }
-	if name !in dependencies {
-		dependencies << name
+	id, _ := tc.intern_symbol(name)
+	mut dependencies := tc.direct_dependencies_by_fn[tc.fn_context.node_id] or { []SymbolId{} }
+	if id !in dependencies {
+		dependencies << id
 		tc.direct_dependencies_by_fn[tc.fn_context.node_id] = dependencies
 	}
+}
+
+fn (tc &TypeChecker) intern_symbol(name string) (SymbolId, string) {
+	if isnil(tc.symbols) {
+		return SymbolId(0), name
+	}
+	mut symbols := unsafe { tc.symbols }
+	return symbols.intern(name)
+}
+
+// symbol_name resolves a checker symbol identity to its canonical name.
+pub fn (tc &TypeChecker) symbol_name(id SymbolId) string {
+	if isnil(tc.symbols) {
+		return ''
+	}
+	mut symbols := unsafe { tc.symbols }
+	return symbols.name(id)
+}
+
+// canonical_symbol returns the compilation-owned canonical spelling of name.
+pub fn (tc &TypeChecker) canonical_symbol(name string) string {
+	_, canonical := tc.intern_symbol(name)
+	return canonical
+}
+
+// symbol_count returns the number of resolved names interned by the checker.
+pub fn (tc &TypeChecker) symbol_count() int {
+	if isnil(tc.symbols) {
+		return 0
+	}
+	mut symbols := unsafe { tc.symbols }
+	return symbols.len()
 }
 
 // copy_cloned_resolution copies checker-owned call/function-value resolution metadata
@@ -2952,21 +3003,22 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 	if idx < 0 {
 		return
 	}
-	tc.record_direct_dependency(name)
+	canonical := tc.canonical_symbol(name)
+	tc.record_direct_dependency(canonical)
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.resolved_call_names.len {
-			tc.resolved_call_names[idx] = name
+			tc.resolved_call_names[idx] = canonical
 			tc.resolved_call_set[idx] = true
 			return
 		}
-		tc.sparse_resolved_call_names[idx] = name
+		tc.sparse_resolved_call_names[idx] = canonical
 		return
 	}
 	if idx >= tc.resolved_call_names.len {
 		tc.extend_node_caches(tc.a.nodes.len)
 	}
 	if idx < tc.resolved_call_names.len {
-		tc.resolved_call_names[idx] = name
+		tc.resolved_call_names[idx] = canonical
 		tc.resolved_call_set[idx] = true
 	}
 }
@@ -2977,21 +3029,22 @@ fn (mut tc TypeChecker) remember_resolved_fn_value(id flat.NodeId, name string) 
 	if idx < 0 {
 		return
 	}
-	tc.record_direct_dependency(name)
+	canonical := tc.canonical_symbol(name)
+	tc.record_direct_dependency(canonical)
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.resolved_fn_value_names.len {
-			tc.resolved_fn_value_names[idx] = name
+			tc.resolved_fn_value_names[idx] = canonical
 			tc.resolved_fn_value_set[idx] = true
 			return
 		}
-		tc.sparse_resolved_fn_values[idx] = name
+		tc.sparse_resolved_fn_values[idx] = canonical
 		return
 	}
 	if idx >= tc.resolved_fn_value_names.len {
 		tc.extend_node_caches(tc.a.nodes.len)
 	}
 	if idx < tc.resolved_fn_value_names.len {
-		tc.resolved_fn_value_names[idx] = name
+		tc.resolved_fn_value_names[idx] = canonical
 		tc.resolved_fn_value_set[idx] = true
 	}
 }
