@@ -178,3 +178,57 @@ fn main() { println(int_str(C.cached_value())) }
 	assert fourth.output.contains('C object content-key hits'), fourth.output
 	assert cmdexec.run(fourth_out, []string{}).output.trim_space() == '9'
 }
+
+fn test_c_object_cache_bypasses_failed_dependency_scan() {
+	$if windows {
+		return
+	}
+	v3_bin := build_secure_command_v3()
+	root := secure_temp_path('object_cache_dependency_fallback')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.unsetenv('V3_CACHE_TRACE')
+		os.rmdir_all(root) or {}
+		os.rm(v3_bin) or {}
+	}
+	compiler := os.join_path(root, 'cc_without_dependencies')
+	os.write_file(compiler, '#!/bin/sh
+for arg in "\$@"; do
+	if [ "\$arg" = "-M" ]; then
+		exit 1
+	fi
+done
+exec cc "\$@"
+') or {
+		panic(err)
+	}
+	os.chmod(compiler, 0o700) or { panic(err) }
+	header := os.join_path(root, 'value.h')
+	c_source := os.join_path(root, 'helper.c')
+	v_source := os.join_path(root, 'main.v')
+	os.write_file(header, '#define FALLBACK_VALUE 7\n') or { panic(err) }
+	os.write_file(c_source,
+		'#include "value.h"\nint fallback_value(void) { return FALLBACK_VALUE; }\n') or {
+		panic(err)
+	}
+	os.write_file(v_source, 'module main
+#flag @DIR/helper.o
+fn C.fallback_value() int
+fn main() { println(int_str(C.fallback_value())) }
+') or {
+		panic(err)
+	}
+	os.setenv('V3_CACHE_TRACE', '1', true)
+	first_out := os.join_path(root, 'first')
+	first := cmdexec.run(v3_bin, [v_source, '-cc', compiler, '-prod', '-o', first_out])
+	assert first.exit_code == 0, first.output
+	assert cmdexec.run(first_out, []string{}).output.trim_space() == '7'
+	assert first.output.contains('C object cache bypass:'), first.output
+	os.write_file(header, '#define FALLBACK_VALUE 9\n') or { panic(err) }
+	second_out := os.join_path(root, 'second')
+	second := cmdexec.run(v3_bin, [v_source, '-cc', compiler, '-prod', '-o', second_out])
+	assert second.exit_code == 0, second.output
+	assert cmdexec.run(second_out, []string{}).output.trim_space() == '9'
+	assert second.output.contains('C object cache bypass:'), second.output
+}

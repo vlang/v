@@ -85,6 +85,7 @@ mut:
 	dependency_files          int
 	dependency_scan_fallbacks int
 	publish_races             int
+	temporary_objects         []string
 }
 
 struct CObjectDependencies {
@@ -92,7 +93,7 @@ struct CObjectDependencies {
 	used_fallback bool
 }
 
-fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, mut stats CObjectCacheStats) ![]string {
+fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
 	for flag in flags {
@@ -100,7 +101,7 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 		if c_flag_is_object_file(clean) {
 			stats.requests++
 			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag, target_args,
-				target, c_compiler, mut stats)!
+				target, c_compiler, uncached_dir, mut stats)!
 		} else {
 			prepared << flag
 		}
@@ -157,7 +158,7 @@ fn c_flags_need_objective_c(flags []string) bool {
 	return false
 }
 
-fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, mut stats CObjectCacheStats) !string {
+fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
 	if os.exists(obj_path) {
 		stats.direct_objects++
 		return obj_path
@@ -180,6 +181,18 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	stats.dependency_files += dependencies.files.len
 	if dependencies.used_fallback {
 		stats.dependency_scan_fallbacks++
+		uncached_obj := os.join_path(uncached_dir,
+			'dependency_scan_fallback_${os.getpid()}_${rand.ulid()}.o')
+		trace_c_object_cache('bypass', os.base(obj_path),
+			'dependency scan failed; using build-local object', dependencies.files.len)
+		args << ['-o', uncached_obj, '-c', source_file]
+		res := cmdexec.run(compiler, args)
+		if res.exit_code != 0 {
+			os.rm(uncached_obj) or {}
+			return error('failed to build C object ${obj_path} from ${source_file}:\n${res.output}')
+		}
+		stats.temporary_objects << uncached_obj
+		return uncached_obj
 	}
 	cache_key := c_object_cache_name(obj_path, compiler, args, dependencies.files, target)
 	cached_obj := os.join_path(cache_dir, cache_key)
@@ -1404,7 +1417,7 @@ fn main() {
 			['-w']
 		}
 		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
-			target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
+			target_args, prefs.target, c_compiler, cc_dir, mut c_object_cache_stats) or {
 			eprintln(err.msg())
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
@@ -1515,6 +1528,9 @@ fn main() {
 			eprintln('failed to finalize ${bin_file}: ${err}')
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
+		}
+		for temporary_object in c_object_cache_stats.temporary_objects {
+			os.rm(temporary_object) or {}
 		}
 		os.rm(cc_src) or {}
 		os.rmdir(cc_dir) or {}
