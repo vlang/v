@@ -57,11 +57,7 @@ pub fn drop_owned[T](value T) {
 	} $else $if T.unaliased_typ is $sumtype {
 		$for variant in T.variants {
 			if owned is variant {
-				payload := unsafe { &owned }
-				if payload != unsafe { nil } {
-					drop_owned(owned)
-					unsafe { free(payload) }
-				}
+				drop_owned(owned)
 			}
 		}
 	} $else $if T.unaliased_typ is $array_dynamic {
