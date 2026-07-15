@@ -1,5 +1,7 @@
 module workers
 
+import os
+
 struct PoolTestArg {
 mut:
 	value int
@@ -42,4 +44,42 @@ fn test_pool_runs_persistent_batches_and_sync_fallbacks() {
 		assert stats.worker_run_ns > 0
 	}
 	pool.close()
+}
+
+fn test_pool_falls_back_for_every_failed_launch_index() {
+	$if !windows {
+		old_failure := os.getenv_opt('V3_TEST_PTHREAD_CREATE_FAIL')
+		defer {
+			if value := old_failure {
+				os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', value, true)
+			} else {
+				os.unsetenv('V3_TEST_PTHREAD_CREATE_FAIL')
+			}
+		}
+		for failure in ['pool:0', 'pool:1', 'pool:2', 'pool:all'] {
+			os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', failure, true)
+			mut pool := new(3)
+			mut args := []&PoolTestArg{cap: 6}
+			mut tasks := []Task{cap: 6}
+			for _ in 0 .. 6 {
+				args << &PoolTestArg{}
+				tasks << Task{
+					run: pool_test_task
+					arg: voidptr(args.last())
+				}
+			}
+			pool.run(tasks)
+			assert args.all(it.value == 1), failure
+			stats := pool.stats()
+			assert stats.launch_attempts == 3
+			if failure == 'pool:all' {
+				assert stats.launch_failures == 3
+				assert stats.fallback_tasks == 6
+			} else {
+				assert stats.launch_failures == 1
+				assert stats.async_tasks == 6
+			}
+			pool.close()
+		}
+	}
 }
