@@ -302,6 +302,19 @@ fn new_function_check_context() FunctionCheckContext {
 	}
 }
 
+fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
+	return FunctionCheckContext{
+		method_value_locals:      src.method_value_locals.clone()
+		method_value_local_depth: src.method_value_local_depth.clone()
+		node_id:                  src.node_id
+		mut_param_base_types:     src.mut_param_base_types.clone()
+		mut_param_owners:         src.mut_param_owners.clone()
+		mut_local_owners:         src.mut_local_owners.clone()
+		shared_owners:            src.shared_owners.clone()
+		return_type:              src.return_type
+	}
+}
+
 // TypeChecker represents type checker data used by types.
 @[heap]
 pub struct TypeChecker {
@@ -638,6 +651,35 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst) TypeChecker {
 		type_interner:                      tc.type_interner
 		symbols:                            tc.symbols
 	}
+}
+
+// fork_type_parse_view creates a lookup-only view in an explicit source
+// context. It shares the compilation's immutable indexes, interner, and
+// synchronous memoization cache, but none of the caller's function state.
+fn (tc &TypeChecker) fork_type_parse_view(file string, module_name string) TypeChecker {
+	mut view := tc.fork_program_view(tc.a)
+	view.cur_file = file
+	view.cur_module = module_name
+	view.type_cache = tc.type_cache
+	return view
+}
+
+// fork_smartcast_query_view preserves the active lexical/function context for
+// a synchronous expression-type query while owning every mutable map it may
+// consult. This avoids inheriting unrelated checker state through a whole
+// struct copy.
+fn (tc &TypeChecker) fork_smartcast_query_view() TypeChecker {
+	mut view := tc.fork_program_view(tc.a)
+	view.file_scope = tc.file_scope
+	view.cur_scope = tc.cur_scope
+	view.scope_pool = tc.scope_pool
+	view.scope_pool_index = tc.scope_pool_index
+	view.expected_expr_id = tc.expected_expr_id
+	view.expected_expr_type = tc.expected_expr_type
+	view.fn_context = clone_function_check_context(tc.fn_context)
+	view.smartcasts = clone_smartcasts(tc.smartcasts)
+	view.type_cache = tc.type_cache
+	return view
 }
 
 // fork_for_parallel_transform returns a TypeChecker that shares all of `tc`'s
@@ -12646,14 +12688,8 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 
 fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
 	decl_file := tc.fn_type_files[name] or { return tc.parse_type(typ) }
-	// The scoped copy changes only lookup context. Reuse this checker's cache
-	// overlay and compilation-wide interner; allocating a fresh cache for every
-	// signature substitution defeats the warm parse cache.
-	mut scoped := *tc
-	scoped.cur_file = decl_file
-	scoped.cur_module = tc.fn_type_modules[name] or {
-		tc.file_modules[decl_file] or { tc.cur_module }
-	}
+	decl_module := tc.fn_type_modules[name] or { tc.file_modules[decl_file] or { tc.cur_module } }
+	mut scoped := tc.fork_type_parse_view(decl_file, decl_module)
 	return scoped.parse_type(typ)
 }
 
@@ -14983,8 +15019,7 @@ fn (tc &TypeChecker) branch_tail_type_with_smartcasts(id flat.NodeId, smartcasts
 	if smartcasts.len == 0 {
 		return tc.branch_tail_type(id)
 	}
-	mut scoped := *tc
-	scoped.smartcasts = clone_smartcasts(tc.smartcasts)
+	mut scoped := tc.fork_smartcast_query_view()
 	for sc in smartcasts {
 		if valid_string_data(sc.name) {
 			scoped.smartcasts[sc.name] = sc.typ
