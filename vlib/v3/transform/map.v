@@ -12,8 +12,14 @@ struct MapIndexInfo {
 	value_type       string
 }
 
+struct MapFixedArrayIndexInfo {
+	map_info  MapIndexInfo
+	index_ids []flat.NodeId
+	elem_type string
+}
+
 // map_type_parts supports map type parts handling for Transformer.
-fn (mut t Transformer) map_type_parts(map_type string) (string, string) {
+fn (t &Transformer) map_type_parts(map_type string) (string, string) {
 	clean := t.clean_map_type(map_type)
 	if !clean.starts_with('map[') {
 		return '', ''
@@ -140,14 +146,31 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 // make_map_get_expr builds make map get expr data for transform.
 fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type string, key_name string, zero_name string, value_type string) flat.NodeId {
 	clean_value_type := if t.is_fixed_array_type(value_type) {
-		fixed_array_canonical_type(value_type)
+		if t.fixed_array_type_contains_map(value_type) {
+			value_type
+		} else {
+			fixed_array_canonical_type(value_type)
+		}
 	} else {
 		value_type
 	}
 	call := t.make_call_typed('map__get', arr3(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,
 		t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(zero_name))), 'voidptr')
 	cast := t.make_cast('&${clean_value_type}', call, '&${clean_value_type}')
-	return t.make_prefix(.mul, cast)
+	result := t.make_prefix(.mul, cast)
+	t.set_node_typ(int(result), clean_value_type)
+	return result
+}
+
+fn (t &Transformer) fixed_array_type_contains_map(typ string) bool {
+	clean := t.normalize_type_alias(typ).trim_space()
+	if clean.starts_with('map[') {
+		return true
+	}
+	if !t.is_fixed_array_type(clean) {
+		return false
+	}
+	return t.fixed_array_type_contains_map(fixed_array_elem_type(clean))
 }
 
 // make_map_get_check_expr builds make map get check expr data for transform.
@@ -285,6 +308,10 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 	if source_is_optional {
 		source_value_type = t.map_optional_value_base_type(info.value_type)
 		result_type = source_value_type
+	}
+	if source_is_optional && t.or_body_is_none(body_id) {
+		result_type = info.value_type
+		wrap_found_value = true
 	}
 	if t.map_value_type_is_optional(node.typ) {
 		optional_target := t.map_optional_target_type(node.typ)
@@ -465,6 +492,7 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 		} else {
 			t.transform_expr_for_type(rhs_id, info.value_type)
 		}
+		t.drain_pending(mut result)
 		result << t.make_decl_assign_typed(value_name, value, info.value_type)
 		result << t.make_map_set_stmt(map_expr, info.base_type, key_name, value_name)
 		return result
@@ -528,6 +556,83 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 		inner_value_name)
 	result << t.make_map_set_stmt(map_expr, outer_info.base_type, outer_key_name, inner_name)
 	return result
+}
+
+fn (mut t Transformer) try_lower_map_index_fixed_array_assign(node flat.Node) ?[]flat.NodeId {
+	if node.kind !in [.assign, .index_assign] || node.children_count < 2 || node.op != .assign {
+		return none
+	}
+	lhs_id := t.a.child(&node, 0)
+	path := t.map_fixed_array_index_path(lhs_id) or { return none }
+	map_expr := t.stable_expr_for_reuse(path.map_info.base_id)
+	key_name := t.new_temp('map_key')
+	mut result := []flat.NodeId{}
+	t.drain_pending(mut result)
+	result << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(path.map_info.key_id,
+		path.map_info.key_type), path.map_info.key_storage_type)
+	current_name := t.load_map_index_current(path.map_info, map_expr, key_name, mut result)
+	mut target := t.make_ident(current_name)
+	mut cur_type := path.map_info.value_type
+	for index_id in path.index_ids {
+		clean := t.resolved_fixed_array_canonical_type(cur_type)
+		elem_type := fixed_array_elem_type(clean)
+		if elem_type.len == 0 {
+			return none
+		}
+		target = t.make_index(target, t.transform_expr(index_id), elem_type)
+		cur_type = elem_type
+	}
+	rhs_id := t.a.child(&node, 1)
+	result << t.make_assign(target, t.transform_expr_for_type(rhs_id, path.elem_type))
+	result << t.make_map_set_stmt(map_expr, path.map_info.base_type, key_name, current_name)
+	return result
+}
+
+fn (mut t Transformer) map_fixed_array_index_path(lhs_id flat.NodeId) ?MapFixedArrayIndexInfo {
+	mut ids_rev := []flat.NodeId{}
+	mut cur_id := lhs_id
+	mut info := MapIndexInfo{}
+	mut found := false
+	for {
+		if int(cur_id) < 0 || int(cur_id) >= t.a.nodes.len {
+			return none
+		}
+		cur := t.a.nodes[int(cur_id)]
+		if cur.kind != .index || cur.children_count < 2 || cur.value == 'range' {
+			return none
+		}
+		parent_id := t.a.child(&cur, 0)
+		ids_rev << t.a.child(&cur, 1)
+		if map_info := t.map_index_info(parent_id) {
+			info = map_info
+			found = true
+			break
+		}
+		cur_id = parent_id
+	}
+	if !found || ids_rev.len == 0 {
+		return none
+	}
+	mut index_ids := []flat.NodeId{cap: ids_rev.len}
+	for i := ids_rev.len; i > 0; i-- {
+		index_ids << ids_rev[i - 1]
+	}
+	mut cur_type := info.value_type
+	for _ in index_ids {
+		clean := t.resolved_fixed_array_canonical_type(cur_type)
+		if !t.is_fixed_array_type(clean) {
+			return none
+		}
+		cur_type = fixed_array_elem_type(clean)
+		if cur_type.len == 0 {
+			return none
+		}
+	}
+	return MapFixedArrayIndexInfo{
+		map_info:  info
+		index_ids: index_ids
+		elem_type: cur_type
+	}
 }
 
 // try_lower_map_index_selector_assign lowers `m[k].field = value` by updating a
@@ -715,6 +820,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	if !map_type.starts_with('map[') {
 		return id
 	}
+	map_type = t.refine_map_init_fixed_array_value_type(node, map_type)
 	mut init_call := t.make_new_map_call(map_type)
 	if node.children_count == 0 {
 		return init_call
@@ -754,4 +860,98 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		t.pending_stmts << t.make_expr_stmt(call)
 	}
 	return t.make_ident(tmp_name)
+}
+
+fn (t &Transformer) refine_map_init_fixed_array_value_type(node flat.Node, map_type string) string {
+	key_type, value_type := t.map_type_parts(map_type)
+	if key_type.len == 0 || value_type.len == 0 || t.is_fixed_array_type(value_type) {
+		return map_type
+	}
+	mut i := 0
+	for i + 1 < node.children_count {
+		key_id := t.a.child(&node, i)
+		key := t.a.nodes[int(key_id)]
+		if key.kind == .prefix && key.value == '...' && key.children_count > 0 {
+			i += 2
+			continue
+		}
+		value_id := t.a.child(&node, i + 1)
+		value_typ := t.fixed_array_literal_type_containing_map(value_id) or {
+			t.node_type(value_id)
+		}
+		if t.is_fixed_array_type(value_typ) && t.fixed_array_type_contains_map(value_typ) {
+			return 'map[${key_type}]${value_typ}'
+		}
+		i += 2
+	}
+	return map_type
+}
+
+fn (t &Transformer) fixed_array_literal_type_containing_map(id flat.NodeId) ?string {
+	value_type := t.fixed_array_literal_type_from_syntax(id) or { return none }
+	if t.is_fixed_array_type(value_type) && t.fixed_array_type_contains_map(value_type) {
+		return value_type
+	}
+	return none
+}
+
+fn (t &Transformer) fixed_array_literal_type_from_syntax(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt] {
+		if node.children_count == 0 {
+			return none
+		}
+		return t.fixed_array_literal_type_from_syntax(t.a.child(&node, 0))
+	}
+	if node.kind != .postfix || node.op != .not || node.children_count == 0 {
+		return none
+	}
+	child_id := t.a.child(&node, 0)
+	child := t.a.nodes[int(child_id)]
+	if child.kind != .array_literal {
+		return none
+	}
+	elem_type := if child.children_count > 0 {
+		t.fixed_array_literal_elem_type_from_syntax(t.a.child(&child, 0)) or { return none }
+	} else {
+		'int'
+	}
+	return '[${child.children_count}]${elem_type}'
+}
+
+fn (t &Transformer) fixed_array_literal_elem_type_from_syntax(id flat.NodeId) ?string {
+	if fixed_type := t.fixed_array_literal_type_from_syntax(id) {
+		return fixed_type
+	}
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt] {
+		if node.children_count == 0 {
+			return none
+		}
+		return t.fixed_array_literal_elem_type_from_syntax(t.a.child(&node, 0))
+	}
+	if node.kind == .map_init {
+		mut map_type := if node.value.starts_with('map[') {
+			node.value
+		} else if node.typ.starts_with('map[') {
+			node.typ
+		} else {
+			t.node_type(id)
+		}
+		map_type = t.normalize_type_alias(t.resolve_type_text_import_aliases(map_type))
+		if map_type.starts_with('map[') {
+			return t.refine_map_init_fixed_array_value_type(node, map_type)
+		}
+	}
+	node_type := t.node_type(id)
+	if node_type.len > 0 {
+		return node_type
+	}
+	return none
 }

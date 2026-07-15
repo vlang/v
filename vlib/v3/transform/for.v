@@ -422,8 +422,12 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		actual_iter_type = container_type
 	}
 	if actual_iter_type.starts_with('&[]') {
-		container = t.make_prefix(.mul, container)
-		t.set_node_typ(int(container), actual_iter_type[1..])
+		if t.for_in_container_is_shared_array_pointer(id, container_id) {
+			t.set_node_typ(int(container), actual_iter_type[1..])
+		} else {
+			container = t.make_prefix(.mul, container)
+			t.set_node_typ(int(container), actual_iter_type[1..])
+		}
 		actual_iter_type = actual_iter_type[1..]
 	}
 	elem_type := t.infer_for_in_elem_type(actual_iter_type, node)
@@ -431,7 +435,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		return arr1(id)
 	}
 	mut idx_name := key.value
-	if !has_index {
+	if !has_index || key.value == '_' {
 		idx_name = t.new_temp('for_idx')
 	}
 	mut elem_name := key.value
@@ -488,6 +492,22 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	return prefix
 }
 
+fn (t &Transformer) for_in_container_is_shared_array_pointer(for_id flat.NodeId, container_id flat.NodeId) bool {
+	if int(container_id) < 0 || int(container_id) >= t.a.nodes.len {
+		return false
+	}
+	container := t.a.nodes[int(container_id)]
+	if container.kind != .ident || container.value.len == 0 {
+		return false
+	}
+	raw_type := t.raw_var_type(container.value)
+	typ := if raw_type.len > 0 { raw_type } else { t.var_type(container.value) }
+	if typ.trim_space().starts_with('shared ') {
+		return true
+	}
+	return t.local_decl_is_shared_before(container.value, for_id)
+}
+
 // make_for_stmt builds make for stmt data for transform.
 fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post flat.NodeId, body []flat.NodeId, src flat.Node) flat.NodeId {
 	start := t.a.children.len
@@ -515,6 +535,14 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		iter_id := t.a.child(&node, container_idx)
 		if fixed_array_type := t.detect_for_in_global_fixed_array_type(iter_id) {
 			return fixed_array_type
+		}
+		iter_node := t.a.nodes[int(iter_id)]
+		if iter_node.kind == .ident && iter_node.value.len > 0 {
+			local_type := t.normalize_type_alias(t.var_type(iter_node.value))
+			if local_type.len > 0 && for_iter_type_is_container(local_type) {
+				t.set_node_typ(int(iter_id), local_type)
+				return local_type
+			}
 		}
 		checker_type := t.raw_checker_node_type(iter_id)
 		if checker_type.len > 0 && for_iter_type_is_container(checker_type) {

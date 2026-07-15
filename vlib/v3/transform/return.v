@@ -361,7 +361,50 @@ fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, act
 		|| actual_base.value_type.name() != expected_base.value_type.name()) {
 		return t.convert_forwarded_map(value_id, actual, actual_base, expected, expected_base)
 	}
+	if expected_base is types.SumType
+		&& t.sum_target_accepts_variant_type(expected_base.name, actual_base.name()) {
+		return t.wrap_sum_value(value_id, expected_base.name)
+	}
 	return t.transform_expr_for_type(value_id, expected.name())
+}
+
+fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expected types.Type) bool {
+	actual_base := forwarded_return_unalias_type(actual)
+	expected_base := forwarded_return_unalias_type(expected)
+	if actual_base.name() == expected_base.name() {
+		return false
+	}
+	if expected_base is types.Interface {
+		return true
+	}
+	if expected_base is types.SumType {
+		return t.sum_target_accepts_variant_type(expected_base.name, actual_base.name())
+			|| t.sum_target_accepts_variant_type(expected_base.name, actual.name())
+	}
+	if actual_base is types.OptionType && expected_base is types.OptionType {
+		return t.forwarded_slot_conversion_supported(actual_base.base_type, expected_base.base_type)
+	}
+	if actual_base is types.ResultType && expected_base is types.ResultType {
+		return t.forwarded_slot_conversion_supported(actual_base.base_type, expected_base.base_type)
+	}
+	if expected_base is types.Array {
+		if actual_base is types.Array {
+			return t.forwarded_slot_conversion_supported(actual_base.elem_type,
+				expected_base.elem_type)
+		}
+		if actual_base is types.ArrayFixed {
+			return t.forwarded_slot_conversion_supported(actual_base.elem_type,
+				expected_base.elem_type)
+		}
+	}
+	if actual_base is types.ArrayFixed && expected_base is types.ArrayFixed {
+		return t.forwarded_slot_conversion_supported(actual_base.elem_type, expected_base.elem_type)
+	}
+	if actual_base is types.Map && expected_base is types.Map {
+		return t.forwarded_slot_conversion_supported(actual_base.key_type, expected_base.key_type)
+			|| t.forwarded_slot_conversion_supported(actual_base.value_type, expected_base.value_type)
+	}
+	return false
 }
 
 fn (mut t Transformer) convert_forwarded_optional_result(value_id flat.NodeId, actual_type types.Type, actual_payload types.Type, expected_type types.Type, expected_wrapper types.Type, expected_payload types.Type) flat.NodeId {
@@ -843,6 +886,7 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 	is_id := t.a.add_node(flat.Node{
 		kind:           .is_expr
 		value:          variant_name
+		typ:            'match_exact'
 		children_start: is_start
 		children_count: 1
 	})

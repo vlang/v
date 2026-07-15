@@ -151,11 +151,18 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				return
 			}
 		} else {
-			container_type := g.usable_expr_type(g.a.child(&node, 2))
-			idx_var := if has_index {
-				g.c_loop_local_name(g.a.child_node(&node, 0).value)
+			container_id := g.a.child(&node, 2)
+			container_type := g.for_in_container_type(node, container_id)
+			mut idx_var := ''
+			if has_index {
+				if idx_binding_name == '_' {
+					idx_var = '__for_idx_${g.tmp_count}'
+					g.tmp_count++
+				} else {
+					idx_var = g.c_loop_local_name(idx_binding_name)
+				}
 			} else {
-				'__iter_${var_name}'
+				idx_var = '__iter_${var_name}'
 			}
 			elem_var := if has_index {
 				g.c_loop_local_name(g.a.child_node(&node, 1).value)
@@ -168,6 +175,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					types.unwrap_pointer((clean_container_type as types.Alias).base_type)
 			}
 			mut map_snapshot_var := ''
+			mut map_writeback_target := ''
+			mut map_writeback_key := ''
+			mut map_writeback_value := ''
 			if clean_container_type is types.Map {
 				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
 				c_val := g.value_c_type(clean_container_type.value_type)
@@ -228,11 +238,22 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.declare_local_pointer_storage(val_owner,
 					clean_container_type.value_type is types.Pointer
 					|| c_type_is_pointer_storage(c_val))
+				if node.op == .amp {
+					map_writeback_target = if container_type is types.Pointer {
+						container_str
+					} else {
+						'&${container_str}'
+					}
+					map_writeback_key = key_var
+					map_writeback_value = val_var_
+				}
 			} else if container_type is types.Array {
 				c_elem := g.value_c_type(container_type.elem_type)
-				container_id := g.a.child(&node, 2)
 				container_node := g.a.nodes[int(container_id)]
 				mut container_str := g.expr_to_string(container_id)
+				if container_str.starts_with('*') && container_str.contains('->val') {
+					container_str = container_str[1..]
+				}
 				// A call-valued container (e.g. `threads.wait()`, `xs.map(..)`) is not
 				// idempotent and is referenced multiple times below; bind it to a temp so
 				// it runs exactly once.
@@ -299,6 +320,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			for i in body_start .. node.children_count {
 				g.gen_node(g.a.child(&node, i))
 			}
+			if map_writeback_target.len > 0 {
+				g.writeln('map__set(${map_writeback_target}, &${map_writeback_key}, &${map_writeback_value});')
+			}
 			g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 			g.loop_depth--
 			g.indent--
@@ -324,6 +348,16 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	g.indent--
 	g.writeln('}')
 	g.pop_scope()
+}
+
+fn (g &FlatGen) for_in_container_type(node flat.Node, container_id flat.NodeId) types.Type {
+	if node.typ.starts_with('map[') {
+		typ := g.tc.parse_type(node.typ)
+		if typ is types.Map {
+			return typ
+		}
+	}
+	return g.usable_expr_type(container_id)
 }
 
 fn (g &FlatGen) for_in_array_literal_element_needs_ierror_copy(container flat.Node) bool {

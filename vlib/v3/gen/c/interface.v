@@ -261,23 +261,29 @@ fn (g &FlatGen) iface_type_id(iface string, concrete string) int {
 }
 
 fn (g &FlatGen) iface_type_id_for_pattern(iface string, pattern string) int {
-	id := g.iface_type_id(iface, pattern)
+	pattern_key := if pattern.contains('.')
+		&& types.is_builtin_type_name(pattern.all_after_last('.')) {
+		pattern.all_after_last('.')
+	} else {
+		pattern
+	}
+	id := g.iface_type_id(iface, pattern_key)
 	if id != 0 {
 		return id
 	}
-	qpattern := g.tc.qualify_name(pattern)
-	if qpattern != pattern {
+	qpattern := g.tc.qualify_name(pattern_key)
+	if qpattern != pattern_key {
 		qid := g.iface_type_id(iface, qpattern)
 		if qid != 0 {
 			return qid
 		}
 	}
-	if pattern.contains('.') {
+	if pattern_key.contains('.') {
 		return 0
 	}
 	mut found := 0
 	for concrete in g.iface_impls[iface] or { []string{} } {
-		if concrete.all_after_last('.') != pattern {
+		if concrete.all_after_last('.') != pattern_key {
 			continue
 		}
 		cid := g.iface_type_id(iface, concrete)
@@ -785,6 +791,20 @@ fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
 // implementation, passing `_object` as the receiver. Interfaces with no known
 // implementers (and the special builtin `IError`) fall back to a panic stub.
 fn (mut g FlatGen) interface_method_stubs() {
+	mut wrote_prototype := false
+	for iface_name, methods in g.interfaces {
+		cn := g.cname(iface_name)
+		for method in methods {
+			if !g.should_emit_interface_dispatch(iface_name, method) {
+				continue
+			}
+			g.writeln('${g.interface_dispatch_signature(iface_name, cn, method)};')
+			wrote_prototype = true
+		}
+	}
+	if wrote_prototype {
+		g.writeln('')
+	}
 	for iface_name, methods in g.interfaces {
 		cn := g.cname(iface_name)
 		for method in methods {
@@ -922,6 +942,59 @@ fn (g &FlatGen) should_emit_interface_dispatch(iface_name string, method string)
 		&& g.used_interface_dispatch_key(short_name)
 }
 
+fn (mut g FlatGen) interface_dispatch_signature(iface_name string, cn string, method string) string {
+	if cn == 'IError' {
+		ret_ct := if method == 'code' { 'int' } else { 'string' }
+		return '${ret_ct} ${cn}__${method}(${cn}* i)'
+	}
+	mname := '${iface_name}.${method}'
+	decl_key := g.interface_method_signature_key(iface_name, method) or { mname }
+	impls := g.iface_impls[iface_name] or { []string{} }
+	mut sig_key := ''
+	for concrete in impls {
+		if concrete in g.tc.interface_names {
+			continue
+		}
+		ck := '${concrete}.${method}'
+		if ck in g.tc.fn_param_types {
+			sig_key = ck
+			break
+		}
+	}
+	ret_type := g.tc.fn_ret_types[decl_key] or {
+		if sig_key.len > 0 {
+			g.tc.fn_ret_types[sig_key] or { types.Type(types.void_) }
+		} else {
+			types.Type(types.void_)
+		}
+	}
+	ret_ct := g.fn_return_type_name(ret_type)
+	decl_params := g.tc.fn_param_types[decl_key] or { []types.Type{} }
+	concrete_sig_params := if sig_key.len > 0 {
+		g.tc.fn_param_types[sig_key] or { []types.Type{} }
+	} else {
+		[]types.Type{}
+	}
+	sig_params := if decl_params.len > 0
+		&& (concrete_sig_params.len == 0 || decl_params.len == concrete_sig_params.len) {
+		decl_params.clone()
+	} else {
+		concrete_sig_params.clone()
+	}
+	mut sig := '${ret_ct} ${cn}__${method}(${cn}* i'
+	for pi := 1; pi < sig_params.len; pi++ {
+		pt := sig_params[pi]
+		pct := if pt is types.OptionType || pt is types.ResultType {
+			g.optional_type_name(pt)
+		} else {
+			g.tc.c_type(pt)
+		}
+		sig += ', ${pct} _a${pi - 1}'
+	}
+	sig += ')'
+	return sig
+}
+
 fn (g &FlatGen) interface_alias_names(iface_name string) []string {
 	mut aliases := []string{}
 	for alias, target in g.tc.type_aliases {
@@ -1031,9 +1104,49 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 		g.writeln('\tswitch (i->_typ) {')
 		for concrete in impls {
 			id := g.iface_type_id(iface_name, concrete)
+			if id == 0 {
+				continue
+			}
+			if concrete in g.tc.interface_names {
+				decl := g.interface_method_signature_key(concrete, method) or { continue }
+				if !g.interface_dispatch_target_is_emitted('${concrete}.${method}')
+					&& !g.interface_dispatch_target_is_emitted(decl) {
+					continue
+				}
+				concrete_params := g.tc.fn_param_types[decl] or { []types.Type{} }
+				g.write('\t\tcase ${id}: ')
+				mut call := '${g.cname(concrete)}__${method}((${g.cname(concrete)}*)i->_object'
+				for ai, an in arg_names {
+					arg_idx := ai + 1
+					concrete_param := if arg_idx < concrete_params.len {
+						concrete_params[arg_idx]
+					} else {
+						types.Type(types.void_)
+					}
+					dispatch_param := if arg_idx < sig_params.len {
+						sig_params[arg_idx]
+					} else {
+						concrete_param
+					}
+					if concrete_param is types.Pointer && dispatch_param !is types.Pointer {
+						call += ', &${an}'
+					} else if concrete_param !is types.Pointer && dispatch_param is types.Pointer {
+						call += ', *${an}'
+					} else {
+						call += ', ${an}'
+					}
+				}
+				call += ')'
+				if ret_ct == 'void' {
+					g.writeln('${call}; return;')
+				} else {
+					g.writeln('return ${call};')
+				}
+				continue
+			}
 			concrete_key := '${concrete}.${method}'
 			method_key := g.tc.concrete_method_signature_key(concrete, method) or { concrete_key }
-			if id == 0 || method_key !in g.tc.fn_param_types
+			if method_key !in g.tc.fn_param_types
 				|| !g.interface_dispatch_target_is_emitted(method_key) {
 				continue
 			}

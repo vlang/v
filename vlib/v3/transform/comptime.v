@@ -6,6 +6,7 @@ import strings
 import v3.flat
 
 const comptime_unsupported_late_generic_call = '__v3_comptime_unsupported_late_generic_call'
+const comptime_method_selector_marker = '__v3_comptime_method_selector'
 
 // vmod_root supports vmod root handling for Transformer.
 fn (t &Transformer) vmod_root() string {
@@ -1228,7 +1229,7 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 		}
 		receiver_name := comptime_method_receiver_name(method.receiver, method.module_name)
 		t.mark_fn_used('${receiver_name}.${method.name}')
-		return t.make_selector(receiver, method.name, method.return_type)
+		return t.make_comptime_method_selector(receiver, method)
 	}
 	if node.kind == .selector && node.children_count > 0 {
 		base := t.a.child_node(&node, 0)
@@ -1304,6 +1305,19 @@ fn (mut t Transformer) make_param_array_literal(params []ParamMeta, module_name 
 		ids << t.make_param_data_literal_in_module(param, module_name)
 	}
 	return t.make_array_literal_typed(ids, '[]FunctionParam')
+}
+
+fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, method MethodMeta) flat.NodeId {
+	start := t.a.children.len
+	t.a.children << receiver
+	return t.a.add_node(flat.Node{
+		kind:           .selector
+		children_start: start
+		children_count: 1
+		value:          method.name
+		typ:            method.return_type
+		generic_params: [comptime_method_selector_marker]
+	})
 }
 
 fn (t &Transformer) comptime_method_param_index(id flat.NodeId, var_name string) ?int {

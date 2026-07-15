@@ -298,9 +298,6 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	rhs_id := t.a.children[node.children_start + 1]
 	lhs_type := t.map_comparison_expr_type(lhs_id)
 	rhs_type := t.map_comparison_expr_type(rhs_id)
-	if t.equality_type_is_map_pointer(lhs_type) || t.equality_type_is_map_pointer(rhs_type) {
-		return none
-	}
 	mut lhs_map_type := t.clean_map_type(lhs_type)
 	mut rhs_map_type := t.clean_map_type(rhs_type)
 	if !lhs_map_type.starts_with('map[') && rhs_map_type.starts_with('map[')
@@ -317,22 +314,33 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	map_type := lhs_map_type
 	mut new_lhs := t.transform_expr_for_type(lhs_id, map_type)
 	mut new_rhs := t.transform_expr_for_type(rhs_id, map_type)
-	if lhs_type.starts_with('&') {
+	if t.transformed_map_equality_operand_needs_deref(new_lhs, lhs_type) {
 		new_lhs = t.make_prefix(.mul, new_lhs)
 	}
-	if rhs_type.starts_with('&') {
+	if t.transformed_map_equality_operand_needs_deref(new_rhs, rhs_type) {
 		new_rhs = t.make_prefix(.mul, new_rhs)
 	}
 	_, value_type := t.map_type_parts(map_type)
 	eq_call := if value_type.len > 0 && t.map_value_needs_element_eq(value_type) {
 		t.make_map_elementwise_eq_call(new_lhs, new_rhs, map_type, node)
 	} else {
-		t.make_call_typed('v3_map_map_eq', arr2(new_lhs, new_rhs), 'bool')
+		t.make_call_typed('map_map_eq', arr2(new_lhs, new_rhs), 'bool')
 	}
 	if node.op == .ne {
 		return t.make_prefix(.not, eq_call)
 	}
 	return eq_call
+}
+
+fn (t &Transformer) transformed_map_equality_operand_needs_deref(id flat.NodeId, original_type string) bool {
+	if !original_type.starts_with('&') {
+		return false
+	}
+	typ := t.node_type(id)
+	if typ.len == 0 {
+		return true
+	}
+	return typ.starts_with('&') && t.clean_map_type(typ).starts_with('map[')
 }
 
 fn (mut t Transformer) map_comparison_expr_type(id flat.NodeId) string {
@@ -411,6 +419,16 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 	if lhs_iface.len == 0 && rhs_iface.len == 0 {
 		return none
 	}
+	if rhs_iface.len == 0 && t.expr_is_nil_like(rhs_id) {
+		if nil_cmp := t.interface_nil_compare_expr(lhs_id, lhs_type, node.op) {
+			return nil_cmp
+		}
+	}
+	if lhs_iface.len == 0 && t.expr_is_nil_like(lhs_id) {
+		if nil_cmp := t.interface_nil_compare_expr(rhs_id, rhs_type, node.op) {
+			return nil_cmp
+		}
+	}
 	iface := if lhs_iface.len > 0 { lhs_iface } else { rhs_iface }
 	lhs := t.transform_expr_for_type(lhs_id, iface)
 	rhs := t.transform_expr_for_type(rhs_id, iface)
@@ -476,6 +494,19 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 		return t.make_prefix(.not, eq)
 	}
 	return eq
+}
+
+fn (mut t Transformer) interface_nil_compare_expr(value_id flat.NodeId, value_type string, op flat.Op) ?flat.NodeId {
+	if t.resolve_interface_type_name(value_type).len == 0 {
+		return none
+	}
+	value := t.transform_expr(value_id)
+	lhs := if value_type.starts_with('&') {
+		value
+	} else {
+		t.make_selector(value, '_object', 'voidptr')
+	}
+	return t.make_infix(op, lhs, t.a.add(.nil_literal))
 }
 
 fn (t &Transformer) interface_box_concrete_type(id flat.NodeId) ?string {
@@ -1245,7 +1276,22 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		opt_type = t.node_type(opt_id)
 	}
 	if !t.is_optional_type_name(opt_type) {
-		return none
+		outer_pending := t.pending_stmts.clone()
+		t.pending_stmts.clear()
+		transformed_opt := t.transform_expr(opt_id)
+		transformed_pending := t.pending_stmts.clone()
+		t.pending_stmts.clear()
+		transformed_type := t.node_type(transformed_opt)
+		if !t.is_optional_type_name(transformed_type) {
+			t.pending_stmts = outer_pending
+			return none
+		}
+		t.pending_stmts = outer_pending
+		for stmt in transformed_pending {
+			t.pending_stmts << stmt
+		}
+		opt_id = transformed_opt
+		opt_type = transformed_type
 	}
 	ok := t.make_selector(t.transform_expr(opt_id), 'ok', 'bool')
 	if node.op == .eq {
@@ -1768,6 +1814,14 @@ fn (mut t Transformer) make_membership_eq_expr(lhs flat.NodeId, rhs flat.NodeId,
 
 fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, elem_type string, seen []string) flat.NodeId {
 	if t.membership_type_is_pointer(elem_type) {
+		clean_ptr := t.membership_container_type(elem_type)
+		if t.is_sum_type_name(clean_ptr) {
+			lhs_value := t.make_prefix(.mul, lhs)
+			t.set_node_typ(int(lhs_value), clean_ptr)
+			rhs_value := t.make_prefix(.mul, rhs)
+			t.set_node_typ(int(rhs_value), clean_ptr)
+			return t.make_sum_semantic_eq_expr(lhs_value, rhs_value, clean_ptr, seen)
+		}
 		return t.make_infix(.eq, lhs, rhs)
 	}
 	mut clean := t.membership_container_type(elem_type)
@@ -1799,7 +1853,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 			}
 			return t.make_map_elementwise_eq_call_with_seen(lhs, rhs, map_type, src, seen)
 		}
-		return t.make_call_typed('v3_map_map_eq', arr2(lhs, rhs), 'bool')
+		return t.make_call_typed('map_map_eq', arr2(lhs, rhs), 'bool')
 	}
 	if clean.starts_with('[]') {
 		inner := clean[2..]
@@ -1830,8 +1884,8 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		}
 		lhs_value := t.stable_transformed_expr_for_reuse(lhs, clean, 'fixed_eq_lhs')
 		rhs_value := t.stable_transformed_expr_for_reuse(rhs, clean, 'fixed_eq_rhs')
-		cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
-			rhs_value), t.make_sizeof_type(clean)), 'int')
+		cmp := t.make_call_typed('C.memcmp', arr3(t.fixed_array_memcmp_addr(lhs_value),
+			t.fixed_array_memcmp_addr(rhs_value), t.make_sizeof_type(clean)), 'int')
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
 	if t.is_optional_type_name(clean) {
@@ -1841,6 +1895,9 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		return t.make_sum_semantic_eq_expr(lhs, rhs, clean, seen)
 	}
 	if t.is_interface_type(clean) {
+		if rhs_boxed := t.box_membership_interface_eq_rhs(rhs, clean) {
+			return t.make_interface_semantic_eq_expr(lhs, rhs_boxed, clean, seen)
+		}
 		return t.make_interface_semantic_eq_expr(lhs, rhs, clean, seen)
 	}
 	struct_type := t.struct_lookup_name(clean)
@@ -1862,6 +1919,19 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		return t.make_infix(.eq, cmp, t.make_int_literal(0))
 	}
 	return t.make_infix(.eq, lhs, rhs)
+}
+
+fn (mut t Transformer) box_membership_interface_eq_rhs(rhs flat.NodeId, interface_type string) ?flat.NodeId {
+	iface := t.resolve_interface_type_name(interface_type)
+	if iface.len == 0 {
+		return none
+	}
+	if rhs_iface := t.transform_interface_value_for_type(rhs, iface, true) {
+		if rhs_iface != rhs {
+			return rhs_iface
+		}
+	}
+	return none
 }
 
 // make_sum_semantic_eq_expr compares two sum-type values by tag, then by the
@@ -2089,9 +2159,19 @@ fn (mut t Transformer) register_sum_eq_helper_signature(helper string, clean_sum
 fn (mut t Transformer) make_memcmp_eq_expr(lhs flat.NodeId, rhs flat.NodeId, typ string, prefix string) flat.NodeId {
 	lhs_value := t.stable_transformed_expr_for_reuse(lhs, typ, '${prefix}_lhs')
 	rhs_value := t.stable_transformed_expr_for_reuse(rhs, typ, '${prefix}_rhs')
-	cmp := t.make_call_typed('C.memcmp', arr3(t.make_prefix(.amp, lhs_value), t.make_prefix(.amp,
-		rhs_value), t.make_sizeof_type(typ)), 'int')
+	cmp := t.make_call_typed('C.memcmp', arr3(t.fixed_array_memcmp_addr(lhs_value),
+		t.fixed_array_memcmp_addr(rhs_value), t.make_sizeof_type(typ)), 'int')
 	return t.make_infix(.eq, cmp, t.make_int_literal(0))
+}
+
+fn (mut t Transformer) fixed_array_memcmp_addr(expr flat.NodeId) flat.NodeId {
+	if int(expr) >= 0 && int(expr) < t.a.nodes.len {
+		node := t.a.nodes[int(expr)]
+		if node.kind == .ident && t.fixed_array_param_values[node.value] {
+			return expr
+		}
+	}
+	return t.make_prefix(.amp, expr)
 }
 
 fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeId, lhs_opt_type string, rhs_opt_type string, seen []string) flat.NodeId {
@@ -2560,7 +2640,11 @@ fn fixed_array_contains_fn_name(elem string) string {
 
 // stable_expr_for_reuse supports stable expr for reuse handling for Transformer.
 fn (mut t Transformer) stable_expr_for_reuse(id flat.NodeId) flat.NodeId {
-	expr := t.transform_expr(id)
+	expr := if _ := t.generated_variant_access_type(id) {
+		id
+	} else {
+		t.transform_expr(id)
+	}
 	if t.is_stable_expr_for_reuse(expr) {
 		return expr
 	}
@@ -2894,6 +2978,14 @@ pub fn (mut t Transformer) make_array_init(elem_type string) flat.NodeId {
 		kind:  .array_init
 		value: elem_type
 		typ:   '[]${elem_type}'
+	})
+}
+
+fn (mut t Transformer) make_fixed_array_init(fixed_type string) flat.NodeId {
+	return t.a.add_node(flat.Node{
+		kind:  .array_init
+		value: fixed_type
+		typ:   fixed_type
 	})
 }
 
