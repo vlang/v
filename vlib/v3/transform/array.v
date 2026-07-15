@@ -203,11 +203,18 @@ fn (mut t Transformer) make_array_insert_many_call(lhs_addr flat.NodeId, index f
 
 fn (mut t Transformer) make_array_clone_call(base_id flat.NodeId, base_type string) flat.NodeId {
 	t.mark_fn_used('array__clone')
-	mut receiver := t.transform_expr(base_id)
 	clean_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	// Classify the source before transformation can lower a literal to an addressable temp.
+	source_is_owned_temporary := clean_type.starts_with('[]') && !isnil(t.tc)
+		&& !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(clean_type))
+	mut receiver := t.transform_expr(base_id)
 	if clean_type.starts_with('[]') && !isnil(t.tc) {
 		elem_type := t.tc.parse_type(clean_type[2..])
 		if !t.tc.ownership_type_requires_destruction(elem_type) {
+			if source_is_owned_temporary {
+				return t.make_array_clone_from_owned_temporary(receiver, clean_type)
+			}
 			return t.make_array_clone_value(receiver, base_type)
 		}
 		// The checker rejects this call. Do not lower it to the unsafe raw clone while
@@ -222,6 +229,19 @@ fn (mut t Transformer) make_array_clone_call(base_id flat.NodeId, base_type stri
 		return t.make_compiler_default_array_clone_value(receiver, clean_type)
 	}
 	return t.make_array_clone_value(receiver, base_type)
+}
+
+// make_array_clone_from_owned_temporary saves a non-addressable source until its backing
+// storage has been cloned, then destroys the generated source temp before returning the clone.
+fn (mut t Transformer) make_array_clone_from_owned_temporary(source flat.NodeId, array_type string) flat.NodeId {
+	stable_source := t.stable_transformed_expr_for_reuse(source, array_type, 'array_clone_source')
+	out_name := t.new_temp('array_clone')
+	cloned := t.make_array_clone_value(stable_source, array_type)
+	t.pending_stmts << t.make_decl_assign_typed(out_name, cloned, array_type)
+	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source), 'void'))
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), array_type)
+	return result
 }
 
 // make_array_reverse_call clones ownership-bearing elements before reversing the new array
@@ -470,7 +490,8 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 // append_array_literal_spread appends independent element clones when the destination
 // array will own and destroy its elements. Plain-data spreads keep the runtime bulk copy.
 fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id flat.NodeId, array_type string, elem_type string) {
-	source_is_owned_temporary := !t.expr_can_take_address(spread_id)
+	source_is_owned_temporary := !t.expr_can_take_address(spread_id) && !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(array_type))
 	mut needs_element_clone := false
 	if !isnil(t.tc) {
 		elem := t.tc.parse_type(elem_type)
@@ -485,9 +506,15 @@ fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id fl
 	}
 	spread := t.transform_expr_for_type(spread_id, array_type)
 	if !needs_element_clone {
-		call := t.make_array_push_many_call(t.make_prefix(.amp, t.make_ident(out_name)), spread,
-			array_type)
+		stable_source := t.stable_transformed_expr_for_reuse(spread, array_type,
+			'array_spread_source')
+		call := t.make_array_push_many_call(t.make_prefix(.amp, t.make_ident(out_name)),
+			stable_source, array_type)
 		t.pending_stmts << t.make_expr_stmt(call)
+		if source_is_owned_temporary {
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
+				arr1(stable_source), 'void'))
+		}
 		return
 	}
 	stable_source := t.stable_transformed_expr_for_reuse(spread, array_type,
