@@ -3307,14 +3307,24 @@ fn main() {
 	m := Marked{
 		y: 2
 	}
-	println(int_str(b.x + m.y))
+	h := &Bare{
+		x: 3
+	}
+	println(int_str(b.x + m.y + h.x))
+	unsafe {
+		free(h)
+	}
 }
 '
 	c_source := gen_c(v3_bin, 'bare_aligned_attribute_metadata', source)
 	assert c_source.contains('__attribute__((aligned))')
 	assert !c_source.contains('aligned(aligned)')
+	assert c_source.contains('_aligned_malloc((size_t)sz, alignment)')
+	assert c_source.contains('static inline void v3_aligned_free(void* p)')
+	assert !c_source.contains('uintptr_t raw = (uintptr_t)malloc')
+	assert c_source.contains('v3_aligned_free(h)')
 	out := run_good(v3_bin, 'bare_aligned_attribute_cgen', source)
-	assert out == '3'
+	assert out == '6'
 }
 
 fn test_implicit_interface_str_dispatch_dereferences_pointer_scalar_fields() {

@@ -2029,19 +2029,17 @@ fn (mut g FlatGen) heap_local_address_expr(ret_id flat.NodeId, expected types.Ty
 	}
 	ptr := expected as types.Pointer
 	if node.kind == .ident {
-		if source := g.local_pointer_alias_source(node.value) {
-			local_type := g.local_ident_type(source) or { return none }
+		if _ := g.local_pointer_alias_source(node.value) {
 			base_type := ptr.base_type
-			local_ct := g.tc.c_type(local_type)
 			base_ct := g.tc.c_type(base_type)
 			if base_ct.len == 0 || base_ct == 'void' {
 				return none
 			}
-			if local_ct != base_ct && !g.type_names_match(local_type, base_type) {
+			local_expr := g.expr_to_string(ret_id)
+			if local_expr.len == 0 {
 				return none
 			}
-			local_expr := g.cname(source)
-			return '(${base_ct}*)memdup(&${local_expr}, sizeof(${base_ct}))'
+			return '(${base_ct}*)memdup(${local_expr}, sizeof(${base_ct}))'
 		}
 		return none
 	}

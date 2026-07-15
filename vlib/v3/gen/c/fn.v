@@ -929,7 +929,11 @@ fn (mut g FlatGen) gen_compiler_default_free_call(fn_node flat.Node, resolved_ta
 		return false
 	}
 	if resolved_target_name in ['free', 'builtin.free'] && cgen_type_is_pointer_like(base_type) {
-		g.write('free(')
+		if g.pointer_free_needs_aligned_free(base_type) {
+			g.write('v3_aligned_free(')
+		} else {
+			g.write('free(')
+		}
 		g.gen_expr(base_id)
 		g.write(')')
 		return true
@@ -957,6 +961,29 @@ fn cgen_type_is_pointer_like(t types.Type) bool {
 			return true
 		}
 		return cgen_type_is_pointer_like(t.base_type)
+	}
+	return false
+}
+
+fn pointer_free_base_type(t types.Type) ?types.Type {
+	clean := default_init_unalias_type(t)
+	if clean is types.Pointer {
+		return default_init_unalias_type(clean.base_type)
+	}
+	return none
+}
+
+fn (g &FlatGen) pointer_free_needs_aligned_free(t types.Type) bool {
+	base_type := pointer_free_base_type(t) or { return false }
+	if base_type is types.Pointer {
+		return false
+	}
+	name := base_type.name()
+	if name.len == 0 {
+		return false
+	}
+	if _ := g.struct_decl_alignment_for_name(name) {
+		return true
 	}
 	return false
 }
@@ -3503,6 +3530,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			if arg_type !is types.Pointer {
 				g.write('&')
 			}
+			g.gen_expr(arg_id)
+			g.write(')')
+			return
+		}
+		if g.pointer_free_needs_aligned_free(arg_type) {
+			g.write('v3_aligned_free(')
 			g.gen_expr(arg_id)
 			g.write(')')
 			return

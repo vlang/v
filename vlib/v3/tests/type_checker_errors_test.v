@@ -1911,6 +1911,11 @@ fn test_pr_review_codegen_batch_twentynine() {
 	reassigned_alias := run_good(v3_bin, 'good_reassigned_pointer_alias_source',
 		'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut x := Box{\n\t\tx: 1\n\t}\n\tmut y := Box{\n\t\tx: 2\n\t}\n\tmut p := &x\n\tp = &y\n\treturn p\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
 	assert reassigned_alias == '2'
+	// Returning a pointer alias inside a child scope must copy through the pointer itself. Looking
+	// up the original source by bare name at the return site can resolve a shadowing local instead.
+	shadowed_alias := run_good(v3_bin, 'good_returned_pointer_alias_shadowed_source',
+		'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut a := Box{\n\t\tx: 1\n\t}\n\tp := &a\n\ta.x = 2\n\t{\n\t\tmut a := Box{\n\t\t\tx: 9\n\t\t}\n\t\ta.x = 10\n\t\treturn p\n\t}\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
+	assert shadowed_alias == '2'
 	// A capitalized field followed by a const-sized fixed array is a named field whose type is
 	// `[n]int`, not a failed generic embedded-field probe that skips `[n]` and leaves `int`.
 	fixed_field := run_good(v3_bin, 'good_capitalized_fixed_array_field',
