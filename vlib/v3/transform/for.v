@@ -192,7 +192,11 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	body_ids := t.a.children_of(&node)[header_count..].clone()
 	source_is_owned_temporary := !raw_iter_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
-	mut new_container := t.transform_expr(container_id)
+	mut new_container := if map_iter_type.starts_with('map[') && source_is_owned_temporary {
+		t.stable_expr_for_reuse(container_id)
+	} else {
+		t.transform_expr(container_id)
+	}
 	mut cleanup_owned_snapshot := false
 	if map_iter_type.starts_with('map[') && !isnil(t.tc)
 		&& t.for_in_body_contains_map_delete(body_ids) {
@@ -322,9 +326,11 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	for cid in ids {
 		t.a.children << cid
 	}
+	cleanup_owned_container := cleanup_owned_snapshot
+		|| (map_iter_type.starts_with('map[') && source_is_owned_temporary)
 	mut cleanup_guard_name := ''
-	if cleanup_owned_snapshot {
-		cleanup_guard_name = t.new_temp('for_map_snapshot_live')
+	if cleanup_owned_container {
+		cleanup_guard_name = t.new_temp('for_map_container_live')
 		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
 		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(new_container),
 			'void'))
@@ -350,7 +356,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		typ:                  if iter_type.len > 0 { iter_type } else { node.typ }
 		skip_ownership_drops: node.skip_ownership_drops
 	})
-	if cleanup_owned_snapshot {
+	if cleanup_owned_container {
 		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(new_container), 'void'))
 		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
 	}

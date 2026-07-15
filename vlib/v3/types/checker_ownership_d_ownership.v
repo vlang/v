@@ -5848,6 +5848,50 @@ fn (mut tc TypeChecker) ownership_bind_mut_for_in_var(key_id flat.NodeId, val_id
 	tc.ownership_add_borrow(source_name, target_name, target_id, true)
 }
 
+fn (mut tc TypeChecker) ownership_bind_array_dsl_element(node flat.Node, target_name string, elem_type Type) {
+	if tc.ownership_effects_disabled() || target_name.len == 0
+		|| !tc.ownership_type_requires_destruction(elem_type) || node.children_count == 0 {
+		return
+	}
+	fn_node := tc.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.children_count == 0 {
+		return
+	}
+	receiver_id := tc.a.child(fn_node, 0)
+	receiver_name := tc.ownership_expr_ident_name(receiver_id)
+	source_name := if receiver_name.len > 0 {
+		'${receiver_name}[*]'
+	} else {
+		'${tc.ownership_state().cur_fn}__array_dsl_source_${int(receiver_id)}[*]'
+	}
+	tc.ownership_note_decl(target_name)
+	tc.ownership_release_borrower(target_name)
+	tc.ownership_clear_descendant_state(target_name)
+	{
+		mut st := tc.ownership_state()
+		st.owned_vars.delete(target_name)
+		st.owned_var_types.delete(target_name)
+		st.moved_vars.delete(target_name)
+		st.ownership_fn_value_vars.delete(target_name)
+	}
+	tc.ownership_add_borrow(source_name, target_name, receiver_id, false)
+}
+
+fn (mut tc TypeChecker) check_array_map_mapper_borrows_element(node flat.Node, elem_type Type, pos flat.NodeId) {
+	if !tc.ownership_type_requires_destruction(elem_type) || node.children_count < 2 {
+		return
+	}
+	mapper_id := tc.call_arg_value(tc.a.child(&node, 1))
+	mapper_type := tc.resolve_type(mapper_id)
+	mapper := fn_type_from_type(mapper_type) or { return }
+	if mapper.params.len == 0 || fn_param_unalias_type(fn_param_type(mapper, 0)) is Pointer {
+		return
+	}
+	tc.record_error(.call_arg_mismatch,
+		'array.map mapper cannot consume borrowed `${elem_type.name()}` elements; use a pointer parameter or clone the element',
+		pos)
+}
+
 fn (mut tc TypeChecker) ownership_bind_for_in_var_from_storage(target_name string, source_name string, target_id flat.NodeId, clones_storage_binding bool) bool {
 	if target_name.len == 0 || target_name == '_' {
 		return false
@@ -6356,7 +6400,7 @@ fn (mut tc TypeChecker) ownership_commit_multi_assign_temp(temp_name string, lhs
 	if temp_name.len == 0 || lhs_name.len == 0 {
 		return
 	}
-	if _ := tc.ownership_borrowed_alias_source(lhs_name) {
+	if _ := tc.ownership_borrowed_alias_source(lhs_name, true) {
 		return
 	}
 	tc.ownership_release_borrower(lhs_name)
@@ -6398,7 +6442,7 @@ fn (mut tc TypeChecker) ownership_commit_multi_assign_temp(temp_name string, lhs
 }
 
 fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.NodeId, lhs_type Type, assign_id flat.NodeId) {
-	if source := tc.ownership_borrowed_alias_source(lhs_name) {
+	if source := tc.ownership_borrowed_alias_source(lhs_name, true) {
 		tc.ownership_consume_expr(rhs_id, source, assign_id)
 		return
 	}
@@ -10486,10 +10530,10 @@ fn (mut tc TypeChecker) ownership_release_borrower(borrower string) {
 }
 
 fn (mut tc TypeChecker) ownership_reject_global_move(name string, pos flat.NodeId, target string, is_call bool) {
-	if source := tc.ownership_borrowed_alias_source(name) {
+	if source := tc.ownership_borrowed_alias_source(name, false) {
 		action := if is_call { 'move into function' } else { 'move to' }
 		tc.record_error(.assignment_mismatch,
-			'cannot move `${name}` because it mutably borrows `${source}`; attempted ${action} `${target}`',
+			'cannot move `${name}` because it borrows `${source}`; attempted ${action} `${target}`',
 			pos)
 	}
 	if tname := tc.ownership_owned_global_type_name(name) {
@@ -10500,14 +10544,14 @@ fn (mut tc TypeChecker) ownership_reject_global_move(name string, pos flat.NodeI
 	}
 }
 
-fn (mut tc TypeChecker) ownership_borrowed_alias_source(name string) ?string {
+fn (mut tc TypeChecker) ownership_borrowed_alias_source(name string, mutable_only bool) ?string {
 	if name.len == 0 {
 		return none
 	}
 	st := tc.ownership_state()
 	for source, borrows in st.borrowed_vars {
 		for borrow in borrows {
-			if !borrow.is_mut {
+			if mutable_only && !borrow.is_mut {
 				continue
 			}
 			if borrow.borrower == name {

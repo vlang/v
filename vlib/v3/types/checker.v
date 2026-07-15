@@ -10729,6 +10729,9 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				}
 				'map' {
 					elem_type := tc.array_map_return_elem_type(node)
+					$if ownership ? {
+						tc.check_array_map_mapper_borrows_element(node, clean_array.elem_type, id)
+					}
 					if tc.array_map_result_borrows_element(node) {
 						if bad_type := tc.ownership_default_clone_missing_method(elem_type) {
 							tc.record_error(.call_arg_mismatch,
@@ -13200,9 +13203,16 @@ fn (mut tc TypeChecker) push_array_dsl_scope(node flat.Node, name string) {
 	if is_array_sort_dsl_call_name(name) {
 		tc.cur_scope.insert('a', arr.elem_type)
 		tc.cur_scope.insert('b', arr.elem_type)
+		$if ownership ? {
+			tc.ownership_bind_array_dsl_element(node, 'a', arr.elem_type)
+			tc.ownership_bind_array_dsl_element(node, 'b', arr.elem_type)
+		}
 		return
 	}
 	tc.cur_scope.insert('it', arr.elem_type)
+	$if ownership ? {
+		tc.ownership_bind_array_dsl_element(node, 'it', arr.elem_type)
+	}
 }
 
 fn is_array_sort_dsl_call_name(name string) bool {
