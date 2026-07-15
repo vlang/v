@@ -591,11 +591,11 @@ fn (t &Transformer) comptime_node_attribute_metas(node_id int) []AttributeMeta {
 }
 
 fn comptime_attr_unquote(s string) string {
-	if s.len >= 2 && s[0] in [`'`, `\"`] && s[s.len - 1] == s[0] {
-		return s[1..s.len - 1]
-	}
 	if s.len >= 3 && s[0] == `r` && s[1] in [`'`, `\"`] && s[s.len - 1] == s[1] {
 		return s[2..s.len - 1]
+	}
+	if s.len >= 2 && s[0] in [`'`, `\"`] && s[s.len - 1] == s[0] {
+		return comptime_cond_unescape(s[1..s.len - 1])
 	}
 	return s
 }
@@ -3559,15 +3559,91 @@ fn comptime_cond_unescape(value string) string {
 			continue
 		}
 		next := value[i + 1]
-		if next in [`\\`, `'`, `"`] {
-			out.write_u8(next)
+		if next == `\n` {
 			i += 2
+			for i < value.len && value[i] in [` `, `\t`, `\r`] {
+				i++
+			}
 			continue
 		}
-		out.write_u8(`\\`)
-		i++
+		if next == `\r` && i + 2 < value.len && value[i + 2] == `\n` {
+			i += 3
+			for i < value.len && value[i] in [` `, `\t`] {
+				i++
+			}
+			continue
+		}
+		if next == `x` && i + 3 < value.len {
+			if code := comptime_cond_fixed_hex(value, i + 2, 2) {
+				out.write_u8(u8(code))
+				i += 4
+				continue
+			}
+		}
+		if next == `u` && i + 5 < value.len {
+			if code := comptime_cond_fixed_hex(value, i + 2, 4) {
+				out.write_rune(rune(code))
+				i += 6
+				continue
+			}
+		}
+		if next == `U` && i + 9 < value.len {
+			if code := comptime_cond_fixed_hex(value, i + 2, 8) {
+				out.write_rune(rune(code))
+				i += 10
+				continue
+			}
+		}
+		decoded := match next {
+			`n` { int(`\n`) }
+			`t` { int(`\t`) }
+			`r` { int(`\r`) }
+			`\\` { int(`\\`) }
+			`'` { int(`'`) }
+			`"` { int(`"`) }
+			`$` { int(`$`) }
+			`0` { 0 }
+			`a` { 7 }
+			`b` { 8 }
+			`f` { 12 }
+			`v` { 11 }
+			else { -1 }
+		}
+
+		if decoded >= 0 {
+			out.write_u8(u8(decoded))
+		} else {
+			out.write_u8(`\\`)
+			out.write_u8(next)
+		}
+		i += 2
 	}
 	return out.str()
+}
+
+fn comptime_cond_fixed_hex(value string, start int, count int) ?u32 {
+	mut code := u32(0)
+	for i in 0 .. count {
+		if start + i >= value.len {
+			return none
+		}
+		digit := comptime_cond_hex_digit(value[start + i]) or { return none }
+		code = (code << 4) | digit
+	}
+	return code
+}
+
+fn comptime_cond_hex_digit(c u8) ?u32 {
+	if c >= `0` && c <= `9` {
+		return u32(c - `0`)
+	}
+	if c >= `a` && c <= `f` {
+		return u32(c - `a` + 10)
+	}
+	if c >= `A` && c <= `F` {
+		return u32(c - `A` + 10)
+	}
+	return none
 }
 
 fn comptime_top_index(s string, op string) ?int {

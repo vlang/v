@@ -5488,7 +5488,7 @@ fn comptime_static_attribute_case(raw string, kind int) ComptimeStaticValueCase 
 	if arg.len >= 3 && arg[0] == `r` && arg[1] in [`'`, `"`] && arg[arg.len - 1] == arg[1] {
 		arg = arg[2..arg.len - 1]
 	} else if arg.len >= 2 && arg[0] in [`'`, `"`] && arg[arg.len - 1] == arg[0] {
-		arg = arg[1..arg.len - 1]
+		arg = comptime_static_unescape(arg[1..arg.len - 1])
 	}
 	return ComptimeStaticValueCase{
 		name:          name
@@ -6960,15 +6960,91 @@ fn comptime_static_unescape(value string) string {
 			continue
 		}
 		next := value[i + 1]
-		if next in [`\\`, `'`, `"`] {
-			out.write_u8(next)
+		if next == `\n` {
 			i += 2
+			for i < value.len && value[i] in [` `, `\t`, `\r`] {
+				i++
+			}
 			continue
 		}
-		out.write_u8(`\\`)
-		i++
+		if next == `\r` && i + 2 < value.len && value[i + 2] == `\n` {
+			i += 3
+			for i < value.len && value[i] in [` `, `\t`] {
+				i++
+			}
+			continue
+		}
+		if next == `x` && i + 3 < value.len {
+			if code := comptime_static_fixed_hex(value, i + 2, 2) {
+				out.write_u8(u8(code))
+				i += 4
+				continue
+			}
+		}
+		if next == `u` && i + 5 < value.len {
+			if code := comptime_static_fixed_hex(value, i + 2, 4) {
+				out.write_rune(rune(code))
+				i += 6
+				continue
+			}
+		}
+		if next == `U` && i + 9 < value.len {
+			if code := comptime_static_fixed_hex(value, i + 2, 8) {
+				out.write_rune(rune(code))
+				i += 10
+				continue
+			}
+		}
+		decoded := match next {
+			`n` { int(`\n`) }
+			`t` { int(`\t`) }
+			`r` { int(`\r`) }
+			`\\` { int(`\\`) }
+			`'` { int(`'`) }
+			`"` { int(`"`) }
+			`$` { int(`$`) }
+			`0` { 0 }
+			`a` { 7 }
+			`b` { 8 }
+			`f` { 12 }
+			`v` { 11 }
+			else { -1 }
+		}
+
+		if decoded >= 0 {
+			out.write_u8(u8(decoded))
+		} else {
+			out.write_u8(`\\`)
+			out.write_u8(next)
+		}
+		i += 2
 	}
 	return out.str()
+}
+
+fn comptime_static_fixed_hex(value string, start int, count int) ?u32 {
+	mut code := u32(0)
+	for i in 0 .. count {
+		if start + i >= value.len {
+			return none
+		}
+		digit := comptime_static_hex_digit(value[start + i]) or { return none }
+		code = (code << 4) | digit
+	}
+	return code
+}
+
+fn comptime_static_hex_digit(c u8) ?u32 {
+	if c >= `0` && c <= `9` {
+		return u32(c - `0`)
+	}
+	if c >= `a` && c <= `f` {
+		return u32(c - `a` + 10)
+	}
+	if c >= `A` && c <= `F` {
+		return u32(c - `A` + 10)
+	}
+	return none
 }
 
 // check_node validates check node state for types.

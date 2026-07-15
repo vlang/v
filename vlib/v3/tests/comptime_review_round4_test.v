@@ -2569,6 +2569,40 @@ fn main() {
 	assert out == 'route:/path'
 }
 
+fn test_normal_string_attribute_arguments_are_unescaped() {
+	v3_bin := round4_build_v3()
+	src := [
+		"@[quote: 'O\\'Reilly']",
+		"@[line: 'a\\n']",
+		"@[hex: '\\x41']",
+		"@[unicode: '\\u03bb']",
+		"@[raw: r'a\\n']",
+		'fn handler() {}',
+		'',
+		'fn main() {',
+		'\tmut rows := []string{}',
+		'\t\$for attr in handler.attributes {',
+		"\t\trows << attr.name + ':' + attr.arg.replace('\\n', '<nl>')",
+		'\t}',
+		'\tprintln(rows.join("|"))',
+		'}',
+	].join('\n')
+	out := round4_run_good(v3_bin, 'normal_string_attribute_arguments', src)
+	assert out == "quote:O'Reilly|line:a<nl>|hex:A|unicode:λ|raw:a\\n"
+	round4_run_bad(v3_bin, 'escaped_attribute_selected_guard', [
+		"@[label: 'O\\'Reilly']",
+		'fn handler() {}',
+		'',
+		'fn main() {',
+		'\t\$for attr in handler.attributes {',
+		'\t\t\$if attr.arg == "O\'Reilly" {',
+		'\t\t\tmissing_selected_escaped_attribute_fn()',
+		'\t\t}',
+		'\t}',
+		'}',
+	].join('\n'), 'unknown function `missing_selected_escaped_attribute_fn`')
+}
+
 fn test_attribute_guard_escapes_reflected_string_arguments() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'attribute_guard_escaped_argument', '@[label: "O\'Reilly"]
