@@ -1506,8 +1506,10 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	if result_elem_type.len == 0 {
 		result_elem_type = elem_type
 	}
-	mapped_borrows_elem := t.array_map_expr_references_ident(mapped_source, elem_name)
-		&& (isnil(t.tc) || !t.tc.ownership_expr_creates_owned_value(map_source_id))
+	opaque_mapper := map_fn_name.len > 0 || map_expr.kind == .fn_literal
+	mapped_borrows_elem := opaque_mapper
+		|| (t.array_map_expr_references_ident(mapped_source, elem_name)
+		&& (isnil(t.tc) || !t.tc.ownership_expr_creates_owned_value(map_source_id)))
 	mapped_result_needs_clone := mapped_borrows_elem && !isnil(t.tc)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(result_elem_type))
 	if mapped_result_needs_clone {

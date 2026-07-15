@@ -12880,8 +12880,9 @@ fn (mut tc TypeChecker) array_map_return_elem_type(node flat.Node) Type {
 	return elem_type
 }
 
-// array_map_result_borrows_element reports whether the mapper result reads `it` or
-// a lambda parameter without explicitly creating a fresh owner.
+// array_map_result_borrows_element reports whether a mapper result must be made
+// independent before its source array is destroyed. Opaque function values are handled
+// conservatively because their body cannot be inspected at the call site.
 fn (tc &TypeChecker) array_map_result_borrows_element(node flat.Node) bool {
 	if node.children_count < 2 {
 		return false
@@ -12889,7 +12890,7 @@ fn (tc &TypeChecker) array_map_result_borrows_element(node flat.Node) bool {
 	arg_id := tc.call_arg_value(tc.a.child(&node, 1))
 	arg := tc.a.nodes[int(arg_id)]
 	if arg.kind == .fn_literal {
-		return false
+		return true
 	}
 	mut body_id := arg_id
 	mut elem_name := 'it'
@@ -12902,7 +12903,7 @@ fn (tc &TypeChecker) array_map_result_borrows_element(node flat.Node) bool {
 			}
 		}
 	} else if _ := fn_type_from_type(tc.resolve_type(arg_id)) {
-		return false
+		return true
 	}
 	return tc.array_map_expr_references_ident(body_id, elem_name)
 		&& !tc.ownership_expr_creates_owned_value(body_id)

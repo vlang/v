@@ -36,6 +36,8 @@ pub fn drop_owned[T](value T) {
 	} $else $if T.unaliased_typ is $option {
 		if payload := owned {
 			drop_owned(payload)
+		} else {
+			drop_owned_result_error(owned.err)
 		}
 	} $else $if T.unaliased_typ.payload_type != 0 {
 		// After the option branch, the remaining wrapper with a payload type is a result.

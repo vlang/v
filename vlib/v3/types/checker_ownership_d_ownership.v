@@ -1083,11 +1083,9 @@ fn (tc &TypeChecker) ownership_drop_target_for_type_name(type_name string) ?Owne
 	}
 	clean := type_name.trim_left('&')
 	if clean.len > 1 && clean[0] == `?` {
-		payload := clean[1..]
-		if target := tc.ownership_drop_target_for_direct_type_name(payload, true) {
-			return target
+		return OwnershipDropTarget{
+			type_name: clean
 		}
-		return none
 	}
 	// A result owns both its successful payload and its failed IError. Preserve the
 	// complete result type so code generation can destroy whichever branch is active.
@@ -1117,7 +1115,10 @@ fn (tc &TypeChecker) ownership_drop_target_for_resolved_type(typ Type, optional_
 		return tc.ownership_drop_target_for_resolved_type(typ.base_type, optional_wrapper)
 	}
 	if typ is OptionType {
-		return tc.ownership_drop_target_for_resolved_type(typ.base_type, true)
+		return OwnershipDropTarget{
+			type_name:        typ.name()
+			optional_wrapper: optional_wrapper
+		}
 	}
 	if typ is ResultType {
 		return OwnershipDropTarget{
@@ -1244,13 +1245,10 @@ fn (tc &TypeChecker) ownership_type_requires_destruction_inner(typ Type, depth i
 		return false
 	}
 	match typ {
-		String, Array, Map, Interface, ResultType, SumType {
+		String, Array, Map, Interface, OptionType, ResultType, SumType {
 			return true
 		}
 		Alias {
-			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
-		}
-		OptionType {
 			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
 		}
 		ArrayFixed {
@@ -1294,25 +1292,16 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
 		}
 		OptionType {
-			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
+			if bad := tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen) {
+				return bad
+			}
+			return tc.ownership_default_clone_missing_ierror_method()
 		}
 		ResultType {
 			if bad := tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen) {
 				return bad
 			}
-			// A failed result owns its concrete IError payload too. Plain error structs can
-			// be copied, while payloads with destructible storage need a real dynamic clone.
-			for concrete in tc.ierror_impl_names() {
-				concrete_type := tc.parse_type(concrete)
-				if !tc.ownership_type_requires_destruction(concrete_type)
-					|| concrete in ['Error', 'MessageError', 'builtin.Error', 'builtin.MessageError'] {
-					continue
-				}
-				if !tc.ownership_ierror_has_compatible_clone_method(concrete_type) {
-					return concrete
-				}
-			}
-			return none
+			return tc.ownership_default_clone_missing_ierror_method()
 		}
 		Array {
 			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, mut seen)
@@ -1366,6 +1355,23 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 	}
 }
 
+// ownership_default_clone_missing_ierror_method validates the failed branch shared by
+// options and results. Plain builtin errors can be copied; destructible custom errors
+// need a dynamic clone that preserves their concrete payload.
+fn (tc &TypeChecker) ownership_default_clone_missing_ierror_method() ?string {
+	for concrete in tc.ierror_impl_names() {
+		concrete_type := tc.parse_type(concrete)
+		if !tc.ownership_type_requires_destruction(concrete_type)
+			|| concrete in ['Error', 'MessageError', 'builtin.Error', 'builtin.MessageError'] {
+			continue
+		}
+		if !tc.ownership_ierror_has_compatible_clone_method(concrete_type) {
+			return concrete
+		}
+	}
+	return none
+}
+
 fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
 	name := resolve_type_name_for_method(typ)
 	if name.len == 0 {
@@ -1410,6 +1416,7 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []str
 		}
 		OptionType {
 			tc.ownership_collect_drop_type_names(typ.base_type, mut names, mut seen)
+			tc.ownership_collect_drop_type_names(tc.parse_type('IError'), mut names, mut seen)
 		}
 		ResultType {
 			tc.ownership_collect_drop_type_names(typ.base_type, mut names, mut seen)
@@ -10493,10 +10500,10 @@ fn (tc &TypeChecker) ownership_type_is_owned(typ Type) bool {
 		return tc.ownership_type_is_owned(typ.base_type)
 	}
 	if typ is OptionType {
-		return tc.ownership_type_is_owned(typ.base_type)
+		return true
 	}
 	if typ is ResultType {
-		return tc.ownership_type_is_owned(typ.base_type)
+		return true
 	}
 	if typ is Struct {
 		base := generic_base_name(typ.name)

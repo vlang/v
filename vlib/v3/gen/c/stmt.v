@@ -463,13 +463,17 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 			g.gen_ownership_drop_value(typ.base_type, expr, depth + 1)
 		}
 		types.OptionType {
+			g.writeln('if ((${expr}).ok) {')
+			g.indent++
 			if g.ownership_type_requires_destruction(typ.base_type, depth + 1) {
-				g.writeln('if ((${expr}).ok) {')
-				g.indent++
 				g.gen_ownership_drop_value(typ.base_type, '(${expr}).value', depth + 1)
-				g.indent--
-				g.writeln('}')
 			}
+			g.indent--
+			g.writeln('} else {')
+			g.indent++
+			g.gen_ownership_drop_result_error('(${expr}).err', depth + 1)
+			g.indent--
+			g.writeln('}')
 		}
 		types.ResultType {
 			g.writeln('if ((${expr}).ok) {')
@@ -729,13 +733,11 @@ fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) b
 		return false
 	}
 	match typ {
-		types.String, types.Array, types.Map, types.Interface, types.ResultType, types.SumType {
+		types.String, types.Array, types.Map, types.Interface, types.OptionType, types.ResultType,
+		types.SumType {
 			return true
 		}
 		types.Alias {
-			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
-		}
-		types.OptionType {
 			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
 		}
 		types.ArrayFixed {
