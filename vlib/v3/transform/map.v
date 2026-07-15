@@ -668,6 +668,27 @@ fn (t &Transformer) map_key_expr_creates_owned_value(id flat.NodeId, key_type_na
 	return false
 }
 
+// Map literals consume named string storage, even though an identifier does not create a
+// fresh value. map__set clones string keys, so the consumed input still needs destruction.
+fn (t &Transformer) map_literal_key_expr_creates_owned_value(id flat.NodeId, key_type_name string) bool {
+	if t.map_key_expr_creates_owned_value(id, key_type_name) {
+		return true
+	}
+	if isnil(t.tc) || t.normalize_type_alias(key_type_name).trim_space() != 'string' {
+		return false
+	}
+	mut expr_id := id
+	for int(expr_id) >= 0 {
+		expr := t.a.nodes[int(expr_id)]
+		if expr.kind in [.paren, .expr_stmt, .cast_expr] && expr.children_count > 0 {
+			expr_id = t.a.child(&expr, 0)
+			continue
+		}
+		return expr.kind in [.ident, .selector, .index]
+	}
+	return false
+}
+
 // clone_map_assignment_rhs_if_overlapping makes a map-derived replacement independent
 // before the stored owner is destroyed. The checker rejects an overlapping move that cannot
 // be cloned, and the false result prevents unsafe lowering of that invalid assignment.
@@ -1141,7 +1162,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		mut existing_key_name := ''
 		if needs_entry_cleanup {
 			mut drop_stmts := []flat.NodeId{}
-			key_is_owned := t.map_key_expr_creates_owned_value(key_id, key_type)
+			key_is_owned := t.map_literal_key_expr_creates_owned_value(key_id, key_type)
 			cleanup_key, existing_key_name = t.prepare_owned_map_set_key_cleanup(key_is_owned,
 				key_type, t.make_ident(tmp_name), map_type, key_name, mut drop_stmts)
 			t.append_map_value_drop_before_set(t.make_ident(tmp_name), map_type, key_name,
