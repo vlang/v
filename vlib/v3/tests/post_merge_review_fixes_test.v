@@ -1,4 +1,7 @@
 import os
+import v3.parser
+import v3.pref
+import v3.types
 
 const vexe = @VEXE
 const tests_dir = os.dir(@FILE)
@@ -56,6 +59,18 @@ fn run_bad(v3_bin string, name string, src string, expected string) {
 	assert compile.exit_code != 0, '${name}: ${compile.output}'
 	assert compile.output.contains(expected), '${name}: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
+}
+
+fn check_good(name string, src string) {
+	check_src := '${tmp_test_path(name)}.v'
+	os.write_file(check_src, src) or { panic(err) }
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_file(check_src)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
 }
 
 fn gen_c(v3_bin string, name string, src string) string {
@@ -2649,6 +2664,49 @@ fn main() {
 	assert decoded == '{}\n[1,2]'
 }
 
+fn test_json_encode_omitempty_field_attr_preserves_omission() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_encode_omitempty_field_attr', 'import json
+
+struct User {
+	name string @[omitempty]
+	age int
+}
+
+fn main() {
+	println(json.encode(User{
+		age: 3
+	}))
+	println(json.encode(User{
+		name: "Ada"
+		age:  4
+	}))
+}
+')
+	assert out == '{"age":3}\n{"name":"Ada","age":4}'
+}
+
+fn test_json_encode_declines_unsupported_field_attrs() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'json_encode_unsupported_field_attr', 'import json
+
+struct User {
+	name string @[required]
+	age int
+}
+
+fn main() {
+	println(json.encode(User{
+		name: "Ada"
+		age:  4
+	}))
+}
+')
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
+	assert main_body.contains('json__encode(&')
+	assert !main_body.contains('v3_json_encode_string(')
+}
+
 fn test_enum_helper_prefers_exact_free_function_over_method_suffix() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'enum_helper_exact_free_function', 'struct Maker {}
@@ -2939,6 +2997,382 @@ fn test_alias_interface_str_dispatch_marks_alias_method_used() {
 	assert out == 'label:7'
 }
 
+fn test_implicit_interface_str_dispatch_uses_boxed_receiver() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_receiver', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	x int
+}
+
+fn main() {
+	value := Printable(Foo{
+		x: 7
+	})
+	println(value.str())
+}
+')
+	assert out == 'Foo{\n    x: 7\n}'
+}
+
+fn test_implicit_interface_str_dispatch_stringifies_struct_alias() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_struct_alias', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	x int
+}
+
+type AliasFoo = Foo
+
+fn main() {
+	aliased := AliasFoo(Foo{
+		x: 7
+	})
+	value := Printable(aliased)
+	println(value.str())
+}
+')
+	assert out.contains('x: 7')
+	assert !out.contains('Foo{}')
+}
+
+fn test_implicit_interface_str_dispatch_stringifies_collection_aliases() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_collection_aliases', 'interface Printable {
+	str() string
+}
+
+type Items = []int
+type Counts = map[string]int
+type Pair = [2]int
+type Words = []string
+
+fn main() {
+	items := Printable(Items([1, 2]))
+	counts := Printable(Counts({
+		"a": 3
+	}))
+	pair := Printable(Pair([4, 5]!))
+	words := Printable(Words(["x", "y"]))
+	println(items.str())
+	println(counts.str())
+	println(pair.str())
+	println(words.str())
+}
+')
+	assert out == "[1, 2]\n{'a': 3}\n[4, 5]\n['x', 'y']"
+}
+
+fn test_implicit_interface_str_dispatch_rejects_sum_without_dispatch_id() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'implicit_interface_str_dispatch_rejects_sum', 'interface Printable {
+	str() string
+}
+
+type Value = int | string
+
+fn main() {
+	value := Value(1)
+	_ := Printable(value)
+}
+',
+		'does not implement interface')
+}
+
+fn test_implicit_interface_str_dispatch_stringifies_nested_struct_fields() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_nested_struct', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+struct Foo {
+	bar Bar
+}
+
+fn main() {
+	value := Printable(Foo{
+		bar: Bar{
+			x: 7
+		}
+	})
+	println(value.str())
+}
+')
+	assert out == 'Foo{\n    bar: Bar{\n        x: 7\n    }\n}'
+}
+
+fn test_implicit_interface_str_dispatch_stringifies_collection_fields() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_collections', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	nums []int
+	labels map[string]int
+	fixed [2]int
+	words []string
+}
+
+fn main() {
+	value := Printable(Foo{
+		nums: [1, 2]
+		labels: {
+			"a": 3
+		}
+		fixed: [4, 5]!
+		words: ["x", "y"]
+	})
+	println(value.str())
+}
+')
+	assert out == "Foo{\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n    words: ['x', 'y']\n}"
+}
+
+fn test_implicit_interface_str_dispatch_unaliases_field_types() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_aliased_fields', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+type MyBar = Bar
+type MyNums = []int
+type MyLabels = map[string]int
+type MyFixed = [2]int
+
+struct Foo {
+	bar MyBar
+	nums MyNums
+	labels MyLabels
+	fixed MyFixed
+}
+
+fn main() {
+	value := Printable(Foo{
+		bar: MyBar(Bar{
+			x: 7
+		})
+		nums: MyNums([1, 2])
+		labels: MyLabels({
+			"a": 3
+		})
+		fixed: MyFixed([4, 5]!)
+	})
+	println(value.str())
+}
+')
+	assert out == "Foo{\n    bar: Bar{\n        x: 7\n    }\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n}"
+}
+
+fn test_implicit_interface_str_dispatch_preserves_pointer_field_custom_str() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_custom_str', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+fn (b Bar) str() string {
+	return "value:" + int_str(b.x)
+}
+
+struct Baz {
+	x int
+}
+
+fn (b &Baz) str() string {
+	return "ptr:" + int_str(b.x)
+}
+
+struct Foo {
+	bar &Bar
+	baz &Baz
+}
+
+fn main() {
+	bar := &Bar{
+		x: 7
+	}
+	baz := &Baz{
+		x: 9
+	}
+	value := Printable(Foo{
+		bar: bar
+		baz: baz
+	})
+	println(value.str())
+}
+')
+	assert out == 'Foo{\n    bar: value:7\n    baz: ptr:9\n}'
+}
+
+fn test_implicit_interface_str_dispatch_preserves_pointer_alias_custom_str() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_alias_custom_str', 'interface Printable {
+	str() string
+}
+
+type Name = string
+
+fn (n Name) str() string {
+	return "name:" + string(n)
+}
+
+type Code = int
+
+fn (c &Code) str() string {
+	return "code:" + int_str(int(*c))
+}
+
+struct Foo {
+	name    &Name
+	missing &Name
+	code    &Code
+}
+
+fn main() {
+	name := Name("Ada")
+	code := Code(7)
+	value := Printable(Foo{
+		name: &name
+		missing: unsafe { nil }
+		code: &code
+	})
+	println(value.str())
+}
+')
+	assert out == 'Foo{\n    name: name:Ada\n    missing: &nil\n    code: code:7\n}'
+}
+
+fn test_implicit_interface_str_dispatch_dereferences_pointer_struct_fields() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_struct_fields', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+struct Foo {
+	bar   &Bar
+	empty &Bar
+}
+
+fn main() {
+	bar := &Bar{
+		x: 7
+	}
+	value := Printable(Foo{
+		bar: bar
+		empty: unsafe { nil }
+	})
+	println(value.str())
+}
+')
+	assert out == 'Foo{\n    bar: Bar{\n        x: 7\n    }\n    empty: &nil\n}'
+}
+
+fn test_bare_aligned_attribute_metadata_and_cgen() {
+	v3_bin := build_v3()
+	source := '@[aligned]
+struct Bare {
+	x int
+}
+
+@[aligned; markused]
+struct Marked {
+	y int
+}
+
+fn main() {
+	b := Bare{
+		x: 1
+	}
+	m := Marked{
+		y: 2
+	}
+	println(int_str(b.x + m.y))
+}
+'
+	c_source := gen_c(v3_bin, 'bare_aligned_attribute_metadata', source)
+	assert c_source.contains('__attribute__((aligned))')
+	assert !c_source.contains('aligned(aligned)')
+	out := run_good(v3_bin, 'bare_aligned_attribute_cgen', source)
+	assert out == '3'
+}
+
+fn test_implicit_interface_str_dispatch_dereferences_pointer_scalar_fields() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_scalar_fields', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	p &int
+	s &string
+}
+
+fn main() {
+	n := 7
+	text := "hi"
+	value := Printable(Foo{
+		p: &n
+		s: &text
+	})
+	println(value.str())
+}
+')
+	assert out == "Foo{\n    p: 7\n    s: 'hi'\n}"
+}
+
+fn test_implicit_interface_str_dispatch_dereferences_pointer_collection_fields() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_collection_fields', 'interface Printable {
+	str() string
+}
+
+struct Foo {
+	nums &[]int
+	labels &map[string]int
+	fixed &[2]int
+	words &[]string
+}
+
+fn main() {
+	nums := [1, 2]
+	labels := {
+		"a": 3
+	}
+	fixed := [4, 5]!
+	words := ["x", "y"]
+	value := Printable(Foo{
+		nums: &nums
+		labels: &labels
+		fixed: &fixed
+		words: &words
+	})
+	println(value.str())
+}
+')
+	assert out == "Foo{\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n    words: ['x', 'y']\n}"
+}
+
 fn test_empty_interface_box_preserves_alias_type_id() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'empty_interface_alias_type_id',
@@ -2951,11 +3385,17 @@ fn test_interface_cast_rejects_pointer_shape_mismatch() {
 	run_bad(v3_bin, 'interface_pointer_shape_mismatch',
 		'interface Sink {\n\tput(x &int)\n}\n\nstruct Bad {}\n\nfn (b Bad) put(x int) {}\n\nfn main() {\n\t_ := Sink(Bad{})\n}\n',
 		'does not implement interface')
+	run_bad(v3_bin, 'interface_voidptr_cast_rejected',
+		'interface Sink {\n\tput()\n}\n\nfn main() {\n\tx := 1\n\tp := voidptr(&x)\n\t_ := Sink(p)\n}\n',
+		'does not implement interface')
+	run_bad(v3_bin, 'interface_pointer_voidptr_cast_rejected',
+		'interface Sink {\n\tput()\n}\n\nfn main() {\n\tx := 1\n\tp := voidptr(&x)\n\t_ := &Sink(p)\n}\n',
+		'does not implement interface')
 	run_bad(v3_bin, 'interface_alias_cast_non_implementer',
 		'interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nstruct Bad {}\n\nfn main() {\n\t_ := SinkAlias(Bad{})\n}\n',
 		'does not implement interface')
 	nil_out := run_good(v3_bin, 'interface_pointer_nil_cast',
-		"interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nfn main() {\n\t_ := &Sink(nil)\n\t_ := &SinkAlias(nil)\n\tprintln('ok')\n}\n")
+		"interface Sink {\n\tput()\n}\n\ntype SinkAlias = Sink\n\nfn main() {\n\t_ := Sink(nil)\n\t_ := &Sink(nil)\n\t_ := &SinkAlias(nil)\n\tprintln('ok')\n}\n")
 	assert nil_out == 'ok'
 }
 
@@ -2991,14 +3431,34 @@ fn test_amp_interface_cast_heap_copies_concrete_source() {
 	assert out == '5'
 }
 
+fn test_interface_boxed_local_address_preserves_pointer_identity() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\tprintln(int_str(r.value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_local_address_identity', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
+	assert !main_body.contains('memdup(') && !main_body.contains('sizeof(Box)'), main_body
+	out := run_good(v3_bin, 'interface_box_local_address_identity_run', source)
+	assert out == '2'
+}
+
+fn test_interface_boxed_returned_local_address_still_heap_copies() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make() Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn Reader(&b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_returned_local_address_heap_copy', source)
+	make_body := c_fn_body(c_source, 'Reader make(void) {')
+	assert make_body.contains('memdup(') && make_body.contains('sizeof(Box)'), make_body
+	out := run_good(v3_bin, 'interface_box_returned_local_address_heap_copy_run', source)
+	assert out == '5'
+}
+
 fn test_mut_interface_argument_borrows_existing_interface_box() {
 	v3_bin := build_v3()
-	source := 'interface Visitor {\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln("ok")\n}\n'
+	source := 'interface Visitor {\n\tvalue() int\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (c Counter) value() int {\n\treturn c.n\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln(int_str(visitor.value()))\n}\n'
 	c_source := gen_c(v3_bin, 'mut_interface_arg_borrows_existing_box', source)
 	assert c_source.contains('call(&visitor);')
 	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
 	out := run_good(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
-	assert out == 'ok'
+	assert out == '1'
 }
 
 fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
@@ -3008,6 +3468,16 @@ fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
 	assert c_source.contains('memdup(&__iface_box_')
 	out := run_good(v3_bin, 'pointer_interface_rvalue_sources_run', source)
 	assert out == '7\n9'
+}
+
+fn test_pointer_interface_cast_heap_copies_converted_interface_source() {
+	v3_bin := build_v3()
+	source := 'interface Base {\n\tget() int\n}\n\ninterface Narrow {\n\tBase\n\textra() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nfn (i Item) extra() int {\n\treturn i.n + 1\n}\n\nfn make_narrow() Narrow {\n\treturn Item{\n\t\tn: 11\n\t}\n}\n\nfn use(value &Base) int {\n\treturn value.get()\n}\n\nfn make_base() &Base {\n\tnarrow := make_narrow()\n\treturn &Base(narrow)\n}\n\nfn main() {\n\tprintln(int_str(use(make_base())))\n}\n'
+	c_source := gen_c(v3_bin, 'pointer_interface_converted_source', source)
+	assert c_source.contains('Base __iface_cast_')
+	assert c_source.contains('return (Base*)(memdup(&__iface_box_')
+	out := run_good(v3_bin, 'pointer_interface_converted_source_run', source)
+	assert out == '11'
 }
 
 fn test_c_atomic_pointer_load_store_preserves_pointer_width() {
@@ -3055,7 +3525,7 @@ fn take_grouped(value struct {
 fn main() {
 	println(int_str(take_int(struct { x: 7 })))
 	println(take_string(struct { x: "right" }))
-	println(take_i64(struct { x: 9 }))
+	println(take_i64(struct { x: i64(9) }))
 	println(int_str(take_grouped(struct { x: 2, y: 3 })))
 	mut values := []struct {
 		x int
@@ -3065,6 +3535,43 @@ fn main() {
 }
 ')
 	assert out == '7\nright\n9\n23\n13'
+	inferred := run_good(v3_bin, 'anonymous_struct_inferred_literal_typed_shape', 'fn main() {
+	a := struct { x: 1 }
+	b := struct { x: "typed" }
+	println(int_str(a.x))
+	println(b.x)
+}
+')
+	assert inferred == '1\ntyped'
+}
+
+fn test_anonymous_struct_context_accepts_untyped_numeric_literal() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'anonymous_struct_context_untyped_numeric_literal', 'fn take(value struct {
+	n i64
+}) i64 {
+	return value.n
+}
+
+fn main() {
+	println(take(struct { n: 1 }).str())
+}
+')
+	assert out == '1'
+}
+
+fn test_implicit_ref_arg_rejects_multiple_pointer_levels() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'implicit_ref_arg_rejects_multiple_pointer_levels', 'fn take(value &&int) {
+	_ = value
+}
+
+fn main() {
+	mut n := 1
+	take(n)
+}
+',
+		'expected `&&int`')
 }
 
 fn test_latest_pr_review_codegen_regressions() {
@@ -3336,6 +3843,408 @@ fn main() {
 }
 ")
 	assert out == 'platform|custom'
+}
+
+fn test_overloaded_index_compound_assignment_caches_operands() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'overloaded_index_compound_assignment_caches_operands', 'struct IntList {
+mut:
+	values []int
+}
+
+fn (l IntList) [] (index int) int {
+	return l.values[index]
+}
+
+fn (mut l IntList) []= (index int, value int) {
+	l.values[index] = value
+}
+
+struct Env {
+mut:
+	list_index_calls int
+	index_calls      int
+}
+
+fn (mut e Env) list_idx() int {
+	e.list_index_calls++
+	return 0
+}
+
+fn (mut e Env) idx() int {
+	n := e.index_calls
+	e.index_calls++
+	return n
+}
+
+fn main() {
+	mut env := Env{}
+	mut lists := [IntList{
+			values: [1, 20]
+		}]
+	lists[env.list_idx()][env.idx()] += 10
+	println(int_str(env.list_index_calls) + "," + int_str(env.index_calls))
+	println(int_str(lists[0].values[0]) + "," + int_str(lists[0].values[1]))
+}
+')
+	assert out == '1,1\n11,20'
+}
+
+fn test_overloaded_index_accepts_declared_key_type() {
+	v3_bin := build_v3()
+	dict_src := 'struct Dict {
+	values map[string]int
+}
+
+fn (d Dict) [] (key string) int {
+	return d.values[key]
+}
+'
+	out := run_good(v3_bin, 'overloaded_index_accepts_declared_key_type', dict_src +
+		'
+
+fn main() {
+	d := Dict{
+		values: {
+			"name": 7
+		}
+	}
+	println(int_str(d["name"]))
+}
+')
+	assert out == '7'
+	run_bad(v3_bin, 'overloaded_index_rejects_wrong_key_type', dict_src +
+		'
+
+fn main() {
+	d := Dict{}
+	println(int_str(d[1]))
+}
+',
+		'cannot use `int` as overloaded index; expected `string`')
+	run_bad(v3_bin, 'overloaded_index_assignment_requires_setter', dict_src +
+		'
+
+fn main() {
+	mut d := Dict{}
+	d["name"] = 1
+}
+',
+		'overloaded index assignment requires a matching `[]=` setter')
+	run_bad(v3_bin, 'overloaded_index_compound_assignment_requires_setter', dict_src +
+		'
+
+fn main() {
+	mut d := Dict{}
+	d["name"] += 1
+}
+',
+		'overloaded index assignment requires a matching `[]=` setter')
+}
+
+fn test_overloaded_index_assignment_uses_setter_signature() {
+	v3_bin := build_v3()
+	setter_only_src := 'struct Dict {
+mut:
+	values map[string]int
+}
+
+fn (mut d Dict) []= (key string, value int) {
+	d.values[key] = value
+}
+'
+	setter_only := run_good(v3_bin, 'overloaded_index_assignment_write_only_setter',
+		setter_only_src +
+		'
+
+fn main() {
+	mut d := Dict{
+		values: map[string]int{}
+	}
+	d["name"] = 7
+	println(int_str(d.values["name"]))
+}
+')
+	assert setter_only == '7'
+	run_bad(v3_bin, 'overloaded_index_compound_assignment_requires_getter', setter_only_src +
+		'
+
+fn main() {
+	mut d := Dict{
+		values: map[string]int{}
+	}
+	d["name"] += 1
+}
+',
+		'compound overloaded index assignment requires a matching `[]` getter')
+	mismatched_getter_src := 'struct Tensor {}
+
+fn (t Tensor) [] (index int) int {
+	return 0
+}
+
+fn (mut t Tensor) []= (parts []SliceIndex, value int) {
+}
+'
+	run_bad(v3_bin, 'overloaded_index_compound_assignment_checks_getter_index',
+		mismatched_getter_src + '
+
+fn main() {
+	mut t := Tensor{}
+	t[1, 2] += 3
+}
+',
+		'multi-index expressions on overloaded `[]` require a `[]SliceIndex` parameter')
+	range_mismatched_getter_src := 'struct Window {}
+
+fn (w Window) [] (part SliceIndex) int {
+	return 0
+}
+
+fn (mut w Window) []= (parts []SliceIndex, value int) {
+}
+'
+	run_bad(v3_bin, 'overloaded_index_compound_assignment_rejects_mismatched_index_temps',
+		range_mismatched_getter_src + '
+
+fn main() {
+	mut w := Window{}
+	w[1..2] += 3
+}
+',
+		'compound overloaded index assignment requires matching `[]` and `[]=` index parameter types')
+	run_bad(v3_bin, 'overloaded_index_assignment_rejects_wrong_setter_key', setter_only_src +
+		'
+
+fn main() {
+	mut d := Dict{
+		values: map[string]int{}
+	}
+	d[1] = 7
+}
+',
+		'cannot use `int` as overloaded index; expected `string`')
+	getter_and_setter_src := 'struct Dict {
+mut:
+	values map[string]int
+}
+
+fn (d Dict) [] (key string) string {
+	return "getter:" + key
+}
+
+fn (mut d Dict) []= (key string, value int) {
+	d.values[key] = value
+}
+'
+	both := run_good(v3_bin, 'overloaded_index_assignment_prefers_setter_value_type',
+		getter_and_setter_src +
+		'
+
+fn main() {
+	mut d := Dict{
+		values: map[string]int{}
+	}
+	d["name"] = 9
+	println(int_str(d.values["name"]))
+}
+')
+	assert both == '9'
+	run_bad(v3_bin, 'overloaded_index_assignment_rejects_getter_value_type',
+		getter_and_setter_src +
+		'
+
+fn main() {
+	mut d := Dict{
+		values: map[string]int{}
+	}
+	d["name"] = "bad"
+}
+',
+		'cannot assign `string` to `int`')
+}
+
+fn test_generic_overloaded_index_uses_specialized_methods() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'generic_overloaded_index_specialized_methods', 'struct Box[T] {
+mut:
+	items []T
+}
+
+fn (b Box[T]) [] (index int) T {
+	return b.items[index]
+}
+
+fn (mut b Box[T]) []= (index int, value T) {
+	b.items[index] = value
+}
+
+fn main() {
+	mut b := Box[int]{
+		items: [1, 2]
+	}
+	println(int_str(b[0]))
+	b[1] = 7
+	b[0] += 3
+	println(int_str(b[0]) + "," + int_str(b[1]))
+}
+')
+	assert out == '1\n4,7'
+}
+
+fn test_explicit_generic_method_index_callee_codegen() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'explicit_generic_method_index_callee', 'struct Tool {}
+
+fn (t Tool) pick[T](value T) T {
+	return value
+}
+
+fn main() {
+	tool := Tool{}
+	println(int_str(tool.pick[int](7)))
+}
+')
+	assert out == '7'
+}
+
+fn test_shadowed_global_local_rename_is_scoped_to_binding() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'shadowed_global_local_rename_scoped', '__global foo int
+
+fn main() {
+	foo = 1
+	if true {
+		foo := 3
+		println(int_str(foo))
+	}
+	println(int_str(foo))
+}
+')
+	assert out == '3\n1'
+}
+
+fn test_capturing_fn_literal_aliases_are_scoped_to_lambda() {
+	check_good('capturing_fn_literal_aliases_scoped_to_lambda', 'fn call(cb fn ()) {
+	_ = cb
+}
+
+fn plain() int {
+	return 3
+}
+
+fn make() fn () int {
+	cb := plain
+	x := 7
+	call(|| {
+		cb := fn [x] () int {
+			return x
+		}
+	})
+	return cb
+}
+
+fn main() {}
+')
+}
+
+fn test_capturing_fn_literal_aliases_are_scoped_to_shadowing_block() {
+	check_good('capturing_fn_literal_aliases_scoped_to_shadowing_block', 'fn plain() int {
+	return 3
+}
+
+fn make(cond bool) fn () int {
+	cb := plain
+	x := 7
+	if cond {
+		cb := fn [x] () int {
+			return x
+		}
+		_ = cb
+	}
+	return cb
+}
+
+fn main() {}
+')
+}
+
+fn test_for_in_uppercase_const_body_not_struct_init() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'for_in_uppercase_const_body_not_struct_init', "const Foo = [1, 2]
+
+fn main() {
+	mut sum := 0
+	for x in Foo {
+		label := 'x:'
+		_ = label
+		y := x
+		sum += y
+	}
+	println(int_str(sum))
+}
+")
+	assert out == '3'
+}
+
+fn test_amp_uppercase_index_operand_preserves_postfix() {
+	v3_bin := build_v3()
+	source := 'const Foo = [1, 2]
+
+fn main() {
+	mut p := &Foo[0]
+	p = &Foo[1]
+	println(int_str(*p))
+}
+'
+	c_source := gen_c(v3_bin, 'amp_uppercase_index_operand_preserves_postfix', source)
+	assert c_source.contains('int* p ='), c_source
+	assert !c_source.contains('int p = (*(int*)array_get(*&'), c_source
+	out := run_good(v3_bin, 'amp_uppercase_index_operand_preserves_postfix_run', source)
+	assert out == '2'
+}
+
+fn test_interface_rvalue_upcast_to_embedded_base_argument() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'interface_rvalue_upcast_to_embedded_base_argument', 'interface Base {
+	value() int
+}
+
+interface Child {
+	Base
+	extra() int
+}
+
+struct Item {
+	n int
+}
+
+fn (i Item) value() int {
+	return i.n
+}
+
+fn (i Item) extra() int {
+	return i.n + 1
+}
+
+fn make_child(n int) Child {
+	return Child(Item{
+		n: n
+	})
+}
+
+fn take_base(b Base) int {
+	return b.value()
+}
+
+fn main() {
+	println(int_str(take_base(make_child(7))))
+	println(int_str(take_base(if true { make_child(8) } else { make_child(0) })))
+	children := [make_child(9)]
+	println(int_str(take_base(children[0])))
+}
+')
+	assert out == '7\n8\n9'
 }
 
 fn test_non_generic_reflection_compile_error_waits_for_selected_branch() {

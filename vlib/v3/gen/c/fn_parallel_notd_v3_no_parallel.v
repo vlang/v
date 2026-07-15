@@ -640,6 +640,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		interface_fields:                   g.tc.interface_fields
 		interface_embeds:                   g.tc.interface_embeds
 		interface_abstract_methods:         g.tc.interface_abstract_methods
+		interface_impl_name_snapshots:      g.tc.interface_impl_name_snapshots
 		c_globals:                          g.tc.c_globals
 		const_types:                        g.tc.const_types
 		const_exprs:                        g.tc.const_exprs

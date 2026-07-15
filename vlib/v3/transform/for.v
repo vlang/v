@@ -431,7 +431,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		return arr1(id)
 	}
 	mut idx_name := key.value
-	if !has_index {
+	if !has_index || key.value == '_' {
 		idx_name = t.new_temp('for_idx')
 	}
 	mut elem_name := key.value
@@ -471,12 +471,19 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	mut transformed_body := []flat.NodeId{}
 	if elem_needs_ref {
 		had_pointer_value_lvalue := t.pointer_value_lvalues[elem_name] or { false }
+		had_pointer_value_rvalue := t.pointer_value_rvalues[elem_name] or { false }
 		t.pointer_value_lvalues[elem_name] = true
+		t.pointer_value_rvalues[elem_name] = true
 		transformed_body = t.transform_stmts(body_ids)
 		if had_pointer_value_lvalue {
 			t.pointer_value_lvalues[elem_name] = true
 		} else {
 			t.pointer_value_lvalues.delete(elem_name)
+		}
+		if had_pointer_value_rvalue {
+			t.pointer_value_rvalues[elem_name] = true
+		} else {
+			t.pointer_value_rvalues.delete(elem_name)
 		}
 	} else {
 		transformed_body = t.transform_stmts(body_ids)
@@ -549,6 +556,9 @@ fn (t &Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?strin
 	if node.kind != .ident || node.value.len == 0 {
 		return none
 	}
+	if fixed_storage_type := t.const_array_literal_storage_type_name_for_expr(id) {
+		return fixed_storage_type
+	}
 	if t.var_type(node.value).len > 0 {
 		return none
 	}
@@ -566,6 +576,14 @@ fn (t &Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?strin
 		}
 	}
 	if !isnil(t.tc) {
+		for candidate in candidates {
+			if typ := t.tc.const_types[candidate] {
+				normalized := t.normalize_type_alias(typ.name())
+				if t.is_fixed_array_type(normalized) {
+					return normalized
+				}
+			}
+		}
 		checker_type := t.normalize_type_alias(t.tc.resolve_type(id).name())
 		if t.is_fixed_array_type(checker_type) {
 			return checker_type

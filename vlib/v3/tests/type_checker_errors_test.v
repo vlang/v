@@ -391,6 +391,13 @@ fn test_type_checker_reports_core_semantic_errors() {
 	assert cross_module_array_append_c.contains('array_push(&xs')
 }
 
+fn test_interface_method_rejects_narrowed_interface_param() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_interface_method_narrowed_interface_param',
+		'interface Base {\n\tbase() int\n}\n\ninterface Narrow {\n\tBase\n\tnarrow() int\n}\n\ninterface Handler {\n\thandle(x Base) int\n}\n\nstruct Service {}\n\nfn (s Service) handle(x Narrow) int {\n\treturn x.narrow()\n}\n\nfn main() {\n\t_ := Handler(Service{})\n}\n',
+		'does not implement interface')
+}
+
 fn test_review_generic_call_diagnostics() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_nongeneric_unknown_is_pattern', 'fn check(err IError) bool {
@@ -997,6 +1004,9 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 	assert statement_if == '1'
 	run_bad(v3_bin, 'bad_if_branch_primitive_mismatch',
 		"fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_if_branch_value_pointer_mismatch',
+		'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n',
 		'if-expression branch type mismatch')
 }
 
@@ -1690,6 +1700,16 @@ fn test_pr_review_codegen_batch_twenty() {
 	ok := run_good(v3_bin, 'good_method_value_local_assign_direct_use', mv +
 		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut cb := c.report\n\tcb = c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
 	assert ok == '7'
+	iface_mv := 'interface Runner {\n\trun() int\n}\n\nstruct Job {\n\tid int\n}\n\nfn (j Job) run() int {\n\treturn j.id\n}\n\nstruct Holder {\nmut:\n\tcb fn () int\n}\n'
+	run_bad(v3_bin, 'bad_interface_method_value_struct_field_escape', iface_mv +
+		'fn main() {\n\tr := Runner(Job{\n\t\tid: 5\n\t})\n\t_ := Holder{\n\t\tcb: r.run\n\t}\n}\n',
+		'cannot escape its call site')
+	run_bad(v3_bin, 'bad_interface_method_value_struct_field_assign', iface_mv +
+		'fn main() {\n\tr := Runner(Job{\n\t\tid: 5\n\t})\n\tmut h := Holder{}\n\th.cb = r.run\n\tprintln(int_str(h.cb()))\n}\n',
+		'cannot escape its call site')
+	iface_ok := run_good(v3_bin, 'good_interface_method_value_direct_callback', iface_mv +
+		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tr := Runner(Job{\n\t\tid: 7\n\t})\n\tprintln(int_str(invoke(r.run)))\n}\n')
+	assert iface_ok == '7'
 }
 
 fn test_pr_review_codegen_batch_twentyone() {
@@ -1876,6 +1896,26 @@ fn test_pr_review_codegen_batch_twentyeight() {
 	local_collision := run_good(v3_bin, 'good_local_type_name_avoids_user_collision',
 		'struct Row__local_make {\n\tglobal int\n}\nfn make() int {\n\tstruct Row {\n\t\tlocal int\n\t}\n\tlocal := Row{\n\t\tlocal: 3\n\t}\n\tglobal := Row__local_make{\n\t\tglobal: 4\n\t}\n\treturn local.local + global.global\n}\nfn main() {\n\tprintln(int_str(make()))\n}\n')
 	assert local_collision == '7'
+}
+
+fn test_pr_review_codegen_batch_twentynine() {
+	v3_bin := build_v3()
+	// A local pointer initialized from a call must not be treated as an alias of the first
+	// same-pointee pointer argument: the callee can return another argument. Here `choose` returns
+	// `&y`, so returning `p` must not heap-copy `x`.
+	call_alias := run_good(v3_bin, 'good_call_return_pointer_alias_not_inferred',
+		'struct Box {\nmut:\n\tx int\n}\nfn choose(a &Box, b &Box) &Box {\n\t_ = a\n\treturn b\n}\nfn leak() &Box {\n\tmut x := Box{\n\t\tx: 1\n\t}\n\tmut y := Box{\n\t\tx: 2\n\t}\n\tp := choose(&x, &y)\n\treturn p\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
+	assert call_alias == '2'
+	// Reassigning a local pointer updates the stack-local alias source used when the pointer
+	// escapes. Returning `p` after `p = &y` must heap-copy `y`, not the initializer's `x`.
+	reassigned_alias := run_good(v3_bin, 'good_reassigned_pointer_alias_source',
+		'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut x := Box{\n\t\tx: 1\n\t}\n\tmut y := Box{\n\t\tx: 2\n\t}\n\tmut p := &x\n\tp = &y\n\treturn p\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
+	assert reassigned_alias == '2'
+	// A capitalized field followed by a const-sized fixed array is a named field whose type is
+	// `[n]int`, not a failed generic embedded-field probe that skips `[n]` and leaves `int`.
+	fixed_field := run_good(v3_bin, 'good_capitalized_fixed_array_field',
+		'const n = 2\nstruct S {\n\tFoo [n]int\n}\nfn main() {\n\ts := S{\n\t\tFoo: [1, 2]!\n\t}\n\tprintln(int_str(s.Foo.len) + ":" + int_str(s.Foo[1]))\n}\n')
+	assert fixed_field == '2:2'
 }
 
 fn test_if_guard_rejects_or_handled_value() {

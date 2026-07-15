@@ -1346,6 +1346,7 @@ fn main() {
 		}
 		exit(1)
 	}
+	pre_tc.freeze_interface_impl_names()
 
 	// Reuse the pre-transform checker for metadata only. Transform does not add
 	// declarations, and v1/v2 do not run a second semantic checker after lowering.
@@ -2989,6 +2990,13 @@ fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name 
 }
 
 fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) string {
+	if importing_file.len > 0 {
+		local_modules_path := os.join_path(os.dir(importing_file), 'modules',
+			mod_name.replace('.', os.path_separator))
+		if os.is_dir(local_modules_path) {
+			return local_modules_path
+		}
+	}
 	if project_root.len > 0 {
 		project_path := os.join_path_single(project_root, mod_name.replace('.', os.path_separator))
 		if os.is_dir(project_path) {

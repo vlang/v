@@ -264,6 +264,16 @@ fn (t &Transformer) contextual_array_comparison_type(id flat.NodeId, own_type st
 	}
 	own_elem := own_type[2..]
 	other_elem := other_type[2..]
+	other_iface := t.resolve_interface_type_name(other_elem)
+	if other_iface.len > 0 {
+		if !t.array_append_interface_has_requirements(other_iface) {
+			return other_type
+		}
+		own_concrete := t.trim_pointer_type(t.normalize_type_alias(own_elem))
+		if !isnil(t.tc) && t.tc.named_type_implements_interface(own_concrete, other_iface) {
+			return other_type
+		}
+	}
 	other_base, _, other_is_generic := generic_app_parts(other_elem)
 	if !other_is_generic {
 		return own_type
@@ -411,6 +421,16 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 	if lhs_iface.len == 0 && rhs_iface.len == 0 {
 		return none
 	}
+	if rhs_iface.len == 0 && t.expr_is_nil_like(rhs_id) {
+		if nil_cmp := t.interface_nil_compare_expr(lhs_id, lhs_type, node.op) {
+			return nil_cmp
+		}
+	}
+	if lhs_iface.len == 0 && t.expr_is_nil_like(lhs_id) {
+		if nil_cmp := t.interface_nil_compare_expr(rhs_id, rhs_type, node.op) {
+			return nil_cmp
+		}
+	}
 	iface := if lhs_iface.len > 0 { lhs_iface } else { rhs_iface }
 	lhs := t.transform_expr_for_type(lhs_id, iface)
 	rhs := t.transform_expr_for_type(rhs_id, iface)
@@ -476,6 +496,19 @@ fn (mut t Transformer) transform_infix_interface_ops(_id flat.NodeId, node flat.
 		return t.make_prefix(.not, eq)
 	}
 	return eq
+}
+
+fn (mut t Transformer) interface_nil_compare_expr(value_id flat.NodeId, value_type string, op flat.Op) ?flat.NodeId {
+	if t.resolve_interface_type_name(value_type).len == 0 {
+		return none
+	}
+	value := t.transform_expr(value_id)
+	lhs := if value_type.starts_with('&') {
+		value
+	} else {
+		t.make_selector(value, '_object', 'voidptr')
+	}
+	return t.make_infix(op, lhs, t.a.add(.nil_literal))
 }
 
 fn (t &Transformer) interface_box_concrete_type(id flat.NodeId) ?string {
@@ -598,8 +631,13 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		} else {
 			arr2(call_lhs, call_rhs)
 		}
-		t.mark_fn_used_name(call_info.name)
-		call := t.make_call_typed(call_info.name, args, node.typ)
+		t.mark_struct_operator_used_name(call_info.name)
+		ret_type := t.infix_struct_operator_result_type(node, struct_type)
+		call := t.make_call_typed(call_info.name, args, if ret_type.len > 0 {
+			ret_type
+		} else {
+			node.typ
+		})
 		if call_info.negate {
 			return t.make_prefix(.not, call)
 		}
@@ -628,7 +666,7 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		}
 		lhs := t.transform_expr(lhs_id)
 		rhs := t.transform_expr(t.a.children[node.children_start + 1])
-		t.mark_fn_used_name(eq_fn)
+		t.mark_struct_operator_used_name(eq_fn)
 		eq_call := t.make_call_typed(eq_fn, arr2(lhs, rhs), 'bool')
 		if node.op == .ne {
 			return t.make_prefix(.not, eq_call)
@@ -757,8 +795,13 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 		} else {
 			arr2(call_lhs, call_rhs)
 		}
-		t.mark_fn_used_name(call_info.name)
-		call := t.make_call_typed(call_info.name, args, node.typ)
+		t.mark_struct_operator_used_name(call_info.name)
+		ret_type := t.infix_struct_operator_result_type(node, struct_type)
+		call := t.make_call_typed(call_info.name, args, if ret_type.len > 0 {
+			ret_type
+		} else {
+			node.typ
+		})
 		if call_info.negate {
 			return t.make_prefix(.not, call)
 		}
@@ -773,7 +816,7 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 		}
 		call_lhs := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'eq_lhs')
 		call_rhs := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'eq_rhs')
-		t.mark_fn_used_name(eq_fn)
+		t.mark_struct_operator_used_name(eq_fn)
 		eq_call := t.make_call_typed(eq_fn, arr2(call_lhs, call_rhs), 'bool')
 		if node.op == .ne {
 			return t.make_prefix(.not, eq_call)
@@ -994,12 +1037,12 @@ fn (t &Transformer) struct_operator_fn_name_with_usage(struct_type string, op_na
 		if t.is_known_operator_fn_name(method_name, require_used) {
 			return method_name
 		}
+		if name := t.generic_struct_operator_fn_name(receiver, op_name) {
+			return name
+		}
 		cmethod_name := c_name(method_name)
 		if t.is_known_operator_fn_name(cmethod_name, require_used) {
 			return cmethod_name
-		}
-		if name := t.generic_struct_operator_fn_name(receiver, op_name) {
-			return name
 		}
 	}
 	return none
@@ -1031,7 +1074,7 @@ fn (t &Transformer) generic_struct_instance_name(type_name string) string {
 	if !ok {
 		return ''
 	}
-	if base in t.tc.struct_generic_params {
+	if _ := t.generic_struct_params_for_base(base) {
 		return normalized
 	}
 	return ''
@@ -1039,9 +1082,9 @@ fn (t &Transformer) generic_struct_instance_name(type_name string) string {
 
 // generic_struct_operator_fn_name handles operator overloads on a generic-struct
 // instance (e.g. `Vec4[f32] + Vec4[f32]`). The operator is declared on the generic
-// form (`Vec4[T].+`) and specialized to `vec__Vec4_f32__plus` by the monomorphizer
-// (which runs after this lowering). When the generic operator exists, anticipate
-// the specialized C name so the infix lowers to that call.
+// form (`Vec4[T].+`) and specialized by the monomorphizer. Keep the operator
+// spelling in the lowered call so signature lookup can distinguish `.+` from an
+// ordinary `.plus` method with the same C spelling.
 fn (t &Transformer) generic_struct_operator_fn_name(struct_type string, op_name string) ?string {
 	if isnil(t.tc) {
 		return none
@@ -1050,13 +1093,46 @@ fn (t &Transformer) generic_struct_operator_fn_name(struct_type string, op_name 
 	if !ok {
 		return none
 	}
-	params := t.tc.struct_generic_params[base] or { return none }
+	params := t.generic_struct_params_for_base(base) or { return none }
 	if params.len == 0 {
 		return none
 	}
 	generic_key := '${base}[${params.join(', ')}].${op_name}'
 	if generic_key in t.tc.fn_ret_types || generic_key in t.tc.fn_param_types {
-		return c_name('${struct_type}.${op_name}')
+		return '${struct_type}.${op_name}'
+	}
+	return none
+}
+
+fn (t &Transformer) generic_struct_params_for_base(base string) ?[]string {
+	if isnil(t.tc) || base.len == 0 {
+		return none
+	}
+	if params := t.tc.struct_generic_params[base] {
+		return params
+	}
+	short := base.all_after_last('.')
+	if params := t.tc.struct_generic_params[short] {
+		return params
+	}
+	if !base.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		if params := t.tc.struct_generic_params['${t.cur_module}.${base}'] {
+			return params
+		}
+	}
+	mut found := []string{}
+	for name, params in t.tc.struct_generic_params {
+		if name.all_after_last('.') != short {
+			continue
+		}
+		if found.len > 0 && found != params {
+			return none
+		}
+		found = params.clone()
+	}
+	if found.len > 0 {
+		return found
 	}
 	return none
 }
@@ -1087,6 +1163,15 @@ fn (t &Transformer) struct_operator_return_type(fn_name string) string {
 	if !isnil(t.tc) {
 		if ret := t.tc.fn_ret_types[fn_name] {
 			return t.normalize_type_alias(ret.name())
+		}
+	}
+	if fn_name.contains('.') {
+		receiver := fn_name.all_before_last('.')
+		op_name := fn_name.all_after_last('.')
+		if _ := struct_operator_name_to_op(op_name) {
+			if ret := t.generic_struct_operator_return_type_by_name(receiver, op_name) {
+				return ret
+			}
 		}
 	}
 	return ''
@@ -1132,11 +1217,18 @@ fn (t &Transformer) generic_struct_operator_return_type(struct_type string, op f
 		return none
 	}
 	op_name := struct_operator_symbol(op) or { return none }
+	return t.generic_struct_operator_return_type_by_name(struct_type, op_name)
+}
+
+fn (t &Transformer) generic_struct_operator_return_type_by_name(struct_type string, op_name string) ?string {
+	if struct_type.len == 0 || isnil(t.tc) {
+		return none
+	}
 	full_base, args, ok := generic_app_parts(struct_type)
 	if !ok {
 		return none
 	}
-	params := t.tc.struct_generic_params[full_base] or { return none }
+	params := t.generic_struct_params_for_base(full_base) or { return none }
 	generic_key := '${full_base}[${params.join(', ')}].${op_name}'
 	mut ret := ''
 	if r := t.fn_ret_types[generic_key] {
@@ -1154,6 +1246,25 @@ fn (t &Transformer) generic_struct_operator_return_type(struct_type string, op f
 		return '${full_base.all_before_last('.')}.${substituted}'
 	}
 	return substituted
+}
+
+fn struct_operator_name_to_op(op_name string) ?flat.Op {
+	match op_name {
+		'+' { return .plus }
+		'-' { return .minus }
+		'*' { return .mul }
+		'/' { return .div }
+		'%' { return .mod }
+		'==' { return .eq }
+		'!=' { return .ne }
+		'<' { return .lt }
+		'>' { return .gt }
+		'<=' { return .le }
+		'>=' { return .ge }
+		else {}
+	}
+
+	return none
 }
 
 // transform_infix_sum_ops transforms transform infix sum ops data for transform.
@@ -1534,6 +1645,9 @@ fn (t &Transformer) type_pattern_name(id flat.NodeId) string {
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
+		.fn_literal, .lambda_expr {
+			return t.fn_value_type_name(id) or { '' }
+		}
 		.ident {
 			return node.value
 		}

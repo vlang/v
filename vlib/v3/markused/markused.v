@@ -399,6 +399,15 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				if !valid_symbol_name(callee) {
 					continue
 				}
+				if collector.is_generic_index_overload_call(callee, fn_info.module) {
+					enqueue(callee, mut used, mut queue)
+					lowered := markused_c_name(callee)
+					if lowered != callee {
+						enqueue(lowered, mut used, mut queue)
+					}
+					uses_generics = true
+					continue
+				}
 				if callee == 'string__plus' {
 					enqueue(callee, mut used, mut queue)
 					continue
@@ -2047,6 +2056,7 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 		}
 		'rune', 'char' {
 			enqueue('rune.str', mut used, mut queue)
+			enqueue(markused_c_name('rune.str'), mut used, mut queue)
 		}
 		'int', 'i8', 'i16', 'i32', 'i64' {
 			enqueue('${type_name}.str', mut used, mut queue)
@@ -2070,6 +2080,8 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 			enqueue('strconv__f32_to_str_l', mut used, mut queue)
 		}
 		'f64' {
+			enqueue('f64.str', mut used, mut queue)
+			enqueue(markused_c_name('f64.str'), mut used, mut queue)
 			enqueue('strconv__f64_to_str_l', mut used, mut queue)
 		}
 		else {}
@@ -3147,7 +3159,9 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 					calls)
 			}
 			.selector {
-				if !c.selector_base_is_local(child, local_values) {
+				if c.collect_interface_method_value_selector(child, mut calls) {
+					// handled
+				} else if !c.selector_base_is_local(child, local_values) {
 					c.collect_fn_value_selector(child_id, child, cur_module, imports, mut calls)
 				} else if resolved := c.tc.resolved_fn_value_name(child_id) {
 					calls << resolved
@@ -3316,6 +3330,9 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			}
 			.assign, .selector_assign, .index_assign {
 				c.collect_assign_operator_call(child, cur_module, local_types, mut calls)
+			}
+			.index {
+				c.collect_index_overload_getter_method(child, cur_module, local_types, mut calls)
 			}
 			.infix {
 				if child.op == .plus {
@@ -3913,7 +3930,9 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 				}
 			}
 			.selector {
-				if !c.top_level_selector_base_is_local(child, local_values) {
+				if c.collect_interface_method_value_selector(child, mut calls) {
+					// handled
+				} else if !c.top_level_selector_base_is_local(child, local_values) {
 					c.collect_fn_value_selector(child_id, child, cur_module, imports, mut calls)
 				}
 			}
@@ -3937,6 +3956,9 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 			}
 			.assign, .selector_assign, .index_assign {
 				c.collect_assign_operator_call(child, cur_module, local_types, mut calls)
+			}
+			.index {
+				c.collect_index_overload_getter_method(child, cur_module, local_types, mut calls)
 			}
 			.infix {
 				if child.op == .plus {
@@ -4848,6 +4870,9 @@ fn (c &CallCollector) collect_struct_operator_call(lhs_id flat.NodeId, op flat.O
 
 // collect_assign_operator_call adds operator overloads used through assignment operators.
 fn (c &CallCollector) collect_assign_operator_call(node &flat.Node, cur_module string, local_types map[string]string, mut calls []string) {
+	if node.kind == .index_assign {
+		c.collect_index_overload_assignment_methods(node, cur_module, local_types, mut calls)
+	}
 	op := markused_assign_operator_symbol(node.op) or { return }
 	mut i := 0
 	for i + 1 < node.children_count {
@@ -4857,6 +4882,96 @@ fn (c &CallCollector) collect_assign_operator_call(node &flat.Node, cur_module s
 		}
 		i += 2
 	}
+}
+
+fn (c &CallCollector) collect_index_overload_assignment_methods(node &flat.Node, cur_module string, local_types map[string]string, mut calls []string) {
+	if node.children_count < 2 {
+		return
+	}
+	lhs_id := c.a.child(node, 0)
+	if int(lhs_id) < 0 {
+		return
+	}
+	lhs := c.a.node(lhs_id)
+	if lhs.kind != .index || lhs.children_count == 0 {
+		return
+	}
+	base_id := c.a.child(lhs, 0)
+	base_type := c.operator_lhs_type(base_id, local_types)
+	for receiver in c.struct_operator_receivers_for_call(base_type, cur_module) {
+		c.collect_index_overload_method(receiver, '[]=', cur_module, mut calls)
+		if node.op != .assign {
+			c.collect_index_overload_method(receiver, '[]', cur_module, mut calls)
+		}
+	}
+	if receiver := c.generic_index_overload_receiver(base_type, cur_module) {
+		c.collect_index_overload_method(receiver, '[]=', cur_module, mut calls)
+		if node.op != .assign {
+			c.collect_index_overload_method(receiver, '[]', cur_module, mut calls)
+		}
+	}
+}
+
+fn (c &CallCollector) collect_index_overload_getter_method(node &flat.Node, cur_module string, local_types map[string]string, mut calls []string) {
+	if node.children_count == 0 {
+		return
+	}
+	base_id := c.a.child(node, 0)
+	base_type := c.operator_lhs_type(base_id, local_types)
+	for receiver in c.struct_operator_receivers_for_call(base_type, cur_module) {
+		c.collect_index_overload_method(receiver, '[]', cur_module, mut calls)
+	}
+	if receiver := c.generic_index_overload_receiver(base_type, cur_module) {
+		c.collect_index_overload_method(receiver, '[]', cur_module, mut calls)
+	}
+}
+
+fn (c &CallCollector) collect_index_overload_method(receiver string, method string, cur_module string, mut calls []string) {
+	if method_name := c.typed_receiver_method_name(receiver, method, cur_module) {
+		c.add_typed_receiver_method_name(method_name, mut calls)
+		return
+	}
+	if c.receiver_is_generic_struct_application(receiver, cur_module) {
+		c.add_typed_receiver_method_name('${receiver}.${method}', mut calls)
+	}
+}
+
+fn (c &CallCollector) is_generic_index_overload_call(name string, cur_module string) bool {
+	method := name.all_after_last('.')
+	if method !in ['[]', '[]='] {
+		return false
+	}
+	receiver := name.all_before_last('.')
+	return c.receiver_is_generic_struct_application(receiver, cur_module)
+}
+
+fn (c &CallCollector) generic_index_overload_receiver(typ types.Type, cur_module string) ?string {
+	clean := types.unwrap_pointer(typ)
+	receiver := resolve_type_name(clean)
+	if c.receiver_is_generic_struct_application(receiver, cur_module) {
+		return receiver
+	}
+	return none
+}
+
+fn (c &CallCollector) receiver_is_generic_struct_application(receiver string, cur_module string) bool {
+	clean := markused_clean_receiver_type_name(receiver)
+	bracket := clean.index_u8(`[`)
+	if bracket <= 0 || !clean.ends_with(']') {
+		return false
+	}
+	base := clean[..bracket]
+	if base in c.tc.struct_generic_params {
+		return true
+	}
+	short_base := base.all_after_last('.')
+	if short_base != base && short_base in c.tc.struct_generic_params {
+		return true
+	}
+	if !base.contains('.') && cur_module.len > 0 && cur_module != 'main' && cur_module != 'builtin' {
+		return '${cur_module}.${base}' in c.tc.struct_generic_params
+	}
+	return false
 }
 
 fn (c &CallCollector) operator_lhs_type(lhs_id flat.NodeId, local_types map[string]string) types.Type {
@@ -5080,6 +5195,9 @@ fn (c &CallCollector) collect_fn_value_ident(id flat.NodeId, name string, cur_mo
 
 // collect_fn_value_selector updates collect fn value selector state for markused.
 fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
+	if c.collect_interface_method_value_selector(node, mut calls) {
+		return
+	}
 	if resolved := c.tc.resolved_fn_value_name(id) {
 		calls << resolved
 		return
@@ -5107,6 +5225,26 @@ fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node,
 		c.add_fn_value_candidates(resolved_name, cur_module, imports, mut calls)
 		c.add_const_alias_candidates(resolved_name, cur_module, imports, mut calls)
 	}
+}
+
+fn (c &CallCollector) collect_interface_method_value_selector(node &flat.Node, mut calls []string) bool {
+	if node.children_count == 0 || node.value.len == 0 {
+		return false
+	}
+	base_id := c.a.child(node, 0)
+	mut base_type := types.unwrap_pointer(c.node_type(base_id))
+	if base_type is types.Alias {
+		base_type = base_type.base_type
+	}
+	if base_type !is types.Interface {
+		return false
+	}
+	iface := base_type as types.Interface
+	if _ := c.tc.interface_method_signature_key(iface.name, node.value) {
+		calls << '${iface.name}.${node.value}'
+		return true
+	}
+	return false
 }
 
 // name_may_reference_fn returns name may reference fn data for CallCollector.

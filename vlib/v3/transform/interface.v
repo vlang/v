@@ -42,7 +42,11 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 	if name.len == 0 || isnil(t.tc) {
 		return ''
 	}
-	clean := t.trim_pointer_type(t.normalize_type_alias(name))
+	mut clean := t.trim_pointer_type(t.normalize_type_alias(name))
+	base, _, is_generic := generic_app_parts(clean)
+	if is_generic {
+		clean = base
+	}
 	if clean in t.tc.interface_names {
 		return clean
 	}
@@ -103,6 +107,13 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			return t.transform_expr(id)
 		}
 	}
+	if target_is_ptr && t.expr_is_nil_like(id) {
+		expr := t.transform_expr(id)
+		if int(expr) >= 0 {
+			t.set_node_typ(int(expr), target_type)
+		}
+		return expr
+	}
 	// IError has bespoke handling (built via `error()`, fields accessed directly);
 	// do not route it through the generic interface boxing.
 	if t.is_builtin_ierror_interface_name(iface_name) {
@@ -116,6 +127,30 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return t.transform_expr(id)
 	}
 	source_type := t.node_type(id)
+	if target_is_ptr && (source_type == 'voidptr' || source_type == '&void') {
+		expr := t.transform_expr(id)
+		cast := t.make_cast(target_type, expr, target_type)
+		t.set_node_typ(int(cast), target_type)
+		return cast
+	}
+	if !target_is_ptr && (source_type == 'voidptr' || source_type == '&void') {
+		expr := t.transform_expr(id)
+		fields := [
+			t.make_sum_literal_field('_typ', t.make_int_literal(0), 'int'),
+			t.make_sum_literal_field('_object', expr, 'voidptr'),
+		]
+		start := t.a.children.len
+		for field in fields {
+			t.a.children << field
+		}
+		return t.a.add_node(flat.Node{
+			kind:           .struct_init
+			children_start: start
+			children_count: flat.child_count(fields.len)
+			value:          iface_name
+			typ:            iface_name
+		})
+	}
 	if target_is_ptr && node.kind == .prefix && node.op == .amp && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
@@ -167,6 +202,15 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		}
 		return t.heap_copy_interface_expr(expr, iface_name, target_type)
 	}
+	if source_iface.len > 0 {
+		expr := t.transform_expr(id)
+		if converted := t.convert_interface_expr_to_interface(expr, source_type, iface_name) {
+			if target_is_ptr {
+				return t.heap_copy_interface_expr(converted, iface_name, target_type)
+			}
+			return converted
+		}
+	}
 	literal := t.make_interface_literal_from_expr(id, iface_name, share_source) or { return none }
 	if !target_is_ptr {
 		return literal
@@ -176,6 +220,187 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	// interface box rather than taking the address of a local temporary, which
 	// would dangle.
 	return t.heap_copy_interface_expr(literal, iface_name, target_type)
+}
+
+fn (t &Transformer) interface_pointer_source_needs_heap_copy(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return false
+	}
+	child_id := t.a.child(&node, 0)
+	if int(child_id) < 0 || int(child_id) >= t.a.nodes.len {
+		return false
+	}
+	child := t.a.nodes[int(child_id)]
+	return child.kind == .ident && t.var_type(child.value).len > 0
+}
+
+fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.NodeId, source_type string, target_iface string) ?flat.NodeId {
+	source_iface := t.resolve_interface_type_name(source_type)
+	if source_iface.len == 0 || target_iface.len == 0 || isnil(t.tc) {
+		return none
+	}
+	if source_iface == target_iface {
+		return source_expr
+	}
+	matching := t.interface_conversion_impl_mappings(source_iface, target_iface)
+	if matching.len == 0 {
+		return none
+	}
+	base := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_cast')
+	op := if source_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
+	object := t.make_selector_op(base, '_object', 'voidptr', op)
+	fields := [
+		t.make_sum_literal_field('_typ', t.make_int_literal(0), 'int'),
+		t.make_sum_literal_field('_object', object, 'voidptr'),
+	]
+	start := t.a.children.len
+	for field in fields {
+		t.a.children << field
+	}
+	init := t.a.add_node(flat.Node{
+		kind:           .struct_init
+		children_start: start
+		children_count: flat.child_count(fields.len)
+		value:          target_iface
+		typ:            target_iface
+	})
+	out_name := t.new_temp('iface_cast')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, init, target_iface)
+	source_typ := t.make_selector_op(base, '_typ', 'int', op)
+	out_typ := t.make_selector(t.make_ident(out_name), '_typ', 'int')
+	target_fields := t.tc.interface_fields[target_iface] or { []types.StructField{} }
+	for mapping in matching {
+		cond := t.make_infix(.eq, source_typ, t.make_int_literal(mapping.source_id))
+		mut assigns := []flat.NodeId{}
+		assigns << t.make_assign(out_typ, t.make_int_literal(mapping.target_id))
+		for field in target_fields {
+			field_type := t.normalize_type_alias(field.typ.name())
+			lhs := t.make_selector(t.make_ident(out_name), field.name, field_type)
+			object_ptr := t.make_cast('&${mapping.impl}', object, '&${mapping.impl}')
+			rhs := t.make_selector_op(object_ptr, field.name, field_type, flat.Op.arrow)
+			assigns << t.make_assign(lhs, rhs)
+		}
+		t.pending_stmts << t.make_if(cond, t.make_block(assigns), t.make_empty())
+	}
+	if t.is_builtin_ierror_interface_name(target_iface) {
+		if source_id := t.interface_impl_type_id(source_iface, 'IError') {
+			cond := t.make_infix(.eq, source_typ, t.make_int_literal(source_id))
+			ierror_ptr := t.make_cast('&${target_iface}', object, '&${target_iface}')
+			ierror_value := t.make_prefix(.mul, ierror_ptr)
+			t.set_node_typ(int(ierror_value), target_iface)
+			assign := t.make_assign(t.make_ident(out_name), ierror_value)
+			t.pending_stmts << t.make_if(cond, t.make_block(arr1(assign)), t.make_empty())
+		}
+	}
+	if t.is_builtin_ierror_interface_name(source_iface) {
+		if target_id := t.interface_impl_type_id(target_iface, 'IError') {
+			cond := t.make_infix(.eq, source_typ, t.make_int_literal(0))
+			out_object := t.make_selector(t.make_ident(out_name), '_object', 'voidptr')
+			source_addr := t.runtime_addr(base, source_type)
+			dup := t.make_call_typed('memdup', arr2(source_addr, t.make_sizeof_type(source_iface)),
+				'voidptr')
+			assigns := [
+				t.make_assign(out_typ, t.make_int_literal(target_id)),
+				t.make_assign(out_object, dup),
+			]
+			t.pending_stmts << t.make_if(cond, t.make_block(assigns), t.make_empty())
+		}
+	}
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), target_iface)
+	return result
+}
+
+struct InterfaceImplMapping {
+	source_id int
+	target_id int
+	impl      string
+}
+
+fn (mut t Transformer) interface_conversion_impl_mappings(source_iface string, target_iface string) []InterfaceImplMapping {
+	mut result := []InterfaceImplMapping{}
+	if source_iface.len == 0 || target_iface.len == 0 || isnil(t.tc) {
+		return result
+	}
+	impls := if t.is_builtin_ierror_interface_name(source_iface) {
+		t.tc.ierror_impl_names()
+	} else {
+		t.tc.interface_impl_names(source_iface)
+	}
+	for impl in impls {
+		if !t.interface_impl_satisfies_target(impl, target_iface) {
+			continue
+		}
+		source_id := t.interface_impl_type_id(source_iface, impl) or { continue }
+		target_id := t.interface_impl_type_id(target_iface, impl) or { continue }
+		result << InterfaceImplMapping{
+			source_id: source_id
+			target_id: target_id
+			impl:      impl
+		}
+	}
+	return result
+}
+
+fn (mut t Transformer) make_interface_target_is_check(source_expr flat.NodeId, source_type string, source_iface string, target_iface string) ?flat.NodeId {
+	mappings := t.interface_conversion_impl_mappings(source_iface, target_iface)
+	if mappings.len == 0 {
+		return none
+	}
+	op := if source_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
+	typ := t.make_selector_op(source_expr, '_typ', 'int', op)
+	mut result := flat.empty_node
+	for mapping in mappings {
+		cmp := t.make_infix(.eq, typ, t.make_int_literal(mapping.source_id))
+		if int(result) < 0 {
+			result = cmp
+		} else {
+			result = t.make_infix(.logical_or, result, cmp)
+		}
+	}
+	if t.is_builtin_ierror_interface_name(target_iface) {
+		if source_id := t.interface_impl_type_id(source_iface, 'IError') {
+			cmp := t.make_infix(.eq, typ, t.make_int_literal(source_id))
+			if int(result) < 0 {
+				result = cmp
+			} else {
+				result = t.make_infix(.logical_or, result, cmp)
+			}
+		}
+	}
+	return result
+}
+
+fn (t &Transformer) interface_impl_satisfies_target(impl string, target_iface string) bool {
+	if impl == target_iface || (t.is_builtin_ierror_interface_name(impl)
+		&& t.is_builtin_ierror_interface_name(target_iface)) {
+		return true
+	}
+	if impl in t.tc.interface_names {
+		return t.tc.interface_implements_interface(impl, target_iface)
+	}
+	resolved := t.tc.interface_metadata_name(impl)
+	if resolved in t.tc.interface_names {
+		return t.tc.interface_implements_interface(resolved, target_iface)
+	}
+	if t.is_builtin_ierror_interface_name(target_iface) {
+		return t.tc.named_type_compatible_with_ierror(impl)
+	}
+	return t.tc.named_type_implements_interface(impl, target_iface)
+}
+
+fn (t &Transformer) resolve_interface_pattern_interface(pattern string) ?string {
+	for candidate in t.interface_pattern_candidates(pattern) {
+		iface := t.resolve_interface_type_name(candidate)
+		if iface.len > 0 {
+			return iface
+		}
+	}
+	return none
 }
 
 // transform_global_amp_interface_cast supports transform_global_amp_interface_cast handling.
@@ -278,6 +503,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	is_ptr := source_type.starts_with('&')
 	concrete_type := if is_ptr { source_type[1..] } else { source_type }
 	t.mark_interface_boxed_type(iface_name, concrete_type)
+	if is_ptr && !share_source && t.interface_pointer_source_needs_heap_copy(id) {
+		size := t.make_sizeof_type(concrete_type)
+		dup := t.make_call_typed('memdup', arr2(source, size), 'voidptr')
+		copied := t.make_cast('&${concrete_type}', dup, '&${concrete_type}')
+		tmp_name := t.new_temp('iface_obj')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, copied, '&${concrete_type}')
+		source = t.make_ident(tmp_name)
+	}
 	if !is_ptr && !t.expr_can_take_address(source) {
 		tmp_name := t.new_temp('iface_src')
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, source_type)

@@ -43,12 +43,19 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 		}
 		then_id := g.a.child(&cur, 1)
 		mut then_scope_drops_consumed := false
+		mut then_scope_drop_prefix_count := 0
 		if g.valid_node_id(then_id) {
 			then_block := g.a.nodes[int(then_id)]
-			then_scope_drops_consumed = g.gen_branch_block_children(then_block, 1)
+			then_scope_drop_prefix_count = g.block_scope_drop_prefix_count(then_block)
+			then_scope_drops_consumed = g.gen_branch_block_children(then_block, 1 +
+				then_scope_drop_prefix_count)
+			if !g.block_consumes_scope_ownership_drops(then_block) {
+				then_scope_drops_consumed = true
+			}
 		}
 		g.gen_defers_from(defer_start)
 		if !then_scope_drops_consumed {
+			g.gen_scope_ownership_drop_count(then_scope_drop_prefix_count)
 			g.gen_scope_ownership_drops()
 		}
 		g.trim_defers(defer_start)
@@ -92,9 +99,15 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			else_defer_start := g.defers.len
 			g.indent++
 			mut else_scope_drops_consumed := false
-			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1)
+			else_scope_drop_prefix_count := g.block_scope_drop_prefix_count(else_node)
+			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1 +
+				else_scope_drop_prefix_count)
+			if !g.block_consumes_scope_ownership_drops(else_node) {
+				else_scope_drops_consumed = true
+			}
 			g.gen_defers_from(else_defer_start)
 			if !else_scope_drops_consumed {
+				g.gen_scope_ownership_drop_count(else_scope_drop_prefix_count)
 				g.gen_scope_ownership_drops()
 			}
 			g.trim_defers(else_defer_start)
@@ -275,13 +288,20 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 	}
 	then_id := g.a.child(&node, 1)
 	mut then_scope_drops_consumed := false
+	mut then_scope_drop_prefix_count := 0
 	if g.valid_node_id(then_id) {
 		then_block := g.a.nodes[int(then_id)]
-		then_scope_drops_consumed = g.gen_branch_block_children(then_block, 2)
+		then_scope_drop_prefix_count = g.block_scope_drop_prefix_count(then_block)
+		then_scope_drops_consumed = g.gen_branch_block_children(then_block, 2 +
+			then_scope_drop_prefix_count)
+		if !g.block_consumes_scope_ownership_drops(then_block) {
+			then_scope_drops_consumed = true
+		}
 	}
 	g.gen_defers_from(defer_start)
 	// The checker records the then block scope, then the outer guard-binding scope.
 	if !then_scope_drops_consumed {
+		g.gen_scope_ownership_drop_count(then_scope_drop_prefix_count)
 		g.gen_scope_ownership_drops()
 		g.gen_scope_ownership_drops()
 	}
@@ -385,9 +405,15 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 			defer_start := g.defers.len
 			g.indent++
 			mut else_scope_drops_consumed := false
-			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1)
+			else_scope_drop_prefix_count := g.block_scope_drop_prefix_count(else_node)
+			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1 +
+				else_scope_drop_prefix_count)
+			if !g.block_consumes_scope_ownership_drops(else_node) {
+				else_scope_drops_consumed = true
+			}
 			g.gen_defers_from(defer_start)
 			if !else_scope_drops_consumed {
+				g.gen_scope_ownership_drop_count(else_scope_drop_prefix_count)
 				g.gen_scope_ownership_drops()
 			}
 			g.trim_defers(defer_start)

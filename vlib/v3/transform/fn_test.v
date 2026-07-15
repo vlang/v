@@ -38,6 +38,46 @@ fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
 	assert t.generic_call_arg_type_for_inference(ident_id) == 'Concrete'
 }
 
+fn test_lowered_generic_operator_call_records_operator_use() {
+	decls := {
+		'Box.+': GenericFnDecl{
+			node:   flat.Node{
+				kind:  .fn_decl
+				value: 'Box[T].+'
+			}
+			module: 'main'
+			key:    'Box.+'
+		}
+	}
+	specs := {
+		'Box[int]': 'Box'
+	}
+	mut indexer := Transformer{}
+	lowered_operator_uses := indexer.lowered_generic_struct_operator_uses_for_specs(specs, decls)
+	assert 'Box_int__plus' in lowered_operator_uses
+	assert lowered_operator_uses['Box_int__plus'] == ['Box[int].+']
+
+	mut a := flat.FlatAst.new()
+	callee_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'Box_int__plus'
+	})
+	call_start := a.children.len
+	a.children << callee_id
+	call_id := a.add_node(flat.Node{
+		kind:           .call
+		children_start: i32(call_start)
+		children_count: flat.child_count(1)
+	})
+	mut t := Transformer{
+		a: &a
+	}
+	assert t.record_lowered_generic_struct_operator_call(a.nodes[int(call_id)],
+		lowered_operator_uses)
+	assert t.used_struct_operator_fns['Box[int].+']
+	assert t.used_struct_operator_fns['Box_int__plus']
+}
+
 fn test_typeof_display_canonicalizes_fixed_array_map_values() {
 	assert typeof_display_type_text('map[string]int[3]') == 'map[string][3]int'
 	assert typeof_display_type_text('int[n]') == '[n]int'

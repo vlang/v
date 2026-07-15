@@ -346,6 +346,8 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
 	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
+	mut saved_capturing_fn_literal_locals := tc.capturing_fn_literal_locals.move()
+	mut saved_capturing_fn_literal_local_depth := tc.capturing_fn_literal_local_depth.move()
 	tc.cur_fn_mut_param_base_types = map[string]Type{}
 	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
@@ -356,6 +358,8 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_fn_node_id = fn_idx
 	tc.method_value_locals = map[string]bool{}
 	tc.method_value_local_depth = map[string]int{}
+	tc.capturing_fn_literal_locals = map[string]bool{}
+	tc.capturing_fn_literal_local_depth = map[string]int{}
 	$if ownership ? {
 		tc.ownership_begin_fn(node)
 	}
@@ -390,6 +394,8 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
+	tc.capturing_fn_literal_locals = saved_capturing_fn_literal_locals.move()
+	tc.capturing_fn_literal_local_depth = saved_capturing_fn_literal_local_depth.move()
 }
 
 // prewarm_shared_type_cache forces the lazily-built type_cache indexes that

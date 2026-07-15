@@ -91,7 +91,7 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 	} else {
 		then_children << t.transform_stmt(then_id)
 	}
-	then_block := t.make_block(then_children)
+	then_block := t.make_block_prefix_scope_drops(then_children)
 
 	mut else_block := flat.empty_node
 	if node.children_count >= 3 {
@@ -212,7 +212,7 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 	} else {
 		then_children << t.transform_stmt(then_id)
 	}
-	then_block := t.make_block(then_children)
+	then_block := t.make_block_prefix_scope_drops(then_children)
 
 	mut else_block := flat.empty_node
 	if node.children_count >= 3 {
@@ -273,7 +273,7 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 		then_children << t.transform_stmt(then_id)
 	}
 	t.restore_var_types(saved_var_types)
-	then_block := t.make_block(then_children)
+	then_block := t.make_block_prefix_scope_drops(then_children)
 
 	mut else_block := flat.empty_node
 	if node.children_count >= 3 {
@@ -296,7 +296,7 @@ fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name stri
 		for i in 1 .. then_children.len {
 			inner_children << then_children[i]
 		}
-		inner_if := t.make_if(ok_cond, t.make_block(inner_children), else_block)
+		inner_if := t.make_if(ok_cond, t.make_block_prefix_scope_drops(inner_children), else_block)
 		selected_block = t.make_block([opt_decl, inner_if])
 	}
 	t.pending_stmts = outer_pending
@@ -838,7 +838,7 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	mut then_children := []flat.NodeId{cap: int(t.a.nodes[int(then_block0)].children_count) + 1}
 	then_children << value_decl
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
-	then_block := t.make_block(then_children)
+	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)
 
 	else_id := t.a.child(&if_node, 2)
@@ -888,7 +888,7 @@ fn (mut t Transformer) build_map_index_if_value_guard_chain(if_node flat.Node, l
 	then_id := t.a.child(&if_node, 1)
 	then_block0 := t.if_value_branch_block(then_id, target_name, target_type)
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
-	then_block := t.make_block(then_children)
+	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)
 
 	else_id := t.a.child(&if_node, 2)
@@ -943,7 +943,7 @@ fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node,
 	then_id := t.a.child(&if_node, 1)
 	then_block0 := t.if_value_branch_block(then_id, target_name, target_type)
 	then_children << t.a.children_of(&t.a.nodes[int(then_block0)])
-	then_block := t.make_block(then_children)
+	then_block := t.make_block_prefix_scope_drops(then_children)
 	t.restore_var_types(saved_var_types)
 
 	else_id := t.a.child(&if_node, 2)
@@ -1298,7 +1298,7 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 	else_id := if has_else { t.a.child(&node, 2) } else { flat.empty_node }
 
 	all_is := t.extract_all_is_exprs(cond_id)
-	all_none_eq := t.extract_none_eq_exprs(cond_id)
+	all_none_eq := t.extract_else_branch_smartcasts(cond_id)
 	cond_node := t.a.nodes[int(cond_id)]
 	if all_is.len == 0 && all_none_eq.len == 0 && cond_node.kind != .decl_assign {
 		return t.transform_plain_if_branches(id, node)
@@ -1320,8 +1320,8 @@ fn (mut t Transformer) transform_if_branches_with_smartcast(id flat.NodeId, node
 	t.invalidated_smartcasts = base_invalidated.clone()
 	t.restore_var_types(saved_var_types)
 
-	// Transform else-block (no is-smartcast -- the is_expr was false here; a
-	// `x == none` condition unwraps x in the else branch instead).
+	// Transform else-block. A `!is` condition narrows in the else branch, and
+	// `x == none` unwraps x there.
 	mut new_else_id := flat.empty_node
 	if has_else {
 		else_base_smartcasts := t.smartcast_stack.clone()
@@ -1424,6 +1424,13 @@ fn (t &Transformer) stmt_definitely_exits(id flat.NodeId) bool {
 	match node.kind {
 		.return_stmt {
 			return true
+		}
+		.assert_stmt {
+			if node.children_count == 0 {
+				return false
+			}
+			cond := t.a.nodes[int(t.a.child(&node, 0))]
+			return cond.kind == .bool_literal && cond.value == 'false'
 		}
 		.block {
 			for i in 0 .. node.children_count {
@@ -1566,13 +1573,35 @@ fn (t &Transformer) option_none_cmp_info(cond flat.Node) ?IsExprInfo {
 	}
 }
 
-// extract_none_eq_exprs returns option-unwrap contexts that apply to the ELSE
-// branch of an if: `if x == none { ... } else { <x unwrapped here> }`.
-fn (t &Transformer) extract_none_eq_exprs(cond_id flat.NodeId) []IsExprInfo {
+// extract_else_branch_smartcasts returns smartcast contexts that apply to the
+// ELSE branch of an if: `if x !is T { ... } else { <x as T> }`, or
+// `if x == none { ... } else { <x unwrapped here> }`.
+fn (t &Transformer) extract_else_branch_smartcasts(cond_id flat.NodeId) []IsExprInfo {
 	if int(cond_id) < 0 {
 		return []IsExprInfo{}
 	}
 	cond := t.a.nodes[int(cond_id)]
+	if cond.kind == .prefix && cond.op == .not && cond.children_count > 0 {
+		inner_id := t.a.child(&cond, 0)
+		inner := t.a.nodes[int(inner_id)]
+		if inner.kind == .is_expr && inner.children_count > 0 {
+			expr_id := t.a.child(&inner, 0)
+			ek := t.expr_key(expr_id)
+			if ek.len > 0 && inner.value.len > 0 {
+				expr_type := t.original_expr_type(expr_id)
+				stn := t.sum_type_for_is_expr(expr_type, inner.value)
+				if stn.len > 0 {
+					return [
+						IsExprInfo{
+							expr_name:     ek
+							variant_name:  inner.value
+							sum_type_name: stn
+						},
+					]
+				}
+			}
+		}
+	}
 	if cond.kind == .infix && cond.op == .eq && cond.children_count >= 2 {
 		if info := t.option_none_cmp_info(cond) {
 			return [info]
@@ -1615,7 +1644,15 @@ fn (t &Transformer) extract_is_expr(cond_id flat.NodeId) IsExprInfo {
 
 // sum_type_for_is_expr supports sum type for is expr handling for Transformer.
 fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) string {
-	clean_expr_type := t.trim_pointer_type(expr_type)
+	clean_expr_type := t.trim_all_pointer_type(expr_type)
+	if t.is_interface_type_name(clean_expr_type) {
+		if _ := t.resolve_interface_pattern(variant, clean_expr_type) {
+			return clean_expr_type
+		}
+		if _ := t.resolve_interface_pattern_interface(variant) {
+			return clean_expr_type
+		}
+	}
 	if _ := t.resolve_sum_variant_pattern_for_subject(clean_expr_type, variant) {
 		return clean_expr_type
 	}
