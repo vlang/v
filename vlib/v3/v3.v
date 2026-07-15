@@ -726,6 +726,7 @@ fn clone_flat_ast(ast &flat.FlatAst) &flat.FlatAst {
 		source_buffers:  ast.source_buffers.clone()
 		text_values:     ast.text_values.clone()
 		text_ids:        ast.text_ids.clone()
+		worker_pool:     ast.worker_pool
 	}
 }
 
@@ -1252,6 +1253,9 @@ fn main() {
 	_, builtin_parse_parallel := p.parse_files_dispatch(files, !current_no_parallel)
 	parse_was_parallel = parse_was_parallel || builtin_parse_parallel
 	mut a := p.a
+	defer {
+		a.close_workers()
+	}
 	a.user_code_start = a.nodes.len
 
 	// Test mode is a compile-time define as well as a harness mode. Install it
@@ -1320,6 +1324,7 @@ fn main() {
 	b.metric('AST nodes after parse', a.nodes.len, 'nodes')
 	b.metric('AST children after parse', a.children.len, 'edges')
 	b.metric('canonical AST texts', a.text_count(), 'texts')
+	b.metric('persistent worker threads', a.worker_count(), 'threads')
 
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
@@ -1689,6 +1694,7 @@ fn main() {
 		}
 	}
 
+	b.metric('worker phase callbacks', int(a.worker_tasks_run()), 'tasks')
 	b.print_report()
 }
 

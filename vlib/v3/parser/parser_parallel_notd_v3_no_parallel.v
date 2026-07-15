@@ -3,6 +3,7 @@ module parser
 import os
 import runtime
 import v3.flat
+import v3.workers
 
 // Parallel file parsing. The input file list is split into contiguous,
 // size-balanced chunks; each worker parses its chunk into a private Parser +
@@ -25,24 +26,6 @@ $if !windows {
 		starts_ptr voidptr // &[]int (worker-local starts; the master shifts them on merge)
 		start      int
 		end        int
-	}
-
-	// C.pthread_t declares C pthread t data used by parser.
-	@[typedef]
-	struct C.pthread_t {}
-
-	// C.pthread_create declares the C pthread_create symbol used by parser.
-	fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-
-	// C.pthread_join declares the C pthread_join symbol used by parser.
-	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
-
-	fn create_parser_thread(index int, thread_id &C.pthread_t, arg voidptr) int {
-		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
-		if fail == 'parser:all' || fail == 'parser:${index}' {
-			return 11
-		}
-		return C.pthread_create(thread_id, unsafe { nil }, parse_chunk_thread, arg)
 	}
 
 	// parse_chunk_thread parses one worker's contiguous range of files into the
@@ -80,7 +63,10 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 			sizes << size
 			total_bytes += size
 		}
-		n_jobs := parse_job_count(runtime.nr_jobs(), paths.len)
+		if isnil(p.a.worker_pool) {
+			p.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
+		}
+		n_jobs := parse_job_count(p.a.worker_pool.size() + 1, paths.len)
 		if n_jobs <= 1 || total_bytes < min_parallel_parse_bytes {
 			return p.parse_files_with_starts(paths), false
 		}
@@ -91,7 +77,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		// Worker parsers are cheap to build (no AST clone: parse output is
 		// per-file independent), so all of them are created up front. Each
 		// pre-reserves for its chunk's source bytes to avoid growth doubling.
-		mut workers := []&Parser{cap: thread_count}
+		mut parser_workers := []&Parser{cap: thread_count}
 		for ci in 0 .. thread_count {
 			mut w := Parser.new(p.prefs)
 			w.next_file_id = dispatch_file_id_start + bounds[ci + 1]
@@ -100,44 +86,41 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 				chunk_bytes += sizes[i]
 			}
 			w.reserve_for_source(int(chunk_bytes))
-			workers << w
+			parser_workers << w
 		}
-		mut args := []ParseChunkArgs{cap: thread_count}
+		mut args := []ParseChunkArgs{cap: n_jobs}
+		args << ParseChunkArgs{
+			worker:     voidptr(p)
+			paths_ptr:  unsafe { voidptr(&paths) }
+			starts_ptr: unsafe { voidptr(&starts) }
+			start:      bounds[0]
+			end:        bounds[1]
+		}
 		for ci in 0 .. thread_count {
 			args << ParseChunkArgs{
-				worker:     voidptr(workers[ci])
+				worker:     voidptr(parser_workers[ci])
 				paths_ptr:  unsafe { voidptr(&paths) }
 				starts_ptr: unsafe { voidptr(&starts) }
 				start:      bounds[ci + 1]
 				end:        bounds[ci + 2]
 			}
 		}
-		mut thread_ids := []C.pthread_t{len: thread_count}
-		mut started := []bool{len: thread_count}
-		mut any_started := false
-		for ci in 0 .. thread_count {
-			res := create_parser_thread(ci, unsafe { &thread_ids[ci] },
-				unsafe { voidptr(&args[ci]) })
-			if res == 0 {
-				started[ci] = true
-				any_started = true
-			} else {
-				parse_chunk_thread(unsafe { voidptr(&args[ci]) })
+		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+		mut tasks := []workers.Task{cap: n_jobs}
+		for ci in 0 .. n_jobs {
+			helper_idx := ci - 1
+			tasks << workers.Task{
+				run:        parse_chunk_thread
+				arg:        unsafe { voidptr(&args[ci]) }
+				force_sync: ci == 0 || fail == 'parser:all' || fail == 'parser:${helper_idx}'
 			}
 		}
-		// The master parses chunk 0 straight into p.a while the helpers run —
-		// no merge needed for it, and its layout matches a serial parse.
-		for i in bounds[0] .. bounds[1] {
-			starts[i] = p.a.nodes.len
-			p.parse_into(paths[i])
-		}
-		// Join and merge each helper in fixed chunk order (input file order),
+		any_started := p.a.worker_pool.run(tasks)
+		// Merge each helper in fixed chunk order (input file order),
 		// so node numbering stays deterministic and byte-identical to serial.
 		for ci in 0 .. thread_count {
-			if started[ci] && C.pthread_join(thread_ids[ci], unsafe { nil }) != 0 {
-				panic('failed to join parser worker ${ci}')
-			}
-			p.merge_parsed_worker(mut workers[ci], mut starts, bounds[ci + 1], bounds[ci + 2])
+			p.merge_parsed_worker(mut parser_workers[ci], mut starts, bounds[ci + 1],
+				bounds[ci + 2])
 		}
 		p.next_file_id = dispatch_file_id_start + paths.len
 		return starts, any_started

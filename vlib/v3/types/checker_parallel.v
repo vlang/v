@@ -3,6 +3,7 @@ module types
 import os
 import runtime
 import v3.flat
+import v3.workers
 
 const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
@@ -23,20 +24,6 @@ $if !windows {
 	struct CheckChunkArgs {
 		worker    voidptr
 		items_ptr voidptr
-	}
-
-	@[typedef]
-	struct C.pthread_t {}
-
-	fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
-
-	fn create_checker_thread(index int, thread_id &C.pthread_t, arg voidptr) int {
-		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
-		if fail == 'checker:all' || fail == 'checker:${index}' {
-			return 11
-		}
-		return C.pthread_create(thread_id, unsafe { nil }, check_chunk_thread, arg)
 	}
 
 	fn check_chunk_thread(arg voidptr) voidptr {
@@ -171,7 +158,11 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		tc.check_fn_items_serial(items)
 		return false
 	} $else {
-		n_jobs := check_job_count(runtime.nr_jobs(), items.len)
+		mut ast := unsafe { tc.a }
+		if isnil(ast.worker_pool) {
+			ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
+		}
+		n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
 		if items.len < min_parallel_check_items || n_jobs <= 1 {
 			tc.check_fn_items_serial(items)
 			return false
@@ -179,30 +170,20 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		mut chunks := split_check_items(items, n_jobs)
 		chunk_count := chunks.len
 		thread_count := chunk_count - 1
-		mut workers := []voidptr{cap: thread_count}
+		mut checker_workers := []voidptr{cap: thread_count}
 		for _ in 0 .. thread_count {
 			w := tc.fork_for_parallel_check()
-			workers << voidptr(w)
+			checker_workers << voidptr(w)
 		}
-		mut args := []CheckChunkArgs{cap: thread_count}
+		mut args := []CheckChunkArgs{cap: chunk_count}
+		args << CheckChunkArgs{
+			worker:    voidptr(tc)
+			items_ptr: unsafe { voidptr(&chunks[0]) }
+		}
 		for ci in 0 .. thread_count {
 			args << CheckChunkArgs{
-				worker:    workers[ci]
+				worker:    checker_workers[ci]
 				items_ptr: unsafe { voidptr(&chunks[ci + 1]) }
-			}
-		}
-
-		mut thread_ids := []C.pthread_t{len: thread_count}
-		mut started := []bool{len: thread_count}
-		mut any_started := false
-		for ci in 0 .. thread_count {
-			res := create_checker_thread(ci, unsafe { &thread_ids[ci] },
-				unsafe { voidptr(&args[ci]) })
-			if res == 0 {
-				started[ci] = true
-				any_started = true
-			} else {
-				check_chunk_thread(unsafe { voidptr(&args[ci]) })
 			}
 		}
 		// The master checks its own chunk under the same range discipline as the
@@ -211,16 +192,21 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		// are replayed first after join so that worker merges overwrite them in
 		// the same order the old serial flow did.
 		tc.parallel_check_sparse = true
-		tc.check_fn_items_serial(chunks[0])
-		for ci in 0 .. thread_count {
-			if started[ci] && C.pthread_join(thread_ids[ci], unsafe { nil }) != 0 {
-				panic('failed to join checker worker ${ci}')
+		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+		mut tasks := []workers.Task{cap: chunk_count}
+		for ci in 0 .. chunk_count {
+			helper_idx := ci - 1
+			tasks << workers.Task{
+				run:        check_chunk_thread
+				arg:        unsafe { voidptr(&args[ci]) }
+				force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
 			}
 		}
+		any_started := ast.worker_pool.run(tasks)
 		tc.merge_own_sparse_caches()
 		tc.parallel_check_sparse = false
 		for ci in 0 .. thread_count {
-			mut w := unsafe { &TypeChecker(workers[ci]) }
+			mut w := unsafe { &TypeChecker(checker_workers[ci]) }
 			tc.merge_parallel_check_worker(w)
 			w.free_parallel_check_worker_cache()
 		}
@@ -283,9 +269,8 @@ fn split_check_items(items []CheckWorkItem, n int) [][]CheckWorkItem {
 	mut loads := []i64{len: n}
 	if n > 1 {
 		// The master (bucket 0) runs on a busy performance core while several
-		// workers inevitably land on efficiency cores (plus the called-fns
-		// collector occupying another); measured per-unit it finishes its even
-		// share early and idles in pthread_join. Give it a proportionally
+		// workers inevitably land on efficiency cores; measured per-unit it
+		// finishes its even share early and waits for the pool. Give it a proportionally
 		// heavier share by starting it with negative load.
 		mut total := i64(0)
 		for it in items {

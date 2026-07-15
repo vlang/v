@@ -1482,6 +1482,7 @@ fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.Flat
 		source_buffers:  t.a.source_buffers
 		text_values:     t.a.text_values
 		text_ids:        t.a.text_ids
+		worker_pool:     t.a.worker_pool
 	}
 }
 

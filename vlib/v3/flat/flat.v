@@ -1,6 +1,7 @@
 module flat
 
 import v3.token
+import v3.workers
 
 // NodeId aliases node id values used by flat.
 pub type NodeId = int
@@ -211,6 +212,30 @@ pub mut:
 	// semantic/compiler caches can use compact TextId identities.
 	text_values []string
 	text_ids    map[string]TextId
+	worker_pool &workers.Pool = unsafe { nil }
+}
+
+// close_workers stops the compilation-owned persistent worker pool.
+pub fn (mut a FlatAst) close_workers() {
+	if !isnil(a.worker_pool) {
+		a.worker_pool.close()
+	}
+}
+
+// worker_count reports the number of persistent compiler helper threads.
+pub fn (a &FlatAst) worker_count() int {
+	if isnil(a.worker_pool) {
+		return 0
+	}
+	return a.worker_pool.size()
+}
+
+// worker_tasks_run reports completed callbacks across all parallel phases.
+pub fn (a &FlatAst) worker_tasks_run() u64 {
+	if isnil(a.worker_pool) {
+		return 0
+	}
+	return a.worker_pool.tasks_run()
 }
 
 // set_node_is_mut updates a node's mut declaration marker in place.

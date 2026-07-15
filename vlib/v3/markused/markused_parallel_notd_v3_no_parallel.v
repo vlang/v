@@ -9,7 +9,7 @@ module markused
 import os
 import runtime
 import v3.flat
-import v3.types
+import v3.workers
 
 const max_markused_jobs = 8
 const min_markused_parallel_bodies = 512
@@ -24,24 +24,6 @@ $if !windows {
 		results_ptr        voidptr // &[]BodyCalls
 		start              int
 		end                int
-	}
-
-	// C.pthread_t declares C pthread t data used by markused.
-	@[typedef]
-	struct C.pthread_t {}
-
-	// C.pthread_create declares the C pthread_create symbol used by markused.
-	fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-
-	// C.pthread_join declares the C pthread_join symbol used by markused.
-	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
-
-	fn create_markused_thread(index int, thread_id &C.pthread_t, arg voidptr) int {
-		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
-		if fail == 'markused:all' || fail == 'markused:${index}' {
-			return 11
-		}
-		return C.pthread_create(thread_id, unsafe { nil }, markused_chunk_thread, arg)
 	}
 
 	// markused_chunk_thread runs one worker's range of bodies.
@@ -67,7 +49,11 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 			body_ids.len, mut results)
 		return results
 	} $else {
-		mut n_jobs := runtime.nr_jobs()
+		mut ast := unsafe { collector.a }
+		if isnil(ast.worker_pool) {
+			ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
+		}
+		mut n_jobs := ast.worker_pool.size() + 1
 		if n_jobs > max_markused_jobs {
 			n_jobs = max_markused_jobs
 		}
@@ -86,7 +72,17 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 			wtc := collector.tc.fork_for_parallel_transform(collector.a)
 			worker_collectors << collector.fork_with_tc(wtc)
 		}
-		mut args := []MarkusedChunkArgs{cap: thread_count}
+		mut master_collector := collector
+		mut args := []MarkusedChunkArgs{cap: n_jobs}
+		args << MarkusedChunkArgs{
+			collector:          unsafe { voidptr(&master_collector) }
+			body_ids_ptr:       unsafe { voidptr(&body_ids) }
+			modules_ptr:        unsafe { voidptr(&body_modules) }
+			import_context_ptr: unsafe { voidptr(&body_import_contexts) }
+			results_ptr:        unsafe { voidptr(&results) }
+			start:              bounds[0]
+			end:                bounds[1]
+		}
 		for ci in 0 .. thread_count {
 			args << MarkusedChunkArgs{
 				collector:          unsafe { voidptr(&worker_collectors[ci]) }
@@ -98,25 +94,17 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 				end:                bounds[ci + 2]
 			}
 		}
-		mut thread_ids := []C.pthread_t{len: thread_count}
-		mut started := []bool{len: thread_count}
-		for ci in 0 .. thread_count {
-			res := create_markused_thread(ci, unsafe { &thread_ids[ci] },
-				unsafe { voidptr(&args[ci]) })
-			if res == 0 {
-				started[ci] = true
-			} else {
-				markused_chunk_thread(unsafe { voidptr(&args[ci]) })
+		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+		mut tasks := []workers.Task{cap: n_jobs}
+		for ci in 0 .. n_jobs {
+			helper_idx := ci - 1
+			tasks << workers.Task{
+				run:        markused_chunk_thread
+				arg:        unsafe { voidptr(&args[ci]) }
+				force_sync: ci == 0 || fail == 'markused:all' || fail == 'markused:${helper_idx}'
 			}
 		}
-		// The master analyzes chunk 0 on this thread while the helpers run.
-		collector.collect_bodies_range(body_ids, body_modules, body_import_contexts, bounds[0],
-			bounds[1], mut results)
-		for ci in 0 .. thread_count {
-			if started[ci] && C.pthread_join(thread_ids[ci], unsafe { nil }) != 0 {
-				panic('failed to join mark-used worker ${ci}')
-			}
-		}
+		ast.worker_pool.run(tasks)
 		return results
 	}
 }
