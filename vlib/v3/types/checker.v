@@ -21138,18 +21138,28 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 	if params.len == 0 || params.len != concrete_args.len {
 		return none
 	}
+	// Resolve arguments in the caller's file/module before parsing any part of
+	// the generic declaration's signature. A caller-local alias such as `Pair`
+	// must not be reinterpreted as `gr.Pair` in the method's declaring module.
+	mut concrete_types := []Type{cap: concrete_args.len}
+	for arg in concrete_args {
+		concrete_types << tc.parse_type(arg)
+	}
 	generic_key := '${generic_base}[${params.join(', ')}].${method}'
 	ret := tc.fn_ret_types[generic_key] or { return none }
 	// Prefer substituting the original signature TEXT: parsing `Box[T]` collapses the
 	// non-concrete application to the bare `Box`, so substituting the already-parsed type
 	// cannot recover `Box[int]`. Re-substituting the text and re-parsing does.
 	mut sub_ret := tc.substitute_generic_type(ret, concrete_args, params)
-	if ret_text := tc.fn_ret_type_texts[generic_key] {
+	if generic_semantic_type_has_placeholder(ret) {
+		sub_ret = tc.substitute_generic_type_values(ret, concrete_types, params)
+	} else if ret_text := tc.fn_ret_type_texts[generic_key] {
 		sub_ret = tc.parse_fn_signature_type(generic_key, subst_generic_text(ret_text,
 			concrete_args, params))
 	}
 	mut sub_params := []Type{}
 	if param_texts := tc.fn_param_type_texts[generic_key] {
+		param_types := tc.fn_param_types[generic_key] or { []Type{} }
 		for i, pt in param_texts {
 			receiver_clean := pt.trim_space().trim_left('&').trim_space()
 			receiver_base := if receiver_clean.contains('[') {
@@ -21162,6 +21172,11 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 				|| receiver_base == base
 				|| receiver_base == base.all_after_last('.')) {
 				sub_params << generic_method_receiver_param(type_name, pt)
+				continue
+			}
+			if i < param_types.len && generic_semantic_type_has_placeholder(param_types[i]) {
+				sub_params << tc.substitute_generic_type_values(param_types[i], concrete_types,
+					params)
 				continue
 			}
 			sub_params << tc.parse_fn_signature_type(generic_key, subst_generic_text(pt,
@@ -21181,6 +21196,54 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 		is_variadic:   tc.fn_variadic[generic_key] or { false }
 		params_known:  true
 	}
+}
+
+fn generic_semantic_type_has_placeholder(typ Type) bool {
+	match typ {
+		Unknown {
+			return generic_placeholder_from_unknown(typ) != none
+		}
+		Array {
+			return generic_semantic_type_has_placeholder(typ.elem_type)
+		}
+		ArrayFixed {
+			return generic_semantic_type_has_placeholder(typ.elem_type)
+		}
+		Channel {
+			return generic_semantic_type_has_placeholder(typ.elem_type)
+		}
+		Map {
+			return generic_semantic_type_has_placeholder(typ.key_type)
+				|| generic_semantic_type_has_placeholder(typ.value_type)
+		}
+		Pointer {
+			return generic_semantic_type_has_placeholder(typ.base_type)
+		}
+		OptionType {
+			return generic_semantic_type_has_placeholder(typ.base_type)
+		}
+		ResultType {
+			return generic_semantic_type_has_placeholder(typ.base_type)
+		}
+		FnType {
+			for param in typ.params {
+				if generic_semantic_type_has_placeholder(param) {
+					return true
+				}
+			}
+			return generic_semantic_type_has_placeholder(typ.return_type)
+		}
+		MultiReturn {
+			for part in typ.types {
+				if generic_semantic_type_has_placeholder(part) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
 }
 
 fn (tc &TypeChecker) generic_struct_method_base_candidates(base string) []string {

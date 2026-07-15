@@ -174,6 +174,7 @@ mut:
 	generic_call_spec_misses         map[int]bool
 	stringify_stack                  []string
 	node_module_map_cache            []string
+	node_file_map_cache              []string
 	node_module_map_nodes            int = -1
 	// used_fns_log records names newly inserted into used_fns while the
 	// late-used-fn-bodies pass runs, so that pass can tell "was this name
