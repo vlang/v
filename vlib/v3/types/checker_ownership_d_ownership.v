@@ -1082,12 +1082,19 @@ fn (tc &TypeChecker) ownership_drop_target_for_type_name(type_name string) ?Owne
 		return none
 	}
 	clean := type_name.trim_left('&')
-	if clean.len > 1 && (clean[0] == `?` || clean[0] == `!`) {
+	if clean.len > 1 && clean[0] == `?` {
 		payload := clean[1..]
 		if target := tc.ownership_drop_target_for_direct_type_name(payload, true) {
 			return target
 		}
 		return none
+	}
+	// A result owns both its successful payload and its failed IError. Preserve the
+	// complete result type so code generation can destroy whichever branch is active.
+	if clean.len > 1 && clean[0] == `!` {
+		return OwnershipDropTarget{
+			type_name: clean
+		}
 	}
 	if target := tc.ownership_drop_target_for_direct_type_name(clean, false) {
 		return target
@@ -1113,7 +1120,10 @@ fn (tc &TypeChecker) ownership_drop_target_for_resolved_type(typ Type, optional_
 		return tc.ownership_drop_target_for_resolved_type(typ.base_type, true)
 	}
 	if typ is ResultType {
-		return tc.ownership_drop_target_for_resolved_type(typ.base_type, true)
+		return OwnershipDropTarget{
+			type_name:        typ.name()
+			optional_wrapper: optional_wrapper
+		}
 	}
 	type_name := typ.name()
 	if tc.ownership_type_name_has_direct_drop(type_name) {

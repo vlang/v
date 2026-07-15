@@ -786,6 +786,13 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	t.drain_pending(mut result)
 	result << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(info.key_id,
 		info.key_type), info.key_storage_type)
+	mut current_existed := flat.empty_node
+	if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(field_type)) {
+		current_existed_name := t.new_temp('map_value_existed')
+		result << t.make_decl_assign_typed(current_existed_name, t.make_map_exists_expr(map_expr,
+			info.base_type, key_name), 'bool')
+		current_existed = t.make_ident(current_existed_name)
+	}
 	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
 	field := t.make_selector(t.make_ident(current_name), lhs.value, field_type)
 	rhs_id := t.a.child(&node, 1)
@@ -799,7 +806,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	}
 	rhs_name := t.new_temp('map_field_value')
 	result << t.make_decl_assign_typed(rhs_name, rhs, field_type)
-	t.append_owned_lvalue_drop_before_assign(field, field_type, mut result)
+	t.append_owned_lvalue_drop_before_assign_if(field, field_type, current_existed, mut result)
 	result << t.make_assign(field, t.make_ident(rhs_name))
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 	return result
@@ -808,11 +815,23 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 // append_owned_lvalue_drop_before_assign destroys an owned value after its
 // replacement has been saved and before its storage is overwritten.
 fn (mut t Transformer) append_owned_lvalue_drop_before_assign(lvalue flat.NodeId, type_name string, mut result []flat.NodeId) {
+	t.append_owned_lvalue_drop_before_assign_if(lvalue, type_name, flat.empty_node, mut result)
+}
+
+// append_owned_lvalue_drop_before_assign_if destroys an owned value only when its
+// storage existed before the assignment. Map-index field updates use this to avoid
+// dropping the zero fallback loaded for an absent key.
+fn (mut t Transformer) append_owned_lvalue_drop_before_assign_if(lvalue flat.NodeId, type_name string, guard flat.NodeId, mut result []flat.NodeId) {
 	if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(type_name)) {
 		return
 	}
 	drop_call := t.make_call_typed('drop_owned', arr1(lvalue), 'void')
-	result << t.make_expr_stmt(drop_call)
+	drop_stmt := t.make_expr_stmt(drop_call)
+	if int(guard) >= 0 {
+		result << t.make_if(guard, t.make_block(arr1(drop_stmt)), t.make_empty())
+		return
+	}
+	result << drop_stmt
 }
 
 // map_compound_to_infix_op converts map compound to infix op data for transform.
