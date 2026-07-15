@@ -212,12 +212,13 @@ mut:
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
 // many `&Transformer` (read-only) query methods can populate it through the
-// pointer. normalize_type_alias is a pure function of (cur_module, typ) plus the
+// pointer. normalize_type_alias is a pure function of (cur_file, cur_module, typ) plus the
 // collected type maps (which never change during transform), so the cache is
-// keyed by typ and cleared whenever cur_module changes.
+// keyed by typ and cleared whenever the source context changes.
 struct AliasCache {
 mut:
 	module  string
+	file    string
 	entries map[string]string
 }
 
