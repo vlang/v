@@ -3114,11 +3114,22 @@ fn take_grouped(value struct {
 	return value.x * 10 + value.y
 }
 
+fn call_late_i64() i64 {
+	return take_late_i64(struct { x: 11 })
+}
+
+fn take_late_i64(value struct {
+	x i64
+}) i64 {
+	return value.x
+}
+
 fn main() {
 	println(int_str(take_int(struct { x: 7 })))
 	println(take_string(struct { x: "right" }))
 	println(take_i64(struct { x: 9 }))
 	println(int_str(take_grouped(struct { x: 2, y: 3 })))
+	println(call_late_i64().str())
 	mut values := []struct {
 		x int
 	}{}
@@ -3126,7 +3137,7 @@ fn main() {
 	println(int_str(values[0].x))
 }
 	')
-	assert out == '7\nright\n9\n23\n13'
+	assert out == '7\nright\n9\n23\n11\n13'
 	inferred_out := run_good(v3_bin, 'anonymous_struct_inferred_literal_typed_shape',
 		'fn main() {\n\ta := struct { x: 1 }\n\tb := struct { x: "typed" }\n\tprintln(int_str(a.x))\n\tprintln(b.x)\n}\n')
 	assert inferred_out == '1\ntyped'

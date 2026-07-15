@@ -14460,6 +14460,10 @@ fn is_anonymous_struct_name(name string) bool {
 	return name.all_after_last('.').starts_with('AnonStruct_')
 }
 
+fn is_contextual_anonymous_struct_literal(name string) bool {
+	return name == 'struct' || is_anonymous_struct_name(name)
+}
+
 fn (mut tc TypeChecker) anonymous_struct_literal_compatible(node flat.Node, expected Type) bool {
 	struct_type := struct_type_from_type(expected) or { return false }
 	if !is_anonymous_struct_name(struct_type.name) {
@@ -17263,11 +17267,11 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			return Type(int_)
 		}
 	}
-	// When several anonymous structs share the same field names, the parser leaves
-	// the literal unresolved instead of choosing the most recently declared shape.
+	// When several anonymous structs share the same field names, or a contextual type is
+	// declared after the literal, the parser may leave or infer the literal too early.
 	// Its call/assignment/return context supplies the exact anonymous struct here.
-	if node.kind == .struct_init && node.value == 'struct' && expected !is Pointer
-		&& tc.anonymous_struct_literal_compatible(node, expected) {
+	if node.kind == .struct_init && is_contextual_anonymous_struct_literal(node.value)
+		&& expected !is Pointer && tc.anonymous_struct_literal_compatible(node, expected) {
 		tc.register_synth_type(id, expected_raw)
 		return expected_raw
 	}
@@ -17288,7 +17292,7 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	if node.kind == .prefix && node.op == .amp && node.children_count == 1 && expected is Pointer {
 		child_id := tc.a.child(&node, 0)
 		child := tc.a.nodes[int(child_id)]
-		if child.kind == .struct_init && child.value == 'struct'
+		if child.kind == .struct_init && is_contextual_anonymous_struct_literal(child.value)
 			&& tc.anonymous_struct_literal_compatible(child, expected.base_type) {
 			tc.register_synth_type(child_id, expected.base_type)
 			tc.register_synth_type(id, expected_raw)
