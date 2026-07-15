@@ -1480,10 +1480,11 @@ fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mu
 	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('${display_name} {\n')};'
 	for field in fields {
 		field_expr := '${tmp}.${c_field_name(field.name)}'
-		mut field_str := if field.typ.name() == struct_name {
+		field_clean_type := g.interface_unaliased_type(field.typ)
+		mut field_str := if field_clean_type.name() == struct_name {
 			g.interface_str_lit(empty_struct)
 		} else {
-			g.interface_implicit_str_expr(field.typ, field_expr, field.typ is types.String, mut
+			g.interface_implicit_str_expr(field.typ, field_expr, field_clean_type is types.String, mut
 				stack) or { g.interface_str_lit('<field value>') }
 		}
 		body += ' ${out} = ${g.interface_str_plus(out, g.interface_str_lit('    ${field.name}: '))};'
