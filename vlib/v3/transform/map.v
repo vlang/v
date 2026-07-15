@@ -1123,7 +1123,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		mut existing_key_name := ''
 		if needs_entry_cleanup {
 			mut drop_stmts := []flat.NodeId{}
-			key_is_owned := !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(key_id)
+			key_is_owned := t.map_key_expr_creates_owned_value(key_id, key_type)
 			cleanup_key, existing_key_name = t.prepare_owned_map_set_key_cleanup(key_is_owned,
 				key_type, t.make_ident(tmp_name), map_type, key_name, mut drop_stmts)
 			t.append_map_value_drop_before_set(t.make_ident(tmp_name), map_type, key_name,
