@@ -319,6 +319,12 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return g.type_contains_generic_placeholder(t.base_type)
 		}
 		types.Struct {
+			if type_name_is_unbound_generic_decl(t.name, g.struct_generic_params_for_name(t.name),
+
+				t.name in g.tc.structs || g.tc.qualify_name(t.name) in g.tc.structs)
+			{
+				return true
+			}
 			return g.type_name_contains_generic_placeholder(t.name)
 		}
 		types.Interface {
@@ -328,6 +334,12 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return g.type_name_contains_generic_placeholder(t.name)
 		}
 		types.SumType {
+			if type_name_is_unbound_generic_decl(t.name, g.sum_generic_params_for_name(t.name),
+
+				t.name in g.tc.sum_types || g.tc.qualify_name(t.name) in g.tc.sum_types)
+			{
+				return true
+			}
 			return g.type_name_contains_generic_placeholder(t.name)
 		}
 		types.Alias {
@@ -346,6 +358,39 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return false
 		}
 	}
+}
+
+fn (g &FlatGen) struct_generic_params_for_name(name string) []string {
+	base, _, ok := shared_generic_app_parts(name)
+	if !ok {
+		return []string{}
+	}
+	return g.tc.struct_generic_params[base] or {
+		g.tc.struct_generic_params[base.all_after_last('.')] or { []string{} }
+	}
+}
+
+fn (g &FlatGen) sum_generic_params_for_name(name string) []string {
+	base, _, ok := shared_generic_app_parts(name)
+	if !ok {
+		return []string{}
+	}
+	return g.tc.sum_generic_params[base] or {
+		g.tc.sum_generic_params[base.all_after_last('.')] or { []string{} }
+	}
+}
+
+fn type_name_is_unbound_generic_decl(name string, params []string, materialized bool) bool {
+	_, args, ok := shared_generic_app_parts(name)
+	if !ok || materialized || params.len == 0 {
+		return false
+	}
+	for arg in args {
+		if shared_type_text_uses_generic_params(arg, params) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (g &FlatGen) type_name_contains_generic_placeholder(name string) bool {
