@@ -4690,7 +4690,9 @@ fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeI
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
 		cloned_elem)
-	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{})
+	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
+		skip_ownership_drops: true
+	})
 	if source_is_owned_temporary {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
 			'void'))
@@ -4725,7 +4727,9 @@ fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
 		cloned_elem)
-	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{})
+	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
+		skip_ownership_drops: true
+	})
 	if source_is_owned_temporary {
 		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
 			'void'))

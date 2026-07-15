@@ -10727,6 +10727,13 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				}
 				'map' {
 					elem_type := tc.array_map_return_elem_type(node)
+					if tc.array_map_result_borrows_element(node) {
+						if bad_type := tc.ownership_default_clone_missing_method(elem_type) {
+							tc.record_error(.call_arg_mismatch,
+								'cannot clone borrowed array.map result: `${bad_type}` requires ownership destruction but has no `clone()` method',
+								id)
+						}
+					}
 					return CallInfo{
 						name:         'array.map'
 						params:       tarr2(base_type, elem_type)
@@ -12871,6 +12878,50 @@ fn (mut tc TypeChecker) array_map_return_elem_type(node flat.Node) Type {
 		return Type(void_)
 	}
 	return elem_type
+}
+
+// array_map_result_borrows_element reports whether the mapper result reads `it` or
+// a lambda parameter without explicitly creating a fresh owner.
+fn (tc &TypeChecker) array_map_result_borrows_element(node flat.Node) bool {
+	if node.children_count < 2 {
+		return false
+	}
+	arg_id := tc.call_arg_value(tc.a.child(&node, 1))
+	arg := tc.a.nodes[int(arg_id)]
+	if arg.kind == .fn_literal {
+		return false
+	}
+	mut body_id := arg_id
+	mut elem_name := 'it'
+	if arg.kind == .lambda_expr && arg.children_count > 0 {
+		body_id = tc.a.child(&arg, arg.children_count - 1)
+		if arg.children_count > 1 {
+			param := tc.a.child_node(&arg, 0)
+			if param.kind == .ident && param.value.len > 0 {
+				elem_name = param.value
+			}
+		}
+	} else if _ := fn_type_from_type(tc.resolve_type(arg_id)) {
+		return false
+	}
+	return tc.array_map_expr_references_ident(body_id, elem_name)
+		&& !tc.ownership_expr_creates_owned_value(body_id)
+}
+
+fn (tc &TypeChecker) array_map_expr_references_ident(id flat.NodeId, name string) bool {
+	if !tc.valid_node_id(id) || name.len == 0 {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .ident && node.value == name {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if tc.array_map_expr_references_ident(tc.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) array_contains_elem_type(base_node flat.Node, array_type Array) Type {

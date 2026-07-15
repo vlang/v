@@ -1506,6 +1506,17 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	if result_elem_type.len == 0 {
 		result_elem_type = elem_type
 	}
+	mapped_borrows_elem := t.array_map_expr_references_ident(mapped_source, elem_name)
+		&& (isnil(t.tc) || !t.tc.ownership_expr_creates_owned_value(map_source_id))
+	mapped_result_needs_clone := mapped_borrows_elem && !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(result_elem_type))
+	if mapped_result_needs_clone {
+		// The checker reports the missing clone method. Do not leave a shallow mapped
+		// owner in the result while transforming the invalid program.
+		if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(result_elem_type)) {
+			return t.make_empty()
+		}
+	}
 	out_type := '[]${result_elem_type}'
 	base_id := t.a.child(&fn_node, 0)
 	source_needs_drop := !isnil(t.tc)
@@ -1529,8 +1540,21 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	}
 	value_name := t.new_temp('map_val')
 	loop_body << t.make_decl_assign_typed(value_name, mapped_expr, result_elem_type)
+	mut pushed_name := value_name
+	if mapped_result_needs_clone {
+		mapped_value := t.make_ident(value_name)
+		t.set_node_typ(int(mapped_value), result_elem_type)
+		pending_start := t.pending_stmts.len
+		cloned_value := t.make_compiler_default_clone_value(mapped_value, result_elem_type, true)
+		for stmt in t.pending_stmts[pending_start..].clone() {
+			loop_body << stmt
+		}
+		t.pending_stmts = t.pending_stmts[..pending_start].clone()
+		pushed_name = t.new_temp('map_cloned_val')
+		loop_body << t.make_decl_assign_typed(pushed_name, cloned_value, result_elem_type)
+	}
 	loop_body << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.make_prefix(.amp,
-		t.make_ident(out_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void'))
+		t.make_ident(out_name)), t.make_prefix(.amp, t.make_ident(pushed_name))), 'void'))
 	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
 		skip_ownership_drops: true
 	})
@@ -1543,6 +1567,25 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), out_type)
 	return result
+}
+
+// array_map_expr_references_ident reports whether a mapped value reads the synthetic
+// element binding. Such values remain borrowed from the consumed source unless their
+// expression explicitly creates a fresh owner.
+fn (t &Transformer) array_map_expr_references_ident(id flat.NodeId, name string) bool {
+	if int(id) < 0 || name.len == 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.value == name {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.array_map_expr_references_ident(t.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (t &Transformer) fn_value_return_type_name(id flat.NodeId) ?string {
