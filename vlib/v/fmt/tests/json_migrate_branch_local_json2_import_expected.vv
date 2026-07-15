@@ -1,0 +1,14 @@
+module main
+
+import json2
+
+$if linux {
+}
+
+fn dump_json(x int) string {
+	return json2.encode(x)
+}
+
+fn main() {
+	println(dump_json(42))
+}

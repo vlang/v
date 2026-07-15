@@ -66,7 +66,8 @@ pub mut:
 	source_text              string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 	global_processed_imports []string
 	branch_processed_imports []string
-	has_json2_import         bool // the file already imports `json2` (in any form); used when migrating `import json`
+	has_json2_import         bool   // the file has a top-level `json2` import; used when migrating `import json`
+	json2_prefix             string = 'json2' // local name of `json2` at call sites (its alias, if imported as one)
 	is_translated_module     bool // @[translated]
 	is_c_function            bool // C.func(...)
 }
@@ -155,10 +156,26 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	}
 	f.implied_import_str = sb.str()
 
-	for imp in file.imports {
-		if imp.source_name == 'json2' {
+	// Detect an existing top-level `json2` import, which the json->json2 migration
+	// reuses instead of emitting a duplicate `import json2` (see import_stmt). The
+	// migrated call sites are rewritten with that import's local name (its alias if
+	// `import json2 as x`, else `json2`), so they stay in scope and idempotent.
+	// Only top-level imports qualify: a branch-local (`$if { import json2 }`) one is
+	// nested inside a comptime-if statement rather than being a direct file.stmt, so
+	// it is not picked up here and a top-level `import json2` is emitted instead.
+	for stmt in file.stmts {
+		if stmt is ast.Import && stmt.source_name == 'json2' {
 			f.has_json2_import = true
+			f.json2_prefix = if stmt.alias != '' {
+				stmt.alias
+			} else {
+				stmt.source_name.all_after_last('.')
+			}
+			break
 		}
+	}
+
+	for imp in file.imports {
 		f.mod2alias[imp.mod] = imp.alias
 		f.mod2alias[imp.mod.all_after('${file.mod.name}.')] = imp.alias
 		for sym in imp.syms {
@@ -354,11 +371,11 @@ pub fn (mut f Fmt) import_stmt(imp ast.Import) {
 	}
 	if imp.source_name == 'json' && f.has_json2_import {
 		// Migrating deprecated `import json` to `import json2`, but the file already
-		// imports `json2` (possibly with symbols/alias, e.g. `import json2 { Any }`).
-		// Drop the migrated import entirely so it merges into the existing one; the
-		// rewritten call sites use the qualified `json2.x` form, which a selective
-		// json2 import still provides. Keeping both would emit a duplicate `import
-		// json2` that the checker rejects as already imported.
+		// has a top-level `json2` import (possibly with symbols or an alias, e.g.
+		// `import json2 { Any }` or `import json2 as j2`). Drop the migrated import
+		// so it merges into the existing one; the rewritten call sites use that
+		// import's local name (f.json2_prefix), so they stay in scope. Emitting a
+		// second `import json2` would be rejected by the checker as already imported.
 		f.import_comments(imp.next_comments)
 		return
 	}
@@ -2310,32 +2327,35 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 
 // json2_migrate_call rewrites a call to the deprecated `json` module into the
 // equivalent call to the pure V `json2` module (see call_expr for the mapping).
+// The `json2` prefix follows f.json2_prefix, so an existing `import json2 as x`
+// is respected and the output stays in scope and idempotent.
 fn (mut f Fmt) json2_migrate_call(node ast.CallExpr) {
+	j2 := f.json2_prefix
 	match node.kind {
 		.json_decode {
 			// json.decode(T, s) => json2.decode[T](s)
 			// The first argument is the target type; the rest are forwarded.
 			// Guard against malformed calls, since vfmt runs on unchecked ASTs.
 			if node.args.len >= 1 {
-				f.write('json2.decode[')
+				f.write('${j2}.decode[')
 				f.expr(node.args[0].expr)
 				f.write('](')
 				f.call_args(node.args[1..])
 				f.write(')')
 			} else {
-				f.write('json2.decode()')
+				f.write('${j2}.decode()')
 			}
 		}
 		.json_encode {
 			// json.encode(x) => json2.encode(x)
-			f.write('json2.encode(')
+			f.write('${j2}.encode(')
 			f.call_args(node.args)
 			f.write(')')
 		}
 		.json_encode_pretty {
 			// json.encode_pretty(x) => json2.encode(x, prettify: true)
 			// json2 deprecated `encode_pretty` in favour of the `prettify` option.
-			f.write('json2.encode(')
+			f.write('${j2}.encode(')
 			f.call_args(node.args)
 			f.write(', prettify: true)')
 		}

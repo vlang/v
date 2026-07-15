@@ -1,0 +1,14 @@
+import json2 as j2
+
+struct User {
+	name string
+}
+
+fn encode_user(u User) string {
+	return j2.encode(u)
+}
+
+fn main() {
+	println(encode_user(User{ name: 'bob' }))
+	println(j2.encode(42))
+}
