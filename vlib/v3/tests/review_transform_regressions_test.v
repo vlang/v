@@ -619,6 +619,35 @@ fn main() {
 	assert out == 'Foo\ntrue\nBar\ntrue'
 }
 
+fn test_mut_map_for_in_writeback_survives_continue_and_break() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'mut_map_for_in_writeback_continue_break', 'struct Box {
+mut:
+	n int
+}
+
+fn main() {
+	mut items := map[string]Box{}
+	items["a"] = Box{n: 1}
+	items["b"] = Box{n: 2}
+	for _, mut value in items {
+		value.n += 10
+		continue
+	}
+	println(items["a"].n)
+	println(items["b"].n)
+	mut once := map[string]Box{}
+	once["x"] = Box{n: 3}
+	for _, mut value in once {
+		value.n = 9
+		break
+	}
+	println(once["x"].n)
+}
+')
+	assert out == '11\n12\n9'
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',

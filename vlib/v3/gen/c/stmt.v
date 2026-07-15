@@ -1743,6 +1743,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_select(id, node, false)
 		}
 		.break_stmt {
+			g.gen_loop_control_writebacks(node.value)
 			g.gen_branch_lock_cleanup(node.value)
 			g.gen_loop_control_ownership_drops()
 			if node.value.len > 0 {
@@ -1752,6 +1753,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			}
 		}
 		.continue_stmt {
+			g.gen_loop_control_writebacks(node.value)
 			g.gen_branch_lock_cleanup(node.value)
 			g.gen_loop_control_ownership_drops()
 			if node.value.len > 0 {

@@ -24,6 +24,11 @@ mut:
 	prev_depth int
 }
 
+struct LoopControlWriteback {
+	loop_depth int
+	stmt       string
+}
+
 struct FixedStorageConstRefItem {
 	id     flat.NodeId
 	file   string
@@ -157,6 +162,7 @@ mut:
 	active_locks                 []ActiveLock
 	loop_depth                   int
 	loop_label_depths            map[string]int
+	loop_control_writebacks      []LoopControlWriteback
 	goto_label_lock_scopes       map[string][]int
 	pending_loop_label           string
 	// in_return is true only while generating a `return` statement's value, so a bare

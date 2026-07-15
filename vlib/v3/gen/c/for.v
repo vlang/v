@@ -59,6 +59,18 @@ fn (mut g FlatGen) gen_loop_iteration_ownership_drops_for_label(label string) {
 	g.writeln('${skip_drops} = false;')
 }
 
+fn (mut g FlatGen) gen_loop_control_writebacks(label string) {
+	target_depth := g.branch_target_loop_depth(label)
+	mut i := g.loop_control_writebacks.len - 1
+	for i >= 0 {
+		writeback := g.loop_control_writebacks[i]
+		if writeback.loop_depth >= target_depth {
+			g.writeln(writeback.stmt)
+		}
+		i--
+	}
+}
+
 // gen_for emits for output for c.
 fn (mut g FlatGen) gen_for(node flat.Node) {
 	label_state := g.push_loop_label_depth(g.take_pending_loop_label())
@@ -178,6 +190,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			mut map_writeback_target := ''
 			mut map_writeback_key := ''
 			mut map_writeback_value := ''
+			mut map_writeback_stmt := ''
 			if clean_container_type is types.Map {
 				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
 				c_val := g.value_c_type(clean_container_type.value_type)
@@ -246,6 +259,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					}
 					map_writeback_key = key_var
 					map_writeback_value = val_var_
+					map_writeback_stmt = 'map__set(${map_writeback_target}, &${map_writeback_key}, &${map_writeback_value});'
 				}
 			} else if container_type is types.Array {
 				c_elem := g.value_c_type(container_type.elem_type)
@@ -317,11 +331,18 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.gen_labelled_continue_skip_drops_var(label_state.label)
 			}
 			g.loop_depth++
+			if map_writeback_stmt.len > 0 {
+				g.loop_control_writebacks << LoopControlWriteback{
+					loop_depth: g.loop_depth
+					stmt:       map_writeback_stmt
+				}
+			}
 			for i in body_start .. node.children_count {
 				g.gen_node(g.a.child(&node, i))
 			}
-			if map_writeback_target.len > 0 {
-				g.writeln('map__set(${map_writeback_target}, &${map_writeback_key}, &${map_writeback_value});')
+			if map_writeback_stmt.len > 0 {
+				g.writeln(map_writeback_stmt)
+				g.loop_control_writebacks.delete_last()
 			}
 			g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 			g.loop_depth--

@@ -9744,8 +9744,13 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 	// A returned method value escapes the function, where its per-site static receiver
 	// can't keep multiple returned callbacks distinct (a factory `fn bind(c) fn () int {
 	// return c.report }`); reject it rather than emitting invalid C.
+	// Returned fn literals with ordinary captures need a real closure environment too.
+	// V3 only supports the narrow returned case of an explicit `mut` capture of a
+	// pointer/reference value, where the lifted fn can keep using the pointee.
 	for i in 0 .. node.children_count {
-		tc.reject_stored_method_value(tc.a.child(&node, i))
+		child_id := tc.a.child(&node, i)
+		tc.reject_stored_method_value(child_id)
+		tc.reject_returned_capturing_fn_literal(child_id)
 	}
 	expected := tc.cur_fn_ret_type
 	saved_expected_expr_id := tc.expected_expr_id
@@ -16425,6 +16430,27 @@ fn (tc &TypeChecker) expr_is_capturing_fn_literal_value(id flat.NodeId) bool {
 	}
 }
 
+fn (tc &TypeChecker) expr_is_unsupported_returned_capturing_fn_literal_value(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.fn_literal {
+			return tc.fn_literal_has_unsupported_return_capture(node)
+		}
+		.cast_expr, .paren, .expr_stmt {
+			if node.children_count == 0 {
+				return false
+			}
+			return tc.expr_is_unsupported_returned_capturing_fn_literal_value(tc.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (tc &TypeChecker) fn_literal_has_captures(node flat.Node) bool {
 	if node.kind != .fn_literal {
 		return false
@@ -16436,6 +16462,38 @@ fn (tc &TypeChecker) fn_literal_has_captures(node flat.Node) bool {
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) fn_literal_has_unsupported_return_capture(node flat.Node) bool {
+	if node.kind != .fn_literal {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(&node, i)
+		if child.kind == .ident && child.value.len > 0
+			&& !tc.fn_literal_return_capture_is_supported(child) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) fn_literal_return_capture_is_supported(capture flat.Node) bool {
+	if !capture.is_mut || capture.value.len == 0 {
+		return false
+	}
+	if typ := tc.cur_scope.lookup(capture.value) {
+		return unalias_type(typ) is Pointer
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) reject_returned_capturing_fn_literal(id flat.NodeId) {
+	if tc.expr_is_unsupported_returned_capturing_fn_literal_value(id) && tc.should_diagnose(id) {
+		tc.record_error(.assignment_mismatch,
+			'a capturing fn literal cannot be stored or returned (no closure capture); pass it directly as a callback argument',
+			id)
+	}
 }
 
 fn (mut tc TypeChecker) reject_stored_capturing_fn_literal(id flat.NodeId) {
