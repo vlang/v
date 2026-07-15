@@ -4596,7 +4596,8 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		return t.make_compiler_default_fixed_array_clone_value(source, clean)
 	}
 	if clean.starts_with('map[') {
-		return t.make_compiler_default_map_clone_value(source, clean)
+		return t.make_compiler_default_map_clone_value(source, clean,
+			!t.expr_can_take_address(source))
 	}
 	if allow_method {
 		if !isnil(t.tc) && clean.contains('[') && clean.ends_with(']') {
@@ -4730,19 +4731,31 @@ fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat
 
 // make_compiler_default_map_clone_value constructs a fresh map, recursively clones
 // owning non-string keys and values, and lets map key callbacks clone string keys.
-fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId, map_type string) flat.NodeId {
+// The source lifetime is classified by the caller before transformation can turn a
+// temporary literal into an addressable synthetic identifier.
+fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId, map_type string, source_is_owned_temporary bool) flat.NodeId {
 	key_type, value_type := t.map_type_parts(map_type)
 	clean_key_type := t.normalize_type_alias(key_type).trim_space()
 	key_needs_clone := clean_key_type != 'string'
 		&& t.compiler_default_clone_type_needs_work(key_type)
 	value_needs_clone := t.compiler_default_clone_type_needs_work(value_type)
-	if key_type.len == 0 || value_type.len == 0 || (!key_needs_clone && !value_needs_clone) {
-		t.mark_fn_used('map__clone')
-		return t.make_call_typed('map__clone', arr1(t.runtime_addr(source, map_type)), map_type)
-	}
-	source_is_owned_temporary := !t.expr_can_take_address(source)
 	stable_source := t.stable_transformed_expr_for_reuse(source, map_type,
 		'derived_clone_map_source')
+	if key_type.len == 0 || value_type.len == 0 || (!key_needs_clone && !value_needs_clone) {
+		t.mark_fn_used('map__clone')
+		storage_clone := t.make_call_typed('map__clone', arr1(t.runtime_addr(stable_source,
+			map_type)), map_type)
+		if !source_is_owned_temporary {
+			return storage_clone
+		}
+		out_name := t.new_temp('derived_clone_map')
+		t.pending_stmts << t.make_decl_assign_typed(out_name, storage_clone, map_type)
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+		result := t.make_ident(out_name)
+		t.set_node_typ(int(result), map_type)
+		return result
+	}
 	out_name := t.new_temp('derived_clone_map')
 	key_name := t.new_temp('derived_clone_map_key')
 	source_value_name := t.new_temp('derived_clone_map_source_value')
@@ -5689,18 +5702,18 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		if key_type.len == 0 || value_type.len == 0 {
 			return none
 		}
-		mut source := t.transform_expr(base_id)
 		mut clean_base_type := t.normalize_type_alias(base_type).trim_space()
 		for clean_base_type.starts_with('shared ') {
 			clean_base_type = clean_base_type[7..].trim_space()
 		}
+		source_is_owned_temporary := !clean_base_type.starts_with('&')
+			&& !t.expr_can_take_address(base_id)
+		mut source := t.transform_expr(base_id)
 		if clean_base_type.starts_with('&') {
 			source = t.make_prefix(.mul, source)
 			t.set_node_typ(int(source), clean_type)
 		}
-		if isnil(t.tc)
-			|| (!t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
-			&& !t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type))) {
+		if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(clean_type)) {
 			t.mark_fn_used('map__clone')
 			return t.make_call_typed('map__clone', arr1(t.runtime_addr(source, clean_type)),
 				clean_type)
@@ -5713,7 +5726,8 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(value_type)) {
 			return source
 		}
-		return t.make_compiler_default_map_clone_value(source, clean_type)
+		return t.make_compiler_default_map_clone_value(source, clean_type,
+			source_is_owned_temporary)
 	}
 	source_is_owned_temporary := !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
 	base := t.stable_expr_for_reuse(base_id)

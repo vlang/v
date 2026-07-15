@@ -940,8 +940,10 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	first := t.a.nodes[int(first_id)]
 	if first.kind == .prefix && first.value == '...' && first.children_count > 0 {
 		source_id := t.a.child(&first, 0)
+		source_is_owned_temporary := !t.expr_can_take_address(source_id)
 		source_expr := t.transform_expr(source_id)
-		init_call = t.make_compiler_default_map_clone_value(source_expr, map_type)
+		init_call = t.make_compiler_default_map_clone_value(source_expr, map_type,
+			source_is_owned_temporary)
 		start_i = 2
 		has_spread = true
 	}

@@ -45,12 +45,15 @@ fn (mut t Transformer) try_lower_array_repeat_call(_id flat.NodeId, node flat.No
 // result with an independent clone before ownership destruction can observe the array.
 fn (mut t Transformer) make_owned_array_repeat_value(base_id flat.NodeId, count_id flat.NodeId, array_type string) flat.NodeId {
 	elem_type := array_type[2..]
+	base_type := t.node_type(base_id)
+	// Classify the source before transforming it because literals can lower to addressable
+	// synthetic identifiers that still need explicit destruction.
+	source_is_owned_temporary := !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
 	mut source := t.transform_expr(base_id)
-	if t.node_type(base_id).starts_with('&') {
+	if base_type.starts_with('&') {
 		source = t.make_prefix(.mul, source)
 		t.set_node_typ(int(source), array_type)
 	}
-	source_is_owned_temporary := !t.expr_can_take_address(source)
 	stable_source := t.stable_transformed_expr_for_reuse(source, array_type,
 		'owned_array_repeat_source')
 	count := t.transform_expr_for_type(count_id, 'int')
