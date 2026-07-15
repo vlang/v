@@ -3182,7 +3182,7 @@ fn source_contains_target_inline_asm(source string, target_arch string) bool {
 		return false
 	}
 	mut offset := 0
-	mut sequence := 0 // 0: asm, 1: target architecture, 2: opening brace
+	mut sequence := 0 // 0: asm, 1: volatile/target arch, 2: target arch, 3: opening brace
 	for offset < source.len {
 		c := source[offset]
 		if c in [` `, `\t`, `\r`, `\n`] {
@@ -3214,7 +3214,17 @@ fn source_contains_target_inline_asm(source string, target_arch string) bool {
 				sequence = if ident == 'asm' { 1 } else { 0 }
 			} else if sequence == 1 {
 				sequence = if comptime_flag_is_target_arch(ident, target_arch) {
+					3
+				} else if ident == 'volatile' {
 					2
+				} else if ident == 'asm' {
+					1
+				} else {
+					0
+				}
+			} else if sequence == 2 {
+				sequence = if comptime_flag_is_target_arch(ident, target_arch) {
+					3
 				} else if ident == 'asm' {
 					1
 				} else {
@@ -3225,7 +3235,7 @@ fn source_contains_target_inline_asm(source string, target_arch string) bool {
 			}
 			continue
 		}
-		if c == `{` && sequence == 2 {
+		if c == `{` && sequence == 3 {
 			return true
 		}
 		sequence = 0
