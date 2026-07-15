@@ -165,13 +165,23 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	// Only top-level imports qualify: a branch-local (`$if { import json2 }`) one is
 	// nested inside a comptime-if statement rather than being a direct file.stmt, so
 	// it is not picked up here and a top-level `import json2` is emitted instead.
+	mut json2_alias_is_blank := false
 	for stmt in file.stmts {
-		if stmt is ast.Import && stmt.source_name == 'json2' && !f.has_json2_import {
-			f.has_json2_import = true
-			f.json2_prefix = if stmt.alias != '' {
-				stmt.alias
+		if stmt is ast.Import && stmt.source_name == 'json2' && !f.has_json2_import
+			&& !json2_alias_is_blank {
+			if stmt.alias == '_' {
+				// `import json2 as _` only silences unused-import warnings; `_` is not a
+				// usable qualifier and does not bring `json2` into scope, and a second
+				// plain `import json2` would be a duplicate import. So there is no way
+				// to emit valid `json2.x` calls — leave the file's json usage unmigrated.
+				json2_alias_is_blank = true
 			} else {
-				stmt.source_name.all_after_last('.')
+				f.has_json2_import = true
+				f.json2_prefix = if stmt.alias != '' {
+					stmt.alias
+				} else {
+					stmt.source_name.all_after_last('.')
+				}
 			}
 		}
 	}
@@ -193,7 +203,7 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 		}
 	}
 	if imports_json {
-		f.keep_json_unmigrated = file_has_unmigratable_json_call(file)
+		f.keep_json_unmigrated = json2_alias_is_blank || file_has_unmigratable_json_call(file)
 	}
 
 	for imp in file.imports {
