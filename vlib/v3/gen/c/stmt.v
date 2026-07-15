@@ -655,6 +655,74 @@ fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int) {
 	g.writeln('}')
 }
 
+// gen_ownership_clone_ierror clones a failed result's IError without erasing its dynamic
+// payload type. Result errors own pointer-backed implementations, so even an unboxed source
+// receives independent storage in the clone.
+fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
+	tmp := g.tmp_count
+	g.tmp_count++
+	source := '_clone_ierror_source${tmp}'
+	result := '_clone_ierror_result${tmp}'
+	object := '${source}._object'
+	g.write('({ IError ${source} = ')
+	g.gen_expr(id)
+	g.writeln(';')
+	g.writeln('IError ${result} = ${source};')
+	g.writeln('${result}.message = string__clone(${source}.message);')
+	g.writeln('if (${object} != NULL && ${object} != builtin__none__._object && ${object} != builtin__error_sentinel._object) {')
+	g.indent++
+	g.writeln('switch (${source}._typ) {')
+	mut iface_name := 'IError'
+	if iface_name !in g.iface_impls && 'builtin.IError' in g.iface_impls {
+		iface_name = 'builtin.IError'
+	}
+	for concrete in g.iface_impls[iface_name] or { []string{} } {
+		type_id := g.iface_type_id(iface_name, concrete)
+		if type_id == 0 {
+			continue
+		}
+		concrete_type := g.tc.parse_type(concrete)
+		concrete_ct := g.value_c_type(concrete_type)
+		g.writeln('case ${type_id}: {')
+		g.indent++
+		if concrete in ['MessageError', 'builtin.MessageError'] {
+			value := '_clone_ierror_value${tmp}'
+			g.writeln('${concrete_ct} ${value} = *((${concrete_ct}*)${object});')
+			g.writeln('${value}.msg = string__clone(${value}.msg);')
+			g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
+			g.writeln('${result}._object_is_boxed = true;')
+		} else if clone_method := g.resolve_method_name(concrete, 'clone') {
+			params := g.tc.fn_param_types[clone_method] or { []types.Type{} }
+			receiver := if params.len > 0 && params[0] is types.Pointer {
+				'((${concrete_ct}*)${object})'
+			} else {
+				'*((${concrete_ct}*)${object})'
+			}
+			return_type := g.tc.fn_ret_types[clone_method] or { concrete_type }
+			if return_type is types.Pointer {
+				g.writeln('${result}._object = ${g.cname(clone_method)}(${receiver});')
+				g.writeln('${result}._object_is_boxed = false;')
+			} else {
+				value := '_clone_ierror_value${tmp}'
+				g.writeln('${concrete_ct} ${value} = ${g.cname(clone_method)}(${receiver});')
+				g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
+				g.writeln('${result}._object_is_boxed = true;')
+			}
+		} else {
+			g.writeln('${result}._object = memdup(${object}, sizeof(${concrete_ct}));')
+			g.writeln('${result}._object_is_boxed = true;')
+		}
+		g.writeln('break;')
+		g.indent--
+		g.writeln('}')
+	}
+	g.writeln('default: break;')
+	g.writeln('}')
+	g.indent--
+	g.writeln('}')
+	g.write('${result}; })')
+}
+
 fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) bool {
 	if depth > 64 {
 		return false

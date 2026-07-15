@@ -1239,7 +1239,22 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
 		}
 		ResultType {
-			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
+			if bad := tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen) {
+				return bad
+			}
+			// A failed result owns its concrete IError payload too. Plain error structs can
+			// be copied, while payloads with destructible storage need a real dynamic clone.
+			for concrete in tc.ierror_impl_names() {
+				concrete_type := tc.parse_type(concrete)
+				if !tc.ownership_type_requires_destruction(concrete_type)
+					|| concrete in ['Error', 'MessageError', 'builtin.Error', 'builtin.MessageError'] {
+					continue
+				}
+				if !tc.ownership_ierror_has_compatible_clone_method(concrete_type) {
+					return concrete
+				}
+			}
+			return none
 		}
 		Array {
 			return tc.ownership_default_clone_missing_method_inner(typ.elem_type, mut seen)
@@ -1307,6 +1322,21 @@ fn (tc &TypeChecker) ownership_type_has_clone_method(typ Type) bool {
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) ownership_ierror_has_compatible_clone_method(typ Type) bool {
+	type_name := resolve_type_name_for_method(typ)
+	if type_name.len == 0 {
+		return false
+	}
+	method := tc.concrete_method_signature_key(type_name, 'clone') or { return false }
+	return_type := tc.fn_ret_types[method] or { return false }
+	actual := method_type_name(unwrap_pointer(return_type))
+	expected := method_type_name(unwrap_pointer(typ))
+	if actual.len == 0 || expected.len == 0 {
+		return false
+	}
+	return actual == expected || actual.all_after_last('.') == expected.all_after_last('.')
 }
 
 fn (tc &TypeChecker) ownership_type_has_explicit_drop(type_name string) bool {

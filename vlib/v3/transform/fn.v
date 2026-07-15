@@ -4569,15 +4569,15 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		mut else_branch := t.make_empty()
 		if is_result {
 			source_err := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
-			message := t.make_method_call(source_err, 'msg', []flat.NodeId{})
-			t.set_node_typ(int(message), 'string')
-			code := t.make_method_call(source_err, 'code', []flat.NodeId{})
-			t.set_node_typ(int(code), 'int')
 			t.mark_fn_used('string__clone')
-			cloned_message := t.make_call_typed('string__clone', arr1(message), 'string')
-			t.mark_fn_used('builtin.error_with_code')
-			cloned_err := t.make_call_typed('builtin.error_with_code', arr2(cloned_message, code),
-				'IError')
+			if !isnil(t.tc) {
+				for concrete in t.tc.ierror_impl_names() {
+					if clone_method := t.tc.concrete_method_signature_key(concrete, 'clone') {
+						t.mark_fn_used_name(clone_method)
+					}
+				}
+			}
+			cloned_err := t.make_call_typed('__v3_clone_owned_ierror', arr1(source_err), 'IError')
 			else_branch = t.make_block(arr1(t.make_assign(t.make_selector(t.make_ident(tmp_name),
 				'err', 'IError'), cloned_err)))
 		}

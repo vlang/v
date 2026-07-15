@@ -1790,6 +1790,35 @@ fn (g &FlatGen) expr_is_addressable(id flat.NodeId) bool {
 	}
 }
 
+// expr_is_stable_for_reuse reports whether evaluating an expression repeatedly is free of
+// observable side effects. This is intentionally narrower than addressability: `xs[next()]`
+// is an lvalue, but the index must still be evaluated exactly once.
+fn (g &FlatGen) expr_is_stable_for_reuse(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	return match node.kind {
+		.ident, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.nil_literal, .none_expr, .enum_val, .sizeof_expr, .typeof_expr {
+			true
+		}
+		.selector, .paren, .cast_expr {
+			node.children_count > 0 && g.expr_is_stable_for_reuse(g.a.child(&node, 0))
+		}
+		.prefix {
+			node.children_count > 0 && g.expr_is_stable_for_reuse(g.a.child(&node, 0))
+		}
+		.index {
+			node.children_count >= 2 && g.expr_is_stable_for_reuse(g.a.child(&node, 0))
+				&& g.expr_is_stable_for_reuse(g.a.child(&node, 1))
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (mut g FlatGen) gen_mut_sum_lvalue_arg(arg_id flat.NodeId, expected types.Type) bool {
 	mut lvalue_id := arg_id
 	if int(arg_id) >= 0 && int(arg_id) < g.a.nodes.len {
@@ -3304,12 +3333,38 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	if node.children_count == 2 && g.ownership_drop_intrinsic_name(drop_target_name) {
 		arg_id := g.a.child(&node, 1)
 		arg_type := g.usable_expr_type(arg_id)
-		expr := g.expr_to_string(arg_id)
 		g.writeln('({')
 		g.indent++
+		mut expr := ''
+		if g.expr_is_addressable(arg_id) {
+			if g.expr_is_stable_for_reuse(arg_id) {
+				expr = g.expr_to_string(arg_id)
+			} else {
+				tmp := g.tmp_count
+				g.tmp_count++
+				ct := g.value_c_type(arg_type)
+				g.write('${ct}* _drop_owned_ref${tmp} = &(')
+				g.gen_expr(arg_id)
+				g.writeln(');')
+				expr = '*_drop_owned_ref${tmp}'
+			}
+		} else {
+			tmp := g.tmp_count
+			g.tmp_count++
+			ct := g.value_c_type(arg_type)
+			g.write('${ct} _drop_owned_value${tmp} = ')
+			g.gen_expr(arg_id)
+			g.writeln(';')
+			expr = '_drop_owned_value${tmp}'
+		}
 		g.gen_ownership_drop_value(arg_type, expr, 0)
 		g.indent--
 		g.write('})')
+		return
+	}
+	if node.children_count == 2 && resolved_target_name.len == 0
+		&& target_name == '__v3_clone_owned_ierror' {
+		g.gen_ownership_clone_ierror(g.a.child(&node, 1))
 		return
 	}
 	if node.children_count >= 2 && (fn_name == 'sync__Channel__close'
