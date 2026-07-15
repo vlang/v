@@ -322,16 +322,21 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 			return info
 		}
 	}
+	// A bare alias in the active module has more authority than the legacy
+	// short-name table, which can contain an unrelated imported struct with the
+	// same spelling. Resolve the alias before that ambiguous fallback.
+	normalized := t.normalize_type_alias(name)
+	if normalized != name {
+		if info := t.lookup_struct_info_direct(normalized) {
+			return info
+		}
+	}
 	// A monomorphized generic instantiated from another module references the concrete
 	// type by its bare name (`BoolConfig` from main, while transforming the declaring
 	// module); the module-qualified lookup above misses those, so fall back to the
 	// direct lookup, which tries the bare name too.
 	if info := t.lookup_struct_info_direct(name) {
 		return info
-	}
-	normalized := t.normalize_type_alias(name)
-	if normalized != name {
-		return t.lookup_struct_info_direct(normalized)
 	}
 	return none
 }

@@ -49,10 +49,25 @@ fn (g &FlatGen) struct_init_fields_key(type_name string, fallback string) string
 
 fn (g &FlatGen) struct_init_lookup_type_name(type_name string) string {
 	typ := g.tc.parse_type(type_name)
-	if typ is types.Struct {
-		return typ.name
+	match typ {
+		types.Alias {
+			return struct_init_unaliased_type_name(typ.base_type, type_name)
+		}
+		types.Struct {
+			return typ.name
+		}
+		else {}
 	}
+
 	return type_name
+}
+
+fn struct_init_unaliased_type_name(typ types.Type, fallback string) string {
+	if typ is types.Alias {
+		return struct_init_unaliased_type_name(typ.base_type, fallback)
+	}
+	name := typ.name()
+	return if name.len > 0 && name !in ['unknown', 'void'] { name } else { fallback }
 }
 
 fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Type) {
