@@ -6287,10 +6287,6 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 	if wants_ptr {
 		return false
 	}
-	base_node := g.a.nodes[int(base_id)]
-	if base_node.kind !in [.ident, .selector] {
-		return false
-	}
 	source_iface := g.interface_receiver_name(base_type)
 	target_iface := g.interface_receiver_name(expected_type)
 	if source_iface.len == 0 || target_iface.len == 0 || source_iface == target_iface {
@@ -6302,6 +6298,20 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 	mappings := g.interface_receiver_type_id_mappings(source_iface, target_iface)
 	if mappings.len == 0 {
 		return false
+	}
+	base_node := g.a.nodes[int(base_id)]
+	if base_node.kind !in [.ident, .selector] {
+		base_is_ptr := base_type is types.Pointer
+		source_ct := g.tc.c_type(base_type)
+		tmp := g.tmp_count
+		g.tmp_count++
+		g.write('({ ${source_ct} _iface_up${tmp} = ')
+		g.gen_expr(base_id)
+		g.write('; ')
+		g.gen_embedded_interface_receiver_from_expr('_iface_up${tmp}', base_is_ptr, target_iface,
+			expected_type, mappings)
+		g.write('; })')
+		return true
 	}
 	target_ct := g.tc.c_type(types.unwrap_pointer(expected_type))
 	base_is_ptr := base_type is types.Pointer
@@ -6337,6 +6347,33 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 	}
 	g.write('}')
 	return true
+}
+
+fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, base_is_ptr bool, target_iface string, expected_type types.Type, mappings []InterfaceReceiverIdMapping) {
+	target_ct := g.tc.c_type(types.unwrap_pointer(expected_type))
+	op := if base_is_ptr { '->' } else { '.' }
+	g.write('(${target_ct}){._typ = ')
+	for mapping in mappings {
+		g.write('(${base_expr}${op}_typ == ${mapping.source_id} ? ${mapping.target_id} : ')
+	}
+	g.write('0')
+	for _ in mappings {
+		g.write(')')
+	}
+	g.write(', ._object = ${base_expr}${op}_object')
+	for field in g.tc.interface_fields[target_iface] or { []types.StructField{} } {
+		field_ct := g.tc.c_type(field.typ)
+		g.write(', .${g.cname(field.name)} = ')
+		for mapping in mappings {
+			impl_ct := g.tc.c_type(g.tc.parse_type(mapping.impl))
+			g.write('(${base_expr}${op}_typ == ${mapping.source_id} ? ((${impl_ct}*)${base_expr}${op}_object)->${g.cname(field.name)} : ')
+		}
+		g.write('(${field_ct}){0}')
+		for _ in mappings {
+			g.write(')')
+		}
+	}
+	g.write('}')
 }
 
 struct InterfaceReceiverIdMapping {

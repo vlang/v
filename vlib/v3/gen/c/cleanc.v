@@ -4388,6 +4388,11 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = old_expected_enum
 		return
 	}
+	if g.gen_embedded_interface_receiver(id, actual, expected, expected is types.Pointer) {
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
 	if g.gen_interface_value_expr(id, expected) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum

@@ -3571,8 +3571,11 @@ fn main() {
 	p := voidptr(&x)
 	_ := Sink(p)
 }
-',
+	',
 		'does not implement interface')
+	rvalue_upcast_out := run_good(v3_bin, 'review_interface_rvalue_upcasts',
+		'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n')
+	assert rvalue_upcast_out == 'call\nif\nindex'
 }
 
 fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {

@@ -113,6 +113,20 @@ fn test_lifetime_generic_struct_init_suffixes_are_erased() {
 	assert struct_init_values(a) == ['Candidate', 'Slot[int]']
 }
 
+fn test_for_in_container_generic_index_keeps_loop_body() {
+	a := parse_parser_regression_source('for_in_generic_index_keeps_body',
+		'const Foo = [1, 2]\n\nfn main() {\n\tfor x in Foo[int] {\n\t\tprintln(x)\n\t}\n}\n')
+	assert 'Foo[int]' !in struct_init_values(a)
+	mut saw_for_in := false
+	for node in a.nodes {
+		if node.kind == .for_in_stmt {
+			saw_for_in = true
+			assert int(node.children_count) > 3
+		}
+	}
+	assert saw_for_in
+}
+
 fn test_c_pointer_cast_selector_parses_cast_before_selector() {
 	a := parse_parser_regression_source('c_pointer_cast_selector', 'module main
 

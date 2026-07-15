@@ -5302,7 +5302,7 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 			continue
 		}
 		// module-qualified struct init: module.Type{} or module.Type{field: val, ...}
-		if p.tok == .lcbr {
+		if !p.in_for_container && p.tok == .lcbr {
 			lhs_node := p.a.nodes[int(lhs)]
 			if lhs_node.kind == .index {
 				if full_name := p.generic_struct_init_type_name(lhs) {
@@ -5352,7 +5352,7 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		// index / generic
 		if p.tok == .lsbr {
 			base_type_name := p.resolve_local_type_name(p.type_expr_name(lhs))
-			if type_name_can_init(base_type_name)
+			if !p.in_for_container && type_name_can_init(base_type_name)
 				&& p.current_generic_struct_init_suffix_followed_by_lcbr() {
 				before_suffix_offset := p.s.offset
 				suffix := p.parse_type_generic_suffix()

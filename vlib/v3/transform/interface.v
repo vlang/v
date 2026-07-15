@@ -192,6 +192,7 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			}
 			return converted
 		}
+		return none
 	}
 	literal := t.make_interface_literal_from_expr(id, iface_name, share_source) or { return none }
 	if !target_is_ptr {
@@ -214,6 +215,9 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 	}
 	matching := t.interface_conversion_impl_mappings(source_iface, target_iface)
 	if matching.len == 0 {
+		return none
+	}
+	if !t.source_interface_carries_target_fields(source_iface, target_iface) {
 		return none
 	}
 	base := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_cast')
@@ -251,6 +255,27 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), target_iface)
 	return result
+}
+
+fn (t &Transformer) source_interface_carries_target_fields(source_iface string, target_iface string) bool {
+	target_fields := t.tc.interface_field_list(target_iface)
+	if target_fields.len == 0 {
+		return true
+	}
+	source_fields := t.tc.interface_fields[source_iface] or { return false }
+	for target in target_fields {
+		mut found := false
+		for source in source_fields {
+			if source.name == target.name {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 struct InterfaceImplMapping {
