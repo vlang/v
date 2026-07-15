@@ -10,6 +10,12 @@ struct OwnershipSumPayload {
 	payload voidptr
 }
 
+// OwnershipInterfacePayload matches the leading object pointer in the runtime
+// interface layout.
+struct OwnershipInterfacePayload {
+	payload voidptr
+}
+
 fn drop_owned_result_error(err IError) {
 	raw_err := unsafe { &C.IError(&err) }
 	none_err := unsafe { &C.IError(&none__) }
@@ -18,10 +24,7 @@ fn drop_owned_result_error(err IError) {
 		|| raw_err._object == sentinel_err._object {
 		return
 	}
-	if err is MessageError {
-		unsafe { err.free() }
-	}
-	unsafe { free(raw_err._object) }
+	drop_owned(err)
 }
 
 // drop_owned destroys an owned value outside ownership mode.
@@ -31,8 +34,17 @@ fn drop_owned_result_error(err IError) {
 @[manualfree]
 pub fn drop_owned[T](value T) {
 	mut owned := value
-	// After the option branch, the remaining wrapper with a payload type is a result.
-	$if T is OwnershipDrop {
+	$if T.unaliased_typ is $interface {
+		payload := unsafe { (&OwnershipInterfacePayload(&owned)).payload }
+		if mut owned is OwnershipDrop {
+			owned.drop()
+		} else {
+			unsafe { owned.free() }
+		}
+		if payload != unsafe { nil } {
+			unsafe { free(payload) }
+		}
+	} $else $if T is OwnershipDrop {
 		owned.drop()
 	} $else $if T.unaliased_typ is string {
 		unsafe { owned.free() }
@@ -41,6 +53,7 @@ pub fn drop_owned[T](value T) {
 			drop_owned(payload)
 		}
 	} $else $if T.unaliased_typ.payload_type != 0 {
+		// After the option branch, the remaining wrapper with a payload type is a result.
 		if payload := owned {
 			drop_owned(payload)
 		} else {

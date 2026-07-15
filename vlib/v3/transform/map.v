@@ -543,7 +543,17 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
-	key_value := t.transform_expr_for_type(info.key_id, info.key_type)
+	mut key_value := t.transform_expr_for_type(info.key_id, info.key_type)
+	mut key_is_owned := !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(info.key_id)
+	if node.op == .assign && !key_is_owned && !isnil(t.tc)
+		&& t.normalize_type_alias(info.key_type).trim_space() != 'string' {
+		key_type := t.tc.parse_type(info.key_type)
+		if t.tc.ownership_type_requires_destruction(key_type)
+			&& t.tc.ownership_default_clone_missing_method(key_type) == none {
+			key_value = t.make_compiler_default_clone_value(key_value, info.key_type, true)
+			key_is_owned = true
+		}
+	}
 	t.drain_pending(mut result)
 	result << t.make_decl_assign_typed(key_name, key_value, info.key_storage_type)
 	rhs_id := t.a.child(&node, 1)
@@ -562,7 +572,7 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 			t.a.child(&node, 0), info.value_type)
 		t.drain_pending(mut result)
 		result << t.make_decl_assign_typed(value_name, value, info.value_type)
-		cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(info.key_id,
+		cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned,
 			info.key_type, map_expr, info.base_type, key_name, mut result)
 		if drop_old_value {
 			t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
@@ -581,12 +591,12 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 	return result
 }
 
-// prepare_owned_map_set_key_cleanup records whether map__set will consume a freshly
-// created ownership-bearing key. Non-string keys transfer into a new slot by byte copy, so
+// prepare_owned_map_set_key_cleanup records whether map__set receives an independently
+// owned key. Non-string keys transfer into a new slot by byte copy, so
 // only an existing-key update leaves the incoming owner unused. String keys are cloned by
 // the runtime for new slots and therefore always leave a fresh incoming owner to destroy.
-fn (mut t Transformer) prepare_owned_map_set_key_cleanup(key_id flat.NodeId, key_type_name string, map_expr flat.NodeId, map_type string, key_name string, mut result []flat.NodeId) (bool, string) {
-	if isnil(t.tc) || !t.tc.ownership_expr_creates_owned_value(key_id) {
+fn (mut t Transformer) prepare_owned_map_set_key_cleanup(key_is_owned bool, key_type_name string, map_expr flat.NodeId, map_type string, key_name string, mut result []flat.NodeId) (bool, string) {
+	if isnil(t.tc) || !key_is_owned {
 		return false, ''
 	}
 	key_type := t.tc.parse_type(key_type_name)
@@ -958,8 +968,9 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		mut existing_key_name := ''
 		if has_spread {
 			mut drop_stmts := []flat.NodeId{}
-			cleanup_key, existing_key_name = t.prepare_owned_map_set_key_cleanup(key_id, key_type,
-				t.make_ident(tmp_name), map_type, key_name, mut drop_stmts)
+			key_is_owned := !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(key_id)
+			cleanup_key, existing_key_name = t.prepare_owned_map_set_key_cleanup(key_is_owned,
+				key_type, t.make_ident(tmp_name), map_type, key_name, mut drop_stmts)
 			t.append_map_value_drop_before_set(t.make_ident(tmp_name), map_type, key_name,
 				value_type, mut drop_stmts)
 			for stmt in drop_stmts {

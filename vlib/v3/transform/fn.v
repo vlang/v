@@ -4547,21 +4547,42 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 	}
 	// Options and results both store successful values behind the `ok` flag.
 	if clean.starts_with('?') || clean.starts_with('!') {
+		is_result := clean.starts_with('!')
 		inner := t.optional_base_type(t.qualify_optional_type(clean))
-		if !t.compiler_default_clone_type_needs_work(inner) {
+		inner_needs_work := t.compiler_default_clone_type_needs_work(inner)
+		if !inner_needs_work && !is_result {
 			return source
 		}
 		tmp_name := t.new_temp('derived_clone_opt')
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, clean)
 		tmp := t.make_ident(tmp_name)
-		source_value := t.make_selector(tmp, 'value', inner)
-		pending_start := t.pending_stmts.len
-		cloned_value := t.make_compiler_default_clone_value(source_value, inner, true)
-		mut body := t.pending_stmts[pending_start..].clone()
-		t.pending_stmts = t.pending_stmts[..pending_start].clone()
-		body << t.make_assign(t.make_selector(t.make_ident(tmp_name), 'value', inner), cloned_value)
+		mut body := []flat.NodeId{}
+		if inner_needs_work {
+			source_value := t.make_selector(tmp, 'value', inner)
+			pending_start := t.pending_stmts.len
+			cloned_value := t.make_compiler_default_clone_value(source_value, inner, true)
+			body = t.pending_stmts[pending_start..].clone()
+			t.pending_stmts = t.pending_stmts[..pending_start].clone()
+			body << t.make_assign(t.make_selector(t.make_ident(tmp_name), 'value', inner),
+				cloned_value)
+		}
+		mut else_branch := t.make_empty()
+		if is_result {
+			source_err := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
+			message := t.make_method_call(source_err, 'msg', []flat.NodeId{})
+			t.set_node_typ(int(message), 'string')
+			code := t.make_method_call(source_err, 'code', []flat.NodeId{})
+			t.set_node_typ(int(code), 'int')
+			t.mark_fn_used('string__clone')
+			cloned_message := t.make_call_typed('string__clone', arr1(message), 'string')
+			t.mark_fn_used('builtin.error_with_code')
+			cloned_err := t.make_call_typed('builtin.error_with_code', arr2(cloned_message, code),
+				'IError')
+			else_branch = t.make_block(arr1(t.make_assign(t.make_selector(t.make_ident(tmp_name),
+				'err', 'IError'), cloned_err)))
+		}
 		t.pending_stmts << t.make_if(t.make_selector(tmp, 'ok', 'bool'), t.make_block(body),
-			t.make_empty())
+			else_branch)
 		return t.make_ident(tmp_name)
 	}
 	if clean == 'string' {

@@ -8772,6 +8772,7 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 				'cannot assign `${rhs_type.name()}` to `${expected_type.name()}`', id)
 		}
 		$if ownership ? {
+			tc.check_ownership_map_assignment_key(lhs_id, node.op)
 			ownership_lhs_ids << lhs_id
 			ownership_rhs_ids << rhs_id
 			ownership_lhs_types << lhs_type

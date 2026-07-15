@@ -472,13 +472,17 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 			}
 		}
 		types.ResultType {
+			g.writeln('if ((${expr}).ok) {')
+			g.indent++
 			if g.ownership_type_requires_destruction(typ.base_type, depth + 1) {
-				g.writeln('if ((${expr}).ok) {')
-				g.indent++
 				g.gen_ownership_drop_value(typ.base_type, '(${expr}).value', depth + 1)
-				g.indent--
-				g.writeln('}')
 			}
+			g.indent--
+			g.writeln('} else {')
+			g.indent++
+			g.gen_ownership_drop_result_error('(${expr}).err', depth + 1)
+			g.indent--
+			g.writeln('}')
 		}
 		types.String {
 			g.writeln('string__free(&(${expr}));')
@@ -616,21 +620,53 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 	}
 }
 
+// gen_ownership_drop_result_error destroys the owned IError stored by a failed result.
+// Unlike a general interface, a result owns pointer-backed error objects as well as boxed
+// value objects. The process-wide none and error-sentinel objects remain borrowed.
+fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int) {
+	object := '((${expr})._object)'
+	g.writeln('string__free(&((${expr}).message));')
+	g.writeln('if (${object} != NULL && ${object} != builtin__none__._object && ${object} != builtin__error_sentinel._object) {')
+	g.indent++
+	g.writeln('switch ((${expr})._typ) {')
+	mut iface_name := 'IError'
+	if iface_name !in g.iface_impls && 'builtin.IError' in g.iface_impls {
+		iface_name = 'builtin.IError'
+	}
+	for concrete in g.iface_impls[iface_name] or { []string{} } {
+		id := g.iface_type_id(iface_name, concrete)
+		concrete_type := g.tc.parse_type(concrete)
+		if id == 0 || !g.ownership_type_requires_destruction(concrete_type, depth + 1) {
+			continue
+		}
+		concrete_ct := g.value_c_type(concrete_type)
+		g.writeln('case ${id}:')
+		g.indent++
+		g.gen_ownership_drop_value(concrete_type, '*((${concrete_ct}*)${object})', depth + 1)
+		g.writeln('break;')
+		g.indent--
+	}
+	g.writeln('default: break;')
+	g.writeln('}')
+	g.writeln('free(${object});')
+	g.writeln('(${expr})._object = NULL;')
+	g.writeln('(${expr})._object_is_boxed = false;')
+	g.indent--
+	g.writeln('}')
+}
+
 fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) bool {
 	if depth > 64 {
 		return false
 	}
 	match typ {
-		types.String, types.Array, types.Map, types.Interface, types.SumType {
+		types.String, types.Array, types.Map, types.Interface, types.ResultType, types.SumType {
 			return true
 		}
 		types.Alias {
 			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
 		}
 		types.OptionType {
-			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
-		}
-		types.ResultType {
 			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
 		}
 		types.ArrayFixed {

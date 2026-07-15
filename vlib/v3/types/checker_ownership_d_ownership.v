@@ -1154,21 +1154,44 @@ pub fn (tc &TypeChecker) ownership_type_requires_destruction(typ Type) bool {
 	return tc.ownership_type_requires_destruction_inner(typ, 0, mut seen)
 }
 
+// check_ownership_map_assignment_key rejects borrowed map keys that cannot be cloned
+// before map storage takes an independent ownership-bearing copy.
+fn (mut tc TypeChecker) check_ownership_map_assignment_key(lhs_id flat.NodeId, op flat.Op) {
+	if tc.ownership == unsafe { nil } || op != .assign || !tc.valid_node_id(lhs_id) {
+		return
+	}
+	lhs := tc.a.nodes[int(lhs_id)]
+	if lhs.kind != .index || lhs.children_count < 2 {
+		return
+	}
+	map_id := tc.a.child(&lhs, 0)
+	map_type := map_type_from_receiver(tc.resolve_type(map_id)) or { return }
+	if map_type.key_type is String || !tc.ownership_type_requires_destruction(map_type.key_type) {
+		return
+	}
+	key_id := tc.a.child(&lhs, 1)
+	if tc.ownership_expr_creates_owned_value(key_id) {
+		return
+	}
+	if bad_type := tc.ownership_default_clone_missing_method(map_type.key_type) {
+		tc.record_error(.assignment_mismatch,
+			'cannot clone borrowed map key: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			key_id)
+	}
+}
+
 fn (tc &TypeChecker) ownership_type_requires_destruction_inner(typ Type, depth int, mut seen map[string]bool) bool {
 	if tc.ownership == unsafe { nil } || depth > 64 {
 		return false
 	}
 	match typ {
-		String, Array, Map, Interface, SumType {
+		String, Array, Map, Interface, ResultType, SumType {
 			return true
 		}
 		Alias {
 			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
 		}
 		OptionType {
-			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
-		}
-		ResultType {
 			return tc.ownership_type_requires_destruction_inner(typ.base_type, depth + 1, mut seen)
 		}
 		ArrayFixed {
@@ -1302,6 +1325,7 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []str
 		}
 		ResultType {
 			tc.ownership_collect_drop_type_names(typ.base_type, mut names, mut seen)
+			tc.ownership_collect_drop_type_names(tc.parse_type('IError'), mut names, mut seen)
 		}
 		Array {
 			tc.ownership_collect_drop_type_names(typ.elem_type, mut names, mut seen)
