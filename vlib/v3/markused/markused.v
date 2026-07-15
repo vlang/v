@@ -3612,7 +3612,7 @@ fn (c &CallCollector) local_fn_param_type_names(node &flat.Node, cur_module stri
 }
 
 fn (c &CallCollector) local_decl_type_name(declared string, rhs_id flat.NodeId, cur_module string, imports map[string]string, local_types map[string]string) string {
-	declared_type := c.tc.parse_type(declared)
+	declared_type := c.tc.parse_canonical_type(declared)
 	if declared_type is types.Alias {
 		return declared_type.name
 	}
@@ -3621,7 +3621,7 @@ fn (c &CallCollector) local_decl_type_name(declared string, rhs_id flat.NodeId, 
 	if rhs_name.len == 0 {
 		return declared
 	}
-	rhs_type := c.tc.parse_type(rhs_name)
+	rhs_type := c.tc.parse_canonical_type(rhs_name)
 	if rhs_type is types.Alias && markused_alias_base_matches_type(c.tc, rhs_type, declared_type) {
 		return rhs_type.name
 	}
@@ -4320,7 +4320,7 @@ fn (c &CallCollector) alias_type_from_name(name string, cur_module string, impor
 	resolved := markused_resolve_imported_type_name(name, imports)
 	for candidate in markused_alias_type_candidates(resolved, name, cur_module) {
 		if candidate in c.tc.type_aliases {
-			return c.tc.parse_type(candidate)
+			return c.tc.parse_canonical_type(candidate)
 		}
 	}
 	return none
@@ -4781,7 +4781,7 @@ fn (c &CallCollector) top_level_index_elem_type_name(id flat.NodeId, cur_module 
 	if base_type_name.len == 0 {
 		return none
 	}
-	base_type := types.unwrap_pointer(c.tc.parse_type(base_type_name))
+	base_type := types.unwrap_pointer(c.tc.parse_canonical_type(base_type_name))
 	if base_type is types.Array {
 		return base_type.elem_type.name()
 	}
@@ -4880,7 +4880,7 @@ fn (c &CallCollector) operator_lhs_type(lhs_id flat.NodeId, local_types map[stri
 		lhs := c.a.node(lhs_id)
 		if lhs.kind == .ident {
 			if local_type := local_types[lhs.value] {
-				typ := c.tc.parse_type(local_type)
+				typ := c.tc.parse_canonical_type(local_type)
 				if typ !is types.Unknown && typ !is types.Void {
 					return typ
 				}
