@@ -216,10 +216,15 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 	base := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_cast')
 	op := if source_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
 	object := t.make_selector_op(base, '_object', 'voidptr', op)
-	fields := [
+	mut fields := [
 		t.make_sum_literal_field('_typ', t.make_int_literal(0), 'int'),
 		t.make_sum_literal_field('_object', object, 'voidptr'),
 	]
+	for field in t.tc.interface_field_list(target_iface) {
+		field_type := t.normalize_type_alias(field.typ.name())
+		field_value := t.make_selector_op(base, field.name, field_type, op)
+		fields << t.make_sum_literal_field(field.name, field_value, field_type)
+	}
 	start := t.a.children.len
 	for field in fields {
 		t.a.children << field

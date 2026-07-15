@@ -16680,8 +16680,10 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 		if typ := tc.lowered_sum_selector_type(clean, node.value) {
 			return typ
 		}
-		if typ := tc.sum_unique_variant_field_type(clean, node.value) {
-			return typ
+		if base_node.kind == .index {
+			if typ := tc.sum_unique_variant_field_type(clean, node.value) {
+				return typ
+			}
 		}
 		if typ := tc.sum_shared_field_type(clean, node.value) {
 			return typ
@@ -19169,7 +19171,7 @@ fn (tc &TypeChecker) interface_receiver_method_call_info(iface_name string, meth
 }
 
 // interface_field_list supports interface field list handling for TypeChecker.
-fn (tc &TypeChecker) interface_field_list(iface_name string) []StructField {
+pub fn (tc &TypeChecker) interface_field_list(iface_name string) []StructField {
 	mut seen := map[string]bool{}
 	return tc.interface_field_list_inner(iface_name, mut seen)
 }

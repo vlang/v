@@ -648,6 +648,41 @@ fn main() {
 	assert out == '11\n12\n9'
 }
 
+fn test_interface_to_interface_conversion_preserves_fields() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_to_interface_preserves_fields', 'interface Named {
+	name string
+}
+
+interface Rich {
+	name string
+	describe() string
+}
+
+struct User {
+	name string
+}
+
+fn (u User) describe() string {
+	return "user:" + u.name
+}
+
+fn read_named(n Named) string {
+	return n.name
+}
+
+fn main() {
+	rich := Rich(User{
+		name: "Ada"
+	})
+	println(read_named(rich))
+	named := Named(rich)
+	println(named.name)
+}
+')
+	assert out == 'Ada\nAda'
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',

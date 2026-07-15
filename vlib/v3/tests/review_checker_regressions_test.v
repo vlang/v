@@ -228,6 +228,16 @@ fn test_reject_escaping_capturing_fn_literals() {
 		'capturing fn literal cannot be stored or returned')
 }
 
+fn test_reject_unsmartcasted_unique_sum_variant_field() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_unsmartcasted_unique_sum_field',
+		'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype K = A | B\nfn main() {\n\tk := K(B{})\n\t_ := k.only_on_a\n}\n',
+		'unknown field `only_on_a`')
+	out := run_good(v3_bin, 'good_smartcasted_unique_sum_field',
+		'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype K = A | B\nfn main() {\n\tk := K(A{\n\t\tonly_on_a: 7\n\t})\n\tif k is A {\n\t\tprintln(int_str(k.only_on_a))\n\t}\n}\n')
+	assert out == '7'
+}
+
 fn test_generic_functions_report_missing_return() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {}\n',
