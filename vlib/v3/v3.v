@@ -931,6 +931,12 @@ fn main() {
 	mut files := []string{}
 	builtin_dir := builtin_dir_for_vroot(prefs.vroot)
 	mut builtin_defines := prefs.user_defines.clone()
+	// Builtin contains a small number of ABI-sensitive helpers. Keep their v3
+	// implementations separate from the regular backend without exposing this
+	// internal selection define to user modules.
+	if 'v3_backend' !in builtin_defines {
+		builtin_defines << 'v3_backend'
+	}
 	if ownership_mode && 'ownership' !in builtin_defines {
 		builtin_defines << 'ownership'
 	}

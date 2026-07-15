@@ -949,6 +949,9 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, init_call, map_type)
 	key_type, value_type := t.map_type_parts(map_type)
 	key_storage_type := t.map_key_storage_type(key_type)
+	needs_entry_cleanup := has_spread || (!isnil(t.tc)
+		&& (t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
+		|| t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type))))
 	for i := start_i; i + 1 < node.children_count; i += 2 {
 		key_id := t.a.child(&node, i)
 		key_name := t.new_temp('map_key')
@@ -966,7 +969,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		t.pending_stmts << t.make_decl_assign_typed(value_name, value, value_type)
 		mut cleanup_key := false
 		mut existing_key_name := ''
-		if has_spread {
+		if needs_entry_cleanup {
 			mut drop_stmts := []flat.NodeId{}
 			key_is_owned := !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(key_id)
 			cleanup_key, existing_key_name = t.prepare_owned_map_set_key_cleanup(key_is_owned,
@@ -980,7 +983,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		call := t.make_call_typed('map__set', arr3(t.make_prefix(.amp, t.make_ident(tmp_name)), t.make_prefix(.amp,
 			t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void')
 		t.pending_stmts << t.make_expr_stmt(call)
-		if has_spread {
+		if needs_entry_cleanup {
 			mut cleanup_stmts := []flat.NodeId{}
 			t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut
 				cleanup_stmts)

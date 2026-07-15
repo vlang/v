@@ -1,38 +1,8 @@
 module builtin
 
-interface OwnershipDrop {
-mut:
-	drop()
-}
-
 // OwnershipSumPayload matches the leading active-variant pointer in the runtime sum layout.
 struct OwnershipSumPayload {
 	payload voidptr
-}
-
-// OwnershipInterfacePayload matches the common runtime interface header.
-struct OwnershipInterfacePayload {
-	payload  voidptr
-	typ      int
-	is_boxed bool
-}
-
-fn drop_owned_interface[T](value T, force_owned bool) {
-	$if T.unaliased_typ is $interface {
-		mut owned := value
-		raw_interface := unsafe { &OwnershipInterfacePayload(&owned) }
-		if force_owned || raw_interface.is_boxed {
-			payload := raw_interface.payload
-			if mut owned is OwnershipDrop {
-				owned.drop()
-			} else {
-				unsafe { owned.free() }
-			}
-			if payload != unsafe { nil } {
-				unsafe { free(payload) }
-			}
-		}
-	}
 }
 
 fn drop_owned_result_error(err IError) {
@@ -47,9 +17,7 @@ fn drop_owned_result_error(err IError) {
 	if raw_err._object == none_err._object || raw_err._object == sentinel_err._object {
 		return
 	}
-	// Failed results own pointer-backed error payloads even though ordinary interface
-	// conversions treat an unboxed pointer as borrowed.
-	drop_owned_interface(err, true)
+	drop_owned_result_error_interface(err)
 }
 
 // drop_owned destroys an owned value outside ownership mode.
@@ -60,7 +28,7 @@ fn drop_owned_result_error(err IError) {
 pub fn drop_owned[T](value T) {
 	mut owned := value
 	$if T.unaliased_typ is $interface {
-		drop_owned_interface(owned, false)
+		drop_owned_interface(owned)
 	} $else $if T is OwnershipDrop {
 		owned.drop()
 	} $else $if T.unaliased_typ is string {
