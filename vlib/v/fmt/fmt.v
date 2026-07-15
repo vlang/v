@@ -225,7 +225,8 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 // it detects `json` usage the json->json2 migration cannot rewrite losslessly, so
 // the file is left entirely unmigrated (see process_file_imports and the visitor).
 struct JsonUnmigratableScan {
-	table &ast.Table = unsafe { nil }
+	table        &ast.Table = unsafe { nil }
+	json2_prefix string // the local name migrated calls would use; shadowing it breaks them
 mut:
 	found bool
 }
@@ -258,13 +259,46 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 				break
 			}
 		}
+	} else if node is ast.Stmt && node is ast.FnDecl {
+		// A parameter or receiver named the same as the migrated qualifier (e.g. a
+		// param `json2`) shadows the module, so the rewritten `json2.encode(...)`
+		// would bind to the local instead. Leave the file unmigrated in that case.
+		decl := node as ast.FnDecl
+		if decl.receiver.name == s.json2_prefix || decl.params.any(it.name == s.json2_prefix) {
+			s.found = true
+		}
+	} else if node is ast.Stmt && node is ast.AssignStmt {
+		// A local declaration `json2 := ...` shadows the qualifier too.
+		assign := node as ast.AssignStmt
+		if assign.op == .decl_assign {
+			for lx in assign.left {
+				if lx is ast.Ident && lx.name == s.json2_prefix {
+					s.found = true
+					break
+				}
+			}
+		}
+	} else if node is ast.Stmt && node is ast.ForInStmt {
+		fin := node as ast.ForInStmt
+		if fin.key_var == s.json2_prefix || fin.val_var == s.json2_prefix {
+			s.found = true
+		}
+	} else if node is ast.Stmt && node is ast.ConstDecl {
+		cd := node as ast.ConstDecl
+		for field in cd.fields {
+			if field.name == s.json2_prefix || field.name.all_after_last('.') == s.json2_prefix {
+				s.found = true
+				break
+			}
+		}
 	}
 	return true
 }
 
 fn (f &Fmt) file_has_unmigratable_json_usage(file &ast.File) bool {
 	mut scan := JsonUnmigratableScan{
-		table: f.table
+		table:        f.table
+		json2_prefix: f.json2_prefix
 	}
 	walker.inspect(file, &scan, json_unmigratable_scan_visit)
 	return scan.found

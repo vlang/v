@@ -1,0 +1,20 @@
+import json
+
+struct Foo {
+	a int
+}
+
+struct User {
+	name string
+}
+
+// A parameter named `json2` shadows the module qualifier the migration would use,
+// so a rewritten `json2.encode(...)` would bind to the parameter instead of the
+// module. The file's json usage is therefore left unmigrated.
+fn to_json(json2 Foo, u User) string {
+	return json.encode(u)
+}
+
+fn main() {
+	println(to_json(Foo{}, User{ name: 'bob' }))
+}
