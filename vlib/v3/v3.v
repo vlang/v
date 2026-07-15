@@ -494,16 +494,17 @@ fn clone_int_type_map(values map[int]types.Type) map[int]types.Type {
 // clone_flat_node clones the owned fields of one flat AST node.
 fn clone_flat_node(node flat.Node) flat.Node {
 	return flat.Node{
-		value:          node.value.clone()
-		typ:            node.typ.clone()
-		generic_params: clone_string_list(node.generic_params)
-		kind_id:        node.kind_id
-		pos:            node.pos
-		children_start: node.children_start
-		children_count: node.children_count
-		kind:           node.kind
-		op:             node.op
-		is_mut:         node.is_mut
+		value:                node.value.clone()
+		typ:                  node.typ.clone()
+		generic_params:       clone_string_list(node.generic_params)
+		kind_id:              node.kind_id
+		pos:                  node.pos
+		children_start:       node.children_start
+		children_count:       node.children_count
+		kind:                 node.kind
+		op:                   node.op
+		is_mut:               node.is_mut
+		skip_ownership_drops: node.skip_ownership_drops
 	}
 }
 
