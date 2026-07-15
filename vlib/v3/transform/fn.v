@@ -5257,6 +5257,9 @@ fn (mut t Transformer) lower_owned_array_accessor_call(base_id flat.NodeId, base
 		array_value = t.make_prefix(.mul, base)
 		t.set_node_typ(int(array_value), clean_base_type)
 	}
+	empty := t.make_infix(.eq, t.make_selector(array_value, 'len', 'int'), t.make_int_literal(0))
+	t.pending_stmts << t.make_if(empty,
+		t.make_block(arr1(t.make_panic_stmt('array.${method}: array is empty'))), t.make_empty())
 	index := if method == 'first' {
 		t.make_int_literal(0)
 	} else {
