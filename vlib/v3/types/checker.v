@@ -9836,6 +9836,16 @@ fn (mut tc TypeChecker) resolve_index_lvalue_type(lhs_id flat.NodeId, op flat.Op
 					tc.register_synth_type(lhs_id, invalid_type)
 					return invalid_type
 				}
+				if !tc.index_overload_key_types_match(setter.params[1], getter.params[1]) {
+					if tc.should_diagnose(lhs_id) {
+						tc.record_error(.assignment_mismatch,
+							'compound index assignment requires matching `[]` and `[]=` index parameter types (`[]` uses `${getter.params[1].name()}`, `[]=` uses `${setter.params[1].name()}`)',
+							lhs_id)
+					}
+					invalid_type := unknown_type('mismatched overloaded index key types')
+					tc.register_synth_type(lhs_id, invalid_type)
+					return invalid_type
+				}
 			} else {
 				if tc.should_diagnose(lhs_id) {
 					tc.record_error(.assignment_mismatch,
@@ -9865,6 +9875,10 @@ fn (mut tc TypeChecker) resolve_index_lvalue_type(lhs_id flat.NodeId, op flat.Op
 	}
 	tc.check_index(lhs_id, lhs)
 	return tc.resolve_type(lhs_id)
+}
+
+fn (tc &TypeChecker) index_overload_key_types_match(left Type, right Type) bool {
+	return tc.type_compatible(left, right) && tc.type_compatible(right, left)
 }
 
 // check_return validates check return state for types.

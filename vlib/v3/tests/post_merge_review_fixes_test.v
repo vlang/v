@@ -3449,6 +3449,13 @@ fn next() int {
 	return 0
 }
 
+type Key = string
+
+fn next_key() Key {
+	hits++
+	return Key('name')
+}
+
 struct Dict {
 mut:
 	values map[string]int
@@ -3459,6 +3466,19 @@ fn (d Dict) [] (key string) int {
 }
 
 fn (mut d Dict) []= (key string, value int) {
+	d.values[key] = value
+}
+
+struct AliasDict {
+mut:
+	values map[string]int
+}
+
+fn (d AliasDict) [] (key Key) int {
+	return d.values[string(key)]
+}
+
+fn (mut d AliasDict) []= (key string, value int) {
 	d.values[key] = value
 }
 
@@ -3484,6 +3504,14 @@ fn main() {
 	println(d['name'].str())
 	d['name'] += 5
 	println(d.values['name'].str())
+	mut alias_d := AliasDict{
+		values: {
+			'name': 4
+		}
+	}
+	alias_d[next_key()] += 6
+	println(hits.str())
+	println(alias_d.values['name'].str())
 	mut b := Bag{
 		values: [1]
 	}
@@ -3492,7 +3520,7 @@ fn main() {
 	println(b.values[0].str())
 }
 ")
-	assert overload_out == '7\n12\n1\n5'
+	assert overload_out == '7\n12\n1\n10\n2\n5'
 	generic_index_out := run_good(v3_bin, 'review_generic_index_overload_specializes',
 		'struct Box[T] {\nmut:\n\tvalues []T\n}\n\nfn (b Box[T]) [] (i int) T {\n\treturn b.values[i]\n}\n\nfn (mut b Box[T]) []= (i int, value T) {\n\tb.values[i] = value\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tvalues: [1, 2]\n\t}\n\tprintln(b[1].str())\n\tb[1] = 9\n\tprintln(b[1].str())\n}\n')
 	assert generic_index_out == '2\n9'

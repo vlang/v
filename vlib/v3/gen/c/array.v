@@ -959,7 +959,7 @@ fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.N
 	recv_tmp := '_idx_recv_${tmp}'
 	index_tmp := '_idx_key_${tmp}'
 	recv_storage := g.index_operator_receiver_storage_type(base_type, setter.params[0])
-	index_storage := setter.params[1]
+	index_storage := getter.params[1]
 	g.write('{ ${g.tc.c_type(recv_storage)} ${recv_tmp} = ')
 	g.gen_index_operator_receiver_storage_init(base_id, base_type, recv_storage)
 	g.write('; ${g.value_c_type(index_storage)} ${index_tmp} = ')
@@ -968,7 +968,9 @@ fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.N
 	g.write(g.cname(g.index_operator_call_name(setter, base_type, '[]=')))
 	g.write('(')
 	g.gen_index_operator_receiver_tmp_arg(recv_tmp, recv_storage, setter.params[0])
-	g.write(', ${index_tmp}, ')
+	g.write(', ')
+	g.gen_index_operator_tmp_arg(index_tmp, index_storage, setter.params[1])
+	g.write(', ')
 	if op := compound_assign_to_infix_op(node.op) {
 		if setter.params[2] is types.String && op == .plus {
 			g.write('string__plus(')
@@ -996,11 +998,15 @@ fn (mut g FlatGen) gen_index_operator_get_call_from_temps(getter types.CallInfo,
 	g.write('(')
 	g.gen_index_operator_receiver_tmp_arg(recv_tmp, recv_storage, getter.params[0])
 	g.write(', ')
-	if getter.params.len > 1 && !g.type_names_match(index_storage, getter.params[1]) {
-		g.write('(${g.value_c_type(getter.params[1])})')
+	g.gen_index_operator_tmp_arg(index_tmp, index_storage, getter.params[1])
+	g.write(')')
+}
+
+fn (mut g FlatGen) gen_index_operator_tmp_arg(index_tmp string, actual types.Type, expected types.Type) {
+	if !g.type_names_match(actual, expected) {
+		g.write('(${g.value_c_type(expected)})')
 	}
 	g.write(index_tmp)
-	g.write(')')
 }
 
 fn (g &FlatGen) index_operator_call_name(info types.CallInfo, base_type types.Type, method string) string {

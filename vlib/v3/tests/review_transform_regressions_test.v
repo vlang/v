@@ -781,6 +781,12 @@ fn (c &Custom) str() string {
 	return "custom:" + int_str(c.x)
 }
 
+type Name = string
+
+fn (n &Name) str() string {
+	return "alias:" + string(*n)
+}
+
 struct Foo {
 	x int
 	bar Bar
@@ -788,6 +794,7 @@ struct Foo {
 	lookup map[string]int
 	p &int
 	custom &Custom
+	name &Name
 }
 
 fn main() {
@@ -795,6 +802,7 @@ fn main() {
 	mut custom := Custom{
 		x: 12
 	}
+	mut name := Name("Ada")
 	value := Printable(Foo{
 		x: 7
 		bar: Bar{
@@ -806,6 +814,7 @@ fn main() {
 		}
 		p: &n
 		custom: &custom
+		name: &name
 	})
 	text := value.str()
 	println(text.contains("x: 7"))
@@ -816,9 +825,10 @@ fn main() {
 	println(text.contains("3"))
 	println(text.contains("11"))
 	println(text.contains("custom:12"))
+	println(text.contains("alias:Ada"))
 }
 ')
-	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
+	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
 }
 
 fn test_interface_implicit_str_dispatch_stringifies_collection_aliases() {
