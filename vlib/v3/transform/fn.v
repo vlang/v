@@ -5780,7 +5780,7 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		}
 		t.mark_fn_used('map__delete')
 		key_id := t.a.child(&node, 1)
-		cleanup_key := !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(key_id)
+		cleanup_key := !isnil(t.tc) && t.map_key_expr_creates_owned_value(key_id, key_type)
 			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
 		key_name := t.new_temp('map_key')
 		key_storage_type := t.map_key_storage_type(key_type)
