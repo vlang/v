@@ -120,7 +120,7 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 		return t.rebuild_for_in_stmt(id, node)
 	}
 	has_index := int(val_id) >= 0
-	if iter_type.starts_with('map[') {
+	if t.clean_map_type(iter_type).starts_with('map[') {
 		return t.rebuild_for_in_stmt(id, node)
 	}
 	if pool_iter := t.pool_get_results_iter_type(container_id) {
@@ -196,6 +196,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	t.drain_pending(mut prefix)
 	raw_iter_type := t.detect_for_in_type(node)
 	iter_type := t.normalize_type_alias(raw_iter_type)
+	map_iter_type := t.clean_map_type(iter_type)
 	if int(new_container) >= 0 && iter_type.len > 0 {
 		t.set_node_typ(int(new_container), iter_type)
 	}
@@ -223,11 +224,11 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		// two loop vars: child0 = key/index, child1 = value/element
 		key_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 		val_name := if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
-		if iter_type.starts_with('map[') {
+		if map_iter_type.starts_with('map[') {
 			// map[K]V: child0 (key) -> key type, child1 (val) -> value type
-			bracket_end := iter_type.index(']') or { 0 }
+			bracket_end := map_iter_type.index(']') or { 0 }
 			if key_name.len > 0 && bracket_end > 4 {
-				t.set_var_type(key_name, iter_type[4..bracket_end])
+				t.set_var_type(key_name, map_iter_type[4..bracket_end])
 			}
 		} else if iter_type.starts_with('[]') || iter_type == 'string' {
 			// []E: child0 (index) -> 'int'
@@ -236,7 +237,11 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			}
 		}
 		if val_name.len > 0 {
-			elem_type := t.infer_for_in_elem_type(iter_type, node)
+			elem_type := if map_iter_type.starts_with('map[') {
+				t.map_value_type(map_iter_type)
+			} else {
+				t.infer_for_in_elem_type(iter_type, node)
+			}
 			if elem_type.len > 0 {
 				t.set_var_type(val_name, elem_type)
 			}
@@ -246,7 +251,11 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		if int(key_id) >= 0 {
 			key_name := t.a.nodes[int(key_id)].value
 			if key_name.len > 0 {
-				elem_type := t.infer_for_in_elem_type(iter_type, node)
+				elem_type := if map_iter_type.starts_with('map[') {
+					t.map_value_type(map_iter_type)
+				} else {
+					t.infer_for_in_elem_type(iter_type, node)
+				}
 				if elem_type.len > 0 {
 					t.set_var_type(key_name, elem_type)
 				}
@@ -255,8 +264,8 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	}
 
 	mut binding_clones := []flat.NodeId{}
-	if iter_type.starts_with('map[') {
-		key_type, value_type := t.map_type_parts(iter_type)
+	if map_iter_type.starts_with('map[') {
+		key_type, value_type := t.map_type_parts(map_iter_type)
 		if has_index {
 			key_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 			if t.normalize_type_alias(key_type).trim_space() != 'string' {

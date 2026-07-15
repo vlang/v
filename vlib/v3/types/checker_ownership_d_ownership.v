@@ -5657,6 +5657,9 @@ fn (mut tc TypeChecker) ownership_bind_for_in_vars(key_id flat.NodeId, val_id fl
 	}
 	container_name := tc.ownership_expr_ident_name(container_id)
 	clean := unwrap_pointer(tc.resolve_type(container_id))
+	// The transformer prepends independent clone assignments for array, fixed-array,
+	// and map bindings before the user loop body runs. C generation clones map string
+	// keys directly when it creates their loop binding.
 	clones_storage_binding := clean is Array || clean is ArrayFixed || clean is Map
 	if clean is Map && has_val {
 		key_name := tc.ownership_lhs_name(key_id)
@@ -6647,6 +6650,18 @@ fn (mut tc TypeChecker) ownership_mark_array_literal_elements_with_mode(lhs_name
 	tc.ownership_state().array_lengths[lhs_name] = node.children_count
 	for i in 0 .. node.children_count {
 		elem_id := tc.a.child(&node, i)
+		elem := tc.a.nodes[int(elem_id)]
+		if elem.kind == .prefix && elem.value == '...' && elem.children_count > 0 {
+			spread_type := array_type_from_receiver(tc.resolve_type(tc.a.child(&elem, 0))) or {
+				tc.ownership_state().array_lengths.delete(lhs_name)
+				continue
+			}
+			if tc.ownership_type_requires_destruction(spread_type.elem_type) {
+				marked = true
+			}
+			tc.ownership_state().array_lengths.delete(lhs_name)
+			continue
+		}
 		elem_key := '${lhs_name}[${i}]'
 		elem_type := tc.resolve_type(elem_id)
 		if tc.ownership_mark_storage_from_expr_with_mode(elem_key, elem_id, elem_type, pos,

@@ -6693,6 +6693,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.reject_stored_method_value(tc.a.child(&node, i))
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, i))
 		}
+		tc.check_ownership_array_spread_clone(id, node)
 	} else if node.kind == .map_init {
 		// children alternate key, value, key, value, ...; check the value positions.
 		for j := 1; j < node.children_count; j += 2 {
@@ -6766,6 +6767,26 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			value_id := tc.a.child(&node, 1)
 			tc.ownership_consume_expr(value_id, 'channel send', id)
 		}
+	}
+}
+
+fn (mut tc TypeChecker) check_ownership_array_spread_clone(id flat.NodeId, node flat.Node) {
+	mut has_spread := false
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(&node, i)
+		if child.kind == .prefix && child.value == '...' && child.children_count > 0 {
+			has_spread = true
+			break
+		}
+	}
+	if !has_spread {
+		return
+	}
+	array_type := array_type_from_receiver(tc.resolve_type(id)) or { return }
+	if bad_type := tc.ownership_default_clone_missing_method(array_type.elem_type) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot clone array spread elements: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			id)
 	}
 }
 

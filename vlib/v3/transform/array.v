@@ -396,15 +396,7 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 		elem := t.a.nodes[int(elem_id)]
 		if elem.kind == .prefix && elem.value == '...' && elem.children_count > 0 {
 			spread_id := t.a.child(&elem, 0)
-			spread := t.transform_expr(spread_id)
-			spread_type := if t.node_type(spread_id).len > 0 {
-				t.node_type(spread_id)
-			} else {
-				array_type
-			}
-			call := t.make_array_push_many_call(t.make_prefix(.amp, t.make_ident(tmp_name)),
-				spread, spread_type)
-			t.pending_stmts << t.make_expr_stmt(call)
+			t.append_array_literal_spread(tmp_name, spread_id, array_type, elem_type)
 			continue
 		}
 		value_name := t.new_temp('arr_val')
@@ -421,6 +413,41 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 	result := t.make_ident(tmp_name)
 	t.set_node_typ(int(result), array_type)
 	return result
+}
+
+// append_array_literal_spread appends independent element clones when the destination
+// array will own and destroy its elements. Plain-data spreads keep the runtime bulk copy.
+fn (mut t Transformer) append_array_literal_spread(out_name string, spread_id flat.NodeId, array_type string, elem_type string) {
+	source_is_owned_temporary := !t.expr_can_take_address(spread_id)
+	spread := t.transform_expr_for_type(spread_id, array_type)
+	if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+		call := t.make_array_push_many_call(t.make_prefix(.amp, t.make_ident(out_name)), spread,
+			array_type)
+		t.pending_stmts << t.make_expr_stmt(call)
+		return
+	}
+	stable_source := t.stable_transformed_expr_for_reuse(spread, array_type,
+		'owned_array_spread_source')
+	idx_name := t.new_temp('owned_array_spread_idx')
+	value_name := t.new_temp('owned_array_spread_value')
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(stable_source, 'len', 'int'))
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	source_elem := t.array_get_value(stable_source, t.make_ident(idx_name), elem_type)
+	pending_start := t.pending_stmts.len
+	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
+	mut body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	body << t.make_decl_assign_typed(value_name, cloned_elem, elem_type)
+	body << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.make_prefix(.amp,
+		t.make_ident(out_name)), t.make_prefix(.amp, t.make_ident(value_name))), 'void'))
+	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
+		skip_ownership_drops: true
+	})
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+	}
 }
 
 fn (t &Transformer) array_literal_checker_alias_type(id flat.NodeId) ?string {
@@ -548,10 +575,7 @@ fn (mut t Transformer) transform_array_literal_for_type(id flat.NodeId, node fla
 		elem_id := t.a.child(&node, i)
 		elem := t.a.nodes[int(elem_id)]
 		if elem.kind == .prefix && elem.value == '...' && elem.children_count > 0 {
-			spread := t.transform_expr_for_type(t.a.child(&elem, 0), array_type)
-			call := t.make_array_push_many_call(t.make_prefix(.amp, t.make_ident(tmp_name)),
-				spread, array_type)
-			t.pending_stmts << t.make_expr_stmt(call)
+			t.append_array_literal_spread(tmp_name, t.a.child(&elem, 0), array_type, elem_type)
 			continue
 		}
 		value_name := t.new_temp('arr_val')
