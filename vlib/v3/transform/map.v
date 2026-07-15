@@ -551,7 +551,7 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	mut key_value := t.transform_expr_for_type(info.key_id, info.key_type)
-	mut key_is_owned := !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(info.key_id)
+	mut key_is_owned := t.map_key_expr_creates_owned_value(info.key_id, info.key_type)
 	if !key_is_owned && !isnil(t.tc)
 		&& t.normalize_type_alias(info.key_type).trim_space() != 'string' {
 		key_type := t.tc.parse_type(info.key_type)
