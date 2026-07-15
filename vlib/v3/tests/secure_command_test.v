@@ -130,4 +130,18 @@ fn main() { println(int_str(C.cached_value())) }
 	third := cmdexec.run(v3_bin, [v_source, '-prod', '-o', third_out])
 	assert third.exit_code == 0, third.output
 	assert cmdexec.run(third_out, []string{}).output.trim_space() == '9'
+
+	os.setenv('V3_CACHE_TRACE', '1', true)
+	defer {
+		os.unsetenv('V3_CACHE_TRACE')
+	}
+	fourth_out := os.join_path(root, 'fourth')
+	fourth := cmdexec.run(v3_bin, [v_source, '-prod', '-o', fourth_out])
+	assert fourth.exit_code == 0, fourth.output
+	assert fourth.output.contains('C object cache hit: key='), fourth.output
+	assert fourth.output.contains('reason=compiler, target, argv, and dependency contents matched'), fourth.output
+
+	assert fourth.output.contains('dependencies=2'), fourth.output
+	assert fourth.output.contains('C object content-key hits'), fourth.output
+	assert cmdexec.run(fourth_out, []string{}).output.trim_space() == '9'
 }

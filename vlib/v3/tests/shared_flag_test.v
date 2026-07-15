@@ -149,5 +149,6 @@ fn shared_flag_remove_cached_objects(obj_path string) {
 }
 
 fn shared_flag_object_cache_prefix(path string) string {
-	return path.replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_']) + '_'
+	return os.file_name(path).replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_']) +
+		'_'
 }

@@ -50,14 +50,31 @@ fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	return atomic_s
 }
 
-fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string) ![]string {
+struct CObjectCacheStats {
+mut:
+	requests                  int
+	direct_objects            int
+	content_key_hits          int
+	misses                    int
+	dependency_files          int
+	dependency_scan_fallbacks int
+	publish_races             int
+}
+
+struct CObjectDependencies {
+	files         []string
+	used_fallback bool
+}
+
+fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, mut stats CObjectCacheStats) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
 	for flag in flags {
 		clean := flag.trim_space()
 		if c_flag_is_object_file(clean) {
+			stats.requests++
 			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag, target_args,
-				target, c_compiler)!
+				target, c_compiler, mut stats)!
 		} else {
 			prepared << flag
 		}
@@ -107,8 +124,9 @@ fn c_flags_need_objective_c(flags []string) bool {
 	return false
 }
 
-fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string) !string {
+fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, mut stats CObjectCacheStats) !string {
 	if os.exists(obj_path) {
+		stats.direct_objects++
 		return obj_path
 	}
 	source_file := c_source_from_object_file(obj_path) or {
@@ -126,11 +144,21 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	args << '-w'
 	args << support_flags
 	dependencies := c_object_dependencies(compiler, args, source_file)
-	cached_obj := os.join_path(cache_dir, c_object_cache_name(obj_path, compiler, args,
-		dependencies, target))
+	stats.dependency_files += dependencies.files.len
+	if dependencies.used_fallback {
+		stats.dependency_scan_fallbacks++
+	}
+	cache_key := c_object_cache_name(obj_path, compiler, args, dependencies.files, target)
+	cached_obj := os.join_path(cache_dir, cache_key)
 	if os.exists(cached_obj) {
+		stats.content_key_hits++
+		trace_c_object_cache('hit', cache_key,
+			'compiler, target, argv, and dependency contents matched', dependencies.files.len)
 		return cached_obj
 	}
+	stats.misses++
+	trace_c_object_cache('miss', cache_key, 'no published content-key entry',
+		dependencies.files.len)
 	temp_obj := '${cached_obj}.tmp.${os.getpid()}.${rand.ulid()}'
 	args << ['-o', temp_obj, '-c', source_file]
 	res := cmdexec.run(compiler, args)
@@ -143,16 +171,27 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 		if !os.exists(cached_obj) {
 			return error('failed to publish cached C object ${cached_obj}: ${err}')
 		}
+		stats.publish_races++
 	}
 	return cached_obj
 }
 
-fn c_object_dependencies(compiler string, compile_args []string, source_file string) []string {
+fn trace_c_object_cache(status string, key string, reason string, dependency_count int) {
+	if os.getenv('V3_CACHE_TRACE') == '' {
+		return
+	}
+	println('  C object cache ${status}: key=${key} reason=${reason} dependencies=${dependency_count}')
+}
+
+fn c_object_dependencies(compiler string, compile_args []string, source_file string) CObjectDependencies {
 	mut args := compile_args.clone()
 	args << ['-M', '-MT', 'v3cache', source_file]
 	result := cmdexec.run(compiler, args)
 	if result.exit_code != 0 {
-		return [source_file]
+		return CObjectDependencies{
+			files:         [source_file]
+			used_fallback: true
+		}
 	}
 	continuation := '\\' + '\n'
 	dep_text := result.output.replace(continuation, ' ').all_after('v3cache:')
@@ -161,7 +200,9 @@ fn c_object_dependencies(compiler string, compile_args []string, source_file str
 		dependencies << source_file
 	}
 	dependencies.sort()
-	return dependencies
+	return CObjectDependencies{
+		files: dependencies
+	}
 }
 
 fn c_source_from_object_file(obj_path string) ?string {
@@ -796,6 +837,7 @@ fn main() {
 	}
 
 	mut b := bench.new()
+	mut c_object_cache_stats := CObjectCacheStats{}
 	println('=== v3 benchmark ===')
 
 	// Parse directly to flat AST
@@ -1149,7 +1191,7 @@ fn main() {
 			['-w']
 		}
 		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
-			target_args, prefs.target, c_compiler) or {
+			target_args, prefs.target, c_compiler, mut c_object_cache_stats) or {
 			eprintln(err.msg())
 			exit(1)
 		}
@@ -1258,6 +1300,14 @@ fn main() {
 	b.metric('worker queue wait', i64(worker_stats.queue_wait_ns), 'ns')
 	b.metric('worker execution', i64(worker_stats.worker_run_ns), 'ns')
 	b.metric('worker utilization', i64(worker_stats.utilization_ppm), 'ppm')
+	b.metric('C object cache requests', c_object_cache_stats.requests, 'objects')
+	b.metric('C object cache direct', c_object_cache_stats.direct_objects, 'objects')
+	b.metric('C object content-key hits', c_object_cache_stats.content_key_hits, 'objects')
+	b.metric('C object cache misses', c_object_cache_stats.misses, 'objects')
+	b.metric('C object dependency files', c_object_cache_stats.dependency_files, 'files')
+	b.metric('C object dep-scan fallbacks', c_object_cache_stats.dependency_scan_fallbacks,
+		'objects')
+	b.metric('C object publish races', c_object_cache_stats.publish_races, 'objects')
 	b.print_report()
 }
 
