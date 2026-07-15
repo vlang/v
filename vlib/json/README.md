@@ -1,5 +1,7 @@
 ## Description
 
+The `json` module is deprecated and will be removed soon. Use the pure V `json2` module instead.
+
 The `json` module provides encoding/decoding of V data structures to/from JSON.
 For more details, see also the
 [JSON section of the V documentation](https://github.com/vlang/v/blob/master/doc/docs.md#json)
