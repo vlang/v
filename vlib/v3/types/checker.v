@@ -565,9 +565,11 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 
 // fork_program_view builds a checker view over immutable, compilation-wide
 // semantic data. Mutable scope, diagnostics, sparse caches, and function state
-// start private. Keeping this constructor explicit prevents a newly-added
-// mutable field from being silently shared by parallel workers.
-fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst) TypeChecker {
+// start private. Dependency-map ownership is explicit: parallel workers pass
+// a fresh map, while a synchronous subview may keep recording in its owning
+// checker's private map. Keeping this constructor explicit prevents a
+// newly-added mutable field from being silently shared by parallel workers.
+fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by_fn map[int][]SymbolId) TypeChecker {
 	fs := new_scope(tc.file_scope)
 	return TypeChecker{
 		a:                                  ast
@@ -630,7 +632,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst) TypeChecker {
 		resolved_fn_value_names:            tc.resolved_fn_value_names
 		resolved_fn_value_set:              tc.resolved_fn_value_set
 		statement_nodes:                    tc.statement_nodes
-		direct_dependencies_by_fn:          tc.direct_dependencies_by_fn
+		direct_dependencies_by_fn:          direct_dependencies_by_fn
 		method_values_by_fn:                tc.method_values_by_fn
 		cur_comptime_variant_loop_vars:     tc.cur_comptime_variant_loop_vars
 		expr_type_values:                   tc.expr_type_values
@@ -668,7 +670,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst) TypeChecker {
 // context. It shares the compilation's immutable indexes, interner, and
 // synchronous memoization cache, but none of the caller's function state.
 fn (tc &TypeChecker) fork_type_parse_view(file string, module_name string) TypeChecker {
-	mut view := tc.fork_program_view(tc.a)
+	mut view := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	view.cur_file = file
 	view.cur_module = module_name
 	view.type_cache = tc.type_cache
@@ -680,7 +682,9 @@ fn (tc &TypeChecker) fork_type_parse_view(file string, module_name string) TypeC
 // consult. This avoids inheriting unrelated checker state through a whole
 // struct copy.
 fn (tc &TypeChecker) fork_smartcast_query_view() TypeChecker {
-	mut view := tc.fork_program_view(tc.a)
+	// This query is synchronous, so any dependency it discovers remains owned
+	// by the current master/worker checker rather than crossing worker threads.
+	mut view := tc.fork_program_view(tc.a, tc.direct_dependencies_by_fn)
 	view.file_scope = tc.file_scope
 	view.cur_scope = tc.cur_scope
 	view.scope_pool = tc.scope_pool
@@ -702,7 +706,7 @@ fn (tc &TypeChecker) fork_smartcast_query_view() TypeChecker {
 // semantic maps. `ast` must be the worker's own (cloned) FlatAst so that any
 // expr_type lookup on a freshly-created node id indexes a valid array.
 pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChecker {
-	mut forked := tc.fork_program_view(ast)
+	mut forked := tc.fork_program_view(ast, map[int][]SymbolId{})
 	// The transformer propagates call/fn-value resolution metadata onto the call
 	// nodes it clones (Transformer.copy_cloned_resolution). In a worker those
 	// writes must not touch (or grow/realloc) the shared node-indexed arrays

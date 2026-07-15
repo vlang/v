@@ -458,7 +458,7 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 }
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
-	mut w := tc.fork_program_view(tc.a)
+	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint
 	// node id range [range_lo, fn_idx], and while parallel_check_sparse is set
@@ -474,7 +474,6 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.sparse_statement_nodes = map[int]bool{}
 	w.sparse_expr_type_values = map[int]Type{}
 	w.sparse_checking_nodes = map[int]bool{}
-	w.direct_dependencies_by_fn = map[int][]SymbolId{}
 	w.method_values_by_fn = map[int][]string{}
 	w.fn_context = new_function_check_context()
 	w.generic_method_value_info = map[string]CallInfo{}
@@ -533,8 +532,14 @@ fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 		tc.expr_type_set[idx] = true
 	}
 	for fn_idx, dependencies in w.direct_dependencies_by_fn {
-		if dependencies.len > 0 {
-			tc.direct_dependencies_by_fn[fn_idx] = dependencies.clone()
+		mut merged := tc.direct_dependencies_by_fn[fn_idx] or { []SymbolId{} }
+		for dependency in dependencies {
+			if dependency !in merged {
+				merged << dependency
+			}
+		}
+		if merged.len > 0 {
+			tc.direct_dependencies_by_fn[fn_idx] = merged
 		}
 	}
 	for fn_idx, values in w.method_values_by_fn {
