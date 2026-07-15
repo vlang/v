@@ -69,6 +69,29 @@ fn gen_c(v3_bin string, name string, src string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
+fn test_amp_array_literal_uses_scanned_heap_header() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'amp_array_literal_scanned_header', 'struct Holder {
+	values &[]int
+}
+
+fn make_holder() Holder {
+	return Holder{
+		values: &[1, 2, 3]
+	}
+}
+
+fn main() {
+	holder := make_holder()
+	println(holder.values[1])
+}
+')
+	assert c_source.contains('void* memdup(void* src, ptrdiff_t sz);\nstatic inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }'), c_source
+
+	assert c_source.count('v3_heap_array(') >= 2, c_source
+	assert !c_source.contains('malloc_noscan(sizeof(Array))'), c_source
+}
+
 fn c_fn_body(c_source string, signature string) string {
 	start := c_source.index(signature) or { return '' }
 	open_rel := c_source[start..].index('{') or { return '' }
@@ -110,6 +133,26 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	run := os.execute(good_bin)
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
+}
+
+fn run_bad_project(v3_bin string, name string, files map[string]string, inputs []string, expected string) {
+	root := '${tmp_test_path(name)}_project'
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	mut input_paths := []string{cap: inputs.len}
+	for input in inputs {
+		input_paths << os.quoted_path(os.join_path(root, input))
+	}
+	bad_bin := tmp_test_path(name)
+	compile := os.execute('${v3_bin} ${input_paths.join(' ')} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, '${name}: ${compile.output}'
+	assert compile.output.contains(expected), '${name}: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: ${compile.output}'
 }
 
 fn test_compiler_vexe_env_uses_running_executable() {
@@ -2063,6 +2106,27 @@ fn test_array_alias_free_uses_array_builtin_inside_alias_method() {
 	assert out == 'ok'
 }
 
+fn test_dynamic_enum_array_literal_keeps_enum_element_width() {
+	v3_bin := build_v3()
+	c_source := gen_c(v3_bin, 'dynamic_enum_array_literal_width',
+		'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
+	assert c_source.contains('array_new(\tsizeof(Tiny), 0, 2)'), c_source
+	assert !c_source.contains('Array values = array_new(\tsizeof(int), 0, 2)'), c_source
+	out := run_good(v3_bin, 'dynamic_enum_array_literal_width_run',
+		'enum Tiny as u8 {\n\tzero\n\tone\n}\n\nfn main() {\n\tvalues := [Tiny.zero, Tiny.one]\n\tprintln(int_str(int(values[0])))\n\tprintln(int_str(int(values[1])))\n}\n')
+	assert out == '0\n1'
+}
+
+fn test_nested_string_plus_releases_intermediate_storage() {
+	v3_bin := build_v3()
+	source := "fn concat_path(dir string, name &string) string {\n\treturn '\${dir}/\${name}'\n}\n\nfn main() {\n\tname := 'file'\n\tprintln(concat_path('root', &name))\n}\n"
+	c_source := gen_c(v3_bin, 'nested_string_plus_owned_intermediate', source)
+	assert !c_source.contains('string__plus(string__plus(dir,'), c_source
+	assert c_source.contains('string__free(&__str_plus_acc_'), c_source
+	out := run_good(v3_bin, 'nested_string_plus_owned_intermediate_run', source)
+	assert out == 'root/file'
+}
+
 fn test_for_mut_pointer_storage_receivers_do_not_get_extra_address() {
 	v3_bin := build_v3()
 	item_src := 'struct Item {
@@ -2413,12 +2477,123 @@ struct Box[T] {
 	n int = 5
 }
 
+struct GenericChild {
+	n int
+}
+
+struct PointerBox[T] {
+	p     &GenericChild = &GenericChild{n: 7}
+	value T
+}
+
 fn main() {
 	box := json.decode(Box[int], "{}") or { Box[int]{n: 5} }
 	println(int_str(box.n))
+	pointer_box := json.decode(PointerBox[int], "{\\"value\\":3}") or {
+		PointerBox[int]{value: 3}
+	}
+	println(int_str(pointer_box.p.n))
+	println(int_str(pointer_box.value))
 }
 ')
-	assert out == '5'
+	assert out == '5\n7\n3'
+}
+
+fn test_json_decode_fast_path_validates_arrays_and_preserves_defaults() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_decode_fast_path_nested_values', 'import json
+
+struct Inner {
+	value int
+}
+
+struct Outer {
+	inner Inner
+}
+
+struct BoolList {
+	values []bool
+}
+
+struct I64List {
+	values []i64
+}
+
+struct WideInts {
+	min             i64
+	max             u64
+	signed_values   []i64
+	unsigned_values []u64
+}
+
+struct StrictChild {
+	ok bool
+}
+
+struct ChildList {
+	values []StrictChild
+}
+
+struct PointerDefault {
+	value &Inner = &Inner{value: 7}
+}
+
+struct NestedPointerDefaults {
+	nested PointerDefault
+	values []PointerDefault
+}
+
+fn main() {
+	mut array_failed := false
+	_ := json.decode(BoolList, "{\\"values\\":[1]}") or {
+		array_failed = true
+		BoolList{}
+	}
+	println(array_failed)
+	i64_values := json.decode(I64List, "{\\"values\\":[9007199254740993]}")!
+	println(i64_values.values[0].str())
+	mut struct_array_failed := false
+	_ := json.decode(ChildList, "{\\"values\\":[{\\"ok\\":1}]}") or {
+		struct_array_failed = true
+		ChildList{}
+	}
+	println(struct_array_failed)
+
+	mut nested_failed := false
+	outer := json.decode(Outer, "{}") or {
+		nested_failed = true
+		Outer{}
+	}
+	println(!nested_failed)
+	println(int_str(outer.inner.value))
+
+	pointer_default := json.decode(PointerDefault, "{}")!
+	println(int_str(pointer_default.value.value))
+
+	nested_defaults := json.decode(NestedPointerDefaults, "{\\"values\\":[{}]}")!
+	println(int_str(nested_defaults.nested.value.value))
+	println(int_str(nested_defaults.values[0].value.value))
+
+	wide := json.decode(WideInts, "{\\"min\\":-9223372036854775808,\\"max\\":18446744073709551615,\\"signed_values\\":[9007199254740993],\\"unsigned_values\\":[9007199254740993]}")!
+	println(wide.min.str())
+	println(wide.max.str())
+	println(wide.signed_values[0].str())
+	println(wide.unsigned_values[0].str())
+}
+')
+	assert out == 'true\n9007199254740993\ntrue\ntrue\n0\n7\n7\n7\n-9223372036854775808\n18446744073709551615\n9007199254740993\n9007199254740993'
+}
+
+fn test_unimported_main_types_are_not_visible_in_modules() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'unimported_plain_main_type', {
+		'main.v':      'module main\n\nimport moda\n\nstruct Foo {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
+		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Foo\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
+	}, ['main.v', 'moda/moda.v'], 'unknown type `Foo`')
+	run_bad_project(v3_bin, 'unimported_generic_main_type', {
+		'main.v':      'module main\n\nimport moda\n\nstruct Box[T] {}\n\nfn main() {\n\t_ = moda.make()\n}\n'
+		'moda/moda.v': 'module moda\n\npub struct Holder {\n\tvalue Box[int]\n}\n\npub fn make() Holder {\n\treturn Holder{}\n}\n'
+	}, ['main.v', 'moda/moda.v'], 'unknown type `Box`')
 }
 
 fn test_json_fast_paths_handle_primitives_and_stringified_composites() {
@@ -2816,6 +2991,25 @@ fn test_amp_interface_cast_heap_copies_concrete_source() {
 	assert out == '5'
 }
 
+fn test_mut_interface_argument_borrows_existing_interface_box() {
+	v3_bin := build_v3()
+	source := 'interface Visitor {\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln("ok")\n}\n'
+	c_source := gen_c(v3_bin, 'mut_interface_arg_borrows_existing_box', source)
+	assert c_source.contains('call(&visitor);')
+	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
+	out := run_good(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
+	assert out == 'ok'
+}
+
+fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
+	v3_bin := build_v3()
+	source := 'interface Value {\n\tget() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nstruct Holder {\n\titem Value\n}\n\nfn make_holder() Holder {\n\treturn Holder{\n\t\titem: Value(Item{\n\t\t\tn: 7\n\t\t})\n\t}\n}\n\nfn make_items() []Value {\n\treturn [Value(Item{\n\t\tn: 9\n\t})]\n}\n\nfn use(value &Value) int {\n\treturn value.get()\n}\n\nfn main() {\n\tprintln(int_str(use(make_holder().item)))\n\tprintln(int_str(use(make_items()[0])))\n}\n'
+	c_source := gen_c(v3_bin, 'pointer_interface_rvalue_sources', source)
+	assert c_source.contains('memdup(&__iface_box_')
+	out := run_good(v3_bin, 'pointer_interface_rvalue_sources_run', source)
+	assert out == '7\n9'
+}
+
 fn test_c_atomic_pointer_load_store_preserves_pointer_width() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'c_atomic_pointer_load_store',
@@ -2832,6 +3026,47 @@ fn test_native_arm64_atomic_pointer_fetch_add_sub() {
 	}
 }
 
+fn test_anonymous_struct_literals_use_typed_shape() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'anonymous_struct_literal_typed_shape', 'fn take_int(value struct {
+	x int
+}) int {
+	return value.x
+}
+
+fn take_string(value struct {
+	x string
+}) string {
+	return value.x
+}
+
+fn take_i64(value struct {
+	x i64
+}) i64 {
+	return value.x
+}
+
+fn take_grouped(value struct {
+	x, y int
+}) int {
+	return value.x * 10 + value.y
+}
+
+fn main() {
+	println(int_str(take_int(struct { x: 7 })))
+	println(take_string(struct { x: "right" }))
+	println(take_i64(struct { x: 9 }))
+	println(int_str(take_grouped(struct { x: 2, y: 3 })))
+	mut values := []struct {
+		x int
+	}{}
+	values << struct { x: 13 }
+	println(int_str(values[0].x))
+}
+')
+	assert out == '7\nright\n9\n23\n13'
+}
+
 fn test_latest_pr_review_codegen_regressions() {
 	v3_bin := build_v3()
 	small_int_comparison := run_good(v3_bin, 'parenthesized_small_int_comparison', 'fn main() {
@@ -2845,7 +3080,7 @@ fn test_latest_pr_review_codegen_regressions() {
 
 fn main() {
 	println(C.strlen(c'\\n'))
-	println(C.strlen(&c'\\n'))
+	println(C.strlen((c'\\n')))
 }
 ")
 	assert c_strings == '1\n1'
@@ -3065,4 +3300,75 @@ fn main() {
 }
 ")
 	assert comptime_types == 'pointer\nalias'
+}
+
+fn test_selected_compile_error_in_void_fn_has_clean_diagnostic() {
+	v3_bin := build_v3()
+	bad_src := '${tmp_test_path('selected_compile_error_void_fn')}.v'
+	os.write_file(bad_src, "fn main() {\n\t\$compile_error('bad')\n}\n") or { panic(err) }
+	bad_bin := tmp_test_path('selected_compile_error_void_fn')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('compile-time error: bad'), compile.output
+	assert !compile.output.contains('void function should not return a value'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
+fn test_comptime_flags_are_not_shadowed_by_cached_values() {
+	v3_bin := build_v3()
+	platform_flag := if os.user_os() == 'windows' { 'windows' } else { 'unix' }
+	out := run_good_with_flags(v3_bin, 'comptime_flags_shadow_cached_values', '-d myflag', "const myflag = false
+
+fn main() {
+	${platform_flag} := false
+	mut rows := []string{}
+	\$if ${platform_flag} {
+		rows << 'platform'
+	} \$else {
+		rows << 'wrong-platform'
+	}
+	\$if myflag ? {
+		rows << 'custom'
+	} \$else {
+		rows << 'wrong-custom'
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'platform|custom'
+}
+
+fn test_non_generic_reflection_compile_error_waits_for_selected_branch() {
+	v3_bin := build_v3()
+	good := run_good(v3_bin, 'non_generic_reflection_unselected_compile_error', "struct App {}
+
+fn (app App) present() {
+	_ = app
+}
+
+fn main() {
+	\$for method in App.methods {
+		\$if method.name == 'missing' {
+			\$compile_error('missing method selected')
+		}
+	}
+	println('ok')
+}
+")
+	assert good == 'ok'
+	run_bad(v3_bin, 'non_generic_reflection_selected_compile_error', "struct App {}
+
+fn (app App) present() {
+	_ = app
+}
+
+fn main() {
+	\$for method in App.methods {
+		\$if method.name == 'present' {
+			\$compile_error('present method selected')
+		}
+	}
+}
+",
+		'compile-time error: present method selected')
 }

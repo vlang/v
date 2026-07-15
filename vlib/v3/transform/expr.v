@@ -206,17 +206,19 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 	if elem_type.len == 0 {
 		elem_type = 'int'
 	}
+	lhs_target_type := t.contextual_array_comparison_type(lhs_id, lhs_type, rhs_type)
+	rhs_target_type := t.contextual_array_comparison_type(rhs_id, rhs_type, lhs_type)
 	mut new_lhs := if int(fixed_lhs_as_array) >= 0 {
 		fixed_lhs_as_array
-	} else if lhs_type.starts_with('[]') {
-		t.transform_expr_for_type(lhs_id, lhs_type)
+	} else if lhs_target_type.starts_with('[]') {
+		t.transform_expr_for_type(lhs_id, lhs_target_type)
 	} else {
 		t.transform_expr(lhs_id)
 	}
 	mut new_rhs := if int(fixed_rhs_as_array) >= 0 {
 		fixed_rhs_as_array
-	} else if rhs_type.starts_with('[]') {
-		t.transform_expr_for_type(rhs_id, rhs_type)
+	} else if rhs_target_type.starts_with('[]') {
+		t.transform_expr_for_type(rhs_id, rhs_target_type)
 	} else {
 		t.transform_expr(rhs_id)
 	}
@@ -250,6 +252,26 @@ fn (mut t Transformer) transform_infix_array_ops(_id flat.NodeId, node flat.Node
 		return t.make_prefix(.not, eq_call)
 	}
 	return eq_call
+}
+
+fn (t &Transformer) contextual_array_comparison_type(id flat.NodeId, own_type string, other_type string) string {
+	if int(id) < 0 || !own_type.starts_with('[]') || !other_type.starts_with('[]') {
+		return own_type
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .array_literal {
+		return own_type
+	}
+	own_elem := own_type[2..]
+	other_elem := other_type[2..]
+	other_base, _, other_is_generic := generic_app_parts(other_elem)
+	if !other_is_generic {
+		return own_type
+	}
+	if own_elem.all_after_last('.') == other_base.all_after_last('.') {
+		return other_type
+	}
+	return own_type
 }
 
 fn (t &Transformer) expr_can_be_fixed_array_literal(id flat.NodeId) bool {
@@ -509,8 +531,17 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	if lhs_type.len == 0 {
 		lhs_type = checker_lhs_type
 	}
-	if lhs_type.starts_with('&') {
-		return none
+	lhs_node := t.a.nodes[int(lhs_id)]
+	lhs_is_mut_value_param := lhs_node.kind == .ident && t.mut_param_values[lhs_node.value]
+	lhs_is_pointer := lhs_type.starts_with('&') || checker_lhs_type.starts_with('&')
+		|| lhs_is_mut_value_param
+	if lhs_is_pointer {
+		if node.op in [.eq, .ne] {
+			return none
+		}
+		if lhs_type.starts_with('&') {
+			lhs_type = lhs_type[1..]
+		}
 	}
 	mut struct_type := t.struct_lookup_name(lhs_type)
 	if struct_type.len == 0 {
@@ -531,7 +562,7 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	// Skip the checker/transformer agreement guard for generic-struct instances:
 	// they resolve reliably, and an alias name (`SimdFloat4`) vs the resolved form
 	// (`vec.Vec4[f32]`) would otherwise spuriously fail the comparison.
-	if checker_lhs_type.len > 0 && !has_smartcast && !struct_type.contains('[')
+	if checker_lhs_type.len > 0 && !has_smartcast && !lhs_is_pointer && !struct_type.contains('[')
 		&& !is_alias_operator {
 		checker_struct_type := t.struct_lookup_name(checker_lhs_type)
 		if checker_struct_type.len > 0 && checker_struct_type != struct_type {
@@ -549,7 +580,11 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 			}
 			return t.zero_value_for_type(ret_type)
 		}
-		lhs := t.transform_expr(lhs_id)
+		mut lhs := t.transform_expr(lhs_id)
+		if lhs_is_pointer {
+			lhs = t.make_prefix(.mul, lhs)
+			t.set_node_typ(int(lhs), lhs_type)
+		}
 		rhs := t.transform_expr(t.a.children[node.children_start + 1])
 		mut call_lhs := lhs
 		mut call_rhs := rhs
@@ -575,7 +610,8 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 	}
 	if !t.has_struct_operator_fn(struct_type, '==') {
 		lhs := t.stable_expr_for_reuse(lhs_id)
-		rhs := t.stable_expr_for_reuse(rhs_id)
+		rhs_expr := t.transform_expr_for_type(rhs_id, lhs_type)
+		rhs := t.stable_transformed_expr_for_reuse(rhs_expr, lhs_type, 'eq_rhs')
 		if field_eq := t.make_struct_field_eq_expr(lhs, rhs, struct_type) {
 			if node.op == .ne {
 				return t.make_prefix(.not, field_eq)
@@ -1139,6 +1175,8 @@ fn (mut t Transformer) transform_infix_sum_ops(_id flat.NodeId, node flat.Node) 
 	if rhs_is_ptr {
 		rhs_type = rhs_type[1..]
 	}
+	lhs_type = t.normalize_type_alias(lhs_type)
+	rhs_type = t.normalize_type_alias(rhs_type)
 	if !t.is_sum_type_name(lhs_type) || !t.is_sum_type_name(rhs_type) {
 		return none
 	}
@@ -1849,9 +1887,21 @@ fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 	}
 	helper := sum_eq_helper_name(clean_sum)
 	if clean_sum !in t.sum_eq_types {
+		// A concrete generic specialization is emitted in main even while it is
+		// transformed under its declaring module's type-resolution context.
+		helper_module := if t.sum_eq_helper_module.len > 0 {
+			t.sum_eq_helper_module
+		} else if t.validating_generic_spec {
+			'main'
+		} else if t.cur_module.len > 0 {
+			t.cur_module
+		} else {
+			'main'
+		}
 		t.sum_eq_types[clean_sum] = SumEqRequest{
-			module: t.cur_module
-			file:   t.cur_file
+			module:        t.cur_module
+			file:          t.cur_file
+			helper_module: helper_module
 		}
 	}
 	t.mark_fn_used_name(helper)
@@ -1875,6 +1925,7 @@ pub fn sum_eq_helper_name(sum_name string) string {
 pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	old_module := t.cur_module
 	old_file := t.cur_file
+	old_helper_module := t.sum_eq_helper_module
 	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
 	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
 	was_log_active := t.used_fns_log_active
@@ -1902,6 +1953,13 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 			req := t.sum_eq_types[name] or { SumEqRequest{} }
 			t.cur_module = req.module
 			t.cur_file = req.file
+			t.sum_eq_helper_module = if req.helper_module.len > 0 {
+				req.helper_module
+			} else if req.module.len > 0 {
+				req.module
+			} else {
+				'main'
+			}
 			if !isnil(t.tc) {
 				t.tc.cur_module = req.module
 				t.tc.cur_file = req.file
@@ -1924,6 +1982,7 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
+	t.sum_eq_helper_module = old_helper_module
 	if !isnil(t.tc) {
 		t.tc.cur_module = old_tc_module
 		t.tc.cur_file = old_tc_file
@@ -2000,10 +2059,12 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 	t.a.nodes[int(ret_result)].typ = 'bool'
 	stmts << t.make_return(ret_result, 'bool')
 	t.pending_stmts = saved_pending
-	// place the helper in the main module so its C name is the plain helper name
+	// Keep the helper in its request's output segment. This is normally the requesting
+	// module, but program-specific generic specializations and their nested helpers use
+	// main even though their bodies are resolved under the declaring module.
 	t.a.add_node(flat.Node{
 		kind:  .module_decl
-		value: 'main'
+		value: if t.sum_eq_helper_module.len > 0 { t.sum_eq_helper_module } else { 'main' }
 	})
 	start := t.a.children.len
 	t.a.children << param_a

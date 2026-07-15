@@ -9,7 +9,7 @@ const min_eager_markused_bodies = 4096
 
 // mark_used updates mark used state for markused.
 pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
-	used, _ := mark_used_with_test_files(a, tc, map[string]bool{})
+	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false)
 	return used
 }
 
@@ -21,7 +21,7 @@ pub fn mark_used_for_tests(a &flat.FlatAst, tc &types.TypeChecker, test_files []
 // mark_used_with_generic_usage also reports whether reachable code uses a generic
 // function, struct, or sum type and therefore requires monomorphization.
 pub fn mark_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
-	return mark_used_with_test_files(a, tc, map[string]bool{})
+	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false)
 }
 
 // mark_used_for_tests_with_generic_usage is the test-file-rooted variant of
@@ -31,10 +31,26 @@ pub fn mark_used_for_tests_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 	for file in test_files {
 		file_map[file] = true
 	}
-	return mark_used_with_test_files(a, tc, file_map)
+	return mark_used_with_test_files(a, tc, file_map, map[string]bool{}, false)
 }
 
-fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool) (map[string]bool, bool) {
+// mark_used_for_cache roots every concrete function in modules being built for the object cache.
+pub fn mark_used_for_cache(a &flat.FlatAst, tc &types.TypeChecker, test_files []string, source_modules map[string]bool) map[string]bool {
+	used, _ := mark_used_for_cache_with_generic_usage(a, tc, test_files, source_modules)
+	return used
+}
+
+// mark_used_for_cache_with_generic_usage roots cached module functions and reports whether
+// their reachable code requires monomorphization.
+pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker, test_files []string, source_modules map[string]bool) (map[string]bool, bool) {
+	mut file_map := map[string]bool{}
+	for file in test_files {
+		file_map[file] = true
+	}
+	return mark_used_with_test_files(a, tc, file_map, source_modules, true)
+}
+
+fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool) (map[string]bool, bool) {
 	mut cur_module := ''
 	mut import_contexts := []map[string]string{cap: 256}
 	import_contexts << map[string]string{}
@@ -60,6 +76,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut body_ids := []int{cap: 8192}
 	mut body_modules := []string{cap: 8192}
 	mut body_import_contexts := []int{cap: 8192}
+	mut cache_roots := []string{}
 
 	mut fn_count := 0
 	mut fn_with_dot := 0
@@ -146,6 +163,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			qname := qualify_fn(cur_module, node.value)
+			if cache_mode && node.kind == .fn_decl && node.generic_params().len == 0
+				&& cache_modules[cur_module] {
+				cache_roots << qname
+			}
 			if qname != node.value {
 				add_fn_decl_info(mut fn_decls, mut fn_decl_lists, qname, info)
 				if can_suffix_match {
@@ -224,9 +245,20 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	}
 	queue << 'array.delete_last'
 	used['array.delete_last'] = true
+	for type_name in tc.ownership_drop_type_names() {
+		method := '${type_name}.drop'
+		enqueue(method, mut used, mut queue)
+		lowered := markused_c_name(method)
+		if lowered != method {
+			enqueue(lowered, mut used, mut queue)
+		}
+	}
 	for seed in ['i8.str', 'i16.str', 'i32.str', 'i64.str'] {
 		queue << seed
 		used[seed] = true
+	}
+	for name in cache_roots {
+		enqueue(name, mut used, mut queue)
 	}
 
 	if trace_markused {

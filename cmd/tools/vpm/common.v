@@ -4,7 +4,7 @@ import os
 import net.http
 import net.urllib
 import v.vmod
-import json
+import json2
 import term
 import time
 
@@ -140,7 +140,7 @@ fn get_mod_vpm_info_with_selector(name string, mut selector VpmInstallServerSele
 			errors << s.trim_space().limit(100) + '...'
 			continue
 		}
-		mod := json.decode(ModuleVpmInfo, s) or {
+		mod := json2.decode[ModuleVpmInfo](s) or {
 			errors << 'Skipping module `${name}`, since its information is not in json format.'
 			continue
 		}

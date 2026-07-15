@@ -75,6 +75,12 @@ fn fail() !int {
 	}
 }
 
+fn fail_fixed() ![2]int {
+	return MyErr{
+		label: 'fixed-error'
+	}
+}
+
 fn make_err() IError {
 	return error('boom')
 }
@@ -119,6 +125,10 @@ fn main() {
 		println('ERR:' + err.msg() + ':' + err.code().str())
 	}
 
+	fail_fixed() or {
+		println('FIXED_ERR:' + err.msg())
+	}
+
 	fail_interface() or {
 		println('IERR:' + err.msg())
 	}
@@ -140,7 +150,7 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'OK:payload\nOK:payload-defer\nIERR_OK:payload-ierror\nIERR_DEFER_OK:payload-ierror-defer\nERR:real-error:7\nIERR:boom\nIERR_DEFER:boom'
+	assert run.output.trim_space() == 'OK:payload\nOK:payload-defer\nIERR_OK:payload-ierror\nIERR_DEFER_OK:payload-ierror-defer\nERR:real-error:7\nFIXED_ERR:fixed-error\nIERR:boom\nIERR_DEFER:boom'
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	payload_ierror_body := c_fn_body(c_code, 'Optional_IError payload_ierror(void) {')

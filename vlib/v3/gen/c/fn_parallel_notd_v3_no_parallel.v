@@ -467,7 +467,7 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 // cur_param_* scratch; and runtime_inits (kept private out of caution). This drops the
 // bulk of each worker's clone cost — previously the whole table set was duplicated per
 // worker and, under -gc none, never freed.
-fn (g &FlatGen) new_parallel_worker(_ int) &FlatGen {
+fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 	return &FlatGen{
 		sb:                             strings.new_builder(64_000)
 		a:                              unsafe { g.a }
@@ -502,7 +502,8 @@ fn (g &FlatGen) new_parallel_worker(_ int) &FlatGen {
 		libc_compat_fns:                g.libc_compat_fns.clone()
 		tc:                             g.clone_parallel_type_checker()
 		has_builtins:                   g.has_builtins
-		tmp_count:                      0
+		cache_split:                    g.cache_split
+		tmp_count:                      (worker_id + 1) * 100_000
 		line_start:                     true
 		modules:                        g.modules
 		fn_ptr_types:                   g.fn_ptr_types.clone()
@@ -601,6 +602,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		structs:                            g.tc.structs
 		struct_modules:                     g.tc.struct_modules
 		struct_files:                       g.tc.struct_files
+		soa_structs:                        g.tc.soa_structs
 		struct_error_embeds_shadow_builtin: g.tc.struct_error_embeds_shadow_builtin
 		struct_generic_params:              g.tc.struct_generic_params
 		struct_field_c_abi_fns:             g.tc.struct_field_c_abi_fns
@@ -630,6 +632,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		cur_scope:                          fs
 		scope_pool:                         []&types.Scope{}
 		has_builtins:                       g.tc.has_builtins
+		resolution_type_mode:               g.tc.resolution_type_mode
 		cur_module:                         g.tc.cur_module
 		cur_file:                           g.tc.cur_file
 		errors:                             g.tc.errors.clone()
@@ -641,6 +644,11 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		expr_type_values:                   g.tc.expr_type_values
 		expr_type_set:                      g.tc.expr_type_set
 		checking_nodes:                     g.tc.checking_nodes
+		sparse_resolved_call_names:         g.tc.sparse_resolved_call_names
+		sparse_resolved_fn_values:          g.tc.sparse_resolved_fn_values
+		sparse_statement_nodes:             g.tc.sparse_statement_nodes
+		sparse_expr_type_values:            g.tc.sparse_expr_type_values
+		sparse_checking_nodes:              g.tc.sparse_checking_nodes
 		diagnose_unknown_calls:             g.tc.diagnose_unknown_calls
 		reject_unlowered_map_mutation:      g.tc.reject_unlowered_map_mutation
 		diagnostic_files:                   g.tc.diagnostic_files
@@ -652,6 +660,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		generic_method_value_info: g.tc.generic_method_value_info
 		params_structs:            g.tc.params_structs
 	}
+	wtc.inherit_ownership_codegen_metadata_from(g.tc)
 	// A private empty TypeCache lets the worker use the lazily-built lookup
 	// indexes (short type names, local fn decls) and the field/IError
 	// memoizations instead of their uncached full-scan fallbacks. It shares no

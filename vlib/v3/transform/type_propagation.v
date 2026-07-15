@@ -63,7 +63,7 @@ fn decl_type_should_override_fallback(authority string, fallback string, rhs fla
 }
 
 fn decl_type_is_usable(typ string) bool {
-	if typ.len == 0 || typ in ['unknown', 'array', 'map'] {
+	if typ.len == 0 || typ in ['unknown', 'array', 'map'] || typ.contains('unknown') {
 		return false
 	}
 	clean := typ.replace(' ', '')
@@ -633,6 +633,15 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 	if typ.len == 0 {
 		return typ
 	}
+	if typ.starts_with('mut ') {
+		return 'mut ' + t.normalize_field_type(typ[4..], owner_type)
+	}
+	if typ.starts_with('shared ') {
+		return 'shared ' + t.normalize_field_type(typ[7..], owner_type)
+	}
+	if typ.starts_with('atomic ') {
+		return 'atomic ' + t.normalize_field_type(typ[7..], owner_type)
+	}
 	if typ.starts_with('&') {
 		return '&' + t.normalize_field_type(typ[1..], owner_type)
 	}
@@ -826,6 +835,20 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 		qtyp := '${t.cur_module}.${typ}'
 		if target := t.tc.type_aliases[qtyp] {
 			return target
+		}
+	}
+	if !typ.contains('.') {
+		mut unique_target := ''
+		for name, target in t.tc.type_aliases {
+			if name == typ || name.ends_with('.${typ}') {
+				if unique_target.len > 0 && unique_target != target {
+					return typ
+				}
+				unique_target = target
+			}
+		}
+		if unique_target.len > 0 {
+			return unique_target
 		}
 	}
 	return typ

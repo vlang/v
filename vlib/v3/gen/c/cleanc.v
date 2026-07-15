@@ -46,6 +46,7 @@ mut:
 	fn_gen_items                   []FlatFnGenItem
 	fn_segs                        []string
 	test_files                     map[string]bool
+	cache_program_files            map[string]bool
 	str_lits                       []string
 	str_lit_ids                    map[string]int
 	global_types                   map[string]types.Type
@@ -160,32 +161,42 @@ mut:
 	// in_return is true only while generating a `return` statement's value, so a bare
 	// generic literal (`return Box{...}`) may adopt `cur_fn_ret`'s concrete instance —
 	// but a literal in a local decl / argument elsewhere in the body does not.
-	in_return                  bool
-	expected_expr_type         types.Type = types.Type(types.void_)
-	expected_enum              string
-	needed_optional_types      map[string]string
-	emitted_optional_types     map[string]bool
-	emitted_fns                map[string]bool
-	array_method_cache         map[string]string
-	param_types_cache          map[string][]types.Type        // (name|fallback) -> resolved param types
-	embedded_fields_by_type    map[string][]types.StructField // type name -> its embedded fields (usually empty)
-	param_types_by_short       map[string][]types.Type        // method short-name suffix -> param types (fallback index)
-	generic_method_candidates  map[string][]GenericMethodCandidate
-	spawn_wrapper_names        map[string]string
-	spawn_wrapper_defs         []string
-	spawn_wrapper_defs_seen    map[string]bool
-	callback_wrapper_names     map[string]string
-	callback_wrapper_defs      []string
-	callback_wrapper_defs_seen map[string]bool
-	parallel_used              bool
-	c_name_cache               &CNameCache = unsafe { nil }
-	emitted_fn_ptr_typedefs    map[string]bool
-	c_extern_refs              map[string]bool
-	c_extern_refs_ready        bool
-	parallel_prepared          bool
-	const_short_index          &ConstShortIndex = unsafe { nil }
-	mut_recv_facts             &FnNameFactCache = unsafe { nil }
-	want_parallel_prep         bool
+	in_return                      bool
+	cur_return_node_id             int = -1
+	ownership_return_index         int
+	ownership_seen_return_sources  map[string]bool
+	ownership_propagation_index    int
+	ownership_loop_control_index   int
+	ownership_loop_iteration_index int
+	ownership_scope_index          int
+	cur_return_drops               []types.OwnershipDropEntry
+	pending_return_scope_drops     []types.OwnershipDropEntry
+	expected_expr_type             types.Type = types.Type(types.void_)
+	expected_enum                  string
+	needed_optional_types          map[string]string
+	emitted_optional_types         map[string]bool
+	emitted_fns                    map[string]bool
+	array_method_cache             map[string]string
+	param_types_cache              map[string][]types.Type        // (name|fallback) -> resolved param types
+	embedded_fields_by_type        map[string][]types.StructField // type name -> its embedded fields (usually empty)
+	param_types_by_short           map[string][]types.Type        // method short-name suffix -> param types (fallback index)
+	generic_method_candidates      map[string][]GenericMethodCandidate
+	spawn_wrapper_names            map[string]string
+	spawn_wrapper_defs             []string
+	spawn_wrapper_defs_seen        map[string]bool
+	callback_wrapper_names         map[string]string
+	callback_wrapper_defs          []string
+	callback_wrapper_defs_seen     map[string]bool
+	parallel_used                  bool
+	c_name_cache                   &CNameCache = unsafe { nil }
+	emitted_fn_ptr_typedefs        map[string]bool
+	c_extern_refs                  map[string]bool
+	c_extern_refs_ready            bool
+	parallel_prepared              bool
+	const_short_index              &ConstShortIndex = unsafe { nil }
+	mut_recv_facts                 &FnNameFactCache = unsafe { nil }
+	want_parallel_prep             bool
+	cache_split                    bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
@@ -395,6 +406,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_gen_items:                   []FlatFnGenItem{}
 		fn_segs:                        []string{}
 		test_files:                     map[string]bool{}
+		cache_program_files:            map[string]bool{}
 		str_lit_ids:                    map[string]int{}
 		global_types:                   map[string]types.Type{}
 		enum_vals:                      map[string]int{}
@@ -463,6 +475,7 @@ pub fn FlatGen.new() FlatGen {
 		active_locks:                   []ActiveLock{}
 		loop_label_depths:              map[string]int{}
 		goto_label_lock_scopes:         map[string][]int{}
+		ownership_seen_return_sources:  map[string]bool{}
 		needed_optional_types:          map[string]string{}
 		emitted_optional_types:         map[string]bool{}
 		emitted_fns:                    map[string]bool{}
@@ -502,6 +515,267 @@ pub fn (mut g FlatGen) set_compiler_vexe(path string) {
 // set_target sets the canonical code-generation target.
 pub fn (mut g FlatGen) set_target(target pref.Target) {
 	g.target = target
+}
+
+// set_cache_split enables stable cache markers and string symbols in generated C.
+// The v3 driver uses them to split one checked program into independently cached
+// module objects without changing regular `-o file.c` output.
+pub fn (mut g FlatGen) set_cache_split(enabled bool) {
+	g.cache_split = enabled
+}
+
+// set_cache_program_files assigns entry-module source files to the program
+// translation unit rather than an imported module cache object.
+pub fn (mut g FlatGen) set_cache_program_files(files []string) {
+	g.cache_program_files = map[string]bool{}
+	for file in files {
+		g.cache_program_files[file] = true
+	}
+}
+
+// cache_external_input_files returns local include/embed inputs grouped by the
+// module whose cached object incorporates their contents. Forced-include inputs
+// affect every object and are kept in a configuration-wide group. The second
+// result reports include forms whose dependencies cannot be resolved statically.
+pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool) (map[string][]string, bool) {
+	mut c_flags := []string{}
+	mut cur_file := ''
+	for node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			continue
+		}
+		if node.kind != .directive || node.value != 'flag' || node.typ.len == 0 {
+			continue
+		}
+		for flag in c_flag_args(node.typ, vroot, cur_file, pref.host_target()) {
+			if flag.len > 0 && flag !in c_flags {
+				c_flags << flag
+			}
+		}
+	}
+	include_dirs := c_flag_include_dirs(c_flags)
+	mut collect_modules := map[string]bool{}
+	for module_name, enabled in source_modules {
+		if enabled {
+			collect_modules[module_name] = true
+			collect_modules[module_name.all_after_last('.')] = true
+		}
+	}
+	mut inputs := map[string][]string{}
+	mut has_untracked_include := false
+	mut cur_module := ''
+	cur_file = ''
+	for node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if !collect_modules[cur_module] {
+			continue
+		}
+		if node.kind == .directive && node.value in ['include', 'insert'] && node.typ.len > 0 {
+			include_arg := c_include_arg(node.typ, vroot, cur_file)
+			if !c_include_arg_is_literal(include_arg) {
+				has_untracked_include = true
+				continue
+			}
+			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
+				if !os.is_file(path) {
+					continue
+				}
+				mut seen := map[string]bool{}
+				mut files := []string{}
+				if c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files) {
+					has_untracked_include = true
+				}
+				for file in files {
+					c_add_cache_external_input(mut inputs, cur_module, file)
+				}
+				break
+			}
+			continue
+		}
+		if path := c_embed_external_input_path(a, node) {
+			c_add_cache_external_input(mut inputs, cur_module, path)
+		}
+	}
+	flag_inputs, flags_have_untracked_include := cache_c_flag_input_files_with_status(c_flags)
+	if flags_have_untracked_include {
+		has_untracked_include = true
+	}
+	for path in flag_inputs {
+		c_add_cache_external_input(mut inputs, '__v3_c_flags__', path)
+	}
+	for module_name, paths in inputs {
+		mut sorted := paths.clone()
+		sorted.sort()
+		inputs[module_name] = sorted
+	}
+	return inputs, has_untracked_include
+}
+
+// cache_c_flag_input_files returns forced include/macro files whose contents
+// affect every cached object compiled with the supplied C flags.
+pub fn cache_c_flag_input_files(flags []string) []string {
+	files, _ := cache_c_flag_input_files_with_status(flags)
+	return files
+}
+
+fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool) {
+	include_dirs := c_flag_include_dirs(flags)
+	mut seen := map[string]bool{}
+	mut files := []string{}
+	mut has_untracked_include := false
+	for flag in flags {
+		for forced_input in c_forced_include_inputs(flag) {
+			for path in c_include_file_paths('"${forced_input}"', '', '', include_dirs) {
+				if !os.is_file(path) {
+					continue
+				}
+				if c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files) {
+					has_untracked_include = true
+				}
+				break
+			}
+		}
+	}
+	files.sort()
+	return files, has_untracked_include
+}
+
+fn c_forced_include_inputs(flag string) []string {
+	mut inputs := []string{}
+	tokens := tokenize_c_flag(flag)
+	mut i := 0
+	for i < tokens.len {
+		token := tokens[i]
+		if token in ['-include', '-imacros'] && i + 1 < tokens.len {
+			inputs << tokens[i + 1].trim('"\'')
+			i += 2
+			continue
+		}
+		for prefix in ['-include=', '-imacros='] {
+			if token.starts_with(prefix) && token.len > prefix.len {
+				inputs << token[prefix.len..].trim('"\'')
+			}
+		}
+		i++
+	}
+	return inputs
+}
+
+// tokenize_c_flag splits a C flag on unquoted whitespace while preserving quotes.
+pub fn tokenize_c_flag(value string) []string {
+	mut tokens := []string{}
+	mut start := -1
+	mut quote := u8(0)
+	mut escaped := false
+	for i, c in value.bytes() {
+		if start < 0 {
+			if c.is_space() {
+				continue
+			}
+			start = i
+		}
+		if escaped {
+			escaped = false
+			continue
+		}
+		if c == `\\` {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c in [`'`, `\"`] {
+			quote = c
+			continue
+		}
+		if c.is_space() {
+			tokens << value[start..i]
+			start = -1
+		}
+	}
+	if start >= 0 {
+		tokens << value[start..]
+	}
+	return tokens
+}
+
+fn c_add_cache_external_input(mut inputs map[string][]string, module_name string, path string) {
+	if module_name.len == 0 || path.len == 0 || !os.is_file(path) {
+		return
+	}
+	real_path := os.real_path(path)
+	mut paths := inputs[module_name]
+	if real_path !in paths {
+		paths << real_path
+		inputs[module_name] = paths
+	}
+}
+
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string) bool {
+	if path.len == 0 || !os.is_file(path) {
+		return false
+	}
+	real_path := os.real_path(path)
+	if seen[real_path] {
+		return false
+	}
+	seen[real_path] = true
+	files << real_path
+	text := os.read_file(real_path) or { return false }
+	mut has_untracked_include := false
+	mut in_block_comment := false
+	for line in text.split_into_lines() {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		if c_directive_name(clean) != 'include' {
+			continue
+		}
+		include_arg := c_include_arg(c_directive_arg(clean), vroot, real_path)
+		if !c_include_arg_is_literal(include_arg) {
+			has_untracked_include = true
+			continue
+		}
+		for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
+			if !os.is_file(nested_path) {
+				continue
+			}
+			if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut seen, mut files) {
+				has_untracked_include = true
+			}
+			break
+		}
+	}
+	return has_untracked_include
+}
+
+fn c_embed_external_input_path(a &flat.FlatAst, node flat.Node) ?string {
+	if node.kind != .struct_init || node.value != 'embed_file.EmbedFileData' {
+		return none
+	}
+	for i in 0 .. node.children_count {
+		field := a.child_node(&node, i)
+		if field.kind != .field_init || field.value != 'apath' || field.children_count == 0 {
+			continue
+		}
+		value := a.child_node(field, 0)
+		if value.kind == .string_literal && value.value.len > 0 && os.is_file(value.value) {
+			return os.real_path(value.value)
+		}
+	}
+	return none
 }
 
 // set_scope_parallel_workers makes cgen helpers use disposable prealloc
@@ -701,6 +975,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_sum_name_lookup()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
+	g.preseed_fn_signature_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
 	g.preseed_libc_compat_fns()
 	if !g.skip_generics {
@@ -750,17 +1025,27 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.test_failure_helpers()
 	g.global_decls()
 	g.forward_decls()
+	g.cached_header_forward_decls()
+	g.interface_method_forward_decls()
 	g.shared_dup_fns()
 	g.enum_str_forward_decls()
 	g.callback_wrapper_decls()
 	g.spawn_wrapper_decls()
 	g.register_interface_strings()
 	g.string_literals()
-	g.interface_method_stubs()
+	if !g.cache_split {
+		g.interface_method_stubs()
+	}
 	g.enum_str_defs()
 	g.sb.write_string(const_code)
 	// The final builder now owns a copy of the const code.
 	unsafe { const_code.free() }
+	if g.cache_split {
+		g.writeln('/* V3CACHE_BODY_BEGIN */')
+		// `_vinit` aggregates module and global initialization for the current
+		// entry program, so it must never be retained in a reusable module object.
+		g.writeln('/* V3CACHE_MODULE main */')
+	}
 	if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 		|| g.global_inits.len > 0 {
 		g.writeln('void _vinit() {')
@@ -777,6 +1062,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('}')
 		g.writeln('')
 	}
+	if g.cache_split {
+		g.interface_method_stubs()
+	}
 	if g.fn_segs.len > 0 {
 		for segment in g.fn_segs {
 			g.sb.write_string(segment)
@@ -787,6 +1075,22 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.sb.write_string(fn_code)
 		// The final builder now owns a copy of the function code.
 		unsafe { fn_code.free() }
+	}
+	if g.cache_split {
+		g.writeln('/* V3CACHE_BODY_END */')
+		source := g.sb.str()
+		result := g.rewrite_cache_string_symbols(source)
+		unsafe {
+			source.free()
+			g.sb.free()
+		}
+		if g.output_path.len > 0 {
+			os.write_file(g.output_path, result) or { g.output_error = err.msg() }
+			unsafe { result.free() }
+			g.sb = strings.new_builder(4096)
+			return ''
+		}
+		return result
 	}
 	if g.output_path.len > 0 {
 		mut output := unsafe { g.sb.reuse_as_plain_u8_array() }
@@ -799,6 +1103,173 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Keep only the returned C string, not the builder's copied backing array.
 	unsafe { g.sb.free() }
 	return result
+}
+
+fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
+	mut symbols := []string{cap: g.str_lits.len}
+	for value in g.str_lits {
+		symbols << cache_string_symbol(value)
+	}
+	user_c_symbols := g.cache_user_c_string_symbols()
+	mut out := strings.new_builder(source.len + g.str_lits.len * 8)
+	mut i := 0
+	for i < source.len {
+		if source[i] in [`"`, `'`] {
+			quote := source[i]
+			start := i
+			i++
+			for i < source.len {
+				if source[i] == `\\` && i + 1 < source.len {
+					i += 2
+					continue
+				}
+				i++
+				if source[i - 1] == quote {
+					break
+				}
+			}
+			out.write_string(source[start..i])
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+			start := i
+			i += 2
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+			out.write_string(source[start..i])
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+			start := i
+			i += 2
+			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 < source.len {
+				i += 2
+			} else {
+				i = source.len
+			}
+			out.write_string(source[start..i])
+			continue
+		}
+		if c_identifier_start(source[i]) {
+			start := i
+			i++
+			for i < source.len && c_identifier_continue(source[i]) {
+				i++
+			}
+			identifier := source[start..i]
+			if cache_numbered_string_symbol(identifier) && !user_c_symbols[identifier] {
+				mut id := 0
+				for digit in identifier[5..].bytes() {
+					id = id * 10 + int(digit - `0`)
+				}
+				if id >= 0 && id < symbols.len {
+					out.write_string(symbols[id])
+					continue
+				}
+			}
+			out.write_string(identifier)
+			continue
+		}
+		out.write_u8(source[i])
+		i++
+	}
+	return out.str()
+}
+
+fn (mut g FlatGen) cache_user_c_string_symbols() map[string]bool {
+	mut symbols := map[string]bool{}
+	for directive in g.c_directives {
+		collect_cache_numbered_string_symbols(directive.text, mut symbols)
+	}
+	for name in g.inlined_c_fns.keys() {
+		collect_cache_numbered_string_symbols(name, mut symbols)
+	}
+	for name in g.inlined_c_declared_fns.keys() {
+		collect_cache_numbered_string_symbols(name, mut symbols)
+	}
+	referenced_symbols := g.c_extern_referenced_symbols()
+	for name in referenced_symbols.keys() {
+		collect_cache_numbered_string_symbols(name, mut symbols)
+	}
+	return symbols
+}
+
+fn collect_cache_numbered_string_symbols(source string, mut symbols map[string]bool) {
+	mut i := 0
+	for i < source.len {
+		if source[i] in [`\"`, `'`] {
+			quote := source[i]
+			i++
+			for i < source.len {
+				if source[i] == `\\` && i + 1 < source.len {
+					i += 2
+					continue
+				}
+				i++
+				if source[i - 1] == quote {
+					break
+				}
+			}
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+			i += 2
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+			i += 2
+			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 < source.len {
+				i += 2
+			} else {
+				i = source.len
+			}
+			continue
+		}
+		if !c_identifier_start(source[i]) {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < source.len && c_identifier_continue(source[i]) {
+			i++
+		}
+		identifier := source[start..i]
+		if cache_numbered_string_symbol(identifier) {
+			symbols[identifier] = true
+		}
+	}
+}
+
+fn cache_numbered_string_symbol(identifier string) bool {
+	return identifier.len > 5 && identifier.starts_with('_str_')
+		&& identifier[5..].bytes().all(it >= `0` && it <= `9`)
+}
+
+fn c_identifier_start(c u8) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
+}
+
+fn c_identifier_continue(c u8) bool {
+	return c_identifier_start(c) || (c >= `0` && c <= `9`)
+}
+
+fn cache_string_symbol(value string) string {
+	mut hash := u64(1469598103934665603)
+	for c in value.bytes() {
+		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
+	return '_v3_lit_${value.len}_${hash.hex()}'
 }
 
 // node_kind_id supports node kind id handling for c.
@@ -1229,7 +1700,8 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			if header_text.len > 0 {
 				g.add_c_directive(module_name, header_text, before_import)
 			}
-		} else if c_should_preserve_uninlined_include(include_arg) {
+		} else if c_should_preserve_uninlined_include(include_arg) || (g.cache_split
+			&& include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>']) {
 			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
@@ -1539,22 +2011,28 @@ fn c_nested_include_context_depth(context []string) int {
 
 fn c_flag_include_dirs(flags []string) []string {
 	mut dirs := []string{}
-	mut i := 0
-	for i < flags.len {
-		flag := flags[i]
-		mut dir := ''
-		if flag == '-I' {
-			if i + 1 < flags.len {
-				i++
-				dir = flags[i]
+	for flag in flags {
+		tokens := tokenize_c_flag(flag)
+		mut i := 0
+		for i < tokens.len {
+			tok := tokens[i]
+			mut dir := ''
+			if tok in ['-I', '-isystem'] {
+				if i + 1 < tokens.len {
+					dir = tokens[i + 1]
+					i++
+				}
+			} else if tok.starts_with('-I') && tok.len > 2 {
+				dir = tok[2..]
+			} else if tok.starts_with('-isystem') && tok.len > '-isystem'.len {
+				dir = tok['-isystem'.len..].trim_left('=')
 			}
-		} else if flag.starts_with('-I') && flag.len > 2 {
-			dir = flag[2..]
+			dir = dir.trim('"\'')
+			if dir.len > 0 && dir !in dirs {
+				dirs << dir
+			}
+			i++
 		}
-		if dir.len > 0 && dir !in dirs {
-			dirs << dir
-		}
-		i++
 	}
 	return dirs
 }
@@ -1607,12 +2085,54 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 	return clean in ['<dlfcn.h>', '<limits.h>', '<arm_neon.h>']
 }
 
-fn c_preserved_system_include_declared_fns(_include_arg string) []string {
+fn c_preserved_system_include_declared_fns(include_arg string) []string {
+	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
+		return [
+			'host_page_size',
+			'host_statistics64',
+			'mach_absolute_time',
+			'mach_host_self',
+			'mach_port_deallocate',
+			'mach_task_self',
+			'mach_timebase_info',
+			'task_info',
+		]
+	}
 	return []string{}
 }
 
-fn c_preserved_system_include_struct_names(_include_arg string) []string {
+fn c_preserved_system_include_struct_names(include_arg string) []string {
+	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
+		return [
+			'host_t',
+			'mach_timebase_info_data_t',
+			'task_basic_info',
+			'task_t',
+			'vm_size_t',
+			'vm_statistics64_data_t',
+		]
+	}
 	return []string{}
+}
+
+const c_cache_system_header_declared_fns = {
+	'host_page_size':       true
+	'host_statistics64':    true
+	'mach_absolute_time':   true
+	'mach_host_self':       true
+	'mach_port_deallocate': true
+	'mach_task_self':       true
+	'mach_timebase_info':   true
+	'task_info':            true
+}
+
+const c_cache_system_header_struct_names = {
+	'host_t':                    true
+	'mach_timebase_info_data_t': true
+	'task_basic_info':           true
+	'task_t':                    true
+	'vm_size_t':                 true
+	'vm_statistics64_data_t':    true
 }
 
 fn c_stdint_header_text() string {
@@ -2124,6 +2644,9 @@ fn c_header_declared_fn_name(line string) string {
 		|| line.contains('}') {
 		return ''
 	}
+	if macro_name := c_header_macro_wrapped_declared_fn_name(line) {
+		return macro_name
+	}
 	// Reject function-pointer variable declarations (`int (*fp)(void);`) and
 	// functions returning function pointers, where the identifier before the
 	// first `(` is not the declared name. A `(*` later in the parameter list
@@ -2155,6 +2678,35 @@ fn c_header_declared_fn_name(line string) string {
 		return ''
 	}
 	return c_header_fn_name(line)
+}
+
+fn c_header_macro_wrapped_declared_fn_name(line string) ?string {
+	open := line.index_u8(`(`)
+	if open <= 0 {
+		return none
+	}
+	macro_name := line[..open].trim_space()
+	if macro_name.len == 0 || macro_name.contains(' ') || macro_name.contains('\t') {
+		return none
+	}
+	for c in macro_name.bytes() {
+		if !((c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`) {
+			return none
+		}
+	}
+	close := typeof_display_type_name_matching_paren(line, open)
+	if close < 0 || close + 1 >= line.len {
+		return none
+	}
+	declarator := line[close + 1..].trim_space()
+	if !declarator.ends_with(';') || !declarator.contains('(') {
+		return none
+	}
+	name := c_header_fn_name(declarator)
+	if name.len == 0 {
+		return none
+	}
+	return name
 }
 
 fn c_header_defined_fn_name(line string) string {
@@ -2198,6 +2750,15 @@ fn c_include_file_path(include_arg string, vroot string, source_file string) str
 		return path
 	}
 	return os.join_path_single(os.dir(source_file), path)
+}
+
+fn c_include_arg_is_literal(include_arg string) bool {
+	clean := trimmed_space(include_arg)
+	if clean.len < 2 {
+		return false
+	}
+	return (clean[0] == `"` && clean[clean.len - 1] == `"`)
+		|| (clean[0] == `<` && clean[clean.len - 1] == `>`)
 }
 
 fn c_include_file_paths(include_arg string, vroot string, source_file string, include_dirs []string) []string {
@@ -2496,10 +3057,14 @@ fn (mut g FlatGen) emit_c_directives() {
 fn (mut g FlatGen) emit_preserved_c_directives() {
 	mut emitted := false
 	mut emitted_includes := map[string]bool{}
+	mut has_mach_headers := false
 	directives := g.ordered_c_directives()
 	for i, directive in directives {
 		if !c_contains_preserved_system_include_directive(directive) {
 			continue
+		}
+		if directive.contains('<mach/mach.h>') {
+			has_mach_headers = true
 		}
 		clean := trimmed_space(directive)
 		if directive.contains('\n') {
@@ -2533,6 +3098,15 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 		for _ in 0 .. c_lifted_include_context_depth(prefix) {
 			g.writeln('#endif')
 		}
+	}
+	refs := g.c_extern_referenced_symbols()
+	if !has_mach_headers && (refs['C.task_info'] || refs['task_info']
+		|| refs['C.mach_task_self'] || refs['mach_task_self']) {
+		g.writeln('#ifdef __APPLE__')
+		g.emit_preserved_c_directive('#include <mach/mach.h>')
+		g.emit_preserved_c_directive('#include <mach/task.h>')
+		g.writeln('#endif')
+		emitted = true
 	}
 	if emitted {
 		g.writeln('')
@@ -3301,6 +3875,10 @@ fn (mut g FlatGen) gen_expr_as_string(id flat.NodeId) {
 		if g.gen_current_mut_param_value_read(id, typ.base_type) {
 			return
 		}
+		g.write('*(')
+		g.gen_expr(id)
+		g.write(')')
+		return
 	}
 	g.gen_expr(id)
 }
@@ -3536,7 +4114,8 @@ fn (mut g FlatGen) gen_current_mut_param_value_read(id flat.NodeId, expected typ
 	}
 	param_type := g.current_param_type(node.value) or { return false }
 	if param_type is types.Pointer {
-		if !g.type_names_match(param_type.base_type, expected) {
+		if !g.type_names_match(select_receive_unalias_type(param_type.base_type),
+			select_receive_unalias_type(expected)) {
 			return false
 		}
 	} else {
@@ -3605,6 +4184,13 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		return
 	}
 	if g.gen_current_mut_param_value_read(id, semantic_expected) {
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
+	if node.kind == .cast_expr && node.children_count > 0
+		&& g.cast_alias_matches_expected_storage(node.value, expected) {
+		g.gen_expr_with_expected_type(g.a.child(&node, 0), expected)
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
@@ -3693,9 +4279,49 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = old_expected_enum
 		return
 	}
+	clean_expected := select_receive_unalias_type(expected)
+	if node.kind == .prefix && node.op in [.minus, .plus] && node.children_count > 0
+		&& clean_expected is types.Primitive && clean_expected.props.has(.float)
+		&& clean_expected.size == 32 {
+		child_id := g.a.child(&node, 0)
+		child := g.a.nodes[int(child_id)]
+		if child.kind == .float_literal {
+			g.write(g.op_str(node.op))
+			g.gen_expr_with_expected_type(child_id, expected)
+			g.expected_expr_type = old_expected
+			g.expected_enum = old_expected_enum
+			return
+		}
+	}
+	if node.kind == .float_literal && clean_expected is types.Primitive
+		&& clean_expected.props.has(.float) && clean_expected.size == 32 {
+		g.write('(float)(')
+		g.gen_expr(id)
+		g.write(')')
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
 	g.gen_expr(id)
 	g.expected_expr_type = old_expected
 	g.expected_enum = old_expected_enum
+}
+
+fn (g &FlatGen) cast_alias_matches_expected_storage(alias_name string, expected types.Type) bool {
+	if alias_name.len == 0 {
+		return false
+	}
+	mut target_name := g.tc.type_aliases[alias_name] or { '' }
+	if target_name.len == 0 {
+		target_name = g.tc.type_aliases[g.tc.qualify_name(alias_name)] or { '' }
+	}
+	if target_name.len == 0 {
+		return false
+	}
+	target := select_receive_unalias_type(g.tc.parse_type(target_name))
+	expected_base := select_receive_unalias_type(expected)
+	return g.type_names_match(target, expected_base)
+		|| g.tc.c_type(target) == g.tc.c_type(expected_base)
 }
 
 fn (mut g FlatGen) gen_sum_pointer_value_expr(id flat.NodeId, expected types.Type) bool {
@@ -3958,7 +4584,7 @@ fn (mut g FlatGen) gen_sum_variant_memdup_source(value_id flat.NodeId, inner_typ
 			return
 		}
 	}
-	inner_ct := g.tc.c_type(inner_type)
+	inner_ct := g.value_c_type(inner_type)
 	g.write('(${inner_ct}[]){')
 	g.gen_expr_with_expected_type(value_id, inner_type)
 	g.write('}')
@@ -4155,7 +4781,14 @@ fn (g &FlatGen) c_typedef_cast_call_name(node flat.Node) string {
 
 // gen_expr_with_possible_enum_type emits expr with possible enum type output for c.
 fn (mut g FlatGen) gen_expr_with_possible_enum_type(id flat.NodeId, expected types.Type) {
-	if expected is types.Enum {
+	node := g.a.nodes[int(id)]
+	mut is_signed_numeric_literal := false
+	if node.kind == .prefix && node.op in [.minus, .plus] && node.children_count > 0 {
+		child := g.a.child_node(&node, 0)
+		is_signed_numeric_literal = child.kind in [.int_literal, .float_literal]
+	}
+	if expected is types.Enum || node.kind in [.int_literal, .float_literal]
+		|| is_signed_numeric_literal {
 		g.gen_expr_with_expected_type(id, expected)
 		return
 	}
@@ -4199,6 +4832,12 @@ fn (mut g FlatGen) sizeof_target(value string) string {
 	}
 	if fixed_target := c_fixed_array_typedef_sizeof_target(value) {
 		return fixed_target
+	}
+	// Values of explicitly backed enums use their declared C typedef instead of the
+	// integer ABI type. `sizeof` must therefore follow value storage semantics too.
+	parsed := g.tc.parse_type(value)
+	if parsed is types.Enum {
+		return g.value_sizeof_target(parsed)
 	}
 	if value.contains('.') {
 		parts := value.split('.')
@@ -5455,6 +6094,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			g.write('0')
 		}
 		.call {
+			if g.string_plus_call_is_nested(id, node) {
+				g.gen_owned_string_plus_chain(id)
+				return
+			}
 			// A call to a fixed-array-returning function yields the wrapper struct;
 			// unwrap `.ret_arr` so the result behaves as the array value everywhere
 			// (indexing, arg passing, memcpy into a destination).
@@ -7269,6 +7912,12 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef intptr_t ssize_t;')
 	g.writeln('#endif')
 	g.writeln('extern char** environ;')
+	g.writeln('void* malloc(size_t size);')
+	g.writeln('void* calloc(size_t count, size_t size);')
+	g.writeln('void* realloc(void* ptr, size_t size);')
+	g.writeln('void free(void* ptr);')
+	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
+	g.writeln('int fseek(FILE* stream, long offset, int whence);')
 	g.writeln('char* getenv(const char* name);')
 	g.writeln('int setenv(const char* name, const char* value, int overwrite);')
 	g.writeln('void abort(void);')
@@ -7400,6 +8049,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	g.writeln('int pthread_attr_init(pthread_attr_t* attr);')
 	g.writeln('int pthread_attr_destroy(pthread_attr_t* attr);')
+	g.writeln('int pthread_attr_setstacksize(void* attr, size_t stacksize);')
 	g.writeln('int pthread_mutex_init(void* mutex, void* attr);')
 	g.writeln('int pthread_mutex_lock(void* mutex);')
 	g.writeln('int pthread_mutex_unlock(void* mutex);')
@@ -7470,6 +8120,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_darwin_task_info_struct()
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
+	g.writeln('int stat(char* path, struct stat* buf);')
 	g.headerless_tm_struct()
 	g.writeln('struct utimbuf { time_t actime; time_t modtime; };')
 	g.writeln('time_t mktime(struct tm* timeptr);')
@@ -7518,6 +8169,12 @@ fn c_function_like_macro_decl_names() []string {
 }
 
 const c_headerless_libc_declared_fns = [
+	'malloc',
+	'calloc',
+	'realloc',
+	'free',
+	'fprintf',
+	'fseek',
 	'getenv',
 	'setenv',
 	'abort',
@@ -7552,6 +8209,7 @@ const c_headerless_libc_declared_fns = [
 	'strrchr',
 	'strstr',
 	'snprintf',
+	'stat',
 	'fcntl',
 	'pipe',
 	'close',
@@ -7562,6 +8220,9 @@ const c_headerless_libc_declared_fns = [
 	'__errno',
 	'__errno_location',
 	'_errno',
+	'pthread_attr_init',
+	'pthread_attr_destroy',
+	'pthread_attr_setstacksize',
 	'pthread_mutex_init',
 	'pthread_mutex_lock',
 	'pthread_mutex_unlock',
@@ -7784,10 +8445,12 @@ fn (mut g FlatGen) headerless_timespec_struct() {
 
 fn (mut g FlatGen) headerless_darwin_task_info_struct() {
 	g.writeln('#ifdef __APPLE__')
+	g.writeln('#ifndef _MACH_TASK_INFO_H_')
 	g.writeln('typedef unsigned int task_t;')
 	g.writeln('#pragma pack(push, 4)')
 	g.writeln('struct task_basic_info { i32 suspend_count; u64 virtual_size; u64 resident_size; struct { i32 seconds; i32 microseconds; } user_time; struct { i32 seconds; i32 microseconds; } system_time; i32 policy; };')
 	g.writeln('#pragma pack(pop)')
+	g.writeln('#endif')
 	g.writeln('#endif')
 }
 
@@ -9296,12 +9959,14 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('string i64__str(i64 n);')
 	g.writeln('string u64__str(u64 nn);')
 	g.writeln('string f64__str(double x);')
-	g.writeln('string rune__str(i32 c);')
+	g.writeln('string rune__str(u32 c);')
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
+	g.writeln('void* memdup(void* src, ptrdiff_t sz);')
+	g.writeln('static inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }')
 	g.writeln('static inline string v3_c_lit(const char* s, int len) { return (string){.str = (u8*)s, .len = len, .is_lit = 1}; }')
 	g.writeln("static inline string v3_string_pad(string s, int width, int left) { if (width < 0) { left = 1; width = -width; } if (s.len >= width) return s; int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); if (left) { memcpy(out, s.str, (size_t)s.len); memset(out + s.len, ' ', (size_t)pad); } else { memset(out, ' ', (size_t)pad); memcpy(out + pad, s.str, (size_t)s.len); } out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
 	g.writeln("static inline string v3_string_upper_ascii(string s) { u8* out = malloc_noscan((ptrdiff_t)s.len + 1); for (int i = 0; i < s.len; ++i) { u8 c = s.str[i]; out[i] = c >= 'a' && c <= 'f' ? (u8)(c - ('a' - 'A')) : c; } out[s.len] = 0; return (string){.str = out, .len = s.len, .is_lit = 0}; }")
-	g.writeln('static inline string v3_char_string(int c) { return rune__str((i32)c); }')
+	g.writeln('static inline string v3_char_string(int c) { return rune__str((u32)c); }')
 	g.writeln('static inline string v3_chan_str(chan ch, string elem) { if (ch == NULL) return string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("(nil)", 5)); string out = string__plus(string__plus(v3_c_lit("chan ", 5), elem), v3_c_lit("{\\n    cap: ", 11)); out = string__plus(out, int__str(ch->cap)); out = string__plus(out, ch->closed != 0 ? v3_c_lit(", closed: true\\n}", 16) : v3_c_lit(", closed: false\\n}", 17)); return out; }')
 	g.writeln('static inline double v3_f64_fixed_value(double x, int precision) { if (precision == 0) return x < 0.0 ? ceil(x - 0.5) : floor(x + 0.5); if (precision == 6) { double scale = 1000000.0; double ax = fabs(x) * scale; double base = floor(ax); double frac = ax - base; if (frac == 0.5) { double rounded = floor(ax + 0.5) / scale; return x < 0.0 ? -rounded : rounded; } } return x; }')
 	g.writeln('static inline string v3_f64_fixed(double x, int precision) { if (precision > 16) { char base[128]; int b = snprintf(base, sizeof(base), "%.16g", x); if (b >= 0 && b < (int)sizeof(base)) { int dot = -1; int has_exp = 0; for (int i = 0; i < b; ++i) { if (base[i] == \'.\') dot = i; if (base[i] == \'e\' || base[i] == \'E\') has_exp = 1; } if (!has_exp) { int frac = dot >= 0 ? b - dot - 1 : 0; if (frac <= precision) { int n = b + (dot < 0 ? 1 : 0) + (precision - frac); u8* out = malloc_noscan(n + 1); memcpy(out, base, b); int pos = b; if (dot < 0) out[pos++] = \'.\'; while (frac++ < precision) out[pos++] = \'0\'; out[pos] = 0; return (string){.str = out, .len = n, .is_lit = 0}; } } } } double y = v3_f64_fixed_value(x, precision); char tmp[128]; int n = snprintf(tmp, sizeof(tmp), "%.*f", precision, y); if (n < 0) return v3_c_lit("", 0); if (n < (int)sizeof(tmp)) { u8* out = malloc_noscan(n + 1); memcpy(out, tmp, n + 1); return (string){.str = out, .len = n, .is_lit = 0}; } u8* out = malloc_noscan(n + 1); snprintf((char*)out, (size_t)n + 1, "%.*f", precision, y); return (string){.str = out, .len = n, .is_lit = 0}; }')
@@ -9313,6 +9978,9 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	// escaped rather than truncating like a C NUL-terminated string. ASCII
 	// codes are used to avoid escaping quirks; 92=\ 34=" 98=b 102=f 110=n 114=r 116=t 117=u 48=0.
 	g.writeln('static inline string v3_json_encode_string(string s) { const char* hex = "0123456789abcdef"; u8* out = malloc_noscan((ptrdiff_t)s.len * 6 + 8); int p = 0; out[p++] = 34; for (int i = 0; i < s.len; i++) { u8 c = s.str[i]; if (c == 34) { out[p++]=92; out[p++]=34; } else if (c == 92) { out[p++]=92; out[p++]=92; } else if (c == 8) { out[p++]=92; out[p++]=98; } else if (c == 12) { out[p++]=92; out[p++]=102; } else if (c == 10) { out[p++]=92; out[p++]=110; } else if (c == 13) { out[p++]=92; out[p++]=114; } else if (c == 9) { out[p++]=92; out[p++]=116; } else if (c < 32) { out[p++]=92; out[p++]=117; out[p++]=48; out[p++]=48; out[p++]=hex[(c>>4)&15]; out[p++]=hex[c&15]; } else { out[p++]=c; } } out[p++] = 34; out[p] = 0; return (string){.str = out, .len = p, .is_lit = 0}; }')
+	if g.has_cjson() {
+		g.json_number_token_helpers()
+	}
 	g.writeln('static inline i64 v3_map_signed(void* p, int bytes) { if (bytes == 1) return *(signed char*)p; if (bytes == 2) return *(short*)p; if (bytes == 8) return *(long long*)p; return *(int*)p; }')
 	g.writeln('static inline u64 v3_map_unsigned(void* p, int bytes) { if (bytes == 1) return *(unsigned char*)p; if (bytes == 2) return *(unsigned short*)p; if (bytes == 8) return *(unsigned long long*)p; return *(unsigned int*)p; }')
 	g.writeln('static inline string v3_f32_array_str(float* vals, int n) { string out = v3_c_lit("[", 1); for (int i = 0; i < n; ++i) { if (i > 0) out = string__plus(out, v3_c_lit(", ", 2)); out = string__plus(out, f64__str((double)vals[i])); } return string__plus(out, v3_c_lit("]", 1)); }')
@@ -9321,7 +9989,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('\tif (kind == 1) { return string__plus(string__plus(v3_c_lit("\'", 1), *(string*)p), v3_c_lit("\'", 1)); }')
 	g.writeln('\tif (kind == 2) { return v3_i64_zpad(v3_map_signed(p, bytes), 0); }')
 	g.writeln('\tif (kind == 3) { return u64__str(v3_map_unsigned(p, bytes)); }')
-	g.writeln('\tif (kind == 4) { i32 r = bytes == 1 ? (i32)(*(u8*)p) : *(i32*)p; return string__plus(string__plus(v3_c_lit("`", 1), rune__str(r)), v3_c_lit("`", 1)); }')
+	g.writeln('\tif (kind == 4) { u32 r = bytes == 1 ? (u32)(*(u8*)p) : *(u32*)p; return string__plus(string__plus(v3_c_lit("`", 1), rune__str(r)), v3_c_lit("`", 1)); }')
 	g.writeln('\tif (kind == 5) { if (bytes == (int)sizeof(float)) return f64__str((double)*(float*)p); return f64__str(*(double*)p); }')
 	g.writeln('\tif (kind == 6) { if (fixed_len == 0 && bytes == (int)sizeof(Array)) { Array a = *(Array*)p; if (a.element_size == (int)sizeof(float)) return v3_f32_array_str((float*)a.data, a.len); if (a.element_size == (int)sizeof(double)) return v3_f64_array_str((double*)a.data, a.len); } if (fixed_len > 0 && bytes == fixed_len * (int)sizeof(float)) return v3_f32_array_str((float*)p, fixed_len); int n = fixed_len > 0 ? fixed_len : bytes / (int)sizeof(double); return v3_f64_array_str((double*)p, n); }')
 	g.writeln('\tif (kind == 8) { return f64__str((double)*(float*)p); }')
@@ -9370,6 +10038,29 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('#define min_int min_i32')
 	g.writeln('#endif')
 	g.writeln('')
+}
+
+fn (g &FlatGen) has_cjson() bool {
+	for flag in g.c_flags {
+		if flag.contains('cJSON') {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g FlatGen) json_number_token_helpers() {
+	g.writeln('static inline const u8* v3_json_skip_space(const u8* p, const u8* end) { while (p < end && (*p == 32 || *p == 9 || *p == 10 || *p == 13)) p++; return p; }')
+	g.writeln('static inline const u8* v3_json_skip_string(const u8* p, const u8* end) { if (p >= end || *p != 34) return p; p++; while (p < end) { if (*p == 92) { p++; if (p < end) p++; continue; } if (*p == 34) return p + 1; p++; } return p; }')
+	g.writeln('static const u8* v3_json_preserve_number_tokens_inner(const u8* p, const u8* end, cJSON* item);')
+	g.writeln('static const u8* v3_json_preserve_number_tokens_inner(const u8* p, const u8* end, cJSON* item) {')
+	g.writeln('\tp = v3_json_skip_space(p, end); if (p >= end) return p;')
+	g.writeln('\tif (*p == 123) { cJSON* child = item != NULL ? item->child : NULL; p++; p = v3_json_skip_space(p, end); while (p < end && *p != 125) { p = v3_json_skip_string(p, end); p = v3_json_skip_space(p, end); if (p < end && *p == 58) p++; p = v3_json_preserve_number_tokens_inner(p, end, child); if (child != NULL) child = child->next; p = v3_json_skip_space(p, end); if (p < end && *p == 44) { p++; p = v3_json_skip_space(p, end); } else { break; } } return p < end && *p == 125 ? p + 1 : p; }')
+	g.writeln('\tif (*p == 91) { cJSON* child = item != NULL ? item->child : NULL; p++; p = v3_json_skip_space(p, end); while (p < end && *p != 93) { p = v3_json_preserve_number_tokens_inner(p, end, child); if (child != NULL) child = child->next; p = v3_json_skip_space(p, end); if (p < end && *p == 44) { p++; p = v3_json_skip_space(p, end); } else { break; } } return p < end && *p == 93 ? p + 1 : p; }')
+	g.writeln('\tif (*p == 34) return v3_json_skip_string(p, end);')
+	g.writeln('\tconst u8* start = p; while (p < end && *p != 44 && *p != 93 && *p != 125 && *p != 32 && *p != 9 && *p != 10 && *p != 13) p++; if (item != NULL && cJSON_IsNumber(item) && item->valuestring == NULL) { size_t len = (size_t)(p - start); char* raw = (char*)cJSON_malloc(len + 1); if (raw != NULL) { memcpy(raw, start, len); raw[len] = 0; item->valuestring = raw; } } return p;')
+	g.writeln('}')
+	g.writeln('static inline void v3_json_preserve_number_tokens(const u8* json, int len, cJSON* root) { if (json != NULL && len > 0 && root != NULL) v3_json_preserve_number_tokens_inner(json, json + len, root); }')
 }
 
 fn (mut g FlatGen) filelock_compat_decls() {
@@ -9951,10 +10642,26 @@ fn (mut g FlatGen) global_decls() {
 			g.tc.cur_module = old_module
 		}
 		decl_typ := g.global_storage_type(name, typ)
+		is_fn_capture := name.contains('__anon_fn_')
 		if decl_typ is types.ArrayFixed {
 			c_elem, dims := g.fixed_array_decl_parts(decl_typ)
 			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
-			g.writeln('${c_elem} ${g.cname(name)}${dims}${init};')
+			if is_fn_capture {
+				g.writeln('#if defined(__TINYC__)')
+				g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
+				g.writeln('void* pthread_getspecific(u64 key);')
+				g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
+				g.writeln('static u64 ${g.cname(name)}_key;')
+				g.writeln('static void ${g.cname(name)}_key_init(void) __attribute__((constructor));')
+				g.writeln('static void ${g.cname(name)}_key_init(void) { pthread_key_create(&${g.cname(name)}_key, free); }')
+				g.writeln('static ${c_elem} (*${g.cname(name)}_slot(void))${dims} { void* p = pthread_getspecific(${g.cname(name)}_key); if (!p) { p = calloc(1, sizeof(*${g.cname(name)}_slot())); pthread_setspecific(${g.cname(name)}_key, p); } return p; }')
+				g.writeln('#define ${g.cname(name)} (*${g.cname(name)}_slot())')
+				g.writeln('#else')
+				g.writeln('_Thread_local ${c_elem} ${g.cname(name)}${dims}${init};')
+				g.writeln('#endif')
+			} else {
+				g.writeln('${c_elem} ${g.cname(name)}${dims}${init};')
+			}
 			continue
 		}
 		mut ct := g.tc.c_type(decl_typ)
@@ -9973,6 +10680,27 @@ fn (mut g FlatGen) global_decls() {
 			continue
 		}
 		init := if g.can_use_global_brace_zero_init(decl_typ, ct) { ' = {0}' } else { '' }
+		// Capturing fn literals are immediately consumed callbacks in the V3
+		// frontend. Their lifted capture slots must nevertheless be per-thread:
+		// a process-global slot lets concurrent invocations overwrite one
+		// another before the callback runs. Native C compilers use TLS directly;
+		// TinyCC uses pthread keys because it does not implement `_Thread_local`.
+		if is_fn_capture {
+			cname := g.cname(name)
+			g.writeln('#if defined(__TINYC__)')
+			g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
+			g.writeln('void* pthread_getspecific(u64 key);')
+			g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
+			g.writeln('static u64 ${cname}_key;')
+			g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
+			g.writeln('static void ${cname}_key_init(void) { pthread_key_create(&${cname}_key, free); }')
+			g.writeln('static ${ct}* ${cname}_slot(void) { void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); pthread_setspecific(${cname}_key, p); } return (${ct}*)p; }')
+			g.writeln('#define ${cname} (*${cname}_slot())')
+			g.writeln('#else')
+			g.writeln('_Thread_local ${ct} ${cname}${init};')
+			g.writeln('#endif')
+			continue
+		}
 		// With -prealloc the arena base block is per-thread (lazily initialized
 		// on first allocation in each thread); a shared pointer would make all
 		// threads bump the same block without synchronization. cc gets real
@@ -11044,6 +11772,61 @@ fn (g &FlatGen) is_const_expr(id flat.NodeId) bool {
 			false
 		}
 	}
+}
+
+fn (g &FlatGen) is_string_plus_call(node flat.Node) bool {
+	if node.kind != .call || node.children_count != 3 {
+		return false
+	}
+	callee := g.a.child_node(&node, 0)
+	return callee.kind == .ident && callee.value == 'string__plus'
+}
+
+fn (g &FlatGen) string_plus_call_is_nested(_id flat.NodeId, node flat.Node) bool {
+	if !g.is_string_plus_call(node) {
+		return false
+	}
+	lhs := g.a.child_node(&node, 1)
+	rhs := g.a.child_node(&node, 2)
+	return g.is_string_plus_call(lhs) || g.is_string_plus_call(rhs)
+}
+
+fn (g &FlatGen) collect_string_plus_parts(id flat.NodeId, mut parts []flat.NodeId) {
+	node := g.a.nodes[int(id)]
+	if g.is_string_plus_call(node) {
+		g.collect_string_plus_parts(g.a.child(&node, 1), mut parts)
+		g.collect_string_plus_parts(g.a.child(&node, 2), mut parts)
+		return
+	}
+	parts << id
+}
+
+// Nested string concatenation owns each intermediate result. Emit the chain as
+// ordered statements and release every superseded accumulator.
+fn (mut g FlatGen) gen_owned_string_plus_chain(id flat.NodeId) {
+	mut parts := []flat.NodeId{}
+	g.collect_string_plus_parts(id, mut parts)
+	if parts.len < 3 {
+		g.gen_call(id, g.a.nodes[int(id)])
+		return
+	}
+	tmp := g.tmp_count
+	g.tmp_count++
+	g.write('({')
+	for i, part in parts {
+		g.write(' string __str_plus_part_${tmp}_${i} = ')
+		g.gen_expr_as_string(part)
+		g.write(';')
+	}
+	g.write(' string __str_plus_acc_${tmp}_1 = string__plus(__str_plus_part_${tmp}_0, __str_plus_part_${tmp}_1);')
+	mut previous := '__str_plus_acc_${tmp}_1'
+	for i := 2; i < parts.len; i++ {
+		next := '__str_plus_acc_${tmp}_${i}'
+		g.write(' string ${next} = string__plus(${previous}, __str_plus_part_${tmp}_${i});')
+		g.write(' string__free(&${previous});')
+		previous = next
+	}
+	g.write(' ${previous}; })')
 }
 
 fn (g &FlatGen) is_runtime_assignable(id flat.NodeId) bool {

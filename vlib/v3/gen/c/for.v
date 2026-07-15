@@ -35,6 +35,30 @@ fn (mut g FlatGen) pop_loop_label_depth(state LoopLabelState) {
 	}
 }
 
+fn (g &FlatGen) labelled_continue_skip_drops_var(label string) string {
+	return '__v_${g.cname(label)}_continue_skip_drops'
+}
+
+fn (mut g FlatGen) gen_labelled_continue_skip_drops_var(label string) {
+	if label.len > 0 {
+		g.writeln('bool ${g.labelled_continue_skip_drops_var(label)} = false;')
+	}
+}
+
+fn (mut g FlatGen) gen_loop_iteration_ownership_drops_for_label(label string) {
+	if label.len == 0 {
+		g.gen_loop_iteration_ownership_drops()
+		return
+	}
+	skip_drops := g.labelled_continue_skip_drops_var(label)
+	g.writeln('if (!${skip_drops}) {')
+	g.indent++
+	g.gen_loop_iteration_ownership_drops()
+	g.indent--
+	g.writeln('}')
+	g.writeln('${skip_drops} = false;')
+}
+
 // gen_for emits for output for c.
 fn (mut g FlatGen) gen_for(node flat.Node) {
 	label_state := g.push_loop_label_depth(g.take_pending_loop_label())
@@ -44,6 +68,13 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	cond_id := g.a.child(&node, 1)
 	cond_node := g.a.nodes[int(cond_id)]
 	post_node := g.a.child_node(&node, 2)
+	wrap_init := init_node.kind != .empty
+
+	if wrap_init {
+		g.writeln('{')
+		g.indent++
+		g.gen_node(g.a.child(&node, 0))
+	}
 
 	if init_node.kind == .empty && cond_node.kind == .empty && post_node.kind == .empty {
 		g.writeln('for (;;) {')
@@ -52,11 +83,7 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 		g.gen_expr(cond_id)
 		g.writeln(') {')
 	} else {
-		g.write('for (')
-		if init_node.kind != .empty {
-			g.gen_node_inline(g.a.child(&node, 0))
-		}
-		g.write('; ')
+		g.write('for (; ')
 		if cond_node.kind != .empty {
 			g.gen_expr(cond_id)
 		}
@@ -67,15 +94,22 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 		g.writeln(') {')
 	}
 	g.indent++
+	g.gen_labelled_continue_skip_drops_var(label_state.label)
 	g.loop_depth++
 	for i in 3 .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
 	g.loop_depth--
 	g.gen_defers_from(defer_start)
+	g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 	g.trim_defers(defer_start)
 	g.indent--
 	g.writeln('}')
+	if wrap_init {
+		g.gen_scope_ownership_drops()
+		g.indent--
+		g.writeln('}')
+	}
 	g.pop_scope()
 	g.pop_loop_label_depth(label_state)
 }
@@ -105,14 +139,15 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	if header_count == 4 {
 		low_id := g.a.child(&node, 2)
 		high_id := g.a.child(&node, 3)
-		g.gen_range_for_in(node, g.a.child(&node, 0), low_id, high_id, body_start)
+		g.gen_range_for_in(node, g.a.child(&node, 0), low_id, high_id, body_start,
+			label_state.label)
 		return
 	} else if header_count == 3 {
 		container := g.a.child_node(&node, 2)
 		if container.kind == .range {
 			if container.children_count >= 2 {
 				g.gen_range_for_in(node, g.a.child(&node, 0), g.a.child(container, 0), g.a.child(container,
-					1), body_start)
+					1), body_start, label_state.label)
 				return
 			}
 		} else {
@@ -127,7 +162,11 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			} else {
 				var_name
 			}
-			clean_container_type := types.unwrap_pointer(container_type)
+			mut clean_container_type := types.unwrap_pointer(container_type)
+			for clean_container_type is types.Alias {
+				clean_container_type =
+					types.unwrap_pointer((clean_container_type as types.Alias).base_type)
+			}
 			mut map_snapshot_var := ''
 			if clean_container_type is types.Map {
 				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
@@ -156,6 +195,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				g.writeln('for (int ${iter_var} = 0; ${iter_var} < ${key_values}.len; ${iter_var}++) {')
 				g.indent++
+				g.gen_labelled_continue_skip_drops_var(label_state.label)
 				g.writeln('if (${key_values}.all_deleted && ${key_values}.all_deleted[${iter_var}]) continue;')
 				key_slot := '${key_values}.keys + ${iter_var} * ${key_values}.key_bytes'
 				if key_fixed := array_fixed_type(clean_container_type.key_type) {
@@ -252,10 +292,14 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					types.Type(types.int_))
 				g.declare_local_pointer_storage(idx_owner, false)
 			}
+			if clean_container_type !is types.Map {
+				g.gen_labelled_continue_skip_drops_var(label_state.label)
+			}
 			g.loop_depth++
 			for i in body_start .. node.children_count {
 				g.gen_node(g.a.child(&node, i))
 			}
+			g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 			g.loop_depth--
 			g.indent--
 			g.writeln('}')
@@ -270,10 +314,12 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 		return
 	}
 	g.indent++
+	g.gen_labelled_continue_skip_drops_var(label_state.label)
 	g.loop_depth++
 	for i in body_start .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
+	g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 	g.loop_depth--
 	g.indent--
 	g.writeln('}')
@@ -292,13 +338,17 @@ fn (g &FlatGen) for_in_array_literal_element_needs_ierror_copy(container flat.No
 	return false
 }
 
-fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id flat.NodeId, high_id flat.NodeId, body_start int) {
+fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id flat.NodeId, high_id flat.NodeId, body_start int, label string) {
 	key := g.a.node(key_id)
 	if key.kind != .ident || key.value.len == 0 {
 		g.pop_scope()
 		return
 	}
-	key_name := g.c_loop_local_name(key.value)
+	key_name := if key.value == '_' {
+		'__discard_${int(key_id)}'
+	} else {
+		g.c_loop_local_name(key.value)
+	}
 	low_type := g.usable_expr_type(low_id)
 	range_type := if low_type is types.Primitive || low_type is types.ISize
 		|| low_type is types.USize {
@@ -320,10 +370,12 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 	g.tc.cur_scope.insert(key.value, range_type)
 	g.writeln('for (${ct} ${key_name} = ${low_name}; ${key_name} < ${high_name}; ${key_name}++) {')
 	g.indent++
+	g.gen_labelled_continue_skip_drops_var(label)
 	g.loop_depth++
 	for i in body_start .. node.children_count {
 		g.gen_node(g.a.child(&node, i))
 	}
+	g.gen_loop_iteration_ownership_drops_for_label(label)
 	g.loop_depth--
 	g.indent--
 	g.writeln('}')

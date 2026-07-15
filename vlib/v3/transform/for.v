@@ -113,10 +113,11 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 				1), body_ids)
 		}
 	}
-	if t.cur_fn_is_generic {
+	iter_type := t.normalize_type_alias(t.detect_for_in_type(node))
+	if t.cur_fn_is_generic
+		&& (iter_type.len == 0 || for_iter_type_has_generic_placeholder(iter_type)) {
 		return t.rebuild_for_in_stmt(id, node)
 	}
-	iter_type := t.detect_for_in_type(node)
 	has_index := int(val_id) >= 0
 	if iter_type.starts_with('map[') {
 		return t.rebuild_for_in_stmt(id, node)
@@ -192,7 +193,11 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	}
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
-	iter_type := t.detect_for_in_type(node)
+	raw_iter_type := t.detect_for_in_type(node)
+	iter_type := t.normalize_type_alias(raw_iter_type)
+	if int(new_container) >= 0 && iter_type.len > 0 {
+		t.set_node_typ(int(new_container), iter_type)
+	}
 	has_index := int(val_id) >= 0
 	container_is_range := if int(container_id) >= 0 {
 		t.a.nodes[int(container_id)].kind == .range
@@ -271,7 +276,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		children_count: flat.child_count(ids.len)
 		pos:            node.pos
 		value:          node.value
-		typ:            node.typ
+		typ:            if iter_type.len > 0 { iter_type } else { node.typ }
 	})
 	return prefix
 }
@@ -318,12 +323,13 @@ fn (mut t Transformer) lower_range_for_in(id flat.NodeId, node flat.Node, key_id
 	range_type := t.range_loop_var_type_name(low_id)
 	low := t.stable_expr_for_reuse(low_id)
 	high := t.stable_expr_for_reuse(high_id)
-	t.set_var_type(key.value, range_type)
+	loop_name := if key.value == '_' { '__discard_${int(key_id)}' } else { key.value }
+	t.set_var_type(loop_name, range_type)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
-	init := t.make_decl_assign_typed(key.value, low, range_type)
-	cond := t.make_infix(.lt, t.make_ident(key.value), high)
-	post := t.make_expr_stmt(t.make_postfix(t.make_ident(key.value), .inc))
+	init := t.make_decl_assign_typed(loop_name, low, range_type)
+	cond := t.make_infix(.lt, t.make_ident(loop_name), high)
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(loop_name), .inc))
 	new_body := t.transform_stmts(body_ids)
 	prefix << t.make_for_stmt(init, cond, post, new_body, node)
 	return prefix

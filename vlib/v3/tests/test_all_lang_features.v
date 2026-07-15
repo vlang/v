@@ -1651,9 +1651,9 @@ fn pass_error118() !string {
 fn array_callback_enum_score118() int {
 	mut args118 := []string{}
 	args118 << 'beta'
-	args118 << '-v2'
+	args118 << '-old'
 	args118 << 'alpha'
-	filtered118 := args118.filter(it != '-v2')
+	filtered118 := args118.filter(it != '-old')
 	mut sorted118 := filtered118.clone()
 	sorted118.sort()
 	mut score118 := sorted118.len * 10

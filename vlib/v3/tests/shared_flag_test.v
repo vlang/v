@@ -117,6 +117,139 @@ pub fn answer() int {
 	assert os.file_size(out_path) > 0
 }
 
+fn test_relative_c_object_cache_rebuilds_when_header_changes() {
+	$if windows {
+		return
+	}
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_c_object_header_test_${pid}')
+	build :=
+		os.execute('${os.quoted_path(shared_flag_vexe)} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(shared_flag_v3_src)}')
+	assert build.exit_code == 0, build.output
+
+	project_dir := os.join_path(os.temp_dir(), 'v3_c_object_header_${pid}')
+	os.rmdir_all(project_dir) or {}
+	os.mkdir_all(project_dir)!
+	object_name := 'header_dep_${pid}.o'
+	object_path := os.join_path(project_dir, object_name)
+	shared_flag_remove_cached_objects(object_name)
+	shared_flag_remove_cached_objects(object_path)
+	defer {
+		shared_flag_remove_cached_objects(object_name)
+		shared_flag_remove_cached_objects(object_path)
+		os.rmdir_all(project_dir) or {}
+		os.rm(v3_bin) or {}
+	}
+
+	header_path := os.join_path(project_dir, 'value.h')
+	os.write_file(header_path, '#define V3_HEADER_DEP_VALUE 41\n')!
+	os.write_file(os.join_path(project_dir, object_name.all_before_last('.') + '.c'),
+		'#include "value.h"\nint v3_header_dep_value(void) { return V3_HEADER_DEP_VALUE; }\n')!
+	os.write_file(os.join_path(project_dir, 'main.v'), '#flag ${object_name}
+fn C.v3_header_dep_value() int
+
+fn main() {
+	println(C.v3_header_dep_value())
+}
+')!
+	first_bin := os.join_path(project_dir, 'first')
+	first_compile :=
+		os.execute('cd ${os.quoted_path(project_dir)} && ${os.quoted_path(v3_bin)} -o ${os.quoted_path(first_bin)} main.v')
+	assert first_compile.exit_code == 0, first_compile.output
+	first_run := os.execute(os.quoted_path(first_bin))
+	assert first_run.exit_code == 0, first_run.output
+	assert first_run.output.trim_space() == '41'
+	cached_objects := shared_flag_cached_objects(object_path)
+	assert cached_objects.len == 1, cached_objects.str()
+	cached_object := cached_objects[0]
+	old_cache_time := os.file_last_mod_unix(cached_object) - 3600
+	os.utime(cached_object, old_cache_time, old_cache_time)!
+	reuse_bin := os.join_path(project_dir, 'reuse')
+	reuse_compile :=
+		os.execute('cd ${os.quoted_path(project_dir)} && ${os.quoted_path(v3_bin)} -o ${os.quoted_path(reuse_bin)} main.v')
+	assert reuse_compile.exit_code == 0, reuse_compile.output
+	assert os.file_last_mod_unix(cached_object) == old_cache_time
+
+	os.write_file(header_path, '#define V3_HEADER_DEP_VALUE 42\n')!
+	second_bin := os.join_path(project_dir, 'second')
+	second_compile :=
+		os.execute('cd ${os.quoted_path(project_dir)} && ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_bin)} main.v')
+	assert second_compile.exit_code == 0, second_compile.output
+	second_run := os.execute(os.quoted_path(second_bin))
+	assert second_run.exit_code == 0, second_run.output
+	assert second_run.output.trim_space() == '42'
+}
+
+fn test_relative_c_object_caches_use_resolved_source_path() {
+	$if windows {
+		return
+	}
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_c_object_path_test_${pid}')
+	build :=
+		os.execute('${os.quoted_path(shared_flag_vexe)} -o ${os.quoted_path(v3_bin)} ${os.quoted_path(shared_flag_v3_src)}')
+	assert build.exit_code == 0, build.output
+
+	root := os.join_path(os.temp_dir(), 'v3_c_object_path_${pid}')
+	os.rmdir_all(root) or {}
+	first_project := os.join_path(root, 'first')
+	second_project := os.join_path(root, 'second')
+	os.mkdir_all(first_project)!
+	os.mkdir_all(second_project)!
+	object_name := 'relative_dep_${pid}.o'
+	first_object := os.join_path(first_project, object_name)
+	second_object := os.join_path(second_project, object_name)
+	shared_flag_remove_cached_objects(object_name)
+	shared_flag_remove_cached_objects(first_object)
+	shared_flag_remove_cached_objects(second_object)
+	defer {
+		shared_flag_remove_cached_objects(object_name)
+		shared_flag_remove_cached_objects(first_object)
+		shared_flag_remove_cached_objects(second_object)
+		os.rmdir_all(root) or {}
+		os.rm(v3_bin) or {}
+	}
+
+	for project, value in {
+		first_project:  41
+		second_project: 42
+	} {
+		os.write_file(os.join_path(project, object_name.all_before_last('.') + '.c'),
+			'int v3_relative_dep_value(void) { return ${value}; }\n')!
+		os.write_file(os.join_path(project, 'main.v'), '#flag ${object_name}
+fn C.v3_relative_dep_value() int
+
+fn main() {
+	println(C.v3_relative_dep_value())
+}
+')!
+	}
+	second_source := os.join_path(second_project, object_name.all_before_last('.') + '.c')
+	old_time := os.file_last_mod_unix(second_source) - 3600
+	os.utime(second_source, old_time, old_time)!
+
+	first_bin := os.join_path(first_project, 'out')
+	first_compile :=
+		os.execute('cd ${os.quoted_path(first_project)} && ${os.quoted_path(v3_bin)} -o ${os.quoted_path(first_bin)} main.v')
+	assert first_compile.exit_code == 0, first_compile.output
+	first_run := os.execute(os.quoted_path(first_bin))
+	assert first_run.exit_code == 0, first_run.output
+	assert first_run.output.trim_space() == '41'
+
+	second_bin := os.join_path(second_project, 'out')
+	second_compile :=
+		os.execute('cd ${os.quoted_path(second_project)} && ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_bin)} main.v')
+	assert second_compile.exit_code == 0, second_compile.output
+	second_run := os.execute(os.quoted_path(second_bin))
+	assert second_run.exit_code == 0, second_run.output
+	assert second_run.output.trim_space() == '42'
+	first_cached_objects := shared_flag_cached_objects(first_object)
+	second_cached_objects := shared_flag_cached_objects(second_object)
+	assert first_cached_objects.len == 1, first_cached_objects.str()
+	assert second_cached_objects.len == 1, second_cached_objects.str()
+	assert first_cached_objects[0] != second_cached_objects[0]
+}
+
 fn shared_flag_library_postfix() string {
 	$if windows {
 		return '.dll'
@@ -144,7 +277,9 @@ fn shared_flag_cached_objects(obj_path string) []string {
 
 fn shared_flag_remove_cached_objects(obj_path string) {
 	for path in shared_flag_cached_objects(obj_path) {
-		os.rm(path) or {}
+		for artifact in [path, path + '.deps', path + '.deps.stamp'] {
+			os.rm(artifact) or {}
+		}
 	}
 }
 

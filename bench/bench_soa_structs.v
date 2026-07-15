@@ -1,6 +1,6 @@
-// bench_soa_structs.v - V2 benchmark for @[soa] structs
+// bench_soa_structs.v - V3 benchmark for @[soa] structs
 // Build and run with:
-//   ./cmd/v2/v2 -prod -backend cleanc bench/bench_soa_structs.v -o bench/bench_soa_structs
+//   ./vnew -ownership -prod bench/bench_soa_structs.v -o bench/bench_soa_structs
 //   ./bench/bench_soa_structs
 module main
 
@@ -346,7 +346,7 @@ fn print_build_results(aos BenchResult, soa_push BenchResult, soa_indexed BenchR
 }
 
 fn main() {
-	println('soa struct bench (v2 cleanc)')
+	println('soa struct bench (v3 c)')
 	println('particle_count=${particle_count}, build_rounds=${build_rounds}, sum_rounds=${sum_rounds}, hot_fields_rounds=${hot_fields_rounds}, full_struct_rounds=${full_struct_rounds}, integrate_rounds=${integrate_rounds}')
 
 	result_build_aos := bench_build_aos()

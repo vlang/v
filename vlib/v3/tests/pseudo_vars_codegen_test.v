@@ -40,6 +40,22 @@ fn test_at_file_line_codegen_uses_source_line() {
 	assert run.exit_code == 0, run.output
 }
 
+fn test_quoted_comptime_pseudo_vars_are_not_expanded() {
+	v3_bin := os.join_path(os.temp_dir(), 'v3_quoted_pseudo_vars_test')
+	build := os.execute('${vexe} -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+
+	main_src := os.join_path(os.temp_dir(), 'v3_quoted_pseudo_vars_main.v')
+	main_bin := os.join_path(os.temp_dir(), 'v3_quoted_pseudo_vars_main')
+	os.write_file(main_src,
+		"fn main() {\n\t\$if '@OS' == @OS {\n\t\tprintln('wrong')\n\t} \$else {\n\t\tprintln('ok')\n\t}\n}\n")!
+	compile := os.execute('${v3_bin} ${main_src} -o ${main_bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(main_bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
 // test_embed_file_codegen validates that v3 lowers $embed_file to EmbedFileData.
 fn test_embed_file_codegen() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_embed_file_codegen_test')

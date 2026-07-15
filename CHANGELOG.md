@@ -8,7 +8,6 @@
   any speed/size impact on normal V (#26852)
 - VGC, a concurrent tri-color mark-and-sweep GC translated from Go (#26739)
 - ios and macos modules that allow writing code without Objective C
-- Enable the new V2 backend via `v -v2 file.v`
 - Optional error parameter for closing channel (fixes #19203)
 - Allow negative indexing of array like `arr#[-1]` (fixes #24066)
 - Add power operator `**` (fixes #24067)

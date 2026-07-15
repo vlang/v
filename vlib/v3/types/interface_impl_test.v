@@ -12,3 +12,8 @@ fn test_empty_interface_impl_names_deduplicate_builtin_aliases() {
 	assert impls.filter(it == 'byte').len == 1
 	assert 'builtin.byte' !in impls
 }
+
+fn test_stable_interface_type_ids_resolve_hash_collisions() {
+	ids := stable_interface_type_ids(['main.TZjXQlDs6', 'main.T2nAMbYQH'])
+	assert ids['main.TZjXQlDs6'] != ids['main.T2nAMbYQH']
+}

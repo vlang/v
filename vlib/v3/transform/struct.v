@@ -310,6 +310,32 @@ fn (mut t Transformer) add_missing_struct_defaults(id flat.NodeId, node flat.Nod
 
 // lookup_struct_info resolves lookup struct info information for transform.
 fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
+	base, args, has_generic_args := generic_app_parts(name)
+	if has_generic_args {
+		if base_info := t.lookup_struct_info_direct(base) {
+			params := t.generic_struct_param_names_for_base(base)
+			if params.len == args.len && params.len > 0 {
+				mut fields := []FieldInfo{cap: base_info.fields.len}
+				for field in base_info.fields {
+					fields << FieldInfo{
+						name:         field.name
+						typ:          substitute_generic_type_text_with_params(field.typ, args,
+							params)
+						raw_typ:      substitute_generic_type_text_with_params(field.raw_typ, args,
+							params)
+						default_expr: field.default_expr
+						is_embedded:  field.is_embedded
+					}
+				}
+				return StructInfo{
+					name:      name
+					module:    base_info.module
+					is_params: base_info.is_params
+					fields:    fields
+				}
+			}
+		}
+	}
 	if info := t.lookup_struct_info_preferred(name) {
 		return info
 	}
@@ -322,9 +348,9 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 			return info
 		}
 	}
-	// A bare alias in the active module has more authority than the legacy
-	// short-name table, which can contain an unrelated imported struct with the
-	// same spelling. Resolve the alias before that ambiguous fallback.
+	// Resolve a module-local alias before the bare short-name fallback. A local
+	// `Context = C.sgl_context` must not inherit defaults from an imported
+	// `gg.Context` that happens to own the global short-name entry.
 	normalized := t.normalize_type_alias(name)
 	if normalized != name {
 		if info := t.lookup_struct_info_direct(normalized) {
@@ -452,6 +478,16 @@ fn (t &Transformer) lookup_struct_info_direct(name string) ?StructInfo {
 		short_name := name.all_after_last('.')
 		if short_name in t.structs {
 			return t.structs[short_name]
+		}
+	} else {
+		mut matches := []StructInfo{}
+		for qualified, info in t.structs {
+			if qualified.contains('.') && qualified.all_after_last('.') == name {
+				matches << info
+			}
+		}
+		if matches.len == 1 {
+			return matches[0]
 		}
 	}
 	return none

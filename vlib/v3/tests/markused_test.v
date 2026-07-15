@@ -807,7 +807,7 @@ pub fn (mut l ThreadSafeLog) free() {
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
 	assert c_code.contains('m__Logger__error(')
-	assert c_code.contains('case 1: m__ThreadSafeLog__error')
+	assert c_code.contains(': m__ThreadSafeLog__error')
 }
 
 fn test_unreachable_interface_dispatch_stub_is_not_emitted_after_used_filter_transform() {

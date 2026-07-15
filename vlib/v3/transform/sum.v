@@ -392,6 +392,14 @@ fn (t &Transformer) sum_target_accepts_variant_type(target_type string, variant_
 	if target_type.len == 0 || variant_type.len == 0 {
 		return false
 	}
+	resolved_raw_target := t.resolve_sum_name(t.trim_pointer_type(target_type))
+	if resolved_raw_target in t.sum_types {
+		for variant in t.sum_types[resolved_raw_target] {
+			if t.variant_names_match(variant, t.trim_pointer_type(variant_type)) {
+				return true
+			}
+		}
+	}
 	clean_target := t.trim_pointer_type(t.normalize_type_alias(target_type))
 	clean_variant := t.trim_pointer_type(t.normalize_type_alias(variant_type))
 	if clean_target.len == 0 || clean_variant.len == 0 {
@@ -694,20 +702,16 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	}
 	concrete := t.interface_concrete_impl_name(concrete_name) or { return none }
 	requested_qualified := concrete_name.contains('.') || concrete != concrete_name
-	// The 1-based position in the same implementation list cgen uses is the
-	// `_typ` id assigned when boxing; deriving it here keeps `is` checks and
-	// dispatch in sync (aliases included).
-	mut idx := 0
 	impl_names := if t.is_builtin_ierror_interface_name(iface) {
 		t.tc.ierror_impl_names()
 	} else {
 		t.tc.interface_impl_names(iface)
 	}
+	type_ids := types.stable_interface_type_ids(impl_names)
 	for impl_name in impl_names {
-		idx++
 		if impl_name == concrete || (!requested_qualified
 			&& impl_name.all_after_last('.') == concrete.all_after_last('.')) {
-			return idx
+			return type_ids[impl_name]
 		}
 	}
 	return none
@@ -949,7 +953,16 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 			return lowered
 		}
 	}
-	expr_type := t.node_type(expr_id)
+	mut expr_type := t.node_type(expr_id)
+	if expr.typ.len > 0 && t.sum_target_accepts_variant_type(resolved_sum, expr.typ) {
+		expr_type = expr.typ
+	}
+	if expr.kind == .ident && expr.value.len > 0 {
+		local_type := t.raw_var_type(expr.value)
+		if local_type.len > 0 && t.sum_target_accepts_variant_type(resolved_sum, local_type) {
+			expr_type = local_type
+		}
+	}
 	mut variant := expr_type
 	mut expr_smartcast := SmartcastContext{}
 	key := t.expr_key(expr_id)
@@ -1009,6 +1022,23 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 			break
 		}
 	}
+	if !matches && t.is_integer_type_name(clean_variant) {
+		mut enum_variant := ''
+		for v in t.sum_types[resolved_sum] {
+			if t.enum_type_name_for_expected(v, t.cur_module).len == 0 {
+				continue
+			}
+			if enum_variant.len > 0 {
+				enum_variant = ''
+				break
+			}
+			enum_variant = v
+		}
+		if enum_variant.len > 0 {
+			matches = true
+			matched_variant = enum_variant
+		}
+	}
 	if !matches {
 		return t.transform_expr(expr_id)
 	}
@@ -1062,6 +1092,17 @@ fn (mut t Transformer) ensure_sum_variant_ref(value flat.NodeId, variant string)
 	ref := t.make_prefix(.amp, t.make_ident(tmp_name))
 	t.set_node_typ(int(ref), '&${clean_variant}')
 	return ref
+}
+
+// make_default_sum_value initializes a sum type with the zero value of its first variant.
+fn (mut t Transformer) make_default_sum_value(typ string) ?flat.NodeId {
+	resolved_sum := t.resolve_sum_name(t.normalize_type_alias(typ))
+	variants := t.sum_types[resolved_sum] or { return none }
+	if variants.len == 0 {
+		return none
+	}
+	variant := variants[0]
+	return t.make_sum_literal(resolved_sum, variant, t.zero_value_for_type(variant))
 }
 
 // make_sum_literal builds make sum literal data for transform.

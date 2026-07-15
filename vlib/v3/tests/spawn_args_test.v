@@ -31,9 +31,8 @@ fn compact_c(c_code string) string {
 fn assert_spawn_pthread_decls(c_code string) {
 	assert c_code.contains('int pthread_attr_init(pthread_attr_t* attr);'), c_code
 	assert c_code.contains('int pthread_attr_destroy(pthread_attr_t* attr);'), c_code
-	assert c_code.contains('i32 pthread_attr_setstacksize(void* attr, size_t stacksize);'), c_code
+	assert c_code.contains('int pthread_attr_setstacksize(void* attr, size_t stacksize);'), c_code
 	assert c_code.contains('int pthread_create(void* thread, void* attr, void* start_routine, void* arg);'), c_code
-
 	assert c_code.contains('int pthread_join(void* thread, void** retval);'), c_code
 	assert !c_code.contains('i32 pthread_attr_init(void* attr);'), c_code
 	assert !c_code.contains('i32 pthread_attr_destroy(void* attr);'), c_code

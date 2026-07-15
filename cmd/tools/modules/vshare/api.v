@@ -1,6 +1,6 @@
 module vshare
 
-import json
+import json2
 
 const max_response_excerpt_len = 200
 
@@ -18,7 +18,7 @@ pub fn share_url_from_response(status_code int, body string) !string {
 		}
 		return error('Failed to share code: playground returned HTTP ${status_code}: ${excerpt}')
 	}
-	response := json.decode(ShareResponse, body) or {
+	response := json2.decode[ShareResponse](body) or {
 		return error('Failed to decode playground response: ${err.msg()}')
 	}
 	if response.error != '' {
