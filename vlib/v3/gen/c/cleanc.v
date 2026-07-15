@@ -618,7 +618,7 @@ pub fn cache_c_flag_input_files(flags []string) []string {
 
 fn c_forced_include_inputs(flag string) []string {
 	mut inputs := []string{}
-	tokens := flag.fields()
+	tokens := c_quoted_flag_tokens(flag)
 	mut i := 0
 	for i < tokens.len {
 		token := tokens[i]
@@ -635,6 +635,54 @@ fn c_forced_include_inputs(flag string) []string {
 		i++
 	}
 	return inputs
+}
+
+fn c_quoted_flag_tokens(value string) []string {
+	mut tokens := []string{}
+	mut token := []u8{}
+	mut quote := u8(0)
+	mut token_started := false
+	mut i := 0
+	for i < value.len {
+		c := value[i]
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+				i++
+				continue
+			}
+			if c == `\\` && i + 1 < value.len && value[i + 1] == quote {
+				token << value[i + 1]
+				i += 2
+				continue
+			}
+			token << c
+			i++
+			continue
+		}
+		if c in [`'`, `\"`] {
+			quote = c
+			token_started = true
+			i++
+			continue
+		}
+		if c.is_space() {
+			if token_started {
+				tokens << token.bytestr()
+				token = []u8{}
+				token_started = false
+			}
+			i++
+			continue
+		}
+		token << c
+		token_started = true
+		i++
+	}
+	if token_started {
+		tokens << token.bytestr()
+	}
+	return tokens
 }
 
 fn c_add_cache_external_input(mut inputs map[string][]string, module_name string, path string) {
@@ -1964,7 +2012,7 @@ fn c_nested_include_context_depth(context []string) int {
 fn c_flag_include_dirs(flags []string) []string {
 	mut dirs := []string{}
 	for flag in flags {
-		tokens := flag.fields()
+		tokens := c_quoted_flag_tokens(flag)
 		mut i := 0
 		for i < tokens.len {
 			tok := tokens[i]
