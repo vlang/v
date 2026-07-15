@@ -1,0 +1,16 @@
+import json
+
+struct User {
+	name string
+}
+
+// A `json.decode` whose type argument carries a comment is left unmigrated: the
+// comment cannot be re-parsed inside the migrated `json2.decode[T]` bracket, so the
+// whole file stays on `json` and the comment is preserved rather than dropped.
+fn a(s string) !User {
+	return json.decode(/* the type */ User, s)
+}
+
+fn main() {
+	println(a('{"name":"bob"}')!)
+}
