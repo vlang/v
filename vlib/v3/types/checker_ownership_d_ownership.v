@@ -5772,23 +5772,22 @@ fn (mut tc TypeChecker) ownership_bind_for_in_vars(key_id flat.NodeId, val_id fl
 	}
 	container_name := tc.ownership_expr_ident_name(container_id)
 	clean := unwrap_pointer(tc.resolve_type(container_id))
-	// The transformer prepends independent clone assignments for array, fixed-array,
-	// and map bindings before the user loop body runs. C generation clones map string
-	// keys directly when it creates their loop binding.
-	clones_storage_binding := clean is Array || clean is ArrayFixed || clean is Map
+	// The transformer prepends independent clone assignments for array and fixed-array
+	// bindings before the user loop body runs. Map bindings remain borrowed shallow copies,
+	// except for string keys, which C generation clones directly.
+	clones_storage_binding := clean is Array || clean is ArrayFixed
 	if clean is Map && has_val {
 		key_name := tc.ownership_lhs_name(key_id)
-		key_source := if container_name.len > 0 {
-			ownership_map_key_storage_name(container_name)
-		} else {
-			''
-		}
-		tc.ownership_bind_for_in_var_from_storage(key_name, key_source, key_id,
-			clones_storage_binding)
+		key_is_cloned := clean.key_type is String
+		tc.ownership_bind_for_in_var_from_storage(key_name, '', key_id, key_is_cloned)
 	}
 	target_id := if has_val { val_id } else { key_id }
 	target_name := tc.ownership_lhs_name(target_id)
-	source_name := if container_name.len > 0 { '${container_name}[*]' } else { '' }
+	source_name := if clean !is Map && container_name.len > 0 {
+		'${container_name}[*]'
+	} else {
+		''
+	}
 	tc.ownership_bind_for_in_var_from_storage(target_name, source_name, target_id,
 		clones_storage_binding)
 }

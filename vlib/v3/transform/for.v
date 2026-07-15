@@ -556,9 +556,8 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	new_body << binding_clones
 	new_body << elem_decl
 	new_body << transformed_body
-	container_needs_drop :=
-		(actual_iter_type.starts_with('[]') || t.is_fixed_array_type(actual_iter_type))
-		&& !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type))
+	container_needs_drop := !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(actual_iter_type))
 	cleanup_temporary := source_is_owned_temporary && container_needs_drop
 	mut cleanup_guard_name := ''
 	if cleanup_temporary {

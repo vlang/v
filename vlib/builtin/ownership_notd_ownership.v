@@ -1,10 +1,5 @@
 module builtin
 
-// OwnershipSumPayload matches the leading active-variant pointer in the runtime sum layout.
-struct OwnershipSumPayload {
-	payload voidptr
-}
-
 // OwnershipIErrorPayload matches the backend-neutral leading object pointer in IError.
 struct OwnershipIErrorPayload {
 	payload voidptr
@@ -50,14 +45,14 @@ pub fn drop_owned[T](value T) {
 			drop_owned_result_error(owned.err)
 		}
 	} $else $if T.unaliased_typ is $sumtype {
-		payload := unsafe { (&OwnershipSumPayload(&owned)).payload }
 		$for variant in T.variants {
 			if owned is variant {
-				drop_owned(owned)
+				payload := unsafe { &owned }
+				if payload != unsafe { nil } {
+					drop_owned(owned)
+					unsafe { free(payload) }
+				}
 			}
-		}
-		if payload != unsafe { nil } {
-			unsafe { free(payload) }
 		}
 	} $else $if T.unaliased_typ is $array_dynamic {
 		mut raw_array := unsafe { &array(owned) }
