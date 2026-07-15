@@ -5268,9 +5268,9 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		return none
 	}
 	if clean is types.Struct {
-		// The shortcut keys the wire format off the raw field name, so any struct
-		// carrying json field attributes (`@[json: 'x']`, `@[skip]`, ...) would be
-		// serialized with the wrong keys. Decline those and let normal codegen run.
+		// The shortcut keys the wire format off the raw field name and always emits
+		// every field, so any struct carrying json field attributes (`@[json: 'x']`,
+		// `@[skip]`, `@[omitempty]`, ...) must use normal codegen.
 		if g.json_struct_has_field_attrs(clean.name) {
 			return none
 		}

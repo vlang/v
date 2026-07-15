@@ -2630,8 +2630,24 @@ fn main() {
 		score: 1.5
 	}))
 }
-')
+	')
 	assert encoded == '{"age":1,"ok":true,"score":1.5}'
+
+	omitempty_c := gen_c(v3_bin, 'json_encode_omitempty_field_falls_back', 'import json
+
+struct Payload {
+	keep int
+	omit int @[omitempty]
+}
+
+fn main() {
+	println(json.encode(Payload{
+		keep: 1
+	}))
+}
+')
+	omitempty_main := c_fn_body(omitempty_c, 'int main(int argc, char** argv)')
+	assert omitempty_main.contains('json__encode(&(Payload)')
 
 	decoded := run_good(v3_bin, 'json_decode_composites_to_strings', 'import json
 
@@ -2999,6 +3015,38 @@ fn test_mut_interface_argument_borrows_existing_interface_box() {
 	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
 	out := run_good(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
 	assert out == 'ok'
+
+	assign_source := 'interface Base {
+	get() int
+}
+
+struct Item {
+	n int
+}
+
+fn (i Item) get() int {
+	return i.n
+}
+
+fn update(mut x Base) {
+	x = Base(Item{
+		n: 7
+	})
+}
+
+fn main() {
+	mut b := Base(Item{
+		n: 1
+	})
+	update(mut b)
+	println(int_str(b.get()))
+}
+'
+	assign_c := gen_c(v3_bin, 'mut_interface_arg_assignment_keeps_storage', assign_source)
+	assert assign_c.contains('update(&b);')
+	assert !assign_c.contains('update(&((Base[]){b})[0]);')
+	assign_out := run_good(v3_bin, 'mut_interface_arg_assignment_keeps_storage_run', assign_source)
+	assert assign_out == '7'
 }
 
 fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
