@@ -86,6 +86,19 @@ fn cast_expr_values(a &flat.FlatAst) []string {
 	return values
 }
 
+fn test_nested_inferred_fixed_array_literal_keeps_literal_out_of_type_suffix() {
+	a := parse_parser_regression_source('nested_inferred_fixed_array',
+		'fn main() { values := [..][..]int[[1, 2], [3, 4]] }')
+	mut fixed_types := []string{}
+	for node in a.nodes {
+		if node.kind == .postfix && node.op == .not {
+			assert node.value != 'ragged_inferred_fixed_array'
+			fixed_types << node.typ
+		}
+	}
+	assert fixed_types == ['[2]int', '[2]int', '[2][2]int']
+}
+
 fn test_architecture_qualified_asm_is_consumed_as_one_statement() {
 	src := os.join_path(os.temp_dir(), 'v3_architecture_asm.v')
 	os.write_file(src, 'fn mul(x u64, y u64) u64 {

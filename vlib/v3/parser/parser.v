@@ -50,6 +50,7 @@ mut:
 	disable_fn_body                   bool
 	in_for_container                  bool
 	disable_source_arch_optimizations bool
+	parsing_inferred_fixed_array_type bool
 	diagnostic_limit_reached          bool
 	local_type_names                  map[string]string
 	local_type_scopes                 []string
@@ -159,6 +160,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.skip_next_decl = false
 	p.disable_fn_body = false
 	p.in_for_container = false
+	p.parsing_inferred_fixed_array_type = false
 	p.local_type_scopes = []string{}
 	// File marker before content so import resolver can track source files
 	p.add_node(flat.Node{
@@ -5843,7 +5845,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			p.check(.rsbr)
 			dimensions++
 		}
+		was_parsing_inferred_type := p.parsing_inferred_fixed_array_type
+		p.parsing_inferred_fixed_array_type = true
 		elem_type := p.parse_type_name()
+		p.parsing_inferred_fixed_array_type = was_parsing_inferred_type
 		lit, _ := p.inferred_fixed_array_literal_values(elem_type, dimensions)
 		return lit
 	}
@@ -6545,6 +6550,16 @@ fn (mut p Parser) parse_type_generic_suffix() string {
 	if p.tok != .lsbr {
 		return ''
 	}
+	if p.parsing_inferred_fixed_array_type {
+		// This is the root type suffix immediately before the required literal.
+		// Consume a genuine `Foo[T]` suffix only when its matching `]` is followed
+		// by another `[`. Otherwise this bracket is the literal itself (`int[[1,
+		// 2], [3, 4]]`), not a generic application on `int`.
+		p.parsing_inferred_fixed_array_type = false
+		if !p.type_suffix_is_followed_by_array_literal() {
+			return ''
+		}
+	}
 	pk := p.peek()
 	if pk != .name && pk != .amp && pk != .lsbr && pk != .question && pk != .key_fn && pk != .xor {
 		return ''
@@ -6569,6 +6584,36 @@ fn (mut p Parser) parse_type_generic_suffix() string {
 		return ''
 	}
 	return '[' + params.join(', ') + ']'
+}
+
+fn (p &Parser) type_suffix_is_followed_by_array_literal() bool {
+	if p.tok != .lsbr || p.tok_pos < 0 || p.tok_pos >= p.s.src.len {
+		return false
+	}
+	mut look := scanner.new_scanner(p.prefs, .normal)
+	look.init(p.s.current_file(), p.s.src)
+	look.offset = p.tok_pos
+	look.pos = p.tok_pos
+	mut depth := 0
+	for {
+		tok := look.scan()
+		if tok == .eof {
+			return false
+		}
+		if tok == .lsbr {
+			depth++
+		} else if tok == .rsbr {
+			depth--
+			if depth == 0 {
+				mut next := look.scan()
+				for next == .semicolon {
+					next = look.scan()
+				}
+				return next == .lsbr
+			}
+		}
+	}
+	return false
 }
 
 // parse_type_name reads parse type name input for parser.
