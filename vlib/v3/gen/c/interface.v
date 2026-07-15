@@ -1263,8 +1263,17 @@ fn (g &FlatGen) interface_dispatch_can_use_implicit_str(method string, ret_ct st
 }
 
 fn (g &FlatGen) interface_dispatch_boxed_value_expr(concrete string) string {
-	ct := g.cname(concrete)
+	ct := g.interface_concrete_storage_c_type(concrete)
 	return '*(${ct}*)i->_object'
+}
+
+fn (g &FlatGen) interface_concrete_storage_c_type(concrete string) string {
+	concrete_type := g.interface_concrete_type(concrete)
+	return if concrete_type is types.Unknown {
+		g.cname(concrete)
+	} else {
+		g.tc.c_type(concrete_type)
+	}
 }
 
 fn (g &FlatGen) interface_concrete_type(concrete string) types.Type {
@@ -1303,7 +1312,7 @@ fn (g &FlatGen) interface_concrete_type(concrete string) types.Type {
 }
 
 fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quote_string bool, mut stack []string) ?string {
-	clean := if typ is types.Alias { typ.base_type } else { typ }
+	clean := g.interface_unaliased_type(typ)
 	if typ is types.Alias {
 		if custom := g.interface_custom_str_expr(typ.name, typ, expr) {
 			return custom
@@ -1372,6 +1381,18 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 			return none
 		}
 	}
+}
+
+fn (g &FlatGen) interface_unaliased_type(typ types.Type) types.Type {
+	mut clean := typ
+	for _ in 0 .. 100 {
+		if clean is types.Alias {
+			clean = clean.base_type
+			continue
+		}
+		break
+	}
+	return clean
 }
 
 fn (mut g FlatGen) interface_custom_str_expr(type_name string, typ types.Type, expr string) ?string {
@@ -1488,7 +1509,7 @@ fn (g &FlatGen) interface_str_plus(left string, right string) string {
 }
 
 fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_params []types.Type, wants_ptr bool) string {
-	cct := g.cname(concrete)
+	cct := g.interface_concrete_storage_c_type(concrete)
 	if concrete_params.len == 0 {
 		return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
 	}

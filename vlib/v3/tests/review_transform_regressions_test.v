@@ -54,6 +54,35 @@ fn run_good_with_flags(v3_bin string, name string, flags string, src string) str
 	return run.output.trim_space()
 }
 
+fn gen_c_from_source(v3_bin string, name string, src string) string {
+	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src_path, src) or { panic(err) }
+	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	os.rm(c_path) or {}
+	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	assert compile.exit_code == 0, '${name}: ${compile.output}'
+	assert os.exists(c_path)
+	return os.read_file(c_path) or { panic(err) }
+}
+
+fn c_fn_body(c_source string, signature string) string {
+	start := c_source.index(signature) or { return '' }
+	open_rel := c_source[start..].index('{') or { return '' }
+	body_start := start + open_rel
+	mut depth := 0
+	for i in body_start .. c_source.len {
+		if c_source[i] == `{` {
+			depth++
+		} else if c_source[i] == `}` {
+			depth--
+			if depth == 0 {
+				return c_source[start..i + 1]
+			}
+		}
+	}
+	return c_source[start..]
+}
+
 fn write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
@@ -224,6 +253,18 @@ fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
 	out := run_good(v3_bin, 'heap_escaping_amp_alias',
 		'struct S {\n\tn int\n}\n\nfn leak() &S {\n\tmut s := S{\n\t\tn: 1\n\t}\n\tp := &s\n\ts = S{\n\t\tn: 2\n\t}\n\treturn p\n}\n\nfn main() {\n\tp := leak()\n\tprintln(int_str(p.n))\n}\n')
 	assert out == '2'
+}
+
+fn test_heap_escaping_amp_reassignment_moves_current_source() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'heap_escaping_amp_reassign_source',
+		'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n')
+	assert out == '20'
+	c_source := gen_c_from_source(v3_bin, 'heap_escaping_amp_reassign_source_c',
+		'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\t_ := make()\n}\n')
+	body := c_fn_body(c_source, 'int* make(void) {')
+	assert body.contains('int* b ='), body
+	assert !body.contains('p = &b;'), body
 }
 
 fn test_imported_result_array_return_or_preserves_success_value() {

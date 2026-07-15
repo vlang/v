@@ -3563,6 +3563,12 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	run_bad(v3_bin, 'review_setter_only_compound_index_assignment',
 		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
 		'compound index assignment requires a `[]` overload')
+	run_bad(v3_bin, 'review_compound_index_getter_key_mismatch',
+		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
+		'index must be `int`, not `string`')
+	alias_str_out := run_good(v3_bin, 'review_alias_struct_implicit_interface_str',
+		"interface Printable {\n\tstr() string\n}\n\nstruct Foo {\n\tx int\n}\n\ntype AliasFoo = Foo\n\nfn main() {\n\tvalue := Printable(AliasFoo(Foo{\n\t\tx: 7\n\t}))\n\ttext := value.str()\n\tprintln(text.contains('Foo'))\n\tprintln(text.contains('x: 7'))\n}\n")
+	assert alias_str_out == 'true\ntrue'
 	call_ptr_out := run_good(v3_bin, 'review_call_return_pointer_not_arg_alias',
 		'fn choose(a &int, b &int) &int {\n\t_ = a\n\treturn b\n}\n\nfn make() &int {\n\tx := 10\n\ty := 20\n\tp := choose(&x, &y)\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n')
 	assert call_ptr_out == '20'

@@ -176,10 +176,10 @@ mut:
 	// on return. Recomputed per function (structural pre-pass in transform_fn_body),
 	// consumed when the `p := &v` decl is transformed (RHS rewritten to a heap copy).
 	escaping_amp_ptrs map[string]bool
-	// escaping_amp_sources holds the source locals `v` of such `p := &v` escapes — the
-	// values whose address leaves the frame. The local itself is moved to the heap at its
-	// declaration (its type becomes `&T`) so a mutation between `p := &v` and `return p`
-	// is observed by the caller; copying eagerly at the alias would return stale data.
+	// escaping_amp_sources holds the source locals `v` of such `p := &v` escapes. A returned
+	// pointer local can collect more than one source through later assignments (`p = &w`);
+	// each possible source whose address may leave the frame is moved to the heap at its
+	// declaration so mutations before the return remain visible to the caller.
 	escaping_amp_sources map[string]bool
 	// heaped_amp_locals records which of those sources were actually moved to the heap, so
 	// the `p := &v` alias emits `p = v` (the heap pointer) instead of a fresh memdup copy.
@@ -2926,7 +2926,7 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	t.reset_escaping_amp_state()
 	mut amp_ptrs := map[string]bool{}
-	mut amp_sources := map[string]string{} // pointer `p` -> source local `v`
+	mut amp_sources := map[string][]string{} // pointer `p` -> possible source locals `v`
 	mut ptr_aliases := map[string]string{} // copy `q := p` -> aliased pointer `p`
 	mut returned := map[string]bool{}
 	for id in body_ids {
@@ -2950,7 +2950,7 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	for name, _ in amp_ptrs {
 		if name in returned {
 			t.escaping_amp_ptrs[name] = true
-			if src := amp_sources[name] {
+			for src in amp_sources[name] {
 				t.escaping_amp_sources[src] = true
 			}
 		}
@@ -2967,11 +2967,40 @@ fn (mut t Transformer) reset_escaping_amp_state() {
 	t.pointer_value_rvalues.clear()
 }
 
+fn add_escape_amp_source(mut amp_sources map[string][]string, ptr_name string, source_name string) {
+	mut sources := amp_sources[ptr_name]
+	if source_name !in sources {
+		sources << source_name
+		amp_sources[ptr_name] = sources
+	}
+}
+
+fn (mut t Transformer) scan_escape_pointer_write(lhs flat.Node, rhs flat.Node, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string) {
+	if lhs.kind != .ident || lhs.value.len == 0 {
+		return
+	}
+	if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0 {
+		amp_child := t.a.nodes[int(t.a.child(&rhs, 0))]
+		if amp_child.kind == .ident {
+			amp_ptrs[lhs.value] = true
+			add_escape_amp_source(mut amp_sources, lhs.value, amp_child.value)
+			ptr_aliases.delete(lhs.value)
+		}
+		return
+	}
+	if rhs.kind == .ident && rhs.value.len > 0 {
+		// `q := p` / `q = p` aliases an existing pointer; recorded so a returned alias still
+		// marks the underlying `p := &v` as escaping.
+		ptr_aliases[lhs.value] = rhs.value
+	}
+}
+
 // scan_escape_pass recursively collects, in a function-body subtree, (a) the LHS
-// names of `p := &ident` declarations into `amp_ptrs` (and the source `ident` into
-// `amp_sources[p]`), (b) plain pointer copies `q := p` into `ptr_aliases[q] = p`, and
-// (c) every ident name appearing inside a return statement into `returned`.
-fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut returned map[string]bool) {
+// names of `p := &ident` declarations and `p = &ident` assignments into `amp_ptrs`
+// (with all source `ident` names in `amp_sources[p]`), (b) plain pointer copies
+// `q := p`/`q = p` into `ptr_aliases[q] = p`, and (c) every ident name appearing
+// inside a return statement into `returned`.
+fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string, mut returned map[string]bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
@@ -2979,18 +3008,11 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	if node.kind == .decl_assign && node.children_count == 2 {
 		lhs := t.a.nodes[int(t.a.child(&node, 0))]
 		rhs := t.a.nodes[int(t.a.child(&node, 1))]
-		if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .prefix && rhs.op == .amp
-			&& rhs.children_count > 0 {
-			amp_child := t.a.nodes[int(t.a.child(&rhs, 0))]
-			if amp_child.kind == .ident {
-				amp_ptrs[lhs.value] = true
-				amp_sources[lhs.value] = amp_child.value
-			}
-		} else if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .ident && rhs.value.len > 0 {
-			// `q := p` aliases an existing pointer; recorded so a returned alias still marks the
-			// underlying `p := &v` as escaping.
-			ptr_aliases[lhs.value] = rhs.value
-		}
+		t.scan_escape_pointer_write(lhs, rhs, mut amp_ptrs, mut amp_sources, mut ptr_aliases)
+	} else if node.kind == .assign && node.op == .assign && node.children_count == 2 {
+		lhs := t.a.nodes[int(t.a.child(&node, 0))]
+		rhs := t.a.nodes[int(t.a.child(&node, 1))]
+		t.scan_escape_pointer_write(lhs, rhs, mut amp_ptrs, mut amp_sources, mut ptr_aliases)
 	}
 	if node.kind == .return_stmt {
 		for i in 0 .. node.children_count {

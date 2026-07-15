@@ -9824,14 +9824,27 @@ fn (mut tc TypeChecker) resolve_index_lvalue_type(lhs_id flat.NodeId, op flat.Op
 			tc.register_synth_type(lhs_id, unknown_type('invalid overloaded index setter'))
 			return unknown_type('invalid overloaded index setter')
 		}
-		tc.check_index_overload_arg(lhs_id, lhs, setter, '[]=')
+		if !tc.check_index_overload_arg(lhs_id, lhs, setter, '[]=') {
+			invalid_type := unknown_type('invalid overloaded index setter')
+			tc.register_synth_type(lhs_id, invalid_type)
+			return invalid_type
+		}
 		if op != .assign {
 			if getter := tc.index_operator_call_info(base_type, '[]') {
-				tc.check_index_overload_arg(lhs_id, lhs, getter, '[]')
-			} else if tc.should_diagnose(lhs_id) {
-				tc.record_error(.assignment_mismatch,
-					'compound index assignment requires a `[]` overload on `${base_type.name()}`',
-					lhs_id)
+				if !tc.check_index_overload_arg(lhs_id, lhs, getter, '[]') {
+					invalid_type := unknown_type('invalid overloaded index getter')
+					tc.register_synth_type(lhs_id, invalid_type)
+					return invalid_type
+				}
+			} else {
+				if tc.should_diagnose(lhs_id) {
+					tc.record_error(.assignment_mismatch,
+						'compound index assignment requires a `[]` overload on `${base_type.name()}`',
+						lhs_id)
+				}
+				invalid_type := unknown_type('missing overloaded index getter')
+				tc.register_synth_type(lhs_id, invalid_type)
+				return invalid_type
 			}
 		}
 		value_type := setter.params[2]
