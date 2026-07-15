@@ -5,7 +5,7 @@ struct User {
 }
 
 fn to_json(u User) string {
-	return json2.encode(u)
+	return json2.encode(u, escape_unicode: true)
 }
 
 fn from_json(s string) !User {

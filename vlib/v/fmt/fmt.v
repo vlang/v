@@ -2411,9 +2411,15 @@ fn (mut f Fmt) json2_migrate_call(node ast.CallExpr) {
 			}
 		}
 		.json_encode {
-			// json.encode(x) => json2.encode(x)
+			// json.encode(x) => json2.encode(x, escape_unicode: true)
+			// Legacy json.encode escapes non-ASCII as `\uXXXX`, while json2 defaults
+			// `escape_unicode` to false (raw unicode); pass it explicitly so the
+			// migrated call produces the exact same bytes for Unicode fields.
 			f.write('${j2}.encode(')
 			f.call_args(node.args)
+			if node.args.len > 0 {
+				f.write(', escape_unicode: true')
+			}
 			f.write(')')
 		}
 		else {}

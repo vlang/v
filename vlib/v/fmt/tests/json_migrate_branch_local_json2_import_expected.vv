@@ -6,7 +6,7 @@ $if linux {
 }
 
 fn dump_json(x int) string {
-	return json2.encode(x)
+	return json2.encode(x, escape_unicode: true)
 }
 
 fn main() {

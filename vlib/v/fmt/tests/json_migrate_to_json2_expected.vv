@@ -18,7 +18,7 @@ fn parse_arr(s string) ![]Request {
 }
 
 fn to_json(r Request) string {
-	return json2.encode(r)
+	return json2.encode(r, escape_unicode: true)
 }
 
 fn main() {
