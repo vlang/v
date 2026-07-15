@@ -39,26 +39,6 @@ $if !windows {
 		return unsafe { nil }
 	}
 
-	// postamble_segments_thread_a / _b emit the body-independent postamble
-	// groups on private FlatGen forks while the body workers run.
-	fn postamble_segments_thread_a(arg voidptr) voidptr {
-		mut w := unsafe { &FlatGen(arg) }
-		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
-		w.emit_postamble_segments_a()
-		w.worker_scope = scope
-		cgen_worker_scope_leave(scope)
-		return unsafe { nil }
-	}
-
-	fn postamble_segments_thread_b(arg voidptr) voidptr {
-		mut w := unsafe { &FlatGen(arg) }
-		scope := cgen_worker_scope_begin(w.scope_parallel_workers)
-		w.emit_postamble_segments_b()
-		w.worker_scope = scope
-		cgen_worker_scope_leave(scope)
-		return unsafe { nil }
-	}
-
 	// flat_cgen_chunk_thread supports flat cgen chunk thread handling for c.
 	fn flat_cgen_chunk_thread(arg voidptr) voidptr {
 		a := unsafe { &FlatCgenChunkArgs(arg) }
@@ -147,9 +127,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		mut chunk_items := split_flat_cgen_items(items, n_jobs)
 		chunk_count := chunk_items.len
 		// chunk[0] is emitted by the master directly into its own builder; the
-		// other chunks get helper threads, plus ONE extra helper that emits the
-		// body-independent postamble groups (previously a serial tail after the
-		// region) on a private fork. Worker chunk ci keeps the temp-name base
+		// other chunks get helper threads. Worker chunk ci keeps the temp-name base
 		// (ci+1)*100_000, so each chunk stays in its own disjoint _tN range and
 		// the numbering is deterministic.
 		thread_count := chunk_count - 1
@@ -164,8 +142,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			w := g.new_parallel_worker(ci + 1)
 			cgen_workers << voidptr(w)
 		}
-		mut post_worker_a := g.postamble_fork(thread_count + 1)
-		mut post_worker_b := g.postamble_fork(thread_count + 2)
 		for ci := 0; ci < thread_count; ci++ {
 			args << FlatCgenChunkArgs{
 				worker:         cgen_workers[ci]
@@ -175,7 +151,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 
 		g.tmp_count = 100_000
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
-		mut tasks := []workers.Task{cap: chunk_count + 2}
+		mut tasks := []workers.Task{cap: chunk_count}
 		for ci in 0 .. chunk_count {
 			helper_idx := ci - 1
 			tasks << workers.Task{
@@ -185,16 +161,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 					|| fail == 'cgen:body:${helper_idx}'
 			}
 		}
-		tasks << workers.Task{
-			run:        postamble_segments_thread_a
-			arg:        voidptr(post_worker_a)
-			force_sync: fail == 'cgen:all' || fail == 'cgen:post:all' || fail == 'cgen:post:0'
-		}
-		tasks << workers.Task{
-			run:        postamble_segments_thread_b
-			arg:        voidptr(post_worker_b)
-			force_sync: fail == 'cgen:all' || fail == 'cgen:post:all' || fail == 'cgen:post:1'
-		}
 		g.parallel_used = g.a.worker_pool.run(tasks)
 		for ci := 0; ci < thread_count; ci++ {
 			w := unsafe { &FlatGen(cgen_workers[ci]) }
@@ -202,18 +168,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				g.parallel_worker_scopes << w.worker_scope
 			}
 		}
-		if post_worker_a.worker_scope != unsafe { nil } {
-			g.parallel_worker_scopes << post_worker_a.worker_scope
-		}
-		if post_worker_b.worker_scope != unsafe { nil } {
-			g.parallel_worker_scopes << post_worker_b.worker_scope
-		}
-		// Adopt the postamble fork's segments and emission-dedup state FIRST
-		// (it ran logically at the start of the postamble), then merge helper
-		// output in fixed chunk order — body-registered additions (fn-ptr
-		// types, optional/fixed-array needs) then land on top, exactly like
-		// the old serial order.
-		g.adopt_postamble_worker(post_worker_a, post_worker_b)
 		master_output := g.sb.str()
 		unsafe { g.sb.free() }
 		g.sb = strings.new_builder(4096)
@@ -750,87 +704,6 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	for def in w.callback_wrapper_defs {
 		g.add_callback_wrapper_def(def)
 	}
-}
-
-// adopt_postamble_worker takes over the postamble fork's emitted segments and
-// its emission-dedup state, so the body-dependent postamble pieces that run
-// after the region skip everything the fork already emitted and add only what
-// the body workers registered on top (same net content as the old serial
-// order).
-// postamble_fork builds a FULL copy of the master FlatGen for a postamble
-// helper thread: unlike new_parallel_worker (which lists only the fields body
-// generation touches), the struct copy carries every collected table the
-// postamble pieces read (C directives, flags, module tables, ...). Only the
-// state the postamble WRITES is re-privatized: the builder, the checker (its
-// cur_file/cur_module scratch and caches), cgen memoization caches, the c_name
-// cache, and the emission-dedup maps that are adopted back after the join.
-fn (g &FlatGen) postamble_fork(worker_id int) &FlatGen {
-	mut w := *g
-	w.sb = strings.new_builder(65536)
-	w.line_start = true
-	w.tc = g.clone_parallel_type_checker()
-	w.c_name_cache = &CNameCache{}
-	w.mut_recv_facts = &FnNameFactCache{}
-	w.tmp_count = (worker_id + 1) * 100_000
-	w.post_segs = []string{}
-	w.emitted_optional_types = g.emitted_optional_types.clone()
-	w.needed_optional_types = g.needed_optional_types.clone()
-	w.emitted_fixed_array_typedefs = g.emitted_fixed_array_typedefs.clone()
-	w.fixed_array_typedefs_needed = g.fixed_array_typedefs_needed.clone()
-	w.emitted_fn_ptr_typedefs = g.emitted_fn_ptr_typedefs.clone()
-	w.fn_ptr_types = g.fn_ptr_types.clone()
-	w.multi_return_types = g.multi_return_types.clone()
-	w.multi_return_type_names = g.multi_return_type_names.clone()
-	w.libc_compat_fns = g.libc_compat_fns.clone()
-	w.array_method_cache = g.array_method_cache.clone()
-	w.param_types_cache = g.param_types_cache.clone()
-	w.embedded_fields_by_type = g.embedded_fields_by_type.clone()
-	w.spawn_wrapper_names = g.spawn_wrapper_names.clone()
-	w.spawn_wrapper_defs = g.spawn_wrapper_defs.clone()
-	w.spawn_wrapper_defs_seen = g.spawn_wrapper_defs_seen.clone()
-	w.callback_wrapper_names = g.callback_wrapper_names.clone()
-	w.callback_wrapper_defs = g.callback_wrapper_defs.clone()
-	w.callback_wrapper_defs_seen = g.callback_wrapper_defs_seen.clone()
-	w.c_extern_refs = g.c_extern_refs.clone()
-	w.c_extern_refs_ready = g.c_extern_refs_ready
-	w.worker_scope = unsafe { nil }
-	w.parallel_worker_scopes = []voidptr{}
-	// Snapshot of the interned-string table for the string_literals segment;
-	// the master's later interning appends beyond it (see
-	// string_literals_from).
-	w.str_lits = g.str_lits.clone()
-	w.str_lit_ids = g.str_lit_ids.clone()
-	return &w
-}
-
-fn (mut g FlatGen) adopt_postamble_worker(wa &FlatGen, wb &FlatGen) {
-	mut segs := []string{cap: 4}
-	segs << wa.post_segs[0]
-	segs << wb.post_segs[0]
-	segs << wb.post_segs[1]
-	segs << wb.post_segs[2]
-	g.post_segs = segs
-	// Fork A ran the typedef/struct pieces: adopt its emission-dedup state so
-	// the post-region pieces only add what the body workers registered on top.
-	g.emitted_optional_types = wa.emitted_optional_types.clone()
-	g.needed_optional_types = wa.needed_optional_types.clone()
-	g.emitted_fixed_array_typedefs = wa.emitted_fixed_array_typedefs.clone()
-	g.fixed_array_typedefs_needed = wa.fixed_array_typedefs_needed.clone()
-	g.fixed_array_typedefs_ready = wa.fixed_array_typedefs_ready
-	g.emitted_fn_ptr_typedefs = wa.emitted_fn_ptr_typedefs.clone()
-	g.fn_ptr_types = wa.fn_ptr_types.clone()
-	mut libc := wa.libc_compat_fns.clone()
-	for name, enabled in wb.libc_compat_fns {
-		if enabled {
-			libc[name] = true
-		}
-	}
-	g.libc_compat_fns = libc.move()
-	// Fork B retained the C-extern references collected by the fused item walk
-	// and emitted the string table up to its snapshot.
-	g.c_extern_refs = wb.c_extern_refs.clone()
-	g.c_extern_refs_ready = wb.c_extern_refs_ready
-	g.post_str_lits_snapshot = wb.str_lits.len
 }
 
 // run_pre_dispatch_parallel overlaps the serial pre-dispatch work: the

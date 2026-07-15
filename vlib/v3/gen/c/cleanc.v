@@ -178,18 +178,13 @@ mut:
 	callback_wrapper_defs_seen map[string]bool
 	parallel_used              bool
 	c_name_cache               &CNameCache = unsafe { nil }
-	// Body-independent postamble segments emitted on helper threads while the
-	// fn-body workers run; spliced into the final output in the exact order
-	// the serial postamble produces them.
-	post_segs               []string
-	emitted_fn_ptr_typedefs map[string]bool
-	c_extern_refs           map[string]bool
-	c_extern_refs_ready     bool
-	parallel_prepared       bool
-	post_str_lits_snapshot  int
-	const_short_index       &ConstShortIndex = unsafe { nil }
-	mut_recv_facts          &FnNameFactCache = unsafe { nil }
-	want_parallel_prep      bool
+	emitted_fn_ptr_typedefs    map[string]bool
+	c_extern_refs              map[string]bool
+	c_extern_refs_ready        bool
+	parallel_prepared          bool
+	const_short_index          &ConstShortIndex = unsafe { nil }
+	mut_recv_facts             &FnNameFactCache = unsafe { nil }
+	want_parallel_prep         bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
@@ -666,12 +661,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.callback_wrapper_defs_seen.clear()
 	g.parallel_used = false
 	g.c_name_cache = &CNameCache{}
-	g.post_segs = []string{}
 	g.emitted_fn_ptr_typedefs.clear()
 	g.c_extern_refs.clear()
 	g.c_extern_refs_ready = false
 	g.parallel_prepared = false
-	g.post_str_lits_snapshot = 0
 	g.const_short_index = &ConstShortIndex{}
 	g.mut_recv_facts = &FnNameFactCache{}
 	g.want_parallel_prep = false
@@ -725,71 +718,43 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.sb = orig_sb
 	g.line_start = orig_line_start
 	mut known_output_len := g.sb.len + fn_code.len + const_code.len
-	for segment in g.post_segs {
-		known_output_len += segment.len
-	}
 	for segment in g.fn_segs {
 		known_output_len += segment.len
 	}
 	// Leave headroom for the small body-dependent supplement emitted below.
 	g.sb.ensure_cap(known_output_len + 1024 * 1024)
-	if g.post_segs.len == 4 {
-		// The body-independent postamble groups were already emitted during the
-		// parallel region (emit_overlap_postamble_segments); splice them here in
-		// the exact serial order, interleaved with the body-dependent pieces.
-		g.sb.write_string(g.post_segs[0])
-		// Anything the body workers registered beyond the pre-seeded state
-		// (fn-ptr types, optionals) is emitted here — still ahead of every
-		// declaration and body that could reference it. fn_ptr_typedefs keeps
-		// a persistent emitted set, so with a complete pre-seed it emits
-		// nothing; fixed-array and multi-return typedefs derive from the AST
-		// and signatures only, which cannot change during the region.
-		g.fn_ptr_typedefs()
-		g.optional_typedefs()
-		g.c_extern_forward_decls()
-		g.sb.write_string(g.post_segs[1])
-		g.callback_wrapper_decls()
-		g.spawn_wrapper_decls()
-		g.register_interface_strings()
-		g.sb.write_string(g.post_segs[2])
-		// Literals interned after the fork snapshot (worker novelties, the
-		// synthetic main) — per-id definitions, order-independent.
-		g.string_literals_from(g.post_str_lits_snapshot)
-		g.sb.write_string(g.post_segs[3])
-	} else {
-		g.c99_feature_test_macros()
-		g.emit_preserved_c_directives()
-		g.preamble()
-		g.emit_c_directives()
-		g.enum_decls()
-		g.type_alias_decls()
-		g.type_forward_decls()
-		// Forward-declare multi-return structs before fn-ptr typedefs, which may name a
-		// multi-return as a by-value return type (full bodies come after struct_decls).
-		g.multi_return_forward_decls()
-		// Bare typedefs for primitive-element fixed arrays and wrapper structs for
-		// fixed-array return types, before fn-ptr typedefs (which may name a fixed
-		// array in param or return position) and the function declarations.
-		g.fixed_array_early_typedefs()
-		g.fn_ptr_typedefs()
-		g.struct_decls()
-		g.fixed_array_typedefs()
-		g.multi_return_typedefs()
-		g.optional_typedefs()
-		g.c_extern_forward_decls()
-		g.builtin_abi_decls()
-		g.test_failure_helpers()
-		g.global_decls()
-		g.forward_decls()
-		g.shared_dup_fns()
-		g.enum_str_forward_decls()
-		g.callback_wrapper_decls()
-		g.spawn_wrapper_decls()
-		g.register_interface_strings()
-		g.string_literals()
-		g.interface_method_stubs()
-		g.enum_str_defs()
-	}
+	g.c99_feature_test_macros()
+	g.emit_preserved_c_directives()
+	g.preamble()
+	g.emit_c_directives()
+	g.enum_decls()
+	g.type_alias_decls()
+	g.type_forward_decls()
+	// Forward-declare multi-return structs before fn-ptr typedefs, which may name a
+	// multi-return as a by-value return type (full bodies come after struct_decls).
+	g.multi_return_forward_decls()
+	// Bare typedefs for primitive-element fixed arrays and wrapper structs for
+	// fixed-array return types, before fn-ptr typedefs (which may name a fixed
+	// array in param or return position) and the function declarations.
+	g.fixed_array_early_typedefs()
+	g.fn_ptr_typedefs()
+	g.struct_decls()
+	g.fixed_array_typedefs()
+	g.multi_return_typedefs()
+	g.optional_typedefs()
+	g.c_extern_forward_decls()
+	g.builtin_abi_decls()
+	g.test_failure_helpers()
+	g.global_decls()
+	g.forward_decls()
+	g.shared_dup_fns()
+	g.enum_str_forward_decls()
+	g.callback_wrapper_decls()
+	g.spawn_wrapper_decls()
+	g.register_interface_strings()
+	g.string_literals()
+	g.interface_method_stubs()
+	g.enum_str_defs()
 	g.sb.write_string(const_code)
 	// The final builder now owns a copy of the const code.
 	unsafe { const_code.free() }
@@ -831,75 +796,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Keep only the returned C string, not the builder's copied backing array.
 	unsafe { g.sb.free() }
 	return result
-}
-
-// emit_overlap_postamble_segments emits the body-independent postamble groups
-// into private builders while the parallel fn-body workers run. Every piece
-// here reads only state that is complete before the region starts (collected
-// tables, precomputed indexes, interned strings — prepare_parallel_items
-// pre-seeds everything workers could add) and writes only master-private
-// state, so running them concurrently with the workers is race-free and the
-// spliced output is byte-identical to the serial postamble order.
-fn (mut g FlatGen) emit_postamble_segments_a() {
-	saved_sb := g.sb
-	saved_line_start := g.line_start
-	// Segment 0: preamble through multi-return typedefs, in the exact serial
-	// order (these pieces share emission-dedup state, so their relative order
-	// must not change).
-	g.sb = strings.new_builder(262144)
-	g.line_start = true
-	g.c99_feature_test_macros()
-	g.emit_preserved_c_directives()
-	g.preamble()
-	g.emit_c_directives()
-	g.enum_decls()
-	g.type_alias_decls()
-	g.type_forward_decls()
-	g.multi_return_forward_decls()
-	g.fixed_array_early_typedefs()
-	g.fn_ptr_typedefs()
-	g.struct_decls()
-	g.fixed_array_typedefs()
-	g.multi_return_typedefs()
-	g.post_segs = [g.sb.str()]
-	unsafe { g.sb.free() }
-	g.sb = saved_sb
-	g.line_start = saved_line_start
-}
-
-fn (mut g FlatGen) emit_postamble_segments_b() {
-	saved_sb := g.sb
-	saved_line_start := g.line_start
-	mut segs := []string{cap: 3}
-	// Segment 1: ABI decls, globals and fn forward decls.
-	g.sb = strings.new_builder(262144)
-	g.line_start = true
-	g.builtin_abi_decls()
-	g.test_failure_helpers()
-	g.global_decls()
-	g.forward_decls()
-	g.shared_dup_fns()
-	g.enum_str_forward_decls()
-	segs << g.sb.str()
-	// Segment 2: interned string literal table (fixed before the region:
-	// prepare_parallel_items pre-seeds every string the workers reference).
-	g.sb = strings.new_builder(262144)
-	g.line_start = true
-	g.string_literals()
-	segs << g.sb.str()
-	// Segment 3: interface method stubs and enum str defs.
-	g.sb = strings.new_builder(65536)
-	g.line_start = true
-	g.interface_method_stubs()
-	g.enum_str_defs()
-	segs << g.sb.str()
-	unsafe { g.sb.free() }
-	g.sb = saved_sb
-	g.line_start = saved_line_start
-	g.post_segs = segs
-	// The fused item walk normally collected C-extern references already. The
-	// fallback here covers serial generation and small programs.
-	_ = g.c_extern_referenced_symbols()
 }
 
 // node_kind_id supports node kind id handling for c.
