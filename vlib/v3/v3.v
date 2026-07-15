@@ -1256,9 +1256,11 @@ fn main() {
 			cache_input_modules[module_name] = true
 		}
 		cache_input_modules['main'] = true
-		cache_state.module_external_inputs = cgen.cache_external_input_files(a, prefs.vroot,
+		external_inputs, has_untracked_c_include := cgen.cache_external_input_files(a, prefs.vroot,
 			cache_input_modules)
-		if cache_external_inputs_have_static_storage(cache_state.module_external_inputs) {
+		cache_state.module_external_inputs = external_inputs.clone()
+		if has_untracked_c_include
+			|| cache_external_inputs_have_static_storage(cache_state.module_external_inputs) {
 			restart_v3_without_cache()
 		}
 		for module_name, parsed in cache_state.parsed_from_source {

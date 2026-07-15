@@ -523,8 +523,9 @@ pub fn (mut g FlatGen) set_cache_program_files(files []string) {
 
 // cache_external_input_files returns local include/embed inputs grouped by the
 // module whose cached object incorporates their contents. Forced-include inputs
-// affect every object and are kept in a configuration-wide group.
-pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool) map[string][]string {
+// affect every object and are kept in a configuration-wide group. The second
+// result reports include forms whose dependencies cannot be resolved statically.
+pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool) (map[string][]string, bool) {
 	mut c_flags := []string{}
 	mut cur_file := ''
 	for node in a.nodes {
@@ -549,6 +550,7 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 		}
 	}
 	mut inputs := map[string][]string{}
+	mut has_untracked_include := false
 	mut cur_module := ''
 	cur_file = ''
 	for node in a.nodes {
@@ -566,13 +568,19 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 		}
 		if node.kind == .directive && node.value in ['include', 'insert'] && node.typ.len > 0 {
 			include_arg := c_include_arg(node.typ, vroot, cur_file)
+			if !c_include_arg_is_literal(include_arg) {
+				has_untracked_include = true
+				continue
+			}
 			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
 				if !os.is_file(path) {
 					continue
 				}
 				mut seen := map[string]bool{}
 				mut files := []string{}
-				c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files)
+				if c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files) {
+					has_untracked_include = true
+				}
 				for file in files {
 					c_add_cache_external_input(mut inputs, cur_module, file)
 				}
@@ -584,7 +592,11 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 			c_add_cache_external_input(mut inputs, cur_module, path)
 		}
 	}
-	for path in cache_c_flag_input_files(c_flags) {
+	flag_inputs, flags_have_untracked_include := cache_c_flag_input_files_with_status(c_flags)
+	if flags_have_untracked_include {
+		has_untracked_include = true
+	}
+	for path in flag_inputs {
 		c_add_cache_external_input(mut inputs, '__v3_c_flags__', path)
 	}
 	for module_name, paths in inputs {
@@ -592,28 +604,36 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 		sorted.sort()
 		inputs[module_name] = sorted
 	}
-	return inputs
+	return inputs, has_untracked_include
 }
 
 // cache_c_flag_input_files returns forced include/macro files whose contents
 // affect every cached object compiled with the supplied C flags.
 pub fn cache_c_flag_input_files(flags []string) []string {
+	files, _ := cache_c_flag_input_files_with_status(flags)
+	return files
+}
+
+fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool) {
 	include_dirs := c_flag_include_dirs(flags)
 	mut seen := map[string]bool{}
 	mut files := []string{}
+	mut has_untracked_include := false
 	for flag in flags {
 		for forced_input in c_forced_include_inputs(flag) {
 			for path in c_include_file_paths('"${forced_input}"', '', '', include_dirs) {
 				if !os.is_file(path) {
 					continue
 				}
-				c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files)
+				if c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files) {
+					has_untracked_include = true
+				}
 				break
 			}
 		}
 	}
 	files.sort()
-	return files
+	return files, has_untracked_include
 }
 
 fn c_forced_include_inputs(flag string) []string {
@@ -691,17 +711,18 @@ fn c_add_cache_external_input(mut inputs map[string][]string, module_name string
 	}
 }
 
-fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string) {
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string) bool {
 	if path.len == 0 || !os.is_file(path) {
-		return
+		return false
 	}
 	real_path := os.real_path(path)
 	if seen[real_path] {
-		return
+		return false
 	}
 	seen[real_path] = true
 	files << real_path
-	text := os.read_file(real_path) or { return }
+	text := os.read_file(real_path) or { return false }
+	mut has_untracked_include := false
 	mut in_block_comment := false
 	for line in text.split_into_lines() {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
@@ -710,14 +731,21 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 			continue
 		}
 		include_arg := c_include_arg(c_directive_arg(clean), vroot, real_path)
+		if !c_include_arg_is_literal(include_arg) {
+			has_untracked_include = true
+			continue
+		}
 		for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
 			if !os.is_file(nested_path) {
 				continue
 			}
-			c_collect_external_input_tree(nested_path, vroot, include_dirs, mut seen, mut files)
+			if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut seen, mut files) {
+				has_untracked_include = true
+			}
 			break
 		}
 	}
+	return has_untracked_include
 }
 
 fn c_embed_external_input_path(a &flat.FlatAst, node flat.Node) ?string {
@@ -2778,6 +2806,15 @@ fn c_include_file_path(include_arg string, vroot string, source_file string) str
 		return path
 	}
 	return os.join_path_single(os.dir(source_file), path)
+}
+
+fn c_include_arg_is_literal(include_arg string) bool {
+	clean := trimmed_space(include_arg)
+	if clean.len < 2 {
+		return false
+	}
+	return (clean[0] == `"` && clean[clean.len - 1] == `"`)
+		|| (clean[0] == `<` && clean[clean.len - 1] == `>`)
 }
 
 fn c_include_file_paths(include_arg string, vroot string, source_file string, include_dirs []string) []string {
