@@ -46,8 +46,8 @@ pub fn drop_owned[T](value T) {
 			for i in 0 .. owned.len {
 				drop_owned(owned[i])
 			}
+			unsafe { raw_array.free() }
 		}
-		unsafe { raw_array.free() }
 	} $else $if T.unaliased_typ is $array_fixed {
 		for i in 0 .. owned.len {
 			drop_owned(owned[i])
