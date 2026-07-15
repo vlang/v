@@ -547,7 +547,7 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 				return
 			}
 			for field in g.tc.struct_fields_for_type(typ.name) {
-				if g.ownership_type_needs_drop(field.typ, depth + 1) {
+				if g.ownership_type_requires_destruction(field.typ, depth + 1) {
 					g.gen_ownership_drop_value(field.typ, '(${expr}).${g.cname(field.name)}',
 
 						depth + 1)

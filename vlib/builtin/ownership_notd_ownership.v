@@ -17,11 +17,16 @@ struct OwnershipSumPayload {
 @[manualfree]
 pub fn drop_owned[T](value T) {
 	mut owned := value
+	// After the option branch, the remaining wrapper with a payload type is a result.
 	$if T is OwnershipDrop {
 		owned.drop()
 	} $else $if T.unaliased_typ is string {
 		unsafe { owned.free() }
 	} $else $if T.unaliased_typ is $option {
+		if payload := owned {
+			drop_owned(payload)
+		}
+	} $else $if T.unaliased_typ.payload_type != 0 {
 		if payload := owned {
 			drop_owned(payload)
 		}

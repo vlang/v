@@ -5686,17 +5686,31 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 			return none
 		}
 		t.mark_fn_used('map__delete')
+		key_id := t.a.child(&node, 1)
+		cleanup_key := !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(key_id)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
 		key_name := t.new_temp('map_key')
 		key_storage_type := t.map_key_storage_type(key_type)
-		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(t.a.child(&node, 1),
+		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
 			key_type), key_storage_type)
 		handled_delete := t.append_owned_map_entry_delete_with_drops(base, base_type, key_name,
 			key_type, value_type)
 		if handled_delete {
+			if cleanup_key {
+				t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
+					arr1(t.make_ident(key_name)), 'void'))
+			}
 			return t.make_empty()
 		}
-		return t.make_call_typed('map__delete', arr2(t.runtime_addr(base, base_type), t.make_prefix(.amp,
+		delete_call := t.make_call_typed('map__delete', arr2(t.runtime_addr(base, base_type), t.make_prefix(.amp,
 			t.make_ident(key_name))), 'void')
+		if cleanup_key {
+			t.pending_stmts << t.make_expr_stmt(delete_call)
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
+				arr1(t.make_ident(key_name)), 'void'))
+			return t.make_empty()
+		}
+		return delete_call
 	}
 	elem_type := if fn_node.value == 'keys' {
 		t.map_key_type(clean_type)

@@ -6944,6 +6944,14 @@ fn (t &Transformer) subst_comptime_type_condition(cond string, args []string) st
 			}
 		}
 	}
+	for op in [' != ', ' == ', ' <= ', ' >= ', ' < ', ' > '] {
+		op_idx := comptime_condition_top_level_index(clean, op)
+		if op_idx >= 0 {
+			left := t.subst_comptime_type_operand(clean[..op_idx], args)
+			right := t.subst_comptime_type_operand(clean[op_idx + op.len..], args)
+			return '${left}${op}${right}'
+		}
+	}
 	if clean.starts_with('!') {
 		inner_raw := clean[1..].trim_space()
 		inner := t.subst_comptime_type_condition(inner_raw, args)
@@ -7007,6 +7015,17 @@ fn (t &Transformer) subst_comptime_type_operand(raw string, args []string) strin
 		if comptime_condition_is_unresolved_value_ident(clean) {
 			return clean
 		}
+	}
+	payload_suffix := '.unaliased_typ.payload_type'
+	if clean.ends_with(payload_suffix) {
+		base := clean[..clean.len - payload_suffix.len]
+		substituted :=
+			t.comptime_normalize_type_alias_chain(t.resolve_substituted_type_text(t.subst_type(base, args)))
+		if substituted.starts_with('?') || substituted.starts_with('!') {
+			payload := substituted[1..].trim_space()
+			return t.comptime_field_type_id(payload, t.cur_module).str()
+		}
+		return '0'
 	}
 	if clean.ends_with('.unaliased_typ') {
 		base := clean[..clean.len - '.unaliased_typ'.len]
