@@ -8049,7 +8049,7 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	g.writeln('int pthread_attr_init(pthread_attr_t* attr);')
 	g.writeln('int pthread_attr_destroy(pthread_attr_t* attr);')
-	g.writeln('int pthread_attr_setstacksize(void* attr, size_t stacksize);')
+	g.writeln('int pthread_attr_setstacksize(pthread_attr_t* attr, size_t stacksize);')
 	g.writeln('int pthread_mutex_init(void* mutex, void* attr);')
 	g.writeln('int pthread_mutex_lock(void* mutex);')
 	g.writeln('int pthread_mutex_unlock(void* mutex);')

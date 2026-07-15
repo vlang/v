@@ -3181,31 +3181,115 @@ fn source_contains_target_inline_asm(source string, target_arch string) bool {
 	if source.len < 3 {
 		return false
 	}
-	for offset in 0 .. source.len - 2 {
-		if source[offset] != `a` || source[offset + 1] != `s` || source[offset + 2] != `m` {
+	mut offset := 0
+	mut sequence := 0 // 0: asm, 1: target architecture, 2: opening brace
+	for offset < source.len {
+		c := source[offset]
+		if c in [` `, `\t`, `\r`, `\n`] {
+			offset++
 			continue
 		}
-		mut arch_start := offset + 3
-		for arch_start < source.len && source[arch_start] in [` `, `\t`, `\r`, `\n`] {
-			arch_start++
-		}
-		mut arch_end := arch_start
-		for arch_end < source.len && (source[arch_end].is_letter() || source[arch_end].is_digit()
-			|| source[arch_end] == `_`) {
-			arch_end++
-		}
-		if arch_end == arch_start
-			|| !comptime_flag_is_target_arch(source[arch_start..arch_end], target_arch) {
+		if c == `/` && offset + 1 < source.len && source[offset + 1] in [`/`, `*`] {
+			offset = inline_asm_skip_comment(source, offset)
 			continue
 		}
-		for arch_end < source.len && source[arch_end] in [` `, `\t`, `\r`, `\n`] {
-			arch_end++
+		if c in [`'`, `"`, `\``] {
+			offset = inline_asm_skip_quoted(source, offset, c, false)
+			sequence = 0
+			continue
 		}
-		if arch_end < source.len && source[arch_end] == `{` {
+		if inline_asm_ident_start(c) {
+			start := offset
+			offset++
+			for offset < source.len && inline_asm_ident_char(source[offset]) {
+				offset++
+			}
+			ident := source[start..offset]
+			if ident == 'r' && offset < source.len && source[offset] in [`'`, `"`] {
+				offset = inline_asm_skip_quoted(source, offset, source[offset], true)
+				sequence = 0
+				continue
+			}
+			if sequence == 0 {
+				sequence = if ident == 'asm' { 1 } else { 0 }
+			} else if sequence == 1 {
+				sequence = if comptime_flag_is_target_arch(ident, target_arch) {
+					2
+				} else if ident == 'asm' {
+					1
+				} else {
+					0
+				}
+			} else {
+				sequence = if ident == 'asm' { 1 } else { 0 }
+			}
+			continue
+		}
+		if c == `{` && sequence == 2 {
 			return true
 		}
+		sequence = 0
+		offset++
 	}
 	return false
+}
+
+@[inline]
+fn inline_asm_ident_start(c u8) bool {
+	return c.is_letter() || c == `_`
+}
+
+@[inline]
+fn inline_asm_ident_char(c u8) bool {
+	return c.is_letter() || c.is_digit() || c == `_`
+}
+
+fn inline_asm_skip_quoted(source string, start int, quote u8, raw bool) int {
+	mut offset := start + 1
+	for offset < source.len {
+		c := source[offset]
+		if !raw && c == `\\` {
+			if offset + 1 >= source.len {
+				return source.len
+			}
+			offset += 2
+			continue
+		}
+		if c == quote {
+			return offset + 1
+		}
+		offset++
+	}
+	return source.len
+}
+
+fn inline_asm_skip_comment(source string, start int) int {
+	if source[start + 1] == `/` {
+		mut offset := start + 2
+		for offset < source.len && source[offset] != `\n` {
+			offset++
+		}
+		return offset
+	}
+	mut offset := start + 2
+	mut depth := 1
+	for offset < source.len {
+		if offset + 1 < source.len && source[offset] == `/` && source[offset + 1] == `*` {
+			depth++
+			offset += 2
+			continue
+		}
+		if offset + 1 < source.len && source[offset] == `*` && source[offset + 1] == `/` {
+			depth--
+			offset += 2
+			if depth == 0 {
+				return offset
+			}
+			continue
+		}
+		offset++
+	}
+	return source.len
 }
 
 fn comptime_flag_is_target_arch(name string, target_arch string) bool {

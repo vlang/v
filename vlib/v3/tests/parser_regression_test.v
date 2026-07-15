@@ -145,6 +145,31 @@ fn test_guarded_inline_asm_selects_software_fallback() {
 	assert a.nodes.any(it.kind == .int_literal && it.value == '42')
 }
 
+fn test_inline_asm_detection_ignores_comments_and_strings() {
+	src := os.join_path(os.temp_dir(), 'v3_ignored_architecture_asm_text.v')
+	os.write_file(src, '// asm arm64 {
+/* outer comment
+	/* asm arm64 { */
+*/
+fn marker() string { return "asm arm64 {" }
+fn raw_marker() string { return r"asm arm64 {" }
+$if arm64 {
+	fn selected() int { return 64 }
+} $else {
+	fn selected() int { return 32 }
+}
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(src)
+	assert p.diagnostics.len == 0
+	assert a.nodes.any(it.kind == .int_literal && it.value == '64')
+	assert !a.nodes.any(it.kind == .int_literal && it.value == '32')
+}
+
 // test_interface_method_generic_type_only_param_is_not_parsed_as_name
 // validates this v3 regression case.
 fn test_interface_method_generic_type_only_param_is_not_parsed_as_name() {
