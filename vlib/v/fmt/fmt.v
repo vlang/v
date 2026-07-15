@@ -286,6 +286,30 @@ mut:
 	found bool
 }
 
+// type_mentions_time reports whether `typ` is `time.Time` or has it as the element,
+// key or value of an array/fixed-array/map/chan, recursively and following aliases.
+// Legacy json encodes a contained `time.Time` as a unix number while json2 uses an
+// RFC3339 string, so a payload mentioning it must not be migrated.
+fn type_mentions_time(t &ast.Table, typ ast.Type) bool {
+	if typ == 0 {
+		return false
+	}
+	sym := t.final_sym(typ)
+	if sym.name == 'time.Time' {
+		return true
+	}
+	if sym.info is ast.Array {
+		return type_mentions_time(t, sym.info.elem_type)
+	} else if sym.info is ast.ArrayFixed {
+		return type_mentions_time(t, sym.info.elem_type)
+	} else if sym.info is ast.Map {
+		return type_mentions_time(t, sym.info.key_type) || type_mentions_time(t, sym.info.value_type)
+	} else if sym.info is ast.Chan {
+		return type_mentions_time(t, sym.info.elem_type)
+	}
+	return false
+}
+
 // assign_declares_name reports whether a `:=` declaration introduces `name` on its
 // left-hand side (e.g. `name := ...` or `a, name := ...`).
 fn assign_declares_name(assign ast.AssignStmt, name string) bool {
@@ -322,10 +346,10 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		// payloads, so as a conservative proxy any struct declared in the file with
 		// such a field leaves the file unmigrated. Only file-local structs are visible.
 		for field in decl.fields {
-			// final_sym follows alias chains, so a local `type MyTime = time.Time`
-			// field is still recognised as a time field.
-			if field.attrs.any(it.name == 'raw')
-				|| (field.typ != 0 && s.table.final_sym(field.typ).name.contains('time.Time')) {
+			// type_mentions_time follows aliases and looks inside array/map/chan
+			// element/key/value types, so `[]time.Time`, `map[string]MyTime`, etc. are
+			// recognised as time payloads.
+			if field.attrs.any(it.name == 'raw') || type_mentions_time(s.table, field.typ) {
 				s.found = true
 				break
 			}
@@ -371,6 +395,16 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		if ifg.vars.any(it.name == s.json2_prefix) {
 			s.found = true
 		}
+	} else if node is ast.Expr && node is ast.SpawnExpr {
+		// `spawn json.encode_pretty(u)` — SpawnExpr.call_expr is outside
+		// Node.children(), so sub-walk the spawned call explicitly. It is wrapped as
+		// ast.Expr because walker.inspect converts only one level to ast.Node.
+		spawn_expr := node as ast.SpawnExpr
+		walker.inspect(ast.Expr(spawn_expr.call_expr), data, json_unmigratable_scan_visit)
+	} else if node is ast.Expr && node is ast.GoExpr {
+		// `go json.encode_pretty(u)` — GoExpr.call_expr is likewise outside children().
+		go_expr := node as ast.GoExpr
+		walker.inspect(ast.Expr(go_expr.call_expr), data, json_unmigratable_scan_visit)
 	} else if node is ast.Expr && node is ast.LambdaExpr {
 		// A lambda parameter named like the qualifier (`|json2| json.encode(u)`) shadows
 		// the module for the lambda body.

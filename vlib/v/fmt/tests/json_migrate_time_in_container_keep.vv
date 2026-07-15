@@ -1,0 +1,18 @@
+import json
+import time
+
+type MyTime = time.Time
+
+// A `time.Time` nested inside a container — directly or through an alias — still
+// serialises as a unix number under legacy json but an RFC3339 string under json2.
+// The time-field guard recurses into array/map/chan element/key/value types, so
+// these fields keep the file unmigrated.
+struct Log {
+	events []time.Time
+	by_id  map[string]time.Time
+	tagged []MyTime
+}
+
+fn to_json(l Log) string {
+	return json.encode(l)
+}
