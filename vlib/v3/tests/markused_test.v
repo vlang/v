@@ -1335,6 +1335,37 @@ fn main() {
 	assert c_code.contains('f64__str('), c_code
 }
 
+fn test_json_encode_fast_path_seeds_generated_helpers() {
+	mut a, mut tc := parse_checked_source('json_encode_fast_path_helpers', '
+import json
+
+struct Payload {
+	n     int
+	score f64
+}
+
+fn main() {
+	_ := json.encode(Payload{
+		n:     7
+		score: 1.5
+	})
+}
+')
+	mut used := markused.mark_used(a, tc)
+	for helper in ['string__plus', 'i64__str', 'f64__str'] {
+		assert used[helper], helper
+	}
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('string__plus('), c_code
+	assert c_code.contains('i64__str('), c_code
+	assert c_code.contains('f64__str('), c_code
+}
+
 // test_string_interpolation_lowers_to_formatter_after_used_filter_transform
 // validates this v3 regression case.
 fn test_string_interpolation_lowers_to_formatter_after_used_filter_transform() {

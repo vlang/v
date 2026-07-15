@@ -1426,7 +1426,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut ierror_equality_cache := map[string]int{}
 	mut cur_module := ''
 	mut imports := map[string]string{}
-	for node in a.nodes {
+	for node_idx, node in a.nodes {
 		if node.typ.len > 0 {
 			if !needs_channel_helpers && markused_type_text_is_channel(node.typ) {
 				needs_channel_helpers = true
@@ -1472,6 +1472,14 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			.call {
 				if node.children_count > 0 {
 					fn_node := a.child_node(&node, 0)
+					if node.children_count >= 2
+						&& markused_call_is_json_encode_fast_path(a, tc, flat.NodeId(node_idx), fn_node, cur_module, imports) {
+						arg_id := a.child(&node, 1)
+						arg_type := types.unwrap_pointer(tc.expr_type(arg_id) or {
+							tc.resolve_type(arg_id)
+						})
+						enqueue_json_encode_fast_path_helpers(arg_type, a, tc, mut used, mut queue)
+					}
 					if !needs_channel_str_helpers && fn_node.kind == .selector
 						&& fn_node.value == 'str' && fn_node.children_count > 0
 						&& markused_expr_stringifies_channel(a, tc, a.child(fn_node, 0), cur_module, mut channel_stringify_cache) {
@@ -1675,6 +1683,192 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			enqueue(helper, mut used, mut queue)
 		}
 	}
+}
+
+fn markused_call_is_json_encode_fast_path(a &flat.FlatAst, tc &types.TypeChecker, call_id flat.NodeId, fn_node flat.Node, cur_module string, imports map[string]string) bool {
+	if resolved := tc.resolved_call_name(call_id) {
+		if resolved in ['json.encode', 'json__encode'] {
+			return true
+		}
+	}
+	if fn_node.kind == .ident {
+		return fn_node.value in ['json.encode', 'json__encode']
+			|| (cur_module == 'json' && fn_node.value == 'encode')
+	}
+	if fn_node.kind != .selector || fn_node.value != 'encode' || fn_node.children_count == 0 {
+		return false
+	}
+	base := a.child_node(&fn_node, 0)
+	if base.kind != .ident {
+		return false
+	}
+	module_name := imports[base.value] or { base.value }
+	return module_name == 'json'
+}
+
+fn enqueue_json_encode_fast_path_helpers(typ types.Type, a &flat.FlatAst, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	mut helpers := map[string]bool{}
+	mut seen := map[string]bool{}
+	if !markused_json_encode_fast_path_helpers_for_type(typ, a, tc, mut helpers, mut seen) {
+		return
+	}
+	for helper, _ in helpers {
+		enqueue(helper, mut used, mut queue)
+	}
+}
+
+fn markused_json_encode_fast_path_helpers_for_type(typ types.Type, a &flat.FlatAst, tc &types.TypeChecker, mut helpers map[string]bool, mut seen map[string]bool) bool {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	key := clean.name()
+	if key in seen {
+		return true
+	}
+	seen[key] = true
+	match clean {
+		types.Enum {
+			if cast := markused_json_enum_number_cast(clean.name, a) {
+				if cast == 'u64' {
+					markused_json_add_stringified_primitive_helpers('u64', mut helpers)
+				} else {
+					markused_json_add_stringified_primitive_helpers('i64', mut helpers)
+				}
+			}
+			return clean.name in tc.enum_names
+		}
+		types.String {
+			return true
+		}
+		types.Primitive {
+			if clean.props.has(.boolean) {
+				return true
+			}
+			if clean.props.has(.integer) {
+				if clean.props.has(.unsigned) {
+					markused_json_add_stringified_primitive_helpers('u64', mut helpers)
+				} else {
+					markused_json_add_stringified_primitive_helpers('i64', mut helpers)
+				}
+				return true
+			}
+			if clean.props.has(.float) {
+				markused_json_add_stringified_primitive_helpers('f64', mut helpers)
+				return true
+			}
+			return false
+		}
+		types.Struct {
+			if markused_json_struct_has_field_attrs(a, clean.name) {
+				return false
+			}
+			fields := tc.structs[clean.name] or { return false }
+			helpers['string__plus'] = true
+			for field in fields {
+				if !markused_json_encode_fast_path_helpers_for_type(field.typ, a, tc, mut helpers, mut
+					seen) {
+					return false
+				}
+			}
+			return true
+		}
+		types.Map {
+			if clean.key_type !is types.String {
+				return false
+			}
+			helpers['string__plus'] = true
+			return markused_json_encode_fast_path_helpers_for_type(clean.value_type, a, tc, mut
+				helpers, mut seen)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn markused_json_add_stringified_primitive_helpers(type_name string, mut helpers map[string]bool) {
+	match type_name {
+		'i64' {
+			for helper in ['i64.str', 'i64__str', 'strconv__format_int'] {
+				helpers[helper] = true
+			}
+		}
+		'u64' {
+			for helper in ['u64.str', 'u64__str', 'strconv__format_uint'] {
+				helpers[helper] = true
+			}
+		}
+		'f64' {
+			for helper in ['f64.str', 'f64__str', 'strconv__f64_to_str_l'] {
+				helpers[helper] = true
+			}
+		}
+		else {}
+	}
+}
+
+fn markused_json_struct_has_field_attrs(a &flat.FlatAst, struct_name string) bool {
+	decl_name := markused_json_struct_decl_name(struct_name)
+	mut cur_module := ''
+	for node in a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .struct_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if decl_name != node.value && decl_name != qualified {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := a.child_node(&node, i)
+			if field.kind == .field_decl && field.generic_params.len > 1 {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+fn markused_json_struct_decl_name(name string) string {
+	bracket := name.index_u8(`[`)
+	if bracket <= 0 {
+		return name
+	}
+	return name[..bracket]
+}
+
+fn markused_json_enum_number_cast(enum_name string, a &flat.FlatAst) ?string {
+	mut cur_module := ''
+	for node in a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .enum_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if enum_name != node.value && enum_name != qualified {
+			continue
+		}
+		for attr in node.generic_params {
+			if attr == 'json_as_number' {
+				return if node.typ == 'flag' { 'u64' } else { 'i64' }
+			}
+		}
+		return none
+	}
+	return none
 }
 
 fn enqueue_ierror_equality_dispatch_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
