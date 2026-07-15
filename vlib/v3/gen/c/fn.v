@@ -4,6 +4,10 @@ import strings
 import v3.flat
 import v3.types
 
+// Match the previous spawned pthread stack size so recursive workers and
+// functions with large stack locals do not regress at spawn sites.
+const spawn_thread_stack_size = 8 * 1024 * 1024
+
 struct TestHarnessFn {
 	name   string
 	c_name string
@@ -2174,7 +2178,7 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	tmp := g.tmp_count
 	g.tmp_count++
 	g.write('({ pthread_t _t${tmp}; pthread_attr_t _a${tmp}; pthread_attr_init(&_a${tmp}); ')
-	g.write('pthread_attr_setstacksize(&_a${tmp}, 8388608); ')
+	g.write('pthread_attr_setstacksize(&_a${tmp}, ${spawn_thread_stack_size}); ')
 	g.write('int _r${tmp} = pthread_create(&_t${tmp}, &_a${tmp}, ${wrapper}, (void*)(${arg_expr})); ')
 	g.write('pthread_attr_destroy(&_a${tmp}); (void)_r${tmp}; (void*)_t${tmp}; })')
 }
@@ -2255,7 +2259,7 @@ fn (mut g FlatGen) emit_args_spawn_expr(cfn string, args []SpawnPackedArg, ret_c
 		g.write_spawn_packed_arg_init(tmp, i, arg)
 	}
 	g.write('pthread_t _t${tmp}; pthread_attr_t _at${tmp}; pthread_attr_init(&_at${tmp}); ')
-	g.write('pthread_attr_setstacksize(&_at${tmp}, 8388608); ')
+	g.write('pthread_attr_setstacksize(&_at${tmp}, ${spawn_thread_stack_size}); ')
 	g.write('int _r${tmp} = pthread_create(&_t${tmp}, &_at${tmp}, ${wrapper}, (void*)_sa${tmp}); ')
 	g.write('pthread_attr_destroy(&_at${tmp}); (void)_r${tmp}; (void*)_t${tmp}; })')
 }
@@ -2296,7 +2300,7 @@ fn (mut g FlatGen) emit_fn_value_spawn_expr(call_id flat.NodeId, fn_node flat.No
 		g.write_spawn_packed_arg_init(tmp, i, arg)
 	}
 	g.write('pthread_t _t${tmp}; pthread_attr_t _at${tmp}; pthread_attr_init(&_at${tmp}); ')
-	g.write('pthread_attr_setstacksize(&_at${tmp}, 8388608); ')
+	g.write('pthread_attr_setstacksize(&_at${tmp}, ${spawn_thread_stack_size}); ')
 	g.write('int _r${tmp} = pthread_create(&_t${tmp}, &_at${tmp}, ${wrapper}, (void*)_sa${tmp}); ')
 	g.write('pthread_attr_destroy(&_at${tmp}); (void)_r${tmp}; (void*)_t${tmp}; })')
 	_ = fn_node
@@ -2598,6 +2602,13 @@ fn (g &FlatGen) resolved_method_name_for_spawn(clean_type types.Type, method str
 fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.tc.cur_module = module_name
 	g.cur_fn_name = node.value
+	g.ownership_return_index = 0
+	g.ownership_seen_return_sources = map[string]bool{}
+	g.ownership_propagation_index = 0
+	g.ownership_loop_control_index = 0
+	g.ownership_loop_iteration_index = 0
+	g.ownership_scope_index = 0
+	g.cur_return_drops = []types.OwnershipDropEntry{}
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
 	mut prelude_scan := g.collect_fn_prelude_scan(node)
@@ -2703,6 +2714,8 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 		}
 	}
 	g.gen_all_defers()
+	g.gen_ownership_drops(g.tc.ownership_drop_entries_at_fn_exit(qualify_name_in_module(module_name,
+		node.value)))
 	if is_entry_main {
 		g.writeln('return 0;')
 	} else if g.cur_fn_ret_is_optional {
@@ -4371,10 +4384,9 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					if g.c_typedef_nil_call(arg_id) {
 						g.write('NULL')
 					} else {
-						g.write('({${ct} _t${g.tmp_count} = ')
+						g.write('&((${ct}[]){')
 						g.gen_expr_with_expected_type(arg_id, types.unwrap_pointer(pt))
-						g.write('; &_t${g.tmp_count};})')
-						g.tmp_count++
+						g.write('})[0]')
 					}
 				} else if needs_addr && g.gen_mut_sum_lvalue_arg(arg_id, param_types[arg_idx]) {
 					// handled
@@ -8327,10 +8339,9 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 		} else if needs_addr && is_rvalue {
 			pt := param_types[arg_idx]
 			ct := g.tc.c_type(types.unwrap_pointer(pt))
-			g.write('({${ct} _t${g.tmp_count} = ')
+			g.write('&((${ct}[]){')
 			g.gen_expr_with_expected_type(arg_id, types.unwrap_pointer(pt))
-			g.write('; &_t${g.tmp_count};})')
-			g.tmp_count++
+			g.write('})[0]')
 		} else if needs_addr && g.gen_mut_sum_lvalue_arg(arg_id, param_types[arg_idx]) {
 			// handled
 		} else {
@@ -8739,10 +8750,9 @@ fn (mut g FlatGen) gen_addressed_rvalue_arg(child_id flat.NodeId, pt types.Type)
 		return true
 	}
 	ct := g.tc.c_type(types.unwrap_pointer(pt))
-	g.write('({${ct} _t${g.tmp_count} = ')
+	g.write('&((${ct}[]){')
 	g.gen_expr_with_expected_type(child_id, types.unwrap_pointer(pt))
-	g.write('; &_t${g.tmp_count};})')
-	g.tmp_count++
+	g.write('})[0]')
 	return true
 }
 
@@ -10498,7 +10508,7 @@ fn (mut g FlatGen) emit_multi_return_typedef(ret types.Type, mut emitted map[str
 			g.emit_multi_return_field_option_typedefs(ret)
 			g.writeln('struct ${name} {')
 			for i, typ in ret.types {
-				mut ct := g.value_c_type(typ)
+				mut ct := g.multi_return_field_c_type(typ)
 				if ct.starts_with('fn_ptr:') {
 					ct = g.resolve_fn_ptr_type(ct)
 				}

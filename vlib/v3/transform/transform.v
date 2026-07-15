@@ -127,6 +127,7 @@ mut:
 	call_param_types_decl_index  map[string]FnParamDeclRef
 	call_param_types_index_ready bool
 	used_fns                     map[string]bool
+	comptime_reflected_params    map[string][]ParamMeta
 	// sum_eq_types records sum types whose deep-equality helper fn
 	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
 	// module/file context of the requesting call site (type resolution inside
@@ -338,10 +339,19 @@ pub fn transform_with_used_opt_config(mut a flat.FlatAst, tc &types.TypeChecker,
 // helpers disposable prealloc arenas. It is used by prealloc self-host builds
 // to retain parallel latency without retaining every helper's scratch memory.
 pub fn transform_with_used_opt_config_scoped_workers(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool) (map[string]bool, bool) {
+	augmented, was_parallel, _ := transform_with_used_opt_config_scoped_workers_checked(mut a, tc,
+		used_fns, want_parallel, skip_generics, scope_parallel_workers)
+	return augmented, was_parallel
+}
+
+// transform_with_used_opt_config_scoped_workers_checked also returns diagnostics selected while
+// normal comptime reflection loops are unrolled.
+pub fn transform_with_used_opt_config_scoped_workers_checked(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool) (map[string]bool, bool, []string) {
 	mut t := new_transformer(mut a, tc, used_fns)
 	t.skip_generics = skip_generics
 	t.scope_parallel_workers = scope_parallel_workers
 	t.prepare()
+	t.cache_comptime_param_reflection_metadata()
 	if want_parallel {
 		// Transform roughly grows the node/children arrays by ~75%. Reserve that capacity
 		// up front so they don't double past it (the parsed AST already overshoots to the
@@ -384,7 +394,7 @@ pub fn transform_with_used_opt_config_scoped_workers(mut a flat.FlatAst, tc &typ
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	t.run_sum_eq_synthesis_rounds(base_node_count)
 	t.apply_ignored_comptime_for_nodes()
-	return t.used_fns, was_parallel
+	return t.used_fns, was_parallel, t.monomorph_errors
 }
 
 // run_sum_eq_synthesis_rounds alternates sum-eq helper synthesis with the
@@ -560,6 +570,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		enum_backing_types:               map[string]string{}
 		sum_variant_names:                map[string]bool{}
 		used_fns:                         used_fns.clone()
+		comptime_reflected_params:        map[string][]ParamMeta{}
 		interface_boxed_types:            map[string]bool{}
 		interface_var_concrete_types:     map[string]string{}
 	}
@@ -751,6 +762,7 @@ fn (mut t Transformer) clear_struct_field_type_cache() {
 
 const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__'
 const sum_type_tag_selector_field = '__v_sum_type_tag__'
+const pending_loop_label_marker = '__v_pending_loop_label:'
 
 fn (mut t Transformer) rebuild_receiver_method_suffix_index() {
 	t.receiver_method_suffix_index.clear()
@@ -1574,6 +1586,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.a = ast
 	w.tc = wtc
 	w.used_fns = t.used_fns.clone()
+	w.comptime_reflected_params = t.comptime_reflected_params.clone()
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -1608,6 +1621,8 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.heaped_amp_locals = map[string]bool{}
 	w.generic_specialization_args = t.generic_specialization_args.clone()
 	w.generic_fn_specs_in_progress = map[string]bool{}
+	w.monomorph_errors = []string{}
+	w.monomorph_error_seen = map[string]bool{}
 	w.used_fns = t.used_fns.clone()
 	// Fields added after the fork/merge machinery was first written. They are
 	// mutated during body transforms (or lazily built), so each worker needs
@@ -1835,6 +1850,10 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			owned_name := if w.worker_scope != unsafe { nil } { name.clone() } else { name }
 			t.used_fns[owned_name] = true
 		}
+	}
+	for message in w.monomorph_errors {
+		owned_message := if w.worker_scope != unsafe { nil } { message.clone() } else { message }
+		t.record_monomorph_error(owned_message)
 	}
 	if w.ignored_comptime_for_nodes.len > 0 {
 		if t.ignored_comptime_for_nodes.len < t.a.nodes.len {
@@ -3199,7 +3218,15 @@ fn (mut t Transformer) transform_labeled_loop(label string, loop_id flat.NodeId,
 	})
 	mut result := []flat.NodeId{}
 	result << t.a.add_val(.label_stmt, label)
-	result << t.transform_stmt(new_loop)
+	transformed_loop := t.transform_stmt(new_loop)
+	mut marked_loop := false
+	for item_id in transformed_loop {
+		if !marked_loop && t.a.nodes[int(item_id)].kind in [.for_stmt, .for_in_stmt] {
+			result << t.a.add_val(.label_stmt, pending_loop_label_marker + label)
+			marked_loop = true
+		}
+		result << item_id
+	}
 	result << t.a.add_val(.label_stmt, break_label)
 	return result
 }
@@ -3652,19 +3679,20 @@ fn (mut t Transformer) transform_return_stmt(id flat.NodeId, node flat.Node) []f
 	if node.children_count == 0 {
 		return arr1(id)
 	}
-	if expanded := t.try_expand_return_if(id, node) {
+	source_return_id := t.return_drop_source_id(id, node)
+	if expanded := t.try_expand_return_if(source_return_id, node) {
 		return expanded
 	}
-	if expanded := t.try_expand_return_match(id, node) {
+	if expanded := t.try_expand_return_match(source_return_id, node) {
 		return expanded
 	}
 	if direct := t.try_return_direct_optional_expr(node) {
 		return direct
 	}
-	if expanded := t.try_expand_return_optional_expr(node) {
+	if expanded := t.try_expand_return_optional_expr(source_return_id, node) {
 		return expanded
 	}
-	if expanded := t.try_expand_forwarded_multi_return(node) {
+	if expanded := t.try_expand_forwarded_multi_return(source_return_id, node) {
 		return expanded
 	}
 	if node.children_count == 1 {
@@ -3878,7 +3906,7 @@ fn (t &Transformer) const_array_literal_storage_elem_excluded(raw_type types.Typ
 
 fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool {
 	mut fixed_safe_refs := map[int]bool{}
-	for _, node in t.a.nodes {
+	for node in t.a.nodes {
 		if node.kind == .index && node.children_count > 0 {
 			t.mark_const_ref_descendants(mut fixed_safe_refs, t.a.child(&node, 0))
 		}
@@ -5020,12 +5048,15 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 		.index {
 			// `a[lo..hi]` (an index node tagged `range`) yields a fresh array value, not an
 			// addressable element, so its address can't be taken in place — runtime_addr
-			// must materialize it to a temp first. Only plain element indexing `a[i]` is an
-			// addressable lvalue.
+			// must materialize it to a temp first. Plain element indexing is addressable only
+			// when the indexed storage is addressable too.
 			if node.value == 'range' {
 				return false
 			}
-			return true
+			if node.children_count == 0 {
+				return false
+			}
+			return t.expr_can_take_address(t.a.child(&node, 0))
 		}
 		.selector {
 			if node.children_count == 0 {
@@ -7271,6 +7302,9 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 
 // transform_call_expr transforms transform call expr data for transform.
 fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	if node.value.len > 0 && node.value == '__v_compile_error' {
+		t.record_selected_compile_error_call(node)
+	}
 	call_id := t.normalize_generic_call_expr(id, node)
 	mut call_node := t.a.nodes[int(call_id)]
 	mut resolved_typ := t.concrete_generic_call_return_type(call_id, call_node)
@@ -7314,6 +7348,27 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		return lowered
 	}
 	return t.transform_call_args(call_id, call_node)
+}
+
+fn (mut t Transformer) record_selected_compile_error_call(node flat.Node) {
+	if node.kind != .call || node.children_count == 0 {
+		return
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .ident || callee.value != '__v_compile_error' {
+		return
+	}
+	message := if node.children_count > 1 {
+		arg := t.a.child_node(&node, 1)
+		if arg.value.len > 0 {
+			arg.value
+		} else {
+			'compile-time error'
+		}
+	} else {
+		'compile-time error'
+	}
+	t.record_monomorph_error('compile-time error: ${message}')
 }
 
 fn (t &Transformer) is_cgen_magic_json_call(id flat.NodeId, node flat.Node) bool {

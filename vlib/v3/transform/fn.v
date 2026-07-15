@@ -4502,7 +4502,10 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 		return none
 	}
 	base_id := t.a.children[fn_node.children_start]
-	raw_base_type := t.node_type(base_id)
+	mut raw_base_type := t.node_type(base_id)
+	if raw_base_type.len == 0 {
+		raw_base_type = t.lvalue_type(base_id)
+	}
 	mut base_type := raw_base_type
 	if base_type.starts_with('&') {
 		base_type = base_type[1..]
@@ -5510,6 +5513,13 @@ fn (mut t Transformer) add_fn_literal_capture_global(name string, typ string) {
 fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count == 0 {
 		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind == .selector && callee.children_count > 0 {
+		base := t.a.child_node(callee, 0)
+		if base.kind == .ident && base.value == 'C' {
+			return none
+		}
 	}
 	if cast_call := t.try_lower_primitive_cast_call(node) {
 		return cast_call

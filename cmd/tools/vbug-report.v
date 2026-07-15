@@ -2,7 +2,7 @@ module main
 
 import db.sqlite
 import flag
-import json
+import json2
 import os
 import rand
 import time
@@ -240,7 +240,7 @@ pub fn (mut app App) create(mut ctx Context) veb.Result {
 		ctx.res.set_status(.bad_request)
 		return ctx.text('report body is too large')
 	}
-	report := json.decode(BugReport, ctx.req.data) or {
+	report := json2.decode[BugReport](ctx.req.data) or {
 		return ctx.request_error('invalid report JSON: ${err}')
 	}
 	if report.kind != 'v-c-compiler-error' {

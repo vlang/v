@@ -1,6 +1,7 @@
 module pref
 
 import os
+import time
 
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
@@ -17,11 +18,28 @@ pub mut:
 	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization
 	is_prod      bool
 	is_test      bool // at least one compatible user test file is being compiled
+pub:
+	build_date      string
+	build_time      string
+	build_timestamp string
 }
 
 // new_preferences supports new preferences handling for pref.
 pub fn new_preferences() &Preferences {
-	return &Preferences{}
+	build_time := target_build_time()
+	return &Preferences{
+		build_date:      build_time.strftime('%Y-%m-%d')
+		build_time:      build_time.strftime('%H:%M:%S')
+		build_timestamp: build_time.unix().str()
+	}
+}
+
+fn target_build_time() time.Time {
+	source_date_epoch := os.getenv('SOURCE_DATE_EPOCH')
+	if source_date_epoch.len == 0 {
+		return time.utc()
+	}
+	return time.unix_nanosecond(source_date_epoch.i64(), 0)
 }
 
 // detect_vroot resolves detect vroot information for pref.
@@ -132,22 +150,12 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		}
 		current_dir = parent_dir
 	}
-	// 5. temporary compatibility path for the in-tree v2 modules. Keep this last
-	// so a project or dependency named `v2` is not shadowed by the vlib shim.
-	vlib_compat_path := p.get_vlib_module_path(mod)
-	if vlib_compat_path != vlib_path && dir_is_module(vlib_compat_path) {
-		return vlib_compat_path
-	}
 	return ''
 }
 
 // vlib_module_path maps an import name to its directory below vlib.
 fn vlib_module_path(mod string) string {
-	mut parts := mod.split('.')
-	if parts.len > 0 && parts[0] == 'v2' {
-		parts[0] = 'v2_toberemoved'
-	}
-	return parts.join(os.path_separator)
+	return mod.replace('.', os.path_separator)
 }
 
 // dir_is_module reports whether `dir` is a usable module directory: it must exist

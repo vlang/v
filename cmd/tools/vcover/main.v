@@ -6,7 +6,7 @@ module main
 import os
 import log
 import flag
-import json
+import json2
 import arrays
 import encoding.csv
 
@@ -40,7 +40,7 @@ fn (mut ctx Context) load_meta(folder string) {
 		mfile := omfile.replace('\\', '/')
 		content := os.read_file(mfile) or { '' }
 		meta := os.file_name(mfile.replace(metadata_extension, ''))
-		data := json.decode(MetaData, content) or {
+		data := json2.decode[MetaData](content) or {
 			log.error('${@METHOD} failed to load ${mfile}')
 			continue
 		}

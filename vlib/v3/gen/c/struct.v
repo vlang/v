@@ -1171,6 +1171,13 @@ struct StructDeclInfo {
 	full_name string
 }
 
+struct SoaFieldInfo {
+	name           string
+	soa_name       string
+	c_type         string
+	is_fixed_array bool
+}
+
 struct SharedFieldInfo {
 	inner   string
 	wrapper string
@@ -3038,6 +3045,7 @@ fn (mut g FlatGen) struct_decls() {
 		}
 		g.emit_struct(name)
 	}
+	g.soa_companion_decls()
 	g.shared_struct_decls()
 }
 
@@ -3133,6 +3141,279 @@ fn (g &FlatGen) is_generic_struct(name string) bool {
 		return info.full_name == name && 'generic' in info.node.typ.split(',')
 	}
 	return false
+}
+
+fn (mut g FlatGen) soa_companion_decls() {
+	mut names := g.tc.soa_structs.keys()
+	names.sort()
+	for name in names {
+		if name !in g.tc.structs || name in g.tc.unions || g.is_generic_struct(name) {
+			continue
+		}
+		g.emit_soa_companion(name)
+	}
+}
+
+fn (g &FlatGen) soa_companion_name(struct_name string) string {
+	mut source_name := struct_name
+	if mod_name := g.tc.struct_modules[struct_name] {
+		if mod_name == 'main' || mod_name == 'builtin' {
+			source_name = struct_name.all_after_last('.')
+		}
+	}
+	return '${g.cname(source_name)}_SOA'
+}
+
+fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
+	return 'C.${soa_name}' in g.tc.structs
+}
+
+fn (g &FlatGen) soa_companion_collision(struct_name string, soa_name string, fields []SoaFieldInfo) ?string {
+	c_name := 'C.${soa_name}'
+	has_matching_c_decl := c_name in g.tc.structs && g.soa_companion_c_decl_matches(c_name, fields)
+	if c_name in g.tc.structs && !has_matching_c_decl {
+		return c_name
+	}
+	for name, _ in g.tc.structs {
+		if name == struct_name || name == c_name {
+			continue
+		}
+		if g.cname(name) == soa_name {
+			return name
+		}
+	}
+	for name, _ in g.tc.type_aliases {
+		if g.cname(name) == soa_name {
+			return name
+		}
+	}
+	for name, _ in g.tc.enum_names {
+		if g.cname(name) == soa_name {
+			return name
+		}
+	}
+	for name, _ in g.tc.sum_types {
+		if g.cname(name) == soa_name {
+			return name
+		}
+	}
+	for name, _ in g.tc.interface_names {
+		if g.cname(name) == soa_name {
+			return name
+		}
+	}
+	if !has_matching_c_decl
+		&& (soa_name in g.inlined_c_typedef_names || soa_name in g.inlined_c_structs) {
+		return c_name
+	}
+	return none
+}
+
+fn (g &FlatGen) soa_companion_c_decl_matches(c_name string, fields []SoaFieldInfo) bool {
+	decl_fields := g.tc.structs[c_name] or { return false }
+	if decl_fields.len != fields.len + 2 {
+		return false
+	}
+	if !g.soa_companion_c_decl_field_matches(decl_fields[0], 'len', 'int') {
+		return false
+	}
+	if !g.soa_companion_c_decl_field_matches(decl_fields[1], 'cap', 'int') {
+		return false
+	}
+	for i, field in fields {
+		if !g.soa_companion_c_decl_field_matches(decl_fields[i + 2], field.soa_name,
+			'${field.c_type}*') {
+			return false
+		}
+	}
+	return true
+}
+
+fn (g &FlatGen) soa_companion_c_decl_field_matches(field types.StructField, name string, c_type string) bool {
+	return g.cname(field.name) == name && g.tc.c_type(field.typ) == c_type
+}
+
+fn (mut g FlatGen) soa_field_c_type(struct_name string, f types.StructField) string {
+	if f.typ is types.Void {
+		return 'int'
+	}
+	if info := g.shared_field_info(struct_name, f.name) {
+		return '${info.wrapper}*'
+	}
+	mut field_type := f.typ
+	if f.typ is types.Alias {
+		field_type = f.typ.base_type
+	}
+	if field_type is types.FnType {
+		c_abi_fn := g.struct_field_c_abi_fn_ptr_type(struct_name, f.name) or {
+			g.tc.c_type(field_type)
+		}
+		return g.resolve_fn_ptr_type(c_abi_fn)
+	}
+	if field_type is types.ArrayFixed {
+		return g.fixed_array_c_type(field_type)
+	}
+	mut ct := if field_type is types.OptionType || field_type is types.ResultType {
+		g.optional_type_name(field_type)
+	} else if field_type is types.Enum {
+		g.enum_value_c_type(field_type)
+	} else {
+		g.tc.c_type(field_type)
+	}
+	if ct.starts_with('fn_ptr:') {
+		ct = g.resolve_fn_ptr_type(ct)
+	}
+	if ct == 'void' {
+		return 'int'
+	}
+	return ct
+}
+
+fn (mut g FlatGen) write_soa_struct_return(base_name string, fields []SoaFieldInfo, prefix string, index string) {
+	if fields.len == 0 {
+		g.writeln('\treturn (${base_name}){0};')
+		return
+	}
+	mut has_fixed_array := false
+	for field in fields {
+		if field.is_fixed_array {
+			has_fixed_array = true
+			break
+		}
+	}
+	if has_fixed_array {
+		g.writeln('\t${base_name} val = (${base_name}){0};')
+		for field in fields {
+			if field.is_fixed_array {
+				g.writeln('\tmemmove(val.${field.name}, ${prefix}${field.soa_name}[${index}], sizeof(val.${field.name}));')
+			} else {
+				g.writeln('\tval.${field.name} = ${prefix}${field.soa_name}[${index}];')
+			}
+		}
+		g.writeln('\treturn val;')
+		return
+	}
+	g.writeln('\treturn (${base_name}){')
+	for field in fields {
+		g.writeln('\t\t.${field.name} = ${prefix}${field.soa_name}[${index}],')
+	}
+	g.writeln('\t};')
+}
+
+fn (mut g FlatGen) write_soa_field_value_copy(field SoaFieldInfo, prefix string, index string) {
+	if field.is_fixed_array {
+		g.writeln('\tmemmove(${prefix}${field.soa_name}[${index}], val.${field.name}, sizeof(${prefix}${field.soa_name}[${index}]));')
+		return
+	}
+	g.writeln('\t${prefix}${field.soa_name}[${index}] = val.${field.name};')
+}
+
+fn soa_companion_field_name(name string, mut used map[string]bool) string {
+	mut candidate := name
+	if candidate in used {
+		base := '__soa_field_${name}'
+		candidate = base
+		mut suffix := 2
+		for (candidate in used) {
+			candidate = '${base}_${suffix}'
+			suffix++
+		}
+	}
+	used[candidate] = true
+	return candidate
+}
+
+fn (mut g FlatGen) emit_soa_companion(struct_name string) {
+	fields := g.tc.structs[struct_name] or { return }
+	base_name := g.tc.c_type(types.Type(types.Struct{
+		name: struct_name
+	}))
+	soa_name := g.soa_companion_name(struct_name)
+	mut soa_fields := []SoaFieldInfo{cap: fields.len}
+	mut used_soa_names := {
+		'len': true
+		'cap': true
+	}
+	for f in fields {
+		field_name := g.cname(f.name)
+		is_fixed_array := if _ := array_fixed_type(f.typ) { true } else { false }
+		soa_fields << SoaFieldInfo{
+			name:           field_name
+			soa_name:       soa_companion_field_name(field_name, mut used_soa_names)
+			c_type:         g.soa_field_c_type(struct_name, f)
+			is_fixed_array: is_fixed_array
+		}
+	}
+	g.writeln('/* SoA companion for ${base_name}. */')
+	if conflict := g.soa_companion_collision(struct_name, soa_name, soa_fields) {
+		g.writeln('#error SoA companion ${soa_name} for ${base_name} collides with existing type ${conflict}')
+		return
+	}
+	if !g.soa_companion_has_c_typedef(soa_name) {
+		g.writeln('typedef struct ${soa_name} {')
+		g.writeln('\tint len;')
+		g.writeln('\tint cap;')
+		for field in soa_fields {
+			g.writeln('\t${field.c_type}* ${field.soa_name};')
+		}
+		g.writeln('} ${soa_name};')
+		g.writeln('')
+	}
+	g.writeln('${soa_name} ${soa_name}_new(int len, int cap) {')
+	g.writeln('\tif (len < 0) { len = 0; }')
+	g.writeln('\tif (cap < len) { cap = len; }')
+	g.writeln('\tif (cap < 0) { cap = 0; }')
+	g.writeln('\t${soa_name} soa;')
+	g.writeln('\tsoa.len = len;')
+	g.writeln('\tsoa.cap = cap;')
+	for field in soa_fields {
+		g.writeln('\tsoa.${field.soa_name} = (${field.c_type}*)calloc((size_t)cap, sizeof(${field.c_type}));')
+	}
+	g.writeln('\treturn soa;')
+	g.writeln('}')
+	g.writeln('')
+	g.writeln('${base_name} ${soa_name}_get(${soa_name} soa, int i) {')
+	g.write_soa_struct_return(base_name, soa_fields, 'soa.', 'i')
+	g.writeln('}')
+	g.writeln('')
+	g.writeln('void ${soa_name}_set(${soa_name}* soa, int i, ${base_name} val) {')
+	for field in soa_fields {
+		g.write_soa_field_value_copy(field, 'soa->', 'i')
+	}
+	g.writeln('}')
+	g.writeln('')
+	g.writeln('void ${soa_name}_push(${soa_name}* soa, ${base_name} val) {')
+	g.writeln('\tif (soa->len >= soa->cap) {')
+	g.writeln('\t\tint new_cap = soa->cap < 8 ? 8 : soa->cap * 2;')
+	for field in soa_fields {
+		g.writeln('\t\tsoa->${field.soa_name} = (${field.c_type}*)realloc(soa->${field.soa_name}, (size_t)new_cap * sizeof(${field.c_type}));')
+	}
+	g.writeln('\t\tsoa->cap = new_cap;')
+	g.writeln('\t}')
+	g.writeln('\tint i = soa->len;')
+	for field in soa_fields {
+		g.write_soa_field_value_copy(field, 'soa->', 'i')
+	}
+	g.writeln('\tsoa->len++;')
+	g.writeln('}')
+	g.writeln('')
+	g.writeln('${base_name} ${soa_name}_pop(${soa_name}* soa) {')
+	g.writeln('\tif (soa->len <= 0) {')
+	g.writeln('\t\treturn (${base_name}){0};')
+	g.writeln('\t}')
+	g.writeln('\tsoa->len--;')
+	g.write_soa_struct_return(base_name, soa_fields, 'soa->', 'soa->len')
+	g.writeln('}')
+	g.writeln('')
+	g.writeln('void ${soa_name}_free(${soa_name}* soa) {')
+	for field in soa_fields {
+		g.writeln('\tfree(soa->${field.soa_name});')
+		g.writeln('\tsoa->${field.soa_name} = NULL;')
+	}
+	g.writeln('\tsoa->len = 0;')
+	g.writeln('\tsoa->cap = 0;')
+	g.writeln('}')
+	g.writeln('')
 }
 
 // write_struct_field writes struct field output for c.

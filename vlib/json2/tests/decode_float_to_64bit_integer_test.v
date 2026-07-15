@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json as old_json
 import json2 as json
 
