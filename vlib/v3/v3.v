@@ -1116,7 +1116,9 @@ fn main() {
 		'test=${is_test_command || pref.is_test_file_for_backend(input_file, backend)}',
 		'defines=${prefs.user_defines.join(',')}',
 	].join('\n')
-	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled)
+	build_pseudo_values := [prefs.build_date, prefs.build_time, prefs.build_timestamp].join('\n')
+	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled,
+		build_pseudo_values)
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
 	// The cache generator emits complete module bodies, including late generic
 	// specializations that are not reachable from the entry program. Its split output

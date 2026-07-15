@@ -16,6 +16,7 @@ const source_body_marker = '// v3cache: source bodies required'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
+	build_pseudo_values string
 pub:
 	dir     string
 	enabled bool
@@ -40,14 +41,15 @@ pub:
 }
 
 // new_manager creates a configuration-scoped persistent module cache manager.
-pub fn new_manager(vroot string, salt string, enabled bool) Manager {
+pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values string) Manager {
 	root_key := hash_text(os.real_path(vroot))
 	config_key := hash_text(cache_format + '\n' + salt)
 	base_dir := os.abs_path(os.getenv_opt('V3CACHE') or { os.vtmp_dir() })
 	return Manager{
-		dir:     os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
-		enabled: enabled
-		salt:    salt
+		dir:                 os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
+		enabled:             enabled
+		salt:                salt
+		build_pseudo_values: build_pseudo_values
 	}
 }
 
@@ -93,13 +95,18 @@ pub fn (m &Manager) object_entry(module_name string, source_files []string, comp
 }
 
 // source_signature hashes selected source paths, contents, resolved module roots,
-// compile-time environment values, and pkg-config probe results in stable order.
+// build/environment values, and pkg-config probe results in stable order.
 pub fn source_signature(source_files []string) string {
+	return source_signature_with_build_values(source_files, '')
+}
+
+fn source_signature_with_build_values(source_files []string, build_pseudo_values string) string {
 	mut files := source_files.clone()
 	files.sort()
 	mut hash := u64(1469598103934665603)
 	mut env_names := map[string]bool{}
 	mut pkgconfig_names := map[string]bool{}
+	mut uses_build_pseudo := false
 	for file in files {
 		path := os.real_path(file)
 		hash = hash_bytes(hash, path.bytes())
@@ -108,6 +115,10 @@ pub fn source_signature(source_files []string) string {
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
+		if source.contains('@BUILD_TIMESTAMP') || source.contains('@BUILD_DATE')
+			|| source.contains('@BUILD_TIME') {
+			uses_build_pseudo = true
+		}
 		if source.contains('@VMODROOT') || source.contains('@VMOD_FILE')
 			|| source.contains('@VROOT') {
 			root, vmod_file := signature_vmod_root(file)
@@ -132,6 +143,11 @@ pub fn source_signature(source_files []string) string {
 			pkgconfig_names[name] = true
 		}
 	}
+	if uses_build_pseudo {
+		hash = hash_bytes(hash, [u8(0xfb)])
+		hash = hash_bytes(hash, build_pseudo_values.bytes())
+		hash = hash_bytes(hash, [u8(0xff)])
+	}
 	mut names := env_names.keys()
 	names.sort()
 	for name in names {
@@ -152,6 +168,10 @@ pub fn source_signature(source_files []string) string {
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	return hash.hex()
+}
+
+fn (m &Manager) source_signature(source_files []string) string {
+	return source_signature_with_build_values(source_files, m.build_pseudo_values)
 }
 
 fn signature_vmod_root(source_file string) (string, string) {
@@ -365,7 +385,7 @@ pub fn (m &Manager) valid_entry(module_name string, source_files []string) ?Entr
 		return none
 	}
 	stamp := os.read_file(entry.header_stamp) or { return none }
-	expected := entry_stamp(m.salt, source_signature(source_files))
+	expected := entry_stamp(m.salt, m.source_signature(source_files))
 	if stamp != expected {
 		return none
 	}
@@ -386,7 +406,7 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 		return none
 	}
 	stamp := os.read_file(entry.header_stamp) or { return none }
-	if stamp != entry_stamp(m.salt, source_signature(source_files)) {
+	if stamp != entry_stamp(m.salt, m.source_signature(source_files)) {
 		return none
 	}
 	return entry
@@ -409,7 +429,7 @@ pub fn (m &Manager) valid_object(cache_name string, source_files []string) ?Entr
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
-	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_signature(source_files))) {
+	if !object_stamp_valid(stamp, entry_stamp(m.salt, m.source_signature(source_files))) {
 		return none
 	}
 	return entry
@@ -422,7 +442,7 @@ pub fn (m &Manager) write_entry(module_name string, source_files []string, heade
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
-	write_atomic(entry.header_stamp, entry_stamp(m.salt, source_signature(source_files)))!
+	write_atomic(entry.header_stamp, entry_stamp(m.salt, m.source_signature(source_files)))!
 	return entry
 }
 
@@ -433,7 +453,7 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
-	write_atomic(entry.header_stamp, entry_stamp(m.salt, source_signature(source_files)))!
+	write_atomic(entry.header_stamp, entry_stamp(m.salt, m.source_signature(source_files)))!
 	return entry
 }
 
@@ -445,7 +465,7 @@ pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
-	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_signature(source_files))) {
+	if !object_stamp_valid(stamp, entry_stamp(m.salt, m.source_signature(source_files))) {
 		return none
 	}
 	expected := 'compile=${hash_text(compile_signature)}'
@@ -464,7 +484,7 @@ pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source
 pub fn (m &Manager) write_stamp(module_name string, source_files []string, dependency_inputs map[string]string, compile_signature string) ! {
 	entry := m.entry(module_name, source_files)
 	object_entry := m.object_entry(module_name, source_files, compile_signature)
-	stamp := object_entry_stamp(m.salt, source_signature(source_files), dependency_inputs,
+	stamp := object_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs,
 		compile_signature)
 	write_atomic(object_entry.object_stamp, stamp)!
 	write_atomic(entry.object_stamp, stamp)!
@@ -2240,7 +2260,8 @@ fn expr_can_serialize(a &flat.FlatAst, id flat.NodeId) bool {
 			expr_children_can_serialize(a, node)
 		}
 		.map_init {
-			node.children_count % 2 == 0 && expr_children_can_serialize(a, node)
+			(node.value.len > 0 || node.typ.len > 0) && node.children_count % 2 == 0
+				&& expr_children_can_serialize(a, node)
 		}
 		.cast_expr, .as_expr {
 			node.children_count == 1 && expr_can_serialize(a, a.child(&node, 0))
@@ -2302,7 +2323,13 @@ fn map_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i := 0; i + 1 < node.children_count; i += 2 {
 		values << '${expr_text(a, a.child(&node, i))}: ${expr_text(a, a.child(&node, i + 1))}'
 	}
-	prefix := if node.typ.len > 0 { node.typ } else { 'map[string]string' }
+	prefix := if node.value.len > 0 {
+		node.value
+	} else if node.typ.len > 0 {
+		node.typ
+	} else {
+		'map[string]string'
+	}
 	return '${prefix}{${values.join(', ')}}'
 }
 
