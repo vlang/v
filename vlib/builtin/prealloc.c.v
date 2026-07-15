@@ -13,6 +13,8 @@ fn C.v_prealloc_atomic_add_i32(ptr &int, delta int) int
 fn C.v_prealloc_atomic_load_i32(ptr &int) int
 fn C.v_prealloc_atomic_store_i32(ptr &int, val int) int
 fn C.v_prealloc_atomic_cas_i32(ptr &int, expected int, desired int) int
+fn C.v_prealloc_atomic_add_i64(ptr &i64, delta i64) i64
+fn C.v_prealloc_atomic_load_i64(ptr &i64) i64
 
 // With -prealloc, V calls libc's malloc to get chunks, each at least 16MB
 // in size, as needed. Once a chunk is available, all malloc() calls within
@@ -38,6 +40,32 @@ const prealloc_scope_block_size = 256 * 1024
 const prealloc_default_align = sizeof(voidptr) * 2
 
 __global g_memory_block &VMemoryBlock
+__global g_prealloc_allocation_count i64
+__global g_prealloc_allocated_bytes i64
+
+// PreallocStats is a process-wide snapshot of instrumented arena allocations.
+// Counters are populated only when the program is built with `-d prealloc_stats`.
+pub struct PreallocStats {
+pub:
+	enabled          bool
+	allocation_count u64
+	allocated_bytes  u64
+}
+
+// prealloc_stats_snapshot returns allocation totals across every prealloc
+// thread and scoped arena in the process.
+pub fn prealloc_stats_snapshot() PreallocStats {
+	$if prealloc_stats ? {
+		return PreallocStats{
+			enabled:          true
+			allocation_count: u64(C.v_prealloc_atomic_load_i64(&g_prealloc_allocation_count))
+			allocated_bytes:  u64(C.v_prealloc_atomic_load_i64(&g_prealloc_allocated_bytes))
+		}
+	} $else {
+		return PreallocStats{}
+	}
+}
+
 @[heap]
 struct VMemoryBlock {
 mut:
@@ -305,6 +333,8 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 		mb.current += n
 		$if prealloc_stats ? {
 			mb.mallocs++
+			C.v_prealloc_atomic_add_i64(&g_prealloc_allocation_count, 1)
+			C.v_prealloc_atomic_add_i64(&g_prealloc_allocated_bytes, i64(n))
 		} $else {
 			$if trace_prealloc ? {
 				mb.mallocs++

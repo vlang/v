@@ -6,10 +6,12 @@ import time
 // Step represents step data used by bench.
 pub struct Step {
 pub:
-	name        string
-	time_us     i64
-	ram_kb      i64
-	peak_ram_kb i64
+	name             string
+	time_us          i64
+	ram_kb           i64
+	peak_ram_kb      i64
+	allocation_count u64
+	allocated_bytes  u64
 }
 
 // Metric represents one structural compiler counter reported with a build.
@@ -23,17 +25,22 @@ pub:
 // Bench represents bench data used by bench.
 pub struct Bench {
 mut:
-	steps    []Step
-	metrics  []Metric
-	total_sw time.StopWatch
-	step_sw  time.StopWatch
+	steps                 []Step
+	metrics               []Metric
+	total_sw              time.StopWatch
+	step_sw               time.StopWatch
+	last_allocation_count u64
+	last_allocated_bytes  u64
 }
 
 // new creates a new value for bench.
 pub fn new() Bench {
+	allocations := current_allocation_stats()
 	return Bench{
-		total_sw: time.new_stopwatch()
-		step_sw:  time.new_stopwatch()
+		total_sw:              time.new_stopwatch()
+		step_sw:               time.new_stopwatch()
+		last_allocation_count: allocations.allocation_count
+		last_allocated_bytes:  allocations.allocated_bytes
 	}
 }
 
@@ -52,13 +59,28 @@ pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	peak_ram_mb := f64(peak_ram_kb) / 1024.0
 	ms := f64(elapsed_us) / 1000.0
 	label := if parallel { '${name} (parallel)' } else { name }
-	println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS   ${peak_ram_mb:6.0f} MB peak')
-	b.steps << Step{
-		name:        label
-		time_us:     elapsed_us
-		ram_kb:      ram_kb
-		peak_ram_kb: peak_ram_kb
+	allocations := current_allocation_stats()
+	allocation_count := allocations.allocation_count - b.last_allocation_count
+	allocated_bytes := allocations.allocated_bytes - b.last_allocated_bytes
+	allocation_suffix := if allocations.enabled {
+		allocated_mb := f64(allocated_bytes) / (1024.0 * 1024.0)
+		'   ${allocation_count} allocs   ${allocated_mb:8.2f} MB allocated'
+	} else {
+		''
 	}
+	println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS   ${peak_ram_mb:6.0f} MB peak${allocation_suffix}')
+	b.steps << Step{
+		name:             label
+		time_us:          elapsed_us
+		ram_kb:           ram_kb
+		peak_ram_kb:      peak_ram_kb
+		allocation_count: allocation_count
+		allocated_bytes:  allocated_bytes
+	}
+	// Exclude the benchmark line's own formatting allocations from the next phase.
+	after_report := current_allocation_stats()
+	b.last_allocation_count = after_report.allocation_count
+	b.last_allocated_bytes = after_report.allocated_bytes
 	b.step_sw.restart()
 }
 
@@ -89,4 +111,23 @@ pub fn (b &Bench) print_report() {
 fn current_rss_kb() i64 {
 	bytes := runtime.used_memory() or { return 0 }
 	return i64(bytes / 1024)
+}
+
+struct AllocationStats {
+	enabled          bool
+	allocation_count u64
+	allocated_bytes  u64
+}
+
+fn current_allocation_stats() AllocationStats {
+	$if prealloc {
+		stats := prealloc_stats_snapshot()
+		return AllocationStats{
+			enabled:          stats.enabled
+			allocation_count: stats.allocation_count
+			allocated_bytes:  stats.allocated_bytes
+		}
+	} $else {
+		return AllocationStats{}
+	}
 }
