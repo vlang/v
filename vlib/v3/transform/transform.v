@@ -4262,6 +4262,19 @@ fn (mut t Transformer) try_lower_optional_selector_lvalue_assign(node flat.Node)
 		t.transform_expr_for_type(rhs_id, lhs_type)
 	}
 	t.drain_pending(mut result)
+	if node.op == .assign && lhs_type.len > 0 && !isnil(t.tc) {
+		parsed_lhs_type := t.tc.parse_type(lhs_type)
+		if t.tc.ownership_type_requires_destruction(parsed_lhs_type)
+			&& !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
+			rhs_name := t.new_temp('optional_selector_value')
+			result << t.make_decl_assign_typed(rhs_name, rhs, lhs_type)
+			stable_lhs := t.stabilize_transformed_lvalue_for_reuse(lowered_lhs)
+			t.drain_pending(mut result)
+			t.append_owned_lvalue_drop_before_assign(stable_lhs, lhs_type, mut result)
+			result << t.make_assign(stable_lhs, t.make_ident(rhs_name))
+			return result
+		}
+	}
 	result << t.make_assign_op(lowered_lhs, rhs, node.op)
 	return result
 }
