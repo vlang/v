@@ -9859,8 +9859,9 @@ fn (mut tc TypeChecker) resolve_index_lvalue_type(lhs_id flat.NodeId, op flat.Op
 		if getter.params.len >= 2 {
 			tc.check_index_overload_arg(lhs_id, lhs, getter, '[]')
 		}
-		tc.register_synth_type(lhs_id, getter.return_type)
-		return getter.return_type
+		invalid_type := unknown_type('missing overloaded index setter')
+		tc.register_synth_type(lhs_id, invalid_type)
+		return invalid_type
 	}
 	tc.check_index(lhs_id, lhs)
 	return tc.resolve_type(lhs_id)
@@ -14340,6 +14341,15 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 		return true
 	}
 	if expected is Pointer {
+		if actual is Pointer {
+			if expected.base_type is Alias && expected.base_type.base_type is Pointer {
+				return tc.type_compatible(actual, expected.base_type.base_type)
+			}
+			return false
+		}
+		if expected.base_type is Pointer {
+			return false
+		}
 		return tc.type_compatible(actual, expected.base_type)
 	}
 	if actual is Pointer {

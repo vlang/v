@@ -7728,8 +7728,8 @@ fn (p &Parser) can_start_type_name() bool {
 
 fn token_can_start_type_name(tok token.Token) bool {
 	return tok == .name || tok == .amp || tok == .question || tok == .not || tok == .lsbr
-		|| tok == .lpar || tok == .key_fn || tok == .ellipsis || tok == .key_mut
-		|| tok == .key_shared || tok == .key_atomic
+		|| tok == .lpar || tok == .key_fn || tok == .key_struct || tok == .ellipsis
+		|| tok == .key_mut || tok == .key_shared || tok == .key_atomic
 }
 
 // fn_type_param_with_mut supports fn type param with mut handling for parser.
@@ -7983,24 +7983,109 @@ fn (mut p Parser) parse_type_name() string {
 	return name
 }
 
-fn anonymous_struct_shape(fields []string) string {
-	return fields.join(',')
+fn anonymous_struct_name_shape_key(fields []string) string {
+	return 'names:${fields.join(',')}'
 }
 
-fn (p &Parser) anonymous_struct_type_for_literal(init flat.Node) ?string {
+fn anonymous_struct_typed_shape_key(fields []string, field_types []string) string {
+	mut parts := []string{cap: fields.len}
+	for i, field in fields {
+		typ := if i < field_types.len { field_types[i] } else { '' }
+		parts << '${field.len}:${field}:${typ.len}:${typ}'
+	}
+	return 'typed:${parts.join(',')}'
+}
+
+fn (mut p Parser) anonymous_struct_type_for_literal(init flat.Node) ?string {
 	mut field_names := []string{cap: int(init.children_count)}
+	mut field_types := []string{cap: int(init.children_count)}
+	mut can_infer_types := true
 	for i in 0 .. init.children_count {
 		field := p.a.child_node(&init, i)
-		if field.value.len == 0 {
+		if field.value.len == 0 || field.children_count == 0 {
 			return none
 		}
 		field_names << field.value
+		value_id := p.a.child(field, 0)
+		if field_type := p.anonymous_struct_literal_field_type(value_id) {
+			field_types << field_type
+		} else {
+			can_infer_types = false
+		}
 	}
-	if candidates := p.anonymous_struct_types[anonymous_struct_shape(field_names)] {
+	name_key := anonymous_struct_name_shape_key(field_names)
+	if can_infer_types {
+		typed_key := anonymous_struct_typed_shape_key(field_names, field_types)
+		if candidates := p.anonymous_struct_types[typed_key] {
+			if candidates.len == 1 {
+				if declared_candidates := p.anonymous_struct_types[name_key] {
+					if declared_candidates.len > 1 && candidates[0] in declared_candidates {
+						return none
+					}
+				}
+				return candidates[0]
+			}
+			return none
+		}
+		if _ := p.anonymous_struct_types[name_key] {
+			return none
+		}
+		mut ids := []flat.NodeId{cap: field_names.len}
+		for i, field_name in field_names {
+			ids << p.a.add_node(flat.Node{
+				kind:  .field_decl
+				value: field_name
+				typ:   field_types[i]
+			})
+		}
+		return p.register_anonymous_struct_type(ids, field_names, field_types, true)
+	}
+	if candidates := p.anonymous_struct_types[name_key] {
 		if candidates.len == 1 {
 			return candidates[0]
 		}
+		return none
 	}
+	return none
+}
+
+fn (p &Parser) anonymous_struct_literal_field_type(value_id flat.NodeId) ?string {
+	if int(value_id) < 0 || int(value_id) >= p.a.nodes.len {
+		return none
+	}
+	node := p.a.nodes[int(value_id)]
+	match node.kind {
+		.int_literal {
+			return 'int'
+		}
+		.float_literal {
+			return 'f64'
+		}
+		.bool_literal {
+			return 'bool'
+		}
+		.char_literal {
+			return 'rune'
+		}
+		.string_literal {
+			return 'string'
+		}
+		.struct_init, .array_init, .map_init, .cast_expr {
+			if node.value.len > 0 {
+				return node.value
+			}
+			if node.typ.len > 0 {
+				return node.typ
+			}
+		}
+		.paren {
+			if node.children_count == 1 {
+				return p.anonymous_struct_literal_field_type(p.a.child(&node, 0))
+			}
+		}
+		else {}
+	}
+
 	return none
 }
 
@@ -8012,6 +8097,7 @@ fn (mut p Parser) parse_anonymous_struct_type() string {
 	p.next()
 	mut ids := []flat.NodeId{}
 	mut field_names := []string{}
+	mut field_types := []string{}
 	for p.tok != .rcbr && p.tok != .eof {
 		if p.tok == .semicolon || p.tok == .comma {
 			p.next()
@@ -8045,6 +8131,7 @@ fn (mut p Parser) parse_anonymous_struct_type() string {
 				p.apply_field_meta(fid, false, false, attrs)
 				ids << fid
 				field_names << name
+				field_types << field_type
 			}
 			if p.tok == .semicolon || p.tok == .comma {
 				p.next()
@@ -8075,11 +8162,16 @@ fn (mut p Parser) parse_anonymous_struct_type() string {
 		}
 		ids << fid
 		field_names << field_name
+		field_types << field_type
 		if p.tok == .semicolon || p.tok == .comma {
 			p.next()
 		}
 	}
 	p.check(.rcbr)
+	return p.register_anonymous_struct_type(ids, field_names, field_types, false)
+}
+
+fn (mut p Parser) register_anonymous_struct_type(ids []flat.NodeId, field_names []string, field_types []string, inferred bool) string {
 	p.anonymous_struct_count++
 	name := 'AnonStruct_${local_type_scope_part(p.cur_file)}_${p.anonymous_struct_count}'
 	start := p.add_children(ids)
@@ -8089,10 +8181,16 @@ fn (mut p Parser) parse_anonymous_struct_type() string {
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
-	shape := anonymous_struct_shape(field_names)
-	mut candidates := p.anonymous_struct_types[shape] or { []string{} }
-	candidates << name
-	p.anonymous_struct_types[shape] = candidates
+	typed_key := anonymous_struct_typed_shape_key(field_names, field_types)
+	mut typed_candidates := p.anonymous_struct_types[typed_key] or { []string{} }
+	typed_candidates << name
+	p.anonymous_struct_types[typed_key] = typed_candidates
+	if !inferred {
+		name_key := anonymous_struct_name_shape_key(field_names)
+		mut name_candidates := p.anonymous_struct_types[name_key] or { []string{} }
+		name_candidates << name
+		p.anonymous_struct_types[name_key] = name_candidates
+	}
 	return name
 }
 
