@@ -108,7 +108,8 @@ pub fn source_signature(source_files []string) string {
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		if source.contains('@VMODROOT') || source.contains('@VROOT') {
+		if source.contains('@VMODROOT') || source.contains('@VMOD_FILE')
+			|| source.contains('@VROOT') {
 			root, vmod_file := signature_vmod_root(file)
 			hash = hash_bytes(hash, [u8(0xfc)])
 			hash = hash_bytes(hash, root.bytes())
