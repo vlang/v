@@ -655,7 +655,7 @@ fn add_candidate_suffix(mut suffixes map[string]bool, name string) {
 }
 
 fn markused_fn_decl_is_generic_template(node flat.Node, a &flat.FlatAst) bool {
-	if node.generic_params.len > 0 || node.value.contains('[') || node.typ.contains('generic') {
+	if node.generic_params().len > 0 || node.value.contains('[') || node.typ.contains('generic') {
 		return true
 	}
 	for i in 0 .. node.children_count {
@@ -4171,7 +4171,7 @@ fn (c &CallCollector) generic_candidate_is_generic(name string) bool {
 	}
 	if info := c.fn_decls[name] {
 		node := c.a.node(info.node_id)
-		return node.kind == .fn_decl && node.generic_params.len > 0
+		return node.kind == .fn_decl && node.generic_params().len > 0
 	}
 	return false
 }
@@ -4180,7 +4180,7 @@ fn (c &CallCollector) generic_fn_param_names(name string, fn_node &flat.Node) []
 	if params := c.tc.fn_generic_params[name] {
 		return params
 	}
-	return fn_node.generic_params.clone()
+	return fn_node.generic_params().clone()
 }
 
 fn (c &CallCollector) generic_fn_param_type_texts(name string, fn_node &flat.Node) []string {

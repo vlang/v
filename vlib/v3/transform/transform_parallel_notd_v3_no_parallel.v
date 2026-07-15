@@ -161,8 +161,8 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 				}
 			}
 			2 {
-				mut params := []string{cap: write.node.generic_params.len}
-				for param in write.node.generic_params {
+				mut params := []string{cap: write.node.generic_params().len}
+				for param in write.node.generic_params() {
 					params << param.clone()
 				}
 				DeferredBaseWrite{
@@ -171,7 +171,7 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 					node: flat.Node{
 						value:          write.node.value.clone()
 						typ:            write.node.typ.clone()
-						generic_params: params
+						payload:        flat.node_payload(params)
 						pos:            write.node.pos
 						children_start: write.node.children_start
 						children_count: write.node.children_count

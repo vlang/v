@@ -10,8 +10,8 @@ fn enum_decl_is_flag(node flat.Node) bool {
 }
 
 fn enum_decl_backing_type(node flat.Node) ?string {
-	if node.generic_params.len > 0 && node.generic_params[0].len > 0 {
-		return node.generic_params[0]
+	if node.generic_params().len > 0 && node.generic_params()[0].len > 0 {
+		return node.generic_params()[0]
 	}
 	return none
 }

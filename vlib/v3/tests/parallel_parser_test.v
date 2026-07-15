@@ -60,7 +60,7 @@ fn test_parallel_parse_matches_serial() {
 		assert q.typ == s.typ, 'node ${i} typ differs'
 		assert q.op == s.op, 'node ${i} op differs'
 		assert q.is_mut == s.is_mut, 'node ${i} is_mut differs'
-		assert q.generic_params == s.generic_params, 'node ${i} generic_params differs'
+		assert q.generic_params() == s.generic_params(), 'node ${i} generic_params differs'
 		assert q.pos.offset == s.pos.offset, 'node ${i} pos differs'
 		assert q.pos.id == s.pos.id, 'node ${i} file id differs'
 		assert q.children_count == s.children_count, 'node ${i} children_count differs'

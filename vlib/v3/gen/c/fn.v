@@ -319,7 +319,7 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 	if node.value.starts_with('__anon_fn_') || qfn.contains('__anon_fn_') {
 		return true
 	}
-	if node.generic_params.len == 0 && cgen_is_operator_overload_fn(node.value)
+	if node.generic_params().len == 0 && cgen_is_operator_overload_fn(node.value)
 		&& g.test_files[file_name] {
 		return true
 	}
@@ -2955,7 +2955,7 @@ fn (g &FlatGen) collect_test_harness_decl_ids(node flat.Node, mut ids []flat.Nod
 }
 
 fn (g &FlatGen) is_supported_test_fn_decl(node flat.Node) bool {
-	if node.generic_params.len > 0 {
+	if node.generic_params().len > 0 {
 		return false
 	}
 	if g.test_fn_param_count(node) != 0 {
@@ -2965,7 +2965,7 @@ fn (g &FlatGen) is_supported_test_fn_decl(node flat.Node) bool {
 }
 
 fn (g &FlatGen) is_supported_test_hook_decl(node flat.Node) bool {
-	if node.generic_params.len > 0 {
+	if node.generic_params().len > 0 {
 		return false
 	}
 	return g.test_fn_param_count(node) == 0 && g.tc.parse_type(node.typ) is types.Void
@@ -5272,7 +5272,7 @@ fn (g &FlatGen) json_struct_has_field_attrs(struct_name string) bool {
 			if field.kind != .field_decl {
 				continue
 			}
-			if field.generic_params.len > 1 {
+			if field.generic_params().len > 1 {
 				return true
 			}
 		}
@@ -5302,10 +5302,10 @@ fn (g &FlatGen) json_enum_number_cast(enum_name string) ?string {
 		if enum_name != node.value && enum_name != qualified {
 			continue
 		}
-		if 'json_as_number' !in node.generic_params {
+		if 'json_as_number' !in node.generic_params() {
 			return none
 		}
-		backing := if node.generic_params.len > 0 { node.generic_params[0] } else { '' }
+		backing := if node.generic_params().len > 0 { node.generic_params()[0] } else { '' }
 		return if backing in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
 			'u64'
 		} else {
@@ -5338,7 +5338,7 @@ fn (g &FlatGen) json_enum_labels(enum_name string) ([]string, map[string]string)
 		for i in 0 .. node.children_count {
 			field := g.a.child_node(&node, i)
 			names << field.value
-			for attr in field.generic_params {
+			for attr in field.generic_params() {
 				if attr.starts_with('json:') {
 					labels[field.value] = json_enum_attr_label(attr.all_after(':'))
 				}
@@ -7118,7 +7118,7 @@ fn (mut g FlatGen) precompute_non_generic_fn_index() {
 				cur_module = node.value
 			}
 			.fn_decl {
-				if node.generic_params.len == 0 && !node.typ.contains('generic') {
+				if node.generic_params().len == 0 && !node.typ.contains('generic') {
 					g.non_generic_fn_names_by_module['${cur_module}\x01${node.value}'] = true
 				}
 			}

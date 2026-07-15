@@ -1013,10 +1013,10 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 				tc.struct_modules[qname] = tc.cur_module
 				tc.struct_files[qname] = tc.cur_file
-				if node.generic_params.len > 0 {
-					tc.struct_generic_params[qname] = node.generic_params.clone()
+				if node.generic_params().len > 0 {
+					tc.struct_generic_params[qname] = node.generic_params().clone()
 					if qname != node.value {
-						tc.struct_generic_params[node.value] = node.generic_params.clone()
+						tc.struct_generic_params[node.value] = node.generic_params().clone()
 					}
 				}
 				implements_types := struct_decl_implements_from_typ(node.typ)
@@ -1035,14 +1035,14 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 					mut variants := []string{}
 					for i in 0 .. node.children_count {
 						v := a.child_node(&node, i)
-						variants << tc.qualify_sum_variant_name(v.value, node.generic_params)
+						variants << tc.qualify_sum_variant_name(v.value, node.generic_params())
 					}
 					qname := tc.qualify_name(node.value)
 					tc.sum_types[qname] = variants
-					if node.generic_params.len > 0 {
-						tc.sum_generic_params[qname] = node.generic_params.clone()
+					if node.generic_params().len > 0 {
+						tc.sum_generic_params[qname] = node.generic_params().clone()
 						if qname != node.value {
-							tc.sum_generic_params[node.value] = node.generic_params.clone()
+							tc.sum_generic_params[node.value] = node.generic_params().clone()
 						}
 					}
 				} else if node.typ.len > 0 {
@@ -1050,14 +1050,14 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 					if sum_variant_texts.len > 1 {
 						mut variants := []string{}
 						for part in sum_variant_texts {
-							variants << tc.qualify_sum_variant_name(part, node.generic_params)
+							variants << tc.qualify_sum_variant_name(part, node.generic_params())
 						}
 						qname := tc.qualify_name(node.value)
 						tc.sum_types[qname] = variants
-						if node.generic_params.len > 0 {
-							tc.sum_generic_params[qname] = node.generic_params.clone()
+						if node.generic_params().len > 0 {
+							tc.sum_generic_params[qname] = node.generic_params().clone()
 							if qname != node.value {
-								tc.sum_generic_params[node.value] = node.generic_params.clone()
+								tc.sum_generic_params[node.value] = node.generic_params().clone()
 							}
 						}
 						continue
@@ -1127,14 +1127,14 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				// so a concrete call must re-substitute the type arguments from the text to
 				// recover applications like the receiver type in the return position
 				// (`Box[T]` -> `Box[int]`). Only such methods carry `[` in their key.
-				if node.generic_params.len > 0 || node.value.contains('[') {
+				if node.generic_params().len > 0 || node.value.contains('[') {
 					for name in [qname, node.value] {
 						tc.fn_ret_type_texts[name] = node.typ
 						tc.fn_param_type_texts[name] = param_texts.clone()
 						tc.fn_type_files[name] = tc.cur_file
 						tc.fn_type_modules[name] = tc.cur_module
-						if node.generic_params.len > 0 {
-							tc.fn_generic_params[name] = node.generic_params.clone()
+						if node.generic_params().len > 0 {
+							tc.fn_generic_params[name] = node.generic_params().clone()
 						}
 					}
 				}
@@ -3592,7 +3592,7 @@ fn (mut tc TypeChecker) check_export_attrs() {
 						'export name `main` for `${qname}` collides with synthetic entry point `main`',
 						flat.NodeId(i))
 				}
-				if node.generic_params.len > 0 {
+				if node.generic_params().len > 0 {
 					tc.record_error_unfiltered(.unsupported_generic,
 						'generic function `${qname}` cannot be exported', flat.NodeId(i))
 				}
@@ -3942,7 +3942,7 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			tc.record_unsupported_generic('unsupported generic struct `${node.value}`', node_id)
 		}
 	} else {
-		if node.generic_params.len > 0 && tc.reject_unsupported_generics {
+		if node.generic_params().len > 0 && tc.reject_unsupported_generics {
 			tc.record_unsupported_generic('unsupported generic declaration `${node.value}`',
 				node_id)
 		}
@@ -3980,7 +3980,7 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 
 fn (tc &TypeChecker) infer_decl_generic_params(node flat.Node) map[string]bool {
 	mut params := map[string]bool{}
-	for name in node.generic_params {
+	for name in node.generic_params() {
 		params[name] = true
 	}
 	tc.collect_generic_receiver_params(node, mut params)
@@ -4549,10 +4549,10 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node flat.Node) {
 
 // check_enum_backing_type validates explicit enum backing storage types.
 fn (mut tc TypeChecker) check_enum_backing_type(node_id flat.NodeId, node flat.Node) {
-	if node.kind != .enum_decl || node.generic_params.len == 0 {
+	if node.kind != .enum_decl || node.generic_params().len == 0 {
 		return
 	}
-	backing := node.generic_params[0].trim_space()
+	backing := node.generic_params()[0].trim_space()
 	if backing.len == 0 {
 		return
 	}
@@ -6396,8 +6396,8 @@ fn (tc &TypeChecker) comptime_static_field_decl_metas_for_node(decl_name string,
 		raw_typ := if f.typ.len > 0 { f.typ } else { f.value }
 		mut is_mut := false
 		mut is_pub := false
-		if f.generic_params.len > 0 {
-			flags := f.generic_params[0]
+		if f.generic_params().len > 0 {
+			flags := f.generic_params()[0]
 			is_mut = flags.contains('m')
 			is_pub = flags.contains('p')
 		}
@@ -9831,7 +9831,7 @@ fn (tc &TypeChecker) cur_fn_is_generic_template() bool {
 		return false
 	}
 	fn_node := tc.a.nodes[tc.fn_context.node_id]
-	if fn_node.generic_params.len > 0 {
+	if fn_node.generic_params().len > 0 {
 		return true
 	}
 	for i in 0 .. fn_node.children_count {

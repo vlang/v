@@ -1463,7 +1463,7 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 		pos:            node.pos
 		value:          node.value
 		typ:            node.typ
-		generic_params: node.generic_params.clone()
+		payload:        flat.node_payload(node.generic_params().clone())
 	})
 }
 
@@ -1500,7 +1500,7 @@ fn (mut t Transformer) substitute_ident_expr(id flat.NodeId, name string, replac
 		pos:            node.pos
 		value:          node.value
 		typ:            node.typ
-		generic_params: node.generic_params.clone()
+		payload:        flat.node_payload(node.generic_params().clone())
 	})
 }
 

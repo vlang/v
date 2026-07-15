@@ -655,7 +655,7 @@ fn (mut t Transformer) set_node(idx int, node flat.Node) {
 @[inline]
 fn (mut t Transformer) set_node_generic_params(idx int, gparams []string) {
 	if t.base_write_allowed(idx) {
-		t.a.nodes[idx].generic_params = gparams
+		t.a.nodes[idx].set_generic_params(gparams)
 		return
 	}
 	if t.defer_oor_writes {
@@ -675,7 +675,7 @@ fn (mut t Transformer) flush_deferred_base_writes() {
 			0 { t.a.nodes[w.idx].typ = w.str }
 			1 { t.a.nodes[w.idx].value = w.str }
 			2 { t.a.nodes[w.idx] = w.node }
-			else { t.a.nodes[w.idx].generic_params = w.gparams }
+			else { t.a.nodes[w.idx].set_generic_params(w.gparams) }
 		}
 	}
 	t.deferred_base_writes = []DeferredBaseWrite{}
@@ -869,7 +869,7 @@ fn (mut t Transformer) collect_types() {
 					for i in 0 .. node.children_count {
 						v := t.a.child_node(&node, i)
 						variants << t.normalize_sum_variant_type(v.value, cur_mod,
-							node.generic_params)
+							node.generic_params())
 					}
 					t.sum_types[node.value] = variants
 					for variant in variants {
@@ -896,9 +896,9 @@ fn (mut t Transformer) collect_types() {
 					}
 				}
 				t.enum_types[node.value] = field_names
-				backing_storage_type := if node.generic_params.len > 0
-					&& node.generic_params[0].len > 0 {
-					t.normalize_type_in_module(node.generic_params[0], cur_mod)
+				backing_storage_type := if node.generic_params().len > 0
+					&& node.generic_params()[0].len > 0 {
+					t.normalize_type_in_module(node.generic_params()[0], cur_mod)
 				} else {
 					''
 				}
@@ -1266,7 +1266,7 @@ fn (mut t Transformer) transform_top_level_file(file_idx int, file_node flat.Nod
 		pos:            file_node.pos
 		value:          file_node.value
 		typ:            file_node.typ
-		generic_params: file_node.generic_params
+		payload:        file_node.payload
 	})
 	t.cur_file = old_file
 	t.cur_module = old_module
@@ -1654,12 +1654,12 @@ fn (mut t Transformer) clone_scoped_worker_node(idx int) {
 	if node.typ.len > 0 {
 		node.typ = node.typ.clone()
 	}
-	if node.generic_params.len > 0 {
-		mut params := []string{cap: node.generic_params.len}
-		for param in node.generic_params {
+	if node.generic_params().len > 0 {
+		mut params := []string{cap: node.generic_params().len}
+		for param in node.generic_params() {
 			params << param.clone()
 		}
-		node.generic_params = params
+		node.set_generic_params(params)
 	}
 }
 
@@ -2838,7 +2838,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 		pos:            fn_node.pos
 		value:          fn_node.value
 		typ:            fn_node.typ
-		generic_params: fn_node.generic_params
+		payload:        fn_node.payload
 	})
 	t.smartcast_stack.clear()
 	t.invalidated_smartcasts.clear()

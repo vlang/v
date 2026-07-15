@@ -798,7 +798,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			kind:           .c_fn_decl
 			value:          name
 			typ:            ret_type
-			generic_params: generic_params
+			payload:        flat.node_payload(generic_params)
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
 		})
@@ -852,7 +852,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		kind:           .fn_decl
 		value:          name
 		typ:            ret_type
-		generic_params: generic_params
+		payload:        flat.node_payload(generic_params)
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})
@@ -1064,10 +1064,10 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 			p.next()
 		}
 		return p.add_node(flat.Node{
-			kind:           .struct_decl
-			value:          name
-			typ:            struct_decl_typ(is_union, is_generic, is_params, implements_types)
-			generic_params: generic_params
+			kind:    .struct_decl
+			value:   name
+			typ:     struct_decl_typ(is_union, is_generic, is_params, implements_types)
+			payload: flat.node_payload(generic_params)
 		})
 	}
 	p.check(.lcbr)
@@ -1246,7 +1246,7 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		kind:           .struct_decl
 		value:          name
 		typ:            struct_decl_typ(is_union, is_generic, is_params, implements_types)
-		generic_params: generic_params
+		payload:        flat.node_payload(generic_params)
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
@@ -1493,7 +1493,7 @@ fn (mut p Parser) enum_decl() flat.NodeId {
 			children_count: children_count
 		}
 		if attrs.len > 0 {
-			field.generic_params = attrs
+			field.set_generic_params(attrs)
 		}
 		ids << p.add_node(field)
 		if p.tok == .semicolon {
@@ -1518,10 +1518,10 @@ fn (mut p Parser) enum_decl() flat.NodeId {
 	// `json_as_number` marker records the `@[json_as_number]` enum attribute so the
 	// json fast path can encode members as their numeric value.
 	if p.pending_json_as_number {
-		enum_node.generic_params = [enum_base_type, 'json_as_number']
+		enum_node.set_generic_params([enum_base_type, 'json_as_number'])
 		p.pending_json_as_number = false
 	} else if enum_base_type.len > 0 {
-		enum_node.generic_params = [enum_base_type]
+		enum_node.set_generic_params([enum_base_type])
 	}
 	return p.add_node(enum_node)
 }
@@ -1563,7 +1563,7 @@ fn (mut p Parser) type_decl() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:           .type_decl
 			value:          name
-			generic_params: generic_params
+			payload:        flat.node_payload(generic_params)
 			children_start: start
 			children_count: flat.child_count(variants.len)
 		})
@@ -1573,10 +1573,10 @@ fn (mut p Parser) type_decl() flat.NodeId {
 	}
 	// type alias
 	return p.add_node(flat.Node{
-		kind:           .type_decl
-		value:          name
-		typ:            first_type
-		generic_params: generic_params
+		kind:    .type_decl
+		value:   name
+		typ:     first_type
+		payload: flat.node_payload(generic_params)
 	})
 }
 
@@ -1691,7 +1691,7 @@ fn (mut p Parser) interface_decl() flat.NodeId {
 	return p.add_node(flat.Node{
 		kind:           .interface_decl
 		value:          name
-		generic_params: generic_params
+		payload:        flat.node_payload(generic_params)
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
@@ -1863,7 +1863,7 @@ fn (mut p Parser) apply_field_meta(id flat.NodeId, is_mut bool, is_pub bool, att
 	mut gp := []string{cap: attrs.len + 1}
 	gp << flags
 	gp << attrs
-	p.a.nodes[int(id)].generic_params = gp
+	p.a.nodes[int(id)].set_generic_params(gp)
 }
 
 // attr_unquote strips a single pair of surrounding quotes from an attribute key (unlike

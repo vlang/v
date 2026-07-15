@@ -13,7 +13,7 @@ pub const empty_node = NodeId(-1)
 const empty_node_value = Node{}
 
 // NodeKind lists node kind values used by flat.
-pub enum NodeKind {
+pub enum NodeKind as u8 {
 	empty
 	// expressions
 	int_literal
@@ -100,7 +100,7 @@ pub enum NodeKind {
 }
 
 // Op lists op values used by flat.
-pub enum Op {
+pub enum Op as u8 {
 	none
 	plus
 	minus
@@ -142,12 +142,31 @@ pub enum Op {
 	gated_index
 }
 
+// NodePayload holds the uncommon managed fields used only by declarations and
+// a handful of lowering markers. Keeping it out of Node makes the hot flat
+// header substantially smaller without changing string-facing phase APIs.
+@[heap]
+pub struct NodePayload {
+pub:
+	generic_params []string
+}
+
+// node_payload creates an uncommon node payload, or nil for an empty list.
+pub fn node_payload(generic_params []string) &NodePayload {
+	if generic_params.len == 0 {
+		return &NodePayload(unsafe { nil })
+	}
+	return &NodePayload{
+		generic_params: generic_params
+	}
+}
+
 // Node represents node data used by flat.
 pub struct Node {
 pub mut:
 	value          string
 	typ            string
-	generic_params []string
+	payload        &NodePayload = unsafe { nil }
 	is_mut         bool
 	children_start i32
 pub:
@@ -155,6 +174,21 @@ pub:
 	children_count i32
 	kind           NodeKind
 	op             Op
+}
+
+// generic_params returns this node's uncommon generic/attribute metadata.
+@[inline]
+pub fn (n &Node) generic_params() []string {
+	if isnil(n.payload) {
+		return []string{}
+	}
+	return n.payload.generic_params
+}
+
+// set_generic_params replaces this node's uncommon managed payload.
+@[inline]
+pub fn (mut n Node) set_generic_params(params []string) {
+	n.payload = node_payload(params)
 }
 
 // FlatAst represents flat ast data used by flat.
@@ -246,9 +280,14 @@ pub fn (mut a FlatAst) intern_node_texts_from(start int) {
 		_, typ := a.intern_text(a.nodes[idx].typ)
 		a.nodes[idx].value = value
 		a.nodes[idx].typ = typ
-		for param_idx in 0 .. a.nodes[idx].generic_params.len {
-			_, param := a.intern_text(a.nodes[idx].generic_params[param_idx])
-			a.nodes[idx].generic_params[param_idx] = param
+		params := a.nodes[idx].generic_params()
+		if params.len > 0 {
+			mut canonical_params := []string{cap: params.len}
+			for item in params {
+				_, param := a.intern_text(item)
+				canonical_params << param
+			}
+			a.nodes[idx].set_generic_params(canonical_params)
 		}
 	}
 }
@@ -342,7 +381,7 @@ pub fn (n Node) with_shifted_children(shift i32) Node {
 	return Node{
 		value:          n.value
 		typ:            n.typ
-		generic_params: n.generic_params
+		payload:        n.payload
 		pos:            n.pos
 		children_start: n.children_start + shift
 		children_count: n.children_count
@@ -357,7 +396,7 @@ pub fn (n Node) with_pos(pos token.Pos) Node {
 	return Node{
 		value:          n.value
 		typ:            n.typ
-		generic_params: n.generic_params
+		payload:        n.payload
 		pos:            pos
 		children_start: n.children_start
 		children_count: n.children_count

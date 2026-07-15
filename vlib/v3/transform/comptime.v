@@ -355,7 +355,7 @@ fn (t &Transformer) comptime_local_sum_variants(name string) ?[]string {
 		for i in 0 .. node.children_count {
 			variant := t.a.child_node(&node, i)
 			variants << t.normalize_sum_variant_type(variant.value, module_name,
-				node.generic_params)
+				node.generic_params())
 		}
 		return variants
 	}
@@ -430,7 +430,7 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 			fields << EnumDeclFieldValue{
 				name:    f.value
 				expr_id: expr_id
-				attrs:   f.generic_params.clone()
+				attrs:   f.generic_params().clone()
 			}
 			if int(expr_id) >= 0 {
 				field_exprs[f.value] = expr_id
@@ -1179,11 +1179,11 @@ fn (t &Transformer) struct_field_decl_metas(base_type string) map[string]FieldDe
 			mut is_mut := false
 			mut is_pub := false
 			mut attrs := []string{}
-			if f.generic_params.len > 0 {
-				flags := f.generic_params[0]
+			if f.generic_params().len > 0 {
+				flags := f.generic_params()[0]
 				is_mut = flags.contains('m')
 				is_pub = flags.contains('p')
-				attrs = f.generic_params[1..].clone()
+				attrs = f.generic_params()[1..].clone()
 			}
 			out[f.value] = FieldDeclMeta{
 				is_mut: is_mut

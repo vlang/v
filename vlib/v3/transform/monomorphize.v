@@ -351,7 +351,7 @@ fn (t &Transformer) type_erased_generic_template_candidate_key(candidate string,
 }
 
 fn (mut t Transformer) generic_fn_decl_needs_erasure_scan(node flat.Node, module_name string) bool {
-	if generic_params_have_runtime_type_param(node.generic_params)
+	if generic_params_have_runtime_type_param(node.generic_params())
 		|| t.type_text_has_generic_placeholder(node.typ, module_name)
 		|| t.type_text_has_generic_placeholder(node.value, module_name) {
 		return true
@@ -1417,7 +1417,7 @@ fn (mut t Transformer) collect_generic_materialization_specs(decls map[string]Ge
 					continue
 				}
 				field_type := substitute_generic_type_text_with_params(field.typ, args,
-					decl.node.generic_params)
+					decl.node.generic_params())
 				t.collect_generic_struct_spec_from_type(field_type, decl.module, decl.file, decls, mut
 					specs)
 				t.collect_generic_sum_spec_from_type(field_type, decl.module, decl.file, sum_decls, mut
@@ -1434,7 +1434,7 @@ fn (mut t Transformer) collect_generic_materialization_specs(decls map[string]Ge
 			for i in 0 .. decl.node.children_count {
 				variant := t.a.child_node(&decl.node, i)
 				variant_type := substitute_generic_type_text_with_params(variant.value, args,
-					decl.node.generic_params)
+					decl.node.generic_params())
 				t.collect_generic_struct_spec_from_type(variant_type, decl.module, decl.file,
 					decls, mut specs)
 				t.collect_generic_sum_spec_from_type(variant_type, decl.module, decl.file,
@@ -1462,7 +1462,7 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 				cur_module = node.value
 			}
 			.struct_decl {
-				if node.generic_params.len == 0 && 'generic' !in node.typ.split(',') {
+				if node.generic_params().len == 0 && 'generic' !in node.typ.split(',') {
 					continue
 				}
 				module_name := t.node_module_or(i, cur_module)
@@ -1503,7 +1503,7 @@ fn (mut t Transformer) collect_generic_sum_decls() map[string]GenericSumDecl {
 				cur_module = node.value
 			}
 			.type_decl {
-				if node.generic_params.len == 0 || node.children_count == 0 {
+				if node.generic_params().len == 0 || node.children_count == 0 {
 					continue
 				}
 				module_name := t.node_module_map_cache[i] or { cur_module }
@@ -1883,7 +1883,7 @@ fn (mut t Transformer) materialize_generic_sum_spec(spec_name string, decl Gener
 	for i in 0 .. decl.node.children_count {
 		variant := t.a.child_node(&decl.node, i)
 		variant_type := substitute_generic_type_text_with_params(variant.value, scoped_args,
-			decl.node.generic_params)
+			decl.node.generic_params())
 		parsed := t.tc.parse_type(variant_type)
 		variants << if parsed is types.Unknown { variant_type } else { parsed.name() }
 	}
@@ -1920,7 +1920,7 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_name string, decl Ge
 			continue
 		}
 		field_type := substitute_generic_type_text_with_params(field.typ, args,
-			decl.node.generic_params)
+			decl.node.generic_params())
 		fields << types.StructField{
 			name: field.value
 			typ:  t.tc.parse_type(field_type)
@@ -5871,7 +5871,7 @@ fn substitute_generic_node_value(node flat.Node, args []string) string {
 }
 
 fn (mut t Transformer) fn_decl_has_unresolved_generics(node flat.Node, module_name string) bool {
-	if generic_params_have_runtime_type_param(node.generic_params) {
+	if generic_params_have_runtime_type_param(node.generic_params()) {
 		return true
 	}
 	if t.skip_generics {
@@ -6061,7 +6061,7 @@ fn (mut t Transformer) generic_decl_has_method_level_params(decl GenericFnDecl) 
 
 fn (mut t Transformer) generic_fn_param_names(node flat.Node, module_name string) []string {
 	mut names := []string{}
-	for param in node.generic_params {
+	for param in node.generic_params() {
 		if param !in names {
 			names << param
 		}

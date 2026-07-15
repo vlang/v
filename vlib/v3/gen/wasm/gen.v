@@ -239,7 +239,7 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 				if i < g.a.user_code_start {
 					continue
 				}
-				if node.generic_params.len > 0 || node.value == '' {
+				if node.generic_params().len > 0 || node.value == '' {
 					continue
 				}
 				// Prefer the import path (distinguishes same-leaf modules); fall

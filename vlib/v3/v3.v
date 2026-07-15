@@ -697,7 +697,7 @@ fn clone_flat_node(node flat.Node) flat.Node {
 	return flat.Node{
 		value:          node.value.clone()
 		typ:            node.typ.clone()
-		generic_params: clone_string_list(node.generic_params)
+		payload:        flat.node_payload(clone_string_list(node.generic_params()))
 		pos:            node.pos
 		children_start: node.children_start
 		children_count: node.children_count
@@ -758,7 +758,7 @@ fn promote_flat_ast_after_scoped_transform(ast &flat.FlatAst, scope voidptr) &fl
 			if string_is_in_prealloc_scope(node.typ, scope) {
 				node.typ = node.typ.clone()
 			}
-			node.generic_params = promote_string_list_from_scope(node.generic_params, scope)
+			node.set_generic_params(promote_string_list_from_scope(node.generic_params(), scope))
 		}
 	}
 	promoted.disabled_fns = clone_string_bool_map(promoted.disabled_fns)
@@ -2021,7 +2021,7 @@ fn test_file_module_name(a &flat.FlatAst, file_node flat.Node) string {
 }
 
 fn is_supported_test_harness_fn(a &flat.FlatAst, tc &types.TypeChecker, node &flat.Node) bool {
-	if node.generic_params.len > 0 {
+	if node.generic_params().len > 0 {
 		return false
 	}
 	if test_harness_fn_param_count(a, node) != 0 {
@@ -2031,7 +2031,7 @@ fn is_supported_test_harness_fn(a &flat.FlatAst, tc &types.TypeChecker, node &fl
 }
 
 fn is_supported_test_harness_hook(a &flat.FlatAst, tc &types.TypeChecker, node &flat.Node) bool {
-	if node.generic_params.len > 0 {
+	if node.generic_params().len > 0 {
 		return false
 	}
 	return test_harness_fn_param_count(a, node) == 0 && tc.parse_type(node.typ) is types.Void
