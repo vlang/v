@@ -5413,11 +5413,10 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 	}
 
 	if drop_stmts.len > 0 {
-		needs_unique_shrink := t.make_method_call(array_value, 'needs_unique_shrink',
-			[]flat.NodeId{})
-		t.set_node_typ(int(needs_unique_shrink), 'bool')
-		t.mark_fn_used('array.needs_unique_shrink')
-		mut should_drop := t.make_prefix(.not, needs_unique_shrink)
+		is_slice_view := t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
+		t.set_node_typ(int(is_slice_view), 'bool')
+		t.mark_fn_used('array.is_slice_view')
+		mut should_drop := t.make_prefix(.not, is_slice_view)
 		if int(valid_drop_range) >= 0 {
 			should_drop = t.make_infix(.logical_and, valid_drop_range, should_drop)
 		}
