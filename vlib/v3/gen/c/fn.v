@@ -1089,7 +1089,10 @@ fn (g &FlatGen) concrete_generic_method_name_from_call_receiver(node flat.Node, 
 	if !method_name.contains('.') || node.children_count == 0 {
 		return none
 	}
-	fn_node := g.a.child_node(&node, 0)
+	mut fn_node := g.a.child_node(&node, 0)
+	if fn_node.kind == .index && fn_node.children_count > 0 {
+		fn_node = g.a.child_node(fn_node, 0)
+	}
 	if fn_node.kind != .selector || fn_node.children_count == 0 {
 		return none
 	}
@@ -1114,6 +1117,34 @@ fn (g &FlatGen) concrete_generic_method_name_from_call_receiver(node flat.Node, 
 		return g.method_name_by_receiver_param_type(receiver_type, method)
 	}
 	return none
+}
+
+fn (g &FlatGen) is_explicit_generic_method_call_selector(fn_node &flat.Node, resolved_target_name string, target_name string) bool {
+	if fn_node.kind != .index || fn_node.children_count < 2 {
+		return false
+	}
+	selector := g.a.child_node(fn_node, 0)
+	if selector.kind != .selector || selector.children_count == 0 {
+		return false
+	}
+	for i in 1 .. fn_node.children_count {
+		arg := g.a.child_node(fn_node, i)
+		if arg.kind in [.ident, .selector] {
+			continue
+		}
+		if arg.kind == .index && arg.value != 'range' {
+			continue
+		}
+		return false
+	}
+	if resolved_target_name.contains('.') || target_name.contains('.') {
+		return true
+	}
+	receiver_type := types.unwrap_pointer(g.usable_expr_type(g.a.child(selector, 0)))
+	if g.resolve_method_name(receiver_type.name(), selector.value).len > 0 {
+		return true
+	}
+	return false
 }
 
 fn (g &FlatGen) method_name_by_receiver_param_type(receiver_type types.Type, method string) ?string {
@@ -1478,6 +1509,10 @@ fn (g &FlatGen) resolve_concrete_generic_method_name(type_name string, method st
 		for candidate in candidates {
 			if candidate in g.tc.fn_param_types || candidate in g.tc.fn_ret_types {
 				return candidate
+			}
+			lowered := g.cname(candidate)
+			if lowered in g.tc.fn_param_types || lowered in g.tc.fn_ret_types {
+				return lowered
 			}
 		}
 	}
@@ -3471,7 +3506,7 @@ fn (g &FlatGen) main_runtime_shadow_call_c_name(node flat.Node, fn_node flat.Nod
 
 // gen_call emits call output for c.
 fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
-	fn_node := g.a.child_node(&node, 0)
+	mut fn_node := g.a.child_node(&node, 0)
 	target_name := g.call_target_name(g.a.child(&node, 0))
 	fn_name := if fn_node.kind == .selector && fn_node.value in ['error', 'error_with_code'] {
 		target_name
@@ -3745,6 +3780,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			mut method_name := ''
 			mut base_id := flat.NodeId(0)
 			mut emitted_callee_name := ''
+			if g.is_explicit_generic_method_call_selector(fn_node, resolved_target_name,
+				target_name)
+			{
+				fn_node = g.a.child_node(fn_node, 0)
+			}
 			if fn_node.kind == .selector {
 				base := g.a.child_node(fn_node, 0)
 				base_is_local := if base.kind == .ident {

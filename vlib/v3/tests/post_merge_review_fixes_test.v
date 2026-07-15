@@ -3490,6 +3490,12 @@ fn main() {
 }
 ")
 	assert overload_out == '7\n12\n1\n5'
+	generic_index_out := run_good(v3_bin, 'review_generic_index_overload_specializes',
+		'struct Box[T] {\nmut:\n\tvalues []T\n}\n\nfn (b Box[T]) [] (i int) T {\n\treturn b.values[i]\n}\n\nfn (mut b Box[T]) []= (i int, value T) {\n\tb.values[i] = value\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tvalues: [1, 2]\n\t}\n\tprintln(b[1].str())\n\tb[1] = 9\n\tprintln(b[1].str())\n}\n')
+	assert generic_index_out == '2\n9'
+	explicit_method_out := run_good(v3_bin, 'review_explicit_generic_method_callee',
+		'struct Runner {}\n\nfn (r Runner) type_name[T]() string {\n\t_ = r\n\treturn typeof[T]().name\n}\n\nfn main() {\n\tr := Runner{}\n\tprintln(r.type_name[int]())\n}\n')
+	assert explicit_method_out == 'int'
 	str_out := run_good(v3_bin, 'review_pointer_fields_implicit_str', "interface Printable {
 	str() string
 }

@@ -907,7 +907,7 @@ fn (mut g FlatGen) gen_index_operator_get_call(node flat.Node) bool {
 	if info.params.len < 2 {
 		return false
 	}
-	g.write(g.cname(info.name))
+	g.write(g.cname(g.index_operator_call_name(info, base_type, '[]')))
 	g.write('(')
 	g.gen_index_operator_receiver_arg(base_id, base_type, info.params[0])
 	g.write(', ')
@@ -940,7 +940,7 @@ fn (mut g FlatGen) gen_index_operator_assign(node flat.Node, lhs flat.Node, base
 fn (mut g FlatGen) gen_index_operator_set_call(lhs flat.Node, setter types.CallInfo, base_type types.Type, value_id flat.NodeId) {
 	base_id := g.a.child(&lhs, 0)
 	index_id := g.a.child(&lhs, 1)
-	g.write(g.cname(setter.name))
+	g.write(g.cname(g.index_operator_call_name(setter, base_type, '[]=')))
 	g.write('(')
 	g.gen_index_operator_receiver_arg(base_id, base_type, setter.params[0])
 	g.write(', ')
@@ -965,7 +965,7 @@ fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.N
 	g.write('; ${g.value_c_type(index_storage)} ${index_tmp} = ')
 	g.gen_expr_with_expected_type(index_id, index_storage)
 	g.write('; ')
-	g.write(g.cname(setter.name))
+	g.write(g.cname(g.index_operator_call_name(setter, base_type, '[]=')))
 	g.write('(')
 	g.gen_index_operator_receiver_tmp_arg(recv_tmp, recv_storage, setter.params[0])
 	g.write(', ${index_tmp}, ')
@@ -992,7 +992,7 @@ fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.N
 }
 
 fn (mut g FlatGen) gen_index_operator_get_call_from_temps(getter types.CallInfo, recv_tmp string, recv_storage types.Type, index_tmp string, index_storage types.Type) {
-	g.write(g.cname(getter.name))
+	g.write(g.cname(g.index_operator_call_name(getter, recv_storage, '[]')))
 	g.write('(')
 	g.gen_index_operator_receiver_tmp_arg(recv_tmp, recv_storage, getter.params[0])
 	g.write(', ')
@@ -1001,6 +1001,25 @@ fn (mut g FlatGen) gen_index_operator_get_call_from_temps(getter types.CallInfo,
 	}
 	g.write(index_tmp)
 	g.write(')')
+}
+
+fn (g &FlatGen) index_operator_call_name(info types.CallInfo, base_type types.Type, method string) string {
+	if !info.name.contains('[') {
+		return info.name
+	}
+	receiver_type := types.unwrap_pointer(base_type)
+	receiver_name := receiver_type.name()
+	if receiver_name.len == 0 {
+		return info.name
+	}
+	if resolved := g.resolve_concrete_generic_method_name(receiver_name, method) {
+		return resolved
+	}
+	resolved := g.resolve_method_name(receiver_name, method)
+	if resolved.len > 0 {
+		return resolved
+	}
+	return info.name
 }
 
 fn (g &FlatGen) index_operator_receiver_storage_type(base_type types.Type, expected types.Type) types.Type {

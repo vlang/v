@@ -133,6 +133,20 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					emitted[spec_key] = true
 					changed = true
 				}
+				.index {
+					t.record_index_operator_fn_name(node, '[]')
+				}
+				.index_assign {
+					if node.children_count > 0 {
+						lhs := t.a.child_node(&node, 0)
+						if lhs.kind == .index {
+							t.record_index_operator_fn_name(lhs, '[]=')
+							if node.op != .assign {
+								t.record_index_operator_fn_name(lhs, '[]')
+							}
+						}
+					}
+				}
 				else {}
 			}
 		}
@@ -374,7 +388,7 @@ fn building_v_type_erased_generic_keep_root(key string) bool {
 // is_operator_method_name reports whether a method-name part is an overloaded
 // operator symbol (`+`, `-`, `*`, `/`, `%`, `==`, `<`, `>`, `<=`, `>=`).
 fn is_operator_method_name(name string) bool {
-	return name in ['+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=']
+	return name in ['+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=', '[]', '[]=']
 }
 
 // record_called_fn_name records the callee name of a direct call so operator overloads
@@ -388,6 +402,22 @@ fn (mut t Transformer) record_called_fn_name(node flat.Node) {
 	fn_node := t.a.child_node(&node, 0)
 	if fn_node.kind == .ident && fn_node.value.len > 0 {
 		t.used_struct_operator_fns[fn_node.value] = true
+	}
+}
+
+fn (mut t Transformer) record_index_operator_fn_name(node flat.Node, method string) {
+	if node.kind != .index || node.value == 'range' || node.children_count < 2 {
+		return
+	}
+	base_id := t.a.child(&node, 0)
+	base_type := t.node_type(base_id)
+	struct_type := t.generic_struct_instance_name(base_type)
+	if struct_type.len == 0 {
+		return
+	}
+	if name := t.generic_struct_operator_fn_name(struct_type, method) {
+		t.used_struct_operator_fns[name] = true
+		t.used_struct_operator_fns[c_name('${struct_type}.${method}')] = true
 	}
 }
 
