@@ -251,6 +251,20 @@ mut:
 	found bool
 }
 
+// assign_declares_name reports whether a `:=` declaration introduces `name` on its
+// left-hand side (e.g. `name := ...` or `a, name := ...`).
+fn assign_declares_name(assign ast.AssignStmt, name string) bool {
+	if assign.op != .decl_assign {
+		return false
+	}
+	for lx in assign.left {
+		if lx is ast.Ident && lx.name == name {
+			return true
+		}
+	}
+	return false
+}
+
 fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 	mut s := unsafe { &JsonUnmigratableScan(data) }
 	if s.found {
@@ -273,8 +287,10 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		// payloads, so as a conservative proxy any struct declared in the file with
 		// such a field leaves the file unmigrated. Only file-local structs are visible.
 		for field in decl.fields {
+			// final_sym follows alias chains, so a local `type MyTime = time.Time`
+			// field is still recognised as a time field.
 			if field.attrs.any(it.name == 'raw')
-				|| (field.typ != 0 && s.table.sym(field.typ).name.contains('time.Time')) {
+				|| (field.typ != 0 && s.table.final_sym(field.typ).name.contains('time.Time')) {
 				s.found = true
 				break
 			}
@@ -313,14 +329,17 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		}
 	} else if node is ast.Stmt && node is ast.AssignStmt {
 		// A local declaration `json2 := ...` shadows the qualifier too.
-		assign := node as ast.AssignStmt
-		if assign.op == .decl_assign {
-			for lx in assign.left {
-				if lx is ast.Ident && lx.name == s.json2_prefix {
-					s.found = true
-					break
-				}
-			}
+		if assign_declares_name(node as ast.AssignStmt, s.json2_prefix) {
+			s.found = true
+		}
+	} else if node is ast.Stmt && node is ast.ForCStmt {
+		// A C-style for initializer `for json2 := 0; ...` declares the loop variable,
+		// but the walker does not descend into ForCStmt.init (children() yields only
+		// the body stmts), so check the initializer here.
+		forc := node as ast.ForCStmt
+		init := forc.init
+		if init is ast.AssignStmt && assign_declares_name(init, s.json2_prefix) {
+			s.found = true
 		}
 	} else if node is ast.Stmt && node is ast.ForInStmt {
 		fin := node as ast.ForInStmt
