@@ -86,6 +86,16 @@ fn cast_expr_values(a &flat.FlatAst) []string {
 	return values
 }
 
+fn selector_values(a &flat.FlatAst) []string {
+	mut values := []string{}
+	for node in a.nodes {
+		if node.kind == .selector {
+			values << node.value
+		}
+	}
+	return values
+}
+
 fn has_addressed_index_base(a &flat.FlatAst, base_name string) bool {
 	for node in a.nodes {
 		if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
@@ -148,6 +158,19 @@ fn test_address_of_capitalized_index_keeps_postfix_on_operand() {
 	a := parse_parser_regression_source('address_capitalized_index_operand',
 		'const Foo = [1, 2]\n\nfn main() {\n\tp := &Foo[0]\n\t_ = p\n}\n')
 	assert has_addressed_index_base(a, 'Foo')
+}
+
+fn test_isreftype_qualified_type_names_parse_as_types() {
+	a := parse_parser_regression_source('isreftype_qualified_type_names',
+		'module main\n\nfn main() {\n\t_ = isreftype(foo.Bar)\n\t_ = isreftype(&foo.Bar)\n}\n')
+	assert 'Bar' !in selector_values(a)
+	mut false_literals := 0
+	for node in a.nodes {
+		if node.kind == .bool_literal && node.value == 'false' {
+			false_literals++
+		}
+	}
+	assert false_literals == 2
 }
 
 fn test_c_pointer_cast_selector_parses_cast_before_selector() {
