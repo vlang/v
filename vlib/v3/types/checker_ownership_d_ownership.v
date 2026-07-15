@@ -5819,6 +5819,35 @@ fn (mut tc TypeChecker) ownership_bind_for_in_vars(key_id flat.NodeId, val_id fl
 		clones_storage_binding)
 }
 
+fn (mut tc TypeChecker) ownership_bind_mut_for_in_var(key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, has_val bool) {
+	if tc.ownership_effects_disabled() {
+		return
+	}
+	target_id := if has_val { val_id } else { key_id }
+	target_name := tc.ownership_lhs_name(target_id)
+	if target_name.len == 0 || target_name == '_'
+		|| !tc.ownership_type_requires_destruction(tc.resolve_type(target_id)) {
+		return
+	}
+	tc.ownership_note_decl(target_name)
+	tc.ownership_release_borrower(target_name)
+	tc.ownership_clear_descendant_state(target_name)
+	{
+		mut st := tc.ownership_state()
+		st.owned_vars.delete(target_name)
+		st.owned_var_types.delete(target_name)
+		st.moved_vars.delete(target_name)
+		st.ownership_fn_value_vars.delete(target_name)
+	}
+	container_name := tc.ownership_expr_ident_name(container_id)
+	source_name := if container_name.len > 0 {
+		'${container_name}[*]'
+	} else {
+		'${tc.ownership_state().cur_fn}__for_in_source_${int(container_id)}[*]'
+	}
+	tc.ownership_add_borrow(source_name, target_name, target_id, true)
+}
+
 fn (mut tc TypeChecker) ownership_bind_for_in_var_from_storage(target_name string, source_name string, target_id flat.NodeId, clones_storage_binding bool) bool {
 	if target_name.len == 0 || target_name == '_' {
 		return false
@@ -6327,6 +6356,9 @@ fn (mut tc TypeChecker) ownership_commit_multi_assign_temp(temp_name string, lhs
 	if temp_name.len == 0 || lhs_name.len == 0 {
 		return
 	}
+	if _ := tc.ownership_borrowed_alias_source(lhs_name) {
+		return
+	}
 	tc.ownership_release_borrower(lhs_name)
 	mut st := tc.ownership_state()
 	st.moved_vars.delete(lhs_name)
@@ -6366,6 +6398,10 @@ fn (mut tc TypeChecker) ownership_commit_multi_assign_temp(temp_name string, lhs
 }
 
 fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.NodeId, lhs_type Type, assign_id flat.NodeId) {
+	if source := tc.ownership_borrowed_alias_source(lhs_name) {
+		tc.ownership_consume_expr(rhs_id, source, assign_id)
+		return
+	}
 	tc.ownership_release_borrower(lhs_name)
 	mut st := tc.ownership_state()
 	st.moved_vars.delete(lhs_name)
@@ -10450,12 +10486,39 @@ fn (mut tc TypeChecker) ownership_release_borrower(borrower string) {
 }
 
 fn (mut tc TypeChecker) ownership_reject_global_move(name string, pos flat.NodeId, target string, is_call bool) {
+	if source := tc.ownership_borrowed_alias_source(name) {
+		action := if is_call { 'move into function' } else { 'move to' }
+		tc.record_error(.assignment_mismatch,
+			'cannot move `${name}` because it mutably borrows `${source}`; attempted ${action} `${target}`',
+			pos)
+	}
 	if tname := tc.ownership_owned_global_type_name(name) {
 		action := if is_call { 'move into function' } else { 'move to' }
 		tc.record_error(.assignment_mismatch,
 			'cannot move owned global `${name}` of type `${tname}`; attempted ${action} `${target}`',
 			pos)
 	}
+}
+
+fn (mut tc TypeChecker) ownership_borrowed_alias_source(name string) ?string {
+	if name.len == 0 {
+		return none
+	}
+	st := tc.ownership_state()
+	for source, borrows in st.borrowed_vars {
+		for borrow in borrows {
+			if !borrow.is_mut {
+				continue
+			}
+			if borrow.borrower == name {
+				return source
+			}
+			if ownership_storage_key_is_descendant(name, borrow.borrower) {
+				return source + name[borrow.borrower.len..]
+			}
+		}
+	}
+	return none
 }
 
 fn (mut tc TypeChecker) ownership_owned_global_type_name(name string) ?string {

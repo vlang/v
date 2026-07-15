@@ -7881,6 +7881,8 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.ownership_begin_loop_branch_group()
 		if node.op != .amp {
 			tc.ownership_bind_for_in_vars(key_id, val_id, container_id, has_val)
+		} else {
+			tc.ownership_bind_mut_for_in_var(key_id, val_id, container_id, has_val)
 		}
 	}
 	for i in header .. node.children_count {
