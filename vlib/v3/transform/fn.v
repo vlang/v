@@ -2312,6 +2312,10 @@ fn (mut t Transformer) make_array_literal_typed(values []flat.NodeId, typ string
 
 // stringify_expr supports stringify expr handling for Transformer.
 fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
+	// Transforming a pointer expression can normalize `&Alias` to `&Base`. Keep the
+	// checker's source-level alias here so auto-str can still add `Alias(...)` while
+	// reading the pointee through the base representation.
+	raw_alias_type := t.raw_alias_type_for_expr(expr_id)
 	expr := t.transform_expr(expr_id)
 	mut typ := t.node_type(expr)
 	if typ.len == 0 {
@@ -2326,6 +2330,9 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 		if typ.len == 0 {
 			typ = t.reliable_stringify_type(expr_id)
 		}
+	}
+	if raw_alias_type.len > 0 {
+		typ = raw_alias_type
 	}
 	return t.wrap_string_conversion(expr, typ)
 }
