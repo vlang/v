@@ -1078,7 +1078,7 @@ fn main() {
 		}
 		cache_input_modules['main'] = true
 		external_inputs, has_untracked_c_include := cgen.cache_external_input_files(a, prefs.vroot,
-			cache_input_modules)
+			cache_input_modules, prefs.target)
 		cache_state.module_external_inputs = external_inputs.clone()
 		if has_untracked_c_include
 			|| cache_external_inputs_have_static_storage(cache_state.module_external_inputs) {

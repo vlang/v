@@ -85,6 +85,37 @@ fn test_split_forced_include_flags_are_cache_inputs() {
 	assert cache_c_flag_input_files(flags) == expected
 }
 
+fn test_cache_input_scan_uses_requested_target_flags() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_target_cache_inputs_${os.getpid()}')
+	include_dir := os.join_path(dir, 'target_include')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(include_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header := os.join_path(include_dir, 'target.h')
+	os.write_file(header, '#define TARGET_VALUE 1\n') or { panic(err) }
+	host_arch := pref.host_target().arch
+	target_arch := if host_arch == 'arm64' { 'amd64' } else { 'arm64' }
+	target := pref.target_from('linux', target_arch) or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample
+#flag ${target_arch} -I target_include
+#include "target.h"
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = target
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, target)
+	assert !has_untracked
+	assert inputs['sample'] == [os.real_path(header)]
+}
+
 fn test_termux_comptime_branch_uses_canonical_target() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_termux_comptime_${os.getpid()}')
 	os.rmdir_all(dir) or {}

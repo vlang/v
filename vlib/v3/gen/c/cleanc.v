@@ -537,7 +537,7 @@ pub fn (mut g FlatGen) set_cache_program_files(files []string) {
 // module whose cached object incorporates their contents. Forced-include inputs
 // affect every object and are kept in a configuration-wide group. The second
 // result reports include forms whose dependencies cannot be resolved statically.
-pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool) (map[string][]string, bool) {
+pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool, target pref.Target) (map[string][]string, bool) {
 	mut c_flags := []string{}
 	mut cur_file := ''
 	for node in a.nodes {
@@ -548,7 +548,7 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 		if node.kind != .directive || node.value != 'flag' || node.typ.len == 0 {
 			continue
 		}
-		for flag in c_flag_args(node.typ, vroot, cur_file, pref.host_target()) {
+		for flag in c_flag_args(node.typ, vroot, cur_file, target) {
 			if flag.len > 0 && flag !in c_flags {
 				c_flags << flag
 			}
@@ -580,7 +580,7 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 			continue
 		}
 		if node.kind == .directive && node.value in ['include', 'insert'] && node.typ.len > 0 {
-			include_arg := c_include_arg(node.typ, vroot, cur_file)
+			include_arg := c_include_arg_for_target(node.typ, vroot, cur_file, target)
 			if !c_include_arg_is_literal(include_arg) {
 				has_untracked_include = true
 				continue
