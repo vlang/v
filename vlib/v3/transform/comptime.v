@@ -1396,6 +1396,8 @@ fn (t &Transformer) subst_method_cond(cond string, var_name string, method Metho
 	result = comptime_cond_replace_unquoted(result, '${var_name}.params.len',
 		method.params.len.str())
 	method_type := t.comptime_method_type_text(method)
+	result = comptime_cond_replace_unquoted(result, '${var_name}.location',
+		comptime_cond_string_literal(method.location))
 	result = comptime_cond_replace_unquoted(result, '${var_name}.return_type', t.comptime_field_type_id_key(method.return_type,
 		method.module_name))
 	result = comptime_cond_replace_unquoted(result, '${var_name}.typ', method_type)

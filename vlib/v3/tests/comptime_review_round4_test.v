@@ -1771,15 +1771,35 @@ fn (item Located) run() {
 fn main() {
 	mut items := []FunctionData{}
 	mut locations := []string{}
+	mut guarded := []string{}
 	$for method in Located.methods {
 		locations << method.location
 		items << method
+		$if method.location != "" {
+			guarded << method.name
+		}
 	}
 	println(locations[0].ends_with(":3:18"))
 	println(items[0].location == locations[0])
+	println(guarded.join("|"))
 }
 ')
-	assert out == 'true\ntrue'
+	assert out == 'true\ntrue\nrun'
+	round4_run_bad(v3_bin, 'method_metadata_location_selected_guard', 'struct Located {}
+
+fn (item Located) run() {
+	_ = item
+}
+
+fn main() {
+	$for method in Located.methods {
+		$if method.location != "" {
+			missing_selected_method_location_fn()
+		}
+	}
+}
+',
+		'unknown function `missing_selected_method_location_fn`')
 }
 
 fn test_field_type_membership_uses_the_selected_receiver_type() {
@@ -2169,6 +2189,28 @@ fn test_comptime_line_pseudo_values_use_their_token_positions() {
 	match_file_lines << '}'
 	match_file_out := round4_run_good(v3_bin, match_file_name, match_file_lines.join('\n') + '\n')
 	assert match_file_out == 'match-file-line'
+}
+
+fn test_attribute_line_pseudo_values_use_their_token_positions() {
+	v3_bin := round4_build_v3()
+	name := 'attribute_line_pseudo_token_positions'
+	src_path := '${round4_tmp_path(name)}.v'
+	real_src_path := os.join_path(os.real_path(os.dir(src_path)), os.file_name(src_path))
+	mut lines := []string{}
+	line := lines.len + 1
+	lines << "@[if @LINE == '${line}'"
+	lines << ']'
+	lines << "const selected_line = 'line'"
+	file_line := lines.len + 1
+	lines << "@[if @FILE_LINE == '${real_src_path}:${file_line}'"
+	lines << ']'
+	lines << "const selected_file_line = 'file-line'"
+	lines << ''
+	lines << 'fn main() {'
+	lines << "\tprintln(selected_line + '|' + selected_file_line)"
+	lines << '}'
+	out := round4_run_good(v3_bin, name, lines.join('\n') + '\n')
+	assert out == 'line|file-line'
 }
 
 fn test_comptime_define_builtin_is_not_resolved_as_cached_local() {
@@ -3217,6 +3259,21 @@ fn main() {
 }
 ',
 		'unknown function `missing_selected_method_fn`')
+	round4_run_bad(v3_bin, 'method_loop_selected_missing_param_branch_error', 'struct App {}
+
+fn (app App) run() {
+	_ = app
+}
+
+fn main() {
+	$for method in App.methods {
+		$if method.args[1].name == "" {
+			missing_selected_method_param_slot_fn()
+		}
+	}
+}
+',
+		'unknown function `missing_selected_method_param_slot_fn`')
 	round4_run_bad(v3_bin, 'param_loop_selected_branch_error', 'fn consume(value int) {
 	_ = value
 }

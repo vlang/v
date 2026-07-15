@@ -1,5 +1,6 @@
 module types
 
+import os
 import strings
 import v3.flat
 import v3.gen.c.naming
@@ -5194,6 +5195,7 @@ struct ComptimeStaticFieldCases {
 
 struct ComptimeStaticValueCase {
 	name          string
+	location      string
 	value         int
 	has_value     bool
 	typ           string
@@ -5343,12 +5345,15 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 	}
 	wanted_receiver := struct_name.all_after_last('.').all_before('[')
 	mut module_name := ''
+	mut file_name := ''
 	mut cases := []ComptimeStaticValueCase{}
 	mut seen := map[string]bool{}
+	mut line_offsets_by_file := map[string][]int{}
 	for idx in tc.top_level_idx {
 		candidate := tc.a.nodes[idx]
 		if candidate.kind == .file {
 			module_name = 'main'
+			file_name = candidate.value
 			continue
 		}
 		if candidate.kind == .module_decl {
@@ -5364,6 +5369,9 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 			name := candidate.value.all_after_last('.')
 			if name.len > 0 && name !in seen {
 				seen[name] = true
+				if file_name !in line_offsets_by_file {
+					line_offsets_by_file[file_name] = comptime_static_source_line_offsets(file_name)
+				}
 				mut param_names := []string{}
 				mut param_types := []string{}
 				for i in 1 .. candidate.children_count {
@@ -5380,6 +5388,8 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 				}, generic_args, generic_params)
 				cases << ComptimeStaticValueCase{
 					name:        name
+					location:    comptime_static_source_location(file_name, candidate.pos.offset,
+						line_offsets_by_file[file_name])
 					typ:         comptime_static_method_type_text(param_types, return_type)
 					return_type: return_type
 					is_pub:      candidate.op == .arrow
@@ -5495,6 +5505,37 @@ fn (tc &TypeChecker) comptime_static_attribute_cases(source string) ComptimeStat
 fn comptime_static_method_type_text(param_types []string, return_type string) string {
 	ret := if return_type.len > 0 && return_type != 'void' { ' ${return_type}' } else { '' }
 	return 'fn(${param_types.join(', ')})${ret}'
+}
+
+fn comptime_static_source_line_offsets(path string) []int {
+	source := os.read_file(path) or { return []int{} }
+	mut offsets := []int{cap: source.len / 40 + 1}
+	offsets << 0
+	for i, ch in source {
+		if ch == `\n` {
+			offsets << i + 1
+		}
+	}
+	return offsets
+}
+
+fn comptime_static_source_location(path string, encoded_offset int, line_offsets []int) string {
+	if path.len == 0 || encoded_offset <= 0 || line_offsets.len == 0 {
+		return ''
+	}
+	offset := encoded_offset - 1
+	mut lo := 0
+	mut hi := line_offsets.len
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if line_offsets[mid] <= offset {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	line_index := if lo > 0 { lo - 1 } else { 0 }
+	return '${path}:${line_index + 1}:${offset - line_offsets[line_index]}'
 }
 
 fn comptime_static_attribute_case(raw string, kind int) ComptimeStaticValueCase {
@@ -5762,23 +5803,13 @@ fn comptime_static_subst_deferred_cond(cond string, var_name string, loop_kind s
 	mut result := comptime_static_replace_unquoted(cond, '${var_name}.name',
 		comptime_static_string_literal(item.name))
 	if loop_kind == 'methods' {
-		for idx, param_name in item.param_names {
-			result = comptime_static_replace_unquoted(result, '${var_name}.args[${idx}].name',
-				comptime_static_string_literal(param_name))
-			result = comptime_static_replace_unquoted(result, '${var_name}.params[${idx}].name',
-				comptime_static_string_literal(param_name))
-			if idx < item.param_types.len {
-				param_type := comptime_static_deferred_type(item.param_types[idx])
-				result = comptime_static_replace_unquoted(result, '${var_name}.args[${idx}].typ',
-					param_type)
-				result = comptime_static_replace_unquoted(result, '${var_name}.params[${idx}].typ',
-					param_type)
-			}
-		}
+		result = comptime_static_subst_method_param_cond(result, var_name, item)
 		result = comptime_static_replace_unquoted(result, '${var_name}.args.len',
 			item.param_names.len.str())
 		result = comptime_static_replace_unquoted(result, '${var_name}.params.len',
 			item.param_names.len.str())
+		result = comptime_static_replace_unquoted(result, '${var_name}.location',
+			comptime_static_string_literal(item.location))
 		result = comptime_static_replace_unquoted(result, '${var_name}.return_type',
 			comptime_static_deferred_type(item.return_type))
 		result = comptime_static_replace_unquoted(result, '${var_name}.typ', item.typ)
@@ -5797,6 +5828,68 @@ fn comptime_static_subst_deferred_cond(cond string, var_name string, loop_kind s
 		result = comptime_static_replace_unquoted(result, '${var_name}.kind ==.', '${kind} == .')
 		result = comptime_static_replace_unquoted(result, '${var_name}.kind !=.', '${kind} != .')
 		result = comptime_static_replace_unquoted(result, '${var_name}.kind', kind)
+	}
+	return result
+}
+
+fn comptime_static_subst_method_param_cond(cond string, var_name string, item ComptimeStaticValueCase) string {
+	mut result := cond
+	for collection in ['args', 'params'] {
+		prefix := '${var_name}.${collection}['
+		mut offset := 0
+		for offset < result.len {
+			if result[offset] == `'` || result[offset] == `"` {
+				offset = comptime_cond_skip_string(result, offset)
+				continue
+			}
+			if !result[offset..].starts_with(prefix)
+				|| (offset > 0 && comptime_cond_name_char(result[offset - 1])) {
+				offset++
+				continue
+			}
+			start := offset
+			index_start := start + prefix.len
+			rel_end := result[index_start..].index_u8(`]`)
+			if rel_end < 0 {
+				break
+			}
+			index_end := index_start + rel_end
+			member_start := index_end + 1
+			member := if result[member_start..].starts_with('.typ') {
+				'typ'
+			} else if result[member_start..].starts_with('.name') {
+				'name'
+			} else {
+				''
+			}
+			member_end := member_start + member.len + 1
+			if member.len == 0
+				|| (member_end < result.len && comptime_cond_name_char(result[member_end])) {
+				offset = member_start
+				continue
+			}
+			index_text := result[index_start..index_end].trim_space()
+			if !comptime_static_is_int(index_text) || index_text.starts_with('-') {
+				offset = member_end
+				continue
+			}
+			index := index_text.int()
+			replacement := if index >= 0 && index < item.param_names.len {
+				if member == 'name' {
+					comptime_static_string_literal(item.param_names[index])
+				} else if index < item.param_types.len {
+					comptime_static_deferred_type(item.param_types[index])
+				} else {
+					'__v3_missing_method_param_type'
+				}
+			} else if member == 'name' {
+				"''"
+			} else {
+				'__v3_missing_method_param_type'
+			}
+			result = result[..start] + replacement + result[member_end..]
+			offset = start + replacement.len
+		}
 	}
 	return result
 }

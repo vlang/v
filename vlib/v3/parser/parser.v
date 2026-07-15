@@ -2085,16 +2085,7 @@ fn (mut p Parser) skip_attrs() {
 		p.next()
 		if p.tok == .key_if {
 			p.next()
-			mut cond := strings.new_builder(32)
-			for p.tok != .rsbr && p.tok != .eof {
-				tok_str := p.comptime_cond_token_text()
-				if cond.len > 0 && tok_str != '?' {
-					cond.write_string(' ')
-				}
-				cond.write_string(tok_str)
-				p.next()
-			}
-			if !eval_comptime_cond(p.prefs, p.resolve_comptime_at_values(cond.str())) {
+			if !eval_comptime_cond(p.prefs, p.parse_attribute_comptime_cond()) {
 				p.skip_next_decl = true
 			}
 		}
@@ -2148,6 +2139,24 @@ fn (mut p Parser) skip_attrs() {
 			p.next()
 		}
 	}
+}
+
+fn (mut p Parser) parse_attribute_comptime_cond() string {
+	mut cond := strings.new_builder(32)
+	for p.tok != .rsbr && p.tok != .eof {
+		raw_tok_str := p.comptime_cond_token_text()
+		tok_str := if raw_tok_str.starts_with('@') {
+			p.resolve_comptime_at_values_at(raw_tok_str, p.tok_pos)
+		} else {
+			raw_tok_str
+		}
+		if cond.len > 0 && tok_str != '?' {
+			cond.write_string(' ')
+		}
+		cond.write_string(tok_str)
+		p.next()
+	}
+	return cond.str()
 }
 
 // apply_field_meta records a struct field's mutability, visibility, and attributes on its
@@ -2213,16 +2222,7 @@ fn (mut p Parser) parse_field_attrs_with_kinds() ParsedFieldAttrs {
 		p.next() // consume `@[` / `[`
 		if p.tok == .key_if {
 			p.next()
-			mut cond := strings.new_builder(16)
-			for p.tok != .rsbr && p.tok != .eof {
-				tok_str := p.comptime_cond_token_text()
-				if cond.len > 0 && tok_str != '?' {
-					cond.write_string(' ')
-				}
-				cond.write_string(tok_str)
-				p.next()
-			}
-			if !eval_comptime_cond(p.prefs, p.resolve_comptime_at_values(cond.str())) {
+			if !eval_comptime_cond(p.prefs, p.parse_attribute_comptime_cond()) {
 				p.skip_next_decl = true
 			}
 			p.check(.rsbr)
