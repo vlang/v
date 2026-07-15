@@ -245,15 +245,16 @@ fn (mut g Gen) gen_expr_to_string(expr ast.Expr, etype ast.Type) {
 		}
 		is_dump_expr := expr is ast.DumpExpr
 		is_var_mut := g.expr_is_auto_deref_var(expr) && !typ.has_flag(.option)
-		option_payload_ref_tmp := if expr is ast.PrefixExpr {
+		mut option_payload_ref_tmp := false
+		if expr is ast.PrefixExpr {
 			right_expr := expr.right.remove_par()
 			right_type := g.table.fully_unaliased_type(expr.right_type)
-			expr.op == .amp && right_type.has_flag(.option) && match right_expr {
-				ast.Ident, ast.IndexExpr, ast.SelectorExpr { true }
-				else { false }
+			if expr.op == .amp && right_type.has_flag(.option) {
+				option_payload_ref_tmp = match right_expr {
+					ast.Ident, ast.IndexExpr, ast.SelectorExpr { true }
+					else { false }
+				}
 			}
-		} else {
-			false
 		}
 		if option_payload_ref_tmp && expr is ast.PrefixExpr {
 			exp_typ =
