@@ -2353,11 +2353,14 @@ fn (mut f Fmt) json2_migrate_call(node ast.CallExpr) {
 			f.write(')')
 		}
 		.json_encode_pretty {
-			// json.encode_pretty(x) => json2.encode(x, prettify: true)
+			// json.encode_pretty(x) => json2.encode(x, prettify: true, indent_string: '\t')
 			// json2 deprecated `encode_pretty` in favour of the `prettify` option.
+			// The old json module's cJSON printer indents each level with a tab,
+			// while json2's indent_string defaults to 4 spaces; pass '\t' explicitly
+			// so the migrated output keeps the same indentation shape.
 			f.write('${j2}.encode(')
 			f.call_args(node.args)
-			f.write(', prettify: true)')
+			f.write(", prettify: true, indent_string: '\\t')")
 		}
 		else {}
 	}

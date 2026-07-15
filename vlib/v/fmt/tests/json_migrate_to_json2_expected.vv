@@ -22,7 +22,7 @@ fn to_json(r Request) string {
 }
 
 fn to_json_pretty(r Request) string {
-	return json2.encode(r, prettify: true)
+	return json2.encode(r, prettify: true, indent_string: '\t')
 }
 
 fn main() {
