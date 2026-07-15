@@ -1,5 +1,19 @@
 module workers
 
+// Stats is a cumulative snapshot of serial worker-pool activity.
+pub struct Stats {
+pub:
+	tasks_run         u64
+	async_tasks       u64
+	forced_sync_tasks u64
+	fallback_tasks    u64
+	launch_attempts   u64
+	launch_failures   u64
+	queue_wait_ns     u64
+	worker_run_ns     u64
+	utilization_ppm   u64
+}
+
 // Task is one type-erased compiler phase callback submitted to Pool.
 pub struct Task {
 pub:
@@ -12,7 +26,9 @@ pub:
 @[heap]
 pub struct Pool {
 mut:
-	task_count u64
+	task_count             u64
+	forced_sync_task_count u64
+	fallback_task_count    u64
 }
 
 // new creates a serial compatibility pool.
@@ -29,6 +45,11 @@ pub fn (p &Pool) size() int {
 pub fn (mut p Pool) run(tasks []Task) bool {
 	for task in tasks {
 		task.run(task.arg)
+		if task.force_sync {
+			p.forced_sync_task_count++
+		} else {
+			p.fallback_task_count++
+		}
 	}
 	p.task_count += u64(tasks.len)
 	return false
@@ -37,6 +58,15 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 // tasks_run reports the number of completed phase callbacks.
 pub fn (p &Pool) tasks_run() u64 {
 	return p.task_count
+}
+
+// stats returns cumulative serial fallback counters.
+pub fn (p &Pool) stats() Stats {
+	return Stats{
+		tasks_run:         p.task_count
+		forced_sync_tasks: p.forced_sync_task_count
+		fallback_tasks:    p.fallback_task_count
+	}
 }
 
 // close releases pool resources.

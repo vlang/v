@@ -27,5 +27,19 @@ fn test_pool_runs_persistent_batches_and_sync_fallbacks() {
 	pool.run(tasks)
 	assert args.map(it.value) == [2, 2, 2, 2]
 	assert pool.tasks_run() == 8
+	stats := pool.stats()
+	assert stats.tasks_run == 8
+	$if windows {
+		assert stats.async_tasks == 0
+		assert stats.forced_sync_tasks == 2
+		assert stats.fallback_tasks == 6
+	} $else {
+		assert stats.async_tasks == 6
+		assert stats.forced_sync_tasks == 2
+		assert stats.fallback_tasks == 0
+		assert stats.launch_attempts == 2
+		assert stats.launch_failures == 0
+		assert stats.worker_run_ns > 0
+	}
 	pool.close()
 }

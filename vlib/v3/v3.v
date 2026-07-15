@@ -1248,7 +1248,16 @@ fn main() {
 		}
 	}
 
-	b.metric('worker phase callbacks', int(a.worker_tasks_run()), 'tasks')
+	worker_stats := a.worker_stats()
+	b.metric('worker phase callbacks', i64(worker_stats.tasks_run), 'tasks')
+	b.metric('worker async callbacks', i64(worker_stats.async_tasks), 'tasks')
+	b.metric('worker forced sync callbacks', i64(worker_stats.forced_sync_tasks), 'tasks')
+	b.metric('worker fallback callbacks', i64(worker_stats.fallback_tasks), 'tasks')
+	b.metric('worker launch attempts', i64(worker_stats.launch_attempts), 'threads')
+	b.metric('worker launch failures', i64(worker_stats.launch_failures), 'threads')
+	b.metric('worker queue wait', i64(worker_stats.queue_wait_ns), 'ns')
+	b.metric('worker execution', i64(worker_stats.worker_run_ns), 'ns')
+	b.metric('worker utilization', i64(worker_stats.utilization_ppm), 'ppm')
 	b.print_report()
 }
 

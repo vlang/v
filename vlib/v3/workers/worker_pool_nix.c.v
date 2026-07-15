@@ -1,6 +1,7 @@
 module workers
 
 import os
+import time
 
 #include "@VEXEROOT/vlib/v3/pthread_helper.h"
 
@@ -16,6 +17,27 @@ pub:
 	arg        voidptr
 	force_sync bool
 	stop       bool
+mut:
+	queued_at_ns u64
+}
+
+// Stats is a cumulative snapshot of persistent worker-pool activity.
+pub struct Stats {
+pub:
+	tasks_run         u64
+	async_tasks       u64
+	forced_sync_tasks u64
+	fallback_tasks    u64
+	launch_attempts   u64
+	launch_failures   u64
+	queue_wait_ns     u64
+	worker_run_ns     u64
+	utilization_ppm   u64
+}
+
+struct Completion {
+	queue_wait_ns u64
+	worker_run_ns u64
 }
 
 // C.pthread_t is the platform pthread handle type.
@@ -30,11 +52,19 @@ fn C.v3_pthread_create(thread &C.pthread_t, stack_size usize, start_routine fn (
 @[heap]
 pub struct Pool {
 mut:
-	jobs       chan Task
-	done       chan bool
-	threads    []C.pthread_t
-	is_closed  bool
-	task_count u64
+	jobs                   chan Task
+	done                   chan Completion
+	threads                []C.pthread_t
+	is_closed              bool
+	task_count             u64
+	async_task_count       u64
+	forced_sync_task_count u64
+	fallback_task_count    u64
+	launch_attempt_count   u64
+	launch_failure_count   u64
+	queue_wait_ns          u64
+	worker_run_ns          u64
+	started_at_ns          u64
 }
 
 fn pool_worker(arg voidptr) voidptr {
@@ -44,8 +74,17 @@ fn pool_worker(arg voidptr) voidptr {
 		if task.stop {
 			break
 		}
+		started_at := time.sys_mono_now()
 		task.run(task.arg)
-		pool.done <- true
+		finished_at := time.sys_mono_now()
+		pool.done <- Completion{
+			queue_wait_ns: if started_at >= task.queued_at_ns {
+				started_at - task.queued_at_ns
+			} else {
+				0
+			}
+			worker_run_ns: if finished_at >= started_at { finished_at - started_at } else { 0 }
+		}
 	}
 	return unsafe { nil }
 }
@@ -55,8 +94,10 @@ fn pool_worker(arg voidptr) voidptr {
 pub fn new(size int) &Pool {
 	wanted := if size < 0 { 0 } else { size }
 	mut pool := &Pool{
-		jobs: chan Task{cap: if wanted > 0 { wanted * 2 } else { 1 }}
-		done: chan bool{cap: if wanted > 0 { wanted * 2 } else { 1 }}
+		jobs:                 chan Task{cap: if wanted > 0 { wanted * 2 } else { 1 }}
+		done:                 chan Completion{cap: if wanted > 0 { wanted * 2 } else { 1 }}
+		launch_attempt_count: u64(wanted)
+		started_at_ns:        time.sys_mono_now()
 	}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 	for idx in 0 .. wanted {
@@ -68,6 +109,8 @@ pub fn new(size int) &Pool {
 		}
 		if result == 0 {
 			pool.threads << thread_id
+		} else {
+			pool.launch_failure_count++
 		}
 	}
 	return pool
@@ -87,6 +130,11 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 	if p.is_closed || p.threads.len == 0 {
 		for task in tasks {
 			task.run(task.arg)
+			if task.force_sync {
+				p.forced_sync_task_count++
+			} else {
+				p.fallback_task_count++
+			}
 		}
 		p.task_count += u64(tasks.len)
 		return false
@@ -94,18 +142,26 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 	mut submitted := 0
 	for task in tasks {
 		if !task.force_sync {
-			p.jobs <- task
+			p.jobs <- Task{
+				run:          task.run
+				arg:          task.arg
+				queued_at_ns: time.sys_mono_now()
+			}
 			submitted++
 		}
 	}
 	for task in tasks {
 		if task.force_sync {
 			task.run(task.arg)
+			p.forced_sync_task_count++
 		}
 	}
 	for _ in 0 .. submitted {
-		_ = <-p.done
+		completion := <-p.done
+		p.queue_wait_ns += completion.queue_wait_ns
+		p.worker_run_ns += completion.worker_run_ns
 	}
+	p.async_task_count += u64(submitted)
 	p.task_count += u64(tasks.len)
 	return submitted > 0
 }
@@ -113,6 +169,29 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 // tasks_run reports the number of phase callbacks completed through this pool.
 pub fn (p &Pool) tasks_run() u64 {
 	return p.task_count
+}
+
+// stats returns cumulative scheduling and utilization counters.
+pub fn (p &Pool) stats() Stats {
+	now := time.sys_mono_now()
+	elapsed_ns := if now >= p.started_at_ns { now - p.started_at_ns } else { 0 }
+	capacity_ns := elapsed_ns * u64(p.threads.len)
+	utilization_ppm := if capacity_ns > 0 {
+		p.worker_run_ns * 1_000_000 / capacity_ns
+	} else {
+		0
+	}
+	return Stats{
+		tasks_run:         p.task_count
+		async_tasks:       p.async_task_count
+		forced_sync_tasks: p.forced_sync_task_count
+		fallback_tasks:    p.fallback_task_count
+		launch_attempts:   p.launch_attempt_count
+		launch_failures:   p.launch_failure_count
+		queue_wait_ns:     p.queue_wait_ns
+		worker_run_ns:     p.worker_run_ns
+		utilization_ppm:   utilization_ppm
+	}
 }
 
 // close stops and joins every persistent worker. Join failures are surfaced.

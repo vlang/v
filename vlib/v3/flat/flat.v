@@ -238,6 +238,14 @@ pub fn (a &FlatAst) worker_tasks_run() u64 {
 	return a.worker_pool.tasks_run()
 }
 
+// worker_stats reports scheduling and utilization across compiler phases.
+pub fn (a &FlatAst) worker_stats() workers.Stats {
+	if isnil(a.worker_pool) {
+		return workers.Stats{}
+	}
+	return a.worker_pool.stats()
+}
+
 // set_node_is_mut updates a node's mut declaration marker in place.
 pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
 	if int(id) < 0 || int(id) >= a.nodes.len {
