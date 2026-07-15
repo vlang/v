@@ -5412,10 +5412,11 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 	}
 
 	if drop_stmts.len > 0 {
-		is_slice_view := t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
-		t.set_node_typ(int(is_slice_view), 'bool')
-		t.mark_fn_used('array.is_slice_view')
-		mut should_drop := t.make_prefix(.not, is_slice_view)
+		needs_unique_shrink := t.make_method_call(array_value, 'needs_unique_shrink',
+			[]flat.NodeId{})
+		t.set_node_typ(int(needs_unique_shrink), 'bool')
+		t.mark_fn_used('array.needs_unique_shrink')
+		mut should_drop := t.make_prefix(.not, needs_unique_shrink)
 		if int(valid_drop_range) >= 0 {
 			should_drop = t.make_infix(.logical_and, valid_drop_range, should_drop)
 		}
@@ -5474,8 +5475,7 @@ fn (mut t Transformer) append_owned_array_drop_range(array_value flat.NodeId, el
 
 // try_lower_ignored_owned_array_pop_stmt destroys an owned array element result when the
 // source program ignores it. Pop methods transfer the removed element from owning arrays,
-// including arrays that detach from live slice views. A slice receiver itself is non-owning,
-// so its shallow result must not be destroyed.
+// while slices and arrays with live slice views still alias shared backing storage.
 // First/last produce the independent clone supplied by lower_owned_array_accessor_call.
 fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
 	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
@@ -5519,12 +5519,13 @@ fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeI
 			array_value = t.make_prefix(.mul, base)
 			t.set_node_typ(int(array_value), clean_base_type)
 		}
-		is_slice_view := t.make_method_call(array_value, 'is_slice_view', []flat.NodeId{})
-		t.set_node_typ(int(is_slice_view), 'bool')
-		t.mark_fn_used('array.is_slice_view')
+		needs_unique_shrink := t.make_method_call(array_value, 'needs_unique_shrink',
+			[]flat.NodeId{})
+		t.set_node_typ(int(needs_unique_shrink), 'bool')
+		t.mark_fn_used('array.needs_unique_shrink')
 		drop_result_guard_name = t.new_temp('ignored_array_pop_can_drop')
 		result << t.make_decl_assign_typed(drop_result_guard_name, t.make_prefix(.not,
-			is_slice_view), 'bool')
+			needs_unique_shrink), 'bool')
 		popped = t.make_method_call(array_value, fn_node.value, []flat.NodeId{})
 		t.set_node_typ(int(popped), elem_type)
 		if fn_node.value == 'pop' {
