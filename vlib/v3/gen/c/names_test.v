@@ -59,6 +59,19 @@ fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
 	assert g.sum_type_index('tast.Value', 'b.tast.Target') == 0
 }
 
+fn test_typeof_type_index_fallback_uses_matching_sum_variant() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.sum_types['main.Value'] = ['main.Foo', 'main.Bar']
+	tc.sum_types['main.Other'] = ['main.Baz', 'main.Qux']
+	mut g := FlatGen.new()
+	g.tc = &tc
+	assert g.type_index_for_type_name('Foo') == 1
+	assert g.type_index_for_type_name('Bar') == 2
+	assert g.type_index_for_type_name('Qux') == 2
+	assert g.type_index_for_type_name('NotVariant') == 0
+}
+
 fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {
 	mut g := FlatGen.new()
 	g.modules['http'] = 'b.http'

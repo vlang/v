@@ -7690,6 +7690,10 @@ fn typeof_display_type_name_list(text string) string {
 
 fn (g &FlatGen) typeof_type_index(node flat.Node) int {
 	type_name := g.typeof_type_name(node)
+	return g.type_index_for_type_name(type_name)
+}
+
+fn (g &FlatGen) type_index_for_type_name(type_name string) int {
 	if type_name.len == 0 {
 		return 0
 	}
@@ -7722,15 +7726,32 @@ fn (g &FlatGen) typeof_type_index(node flat.Node) int {
 			}
 		}
 	}
-	for sum_name, sum_variants in g.tc.sum_types {
-		for i := 0; i < sum_variants.len; i++ {
-			idx := g.sum_type_index(sum_name, sum_variants[i])
+	for candidate in candidate_names {
+		sum_name := g.find_sum_type_for_variant(candidate)
+		if sum_name.len > 0 {
+			idx := g.sum_type_index_resolved(sum_name, candidate)
 			if idx != 0 {
 				return idx
 			}
 		}
 	}
 	return 0
+}
+
+fn (g &FlatGen) find_sum_type_for_variant(variant string) string {
+	mut best := ''
+	for sum_name, _ in g.tc.sum_types {
+		if g.sum_type_index_resolved(sum_name, variant) == 0 {
+			continue
+		}
+		if sum_name.contains('.') {
+			return sum_name
+		}
+		if best.len == 0 {
+			best = sum_name
+		}
+	}
+	return best
 }
 
 // builtin_ast_type_idx maps a builtin type name to V's stable ast `*_type_idx` value
