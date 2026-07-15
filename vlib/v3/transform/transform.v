@@ -4057,7 +4057,7 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			lhs_type_name = t.original_expr_type(t.a.child(&node, 0))
 		}
 		lhs_type := t.tc.parse_type(lhs_type_name)
-		if t.tc.ownership_type_requires_drop(lhs_type)
+		if t.tc.ownership_type_requires_destruction(lhs_type)
 			&& !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id)
 			&& t.drop_before_assign_has_stable_lvalue(new_children[0]) {
 			mut result := []flat.NodeId{}

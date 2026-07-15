@@ -4545,7 +4545,8 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 	if clean.len == 0 || clean.starts_with('&') {
 		return source
 	}
-	if t.is_optional_type_name(clean) {
+	// Options and results both store successful values behind the `ok` flag.
+	if clean.starts_with('?') || clean.starts_with('!') {
 		inner := t.optional_base_type(t.qualify_optional_type(clean))
 		if !t.compiler_default_clone_type_needs_work(inner) {
 			return source
@@ -4781,7 +4782,7 @@ fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
 	if clean.len == 0 || clean.starts_with('&') {
 		return false
 	}
-	if t.is_optional_type_name(clean) {
+	if clean.starts_with('?') || clean.starts_with('!') {
 		return t.compiler_default_clone_type_needs_work(t.optional_base_type(t.qualify_optional_type(clean)))
 	}
 	if t.is_fixed_array_type(clean) {
