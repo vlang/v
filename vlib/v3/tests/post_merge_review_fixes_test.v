@@ -3503,3 +3503,16 @@ fn main() {
 ',
 		'does not implement interface')
 }
+
+fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
+	v3_bin := build_v3()
+	shadow_out := run_good(v3_bin, 'review_shadowed_global_nested_scope',
+		'__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n')
+	assert shadow_out == '3\n12'
+	pointer_str_out := run_good(v3_bin, 'review_pointer_value_receiver_str',
+		"struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n")
+	assert pointer_str_out == 'custom:7'
+	run_bad(v3_bin, 'review_setter_only_compound_index_assignment',
+		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
+		'compound index assignment requires a `[]` overload')
+}

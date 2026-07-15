@@ -356,6 +356,9 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_fn_node_id = fn_idx
 	tc.method_value_locals = map[string]bool{}
 	tc.method_value_local_depth = map[string]int{}
+	tc.capturing_fn_literal_locals = map[string]bool{}
+	tc.capturing_fn_literal_local_depth = map[string]int{}
+	tc.capturing_fn_literal_return_unsupported = map[string]bool{}
 	$if ownership ? {
 		tc.ownership_begin_fn(node)
 	}

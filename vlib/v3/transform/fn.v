@@ -6615,6 +6615,12 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		// prefix (or `&nil`); primitive/alias pointers keep their existing ptr_str behavior.
 		if base_is_pointer {
 			if aggregate := t.stringify_aggregate_type_name(base_type) {
+				if selected := t.checker_selected_receiver_method_name(id, 'str') {
+					args := t.transform_receiver_method_args(node, base_id, selected)
+					ret_type := t.receiver_method_return_type(selected, node.typ)
+					t.mark_fn_used_name(selected)
+					return t.make_call_typed(selected, args, ret_type)
+				}
 				return t.lower_ref_str_prefixed(t.transform_expr(base_id), aggregate)
 			}
 		}

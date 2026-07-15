@@ -242,6 +242,19 @@ fn test_reject_escaping_capturing_fn_literals() {
 		'capturing fn literal cannot be stored or returned')
 }
 
+fn test_capturing_fn_literal_aliases_are_binding_scoped() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_capturing_fn_literal_inner_shadow',
+		'fn plain() int {\n\treturn 3\n}\n\nfn make(x int) fn () int {\n\tcb := plain\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make(0)()))\n}\n')
+	assert out == '3'
+	lambda_out := run_good(v3_bin, 'good_lambda_capturing_fn_literal_shadow',
+		'fn plain() int {\n\treturn 4\n}\n\nfn apply(cb fn (int) int) int {\n\treturn cb(1)\n}\n\nfn make() fn () int {\n\tcb := plain\n\t_ = apply(|n| if n > 0 {\n\t\tcb := fn [n] () int {\n\t\t\treturn n\n\t\t}\n\t\t_ = cb\n\t\tn\n\t} else {\n\t\tn\n\t})\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make()()))\n}\n')
+	assert lambda_out == '4'
+	run_bad(v3_bin, 'bad_outer_capturing_alias_survives_inner_shadow',
+		'fn make(x int) fn () int {\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\nfn main() {}\n',
+		'capturing fn literal cannot be stored or returned')
+}
+
 fn test_reject_unsmartcasted_unique_sum_variant_field() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_unsmartcasted_unique_sum_field',

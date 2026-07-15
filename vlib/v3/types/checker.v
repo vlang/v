@@ -345,17 +345,20 @@ pub mut:
 	// Scope depth at which each method-value local was marked, so a reassignment to a
 	// non-method value only clears the marker when it dominates later uses (same-or-shallower
 	// scope); a reassignment in a deeper conditional/loop scope keeps the maybe-method marker.
-	method_value_local_depth        map[string]int
-	cur_fn_node_id                  int = -1
-	cur_fn_mut_param_base_types     map[string]Type
-	cur_fn_mut_param_binding_owners map[string]ScopeBindingOwner
-	cur_fn_mut_local_binding_owners map[string]ScopeBindingOwner
-	cur_fn_shared_binding_owners    map[string]ScopeBindingOwner
-	cur_comptime_variant_loop_vars  []string
-	expr_type_values                []Type // node_id -> complex/contextual resolved type
-	expr_type_set                   []bool
-	checking_nodes                  []bool
-	parallel_check_sparse           bool
+	method_value_local_depth                map[string]int
+	capturing_fn_literal_locals             map[string]bool
+	capturing_fn_literal_local_depth        map[string]int
+	capturing_fn_literal_return_unsupported map[string]bool
+	cur_fn_node_id                          int = -1
+	cur_fn_mut_param_base_types             map[string]Type
+	cur_fn_mut_param_binding_owners         map[string]ScopeBindingOwner
+	cur_fn_mut_local_binding_owners         map[string]ScopeBindingOwner
+	cur_fn_shared_binding_owners            map[string]ScopeBindingOwner
+	cur_comptime_variant_loop_vars          []string
+	expr_type_values                        []Type // node_id -> complex/contextual resolved type
+	expr_type_set                           []bool
+	checking_nodes                          []bool
+	parallel_check_sparse                   bool
 	// Node id range [check_range_lo, check_range_hi] of the fn item currently
 	// being checked. Fn subtrees are disjoint contiguous ranges (each fn_decl at
 	// index i owns (prev_top_level_idx, i]), so while parallel_check_sparse is
@@ -472,30 +475,33 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		// reset_node_caches (allocating them here too paid for everything
 		// twice), and extend_node_caches grows them on demand for any checker
 		// used without a collect() call.
-		resolved_call_names:             []string{}
-		resolved_call_set:               []bool{}
-		resolved_fn_value_names:         []string{}
-		resolved_fn_value_set:           []bool{}
-		statement_nodes:                 []bool{}
-		method_values_by_fn:             map[int][]string{}
-		method_value_locals:             map[string]bool{}
-		method_value_local_depth:        map[string]int{}
-		cur_fn_mut_param_base_types:     map[string]Type{}
-		cur_fn_mut_param_binding_owners: map[string]ScopeBindingOwner{}
-		cur_fn_mut_local_binding_owners: map[string]ScopeBindingOwner{}
-		cur_fn_shared_binding_owners:    map[string]ScopeBindingOwner{}
-		expr_type_values:                []Type{}
-		expr_type_set:                   []bool{}
-		checking_nodes:                  []bool{}
-		sparse_resolved_call_names:      map[int]string{}
-		sparse_resolved_fn_values:       map[int]string{}
-		sparse_statement_nodes:          map[int]bool{}
-		sparse_expr_type_values:         map[int]Type{}
-		sparse_checking_nodes:           map[int]bool{}
-		diagnostic_files:                map[string]bool{}
-		selected_file_called_fns:        map[string]bool{}
-		smartcasts:                      map[string]Type{}
-		type_cache:                      &TypeCache{
+		resolved_call_names:                     []string{}
+		resolved_call_set:                       []bool{}
+		resolved_fn_value_names:                 []string{}
+		resolved_fn_value_set:                   []bool{}
+		statement_nodes:                         []bool{}
+		method_values_by_fn:                     map[int][]string{}
+		method_value_locals:                     map[string]bool{}
+		method_value_local_depth:                map[string]int{}
+		capturing_fn_literal_locals:             map[string]bool{}
+		capturing_fn_literal_local_depth:        map[string]int{}
+		capturing_fn_literal_return_unsupported: map[string]bool{}
+		cur_fn_mut_param_base_types:             map[string]Type{}
+		cur_fn_mut_param_binding_owners:         map[string]ScopeBindingOwner{}
+		cur_fn_mut_local_binding_owners:         map[string]ScopeBindingOwner{}
+		cur_fn_shared_binding_owners:            map[string]ScopeBindingOwner{}
+		expr_type_values:                        []Type{}
+		expr_type_set:                           []bool{}
+		checking_nodes:                          []bool{}
+		sparse_resolved_call_names:              map[int]string{}
+		sparse_resolved_fn_values:               map[int]string{}
+		sparse_statement_nodes:                  map[int]bool{}
+		sparse_expr_type_values:                 map[int]Type{}
+		sparse_checking_nodes:                   map[int]bool{}
+		diagnostic_files:                        map[string]bool{}
+		selected_file_called_fns:                map[string]bool{}
+		smartcasts:                              map[string]Type{}
+		type_cache:                              &TypeCache{
 			parse_entries:              map[string]Type{}
 			c_entries:                  map[string]string{}
 			struct_field_entries:       map[string]Type{}
@@ -8342,10 +8348,17 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
 	mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
+	mut saved_capturing_fn_literal_locals := tc.capturing_fn_literal_locals.move()
+	mut saved_capturing_fn_literal_local_depth := tc.capturing_fn_literal_local_depth.move()
+	mut saved_capturing_fn_literal_return_unsupported :=
+		tc.capturing_fn_literal_return_unsupported.move()
 	tc.cur_fn_mut_param_base_types = map[string]Type{}
 	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_shared_binding_owners = map[string]ScopeBindingOwner{}
+	tc.capturing_fn_literal_locals = map[string]bool{}
+	tc.capturing_fn_literal_local_depth = map[string]int{}
+	tc.capturing_fn_literal_return_unsupported = map[string]bool{}
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
 	$if ownership ? {
 		tc.ownership_begin_fn_literal(node)
@@ -8372,6 +8385,10 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
 	tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
+	tc.capturing_fn_literal_locals = saved_capturing_fn_literal_locals.move()
+	tc.capturing_fn_literal_local_depth = saved_capturing_fn_literal_local_depth.move()
+	tc.capturing_fn_literal_return_unsupported =
+		saved_capturing_fn_literal_return_unsupported.move()
 }
 
 // check_lambda_expr validates check lambda expr state for types.
@@ -8379,6 +8396,13 @@ fn (mut tc TypeChecker) check_lambda_expr(node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
+	mut saved_capturing_fn_literal_locals := tc.capturing_fn_literal_locals.move()
+	mut saved_capturing_fn_literal_local_depth := tc.capturing_fn_literal_local_depth.move()
+	mut saved_capturing_fn_literal_return_unsupported :=
+		tc.capturing_fn_literal_return_unsupported.move()
+	tc.capturing_fn_literal_locals = map[string]bool{}
+	tc.capturing_fn_literal_local_depth = map[string]int{}
+	tc.capturing_fn_literal_return_unsupported = map[string]bool{}
 	$if ownership ? {
 		tc.ownership_begin_lambda_expr(node)
 	}
@@ -8394,6 +8418,10 @@ fn (mut tc TypeChecker) check_lambda_expr(node flat.Node) {
 	$if ownership ? {
 		tc.ownership_end_fn()
 	}
+	tc.capturing_fn_literal_locals = saved_capturing_fn_literal_locals.move()
+	tc.capturing_fn_literal_local_depth = saved_capturing_fn_literal_local_depth.move()
+	tc.capturing_fn_literal_return_unsupported =
+		saved_capturing_fn_literal_return_unsupported.move()
 }
 
 // check_block validates check block state for types.
@@ -8635,7 +8663,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			tc.ownership_after_decl_assign(lhs_id, rhs_id, expected, id)
 		}
 		tc.track_method_value_local(lhs_id, rhs_id)
-		tc.reject_stored_capturing_fn_literal(rhs_id)
+		tc.track_capturing_fn_literal_local(lhs_id, rhs_id, owner)
 		i += 2
 	}
 }
@@ -8677,6 +8705,40 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 			tc.method_value_locals.delete(lhs.value)
 			tc.method_value_local_depth.delete(lhs.value)
 		}
+	}
+}
+
+fn (mut tc TypeChecker) track_capturing_fn_literal_local(lhs_id flat.NodeId, rhs_id flat.NodeId, owner ScopeBindingOwner) {
+	if int(lhs_id) < 0 {
+		return
+	}
+	lhs := tc.a.nodes[int(lhs_id)]
+	if lhs.kind != .ident || lhs.value.len == 0 || lhs.value == '_' {
+		return
+	}
+	mut binding_owner := owner
+	if binding_owner.storage_key().len == 0 {
+		binding_owner = tc.cur_scope.lookup_owner(lhs.value) or { ScopeBindingOwner{} }
+	}
+	if binding_owner.storage_key().len == 0 {
+		return
+	}
+	binding_key := binding_owner.storage_key()
+	if tc.expr_is_capturing_fn_literal_value(rhs_id) {
+		tc.capturing_fn_literal_locals[binding_key] = true
+		tc.capturing_fn_literal_local_depth[binding_key] = tc.cur_scope_depth()
+		tc.capturing_fn_literal_return_unsupported[binding_key] =
+			tc.expr_is_unsupported_returned_capturing_fn_literal_value(rhs_id)
+		return
+	}
+	if !tc.capturing_fn_literal_locals[binding_key] {
+		return
+	}
+	marked_depth := tc.capturing_fn_literal_local_depth[binding_key] or { 0 }
+	if tc.cur_scope_depth() <= marked_depth {
+		tc.capturing_fn_literal_locals.delete(binding_key)
+		tc.capturing_fn_literal_local_depth.delete(binding_key)
+		tc.capturing_fn_literal_return_unsupported.delete(binding_key)
 	}
 }
 
@@ -9420,7 +9482,11 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 			} else {
 				tc.track_method_value_local(lhs_id, rhs_id)
 			}
-			tc.reject_stored_capturing_fn_literal(rhs_id)
+			if tc.expr_is_capturing_fn_literal_value(rhs_id) && !tc.lvalue_is_local_var(lhs_id) {
+				tc.reject_stored_capturing_fn_literal(rhs_id)
+			} else {
+				tc.track_capturing_fn_literal_local(lhs_id, rhs_id, ScopeBindingOwner{})
+			}
 		}
 		lhs_key := tc.expr_key(lhs_id)
 		if lhs_key.len > 0 {
@@ -16470,6 +16536,9 @@ fn (tc &TypeChecker) expr_is_capturing_fn_literal_value(id flat.NodeId) bool {
 	}
 	node := tc.a.nodes[int(id)]
 	match node.kind {
+		.ident {
+			return tc.ident_is_capturing_fn_literal_alias(node.value)
+		}
 		.fn_literal {
 			return tc.fn_literal_has_captures(node)
 		}
@@ -16485,12 +16554,32 @@ fn (tc &TypeChecker) expr_is_capturing_fn_literal_value(id flat.NodeId) bool {
 	}
 }
 
+fn (tc &TypeChecker) ident_is_capturing_fn_literal_alias(name string) bool {
+	binding_key := tc.visible_binding_storage_key(name) or { return false }
+	return tc.capturing_fn_literal_locals[binding_key]
+}
+
+fn (tc &TypeChecker) visible_binding_storage_key(name string) ?string {
+	if tc.cur_scope == unsafe { nil } {
+		return none
+	}
+	owner := tc.cur_scope.lookup_owner(name) or { return none }
+	binding_key := owner.storage_key()
+	if binding_key.len == 0 {
+		return none
+	}
+	return binding_key
+}
+
 fn (tc &TypeChecker) expr_is_unsupported_returned_capturing_fn_literal_value(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return false
 	}
 	node := tc.a.nodes[int(id)]
 	match node.kind {
+		.ident {
+			return tc.ident_is_unsupported_returned_capturing_fn_literal_alias(node.value)
+		}
 		.fn_literal {
 			return tc.fn_literal_has_unsupported_return_capture(node)
 		}
@@ -16504,6 +16593,14 @@ fn (tc &TypeChecker) expr_is_unsupported_returned_capturing_fn_literal_value(id 
 			return false
 		}
 	}
+}
+
+fn (tc &TypeChecker) ident_is_unsupported_returned_capturing_fn_literal_alias(name string) bool {
+	binding_key := tc.visible_binding_storage_key(name) or { return false }
+	if !tc.capturing_fn_literal_locals[binding_key] {
+		return false
+	}
+	return tc.capturing_fn_literal_return_unsupported[binding_key] or { true }
 }
 
 fn (tc &TypeChecker) fn_literal_has_captures(node flat.Node) bool {
