@@ -41,6 +41,11 @@ fn test_comptime_flags_use_target_instead_of_host() {
 	assert comptime_flag_value(prefs, 'termux')
 	assert !comptime_flag_value(prefs, 'android')
 	assert comptime_flag_value(prefs, 'posix')
+
+	prefs.target = target_from('wasm32_emscripten', 'wasm32') or { panic(err) }
+	assert comptime_flag_value(prefs, 'wasm32_emscripten')
+	assert comptime_flag_value(prefs, 'wasm32')
+	assert !comptime_flag_value(prefs, 'linux')
 }
 
 fn test_source_selection_uses_target_os_and_arch() {
@@ -90,4 +95,28 @@ fn test_termux_source_selection_keeps_android_common_files_distinct() {
 	linux := target_from('linux', 'arm64') or { panic(err) }
 	selected = get_v_files_from_dir_for_target(dir, [], linux).map(os.base(it))
 	assert selected == ['platform_default.c.v']
+}
+
+fn test_emscripten_source_and_test_selection_is_target_specific() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_emscripten_target_pref_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	for name in ['runtime_default.c.v', 'runtime_wasm32_emscripten.c.v'] {
+		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
+	}
+
+	wasm := target_from('wasm32_emscripten', 'wasm32') or { panic(err) }
+	assert get_v_files_from_dir_for_target(dir, [], wasm).map(os.base(it)) == [
+		'runtime_wasm32_emscripten.c.v',
+	]
+	assert is_test_file_for_platform('/tmp/runtime_wasm32_emscripten_test.v', 'c', wasm)
+
+	linux := target_from('linux', 'amd64') or { panic(err) }
+	assert get_v_files_from_dir_for_target(dir, [], linux).map(os.base(it)) == [
+		'runtime_default.c.v',
+	]
+	assert !is_test_file_for_platform('/tmp/runtime_wasm32_emscripten_test.v', 'c', linux)
 }

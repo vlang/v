@@ -333,6 +333,9 @@ fn file_has_incompatible_os_only_suffix(file string, current_os string) bool {
 	if os_name != 'solaris' && file.contains('_solaris.') {
 		return true
 	}
+	if os_name != 'wasm32_emscripten' && file.contains('_wasm32_emscripten.') {
+		return true
+	}
 	return false
 }
 
@@ -570,6 +573,9 @@ fn os_specific_base(file string, target_os string) ?string {
 		'solaris' {
 			suffixes << '_solaris'
 		}
+		'wasm32_emscripten' {
+			suffixes << '_wasm32_emscripten'
+		}
 		else {}
 	}
 
@@ -664,6 +670,9 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		}
 		'termux' {
 			return p.normalized_target_os() == 'termux'
+		}
+		'wasm32_emscripten' {
+			return p.normalized_target_os() == 'wasm32_emscripten'
 		}
 		'posix', 'unix' {
 			return p.normalized_target_os() != 'windows'
