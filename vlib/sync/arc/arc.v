@@ -10,12 +10,6 @@ mut:
 	value  T
 }
 
-// Arc provides shared ownership of a heap-allocated value of type `T`.
-// Cloning an Arc increments its atomic strong count instead of cloning `T`.
-pub struct Arc[T] implements IClone, Drop {
-	inner &ArcInner[T]
-}
-
 // new moves `value` into a new atomically reference-counted allocation.
 pub fn new[T](value T) Arc[T] {
 	return Arc[T]{
@@ -33,12 +27,6 @@ pub fn (a &Arc[T]) clone() Arc[T] {
 	return Arc[T]{
 		inner: a.inner
 	}
-}
-
-// get returns a shared borrow of the value stored in this Arc.
-pub fn (a &^a Arc[T]) get[^a]() &^a T {
-	assert !isnil(a.inner)
-	return &a.inner.value
 }
 
 // strong_count returns the number of strong references to this allocation.
