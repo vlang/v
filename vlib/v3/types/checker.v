@@ -7875,7 +7875,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			if node.op != .amp {
 				tc.check_for_in_binding_clones(clean, key_id, val_id, has_val)
 			}
-			if clean is Map && tc.for_in_body_contains_map_delete(node, header) {
+			if clean is Map && tc.for_in_body_contains_map_delete(node, header, container_id) {
 				tc.check_map_delete_snapshot_clones(clean, container_id)
 			}
 		}
@@ -7901,35 +7901,63 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 	tc.pop_scope()
 }
 
-fn (tc &TypeChecker) for_in_body_contains_map_delete(node flat.Node, body_start int) bool {
+fn (tc &TypeChecker) for_in_body_contains_map_delete(node flat.Node, body_start int, container_id flat.NodeId) bool {
+	container_key := tc.for_in_map_storage_key(container_id)
+	if container_key.len == 0 {
+		return false
+	}
 	for i in body_start .. node.children_count {
-		if tc.for_in_node_contains_map_delete(tc.a.child(&node, i)) {
+		if tc.for_in_node_contains_map_delete(tc.a.child(&node, i), container_key) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (tc &TypeChecker) for_in_node_contains_map_delete(id flat.NodeId) bool {
+fn (tc &TypeChecker) for_in_node_contains_map_delete(id flat.NodeId, container_key string) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
 	node := tc.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return false
+	}
 	if node.kind == .call && node.children_count > 0 {
 		fn_node := tc.a.child_node(&node, 0)
-		if fn_node.kind == .selector && fn_node.value == 'delete' {
-			return true
+		if fn_node.kind == .selector && fn_node.value == 'delete' && fn_node.children_count > 0 {
+			receiver_id := tc.a.child(fn_node, 0)
+			if tc.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
 		}
-		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete'] {
-			return true
+		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete']
+			&& node.children_count > 1 {
+			receiver_id := tc.a.child(&node, 1)
+			if tc.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
 		}
 	}
 	for i in 0 .. node.children_count {
-		if tc.for_in_node_contains_map_delete(tc.a.child(&node, i)) {
+		if tc.for_in_node_contains_map_delete(tc.a.child(&node, i), container_key) {
 			return true
 		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) for_in_map_storage_key(id flat.NodeId) string {
+	if !tc.valid_node_id(id) {
+		return ''
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && node.children_count > 0 {
+		return tc.for_in_map_storage_key(tc.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.op in [.amp, .mul] && node.children_count > 0 {
+		return tc.for_in_map_storage_key(tc.a.child(&node, 0))
+	}
+	return tc.expr_key(id)
 }
 
 fn (mut tc TypeChecker) check_map_delete_snapshot_clones(map_type Map, pos flat.NodeId) {

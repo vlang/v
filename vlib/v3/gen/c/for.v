@@ -180,7 +180,8 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.tmp_count++
 				key_var := if has_index { idx_var } else { '__mk_${g.tmp_count}' }
 				val_var_ := if has_index { elem_var } else { var_name }
-				use_snapshot := g.for_in_body_contains_delete_call(node, body_start)
+				use_snapshot := g.for_in_body_contains_delete_call(node, body_start,
+					g.a.child(&node, 2))
 				key_values := if use_snapshot {
 					map_snapshot_var = '__for_map_${g.tmp_count}'
 					g.tmp_count++
@@ -393,35 +394,63 @@ fn (mut g FlatGen) gen_range_for_in(node flat.Node, key_id flat.NodeId, low_id f
 	g.pop_scope()
 }
 
-fn (g &FlatGen) for_in_body_contains_delete_call(node flat.Node, body_start int) bool {
+fn (g &FlatGen) for_in_body_contains_delete_call(node flat.Node, body_start int, container_id flat.NodeId) bool {
+	container_key := g.for_in_map_storage_key(container_id)
+	if container_key.len == 0 {
+		return false
+	}
 	for i in body_start .. node.children_count {
-		if g.node_contains_delete_call(g.a.child(&node, i)) {
+		if g.node_contains_delete_call(g.a.child(&node, i), container_key) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (g &FlatGen) node_contains_delete_call(id flat.NodeId) bool {
+fn (g &FlatGen) node_contains_delete_call(id flat.NodeId, container_key string) bool {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
 	node := g.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return false
+	}
 	if node.kind == .call && node.children_count > 0 {
 		fn_node := g.a.child_node(&node, 0)
-		if fn_node.kind == .selector && fn_node.value == 'delete' {
-			return true
+		if fn_node.kind == .selector && fn_node.value == 'delete' && fn_node.children_count > 0 {
+			receiver_id := g.a.child(fn_node, 0)
+			if g.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
 		}
-		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete'] {
-			return true
+		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete']
+			&& node.children_count > 1 {
+			receiver_id := g.a.child(&node, 1)
+			if g.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
 		}
 	}
 	for i in 0 .. node.children_count {
-		if g.node_contains_delete_call(g.a.child(&node, i)) {
+		if g.node_contains_delete_call(g.a.child(&node, i), container_key) {
 			return true
 		}
 	}
 	return false
+}
+
+fn (g &FlatGen) for_in_map_storage_key(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return ''
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && node.children_count > 0 {
+		return g.for_in_map_storage_key(g.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.op in [.amp, .mul] && node.children_count > 0 {
+		return g.for_in_map_storage_key(g.a.child(&node, 0))
+	}
+	return g.expr_key(id)
 }
 
 fn (g &FlatGen) c_loop_local_name(name string) string {

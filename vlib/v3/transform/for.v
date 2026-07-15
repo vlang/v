@@ -199,7 +199,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	}
 	mut cleanup_owned_snapshot := false
 	if map_iter_type.starts_with('map[') && !isnil(t.tc)
-		&& t.for_in_body_contains_map_delete(body_ids) {
+		&& t.for_in_body_contains_map_delete(body_ids, container_id) {
 		// C generation takes a structural snapshot for delete-capable map loops, but its
 		// values are shallow copies. First clone destructible entries here so deleting from
 		// the source map cannot invalidate an unvisited snapshot binding.
@@ -363,35 +363,63 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	return prefix
 }
 
-fn (t &Transformer) for_in_body_contains_map_delete(body []flat.NodeId) bool {
+fn (t &Transformer) for_in_body_contains_map_delete(body []flat.NodeId, container_id flat.NodeId) bool {
+	container_key := t.for_in_map_storage_key(container_id)
+	if container_key.len == 0 {
+		return false
+	}
 	for id in body {
-		if t.for_in_node_contains_map_delete(id) {
+		if t.for_in_node_contains_map_delete(id, container_key) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (t &Transformer) for_in_node_contains_map_delete(id flat.NodeId) bool {
+fn (t &Transformer) for_in_node_contains_map_delete(id flat.NodeId, container_key string) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return false
+	}
 	if node.kind == .call && node.children_count > 0 {
 		fn_node := t.a.child_node(&node, 0)
-		if fn_node.kind == .selector && fn_node.value == 'delete' {
-			return true
+		if fn_node.kind == .selector && fn_node.value == 'delete' && fn_node.children_count > 0 {
+			receiver_id := t.a.child(fn_node, 0)
+			if t.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
 		}
-		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete'] {
-			return true
+		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete']
+			&& node.children_count > 1 {
+			receiver_id := t.a.child(&node, 1)
+			if t.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
 		}
 	}
 	for i in 0 .. node.children_count {
-		if t.for_in_node_contains_map_delete(t.a.child(&node, i)) {
+		if t.for_in_node_contains_map_delete(t.a.child(&node, i), container_key) {
 			return true
 		}
 	}
 	return false
+}
+
+fn (t &Transformer) for_in_map_storage_key(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && node.children_count > 0 {
+		return t.for_in_map_storage_key(t.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.op in [.amp, .mul] && node.children_count > 0 {
+		return t.for_in_map_storage_key(t.a.child(&node, 0))
+	}
+	return t.expr_key(id)
 }
 
 // make_for_in_binding_clone turns a shallow container iteration copy into an independent
