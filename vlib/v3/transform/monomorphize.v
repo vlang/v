@@ -7565,15 +7565,29 @@ fn generic_array_type_arg_from_suffix(suffix string) ?string {
 			}
 		}
 	}
-	elem := if nested := generic_array_type_arg_from_suffix(elem_suffix) {
-		nested
-	} else {
-		generic_type_arg_from_suffix(elem_suffix)
-	}
+	elem := generic_type_arg_from_suffix_with_containers(elem_suffix)
 	if elem.len == 0 {
 		return none
 	}
 	return '[]${elem}'
+}
+
+fn generic_map_type_arg_from_suffix(suffix string) ?string {
+	clean := suffix.trim_space()
+	if !clean.starts_with('Map_') {
+		return none
+	}
+	entry_suffix := clean['Map_'.len..]
+	split := entry_suffix.last_index_u8(`_`)
+	if split <= 0 || split + 1 >= entry_suffix.len {
+		return none
+	}
+	key := generic_type_arg_from_suffix_with_containers(entry_suffix[..split])
+	value := generic_type_arg_from_suffix_with_containers(entry_suffix[split + 1..])
+	if key.len == 0 || value.len == 0 {
+		return none
+	}
+	return 'map[${key}]${value}'
 }
 
 fn (t &Transformer) generic_type_arg_from_suffix(suffix string) string {
@@ -7590,25 +7604,25 @@ fn generic_type_arg_from_suffix(suffix string) string {
 		return ''
 	}
 	if clean.starts_with('ptr_') {
-		inner := generic_type_arg_from_suffix_with_arrays(clean['ptr_'.len..])
+		inner := generic_type_arg_from_suffix_with_containers(clean['ptr_'.len..])
 		if inner.len > 0 {
 			return '&${inner}'
 		}
 	}
 	if clean.starts_with('Option_') {
-		inner := generic_type_arg_from_suffix_with_arrays(clean['Option_'.len..])
+		inner := generic_type_arg_from_suffix_with_containers(clean['Option_'.len..])
 		if inner.len > 0 {
 			return '?${inner}'
 		}
 	}
 	if clean.starts_with('Optional_') {
-		inner := generic_type_arg_from_suffix_with_arrays(clean['Optional_'.len..])
+		inner := generic_type_arg_from_suffix_with_containers(clean['Optional_'.len..])
 		if inner.len > 0 {
 			return '?${inner}'
 		}
 	}
 	if clean.starts_with('Result_') {
-		inner := generic_type_arg_from_suffix_with_arrays(clean['Result_'.len..])
+		inner := generic_type_arg_from_suffix_with_containers(clean['Result_'.len..])
 		if inner.len > 0 {
 			return '!${inner}'
 		}
@@ -7630,8 +7644,11 @@ fn generic_type_arg_from_suffix(suffix string) string {
 	}
 }
 
-fn generic_type_arg_from_suffix_with_arrays(suffix string) string {
+fn generic_type_arg_from_suffix_with_containers(suffix string) string {
 	if decoded := generic_array_type_arg_from_suffix(suffix) {
+		return decoded
+	}
+	if decoded := generic_map_type_arg_from_suffix(suffix) {
 		return decoded
 	}
 	return generic_type_arg_from_suffix(suffix)

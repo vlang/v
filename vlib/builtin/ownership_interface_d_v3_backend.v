@@ -1,10 +1,5 @@
 module builtin
 
-interface OwnershipDrop {
-mut:
-	drop()
-}
-
 // OwnershipV3InterfacePayload matches the v3 runtime interface header.
 struct OwnershipV3InterfacePayload {
 	payload  voidptr
@@ -17,15 +12,9 @@ fn drop_owned_v3_interface[T](value T) {
 		mut owned := value
 		raw_interface := unsafe { &OwnershipV3InterfacePayload(&owned) }
 		if raw_interface.is_boxed {
-			payload := raw_interface.payload
-			if mut owned is OwnershipDrop {
-				owned.drop()
-			} else {
-				unsafe { owned.free() }
-			}
-			if payload != unsafe { nil } {
-				unsafe { free(payload) }
-			}
+			// The v3 C backend recognizes builtin.drop_owned as an intrinsic and uses
+			// the interface type id to destroy the concrete value before freeing its box.
+			drop_owned(owned)
 		}
 	}
 }
