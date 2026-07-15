@@ -20471,7 +20471,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 				return inner
 			}
 			if node.op == .arrow {
-				inner := tc.resolve_type(tc.a.child(&node, 0))
+				inner := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(&node, 0)))
 				if inner is Channel {
 					return inner.elem_type
 				}

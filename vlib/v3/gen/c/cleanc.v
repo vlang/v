@@ -3549,6 +3549,7 @@ fn (mut g FlatGen) gen_current_mut_param_value_read(id flat.NodeId, expected typ
 
 // gen_expr_with_expected_type emits expr with expected type output for c.
 fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Type) {
+	semantic_expected := cgen_unalias_type(expected)
 	old_expected := g.expected_expr_type
 	old_expected_enum := g.expected_enum
 	g.expected_expr_type = expected
@@ -3556,13 +3557,13 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = expected.name
 	}
 	node := g.a.nodes[int(id)]
-	if g.is_ierror_type_name(expected.name()) && node.kind == .none_expr {
+	if g.is_ierror_type_name(semantic_expected.name()) && node.kind == .none_expr {
 		g.write(g.ierror_none_literal_string())
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
 	}
-	if g.is_ierror_type_name(expected.name()) && g.expr_is_error_call(id) {
+	if g.is_ierror_type_name(semantic_expected.name()) && g.expr_is_error_call(id) {
 		g.gen_ierror_from_error_call(node)
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
@@ -3578,14 +3579,14 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = old_expected_enum
 		return
 	}
-	if expected is types.MultiReturn && node.kind == .if_expr {
+	if semantic_expected is types.MultiReturn && node.kind == .if_expr {
 		g.gen_if_expr_stmt(node)
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
 	}
-	if expected is types.MultiReturn && node.kind == .block {
-		if g.gen_multi_return_block_expr(&node, expected) {
+	if semantic_expected is types.MultiReturn && node.kind == .block {
+		if g.gen_multi_return_block_expr(&node, semantic_expected) {
 			g.expected_expr_type = old_expected
 			g.expected_enum = old_expected_enum
 			return
@@ -3597,22 +3598,23 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 			actual = param_type
 		}
 	}
-	if expected is types.String && g.gen_map_str_expr(id, actual) {
+	semantic_actual := cgen_unalias_type(actual)
+	if semantic_expected is types.String && g.gen_map_str_expr(id, actual) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
 	}
-	if g.gen_current_mut_param_value_read(id, expected) {
+	if g.gen_current_mut_param_value_read(id, semantic_expected) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
 	}
-	if expected is types.OptionType || expected is types.ResultType {
-		if node.kind == .none_expr || g.expr_is_optional_literal(id, expected)
-			|| actual is types.OptionType || actual is types.ResultType {
+	if semantic_expected is types.OptionType || semantic_expected is types.ResultType {
+		if node.kind == .none_expr || g.expr_is_optional_literal(id, semantic_expected)
+			|| semantic_actual is types.OptionType || semantic_actual is types.ResultType {
 			g.gen_expr(id)
 		} else {
-			g.gen_optional_arg(id, expected)
+			g.gen_optional_arg(id, semantic_expected)
 		}
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
@@ -3671,22 +3673,22 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = old_expected_enum
 		return
 	}
-	if g.gen_sum_pointer_value_expr(id, expected) {
+	if g.gen_sum_pointer_value_expr(id, semantic_expected) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
 	}
-	if g.gen_interface_value_expr(id, expected) {
+	if g.gen_interface_value_expr(id, semantic_expected) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
 	}
-	if g.gen_sum_constructor_call_with_expected_type(id, node, expected) {
+	if g.gen_sum_constructor_call_with_expected_type(id, node, semantic_expected) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
 	}
-	if g.gen_sum_value_expr(id, expected) {
+	if g.gen_sum_value_expr(id, semantic_expected) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
@@ -3790,18 +3792,18 @@ fn generic_sum_base_name(name string) string {
 
 // gen_sum_value_expr emits sum value expr output for c.
 fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool {
-	sum_type0 := if expected is types.Alias { expected.base_type } else { expected }
+	sum_type0 := cgen_unalias_type(expected)
 	if sum_type0 !is types.SumType {
 		return false
 	}
 	sum_type := sum_type0 as types.SumType
 	raw_actual0 := g.sum_cast_actual_type(id)
-	raw_actual_type := if raw_actual0 is types.Alias { raw_actual0.base_type } else { raw_actual0 }
+	raw_actual_type := cgen_unalias_type(raw_actual0)
 	if raw_actual_type is types.SumType {
 		return false
 	}
 	if declared := g.selector_declared_type(id) {
-		declared0 := if declared is types.Alias { declared.base_type } else { declared }
+		declared0 := cgen_unalias_type(declared)
 		if declared0 is types.SumType && g.type_names_match(declared0, sum_type0) {
 			return false
 		}
@@ -6229,6 +6231,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		.cast_expr {
 			target_type := g.tc.parse_type(node.value)
+			semantic_target := cgen_unalias_type(target_type)
 			mut ct := g.cast_c_type(target_type)
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
@@ -6238,10 +6241,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.gen_default_value_for_type(target_type)
 				return
 			}
-			if node.value in g.interfaces || g.tc.qualify_name(node.value) in g.interfaces {
-				g.write('(${ct}){0}')
-			} else if target_type is types.SumType {
-				g.gen_sum_cast_expr(target_type, g.a.child(&node, 0))
+			if semantic_target is types.Interface {
+				if !g.gen_interface_value_expr(g.a.child(&node, 0), semantic_target) {
+					g.gen_expr(g.a.child(&node, 0))
+				}
+			} else if semantic_target is types.SumType {
+				g.gen_sum_cast_expr(semantic_target, g.a.child(&node, 0))
+			} else if semantic_target is types.OptionType || semantic_target is types.ResultType {
+				g.gen_optional_arg(g.a.child(&node, 0), semantic_target)
 			} else if target_type is types.Pointer
 				&& g.gen_pointer_cast_fixed_array_literal(g.a.child(&node, 0), target_type, ct) {
 				return

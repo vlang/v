@@ -6882,12 +6882,14 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 		return true
 	}
 	arg_type := g.usable_expr_type(arg_id)
-	if arg_type is types.OptionType || arg_type is types.ResultType {
+	semantic_arg_type := cgen_unalias_type(arg_type)
+	if semantic_arg_type is types.OptionType || semantic_arg_type is types.ResultType {
 		if concrete_abi {
-			g.gen_concrete_optional_arg_from_optional_expr(arg_id, arg_type, expected, base_type)
+			g.gen_concrete_optional_arg_from_optional_expr(arg_id, semantic_arg_type, expected,
+				base_type)
 			return true
 		}
-		if g.type_names_match(arg_type, expected) {
+		if g.type_names_match(semantic_arg_type, expected) {
 			g.gen_expr_with_expected_type(arg_id, expected)
 			return true
 		}
@@ -9786,13 +9788,14 @@ fn (g &FlatGen) is_specialized_generic_fn_node(node flat.Node) bool {
 }
 
 fn (mut g FlatGen) concrete_optional_type_name(t types.Type) string {
+	clean_type := cgen_unalias_type(t)
 	mut base_type := types.Type(types.void_)
-	if t is types.OptionType {
-		base_type = t.base_type
-	} else if t is types.ResultType {
-		base_type = t.base_type
+	if clean_type is types.OptionType {
+		base_type = clean_type.base_type
+	} else if clean_type is types.ResultType {
+		base_type = clean_type.base_type
 	} else {
-		return g.tc.c_type(t)
+		return g.tc.c_type(clean_type)
 	}
 	if base_type is types.Void {
 		return 'Optional'

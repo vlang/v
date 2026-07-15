@@ -661,7 +661,7 @@ fn (g &FlatGen) iface_type_id_for_concrete(iface string, concrete types.Type) in
 }
 
 fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type) bool {
-	iface_type := if expected is types.Alias { expected.base_type } else { expected }
+	iface_type := cgen_unalias_type(expected)
 	if iface_type !is types.Interface {
 		return false
 	}
@@ -680,7 +680,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 		}
 	}
 	actual_clean := if actual is types.Pointer { actual.base_type } else { actual }
-	actual_base := actual_clean
+	actual_base := cgen_unalias_type(actual_clean)
 	if actual_base is types.Interface {
 		return false
 	}
