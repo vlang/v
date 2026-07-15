@@ -6468,9 +6468,13 @@ fn (mut t Transformer) comptime_type_condition_value(cond string) ?bool {
 fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bool {
 	mut clean_actual := t.comptime_condition_actual_type(actual)
 	clean_expected := expected.trim_space()
-	if clean_actual.len == 0 || clean_expected.len == 0
-		|| is_generic_fn_placeholder_name(clean_actual) {
+	if clean_actual.len == 0 || clean_expected.len == 0 {
 		return none
+	}
+	if is_generic_fn_placeholder_name(clean_actual) {
+		if isnil(t.tc) || t.tc.parse_type(clean_actual) is types.Unknown {
+			return none
+		}
 	}
 	// `X.typ` / `X.unaliased_typ` metadata selectors compare the underlying type
 	// itself; strip the suffix so a substituted `SumtypeTimeValue.unaliased_typ`
