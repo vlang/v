@@ -4292,7 +4292,8 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 // applicable to situations where the expr_typ does not have `option` and `result`,
 // e.g. field default: "foo ?int = 1", field assign: "foo = 1", field init: "foo: 1"
 fn (mut g Gen) gen_option_payload_ref(expr ast.PrefixExpr, ret_typ ast.Type, tmp_var string) bool {
-	if expr.op != .amp || !expr.right_type.has_flag(.option) {
+	right_type := g.table.fully_unaliased_type(expr.right_type)
+	if expr.op != .amp || !right_type.has_flag(.option) {
 		return false
 	}
 	mut right_expr := expr.right
