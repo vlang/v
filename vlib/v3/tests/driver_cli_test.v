@@ -19,6 +19,44 @@ fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	assert result.output.contains(message), result.output
 }
 
+fn run_driver_with_stdin_file(v3_bin string, args []string, stdin_path string) os.Result {
+	mut process := os.new_process(v3_bin)
+	process.set_args(args)
+	process.set_stdin_path(stdin_path)
+	process.set_redirect_stdio()
+	process.run()
+	process.wait()
+	mut output := process.stdout_slurp()
+	output += process.stderr_slurp()
+	if process.err.len > 0 {
+		output += process.err
+	}
+	exit_code := if process.code >= 0 { process.code } else { 1 }
+	process.close()
+	return os.Result{
+		exit_code: exit_code
+		output:    output
+	}
+}
+
+fn test_driver_run_preserves_stdin() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_stdin_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'stdin_program.v')
+	output := os.join_path(root, 'stdin_program')
+	input_file := os.join_path(root, 'input.txt')
+	os.write_file(source, "import os\n\nfn main() { println('read:' + os.input('')) }\n")!
+	os.write_file(input_file, 'from-stdin\n')!
+	result := run_driver_with_stdin_file(v3_bin, ['-o', output, 'run', source], input_file)
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('read:from-stdin'), result.output
+}
+
 fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_cli_${os.getpid()}')
 	os.rmdir_all(root) or {}

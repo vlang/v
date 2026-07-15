@@ -326,22 +326,11 @@ fn run_test_binary(bin_file string) int {
 }
 
 fn run_binary(bin_file string, args []string) int {
-	return run_binary_impl(bin_file, args, false)
-}
-
-fn run_binary_with_stderr_to_stdout(bin_file string, args []string) int {
-	return run_binary_impl(bin_file, args, true)
-}
-
-fn run_binary_impl(bin_file string, args []string, stderr_to_stdout bool) int {
 	run_path := executable_path_for_run(bin_file)
-	if stderr_to_stdout {
-		result := cmdexec.run(run_path, args)
-		print(result.output)
-		return result.exit_code
-	}
 	mut process := os.new_process(run_path)
 	process.set_args(args)
+	// `v3 run` is interactive: leave all three standard streams inherited so
+	// prompts are visible immediately and the program can read the caller's stdin.
 	process.wait()
 	exit_code := if process.code >= 0 { process.code } else { 1 }
 	process.close()
@@ -1530,7 +1519,7 @@ fn main() {
 		os.rmdir(cc_dir) or {}
 		b.step('cc')
 		if should_run {
-			run_result := run_binary_with_stderr_to_stdout(bin_file, run_args)
+			run_result := run_binary(bin_file, run_args)
 			if run_result != 0 {
 				exit(run_result)
 			}
