@@ -1,0 +1,18 @@
+import json
+
+struct User {
+	name string
+}
+
+// A `// vfmt off` region is copied back to the output verbatim, so its raw
+// `json.encode` call would not be migrated in step with an `import json` rewrite.
+// The whole file's json usage is therefore left unmigrated.
+// vfmt off
+fn to_json(u User) string {
+	return json.encode(u)
+}
+// vfmt on
+
+fn main() {
+	println(to_json(User{ name: 'bob' }))
+}

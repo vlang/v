@@ -203,7 +203,8 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 		}
 	}
 	if imports_json {
-		f.keep_json_unmigrated = json2_alias_is_blank || f.file_has_unmigratable_json_usage(file)
+		f.keep_json_unmigrated = json2_alias_is_blank || f.file_has_vfmt_off_region()
+			|| f.file_has_unmigratable_json_usage(file)
 	}
 
 	for imp in file.imports {
@@ -267,6 +268,22 @@ fn (f &Fmt) file_has_unmigratable_json_usage(file &ast.File) bool {
 	}
 	walker.inspect(file, &scan, json_unmigratable_scan_visit)
 	return scan.found
+}
+
+// file_has_vfmt_off_region reports whether the source has a `// vfmt off` region.
+// Such a region is copied back to the output verbatim, so a raw `json.*` call or
+// `import json` inside it is not migrated in step with the rest of the file (e.g.
+// `import json` migrates to `import json2` while the off-block still calls
+// `json.encode`, leaving the file with no `json` import). Since a `// vfmt off`
+// comment can even sit between the import and a call, the whole file's json usage is
+// left unmigrated whenever any such region is present.
+fn (mut f Fmt) file_has_vfmt_off_region() bool {
+	for line in f.get_source_lines() {
+		if line.contains('// vfmt off') {
+			return true
+		}
+	}
+	return false
 }
 
 //=== Basic buffer write operations ===//
