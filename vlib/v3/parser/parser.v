@@ -7555,7 +7555,7 @@ fn (mut p Parser) isreftype_expr() flat.NodeId {
 fn (mut p Parser) isreftype_paren_arg_starts_type() bool {
 	match p.tok {
 		.name {
-			return isreftype_name_can_start_type(p.lit)
+			return p.isreftype_current_name_can_start_type()
 		}
 		.amp, .and, .question, .not {
 			return p.isreftype_prefix_arg_starts_type()
@@ -7576,10 +7576,70 @@ fn isreftype_name_can_start_type(name string) bool {
 	return is_builtin_type(name) || (name.len > 0 && name[0] >= `A` && name[0] <= `Z`)
 }
 
+fn (mut p Parser) isreftype_current_name_can_start_type() bool {
+	if p.tok != .name {
+		return false
+	}
+	if isreftype_name_can_start_type(p.lit) {
+		return true
+	}
+	return p.isreftype_current_name_starts_qualified_type()
+}
+
+fn (mut p Parser) isreftype_current_name_starts_qualified_type() bool {
+	if p.peek() != .dot {
+		return false
+	}
+	saved_s := p.s
+	saved_tok := p.tok
+	saved_lit := p.lit
+	saved_tok_pos := p.tok_pos
+	saved_peek_tok := p.peek_tok
+	saved_peek_lit := p.peek_lit
+	saved_peek_pos := p.peek_pos
+	saved_has_peek := p.has_peek
+	p.next()
+	if p.tok == .dot {
+		p.next()
+	}
+	result := p.tok == .name && isreftype_name_can_start_type(p.lit)
+	p.s = saved_s
+	p.tok = saved_tok
+	p.lit = saved_lit
+	p.tok_pos = saved_tok_pos
+	p.peek_tok = saved_peek_tok
+	p.peek_lit = saved_peek_lit
+	p.peek_pos = saved_peek_pos
+	p.has_peek = saved_has_peek
+	return result
+}
+
+fn (mut p Parser) isreftype_peek_name_can_start_type() bool {
+	saved_s := p.s
+	saved_tok := p.tok
+	saved_lit := p.lit
+	saved_tok_pos := p.tok_pos
+	saved_peek_tok := p.peek_tok
+	saved_peek_lit := p.peek_lit
+	saved_peek_pos := p.peek_pos
+	saved_has_peek := p.has_peek
+	p.next()
+	result := p.isreftype_current_name_can_start_type()
+	p.s = saved_s
+	p.tok = saved_tok
+	p.lit = saved_lit
+	p.tok_pos = saved_tok_pos
+	p.peek_tok = saved_peek_tok
+	p.peek_lit = saved_peek_lit
+	p.peek_pos = saved_peek_pos
+	p.has_peek = saved_has_peek
+	return result
+}
+
 fn (mut p Parser) isreftype_prefix_arg_starts_type() bool {
 	pk := p.peek()
 	if pk == .name {
-		return isreftype_name_can_start_type(p.peek_lit)
+		return p.isreftype_peek_name_can_start_type()
 	}
 	if pk == .lsbr {
 		return p.peek_lbr_starts_array_type_after_prefix()

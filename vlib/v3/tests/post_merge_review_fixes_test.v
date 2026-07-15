@@ -4272,6 +4272,12 @@ fn main() {
 }
 ')
 	assert out == 'value expr\nptr expr\nptr type\nfn type\narray type'
+	qualified_out := run_good_project(v3_bin, 'isreftype_qualified_type_args', {
+		'v.mod':     "Module { name: 'isreftype_qualified_type_args' }\n"
+		'foo/foo.v': 'module foo\n\npub struct Bar {}\n'
+		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\tif !isreftype(foo.Bar) {\n\t\tprintln("qualified type")\n\t}\n\tif isreftype(&foo.Bar) {\n\t\tprintln("qualified ptr type")\n\t}\n\tbar := foo.Bar{}\n\tif isreftype(bar) {\n\t\tprintln("bad expr")\n\t} else {\n\t\tprintln("qualified value expr")\n\t}\n}\n'
+	}, 'main.v')
+	assert qualified_out == 'qualified type\nqualified ptr type\nqualified value expr'
 }
 
 fn test_shadowed_global_local_rename_is_scoped_to_binding() {
