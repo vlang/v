@@ -7590,25 +7590,25 @@ fn generic_type_arg_from_suffix(suffix string) string {
 		return ''
 	}
 	if clean.starts_with('ptr_') {
-		inner := generic_type_arg_from_suffix(clean['ptr_'.len..])
+		inner := generic_type_arg_from_suffix_with_arrays(clean['ptr_'.len..])
 		if inner.len > 0 {
 			return '&${inner}'
 		}
 	}
 	if clean.starts_with('Option_') {
-		inner := generic_type_arg_from_suffix(clean['Option_'.len..])
+		inner := generic_type_arg_from_suffix_with_arrays(clean['Option_'.len..])
 		if inner.len > 0 {
 			return '?${inner}'
 		}
 	}
 	if clean.starts_with('Optional_') {
-		inner := generic_type_arg_from_suffix(clean['Optional_'.len..])
+		inner := generic_type_arg_from_suffix_with_arrays(clean['Optional_'.len..])
 		if inner.len > 0 {
 			return '?${inner}'
 		}
 	}
 	if clean.starts_with('Result_') {
-		inner := generic_type_arg_from_suffix(clean['Result_'.len..])
+		inner := generic_type_arg_from_suffix_with_arrays(clean['Result_'.len..])
 		if inner.len > 0 {
 			return '!${inner}'
 		}
@@ -7628,6 +7628,13 @@ fn generic_type_arg_from_suffix(suffix string) string {
 		'Array_u8' { '[]u8' }
 		else { clean.replace('__', '.') }
 	}
+}
+
+fn generic_type_arg_from_suffix_with_arrays(suffix string) string {
+	if decoded := generic_array_type_arg_from_suffix(suffix) {
+		return decoded
+	}
+	return generic_type_arg_from_suffix(suffix)
 }
 
 fn generic_fn_spec_key(decl_key string, args []string) string {
