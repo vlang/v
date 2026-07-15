@@ -701,7 +701,8 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 			return_type := g.tc.fn_ret_types[clone_method] or { concrete_type }
 			if return_type is types.Pointer {
 				g.writeln('${result}._object = ${g.cname(clone_method)}(${receiver});')
-				g.writeln('${result}._object_is_boxed = false;')
+				// A compatible pointer-returning clone creates independent owned storage.
+				g.writeln('${result}._object_is_boxed = true;')
 			} else {
 				value := '_clone_ierror_value${tmp}'
 				g.writeln('${concrete_ct} ${value} = ${g.cname(clone_method)}(${receiver});')
