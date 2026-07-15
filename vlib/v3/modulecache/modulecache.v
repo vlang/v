@@ -1639,27 +1639,86 @@ fn cached_resolve_relative_flag_paths(value string, source_file string) string {
 	if base_dir.len == 0 {
 		return value
 	}
+	tokens, valid := cached_split_flag_tokens(value)
+	if !valid {
+		return value
+	}
 	mut resolved := []string{}
-	for token in value.fields() {
+	for token in tokens {
 		resolved << cached_resolve_relative_flag_path_token(token, base_dir)
 	}
 	return resolved.join(' ')
+}
+
+fn cached_split_flag_tokens(value string) ([]string, bool) {
+	mut tokens := []string{}
+	mut start := -1
+	mut quote := u8(0)
+	mut escaped := false
+	for i, c in value.bytes() {
+		if start < 0 {
+			if c.is_space() {
+				continue
+			}
+			start = i
+		}
+		if escaped {
+			escaped = false
+			continue
+		}
+		if c == `\\` {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c in [`'`, `\"`] {
+			quote = c
+			continue
+		}
+		if c.is_space() {
+			tokens << value[start..i]
+			start = -1
+		}
+	}
+	if quote != 0 {
+		return []string{}, false
+	}
+	if start >= 0 {
+		tokens << value[start..]
+	}
+	return tokens, true
 }
 
 fn cached_resolve_relative_flag_path_token(token string, base_dir string) string {
 	for prefix in ['-I', '-L'] {
 		if token.starts_with(prefix) && token.len > prefix.len {
 			path := token[prefix.len..]
-			if cached_flag_path_is_relative(path) {
-				return prefix + os.real_path(os.join_path_single(base_dir, path))
-			}
-			return token
+			return prefix + cached_resolve_relative_flag_path(path, base_dir)
 		}
 	}
-	if !token.starts_with('-') && cached_flag_path_is_relative(token) {
-		return os.real_path(os.join_path_single(base_dir, token))
+	if !token.starts_with('-') {
+		return cached_resolve_relative_flag_path(token, base_dir)
 	}
 	return token
+}
+
+fn cached_resolve_relative_flag_path(path_token string, base_dir string) string {
+	mut path := path_token
+	mut quote := u8(0)
+	if path.len >= 2 && path[0] in [`'`, `\"`] && path[path.len - 1] == path[0] {
+		quote = path[0]
+		path = path[1..path.len - 1]
+	}
+	if !cached_flag_path_is_relative(path) {
+		return path_token
+	}
+	resolved := os.real_path(os.join_path_single(base_dir, path))
+	return if quote == 0 { resolved } else { quote.ascii_str() + resolved + quote.ascii_str() }
 }
 
 fn cached_flag_path_is_relative(path string) bool {
