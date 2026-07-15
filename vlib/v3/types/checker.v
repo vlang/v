@@ -539,6 +539,107 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	}
 }
 
+// fork_program_view builds a checker view over immutable, compilation-wide
+// semantic data. Mutable scope, diagnostics, sparse caches, and function state
+// start private. Keeping this constructor explicit prevents a newly-added
+// mutable field from being silently shared by parallel workers.
+fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst) TypeChecker {
+	fs := new_scope(tc.file_scope)
+	return TypeChecker{
+		a:                                  ast
+		fn_ret_types:                       tc.fn_ret_types
+		fn_param_types:                     tc.fn_param_types
+		fn_shared_params:                   tc.fn_shared_params
+		fn_ret_type_texts:                  tc.fn_ret_type_texts
+		fn_param_type_texts:                tc.fn_param_type_texts
+		fn_type_files:                      tc.fn_type_files
+		fn_type_modules:                    tc.fn_type_modules
+		fn_generic_params:                  tc.fn_generic_params
+		specialized_generic_fns:            tc.specialized_generic_fns
+		fn_variadic:                        tc.fn_variadic
+		c_variadic_fns:                     tc.c_variadic_fns
+		fn_implicit_veb_ctx:                tc.fn_implicit_veb_ctx
+		receiver_method_suffix_index:       tc.receiver_method_suffix_index
+		structs:                            tc.structs
+		struct_modules:                     tc.struct_modules
+		struct_files:                       tc.struct_files
+		declared_type_scope_keys:           tc.declared_type_scope_keys
+		struct_error_embeds_shadow_builtin: tc.struct_error_embeds_shadow_builtin
+		struct_generic_params:              tc.struct_generic_params
+		struct_implements:                  tc.struct_implements
+		struct_shared_fields:               tc.struct_shared_fields
+		struct_field_c_abi_fns:             tc.struct_field_c_abi_fns
+		generic_method_value_info:          tc.generic_method_value_info
+		params_structs:                     tc.params_structs
+		unions:                             tc.unions
+		type_aliases:                       tc.type_aliases
+		type_alias_c_abi_fns:               tc.type_alias_c_abi_fns
+		sum_types:                          tc.sum_types
+		sum_generic_params:                 tc.sum_generic_params
+		enum_names:                         tc.enum_names
+		enum_fields:                        tc.enum_fields
+		flag_enums:                         tc.flag_enums
+		interface_names:                    tc.interface_names
+		interface_fields:                   tc.interface_fields
+		interface_embeds:                   tc.interface_embeds
+		interface_abstract_methods:         tc.interface_abstract_methods
+		c_globals:                          tc.c_globals
+		const_types:                        tc.const_types
+		const_exprs:                        tc.const_exprs
+		const_modules:                      tc.const_modules
+		const_files:                        tc.const_files
+		const_suffixes:                     tc.const_suffixes
+		imports:                            tc.imports
+		file_imports:                       tc.file_imports
+		file_selective_imports:             tc.file_selective_imports
+		file_imports_by_file:               tc.file_imports_by_file
+		file_modules:                       tc.file_modules
+		file_scope:                         fs
+		cur_scope:                          fs
+		scope_pool:                         []&Scope{}
+		has_builtins:                       tc.has_builtins
+		cur_module:                         tc.cur_module
+		cur_file:                           tc.cur_file
+		errors:                             []TypeError{}
+		resolved_call_names:                tc.resolved_call_names
+		resolved_call_set:                  tc.resolved_call_set
+		resolved_fn_value_names:            tc.resolved_fn_value_names
+		resolved_fn_value_set:              tc.resolved_fn_value_set
+		statement_nodes:                    tc.statement_nodes
+		direct_dependencies_by_fn:          tc.direct_dependencies_by_fn
+		method_values_by_fn:                tc.method_values_by_fn
+		cur_comptime_variant_loop_vars:     tc.cur_comptime_variant_loop_vars
+		expr_type_values:                   tc.expr_type_values
+		expr_type_set:                      tc.expr_type_set
+		checking_nodes:                     tc.checking_nodes
+		sparse_resolved_call_names:         map[int]string{}
+		sparse_resolved_fn_values:          map[int]string{}
+		sparse_statement_nodes:             map[int]bool{}
+		sparse_expr_type_values:            map[int]Type{}
+		sparse_checking_nodes:              map[int]bool{}
+		diagnose_unknown_calls:             tc.diagnose_unknown_calls
+		reject_unlowered_map_mutation:      tc.reject_unlowered_map_mutation
+		reject_unsupported_generics:        tc.reject_unsupported_generics
+		diagnostic_files:                   tc.diagnostic_files
+		has_spawn_expr:                     tc.has_spawn_expr
+		inactive_top_level_node_ids:        tc.inactive_top_level_node_ids
+		selected_file_called_fns:           tc.selected_file_called_fns
+		selected_file_worklist:             tc.selected_file_worklist
+		defer_ierror_gating:                tc.defer_ierror_gating
+		pending_ierror_errors:              []PendingIerrorError{}
+		top_level_idx:                      tc.top_level_idx
+		top_level_idx_nodes_len:            tc.top_level_idx_nodes_len
+		expected_expr_id:                   -1
+		expected_expr_type:                 Type(void_)
+		smartcasts:                         tc.smartcasts
+		ownership:                          tc.ownership
+		selfhost:                           tc.selfhost
+		fn_context:                         new_function_check_context()
+		type_interner:                      tc.type_interner
+		symbols:                            tc.symbols
+	}
+}
+
 // fork_for_parallel_transform returns a TypeChecker that shares all of `tc`'s
 // read-only data (semantic maps and node-indexed cache arrays, which the transform
 // pass only reads) but owns a fresh, private `type_cache` and a private AST view.
@@ -548,8 +649,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 // semantic maps. `ast` must be the worker's own (cloned) FlatAst so that any
 // expr_type lookup on a freshly-created node id indexes a valid array.
 pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChecker {
-	mut forked := *tc
-	forked.a = ast
+	mut forked := tc.fork_program_view(ast)
 	// The transformer propagates call/fn-value resolution metadata onto the call
 	// nodes it clones (Transformer.copy_cloned_resolution). In a worker those
 	// writes must not touch (or grow/realloc) the shared node-indexed arrays

@@ -512,6 +512,13 @@ pub fn monomorphize_with_used_checked(mut a flat.FlatAst, tc &types.TypeChecker,
 }
 
 fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) Transformer {
+	return new_transformer_view(a, tc, used_fns)
+}
+
+// new_transformer_view creates a transformer with private mutable state over an
+// existing AST. It is also the baseline for parallel workers: worker forks add
+// only the frozen program indexes they are allowed to share.
+fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) Transformer {
 	return Transformer{
 		a:                                a
 		tc:                               unsafe { tc }
@@ -1493,10 +1500,7 @@ fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.Flat
 // per-function mutable state, helper-root tracking, used-fn additions, and
 // memoization caches are reset/private so the worker can run on its own thread.
 fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Transformer {
-	mut w := *t
-	w.a = ast
-	w.tc = wtc
-	w.used_fns = t.used_fns.clone()
+	mut w := t.fork_program_view(ast, wtc, t.used_fns)
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -1569,9 +1573,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 // caller's `used` snapshot and never marks names — so forking costs almost
 // nothing even with one fork per scan thread.
 fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
-	mut w := *t
-	w.tc = wtc
-	w.used_fns = map[string]bool{}
+	mut w := t.fork_program_view(t.a, wtc, map[string]bool{})
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -1619,6 +1621,60 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.expected_expr_node = -1
 	w.expected_expr_type = ''
 	return &w
+}
+
+// fork_program_view constructs a worker from explicit compilation-wide state.
+// All fields omitted here come from new_transformer_view as fresh worker-local
+// state, so adding a mutable Transformer field cannot silently share its backing
+// storage with a helper thread.
+fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker, used_fns map[string]bool) Transformer {
+	return Transformer{
+		a:                                ast
+		tc:                               wtc
+		structs:                          t.structs
+		unique_fields:                    t.unique_fields
+		alias_methods:                    t.alias_methods
+		globals:                          t.globals
+		sum_types:                        t.sum_types
+		sum_variant_parents:              t.sum_variant_parents
+		sum_variant_names:                t.sum_variant_names
+		sum_variant_fields:               t.sum_variant_fields
+		qualified_types:                  t.qualified_types
+		fn_ret_types:                     t.fn_ret_types
+		receiver_method_suffix_index:     t.receiver_method_suffix_index
+		const_suffixes:                   t.const_suffixes
+		enum_types:                       t.enum_types
+		enum_backing_types:               t.enum_backing_types
+		call_param_types_decl_cache:      t.call_param_types_decl_cache
+		call_param_types_decl_misses:     t.call_param_types_decl_misses.clone()
+		call_param_types_decl_index:      t.call_param_types_decl_index
+		call_param_types_index_ready:     t.call_param_types_index_ready
+		used_struct_operator_fns:         t.used_struct_operator_fns
+		generic_specialization_args:      t.generic_specialization_args.clone()
+		interface_var_concrete_types:     t.interface_var_concrete_types.clone()
+		interface_boxed_types:            t.interface_boxed_types.clone()
+		sum_eq_types:                     t.sum_eq_types.clone()
+		sum_eq_synthesized:               t.sum_eq_synthesized.clone()
+		used_fns:                         used_fns.clone()
+		mut_param_values:                 map[string]bool{}
+		pointer_value_lvalues:            map[string]bool{}
+		pointer_value_rvalues:            map[string]bool{}
+		invalidated_smartcasts:           map[string]bool{}
+		escaping_amp_ptrs:                map[string]bool{}
+		escaping_amp_sources:             map[string]bool{}
+		heaped_amp_locals:                map[string]bool{}
+		generic_fn_specs_in_progress:     map[string]bool{}
+		generic_receiver_methods_by_name: map[string][]string{}
+		generic_call_spec_cache:          map[int]GenericCallSpec{}
+		generic_call_spec_misses:         map[int]bool{}
+		monomorph_error_seen:             map[string]bool{}
+		skip_generics:                    t.skip_generics
+		has_spawn_expr:                   t.has_spawn_expr
+		base_write_intercept:             t.base_write_intercept
+		defer_oor_writes:                 t.defer_oor_writes
+		shared_base_nodes:                t.shared_base_nodes
+		scope_parallel_workers:           t.scope_parallel_workers
+	}
 }
 
 fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {

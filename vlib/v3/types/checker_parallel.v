@@ -447,13 +447,7 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 }
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
-	mut w := *tc
-	w.file_scope = new_scope(tc.file_scope)
-	w.cur_scope = w.file_scope
-	w.scope_pool = []&Scope{}
-	w.scope_pool_index = 0
-	w.errors = []TypeError{}
-	w.pending_ierror_errors = []PendingIerrorError{}
+	mut w := tc.fork_program_view(tc.a)
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint
 	// node id range [range_lo, fn_idx], and while parallel_check_sparse is set
