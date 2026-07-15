@@ -18516,17 +18516,44 @@ fn (tc &TypeChecker) type_has_implicit_str_method(name string) bool {
 	if clean.len == 0 {
 		return false
 	}
+	if tc.type_name_resolves_to_sum_type(clean) {
+		return false
+	}
 	if is_builtin_type_name(clean) {
 		return true
 	}
-	if clean in tc.structs || clean in tc.type_aliases || clean in tc.sum_types
-		|| clean in tc.interface_names {
+	if clean in tc.structs || clean in tc.type_aliases || clean in tc.interface_names {
 		return true
 	}
 	if !clean.contains('.') {
 		qname := tc.qualify_name(clean)
-		return qname in tc.structs || qname in tc.type_aliases || qname in tc.sum_types
-			|| qname in tc.interface_names
+		return qname in tc.structs || qname in tc.type_aliases || qname in tc.interface_names
+	}
+	return false
+}
+
+fn (tc &TypeChecker) type_name_resolves_to_sum_type(name string) bool {
+	mut cur := name.trim_space()
+	mut seen := map[string]bool{}
+	for cur.len > 0 {
+		if cur in tc.sum_types {
+			return true
+		}
+		if !cur.contains('.') {
+			qname := tc.qualify_name(cur)
+			if qname in tc.sum_types {
+				return true
+			}
+		}
+		if seen[cur] {
+			return false
+		}
+		seen[cur] = true
+		mut next := tc.type_aliases[cur] or { '' }
+		if next.len == 0 && !cur.contains('.') {
+			next = tc.type_aliases[tc.qualify_name(cur)] or { '' }
+		}
+		cur = next.trim_space()
 	}
 	return false
 }

@@ -826,3 +826,10 @@ fn test_hierarchical_import_runtime_inits_before_importer_init() {
 	}, 'main.v')
 	assert out == '41'
 }
+
+fn test_lowered_generic_operator_call_records_specialization() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'lowered_generic_operator_call_records_specialization',
+		'struct Box[T] {\n\tv T\n}\n\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\n\nfn main() {\n\tleft := Box[int]{\n\t\tv: 2\n\t}\n\tright := Box[int]{\n\t\tv: 5\n\t}\n\tresult := left + right\n\tprintln(int_str(result.v))\n}\n')
+	assert out == '7'
+}

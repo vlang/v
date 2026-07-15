@@ -72,6 +72,13 @@ fn test_reject_narrowed_interface_method_parameters() {
 		'type `Impl` does not implement interface `I`')
 }
 
+fn test_implicit_str_sum_does_not_satisfy_interface() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_implicit_str_sum_interface',
+		'interface Printable {\n\tstr() string\n}\ntype Value = int | string\nfn main() {\n\t_ := Printable(Value(1))\n}\n',
+		'does not implement interface')
+}
+
 fn test_multi_return_tail_slots_use_return_compatibility() {
 	v3_bin := build_v3_review_checker()
 	if_out := run_good(v3_bin, 'good_multi_return_if_pointer_value_tail',

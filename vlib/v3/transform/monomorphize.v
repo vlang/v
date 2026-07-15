@@ -421,10 +421,10 @@ fn (mut t Transformer) specialize_generic_struct_methods(struct_decls map[string
 			method := decl_key.all_after_last('.')
 			if is_operator_method_name(method) {
 				// Specialize an operator overload only for an instance whose operator is
-				// actually applied somewhere (recorded by record_used_struct_operator).
-				// Otherwise a stored-but-never-operated instance whose type argument does
-				// not support the operation would emit a body that fails C compilation.
-				if c_name('${spec}.${method}') !in t.used_struct_operator_fns {
+				// actually applied somewhere. Otherwise a stored-but-never-operated
+				// instance whose type argument does not support the operation would emit
+				// a body that fails C compilation.
+				if !t.generic_struct_operator_call_seen(c_name('${spec}.${method}')) {
 					continue
 				}
 			} else if !t.generic_struct_method_needed_for_interface(spec, method) {
@@ -459,6 +459,13 @@ fn (mut t Transformer) specialize_generic_struct_methods(struct_decls map[string
 		}
 	}
 	return any
+}
+
+fn (t &Transformer) generic_struct_operator_call_seen(name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	return name in t.used_struct_operator_fns || t.used_fns[name] || t.used_fns[c_name(name)]
 }
 
 fn (t &Transformer) generic_struct_spec_has_emitted_method(base string, args []string, decls map[string]GenericFnDecl, emitted map[string]bool) bool {
@@ -3971,7 +3978,7 @@ fn (t &Transformer) generic_flat_receiver_call_decl_key(name string, module_name
 	if receiver.len == 0 || method.len == 0 {
 		return none
 	}
-	if name in t.used_struct_operator_fns
+	if t.generic_struct_operator_call_seen(name)
 		&& t.generic_flat_receiver_operator_decl_exists(receiver, method, module_name, decls) {
 		return none
 	}
