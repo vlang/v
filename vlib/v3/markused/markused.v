@@ -1473,6 +1473,14 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			.call {
 				if node.children_count > 0 {
 					fn_node := a.child_node(&node, 0)
+					if fn_node.kind == .selector && fn_node.value == 'str'
+						&& fn_node.children_count > 0 {
+						base_type := types.unwrap_pointer(tc.resolve_type(a.child(fn_node, 0)))
+						if base_type is types.Interface
+							&& tc.interface_accepts_implicit_str(base_type.name) {
+							enqueue_interface_str_methods(base_type.name, tc, mut used, mut queue)
+						}
+					}
 					if !needs_channel_str_helpers && fn_node.kind == .selector
 						&& fn_node.value == 'str' && fn_node.children_count > 0
 						&& markused_expr_stringifies_channel(a, tc, a.child(fn_node, 0), cur_module, mut channel_stringify_cache) {
@@ -2047,12 +2055,79 @@ fn enqueue_interface_str_methods(iface_name string, tc &types.TypeChecker, mut u
 			enqueue(short, mut used, mut queue)
 		}
 	}
+	enqueue_implicit_interface_str_dispatch_helpers(iface_name, tc, mut used, mut queue)
+}
+
+fn enqueue_implicit_interface_str_dispatch_helpers(iface_name string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	if !tc.interface_accepts_implicit_str(iface_name) {
+		return
+	}
+	enqueue('string__plus', mut used, mut queue)
+	for impl in tc.interface_impl_names(iface_name) {
+		if !tc.type_has_implicit_str_method(impl) {
+			continue
+		}
+		mut seen := map[string]bool{}
+		enqueue_implicit_str_type_helpers(tc.parse_type(impl), tc, mut used, mut queue, mut seen)
+	}
+}
+
+fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut seen map[string]bool) {
+	key := typ.name()
+	if key.len > 0 {
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		enqueue_structlike_str_method(key, '', tc, mut used, mut queue)
+	}
+	match typ {
+		types.Alias {
+			enqueue_implicit_str_type_helpers(typ.base_type, tc, mut used, mut queue, mut seen)
+		}
+		types.Pointer {
+			enqueue_implicit_str_type_helpers(typ.base_type, tc, mut used, mut queue, mut seen)
+		}
+		types.Primitive, types.Rune, types.Char, types.ISize, types.USize {
+			enqueue_stringified_primitive_helpers(key, mut used, mut queue)
+		}
+		types.Enum {
+			enqueue_enum_str_method(key, '', tc, mut used, mut queue)
+		}
+		types.Struct {
+			for field in tc.structs[key] or { []types.StructField{} } {
+				enqueue_implicit_str_type_helpers(field.typ, tc, mut used, mut queue, mut seen)
+			}
+		}
+		types.Array {
+			enqueue('string__plus', mut used, mut queue)
+			enqueue_implicit_str_type_helpers(typ.elem_type, tc, mut used, mut queue, mut seen)
+		}
+		types.ArrayFixed {
+			enqueue('string__plus', mut used, mut queue)
+			enqueue_implicit_str_type_helpers(typ.elem_type, tc, mut used, mut queue, mut seen)
+		}
+		types.Map {
+			enqueue_implicit_map_str_helpers(mut used, mut queue)
+			enqueue_implicit_str_type_helpers(typ.key_type, tc, mut used, mut queue, mut seen)
+			enqueue_implicit_str_type_helpers(typ.value_type, tc, mut used, mut queue, mut seen)
+		}
+		else {}
+	}
+}
+
+fn enqueue_implicit_map_str_helpers(mut used map[string]bool, mut queue []string) {
+	enqueue('string__plus', mut used, mut queue)
+	for primitive in ['i64', 'u64', 'f64', 'rune'] {
+		enqueue_stringified_primitive_helpers(primitive, mut used, mut queue)
+	}
 }
 
 fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]bool, mut queue []string) {
 	match type_name {
 		'bool' {
 			enqueue('bool.str', mut used, mut queue)
+			enqueue(markused_c_name('bool.str'), mut used, mut queue)
 		}
 		'rune', 'char' {
 			enqueue('rune.str', mut used, mut queue)

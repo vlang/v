@@ -18778,7 +18778,7 @@ fn stable_interface_type_id_hash(name string) int {
 	return if id == 0 { 1 } else { id }
 }
 
-fn (tc &TypeChecker) interface_accepts_implicit_str(iface_name string) bool {
+pub fn (tc &TypeChecker) interface_accepts_implicit_str(iface_name string) bool {
 	for method in tc.interface_abstract_method_names(iface_name) {
 		if method != 'str' {
 			continue

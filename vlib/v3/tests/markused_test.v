@@ -188,6 +188,26 @@ fn main() {
 	assert used['string__plus']
 }
 
+fn test_implicit_interface_str_dispatch_seeds_generated_helpers() {
+	used := mark_used_source('implicit_interface_str_dispatch_helpers', '
+interface Printable {
+	str() string
+}
+
+struct Foo {
+	x int
+}
+
+fn main() {
+	println(Printable(Foo{
+		x: 1
+	}).str())
+}
+')
+	assert used['string__plus']
+	assert used['int__str']
+}
+
 fn test_generic_struct_operator_roots_operator_dependencies() {
 	used := mark_used_source('generic_struct_operator_dependencies', '
 struct Time {

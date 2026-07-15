@@ -5422,8 +5422,8 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 					continue
 				}
 				label := json_struct_field_label(field.name, attrs)
-				prefix := g.intern_string('"${label}":')
-				prefix_with_separator := g.intern_string(',"${label}":')
+				prefix := g.intern_string(json_struct_field_label_prefix(label, ''))
+				prefix_with_separator := g.intern_string(json_struct_field_label_prefix(label, ','))
 				field_expr := '(${expr}).${g.cname(field.name)}'
 				encoded := g.json_encode_value_c_expr(field.typ, field_expr) or { return none }
 				append := '${res} = string__plus(string__plus(${res}, (${count} == 0 ? _str_${prefix} : _str_${prefix_with_separator})), ${encoded}); ${count}++;'
@@ -5446,7 +5446,7 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 			}
 			label := json_struct_field_label(field.name, attrs)
 			separator := if emitted_fields == 0 { '' } else { ',' }
-			prefix := g.intern_string('${separator}"${label}":')
+			prefix := g.intern_string(json_struct_field_label_prefix(label, separator))
 			field_expr := '(${expr}).${g.cname(field.name)}'
 			encoded := g.json_encode_value_c_expr(field.typ, field_expr) or { return none }
 			result = 'string__plus(string__plus(${result}, _str_${prefix}), ${encoded})'
@@ -5981,6 +5981,50 @@ fn json_struct_field_label(field_name string, attrs []string) string {
 		}
 	}
 	return field_name
+}
+
+fn json_struct_field_label_prefix(label string, separator string) string {
+	return '${separator}"${json_string_content_escape(label)}":'
+}
+
+fn json_string_content_escape(value string) string {
+	mut out := strings.new_builder(value.len)
+	for i in 0 .. value.len {
+		c := value[i]
+		match c {
+			`"` {
+				out.write_string('\\"')
+			}
+			`\\` {
+				out.write_string('\\\\')
+			}
+			8 {
+				out.write_string('\\b')
+			}
+			12 {
+				out.write_string('\\f')
+			}
+			`\n` {
+				out.write_string('\\n')
+			}
+			`\r` {
+				out.write_string('\\r')
+			}
+			`\t` {
+				out.write_string('\\t')
+			}
+			else {
+				if c < 32 {
+					out.write_string('\\u00')
+					out.write_u8('0123456789abcdef'[int((c >> 4) & 15)])
+					out.write_u8('0123456789abcdef'[int(c & 15)])
+				} else {
+					out.write_u8(c)
+				}
+			}
+		}
+	}
+	return out.str()
 }
 
 // json_enum_number_cast returns the integer cast (`i64`/`u64`) to use when an enum is

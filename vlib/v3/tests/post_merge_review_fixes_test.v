@@ -2686,6 +2686,27 @@ fn main() {
 	assert out == '{"age":3}\n{"name":"Ada","age":4}'
 }
 
+fn test_json_encode_escapes_struct_field_labels_on_fast_path() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_encode_escaped_struct_field_labels', 'import json
+
+struct Packet {
+	text  string @[json: \'a"b\']
+	line  int    @[json: \'line\\nbreak\']
+	slash bool   @[json: \'c\\\\d\']
+}
+
+fn main() {
+	println(json.encode(Packet{
+		text:  "ok"
+		line:  2
+		slash: true
+	}))
+}
+')
+	assert out == '{"a\\"b":"ok","line\\nbreak":2,"c\\\\d":true}'
+}
+
 fn test_json_encode_declines_unsupported_field_attrs() {
 	v3_bin := build_v3()
 	c_source := gen_c(v3_bin, 'json_encode_unsupported_field_attr', 'import json
