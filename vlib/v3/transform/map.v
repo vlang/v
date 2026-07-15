@@ -248,8 +248,14 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 		key_type), t.map_key_storage_type(key_type))
 	if !isnil(t.tc) && t.tc.ownership_index_read_moves_value(id)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type)) {
-		return t.lower_owned_map_index_move(map_source_id, map_expr, base_type, key_name,
+		result := t.lower_owned_map_index_move(map_source_id, map_expr, base_type, key_name,
 			value_type)
+		if t.tc.ownership_expr_creates_owned_value(key_id)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type)) {
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
+				arr1(t.make_ident(key_name)), 'void'))
+		}
+		return result
 	}
 	zero_name := t.new_temp('map_zero')
 	t.pending_stmts << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type),
@@ -738,7 +744,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 // append_owned_lvalue_drop_before_assign destroys an owned value after its
 // replacement has been saved and before its storage is overwritten.
 fn (mut t Transformer) append_owned_lvalue_drop_before_assign(lvalue flat.NodeId, type_name string, mut result []flat.NodeId) {
-	if isnil(t.tc) || !t.tc.ownership_type_requires_drop(t.tc.parse_type(type_name)) {
+	if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(type_name)) {
 		return
 	}
 	drop_call := t.make_call_typed('drop_owned', arr1(lvalue), 'void')
