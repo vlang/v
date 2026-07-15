@@ -375,6 +375,13 @@ pub fn (mut f Fmt) import_stmt(imp ast.Import) {
 }
 
 pub fn (f &Fmt) imp_stmt_str(imp ast.Import) string {
+	// The `json` module is deprecated; migrate `import json` (and `import json as x`)
+	// to `import json2`, to match the call rewriting done in json2_migrate_call.
+	// A selective import (`import json { ... }`) is left untouched, since its call
+	// sites use bare, un-prefixed names that are not migrated.
+	if imp.source_name == 'json' && imp.syms.len == 0 {
+		return 'json2'
+	}
 	// Format / remove unused selective import symbols
 	// E.g.: `import foo { Foo }` || `import foo as f { Foo }`
 	has_alias := imp.alias != imp.source_name.all_after_last('.')
@@ -2228,6 +2235,15 @@ fn (mut f Fmt) write_static_method(_name string, short_name string) {
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
+	// The `json` module is deprecated in favour of the pure V `json2` module.
+	// vfmt migrates its calls automatically:
+	//   json.decode(T, s)      => json2.decode[T](s)
+	//   json.encode(x)         => json2.encode(x)
+	//   json.encode_pretty(x)  => json2.encode(x, prettify: true)
+	if node.kind in [.json_decode, .json_encode, .json_encode_pretty] {
+		f.json2_migrate_call(node)
+		return
+	}
 	mut is_method_newline := false
 	if node.is_method {
 		if ast.builtin_array_generic_methods_no_sort_matcher.matches(node.name) {
@@ -2274,6 +2290,43 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	if is_method_newline {
 		f.indent--
 	}
+}
+
+// json2_migrate_call rewrites a call to the deprecated `json` module into the
+// equivalent call to the pure V `json2` module (see call_expr for the mapping).
+fn (mut f Fmt) json2_migrate_call(node ast.CallExpr) {
+	match node.kind {
+		.json_decode {
+			// json.decode(T, s) => json2.decode[T](s)
+			// The first argument is the target type; the rest are forwarded.
+			// Guard against malformed calls, since vfmt runs on unchecked ASTs.
+			if node.args.len >= 1 {
+				f.write('json2.decode[')
+				f.expr(node.args[0].expr)
+				f.write('](')
+				f.call_args(node.args[1..])
+				f.write(')')
+			} else {
+				f.write('json2.decode()')
+			}
+		}
+		.json_encode {
+			// json.encode(x) => json2.encode(x)
+			f.write('json2.encode(')
+			f.call_args(node.args)
+			f.write(')')
+		}
+		.json_encode_pretty {
+			// json.encode_pretty(x) => json2.encode(x, prettify: true)
+			// json2 deprecated `encode_pretty` in favour of the `prettify` option.
+			f.write('json2.encode(')
+			f.call_args(node.args)
+			f.write(', prettify: true)')
+		}
+		else {}
+	}
+	f.or_expr(node.or_block)
+	f.comments(node.comments, has_nl: false)
 }
 
 fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {

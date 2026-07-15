@@ -1,0 +1,33 @@
+import json2
+
+struct Request {
+	a int
+}
+
+fn parse(s string) !Request {
+	return json2.decode[Request](s)
+}
+
+fn parse2(s string) !Request {
+	req := json2.decode[Request](s)!
+	return req
+}
+
+fn parse_arr(s string) ![]Request {
+	return json2.decode[[]Request](s)
+}
+
+fn to_json(r Request) string {
+	return json2.encode(r)
+}
+
+fn to_json_pretty(r Request) string {
+	return json2.encode(r, prettify: true)
+}
+
+fn main() {
+	println(parse('{"a": 22} ')!)
+	println(parse2('{"a": 22} ')!)
+	println(to_json(Request{ a: 1 }))
+	println(to_json_pretty(Request{ a: 1 }))
+}
