@@ -5500,11 +5500,13 @@ fn comptime_static_method_type_text(param_types []string, return_type string) st
 fn comptime_static_attribute_case(raw string, kind int) ComptimeStaticValueCase {
 	clean := raw.trim_space()
 	colon := clean.index_u8(`:`)
-	mut name := if colon >= 0 { clean[..colon].trim_space() } else { clean }
+	has_arg := colon >= 0 && !(kind == 1
+		&& !comptime_static_attr_is_string_literal(clean[colon + 1..].trim_space()))
+	mut name := if has_arg { clean[..colon].trim_space() } else { clean }
 	if name.len >= 2 && name[0] in [`'`, `"`] && name[name.len - 1] == name[0] {
 		name = name[1..name.len - 1]
 	}
-	mut arg := if colon >= 0 { clean[colon + 1..].trim_space() } else { '' }
+	mut arg := if has_arg { clean[colon + 1..].trim_space() } else { '' }
 	if arg.len >= 3 && arg[0] == `r` && arg[1] in [`'`, `"`] && arg[arg.len - 1] == arg[1] {
 		arg = arg[2..arg.len - 1]
 	} else if arg.len >= 2 && arg[0] in [`'`, `"`] && arg[arg.len - 1] == arg[0] {
@@ -5513,10 +5515,15 @@ fn comptime_static_attribute_case(raw string, kind int) ComptimeStaticValueCase 
 	return ComptimeStaticValueCase{
 		name:          name
 		arg:           arg
-		has_arg:       colon >= 0
+		has_arg:       has_arg
 		has_attr_meta: true
 		attr_kind:     kind
 	}
+}
+
+fn comptime_static_attr_is_string_literal(raw string) bool {
+	return (raw.len >= 2 && raw[0] in [`'`, `"`] && raw[raw.len - 1] == raw[0])
+		|| (raw.len >= 3 && raw[0] == `r` && raw[1] in [`'`, `"`] && raw[raw.len - 1] == raw[1])
 }
 
 fn (tc &TypeChecker) comptime_deferred_decl_source(source string, allow_type bool) ?ComptimeDeferredDeclSource {

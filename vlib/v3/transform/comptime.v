@@ -555,12 +555,17 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []Attr
 		if clean.len == 0 {
 			continue
 		}
-		if idx := clean.index(':') {
+		recorded_kind := if attr_idx < raw_kinds.len { raw_kinds[attr_idx] } else { -1 }
+		colon := clean.index_u8(`:`)
+		has_arg := colon >= 0 && !(recorded_kind == 1
+			&& !comptime_attr_is_string_literal(clean[colon + 1..].trim_space()))
+		if has_arg {
+			idx := colon
 			name := clean[..idx].trim_space()
 			raw_arg := clean[idx + 1..].trim_space()
 			arg := comptime_attr_unquote(raw_arg)
-			kind := if attr_idx < raw_kinds.len {
-				raw_kinds[attr_idx]
+			kind := if recorded_kind >= 0 {
+				recorded_kind
 			} else if raw_arg.len >= 2 && raw_arg[0] in [`'`, `\"`] {
 				1
 			} else if raw_arg == 'true' || raw_arg == 'false' {
@@ -579,11 +584,16 @@ fn comptime_attribute_metas_from_raw(raw_attrs []string, raw_kinds []int) []Attr
 		} else {
 			attrs << AttributeMeta{
 				name: clean
-				kind: if attr_idx < raw_kinds.len { raw_kinds[attr_idx] } else { 0 }
+				kind: if recorded_kind >= 0 { recorded_kind } else { 0 }
 			}
 		}
 	}
 	return attrs
+}
+
+fn comptime_attr_is_string_literal(raw string) bool {
+	return (raw.len >= 2 && raw[0] in [`'`, `"`] && raw[raw.len - 1] == raw[0])
+		|| (raw.len >= 3 && raw[0] == `r` && raw[1] in [`'`, `"`] && raw[raw.len - 1] == raw[1])
 }
 
 fn (t &Transformer) comptime_node_attribute_metas(node_id int) []AttributeMeta {
@@ -1382,6 +1392,9 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 
 fn (t &Transformer) subst_method_cond(cond string, var_name string, method MethodMeta) string {
 	mut result := t.subst_method_param_cond(cond, var_name, method)
+	result = comptime_cond_replace_unquoted(result, '${var_name}.args.len', method.params.len.str())
+	result = comptime_cond_replace_unquoted(result, '${var_name}.params.len',
+		method.params.len.str())
 	method_type := t.comptime_method_type_text(method)
 	result = comptime_cond_replace_unquoted(result, '${var_name}.return_type', t.comptime_field_type_id_key(method.return_type,
 		method.module_name))

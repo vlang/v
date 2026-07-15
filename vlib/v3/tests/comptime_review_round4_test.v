@@ -1731,6 +1731,35 @@ fn main() {
 	assert out == "2|2|get,host: 'example.com'|get,host|typed:handle"
 }
 
+fn test_method_parameter_count_guards_are_folded() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'method_parameter_count_guards', 'struct Counted {}
+
+fn (item Counted) empty() {
+	_ = item
+}
+
+fn (item Counted) one(value int) {
+	_ = item
+	_ = value
+}
+
+fn main() {
+	mut rows := []string{}
+	$for method in Counted.methods {
+		$if method.params.len == 0 {
+			rows << "params:" + method.name
+		}
+		$if method.args.len == 1 {
+			rows << "args:" + method.name
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'params:empty|args:one'
+}
+
 fn test_method_metadata_locations_are_materialized() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'method_metadata_location', 'struct Located {}
@@ -1827,6 +1856,29 @@ fn main() {
 }
 ")
 	assert out == 'route:string:false|plain:plain:false'
+}
+
+fn test_string_attribute_names_preserve_colons() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'string_attribute_names_with_colons', "@['http://x'; 'a:b']
+struct ColonNamedAttrs {}
+
+fn describe_colon_named_attr(attr VAttribute) string {
+	return attr.name + '#' + attr.arg + '#' + attr.has_arg.str() + '#' + attr.kind.str()
+}
+
+fn main() {
+	mut rows := []string{}
+	\$for attr in ColonNamedAttrs.attributes {
+		\$if attr.has_arg {
+			missing_string_attribute_argument_branch()
+		}
+		rows << describe_colon_named_attr(attr)
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'http://x##false#string|a:b##false#string'
 }
 
 fn test_qualified_single_letter_type_is_a_concrete_generic_argument() {
