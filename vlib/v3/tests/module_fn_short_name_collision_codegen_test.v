@@ -89,7 +89,7 @@ fn test_imported_module_fn_short_name_does_not_pollute_builtin_return_type() {
 	out := os.join_path(os.temp_dir(), 'v3_module_fn_collision_out_${os.getpid()}')
 	os.rm(out) or {}
 	os.rm(out + '.c') or {}
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${out}')
+	compile := os.execute('${v3_bin} -nocache ${main_path} -b c -o ${out}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

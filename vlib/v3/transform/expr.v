@@ -1879,9 +1879,21 @@ fn (mut t Transformer) make_sum_semantic_eq_expr(lhs flat.NodeId, rhs flat.NodeI
 	}
 	helper := sum_eq_helper_name(clean_sum)
 	if clean_sum !in t.sum_eq_types {
+		// A concrete generic specialization is emitted in main even while it is
+		// transformed under its declaring module's type-resolution context.
+		helper_module := if t.sum_eq_helper_module.len > 0 {
+			t.sum_eq_helper_module
+		} else if t.validating_generic_spec {
+			'main'
+		} else if t.cur_module.len > 0 {
+			t.cur_module
+		} else {
+			'main'
+		}
 		t.sum_eq_types[clean_sum] = SumEqRequest{
-			module: t.cur_module
-			file:   t.cur_file
+			module:        t.cur_module
+			file:          t.cur_file
+			helper_module: helper_module
 		}
 	}
 	t.mark_fn_used_name(helper)
@@ -1905,6 +1917,7 @@ pub fn sum_eq_helper_name(sum_name string) string {
 pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	old_module := t.cur_module
 	old_file := t.cur_file
+	old_helper_module := t.sum_eq_helper_module
 	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
 	old_tc_file := if isnil(t.tc) { '' } else { t.tc.cur_file }
 	was_log_active := t.used_fns_log_active
@@ -1932,6 +1945,13 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 			req := t.sum_eq_types[name] or { SumEqRequest{} }
 			t.cur_module = req.module
 			t.cur_file = req.file
+			t.sum_eq_helper_module = if req.helper_module.len > 0 {
+				req.helper_module
+			} else if req.module.len > 0 {
+				req.module
+			} else {
+				'main'
+			}
 			if !isnil(t.tc) {
 				t.tc.cur_module = req.module
 				t.tc.cur_file = req.file
@@ -1954,6 +1974,7 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
+	t.sum_eq_helper_module = old_helper_module
 	if !isnil(t.tc) {
 		t.tc.cur_module = old_tc_module
 		t.tc.cur_file = old_tc_file
@@ -2030,10 +2051,12 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 	t.a.nodes[int(ret_result)].typ = 'bool'
 	stmts << t.make_return(ret_result, 'bool')
 	t.pending_stmts = saved_pending
-	// place the helper in the main module so its C name is the plain helper name
+	// Keep the helper in its request's output segment. This is normally the requesting
+	// module, but program-specific generic specializations and their nested helpers use
+	// main even though their bodies are resolved under the declaring module.
 	t.a.add_node(flat.Node{
 		kind:  .module_decl
-		value: 'main'
+		value: if t.sum_eq_helper_module.len > 0 { t.sum_eq_helper_module } else { 'main' }
 	})
 	start := t.a.children.len
 	t.a.children << param_a

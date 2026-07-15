@@ -52,11 +52,14 @@ fn node_kind_id(node flat.Node) int {
 pub const option_unwrap_marker = '?opt'
 
 // SumEqRequest records where a sum type's equality helper was first requested,
-// so the helper body is built under that module/file resolution context.
+// so the helper body is built under that module/file resolution context. The
+// helper module can differ for program-specific generic specializations, whose
+// generated functions and helpers must stay in the main cache segment.
 pub struct SumEqRequest {
 pub:
-	module string
-	file   string
+	module        string
+	file          string
+	helper_module string
 }
 
 // SmartcastContext stores smartcast context state used by transform.
@@ -132,6 +135,7 @@ mut:
 	// serially after the (possibly parallel) transform completes.
 	sum_eq_types                 map[string]SumEqRequest
 	sum_eq_synthesized           map[string]bool
+	sum_eq_helper_module         string
 	interface_boxed_types        map[string]bool
 	interface_boxed_types_done   bool
 	interface_var_concrete_types map[string]string
@@ -1563,11 +1567,12 @@ fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.Flat
 	mut children := []flat.NodeId{cap: base_children + base_children / 4}
 	children << t.a.children[0..base_children]
 	return &flat.FlatAst{
-		nodes:           nodes
-		children:        children
-		user_code_start: t.a.user_code_start
-		disabled_fns:    t.a.disabled_fns
-		noreturn_fns:    t.a.noreturn_fns
+		nodes:                nodes
+		children:             children
+		user_code_start:      t.a.user_code_start
+		disabled_fns:         t.a.disabled_fns
+		noreturn_fns:         t.a.noreturn_fns
+		specialized_fn_nodes: t.a.specialized_fn_nodes
 	}
 }
 
@@ -1628,6 +1633,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.interface_boxed_types_done = true
 	w.sum_eq_types = t.sum_eq_types.clone()
 	w.sum_eq_synthesized = t.sum_eq_synthesized.clone()
+	w.sum_eq_helper_module = ''
 	w.generic_receiver_methods_by_name = map[string][]string{}
 	w.used_fns_log = []string{}
 	w.used_fns_log_active = false
@@ -1721,8 +1727,9 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 		if name !in t.sum_eq_types {
 			if scoped {
 				t.sum_eq_types[name.clone()] = SumEqRequest{
-					module: req.module.clone()
-					file:   req.file.clone()
+					module:        req.module.clone()
+					file:          req.file.clone()
+					helper_module: req.helper_module.clone()
 				}
 			} else {
 				t.sum_eq_types[name] = req

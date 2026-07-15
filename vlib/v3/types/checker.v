@@ -1289,6 +1289,7 @@ fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
 fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 	mut c_struct_decl_sigs := map[string]string{}
 	mut c_struct_decl_files := map[string]string{}
+	mut c_struct_decl_modules := map[string]string{}
 	for node_idx in tc.top_level_idx {
 		node := a.nodes[node_idx]
 		match node.kind {
@@ -1308,7 +1309,9 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 					existing_sig := c_struct_decl_sigs[qname]
 					if !c_struct_decl_signatures_compatible(existing_sig, c_struct_sig) {
 						existing_file := c_struct_decl_files[qname] or { '' }
-						if !tc.c_struct_redeclaration_allowed(qname, existing_file, tc.cur_file) {
+						existing_module := c_struct_decl_modules[qname] or { '' }
+						if !tc.c_struct_redeclaration_allowed(qname, existing_file, tc.cur_file,
+							existing_module, tc.cur_module) {
 							tc.record_error_unfiltered(.duplicate_decl,
 								'cannot redeclare C struct `${qname}`', flat.NodeId(node_idx))
 						}
@@ -1318,10 +1321,12 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 					if current_fields > existing_fields {
 						c_struct_decl_sigs[qname] = c_struct_sig
 						c_struct_decl_files[qname] = tc.cur_file
+						c_struct_decl_modules[qname] = tc.cur_module
 					}
 				} else {
 					c_struct_decl_sigs[qname] = c_struct_sig
 					c_struct_decl_files[qname] = tc.cur_file
+					c_struct_decl_modules[qname] = tc.cur_module
 				}
 			}
 			else {}
@@ -1329,27 +1334,40 @@ fn (mut tc TypeChecker) check_c_struct_redeclarations(a &flat.FlatAst) {
 	}
 }
 
-fn (tc &TypeChecker) c_struct_redeclaration_allowed(qname string, first_file string, second_file string) bool {
-	if qname == 'C.termios' && tc.c_struct_decl_is_vlib_termios_shim(first_file)
-		&& tc.c_struct_decl_is_vlib_termios_shim(second_file) {
+fn (tc &TypeChecker) c_struct_redeclaration_allowed(qname string, first_file string, second_file string, first_module string, second_module string) bool {
+	if qname == 'C.termios' && tc.c_struct_decl_is_vlib_termios_shim(first_file, first_module)
+		&& tc.c_struct_decl_is_vlib_termios_shim(second_file, second_module) {
 		return true
 	}
-	if qname == 'C.cJSON' && tc.c_struct_decl_is_vlib_cjson(first_file)
-		&& tc.c_struct_decl_is_vlib_cjson(second_file) {
+	if qname == 'C.cJSON' && tc.c_struct_decl_is_vlib_cjson(first_file, first_module)
+		&& tc.c_struct_decl_is_vlib_cjson(second_file, second_module) {
 		return true
 	}
 	return false
 }
 
-fn (tc &TypeChecker) c_struct_decl_is_vlib_termios_shim(file string) bool {
-	return file.contains('/vlib/term/') || file.contains('\\vlib\\term\\')
+fn (tc &TypeChecker) c_struct_decl_is_vlib_termios_shim(file string, module_name string) bool {
+	if module_name !in ['term', 'termios', 'term.termios'] {
+		return false
+	}
+	normalized := file.replace('\\', '/')
+	return normalized.contains('/vlib/term/')
+		|| (normalized.contains('/v3_module_cache_')
+		&& normalized.all_after_last('/').starts_with('termios_') && normalized.ends_with('.vh'))
 }
 
-fn (tc &TypeChecker) c_struct_decl_is_vlib_cjson(file string) bool {
-	return file.contains('/vlib/json/json_primitives.c.v')
-		|| file.contains('\\vlib\\json\\json_primitives.c.v')
-		|| file.contains('/vlib/json/cjson/cjson_wrapper.c.v')
-		|| file.contains('\\vlib\\json\\cjson\\cjson_wrapper.c.v')
+fn (tc &TypeChecker) c_struct_decl_is_vlib_cjson(file string, module_name string) bool {
+	if module_name !in ['json', 'cjson', 'json.cjson'] {
+		return false
+	}
+	normalized := file.replace('\\', '/')
+	if normalized.contains('/vlib/json/json_primitives.c.v')
+		|| normalized.contains('/vlib/json/cjson/cjson_wrapper.c.v') {
+		return true
+	}
+	base := normalized.all_after_last('/')
+	return normalized.contains('/v3_module_cache_') && normalized.ends_with('.vh')
+		&& (base.starts_with('json_') || base.starts_with('cjson_'))
 }
 
 fn (tc &TypeChecker) c_struct_decl_signature(a &flat.FlatAst, node flat.Node) string {
@@ -17803,10 +17821,7 @@ fn (tc &TypeChecker) type_has_compiler_default_clone(t Type) bool {
 }
 
 // interface_impl_names returns the concrete type names (structs and type
-// aliases) that implement `iface_name`, sorted by name. The 1-based position
-// in this list is the interface's `_typ` dispatch id; cgen (boxing, method
-// dispatch) and the transform (`iface is Concrete` checks) must both derive
-// ids from this single list so they stay in sync.
+// aliases) that implement `iface_name`, sorted by name.
 pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 	mut candidate_set := map[string]bool{}
 	if tc.interface_has_no_requirements(iface_name) {
@@ -17830,6 +17845,58 @@ pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 		}
 	}
 	return impls
+}
+
+// stable_interface_type_ids assigns deterministic nonzero `_typ` dispatch IDs
+// to interface implementers. Hash collisions are resolved in sorted name order
+// with linear probing, so cgen and transformed `is` checks share one mapping.
+pub fn stable_interface_type_ids(impl_names []string) map[string]int {
+	mut names := impl_names.clone()
+	names.sort()
+	mut ids := map[string]int{}
+	mut used := map[int]bool{}
+	for name in names {
+		if name in ids {
+			continue
+		}
+		mut id := stable_interface_type_id_hash(name)
+		for used[id] {
+			if id == 0x7fffffff {
+				id = 1
+			} else {
+				id++
+			}
+		}
+		used[id] = true
+		ids[name] = id
+	}
+	return ids
+}
+
+// interface_impl_set_signature returns the complete deterministic interface implementer set
+// that controls collision-resolved dispatch IDs for the current program.
+pub fn (tc &TypeChecker) interface_impl_set_signature() string {
+	mut iface_names := tc.interface_names.keys()
+	iface_names.sort()
+	mut lines := []string{cap: iface_names.len}
+	for iface_name in iface_names {
+		impl_names := if iface_name in ['IError', 'builtin.IError'] {
+			tc.ierror_impl_names()
+		} else {
+			tc.interface_impl_names(iface_name)
+		}
+		lines << '${iface_name}=${impl_names.join(',')}'
+	}
+	return lines.join('\n')
+}
+
+fn stable_interface_type_id_hash(name string) int {
+	mut hash := u32(2166136261)
+	for c in name.bytes() {
+		hash = (hash ^ u32(c)) * u32(16777619)
+	}
+	id := int(hash & u32(0x7fffffff))
+	return if id == 0 { 1 } else { id }
 }
 
 fn interface_impl_candidate_name(name string) string {

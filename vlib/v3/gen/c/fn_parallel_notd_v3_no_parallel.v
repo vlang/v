@@ -527,6 +527,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		libc_compat_fns:                g.libc_compat_fns.clone()
 		tc:                             g.clone_parallel_type_checker()
 		has_builtins:                   g.has_builtins
+		cache_split:                    g.cache_split
 		tmp_count:                      (worker_id + 1) * 100_000
 		line_start:                     true
 		modules:                        g.modules
@@ -665,6 +666,11 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		expr_type_values:                   g.tc.expr_type_values
 		expr_type_set:                      g.tc.expr_type_set
 		checking_nodes:                     g.tc.checking_nodes
+		sparse_resolved_call_names:         g.tc.sparse_resolved_call_names
+		sparse_resolved_fn_values:          g.tc.sparse_resolved_fn_values
+		sparse_statement_nodes:             g.tc.sparse_statement_nodes
+		sparse_expr_type_values:            g.tc.sparse_expr_type_values
+		sparse_checking_nodes:              g.tc.sparse_checking_nodes
 		diagnose_unknown_calls:             g.tc.diagnose_unknown_calls
 		reject_unlowered_map_mutation:      g.tc.reject_unlowered_map_mutation
 		diagnostic_files:                   g.tc.diagnostic_files
@@ -812,6 +818,12 @@ fn (mut g FlatGen) adopt_postamble_worker(wa &FlatGen, wb &FlatGen) {
 	g.c_extern_refs = wb.c_extern_refs.clone()
 	g.c_extern_refs_ready = wb.c_extern_refs_ready
 	g.post_str_lits_snapshot = wb.str_lits.len
+	// global_decls runs on fork B and queues program/global assignments for
+	// `_vinit`; retain those queues when the emitted postamble is adopted.
+	g.const_runtime_inits = wb.const_runtime_inits.clone()
+	g.const_runtime_init_modules = wb.const_runtime_init_modules.clone()
+	g.runtime_inits = wb.runtime_inits.clone()
+	g.runtime_init_modules = wb.runtime_init_modules.clone()
 }
 
 // run_pre_dispatch_parallel overlaps the serial pre-dispatch work: the

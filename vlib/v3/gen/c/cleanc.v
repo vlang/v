@@ -44,6 +44,7 @@ mut:
 	fn_gen_items                   []FlatFnGenItem
 	fn_segs                        []string
 	test_files                     map[string]bool
+	cache_program_files            map[string]bool
 	str_lits                       []string
 	str_lit_ids                    map[string]int
 	global_types                   map[string]types.Type
@@ -192,6 +193,7 @@ mut:
 	const_short_index       &ConstShortIndex = unsafe { nil }
 	mut_recv_facts          &FnNameFactCache = unsafe { nil }
 	want_parallel_prep      bool
+	cache_split             bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
@@ -401,6 +403,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_gen_items:                   []FlatFnGenItem{}
 		fn_segs:                        []string{}
 		test_files:                     map[string]bool{}
+		cache_program_files:            map[string]bool{}
 		str_lit_ids:                    map[string]int{}
 		global_types:                   map[string]types.Type{}
 		enum_vals:                      map[string]int{}
@@ -500,6 +503,266 @@ pub fn FlatGen.new() FlatGen {
 // set_compiler_vexe sets the V executable path baked into generated test/runtime helpers.
 pub fn (mut g FlatGen) set_compiler_vexe(path string) {
 	g.compiler_vexe = path
+}
+
+// set_cache_split enables stable cache markers and string symbols in generated C.
+// The v3 driver uses them to split one checked program into independently cached
+// module objects without changing regular `-o file.c` output.
+pub fn (mut g FlatGen) set_cache_split(enabled bool) {
+	g.cache_split = enabled
+}
+
+// set_cache_program_files assigns entry-module source files to the program
+// translation unit rather than an imported module cache object.
+pub fn (mut g FlatGen) set_cache_program_files(files []string) {
+	g.cache_program_files = map[string]bool{}
+	for file in files {
+		g.cache_program_files[file] = true
+	}
+}
+
+// cache_external_input_files returns local include/embed inputs grouped by the
+// module whose cached object incorporates their contents. Forced-include inputs
+// affect every object and are kept in a configuration-wide group. The second
+// result reports include forms whose dependencies cannot be resolved statically.
+pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool) (map[string][]string, bool) {
+	mut c_flags := []string{}
+	mut cur_file := ''
+	for node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			continue
+		}
+		if node.kind != .directive || node.value != 'flag' || node.typ.len == 0 {
+			continue
+		}
+		flag := c_flag_arg(node.typ, vroot, cur_file)
+		if flag.len > 0 && flag !in c_flags {
+			c_flags << flag
+		}
+	}
+	include_dirs := c_flag_include_dirs(c_flags)
+	mut collect_modules := map[string]bool{}
+	for module_name, enabled in source_modules {
+		if enabled {
+			collect_modules[module_name] = true
+			collect_modules[module_name.all_after_last('.')] = true
+		}
+	}
+	mut inputs := map[string][]string{}
+	mut has_untracked_include := false
+	mut cur_module := ''
+	cur_file = ''
+	for node in a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if !collect_modules[cur_module] {
+			continue
+		}
+		if node.kind == .directive && node.value in ['include', 'insert'] && node.typ.len > 0 {
+			include_arg := c_include_arg(node.typ, vroot, cur_file)
+			if !c_include_arg_is_literal(include_arg) {
+				has_untracked_include = true
+				continue
+			}
+			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
+				if !os.is_file(path) {
+					continue
+				}
+				mut seen := map[string]bool{}
+				mut files := []string{}
+				if c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files) {
+					has_untracked_include = true
+				}
+				for file in files {
+					c_add_cache_external_input(mut inputs, cur_module, file)
+				}
+				break
+			}
+			continue
+		}
+		if path := c_embed_external_input_path(a, node) {
+			c_add_cache_external_input(mut inputs, cur_module, path)
+		}
+	}
+	flag_inputs, flags_have_untracked_include := cache_c_flag_input_files_with_status(c_flags)
+	if flags_have_untracked_include {
+		has_untracked_include = true
+	}
+	for path in flag_inputs {
+		c_add_cache_external_input(mut inputs, '__v3_c_flags__', path)
+	}
+	for module_name, paths in inputs {
+		mut sorted := paths.clone()
+		sorted.sort()
+		inputs[module_name] = sorted
+	}
+	return inputs, has_untracked_include
+}
+
+// cache_c_flag_input_files returns forced include/macro files whose contents
+// affect every cached object compiled with the supplied C flags.
+pub fn cache_c_flag_input_files(flags []string) []string {
+	files, _ := cache_c_flag_input_files_with_status(flags)
+	return files
+}
+
+fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool) {
+	include_dirs := c_flag_include_dirs(flags)
+	mut seen := map[string]bool{}
+	mut files := []string{}
+	mut has_untracked_include := false
+	for flag in flags {
+		for forced_input in c_forced_include_inputs(flag) {
+			for path in c_include_file_paths('"${forced_input}"', '', '', include_dirs) {
+				if !os.is_file(path) {
+					continue
+				}
+				if c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files) {
+					has_untracked_include = true
+				}
+				break
+			}
+		}
+	}
+	files.sort()
+	return files, has_untracked_include
+}
+
+fn c_forced_include_inputs(flag string) []string {
+	mut inputs := []string{}
+	tokens := tokenize_c_flag(flag)
+	mut i := 0
+	for i < tokens.len {
+		token := tokens[i]
+		if token in ['-include', '-imacros'] && i + 1 < tokens.len {
+			inputs << tokens[i + 1].trim('"\'')
+			i += 2
+			continue
+		}
+		for prefix in ['-include=', '-imacros='] {
+			if token.starts_with(prefix) && token.len > prefix.len {
+				inputs << token[prefix.len..].trim('"\'')
+			}
+		}
+		i++
+	}
+	return inputs
+}
+
+// tokenize_c_flag splits a C flag on unquoted whitespace while preserving quotes.
+pub fn tokenize_c_flag(value string) []string {
+	mut tokens := []string{}
+	mut start := -1
+	mut quote := u8(0)
+	mut escaped := false
+	for i, c in value.bytes() {
+		if start < 0 {
+			if c.is_space() {
+				continue
+			}
+			start = i
+		}
+		if escaped {
+			escaped = false
+			continue
+		}
+		if c == `\\` {
+			escaped = true
+			continue
+		}
+		if quote != 0 {
+			if c == quote {
+				quote = 0
+			}
+			continue
+		}
+		if c in [`'`, `\"`] {
+			quote = c
+			continue
+		}
+		if c.is_space() {
+			tokens << value[start..i]
+			start = -1
+		}
+	}
+	if start >= 0 {
+		tokens << value[start..]
+	}
+	return tokens
+}
+
+fn c_add_cache_external_input(mut inputs map[string][]string, module_name string, path string) {
+	if module_name.len == 0 || path.len == 0 || !os.is_file(path) {
+		return
+	}
+	real_path := os.real_path(path)
+	mut paths := inputs[module_name]
+	if real_path !in paths {
+		paths << real_path
+		inputs[module_name] = paths
+	}
+}
+
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string) bool {
+	if path.len == 0 || !os.is_file(path) {
+		return false
+	}
+	real_path := os.real_path(path)
+	if seen[real_path] {
+		return false
+	}
+	seen[real_path] = true
+	files << real_path
+	text := os.read_file(real_path) or { return false }
+	mut has_untracked_include := false
+	mut in_block_comment := false
+	for line in text.split_into_lines() {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		if c_directive_name(clean) != 'include' {
+			continue
+		}
+		include_arg := c_include_arg(c_directive_arg(clean), vroot, real_path)
+		if !c_include_arg_is_literal(include_arg) {
+			has_untracked_include = true
+			continue
+		}
+		for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
+			if !os.is_file(nested_path) {
+				continue
+			}
+			if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut seen, mut files) {
+				has_untracked_include = true
+			}
+			break
+		}
+	}
+	return has_untracked_include
+}
+
+fn c_embed_external_input_path(a &flat.FlatAst, node flat.Node) ?string {
+	if node.kind != .struct_init || node.value != 'embed_file.EmbedFileData' {
+		return none
+	}
+	for i in 0 .. node.children_count {
+		field := a.child_node(&node, i)
+		if field.kind != .field_init || field.value != 'apath' || field.children_count == 0 {
+			continue
+		}
+		value := a.child_node(field, 0)
+		if value.kind == .string_literal && value.value.len > 0 && os.is_file(value.value) {
+			return os.real_path(value.value)
+		}
+	}
+	return none
 }
 
 // set_scope_parallel_workers makes cgen helpers use disposable prealloc
@@ -686,6 +949,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.precompute_sum_name_lookup()
 	g.preseed_struct_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
+	g.preseed_fn_signature_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
 	g.preseed_libc_compat_fns()
 	if !g.skip_generics {
@@ -762,18 +1026,28 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.test_failure_helpers()
 		g.global_decls()
 		g.forward_decls()
+		g.cached_header_forward_decls()
+		g.interface_method_forward_decls()
 		g.shared_dup_fns()
 		g.enum_str_forward_decls()
 		g.callback_wrapper_decls()
 		g.spawn_wrapper_decls()
 		g.register_interface_strings()
 		g.string_literals()
-		g.interface_method_stubs()
+		if !g.cache_split {
+			g.interface_method_stubs()
+		}
 		g.enum_str_defs()
 	}
 	g.sb.write_string(const_code)
 	// The final builder now owns a copy of the const code.
 	unsafe { const_code.free() }
+	if g.cache_split {
+		g.writeln('/* V3CACHE_BODY_BEGIN */')
+		// `_vinit` aggregates module and global initialization for the current
+		// entry program, so it must never be retained in a reusable module object.
+		g.writeln('/* V3CACHE_MODULE main */')
+	}
 	if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
 		|| g.global_inits.len > 0 {
 		g.writeln('void _vinit() {')
@@ -790,6 +1064,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('}')
 		g.writeln('')
 	}
+	if g.cache_split {
+		g.interface_method_stubs()
+	}
 	if g.fn_segs.len > 0 {
 		for segment in g.fn_segs {
 			g.sb.write_string(segment)
@@ -801,10 +1078,183 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		// The final builder now owns a copy of the function code.
 		unsafe { fn_code.free() }
 	}
-	result := g.sb.str()
+	if g.cache_split {
+		g.writeln('/* V3CACHE_BODY_END */')
+	}
+	mut result := g.sb.str()
 	// Keep only the returned C string, not the builder's copied backing array.
 	unsafe { g.sb.free() }
+	if g.cache_split {
+		result = g.rewrite_cache_string_symbols(result)
+	}
 	return result
+}
+
+fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
+	mut symbols := []string{cap: g.str_lits.len}
+	for value in g.str_lits {
+		symbols << cache_string_symbol(value)
+	}
+	user_c_symbols := g.cache_user_c_string_symbols()
+	mut out := strings.new_builder(source.len + g.str_lits.len * 8)
+	mut i := 0
+	for i < source.len {
+		if source[i] in [`"`, `'`] {
+			quote := source[i]
+			start := i
+			i++
+			for i < source.len {
+				if source[i] == `\\` && i + 1 < source.len {
+					i += 2
+					continue
+				}
+				i++
+				if source[i - 1] == quote {
+					break
+				}
+			}
+			out.write_string(source[start..i])
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+			start := i
+			i += 2
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+			out.write_string(source[start..i])
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+			start := i
+			i += 2
+			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 < source.len {
+				i += 2
+			} else {
+				i = source.len
+			}
+			out.write_string(source[start..i])
+			continue
+		}
+		if c_identifier_start(source[i]) {
+			start := i
+			i++
+			for i < source.len && c_identifier_continue(source[i]) {
+				i++
+			}
+			identifier := source[start..i]
+			if cache_numbered_string_symbol(identifier) && !user_c_symbols[identifier] {
+				mut id := 0
+				for digit in identifier[5..].bytes() {
+					id = id * 10 + int(digit - `0`)
+				}
+				if id >= 0 && id < symbols.len {
+					out.write_string(symbols[id])
+					continue
+				}
+			}
+			out.write_string(identifier)
+			continue
+		}
+		out.write_u8(source[i])
+		i++
+	}
+	return out.str()
+}
+
+fn (mut g FlatGen) cache_user_c_string_symbols() map[string]bool {
+	mut symbols := map[string]bool{}
+	for directive in g.c_directives {
+		collect_cache_numbered_string_symbols(directive.text, mut symbols)
+	}
+	for name in g.inlined_c_fns.keys() {
+		collect_cache_numbered_string_symbols(name, mut symbols)
+	}
+	for name in g.inlined_c_declared_fns.keys() {
+		collect_cache_numbered_string_symbols(name, mut symbols)
+	}
+	referenced_symbols := g.c_extern_referenced_symbols()
+	for name in referenced_symbols.keys() {
+		collect_cache_numbered_string_symbols(name, mut symbols)
+	}
+	return symbols
+}
+
+fn collect_cache_numbered_string_symbols(source string, mut symbols map[string]bool) {
+	mut i := 0
+	for i < source.len {
+		if source[i] in [`\"`, `'`] {
+			quote := source[i]
+			i++
+			for i < source.len {
+				if source[i] == `\\` && i + 1 < source.len {
+					i += 2
+					continue
+				}
+				i++
+				if source[i - 1] == quote {
+					break
+				}
+			}
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+			i += 2
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+			i += 2
+			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 < source.len {
+				i += 2
+			} else {
+				i = source.len
+			}
+			continue
+		}
+		if !c_identifier_start(source[i]) {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < source.len && c_identifier_continue(source[i]) {
+			i++
+		}
+		identifier := source[start..i]
+		if cache_numbered_string_symbol(identifier) {
+			symbols[identifier] = true
+		}
+	}
+}
+
+fn cache_numbered_string_symbol(identifier string) bool {
+	return identifier.len > 5 && identifier.starts_with('_str_')
+		&& identifier[5..].bytes().all(it >= `0` && it <= `9`)
+}
+
+fn c_identifier_start(c u8) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || c == `_`
+}
+
+fn c_identifier_continue(c u8) bool {
+	return c_identifier_start(c) || (c >= `0` && c <= `9`)
+}
+
+fn cache_string_symbol(value string) string {
+	mut hash := u64(1469598103934665603)
+	for c in value.bytes() {
+		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
+	return '_v3_lit_${value.len}_${hash.hex()}'
 }
 
 // emit_overlap_postamble_segments emits the body-independent postamble groups
@@ -852,6 +1302,8 @@ fn (mut g FlatGen) emit_postamble_segments_b() {
 	g.test_failure_helpers()
 	g.global_decls()
 	g.forward_decls()
+	g.cached_header_forward_decls()
+	g.interface_method_forward_decls()
 	g.shared_dup_fns()
 	g.enum_str_forward_decls()
 	segs << g.sb.str()
@@ -861,10 +1313,12 @@ fn (mut g FlatGen) emit_postamble_segments_b() {
 	g.line_start = true
 	g.string_literals()
 	segs << g.sb.str()
-	// Segment 3: interface method stubs and enum str defs.
+	// Segment 3: interface dispatch and enum string definitions.
 	g.sb = strings.new_builder(65536)
 	g.line_start = true
-	g.interface_method_stubs()
+	if !g.cache_split {
+		g.interface_method_stubs()
+	}
 	g.enum_str_defs()
 	segs << g.sb.str()
 	unsafe { g.sb.free() }
@@ -1302,7 +1756,8 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			if header_text.len > 0 {
 				g.add_c_directive(module_name, header_text, before_import)
 			}
-		} else if c_should_preserve_uninlined_include(include_arg) {
+		} else if c_should_preserve_uninlined_include(include_arg) || (g.cache_split
+			&& include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>']) {
 			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
 			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
 			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
@@ -1613,19 +2068,22 @@ fn c_nested_include_context_depth(context []string) int {
 fn c_flag_include_dirs(flags []string) []string {
 	mut dirs := []string{}
 	for flag in flags {
-		tokens := flag.fields()
+		tokens := tokenize_c_flag(flag)
 		mut i := 0
 		for i < tokens.len {
 			tok := tokens[i]
 			mut dir := ''
-			if tok == '-I' {
+			if tok in ['-I', '-isystem'] {
 				if i + 1 < tokens.len {
 					dir = tokens[i + 1]
 					i++
 				}
 			} else if tok.starts_with('-I') && tok.len > 2 {
 				dir = tok[2..]
+			} else if tok.starts_with('-isystem') && tok.len > '-isystem'.len {
+				dir = tok['-isystem'.len..].trim_left('=')
 			}
+			dir = dir.trim('"\'')
 			if dir.len > 0 && dir !in dirs {
 				dirs << dir
 			}
@@ -1683,12 +2141,54 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 	return clean in ['<dlfcn.h>', '<limits.h>', '<arm_neon.h>']
 }
 
-fn c_preserved_system_include_declared_fns(_include_arg string) []string {
+fn c_preserved_system_include_declared_fns(include_arg string) []string {
+	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
+		return [
+			'host_page_size',
+			'host_statistics64',
+			'mach_absolute_time',
+			'mach_host_self',
+			'mach_port_deallocate',
+			'mach_task_self',
+			'mach_timebase_info',
+			'task_info',
+		]
+	}
 	return []string{}
 }
 
-fn c_preserved_system_include_struct_names(_include_arg string) []string {
+fn c_preserved_system_include_struct_names(include_arg string) []string {
+	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
+		return [
+			'host_t',
+			'mach_timebase_info_data_t',
+			'task_basic_info',
+			'task_t',
+			'vm_size_t',
+			'vm_statistics64_data_t',
+		]
+	}
 	return []string{}
+}
+
+const c_cache_system_header_declared_fns = {
+	'host_page_size':       true
+	'host_statistics64':    true
+	'mach_absolute_time':   true
+	'mach_host_self':       true
+	'mach_port_deallocate': true
+	'mach_task_self':       true
+	'mach_timebase_info':   true
+	'task_info':            true
+}
+
+const c_cache_system_header_struct_names = {
+	'host_t':                    true
+	'mach_timebase_info_data_t': true
+	'task_basic_info':           true
+	'task_t':                    true
+	'vm_size_t':                 true
+	'vm_statistics64_data_t':    true
 }
 
 fn c_stdint_header_text() string {
@@ -2200,6 +2700,9 @@ fn c_header_declared_fn_name(line string) string {
 		|| line.contains('}') {
 		return ''
 	}
+	if macro_name := c_header_macro_wrapped_declared_fn_name(line) {
+		return macro_name
+	}
 	// Reject function-pointer variable declarations (`int (*fp)(void);`) and
 	// functions returning function pointers, where the identifier before the
 	// first `(` is not the declared name. A `(*` later in the parameter list
@@ -2231,6 +2734,35 @@ fn c_header_declared_fn_name(line string) string {
 		return ''
 	}
 	return c_header_fn_name(line)
+}
+
+fn c_header_macro_wrapped_declared_fn_name(line string) ?string {
+	open := line.index_u8(`(`)
+	if open <= 0 {
+		return none
+	}
+	macro_name := line[..open].trim_space()
+	if macro_name.len == 0 || macro_name.contains(' ') || macro_name.contains('\t') {
+		return none
+	}
+	for c in macro_name.bytes() {
+		if !((c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`) {
+			return none
+		}
+	}
+	close := typeof_display_type_name_matching_paren(line, open)
+	if close < 0 || close + 1 >= line.len {
+		return none
+	}
+	declarator := line[close + 1..].trim_space()
+	if !declarator.ends_with(';') || !declarator.contains('(') {
+		return none
+	}
+	name := c_header_fn_name(declarator)
+	if name.len == 0 {
+		return none
+	}
+	return name
 }
 
 fn c_header_defined_fn_name(line string) string {
@@ -2274,6 +2806,15 @@ fn c_include_file_path(include_arg string, vroot string, source_file string) str
 		return path
 	}
 	return os.join_path_single(os.dir(source_file), path)
+}
+
+fn c_include_arg_is_literal(include_arg string) bool {
+	clean := trimmed_space(include_arg)
+	if clean.len < 2 {
+		return false
+	}
+	return (clean[0] == `"` && clean[clean.len - 1] == `"`)
+		|| (clean[0] == `<` && clean[clean.len - 1] == `>`)
 }
 
 fn c_include_file_paths(include_arg string, vroot string, source_file string, include_dirs []string) []string {
@@ -7463,6 +8004,12 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef intptr_t ssize_t;')
 	g.writeln('#endif')
 	g.writeln('extern char** environ;')
+	g.writeln('void* malloc(size_t size);')
+	g.writeln('void* calloc(size_t count, size_t size);')
+	g.writeln('void* realloc(void* ptr, size_t size);')
+	g.writeln('void free(void* ptr);')
+	g.writeln('int fprintf(FILE* stream, const char* format, ...);')
+	g.writeln('int fseek(FILE* stream, long offset, int whence);')
 	g.writeln('char* getenv(const char* name);')
 	g.writeln('int setenv(const char* name, const char* value, int overwrite);')
 	g.writeln('void abort(void);')
@@ -7709,6 +8256,12 @@ fn c_function_like_macro_decl_names() []string {
 }
 
 const c_headerless_libc_declared_fns = [
+	'malloc',
+	'calloc',
+	'realloc',
+	'free',
+	'fprintf',
+	'fseek',
 	'getenv',
 	'setenv',
 	'abort',

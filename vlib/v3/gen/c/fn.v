@@ -43,11 +43,12 @@ struct SpawnPackedArg {
 
 // FlatFnGenItem represents one top-level function selected for C emission.
 struct FlatFnGenItem {
-	node_id flat.NodeId
-	file    string
-	module  string
-	c_name  string
-	cost    int
+	node_id                   flat.NodeId
+	file                      string
+	module                    string
+	c_name                    string
+	cost                      int
+	is_program_specialization bool
 }
 
 struct FlatFnGenCandidate {
@@ -72,6 +73,8 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	mut candidates := []FlatFnGenCandidate{}
 	mut preferred_fns := map[string]int{}
 	mut ranks := map[string]int{}
+	mut program_specializations := map[string]bool{}
+	mut preferred_program_specializations := map[string]bool{}
 	mut cur_module := ''
 	mut cur_file := ''
 	// Defer cost/prep until after preferred-file and emission filtering. When
@@ -99,10 +102,17 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 				continue
 			}
 			preferred_name := g.qualified_fn_name_in_module_c(cur_module, node.value)
+			if g.is_program_specialization_fn_node(node, i, cur_module) {
+				program_specializations[preferred_name] = true
+			}
 			rank := c_backend_fn_file_rank(cur_file)
-			if preferred_name !in preferred_fns || rank > ranks[preferred_name] {
+			is_program_specialization := program_specializations[preferred_name]
+			if preferred_name !in preferred_fns || rank > ranks[preferred_name]
+				|| (rank == ranks[preferred_name] && is_program_specialization
+				&& !preferred_program_specializations[preferred_name]) {
 				preferred_fns[preferred_name] = i
 				ranks[preferred_name] = rank
+				preferred_program_specializations[preferred_name] = is_program_specialization
 			}
 			candidates << FlatFnGenCandidate{
 				preferred_name: preferred_name
@@ -141,11 +151,12 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			flat_fn_gen_item_cost(g.a, item.node_id)
 		}
 		items << FlatFnGenItem{
-			node_id: item.node_id
-			file:    item.file
-			module:  item.module
-			c_name:  item.c_name
-			cost:    cost
+			node_id:                   item.node_id
+			file:                      item.file
+			module:                    item.module
+			c_name:                    item.c_name
+			cost:                      cost
+			is_program_specialization: program_specializations[candidate.preferred_name]
 		}
 	}
 	return items
@@ -181,6 +192,25 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		g.tc.cur_file = item.file
 		g.tc.cur_module = item.module
 		node := g.a.nodes[int(item.node_id)]
+		is_anon_fn := node.value.starts_with('__anon_fn_') || node.value.contains('.__anon_fn_')
+		is_program_fn := item.is_program_specialization
+			|| g.is_program_specialization_fn_node(node, int(item.node_id), item.module)
+			|| (is_anon_fn && item.module in ['', 'main']) || g.test_files[item.file]
+			|| g.cache_program_files[item.file]
+		if node.is_mut && item.file.ends_with('.vh') && !is_program_fn {
+			continue
+		}
+		if g.cache_split {
+			// Generic templates are source-parsed even when their module object is
+			// cached. Their program-specific concrete specializations belong to the
+			// main translation unit, not to the source-stable module object.
+			module_name := if is_program_fn || item.module.len == 0 {
+				'main'
+			} else {
+				item.module
+			}
+			g.writeln('/* V3CACHE_MODULE ${module_name} */')
+		}
 		g.gen_fn_in_module(node, item.module)
 	}
 }
@@ -194,6 +224,9 @@ fn c_backend_fn_file_rank(file string) int {
 
 fn (mut g FlatGen) gen_synthetic_main_after_fns() {
 	if g.test_files.len > 0 {
+		if g.cache_split {
+			g.writeln('/* V3CACHE_MODULE main */')
+		}
 		g.gen_test_main()
 		return
 	}
@@ -202,6 +235,9 @@ fn (mut g FlatGen) gen_synthetic_main_after_fns() {
 	}
 	top_level_stmts := g.top_level_stmts()
 	if top_level_stmts.len > 0 {
+		if g.cache_split {
+			g.writeln('/* V3CACHE_MODULE main */')
+		}
 		g.gen_top_level_main(top_level_stmts)
 	}
 }
@@ -298,7 +334,6 @@ fn (mut g FlatGen) should_emit_fn_node(node flat.Node, node_index int) bool {
 
 // should_emit_fn_node_in_module reports whether should emit fn node in module applies in c.
 fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int, module_name string, file_name string) bool {
-	_ = node_index
 	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
 	if g.should_rename_user_main_for_tests(module_name, node.value) {
 		return true
@@ -330,10 +365,25 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 	if g.should_emit_ierror_method(node.value, qfn) {
 		return true
 	}
+	// Every specialization materialized from the combined program/module-cache
+	// graph is a concrete body needed by either main or one of the cached objects.
+	if g.is_program_specialization_fn_node(node, node_index, module_name) {
+		return true
+	}
 	if g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, module_name) {
 		return false
 	}
 	return true
+}
+
+fn (g &FlatGen) is_program_specialization_fn_node(node flat.Node, node_index int, module_name string) bool {
+	if g.a.specialized_fn_nodes[node_index] {
+		return true
+	}
+	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
+	return node.value in g.tc.specialized_generic_fns || qfn in g.tc.specialized_generic_fns
+		|| g.cname(node.value) in g.tc.specialized_generic_fns
+		|| g.cname(qfn) in g.tc.specialized_generic_fns
 }
 
 fn cgen_is_operator_overload_fn(name string) bool {
@@ -456,6 +506,9 @@ fn (g &FlatGen) qualified_fn_name_in_module_c(module_name string, name string) s
 	if module_name == 'builtin' && name == 'free' {
 		return 'v_free'
 	}
+	if name.starts_with('__v3_sum_eq_') {
+		return g.cname(name)
+	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
 		return g.cname('${module_name}.${name}')
 	}
@@ -468,6 +521,9 @@ fn (g &FlatGen) qualified_fn_name_in_module_c(module_name string, name string) s
 fn qualified_fn_name_in_module(module_name string, name string) string {
 	if module_name == 'builtin' && name == 'free' {
 		return 'v_free'
+	}
+	if name.starts_with('__v3_sum_eq_') {
+		return c_name(name)
 	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
 		return c_name('${module_name}.${name}')
@@ -7276,6 +7332,12 @@ fn (mut g FlatGen) specialized_generic_plain_fn_name_for_call(id flat.NodeId, no
 	if name.len == 0 || name.contains('[') || node.children_count == 0 {
 		return none
 	}
+	// A transformed receiver call is an already-resolved qualified concrete
+	// function. Do not reinterpret its short method name as an unrelated plain
+	// generic (for example `sync.WaitGroup.add` versus a user `add[T]`).
+	if name.contains('.') && g.concrete_fn_return_known(name) {
+		return none
+	}
 	if g.plain_concrete_fn_name_shadows_generic(name) {
 		return none
 	}
@@ -8860,6 +8922,43 @@ fn (mut g FlatGen) forward_decls() {
 	g.writeln('')
 }
 
+fn (mut g FlatGen) cached_header_forward_decls() {
+	mut cur_file := ''
+	mut cur_module := ''
+	mut forwarded := map[string]bool{}
+	for node in g.a.nodes {
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .fn_decl || !node.is_mut || !cur_file.ends_with('.vh') {
+			continue
+		}
+		qfn := g.fn_c_name_in_module(cur_module, node.value)
+		if forwarded[qfn] {
+			continue
+		}
+		forwarded[qfn] = true
+		g.tc.cur_file = cur_file
+		g.tc.cur_module = cur_module
+		ret_type := g.fn_node_return_type(node, cur_module)
+		g.write(g.fn_return_type_name(ret_type))
+		g.write(' ')
+		g.write(qfn)
+		g.write('(')
+		g.write_fn_node_params(node)
+		g.writeln(');')
+	}
+	if forwarded.len > 0 {
+		g.writeln('')
+	}
+}
+
 fn (mut g FlatGen) c_extern_forward_decls() {
 	mut cur_module := ''
 	mut cur_file := ''
@@ -9024,6 +9123,9 @@ const c_shared_runtime_extern_symbols = {
 
 fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	if cfn.contains('.') {
+		return false
+	}
+	if g.cache_split && cfn in c_cache_system_header_declared_fns {
 		return false
 	}
 	if cfn in c_preamble_declared_extern_symbols {

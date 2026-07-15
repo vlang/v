@@ -690,20 +690,16 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	}
 	concrete := t.interface_concrete_impl_name(concrete_name) or { return none }
 	requested_qualified := concrete_name.contains('.') || concrete != concrete_name
-	// The 1-based position in the same implementation list cgen uses is the
-	// `_typ` id assigned when boxing; deriving it here keeps `is` checks and
-	// dispatch in sync (aliases included).
-	mut idx := 0
 	impl_names := if t.is_builtin_ierror_interface_name(iface) {
 		t.tc.ierror_impl_names()
 	} else {
 		t.tc.interface_impl_names(iface)
 	}
+	type_ids := types.stable_interface_type_ids(impl_names)
 	for impl_name in impl_names {
-		idx++
 		if impl_name == concrete || (!requested_qualified
 			&& impl_name.all_after_last('.') == concrete.all_after_last('.')) {
-			return idx
+			return type_ids[impl_name]
 		}
 	}
 	return none

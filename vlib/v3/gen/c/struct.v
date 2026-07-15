@@ -30,6 +30,14 @@ fn (g &FlatGen) struct_init_fields_key(type_name string, fallback string) string
 			return inst
 		}
 	}
+	// Resolve a module-local alias before consulting an unqualified short-name
+	// fallback. Otherwise `sgl_like.Context = C.sgl_context` can borrow omitted
+	// defaults from an unrelated imported `gg.Context`.
+	if info := g.find_struct_decl(type_name) {
+		if info.full_name in g.tc.structs {
+			return info.full_name
+		}
+	}
 	if fallback in g.tc.structs {
 		return fallback
 	}
@@ -2697,6 +2705,12 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 	if name.starts_with('C.') && g.inlined_c_structs[name[2..]] {
 		return true
 	}
+	if g.cache_split {
+		system_name := if name.starts_with('C.') { name[2..] } else { name }
+		if system_name in c_cache_system_header_struct_names {
+			return true
+		}
+	}
 	return name in c_preamble_defined_structs
 }
 
@@ -2813,7 +2827,8 @@ fn (mut g FlatGen) struct_decls() {
 			// (skipped when the header already typedefs it).
 			if name.starts_with('C.') && name !in c_preamble_defined_structs
 				&& c_struct_needs_typedef(name) && g.inlined_c_structs[name[2..]]
-				&& !g.inlined_c_typedef_names[name[2..]] {
+				&& !g.inlined_c_typedef_names[name[2..]] && !(g.cache_split
+				&& name[2..] in c_cache_system_header_struct_names) {
 				ityp := if name in g.tc.unions { 'union' } else { 'struct' }
 				g.writeln('typedef ${ityp} ${g.cname(name)} ${g.cname(name)};')
 			}
@@ -3458,6 +3473,17 @@ fn (mut g FlatGen) preseed_struct_fn_ptr_types() {
 
 fn (mut g FlatGen) preseed_global_fn_ptr_types() {
 	for _, typ in g.global_types {
+		g.preseed_fn_ptr_type(typ)
+	}
+}
+
+fn (mut g FlatGen) preseed_fn_signature_fn_ptr_types() {
+	for _, params in g.fn_decl_param_types {
+		for typ in params {
+			g.preseed_fn_ptr_type(typ)
+		}
+	}
+	for _, typ in g.fn_decl_ret_types {
 		g.preseed_fn_ptr_type(typ)
 	}
 }

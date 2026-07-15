@@ -348,16 +348,21 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 			return info
 		}
 	}
+	// Resolve a module-local alias before the bare short-name fallback. A local
+	// `Context = C.sgl_context` must not inherit defaults from an imported
+	// `gg.Context` that happens to own the global short-name entry.
+	normalized := t.normalize_type_alias(name)
+	if normalized != name {
+		if info := t.lookup_struct_info_direct(normalized) {
+			return info
+		}
+	}
 	// A monomorphized generic instantiated from another module references the concrete
 	// type by its bare name (`BoolConfig` from main, while transforming the declaring
 	// module); the module-qualified lookup above misses those, so fall back to the
 	// direct lookup, which tries the bare name too.
 	if info := t.lookup_struct_info_direct(name) {
 		return info
-	}
-	normalized := t.normalize_type_alias(name)
-	if normalized != name {
-		return t.lookup_struct_info_direct(normalized)
 	}
 	return none
 }
