@@ -240,6 +240,7 @@ fn (mut t Transformer) collect_generic_fn_decls_for_erasure() map[string]Generic
 		match node.kind {
 			.file {
 				cur_file = node.value
+				cur_module = t.tc.file_modules[cur_file] or { '' }
 			}
 			.module_decl {
 				cur_module = node.value
@@ -608,7 +609,29 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 		return
 	}
 	t.interface_boxed_types_done = true
+	old_file := t.cur_file
+	old_module := t.cur_module
+	old_tc_file := t.tc.cur_file
+	old_tc_module := t.tc.cur_module
+	defer {
+		t.cur_file = old_file
+		t.cur_module = old_module
+		t.tc.cur_file = old_tc_file
+		t.tc.cur_module = old_tc_module
+	}
 	for idx, node in t.a.nodes {
+		if node.kind == .file {
+			t.cur_file = node.value
+			t.tc.cur_file = node.value
+			t.cur_module = t.tc.file_modules[node.value] or { '' }
+			t.tc.cur_module = t.cur_module
+			continue
+		}
+		if node.kind == .module_decl {
+			t.cur_module = node.value
+			t.tc.cur_module = node.value
+			continue
+		}
 		if node.kind == .fn_decl && t.interface_box_type_text_maybe(node.typ) {
 			return_type := t.tc.parse_type(node.typ)
 			if interface_box_expected_type(return_type) {
@@ -1457,6 +1480,7 @@ fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDe
 		match node.kind {
 			.file {
 				cur_file = node.value
+				cur_module = t.tc.file_modules[cur_file] or { '' }
 			}
 			.module_decl {
 				cur_module = node.value
@@ -1498,6 +1522,7 @@ fn (mut t Transformer) collect_generic_sum_decls() map[string]GenericSumDecl {
 		match node.kind {
 			.file {
 				cur_file = node.value
+				cur_module = t.tc.file_modules[cur_file] or { '' }
 			}
 			.module_decl {
 				cur_module = node.value
@@ -1536,7 +1561,7 @@ fn (mut t Transformer) collect_generic_struct_specs(decls map[string]GenericStru
 		match node.kind {
 			.file {
 				file_name = node.value
-				module_name = ''
+				module_name = t.tc.file_modules[file_name] or { '' }
 			}
 			.module_decl {
 				module_name = node.value
@@ -1634,7 +1659,7 @@ fn (mut t Transformer) collect_generic_sum_specs(decls map[string]GenericSumDecl
 		match node.kind {
 			.file {
 				file_name = node.value
-				module_name = ''
+				module_name = t.tc.file_modules[file_name] or { '' }
 			}
 			.module_decl {
 				module_name = node.value
@@ -1949,6 +1974,7 @@ fn (mut t Transformer) collect_generic_fn_decls() map[string]GenericFnDecl {
 		match node.kind {
 			.file {
 				cur_file = node.value
+				cur_module = t.tc.file_modules[cur_file] or { '' }
 			}
 			.module_decl {
 				cur_module = node.value
@@ -2018,6 +2044,9 @@ fn (mut t Transformer) ensure_node_module_map() {
 	for i := t.node_module_map_nodes; i < t.a.nodes.len; i++ {
 		node := t.a.nodes[i]
 		match node.kind {
+			.file {
+				cur_module = t.tc.file_modules[node.value] or { '' }
+			}
 			.module_decl {
 				cur_module = node.value
 			}
