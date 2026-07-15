@@ -338,7 +338,62 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 	if info := t.lookup_struct_info_direct(name) {
 		return info
 	}
+	// Mark-used runs before transform and can prune a struct declaration whose value is
+	// only observed through an interface box. The checker field table deliberately
+	// survives that pruning, so use it as the authoritative fallback for structural
+	// operations such as semantic equality.
+	if info := t.lookup_checker_struct_info(name) {
+		return info
+	}
 	return none
+}
+
+fn (t &Transformer) checker_struct_lookup_name(name string) string {
+	if isnil(t.tc) || name.len == 0 {
+		return ''
+	}
+	if name in t.tc.structs {
+		return name
+	}
+	if name.contains('.') {
+		short_name := name.all_after_last('.')
+		module_name := name.all_before_last('.')
+		short_module := t.tc.struct_modules[short_name] or { '' }
+		if short_name in t.tc.structs && short_module == module_name {
+			return short_name
+		}
+		return ''
+	}
+	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		qualified_name := '${t.cur_module}.${name}'
+		if qualified_name in t.tc.structs {
+			return qualified_name
+		}
+	}
+	return ''
+}
+
+fn (t &Transformer) lookup_checker_struct_info(name string) ?StructInfo {
+	lookup_name := t.checker_struct_lookup_name(name)
+	if lookup_name.len == 0 {
+		return none
+	}
+	checker_fields := t.tc.structs[lookup_name] or { return none }
+	mut fields := []FieldInfo{cap: checker_fields.len}
+	for field in checker_fields {
+		field_type := field.typ.name()
+		fields << FieldInfo{
+			name:        field.name
+			typ:         field_type
+			raw_typ:     field_type
+			is_embedded: field.name == field_type
+		}
+	}
+	return StructInfo{
+		name:   lookup_name.all_after_last('.')
+		module: t.tc.struct_modules[lookup_name] or { '' }
+		fields: fields
+	}
 }
 
 fn (t &Transformer) resolve_imported_type_name(name string) ?string {
