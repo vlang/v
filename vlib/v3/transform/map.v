@@ -695,14 +695,42 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 	outer_key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
-	result << t.make_decl_assign_typed(outer_key_name, t.transform_expr_for_type(outer_info.key_id,
-		outer_info.key_type), outer_info.key_storage_type)
+	mut outer_key_value := t.transform_expr_for_type(outer_info.key_id, outer_info.key_type)
+	mut outer_key_is_owned := !isnil(t.tc)
+		&& t.tc.ownership_expr_creates_owned_value(outer_info.key_id)
+	if !outer_key_is_owned && !isnil(t.tc)
+		&& t.normalize_type_alias(outer_info.key_type).trim_space() != 'string' {
+		outer_key_type := t.tc.parse_type(outer_info.key_type)
+		if t.tc.ownership_type_requires_destruction(outer_key_type)
+			&& t.tc.ownership_default_clone_missing_method(outer_key_type) == none {
+			outer_key_value = t.make_compiler_default_clone_value(outer_key_value,
+				outer_info.key_type, true)
+			outer_key_is_owned = true
+		}
+	}
+	t.drain_pending(mut result)
+	result << t.make_decl_assign_typed(outer_key_name, outer_key_value, outer_info.key_storage_type)
+	cleanup_outer_key, outer_key_existed_name := t.prepare_owned_map_set_key_cleanup(outer_key_is_owned,
+		outer_info.key_type, map_expr, outer_info.base_type, outer_key_name, mut result)
 	inner_name := t.load_map_index_current(outer_info, map_expr, outer_key_name, mut result)
 	inner_key_name := t.new_temp('map_key')
 	inner_value_name := t.new_temp('map_val')
 	inner_key_storage_type := t.map_key_storage_type(inner_key_type)
-	result << t.make_decl_assign_typed(inner_key_name, t.transform_expr_for_type(t.a.child(&lhs, 1),
-		inner_key_type), inner_key_storage_type)
+	inner_key_id := t.a.child(&lhs, 1)
+	mut inner_key_value := t.transform_expr_for_type(inner_key_id, inner_key_type)
+	mut inner_key_is_owned := !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(inner_key_id)
+	if !inner_key_is_owned && !isnil(t.tc)
+		&& t.normalize_type_alias(inner_key_type).trim_space() != 'string' {
+		inner_key_parsed_type := t.tc.parse_type(inner_key_type)
+		if t.tc.ownership_type_requires_destruction(inner_key_parsed_type)
+			&& t.tc.ownership_default_clone_missing_method(inner_key_parsed_type) == none {
+			inner_key_value =
+				t.make_compiler_default_clone_value(inner_key_value, inner_key_type, true)
+			inner_key_is_owned = true
+		}
+	}
+	t.drain_pending(mut result)
+	result << t.make_decl_assign_typed(inner_key_name, inner_key_value, inner_key_storage_type)
 	rhs_id := t.a.child(&node, 1)
 	mut inner_value := if inner_value_type.starts_with('&')
 		&& t.is_sum_type_name(inner_value_type[1..]) {
@@ -720,11 +748,17 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 		return []flat.NodeId{}
 	}
 	result << t.make_decl_assign_typed(inner_value_name, inner_value, inner_value_type)
-	t.append_map_value_drop_before_set(t.make_ident(inner_name), inner_map_type, inner_key_name,
+	inner_map_expr := t.make_ident(inner_name)
+	cleanup_inner_key, inner_key_existed_name := t.prepare_owned_map_set_key_cleanup(inner_key_is_owned,
+		inner_key_type, inner_map_expr, inner_map_type, inner_key_name, mut result)
+	t.append_map_value_drop_before_set(inner_map_expr, inner_map_type, inner_key_name,
 		inner_value_type, mut result)
-	result << t.make_map_set_stmt(t.make_ident(inner_name), inner_map_type, inner_key_name,
-		inner_value_name)
+	result << t.make_map_set_stmt(inner_map_expr, inner_map_type, inner_key_name, inner_value_name)
+	t.append_owned_map_set_key_cleanup(inner_key_name, cleanup_inner_key, inner_key_existed_name, mut
+		result)
 	result << t.make_map_set_stmt(map_expr, outer_info.base_type, outer_key_name, inner_name)
+	t.append_owned_map_set_key_cleanup(outer_key_name, cleanup_outer_key, outer_key_existed_name, mut
+		result)
 	return result
 }
 
