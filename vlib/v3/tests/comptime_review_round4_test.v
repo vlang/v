@@ -2987,6 +2987,44 @@ fn main() {
 	assert out == 'return|param|signature'
 }
 
+fn test_concrete_generic_receiver_reflection_checks_selected_branches() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'generic_receiver_selected_name_branch', 'struct Box[T] {}
+
+fn (b Box[T]) get(value T) T {
+	_ = b
+	return value
+}
+
+fn main() {
+	box := Box[int]{}
+	$for method in box.methods {
+		$if method.name == "get" {
+			missing_generic_method_name_branch()
+		}
+	}
+}
+',
+		'unknown function `missing_generic_method_name_branch`')
+	round4_run_bad(v3_bin, 'generic_receiver_selected_param_branch', 'struct Box[T] {}
+
+fn (b Box[T]) get(value T) T {
+	_ = b
+	return value
+}
+
+fn main() {
+	box := Box[int]{}
+	$for method in box.methods {
+		$if method.args[0].typ is int {
+			missing_generic_method_param_branch()
+		}
+	}
+}
+',
+		'unknown function `missing_generic_method_param_branch`')
+}
+
 fn test_generic_reflection_compile_error_waits_for_selected_branch() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'generic_reflection_unselected_compile_error', "struct App {}

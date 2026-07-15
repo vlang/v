@@ -5307,7 +5307,23 @@ fn (tc &TypeChecker) comptime_static_deferred_cases(source string, loop_kind str
 
 fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticValueCases {
 	base_type := tc.comptime_static_for_base_type(source)
-	struct_name := tc.comptime_static_struct_name(base_type) or {
+	clean_type := comptime_static_unwrap_type_text(base_type)
+	generic_base, generic_args, is_generic := generic_type_application_parts(clean_type)
+	if is_generic && !tc.generic_args_are_concrete(generic_args) {
+		return ComptimeStaticValueCases{}
+	}
+	lookup_type := if is_generic { generic_base } else { clean_type }
+	struct_name := tc.comptime_static_struct_name(lookup_type) or {
+		return ComptimeStaticValueCases{}
+	}
+	generic_params := if is_generic {
+		tc.struct_generic_params[struct_name] or {
+			tc.struct_generic_params[struct_name.all_after_last('.')] or { []string{} }
+		}
+	} else {
+		[]string{}
+	}
+	if is_generic && generic_params.len != generic_args.len {
 		return ComptimeStaticValueCases{}
 	}
 	mut wanted_module := tc.struct_modules[struct_name] or { '' }
@@ -5354,10 +5370,14 @@ fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticV
 					param := tc.a.child_node(&candidate, i)
 					if param.kind == .param {
 						param_names << param.value
-						param_types << param.typ
+						param_types << subst_generic_text(param.typ, generic_args, generic_params)
 					}
 				}
-				return_type := if candidate.typ.len > 0 { candidate.typ } else { 'void' }
+				return_type := subst_generic_text(if candidate.typ.len > 0 {
+					candidate.typ
+				} else {
+					'void'
+				}, generic_args, generic_params)
 				cases << ComptimeStaticValueCase{
 					name:        name
 					typ:         comptime_static_method_type_text(param_types, return_type)
