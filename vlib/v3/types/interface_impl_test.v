@@ -17,3 +17,11 @@ fn test_stable_interface_type_ids_resolve_hash_collisions() {
 	ids := stable_interface_type_ids(['main.TZjXQlDs6', 'main.T2nAMbYQH'])
 	assert ids['main.TZjXQlDs6'] != ids['main.T2nAMbYQH']
 }
+
+fn test_stable_interface_type_ids_preserve_existing_ids_after_late_collisions() {
+	assert stable_interface_type_id_hash('Tnndxrxb') == stable_interface_type_id_hash('Twvlzleh')
+	before := stable_interface_type_ids(['Twvlzleh'])
+	after := stable_interface_type_ids(['Twvlzleh', 'Tnndxrxb'])
+	assert after['Twvlzleh'] == before['Twvlzleh']
+	assert after['Tnndxrxb'] != before['Twvlzleh']
+}

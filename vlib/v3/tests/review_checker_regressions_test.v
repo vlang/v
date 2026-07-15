@@ -58,6 +58,20 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'cannot initialize field `x` with `&int`; expected `int`')
 }
 
+fn test_if_expr_pointer_and_value_branches_are_incompatible() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_if_expr_pointer_value_branch',
+		'struct Foo {}\n\nfn main() {\n\t_ := if true {\n\t\tFoo{}\n\t} else {\n\t\t&Foo{}\n\t}\n}\n',
+		'if-expression branch type mismatch')
+}
+
+fn test_reject_narrowed_interface_method_parameters() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_narrowed_interface_method_param',
+		'interface A {\n\ta() string\n}\n\ninterface B {\n\tA\n\tb() string\n}\n\nstruct Impl {}\n\nfn (Impl) m(x B) {\n\t_ = x\n}\n\ninterface I {\n\tm(x A)\n}\n\nfn main() {\n\t_ := I(Impl{})\n}\n',
+		'type `Impl` does not implement interface `I`')
+}
+
 fn test_multi_return_tail_slots_use_return_compatibility() {
 	v3_bin := build_v3_review_checker()
 	if_out := run_good(v3_bin, 'good_multi_return_if_pointer_value_tail',

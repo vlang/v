@@ -683,6 +683,103 @@ fn main() {
 	assert out == 'Ada\nAda'
 }
 
+fn test_pointer_interface_conversion_heap_copies_converted_interface() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_interface_conversion_heap_copy', 'interface Named {
+	name string
+}
+
+interface Rich {
+	name string
+	describe() string
+}
+
+struct User {
+	name string
+}
+
+fn (u User) describe() string {
+	return "user:" + u.name
+}
+
+fn make_named(r Rich) &Named {
+	return &Named(r)
+}
+
+fn read_named(n &Named) string {
+	return n.name
+}
+
+fn main() {
+	rich := Rich(User{
+		name: "Ada"
+	})
+	named := make_named(rich)
+	println(read_named(named))
+	println(named.name)
+}
+')
+	assert out == 'Ada\nAda'
+}
+
+fn test_interface_implicit_str_dispatch_preserves_receiver_values() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_implicit_str_receiver_values', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+struct Custom {
+	x int
+}
+
+fn (c &Custom) str() string {
+	return "custom:" + int_str(c.x)
+}
+
+struct Foo {
+	x int
+	bar Bar
+	nums []int
+	lookup map[string]int
+	p &int
+	custom &Custom
+}
+
+fn main() {
+	mut n := 11
+	mut custom := Custom{
+		x: 12
+	}
+	value := Printable(Foo{
+		x: 7
+		bar: Bar{
+			x: 8
+		}
+		nums: [1, 2]
+		lookup: {
+			"a": 3
+		}
+		p: &n
+		custom: &custom
+	})
+	text := value.str()
+	println(text.contains("x: 7"))
+	println(text.contains("Bar"))
+	println(text.contains("x: 8"))
+	println(text.contains("[1, 2]"))
+	println(text.contains("a"))
+	println(text.contains("3"))
+	println(text.contains("11"))
+	println(text.contains("custom:12"))
+}
+')
+	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',

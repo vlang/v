@@ -18459,15 +18459,15 @@ pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 	return impls
 }
 
-// stable_interface_type_ids assigns deterministic nonzero `_typ` dispatch IDs
-// to interface implementers. Hash collisions are resolved in sorted name order
-// with linear probing, so cgen and transformed `is` checks share one mapping.
+// stable_interface_type_ids assigns deterministic nonzero `_typ` dispatch IDs to
+// interface implementers in caller-supplied order. Hash collisions are resolved
+// with linear probing after earlier names keep their IDs, so late generic
+// implementers appended after transform cannot shift IDs already emitted for
+// existing interface values/checks.
 pub fn stable_interface_type_ids(impl_names []string) map[string]int {
-	mut names := impl_names.clone()
-	names.sort()
 	mut ids := map[string]int{}
 	mut used := map[int]bool{}
-	for name in names {
+	for name in impl_names {
 		if name in ids {
 			continue
 		}
@@ -19561,7 +19561,26 @@ fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Typ
 	if type_pointer_depth(actual) != type_pointer_depth(expected) {
 		return false
 	}
+	if actual_iface := tc.method_param_interface_name(actual) {
+		expected_iface := tc.method_param_interface_name(expected) or { return false }
+		return actual_iface == expected_iface
+	}
+	if _ := tc.method_param_interface_name(expected) {
+		return false
+	}
 	return tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual)
+}
+
+fn (tc &TypeChecker) method_param_interface_name(typ Type) ?string {
+	clean := unwrap_pointer(typ)
+	if clean is Interface {
+		return tc.interface_metadata_name(clean.name)
+	}
+	name := clean.name()
+	if name in tc.interface_names {
+		return tc.interface_metadata_name(name)
+	}
+	return none
 }
 
 fn type_pointer_depth(t Type) int {

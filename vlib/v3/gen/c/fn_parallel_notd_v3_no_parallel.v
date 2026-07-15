@@ -515,6 +515,8 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		enum_backing_infos:             g.enum_backing_infos
 		iface_impls:                    g.iface_impls
 		iface_type_ids:                 g.iface_type_ids
+		interface_boxed_types:          g.interface_boxed_types
+		interface_boxed_types_done:     g.interface_boxed_types_done
 		ierror_method_emit_names:       g.ierror_method_emit_names
 		ierror_stack_pointer_aliases:   []map[string]bool{}
 		local_pointer_storage_by_owner: map[string]bool{}

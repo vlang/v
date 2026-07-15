@@ -187,6 +187,9 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if source_iface.len > 0 {
 		expr := t.transform_expr(id)
 		if converted := t.convert_interface_expr_to_interface(expr, source_type, iface_name) {
+			if target_is_ptr {
+				return t.heap_copy_interface_expr(converted, iface_name, target_type)
+			}
 			return converted
 		}
 	}

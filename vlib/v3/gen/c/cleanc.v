@@ -80,6 +80,8 @@ mut:
 	enum_backing_infos             map[string]EnumBackingInfo
 	iface_impls                    map[string][]string // interface name -> implementing concrete type names
 	iface_type_ids                 map[string]int      // "${iface}::${concrete}" -> 1-based type id
+	interface_boxed_types          map[string]bool
+	interface_boxed_types_done     bool
 	ierror_method_emit_names       map[string]bool     // names/lowered names of concrete IError msg/code methods
 	ierror_stack_pointer_aliases   []map[string]bool   // scoped local pointer aliases to stack subobjects
 	local_pointer_storage_by_owner map[string]bool     // exact scope binding owner -> C storage is already a pointer
@@ -434,6 +436,7 @@ pub fn FlatGen.new() FlatGen {
 		enum_backing_infos:             map[string]EnumBackingInfo{}
 		iface_impls:                    map[string][]string{}
 		iface_type_ids:                 map[string]int{}
+		interface_boxed_types:          map[string]bool{}
 		ierror_method_emit_names:       map[string]bool{}
 		ierror_stack_pointer_aliases:   []map[string]bool{}
 		local_pointer_storage_by_owner: map[string]bool{}
