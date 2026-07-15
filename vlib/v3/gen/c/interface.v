@@ -10,7 +10,7 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 	g.writeln('\tint typ;')
 	g.writeln('\tunion {')
 	for v in variants {
-		ct := g.value_c_type(g.tc.parse_type(v))
+		ct := g.value_c_type(g.tc.parse_canonical_type(v))
 		field := g.sum_field_name(v)
 		g.writeln('\t\t${ct}* ${field};')
 	}
@@ -330,7 +330,7 @@ fn (g &FlatGen) ierror_method_signature_matches(name string, concrete string, me
 		return false
 	}
 	receiver := g.ierror_clean_type(params[0])
-	expected := g.ierror_clean_type(g.tc.parse_type(concrete))
+	expected := g.ierror_clean_type(g.tc.parse_canonical_type(concrete))
 	return g.type_names_match(receiver, expected)
 }
 
@@ -392,7 +392,7 @@ fn (g &FlatGen) ierror_promoted_method_call(concrete string, method string, mut 
 }
 
 fn (g &FlatGen) ierror_method_receiver_expr(concrete string, path []types.StructField, recv_is_ptr bool) string {
-	concrete_ct := g.tc.c_type(g.tc.parse_type(concrete))
+	concrete_ct := g.tc.c_type(g.tc.parse_canonical_type(concrete))
 	object := '(${concrete_ct}*)i->_object'
 	if path.len == 0 {
 		return if recv_is_ptr { object } else { '*${object}' }
@@ -499,7 +499,7 @@ fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual type
 		return none
 	}
 	expr := g.expr_to_string(id)
-	concrete_ct := g.tc.c_type(g.tc.parse_type(concrete))
+	concrete_ct := g.tc.c_type(g.tc.parse_canonical_type(concrete))
 	object := if actual is types.Pointer {
 		if g.ierror_pointer_payload_needs_heap_copy(node)
 			|| g.ierror_pointer_payload_alias_needs_heap_copy(node) {
@@ -979,11 +979,11 @@ fn (mut g FlatGen) gen_interface_dispatch(iface_name string, cn string, method s
 }
 
 fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_params []types.Type, wants_ptr bool) string {
-	cct := g.tc.c_type(g.tc.parse_type(concrete))
+	concrete_type := g.tc.parse_canonical_type(concrete)
+	cct := g.tc.c_type(concrete_type)
 	if concrete_params.len == 0 {
 		return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
 	}
-	concrete_type := g.tc.parse_type(concrete)
 	expected_type := concrete_params[0]
 	if path := g.embedded_receiver_path_for_expected(concrete_type, expected_type) {
 		base := '(${cct}*)i->_object'

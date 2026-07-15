@@ -227,6 +227,18 @@ pub fn make() Box {
 	assert uses_generics
 }
 
+fn test_local_generic_struct_init_requires_monomorphization() {
+	a, tc := parse_checked_source('local_generic_struct_init', '
+fn main() {
+	struct Inner {}
+	struct Box[T] {}
+	_ := Box[Inner]{}
+}
+')
+	_, uses_generics := markused.mark_used_with_generic_usage(a, tc)
+	assert uses_generics
+}
+
 // build_v3_bin builds v3 bin data for v3 tests.
 fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')

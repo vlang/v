@@ -45,6 +45,12 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut const_decls := map[string]ConstDeclInfo{}
 	mut fn_name_suffixes := map[string]bool{}
 	mut const_name_suffixes := map[string]bool{}
+	mut generic_type_bases := map[string]bool{}
+	for node in a.nodes {
+		if node.kind in [.struct_decl, .type_decl] && node.generic_params().len > 0 {
+			generic_type_bases[node.value] = true
+		}
+	}
 
 	// Reverse index: short name (after last '.') -> list of full qualified names
 	mut suffix_map := map[string][]string{}
@@ -257,6 +263,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		import_contexts:         import_contexts
 		selective_alias_targets: markused_selective_alias_targets(tc)
 		iface_param_gate:        markused_interface_param_gate(tc)
+		generic_type_bases:      generic_type_bases
 	}
 	// Precollect every body's call/initializer-ref lists up front (across
 	// threads when available): the BFS below then only does the cheap
@@ -1137,6 +1144,9 @@ struct CallCollector {
 	// per-call-node scan bail out with a couple of map probes instead of building
 	// signature-candidate spellings (c_name/qualify allocations) for every call.
 	iface_param_gate map[string]bool
+	// Includes scoped local declarations, which are intentionally absent from
+	// the checker's top-level generic declaration maps.
+	generic_type_bases map[string]bool
 }
 
 fn (c &CallCollector) imports(context int) map[string]string {
@@ -2489,11 +2499,12 @@ fn markused_type_name_start_byte(ch u8) bool {
 
 fn markused_generic_name_byte(ch u8) bool {
 	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
-		|| (ch >= `0` && ch <= `9`) || ch in [`_`, `.`]
+		|| (ch >= `0` && ch <= `9`) || ch in [`_`, `.`, `@`]
 }
 
 fn (c &CallCollector) generic_type_base_is_known(base string, cur_module string, imports map[string]string) bool {
-	if base in c.tc.struct_generic_params || base in c.tc.sum_generic_params {
+	if base in c.generic_type_bases || base in c.tc.struct_generic_params
+		|| base in c.tc.sum_generic_params {
 		return true
 	}
 	if !base.contains('.') {
@@ -3086,6 +3097,7 @@ fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
 		import_contexts:         c.import_contexts
 		selective_alias_targets: c.selective_alias_targets
 		iface_param_gate:        c.iface_param_gate
+		generic_type_bases:      c.generic_type_bases
 	}
 }
 
