@@ -3015,6 +3015,50 @@ fn main() {
 		'unknown function `missing_selected_attribute_fn`')
 }
 
+fn test_deferred_reflection_loops_check_selected_non_name_metadata_branches() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'method_loop_selected_is_pub_branch_error', 'struct App {}
+
+pub fn (app App) run() {
+	_ = app
+}
+
+fn main() {
+	$for method in App.methods {
+		$if method.is_pub {
+			missing_selected_public_method_fn()
+		}
+	}
+}
+',
+		'unknown function `missing_selected_public_method_fn`')
+	round4_run_bad(v3_bin, 'param_loop_selected_typ_branch_error', 'fn consume(value string) {
+	_ = value
+}
+
+fn main() {
+	$for param in consume.params {
+		$if param.typ is string {
+			missing_selected_string_param_fn()
+		}
+	}
+}
+',
+		'unknown function `missing_selected_string_param_fn`')
+	round4_run_bad(v3_bin, 'attribute_loop_selected_arg_branch_error', "@[route: '/path']
+struct App {}
+
+fn main() {
+	\$for attr in App.attributes {
+		\$if attr.arg == '/path' {
+			missing_selected_attribute_arg_fn()
+		}
+	}
+}
+",
+		'unknown function `missing_selected_attribute_arg_fn`')
+}
+
 fn test_deferred_reflection_loops_skip_unselected_metadata_branches() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'deferred_loop_unselected_metadata_branches', '@[route]
@@ -3047,6 +3091,48 @@ fn main() {
 	$for attr in App.attributes {
 		$if attr.name == "missing" {
 			missing_unselected_attribute_fn()
+		} $else {
+			rows << attr.name
+		}
+	}
+	println(rows.join("|"))
+}
+')
+	assert out == 'run|value|route'
+}
+
+fn test_deferred_reflection_loops_skip_unselected_non_name_metadata_branches() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'deferred_loop_unselected_non_name_metadata_branches', '@[route]
+struct App {}
+
+fn (app App) run() {
+	_ = app
+}
+
+fn consume(value int) {
+	_ = value
+}
+
+fn main() {
+	mut rows := []string{}
+	$for method in App.methods {
+		$if method.is_pub {
+			missing_unselected_public_method_fn()
+		} $else {
+			rows << method.name
+		}
+	}
+	$for param in consume.params {
+		$if param.typ is string {
+			missing_unselected_string_param_fn()
+		} $else {
+			rows << param.name
+		}
+	}
+	$for attr in App.attributes {
+		$if attr.has_arg {
+			missing_unselected_attribute_arg_fn()
 		} $else {
 			rows << attr.name
 		}

@@ -368,7 +368,8 @@ fn (mut p Parser) parallel_comptime_branch_enabled(mut s scanner.Scanner, src st
 		if cond.len == 0 {
 			cond_start = s.pos
 		}
-		piece := parallel_comptime_prepass_token_text(tok, s, src)
+		mut piece := parallel_comptime_prepass_token_text(tok, s, src)
+		piece = p.resolve_parallel_comptime_prepass_at_token(piece, s.pos, src, path, module_name)
 		if cond.len > 0 && comptime_cond_needs_space(prev, piece) {
 			cond += ' '
 		}
@@ -385,6 +386,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 	mut subject := ''
 	mut subject_start := s.offset
 	mut subject_is_literal := false
+	mut subject_has_pseudo := false
 	mut prev := ''
 	for {
 		tok := s.scan()
@@ -397,7 +399,12 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 		if tok == .semicolon {
 			continue
 		}
-		piece := parallel_comptime_prepass_token_text(tok, s, src)
+		mut piece := parallel_comptime_prepass_token_text(tok, s, src)
+		if piece.starts_with('@') {
+			subject_has_pseudo = true
+		}
+		piece = p.resolve_parallel_comptime_prepass_at_token(piece, s.pos, src, path,
+			current_module)
 		if subject.len == 0 {
 			subject_start = s.pos
 			subject_is_literal = tok in [.string, .char, .number, .key_true, .key_false]
@@ -409,7 +416,7 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 	}
 	resolved_subject := p.resolve_parallel_comptime_prepass_text(subject, subject_start, src, path,
 		current_module, values, false)
-	subject_known := subject_is_literal || subject.starts_with('@') || resolved_subject != subject
+	subject_known := subject_is_literal || subject_has_pseudo || resolved_subject != subject
 	mut matched := false
 	for {
 		mut tok := s.scan()
@@ -468,7 +475,9 @@ fn (mut p Parser) precollect_parallel_comptime_match(mut s scanner.Scanner, src 
 					pattern_start = s.pos
 					continue
 				}
-				piece := parallel_comptime_prepass_token_text(tok, s, src)
+				mut piece := parallel_comptime_prepass_token_text(tok, s, src)
+				piece = p.resolve_parallel_comptime_prepass_at_token(piece, s.pos, src, path,
+					current_module)
 				if pattern.len > 0 && comptime_cond_needs_space(pattern_prev, piece) {
 					pattern += ' '
 				}
@@ -509,6 +518,17 @@ fn (mut p Parser) resolve_parallel_comptime_prepass_text(text string, pos int, s
 	resolver.comptime_const_values = values.clone()
 	return resolver.resolve_comptime_cached_values(resolver.resolve_comptime_at_values(text),
 		preserve_flags)
+}
+
+fn (mut p Parser) resolve_parallel_comptime_prepass_at_token(text string, pos int, src string, path string, module_name string) string {
+	if !text.starts_with('@') {
+		return text
+	}
+	mut resolver := Parser.new(p.prefs)
+	resolver.cur_file = path
+	resolver.cur_module = module_name
+	resolver.s.src = src
+	return resolver.resolve_comptime_at_values_at(text, pos)
 }
 
 fn parallel_comptime_prepass_token_text(tok token.Token, s &scanner.Scanner, src string) string {
@@ -561,6 +581,7 @@ fn (mut p Parser) parallel_decl_attr_enabled(mut s scanner.Scanner, src string, 
 	mut cond := ''
 	mut cond_start := s.offset
 	mut bracket_depth := 0
+	mut prev := ''
 	for {
 		tok := s.scan()
 		if tok == .eof {
@@ -577,16 +598,15 @@ fn (mut p Parser) parallel_decl_attr_enabled(mut s scanner.Scanner, src string, 
 		if tok == .semicolon {
 			continue
 		}
+		mut piece := parallel_comptime_prepass_token_text(tok, s, src)
+		piece = p.resolve_parallel_comptime_prepass_at_token(piece, s.pos, src, path, module_name)
 		if cond.len == 0 {
 			cond_start = s.pos
-		} else {
+		} else if comptime_cond_needs_space(prev, piece) {
 			cond += ' '
 		}
-		if s.pos >= 0 && s.offset <= src.len && s.pos < s.offset {
-			cond += src[s.pos..s.offset]
-		} else {
-			cond += s.lit
-		}
+		cond += piece
+		prev = piece
 	}
 	if !cond.contains('@') {
 		return eval_comptime_cond(p.prefs, cond)

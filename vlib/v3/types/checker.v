@@ -1,5 +1,6 @@
 module types
 
+import strings
 import v3.flat
 import v3.gen.c.naming
 
@@ -5192,9 +5193,19 @@ struct ComptimeStaticFieldCases {
 }
 
 struct ComptimeStaticValueCase {
-	name      string
-	value     int
-	has_value bool
+	name          string
+	value         int
+	has_value     bool
+	typ           string
+	return_type   string
+	is_pub        bool
+	has_is_pub    bool
+	arg           string
+	has_arg       bool
+	has_attr_meta bool
+	attr_kind     int
+	param_names   []string
+	param_types   []string
 }
 
 struct ComptimeStaticValueCases {
@@ -5253,7 +5264,7 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	// Their bodies can also reference metadata from an enclosing reflection loop, which does
 	// not exist as a runtime local while checking the original generic body.
 	if parts[1] in ['methods', 'params', 'attributes'] {
-		deferred_cases := tc.comptime_static_deferred_name_cases(node.typ, parts[1])
+		deferred_cases := tc.comptime_static_deferred_cases(node.typ, parts[1])
 		if deferred_cases.known && deferred_cases.cases.len == 0 {
 			return
 		}
@@ -5281,20 +5292,20 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	tc.check_comptime_static_body(body_id, parts[0], parts[1], field_cases, value_cases)
 }
 
-fn (tc &TypeChecker) comptime_static_deferred_name_cases(source string, loop_kind string) ComptimeStaticValueCases {
+fn (tc &TypeChecker) comptime_static_deferred_cases(source string, loop_kind string) ComptimeStaticValueCases {
 	if loop_kind == 'methods' {
-		return tc.comptime_static_method_name_cases(source)
+		return tc.comptime_static_method_cases(source)
 	}
 	if loop_kind == 'params' {
-		return tc.comptime_static_param_name_cases(source)
+		return tc.comptime_static_param_cases(source)
 	}
 	if loop_kind == 'attributes' {
-		return tc.comptime_static_attribute_name_cases(source)
+		return tc.comptime_static_attribute_cases(source)
 	}
 	return ComptimeStaticValueCases{}
 }
 
-fn (tc &TypeChecker) comptime_static_method_name_cases(source string) ComptimeStaticValueCases {
+fn (tc &TypeChecker) comptime_static_method_cases(source string) ComptimeStaticValueCases {
 	base_type := tc.comptime_static_for_base_type(source)
 	struct_name := tc.comptime_static_struct_name(base_type) or {
 		return ComptimeStaticValueCases{}
@@ -5337,8 +5348,24 @@ fn (tc &TypeChecker) comptime_static_method_name_cases(source string) ComptimeSt
 			name := candidate.value.all_after_last('.')
 			if name.len > 0 && name !in seen {
 				seen[name] = true
+				mut param_names := []string{}
+				mut param_types := []string{}
+				for i in 1 .. candidate.children_count {
+					param := tc.a.child_node(&candidate, i)
+					if param.kind == .param {
+						param_names << param.value
+						param_types << param.typ
+					}
+				}
+				return_type := if candidate.typ.len > 0 { candidate.typ } else { 'void' }
 				cases << ComptimeStaticValueCase{
-					name: name
+					name:        name
+					typ:         comptime_static_method_type_text(param_types, return_type)
+					return_type: return_type
+					is_pub:      candidate.op == .arrow
+					has_is_pub:  true
+					param_names: param_names
+					param_types: param_types
 				}
 			}
 		}
@@ -5349,7 +5376,7 @@ fn (tc &TypeChecker) comptime_static_method_name_cases(source string) ComptimeSt
 	}
 }
 
-fn (tc &TypeChecker) comptime_static_param_name_cases(source string) ComptimeStaticValueCases {
+fn (tc &TypeChecker) comptime_static_param_cases(source string) ComptimeStaticValueCases {
 	wanted := tc.comptime_deferred_decl_source(source, false) or {
 		return ComptimeStaticValueCases{}
 	}
@@ -5378,6 +5405,7 @@ fn (tc &TypeChecker) comptime_static_param_name_cases(source string) ComptimeSta
 			if param.kind == .param {
 				cases << ComptimeStaticValueCase{
 					name: param.value
+					typ:  param.typ
 				}
 			}
 		}
@@ -5389,7 +5417,7 @@ fn (tc &TypeChecker) comptime_static_param_name_cases(source string) ComptimeSta
 	return ComptimeStaticValueCases{}
 }
 
-fn (tc &TypeChecker) comptime_static_attribute_name_cases(source string) ComptimeStaticValueCases {
+fn (tc &TypeChecker) comptime_static_attribute_cases(source string) ComptimeStaticValueCases {
 	wanted := tc.comptime_deferred_decl_source(source, true) or {
 		return ComptimeStaticValueCases{}
 	}
@@ -5421,12 +5449,16 @@ fn (tc &TypeChecker) comptime_static_attribute_name_cases(source string) Comptim
 	for candidate in tc.a.nodes {
 		if candidate.kind == .directive && candidate.value == marker {
 			mut cases := []ComptimeStaticValueCase{cap: candidate.generic_params.len}
-			for raw in candidate.generic_params {
-				name := comptime_static_attribute_name(raw)
+			kinds := if candidate.typ.len > 0 { candidate.typ.split(',') } else { []string{} }
+			for idx, raw in candidate.generic_params {
+				item := comptime_static_attribute_case(raw, if idx < kinds.len {
+					kinds[idx].int()
+				} else {
+					0
+				})
+				name := item.name
 				if name.len > 0 {
-					cases << ComptimeStaticValueCase{
-						name: name
-					}
+					cases << item
 				}
 			}
 			return ComptimeStaticValueCases{
@@ -5440,12 +5472,31 @@ fn (tc &TypeChecker) comptime_static_attribute_name_cases(source string) Comptim
 	}
 }
 
-fn comptime_static_attribute_name(raw string) string {
-	mut name := raw.all_before(':').trim_space()
+fn comptime_static_method_type_text(param_types []string, return_type string) string {
+	ret := if return_type.len > 0 && return_type != 'void' { ' ${return_type}' } else { '' }
+	return 'fn(${param_types.join(', ')})${ret}'
+}
+
+fn comptime_static_attribute_case(raw string, kind int) ComptimeStaticValueCase {
+	clean := raw.trim_space()
+	colon := clean.index_u8(`:`)
+	mut name := if colon >= 0 { clean[..colon].trim_space() } else { clean }
 	if name.len >= 2 && name[0] in [`'`, `"`] && name[name.len - 1] == name[0] {
 		name = name[1..name.len - 1]
 	}
-	return name
+	mut arg := if colon >= 0 { clean[colon + 1..].trim_space() } else { '' }
+	if arg.len >= 3 && arg[0] == `r` && arg[1] in [`'`, `"`] && arg[arg.len - 1] == arg[1] {
+		arg = arg[2..arg.len - 1]
+	} else if arg.len >= 2 && arg[0] in [`'`, `"`] && arg[arg.len - 1] == arg[0] {
+		arg = arg[1..arg.len - 1]
+	}
+	return ComptimeStaticValueCase{
+		name:          name
+		arg:           arg
+		has_arg:       colon >= 0
+		has_attr_meta: true
+		attr_kind:     kind
+	}
 }
 
 fn (tc &TypeChecker) comptime_deferred_decl_source(source string, allow_type bool) ?ComptimeDeferredDeclSource {
@@ -5659,7 +5710,7 @@ fn (mut tc TypeChecker) check_comptime_static_deferred_metadata_if(node flat.Nod
 	mut check_then := false
 	mut check_else := false
 	for item in value_cases.cases {
-		cond := comptime_static_subst_deferred_name_cond(node.value, var_name, item.name)
+		cond := comptime_static_subst_deferred_cond(node.value, var_name, loop_kind, item)
 		if comptime_text_references_var(cond, var_name) {
 			continue
 		}
@@ -5680,8 +5731,61 @@ fn (mut tc TypeChecker) check_comptime_static_deferred_metadata_if(node flat.Nod
 	}
 }
 
-fn comptime_static_subst_deferred_name_cond(cond string, var_name string, name string) string {
-	return comptime_static_replace_unquoted(cond, '${var_name}.name', "'${name}'")
+fn comptime_static_subst_deferred_cond(cond string, var_name string, loop_kind string, item ComptimeStaticValueCase) string {
+	mut result := comptime_static_replace_unquoted(cond, '${var_name}.name',
+		comptime_static_string_literal(item.name))
+	if loop_kind == 'methods' {
+		for idx, param_name in item.param_names {
+			result = comptime_static_replace_unquoted(result, '${var_name}.args[${idx}].name',
+				comptime_static_string_literal(param_name))
+			result = comptime_static_replace_unquoted(result, '${var_name}.params[${idx}].name',
+				comptime_static_string_literal(param_name))
+			if idx < item.param_types.len {
+				param_type := comptime_static_deferred_type(item.param_types[idx])
+				result = comptime_static_replace_unquoted(result, '${var_name}.args[${idx}].typ',
+					param_type)
+				result = comptime_static_replace_unquoted(result, '${var_name}.params[${idx}].typ',
+					param_type)
+			}
+		}
+		result = comptime_static_replace_unquoted(result, '${var_name}.args.len',
+			item.param_names.len.str())
+		result = comptime_static_replace_unquoted(result, '${var_name}.params.len',
+			item.param_names.len.str())
+		result = comptime_static_replace_unquoted(result, '${var_name}.return_type',
+			comptime_static_deferred_type(item.return_type))
+		result = comptime_static_replace_unquoted(result, '${var_name}.typ', item.typ)
+		if item.has_is_pub {
+			result = comptime_static_replace_unquoted(result, '${var_name}.is_pub',
+				item.is_pub.str())
+		}
+	} else if loop_kind == 'params' {
+		result = comptime_static_replace_unquoted(result, '${var_name}.typ',
+			comptime_static_deferred_type(item.typ))
+	} else if loop_kind == 'attributes' && item.has_attr_meta {
+		result = comptime_static_replace_unquoted(result, '${var_name}.has_arg', item.has_arg.str())
+		result = comptime_static_replace_unquoted(result, '${var_name}.arg',
+			comptime_static_string_literal(item.arg))
+		kind := comptime_static_attribute_kind_value(item.attr_kind)
+		result = comptime_static_replace_unquoted(result, '${var_name}.kind ==.', '${kind} == .')
+		result = comptime_static_replace_unquoted(result, '${var_name}.kind !=.', '${kind} != .')
+		result = comptime_static_replace_unquoted(result, '${var_name}.kind', kind)
+	}
+	return result
+}
+
+fn comptime_static_deferred_type(typ string) string {
+	return if typ == '&void' { 'voidptr' } else { typ }
+}
+
+fn comptime_static_attribute_kind_value(kind int) string {
+	return match kind {
+		1 { '.string' }
+		2 { '.number' }
+		3 { '.bool' }
+		4 { '.comptime_define' }
+		else { '.plain' }
+	}
 }
 
 fn comptime_static_replace_unquoted(cond string, needle string, replacement string) string {
@@ -6825,9 +6929,46 @@ fn comptime_static_is_int(s string) bool {
 
 fn comptime_static_unquote(s string) string {
 	if s.len >= 2 && (s[0] == `'` || s[0] == `"`) && s[s.len - 1] == s[0] {
-		return s[1..s.len - 1]
+		return comptime_static_unescape(s[1..s.len - 1])
 	}
 	return s
+}
+
+fn comptime_static_string_literal(value string) string {
+	mut out := strings.new_builder(value.len + 2)
+	out.write_u8(`'`)
+	for i := 0; i < value.len; i++ {
+		if value[i] == `\\` || value[i] == `'` {
+			out.write_u8(`\\`)
+		}
+		out.write_u8(value[i])
+	}
+	out.write_u8(`'`)
+	return out.str()
+}
+
+fn comptime_static_unescape(value string) string {
+	if !value.contains('\\') {
+		return value
+	}
+	mut out := strings.new_builder(value.len)
+	mut i := 0
+	for i < value.len {
+		if value[i] != `\\` || i + 1 >= value.len {
+			out.write_u8(value[i])
+			i++
+			continue
+		}
+		next := value[i + 1]
+		if next in [`\\`, `'`, `"`] {
+			out.write_u8(next)
+			i += 2
+			continue
+		}
+		out.write_u8(`\\`)
+		i++
+	}
+	return out.str()
 }
 
 // check_node validates check node state for types.
