@@ -3019,6 +3019,14 @@ fn test_interface_cast_from_local_address_preserves_pointer_identity() {
 	mut_source := 'interface Writer {\nmut:\n\tset(n int)\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (mut b Box) set(n int) {\n\tb.n = n\n}\n\nfn (b Box) get() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tmut w := Writer(&b)\n\tw.set(3)\n\tprintln(int_str(b.n))\n\tprintln(int_str(w.get()))\n}\n'
 	mut_out := run_good(v3_bin, 'interface_local_address_identity_mut_run', mut_source)
 	assert mut_out == '3\n3'
+	escape_source := 'interface Reader {\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) get() int {\n\treturn b.n\n}\n\nfn make_reader() Reader {\n\tmut b := Box{\n\t\tn: 5\n\t}\n\tr := Reader(&b)\n\tb.n = 6\n\treturn r\n}\n\nfn main() {\n\tr := make_reader()\n\tprintln(int_str(r.get()))\n}\n'
+	escape_c := gen_c(v3_bin, 'interface_local_address_escape_box', escape_source)
+	make_reader_body := c_fn_body(escape_c, '\nReader make_reader(void) {')
+	assert make_reader_body.contains('Box* b ='), make_reader_body
+	assert make_reader_body.contains('memdup'), make_reader_body
+	assert !make_reader_body.contains('Box b ='), make_reader_body
+	escape_out := run_good(v3_bin, 'interface_local_address_escape_box_run', escape_source)
+	assert escape_out == '6'
 }
 
 fn test_mut_interface_argument_borrows_existing_interface_box() {
@@ -3536,8 +3544,8 @@ fn main() {
 		'struct Box[T] {\nmut:\n\tvalues []T\n}\n\nfn (b Box[T]) [] (i int) T {\n\treturn b.values[i]\n}\n\nfn (mut b Box[T]) []= (i int, value T) {\n\tb.values[i] = value\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tvalues: [1, 2]\n\t}\n\tprintln(b[1].str())\n\tb[1] = 9\n\tprintln(b[1].str())\n}\n')
 	assert generic_index_out == '2\n9'
 	explicit_method_out := run_good(v3_bin, 'review_explicit_generic_method_callee',
-		'struct Runner {}\n\nfn (r Runner) type_name[T]() string {\n\t_ = r\n\treturn typeof[T]().name\n}\n\nfn main() {\n\tr := Runner{}\n\tprintln(r.type_name[int]())\n}\n')
-	assert explicit_method_out == 'int'
+		'interface Named {\n\tname() string\n}\n\nstruct Config {\n\tx int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) name() string {\n\treturn u.name\n}\n\nstruct Runner {}\n\nfn (r Runner) type_name[T]() string {\n\t_ = r\n\treturn typeof[T]().name\n}\n\nfn (r Runner) make[T](cfg T) T {\n\t_ = r\n\treturn cfg\n}\n\nfn (r Runner) pass[T](value T) T {\n\t_ = r\n\treturn value\n}\n\nfn main() {\n\tr := Runner{}\n\tprintln(r.type_name[int]())\n\tcfg := r.make[Config](x: 7)\n\tprintln(int_str(cfg.x))\n\tnamed := r.pass[Named](User{\n\t\tname: "Ada"\n\t})\n\tprintln(named.name())\n}\n')
+	assert explicit_method_out == 'int\n7\nAda'
 	str_out := run_good(v3_bin, 'review_pointer_fields_implicit_str', "interface Printable {
 	str() string
 }

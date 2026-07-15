@@ -987,7 +987,13 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 	if params.len == 0 || node.children_count == 0 {
 		return 0
 	}
-	fn_node := t.a.child_node(&node, 0)
+	mut fn_node := t.a.nodes[int(t.a.child(&node, 0))]
+	if fn_node.kind == .index && fn_node.children_count > 0 && fn_node.value != 'range' {
+		index_base := t.a.nodes[int(t.a.child(&fn_node, 0))]
+		if index_base.kind == .selector {
+			fn_node = index_base
+		}
+	}
 	if fn_node.kind != .selector {
 		return 0
 	}

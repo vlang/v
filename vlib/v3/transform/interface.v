@@ -420,14 +420,43 @@ fn (t &Transformer) mut_param_address_source_type(id flat.NodeId) ?string {
 	return '&${clean}'
 }
 
+// heaped_amp_local_address_child unwraps `&v` when `v` was already moved to the heap
+// because its address escapes. The interface box must store `v`, not `&*v`.
+fn (t &Transformer) heaped_amp_local_address_child(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
+		return none
+	}
+	child_id := t.a.child(&node, 0)
+	child := t.a.nodes[int(child_id)]
+	if child.kind == .ident && child.value in t.heaped_amp_locals {
+		return child_id
+	}
+	return none
+}
+
 // make_interface_literal_from_expr converts make interface literal from expr data for transform.
 fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string, share_source bool) ?flat.NodeId {
 	fields := t.tc.interface_fields[iface_name] or { []types.StructField{} }
+	mut source_id := id
 	mut source_type := t.node_type(id)
+	mut source_is_heaped_amp_child := false
+	if heaped_child_id := t.heaped_amp_local_address_child(id) {
+		child := t.a.nodes[int(heaped_child_id)]
+		heap_type := t.var_type(child.value)
+		if heap_type.len > 0 {
+			source_id = heaped_child_id
+			source_type = heap_type
+			source_is_heaped_amp_child = true
+		}
+	}
 	// Type propagation normalizes aliases for operations, but interface `_typ` must
 	// retain the declared alias so `is Alias` does not become `is Base`.
 	if source_type.len > 0 {
-		node := t.a.nodes[int(id)]
+		node := t.a.nodes[int(source_id)]
 		if node.kind == .ident {
 			raw_type := t.raw_var_type(node.value)
 			if raw_type.len > 0 && t.normalize_type_alias(raw_type) == source_type {
@@ -445,7 +474,20 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	if source_type.len == 0 {
 		return none
 	}
-	source_expr := t.transform_expr(id)
+	source_expr := if source_is_heaped_amp_child {
+		source := t.a.nodes[int(source_id)]
+		had_rvalue := source.kind == .ident && source.value in t.pointer_value_rvalues
+		if had_rvalue {
+			t.pointer_value_rvalues.delete(source.value)
+		}
+		transformed := t.transform_expr(source_id)
+		if had_rvalue {
+			t.pointer_value_rvalues[source.value] = true
+		}
+		transformed
+	} else {
+		t.transform_expr(source_id)
+	}
 	mut source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
 	is_ptr := source_type.starts_with('&')
 	concrete_type := if is_ptr { source_type[1..] } else { source_type }
