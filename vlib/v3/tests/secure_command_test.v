@@ -24,8 +24,41 @@ fn test_command_argument_parser_preserves_quoted_values() {
 		panic(err)
 	}
 	assert args == ['-I', 'dir with spaces', '-DNAME=quoted value', 'plain value']
+	windows_args := cmdexec.split_args(r'-IC:\SDK\include @DIR\include "C:\Program Files\SDK"') or {
+		panic(err)
+	}
+	assert windows_args == [r'-IC:\SDK\include', r'@DIR\include', r'C:\Program Files\SDK']
 	invalid := cmdexec.split_args('"unterminated') or { []string{} }
 	assert invalid == []string{}
+}
+
+fn test_split_linker_path_is_not_passed_to_object_compile() {
+	v3_bin := build_secure_command_v3()
+	root := secure_temp_path('split_linker_object')
+	lib_dir := os.join_path(root, 'link lib')
+	os.mkdir_all(lib_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+		os.rm(v3_bin) or {}
+	}
+	os.write_file(os.join_path(root, 'helper.c'), 'int split_link_answer(void) { return 42; }\n') or {
+		panic(err)
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'module main
+#flag -L "link lib"
+#flag @DIR/helper.o
+fn C.split_link_answer() int
+fn main() { println(int_str(C.split_link_answer())) }
+') or {
+		panic(err)
+	}
+	output := os.join_path(root, 'program')
+	compile := cmdexec.run(v3_bin, [source, '-prod', '-o', output])
+	assert compile.exit_code == 0, compile.output
+	run := cmdexec.run(output, []string{})
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '42'
 }
 
 // test_source_directives_cannot_inject_shell_commands verifies that #flag and

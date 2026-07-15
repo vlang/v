@@ -36,13 +36,15 @@ fn test_split_relative_c_flag_paths_resolve_from_source_directory() {
 	source_file := os.join_path(source_dir, 'main.v')
 	include_dir := os.real_path(os.join_path(source_dir, 'include dir'))
 	lib_dir := os.real_path(os.join_path(source_dir, 'lib'))
-	assert c_flag_args('-I "include dir" -L lib -DVALUE=1', '', source_file, pref.host_target()) == [
+	flags := c_flag_args('-I "include dir" -L lib -DVALUE=1', '', source_file, pref.host_target())
+	assert flags == [
 		'-I',
 		include_dir,
 		'-L',
 		lib_dir,
 		'-DVALUE=1',
 	]
+	assert c_flag_include_dirs(flags) == [include_dir]
 }
 
 fn test_termux_comptime_branch_uses_canonical_target() {

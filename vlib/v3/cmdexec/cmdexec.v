@@ -43,7 +43,7 @@ pub fn run_in(program string, args []string, work_folder string) os.Result {
 }
 
 // split_args parses a directive or tool response into literal argv elements.
-// Quotes and backslash escapes group text; no shell expansion is performed.
+// Quotes and quoting backslash escapes group text; no shell expansion is performed.
 pub fn split_args(input string) ![]string {
 	mut args := []string{}
 	mut current := strings.new_builder(input.len)
@@ -75,11 +75,21 @@ pub fn split_args(input string) ![]string {
 			}
 		}
 		if ch == `\\` && quote != `'` {
-			if i + 1 >= input.len {
-				return error('trailing backslash in argument list')
+			if i + 1 < input.len {
+				next := input[i + 1]
+				escapable := if quote == `"` {
+					next in [`"`, `\\`]
+				} else {
+					next in [` `, `\t`, `\r`, `\n`, `'`, `"`, `\\`]
+				}
+				if escapable {
+					current.write_u8(next)
+					has_arg = true
+					i += 2
+					continue
+				}
 			}
-			i++
-			current.write_u8(input[i])
+			current.write_u8(ch)
 			has_arg = true
 			i++
 			continue

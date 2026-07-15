@@ -110,27 +110,22 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 
 fn c_object_compile_flags(flags []string) []string {
 	mut compile_flags := []string{}
+	mut skip_link_operand := false
 	for flag in flags {
-		mut compile_parts := []string{}
-		parts := cgen.tokenize_c_flag(flag.trim_space())
-		mut i := 0
-		for i < parts.len {
-			part := parts[i]
-			if part in ['-l', '-L', '-Xlinker', '-framework', '-weak_framework', '-force_load'] {
-				i += 2
-				continue
-			}
-			if c_flag_token_is_link_only(part) || c_flag_is_object_file(part)
-				|| c_flag_is_c_source_file(part) {
-				i++
-				continue
-			}
-			compile_parts << part
-			i++
+		part := flag.trim_space()
+		if skip_link_operand {
+			skip_link_operand = false
+			continue
 		}
-		if compile_parts.len > 0 {
-			compile_flags << compile_parts
+		if part in ['-l', '-L', '-Xlinker', '-framework', '-weak_framework', '-force_load'] {
+			skip_link_operand = true
+			continue
 		}
+		if part.len == 0 || c_flag_token_is_link_only(part) || c_flag_is_object_file(part)
+			|| c_flag_is_c_source_file(part) {
+			continue
+		}
+		compile_flags << flag
 	}
 	return compile_flags
 }
