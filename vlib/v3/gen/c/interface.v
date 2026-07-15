@@ -511,6 +511,8 @@ fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual type
 	}
 	expr := g.expr_to_string(id)
 	concrete_ct := g.tc.c_type(g.tc.parse_type(concrete))
+	pointer_object_is_owned := actual is types.Pointer
+		&& g.ierror_pointer_payload_creates_owned_object(node)
 	object := if actual is types.Pointer {
 		if g.ierror_pointer_payload_needs_heap_copy(node)
 			|| g.ierror_pointer_payload_alias_needs_heap_copy(node) {
@@ -522,8 +524,20 @@ fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual type
 		'memdup((${concrete_ct}[]){${expr}}, sizeof(${concrete_ct}))'
 	}
 	empty_sid := g.intern_string('')
-	boxed := object.starts_with('memdup(')
+	boxed := pointer_object_is_owned || object.starts_with('memdup(')
 	return '(IError){._typ = ${type_id}, ._object = ${object}, ._object_is_boxed = ${boxed}, .message = _str_${empty_sid}, .code = 0}'
+}
+
+// ierror_pointer_payload_creates_owned_object reports pointer expressions whose C
+// lowering allocates independent storage. Result/interface destruction must release
+// these objects even though ordinary pointer-backed interface values are borrowed.
+fn (g &FlatGen) ierror_pointer_payload_creates_owned_object(node flat.Node) bool {
+	clean := g.ierror_pointer_payload_unwrapped_node(node)
+	if clean.kind != .prefix || clean.op != .amp || clean.children_count == 0 {
+		return false
+	}
+	child := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(g.a.child(&clean, 0))])
+	return child.kind in [.struct_init, .assoc]
 }
 
 fn (g &FlatGen) ierror_pointer_payload_needs_heap_copy(node flat.Node) bool {

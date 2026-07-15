@@ -625,8 +625,8 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 }
 
 // gen_ownership_drop_result_error destroys the owned IError stored by a failed result.
-// Direct error messages and boxed concrete values are owned; pointer-backed interface
-// objects remain borrowed. The process-wide none and error-sentinel objects are borrowed too.
+// Direct error messages and owned concrete objects are released. Borrowed pointer-backed
+// interfaces and the process-wide none and error-sentinel objects remain untouched.
 fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int) {
 	object := '((${expr})._object)'
 	g.writeln('string__free(&((${expr}).message));')
