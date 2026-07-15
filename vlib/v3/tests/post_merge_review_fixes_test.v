@@ -3471,6 +3471,17 @@ fn test_mut_interface_argument_borrows_existing_interface_box() {
 	assert out == '1'
 }
 
+fn test_pointer_interface_arg_upcasts_interface_lvalue_source() {
+	v3_bin := build_v3()
+	source := 'interface Base {\n\tget() int\n}\n\ninterface Child {\n\tBase\n\textra() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nfn (i Item) extra() int {\n\treturn i.n + 1\n}\n\nfn use(value &Base) int {\n\treturn value.get()\n}\n\nfn main() {\n\tchild := Child(Item{\n\t\tn: 13\n\t})\n\tprintln(int_str(use(child)))\n}\n'
+	c_source := gen_c(v3_bin, 'pointer_interface_lvalue_upcast_source', source)
+	assert !c_source.contains('&((Base[]){child})[0]')
+	assert c_source.contains('Base __iface_cast_')
+	assert c_source.contains('use((Base*)(memdup(&__iface_box_')
+	out := run_good(v3_bin, 'pointer_interface_lvalue_upcast_source_run', source)
+	assert out == '13'
+}
+
 fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
 	v3_bin := build_v3()
 	source := 'interface Value {\n\tget() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nstruct Holder {\n\titem Value\n}\n\nfn make_holder() Holder {\n\treturn Holder{\n\t\titem: Value(Item{\n\t\t\tn: 7\n\t\t})\n\t}\n}\n\nfn make_items() []Value {\n\treturn [Value(Item{\n\t\tn: 9\n\t})]\n}\n\nfn use(value &Value) int {\n\treturn value.get()\n}\n\nfn main() {\n\tprintln(int_str(use(make_holder().item)))\n\tprintln(int_str(use(make_items()[0])))\n}\n'
