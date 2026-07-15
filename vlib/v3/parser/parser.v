@@ -849,6 +849,7 @@ fn (mut p Parser) cur_decl_is_fn() bool {
 fn (mut p Parser) fn_decl() flat.NodeId {
 	p.check(.key_fn)
 	mut name := ''
+	mut name_pos := p.tok_pos
 	mut receiver_name := ''
 	mut receiver_type := ''
 	mut receiver_is_mut := false
@@ -879,21 +880,24 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		// operator overload: fn (r Type) + (other Type) RetType { }
 		if p.tok != .name && p.tok != .eof {
 			if p.tok.is_overloadable() {
+				name_pos = p.tok_pos
 				op_name := overload_token_name(p.tok)
 				p.next()
 				return p.fn_operator_overload(receiver_name, receiver_type, receiver_is_mut,
-					op_name)
+					op_name, name_pos)
 			}
 		}
 	}
 
 	// function name
 	if p.tok_can_be_decl_name() {
+		name_pos = p.tok_pos
 		name = p.expect_name_or_keyword()
 		if p.tok == .dot {
 			p.next()
 			if name == 'C' || name == 'JS' {
 				// C.func or JS.func
+				name_pos = p.tok_pos
 				name = p.expect_name_or_keyword()
 				for p.tok == .dot {
 					p.next()
@@ -904,9 +908,10 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 					name = '${clean_type}.${name}'
 				}
 				return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut,
-					is_method, true)
+					is_method, true, name_pos)
 			}
 			// module.func or Type.static_method
+			name_pos = p.tok_pos
 			second := p.expect_name_or_keyword()
 			if is_method {
 				// This shouldn't happen for methods
@@ -925,10 +930,11 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 		name = '${clean_type}.${name}'
 	}
 
-	return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut, is_method, false)
+	return p.fn_decl_body(name, receiver_name, receiver_type, receiver_is_mut, is_method, false,
+		name_pos)
 }
 
-fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type string, receiver_is_mut bool, op_name string) flat.NodeId {
+fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type string, receiver_is_mut bool, op_name string, name_pos int) flat.NodeId {
 	is_pub := p.pending_fn_pub
 	p.pending_fn_pub = false
 	disable_body := p.disable_fn_body
@@ -1010,6 +1016,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 		op:             if is_pub { .arrow } else { .none }
 		value:          name
 		typ:            ret_type
+		pos:            source_token_pos(name_pos)
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})
@@ -1017,7 +1024,7 @@ fn (mut p Parser) fn_operator_overload(receiver_name string, receiver_type strin
 	return id
 }
 
-fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, receiver_is_mut bool, is_method bool, is_c_decl bool) flat.NodeId {
+fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type string, receiver_is_mut bool, is_method bool, is_c_decl bool, name_pos int) flat.NodeId {
 	is_pub := p.pending_fn_pub
 	p.pending_fn_pub = false
 	// Capture & clear here so it applies only to this function (not nested closures
@@ -1068,6 +1075,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 			op:             if is_pub { .arrow } else { .none }
 			value:          name
 			typ:            ret_type
+			pos:            source_token_pos(name_pos)
 			generic_params: generic_params
 			children_start: start
 			children_count: flat.child_count(param_ids.len)
@@ -1128,6 +1136,7 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		op:             if is_pub { .arrow } else { .none }
 		value:          name
 		typ:            ret_type
+		pos:            source_token_pos(name_pos)
 		generic_params: generic_params
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
@@ -1135,6 +1144,15 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 	p.register_pending_export(name)
 	p.register_pending_noreturn(name)
 	return id
+}
+
+// source_token_pos stores a deterministic source-local byte offset. Each input file has its own
+// token file set, so the offset is encoded with the same one-byte base used by token.File.pos.
+fn source_token_pos(offset int) token.Pos {
+	return token.Pos{
+		offset: offset + 1
+		id:     offset + 1
+	}
 }
 
 fn method_receiver_type_name(receiver_type string) string {

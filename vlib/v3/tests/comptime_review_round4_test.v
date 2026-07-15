@@ -1687,6 +1687,28 @@ fn main() {
 	assert out == "2|2|get,host: 'example.com'|get,host|typed:handle"
 }
 
+fn test_method_metadata_locations_are_materialized() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'method_metadata_location', 'struct Located {}
+
+fn (item Located) run() {
+	_ = item
+}
+
+fn main() {
+	mut items := []FunctionData{}
+	mut locations := []string{}
+	$for method in Located.methods {
+		locations << method.location
+		items << method
+	}
+	println(locations[0].ends_with(":3:18"))
+	println(items[0].location == locations[0])
+}
+')
+	assert out == 'true\ntrue'
+}
+
 fn test_field_type_membership_uses_the_selected_receiver_type() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'field_type_membership_receiver', 'struct ReflectedFields {

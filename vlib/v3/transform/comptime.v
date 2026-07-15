@@ -74,6 +74,7 @@ struct MethodMeta {
 	name        string
 	receiver    string
 	module_name string
+	location    string
 	return_type string
 	is_pub      bool
 	params      []ParamMeta
@@ -989,7 +990,7 @@ fn (mut t Transformer) make_param_data_literal_in_module(param ParamMeta, module
 fn (mut t Transformer) make_method_data_literal(method MethodMeta) flat.NodeId {
 	fields := [
 		t.make_named_field_init('name', t.make_string_literal(method.name), 'string'),
-		t.make_named_field_init('location', t.make_string_literal(''), 'string'),
+		t.make_named_field_init('location', t.make_string_literal(method.location), 'string'),
 		t.make_named_field_init('attrs', t.make_string_array_literal(method.attrs), '[]string'),
 		t.make_named_field_init('attributes', t.make_attribute_array_literal(method.attributes),
 			'[]VAttribute'),
@@ -1058,6 +1059,37 @@ fn comptime_method_receiver_name(raw string, module_name string) string {
 	return '${module_name}.${name}'
 }
 
+fn comptime_source_line_offsets(path string) []int {
+	source := os.read_file(path) or { return []int{} }
+	mut offsets := []int{cap: source.len / 40 + 1}
+	offsets << 0
+	for i, ch in source {
+		if ch == `\n` {
+			offsets << i + 1
+		}
+	}
+	return offsets
+}
+
+fn comptime_source_location(path string, encoded_offset int, line_offsets []int) string {
+	if path.len == 0 || encoded_offset <= 0 || line_offsets.len == 0 {
+		return ''
+	}
+	offset := encoded_offset - 1
+	mut lo := 0
+	mut hi := line_offsets.len
+	for lo < hi {
+		mid := (lo + hi) / 2
+		if line_offsets[mid] <= offset {
+			lo = mid + 1
+		} else {
+			hi = mid
+		}
+	}
+	line_index := if lo > 0 { lo - 1 } else { 0 }
+	return '${path}:${line_index + 1}:${offset - line_offsets[line_index]}'
+}
+
 fn comptime_method_receiver_matches(receiver string, requested string, normalized string, receiver_module string, requested_module string) bool {
 	receiver_name := comptime_method_receiver_name(receiver, receiver_module)
 	for candidate in [requested, normalized] {
@@ -1071,11 +1103,15 @@ fn comptime_method_receiver_matches(receiver string, requested string, normalize
 fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 	normalized := t.comptime_normalize_type_alias_chain(base_type)
 	mut module_name := ''
+	mut file_name := ''
 	mut methods := []MethodMeta{}
 	mut seen := map[string]bool{}
+	mut loaded_source_files := map[string]bool{}
+	mut line_offsets_by_file := map[string][]int{}
 	for node_id, node in t.a.nodes {
 		if node.kind == .file {
 			module_name = ''
+			file_name = node.value
 			continue
 		}
 		if node.kind == .module_decl {
@@ -1115,10 +1151,16 @@ fn (t &Transformer) comptime_method_metas(base_type string) []MethodMeta {
 			'void'
 		}, generic_args, generic_params)
 		raw_attr_data := t.comptime_node_raw_attribute_data(node_id)
+		if file_name !in loaded_source_files {
+			loaded_source_files[file_name] = true
+			line_offsets_by_file[file_name] = comptime_source_line_offsets(file_name)
+		}
 		methods << MethodMeta{
 			name:        name
 			receiver:    first.typ
 			module_name: module_name
+			location:    comptime_source_location(file_name, node.pos.offset,
+				line_offsets_by_file[file_name])
 			return_type: return_type
 			is_pub:      node.op == .arrow
 			params:      params
@@ -1184,6 +1226,9 @@ fn (mut t Transformer) clone_method_subst_scoped(id flat.NodeId, var_name string
 			return match node.value {
 				'name' {
 					t.make_string_literal(method.name)
+				}
+				'location' {
+					t.make_string_literal(method.location)
 				}
 				'is_pub' {
 					t.make_bool_literal(method.is_pub)
