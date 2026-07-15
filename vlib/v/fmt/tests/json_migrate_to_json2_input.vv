@@ -21,13 +21,8 @@ fn to_json(r Request) string {
 	return json.encode(r)
 }
 
-fn to_json_pretty(r Request) string {
-	return json.encode_pretty(r)
-}
-
 fn main() {
 	println(parse('{"a": 22} ')!)
 	println(parse2('{"a": 22} ')!)
 	println(to_json(Request{ a: 1 }))
-	println(to_json_pretty(Request{ a: 1 }))
 }

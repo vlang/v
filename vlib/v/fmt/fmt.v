@@ -6,6 +6,7 @@ module fmt
 import os
 import strings
 import v.ast
+import v.ast.walker
 import v.util
 import v.pref
 
@@ -68,6 +69,7 @@ pub mut:
 	branch_processed_imports []string
 	has_json2_import         bool   // the file has a top-level `json2` import; used when migrating `import json`
 	json2_prefix             string = 'json2' // local name of `json2` at call sites (its alias, if imported as one)
+	uses_json_encode_pretty  bool   // the file calls `json.encode_pretty`; then its json usage is left unmigrated (see process_file_imports)
 	is_translated_module     bool // @[translated]
 	is_c_function            bool // C.func(...)
 }
@@ -163,16 +165,29 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	// Only top-level imports qualify: a branch-local (`$if { import json2 }`) one is
 	// nested inside a comptime-if statement rather than being a direct file.stmt, so
 	// it is not picked up here and a top-level `import json2` is emitted instead.
+	mut imports_json := false
 	for stmt in file.stmts {
-		if stmt is ast.Import && stmt.source_name == 'json2' {
-			f.has_json2_import = true
-			f.json2_prefix = if stmt.alias != '' {
-				stmt.alias
-			} else {
-				stmt.source_name.all_after_last('.')
+		if stmt is ast.Import {
+			if stmt.source_name == 'json' {
+				imports_json = true
+			} else if stmt.source_name == 'json2' && !f.has_json2_import {
+				f.has_json2_import = true
+				f.json2_prefix = if stmt.alias != '' {
+					stmt.alias
+				} else {
+					stmt.source_name.all_after_last('.')
+				}
 			}
-			break
 		}
+	}
+	// The old `json` module's `encode_pretty` produces a formatted string (cJSON's
+	// tab indentation and tab after each key colon) that json2 cannot reproduce
+	// exactly, since json2 has no key/value separator option. Rather than silently
+	// change that output, leave the whole file's `json` usage unmigrated when it
+	// calls `json.encode_pretty` (see call_expr / imp_stmt_str). Only scan when the
+	// file actually imports `json`, to avoid walking the AST of unrelated files.
+	if imports_json {
+		f.uses_json_encode_pretty = file_uses_json_encode_pretty(file)
 	}
 
 	for imp in file.imports {
@@ -187,6 +202,26 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			f.mod2syms[sym.name] = sym.name
 		}
 	}
+}
+
+// file_uses_json_encode_pretty reports whether the file contains any
+// `json.encode_pretty(...)` call, whose exact formatted output the json->json2
+// migration cannot reproduce (see process_file_imports).
+fn file_uses_json_encode_pretty(file &ast.File) bool {
+	mut found := false
+	walker.inspect(file, &found, fn (node &ast.Node, data voidptr) bool {
+		if node is ast.Expr && node is ast.CallExpr {
+			call := node as ast.CallExpr
+			if call.kind == .json_encode_pretty {
+				mut fp := unsafe { &bool(data) }
+				unsafe {
+					*fp = true
+				}
+			}
+		}
+		return true
+	})
+	return found
 }
 
 //=== Basic buffer write operations ===//
@@ -369,7 +404,7 @@ pub fn (mut f Fmt) import_stmt(imp ast.Import) {
 		// Skip hidden imports like preludes.
 		return
 	}
-	if imp.source_name == 'json' && f.has_json2_import {
+	if imp.source_name == 'json' && f.has_json2_import && !f.uses_json_encode_pretty {
 		// Migrating deprecated `import json` to `import json2`, but the file already
 		// has a top-level `json2` import (possibly with symbols or an alias, e.g.
 		// `import json2 { Any }` or `import json2 as j2`). Drop the migrated import
@@ -412,7 +447,9 @@ pub fn (f &Fmt) imp_stmt_str(imp ast.Import) string {
 	// (`import json { decode }`): the alias/symbols are dropped, since json's whole
 	// public API (decode/encode/encode_pretty) is rewritten to qualified `json2.x`
 	// calls, so nothing needs to be brought into scope unqualified anymore.
-	if imp.source_name == 'json' {
+	// Exception: a file that calls `json.encode_pretty` is left unmigrated (json2
+	// cannot reproduce its exact output), so its `import json` is kept as-is.
+	if imp.source_name == 'json' && !f.uses_json_encode_pretty {
 		return 'json2'
 	}
 	// Format / remove unused selective import symbols
@@ -2270,10 +2307,13 @@ fn (mut f Fmt) write_static_method(_name string, short_name string) {
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	// The `json` module is deprecated in favour of the pure V `json2` module.
 	// vfmt migrates its calls automatically:
-	//   json.decode(T, s)      => json2.decode[T](s)
-	//   json.encode(x)         => json2.encode(x)
-	//   json.encode_pretty(x)  => json2.encode(x, prettify: true)
-	if node.kind in [.json_decode, .json_encode, .json_encode_pretty] {
+	//   json.decode(T, s)  => json2.decode[T](s)
+	//   json.encode(x)     => json2.encode(x)
+	// `json.encode_pretty` is intentionally not migrated (json2 cannot reproduce its
+	// exact output); a file that uses it is left entirely unmigrated, so its
+	// `json.encode_pretty`/`encode`/`decode` calls all stay as-is (see
+	// process_file_imports and file_uses_json_encode_pretty).
+	if node.kind in [.json_decode, .json_encode] && !f.uses_json_encode_pretty {
 		f.json2_migrate_call(node)
 		return
 	}
@@ -2351,16 +2391,6 @@ fn (mut f Fmt) json2_migrate_call(node ast.CallExpr) {
 			f.write('${j2}.encode(')
 			f.call_args(node.args)
 			f.write(')')
-		}
-		.json_encode_pretty {
-			// json.encode_pretty(x) => json2.encode(x, prettify: true, indent_string: '\t')
-			// json2 deprecated `encode_pretty` in favour of the `prettify` option.
-			// The old json module's cJSON printer indents each level with a tab,
-			// while json2's indent_string defaults to 4 spaces; pass '\t' explicitly
-			// so the migrated output keeps the same indentation shape.
-			f.write('${j2}.encode(')
-			f.call_args(node.args)
-			f.write(", prettify: true, indent_string: '\\t')")
 		}
 		else {}
 	}

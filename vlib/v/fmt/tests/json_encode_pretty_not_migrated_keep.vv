@@ -1,0 +1,26 @@
+import json
+
+struct Request {
+	a int
+}
+
+// A file that uses `json.encode_pretty` is left entirely unmigrated, because
+// json2 cannot reproduce encode_pretty's exact formatted output. Its `encode`
+// and `decode` calls therefore also stay on the deprecated `json` module.
+fn to_json_pretty(r Request) string {
+	return json.encode_pretty(r)
+}
+
+fn to_json(r Request) string {
+	return json.encode(r)
+}
+
+fn from_json(s string) !Request {
+	return json.decode(Request, s)
+}
+
+fn main() {
+	println(to_json_pretty(Request{ a: 1 }))
+	println(to_json(Request{ a: 2 }))
+	println(from_json('{"a": 3}')!)
+}
