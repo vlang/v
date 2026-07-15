@@ -204,6 +204,18 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			break
 		}
 	}
+	// The migrated qualifier (f.json2_prefix) must be free. If another module is
+	// imported under that local name — e.g. `import rand as json2` — adding
+	// `import json2` and rewriting calls to `json2.x` would create two imports with
+	// the same alias (the checker's duplicate-import check compares aliases), and the
+	// calls would resolve to the wrong module. Leave the file unmigrated in that case.
+	mut json2_name_taken := false
+	for imp in file.imports {
+		if imp.source_name != 'json2' && imp.alias == f.json2_prefix {
+			json2_name_taken = true
+			break
+		}
+	}
 	// Some `json` usage cannot be rewritten to `json2` without changing or losing
 	// source (see file_has_unmigratable_json_usage): `json.encode_pretty`, a
 	// `json.decode` with comments on its type argument, or a struct field whose JSON
@@ -223,7 +235,8 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	}
 	if imports_json {
 		f.keep_json_unmigrated = json2_alias_is_blank || has_branch_local_json2
-			|| f.file_has_vfmt_off_region() || f.file_has_unmigratable_json_usage(file)
+			|| json2_name_taken || f.file_has_vfmt_off_region()
+			|| f.file_has_unmigratable_json_usage(file)
 	}
 
 	for imp in file.imports {
@@ -353,6 +366,13 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 	} else if node is ast.Stmt && node is ast.ForInStmt {
 		fin := node as ast.ForInStmt
 		if fin.key_var == s.json2_prefix || fin.val_var == s.json2_prefix {
+			s.found = true
+		}
+	} else if node is ast.Stmt && node is ast.ComptimeFor {
+		// `$for json2 in User.fields { ... }` introduces a compile-time loop variable
+		// named like the qualifier, shadowing the module for calls in the loop body.
+		cfor := node as ast.ComptimeFor
+		if cfor.val_var == s.json2_prefix {
 			s.found = true
 		}
 	} else if node is ast.Stmt && node is ast.ConstDecl {

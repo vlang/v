@@ -1,0 +1,20 @@
+import json
+
+struct User {
+	name string
+	age  int
+}
+
+// A `$for json2 in User.fields { ... }` compile-time loop introduces a metadata
+// variable named like the qualifier, shadowing the module for calls in the loop
+// body. The file's json usage is therefore left unmigrated.
+fn to_json(u User) string {
+	$for json2 in User.fields {
+		_ := json2.name
+	}
+	return json.encode(u)
+}
+
+fn main() {
+	println(to_json(User{ name: 'bob', age: 3 }))
+}
