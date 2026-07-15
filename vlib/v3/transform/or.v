@@ -32,6 +32,12 @@ struct MultiReturnTailValues {
 	start_index int
 }
 
+struct NestedOptionalPart {
+	expr    flat.NodeId
+	stmts   []flat.NodeId
+	changed bool
+}
+
 // EnumFromStringInfo stores enum from string info metadata used by transform.
 struct EnumFromStringInfo {
 	enum_type string
@@ -84,6 +90,25 @@ fn (mut t Transformer) array_index_info(index_id flat.NodeId) ?ArrayIndexInfo {
 	}
 	base_id := t.a.child(&expr, 0)
 	index_expr_id := t.a.child(&expr, 1)
+	return t.array_index_info_from_parts(base_id, index_expr_id)
+}
+
+fn (mut t Transformer) array_get_call_info(call_id flat.NodeId) ?ArrayIndexInfo {
+	if int(call_id) < 0 {
+		return none
+	}
+	call := t.a.nodes[int(call_id)]
+	if call.kind != .call || call.children_count < 2 {
+		return none
+	}
+	fn_node := t.a.child_node(&call, 0)
+	if fn_node.kind != .selector || fn_node.value != 'get' || fn_node.children_count == 0 {
+		return none
+	}
+	return t.array_index_info_from_parts(t.a.child(fn_node, 0), t.a.child(&call, 1))
+}
+
+fn (mut t Transformer) array_index_info_from_parts(base_id flat.NodeId, index_expr_id flat.NodeId) ?ArrayIndexInfo {
 	mut base_type := t.resolve_expr_type(base_id)
 	for base_type.starts_with('&') {
 		base_type = base_type[1..]
@@ -152,8 +177,14 @@ fn (mut t Transformer) is_array_index_or_expr(node flat.Node) bool {
 	if node.kind != .or_expr || node.children_count < 2 {
 		return false
 	}
-	_ := t.array_index_info(t.a.child(&node, 0)) or { return false }
-	return true
+	source_id := t.a.child(&node, 0)
+	if _ := t.array_index_info(source_id) {
+		return true
+	}
+	if _ := t.array_get_call_info(source_id) {
+		return true
+	}
+	return false
 }
 
 fn (mut t Transformer) string_slice_info(index_id flat.NodeId) ?StringSliceInfo {
@@ -242,6 +273,11 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 		channel_type = channel_type[1..].trim_space()
 	}
 	if !channel_type.starts_with('chan ') {
+		if field_channel_type := t.channel_receive_selector_source_type(channel_id) {
+			channel_type = field_channel_type
+		}
+	}
+	if !channel_type.starts_with('chan ') {
 		return none
 	}
 	value_type := t.normalize_type_alias(channel_type[5..].trim_space())
@@ -253,6 +289,23 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 		value_type:  value_type
 		needs_deref: fallback_needs_deref
 	}
+}
+
+fn (t &Transformer) channel_receive_selector_source_type(channel_id flat.NodeId) ?string {
+	if int(channel_id) < 0 {
+		return none
+	}
+	node := t.a.nodes[int(channel_id)]
+	if node.kind != .selector {
+		return none
+	}
+	for candidate in [t.resolve_selector_type(node), t.selector_field_type(node)] {
+		clean := t.normalize_type_alias(candidate).trim_space()
+		if clean.starts_with('chan ') || clean.starts_with('&chan ') {
+			return clean.trim_left('&').trim_space()
+		}
+	}
+	return none
 }
 
 fn (mut t Transformer) channel_receive_source_needs_deref(channel_id flat.NodeId) bool {
@@ -278,18 +331,56 @@ fn (mut t Transformer) is_channel_receive_or_expr(node flat.Node) bool {
 	if node.kind != .or_expr || node.children_count < 2 {
 		return false
 	}
-	source_id := t.a.child(&node, 0)
-	_ := t.channel_receive_info(source_id) or { return false }
+	_ := t.channel_receive_or_info(node) or { return false }
 	return true
+}
+
+fn (mut t Transformer) channel_receive_or_info(node flat.Node) ?ChannelReceiveInfo {
+	if node.kind != .or_expr || node.children_count < 1 {
+		return none
+	}
+	source_id := t.a.child(&node, 0)
+	if info := t.channel_receive_info(source_id) {
+		return info
+	}
+	mut expr_id := source_id
+	for int(expr_id) >= 0 {
+		expr := t.a.nodes[int(expr_id)]
+		if expr.kind in [.paren, .expr_stmt] && expr.children_count > 0 {
+			expr_id = t.a.child(&expr, 0)
+			continue
+		}
+		break
+	}
+	if int(expr_id) < 0 {
+		return none
+	}
+	expr := t.a.nodes[int(expr_id)]
+	if expr.kind != .prefix || expr.op != .arrow || expr.children_count == 0 {
+		return none
+	}
+	mut value_type := t.normalize_type_alias(node.typ).trim_space()
+	if (value_type.len == 0 || value_type in ['void', 'unknown'])
+		&& t.is_optional_type_name(t.cur_fn_ret_type) {
+		value_type = t.optional_base_type(t.qualify_optional_type(t.cur_fn_ret_type))
+	}
+	if value_type.len == 0 || value_type in ['void', 'unknown'] {
+		return none
+	}
+	channel_id := t.a.child(&expr, 0)
+	return ChannelReceiveInfo{
+		channel_id:  channel_id
+		value_type:  value_type
+		needs_deref: t.channel_receive_source_needs_deref(channel_id)
+	}
 }
 
 fn (mut t Transformer) transform_channel_receive_or_expr(id flat.NodeId, node flat.Node) flat.NodeId {
 	if node.children_count < 2 {
 		return id
 	}
-	expr_id := t.a.child(&node, 0)
 	body_id := t.a.child(&node, 1)
-	info := t.channel_receive_info(expr_id) or { return id }
+	info := t.channel_receive_or_info(node) or { return id }
 	val_name := t.new_temp('chan_val')
 	ok_name := t.new_temp('chan_ok')
 	outer_pending := t.pending_stmts.clone()
@@ -376,7 +467,7 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 	}
 	expr_id := t.a.child(&node, 0)
 	body_id := t.a.child(&node, 1)
-	info := t.array_index_info(expr_id) or { return id }
+	info := t.array_index_info(expr_id) or { t.array_get_call_info(expr_id) or { return id } }
 	base_expr0 := t.stable_expr_for_reuse(info.base_id)
 	mut base_expr := base_expr0
 	index_name := t.new_temp('arr_idx')
@@ -474,7 +565,9 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 	} else {
 		t.pending_stmts << t.make_if(found_cond, then_block, else_block)
 	}
-	return t.make_ident(val_name)
+	result := t.make_ident(val_name)
+	t.set_node_typ(int(result), result_type)
+	return result
 }
 
 // or_body_is_nil supports or body is nil handling for Transformer.
@@ -979,16 +1072,9 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	new_expr := t.disabled_optional_call_or_none(expr_id, expr_node, expr_type) or {
 		t.transform_expr(expr_id)
 	}
+	t.mark_optional_source_expr_type(new_expr, expr_type)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
-	new_expr_type := t.node_type(new_expr)
-	if !t.is_optional_type_name(new_expr_type) {
-		t.pending_stmts = outer_pending
-		for stmt in prelude {
-			t.pending_stmts << stmt
-		}
-		return new_expr
-	}
 
 	if is_void {
 		prelude << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)
@@ -1028,6 +1114,313 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	return t.make_ident(val_tmp)
 }
 
+fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.Node) flat.NodeId {
+	if node.children_count < 2 {
+		return id
+	}
+	expr_id := t.a.child(&node, 0)
+	body_id := t.a.child(&node, 1)
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	new_expr := t.transform_expr(expr_id)
+	mut prelude := []flat.NodeId{}
+	t.drain_pending(mut prelude)
+	t.pending_stmts = outer_pending
+	for stmt in prelude {
+		t.pending_stmts << stmt
+	}
+
+	saved_var_types := t.var_types.clone()
+	t.set_var_type('err', 'IError')
+	new_body := t.transform_or_body_for_codegen(body_id)
+	t.restore_var_types(saved_var_types)
+
+	start := t.a.children.len
+	t.a.children << new_expr
+	t.a.children << new_body
+	return t.a.add_node(flat.Node{
+		kind:           .or_expr
+		op:             node.op
+		children_start: start
+		children_count: 2
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+	})
+}
+
+fn (mut t Transformer) transform_or_body_for_codegen(body_id flat.NodeId) flat.NodeId {
+	if int(body_id) < 0 || int(body_id) >= t.a.nodes.len {
+		return body_id
+	}
+	body := t.a.nodes[int(body_id)]
+	if body.kind == .block {
+		return t.make_block(t.transform_stmts(t.a.children_of(&body)))
+	}
+	if t.is_stmt_kind_id(node_kind_id(body)) {
+		return t.make_block(t.transform_stmt(body_id))
+	}
+	new_expr := t.transform_expr(body_id)
+	return t.make_block(arr1(t.make_expr_stmt(new_expr)))
+}
+
+fn (mut t Transformer) transform_nested_optional_or_expr(expr_id flat.NodeId, or_node flat.Node) ?flat.NodeId {
+	if int(expr_id) < 0 || int(expr_id) >= t.a.nodes.len || or_node.children_count < 2 {
+		return none
+	}
+	result_type := t.nested_optional_value_type(expr_id, or_node.typ)
+	if result_type.len == 0 || result_type == 'void' {
+		return none
+	}
+	result_name := t.new_temp('or_val')
+	ok_name := t.new_temp('or_ok')
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	part := t.lower_nested_optional_expr_part(expr_id, or_node, result_name, result_type, ok_name)
+	if !part.changed {
+		t.pending_stmts = outer_pending
+		return none
+	}
+	mut stmts := []flat.NodeId{}
+	stmts << t.make_decl_assign_typed(result_name, t.zero_value_for_type(result_type), result_type)
+	stmts << t.make_decl_assign_typed(ok_name, t.make_bool_literal(true), 'bool')
+	for stmt in part.stmts {
+		stmts << stmt
+	}
+	value := t.transform_expr_for_type(part.expr, result_type)
+	mut final_stmts := []flat.NodeId{}
+	t.drain_pending(mut final_stmts)
+	final_stmts << t.make_assign(t.make_ident(result_name), value)
+	stmts << t.make_guarded_nested_optional_step(ok_name, final_stmts)
+	t.pending_stmts = outer_pending
+	for stmt in stmts {
+		t.pending_stmts << stmt
+	}
+	return t.make_ident(result_name)
+}
+
+fn (mut t Transformer) lower_nested_optional_expr_part(expr_id flat.NodeId, or_node flat.Node, result_name string, result_type string, ok_name string) NestedOptionalPart {
+	if int(expr_id) < 0 || int(expr_id) >= t.a.nodes.len {
+		return NestedOptionalPart{
+			expr: expr_id
+		}
+	}
+	expr := t.a.nodes[int(expr_id)]
+	if expr.kind == .infix && expr.children_count >= 2 {
+		lhs_id := t.a.child(&expr, 0)
+		rhs_id := t.a.child(&expr, 1)
+		lhs_part0 := t.lower_nested_optional_expr_part(lhs_id, or_node, result_name, result_type,
+			ok_name)
+		rhs_part := t.lower_nested_optional_expr_part(rhs_id, or_node, result_name, result_type,
+			ok_name)
+		if !lhs_part0.changed && !rhs_part.changed {
+			return NestedOptionalPart{
+				expr: expr_id
+			}
+		}
+		if expr.op in [.logical_and, .logical_or] && rhs_part.changed {
+			return t.lower_nested_optional_logical_infix_part(expr, expr_id, lhs_id, lhs_part0,
+				rhs_part, ok_name)
+		}
+		mut lhs_part := lhs_part0
+		mut stmts := []flat.NodeId{}
+		for stmt in lhs_part.stmts {
+			stmts << stmt
+		}
+		if rhs_part.changed {
+			lhs_part = t.stabilize_nested_optional_part(lhs_part.expr,
+				t.nested_optional_value_type(lhs_id, ''), ok_name)
+			for stmt in lhs_part.stmts {
+				stmts << stmt
+			}
+		}
+		for stmt in rhs_part.stmts {
+			stmts << stmt
+		}
+		start := t.a.children.len
+		t.a.children << lhs_part.expr
+		t.a.children << rhs_part.expr
+		return NestedOptionalPart{
+			expr:    t.a.add_node(flat.Node{
+				kind:           .infix
+				op:             expr.op
+				pos:            expr.pos
+				children_start: start
+				children_count: 2
+				value:          expr.value
+				typ:            t.nested_optional_value_type(expr_id, expr.typ)
+			})
+			stmts:   stmts
+			changed: true
+		}
+	}
+	if expr.kind == .paren && expr.children_count > 0 {
+		inner := t.lower_nested_optional_expr_part(t.a.child(&expr, 0), or_node, result_name,
+			result_type, ok_name)
+		if !inner.changed {
+			return NestedOptionalPart{
+				expr: expr_id
+			}
+		}
+		paren := t.make_paren(inner.expr)
+		t.set_node_typ(int(paren), t.nested_optional_value_type(expr_id, expr.typ))
+		return NestedOptionalPart{
+			expr:    paren
+			stmts:   inner.stmts
+			changed: true
+		}
+	}
+	if lowered := t.lower_optional_leaf_with_outer_or(expr_id, or_node, result_name, result_type,
+		ok_name)
+	{
+		return lowered
+	}
+	return NestedOptionalPart{
+		expr: expr_id
+	}
+}
+
+fn (mut t Transformer) lower_nested_optional_logical_infix_part(expr flat.Node, expr_id flat.NodeId, lhs_id flat.NodeId, lhs_part0 NestedOptionalPart, rhs_part NestedOptionalPart, ok_name string) NestedOptionalPart {
+	logic_type0 := t.nested_optional_value_type(expr_id, expr.typ)
+	logic_type := if logic_type0.len > 0 { logic_type0 } else { 'bool' }
+	logic_name := t.new_temp('or_logic')
+	mut stmts := []flat.NodeId{}
+	stmts << t.make_decl_assign_typed(logic_name, t.zero_value_for_type(logic_type), logic_type)
+	mut lhs_part := lhs_part0
+	for stmt in lhs_part.stmts {
+		stmts << stmt
+	}
+	lhs_part = t.stabilize_nested_optional_part(lhs_part.expr,
+		t.nested_optional_value_type(lhs_id, ''), ok_name)
+	for stmt in lhs_part.stmts {
+		stmts << stmt
+	}
+	mut rhs_stmts := []flat.NodeId{}
+	for stmt in rhs_part.stmts {
+		rhs_stmts << stmt
+	}
+	rhs_stmts << t.make_guarded_nested_optional_step(ok_name, t.nested_optional_assign_stmts(logic_name,
+		rhs_part.expr, logic_type))
+	cond := if expr.op == .logical_or {
+		t.make_prefix(.not, lhs_part.expr)
+	} else {
+		lhs_part.expr
+	}
+	lhs_assign := t.make_assign(t.make_ident(logic_name), lhs_part.expr)
+	logical_if := t.make_if(cond, t.make_block(rhs_stmts), t.make_block(arr1(lhs_assign)))
+	stmts << t.make_guarded_nested_optional_step(ok_name, arr1(logical_if))
+	return NestedOptionalPart{
+		expr:    t.make_ident(logic_name)
+		stmts:   stmts
+		changed: true
+	}
+}
+
+fn (mut t Transformer) lower_optional_leaf_with_outer_or(expr_id flat.NodeId, or_node flat.Node, result_name string, result_type string, ok_name string) ?NestedOptionalPart {
+	if or_node.children_count < 2 {
+		return none
+	}
+	source_id := t.nested_optional_leaf_source_id(expr_id)
+	expr_type, value_type := t.or_expr_types(source_id, '')
+	if !t.is_optional_type_name(expr_type) {
+		return none
+	}
+	body_id := t.a.child(&or_node, 1)
+	opt_tmp := t.new_temp('or_opt')
+	val_tmp := t.new_temp('or_leaf')
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	expr_node := t.a.nodes[int(source_id)]
+	new_expr := t.disabled_optional_call_or_none(source_id, expr_node, expr_type) or {
+		t.transform_expr(source_id)
+	}
+	t.mark_optional_source_expr_type(new_expr, expr_type)
+	mut eval_stmts := []flat.NodeId{}
+	t.drain_pending(mut eval_stmts)
+	t.pending_stmts = outer_pending
+	eval_stmts << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)
+	opt_ident := t.make_ident(opt_tmp)
+	ok_cond := t.make_selector(opt_ident, 'ok', 'bool')
+	value_expr := t.make_selector(t.make_ident(opt_tmp), 'value', value_type)
+	then_block := t.make_block(arr1(t.make_assign(t.make_ident(val_tmp), value_expr)))
+	mut else_stmts := t.lower_or_body_to_stmts(body_id, result_name, result_type, or_node.value,
+		opt_tmp)
+	else_stmts << t.make_assign(t.make_ident(ok_name), t.make_bool_literal(false))
+	eval_stmts << t.make_if(ok_cond, then_block, t.make_block(else_stmts))
+	return NestedOptionalPart{
+		expr:    t.make_ident(val_tmp)
+		stmts:   [
+			t.make_decl_assign_typed(val_tmp, t.zero_value_for_type(value_type), value_type),
+			t.make_guarded_nested_optional_step(ok_name, eval_stmts),
+		]
+		changed: true
+	}
+}
+
+fn (t &Transformer) nested_optional_leaf_source_id(expr_id flat.NodeId) flat.NodeId {
+	if int(expr_id) < 0 || int(expr_id) >= t.a.nodes.len {
+		return expr_id
+	}
+	expr := t.a.nodes[int(expr_id)]
+	if expr.kind == .or_expr && expr.value in ['?', '!'] && expr.children_count > 0 {
+		return t.a.child(&expr, 0)
+	}
+	return expr_id
+}
+
+fn (mut t Transformer) stabilize_nested_optional_part(expr_id flat.NodeId, typ string, ok_name string) NestedOptionalPart {
+	value_type := if typ.len > 0 { typ } else { t.node_type(expr_id) }
+	tmp := t.new_temp('or_part')
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	value := if value_type.len > 0 {
+		t.transform_expr_for_type(expr_id, value_type)
+	} else {
+		t.transform_expr(expr_id)
+	}
+	mut stmts := []flat.NodeId{}
+	t.drain_pending(mut stmts)
+	t.pending_stmts = outer_pending
+	stmts << t.make_assign(t.make_ident(tmp), value)
+	return NestedOptionalPart{
+		expr:  t.make_ident(tmp)
+		stmts: [
+			t.make_decl_assign_typed(tmp, t.zero_value_for_type(value_type), value_type),
+			t.make_guarded_nested_optional_step(ok_name, stmts),
+		]
+	}
+}
+
+fn (mut t Transformer) nested_optional_assign_stmts(target_name string, expr_id flat.NodeId, target_type string) []flat.NodeId {
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	value := if target_type.len > 0 {
+		t.transform_expr_for_type(expr_id, target_type)
+	} else {
+		t.transform_expr(expr_id)
+	}
+	mut stmts := []flat.NodeId{}
+	t.drain_pending(mut stmts)
+	t.pending_stmts = outer_pending
+	stmts << t.make_assign(t.make_ident(target_name), value)
+	return stmts
+}
+
+fn (mut t Transformer) make_guarded_nested_optional_step(ok_name string, stmts []flat.NodeId) flat.NodeId {
+	return t.make_if(t.make_ident(ok_name), t.make_block(stmts), t.make_empty())
+}
+
+fn (mut t Transformer) nested_optional_value_type(expr_id flat.NodeId, fallback string) string {
+	mut typ := t.node_type(expr_id)
+	if typ.len == 0 || typ.contains('unknown') {
+		typ = fallback
+	}
+	if t.is_optional_type_name(typ) {
+		typ = t.optional_base_type(typ)
+	}
+	return typ
+}
+
 fn (mut t Transformer) disabled_optional_call_or_none(expr_id flat.NodeId, expr_node flat.Node, expr_type string) ?flat.NodeId {
 	if isnil(t.tc) || expr_node.kind != .call || !t.is_optional_type_name(expr_type) {
 		return none
@@ -1065,6 +1458,7 @@ fn (mut t Transformer) lower_or_expr_to_stmt(node flat.Node) {
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
 	new_expr := t.transform_expr(expr_id)
+	t.mark_optional_source_expr_type(new_expr, expr_type)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
 	prelude << t.make_decl_assign_typed(opt_tmp, new_expr, expr_type)
@@ -1079,6 +1473,13 @@ fn (mut t Transformer) lower_or_expr_to_stmt(node flat.Node) {
 		t.pending_stmts << stmt
 	}
 	t.pending_stmts << if_stmt
+}
+
+fn (mut t Transformer) mark_optional_source_expr_type(expr flat.NodeId, typ string) {
+	if !t.is_optional_type_name(typ) || int(expr) < 0 || int(expr) >= t.a.nodes.len {
+		return
+	}
+	t.set_node_typ(int(expr), typ)
 }
 
 // lower_or_body_to_stmts converts lower or body to stmts data for transform.

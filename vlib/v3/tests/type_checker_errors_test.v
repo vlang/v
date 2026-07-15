@@ -998,6 +998,15 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 	run_bad(v3_bin, 'bad_if_branch_primitive_mismatch',
 		"fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n",
 		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_option_if_error_branch',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_option_const_if_error_branch',
+		"fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_option_return_error',
+		"fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n",
+		'cannot return `IError` as `?int`')
 }
 
 fn test_multi_return_if_tail_infers_common_type() {

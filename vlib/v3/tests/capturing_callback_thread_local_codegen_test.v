@@ -69,3 +69,62 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
+
+fn test_spawned_capturing_literals_use_thread_local_capture_slots() {
+	pid := os.getpid()
+	v3_bin := os.join_path(os.temp_dir(), 'v3_spawn_capture_tls_${pid}')
+	src := os.join_path(os.temp_dir(), 'v3_spawn_capture_tls_${pid}.v')
+	out := os.join_path(os.temp_dir(), 'v3_spawn_capture_tls_program_${pid}')
+	defer {
+		os.rm(v3_bin) or {}
+		os.rm(src) or {}
+		os.rm(out) or {}
+		os.rm(out + '.c') or {}
+	}
+	build :=
+		os.execute('${closure_tls_vexe} -gc none -path "${closure_tls_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${closure_tls_v3_src}')
+	assert build.exit_code == 0, build.output
+	os.write_file(src, "module main
+
+import time
+
+fn main() {
+	count := 32
+	results := chan int{cap: count}
+	mut threads := []thread int{cap: count}
+	for i in 0 .. count {
+		mut value := i
+		threads << spawn fn [mut value, results] () int {
+			time.sleep(time.millisecond)
+			results <- value
+			return value
+		}()
+	}
+	mut seen := []bool{len: count}
+	for _ in 0 .. count {
+		value := <-results
+		assert value >= 0 && value < count
+		seen[value] = true
+	}
+	for thread in threads {
+		_ := thread.wait()
+	}
+	for i in 0 .. count {
+		assert seen[i]
+	}
+	println('ok')
+}
+") or {
+		panic(err)
+	}
+	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	assert compile.exit_code == 0, compile.output
+	c_source := os.read_file(out + '.c') or { panic(err) }
+	assert c_source.contains('_key_init(void) __attribute__((constructor))'), c_source
+	assert c_source.contains('_Thread_local int __anon_fn_'), c_source
+	assert c_source.contains('_args_thread_wrapper'), c_source
+	assert c_source.contains(' = p->c'), c_source
+	run := os.execute(out)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}

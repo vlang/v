@@ -502,6 +502,7 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		str_lits:                       g.str_lits.clone()
 		str_lit_ids:                    g.str_lit_ids.clone()
 		global_types:                   g.global_types
+		global_raw_type_texts:          g.global_raw_type_texts
 		enum_vals:                      g.enum_vals
 		enum_value_exprs:               g.enum_value_exprs
 		interfaces:                     g.interfaces
@@ -519,7 +520,9 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		ierror_stack_pointer_aliases:   []map[string]bool{}
 		local_pointer_storage_by_owner: map[string]bool{}
 		local_c_type_by_owner:          map[string]string{}
+		local_raw_type_by_owner:        map[string]string{}
 		local_shared_storage_by_owner:  map[string]bool{}
+		local_fn_value_c_name_by_owner: map[string]string{}
 		sum_name_lookup:                g.sum_name_lookup
 		module_init_fns:                g.module_init_fns
 		module_init_fn_modules:         g.module_init_fn_modules
