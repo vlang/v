@@ -160,6 +160,16 @@ pub fn sanitize(name string) string {
 		} else if c == `.` {
 			if i + 1 < name.len {
 				next := name[i + 1]
+				if next == `[` && i + 2 < name.len && name[i + 2] == `]` {
+					if i + 3 < name.len && name[i + 3] == `=` {
+						b.write_string('__op_index_set')
+						i += 4
+						continue
+					}
+					b.write_string('__op_index')
+					i += 3
+					continue
+				}
 				if next == `-` {
 					b.write_string('__minus')
 					i += 2

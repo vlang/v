@@ -9380,7 +9380,11 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 	for i + 1 < node.children_count {
 		lhs_id := tc.a.child(&node, i)
 		rhs_id := tc.a.child(&node, i + 1)
-		lhs_type := tc.resolve_lvalue_type(lhs_id)
+		lhs_type := if node.kind == .index_assign {
+			tc.resolve_index_lvalue_type(lhs_id, node.op)
+		} else {
+			tc.resolve_lvalue_type(lhs_id)
+		}
 		tc.remember_expr_type(lhs_id, lhs_type)
 		expected_type := tc.assignment_expected_type(lhs_id, lhs_type)
 		tc.annotate_expected_expr(rhs_id, expected_type)
@@ -9726,8 +9730,7 @@ fn (mut tc TypeChecker) resolve_lvalue_type(lhs_id flat.NodeId) Type {
 		return tc.resolve_type(lhs_id)
 	}
 	if lhs.kind == .index {
-		tc.check_index(lhs_id, lhs)
-		return tc.resolve_type(lhs_id)
+		return tc.resolve_index_lvalue_type(lhs_id, .assign)
 	}
 	if lhs.kind == .prefix && lhs.op == .mul && lhs.children_count > 0 {
 		inner := tc.resolve_type(tc.a.child(&lhs, 0))
@@ -9736,6 +9739,51 @@ fn (mut tc TypeChecker) resolve_lvalue_type(lhs_id flat.NodeId) Type {
 		}
 		return inner
 	}
+	return tc.resolve_type(lhs_id)
+}
+
+fn (mut tc TypeChecker) resolve_index_lvalue_type(lhs_id flat.NodeId, op flat.Op) Type {
+	if int(lhs_id) < 0 {
+		return Type(void_)
+	}
+	lhs := tc.a.nodes[int(lhs_id)]
+	if lhs.kind != .index || lhs.children_count < 2 || lhs.value == 'range' {
+		tc.check_index(lhs_id, lhs)
+		return tc.resolve_type(lhs_id)
+	}
+	base_id := tc.a.child(&lhs, 0)
+	base_type := tc.resolve_type(base_id)
+	if setter := tc.index_operator_call_info(base_type, '[]=') {
+		if setter.params.len < 3 {
+			tc.register_synth_type(lhs_id, unknown_type('invalid overloaded index setter'))
+			return unknown_type('invalid overloaded index setter')
+		}
+		tc.check_index_overload_arg(lhs_id, lhs, setter, '[]=')
+		if op != .assign {
+			if getter := tc.index_operator_call_info(base_type, '[]') {
+				tc.check_index_overload_arg(lhs_id, lhs, getter, '[]')
+			} else if tc.should_diagnose(lhs_id) {
+				tc.record_error(.assignment_mismatch,
+					'compound index assignment requires a `[]` overload on `${base_type.name()}`',
+					lhs_id)
+			}
+		}
+		value_type := setter.params[2]
+		tc.register_synth_type(lhs_id, value_type)
+		return value_type
+	}
+	if getter := tc.index_operator_call_info(base_type, '[]') {
+		if tc.should_diagnose(lhs_id) {
+			tc.record_error(.assignment_mismatch,
+				'index assignment requires a `[]=` overload on `${base_type.name()}`', lhs_id)
+		}
+		if getter.params.len >= 2 {
+			tc.check_index_overload_arg(lhs_id, lhs, getter, '[]')
+		}
+		tc.register_synth_type(lhs_id, getter.return_type)
+		return getter.return_type
+	}
+	tc.check_index(lhs_id, lhs)
 	return tc.resolve_type(lhs_id)
 }
 
@@ -16360,7 +16408,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 }
 
 // expr_is_method_value reports whether `id` is a selector that resolves to a *method
-// value* — a struct method used as a value (`obj.draw`), not a field access or a method
+// value* — a struct/interface method used as a value (`obj.draw`), not a field access or a method
 // call. cgen backs such a value with a per-evaluation-site static receiver slot, which is
 // only safe for an immediately-consumed callback; it cannot hold several live instances
 // from the same site at once (see gen_method_value_closure).
@@ -16378,18 +16426,25 @@ fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 		return false
 	}
 	clean := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
-	if clean !is Struct {
-		return false
-	}
-	sname := (clean as Struct).name
-	if tc.struct_field_type(sname, node.value) != none {
-		return false
-	}
-	if '${sname}.${node.value}' in tc.fn_param_types {
-		return true
-	}
-	if _ := tc.resolve_generic_struct_method(sname, node.value) {
-		return true
+	if clean is Struct {
+		sname := clean.name
+		if tc.struct_field_type(sname, node.value) != none {
+			return false
+		}
+		if '${sname}.${node.value}' in tc.fn_param_types {
+			return true
+		}
+		if _ := tc.resolve_generic_struct_method(sname, node.value) {
+			return true
+		}
+	} else if clean is Interface {
+		iname := clean.name
+		if tc.interface_field_type(iname, node.value) != none {
+			return false
+		}
+		if _ := tc.interface_receiver_method_call_info(iname, node.value) {
+			return true
+		}
 	}
 	return false
 }
@@ -16831,6 +16886,61 @@ fn option_result_selector_type(typ Type, field string) ?Type {
 	return none
 }
 
+pub fn (tc &TypeChecker) index_operator_call_info(base_type Type, op string) ?CallInfo {
+	clean := unwrap_pointer(base_type)
+	type_name := resolve_type_name_for_method(clean)
+	if type_name.len == 0 {
+		return none
+	}
+	if info := tc.resolve_generic_struct_method(type_name, op) {
+		if info.params.len == 0
+			|| tc.method_receiver_compatible(base_type, info.params[0], info.name) {
+			return info
+		}
+	}
+	for method_name in receiver_method_name_candidates(clean, op, tc.cur_module) {
+		for candidate in [method_name, tc.cached_c_name(method_name)] {
+			if candidate !in tc.fn_ret_types && candidate !in tc.fn_param_types {
+				continue
+			}
+			info := tc.call_info(candidate, true)
+			if info.params.len > 0
+				&& !tc.method_receiver_compatible(base_type, info.params[0], candidate) {
+				continue
+			}
+			return info
+		}
+	}
+	return none
+}
+
+fn (mut tc TypeChecker) check_index_overload_arg(id flat.NodeId, node flat.Node, info CallInfo, op string) bool {
+	if node.children_count != 2 {
+		if tc.should_diagnose(id) {
+			tc.record_error(.cannot_index,
+				'overloaded `${op}` expression accepts one index, got ${node.children_count - 1}',
+				id)
+		}
+		return false
+	}
+	if info.params.len < 2 {
+		if tc.should_diagnose(id) {
+			tc.record_error(.cannot_index, 'overloaded `${op}` is missing an index parameter', id)
+		}
+		return false
+	}
+	index_id := tc.a.child(&node, 1)
+	tc.check_node(index_id)
+	expected_key := info.params[1]
+	actual_key := tc.resolve_expr(index_id, expected_key)
+	if !tc.type_compatible(actual_key, expected_key) {
+		tc.type_mismatch(.cannot_index,
+			'index must be `${expected_key.name()}`, not `${actual_key.name()}`', index_id)
+		return false
+	}
+	return true
+}
+
 // check_index validates check index state for types.
 fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
@@ -16891,6 +17001,11 @@ fn (mut tc TypeChecker) check_index(id flat.NodeId, node flat.Node) {
 					index_id)
 			}
 			tc.register_synth_type(id, base_type.value_type)
+			return
+		}
+		if getter := tc.index_operator_call_info(base_type_raw, '[]') {
+			tc.check_index_overload_arg(id, node, getter, '[]')
+			tc.register_synth_type(id, getter.return_type)
 			return
 		}
 		index_type := unalias_type(tc.resolve_type(index_id))

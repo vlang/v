@@ -397,7 +397,7 @@ fn cgen_is_operator_overload_fn(name string) bool {
 		return false
 	}
 	method := name.all_after_last('.')
-	return method in ['+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=']
+	return method in ['+', '-', '*', '/', '%', '==', '!=', '<', '>', '<=', '>=', '[]', '[]=']
 }
 
 fn is_generated_fn_after_markused(name string) bool {

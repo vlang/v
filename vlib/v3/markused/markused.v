@@ -3314,7 +3314,20 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			.string_interp {
 				calls << 'string_plus_many'
 			}
+			.index {
+				c.collect_index_operator_method(child_id, '[]', cur_module, imports, local_values,
+					local_types, mut calls)
+			}
 			.assign, .selector_assign, .index_assign {
+				if child.kind == .index_assign && child.children_count > 0 {
+					lhs_id := c.a.child(child, 0)
+					c.collect_index_operator_method(lhs_id, '[]=', cur_module, imports,
+						local_values, local_types, mut calls)
+					if child.op != .assign {
+						c.collect_index_operator_method(lhs_id, '[]', cur_module, imports,
+							local_values, local_types, mut calls)
+					}
+				}
 				c.collect_assign_operator_call(child, cur_module, local_types, mut calls)
 			}
 			.infix {
@@ -3400,7 +3413,7 @@ fn (c &CallCollector) call_callee_expr_to_collect(node &flat.Node) ?flat.NodeId 
 			return none
 		}
 		base_id := c.a.child(callee, 0)
-		if int(base_id) >= 0 && c.expr_contains_call(base_id) {
+		if int(base_id) >= 0 && (c.expr_contains_call(base_id) || c.expr_contains_index(base_id)) {
 			return base_id
 		}
 		return none
@@ -3412,6 +3425,27 @@ fn (c &CallCollector) call_callee_expr_to_collect(node &flat.Node) ?flat.NodeId 
 		return callee_id
 	}
 	return none
+}
+
+fn (c &CallCollector) expr_contains_index(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	mut stack := [id]
+	for stack.len > 0 {
+		cur_id := stack.pop()
+		if int(cur_id) < 0 {
+			continue
+		}
+		node := c.a.node(cur_id)
+		if node.kind == .index {
+			return true
+		}
+		for i in 0 .. node.children_count {
+			stack << c.a.child(node, i)
+		}
+	}
+	return false
 }
 
 fn (c &CallCollector) expr_contains_call(id flat.NodeId) bool {
@@ -5234,6 +5268,22 @@ fn (c &CallCollector) collect_typed_receiver_method(base_id flat.NodeId, method 
 	method_name := c.typed_receiver_method_name(type_name, method, cur_module) or { return false }
 	c.add_typed_receiver_method_name(method_name, mut calls)
 	return true
+}
+
+fn (c &CallCollector) collect_index_operator_method(index_id flat.NodeId, method string, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut calls []string) bool {
+	if int(index_id) < 0 {
+		return false
+	}
+	index := c.a.node(index_id)
+	if index.kind != .index || index.value == 'range' || index.children_count < 2 {
+		return false
+	}
+	base_id := c.a.child(index, 0)
+	if int(base_id) < 0 {
+		return false
+	}
+	return c.collect_typed_receiver_method(base_id, method, cur_module, imports, local_values,
+		local_types, mut calls)
 }
 
 fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) string {

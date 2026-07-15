@@ -7009,6 +7009,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write('}, ')
 				g.gen_default_value_addr_for_type(base_type.value_type)
 				g.write('))')
+			} else if g.gen_index_operator_get_call(node) {
+				return
 			} else {
 				mut index_base_type := base_type
 				if fixed_lit := g.fixed_array_literal_index_type(base_id, node) {

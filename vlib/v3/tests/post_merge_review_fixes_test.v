@@ -3372,3 +3372,134 @@ fn main() {
 ",
 		'compile-time error: present method selected')
 }
+
+fn test_review_index_overload_and_interface_regressions() {
+	v3_bin := build_v3()
+	overload_out := run_good(v3_bin, 'review_index_overload_regressions', "__global (
+	hits int
+)
+
+fn next() int {
+	hits++
+	return 0
+}
+
+struct Dict {
+mut:
+	values map[string]int
+}
+
+fn (d Dict) [] (key string) int {
+	return d.values[key]
+}
+
+fn (mut d Dict) []= (key string, value int) {
+	d.values[key] = value
+}
+
+struct Bag {
+mut:
+	values []int
+}
+
+fn (b Bag) [] (i int) int {
+	return b.values[i]
+}
+
+fn (mut b Bag) []= (i int, value int) {
+	b.values[i] = value
+}
+
+fn main() {
+	mut d := Dict{
+		values: {
+			'name': 7
+		}
+	}
+	println(d['name'].str())
+	d['name'] += 5
+	println(d.values['name'].str())
+	mut b := Bag{
+		values: [1]
+	}
+	b[next()] += 4
+	println(hits.str())
+	println(b.values[0].str())
+}
+")
+	assert overload_out == '7\n12\n1\n5'
+	str_out := run_good(v3_bin, 'review_pointer_fields_implicit_str', "interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+struct Foo {
+	nums &[]int
+	m    &map[string]int
+	bar  &Bar
+}
+
+fn main() {
+	nums := [1, 2]
+	m := {
+		'a': 3
+	}
+	f := Printable(Foo{
+		nums: &nums
+		m:    &m
+		bar:  &Bar{
+			x: 7
+		}
+	})
+	println(f.str())
+}
+")
+	assert str_out.contains('nums: &[1, 2]'), str_out
+	assert str_out.contains("m: &{'a': 3}"), str_out
+	assert str_out.contains('bar: &Bar'), str_out
+	assert str_out.contains('x: 7'), str_out
+	run_bad(v3_bin, 'review_interface_method_value_escape', 'interface Runner {
+	run() int
+}
+
+struct Job {
+	n int
+}
+
+fn (j Job) run() int {
+	return j.n
+}
+
+struct Holder {
+	cb fn () int
+}
+
+fn main() {
+	r := Runner(Job{
+		n: 1
+	})
+	_ := Holder{
+		cb: r.run
+	}
+}
+',
+		'cannot escape its call site')
+	run_bad(v3_bin, 'review_voidptr_interface_cast', 'interface Sink {
+	sink()
+}
+
+struct S {}
+
+fn (s S) sink() {}
+
+fn main() {
+	x := 1
+	p := voidptr(&x)
+	_ := Sink(p)
+}
+',
+		'does not implement interface')
+}

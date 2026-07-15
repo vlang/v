@@ -896,6 +896,160 @@ fn (mut g FlatGen) gen_map_ref_arg(base_id flat.NodeId, base_type types.Type) {
 	}
 }
 
+fn (mut g FlatGen) gen_index_operator_get_call(node flat.Node) bool {
+	if node.value == 'range' || node.children_count != 2 {
+		return false
+	}
+	base_id := g.a.child(&node, 0)
+	index_id := g.a.child(&node, 1)
+	base_type := g.usable_expr_type(base_id)
+	info := g.tc.index_operator_call_info(base_type, '[]') or { return false }
+	if info.params.len < 2 {
+		return false
+	}
+	g.write(g.cname(info.name))
+	g.write('(')
+	g.gen_index_operator_receiver_arg(base_id, base_type, info.params[0])
+	g.write(', ')
+	g.gen_expr_with_expected_type(index_id, info.params[1])
+	g.write(')')
+	return true
+}
+
+fn (mut g FlatGen) gen_index_operator_assign(node flat.Node, lhs flat.Node, base_type types.Type) bool {
+	if lhs.value == 'range' || lhs.children_count != 2 {
+		return false
+	}
+	setter := g.tc.index_operator_call_info(base_type, '[]=') or { return false }
+	if setter.params.len < 3 {
+		return false
+	}
+	if node.op == .assign {
+		g.gen_index_operator_set_call(lhs, setter, base_type, g.a.child(&node, 1))
+		g.writeln(';')
+		return true
+	}
+	getter := g.tc.index_operator_call_info(base_type, '[]') or { return false }
+	if getter.params.len < 2 {
+		return false
+	}
+	g.gen_index_operator_compound_assign(node, lhs, setter, getter, base_type)
+	return true
+}
+
+fn (mut g FlatGen) gen_index_operator_set_call(lhs flat.Node, setter types.CallInfo, base_type types.Type, value_id flat.NodeId) {
+	base_id := g.a.child(&lhs, 0)
+	index_id := g.a.child(&lhs, 1)
+	g.write(g.cname(setter.name))
+	g.write('(')
+	g.gen_index_operator_receiver_arg(base_id, base_type, setter.params[0])
+	g.write(', ')
+	g.gen_expr_with_expected_type(index_id, setter.params[1])
+	g.write(', ')
+	g.gen_expr_with_expected_type(value_id, setter.params[2])
+	g.write(')')
+}
+
+fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.Node, setter types.CallInfo, getter types.CallInfo, base_type types.Type) {
+	base_id := g.a.child(&lhs, 0)
+	index_id := g.a.child(&lhs, 1)
+	rhs_id := g.a.child(&node, 1)
+	tmp := g.tmp_count
+	g.tmp_count += 2
+	recv_tmp := '_idx_recv_${tmp}'
+	index_tmp := '_idx_key_${tmp}'
+	recv_storage := g.index_operator_receiver_storage_type(base_type, setter.params[0])
+	index_storage := setter.params[1]
+	g.write('{ ${g.tc.c_type(recv_storage)} ${recv_tmp} = ')
+	g.gen_index_operator_receiver_storage_init(base_id, base_type, recv_storage)
+	g.write('; ${g.value_c_type(index_storage)} ${index_tmp} = ')
+	g.gen_expr_with_expected_type(index_id, index_storage)
+	g.write('; ')
+	g.write(g.cname(setter.name))
+	g.write('(')
+	g.gen_index_operator_receiver_tmp_arg(recv_tmp, recv_storage, setter.params[0])
+	g.write(', ${index_tmp}, ')
+	if op := compound_assign_to_infix_op(node.op) {
+		if setter.params[2] is types.String && op == .plus {
+			g.write('string__plus(')
+			g.gen_index_operator_get_call_from_temps(getter, recv_tmp, recv_storage, index_tmp,
+				index_storage)
+			g.write(', ')
+			g.gen_expr_as_string(rhs_id)
+			g.write(')')
+		} else {
+			g.write('(')
+			g.gen_index_operator_get_call_from_temps(getter, recv_tmp, recv_storage, index_tmp,
+				index_storage)
+			g.write(' ${g.op_str(op)} (')
+			g.gen_expr_with_expected_type(rhs_id, setter.params[2])
+			g.write('))')
+		}
+	} else {
+		g.gen_expr_with_expected_type(rhs_id, setter.params[2])
+	}
+	g.writeln('); }')
+}
+
+fn (mut g FlatGen) gen_index_operator_get_call_from_temps(getter types.CallInfo, recv_tmp string, recv_storage types.Type, index_tmp string, index_storage types.Type) {
+	g.write(g.cname(getter.name))
+	g.write('(')
+	g.gen_index_operator_receiver_tmp_arg(recv_tmp, recv_storage, getter.params[0])
+	g.write(', ')
+	if getter.params.len > 1 && !g.type_names_match(index_storage, getter.params[1]) {
+		g.write('(${g.value_c_type(getter.params[1])})')
+	}
+	g.write(index_tmp)
+	g.write(')')
+}
+
+fn (g &FlatGen) index_operator_receiver_storage_type(base_type types.Type, expected types.Type) types.Type {
+	if base_type is types.Pointer {
+		return base_type
+	}
+	if expected is types.Pointer {
+		return expected
+	}
+	return base_type
+}
+
+fn (mut g FlatGen) gen_index_operator_receiver_storage_init(base_id flat.NodeId, base_type types.Type, storage_type types.Type) {
+	if storage_type is types.Pointer && base_type !is types.Pointer {
+		g.write('&')
+		g.gen_expr(base_id)
+		return
+	}
+	g.gen_expr_with_expected_type(base_id, storage_type)
+}
+
+fn (mut g FlatGen) gen_index_operator_receiver_arg(base_id flat.NodeId, actual types.Type, expected types.Type) {
+	if expected is types.Pointer {
+		if actual !is types.Pointer && !g.receiver_ident_storage_is_pointer(base_id) {
+			g.write('&')
+		}
+		g.gen_expr(base_id)
+		return
+	}
+	if actual is types.Pointer || g.receiver_ident_storage_is_pointer(base_id) {
+		g.write('*')
+	}
+	g.gen_expr(base_id)
+}
+
+fn (mut g FlatGen) gen_index_operator_receiver_tmp_arg(tmp string, actual types.Type, expected types.Type) {
+	if expected is types.Pointer {
+		if actual !is types.Pointer {
+			g.write('&')
+		}
+		g.write(tmp)
+		return
+	}
+	if actual is types.Pointer {
+		g.write('*')
+	}
+	g.write(tmp)
+}
+
 // gen_index_assign emits index assign output for c.
 fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 	lhs_id := g.a.child(&node, 0)
@@ -903,6 +1057,9 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 	if lhs.kind == .index {
 		base_id := g.a.child(&lhs, 0)
 		base_type := g.usable_expr_type(base_id)
+		if g.gen_index_operator_assign(node, lhs, base_type) {
+			return
+		}
 		clean_base := types.unwrap_pointer(base_type)
 		if clean_base is types.Map {
 			c_key := g.map_key_temp_c_type(clean_base.key_type)

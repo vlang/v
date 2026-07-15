@@ -887,6 +887,18 @@ fn (mut p Parser) fn_decl() flat.NodeId {
 				return p.fn_operator_overload(receiver_name, receiver_type, receiver_is_mut,
 					op_name, name_pos)
 			}
+			if p.tok == .lsbr && p.peek() == .rsbr {
+				name_pos = p.tok_pos
+				p.next()
+				p.next()
+				if p.tok == .assign {
+					p.next()
+					return p.fn_operator_overload(receiver_name, receiver_type, receiver_is_mut,
+						'[]=', name_pos)
+				}
+				return p.fn_operator_overload(receiver_name, receiver_type, receiver_is_mut, '[]',
+					name_pos)
+			}
 		}
 	}
 
