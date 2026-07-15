@@ -2744,6 +2744,45 @@ fn main() {
 	assert out == 'direct:item|local:item'
 }
 
+fn test_local_reflection_sources_are_qualified_to_current_module() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good_project(v3_bin, 'local_reflection_source_module_qualification', {
+		'v.mod':               "Module { name: 'local_reflection_source_module_qualification' }\n"
+		'localmod/localmod.v': 'module localmod
+
+@[module_attr]
+pub fn target(local string) {
+	_ = local
+}
+
+pub fn inspect() string {
+	mut rows := []string{}
+	$for param in target.params {
+		rows << "param:" + param.name
+	}
+	$for attr in target.attributes {
+		rows << "attr:" + attr.name
+	}
+	return rows.join("|")
+}
+'
+		'main.v':              'module main
+
+import localmod
+
+@[main_attr]
+fn target(foreign int) {
+	_ = foreign
+}
+
+fn main() {
+	println(localmod.inspect())
+}
+'
+	}, 'main.v')
+	assert out == 'param:local|attr:module_attr'
+}
+
 fn test_nested_field_method_guard_preserves_inner_selector() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good(v3_bin, 'nested_field_method_guard', "struct Row {

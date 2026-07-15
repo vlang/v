@@ -212,6 +212,9 @@ fn (t &Transformer) comptime_resolve_selective_import_reflection_source(raw stri
 	if clean.len == 0 || isnil(t.tc) || t.cur_file.len == 0 {
 		return clean
 	}
+	if local := t.comptime_local_reflection_source(clean) {
+		return local
+	}
 	if clean.contains('.') {
 		return t.resolve_imported_type_name(clean) or { clean }
 	}
@@ -227,6 +230,20 @@ fn (t &Transformer) comptime_resolve_selective_import_reflection_source(raw stri
 		}
 	}
 	return clean
+}
+
+fn (t &Transformer) comptime_local_reflection_source(name string) ?string {
+	if name.len == 0 || t.cur_module.len == 0 || t.cur_module in ['main', 'builtin'] {
+		return none
+	}
+	qualified := '${t.cur_module}.${name}'
+	if qualified in t.tc.fn_ret_types || qualified in t.tc.fn_param_types
+		|| qualified in t.tc.type_aliases || qualified in t.tc.structs
+		|| qualified in t.tc.interface_names || qualified in t.tc.flag_enums
+		|| qualified in t.tc.enum_names || qualified in t.tc.sum_types {
+		return qualified
+	}
+	return none
 }
 
 fn (mut t Transformer) cache_comptime_param_reflection_metadata() {
