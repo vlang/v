@@ -3281,7 +3281,7 @@ fn (p &Parser) comptime_cond_name_is_flag(cond string, name string, end int) boo
 	}
 	match name {
 		'macos', 'darwin', 'mac', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
-		'android', 'posix', 'unix', 'bsd', 'x64', 'x32', 'amd64', 'arm64', 'aarch64',
+		'android', 'termux', 'posix', 'unix', 'bsd', 'x64', 'x32', 'amd64', 'arm64', 'aarch64',
 		'little_endian', 'big_endian', 'debug', 'test', 'native',
 		'builtin_write_buf_to_fd_should_use_c_write', 'tinyc', 'no_backtrace', 'gcboehm',
 		'gcboehm_opt', 'prealloc', 'autofree', 'no_bounds_checking', 'freestanding', 'nofloat',

@@ -19,6 +19,12 @@ fn test_target_from_normalizes_and_derives_platform_properties() {
 	} else {
 		assert true
 	}
+
+	termux_target := target_from('termux', 'aarch64') or { panic(err) }
+	assert termux_target.os == 'termux'
+	assert termux_target.arch == 'arm64'
+	assert termux_target.abi == 'android'
+	assert termux_target.object_format == 'elf'
 }
 
 fn test_comptime_flags_use_target_instead_of_host() {
@@ -30,6 +36,11 @@ fn test_comptime_flags_use_target_instead_of_host() {
 	assert !comptime_flag_value(prefs, 'macos')
 	assert !comptime_flag_value(prefs, 'arm64')
 	assert !comptime_flag_value(prefs, 'tinyc')
+
+	prefs.target = target_from('termux', 'arm64') or { panic(err) }
+	assert comptime_flag_value(prefs, 'termux')
+	assert !comptime_flag_value(prefs, 'android')
+	assert comptime_flag_value(prefs, 'posix')
 }
 
 fn test_source_selection_uses_target_os_and_arch() {
@@ -52,4 +63,31 @@ fn test_source_selection_uses_target_os_and_arch() {
 	selected = get_v_files_from_dir_for_target(dir, [], macos_amd64).map(os.base(it))
 	selected.sort()
 	assert selected == ['common.v', 'cpu_amd64.v', 'sys_macos.v']
+}
+
+fn test_termux_source_selection_keeps_android_common_files_distinct() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_termux_target_pref_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	for name in ['platform_default.c.v', 'platform_android.c.v',
+		'platform_android_outside_termux.c.v', 'platform_termux.c.v'] {
+		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
+	}
+
+	termux := target_from('termux', 'arm64') or { panic(err) }
+	mut selected := get_v_files_from_dir_for_target(dir, [], termux).map(os.base(it))
+	selected.sort()
+	assert selected == ['platform_android.c.v', 'platform_termux.c.v']
+
+	android := target_from('android', 'arm64') or { panic(err) }
+	selected = get_v_files_from_dir_for_target(dir, [], android).map(os.base(it))
+	selected.sort()
+	assert selected == ['platform_android.c.v', 'platform_android_outside_termux.c.v']
+
+	linux := target_from('linux', 'arm64') or { panic(err) }
+	selected = get_v_files_from_dir_for_target(dir, [], linux).map(os.base(it))
+	assert selected == ['platform_default.c.v']
 }

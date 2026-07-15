@@ -3457,7 +3457,7 @@ fn c_flag_target_enabled(target string, platform pref.Target) bool {
 			return platform.os == 'solaris'
 		}
 		'termux' {
-			return platform.os == 'android'
+			return platform.os == 'termux'
 		}
 		'wasm32_emscripten' {
 			return platform.os == 'wasm32_emscripten'

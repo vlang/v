@@ -65,7 +65,7 @@ pub fn target_from(os_name string, arch_name string) !Target {
 	target_os := normalized_os(os_name.trim_space().to_lower())
 	target_arch := normalized_arch(arch_name.trim_space().to_lower())
 	if target_os !in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
-		'android', 'ios', 'solaris', 'wasm32_emscripten'] {
+		'android', 'termux', 'ios', 'solaris', 'wasm32_emscripten'] {
 		return error('unsupported target OS `${os_name}`')
 	}
 	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv64', 'ppc64', 'ppc64le', 's390x',
@@ -80,7 +80,7 @@ pub fn target_from(os_name string, arch_name string) !Target {
 	abi := match target_os {
 		'windows' { 'windows' }
 		'macos', 'ios' { 'darwin' }
-		'android' { 'android' }
+		'android', 'termux' { 'android' }
 		'wasm32_emscripten' { 'emscripten' }
 		else { 'gnu' }
 	}
@@ -304,7 +304,15 @@ fn file_has_incompatible_os_only_suffix(file string, current_os string) bool {
 		&& os_name != 'dragonfly' && file.contains('_bsd.') {
 		return true
 	}
-	if os_name != 'android' && file.contains('_android') {
+	if file.contains('_android_outside_termux.') {
+		if os_name != 'android' {
+			return true
+		}
+	} else if file.contains('_termux.') {
+		if os_name != 'termux' {
+			return true
+		}
+	} else if file.contains('_android.') && os_name !in ['android', 'termux'] {
 		return true
 	}
 	if os_name != 'ios' && file.contains('_ios.') {
@@ -533,6 +541,11 @@ fn os_specific_base(file string, target_os string) ?string {
 			suffixes << '_linux'
 		}
 		'android' {
+			suffixes << '_android_outside_termux'
+			suffixes << '_android'
+		}
+		'termux' {
+			suffixes << '_termux'
 			suffixes << '_android'
 		}
 		'ios' {
@@ -648,6 +661,9 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		}
 		'android' {
 			return p.normalized_target_os() == 'android'
+		}
+		'termux' {
+			return p.normalized_target_os() == 'termux'
 		}
 		'posix', 'unix' {
 			return p.normalized_target_os() != 'windows'
