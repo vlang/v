@@ -11423,8 +11423,10 @@ fn (t &Transformer) resolve_sum_variant_pattern_for_subject(subject_type string,
 		return none
 	}
 	for candidate in t.sum_subject_type_candidates(subject_type) {
-		resolved_sum := t.resolve_sum_name(candidate)
-		if resolved_variant := t.sum_variant_name(resolved_sum, pattern) {
+		// Keep the concrete generic application while resolving the pattern.
+		// Resolving `Tree[int]` to its declaration key `Tree` first would turn a
+		// bare `Node` arm back into the open declaration variant `Node[T]`.
+		if resolved_variant := t.sum_variant_name(candidate, pattern) {
 			return resolved_variant
 		}
 		if !isnil(t.tc) {
