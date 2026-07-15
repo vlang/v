@@ -3307,6 +3307,7 @@ fn comptime_flag_is_target_arch(name string, target_arch string) bool {
 		'amd64' { name in ['amd64', 'x64', 'x86_64'] }
 		'arm64' { name in ['arm64', 'aarch64'] }
 		'x86' { name in ['x86', 'i386'] }
+		'riscv64' { name in ['riscv64', 'rv64'] }
 		else { name == target_arch }
 	}
 }

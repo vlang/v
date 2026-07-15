@@ -167,6 +167,28 @@ fn test_guarded_volatile_inline_asm_selects_software_fallback() {
 	assert a.nodes.any(it.kind == .int_literal && it.value == '84')
 }
 
+fn test_guarded_rv64_inline_asm_selects_software_fallback() {
+	src := os.join_path(os.temp_dir(), 'v3_guarded_rv64_architecture_asm.v')
+	os.write_file(src, '$if rv64 && !tinyc {
+	fn spin_hint() int {
+		asm rv64 { nop }
+		return 0
+	}
+} $else {
+	fn spin_hint() int { return 128 }
+}
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('linux', 'rv64') or { panic(err) }
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(src)
+	assert p.diagnostics.len == 0
+	assert a.nodes.count(it.kind == .asm_stmt) == 0
+	assert a.nodes.any(it.kind == .int_literal && it.value == '128')
+}
+
 fn test_inline_asm_detection_ignores_comments_and_strings() {
 	src := os.join_path(os.temp_dir(), 'v3_ignored_architecture_asm_text.v')
 	os.write_file(src, '// asm arm64 {
