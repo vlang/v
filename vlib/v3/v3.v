@@ -724,6 +724,8 @@ fn clone_flat_ast(ast &flat.FlatAst) &flat.FlatAst {
 		noreturn_fns:    clone_string_bool_map(ast.noreturn_fns)
 		source_files:    ast.source_files.clone()
 		source_buffers:  ast.source_buffers.clone()
+		text_values:     ast.text_values.clone()
+		text_ids:        ast.text_ids.clone()
 	}
 }
 
@@ -1304,6 +1306,10 @@ fn main() {
 		}
 		exit(1)
 	}
+	// Parsing workers own source buffers and private text tables. Canonicalize
+	// once more after implicit imports/import waves so every surviving payload
+	// uses the compilation table before semantic phases begin.
+	p.release_source_storage()
 	diagnostic_root := if is_selfhost {
 		diagnostic_root_for_input(input_file, user_files)
 	} else {
@@ -1313,6 +1319,7 @@ fn main() {
 	b.step_parallel('parse', parse_was_parallel)
 	b.metric('AST nodes after parse', a.nodes.len, 'nodes')
 	b.metric('AST children after parse', a.children.len, 'edges')
+	b.metric('canonical AST texts', a.text_count(), 'texts')
 
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
@@ -1461,6 +1468,10 @@ fn main() {
 	} else {
 		erase_unreachable_generic_type_templates(mut pre_tc)
 	}
+	// Transform and monomorphization can synthesize or rewrite payload text.
+	// They run with private/arena-backed worker state; publish only canonical,
+	// compilation-owned strings after all worker merges are complete.
+	a.intern_node_texts_from(0)
 	b.step('monomorphize')
 
 	if backend == 'arm64' {

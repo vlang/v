@@ -341,6 +341,8 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 		noreturn_fns:    a.noreturn_fns
 		source_files:    a.source_files
 		source_buffers:  a.source_buffers
+		text_values:     a.text_values
+		text_ids:        a.text_ids
 	}
 }
 

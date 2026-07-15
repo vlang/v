@@ -184,6 +184,9 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 			// move so only the master owns and eventually releases those payloads.
 			w.a.nodes.len = 0
 		}
+		// Worker text tables are private. Rebind every moved payload to the
+		// master's compilation-wide canonical text table before the worker dies.
+		p.a.intern_node_texts_from(nodes_old_len)
 	}
 	// Per-file region starts move by the merge offset.
 	for i in chunk_start .. chunk_end {

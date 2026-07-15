@@ -4,6 +4,7 @@ module token
 pub struct Pos {
 pub:
 	offset int
+	end    int
 	id     int
 }
 
@@ -12,12 +13,23 @@ pub fn new_pos(file_id int, offset int) Pos {
 	return Pos{
 		id:     file_id
 		offset: offset
+		end:    offset
+	}
+}
+
+// new_span creates an immutable half-open source span. The offset field is
+// retained as the start for compatibility with existing diagnostic consumers.
+pub fn new_span(file_id int, start int, end int) Pos {
+	return Pos{
+		id:     file_id
+		offset: start
+		end:    if end < start { start } else { end }
 	}
 }
 
 // str returns the string form for Pos.
 pub fn (p Pos) str() string {
-	return '{ offset: ${p.offset}, id: ${p.id} }'
+	return '{ offset: ${p.offset}, end: ${p.end}, id: ${p.id} }'
 }
 
 // is_valid reports whether is valid applies in token.

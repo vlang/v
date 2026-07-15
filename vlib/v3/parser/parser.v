@@ -26,9 +26,11 @@ mut:
 	tok                               token.Token
 	lit                               string
 	tok_pos                           int
+	tok_end                           int
 	peek_tok                          token.Token = .eof
 	peek_lit                          string
 	peek_pos                          int
+	peek_end                          int
 	has_peek                          bool
 	cur_file                          string
 	cur_file_id                       int
@@ -77,6 +79,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 			disabled_fns:    map[string]bool{}
 			export_fn_names: map[string]string{}
 			source_files:    map[int]&token.File{}
+			text_ids:        map[string]flat.TextId{}
 		}
 	}
 }
@@ -95,6 +98,25 @@ pub fn (mut p Parser) parse_files(paths []string) &flat.FlatAst {
 	return p.a
 }
 
+// release_source_storage canonicalizes every retained source slice and drops
+// parser/scanner references to raw file buffers. Source files keep only their
+// compact line indexes for later diagnostic lookup.
+pub fn (mut p Parser) release_source_storage() {
+	p.a.intern_node_texts_from(0)
+	p.a.intern_metadata_texts()
+	p.lit = ''
+	p.peek_lit = ''
+	p.cur_module = ''
+	p.cur_fn = ''
+	p.cur_struct = ''
+	p.pending_export = ''
+	p.local_type_names = map[string]string{}
+	p.export_records = []ExportRecord{}
+	p.s.src = ''
+	p.s.lit = ''
+	p.a.source_buffers = []string{}
+}
+
 // parse_files_with_starts parses paths in order like parse_files, recording the
 // first node id of each file's region. Import resolution uses the starts to
 // bound per-file post-processing (module-name canonicalization) when files are
@@ -110,10 +132,17 @@ pub fn (mut p Parser) parse_files_with_starts(paths []string) []int {
 
 // parse_into reads parse into input for parser.
 pub fn (mut p Parser) parse_into(path string) {
+	first_node := p.a.nodes.len
+	defer {
+		p.a.intern_node_texts_from(first_node)
+	}
 	p.cur_file = path
 	p.cur_file_id = p.next_file_id
 	p.next_file_id++
 	p.tok_pos = 0
+	p.tok_end = 0
+	p.peek_pos = 0
+	p.peek_end = 0
 	p.cur_module = ''
 	p.cur_fn = ''
 	p.has_peek = false
@@ -201,7 +230,9 @@ fn (mut p Parser) reserve_for_source(src_len int) {
 }
 
 fn (p &Parser) current_pos() token.Pos {
-	return token.new_pos(p.cur_file_id, clamp_source_offset(p.tok_pos, p.s.src.len))
+	start := clamp_source_offset(p.tok_pos, p.s.src.len)
+	end := clamp_source_offset(p.tok_end, p.s.src.len)
+	return token.new_span(p.cur_file_id, start, end)
 }
 
 fn (mut p Parser) add_node(node flat.Node) flat.NodeId {
@@ -293,12 +324,14 @@ fn (mut p Parser) next() {
 		p.tok = p.peek_tok
 		p.lit = p.peek_lit
 		p.tok_pos = p.peek_pos
+		p.tok_end = p.peek_end
 		p.has_peek = false
 		return
 	}
 	p.tok = p.s.scan()
 	p.lit = p.s.lit
 	p.tok_pos = p.s.pos
+	p.tok_end = p.s.offset
 }
 
 // line_nr_for_pos returns the 1-based line number of a byte offset.
@@ -331,6 +364,7 @@ fn (mut p Parser) peek() token.Token {
 		p.peek_tok = p.s.scan()
 		p.peek_lit = p.s.lit
 		p.peek_pos = p.s.pos
+		p.peek_end = p.s.offset
 		p.has_peek = true
 	}
 	return p.peek_tok
@@ -4586,9 +4620,11 @@ fn (mut p Parser) starts_sql_expr() bool {
 	saved_tok := p.tok
 	saved_lit := p.lit
 	saved_tok_pos := p.tok_pos
+	saved_tok_end := p.tok_end
 	saved_peek_tok := p.peek_tok
 	saved_peek_lit := p.peek_lit
 	saved_peek_pos := p.peek_pos
+	saved_peek_end := p.peek_end
 	saved_has_peek := p.has_peek
 	p.next()
 	for p.tok == .dot {
@@ -4603,9 +4639,11 @@ fn (mut p Parser) starts_sql_expr() bool {
 	p.tok = saved_tok
 	p.lit = saved_lit
 	p.tok_pos = saved_tok_pos
+	p.tok_end = saved_tok_end
 	p.peek_tok = saved_peek_tok
 	p.peek_lit = saved_peek_lit
 	p.peek_pos = saved_peek_pos
+	p.peek_end = saved_peek_end
 	p.has_peek = saved_has_peek
 	return ok
 }
@@ -5200,9 +5238,11 @@ fn (mut p Parser) pointer_cast_expr_from_current_amp() ?flat.NodeId {
 	saved_tok := p.tok
 	saved_lit := p.lit
 	saved_tok_pos := p.tok_pos
+	saved_tok_end := p.tok_end
 	saved_peek_tok := p.peek_tok
 	saved_peek_lit := p.peek_lit
 	saved_peek_pos := p.peek_pos
+	saved_peek_end := p.peek_end
 	saved_has_peek := p.has_peek
 	type_name := '&' + p.parse_type_name()
 	if type_name.len > 1 && p.tok == .lpar {
@@ -5221,9 +5261,11 @@ fn (mut p Parser) pointer_cast_expr_from_current_amp() ?flat.NodeId {
 	p.tok = saved_tok
 	p.lit = saved_lit
 	p.tok_pos = saved_tok_pos
+	p.tok_end = saved_tok_end
 	p.peek_tok = saved_peek_tok
 	p.peek_lit = saved_peek_lit
 	p.peek_pos = saved_peek_pos
+	p.peek_end = saved_peek_end
 	p.has_peek = saved_has_peek
 	return none
 }

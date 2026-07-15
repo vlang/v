@@ -97,6 +97,33 @@ fn test_parser_attaches_stable_file_positions_to_nodes() {
 	assert two_pos.id == 2
 	assert one_pos.offset > 0
 	assert two_pos.offset > 0
+	assert one_pos.end >= one_pos.offset
+	assert two_pos.end >= two_pos.offset
+}
+
+fn test_parser_canonicalizes_repeated_node_text() {
+	path := os.join_path(os.temp_dir(), 'v3_source_text_intern_${os.getpid()}.v')
+	os.write_file(path, 'module main\nfn repeated(repeated int) int { return repeated }\n')!
+	defer {
+		os.rm(path) or {}
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_into(path)
+	mut pointers := []usize{}
+	for idx in 0 .. p.a.nodes.len {
+		if p.a.nodes[idx].value == 'repeated' {
+			pointers << usize(p.a.nodes[idx].value.str)
+		}
+	}
+	assert pointers.len >= 3
+	for pointer in pointers[1..] {
+		assert pointer == pointers[0]
+	}
+	assert p.a.text_count() > 0
+	p.release_source_storage()
+	assert p.a.source_buffers.len == 0
+	assert p.a.nodes.any(it.value == 'repeated')
 }
 
 fn test_missing_source_is_a_structured_diagnostic() {

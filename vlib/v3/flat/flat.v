@@ -5,6 +5,9 @@ import v3.token
 // NodeId aliases node id values used by flat.
 pub type NodeId = int
 
+// TextId is the stable identity of one canonical AST text value.
+pub type TextId = u32
+
 pub const empty_node = NodeId(-1)
 
 const empty_node_value = Node{}
@@ -169,6 +172,11 @@ pub mut:
 	// by AST nodes. Keeping the buffers on the AST makes the lifetime boundary
 	// explicit and lets parser workers transfer ownership with their nodes.
 	source_buffers []string
+	// text_values/text_ids own one canonical copy of every non-empty string
+	// stored in a node payload. Nodes keep string compatibility views while
+	// semantic/compiler caches can use compact TextId identities.
+	text_values []string
+	text_ids    map[string]TextId
 }
 
 // set_node_is_mut updates a node's mut declaration marker in place.
@@ -192,7 +200,82 @@ pub fn FlatAst.new() FlatAst {
 		export_fn_names: map[string]string{}
 		noreturn_fns:    map[string]bool{}
 		source_files:    map[int]&token.File{}
+		text_ids:        map[string]TextId{}
 	}
+}
+
+// intern_text returns the canonical AST-owned copy and stable identity of text.
+pub fn (mut a FlatAst) intern_text(value string) (TextId, string) {
+	if value.len == 0 {
+		return TextId(0), ''
+	}
+	if id := a.text_ids[value] {
+		return id, a.text_values[int(id) - 1]
+	}
+	canonical := value.clone()
+	id := TextId(a.text_values.len + 1)
+	a.text_values << canonical
+	a.text_ids[canonical] = id
+	return id, a.text_values.last()
+}
+
+// text resolves a stable AST text identity.
+pub fn (a &FlatAst) text(id TextId) string {
+	idx := int(id) - 1
+	if idx < 0 || idx >= a.text_values.len {
+		return ''
+	}
+	return a.text_values[idx]
+}
+
+// text_count returns the number of unique non-empty AST text values.
+pub fn (a &FlatAst) text_count() int {
+	return a.text_values.len
+}
+
+// intern_node_texts_from canonicalizes managed payloads in nodes[start..].
+// This runs serially after parse/transform worker merges, so the text table
+// itself requires no synchronization and cannot retain worker-arena storage.
+pub fn (mut a FlatAst) intern_node_texts_from(start int) {
+	first := if start < 0 { 0 } else { start }
+	if first >= a.nodes.len {
+		return
+	}
+	for idx in first .. a.nodes.len {
+		_, value := a.intern_text(a.nodes[idx].value)
+		_, typ := a.intern_text(a.nodes[idx].typ)
+		a.nodes[idx].value = value
+		a.nodes[idx].typ = typ
+		for param_idx in 0 .. a.nodes[idx].generic_params.len {
+			_, param := a.intern_text(a.nodes[idx].generic_params[param_idx])
+			a.nodes[idx].generic_params[param_idx] = param
+		}
+	}
+}
+
+// intern_metadata_texts canonicalizes all source-derived FlatAst map keys and
+// values. Once this and intern_node_texts_from have run, source buffers are no
+// longer part of the AST representation and can be released.
+pub fn (mut a FlatAst) intern_metadata_texts() {
+	mut disabled_fns := map[string]bool{}
+	for name, disabled in a.disabled_fns {
+		_, canonical := a.intern_text(name)
+		disabled_fns[canonical] = disabled
+	}
+	a.disabled_fns = disabled_fns.move()
+	mut export_fn_names := map[string]string{}
+	for name, value in a.export_fn_names {
+		_, canonical_name := a.intern_text(name)
+		_, canonical_value := a.intern_text(value)
+		export_fn_names[canonical_name] = canonical_value
+	}
+	a.export_fn_names = export_fn_names.move()
+	mut noreturn_fns := map[string]bool{}
+	for name, is_noreturn in a.noreturn_fns {
+		_, canonical := a.intern_text(name)
+		noreturn_fns[canonical] = is_noreturn
+	}
+	a.noreturn_fns = noreturn_fns.move()
 }
 
 // source_position resolves an AST source position to file/line/column metadata.
