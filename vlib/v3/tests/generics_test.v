@@ -437,4 +437,15 @@ fn main() {
 }
 ')
 	assert selector_convert_out == 'ok'
+
+	explicit_multi_arg_out := run_generic_exec(v3_bin, 'explicit_generic_call_keeps_runtime_args', '
+fn second[T](a T, b T) T {
+	return b
+}
+
+fn main() {
+	println(second[int](1, 2))
+}
+')
+	assert explicit_multi_arg_out == '2'
 }

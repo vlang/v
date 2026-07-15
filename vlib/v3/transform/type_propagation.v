@@ -93,6 +93,11 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 	}
 	if int(id) >= 0 {
 		node := t.a.nodes[int(id)]
+		if node.kind == .struct_init {
+			if typ := t.checker_expr_type_name(id) {
+				return typ
+			}
+		}
 		if node.kind == .call {
 			if ret := t.checker_resolved_non_builtin_return_type(id, node) {
 				return ret
@@ -526,6 +531,23 @@ fn (t &Transformer) lookup_struct_field_raw_type(type_name string, field_name st
 				return f.raw_typ
 			}
 			return f.typ
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_struct_field_raw_type_with_owner(type_name string, field_name string) ?(string, string) {
+	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
+	for f in lookup.info.fields {
+		if f.name == field_name {
+			raw := if f.raw_typ.len > 0 { f.raw_typ } else { f.typ }
+			owner_type := if lookup.owner_type.contains('.') || lookup.info.module.len == 0
+				|| lookup.info.module == 'main' || lookup.info.module == 'builtin' {
+				lookup.owner_type
+			} else {
+				'${lookup.info.module}.${lookup.owner_type}'
+			}
+			return raw, owner_type
 		}
 	}
 	return none
@@ -1285,7 +1307,7 @@ fn (t &Transformer) is_string_type(id flat.NodeId) bool {
 	if node.kind == .string_literal || node.kind == .string_interp {
 		return true
 	}
-	return t.node_type(id) == 'string'
+	return t.normalize_type_alias(t.node_type(id)) == 'string'
 }
 
 // is_array_type checks if a type string represents an array type (starts with `[]`).

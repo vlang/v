@@ -459,6 +459,9 @@ fn (t &Transformer) smartcast_target_type(sc SmartcastContext) string {
 	if sc.sum_type_name == option_unwrap_marker {
 		return sc.variant_name
 	}
+	if sc.variant_name.starts_with('&') {
+		return '&' + t.resolve_variant(sc.sum_type_name, sc.variant_name[1..])
+	}
 	if t.is_interface_type_name(sc.sum_type_name) {
 		return t.interface_variant_type(sc.variant_name)
 	}
@@ -583,8 +586,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 		new_expr := t.stable_transformed_expr_for_reuse(new_expr0, expr_type, 'ierror_is')
 		op := if expr_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
 		typ := t.make_selector_op(new_expr, '_typ', 'int', op)
-		type_id := t.interface_impl_type_id(clean_type0, 'None__') or { 0 }
-		return t.make_infix(.eq, typ, t.make_int_literal(type_id))
+		return t.make_ierror_none_type_check(typ, clean_type0)
 	}
 	if t.is_interface_type_name(clean_type0) {
 		new_expr := t.transform_expr(expr_id)
@@ -1012,6 +1014,19 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 		if enum_variant.len > 0 {
 			matches = true
 			matched_variant = enum_variant
+		}
+	}
+	if !matches {
+		path := t.sum_variant_path(resolved_sum, clean_variant)
+		if path.len == 1 {
+			matches = true
+			matched_variant = path[0]
+		} else if path.len > 1 {
+			nested_sum := t.resolve_sum_name(t.trim_pointer_type(path[0]))
+			if nested_sum.len > 0 && nested_sum in t.sum_types {
+				nested_value := t.wrap_sum_value(expr_id, nested_sum)
+				return t.make_sum_literal(resolved_sum, path[0], nested_value)
+			}
 		}
 	}
 	if !matches {
