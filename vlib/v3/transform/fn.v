@@ -5448,9 +5448,6 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 }
 
 fn (t &Transformer) current_source_module() string {
-	if t.cur_fn_name == 'main' {
-		return 'main'
-	}
 	if !isnil(t.tc) {
 		if entry_file := t.tc.fn_type_files['main'] {
 			if entry_file == t.cur_file {

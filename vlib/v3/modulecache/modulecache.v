@@ -734,11 +734,17 @@ fn c_declaration_item(item string, has_brace bool) string {
 		return item
 	}
 	clean := trim_leading_c_comments(trimmed)
-	if clean.starts_with('extern "C"') {
-		rest := clean['extern "C"'.len..].trim_space()
-		if rest.starts_with('{') {
-			return item
+	if block := c_extern_c_block(item) {
+		inner_header, _ := c_declaration_header(block.inner)
+		mut result := block.before
+		if !result.ends_with('\n') && !inner_header.starts_with('\n') {
+			result += '\n'
 		}
+		result += inner_header
+		if !result.ends_with('\n') && !block.after.starts_with('\n') {
+			result += '\n'
+		}
+		return result + block.after
 	}
 	if c_starts_with_static_storage_class(clean) || clean.starts_with('typedef ')
 		|| c_tag_declaration_is_type_only(clean, has_brace) {
@@ -769,6 +775,10 @@ fn c_declaration_item(item string, has_brace bool) string {
 
 fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {
 	clean := trim_leading_c_comments(item.trim_space())
+	if block := c_extern_c_block(item) {
+		_, has_static_storage := c_declaration_header(block.inner)
+		return has_static_storage
+	}
 	if has_brace {
 		brace := clean.index_u8(`{`)
 		if brace > 0 {
@@ -786,6 +796,38 @@ fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {
 		return !c_declaration_head_is_function(clean.trim_right(';'))
 	}
 	return true
+}
+
+struct CExternBlock {
+	before string
+	inner  string
+	after  string
+}
+
+fn c_extern_c_block(item string) ?CExternBlock {
+	clean := trim_leading_c_comments(item.trim_space())
+	if !clean.starts_with('extern "C"') {
+		return none
+	}
+	rest := clean['extern "C"'.len..].trim_space()
+	if !rest.starts_with('{') {
+		return none
+	}
+	marker_pos := item.index('extern "C"') or { return none }
+	brace_offset := item[marker_pos + 'extern "C"'.len..].index_u8(`{`)
+	if brace_offset < 0 {
+		return none
+	}
+	open := marker_pos + 'extern "C"'.len + brace_offset
+	close := item.last_index_u8(`}`)
+	if close <= open {
+		return none
+	}
+	return CExternBlock{
+		before: item[..open + 1]
+		inner:  item[open + 1..close]
+		after:  item[close..]
+	}
 }
 
 fn c_starts_with_static_storage_class(value string) bool {
