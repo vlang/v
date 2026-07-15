@@ -393,8 +393,15 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 		}
 		ok_cond := t.make_selector(t.make_ident(opt_name), 'ok', 'bool')
 		opt_err_expr := t.make_selector(t.make_ident(opt_name), 'err', 'IError')
-		opt_else_block := t.make_block(t.lower_map_or_body_to_stmts(body_id, val_name, result_type,
-			node.value, opt_err_expr))
+		mut opt_else_stmts := []flat.NodeId{}
+		if move_found_value && node.value in ['?', '!'] {
+			// Propagation transfers the failed wrapper's error through `opt_name`, so the map
+			// slot must relinquish it before the return/panic branch consumes that copy.
+			opt_else_stmts << t.make_clear_map_ptr_value(ptr_name, info.value_type)
+		}
+		opt_else_stmts << t.lower_map_or_body_to_stmts(body_id, val_name, result_type, node.value,
+			opt_err_expr)
+		opt_else_block := t.make_block(opt_else_stmts)
 		t.make_block([opt_decl, t.make_if(ok_cond, t.make_block(ok_stmts), opt_else_block)])
 	} else {
 		found_value := if wrap_found_value {
