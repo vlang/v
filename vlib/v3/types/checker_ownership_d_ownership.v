@@ -8555,6 +8555,10 @@ fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, inf
 			tc.ownership_report_moved(moved.name, moved.info, arg_id)
 			continue
 		}
+		if _ := tc.ownership_borrowed_alias_source(arg_name, false) {
+			tc.ownership_reject_global_move(arg_name, id, call_name, true)
+			continue
+		}
 		tc.ownership_reject_global_move(arg_name, id, call_name, true)
 		if arg_name in st.owned_vars {
 			type_name := tc.ownership_type_name_for_var(arg_name)

@@ -246,7 +246,7 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 	key_name := t.new_temp('map_key')
 	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
 		key_type), t.map_key_storage_type(key_type))
-	cleanup_key := !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(key_id)
+	cleanup_key := !isnil(t.tc) && t.map_key_expr_creates_owned_value(key_id, key_type)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
 	if !isnil(t.tc) && t.tc.ownership_index_read_moves_value(id)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type)) {

@@ -10755,6 +10755,10 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'any', 'all' {
+					$if ownership ? {
+						tc.check_array_dsl_fn_borrows_element(node, clean_array.elem_type, id,
+							'array.${fn_node.value} predicate')
+					}
 					return CallInfo{
 						name:         'array.${fn_node.value}'
 						params:       tarr2(base_type, Type(bool_))
@@ -10764,6 +10768,10 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'count' {
+					$if ownership ? {
+						tc.check_array_dsl_fn_borrows_element(node, clean_array.elem_type, id,
+							'array.count predicate')
+					}
 					return CallInfo{
 						name:         'array.count'
 						params:       tarr2(base_type, Type(bool_))
