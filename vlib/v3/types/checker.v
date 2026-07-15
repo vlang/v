@@ -10706,6 +10706,10 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'filter' {
+					$if ownership ? {
+						tc.check_array_dsl_fn_borrows_element(node, clean_array.elem_type, id,
+							'array.filter predicate')
+					}
 					if bad_type := tc.ownership_default_clone_missing_method(clean_array.elem_type) {
 						tc.record_error(.call_arg_mismatch,
 							'cannot filter array elements: `${bad_type}` requires ownership destruction but has no `clone()` method',
@@ -10730,7 +10734,8 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				'map' {
 					elem_type := tc.array_map_return_elem_type(node)
 					$if ownership ? {
-						tc.check_array_map_mapper_borrows_element(node, clean_array.elem_type, id)
+						tc.check_array_dsl_fn_borrows_element(node, clean_array.elem_type, id,
+							'array.map mapper')
 					}
 					if tc.array_map_result_borrows_element(node) {
 						if bad_type := tc.ownership_default_clone_missing_method(elem_type) {

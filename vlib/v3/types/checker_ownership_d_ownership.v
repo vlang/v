@@ -5878,7 +5878,7 @@ fn (mut tc TypeChecker) ownership_bind_array_dsl_element(node flat.Node, target_
 	tc.ownership_add_borrow(source_name, target_name, receiver_id, false)
 }
 
-fn (mut tc TypeChecker) check_array_map_mapper_borrows_element(node flat.Node, elem_type Type, pos flat.NodeId) {
+fn (mut tc TypeChecker) check_array_dsl_fn_borrows_element(node flat.Node, elem_type Type, pos flat.NodeId, label string) {
 	if !tc.ownership_type_requires_destruction(elem_type) || node.children_count < 2 {
 		return
 	}
@@ -5889,7 +5889,7 @@ fn (mut tc TypeChecker) check_array_map_mapper_borrows_element(node flat.Node, e
 		return
 	}
 	tc.record_error(.call_arg_mismatch,
-		'array.map mapper cannot consume borrowed `${elem_type.name()}` elements; use a pointer parameter or clone the element',
+		'${label} cannot consume borrowed `${elem_type.name()}` elements; use a pointer parameter or clone the element',
 		pos)
 }
 
