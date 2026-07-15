@@ -93,6 +93,7 @@ mut:
 	field_name_set                 map[string]bool   // every struct field's C name (lazy) — for const/field collision checks
 	modules                        map[string]string // alias -> full module name
 	fn_ptr_types                   map[string]string // fn_ptr:ret|params -> typedef name
+	used_fn_ptr_types              map[string]bool   // signatures referenced by emitted C
 	multi_return_types             []types.Type
 	multi_return_type_names        map[string]bool
 	multi_return_types_ready       bool
@@ -429,6 +430,7 @@ pub fn FlatGen.new() FlatGen {
 		libc_compat_fns:                map[string]bool{}
 		modules:                        map[string]string{}
 		fn_ptr_types:                   map[string]string{}
+		used_fn_ptr_types:              map[string]bool{}
 		multi_return_types:             []types.Type{}
 		multi_return_type_names:        map[string]bool{}
 		fixed_array_ret_wrappers:       map[string]bool{}
@@ -607,6 +609,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.libc_compat_fns.clear()
 	g.modules.clear()
 	g.fn_ptr_types.clear()
+	g.used_fn_ptr_types.clear()
 	g.multi_return_types = []types.Type{}
 	g.multi_return_type_names.clear()
 	g.multi_return_types_ready = false
@@ -1127,7 +1130,9 @@ fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name
 		}
 		param_idx++
 		if param_type is types.FnType {
-			g.resolve_fn_ptr_type(g.tc.c_type(param_type))
+			// Keep the canonical name available for a later concrete use without
+			// emitting a typedef solely for a function that mark-used discarded.
+			g.register_fn_ptr_type(g.tc.c_type(param_type))
 		}
 	}
 }

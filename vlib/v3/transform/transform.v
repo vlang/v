@@ -93,6 +93,7 @@ mut:
 	pointer_value_lvalues        map[string]bool
 	pointer_value_rvalues        map[string]bool
 	temp_counter                 int
+	global_temp_counter          int
 	pending_stmts                []flat.NodeId
 	smartcast_stack              []SmartcastContext
 	invalidated_smartcasts       map[string]bool
@@ -2736,6 +2737,11 @@ fn (mut t Transformer) collect_return_escape_idents(id flat.NodeId, mut names ma
 }
 
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
+	// Synthesized expression temporaries are function-local. Preserve the
+	// surrounding counter used by const/global lowering and give every function
+	// the same namespace regardless of serial/parallel scheduling.
+	outer_temp_counter := t.temp_counter
+	t.temp_counter = 0
 	if fn_idx >= 0 && fn_idx < t.transformed_fns.len {
 		t.transformed_fns[fn_idx] = true
 	}
@@ -2844,6 +2850,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	t.smartcast_stack.clear()
 	t.invalidated_smartcasts.clear()
 	t.cur_fn_is_generic = old_is_generic
+	t.temp_counter = outer_temp_counter
 }
 
 // fn_body_param_types supports fn body param types handling for Transformer.
@@ -9509,6 +9516,12 @@ fn (t &Transformer) resolve_fn_value_ident(name string) ?string {
 pub fn (mut t Transformer) new_temp(prefix string) string {
 	name := '__${prefix}_${t.temp_counter}'
 	t.temp_counter++
+	return name
+}
+
+fn (mut t Transformer) new_global_temp(prefix string) string {
+	name := '__${prefix}_${t.global_temp_counter}'
+	t.global_temp_counter++
 	return name
 }
 

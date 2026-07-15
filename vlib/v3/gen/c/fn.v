@@ -1933,8 +1933,9 @@ fn (mut g FlatGen) gen_method_value_closure(base_id flat.NodeId, base_type types
 	// fn-pointer typedef): an option/result is `Optional_T`, a fixed array its
 	// `_v_ret_*` wrapper — not the bare `c_type` (`Optional`/`Array_fixed_*`).
 	ret_ct := g.fn_return_type_name(ret)
-	idx := g.tmp_count
-	g.tmp_count++
+	// The wrapper has translation-unit scope, so name it from the stable selector
+	// site instead of the function-local temporary counter.
+	idx := int(base_id)
 	ctx_name := '_mvctx_${idx}'
 	wrap_name := '_mvwrap_${idx}'
 	mut wparams := []string{}
@@ -2640,6 +2641,9 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 		g.write_fn_node_params(node)
 		g.writeln(') {')
 	}
+	// All generated temporary identifiers are function-local. Reset immediately
+	// before emitting the body so lookup/preparation work cannot affect spelling.
+	g.tmp_count = 0
 	g.indent++
 	g.gen_function_defer_prelude()
 
@@ -8738,9 +8742,24 @@ fn (g &FlatGen) collect_c_extern_ref_from_node_into(node flat.Node, mut refs map
 }
 
 fn (mut g FlatGen) preseed_c_extern_fn_ptr_types() {
+	referenced := g.c_extern_referenced_symbols()
 	for i in 0 .. g.a.nodes.len {
 		node := g.a.nodes[i]
 		if node_kind_id(node) != 76 {
+			continue
+		}
+		raw_name := if node.value.starts_with('C.') { node.value } else { 'C.${node.value}' }
+		raw_cfn := g.cname(raw_name)
+		cfn := c_winapi_wide_export_name(raw_cfn)
+		shared_runtime_extern := g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols
+		if g.has_used_fn_filter() && !(g.spawn_wrapper_defs.len > 0
+			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
+			&& !g.used_fn_contains(raw_name) && !g.used_fn_contains(raw_cfn)
+			&& !g.used_fn_contains(cfn) && !referenced[raw_name] && !referenced[raw_cfn]
+			&& !referenced[cfn] {
+			continue
+		}
+		if !g.should_emit_c_extern_decl(cfn) {
 			continue
 		}
 		ret_type := g.tc.parse_type(node.typ)
@@ -9847,20 +9866,18 @@ fn (mut g FlatGen) fn_ptr_typedefs() {
 	start_len := g.emitted_fn_ptr_typedefs.len
 	for {
 		mut pending_encoded := []string{}
-		mut pending_name := []string{}
-		for encoded, name in g.fn_ptr_types {
-			if g.emitted_fn_ptr_typedefs[encoded] {
+		for encoded, _ in g.fn_ptr_types {
+			if !g.used_fn_ptr_types[encoded] || g.emitted_fn_ptr_typedefs[encoded] {
 				continue
 			}
 			pending_encoded << encoded
-			pending_name << name
 		}
 		if pending_encoded.len == 0 {
 			break
 		}
-		for i in 0 .. pending_encoded.len {
-			g.emit_fn_ptr_typedef(pending_encoded[i], pending_name[i], mut
-				g.emitted_fn_ptr_typedefs)
+		pending_encoded.sort()
+		for encoded in pending_encoded {
+			g.emit_fn_ptr_typedef(encoded, g.fn_ptr_types[encoded], mut g.emitted_fn_ptr_typedefs)
 		}
 	}
 	if g.emitted_fn_ptr_typedefs.len > start_len {
@@ -10008,6 +10025,9 @@ fn (mut g FlatGen) multi_return_forward_decls() {
 	// cgen preseeds fn-ptr types that the serial path never materializes, so their
 	// return multi-returns may not appear among the function/expression types above.
 	for encoded, _ in g.fn_ptr_types {
+		if !g.used_fn_ptr_types[encoded] {
+			continue
+		}
 		ret, _ := fn_ptr_typedef_parts(encoded)
 		if ret.starts_with('multi_return_') && ret !in emitted {
 			emitted[ret] = true
@@ -10186,6 +10206,11 @@ fn (mut g FlatGen) emit_multi_return_field_option_typedefs(ret types.MultiReturn
 
 // resolve_fn_ptr_type resolves resolve fn ptr type information for c.
 fn (mut g FlatGen) resolve_fn_ptr_type(typ string) string {
+	g.used_fn_ptr_types[typ] = true
+	return g.register_fn_ptr_type(typ)
+}
+
+fn (mut g FlatGen) register_fn_ptr_type(typ string) string {
 	if typ in g.fn_ptr_types {
 		return g.fn_ptr_types[typ]
 	}

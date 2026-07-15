@@ -127,9 +127,8 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		mut chunk_items := split_flat_cgen_items(items, n_jobs)
 		chunk_count := chunk_items.len
 		// chunk[0] is emitted by the master directly into its own builder; the
-		// other chunks get helper threads. Worker chunk ci keeps the temp-name base
-		// (ci+1)*100_000, so each chunk stays in its own disjoint _tN range and
-		// the numbering is deterministic.
+		// other chunks get helper threads. Function-local temporary names are reset
+		// for each item, so their spelling does not depend on chunk assignment.
 		thread_count := chunk_count - 1
 		mut args := []FlatCgenChunkArgs{cap: chunk_count}
 		args << FlatCgenChunkArgs{
@@ -149,7 +148,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			}
 		}
 
-		g.tmp_count = 100_000
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		mut tasks := []workers.Task{cap: chunk_count}
 		for ci in 0 .. chunk_count {
@@ -417,7 +415,7 @@ fn (g &FlatGen) parallel_base_type_text(typ string) string {
 // preseed_parallel_fn_ptr_type supports preseed parallel fn ptr type handling for FlatGen.
 fn (mut g FlatGen) preseed_parallel_fn_ptr_type(typ types.Type) {
 	if typ is types.FnType {
-		g.resolve_fn_ptr_type(g.fn_ptr_type_key(typ))
+		g.register_fn_ptr_type(g.fn_ptr_type_key(typ))
 		for param in typ.params {
 			g.preseed_parallel_fn_ptr_type(param)
 		}
@@ -469,7 +467,7 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 // cur_param_* scratch; and runtime_inits (kept private out of caution). This drops the
 // bulk of each worker's clone cost — previously the whole table set was duplicated per
 // worker and, under -gc none, never freed.
-fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
+fn (g &FlatGen) new_parallel_worker(_ int) &FlatGen {
 	return &FlatGen{
 		sb:                             strings.new_builder(64_000)
 		a:                              unsafe { g.a }
@@ -504,10 +502,11 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		libc_compat_fns:                g.libc_compat_fns.clone()
 		tc:                             g.clone_parallel_type_checker()
 		has_builtins:                   g.has_builtins
-		tmp_count:                      (worker_id + 1) * 100_000
+		tmp_count:                      0
 		line_start:                     true
 		modules:                        g.modules
 		fn_ptr_types:                   g.fn_ptr_types.clone()
+		used_fn_ptr_types:              g.used_fn_ptr_types.clone()
 		fixed_array_ret_wrappers:       g.fixed_array_ret_wrappers
 		concrete_optional_abi_fns:      g.concrete_optional_abi_fns
 		fn_decl_param_types:            g.fn_decl_param_types
@@ -678,6 +677,11 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
 			g.fn_ptr_types[encoded] = name
+		}
+	}
+	for encoded, used in w.used_fn_ptr_types {
+		if used {
+			g.used_fn_ptr_types[encoded] = true
 		}
 	}
 	for name, enabled in w.libc_compat_fns {

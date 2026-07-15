@@ -5364,12 +5364,12 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 
 fn (mut t Transformer) new_fn_literal_name() string {
 	for {
-		name := t.new_temp('anon_fn')
+		name := t.new_global_temp('anon_fn')
 		if !t.fn_literal_name_exists(name) {
 			return name
 		}
 	}
-	return t.new_temp('anon_fn')
+	return t.new_global_temp('anon_fn')
 }
 
 fn (t &Transformer) fn_literal_name_exists(name string) bool {
