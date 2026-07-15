@@ -215,6 +215,40 @@ fn (mut t Transformer) make_array_clone_call(base_id flat.NodeId, base_type stri
 	return t.make_array_clone_value(receiver, base_type)
 }
 
+// make_array_reverse_call clones ownership-bearing elements before reversing the new array
+// in place, so the source and result never share element ownership.
+fn (mut t Transformer) make_array_reverse_call(base_id flat.NodeId, base_type string) flat.NodeId {
+	clean_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	if clean_type.starts_with('[]') && !isnil(t.tc) {
+		elem_type := t.tc.parse_type(clean_type[2..])
+		if t.tc.ownership_type_requires_destruction(elem_type) {
+			// The checker rejects this call. Do not mutate the source while processing the
+			// invalid program.
+			if _ := t.tc.ownership_default_clone_missing_method(elem_type) {
+				mut receiver := t.transform_expr(base_id)
+				if base_type.starts_with('&') {
+					receiver = t.make_prefix(.mul, receiver)
+					t.set_node_typ(int(receiver), clean_type)
+				}
+				return receiver
+			}
+			clone := t.make_array_clone_call(base_id, base_type)
+			stable_clone := t.stable_transformed_expr_for_reuse(clone, clean_type, 'owned_reverse')
+			t.mark_fn_used('array__reverse_in_place')
+			reverse := t.make_call_typed('array__reverse_in_place', arr1(t.runtime_addr(stable_clone,
+				clean_type)), 'void')
+			t.pending_stmts << t.make_expr_stmt(reverse)
+			return stable_clone
+		}
+	}
+	mut receiver := t.transform_expr(base_id)
+	if base_type.starts_with('&') {
+		receiver = t.make_prefix(.mul, receiver)
+		t.set_node_typ(int(receiver), clean_type)
+	}
+	return t.make_call_typed('array__reverse', arr1(receiver), clean_type)
+}
+
 fn (mut t Transformer) make_array_clone_value(receiver flat.NodeId, base_type string) flat.NodeId {
 	clean_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
 	depth := array_repeat_clone_depth(clean_type)

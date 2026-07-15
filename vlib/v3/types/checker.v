@@ -10497,12 +10497,10 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				return tc.call_info(mname, true)
 			}
 			if fn_node.value in ['clone', 'reverse'] {
-				if fn_node.value == 'clone' {
-					if bad_type := tc.ownership_default_clone_missing_method(clean_array.elem_type) {
-						tc.record_error(.call_arg_mismatch,
-							'cannot clone array elements: `${bad_type}` requires ownership destruction but has no `clone()` method',
-							id)
-					}
+				if bad_type := tc.ownership_default_clone_missing_method(clean_array.elem_type) {
+					tc.record_error(.call_arg_mismatch,
+						'cannot ${fn_node.value} array elements: `${bad_type}` requires ownership destruction but has no `clone()` method',
+						id)
 				}
 				return CallInfo{
 					name:         'array.${fn_node.value}'

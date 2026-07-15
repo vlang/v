@@ -5145,12 +5145,16 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return t.make_array_clone_call(base_id, base_type)
 		}
 		'reverse' {
-			mut receiver := t.transform_expr(base_id)
-			if base_type.starts_with('&') {
-				receiver = t.make_prefix(.mul, receiver)
-				t.set_node_typ(int(receiver), clean_base_type)
+			method_name := t.resolve_collection_receiver_method_name(base_id, fn_node.value,
+				clean_base_type)
+			if method_name.len > 0 && t.call_resolved_to_method(call_id, method_name)
+				&& !t.receiver_method_name_is_open_generic(method_name) {
+				args := t.transform_receiver_method_args(node, base_id, method_name)
+				ret_type := t.receiver_method_return_type(method_name, node.typ)
+				t.mark_fn_used(method_name)
+				return t.make_call_typed(method_name, args, ret_type)
 			}
-			return t.make_call_typed('array__reverse', arr1(receiver), clean_base_type)
+			return t.make_array_reverse_call(base_id, base_type)
 		}
 		'contains' {
 			if node.children_count < 2 {
@@ -7927,6 +7931,7 @@ fn is_array_runtime_helper_method_name(name string, start int, len int) bool {
 		6 { name_part_eq(name, start, 'insert') }
 		7 { name_part_eq(name, start, 'reverse') || name_part_eq(name, start, 'prepend') }
 		9 { name_part_eq(name, start, 'push_many') }
+		16 { name_part_eq(name, start, 'reverse_in_place') }
 		18 { name_part_eq(name, start, 'needs_unique_shift') }
 		else { false }
 	}
