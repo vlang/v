@@ -222,7 +222,17 @@ fn (mut t Transformer) lower_map_membership_expr(map_id flat.NodeId, key_id flat
 	key_name := t.new_temp('map_key')
 	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
 		key_type), t.map_key_storage_type(key_type))
-	return t.make_map_exists_expr(map_expr, map_type, key_name)
+	exists := t.make_map_exists_expr(map_expr, map_type, key_name)
+	cleanup_key := !isnil(t.tc) && t.map_key_expr_creates_owned_value(key_id, key_type)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
+	if cleanup_key {
+		result_name := t.new_temp('map_exists')
+		t.pending_stmts << t.make_decl_assign_typed(result_name, exists, 'bool')
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
+			arr1(t.make_ident(key_name)), 'void'))
+		return t.make_ident(result_name)
+	}
+	return exists
 }
 
 // try_lower_map_index_expr supports try lower map index expr handling for Transformer.
