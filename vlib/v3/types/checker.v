@@ -2708,18 +2708,25 @@ fn (tc &TypeChecker) call_arg_expected_type(info CallInfo, param_idx int) Type {
 }
 
 fn (mut tc TypeChecker) annotate_params_field_expected_expr(arg_id flat.NodeId, field_name string, info CallInfo) {
+	if expected := tc.params_field_expected_type(field_name, info) {
+		tc.annotate_expected_expr(arg_id, expected)
+	}
+}
+
+fn (tc &TypeChecker) params_field_expected_type(field_name string, info CallInfo) ?Type {
 	if field_name.len == 0 {
-		return
+		return none
 	}
 	for param in info.params {
-		clean := unwrap_pointer(param)
-		if clean is Struct {
-			if expected := tc.struct_field_type(clean.name, field_name) {
-				tc.annotate_expected_expr(arg_id, expected)
-				return
-			}
+		if !tc.is_params_struct_type(param) {
+			continue
+		}
+		param_struct := struct_type_from_type(unwrap_pointer(param)) or { continue }
+		if expected := tc.struct_field_type(param_struct.name, field_name) {
+			return expected
 		}
 	}
+	return none
 }
 
 // annotate_for_in supports annotate for in handling for TypeChecker.
@@ -12261,11 +12268,21 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		// field_init args are fields of the collapsed `@[params]` struct, not positional params
-		if tc.a.child_node(&node, i).kind == .field_init {
+		raw_arg := tc.a.child_node(&node, i)
+		if raw_arg.kind == .field_init {
 			$if ownership ? {
 				tc.ownership_check_node_with_deferred_aggregate_consumption(arg_id)
 			} $else {
 				tc.check_node(arg_id)
+			}
+			if expected := tc.params_field_expected_type(raw_arg.value, info) {
+				actual := tc.resolve_expr(arg_id, expected)
+				if !tc.expr_compatible(arg_id, actual, expected)
+					&& !tc.pointer_value_compatible(actual, expected) {
+					tc.type_mismatch(.assignment_mismatch,
+						'cannot initialize params field `${raw_arg.value}` with `${actual.name()}`; expected `${expected.name()}`', tc.a.child(&node,
+						i))
+				}
 			}
 			continue
 		}
@@ -15219,8 +15236,8 @@ fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []Local
 // check_struct_init validates check struct init state for types.
 fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	init_type := tc.parse_type(node.value)
-	if init_type is Struct {
-		init_name := tc.struct_init_field_lookup_name(node.value, init_type.name)
+	if init_struct := struct_type_from_type(init_type) {
+		init_name := tc.struct_init_field_lookup_name(node.value, init_struct.name)
 		fields := tc.struct_fields_for_init(init_name)
 		for i in 0 .. node.children_count {
 			field_id := tc.a.child(&node, i)
