@@ -76,6 +76,26 @@ fn test_parser_stops_after_diagnostic_budget() {
 	assert diagnostics.last().message.contains('too many errors')
 }
 
+fn test_scanner_parser_deterministic_fuzz_corpus_stays_bounded() {
+	mut state := u64(0x9e3779b97f4a7c15)
+	for case_index in 0 .. 128 {
+		length := 1 + case_index * 509 % 1024
+		mut data := []u8{len: length}
+		for byte_index in 0 .. length {
+			state ^= state << 13
+			state ^= state >> 7
+			state ^= state << 17
+			data[byte_index] = u8(state >> 24)
+		}
+		source := data.bytestr()
+		scanner_diagnostics := scan_source_diagnostics(source)
+		assert scanner_diagnostics.all(it.offset >= 0 && it.offset <= source.len)
+		_, parser_diagnostics := parse_source_with_diagnostics('fuzz_${case_index}', source)
+		assert parser_diagnostics.len <= 101
+		assert parser_diagnostics.all(it.pos.offset >= 0 && it.pos.offset <= source.len)
+	}
+}
+
 fn test_parser_attaches_stable_file_positions_to_nodes() {
 	path1 := os.join_path(os.temp_dir(), 'v3_source_pos_1_${os.getpid()}.v')
 	path2 := os.join_path(os.temp_dir(), 'v3_source_pos_2_${os.getpid()}.v')
