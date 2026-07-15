@@ -2880,33 +2880,39 @@ fn (mut t Transformer) reset_escaping_amp_state() {
 
 // scan_escape_pass recursively collects, in a function-body subtree, (a) the LHS
 // names of `p := &ident` declarations into `amp_ptrs` (and the source `ident` into
-// `amp_sources[p]`), (b) plain pointer copies `q := p` into `ptr_aliases[q] = p`, and
-// (c) every ident name appearing inside a return statement into `returned`.
+// `amp_sources[p]`), (b) plain pointer copies `q := p` into `ptr_aliases[q] = p`,
+// (c) stack-backed interface boxes assigned to locals, and (d) every ident name
+// appearing inside a return statement into `returned`.
 fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .decl_assign && node.children_count == 2 {
-		lhs := t.a.nodes[int(t.a.child(&node, 0))]
-		rhs := t.a.nodes[int(t.a.child(&node, 1))]
-		if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .prefix && rhs.op == .amp
-			&& rhs.children_count > 0 {
-			amp_child := t.a.nodes[int(t.a.child(&rhs, 0))]
-			if amp_child.kind == .ident {
-				amp_ptrs[lhs.value] = true
-				amp_sources[lhs.value] = amp_child.value
-			}
-		} else if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .ident && rhs.value.len > 0 {
-			// `q := p` aliases an existing pointer; recorded so a returned alias still marks the
-			// underlying `p := &v` as escaping.
-			ptr_aliases[lhs.value] = rhs.value
-			if rhs.value in interface_boxes {
+	if node.kind in [.decl_assign, .assign] && node.children_count >= 2 {
+		mut i := 0
+		for i + 1 < node.children_count {
+			lhs := t.a.nodes[int(t.a.child(&node, i))]
+			rhs := t.a.nodes[int(t.a.child(&node, i + 1))]
+			if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .prefix && rhs.op == .amp
+				&& rhs.children_count > 0 {
+				amp_child := t.a.nodes[int(t.a.child(&rhs, 0))]
+				if amp_child.kind == .ident {
+					amp_ptrs[lhs.value] = true
+					amp_sources[lhs.value] = amp_child.value
+				}
+			} else if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .ident
+				&& rhs.value.len > 0 {
+				// `q := p` aliases an existing pointer; recorded so a returned alias still marks the
+				// underlying `p := &v` as escaping.
+				ptr_aliases[lhs.value] = rhs.value
+				if rhs.value in interface_boxes {
+					interface_boxes[lhs.value] = true
+				}
+			} else if lhs.kind == .ident && lhs.value.len > 0
+				&& t.interface_box_from_stack_pointer_source(t.a.child(&node, i + 1), amp_ptrs) {
 				interface_boxes[lhs.value] = true
 			}
-		} else if lhs.kind == .ident && lhs.value.len > 0
-			&& t.interface_box_from_stack_pointer_source(t.a.child(&node, 1), amp_ptrs) {
-			interface_boxes[lhs.value] = true
+			i += 2
 		}
 	}
 	if node.kind == .return_stmt {
@@ -3901,13 +3907,14 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		}
 		return t.transform_expr_for_type(child_id, payload_type)
 	}
-	if copied := t.heap_copy_escaping_interface_box_return(child_id, target_type) {
-		return copied
+	mut return_child_id := child_id
+	if rewritten := t.rewrite_escaping_interface_box_return_expr(child_id) {
+		return_child_id = rewritten
 	}
 	if target_type.len > 0 && target_type !in t.sum_types && !t.is_optional_type_name(target_type) {
-		return t.transform_expr_for_type(child_id, target_type)
+		return t.transform_expr_for_type(return_child_id, target_type)
 	}
-	return t.wrap_sum_return_expr(child_id)
+	return t.wrap_sum_return_expr(return_child_id)
 }
 
 fn (t &Transformer) return_child_target_type(child_index int, total_children int) string {
@@ -3954,16 +3961,76 @@ fn (mut t Transformer) heap_copy_local_address_return(child_id flat.NodeId) ?fla
 	return t.make_cast(t.cur_fn_ret_type, dup, t.cur_fn_ret_type)
 }
 
-fn (mut t Transformer) heap_copy_escaping_interface_box_return(child_id flat.NodeId, target_type string) ?flat.NodeId {
-	if target_type.len == 0 || target_type.starts_with('&') || isnil(t.tc) {
+fn (mut t Transformer) rewrite_escaping_interface_box_return_expr(child_id flat.NodeId) ?flat.NodeId {
+	if isnil(t.tc) || t.escaping_interface_box_locals.len == 0 {
 		return none
 	}
-	iface_name := t.resolve_interface_type_name(target_type)
+	mut replacements := map[string]string{}
+	return t.rewrite_escaping_interface_box_return_expr_rec(child_id, mut replacements)
+}
+
+fn (mut t Transformer) rewrite_escaping_interface_box_return_expr_rec(id flat.NodeId, mut replacements map[string]string) ?flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .ident && node.value in t.escaping_interface_box_locals {
+		tmp_name := if existing := replacements[node.value] {
+			existing
+		} else {
+			new_tmp := t.heap_copy_escaping_interface_box_local(node.value) or { return none }
+			replacements[node.value] = new_tmp
+			new_tmp
+		}
+		return t.make_ident(tmp_name)
+	}
+	if !return_expr_node_can_hold_escaping_interface_box(node) {
+		return none
+	}
+	mut children := []flat.NodeId{cap: int(node.children_count)}
+	mut changed := false
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		if rewritten := t.rewrite_escaping_interface_box_return_expr_rec(child_id, mut replacements) {
+			children << rewritten
+			changed = true
+		} else {
+			children << child_id
+		}
+	}
+	if !changed {
+		return none
+	}
+	start := t.a.children.len
+	for child in children {
+		t.a.children << child
+	}
+	return t.a.add_node(flat.Node{
+		kind:           node.kind
+		kind_id:        node.kind_id
+		op:             node.op
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+		generic_params: node.generic_params.clone()
+		is_mut:         node.is_mut
+		children_start: start
+		children_count: flat.child_count(children.len)
+	})
+}
+
+fn return_expr_node_can_hold_escaping_interface_box(node flat.Node) bool {
+	return node.kind in [.array_literal, .array_init, .struct_init, .field_init, .map_init, .paren,
+		.expr_stmt]
+}
+
+fn (mut t Transformer) heap_copy_escaping_interface_box_local(name string) ?string {
+	if name.len == 0 || isnil(t.tc) {
+		return none
+	}
+	local_type := t.var_type(name)
+	iface_name := t.resolve_interface_type_name(local_type)
 	if iface_name.len == 0 {
-		return none
-	}
-	node := t.a.nodes[int(child_id)]
-	if node.kind != .ident || node.value !in t.escaping_interface_box_locals {
 		return none
 	}
 	impls := if t.is_builtin_ierror_interface_name(iface_name) {
@@ -3974,7 +4041,7 @@ fn (mut t Transformer) heap_copy_escaping_interface_box_return(child_id flat.Nod
 	if impls.len == 0 {
 		return none
 	}
-	source := t.transform_expr(child_id)
+	source := t.transform_expr(t.make_ident(name))
 	tmp_name := t.new_temp('iface_ret')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, iface_name)
 	for impl in impls {
@@ -3988,9 +4055,7 @@ fn (mut t Transformer) heap_copy_escaping_interface_box_return(child_id flat.Nod
 		t.pending_stmts << t.make_if(cond, t.make_block(arr1(t.make_assign(object_lhs, dup))),
 			t.make_empty())
 	}
-	result := t.make_ident(tmp_name)
-	t.set_node_typ(int(result), iface_name)
-	return result
+	return tmp_name
 }
 
 // fixed_array_return_value supports fixed array return value handling for Transformer.

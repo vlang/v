@@ -3461,6 +3461,19 @@ fn test_returned_interface_local_boxed_from_local_address_heap_copies_on_return(
 	assert out == '2'
 }
 
+fn test_returned_interface_local_boxed_from_local_address_heap_copies_in_aggregates_and_assignments() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nstruct Holder {\n\treader Reader\n}\n\nfn make_array() []Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\treturn [r]\n}\n\nfn make_holder() Holder {\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tr := Reader(&b)\n\tb.n = 4\n\treturn Holder{\n\t\treader: r\n\t}\n}\n\nfn make_reassigned() Reader {\n\tmut r := Reader(&Box{\n\t\tn: 0\n\t})\n\tmut b := Box{\n\t\tn: 5\n\t}\n\tr = Reader(&b)\n\tb.n = 6\n\treturn r\n}\n\nfn main() {\n\tarr := make_array()\n\tprintln(int_str(arr[0].value()))\n\tholder := make_holder()\n\tprintln(int_str(holder.reader.value()))\n\treader := make_reassigned()\n\tprintln(int_str(reader.value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_returned_aggregate_heap_copy', source)
+	for signature in ['Array make_array(void) {', 'Holder make_holder(void) {',
+		'Reader make_reassigned(void) {'] {
+		body := c_fn_body(c_source, signature)
+		assert body.contains('memdup(') && body.contains('sizeof(Box)'), body
+	}
+	out := run_good(v3_bin, 'interface_box_returned_aggregate_heap_copy_run', source)
+	assert out == '2\n4\n6'
+}
+
 fn test_mut_interface_argument_borrows_existing_interface_box() {
 	v3_bin := build_v3()
 	source := 'interface Visitor {\n\tvalue() int\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (c Counter) value() int {\n\treturn c.n\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln(int_str(visitor.value()))\n}\n'
@@ -4083,6 +4096,18 @@ fn main() {
 }
 ',
 		'cannot assign `string` to `int`')
+	run_bad(v3_bin, 'overloaded_index_compound_assignment_rejects_getter_value_type',
+		getter_and_setter_src +
+		'
+
+fn main() {
+	mut d := Dict{
+		values: map[string]int{}
+	}
+	d["name"] += 1
+}
+',
+		'compound overloaded index assignment requires `[]` return type compatible with `[]=` value parameter type')
 }
 
 fn test_generic_overloaded_index_uses_specialized_methods() {

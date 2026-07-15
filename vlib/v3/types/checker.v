@@ -9639,6 +9639,14 @@ fn (mut tc TypeChecker) check_compound_index_assignment_getter(assign_id flat.No
 				}
 				return
 			}
+			if !tc.compound_index_overload_value_params_match(setter, getter) {
+				if tc.should_diagnose(lhs_id) {
+					tc.record_error(.assignment_mismatch,
+						'compound overloaded index assignment requires `[]` return type compatible with `[]=` value parameter type',
+						assign_id)
+				}
+				return
+			}
 			return
 		}
 		if tc.should_diagnose(lhs_id) {
@@ -9653,6 +9661,13 @@ fn (tc &TypeChecker) compound_index_overload_index_params_match(setter CallInfo,
 		return true
 	}
 	return tc.c_type(setter.params[1]) == tc.c_type(getter.params[1])
+}
+
+fn (tc &TypeChecker) compound_index_overload_value_params_match(setter CallInfo, getter CallInfo) bool {
+	if setter.params.len < 3 {
+		return true
+	}
+	return tc.type_compatible(getter.return_type, setter.params[2])
 }
 
 fn assignment_op_reads_lhs(op flat.Op) bool {
