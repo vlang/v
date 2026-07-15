@@ -4529,6 +4529,12 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	if t.resolve_receiver_method_name(base_id, 'clone').len > 0 {
 		return none
 	}
+	// The checker reports the concrete ownership-bearing field that has no safe clone.
+	// Do not turn the rejected default clone into a shallow aggregate copy while
+	// transforming the invalid program.
+	if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(base_type)) {
+		return t.make_empty()
+	}
 	mut receiver := t.transform_expr(base_id)
 	if raw_base_type.starts_with('&') {
 		receiver = t.make_prefix(.mul, receiver)
@@ -4828,8 +4834,12 @@ fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
 	if clean == 'string' || clean.starts_with('[]') || clean.starts_with('map[') {
 		return true
 	}
-	if !isnil(t.tc) && t.tc.named_type_implements_marker(clean, 'IClone') {
-		return true
+	if !isnil(t.tc) {
+		parsed := t.tc.parse_type(clean)
+		if t.tc.ownership_type_requires_destruction(parsed)
+			|| t.tc.named_type_implements_marker(clean, 'IClone') {
+			return true
+		}
 	}
 	if clean in t.structs || clean in t.sum_types {
 		for name, _ in t.fn_ret_types {
