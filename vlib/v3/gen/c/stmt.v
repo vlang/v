@@ -563,6 +563,10 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 			}
 		}
 		types.Interface {
+			if g.is_ierror_type_name(typ.name) {
+				g.gen_ownership_drop_result_error(expr, depth + 1)
+				return
+			}
 			mut iface_name := typ.name
 			if iface_name !in g.iface_impls {
 				qualified := g.tc.qualify_name(iface_name)
