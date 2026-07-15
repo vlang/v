@@ -723,6 +723,7 @@ fn clone_flat_ast(ast &flat.FlatAst) &flat.FlatAst {
 		export_fn_names: clone_string_string_map(ast.export_fn_names)
 		noreturn_fns:    clone_string_bool_map(ast.noreturn_fns)
 		source_files:    ast.source_files.clone()
+		source_buffers:  ast.source_buffers.clone()
 	}
 }
 

@@ -49,7 +49,6 @@ mut:
 	local_type_names                  map[string]string
 	local_type_scopes                 []string
 	export_records                    []ExportRecord
-	source_buffers                    []string
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
@@ -135,10 +134,10 @@ pub fn (mut p Parser) parse_into(path string) {
 		p.record_diagnostic('error reading source: ${err.msg()}', 0)
 		return
 	}
-	// Scanner token strings are zero-copy views into the source. Retain every
-	// source buffer for the Parser/AST lifetime so those views stay valid.
-	p.source_buffers << src
-	stable_src := p.source_buffers.last()
+	// Scanner token strings are zero-copy views into the source. The AST owns
+	// every source buffer so those views remain valid through later phases.
+	p.a.source_buffers << src
+	stable_src := p.a.source_buffers.last()
 	p.disable_source_arch_optimizations = !p.prefs.supports_inline_asm
 		&& source_contains_target_inline_asm(stable_src, p.prefs.target.arch)
 	if path.ends_with('.v') {

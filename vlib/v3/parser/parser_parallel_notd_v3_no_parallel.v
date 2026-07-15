@@ -173,7 +173,7 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 	if new_nodes > 0 {
 		for k in 0 .. new_nodes {
 			if w.a.nodes[k].children_count != 0 {
-				w.a.nodes[k] = w.a.nodes[k].with_shifted_children(child_shift)
+				w.a.nodes[k].children_start += child_shift
 			}
 		}
 		nodes_old_len := p.a.nodes.len
@@ -211,8 +211,13 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 			p.a.noreturn_fns[name] = true
 		}
 	}
-	for source in w.source_buffers {
-		p.source_buffers << source
+	for source in w.a.source_buffers {
+		p.a.source_buffers << source
+	}
+	unsafe {
+		// The string headers moved to the master AST. The worker must no longer
+		// release the storage referenced by them.
+		w.a.source_buffers.len = 0
 	}
 	for diagnostic in w.diagnostics {
 		p.diagnostics << diagnostic

@@ -1479,6 +1479,7 @@ fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.Flat
 		disabled_fns:    t.a.disabled_fns
 		noreturn_fns:    t.a.noreturn_fns
 		source_files:    t.a.source_files
+		source_buffers:  t.a.source_buffers
 	}
 }
 

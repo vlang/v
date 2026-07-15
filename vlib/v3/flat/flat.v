@@ -146,9 +146,9 @@ pub mut:
 	typ            string
 	generic_params []string
 	is_mut         bool
+	children_start i32
 pub:
 	pos            token.Pos
-	children_start i32
 	children_count i32
 	kind           NodeKind
 	op             Op
@@ -165,6 +165,10 @@ pub mut:
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
 	source_files    map[int]&token.File
+	// source_buffers owns the storage behind zero-copy scanner strings retained
+	// by AST nodes. Keeping the buffers on the AST makes the lifetime boundary
+	// explicit and lets parser workers transfer ownership with their nodes.
+	source_buffers []string
 }
 
 // set_node_is_mut updates a node's mut declaration marker in place.
