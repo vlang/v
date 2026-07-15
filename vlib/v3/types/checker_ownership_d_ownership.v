@@ -1167,7 +1167,7 @@ pub fn (tc &TypeChecker) ownership_type_requires_destruction(typ Type) bool {
 
 // check_ownership_map_assignment_key rejects borrowed map keys that cannot be cloned
 // before map storage takes an independent ownership-bearing copy.
-fn (mut tc TypeChecker) check_ownership_map_assignment_key(lhs_id flat.NodeId, _op flat.Op) {
+fn (mut tc TypeChecker) check_ownership_map_assignment_key(lhs_id flat.NodeId, op flat.Op) {
 	if tc.ownership == unsafe { nil } || !tc.valid_node_id(lhs_id) {
 		return
 	}
@@ -1188,6 +1188,7 @@ fn (mut tc TypeChecker) check_ownership_map_assignment_key(lhs_id flat.NodeId, _
 		return
 	}
 	map_id := tc.a.child(&lhs, 0)
+	tc.check_ownership_map_assignment_key(map_id, op)
 	map_type := map_type_from_receiver(tc.resolve_type(map_id)) or { return }
 	if map_type.key_type is String || !tc.ownership_type_requires_destruction(map_type.key_type) {
 		return

@@ -743,8 +743,10 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 	if !outer_key_is_owned && !isnil(t.tc)
 		&& t.normalize_type_alias(outer_info.key_type).trim_space() != 'string' {
 		outer_key_type := t.tc.parse_type(outer_info.key_type)
-		if t.tc.ownership_type_requires_destruction(outer_key_type)
-			&& t.tc.ownership_default_clone_missing_method(outer_key_type) == none {
+		if t.tc.ownership_type_requires_destruction(outer_key_type) {
+			if _ := t.tc.ownership_default_clone_missing_method(outer_key_type) {
+				return []flat.NodeId{}
+			}
 			outer_key_value = t.make_compiler_default_clone_value(outer_key_value,
 				outer_info.key_type, true)
 			outer_key_is_owned = true
