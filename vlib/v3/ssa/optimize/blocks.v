@@ -28,6 +28,10 @@ fn remove_unreachable_blocks(mut m ssa.Module) {
 		for blk in m.funcs[fi].blocks {
 			if reachable[blk] {
 				new_blocks << blk
+			} else {
+				for value_id in m.blocks[blk].instrs {
+					m.detach_instruction_uses(value_id)
+				}
 			}
 		}
 		mut func := m.funcs[fi]

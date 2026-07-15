@@ -511,6 +511,79 @@ pub fn (mut m Module) append_phi_operands(phi_val_id ValueID, val ValueID, block
 	}
 }
 
+// remove_value_user removes one instruction from a value's unique user list.
+pub fn (mut m Module) remove_value_user(value_id ValueID, user_id ValueID) {
+	if value_id <= 0 || value_id >= m.values.len {
+		return
+	}
+	mut value := m.values[value_id]
+	for idx := value.uses.len - 1; idx >= 0; idx-- {
+		if value.uses[idx] == user_id {
+			value.uses.delete(idx)
+		}
+	}
+	m.values[value_id] = value
+}
+
+// add_value_user records one instruction in a value's unique user list.
+pub fn (mut m Module) add_value_user(value_id ValueID, user_id ValueID) {
+	if value_id <= 0 || value_id >= m.values.len || user_id <= 0 || user_id >= m.values.len {
+		return
+	}
+	if user_id in m.values[value_id].uses {
+		return
+	}
+	mut value := m.values[value_id]
+	value.uses << user_id
+	m.values[value_id] = value
+}
+
+// rewrite_instruction changes an instruction while maintaining its value-use
+// edges. CFG edges remain the responsibility of callers that change a
+// terminator; they can rebuild or update the CFG once after batching edits.
+pub fn (mut m Module) rewrite_instruction(value_id ValueID, op OpCode, operands []ValueID) {
+	if value_id <= 0 || value_id >= m.values.len || m.values[value_id].kind != .instruction {
+		return
+	}
+	instr_idx := m.values[value_id].index
+	if instr_idx < 0 || instr_idx >= m.instrs.len {
+		return
+	}
+	old := m.instrs[instr_idx]
+	for operand_idx, operand in old.operands {
+		if old.is_value_operand(operand_idx) {
+			m.remove_value_user(operand, value_id)
+		}
+	}
+	mut rewritten := old
+	rewritten.op = op
+	rewritten.operands = operands
+	m.instrs[instr_idx] = rewritten
+	for operand_idx, operand in operands {
+		if rewritten.is_value_operand(operand_idx) {
+			m.add_value_user(operand, value_id)
+		}
+	}
+}
+
+// detach_instruction_uses removes every use edge contributed by an
+// instruction that is about to leave its block.
+pub fn (mut m Module) detach_instruction_uses(value_id ValueID) {
+	if value_id <= 0 || value_id >= m.values.len || m.values[value_id].kind != .instruction {
+		return
+	}
+	instr_idx := m.values[value_id].index
+	if instr_idx < 0 || instr_idx >= m.instrs.len {
+		return
+	}
+	instr := m.instrs[instr_idx]
+	for operand_idx, operand in instr.operands {
+		if instr.is_value_operand(operand_idx) {
+			m.remove_value_user(operand, value_id)
+		}
+	}
+}
+
 // add_block updates add block state for Module.
 pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 	id := BlockID(m.blocks.len)

@@ -4,74 +4,87 @@ import v3.ssa
 
 // dead_code_elimination supports dead code elimination handling for optimize.
 fn dead_code_elimination(mut m ssa.Module) {
-	for {
-		mut worklist := []int{}
-		for fi in 0 .. m.funcs.len {
-			dead_stores := find_dead_stores(m, m.funcs[fi])
-			for blk_id in m.funcs[fi].blocks {
-				for val_id in m.blocks[blk_id].instrs {
-					val := m.values[val_id]
-					if val.kind != .instruction {
-						continue
-					}
-					instr := m.instrs[val.index]
-					if (instr.op == .store && val_id in dead_stores)
-						|| (!instruction_has_side_effects(instr.op) && val.uses.len == 0) {
-						worklist << val_id
+	mut state := collect_dead_store_state(m)
+	mut worklist := []int{}
+	for fi in 0 .. m.funcs.len {
+		for blk_id in m.funcs[fi].blocks {
+			for val_id in m.blocks[blk_id].instrs {
+				val := m.values[val_id]
+				if val.kind != .instruction {
+					continue
+				}
+				instr := m.instrs[val.index]
+				if !instruction_has_side_effects(instr.op) && val.uses.len == 0 {
+					worklist << val_id
+				}
+			}
+		}
+	}
+	for alloca_id, stores in state.stores {
+		if alloca_id !in state.escapes && state.load_counts[alloca_id] == 0 {
+			worklist << stores
+		}
+	}
+	if worklist.len == 0 {
+		return
+	}
+
+	mut dead := []bool{len: m.values.len}
+	for worklist.len > 0 {
+		val_id := worklist.pop()
+		if val_id <= 0 || val_id >= m.values.len || dead[val_id]
+			|| m.values[val_id].kind != .instruction {
+			continue
+		}
+		dead[val_id] = true
+		instr := m.instrs[m.values[val_id].index]
+		if instr.op == .load {
+			if alloca_id := state.load_ptrs[val_id] {
+				remaining := state.load_counts[alloca_id] - 1
+				state.load_counts[alloca_id] = remaining
+				if remaining == 0 && alloca_id !in state.escapes {
+					if stores := state.stores[alloca_id] {
+						worklist << stores
 					}
 				}
 			}
 		}
-		if worklist.len == 0 {
-			return
-		}
-
-		mut dead := []bool{len: m.values.len}
-		for worklist.len > 0 {
-			val_id := worklist.pop()
-			if val_id <= 0 || val_id >= m.values.len || dead[val_id]
-				|| m.values[val_id].kind != .instruction {
+		for oi, op_id in instr.operands {
+			if !instr.is_value_operand(oi) {
 				continue
 			}
-			dead[val_id] = true
-			instr := m.instrs[m.values[val_id].index]
-			for oi, op_id in instr.operands {
-				if !instr.is_value_operand(oi) {
-					continue
-				}
-				remove_use(mut m, op_id, val_id)
-				if op_id > 0 && op_id < m.values.len && m.values[op_id].kind == .instruction
-					&& m.values[op_id].uses.len == 0 {
-					op_instr := m.instrs[m.values[op_id].index]
-					if !instruction_has_side_effects(op_instr.op) {
-						worklist << op_id
-					}
+			remove_use(mut m, op_id, val_id)
+			if op_id > 0 && op_id < m.values.len && m.values[op_id].kind == .instruction
+				&& m.values[op_id].uses.len == 0 {
+				op_instr := m.instrs[m.values[op_id].index]
+				if !instruction_has_side_effects(op_instr.op) {
+					worklist << op_id
 				}
 			}
 		}
+	}
 
-		for fi in 0 .. m.funcs.len {
-			for blk_id in m.funcs[fi].blocks {
-				blk := m.blocks[blk_id]
-				mut removed := 0
-				for val_id in blk.instrs {
-					if val_id > 0 && val_id < dead.len && dead[val_id] {
-						removed++
-					}
+	for fi in 0 .. m.funcs.len {
+		for blk_id in m.funcs[fi].blocks {
+			blk := m.blocks[blk_id]
+			mut removed := 0
+			for val_id in blk.instrs {
+				if val_id > 0 && val_id < dead.len && dead[val_id] {
+					removed++
 				}
-				if removed == 0 {
-					continue
-				}
-				mut kept := []ssa.ValueID{cap: blk.instrs.len - removed}
-				for val_id in blk.instrs {
-					if val_id <= 0 || val_id >= dead.len || !dead[val_id] {
-						kept << val_id
-					}
-				}
-				mut compacted := blk
-				compacted.instrs = kept
-				m.blocks[blk_id] = compacted
 			}
+			if removed == 0 {
+				continue
+			}
+			mut kept := []ssa.ValueID{cap: blk.instrs.len - removed}
+			for val_id in blk.instrs {
+				if val_id <= 0 || val_id >= dead.len || !dead[val_id] {
+					kept << val_id
+				}
+			}
+			mut compacted := blk
+			compacted.instrs = kept
+			m.blocks[blk_id] = compacted
 		}
 	}
 }
@@ -95,75 +108,50 @@ fn remove_use(mut m ssa.Module, val_id int, user_id int) {
 	m.values[val_id] = val
 }
 
-// find_dead_stores resolves find dead stores information for optimize.
-fn find_dead_stores(m &ssa.Module, func ssa.Function) map[int]bool {
-	mut dead_stores := map[int]bool{}
+struct DeadStoreState {
+mut:
+	stores      map[int][]int
+	load_counts map[int]int
+	load_ptrs   map[int]int
+	escapes     map[int]bool
+}
+
+fn collect_dead_store_state(m &ssa.Module) DeadStoreState {
+	mut state := DeadStoreState{
+		stores:      map[int][]int{}
+		load_counts: map[int]int{}
+		load_ptrs:   map[int]int{}
+		escapes:     map[int]bool{}
+	}
 	mut allocas := map[int]bool{}
-	mut alloca_stores := map[int][]int{}
-	mut alloca_escapes := map[int]bool{}
-
-	for blk_id in func.blocks {
-		for val_id in m.blocks[blk_id].instrs {
-			val := m.values[val_id]
-			if val.kind != .instruction {
-				continue
-			}
-			op := m.instrs[val.index].op
-			if op == .alloca || op == .heap_alloc {
-				allocas[val_id] = true
+	for func in m.funcs {
+		for blk_id in func.blocks {
+			for val_id in m.blocks[blk_id].instrs {
+				val := m.values[val_id]
+				if val.kind == .instruction && m.instrs[val.index].op in [.alloca, .heap_alloc] {
+					allocas[val_id] = true
+				}
 			}
 		}
 	}
-
 	for alloca_id, _ in allocas {
 		for use_id in m.values[alloca_id].uses {
-			if use_id < 0 || use_id >= m.values.len {
+			if use_id <= 0 || use_id >= m.values.len || m.values[use_id].kind != .instruction {
+				state.escapes[alloca_id] = true
 				continue
 			}
-			val := m.values[use_id]
-			if val.kind != .instruction {
-				alloca_escapes[alloca_id] = true
-				continue
-			}
-			instr := m.instrs[val.index]
-			match instr.op {
-				.store {
-					if instr.operands.len > 1 && instr.operands[1] == alloca_id {
-						alloca_stores[alloca_id] << use_id
-					} else {
-						alloca_escapes[alloca_id] = true
-					}
-				}
-				.load {}
-				else {
-					alloca_escapes[alloca_id] = true
-				}
+			instr := m.instrs[m.values[use_id].index]
+			if instr.op == .store && instr.operands.len > 1 && instr.operands[1] == alloca_id {
+				mut stores := state.stores[alloca_id]
+				stores << use_id
+				state.stores[alloca_id] = stores
+			} else if instr.op == .load && instr.operands.len > 0 && instr.operands[0] == alloca_id {
+				state.load_counts[alloca_id]++
+				state.load_ptrs[use_id] = alloca_id
+			} else {
+				state.escapes[alloca_id] = true
 			}
 		}
 	}
-
-	// An alloca with no loads and no escapes → all stores to it are dead
-	for alloca_id, _ in allocas {
-		if alloca_id in alloca_escapes {
-			continue
-		}
-		mut has_load := false
-		for use_id in m.values[alloca_id].uses {
-			if use_id >= 0 && use_id < m.values.len && m.values[use_id].kind == .instruction {
-				if m.instrs[m.values[use_id].index].op == .load {
-					has_load = true
-					break
-				}
-			}
-		}
-		if !has_load {
-			if store_ids := alloca_stores[alloca_id] {
-				for store_id in store_ids {
-					dead_stores[store_id] = true
-				}
-			}
-		}
-	}
-
-	return dead_stores
+	return state
 }

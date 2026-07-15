@@ -33,14 +33,11 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 	verify_pipeline_checkpoint(m, opts, 'input')
 
 	constant_fold(mut m)
-	rebuild_use_lists(mut m)
 
 	branch_fold(mut m)
-	rebuild_use_lists(mut m)
 	build_cfg(mut m)
 	// Branch folding can drop a phi block's predecessor edge; keep phis consistent.
 	prune_phi_operands(mut m)
-	rebuild_use_lists(mut m)
 
 	if opts.mem2reg {
 		// Normalize the CFG *before* SSA construction so that every phi
@@ -52,19 +49,16 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 		// terminators, so the current uses and CFG remain valid here.
 		remove_unreachable_blocks(mut m)
 		merge_blocks(mut m)
-		// Dropping unreachable blocks invalidates uses; merge_blocks leaves its
-		// final CFG current after batching all block edits.
-		rebuild_use_lists(mut m)
+		// Unreachable-block removal detaches its instruction uses incrementally;
+		// merge_blocks leaves the final CFG current after batching block edits.
 
 		// Structural SSA construction: dominators -> mem2reg -> simplify phis.
 		cfg := cfg_data_from_module(m)
 		dom := compute_dominators(mut m, &cfg)
 		verify_pipeline_checkpoint(m, opts, 'compute_dominators')
 		promote_memory_to_register(mut m, dom, &cfg)
-		rebuild_use_lists(mut m)
 		verify_pipeline_checkpoint(m, opts, 'mem2reg')
 		simplify_phi_nodes(mut m)
-		rebuild_use_lists(mut m)
 		verify_pipeline_checkpoint(m, opts, 'simplify_phi')
 	}
 
@@ -73,7 +67,6 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 	// or a worker merge may exist even without mem2reg).
 	if opts.eliminate_phis {
 		eliminate_phi_nodes(mut m)
-		rebuild_use_lists(mut m)
 		verify_pipeline_checkpoint(m, opts, 'eliminate_phi')
 	}
 
@@ -84,7 +77,6 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 		// Without SSA construction, block-merging is phi-aware and safe to run.
 		merge_blocks(mut m)
 	}
-	rebuild_use_lists(mut m)
 	if opts.mem2reg {
 		// No merge ran after unreachable-block removal in this mode.
 		build_cfg(mut m)
@@ -92,7 +84,6 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 
 	// Final phi-consistency pass: any phi still present must match the final CFG.
 	prune_phi_operands(mut m)
-	rebuild_use_lists(mut m)
 
 	verify_ssa(m, 'optimization')
 	verify_pipeline_checkpoint(m, opts, 'final')
