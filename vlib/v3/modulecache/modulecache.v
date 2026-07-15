@@ -767,25 +767,23 @@ fn c_declaration_item(item string, has_brace bool) string {
 		}
 		return result + block.after
 	}
-	if c_starts_with_static_storage_class(clean) || clean.starts_with('typedef ')
+	brace := if has_brace { clean.index_u8(`{`) } else { -1 }
+	head := if brace > 0 { clean[..brace].trim_space() } else { clean }
+	if c_has_static_storage_class(head) || clean.starts_with('typedef ')
 		|| c_tag_declaration_is_type_only(clean, has_brace) {
 		return item
 	}
-	if has_brace {
-		brace := clean.index_u8(`{`)
-		if brace > 0 {
-			head := clean[..brace].trim_space()
-			if c_declaration_head_is_function(head) {
-				if c_declaration_head_keeps_definition(head) {
-					return item
-				}
-				return '${head};\n'
+	if has_brace && brace > 0 {
+		if c_declaration_head_is_function(head) {
+			if c_declaration_head_keeps_definition(head) {
+				return item
 			}
-			if c_tag_declaration_keyword_len(clean) > 0 {
-				return c_extern_storage_decl(clean.trim_right(';'))
-			}
-			return c_extern_storage_decl(head)
+			return '${head};\n'
 		}
+		if c_tag_declaration_keyword_len(clean) > 0 {
+			return c_extern_storage_decl(clean.trim_right(';'))
+		}
+		return c_extern_storage_decl(head)
 	}
 	if clean.starts_with('extern ') || clean.starts_with('_Static_assert')
 		|| c_declaration_head_is_function(clean) {
@@ -800,17 +798,19 @@ fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {
 		_, has_static_storage := c_declaration_header(block.inner)
 		return has_static_storage
 	}
+	mut storage_head := clean
 	if has_brace {
 		brace := clean.index_u8(`{`)
 		if brace > 0 {
 			head := clean[..brace].trim_space()
+			storage_head = head
 			if c_declaration_head_is_function(head) {
 				return c_declaration_head_keeps_definition(head)
 					&& c_code_contains_identifier(clean[brace + 1..], 'static')
 			}
 		}
 	}
-	if !c_starts_with_static_storage_class(clean) {
+	if !c_has_static_storage_class(storage_head) {
 		return false
 	}
 	if !has_brace {
@@ -851,9 +851,8 @@ fn c_extern_c_block(item string) ?CExternBlock {
 	}
 }
 
-fn c_starts_with_static_storage_class(value string) bool {
-	return value.len > 'static'.len && value[..'static'.len] == 'static'
-		&& value['static'.len] in [` `, `\t`, `\r`, `\n`]
+fn c_has_static_storage_class(value string) bool {
+	return c_code_contains_identifier(value, 'static')
 }
 
 fn c_declaration_head_is_function(value string) bool {
@@ -862,7 +861,7 @@ fn c_declaration_head_is_function(value string) bool {
 }
 
 fn c_declaration_head_keeps_definition(value string) bool {
-	if c_starts_with_static_storage_class(value) {
+	if c_has_static_storage_class(value) {
 		return true
 	}
 	return !c_code_contains_identifier(value, 'extern')
@@ -2390,7 +2389,8 @@ fn escape_v_string(value string) string {
 				out.write_string('\\t')
 			}
 			`$` {
-				if i + 1 < value.len && value[i + 1] == `{` {
+				if i + 1 < value.len && (value[i + 1] == `{` || value[i + 1].is_letter()
+					|| value[i + 1] == `_`) {
 					out.write_u8(`\\`)
 				}
 				out.write_u8(c)

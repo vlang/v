@@ -618,7 +618,7 @@ pub fn cache_c_flag_input_files(flags []string) []string {
 
 fn c_forced_include_inputs(flag string) []string {
 	mut inputs := []string{}
-	tokens := c_quoted_flag_tokens(flag)
+	tokens := tokenize_c_flag(flag)
 	mut i := 0
 	for i < tokens.len {
 		token := tokens[i]
@@ -637,50 +637,44 @@ fn c_forced_include_inputs(flag string) []string {
 	return inputs
 }
 
-fn c_quoted_flag_tokens(value string) []string {
+// tokenize_c_flag splits a C flag on unquoted whitespace while preserving quotes.
+pub fn tokenize_c_flag(value string) []string {
 	mut tokens := []string{}
-	mut token := []u8{}
+	mut start := -1
 	mut quote := u8(0)
-	mut token_started := false
-	mut i := 0
-	for i < value.len {
-		c := value[i]
+	mut escaped := false
+	for i, c in value.bytes() {
+		if start < 0 {
+			if c.is_space() {
+				continue
+			}
+			start = i
+		}
+		if escaped {
+			escaped = false
+			continue
+		}
+		if c == `\\` {
+			escaped = true
+			continue
+		}
 		if quote != 0 {
 			if c == quote {
 				quote = 0
-				i++
-				continue
 			}
-			if c == `\\` && i + 1 < value.len && value[i + 1] == quote {
-				token << value[i + 1]
-				i += 2
-				continue
-			}
-			token << c
-			i++
 			continue
 		}
 		if c in [`'`, `\"`] {
 			quote = c
-			token_started = true
-			i++
 			continue
 		}
 		if c.is_space() {
-			if token_started {
-				tokens << token.bytestr()
-				token = []u8{}
-				token_started = false
-			}
-			i++
-			continue
+			tokens << value[start..i]
+			start = -1
 		}
-		token << c
-		token_started = true
-		i++
 	}
-	if token_started {
-		tokens << token.bytestr()
+	if start >= 0 {
+		tokens << value[start..]
 	}
 	return tokens
 }
@@ -1164,6 +1158,40 @@ fn (mut g FlatGen) cache_user_c_string_symbols() map[string]bool {
 fn collect_cache_numbered_string_symbols(source string, mut symbols map[string]bool) {
 	mut i := 0
 	for i < source.len {
+		if source[i] in [`\"`, `'`] {
+			quote := source[i]
+			i++
+			for i < source.len {
+				if source[i] == `\\` && i + 1 < source.len {
+					i += 2
+					continue
+				}
+				i++
+				if source[i - 1] == quote {
+					break
+				}
+			}
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+			i += 2
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+			i += 2
+			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 < source.len {
+				i += 2
+			} else {
+				i = source.len
+			}
+			continue
+		}
 		if !c_identifier_start(source[i]) {
 			i++
 			continue
@@ -2012,7 +2040,7 @@ fn c_nested_include_context_depth(context []string) int {
 fn c_flag_include_dirs(flags []string) []string {
 	mut dirs := []string{}
 	for flag in flags {
-		tokens := c_quoted_flag_tokens(flag)
+		tokens := tokenize_c_flag(flag)
 		mut i := 0
 		for i < tokens.len {
 			tok := tokens[i]

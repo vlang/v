@@ -97,7 +97,7 @@ fn c_object_compile_flags(flags []string) []string {
 	mut compile_flags := []string{}
 	for flag in flags {
 		mut compile_parts := []string{}
-		parts := flag.trim_space().fields()
+		parts := cgen.tokenize_c_flag(flag.trim_space())
 		mut i := 0
 		for i < parts.len {
 			part := parts[i]
