@@ -12503,12 +12503,14 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 
 fn (tc &TypeChecker) parse_fn_signature_type(name string, typ string) Type {
 	decl_file := tc.fn_type_files[name] or { return tc.parse_type(typ) }
+	// The scoped copy changes only lookup context. Reuse this checker's cache
+	// overlay and compilation-wide interner; allocating a fresh cache for every
+	// signature substitution defeats the warm parse cache.
 	mut scoped := *tc
 	scoped.cur_file = decl_file
 	scoped.cur_module = tc.fn_type_modules[name] or {
 		tc.file_modules[decl_file] or { tc.cur_module }
 	}
-	scoped.set_fresh_type_cache_based_on(tc, tc.type_cache_parse_enabled())
 	return scoped.parse_type(typ)
 }
 
