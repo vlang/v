@@ -10696,6 +10696,11 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'filter' {
+					if bad_type := tc.ownership_default_clone_missing_method(clean_array.elem_type) {
+						tc.record_error(.call_arg_mismatch,
+							'cannot filter array elements: `${bad_type}` requires ownership destruction but has no `clone()` method',
+							id)
+					}
 					// filtering a fixed array yields a dynamic array
 					filter_ret := if receiver_is_fixed_array(clean) {
 						Type(Array{

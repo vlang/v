@@ -1284,6 +1284,17 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	}
 	elem_type := base_type[2..]
 	base_id := t.a.child(&fn_node, 0)
+	elem_needs_clone := !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type))
+	if elem_needs_clone {
+		// The checker reports the missing clone method. Do not lower the rejected call
+		// to a shallow element copy while processing the invalid program.
+		if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(elem_type)) {
+			return t.make_empty()
+		}
+	}
+	source_needs_drop := !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type))
 	base := t.stable_expr_for_reuse(base_id)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
@@ -1354,11 +1365,27 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	for stmt in predicate_pending {
 		loop_body << stmt
 	}
+	mut then_body := []flat.NodeId{}
+	mut pushed_name := elem_name
+	if elem_needs_clone {
+		pending_start := t.pending_stmts.len
+		cloned_elem := t.make_compiler_default_clone_value(t.make_ident(elem_name), elem_type, true)
+		then_body = t.pending_stmts[pending_start..].clone()
+		t.pending_stmts = t.pending_stmts[..pending_start].clone()
+		pushed_name = t.new_temp('filter_value')
+		then_body << t.make_decl_assign_typed(pushed_name, cloned_elem, elem_type)
+	}
 	push_call := t.make_call_typed('array_push', arr2(t.make_prefix(.amp, t.make_ident(out_name)), t.make_prefix(.amp,
-		t.make_ident(elem_name))), 'void')
-	then_block := t.make_block(arr1(t.make_expr_stmt(push_call)))
+		t.make_ident(pushed_name))), 'void')
+	then_body << t.make_expr_stmt(push_call)
+	then_block := t.make_block(then_body)
 	loop_body << t.make_if(predicate, then_block, t.make_empty())
-	prefix << t.make_for_stmt(init, cond, post, loop_body, node)
+	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
+		skip_ownership_drops: true
+	})
+	if source_needs_drop {
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
+	}
 	for stmt in prefix {
 		t.pending_stmts << stmt
 	}

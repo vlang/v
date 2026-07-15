@@ -5817,8 +5817,21 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 			source_is_owned_temporary)
 	}
 	t.mark_fn_used('map__${fn_node.value}')
-	return t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
+	items := t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
 		'[]${elem_type}')
+	if !source_is_owned_temporary || isnil(t.tc)
+		|| !t.tc.ownership_type_requires_destruction(t.tc.parse_type(clean_type)) {
+		return items
+	}
+	// Preserve the returned array before destroying a map receiver that was materialized
+	// after ownership analysis. Raw keys()/values() still allocate independent array storage,
+	// even when their scalar items need no per-entry clone work.
+	out_name := t.new_temp('map_items')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, items, '[]${elem_type}')
+	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), '[]${elem_type}')
+	return result
 }
 
 // make_owned_map_items_value builds an independent keys()/values() array by cloning every
