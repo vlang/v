@@ -8217,7 +8217,25 @@ fn (mut p Parser) create_anonymous_struct_type_for_literal(init flat.Node) ?stri
 		field_names << field.value
 		field_types << field_type
 	}
+	if p.anonymous_struct_literal_has_contextual_candidate(init, field_names) {
+		return none
+	}
 	return p.register_anonymous_struct_type(field_names, field_types, false)
+}
+
+fn (p &Parser) anonymous_struct_literal_has_contextual_candidate(init flat.Node, field_names []string) bool {
+	candidates := p.anonymous_struct_types[anonymous_struct_name_shape(field_names)] or {
+		return false
+	}
+	if candidates.len <= 1 {
+		return false
+	}
+	for candidate in candidates {
+		if p.anonymous_struct_literal_matches_candidate(init, field_names, candidate) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (p &Parser) anonymous_struct_literal_matches_candidate(init flat.Node, field_names []string, candidate string) bool {

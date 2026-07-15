@@ -3594,17 +3594,24 @@ fn main() {
 
 fn test_anonymous_struct_context_accepts_untyped_numeric_literal() {
 	v3_bin := build_v3()
-	out := run_good(v3_bin, 'anonymous_struct_context_untyped_numeric_literal', 'fn take(value struct {
+	out := run_good(v3_bin, 'anonymous_struct_context_untyped_numeric_literal', 'fn take_i64(value struct {
 	n i64
 }) i64 {
 	return value.n
 }
 
+fn take_str(value struct {
+	n string
+}) string {
+	return value.n
+}
+
 fn main() {
-	println(take(struct { n: 1 }).str())
+	println(take_i64(struct { n: 1 }).str())
+	println(take_str(struct { n: "ok" }))
 }
 ')
-	assert out == '1'
+	assert out == '1\nok'
 }
 
 fn test_implicit_ref_arg_rejects_multiple_pointer_levels() {

@@ -80,6 +80,20 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 	g.gen_expr_with_expected_type(value_id, expected)
 }
 
+fn is_anonymous_struct_type_name(name string) bool {
+	return name.all_after_last('.').starts_with('AnonStruct_')
+}
+
+fn (g &FlatGen) struct_init_effective_type_name(node flat.Node) string {
+	if node.value == 'struct' {
+		expected := types.unwrap_pointer(g.expected_expr_type)
+		if expected is types.Struct && is_anonymous_struct_type_name(expected.name) {
+			return expected.name
+		}
+	}
+	return node.value
+}
+
 fn (mut g FlatGen) gen_pointer_value_struct_field(value_id flat.NodeId, expected types.Type) bool {
 	actual := g.tc.resolve_type(value_id)
 	expected0 := if expected is types.Alias { expected.base_type } else { expected }
@@ -219,29 +233,30 @@ fn (mut g FlatGen) gen_unset_struct_field_default(struct_name string, field_name
 // gen_struct_init emits struct init output for c.
 fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	init_module := g.tc.cur_module
-	if node.value.starts_with('chan ') {
+	init_value := g.struct_init_effective_type_name(node)
+	if init_value.starts_with('chan ') {
 		g.gen_channel_init(node)
 		return
 	}
 	if g.gen_lowered_sum_init(node) {
 		return
 	}
-	mut name := g.struct_init_c_type_name(node.value)
+	mut name := g.struct_init_c_type_name(init_value)
 	// A bare generic struct literal (`Vec4{..}`) carries no type args; when the
 	// surrounding expected type fixes them (e.g. a `Vec4[f32]` return), emit the
 	// concrete instance name so it matches the materialized struct.
 	if inst := g.generic_struct_init_instance_ct_for_node(node) {
 		name = inst
 	}
-	init_type := g.tc.parse_type(node.value)
-	is_optional_init := node.value == 'Optional' || init_type is types.OptionType
+	init_type := g.tc.parse_type(init_value)
+	is_optional_init := init_value == 'Optional' || init_type is types.OptionType
 		|| init_type is types.ResultType
 	has_expected_optional := g.expected_expr_type is types.OptionType
 		|| g.expected_expr_type is types.ResultType || g.expected_expr_is_optional_struct()
-	if node.value == 'Optional'
+	if init_value == 'Optional'
 		&& (g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType) {
 		name = g.optional_type_name(g.expected_expr_type)
-	} else if node.value == 'Optional' && g.expected_expr_is_optional_struct() {
+	} else if init_value == 'Optional' && g.expected_expr_is_optional_struct() {
 		name = g.value_c_type(g.expected_expr_type)
 	}
 	if is_optional_init {
@@ -267,20 +282,20 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	} else if inst := g.generic_struct_init_instance_name_for_node(node) {
 		inst
 	} else {
-		g.struct_init_lookup_type_name(node.value)
+		g.struct_init_lookup_type_name(init_value)
 	}
 	lookup_name := if is_optional_init {
 		''
 	} else {
 		g.struct_init_fields_key(lookup_source_name, lookup_source_name)
 	}
-	is_union_init := node.value in g.tc.unions || lookup_source_name in g.tc.unions
+	is_union_init := init_value in g.tc.unions || lookup_source_name in g.tc.unions
 		|| lookup_name in g.tc.unions
 	if node.children_count == 0 && g.is_scalar_zero_init_type(lookup_source_name, name) {
 		g.write(g.scalar_zero_init(name))
 		return
 	}
-	if !g.is_interface_type_name(node.value)
+	if !g.is_interface_type_name(init_value)
 		&& g.struct_init_has_fixed_array_field(node, lookup_name) {
 		g.gen_struct_init_with_fixed_array_fields(node, name, init_module)
 		return
@@ -294,7 +309,7 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	}
 	mut set_fields := map[string]bool{}
 	mut has_field := false
-	if g.is_interface_type_name(node.value) {
+	if g.is_interface_type_name(init_value) {
 		if tid := g.interface_init_typ_id(node) {
 			g.write('._typ = ${tid}')
 			has_field = true
