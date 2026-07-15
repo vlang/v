@@ -227,6 +227,37 @@ pub fn make() Box {
 	assert uses_generics
 }
 
+fn test_top_level_initializer_keeps_file_import_context() {
+	a, tc := parse_checked_project_in_order('top_level_initializer_import_context', [
+		'main/main.v',
+		'support/support.v',
+	], [
+		'module main
+
+import support as dep
+
+__global answer = dep.make()
+
+fn main() {
+	_ := answer
+}
+',
+		'module support
+
+pub struct Box[T] {
+	value T
+}
+
+pub fn make() Box[int] {
+	return Box[int]{value: 42}
+}
+',
+	])
+	used, uses_generics := markused.mark_used_with_generic_usage(a, tc)
+	assert used['support.make']
+	assert uses_generics
+}
+
 fn test_local_generic_struct_init_requires_monomorphization() {
 	a, tc := parse_checked_source('local_generic_struct_init', '
 fn main() {

@@ -94,6 +94,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			continue
 		}
 		if node.kind == .import_decl {
+			if cur_import_context >= 0 && cur_import_context < import_contexts.len {
+				import_contexts[cur_import_context][node.typ] = node.value
+			}
 			continue
 		}
 		if node.kind == .struct_decl {
@@ -874,6 +877,9 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls 
 			}
 			.module_decl {
 				cur_module = node.value
+			}
+			.import_decl {
+				imports[node.typ] = node.value
 			}
 			.const_decl, .global_decl {
 				for i in 0 .. node.children_count {
@@ -2439,6 +2445,9 @@ fn (c &CallCollector) emitted_type_declarations_use_generics() bool {
 			}
 			.module_decl {
 				cur_module = node.value
+			}
+			.import_decl {
+				imports[node.typ] = node.value
 			}
 			.const_decl, .global_decl {
 				for i in 0 .. node.children_count {
