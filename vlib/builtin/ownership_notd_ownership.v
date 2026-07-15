@@ -10,6 +10,20 @@ struct OwnershipSumPayload {
 	payload voidptr
 }
 
+fn drop_owned_result_error(err IError) {
+	raw_err := unsafe { &C.IError(&err) }
+	none_err := unsafe { &C.IError(&none__) }
+	sentinel_err := unsafe { &C.IError(&error_sentinel) }
+	if raw_err._object == unsafe { nil } || raw_err._object == none_err._object
+		|| raw_err._object == sentinel_err._object {
+		return
+	}
+	if err is MessageError {
+		unsafe { err.free() }
+	}
+	unsafe { free(raw_err._object) }
+}
+
 // drop_owned destroys an owned value outside ownership mode.
 //
 // Ownership builds replace this generic fallback with the compiler intrinsic that
@@ -29,6 +43,8 @@ pub fn drop_owned[T](value T) {
 	} $else $if T.unaliased_typ.payload_type != 0 {
 		if payload := owned {
 			drop_owned(payload)
+		} else {
+			drop_owned_result_error(owned.err)
 		}
 	} $else $if T.unaliased_typ is $sumtype {
 		payload := unsafe { (&OwnershipSumPayload(&owned)).payload }
