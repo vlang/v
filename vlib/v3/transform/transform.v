@@ -12758,6 +12758,9 @@ fn (t &Transformer) match_type_pattern_for_subject(match_expr_id flat.NodeId, co
 	}
 	subject_type := t.trim_pointer_type(t.original_expr_type(match_expr_id))
 	if t.is_interface_type_name(subject_type) {
+		if target_iface := t.resolve_interface_pattern_interface(pattern) {
+			return target_iface
+		}
 		return t.resolve_interface_pattern(pattern, subject_type)
 	}
 	if resolved_variant := t.resolve_sum_variant_pattern_for_subject(subject_type, pattern) {
