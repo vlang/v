@@ -7572,12 +7572,89 @@ fn generic_array_type_arg_from_suffix(suffix string) ?string {
 	return '[]${elem}'
 }
 
+struct GenericTypeSuffixPart {
+	typ string
+	len int
+}
+
+fn generic_type_arg_prefix_from_suffix(suffix string) ?GenericTypeSuffixPart {
+	clean := suffix.trim_space()
+	if clean.len == 0 {
+		return none
+	}
+	for encoded in ['string', 'bool', 'int', 'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64',
+		'f32', 'f64', 'v_int', 'v_u8', 'v_u16', 'v_u32', 'v_u64', 'v_i8', 'v_i16', 'v_i32', 'v_i64',
+		'v_f32', 'v_f64'] {
+		if clean == encoded || clean.starts_with('${encoded}_') {
+			return GenericTypeSuffixPart{
+				typ: generic_type_arg_from_suffix(encoded)
+				len: encoded.len
+			}
+		}
+	}
+	for prefix, marker in {
+		'ptr_':      '&'
+		'Option_':   '?'
+		'Optional_': '?'
+		'Result_':   '!'
+	} {
+		if clean.starts_with(prefix) {
+			inner := generic_type_arg_prefix_from_suffix(clean[prefix.len..]) or { return none }
+			return GenericTypeSuffixPart{
+				typ: '${marker}${inner.typ}'
+				len: prefix.len + inner.len
+			}
+		}
+	}
+	if clean.starts_with('Array_') && !clean.starts_with('Array_fixed_') {
+		inner := generic_type_arg_prefix_from_suffix(clean['Array_'.len..]) or { return none }
+		mut typ := '[]${inner.typ}'
+		mut consumed := 'Array_'.len + inner.len
+		if consumed + 1 < clean.len && clean[consumed] == `_` {
+			mut end := consumed + 1
+			for end < clean.len && clean[end] >= `0` && clean[end] <= `9` {
+				end++
+			}
+			if end > consumed + 1 && (end == clean.len || clean[end] == `_`) {
+				typ = '[${clean[consumed + 1..end]}]${inner.typ}'
+				consumed = end
+			}
+		}
+		return GenericTypeSuffixPart{
+			typ: typ
+			len: consumed
+		}
+	}
+	if clean.starts_with('Map_') {
+		entry_suffix := clean['Map_'.len..]
+		key := generic_type_arg_prefix_from_suffix(entry_suffix) or { return none }
+		separator := 'Map_'.len + key.len
+		if separator >= clean.len || clean[separator] != `_` {
+			return none
+		}
+		value := generic_type_arg_prefix_from_suffix(clean[separator + 1..]) or { return none }
+		return GenericTypeSuffixPart{
+			typ: 'map[${key.typ}]${value.typ}'
+			len: separator + 1 + value.len
+		}
+	}
+	return none
+}
+
 fn generic_map_type_arg_from_suffix(suffix string) ?string {
 	clean := suffix.trim_space()
 	if !clean.starts_with('Map_') {
 		return none
 	}
 	entry_suffix := clean['Map_'.len..]
+	if key := generic_type_arg_prefix_from_suffix(entry_suffix) {
+		if key.len < entry_suffix.len && entry_suffix[key.len] == `_` {
+			value := generic_type_arg_from_suffix_with_containers(entry_suffix[key.len + 1..])
+			if value.len > 0 {
+				return 'map[${key.typ}]${value}'
+			}
+		}
+	}
 	split := entry_suffix.last_index_u8(`_`)
 	if split <= 0 || split + 1 >= entry_suffix.len {
 		return none
