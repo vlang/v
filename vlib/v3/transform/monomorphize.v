@@ -3551,18 +3551,48 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 		if recv_id := t.generic_call_receiver_id(node) {
 			children << recv_id
 		}
-		for i in 1 .. node.children_count {
+		mut i := 1
+		for i < node.children_count {
 			arg_id := t.a.child(&node, i)
 			param_type := if i < param_types.len { param_types[i] } else { '' }
+			arg := t.a.nodes[int(arg_id)]
+			if arg.kind == .field_init {
+				if packed_arg := t.transform_params_struct_call_arg(node, i, param_type) {
+					children << packed_arg
+					i = t.next_non_field_init_arg(node, i)
+					continue
+				}
+				if packed_arg := t.transform_struct_call_arg(node, i, param_type) {
+					children << packed_arg
+					i = t.next_non_field_init_arg(node, i)
+					continue
+				}
+			}
 			children << t.retype_generic_call_literal_arg(arg_id, param_type)
+			i++
 		}
 	} else {
 		// Ident-lowered form: receiver and args are already explicit children 1..n.
-		for i in 1 .. node.children_count {
+		mut i := 1
+		for i < node.children_count {
 			arg_id := t.a.child(&node, i)
 			param_idx := i - 1
 			param_type := if param_idx < param_types.len { param_types[param_idx] } else { '' }
+			arg := t.a.nodes[int(arg_id)]
+			if arg.kind == .field_init {
+				if packed_arg := t.transform_params_struct_call_arg(node, i, param_type) {
+					children << packed_arg
+					i = t.next_non_field_init_arg(node, i)
+					continue
+				}
+				if packed_arg := t.transform_struct_call_arg(node, i, param_type) {
+					children << packed_arg
+					i = t.next_non_field_init_arg(node, i)
+					continue
+				}
+			}
 			children << t.retype_generic_call_literal_arg(arg_id, param_type)
+			i++
 		}
 	}
 	start := t.a.children.len

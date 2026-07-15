@@ -3451,6 +3451,16 @@ fn test_interface_boxed_returned_local_address_still_heap_copies() {
 	assert out == '5'
 }
 
+fn test_returned_interface_local_boxed_from_local_address_heap_copies_on_return() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make() Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\treturn r\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_returned_local_alias_heap_copy', source)
+	make_body := c_fn_body(c_source, 'Reader make(void) {')
+	assert make_body.contains('memdup(') && make_body.contains('sizeof(Box)'), make_body
+	out := run_good(v3_bin, 'interface_box_returned_local_alias_heap_copy_run', source)
+	assert out == '2'
+}
+
 fn test_mut_interface_argument_borrows_existing_interface_box() {
 	v3_bin := build_v3()
 	source := 'interface Visitor {\n\tvalue() int\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (c Counter) value() int {\n\treturn c.n\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln(int_str(visitor.value()))\n}\n'
@@ -4096,6 +4106,10 @@ fn test_explicit_generic_method_index_callee_codegen() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'explicit_generic_method_index_callee', 'struct Tool {}
 
+struct Config {
+	x int
+}
+
 fn (t Tool) pick[T](value T) T {
 	return value
 }
@@ -4103,9 +4117,11 @@ fn (t Tool) pick[T](value T) T {
 fn main() {
 	tool := Tool{}
 	println(int_str(tool.pick[int](7)))
+	cfg := tool.pick[Config](x: 9)
+	println(int_str(cfg.x))
 }
 ')
-	assert out == '7'
+	assert out == '7\n9'
 }
 
 fn test_shadowed_global_local_rename_is_scoped_to_binding() {

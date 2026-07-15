@@ -183,7 +183,11 @@ mut:
 	escaping_amp_sources map[string]bool
 	// heaped_amp_locals records which of those sources were actually moved to the heap, so
 	// the `p := &v` alias emits `p = v` (the heap pointer) instead of a fresh memdup copy.
-	heaped_amp_locals                map[string]bool
+	heaped_amp_locals map[string]bool
+	// escaping_interface_box_locals holds interface locals boxed from stack-backed pointer
+	// sources and later returned. The box can alias the stack value while in scope, but its
+	// `_object` needs a heap copy before the interface value leaves the frame.
+	escaping_interface_box_locals    map[string]bool
 	generic_specialization_args      map[string][]string
 	generic_fn_specs_in_progress     map[string]bool
 	generic_fn_decls_cache           map[string]GenericFnDecl
@@ -565,6 +569,7 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		escaping_amp_ptrs:                map[string]bool{}
 		escaping_amp_sources:             map[string]bool{}
 		heaped_amp_locals:                map[string]bool{}
+		escaping_interface_box_locals:    map[string]bool{}
 		generic_specialization_args:      map[string][]string{}
 		generic_fn_specs_in_progress:     map[string]bool{}
 		generic_receiver_methods_by_name: map[string][]string{}
@@ -1642,6 +1647,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.escaping_amp_ptrs = map[string]bool{}
 	w.escaping_amp_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
+	w.escaping_interface_box_locals = map[string]bool{}
 	w.generic_specialization_args = t.generic_specialization_args.clone()
 	w.generic_fn_specs_in_progress = map[string]bool{}
 	w.monomorph_errors = []string{}
@@ -1716,6 +1722,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.escaping_amp_ptrs = map[string]bool{}
 	w.escaping_amp_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
+	w.escaping_interface_box_locals = map[string]bool{}
 	w.generic_fn_specs_in_progress = map[string]bool{}
 	w.stringify_stack = []string{}
 	w.interface_boxed_types = map[string]bool{}
@@ -2823,9 +2830,11 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	mut amp_ptrs := map[string]bool{}
 	mut amp_sources := map[string]string{} // pointer `p` -> source local `v`
 	mut ptr_aliases := map[string]string{} // copy `q := p` -> aliased pointer `p`
+	mut interface_boxes := map[string]bool{}
 	mut returned := map[string]bool{}
 	for id in body_ids {
-		t.scan_escape_pass(id, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut returned)
+		t.scan_escape_pass(id, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut interface_boxes, mut
+			returned)
 	}
 	// A pointer may be returned through a copy (`p := &v; q := p; return q`): `q` is collected
 	// as returned but `p` is not, so propagate "returned" backward along the `q := p` aliases
@@ -2850,12 +2859,18 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 			}
 		}
 	}
+	for name, _ in interface_boxes {
+		if name in returned {
+			t.escaping_interface_box_locals[name] = true
+		}
+	}
 }
 
 fn (mut t Transformer) reset_escaping_amp_state() {
 	t.escaping_amp_ptrs.clear()
 	t.escaping_amp_sources.clear()
 	t.heaped_amp_locals.clear()
+	t.escaping_interface_box_locals.clear()
 	// Cleared per function: heaped locals add their names below (in heap_escaping_source_decl);
 	// for-loop element vars set and restore their own entries within the loop body.
 	t.pointer_value_lvalues.clear()
@@ -2867,7 +2882,7 @@ fn (mut t Transformer) reset_escaping_amp_state() {
 // names of `p := &ident` declarations into `amp_ptrs` (and the source `ident` into
 // `amp_sources[p]`), (b) plain pointer copies `q := p` into `ptr_aliases[q] = p`, and
 // (c) every ident name appearing inside a return statement into `returned`.
-fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut returned map[string]bool) {
+fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
@@ -2886,6 +2901,12 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 			// `q := p` aliases an existing pointer; recorded so a returned alias still marks the
 			// underlying `p := &v` as escaping.
 			ptr_aliases[lhs.value] = rhs.value
+			if rhs.value in interface_boxes {
+				interface_boxes[lhs.value] = true
+			}
+		} else if lhs.kind == .ident && lhs.value.len > 0
+			&& t.interface_box_from_stack_pointer_source(t.a.child(&node, 1), amp_ptrs) {
+			interface_boxes[lhs.value] = true
 		}
 	}
 	if node.kind == .return_stmt {
@@ -2895,8 +2916,29 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	}
 	for i in 0 .. node.children_count {
 		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
-			returned)
+			interface_boxes, mut returned)
 	}
+}
+
+fn (t &Transformer) interface_box_from_stack_pointer_source(id flat.NodeId, amp_ptrs map[string]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .cast_expr || node.children_count == 0
+		|| t.resolve_interface_type_name(node.value).len == 0 {
+		return false
+	}
+	arg_id := t.a.child(&node, 0)
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return false
+	}
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind == .prefix && arg.op == .amp && arg.children_count == 1 {
+		child := t.a.nodes[int(t.a.child(&arg, 0))]
+		return child.kind == .ident && child.value.len > 0
+	}
+	return arg.kind == .ident && arg.value in amp_ptrs
 }
 
 // collect_return_escape_idents gathers the idents in a return-expression subtree that occupy an
@@ -3859,6 +3901,9 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		}
 		return t.transform_expr_for_type(child_id, payload_type)
 	}
+	if copied := t.heap_copy_escaping_interface_box_return(child_id, target_type) {
+		return copied
+	}
 	if target_type.len > 0 && target_type !in t.sum_types && !t.is_optional_type_name(target_type) {
 		return t.transform_expr_for_type(child_id, target_type)
 	}
@@ -3907,6 +3952,45 @@ fn (mut t Transformer) heap_copy_local_address_return(child_id flat.NodeId) ?fla
 	size := t.make_sizeof_type(ret_base_type)
 	dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
 	return t.make_cast(t.cur_fn_ret_type, dup, t.cur_fn_ret_type)
+}
+
+fn (mut t Transformer) heap_copy_escaping_interface_box_return(child_id flat.NodeId, target_type string) ?flat.NodeId {
+	if target_type.len == 0 || target_type.starts_with('&') || isnil(t.tc) {
+		return none
+	}
+	iface_name := t.resolve_interface_type_name(target_type)
+	if iface_name.len == 0 {
+		return none
+	}
+	node := t.a.nodes[int(child_id)]
+	if node.kind != .ident || node.value !in t.escaping_interface_box_locals {
+		return none
+	}
+	impls := if t.is_builtin_ierror_interface_name(iface_name) {
+		t.tc.ierror_impl_names()
+	} else {
+		t.tc.interface_impl_names(iface_name)
+	}
+	if impls.len == 0 {
+		return none
+	}
+	source := t.transform_expr(child_id)
+	tmp_name := t.new_temp('iface_ret')
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, iface_name)
+	for impl in impls {
+		impl_id := t.interface_impl_type_id(iface_name, impl) or { continue }
+		tmp := t.make_ident(tmp_name)
+		typ := t.make_selector(tmp, '_typ', 'int')
+		cond := t.make_infix(.eq, typ, t.make_int_literal(impl_id))
+		object_lhs := t.make_selector(t.make_ident(tmp_name), '_object', 'voidptr')
+		object_rhs := t.make_selector(t.make_ident(tmp_name), '_object', 'voidptr')
+		dup := t.make_call_typed('memdup', arr2(object_rhs, t.make_sizeof_type(impl)), 'voidptr')
+		t.pending_stmts << t.make_if(cond, t.make_block(arr1(t.make_assign(object_lhs, dup))),
+			t.make_empty())
+	}
+	result := t.make_ident(tmp_name)
+	t.set_node_typ(int(result), iface_name)
+	return result
 }
 
 // fixed_array_return_value supports fixed array return value handling for Transformer.

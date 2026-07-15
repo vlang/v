@@ -859,6 +859,12 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		typ:            typ
 	})
 	t.copy_cloned_resolution(id, new_id)
+	if spec := t.generic_call_spec_cache[int(id)] {
+		t.generic_call_spec_cache[int(new_id)] = GenericCallSpec{
+			decl_key: spec.decl_key
+			args:     spec.args.clone()
+		}
+	}
 	return new_id
 }
 
@@ -1019,7 +1025,8 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 	if params.len == 0 || node.children_count == 0 {
 		return 0
 	}
-	fn_node := t.a.child_node(&node, 0)
+	fn_id := t.call_selector_callee_id(node) or { return 0 }
+	fn_node := t.a.nodes[int(fn_id)]
 	if fn_node.kind != .selector {
 		return 0
 	}
@@ -1053,6 +1060,31 @@ fn (t &Transformer) call_param_offset(call_name string, node flat.Node, params [
 		return 1
 	}
 	return 0
+}
+
+fn (t &Transformer) call_selector_callee_id(node flat.Node) ?flat.NodeId {
+	if node.children_count == 0 {
+		return none
+	}
+	fn_id := t.a.child(&node, 0)
+	if int(fn_id) < 0 || int(fn_id) >= t.a.nodes.len {
+		return none
+	}
+	fn_node := t.a.nodes[int(fn_id)]
+	if fn_node.kind == .selector {
+		return fn_id
+	}
+	if fn_node.kind == .index && fn_node.children_count > 0 && fn_node.value != 'range'
+		&& !t.index_callee_is_value_index(fn_node) {
+		base_id := t.a.child(&fn_node, 0)
+		if int(base_id) >= 0 && int(base_id) < t.a.nodes.len {
+			base := t.a.nodes[int(base_id)]
+			if base.kind == .selector {
+				return base_id
+			}
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) selector_call_name_has_receiver_param(call_name string, method string, params []types.Type) bool {
@@ -6770,7 +6802,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 					if !t.validate_specialized_call_result(id, ret_type) {
 						return t.make_empty()
 					}
-					return t.make_call_typed(resolved_method, args, ret_type)
+					return t.make_receiver_method_call_typed(node, resolved_method, args, ret_type)
 				}
 			}
 		}
@@ -6791,7 +6823,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		if !t.validate_specialized_call_result(id, ret_type) {
 			return t.make_empty()
 		}
-		return t.make_call_typed(method_name, args, ret_type)
+		return t.make_receiver_method_call_typed(node, method_name, args, ret_type)
 	}
 	if !isnil(t.tc) {
 		if resolved_method := t.tc.resolved_call_name(id) {
@@ -6812,7 +6844,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 				if !t.validate_specialized_call_result(id, ret_type) {
 					return t.make_empty()
 				}
-				return t.make_call_typed(resolved_method, args, ret_type)
+				return t.make_receiver_method_call_typed(node, resolved_method, args, ret_type)
 			}
 		}
 	}
@@ -6826,7 +6858,7 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 		if !t.validate_specialized_call_result(id, ret_type) {
 			return t.make_empty()
 		}
-		return t.make_call_typed(sum_method, args, ret_type)
+		return t.make_receiver_method_call_typed(node, sum_method, args, ret_type)
 	}
 	if t.validating_generic_spec {
 		if base_node.kind == .ident && base_node.value in ['C', 'JS'] {
@@ -7701,7 +7733,30 @@ fn (mut t Transformer) lower_checker_selected_receiver_method(call_id flat.NodeI
 	args := t.transform_receiver_method_args(node, base_id, resolved)
 	ret_type := t.receiver_method_return_type(resolved, node.typ)
 	t.mark_fn_used_name(resolved)
-	return t.make_call_typed(resolved, args, ret_type)
+	return t.make_receiver_method_call_typed(node, resolved, args, ret_type)
+}
+
+fn (mut t Transformer) make_receiver_method_call_typed(node flat.Node, method_name string, args []flat.NodeId, typ string) flat.NodeId {
+	call := t.make_call_typed(method_name, args, typ)
+	generic_args := t.explicit_generic_call_arg_text(node)
+	if generic_args.len > 0 {
+		t.set_node_value(int(call), generic_args)
+	}
+	return call
+}
+
+fn (t &Transformer) explicit_generic_call_arg_text(node flat.Node) string {
+	if node.value.len > 0 {
+		return node.value
+	}
+	if node.children_count == 0 {
+		return ''
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value == 'range' {
+		return ''
+	}
+	return t.generic_call_type_args_name(fn_node)
 }
 
 fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_id flat.NodeId) bool {
