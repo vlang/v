@@ -1576,6 +1576,26 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	idx_name := t.new_temp('map_idx')
 	prefix << t.make_decl_assign_typed(out_name, t.make_array_new_call(result_elem_type,
 		t.make_int_literal(0), t.make_selector(base, 'len', 'int')), out_type)
+	mut cleanup_guard_name := ''
+	if source_needs_drop {
+		cleanup_guard_name = t.new_temp('map_values_live')
+		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
+		deferred_drops := [
+			t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void')),
+			t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(out_name)), 'void')),
+		]
+		guarded_drop := t.make_if(t.make_ident(cleanup_guard_name), t.make_block(deferred_drops),
+			t.make_empty())
+		t.a.nodes[int(guarded_drop)].skip_ownership_drops = true
+		defer_body := t.make_block(arr1(guarded_drop))
+		defer_start := t.a.children.len
+		t.a.children << defer_body
+		prefix << t.a.add_node(flat.Node{
+			kind:           .defer_stmt
+			children_start: defer_start
+			children_count: 1
+		})
+	}
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(base, 'len', 'int'))
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
@@ -1608,6 +1628,7 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 	})
 	if source_needs_drop {
 		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
+		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
 	}
 	for stmt in prefix {
 		t.pending_stmts << stmt
