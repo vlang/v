@@ -1201,6 +1201,7 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 	}
 	out.writeln('')
 	mut seen := map[string]bool{}
+	declaration_attrs := cached_declaration_attrs(a)
 	for file_node in a.nodes {
 		if file_node.kind != .file || file_node.children_count == 0 {
 			continue
@@ -1221,9 +1222,15 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 				if key.len > 0 && seen[key] {
 					continue
 				}
-				text := decl_text(a, tc, module_name, node, vroot, file_node.value, import_paths)
+				attrs := declaration_attrs[int(id)] or { CachedDeclarationAttrs{} }
+				mut text := decl_text(a, tc, module_name, node, vroot, file_node.value,
+					import_paths, attrs.attrs)
 				if text.len == 0 {
 					continue
+				}
+				attrs_text := cached_declaration_attrs_text(attrs)
+				if attrs_text.len > 0 {
+					text = '${attrs_text}\n${text}'
 				}
 				if key.len > 0 {
 					seen[key] = true
@@ -1259,6 +1266,75 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 		out.writeln('')
 	}
 	return out.str()
+}
+
+struct CachedDeclarationAttrs {
+	attrs []string
+	kinds []int
+}
+
+fn cached_declaration_attrs(a &flat.FlatAst) map[int]CachedDeclarationAttrs {
+	mut result := map[int]CachedDeclarationAttrs{}
+	for node in a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		decl_id := node.value['@attributes:'.len..].int()
+		if decl_id < 0 || decl_id >= a.nodes.len || node.generic_params.len == 0 {
+			continue
+		}
+		result[decl_id] = CachedDeclarationAttrs{
+			attrs: node.generic_params.clone()
+			kinds: if node.typ.len > 0 {
+				node.typ.split(',').map(it.int())
+			} else {
+				[]int{}
+			}
+		}
+	}
+	return result
+}
+
+fn cached_declaration_attrs_text(data CachedDeclarationAttrs) string {
+	mut lines := []string{cap: data.attrs.len}
+	for i, raw_attr in data.attrs {
+		attr := cached_declaration_attr_source(raw_attr, if i < data.kinds.len {
+			data.kinds[i]
+		} else {
+			0
+		})
+		if attr.len > 0 {
+			lines << '@[${attr}]'
+		}
+	}
+	return lines.join('\n')
+}
+
+fn cached_declaration_attr_source(raw_attr string, kind int) string {
+	attr := raw_attr.trim_space()
+	if attr.len == 0 {
+		return ''
+	}
+	if kind == 1 {
+		colon := attr.index_u8(`:`)
+		if colon < 0 || !cached_attribute_string_literal(attr[colon + 1..].trim_space()) {
+			return "'${escape_v_string(attr)}'"
+		}
+	}
+	return attr
+}
+
+fn cached_attribute_string_literal(value string) bool {
+	return value.len >= 2 && value[0] in [`'`, `\"`] && value[value.len - 1] == value[0]
+}
+
+fn cached_declaration_has_attr(attrs []string, name string) bool {
+	for attr in attrs {
+		if attr.all_before(':').trim_space() == name {
+			return true
+		}
+	}
+	return false
 }
 
 fn append_declaration_nodes(a &flat.FlatAst, id flat.NodeId, mut declarations []flat.NodeId) {
@@ -1425,19 +1501,19 @@ fn decl_key(a &flat.FlatAst, node flat.Node) string {
 	}
 }
 
-fn decl_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node flat.Node, vroot string, source_file string, import_paths map[string]string) string {
+fn decl_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node flat.Node, vroot string, source_file string, import_paths map[string]string, declaration_attrs []string) string {
 	return match node.kind {
 		.import_decl {
 			import_text(a, node, import_paths)
 		}
 		.fn_decl {
-			fn_text(a, module_name, node, false)
+			fn_text(a, module_name, node, false, declaration_attrs)
 		}
 		.c_fn_decl {
-			fn_text(a, module_name, node, true)
+			fn_text(a, module_name, node, true, declaration_attrs)
 		}
 		.struct_decl {
-			struct_text(a, node)
+			struct_text(a, node, declaration_attrs)
 		}
 		.global_decl {
 			global_text(a, tc, module_name, node)
@@ -1446,7 +1522,7 @@ fn decl_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node fl
 			const_text(a, node)
 		}
 		.enum_decl {
-			enum_text(a, node)
+			enum_text(a, node, declaration_attrs)
 		}
 		.type_decl {
 			type_text(a, node)
@@ -1582,7 +1658,7 @@ fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) 
 	return text
 }
 
-fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool) string {
+fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, declaration_attrs []string) string {
 	mut params := []flat.Node{}
 	for i in 0 .. node.children_count {
 		child := a.child_node(&node, i)
@@ -1641,10 +1717,13 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool) strin
 		attr_lines << '@[if false]'
 	}
 	mut attrs := []string{}
-	if export_name := fn_export_name(a, module_name, name) {
-		attrs << "export: '${escape_v_string(export_name)}'"
+	if !cached_declaration_has_attr(declaration_attrs, 'export') {
+		if export_name := fn_export_name(a, module_name, name) {
+			attrs << "export: '${escape_v_string(export_name)}'"
+		}
 	}
-	if fn_is_noreturn(a, module_name, name) {
+	if !cached_declaration_has_attr(declaration_attrs, 'noreturn')
+		&& fn_is_noreturn(a, module_name, name) {
 		attrs << 'noreturn'
 	}
 	if attrs.len > 0 {
@@ -1751,7 +1830,7 @@ fn append_struct_field_nodes(a &flat.FlatAst, id flat.NodeId, mut fields []flat.
 	}
 }
 
-fn struct_text(a &flat.FlatAst, node flat.Node) string {
+fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string) string {
 	kind := if node.typ.split(',').contains('union') { 'union' } else { 'struct' }
 	mut head := '${kind} ${node.value}${generic_suffix(node.generic_params)}'
 	for part in node.typ.split(',') {
@@ -1759,7 +1838,8 @@ fn struct_text(a &flat.FlatAst, node flat.Node) string {
 			head += ' implements ' + part.all_after('=').replace('|', ', ')
 		}
 	}
-	if node.typ.split(',').contains('params') {
+	if node.typ.split(',').contains('params')
+		&& !cached_declaration_has_attr(declaration_attrs, 'params') {
 		head = '@[params]\n${head}'
 	}
 	if node.children_count == 0 {
@@ -1872,12 +1952,13 @@ fn const_text(a &flat.FlatAst, node flat.Node) string {
 	return out.str()
 }
 
-fn enum_text(a &flat.FlatAst, node flat.Node) string {
+fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string) string {
 	mut out := strings.new_builder(128)
-	if node.typ == 'flag' {
+	if node.typ == 'flag' && !cached_declaration_has_attr(declaration_attrs, 'flag') {
 		out.writeln('@[flag]')
 	}
-	if node.generic_params.contains('json_as_number') {
+	if node.generic_params.contains('json_as_number')
+		&& !cached_declaration_has_attr(declaration_attrs, 'json_as_number') {
 		out.writeln('@[json_as_number]')
 	}
 	mut head := 'enum ${node.value}'
