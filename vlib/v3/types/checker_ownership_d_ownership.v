@@ -1267,9 +1267,8 @@ pub fn (tc &TypeChecker) ownership_default_clone_missing_method(typ Type) ?strin
 fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut seen map[string]bool) ?string {
 	match typ {
 		Alias {
-			if tc.ownership_type_has_clone_method(typ) {
-				return none
-			}
+			// Compiler-default clone lowering normalizes aliases before recursive method
+			// dispatch, so only clone paths available on the underlying type are safe here.
 			return tc.ownership_default_clone_missing_method_inner(typ.base_type, mut seen)
 		}
 		OptionType {
