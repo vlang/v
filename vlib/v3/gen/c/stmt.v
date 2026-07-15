@@ -610,9 +610,17 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 				idx := g.sum_type_index(sum_name, resolved_variant)
 				g.writeln('case ${idx}:')
 				g.indent++
-				// Pointer variants can refer to borrowed storage. Unlike boxed value
-				// variants, the sum representation does not mark them as owned.
-				if select_receive_unalias_type(variant_type) is types.Pointer {
+				clean_variant_type := select_receive_unalias_type(variant_type)
+				if clean_variant_type is types.Pointer {
+					field := g.sum_field_name(resolved_variant)
+					payload := '((${expr}).${field})'
+					g.writeln('if ((${expr})._pointer_variant_is_owned && ${payload} != NULL) {')
+					g.indent++
+					g.gen_ownership_drop_value(clean_variant_type.base_type, '*${payload}', depth +
+						1)
+					g.writeln('free(${payload});')
+					g.indent--
+					g.writeln('}')
 					g.writeln('break;')
 					g.indent--
 					continue

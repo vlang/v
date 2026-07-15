@@ -8,9 +8,15 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 	variants := g.tc.sum_types[name]
 	g.writeln('struct ${g.cname(name)} {')
 	g.writeln('\tint typ;')
+	g.writeln('\tbool _pointer_variant_is_owned;')
 	g.writeln('\tunion {')
 	for v in variants {
-		ct := g.value_c_type(g.tc.parse_type(v))
+		variant_type := select_receive_unalias_type(g.tc.parse_type(v))
+		ct := if variant_type is types.Pointer {
+			g.value_c_type(variant_type.base_type)
+		} else {
+			g.value_c_type(variant_type)
+		}
 		field := g.sum_field_name(v)
 		g.writeln('\t\t${ct}* ${field};')
 	}

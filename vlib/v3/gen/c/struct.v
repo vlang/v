@@ -561,14 +561,22 @@ fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 		return false
 	}
 	name := g.struct_init_c_type_name(node.value)
+	mut pointer_variant_is_owned := false
 	g.write('(${name}){')
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
+		if field.value != 'typ' && field.typ.len > 0
+			&& select_receive_unalias_type(g.tc.parse_type(field.typ)) is types.Pointer {
+			pointer_variant_is_owned = true
+		}
 		if i > 0 {
 			g.write(', ')
 		}
 		g.write('.${c_field_name(field.value)} = ')
 		g.gen_lowered_sum_field_value(sum_name, field)
+	}
+	if pointer_variant_is_owned {
+		g.write(', ._pointer_variant_is_owned = true')
 	}
 	g.write('}')
 	return true
@@ -845,8 +853,12 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 		variants := g.tc.sum_types[sum_name] or { []string{} }
 		if variants.len > 0 {
 			variant := variants[0]
-			variant_type := g.tc.parse_type(variant)
+			variant_type := select_receive_unalias_type(g.tc.parse_type(variant))
 			ct := g.value_c_type(clean_typ)
+			if variant_type is types.Pointer {
+				g.write('(${ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = NULL}')
+				return
+			}
 			inner_ct := g.value_c_type(variant_type)
 			g.write('(${ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = (${inner_ct}*)memdup(&(${inner_ct}[]){')
 			g.gen_default_value_for_type(variant_type)
