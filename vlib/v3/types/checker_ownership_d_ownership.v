@@ -9432,7 +9432,9 @@ fn (tc &TypeChecker) ownership_cloned_array_accessor_elem_type(recv_id flat.Node
 	array_type := unwrap_pointer(tc.resolve_type(recv_id))
 	if array_type is Array && tc.ownership_type_requires_destruction(array_type.elem_type) {
 		if _ := tc.ownership_default_clone_missing_method(array_type.elem_type) {
-			return none
+			// Call checking reports the missing clone. Keep ownership recovery on the
+			// rejected clone path instead of transferring a shallow array slot.
+			return array_type.elem_type
 		}
 		return array_type.elem_type
 	}

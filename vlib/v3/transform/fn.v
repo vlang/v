@@ -5298,7 +5298,9 @@ fn (mut t Transformer) lower_owned_array_accessor_call(base_id flat.NodeId, base
 		return none
 	}
 	if _ := t.tc.ownership_default_clone_missing_method(elem) {
-		return none
+		// The checker rejects this accessor. Do not fall through to the raw shallow
+		// first()/last() path while transforming the invalid program.
+		return t.make_empty()
 	}
 	source_is_owned_temporary := !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
 	base := t.stable_expr_for_reuse(base_id)
@@ -5436,6 +5438,13 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 	}
 	call := t.make_method_call(base, method, args)
 	t.set_node_typ(int(call), node.typ)
+	if method == 'free' {
+		// Keep scope-exit destruction safe even when the raw backend free does not
+		// mutate the original header in place.
+		t.pending_stmts << t.make_expr_stmt(call)
+		t.pending_stmts << t.make_assign(array_value, t.zero_value_for_type(clean_base_type))
+		return t.make_empty()
+	}
 	return call
 }
 
