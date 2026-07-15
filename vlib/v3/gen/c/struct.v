@@ -2790,9 +2790,10 @@ fn (mut g FlatGen) emit_interface_struct(name string) {
 	g.emit_struct_option_typedefs(iface_fields)
 	cn := g.cname(name)
 	g.writeln('struct ${cn} {')
-	g.writeln('\tint _typ;')
+	// Keep the common interface header ABI-compatible with the regular C backend.
 	// `_object` either owns a boxed concrete value or borrows a concrete pointer.
 	g.writeln('\tvoid* _object;')
+	g.writeln('\tint _typ;')
 	g.writeln('\tbool _object_is_boxed;')
 	if g.is_ierror_type_name(name) {
 		g.writeln('\tstring message;')
