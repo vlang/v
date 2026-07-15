@@ -432,8 +432,11 @@ fn flush_batch(mut w Worker, fd int, mut cs ConnState) bool {
 		close_conn(mut w, fd)
 		return false
 	}
-	// Phase 2: stream the deferred file body straight from the page cache.
-	if cs.file_remaining > 0 {
+	// Phase 2: stream the deferred file body straight from the page cache. Guard on
+	// file_fd, not file_remaining: a zero-length file leaves an open fd with
+	// file_remaining == 0, and it must still be closed here (drain_file returns 1
+	// immediately for it) or the descriptor leaks across a keep-alive connection.
+	if cs.file_fd != -1 {
 		match drain_file(fd, mut cs) {
 			0 {
 				return park_write(mut w, fd, mut cs)
@@ -552,8 +555,10 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 			return flush_batch(mut w, fd, mut cs)
 		}
 		// A file deferred by an earlier request in this batch must be streamed (in
-		// byte order) before this next response can be appended: flush now.
-		if cs.file_remaining > 0 {
+		// byte order) before this next response can be appended: flush now. Gate on
+		// file_fd (not file_remaining) so a zero-length deferred file is drained and
+		// its fd closed here instead of being orphaned by the next open_deferred_file.
+		if cs.file_fd != -1 {
 			compact_read_buf(mut cs, pos)
 			mark_active(mut w, mut cs)
 			if !flush_batch(mut w, fd, mut cs) {
@@ -584,18 +589,33 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 			decoded.user_data = w.server.user_data
 			decoded.worker_state = w.worker_state
 			mut ctl := ResponseControl{}
+			// write_len before the handler runs: a takeover handler writes its
+			// response directly to the socket (it does not append to `out`), so any
+			// growth here for .manual/.reusable is earlier pipelined responses that
+			// were already buffered — those must not be reordered behind the direct
+			// write. (Snapshot before the call because the handler may grow write_buf.)
+			pre_write_len := cs.write_buf.len
 			step := w.server.append_handler(decoded, mut cs.write_buf, w.worker_state, mut ctl)
 			match ctl.takeover_mode {
-				.manual {
-					// The handler owns the fd from here (SSE/WebSocket): it must be the
-					// sole response in this read burst — any bytes still buffered for a
-					// request pipelined ahead of it are dropped, since the handler now
-					// writes to the socket directly. In practice a takeover is always the
-					// first request on a connection, so write_buf is empty here.
-					detach_conn(mut w, fd)
-					return false
-				}
-				.reusable {
+				.manual, .reusable {
+					// A takeover handler already wrote its response straight to the socket.
+					// If earlier pipelined responses are still buffered, flushing them now
+					// would put them AFTER the takeover write on the wire — reversing
+					// HTTP/1.1 response order. In practice a takeover is always the first
+					// (and only) request on its connection, so the buffer is empty here;
+					// if it is not, the peer violated that contract — drop the connection
+					// rather than emit responses out of order. (A .manual handler must
+					// not append to `out`; guard on the pre-call length.)
+					if pre_write_len > cs.write_off {
+						close_conn(mut w, fd)
+						return false
+					}
+					if ctl.takeover_mode == .manual {
+						// The handler owns the fd from here (SSE/WebSocket).
+						detach_conn(mut w, fd)
+						return false
+					}
+					// .reusable: the reactor keeps serving the kept-alive connection.
 					set_blocking(fd, false)
 					if ctl.should_close || step != .done {
 						cs.should_close = true
@@ -650,6 +670,21 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 				return flush_batch(mut w, fd, mut cs)
 			}
 
+			if resp.takeover_mode != .none && cs.write_buf.len > cs.write_off {
+				// A takeover handler already wrote its response straight to the socket.
+				// Earlier pipelined responses are still buffered here; flushing them now
+				// would put them AFTER the takeover write on the wire — reversing
+				// HTTP/1.1 response order. A takeover is always the first (and only)
+				// request on its connection in practice, so this buffer is empty; if it
+				// is not, the peer violated that contract — drop the connection rather
+				// than emit responses out of order.
+				resp.free_owned_content()
+				$if prealloc {
+					end_request_arena_current_thread(arena)
+				}
+				close_conn(mut w, fd)
+				return false
+			}
 			match resp.takeover_mode {
 				.manual {
 					// The handler took ownership of the connection: hand off the fd
@@ -705,11 +740,12 @@ fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 			}
 		}
 
-		if cs.should_close || cs.file_remaining > 0 {
-			// Batch boundary: a close or a file body ends the batch. Flush now, then
-			// keep draining any requests pipelined behind it — otherwise a request
-			// buffered after a file response would be stranded (no new edge fires for
-			// bytes already in read_buf) until it spuriously times out.
+		if cs.should_close || cs.file_fd != -1 {
+			// Batch boundary: a close or a deferred file body ends the batch (gate on
+			// file_fd so a zero-length file is drained and closed here, not orphaned).
+			// Flush now, then keep draining any requests pipelined behind it —
+			// otherwise a request buffered after a file response would be stranded (no
+			// new edge fires for bytes already in read_buf) until it spuriously times out.
 			compact_read_buf(mut cs, pos)
 			mark_active(mut w, mut cs)
 			if !flush_batch(mut w, fd, mut cs) {

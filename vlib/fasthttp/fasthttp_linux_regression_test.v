@@ -355,6 +355,113 @@ fn test_pipelined_request_behind_file_response_is_served() ! {
 	C.close(client_fd)
 }
 
+// A zero-length file response leaves cs.file_fd open with file_remaining == 0.
+// flush_batch must still close it (guarding on file_fd, not file_remaining), or the
+// descriptor leaks; on a keep-alive connection two empty-file responses would then
+// orphan the first fd. This drives two pipelined empty-file responses and asserts
+// the fd is reset each time and the connection survives.
+fn test_zero_length_file_response_does_not_leak_fd() ! {
+	tmp := os.join_path(os.vtmp_dir(), 'fasthttp_zero_file_test.txt')
+	os.write_file(tmp, '')!
+	defer {
+		os.rm(tmp) or {}
+	}
+	empty_file_handler := fn [tmp] (req HttpRequest) !HttpResponse {
+		return HttpResponse{
+			content:       'HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n'.bytes()
+			content_owned: true
+			file_path:     tmp
+		}
+	}
+	server := new_server(ServerConfig{
+		family:  .ip
+		port:    0
+		handler: empty_file_handler
+	})!
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer { C.close(epoll_fd) }
+	mut sockets := [2]int{}
+	assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+	server_fd := sockets[0]
+	client_fd := sockets[1]
+	set_blocking(server_fd, false)
+	set_blocking(client_fd, false)
+
+	mut w := new_regression_worker(server, epoll_fd)
+	assert add_fd_to_epoll(epoll_fd, server_fd, u32(C.EPOLLIN | C.EPOLLET)) == 0
+	mut cs := state_for(mut w, server_fd)
+
+	// Two empty-file responses pipelined on one connection: the first fd must be
+	// closed (file_fd reset) before the second is opened, and both must be answered.
+	req := 'GET /f1 HTTP/1.1\r\nHost: x\r\n\r\nGET /f2 HTTP/1.1\r\nHost: x\r\n\r\n'
+	assert C.send(client_fd, req.str, req.len, C.MSG_NOSIGNAL) == req.len
+	serve_conn(mut w, server_fd, mut cs)
+	resp := recv_available(client_fd)
+	// Both zero-length responses came back (headers only, no body bytes).
+	assert resp.count('HTTP/1.1 200 OK') == 2, resp
+	// The deferred-file fd was drained and reset, not left dangling.
+	assert cs.file_fd == -1
+	assert cs.file_remaining == 0
+	// keep-alive: connection is still open.
+	assert unsafe { w.conns[server_fd] != nil }
+
+	C.close(server_fd)
+	C.close(client_fd)
+}
+
+// A .reusable takeover writes its response directly to the socket. If an earlier
+// pipelined response is still buffered in write_buf, flushing it afterwards would
+// reverse HTTP/1.1 response order. The reactor enforces the "takeover is the sole
+// response in its burst" contract by dropping the connection instead of emitting
+// out-of-order bytes. This drives a normal request followed by a .reusable takeover
+// in one read burst and asserts the connection is closed.
+fn reorder_takeover_handler(req HttpRequest, mut out []u8, worker_state voidptr, mut ctl ResponseControl) Step {
+	path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
+	if path == '/takeover' {
+		// Simulate a reusable takeover: write directly to the socket (as veb does via
+		// its blocking TcpConn) and DO NOT append to `out`.
+		direct := 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nTO'
+		C.send(req.client_conn_fd, direct.str, direct.len, C.MSG_NOSIGNAL)
+		ctl.takeover_mode = .reusable
+		return .done
+	}
+	// Normal response: buffered into `out` (still pending when the takeover runs).
+	out << 'HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: keep-alive\r\n\r\nno'.bytes()
+	return .done
+}
+
+fn test_reusable_takeover_behind_buffered_response_closes() ! {
+	server := new_server(ServerConfig{
+		family:         .ip
+		port:           0
+		append_handler: reorder_takeover_handler
+	})!
+	epoll_fd := C.epoll_create1(0)
+	assert epoll_fd >= 0
+	defer { C.close(epoll_fd) }
+	mut sockets := [2]int{}
+	assert C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) == 0
+	server_fd := sockets[0]
+	client_fd := sockets[1]
+	set_blocking(server_fd, false)
+	set_blocking(client_fd, false)
+
+	mut w := new_regression_worker(server, epoll_fd)
+	assert add_fd_to_epoll(epoll_fd, server_fd, u32(C.EPOLLIN | C.EPOLLET)) == 0
+	mut cs := state_for(mut w, server_fd)
+
+	// Normal request, then a .reusable takeover pipelined right behind it. The
+	// normal response is buffered when the takeover writes directly to the socket.
+	req := 'GET /normal HTTP/1.1\r\nHost: x\r\n\r\nGET /takeover HTTP/1.1\r\nHost: x\r\n\r\n'
+	assert C.send(client_fd, req.str, req.len, C.MSG_NOSIGNAL) == req.len
+	serve_conn(mut w, server_fd, mut cs)
+	// The reactor refuses to reorder: the connection is closed and its slot freed.
+	assert unsafe { w.conns[server_fd] == nil }
+
+	C.close(client_fd)
+}
+
 fn test_conn_state_is_pooled_with_buffers_retained() ! {
 	server := new_server(ServerConfig{
 		family:  .ip
