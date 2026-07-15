@@ -6308,8 +6308,10 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 	if p.tok == .dollar {
 		// Compile-time field selector `receiver.$(field.name)`: the field name is resolved when
 		// the enclosing `$for` loop is unrolled. `receiver.$method()` binds its identifier to the
-		// innermost methods loop. Marker value `$`; child 1 is the name expr.
+		// innermost methods loop. Valid selectors use marker `$`; unresolved shorthand keeps its
+		// spelling in the marker so the checker reports it instead of deferring it to cgen.
 		p.next() // skip $
+		mut selector_value := '$'
 		inner := if p.tok == .lpar {
 			p.next()
 			name_expr := p.expr(.lowest)
@@ -6317,7 +6319,12 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 			name_expr
 		} else {
 			name := p.expect_name_or_keyword()
-			resolved_name := if name == 'method' && p.comptime_method_var.len > 0 {
+			valid_method_name := p.comptime_method_var.len > 0
+				&& name in ['method', p.comptime_method_var]
+			if !valid_method_name {
+				selector_value = '$${name}'
+			}
+			resolved_name := if name == 'method' && valid_method_name {
 				p.comptime_method_var
 			} else {
 				name
@@ -6327,7 +6334,7 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 		sel_start := p.add_children2(lhs, inner)
 		sel := p.a.add_node(flat.Node{
 			kind:           .selector
-			value:          '$'
+			value:          selector_value
 			children_start: sel_start
 			children_count: 2
 		})

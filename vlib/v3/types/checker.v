@@ -5253,12 +5253,12 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	// Their bodies can also reference metadata from an enclosing reflection loop, which does
 	// not exist as a runtime local while checking the original generic body.
 	if parts[1] in ['methods', 'params', 'attributes'] {
-		if has_items := tc.comptime_deferred_loop_has_items(node.typ, parts[1]) {
-			if !has_items {
-				return
-			}
+		deferred_cases := tc.comptime_static_deferred_name_cases(node.typ, parts[1])
+		if deferred_cases.known && deferred_cases.cases.len == 0 {
+			return
 		}
-		tc.check_comptime_static_body(body_id, parts[0], parts[1], ComptimeStaticFieldCases{}, ComptimeStaticValueCases{})
+		tc.check_comptime_static_body(body_id, parts[0], parts[1], ComptimeStaticFieldCases{},
+			deferred_cases)
 		return
 	}
 
@@ -5281,22 +5281,24 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 	tc.check_comptime_static_body(body_id, parts[0], parts[1], field_cases, value_cases)
 }
 
-fn (tc &TypeChecker) comptime_deferred_loop_has_items(source string, loop_kind string) ?bool {
+fn (tc &TypeChecker) comptime_static_deferred_name_cases(source string, loop_kind string) ComptimeStaticValueCases {
 	if loop_kind == 'methods' {
-		return tc.comptime_method_loop_has_items(source)
+		return tc.comptime_static_method_name_cases(source)
 	}
 	if loop_kind == 'params' {
-		return tc.comptime_param_loop_has_items(source)
+		return tc.comptime_static_param_name_cases(source)
 	}
 	if loop_kind == 'attributes' {
-		return tc.comptime_attribute_loop_has_items(source)
+		return tc.comptime_static_attribute_name_cases(source)
 	}
-	return none
+	return ComptimeStaticValueCases{}
 }
 
-fn (tc &TypeChecker) comptime_method_loop_has_items(source string) ?bool {
+fn (tc &TypeChecker) comptime_static_method_name_cases(source string) ComptimeStaticValueCases {
 	base_type := tc.comptime_static_for_base_type(source)
-	struct_name := tc.comptime_static_struct_name(base_type) or { return none }
+	struct_name := tc.comptime_static_struct_name(base_type) or {
+		return ComptimeStaticValueCases{}
+	}
 	mut wanted_module := tc.struct_modules[struct_name] or { '' }
 	if wanted_module.len == 0 {
 		if decl_file := tc.struct_files[struct_name] {
@@ -5314,6 +5316,8 @@ fn (tc &TypeChecker) comptime_method_loop_has_items(source string) ?bool {
 	}
 	wanted_receiver := struct_name.all_after_last('.').all_before('[')
 	mut module_name := ''
+	mut cases := []ComptimeStaticValueCase{}
+	mut seen := map[string]bool{}
 	for idx in tc.top_level_idx {
 		candidate := tc.a.nodes[idx]
 		if candidate.kind == .file {
@@ -5330,14 +5334,25 @@ fn (tc &TypeChecker) comptime_method_loop_has_items(source string) ?bool {
 		receiver := candidate.value.all_before_last('.').all_after_last('.').all_before('[')
 		candidate_module := if module_name.len > 0 { module_name } else { 'main' }
 		if candidate_module == wanted_module && receiver == wanted_receiver {
-			return true
+			name := candidate.value.all_after_last('.')
+			if name.len > 0 && name !in seen {
+				seen[name] = true
+				cases << ComptimeStaticValueCase{
+					name: name
+				}
+			}
 		}
 	}
-	return false
+	return ComptimeStaticValueCases{
+		known: true
+		cases: cases
+	}
 }
 
-fn (tc &TypeChecker) comptime_param_loop_has_items(source string) ?bool {
-	wanted := tc.comptime_deferred_decl_source(source, false) or { return none }
+fn (tc &TypeChecker) comptime_static_param_name_cases(source string) ComptimeStaticValueCases {
+	wanted := tc.comptime_deferred_decl_source(source, false) or {
+		return ComptimeStaticValueCases{}
+	}
 	mut module_name := ''
 	for idx in tc.top_level_idx {
 		candidate := tc.a.nodes[idx]
@@ -5357,19 +5372,27 @@ fn (tc &TypeChecker) comptime_param_loop_has_items(source string) ?bool {
 			continue
 		}
 		param_start := if tc.fn_has_receiver_param(candidate) { 1 } else { 0 }
-		mut count := 0
+		mut cases := []ComptimeStaticValueCase{}
 		for i in param_start .. candidate.children_count {
-			if tc.a.child_node(&candidate, i).kind == .param {
-				count++
+			param := tc.a.child_node(&candidate, i)
+			if param.kind == .param {
+				cases << ComptimeStaticValueCase{
+					name: param.value
+				}
 			}
 		}
-		return count > 0
+		return ComptimeStaticValueCases{
+			known: true
+			cases: cases
+		}
 	}
-	return none
+	return ComptimeStaticValueCases{}
 }
 
-fn (tc &TypeChecker) comptime_attribute_loop_has_items(source string) ?bool {
-	wanted := tc.comptime_deferred_decl_source(source, true) or { return none }
+fn (tc &TypeChecker) comptime_static_attribute_name_cases(source string) ComptimeStaticValueCases {
+	wanted := tc.comptime_deferred_decl_source(source, true) or {
+		return ComptimeStaticValueCases{}
+	}
 	mut module_name := ''
 	mut decl_id := -1
 	for idx in tc.top_level_idx {
@@ -5392,15 +5415,37 @@ fn (tc &TypeChecker) comptime_attribute_loop_has_items(source string) ?bool {
 		}
 	}
 	if decl_id < 0 {
-		return none
+		return ComptimeStaticValueCases{}
 	}
 	marker := '@attributes:${decl_id}'
 	for candidate in tc.a.nodes {
 		if candidate.kind == .directive && candidate.value == marker {
-			return candidate.generic_params.len > 0
+			mut cases := []ComptimeStaticValueCase{cap: candidate.generic_params.len}
+			for raw in candidate.generic_params {
+				name := comptime_static_attribute_name(raw)
+				if name.len > 0 {
+					cases << ComptimeStaticValueCase{
+						name: name
+					}
+				}
+			}
+			return ComptimeStaticValueCases{
+				known: true
+				cases: cases
+			}
 		}
 	}
-	return false
+	return ComptimeStaticValueCases{
+		known: true
+	}
+}
+
+fn comptime_static_attribute_name(raw string) string {
+	mut name := raw.all_before(':').trim_space()
+	if name.len >= 2 && name[0] in [`'`, `"`] && name[name.len - 1] == name[0] {
+		name = name[1..name.len - 1]
+	}
+	return name
 }
 
 fn (tc &TypeChecker) comptime_deferred_decl_source(source string, allow_type bool) ?ComptimeDeferredDeclSource {
@@ -5575,6 +5620,8 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	}
 	if node.kind == .comptime_if && comptime_text_references_var(node.value, var_name) {
 		if loop_kind in ['methods', 'params', 'attributes'] {
+			tc.check_comptime_static_deferred_metadata_if(node, var_name, loop_kind, field_cases,
+				value_cases)
 			return
 		}
 		tc.check_comptime_static_metadata_if(node, var_name, loop_kind, field_cases, value_cases)
@@ -5603,6 +5650,69 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			tc.cur_scope.insert(lhs.value, typ)
 		}
 	}
+}
+
+fn (mut tc TypeChecker) check_comptime_static_deferred_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
+	if !value_cases.known {
+		return
+	}
+	mut check_then := false
+	mut check_else := false
+	for item in value_cases.cases {
+		cond := comptime_static_subst_deferred_name_cond(node.value, var_name, item.name)
+		if comptime_text_references_var(cond, var_name) {
+			continue
+		}
+		taken := tc.comptime_static_eval_field_cond(cond) or { continue }
+		if taken {
+			check_then = true
+		} else {
+			check_else = true
+		}
+	}
+	if check_then && node.children_count > 0 {
+		tc.check_comptime_static_body(tc.a.child(&node, 0), var_name, loop_kind, field_cases,
+			value_cases)
+	}
+	if check_else && node.children_count > 1 {
+		tc.check_comptime_static_body(tc.a.child(&node, 1), var_name, loop_kind, field_cases,
+			value_cases)
+	}
+}
+
+fn comptime_static_subst_deferred_name_cond(cond string, var_name string, name string) string {
+	return comptime_static_replace_unquoted(cond, '${var_name}.name', "'${name}'")
+}
+
+fn comptime_static_replace_unquoted(cond string, needle string, replacement string) string {
+	if needle.len == 0 || !cond.contains(needle) {
+		return cond
+	}
+	mut out := ''
+	mut offset := 0
+	for offset < cond.len {
+		if cond[offset] == `'` || cond[offset] == `"` {
+			end := comptime_cond_skip_string(cond, offset)
+			out += cond[offset..end]
+			offset = end
+			continue
+		}
+		if offset + needle.len <= cond.len && cond[offset..offset + needle.len] == needle {
+			before_ok := !comptime_cond_name_char(needle[0]) || offset == 0
+				|| !comptime_cond_name_char(cond[offset - 1])
+			after := offset + needle.len
+			after_ok := !comptime_cond_name_char(needle[needle.len - 1]) || after >= cond.len
+				|| !comptime_cond_name_char(cond[after])
+			if before_ok && after_ok {
+				out += replacement
+				offset = after
+				continue
+			}
+		}
+		out += cond[offset..offset + 1]
+		offset++
+	}
+	return out
 }
 
 fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {

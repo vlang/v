@@ -2141,6 +2141,36 @@ fn main() {
 		'unknown field `$` on `Item`')
 }
 
+fn test_unresolved_shorthand_method_selectors_are_rejected() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'shorthand_method_selector_outside_loop', 'struct Item {}
+
+fn (item Item) run() {
+	_ = item
+}
+
+fn main() {
+	item := Item{}
+	item.$method()
+}
+',
+		'unknown function `item.$method`')
+	round4_run_bad(v3_bin, 'misspelled_shorthand_method_selector', 'struct Item {}
+
+fn (item Item) run() {
+	_ = item
+}
+
+fn main() {
+	item := Item{}
+	$for method in Item.methods {
+		item.$methd()
+	}
+}
+',
+		'unknown function `item.$methd`')
+}
+
 fn test_bare_method_data_and_imported_return_type_are_materialized() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'bare_method_data_imported_return', {
@@ -2941,12 +2971,61 @@ fn main() {
 		'unknown function `missing_attribute_loop_fn`')
 }
 
-fn test_deferred_method_loop_skips_unselected_metadata_branch() {
+fn test_deferred_reflection_loops_check_selected_metadata_branches() {
 	v3_bin := round4_build_v3()
-	out := round4_run_good(v3_bin, 'method_loop_unselected_metadata_branch', 'struct App {}
+	round4_run_bad(v3_bin, 'method_loop_selected_branch_error', 'struct App {}
 
 fn (app App) run() {
 	_ = app
+}
+
+fn main() {
+	$for method in App.methods {
+		$if method.name == "run" {
+			missing_selected_method_fn()
+		}
+	}
+}
+',
+		'unknown function `missing_selected_method_fn`')
+	round4_run_bad(v3_bin, 'param_loop_selected_branch_error', 'fn consume(value int) {
+	_ = value
+}
+
+fn main() {
+	$for param in consume.params {
+		$if param.name == "value" {
+			missing_selected_param_fn()
+		}
+	}
+}
+',
+		'unknown function `missing_selected_param_fn`')
+	round4_run_bad(v3_bin, 'attribute_loop_selected_branch_error', '@[route]
+struct App {}
+
+fn main() {
+	$for attr in App.attributes {
+		$if attr.name == "route" {
+			missing_selected_attribute_fn()
+		}
+	}
+}
+',
+		'unknown function `missing_selected_attribute_fn`')
+}
+
+fn test_deferred_reflection_loops_skip_unselected_metadata_branches() {
+	v3_bin := round4_build_v3()
+	out := round4_run_good(v3_bin, 'deferred_loop_unselected_metadata_branches', '@[route]
+struct App {}
+
+fn (app App) run() {
+	_ = app
+}
+
+fn consume(value int) {
+	_ = value
 }
 
 fn main() {
@@ -2958,10 +3037,24 @@ fn main() {
 			rows << method.name
 		}
 	}
+	$for param in consume.params {
+		$if param.name == "missing" {
+			missing_unselected_param_fn()
+		} $else {
+			rows << param.name
+		}
+	}
+	$for attr in App.attributes {
+		$if attr.name == "missing" {
+			missing_unselected_attribute_fn()
+		} $else {
+			rows << attr.name
+		}
+	}
 	println(rows.join("|"))
 }
 ')
-	assert out == 'run'
+	assert out == 'run|value|route'
 }
 
 fn test_empty_deferred_reflection_loops_skip_static_body_checks() {
