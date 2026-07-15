@@ -12549,6 +12549,7 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		return info
 	}
 	mut inferred := map[string]string{}
+	mut inferred_types := map[string]Type{}
 	mut first_param_idx := 0
 	if info.has_receiver && param_texts.len > 0 {
 		fn_node := tc.a.child_node(&node, 0)
@@ -12557,6 +12558,8 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 			actual := tc.resolve_type(recv_id)
 			tc.infer_generic_type_text_from_type(param_texts[0], actual, generic_params, mut
 				inferred)
+			tc.infer_generic_type_value_from_type(param_texts[0], actual, generic_params, mut
+				inferred_types)
 			first_param_idx = 1
 		}
 	}
@@ -12569,23 +12572,46 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		actual := tc.resolve_type(arg_id)
 		tc.infer_generic_type_text_from_type(param_texts[param_idx], actual, generic_params, mut
 			inferred)
+		tc.infer_generic_type_value_from_type(param_texts[param_idx], actual, generic_params, mut
+			inferred_types)
 	}
 	mut concrete_args := []string{cap: generic_params.len}
+	mut concrete_types := []Type{cap: generic_params.len}
 	for param in generic_params {
 		arg := inferred[param] or { return info }
 		concrete_args << arg
+		// Retain the caller-side semantic type. Re-parsing a bare caller type such
+		// as `User` in the generic declaration's module would incorrectly turn it
+		// into `json2.User`.
+		concrete_types << inferred_types[param] or {
+			tc.type_from_known_symbol(arg) or { tc.parse_type(arg) }
+		}
 	}
 	mut sub_params := []Type{}
-	for param_text in param_texts {
-		sub_params << tc.parse_fn_signature_type(info.name, subst_generic_text(param_text,
-			concrete_args, generic_params))
+	for i, param_text in param_texts {
+		if generic_type_application(param_text) {
+			// Named applications such as `Box[T]` lose their arguments in the
+			// open parsed type, so retain the textual reconstruction for them.
+			sub_params << tc.parse_fn_signature_type(info.name, subst_generic_text(param_text,
+				concrete_args, generic_params))
+		} else if i < info.params.len {
+			sub_params << tc.substitute_generic_type_values(info.params[i], concrete_types,
+				generic_params)
+		} else {
+			sub_params << tc.parse_fn_signature_type(info.name, subst_generic_text(param_text,
+				concrete_args, generic_params))
+		}
 	}
 	ret_text := tc.fn_ret_type_texts[info.name] or { '' }
 	sub_ret := if ret_text.len > 0 {
-		tc.parse_fn_signature_type(info.name, subst_generic_text(ret_text, concrete_args,
-			generic_params))
+		if generic_type_application(ret_text) {
+			tc.parse_fn_signature_type(info.name, subst_generic_text(ret_text, concrete_args,
+				generic_params))
+		} else {
+			tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
+		}
 	} else {
-		info.return_type
+		tc.substitute_generic_type_values(info.return_type, concrete_types, generic_params)
 	}
 	return CallInfo{
 		name:                 info.name
@@ -12678,6 +12704,64 @@ fn (mut tc TypeChecker) infer_generic_type_text_from_type(param_text string, act
 				actual_text = param
 			}
 			inferred[param] = actual_text
+			return
+		}
+	}
+}
+
+// infer_generic_type_value_from_type retains the resolved caller-side Type for
+// each generic placeholder. The text inference remains useful for reconstructing
+// named applications, but semantic substitution must not parse a caller-local or
+// canonical qualified name again in the callee's import context.
+fn (mut tc TypeChecker) infer_generic_type_value_from_type(param_text string, actual Type, generic_params []string, mut inferred map[string]Type) {
+	clean := param_text.trim_space()
+	if clean.len == 0 {
+		return
+	}
+	if clean.starts_with('&') {
+		if actual is Pointer {
+			tc.infer_generic_type_value_from_type(clean[1..], actual.base_type, generic_params, mut
+				inferred)
+		} else {
+			tc.infer_generic_type_value_from_type(clean[1..], actual, generic_params, mut inferred)
+		}
+		return
+	}
+	if clean.starts_with('mut ') {
+		tc.infer_generic_type_value_from_type(clean[4..], actual, generic_params, mut inferred)
+		return
+	}
+	if clean.starts_with('...') {
+		if actual is Array {
+			tc.infer_generic_type_value_from_type(clean[3..], actual.elem_type, generic_params, mut
+				inferred)
+		}
+		return
+	}
+	if clean.starts_with('[]') {
+		if actual is Array {
+			tc.infer_generic_type_value_from_type(clean[2..], actual.elem_type, generic_params, mut
+				inferred)
+		}
+		return
+	}
+	if clean.starts_with('?') {
+		if actual is OptionType {
+			tc.infer_generic_type_value_from_type(clean[1..], actual.base_type, generic_params, mut
+				inferred)
+		}
+		return
+	}
+	if clean.starts_with('!') {
+		if actual is ResultType {
+			tc.infer_generic_type_value_from_type(clean[1..], actual.base_type, generic_params, mut
+				inferred)
+		}
+		return
+	}
+	for param in generic_params {
+		if clean == param && param !in inferred {
+			inferred[param] = actual
 			return
 		}
 	}
@@ -17887,6 +17971,80 @@ fn (tc &TypeChecker) substitute_generic_type(typ Type, args []string, param_name
 	return typ
 }
 
+// substitute_generic_type_values replaces generic placeholders with already
+// resolved semantic types. Unlike the text-based variant, it cannot reinterpret
+// a caller-local type name in the generic declaration's module.
+fn (tc &TypeChecker) substitute_generic_type_values(typ Type, args []Type, param_names []string) Type {
+	if args.len == 0 {
+		return typ
+	}
+	if typ is Unknown {
+		if name := generic_placeholder_from_unknown(typ) {
+			mut idx := if param_names.len > 0 { param_names.index(name) } else { -1 }
+			if idx < 0 {
+				idx = generic_param_index(name)
+			}
+			if idx >= 0 && idx < args.len {
+				return args[idx]
+			}
+		}
+		return typ
+	}
+	if typ is Array {
+		return Type(Array{
+			elem_type: tc.substitute_generic_type_values(typ.elem_type, args, param_names)
+		})
+	}
+	if typ is ArrayFixed {
+		return Type(ArrayFixed{
+			elem_type: tc.substitute_generic_type_values(typ.elem_type, args, param_names)
+			len:       typ.len
+			len_expr:  typ.len_expr
+		})
+	}
+	if typ is Map {
+		return Type(Map{
+			key_type:   tc.substitute_generic_type_values(typ.key_type, args, param_names)
+			value_type: tc.substitute_generic_type_values(typ.value_type, args, param_names)
+		})
+	}
+	if typ is Pointer {
+		return Type(Pointer{
+			base_type: tc.substitute_generic_type_values(typ.base_type, args, param_names)
+		})
+	}
+	if typ is OptionType {
+		return Type(OptionType{
+			base_type: tc.substitute_generic_type_values(typ.base_type, args, param_names)
+		})
+	}
+	if typ is ResultType {
+		return Type(ResultType{
+			base_type: tc.substitute_generic_type_values(typ.base_type, args, param_names)
+		})
+	}
+	if typ is FnType {
+		mut params := []Type{cap: typ.params.len}
+		for param in typ.params {
+			params << tc.substitute_generic_type_values(param, args, param_names)
+		}
+		return Type(FnType{
+			params:      params
+			return_type: tc.substitute_generic_type_values(typ.return_type, args, param_names)
+		})
+	}
+	if typ is MultiReturn {
+		mut parts := []Type{cap: typ.types.len}
+		for part in typ.types {
+			parts << tc.substitute_generic_type_values(part, args, param_names)
+		}
+		return Type(MultiReturn{
+			types: parts
+		})
+	}
+	return typ
+}
+
 fn (tc &TypeChecker) embedded_method_call_info(struct_name string, method string) ?CallInfo {
 	mut seen := map[string]bool{}
 	return tc.embedded_method_call_info_inner(struct_name, method, mut seen)
@@ -18570,6 +18728,58 @@ pub fn (tc &TypeChecker) parse_type(typ string) Type {
 	}
 	_, result := tc.intern_type(tc.parse_type_uncached(typ))
 	return result
+}
+
+// parse_canonical_type parses compiler-produced type text while preserving an
+// exact known qualified symbol before consulting the current file's import
+// aliases. Source text must continue to use parse_type, where aliases take
+// precedence; this entry point is for semantic names carried between phases.
+pub fn (tc &TypeChecker) parse_canonical_type(typ string) Type {
+	clean := typ.trim_space()
+	if clean.starts_with('&') {
+		_, result := tc.intern_type(Type(Pointer{
+			base_type: tc.parse_canonical_type(clean[1..])
+		}))
+		return result
+	}
+	if clean.starts_with('mut ') {
+		_, result := tc.intern_type(Type(Pointer{
+			base_type: tc.parse_canonical_type(clean[4..])
+		}))
+		return result
+	}
+	if clean.starts_with('shared ') {
+		return tc.parse_canonical_type(clean[7..])
+	}
+	if clean.starts_with('...') {
+		_, result := tc.intern_type(Type(Array{
+			elem_type: tc.parse_canonical_type(clean[3..])
+		}))
+		return result
+	}
+	if clean.starts_with('[]') {
+		_, result := tc.intern_type(Type(Array{
+			elem_type: tc.parse_canonical_type(clean[2..])
+		}))
+		return result
+	}
+	if clean.starts_with('?') {
+		_, result := tc.intern_type(Type(OptionType{
+			base_type: tc.parse_canonical_type(clean[1..])
+		}))
+		return result
+	}
+	if clean.starts_with('!') {
+		_, result := tc.intern_type(Type(ResultType{
+			base_type: tc.parse_canonical_type(clean[1..])
+		}))
+		return result
+	}
+	if known := tc.type_from_known_symbol(clean) {
+		_, result := tc.intern_type(known)
+		return result
+	}
+	return tc.parse_type(clean)
 }
 
 fn (tc &TypeChecker) intern_type(t Type) (TypeId, Type) {

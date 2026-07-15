@@ -1902,6 +1902,10 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	}
 	project_root := project_root_for_files(initial_files)
 	mut parsed_module_identities := map[string]string{}
+	mut parsed_identity_dirs := map[string]string{}
+	mut identity_source_paths := map[string]string{}
+	mut identity_source_dirs := map[string]string{}
+	mut forced_full_module_paths := map[string]bool{}
 	mut module_path_cache := map[string]string{}
 	mut module_identity_cache := map[string]string{}
 
@@ -1919,6 +1923,40 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	mut synthetic_sync_added := implicit_imports.has_sync
 	mut synthetic_embed_file_added := implicit_imports.has_embed_import
 	for {
+		// Decide short-name collisions for the whole visible import wave before
+		// mutating any import node or parsing either module. This qualifies both
+		// sides of `a.tast`/`b.tast`, avoiding an order-dependent state where the
+		// first module is called `tast` and that semantic name is later mistaken
+		// for the source alias of the second import.
+		mut scan_file := cur_file
+		for scan_idx in node_idx .. a.nodes.len {
+			scan_node := a.nodes[scan_idx]
+			if scan_node.kind == .file && scan_node.value.len > 0 {
+				scan_file = scan_node.value
+				continue
+			}
+			if scan_node.kind != .import_decl || !scan_node.value.contains('.') {
+				continue
+			}
+			scan_path := scan_node.value
+			scan_importing_file := if scan_file.len > 0 { scan_file } else { first_file }
+			scan_dir := resolve_project_or_pref_module_path_cached(prefs, scan_path,
+				scan_importing_file, project_root, mut module_path_cache)
+			scan_identity := import_module_identity_cached(prefs, scan_path, scan_importing_file,
+				project_root, scan_dir, mut module_path_cache, mut module_identity_cache)
+			if owner_path := identity_source_paths[scan_identity] {
+				owner_dir := identity_source_dirs[scan_identity] or { '' }
+				if owner_path != scan_path && owner_dir.len > 0 && scan_dir.len > 0
+					&& os.is_dir(owner_dir) && os.is_dir(scan_dir)
+					&& os.real_path(owner_dir) != os.real_path(scan_dir) {
+					forced_full_module_paths[owner_path] = true
+					forced_full_module_paths[scan_path] = true
+				}
+			} else {
+				identity_source_paths[scan_identity] = scan_path
+				identity_source_dirs[scan_identity] = scan_dir
+			}
+		}
 		// Collect one wave: every not-yet-parsed module imported by the nodes
 		// scanned so far. Parsing appends at the end of the node array and the
 		// scan proceeds in node order, so batching a wave and appending its
@@ -1955,8 +1993,21 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			importing_file := if cur_file.len > 0 { cur_file } else { first_file }
 			mod_dir := resolve_project_or_pref_module_path_cached(prefs, mod_name, importing_file,
 				project_root, mut module_path_cache)
-			module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
+			mut module_identity := import_module_identity_cached(prefs, mod_name, importing_file,
 				project_root, mod_dir, mut module_path_cache, mut module_identity_cache)
+			if forced_full_module_paths[mod_name] {
+				module_identity = mod_name
+			}
+			// Two distinct dotted imports can legitimately declare the same short
+			// module name (for example `a.http` and `b.http`). Keep the first short
+			// identity for compatibility, but qualify every colliding directory by
+			// its import path so it is parsed and indexed as a separate module.
+			if owner_dir := parsed_identity_dirs[module_identity] {
+				if mod_dir.len > 0 && owner_dir.len > 0 && os.is_dir(mod_dir)
+					&& os.real_path(owner_dir) != os.real_path(mod_dir) {
+					module_identity = mod_name
+				}
+			}
 			if module_identity.len > 0 {
 				a.nodes[node_idx].value = module_identity
 			}
@@ -1968,6 +2019,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			parsed_modules[mod_name] = true
 			if mod_dir_exists && module_identity.len > 0 {
 				parsed_modules[module_identity] = true
+				parsed_identity_dirs[module_identity] = mod_dir
 			}
 			parsed_module_identities[mod_name] = if module_identity.len > 0 {
 				module_identity

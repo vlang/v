@@ -2643,7 +2643,11 @@ fn (mut t Transformer) register_specialized_fn_signature(decl GenericFnDecl, clo
 	}
 	generic_params := t.generic_fn_param_names(decl.node, decl.module)
 	ret_name := t.specialized_signature_type_text(decl, decl.node.typ, args, generic_params)
-	ret := if !isnil(t.tc) { t.tc.parse_type(ret_name) } else { types.Type(types.void_) }
+	ret := if !isnil(t.tc) {
+		t.tc.parse_canonical_type(ret_name)
+	} else {
+		types.Type(types.void_)
+	}
 	mut params := []types.Type{}
 	mut variadic := false
 	for i in 0 .. decl.node.children_count {
@@ -2656,7 +2660,7 @@ fn (mut t Transformer) register_specialized_fn_signature(decl GenericFnDecl, clo
 			variadic = true
 		}
 		if !isnil(t.tc) {
-			params << t.tc.parse_type(param_type)
+			params << t.tc.parse_canonical_type(param_type)
 		}
 	}
 	qname := transform_qualified_fn_name(decl.module, clone.value)
@@ -2708,7 +2712,7 @@ fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ s
 	t.cur_file = decl.file
 	t.tc.cur_module = decl.module
 	t.tc.cur_file = decl.file
-	parsed := t.tc.parse_type(qualified)
+	parsed := t.tc.parse_canonical_type(qualified)
 	t.cur_module = old_module
 	t.cur_file = old_file
 	t.tc.cur_module = old_tc_module
@@ -2977,7 +2981,7 @@ fn (mut t Transformer) concrete_generic_call_param_types(id flat.NodeId, node fl
 			continue
 		}
 		param_type := t.specialized_signature_type_text(decl, child.typ, args, params)
-		result << t.tc.parse_type(param_type)
+		result << t.tc.parse_canonical_type(param_type)
 	}
 	if result.len == 0 {
 		return none
@@ -3058,10 +3062,11 @@ fn (mut t Transformer) rewrite_generic_plain_call(id flat.NodeId, node flat.Node
 			return
 		}
 	}
-	spec_value := specialized_generic_fn_value(decl.node.value, args)
+	concrete_args := t.canonical_generic_specialization_args(args)
+	spec_value := specialized_generic_fn_value(decl.node.value, concrete_args)
 	spec_name := transform_qualified_fn_name(decl.module, spec_value)
-	ret_typ := t.specialized_fn_return_type_text(decl, args)
-	param_types := t.specialized_generic_call_param_type_texts(decl, args)
+	ret_typ := t.specialized_fn_return_type_text(decl, concrete_args)
+	param_types := t.specialized_generic_call_param_type_texts(decl, concrete_args)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	children << t.make_ident(spec_name)
 	for i in 1 .. node.children_count {
@@ -3312,11 +3317,13 @@ fn (mut t Transformer) rewrite_generic_method_call(id flat.NodeId, node flat.Nod
 fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node flat.Node, decl GenericFnDecl, args []string) {
 	old_params := t.active_generic_params
 	t.active_generic_params = t.generic_fn_param_names(decl.node, decl.module)
-	spec_value := specialized_generic_fn_value(decl.node.value, args)
+	concrete_args := t.canonical_generic_specialization_args(args)
+	spec_value := specialized_generic_fn_value(decl.node.value, concrete_args)
 	spec_name := transform_qualified_fn_name(decl.module, spec_value)
-	ret_typ := t.specialized_signature_type_text(decl, decl.node.typ, args, t.active_generic_params)
+	ret_typ := t.specialized_signature_type_text(decl, decl.node.typ, concrete_args,
+		t.active_generic_params)
 	t.active_generic_params = old_params
-	param_types := t.specialized_generic_call_param_type_texts(decl, args)
+	param_types := t.specialized_generic_call_param_type_texts(decl, concrete_args)
 
 	mut children := []flat.NodeId{cap: int(node.children_count) + 1}
 	children << t.make_ident(spec_name)
@@ -6666,7 +6673,11 @@ fn specialized_generic_fn_value(value string, args []string) string {
 		}
 		return '${receiver}[${generic_type_args_short(args)}].${method}'
 	}
-	return '${value}_T_${generic_type_suffixes(args)}'
+	// Free-function specializations need the canonical module-qualified type
+	// arguments in their identity. Using only the last type component made
+	// `keep[a.tast.Value]` and `keep[b.tast.Value]` both become `keep_T_Value`,
+	// so one body/prototype was reused with the other module's ABI type.
+	return '${value}_T_${generic_type_full_suffixes(args)}'
 }
 
 fn generic_type_args_short(args []string) string {
@@ -6883,6 +6894,15 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg string) string {
 		return '[]' + t.canonical_generic_specialization_arg(clean[2..])
 	}
 	if t.generic_arg_is_alias_name(clean, '') {
+		return clean
+	}
+	// A checker-resolved qualified type is already a canonical semantic name.
+	// Do not reinterpret its first component as an import alias from the current
+	// source file (where the same spelling can intentionally name another module).
+	if clean.contains('.') && (clean in t.structs || clean in t.sum_types
+		|| clean in t.enum_types || (!isnil(t.tc) && (clean in t.tc.structs
+		|| clean in t.tc.sum_types || clean in t.tc.enum_names
+		|| clean in t.tc.interface_names))) {
 		return clean
 	}
 	// Resolve an import-alias module prefix (`import x.json2 as json` makes
