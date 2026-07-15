@@ -1,0 +1,13 @@
+import json
+
+struct Default {
+	a int
+}
+
+// A struct field default can hold an unmigratable json call, but
+// StructField.default_expr is outside Node.children(), so the unmigratable scan
+// sub-walks it. This file is left unmigrated (its `import json` is kept) because
+// json.encode_pretty cannot be reproduced by json2.
+struct Payload {
+	payload string = json.encode_pretty(Default{})
+}

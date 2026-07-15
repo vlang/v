@@ -319,6 +319,12 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 				s.found = true
 				break
 			}
+			// A field default (`payload string = json.encode_pretty(...)`) can hold an
+			// unmigratable json call, but StructField.default_expr is outside
+			// Node.children(), so sub-walk it explicitly.
+			if field.has_default_expr {
+				walker.inspect(field.default_expr, data, json_unmigratable_scan_visit)
+			}
 		}
 	} else if node is ast.Stmt && node is ast.FnDecl {
 		decl := node as ast.FnDecl
