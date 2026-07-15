@@ -2915,6 +2915,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 		for i + 1 < node.children_count {
 			lhs := t.a.nodes[int(t.a.child(&node, i))]
 			rhs := t.a.nodes[int(t.a.child(&node, i + 1))]
+			mut lhs_marks_interface_box := false
 			if node.kind == .decl_assign && lhs.kind == .ident && lhs.value.len > 0 {
 				declared_names << lhs.value
 			}
@@ -2933,10 +2934,16 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 				ptr_aliases[lhs.value] = rhs.value
 				if rhs.value in interface_boxes {
 					interface_boxes[lhs.value] = true
+					lhs_marks_interface_box = true
 				}
 			} else if lhs.kind == .ident && lhs.value.len > 0
 				&& t.interface_box_from_stack_pointer_source(t.a.child(&node, i + 1), amp_ptrs, local_stack_names) {
 				interface_boxes[lhs.value] = true
+				lhs_marks_interface_box = true
+			}
+			if node.kind == .assign && lhs.kind == .ident && lhs.value.len > 0
+				&& !lhs_marks_interface_box {
+				interface_boxes.delete(lhs.value)
 			}
 			i += 2
 		}
