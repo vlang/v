@@ -239,16 +239,26 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	// `file.imports` includes branch-local (`$if { import json }`) imports, so those
 	// are covered too — otherwise vfmt could migrate the branch import to `json2`
 	// while leaving an unmigrated `json.*` call behind.
-	mut imports_json := false
+	// `json` can be present only in file.implied_imports when vfmt auto-adds a missing
+	// import. That path is left unmigrated: vfmt would emit the implied import verbatim
+	// (not through imp_stmt_str), and whether a `json.encode` there even rewrites
+	// depends on if `json` resolved as a module, so migrating risks an import/call
+	// mismatch. Treat implied json as a reason to keep the file's json usage as-is.
+	implied_json := 'json' in file.implied_imports
+	mut imports_json := implied_json
 	for imp in file.imports {
 		if imp.source_name == 'json' {
 			imports_json = true
 			break
 		}
 	}
+	// Importing `json2` into a file whose own module is `json2` is rejected by the
+	// checker (cannot import a module into a module with the same name), so the
+	// qualifier is effectively taken — leave such a file unmigrated.
+	cur_module_is_json2 := file.mod.name == 'json2'
 	if imports_json {
-		f.keep_json_unmigrated = json2_alias_is_blank || has_branch_local_json2
-			|| json2_name_taken || json_import_has_line_comment
+		f.keep_json_unmigrated = implied_json || json2_alias_is_blank || has_branch_local_json2
+			|| json2_name_taken || json_import_has_line_comment || cur_module_is_json2
 			|| f.file_has_vfmt_off_region() || f.file_has_unmigratable_json_usage(file)
 	}
 
