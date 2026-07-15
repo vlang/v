@@ -66,6 +66,7 @@ pub mut:
 	source_text              string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 	global_processed_imports []string
 	branch_processed_imports []string
+	has_json2_import         bool // the file already imports `json2` (in any form); used when migrating `import json`
 	is_translated_module     bool // @[translated]
 	is_c_function            bool // C.func(...)
 }
@@ -155,6 +156,9 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	f.implied_import_str = sb.str()
 
 	for imp in file.imports {
+		if imp.source_name == 'json2' {
+			f.has_json2_import = true
+		}
 		f.mod2alias[imp.mod] = imp.alias
 		f.mod2alias[imp.mod.all_after('${file.mod.name}.')] = imp.alias
 		for sym in imp.syms {
@@ -346,6 +350,16 @@ pub fn (mut f Fmt) import_stmt(imp ast.Import) {
 	f.has_import_stmt = true
 	if imp.mod in f.file.auto_imports && imp.mod !in f.file.used_imports {
 		// Skip hidden imports like preludes.
+		return
+	}
+	if imp.source_name == 'json' && f.has_json2_import {
+		// Migrating deprecated `import json` to `import json2`, but the file already
+		// imports `json2` (possibly with symbols/alias, e.g. `import json2 { Any }`).
+		// Drop the migrated import entirely so it merges into the existing one; the
+		// rewritten call sites use the qualified `json2.x` form, which a selective
+		// json2 import still provides. Keeping both would emit a duplicate `import
+		// json2` that the checker rejects as already imported.
+		f.import_comments(imp.next_comments)
 		return
 	}
 	imp_stmt := f.imp_stmt_str(imp)
