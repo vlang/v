@@ -2011,6 +2011,15 @@ fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string,
 			typ = typ.base_type
 			continue
 		}
+		if typ is types.Pointer {
+			base := typ.base_type
+			if base is types.Struct || base is types.SumType || base is types.Interface
+				|| base is types.Enum {
+				typ = base
+				continue
+			}
+			return
+		}
 		break
 	}
 	type_name := typ.name()
