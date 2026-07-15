@@ -4119,16 +4119,8 @@ fn (mut tc TypeChecker) ownership_prescan_expr_is_owned_clone_call(id flat.NodeI
 	if !tc.valid_node_id(recv_id) {
 		return false
 	}
-	recv_name := tc.ownership_expr_ident_name(recv_id)
-	if recv_name.len > 0 && recv_name in owned_locals {
-		recv_type := local_types[recv_name] or { Type(String{}) }
-		return tc.ownership_clone_result_is_owned(call_id, recv_type)
-	}
-	if !tc.ownership_prescan_expr_for_owned_calls(recv_id, mut owned_locals, mut local_types)
-		&& !tc.ownership_type_is_owned(tc.resolve_type(recv_id)) {
-		return false
-	}
-	return tc.ownership_clone_result_is_owned(call_id, tc.resolve_type(recv_id))
+	_ = tc.ownership_prescan_expr_for_owned_calls(recv_id, mut owned_locals, mut local_types)
+	return tc.ownership_type_requires_destruction(tc.resolve_type(call_id))
 }
 
 fn (mut tc TypeChecker) ownership_prescan_call_for_owned_calls(id flat.NodeId, node flat.Node, mut owned_locals map[string]bool, mut local_types map[string]Type) bool {
@@ -9864,24 +9856,8 @@ fn (tc &TypeChecker) ownership_expr_is_to_owned_call(id flat.NodeId) bool {
 fn (mut tc TypeChecker) ownership_expr_is_owned_clone_call(id flat.NodeId) bool {
 	call_id := tc.ownership_unwrap_expr(id)
 	recv_id := tc.ownership_clone_receiver_id(call_id)
-	if !tc.valid_node_id(recv_id) {
-		return false
-	}
-	name := tc.ownership_expr_ident_name(recv_id)
-	if name.len > 0 && name in tc.ownership.owned_vars {
-		return tc.ownership_clone_result_is_owned(call_id, tc.ownership_type_for_name(name,
-			Type(String{})))
-	}
-	if !tc.ownership_expr_produces_owned_value(recv_id) {
-		return false
-	}
-	return tc.ownership_clone_result_is_owned(call_id, tc.resolve_type(recv_id))
-}
-
-fn (mut tc TypeChecker) ownership_expr_produces_owned_value(id flat.NodeId) bool {
-	return tc.ownership_expr_is_to_owned_call(id) || tc.ownership_expr_is_owned_clone_call(id)
-		|| tc.ownership_expr_is_ownership_call(id)
-		|| tc.ownership_type_is_owned(tc.resolve_type(id))
+	return tc.valid_node_id(recv_id)
+		&& tc.ownership_type_requires_destruction(tc.resolve_type(call_id))
 }
 
 // ownership_expr_creates_owned_value reports whether evaluating an expression creates a
@@ -9896,12 +9872,33 @@ pub fn (tc &TypeChecker) ownership_expr_creates_owned_value(id flat.NodeId) bool
 		&& tc.ownership_type_requires_destruction(tc.resolve_type(call_id))
 }
 
-fn (mut tc TypeChecker) ownership_clone_result_is_owned(call_id flat.NodeId, recv_type Type) bool {
-	if tc.ownership_type_is_string(recv_type) {
-		return true
+// ownership_fn_value_returns_owned reports whether invoking a function value produces a
+// fresh owner according to the ownership return analysis.
+pub fn (tc &TypeChecker) ownership_fn_value_returns_owned(id flat.NodeId, enclosing_fn string, module_name string) bool {
+	if tc.ownership == unsafe { nil } || !tc.valid_node_id(id) {
+		return false
 	}
-	ret_type := tc.resolve_type(call_id)
-	return tc.ownership_type_is_owned(ret_type)
+	mut names := []string{}
+	if resolved := tc.resolved_fn_value_name(id) {
+		names << resolved
+		names << ownership_qualify_name(module_name, resolved)
+	}
+	node := tc.a.nodes[int(id)]
+	parent_fn := ownership_qualify_fn_decl_name(module_name, enclosing_fn)
+	if node.kind == .fn_literal {
+		names << ownership_fn_literal_name(parent_fn, node)
+	} else if node.kind == .lambda_expr {
+		names << '${parent_fn}__lambda_${node.pos.id}_${node.pos.offset}'
+	} else if node.kind == .ident && node.value.len > 0 {
+		names << node.value
+		names << ownership_qualify_name(module_name, node.value)
+	}
+	for name in names {
+		if name.len > 0 && name in tc.ownership.ownership_fns {
+			return true
+		}
+	}
+	return false
 }
 
 fn (tc &TypeChecker) ownership_clone_receiver_name(id flat.NodeId) string {

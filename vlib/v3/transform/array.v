@@ -1530,7 +1530,9 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 		result_elem_type = elem_type
 	}
 	opaque_mapper := map_fn_name.len > 0 || map_expr.kind == .fn_literal
-	mapped_borrows_elem := opaque_mapper
+	mapper_returns_owned := !isnil(t.tc)
+		&& t.tc.ownership_fn_value_returns_owned(map_expr_id, t.cur_fn_name, t.cur_module)
+	mapped_borrows_elem := (opaque_mapper && !mapper_returns_owned)
 		|| (t.array_map_expr_references_ident(mapped_source, elem_name)
 		&& (isnil(t.tc) || !t.tc.ownership_expr_creates_owned_value(map_source_id)))
 	mapped_result_needs_clone := mapped_borrows_elem && !isnil(t.tc)
