@@ -12,11 +12,11 @@ struct OwnershipV3InterfacePayload {
 	is_boxed bool
 }
 
-fn drop_owned_v3_interface[T](value T, force_owned bool) {
+fn drop_owned_v3_interface[T](value T) {
 	$if T.unaliased_typ is $interface {
 		mut owned := value
 		raw_interface := unsafe { &OwnershipV3InterfacePayload(&owned) }
-		if force_owned || raw_interface.is_boxed {
+		if raw_interface.is_boxed {
 			payload := raw_interface.payload
 			if mut owned is OwnershipDrop {
 				owned.drop()
@@ -31,11 +31,10 @@ fn drop_owned_v3_interface[T](value T, force_owned bool) {
 }
 
 fn drop_owned_interface[T](value T) {
-	drop_owned_v3_interface(value, false)
+	drop_owned_v3_interface(value)
 }
 
 fn drop_owned_result_error_interface(err IError) {
-	// Failed results own pointer-backed error payloads even though ordinary interface
-	// conversions treat an unboxed pointer as borrowed.
-	drop_owned_v3_interface(err, true)
+	// Pointer-backed errors remain borrowed; only boxed concrete values are owned.
+	drop_owned_v3_interface(err)
 }
