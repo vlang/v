@@ -1170,7 +1170,19 @@ fn (mut tc TypeChecker) check_ownership_map_assignment_key(lhs_id flat.NodeId, o
 	if tc.ownership == unsafe { nil } || op != .assign || !tc.valid_node_id(lhs_id) {
 		return
 	}
-	lhs := tc.a.nodes[int(lhs_id)]
+	mut index_id := lhs_id
+	for tc.valid_node_id(index_id) {
+		wrapper := tc.a.nodes[int(index_id)]
+		if wrapper.kind in [.selector, .paren, .expr_stmt, .cast_expr] && wrapper.children_count > 0 {
+			index_id = tc.a.child(&wrapper, 0)
+			continue
+		}
+		break
+	}
+	if !tc.valid_node_id(index_id) {
+		return
+	}
+	lhs := tc.a.nodes[int(index_id)]
 	if lhs.kind != .index || lhs.children_count < 2 {
 		return
 	}

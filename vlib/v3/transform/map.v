@@ -626,6 +626,31 @@ fn (mut t Transformer) append_owned_map_set_key_cleanup(key_name string, cleanup
 	result << t.make_if(t.make_ident(existing_name), t.make_block(arr1(drop_stmt)), t.make_empty())
 }
 
+// map_key_expr_creates_owned_value includes ownership-bearing expressions recognized by
+// the checker plus string forms lowered directly by the transformer. Concatenation and
+// interpolation allocate independent string storage that map__set only borrows/clones.
+fn (t &Transformer) map_key_expr_creates_owned_value(id flat.NodeId, key_type_name string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	if t.tc.ownership_expr_creates_owned_value(id) {
+		return true
+	}
+	if t.normalize_type_alias(key_type_name).trim_space() != 'string' {
+		return false
+	}
+	mut expr_id := id
+	for int(expr_id) >= 0 {
+		expr := t.a.nodes[int(expr_id)]
+		if expr.kind in [.paren, .expr_stmt, .cast_expr] && expr.children_count > 0 {
+			expr_id = t.a.child(&expr, 0)
+			continue
+		}
+		return expr.kind == .string_interp || (expr.kind == .infix && expr.op == .plus)
+	}
+	return false
+}
+
 // clone_map_assignment_rhs_if_overlapping makes a map-derived replacement independent
 // before the stored owner is destroyed. The checker rejects an overlapping move that cannot
 // be cloned, and the false result prevents unsafe lowering of that invalid assignment.
@@ -784,14 +809,31 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	key_name := t.new_temp('map_key')
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
-	result << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(info.key_id,
-		info.key_type), info.key_storage_type)
+	mut key_value := t.transform_expr_for_type(info.key_id, info.key_type)
+	mut key_is_owned := t.map_key_expr_creates_owned_value(info.key_id, info.key_type)
+	if !key_is_owned && !isnil(t.tc)
+		&& t.normalize_type_alias(info.key_type).trim_space() != 'string' {
+		key_type := t.tc.parse_type(info.key_type)
+		if t.tc.ownership_type_requires_destruction(key_type)
+			&& t.tc.ownership_default_clone_missing_method(key_type) == none {
+			key_value = t.make_compiler_default_clone_value(key_value, info.key_type, true)
+			key_is_owned = true
+		}
+	}
+	t.drain_pending(mut result)
+	result << t.make_decl_assign_typed(key_name, key_value, info.key_storage_type)
+	cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned,
+		info.key_type, map_expr, info.base_type, key_name, mut result)
 	mut current_existed := flat.empty_node
 	if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(field_type)) {
-		current_existed_name := t.new_temp('map_value_existed')
-		result << t.make_decl_assign_typed(current_existed_name, t.make_map_exists_expr(map_expr,
-			info.base_type, key_name), 'bool')
-		current_existed = t.make_ident(current_existed_name)
+		if existing_key_name.len > 0 {
+			current_existed = t.make_ident(existing_key_name)
+		} else {
+			current_existed_name := t.new_temp('map_value_existed')
+			result << t.make_decl_assign_typed(current_existed_name, t.make_map_exists_expr(map_expr,
+				info.base_type, key_name), 'bool')
+			current_existed = t.make_ident(current_existed_name)
+		}
 	}
 	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
 	field := t.make_selector(t.make_ident(current_name), lhs.value, field_type)
@@ -809,6 +851,7 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	t.append_owned_lvalue_drop_before_assign_if(field, field_type, current_existed, mut result)
 	result << t.make_assign(field, t.make_ident(rhs_name))
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
+	t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
 	return result
 }
 
