@@ -219,7 +219,7 @@ mut:
 	c_hits                     i64
 	c_misses                   i64
 	parse_entries              map[u64]ParseTypeCacheEntry
-	c_entries                  map[string]string
+	c_entries                  map[TypeId]string
 	c_name_entries             map[string]string
 	struct_field_entries       map[string]Type
 	struct_field_misses        map[string]bool
@@ -441,13 +441,15 @@ pub mut:
 mut:
 	// Includes method-value aliases and binding-owner maps; all backing maps are
 	// replaced together at every function/worker boundary.
-	fn_context FunctionCheckContext
-	type_cache &TypeCache = unsafe { nil }
+	fn_context    FunctionCheckContext
+	type_cache    &TypeCache    = unsafe { nil }
+	type_interner &TypeInterner = unsafe { nil }
 }
 
 // new creates a TypeChecker value for types.
 pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	fs := new_scope(unsafe { nil })
+	type_interner := new_type_interner()
 	return TypeChecker{
 		a:                                  a
 		fn_ret_types:                       map[string]Type{}
@@ -524,12 +526,13 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		smartcasts:                 map[string]Type{}
 		type_cache:                 &TypeCache{
 			parse_entries:              map[u64]ParseTypeCacheEntry{}
-			c_entries:                  map[string]string{}
+			c_entries:                  map[TypeId]string{}
 			struct_field_entries:       map[string]Type{}
 			struct_field_misses:        map[string]bool{}
 			ierror_compat_entries:      map[string]int{}
 			source_error_embed_entries: map[string]int{}
 		}
+		type_interner:              type_interner
 	}
 }
 
@@ -551,6 +554,12 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 	// writes go only to the overlay, reads check it before the shared arrays,
 	// and merge_worker replays the entries into the master under shifted ids.
 	forked.fork_overlay = &TransformForkOverlay{}
+	// Transform helpers allocate inside disposable arenas. A shared interner
+	// would let one helper publish map/array storage owned by its arena and leave
+	// other helpers with dangling storage when that arena is released. Each
+	// helper therefore gets a private canonical table; semantic Type values are
+	// still compatible across tables, while TypeIds stay local to its cache.
+	forked.type_interner = new_type_interner()
 	forked.type_cache = &TypeCache{
 		// When the master froze its warm cache behind an overlay (see
 		// freeze_type_cache_for_forks), every fork shares that frozen cache as
@@ -566,7 +575,7 @@ pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChe
 			false
 		}
 		parse_entries:              map[u64]ParseTypeCacheEntry{}
-		c_entries:                  map[string]string{}
+		c_entries:                  map[TypeId]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
 		ierror_compat_entries:      map[string]int{}
@@ -597,6 +606,9 @@ pub fn (tc &TypeChecker) unfreeze_type_cache_after_forks() {
 // checkers use this so the lazily-built lookup indexes and memoizations work
 // per worker instead of falling back to their uncached full scans.
 pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
+	if isnil(tc.type_interner) {
+		tc.type_interner = new_type_interner()
+	}
 	tc.type_cache = &TypeCache{
 		parse_enabled: parse_enabled
 	}
@@ -618,6 +630,9 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache_based_on(src &TypeChecker, pars
 		parse_enabled: parse_enabled
 		base:          base
 	}
+	// C-generation workers can also use disposable arenas. Keep their TypeIds
+	// private instead of publishing arena-backed interner storage globally.
+	tc.type_interner = new_type_interner()
 }
 
 // type_cache_parse_enabled reports whether parse_type memoization is enabled
@@ -656,7 +671,7 @@ pub fn (mut tc TypeChecker) free_parallel_transform_caches() {
 	tc.type_cache = &TypeCache{
 		parse_enabled:              parse_enabled
 		parse_entries:              map[u64]ParseTypeCacheEntry{}
-		c_entries:                  map[string]string{}
+		c_entries:                  map[TypeId]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
 		ierror_compat_entries:      map[string]int{}
@@ -899,7 +914,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	}
 	tc.type_cache = &TypeCache{
 		parse_entries:              map[u64]ParseTypeCacheEntry{}
-		c_entries:                  map[string]string{}
+		c_entries:                  map[TypeId]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
 		ierror_compat_entries:      map[string]int{}
@@ -18394,11 +18409,32 @@ pub fn (tc &TypeChecker) parse_type(typ string) Type {
 			return cached
 		}
 		cache.parse_misses++
-		result := tc.parse_type_uncached(typ)
+		_, result := tc.intern_type(tc.parse_type_uncached(typ))
 		parse_type_cache_put(mut cache, tc.cur_file, tc.cur_module, typ, result)
 		return result
 	}
-	return tc.parse_type_uncached(typ)
+	_, result := tc.intern_type(tc.parse_type_uncached(typ))
+	return result
+}
+
+fn (tc &TypeChecker) intern_type(t Type) (TypeId, Type) {
+	if isnil(tc.type_interner) {
+		// Only hand-built compatibility checkers can reach this path. Production
+		// checkers are created with one compilation-wide interner.
+		return TypeId(0), t
+	}
+	mut interner := unsafe { tc.type_interner }
+	return interner.canonicalize(t)
+}
+
+// type_count reports the number of unique canonical semantic types observed by
+// this compilation.
+pub fn (tc &TypeChecker) type_count() int {
+	if isnil(tc.type_interner) {
+		return 0
+	}
+	mut interner := unsafe { tc.type_interner }
+	return interner.len()
 }
 
 // type_cache_stats returns cache counters accumulated by this checker.
@@ -20402,43 +20438,19 @@ fn (tc &TypeChecker) resolve_index_base_type(base_type Type, node flat.Node) Typ
 
 // c_type supports c type handling for TypeChecker.
 pub fn (tc &TypeChecker) c_type(t Type) string {
-	if key := named_type_c_cache_key(t) {
-		if tc.type_cache == unsafe { nil } {
-			return tc.c_type_uncached(t)
-		}
-		mut cache := unsafe { tc.type_cache }
-		if !isnil(cache.base) {
-			if cached := cache.base.c_entries[key] {
-				cache.c_hits++
-				return cached
-			}
-		}
-		if cached := cache.c_entries[key] {
-			cache.c_hits++
-			return cached
-		}
-		cache.c_misses++
-		result := tc.c_type_uncached(t)
-		cache.c_entries[key] = result
-		return result
+	if tc.type_cache == unsafe { nil } || isnil(tc.type_interner) {
+		return tc.c_type_uncached(t)
 	}
-	return tc.c_type_uncached(t)
-}
-
-fn named_type_c_cache_key(t Type) ?string {
-	if t is Struct {
-		return t.name
+	key, canonical := tc.intern_type(t)
+	mut cache := unsafe { tc.type_cache }
+	if cached := cache.c_entries[key] {
+		cache.c_hits++
+		return cached
 	}
-	if t is Interface {
-		return t.name
-	}
-	if t is SumType {
-		return t.name
-	}
-	if t is Alias {
-		return t.name
-	}
-	return none
+	cache.c_misses++
+	result := tc.c_type_uncached(canonical)
+	cache.c_entries[key] = result
+	return result
 }
 
 // c_type_uncached supports c type uncached handling for TypeChecker.
