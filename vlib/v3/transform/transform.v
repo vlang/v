@@ -4058,16 +4058,17 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 		}
 		lhs_type := t.tc.parse_type(lhs_type_name)
 		if t.tc.ownership_type_requires_destruction(lhs_type)
-			&& !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id)
-			&& t.drop_before_assign_has_stable_lvalue(new_children[0]) {
+			&& !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
 			mut result := []flat.NodeId{}
 			t.drain_pending(mut result)
 			tmp_name := t.new_temp('drop_assign')
 			tmp_type := lhs_type.name()
 			result << t.make_decl_assign_typed(tmp_name, new_children[1], tmp_type)
-			drop_call := t.make_call_typed('drop_owned', arr1(new_children[0]), 'void')
+			lvalue := t.stabilize_transformed_lvalue_for_reuse(new_children[0])
+			t.drain_pending(mut result)
+			drop_call := t.make_call_typed('drop_owned', arr1(lvalue), 'void')
 			result << t.make_expr_stmt(drop_call)
-			result << t.make_assign(new_children[0], t.make_ident(tmp_name))
+			result << t.make_assign(lvalue, t.make_ident(tmp_name))
 			t.invalidate_smartcast_for_lvalue(t.a.child(&node, 0))
 			return result
 		}
@@ -4131,43 +4132,92 @@ fn (t &Transformer) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id fl
 	return t.variant_names_match(payload_type, target_variant)
 }
 
-fn (t &Transformer) drop_before_assign_has_stable_lvalue(id flat.NodeId) bool {
+// stabilize_transformed_lvalue_for_reuse rebuilds an lvalue so evaluating it repeatedly
+// does not repeat side effects. It preserves the lvalue shape instead of copying its value:
+// indexed assignments still reach their normal array/map lowering, while dynamic bases,
+// indices and dereferenced pointers are materialized exactly once.
+fn (mut t Transformer) stabilize_transformed_lvalue_for_reuse(id flat.NodeId) flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
-		return false
+		return id
 	}
 	node := t.a.nodes[int(id)]
 	match node.kind {
 		.ident {
-			return node.value.len > 0 && node.value != '_'
+			return id
 		}
 		.selector {
-			return node.children_count > 0
-				&& t.drop_before_assign_has_stable_lvalue(t.a.child(&node, 0))
+			if node.children_count == 0 {
+				return id
+			}
+			mut children := []flat.NodeId{cap: int(node.children_count)}
+			children << t.stabilize_transformed_lvalue_for_reuse(t.a.child(&node, 0))
+			for i in 1 .. node.children_count {
+				children << t.stabilize_transformed_lvalue_component(t.a.child(&node, i),
+					'drop_lvalue_selector')
+			}
+			return t.rebuild_transformed_lvalue(node, children)
 		}
 		.index {
-			if node.children_count < 2
-				|| !t.drop_before_assign_has_stable_lvalue(t.a.child(&node, 0)) {
-				return false
+			if node.children_count == 0 {
+				return id
 			}
+			mut children := []flat.NodeId{cap: int(node.children_count)}
+			children << t.stabilize_transformed_lvalue_for_reuse(t.a.child(&node, 0))
 			for i in 1 .. node.children_count {
-				if !t.is_stable_expr_for_reuse(t.a.child(&node, i)) {
-					return false
-				}
+				children << t.stabilize_transformed_lvalue_component(t.a.child(&node, i),
+					'drop_lvalue_index')
 			}
-			return true
+			return t.rebuild_transformed_lvalue(node, children)
 		}
 		.prefix {
-			return node.op == .mul && node.children_count > 0
-				&& t.is_stable_expr_for_reuse(t.a.child(&node, 0))
+			if node.op != .mul || node.children_count == 0 {
+				return id
+			}
+			child := t.stabilize_transformed_lvalue_component(t.a.child(&node, 0),
+				'drop_lvalue_pointer')
+			return t.rebuild_transformed_lvalue(node, arr1(child))
 		}
 		.paren {
-			return node.children_count > 0
-				&& t.drop_before_assign_has_stable_lvalue(t.a.child(&node, 0))
+			if node.children_count == 0 {
+				return id
+			}
+			child := t.stabilize_transformed_lvalue_for_reuse(t.a.child(&node, 0))
+			return t.rebuild_transformed_lvalue(node, arr1(child))
 		}
 		else {
-			return false
+			return id
 		}
 	}
+}
+
+fn (mut t Transformer) stabilize_transformed_lvalue_component(id flat.NodeId, prefix string) flat.NodeId {
+	if t.is_stable_expr_for_reuse(id) {
+		return id
+	}
+	tmp_name := t.new_temp(prefix)
+	typ := t.node_type(id)
+	if typ.len > 0 {
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, id, typ)
+	} else {
+		t.pending_stmts << t.make_decl_assign(tmp_name, id)
+	}
+	return t.make_ident(tmp_name)
+}
+
+fn (mut t Transformer) rebuild_transformed_lvalue(node flat.Node, children []flat.NodeId) flat.NodeId {
+	start := t.a.children.len
+	for child in children {
+		t.a.children << child
+	}
+	return t.a.add_node(flat.Node{
+		kind:           node.kind
+		op:             node.op
+		children_start: start
+		children_count: flat.child_count(children.len)
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+	})
 }
 
 fn (mut t Transformer) invalidate_smartcast_for_lvalue(id flat.NodeId) {
@@ -5567,9 +5617,12 @@ fn (mut t Transformer) try_expand_multi_return_assign(node flat.Node) ?[]flat.No
 			field_name := 'arg${j}'
 			field_type_name := field_type.name()
 			field := t.make_selector(t.make_ident(tmp_name), field_name, field_type_name)
-			lvalue := t.transform_lvalue(lhs_id)
+			mut lvalue := t.transform_lvalue(lhs_id)
 			t.drain_pending(mut result)
-			if !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
+			if !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id)
+				&& t.tc.ownership_type_requires_destruction(field_type) {
+				lvalue = t.stabilize_transformed_lvalue_for_reuse(lvalue)
+				t.drain_pending(mut result)
 				t.append_owned_lvalue_drop_before_assign(lvalue, field_type_name, mut result)
 			}
 			result << t.make_assign(lvalue, field)
@@ -5633,13 +5686,16 @@ fn (mut t Transformer) try_expand_plain_multi_assign(node flat.Node) ?[]flat.Nod
 		if lhs.kind == .ident && lhs.value == '_' {
 			continue
 		}
-		lvalue := t.transform_lvalue_without_smartcast(lhs_id)
+		mut lvalue := t.transform_lvalue_without_smartcast(lhs_id)
 		t.drain_pending(mut result)
 		mut lhs_type := t.lvalue_type(lhs_id)
 		if lhs_type.len == 0 {
 			lhs_type = t.original_expr_type(lhs_id)
 		}
-		if !lhs_was_moved[i] {
+		if !lhs_was_moved[i] && !isnil(t.tc) && lhs_type.len > 0
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(lhs_type)) {
+			lvalue = t.stabilize_transformed_lvalue_for_reuse(lvalue)
+			t.drain_pending(mut result)
 			t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut result)
 		}
 		result << t.make_assign(lvalue, t.make_ident(tmp_names[i]))
@@ -6097,13 +6153,16 @@ fn (mut t Transformer) multi_if_assign_stmts(parts TupleBlockParts, lhs_ids []fl
 		if lhs.kind == .ident && lhs.value == '_' {
 			continue
 		}
-		lvalue := t.transform_lvalue(lhs_id)
+		mut lvalue := t.transform_lvalue(lhs_id)
 		t.drain_pending(mut stmts)
 		mut lhs_type := t.lvalue_type(lhs_id)
 		if lhs_type.len == 0 {
 			lhs_type = t.original_expr_type(lhs_id)
 		}
-		if !lhs_was_moved[i] {
+		if !lhs_was_moved[i] && !isnil(t.tc) && lhs_type.len > 0
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(lhs_type)) {
+			lvalue = t.stabilize_transformed_lvalue_for_reuse(lvalue)
+			t.drain_pending(mut stmts)
 			t.append_owned_lvalue_drop_before_assign(lvalue, lhs_type, mut stmts)
 		}
 		stmts << t.make_assign(lvalue, t.make_ident(tmp_name))
