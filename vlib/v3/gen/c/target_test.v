@@ -31,6 +31,20 @@ fn test_emscripten_c_directive_target_is_distinct_from_host() {
 	assert c_flag_args('wasm32_emscripten --embed-file asset.txt', '', '', linux).len == 0
 }
 
+fn test_split_relative_c_flag_paths_resolve_from_source_directory() {
+	source_dir := os.join_path(os.vtmp_dir(), 'v3_split_c_flag_paths', 'source')
+	source_file := os.join_path(source_dir, 'main.v')
+	include_dir := os.real_path(os.join_path(source_dir, 'include dir'))
+	lib_dir := os.real_path(os.join_path(source_dir, 'lib'))
+	assert c_flag_args('-I "include dir" -L lib -DVALUE=1', '', source_file, pref.host_target()) == [
+		'-I',
+		include_dir,
+		'-L',
+		lib_dir,
+		'-DVALUE=1',
+	]
+}
+
 fn test_termux_comptime_branch_uses_canonical_target() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_termux_comptime_${os.getpid()}')
 	os.rmdir_all(dir) or {}

@@ -3329,15 +3329,28 @@ fn c_flag_args(raw string, vroot string, source_file string, target pref.Target)
 	}
 	base_dir := if source_file.len > 0 { os.dir(source_file) } else { '' }
 	mut resolved := []string{cap: args.len}
+	mut resolve_next_path := false
 	for arg in args {
 		with_pseudo_paths := c_resolve_pseudo_paths(arg, vroot, source_file)
 		if base_dir.len > 0 {
-			resolved << c_resolve_flag_path_token(with_pseudo_paths, base_dir)
+			if resolve_next_path {
+				resolved << c_resolve_split_flag_path_token(with_pseudo_paths, base_dir)
+			} else {
+				resolved << c_resolve_flag_path_token(with_pseudo_paths, base_dir)
+			}
 		} else {
 			resolved << with_pseudo_paths
 		}
+		resolve_next_path = with_pseudo_paths in ['-I', '-L']
 	}
 	return resolved
+}
+
+fn c_resolve_split_flag_path_token(tok string, base_dir string) string {
+	if tok.len == 0 || os.is_abs_path(tok) {
+		return tok
+	}
+	return os.real_path(os.join_path_single(base_dir, tok))
 }
 
 fn c_resolve_flag_path_token(tok string, base_dir string) string {
