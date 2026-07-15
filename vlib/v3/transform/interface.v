@@ -436,10 +436,11 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		source = t.make_ident(tmp_name)
 	}
 	// `_object` is a pointer to the boxed concrete value; method dispatch reads it
-	// back and casts it to the concrete type. For pointer sources we store the
-	// pointer directly; for value sources we heap-copy so the box can outlive the
-	// source scope, unless the caller passed `share_source` (mut/reference call
-	// args) where the box must alias the original value.
+	// back and casts it to the concrete type. For pointer sources (`Iface(&local)`)
+	// we store the pointer directly so interface calls observe the original value
+	// while it is in scope. Value sources are heap-copied so the box can outlive
+	// the source scope, unless the caller passed `share_source` (mut/reference
+	// call args) where the box must alias the original value.
 	// The pointer is typed (`&Concrete`) so codegen can recover the concrete
 	// type and emit the matching `_typ` dispatch id.
 	object_expr := if is_ptr {

@@ -3007,6 +3007,20 @@ fn test_amp_interface_cast_heap_copies_concrete_source() {
 	assert out == '5'
 }
 
+fn test_interface_cast_from_local_address_preserves_pointer_identity() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) get() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\tprintln(int_str(r.get()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_local_address_identity', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
+	assert main_body.contains('._object = __iface_src_'), main_body
+	assert !main_body.contains('memdup(&b, sizeof(Box))'), main_body
+	out := run_good(v3_bin, 'interface_local_address_identity_run', source)
+	assert out == '2'
+	mut_source := 'interface Writer {\nmut:\n\tset(n int)\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (mut b Box) set(n int) {\n\tb.n = n\n}\n\nfn (b Box) get() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tmut w := Writer(&b)\n\tw.set(3)\n\tprintln(int_str(b.n))\n\tprintln(int_str(w.get()))\n}\n'
+	mut_out := run_good(v3_bin, 'interface_local_address_identity_mut_run', mut_source)
+	assert mut_out == '3\n3'
+}
+
 fn test_mut_interface_argument_borrows_existing_interface_box() {
 	v3_bin := build_v3()
 	source := 'interface Visitor {\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln("ok")\n}\n'
