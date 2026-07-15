@@ -2930,11 +2930,13 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 			}
 			if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .prefix && rhs.op == .amp
 				&& rhs.children_count > 0 {
-				amp_child := t.a.nodes[int(t.a.child(&rhs, 0))]
-				if amp_child.kind == .ident
-					&& t.escape_ident_is_stack_local(amp_child.value, local_stack_names) {
+				amp_child_id := t.a.child(&rhs, 0)
+				if t.escape_address_expr_is_stack_local(amp_child_id, local_stack_names) {
 					amp_ptrs[lhs.value] = true
-					amp_sources[lhs.value] = amp_child.value
+					amp_child := t.a.nodes[int(amp_child_id)]
+					if amp_child.kind == .ident {
+						amp_sources[lhs.value] = amp_child.value
+					}
 				}
 			} else if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .ident
 				&& rhs.value.len > 0 {
@@ -2946,7 +2948,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 					lhs_marks_interface_box = true
 				}
 			} else if lhs.kind == .ident && lhs.value.len > 0
-				&& t.interface_box_from_stack_pointer_source(t.a.child(&node, i + 1), amp_ptrs, local_stack_names) {
+				&& t.interface_box_from_stack_pointer_source(t.a.child(&node, i + 1), amp_ptrs, ptr_aliases, local_stack_names) {
 				interface_boxes[lhs.value] = true
 				lhs_marks_interface_box = true
 			}
@@ -3024,7 +3026,7 @@ fn pop_escape_local_stack_names(mark int, mut local_stack_names map[string]bool,
 	}
 }
 
-fn (t &Transformer) interface_box_from_stack_pointer_source(id flat.NodeId, amp_ptrs map[string]bool, local_stack_names map[string]bool) bool {
+fn (t &Transformer) interface_box_from_stack_pointer_source(id flat.NodeId, amp_ptrs map[string]bool, ptr_aliases map[string]string, local_stack_names map[string]bool) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
@@ -3039,10 +3041,90 @@ fn (t &Transformer) interface_box_from_stack_pointer_source(id flat.NodeId, amp_
 	}
 	arg := t.a.nodes[int(arg_id)]
 	if arg.kind == .prefix && arg.op == .amp && arg.children_count == 1 {
-		child := t.a.nodes[int(t.a.child(&arg, 0))]
-		return child.kind == .ident && t.escape_ident_is_stack_local(child.value, local_stack_names)
+		return t.escape_address_expr_is_stack_local(t.a.child(&arg, 0), local_stack_names)
 	}
-	return arg.kind == .ident && arg.value in amp_ptrs
+	return arg.kind == .ident
+		&& t.escape_pointer_ident_is_stack_backed(arg.value, amp_ptrs, ptr_aliases)
+}
+
+fn (t &Transformer) escape_pointer_ident_is_stack_backed(name string, amp_ptrs map[string]bool, ptr_aliases map[string]string) bool {
+	if name.len == 0 {
+		return false
+	}
+	mut current := name
+	for _ in 0 .. ptr_aliases.len + 1 {
+		if current in amp_ptrs {
+			return true
+		}
+		next := ptr_aliases[current] or { return false }
+		if next == current {
+			return false
+		}
+		current = next
+	}
+	return false
+}
+
+fn (t &Transformer) escape_address_expr_is_stack_local(id flat.NodeId, local_stack_names map[string]bool) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return t.escape_ident_is_stack_local(node.value, local_stack_names)
+		}
+		.selector {
+			if node.children_count == 0 {
+				return false
+			}
+			base_id := t.a.child(&node, 0)
+			if address_expr_base_is_indirect_storage(t.address_expr_type_name(base_id)) {
+				return false
+			}
+			return t.escape_address_expr_is_stack_local(base_id, local_stack_names)
+		}
+		.index {
+			if node.children_count == 0 {
+				return false
+			}
+			base_id := t.a.child(&node, 0)
+			base_type := t.normalize_type_alias(t.address_expr_type_name(base_id))
+			if !t.is_fixed_array_type(base_type) {
+				return false
+			}
+			return t.escape_address_expr_is_stack_local(base_id, local_stack_names)
+		}
+		.paren {
+			if node.children_count == 0 {
+				return false
+			}
+			return t.escape_address_expr_is_stack_local(t.a.child(&node, 0), local_stack_names)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (t &Transformer) address_expr_type_name(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	mut typ := t.node_type(id)
+	if typ.len == 0 {
+		typ = t.original_expr_type(id)
+	}
+	node := t.a.nodes[int(id)]
+	if typ.len == 0 && node.kind == .ident {
+		typ = t.var_type(node.value)
+	}
+	return typ.trim_space()
+}
+
+fn address_expr_base_is_indirect_storage(typ string) bool {
+	clean := typ.trim_space()
+	return clean.starts_with('&') || clean.starts_with('[]') || clean.starts_with('map[')
 }
 
 fn (t &Transformer) escape_ident_is_stack_local(name string, local_stack_names map[string]bool) bool {
@@ -4808,6 +4890,7 @@ fn (mut t Transformer) try_lower_interface_field_assign(node flat.Node) ?[]flat.
 		return none
 	}
 	field_type := t.interface_field_type_name(iface_name, lhs.value) or { return none }
+	has_cached_field := t.interface_has_direct_field(iface_name, lhs.value)
 	mut base := t.transform_lvalue(base_id)
 	mut base_ptr := if base_type.starts_with('&') {
 		base
@@ -4834,14 +4917,15 @@ fn (mut t Transformer) try_lower_interface_field_assign(node flat.Node) ?[]flat.
 		rhs_type = field_type
 	}
 	rhs = t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'iface_assign')
-	cached_lhs := t.make_selector_op(base_ptr, lhs.value, field_type, .arrow)
-	cached_assign := t.make_assign_op(cached_lhs, rhs, node.op)
 	impls := t.tc.interface_impl_names(iface_name)
 	object_assign := t.build_interface_field_assign_chain(base_ptr, iface_name, impls, lhs.value,
 		field_type, rhs, node.op, 0)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
-	result << cached_assign
+	if has_cached_field {
+		cached_lhs := t.make_selector_op(base_ptr, lhs.value, field_type, .arrow)
+		result << t.make_assign_op(cached_lhs, rhs, node.op)
+	}
 	result << object_assign
 	return result
 }
@@ -4850,12 +4934,38 @@ fn (t &Transformer) interface_field_type_name(iface_name string, field_name stri
 	if isnil(t.tc) {
 		return none
 	}
+	mut seen := map[string]bool{}
+	return t.interface_field_type_name_inner(iface_name, field_name, mut seen)
+}
+
+fn (t &Transformer) interface_field_type_name_inner(iface_name string, field_name string, mut seen map[string]bool) ?string {
+	if iface_name.len == 0 || iface_name in seen {
+		return none
+	}
+	seen[iface_name] = true
+	for embed in t.tc.interface_embeds[iface_name] or { []string{} } {
+		if field_type := t.interface_field_type_name_inner(embed, field_name, mut seen) {
+			return field_type
+		}
+	}
 	for field in t.tc.interface_fields[iface_name] or { []types.StructField{} } {
 		if field.name == field_name {
 			return t.normalize_type_alias(field.typ.name())
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) interface_has_direct_field(iface_name string, field_name string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	for field in t.tc.interface_fields[iface_name] or { []types.StructField{} } {
+		if field.name == field_name {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) build_interface_field_assign_chain(base_ptr flat.NodeId, iface_name string, impls []string, field string, field_type string, rhs flat.NodeId, op flat.Op, idx int) flat.NodeId {
@@ -4884,7 +4994,11 @@ fn (mut t Transformer) build_interface_field_assign_chain(base_ptr flat.NodeId, 
 fn (mut t Transformer) lower_interface_field_selector(base flat.NodeId, base_type string, iface_name string, field string, field_type string) flat.NodeId {
 	impls := t.tc.interface_impl_names(iface_name)
 	op := if base_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
-	fallback := t.make_selector_op(base, field, field_type, op)
+	fallback := if t.interface_has_direct_field(iface_name, field) {
+		t.make_selector_op(base, field, field_type, op)
+	} else {
+		t.zero_value_for_type(field_type)
+	}
 	return t.build_interface_field_selector_chain(base, base_type, iface_name, impls, field,
 		field_type, fallback, 0)
 }

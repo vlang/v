@@ -234,8 +234,49 @@ fn (t &Transformer) interface_pointer_source_needs_heap_copy(id flat.NodeId) boo
 	if int(child_id) < 0 || int(child_id) >= t.a.nodes.len {
 		return false
 	}
-	child := t.a.nodes[int(child_id)]
-	return child.kind == .ident && t.var_type(child.value).len > 0
+	return t.interface_pointer_source_root_is_local(child_id)
+}
+
+fn (t &Transformer) interface_pointer_source_root_is_local(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value.len > 0 && t.var_type(node.value).len > 0
+		}
+		.selector {
+			if node.children_count == 0 {
+				return false
+			}
+			base_id := t.a.child(&node, 0)
+			if address_expr_base_is_indirect_storage(t.address_expr_type_name(base_id)) {
+				return false
+			}
+			return t.interface_pointer_source_root_is_local(base_id)
+		}
+		.index {
+			if node.children_count == 0 {
+				return false
+			}
+			base_id := t.a.child(&node, 0)
+			base_type := t.normalize_type_alias(t.address_expr_type_name(base_id))
+			if !t.is_fixed_array_type(base_type) {
+				return false
+			}
+			return t.interface_pointer_source_root_is_local(base_id)
+		}
+		.paren {
+			if node.children_count == 0 {
+				return false
+			}
+			return t.interface_pointer_source_root_is_local(t.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.NodeId, source_type string, target_iface string) ?flat.NodeId {

@@ -3521,6 +3521,36 @@ fn test_returned_interface_boxed_from_global_address_preserves_identity() {
 	assert out == '7\n9\n13\n22'
 }
 
+fn test_embedded_interface_fields_lower_to_concrete_object() {
+	v3_bin := build_v3()
+	source := "interface Base {\nmut:\n\tname string\n}\n\ninterface Child {\n\tBase\n}\n\nstruct Item {\nmut:\n\tname string\n}\n\nfn main() {\n\tmut child := Child(Item{\n\t\tname: 'old'\n\t})\n\tprintln(child.name)\n\tchild.name = 'new'\n\tprintln(child.name)\n}\n"
+	out := run_good(v3_bin, 'embedded_interface_field_lowering', source)
+	assert out == 'old\nnew'
+}
+
+fn test_returned_interface_local_boxed_from_pointer_alias_heap_copies_on_return() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make() Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tp := &b\n\tq := p\n\tr := Reader(q)\n\tb.n = 2\n\treturn r\n}\n\nfn main() {\n\tprintln(int_str(make().value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_returned_pointer_alias_heap_copy', source)
+	make_body := c_fn_body(c_source, 'Reader make(void) {')
+	assert make_body.contains('memdup(') && make_body.contains('sizeof(Box)'), make_body
+	out := run_good(v3_bin, 'interface_box_returned_pointer_alias_heap_copy_run', source)
+	assert out == '2'
+}
+
+fn test_returned_interface_boxed_from_local_field_and_index_heap_copies() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nstruct Holder {\nmut:\n\tbox Box\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make_direct_field() Reader {\n\tmut holder := Holder{\n\t\tbox: Box{\n\t\t\tn: 3\n\t\t}\n\t}\n\tholder.box.n = 4\n\treturn Reader(&holder.box)\n}\n\nfn make_later_field() Reader {\n\tmut holder := Holder{\n\t\tbox: Box{\n\t\t\tn: 5\n\t\t}\n\t}\n\tr := Reader(&holder.box)\n\tholder.box.n = 6\n\treturn r\n}\n\nfn make_direct_index() Reader {\n\tmut boxes := [Box{\n\t\tn: 7\n\t}, Box{\n\t\tn: 8\n\t}]!\n\tboxes[1].n = 9\n\treturn Reader(&boxes[1])\n}\n\nfn make_later_index() Reader {\n\tmut boxes := [Box{\n\t\tn: 10\n\t}, Box{\n\t\tn: 11\n\t}]!\n\tr := Reader(&boxes[1])\n\tboxes[1].n = 12\n\treturn r\n}\n\nfn main() {\n\tprintln(int_str(make_direct_field().value()))\n\tprintln(int_str(make_later_field().value()))\n\tprintln(int_str(make_direct_index().value()))\n\tprintln(int_str(make_later_index().value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_returned_field_index_heap_copy', source)
+	for signature in ['Reader make_direct_field(void) {', 'Reader make_later_field(void) {',
+		'Reader make_direct_index(void) {', 'Reader make_later_index(void) {'] {
+		body := c_fn_body(c_source, signature)
+		assert body.contains('memdup(') && body.contains('sizeof(Box)'), body
+	}
+	out := run_good(v3_bin, 'interface_box_returned_field_index_heap_copy_run', source)
+	assert out == '4\n6\n9\n12'
+}
+
 fn test_mut_interface_argument_borrows_existing_interface_box() {
 	v3_bin := build_v3()
 	source := 'interface Visitor {\n\tvalue() int\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (c Counter) value() int {\n\treturn c.n\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln(int_str(visitor.value()))\n}\n'
