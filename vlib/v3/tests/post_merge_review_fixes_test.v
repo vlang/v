@@ -3476,15 +3476,18 @@ fn test_returned_interface_local_boxed_from_local_address_heap_copies_in_aggrega
 
 fn test_returned_interface_boxed_from_global_address_preserves_identity() {
 	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\n__global global_box Box\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make_direct() Reader {\n\tr := Reader(&global_box)\n\treturn r\n}\n\nfn make_alias() Reader {\n\tp := &global_box\n\tr := Reader(p)\n\treturn r\n}\n\nfn make_reassigned() Reader {\n\tb := Box{\n\t\tn: 3\n\t}\n\tmut r := Reader(&b)\n\tr = Reader(&global_box)\n\treturn r\n}\n\nfn main() {\n\tglobal_box.n = 1\n\tr := make_direct()\n\tglobal_box.n = 7\n\tprintln(int_str(r.value()))\n\talias := make_alias()\n\tglobal_box.n = 9\n\tprintln(int_str(alias.value()))\n\tglobal_box.n = 11\n\treassigned := make_reassigned()\n\tglobal_box.n = 13\n\tprintln(int_str(reassigned.value()))\n}\n'
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\n__global global_box Box\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make_direct() Reader {\n\tr := Reader(&global_box)\n\treturn r\n}\n\nfn make_alias() Reader {\n\tp := &global_box\n\tr := Reader(p)\n\treturn r\n}\n\nfn make_reassigned() Reader {\n\tb := Box{\n\t\tn: 3\n\t}\n\tmut r := Reader(&b)\n\tr = Reader(&global_box)\n\treturn r\n}\n\nfn make_conditional(use_global bool) Reader {\n\tmut b := Box{\n\t\tn: 21\n\t}\n\tmut r := Reader(&b)\n\tif use_global {\n\t\tr = Reader(&global_box)\n\t}\n\tb.n = 22\n\treturn r\n}\n\nfn main() {\n\tglobal_box.n = 1\n\tr := make_direct()\n\tglobal_box.n = 7\n\tprintln(int_str(r.value()))\n\talias := make_alias()\n\tglobal_box.n = 9\n\tprintln(int_str(alias.value()))\n\tglobal_box.n = 11\n\treassigned := make_reassigned()\n\tglobal_box.n = 13\n\tprintln(int_str(reassigned.value()))\n\tconditional := make_conditional(false)\n\tprintln(int_str(conditional.value()))\n}\n'
 	c_source := gen_c(v3_bin, 'interface_box_global_address_identity', source)
 	for signature in ['Reader make_direct(void) {', 'Reader make_alias(void) {',
 		'Reader make_reassigned(void) {'] {
 		body := c_fn_body(c_source, signature)
 		assert !body.contains('memdup(') && !body.contains('sizeof(Box)'), body
 	}
+	conditional_body := c_fn_body(c_source, 'Reader make_conditional(bool use_global) {')
+	assert conditional_body.contains('memdup(') && conditional_body.contains('sizeof(Box)'), conditional_body
+
 	out := run_good(v3_bin, 'interface_box_global_address_identity_run', source)
-	assert out == '7\n9\n13'
+	assert out == '7\n9\n13\n22'
 }
 
 fn test_mut_interface_argument_borrows_existing_interface_box() {

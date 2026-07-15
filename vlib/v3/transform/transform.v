@@ -2841,7 +2841,7 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	mut local_stack_added := []string{}
 	for id in body_ids {
 		t.scan_escape_pass(id, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut interface_boxes, mut
-			returned, mut local_stack_names, mut local_stack_added)
+			returned, mut local_stack_names, mut local_stack_added, true)
 	}
 	// A pointer may be returned through a copy (`p := &v; q := p; return q`): `q` is collected
 	// as returned but `p` is not, so propagate "returned" backward along the `q := p` aliases
@@ -2890,23 +2890,32 @@ fn (mut t Transformer) reset_escaping_amp_state() {
 // `amp_sources[p]`), (b) plain pointer copies `q := p` into `ptr_aliases[q] = p`,
 // (c) stack-backed interface boxes assigned to locals, and (d) every ident name
 // appearing inside a return statement into `returned`.
-fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string) {
+fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string, can_clear_interface_boxes bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind in [.if_expr, .match_stmt, .match_branch, .for_stmt] {
+		for i in 0 .. node.children_count {
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
+				interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, false)
+		}
+		return
+	}
 	if node.kind == .block {
 		scope_mark := local_stack_added.len
 		for i in 0 .. node.children_count {
 			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
-				interface_boxes, mut returned, mut local_stack_names, mut local_stack_added)
+				interface_boxes, mut returned, mut local_stack_names, mut local_stack_added,
+				can_clear_interface_boxes)
 		}
 		pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
 		return
 	}
 	if node.kind == .for_in_stmt {
 		t.scan_for_in_escape_pass(node, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
-			interface_boxes, mut returned, mut local_stack_names, mut local_stack_added)
+			interface_boxes, mut returned, mut local_stack_names, mut local_stack_added,
+			can_clear_interface_boxes)
 		return
 	}
 	if node.kind in [.decl_assign, .assign] && node.children_count >= 2 {
@@ -2941,8 +2950,8 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 				interface_boxes[lhs.value] = true
 				lhs_marks_interface_box = true
 			}
-			if node.kind == .assign && lhs.kind == .ident && lhs.value.len > 0
-				&& !lhs_marks_interface_box {
+			if can_clear_interface_boxes && node.kind == .assign && lhs.kind == .ident
+				&& lhs.value.len > 0 && !lhs_marks_interface_box {
 				interface_boxes.delete(lhs.value)
 			}
 			i += 2
@@ -2958,11 +2967,12 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	}
 	for i in 0 .. node.children_count {
 		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
-			interface_boxes, mut returned, mut local_stack_names, mut local_stack_added)
+			interface_boxes, mut returned, mut local_stack_names, mut local_stack_added,
+			can_clear_interface_boxes)
 	}
 }
 
-fn (mut t Transformer) scan_for_in_escape_pass(node flat.Node, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string) {
+fn (mut t Transformer) scan_for_in_escape_pass(node flat.Node, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string, can_clear_interface_boxes bool) {
 	header_count := node.value.int()
 	header_end := if header_count > 0 && header_count <= int(node.children_count) {
 		header_count
@@ -2972,7 +2982,8 @@ fn (mut t Transformer) scan_for_in_escape_pass(node flat.Node, mut amp_ptrs map[
 	if header_end > 2 {
 		for i in 2 .. header_end {
 			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
-				interface_boxes, mut returned, mut local_stack_names, mut local_stack_added)
+				interface_boxes, mut returned, mut local_stack_names, mut local_stack_added,
+				can_clear_interface_boxes)
 		}
 	}
 	scope_mark := local_stack_added.len
@@ -2991,7 +3002,7 @@ fn (mut t Transformer) scan_for_in_escape_pass(node flat.Node, mut amp_ptrs map[
 	}
 	for i in header_end .. node.children_count {
 		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
-			interface_boxes, mut returned, mut local_stack_names, mut local_stack_added)
+			interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, false)
 	}
 	pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
 }
