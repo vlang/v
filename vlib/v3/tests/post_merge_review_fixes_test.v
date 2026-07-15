@@ -3080,7 +3080,7 @@ fn test_latest_pr_review_codegen_regressions() {
 
 fn main() {
 	println(C.strlen(c'\\n'))
-	println(C.strlen(&c'\\n'))
+	println(C.strlen((c'\\n')))
 }
 ")
 	assert c_strings == '1\n1'
@@ -3300,4 +3300,75 @@ fn main() {
 }
 ")
 	assert comptime_types == 'pointer\nalias'
+}
+
+fn test_selected_compile_error_in_void_fn_has_clean_diagnostic() {
+	v3_bin := build_v3()
+	bad_src := '${tmp_test_path('selected_compile_error_void_fn')}.v'
+	os.write_file(bad_src, "fn main() {\n\t\$compile_error('bad')\n}\n") or { panic(err) }
+	bad_bin := tmp_test_path('selected_compile_error_void_fn')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('compile-time error: bad'), compile.output
+	assert !compile.output.contains('void function should not return a value'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
+fn test_comptime_flags_are_not_shadowed_by_cached_values() {
+	v3_bin := build_v3()
+	platform_flag := if os.user_os() == 'windows' { 'windows' } else { 'unix' }
+	out := run_good_with_flags(v3_bin, 'comptime_flags_shadow_cached_values', '-d myflag', "const myflag = false
+
+fn main() {
+	${platform_flag} := false
+	mut rows := []string{}
+	\$if ${platform_flag} {
+		rows << 'platform'
+	} \$else {
+		rows << 'wrong-platform'
+	}
+	\$if myflag ? {
+		rows << 'custom'
+	} \$else {
+		rows << 'wrong-custom'
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'platform|custom'
+}
+
+fn test_non_generic_reflection_compile_error_waits_for_selected_branch() {
+	v3_bin := build_v3()
+	good := run_good(v3_bin, 'non_generic_reflection_unselected_compile_error', "struct App {}
+
+fn (app App) present() {
+	_ = app
+}
+
+fn main() {
+	\$for method in App.methods {
+		\$if method.name == 'missing' {
+			\$compile_error('missing method selected')
+		}
+	}
+	println('ok')
+}
+")
+	assert good == 'ok'
+	run_bad(v3_bin, 'non_generic_reflection_selected_compile_error', "struct App {}
+
+fn (app App) present() {
+	_ = app
+}
+
+fn main() {
+	\$for method in App.methods {
+		\$if method.name == 'present' {
+			\$compile_error('present method selected')
+		}
+	}
+}
+",
+		'compile-time error: present method selected')
 }

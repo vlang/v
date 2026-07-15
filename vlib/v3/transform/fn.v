@@ -5497,6 +5497,13 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	if node.children_count == 0 {
 		return none
 	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind == .selector && callee.children_count > 0 {
+		base := t.a.child_node(callee, 0)
+		if base.kind == .ident && base.value == 'C' {
+			return none
+		}
+	}
 	if cast_call := t.try_lower_primitive_cast_call(node) {
 		return cast_call
 	}

@@ -1219,6 +1219,7 @@ fn test_mach_headers_are_emitted_headerlessly() {
 fn test_inferred_mach_headers_are_target_guarded() {
 	c_code := directive_order_gen_c_task_info_reference(directive_order_build_v3())
 	assert c_code.contains('#ifdef __APPLE__\n#define panic mach_panic\n#include <mach/mach.h>\n#undef panic\n#include <mach/task.h>\n#endif'), c_code
+	assert c_code.contains('#ifdef __APPLE__\n#ifndef _MACH_TASK_INFO_H_\ntypedef unsigned int task_t;'), c_code
 	assert c_code.contains('#ifndef __APPLE__\nint task_info(void);\n#endif'), c_code
 }
 

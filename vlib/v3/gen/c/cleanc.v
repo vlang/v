@@ -7979,10 +7979,12 @@ fn (mut g FlatGen) headerless_timespec_struct() {
 
 fn (mut g FlatGen) headerless_darwin_task_info_struct() {
 	g.writeln('#ifdef __APPLE__')
+	g.writeln('#ifndef _MACH_TASK_INFO_H_')
 	g.writeln('typedef unsigned int task_t;')
 	g.writeln('#pragma pack(push, 4)')
 	g.writeln('struct task_basic_info { i32 suspend_count; u64 virtual_size; u64 resident_size; struct { i32 seconds; i32 microseconds; } user_time; struct { i32 seconds; i32 microseconds; } system_time; i32 policy; };')
 	g.writeln('#pragma pack(pop)')
+	g.writeln('#endif')
 	g.writeln('#endif')
 }
 

@@ -693,7 +693,7 @@ fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst,
 fn main() {
 	args := os.args[1..]
 	if args.len == 0 {
-		eprintln('usage: v3 [run] <file.v> [-o output|file.c] [-b c|arm64|eval] [-c99] [-d flag]')
+		eprintln('usage: v3 [run] <file.v> [-o output|file.c] [-b c|arm64|eval] [-os target] [-c99] [-d flag]')
 		exit(1)
 	}
 
@@ -701,6 +701,7 @@ fn main() {
 	mut output_file := ''
 	mut explicit_output := false
 	mut backend := 'c'
+	mut target_os := os.user_os()
 	mut is_prod := false
 	mut is_shared := false
 	mut is_strict := false
@@ -740,6 +741,9 @@ fn main() {
 			i += 2
 		} else if args[i] == '-b' && i + 1 < args.len {
 			backend = args[i + 1]
+			i += 2
+		} else if args[i] == '-os' && i + 1 < args.len {
+			target_os = args[i + 1]
 			i += 2
 		} else if args[i] == '-prod' {
 			is_prod = true
@@ -920,6 +924,7 @@ fn main() {
 	// Parse directly to flat AST
 	mut prefs := pref.new_preferences()
 	prefs.backend = backend
+	prefs.target_os = target_os
 	prefs.c99 = c99
 	prefs.user_defines = user_defines
 	prefs.vroot = resolve_vroot_for_input(prefs.vroot, input_file)
@@ -1044,6 +1049,7 @@ fn main() {
 	// by default for compatible builds, and `-no-parallel` disables both threaded transform
 	// and cgen.
 	mut transform_was_parallel := false
+	mut transform_errors := []string{}
 	// Markused distinguishes reachable generic calls/types from generic templates
 	// that merely came along with an imported module (notably sync and rand).
 	skip_transform_generics := building_v || cmd_v_build || !uses_generics
@@ -1053,19 +1059,27 @@ fn main() {
 	}
 	if scope_prealloc_selfhost && scope_whole_transform {
 		transform_scope := prealloc_scope_begin_for_v3()
-		used_fns, transform_was_parallel = transform.transform_with_used_opt_config(mut a, &pre_tc,
-			used_fns, current_parallel_transform, skip_transform_generics)
+		used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
+			&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, false)
 		prealloc_scope_leave_for_v3(transform_scope)
 		a = clone_flat_ast(a)
 		used_fns = clone_string_bool_map(used_fns)
+		transform_errors = clone_string_list(transform_errors)
 		clone_typechecker_after_scoped_transform(mut pre_tc, a)
 		prealloc_scope_free_for_v3(transform_scope)
 	} else {
-		used_fns, transform_was_parallel = transform.transform_with_used_opt_config_scoped_workers(mut a,
+		used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
 			&pre_tc, used_fns, current_parallel_transform, skip_transform_generics,
 			scope_prealloc_selfhost)
 	}
 	b.step_parallel('transform', transform_was_parallel)
+	if transform_errors.len > 0 {
+		eprintln('type checker found ${transform_errors.len} error(s):')
+		for message in transform_errors {
+			eprintln(message)
+		}
+		exit(1)
+	}
 
 	// Reuse the pre-transform checker for metadata only. Transform does not add
 	// declarations, and v1/v2 do not run a second semantic checker after lowering.

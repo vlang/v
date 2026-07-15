@@ -1,6 +1,7 @@
 module pref
 
 import os
+import time
 
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
@@ -17,11 +18,28 @@ pub mut:
 	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization
 	is_prod      bool
 	is_test      bool // at least one compatible user test file is being compiled
+pub:
+	build_date      string
+	build_time      string
+	build_timestamp string
 }
 
 // new_preferences supports new preferences handling for pref.
 pub fn new_preferences() &Preferences {
-	return &Preferences{}
+	build_time := target_build_time()
+	return &Preferences{
+		build_date:      build_time.strftime('%Y-%m-%d')
+		build_time:      build_time.strftime('%H:%M:%S')
+		build_timestamp: build_time.unix().str()
+	}
+}
+
+fn target_build_time() time.Time {
+	source_date_epoch := os.getenv('SOURCE_DATE_EPOCH')
+	if source_date_epoch.len == 0 {
+		return time.utc()
+	}
+	return time.unix_nanosecond(source_date_epoch.i64(), 0)
 }
 
 // detect_vroot resolves detect vroot information for pref.
