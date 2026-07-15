@@ -166,22 +166,42 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	// nested inside a comptime-if statement rather than being a direct file.stmt, so
 	// it is not picked up here and a top-level `import json2` is emitted instead.
 	mut json2_alias_is_blank := false
+	mut toplevel_json2_positions := []int{}
 	for stmt in file.stmts {
-		if stmt is ast.Import && stmt.source_name == 'json2' && !f.has_json2_import
-			&& !json2_alias_is_blank {
-			if stmt.alias == '_' {
-				// `import json2 as _` only silences unused-import warnings; `_` is not a
-				// usable qualifier and does not bring `json2` into scope, and a second
-				// plain `import json2` would be a duplicate import. So there is no way
-				// to emit valid `json2.x` calls — leave the file's json usage unmigrated.
-				json2_alias_is_blank = true
-			} else {
-				f.has_json2_import = true
-				f.json2_prefix = if stmt.alias != '' {
-					stmt.alias
+		if stmt is ast.Import && stmt.source_name == 'json2' {
+			toplevel_json2_positions << stmt.pos.pos
+			if !f.has_json2_import && !json2_alias_is_blank {
+				if stmt.alias == '_' {
+					// `import json2 as _` only silences unused-import warnings; `_` is not a
+					// usable qualifier and does not bring `json2` into scope, and a second
+					// plain `import json2` would be a duplicate import. So there is no way
+					// to emit valid `json2.x` calls — leave the file's json usage unmigrated.
+					json2_alias_is_blank = true
 				} else {
-					stmt.source_name.all_after_last('.')
+					f.has_json2_import = true
+					f.json2_prefix = if stmt.alias != '' {
+						stmt.alias
+					} else {
+						stmt.source_name.all_after_last('.')
+					}
 				}
+			}
+		}
+	}
+	// A `json2` import inside a top-level `$if` branch is present in file.imports but
+	// is not a direct file.stmt (it is nested in a comptime-if). Migrating `import
+	// json` adds a plain top-level `import json2`; a plain branch import dedups against
+	// it (same formatted string), but a selective or aliased branch import does not, so
+	// both survive and the checker reports `json2` as already imported. Merging is not
+	// safe (it could drop selective symbols the branch relies on), so leave the file
+	// unmigrated when such a branch-local json2 import is present.
+	mut has_unmergeable_branch_json2 := false
+	for imp in file.imports {
+		if imp.source_name == 'json2' && imp.pos.pos !in toplevel_json2_positions {
+			is_plain := imp.syms.len == 0 && imp.alias == imp.source_name.all_after_last('.')
+			if !is_plain {
+				has_unmergeable_branch_json2 = true
+				break
 			}
 		}
 	}
@@ -203,8 +223,8 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 		}
 	}
 	if imports_json {
-		f.keep_json_unmigrated = json2_alias_is_blank || f.file_has_vfmt_off_region()
-			|| f.file_has_unmigratable_json_usage(file)
+		f.keep_json_unmigrated = json2_alias_is_blank || has_unmergeable_branch_json2
+			|| f.file_has_vfmt_off_region() || f.file_has_unmigratable_json_usage(file)
 	}
 
 	for imp in file.imports {
@@ -260,12 +280,36 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 			}
 		}
 	} else if node is ast.Stmt && node is ast.FnDecl {
+		decl := node as ast.FnDecl
 		// A parameter or receiver named the same as the migrated qualifier (e.g. a
 		// param `json2`) shadows the module, so the rewritten `json2.encode(...)`
 		// would bind to the local instead. Leave the file unmigrated in that case.
-		decl := node as ast.FnDecl
 		if decl.receiver.name == s.json2_prefix || decl.params.any(it.name == s.json2_prefix) {
 			s.found = true
+		}
+		// A payload type that implements a json2 custom (de)serialization hook —
+		// `to_json`/`json_str` for encode, `from_json_*` for decode — makes json2
+		// dispatch to that hook, emitting/parsing different bytes than the legacy
+		// field-based json path. Leave such files unmigrated (the hook is a file-local
+		// method declaration on the payload type).
+		if decl.is_method {
+			method_name := decl.name.all_after_last('.')
+			if method_name in ['to_json', 'json_str'] || method_name.starts_with('from_json_') {
+				s.found = true
+			}
+		}
+	} else if node is ast.Expr && node is ast.IfExpr {
+		// `if json2 := opt() { ... json.encode(u) ... }` introduces a local named
+		// `json2` for the branch, shadowing the module qualifier for calls inside it.
+		// The guard lives in the branch condition, which the walker does not descend
+		// into (IfBranch.children() yields only its stmts), so check it here.
+		ifexpr := node as ast.IfExpr
+		for branch in ifexpr.branches {
+			cond := branch.cond
+			if cond is ast.IfGuardExpr && cond.vars.any(it.name == s.json2_prefix) {
+				s.found = true
+				break
+			}
 		}
 	} else if node is ast.Stmt && node is ast.AssignStmt {
 		// A local declaration `json2 := ...` shadows the qualifier too.
