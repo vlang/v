@@ -1180,6 +1180,43 @@ fn (mut tc TypeChecker) check_ownership_map_assignment_key(lhs_id flat.NodeId, o
 	}
 }
 
+// check_ownership_uncloneable_overlapping_map_assignment rejects a moved map-derived RHS
+// whose dynamic storage may differ from the target at runtime. Without an independent clone,
+// lowering cannot both preserve same-slot moves and destroy a distinct overwritten target.
+fn (mut tc TypeChecker) check_ownership_uncloneable_overlapping_map_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, op flat.Op, pos flat.NodeId) {
+	if tc.ownership == unsafe { nil } || op != .assign
+		|| !tc.ownership_lvalue_contains_map_index(lhs_id)
+		|| !tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
+		return
+	}
+	if bad_type := tc.ownership_default_clone_missing_method(lhs_type) {
+		tc.record_error(.assignment_mismatch,
+			'cannot move overlapping map storage: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			pos)
+	}
+}
+
+fn (tc &TypeChecker) ownership_lvalue_contains_map_index(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt, .cast_expr] && node.children_count > 0 {
+		return tc.ownership_lvalue_contains_map_index(tc.a.child(&node, 0))
+	}
+	if node.kind == .selector && node.children_count > 0 {
+		return tc.ownership_lvalue_contains_map_index(tc.a.child(&node, 0))
+	}
+	if node.kind != .index || node.children_count == 0 {
+		return false
+	}
+	base_id := tc.a.child(&node, 0)
+	if unwrap_pointer(tc.resolve_type(base_id)) is Map {
+		return true
+	}
+	return tc.ownership_lvalue_contains_map_index(base_id)
+}
+
 fn (tc &TypeChecker) ownership_type_requires_destruction_inner(typ Type, depth int, mut seen map[string]bool) bool {
 	if tc.ownership == unsafe { nil } || depth > 64 {
 		return false

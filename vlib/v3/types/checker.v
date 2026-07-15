@@ -8773,6 +8773,8 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 		}
 		$if ownership ? {
 			tc.check_ownership_map_assignment_key(lhs_id, node.op)
+			tc.check_ownership_uncloneable_overlapping_map_assignment(lhs_id, rhs_id, lhs_type,
+				node.op, id)
 			ownership_lhs_ids << lhs_id
 			ownership_rhs_ids << rhs_id
 			ownership_lhs_types << lhs_type

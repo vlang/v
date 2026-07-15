@@ -567,17 +567,18 @@ fn (mut t Transformer) try_lower_map_index_assign(node flat.Node) ?[]flat.NodeId
 		} else {
 			t.transform_expr_for_type(rhs_id, info.value_type)
 		}
-		mut drop_old_value := true
-		value, drop_old_value = t.clone_map_assignment_rhs_if_overlapping(value, rhs_id,
+		mut assignment_is_valid := true
+		value, assignment_is_valid = t.clone_map_assignment_rhs_if_overlapping(value, rhs_id,
 			t.a.child(&node, 0), info.value_type)
 		t.drain_pending(mut result)
+		if !assignment_is_valid {
+			return []flat.NodeId{}
+		}
 		result << t.make_decl_assign_typed(value_name, value, info.value_type)
 		cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned,
 			info.key_type, map_expr, info.base_type, key_name, mut result)
-		if drop_old_value {
-			t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
-				result)
-		}
+		t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
+			result)
 		result << t.make_map_set_stmt(map_expr, info.base_type, key_name, value_name)
 		t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
 		return result
@@ -626,8 +627,8 @@ fn (mut t Transformer) append_owned_map_set_key_cleanup(key_name string, cleanup
 }
 
 // clone_map_assignment_rhs_if_overlapping makes a map-derived replacement independent
-// before the stored owner is destroyed. If the value cannot be cloned, keep the old owner
-// alive rather than invalidating the shallow replacement.
+// before the stored owner is destroyed. The checker rejects an overlapping move that cannot
+// be cloned, and the false result prevents unsafe lowering of that invalid assignment.
 fn (mut t Transformer) clone_map_assignment_rhs_if_overlapping(value flat.NodeId, rhs_id flat.NodeId, lhs_id flat.NodeId, value_type_name string) (flat.NodeId, bool) {
 	if isnil(t.tc) || !t.tc.ownership_expr_moves_storage(rhs_id, lhs_id) {
 		return value, true
@@ -711,15 +712,16 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 	} else {
 		t.transform_expr_for_type(rhs_id, inner_value_type)
 	}
-	mut drop_old_value := true
-	inner_value, drop_old_value = t.clone_map_assignment_rhs_if_overlapping(inner_value, rhs_id,
-		lhs_id, inner_value_type)
+	mut assignment_is_valid := true
+	inner_value, assignment_is_valid = t.clone_map_assignment_rhs_if_overlapping(inner_value,
+		rhs_id, lhs_id, inner_value_type)
 	t.drain_pending(mut result)
-	result << t.make_decl_assign_typed(inner_value_name, inner_value, inner_value_type)
-	if drop_old_value {
-		t.append_map_value_drop_before_set(t.make_ident(inner_name), inner_map_type,
-			inner_key_name, inner_value_type, mut result)
+	if !assignment_is_valid {
+		return []flat.NodeId{}
 	}
+	result << t.make_decl_assign_typed(inner_value_name, inner_value, inner_value_type)
+	t.append_map_value_drop_before_set(t.make_ident(inner_name), inner_map_type, inner_key_name,
+		inner_value_type, mut result)
 	result << t.make_map_set_stmt(t.make_ident(inner_name), inner_map_type, inner_key_name,
 		inner_value_name)
 	result << t.make_map_set_stmt(map_expr, outer_info.base_type, outer_key_name, inner_name)
@@ -754,14 +756,16 @@ fn (mut t Transformer) try_lower_map_index_selector_assign(node flat.Node) ?[]fl
 	field := t.make_selector(t.make_ident(current_name), lhs.value, field_type)
 	rhs_id := t.a.child(&node, 1)
 	mut rhs := t.transform_expr_for_type(rhs_id, field_type)
-	mut drop_old_field := true
-	rhs, drop_old_field = t.clone_map_assignment_rhs_if_overlapping(rhs, rhs_id, lhs_id, field_type)
+	mut assignment_is_valid := true
+	rhs, assignment_is_valid = t.clone_map_assignment_rhs_if_overlapping(rhs, rhs_id, lhs_id,
+		field_type)
 	t.drain_pending(mut result)
+	if !assignment_is_valid {
+		return []flat.NodeId{}
+	}
 	rhs_name := t.new_temp('map_field_value')
 	result << t.make_decl_assign_typed(rhs_name, rhs, field_type)
-	if drop_old_field {
-		t.append_owned_lvalue_drop_before_assign(field, field_type, mut result)
-	}
+	t.append_owned_lvalue_drop_before_assign(field, field_type, mut result)
 	result << t.make_assign(field, t.make_ident(rhs_name))
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, current_name)
 	return result
