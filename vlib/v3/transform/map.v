@@ -738,8 +738,8 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
 	mut outer_key_value := t.transform_expr_for_type(outer_info.key_id, outer_info.key_type)
-	mut outer_key_is_owned := !isnil(t.tc)
-		&& t.tc.ownership_expr_creates_owned_value(outer_info.key_id)
+	mut outer_key_is_owned := t.map_key_expr_creates_owned_value(outer_info.key_id,
+		outer_info.key_type)
 	if !outer_key_is_owned && !isnil(t.tc)
 		&& t.normalize_type_alias(outer_info.key_type).trim_space() != 'string' {
 		outer_key_type := t.tc.parse_type(outer_info.key_type)
@@ -760,7 +760,7 @@ fn (mut t Transformer) try_lower_nested_map_index_assign(node flat.Node) ?[]flat
 	inner_key_storage_type := t.map_key_storage_type(inner_key_type)
 	inner_key_id := t.a.child(&lhs, 1)
 	mut inner_key_value := t.transform_expr_for_type(inner_key_id, inner_key_type)
-	mut inner_key_is_owned := !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(inner_key_id)
+	mut inner_key_is_owned := t.map_key_expr_creates_owned_value(inner_key_id, inner_key_type)
 	if !inner_key_is_owned && !isnil(t.tc)
 		&& t.normalize_type_alias(inner_key_type).trim_space() != 'string' {
 		inner_key_parsed_type := t.tc.parse_type(inner_key_type)
