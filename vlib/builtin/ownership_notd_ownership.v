@@ -20,8 +20,12 @@ fn drop_owned_result_error(err IError) {
 	raw_err := unsafe { &C.IError(&err) }
 	none_err := unsafe { &C.IError(&none__) }
 	sentinel_err := unsafe { &C.IError(&error_sentinel) }
-	if raw_err._object == unsafe { nil } || raw_err._object == none_err._object
-		|| raw_err._object == sentinel_err._object {
+	if raw_err._object == unsafe { nil } {
+		message := err.msg()
+		unsafe { message.free() }
+		return
+	}
+	if raw_err._object == none_err._object || raw_err._object == sentinel_err._object {
 		return
 	}
 	drop_owned(err)

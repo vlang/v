@@ -4803,7 +4803,10 @@ fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
 	if clean.len == 0 || clean.starts_with('&') {
 		return false
 	}
-	if clean.starts_with('?') || clean.starts_with('!') {
+	if clean.starts_with('!') {
+		return true
+	}
+	if clean.starts_with('?') {
 		return t.compiler_default_clone_type_needs_work(t.optional_base_type(t.qualify_optional_type(clean)))
 	}
 	if t.is_fixed_array_type(clean) {
