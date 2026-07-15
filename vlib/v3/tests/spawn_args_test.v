@@ -38,11 +38,16 @@ fn assert_spawn_pthread_decls(c_code string) {
 	assert !c_code.contains('i32 pthread_attr_destroy(void* attr);'), c_code
 	assert c_code.contains('typedef struct { pthread_t handle; } __v_thread;'), c_code
 	assert c_code.contains('static __v_thread __v_thread_spawn('), c_code
+	assert c_code.contains('static const size_t __v_thread_stack_size = 8388608;'), c_code
+	assert c_code.contains('pthread_attr_setstacksize(&attr, __v_thread_stack_size);'), c_code
+	assert c_code.contains('pthread_create(&result.handle, &attr, (void*)start, arg);'), c_code
+	assert c_code.contains('int attr_rc = pthread_attr_destroy(&attr);'), c_code
 	assert c_code.contains('if (cleanup) cleanup(arg);'), c_code
+	assert c_code.contains('V thread attribute initialization failed: %d'), c_code
+	assert c_code.contains('V thread stack size setup failed: %d'), c_code
 	assert c_code.contains('V thread creation failed: %d'), c_code
 	assert c_code.contains('static void* __v_thread_join(__v_thread thread)'), c_code
 	assert !c_code.contains('pthread_attr_setstacksize(&_at'), c_code
-	assert !c_code.contains('8388608'), c_code
 }
 
 // A `spawn` of a free function with arguments must pack the arguments into a heap
