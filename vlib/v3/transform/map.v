@@ -246,12 +246,13 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 	key_name := t.new_temp('map_key')
 	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
 		key_type), t.map_key_storage_type(key_type))
+	cleanup_key := !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(key_id)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
 	if !isnil(t.tc) && t.tc.ownership_index_read_moves_value(id)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type)) {
 		result := t.lower_owned_map_index_move(map_source_id, map_expr, base_type, key_name,
 			value_type)
-		if t.tc.ownership_expr_creates_owned_value(key_id)
-			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type)) {
+		if cleanup_key {
 			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
 				arr1(t.make_ident(key_name)), 'void'))
 		}
@@ -260,7 +261,17 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 	zero_name := t.new_temp('map_zero')
 	t.pending_stmts << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type),
 		value_type)
-	return t.make_map_get_expr(map_expr, base_type, key_name, zero_name, value_type)
+	value := t.make_map_get_expr(map_expr, base_type, key_name, zero_name, value_type)
+	if cleanup_key {
+		result_name := t.new_temp('map_index_value')
+		t.pending_stmts << t.make_decl_assign_typed(result_name, value, value_type)
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
+			arr1(t.make_ident(key_name)), 'void'))
+		result := t.make_ident(result_name)
+		t.set_node_typ(int(result), value_type)
+		return result
+	}
+	return value
 }
 
 // lower_owned_map_index_move materializes an indexed value that ownership analysis

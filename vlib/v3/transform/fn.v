@@ -5415,8 +5415,8 @@ fn (mut t Transformer) append_owned_array_drop_range(array_value flat.NodeId, el
 
 // try_lower_ignored_owned_array_pop_stmt destroys an owned array element result when the
 // source program ignores it. Pop methods transfer the removed element from owning arrays,
-// while slice results still alias backing storage. First/last produce the independent clone
-// supplied by lower_owned_array_accessor_call.
+// while slices and arrays with live slice views still alias shared backing storage.
+// First/last produce the independent clone supplied by lower_owned_array_accessor_call.
 fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
 	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
 		return none
@@ -5450,6 +5450,7 @@ fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeI
 	mut result := []flat.NodeId{}
 	mut popped := flat.empty_node
 	mut array_value := flat.empty_node
+	mut drop_result_guard_name := ''
 	if fn_node.value in ['pop', 'pop_left'] {
 		base := t.stable_expr_for_reuse(base_id)
 		t.drain_pending(mut result)
@@ -5458,6 +5459,13 @@ fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeI
 			array_value = t.make_prefix(.mul, base)
 			t.set_node_typ(int(array_value), clean_base_type)
 		}
+		needs_unique_shrink := t.make_method_call(array_value, 'needs_unique_shrink',
+			[]flat.NodeId{})
+		t.set_node_typ(int(needs_unique_shrink), 'bool')
+		t.mark_fn_used('array.needs_unique_shrink')
+		drop_result_guard_name = t.new_temp('ignored_array_pop_can_drop')
+		result << t.make_decl_assign_typed(drop_result_guard_name, t.make_prefix(.not,
+			needs_unique_shrink), 'bool')
 		popped = t.make_method_call(array_value, fn_node.value, []flat.NodeId{})
 		t.set_node_typ(int(popped), elem_type)
 		if fn_node.value == 'pop' {
@@ -5472,16 +5480,8 @@ fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeI
 	drop_result := t.make_expr_stmt(t.make_call_typed('drop_owned',
 		arr1(t.make_ident(popped_name)), 'void'))
 	if fn_node.value in ['pop', 'pop_left'] {
-		flags := t.make_selector(array_value, 'flags', 'ArrayFlags')
-		is_slice_flag := t.a.add_node(flat.Node{
-			kind:  .enum_val
-			value: 'ArrayFlags.is_slice'
-			typ:   'ArrayFlags'
-		})
-		is_slice := t.make_method_call(flags, 'has', arr1(is_slice_flag))
-		t.set_node_typ(int(is_slice), 'bool')
 		start := t.a.children.len
-		t.a.children << t.make_prefix(.not, is_slice)
+		t.a.children << t.make_ident(drop_result_guard_name)
 		t.a.children << t.make_block(arr1(drop_result))
 		result << t.a.add_node(flat.Node{
 			kind:                 .if_expr
