@@ -556,12 +556,31 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	new_body << binding_clones
 	new_body << elem_decl
 	new_body << transformed_body
-	prefix << t.make_for_stmt(init, cond, post, new_body, node)
 	container_needs_drop :=
 		(actual_iter_type.starts_with('[]') || t.is_fixed_array_type(actual_iter_type))
 		&& !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type))
-	if source_is_owned_temporary && container_needs_drop {
+	cleanup_temporary := source_is_owned_temporary && container_needs_drop
+	mut cleanup_guard_name := ''
+	if cleanup_temporary {
+		cleanup_guard_name = t.new_temp('for_container_live')
+		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
+		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(container), 'void'))
+		guarded_drop := t.make_if(t.make_ident(cleanup_guard_name),
+			t.make_block(arr1(deferred_drop)), t.make_empty())
+		t.a.nodes[int(guarded_drop)].skip_ownership_drops = true
+		defer_body := t.make_block(arr1(guarded_drop))
+		defer_start := t.a.children.len
+		t.a.children << defer_body
+		prefix << t.a.add_node(flat.Node{
+			kind:           .defer_stmt
+			children_start: defer_start
+			children_count: 1
+		})
+	}
+	prefix << t.make_for_stmt(init, cond, post, new_body, node)
+	if cleanup_temporary {
 		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(container), 'void'))
+		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
 	}
 	return prefix
 }

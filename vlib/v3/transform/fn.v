@@ -5716,6 +5716,9 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		}
 		return delete_call
 	}
+	if fn_node.value !in ['keys', 'values'] {
+		return none
+	}
 	elem_type := if fn_node.value == 'keys' {
 		t.map_key_type(clean_type)
 	} else {
