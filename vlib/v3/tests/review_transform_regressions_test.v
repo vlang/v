@@ -821,6 +821,29 @@ fn main() {
 	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
 }
 
+fn test_interface_implicit_str_dispatch_stringifies_collection_aliases() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_implicit_str_collection_aliases', 'interface Printable {
+	str() string
+}
+
+type Items = []int
+type Counts = map[string]int
+
+fn main() {
+	items := Printable(Items([1, 2]))
+	mut raw_counts := map[string]int{}
+	raw_counts["a"] = 3
+	counts := Printable(Counts(raw_counts))
+	count_text := counts.str()
+	println(items.str())
+	println(count_text.contains("a"))
+	println(count_text.contains("3"))
+}
+')
+	assert out == '[1, 2]\ntrue\ntrue'
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',

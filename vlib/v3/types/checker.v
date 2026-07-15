@@ -18539,20 +18539,51 @@ fn (tc &TypeChecker) type_has_implicit_str_method(name string) bool {
 	if clean.len == 0 {
 		return false
 	}
-	if tc.type_name_resolves_to_sum_type(clean) {
-		return false
-	}
-	if is_builtin_type_name(clean) {
-		return true
-	}
-	if clean in tc.structs || clean in tc.type_aliases || clean in tc.interface_names {
-		return true
-	}
+	mut candidates := [clean]
 	if !clean.contains('.') {
 		qname := tc.qualify_name(clean)
-		return qname in tc.structs || qname in tc.type_aliases || qname in tc.interface_names
+		if qname != clean {
+			candidates << qname
+		}
+	}
+	for candidate in candidates {
+		if tc.type_name_resolves_to_sum_type(candidate) {
+			continue
+		}
+		if candidate in tc.structs || candidate in tc.interface_names {
+			return true
+		}
+		if is_builtin_type_name(candidate) {
+			mut seen := map[string]bool{}
+			if tc.type_supports_implicit_str(tc.parse_type(candidate), mut seen) {
+				return true
+			}
+		}
+		if candidate in tc.type_aliases {
+			mut seen := map[string]bool{}
+			seen[candidate] = true
+			if tc.type_supports_implicit_str(tc.parse_type(tc.type_aliases[candidate]), mut seen) {
+				return true
+			}
+		}
 	}
 	return false
+}
+
+fn (tc &TypeChecker) type_supports_implicit_str(typ Type, mut seen map[string]bool) bool {
+	if typ is Alias {
+		if seen[typ.name] {
+			return false
+		}
+		seen[typ.name] = true
+		return tc.type_supports_implicit_str(typ.base_type, mut seen)
+	}
+	if typ is Primitive {
+		return typ.props.has(.boolean) || typ.props.has(.integer) || typ.props.has(.float)
+	}
+	return typ is String || typ is Char || typ is Rune || typ is ISize || typ is USize
+		|| typ is Pointer || typ is Array || typ is ArrayFixed || typ is Map || typ is Enum
+		|| typ is Struct
 }
 
 fn (tc &TypeChecker) type_name_resolves_to_sum_type(name string) bool {

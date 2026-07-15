@@ -478,7 +478,12 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		addr := t.make_prefix(.amp, source)
 		size := t.make_sizeof_type(concrete_type)
 		dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
-		t.make_cast('&${concrete_type}', dup, '&${concrete_type}')
+		if t.interface_box_object_cast_needs_raw_call(concrete_type) {
+			t.set_node_typ(int(dup), '&${concrete_type}')
+			dup
+		} else {
+			t.make_cast('&${concrete_type}', dup, '&${concrete_type}')
+		}
 	}
 	field_base := if is_ptr {
 		base := t.make_prefix(.mul, source)
@@ -508,6 +513,20 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		value:          iface_name
 		typ:            iface_name
 	})
+}
+
+fn (t &Transformer) interface_box_object_cast_needs_raw_call(concrete_type string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	target := t.tc.type_aliases[concrete_type] or {
+		if !concrete_type.contains('.') {
+			t.tc.type_aliases[t.tc.qualify_name(concrete_type)] or { return false }
+		} else {
+			return false
+		}
+	}
+	return t.normalize_type_alias(target).starts_with('map[')
 }
 
 fn (t &Transformer) ident_is_global_pointer_to_interface(name string, iface_name string) bool {
