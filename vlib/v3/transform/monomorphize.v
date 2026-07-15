@@ -6569,8 +6569,19 @@ fn (t &Transformer) subst_node_value(node flat.Node, args []string) string {
 			}
 			return node.value
 		}
+		.is_expr {
+			// A `$for variant in T.variants` body still contains the loop variable
+			// while the generic function is cloned. Qualifying that bare name as a
+			// module type (`variant` -> `json2.variant`) prevents the later comptime
+			// unroll from replacing it with each concrete sum variant.
+			substituted := t.subst_type(node.value, args)
+			if t.cloning_comptime_for_depth > 0 {
+				return substituted
+			}
+			return t.resolve_substituted_type_text(substituted)
+		}
 		.array_init, .map_init, .struct_init, .assoc, .cast_expr, .as_expr, .sizeof_expr,
-		.typeof_expr, .is_expr {
+		.typeof_expr {
 			return t.resolve_substituted_type_text(t.subst_type(node.value, args))
 		}
 		.call, .type_decl, .field_decl, .param {
