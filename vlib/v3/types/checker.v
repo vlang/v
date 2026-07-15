@@ -9271,7 +9271,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	if expected is ResultType && node.children_count == 1
+	if expected is ResultType && expected.base_type !is MultiReturn && node.children_count == 1
 		&& !tc.result_return_uses_multi_tail(tc.a.child(&node, 0), expected) {
 		child_id := tc.a.child(&node, 0)
 		$if ownership ? {

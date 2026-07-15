@@ -5920,7 +5920,8 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	if p.tok == .rsbr {
 		size_end := p.tok_pos
 		p.next()
-		if p.tok == .name || p.tok == .amp || p.tok == .question || p.tok == .not
+		if p.tok == .name || p.tok == .amp || p.tok == .question
+			|| (p.tok == .not && can_start_type_name_token(p.peek()))
 			|| (p.tok == .lsbr && p.current_lbr_starts_array_type()) {
 			// fixed array type: [N]Type. Use the literal node value for a plain integer
 			// size, but recover the full source text for a const expression (e.g.
@@ -6502,9 +6503,13 @@ fn (mut p Parser) lbr_starts_array_type_from_offset(offset int) bool {
 
 // can_start_type_name reports whether can start type name applies in parser.
 fn (p &Parser) can_start_type_name() bool {
-	return p.tok == .name || p.tok == .amp || p.tok == .question || p.tok == .not || p.tok == .lsbr
-		|| p.tok == .lpar || p.tok == .key_fn || p.tok == .ellipsis || p.tok == .key_mut
-		|| p.tok == .key_shared || p.tok == .key_atomic
+	return can_start_type_name_token(p.tok)
+}
+
+fn can_start_type_name_token(tok token.Token) bool {
+	return tok == .name || tok == .amp || tok == .question || tok == .not || tok == .lsbr
+		|| tok == .lpar || tok == .key_fn || tok == .ellipsis || tok == .key_mut
+		|| tok == .key_shared || tok == .key_atomic
 }
 
 // fn_type_param_with_mut supports fn type param with mut handling for parser.

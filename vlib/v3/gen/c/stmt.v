@@ -1344,7 +1344,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 					}
 				} else if g.cur_fn_ret is types.MultiReturn {
 					if node.children_count > 1 {
-						ct := g.tc.c_type(g.cur_fn_ret)
+						ct := g.value_c_type(g.cur_fn_ret)
 						ret_types := g.cur_fn_ret.types
 						if g.multi_return_types_have_fixed_array(ret_types) {
 							g.gen_multi_return_temp_return(ct, ret_types, node)
