@@ -4006,7 +4006,14 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 	if clean_variant_type is types.Pointer && actual_type is types.Pointer
 		&& g.type_names_match(actual_type.base_type, clean_variant_type.base_type) {
 		g.write('(${ct}){.typ = ${idx}, .${field} = ')
-		g.gen_expr(id)
+		if g.pointer_variant_expr_needs_heap_copy(id) {
+			pointer_ct := g.value_c_type(clean_variant_type.base_type)
+			g.write('(${pointer_ct}*)memdup(')
+			g.gen_expr(id)
+			g.write(', sizeof(${pointer_ct}))')
+		} else {
+			g.gen_expr(id)
+		}
 		if g.pointer_variant_expr_creates_owned_value(id) {
 			g.write(', ._pointer_variant_is_owned = true')
 		}
@@ -4101,7 +4108,7 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 		inner_ct := g.value_c_type(variant_type)
 		if variant_is_pointer_arg {
 			g.write('(${ct}){.typ = ${idx}, .${field} = ')
-			if g.pointer_variant_arg_needs_heap_copy(inner) {
+			if g.pointer_variant_expr_needs_heap_copy(inner_id) {
 				pointer_ct := g.value_c_type(clean_variant_type.base_type)
 				g.write('(${pointer_ct}*)memdup(')
 				g.gen_expr(inner_id)
@@ -4191,6 +4198,19 @@ fn (g &FlatGen) pointer_variant_arg_needs_heap_copy(node flat.Node) bool {
 	return false
 }
 
+fn (g &FlatGen) pointer_variant_expr_needs_heap_copy(id flat.NodeId) bool {
+	mut expr_id := id
+	for int(expr_id) >= 0 && int(expr_id) < g.a.nodes.len {
+		node := g.a.nodes[int(expr_id)]
+		if node.kind in [.paren, .expr_stmt, .cast_expr] && node.children_count > 0 {
+			expr_id = g.a.child(&node, 0)
+			continue
+		}
+		return g.pointer_variant_arg_needs_heap_copy(node)
+	}
+	return false
+}
+
 // pointer_variant_expr_creates_owned_value reports pointer expressions whose pointee is
 // independently owned by the sum. Borrowed call/selector results remain unmarked.
 fn (g &FlatGen) pointer_variant_expr_creates_owned_value(id flat.NodeId) bool {
@@ -4207,7 +4227,7 @@ fn (g &FlatGen) pointer_variant_expr_creates_owned_value(id flat.NodeId) bool {
 			expr_id = g.a.child(&node, 0)
 			continue
 		}
-		if g.pointer_variant_arg_needs_heap_copy(node) {
+		if g.pointer_variant_expr_needs_heap_copy(expr_id) {
 			return true
 		}
 		if node.kind != .prefix || node.op != .amp || node.children_count == 0 {

@@ -7875,6 +7875,9 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 			if node.op != .amp {
 				tc.check_for_in_binding_clones(clean, key_id, val_id, has_val)
 			}
+			if clean is Map && tc.for_in_body_contains_map_delete(node, header) {
+				tc.check_map_delete_snapshot_clones(clean, container_id)
+			}
 		}
 	}
 	$if ownership ? {
@@ -7896,6 +7899,50 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.ownership_end_branch_group()
 	}
 	tc.pop_scope()
+}
+
+fn (tc &TypeChecker) for_in_body_contains_map_delete(node flat.Node, body_start int) bool {
+	for i in body_start .. node.children_count {
+		if tc.for_in_node_contains_map_delete(tc.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) for_in_node_contains_map_delete(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .call && node.children_count > 0 {
+		fn_node := tc.a.child_node(&node, 0)
+		if fn_node.kind == .selector && fn_node.value == 'delete' {
+			return true
+		}
+		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete'] {
+			return true
+		}
+	}
+	for i in 0 .. node.children_count {
+		if tc.for_in_node_contains_map_delete(tc.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) check_map_delete_snapshot_clones(map_type Map, pos flat.NodeId) {
+	if bad_type := tc.ownership_default_clone_missing_method(map_type.key_type) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot snapshot map keys for iteration with delete: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			pos)
+	}
+	if bad_type := tc.ownership_default_clone_missing_method(map_type.value_type) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot snapshot map values for iteration with delete: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			pos)
+	}
 }
 
 fn (mut tc TypeChecker) check_for_in_binding_clones(container Type, key_id flat.NodeId, val_id flat.NodeId, has_val bool) {
