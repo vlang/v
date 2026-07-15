@@ -5330,8 +5330,8 @@ fn (mut t Transformer) lower_owned_array_accessor_call(base_id flat.NodeId, base
 // lower_owned_array_removal_call drops ownership-bearing elements before a raw array
 // operation removes them from the range visited by the scope-exit destructor.
 fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id flat.NodeId, base_type string, elem_type string, method string) ?flat.NodeId {
-	if method !in ['delete', 'delete_many', 'clear', 'trim', 'drop', 'delete_last'] || isnil(t.tc)
-		|| !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+	if method !in ['delete', 'delete_many', 'clear', 'free', 'trim', 'drop', 'delete_last']
+		|| isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
 		return none
 	}
 	base := t.stable_expr_for_reuse(base_id)
@@ -5376,7 +5376,7 @@ fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id fl
 				t.make_int_literal(0)), t.make_infix(.le, end, t.make_cast('i64', t.make_selector(array_value,
 				'len', 'int'), 'i64')))
 		}
-		'clear' {
+		'clear', 'free' {
 			t.append_owned_array_drop_range(array_value, elem_type, t.make_int_literal(0), t.make_selector(array_value,
 				'len', 'int'), mut drop_stmts)
 		}
