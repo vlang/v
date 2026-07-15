@@ -75,3 +75,18 @@ fn test_c_type_cache_keys_composite_types_by_type_id() {
 	assert tc.c_type(typ) == 'sample__Item*'
 	assert tc.type_cache.c_entries.len == entries_after_first
 }
+
+fn test_type_name_is_lazily_cached_by_type_id() {
+	a := flat.FlatAst.new()
+	tc := TypeChecker.new(&a)
+	typ := Type(Map{
+		key_type:   Type(string_)
+		value_type: Type(Array{
+			elem_type: Type(int_)
+		})
+	})
+	first := tc.type_name(typ)
+	second := tc.type_name(typ)
+	assert first == 'map[string][]int'
+	assert first.str == second.str
+}

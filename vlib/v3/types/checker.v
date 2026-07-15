@@ -18437,6 +18437,18 @@ pub fn (tc &TypeChecker) type_count() int {
 	return interner.len()
 }
 
+// type_name lazily formats and memoizes the canonical spelling of a semantic
+// type. Hot compiler paths should prefer this to repeated recursive Type.name
+// construction.
+pub fn (tc &TypeChecker) type_name(t Type) string {
+	if isnil(tc.type_interner) {
+		return t.name()
+	}
+	id, _ := tc.intern_type(t)
+	mut interner := unsafe { tc.type_interner }
+	return interner.name(id)
+}
+
 // type_cache_stats returns cache counters accumulated by this checker.
 pub fn (tc &TypeChecker) type_cache_stats() TypeCacheStats {
 	if isnil(tc.type_cache) {

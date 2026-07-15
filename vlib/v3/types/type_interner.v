@@ -12,6 +12,7 @@ struct TypeInterner {
 mut:
 	lock    &sync.Mutex = unsafe { nil }
 	types   []Type
+	names   []string
 	buckets map[u64]TypeId
 }
 
@@ -40,8 +41,23 @@ fn (mut i TypeInterner) intern_locked(t Type) (TypeId, Type) {
 	}
 	id := TypeId(i.types.len)
 	i.types << t
+	i.names << ''
 	i.buckets[key] = id
 	return id, i.types[int(id)]
+}
+
+fn (mut i TypeInterner) name(id TypeId) string {
+	i.lock.lock()
+	defer {
+		i.lock.unlock()
+	}
+	if int(id) < 0 || int(id) >= i.types.len {
+		return 'unknown'
+	}
+	if i.names[int(id)].len == 0 {
+		i.names[int(id)] = i.types[int(id)].name()
+	}
+	return i.names[int(id)]
 }
 
 fn (mut i TypeInterner) canonicalize(t Type) (TypeId, Type) {
