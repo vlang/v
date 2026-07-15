@@ -245,16 +245,17 @@ pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 // a fresh node instead of mutating in place.
 pub fn (n Node) with_shifted_children(shift i32) Node {
 	return Node{
-		value:          n.value
-		typ:            n.typ
-		generic_params: n.generic_params
-		kind_id:        n.kind_id
-		pos:            n.pos
-		children_start: n.children_start + shift
-		children_count: n.children_count
-		kind:           n.kind
-		op:             n.op
-		is_mut:         n.is_mut
+		value:                n.value
+		typ:                  n.typ
+		generic_params:       n.generic_params
+		kind_id:              n.kind_id
+		pos:                  n.pos
+		children_start:       n.children_start + shift
+		children_count:       n.children_count
+		kind:                 n.kind
+		op:                   n.op
+		is_mut:               n.is_mut
+		skip_ownership_drops: n.skip_ownership_drops
 	}
 }
 
