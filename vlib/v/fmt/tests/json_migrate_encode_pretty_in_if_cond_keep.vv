@@ -1,0 +1,20 @@
+import json
+
+struct User {
+	name string
+}
+
+// `json.encode_pretty` in an `if` condition is not reachable through the walker
+// (IfBranch.children() yields only the branch stmts), so the unmigratable scan
+// sub-walks the branch conditions. The file is left unmigrated because encode_pretty
+// cannot be reproduced by json2.
+fn to_json(u User) string {
+	if json.encode_pretty(u) == '' {
+		return 'empty'
+	}
+	return json.encode(u)
+}
+
+fn main() {
+	println(to_json(User{ name: 'bob' }))
+}

@@ -190,19 +190,18 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	}
 	// A `json2` import inside a top-level `$if` branch is present in file.imports but
 	// is not a direct file.stmt (it is nested in a comptime-if). Migrating `import
-	// json` adds a plain top-level `import json2`; a plain branch import dedups against
-	// it (same formatted string), but a selective or aliased branch import does not, so
-	// both survive and the checker reports `json2` as already imported. Merging is not
-	// safe (it could drop selective symbols the branch relies on), so leave the file
-	// unmigrated when such a branch-local json2 import is present.
-	mut has_unmergeable_branch_json2 := false
+	// json` would add a plain top-level `import json2`, which then coexists with the
+	// branch import and trips the checker's duplicate-module error. The vfmt dedup
+	// cannot be relied on: a selective/aliased branch import has a different formatted
+	// string, and even a plain branch import emitted *before* the top-level one goes
+	// to branch_processed_imports (not global_processed_imports), so the later
+	// top-level import is not deduped. So leave the file unmigrated whenever any
+	// branch-local json2 import is present.
+	mut has_branch_local_json2 := false
 	for imp in file.imports {
 		if imp.source_name == 'json2' && imp.pos.pos !in toplevel_json2_positions {
-			is_plain := imp.syms.len == 0 && imp.alias == imp.source_name.all_after_last('.')
-			if !is_plain {
-				has_unmergeable_branch_json2 = true
-				break
-			}
+			has_branch_local_json2 = true
+			break
 		}
 	}
 	// Some `json` usage cannot be rewritten to `json2` without changing or losing
@@ -223,7 +222,7 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 		}
 	}
 	if imports_json {
-		f.keep_json_unmigrated = json2_alias_is_blank || has_unmergeable_branch_json2
+		f.keep_json_unmigrated = json2_alias_is_blank || has_branch_local_json2
 			|| f.file_has_vfmt_off_region() || f.file_has_unmigratable_json_usage(file)
 	}
 
@@ -315,17 +314,27 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 			}
 		}
 	} else if node is ast.Expr && node is ast.IfExpr {
-		// `if json2 := opt() { ... json.encode(u) ... }` introduces a local named
-		// `json2` for the branch, shadowing the module qualifier for calls inside it.
-		// The guard lives in the branch condition, which the walker does not descend
-		// into (IfBranch.children() yields only its stmts), so check it here.
+		// The walker does not descend into a branch condition (IfBranch.children()
+		// yields only its stmts), so an unmigratable call or a shadowing guard variable
+		// in `if <cond> { }` would be missed. Sub-walk each branch condition explicitly
+		// (this reaches nested calls and the IfGuardExpr case below).
 		ifexpr := node as ast.IfExpr
 		for branch in ifexpr.branches {
-			cond := branch.cond
-			if cond is ast.IfGuardExpr && cond.vars.any(it.name == s.json2_prefix) {
-				s.found = true
-				break
-			}
+			walker.inspect(branch.cond, data, json_unmigratable_scan_visit)
+		}
+	} else if node is ast.Expr && node is ast.IfGuardExpr {
+		// `if json2 := opt() { ... }` introduces a local named `json2` for the branch,
+		// shadowing the module qualifier for calls inside it.
+		ifg := node as ast.IfGuardExpr
+		if ifg.vars.any(it.name == s.json2_prefix) {
+			s.found = true
+		}
+	} else if node is ast.Expr && node is ast.LambdaExpr {
+		// A lambda parameter named like the qualifier (`|json2| json.encode(u)`) shadows
+		// the module for the lambda body.
+		lambda := node as ast.LambdaExpr
+		if lambda.params.any(it.name == s.json2_prefix) {
+			s.found = true
 		}
 	} else if node is ast.Stmt && node is ast.AssignStmt {
 		// A local declaration `json2 := ...` shadows the qualifier too.
