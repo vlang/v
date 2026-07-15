@@ -4124,6 +4124,36 @@ fn main() {
 	assert out == '7\n9'
 }
 
+fn test_isreftype_parenthesized_type_args() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'isreftype_parenthesized_type_args', 'struct Foo {
+	n int
+}
+
+fn main() {
+	foo := Foo{}
+	if isreftype(foo) {
+		println("bad expr")
+	} else {
+		println("value expr")
+	}
+	if isreftype(&foo) {
+		println("ptr expr")
+	}
+	if isreftype(&Foo) {
+		println("ptr type")
+	}
+	if isreftype(fn () int) {
+		println("fn type")
+	}
+	if isreftype([]int) {
+		println("array type")
+	}
+}
+')
+	assert out == 'value expr\nptr expr\nptr type\nfn type\narray type'
+}
+
 fn test_shadowed_global_local_rename_is_scoped_to_binding() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'shadowed_global_local_rename_scoped', '__global foo int
