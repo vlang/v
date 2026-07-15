@@ -300,6 +300,26 @@ fn verify_instruction(m &ssa.Module, func_id int, blk_id int, val_id int, instr 
 		.phi {
 			errors << verify_phi(m, func_id, blk_id, val_id, instr)
 		}
+		.assign {
+			if instr.operands.len != 2 {
+				errors << VerifyError{
+					msg:      'assign has ${instr.operands.len} operands, expected 2'
+					func_id:  func_id
+					block_id: blk_id
+					val_id:   val_id
+				}
+			} else {
+				dest := instr.operands[0]
+				if dest <= 0 || dest >= m.values.len || m.values[dest].kind != .phi_result {
+					errors << VerifyError{
+						msg:      'assign has invalid destination ${dest}'
+						func_id:  func_id
+						block_id: blk_id
+						val_id:   val_id
+					}
+				}
+			}
+		}
 		.br {
 			errors << verify_branch(m, func_id, blk_id, val_id, instr)
 		}
@@ -333,16 +353,6 @@ fn verify_instruction(m &ssa.Module, func_id int, blk_id int, val_id int, instr 
 			if instr.operands.len != 3 {
 				errors << VerifyError{
 					msg:      'select has ${instr.operands.len} operands, expected 3'
-					func_id:  func_id
-					block_id: blk_id
-					val_id:   val_id
-				}
-			}
-		}
-		.assign {
-			if instr.operands.len != 2 {
-				errors << VerifyError{
-					msg:      'assign has ${instr.operands.len} operands, expected 2'
 					func_id:  func_id
 					block_id: blk_id
 					val_id:   val_id

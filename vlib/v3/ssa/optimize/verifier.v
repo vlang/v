@@ -149,6 +149,18 @@ fn verify_instruction_operands(m &ssa.Module, stage string, fi int, blk_id int, 
 					'phi predecessor')
 			}
 		}
+		.assign {
+			if instr.operands.len != 2 {
+				verify_fail(stage,
+					'assign value ${val_id} in block ${blk_id} has ${instr.operands.len} operands')
+			} else {
+				dest := instr.operands[0]
+				if dest <= 0 || dest >= m.values.len || m.values[dest].kind != .phi_result {
+					verify_fail(stage,
+						'assign value ${val_id} in block ${blk_id} has invalid destination ${dest}')
+				}
+			}
+		}
 		else {}
 	}
 }

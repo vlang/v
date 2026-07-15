@@ -34,6 +34,28 @@ fn test_replace_uses_only_rewrites_value_operands_when_ids_collide() {
 	assert phi_value in m.values[new_value].uses
 }
 
+// test_replace_uses_preserves_assign_destination validates that lowered copy
+// destinations are definitions rather than replaceable value uses.
+fn test_replace_uses_preserves_assign_destination() {
+	mut m := ssa.Module.new()
+	i64t := m.type_store.get_int(64)
+	func_id := m.new_function('assign_definition', i64t)
+	entry := m.add_block(func_id, 'entry')
+	dest := m.add_value(.phi_result, i64t, 'dest', -1)
+	src := m.get_or_add_const(i64t, '1')
+	replacement := m.get_or_add_const(i64t, '2')
+	assign := m.add_instr(.assign, entry, i64t, [dest, src])
+	m.add_instr(.ret, entry, ssa.TypeID(0), [dest])
+
+	m.replace_uses(dest, replacement)
+
+	instr := m.instrs[m.values[assign].index]
+	assert instr.operands[0] == dest
+	ret_id := m.blocks[entry].instrs.last()
+	ret := m.instrs[m.values[ret_id].index]
+	assert ret.operands[0] == replacement
+}
+
 fn test_critical_edge_split_preserves_colliding_branch_condition() {
 	mut m := ssa.Module.new()
 	i1 := m.type_store.get_int(1)

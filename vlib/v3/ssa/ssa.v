@@ -252,6 +252,7 @@ pub enum ValueKind {
 	argument
 	global
 	instruction
+	phi_result
 	basic_block
 	string_literal   // V string struct literal (by value)
 	c_string_literal // C string literal (raw char pointer)
@@ -312,6 +313,18 @@ pub fn (i &Instruction) is_block_operand(idx int) bool {
 // is_value_operand reports whether operand `idx` names an SSA value.
 pub fn (i &Instruction) is_value_operand(idx int) bool {
 	return idx >= 0 && idx < i.operands.len && !i.is_block_operand(idx)
+		&& !i.is_definition_operand(idx)
+}
+
+// is_definition_operand reports whether operand `idx` is defined by an
+// instruction rather than read by it. Phi lowering represents copies as
+// `assign destination, source`, so the destination must never participate in
+// use lists or replacement walks.
+pub fn (i &Instruction) is_definition_operand(idx int) bool {
+	if idx < 0 || idx >= i.operands.len {
+		return false
+	}
+	return i.op == .assign && idx == 0
 }
 
 // is_successor_operand reports whether operand `idx` is a CFG successor. Phi

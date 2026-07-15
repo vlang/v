@@ -17,6 +17,17 @@ fn count_op(m &ssa.Module, func_id int, op ssa.OpCode) int {
 	return n
 }
 
+// count_value_kind counts module values with a requested representation kind.
+fn count_value_kind(m &ssa.Module, kind ssa.ValueKind) int {
+	mut n := 0
+	for val in m.values {
+		if val.kind == kind {
+			n++
+		}
+	}
+	return n
+}
+
 // --- TypeStore: arrays, tuples, unsigned ----------------------------------
 
 // test_type_store_arrays_tuples_unsigned validates this v3 regression case.
@@ -212,4 +223,70 @@ fn test_default_pipeline_promotes_diamond_slot() {
 	assert count_op(m, func_id, .assign) >= 1
 	// And no phi survives after elimination.
 	assert count_op(m, func_id, .phi) == 0
+	assert count_op(m, func_id, .bitcast) == 0
+	assert count_value_kind(m, .phi_result) == 1
+}
+
+// test_mem2reg_stress_compacts_deep_phi_chains validates that a large set of
+// promoted slots remains compact through deep dominance and copy resolution.
+fn test_mem2reg_stress_compacts_deep_phi_chains() {
+	mut m := ssa.Module.new()
+	i64t := m.type_store.get_int(64)
+	i1 := m.type_store.get_int(1)
+	ptr_i64 := m.type_store.get_ptr(i64t)
+	func_id := m.new_function('deep_phi_chains', i64t)
+	cond := m.add_value(.argument, i1, 'cond', 0)
+	m.func_add_param(func_id, cond)
+
+	entry := m.add_block(func_id, 'entry')
+	slot_count := 12
+	depth := 24
+	mut slots := []ssa.ValueID{cap: slot_count}
+	zero := m.get_or_add_const(i64t, '0')
+	for _ in 0 .. slot_count {
+		slot := m.add_instr(.alloca, entry, ptr_i64, [])
+		slots << slot
+		m.add_instr(.store, entry, ssa.TypeID(0), [zero, slot])
+	}
+
+	mut current := entry
+	for level in 0 .. depth {
+		then_blk := m.add_block(func_id, 'then_${level}')
+		else_blk := m.add_block(func_id, 'else_${level}')
+		merge_blk := m.add_block(func_id, 'merge_${level}')
+		m.add_instr(.br, current, ssa.TypeID(0),
+			[cond, ssa.ValueID(then_blk), ssa.ValueID(else_blk)])
+		for slot_index, slot in slots {
+			then_old := m.add_instr(.load, then_blk, i64t, [slot])
+			then_step := m.get_or_add_const(i64t, '${level * slot_count + slot_index + 1}')
+			then_new := m.add_instr(.add, then_blk, i64t, [then_old, then_step])
+			m.add_instr(.store, then_blk, ssa.TypeID(0), [then_new, slot])
+
+			else_old := m.add_instr(.load, else_blk, i64t, [slot])
+			else_step := m.get_or_add_const(i64t, '${1000 + level * slot_count + slot_index}')
+			else_new := m.add_instr(.add, else_blk, i64t, [else_old, else_step])
+			m.add_instr(.store, else_blk, ssa.TypeID(0), [else_new, slot])
+		}
+		m.add_instr(.jmp, then_blk, ssa.TypeID(0), [ssa.ValueID(merge_blk)])
+		m.add_instr(.jmp, else_blk, ssa.TypeID(0), [ssa.ValueID(merge_blk)])
+		current = merge_blk
+	}
+
+	mut sum := zero
+	for slot in slots {
+		loaded := m.add_instr(.load, current, i64t, [slot])
+		sum = m.add_instr(.add, current, i64t, [sum, loaded])
+	}
+	m.add_instr(.ret, current, ssa.TypeID(0), [sum])
+
+	optimize.optimize(mut m)
+
+	assert count_op(m, func_id, .alloca) == 0
+	assert count_op(m, func_id, .load) == 0
+	assert count_op(m, func_id, .store) == 0
+	assert count_op(m, func_id, .phi) == 0
+	assert count_op(m, func_id, .bitcast) == 0
+	assert count_op(m, func_id, .assign) == slot_count * depth * 2
+	assert count_value_kind(m, .phi_result) == slot_count * depth
+	optimize.verify_and_panic(m, 'deep phi stress')
 }

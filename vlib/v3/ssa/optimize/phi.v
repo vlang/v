@@ -4,7 +4,7 @@ import v3.ssa
 
 // --- Simplify trivial phi nodes ---
 // A phi is trivial if all its non-self operands resolve to a single value, or if
-// it has no uses at all. Trivial phis are replaced and marked dead (nop bitcast).
+// it has no uses at all. Trivial phis are removed from their blocks immediately.
 fn simplify_phi_nodes(mut m ssa.Module) bool {
 	mut any_changed := false
 	mut changed := true
@@ -14,19 +14,22 @@ fn simplify_phi_nodes(mut m ssa.Module) bool {
 			func := m.funcs[fi]
 			for blk_id in func.blocks {
 				blk := m.blocks[blk_id]
+				mut kept := []ssa.ValueID{cap: blk.instrs.len}
 				for val_id in blk.instrs {
 					val := m.values[val_id]
 					if val.kind != .instruction {
+						kept << val_id
 						continue
 					}
 					instr := m.instrs[val.index]
 					if instr.op != .phi {
+						kept << val_id
 						continue
 					}
 
 					// Dead phi: no uses -> remove.
 					if val.uses.len == 0 {
-						m.rewrite_instruction(val_id, .bitcast, [])
+						remove_replaced_phi(mut m, val_id)
 						changed = true
 						any_changed = true
 						continue
@@ -47,12 +50,24 @@ fn simplify_phi_nodes(mut m ssa.Module) bool {
 							break
 						}
 					}
-					if is_trivial && unique_val != -1 {
-						m.replace_uses(val_id, unique_val)
-						m.rewrite_instruction(val_id, .bitcast, [])
+					if is_trivial {
+						replacement := if unique_val != -1 {
+							unique_val
+						} else {
+							m.get_or_add_const(val.typ, 'undef')
+						}
+						m.replace_uses(val_id, replacement)
+						remove_replaced_phi(mut m, val_id)
 						changed = true
 						any_changed = true
+						continue
 					}
+					kept << val_id
+				}
+				if kept.len != blk.instrs.len {
+					mut compacted := m.blocks[blk_id]
+					compacted.instrs = kept
+					m.blocks[blk_id] = compacted
 				}
 			}
 		}
@@ -71,12 +86,16 @@ fn prune_phi_operands(mut m ssa.Module) {
 				continue
 			}
 			preds := m.blocks[blk_id].preds
-			for val_id in m.blocks[blk_id].instrs {
+			blk := m.blocks[blk_id]
+			mut kept_instrs := []ssa.ValueID{cap: blk.instrs.len}
+			for val_id in blk.instrs {
 				if val_id <= 0 || val_id >= m.values.len || m.values[val_id].kind != .instruction {
+					kept_instrs << val_id
 					continue
 				}
 				idx := m.values[val_id].index
 				if m.instrs[idx].op != .phi {
+					kept_instrs << val_id
 					continue
 				}
 				ops := m.instrs[idx].operands
@@ -93,20 +112,40 @@ fn prune_phi_operands(mut m ssa.Module) {
 					}
 				}
 				if kept.len == ops.len && distinct.len > 1 {
+					kept_instrs << val_id
 					continue // unchanged, still a real phi
 				}
 				if distinct.len == 1 {
 					// Trivial phi -> its single incoming value.
 					m.replace_uses(val_id, distinct[0])
-					m.rewrite_instruction(val_id, .bitcast, [])
+					remove_replaced_phi(mut m, val_id)
 				} else if distinct.len == 0 {
-					m.rewrite_instruction(val_id, .bitcast, [])
+					undef := m.get_or_add_const(m.values[val_id].typ, 'undef')
+					m.replace_uses(val_id, undef)
+					remove_replaced_phi(mut m, val_id)
 				} else {
 					m.rewrite_instruction(val_id, .phi, kept)
+					kept_instrs << val_id
 				}
+			}
+			if kept_instrs.len != blk.instrs.len {
+				mut compacted := m.blocks[blk_id]
+				compacted.instrs = kept_instrs
+				m.blocks[blk_id] = compacted
 			}
 		}
 	}
+}
+
+// remove_replaced_phi detaches an obsolete phi and makes accidental future
+// references fail verification instead of masquerading as another operation.
+fn remove_replaced_phi(mut m ssa.Module, val_id int) {
+	m.detach_instruction_uses(val_id)
+	mut dead := m.values[val_id]
+	dead.kind = .unknown
+	dead.index = -1
+	dead.uses = []ssa.ValueID{}
+	m.values[val_id] = dead
 }
 
 // --- Critical edge splitting ---
@@ -233,23 +272,39 @@ fn eliminate_phi_nodes(mut m ssa.Module) {
 			pred_copy_srcs[pred_blk] = []
 		}
 
-		// Remove phi instructions (nop them).
+		// Phi destinations remain virtual values populated by predecessor copies,
+		// but the original phi instructions and their incoming uses are removed.
 		for blk_id in func.blocks {
 			if blk_id < 0 || blk_id >= m.blocks.len {
 				continue
 			}
-			for val_id in m.blocks[blk_id].instrs {
+			blk := m.blocks[blk_id]
+			mut kept_instrs := []ssa.ValueID{cap: blk.instrs.len}
+			for val_id in blk.instrs {
 				if val_id < 0 || val_id >= m.values.len {
+					kept_instrs << val_id
 					continue
 				}
 				val := m.values[val_id]
 				if val.kind != .instruction {
+					kept_instrs << val_id
 					continue
 				}
 				idx := val.index
 				if m.instrs[idx].op == .phi {
-					m.rewrite_instruction(val_id, .bitcast, [])
+					m.detach_instruction_uses(val_id)
+					mut result := m.values[val_id]
+					result.kind = .phi_result
+					result.index = -1
+					m.values[val_id] = result
+				} else {
+					kept_instrs << val_id
 				}
+			}
+			if kept_instrs.len != blk.instrs.len {
+				mut compacted := m.blocks[blk_id]
+				compacted.instrs = kept_instrs
+				m.blocks[blk_id] = compacted
 			}
 		}
 	}
@@ -410,7 +465,6 @@ fn add_copy_value(mut m ssa.Module, blk_id int, dest int, src int) int {
 		operands: [ssa.ValueID(dest), ssa.ValueID(src)]
 	}
 	copy_id := m.add_value(.instruction, typ, 'copy', m.instrs.len - 1)
-	m.add_value_user(dest, copy_id)
 	m.add_value_user(src, copy_id)
 	return copy_id
 }
