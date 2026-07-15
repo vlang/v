@@ -216,6 +216,19 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			break
 		}
 	}
+	// When the file already has a `json2` import, the migrated `import json` is dropped
+	// (merged) rather than rewritten. That drop path only re-emits the import's
+	// next_comments, so a same-line comment on the import (e.g. `import json // note`)
+	// would be lost. Leave such a file unmigrated so the comment is preserved.
+	mut json_import_has_line_comment := false
+	if f.has_json2_import {
+		for imp in file.imports {
+			if imp.source_name == 'json' && imp.comments.len > 0 {
+				json_import_has_line_comment = true
+				break
+			}
+		}
+	}
 	// Some `json` usage cannot be rewritten to `json2` without changing or losing
 	// source (see file_has_unmigratable_json_usage): `json.encode_pretty`, a
 	// `json.decode` with comments on its type argument, or a struct field whose JSON
@@ -235,8 +248,8 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	}
 	if imports_json {
 		f.keep_json_unmigrated = json2_alias_is_blank || has_branch_local_json2
-			|| json2_name_taken || f.file_has_vfmt_off_region()
-			|| f.file_has_unmigratable_json_usage(file)
+			|| json2_name_taken || json_import_has_line_comment
+			|| f.file_has_vfmt_off_region() || f.file_has_unmigratable_json_usage(file)
 	}
 
 	for imp in file.imports {
@@ -354,19 +367,36 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		if assign_declares_name(node as ast.AssignStmt, s.json2_prefix) {
 			s.found = true
 		}
+	} else if node is ast.Stmt && node is ast.ForStmt {
+		// The walker does not descend into a loop header (For*.children() yields only
+		// the body), so an unmigratable call in `for <cond> {}` would be missed.
+		forstmt := node as ast.ForStmt
+		if !forstmt.is_inf {
+			walker.inspect(forstmt.cond, data, json_unmigratable_scan_visit)
+		}
 	} else if node is ast.Stmt && node is ast.ForCStmt {
-		// A C-style for initializer `for json2 := 0; ...` declares the loop variable,
-		// but the walker does not descend into ForCStmt.init (children() yields only
-		// the body stmts), so check the initializer here.
+		// The init / cond / inc of a C-style for are all outside For*.children(). Sub-
+		// walk them: init also catches a loop variable that shadows the qualifier (via
+		// the AssignStmt case), cond/inc catch unmigratable calls in the header.
 		forc := node as ast.ForCStmt
-		init := forc.init
-		if init is ast.AssignStmt && assign_declares_name(init, s.json2_prefix) {
-			s.found = true
+		if forc.has_init {
+			walker.inspect(forc.init, data, json_unmigratable_scan_visit)
+		}
+		if forc.has_cond {
+			walker.inspect(forc.cond, data, json_unmigratable_scan_visit)
+		}
+		if forc.has_inc {
+			walker.inspect(forc.inc, data, json_unmigratable_scan_visit)
 		}
 	} else if node is ast.Stmt && node is ast.ForInStmt {
 		fin := node as ast.ForInStmt
 		if fin.key_var == s.json2_prefix || fin.val_var == s.json2_prefix {
 			s.found = true
+		}
+		// The iterable (and range high) are loop-header exprs outside For*.children().
+		walker.inspect(fin.cond, data, json_unmigratable_scan_visit)
+		if fin.is_range {
+			walker.inspect(fin.high, data, json_unmigratable_scan_visit)
 		}
 	} else if node is ast.Stmt && node is ast.ComptimeFor {
 		// `$for json2 in User.fields { ... }` introduces a compile-time loop variable

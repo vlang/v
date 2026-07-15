@@ -1,0 +1,18 @@
+import json // legacy format required
+import json2
+
+struct User {
+	name string
+}
+
+// The file already imports `json2`, so migrating would drop this `import json` and
+// merge into it — but the drop path only re-emits next_comments, losing the same-line
+// comment above. The file is left unmigrated so the comment is preserved.
+fn to_json(u User) string {
+	_ := json2.encode(1)
+	return json.encode(u)
+}
+
+fn main() {
+	println(to_json(User{ name: 'bob' }))
+}
