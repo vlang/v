@@ -8,6 +8,8 @@ import v3.pref
 import v3.scanner
 import v3.token
 
+const max_parse_diagnostics = 100
+
 // Diagnostic is a structured source-ingestion, lexical, or parse diagnostic.
 pub struct Diagnostic {
 pub:
@@ -48,6 +50,7 @@ mut:
 	disable_fn_body                   bool
 	in_for_container                  bool
 	disable_source_arch_optimizations bool
+	diagnostic_limit_reached          bool
 	local_type_names                  map[string]string
 	local_type_scopes                 []string
 	export_records                    []ExportRecord
@@ -132,6 +135,9 @@ pub fn (mut p Parser) parse_files_with_starts(paths []string) []int {
 
 // parse_into reads parse into input for parser.
 pub fn (mut p Parser) parse_into(path string) {
+	if p.diagnostic_limit_reached {
+		return
+	}
 	first_node := p.a.nodes.len
 	defer {
 		p.a.intern_node_texts_from(first_node)
@@ -181,7 +187,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.next()
 
 	mut ids := []flat.NodeId{}
-	for p.tok != .eof {
+	for p.tok != .eof && !p.diagnostic_limit_reached {
 		if p.tok == .semicolon {
 			p.next()
 			continue
@@ -275,13 +281,31 @@ fn (mut p Parser) record_diagnostic(message string, offset int) {
 	if p.s.src.len > 0 && p.s.current_file().name == p.cur_file {
 		line, column = p.s.current_file().find_line_and_column(clamped_offset)
 	}
-	p.diagnostics << Diagnostic{
+	p.append_diagnostic(Diagnostic{
 		file:    p.cur_file
 		pos:     token.new_pos(p.cur_file_id, clamped_offset)
 		line:    line
 		column:  column
 		message: message
+	})
+}
+
+fn (mut p Parser) append_diagnostic(diagnostic Diagnostic) {
+	if p.diagnostic_limit_reached {
+		return
 	}
+	if p.diagnostics.len >= max_parse_diagnostics {
+		p.diagnostics << Diagnostic{
+			file:    diagnostic.file
+			pos:     diagnostic.pos
+			line:    diagnostic.line
+			column:  diagnostic.column
+			message: 'too many errors; stopping after ${max_parse_diagnostics} diagnostics'
+		}
+		p.diagnostic_limit_reached = true
+		return
+	}
+	p.diagnostics << diagnostic
 }
 
 fn (mut p Parser) collect_scanner_diagnostics() {

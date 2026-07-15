@@ -70,6 +70,12 @@ fn test_malformed_numeric_literals_are_lexical_diagnostics() {
 	assert messages.any(it.contains('cannot end with a separator')), messages.str()
 }
 
+fn test_parser_stops_after_diagnostic_budget() {
+	_, diagnostics := parse_source_with_diagnostics('error_budget', '\x01'.repeat(256))
+	assert diagnostics.len == 101
+	assert diagnostics.last().message.contains('too many errors')
+}
+
 fn test_parser_attaches_stable_file_positions_to_nodes() {
 	path1 := os.join_path(os.temp_dir(), 'v3_source_pos_1_${os.getpid()}.v')
 	path2 := os.join_path(os.temp_dir(), 'v3_source_pos_2_${os.getpid()}.v')

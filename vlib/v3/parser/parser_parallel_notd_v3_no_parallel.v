@@ -206,7 +206,7 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 		w.a.source_buffers.len = 0
 	}
 	for diagnostic in w.diagnostics {
-		p.diagnostics << diagnostic
+		p.append_diagnostic(diagnostic)
 	}
 	for file_id, file in w.a.source_files {
 		p.a.source_files[file_id] = file
