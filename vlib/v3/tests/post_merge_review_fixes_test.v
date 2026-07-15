@@ -3474,6 +3474,18 @@ fn test_returned_interface_local_boxed_from_local_address_heap_copies_in_aggrega
 	assert out == '2\n4\n6'
 }
 
+fn test_returned_interface_boxed_from_global_address_preserves_identity() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\n__global global_box Box\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make_direct() Reader {\n\tr := Reader(&global_box)\n\treturn r\n}\n\nfn make_alias() Reader {\n\tp := &global_box\n\tr := Reader(p)\n\treturn r\n}\n\nfn main() {\n\tglobal_box.n = 1\n\tr := make_direct()\n\tglobal_box.n = 7\n\tprintln(int_str(r.value()))\n\talias := make_alias()\n\tglobal_box.n = 9\n\tprintln(int_str(alias.value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_global_address_identity', source)
+	for signature in ['Reader make_direct(void) {', 'Reader make_alias(void) {'] {
+		body := c_fn_body(c_source, signature)
+		assert !body.contains('memdup(') && !body.contains('sizeof(Box)'), body
+	}
+	out := run_good(v3_bin, 'interface_box_global_address_identity_run', source)
+	assert out == '7\n9'
+}
+
 fn test_mut_interface_argument_borrows_existing_interface_box() {
 	v3_bin := build_v3()
 	source := 'interface Visitor {\n\tvalue() int\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (c Counter) value() int {\n\treturn c.n\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln(int_str(visitor.value()))\n}\n'

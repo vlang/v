@@ -2823,8 +2823,8 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 // `p := &v` declarations whose pointer `p` is later returned. Such a `v` is a local
 // value whose address escapes, so it must be heap-copied (V auto-heaps it); the
 // names are recorded in `escaping_amp_ptrs` and consumed by the decl-assign
-// transform. Purely structural (no type info needed here): the type check happens
-// at rewrite time when `v`'s type is known.
+// transform. The pre-pass stays structural apart from rejecting known globals/file-scope
+// symbols as stack sources; the type check happens at rewrite time when `v`'s type is known.
 fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	t.reset_escaping_amp_state()
 	mut amp_ptrs := map[string]bool{}
@@ -2832,9 +2832,16 @@ fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	mut ptr_aliases := map[string]string{} // copy `q := p` -> aliased pointer `p`
 	mut interface_boxes := map[string]bool{}
 	mut returned := map[string]bool{}
+	mut local_stack_names := map[string]bool{}
+	for binding in t.var_types {
+		if binding.name.len > 0 {
+			local_stack_names[binding.name] = true
+		}
+	}
+	mut local_stack_added := []string{}
 	for id in body_ids {
 		t.scan_escape_pass(id, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut interface_boxes, mut
-			returned)
+			returned, mut local_stack_names, mut local_stack_added)
 	}
 	// A pointer may be returned through a copy (`p := &v; q := p; return q`): `q` is collected
 	// as returned but `p` is not, so propagate "returned" backward along the `q := p` aliases
@@ -2883,20 +2890,39 @@ fn (mut t Transformer) reset_escaping_amp_state() {
 // `amp_sources[p]`), (b) plain pointer copies `q := p` into `ptr_aliases[q] = p`,
 // (c) stack-backed interface boxes assigned to locals, and (d) every ident name
 // appearing inside a return statement into `returned`.
-fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool) {
+fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
 	node := t.a.nodes[int(id)]
+	if node.kind == .block {
+		scope_mark := local_stack_added.len
+		for i in 0 .. node.children_count {
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
+				interface_boxes, mut returned, mut local_stack_names, mut local_stack_added)
+		}
+		pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
+		return
+	}
+	if node.kind == .for_in_stmt {
+		t.scan_for_in_escape_pass(node, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
+			interface_boxes, mut returned, mut local_stack_names, mut local_stack_added)
+		return
+	}
 	if node.kind in [.decl_assign, .assign] && node.children_count >= 2 {
+		mut declared_names := []string{}
 		mut i := 0
 		for i + 1 < node.children_count {
 			lhs := t.a.nodes[int(t.a.child(&node, i))]
 			rhs := t.a.nodes[int(t.a.child(&node, i + 1))]
+			if node.kind == .decl_assign && lhs.kind == .ident && lhs.value.len > 0 {
+				declared_names << lhs.value
+			}
 			if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .prefix && rhs.op == .amp
 				&& rhs.children_count > 0 {
 				amp_child := t.a.nodes[int(t.a.child(&rhs, 0))]
-				if amp_child.kind == .ident {
+				if amp_child.kind == .ident
+					&& t.escape_ident_is_stack_local(amp_child.value, local_stack_names) {
 					amp_ptrs[lhs.value] = true
 					amp_sources[lhs.value] = amp_child.value
 				}
@@ -2909,10 +2935,13 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 					interface_boxes[lhs.value] = true
 				}
 			} else if lhs.kind == .ident && lhs.value.len > 0
-				&& t.interface_box_from_stack_pointer_source(t.a.child(&node, i + 1), amp_ptrs) {
+				&& t.interface_box_from_stack_pointer_source(t.a.child(&node, i + 1), amp_ptrs, local_stack_names) {
 				interface_boxes[lhs.value] = true
 			}
 			i += 2
+		}
+		for name in declared_names {
+			add_escape_local_stack_name(name, mut local_stack_names, mut local_stack_added)
 		}
 	}
 	if node.kind == .return_stmt {
@@ -2922,11 +2951,62 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	}
 	for i in 0 .. node.children_count {
 		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
-			interface_boxes, mut returned)
+			interface_boxes, mut returned, mut local_stack_names, mut local_stack_added)
 	}
 }
 
-fn (t &Transformer) interface_box_from_stack_pointer_source(id flat.NodeId, amp_ptrs map[string]bool) bool {
+fn (mut t Transformer) scan_for_in_escape_pass(node flat.Node, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string) {
+	header_count := node.value.int()
+	header_end := if header_count > 0 && header_count <= int(node.children_count) {
+		header_count
+	} else {
+		0
+	}
+	if header_end > 2 {
+		for i in 2 .. header_end {
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
+				interface_boxes, mut returned, mut local_stack_names, mut local_stack_added)
+		}
+	}
+	scope_mark := local_stack_added.len
+	for i in 0 .. 2 {
+		if i >= int(node.children_count) {
+			break
+		}
+		part_id := t.a.child(&node, i)
+		if int(part_id) >= 0 {
+			part := t.a.nodes[int(part_id)]
+			if part.kind == .ident && part.value.len > 0 {
+				add_escape_local_stack_name(part.value, mut local_stack_names, mut
+					local_stack_added)
+			}
+		}
+	}
+	for i in header_end .. node.children_count {
+		t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
+			interface_boxes, mut returned, mut local_stack_names, mut local_stack_added)
+	}
+	pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
+}
+
+fn add_escape_local_stack_name(name string, mut local_stack_names map[string]bool, mut local_stack_added []string) {
+	if name.len == 0 {
+		return
+	}
+	if name !in local_stack_names {
+		local_stack_added << name
+	}
+	local_stack_names[name] = true
+}
+
+fn pop_escape_local_stack_names(mark int, mut local_stack_names map[string]bool, mut local_stack_added []string) {
+	for local_stack_added.len > mark {
+		name := local_stack_added.pop()
+		local_stack_names.delete(name)
+	}
+}
+
+fn (t &Transformer) interface_box_from_stack_pointer_source(id flat.NodeId, amp_ptrs map[string]bool, local_stack_names map[string]bool) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
@@ -2942,9 +3022,35 @@ fn (t &Transformer) interface_box_from_stack_pointer_source(id flat.NodeId, amp_
 	arg := t.a.nodes[int(arg_id)]
 	if arg.kind == .prefix && arg.op == .amp && arg.children_count == 1 {
 		child := t.a.nodes[int(t.a.child(&arg, 0))]
-		return child.kind == .ident && child.value.len > 0
+		return child.kind == .ident && t.escape_ident_is_stack_local(child.value, local_stack_names)
 	}
 	return arg.kind == .ident && arg.value in amp_ptrs
+}
+
+fn (t &Transformer) escape_ident_is_stack_local(name string, local_stack_names map[string]bool) bool {
+	if name.len == 0 {
+		return false
+	}
+	if name in local_stack_names {
+		return true
+	}
+	if _ := t.global_ident_type(name) {
+		return false
+	}
+	if !isnil(t.tc) {
+		if _ := t.tc.file_scope.lookup(name) {
+			return false
+		}
+		if t.cur_module.len > 0 {
+			qname := '${t.cur_module}.${name}'
+			if qname != name {
+				if _ := t.tc.file_scope.lookup(qname) {
+					return false
+				}
+			}
+		}
+	}
+	return false
 }
 
 // collect_return_escape_idents gathers the idents in a return-expression subtree that occupy an
