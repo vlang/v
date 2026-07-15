@@ -375,11 +375,13 @@ pub fn (mut f Fmt) import_stmt(imp ast.Import) {
 }
 
 pub fn (f &Fmt) imp_stmt_str(imp ast.Import) string {
-	// The `json` module is deprecated; migrate `import json` (and `import json as x`)
-	// to `import json2`, to match the call rewriting done in json2_migrate_call.
-	// A selective import (`import json { ... }`) is left untouched, since its call
-	// sites use bare, un-prefixed names that are not migrated.
-	if imp.source_name == 'json' && imp.syms.len == 0 {
+	// The `json` module is deprecated; migrate any `import json` form to a plain
+	// `import json2`, to match the call rewriting done in json2_migrate_call.
+	// This also covers aliased imports (`import json as x`) and selective imports
+	// (`import json { decode }`): the alias/symbols are dropped, since json's whole
+	// public API (decode/encode/encode_pretty) is rewritten to qualified `json2.x`
+	// calls, so nothing needs to be brought into scope unqualified anymore.
+	if imp.source_name == 'json' {
 		return 'json2'
 	}
 	// Format / remove unused selective import symbols
