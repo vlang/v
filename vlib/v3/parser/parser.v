@@ -211,8 +211,9 @@ pub fn (mut p Parser) parse_into(path string) {
 	// every source buffer so those views remain valid through later phases.
 	p.a.source_buffers << src
 	stable_src := p.a.source_buffers.last()
+	p.disable_source_arch_optimizations = false
 	p.disable_source_arch_optimizations = !p.prefs.supports_inline_asm
-		&& source_contains_target_inline_asm(stable_src, p.prefs.target.arch)
+		&& p.source_contains_active_target_inline_asm(stable_src, p.prefs.target.arch)
 	if path.ends_with('.v') {
 		p.parsed_v_files++
 	}
@@ -3242,6 +3243,173 @@ fn source_contains_target_inline_asm(source string, target_arch string) bool {
 		offset++
 	}
 	return false
+}
+
+struct InlineAsmScanToken {
+	kind token.Token
+	lit  string
+	pos  int
+	end  int
+}
+
+struct InlineAsmScanResult {
+	found bool
+	next  int
+}
+
+// Tokenize only asm-shaped sources and follow parse-time-known `$if` branches.
+// Deferred generic conditions remain conservative because either branch may survive later.
+fn (mut p Parser) source_contains_active_target_inline_asm(source string, target_arch string) bool {
+	if !source_contains_target_inline_asm(source, target_arch) {
+		return false
+	}
+	mut file_set := token.FileSet.new()
+	mut file := file_set.add_file('<inline asm scan>', -1, source.len)
+	mut s := scanner.new_scanner(p.prefs, .skip_interpolation)
+	s.init(file, source)
+	mut tokens := []InlineAsmScanToken{cap: source.len / 4}
+	for {
+		kind := s.scan()
+		tokens << InlineAsmScanToken{
+			kind: kind
+			lit:  s.lit
+			pos:  s.pos
+			end:  s.offset
+		}
+		if kind == .eof {
+			break
+		}
+	}
+	return p.inline_asm_scan_range(source, tokens, 0, tokens.len - 1, target_arch)
+}
+
+fn (mut p Parser) inline_asm_scan_range(source string, tokens []InlineAsmScanToken, start int, end int, target_arch string) bool {
+	mut i := start
+	for i < end {
+		if tokens[i].kind == .dollar && i + 1 < end && tokens[i + 1].kind == .key_if {
+			result := p.inline_asm_scan_comptime_if(source, tokens, i, end, target_arch, true)
+			if result.found {
+				return true
+			}
+			i = if result.next > i { result.next } else { i + 1 }
+			continue
+		}
+		if tokens[i].kind == .key_asm && inline_asm_tokens_match_target(tokens, i, end, target_arch) {
+			return true
+		}
+		i++
+	}
+	return false
+}
+
+fn (mut p Parser) inline_asm_scan_comptime_if(source string, tokens []InlineAsmScanToken, start int, end int, target_arch string, inspect bool) InlineAsmScanResult {
+	open := inline_asm_comptime_open_brace(tokens, start + 2, end)
+	if open >= end {
+		return InlineAsmScanResult{
+			next: start + 1
+		}
+	}
+	close := inline_asm_matching_close_brace(tokens, open, end)
+	if close >= end {
+		return InlineAsmScanResult{
+			next: end
+		}
+	}
+	cond_start := tokens[start + 1].end
+	cond_end := tokens[open].pos
+	condition := if cond_start < cond_end { source[cond_start..cond_end] } else { '' }
+	mut known := true
+	mut taken := true
+	if inspect {
+		known, taken = p.inline_asm_comptime_condition(condition)
+	}
+	if inspect && (!known || taken)
+		&& p.inline_asm_scan_range(source, tokens, open + 1, close, target_arch) {
+		return InlineAsmScanResult{
+			found: true
+			next:  close + 1
+		}
+	}
+	mut next := inline_asm_skip_semicolons(tokens, close + 1, end)
+	if next + 1 >= end || tokens[next].kind != .dollar || tokens[next + 1].kind != .key_else {
+		return InlineAsmScanResult{
+			next: close + 1
+		}
+	}
+	next = inline_asm_skip_semicolons(tokens, next + 2, end)
+	if next + 1 < end && tokens[next].kind == .dollar && tokens[next + 1].kind == .key_if {
+		return p.inline_asm_scan_comptime_if(source, tokens, next, end, target_arch, inspect
+			&& (!known || !taken))
+	}
+	if next >= end || tokens[next].kind != .lcbr {
+		return InlineAsmScanResult{
+			next: next
+		}
+	}
+	else_close := inline_asm_matching_close_brace(tokens, next, end)
+	if inspect && (!known || !taken) && else_close < end
+		&& p.inline_asm_scan_range(source, tokens, next + 1, else_close, target_arch) {
+		return InlineAsmScanResult{
+			found: true
+			next:  else_close + 1
+		}
+	}
+	return InlineAsmScanResult{
+		next: if else_close < end { else_close + 1 } else { end }
+	}
+}
+
+fn (mut p Parser) inline_asm_comptime_condition(condition string) (bool, bool) {
+	cond := p.resolve_comptime_const_values(p.resolve_comptime_at_values(condition.trim_space()))
+	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
+		|| comptime_cond_has_type_metadata(cond) || comptime_cond_has_builtin_threads(cond) {
+		return false, false
+	}
+	return true, p.eval_comptime_cond(cond)
+}
+
+fn inline_asm_tokens_match_target(tokens []InlineAsmScanToken, start int, end int, target_arch string) bool {
+	mut i := start + 1
+	if i < end && tokens[i].kind == .key_volatile {
+		i++
+	}
+	if i >= end || !comptime_flag_is_target_arch(tokens[i].lit, target_arch) {
+		return false
+	}
+	i++
+	return i < end && tokens[i].kind == .lcbr
+}
+
+fn inline_asm_comptime_open_brace(tokens []InlineAsmScanToken, start int, end int) int {
+	for i in start .. end {
+		if tokens[i].kind == .lcbr {
+			return i
+		}
+	}
+	return end
+}
+
+fn inline_asm_matching_close_brace(tokens []InlineAsmScanToken, open int, end int) int {
+	mut depth := 0
+	for i in open .. end {
+		if tokens[i].kind == .lcbr {
+			depth++
+		} else if tokens[i].kind == .rcbr {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return end
+}
+
+fn inline_asm_skip_semicolons(tokens []InlineAsmScanToken, start int, end int) int {
+	mut i := start
+	for i < end && tokens[i].kind == .semicolon {
+		i++
+	}
+	return i
 }
 
 @[inline]
