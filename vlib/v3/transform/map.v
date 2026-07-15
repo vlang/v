@@ -362,7 +362,7 @@ fn (mut t Transformer) transform_map_index_or_expr(id flat.NodeId, node flat.Nod
 	prelude << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
 	prelude << t.make_decl_assign_typed(ptr_name, t.make_map_get_check_expr(map_expr,
 		info.base_type, key_name), 'voidptr')
-	if !isnil(t.tc) && t.tc.ownership_expr_creates_owned_value(info.key_id)
+	if !isnil(t.tc) && t.map_key_expr_creates_owned_value(info.key_id, info.key_type)
 		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(info.key_type)) {
 		prelude << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(key_name)),
 			'void'))
