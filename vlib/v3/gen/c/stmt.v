@@ -554,6 +554,40 @@ fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth i
 				}
 			}
 		}
+		types.Interface {
+			mut iface_name := typ.name
+			if iface_name !in g.iface_impls {
+				qualified := g.tc.qualify_name(iface_name)
+				if qualified in g.iface_impls {
+					iface_name = qualified
+				}
+			}
+			object := '((${expr})._object)'
+			g.writeln('if ((${expr})._object_is_boxed && ${object} != NULL) {')
+			g.indent++
+			g.writeln('switch ((${expr})._typ) {')
+			for concrete in g.iface_impls[iface_name] or { []string{} } {
+				id := g.iface_type_id(iface_name, concrete)
+				concrete_type := g.tc.parse_type(concrete)
+				if id == 0 || !g.ownership_type_requires_destruction(concrete_type, depth + 1) {
+					continue
+				}
+				concrete_ct := g.value_c_type(concrete_type)
+				g.writeln('case ${id}:')
+				g.indent++
+				g.gen_ownership_drop_value(concrete_type, '*((${concrete_ct}*)${object})',
+					depth + 1)
+				g.writeln('break;')
+				g.indent--
+			}
+			g.writeln('default: break;')
+			g.writeln('}')
+			g.writeln('free(${object});')
+			g.writeln('(${expr})._object = NULL;')
+			g.writeln('(${expr})._object_is_boxed = false;')
+			g.indent--
+			g.writeln('}')
+		}
 		types.SumType {
 			sum_name := g.resolve_sum_name(typ.name)
 			variants := g.tc.sum_types[sum_name] or { []string{} }
@@ -587,7 +621,7 @@ fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) b
 		return false
 	}
 	match typ {
-		types.String, types.Array, types.Map, types.SumType {
+		types.String, types.Array, types.Map, types.Interface, types.SumType {
 			return true
 		}
 		types.Alias {
@@ -1331,7 +1365,8 @@ fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.
 		} else {
 			'memdup(&${expr}, sizeof(${concrete_ct}))'
 		}
-		g.write('(${ct}){._typ = ${type_id}, ._object = ${object}, .message = _str_${empty_sid}, .code = 0}')
+		boxed := actual !is types.Pointer
+		g.write('(${ct}){._typ = ${type_id}, ._object = ${object}, ._object_is_boxed = ${boxed}, .message = _str_${empty_sid}, .code = 0}')
 		return true
 	}
 	fields := g.tc.interface_fields[iface.name] or { []types.StructField{} }
@@ -1339,12 +1374,12 @@ fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.
 		tmp := g.tmp_count
 		g.tmp_count++
 		if actual is types.Pointer {
-			g.write('({ ${concrete_ct}* _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}')
+			g.write('({ ${concrete_ct}* _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}, ._object_is_boxed = false')
 			for field in fields {
 				g.write(', .${g.cname(field.name)} = _iface${tmp}->${g.cname(field.name)}')
 			}
 		} else {
-			g.write('({ ${concrete_ct} _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = memdup(&_iface${tmp}, sizeof(${concrete_ct}))')
+			g.write('({ ${concrete_ct} _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = memdup(&_iface${tmp}, sizeof(${concrete_ct})), ._object_is_boxed = true')
 			for field in fields {
 				g.write(', .${g.cname(field.name)} = _iface${tmp}.${g.cname(field.name)}')
 			}
@@ -1354,9 +1389,9 @@ fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.
 	}
 	g.write('(${ct}){._typ = ${type_id}, ._object = ')
 	if actual is types.Pointer {
-		g.write(expr)
+		g.write('${expr}, ._object_is_boxed = false')
 	} else {
-		g.write('memdup(&${expr}, sizeof(${concrete_ct}))')
+		g.write('memdup(&${expr}, sizeof(${concrete_ct})), ._object_is_boxed = true')
 	}
 	g.write('}')
 	return true

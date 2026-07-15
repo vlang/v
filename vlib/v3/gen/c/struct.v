@@ -276,6 +276,13 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 			g.write('._typ = ${tid}')
 			has_field = true
 		}
+		if g.interface_init_object_is_boxed(node) {
+			if has_field {
+				g.write(', ')
+			}
+			g.write('._object_is_boxed = true')
+			has_field = true
+		}
 	}
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
@@ -665,6 +672,13 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	if g.is_interface_type_name(node.value) {
 		if tid := g.interface_init_typ_id(node) {
 			g.write('._typ = ${tid}')
+			has_field = true
+		}
+		if g.interface_init_object_is_boxed(node) {
+			if has_field {
+				g.write(', ')
+			}
+			g.write('._object_is_boxed = true')
 			has_field = true
 		}
 	}
@@ -2777,13 +2791,12 @@ fn (mut g FlatGen) emit_interface_struct(name string) {
 	cn := g.cname(name)
 	g.writeln('struct ${cn} {')
 	g.writeln('\tint _typ;')
+	// `_object` either owns a boxed concrete value or borrows a concrete pointer.
+	g.writeln('\tvoid* _object;')
+	g.writeln('\tbool _object_is_boxed;')
 	if g.is_ierror_type_name(name) {
-		g.writeln('\tvoid* _object;')
 		g.writeln('\tstring message;')
 		g.writeln('\tint code;')
-	} else {
-		// pointer to the boxed concrete value, used by method dispatch
-		g.writeln('\tvoid* _object;')
 	}
 	for field in iface_fields {
 		mut ct := if field.typ is types.OptionType || field.typ is types.ResultType {

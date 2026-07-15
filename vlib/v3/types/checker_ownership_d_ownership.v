@@ -1159,7 +1159,7 @@ fn (tc &TypeChecker) ownership_type_requires_destruction_inner(typ Type, depth i
 		return false
 	}
 	match typ {
-		String, Array, Map, SumType {
+		String, Array, Map, Interface, SumType {
 			return true
 		}
 		Alias {
@@ -1261,6 +1261,9 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 			}
 			return typ.name
 		}
+		Interface {
+			return typ.name
+		}
 		else {
 			return none
 		}
@@ -1309,6 +1312,27 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []str
 		Map {
 			tc.ownership_collect_drop_type_names(typ.key_type, mut names, mut seen)
 			tc.ownership_collect_drop_type_names(typ.value_type, mut names, mut seen)
+		}
+		Interface {
+			mut iface_name := typ.name
+			if iface_name !in tc.interface_names {
+				qualified := tc.qualify_name(iface_name)
+				if qualified in tc.interface_names {
+					iface_name = qualified
+				}
+			}
+			if seen[iface_name] {
+				return
+			}
+			seen[iface_name] = true
+			impls := if iface_name in ['IError', 'builtin.IError'] {
+				tc.ierror_impl_names()
+			} else {
+				tc.interface_impl_names(iface_name)
+			}
+			for concrete in impls {
+				tc.ownership_collect_drop_type_names(tc.parse_type(concrete), mut names, mut seen)
+			}
 		}
 		Struct {
 			name := typ.name
