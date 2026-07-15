@@ -2936,7 +2936,7 @@ fn (g &FlatGen) struct_decl_head(name string) string {
 
 // emit_interface_struct emits emit interface struct output for c.
 fn (mut g FlatGen) emit_interface_struct(name string) {
-	iface_fields := g.tc.interface_fields[name] or { []types.StructField{} }
+	iface_fields := g.tc.interface_field_list(name)
 	g.emit_struct_option_typedefs(iface_fields)
 	cn := g.cname(name)
 	g.writeln('struct ${cn} {')
@@ -3068,7 +3068,7 @@ fn (mut g FlatGen) struct_decls() {
 			// field types must be fully defined first (same constraint as structs).
 			// Option/result fields embed their payload by value in the Optional_T
 			// typedef, so the dependency is the payload type, not the wrapper.
-			for field in g.tc.interface_fields[name] or { []types.StructField{} } {
+			for field in g.tc.interface_field_list(name) {
 				if field.typ is types.Pointer {
 					continue
 				}

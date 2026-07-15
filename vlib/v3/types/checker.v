@@ -9846,6 +9846,17 @@ fn (mut tc TypeChecker) resolve_index_lvalue_type(lhs_id flat.NodeId, op flat.Op
 					tc.register_synth_type(lhs_id, invalid_type)
 					return invalid_type
 				}
+				value_type := setter.params[2]
+				if !tc.type_compatible(getter.return_type, value_type) {
+					if tc.should_diagnose(lhs_id) {
+						tc.record_error(.assignment_mismatch,
+							'compound index assignment getter returns `${getter.return_type.name()}`, which cannot be used as setter value `${value_type.name()}`',
+							lhs_id)
+					}
+					invalid_type := unknown_type('mismatched overloaded index value types')
+					tc.register_synth_type(lhs_id, invalid_type)
+					return invalid_type
+				}
 			} else {
 				if tc.should_diagnose(lhs_id) {
 					tc.record_error(.assignment_mismatch,

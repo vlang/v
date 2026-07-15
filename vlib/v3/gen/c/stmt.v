@@ -1239,7 +1239,7 @@ fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.
 		g.write('(${ct}){._typ = ${type_id}, ._object = ${object}, .message = _str_${empty_sid}, .code = 0}')
 		return true
 	}
-	fields := g.tc.interface_fields[iface.name] or { []types.StructField{} }
+	fields := g.tc.interface_field_list(iface.name)
 	if fields.len > 0 {
 		tmp := g.tmp_count
 		g.tmp_count++

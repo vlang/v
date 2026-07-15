@@ -1282,6 +1282,59 @@ fn main() {
 	assert c_code.contains('string__plus(')
 }
 
+// test_implicit_interface_str_dispatch_seeds_generated_helpers validates this v3 regression case.
+fn test_implicit_interface_str_dispatch_seeds_generated_helpers() {
+	mut a, mut tc := parse_checked_source('implicit_interface_str_dispatch_helpers', '
+interface Printable {
+	str() string
+}
+
+struct Inner {
+	n int
+}
+
+struct Foo {
+	n      int
+	u      u8
+	ratio  f64
+	ch     rune
+	nums   []int
+	lookup map[string]u64
+	inner  Inner
+}
+
+fn main() {
+	value := Printable(Foo{
+		n:      1
+		u:      2
+		ratio:  1.25
+		ch:     `x`
+		nums:   [3, 4]
+		lookup: {
+			"a": u64(5)
+		}
+		inner:  Inner{
+			n: 6
+		}
+	})
+	println(value.str())
+}
+')
+	mut used := markused.mark_used(a, tc)
+	for helper in ['string__plus', 'i64__str', 'u64__str', 'f64__str', 'rune__str'] {
+		assert used[helper], helper
+	}
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('string__plus('), c_code
+	assert c_code.contains('v3_map_str('), c_code
+	assert c_code.contains('f64__str('), c_code
+}
+
 // test_string_interpolation_lowers_to_formatter_after_used_filter_transform
 // validates this v3 regression case.
 fn test_string_interpolation_lowers_to_formatter_after_used_filter_transform() {

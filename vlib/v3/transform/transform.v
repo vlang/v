@@ -2918,11 +2918,12 @@ fn (mut t Transformer) heap_escaping_source_decl(node flat.Node, var_name string
 }
 
 // mark_escaping_amp_ptrs runs a structural pre-pass over a function body to find
-// `p := &v` or `r := Interface(&v)` declarations whose pointer/interface alias is later
-// returned. Such a `v` is a local value whose address escapes, so it must be heap-copied
-// (V auto-heaps it); the names are recorded in `escaping_amp_ptrs` and consumed by the
-// decl-assign transform. Purely structural (no type info needed here): the type check
-// happens at rewrite time when `v`'s type is known.
+// `p := &v`, `r := Interface(&v)` or `r := Interface(p)` declarations whose
+// pointer/interface alias is later returned. Such a `v` is a local value whose address
+// escapes, so it must be heap-copied (V auto-heaps it); the names are recorded in
+// `escaping_amp_ptrs` and consumed by the decl-assign transform. Purely structural
+// (no type info needed here): the type check happens at rewrite time when `v`'s type
+// is known.
 fn (mut t Transformer) mark_escaping_amp_ptrs(body_ids []flat.NodeId) {
 	t.reset_escaping_amp_state()
 	mut amp_ptrs := map[string]bool{}
@@ -2975,15 +2976,57 @@ fn add_escape_amp_source(mut amp_sources map[string][]string, ptr_name string, s
 	}
 }
 
+fn (t &Transformer) escape_address_root_name(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			if node.value.len > 0 {
+				return node.value
+			}
+		}
+		.paren {
+			if node.children_count == 1 {
+				return t.escape_address_root_name(t.a.child(&node, 0))
+			}
+		}
+		.selector, .index {
+			if node.children_count > 0 {
+				return t.escape_address_root_name(t.a.child(&node, 0))
+			}
+		}
+		else {}
+	}
+
+	return none
+}
+
+fn escape_alias_sources(name string, amp_sources map[string][]string, ptr_aliases map[string]string) []string {
+	mut current := name
+	mut seen := map[string]bool{}
+	for _ in 0 .. ptr_aliases.len + 1 {
+		if current.len == 0 || seen[current] {
+			break
+		}
+		seen[current] = true
+		if sources := amp_sources[current] {
+			return sources
+		}
+		current = ptr_aliases[current] or { break }
+	}
+	return []string{}
+}
+
 fn (mut t Transformer) scan_escape_pointer_write(lhs flat.Node, rhs flat.Node, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string) {
 	if lhs.kind != .ident || lhs.value.len == 0 {
 		return
 	}
 	if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0 {
-		amp_child := t.a.nodes[int(t.a.child(&rhs, 0))]
-		if amp_child.kind == .ident {
+		if source_name := t.escape_address_root_name(t.a.child(&rhs, 0)) {
 			amp_ptrs[lhs.value] = true
-			add_escape_amp_source(mut amp_sources, lhs.value, amp_child.value)
+			add_escape_amp_source(mut amp_sources, lhs.value, source_name)
 			ptr_aliases.delete(lhs.value)
 		}
 		return
@@ -2992,11 +3035,19 @@ fn (mut t Transformer) scan_escape_pointer_write(lhs flat.Node, rhs flat.Node, m
 		&& t.resolve_interface_type_name(rhs.value).len > 0 {
 		cast_arg := t.a.nodes[int(t.a.child(&rhs, 0))]
 		if cast_arg.kind == .prefix && cast_arg.op == .amp && cast_arg.children_count > 0 {
-			amp_child := t.a.nodes[int(t.a.child(&cast_arg, 0))]
-			if amp_child.kind == .ident {
+			if source_name := t.escape_address_root_name(t.a.child(&cast_arg, 0)) {
 				amp_ptrs[lhs.value] = true
-				add_escape_amp_source(mut amp_sources, lhs.value, amp_child.value)
+				add_escape_amp_source(mut amp_sources, lhs.value, source_name)
 				ptr_aliases.delete(lhs.value)
+			}
+		} else if cast_arg.kind == .ident && cast_arg.value.len > 0 {
+			sources := escape_alias_sources(cast_arg.value, amp_sources, ptr_aliases)
+			if sources.len > 0 {
+				amp_ptrs[lhs.value] = true
+				for source in sources {
+					add_escape_amp_source(mut amp_sources, lhs.value, source)
+				}
+				ptr_aliases[lhs.value] = cast_arg.value
 			}
 		}
 		return
@@ -3009,10 +3060,11 @@ fn (mut t Transformer) scan_escape_pointer_write(lhs flat.Node, rhs flat.Node, m
 }
 
 // scan_escape_pass recursively collects, in a function-body subtree, (a) the LHS
-// names of `p := &ident`, `p = &ident`, and `r := Interface(&ident)` assignments into
-// `amp_ptrs` (with all source `ident` names in `amp_sources[p]`), (b) plain pointer
-// copies `q := p`/`q = p` into `ptr_aliases[q] = p`, and (c) every ident name
-// appearing inside a return statement into `returned`.
+// names of `p := &local`, `p = &local`, `r := Interface(&local)` and
+// `r := Interface(pointer_alias)` assignments into `amp_ptrs` (with all source root
+// names in `amp_sources[p]`), (b) plain pointer copies `q := p`/`q = p` into
+// `ptr_aliases[q] = p`, and (c) every ident name appearing inside a return statement
+// into `returned`.
 fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string, mut returned map[string]bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
@@ -13064,6 +13116,11 @@ fn (t &Transformer) resolve_interface_pattern(pattern string, subject_type strin
 		if t.is_builtin_ierror_interface_name(iface) {
 			if t.tc.named_type_compatible_with_ierror(candidate) {
 				return candidate
+			}
+		} else if target_iface := t.resolve_interface_pattern_interface(candidate) {
+			if t.tc.interface_implements_interface(iface, target_iface)
+				|| t.tc.interface_implements_interface(target_iface, iface) {
+				return target_iface
 			}
 		} else if t.tc.named_type_implements_interface(candidate, iface) {
 			return candidate

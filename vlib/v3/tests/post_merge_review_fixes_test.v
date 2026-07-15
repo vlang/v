@@ -3027,6 +3027,114 @@ fn test_interface_cast_from_local_address_preserves_pointer_identity() {
 	assert !make_reader_body.contains('Box b ='), make_reader_body
 	escape_out := run_good(v3_bin, 'interface_local_address_escape_box_run', escape_source)
 	assert escape_out == '6'
+	escape_variants := run_good(v3_bin, 'interface_local_address_escape_variants', 'interface Reader {
+	get() int
+}
+
+struct Box {
+mut:
+	n int
+}
+
+struct Holder {
+mut:
+	inner Box
+}
+
+struct StaticReader {
+	n int
+}
+
+__global fallback Box
+__global global_box Box
+
+fn (b &Box) get() int {
+	return b.n
+}
+
+fn (s StaticReader) get() int {
+	return s.n
+}
+
+fn make_aggregate_reader() []Reader {
+	mut b := Box{
+		n: 5
+	}
+	r := Reader(&b)
+	b.n = 6
+	return [r]
+}
+
+fn make_assigned_reader() Reader {
+	mut b := Box{
+		n: 7
+	}
+	mut r := Reader(StaticReader{
+		n: 0
+	})
+	r = Reader(&b)
+	b.n = 8
+	return r
+}
+
+fn make_pointer_alias_reader() Reader {
+	mut b := Box{
+		n: 9
+	}
+	p := &b
+	q := p
+	r := Reader(q)
+	b.n = 10
+	return r
+}
+
+fn make_field_reader() Reader {
+	mut holder := Holder{
+		inner: Box{
+			n: 11
+		}
+	}
+	r := Reader(&holder.inner)
+	holder.inner.n = 12
+	return r
+}
+
+fn make_conditional_reader(use_global bool) Reader {
+	mut b := Box{
+		n: 13
+	}
+	mut r := Reader(&b)
+	if use_global {
+		r = Reader(&fallback)
+	}
+	b.n = 14
+	return r
+}
+
+fn make_global_reader() Reader {
+	r := Reader(&global_box)
+	return r
+}
+
+fn main() {
+	fallback = Box{
+		n: 15
+	}
+	global_box = Box{
+		n: 16
+	}
+	global_reader := make_global_reader()
+	global_box.n = 17
+	println(int_str(make_aggregate_reader()[0].get()))
+	println(int_str(make_assigned_reader().get()))
+	println(int_str(make_pointer_alias_reader().get()))
+	println(int_str(make_field_reader().get()))
+	println(int_str(make_conditional_reader(false).get()))
+	println(int_str(make_conditional_reader(true).get()))
+	println(int_str(global_reader.get()))
+}
+')
+	assert escape_variants == '6\n8\n10\n12\n14\n15\n17'
 }
 
 fn test_mut_interface_argument_borrows_existing_interface_box() {
@@ -3623,6 +3731,9 @@ fn main() {
 	rvalue_upcast_out := run_good(v3_bin, 'review_interface_rvalue_upcasts',
 		'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n')
 	assert rvalue_upcast_out == 'call\nif\nindex'
+	embedded_interface_out := run_good(v3_bin, 'review_embedded_interface_fields_and_ptr_upcast',
+		'interface Base {\n\tname string\n\tlabel() string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name + ":label"\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn use_ptr(b &Base) string {\n\treturn b.name + ":" + b.label()\n}\n\nfn describe(base Base) string {\n\treturn match base {\n\t\tChild { base.name + ":" + base.child().str() }\n\t\telse { "else" }\n\t}\n}\n\nfn main() {\n\tchild := Child(User{\n\t\tname: "Ada"\n\t})\n\tbase := Base(User{\n\t\tname: "Bea"\n\t})\n\tprintln(child.name)\n\tprintln(use_ptr(child))\n\tprintln(describe(base))\n}\n')
+	assert embedded_interface_out == 'Ada\nAda:Ada:label\nBea:3'
 }
 
 fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
@@ -3645,6 +3756,9 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	run_bad(v3_bin, 'review_compound_index_getter_key_mismatch',
 		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
 		'index must be `int`, not `string`')
+	run_bad(v3_bin, 'review_compound_index_getter_value_mismatch',
+		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
+		'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
 	pointer_depth_out := run_good(v3_bin, 'review_one_level_implicit_address',
 		'fn take(p &int) int {\n\treturn *p\n}\n\nfn main() {\n\tmut n := 3\n\tprintln(int_str(take(n)))\n}\n')
 	assert pointer_depth_out == '3'

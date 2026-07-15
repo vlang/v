@@ -262,7 +262,7 @@ fn (t &Transformer) source_interface_carries_target_fields(source_iface string, 
 	if target_fields.len == 0 {
 		return true
 	}
-	source_fields := t.tc.interface_fields[source_iface] or { return false }
+	source_fields := t.tc.interface_field_list(source_iface)
 	for target in target_fields {
 		mut found := false
 		for source in source_fields {
@@ -440,7 +440,7 @@ fn (t &Transformer) heaped_amp_local_address_child(id flat.NodeId) ?flat.NodeId 
 
 // make_interface_literal_from_expr converts make interface literal from expr data for transform.
 fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string, share_source bool) ?flat.NodeId {
-	fields := t.tc.interface_fields[iface_name] or { []types.StructField{} }
+	fields := t.tc.interface_field_list(iface_name)
 	mut source_id := id
 	mut source_type := t.node_type(id)
 	mut source_is_heaped_amp_child := false

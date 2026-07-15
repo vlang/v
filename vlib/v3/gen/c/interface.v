@@ -708,7 +708,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	}
 	type_id := g.iface_type_id_for_concrete(iface.name, actual_clean)
 	ct := g.tc.c_type(iface)
-	fields := g.tc.interface_fields[iface.name] or { []types.StructField{} }
+	fields := g.tc.interface_field_list(iface.name)
 	concrete_ct := g.tc.c_type(actual_base)
 	if fields.len > 0 {
 		tmp := g.tmp_count

@@ -457,7 +457,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						method := iface_callee.all_after_last('.')
 						ensure_iface_impls(recv, fn_info.module, tc, mut iface_impls, mut
 							checked_iface_impls)
+						mut recv_iface := ''
 						if iface_name := interface_name_for_receiver(recv, fn_info.module, tc) {
+							recv_iface = iface_name
 							// Keep the dispatch stub (`Iface__method`) the transform will
 							// call; the call site may name the interface through an alias
 							// (`Expr.name` for `type Expr = Node`), which cgen's used-fn
@@ -473,6 +475,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 								short_impl := '${impl_method.all_before_last('.').all_after_last('.')}.${method}'
 								if short_impl != impl_method {
 									enqueue(short_impl, mut used, mut queue)
+								}
+								if recv_iface.len > 0 {
+									enqueue_implicit_interface_str_helpers_for_impl(recv_iface,
+										method, impl, tc, mut used, mut queue)
 								}
 							}
 						}
@@ -541,6 +547,8 @@ fn enqueue_used_interface_dispatch_implementers(tc &types.TypeChecker, mut used 
 				if short_impl != impl_method && enqueue(short_impl, mut used, mut queue) {
 					added = true
 				}
+				enqueue_implicit_interface_str_helpers_for_impl(iface_name, method, impl, tc, mut
+					used, mut queue)
 			}
 		}
 	}
@@ -2037,6 +2045,84 @@ fn enqueue_interface_str_methods(iface_name string, tc &types.TypeChecker, mut u
 		if short != method {
 			enqueue(short, mut used, mut queue)
 		}
+		enqueue_implicit_interface_str_helpers_for_impl(iface_name, 'str', impl, tc, mut used, mut
+			queue)
+	}
+}
+
+fn enqueue_implicit_interface_str_helpers_for_impl(iface_name string, method string, impl string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	if method != 'str' || !markused_interface_method_is_plain_str(iface_name, tc) {
+		return
+	}
+	method_key := tc.concrete_method_signature_key(impl, method) or { '${impl}.${method}' }
+	if method_key in tc.fn_param_types || markused_c_name(method_key) in tc.fn_param_types {
+		return
+	}
+	enqueue_implicit_interface_str_helpers(tc.parse_type(impl), tc, mut used, mut queue)
+}
+
+fn enqueue_implicit_interface_str_helpers(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	mut seen := map[string]bool{}
+	enqueue_implicit_interface_str_helpers_inner(typ, tc, mut used, mut queue, mut seen)
+}
+
+fn markused_interface_method_is_plain_str(iface_name string, tc &types.TypeChecker) bool {
+	key := tc.interface_method_signature_key(iface_name, 'str') or { return false }
+	ret := tc.fn_ret_types[key] or { return false }
+	if ret.name() != 'string' {
+		return false
+	}
+	params := tc.fn_param_types[key] or { return false }
+	return params.len == 1
+}
+
+fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut seen map[string]bool) {
+	enqueue('string__plus', mut used, mut queue)
+	typ_name := typ.name()
+	if typ_name in seen {
+		return
+	}
+	seen[typ_name] = true
+	match typ {
+		types.Alias {
+			enqueue_implicit_interface_str_helpers_inner(typ.base_type, tc, mut used, mut queue, mut
+				seen)
+		}
+		types.Pointer {
+			enqueue_implicit_interface_str_helpers_inner(typ.base_type, tc, mut used, mut queue, mut
+				seen)
+		}
+		types.Primitive, types.Rune, types.Char, types.ISize, types.USize, types.String {
+			enqueue_stringified_primitive_helpers(types.Type(typ).name(), mut used, mut queue)
+		}
+		types.Enum {
+			enqueue('${markused_c_name(typ.name)}__autostr', mut used, mut queue)
+		}
+		types.Array {
+			enqueue_implicit_interface_str_helpers_inner(typ.elem_type, tc, mut used, mut queue, mut
+				seen)
+		}
+		types.ArrayFixed {
+			enqueue_implicit_interface_str_helpers_inner(typ.elem_type, tc, mut used, mut queue, mut
+				seen)
+		}
+		types.Map {
+			for helper in ['i64.str', 'i64__str', 'u64.str', 'u64__str', 'f64.str', 'f64__str',
+				'rune.str', 'rune__str'] {
+				enqueue(helper, mut used, mut queue)
+			}
+			enqueue_implicit_interface_str_helpers_inner(typ.key_type, tc, mut used, mut queue, mut
+				seen)
+			enqueue_implicit_interface_str_helpers_inner(typ.value_type, tc, mut used, mut queue, mut
+				seen)
+		}
+		types.Struct {
+			for field in tc.structs[typ.name] or { []types.StructField{} } {
+				enqueue_implicit_interface_str_helpers_inner(field.typ, tc, mut used, mut queue, mut
+					seen)
+			}
+		}
+		else {}
 	}
 }
 
@@ -2047,16 +2133,23 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 		}
 		'rune', 'char' {
 			enqueue('rune.str', mut used, mut queue)
+			enqueue(markused_c_name('rune.str'), mut used, mut queue)
 		}
 		'int', 'i8', 'i16', 'i32', 'i64' {
 			enqueue('${type_name}.str', mut used, mut queue)
 			enqueue(markused_c_name('${type_name}.str'), mut used, mut queue)
+			enqueue('i64.str', mut used, mut queue)
+			enqueue(markused_c_name('i64.str'), mut used, mut queue)
 			enqueue('strconv__format_int', mut used, mut queue)
 		}
 		'isize' {
+			enqueue('i64.str', mut used, mut queue)
+			enqueue(markused_c_name('i64.str'), mut used, mut queue)
 			enqueue('strconv__format_int', mut used, mut queue)
 		}
 		'u8', 'byte', 'u16', 'u32', 'usize' {
+			enqueue('u64.str', mut used, mut queue)
+			enqueue(markused_c_name('u64.str'), mut used, mut queue)
 			enqueue('strconv__format_uint', mut used, mut queue)
 		}
 		'u64' {
@@ -2067,9 +2160,13 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 		'f32' {
 			enqueue('f32.str', mut used, mut queue)
 			enqueue(markused_c_name('f32.str'), mut used, mut queue)
+			enqueue('f64.str', mut used, mut queue)
+			enqueue(markused_c_name('f64.str'), mut used, mut queue)
 			enqueue('strconv__f32_to_str_l', mut used, mut queue)
 		}
 		'f64' {
+			enqueue('f64.str', mut used, mut queue)
+			enqueue(markused_c_name('f64.str'), mut used, mut queue)
 			enqueue('strconv__f64_to_str_l', mut used, mut queue)
 		}
 		else {}

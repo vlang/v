@@ -6284,9 +6284,6 @@ fn (mut g FlatGen) gen_embedded_method_receiver(base_id flat.NodeId, base_type t
 }
 
 fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_type types.Type, expected_type types.Type, wants_ptr bool) bool {
-	if wants_ptr {
-		return false
-	}
 	source_iface := g.interface_receiver_name(base_type)
 	target_iface := g.interface_receiver_name(expected_type)
 	if source_iface.len == 0 || target_iface.len == 0 || source_iface == target_iface {
@@ -6298,6 +6295,14 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 	mappings := g.interface_receiver_type_id_mappings(source_iface, target_iface)
 	if mappings.len == 0 {
 		return false
+	}
+	target_ct := g.tc.c_type(types.unwrap_pointer(expected_type))
+	if wants_ptr {
+		g.write('&((${target_ct}[]){')
+		g.gen_embedded_interface_receiver(base_id, base_type, types.unwrap_pointer(expected_type),
+			false)
+		g.write('})[0]')
+		return true
 	}
 	base_node := g.a.nodes[int(base_id)]
 	if base_node.kind !in [.ident, .selector] {
@@ -6313,7 +6318,6 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 		g.write('; })')
 		return true
 	}
-	target_ct := g.tc.c_type(types.unwrap_pointer(expected_type))
 	base_is_ptr := base_type is types.Pointer
 	op := if base_is_ptr { '->' } else { '.' }
 	g.write('(${target_ct}){._typ = ')
@@ -6329,7 +6333,7 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 	g.write(', ._object = ')
 	g.gen_interface_receiver_base_expr(base_id, base_is_ptr)
 	g.write('${op}_object')
-	for field in g.tc.interface_fields[target_iface] or { []types.StructField{} } {
+	for field in g.tc.interface_field_list(target_iface) {
 		field_ct := g.tc.c_type(field.typ)
 		g.write(', .${g.cname(field.name)} = ')
 		for mapping in mappings {
@@ -6361,7 +6365,7 @@ fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, b
 		g.write(')')
 	}
 	g.write(', ._object = ${base_expr}${op}_object')
-	for field in g.tc.interface_fields[target_iface] or { []types.StructField{} } {
+	for field in g.tc.interface_field_list(target_iface) {
 		field_ct := g.tc.c_type(field.typ)
 		g.write(', .${g.cname(field.name)} = ')
 		for mapping in mappings {
@@ -7719,7 +7723,7 @@ fn (g &FlatGen) field_type(base_type types.Type, field_name string) ?types.Type 
 	} else if clean is types.String {
 		struct_name = 'string'
 	} else if clean is types.Interface {
-		for field in g.tc.interface_fields[clean.name] or { []types.StructField{} } {
+		for field in g.tc.interface_field_list(clean.name) {
 			if field.name == field_name {
 				return field.typ
 			}
