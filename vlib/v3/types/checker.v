@@ -6012,15 +6012,15 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 	if !tc.valid_node_id(id) {
 		return none
 	}
-	if loop_kind in ['methods', 'params', 'attributes'] {
-		return none
-	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .paren && node.children_count > 0 {
 		return tc.comptime_static_metadata_expr_type(tc.a.child(&node, 0), var_name, loop_kind)
 	}
 	if node.kind == .ident && node.value == var_name {
 		metadata_type := match loop_kind {
+			'methods' { 'FunctionData' }
+			'params' { 'FunctionParam' }
+			'attributes' { 'VAttribute' }
 			'values' { 'EnumData' }
 			'variants' { 'VariantData' }
 			else { 'FieldData' }
@@ -6038,6 +6038,60 @@ fn (tc &TypeChecker) comptime_static_metadata_expr_type(id flat.NodeId, var_name
 }
 
 fn (tc &TypeChecker) comptime_static_metadata_member_type(member string, loop_kind string) ?Type {
+	if loop_kind == 'methods' {
+		return match member {
+			'name', 'location' {
+				tc.parse_type('string')
+			}
+			'is_pub' {
+				tc.parse_type('bool')
+			}
+			'return_type', 'typ' {
+				tc.parse_type('int')
+			}
+			'args', 'params' {
+				tc.parse_type('[]FunctionParam')
+			}
+			'attrs' {
+				tc.parse_type('[]string')
+			}
+			'attributes' {
+				tc.parse_type('[]VAttribute')
+			}
+			else {
+				none
+			}
+		}
+	}
+	if loop_kind == 'params' {
+		return match member {
+			'name' {
+				tc.parse_type('string')
+			}
+			'typ' {
+				tc.parse_type('int')
+			}
+			else {
+				none
+			}
+		}
+	}
+	if loop_kind == 'attributes' {
+		return match member {
+			'name', 'arg' {
+				tc.parse_type('string')
+			}
+			'has_arg' {
+				tc.parse_type('bool')
+			}
+			'kind' {
+				tc.parse_type('AttributeKind')
+			}
+			else {
+				none
+			}
+		}
+	}
 	if loop_kind == 'variants' {
 		return match member {
 			'typ' {

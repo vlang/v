@@ -707,6 +707,50 @@ fn main() {
 		'cannot use `string` as argument 1 to `takes_int`; expected `int`')
 }
 
+fn test_deferred_metadata_call_arguments_are_checked_against_callee_types() {
+	v3_bin := round4_build_v3()
+	round4_run_bad(v3_bin, 'bad_method_metadata_call_arg_type', 'struct App {}
+
+fn (app App) run() {
+	_ = app
+}
+
+fn takes_int(value int) {}
+
+fn main() {
+	$for method in App.methods {
+		takes_int(method.name)
+	}
+}
+',
+		'cannot use `string` as argument 1 to `takes_int`; expected `int`')
+	round4_run_bad(v3_bin, 'bad_param_metadata_call_arg_type', 'fn consume(value int) {
+	_ = value
+}
+
+fn takes_string(value string) {}
+
+fn main() {
+	$for param in consume.params {
+		takes_string(param.typ)
+	}
+}
+',
+		'cannot use `int` as argument 1 to `takes_string`; expected `string`')
+	round4_run_bad(v3_bin, 'bad_attribute_metadata_call_arg_type', "@[route: '/']
+struct App {}
+
+fn takes_bool(value bool) {}
+
+fn main() {
+	\$for attr in App.attributes {
+		takes_bool(attr.arg)
+	}
+}
+",
+		'cannot use `string` as argument 1 to `takes_bool`; expected `bool`')
+}
+
 fn test_cross_module_composite_field_typ_guard_uses_qualified_type() {
 	v3_bin := round4_build_v3()
 	out := round4_run_good_project(v3_bin, 'cross_module_composite_field_typ_guard', {
