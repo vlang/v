@@ -3337,9 +3337,13 @@ fn c_flag_args(raw string, vroot string, source_file string, target pref.Target)
 		} else {
 			resolved << with_pseudo_paths
 		}
-		resolve_next_path = with_pseudo_paths in ['-I', '-L']
+		resolve_next_path = c_flag_takes_path_operand(with_pseudo_paths)
 	}
 	return resolved
+}
+
+fn c_flag_takes_path_operand(flag string) bool {
+	return flag in ['-I', '-L', '-isystem', '-include', '-imacros']
 }
 
 fn c_resolve_split_flag_path_token(tok string, base_dir string) string {
@@ -3438,8 +3442,9 @@ fn c_pkgconfig_flags(raw string) []string {
 
 fn c_flag_has_target_prefix(target string) bool {
 	return target in ['darwin', 'macos', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd',
-		'solaris', 'termux', 'wasm32_emscripten', 'amd64', 'x64', 'x86_64', 'arm64', 'aarch64',
-		'x86', 'arm32', 'riscv64', 'ppc64', 'ppc64le', 's390x', 'loongarch64', 'wasm32']
+		'dragonfly', 'android', 'termux', 'ios', 'solaris', 'wasm32_emscripten', 'amd64', 'x64',
+		'x86_64', 'arm64', 'aarch64', 'x86', 'arm32', 'riscv64', 'ppc64', 'ppc64le', 's390x',
+		'loongarch64', 'wasm32']
 }
 
 fn c_flag_target_enabled(target string, platform pref.Target) bool {
@@ -3462,11 +3467,20 @@ fn c_flag_target_enabled(target string, platform pref.Target) bool {
 		'netbsd' {
 			return platform.os == 'netbsd'
 		}
+		'dragonfly' {
+			return platform.os == 'dragonfly'
+		}
+		'android' {
+			return platform.os == 'android'
+		}
 		'solaris' {
 			return platform.os == 'solaris'
 		}
 		'termux' {
 			return platform.os == 'termux'
+		}
+		'ios' {
+			return platform.os == 'ios'
 		}
 		'wasm32_emscripten' {
 			return platform.os == 'wasm32_emscripten'

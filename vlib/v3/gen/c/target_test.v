@@ -6,10 +6,19 @@ import v3.pref
 
 fn test_c_directive_targets_use_requested_platform() {
 	target := pref.target_from('macos', 'arm64') or { panic(err) }
+	android := pref.target_from('android', 'arm64') or { panic(err) }
+	dragonfly := pref.target_from('dragonfly', 'amd64') or { panic(err) }
+	ios := pref.target_from('ios', 'arm64') or { panic(err) }
 	assert c_flag_args('macos -DMACOS', '', '', target) == ['-DMACOS']
 	assert c_flag_args('arm64 -DARM64', '', '', target) == ['-DARM64']
 	assert c_flag_args('linux -DLINUX', '', '', target).len == 0
 	assert c_flag_args('amd64 -DAMD64', '', '', target).len == 0
+	assert c_flag_args('android -laaudio', '', '', target).len == 0
+	assert c_flag_args('android -laaudio', '', '', android) == ['-laaudio']
+	assert c_flag_args('dragonfly -lncurses', '', '', target).len == 0
+	assert c_flag_args('dragonfly -lncurses', '', '', dragonfly) == ['-lncurses']
+	assert c_flag_args('ios -framework AudioToolbox', '', '', target).len == 0
+	assert c_flag_args('ios -framework AudioToolbox', '', '', ios) == ['-framework', 'AudioToolbox']
 	assert c_include_arg_for_target('macos <TargetConditionals.h>', '', '', target) == '<TargetConditionals.h>'
 	assert c_include_arg_for_target('windows <windows.h>', '', '', target) == ''
 }
@@ -36,15 +45,25 @@ fn test_split_relative_c_flag_paths_resolve_from_source_directory() {
 	source_file := os.join_path(source_dir, 'main.v')
 	include_dir := os.real_path(os.join_path(source_dir, 'include dir'))
 	lib_dir := os.real_path(os.join_path(source_dir, 'lib'))
-	flags := c_flag_args('-I "include dir" -L lib -DVALUE=1', '', source_file, pref.host_target())
+	system_dir := os.real_path(os.join_path(source_dir, 'system'))
+	cfg_file := os.real_path(os.join_path(source_dir, 'cfg.h'))
+	defs_file := os.real_path(os.join_path(source_dir, 'defs.h'))
+	flags := c_flag_args('-I "include dir" -L lib -isystem system -include cfg.h -imacros defs.h -DVALUE=1',
+		'', source_file, pref.host_target())
 	assert flags == [
 		'-I',
 		include_dir,
 		'-L',
 		lib_dir,
+		'-isystem',
+		system_dir,
+		'-include',
+		cfg_file,
+		'-imacros',
+		defs_file,
 		'-DVALUE=1',
 	]
-	assert c_flag_include_dirs(flags) == [include_dir]
+	assert c_flag_include_dirs(flags) == [include_dir, system_dir]
 }
 
 fn test_split_forced_include_flags_are_cache_inputs() {
@@ -58,8 +77,8 @@ fn test_split_forced_include_flags_are_cache_inputs() {
 	defs := os.join_path(dir, 'defs.h')
 	os.write_file(cfg, '#define CFG_VALUE 1\n') or { panic(err) }
 	os.write_file(defs, '#define DEFS_VALUE 2\n') or { panic(err) }
-	flags := c_flag_args('-include "./cfg header.h" -imacros ./defs.h', '', os.join_path(dir,
-		'main.v'), pref.host_target())
+	flags := c_flag_args('-include "cfg header.h" -imacros defs.h', '',
+		os.join_path(dir, 'main.v'), pref.host_target())
 	assert flags == ['-include', os.real_path(cfg), '-imacros', os.real_path(defs)]
 	mut expected := [os.real_path(cfg), os.real_path(defs)]
 	expected.sort()
