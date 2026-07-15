@@ -7906,6 +7906,14 @@ fn (mut tc TypeChecker) check_for_in_binding_clones(container Type, key_id flat.
 			target_id := if has_val { val_id } else { key_id }
 			tc.check_for_in_binding_clone(target_id, container.elem_type, 'fixed-array element')
 		}
+		Map {
+			if has_val {
+				tc.check_for_in_binding_clone(key_id, container.key_type, 'map key')
+				tc.check_for_in_binding_clone(val_id, container.value_type, 'map value')
+			} else {
+				tc.check_for_in_binding_clone(key_id, container.value_type, 'map value')
+			}
+		}
 		else {}
 	}
 }
