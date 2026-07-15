@@ -10672,7 +10672,9 @@ fn (tc &TypeChecker) ownership_method_keeps_receiver(method_name string) bool {
 }
 
 fn (tc &TypeChecker) ownership_array_builtin_keeps_receiver(recv_id flat.NodeId, method_name string) bool {
-	if method_name !in ['first', 'last', 'pop', 'pop_left', 'insert', 'prepend'] {
+	if method_name !in ['first', 'last', 'pop', 'pop_left', 'insert', 'prepend', 'contains', 'index',
+		'last_index', 'join', 'hex', 'equals', 'pointers', 'any', 'all', 'count', 'repeat',
+		'repeat_to_depth', 'reverse', 'sorted', 'sorted_with_compare'] {
 		return false
 	}
 	return unwrap_pointer(tc.resolve_type(recv_id)) is Array

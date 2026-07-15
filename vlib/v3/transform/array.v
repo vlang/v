@@ -1751,6 +1751,8 @@ fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node,
 	}
 	elem_type := base_type[2..]
 	base_id := t.a.child(&fn_node, 0)
+	source_is_owned_temporary := !t.expr_can_take_address(base_id) && !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type))
 	base := t.stable_expr_for_reuse(base_id)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
@@ -1795,7 +1797,12 @@ fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node,
 	t.drain_pending(mut loop_body)
 	inc := t.make_assign_op(t.make_ident(result_name), t.make_int_literal(1), .plus_assign)
 	loop_body << t.make_if(predicate, t.make_block(arr1(inc)), t.make_empty())
-	prefix << t.make_for_stmt(init, cond, post, loop_body, node)
+	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
+		skip_ownership_drops: true
+	})
+	if source_is_owned_temporary {
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
+	}
 	for stmt in prefix {
 		t.pending_stmts << stmt
 	}
@@ -1809,6 +1816,8 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 	}
 	elem_type := base_type[2..]
 	base_id := t.a.child(&fn_node, 0)
+	source_is_owned_temporary := !t.expr_can_take_address(base_id) && !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(base_type))
 	base := t.stable_expr_for_reuse(base_id)
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
@@ -1864,7 +1873,12 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 		assign_true := t.make_assign(t.make_ident(result_name), t.make_bool_literal(true))
 		loop_body << t.make_if(predicate, t.make_block(arr1(assign_true)), t.make_empty())
 	}
-	prefix << t.make_for_stmt(init, cond, post, loop_body, node)
+	prefix << t.make_for_stmt(init, cond, post, loop_body, flat.Node{
+		skip_ownership_drops: true
+	})
+	if source_is_owned_temporary {
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
+	}
 	for stmt in prefix {
 		t.pending_stmts << stmt
 	}
