@@ -152,6 +152,9 @@ mut:
 	cur_fn_ret_base              types.Type = types.Type(types.void_)
 	active_locks                 []ActiveLock
 	loop_depth                   int
+	conditional_branch_scopes    []&types.Scope
+	conditional_branch_depths    []int
+	conditional_branch_depth     int
 	loop_label_depths            map[string]int
 	goto_label_lock_scopes       map[string][]int
 	pending_loop_label           string
@@ -258,6 +261,25 @@ fn (mut g FlatGen) pop_scope() {
 	g.tc.pop_scope()
 	if g.ierror_stack_pointer_aliases.len > 0 {
 		g.ierror_stack_pointer_aliases.delete_last()
+	}
+}
+
+fn (mut g FlatGen) enter_conditional_branch(has_scope bool) {
+	g.conditional_branch_depth++
+	if has_scope && g.tc != unsafe { nil } && g.tc.cur_scope != unsafe { nil } {
+		g.conditional_branch_scopes << g.tc.cur_scope
+		g.conditional_branch_depths << g.conditional_branch_depth
+	}
+}
+
+fn (mut g FlatGen) leave_conditional_branch() {
+	if g.conditional_branch_scopes.len > 0
+		&& g.conditional_branch_depths.last() == g.conditional_branch_depth {
+		g.conditional_branch_scopes.delete_last()
+		g.conditional_branch_depths.delete_last()
+	}
+	if g.conditional_branch_depth > 0 {
+		g.conditional_branch_depth--
 	}
 }
 
@@ -494,6 +516,8 @@ pub fn FlatGen.new() FlatGen {
 		cur_mut_params:                 map[string]bool{}
 		cur_mut_param_owners:           map[string]types.ScopeBindingOwner{}
 		active_locks:                   []ActiveLock{}
+		conditional_branch_scopes:      []&types.Scope{}
+		conditional_branch_depths:      []int{}
 		loop_label_depths:              map[string]int{}
 		goto_label_lock_scopes:         map[string][]int{}
 		ownership_seen_return_sources:  map[string]bool{}
@@ -920,6 +944,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_mut_param_owners.clear()
 	g.active_locks = []ActiveLock{}
 	g.loop_depth = 0
+	g.conditional_branch_scopes = []&types.Scope{}
+	g.conditional_branch_depths = []int{}
+	g.conditional_branch_depth = 0
 	g.loop_label_depths.clear()
 	g.goto_label_lock_scopes.clear()
 	g.pending_loop_label = ''

@@ -38,6 +38,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 		g.push_scope()
 		defer_start := g.defers.len
 		g.indent++
+		g.enter_conditional_branch(true)
 		if cond.kind == .is_expr {
 			g.smartcast_is_expr(&cond)
 		}
@@ -59,6 +60,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			g.gen_scope_ownership_drops()
 		}
 		g.trim_defers(defer_start)
+		g.leave_conditional_branch()
 		g.indent--
 		g.pop_scope()
 		// else handling — continue the loop for a plain `else if`, recurse only for the
@@ -98,6 +100,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			g.push_scope()
 			else_defer_start := g.defers.len
 			g.indent++
+			g.enter_conditional_branch(true)
 			mut else_scope_drops_consumed := false
 			else_scope_drop_prefix_count := g.block_scope_drop_prefix_count(else_node)
 			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1 +
@@ -111,6 +114,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 				g.gen_scope_ownership_drops()
 			}
 			g.trim_defers(else_defer_start)
+			g.leave_conditional_branch()
 			g.indent--
 			g.pop_scope()
 			g.writeln('}')
@@ -292,8 +296,10 @@ fn (mut g FlatGen) gen_if_guard(node flat.Node, cond flat.Node) {
 	if g.valid_node_id(then_id) {
 		then_block := g.a.nodes[int(then_id)]
 		then_scope_drop_prefix_count = g.block_scope_drop_prefix_count(then_block)
+		g.enter_conditional_branch(true)
 		then_scope_drops_consumed = g.gen_branch_block_children(then_block, 2 +
 			then_scope_drop_prefix_count)
+		g.leave_conditional_branch()
 		if !g.block_consumes_scope_ownership_drops(then_block) {
 			then_scope_drops_consumed = true
 		}
@@ -404,6 +410,7 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 			g.push_scope()
 			defer_start := g.defers.len
 			g.indent++
+			g.enter_conditional_branch(true)
 			mut else_scope_drops_consumed := false
 			else_scope_drop_prefix_count := g.block_scope_drop_prefix_count(else_node)
 			else_scope_drops_consumed = g.gen_branch_block_children(else_node, 1 +
@@ -417,6 +424,7 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 				g.gen_scope_ownership_drops()
 			}
 			g.trim_defers(defer_start)
+			g.leave_conditional_branch()
 			g.indent--
 			g.pop_scope()
 			g.writeln('}')
@@ -481,9 +489,11 @@ fn (mut g FlatGen) gen_if_expr(node flat.Node) {
 
 // gen_if_expr_block emits if expr block output for c.
 fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
+	g.enter_conditional_branch(false)
 	if ret_type is types.MultiReturn {
 		if g.gen_if_expr_multi_return_block(block, ret_type) {
 			g.gen_scope_ownership_drops()
+			g.leave_conditional_branch()
 			return
 		}
 	}
@@ -511,6 +521,7 @@ fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
 		}
 	}
 	g.gen_scope_ownership_drops()
+	g.leave_conditional_branch()
 }
 
 fn (g &FlatGen) multi_return_tail_parts(block &flat.Node, count int) ?MultiReturnTailParts {

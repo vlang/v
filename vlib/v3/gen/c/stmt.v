@@ -889,6 +889,7 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 		g.indent++
 		g.push_scope()
 		defer_start := g.defers.len
+		g.enter_conditional_branch(true)
 		if !select_case.is_push && int(select_case.lhs_id) >= 0 {
 			lhs := g.a.nodes[int(select_case.lhs_id)]
 			if lhs.kind != .ident || lhs.value != '_' {
@@ -922,6 +923,7 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 		g.gen_defers_from(defer_start)
 		g.gen_scope_ownership_drops()
 		g.trim_defers(defer_start)
+		g.leave_conditional_branch()
 		g.pop_scope()
 		g.indent--
 		g.writeln('}')
@@ -940,6 +942,7 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 		g.indent++
 		g.push_scope()
 		defer_start := g.defers.len
+		g.enter_conditional_branch(true)
 		branch := g.a.nodes[int(exception_branch)]
 		body_start := if branch.value == 'else' { 0 } else { 1 }
 		for j in body_start .. branch.children_count {
@@ -948,6 +951,7 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 		g.gen_defers_from(defer_start)
 		g.gen_scope_ownership_drops()
 		g.trim_defers(defer_start)
+		g.leave_conditional_branch()
 		g.pop_scope()
 		g.indent--
 		g.writeln('}')
@@ -2016,6 +2020,31 @@ fn (mut g FlatGen) track_local_pointer_alias_source(lhs flat.Node, owner types.S
 	g.declare_local_pointer_alias_source(owner, source)
 }
 
+fn (g &FlatGen) local_pointer_alias_assignment_can_clear(owner types.ScopeBindingOwner) bool {
+	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
+		return true
+	}
+	key := owner.storage_key()
+	if key.len == 0 || key !in g.local_pointer_alias_by_owner {
+		return true
+	}
+	if g.conditional_branch_depth == 0 {
+		return true
+	}
+	if g.conditional_branch_scopes.len == 0
+		|| g.conditional_branch_depths.last() != g.conditional_branch_depth {
+		return false
+	}
+	branch_scope := g.conditional_branch_scopes.last()
+	return owner.belongs_to_scope_chain_until(g.tc.cur_scope, branch_scope)
+}
+
+fn (mut g FlatGen) clear_local_pointer_alias_source_for_assignment(owner types.ScopeBindingOwner) {
+	if g.local_pointer_alias_assignment_can_clear(owner) {
+		g.declare_local_pointer_alias_source(owner, '')
+	}
+}
+
 // heap_local_address_expr returns a heap-copy expression for `&local` when the
 // surrounding return type is a pointer. V permits local address escapes; C needs
 // the local value copied out of the stack frame before returning.
@@ -2039,7 +2068,7 @@ fn (mut g FlatGen) heap_local_address_expr(ret_id flat.NodeId, expected types.Ty
 			if local_expr.len == 0 {
 				return none
 			}
-			return '(${base_ct}*)memdup(${local_expr}, sizeof(${base_ct}))'
+			return '(${local_expr} == NULL ? NULL : (${base_ct}*)memdup(${local_expr}, sizeof(${base_ct})))'
 		}
 		return none
 	}
@@ -3537,10 +3566,24 @@ fn (mut g FlatGen) track_local_pointer_alias_assign(lhs flat.Node, rhs_id flat.N
 	}
 	owner := g.local_storage_owner(lhs.value) or { return }
 	lhs_type := g.local_ident_type(lhs.value) or {
-		g.declare_local_pointer_alias_source(owner, '')
+		g.clear_local_pointer_alias_source_for_assignment(owner)
 		return
 	}
-	g.track_local_pointer_alias_source(lhs, owner, rhs_id, lhs_type)
+	ptr := match lhs_type {
+		types.Pointer {
+			lhs_type
+		}
+		else {
+			g.clear_local_pointer_alias_source_for_assignment(owner)
+			return
+		}
+	}
+
+	source := g.pointer_alias_stack_source(rhs_id, ptr.base_type) or {
+		g.clear_local_pointer_alias_source_for_assignment(owner)
+		return
+	}
+	g.declare_local_pointer_alias_source(owner, source)
 }
 
 fn (mut g FlatGen) track_ierror_array_push_call_alias(node flat.Node) {
