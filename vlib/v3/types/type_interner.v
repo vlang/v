@@ -92,6 +92,8 @@ fn (mut i TypeInterner) promote_from(start int, scope voidptr) {
 	defer {
 		i.lock.unlock()
 	}
+	types_backing_scoped := scoped_transform_owns(scope, i.types.data)
+	names_backing_scoped := scoped_transform_owns(scope, i.names.data)
 	first := if start < 0 { 0 } else { start }
 	for idx in first .. i.types.len {
 		i.types[idx] = clone_owned_type(i.types[idx])
@@ -100,6 +102,12 @@ fn (mut i TypeInterner) promote_from(start int, scope voidptr) {
 		if name.len > 0 && scoped_transform_owns(scope, name.str) {
 			i.names[idx] = name.clone()
 		}
+	}
+	if types_backing_scoped {
+		i.types = i.types.clone()
+	}
+	if names_backing_scoped {
+		i.names = i.names.clone()
 	}
 	// A scoped insertion can rehash even after the caller reserves headroom.
 	// Rebuild the index after leaving the scope so its backing storage cannot

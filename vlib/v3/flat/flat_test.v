@@ -47,3 +47,29 @@ fn test_clone_text_table_owned_detaches_scoped_storage() {
 		assert ids['scoped_text_128'] == TextId(129)
 	}
 }
+
+fn test_promote_transform_texts_rebuilds_scoped_table_growth() {
+	$if prealloc {
+		mut ast := FlatAst.new()
+		ast.reserve_transform_texts(4)
+		scope := unsafe { prealloc_scope_begin() }
+		for i in 0 .. 256 {
+			ast.intern_text('promoted_text_${i}')
+		}
+		assert unsafe { prealloc_scope_owns(scope, ast.text_values.data) }
+		assert text_id_map_storage_owned_by_scope(ast.text_ids, scope)
+		unsafe { prealloc_scope_leave(scope) }
+
+		ast.promote_transform_texts_from(0, scope)
+		assert !unsafe { prealloc_scope_owns(scope, ast.text_values.data) }
+		assert !text_id_map_storage_owned_by_scope(ast.text_ids, scope)
+		unsafe { prealloc_scope_free_after(scope) }
+
+		for idx in [0, 128, 255] {
+			value := 'promoted_text_${idx}'
+			id, canonical := ast.intern_text(value)
+			assert id == TextId(idx + 1)
+			assert canonical == value
+		}
+	}
+}

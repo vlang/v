@@ -72,6 +72,7 @@ fn (mut i SymbolInterner) promote_from(start int, scope voidptr) {
 	defer {
 		i.lock.unlock()
 	}
+	names_backing_scoped := scoped_transform_owns(scope, i.names.data)
 	first := if start < 0 { 0 } else { start }
 	for idx in first .. i.names.len {
 		name := i.names[idx]
@@ -82,6 +83,9 @@ fn (mut i SymbolInterner) promote_from(start int, scope voidptr) {
 		canonical := name.clone()
 		i.names[idx] = canonical
 		i.ids[canonical] = SymbolId(idx + 1)
+	}
+	if names_backing_scoped {
+		i.names = i.names.clone()
 	}
 	// Keep the hash index itself out of the disposable transform arena too;
 	// an insertion may have rehashed it despite the pre-transform reserve.
