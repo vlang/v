@@ -8,6 +8,31 @@ import v3.gen.c.naming
 import v3.pref
 import v3.types
 
+fn cgen_worker_scope_begin(enabled bool) voidptr {
+	$if prealloc {
+		if enabled {
+			return unsafe { prealloc_scope_begin() }
+		}
+	}
+	return unsafe { nil }
+}
+
+fn cgen_worker_scope_leave(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_leave(scope) }
+		}
+	}
+}
+
+fn cgen_worker_scope_free(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(scope) }
+		}
+	}
+}
+
 struct ActiveLock {
 	mutexes_var string
 	modes_var   string
@@ -81,6 +106,8 @@ mut:
 	ierror_stack_pointer_aliases   []map[string]bool   // scoped local pointer aliases to stack subobjects
 	local_pointer_storage_by_owner map[string]bool     // exact scope binding owner -> C storage is already a pointer
 	local_c_type_by_owner          map[string]string   // exact scope binding owner -> emitted C declaration type
+	local_pointer_alias_by_owner   map[string]string   // exact scope binding owner -> stack local whose address is stored
+	local_pointer_alias_mut_param  map[string]bool     // exact scope binding owner -> alias source is a mut parameter
 	local_raw_type_by_owner        map[string]string   // exact scope binding owner -> source-level raw type text
 	local_shared_storage_by_owner  map[string]bool     // exact scope binding owner -> C storage is a shared wrapper pointer
 	local_fn_value_c_name_by_owner map[string]string   // exact scope binding owner -> lifted fn-literal C name
@@ -153,6 +180,8 @@ mut:
 	c99_mode                     bool
 	skip_generics                bool
 	cur_fn_name                  string
+	struct_default_module        string
+	shadowed_global_locals       map[string]bool
 	cur_param_names              []string
 	cur_param_type_values        []types.Type
 	cur_param_types              map[string]types.Type
@@ -164,6 +193,9 @@ mut:
 	cur_fn_ret_base              types.Type = types.Type(types.void_)
 	active_locks                 []ActiveLock
 	loop_depth                   int
+	conditional_branch_scopes    []&types.Scope
+	conditional_branch_depths    []int
+	conditional_branch_depth     int
 	loop_label_depths            map[string]int
 	loop_control_copybacks       []LoopControlCopyback
 	goto_label_lock_scopes       map[string][]int
@@ -203,6 +235,9 @@ mut:
 	c_extern_refs                  map[string]bool
 	c_extern_refs_ready            bool
 	parallel_prepared              bool
+	scoped_fn_items_scope          voidptr
+	scoped_fn_output_path          string
+	scoped_fn_output_paths         []string
 	const_short_index              &ConstShortIndex = unsafe { nil }
 	mut_recv_facts                 &FnNameFactCache = unsafe { nil }
 	want_parallel_prep             bool
@@ -268,6 +303,25 @@ fn (mut g FlatGen) pop_scope() {
 	g.tc.pop_scope()
 	if g.ierror_stack_pointer_aliases.len > 0 {
 		g.ierror_stack_pointer_aliases.delete_last()
+	}
+}
+
+fn (mut g FlatGen) enter_conditional_branch(has_scope bool) {
+	g.conditional_branch_depth++
+	if has_scope && g.tc != unsafe { nil } && g.tc.cur_scope != unsafe { nil } {
+		g.conditional_branch_scopes << g.tc.cur_scope
+		g.conditional_branch_depths << g.conditional_branch_depth
+	}
+}
+
+fn (mut g FlatGen) leave_conditional_branch() {
+	if g.conditional_branch_scopes.len > 0
+		&& g.conditional_branch_depths.last() == g.conditional_branch_depth {
+		g.conditional_branch_scopes.delete_last()
+		g.conditional_branch_depths.delete_last()
+	}
+	if g.conditional_branch_depth > 0 {
+		g.conditional_branch_depth--
 	}
 }
 
@@ -353,6 +407,28 @@ fn (mut g FlatGen) declare_local_c_type(owner types.ScopeBindingOwner, c_type st
 	}
 }
 
+fn (mut g FlatGen) declare_local_pointer_alias_source(owner types.ScopeBindingOwner, source string) {
+	g.declare_local_pointer_alias_source_kind(owner, source, false)
+}
+
+fn (mut g FlatGen) declare_local_pointer_alias_source_kind(owner types.ScopeBindingOwner, source string, is_mut_param bool) {
+	key := owner.storage_key()
+	if key.len == 0 {
+		return
+	}
+	if source.len > 0 {
+		g.local_pointer_alias_by_owner[key] = source
+		if is_mut_param {
+			g.local_pointer_alias_mut_param[key] = true
+		} else {
+			g.local_pointer_alias_mut_param.delete(key)
+		}
+	} else {
+		g.local_pointer_alias_by_owner.delete(key)
+		g.local_pointer_alias_mut_param.delete(key)
+	}
+}
+
 fn (g &FlatGen) local_storage_owner(name string) ?types.ScopeBindingOwner {
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return none
@@ -372,6 +448,22 @@ fn (g &FlatGen) local_storage_c_type(name string) ?string {
 	}
 	owner := g.local_storage_owner(name) or { return none }
 	return g.local_c_type_by_owner[owner.storage_key()] or { none }
+}
+
+fn (g &FlatGen) local_pointer_alias_source(name string) ?string {
+	if name.len == 0 || g.local_pointer_alias_by_owner.len == 0 {
+		return none
+	}
+	owner := g.local_storage_owner(name) or { return none }
+	return g.local_pointer_alias_by_owner[owner.storage_key()] or { none }
+}
+
+fn (g &FlatGen) local_pointer_alias_source_is_mut_param(name string) bool {
+	if name.len == 0 || g.local_pointer_alias_mut_param.len == 0 {
+		return false
+	}
+	owner := g.local_storage_owner(name) or { return false }
+	return g.local_pointer_alias_mut_param[owner.storage_key()] or { false }
 }
 
 fn (mut g FlatGen) declare_local_raw_type(owner types.ScopeBindingOwner, raw_type string) {
@@ -479,9 +571,12 @@ pub fn FlatGen.new() FlatGen {
 		ierror_stack_pointer_aliases:   []map[string]bool{}
 		local_pointer_storage_by_owner: map[string]bool{}
 		local_c_type_by_owner:          map[string]string{}
+		local_pointer_alias_by_owner:   map[string]string{}
+		local_pointer_alias_mut_param:  map[string]bool{}
 		local_raw_type_by_owner:        map[string]string{}
 		local_shared_storage_by_owner:  map[string]bool{}
 		local_fn_value_c_name_by_owner: map[string]string{}
+		shadowed_global_locals:         map[string]bool{}
 		sum_name_lookup:                map[string]string{}
 		module_init_fns:                []string{}
 		module_init_fn_modules:         map[string]string{}
@@ -526,6 +621,8 @@ pub fn FlatGen.new() FlatGen {
 		cur_mut_params:                 map[string]bool{}
 		cur_mut_param_owners:           map[string]types.ScopeBindingOwner{}
 		active_locks:                   []ActiveLock{}
+		conditional_branch_scopes:      []&types.Scope{}
+		conditional_branch_depths:      []int{}
 		loop_label_depths:              map[string]int{}
 		loop_control_copybacks:         []LoopControlCopyback{}
 		goto_label_lock_scopes:         map[string][]int{}
@@ -883,6 +980,152 @@ pub fn (mut g FlatGen) gen_to_file_with_used_test_options(path string, a &flat.F
 	}
 }
 
+fn (mut g FlatGen) write_scoped_output_chunk(path string, append bool, scope voidptr) bool {
+	mut output := unsafe { g.sb.reuse_as_plain_u8_array() }
+	if append {
+		mut file := os.open_append(path) or {
+			g.output_error = err.msg()
+			unsafe { output.free() }
+			cgen_worker_scope_free(scope)
+			return false
+		}
+		unsafe {
+			file.write_full_buffer(output.data, usize(output.len)) or {
+				g.output_error = err.msg()
+				file.close()
+				output.free()
+				cgen_worker_scope_free(scope)
+				return false
+			}
+		}
+		file.close()
+	} else {
+		os.write_file_array(path, output) or {
+			g.output_error = err.msg()
+			unsafe { output.free() }
+			cgen_worker_scope_free(scope)
+			return false
+		}
+	}
+	unsafe { output.free() }
+	cgen_worker_scope_free(scope)
+	return true
+}
+
+fn (mut g FlatGen) start_scoped_output_builder(cap int) voidptr {
+	scope := cgen_worker_scope_begin(true)
+	g.sb = strings.new_builder(cap)
+	cgen_worker_scope_leave(scope)
+	return scope
+}
+
+fn (mut g FlatGen) flush_and_restart_scoped_output(path string, append bool, scope voidptr, cap int) !voidptr {
+	if !g.write_scoped_output_chunk(path, append, scope) {
+		g.sb = strings.new_builder(4096)
+		return error(g.output_error)
+	}
+	return g.start_scoped_output_builder(cap)
+}
+
+fn (mut g FlatGen) release_scoped_fn_items() {
+	if g.scoped_fn_items_scope == unsafe { nil } {
+		return
+	}
+	scope := g.scoped_fn_items_scope
+	g.fn_gen_items = []FlatFnGenItem{}
+	g.emitted_fns = map[string]bool{}
+	g.tc.cur_file = ''
+	g.tc.cur_module = ''
+	g.scoped_fn_items_scope = unsafe { nil }
+	cgen_worker_scope_free(scope)
+}
+
+fn (mut g FlatGen) write_scoped_function_output(path string, fn_code string) bool {
+	mut initial_file := os.create(path) or {
+		g.output_error = err.msg()
+		return false
+	}
+	initial_file.close()
+	for chunk_path in g.scoped_fn_output_paths {
+		if !g.append_scoped_output_file(path, chunk_path) {
+			return false
+		}
+		os.rm(chunk_path) or {}
+	}
+	g.scoped_fn_output_path = ''
+	g.scoped_fn_output_paths = []string{}
+	mut file := os.open_append(path) or {
+		g.output_error = err.msg()
+		return false
+	}
+	if g.fn_segs.len > 0 {
+		for segment in g.fn_segs {
+			file.write_string(segment) or {
+				g.output_error = err.msg()
+				file.close()
+				return false
+			}
+			unsafe { segment.free() }
+		}
+		g.fn_segs = []string{}
+	} else {
+		file.write_string(fn_code) or {
+			g.output_error = err.msg()
+			file.close()
+			return false
+		}
+		unsafe { fn_code.free() }
+	}
+	file.close()
+	return true
+}
+
+fn (mut g FlatGen) append_scoped_output_file(path string, source_path string) bool {
+	mut source := os.open(source_path) or {
+		g.output_error = err.msg()
+		return false
+	}
+	mut output := os.open_append(path) or {
+		g.output_error = err.msg()
+		source.close()
+		return false
+	}
+	mut buffer := []u8{len: 64 * 1024}
+	for {
+		n_read := source.read(mut buffer) or {
+			if err is os.Eof {
+				break
+			}
+			g.output_error = err.msg()
+			output.close()
+			source.close()
+			return false
+		}
+		if n_read == 0 {
+			break
+		}
+		unsafe {
+			output.write_full_buffer(buffer.data, usize(n_read)) or {
+				g.output_error = err.msg()
+				output.close()
+				source.close()
+				return false
+			}
+		}
+	}
+	output.close()
+	source.close()
+	return true
+}
+
+fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path string) {
+	os.rm(stream_path) or {}
+	os.rm(fn_stream_path) or {}
+	for chunk_path in g.scoped_fn_output_paths {
+		os.rm(chunk_path) or {}
+	}
+}
+
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	g.a = a
@@ -923,9 +1166,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.ierror_stack_pointer_aliases = []map[string]bool{}
 	g.local_pointer_storage_by_owner.clear()
 	g.local_c_type_by_owner.clear()
+	g.local_pointer_alias_by_owner.clear()
+	g.local_pointer_alias_mut_param.clear()
 	g.local_raw_type_by_owner.clear()
 	g.local_shared_storage_by_owner.clear()
 	g.local_fn_value_c_name_by_owner.clear()
+	g.shadowed_global_locals.clear()
 	g.sum_name_lookup.clear()
 	g.module_init_fns = []string{}
 	g.module_init_fn_modules.clear()
@@ -976,6 +1222,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_mut_param_owners.clear()
 	g.active_locks = []ActiveLock{}
 	g.loop_depth = 0
+	g.conditional_branch_scopes = []&types.Scope{}
+	g.conditional_branch_depths = []int{}
+	g.conditional_branch_depth = 0
 	g.loop_label_depths.clear()
 	g.loop_control_copybacks = []LoopControlCopyback{}
 	g.goto_label_lock_scopes.clear()
@@ -1000,6 +1249,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_extern_refs.clear()
 	g.c_extern_refs_ready = false
 	g.parallel_prepared = false
+	g.scoped_fn_items_scope = unsafe { nil }
+	g.scoped_fn_output_path = ''
+	g.scoped_fn_output_paths = []string{}
 	g.const_short_index = &ConstShortIndex{}
 	g.mut_recv_facts = &FnNameFactCache{}
 	g.want_parallel_prep = false
@@ -1032,6 +1284,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.collect_interface_impls()
 	g.precompute_sum_name_lookup()
 	g.preseed_struct_fn_ptr_types()
+	g.preseed_sum_fn_ptr_types()
 	g.preseed_global_fn_ptr_types()
 	g.preseed_fn_signature_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
@@ -1043,6 +1296,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// signatures, returns and call sites all agree on the wrapped types.
 	g.populate_fixed_array_ret_wrappers()
 	const_code := g.precompute_consts()
+	stream_scoped_output := g.output_path.len > 0 && !g.cache_split && g.scope_parallel_workers
+	stream_path := if stream_scoped_output { '${g.output_path}.v3-stream.tmp' } else { '' }
+	fn_stream_path := if stream_scoped_output { '${g.output_path}.v3-fns.tmp' } else { '' }
+	if stream_scoped_output {
+		g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+	}
 	orig_sb := g.sb
 	orig_line_start := g.line_start
 	g.sb = strings.new_builder(4096)
@@ -1057,8 +1316,23 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	for segment in g.fn_segs {
 		known_output_len += segment.len
 	}
-	// Leave headroom for the small body-dependent supplement emitted below.
-	g.sb.ensure_cap(known_output_len + 1024 * 1024)
+	if stream_scoped_output && !g.write_scoped_function_output(fn_stream_path, fn_code) {
+		g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+		return ''
+	}
+	mut stream_started := false
+	mut output_scope := unsafe { nil }
+	if stream_scoped_output {
+		existing_output := if g.sb.len > 0 { g.sb.str() } else { '' }
+		output_scope = g.start_scoped_output_builder(640 * 1024)
+		if existing_output.len > 0 {
+			g.sb.write_string(existing_output)
+			unsafe { existing_output.free() }
+		}
+	} else {
+		// Leave headroom for the small body-dependent supplement emitted below.
+		g.sb.ensure_cap(known_output_len + 1024 * 1024)
+	}
 	g.c99_feature_test_macros()
 	g.emit_preserved_c_directives()
 	g.preamble()
@@ -1066,6 +1340,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.enum_decls()
 	g.type_alias_decls()
 	g.type_forward_decls()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+		stream_started = true
+	}
 	// Forward-declare multi-return structs before fn-ptr typedefs, which may name a
 	// multi-return as a by-value return type (full bodies come after struct_decls).
 	g.multi_return_forward_decls()
@@ -1075,6 +1357,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fixed_array_early_typedefs()
 	g.fn_ptr_typedefs()
 	g.struct_decls()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.fixed_array_typedefs()
 	g.multi_return_typedefs()
 	g.optional_typedefs()
@@ -1082,13 +1371,49 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.builtin_abi_decls()
 	g.test_failure_helpers()
 	g.global_decls()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.forward_decls()
+	g.release_scoped_fn_items()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.cached_header_forward_decls()
 	g.interface_method_forward_decls()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.shared_dup_fns()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.enum_str_forward_decls()
 	g.callback_wrapper_decls()
 	g.spawn_wrapper_decls()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.register_interface_strings()
 	g.string_literals()
 	if !g.cache_split {
@@ -1122,6 +1447,25 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	if g.cache_split {
 		g.interface_method_stubs()
+	}
+	if stream_scoped_output {
+		if !g.write_scoped_output_chunk(stream_path, stream_started, output_scope) {
+			g.sb = strings.new_builder(4096)
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+		g.sb = strings.new_builder(4096)
+		if !g.append_scoped_output_file(stream_path, fn_stream_path) {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+		os.mv(stream_path, g.output_path) or {
+			g.output_error = err.msg()
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+		os.rm(fn_stream_path) or {}
+		return ''
 	}
 	if g.fn_segs.len > 0 {
 		for segment in g.fn_segs {
@@ -1610,8 +1954,8 @@ fn (mut g FlatGen) collect_gen_info() {
 	}
 	if g.has_shared_params {
 		for full_name, flags in preferred_shared_fn_params {
-			g.fn_decl_shared_params[full_name] = flags.clone()
-			g.fn_decl_shared_params[g.cname(full_name)] = flags.clone()
+			g.fn_decl_shared_params[full_name] = flags
+			g.fn_decl_shared_params[g.cname(full_name)] = flags
 		}
 		for i, name in nonshared_fn_short_names {
 			if name in g.fn_decl_shared_params {
@@ -3549,39 +3893,53 @@ fn fn_decl_module_key(module_name string, name string) string {
 // register_fn_decl_param_types updates register fn decl param types state for c.
 fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, ptypes []types.Type, is_variadic bool) {
 	module_key := fn_decl_module_key(g.tc.cur_module, name)
-	g.fn_decl_param_types[module_key] = ptypes.clone()
-	g.fn_decl_variadic[module_key] = is_variadic
+	g.fn_decl_param_types[module_key] = ptypes
+	if is_variadic {
+		g.fn_decl_variadic[module_key] = true
+	}
 	short_name := name.all_after_last('.')
 	g.fn_decl_variadic_short_counts[short_name] = g.fn_decl_variadic_short_counts[short_name] + 1
 	if name !in g.fn_decl_param_types {
-		g.fn_decl_param_types[name] = ptypes.clone()
-		g.fn_decl_variadic[name] = is_variadic
+		g.fn_decl_param_types[name] = ptypes
+		if is_variadic {
+			g.fn_decl_variadic[name] = true
+		}
 	}
 	cname := g.cname(name)
 	if cname !in g.fn_decl_param_types {
-		g.fn_decl_param_types[cname] = ptypes.clone()
-		g.fn_decl_variadic[cname] = is_variadic
+		g.fn_decl_param_types[cname] = ptypes
+		if is_variadic {
+			g.fn_decl_variadic[cname] = true
+		}
 	}
 	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
 		dotted_name := '${g.tc.cur_module}.${name}'
 		if dotted_name !in g.fn_decl_param_types {
-			g.fn_decl_param_types[dotted_name] = ptypes.clone()
-			g.fn_decl_variadic[dotted_name] = is_variadic
+			g.fn_decl_param_types[dotted_name] = ptypes
+			if is_variadic {
+				g.fn_decl_variadic[dotted_name] = true
+			}
 		}
 		cdotted_name := g.cname(dotted_name)
 		if cdotted_name !in g.fn_decl_param_types {
-			g.fn_decl_param_types[cdotted_name] = ptypes.clone()
-			g.fn_decl_variadic[cdotted_name] = is_variadic
+			g.fn_decl_param_types[cdotted_name] = ptypes
+			if is_variadic {
+				g.fn_decl_variadic[cdotted_name] = true
+			}
 		}
 	}
 	if full_name !in g.fn_decl_param_types {
-		g.fn_decl_param_types[full_name] = ptypes.clone()
-		g.fn_decl_variadic[full_name] = is_variadic
+		g.fn_decl_param_types[full_name] = ptypes
+		if is_variadic {
+			g.fn_decl_variadic[full_name] = true
+		}
 	}
 	cfull_name := g.cname(full_name)
 	if cfull_name !in g.fn_decl_param_types {
-		g.fn_decl_param_types[cfull_name] = ptypes.clone()
-		g.fn_decl_variadic[cfull_name] = is_variadic
+		g.fn_decl_param_types[cfull_name] = ptypes
+		if is_variadic {
+			g.fn_decl_variadic[cfull_name] = true
+		}
 	}
 }
 
@@ -3600,28 +3958,28 @@ fn (mut g FlatGen) register_fn_decl_shared_params(name string, full_name string,
 	// stops fn_param_is_shared's short-name fallback from borrowing the shared
 	// flags of an unrelated same-named declaration in another module.
 	if name !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[name] = flags.clone()
+		g.fn_decl_shared_params[name] = flags
 	}
 	cname := g.cname(name)
 	if cname !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[cname] = flags.clone()
+		g.fn_decl_shared_params[cname] = flags
 	}
 	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
 		dotted_name := '${g.tc.cur_module}.${name}'
 		if dotted_name !in g.fn_decl_shared_params {
-			g.fn_decl_shared_params[dotted_name] = flags.clone()
+			g.fn_decl_shared_params[dotted_name] = flags
 		}
 		cdotted_name := g.cname(dotted_name)
 		if cdotted_name !in g.fn_decl_shared_params {
-			g.fn_decl_shared_params[cdotted_name] = flags.clone()
+			g.fn_decl_shared_params[cdotted_name] = flags
 		}
 	}
 	if full_name !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[full_name] = flags.clone()
+		g.fn_decl_shared_params[full_name] = flags
 	}
 	cfull_name := g.cname(full_name)
 	if cfull_name !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[cfull_name] = flags.clone()
+		g.fn_decl_shared_params[cfull_name] = flags
 	}
 }
 
@@ -3879,7 +4237,16 @@ fn (mut g FlatGen) interface_value_to_string(id flat.NodeId, expected types.Type
 	// Box mid-statement (no leading indent), matching the direct return path.
 	g.line_start = false
 	if !g.gen_interface_value_expr(id, expected) {
-		g.gen_expr(id)
+		mut actual := g.usable_expr_type(id)
+		node := g.a.nodes[int(id)]
+		if node.kind == .ident {
+			if param_type := g.current_param_type(node.value) {
+				actual = param_type
+			}
+		}
+		if !g.gen_embedded_interface_receiver(id, actual, expected, false) {
+			g.gen_expr(id)
+		}
 	}
 	result := g.sb.str()
 	g.sb = orig
@@ -4104,14 +4471,97 @@ fn (mut g FlatGen) gen_pointer_cast_from_map_value_address(id flat.NodeId, targe
 	if map_str_clean_type(target.base_type) !is types.Map {
 		return false
 	}
-	return g.gen_map_pointer_cast_from_value_address(id)
+	return g.gen_map_pointer_cast_from_value_address(id, target)
 }
 
-fn (mut g FlatGen) gen_map_pointer_cast_from_value_address(id flat.NodeId) bool {
+fn (mut g FlatGen) gen_sum_variant_pointer_cast(id flat.NodeId, target types.Pointer, ct string) bool {
+	source_type0 := g.sum_cast_actual_type(id)
+	source_ptr := match source_type0 {
+		types.Pointer { source_type0 }
+		else { return false }
+	}
+
+	source_base := match source_ptr.base_type {
+		types.Alias { source_ptr.base_type.base_type }
+		else { source_ptr.base_type }
+	}
+
+	source_sum := match source_base {
+		types.SumType { source_base }
+		else { return false }
+	}
+
+	target_base := match target.base_type {
+		types.Alias { target.base_type.base_type }
+		else { target.base_type }
+	}
+
+	sum_name := g.resolve_sum_name(source_sum.name)
+	variants := g.tc.sum_types[sum_name] or { return false }
+	variant := g.resolve_variant(sum_name, target_base.name())
+	if variant !in variants {
+		return false
+	}
+	variant_idx := variants.index(variant) + 1
+	sum_ct := g.tc.c_type(source_sum)
+	field := g.sum_field_name(variant)
+	tmp := g.tmp_count
+	g.tmp_count++
+	g.write('({ ${sum_ct}* _sum_ptr_${tmp} = (${sum_ct}*)(')
+	g.gen_expr(id)
+	g.write('); (${ct})((_sum_ptr_${tmp}->typ == ${variant_idx}) ? _sum_ptr_${tmp}->${field} : (${ct})_sum_ptr_${tmp}); })')
+	return true
+}
+
+fn (mut g FlatGen) gen_sum_pointer_cast_expr(id flat.NodeId, target types.Pointer, ct string) bool {
+	sum_type0 := match target.base_type {
+		types.Alias { target.base_type.base_type }
+		else { target.base_type }
+	}
+
+	sum_type_name := match sum_type0 {
+		types.SumType { sum_type0.name }
+		else { return false }
+	}
+
+	actual0 := g.sum_cast_actual_type(id)
+	mut actual_type := match actual0 {
+		types.Alias { actual0.base_type }
+		else { actual0 }
+	}
+
+	if actual_type is types.Pointer {
+		actual_type = actual_type.base_type
+	}
+	if actual_type is types.SumType {
+		return false
+	}
+	sum_name := g.resolve_sum_name(sum_type_name)
+	variants := g.tc.sum_types[sum_name] or { return false }
+	variant := g.resolve_variant(sum_name, actual_type.name())
+	if variant !in variants {
+		return false
+	}
+	g.write('(${ct})memdup(&')
+	g.gen_sum_cast_expr(types.SumType{
+		name: sum_type_name
+	}, id)
+	g.write(', sizeof(${g.tc.c_type(g.tc.parse_type(sum_type_name))}))')
+	return true
+}
+
+fn (mut g FlatGen) gen_map_pointer_cast_from_value_address(id flat.NodeId, target types.Pointer) bool {
 	actual0 := if int(id) >= 0 && int(id) < g.a.nodes.len && g.a.nodes[int(id)].typ.len > 0 {
 		g.tc.parse_type(g.a.nodes[int(id)].typ)
 	} else {
 		g.usable_expr_type(id)
+	}
+	if actual0 is types.Pointer && map_str_clean_type(actual0.base_type) is types.Map {
+		ct := g.tc.c_type(target)
+		g.write('(${ct})(')
+		g.gen_expr(id)
+		g.write(')')
+		return true
 	}
 	actual := map_str_clean_type(actual0)
 	if actual !is types.Map {
@@ -4130,11 +4580,16 @@ fn (mut g FlatGen) gen_map_pointer_cast_from_value_address(id flat.NodeId) bool 
 	return true
 }
 
-fn (mut g FlatGen) map_pointer_cast_from_value_address_string(id flat.NodeId, seen []string) ?string {
+fn (mut g FlatGen) map_pointer_cast_from_value_address_string(id flat.NodeId, seen []string, ct string) ?string {
 	actual0 := if int(id) >= 0 && int(id) < g.a.nodes.len && g.a.nodes[int(id)].typ.len > 0 {
 		g.tc.parse_type(g.a.nodes[int(id)].typ)
 	} else {
 		g.usable_expr_type(id)
+	}
+	if actual0 is types.Pointer && map_str_clean_type(actual0.base_type) is types.Map {
+		child0 := g.const_expr_to_string(id, seen)
+		child := if trimmed_space(child0).len == 0 { '0' } else { child0 }
+		return '(${ct})(${child})'
 	}
 	actual := map_str_clean_type(actual0)
 	if actual !is types.Map {
@@ -4145,10 +4600,10 @@ fn (mut g FlatGen) map_pointer_cast_from_value_address_string(id flat.NodeId, se
 	if g.expr_is_addressable(id) {
 		return '&(${child})'
 	}
-	ct := g.tc.c_type(actual)
+	map_ct := g.tc.c_type(actual)
 	tmp := '_t${g.tmp_count}'
 	g.tmp_count++
-	return '({${ct} ${tmp} = ${child}; &${tmp};})'
+	return '({${map_ct} ${tmp} = ${child}; &${tmp};})'
 }
 
 fn (mut g FlatGen) gen_current_mut_param_address(id flat.NodeId) bool {
@@ -4226,6 +4681,11 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = old_expected_enum
 		return
 	}
+	if g.gen_sum_pointer_default_expr(node, semantic_expected) {
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
 	if semantic_expected is types.MultiReturn && node.kind == .if_expr {
 		g.gen_if_expr_stmt(node)
 		g.expected_expr_type = old_expected
@@ -4245,6 +4705,15 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 			actual = param_type
 		}
 	}
+	if expected is types.String && actual is types.Pointer
+		&& g.pointer_stringifies_as_address(actual.base_type) {
+		g.write('ptr_str(')
+		g.gen_expr(id)
+		g.write(')')
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
 	if type_is_void_pointer(expected) && g.gen_voidptr_fn_value_arg(id, node) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
@@ -4257,6 +4726,11 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		return
 	}
 	if g.gen_current_mut_param_value_read(id, semantic_expected) {
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
+	if expected is types.Pointer && g.gen_pointer_alias_value_cast_expr(id, expected) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
@@ -4337,6 +4811,12 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		g.expected_enum = old_expected_enum
 		return
 	}
+	if semantic_expected is types.Pointer
+		&& g.gen_pointer_alias_value_cast_addr(id, semantic_expected) {
+		g.expected_expr_type = old_expected
+		g.expected_enum = old_expected_enum
+		return
+	}
 	if g.gen_interface_value_expr(id, semantic_expected) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
@@ -4380,6 +4860,123 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 	g.expected_enum = old_expected_enum
 }
 
+fn (mut g FlatGen) gen_sum_pointer_default_expr(node flat.Node, expected types.Type) bool {
+	ptr_type := if expected is types.Pointer { expected } else { return false }
+	if node.kind != .struct_init || node.children_count != 0 {
+		return false
+	}
+	base_type := default_init_unalias_type(ptr_type.base_type)
+	if base_type !is types.SumType {
+		return false
+	}
+	if node.value.len > 0 {
+		init_type := default_init_unalias_type(g.tc.parse_type(node.value))
+		if init_type is types.Pointer {
+			init_base := default_init_unalias_type(init_type.base_type)
+			if !g.type_names_match(init_base, base_type) {
+				return false
+			}
+		} else if !g.type_names_match(init_type, base_type) {
+			return false
+		}
+	}
+	g.gen_default_value_for_type(expected)
+	return true
+}
+
+fn (g &FlatGen) pointer_stringifies_as_address(base types.Type) bool {
+	if base is types.Alias {
+		return g.pointer_stringifies_as_address(base.base_type)
+	}
+	return base is types.String || base is types.Primitive || base is types.Char
+		|| base is types.Rune || base is types.ISize || base is types.USize
+}
+
+fn (mut g FlatGen) gen_pointer_alias_value_cast_addr(id flat.NodeId, expected types.Pointer) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.node(id)
+	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
+		return false
+	}
+	child_id := g.a.child(node, 0)
+	child := g.a.node(child_id)
+	if child.kind != .cast_expr || child.children_count == 0 {
+		return false
+	}
+	target_type := g.tc.parse_type(child.value)
+	if target_type !is types.Alias {
+		return false
+	}
+	target_alias := target_type as types.Alias
+	base_type := target_alias.base_type
+	if base_type is types.Pointer {
+		return false
+	}
+	target_ct := g.value_c_type(base_type)
+	expected_ct := g.value_c_type(expected.base_type)
+	if expected_ct != target_ct && !g.type_names_match(expected.base_type, target_type) {
+		return false
+	}
+	value_expr := g.expr_to_string(g.a.child(child, 0))
+	source_expr := '(${target_ct}[]){${value_expr}}[0]'
+	copy_expr := g.heap_local_memdup_expr(source_expr, base_type, target_ct, false)
+	if expected_ct == target_ct {
+		g.write(copy_expr)
+	} else {
+		g.write('(${expected_ct}*)(${copy_expr})')
+	}
+	return true
+}
+
+fn (mut g FlatGen) gen_pointer_alias_value_cast_expr(id flat.NodeId, expected types.Pointer) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.node(id)
+	if node.kind != .cast_expr || node.children_count == 0 {
+		return false
+	}
+	target_type := g.tc.parse_type(node.value)
+	if target_type !is types.Pointer {
+		return false
+	}
+	target_pointer := target_type as types.Pointer
+	target_base := target_pointer.base_type
+	if target_base !is types.Alias {
+		return false
+	}
+	target_alias := target_base as types.Alias
+	base_type := target_alias.base_type
+	if base_type is types.Pointer {
+		return false
+	}
+	child_id := g.a.child(node, 0)
+	child := g.a.node(child_id)
+	if child.kind == .nil_literal {
+		return false
+	}
+	actual := g.usable_expr_type(child_id)
+	if actual is types.Pointer {
+		return false
+	}
+	target_ct := g.value_c_type(base_type)
+	expected_ct := g.value_c_type(expected.base_type)
+	if expected_ct != target_ct && !g.type_names_match(expected.base_type, target_base) {
+		return false
+	}
+	value_expr := g.expr_to_string(child_id)
+	source_expr := '(${target_ct}[]){${value_expr}}[0]'
+	copy_expr := g.heap_local_memdup_expr(source_expr, base_type, target_ct, false)
+	if expected_ct == target_ct {
+		g.write(copy_expr)
+	} else {
+		g.write('(${expected_ct}*)(${copy_expr})')
+	}
+	return true
+}
+
 fn (g &FlatGen) cast_alias_matches_expected_storage(alias_name string, expected types.Type) bool {
 	if alias_name.len == 0 {
 		return false
@@ -4414,7 +5011,7 @@ fn (mut g FlatGen) gen_sum_pointer_value_expr(id flat.NodeId, expected types.Typ
 	if sum_type0 !is types.SumType {
 		return false
 	}
-	sum_type := sum_type0 as types.SumType
+	sum_type_name := sum_type0.name()
 	node := g.a.nodes[int(id)]
 	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
 		return false
@@ -4437,7 +5034,7 @@ fn (mut g FlatGen) gen_sum_pointer_value_expr(id flat.NodeId, expected types.Typ
 		}
 		return false
 	}
-	sum_name := g.resolve_sum_name(sum_type.name)
+	sum_name := g.resolve_sum_name(sum_type_name)
 	variant := g.resolve_variant(sum_name, actual_type.name())
 	variants := g.tc.sum_types[sum_name] or { return false }
 	if variant !in variants {
@@ -4445,7 +5042,9 @@ fn (mut g FlatGen) gen_sum_pointer_value_expr(id flat.NodeId, expected types.Typ
 	}
 	ct := g.tc.c_type(sum_type0)
 	g.write('(${ct}*)memdup(&')
-	g.gen_sum_cast_expr(sum_type, child_id)
+	g.gen_sum_cast_expr(types.SumType{
+		name: sum_type_name
+	}, child_id)
 	g.write(', sizeof(${ct}))')
 	return true
 }
@@ -4491,11 +5090,8 @@ fn generic_sum_base_name(name string) string {
 
 // gen_sum_value_expr emits sum value expr output for c.
 fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool {
-	sum_type0 := cgen_unalias_type(expected)
-	if sum_type0 !is types.SumType {
-		return false
-	}
-	sum_type := sum_type0 as types.SumType
+	sum_type := g.sum_type_for_expected_value(expected) or { return false }
+	sum_type0 := types.Type(sum_type)
 	raw_actual0 := g.sum_cast_actual_type(id)
 	raw_actual_type := cgen_unalias_type(raw_actual0)
 	if raw_actual_type is types.SumType {
@@ -4508,16 +5104,8 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 		}
 	}
 	sum_name := g.resolve_sum_name(sum_type.name)
-	variants := g.tc.sum_types[sum_name] or { return false }
 	mut actual_type := raw_actual0
-	mut variant := g.resolve_variant(sum_name, actual_type.name())
-	if variant !in variants {
-		actual_type = raw_actual_type
-		variant = g.resolve_variant(sum_name, actual_type.name())
-	}
-	if variant !in variants {
-		return false
-	}
+	variant := g.sum_variant_for_actual(sum_name, actual_type) or { return false }
 	ct := g.tc.c_type(sum_type0)
 	idx := g.sum_type_index(sum_name, variant)
 	field := g.sum_field_name(variant)
@@ -4543,7 +5131,7 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 	if g.variant_references_sum(variant, sum_name) {
 		inner_ct := g.value_c_type(variant_type)
 		g.write('(${ct}){.typ = ${idx}, .${field} = (${inner_ct}*)memdup(')
-		g.gen_sum_variant_memdup_source(id, actual_type)
+		g.gen_sum_variant_memdup_source(id, variant_type)
 		g.write(', sizeof(${inner_ct}))')
 		if clean_variant_type is types.Pointer && g.pointer_variant_expr_creates_owned_value(id) {
 			g.write(', ._pointer_variant_is_owned = true')
@@ -4557,7 +5145,70 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 	return true
 }
 
-fn (g &FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
+fn (g &FlatGen) sum_type_for_expected_value(expected types.Type) ?types.SumType {
+	clean := if expected is types.Alias { expected.base_type } else { expected }
+	if clean is types.SumType {
+		return clean
+	}
+	if clean is types.Struct {
+		resolved := g.resolve_sum_name(clean.name)
+		if resolved in g.tc.sum_types {
+			return types.SumType{
+				name: resolved
+			}
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) sum_variant_for_actual(sum_name0 string, actual types.Type) ?string {
+	sum_name := g.resolve_sum_name(sum_name0)
+	variants := g.tc.sum_types[sum_name] or { return none }
+	mut variant := g.resolve_variant(sum_name, actual.name())
+	if variant in variants {
+		return variant
+	}
+	actual_clean := if actual is types.Alias { actual.base_type } else { actual }
+	variant = g.resolve_variant(sum_name, actual_clean.name())
+	if variant in variants {
+		return variant
+	}
+	for candidate in variants {
+		candidate_type := g.tc.parse_type(candidate)
+		if g.sum_variant_accepts_actual(actual, candidate_type) {
+			return candidate
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) sum_variant_accepts_actual(actual types.Type, variant types.Type) bool {
+	if g.type_names_match(actual, variant) {
+		return true
+	}
+	actual_clean := if actual is types.Alias { actual.base_type } else { actual }
+	variant_clean := if variant is types.Alias { variant.base_type } else { variant }
+	if g.type_names_match(actual_clean, variant_clean) {
+		return true
+	}
+	if actual_clean is types.Pointer && variant_clean is types.Pointer {
+		if actual_clean.base_type is types.Void || variant_clean.base_type is types.Void {
+			return true
+		}
+		return g.type_names_match(actual_clean.base_type, variant_clean.base_type)
+	}
+	if actual_clean is types.FnType && variant_clean is types.FnType {
+		return g.tc.c_type(actual_clean) == g.tc.c_type(variant_clean)
+	}
+	if variant_clean is types.SumType {
+		if _ := g.sum_variant_for_actual(variant_clean.name, actual) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 	mut actual_type := g.tc.resolve_type(id)
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return actual_type
@@ -4575,6 +5226,11 @@ fn (g &FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 		}
 		if param_type := g.current_param_map_type(node.value) {
 			return param_type
+		}
+		if fn_name := g.direct_callback_ident_name(id) {
+			if fn_type := g.callback_fn_value_type(fn_name) {
+				return types.Type(fn_type)
+			}
 		}
 		// The local's declared type wins over checker expected-type
 		// propagation (`return bare` in a `!Sum` fn annotates `bare` as the
@@ -4615,7 +5271,9 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 	} else {
 		actual_clean.name()
 	}
-	variant_name := g.resolve_variant(target_type.name, variant_name0)
+	variant_name := g.sum_variant_for_actual(target_type.name, actual_type) or {
+		g.resolve_variant(target_type.name, variant_name0)
+	}
 	idx := g.sum_type_index(target_type.name, variant_name)
 	field := g.sum_field_name(variant_name)
 	ct := g.tc.c_type(target_type)
@@ -4837,10 +5495,42 @@ fn (g &FlatGen) sum_variant_shared_field_type(variant string, field string, seen
 	if variant_field_type := g.struct_field_type(variant, field) {
 		return variant_field_type
 	}
+	if variant_field_type := g.struct_promoted_field_type(variant, field) {
+		return variant_field_type
+	}
 	if nested_sum := g.sum_type_name_for_type(g.tc.parse_type(variant)) {
 		return g.sum_shared_field_type_inner(g.tc.parse_type(nested_sum), field, seen)
 	}
 	return none
+}
+
+fn (g &FlatGen) struct_promoted_field_type(type_name string, field string) ?types.Type {
+	path := g.embedded_field_path_for_promoted_field(type_name, field) or { return none }
+	if path.len == 0 {
+		return none
+	}
+	owner := g.embedded_field_type_name(path[path.len - 1])
+	if owner.len == 0 {
+		return none
+	}
+	return g.struct_field_type(owner, field)
+}
+
+fn (g &FlatGen) struct_promoted_field_suffix(type_name string, field string, initial_ptr bool) ?string {
+	path := g.embedded_field_path_for_promoted_field(type_name, field) or { return none }
+	if path.len == 0 {
+		return none
+	}
+	mut suffix := ''
+	mut is_ptr := initial_ptr
+	for embedded in path {
+		suffix += if is_ptr { '->' } else { '.' }
+		suffix += g.cname(embedded.name)
+		is_ptr = embedded.typ is types.Pointer
+	}
+	suffix += if is_ptr { '->' } else { '.' }
+	suffix += g.cname(field)
+	return suffix
 }
 
 fn (mut g FlatGen) gen_sum_shared_field_selector(base_id flat.NodeId, base_type0 types.Type, field string) bool {
@@ -4877,6 +5567,60 @@ fn (mut g FlatGen) gen_sum_type_tag_selector(base_id flat.NodeId, base_type0 typ
 	return true
 }
 
+fn cgen_type_pointer_depth(t types.Type) int {
+	mut cur := t
+	mut depth := 0
+	for _ in 0 .. 32 {
+		if cur is types.Alias {
+			cur = cur.base_type
+			continue
+		}
+		if cur is types.Pointer {
+			depth++
+			cur = cur.base_type
+			continue
+		}
+		break
+	}
+	return depth
+}
+
+fn cgen_unalias_unwrap_all_pointers(t types.Type) types.Type {
+	mut cur := t
+	for _ in 0 .. 32 {
+		if cur is types.Alias {
+			cur = cur.base_type
+			continue
+		}
+		if cur is types.Pointer {
+			cur = cur.base_type
+			continue
+		}
+		break
+	}
+	return cur
+}
+
+fn cgen_c_type_pointer_depth(ct string) int {
+	mut depth := 0
+	for ch in ct {
+		if ch == `*` {
+			depth++
+		}
+	}
+	return depth
+}
+
+fn (mut g FlatGen) gen_is_expr_subject(expr_id flat.NodeId, extra_deref int) {
+	for _ in 0 .. extra_deref {
+		g.write('(*')
+	}
+	g.gen_expr(expr_id)
+	for _ in 0 .. extra_deref {
+		g.write(')')
+	}
+}
+
 fn (mut g FlatGen) gen_sum_shared_field_switch(sum_var string, sum_name string, field string, seen []string) {
 	if sum_name in seen {
 		return
@@ -4890,6 +5634,8 @@ fn (mut g FlatGen) gen_sum_shared_field_switch(sum_var string, sum_name string, 
 		sum_field := g.sum_field_name(variant)
 		if _ := g.struct_field_type(variant, field) {
 			g.writeln('case ${idx}: if (${sum_var}.${sum_field} != NULL) __field = ${sum_var}.${sum_field}->${c_field_name(field)}; break;')
+		} else if suffix := g.struct_promoted_field_suffix(variant, field, true) {
+			g.writeln('case ${idx}: if (${sum_var}.${sum_field} != NULL) __field = ${sum_var}.${sum_field}${suffix}; break;')
 		} else if nested_sum := g.sum_type_name_for_type(g.tc.parse_type(variant)) {
 			nested_ct := g.tc.c_type(g.tc.parse_type(nested_sum))
 			nested_var := '__nested_sum_${next_seen.len}'
@@ -5169,6 +5915,12 @@ fn (g &FlatGen) const_ref_name(name string) string {
 	if name.contains('.') {
 		if name in g.const_vals {
 			return g.const_primary_name(name)
+		}
+	}
+	if name.contains('__') {
+		dotted := name.replace('__', '.')
+		if dotted in g.const_vals {
+			return g.const_primary_name(dotted)
 		}
 	}
 	sep := if name.contains('.') {
@@ -5619,9 +6371,42 @@ fn (mut g FlatGen) mark_const_ref_descendants(mut ids map[int]bool, id flat.Node
 
 fn (mut g FlatGen) const_storage_type_from_node(node flat.Node) ?types.Type {
 	const_name := g.const_ref_name_from_node(node)
-	if const_name.len == 0 {
-		return none
+	if const_name.len > 0 {
+		return g.const_storage_type_from_name(const_name)
 	}
+	if node.kind == .ident && node.value.len > 0 {
+		return g.const_storage_type_from_ident(node.value)
+	}
+	return none
+}
+
+fn (mut g FlatGen) const_storage_type_from_ident(name string) ?types.Type {
+	mut candidates := []string{cap: 4}
+	candidates << name
+	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
+		candidates << '${g.tc.cur_module}.${name}'
+	}
+	if name.contains('__') {
+		candidates << name.replace('__', '.')
+	}
+	for candidate in candidates {
+		if typ := g.const_storage_type_from_name(candidate) {
+			return typ
+		}
+	}
+	if name.contains('__') {
+		for const_name, _ in g.const_vals {
+			if g.const_ident_c_name(const_name) == name {
+				if typ := g.const_storage_type_from_name(const_name) {
+					return typ
+				}
+			}
+		}
+	}
+	return none
+}
+
+fn (mut g FlatGen) const_storage_type_from_name(const_name string) ?types.Type {
 	val_id := g.const_vals[const_name] or { return none }
 	fallback := g.const_value_type(const_name, val_id)
 	if fallback is types.ArrayFixed {
@@ -5799,7 +6584,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			}
 			if ct == 'map*' {
 				child_id := g.a.child(&node, 0)
-				if map_addr := g.map_pointer_cast_from_value_address_string(child_id, seen) {
+				if map_addr := g.map_pointer_cast_from_value_address_string(child_id, seen, ct) {
 					return map_addr
 				}
 				child_node := g.a.nodes[int(child_id)]
@@ -5998,6 +6783,9 @@ fn (mut g FlatGen) fixed_array_len_raw(raw_len string, fallback int) string {
 	if clean_len.len > 0 && clean_len[0] >= `0` && clean_len[0] <= `9` {
 		return clean_len
 	}
+	if expr := g.fixed_array_len_c_expr(raw_len) {
+		return expr
+	}
 	const_name := g.const_ref_name(raw_len)
 	if const_name.len > 0 {
 		expr := g.const_expr_to_string(g.const_vals[const_name], []string{})
@@ -6007,6 +6795,97 @@ fn (mut g FlatGen) fixed_array_len_raw(raw_len string, fallback int) string {
 		return g.const_ident_c_name(const_name)
 	}
 	return g.cname(raw_len)
+}
+
+fn (mut g FlatGen) fixed_array_len_c_expr(raw_len string) ?string {
+	clean := raw_len.trim_space()
+	if clean.len == 0 || (!clean.contains('sizeof') && !fixed_array_len_has_operator(clean)) {
+		return none
+	}
+	mut out := strings.new_builder(clean.len)
+	mut changed := false
+	mut i := 0
+	for i < clean.len {
+		ch := clean[i]
+		if fixed_array_len_ident_start(ch) {
+			start := i
+			i++
+			for i < clean.len && fixed_array_len_ident_char(clean[i]) {
+				i++
+			}
+			ident := clean[start..i]
+			mut next := i
+			for next < clean.len && clean[next] == ` ` {
+				next++
+			}
+			if ident == 'sizeof' && next < clean.len && clean[next] == `(` {
+				close := fixed_array_len_matching_paren(clean, next)
+				if close > next {
+					target := clean[next + 1..close].trim_space()
+					out.write_string('sizeof(${g.sizeof_target(target)})')
+					i = close + 1
+					changed = true
+					continue
+				}
+			}
+			const_name := g.const_ref_name(ident)
+			if const_name.len > 0 {
+				expr := g.const_expr_to_string(g.const_vals[const_name], []string{})
+				if trimmed_space(expr).len > 0 {
+					out.write_string(expr)
+				} else {
+					out.write_string(g.const_ident_c_name(const_name))
+				}
+				changed = true
+				continue
+			}
+			out.write_string(ident)
+			continue
+		}
+		out.write_u8(ch)
+		i++
+	}
+	result := out.str()
+	unsafe { out.free() }
+	if !changed {
+		return none
+	}
+	return result
+}
+
+fn fixed_array_len_has_operator(text string) bool {
+	for i, ch in text {
+		if ch in [`+`, `*`, `/`, `%`, `|`, `^`, `<`, `>`] || ((ch == `-` || ch == `&`) && i > 0) {
+			return true
+		}
+	}
+	return false
+}
+
+fn fixed_array_len_matching_paren(text string, open int) int {
+	if open < 0 || open >= text.len || text[open] != `(` {
+		return -1
+	}
+	mut depth := 0
+	for i in open .. text.len {
+		if text[i] == `(` {
+			depth++
+		} else if text[i] == `)` {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+fn fixed_array_len_ident_start(ch u8) bool {
+	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || ch == `_`
+}
+
+fn fixed_array_len_ident_char(ch u8) bool {
+	return fixed_array_len_ident_start(ch) || (ch >= `0` && ch <= `9`) || ch == `.`
 }
 
 fn (mut g FlatGen) fixed_array_decl_parts(arr types.ArrayFixed) (string, string) {
@@ -6032,12 +6911,18 @@ fn (mut g FlatGen) fixed_array_elem_c_type(elem types.Type) string {
 fn (mut g FlatGen) fixed_array_c_type(arr types.ArrayFixed) string {
 	len_text := if arr.len_expr.len > 0 { arr.len_expr } else { arr.len.str() }
 	len_name := naming.type_name_part(len_text)
-	elem_name := if arr.elem_type is types.FnType {
-		g.tc.c_type(arr.elem_type)
-	} else {
-		g.fixed_array_elem_c_type(arr.elem_type)
-	}
+	elem_name := g.fixed_array_elem_name_part(arr.elem_type)
 	return 'Array_fixed_${naming.type_name_part(elem_name)}_${len_name}'
+}
+
+fn (mut g FlatGen) fixed_array_elem_name_part(elem types.Type) string {
+	if elem is types.Pointer && elem.base_type is types.Void {
+		return 'voidptr'
+	}
+	if elem is types.FnType {
+		return g.tc.c_type(elem)
+	}
+	return g.fixed_array_elem_c_type(elem)
 }
 
 // infix_can_skip_child_parens reports whether a child infix operand needs no
@@ -6202,11 +7087,24 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(c_fn_name)
 				return
 			}
+			if node.value.contains('sizeof') || fixed_array_len_has_operator(node.value) {
+				if expr := g.fixed_array_len_c_expr(node.value) {
+					g.write(expr)
+					return
+				}
+			}
 			looked_up := g.tc.cur_scope.lookup(node.value) or { types.Type(types.void_) }
 			is_local := looked_up !is types.Void
 			const_name := if !is_local { g.const_ref_name(node.value) } else { '' }
 			if const_name.len > 0 {
 				g.write(g.const_ident_c_name(const_name))
+			} else if g.local_storage_is_shared(node.value) {
+				g.write(g.local_cname(node.value))
+				g.write('->val')
+			} else if g.local_shadows_global(node.value) {
+				g.write(g.local_cname(node.value))
+			} else if is_local && local_name_shadows_c_runtime(node.value) {
+				g.write(g.local_cname(node.value))
 			} else if node.value in g.global_modules {
 				mod := g.global_modules[node.value]
 				if mod.len > 0 && mod != 'main' && mod != 'builtin' {
@@ -6216,9 +7114,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 			} else if fn_c_name := g.ident_fn_value_c_name(id, node) {
 				g.write(fn_c_name)
-			} else if g.local_storage_is_shared(node.value) {
-				g.write(g.cname(node.value))
-				g.write('->val')
 			} else {
 				g.write(g.cname(node.value))
 			}
@@ -6503,6 +7398,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write('(${ct}*)memdup(&')
 					g.gen_sum_cast_expr(target_type, g.a.child(&child, 0))
 					g.write(', sizeof(${ct}))')
+					return
+				}
+				if target_type is types.Alias && target_type.base_type !is types.Pointer {
+					base_ct := g.value_c_type(target_type.base_type)
+					value_expr := g.expr_to_string(g.a.child(&child, 0))
+					source_expr := '(${base_ct}[]){${value_expr}}[0]'
+					g.write(g.heap_local_memdup_expr(source_expr, target_type.base_type, base_ct,
+						false))
 					return
 				}
 				g.write('(${ct}*)(')
@@ -6843,6 +7746,8 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				} else {
 					g.write(g.cname('${qname}.${node.value}'))
 				}
+			} else if g.gen_struct_default_global_selector(base, node.value, node.op) {
+				// handled
 			} else if embedded := g.direct_embedded_field_for_selector(base_type0, node.value) {
 				needs_paren := base.kind !in [.ident, .selector]
 				if needs_paren {
@@ -6918,9 +7823,14 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 		}
 		.index {
+			if g.gen_explicit_generic_callee_index(node) {
+				return
+			}
 			base_id := g.a.child(&node, 0)
 			mut base_type := g.usable_expr_type(base_id)
-			if node.value == 'range' {
+			if info := g.tc.index_overload_call_info(base_type, false) {
+				g.gen_index_overload_call(node, base_id, base_type, info)
+			} else if node.value == 'range' {
 				g.gen_slice_expr(node, base_id, base_type)
 			} else if base_type is types.Map {
 				c_key := g.map_key_temp_c_type(base_type.key_type)
@@ -7090,6 +8000,12 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			} else if semantic_target is types.OptionType || semantic_target is types.ResultType {
 				g.gen_optional_arg(g.a.child(&node, 0), semantic_target)
 			} else if target_type is types.Pointer
+				&& g.gen_sum_pointer_cast_expr(g.a.child(&node, 0), target_type, ct) {
+				return
+			} else if target_type is types.Pointer
+				&& g.gen_sum_variant_pointer_cast(g.a.child(&node, 0), target_type, ct) {
+				return
+			} else if target_type is types.Pointer
 				&& g.gen_pointer_cast_fixed_array_literal(g.a.child(&node, 0), target_type, ct) {
 				return
 			} else if target_type is types.Pointer
@@ -7101,14 +8017,16 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				if child_node.kind == .call && child_node.children_count > 0 {
 					callee := g.a.child_node(&child_node, 0)
 					if callee.kind == .ident
-						&& callee.value in ['array_get', 'array__get', 'map__get', 'map__get_check'] {
+						&& callee.value in ['array_get', 'array__get', 'map__get', 'map__get_check', 'memdup', 'v3_aligned_memdup'] {
 						g.write('(${ct})')
 						g.gen_expr(child_id)
 						return
 					}
 				}
-				if g.gen_map_pointer_cast_from_value_address(child_id) {
-					return
+				if target_type is types.Pointer {
+					if g.gen_map_pointer_cast_from_value_address(child_id, target_type) {
+						return
+					}
 				}
 				if child_node.kind == .prefix && child_node.op == .amp {
 					g.write('(${ct})(')
@@ -7200,16 +8118,27 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.is_expr {
 			expr_id := g.a.child(&node, 0)
 			expr_type := g.tc.resolve_type(expr_id)
-			clean0 := types.unwrap_pointer(expr_type)
-			clean := if clean0 is types.Alias { clean0.base_type } else { clean0 }
+			clean := cgen_unalias_unwrap_all_pointers(expr_type)
+			expr_node := g.a.nodes[int(expr_id)]
+			type_depth := cgen_type_pointer_depth(expr_type)
+			subject_is_pointer := type_depth > 0
+			mut extra_deref := if type_depth > 1 { type_depth - 1 } else { 0 }
+			if expr_node.kind == .ident {
+				if local_ct := g.local_storage_c_type(expr_node.value) {
+					local_depth := cgen_c_type_pointer_depth(local_ct)
+					if local_depth > type_depth {
+						extra_deref += local_depth - type_depth
+					}
+				}
+			}
 			if clean is types.SumType {
 				idx := g.sum_type_index(clean.name, node.value)
 				g.write('(')
-				if expr_type.is_pointer() {
-					g.gen_expr(expr_id)
+				if subject_is_pointer {
+					g.gen_is_expr_subject(expr_id, extra_deref)
 					g.write('->typ == ${idx}')
 				} else {
-					g.gen_expr(expr_id)
+					g.gen_is_expr_subject(expr_id, extra_deref)
 					g.write('.typ == ${idx}')
 				}
 				g.write(')')
@@ -7224,11 +8153,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 				g.write('(')
-				if expr_type.is_pointer() {
-					g.gen_expr(expr_id)
+				if subject_is_pointer {
+					g.gen_is_expr_subject(expr_id, extra_deref)
 					g.write('->_typ == ${idx}')
 				} else {
-					g.gen_expr(expr_id)
+					g.gen_is_expr_subject(expr_id, extra_deref)
 					g.write('._typ == ${idx}')
 				}
 				g.write(')')
@@ -7239,11 +8168,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 				g.write('(')
-				if expr_type.is_pointer() {
-					g.gen_expr(expr_id)
+				if subject_is_pointer {
+					g.gen_is_expr_subject(expr_id, extra_deref)
 					g.write('->_typ == ${idx}')
 				} else {
-					g.gen_expr(expr_id)
+					g.gen_is_expr_subject(expr_id, extra_deref)
 					g.write('._typ == ${idx}')
 				}
 				g.write(')')
@@ -7307,18 +8236,24 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				target := g.tc.parse_type(node.value)
 				if target is types.Pointer {
 					g.write('(${g.tc.c_type(target)})')
-					g.gen_expr(expr_id)
 					if expr_type.is_pointer() {
+						g.write('(')
+						g.gen_expr(expr_id)
+						g.write(')')
 						g.write('->_object')
 					} else {
+						g.gen_expr(expr_id)
 						g.write('._object')
 					}
 				} else {
 					g.write('(*(${g.tc.c_type(target)}*)')
-					g.gen_expr(expr_id)
 					if expr_type.is_pointer() {
+						g.write('(')
+						g.gen_expr(expr_id)
+						g.write(')')
 						g.write('->_object)')
 					} else {
+						g.gen_expr(expr_id)
 						g.write('._object)')
 					}
 				}
@@ -7344,6 +8279,29 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		}
 		else {}
 	}
+}
+
+fn (mut g FlatGen) gen_struct_default_global_selector(base flat.Node, field string, op flat.Op) bool {
+	if g.struct_default_module.len == 0 || base.kind != .ident || base.value.len == 0 {
+		return false
+	}
+	qname := qualify_name_in_module(g.struct_default_module, base.value)
+	if qname !in g.global_types && base.value !in g.global_types {
+		return false
+	}
+	global_name := if g.struct_default_module in ['', 'main', 'builtin'] {
+		base.value
+	} else {
+		qname
+	}
+	g.write(g.cname(global_name))
+	if op == .arrow {
+		g.write('->')
+	} else {
+		g.write('.')
+	}
+	g.write(g.cname(field))
+	return true
 }
 
 fn (mut g FlatGen) gen_pointer_cast_fixed_array_literal(arg_id flat.NodeId, target_type types.Pointer, ct string) bool {
@@ -9097,14 +10055,20 @@ fn (mut g FlatGen) headerless_darwin_constants() {
 	g.writeln('#define _SC_PAGESIZE 29')
 	g.writeln('#define _SC_NPROCESSORS_ONLN 58')
 	g.writeln('#define _SC_PHYS_PAGES 200')
+	g.writeln('#ifndef KERN_SUCCESS')
 	g.writeln('#define KERN_SUCCESS 0')
+	g.writeln('#endif')
+	g.writeln('#ifndef MACH_TASK_BASIC_INFO_COUNT')
 	g.writeln('#define MACH_TASK_BASIC_INFO_COUNT 12')
+	g.writeln('#endif')
+	g.writeln('#ifndef TASK_BASIC_INFO')
 	g.writeln('#if defined(__arm__) || defined(__arm64__)')
 	g.writeln('#define TASK_BASIC_INFO 18')
 	g.writeln('#elif defined(__LP64__)')
 	g.writeln('#define TASK_BASIC_INFO 5')
 	g.writeln('#else')
 	g.writeln('#define TASK_BASIC_INFO 4')
+	g.writeln('#endif')
 	g.writeln('#endif')
 	g.headerless_mmap_constants('0x1000')
 	g.headerless_darwin_kqueue_constants()
@@ -10284,6 +11248,26 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('u8* malloc_noscan(ptrdiff_t n);')
 	g.writeln('void* memdup(void* src, ptrdiff_t sz);')
 	g.writeln('static inline Array* v3_heap_array(Array value) { return (Array*)memdup(&value, sizeof(Array)); }')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('void* _aligned_malloc(size_t size, size_t alignment);')
+	g.writeln('void _aligned_free(void* memblock);')
+	g.writeln('#else')
+	g.writeln('int posix_memalign(void** memptr, size_t alignment, size_t size);')
+	g.writeln('#endif')
+	g.writeln('static inline void* v3_aligned_memdup(void* src, ptrdiff_t sz, size_t alignment) { void* p = NULL; if (alignment < sizeof(void*)) alignment = sizeof(void*);')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('p = _aligned_malloc((size_t)sz, alignment);')
+	g.writeln('#else')
+	g.writeln('if (posix_memalign(&p, alignment, (size_t)sz) != 0) p = NULL;')
+	g.writeln('#endif')
+	g.writeln('if (p != NULL) memcpy(p, src, (size_t)sz); return p; }')
+	g.writeln('static inline void v3_aligned_free(void* p) {')
+	g.writeln('#ifdef _WIN32')
+	g.writeln('_aligned_free(p);')
+	g.writeln('#else')
+	g.writeln('free(p);')
+	g.writeln('#endif')
+	g.writeln('}')
 	g.writeln('static inline string v3_c_lit(const char* s, int len) { return (string){.str = (u8*)s, .len = len, .is_lit = 1}; }')
 	g.writeln("static inline string v3_string_pad(string s, int width, int left) { if (width < 0) { left = 1; width = -width; } if (s.len >= width) return s; int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); if (left) { memcpy(out, s.str, (size_t)s.len); memset(out + s.len, ' ', (size_t)pad); } else { memset(out, ' ', (size_t)pad); memcpy(out + pad, s.str, (size_t)s.len); } out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
 	g.writeln("static inline string v3_string_upper_ascii(string s) { u8* out = malloc_noscan((ptrdiff_t)s.len + 1); for (int i = 0; i < s.len; ++i) { u8 c = s.str[i]; out[i] = c >= 'a' && c <= 'f' ? (u8)(c - ('a' - 'A')) : c; } out[s.len] = 0; return (string){.str = out, .len = s.len, .is_lit = 0}; }")
@@ -10847,15 +11831,18 @@ fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text string, source_mod
 	if type_text.len == 0 || !fixed_array_type_text_may_need_typedef(type_text) {
 		return
 	}
-	clean := trimmed_space(type_text)
+	mut clean := trimmed_space(type_text)
 	if clean.len == 0 {
 		return
+	}
+	if clean.starts_with('&void[') && clean.ends_with(']') {
+		clean = 'voidptr' + clean['&void'.len..]
 	}
 	if g.collect_postfix_fn_fixed_array_typedef_text(clean, source_module, mut needed) {
 		return
 	}
 	typ := g.tc.parse_type(clean)
-	if fixed_array_typedef_has_non_decimal_len(typ) {
+	if g.fixed_array_typedef_has_unresolved_len(typ) {
 		return
 	}
 	g.collect_fixed_array_typedef(typ, source_module, mut needed)
@@ -10899,50 +11886,52 @@ fn fixed_array_typedef_decimal_len_text(text string) bool {
 
 fn fixed_array_type_text_may_need_typedef(type_text string) bool {
 	for i in 0 .. type_text.len - 1 {
-		if type_text[i] == `[` && type_text[i + 1] >= `0` && type_text[i + 1] <= `9` {
+		if type_text[i] == `[` {
 			return true
 		}
 	}
 	return false
 }
 
-fn fixed_array_typedef_has_non_decimal_len(typ types.Type) bool {
+fn (mut g FlatGen) fixed_array_typedef_has_unresolved_len(typ types.Type) bool {
 	if typ is types.ArrayFixed {
 		if typ.len_expr.len > 0 {
-			return true
-		}
-		return fixed_array_typedef_has_non_decimal_len(typ.elem_type)
-	}
-	if typ is types.Pointer {
-		return fixed_array_typedef_has_non_decimal_len(typ.base_type)
-	}
-	if typ is types.Alias {
-		return fixed_array_typedef_has_non_decimal_len(typ.base_type)
-	}
-	if typ is types.OptionType {
-		return fixed_array_typedef_has_non_decimal_len(typ.base_type)
-	}
-	if typ is types.ResultType {
-		return fixed_array_typedef_has_non_decimal_len(typ.base_type)
-	}
-	if typ is types.Array {
-		return fixed_array_typedef_has_non_decimal_len(typ.elem_type)
-	}
-	if typ is types.Map {
-		return fixed_array_typedef_has_non_decimal_len(typ.key_type)
-			|| fixed_array_typedef_has_non_decimal_len(typ.value_type)
-	}
-	if typ is types.FnType {
-		for param in typ.params {
-			if fixed_array_typedef_has_non_decimal_len(param) {
+			if g.tc.fixed_array_len_value(typ) == none {
 				return true
 			}
 		}
-		return fixed_array_typedef_has_non_decimal_len(typ.return_type)
+		return g.fixed_array_typedef_has_unresolved_len(typ.elem_type)
+	}
+	if typ is types.Pointer {
+		return g.fixed_array_typedef_has_unresolved_len(typ.base_type)
+	}
+	if typ is types.Alias {
+		return g.fixed_array_typedef_has_unresolved_len(typ.base_type)
+	}
+	if typ is types.OptionType {
+		return g.fixed_array_typedef_has_unresolved_len(typ.base_type)
+	}
+	if typ is types.ResultType {
+		return g.fixed_array_typedef_has_unresolved_len(typ.base_type)
+	}
+	if typ is types.Array {
+		return g.fixed_array_typedef_has_unresolved_len(typ.elem_type)
+	}
+	if typ is types.Map {
+		return g.fixed_array_typedef_has_unresolved_len(typ.key_type)
+			|| g.fixed_array_typedef_has_unresolved_len(typ.value_type)
+	}
+	if typ is types.FnType {
+		for param in typ.params {
+			if g.fixed_array_typedef_has_unresolved_len(param) {
+				return true
+			}
+		}
+		return g.fixed_array_typedef_has_unresolved_len(typ.return_type)
 	}
 	if typ is types.MultiReturn {
 		for item in typ.types {
-			if fixed_array_typedef_has_non_decimal_len(item) {
+			if g.fixed_array_typedef_has_unresolved_len(item) {
 				return true
 			}
 		}
@@ -11890,7 +12879,8 @@ fn (mut g FlatGen) fixed_array_compound_literal_expr(val_id flat.NodeId, fixed t
 	if trimmed_space(init).len == 0 {
 		return ''
 	}
-	return '(${g.fixed_array_c_type(fixed)})${init}'
+	c_elem, dims := g.fixed_array_decl_parts(fixed)
+	return '(${c_elem}${dims})${init}'
 }
 
 fn (mut g FlatGen) fixed_array_initializer_string(val_id flat.NodeId, fixed types.ArrayFixed) string {

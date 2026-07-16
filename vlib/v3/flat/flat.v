@@ -219,6 +219,50 @@ pub mut:
 	specialized_fn_nodes map[int]bool
 }
 
+// These layouts expose only the backing pointers needed to determine whether
+// text_ids rehashed inside a disposable prealloc scope. Keep them synchronized
+// with builtin.map and builtin.DenseArray.
+struct TextMapDenseArrayLayout {
+	key_bytes   int
+	value_bytes int
+mut:
+	cap         int
+	len         int
+	deletes     u32
+	all_deleted &u8 = unsafe { nil }
+	keys        &u8 = unsafe { nil }
+	values      &u8 = unsafe { nil }
+}
+
+struct TextMapLayout {
+	key_bytes   int
+	value_bytes int
+mut:
+	even_index      u32
+	cached_hashbits u8
+	shift           u8
+	key_values      TextMapDenseArrayLayout
+	metas           &u32 = unsafe { nil }
+	extra_metas     u32
+	has_string_keys bool
+	hash_fn         voidptr
+	key_eq_fn       voidptr
+	clone_fn        voidptr
+	free_fn         voidptr
+pub mut:
+	len int
+}
+
+fn text_id_map_storage_owned_by_scope(ids map[string]TextId, scope voidptr) bool {
+	$if prealloc {
+		layout := unsafe { &TextMapLayout(&ids) }
+		return unsafe { prealloc_scope_owns(scope, layout.key_values.keys) }
+			|| unsafe { prealloc_scope_owns(scope, layout.key_values.values) }
+			|| unsafe { prealloc_scope_owns(scope, layout.metas) }
+	}
+	return false
+}
+
 // close_workers stops the compilation-owned persistent worker pool.
 pub fn (mut a FlatAst) close_workers() {
 	if !isnil(a.worker_pool) {
@@ -289,6 +333,63 @@ pub fn (mut a FlatAst) intern_text(value string) (TextId, string) {
 	a.text_values << canonical
 	a.text_ids[canonical] = id
 	return id, a.text_values.last()
+}
+
+// reserve_transform_texts keeps canonical text-table backing in the
+// compilation arena before a disposable transform scope starts.
+pub fn (mut a FlatAst) reserve_transform_texts(headroom int) {
+	if headroom <= 0 {
+		return
+	}
+	unsafe { a.text_values.grow_cap(headroom) }
+	a.text_ids.reserve(u32(a.text_ids.len + headroom))
+}
+
+// promote_transform_texts_from moves canonical strings inserted by a scoped
+// transform into the current arena and rebuilds table backing only if it grew
+// into the disposable scope.
+pub fn (mut a FlatAst) promote_transform_texts_from(start int, scope voidptr) {
+	values_backing_scoped := scoped_text_storage_owned(scope, a.text_values.data)
+	ids_backing_scoped := text_id_map_storage_owned_by_scope(a.text_ids, scope)
+	first := if start < 0 { 0 } else { start }
+	for idx in first .. a.text_values.len {
+		value := a.text_values[idx]
+		$if prealloc {
+			if value.len == 0 || !unsafe { prealloc_scope_owns(scope, value.str) } {
+				continue
+			}
+			a.text_ids.delete(value)
+			canonical := value.clone()
+			a.text_values[idx] = canonical
+			a.text_ids[canonical] = TextId(idx + 1)
+		}
+	}
+	if values_backing_scoped || ids_backing_scoped {
+		mut values, mut ids := a.clone_text_table_owned()
+		a.text_values = values
+		a.text_ids = ids.move()
+	}
+}
+
+fn scoped_text_storage_owned(scope voidptr, ptr voidptr) bool {
+	$if prealloc {
+		return unsafe { prealloc_scope_owns(scope, ptr) }
+	}
+	return false
+}
+
+// clone_text_table_owned copies the canonical text table and rebuilds its
+// lookup map with storage owned by the current allocation arena.
+pub fn (a &FlatAst) clone_text_table_owned() ([]string, map[string]TextId) {
+	mut values := []string{cap: a.text_values.len}
+	mut ids := map[string]TextId{}
+	ids.reserve(u32(a.text_values.len))
+	for value in a.text_values {
+		canonical := value.clone()
+		values << canonical
+		ids[canonical] = TextId(values.len)
+	}
+	return values, ids
 }
 
 // text resolves a stable AST text identity.

@@ -510,7 +510,9 @@ fn (mut t Transformer) lower_array_literal_to_runtime(id flat.NodeId, node flat.
 	if t.in_const_init {
 		return id
 	}
-	array_type := if checker_alias_type := t.array_literal_checker_alias_type(id) {
+	array_type := if elem_type := t.array_literal_pointer_value_elem_type(node) {
+		'[]${elem_type}'
+	} else if checker_alias_type := t.array_literal_checker_alias_type(id) {
 		checker_alias_type
 	} else if alias_type := t.array_literal_alias_type(node) {
 		alias_type
@@ -807,6 +809,43 @@ fn (mut t Transformer) transform_empty_array_init_for_type(node flat.Node, targe
 	return t.make_array_new_call(elem_type, t.make_int_literal(0), t.make_int_literal(0))
 }
 
+fn (mut t Transformer) transform_array_value_for_dynamic_target(value_id flat.NodeId, target_type string) ?flat.NodeId {
+	if int(value_id) < 0 || target_type.len == 0 || isnil(t.tc) {
+		return none
+	}
+	expected_name := t.normalize_type_alias(target_type).trim_space()
+	if !expected_name.starts_with('[]') {
+		return none
+	}
+	actual_name := t.normalize_type_alias(t.node_type(value_id)).trim_space()
+	if actual_name.len == 0 {
+		return none
+	}
+	expected_type := t.tc.parse_type(expected_name)
+	actual_type := t.tc.parse_type(actual_name)
+	expected_base := forwarded_return_unalias_type(expected_type)
+	actual_base := forwarded_return_unalias_type(actual_type)
+	if expected_base is types.Array {
+		if actual_base is types.Array {
+			if !t.forwarded_slot_conversion_supported(actual_base.elem_type,
+				expected_base.elem_type) {
+				return none
+			}
+			return t.convert_forwarded_array_to_dynamic(value_id, actual_type,
+				actual_base.elem_type, expected_type, expected_base.elem_type, false)
+		}
+		if actual_base is types.ArrayFixed {
+			if !t.forwarded_slot_conversion_supported(actual_base.elem_type,
+				expected_base.elem_type) {
+				return none
+			}
+			return t.convert_forwarded_array_to_dynamic(value_id, actual_type,
+				actual_base.elem_type, expected_type, expected_base.elem_type, true)
+		}
+	}
+	return none
+}
+
 // try_lower_array_append_stmt supports try lower array append stmt handling for Transformer.
 fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeId {
 	if int(id) < 0 {
@@ -850,14 +889,35 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	mut result := []flat.NodeId{}
 	lhs := t.transform_lvalue(lhs_id)
 	t.drain_pending(mut result)
-	mut rhs := if !push_many {
-		if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-			t.wrap_sum_value(rhs_id, elem_type)
-		} else {
-			t.transform_expr_for_type(rhs_id, elem_type)
+	mut rhs := flat.empty_node
+	if !push_many {
+		mut did_convert := false
+		if !t.array_append_elem_is_interface(elem_type) {
+			if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+				rhs = converted
+				rhs_type = array_type
+				push_many = true
+				did_convert = true
+			}
+		}
+		if !did_convert {
+			rhs = if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
+				t.wrap_sum_value(rhs_id, elem_type)
+			} else {
+				t.transform_expr_for_type(rhs_id, elem_type)
+			}
 		}
 	} else {
-		t.transform_expr(rhs_id)
+		if t.array_append_elem_is_interface(elem_type) {
+			if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+				rhs = converted
+				rhs_type = array_type
+			} else {
+				rhs = t.transform_expr(rhs_id)
+			}
+		} else {
+			rhs = t.transform_expr(rhs_id)
+		}
 	}
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
@@ -932,14 +992,35 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 		source)
 	result << t.make_if(not_ok, t.make_block(guard_stmts), t.make_empty())
 
-	mut rhs := if !push_many {
-		if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-			t.wrap_sum_value(rhs_id, elem_type)
-		} else {
-			t.transform_expr_for_type(rhs_id, elem_type)
+	mut rhs := flat.empty_node
+	if !push_many {
+		mut did_convert := false
+		if !t.array_append_elem_is_interface(elem_type) {
+			if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+				rhs = converted
+				rhs_type = array_type
+				push_many = true
+				did_convert = true
+			}
+		}
+		if !did_convert {
+			rhs = if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
+				t.wrap_sum_value(rhs_id, elem_type)
+			} else {
+				t.transform_expr_for_type(rhs_id, elem_type)
+			}
 		}
 	} else {
-		t.transform_expr(rhs_id)
+		if t.array_append_elem_is_interface(elem_type) {
+			if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+				rhs = converted
+				rhs_type = array_type
+			} else {
+				rhs = t.transform_expr(rhs_id)
+			}
+		} else {
+			rhs = t.transform_expr(rhs_id)
+		}
 	}
 	if !push_many {
 		rhs = t.coerce_transformed_expr_to_type(rhs, rhs_id, elem_type)
@@ -1140,8 +1221,12 @@ fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id fla
 		return false
 	}
 	clean_rhs_type := rhs_type.trim_space()
+	lhs_elem_is_interface := t.array_append_elem_is_interface(elem_type)
 	if clean_rhs_type.starts_with('...') {
 		return t.array_append_elem_types_match(clean_rhs_type[3..], elem_type)
+	}
+	if t.array_append_rhs_is_sum_array_variant(clean_rhs_type, elem_type) {
+		return false
 	}
 	if clean_rhs_type.starts_with('[]') {
 		if t.array_append_elem_types_match(clean_rhs_type[2..], elem_type) {
@@ -1164,11 +1249,20 @@ fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id fla
 		if rhs_resolved := t.tc.expr_type(rhs_id) {
 			rhs_clean := types.unwrap_pointer(rhs_resolved)
 			if rhs_clean is types.Array {
+				if t.array_append_rhs_is_sum_array_variant(types.Type(rhs_clean).name(), elem_type) {
+					return false
+				}
 				return t.array_append_elem_types_match(rhs_clean.elem_type.name(), elem_type)
 			}
 			if rhs_clean is types.ArrayFixed {
+				if t.array_append_rhs_is_sum_array_variant(types.Type(rhs_clean).name(), elem_type) {
+					return false
+				}
 				return t.array_append_elem_types_match(rhs_clean.elem_type.name(), elem_type)
 			}
+		}
+		if lhs_elem_is_interface {
+			return false
 		}
 		if lhs_resolved := t.tc.expr_type(lhs_id) {
 			lhs_clean := types.unwrap_pointer(lhs_resolved)
@@ -1176,6 +1270,9 @@ fn (t &Transformer) array_append_rhs_is_push_many(lhs_id flat.NodeId, rhs_id fla
 				return t.tc.c_type(lhs_clean.elem_type) == 'void*'
 			}
 		}
+	}
+	if lhs_elem_is_interface {
+		return false
 	}
 	if clean_rhs_type in ['array', 'Array'] {
 		return t.array_append_elem_c_type(elem_type) !in ['array', 'Array']
@@ -1191,10 +1288,58 @@ fn (t &Transformer) array_append_literal_should_push_many(rhs_id flat.NodeId, el
 	if node.kind != .array_literal {
 		return false
 	}
+	if t.array_append_elem_is_interface(elem_type) {
+		return t.array_append_literal_children_match_elem(rhs_id, elem_type)
+	}
+	if t.array_append_rhs_is_sum_array_variant(t.node_type(rhs_id), elem_type) {
+		return false
+	}
 	if !elem_type.starts_with('[]') && !t.is_fixed_array_type(elem_type) {
 		return true
 	}
 	return t.array_append_literal_children_match_elem(rhs_id, elem_type)
+}
+
+fn (t &Transformer) array_append_rhs_is_sum_array_variant(rhs_type string, elem_type string) bool {
+	resolved_sum := t.resolve_sum_name(elem_type)
+	variants := t.sum_types[resolved_sum] or { return false }
+	mut clean_rhs := rhs_type.trim_space()
+	if clean_rhs.starts_with('...') {
+		clean_rhs = clean_rhs[3..].trim_space()
+	}
+	if clean_rhs.len == 0 {
+		return false
+	}
+	for variant in variants {
+		if t.array_append_elem_types_match(clean_rhs, variant) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) array_append_elem_is_interface(elem_type string) bool {
+	if t.is_builtin_ierror_interface_name(elem_type) {
+		return true
+	}
+	if isnil(t.tc) {
+		return false
+	}
+	mut candidates := [elem_type.trim_space(), t.normalize_type_alias(elem_type).trim_space()]
+	for candidate in candidates.clone() {
+		if candidate.len == 0 || candidate.contains('.') {
+			continue
+		}
+		candidates << t.tc.qualify_name(candidate)
+		candidates << 'main.${candidate}'
+		candidates << 'builtin.${candidate}'
+	}
+	for candidate in candidates {
+		if candidate.len > 0 && candidate in t.tc.interface_names {
+			return true
+		}
+	}
+	return t.is_interface_type(elem_type)
 }
 
 fn (t &Transformer) array_append_literal_children_match_elem(rhs_id flat.NodeId, elem_type string) bool {
@@ -1259,7 +1404,34 @@ fn (t &Transformer) array_append_elem_types_match(rhs_elem_type string, lhs_elem
 	if isnil(t.tc) {
 		return false
 	}
+	lhs_iface := t.resolve_interface_type_name(lhs_clean)
+	if lhs_iface.len > 0 {
+		if t.array_append_interface_has_requirements(lhs_iface) {
+			rhs_concrete := t.trim_pointer_type(rhs_clean)
+			if t.tc.named_type_implements_interface(rhs_concrete, lhs_iface) {
+				return true
+			}
+		}
+	}
 	return t.array_append_elem_c_type(rhs_clean) == t.array_append_elem_c_type(lhs_clean)
+}
+
+fn (t &Transformer) array_append_interface_has_requirements(iface_name string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	if t.tc.interface_abstract_method_names(iface_name).len > 0 {
+		return true
+	}
+	if (t.tc.interface_fields[iface_name] or { []types.StructField{} }).len > 0 {
+		return true
+	}
+	for embed in t.tc.interface_embeds[iface_name] or { []string{} } {
+		if t.array_append_interface_has_requirements(embed) {
+			return true
+		}
+	}
+	return false
 }
 
 fn array_append_type_is_container_shape(typ string) bool {
@@ -1317,6 +1489,9 @@ fn (t &Transformer) array_append_elem_c_type(typ string) string {
 
 // array_get_value supports array get value handling for Transformer.
 fn (mut t Transformer) array_get_value(base flat.NodeId, index flat.NodeId, elem_type string) flat.NodeId {
+	if t.array_get_base_is_fixed_array(base) {
+		return t.make_index(base, index, elem_type)
+	}
 	get_call := t.make_call_typed('array_get', arr2(t.array_get_runtime_base(base), index),
 		'voidptr')
 	ptr := t.make_cast('&${elem_type}', get_call, '&${elem_type}')
@@ -1327,9 +1502,29 @@ fn (mut t Transformer) array_get_value(base flat.NodeId, index flat.NodeId, elem
 
 // array_get_ptr supports array get ptr handling for Transformer.
 fn (mut t Transformer) array_get_ptr(base flat.NodeId, index flat.NodeId, elem_type string) flat.NodeId {
+	if t.array_get_base_is_fixed_array(base) {
+		value := t.make_index(base, index, elem_type)
+		ptr := t.make_prefix(.amp, value)
+		t.set_node_typ(int(ptr), '&${elem_type}')
+		return ptr
+	}
 	get_call := t.make_call_typed('array_get', arr2(t.array_get_runtime_base(base), index),
 		'voidptr')
 	return t.make_cast('&${elem_type}', get_call, '&${elem_type}')
+}
+
+fn (t &Transformer) array_get_base_is_fixed_array(base flat.NodeId) bool {
+	mut base_type := t.node_type(base).trim_space()
+	if base_type.len == 0 {
+		base_type = t.original_expr_type(base).trim_space()
+	}
+	if base_type.starts_with('&') {
+		base_type = base_type[1..].trim_space()
+	}
+	if t.is_fixed_array_type(base_type) {
+		return true
+	}
+	return false
 }
 
 fn (mut t Transformer) array_get_runtime_base(base flat.NodeId) flat.NodeId {
@@ -1953,8 +2148,8 @@ fn (mut t Transformer) infer_map_init_entry_type(node flat.Node) string {
 	if node.kind != .map_init || node.children_count < 2 {
 		return ''
 	}
-	key_type := t.node_type(t.a.child(&node, 0))
-	value_type := t.node_type(t.a.child(&node, 1))
+	key_type := t.array_literal_child_value_type(t.a.child(&node, 0))
+	value_type := t.array_literal_child_value_type(t.a.child(&node, 1))
 	if key_type.len == 0 || value_type.len == 0 {
 		return ''
 	}

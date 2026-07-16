@@ -24,3 +24,30 @@ fn test_parallel_dispatch_worker_shares_checker_as_scoped_accumulator() {
 	w := g.new_parallel_dispatch_worker(1)
 	assert w.tc == tc
 }
+
+fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
+	g, mut tc := parallel_worker_test_gen(false)
+	tc.a.nodes = [flat.Node{
+		kind: .ident
+	}, flat.Node{
+		kind: .ident
+	}]
+	tc.resolved_call_names = ['source_call']
+	tc.resolved_call_set = [true]
+	tc.expr_type_values = [types.Type(types.int_)]
+	tc.expr_type_set = [true]
+	tc.begin_sparse_transform_node_caches(1)
+	tc.sparse_resolved_call_names[1] = 'transformed_call'
+	tc.sparse_expr_type_values[1] = types.Type(types.String{})
+
+	w := g.clone_parallel_type_checker()
+	assert w.parallel_check_sparse
+	assert w.check_range_lo == 0
+	assert w.check_range_hi == 0
+	assert w.resolved_call_name(flat.NodeId(0)) or { '' } == 'source_call'
+	assert w.resolved_call_name(flat.NodeId(1)) or { '' } == 'transformed_call'
+	assert w.expr_type(flat.NodeId(0)) or { types.Type(types.void_) } is types.Primitive
+	assert w.expr_type(flat.NodeId(1)) or { types.Type(types.void_) } is types.String
+	assert g.parallel_cached_expr_type(flat.NodeId(0), tc.a.nodes[0]) or { types.Type(types.void_) } is types.Primitive
+	assert g.parallel_cached_expr_type(flat.NodeId(1), tc.a.nodes[1]) or { types.Type(types.void_) } is types.String
+}

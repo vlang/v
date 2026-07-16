@@ -7,9 +7,9 @@ import v3.flat
 import v3.types
 import v3.workers
 
-const max_flat_cgen_jobs = 4
+const max_flat_cgen_jobs = 2
 const min_flat_cgen_parallel_items = 1024
-const scoped_cgen_worker_batches = 96
+const scoped_cgen_worker_batches = 128
 
 $if !windows {
 	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
@@ -59,16 +59,61 @@ $if !windows {
 }
 
 fn (mut g FlatGen) prepare_pre_dispatch_master() {
-	g.want_parallel_prep = true
-	items := g.ensure_fn_gen_items()
-	g.want_parallel_prep = false
-	if items.len >= min_flat_cgen_parallel_items {
+	mut n_items := 0
+	if g.scope_parallel_workers {
+		selection_scope := cgen_worker_scope_begin(true)
+		master_tc := g.tc
+		g.tc = g.clone_parallel_type_checker()
+		g.want_parallel_prep = false
+		items := g.ensure_fn_gen_items()
+		g.tc = master_tc
+		cgen_worker_scope_leave(selection_scope)
+		items_scope := cgen_worker_scope_begin(true)
+		mut owned_items := []FlatFnGenItem{cap: items.len}
+		for item in items {
+			owned_items << FlatFnGenItem{
+				node_id:                   item.node_id
+				file:                      item.file.clone()
+				module:                    item.module.clone()
+				c_name:                    item.c_name.clone()
+				cost:                      item.cost
+				is_program_specialization: item.is_program_specialization
+			}
+		}
+		g.fn_gen_items = owned_items
+		g.emitted_fns = clone_cgen_string_bool_map(g.emitted_fns)
+		cgen_worker_scope_leave(items_scope)
+		g.scoped_fn_items_scope = items_scope
+		g.c_name_cache = &CNameCache{}
+		cgen_worker_scope_free(selection_scope)
+		prep_scope := cgen_worker_scope_begin(true)
+		prep_master_tc := g.tc
+		g.tc = g.clone_parallel_type_checker()
+		g.prepare_parallel_items(g.fn_gen_items)
+		g.tc = prep_master_tc
+		cgen_worker_scope_leave(prep_scope)
+		g.str_lits = clone_cgen_string_list(g.str_lits)
+		g.str_lit_ids = clone_cgen_string_int_map(g.str_lit_ids)
+		g.fn_ptr_types = clone_cgen_string_map(g.fn_ptr_types)
+		g.used_fn_ptr_types = clone_cgen_string_bool_map(g.used_fn_ptr_types)
+		g.c_extern_refs = clone_cgen_string_bool_map(g.c_extern_refs)
+		g.c_name_cache = &CNameCache{}
+		cgen_worker_scope_free(prep_scope)
+		n_items = g.fn_gen_items.len
+	} else {
+		g.want_parallel_prep = true
+		n_items = g.ensure_fn_gen_items().len
+		g.want_parallel_prep = false
+	}
+	if n_items >= min_flat_cgen_parallel_items {
 		// The fused item walk already interned and pre-seeded; only the
 		// epilogue remains.
-		if _ := g.ierror_interface_name() {
-			g.intern_string('')
+		if !g.scope_parallel_workers {
+			if _ := g.ierror_interface_name() {
+				g.intern_string('')
+			}
+			g.register_interface_strings()
 		}
-		g.register_interface_strings()
 		if g.test_files.len == 0 && !g.has_entry_main() {
 			for stmt in g.top_level_stmts() {
 				g.collect_c_extern_referenced_symbols_from_node(stmt.id, mut g.c_extern_refs)
@@ -82,29 +127,36 @@ fn (mut g FlatGen) prepare_pre_dispatch_master() {
 	_ = g.unique_const_ref_name('__v3_prewarm__') or { '' }
 }
 
-fn cgen_worker_scope_begin(enabled bool) voidptr {
-	$if prealloc {
-		if enabled {
-			return unsafe { prealloc_scope_begin() }
-		}
+fn clone_cgen_string_list(values []string) []string {
+	mut cloned := []string{cap: values.len}
+	for value in values {
+		cloned << value.clone()
 	}
-	return unsafe { nil }
+	return cloned
 }
 
-fn cgen_worker_scope_leave(scope voidptr) {
-	$if prealloc {
-		if scope != unsafe { nil } {
-			unsafe { prealloc_scope_leave(scope) }
-		}
+fn clone_cgen_string_map(values map[string]string) map[string]string {
+	mut cloned := map[string]string{}
+	for key, value in values {
+		cloned[key.clone()] = value.clone()
 	}
+	return cloned
 }
 
-fn cgen_worker_scope_free(scope voidptr) {
-	$if prealloc {
-		if scope != unsafe { nil } {
-			unsafe { prealloc_scope_free_after(scope) }
-		}
+fn clone_cgen_string_bool_map(values map[string]bool) map[string]bool {
+	mut cloned := map[string]bool{}
+	for key, value in values {
+		cloned[key.clone()] = value
 	}
+	return cloned
+}
+
+fn clone_cgen_string_int_map(values map[string]int) map[string]int {
+	mut cloned := map[string]int{}
+	for key, value in values {
+		cloned[key.clone()] = value
+	}
+	return cloned
 }
 
 // absorb_scoped_cgen_batch copies a finished batch's output and observable
@@ -113,7 +165,19 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen) {
 	mut b := unsafe { batch }
 	output := b.sb.str()
 	if output.len > 0 {
-		g.fn_segs << output
+		if g.scoped_fn_output_path.len > 0 {
+			mut file := os.open_append(g.scoped_fn_output_path) or {
+				g.output_error = err.msg()
+				unsafe { output.free() }
+				unsafe { b.sb.free() }
+				return
+			}
+			file.write_string(output) or { g.output_error = err.msg() }
+			file.close()
+			unsafe { output.free() }
+		} else {
+			g.fn_segs << output
+		}
 	}
 	unsafe { b.sb.free() }
 	for opt_name, val_type in batch.needed_optional_types {
@@ -284,6 +348,11 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			g.gen_synthetic_main_after_fns()
 			return
 		}
+		if g.output_path.len > 0 && !g.cache_split && g.scope_parallel_workers {
+			g.scoped_fn_output_path = '${g.output_path}.v3-fns.tmp.0'
+			g.scoped_fn_output_paths = [g.scoped_fn_output_path]
+			os.rm(g.scoped_fn_output_path) or {}
+		}
 		// Freeze the checker's warm type cache (fully populated by the check and
 		// transform phases) as the shared read-only base for every worker's
 		// fresh cache; the master's own memoization writes go to a private
@@ -305,9 +374,19 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			is_master:      true
 		}
 		mut cgen_workers := []voidptr{cap: thread_count}
+		if g.scoped_fn_output_path.len > 0 {
+			for ci := 0; ci < thread_count; ci++ {
+				worker_path := '${g.scoped_fn_output_path}.${ci + 1}'
+				g.scoped_fn_output_paths << worker_path
+				os.rm(worker_path) or {}
+			}
+		}
 		worker_setup_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
 		for ci := 0; ci < thread_count; ci++ {
-			w := g.new_parallel_dispatch_worker(ci + 1)
+			mut w := g.new_parallel_dispatch_worker(ci + 1)
+			if g.scoped_fn_output_path.len > 0 {
+				w.scoped_fn_output_path = g.scoped_fn_output_paths[ci + 1]
+			}
 			cgen_workers << voidptr(w)
 		}
 		for ci := 0; ci < thread_count; ci++ {
@@ -507,7 +586,7 @@ fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node flat.Node) ?types
 	if idx < 0 {
 		return none
 	}
-	if g.tc.parallel_check_sparse {
+	if g.tc.parallel_check_sparse && (idx < g.tc.check_range_lo || idx > g.tc.check_range_hi) {
 		if t := g.tc.sparse_expr_type_values[idx] {
 			return t
 		}
@@ -861,6 +940,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		interface_fields:                   g.tc.interface_fields
 		interface_embeds:                   g.tc.interface_embeds
 		interface_abstract_methods:         g.tc.interface_abstract_methods
+		interface_impl_name_snapshots:      g.tc.interface_impl_name_snapshots
 		c_globals:                          g.tc.c_globals
 		const_types:                        g.tc.const_types
 		const_exprs:                        g.tc.const_exprs
@@ -887,6 +967,9 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		expr_type_values:                   g.tc.expr_type_values
 		expr_type_set:                      g.tc.expr_type_set
 		checking_nodes:                     g.tc.checking_nodes
+		parallel_check_sparse:              g.tc.parallel_check_sparse
+		check_range_lo:                     g.tc.check_range_lo
+		check_range_hi:                     g.tc.check_range_hi
 		sparse_resolved_call_names:         g.tc.sparse_resolved_call_names
 		sparse_resolved_fn_values:          g.tc.sparse_resolved_fn_values
 		sparse_statement_nodes:             g.tc.sparse_statement_nodes
@@ -915,6 +998,9 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 // merge_parallel_worker supports merge parallel worker handling for FlatGen.
 fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	mut ww := unsafe { w }
+	if g.output_error.len == 0 && w.output_error.len > 0 {
+		g.output_error = w.output_error.clone()
+	}
 	worker_output := ww.sb.str()
 	if worker_output.len > 0 {
 		g.fn_segs << worker_output
@@ -982,7 +1068,6 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		}
 		if g.scope_parallel_workers {
 			g.collect_fixed_storage_consts()
-			g.precompute_embedded_fields()
 			g.precompute_param_type_index()
 			g.precompute_concrete_optional_abi_fns()
 			g.prepare_pre_dispatch_master()

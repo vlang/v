@@ -1122,6 +1122,9 @@ fn (t &Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?strin
 	if node.kind != .ident || node.value.len == 0 {
 		return none
 	}
+	if fixed_storage_type := t.const_array_literal_storage_type_name_for_expr(id) {
+		return fixed_storage_type
+	}
 	if t.var_type(node.value).len > 0 {
 		return none
 	}
@@ -1139,6 +1142,14 @@ fn (t &Transformer) detect_for_in_global_fixed_array_type(id flat.NodeId) ?strin
 		}
 	}
 	if !isnil(t.tc) {
+		for candidate in candidates {
+			if typ := t.tc.const_types[candidate] {
+				normalized := t.normalize_type_alias(typ.name())
+				if t.is_fixed_array_type(normalized) {
+					return normalized
+				}
+			}
+		}
 		checker_type := t.normalize_type_alias(t.tc.resolve_type(id).name())
 		if t.is_fixed_array_type(checker_type) {
 			return checker_type
