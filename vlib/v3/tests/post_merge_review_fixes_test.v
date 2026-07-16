@@ -3099,6 +3099,19 @@ fn make_field_reader() Reader {
 	return r
 }
 
+fn make_pointer_alias_field_reader() Reader {
+	mut holder := Holder{
+		inner: Box{
+			n: 18
+		}
+	}
+	p := &holder
+	q := p
+	r := Reader(&q.inner)
+	holder.inner.n = 19
+	return r
+}
+
 fn make_conditional_reader(use_global bool) Reader {
 	mut b := Box{
 		n: 13
@@ -3129,12 +3142,13 @@ fn main() {
 	println(int_str(make_assigned_reader().get()))
 	println(int_str(make_pointer_alias_reader().get()))
 	println(int_str(make_field_reader().get()))
+	println(int_str(make_pointer_alias_field_reader().get()))
 	println(int_str(make_conditional_reader(false).get()))
 	println(int_str(make_conditional_reader(true).get()))
 	println(int_str(global_reader.get()))
 }
 ')
-	assert escape_variants == '6\n8\n10\n12\n14\n15\n17'
+	assert escape_variants == '6\n8\n10\n12\n19\n14\n15\n17'
 }
 
 fn test_mut_interface_argument_borrows_existing_interface_box() {
@@ -3577,6 +3591,7 @@ fn next() int {
 }
 
 type Key = string
+type Label = string
 
 fn next_key() Key {
 	hits++
@@ -3606,6 +3621,42 @@ fn (d AliasDict) [] (key Key) int {
 }
 
 fn (mut d AliasDict) []= (key string, value int) {
+	d.values[key] = value
+}
+
+struct TextDict {
+mut:
+	values map[string]Label
+}
+
+fn (d TextDict) [] (key string) Label {
+	return d.values[key]
+}
+
+fn (mut d TextDict) []= (key string, value Label) {
+	d.values[key] = value
+}
+
+struct Amount {
+	n int
+}
+
+fn (a Amount) + (b Amount) Amount {
+	return Amount{
+		n: a.n + b.n
+	}
+}
+
+struct AmountDict {
+mut:
+	values map[string]Amount
+}
+
+fn (d AmountDict) [] (key string) Amount {
+	return d.values[key]
+}
+
+fn (mut d AmountDict) []= (key string, value Amount) {
 	d.values[key] = value
 }
 
@@ -3639,6 +3690,24 @@ fn main() {
 	alias_d[next_key()] += 6
 	println(hits.str())
 	println(alias_d.values['name'].str())
+	mut text_d := TextDict{
+		values: {
+			'name': Label('a')
+		}
+	}
+	text_d['name'] += Label('x')
+	println(text_d.values['name'])
+	mut amount_d := AmountDict{
+		values: {
+			'sum': Amount{
+				n: 2
+			}
+		}
+	}
+	amount_d['sum'] += Amount{
+		n: 3
+	}
+	println(amount_d.values['sum'].n.str())
 	mut b := Bag{
 		values: [1]
 	}
@@ -3647,7 +3716,7 @@ fn main() {
 	println(b.values[0].str())
 }
 ")
-	assert overload_out == '7\n12\n1\n10\n2\n5'
+	assert overload_out == '7\n12\n1\n10\nax\n5\n2\n5'
 	generic_index_out := run_good(v3_bin, 'review_generic_index_overload_specializes',
 		'struct Box[T] {\nmut:\n\tvalues []T\n}\n\nfn (b Box[T]) [] (i int) T {\n\treturn b.values[i]\n}\n\nfn (mut b Box[T]) []= (i int, value T) {\n\tb.values[i] = value\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tvalues: [1, 2]\n\t}\n\tprintln(b[1].str())\n\tb[1] = 9\n\tprintln(b[1].str())\n}\n')
 	assert generic_index_out == '2\n9'

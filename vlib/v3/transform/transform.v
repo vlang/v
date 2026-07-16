@@ -2822,7 +2822,7 @@ fn (t &Transformer) string_interp_needs_value_read(name string, typ string) bool
 // and `v` resolves to a non-reference value type.
 fn (t &Transformer) try_heap_escaping_amp(node flat.Node, rhs_id flat.NodeId) bool {
 	lhs := t.a.nodes[int(t.a.child(&node, 0))]
-	if lhs.kind != .ident || lhs.value !in t.escaping_amp_ptrs {
+	if lhs.kind != .ident {
 		return false
 	}
 	rhs := t.a.nodes[int(rhs_id)]
@@ -2838,6 +2838,9 @@ fn (t &Transformer) try_heap_escaping_amp(node flat.Node, rhs_id flat.NodeId) bo
 	// `&T` pointer (handled below), regardless of its rewritten pointer type.
 	if amp_node.value in t.heaped_amp_locals {
 		return true
+	}
+	if lhs.value !in t.escaping_amp_ptrs {
+		return false
 	}
 	local_type := t.node_type(amp_child)
 	return local_type.len > 0 && !local_type.starts_with('&') && !local_type.starts_with('[]')
@@ -3019,14 +3022,26 @@ fn escape_alias_sources(name string, amp_sources map[string][]string, ptr_aliase
 	return []string{}
 }
 
+fn (t &Transformer) escape_address_sources(id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string) []string {
+	root := t.escape_address_root_name(id) or { return []string{} }
+	sources := escape_alias_sources(root, amp_sources, ptr_aliases)
+	if sources.len > 0 {
+		return sources
+	}
+	return [root]
+}
+
 fn (mut t Transformer) scan_escape_pointer_write(lhs flat.Node, rhs flat.Node, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string) {
 	if lhs.kind != .ident || lhs.value.len == 0 {
 		return
 	}
 	if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0 {
-		if source_name := t.escape_address_root_name(t.a.child(&rhs, 0)) {
+		sources := t.escape_address_sources(t.a.child(&rhs, 0), amp_sources, ptr_aliases)
+		if sources.len > 0 {
 			amp_ptrs[lhs.value] = true
-			add_escape_amp_source(mut amp_sources, lhs.value, source_name)
+			for source_name in sources {
+				add_escape_amp_source(mut amp_sources, lhs.value, source_name)
+			}
 			ptr_aliases.delete(lhs.value)
 		}
 		return
@@ -3035,9 +3050,12 @@ fn (mut t Transformer) scan_escape_pointer_write(lhs flat.Node, rhs flat.Node, m
 		&& t.resolve_interface_type_name(rhs.value).len > 0 {
 		cast_arg := t.a.nodes[int(t.a.child(&rhs, 0))]
 		if cast_arg.kind == .prefix && cast_arg.op == .amp && cast_arg.children_count > 0 {
-			if source_name := t.escape_address_root_name(t.a.child(&cast_arg, 0)) {
+			sources := t.escape_address_sources(t.a.child(&cast_arg, 0), amp_sources, ptr_aliases)
+			if sources.len > 0 {
 				amp_ptrs[lhs.value] = true
-				add_escape_amp_source(mut amp_sources, lhs.value, source_name)
+				for source_name in sources {
+					add_escape_amp_source(mut amp_sources, lhs.value, source_name)
+				}
 				ptr_aliases.delete(lhs.value)
 			}
 		} else if cast_arg.kind == .ident && cast_arg.value.len > 0 {

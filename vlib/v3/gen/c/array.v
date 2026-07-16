@@ -972,12 +972,22 @@ fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.N
 	g.gen_index_operator_tmp_arg(index_tmp, index_storage, setter.params[1])
 	g.write(', ')
 	if op := compound_assign_to_infix_op(node.op) {
-		if setter.params[2] is types.String && op == .plus {
+		if op == .plus && (g.index_operator_type_is_string_like(getter.return_type)
+			|| g.index_operator_type_is_string_like(setter.params[2])) {
 			g.write('string__plus(')
 			g.gen_index_operator_get_call_from_temps(getter, recv_tmp, recv_storage, index_tmp,
 				index_storage)
 			g.write(', ')
 			g.gen_expr_as_string(rhs_id)
+			g.write(')')
+		} else if method_name := g.index_operator_compound_operator_method(getter.return_type,
+			setter.params[2], node.op)
+		{
+			g.write('${g.cname(method_name)}(')
+			g.gen_index_operator_get_call_from_temps(getter, recv_tmp, recv_storage, index_tmp,
+				index_storage)
+			g.write(', ')
+			g.gen_expr_with_expected_type(rhs_id, setter.params[2])
 			g.write(')')
 		} else {
 			g.write('(')
@@ -991,6 +1001,23 @@ fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.N
 		g.gen_expr_with_expected_type(rhs_id, setter.params[2])
 	}
 	g.writeln('); }')
+}
+
+fn (g &FlatGen) index_operator_type_is_string_like(typ types.Type) bool {
+	if typ is types.String {
+		return true
+	}
+	if typ is types.Alias {
+		return g.index_operator_type_is_string_like(typ.base_type)
+	}
+	return false
+}
+
+fn (g &FlatGen) index_operator_compound_operator_method(getter_type types.Type, setter_type types.Type, op flat.Op) ?string {
+	if method_name := g.assign_struct_operator_method(getter_type, op) {
+		return method_name
+	}
+	return g.assign_struct_operator_method(setter_type, op)
 }
 
 fn (mut g FlatGen) gen_index_operator_get_call_from_temps(getter types.CallInfo, recv_tmp string, recv_storage types.Type, index_tmp string, index_storage types.Type) {

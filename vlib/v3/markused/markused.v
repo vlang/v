@@ -3617,6 +3617,8 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 					if child.op != .assign {
 						c.collect_index_operator_method(lhs_id, '[]', cur_module, imports,
 							local_values, local_types, mut calls)
+						c.collect_index_compound_update_helpers(child, cur_module, local_types, mut
+							calls)
 					}
 				}
 				c.collect_assign_operator_call(child, cur_module, local_types, mut calls)
@@ -5164,11 +5166,53 @@ fn (c &CallCollector) fn_return_type_name(name string, unwrap_optional_result bo
 // collect_struct_operator_call updates collect struct operator call state for markused.
 fn (c &CallCollector) collect_struct_operator_call(lhs_id flat.NodeId, op flat.Op, cur_module string, local_types map[string]string, mut calls []string) {
 	lhs_type := c.operator_lhs_type(lhs_id, local_types)
+	c.collect_struct_operator_call_for_type(lhs_type, op, cur_module, mut calls)
+}
+
+fn (c &CallCollector) collect_struct_operator_call_for_type(lhs_type types.Type, op flat.Op, cur_module string, mut calls []string) {
 	for receiver in c.struct_operator_receivers_for_call(lhs_type, cur_module) {
 		method_name := c.struct_operator_call_name(receiver, op) or { continue }
 		c.add_operator_call_name(method_name, mut calls)
 		return
 	}
+}
+
+fn (c &CallCollector) collect_index_compound_update_helpers(node &flat.Node, cur_module string, local_types map[string]string, mut calls []string) {
+	op := markused_assign_operator_symbol(node.op) or { return }
+	if node.children_count < 2 {
+		return
+	}
+	lhs_id := c.a.child(node, 0)
+	lhs_type := c.index_compound_value_type(lhs_id, local_types)
+	if op == .plus && markused_type_is_string_like(lhs_type) {
+		calls << 'string__plus'
+	}
+	c.collect_struct_operator_call_for_type(lhs_type, op, cur_module, mut calls)
+}
+
+fn (c &CallCollector) index_compound_value_type(lhs_id flat.NodeId, local_types map[string]string) types.Type {
+	if int(lhs_id) < 0 {
+		return types.Type(types.void_)
+	}
+	lhs := c.a.node(lhs_id)
+	if lhs.kind == .index && lhs.children_count >= 1 {
+		base_id := c.a.child(lhs, 0)
+		base_type := c.node_type(base_id)
+		if getter := c.tc.index_operator_call_info(base_type, '[]') {
+			return getter.return_type
+		}
+	}
+	return c.operator_lhs_type(lhs_id, local_types)
+}
+
+fn markused_type_is_string_like(typ types.Type) bool {
+	if typ is types.String {
+		return true
+	}
+	if typ is types.Alias {
+		return markused_type_is_string_like(typ.base_type)
+	}
+	return false
 }
 
 // collect_assign_operator_call adds operator overloads used through assignment operators.
