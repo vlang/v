@@ -65,6 +65,54 @@ fn test_local_pointer_alias_clear_preserves_outer_branch_markers() {
 	tc.pop_scope()
 }
 
+fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	int_type := types.Type(types.int_)
+	ptr_type := types.Type(types.Pointer{
+		base_type: int_type
+	})
+
+	tc.push_scope()
+	tc.cur_scope.insert_with_owner('x', int_type)
+	arg_owner := tc.cur_scope.insert_with_owner('arg', int_type)
+	g.cur_mut_params['arg'] = true
+	g.cur_mut_param_owners['arg'] = arg_owner
+	p_owner := tc.cur_scope.insert_with_owner('p', ptr_type)
+	g.declare_local_pointer_alias_source(p_owner, 'x')
+
+	tc.push_scope()
+	g.enter_conditional_branch(true)
+	arg_id := stmt_test_node(mut a, .ident, 'arg', [])
+	amp_arg := stmt_test_prefix(mut a, .amp, arg_id)
+	g.track_local_pointer_alias_assign(flat.Node{
+		kind:  .ident
+		value: 'p'
+	}, amp_arg)
+	assert g.local_pointer_alias_source('p') or { '' } == 'x'
+	assert !g.local_pointer_alias_source_is_mut_param('p')
+	g.leave_conditional_branch()
+	tc.pop_scope()
+
+	g.declare_local_pointer_alias_source_kind(p_owner, 'arg', true)
+	tc.push_scope()
+	g.enter_conditional_branch(true)
+	x_id := stmt_test_node(mut a, .ident, 'x', [])
+	amp_x := stmt_test_prefix(mut a, .amp, x_id)
+	g.track_local_pointer_alias_assign(flat.Node{
+		kind:  .ident
+		value: 'p'
+	}, amp_x)
+	assert g.local_pointer_alias_source('p') or { '' } == 'arg'
+	assert !g.local_pointer_alias_source_is_mut_param('p')
+	g.leave_conditional_branch()
+	tc.pop_scope()
+	tc.pop_scope()
+}
+
 fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
