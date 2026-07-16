@@ -203,6 +203,23 @@ fn json_migrate_block_visit(node &ast.Node, data voidptr) bool {
 		if call.kind == .json_decode && call.args.len >= 1 && call.args[0].comments.len > 0 {
 			s.blocked = true
 		}
+	} else if node is ast.Expr && node is ast.Ident {
+		// A legacy json function used as a *value* (`[1, 2].map(json.encode)`, `g :=
+		// json.decode`) is a plain qualified identifier, not a CallExpr, so it never reaches
+		// the call migration — yet imp_stmt_str would still rewrite `import json` to
+		// `import json2`, leaving the reference unresolved. Keep such files on legacy json.
+		// (A `json.encode(x)` call is a CallExpr with a resolved kind, not a bare Ident, so
+		// real calls still migrate.)
+		if (node as ast.Ident).name in ['json.encode', 'json.decode', 'json.encode_pretty'] {
+			s.blocked = true
+		}
+	} else if node is ast.Expr && node is ast.SelectorExpr {
+		// The same reference can also appear as a `json.encode` selector.
+		sel := node as ast.SelectorExpr
+		if sel.expr is ast.Ident && (sel.expr as ast.Ident).name == 'json'
+			&& sel.field_name in ['encode', 'decode', 'encode_pretty'] {
+			s.blocked = true
+		}
 	} else if node is ast.Stmt && node is ast.FnDecl {
 		decl := node as ast.FnDecl
 		if decl.name.all_after_last('.') == p || decl.receiver.name == p
@@ -2631,13 +2648,14 @@ fn (mut f Fmt) json2_migrate_call(node ast.CallExpr) {
 			f.write(')')
 		}
 		.json_encode_pretty {
-			// json.encode_pretty(x) => json2.encode(x, prettify: true). json2's own
-			// encode_pretty wrapper is deprecated in favour of the prettify option, so emit
-			// the non-deprecated form to avoid re-introducing a deprecation warning.
+			// json.encode_pretty(x) => json2.encode(x, prettify: true, escape_unicode: true).
+			// json2's own encode_pretty wrapper is deprecated in favour of the prettify
+			// option; escape_unicode matches legacy json's `\uXXXX` escaping (json2 defaults
+			// it to false), the same as the plain encode branch.
 			f.write('${j2}.encode(')
 			f.call_args(node.args)
 			if node.args.len > 0 {
-				f.write(', prettify: true')
+				f.write(', prettify: true, escape_unicode: true')
 			}
 			f.write(')')
 		}
