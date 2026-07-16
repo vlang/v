@@ -1953,7 +1953,7 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		arg_type := t.node_type(arg_id)
 		if arg_type.len > 0 && !arg_type.starts_with('&')
 			&& t.normalize_type_alias(arg_type) == t.normalize_type_alias(param_type[1..])
-			&& t.expr_can_take_address(arg_id) {
+			&& t.expr_can_take_address(arg_id) && !t.expr_is_overloaded_index_result(arg_id) {
 			value := t.transform_expr(arg_id)
 			addr := t.make_prefix(.amp, value)
 			t.set_node_typ(int(addr), param_type)
@@ -2074,10 +2074,16 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		return none
 	}
 	mut current := t.transform_expr(arg_id)
+	mut force_materialize := t.expr_is_overloaded_index_result(arg_id)
 	mut current_type := arg_type
 	mut current_depth := actual_depth
 	for current_depth < expected_depth {
-		if !t.expr_can_take_address(current) {
+		if force_materialize {
+			tmp_name := t.new_temp('ref_arg')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name, current, current_type)
+			current = t.make_ident(tmp_name)
+			force_materialize = false
+		} else if !t.expr_can_take_address(current) {
 			current = t.stable_transformed_expr_for_reuse(current, current_type, 'ref_arg')
 		}
 		addr_type := '&${current_type}'
@@ -2093,6 +2099,38 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		current_type = addr_type
 	}
 	return none
+}
+
+fn (t &Transformer) expr_is_overloaded_index_result(id flat.NodeId) bool {
+	if isnil(t.tc) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.index {
+			if node.children_count == 0 {
+				return false
+			}
+			base_id := t.a.child(&node, 0)
+			if t.resolve_receiver_method_name(base_id, '[]').len > 0 {
+				return true
+			}
+			base_type := t.tc.expr_type(base_id) or { t.tc.resolve_type(base_id) }
+			if _ := t.tc.index_overload_call_info(base_type, false) {
+				return true
+			}
+			return false
+		}
+		.paren, .expr_stmt {
+			if node.children_count == 0 {
+				return false
+			}
+			return t.expr_is_overloaded_index_result(t.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
 }
 
 fn pointer_type_depth_and_base(typ string) (int, string) {

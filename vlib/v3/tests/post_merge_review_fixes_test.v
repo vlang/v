@@ -3928,6 +3928,7 @@ fn test_returned_pointer_copy_alias_heap_moves_stack_source() {
 	assert stack_body.contains('Box* b = (Box*)memdup(') && stack_body.contains('sizeof(Box)'), stack_body
 
 	reassigned_body := c_fn_body(c_source, 'Box* make_reassigned(void) {')
+
 	assert
 		reassigned_body.contains('Box* b = (Box*)memdup(') && reassigned_body.contains('sizeof(Box)'), reassigned_body
 	param_body := c_fn_body(c_source, 'Box* keep_param(Box* b) {')
@@ -4440,6 +4441,42 @@ fn test_overloaded_index_compound_assignment_uses_v_operators() {
 	assert struct_c.contains('Num__plus('), struct_c
 	struct_out := run_good(v3_bin, 'overloaded_index_compound_struct_operator', struct_source)
 	assert struct_out == '7'
+}
+
+fn test_overloaded_index_ref_arg_materializes_getter_result() {
+	v3_bin := build_v3()
+	source := 'struct Item {
+	n int
+}
+
+struct Dict {
+	values map[string]Item
+}
+
+fn (d Dict) [] (key string) Item {
+	return d.values[key]
+}
+
+fn read(item &Item) int {
+	return item.n
+}
+
+fn main() {
+	d := Dict{
+		values: {
+			"a": Item{
+				n: 7
+			}
+		}
+	}
+	println(int_str(read(d["a"])))
+}
+'
+	c_source := gen_c(v3_bin, 'overloaded_index_ref_arg_materializes_getter_result_c', source)
+	assert c_source.contains('ref_arg'), c_source
+	assert !c_source.contains('&Dict__index('), c_source
+	out := run_good(v3_bin, 'overloaded_index_ref_arg_materializes_getter_result', source)
+	assert out == '7'
 }
 
 fn test_overloaded_index_accepts_declared_key_type() {
