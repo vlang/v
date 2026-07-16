@@ -328,6 +328,12 @@ fn type_needs_legacy_json_rec(t &ast.Table, typ ast.Type, mut visited []int) boo
 	if typ == 0 {
 		return false
 	}
+	// An option type (e.g. a `?int` sum-type variant or field) serialises differently:
+	// legacy json emits a `none` as `{}`, while json2 emits an empty slot (`[1,,3]`,
+	// invalid JSON). The option flag is stripped by final_sym, so check it up front.
+	if typ.has_flag(.option) {
+		return true
+	}
 	sym := t.final_sym(typ)
 	if sym.name in ['time.Time', 'rune', 'f32', 'f64'] {
 		return true
@@ -369,6 +375,54 @@ fn type_needs_legacy_json_rec(t &ast.Table, typ ast.Type, mut visited []int) boo
 		}
 	}
 	return false
+}
+
+// payload_expr_needs_legacy_json reports whether a `json.encode` payload expression is (or
+// contains) a typed literal whose type serialises differently under legacy json. A root
+// container literal (`json.encode([]time.Time{})`, `json.encode({'x': rune(..)})`) has no
+// struct field for the StructDecl scan to catch, and — without the checker — its own
+// `typ`/`elem_type`/`value_type` are often unresolved at fmt time, so recurse through the
+// literal and inspect each element/value literal or cast, which does carry a type.
+fn payload_expr_needs_legacy_json(t &ast.Table, expr ast.Expr) bool {
+	match expr {
+		ast.StructInit {
+			return type_needs_legacy_json(t, expr.typ)
+		}
+		ast.CastExpr {
+			return type_needs_legacy_json(t, expr.typ)
+		}
+		ast.ArrayInit {
+			if type_needs_legacy_json(t, expr.typ) || type_needs_legacy_json(t, expr.elem_type) {
+				return true
+			}
+			for e in expr.exprs {
+				if payload_expr_needs_legacy_json(t, e) {
+					return true
+				}
+			}
+			return false
+		}
+		ast.MapInit {
+			if type_needs_legacy_json(t, expr.typ) || type_needs_legacy_json(t, expr.key_type)
+				|| type_needs_legacy_json(t, expr.value_type) {
+				return true
+			}
+			for k in expr.keys {
+				if payload_expr_needs_legacy_json(t, k) {
+					return true
+				}
+			}
+			for v in expr.vals {
+				if payload_expr_needs_legacy_json(t, v) {
+					return true
+				}
+			}
+			return false
+		}
+		else {
+			return false
+		}
+	}
 }
 
 // assign_declares_name reports whether a `:=` declaration introduces `name` on its
@@ -420,18 +474,12 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 				}
 			}
 		} else if call.kind == .json_encode && call.args.len >= 1 {
-			// A root `time.Time` encode payload also serialises differently. Only a
-			// struct-literal / cast argument carries a type at fmt time; a runtime value
-			// like `json.encode(time.utc())` has none (a known type-resolution limit).
-			arg := call.args[0].expr
-			if arg is ast.StructInit {
-				if type_needs_legacy_json(s.table, arg.typ) {
-					s.found = true
-				}
-			} else if arg is ast.CastExpr {
-				if type_needs_legacy_json(s.table, arg.typ) {
-					s.found = true
-				}
+			// A root `time.Time`/rune/float/option encode payload also serialises
+			// differently. Only a literal carries a type at fmt time (a runtime value like
+			// `json.encode(time.utc())` has none — a known limit), so inspect the payload
+			// literal and its element/value literals.
+			if payload_expr_needs_legacy_json(s.table, call.args[0].expr) {
+				s.found = true
 			}
 		}
 	} else if node is ast.Stmt && node is ast.StructDecl {

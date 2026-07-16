@@ -1,0 +1,23 @@
+import json
+import time
+
+// A root container-literal encode payload has no struct field for the StructDecl scan to
+// catch. Without the checker its own element/value type is often unresolved, so the encode
+// guard recurses through the literal and inspects each element/value literal or cast:
+//   - `[]time.Time{}` carries the element type on ArrayInit.typ;
+//   - `[time.Time{}, ..]` carries it only on the element struct-literals;
+//   - `{'x': rune(..)}` carries it only on the value cast.
+// All three keep the file on legacy json (time/rune serialise differently in json2).
+fn enc_typed_array() string {
+	return json.encode([]time.Time{})
+}
+
+fn enc_array_elems() string {
+	return json.encode([time.Time{}, time.Time{}])
+}
+
+fn enc_map_cast() string {
+	return json.encode({
+		'x': rune(65)
+	})
+}
