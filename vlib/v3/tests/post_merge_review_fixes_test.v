@@ -2167,6 +2167,33 @@ fn test_pointer_arithmetic_deref_keeps_pointer_type() {
 	assert out == '2'
 }
 
+fn test_builtin_addr_requires_unsafe_and_addresses_pointer_variables() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'builtin_addr_requires_unsafe', 'fn main() {
+	x := 1
+	_ := __addr(x)
+}
+',
+		'`__addr` can only be used in unsafe blocks')
+	source := 'fn main() {
+	mut a := 1
+	mut b := 2
+	mut p := &a
+	q := unsafe { __addr(p) }
+	unsafe {
+		*q = &b
+		*p = 7
+	}
+	println(int_str(a))
+	println(int_str(b))
+}
+'
+	c_source := gen_c(v3_bin, 'builtin_addr_pointer_variable_c', source)
+	assert c_source.contains('&p'), c_source
+	out := run_good(v3_bin, 'builtin_addr_pointer_variable', source)
+	assert out == '1\n7'
+}
+
 fn test_array_alias_free_uses_array_builtin_inside_alias_method() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'array_alias_free_builtin',
@@ -4534,6 +4561,47 @@ fn main() {
 	assert !c_source.contains('&Dict__index('), c_source
 	out := run_good(v3_bin, 'overloaded_index_ref_arg_materializes_getter_result', source)
 	assert out == '7'
+}
+
+fn test_overloaded_index_sum_ref_arg_materializes_getter_result() {
+	v3_bin := build_v3()
+	source := 'struct Item {
+	n int
+}
+
+struct Other {}
+
+type Value = Item | Other
+
+struct Dict {
+	values map[string]Item
+}
+
+fn (d Dict) [] (key string) Item {
+	return d.values[key]
+}
+
+fn read(value &Value) string {
+	_ := value
+	return "ok"
+}
+
+fn main() {
+	d := Dict{
+		values: {
+			"a": Item{
+				n: 7
+			}
+		}
+	}
+	println(read(d["a"]))
+}
+'
+	c_source := gen_c(v3_bin, 'overloaded_index_sum_ref_arg_materializes_getter_result_c', source)
+	assert c_source.contains('sum_ref_arg'), c_source
+	assert !c_source.contains('&Dict__index('), c_source
+	out := run_good(v3_bin, 'overloaded_index_sum_ref_arg_materializes_getter_result', source)
+	assert out == 'ok'
 }
 
 fn test_overloaded_index_accepts_declared_key_type() {

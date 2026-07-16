@@ -4631,7 +4631,7 @@ fn (mut p Parser) stmt() flat.NodeId {
 		}
 		.key_unsafe {
 			p.next()
-			return p.block_stmt()
+			return p.unsafe_block_stmt()
 		}
 		.key_defer {
 			return p.defer_stmt()
@@ -5531,6 +5531,16 @@ fn (mut p Parser) block_stmt() flat.NodeId {
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
+}
+
+fn (mut p Parser) unsafe_block_stmt() flat.NodeId {
+	id := p.block_stmt()
+	if int(id) >= 0 && int(id) < p.a.nodes.len {
+		unsafe {
+			p.a.nodes[int(id)].value = 'unsafe'
+		}
+	}
+	return id
 }
 
 fn (mut p Parser) parse_block_body() []flat.NodeId {
@@ -7063,7 +7073,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.key_unsafe {
 			p.next()
-			return p.block_stmt()
+			return p.unsafe_block_stmt()
 		}
 		.ellipsis {
 			// spread: ...expr

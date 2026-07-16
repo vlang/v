@@ -425,6 +425,7 @@ pub mut:
 	has_builtins            bool
 	cur_module              string
 	cur_file                string
+	unsafe_depth            int
 	errors                  []TypeError
 	resolved_call_names     []string // node_id -> resolved function name
 	resolved_call_set       []bool
@@ -9093,10 +9094,17 @@ fn (tc &TypeChecker) lambda_expected_fn_type(id flat.NodeId) FnType {
 // check_block validates check block state for types.
 fn (mut tc TypeChecker) check_block(id flat.NodeId, node flat.Node) {
 	tc.push_scope()
+	is_unsafe := node.value == 'unsafe'
+	if is_unsafe {
+		tc.unsafe_depth++
+	}
 	$if ownership ? {
 		tc.ownership_mark_scope_node(id)
 	}
 	tc.check_statement_sequence(node, 0, false)
+	if is_unsafe && tc.unsafe_depth > 0 {
+		tc.unsafe_depth--
+	}
 	tc.pop_scope()
 }
 
@@ -11890,6 +11898,9 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if arg_id := tc.builtin_addr_call_arg(node) {
+		if tc.unsafe_depth == 0 {
+			tc.record_error(.call_arg_mismatch, '`__addr` can only be used in unsafe blocks', id)
+		}
 		arg_type := tc.resolve_type(arg_id)
 		tc.remember_expr_type(id, Type(Pointer{
 			base_type: arg_type

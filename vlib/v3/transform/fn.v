@@ -2060,6 +2060,14 @@ fn (mut t Transformer) wrap_sum_ref_arg(arg_id flat.NodeId, target_sum string) ?
 		t.set_node_typ(int(ptr), '&${qvariant}')
 		return t.make_sum_ref_literal(resolved_sum, qvariant, ptr)
 	}
+	if t.expr_is_overloaded_index_result(arg_id) {
+		value := t.transform_expr(arg_id)
+		tmp_name := t.new_temp('sum_ref_arg')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, qvariant)
+		ptr := t.make_prefix(.amp, t.make_ident(tmp_name))
+		t.set_node_typ(int(ptr), '&${qvariant}')
+		return t.make_sum_ref_literal(resolved_sum, qvariant, ptr)
+	}
 	if !t.expr_can_take_address(arg_id) {
 		return none
 	}
@@ -2082,11 +2090,25 @@ fn (mut t Transformer) transform_builtin_addr_call(node flat.Node) ?flat.NodeId 
 	if arg_type.len == 0 {
 		arg_type = t.resolve_expr_type(arg_id)
 	}
-	addr := t.runtime_addr(arg_id, arg_type)
+	addr := t.builtin_addr_expr(arg_id, arg_type)
 	if arg_type.len > 0 {
-		t.set_node_typ(int(addr), if arg_type.starts_with('&') { arg_type } else { '&${arg_type}' })
+		t.set_node_typ(int(addr), '&${arg_type}')
 	}
 	return addr
+}
+
+fn (mut t Transformer) builtin_addr_expr(arg_id flat.NodeId, arg_type string) flat.NodeId {
+	if !arg_type.starts_with('&') {
+		return t.runtime_addr(arg_id, arg_type)
+	}
+	if addr := t.redundant_deref_addr(arg_id) {
+		return addr
+	}
+	if !t.expr_can_take_address(arg_id) {
+		stable := t.stable_transformed_expr_for_reuse(arg_id, arg_type, 'addr')
+		return t.make_prefix(.amp, stable)
+	}
+	return t.make_prefix(.amp, arg_id)
 }
 
 fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type string) ?flat.NodeId {
