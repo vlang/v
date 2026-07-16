@@ -1,5 +1,5 @@
 module main
 
-import json
+import json2
 
-const f2 = json.encode(JwtHeader{ alg: 'a', typ: 'b', cty: 'c' })
+const f2 = json2.encode(JwtHeader{ alg: 'a', typ: 'b', cty: 'c' })

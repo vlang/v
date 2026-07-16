@@ -1,0 +1,9 @@
+import json
+
+// A legacy json function used as a value rather than invoked (`json.encode` passed to
+// `.map`) is a plain qualified identifier, not a call, so the call migration never rewrites
+// it. Migrating `import json` to `import json2` would leave `json.encode` unresolved, so the
+// file is kept on legacy json.
+fn run() []string {
+	return [1, 2].map(json.encode)
+}
