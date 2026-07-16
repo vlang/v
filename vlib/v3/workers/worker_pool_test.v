@@ -83,3 +83,24 @@ fn test_pool_falls_back_for_every_failed_launch_index() {
 		}
 	}
 }
+
+fn test_pool_drains_fast_completions_while_submitting_large_batch() {
+	$if !windows {
+		mut pool := new(1)
+		mut args := []&PoolTestArg{cap: 256}
+		mut tasks := []Task{cap: 256}
+		for _ in 0 .. 256 {
+			args << &PoolTestArg{}
+			tasks << Task{
+				run: pool_test_task
+				arg: voidptr(args.last())
+			}
+		}
+		assert pool.run(tasks)
+		assert args.all(it.value == 1)
+		stats := pool.stats()
+		assert stats.tasks_run == 256
+		assert stats.async_tasks == 256
+		pool.close()
+	}
+}

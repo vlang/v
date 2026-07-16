@@ -121,6 +121,11 @@ pub fn (p &Pool) size() int {
 	return p.threads.len
 }
 
+fn (mut p Pool) record_completion(completion Completion) {
+	p.queue_wait_ns += completion.queue_wait_ns
+	p.worker_run_ns += completion.worker_run_ns
+}
+
 // run executes one compiler phase batch and waits for every callback. Tasks
 // marked force_sync run on the caller while submitted tasks use the pool.
 pub fn (mut p Pool) run(tasks []Task) bool {
@@ -140,14 +145,27 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 		return false
 	}
 	mut submitted := 0
+	mut completed := 0
 	for task in tasks {
 		if !task.force_sync {
-			p.jobs <- Task{
+			queued_task := Task{
 				run:          task.run
 				arg:          task.arg
 				queued_at_ns: time.sys_mono_now()
 			}
-			submitted++
+			mut is_submitted := false
+			for !is_submitted {
+				select {
+					p.jobs <- queued_task {
+						submitted++
+						is_submitted = true
+					}
+					completion := <-p.done {
+						p.record_completion(completion)
+						completed++
+					}
+				}
+			}
 		}
 	}
 	for task in tasks {
@@ -156,10 +174,10 @@ pub fn (mut p Pool) run(tasks []Task) bool {
 			p.forced_sync_task_count++
 		}
 	}
-	for _ in 0 .. submitted {
+	for completed < submitted {
 		completion := <-p.done
-		p.queue_wait_ns += completion.queue_wait_ns
-		p.worker_run_ns += completion.worker_run_ns
+		p.record_completion(completion)
+		completed++
 	}
 	p.async_task_count += u64(submitted)
 	p.task_count += u64(tasks.len)
