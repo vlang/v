@@ -177,6 +177,9 @@ fn (g &FlatGen) sum_field_name(variant string) string {
 	if variant.starts_with('map[') {
 		return '_Map_${g.cname(variant[4..].replace(']', '_'))}'
 	}
+	if variant.starts_with('fn(') || variant.starts_with('fn (') {
+		return '_Fn_${callback_stable_key_hash(sum_fn_variant_key(variant))}'
+	}
 	if sum_variant_needs_type_name_field(variant) {
 		return '_${naming.type_name_part(variant)}'
 	}
@@ -199,6 +202,85 @@ fn (g &FlatGen) sum_field_name(variant string) string {
 
 fn sum_variant_needs_type_name_field(variant string) bool {
 	return variant.contains('(') || variant.contains(')') || variant.contains(' ')
+}
+
+fn sum_fn_variant_key(variant string) string {
+	clean := variant.trim_space()
+	open := clean.index('(') or { return clean.replace(' ', '') }
+	close := clean.last_index(')') or { return clean.replace(' ', '') }
+	params := clean[open + 1..close]
+	ret := clean[close + 1..].trim_space().replace(' ', '')
+	mut parts := []string{}
+	for part in sum_fn_split_top_level_commas(params) {
+		ptyp := sum_fn_param_type(part)
+		if ptyp.len > 0 {
+			parts << ptyp
+		}
+	}
+	return 'fn(${parts.join(',')})${ret}'
+}
+
+fn sum_fn_split_top_level_commas(params string) []string {
+	mut parts := []string{}
+	mut depth := 0
+	mut start := 0
+	for i := 0; i < params.len; i++ {
+		ch := params[i]
+		if ch == `(` || ch == `[` || ch == `{` {
+			depth++
+		} else if ch == `)` || ch == `]` || ch == `}` {
+			if depth > 0 {
+				depth--
+			}
+		} else if ch == `,` && depth == 0 {
+			parts << params[start..i].trim_space()
+			start = i + 1
+		}
+	}
+	parts << params[start..].trim_space()
+	return parts
+}
+
+fn sum_fn_param_type(param string) string {
+	clean := param.trim_space()
+	if clean.len == 0 {
+		return ''
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		return sum_fn_variant_key(clean)
+	}
+	space := clean.index(' ') or { return clean }
+	first := clean[..space]
+	if sum_fn_is_ident(first) && first !in ['fn', 'mut', 'shared'] {
+		return clean[space + 1..].trim_space().replace(' ', '')
+	}
+	if first in ['mut', 'shared'] {
+		rest := clean[space + 1..].trim_space()
+		second_space := rest.index(' ') or { return clean.replace(' ', '') }
+		second := rest[..second_space]
+		if sum_fn_is_ident(second) {
+			return '${first}${rest[second_space + 1..].trim_space().replace(' ', '')}'
+		}
+	}
+	return clean.replace(' ', '')
+}
+
+fn sum_fn_is_ident(s string) bool {
+	if s.len == 0 {
+		return false
+	}
+	first := s[0]
+	if !((first >= `a` && first <= `z`) || (first >= `A` && first <= `Z`) || first == `_`) {
+		return false
+	}
+	for i := 1; i < s.len; i++ {
+		ch := s[i]
+		if !((ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+			|| (ch >= `0` && ch <= `9`) || ch == `_`) {
+			return false
+		}
+	}
+	return true
 }
 
 // register_interface_strings updates register interface strings state for c.

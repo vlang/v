@@ -228,6 +228,18 @@ fn test_statement_match_trailing_or_is_preserved() {
 	assert found
 }
 
+fn test_match_parenthesized_and_array_literal_subjects_parse_as_match_stmt() {
+	a := parse_parser_regression_source('match_parenthesized_array_subjects',
+		'fn maybe() ?int {\n\treturn none\n}\n\nfn f() int {\n\treturn match (maybe() or { 0 }) {\n\t\t0 { 1 }\n\t\telse { 2 }\n\t}\n}\n\nfn g() int {\n\treturn match []int{} {\n\t\telse { 3 }\n\t}\n}\n')
+	mut match_count := 0
+	for node in a.nodes {
+		if node.kind == .match_stmt {
+			match_count++
+		}
+	}
+	assert match_count == 2
+}
+
 fn test_local_generic_type_with_qualified_arg_resolves_base_before_qualification() {
 	a := parse_parser_regression_source('local_generic_qualified_arg',
 		'module main\n\nimport other\n\nfn main() {\n\tstruct Box[T] {}\n\tmut boxes := []Box[other.Thing]{}\n\tboxes << Box[other.Thing]{}\n}\n')
@@ -424,6 +436,33 @@ fn test_multiline_keyword_infix_expressions_continue_after_semicolon() {
 	assert is_count == 1
 	assert in_count == 1
 	assert as_count == 1
+}
+
+fn test_parenthesized_statement_after_call_is_not_call_continuation() {
+	a := parse_parser_regression_source('parenthesized_statement_after_call',
+		"module main\n\nfn foo() int {\n\treturn 1\n}\n\nfn main() {\n\tprintln('a')\n\t(foo())\n}\n")
+	mut nested_call_continuations := 0
+	mut println_calls := 0
+	mut foo_calls := 0
+	for node in a.nodes {
+		if node.kind != .call || node.children_count == 0 {
+			continue
+		}
+		callee_id := a.child(&node, 0)
+		callee := a.node(callee_id)
+		if callee.kind == .call {
+			nested_call_continuations++
+		}
+		if callee.kind == .ident && callee.value == 'println' {
+			println_calls++
+		}
+		if callee.kind == .ident && callee.value == 'foo' {
+			foo_calls++
+		}
+	}
+	assert nested_call_continuations == 0
+	assert println_calls == 1
+	assert foo_calls == 1
 }
 
 fn test_normalized_option_result_fixed_array_type_names_parse_as_wrapped_arrays() {

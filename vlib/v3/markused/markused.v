@@ -2672,9 +2672,7 @@ fn enqueue_function_value_selectors(a &flat.FlatAst, collector CallCollector, fn
 				&& shadowed_value_idents[int(base_id)] {
 				continue
 			}
-			base := a.node(base_id)
-			if base.kind == .ident && base.value.len > 0 {
-				name := '${base.value}.${node.value}'
+			for name in collector.fn_value_selector_names(&node, '', map[string]string{}) {
 				if name in fn_decls {
 					enqueue(name, mut used, mut queue)
 				}
@@ -2723,10 +2721,7 @@ fn enqueue_function_value_selectors_in_node(a &flat.FlatAst, collector CallColle
 		return
 	}
 	if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
-		base_id := a.child(node, 0)
-		base := a.node(base_id)
-		if base.kind == .ident && base.value.len > 0 {
-			name := '${base.value}.${node.value}'
+		for name in collector.fn_value_selector_names(node, '', map[string]string{}) {
 			if name in fn_decls {
 				enqueue(name, mut used, mut queue)
 			}
@@ -3258,7 +3253,16 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 				if child.children_count > 0 {
 					callee_id := c.a.child(child, 0)
 					if int(callee_id) >= 0 {
-						callee := c.a.nodes[int(callee_id)]
+						mut callee := c.a.nodes[int(callee_id)]
+						if callee.kind == .paren && callee.children_count > 0 {
+							inner_id := c.a.child(&callee, 0)
+							if int(inner_id) >= 0 {
+								inner := c.a.nodes[int(inner_id)]
+								if inner.kind == .ident || inner.kind == .selector {
+									callee = inner
+								}
+							}
+						}
 						if callee.kind == .ident && callee.value.len > 0 {
 							if resolved_call.len > 0 {
 								calls << resolved_call
@@ -3301,6 +3305,10 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 									if !has_exact_selector_call && !base_is_local_value {
 										has_exact_selector_call = c.collect_checker_selected_call(resolved_call, mut
 											calls)
+									}
+									if !has_exact_selector_call {
+										has_exact_selector_call = c.collect_sum_variant_receiver_methods(base_id,
+											callee.value, cur_module, mut calls)
 									}
 									if !has_exact_selector_call {
 										has_exact_selector_call = c.collect_typed_receiver_method(base_id,
@@ -4648,6 +4656,10 @@ fn (c &CallCollector) collect_top_level_selector_call(callee &flat.Node, method 
 				has_exact_selector_call = c.collect_top_level_typed_receiver_method(base_id,
 					method, cur_module, imports, local_values, local_types, mut calls)
 			}
+			if !has_exact_selector_call {
+				has_exact_selector_call = c.collect_sum_variant_receiver_methods(base_id, method,
+					cur_module, mut calls)
+			}
 			if !has_exact_selector_call && base.kind == .ident && base.value in imports
 				&& base.value !in local_values {
 				calls << imports[base.value] + '.' + method
@@ -5279,28 +5291,42 @@ fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node,
 		calls << resolved
 		return
 	}
-	if node.children_count == 0 {
-		return
+	for name in c.fn_value_selector_names(node, cur_module, imports) {
+		if !c.name_may_reference_fn(name, cur_module, imports) {
+			continue
+		}
+		has_fn_decl := c.name_has_fn_decl(name, cur_module, imports)
+		if !has_fn_decl && !c.node_is_fn_value(id) {
+			continue
+		}
+		c.add_fn_value_candidates(name, cur_module, imports, mut calls)
+		c.add_const_alias_candidates(name, cur_module, imports, mut calls)
 	}
-	base := c.a.child_node(node, 0)
-	if base.kind != .ident || base.value.len == 0 || node.value.len == 0 {
-		return
+}
+
+fn (c &CallCollector) fn_value_selector_names(node &flat.Node, cur_module string, imports map[string]string) []string {
+	if node.children_count == 0 || node.value.len == 0 {
+		return []string{}
 	}
-	name := '${base.value}.${node.value}'
-	if !c.name_may_reference_fn(name, cur_module, imports) {
-		return
+	base_id := c.a.child(node, 0)
+	base := c.a.node(base_id)
+	mut names := []string{}
+	if base.kind == .ident && base.value.len > 0 {
+		markused_push_fn_value_selector_name(mut names, '${base.value}.${node.value}')
+		if base.value in imports {
+			markused_push_fn_value_selector_name(mut names, '${imports[base.value]}.${node.value}')
+		}
 	}
-	has_fn_decl := c.name_has_fn_decl(name, cur_module, imports)
-	if !has_fn_decl && !c.node_is_fn_value(id) {
-		return
+	type_name := resolve_type_name(c.node_type(base_id))
+	if method_name := c.typed_receiver_method_name(type_name, node.value, cur_module) {
+		markused_push_fn_value_selector_name(mut names, method_name)
 	}
-	c.add_fn_value_candidates(name, cur_module, imports, mut calls)
-	c.add_const_alias_candidates(name, cur_module, imports, mut calls)
-	if base.value in imports {
-		mod_name := imports[base.value]
-		resolved_name := '${mod_name}.${node.value}'
-		c.add_fn_value_candidates(resolved_name, cur_module, imports, mut calls)
-		c.add_const_alias_candidates(resolved_name, cur_module, imports, mut calls)
+	return names
+}
+
+fn markused_push_fn_value_selector_name(mut names []string, name string) {
+	if name.len > 0 && name !in names {
+		names << name
 	}
 }
 
@@ -5642,6 +5668,30 @@ fn (c &CallCollector) collect_typed_receiver_method(base_id flat.NodeId, method 
 	method_name := c.typed_receiver_method_name(type_name, method, cur_module) or { return false }
 	c.add_typed_receiver_method_name(method_name, mut calls)
 	return true
+}
+
+fn (c &CallCollector) collect_sum_variant_receiver_methods(base_id flat.NodeId, method string, cur_module string, mut calls []string) bool {
+	mut base_type := types.unwrap_pointer(c.node_type(base_id))
+	if base_type is types.Alias {
+		base_type = base_type.base_type
+	}
+	if base_type !is types.SumType {
+		return false
+	}
+	sum_name := (base_type as types.SumType).name
+	variants := c.tc.sum_types[sum_name] or { return false }
+	mut added := false
+	for variant in variants {
+		for candidate in [variant + '.' + method, qualify_fn(cur_module, variant + '.' + method)] {
+			if candidate.len == 0 || !c.is_known_fn_name(candidate) {
+				continue
+			}
+			c.add_typed_receiver_method_name(candidate, mut calls)
+			added = true
+			break
+		}
+	}
+	return added
 }
 
 fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) string {

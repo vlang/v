@@ -3329,33 +3329,42 @@ fn make_alias() &Bare {
 	return p
 }
 
-fn make_direct() &Bare {
-	x := Bare{
-		x: 5
+	fn make_direct() &Bare {
+		x := Bare{
+			x: 5
+		}
+		return &x
 	}
-	return &x
-}
 
-fn main() {
-	b := Bare{
+	fn make_param_alias(x Bare) &Bare {
+		p := &x
+		return p
+	}
+
+	fn main() {
+		b := Bare{
 		x: 1
 	}
 	m := Marked{
 		y: 2
 	}
-	h := &Bare{
-		x: 3
+		h := &Bare{
+			x: 3
+		}
+		a := make_alias()
+		d := make_direct()
+		pa := make_param_alias(Bare{
+			x: 6
+		})
+		println(int_str(b.x + m.y + h.x + a.x + d.x + pa.x))
+		unsafe {
+			free(h)
+			free(a)
+			free(d)
+			free(pa)
+		}
 	}
-	a := make_alias()
-	d := make_direct()
-	println(int_str(b.x + m.y + h.x + a.x + d.x))
-	unsafe {
-		free(h)
-		free(a)
-		free(d)
-	}
-}
-'
+	'
 	c_source := gen_c(v3_bin, 'bare_aligned_attribute_metadata', source)
 	assert c_source.contains('__attribute__((aligned))')
 	assert !c_source.contains('aligned(aligned)')
@@ -3365,8 +3374,10 @@ fn main() {
 	assert c_source.contains('v3_aligned_free(h)')
 	assert c_source.contains('v3_aligned_free(a)')
 	assert c_source.contains('v3_aligned_free(d)')
+	assert c_source.contains('v3_aligned_free(pa)')
+	assert c_source.contains('v3_aligned_memdup(&x, sizeof(Bare), __alignof__(Bare))')
 	out := run_good(v3_bin, 'bare_aligned_attribute_cgen', source)
-	assert out == '15'
+	assert out == '21'
 }
 
 fn test_implicit_interface_str_dispatch_dereferences_pointer_scalar_fields() {
@@ -3471,6 +3482,26 @@ fn test_callback_lambda_lift_preserves_outer_captures() {
 	callee_out := run_good(v3_bin, 'callback_lambda_lift_preserves_fn_callee_capture',
 		'fn apply(cb fn (int) int, n int) int {\n\treturn cb(n)\n}\n\nfn double(n int) int {\n\treturn n * 2\n}\n\nfn main() {\n\tcb := double\n\tprintln(int_str(apply(|n| cb(n), 6)))\n}\n')
 	assert callee_out == '12'
+}
+
+fn test_callback_lambda_lift_forwards_optional_void_failures() {
+	v3_bin := build_v3()
+	result_out := run_good(v3_bin, 'callback_lambda_result_void_forward',
+		'fn takes(cb fn () !void) {\n\tcb() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n\tprintln("success")\n}\n\nfn maybe_fails() !void {\n\treturn error("fail")\n}\n\nfn main() {\n\ttakes(|| maybe_fails())\n}\n')
+	assert result_out == 'fail'
+	option_out := run_good(v3_bin, 'callback_lambda_option_void_forward',
+		'fn takes(cb fn () ?void) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ?void {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n')
+	assert option_out == 'none'
+}
+
+fn test_user_new_map_call_with_args_uses_renamed_symbol() {
+	v3_bin := build_v3()
+	source := 'fn new_map(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tprintln(int_str(new_map(41)))\n}\n'
+	c_source := gen_c(v3_bin, 'user_new_map_call_with_args', source)
+	assert c_source.contains('main__new_map(41)'), c_source
+	assert !c_source.contains('(new_map(41)'), c_source
+	out := run_good(v3_bin, 'user_new_map_call_with_args_run', source)
+	assert out == '42'
 }
 
 fn test_amp_interface_cast_heap_copies_concrete_source() {

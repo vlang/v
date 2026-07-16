@@ -120,6 +120,11 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return none
 	}
 	if node.kind == .nil_literal {
+		if target_is_ptr {
+			expr := t.transform_expr(id)
+			t.set_node_typ(int(expr), target_type)
+			return expr
+		}
 		return none
 	}
 	if target_is_ptr && node.kind == .ident
@@ -127,13 +132,12 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 		return t.transform_expr(id)
 	}
 	source_type := t.node_type(id)
-	if target_is_ptr && (source_type == 'voidptr' || source_type == '&void') {
+	if target_is_ptr && source_type in ['voidptr', '&void', 'nil'] {
 		expr := t.transform_expr(id)
-		cast := t.make_cast(target_type, expr, target_type)
-		t.set_node_typ(int(cast), target_type)
-		return cast
+		t.set_node_typ(int(expr), target_type)
+		return expr
 	}
-	if !target_is_ptr && (source_type == 'voidptr' || source_type == '&void') {
+	if !target_is_ptr && source_type in ['voidptr', '&void'] {
 		expr := t.transform_expr(id)
 		fields := [
 			t.make_sum_literal_field('_typ', t.make_int_literal(0), 'int'),

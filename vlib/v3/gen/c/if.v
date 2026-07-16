@@ -502,17 +502,26 @@ fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
 		child := g.a.nodes[int(child_id)]
 		if i == block.children_count - 1 {
 			if child.kind == .expr_stmt {
-				g.write('_ifexpr = ')
-				g.gen_expr(g.a.child(child, 0))
-				g.writeln(';')
+				inner_id := g.a.child(child, 0)
+				if g.if_expr_tail_has_no_value(inner_id) {
+					g.gen_node(child_id)
+				} else {
+					g.write('_ifexpr = ')
+					g.gen_expr(inner_id)
+					g.writeln(';')
+				}
 			} else if child.kind == .if_expr {
 				g.write('_ifexpr = ')
 				g.gen_if_expr(child)
 				g.writeln(';')
 			} else if g.is_expr_kind(child.kind) {
-				g.write('_ifexpr = ')
-				g.gen_expr(child_id)
-				g.writeln(';')
+				if g.if_expr_tail_has_no_value(child_id) {
+					g.gen_node(child_id)
+				} else {
+					g.write('_ifexpr = ')
+					g.gen_expr(child_id)
+					g.writeln(';')
+				}
 			} else {
 				g.gen_node(child_id)
 			}
@@ -522,6 +531,16 @@ fn (mut g FlatGen) gen_if_expr_block(block &flat.Node, ret_type types.Type) {
 	}
 	g.gen_scope_ownership_drops()
 	g.leave_conditional_branch()
+}
+
+fn (mut g FlatGen) if_expr_tail_has_no_value(id flat.NodeId) bool {
+	if !g.valid_node_id(id) {
+		return false
+	}
+	if g.is_noreturn_call(id) {
+		return true
+	}
+	return g.tc.resolve_type(id) is types.Void
 }
 
 fn (g &FlatGen) multi_return_tail_parts(block &flat.Node, count int) ?MultiReturnTailParts {

@@ -91,22 +91,27 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 	if map_type := t.map_expr_decl_type(id) {
 		return map_type
 	}
-		if int(id) >= 0 {
-			node := t.a.nodes[int(id)]
-			if node.kind == .call {
-				if ret := t.checker_resolved_non_builtin_return_type(id, node) {
-					return ret
-				}
-			}
-			if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
-				child_type := t.lvalue_type(t.a.child(&node, 0))
-				if child_type.len > 0 {
-					return '&${child_type}'
-				}
+	if int(id) >= 0 {
+		node := t.a.nodes[int(id)]
+		if node.kind == .struct_init {
+			if typ := t.checker_expr_type_name(id) {
+				return typ
 			}
 		}
-		return t.node_type(id)
+		if node.kind == .call {
+			if ret := t.checker_resolved_non_builtin_return_type(id, node) {
+				return ret
+			}
+		}
+		if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
+			child_type := t.lvalue_type(t.a.child(&node, 0))
+			if child_type.len > 0 {
+				return '&${child_type}'
+			}
+		}
 	}
+	return t.node_type(id)
+}
 
 fn (t &Transformer) map_expr_decl_type(id flat.NodeId) ?string {
 	if int(id) < 0 {
@@ -575,6 +580,23 @@ fn (t &Transformer) lookup_struct_field_raw_type(type_name string, field_name st
 	return none
 }
 
+fn (t &Transformer) lookup_struct_field_raw_type_with_owner(type_name string, field_name string) ?(string, string) {
+	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
+	for f in lookup.info.fields {
+		if f.name == field_name {
+			raw := if f.raw_typ.len > 0 { f.raw_typ } else { f.typ }
+			owner_type := if lookup.owner_type.contains('.') || lookup.info.module.len == 0
+				|| lookup.info.module == 'main' || lookup.info.module == 'builtin' {
+				lookup.owner_type
+			} else {
+				'${lookup.info.module}.${lookup.owner_type}'
+			}
+			return raw, owner_type
+		}
+	}
+	return none
+}
+
 fn field_type_needs_checker_authority(typ string) bool {
 	return typ in ['Option', 'Result', 'Optional'] || typ.starts_with('Option_')
 		|| typ.starts_with('Result_') || typ.starts_with('Optional_')
@@ -859,12 +881,12 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 			return qtyp
 		}
 	}
-		if target := t.tc.type_aliases[typ] {
-			return target
-		}
-		if typ in t.structs || typ in t.sum_types || typ in t.enum_types {
-			return typ
-		}
+	if target := t.tc.type_aliases[typ] {
+		return target
+	}
+	if typ in t.structs || typ in t.sum_types || typ in t.enum_types {
+		return typ
+	}
 	if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
 		qtyp := '${t.cur_module}.${typ}'
@@ -1135,27 +1157,27 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		}
 		return resolved
 	}
-		if node.kind == .dump_expr && node.children_count > 0 {
-			return t.node_type(t.a.child(&node, 0))
+	if node.kind == .dump_expr && node.children_count > 0 {
+		return t.node_type(t.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
+		if checker_type := t.checker_expr_type_name(id) {
+			return checker_type
 		}
-		if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
-			if checker_type := t.checker_expr_type_name(id) {
-				return checker_type
-			}
-			if !isnil(t.tc) {
-				checker_resolved := t.tc.resolve_type(id).name()
-				if decl_type_is_usable(checker_resolved) && checker_resolved != 'void' {
-					return t.normalize_type_alias(checker_resolved)
-				}
-			}
-			child_type := t.node_type(t.a.child(&node, 0))
-			if child_type.len > 0 {
-				return '&${child_type}'
+		if !isnil(t.tc) {
+			checker_resolved := t.tc.resolve_type(id).name()
+			if decl_type_is_usable(checker_resolved) && checker_resolved != 'void' {
+				return t.normalize_type_alias(checker_resolved)
 			}
 		}
-		mut deferred_call_typ := ''
-		if node.typ.len > 0 {
-			node_typ := t.normalize_type_alias(node.typ)
+		child_type := t.node_type(t.a.child(&node, 0))
+		if child_type.len > 0 {
+			return '&${child_type}'
+		}
+	}
+	mut deferred_call_typ := ''
+	if node.typ.len > 0 {
+		node_typ := t.normalize_type_alias(node.typ)
 		if node.kind == .call && node_typ in ['int', 'array', 'map', 'unknown'] {
 			deferred_call_typ = node_typ
 		} else {
@@ -1179,21 +1201,21 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 			return array_type
 		}
 	}
-		// NOTE: infix is intentionally not handled here — resolve_expr_type() (called at the top
-		// of node_type) already resolves infix types, including struct operator overloads.
-		if node.kind == .struct_init && node.value.len > 0 {
-			for candidate in [node.typ, node.value] {
-				if candidate.len == 0 {
-					continue
-				}
-				normalized := t.normalize_type_alias(candidate)
-				if normalized != candidate || normalized.contains('[') {
-					return normalized
-				}
+	// NOTE: infix is intentionally not handled here — resolve_expr_type() (called at the top
+	// of node_type) already resolves infix types, including struct operator overloads.
+	if node.kind == .struct_init && node.value.len > 0 {
+		for candidate in [node.typ, node.value] {
+			if candidate.len == 0 {
+				continue
 			}
-			if node.value in t.structs {
-				return node.value
+			normalized := t.normalize_type_alias(candidate)
+			if normalized != candidate || normalized.contains('[') {
+				return normalized
 			}
+		}
+		if node.value in t.structs {
+			return node.value
+		}
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qname := '${t.cur_module}.${node.value}'
 			if qname in t.structs {

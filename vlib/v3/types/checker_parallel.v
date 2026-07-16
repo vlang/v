@@ -346,19 +346,27 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
 	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
+	mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
 	mut saved_capturing_fn_literal_locals := tc.capturing_fn_literal_locals.move()
 	mut saved_capturing_fn_literal_local_depth := tc.capturing_fn_literal_local_depth.move()
+	saved_generic_params := tc.cur_generic_params.clone()
 	tc.cur_fn_mut_param_base_types = map[string]Type{}
 	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
+	tc.cur_fn_shared_binding_owners = map[string][]ScopeBindingOwner{}
 	tc.cur_file = file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope
+	tc.cur_generic_params = tc.infer_decl_generic_param_names(node)
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
 	tc.cur_fn_node_id = fn_idx
 	tc.method_value_locals = map[string]bool{}
-	tc.method_value_local_depth = map[string]int{}
+	tc.fn_value_variadic_locals = map[string]bool{}
+	tc.fn_value_variadic_local_owners = map[string][]ScopeBindingOwner{}
 	tc.capturing_fn_literal_locals = map[string]bool{}
+	tc.capturing_fn_literal_local_owners = map[string][]ScopeBindingOwner{}
+	tc.method_value_local_depth = map[string]int{}
+	tc.fn_value_variadic_local_depth = map[string]int{}
 	tc.capturing_fn_literal_local_depth = map[string]int{}
 	$if ownership ? {
 		tc.ownership_begin_fn(node)
@@ -391,9 +399,11 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		tc.ownership_end_fn()
 	}
 	tc.cur_fn_ret_type = Type(void_)
+	tc.cur_generic_params = saved_generic_params
 	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
+	tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
 	tc.capturing_fn_literal_locals = saved_capturing_fn_literal_locals.move()
 	tc.capturing_fn_literal_local_depth = saved_capturing_fn_literal_local_depth.move()
 }
@@ -496,10 +506,17 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.sparse_checking_nodes = map[int]bool{}
 	w.method_values_by_fn = map[int][]string{}
 	w.method_value_locals = map[string]bool{}
+	w.fn_value_variadic_locals = map[string]bool{}
+	w.fn_value_variadic_local_owners = map[string][]ScopeBindingOwner{}
+	w.capturing_fn_literal_locals = map[string]bool{}
+	w.capturing_fn_literal_local_owners = map[string][]ScopeBindingOwner{}
 	w.method_value_local_depth = map[string]int{}
+	w.fn_value_variadic_local_depth = map[string]int{}
+	w.capturing_fn_literal_local_depth = map[string]int{}
 	w.cur_fn_mut_param_base_types = map[string]Type{}
 	w.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	w.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
+	w.cur_fn_shared_binding_owners = map[string][]ScopeBindingOwner{}
 	w.generic_method_value_info = map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
 	w.cur_fn_ret_type = Type(void_)

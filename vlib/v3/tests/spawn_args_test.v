@@ -37,10 +37,10 @@ fn assert_spawn_pthread_decls(c_code string) {
 	assert !c_code.contains('i32 pthread_attr_init(void* attr);'), c_code
 	assert !c_code.contains('i32 pthread_attr_destroy(void* attr);'), c_code
 	assert c_code.contains('pthread_attr_setstacksize('), c_code
-	assert c_code.contains(', 524288);'), c_code
+	assert c_code.contains(', 8388608);'), c_code
+	assert !c_code.contains(', 524288);'), c_code
 	assert !c_code.contains(', 1048576);'), c_code
 	assert !c_code.contains(', 2097152);'), c_code
-	assert !c_code.contains(', 8388608);'), c_code
 }
 
 // A `spawn` of a free function with arguments must pack the arguments into a heap
@@ -173,4 +173,26 @@ fn main() {
 	assert c_compact.contains('typedefstruct{inta0;}takes_ptr_thread_args'), c_code
 	assert c_compact.contains('takes_ptr(&p->a0)'), c_code
 	assert !c_compact.contains('typedefstruct{int*a0;}takes_ptr_thread_args'), c_code
+}
+
+// A spawned fn-value closure must copy the lifted fn literal's thread-local
+// capture slots into the thread argument packet and restore them in the worker.
+fn test_spawn_fn_value_closure_copies_captures() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_fn_value_capture', '
+fn main() {
+	x := 11
+	cb := fn [x] () int {
+		return x
+	}
+	_ := spawn (cb)()
+	println("ok")
+}
+	')
+	c_compact := compact_c(c_code)
+	assert c_code.contains('fn_value_args_thread_wrapper'), c_code
+	assert c_compact.contains('intc0;}fn_value_thread_args_'), c_code
+	assert c_compact.contains('__anon_fn_0_x=p->c0;'), c_code
+	assert c_compact.contains('->c0=__anon_fn_0_x;'), c_code
+	assert c_compact.contains('p->f()'), c_code
 }

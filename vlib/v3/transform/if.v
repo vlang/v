@@ -33,6 +33,12 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 		if info := t.array_index_info(rhs_id) {
 			return t.expand_array_index_if_guard(node, lhs.value, info)
 		}
+		if info := t.array_get_call_info(rhs_id) {
+			return t.expand_array_index_if_guard(node, lhs.value, info)
+		}
+		if info := t.channel_receive_info(rhs_id) {
+			return t.expand_channel_receive_if_guard(node, lhs.value, info)
+		}
 	}
 	mut rhs_type := t.optional_result_expr_type_name(rhs_id)
 	if !t.is_optional_type_name(rhs_type) {
@@ -42,6 +48,7 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 	value_type := t.optional_base_type(rhs_type)
 	tmp_name := t.new_temp('if_guard')
 	rhs_expr := t.transform_expr(rhs_id)
+	t.mark_optional_source_expr_type(rhs_expr, rhs_type)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
 	tmp_decl := t.make_decl_assign_typed(tmp_name, rhs_expr, rhs_type)
@@ -105,6 +112,65 @@ fn (mut t Transformer) try_expand_if_guard(_id flat.NodeId, node flat.Node) ?[]f
 	}
 	expanded << tmp_decl
 	expanded << t.make_if(ok_cond, then_block, else_block)
+	return expanded
+}
+
+fn (mut t Transformer) expand_channel_receive_if_guard(node flat.Node, lhs_name string, info ChannelReceiveInfo) ?[]flat.NodeId {
+	val_name := t.new_temp('chan_val')
+	ok_name := t.new_temp('chan_ok')
+	channel_name := t.new_temp('chan_src')
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	channel_expr := t.transform_expr(info.channel_id)
+	mut prelude := []flat.NodeId{}
+	t.drain_pending(mut prelude)
+	prelude << t.make_decl_assign_typed(val_name, t.zero_value_for_type(info.value_type),
+		info.value_type)
+	mut channel_source := channel_expr
+	if info.needs_deref {
+		channel_source = t.make_prefix(.mul, channel_source)
+	}
+	channel_cast := t.make_cast('&sync.Channel', channel_source, '&sync.Channel')
+	prelude << t.make_decl_assign_typed(channel_name, channel_cast, '&sync.Channel')
+	t.mark_fn_used('sync__Channel__pop')
+	pop_call := t.make_call_typed('sync__Channel__pop', arr2(t.make_ident(channel_name), t.make_prefix(.amp,
+		t.make_ident(val_name))), 'bool')
+	prelude << t.make_decl_assign_typed(ok_name, pop_call, 'bool')
+
+	then_id := t.a.child(&node, 1)
+	then_node := t.a.nodes[int(then_id)]
+	saved_var_types := t.var_types.clone()
+	mut then_children := []flat.NodeId{}
+	if lhs_name != '_' {
+		then_children << t.make_decl_assign_typed(lhs_name, t.make_ident(val_name), info.value_type)
+		t.set_var_type(lhs_name, info.value_type)
+	}
+	if then_node.kind == .block {
+		then_children << t.transform_stmts(t.a.children_of(&then_node))
+	} else {
+		then_children << t.transform_stmt(then_id)
+	}
+	t.restore_var_types(saved_var_types)
+	then_block := t.make_block(then_children)
+
+	mut else_block := flat.empty_node
+	if node.children_count >= 3 {
+		else_id := t.a.child(&node, 2)
+		else_node := t.a.nodes[int(else_id)]
+		else_block = if else_node.kind == .block {
+			t.make_block(t.transform_stmts(t.a.children_of(&else_node)))
+		} else if else_node.kind == .if_expr {
+			t.transform_else_if_expr(else_id, else_node)
+		} else {
+			t.make_block(t.transform_stmt(else_id))
+		}
+	}
+	t.pending_stmts = outer_pending
+	mut expanded := []flat.NodeId{cap: prelude.len + 1}
+	for stmt in prelude {
+		expanded << stmt
+	}
+	expanded << t.make_if(t.make_ident(ok_name), then_block, else_block)
 	return expanded
 }
 
@@ -184,11 +250,11 @@ fn (mut t Transformer) transform_else_if_expr(else_id flat.NodeId, else_node fla
 
 // expand_map_index_if_guard builds expand map index if guard data for transform.
 fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string, info MapIndexInfo) ?[]flat.NodeId {
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
 	map_expr := t.stable_expr_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
 	ptr_name := t.new_temp('map_ptr')
-	outer_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
 	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
@@ -237,10 +303,10 @@ fn (mut t Transformer) expand_map_index_if_guard(node flat.Node, lhs_name string
 
 // expand_array_index_if_guard builds expand array index if guard data for transform.
 fn (mut t Transformer) expand_array_index_if_guard(node flat.Node, lhs_name string, info ArrayIndexInfo) ?[]flat.NodeId {
-	array_expr := t.stable_expr_for_reuse(info.base_id)
-	index_name := t.new_temp('arr_idx')
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
+	array_expr := t.stable_expr_for_reuse(info.base_id)
+	index_name := t.new_temp('arr_idx')
 	index_expr := t.transform_expr(info.index_id)
 	mut prelude := []flat.NodeId{}
 	t.drain_pending(mut prelude)
@@ -630,11 +696,14 @@ fn (t &Transformer) node_type_with_smartcasts(id flat.NodeId, contexts []Smartca
 			base_key := t.expr_key(base_id)
 			if base_key.len > 0 {
 				if sc := t.find_smartcast_in_context(base_key, contexts) {
-					variant_type := t.qualify_variant(sc.variant_name, sc.sum_type_name)
+					variant_type := t.qualify_variant(t.trim_pointer_type(sc.variant_name),
+						sc.sum_type_name)
 					if ftyp := t.lookup_struct_field_type(variant_type, node.value) {
 						return ftyp
 					}
-					if ftyp := t.lookup_struct_field_type(sc.variant_name, node.value) {
+					if ftyp := t.lookup_struct_field_type(t.trim_pointer_type(sc.variant_name),
+						node.value)
+					{
 						return ftyp
 					}
 				}
@@ -863,11 +932,11 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 
 // build_map_index_if_value_guard_chain supports build_map_index_if_value_guard_chain handling.
 fn (mut t Transformer) build_map_index_if_value_guard_chain(if_node flat.Node, lhs_name string, info MapIndexInfo, target_name string, target_type string) []flat.NodeId {
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
 	map_expr := t.stable_expr_for_reuse(info.base_id)
 	key_name := t.new_temp('map_key')
 	ptr_name := t.new_temp('map_ptr')
-	outer_pending := t.pending_stmts.clone()
-	t.pending_stmts.clear()
 	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -905,10 +974,10 @@ fn (mut t Transformer) build_map_index_if_value_guard_chain(if_node flat.Node, l
 
 // build_array_index_if_value_guard_chain supports build_array_index_if_value_guard_chain handling.
 fn (mut t Transformer) build_array_index_if_value_guard_chain(if_node flat.Node, lhs_name string, info ArrayIndexInfo, target_name string, target_type string) []flat.NodeId {
-	array_expr := t.stable_expr_for_reuse(info.base_id)
-	index_name := t.new_temp('arr_idx')
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
+	array_expr := t.stable_expr_for_reuse(info.base_id)
+	index_name := t.new_temp('arr_idx')
 	index_expr := t.transform_expr(info.index_id)
 	mut result := []flat.NodeId{}
 	t.drain_pending(mut result)
@@ -975,6 +1044,12 @@ fn (mut t Transformer) if_value_branch_block(branch_id flat.NodeId, target_name 
 	}
 	if branch.kind != .block {
 		mut result := []flat.NodeId{}
+		if t.if_value_branch_tail_has_no_value(branch_id) {
+			value := t.transform_expr(branch_id)
+			t.drain_pending(mut result)
+			result << t.make_expr_stmt(value)
+			return t.make_block(result)
+		}
 		value := t.transform_if_branch_value(branch_id, target_type)
 		t.drain_pending(mut result)
 		result << t.make_assign(t.make_ident(target_name), value)
@@ -1024,6 +1099,12 @@ fn (mut t Transformer) if_value_branch_block(branch_id flat.NodeId, target_name 
 			}
 			return t.make_block(result)
 		}
+		if t.if_value_branch_tail_has_no_value(tail_id) {
+			value := t.transform_expr(tail_id)
+			t.drain_pending(mut result)
+			result << t.make_expr_stmt(value)
+			return t.make_block(result)
+		}
 		value := t.transform_if_branch_value(inner_id, target_type)
 		t.drain_pending(mut result)
 		result << t.make_assign(t.make_ident(target_name), value)
@@ -1055,10 +1136,27 @@ fn (mut t Transformer) if_value_branch_block(branch_id flat.NodeId, target_name 
 		}
 		return t.make_block(result)
 	}
+	if t.if_value_branch_tail_has_no_value(tail_id) {
+		value := t.transform_expr(tail_id)
+		t.drain_pending(mut result)
+		result << t.make_expr_stmt(value)
+		return t.make_block(result)
+	}
 	value := t.transform_if_branch_value(tail_id, target_type)
 	t.drain_pending(mut result)
 	result << t.make_assign(t.make_ident(target_name), value)
 	return t.make_block(result)
+}
+
+fn (t &Transformer) if_value_branch_tail_has_no_value(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .call && t.is_noreturn_call(id) {
+		return true
+	}
+	return t.node_type(id) == 'void'
 }
 
 // transform_if_branch_value transforms transform if branch value data for transform.
@@ -1645,24 +1743,25 @@ fn (t &Transformer) extract_is_expr(cond_id flat.NodeId) IsExprInfo {
 // sum_type_for_is_expr supports sum type for is expr handling for Transformer.
 fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) string {
 	clean_expr_type := t.trim_all_pointer_type(expr_type)
+	clean_variant := t.trim_pointer_type(variant)
 	if t.is_interface_type_name(clean_expr_type) {
-		if _ := t.resolve_interface_pattern(variant, clean_expr_type) {
+		if _ := t.resolve_interface_pattern(clean_variant, clean_expr_type) {
 			return clean_expr_type
 		}
-		if _ := t.resolve_interface_pattern_interface(variant) {
+		if _ := t.resolve_interface_pattern_interface(clean_variant) {
 			return clean_expr_type
 		}
 	}
-	if _ := t.resolve_sum_variant_pattern_for_subject(clean_expr_type, variant) {
+	if _ := t.resolve_sum_variant_pattern_for_subject(clean_expr_type, clean_variant) {
 		return clean_expr_type
 	}
 	resolved_expr_sum := t.resolve_sum_name(clean_expr_type)
 	if resolved_expr_sum in t.sum_types {
-		if _ := t.sum_variant_name(resolved_expr_sum, variant) {
+		if _ := t.sum_variant_name(resolved_expr_sum, clean_variant) {
 			return clean_expr_type
 		}
 	}
-	return t.find_sum_type_for_variant(variant)
+	return t.find_sum_type_for_variant(clean_variant)
 }
 
 // find_sum_type_for_variant returns the sum type name that contains

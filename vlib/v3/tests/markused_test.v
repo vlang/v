@@ -1020,6 +1020,64 @@ println(int_str(f() + 1))
 	assert c_code.contains('helper('), c_code
 }
 
+fn test_nonlocal_sum_receiver_method_is_collected_before_variant_helpers() {
+	used := mark_used_source('nonlocal_sum_receiver_method', '
+struct A {}
+struct B {}
+
+type Choice = A | B
+
+fn make_choice() Choice {
+	return Choice(A{})
+}
+
+fn (choice Choice) foo() int {
+	return 7
+}
+
+fn (a A) foo() int {
+	return 1
+}
+
+fn (b B) foo() int {
+	return 2
+}
+
+fn main() {
+	_ := make_choice().foo()
+}
+')
+	assert used['Choice.foo'] || used['main.Choice.foo'] || used['main__Choice__foo'], used.str()
+}
+
+fn test_top_level_sum_receiver_method_is_collected_before_variant_helpers() {
+	used := mark_used_source('top_level_sum_receiver_method', '
+struct A {}
+struct B {}
+
+type Choice = A | B
+
+fn make_choice() Choice {
+	return Choice(A{})
+}
+
+fn (choice Choice) foo() int {
+	return 7
+}
+
+fn (a A) foo() int {
+	return 1
+}
+
+fn (b B) foo() int {
+	return 2
+}
+
+__global top = make_choice().foo()
+')
+	assert used['Choice.foo'] || used['main.Choice.foo'] || used['main__Choice__foo'], used.str()
+}
+
 fn test_same_module_unqualified_homonym_call_uses_qualified_key() {
 	a, tc := parse_checked_project('same_module_unqualified_homonym_call', {
 		'main.v': 'module main
