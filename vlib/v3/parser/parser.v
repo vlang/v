@@ -59,7 +59,7 @@ mut:
 	pending_decl_attrs                []string
 	pending_decl_attr_kinds           []int
 	in_for_container                  bool
-	disable_source_arch_optimizations bool
+	unsupported_inline_asm_guards     map[int]bool
 	parsing_inferred_fixed_array_type bool
 	diagnostic_limit_reached          bool
 	local_type_names                  map[string]string
@@ -97,13 +97,14 @@ struct ParsedFieldAttrs {
 // new creates a Parser value for parser.
 pub fn Parser.new(prefs &pref.Preferences) &Parser {
 	return &Parser{
-		prefs:                  unsafe { prefs }
-		s:                      scanner.new_scanner(prefs, .normal)
-		local_type_names:       map[string]string{}
-		anonymous_struct_types: map[string][]string{}
-		comptime_const_values:  map[string]string{}
-		comptime_local_values:  map[string]string{}
-		a:                      &flat.FlatAst{
+		prefs:                         unsafe { prefs }
+		s:                             scanner.new_scanner(prefs, .normal)
+		local_type_names:              map[string]string{}
+		anonymous_struct_types:        map[string][]string{}
+		comptime_const_values:         map[string]string{}
+		comptime_local_values:         map[string]string{}
+		unsupported_inline_asm_guards: map[int]bool{}
+		a:                             &flat.FlatAst{
 			nodes:                []flat.Node{cap: 256}
 			children:             []flat.NodeId{cap: 512}
 			disabled_fns:         map[string]bool{}
@@ -211,9 +212,10 @@ pub fn (mut p Parser) parse_into(path string) {
 	// every source buffer so those views remain valid through later phases.
 	p.a.source_buffers << src
 	stable_src := p.a.source_buffers.last()
-	p.disable_source_arch_optimizations = false
-	p.disable_source_arch_optimizations = !p.prefs.supports_inline_asm
-		&& p.source_contains_active_target_inline_asm(stable_src, p.prefs.target.arch)
+	p.unsupported_inline_asm_guards.clear()
+	if !p.prefs.supports_inline_asm {
+		p.precollect_unsupported_inline_asm_guards(stable_src, p.prefs.target.arch)
+	}
 	if path.ends_with('.v') {
 		p.parsed_v_files++
 	}
@@ -3158,14 +3160,21 @@ fn (mut p Parser) parse_top_level_comptime_else() flat.NodeId {
 }
 
 fn (p &Parser) eval_comptime_cond(cond string) bool {
+	return p.eval_comptime_cond_with_target_override(cond,
+		p.tok_pos in p.unsupported_inline_asm_guards)
+}
+
+fn (p &Parser) eval_comptime_cond_with_target_override(cond string, disable_target_arch bool) bool {
 	c := comptime_cond_strip_outer_parens(cond.trim_space())
 	left_or, right_or, has_or := comptime_cond_split_top_level(c, '||')
 	if has_or {
-		return p.eval_comptime_cond(left_or) || p.eval_comptime_cond(right_or)
+		return p.eval_comptime_cond_with_target_override(left_or, disable_target_arch)
+			|| p.eval_comptime_cond_with_target_override(right_or, disable_target_arch)
 	}
 	left_and, right_and, has_and := comptime_cond_split_top_level(c, '&&')
 	if has_and {
-		return p.eval_comptime_cond(left_and) && p.eval_comptime_cond(right_and)
+		return p.eval_comptime_cond_with_target_override(left_and, disable_target_arch)
+			&& p.eval_comptime_cond_with_target_override(right_and, disable_target_arch)
 	}
 	left_ne, right_ne, has_ne := comptime_cond_split_top_level(c, '!=')
 	if has_ne {
@@ -3176,7 +3185,7 @@ fn (p &Parser) eval_comptime_cond(cond string) bool {
 		return comptime_cond_value(left_eq) == comptime_cond_value(right_eq)
 	}
 	if c.starts_with('!') {
-		return !p.eval_comptime_cond(c[1..])
+		return !p.eval_comptime_cond_with_target_override(c[1..], disable_target_arch)
 	}
 	if c == 'true' {
 		return true
@@ -3195,8 +3204,7 @@ fn (p &Parser) eval_comptime_cond(cond string) bool {
 		return pref.comptime_optional_flag_value(p.prefs, flag)
 	}
 	name := c.trim_space()
-	if p.disable_source_arch_optimizations
-		&& comptime_flag_is_target_arch(name, p.prefs.target.arch) {
+	if disable_target_arch && comptime_flag_is_target_arch(name, p.prefs.target.arch) {
 		return false
 	}
 	return pref.comptime_flag_value(p.prefs, name)
@@ -3277,15 +3285,15 @@ struct InlineAsmScanToken {
 }
 
 struct InlineAsmScanResult {
-	found bool
-	next  int
+	unguarded bool
+	next      int
 }
 
 // Tokenize only asm-shaped sources, precollect ordered file constants, and follow
 // parse-time-known `$if` branches. Deferred generic conditions remain conservative.
-fn (mut p Parser) source_contains_active_target_inline_asm(source string, target_arch string) bool {
+fn (mut p Parser) precollect_unsupported_inline_asm_guards(source string, target_arch string) {
 	if !source_contains_target_inline_asm(source, target_arch) {
-		return false
+		return
 	}
 	saved_module := p.cur_module
 	mut saved_const_values := p.comptime_const_values.clone()
@@ -3310,11 +3318,12 @@ fn (mut p Parser) source_contains_active_target_inline_asm(source string, target
 			break
 		}
 	}
-	return p.inline_asm_scan_range(source, tokens, 0, tokens.len - 1, target_arch, true)
+	p.inline_asm_scan_range(source, tokens, 0, tokens.len - 1, target_arch, true)
 }
 
-fn (mut p Parser) inline_asm_scan_range(source string, tokens []InlineAsmScanToken, start int, end int, target_arch string, collect_consts bool) bool {
+fn (mut p Parser) inline_asm_scan_range(source string, tokens []InlineAsmScanToken, start int, end int, target_arch string, collect_consts bool) InlineAsmScanResult {
 	mut i := start
+	mut unguarded := false
 	for i < end {
 		if collect_consts && tokens[i].kind == .key_module && i + 1 < end
 			&& tokens[i + 1].kind == .name {
@@ -3329,18 +3338,21 @@ fn (mut p Parser) inline_asm_scan_range(source string, tokens []InlineAsmScanTok
 		if tokens[i].kind == .dollar && i + 1 < end && tokens[i + 1].kind == .key_if {
 			result := p.inline_asm_scan_comptime_if(source, tokens, i, end, target_arch, true,
 				collect_consts)
-			if result.found {
-				return true
+			if result.unguarded {
+				unguarded = true
 			}
 			i = if result.next > i { result.next } else { i + 1 }
 			continue
 		}
 		if tokens[i].kind == .key_asm && inline_asm_tokens_match_target(tokens, i, end, target_arch) {
-			return true
+			unguarded = true
 		}
 		i++
 	}
-	return false
+	return InlineAsmScanResult{
+		unguarded: unguarded
+		next:      end
+	}
 }
 
 fn (mut p Parser) inline_asm_scan_comptime_if(source string, tokens []InlineAsmScanToken, start int, end int, target_arch string, inspect bool, collect_consts bool) InlineAsmScanResult {
@@ -3359,47 +3371,116 @@ fn (mut p Parser) inline_asm_scan_comptime_if(source string, tokens []InlineAsmS
 	cond_start := tokens[start + 1].end
 	cond_end := tokens[open].pos
 	condition := if cond_start < cond_end { source[cond_start..cond_end] } else { '' }
+	mut resolved_condition := condition
 	mut known := true
 	mut taken := true
 	if inspect {
-		known, taken = p.inline_asm_comptime_condition(condition)
+		resolved_condition, known, taken = p.inline_asm_comptime_condition(condition)
 	}
-	if inspect && (!known || taken)
-		&& p.inline_asm_scan_range(source, tokens, open + 1, close, target_arch, collect_consts
-		&& known && taken) {
-		return InlineAsmScanResult{
-			found: true
-			next:  close + 1
+	mut unguarded := false
+	if inspect && (!known || taken) {
+		collect_then_consts := collect_consts && known && taken
+		then_result := p.inline_asm_scan_range(source, tokens, open + 1, close, target_arch,
+			collect_then_consts)
+		then_unguarded := p.inline_asm_guard_branch(resolved_condition, tokens[open].pos, true,
+			known, then_result.unguarded, target_arch)
+		if then_unguarded {
+			unguarded = true
 		}
 	}
 	mut next := inline_asm_skip_semicolons(tokens, close + 1, end)
 	if next + 1 >= end || tokens[next].kind != .dollar || tokens[next + 1].kind != .key_else {
 		return InlineAsmScanResult{
-			next: close + 1
+			unguarded: unguarded
+			next:      close + 1
 		}
 	}
 	next = inline_asm_skip_semicolons(tokens, next + 2, end)
 	if next + 1 < end && tokens[next].kind == .dollar && tokens[next + 1].kind == .key_if {
-		return p.inline_asm_scan_comptime_if(source, tokens, next, end, target_arch, inspect
-			&& (!known || !taken), collect_consts && inspect && known && !taken)
+		inspect_else := inspect && (!known || !taken)
+		collect_else_consts := collect_consts && inspect && known && !taken
+		else_result := p.inline_asm_scan_comptime_if(source, tokens, next, end, target_arch,
+			inspect_else, collect_else_consts)
+		else_unguarded := p.inline_asm_guard_branch(resolved_condition, tokens[open].pos, false,
+			known, else_result.unguarded, target_arch)
+		if else_unguarded {
+			unguarded = true
+		}
+		return InlineAsmScanResult{
+			unguarded: unguarded
+			next:      else_result.next
+		}
 	}
 	if next >= end || tokens[next].kind != .lcbr {
 		return InlineAsmScanResult{
-			next: next
+			unguarded: unguarded
+			next:      next
 		}
 	}
 	else_close := inline_asm_matching_close_brace(tokens, next, end)
-	if inspect && (!known || !taken) && else_close < end
-		&& p.inline_asm_scan_range(source, tokens, next + 1, else_close, target_arch, collect_consts
-		&& known && !taken) {
-		return InlineAsmScanResult{
-			found: true
-			next:  else_close + 1
+	if inspect && (!known || !taken) && else_close < end {
+		collect_else_consts := collect_consts && known && !taken
+		else_result := p.inline_asm_scan_range(source, tokens, next + 1, else_close, target_arch,
+			collect_else_consts)
+		else_unguarded := p.inline_asm_guard_branch(resolved_condition, tokens[open].pos, false,
+			known, else_result.unguarded, target_arch)
+		if else_unguarded {
+			unguarded = true
 		}
 	}
 	return InlineAsmScanResult{
-		next: if else_close < end { else_close + 1 } else { end }
+		unguarded: unguarded
+		next:      if else_close < end { else_close + 1 } else { end }
 	}
+}
+
+fn (mut p Parser) inline_asm_guard_branch(condition string, open_pos int, selected_then bool, known bool, unguarded bool, target_arch string) bool {
+	if !unguarded || !known || !inline_asm_condition_targets_arch(condition, target_arch) {
+		return unguarded
+	}
+	if p.eval_comptime_cond_with_target_override(condition, true) == selected_then {
+		return true
+	}
+	p.unsupported_inline_asm_guards[open_pos] = true
+	return false
+}
+
+fn inline_asm_condition_targets_arch(condition string, target_arch string) bool {
+	mut i := 0
+	mut quote := u8(0)
+	for i < condition.len {
+		c := condition[i]
+		if quote != 0 {
+			if c == `\\` && i + 1 < condition.len {
+				i += 2
+				continue
+			}
+			if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if c.is_letter() || c == `_` {
+			start := i
+			i++
+			for i < condition.len && (condition[i].is_letter() || condition[i].is_digit()
+				|| condition[i] == `_`) {
+				i++
+			}
+			if comptime_flag_is_target_arch(condition[start..i], target_arch) {
+				return true
+			}
+			continue
+		}
+		i++
+	}
+	return false
 }
 
 fn (mut p Parser) inline_asm_collect_const_decl(tokens []InlineAsmScanToken, start int, end int) int {
@@ -3502,13 +3583,13 @@ fn (p &Parser) inline_asm_const_value(tokens []InlineAsmScanToken) ?string {
 	}
 }
 
-fn (mut p Parser) inline_asm_comptime_condition(condition string) (bool, bool) {
+fn (mut p Parser) inline_asm_comptime_condition(condition string) (string, bool, bool) {
 	cond := p.resolve_comptime_const_values(p.resolve_comptime_at_values(condition.trim_space()))
 	if p.comptime_cond_needs_loop_var(cond) || comptime_cond_has_type_test(cond)
 		|| comptime_cond_has_type_metadata(cond) || comptime_cond_has_builtin_threads(cond) {
-		return false, false
+		return cond, false, false
 	}
-	return true, p.eval_comptime_cond(cond)
+	return cond, true, p.eval_comptime_cond(cond)
 }
 
 fn inline_asm_tokens_match_target(tokens []InlineAsmScanToken, start int, end int, target_arch string) bool {

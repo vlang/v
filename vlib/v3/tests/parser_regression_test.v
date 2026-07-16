@@ -269,6 +269,43 @@ $if arm64 {
 	assert !a.nodes.any(it.kind == .int_literal && it.value == '32')
 }
 
+fn test_inline_asm_fallback_keeps_unrelated_target_branches() {
+	src := os.join_path(os.temp_dir(), 'v3_scoped_architecture_asm_fallback.v')
+	os.write_file(src, 'module main
+
+$if arm64 {
+	fn before_asm() int { return 64 }
+} $else {
+	fn before_asm() int { return 32 }
+}
+$if arm64 && !tinyc {
+	fn guarded_asm() int {
+		asm arm64 { nop }
+		return 0
+	}
+} $else {
+	fn guarded_asm() int { return 42 }
+}
+$if arm64 {
+	fn after_asm() int { return 128 }
+} $else {
+	fn after_asm() int { return 16 }
+}
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(src)
+	assert p.diagnostics.len == 0
+	assert a.nodes.count(it.kind == .asm_stmt) == 0
+	assert a.nodes.any(it.kind == .int_literal && it.value == '64')
+	assert a.nodes.any(it.kind == .int_literal && it.value == '42')
+	assert a.nodes.any(it.kind == .int_literal && it.value == '128')
+	assert !a.nodes.any(it.kind == .int_literal && it.value in ['32', '0', '16'])
+}
+
 fn test_inline_asm_detection_ignores_comments_and_strings() {
 	src := os.join_path(os.temp_dir(), 'v3_ignored_architecture_asm_text.v')
 	os.write_file(src, '// asm arm64 {
