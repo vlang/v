@@ -317,6 +317,7 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 struct JsonUnmigratableScan {
 	table        &ast.Table = unsafe { nil }
 	json2_prefix string // the local name migrated calls would use; shadowing it breaks them
+	cur_mod      string // the file's module, to qualify a bare decode target type name
 mut:
 	found bool
 }
@@ -334,7 +335,9 @@ fn struct_field_attr_needs_legacy_json(t &ast.Table, field ast.StructField) bool
 		return true
 	}
 	if field.attrs.any(it.name == 'omitempty')
-		&& t.final_sym(field.typ).kind in [.bool, .struct, .sum_type, .enum, .array_fixed] {
+		&& t.final_sym(field.typ).kind in [.bool, .struct, .sum_type, .enum, .array_fixed, .any] {
+		// `.any` is an unresolved generic parameter (`val T @[omitempty]`): its concrete type
+		// is unknown at fmt time and could be one of the emitted-always kinds, so keep.
 		return true
 	}
 	return false
@@ -394,6 +397,21 @@ fn type_needs_legacy_json_rec(t &ast.Table, typ ast.Type, mut visited []int) boo
 				return true
 			}
 		}
+		// The base struct's own fields/attributes matter too: `struct Box[T] { val T
+		// @[omitempty] }` is legacy-sensitive for a concrete `Box[bool]` (legacy omits the
+		// default `false`, json2 emits it), but the concrete_types loop above only sees
+		// `bool`, not the omitempty field. Recurse the parent struct — a generic-parameter
+		// field type resolves to kind `.any`, which struct_field_attr_needs_legacy_json
+		// treats as omitempty-sensitive since its concrete type is unknown at fmt time.
+		parent := t.sym_by_idx(sym.info.parent_idx)
+		if parent.info is ast.Struct {
+			for field in parent.info.fields {
+				if struct_field_attr_needs_legacy_json(t, field)
+					|| type_needs_legacy_json_rec(t, field.typ, mut visited) {
+					return true
+				}
+			}
+		}
 	} else if sym.info is ast.SumType {
 		// A sum type variant (`type Val = rune | int`) can itself be a legacy-sensitive
 		// payload: legacy json encodes a `rune` variant as a string and a non-finite
@@ -416,6 +434,41 @@ fn type_needs_legacy_json_rec(t &ast.Table, typ ast.Type, mut visited []int) boo
 		}
 	}
 	return false
+}
+
+// decode_target_expr_needs_legacy_json checks a `json.decode` target argument that is not a
+// resolved TypeNode. With a selective import (`import json { decode }`) the parser does not
+// know the call is json.decode until after parsing its arguments, so the target type is
+// left as a plain name expression (`time.Time` selector, `Foo` ident) rather than a
+// TypeNode. Resolve the name against the table and apply type_needs_legacy_json; when it
+// cannot be resolved, keep the file unmigrated so a legacy root contract (time.Time/rune/…)
+// is never silently changed.
+fn decode_target_expr_needs_legacy_json(t &ast.Table, cur_mod string, expr ast.Expr) bool {
+	name := match expr {
+		ast.Ident {
+			expr.name
+		}
+		ast.SelectorExpr {
+			if expr.expr is ast.Ident { '${expr.expr.name}.${expr.field_name}' } else { '' }
+		}
+		else {
+			''
+		}
+	}
+	if name == '' {
+		// Not a plain type-name expression (unexpected for a well-formed decode) — be safe.
+		return true
+	}
+	mut typ := t.find_type(name)
+	if typ == 0 && cur_mod != '' && !name.contains('.') {
+		// A bare local type is registered module-qualified (`main.Foo`).
+		typ = t.find_type('${cur_mod}.${name}')
+	}
+	if typ == 0 {
+		// Unresolved at fmt time; keep unmigrated rather than risk changing the contract.
+		return true
+	}
+	return type_needs_legacy_json(t, typ)
 }
 
 // payload_expr_needs_legacy_json reports whether a `json.encode` payload expression is (or
@@ -541,13 +594,18 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		} else if call.kind == .json_decode && call.args.len >= 1 {
 			// A comment on the type arg cannot survive the migrated `[T]` bracket, and a
 			// decode target that is (or contains) `time.Time` serialises differently in
-			// json2 (RFC3339 via Time.to_json vs the legacy root path). The target is a
-			// known TypeNode, so check it here rather than only file-local struct fields.
+			// json2 (RFC3339 via Time.to_json vs the legacy root path). A qualified call
+			// carries a resolved TypeNode; a selective-import `decode(T, s)` leaves the
+			// target as a name expression, resolved by decode_target_expr_needs_legacy_json.
 			if call.args[0].comments.len > 0 {
 				s.found = true
 			} else {
 				type_arg := call.args[0].expr
-				if type_arg is ast.TypeNode && type_needs_legacy_json(s.table, type_arg.typ) {
+				if type_arg is ast.TypeNode {
+					if type_needs_legacy_json(s.table, type_arg.typ) {
+						s.found = true
+					}
+				} else if decode_target_expr_needs_legacy_json(s.table, s.cur_mod, type_arg) {
 					s.found = true
 				}
 			}
@@ -833,6 +891,7 @@ fn (f &Fmt) file_has_unmigratable_json_usage(file &ast.File) bool {
 	mut scan := JsonUnmigratableScan{
 		table:        f.table
 		json2_prefix: f.json2_prefix
+		cur_mod:      file.mod.name
 	}
 	walker.inspect(file, &scan, json_unmigratable_scan_visit)
 	return scan.found
