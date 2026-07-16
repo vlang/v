@@ -2433,6 +2433,45 @@ fn test_array_builtin_method_fallback_keeps_return_type() {
 		'argument count mismatch for `fixed.pointers`: expected 1, got 2')
 }
 
+fn test_alias_receiver_method_value_escape_is_rejected() {
+	v3_bin := build_v3()
+	err := 'a method value (`obj.method`) cannot escape its call site'
+	run_bad(v3_bin, 'alias_receiver_underlying_method_value_escape', 'struct Runner {
+	n int
+}
+
+type RAlias = Runner
+
+fn (r Runner) run() int {
+	return r.n
+}
+
+fn bind(r RAlias) fn () int {
+	return r.run
+}
+
+fn main() {}
+',
+		err)
+	run_bad(v3_bin, 'alias_receiver_own_method_value_escape', 'struct Runner {
+	n int
+}
+
+type RAlias = Runner
+
+fn (r RAlias) alias_run() int {
+	return r.n
+}
+
+fn bind(r RAlias) fn () int {
+	return r.alias_run
+}
+
+fn main() {}
+',
+		err)
+}
+
 fn test_map_builtin_method_fallback_checks_arguments() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'map_keys_rejects_extra_arg',
@@ -3874,6 +3913,22 @@ fn test_returned_interface_local_boxed_from_pointer_alias_heap_copies_on_return(
 	assert make_body.contains('memdup(') && make_body.contains('sizeof(Box)'), make_body
 	out := run_good(v3_bin, 'interface_box_returned_pointer_alias_heap_copy_run', source)
 	assert out == '2'
+}
+
+fn test_returned_pointer_copy_alias_heap_moves_stack_source() {
+	v3_bin := build_v3()
+	source := 'struct Box {\nmut:\n\tn int\n}\n\nfn make_stack() &Box {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tp := &b\n\tq := p\n\tb.n = 2\n\treturn q\n}\n\nfn make_reassigned() &Box {\n\tmut b := Box{\n\t\tn: 4\n\t}\n\tmut other := Box{\n\t\tn: 9\n\t}\n\tp := &b\n\tmut q := &other\n\tq = p\n\tb.n = 6\n\treturn q\n}\n\nfn keep_param(mut b Box) &Box {\n\tp := &b\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tstack := make_stack()\n\tprintln(int_str(stack.n))\n\treassigned := make_reassigned()\n\tprintln(int_str(reassigned.n))\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tparam := keep_param(mut b)\n\tparam.n = 5\n\tprintln(int_str(b.n))\n}\n'
+	c_source := gen_c(v3_bin, 'returned_pointer_copy_alias_heap_move', source)
+	stack_body := c_fn_body(c_source, 'Box* make_stack(void) {')
+	assert stack_body.contains('Box* b = (Box*)memdup(') && stack_body.contains('sizeof(Box)'), stack_body
+
+	reassigned_body := c_fn_body(c_source, 'Box* make_reassigned(void) {')
+	assert
+		reassigned_body.contains('Box* b = (Box*)memdup(') && reassigned_body.contains('sizeof(Box)'), reassigned_body
+	param_body := c_fn_body(c_source, 'Box* keep_param(Box* b) {')
+	assert !param_body.contains('memdup(') && param_body.contains('return q;'), param_body
+	out := run_good(v3_bin, 'returned_pointer_copy_alias_heap_move_run', source)
+	assert out == '2\n6\n5'
 }
 
 fn test_returned_interface_boxed_from_local_field_and_index_heap_copies() {

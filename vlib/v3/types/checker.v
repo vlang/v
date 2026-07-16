@@ -18264,7 +18264,13 @@ fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 	if node.kind != .selector || node.children_count == 0 {
 		return false
 	}
-	clean := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
+	base_type := tc.resolve_type(tc.a.child(&node, 0))
+	clean0 := unwrap_pointer(base_type)
+	mut alias_receiver_name := ''
+	if clean0 is Alias {
+		alias_receiver_name = clean0.name
+	}
+	clean := unalias_and_unwrap_pointer_type(base_type)
 	if clean is Struct {
 		if tc.struct_field_type(clean.name, node.value) != none {
 			return false
@@ -18275,7 +18281,11 @@ fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 		if _ := tc.resolve_generic_struct_method(clean.name, node.value) {
 			return true
 		}
-		return false
+	}
+	if alias_receiver_name.len > 0 {
+		if _ := tc.method_value_type(alias_receiver_name, node.value) {
+			return true
+		}
 	}
 	if clean is Interface {
 		if tc.interface_field_type(clean.name, node.value) != none {

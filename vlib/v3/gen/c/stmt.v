@@ -2116,7 +2116,12 @@ fn (g &FlatGen) local_address_source_name(id flat.NodeId, expected_base types.Ty
 	return none
 }
 
-fn (g &FlatGen) pointer_alias_stack_source(id flat.NodeId, expected_base types.Type) ?string {
+struct PointerAliasStackSource {
+	name         string
+	is_mut_param bool
+}
+
+fn (g &FlatGen) pointer_alias_stack_source(id flat.NodeId, expected_base types.Type) ?PointerAliasStackSource {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return none
 	}
@@ -2128,7 +2133,30 @@ fn (g &FlatGen) pointer_alias_stack_source(id flat.NodeId, expected_base types.T
 		return none
 	}
 	if source := g.local_address_source_name(id, expected_base) {
-		return source
+		return PointerAliasStackSource{
+			name:         source
+			is_mut_param: g.current_param_is_mut(source)
+		}
+	}
+	if node.kind == .ident && node.value.len > 0 {
+		source := g.local_pointer_alias_source(node.value) or { return none }
+		rhs_type := g.local_ident_type(node.value) or { return none }
+		rhs_ptr := match rhs_type {
+			types.Pointer {
+				rhs_type
+			}
+			else {
+				return none
+			}
+		}
+
+		if g.type_names_match(rhs_ptr.base_type, expected_base)
+			|| g.tc.c_type(rhs_ptr.base_type) == g.tc.c_type(expected_base) {
+			return PointerAliasStackSource{
+				name:         source
+				is_mut_param: g.local_pointer_alias_source_is_mut_param(node.value)
+			}
+		}
 	}
 	return none
 }
@@ -2151,7 +2179,7 @@ fn (mut g FlatGen) track_local_pointer_alias_source(lhs flat.Node, owner types.S
 		g.declare_local_pointer_alias_source(owner, '')
 		return
 	}
-	g.declare_local_pointer_alias_source_kind(owner, source, g.current_param_is_mut(source))
+	g.declare_local_pointer_alias_source_kind(owner, source.name, source.is_mut_param)
 }
 
 fn (g &FlatGen) local_pointer_alias_assignment_can_clear(owner types.ScopeBindingOwner) bool {
@@ -3929,7 +3957,7 @@ fn (mut g FlatGen) track_local_pointer_alias_assign(lhs flat.Node, rhs_id flat.N
 		g.clear_local_pointer_alias_source_for_assignment(owner)
 		return
 	}
-	g.declare_local_pointer_alias_source_kind(owner, source, g.current_param_is_mut(source))
+	g.declare_local_pointer_alias_source_kind(owner, source.name, source.is_mut_param)
 }
 
 fn (mut g FlatGen) track_ierror_array_push_call_alias(node flat.Node) {

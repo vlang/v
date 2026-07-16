@@ -3,6 +3,28 @@ module c
 import v3.flat
 import v3.types
 
+fn stmt_test_node(mut a flat.FlatAst, kind flat.NodeKind, value string, children []flat.NodeId) flat.NodeId {
+	start := a.children.len
+	a.children << children
+	return a.add_node(flat.Node{
+		kind:           kind
+		value:          value
+		children_start: i32(start)
+		children_count: flat.child_count(children.len)
+	})
+}
+
+fn stmt_test_prefix(mut a flat.FlatAst, op flat.Op, child flat.NodeId) flat.NodeId {
+	start := a.children.len
+	a.children << child
+	return a.add_node(flat.Node{
+		kind:           .prefix
+		op:             op
+		children_start: i32(start)
+		children_count: 1
+	})
+}
+
 fn test_local_pointer_alias_clear_preserves_outer_branch_markers() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -40,6 +62,59 @@ fn test_local_pointer_alias_clear_preserves_outer_branch_markers() {
 	g.leave_conditional_branch()
 
 	assert g.local_pointer_alias_assignment_can_clear(outer_owner)
+	tc.pop_scope()
+}
+
+fn test_pointer_alias_stack_source_propagates_identifier_aliases() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	int_type := types.Type(types.int_)
+	ptr_type := types.Type(types.Pointer{
+		base_type: int_type
+	})
+
+	tc.push_scope()
+	tc.cur_scope.insert_with_owner('x', int_type)
+	p_owner := tc.cur_scope.insert_with_owner('p', ptr_type)
+	x_id := stmt_test_node(mut a, .ident, 'x', [])
+	amp_x := stmt_test_prefix(mut a, .amp, x_id)
+	g.track_local_pointer_alias_source(flat.Node{
+		kind:  .ident
+		value: 'p'
+	}, p_owner, amp_x, ptr_type)
+	assert g.local_pointer_alias_source('p') or { '' } == 'x'
+	assert !g.local_pointer_alias_source_is_mut_param('p')
+
+	q_owner := tc.cur_scope.insert_with_owner('q', ptr_type)
+	p_id := stmt_test_node(mut a, .ident, 'p', [])
+	g.track_local_pointer_alias_source(flat.Node{
+		kind:  .ident
+		value: 'q'
+	}, q_owner, p_id, ptr_type)
+	assert g.local_pointer_alias_source('q') or { '' } == 'x'
+	assert !g.local_pointer_alias_source_is_mut_param('q')
+
+	assigned_owner := tc.cur_scope.insert_with_owner('assigned', ptr_type)
+	g.declare_local_pointer_alias_source(assigned_owner, '')
+	g.track_local_pointer_alias_assign(flat.Node{
+		kind:  .ident
+		value: 'assigned'
+	}, p_id)
+	assert g.local_pointer_alias_source('assigned') or { '' } == 'x'
+
+	mut_owner := tc.cur_scope.insert_with_owner('mut_alias', ptr_type)
+	g.declare_local_pointer_alias_source_kind(mut_owner, 'x', true)
+	mut_id := stmt_test_node(mut a, .ident, 'mut_alias', [])
+	mut_copy_owner := tc.cur_scope.insert_with_owner('mut_copy', ptr_type)
+	g.track_local_pointer_alias_source(flat.Node{
+		kind:  .ident
+		value: 'mut_copy'
+	}, mut_copy_owner, mut_id, ptr_type)
+	assert g.local_pointer_alias_source('mut_copy') or { '' } == 'x'
+	assert g.local_pointer_alias_source_is_mut_param('mut_copy')
 	tc.pop_scope()
 }
 
