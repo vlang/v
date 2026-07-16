@@ -2171,6 +2171,14 @@ fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut 
 			enqueue('string__plus', mut used, mut queue)
 			enqueue_implicit_str_type_helpers(typ.elem_type, tc, mut used, mut queue, mut seen)
 		}
+		types.OptionType {
+			enqueue('string__plus', mut used, mut queue)
+			enqueue_implicit_str_type_helpers(typ.base_type, tc, mut used, mut queue, mut seen)
+		}
+		types.ResultType {
+			enqueue('string__plus', mut used, mut queue)
+			enqueue_implicit_str_type_helpers(typ.base_type, tc, mut used, mut queue, mut seen)
+		}
 		types.Map {
 			enqueue_implicit_map_str_helpers(mut used, mut queue)
 			enqueue_implicit_str_type_helpers(typ.key_type, tc, mut used, mut queue, mut seen)

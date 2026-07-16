@@ -3473,6 +3473,77 @@ fn main() {
 	assert out == "Foo{\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n    words: ['x', 'y']\n}"
 }
 
+fn test_implicit_interface_str_dispatch_stringifies_typed_map_fields() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_typed_map_fields', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+struct Foo {
+	m map[string]Bar
+}
+
+fn main() {
+	value := Printable(Foo{
+		m: {
+			"one": Bar{
+				x: 7
+			}
+		}
+	})
+	println(value.str())
+}
+')
+	assert out.contains("'one': Bar{"), out
+	assert out.contains('x: 7'), out
+	assert !out.contains('<map value>'), out
+	assert !out.contains('Bar{}'), out
+}
+
+fn test_implicit_interface_str_dispatch_stringifies_optional_fields() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_optional_fields', 'interface Printable {
+	str() string
+}
+
+fn good() !int {
+	return 9
+}
+
+fn bad() !int {
+	return error("nope")
+}
+
+struct Foo {
+	present ?int
+	missing ?int
+	text    ?string
+	ok      !int
+	fail    !int
+}
+
+fn main() {
+	value := Printable(Foo{
+		present: ?int(7)
+		text: ?string("hi")
+		ok: good()
+		fail: bad()
+	})
+	println(value.str())
+}
+')
+	assert out.contains('present: Option(7)'), out
+	assert out.contains('missing: Option(none)'), out
+	assert out.contains("text: Option('hi')"), out
+	assert out.contains('ok: Option(9)'), out
+	assert out.contains('fail: Option(none)'), out
+	assert !out.contains('?int{}'), out
+}
+
 fn test_implicit_interface_str_dispatch_unaliases_field_types() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'implicit_interface_str_dispatch_aliased_fields', 'interface Printable {

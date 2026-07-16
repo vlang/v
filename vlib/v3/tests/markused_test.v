@@ -394,6 +394,29 @@ fn main() {
 	assert c_code.contains('array_get('), c_code
 }
 
+fn test_implicit_interface_str_dispatch_seeds_optional_payload_helpers() {
+	source := '
+interface Printable {
+	str() string
+}
+
+struct Foo {
+	maybe ?u64
+}
+
+fn main() {
+	println(Printable(Foo{
+		maybe: ?u64(7)
+	}).str())
+}
+'
+	mut a, mut tc := parse_checked_source('implicit_interface_str_dispatch_optional_helpers',
+		source)
+	used := markused.mark_used(a, tc)
+	assert used['string__plus']
+	assert used['u64__str']
+}
+
 fn test_generic_struct_operator_roots_operator_dependencies() {
 	used := mark_used_source('generic_struct_operator_dependencies', '
 struct Time {

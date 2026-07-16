@@ -1486,7 +1486,15 @@ fn (mut g FlatGen) interface_implicit_struct_field_str_expr(expr string, typ typ
 			return g.interface_implicit_fixed_array_str_value(expr, clean, mut seen, mut temp_idx)
 		}
 		if clean is types.Map {
-			return g.interface_implicit_map_str_expr(expr, clean)
+			return g.interface_implicit_map_str_expr(expr, clean, mut seen, mut temp_idx)
+		}
+		if clean is types.OptionType {
+			return g.interface_implicit_optional_str_expr(expr, typ, clean.base_type, mut seen, mut
+				temp_idx)
+		}
+		if clean is types.ResultType {
+			return g.interface_implicit_optional_str_expr(expr, typ, clean.base_type, mut seen, mut
+				temp_idx)
 		}
 	}
 	if is_pointer {
@@ -1505,7 +1513,8 @@ fn (mut g FlatGen) interface_implicit_struct_field_str_expr(expr string, typ typ
 				seen, mut temp_idx)
 		}
 		if clean is types.Map {
-			return g.interface_implicit_pointer_map_str_expr(expr, value_expr, clean, mut temp_idx)
+			return g.interface_implicit_pointer_map_str_expr(expr, value_expr, clean, mut seen, mut
+				temp_idx)
 		}
 		if clean !is types.Struct && clean !is types.Array && clean !is types.ArrayFixed
 			&& clean !is types.Map {
@@ -1575,7 +1584,7 @@ fn (mut g FlatGen) interface_implicit_pointer_fixed_array_str_expr(expr string, 
 	return str_var
 }
 
-fn (mut g FlatGen) interface_implicit_pointer_map_str_expr(expr string, value_expr string, m types.Map, mut temp_idx []int) string {
+fn (mut g FlatGen) interface_implicit_pointer_map_str_expr(expr string, value_expr string, m types.Map, mut seen []string, mut temp_idx []int) string {
 	id := temp_idx[0]
 	temp_idx[0] = temp_idx[0] + 1
 	str_var := '__v3_iface_str_${id}'
@@ -1583,7 +1592,7 @@ fn (mut g FlatGen) interface_implicit_pointer_map_str_expr(expr string, value_ex
 	g.writeln('\t\t\tif (${expr} == NULL) {')
 	g.writeln('\t\t\t\t${str_var} = ${c_string_lit_expr('&nil')};')
 	g.writeln('\t\t\t} else {')
-	field_expr := g.interface_implicit_map_str_expr(value_expr, m)
+	field_expr := g.interface_implicit_map_str_expr(value_expr, m, mut seen, mut temp_idx)
 	g.writeln('\t\t\t\t${str_var} = ${field_expr};')
 	g.writeln('\t\t\t}')
 	return str_var
@@ -1625,11 +1634,58 @@ fn (mut g FlatGen) interface_implicit_fixed_array_str_value(expr string, arr typ
 	return str_var
 }
 
-fn (mut g FlatGen) interface_implicit_map_str_expr(expr string, m types.Map) string {
+fn (mut g FlatGen) interface_implicit_map_str_expr(expr string, m types.Map, mut seen []string, mut temp_idx []int) string {
 	key_kind := map_str_kind(g.tc, m.key_type)
 	val_kind := map_str_kind(g.tc, m.value_type)
 	fixed_len := map_str_fixed_len(m.value_type)
-	return 'v3_map_str(${expr}, ${key_kind}, ${val_kind}, ${fixed_len})'
+	if key_kind != 0 && val_kind != 0 {
+		return 'v3_map_str(${expr}, ${key_kind}, ${val_kind}, ${fixed_len})'
+	}
+	id := temp_idx[0]
+	temp_idx[0] = temp_idx[0] + 1
+	str_var := '__v3_iface_str_${id}'
+	idx_var := '__v3_iface_str_i_${id}'
+	first_var := '__v3_iface_str_first_${id}'
+	map_expr := '(${expr})'
+	key_ct := g.value_c_type(m.key_type)
+	val_ct := g.value_c_type(m.value_type)
+	g.writeln('\t\t\tstring ${str_var} = ${c_string_lit_expr('{')};')
+	g.writeln('\t\t\tbool ${first_var} = true;')
+	g.writeln('\t\t\tfor (int ${idx_var} = 0; ${idx_var} < ${map_expr}.key_values.len; ++${idx_var}) {')
+	g.writeln('\t\t\t\tif (${map_expr}.key_values.deletes != 0 && ${map_expr}.key_values.all_deleted != 0 && ${map_expr}.key_values.all_deleted[${idx_var}] != 0) continue;')
+	g.writeln('\t\t\t\tif (!${first_var}) ${str_var} = string__plus(${str_var}, ${c_string_lit_expr(', ')});')
+	key_expr := '*(${key_ct}*)(${map_expr}.key_values.keys + ${idx_var} * ${map_expr}.key_values.key_bytes)'
+	val_expr := '*(${val_ct}*)(${map_expr}.key_values.values + ${idx_var} * ${map_expr}.key_values.value_bytes)'
+	key_str := g.interface_implicit_struct_field_str_expr(key_expr, m.key_type, 0, mut seen, mut
+		temp_idx)
+	val_str := g.interface_implicit_struct_field_str_expr(val_expr, m.value_type, 0, mut seen, mut
+		temp_idx)
+	g.writeln('\t\t\t\t${str_var} = string__plus(${str_var}, ${key_str});')
+	g.writeln('\t\t\t\t${str_var} = string__plus(${str_var}, ${c_string_lit_expr(': ')});')
+	g.writeln('\t\t\t\t${str_var} = string__plus(${str_var}, ${val_str});')
+	g.writeln('\t\t\t\t${first_var} = false;')
+	g.writeln('\t\t\t}')
+	g.writeln('\t\t\t${str_var} = string__plus(${str_var}, ${c_string_lit_expr('}')});')
+	return str_var
+}
+
+fn (mut g FlatGen) interface_implicit_optional_str_expr(expr string, typ types.Type, base_type types.Type, mut seen []string, mut temp_idx []int) string {
+	id := temp_idx[0]
+	temp_idx[0] = temp_idx[0] + 1
+	opt_var := '__v3_iface_opt_${id}'
+	str_var := '__v3_iface_opt_str_${id}'
+	opt_ct := g.optional_type_name(typ)
+	g.writeln('\t\t\t${opt_ct} ${opt_var} = ${expr};')
+	g.writeln('\t\t\tstring ${str_var} = ${c_string_lit_expr('Option(none)')};')
+	if base_type is types.Void {
+		return str_var
+	}
+	g.writeln('\t\t\tif (${opt_var}.ok) {')
+	value_str := g.interface_implicit_struct_field_str_expr('${opt_var}.value', base_type, 0, mut
+		seen, mut temp_idx)
+	g.writeln('\t\t\t\t${str_var} = string__plus(string__plus(${c_string_lit_expr('Option(')}, ${value_str}), ${c_string_lit_expr(')')});')
+	g.writeln('\t\t\t}')
+	return str_var
 }
 
 fn (mut g FlatGen) interface_implicit_struct_str_value(expr string, name string, indent int, mut seen []string, mut temp_idx []int) string {
