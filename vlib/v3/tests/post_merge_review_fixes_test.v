@@ -2686,6 +2686,32 @@ fn main() {
 	assert out == '{"age":3}\n{"name":"Ada","age":4}'
 }
 
+fn test_json_encode_json_dash_label_skips_fast_path_field() {
+	v3_bin := build_v3()
+	source := 'import json
+
+struct User {
+	name   string @[json: \'-\']
+	secret int    @[json: \'-\']
+	age    int
+}
+
+fn main() {
+	println(json.encode(User{
+		name:   "Ada"
+		secret: 9
+		age:    4
+	}))
+}
+'
+	out := run_good(v3_bin, 'json_encode_json_dash_label_skips_fast_path_field', source)
+	assert out == '{"age":4}'
+	c_source := gen_c(v3_bin, 'json_encode_json_dash_label_skips_fast_path_field_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
+	assert !main_body.contains('json__encode(&')
+	assert !main_body.contains('"-":')
+}
+
 fn test_json_encode_escapes_struct_field_labels_on_fast_path() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'json_encode_escaped_struct_field_labels', 'import json
@@ -4526,7 +4552,8 @@ struct Holder {
 }
 
 __global (
-	calls int
+	calls     int
+	idx_calls int
 )
 
 fn (i Item) value() int {
@@ -4546,6 +4573,11 @@ fn next_holder() Holder {
 	}
 }
 
+fn next_index() int {
+	idx_calls = idx_calls + 1
+	return 0
+}
+
 fn take_base(b Base) int {
 	return b.value()
 }
@@ -4553,9 +4585,16 @@ fn take_base(b Base) int {
 fn main() {
 	println(int_str(take_base(next_holder().child)))
 	println(int_str(calls))
+	holders := [Holder{
+		child: Child(Item{
+			n: 7
+		})
+	}]
+	println(int_str(take_base(holders[next_index()].child)))
+	println(int_str(idx_calls))
 }
 ')
-	assert out == '1\n1'
+	assert out == '1\n1\n7\n1'
 }
 
 fn test_non_generic_reflection_compile_error_waits_for_selected_branch() {

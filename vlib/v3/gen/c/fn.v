@@ -5839,7 +5839,7 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		mut has_omitempty := false
 		for field in fields {
 			attrs := g.json_struct_field_attrs(clean.name, field.name)
-			if json_attrs_have_name(attrs, 'skip') {
+			if json_attrs_skip_field(attrs) {
 				continue
 			}
 			if json_attrs_have_name(attrs, 'omitempty') {
@@ -5856,7 +5856,7 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 			mut body := '({ string ${res} = _str_${open}; int ${count} = 0; '
 			for field in fields {
 				attrs := g.json_struct_field_attrs(clean.name, field.name)
-				if json_attrs_have_name(attrs, 'skip') {
+				if json_attrs_skip_field(attrs) {
 					continue
 				}
 				label := json_struct_field_label(field.name, attrs)
@@ -5879,7 +5879,7 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		mut emitted_fields := 0
 		for field in fields {
 			attrs := g.json_struct_field_attrs(clean.name, field.name)
-			if json_attrs_have_name(attrs, 'skip') {
+			if json_attrs_skip_field(attrs) {
 				continue
 			}
 			label := json_struct_field_label(field.name, attrs)
@@ -6406,6 +6406,18 @@ fn (g &FlatGen) json_struct_field_attrs(struct_name string, field_name string) [
 fn json_attrs_have_name(attrs []string, name string) bool {
 	for attr in attrs {
 		if attr.all_before(':').trim_space() == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn json_attrs_skip_field(attrs []string) bool {
+	if json_attrs_have_name(attrs, 'skip') {
+		return true
+	}
+	for attr in attrs {
+		if attr.starts_with('json:') && json_enum_attr_label(attr.all_after(':')) == '-' {
 			return true
 		}
 	}
