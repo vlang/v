@@ -24,6 +24,11 @@ fn (t &Transformer) trim_all_pointer_type(typ string) string {
 	return clean
 }
 
+fn interface_pattern_is_collapsed_container_type(name string) bool {
+	clean := name.trim_space()
+	return clean.starts_with('[]') || clean.starts_with('map[')
+}
+
 fn (mut t Transformer) pointer_sum_access_expr(expr_id flat.NodeId, expr_type string) (flat.NodeId, string, flat.Op) {
 	mut access := t.transform_selector_base_expr(expr_id)
 	mut access_type := expr_type
@@ -897,11 +902,8 @@ fn (t &Transformer) interface_impl_type_id_iface_candidates(iface string) []stri
 
 fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 	clean := name.trim_space()
-	if clean.starts_with('[]') {
-		return 'array'
-	}
-	if clean.starts_with('map[') {
-		return 'map'
+	if interface_pattern_is_collapsed_container_type(clean) {
+		return none
 	}
 	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
 		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {

@@ -207,6 +207,18 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_interface_is_unresolved_pattern',
 		'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn check(s Shape) bool {\n\treturn s is MissingType\n}\nfn main() {}\n',
 		'unknown type `MissingType`')
+	run_bad(v3_bin, 'bad_empty_interface_is_array_pattern',
+		'interface Any {}\nfn check(x Any) bool {\n\treturn x is []string\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
+		'`[]string` is not compatible with interface `Any`')
+	run_bad(v3_bin, 'bad_empty_interface_is_map_pattern',
+		'interface Any {}\nfn check(x Any) bool {\n\treturn x is map[string]string\n}\nfn main() {\n\t_ := Any({\n\t\t"a": 1\n\t})\n}\n',
+		'`map[string]string` is not compatible with interface `Any`')
+	run_bad(v3_bin, 'bad_empty_interface_match_array_pattern',
+		'interface Any {}\nfn check(x Any) int {\n\treturn match x {\n\t\t[]string { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
+		'`[]string` is not compatible with interface `Any`')
+	run_bad(v3_bin, 'bad_empty_interface_as_array_pattern',
+		'interface Any {}\nfn check(x Any) []string {\n\treturn x as []string\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
+		'`[]string` is not compatible with interface `Any`')
 	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface',
 		"type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
 	assert alias_interface_out == 'test\nhehe'

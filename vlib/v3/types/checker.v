@@ -8043,6 +8043,10 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		tc.check_cast_expr(id, node)
 		return
 	}
+	if node.kind == .as_expr {
+		tc.check_as_expr(id, node)
+		return
+	}
 	if node.kind == .array_init {
 		tc.check_array_init(node)
 		$if ownership ? {
@@ -8168,6 +8172,22 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 	if !tc.type_implements_interface(actual, target_iface) {
 		tc.type_mismatch(.assignment_mismatch,
 			'type `${actual.name()}` does not implement interface `${target_iface.name}`', id)
+	}
+}
+
+fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
+	if node.children_count == 0 {
+		return
+	}
+	child_id := tc.a.child(&node, 0)
+	tc.check_node(child_id)
+	if node.value.len == 0 || !interface_pattern_is_collapsed_container(node.value) {
+		return
+	}
+	expr_type := unalias_type(unwrap_pointer(tc.resolve_type(child_id)))
+	if expr_type is Interface && tc.should_diagnose(id) {
+		tc.record_error(.condition_mismatch,
+			'`${node.value}` is not compatible with interface `${expr_type.name}`', id)
 	}
 }
 
@@ -17276,6 +17296,14 @@ fn (mut tc TypeChecker) check_match_stmt(id flat.NodeId, node flat.Node) {
 				cond_id := tc.a.child(branch, j)
 				cond := tc.a.node(cond_id)
 				if pattern := tc.match_type_pattern(cond) {
+					if interface_pattern_is_collapsed_container(pattern) {
+						if tc.should_diagnose(cond_id) {
+							tc.record_error(.condition_mismatch,
+								'`${pattern}` is not compatible with interface `${subject_type.name}`',
+								cond_id)
+						}
+						continue
+					}
 					if target_iface := tc.resolve_interface_pattern_interface(pattern) {
 						if !tc.interface_runtime_pattern_allowed(subject_type.name, target_iface)
 							&& tc.should_diagnose(cond_id) {
@@ -17469,6 +17497,9 @@ fn (tc &TypeChecker) multi_interface_match_common_interface(subject Interface, b
 
 fn (tc &TypeChecker) resolve_interface_match_pattern(pattern string) ?string {
 	for candidate in tc.interface_match_pattern_candidates(pattern) {
+		if interface_pattern_is_collapsed_container(candidate) {
+			continue
+		}
 		if is_builtin_type_name(candidate) {
 			return candidate
 		}
@@ -17480,6 +17511,11 @@ fn (tc &TypeChecker) resolve_interface_match_pattern(pattern string) ?string {
 		}
 	}
 	return none
+}
+
+fn interface_pattern_is_collapsed_container(pattern string) bool {
+	clean := pattern.trim_space()
+	return clean.starts_with('[]') || clean.starts_with('map[')
 }
 
 fn (tc &TypeChecker) resolve_interface_pattern_interface(pattern string) ?string {
@@ -17670,7 +17706,12 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	}
 	if expr_type is Interface {
 		if node.value.len > 0 {
-			if target_iface := tc.resolve_interface_pattern_interface(node.value) {
+			if interface_pattern_is_collapsed_container(node.value) {
+				if tc.should_diagnose(id) {
+					tc.record_error(.condition_mismatch,
+						'`${node.value}` is not compatible with interface `${expr_type.name}`', id)
+				}
+			} else if target_iface := tc.resolve_interface_pattern_interface(node.value) {
 				if !tc.interface_runtime_pattern_allowed(expr_type.name, target_iface)
 					&& tc.should_diagnose(id) {
 					tc.record_error(.condition_mismatch,

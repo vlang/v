@@ -13697,6 +13697,9 @@ fn (t &Transformer) resolve_interface_pattern(pattern string, subject_type strin
 	resolved_iface := t.resolve_interface_type_name(subject_type)
 	iface := if resolved_iface.len > 0 { resolved_iface } else { subject_type }
 	for candidate in t.interface_pattern_candidates(pattern) {
+		if interface_pattern_is_collapsed_container_type(candidate) {
+			continue
+		}
 		if t.is_builtin_ierror_interface_name(iface) {
 			if t.tc.named_type_compatible_with_ierror(candidate) {
 				return candidate
