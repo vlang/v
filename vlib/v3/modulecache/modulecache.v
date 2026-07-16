@@ -1342,11 +1342,12 @@ fn cached_declaration_attrs(a &flat.FlatAst) map[int]CachedDeclarationAttrs {
 			continue
 		}
 		decl_id := node.value['@attributes:'.len..].int()
-		if decl_id < 0 || decl_id >= a.nodes.len || node.generic_params.len == 0 {
+		params := node.generic_params()
+		if decl_id < 0 || decl_id >= a.nodes.len || params.len == 0 {
 			continue
 		}
 		result[decl_id] = CachedDeclarationAttrs{
-			attrs: node.generic_params.clone()
+			attrs: params.clone()
 			kinds: if node.typ.len > 0 {
 				node.typ.split(',').map(it.int())
 			} else {
@@ -1461,7 +1462,7 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 		return false
 	}
 	node := a.nodes[int(id)]
-	if node.generic_params.len > 0 || fn_decl_has_generic_receiver(a, node)
+	if node.generic_params().len > 0 || fn_decl_has_generic_receiver(a, node)
 		|| (node.kind in [.const_decl, .struct_decl, .global_decl]
 		&& declaration_has_unserializable_initializer(a, node))
 		|| node.kind == .comptime_if
@@ -1811,8 +1812,9 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 			param_start = 1
 		}
 	}
-	if node.generic_params.len > 0 {
-		head += '[${node.generic_params.join(', ')}]'
+	generic_params := node.generic_params()
+	if generic_params.len > 0 {
+		head += '[${generic_params.join(', ')}]'
 	}
 	mut ptexts := []string{}
 	for i := param_start; i < params.len; i++ {
@@ -1953,7 +1955,7 @@ fn append_struct_field_nodes(a &flat.FlatAst, id flat.NodeId, mut fields []flat.
 
 fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string) string {
 	kind := if node.typ.split(',').contains('union') { 'union' } else { 'struct' }
-	mut head := '${kind} ${node.value}${generic_suffix(node.generic_params)}'
+	mut head := '${kind} ${node.value}${generic_suffix(node.generic_params())}'
 	for part in node.typ.split(',') {
 		if part.starts_with('implements=') {
 			head += ' implements ' + part.all_after('=').replace('|', ', ')
@@ -1975,7 +1977,8 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string) stri
 	}
 	for field_id in field_ids {
 		field := a.node(field_id)
-		flags := if field.generic_params.len > 0 { field.generic_params[0] } else { '' }
+		field_params := field.generic_params()
+		flags := if field_params.len > 0 { field_params[0] } else { '' }
 		wanted := if flags.contains('p') && flags.contains('m') {
 			'pub mut'
 		} else if flags.contains('p') {
@@ -1989,8 +1992,8 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string) stri
 			out.writeln('${wanted}:')
 			section = wanted
 		}
-		for ai := 1; ai < field.generic_params.len; ai++ {
-			out.writeln('\t@[${field.generic_params[ai]}]')
+		for ai := 1; ai < field_params.len; ai++ {
+			out.writeln('\t@[${field_params[ai]}]')
 		}
 		mut line := '\t${field.value}'
 		if field.typ.len > 0 && field.typ != field.value {
@@ -2078,18 +2081,19 @@ fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string) string
 	if node.typ == 'flag' && !cached_declaration_has_attr(declaration_attrs, 'flag') {
 		out.writeln('@[flag]')
 	}
-	if node.generic_params.contains('json_as_number')
+	params := node.generic_params()
+	if params.contains('json_as_number')
 		&& !cached_declaration_has_attr(declaration_attrs, 'json_as_number') {
 		out.writeln('@[json_as_number]')
 	}
 	mut head := 'enum ${node.value}'
-	if node.generic_params.len > 0 && node.generic_params[0].len > 0 {
-		head += ' as ${node.generic_params[0]}'
+	if params.len > 0 && params[0].len > 0 {
+		head += ' as ${params[0]}'
 	}
 	out.writeln('${head} {')
 	for i in 0 .. node.children_count {
 		field := a.child_node(&node, i)
-		for attr in field.generic_params {
+		for attr in field.generic_params() {
 			out.writeln('\t@[${attr}]')
 		}
 		mut line := '\t${field.value}'
@@ -2106,7 +2110,7 @@ fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string) string
 }
 
 fn type_text(a &flat.FlatAst, node flat.Node) string {
-	head := 'type ${node.value}${generic_suffix(node.generic_params)} = '
+	head := 'type ${node.value}${generic_suffix(node.generic_params())} = '
 	if node.children_count == 0 {
 		return head + node.typ
 	}
@@ -2119,7 +2123,7 @@ fn type_text(a &flat.FlatAst, node flat.Node) string {
 
 fn interface_text(a &flat.FlatAst, node flat.Node) string {
 	mut out := strings.new_builder(128)
-	out.writeln('interface ${node.value}${generic_suffix(node.generic_params)} {')
+	out.writeln('interface ${node.value}${generic_suffix(node.generic_params())} {')
 	for i in 0 .. node.children_count {
 		field := a.child_node(&node, i)
 		if field.op == .dot {

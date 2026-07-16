@@ -1390,6 +1390,10 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 				return type_name
 			}
 		}
+		checker_name := t.checker_struct_lookup_name(type_name)
+		if checker_name.len > 0 {
+			return checker_name
+		}
 		return ''
 	}
 	if type_name in t.structs {
@@ -1404,6 +1408,10 @@ fn (t &Transformer) struct_lookup_name(type_name string) string {
 		if qtype in t.structs {
 			return qtype
 		}
+	}
+	checker_name := t.checker_struct_lookup_name(type_name)
+	if checker_name.len > 0 {
+		return checker_name
 	}
 	return ''
 }

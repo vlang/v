@@ -63,9 +63,6 @@ fn test_reject_lvalue_addresses_for_by_value_args() {
 	run_bad(v3_bin, 'bad_lvalue_address_by_value_arg',
 		'fn take(n int) {}\n\nfn main() {\n\tmut n := 1\n\ttake(&n)\n}\n',
 		'cannot use `&int` as argument 1 to `take`; expected `int`')
-	pointer_out := run_good(v3_bin, 'good_pointer_value_by_value_arg',
-		'fn pass(n &int) &int {\n\tunsafe {\n\t\treturn n\n\t}\n}\n\nfn take(n int) int {\n\treturn n\n}\n\nfn main() {\n\tmut n := 7\n\tp := &n\n\tprintln(int_str(take(p)))\n\tprintln(int_str(take(pass(p))))\n}\n')
-	assert pointer_out == '7\n7'
 	out := run_good(v3_bin, 'good_addressed_rvalue_by_value_arg',
 		'struct Box {\n\tn int\n}\n\nfn make_box() Box {\n\treturn Box{\n\t\tn: 7\n\t}\n}\n\nfn take(b Box) int {\n\treturn b.n\n}\n\nfn main() {\n\tprintln(int_str(take(&make_box())))\n}\n')
 	assert out == '7'

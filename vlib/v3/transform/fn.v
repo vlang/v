@@ -1642,6 +1642,22 @@ fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name strin
 
 // call_is_variadic updates call is variadic state for Transformer.
 fn (t &Transformer) call_is_variadic(call_name string) bool {
+	key := '${t.cur_file}\n${call_name}'
+	if !isnil(t.call_variadic_cache) {
+		mut cache := t.call_variadic_cache
+		if cached := cache.entries[key] {
+			return cached > 0
+		}
+	}
+	result := t.call_is_variadic_uncached(call_name)
+	if !isnil(t.call_variadic_cache) {
+		mut cache := t.call_variadic_cache
+		cache.entries[key] = if result { i8(1) } else { i8(-1) }
+	}
+	return result
+}
+
+fn (t &Transformer) call_is_variadic_uncached(call_name string) bool {
 	if call_name.len == 0 || isnil(t.tc) {
 		return false
 	}
@@ -1663,20 +1679,8 @@ fn (t &Transformer) call_is_variadic(call_name string) bool {
 				return is_variadic
 			}
 		}
-		suffix := '.' + call_name
-		mut suffix_match := false
-		mut suffix_variadic := false
-		for key, is_variadic in t.tc.fn_variadic {
-			if key.ends_with(suffix) {
-				if suffix_match {
-					return false
-				}
-				suffix_match = true
-				suffix_variadic = is_variadic
-			}
-		}
-		if suffix_match {
-			return suffix_variadic
+		if suffix_variadic := t.variadic_suffix_index[call_name] {
+			return suffix_variadic == 1
 		}
 	}
 	return false
@@ -2764,6 +2768,10 @@ fn (mut t Transformer) make_array_literal_typed(values []flat.NodeId, typ string
 
 // stringify_expr supports stringify expr handling for Transformer.
 fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
+	// Transforming a pointer expression can normalize `&Alias` to `&Base`. Keep the
+	// checker's source-level alias here so auto-str can still add `Alias(...)` while
+	// reading the pointee through the base representation.
+	raw_alias_type := t.raw_alias_type_for_expr(expr_id)
 	expr := t.transform_expr(expr_id)
 	mut typ := t.node_type(expr)
 	if typ.len == 0 {
@@ -2778,6 +2786,9 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 		if typ.len == 0 {
 			typ = t.reliable_stringify_type(expr_id)
 		}
+	}
+	if raw_alias_type.len > 0 {
+		typ = raw_alias_type
 	}
 	return t.wrap_string_conversion(expr, typ)
 }
@@ -3521,19 +3532,44 @@ fn (t &Transformer) lookup_str_alias(clean_typ string) ?(string, string) {
 	if isnil(t.tc) || clean_typ.len == 0 {
 		return none
 	}
+	key := '${t.cur_module}\n${clean_typ}'
+	if !isnil(t.str_alias_cache) {
+		mut cache := t.str_alias_cache
+		if target := cache.entries[key] {
+			return clean_typ, target
+		}
+		if cache.misses[key] {
+			return none
+		}
+	}
+	if target := t.lookup_str_alias_uncached(clean_typ) {
+		if !isnil(t.str_alias_cache) {
+			mut cache := t.str_alias_cache
+			cache.entries[key] = target
+		}
+		return clean_typ, target
+	}
+	if !isnil(t.str_alias_cache) {
+		mut cache := t.str_alias_cache
+		cache.misses[key] = true
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_str_alias_uncached(clean_typ string) ?string {
 	if alias := t.tc.type_aliases[clean_typ] {
-		return clean_typ, alias
+		return alias
 	}
 	if !clean_typ.contains('.') {
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qtyp := '${t.cur_module}.${clean_typ}'
 			if alias := t.tc.type_aliases[qtyp] {
-				return clean_typ, alias
+				return alias
 			}
 		}
 		for aname, target in t.tc.type_aliases {
 			if aname.all_after_last('.') == clean_typ {
-				return clean_typ, target
+				return target
 			}
 		}
 	}
@@ -6098,12 +6134,12 @@ fn (t &Transformer) current_source_module() string {
 
 fn (mut t Transformer) new_fn_literal_name() string {
 	for {
-		name := t.new_temp('anon_fn')
+		name := t.new_global_temp('anon_fn')
 		if !t.fn_literal_name_exists(name) {
 			return name
 		}
 	}
-	return t.new_temp('anon_fn')
+	return t.new_global_temp('anon_fn')
 }
 
 fn (t &Transformer) fn_literal_name_exists(name string) bool {
