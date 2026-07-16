@@ -307,7 +307,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		mut cgen_workers := []voidptr{cap: thread_count}
 		worker_setup_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
 		for ci := 0; ci < thread_count; ci++ {
-			w := g.new_parallel_result_worker(ci + 1)
+			w := g.new_parallel_dispatch_worker(ci + 1)
 			cgen_workers << voidptr(w)
 		}
 		for ci := 0; ci < thread_count; ci++ {
@@ -637,6 +637,15 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 // worker and, under -gc none, never freed.
 fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 	return g.new_parallel_worker_config(worker_id, false)
+}
+
+// new_parallel_dispatch_worker selects the lightweight accumulator only when
+// scoped batching keeps all actual emission in fresh full workers.
+fn (g &FlatGen) new_parallel_dispatch_worker(worker_id int) &FlatGen {
+	if g.scope_parallel_workers {
+		return g.new_parallel_result_worker(worker_id)
+	}
+	return g.new_parallel_worker(worker_id)
 }
 
 // new_parallel_result_worker creates a non-emitting helper accumulator. Caches
