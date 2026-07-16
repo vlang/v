@@ -962,7 +962,8 @@ fn (mut g FlatGen) gen_index_overload_set(node flat.Node, lhs flat.Node, base_id
 	rhs_id := g.a.child(&node, 1)
 	if op := compound_assign_to_infix_op(node.op) {
 		if getter := g.tc.index_overload_call_info(base_type, false) {
-			g.gen_index_overload_compound_set(lhs, base_id, base_type, info, getter, op, rhs_id)
+			g.gen_index_overload_compound_set(lhs, base_id, base_type, info, getter, node.op, op,
+				rhs_id)
 			return
 		}
 	}
@@ -988,7 +989,7 @@ fn (mut g FlatGen) gen_index_overload_set(node flat.Node, lhs flat.Node, base_id
 	g.writeln(');')
 }
 
-fn (mut g FlatGen) gen_index_overload_compound_set(lhs flat.Node, base_id flat.NodeId, base_type types.Type, setter types.CallInfo, getter types.CallInfo, op flat.Op, rhs_id flat.NodeId) {
+fn (mut g FlatGen) gen_index_overload_compound_set(lhs flat.Node, base_id flat.NodeId, base_type types.Type, setter types.CallInfo, getter types.CallInfo, assign_op flat.Op, infix_op flat.Op, rhs_id flat.NodeId) {
 	recv_tmp := g.tmp_name()
 	index_tmp := g.tmp_name()
 	recv_type := if base_type is types.Pointer { base_type.base_type } else { base_type }
@@ -1006,12 +1007,13 @@ fn (mut g FlatGen) gen_index_overload_compound_set(lhs flat.Node, base_id flat.N
 	g.write('; ${g.cname(setter.name)}(')
 	g.gen_index_overload_cached_receiver_arg(recv_tmp, setter)
 	g.write(', ${index_tmp}, ')
-	g.gen_index_overload_compound_value_expr(recv_tmp, index_tmp, setter, getter, op, rhs_id)
+	g.gen_index_overload_compound_value_expr(recv_tmp, index_tmp, setter, getter, assign_op,
+		infix_op, rhs_id)
 	g.writeln('); }')
 }
 
-fn (mut g FlatGen) gen_index_overload_compound_value_expr(recv_tmp string, index_tmp string, setter types.CallInfo, getter types.CallInfo, op flat.Op, rhs_id flat.NodeId) {
-	if op == .plus && (index_overload_compound_type_is_string(getter.return_type)
+fn (mut g FlatGen) gen_index_overload_compound_value_expr(recv_tmp string, index_tmp string, setter types.CallInfo, getter types.CallInfo, assign_op flat.Op, infix_op flat.Op, rhs_id flat.NodeId) {
+	if infix_op == .plus && (index_overload_compound_type_is_string(getter.return_type)
 		|| (setter.params.len > 2 && index_overload_compound_type_is_string(setter.params[2]))) {
 		g.write('string__plus(')
 		g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
@@ -1021,20 +1023,18 @@ fn (mut g FlatGen) gen_index_overload_compound_value_expr(recv_tmp string, index
 		return
 	}
 	if setter.params.len > 2 {
-		if assign_op := infix_op_to_compound_assign_op(op) {
-			if method_name := g.assign_struct_operator_method(getter.return_type, assign_op) {
-				g.write('${g.cname(method_name)}(')
-				g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
-				g.write(', ')
-				g.gen_expr(rhs_id)
-				g.write(')')
-				return
-			}
+		if method_name := g.assign_struct_operator_method(getter.return_type, assign_op) {
+			g.write('${g.cname(method_name)}(')
+			g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
+			g.write(', ')
+			g.gen_expr(rhs_id)
+			g.write(')')
+			return
 		}
 	}
 	g.write('(')
 	g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
-	g.write(' ${g.op_str(op)} ')
+	g.write(' ${g.op_str(infix_op)} ')
 	if setter.params.len > 2 {
 		g.gen_expr_with_expected_type(rhs_id, setter.params[2])
 	} else {
@@ -1053,19 +1053,6 @@ fn (mut g FlatGen) gen_index_overload_cached_getter_call(recv_tmp string, index_
 fn index_overload_compound_type_is_string(typ types.Type) bool {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	return clean is types.String
-}
-
-fn infix_op_to_compound_assign_op(op flat.Op) ?flat.Op {
-	match op {
-		.plus { return .plus_assign }
-		.minus { return .minus_assign }
-		.mul { return .mul_assign }
-		.div { return .div_assign }
-		.mod { return .mod_assign }
-		else {}
-	}
-
-	return none
 }
 
 fn (mut g FlatGen) gen_index_overload_receiver_arg(base_id flat.NodeId, base_type types.Type, info types.CallInfo) {
