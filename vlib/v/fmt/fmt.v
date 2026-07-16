@@ -303,31 +303,35 @@ mut:
 	found bool
 }
 
-// type_mentions_time reports whether `typ` is `time.Time` or has it as the element,
-// key or value of an array/fixed-array/map/chan, recursively and following aliases.
-// Legacy json encodes a contained `time.Time` as a unix number while json2 uses an
-// RFC3339 string, so a payload mentioning it must not be migrated.
-fn type_mentions_time(t &ast.Table, typ ast.Type) bool {
+// type_needs_legacy_json reports whether `typ` is — or contains as the element, key
+// or value of an array/fixed-array/map/chan, or as a generic type argument,
+// recursively and following aliases — a type whose JSON differs between the legacy
+// `json` module and `json2`, so a payload of it must not be migrated:
+//   - `time.Time`: a unix number in json vs an RFC3339 string in json2 (Time.to_json);
+//   - `rune`: a JSON string in json (encode_rune) vs a u32 number in json2;
+//   - `f32`/`f64`: json emits `null` for NaN/±Inf, json2 emits `nan`/`inf`.
+fn type_needs_legacy_json(t &ast.Table, typ ast.Type) bool {
 	if typ == 0 {
 		return false
 	}
 	sym := t.final_sym(typ)
-	if sym.name == 'time.Time' {
+	if sym.name in ['time.Time', 'rune', 'f32', 'f64'] {
 		return true
 	}
 	if sym.info is ast.Array {
-		return type_mentions_time(t, sym.info.elem_type)
+		return type_needs_legacy_json(t, sym.info.elem_type)
 	} else if sym.info is ast.ArrayFixed {
-		return type_mentions_time(t, sym.info.elem_type)
+		return type_needs_legacy_json(t, sym.info.elem_type)
 	} else if sym.info is ast.Map {
-		return type_mentions_time(t, sym.info.key_type) || type_mentions_time(t, sym.info.value_type)
+		return type_needs_legacy_json(t, sym.info.key_type)
+			|| type_needs_legacy_json(t, sym.info.value_type)
 	} else if sym.info is ast.Chan {
-		return type_mentions_time(t, sym.info.elem_type)
+		return type_needs_legacy_json(t, sym.info.elem_type)
 	} else if sym.info is ast.GenericInst {
-		// A generic instantiation like `Box[time.Time]` carries `time.Time` only in its
-		// concrete type arguments, so inspect those (e.g. `struct User { box Box[time.Time] }`).
+		// A generic instantiation like `Box[time.Time]` carries the payload type only in
+		// its concrete type arguments (e.g. `struct User { box Box[time.Time] }`).
 		for concrete in sym.info.concrete_types {
-			if type_mentions_time(t, concrete) {
+			if type_needs_legacy_json(t, concrete) {
 				return true
 			}
 		}
@@ -368,7 +372,7 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 				s.found = true
 			} else {
 				type_arg := call.args[0].expr
-				if type_arg is ast.TypeNode && type_mentions_time(s.table, type_arg.typ) {
+				if type_arg is ast.TypeNode && type_needs_legacy_json(s.table, type_arg.typ) {
 					s.found = true
 				}
 			}
@@ -378,28 +382,28 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 			// like `json.encode(time.utc())` has none (a known type-resolution limit).
 			arg := call.args[0].expr
 			if arg is ast.StructInit {
-				if type_mentions_time(s.table, arg.typ) {
+				if type_needs_legacy_json(s.table, arg.typ) {
 					s.found = true
 				}
 			} else if arg is ast.CastExpr {
-				if type_mentions_time(s.table, arg.typ) {
+				if type_needs_legacy_json(s.table, arg.typ) {
 					s.found = true
 				}
 			}
 		}
 	} else if node is ast.Stmt && node is ast.StructDecl {
 		decl := node as ast.StructDecl
-		// Some field kinds serialise differently in json2, with no option to restore
-		// the legacy bytes: a `time.Time` field is a unix number in json but an RFC3339
-		// string in json2, and a `@[raw]` field keeps the normalized subtree in json
-		// but the raw source slice in json2. vfmt has no type info for encode/decode
-		// payloads, so as a conservative proxy any struct declared in the file with
-		// such a field leaves the file unmigrated. Only file-local structs are visible.
+		// Some field kinds serialise differently in json2, with no option to restore the
+		// legacy bytes: a `@[raw]` field keeps the normalized subtree in json but the raw
+		// source slice in json2, and time.Time/rune/f32/f64 fields differ too (see
+		// type_needs_legacy_json). vfmt has no type info for encode/decode payloads, so as
+		// a conservative proxy any struct declared in the file with such a field leaves the
+		// file unmigrated. Only file-local structs are visible.
 		for field in decl.fields {
-			// type_mentions_time follows aliases and looks inside array/map/chan
-			// element/key/value types, so `[]time.Time`, `map[string]MyTime`, etc. are
-			// recognised as time payloads.
-			if field.attrs.any(it.name == 'raw') || type_mentions_time(s.table, field.typ) {
+			// type_needs_legacy_json follows aliases and looks inside array/map/chan and
+			// generic wrappers, so `[]time.Time`, `map[string]MyRune`, `Box[f64]`, etc.
+			// are all recognised.
+			if field.attrs.any(it.name == 'raw') || type_needs_legacy_json(s.table, field.typ) {
 				s.found = true
 				break
 			}

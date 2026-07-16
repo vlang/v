@@ -1,0 +1,12 @@
+import json
+
+// A `rune` field serialises as a JSON string under legacy json (encode_rune) but as a
+// u32 number under json2, so a payload containing rune keeps the file unmigrated.
+struct Thing {
+	ch    rune
+	runes []rune
+}
+
+fn to_json(t Thing) string {
+	return json.encode(t)
+}
