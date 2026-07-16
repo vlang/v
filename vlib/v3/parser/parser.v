@@ -8509,7 +8509,7 @@ fn (mut p Parser) current_lcbr_looks_struct_init() bool {
 	saved_peek_lit := p.peek_lit
 	saved_peek_pos := p.peek_pos
 	saved_has_peek := p.has_peek
-	mut looks_struct_init := false
+	mut looks_struct_init := p.peek() == .rcbr
 	mut brace_depth := 0
 	mut bracket_depth := 0
 	mut paren_depth := 0
