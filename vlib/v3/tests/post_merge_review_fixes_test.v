@@ -4141,14 +4141,16 @@ fn test_returned_interface_local_boxed_from_pointer_alias_heap_copies_on_return(
 
 fn test_returned_interface_boxed_from_pointer_type_alias_heap_copies_pointee() {
 	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\ntype Ref = &Box\n\nfn (r Ref) value() int {\n\treturn r.n\n}\n\nfn make() Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tp := Ref(&b)\n\tb.n = 2\n\treturn Reader(p)\n}\n\nfn main() {\n\tprintln(int_str(make().value()))\n}\n'
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\ntype Ref = &Box\n\nfn (r Ref) value() int {\n\treturn r.n\n}\n\nfn make_alias() Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tp := Ref(&b)\n\tb.n = 2\n\treturn Reader(p)\n}\n\nfn make_direct() Reader {\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tb.n = 4\n\treturn Reader(Ref(&b))\n}\n\nfn main() {\n\tprintln(int_str(make_alias().value()))\n\tprintln(int_str(make_direct().value()))\n}\n'
 	c_source := gen_c(v3_bin, 'interface_box_returned_pointer_type_alias_heap_copy', source)
-	make_body := c_fn_body(c_source, 'Reader make(void) {')
-	assert make_body.contains('Box* b = (Box*)memdup(') && make_body.contains('Box* p = b')
-		&& make_body.contains('._object = (Box**)(memdup(&p, sizeof(Box*)))'), make_body
+	alias_body := c_fn_body(c_source, 'Reader make_alias(void) {')
+	assert alias_body.contains('Box* b = (Box*)memdup(') && alias_body.contains('Box* p = b')
+		&& alias_body.contains('._object = (Box**)(memdup(&p, sizeof(Box*)))'), alias_body
+	direct_body := c_fn_body(c_source, 'Reader make_direct(void) {')
+	assert direct_body.contains('memdup(__iface_src_') && direct_body.contains('sizeof(Box)'), direct_body
 
 	out := run_good(v3_bin, 'interface_box_returned_pointer_type_alias_heap_copy_run', source)
-	assert out == '2'
+	assert out == '2\n4'
 }
 
 fn test_returned_pointer_copy_alias_heap_moves_stack_source() {

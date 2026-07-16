@@ -560,7 +560,8 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	normalized_source_type := t.normalize_type_alias(source_type)
 	source_is_pointer_alias := !source_type.starts_with('&')
 		&& normalized_source_type.starts_with('&')
-	if source_is_pointer_alias && !share_source && t.interface_pointer_source_needs_heap_copy(id) {
+	if source_is_pointer_alias && !share_source
+		&& t.interface_pointer_alias_source_needs_heap_copy(id) {
 		pointee_type := normalized_source_type[1..]
 		dup := t.make_memdup_call_for_type(source, pointee_type)
 		copied := t.make_cast(normalized_source_type, dup, normalized_source_type)
@@ -628,6 +629,29 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		value:          iface_name
 		typ:            iface_name
 	})
+}
+
+fn (t &Transformer) interface_pointer_alias_source_needs_heap_copy(id flat.NodeId) bool {
+	if t.interface_pointer_source_needs_heap_copy(id) {
+		return true
+	}
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .cast_expr || node.children_count == 0 || node.value.starts_with('&')
+		|| !t.normalize_type_alias(node.value).starts_with('&') {
+		return false
+	}
+	arg_id := t.a.child(&node, 0)
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return false
+	}
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind != .prefix || arg.op != .amp || arg.children_count == 0 {
+		return false
+	}
+	return t.interface_pointer_source_root_is_local(t.a.child(&arg, 0))
 }
 
 fn (t &Transformer) ident_is_global_pointer_to_interface(name string, iface_name string) bool {
