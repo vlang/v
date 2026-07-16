@@ -164,57 +164,102 @@ mut:
 
 // file_blocks_json_migration reports two mechanical reasons a straight json->json2 rewrite
 // would break or lose source, beyond the import-level checks in process_file_imports:
-//   - the file declares an identifier named like the migrated qualifier (a parameter,
-//     local, function, const or global `json2`); adding `import json2` would then duplicate
-//     an existing symbol, which the checker rejects.
+//   - the file declares an identifier named like the migrated qualifier `json2` — a
+//     parameter, function/const/global, `:=` local, a `for`/`$for` loop binder, an if-guard
+//     variable or a lambda parameter. Adding `import json2` and rewriting calls to
+//     `json2.x` would then either duplicate an imported symbol (rejected by the checker) or
+//     bind the call to that shadowing local instead of the module.
 //   - a `json.decode` call has a comment on its type argument; migration formats only the
 //     type expression inside `[]`, which would drop that user comment.
 fn (f &Fmt) file_blocks_json_migration(file &ast.File) bool {
 	mut s := JsonMigrateBlock{
 		json2_prefix: f.json2_prefix
 	}
-	walker.inspect(file, &s, fn (node &ast.Node, data voidptr) bool {
-		mut s := unsafe { &JsonMigrateBlock(data) }
-		if s.blocked {
-			return false
-		}
-		if node is ast.Expr && node is ast.CallExpr {
-			call := node as ast.CallExpr
-			if call.kind == .json_decode && call.args.len >= 1 && call.args[0].comments.len > 0 {
-				s.blocked = true
-			}
-		} else if node is ast.Stmt && node is ast.FnDecl {
-			decl := node as ast.FnDecl
-			if decl.name.all_after_last('.') == s.json2_prefix
-				|| decl.receiver.name == s.json2_prefix
-				|| decl.params.any(it.name == s.json2_prefix) {
-				s.blocked = true
-			}
-		} else if node is ast.Stmt && node is ast.ConstDecl {
-			for field in (node as ast.ConstDecl).fields {
-				if field.name.all_after_last('.') == s.json2_prefix {
-					s.blocked = true
-				}
-			}
-		} else if node is ast.Stmt && node is ast.GlobalDecl {
-			for field in (node as ast.GlobalDecl).fields {
-				if field.name == s.json2_prefix {
-					s.blocked = true
-				}
-			}
-		} else if node is ast.Stmt && node is ast.AssignStmt {
-			assign := node as ast.AssignStmt
-			if assign.op == .decl_assign {
-				for lx in assign.left {
-					if lx is ast.Ident && lx.name == s.json2_prefix {
-						s.blocked = true
-					}
-				}
-			}
-		}
-		return true
-	})
+	walker.inspect(file, &s, json_migrate_block_visit)
 	return s.blocked
+}
+
+// assign_decl_shadows reports whether a `:=` declaration binds the name `n`.
+fn assign_decl_shadows(assign ast.AssignStmt, n string) bool {
+	if assign.op != .decl_assign {
+		return false
+	}
+	for lx in assign.left {
+		if lx is ast.Ident && lx.name == n {
+			return true
+		}
+	}
+	return false
+}
+
+fn json_migrate_block_visit(node &ast.Node, data voidptr) bool {
+	mut s := unsafe { &JsonMigrateBlock(data) }
+	if s.blocked {
+		return false
+	}
+	p := s.json2_prefix
+	if node is ast.Expr && node is ast.CallExpr {
+		call := node as ast.CallExpr
+		if call.kind == .json_decode && call.args.len >= 1 && call.args[0].comments.len > 0 {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.FnDecl {
+		decl := node as ast.FnDecl
+		if decl.name.all_after_last('.') == p || decl.receiver.name == p
+			|| decl.params.any(it.name == p) {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.ConstDecl {
+		for field in (node as ast.ConstDecl).fields {
+			if field.name.all_after_last('.') == p {
+				s.blocked = true
+			}
+		}
+	} else if node is ast.Stmt && node is ast.GlobalDecl {
+		for field in (node as ast.GlobalDecl).fields {
+			if field.name == p {
+				s.blocked = true
+			}
+		}
+	} else if node is ast.Stmt && node is ast.AssignStmt {
+		if assign_decl_shadows(node as ast.AssignStmt, p) {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.ForInStmt {
+		// `for json2 in users {}` / `for k, json2 in m {}` — binders live on the node.
+		fin := node as ast.ForInStmt
+		if fin.key_var == p || fin.val_var == p {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.ComptimeFor {
+		// `$for json2 in T.fields {}`
+		if (node as ast.ComptimeFor).val_var == p {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.ForCStmt {
+		// The `json2 := 0` init of a C-style for is a loop-header field outside children().
+		forc := node as ast.ForCStmt
+		if forc.has_init && forc.init is ast.AssignStmt
+			&& assign_decl_shadows(forc.init as ast.AssignStmt, p) {
+			s.blocked = true
+		}
+	} else if node is ast.Expr && node is ast.IfExpr {
+		// An `if json2 := opt() {}` guard is in the branch condition, which
+		// IfBranch.children() does not expose, so sub-walk each condition.
+		for branch in (node as ast.IfExpr).branches {
+			walker.inspect(branch.cond, data, json_migrate_block_visit)
+		}
+	} else if node is ast.Expr && node is ast.IfGuardExpr {
+		if (node as ast.IfGuardExpr).vars.any(it.name == p) {
+			s.blocked = true
+		}
+	} else if node is ast.Expr && node is ast.LambdaExpr {
+		// `|json2| json.encode(json2)`
+		if (node as ast.LambdaExpr).params.any(it.name == p) {
+			s.blocked = true
+		}
+	}
+	return true
 }
 
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
