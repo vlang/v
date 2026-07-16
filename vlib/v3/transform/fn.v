@@ -6377,8 +6377,22 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 				fn_node.value)
 		}
 		t.mark_fn_used('map__${fn_node.value}')
-		return t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
+		call := t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
 			'void')
+		if fn_node.value == 'free' && !isnil(t.tc)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(clean_type)) {
+			mut map_value := base
+			if base_type.starts_with('&') {
+				map_value = t.make_prefix(.mul, base)
+				t.set_node_typ(int(map_value), clean_type)
+			}
+			// Keep scope-exit destruction safe after the raw runtime free leaves the
+			// original map header unchanged.
+			t.pending_stmts << t.make_expr_stmt(call)
+			t.pending_stmts << t.make_assign(map_value, t.zero_value_for_type(clean_type))
+			return t.make_empty()
+		}
+		return call
 	}
 	if fn_node.value == 'move' {
 		t.mark_fn_used('map__move')
