@@ -1,4 +1,5 @@
 import os
+import json
 import json2
 import time
 import benchmark
@@ -73,14 +74,14 @@ fn benchmark_measure_json_vs_json2_on_complex_struct() ! {
 	}
 	b.measure('json2.decode')
 	for _ in 0 .. max_iterations {
-		p := json2.decode[Person](s)!
+		p := json.decode(Person, s)!
 		if p.age != 99 {
 			return error('json.decode ${p}')
 		}
 	}
 	b.measure('json.decode\n')
 
-	measure_json_encode_old_vs_new(json2.decode[Person](s)!)!
+	measure_json_encode_old_vs_new(json.decode(Person, s)!)!
 }
 
 fn benchmark_measure_encode_by_type() ! {
@@ -152,7 +153,7 @@ fn benchmark_measure_decode_by_type() ! {
 	}
 	b.measure('json2.decode StructType[string]')
 	for _ in 0 .. max_iterations {
-		d := json2.decode[StructType[string]](vs)!
+		d := json.decode(StructType[string], vs)!
 		if d.val != '' {
 			return error('json.decode ${d}')
 		}
@@ -168,7 +169,7 @@ fn benchmark_measure_decode_by_type() ! {
 	}
 	b.measure('json2.decode StructType[bool]')
 	for _ in 0 .. max_iterations {
-		d := json2.decode[StructType[bool]](vb) or { panic('') }
+		d := json.decode(StructType[bool], vb) or { panic('') }
 		if !d.val {
 			return error('json.decode ${d}')
 		}
@@ -184,7 +185,7 @@ fn benchmark_measure_decode_by_type() ! {
 	}
 	b.measure('json2.decode StructType[int]')
 	for _ in 0 .. max_iterations {
-		d := json2.decode[StructType[int]](v0)!
+		d := json.decode(StructType[int], v0)!
 		if d.val != 0 {
 			return error('json.decode ${d}')
 		}
@@ -200,7 +201,7 @@ fn benchmark_measure_decode_by_type() ! {
 	}
 	b.measure('json2.decode StructType[time.Time]')
 	for _ in 0 .. max_iterations {
-		d := json2.decode[StructType[time.Time]](vt)!
+		d := json.decode(StructType[time.Time], vt)!
 		if d.val.year != 2015 {
 			return error('json.decode ${d}')
 		}
@@ -219,7 +220,7 @@ fn measure_json_encode_old_vs_new[T](val T) ! {
 	}
 	b.measure('json2.encode ${typename}')
 	for _ in 0 .. max_iterations {
-		e := json2.encode(val, escape_unicode: true)
+		e := json.encode(val)
 		if e[0] != `{` {
 			return error('json.encode ${e}')
 		}

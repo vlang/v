@@ -1,0 +1,13 @@
+import json2
+
+struct User {
+	name string
+}
+
+fn to_json(u User) string {
+	return json2.encode(u, prettify: true)
+}
+
+fn main() {
+	println(to_json(User{ name: 'bob' }))
+}

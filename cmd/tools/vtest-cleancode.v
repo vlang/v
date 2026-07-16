@@ -46,6 +46,10 @@ const vfmt_verify_list = [
 
 const vfmt_known_failing_exceptions = arrays.merge(verify_known_failing_exceptions, [
 	'vlib/v/tests/structs/anon_struct_local_init_test.v',
+	// This benchmark deliberately compares the legacy `json` module against `json2`, so it
+	// must keep its `import json` and `json.*` calls; exclude it from the json->json2 vfmt
+	// migration that `v fmt -verify` would otherwise apply.
+	'vlib/v/tests/bench/bench_json_vs_json2.v',
 ])
 
 const vexe = os.getenv('VEXE')

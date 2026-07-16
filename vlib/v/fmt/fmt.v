@@ -155,6 +155,68 @@ fn (f &Fmt) type_to_str(typ ast.Type) string {
 	return f.table.type_to_str(typ)
 }
 
+// JsonMigrateBlock is the state for file_blocks_json_migration.
+struct JsonMigrateBlock {
+	json2_prefix string
+mut:
+	blocked bool
+}
+
+// file_blocks_json_migration reports two mechanical reasons a straight json->json2 rewrite
+// would break or lose source, beyond the import-level checks in process_file_imports:
+//   - the file declares an identifier named like the migrated qualifier (a parameter,
+//     local, function, const or global `json2`); adding `import json2` would then duplicate
+//     an existing symbol, which the checker rejects.
+//   - a `json.decode` call has a comment on its type argument; migration formats only the
+//     type expression inside `[]`, which would drop that user comment.
+fn (f &Fmt) file_blocks_json_migration(file &ast.File) bool {
+	mut s := JsonMigrateBlock{
+		json2_prefix: f.json2_prefix
+	}
+	walker.inspect(file, &s, fn (node &ast.Node, data voidptr) bool {
+		mut s := unsafe { &JsonMigrateBlock(data) }
+		if s.blocked {
+			return false
+		}
+		if node is ast.Expr && node is ast.CallExpr {
+			call := node as ast.CallExpr
+			if call.kind == .json_decode && call.args.len >= 1 && call.args[0].comments.len > 0 {
+				s.blocked = true
+			}
+		} else if node is ast.Stmt && node is ast.FnDecl {
+			decl := node as ast.FnDecl
+			if decl.name.all_after_last('.') == s.json2_prefix
+				|| decl.receiver.name == s.json2_prefix
+				|| decl.params.any(it.name == s.json2_prefix) {
+				s.blocked = true
+			}
+		} else if node is ast.Stmt && node is ast.ConstDecl {
+			for field in (node as ast.ConstDecl).fields {
+				if field.name.all_after_last('.') == s.json2_prefix {
+					s.blocked = true
+				}
+			}
+		} else if node is ast.Stmt && node is ast.GlobalDecl {
+			for field in (node as ast.GlobalDecl).fields {
+				if field.name == s.json2_prefix {
+					s.blocked = true
+				}
+			}
+		} else if node is ast.Stmt && node is ast.AssignStmt {
+			assign := node as ast.AssignStmt
+			if assign.op == .decl_assign {
+				for lx in assign.left {
+					if lx is ast.Ident && lx.name == s.json2_prefix {
+						s.blocked = true
+					}
+				}
+			}
+		}
+		return true
+	})
+	return s.blocked
+}
+
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	mut sb := strings.new_builder(128)
 	for imp in file.implied_imports {
@@ -300,6 +362,7 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			f.keep_json_unmigrated = implied_json || json2_alias_is_blank || has_branch_local_json2
 				|| has_branch_local_json || has_aliased_json_import || json2_name_taken
 				|| json_import_has_line_comment || cur_module_is_json2
+				|| f.file_blocks_json_migration(file)
 		}
 		// Only rewrite `json.encode`/`json.decode` calls when the file actually imports the
 		// legacy `json` module and it is being migrated. The parser tags a call by its literal
@@ -2504,10 +2567,14 @@ fn (mut f Fmt) json2_migrate_call(node ast.CallExpr) {
 			f.write(')')
 		}
 		.json_encode_pretty {
-			// json.encode_pretty(x) => json2.encode_pretty(x). json2's encode_pretty takes
-			// only the value, so no options are appended.
-			f.write('${j2}.encode_pretty(')
+			// json.encode_pretty(x) => json2.encode(x, prettify: true). json2's own
+			// encode_pretty wrapper is deprecated in favour of the prettify option, so emit
+			// the non-deprecated form to avoid re-introducing a deprecation warning.
+			f.write('${j2}.encode(')
 			f.call_args(node.args)
+			if node.args.len > 0 {
+				f.write(', prettify: true')
+			}
 			f.write(')')
 		}
 		else {}
