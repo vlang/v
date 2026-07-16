@@ -74,7 +74,20 @@ pub fn new_cache_manager(opts []string) CacheManager {
 	deduped_opts_keys := deduped_opts.keys().filter(it != '' && !it.starts_with("['gcboehm', "))
 	// TODO: do not filter the gcboehm options here, instead just start `v build-module vlib/builtin` without the -d gcboehm etc.
 	// Note: the current approach of filtering the gcboehm keys may interfere with (potential) other gc modes.
-	original_vopts := deduped_opts_keys.join('|')
+	// COMPILER-IDENTITY SALT: cached objects encode the *generating
+	// compiler's* codegen/ABI. Reusing them across a compiler rebuild (`v self`,
+	// make) silently links objects from an older cgen — the observed failure was
+	// `_builtin__init_consts` unresolved after a compiler upgrade, and a
+	// compatible-ABI variant of it would be a silently WRONG binary. The baked
+	// git hash is not enough (a `v self` from uncommitted changes keeps it), so
+	// salt with the running v executable's size+mtime, which changes on every
+	// rebuild. Each compiler build therefore gets its own cache namespace.
+	vexe_ident := os.getenv_opt('VEXE') or { os.executable() }
+	mut vexe_salt := ''
+	if vexe_ident != '' && os.exists(vexe_ident) {
+		vexe_salt = 'vexe:${os.file_size(vexe_ident)}:${os.file_last_mod_unix(vexe_ident)}'
+	}
+	original_vopts := deduped_opts_keys.join('|') + '|' + vexe_salt
 	return CacheManager{
 		basepath:       vcache_basepath
 		vopts:          original_vopts

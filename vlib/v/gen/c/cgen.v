@@ -693,6 +693,17 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 	if g.pref.build_mode != .build_module {
 		// no init in builtin.o
 		g.write_init_function()
+	} else {
+		// Under -usecache a cached module object carries its consts as file-local
+		// `static ...; // inited later` but historically had NO code to run those
+		// inits (only the program TU's _vinit did, on ITS own separate copies), so the
+		// cached object's copies stayed zero at runtime (e.g. builtin's `_const_max_int`
+		// == 0 → `array.push` panicking "len bigger than max_int"). Emit a per-module
+		// `${mod}__init_consts()` that runs this object's const inits; the program TU's
+		// _vinit calls it (see write_init_function). This is V's own long-standing TODO
+		// in const_decl ("encapsulate const initialisation for each module in a separate
+		// function, called by the top level program in _vinit").
+		g.write_cached_module_init_consts_function()
 	}
 
 	if g.pref.is_coverage {
@@ -1502,7 +1513,13 @@ pub fn (mut g Gen) write_typeof_functions() {
 			if inter_info.is_generic {
 				continue
 			}
-			if g.pref.skip_unused && sym.idx !in g.table.used_features.used_syms {
+			// Mirror the interface-table emission (see the use_cache note there): under
+			// -usecache the program TU must NOT prune an interface's typeof helpers just
+			// because it isn't in this TU's own used_syms — a `typeof` on that interface
+			// (here or in a cached object) references v_typeof_interface[_idx]_<T>, which
+			// would then be undeclared/undefined at link.
+			if g.pref.skip_unused && !g.pref.use_cache
+				&& sym.idx !in g.table.used_features.used_syms {
 				continue
 			}
 			if sym.cname in already_generated_ifaces {
@@ -1554,6 +1571,14 @@ pub fn (mut g Gen) write_typeof_functions() {
 					g.writeln('\tif (sidx == _${sym.cname}_${sub_sym.cname}_index) return ${u32(t.set_nr_muls(0))};')
 				}
 				g.writeln2('\treturn ${u32(ityp)};', '}')
+			} else if g.pref.use_cache || g.pref.build_mode == .build_module {
+				// A cached module object can `typeof` an interface too (e.g. net.socks
+				// on net.Connection), which references v_typeof_interface_idx_<T>. That
+				// function is DEFINED only in the program TU (above), so emit an extern
+				// declaration here so the call compiles; it links to the program TU's
+				// definition. Without this the cached module fails to build ("could not
+				// rebuild cache module …") and everything importing it cascades.
+				g.definitions.writeln('u32 v_typeof_interface_idx_${sym.cname}(u32 sidx);')
 			}
 		}
 	}
@@ -4954,6 +4979,10 @@ fn (mut g Gen) get_sumtype_casting_fn(got_ ast.Type, exp_ ast.Type) string {
 
 fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	got, exp := fun.got, fun.exp
+	// Under -usecache these per-variant cast fns are generated independently in
+	// every object that uses the sumtype (program TU + each cached module), so
+	// external linkage collides at link. Emit them file-local instead.
+	sc := if g.pref.use_cache || g.pref.build_mode == .build_module { 'static ' } else { '' }
 	got_sym, exp_sym := g.table.sym(got), g.table.sym(exp)
 	mut got_cname, exp_cname := g.get_sumtype_variant_type_name(got, got_sym), exp_sym.cname
 	mut type_idx := g.type_sidx(got)
@@ -4961,8 +4990,8 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 	mut variant_name := g.get_sumtype_variant_name(got, got_sym)
 	if got_sym.kind == .alias && got_sym.info is ast.Alias
 		&& g.table.unaliased_type(got).idx() == exp.idx() {
-		g.definitions.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut);')
-		sb.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut) {')
+		g.definitions.writeln('${sc}${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut);')
+		sb.writeln('${sc}${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut) {')
 		sb.writeln('\treturn *(${exp_cname}*)x;')
 		sb.writeln('}\n')
 		g.auto_fn_definitions << sb.str()
@@ -4989,8 +5018,8 @@ fn (mut g Gen) write_sumtype_casting_fn(fun SumtypeCastingFn) {
 		got_cname = g.styp(got)
 		// g.definitions.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x);')
 		// sb.writeln('${g.static_modifier} inline ${exp_cname} ${fun.fn_name}(${got_cname}* x) {')
-		g.definitions.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut);')
-		sb.writeln('${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut) {')
+		g.definitions.writeln('${sc}${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut);')
+		sb.writeln('${sc}${exp_cname} ${fun.fn_name}(${got_cname}* x, bool is_mut) {')
 		sb.writeln('\t${got_cname}* ptr = x;')
 		sb.writeln('\tif (!is_mut) { ptr = builtin__memdup(x, sizeof(${got_cname})); }')
 	}
@@ -11141,10 +11170,35 @@ fn (mut g Gen) gen_hash_stmts(mut sb strings.Builder, node &ast.HashStmtNode, se
 			line_nr := node.pos.line_nr + 1
 			match node.kind {
 				'include', 'preinclude', 'postinclude' {
-					guarded_include := g.hash_stmt_guarded_include(node)
-					sb.writeln('')
-					sb.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
-					sb.writeln(guarded_include)
+					// A `#include "foo.c"` pulls C *definitions* (an amalgamation like
+					// zstd.c), not just declarations. Under -usecache every module that
+					// transitively imports the owner parses the owner's files, so the
+					// definition-include would land in every such cached object AND the
+					// program TU -> hundreds of duplicate C symbols at link (e.g. _ZSTD_*
+					// in zstd.o and every importer's .o). Emit a definition-include only in the
+					// object that OWNS it: the module being built (build_module), or a
+					// non-cached module in the program TU. Other objects call the owner's
+					// V wrappers (external symbols in its cached object), needing neither
+					// the C definitions nor -- on the wrapper path -- the declarations.
+					// `.h` includes (declarations only) are always safe and never filtered.
+					inc_target := node.main.trim(' "<>')
+					is_def_include := inc_target.ends_with('.c')
+					owned_here := if g.pref.build_mode == .build_module {
+						node.mod == g.module_built
+					} else {
+						node.mod in ['main', 'help'] || util.should_bundle_module(node.mod)
+					}
+					if is_def_include && (g.pref.use_cache || g.pref.build_mode == .build_module)
+						&& !owned_here {
+						sb.writeln('')
+						sb.writeln('// -usecache: skipped C definition-include "' + inc_target +
+							'" from cached module `${node.mod}` (compiled once into its own object)')
+					} else {
+						guarded_include := g.hash_stmt_guarded_include(node)
+						sb.writeln('')
+						sb.writeln('// added by module `${node.mod}`, file: ${os.file_name(node.source_file)}:${line_nr}:')
+						sb.writeln(guarded_include)
+					}
 				}
 				'insert' {
 					sb.writeln('')
@@ -12138,6 +12192,34 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\tbuiltin__builtin_init();')
 	}
 
+	// -usecache: initialize every cached object's OWN const copies BEFORE the program
+	// TU's inline const inits below. Some of those inline inits call generate functions
+	// that live in a cached object and read that object's consts (e.g. edwards25519
+	// d_const_generate reads d_bytes), so the cached consts must already be live. Emitted
+	// in g.table.modules (dependency) order; each ${mod}__init_consts is self-contained.
+	// builtin-family sub-modules (strings, strconv, math.bits, ...) are folded into
+	// builtin.o, so builtin__init_consts covers them; only `builtin` itself is called for
+	// that family. main/help/bundled modules are compiled into this TU, not cached.
+	if g.pref.use_cache {
+		// Call <mod>__init_consts() for exactly the objects handle_usecache links:
+		// builtin.o plus one object per non-builtin/non-bundled import. The builtin
+		// family (math.bits, strconv, strings, ...) folds into builtin.o, whose own
+		// builtin__init_consts covers the copies it carries; bundled modules
+		// (builtin.closure, ...) are emitted in the program TU and have no cached
+		// object at all.
+		for icmod in g.table.modules {
+			if icmod in ['main', 'help'] || util.should_bundle_module(icmod) {
+				continue
+			}
+			if icmod != 'builtin' && util.module_is_builtin(icmod) {
+				continue
+			}
+			icmod_c := util.no_dots(icmod)
+			g.definitions.writeln('void ${icmod_c}__init_consts(void);')
+			g.writeln('\t${icmod_c}__init_consts();')
+		}
+	}
+
 	// reflection bootstrapping
 	if g.has_reflection {
 		if var := g.global_const_defs['g_reflection'] {
@@ -12196,7 +12278,17 @@ fn (mut g Gen) write_init_function() {
 		}
 	}
 
-	if g.nr_closures > 0 {
+	if g.nr_closures > 0 || (g.pref.use_cache && g.table.used_features.anon_fn) {
+		// Under -usecache the program TU emits cached-module functions declaration-only,
+		// so closures defined in those cached objects are NOT counted in this TU's
+		// nr_closures. If the program's own code has no closures, nr_closures is 0 and
+		// closure_init would be skipped — leaving the closure runtime (trampoline pool)
+		// uninitialized, so a closure created+called inside a cached object (e.g. a
+		// stored getter fn) dereferences a garbage captured context → segfault. Gate on
+		// the WHOLE-PROGRAM `used_features.anon_fn` (true iff any module uses closures):
+		// markused already marks closure_init used under that flag, so its declaration
+		// and definition are present; and when no module uses closures we must NOT emit
+		// the call (the closure runtime object is not built → link error).
 		g.writeln('\tbuiltin__closure__closure_init();')
 	}
 
@@ -12277,6 +12369,33 @@ fn (mut g Gen) write_init_function() {
 		g.writeln('\t_vcleanup();')
 		g.writeln('}')
 	}
+}
+
+// write_cached_module_init_consts_function is the -usecache/build_module counterpart
+// of write_init_function's per-module const-init loop. A cached module object has no
+// _vinit of its own (write_init_function is skipped for build_mode == .build_module),
+// so its file-local `static` consts would never be initialized at runtime. Emit a
+// `${module_built}__init_consts()` that runs this object's const inits (in dependency
+// order); the program TU's _vinit calls it once at startup (see write_init_function).
+// It initializes every const emitted into THIS object — the module's own consts plus
+// its static copies of imported consts it references — mirroring the program TU, which
+// keeps its own copies. `once` makes repeated calls idempotent.
+fn (mut g Gen) write_cached_module_init_consts_function() {
+	if g.pref.no_builtin {
+		return
+	}
+	mod_c := util.no_dots(g.module_built)
+	g.writeln('void ${mod_c}__init_consts(void);')
+	g.writeln('void ${mod_c}__init_consts(void) {')
+	g.writeln('\tstatic bool once = false; if (once) {return;} once = true;')
+	for var_name in g.sorted_global_const_names {
+		if var := g.global_const_defs[var_name] {
+			if var.init.len > 0 {
+				g.writeln(var.init)
+			}
+		}
+	}
+	g.writeln('}')
 }
 
 fn (mut g Gen) write_builtin_types() {
@@ -14112,7 +14231,20 @@ fn (mut g Gen) interface_table() string {
 		if inter_info.is_generic {
 			continue
 		}
-		if g.pref.skip_unused && isym.idx !in g.table.used_features.used_syms {
+		// Under -usecache the program TU is the sole definition site for every
+		// interface's index symbols + name_table (it alone has the whole-program view
+		// of all implementors); cached module objects — built with skip_unused OFF —
+		// reference them. So the program TU must NOT prune an interface here just because
+		// it isn't used in the program TU's own trace: doing so leaves its
+		// `_<iface>_<type>_index` undefined at link and its name_table a zeroed common
+		// symbol (silent misdispatch). Emitting the full table set is safe without
+		// pulling in extra code: unused concrete variants degrade to `voidptr` below (no
+		// method refs), and referenced methods/types are already DECLARED in the program
+		// TU (cached-module functions are emitted as declarations, see gen_fn_decl). This
+		// avoids force-marking every interface in markused, which would drag each
+		// interface's whole transitive closure (implementor method bodies, C-interop
+		// thirdparty sources, ...) into the program TU and duplicate it at link.
+		if g.pref.skip_unused && !g.pref.use_cache && isym.idx !in g.table.used_features.used_syms {
 			continue
 		}
 		if isym.cname in already_generated_ifaces {
@@ -14158,16 +14290,25 @@ fn (mut g Gen) interface_table() string {
 		// Exclude interface types from the table length — an interface can't
 		// be its own concrete implementor (happens with nested generic interfaces).
 		iname_table_length := impl_types.filter(g.table.sym(it).kind !in [.interface, .aggregate]).len
+		// A cached module object must only *declare* the name table — the program
+		// TU owns the single initialized definition. The historic form (a tentative
+		// `struct x name_table[N];` in every TU, merged as a common symbol at link)
+		// no longer links: current Apple ld and lld reject cross-TU tentative
+		// definitions as duplicate symbols instead of merging them.
 		if iname_table_length == 0 {
 			// msvc can not process `static struct x[0] = {};`
-			methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[1];')
+			if g.pref.build_mode == .build_module {
+				methods_struct.writeln('extern ${methods_struct_name} ${interface_name}_name_table[1];')
+			} else {
+				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[1];')
+			}
 		} else {
 			name_table_len := iname_table_length + 1
 			if g.pref.build_mode != .build_module {
 				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[${name_table_len}] = {')
 				methods_struct.writeln('\t{0},')
 			} else {
-				methods_struct.writeln('${g.static_modifier}${methods_struct_name} ${interface_name}_name_table[${name_table_len}];')
+				methods_struct.writeln('extern ${methods_struct_name} ${interface_name}_name_table[${name_table_len}];')
 			}
 		}
 		mut cast_functions := strings.new_builder(100)

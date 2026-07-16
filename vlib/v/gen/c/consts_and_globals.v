@@ -49,8 +49,14 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 			ast.ArrayInit {
 				elems_are_const := field.expr.exprs.all(g.check_expr_is_const(it))
 				if field.expr.is_fixed && !field.expr.has_index
-					&& g.pref.build_mode != .build_module
 					&& (!g.is_cc_msvc || field.expr.elem_type != ast.string_type) && elems_are_const {
+					// Initialize fixed-array consts at their C *definition* (`static T x =
+					// {..}`), not in _vinit: a fixed C array is not assignable (`x = {..}`
+					// is illegal), so a deferred runtime init cannot work for them. This
+					// used to be gated to non-build_module (cached modules deferred all
+					// const init to the program TU) — but a cached module now runs its own
+					// ${mod}__init_consts(), and emitting `x = {..}` there is exactly the
+					// illegal form. Initializing at definition is valid in every TU.
 					styp := g.styp(field.expr.typ)
 					val := g.expr_string(ast.Expr(field.expr))
 					// eprintln('> const_name: ${const_name} | name: ${name} | styp: ${styp} | val: ${val}')
@@ -121,7 +127,10 @@ fn (mut g Gen) const_decl(node ast.ConstDecl) {
 						g.expr_string(field_expr))
 				} else if field.expr is ast.CastExpr {
 					if field.expr.expr is ast.ArrayInit {
-						if field.expr.expr.is_fixed && g.pref.build_mode != .build_module {
+						if field.expr.expr.is_fixed {
+							// Fixed-array cast const: initialize at definition, valid in
+							// every TU (a fixed C array cannot be assigned at runtime; see
+							// the ArrayInit fixed-array case above).
 							styp := g.styp(field.expr.typ)
 							val := g.expr_string(field.expr.expr)
 							g.global_const_defs[name] = GlobalConstDef{
@@ -504,11 +513,27 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 	// was static used here to to make code optimizable? it was removed when
 	// 'extern' was used to fix the duplicate symbols with usecache && clang
 	// visibility_kw := if g.pref.build_mode == .build_module && g.is_builtin_mod { 'static ' }
+	// A global owned by the `main` module is only ever compiled into the program
+	// TU — `main` is never emitted as a cached `.o` (see Builder.handle_usecache,
+	// which caches builtin + imports + non-main test files, but never `main`).
+	// So under -usecache it must be *defined* here, not declared `extern`: an
+	// `extern` with no definition site links to nothing (the historic `test_runner`
+	// "Undefined symbols" failure). Every other module either owns a cached object
+	// (defined there, `extern` here) or is bundled (already excluded below).
+	is_program_module_global := g.pref.build_mode != .build_module && node.mod == 'main'
+	// A bundled module (builtin.closure, builtin.overflow, ...) is compiled into
+	// the program TU only, never as its own cached object — so the program TU owns
+	// its globals and every build_module compile must reference them `extern`. The
+	// historic tentative definition per TU relied on the linker merging common
+	// symbols, which current Apple ld and lld no longer do (duplicate-symbol error).
+	is_bundled_mod := util.should_bundle_module(node.mod)
 	visibility_kw := if g.should_use_object_local_linkage(node.mod) {
 		'static '
+	} else if g.pref.build_mode == .build_module && is_bundled_mod {
+		'extern '
 	} else if
 		(g.pref.use_cache || (g.pref.build_mode == .build_module && g.module_built != node.mod))
-		&& !util.should_bundle_module(node.mod) {
+		&& !is_bundled_mod && !is_program_module_global {
 		'extern '
 	} else {
 		''
@@ -522,8 +547,13 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		g.inside_cinit = false
 		g.inside_global_decl = false
 	}
+	// The last clause: bundled-module globals under -usecache — the program TU is
+	// their single definition site (cached objects reference them `extern`, see
+	// visibility_kw above), so it must also emit their initialized definition.
 	should_init := (!g.pref.use_cache && g.pref.build_mode != .build_module)
 		|| (g.pref.build_mode == .build_module && g.module_built == node.mod)
+		|| is_program_module_global
+		|| (g.pref.use_cache && g.pref.build_mode != .build_module && is_bundled_mod)
 	mut attributes := ''
 	first_field := node.fields[0]
 	if first_field.is_weak {
@@ -552,7 +582,49 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 		mut def_builder := strings.new_builder(100)
 		mut init := ''
 		extern := if field.is_extern { 'extern ' } else { '' }
-		field_visibility_kw := if field.is_extern { '' } else { visibility_kw }
+		// `g_main_argc`/`g_main_argv` are owned by the program entry point: the
+		// generated `main()` assigns them (gen_c_main_function_header) and their
+		// declared initializer is suppressed everywhere (see the skip below). So no
+		// module's build_module compile ever *defines* them — under -usecache the
+		// owning builtin object only declares them `extern` too, leaving them defined
+		// NOWHERE (a non-cache build gets a tentative definition in its single TU).
+		// Define them in the program TU (build_mode != build_module): emit '' visibility
+		// → a tentative definition that `main()` then fills, mirroring the non-cache
+		// build. Cached modules keep referencing them `extern`.
+		// -is_o is excluded: each -is_o output is a standalone hostable TU and keeps
+		// the object-local (static) linkage for these — several such TUs are expected
+		// to be linked together (see link_generated_c_files_test.v), so a non-static
+		// definition in each would collide.
+		is_argv_global := field.name in ['g_main_argc', 'g_main_argv']
+		program_owned_argv_global := g.pref.build_mode != .build_module && is_argv_global
+			&& !g.should_use_object_local_linkage(node.mod)
+		field_visibility_kw := if field.is_extern {
+			''
+		} else if program_owned_argv_global {
+			''
+		} else if g.pref.build_mode == .build_module && is_argv_global {
+			// builtin declares these, but the program TU owns them (its `main()`
+			// assigns them) — builtin's own cached object must not emit the
+			// historic tentative definition (no longer merged at link, see above).
+			'extern '
+		} else {
+			visibility_kw
+		}
+		// `extern ` visibility + `!should_init` means this global is *defined* (and
+		// initialized) in some OTHER translation unit — its owning module's cached
+		// object — while the current TU only references it. (`should_init` is true in
+		// the owning module's own build_module compile, where `extern T x = {..}` is
+		// the intended single definition.) When merely referencing, emit the
+		// declaration only: an initializer here is wrong — `extern T x = {..}` is
+		// itself a definition in C → duplicate symbol at link (notably hit by
+		// fixed-array globals, whose init is forced inline below, e.g. vgc_*/autostr
+		// globals defined into every cached module that touches builtin), and a
+		// `_vinit` initializer would redundantly re-init the cached definition.
+		// The argv globals are declared by builtin but owned by the program TU even
+		// in builtin's own build_module compile (should_init is true there, which
+		// would otherwise turn the `extern` into `extern ... = 0;` — a definition).
+		global_defined_elsewhere := (field_visibility_kw == 'extern ' && !should_init)
+			|| (g.pref.build_mode == .build_module && is_argv_global)
 		mut qualifiers := ''
 		if field.is_const {
 			qualifiers += 'const '
@@ -625,7 +697,9 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 			def_builder.write_string('${extern}${tls_kw}${field_visibility_kw}${qualifiers}${styp} ${attributes}${final_c_name}')
 			needs_ending_semicolon = true
 		}
-		if field.has_expr || cinit {
+		if global_defined_elsewhere {
+			// Declaration only — the owning cached object defines + initializes it.
+		} else if field.has_expr || cinit {
 			// `__global x = unsafe { nil }` should still use the simple direct initialisation, `g_main_argv` needs it.
 			mut is_simple_unsafe_expr := false
 			if field.expr is ast.UnsafeExpr {
@@ -667,7 +741,16 @@ fn (mut g Gen) global_decl(node ast.GlobalDecl) {
 					if decls != '' {
 						init = '\t${decls}'
 					}
-					init += '\t${final_c_name} = *(${styp}*)&((${styp}[]){${default_initializer}}[0]); // global 5'
+					// Fixed-size C arrays (`[N]T`) are not assignable with `=`, so
+					// the `dst = *(T*)&((T[]){..}[0])` form emits illegal C ("array
+					// type ... is not assignable") when this runs in `_vinit` rather
+					// than at declaration — the path taken under `-usecache`/build_module.
+					// memcpy the default in, mirroring the `{E_STRUCT}` path above.
+					if g.table.final_sym(field.typ).kind == .array_fixed {
+						init += '\tmemcpy(${final_c_name}, (${styp}[]){${default_initializer}}, sizeof(${styp})); // global 5'
+					} else {
+						init += '\t${final_c_name} = *(${styp}*)&((${styp}[]){${default_initializer}}[0]); // global 5'
+					}
 				}
 			}
 		} else {
