@@ -662,11 +662,14 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 				}
 			}
 		} else if call.kind == .json_encode && call.args.len >= 1 {
-			// A root `time.Time`/rune/float/option encode payload serialises differently, and
-			// vfmt has no checked type for a runtime payload. Keep the file on legacy json
-			// unless the payload is provably safe to migrate (a typed safe literal, a safe
-			// container, a resolved-safe identifier or a scalar literal).
-			if !encode_payload_is_safe_to_migrate(s.table, call.args[0].expr) {
+			// A trailing comment on the argument cannot survive the synthetic
+			// `escape_unicode: true` option: call_args emits the comment and a newline, so the
+			// appended option would land after it as a stray leading comma. Leave such a call
+			// unmigrated. Otherwise, a root `time.Time`/rune/float/option/sum-type payload
+			// serialises differently and vfmt has no checked type for a runtime payload, so
+			// keep the file on legacy json unless the payload is provably safe to migrate.
+			if call.args[0].comments.len > 0
+				|| !encode_payload_is_safe_to_migrate(s.table, call.args[0].expr) {
 				s.found = true
 			}
 		}
