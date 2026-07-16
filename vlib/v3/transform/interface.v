@@ -557,6 +557,16 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	}
 	source_expr := t.transform_expr(id)
 	mut source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
+	normalized_source_type := t.normalize_type_alias(source_type)
+	source_is_pointer_alias := !source_type.starts_with('&') && normalized_source_type.starts_with('&')
+	if source_is_pointer_alias && !share_source && t.interface_pointer_source_needs_heap_copy(id) {
+		pointee_type := normalized_source_type[1..]
+		dup := t.make_memdup_call_for_type(source, pointee_type)
+		copied := t.make_cast(normalized_source_type, dup, normalized_source_type)
+		tmp_name := t.new_temp('iface_ptr')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, copied, source_type)
+		source = t.make_ident(tmp_name)
+	}
 	is_ptr := source_type.starts_with('&')
 	concrete_type := if is_ptr { source_type[1..] } else { source_type }
 	t.mark_interface_boxed_type(iface_name, concrete_type)

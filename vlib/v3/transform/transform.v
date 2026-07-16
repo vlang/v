@@ -3292,6 +3292,15 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 						amp_sources[lhs.value] = amp_child.value
 					}
 				}
+			} else if lhs.kind == .ident && lhs.value.len > 0
+				&& t.pointer_alias_cast_address_is_stack_local(t.a.child(&node, i + 1),
+					local_stack_names, amp_ptrs, ptr_aliases) {
+				amp_ptrs[lhs.value] = true
+				cast_arg := t.a.nodes[int(t.a.child(&rhs, 0))]
+				amp_child := t.a.nodes[int(t.a.child(&cast_arg, 0))]
+				if amp_child.kind == .ident {
+					amp_sources[lhs.value] = amp_child.value
+				}
 			} else if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .ident
 				&& rhs.value.len > 0 {
 				// `q := p` aliases an existing pointer; recorded so a returned alias still marks the
@@ -3400,6 +3409,27 @@ fn (t &Transformer) interface_box_from_stack_pointer_source(id flat.NodeId, amp_
 	}
 	return arg.kind == .ident
 		&& t.escape_pointer_ident_is_stack_backed(arg.value, amp_ptrs, ptr_aliases)
+}
+
+fn (t &Transformer) pointer_alias_cast_address_is_stack_local(id flat.NodeId, local_stack_names map[string]bool, amp_ptrs map[string]bool, ptr_aliases map[string]string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .cast_expr || node.children_count == 0 || node.value.starts_with('&')
+		|| !t.normalize_type_alias(node.value).starts_with('&') {
+		return false
+	}
+	arg_id := t.a.child(&node, 0)
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return false
+	}
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind != .prefix || arg.op != .amp || arg.children_count == 0 {
+		return false
+	}
+	return t.escape_address_expr_is_stack_local(t.a.child(&arg, 0), local_stack_names, amp_ptrs,
+		ptr_aliases)
 }
 
 fn (t &Transformer) escape_pointer_ident_is_stack_backed(name string, amp_ptrs map[string]bool, ptr_aliases map[string]string) bool {
@@ -10641,6 +10671,9 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		return id
 	}
 	target_type := t.normalize_type_alias(node.value)
+	if rewritten := t.transform_pointer_alias_cast_from_heaped_local(node, target_type) {
+		return rewritten
+	}
 	if node.children_count == 1 && transform_is_anonymous_struct_name(target_type) {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
@@ -10767,6 +10800,29 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		value:          node.value
 		typ:            node.typ
 	})
+}
+
+fn (mut t Transformer) transform_pointer_alias_cast_from_heaped_local(node flat.Node, target_type string) ?flat.NodeId {
+	if node.children_count != 1 || node.value.starts_with('&') || !target_type.starts_with('&') {
+		return none
+	}
+	child_id := t.a.child(&node, 0)
+	if int(child_id) < 0 || int(child_id) >= t.a.nodes.len {
+		return none
+	}
+	child := t.a.nodes[int(child_id)]
+	if child.kind != .prefix || child.op != .amp || child.children_count == 0 {
+		return none
+	}
+	source_id := t.a.child(&child, 0)
+	if int(source_id) < 0 || int(source_id) >= t.a.nodes.len {
+		return none
+	}
+	source := t.a.nodes[int(source_id)]
+	if source.kind != .ident || source.value !in t.heaped_amp_locals {
+		return none
+	}
+	return t.make_cast(node.value, t.transform_expr_preserving_pointer_value(source_id), node.value)
 }
 
 fn (t &Transformer) pointer_cast_target_implements_source_iface(target_base_type string, source_iface string) bool {
