@@ -81,7 +81,8 @@ pub fn target_from(os_name string, arch_name string) !Target {
 	target_os := normalized_os(os_name.trim_space().to_lower())
 	target_arch := normalized_arch(arch_name.trim_space().to_lower())
 	if target_os !in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
-		'android', 'termux', 'ios', 'solaris', 'wasm32_emscripten'] {
+		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix',
+		'wasm32_emscripten'] {
 		return error('unsupported target OS `${os_name}`')
 	}
 	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv64', 'ppc64', 'ppc64le', 's390x',
@@ -350,6 +351,11 @@ fn file_has_incompatible_os_only_suffix(file string, current_os string) bool {
 	if os_name != 'solaris' && file.contains('_solaris.') {
 		return true
 	}
+	for target_os in ['qnx', 'haiku', 'serenity', 'vinix'] {
+		if os_name != target_os && file.contains('_${target_os}.') {
+			return true
+		}
+	}
 	if os_name != 'wasm32_emscripten' && file.contains('_wasm32_emscripten.') {
 		return true
 	}
@@ -590,6 +596,9 @@ fn os_specific_base(file string, target_os string) ?string {
 		'solaris' {
 			suffixes << '_solaris'
 		}
+		'qnx', 'haiku', 'serenity', 'vinix' {
+			suffixes << '_${os_name}'
+		}
 		'wasm32_emscripten' {
 			suffixes << '_wasm32_emscripten'
 		}
@@ -689,6 +698,9 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 		}
 		'termux' {
 			return p.normalized_target_os() == 'termux'
+		}
+		'qnx', 'haiku', 'serenity', 'vinix' {
+			return p.normalized_target_os() == name
 		}
 		'wasm32_emscripten' {
 			return p.normalized_target_os() == 'wasm32_emscripten'

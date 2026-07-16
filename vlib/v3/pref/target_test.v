@@ -39,6 +39,19 @@ fn test_native_arch_aliases_normalize_to_supported_targets() {
 	assert target_from('wasm32_emscripten', 'wasm')!.arch == 'wasm32'
 }
 
+fn test_remaining_native_os_targets_are_supported() {
+	mut prefs := new_preferences()
+	for os_name in ['qnx', 'haiku', 'serenity', 'vinix'] {
+		target := target_from(os_name, 'amd64') or { panic(err) }
+		assert target.os == os_name
+		assert target.abi == 'gnu'
+		assert target.object_format == 'elf'
+		prefs.target = target
+		assert comptime_flag_value(prefs, os_name)
+		assert comptime_flag_value(prefs, 'posix')
+	}
+}
+
 fn test_comptime_flags_use_target_instead_of_host() {
 	mut prefs := new_preferences()
 	prefs.target = target_from('linux', 's390x') or { panic(err) }
@@ -149,4 +162,24 @@ fn test_emscripten_source_and_test_selection_is_target_specific() {
 		'runtime_default.c.v',
 	]
 	assert !is_test_file_for_platform('/tmp/runtime_wasm32_emscripten_test.v', 'c', linux)
+}
+
+fn test_remaining_native_os_source_selection_is_target_specific() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_os_target_pref_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	for name in ['platform_default.c.v', 'platform_qnx.c.v', 'platform_haiku.c.v',
+		'platform_serenity.c.v', 'platform_vinix.c.v'] {
+		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
+	}
+
+	for os_name in ['qnx', 'haiku', 'serenity', 'vinix'] {
+		target := target_from(os_name, 'amd64') or { panic(err) }
+		assert get_v_files_from_dir_for_target(dir, [], target).map(os.base(it)) == [
+			'platform_${os_name}.c.v',
+		]
+	}
 }
