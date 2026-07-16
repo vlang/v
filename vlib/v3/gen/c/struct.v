@@ -57,10 +57,25 @@ fn (g &FlatGen) struct_init_lookup_type_name(type_name string) string {
 		return type_name
 	}
 	typ := g.tc.parse_type(type_name)
-	if typ is types.Struct {
-		return typ.name
+	match typ {
+		types.Alias {
+			return struct_init_unaliased_type_name(typ.base_type, type_name)
+		}
+		types.Struct {
+			return typ.name
+		}
+		else {}
 	}
+
 	return type_name
+}
+
+fn struct_init_unaliased_type_name(typ types.Type, fallback string) string {
+	if typ is types.Alias {
+		return struct_init_unaliased_type_name(typ.base_type, fallback)
+	}
+	name := typ.name()
+	return if name.len > 0 && name !in ['unknown', 'void'] { name } else { fallback }
 }
 
 fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Type) {
@@ -1792,7 +1807,7 @@ fn (mut g FlatGen) collect_shared_type_names() {
 	old_module := g.tc.cur_module
 	for _, info in g.struct_decl_infos {
 		g.tc.cur_module = info.module
-		if info.node.generic_params.len > 0 || info.node.typ.contains('generic') {
+		if info.node.generic_params().len > 0 || info.node.typ.contains('generic') {
 			g.collect_generic_shared_type_names(info)
 			continue
 		}
@@ -1850,7 +1865,7 @@ fn (mut g FlatGen) collect_fn_shared_param_type_names(node flat.Node, module_nam
 			continue
 		}
 		inner := shared_inner_type_text(param.typ) or { continue }
-		if shared_type_text_uses_generic_params(inner, node.generic_params) {
+		if shared_type_text_uses_generic_params(inner, node.generic_params()) {
 			continue
 		}
 		g.register_shared_type_name(g.shared_qualify_type_text(inner, module_name), module_name)
@@ -1887,13 +1902,14 @@ fn (mut g FlatGen) collect_shared_type_names_from_info(info StructDeclInfo, args
 		}
 		if array_inner := shared_array_inner_type_text(field.typ) {
 			concrete_inner := substitute_shared_generic_type_text(array_inner,
-				info.node.generic_params, args)
+				info.node.generic_params(), args)
 			qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
 			g.register_shared_type_name(qualified_inner, info.module)
 			continue
 		}
 		inner := shared_inner_type_text(field.typ) or { continue }
-		concrete_inner := substitute_shared_generic_type_text(inner, info.node.generic_params, args)
+		concrete_inner :=
+			substitute_shared_generic_type_text(inner, info.node.generic_params(), args)
 		qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
 		g.register_shared_type_name(qualified_inner, info.module)
 	}
@@ -2097,7 +2113,8 @@ fn (mut g FlatGen) generic_shared_field_info(type_name string, field_name string
 			continue
 		}
 		inner := shared_inner_type_text(field.typ) or { return none }
-		concrete_inner := substitute_shared_generic_type_text(inner, info.node.generic_params, args)
+		concrete_inner :=
+			substitute_shared_generic_type_text(inner, info.node.generic_params(), args)
 		qualified_inner := g.shared_qualify_type_text(concrete_inner, info.module)
 		return SharedFieldInfo{
 			inner:   qualified_inner
@@ -2641,7 +2658,7 @@ fn (g &FlatGen) same_module_flattened_generic_struct_ct(clean string) ?string {
 		return none
 	}
 	info := g.find_struct_decl(base) or { return none }
-	if info.module != g.tc.cur_module || info.node.generic_params.len == 0 {
+	if info.module != g.tc.cur_module || info.node.generic_params().len == 0 {
 		return none
 	}
 	return '${g.cname(g.tc.cur_module)}__${g.cname(base)}_${g.cname(g.tc.cur_module)}__${suffix}'

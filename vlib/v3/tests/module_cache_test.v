@@ -1250,16 +1250,16 @@ fn test_cached_header_preserves_comptime_struct_fields() {
 		value: 'config'
 	})
 	direct_field := a.add_node(flat.Node{
-		kind:           .field_decl
-		value:          'value'
-		typ:            'int'
-		generic_params: ['p']
+		kind:    .field_decl
+		value:   'value'
+		typ:     'int'
+		payload: flat.node_payload(['p'])
 	})
 	comptime_field := a.add_node(flat.Node{
-		kind:           .field_decl
-		value:          'enabled'
-		typ:            'bool'
-		generic_params: ['p']
+		kind:    .field_decl
+		value:   'enabled'
+		typ:     'bool'
+		payload: flat.node_payload(['p'])
 	})
 	block_children := a.begin_children()
 	a.add_child(comptime_field)

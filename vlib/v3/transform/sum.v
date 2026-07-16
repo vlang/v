@@ -575,15 +575,27 @@ fn (t &Transformer) sum_type_variants_for_index(sum_name string) []string {
 }
 
 fn (t &Transformer) concrete_sum_variants_for_candidate(sum_name string) []string {
+	base, args, is_generic := generic_app_parts(sum_name)
 	if variants := t.sum_types[sum_name] {
+		if is_generic {
+			params := t.sum_generic_params_for_base(base)
+			if params.len == args.len && params.len > 0 {
+				return substitute_sum_variant_list(variants, args, params)
+			}
+		}
 		return variants
 	}
 	if !isnil(t.tc) {
 		if variants := t.tc.sum_types[sum_name] {
+			if is_generic {
+				params := t.sum_generic_params_for_base(base)
+				if params.len == args.len && params.len > 0 {
+					return substitute_sum_variant_list(variants, args, params)
+				}
+			}
 			return variants
 		}
 	}
-	base, args, is_generic := generic_app_parts(sum_name)
 	if !is_generic {
 		return []string{}
 	}
@@ -942,6 +954,9 @@ fn (mut t Transformer) make_sum_is_check(expr flat.NodeId, expr_type string, sum
 // sum_variant_path supports sum variant path handling for Transformer.
 fn (t &Transformer) sum_variant_path(sum_name string, variant string) []string {
 	clean_sum := t.trim_pointer_type(sum_name)
+	// Resolve against the concrete application before its declaration key.
+	// `Tree[int]` and `Maybe[int]` may be backed by `Tree`/`Maybe` entries whose
+	// stored variants still contain their generic parameter names.
 	for candidate in t.sum_subject_type_candidates(clean_sum) {
 		if direct := t.sum_variant_name(candidate, variant) {
 			return [direct]
@@ -958,6 +973,9 @@ fn (t &Transformer) sum_variant_path(sum_name string, variant string) []string {
 // sum_variant_path_inner supports sum variant path inner handling for Transformer.
 fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut visited map[string]bool) []string {
 	clean_sum := t.trim_pointer_type(sum_name)
+	if direct := t.sum_variant_name(clean_sum, variant) {
+		return [direct]
+	}
 	resolved_sum := t.resolve_sum_name(clean_sum)
 	if resolved_sum.len == 0 || resolved_sum in visited {
 		return []string{}
@@ -966,7 +984,10 @@ fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut 
 	if direct := t.sum_variant_name(resolved_sum, variant) {
 		return [direct]
 	}
-	variants := t.sum_types[resolved_sum] or { return []string{} }
+	variants := t.concrete_sum_variants_for_candidate(clean_sum)
+	if variants.len == 0 {
+		return []string{}
+	}
 	for direct in variants {
 		direct_sum := t.resolve_sum_name(t.trim_pointer_type(direct))
 		if direct_sum == resolved_sum || direct_sum !in t.sum_types {

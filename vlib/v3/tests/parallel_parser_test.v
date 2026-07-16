@@ -55,13 +55,14 @@ fn test_parallel_parse_matches_serial() {
 		s := ps.a.nodes[i]
 		q := pp.a.nodes[i]
 		assert q.kind == s.kind, 'node ${i} kind differs'
-		assert q.kind_id == s.kind_id, 'node ${i} kind_id differs'
+		assert q.kind == s.kind, 'node ${i} kind differs'
 		assert q.value == s.value, 'node ${i} value differs'
 		assert q.typ == s.typ, 'node ${i} typ differs'
 		assert q.op == s.op, 'node ${i} op differs'
 		assert q.is_mut == s.is_mut, 'node ${i} is_mut differs'
-		assert q.generic_params == s.generic_params, 'node ${i} generic_params differs'
+		assert q.generic_params() == s.generic_params(), 'node ${i} generic_params differs'
 		assert q.pos.offset == s.pos.offset, 'node ${i} pos differs'
+		assert q.pos.id == s.pos.id, 'node ${i} file id differs'
 		assert q.children_count == s.children_count, 'node ${i} children_count differs'
 		if s.children_count != 0 {
 			assert q.children_start == s.children_start, 'node ${i} children_start differs'
@@ -72,6 +73,43 @@ fn test_parallel_parse_matches_serial() {
 	assert pp.a.export_fn_names.keys() == ps.a.export_fn_names.keys()
 	for qname, value in ps.a.export_fn_names {
 		assert pp.a.export_fn_names[qname] == value
+	}
+}
+
+// test_parallel_parse_falls_back_when_workers_cannot_start ensures every helper
+// chunk is parsed synchronously instead of being silently omitted.
+fn test_parallel_parse_falls_back_when_workers_cannot_start() {
+	$if !windows {
+		files := parallel_parse_input_files()
+		prefs := pref.new_preferences()
+		mut serial := parser.Parser.new(prefs)
+		serial_starts := serial.parse_files_with_starts(files)
+		old_failure := os.getenv_opt('V3_TEST_PTHREAD_CREATE_FAIL')
+		os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', 'parser:all', true)
+		defer {
+			if value := old_failure {
+				os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', value, true)
+			} else {
+				os.unsetenv('V3_TEST_PTHREAD_CREATE_FAIL')
+			}
+		}
+		mut fallback := parser.Parser.new(prefs)
+		fallback_starts, was_parallel := fallback.parse_files_dispatch(files, true)
+		assert !was_parallel
+		assert fallback_starts == serial_starts
+		assert fallback.a.children == serial.a.children
+		assert fallback.a.nodes.len == serial.a.nodes.len
+		for i, node in serial.a.nodes {
+			got := fallback.a.nodes[i]
+			assert got.kind == node.kind
+			assert got.value == node.value
+			assert got.typ == node.typ
+			assert got.pos == node.pos
+			assert got.children_count == node.children_count
+			if node.children_count != 0 {
+				assert got.children_start == node.children_start
+			}
+		}
 	}
 }
 

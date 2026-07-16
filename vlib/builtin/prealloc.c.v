@@ -13,6 +13,8 @@ fn C.v_prealloc_atomic_add_i32(ptr &int, delta int) int
 fn C.v_prealloc_atomic_load_i32(ptr &int) int
 fn C.v_prealloc_atomic_store_i32(ptr &int, val int) int
 fn C.v_prealloc_atomic_cas_i32(ptr &int, expected int, desired int) int
+fn C.v_prealloc_atomic_add_i64(ptr &i64, delta i64) i64
+fn C.v_prealloc_atomic_load_i64(ptr &i64) i64
 
 // With -prealloc, V calls libc's malloc to get chunks, each at least 16MB
 // in size, as needed. Once a chunk is available, all malloc() calls within
@@ -38,6 +40,32 @@ const prealloc_scope_block_size = 256 * 1024
 const prealloc_default_align = sizeof(voidptr) * 2
 
 __global g_memory_block &VMemoryBlock
+__global g_prealloc_allocation_count i64
+__global g_prealloc_allocated_bytes i64
+
+// PreallocStats is a process-wide snapshot of instrumented arena allocations.
+// Counters are populated only when the program is built with `-d prealloc_stats`.
+pub struct PreallocStats {
+pub:
+	enabled          bool
+	allocation_count u64
+	allocated_bytes  u64
+}
+
+// prealloc_stats_snapshot returns allocation totals across every prealloc
+// thread and scoped arena in the process.
+pub fn prealloc_stats_snapshot() PreallocStats {
+	$if prealloc_stats ? {
+		return PreallocStats{
+			enabled:          true
+			allocation_count: u64(C.v_prealloc_atomic_load_i64(&g_prealloc_allocation_count))
+			allocated_bytes:  u64(C.v_prealloc_atomic_load_i64(&g_prealloc_allocated_bytes))
+		}
+	} $else {
+		return PreallocStats{}
+	}
+}
+
 @[heap]
 struct VMemoryBlock {
 mut:
@@ -55,14 +83,61 @@ mut:
 }
 
 @[heap]
+struct VPreallocRange {
+mut:
+	start usize
+	stop  usize
+}
+
+@[heap]
 struct VPreallocScope {
 mut:
 	previous       &VMemoryBlock = 0
 	first          &VMemoryBlock = 0
+	min_address    usize
+	max_address    usize
+	ranges         &VPreallocRange = 0
+	ranges_len     int
+	ranges_cap     int
 	refs           int
 	free_requested int
 	abandoned      int
 	finalized      int
+}
+
+@[unsafe]
+fn prealloc_scope_add_block(scope &VPreallocScope, block &VMemoryBlock) {
+	if scope == unsafe { nil } || block == unsafe { nil } {
+		return
+	}
+	unsafe {
+		if scope.ranges_len == scope.ranges_cap {
+			new_cap := if scope.ranges_cap == 0 { 8 } else { scope.ranges_cap * 2 }
+			ranges := &VPreallocRange(C.realloc(scope.ranges,
+				usize(new_cap) * sizeof(VPreallocRange)))
+			vmemory_abort_on_nil(ranges, isize(new_cap) * isize(sizeof(VPreallocRange)))
+			scope.ranges = ranges
+			scope.ranges_cap = new_cap
+		}
+		start := usize(block.start)
+		stop := usize(block.stop)
+		mut insert := scope.ranges_len
+		for insert > 0 && scope.ranges[insert - 1].start > start {
+			scope.ranges[insert] = scope.ranges[insert - 1]
+			insert--
+		}
+		scope.ranges[insert] = VPreallocRange{
+			start: start
+			stop:  stop
+		}
+		scope.ranges_len++
+		if start < scope.min_address {
+			scope.min_address = start
+		}
+		if stop > scope.max_address {
+			scope.max_address = stop
+		}
+	}
 }
 
 fn vmemory_abort_on_nil(p voidptr, bytes isize) {
@@ -247,6 +322,9 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 			mb = vmemory_block_new_sized(mb, n, fixed_align, min_block_size)
 			mb.is_scope = was_scope
 			mb.scope = scope
+			if scope != 0 {
+				prealloc_scope_add_block(scope, mb)
+			}
 			g_memory_block = mb
 			current = vmemory_align_up(mb.current, fixed_align)
 		}
@@ -255,6 +333,8 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 		mb.current += n
 		$if prealloc_stats ? {
 			mb.mallocs++
+			C.v_prealloc_atomic_add_i64(&g_prealloc_allocation_count, 1)
+			C.v_prealloc_atomic_add_i64(&g_prealloc_allocated_bytes, i64(n))
 		} $else {
 			$if trace_prealloc ? {
 				mb.mallocs++
@@ -426,6 +506,9 @@ pub fn prealloc_scope_begin() voidptr {
 			isize(prealloc_scope_block_size))
 		scope.first.is_scope = true
 		scope.first.scope = scope
+		scope.min_address = usize(scope.first.start)
+		scope.max_address = usize(scope.first.stop)
+		prealloc_scope_add_block(scope, scope.first)
 		g_memory_block = scope.first
 		prealloc_trace_scope(c'begin', scope)
 		return scope
@@ -507,6 +590,7 @@ fn prealloc_scope_finish_if_ready(scope &VPreallocScope) {
 		if C.v_prealloc_atomic_load_i32(&scope.abandoned) == 0 {
 			prealloc_scope_free_blocks(scope)
 		}
+		C.free(scope.ranges)
 		C.free(scope)
 	}
 }
@@ -594,6 +678,38 @@ pub fn prealloc_scope_leave(scope_ptr voidptr) {
 		scope := &VPreallocScope(scope_ptr)
 		prealloc_trace_scope(c'leave', scope)
 		prealloc_scope_detach_current(scope)
+	}
+}
+
+// prealloc_scope_owns reports whether ptr points into an allocation block owned
+// by scope_ptr. It lets arena users promote only escaping fields instead of
+// deep-cloning every object reachable from a scoped operation.
+@[unsafe]
+pub fn prealloc_scope_owns(scope_ptr voidptr, ptr voidptr) bool {
+	if scope_ptr == unsafe { nil } || ptr == unsafe { nil } {
+		return false
+	}
+	unsafe {
+		scope := &VPreallocScope(scope_ptr)
+		address := usize(ptr)
+		if address < scope.min_address || address >= scope.max_address {
+			return false
+		}
+		mut lo := 0
+		mut hi := scope.ranges_len
+		for lo < hi {
+			mid := lo + (hi - lo) / 2
+			if scope.ranges[mid].start <= address {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if lo == 0 {
+			return false
+		}
+		range := scope.ranges[lo - 1]
+		return address < range.stop
 	}
 }
 

@@ -1755,6 +1755,19 @@ fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) strin
 	if _ := t.resolve_sum_variant_pattern_for_subject(clean_expr_type, clean_variant) {
 		return clean_expr_type
 	}
+	// Preserve the fully scoped concrete application selected for the pattern.
+	// A declaration in `client` can spell `maybe.Maybe[Local]`, while its union
+	// field is the qualified `client.Local` (or a selectively imported type).
+	for candidate in t.sum_subject_type_candidates(clean_expr_type) {
+		if _ := t.sum_variant_name(candidate, clean_variant) {
+			return candidate
+		}
+		if !isnil(t.tc) {
+			if _ := t.tc.sum_variant_type_for_pattern(candidate, clean_variant) {
+				return candidate
+			}
+		}
+	}
 	resolved_expr_sum := t.resolve_sum_name(clean_expr_type)
 	if resolved_expr_sum in t.sum_types {
 		if _ := t.sum_variant_name(resolved_expr_sum, clean_variant) {

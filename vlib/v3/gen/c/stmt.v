@@ -1092,8 +1092,8 @@ fn (mut g FlatGen) gen_select_receive_value(expr string, actual types.Type, expe
 			} else {
 				(actual_base as types.ResultType).base_type
 			}
-			expected_ct := g.optional_type_name(expected)
-			actual_ct := g.optional_type_name(actual)
+			expected_ct := g.optional_type_name(expected_base)
+			actual_ct := g.optional_type_name(actual_base)
 			if expected_ct == actual_ct {
 				g.write(expr)
 				return
@@ -1111,7 +1111,7 @@ fn (mut g FlatGen) gen_select_receive_value(expr string, actual types.Type, expe
 		} else {
 			(expected_base as types.ResultType).base_type
 		}
-		ct := g.optional_type_name(expected)
+		ct := g.optional_type_name(expected_base)
 		if base_type is types.Void {
 			g.write('(${ct}){.ok = true}')
 			return
@@ -3637,7 +3637,8 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				i += 2
 				continue
 			}
-			ct0 := if v_type is types.MultiReturn {
+			semantic_v_type := cgen_unalias_type(v_type)
+			ct0 := if semantic_v_type is types.MultiReturn {
 				g.value_c_type(v_type)
 			} else if rhs.kind == .struct_init
 				&& g.struct_init_decl_type_is_bare_generic_instance(rhs, v_type) {
@@ -3648,13 +3649,13 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				} else {
 					g.struct_init_c_type_name(rhs.value)
 				}
-			} else if v_type is types.Enum {
+			} else if semantic_v_type is types.Enum {
 				g.value_c_type(v_type)
 			} else {
-				g.tc.c_type(v_type)
+				g.value_c_type(v_type)
 			}
-			ct := if v_type is types.OptionType || v_type is types.ResultType {
-				g.optional_type_name_for_expr(rhs_id, v_type)
+			ct := if semantic_v_type is types.OptionType || semantic_v_type is types.ResultType {
+				g.optional_type_name_for_expr(rhs_id, semantic_v_type)
 			} else {
 				ct0
 			}

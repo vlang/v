@@ -214,6 +214,12 @@ fn (mut g Gen) gen_func(func_idx int) {
 				continue
 			}
 			instr := g.m.instrs[val.index]
+			if instr.op == .assign {
+				if instr.operands.len > 0 {
+					slot_offset = g.reserve_value_stack_slot(instr.operands[0], slot_offset)
+				}
+				continue
+			}
 			if instr.op == .alloca {
 				ptr_type := g.m.type_store.types[val.typ]
 				elem_size := g.m.type_size(ptr_type.elem_type)
@@ -238,16 +244,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 				slot_offset += 8
 			} else if instr.op != .store && instr.op != .ret && instr.op != .br && instr.op != .jmp
 				&& instr.op != .unreachable {
-				result_size := g.m.type_size(val.typ)
-				alloc_size := if result_size > 8 && val.typ > 0
-					&& val.typ < g.m.type_store.types.len
-					&& g.m.type_store.types[val.typ].kind == .struct_t {
-					(result_size + 7) & ~7
-				} else {
-					8
-				}
-				slot_offset += alloc_size
-				g.set_stack_slot(val_id, -slot_offset)
+				slot_offset = g.reserve_value_stack_slot(val_id, slot_offset)
 			}
 		}
 	}
@@ -335,6 +332,28 @@ fn (mut g Gen) gen_func(func_idx int) {
 	}
 
 	g.resolve_all_pending()
+}
+
+// reserve_value_stack_slot allocates one result slot, preserving an existing
+// slot when several predecessor copies define the same lowered phi result.
+fn (mut g Gen) reserve_value_stack_slot(val_id int, current_offset int) int {
+	if _ := g.stack_slot(val_id) {
+		return current_offset
+	}
+	if val_id <= 0 || val_id >= g.m.values.len {
+		return current_offset
+	}
+	val := g.m.values[val_id]
+	result_size := g.m.type_size(val.typ)
+	alloc_size := if result_size > 8 && val.typ > 0 && val.typ < g.m.type_store.types.len
+		&& g.m.type_store.types[val.typ].kind == .struct_t {
+		(result_size + 7) & ~7
+	} else {
+		8
+	}
+	new_offset := current_offset + alloc_size
+	g.set_stack_slot(val_id, -new_offset)
+	return new_offset
 }
 
 // is_large_struct_type reports whether is large struct type applies in arm64.
@@ -1310,6 +1329,12 @@ fn (mut g Gen) emit_value_address(val_id int, reg int) bool {
 				return true
 			}
 		}
+		.phi_result {
+			if off := g.stack_slot(val_id) {
+				g.emit_lea_fp(reg, off)
+				return true
+			}
+		}
 		.argument {
 			if off := g.stack_slot(val_id) {
 				g.emit_lea_fp(reg, off)
@@ -1373,6 +1398,14 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 					return reg
 				}
 			}
+			if off := g.stack_slot(val_id) {
+				g.emit_load_fp(reg, off)
+				return reg
+			}
+			g.emit_mov_imm(reg, 0)
+			return reg
+		}
+		.phi_result {
 			if off := g.stack_slot(val_id) {
 				g.emit_load_fp(reg, off)
 				return reg

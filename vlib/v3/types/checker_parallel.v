@@ -1,7 +1,9 @@
 module types
 
+import os
 import runtime
 import v3.flat
+import v3.workers
 
 const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
@@ -23,15 +25,6 @@ $if !windows {
 		worker    voidptr
 		items_ptr voidptr
 	}
-
-	@[typedef]
-	struct C.pthread_t {}
-
-	fn C.pthread_create(thread &C.pthread_t, attr voidptr, start_routine fn (voidptr) voidptr, arg voidptr) int
-	fn C.pthread_join(thread C.pthread_t, retval voidptr) int
-	fn C.pthread_attr_init(attr voidptr) int
-	fn C.pthread_attr_setstacksize(attr voidptr, stacksize usize) int
-	fn C.pthread_attr_destroy(attr voidptr) int
 
 	fn check_chunk_thread(arg voidptr) voidptr {
 		a := unsafe { &CheckChunkArgs(arg) }
@@ -169,7 +162,11 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		tc.check_fn_items_serial(items)
 		return false
 	} $else {
-		n_jobs := check_job_count(runtime.nr_jobs(), items.len)
+		mut ast := unsafe { tc.a }
+		if isnil(ast.worker_pool) {
+			ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
+		}
+		n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
 		if items.len < min_parallel_check_items || n_jobs <= 1 {
 			tc.check_fn_items_serial(items)
 			return false
@@ -177,48 +174,48 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		mut chunks := split_check_items(items, n_jobs)
 		chunk_count := chunks.len
 		thread_count := chunk_count - 1
-		mut workers := []voidptr{cap: thread_count}
+		mut checker_workers := []voidptr{cap: thread_count}
 		for _ in 0 .. thread_count {
 			w := tc.fork_for_parallel_check()
-			workers << voidptr(w)
+			checker_workers << voidptr(w)
 		}
-		mut args := []CheckChunkArgs{cap: thread_count}
+		mut args := []CheckChunkArgs{cap: chunk_count}
+		args << CheckChunkArgs{
+			worker:    voidptr(tc)
+			items_ptr: unsafe { voidptr(&chunks[0]) }
+		}
 		for ci in 0 .. thread_count {
 			args << CheckChunkArgs{
-				worker:    workers[ci]
+				worker:    checker_workers[ci]
 				items_ptr: unsafe { voidptr(&chunks[ci + 1]) }
 			}
 		}
-
-		mut thread_ids := []C.pthread_t{len: thread_count}
-		attr_buf := [64]u8{}
-		attr := unsafe { voidptr(&attr_buf[0]) }
-		C.pthread_attr_init(attr)
-		C.pthread_attr_setstacksize(attr, 64 * 1024 * 1024)
-		for ci in 0 .. thread_count {
-			C.pthread_create(unsafe { &thread_ids[ci] }, attr, check_chunk_thread,
-				unsafe { voidptr(&args[ci]) })
-		}
-		C.pthread_attr_destroy(attr)
 		// The master checks its own chunk under the same range discipline as the
 		// workers: in-range cache writes go straight into the shared arrays (the
 		// master owns those slots), out-of-range ones into its sparse maps, which
 		// are replayed first after join so that worker merges overwrite them in
 		// the same order the old serial flow did.
 		tc.parallel_check_sparse = true
-		tc.check_fn_items_serial(chunks[0])
-		for ci in 0 .. thread_count {
-			C.pthread_join(thread_ids[ci], unsafe { nil })
+		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+		mut tasks := []workers.Task{cap: chunk_count}
+		for ci in 0 .. chunk_count {
+			helper_idx := ci - 1
+			tasks << workers.Task{
+				run:        check_chunk_thread
+				arg:        unsafe { voidptr(&args[ci]) }
+				force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
+			}
 		}
+		any_started := ast.worker_pool.run(tasks)
 		tc.merge_own_sparse_caches()
 		tc.parallel_check_sparse = false
 		for ci in 0 .. thread_count {
-			mut w := unsafe { &TypeChecker(workers[ci]) }
+			mut w := unsafe { &TypeChecker(checker_workers[ci]) }
 			tc.merge_parallel_check_worker(w)
 			w.free_parallel_check_worker_cache()
 		}
 		tc.sort_parallel_check_errors()
-		return true
+		return any_started
 	}
 }
 
@@ -276,9 +273,8 @@ fn split_check_items(items []CheckWorkItem, n int) [][]CheckWorkItem {
 	mut loads := []i64{len: n}
 	if n > 1 {
 		// The master (bucket 0) runs on a busy performance core while several
-		// workers inevitably land on efficiency cores (plus the called-fns
-		// collector occupying another); measured per-unit it finishes its even
-		// share early and idles in pthread_join. Give it a proportionally
+		// workers inevitably land on efficiency cores; measured per-unit it
+		// finishes its even share early and waits for the pool. Give it a proportionally
 		// heavier share by starting it with negative load.
 		mut total := i64(0)
 		for it in items {
@@ -343,32 +339,14 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 }
 
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
-	mut saved_mut_params := tc.cur_fn_mut_param_base_types.move()
-	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
-	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
-	mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
-	mut saved_capturing_fn_literal_locals := tc.capturing_fn_literal_locals.move()
-	mut saved_capturing_fn_literal_local_depth := tc.capturing_fn_literal_local_depth.move()
-	saved_generic_params := tc.cur_generic_params.clone()
-	tc.cur_fn_mut_param_base_types = map[string]Type{}
-	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
-	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
-	tc.cur_fn_shared_binding_owners = map[string][]ScopeBindingOwner{}
+	saved_fn_context := tc.fn_context
+	tc.fn_context = new_function_check_context()
 	tc.cur_file = file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope
-	tc.cur_generic_params = tc.infer_decl_generic_param_names(node)
-	tc.cur_fn_ret_type = tc.parse_type(node.typ)
-	tc.cur_fn_node_id = fn_idx
-	tc.method_value_locals = map[string]bool{}
-	tc.method_value_local_owners = map[string][]ScopeBindingOwner{}
-	tc.fn_value_variadic_locals = map[string]bool{}
-	tc.fn_value_variadic_local_owners = map[string][]ScopeBindingOwner{}
-	tc.capturing_fn_literal_locals = map[string]bool{}
-	tc.capturing_fn_literal_local_owners = map[string][]ScopeBindingOwner{}
-	tc.method_value_local_depth = map[string]int{}
-	tc.fn_value_variadic_local_depth = map[string]int{}
-	tc.capturing_fn_literal_local_depth = map[string]int{}
+	tc.fn_context.generic_params = tc.infer_decl_generic_param_names(node)
+	tc.fn_context.return_type = tc.parse_type(node.typ)
+	tc.fn_context.node_id = fn_idx
 	$if ownership ? {
 		tc.ownership_begin_fn(node)
 	}
@@ -386,27 +364,21 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	if generic_params.len == 0 || qname in tc.selected_file_called_fns {
 		tc.check_fn_body(node)
 	}
-	tc.cur_fn_node_id = -1
+	tc.fn_context.node_id = -1
 	is_disabled_stub := node.value in tc.a.disabled_fns
-	if tc.cur_fn_ret_type !is Unknown && !type_allows_implicit_return(tc.cur_fn_ret_type)
+	if tc.fn_context.return_type !is Unknown
+		&& !type_allows_implicit_return(tc.fn_context.return_type)
 		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.record_error(.return_mismatch,
-			'missing return at end of function `${node.value}`; expected `${tc.cur_fn_ret_type.name()}`',
+			'missing return at end of function `${node.value}`; expected `${tc.fn_context.return_type.name()}`',
 			flat.NodeId(fn_idx))
 	}
 	tc.pop_scope()
 	$if ownership ? {
 		tc.ownership_end_fn()
 	}
-	tc.cur_fn_ret_type = Type(void_)
-	tc.cur_generic_params = saved_generic_params
-	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
-	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
-	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
-	tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
-	tc.capturing_fn_literal_locals = saved_capturing_fn_literal_locals.move()
-	tc.capturing_fn_literal_local_depth = saved_capturing_fn_literal_local_depth.move()
+	tc.fn_context = saved_fn_context
 }
 
 // prewarm_shared_type_cache forces the lazily-built type_cache indexes that
@@ -447,6 +419,10 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 		return
 	}
 	mut base := overlay.base
+	base.parse_hits += overlay.parse_hits
+	base.parse_misses += overlay.parse_misses
+	base.c_hits += overlay.c_hits
+	base.c_misses += overlay.c_misses
 	for k, v in overlay.parse_entries {
 		base.parse_entries[k] = v
 	}
@@ -483,13 +459,7 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 }
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
-	mut w := *tc
-	w.file_scope = new_scope(tc.file_scope)
-	w.cur_scope = w.file_scope
-	w.scope_pool = []&Scope{}
-	w.scope_pool_index = 0
-	w.errors = []TypeError{}
-	w.pending_ierror_errors = []PendingIerrorError{}
+	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint
 	// node id range [range_lo, fn_idx], and while parallel_check_sparse is set
@@ -506,23 +476,9 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.sparse_expr_type_values = map[int]Type{}
 	w.sparse_checking_nodes = map[int]bool{}
 	w.method_values_by_fn = map[int][]string{}
-	w.method_value_locals = map[string]bool{}
-	w.method_value_local_owners = map[string][]ScopeBindingOwner{}
-	w.fn_value_variadic_locals = map[string]bool{}
-	w.fn_value_variadic_local_owners = map[string][]ScopeBindingOwner{}
-	w.capturing_fn_literal_locals = map[string]bool{}
-	w.capturing_fn_literal_local_owners = map[string][]ScopeBindingOwner{}
-	w.method_value_local_depth = map[string]int{}
-	w.fn_value_variadic_local_depth = map[string]int{}
-	w.capturing_fn_literal_local_depth = map[string]int{}
-	w.cur_fn_mut_param_base_types = map[string]Type{}
-	w.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
-	w.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
-	w.cur_fn_shared_binding_owners = map[string][]ScopeBindingOwner{}
+	w.fn_context = new_function_check_context()
 	w.generic_method_value_info = map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
-	w.cur_fn_ret_type = Type(void_)
-	w.cur_fn_node_id = -1
 	$if ownership ? {
 		w.ownership_fork_for_parallel_check(tc)
 	}
@@ -539,8 +495,8 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 		} else {
 			false
 		}
-		parse_entries:              map[string]Type{}
-		c_entries:                  map[string]string{}
+		parse_entries:              map[u64]ParseTypeCacheEntry{}
+		c_entries:                  map[TypeId]string{}
 		struct_field_entries:       map[string]Type{}
 		struct_field_misses:        map[string]bool{}
 		ierror_compat_entries:      map[string]int{}
@@ -552,6 +508,12 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 	tc.errors << w.errors
 	tc.pending_ierror_errors << w.pending_ierror_errors
+	if !isnil(tc.type_cache) && !isnil(w.type_cache) {
+		tc.type_cache.parse_hits += w.type_cache.parse_hits
+		tc.type_cache.parse_misses += w.type_cache.parse_misses
+		tc.type_cache.c_hits += w.type_cache.c_hits
+		tc.type_cache.c_misses += w.type_cache.c_misses
+	}
 	$if ownership ? {
 		tc.ownership_merge_parallel_check_worker(w)
 	}
@@ -569,6 +531,17 @@ fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 	for idx, typ in w.sparse_expr_type_values {
 		tc.expr_type_values[idx] = typ
 		tc.expr_type_set[idx] = true
+	}
+	for fn_idx, dependencies in w.direct_dependencies_by_fn {
+		mut merged := tc.direct_dependencies_by_fn[fn_idx] or { []SymbolId{} }
+		for dependency in dependencies {
+			if dependency !in merged {
+				merged << dependency
+			}
+		}
+		if merged.len > 0 {
+			tc.direct_dependencies_by_fn[fn_idx] = merged
+		}
 	}
 	for fn_idx, values in w.method_values_by_fn {
 		if values.len == 0 {

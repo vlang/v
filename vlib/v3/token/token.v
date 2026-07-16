@@ -129,149 +129,88 @@ pub enum BindingPower {
 	highest
 }
 
-const token_and_id = 1
-const token_arrow_id = 3
-const token_assign_id = 4
-const token_bit_not_id = 6
-const token_dec_id = 11
-const token_decl_assign_id = 12
-const token_div_id = 13
-const token_div_assign_id = 14
-const token_eq_id = 20
-const token_ge_id = 21
-const token_gt_id = 22
-const token_inc_id = 24
-const token_key_in_id = 44
-const token_key_is_id = 46
-const token_le_id = 74
-const token_left_shift_id = 75
-const token_left_shift_assign_id = 76
-const token_logical_or_id = 77
-const token_lt_id = 80
-const token_minus_id = 81
-const token_minus_assign_id = 82
-const token_mod_id = 83
-const token_mod_assign_id = 84
-const token_mul_id = 85
-const token_mul_assign_id = 86
-const token_ne_id = 88
-const token_not_id = 89
-const token_not_in_id = 90
-const token_not_is_id = 91
-const token_or_assign_id = 93
-const token_pipe_id = 94
-const token_plus_id = 95
-const token_plus_assign_id = 96
-const token_right_shift_id = 99
-const token_right_shift_assign_id = 100
-const token_right_shift_unsigned_id = 101
-const token_right_shift_unsigned_assign_id = 102
-const token_xor_id = 109
-const token_xor_assign_id = 110
-
 // left_binding_power supports left binding power handling for Token.
 @[inline]
 pub fn (t Token) left_binding_power() BindingPower {
-	tv := int(t)
-	if tv == token_logical_or_id {
-		return BindingPower.logical_or
+	return match t {
+		.logical_or { .logical_or }
+		.and { .logical_and }
+		.eq, .ne, .lt, .le, .gt, .ge, .key_in, .not_in, .key_is, .not_is { .compare }
+		.pipe { .bit_or }
+		.xor { .bit_xor }
+		.left_shift, .right_shift, .right_shift_unsigned { .shift }
+		.plus, .minus { .add }
+		.mul, .div, .mod, .amp { .product }
+		else { .lowest }
 	}
-	if tv == token_and_id {
-		return BindingPower.logical_and
-	}
-	if tv == token_eq_id || tv == token_ne_id || tv == token_lt_id || tv == token_le_id
-		|| tv == token_gt_id || tv == token_ge_id || tv == token_key_in_id || tv == token_not_in_id
-		|| tv == token_key_is_id || tv == token_not_is_id {
-		return BindingPower.compare
-	}
-	if tv == token_pipe_id {
-		return BindingPower.bit_or
-	}
-	if tv == token_xor_id {
-		return BindingPower.bit_xor
-	}
-	if tv == token_left_shift_id || tv == token_right_shift_id
-		|| tv == token_right_shift_unsigned_id {
-		return BindingPower.shift
-	}
-	if tv == token_plus_id || tv == token_minus_id {
-		return BindingPower.add
-	}
-	if tv == token_mul_id || tv == token_div_id || tv == token_mod_id || tv == 0 {
-		return BindingPower.product
-	}
-	return BindingPower.lowest
 }
 
 // right_binding_power supports right binding power handling for Token.
 @[inline]
 pub fn (t Token) right_binding_power() BindingPower {
-	return unsafe { BindingPower((int(t.left_binding_power()) + 1)) }
+	return match t.left_binding_power() {
+		.logical_or { .logical_and }
+		.logical_and { .compare }
+		.compare { .bit_or }
+		.bit_or { .bit_xor }
+		.bit_xor { .shift }
+		.shift { .add }
+		.add { .product }
+		.product { .highest }
+		else { .lowest }
+	}
 }
 
 // is_keyword reports whether is keyword applies in token.
 @[inline]
 pub fn (t Token) is_keyword() bool {
-	return int(t) >= int(Token.key_as) && int(t) <= int(Token.key_volatile)
+	return t in [.key_as, .key_asm, .key_assert, .key_atomic, .key_break, .key_const, .key_continue,
+		.key_defer, .key_dump, .key_else, .key_enum, .key_false, .key_fn, .key_for, .key_global,
+		.key_go, .key_goto, .key_if, .key_import, .key_in, .key_interface, .key_is, .key_isreftype,
+		.key_likely, .key_lock, .key_match, .key_module, .key_mut, .key_nil, .key_none, .key_offsetof,
+		.key_or, .key_pub, .key_return, .key_rlock, .key_select, .key_shared, .key_sizeof, .key_spawn,
+		.key_static, .key_struct, .key_true, .key_type, .key_typeof, .key_union, .key_unlikely,
+		.key_unsafe, .key_volatile]
 }
 
 // is_prefix reports whether is prefix applies in token.
 @[inline]
 pub fn (t Token) is_prefix() bool {
-	tv := int(t)
-	return tv == token_minus_id || tv == 0 || tv == token_and_id || tv == token_mul_id
-		|| tv == token_not_id || tv == token_bit_not_id || tv == token_arrow_id
+	return t in [.minus, .amp, .and, .mul, .not, .bit_not, .arrow]
 }
 
 // is_infix reports whether is infix applies in token.
 @[inline]
 pub fn (t Token) is_infix() bool {
-	tv := int(t)
-	return tv == 0 || tv == token_and_id || tv == token_arrow_id || tv == token_div_id
-		|| tv == token_eq_id || tv == token_ge_id || tv == token_gt_id || tv == token_key_in_id
-		|| tv == token_key_is_id || tv == token_le_id || tv == token_left_shift_id
-		|| tv == token_logical_or_id || tv == token_lt_id || tv == token_minus_id
-		|| tv == token_mod_id || tv == token_mul_id || tv == token_ne_id || tv == token_not_in_id
-		|| tv == token_not_is_id || tv == token_pipe_id || tv == token_plus_id
-		|| tv == token_right_shift_id || tv == token_right_shift_unsigned_id || tv == token_xor_id
+	return t in [.amp, .and, .arrow, .div, .eq, .ge, .gt, .key_in, .key_is, .le, .left_shift,
+		.logical_or, .lt, .minus, .mod, .mul, .ne, .not_in, .not_is, .pipe, .plus, .right_shift,
+		.right_shift_unsigned, .xor]
 }
 
 // is_postfix reports whether is postfix applies in token.
 @[inline]
 pub fn (t Token) is_postfix() bool {
-	tv := int(t)
-	return tv == token_dec_id || tv == token_inc_id
+	return t in [.dec, .inc]
 }
 
 // is_assignment reports whether is assignment applies in token.
 @[inline]
 pub fn (t Token) is_assignment() bool {
-	tv := int(t)
-	return tv == 2 || tv == token_assign_id || tv == token_decl_assign_id
-		|| tv == token_div_assign_id || tv == token_left_shift_assign_id
-		|| tv == token_minus_assign_id || tv == token_mod_assign_id || tv == token_mul_assign_id
-		|| tv == token_or_assign_id || tv == token_plus_assign_id
-		|| tv == token_right_shift_assign_id || tv == token_right_shift_unsigned_assign_id
-		|| tv == token_xor_assign_id
+	return t in [.and_assign, .assign, .decl_assign, .div_assign, .left_shift_assign, .minus_assign,
+		.mod_assign, .mul_assign, .or_assign, .plus_assign, .right_shift_assign,
+		.right_shift_unsigned_assign, .xor_assign]
 }
 
 // is_overloadable reports whether is overloadable applies in token.
 @[inline]
 pub fn (t Token) is_overloadable() bool {
-	tv := int(t)
-	return tv == token_div_id || tv == token_eq_id || tv == token_ge_id || tv == token_gt_id
-		|| tv == token_le_id || tv == token_lt_id || tv == token_minus_id || tv == token_mod_id
-		|| tv == token_mul_id || tv == token_ne_id || tv == token_pipe_id || tv == token_plus_id
-		|| tv == token_xor_id
+	return t in [.div, .eq, .ge, .gt, .le, .lt, .minus, .mod, .mul, .ne, .pipe, .plus, .xor]
 }
 
 // is_comparison reports whether is comparison applies in token.
 @[inline]
 pub fn (t Token) is_comparison() bool {
-	tv := int(t)
-	return tv == token_eq_id || tv == token_ge_id || tv == token_gt_id || tv == token_key_in_id
-		|| tv == token_key_is_id || tv == token_le_id || tv == token_lt_id || tv == token_ne_id
-		|| tv == token_not_in_id || tv == token_not_is_id
+	return t in [.eq, .ge, .gt, .key_in, .key_is, .le, .lt, .ne, .not_in, .not_is]
 }
 
 // str returns the string form for Token.
