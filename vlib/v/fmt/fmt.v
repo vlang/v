@@ -70,6 +70,7 @@ pub mut:
 	has_json2_import         bool   // the file has a top-level `json2` import; used when migrating `import json`
 	json2_prefix             string = 'json2' // local name of `json2` at call sites (its alias, if imported as one)
 	keep_json_unmigrated     bool   // the file has a json call the migration cannot rewrite losslessly (`encode_pretty`, or a `decode` with a commented type arg); its json usage is left as-is (see process_file_imports)
+	migrate_json_calls       bool   // the file actually imports the legacy `json` module and it is being migrated, so `json.encode`/`json.decode` calls should be rewritten (guards against `import json2 as json`, whose json2 calls carry the same call kind)
 	is_translated_module     bool // @[translated]
 	is_c_function            bool // C.func(...)
 }
@@ -287,6 +288,14 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			|| json_import_has_line_comment || cur_module_is_json2
 			|| f.file_has_vfmt_off_region() || f.file_has_unmigratable_json_usage(file)
 	}
+	// Only rewrite `json.encode`/`json.decode` calls when the file actually imports the
+	// legacy `json` module and it is being migrated. The parser tags a call by its literal
+	// qualifier name, so a file using `import json2 as json` has its already-json2 calls
+	// (`json.decode[User](s)`) tagged with the same `.json_decode`/`.json_encode` kind;
+	// migrating those would corrupt them (e.g. `json.decode[User](s)` → `json.decode[s]()`,
+	// since json2_migrate_call reads the type from the legacy first argument). An implied
+	// json import keeps the file unmigrated, so it is excluded via keep_json_unmigrated.
+	f.migrate_json_calls = imports_json && !f.keep_json_unmigrated
 
 	for imp in file.imports {
 		f.mod2alias[imp.mod] = imp.alias
@@ -2901,7 +2910,7 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	// `json.decode` with comments on its type arg) leave the whole file unmigrated,
 	// so every `json.*` call and the `import json` stay as-is (see
 	// process_file_imports and file_has_unmigratable_json_call).
-	if node.kind in [.json_decode, .json_encode] && !f.keep_json_unmigrated {
+	if node.kind in [.json_decode, .json_encode] && f.migrate_json_calls {
 		f.json2_migrate_call(node)
 		return
 	}
