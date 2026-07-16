@@ -312,13 +312,32 @@ mut:
 	found bool
 }
 
+// struct_field_attr_needs_legacy_json reports whether a struct field's attributes force
+// legacy json. A `@[raw]` field keeps the normalized subtree in json but the raw source
+// slice in json2. An `@[omitempty]` field is dropped by legacy json when it equals the
+// type default, but json2's check_not_empty only guards string/number/array/map/option/
+// pointer values and always emits bool / struct / sum type / enum fields — so migrating
+// would start emitting fields legacy json omitted.
+fn struct_field_attr_needs_legacy_json(t &ast.Table, field ast.StructField) bool {
+	if field.attrs.any(it.name == 'raw') {
+		return true
+	}
+	if field.attrs.any(it.name == 'omitempty')
+		&& t.final_sym(field.typ).kind in [.bool, .struct, .sum_type, .enum] {
+		return true
+	}
+	return false
+}
+
 // type_needs_legacy_json reports whether `typ` is — or contains as the element, key
-// or value of an array/fixed-array/map/chan, or as a generic type argument,
-// recursively and following aliases — a type whose JSON differs between the legacy
-// `json` module and `json2`, so a payload of it must not be migrated:
+// or value of an array/fixed-array/map/chan, a generic type argument, a sum type
+// variant, or a struct field, recursively and following aliases — a type whose JSON
+// differs between the legacy `json` module and `json2`, so a payload of it must not be
+// migrated:
 //   - `time.Time`: a unix number in json vs an RFC3339 string in json2 (Time.to_json);
 //   - `rune`: a JSON string in json (encode_rune) vs a u32 number in json2;
-//   - `f32`/`f64`: json emits `null` for NaN/±Inf, json2 emits `nan`/`inf`.
+//   - `f32`/`f64`: json emits `null` for NaN/±Inf, json2 emits `nan`/`inf`;
+//   - an option type, or a `@[raw]`/`@[omitempty]` struct field (see the helper above).
 fn type_needs_legacy_json(t &ast.Table, typ ast.Type) bool {
 	mut visited := []int{}
 	return type_needs_legacy_json_rec(t, typ, mut visited)
@@ -370,6 +389,17 @@ fn type_needs_legacy_json_rec(t &ast.Table, typ ast.Type, mut visited []int) boo
 		// float variant as `null`, where json2 emits a number / raw `nan`/`inf`.
 		for variant in sym.info.variants {
 			if type_needs_legacy_json_rec(t, variant, mut visited) {
+				return true
+			}
+		}
+	} else if sym.info is ast.Struct {
+		// A struct payload with no file-local StructDecl for the scan to catch — an
+		// anonymous `struct { t time.Time }` literal, or a type from another module — is
+		// only reachable here, so recurse into its fields (type and attributes alike). The
+		// visited guard above stops self-referential structs (`struct Node { next &Node }`).
+		for field in sym.info.fields {
+			if struct_field_attr_needs_legacy_json(t, field)
+				|| type_needs_legacy_json_rec(t, field.typ, mut visited) {
 				return true
 			}
 		}
@@ -510,10 +540,12 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		// a conservative proxy any struct declared in the file with such a field leaves the
 		// file unmigrated. Only file-local structs are visible.
 		for field in decl.fields {
-			// type_needs_legacy_json follows aliases and looks inside array/map/chan and
-			// generic wrappers, so `[]time.Time`, `map[string]MyRune`, `Box[f64]`, etc.
-			// are all recognised.
-			if field.attrs.any(it.name == 'raw') || type_needs_legacy_json(s.table, field.typ) {
+			// type_needs_legacy_json follows aliases and looks inside array/map/chan,
+			// generic wrappers and nested struct fields, so `[]time.Time`,
+			// `map[string]MyRune`, `Box[f64]`, etc. are all recognised; the attr helper
+			// covers `@[raw]`/`@[omitempty]` on the field itself.
+			if struct_field_attr_needs_legacy_json(s.table, field)
+				|| type_needs_legacy_json(s.table, field.typ) {
 				s.found = true
 				break
 			}
