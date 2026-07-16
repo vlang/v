@@ -3551,6 +3551,16 @@ fn test_returned_interface_boxed_from_local_field_and_index_heap_copies() {
 	assert out == '4\n6\n9\n12'
 }
 
+fn test_returned_interface_boxed_from_pointer_alias_field_heap_copies() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nstruct Holder {\nmut:\n\tbox Box\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make() Reader {\n\tmut holder := Holder{\n\t\tbox: Box{\n\t\t\tn: 13\n\t\t}\n\t}\n\tp := &holder\n\tr := Reader(&p.box)\n\tholder.box.n = 14\n\treturn r\n}\n\nfn main() {\n\tprintln(int_str(make().value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_returned_pointer_alias_field_heap_copy', source)
+	make_body := c_fn_body(c_source, 'Reader make(void) {')
+	assert make_body.contains('memdup(') && make_body.contains('sizeof(Box)'), make_body
+	out := run_good(v3_bin, 'interface_box_returned_pointer_alias_field_heap_copy_run', source)
+	assert out == '14'
+}
+
 fn test_mut_interface_argument_borrows_existing_interface_box() {
 	v3_bin := build_v3()
 	source := 'interface Visitor {\n\tvalue() int\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (c Counter) value() int {\n\treturn c.n\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln(int_str(visitor.value()))\n}\n'
@@ -4006,6 +4016,21 @@ fn main() {
 }
 ')
 	assert out == '1,1\n11,20'
+}
+
+fn test_overloaded_index_compound_assignment_uses_v_operators() {
+	v3_bin := build_v3()
+	string_source := 'struct Dict {\nmut:\n\tvalues map[string]string\n}\n\nfn (d Dict) [] (key string) string {\n\treturn d.values[key]\n}\n\nfn (mut d Dict) []= (key string, value string) {\n\td.values[key] = value\n}\n\nfn main() {\n\tmut d := Dict{\n\t\tvalues: {\n\t\t\t"name": "a"\n\t\t}\n\t}\n\td["name"] += "x"\n\tprintln(d.values["name"])\n}\n'
+	string_c := gen_c(v3_bin, 'overloaded_index_compound_string_operator_c', string_source)
+	assert string_c.contains('string__plus('), string_c
+	string_out := run_good(v3_bin, 'overloaded_index_compound_string_operator', string_source)
+	assert string_out == 'ax'
+
+	struct_source := 'struct Num {\n\tn int\n}\n\nfn (a Num) + (b Num) Num {\n\treturn Num{\n\t\tn: a.n + b.n\n\t}\n}\n\nstruct Slot {\nmut:\n\tvalue Num\n}\n\nfn (s Slot) [] (key string) Num {\n\t_ := key\n\treturn s.value\n}\n\nfn (mut s Slot) []= (key string, value Num) {\n\t_ := key\n\ts.value = value\n}\n\nfn main() {\n\tmut s := Slot{\n\t\tvalue: Num{\n\t\t\tn: 3\n\t\t}\n\t}\n\ts["value"] += Num{\n\t\tn: 4\n\t}\n\tprintln(int_str(s.value.n))\n}\n'
+	struct_c := gen_c(v3_bin, 'overloaded_index_compound_struct_operator_c', struct_source)
+	assert struct_c.contains('Num__plus('), struct_c
+	struct_out := run_good(v3_bin, 'overloaded_index_compound_struct_operator', struct_source)
+	assert struct_out == '7'
 }
 
 fn test_overloaded_index_accepts_declared_key_type() {

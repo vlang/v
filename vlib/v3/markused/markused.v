@@ -1563,7 +1563,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 						queue)
 				}
 			}
-			.assign {
+			.assign, .index_assign {
 				if node.op == .plus_assign && node.children_count == 2 {
 					lhs_id := a.child(&node, 0)
 					rhs_id := a.child(&node, 1)

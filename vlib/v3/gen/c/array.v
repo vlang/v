@@ -950,13 +950,67 @@ fn (mut g FlatGen) gen_index_overload_compound_set(lhs flat.Node, base_id flat.N
 	g.gen_index_overload_index_arg(lhs, setter.params[1])
 	g.write('; ${g.cname(setter.name)}(')
 	g.gen_index_overload_cached_receiver_arg(recv_tmp, setter)
-	g.write(', ${index_tmp}, (')
+	g.write(', ${index_tmp}, ')
+	g.gen_index_overload_compound_value_expr(recv_tmp, index_tmp, setter, getter, op, rhs_id)
+	g.writeln('); }')
+}
+
+fn (mut g FlatGen) gen_index_overload_compound_value_expr(recv_tmp string, index_tmp string, setter types.CallInfo, getter types.CallInfo, op flat.Op, rhs_id flat.NodeId) {
+	if op == .plus && (index_overload_compound_type_is_string(getter.return_type)
+		|| (setter.params.len > 2 && index_overload_compound_type_is_string(setter.params[2]))) {
+		g.write('string__plus(')
+		g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
+		g.write(', ')
+		g.gen_expr_as_string(rhs_id)
+		g.write(')')
+		return
+	}
+	if setter.params.len > 2 {
+		if assign_op := infix_op_to_compound_assign_op(op) {
+			if method_name := g.assign_struct_operator_method(getter.return_type, assign_op) {
+				g.write('${g.cname(method_name)}(')
+				g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
+				g.write(', ')
+				g.gen_expr(rhs_id)
+				g.write(')')
+				return
+			}
+		}
+	}
+	g.write('(')
+	g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
+	g.write(' ${g.op_str(op)} ')
+	if setter.params.len > 2 {
+		g.gen_expr_with_expected_type(rhs_id, setter.params[2])
+	} else {
+		g.gen_expr(rhs_id)
+	}
+	g.write(')')
+}
+
+fn (mut g FlatGen) gen_index_overload_cached_getter_call(recv_tmp string, index_tmp string, getter types.CallInfo) {
 	g.write(g.cname(getter.name))
 	g.write('(')
 	g.gen_index_overload_cached_receiver_arg(recv_tmp, getter)
-	g.write(', ${index_tmp}) ${g.op_str(op)} ')
-	g.gen_expr_with_expected_type(rhs_id, setter.params[2])
-	g.writeln(')); }')
+	g.write(', ${index_tmp})')
+}
+
+fn index_overload_compound_type_is_string(typ types.Type) bool {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	return clean is types.String
+}
+
+fn infix_op_to_compound_assign_op(op flat.Op) ?flat.Op {
+	match op {
+		.plus { return .plus_assign }
+		.minus { return .minus_assign }
+		.mul { return .mul_assign }
+		.div { return .div_assign }
+		.mod { return .mod_assign }
+		else {}
+	}
+
+	return none
 }
 
 fn (mut g FlatGen) gen_index_overload_receiver_arg(base_id flat.NodeId, base_type types.Type, info types.CallInfo) {
