@@ -216,8 +216,8 @@ fn json_migrate_block_visit(node &ast.Node, data voidptr) bool {
 	} else if node is ast.Expr && node is ast.SelectorExpr {
 		// The same reference can also appear as a `json.encode` selector.
 		sel := node as ast.SelectorExpr
-		if sel.expr is ast.Ident && (sel.expr as ast.Ident).name == 'json'
-			&& sel.field_name in ['encode', 'decode', 'encode_pretty'] {
+		if sel.expr is ast.Ident
+			&& (sel.expr as ast.Ident).name == 'json' && sel.field_name in ['encode', 'decode', 'encode_pretty'] {
 			s.blocked = true
 		}
 	} else if node is ast.Stmt && node is ast.FnDecl {
