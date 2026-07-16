@@ -586,7 +586,7 @@ fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node flat.Node) ?types
 	if idx < 0 {
 		return none
 	}
-	if g.tc.parallel_check_sparse {
+	if g.tc.parallel_check_sparse && (idx < g.tc.check_range_lo || idx > g.tc.check_range_hi) {
 		if t := g.tc.sparse_expr_type_values[idx] {
 			return t
 		}
@@ -966,6 +966,9 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		expr_type_values:                   g.tc.expr_type_values
 		expr_type_set:                      g.tc.expr_type_set
 		checking_nodes:                     g.tc.checking_nodes
+		parallel_check_sparse:              g.tc.parallel_check_sparse
+		check_range_lo:                     g.tc.check_range_lo
+		check_range_hi:                     g.tc.check_range_hi
 		sparse_resolved_call_names:         g.tc.sparse_resolved_call_names
 		sparse_resolved_fn_values:          g.tc.sparse_resolved_fn_values
 		sparse_statement_nodes:             g.tc.sparse_statement_nodes
