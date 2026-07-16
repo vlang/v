@@ -1,5 +1,6 @@
 import os
 import v3.cmdexec
+import v3.pref
 
 const driver_cli_vlib_dir = os.dir(os.dir(os.dir(@FILE)))
 const driver_cli_v3_dir = os.dir(os.dir(@FILE))
@@ -55,6 +56,57 @@ fn test_driver_run_preserves_stdin() {
 	result := run_driver_with_stdin_file(v3_bin, ['-o', output, 'run', source], input_file)
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('read:from-stdin'), result.output
+}
+
+fn assert_driver_wasm_output(path string) {
+	bytes := os.read_bytes(path) or { panic(err) }
+	assert bytes.len > 8
+	assert bytes[..4] == [u8(0), 0x61, 0x73, 0x6d]
+}
+
+fn test_wasm_backend_defaults_target_unless_explicit() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_wasm_target_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+
+	default_dir := os.join_path(root, 'default_target')
+	os.mkdir_all(default_dir) or { panic(err) }
+	os.write_file(os.join_path(default_dir, 'main.v'), 'module main
+
+\$if wasm32 {
+fn wasm_arch_selected() {}
+}
+
+fn main() {
+	wasm_os_selected()
+	wasm_arch_selected()
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(default_dir, 'target_wasm32_emscripten.v'),
+		'module main\n\nfn wasm_os_selected() {}\n') or { panic(err) }
+	default_output := os.join_path(root, 'default_target.wasm')
+	default_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-o', default_output, default_dir])
+	assert default_compile.exit_code == 0, default_compile.output
+	assert_driver_wasm_output(default_output)
+
+	host := pref.host_target()
+	explicit_dir := os.join_path(root, 'explicit_target')
+	os.mkdir_all(explicit_dir) or { panic(err) }
+	os.write_file(os.join_path(explicit_dir, 'main.v'),
+		'module main\n\nfn main() { host_os_selected() }\n') or { panic(err) }
+	os.write_file(os.join_path(explicit_dir, 'target_${host.os}.v'),
+		'module main\n\nfn host_os_selected() {}\n') or { panic(err) }
+	explicit_output := os.join_path(root, 'explicit_target.wasm')
+	explicit_compile := cmdexec.run(v3_bin, ['-b', 'wasm', '-os', host.os, '-arch', host.arch,
+		'-o', explicit_output, explicit_dir])
+	assert explicit_compile.exit_code == 0, explicit_compile.output
+	assert_driver_wasm_output(explicit_output)
 }
 
 fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
