@@ -3813,6 +3813,13 @@ fn test_empty_interface_box_preserves_alias_type_id() {
 	assert out == 'true\nfalse\nfalse\ntrue'
 }
 
+fn test_empty_interface_box_preserves_enum_type_id() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'empty_interface_enum_type_id',
+		'interface Any {}\n\nenum Color {\n\tred\n\tblue\n}\n\nfn main() {\n\tx := Any(Color.red)\n\tprintln((x is Color).str())\n\tprintln((x is int).str())\n}\n')
+	assert out == 'true\nfalse'
+}
+
 fn test_interface_cast_rejects_pointer_shape_mismatch() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'interface_pointer_shape_mismatch',

@@ -20530,8 +20530,9 @@ pub fn (mut tc TypeChecker) freeze_interface_impl_names() {
 
 fn (tc &TypeChecker) interface_impl_names_uncached(iface_name string) []string {
 	mut candidate_set := map[string]bool{}
+	has_no_requirements := tc.interface_has_no_requirements(iface_name)
 	accepts_implicit_str := tc.interface_accepts_implicit_str(iface_name)
-	if tc.interface_has_no_requirements(iface_name) || accepts_implicit_str {
+	if has_no_requirements || accepts_implicit_str {
 		for name in implicit_str_builtin_type_names() {
 			candidate_set[name] = true
 		}
@@ -20539,7 +20540,7 @@ fn (tc &TypeChecker) interface_impl_names_uncached(iface_name string) []string {
 	for name, _ in tc.structs {
 		candidate_set[interface_impl_candidate_name(name)] = true
 	}
-	if accepts_implicit_str {
+	if has_no_requirements || accepts_implicit_str {
 		for name, _ in tc.enum_names {
 			candidate_set[interface_impl_candidate_name(name)] = true
 		}
