@@ -488,8 +488,9 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 			walker.inspect(ast.Expr(sub), data, json_unmigratable_scan_visit)
 		}
 	} else if node is ast.Expr && node is ast.ArrayInit {
-		// The len:/cap:/init: exprs of `[]T{len: .., init: ..}` are outside
-		// ArrayInit.children() (only elements are), so sub-walk them.
+		// The len:/cap:/init: exprs of `[]T{len: .., init: ..}` and the spread expr of
+		// `[...a, b]` are outside ArrayInit.children() (only elements are), so sub-walk
+		// them.
 		ai := node as ast.ArrayInit
 		if ai.has_len {
 			walker.inspect(ai.len_expr, data, json_unmigratable_scan_visit)
@@ -499,6 +500,9 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		}
 		if ai.has_init {
 			walker.inspect(ai.init_expr, data, json_unmigratable_scan_visit)
+		}
+		if ai.has_update_expr {
+			walker.inspect(ai.update_expr, data, json_unmigratable_scan_visit)
 		}
 	} else if node is ast.Expr && node is ast.LambdaExpr {
 		// A lambda parameter named like the qualifier (`|json2| json.encode(u)`) shadows
