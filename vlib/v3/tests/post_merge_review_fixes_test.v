@@ -2629,6 +2629,34 @@ fn main() {
 	assert out == '7'
 }
 
+fn test_aligned_alias_heap_cast_uses_aligned_memdup() {
+	v3_bin := build_v3()
+	source := '@[aligned: 64]
+struct Aligned {
+	x int
+}
+
+type A = Aligned
+
+fn main() {
+	p := &A(Aligned{
+		x: 7
+	})
+	println(int_str(p.x))
+	unsafe {
+		free(p)
+	}
+}
+'
+	c_source := gen_c(v3_bin, 'aligned_alias_heap_cast', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
+	assert main_body.contains('(Aligned*)v3_aligned_memdup('), main_body
+	assert !main_body.contains('(Aligned*)memdup('), main_body
+	assert main_body.contains('v3_aligned_free(p)'), main_body
+	out := run_good(v3_bin, 'aligned_alias_heap_cast_run', source)
+	assert out == '7'
+}
+
 fn test_unimported_main_types_are_not_visible_in_modules() {
 	v3_bin := build_v3()
 	run_bad_project(v3_bin, 'unimported_plain_main_type', {

@@ -7110,9 +7110,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				}
 				if target_type is types.Alias && target_type.base_type !is types.Pointer {
 					base_ct := g.value_c_type(target_type.base_type)
-					g.write('(${base_ct}*)memdup(&(${base_ct}[]){')
-					g.gen_expr(g.a.child(&child, 0))
-					g.write('}[0], sizeof(${base_ct}))')
+					value_expr := g.expr_to_string(g.a.child(&child, 0))
+					source_expr := '(${base_ct}[]){${value_expr}}[0]'
+					g.write(g.heap_local_memdup_expr(source_expr, target_type.base_type, base_ct,
+						false))
 					return
 				}
 				g.write('(${ct}*)(')
