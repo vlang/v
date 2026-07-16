@@ -4098,6 +4098,52 @@ fn test_pointer_interface_arg_upcasts_interface_lvalue_source() {
 	assert out == '13'
 }
 
+fn test_pointer_interface_alias_upcasts_use_pointer_access() {
+	v3_bin := build_v3()
+	source := 'interface Base {
+	get() int
+}
+
+interface Child {
+	Base
+	extra() int
+}
+
+type ChildRef = &Child
+
+struct Item {
+	n int
+}
+
+fn (i Item) get() int {
+	return i.n
+}
+
+fn (i Item) extra() int {
+	return i.n + 1
+}
+
+fn use_ref(value &Base) int {
+	return value.get()
+}
+
+fn main() {
+	child := Child(Item{
+		n: 17
+	})
+	ref := ChildRef(&child)
+	println(int_str(use_ref(ref)))
+	println((ref is Base).str())
+}
+'
+	c_source := gen_c(v3_bin, 'pointer_interface_alias_upcast_access_c', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
+	assert main_body.contains('ref->_typ') && main_body.contains('ref->_object'), main_body
+	assert !main_body.contains('ref._typ') && !main_body.contains('ref._object'), main_body
+	out := run_good(v3_bin, 'pointer_interface_alias_upcast_access', source)
+	assert out == '17\ntrue'
+}
+
 fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
 	v3_bin := build_v3()
 	source := 'interface Value {\n\tget() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nstruct Holder {\n\titem Value\n}\n\nfn make_holder() Holder {\n\treturn Holder{\n\t\titem: Value(Item{\n\t\t\tn: 7\n\t\t})\n\t}\n}\n\nfn make_items() []Value {\n\treturn [Value(Item{\n\t\tn: 9\n\t})]\n}\n\nfn use(value &Value) int {\n\treturn value.get()\n}\n\nfn main() {\n\tprintln(int_str(use(make_holder().item)))\n\tprintln(int_str(use(make_items()[0])))\n}\n'

@@ -296,7 +296,7 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 		return none
 	}
 	base := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_cast')
-	op := if source_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
+	op := t.interface_access_op_for_source_type(source_type)
 	object := t.make_selector_op(base, '_object', 'voidptr', op)
 	fields := [
 		t.make_sum_literal_field('_typ', t.make_int_literal(0), 'int'),
@@ -394,12 +394,21 @@ fn (mut t Transformer) interface_conversion_impl_mappings(source_iface string, t
 	return result
 }
 
+fn (t &Transformer) interface_access_op_for_source_type(source_type string) flat.Op {
+	clean := source_type.trim_space()
+	normalized := t.normalize_type_alias(clean)
+	if clean.starts_with('&') || normalized.starts_with('&') {
+		return .arrow
+	}
+	return .dot
+}
+
 fn (mut t Transformer) make_interface_target_is_check(source_expr flat.NodeId, source_type string, source_iface string, target_iface string) ?flat.NodeId {
 	mappings := t.interface_conversion_impl_mappings(source_iface, target_iface)
 	if mappings.len == 0 {
 		return none
 	}
-	op := if source_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
+	op := t.interface_access_op_for_source_type(source_type)
 	typ := t.make_selector_op(source_expr, '_typ', 'int', op)
 	mut result := flat.empty_node
 	for mapping in mappings {
