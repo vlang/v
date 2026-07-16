@@ -167,7 +167,11 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	// it is not picked up here and a top-level `import json2` is emitted instead.
 	mut json2_alias_is_blank := false
 	mut toplevel_json2_positions := []int{}
+	mut toplevel_json_positions := []int{}
 	for stmt in file.stmts {
+		if stmt is ast.Import && stmt.source_name == 'json' {
+			toplevel_json_positions << stmt.pos.pos
+		}
 		if stmt is ast.Import && stmt.source_name == 'json2' {
 			toplevel_json2_positions << stmt.pos.pos
 			if !f.has_json2_import && !json2_alias_is_blank {
@@ -201,6 +205,18 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	for imp in file.imports {
 		if imp.source_name == 'json2' && imp.pos.pos !in toplevel_json2_positions {
 			has_branch_local_json2 = true
+			break
+		}
+	}
+	// A `json` import inside a top-level `$if` branch has the same problem: migrating it
+	// emits `import json2` into branch_processed_imports, which is not deduped against a
+	// top-level migrated `import json2` in global_processed_imports (e.g. a distinct
+	// top-level `import json as old` plus a branch `import json { encode }` both become
+	// `import json2`). Leave the file unmigrated when a branch-local json import exists.
+	mut has_branch_local_json := false
+	for imp in file.imports {
+		if imp.source_name == 'json' && imp.pos.pos !in toplevel_json_positions {
+			has_branch_local_json = true
 			break
 		}
 	}
@@ -258,8 +274,9 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	cur_module_is_json2 := file.mod.name == 'json2'
 	if imports_json {
 		f.keep_json_unmigrated = implied_json || json2_alias_is_blank || has_branch_local_json2
-			|| json2_name_taken || json_import_has_line_comment || cur_module_is_json2
-			|| f.file_has_vfmt_off_region() || f.file_has_unmigratable_json_usage(file)
+			|| has_branch_local_json || json2_name_taken || json_import_has_line_comment
+			|| cur_module_is_json2 || f.file_has_vfmt_off_region()
+			|| f.file_has_unmigratable_json_usage(file)
 	}
 
 	for imp in file.imports {
@@ -372,8 +389,11 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		decl := node as ast.FnDecl
 		// A parameter or receiver named the same as the migrated qualifier (e.g. a
 		// param `json2`) shadows the module, so the rewritten `json2.encode(...)`
-		// would bind to the local instead. Leave the file unmigrated in that case.
-		if decl.receiver.name == s.json2_prefix || decl.params.any(it.name == s.json2_prefix) {
+		// would bind to the local instead. A top-level function with that name
+		// collides outright (`fn json2()` duplicates the imported module symbol).
+		// Leave the file unmigrated in either case.
+		if decl.receiver.name == s.json2_prefix || decl.params.any(it.name == s.json2_prefix)
+			|| (!decl.is_method && decl.short_name == s.json2_prefix) {
 			s.found = true
 		}
 		// A payload type that implements a json2 custom (de)serialization hook —
@@ -417,6 +437,27 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		// `dump(json.encode_pretty(u))` — DumpExpr.expr is outside Node.children().
 		dump_expr := node as ast.DumpExpr
 		walker.inspect(dump_expr.expr, data, json_unmigratable_scan_visit)
+	} else if node is ast.Expr && node is ast.SqlExpr {
+		// The db/where/order/limit/offset exprs and joined sub-queries of a
+		// `sql db { select ... where ... }` query are outside Node.children() but are
+		// printed by sql_expr, so sub-walk them (sub_structs recurse into this case).
+		sqlexpr := node as ast.SqlExpr
+		walker.inspect(sqlexpr.db_expr, data, json_unmigratable_scan_visit)
+		if sqlexpr.has_where {
+			walker.inspect(sqlexpr.where_expr, data, json_unmigratable_scan_visit)
+		}
+		if sqlexpr.has_order {
+			walker.inspect(sqlexpr.order_expr, data, json_unmigratable_scan_visit)
+		}
+		if sqlexpr.has_limit {
+			walker.inspect(sqlexpr.limit_expr, data, json_unmigratable_scan_visit)
+		}
+		if sqlexpr.has_offset {
+			walker.inspect(sqlexpr.offset_expr, data, json_unmigratable_scan_visit)
+		}
+		for _, sub in sqlexpr.sub_structs {
+			walker.inspect(ast.Expr(sub), data, json_unmigratable_scan_visit)
+		}
 	} else if node is ast.Expr && node is ast.ArrayInit {
 		// The len:/cap:/init: exprs of `[]T{len: .., init: ..}` are outside
 		// ArrayInit.children() (only elements are), so sub-walk them.
@@ -493,6 +534,18 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		// outside Node.children(), so sub-walk it explicitly.
 		assert_stmt := node as ast.AssertStmt
 		walker.inspect(assert_stmt.extra, data, json_unmigratable_scan_visit)
+	} else if node is ast.Stmt && node is ast.SqlStmt {
+		// `sql db { update ... set x = json.encode_pretty(u) where ... }` — the db expr
+		// and each line's where/update exprs are outside Node.children().
+		sqlstmt := node as ast.SqlStmt
+		walker.inspect(sqlstmt.db_expr, data, json_unmigratable_scan_visit)
+		for line in sqlstmt.lines {
+			walker.inspect(line.where_expr, data, json_unmigratable_scan_visit)
+			walker.inspect(line.update_data_expr, data, json_unmigratable_scan_visit)
+			for update_expr in line.update_exprs {
+				walker.inspect(update_expr, data, json_unmigratable_scan_visit)
+			}
+		}
 	}
 	return true
 }

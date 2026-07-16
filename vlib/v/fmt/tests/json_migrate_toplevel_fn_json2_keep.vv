@@ -1,0 +1,16 @@
+import json
+
+// A top-level function named `json2` collides with the imported `json2` module the
+// migration would add (`fn json2()` duplicates the module symbol), so the file is
+// left unmigrated.
+fn json2() {
+}
+
+struct User {
+	name string
+}
+
+fn to_json(u User) string {
+	json2()
+	return json.encode(u)
+}
