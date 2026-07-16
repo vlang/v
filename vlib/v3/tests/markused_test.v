@@ -1302,6 +1302,36 @@ fn main() {
 	assert c_code.contains('string__plus(')
 }
 
+fn test_json_encode_fast_path_roots_generated_helpers() {
+	mut a, mut tc := parse_checked_source('json_encode_fast_path_helper_roots', '
+import json
+
+struct User {
+	age   i64
+	score f64
+}
+
+fn main() {
+	_ := json.encode(User{
+		age:   1
+		score: 1.5
+	})
+}
+')
+	mut used := markused.mark_used(a, tc)
+	assert used['string__plus']
+	assert used['i64.str']
+	assert used['f64.str']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('i64__str((i64)')
+	assert c_code.contains('f64__str((double)')
+}
+
 // test_string_interpolation_lowers_to_formatter_after_used_filter_transform
 // validates this v3 regression case.
 fn test_string_interpolation_lowers_to_formatter_after_used_filter_transform() {

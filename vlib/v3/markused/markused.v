@@ -3247,6 +3247,7 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 				if resolved := c.tc.resolved_call_name(child_id) {
 					resolved_call = resolved
 				}
+				c.collect_json_encode_fast_path_helpers(child, resolved_call, cur_module, mut calls)
 				if detect_generics && !uses_generics
 					&& c.generic_fn_name_is_known(resolved_call, cur_module) {
 					uses_generics = true
@@ -4141,6 +4142,7 @@ fn (c &CallCollector) collect_top_level_call(call_id flat.NodeId, call &flat.Nod
 	if resolved := c.tc.resolved_call_name(call_id) {
 		resolved_call = resolved
 	}
+	c.collect_json_encode_fast_path_helpers(call, resolved_call, cur_module, mut calls)
 	c.collect_lowered_join_path_single(call, resolved_call, mut calls)
 	if call.children_count == 0 {
 		if resolved_call.len > 0 {
@@ -5437,6 +5439,199 @@ fn (c &CallCollector) node_type(id flat.NodeId) types.Type {
 		return t
 	}
 	return c.tc.resolve_type(id)
+}
+
+fn (c &CallCollector) collect_json_encode_fast_path_helpers(call &flat.Node, resolved_call string, cur_module string, mut calls []string) {
+	if !c.call_is_json_encode_fast_path_target(call, resolved_call, cur_module) {
+		return
+	}
+	if call.children_count < 2 {
+		return
+	}
+	arg_id := c.a.child(call, 1)
+	if int(arg_id) < 0 {
+		return
+	}
+	mut helpers := []string{}
+	typ := types.unwrap_pointer(c.node_type(arg_id))
+	if !c.collect_json_encode_type_helpers(typ, cur_module, mut helpers) {
+		return
+	}
+	for helper in helpers {
+		calls << helper
+	}
+}
+
+fn (c &CallCollector) call_is_json_encode_fast_path_target(call &flat.Node, resolved_call string, cur_module string) bool {
+	if resolved_call == 'json.encode' {
+		return true
+	}
+	if cur_module == 'json' && call.children_count > 0 {
+		callee := c.a.child_node(call, 0)
+		return callee.kind == .ident && callee.value == 'encode'
+	}
+	if call.children_count == 0 {
+		return false
+	}
+	callee := c.a.child_node(call, 0)
+	if callee.kind != .selector || callee.value != 'encode' || callee.children_count == 0 {
+		return false
+	}
+	base := c.a.child_node(callee, 0)
+	return base.kind == .ident && base.value == 'json'
+}
+
+fn (c &CallCollector) collect_json_encode_type_helpers(typ types.Type, cur_module string, mut helpers []string) bool {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	if clean is types.Enum {
+		if cast := c.json_enum_number_cast(clean.name) {
+			markused_json_push_int_str_helpers(cast == 'u64', mut helpers)
+		}
+		return true
+	}
+	if clean is types.String {
+		return true
+	}
+	if clean is types.Primitive {
+		if clean.props.has(.boolean) {
+			return true
+		}
+		if clean.props.has(.integer) {
+			markused_json_push_int_str_helpers(clean.props.has(.unsigned), mut helpers)
+			return true
+		}
+		if clean.props.has(.float) {
+			helpers << 'f64.str'
+			helpers << 'f64__str'
+			return true
+		}
+		return false
+	}
+	if clean is types.Struct {
+		info := c.json_struct_decl_info(clean.name, cur_module) or { return false }
+		if c.json_struct_has_disallowed_encode_field_attrs(info) {
+			return false
+		}
+		fields := c.tc.structs[clean.name] or { return false }
+		helpers << 'string__plus'
+		for field in fields {
+			attrs := c.json_struct_field_attrs(info, field.name)
+			if markused_json_attrs_have_name(attrs, 'skip') {
+				continue
+			}
+			if markused_json_attrs_have_name(attrs, 'omitempty')
+				&& !markused_json_encode_omitempty_supported(field.typ) {
+				return false
+			}
+			if !c.collect_json_encode_type_helpers(field.typ, cur_module, mut helpers) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+fn (c &CallCollector) json_struct_decl_info(struct_name string, cur_module string) ?StructDeclInfo {
+	return c.struct_decl_info(markused_json_decl_name(struct_name), cur_module)
+}
+
+fn (c &CallCollector) json_struct_has_disallowed_encode_field_attrs(info StructDeclInfo) bool {
+	node := c.a.node(info.node_id)
+	for i in 0 .. node.children_count {
+		field := c.a.child_node(node, i)
+		if field.kind != .field_decl || field.generic_params.len <= 1 {
+			continue
+		}
+		for attr in field.generic_params[1..] {
+			name := attr.all_before(':').trim_space()
+			if name !in ['skip', 'json', 'omitempty'] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (c &CallCollector) json_struct_field_attrs(info StructDeclInfo, field_name string) []string {
+	node := c.a.node(info.node_id)
+	for i in 0 .. node.children_count {
+		field := c.a.child_node(node, i)
+		if field.kind == .field_decl && field.value == field_name && field.generic_params.len > 1 {
+			return field.generic_params[1..]
+		}
+	}
+	return []string{}
+}
+
+fn (c &CallCollector) json_enum_number_cast(enum_name string) ?string {
+	decl_name := markused_json_decl_name(enum_name)
+	mut cur_module := ''
+	for node in c.a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .enum_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if decl_name != node.value && decl_name != qualified {
+			continue
+		}
+		if 'json_as_number' !in node.generic_params {
+			return none
+		}
+		backing := if node.generic_params.len > 0 { node.generic_params[0] } else { '' }
+		return if backing in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+			'u64'
+		} else {
+			'i64'
+		}
+	}
+	return none
+}
+
+fn markused_json_decl_name(name string) string {
+	bracket := name.index_u8(`[`)
+	if bracket <= 0 {
+		return name
+	}
+	return name[..bracket]
+}
+
+fn markused_json_attrs_have_name(attrs []string, name string) bool {
+	for attr in attrs {
+		if attr.all_before(':').trim_space() == name {
+			return true
+		}
+	}
+	return false
+}
+
+fn markused_json_encode_omitempty_supported(typ types.Type) bool {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	if clean is types.String || clean is types.Enum {
+		return true
+	}
+	if clean is types.Primitive {
+		return clean.props.has(.boolean) || clean.props.has(.integer) || clean.props.has(.float)
+	}
+	return false
+}
+
+fn markused_json_push_int_str_helpers(unsigned bool, mut helpers []string) {
+	if unsigned {
+		helpers << 'u64.str'
+		helpers << 'u64__str'
+	} else {
+		helpers << 'i64.str'
+		helpers << 'i64__str'
+	}
 }
 
 fn (c &CallCollector) collect_typed_receiver_method(base_id flat.NodeId, method string, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut calls []string) bool {
