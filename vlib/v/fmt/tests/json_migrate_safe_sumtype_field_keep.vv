@@ -1,0 +1,15 @@
+import json
+
+// Every variant of this sum type is a plain safe scalar, yet the field still serialises
+// differently: legacy json omits an unset (default/unknown) sum value — `json.encode(Box{})`
+// yields `{}` — while json2 emits a synthetic wrapper for the unknown value. vfmt cannot know
+// the runtime value, so any sum type payload/field keeps the file on legacy json.
+type Val = int | string
+
+struct Box {
+	val Val
+}
+
+fn to_json(b Box) string {
+	return json.encode(b)
+}

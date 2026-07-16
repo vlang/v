@@ -429,14 +429,12 @@ fn type_needs_legacy_json_rec(t &ast.Table, typ ast.Type, mut visited []int) boo
 			}
 		}
 	} else if sym.info is ast.SumType {
-		// A sum type variant (`type Val = rune | int`) can itself be a legacy-sensitive
-		// payload: legacy json encodes a `rune` variant as a string and a non-finite
-		// float variant as `null`, where json2 emits a number / raw `nan`/`inf`.
-		for variant in sym.info.variants {
-			if type_needs_legacy_json_rec(t, variant, mut visited) {
-				return true
-			}
-		}
+		// A sum type payload/field serialises differently even when every variant is safe:
+		// legacy json omits an unset (default/unknown) sum value, while json2 emits a
+		// synthetic wrapper for it, so `json.encode(Box{})` for `struct Box { val Val }`
+		// changes bytes. vfmt cannot know the runtime value, so keep any sum type on legacy
+		// json. (A legacy-sensitive variant such as `rune` would keep it anyway.)
+		return true
 	} else if sym.info is ast.Struct {
 		// A struct payload with no file-local StructDecl for the scan to catch — an
 		// anonymous `struct { t time.Time }` literal, or a type from another module — is
