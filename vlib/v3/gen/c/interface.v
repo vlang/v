@@ -1801,8 +1801,9 @@ fn (g &FlatGen) interface_arg_conversion_expr(name string, source_type types.Typ
 		field_ct := g.tc.c_type(field.typ)
 		expr += ', .${g.cname(field.name)} = '
 		for mapping in mappings {
-			impl_ct := g.tc.c_type(g.tc.parse_type(mapping.impl))
-			expr += '(${name}._typ == ${mapping.source_id} ? ((${impl_ct}*)${name}._object)->${g.cname(field.name)} : '
+			field_expr := g.interface_impl_field_access_expr('${name}._object', mapping.impl,
+				field.name)
+			expr += '(${name}._typ == ${mapping.source_id} ? ${field_expr} : '
 		}
 		expr += '(${field_ct}){0}'
 		for _ in mappings {

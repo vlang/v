@@ -2599,6 +2599,36 @@ fn main() {
 	assert out == 'true\n9007199254740993\ntrue\ntrue\n0\n7\n7\n7\n-9223372036854775808\n18446744073709551615\n9007199254740993\n9007199254740993'
 }
 
+fn test_json_decode_aligned_pointer_fields_use_aligned_memdup() {
+	v3_bin := build_v3()
+	source := 'import json
+
+@[aligned: 64]
+struct Aligned {
+	x int
+}
+
+struct Box {
+	p &Aligned
+}
+
+fn main() {
+	box := json.decode(Box, "{\\"p\\":{\\"x\\":7}}")!
+	println(int_str(box.p.x))
+	unsafe {
+		free(box.p)
+	}
+}
+'
+	c_source := gen_c(v3_bin, 'json_decode_aligned_pointer_field', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
+	assert main_body.contains('v3_aligned_memdup('), main_body
+	assert !main_body.contains('(Aligned*)memdup('), main_body
+	assert main_body.contains('v3_aligned_free(box.p)'), main_body
+	out := run_good(v3_bin, 'json_decode_aligned_pointer_field_run', source)
+	assert out == '7'
+}
+
 fn test_unimported_main_types_are_not_visible_in_modules() {
 	v3_bin := build_v3()
 	run_bad_project(v3_bin, 'unimported_plain_main_type', {
@@ -4530,6 +4560,57 @@ fn main() {
 }
 	')
 	assert out == '7\n8\n9'
+}
+
+fn test_interface_upcast_copies_promoted_struct_fields() {
+	v3_bin := build_v3()
+	source := 'interface Base {
+	name string
+}
+
+interface Child {
+	Base
+	value() int
+}
+
+struct Inner {
+	name string
+}
+
+struct User {
+	Inner
+	id int
+}
+
+fn (u User) value() int {
+	return u.id
+}
+
+fn make_child(name string, id int) Child {
+	return Child(User{
+		Inner: Inner{
+			name: name
+		}
+		id: id
+	})
+}
+
+fn take_base(b Base) string {
+	return b.name
+}
+
+fn main() {
+	child := make_child("Ada", 5)
+	println(take_base(child))
+	println(take_base(if true { make_child("Grace", 7) } else { child }))
+}
+'
+	c_source := gen_c(v3_bin, 'interface_upcast_promoted_struct_field', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
+	assert main_body.contains('->Inner.name'), main_body
+	assert !main_body.contains('->name'), main_body
+	out := run_good(v3_bin, 'interface_upcast_promoted_struct_field_run', source)
+	assert out == 'Ada\nGrace'
 }
 
 fn test_selector_interface_upcast_caches_side_effectful_base() {

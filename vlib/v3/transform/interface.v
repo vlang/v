@@ -326,7 +326,10 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 			field_type := t.normalize_type_alias(field.typ.name())
 			lhs := t.make_selector(t.make_ident(out_name), field.name, field_type)
 			object_ptr := t.make_cast('&${mapping.impl}', object, '&${mapping.impl}')
-			rhs := t.make_selector_op(object_ptr, field.name, field_type, flat.Op.arrow)
+			rhs := t.struct_field_selector_for_type(object_ptr, mapping.impl, field.name,
+				field_type, true) or {
+				t.make_selector_op(object_ptr, field.name, field_type, flat.Op.arrow)
+			}
 			assigns << t.make_assign(lhs, rhs)
 		}
 		t.pending_stmts << t.make_if(cond, t.make_block(assigns), t.make_empty())

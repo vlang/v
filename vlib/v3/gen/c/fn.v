@@ -6255,7 +6255,8 @@ fn (mut g FlatGen) gen_json_decode_value_expr(item string, typ types.Type) {
 		base_ct := g.value_c_type(clean.base_type)
 		g.write('({ cJSON* ${item_name} = ${item}; ${base_ct}* ${out_name} = NULL; if (${item_name} != NULL && !cJSON_IsNull(${item_name})) { ${base_ct} ${value_name} = ')
 		g.gen_json_decode_value_expr(item_name, clean.base_type)
-		g.write('; ${out_name} = (${base_ct}*)memdup(&${value_name}, sizeof(${base_ct})); } ${out_name}; })')
+		g.write('; ${out_name} = ${g.heap_local_memdup_expr(value_name, clean.base_type, base_ct,
+			false)}; } ${out_name}; })')
 		return
 	}
 	if clean is types.Struct {
@@ -7011,7 +7012,7 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 			g.gen_interface_receiver_base_expr(base_id, base_is_ptr)
 			g.write('${op}_typ == ${mapping.source_id} ? ((${impl_ct}*)')
 			g.gen_interface_receiver_base_expr(base_id, base_is_ptr)
-			g.write('${op}_object)->${g.cname(field.name)} : ')
+			g.write('${op}_object)${g.interface_impl_field_access_suffix(mapping.impl, field.name)} : ')
 		}
 		g.write('(${field_ct}){0}')
 		for _ in mappings {
@@ -7052,7 +7053,8 @@ fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, b
 		g.write(', .${g.cname(field.name)} = ')
 		for mapping in mappings {
 			impl_ct := g.tc.c_type(g.tc.parse_type(mapping.impl))
-			g.write('(${base_expr}${op}_typ == ${mapping.source_id} ? ((${impl_ct}*)${base_expr}${op}_object)->${g.cname(field.name)} : ')
+			field_suffix := g.interface_impl_field_access_suffix(mapping.impl, field.name)
+			g.write('(${base_expr}${op}_typ == ${mapping.source_id} ? ((${impl_ct}*)${base_expr}${op}_object)${field_suffix} : ')
 		}
 		g.write('(${field_ct}){0}')
 		for _ in mappings {
@@ -7060,6 +7062,22 @@ fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, b
 		}
 	}
 	g.write('}')
+}
+
+fn (g &FlatGen) interface_impl_field_access_suffix(impl_name string, field_name string) string {
+	if g.direct_struct_field_exists(impl_name, field_name) {
+		return '->${g.cname(field_name)}'
+	}
+	if suffix := g.struct_promoted_field_suffix(impl_name, field_name, true) {
+		return suffix
+	}
+	return '->${g.cname(field_name)}'
+}
+
+fn (g &FlatGen) interface_impl_field_access_expr(object_expr string, impl_name string, field_name string) string {
+	impl_ct := g.tc.c_type(g.tc.parse_type(impl_name))
+	return '((${impl_ct}*)${object_expr})${g.interface_impl_field_access_suffix(impl_name,
+		field_name)}'
 }
 
 struct InterfaceReceiverIdMapping {
