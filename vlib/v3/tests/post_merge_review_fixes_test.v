@@ -3175,6 +3175,25 @@ fn main() {
 	assert out == 'Foo{\n    x: 7\n}'
 }
 
+fn test_implicit_interface_str_dispatch_stringifies_enum() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_enum', 'interface Printable {
+	str() string
+}
+
+enum Color {
+	red
+	blue
+}
+
+fn main() {
+	value := Printable(Color.red)
+	println(value.str())
+}
+')
+	assert out == 'red'
+}
+
 fn test_implicit_interface_str_dispatch_stringifies_struct_alias() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'implicit_interface_str_dispatch_struct_alias', 'interface Printable {

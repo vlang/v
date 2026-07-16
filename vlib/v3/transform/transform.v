@@ -6103,6 +6103,9 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 			if node.children_count == 0 {
 				return false
 			}
+			if t.selector_is_enum_value(id) {
+				return false
+			}
 			if t.selector_chain_has_sum_variant_field(id) {
 				return false
 			}
@@ -6121,6 +6124,23 @@ fn (t &Transformer) expr_can_take_address(id flat.NodeId) bool {
 			return false
 		}
 	}
+}
+
+fn (t &Transformer) selector_is_enum_value(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .selector || node.children_count == 0 || node.value.len == 0 {
+		return false
+	}
+	base_name := t.selector_expr_name(t.a.child(&node, 0))
+	if base_name.len == 0 {
+		return false
+	}
+	enum_name := t.enum_type_name_from_selector_name(base_name) or { return false }
+	fields := t.enum_types[enum_name] or { return false }
+	return node.value in fields
 }
 
 // type_alias_targets_type returns type alias targets type data for Transformer.

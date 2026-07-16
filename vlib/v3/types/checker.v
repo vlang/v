@@ -20279,12 +20279,16 @@ pub fn (tc &TypeChecker) type_has_implicit_str_method(name string) bool {
 	if clean in tc.structs {
 		return true
 	}
+	if clean in tc.enum_names {
+		return true
+	}
 	if tc.alias_has_implicit_str_method(clean, 0) {
 		return true
 	}
 	if !clean.contains('.') {
 		qname := tc.qualify_name(clean)
-		return qname in tc.structs || tc.alias_has_implicit_str_method(qname, 0)
+		return qname in tc.structs || qname in tc.enum_names
+			|| tc.alias_has_implicit_str_method(qname, 0)
 	}
 	return false
 }
@@ -20501,6 +20505,11 @@ fn (tc &TypeChecker) interface_impl_names_uncached(iface_name string) []string {
 	}
 	for name, _ in tc.structs {
 		candidate_set[interface_impl_candidate_name(name)] = true
+	}
+	if accepts_implicit_str {
+		for name, _ in tc.enum_names {
+			candidate_set[interface_impl_candidate_name(name)] = true
+		}
 	}
 	for name, _ in tc.type_aliases {
 		candidate_set[interface_impl_candidate_name(name)] = true
