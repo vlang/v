@@ -7748,6 +7748,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			clean := cgen_unalias_unwrap_all_pointers(expr_type)
 			expr_node := g.a.nodes[int(expr_id)]
 			type_depth := cgen_type_pointer_depth(expr_type)
+			subject_is_pointer := type_depth > 0
 			mut extra_deref := if type_depth > 1 { type_depth - 1 } else { 0 }
 			if expr_node.kind == .ident {
 				if local_ct := g.local_storage_c_type(expr_node.value) {
@@ -7760,7 +7761,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			if clean is types.SumType {
 				idx := g.sum_type_index(clean.name, node.value)
 				g.write('(')
-				if expr_type.is_pointer() {
+				if subject_is_pointer {
 					g.gen_is_expr_subject(expr_id, extra_deref)
 					g.write('->typ == ${idx}')
 				} else {
@@ -7779,7 +7780,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 				g.write('(')
-				if expr_type.is_pointer() {
+				if subject_is_pointer {
 					g.gen_is_expr_subject(expr_id, extra_deref)
 					g.write('->_typ == ${idx}')
 				} else {
@@ -7794,7 +7795,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 				g.write('(')
-				if expr_type.is_pointer() {
+				if subject_is_pointer {
 					g.gen_is_expr_subject(expr_id, extra_deref)
 					g.write('->_typ == ${idx}')
 				} else {

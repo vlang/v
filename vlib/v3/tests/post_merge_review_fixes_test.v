@@ -289,6 +289,59 @@ fn main() {
 		'`&Foo` is not a variant of sum type `Item`')
 }
 
+fn test_is_check_treats_pointer_aliases_as_pointers() {
+	v3_bin := build_v3()
+	sum_out := run_good(v3_bin, 'is_pointer_alias_sum', 'struct Foo {
+	value int
+}
+
+struct Bar {}
+
+type Value = Bar | Foo
+type ValueRef = &Value
+
+fn main() {
+	mut value := Value(Foo{
+		value: 7
+	})
+	r := ValueRef(&value)
+	if r is Foo {
+		println("foo")
+	} else {
+		println("other")
+	}
+}
+')
+	assert sum_out == 'foo'
+	interface_out := run_good(v3_bin, 'is_pointer_alias_interface', 'interface Runner {
+	run() int
+}
+
+struct Job {
+	n int
+}
+
+fn (j Job) run() int {
+	return j.n
+}
+
+type RunnerRef = &Runner
+
+fn main() {
+	mut runner := Runner(Job{
+		n: 3
+	})
+	r := RunnerRef(&runner)
+	if r is Job {
+		println("job")
+	} else {
+		println("other")
+	}
+}
+')
+	assert interface_out == 'job'
+}
+
 fn test_interface_equality_includes_implicit_return_boxes() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'interface_eq_implicit_return_box', 'interface IValue {}
