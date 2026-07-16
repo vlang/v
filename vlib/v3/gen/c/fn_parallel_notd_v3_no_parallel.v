@@ -1067,9 +1067,16 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 			g.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
 		if g.scope_parallel_workers {
-			g.collect_fixed_storage_consts()
-			g.precompute_param_type_index()
-			g.precompute_concrete_optional_abi_fns()
+			scan_scope := cgen_worker_scope_begin(true)
+			mut scan := g.new_parallel_worker(0)
+			scan.collect_fixed_storage_consts()
+			scan.precompute_param_type_index()
+			scan.precompute_concrete_optional_abi_fns()
+			cgen_worker_scope_leave(scan_scope)
+			g.fixed_storage_consts = scan.fixed_storage_consts.clone()
+			g.param_types_by_short = clone_param_types_by_short(scan.param_types_by_short)
+			g.concrete_optional_abi_fns = scan.concrete_optional_abi_fns.clone()
+			cgen_worker_scope_free(scan_scope)
 			g.prepare_pre_dispatch_master()
 			return true
 		}
