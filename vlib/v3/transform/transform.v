@@ -146,6 +146,7 @@ mut:
 	sum_eq_helper_module         string
 	interface_boxed_types        map[string]bool
 	interface_boxed_types_done   bool
+	interface_boxed_types_frozen bool
 	interface_var_concrete_types map[string]string
 	// used_struct_operator_fns holds the callee names of direct calls seen during
 	// monomorphize. Infix operators on generic instances are lowered to direct calls
@@ -1720,6 +1721,7 @@ fn (mut t Transformer) collect_interface_boxed_types_dispatch(want_parallel bool
 	}
 	t.interface_boxed_types = boxed_types.move()
 	t.interface_boxed_types_done = true
+	t.interface_boxed_types_frozen = true
 	transform_worker_scope_free(scratch_scope)
 	t.tc.unfreeze_type_cache_after_forks()
 }
@@ -1951,6 +1953,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	// private backing storage — a plain struct copy would share the master's.
 	w.stringify_stack = []string{}
 	w.interface_boxed_types_done = true
+	w.interface_boxed_types_frozen = t.interface_boxed_types_frozen
 	w.sum_eq_helper_module = ''
 	w.generic_receiver_methods_by_name = map[string][]string{}
 	w.used_fns_log = []string{}
@@ -2034,6 +2037,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.stringify_stack = []string{}
 	w.interface_boxed_types = map[string]bool{}
 	w.interface_boxed_types_done = false
+	w.interface_boxed_types_frozen = false
 	w.generic_receiver_methods_by_name = map[string][]string{}
 	w.used_fns_log = []string{}
 	w.used_fns_log_active = false
@@ -2057,6 +2061,8 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 // state, so adding a mutable Transformer field cannot silently share its backing
 // storage with a helper thread.
 fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker, used_fns map[string]bool) Transformer {
+	// The pre-scan freezes the boxed-type set before skip-generics workers
+	// start, so sharing it below is read-only and avoids one map clone per worker.
 	return Transformer{
 		a:                                ast
 		tc:                               wtc
@@ -2090,11 +2096,13 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 			t.generic_specialization_args.clone()
 		}
 		interface_var_concrete_types:     t.interface_var_concrete_types.clone()
-		interface_boxed_types:            if t.skip_generics {
+		interface_boxed_types:            if t.skip_generics && t.interface_boxed_types_frozen {
 			t.interface_boxed_types
 		} else {
 			t.interface_boxed_types.clone()
 		}
+		interface_boxed_types_done:       t.interface_boxed_types_done
+		interface_boxed_types_frozen:     t.interface_boxed_types_frozen
 		sum_eq_types:                     t.sum_eq_types.clone()
 		sum_eq_synthesized:               t.sum_eq_synthesized.clone()
 		used_fns:                         used_fns.clone()

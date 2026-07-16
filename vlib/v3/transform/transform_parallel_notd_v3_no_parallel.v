@@ -167,6 +167,7 @@ fn (mut t Transformer) collect_interface_boxed_types_parallel() bool {
 		}
 		t.interface_boxed_types = boxed_types.move()
 		t.interface_boxed_types_done = true
+		t.interface_boxed_types_frozen = true
 		return true
 	}
 }

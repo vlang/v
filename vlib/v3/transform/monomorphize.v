@@ -623,6 +623,7 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 		t.tc.cur_module = old_tc_module
 	}
 	t.collect_interface_boxed_types_range(0, t.a.nodes.len)
+	t.interface_boxed_types_frozen = true
 }
 
 fn (mut t Transformer) collect_interface_boxed_types_range(start int, end int) {
@@ -1375,7 +1376,7 @@ fn (t &Transformer) interface_literal_name(name string) ?string {
 }
 
 fn (mut t Transformer) mark_interface_boxed_type(iface_name string, concrete_type string) {
-	if iface_name.len == 0 || concrete_type.len == 0 {
+	if t.interface_boxed_types_frozen || iface_name.len == 0 || concrete_type.len == 0 {
 		return
 	}
 	mut iface_names := [iface_name]
