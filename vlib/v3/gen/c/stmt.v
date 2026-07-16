@@ -2187,7 +2187,7 @@ fn (g &FlatGen) local_pointer_alias_assignment_can_clear(owner types.ScopeBindin
 		return true
 	}
 	key := owner.storage_key()
-	if key.len == 0 || key !in g.local_pointer_alias_by_owner {
+	if key.len == 0 {
 		return true
 	}
 	if g.conditional_branch_depth == 0 {
@@ -2198,7 +2198,10 @@ fn (g &FlatGen) local_pointer_alias_assignment_can_clear(owner types.ScopeBindin
 		return false
 	}
 	branch_scope := g.conditional_branch_scopes.last()
-	return owner.belongs_to_scope_chain_until(g.tc.cur_scope, branch_scope)
+	if owner.belongs_to_scope_chain_until(g.tc.cur_scope, branch_scope) {
+		return true
+	}
+	return false
 }
 
 fn (mut g FlatGen) clear_local_pointer_alias_source_for_assignment(owner types.ScopeBindingOwner) {
@@ -2216,7 +2219,7 @@ fn (mut g FlatGen) merge_local_pointer_alias_source_for_assignment(owner types.S
 		return
 	}
 	key := owner.storage_key()
-	existing := g.local_pointer_alias_by_owner[key] or { source.name }
+	existing := g.local_pointer_alias_by_owner[key] or { return }
 	g.declare_local_pointer_alias_source_kind(owner, existing, false)
 }
 

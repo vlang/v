@@ -97,7 +97,48 @@ fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	g.leave_conditional_branch()
 	tc.pop_scope()
 
+	maybe_owner := tc.cur_scope.insert_with_owner('maybe', ptr_type)
+	tc.push_scope()
+	g.enter_conditional_branch(true)
+	x_id := stmt_test_node(mut a, .ident, 'x', [])
+	amp_x := stmt_test_prefix(mut a, .amp, x_id)
+	g.track_local_pointer_alias_assign(flat.Node{
+		kind:  .ident
+		value: 'maybe'
+	}, amp_x)
+	assert g.local_pointer_alias_source('maybe') or { '' } == ''
+	assert !g.local_pointer_alias_assignment_can_clear(maybe_owner)
+	g.leave_conditional_branch()
+	tc.pop_scope()
+
 	g.declare_local_pointer_alias_source_kind(p_owner, 'arg', true)
+	tc.push_scope()
+	g.enter_conditional_branch(true)
+	g.track_local_pointer_alias_assign(flat.Node{
+		kind:  .ident
+		value: 'p'
+	}, amp_x)
+	assert g.local_pointer_alias_source('p') or { '' } == 'arg'
+	assert !g.local_pointer_alias_source_is_mut_param('p')
+	g.leave_conditional_branch()
+	tc.pop_scope()
+	tc.pop_scope()
+}
+
+fn test_local_pointer_alias_branch_assignment_without_outer_marker_stays_conditional() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	int_type := types.Type(types.int_)
+	ptr_type := types.Type(types.Pointer{
+		base_type: int_type
+	})
+
+	tc.push_scope()
+	tc.cur_scope.insert_with_owner('x', int_type)
+	tc.cur_scope.insert_with_owner('p', ptr_type)
 	tc.push_scope()
 	g.enter_conditional_branch(true)
 	x_id := stmt_test_node(mut a, .ident, 'x', [])
@@ -106,7 +147,7 @@ fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 		kind:  .ident
 		value: 'p'
 	}, amp_x)
-	assert g.local_pointer_alias_source('p') or { '' } == 'arg'
+	assert g.local_pointer_alias_source('p') or { '' } == ''
 	assert !g.local_pointer_alias_source_is_mut_param('p')
 	g.leave_conditional_branch()
 	tc.pop_scope()
