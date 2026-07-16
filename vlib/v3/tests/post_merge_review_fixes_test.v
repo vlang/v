@@ -4062,6 +4062,17 @@ fn test_returned_interface_local_boxed_from_local_address_heap_copies_on_return(
 	assert out == '2'
 }
 
+fn test_returned_interface_local_boxed_from_aligned_local_uses_aligned_memdup() {
+	v3_bin := build_v3()
+	source := '@[aligned: 64]\nstruct Aligned {\nmut:\n\tn int\n}\n\ninterface Reader {\n\tvalue() int\n}\n\nfn (a &Aligned) value() int {\n\treturn a.n\n}\n\nfn make() Reader {\n\tmut a := Aligned{\n\t\tn: 5\n\t}\n\tr := Reader(&a)\n\ta.n = 6\n\treturn r\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_returned_aligned_local_heap_copy', source)
+	make_body := c_fn_body(c_source, 'Reader make(void) {')
+	assert make_body.contains('v3_aligned_memdup(') && make_body.contains('sizeof(Aligned)'), make_body
+	assert !make_body.contains('= memdup('), make_body
+	out := run_good(v3_bin, 'interface_box_returned_aligned_local_heap_copy_run', source)
+	assert out == '6'
+}
+
 fn test_returned_interface_local_boxed_from_local_address_heap_copies_in_aggregates_and_assignments() {
 	v3_bin := build_v3()
 	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nstruct Holder {\n\treader Reader\n}\n\nfn make_array() []Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\treturn [r]\n}\n\nfn make_holder() Holder {\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tr := Reader(&b)\n\tb.n = 4\n\treturn Holder{\n\t\treader: r\n\t}\n}\n\nfn make_reassigned() Reader {\n\tmut r := Reader(&Box{\n\t\tn: 0\n\t})\n\tmut b := Box{\n\t\tn: 5\n\t}\n\tr = Reader(&b)\n\tb.n = 6\n\treturn r\n}\n\nfn main() {\n\tarr := make_array()\n\tprintln(int_str(arr[0].value()))\n\tholder := make_holder()\n\tprintln(int_str(holder.reader.value()))\n\treader := make_reassigned()\n\tprintln(int_str(reader.value()))\n}\n'

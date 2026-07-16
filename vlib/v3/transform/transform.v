@@ -4698,7 +4698,7 @@ fn (mut t Transformer) heap_copy_escaping_interface_box_local(name string) ?stri
 		cond := t.make_infix(.eq, typ, t.make_int_literal(impl_id))
 		object_lhs := t.make_selector(t.make_ident(tmp_name), '_object', 'voidptr')
 		object_rhs := t.make_selector(t.make_ident(tmp_name), '_object', 'voidptr')
-		dup := t.make_call_typed('memdup', arr2(object_rhs, t.make_sizeof_type(impl)), 'voidptr')
+		dup := t.make_memdup_call_for_type(object_rhs, impl)
 		t.pending_stmts << t.make_if(cond, t.make_block(arr1(t.make_assign(object_lhs, dup))),
 			t.make_empty())
 	}
