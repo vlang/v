@@ -252,6 +252,9 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 		return none
 	}
 	map_source_id := t.const_expr_for_ident(base_id) or { base_id }
+	source_is_owned_temporary := !isnil(t.tc)
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(map_type))
+		&& !base_type.starts_with('&') && !t.expr_can_take_address(map_source_id)
 	map_expr := t.stable_expr_for_reuse(map_source_id)
 	key_name := t.new_temp('map_key')
 	t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
@@ -272,11 +275,17 @@ fn (mut t Transformer) try_lower_map_index_expr(id flat.NodeId, node flat.Node) 
 	t.pending_stmts << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(value_type),
 		value_type)
 	value := t.make_map_get_expr(map_expr, base_type, key_name, zero_name, value_type)
-	if cleanup_key {
+	if cleanup_key || source_is_owned_temporary {
 		result_name := t.new_temp('map_index_value')
 		t.pending_stmts << t.make_decl_assign_typed(result_name, value, value_type)
-		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
-			arr1(t.make_ident(key_name)), 'void'))
+		if cleanup_key {
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
+				arr1(t.make_ident(key_name)), 'void'))
+		}
+		if source_is_owned_temporary {
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(map_expr),
+				'void'))
+		}
 		result := t.make_ident(result_name)
 		t.set_node_typ(int(result), value_type)
 		return result
