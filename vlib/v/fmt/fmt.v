@@ -344,6 +344,15 @@ fn type_needs_legacy_json(t &ast.Table, typ ast.Type) bool {
 				return true
 			}
 		}
+	} else if sym.info is ast.SumType {
+		// A sum type variant (`type Val = rune | int`) can itself be a legacy-sensitive
+		// payload: legacy json encodes a `rune` variant as a string and a non-finite
+		// float variant as `null`, where json2 emits a number / raw `nan`/`inf`.
+		for variant in sym.info.variants {
+			if type_needs_legacy_json(t, variant) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -360,6 +369,17 @@ fn assign_declares_name(assign ast.AssignStmt, name string) bool {
 		}
 	}
 	return false
+}
+
+// walk_or_block sub-walks the statements of an `or { ... }` block. Node.children()
+// exposes the or-block only for CallExpr; on identifier / index / selector / prefix /
+// infix / comptime expressions the or-block is a separate field the walker never
+// reaches, so an unmigratable `json` call inside e.g. `opt or { json.encode_pretty(u) }`
+// or `m[k] or { json.encode_pretty(u) }` would otherwise be missed.
+fn walk_or_block(or_block ast.OrExpr, data voidptr) {
+	if or_block.kind != .absent {
+		walker.inspect(ast.Expr(or_block), data, json_unmigratable_scan_visit)
+	}
 }
 
 fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
@@ -496,6 +516,7 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		for _, sub in sqlexpr.sub_structs {
 			walker.inspect(ast.Expr(sub), data, json_unmigratable_scan_visit)
 		}
+		walk_or_block(sqlexpr.or_expr, data)
 	} else if node is ast.Expr && node is ast.ArrayInit {
 		// The len:/cap:/init: exprs of `[]T{len: .., init: ..}` and the spread expr of
 		// `[...a, b]` are outside ArrayInit.children() (only elements are), so sub-walk
@@ -513,6 +534,24 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		if ai.has_update_expr {
 			walker.inspect(ai.update_expr, data, json_unmigratable_scan_visit)
 		}
+	} else if node is ast.Expr && node is ast.Ident {
+		// `opt or { json.encode_pretty(u) }` — an identifier's `or {}` block is outside
+		// Node.children() (only CallExpr exposes its or-block), so sub-walk it.
+		walk_or_block((node as ast.Ident).or_expr, data)
+	} else if node is ast.Expr && node is ast.IndexExpr {
+		// `m[k] or { json.encode_pretty(u) }` — IndexExpr.or_expr is not a child either.
+		walk_or_block((node as ast.IndexExpr).or_expr, data)
+	} else if node is ast.Expr && node is ast.SelectorExpr {
+		// `obj.field or { json.encode_pretty(u) }` — the base is a child but or_block isn't.
+		walk_or_block((node as ast.SelectorExpr).or_block, data)
+	} else if node is ast.Expr && node is ast.InfixExpr {
+		walk_or_block((node as ast.InfixExpr).or_block, data)
+	} else if node is ast.Expr && node is ast.PrefixExpr {
+		walk_or_block((node as ast.PrefixExpr).or_block, data)
+	} else if node is ast.Expr && node is ast.ComptimeCall {
+		walk_or_block((node as ast.ComptimeCall).or_block, data)
+	} else if node is ast.Expr && node is ast.ComptimeSelector {
+		walk_or_block((node as ast.ComptimeSelector).or_block, data)
 	} else if node is ast.Expr && node is ast.LambdaExpr {
 		// A lambda parameter named like the qualifier (`|json2| json.encode(u)`) shadows
 		// the module for the lambda body.
@@ -588,6 +627,7 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 				walker.inspect(update_expr, data, json_unmigratable_scan_visit)
 			}
 		}
+		walk_or_block(sqlstmt.or_expr, data)
 	}
 	return true
 }
