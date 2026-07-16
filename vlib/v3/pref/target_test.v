@@ -74,7 +74,8 @@ fn test_source_selection_uses_target_os_and_arch() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	for name in ['common.v', 'cpu_amd64.v', 'cpu_arm64.v', 'cpu.rv64.v', 'sys_linux.v', 'sys_macos.v'] {
+	for name in ['common.v', 'cpu_amd64.v', 'cpu_arm64.v', 'cpu.i386.v', 'cpu.i686.v', 'cpu.rv64.v',
+		'sys_linux.v', 'sys_macos.v'] {
 		os.write_file(os.join_path(dir, name), 'module sample\n') or { panic(err) }
 	}
 
@@ -92,6 +93,11 @@ fn test_source_selection_uses_target_os_and_arch() {
 	selected = get_v_files_from_dir_for_target(dir, [], linux_riscv64).map(os.base(it))
 	selected.sort()
 	assert selected == ['common.v', 'cpu.rv64.v', 'sys_linux.v']
+
+	linux_x86 := target_from('linux', 'x86') or { panic(err) }
+	selected = get_v_files_from_dir_for_target(dir, [], linux_x86).map(os.base(it))
+	selected.sort()
+	assert selected == ['common.v', 'cpu.i386.v', 'cpu.i686.v', 'sys_linux.v']
 }
 
 fn test_termux_source_selection_keeps_android_common_files_distinct() {

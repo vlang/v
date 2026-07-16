@@ -292,8 +292,9 @@ pub fn file_has_incompatible_target_suffix(file string, target Target) bool {
 	if file_has_incompatible_os_only_suffix(file, target.os) {
 		return true
 	}
-	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'arm32', 'rv64', 'riscv64',
-		'ppc64', 'ppc64le', 's390x', 'loongarch64', 'wasm32'] {
+	for arch in ['amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'i386', 'i486', 'i586', 'i686',
+		'x32', 'x86_32', 'ia-32', 'ia32', 'arm32', 'rv64', 'riscv64', 'ppc64', 'ppc64le', 's390x',
+		'loongarch64', 'wasm32'] {
 		if normalized_arch(arch) != target.arch
 			&& (file.contains('.${arch}.') || file.contains('_${arch}.')) {
 			return true
