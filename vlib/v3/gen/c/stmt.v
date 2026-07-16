@@ -2045,6 +2045,24 @@ fn (mut g FlatGen) clear_local_pointer_alias_source_for_assignment(owner types.S
 	}
 }
 
+fn (g &FlatGen) heap_local_memdup_expr(source_expr string, base_type types.Type, base_ct string, source_is_pointer bool) string {
+	src := if source_is_pointer { source_expr } else { '&${source_expr}' }
+	clean_base := default_init_unalias_type(base_type)
+	mut names := []string{}
+	for name in [clean_base.name(), base_type.name(), base_ct] {
+		if name.len > 0 && name !in names {
+			names << name
+		}
+	}
+	for name in names {
+		if align := g.struct_decl_alignment_for_name(name) {
+			align_arg := struct_decl_alignment_memdup_arg(align, base_ct)
+			return '(${base_ct}*)v3_aligned_memdup(${src}, sizeof(${base_ct}), ${align_arg})'
+		}
+	}
+	return '(${base_ct}*)memdup(${src}, sizeof(${base_ct}))'
+}
+
 // heap_local_address_expr returns a heap-copy expression for `&local` when the
 // surrounding return type is a pointer. V permits local address escapes; C needs
 // the local value copied out of the stack frame before returning.
@@ -2071,7 +2089,8 @@ fn (mut g FlatGen) heap_local_address_expr(ret_id flat.NodeId, expected types.Ty
 			if g.local_pointer_alias_source_is_mut_param(node.value) {
 				return local_expr
 			}
-			return '(${local_expr} == NULL ? NULL : (${base_ct}*)memdup(${local_expr}, sizeof(${base_ct})))'
+			copy_expr := g.heap_local_memdup_expr(local_expr, base_type, base_ct, true)
+			return '(${local_expr} == NULL ? NULL : ${copy_expr})'
 		}
 		return none
 	}
@@ -2097,7 +2116,7 @@ fn (mut g FlatGen) heap_local_address_expr(ret_id flat.NodeId, expected types.Ty
 	if g.current_param_is_mut(child.value) {
 		return local_expr
 	}
-	return '(${base_ct}*)memdup(&${local_expr}, sizeof(${base_ct}))'
+	return g.heap_local_memdup_expr(local_expr, local_type, base_ct, false)
 }
 
 fn (mut g FlatGen) gen_heap_local_address_expr(ret_id flat.NodeId, expected types.Type) bool {

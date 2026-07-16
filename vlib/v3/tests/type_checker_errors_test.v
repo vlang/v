@@ -1921,6 +1921,18 @@ fn test_pr_review_codegen_batch_twentynine() {
 	mut_param_alias := run_good(v3_bin, 'good_returned_mut_param_pointer_alias_identity',
 		'fn keep(mut x int) &int {\n\tp := &x\n\treturn p\n}\nfn main() {\n\tmut n := 1\n\tp := keep(mut n)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(int_str(n))\n}\n')
 	assert mut_param_alias == '7'
+	// Returning a pointer alias of an aligned local must use the aligned heap-copy helper, matching
+	// the free path for `&Aligned` values.
+	aligned_alias_source := '@[aligned: 64]\nstruct Aligned {\n\tx int\n}\nfn make() &Aligned {\n\tmut x := Aligned{\n\t\tx: 5\n\t}\n\tp := &x\n\treturn p\n}\nfn main() {\n\tp := make()\n\tprintln(int_str(p.x))\n\tunsafe {\n\t\tfree(p)\n\t}\n}\n'
+	aligned_c := gen_c_project(v3_bin, 'good_aligned_pointer_alias_heap_copy_c', {
+		'main.v': aligned_alias_source
+	}, 'main.v')
+	assert aligned_c.contains('v3_aligned_memdup('), aligned_c
+	assert !aligned_c.contains('memdup(p, sizeof(Aligned))'), aligned_c
+	assert aligned_c.contains('v3_aligned_free(p)'), aligned_c
+	aligned_alias := run_good(v3_bin, 'good_aligned_pointer_alias_heap_copy_run',
+		aligned_alias_source)
+	assert aligned_alias == '5'
 	// A capitalized field followed by a const-sized fixed array is a named field whose type is
 	// `[n]int`, not a failed generic embedded-field probe that skips `[n]` and leaves `int`.
 	fixed_field := run_good(v3_bin, 'good_capitalized_fixed_array_field',

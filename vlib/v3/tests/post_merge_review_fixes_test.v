@@ -3321,6 +3321,21 @@ struct Marked {
 	y int
 }
 
+fn make_alias() &Bare {
+	x := Bare{
+		x: 4
+	}
+	p := &x
+	return p
+}
+
+fn make_direct() &Bare {
+	x := Bare{
+		x: 5
+	}
+	return &x
+}
+
 fn main() {
 	b := Bare{
 		x: 1
@@ -3331,9 +3346,13 @@ fn main() {
 	h := &Bare{
 		x: 3
 	}
-	println(int_str(b.x + m.y + h.x))
+	a := make_alias()
+	d := make_direct()
+	println(int_str(b.x + m.y + h.x + a.x + d.x))
 	unsafe {
 		free(h)
+		free(a)
+		free(d)
 	}
 }
 '
@@ -3344,8 +3363,10 @@ fn main() {
 	assert c_source.contains('static inline void v3_aligned_free(void* p)')
 	assert !c_source.contains('uintptr_t raw = (uintptr_t)malloc')
 	assert c_source.contains('v3_aligned_free(h)')
+	assert c_source.contains('v3_aligned_free(a)')
+	assert c_source.contains('v3_aligned_free(d)')
 	out := run_good(v3_bin, 'bare_aligned_attribute_cgen', source)
-	assert out == '6'
+	assert out == '15'
 }
 
 fn test_implicit_interface_str_dispatch_dereferences_pointer_scalar_fields() {
