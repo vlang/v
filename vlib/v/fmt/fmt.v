@@ -533,6 +533,11 @@ fn encode_payload_is_safe_to_migrate(t &ast.Table, expr ast.Expr) bool {
 			if type_needs_legacy_json(t, expr.typ) || type_needs_legacy_json(t, expr.elem_type) {
 				return false
 			}
+			// A spread element (`[...times]`) is stored on update_expr, outside `exprs`; a
+			// spread of `[]time.Time` is a legacy-sensitive payload with no explicit elements.
+			if expr.has_update_expr && !encode_payload_is_safe_to_migrate(t, expr.update_expr) {
+				return false
+			}
 			// Every element must itself be provably safe (a bare `[time.now()]` element is a
 			// call, so it is unsafe even though the array type is unknown).
 			for e in expr.exprs {

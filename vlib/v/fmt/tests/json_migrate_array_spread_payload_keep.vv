@@ -1,0 +1,11 @@
+import json
+import time
+
+// A spread-only array literal (`[...times]`) has no explicit elements; the spread expression
+// lives on ArrayInit.update_expr, outside `exprs`. Here it spreads a `[]time.Time`, whose
+// elements serialise as Unix numbers in legacy json but RFC3339 strings in json2, so the
+// safety check inspects update_expr and leaves the file on legacy json. (A spread of a safe
+// element type like `[]int` still migrates.)
+fn to_json(times []time.Time) string {
+	return json.encode([...times])
+}
