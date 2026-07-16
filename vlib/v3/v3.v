@@ -605,6 +605,7 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 	}
 	mut children := []flat.NodeId{cap: ast.children.len}
 	children << ast.children
+	text_values, text_ids := ast.clone_text_table_owned()
 	return &flat.FlatAst{
 		nodes:                nodes
 		children:             children
@@ -614,8 +615,8 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 		noreturn_fns:         ast.noreturn_fns
 		source_files:         ast.source_files
 		source_buffers:       ast.source_buffers
-		text_values:          ast.text_values
-		text_ids:             ast.text_ids
+		text_values:          text_values
+		text_ids:             text_ids
 		worker_pool:          ast.worker_pool
 		specialized_fn_nodes: ast.specialized_fn_nodes.clone()
 	}

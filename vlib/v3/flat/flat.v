@@ -318,6 +318,20 @@ pub fn (mut a FlatAst) promote_transform_texts_from(start int, scope voidptr) {
 	}
 }
 
+// clone_text_table_owned copies the canonical text table and rebuilds its
+// lookup map with storage owned by the current allocation arena.
+pub fn (a &FlatAst) clone_text_table_owned() ([]string, map[string]TextId) {
+	mut values := []string{cap: a.text_values.len}
+	mut ids := map[string]TextId{}
+	ids.reserve(u32(a.text_values.len))
+	for value in a.text_values {
+		canonical := value.clone()
+		values << canonical
+		ids[canonical] = TextId(values.len)
+	}
+	return values, ids
+}
+
 // text resolves a stable AST text identity.
 pub fn (a &FlatAst) text(id TextId) string {
 	idx := int(id) - 1

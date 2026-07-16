@@ -253,12 +253,22 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		t.deferred_base_writes << write
 	}
 	t.clone_deferred_worker_writes_from(deferred_start)
-	if !isnil(batch.tc.fork_overlay) && !isnil(t.tc.fork_overlay) {
+	if !isnil(batch.tc.fork_overlay) {
 		for idx, name in batch.tc.fork_overlay.resolved_call_names {
-			t.tc.fork_overlay.resolved_call_names[idx] = name.clone()
+			owned_name := name.clone()
+			if isnil(t.tc.fork_overlay) {
+				t.set_resolved_call_entry(idx, owned_name)
+			} else {
+				t.tc.fork_overlay.resolved_call_names[idx] = owned_name
+			}
 		}
 		for idx, name in batch.tc.fork_overlay.resolved_fn_values {
-			t.tc.fork_overlay.resolved_fn_values[idx] = name.clone()
+			owned_name := name.clone()
+			if isnil(t.tc.fork_overlay) {
+				t.set_resolved_fn_value_entry(idx, owned_name)
+			} else {
+				t.tc.fork_overlay.resolved_fn_values[idx] = owned_name
+			}
 		}
 	}
 	if batch.ignored_comptime_for_nodes.len > 0 {
