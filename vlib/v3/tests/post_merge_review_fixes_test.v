@@ -3393,6 +3393,37 @@ fn main() {
 	assert out == 'Foo{\n    bar: Bar{\n        x: 7\n    }\n    empty: &nil\n}'
 }
 
+fn test_implicit_interface_str_dispatch_treats_pointer_alias_fields_as_pointers() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_alias_struct_fields', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+type BarRef = &Bar
+
+struct Foo {
+	bar   BarRef
+	empty BarRef
+}
+
+fn main() {
+	bar := &Bar{
+		x: 7
+	}
+	value := Printable(Foo{
+		bar: bar
+		empty: unsafe { nil }
+	})
+	println(value.str())
+}
+')
+	assert out == 'Foo{\n    bar: Bar{\n        x: 7\n    }\n    empty: &nil\n}'
+}
+
 fn test_bare_aligned_attribute_metadata_and_cgen() {
 	v3_bin := build_v3()
 	source := '@[aligned]

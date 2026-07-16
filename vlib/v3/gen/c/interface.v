@@ -1353,6 +1353,26 @@ fn interface_str_clean_type(typ types.Type) types.Type {
 	return clean
 }
 
+fn interface_str_type_is_pointer(typ types.Type) bool {
+	if typ is types.Pointer {
+		return true
+	}
+	if typ is types.Alias {
+		return interface_str_type_is_pointer(typ.base_type)
+	}
+	return false
+}
+
+fn interface_str_pointer_base_type(typ types.Type) ?types.Type {
+	if typ is types.Pointer {
+		return typ.base_type
+	}
+	if typ is types.Alias {
+		return interface_str_pointer_base_type(typ.base_type)
+	}
+	return none
+}
+
 fn (mut g FlatGen) interface_alias_custom_str_expr(expr string, typ types.Type) ?string {
 	if typ is types.Pointer {
 		base := typ.base_type
@@ -1448,16 +1468,17 @@ fn (mut g FlatGen) interface_implicit_struct_field_str_expr(expr string, typ typ
 		return str_expr
 	}
 	clean := interface_str_clean_type(typ)
+	is_pointer := interface_str_type_is_pointer(typ)
 	if clean is types.Struct {
 		if str_expr := g.interface_custom_str_expr(expr, clean.name, typ) {
 			return str_expr
 		}
-		if typ !is types.Pointer {
+		if !is_pointer {
 			return g.interface_implicit_struct_str_value(expr, clean.name, indent, mut seen, mut
 				temp_idx)
 		}
 	}
-	if typ !is types.Pointer {
+	if !is_pointer {
 		if clean is types.Array {
 			return g.interface_implicit_array_str_value(expr, clean, mut seen, mut temp_idx)
 		}
@@ -1468,7 +1489,8 @@ fn (mut g FlatGen) interface_implicit_struct_field_str_expr(expr string, typ typ
 			return g.interface_implicit_map_str_expr(expr, clean)
 		}
 	}
-	if typ is types.Pointer {
+	if is_pointer {
+		pointer_base := interface_str_pointer_base_type(typ) or { return c_string_lit_expr('&nil') }
 		value_expr := '*(${expr})'
 		if clean is types.Struct {
 			return g.interface_implicit_pointer_struct_str_expr(expr, value_expr, clean.name,
@@ -1487,11 +1509,11 @@ fn (mut g FlatGen) interface_implicit_struct_field_str_expr(expr string, typ typ
 		}
 		if clean !is types.Struct && clean !is types.Array && clean !is types.ArrayFixed
 			&& clean !is types.Map {
-			mut field_expr := g.interface_implicit_str_expr(value_expr, typ.base_type) or {
-				clean_name := types.unwrap_pointer(typ.base_type).name()
+			mut field_expr := g.interface_implicit_str_expr(value_expr, pointer_base) or {
+				clean_name := types.unwrap_pointer(pointer_base).name()
 				return c_string_lit_expr('${clean_name.all_after_last('.')}{}')
 			}
-			if interface_str_needs_quotes(typ.base_type) {
+			if interface_str_needs_quotes(pointer_base) {
 				quote_lit := c_string_lit_expr("'")
 				field_expr = 'string__plus(string__plus(${quote_lit}, ${field_expr}), ${quote_lit})'
 			}
