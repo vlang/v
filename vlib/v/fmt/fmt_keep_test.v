@@ -38,7 +38,7 @@ fn run_fmt(mut input_files []string) {
 		}
 		mut table := ast.new_table()
 		file_ast := parser.parse_file(ipath, mut table, .parse_comments, fpref)
-		result_ocontent := fmt.fmt(file_ast, mut table, fpref, false)
+		result_ocontent := fmt.fmt(file_ast, mut table, fpref, false, migrate_json2: true)
 		if expected_ocontent != result_ocontent {
 			fmt_bench.fail()
 			eprintln(fmt_bench.step_message_fail('file ${ipath} after formatting, does not look as expected.'))

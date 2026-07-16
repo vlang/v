@@ -67,10 +67,11 @@ pub mut:
 	source_text              string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 	global_processed_imports []string
 	branch_processed_imports []string
-	has_json2_import         bool   // the file has a top-level `json2` import; used when migrating `import json`
+	has_json2_import         bool // the file has a top-level `json2` import; used when migrating `import json`
 	json2_prefix             string = 'json2' // local name of `json2` at call sites (its alias, if imported as one)
-	keep_json_unmigrated     bool   // the file has a json call the migration cannot rewrite losslessly (`encode_pretty`, or a `decode` with a commented type arg); its json usage is left as-is (see process_file_imports)
-	migrate_json_calls       bool   // the file actually imports the legacy `json` module and it is being migrated, so `json.encode`/`json.decode` calls should be rewritten (guards against `import json2 as json`, whose json2 calls carry the same call kind)
+	keep_json_unmigrated     bool // the file has a json call the migration cannot rewrite losslessly (`encode_pretty`, or a `decode` with a commented type arg); its json usage is left as-is (see process_file_imports)
+	migrate_json_calls       bool // the file actually imports the legacy `json` module and it is being migrated, so `json.encode`/`json.decode` calls should be rewritten (guards against `import json2 as json`, whose json2 calls carry the same call kind)
+	migrate_json2            bool // opt-in master switch for the json->json2 migration (FmtOptions.migrate_json2); when false, plain `v fmt` leaves all json usage untouched
 	is_translated_module     bool // @[translated]
 	is_c_function            bool // C.func(...)
 }
@@ -78,7 +79,8 @@ pub mut:
 @[params]
 pub struct FmtOptions {
 pub:
-	source_text string
+	source_text   string
+	migrate_json2 bool // opt in to rewriting deprecated `json` module usage to `json2`; off by default so plain `v fmt` never changes json semantics
 }
 
 pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
@@ -90,6 +92,7 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		out:      strings.new_builder(1000)
 	}
 	f.source_text = options.source_text
+	f.migrate_json2 = options.migrate_json2
 	f.process_file_imports(file)
 	// Compensate for indent increase of toplevel stmts done in `f.stmts()`.
 	f.indent--
@@ -159,144 +162,149 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	}
 	f.implied_import_str = sb.str()
 
-	// Detect an existing top-level `json2` import, which the json->json2 migration
-	// reuses instead of emitting a duplicate `import json2` (see import_stmt). The
-	// migrated call sites are rewritten with that import's local name (its alias if
-	// `import json2 as x`, else `json2`), so they stay in scope and idempotent.
-	// Only top-level imports qualify: a branch-local (`$if { import json2 }`) one is
-	// nested inside a comptime-if statement rather than being a direct file.stmt, so
-	// it is not picked up here and a top-level `import json2` is emitted instead.
-	mut json2_alias_is_blank := false
-	mut toplevel_json2_positions := []int{}
-	mut toplevel_json_positions := []int{}
-	for stmt in file.stmts {
-		if stmt is ast.Import && stmt.source_name == 'json' {
-			toplevel_json_positions << stmt.pos.pos
-		}
-		if stmt is ast.Import && stmt.source_name == 'json2' {
-			toplevel_json2_positions << stmt.pos.pos
-			if !f.has_json2_import && !json2_alias_is_blank {
-				if stmt.alias == '_' {
-					// `import json2 as _` only silences unused-import warnings; `_` is not a
-					// usable qualifier and does not bring `json2` into scope, and a second
-					// plain `import json2` would be a duplicate import. So there is no way
-					// to emit valid `json2.x` calls — leave the file's json usage unmigrated.
-					json2_alias_is_blank = true
-				} else {
-					f.has_json2_import = true
-					f.json2_prefix = if stmt.alias != '' {
-						stmt.alias
+	// The json->json2 migration is opt-in (FmtOptions.migrate_json2, the `-migrate-json2`
+	// vfmt flag). When it is off, plain `v fmt` must leave all json usage untouched, so skip
+	// the whole detection block — no import rewrite, no call rewrite, no scanning I/O.
+	if f.migrate_json2 {
+		// Detect an existing top-level `json2` import, which the json->json2 migration
+		// reuses instead of emitting a duplicate `import json2` (see import_stmt). The
+		// migrated call sites are rewritten with that import's local name (its alias if
+		// `import json2 as x`, else `json2`), so they stay in scope and idempotent.
+		// Only top-level imports qualify: a branch-local (`$if { import json2 }`) one is
+		// nested inside a comptime-if statement rather than being a direct file.stmt, so
+		// it is not picked up here and a top-level `import json2` is emitted instead.
+		mut json2_alias_is_blank := false
+		mut toplevel_json2_positions := []int{}
+		mut toplevel_json_positions := []int{}
+		for stmt in file.stmts {
+			if stmt is ast.Import && stmt.source_name == 'json' {
+				toplevel_json_positions << stmt.pos.pos
+			}
+			if stmt is ast.Import && stmt.source_name == 'json2' {
+				toplevel_json2_positions << stmt.pos.pos
+				if !f.has_json2_import && !json2_alias_is_blank {
+					if stmt.alias == '_' {
+						// `import json2 as _` only silences unused-import warnings; `_` is not a
+						// usable qualifier and does not bring `json2` into scope, and a second
+						// plain `import json2` would be a duplicate import. So there is no way
+						// to emit valid `json2.x` calls — leave the file's json usage unmigrated.
+						json2_alias_is_blank = true
 					} else {
-						stmt.source_name.all_after_last('.')
+						f.has_json2_import = true
+						f.json2_prefix = if stmt.alias != '' {
+							stmt.alias
+						} else {
+							stmt.source_name.all_after_last('.')
+						}
 					}
 				}
 			}
 		}
-	}
-	// A `json2` import inside a top-level `$if` branch is present in file.imports but
-	// is not a direct file.stmt (it is nested in a comptime-if). Migrating `import
-	// json` would add a plain top-level `import json2`, which then coexists with the
-	// branch import and trips the checker's duplicate-module error. The vfmt dedup
-	// cannot be relied on: a selective/aliased branch import has a different formatted
-	// string, and even a plain branch import emitted *before* the top-level one goes
-	// to branch_processed_imports (not global_processed_imports), so the later
-	// top-level import is not deduped. So leave the file unmigrated whenever any
-	// branch-local json2 import is present.
-	mut has_branch_local_json2 := false
-	for imp in file.imports {
-		if imp.source_name == 'json2' && imp.pos.pos !in toplevel_json2_positions {
-			has_branch_local_json2 = true
-			break
-		}
-	}
-	// A `json` import inside a top-level `$if` branch has the same problem: migrating it
-	// emits `import json2` into branch_processed_imports, which is not deduped against a
-	// top-level migrated `import json2` in global_processed_imports (e.g. a distinct
-	// top-level `import json as old` plus a branch `import json { encode }` both become
-	// `import json2`). Leave the file unmigrated when a branch-local json import exists.
-	mut has_branch_local_json := false
-	for imp in file.imports {
-		if imp.source_name == 'json' && imp.pos.pos !in toplevel_json_positions {
-			has_branch_local_json = true
-			break
-		}
-	}
-	// The migrated qualifier (f.json2_prefix) must be free. If another module is
-	// imported under that local name — e.g. `import rand as json2` — adding
-	// `import json2` and rewriting calls to `json2.x` would create two imports with
-	// the same alias (the checker's duplicate-import check compares aliases), and the
-	// calls would resolve to the wrong module. Leave the file unmigrated in that case.
-	mut json2_name_taken := false
-	for imp in file.imports {
-		if imp.source_name != 'json2' && imp.alias == f.json2_prefix {
-			json2_name_taken = true
-			break
-		}
-	}
-	// When the file already has a `json2` import, the migrated `import json` is dropped
-	// (merged) rather than rewritten. That drop path only re-emits the import's
-	// next_comments, so a same-line comment on the import (e.g. `import json // note`)
-	// would be lost. Leave such a file unmigrated so the comment is preserved.
-	mut json_import_has_line_comment := false
-	if f.has_json2_import {
+		// A `json2` import inside a top-level `$if` branch is present in file.imports but
+		// is not a direct file.stmt (it is nested in a comptime-if). Migrating `import
+		// json` would add a plain top-level `import json2`, which then coexists with the
+		// branch import and trips the checker's duplicate-module error. The vfmt dedup
+		// cannot be relied on: a selective/aliased branch import has a different formatted
+		// string, and even a plain branch import emitted *before* the top-level one goes
+		// to branch_processed_imports (not global_processed_imports), so the later
+		// top-level import is not deduped. So leave the file unmigrated whenever any
+		// branch-local json2 import is present.
+		mut has_branch_local_json2 := false
 		for imp in file.imports {
-			if imp.source_name == 'json' && imp.comments.len > 0 {
-				json_import_has_line_comment = true
+			if imp.source_name == 'json2' && imp.pos.pos !in toplevel_json2_positions {
+				has_branch_local_json2 = true
 				break
 			}
 		}
-	}
-	// Some `json` usage cannot be rewritten to `json2` without changing or losing
-	// source (see file_has_unmigratable_json_usage): `json.encode_pretty`, a
-	// `json.decode` with comments on its type argument, or a struct field whose JSON
-	// shape differs between the modules (`time.Time`, `@[raw]`). When the file has any
-	// such usage, leave its whole `json` usage unmigrated (see call_expr /
-	// imp_stmt_str), so calls and the `import json` stay byte-identical. Only scan
-	// when the file actually imports `json`, to avoid walking unrelated files.
-	// `file.imports` includes branch-local (`$if { import json }`) imports, so those
-	// are covered too — otherwise vfmt could migrate the branch import to `json2`
-	// while leaving an unmigrated `json.*` call behind.
-	// `json` can be present only in file.implied_imports when vfmt auto-adds a missing
-	// import. That path is left unmigrated: vfmt would emit the implied import verbatim
-	// (not through imp_stmt_str), and whether a `json.encode` there even rewrites
-	// depends on if `json` resolved as a module, so migrating risks an import/call
-	// mismatch. Treat implied json as a reason to keep the file's json usage as-is.
-	implied_json := 'json' in file.implied_imports
-	mut imports_json := implied_json
-	// An aliased legacy import (`import json as old`) qualifies its calls as
-	// `old.encode(...)`. Whether the parser tags those as the literal `json.encode`
-	// call kind that call_expr migrates depends on the alias being resolved to the
-	// canonical module, which is not guaranteed in every parse context — so migrating
-	// could drop the `old` alias (imp_stmt_str emits plain `import json2`) while
-	// leaving `old.encode(...)` behind. Leave such files unmigrated.
-	mut has_aliased_json_import := false
-	for imp in file.imports {
-		if imp.source_name == 'json' {
-			imports_json = true
-			if imp.alias != 'json' {
-				has_aliased_json_import = true
+		// A `json` import inside a top-level `$if` branch has the same problem: migrating it
+		// emits `import json2` into branch_processed_imports, which is not deduped against a
+		// top-level migrated `import json2` in global_processed_imports (e.g. a distinct
+		// top-level `import json as old` plus a branch `import json { encode }` both become
+		// `import json2`). Leave the file unmigrated when a branch-local json import exists.
+		mut has_branch_local_json := false
+		for imp in file.imports {
+			if imp.source_name == 'json' && imp.pos.pos !in toplevel_json_positions {
+				has_branch_local_json = true
+				break
 			}
 		}
+		// The migrated qualifier (f.json2_prefix) must be free. If another module is
+		// imported under that local name — e.g. `import rand as json2` — adding
+		// `import json2` and rewriting calls to `json2.x` would create two imports with
+		// the same alias (the checker's duplicate-import check compares aliases), and the
+		// calls would resolve to the wrong module. Leave the file unmigrated in that case.
+		mut json2_name_taken := false
+		for imp in file.imports {
+			if imp.source_name != 'json2' && imp.alias == f.json2_prefix {
+				json2_name_taken = true
+				break
+			}
+		}
+		// When the file already has a `json2` import, the migrated `import json` is dropped
+		// (merged) rather than rewritten. That drop path only re-emits the import's
+		// next_comments, so a same-line comment on the import (e.g. `import json // note`)
+		// would be lost. Leave such a file unmigrated so the comment is preserved.
+		mut json_import_has_line_comment := false
+		if f.has_json2_import {
+			for imp in file.imports {
+				if imp.source_name == 'json' && imp.comments.len > 0 {
+					json_import_has_line_comment = true
+					break
+				}
+			}
+		}
+		// Some `json` usage cannot be rewritten to `json2` without changing or losing
+		// source (see file_has_unmigratable_json_usage): `json.encode_pretty`, a
+		// `json.decode` with comments on its type argument, or a struct field whose JSON
+		// shape differs between the modules (`time.Time`, `@[raw]`). When the file has any
+		// such usage, leave its whole `json` usage unmigrated (see call_expr /
+		// imp_stmt_str), so calls and the `import json` stay byte-identical. Only scan
+		// when the file actually imports `json`, to avoid walking unrelated files.
+		// `file.imports` includes branch-local (`$if { import json }`) imports, so those
+		// are covered too — otherwise vfmt could migrate the branch import to `json2`
+		// while leaving an unmigrated `json.*` call behind.
+		// `json` can be present only in file.implied_imports when vfmt auto-adds a missing
+		// import. That path is left unmigrated: vfmt would emit the implied import verbatim
+		// (not through imp_stmt_str), and whether a `json.encode` there even rewrites
+		// depends on if `json` resolved as a module, so migrating risks an import/call
+		// mismatch. Treat implied json as a reason to keep the file's json usage as-is.
+		implied_json := 'json' in file.implied_imports
+		mut imports_json := implied_json
+		// An aliased legacy import (`import json as old`) qualifies its calls as
+		// `old.encode(...)`. Whether the parser tags those as the literal `json.encode`
+		// call kind that call_expr migrates depends on the alias being resolved to the
+		// canonical module, which is not guaranteed in every parse context — so migrating
+		// could drop the `old` alias (imp_stmt_str emits plain `import json2`) while
+		// leaving `old.encode(...)` behind. Leave such files unmigrated.
+		mut has_aliased_json_import := false
+		for imp in file.imports {
+			if imp.source_name == 'json' {
+				imports_json = true
+				if imp.alias != 'json' {
+					has_aliased_json_import = true
+				}
+			}
+		}
+		// Importing `json2` into a file whose own module is `json2` is rejected by the
+		// checker (cannot import a module into a module with the same name), so the
+		// qualifier is effectively taken — leave such a file unmigrated.
+		cur_module_is_json2 := file.mod.name == 'json2'
+		if imports_json {
+			f.keep_json_unmigrated = implied_json || json2_alias_is_blank || has_branch_local_json2
+				|| has_branch_local_json || has_aliased_json_import || json2_name_taken
+				|| json_import_has_line_comment || cur_module_is_json2
+				|| f.file_has_vfmt_off_region() || f.file_has_unmigratable_json_usage(file)
+				|| f.module_has_sibling_json_hook(file)
+		}
+		// Only rewrite `json.encode`/`json.decode` calls when the file actually imports the
+		// legacy `json` module and it is being migrated. The parser tags a call by its literal
+		// qualifier name, so a file using `import json2 as json` has its already-json2 calls
+		// (`json.decode[User](s)`) tagged with the same `.json_decode`/`.json_encode` kind;
+		// migrating those would corrupt them (e.g. `json.decode[User](s)` → `json.decode[s]()`,
+		// since json2_migrate_call reads the type from the legacy first argument). An implied
+		// json import keeps the file unmigrated, so it is excluded via keep_json_unmigrated.
+		f.migrate_json_calls = imports_json && !f.keep_json_unmigrated
 	}
-	// Importing `json2` into a file whose own module is `json2` is rejected by the
-	// checker (cannot import a module into a module with the same name), so the
-	// qualifier is effectively taken — leave such a file unmigrated.
-	cur_module_is_json2 := file.mod.name == 'json2'
-	if imports_json {
-		f.keep_json_unmigrated = implied_json || json2_alias_is_blank || has_branch_local_json2
-			|| has_branch_local_json || has_aliased_json_import || json2_name_taken
-			|| json_import_has_line_comment || cur_module_is_json2
-			|| f.file_has_vfmt_off_region() || f.file_has_unmigratable_json_usage(file)
-			|| f.module_has_sibling_json_hook(file)
-	}
-	// Only rewrite `json.encode`/`json.decode` calls when the file actually imports the
-	// legacy `json` module and it is being migrated. The parser tags a call by its literal
-	// qualifier name, so a file using `import json2 as json` has its already-json2 calls
-	// (`json.decode[User](s)`) tagged with the same `.json_decode`/`.json_encode` kind;
-	// migrating those would corrupt them (e.g. `json.decode[User](s)` → `json.decode[s]()`,
-	// since json2_migrate_call reads the type from the legacy first argument). An implied
-	// json import keeps the file unmigrated, so it is excluded via keep_json_unmigrated.
-	f.migrate_json_calls = imports_json && !f.keep_json_unmigrated
 
 	for imp in file.imports {
 		f.mod2alias[imp.mod] = imp.alias
@@ -463,6 +471,7 @@ fn decode_target_expr_needs_legacy_json(t &ast.Table, cur_mod string, expr ast.E
 			''
 		}
 	}
+
 	if name == '' {
 		// Not a plain type-name expression (unexpected for a well-formed decode) — be safe.
 		return true
@@ -664,7 +673,8 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		// would bind to the local instead. A top-level function with that name
 		// collides outright (`fn json2()` duplicates the imported module symbol).
 		// Leave the file unmigrated in either case.
-		if decl.receiver.name == s.json2_prefix || decl.params.any(it.name == s.json2_prefix)
+		if decl.receiver.name == s.json2_prefix
+			|| decl.params.any(it.name == s.json2_prefix)
 			|| (!decl.is_method && decl.short_name == s.json2_prefix) {
 			s.found = true
 		}
@@ -1201,7 +1211,9 @@ pub fn (f &Fmt) imp_stmt_str(imp ast.Import) string {
 	// calls, so nothing needs to be brought into scope unqualified anymore.
 	// Exception: a file with a json call the migration can't rewrite losslessly is
 	// left unmigrated (see process_file_imports), so its `import json` is kept as-is.
-	if imp.source_name == 'json' && !f.keep_json_unmigrated {
+	// migrate_json_calls is `imports_json && !keep_json_unmigrated`, and is false unless the
+	// opt-in migration is enabled — so plain `v fmt` leaves `import json` untouched.
+	if imp.source_name == 'json' && f.migrate_json_calls {
 		return 'json2'
 	}
 	// Format / remove unused selective import symbols
@@ -3155,6 +3167,7 @@ fn (mut f Fmt) json2_migrate_call(node ast.CallExpr) {
 		}
 		else {}
 	}
+
 	f.or_expr(node.or_block)
 	f.comments(node.comments, has_nl: false)
 }
