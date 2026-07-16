@@ -512,6 +512,12 @@ pub fn (mut tc TypeChecker) enable_scoped_parallel_workers() {
 	}
 }
 
+// scoped_parallel_workers_enabled reports whether compiler stages should use
+// short-lived worker arenas with this checker.
+pub fn (tc &TypeChecker) scoped_parallel_workers_enabled() bool {
+	return tc.scope_parallel_check_workers
+}
+
 // new creates a TypeChecker value for types.
 pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	fs := new_scope(unsafe { nil })
@@ -931,6 +937,57 @@ pub fn (mut tc TypeChecker) reserve_transform_node_caches(n int) {
 	reserve_type_cache(mut tc.expr_type_values, n)
 	reserve_bool_cache(mut tc.expr_type_set, n)
 	reserve_bool_cache(mut tc.checking_nodes, n)
+}
+
+// reserve_scoped_transform_metadata keeps tables that receive escaping
+// transform additions in the compilation arena in the common case while
+// scratch allocations use a disposable arena. The signature maps are rebuilt
+// after promotion, so this headroom is an optimization rather than an
+// ownership requirement.
+pub fn (mut tc TypeChecker) reserve_scoped_transform_metadata(n int, signature_headroom int) {
+	_ = n
+	tc.fn_ret_types.reserve(u32(tc.fn_ret_types.len + signature_headroom))
+	tc.fn_param_types.reserve(u32(tc.fn_param_types.len + signature_headroom))
+	tc.fn_variadic.reserve(u32(tc.fn_variadic.len + signature_headroom))
+	tc.specialized_generic_fns.reserve(u32(tc.specialized_generic_fns.len + signature_headroom))
+	if !isnil(tc.type_interner) {
+		mut interner := tc.type_interner
+		interner.reserve(signature_headroom)
+	}
+	if !isnil(tc.symbols) {
+		mut symbols := tc.symbols
+		symbols.reserve(signature_headroom)
+	}
+}
+
+// rebuild_scoped_transform_signature_maps moves signature-map backing storage
+// into the current arena after a disposable transform scope has been left.
+pub fn (mut tc TypeChecker) rebuild_scoped_transform_signature_maps() {
+	tc.fn_ret_types = tc.fn_ret_types.clone()
+	tc.fn_param_types = tc.fn_param_types.clone()
+	tc.fn_variadic = tc.fn_variadic.clone()
+	tc.specialized_generic_fns = tc.specialized_generic_fns.clone()
+}
+
+// begin_sparse_transform_node_caches keeps source-node entries in their dense
+// checked arrays and records transform-created node metadata sparsely.
+pub fn (mut tc TypeChecker) begin_sparse_transform_node_caches(base_nodes int) {
+	tc.parallel_check_sparse = true
+	tc.check_range_lo = 0
+	tc.check_range_hi = base_nodes - 1
+}
+
+// promote_scoped_transform_interners moves additions made by a scoped
+// transform into the current compilation arena before that scope is freed.
+pub fn (mut tc TypeChecker) promote_scoped_transform_interners(type_start int, symbol_start int, scope voidptr) {
+	if !isnil(tc.type_interner) {
+		mut interner := tc.type_interner
+		interner.promote_from(type_start, scope)
+	}
+	if !isnil(tc.symbols) {
+		mut symbols := tc.symbols
+		symbols.promote_from(symbol_start, scope)
+	}
 }
 
 fn reserve_string_cache(mut values []string, n int) {

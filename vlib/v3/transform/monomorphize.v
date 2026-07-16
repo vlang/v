@@ -66,7 +66,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	mut recorded_call_sites := map[int]bool{}
 	mut changed := true
 	mut scan_start := 0
-	mut used_fns_at_scan := t.used_fns.len
+	mut used_fns_at_scan := t.used_fn_count()
 	t.in_monomorphize_scan = true
 	defer {
 		t.in_monomorphize_scan = false
@@ -79,7 +79,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		// or comptime unroll now calls it); its subtree left the ignore set
 		// and must be scanned too, or its generic calls stay unspecialized.
 		mut rescan := []int{}
-		if scan_start > 0 && t.used_fns.len != used_fns_at_scan {
+		if scan_start > 0 && t.used_fn_count() != used_fns_at_scan {
 			new_ignored := t.monomorphize_ignored_nodes(decls)
 			for i in 0 .. scan_start {
 				if i < ignored_nodes.len && ignored_nodes[i] && !(i < new_ignored.len
@@ -89,7 +89,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			}
 			ignored_nodes = unsafe { new_ignored }
 		}
-		used_fns_at_scan = t.used_fns.len
+		used_fns_at_scan = t.used_fn_count()
 		for scan_idx in 0 .. rescan.len + (node_count - scan_start) {
 			i := if scan_idx < rescan.len {
 				rescan[scan_idx]
@@ -438,7 +438,8 @@ fn (mut t Transformer) specialize_generic_struct_methods(struct_decls map[string
 					// function: markused seeds the concrete instance key (`Box[int].report`) into
 					// `used_fns` per reachable function, so one used only in dead code is skipped —
 					// its body may be invalid for that type argument and would fail C compilation.
-					if t.used_fns.len > 0 && mvkey !in t.used_fns && c_name(mvkey) !in t.used_fns {
+					if t.has_any_used_fns() && !t.used_fn_contains_name(mvkey)
+						&& !t.used_fn_contains_name(c_name(mvkey)) {
 						continue
 					}
 				}
@@ -490,7 +491,7 @@ fn (t &Transformer) generic_struct_method_used_for_spec(spec string, decl Generi
 		}
 	}
 	for alias in aliases {
-		if alias in t.used_fns {
+		if t.used_fn_contains_name(alias) {
 			return true
 		}
 	}
@@ -621,7 +622,14 @@ fn (mut t Transformer) collect_interface_boxed_types() {
 		t.tc.cur_file = old_tc_file
 		t.tc.cur_module = old_tc_module
 	}
-	for idx, node in t.a.nodes {
+	t.collect_interface_boxed_types_range(0, t.a.nodes.len)
+	t.interface_boxed_types_frozen = true
+}
+
+fn (mut t Transformer) collect_interface_boxed_types_range(start int, end int) {
+	limit := if end < t.a.nodes.len { end } else { t.a.nodes.len }
+	for idx in start .. limit {
+		node := t.a.nodes[idx]
 		if node.kind == .file {
 			t.cur_file = node.value
 			t.tc.cur_file = node.value
@@ -1368,7 +1376,7 @@ fn (t &Transformer) interface_literal_name(name string) ?string {
 }
 
 fn (mut t Transformer) mark_interface_boxed_type(iface_name string, concrete_type string) {
-	if iface_name.len == 0 || concrete_type.len == 0 {
+	if t.interface_boxed_types_frozen || iface_name.len == 0 || concrete_type.len == 0 {
 		return
 	}
 	mut iface_names := [iface_name]
@@ -3519,6 +3527,10 @@ fn (mut t Transformer) clear_resolved_call(id flat.NodeId) {
 		return
 	}
 	idx := int(id)
+	if t.tc.parallel_check_sparse && idx >= t.tc.resolved_call_names.len {
+		t.tc.sparse_resolved_call_names.delete(idx)
+		return
+	}
 	if idx >= 0 && idx < t.tc.resolved_call_names.len {
 		t.tc.resolved_call_names[idx] = ''
 		t.tc.resolved_call_set[idx] = false

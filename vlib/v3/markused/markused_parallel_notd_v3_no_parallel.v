@@ -13,6 +13,7 @@ import v3.workers
 
 const max_markused_jobs = 8
 const min_markused_parallel_bodies = 512
+const scoped_markused_worker_batches = 16
 
 $if !windows {
 	// MarkusedChunkArgs is the payload handed to each worker thread.
@@ -38,10 +39,44 @@ $if !windows {
 		modules := unsafe { &[]string(args.modules_ptr) }
 		import_contexts := unsafe { &[]int(args.import_context_ptr) }
 		mut results := unsafe { &[]BodyCalls(args.results_ptr) }
-		c.collect_bodies_range(*body_ids, *modules, *import_contexts, args.start, args.end, mut
-			*results)
+		if args.scope_enabled {
+			c.collect_bodies_scoped_batches(*body_ids, *modules, *import_contexts, args.start,
+				args.end, mut *results)
+		} else {
+			c.collect_bodies_range(*body_ids, *modules, *import_contexts, args.start, args.end, mut
+				*results)
+		}
 		markused_worker_scope_leave(args.scope)
 		return unsafe { nil }
+	}
+}
+
+// collect_bodies_scoped_batches keeps call lists in the worker's result arena,
+// while repeatedly releasing the much larger checker and local-analysis
+// scratch state used to discover them.
+fn (c &CallCollector) collect_bodies_scoped_batches(body_ids []int, body_modules []string, body_import_contexts []int, range_start int, range_end int, mut results []BodyCalls) {
+	item_count := range_end - range_start
+	if item_count <= 0 {
+		return
+	}
+	n_batches := if item_count < scoped_markused_worker_batches {
+		item_count
+	} else {
+		scoped_markused_worker_batches
+	}
+	for batch_idx in 0 .. n_batches {
+		start := range_start + item_count * batch_idx / n_batches
+		end := range_start + item_count * (batch_idx + 1) / n_batches
+		scratch_scope := markused_worker_scope_begin(true)
+		batch_tc := c.tc.fork_for_parallel_transform(c.a)
+		batch := c.fork_with_tc(batch_tc)
+		batch.collect_bodies_range(body_ids, body_modules, body_import_contexts, start, end, mut
+			results)
+		markused_worker_scope_leave(scratch_scope)
+		for result_idx in start .. end {
+			results[result_idx] = clone_body_calls(results[result_idx])
+		}
+		markused_worker_scope_free(scratch_scope)
 	}
 }
 
@@ -110,6 +145,7 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 		}
 		bounds := markused_chunk_bounds(collector.a, body_ids, n_jobs)
 		thread_count := n_jobs - 1
+		scope_workers := collector.tc.scoped_parallel_workers_enabled()
 		// Worker collectors share the read-only lookup maps but carry a forked
 		// TypeChecker with a private type_cache (the only state the collectors
 		// mutate through the checker).
@@ -128,7 +164,7 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 			results_ptr:        unsafe { voidptr(&results) }
 			start:              bounds[0]
 			end:                bounds[1]
-			scope_enabled:      false
+			scope_enabled:      scope_workers
 		}
 		for ci in 0 .. thread_count {
 			args << MarkusedChunkArgs{
@@ -139,7 +175,7 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 				results_ptr:        unsafe { voidptr(&results) }
 				start:              bounds[ci + 1]
 				end:                bounds[ci + 2]
-				scope_enabled:      true
+				scope_enabled:      scope_workers
 			}
 		}
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
@@ -153,14 +189,14 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 			}
 		}
 		ast.worker_pool.run(tasks)
-		for ci in 0 .. thread_count {
-			if args[ci + 1].scope == unsafe { nil } {
+		for ci in 0 .. n_jobs {
+			if args[ci].scope == unsafe { nil } {
 				continue
 			}
-			for result_idx in args[ci + 1].start .. args[ci + 1].end {
+			for result_idx in args[ci].start .. args[ci].end {
 				results[result_idx] = clone_body_calls(results[result_idx])
 			}
-			markused_worker_scope_free(args[ci + 1].scope)
+			markused_worker_scope_free(args[ci].scope)
 		}
 		return results
 	}

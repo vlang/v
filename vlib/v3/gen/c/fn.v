@@ -6955,7 +6955,7 @@ fn (g &FlatGen) selective_import_call_key(name string) ?string {
 fn (g &FlatGen) fn_decl_is_variadic(name string, fallback string) bool {
 	if name.contains('__') {
 		dotted_name := name.replace('__', '.')
-		if v := g.fn_decl_variadic[dotted_name] {
+		if v := g.fn_decl_variadic_entry(dotted_name) {
 			return v
 		}
 		if v := g.import_resolved_fn_decl_variadic(dotted_name) {
@@ -6975,7 +6975,7 @@ fn (g &FlatGen) fn_decl_is_variadic(name string, fallback string) bool {
 		if v := g.import_resolved_fn_decl_variadic(candidate) {
 			return v
 		}
-		if v := g.fn_decl_variadic[candidate] {
+		if v := g.fn_decl_variadic_entry(candidate) {
 			return v
 		}
 		if candidate.starts_with('main.') {
@@ -6992,6 +6992,16 @@ fn (g &FlatGen) fn_decl_is_variadic(name string, fallback string) bool {
 	return false
 }
 
+fn (g &FlatGen) fn_decl_variadic_entry(name string) ?bool {
+	if value := g.fn_decl_variadic[name] {
+		return value
+	}
+	if name in g.fn_decl_param_types {
+		return false
+	}
+	return none
+}
+
 fn (g &FlatGen) import_resolved_fn_decl_variadic(name string) ?bool {
 	if !name.contains('.') {
 		return none
@@ -7006,7 +7016,7 @@ fn (g &FlatGen) import_resolved_fn_decl_variadic(name string) ?bool {
 		g.import_alias_module(alias) or { return none }
 	}
 	resolved_name := '${module_name}.${name.all_after('.')}'
-	if v := g.fn_decl_variadic[resolved_name] {
+	if v := g.fn_decl_variadic_entry(resolved_name) {
 		return v
 	}
 	return none
@@ -7015,7 +7025,7 @@ fn (g &FlatGen) import_resolved_fn_decl_variadic(name string) ?bool {
 fn (g &FlatGen) local_or_unique_short_fn_decl_variadic(name string) ?bool {
 	if g.tc != unsafe { nil } {
 		module_key := fn_decl_module_key(g.tc.cur_module, name)
-		if v := g.fn_decl_variadic[module_key] {
+		if v := g.fn_decl_variadic_entry(module_key) {
 			return v
 		}
 	}
@@ -7027,7 +7037,7 @@ fn (g &FlatGen) unique_short_fn_decl_variadic(name string) ?bool {
 	if g.fn_decl_variadic_short_counts[short_name] != 1 {
 		return none
 	}
-	if v := g.fn_decl_variadic[short_name] {
+	if v := g.fn_decl_variadic_entry(short_name) {
 		return v
 	}
 	return none

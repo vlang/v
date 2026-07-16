@@ -95,6 +95,40 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	assert params[0] is types.String
 }
 
+fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.begin_sparse_transform_node_caches(0)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	batch_tc := tc.fork_for_parallel_transform(&a)
+	mut batch := master.fork_scoped_batch_worker(&a, batch_tc)
+	batch.tc.fork_overlay.resolved_call_names[10] = 'main.resolved_call'
+	batch.tc.fork_overlay.resolved_fn_values[11] = 'main.resolved_fn_value'
+
+	master.absorb_scoped_batch(batch, unsafe { nil }, a.nodes.len)
+	assert tc.sparse_resolved_call_names[10] == 'main.resolved_call'
+	assert tc.sparse_resolved_fn_values[11] == 'main.resolved_fn_value'
+}
+
+fn test_frozen_interface_boxed_types_are_read_only_in_skip_generics_workers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.skip_generics = true
+	master.interface_boxed_types['main.Reader\nmain.Source'] = true
+	master.interface_boxed_types_done = true
+	master.interface_boxed_types_frozen = true
+	mut worker := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
+
+	worker.mark_interface_boxed_type('main.Reader', 'main.Other')
+	assert 'main.Reader\nmain.Other' !in master.interface_boxed_types
+	assert 'main.Reader\nmain.Other' !in worker.interface_boxed_types
+
+	master.interface_boxed_types_frozen = false
+	master.mark_interface_boxed_type('main.Reader', 'main.Other')
+	assert master.interface_boxed_types['main.Reader\nmain.Other']
+}
+
 fn test_multi_return_selector_suffix_does_not_match_free_fn() {
 	mut a := flat.FlatAst.new()
 	receiver_id := a.add_node(flat.Node{
