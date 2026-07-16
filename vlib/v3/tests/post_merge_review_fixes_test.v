@@ -3756,6 +3756,33 @@ fn main() {
 	assert out == "Foo{\n    nums: [1, 2]\n    labels: {'a': 3}\n    fixed: [4, 5]\n    words: ['x', 'y']\n}"
 }
 
+fn test_map_pointer_alias_cast_preserves_existing_pointer() {
+	v3_bin := build_v3()
+	source := 'type M = map[string]int
+
+fn keep(p &M) &M {
+	return &M(p)
+}
+
+fn main() {
+	mut m := {
+		"a": 1
+	}
+	p := keep(&M(m))
+	unsafe {
+		(*p)["b"] = 2
+	}
+	println(int_str(m["b"]))
+}
+'
+	c_source := gen_c(v3_bin, 'map_pointer_alias_cast_preserves_existing_pointer_c', source)
+	body := c_fn_body(c_source, 'map* keep(map* p) {')
+	assert body.contains('return (map*)(p);'), body
+	assert !body.contains('map _t') && !body.contains('&_t') && !body.contains('&p'), body
+	out := run_good(v3_bin, 'map_pointer_alias_cast_preserves_existing_pointer', source)
+	assert out == '2'
+}
+
 fn test_empty_interface_box_preserves_alias_type_id() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'empty_interface_alias_type_id',

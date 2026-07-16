@@ -4189,7 +4189,7 @@ fn (mut g FlatGen) gen_pointer_cast_from_map_value_address(id flat.NodeId, targe
 	if map_str_clean_type(target.base_type) !is types.Map {
 		return false
 	}
-	return g.gen_map_pointer_cast_from_value_address(id)
+	return g.gen_map_pointer_cast_from_value_address(id, target)
 }
 
 fn (mut g FlatGen) gen_sum_variant_pointer_cast(id flat.NodeId, target types.Pointer, ct string) bool {
@@ -4268,11 +4268,18 @@ fn (mut g FlatGen) gen_sum_pointer_cast_expr(id flat.NodeId, target types.Pointe
 	return true
 }
 
-fn (mut g FlatGen) gen_map_pointer_cast_from_value_address(id flat.NodeId) bool {
+fn (mut g FlatGen) gen_map_pointer_cast_from_value_address(id flat.NodeId, target types.Pointer) bool {
 	actual0 := if int(id) >= 0 && int(id) < g.a.nodes.len && g.a.nodes[int(id)].typ.len > 0 {
 		g.tc.parse_type(g.a.nodes[int(id)].typ)
 	} else {
 		g.usable_expr_type(id)
+	}
+	if actual0 is types.Pointer && map_str_clean_type(actual0.base_type) is types.Map {
+		ct := g.tc.c_type(target)
+		g.write('(${ct})(')
+		g.gen_expr(id)
+		g.write(')')
+		return true
 	}
 	actual := map_str_clean_type(actual0)
 	if actual !is types.Map {
@@ -4291,11 +4298,16 @@ fn (mut g FlatGen) gen_map_pointer_cast_from_value_address(id flat.NodeId) bool 
 	return true
 }
 
-fn (mut g FlatGen) map_pointer_cast_from_value_address_string(id flat.NodeId, seen []string) ?string {
+fn (mut g FlatGen) map_pointer_cast_from_value_address_string(id flat.NodeId, seen []string, ct string) ?string {
 	actual0 := if int(id) >= 0 && int(id) < g.a.nodes.len && g.a.nodes[int(id)].typ.len > 0 {
 		g.tc.parse_type(g.a.nodes[int(id)].typ)
 	} else {
 		g.usable_expr_type(id)
+	}
+	if actual0 is types.Pointer && map_str_clean_type(actual0.base_type) is types.Map {
+		child0 := g.const_expr_to_string(id, seen)
+		child := if trimmed_space(child0).len == 0 { '0' } else { child0 }
+		return '(${ct})(${child})'
 	}
 	actual := map_str_clean_type(actual0)
 	if actual !is types.Map {
@@ -4306,10 +4318,10 @@ fn (mut g FlatGen) map_pointer_cast_from_value_address_string(id flat.NodeId, se
 	if g.expr_is_addressable(id) {
 		return '&(${child})'
 	}
-	ct := g.tc.c_type(actual)
+	map_ct := g.tc.c_type(actual)
 	tmp := '_t${g.tmp_count}'
 	g.tmp_count++
-	return '({${ct} ${tmp} = ${child}; &${tmp};})'
+	return '({${map_ct} ${tmp} = ${child}; &${tmp};})'
 }
 
 fn (mut g FlatGen) gen_current_mut_param_address(id flat.NodeId) bool {
@@ -6213,7 +6225,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			}
 			if ct == 'map*' {
 				child_id := g.a.child(&node, 0)
-				if map_addr := g.map_pointer_cast_from_value_address_string(child_id, seen) {
+				if map_addr := g.map_pointer_cast_from_value_address_string(child_id, seen, ct) {
 					return map_addr
 				}
 				child_node := g.a.nodes[int(child_id)]
@@ -7652,8 +7664,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						return
 					}
 				}
-				if g.gen_map_pointer_cast_from_value_address(child_id) {
-					return
+				if target_type is types.Pointer {
+					if g.gen_map_pointer_cast_from_value_address(child_id, target_type) {
+						return
+					}
 				}
 				if child_node.kind == .prefix && child_node.op == .amp {
 					g.write('(${ct})(')
