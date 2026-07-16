@@ -3715,6 +3715,9 @@ fn make_alias() &Bare {
 	assert c_source.contains('v3_aligned_free(pa)')
 	assert c_source.contains('v3_aligned_free(ha)')
 	assert c_source.contains('v3_aligned_memdup(&x, sizeof(Bare), __alignof__(Bare))')
+	make_direct_body := c_fn_body(c_source, 'Bare* make_direct(void) {')
+	assert make_direct_body.contains('v3_aligned_memdup(&x, sizeof(Bare), __alignof__(Bare))'), make_direct_body
+	assert !make_direct_body.contains('memdup(&x, sizeof(Bare))'), make_direct_body
 	assert c_source.contains('v3_aligned_memdup(&__assoc_')
 	out := run_good(v3_bin, 'bare_aligned_attribute_cgen', source)
 	assert out == '29'

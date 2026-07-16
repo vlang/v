@@ -4605,8 +4605,7 @@ fn (mut t Transformer) heap_copy_local_address_return(child_id flat.NodeId) ?fla
 		return none
 	}
 	addr := t.make_prefix(.amp, t.make_ident(inner.value))
-	size := t.make_sizeof_type(ret_base_type)
-	dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
+	dup := t.make_memdup_call_for_type(addr, ret_base_type)
 	return t.make_cast(t.cur_fn_ret_type, dup, t.cur_fn_ret_type)
 }
 
