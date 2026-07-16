@@ -16,6 +16,7 @@ const max_parallel_transform_jobs = 6
 // append into pre-partitioned capacity regions, so extra threads cost no
 // clone memory; cap by core count only.
 const max_shared_transform_jobs = 10
+const scoped_transform_worker_batches = 5
 
 $if !windows {
 	// TransformChunkArgs is the payload handed to each persistent worker.
@@ -38,11 +39,12 @@ $if !windows {
 	fn shared_chunk_thread(arg voidptr) voidptr {
 		a := unsafe { &SharedChunkArgs(arg) }
 		mut w := unsafe { &Transformer(a.worker) }
-		scope := transform_worker_scope_begin(w.scope_parallel_workers && !a.is_master)
 		items := unsafe { &[]FnWorkItem(a.items_ptr) }
-		w.transform_pure_items_serial(*items)
-		w.worker_scope = scope
-		transform_worker_scope_leave(scope)
+		if w.scope_parallel_workers && !a.is_master {
+			w.transform_scoped_helper_batches(*items)
+		} else {
+			w.transform_pure_items_serial(*items)
+		}
 		return unsafe { nil }
 	}
 }
@@ -79,6 +81,131 @@ fn transform_worker_scope_free(scope voidptr) {
 			unsafe { prealloc_scope_free_after(scope) }
 		}
 	}
+}
+
+// promote_scoped_node_to_current copies only fields owned by `scope`. The
+// caller has already left the scratch scope, so clones land in its small result
+// arena and survive until the master merges this worker.
+fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
+	if idx < 0 || idx >= t.a.nodes.len {
+		return
+	}
+	mut node := unsafe { &t.a.nodes[idx] }
+	if node.value.len > 0 && transform_scope_owns(scope, node.value.str) {
+		node.value = node.value.clone()
+	}
+	if node.typ.len > 0 && transform_scope_owns(scope, node.typ.str) {
+		node.typ = node.typ.clone()
+	}
+	old_params := node.generic_params()
+	if old_params.len == 0 {
+		return
+	}
+	mut needs_owned_params := transform_scope_owns(scope, old_params.data)
+	if !needs_owned_params {
+		for param in old_params {
+			if param.len > 0 && transform_scope_owns(scope, param.str) {
+				needs_owned_params = true
+				break
+			}
+		}
+	}
+	if !needs_owned_params {
+		return
+	}
+	mut params := []string{cap: old_params.len}
+	for param in old_params {
+		if param.len > 0 && transform_scope_owns(scope, param.str) {
+			params << param.clone()
+		} else {
+			params << param
+		}
+	}
+	node.set_generic_params(params)
+}
+
+// absorb_scoped_batch publishes one batch's observable state into the helper's
+// result arena before its large scratch arena is released.
+fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, new_node_start int) {
+	for idx in new_node_start .. batch.a.nodes.len {
+		t.promote_scoped_node_to_current(idx, scope)
+	}
+	for idx in batch.scoped_owned_base_nodes.keys() {
+		t.promote_scoped_node_to_current(idx, scope)
+		t.scoped_owned_base_nodes[idx] = true
+	}
+	for name in batch.used_fns_log {
+		t.used_fns[name.clone()] = true
+	}
+	for name, req in batch.sum_eq_types {
+		if name !in t.sum_eq_types {
+			t.sum_eq_types[name.clone()] = SumEqRequest{
+				module:        req.module.clone()
+				file:          req.file.clone()
+				helper_module: req.helper_module.clone()
+			}
+		}
+	}
+	for message in batch.monomorph_errors {
+		t.monomorph_errors << message.clone()
+	}
+	if !isnil(batch.tc.fork_overlay) && !isnil(t.tc.fork_overlay) {
+		for idx, name in batch.tc.fork_overlay.resolved_call_names {
+			t.tc.fork_overlay.resolved_call_names[idx] = name.clone()
+		}
+		for idx, name in batch.tc.fork_overlay.resolved_fn_values {
+			t.tc.fork_overlay.resolved_fn_values[idx] = name.clone()
+		}
+	}
+	if batch.ignored_comptime_for_nodes.len > 0 {
+		if t.ignored_comptime_for_nodes.len < batch.ignored_comptime_for_nodes.len {
+			t.ignored_comptime_for_nodes << []bool{len: batch.ignored_comptime_for_nodes.len - t.ignored_comptime_for_nodes.len}
+		}
+		for idx, ignored in batch.ignored_comptime_for_nodes {
+			if ignored {
+				t.ignored_comptime_for_nodes[idx] = true
+			}
+		}
+	}
+}
+
+// transform_scoped_helper_batches keeps one worker-pool dispatch but bounds
+// scratch lifetime within each helper. A fresh Transformer/TypeChecker fork per
+// batch prevents caches from retaining pointers into the released arena.
+fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem) {
+	result_scope := transform_worker_scope_begin(true)
+	mut total_cost := i64(0)
+	for item in items {
+		total_cost += i64(item.cost) + 1
+	}
+	n_batches := if items.len < scoped_transform_worker_batches {
+		items.len
+	} else {
+		scoped_transform_worker_batches
+	}
+	mut start := 0
+	mut consumed_cost := i64(0)
+	for batch_idx in 0 .. n_batches {
+		mut end := start
+		target_cost := total_cost * i64(batch_idx + 1) / i64(n_batches)
+		for end < items.len
+			&& (batch_idx == n_batches - 1 || consumed_cost < target_cost || end == start) {
+			consumed_cost += i64(items[end].cost) + 1
+			end++
+		}
+		scratch_scope := transform_worker_scope_begin(true)
+		batch_tc := t.tc.fork_for_parallel_transform(t.a)
+		mut batch := t.fork_worker(t.a, batch_tc)
+		batch.used_fns_log_active = true
+		new_node_start := t.a.nodes.len
+		batch.transform_pure_items_serial(items[start..end])
+		transform_worker_scope_leave(scratch_scope)
+		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
+		transform_worker_scope_free(scratch_scope)
+		start = end
+	}
+	t.worker_scope = result_scope
+	transform_worker_scope_leave(result_scope)
 }
 
 // clone_deferred_worker_writes_from moves writes queued by merge_worker out of
@@ -313,6 +440,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.base_write_intercept = true
 		t.defer_oor_writes = true
 		t.shared_base_nodes = base_nodes
+		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		mut args := []SharedChunkArgs{len: chunk_count}
 		args[0] = SharedChunkArgs{
 			worker:    voidptr(t)
@@ -354,6 +482,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 				force_sync: ci == 0 || fail == 'transform:all' || fail == 'transform:${helper_idx}'
 			}
 		}
+		transform_worker_scope_leave(setup_scope)
 		any_started := t.a.worker_pool.run(tasks)
 		unsafe {
 			t.a.nodes.cap = orig_nodes_cap
@@ -380,6 +509,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.shared_base_nodes = -1
 		t.flush_deferred_base_writes()
 		t.tc.unfreeze_type_cache_after_forks()
+		transform_worker_scope_free(setup_scope)
 		return any_started
 	}
 }

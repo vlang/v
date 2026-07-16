@@ -751,6 +751,26 @@ fn prealloc_malloc(n isize) &u8 {
 
 @[unsafe]
 fn prealloc_realloc(old_data &u8, old_size isize, new_size isize) &u8 {
+	unsafe {
+		mut mb := g_memory_block
+		if mb != nil && old_data != nil && old_size >= 0 && new_size >= 0
+			&& old_data + old_size == mb.current {
+			new_end := old_data + new_size
+			if new_end <= mb.stop {
+				mb.current = new_end
+				$if prealloc_stats ? {
+					mb.mallocs++
+					C.v_prealloc_atomic_add_i64(&g_prealloc_allocation_count, 1)
+					C.v_prealloc_atomic_add_i64(&g_prealloc_allocated_bytes, i64(new_size))
+				} $else {
+					$if trace_prealloc ? {
+						mb.mallocs++
+					}
+				}
+				return old_data
+			}
+		}
+	}
 	new_ptr := unsafe { vmemory_block_malloc(new_size, 0) }
 	min_size := if old_size < new_size { old_size } else { new_size }
 	unsafe { C.memcpy(new_ptr, old_data, min_size) }

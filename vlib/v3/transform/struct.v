@@ -479,6 +479,12 @@ fn (t &Transformer) lookup_struct_info_direct(name string) ?StructInfo {
 		if short_name in t.structs {
 			return t.structs[short_name]
 		}
+	} else if t.struct_short_name_index_ready {
+		if qualified := t.struct_short_name_index[name] {
+			if qualified != struct_short_name_ambiguous {
+				return t.structs[qualified]
+			}
+		}
 	} else {
 		mut matches := []StructInfo{}
 		for qualified, info in t.structs {
