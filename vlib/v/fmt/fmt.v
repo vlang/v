@@ -225,11 +225,22 @@ fn json_migrate_block_visit(node &ast.Node, data voidptr) bool {
 		if assign_decl_shadows(node as ast.AssignStmt, p) {
 			s.blocked = true
 		}
+	} else if node is ast.Stmt && node is ast.ForStmt {
+		// The `for <cond> {}` condition is a loop-header expr outside children().
+		forstmt := node as ast.ForStmt
+		if !forstmt.is_inf {
+			walker.inspect(forstmt.cond, data, json_migrate_block_visit)
+		}
 	} else if node is ast.Stmt && node is ast.ForInStmt {
 		// `for json2 in users {}` / `for k, json2 in m {}` — binders live on the node.
 		fin := node as ast.ForInStmt
 		if fin.key_var == p || fin.val_var == p {
 			s.blocked = true
+		}
+		// The iterable and the range high are loop-header exprs outside children().
+		walker.inspect(fin.cond, data, json_migrate_block_visit)
+		if fin.is_range {
+			walker.inspect(fin.high, data, json_migrate_block_visit)
 		}
 	} else if node is ast.Stmt && node is ast.ComptimeFor {
 		// `$for json2 in T.fields {}`
@@ -237,11 +248,19 @@ fn json_migrate_block_visit(node &ast.Node, data voidptr) bool {
 			s.blocked = true
 		}
 	} else if node is ast.Stmt && node is ast.ForCStmt {
-		// The `json2 := 0` init of a C-style for is a loop-header field outside children().
+		// The init/cond/inc of a C-style for are loop-header fields outside children().
 		forc := node as ast.ForCStmt
-		if forc.has_init && forc.init is ast.AssignStmt
-			&& assign_decl_shadows(forc.init as ast.AssignStmt, p) {
-			s.blocked = true
+		if forc.has_init {
+			if forc.init is ast.AssignStmt && assign_decl_shadows(forc.init as ast.AssignStmt, p) {
+				s.blocked = true
+			}
+			walker.inspect(forc.init, data, json_migrate_block_visit)
+		}
+		if forc.has_cond {
+			walker.inspect(forc.cond, data, json_migrate_block_visit)
+		}
+		if forc.has_inc {
+			walker.inspect(forc.inc, data, json_migrate_block_visit)
 		}
 	} else if node is ast.Expr && node is ast.IfExpr {
 		// An `if json2 := opt() {}` guard is in the branch condition, which
