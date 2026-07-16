@@ -1965,14 +1965,21 @@ fn restart_v3_without_cache() {
 }
 
 fn restart_v3_with_args(extra_args []string) {
-	mut command := [os.quoted_path(os.executable())]
-	for arg in extra_args {
-		command << os.quoted_path(arg)
+	executable := os.executable()
+	mut args := extra_args.clone()
+	args << os.args[1..]
+	$if js {
+		mut command := [os.quoted_path(executable)]
+		for arg in args {
+			command << os.quoted_path(arg)
+		}
+		exit(os.system(command.join(' ')))
+	} $else {
+		os.execvp(executable, args) or {
+			eprintln('failed to restart ${executable}: ${err.msg()}')
+			exit(1)
+		}
 	}
-	for arg in os.args[1..] {
-		command << os.quoted_path(arg)
-	}
-	exit(os.system(command.join(' ')))
 }
 
 fn cache_external_inputs_have_static_storage(inputs map[string][]string) bool {
