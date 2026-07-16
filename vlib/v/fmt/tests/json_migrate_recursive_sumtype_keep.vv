@@ -1,0 +1,11 @@
+import json
+
+// A recursive sum type (`type Val = []Val | rune`) is a valid JSON payload shape. The
+// legacy-json guard recurses through the array variant back into Val, so it tracks
+// visited type indexes to avoid an infinite recursion / hang during formatting. The
+// `rune` variant still keeps the file on legacy json (rune encodes as a string there).
+type Val = []Val | rune
+
+fn parse(s string) !Val {
+	return json.decode(Val, s)
+}

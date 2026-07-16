@@ -320,6 +320,11 @@ mut:
 //   - `rune`: a JSON string in json (encode_rune) vs a u32 number in json2;
 //   - `f32`/`f64`: json emits `null` for NaN/±Inf, json2 emits `nan`/`inf`.
 fn type_needs_legacy_json(t &ast.Table, typ ast.Type) bool {
+	mut visited := []int{}
+	return type_needs_legacy_json_rec(t, typ, mut visited)
+}
+
+fn type_needs_legacy_json_rec(t &ast.Table, typ ast.Type, mut visited []int) bool {
 	if typ == 0 {
 		return false
 	}
@@ -327,20 +332,29 @@ fn type_needs_legacy_json(t &ast.Table, typ ast.Type) bool {
 	if sym.name in ['time.Time', 'rune', 'f32', 'f64'] {
 		return true
 	}
+	// A recursive type (`type Val = []Val | int`, `type Tree = []Tree | int`) would
+	// otherwise loop forever through its self-referential variant/element. A repeat of a
+	// type index cannot introduce a new legacy-sensitive leaf (any such leaf is caught by
+	// the name check above before this guard), so stop descending once one is seen.
+	idx := typ.idx()
+	if idx in visited {
+		return false
+	}
+	visited << idx
 	if sym.info is ast.Array {
-		return type_needs_legacy_json(t, sym.info.elem_type)
+		return type_needs_legacy_json_rec(t, sym.info.elem_type, mut visited)
 	} else if sym.info is ast.ArrayFixed {
-		return type_needs_legacy_json(t, sym.info.elem_type)
+		return type_needs_legacy_json_rec(t, sym.info.elem_type, mut visited)
 	} else if sym.info is ast.Map {
-		return type_needs_legacy_json(t, sym.info.key_type)
-			|| type_needs_legacy_json(t, sym.info.value_type)
+		return type_needs_legacy_json_rec(t, sym.info.key_type, mut visited)
+			|| type_needs_legacy_json_rec(t, sym.info.value_type, mut visited)
 	} else if sym.info is ast.Chan {
-		return type_needs_legacy_json(t, sym.info.elem_type)
+		return type_needs_legacy_json_rec(t, sym.info.elem_type, mut visited)
 	} else if sym.info is ast.GenericInst {
 		// A generic instantiation like `Box[time.Time]` carries the payload type only in
 		// its concrete type arguments (e.g. `struct User { box Box[time.Time] }`).
 		for concrete in sym.info.concrete_types {
-			if type_needs_legacy_json(t, concrete) {
+			if type_needs_legacy_json_rec(t, concrete, mut visited) {
 				return true
 			}
 		}
@@ -349,7 +363,7 @@ fn type_needs_legacy_json(t &ast.Table, typ ast.Type) bool {
 		// payload: legacy json encodes a `rune` variant as a string and a non-finite
 		// float variant as `null`, where json2 emits a number / raw `nan`/`inf`.
 		for variant in sym.info.variants {
-			if type_needs_legacy_json(t, variant) {
+			if type_needs_legacy_json_rec(t, variant, mut visited) {
 				return true
 			}
 		}
@@ -549,7 +563,14 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 	} else if node is ast.Expr && node is ast.PrefixExpr {
 		walk_or_block((node as ast.PrefixExpr).or_block, data)
 	} else if node is ast.Expr && node is ast.ComptimeCall {
-		walk_or_block((node as ast.ComptimeCall).or_block, data)
+		// `app.$method(json.encode_pretty(u))` — ComptimeCall.args are printed by
+		// comptime_call (via call_arg_spread_str) but are outside Node.children(), so
+		// sub-walk each argument expression as well as the or-block.
+		cc := node as ast.ComptimeCall
+		for arg in cc.args {
+			walker.inspect(arg.expr, data, json_unmigratable_scan_visit)
+		}
+		walk_or_block(cc.or_block, data)
 	} else if node is ast.Expr && node is ast.ComptimeSelector {
 		walk_or_block((node as ast.ComptimeSelector).or_block, data)
 	} else if node is ast.Expr && node is ast.LambdaExpr {
