@@ -4139,6 +4139,18 @@ fn test_returned_interface_local_boxed_from_pointer_alias_heap_copies_on_return(
 	assert out == '2'
 }
 
+fn test_returned_interface_boxed_from_pointer_type_alias_heap_copies_pointee() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\ntype Ref = &Box\n\nfn (r Ref) value() int {\n\treturn r.n\n}\n\nfn make() Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tp := Ref(&b)\n\tb.n = 2\n\treturn Reader(p)\n}\n\nfn main() {\n\tprintln(int_str(make().value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_returned_pointer_type_alias_heap_copy', source)
+	make_body := c_fn_body(c_source, 'Reader make(void) {')
+	assert make_body.contains('Box* b = (Box*)memdup(') && make_body.contains('Box* p = b')
+		&& make_body.contains('._object = (Box**)(memdup(&p, sizeof(Box*)))'), make_body
+
+	out := run_good(v3_bin, 'interface_box_returned_pointer_type_alias_heap_copy_run', source)
+	assert out == '2'
+}
+
 fn test_returned_pointer_copy_alias_heap_moves_stack_source() {
 	v3_bin := build_v3()
 	source := 'struct Box {\nmut:\n\tn int\n}\n\nfn make_stack() &Box {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tp := &b\n\tq := p\n\tb.n = 2\n\treturn q\n}\n\nfn make_reassigned() &Box {\n\tmut b := Box{\n\t\tn: 4\n\t}\n\tmut other := Box{\n\t\tn: 9\n\t}\n\tp := &b\n\tmut q := &other\n\tq = p\n\tb.n = 6\n\treturn q\n}\n\nfn keep_param(mut b Box) &Box {\n\tp := &b\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tstack := make_stack()\n\tprintln(int_str(stack.n))\n\treassigned := make_reassigned()\n\tprintln(int_str(reassigned.n))\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tparam := keep_param(mut b)\n\tparam.n = 5\n\tprintln(int_str(b.n))\n}\n'

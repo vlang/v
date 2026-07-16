@@ -90,10 +90,10 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			}
 			ignored_nodes = unsafe { new_ignored }
 		}
-			used_fns_at_scan = t.used_fn_count()
-			generic_struct_specs := t.generic_struct_specs(struct_decls)
-			lowered_operator_uses := t.lowered_generic_struct_operator_uses_for_specs(generic_struct_specs,
-				decls)
+		used_fns_at_scan = t.used_fn_count()
+		generic_struct_specs := t.generic_struct_specs(struct_decls)
+		lowered_operator_uses := t.lowered_generic_struct_operator_uses_for_specs(generic_struct_specs,
+			decls)
 		for scan_idx in 0 .. rescan.len + (node_count - scan_start) {
 			i := if scan_idx < rescan.len {
 				rescan[scan_idx]
@@ -575,12 +575,12 @@ fn (t &Transformer) generic_struct_method_used_for_spec(spec string, decl Generi
 		}
 	}
 	for alias in aliases {
-			if t.used_fn_contains_name(alias) {
-				if t.generic_struct_method_alias_is_operator_collision(spec, method, alias) {
-					continue
-				}
-				return true
+		if t.used_fn_contains_name(alias) {
+			if t.generic_struct_method_alias_is_operator_collision(spec, method, alias) {
+				continue
 			}
+			return true
+		}
 	}
 	return false
 }

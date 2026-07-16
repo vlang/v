@@ -3498,8 +3498,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 					}
 				}
 			} else if lhs.kind == .ident && lhs.value.len > 0
-				&& t.pointer_alias_cast_address_is_stack_local(t.a.child(&node, i + 1),
-					local_stack_names, amp_ptrs, ptr_aliases) {
+				&& t.pointer_alias_cast_address_is_stack_local(t.a.child(&node, i + 1), local_stack_names, amp_ptrs, ptr_aliases) {
 				amp_ptrs[lhs.value] = true
 				cast_arg := t.a.nodes[int(t.a.child(&rhs, 0))]
 				amp_child := t.a.nodes[int(t.a.child(&cast_arg, 0))]

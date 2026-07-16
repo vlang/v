@@ -558,7 +558,8 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	source_expr := t.transform_expr(id)
 	mut source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
 	normalized_source_type := t.normalize_type_alias(source_type)
-	source_is_pointer_alias := !source_type.starts_with('&') && normalized_source_type.starts_with('&')
+	source_is_pointer_alias := !source_type.starts_with('&')
+		&& normalized_source_type.starts_with('&')
 	if source_is_pointer_alias && !share_source && t.interface_pointer_source_needs_heap_copy(id) {
 		pointee_type := normalized_source_type[1..]
 		dup := t.make_memdup_call_for_type(source, pointee_type)
