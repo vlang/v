@@ -4538,27 +4538,27 @@ fn (mut t Transformer) transform_return_child(child_id flat.NodeId, child_index 
 		}
 	}
 	target_type := t.return_child_target_type(child_index, total_children)
+	mut return_child_id := child_id
+	if rewritten := t.rewrite_escaping_interface_box_return_expr(child_id) {
+		return_child_id = rewritten
+	}
 	if target_type.len > 0 && t.is_optional_type_name(target_type) {
-		child := t.a.nodes[int(child_id)]
+		child := t.a.nodes[int(return_child_id)]
 		if child.kind == .none_expr {
-			return t.transform_expr(child_id)
+			return t.transform_expr(return_child_id)
 		}
 		if t.is_error_call(child) {
-			return t.transform_expr(child_id)
+			return t.transform_expr(return_child_id)
 		}
 		if child.kind == .or_expr {
-			return t.transform_expr_for_type(child_id, target_type)
+			return t.transform_expr_for_type(return_child_id, target_type)
 		}
 		payload_type := t.optional_base_type(t.qualify_optional_type(target_type))
 		resolved_payload_type := t.resolve_sum_name(payload_type)
 		if resolved_payload_type in t.sum_types {
-			return t.wrap_sum_value(child_id, resolved_payload_type)
+			return t.wrap_sum_value(return_child_id, resolved_payload_type)
 		}
-		return t.transform_expr_for_type(child_id, payload_type)
-	}
-	mut return_child_id := child_id
-	if rewritten := t.rewrite_escaping_interface_box_return_expr(child_id) {
-		return_child_id = rewritten
+		return t.transform_expr_for_type(return_child_id, payload_type)
 	}
 	if target_type.len > 0 && target_type !in t.sum_types && !t.is_optional_type_name(target_type) {
 		return t.transform_expr_for_type(return_child_id, target_type)
@@ -4632,6 +4632,18 @@ fn (mut t Transformer) rewrite_escaping_interface_box_return_expr_rec(id flat.No
 		}
 		return t.make_ident(tmp_name)
 	}
+	if node.kind == .if_expr {
+		return t.rewrite_escaping_interface_box_if_return_expr(node, mut replacements)
+	}
+	if node.kind == .match_stmt {
+		return t.rewrite_escaping_interface_box_match_return_expr(node, mut replacements)
+	}
+	if node.kind == .match_branch {
+		return t.rewrite_escaping_interface_box_match_branch_return_expr(node, mut replacements)
+	}
+	if node.kind == .block {
+		return t.rewrite_escaping_interface_box_block_return_expr(node, mut replacements)
+	}
 	if !return_expr_node_can_hold_escaping_interface_box(node) {
 		return none
 	}
@@ -4649,6 +4661,97 @@ fn (mut t Transformer) rewrite_escaping_interface_box_return_expr_rec(id flat.No
 	if !changed {
 		return none
 	}
+	return t.copy_node_with_children(node, children)
+}
+
+fn (mut t Transformer) rewrite_escaping_interface_box_if_return_expr(node flat.Node, mut replacements map[string]string) ?flat.NodeId {
+	if node.children_count < 2 {
+		return none
+	}
+	mut children := []flat.NodeId{cap: int(node.children_count)}
+	children << t.a.child(&node, 0)
+	mut changed := false
+	for i in 1 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		if rewritten := t.rewrite_escaping_interface_box_return_expr_rec(child_id, mut replacements) {
+			children << rewritten
+			changed = true
+		} else {
+			children << child_id
+		}
+	}
+	if !changed {
+		return none
+	}
+	return t.copy_node_with_children(node, children)
+}
+
+fn (mut t Transformer) rewrite_escaping_interface_box_match_return_expr(node flat.Node, mut replacements map[string]string) ?flat.NodeId {
+	if node.children_count < 2 {
+		return none
+	}
+	mut children := []flat.NodeId{cap: int(node.children_count)}
+	children << t.a.child(&node, 0)
+	mut changed := false
+	for i in 1 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		if rewritten := t.rewrite_escaping_interface_box_return_expr_rec(child_id, mut replacements) {
+			children << rewritten
+			changed = true
+		} else {
+			children << child_id
+		}
+	}
+	if !changed {
+		return none
+	}
+	return t.copy_node_with_children(node, children)
+}
+
+fn (mut t Transformer) rewrite_escaping_interface_box_match_branch_return_expr(node flat.Node, mut replacements map[string]string) ?flat.NodeId {
+	body_start := if node.value == 'else' { 0 } else { t.count_conds(node) }
+	if node.children_count <= body_start {
+		return none
+	}
+	return t.rewrite_escaping_interface_box_tail_child(node, body_start, mut replacements)
+}
+
+fn (mut t Transformer) rewrite_escaping_interface_box_block_return_expr(node flat.Node, mut replacements map[string]string) ?flat.NodeId {
+	if node.children_count == 0 {
+		return none
+	}
+	return t.rewrite_escaping_interface_box_tail_child(node, 0, mut replacements)
+}
+
+fn (mut t Transformer) rewrite_escaping_interface_box_tail_child(node flat.Node, min_tail_index int, mut replacements map[string]string) ?flat.NodeId {
+	tail_idx := int(node.children_count) - 1
+	if tail_idx < min_tail_index {
+		return none
+	}
+	mut children := []flat.NodeId{cap: int(node.children_count)}
+	mut changed := false
+	for i in 0 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		if i == tail_idx {
+			if rewritten := t.rewrite_escaping_interface_box_return_expr_rec(child_id, mut
+				replacements)
+			{
+				children << rewritten
+				changed = true
+			} else {
+				children << child_id
+			}
+		} else {
+			children << child_id
+		}
+	}
+	if !changed {
+		return none
+	}
+	return t.copy_node_with_children(node, children)
+}
+
+fn (mut t Transformer) copy_node_with_children(node flat.Node, children []flat.NodeId) flat.NodeId {
 	start := t.a.children.len
 	for child in children {
 		t.a.children << child

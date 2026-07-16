@@ -4073,6 +4073,26 @@ fn test_returned_interface_local_boxed_from_aligned_local_uses_aligned_memdup() 
 	assert out == '6'
 }
 
+fn test_optional_result_interface_local_boxed_from_local_address_heap_copies_on_return() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make_optional() ?Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\treturn r\n}\n\nfn make_result() !Reader {\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tr := Reader(&b)\n\tb.n = 4\n\treturn r\n}\n\nfn main() {\n\topt := make_optional() or { return }\n\tprintln(int_str(opt.value()))\n\tres := make_result() or { return }\n\tprintln(int_str(res.value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_optional_result_return_heap_copy', source)
+	assert c_source.count('memdup(__iface_ret_') >= 2 && c_source.contains('sizeof(Box)'), c_source
+
+	out := run_good(v3_bin, 'interface_box_optional_result_return_heap_copy_run', source)
+	assert out == '2\n4'
+}
+
+fn test_control_flow_interface_local_boxed_from_local_address_heap_copies_on_return() {
+	v3_bin := build_v3()
+	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make_if(use_local bool) Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\treturn if use_local {\n\t\tr\n\t} else {\n\t\tReader(&Box{\n\t\t\tn: 30\n\t\t})\n\t}\n}\n\nfn make_match(n int) Reader {\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tr := Reader(&b)\n\tb.n = 4\n\treturn match n {\n\t\t0 { r }\n\t\telse { Reader(&Box{\n\t\t\tn: 40\n\t\t}) }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(make_if(true).value()))\n\tprintln(int_str(make_if(false).value()))\n\tprintln(int_str(make_match(0).value()))\n\tprintln(int_str(make_match(1).value()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_box_control_flow_return_heap_copy', source)
+	assert c_source.count('memdup(__iface_ret_') >= 2 && c_source.contains('sizeof(Box)'), c_source
+
+	out := run_good(v3_bin, 'interface_box_control_flow_return_heap_copy_run', source)
+	assert out == '2\n30\n4\n40'
+}
+
 fn test_returned_interface_local_boxed_from_local_address_heap_copies_in_aggregates_and_assignments() {
 	v3_bin := build_v3()
 	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nstruct Holder {\n\treader Reader\n}\n\nfn make_array() []Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\treturn [r]\n}\n\nfn make_holder() Holder {\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tr := Reader(&b)\n\tb.n = 4\n\treturn Holder{\n\t\treader: r\n\t}\n}\n\nfn make_reassigned() Reader {\n\tmut r := Reader(&Box{\n\t\tn: 0\n\t})\n\tmut b := Box{\n\t\tn: 5\n\t}\n\tr = Reader(&b)\n\tb.n = 6\n\treturn r\n}\n\nfn main() {\n\tarr := make_array()\n\tprintln(int_str(arr[0].value()))\n\tholder := make_holder()\n\tprintln(int_str(holder.reader.value()))\n\treader := make_reassigned()\n\tprintln(int_str(reader.value()))\n}\n'
