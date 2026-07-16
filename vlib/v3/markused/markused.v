@@ -2163,6 +2163,8 @@ fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut 
 		}
 		types.Array {
 			enqueue('string__plus', mut used, mut queue)
+			enqueue('array.get', mut used, mut queue)
+			enqueue('array__get', mut used, mut queue)
 			enqueue_implicit_str_type_helpers(typ.elem_type, tc, mut used, mut queue, mut seen)
 		}
 		types.ArrayFixed {

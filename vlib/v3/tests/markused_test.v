@@ -364,23 +364,34 @@ fn main() {
 }
 
 fn test_implicit_interface_str_dispatch_seeds_generated_helpers() {
-	used := mark_used_source('implicit_interface_str_dispatch_helpers', '
+	source := '
 interface Printable {
 	str() string
 }
 
 struct Foo {
-	x int
+	xs []int
 }
 
 fn main() {
 	println(Printable(Foo{
-		x: 1
+		xs: [1, 2]
 	}).str())
 }
-')
+'
+	mut a, mut tc := parse_checked_source('implicit_interface_str_dispatch_helpers', source)
+	mut used := markused.mark_used(a, tc)
 	assert used['string__plus']
+	assert used['array.get']
+	assert used['array__get']
 	assert used['int__str']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('array_get('), c_code
 }
 
 fn test_generic_struct_operator_roots_operator_dependencies() {
