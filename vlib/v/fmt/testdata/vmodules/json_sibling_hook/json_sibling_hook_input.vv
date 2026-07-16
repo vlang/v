@@ -1,0 +1,15 @@
+// The module name has to match the modules dir name.
+module json_sibling_hook
+
+import json
+
+struct User {
+	name string
+}
+
+// User has a `to_json` hook in a sibling module file (hooks.v). Migrating would let json2
+// dispatch to that hook while legacy json uses the field-based path, so the call is left
+// unmigrated even though the payload struct itself looks safe here.
+fn encode_user(u User) string {
+	return json.encode(u)
+}

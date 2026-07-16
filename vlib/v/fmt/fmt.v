@@ -287,6 +287,7 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			|| has_branch_local_json || has_aliased_json_import || json2_name_taken
 			|| json_import_has_line_comment || cur_module_is_json2
 			|| f.file_has_vfmt_off_region() || f.file_has_unmigratable_json_usage(file)
+			|| f.module_has_sibling_json_hook(file)
 	}
 	// Only rewrite `json.encode`/`json.decode` calls when the file actually imports the
 	// legacy `json` module and it is being migrated. The parser tags a call by its literal
@@ -914,6 +915,53 @@ fn (f &Fmt) file_has_unmigratable_json_usage(file &ast.File) bool {
 fn (mut f Fmt) file_has_vfmt_off_region() bool {
 	for line in f.get_source_lines() {
 		if line.contains('// vfmt off') {
+			return true
+		}
+	}
+	return false
+}
+
+// module_has_sibling_json_hook reports whether another `.v` file in the same module
+// directory declares a json2 custom (de)serialization hook (`to_json`/`json_str`/
+// `from_json_*`). v fmt parses only the file being formatted (cmd/tools/vfmt.v), so a hook
+// on a payload type whose method lives in a sibling file is invisible to the in-file scan;
+// migrating would then let json2 dispatch to that hook while legacy json used the
+// field-based path, changing the JSON contract. As with the in-file hook check this is a
+// coarse module-level signal — a real hook anywhere in the module keeps the file
+// unmigrated. Only `.v` sources are read, so the `.vv` fmt fixtures never trip it.
+fn (f &Fmt) module_has_sibling_json_hook(file &ast.File) bool {
+	if file.path == '' {
+		return false
+	}
+	dir := os.dir(file.path)
+	entries := os.ls(dir) or { return false }
+	for entry in entries {
+		if entry == file.path_base || !entry.ends_with('.v') {
+			continue
+		}
+		src := os.read_file(os.join_path(dir, entry)) or { continue }
+		if source_declares_json_hook(src) {
+			return true
+		}
+	}
+	return false
+}
+
+// source_declares_json_hook reports whether the given V source text declares a method named
+// `to_json`/`json_str`/`from_json_*` (a json2 custom hook). It is a line-level scan of the
+// method-declaration form `fn (recv) hook(...)`, which is enough to detect a hook without
+// parsing the sibling file.
+fn source_declares_json_hook(src string) bool {
+	for line in src.split_into_lines() {
+		t := line.trim_space()
+		if !(t.starts_with('fn ') || t.starts_with('pub fn ')) {
+			continue
+		}
+		// The receiver is the first parenthesised group; the method name follows its `)`.
+		close := t.index(')') or { continue }
+		after := t[close + 1..].trim_space()
+		if after.starts_with('to_json(') || after.starts_with('json_str(')
+			|| after.starts_with('from_json_') {
 			return true
 		}
 	}
