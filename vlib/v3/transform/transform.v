@@ -5727,6 +5727,18 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 		expr_type = t.resolve_expr_type(source_id)
 	}
 	expr_type = t.normalize_type_alias(expr_type)
+	if target == 'string' && int(expr) >= 0 && int(expr) < t.a.nodes.len {
+		expr_node := t.a.nodes[int(expr)]
+		if expr_node.kind == .call {
+			mut call_ret := t.get_call_return_type(expr, expr_node)
+			if call_ret.len == 0 {
+				call_ret = t.current_call_return_type(expr_node)
+			}
+			if t.normalize_type_alias(call_ret) == target {
+				return expr
+			}
+		}
+	}
 	mut optional_target := if t.is_optional_type_name(target_type) {
 		t.qualify_optional_type(target_type)
 	} else {
