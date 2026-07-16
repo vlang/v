@@ -20296,21 +20296,25 @@ pub fn (tc &TypeChecker) type_has_implicit_str_method(name string) bool {
 	if is_builtin_type_name(clean) {
 		return true
 	}
-	if clean in tc.structs {
-		return true
-	}
-	if clean in tc.enum_names {
-		return true
-	}
-	if tc.alias_has_implicit_str_method(clean, 0) {
+	if tc.type_name_has_implicit_str_method(clean) {
 		return true
 	}
 	if !clean.contains('.') {
 		qname := tc.qualify_name(clean)
-		return qname in tc.structs || qname in tc.enum_names
-			|| tc.alias_has_implicit_str_method(qname, 0)
+		return tc.type_name_has_implicit_str_method(qname)
 	}
 	return false
+}
+
+fn (tc &TypeChecker) type_name_has_implicit_str_method(name string) bool {
+	if name in tc.structs || name in tc.enum_names || tc.alias_has_implicit_str_method(name, 0) {
+		return true
+	}
+	base, _, is_generic := generic_type_application_parts(name)
+	if !is_generic || base.len == 0 {
+		return false
+	}
+	return base in tc.structs || base in tc.enum_names || tc.alias_has_implicit_str_method(base, 0)
 }
 
 fn (tc &TypeChecker) alias_has_implicit_str_method(name string, depth int) bool {

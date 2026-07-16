@@ -3253,6 +3253,26 @@ fn main() {
 	assert out == 'Foo{\n    x: 7\n}'
 }
 
+fn test_implicit_interface_str_dispatch_accepts_generic_struct() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_generic_struct', 'interface Printable {
+	str() string
+}
+
+struct Box[T] {
+	value T
+}
+
+fn main() {
+	value := Printable(Box[int]{
+		value: 7
+	})
+	println(value.str())
+}
+')
+	assert out == 'Box[int]{\n    value: 7\n}'
+}
+
 fn test_implicit_interface_str_dispatch_stringifies_enum() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'implicit_interface_str_dispatch_enum', 'interface Printable {
