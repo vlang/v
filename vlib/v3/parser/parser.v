@@ -68,9 +68,20 @@ mut:
 	anonymous_struct_types  map[string][]string
 	anonymous_struct_count  int
 	export_records          []ExportRecord
+	scope_parallel_workers  bool
+	worker_scope            voidptr
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
 	parsed_v_files int
+}
+
+// reserve_selfhost_ast prepares the shared AST for parsing and transforming a
+// compiler-sized input without retaining successively doubled backing arrays.
+pub fn (mut p Parser) reserve_selfhost_ast() {
+	selfhost_ast_capacity := 2 * 1024 * 1024
+	p.a.nodes.ensure_cap(selfhost_ast_capacity)
+	p.a.children.ensure_cap(selfhost_ast_capacity)
+	p.scope_parallel_workers = true
 }
 
 // ExportRecord captures one accepted `@[export: name]` registration in file

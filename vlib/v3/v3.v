@@ -714,6 +714,125 @@ fn clone_typechecker_after_scoped_transform(mut tc types.TypeChecker, ast &flat.
 	tc.set_fresh_type_cache(tc.type_cache_parse_enabled())
 }
 
+// clone_scoped_ast_strings_in_place keeps the pre-reserved AST arrays and
+// moves only owned node data out of the disposable transform arena.
+fn clone_scoped_ast_strings_in_place(mut ast flat.FlatAst, base_nodes int, owned_base_nodes []int) {
+	mut string_bytes := 0
+	for idx in owned_base_nodes {
+		if idx < 0 || idx >= base_nodes || idx >= ast.nodes.len {
+			continue
+		}
+		string_bytes += flat_node_owned_string_bytes(ast.nodes[idx])
+	}
+	for idx in base_nodes .. ast.nodes.len {
+		string_bytes += flat_node_owned_string_bytes(ast.nodes[idx])
+	}
+	if string_bytes == 0 {
+		return
+	}
+	// The buffer outlives this helper: the self-host binary uses -gc none and
+	// every resulting string points into this persistent parent-arena block.
+	storage := unsafe { &u8(malloc_noscan(string_bytes)) }
+	mut offset := 0
+	for idx in owned_base_nodes {
+		if idx < 0 || idx >= base_nodes || idx >= ast.nodes.len {
+			continue
+		}
+		unsafe {
+			mut node := &ast.nodes[idx]
+			offset = clone_flat_node_owned_strings(mut node, storage, offset)
+		}
+	}
+	for idx in base_nodes .. ast.nodes.len {
+		unsafe {
+			mut node := &ast.nodes[idx]
+			offset = clone_flat_node_owned_strings(mut node, storage, offset)
+		}
+	}
+}
+
+fn flat_node_owned_string_bytes(node flat.Node) int {
+	mut total := 0
+	if node.value.len > 0 {
+		total += node.value.len + 1
+	}
+	if node.typ.len > 0 {
+		total += node.typ.len + 1
+	}
+	for param in node.generic_params {
+		if param.len > 0 {
+			total += param.len + 1
+		}
+	}
+	return total
+}
+
+fn clone_flat_node_owned_strings(mut node flat.Node, storage &u8, offset int) int {
+	mut next_offset := offset
+	node.value, next_offset = clone_string_to_storage(node.value, storage, next_offset)
+	node.typ, next_offset = clone_string_to_storage(node.typ, storage, next_offset)
+	if node.generic_params.len > 0 {
+		mut params := []string{cap: node.generic_params.len}
+		for param in node.generic_params {
+			mut cloned := ''
+			cloned, next_offset = clone_string_to_storage(param, storage, next_offset)
+			params << cloned
+		}
+		node.generic_params = params
+	}
+	return next_offset
+}
+
+fn clone_string_to_storage(value string, storage &u8, offset int) (string, int) {
+	if value.len == 0 {
+		return value, offset
+	}
+	unsafe {
+		dst := &u8(u64(storage) + u64(offset))
+		vmemcpy(dst, value.str, value.len)
+		dst[value.len] = 0
+		return tos(dst, value.len), offset + value.len + 1
+	}
+}
+
+fn clone_scoped_generated_signatures_in_place(mut tc types.TypeChecker) {
+	mut generated_names := []string{}
+	for name in tc.fn_ret_types.keys() {
+		short_name := name.all_after_last('.')
+		if short_name.starts_with('__v3_') || short_name.starts_with('__anon_fn_') {
+			generated_names << name.clone()
+		}
+	}
+	for name in generated_names {
+		ret_type := tc.fn_ret_types[name] or { continue }
+		cloned_ret_type := clone_type_value(ret_type)
+		cloned_params := if params := tc.fn_param_types[name] {
+			clone_type_list(params)
+		} else {
+			[]types.Type{}
+		}
+		is_variadic := tc.fn_variadic[name]
+		tc.fn_ret_types.delete(name)
+		tc.fn_param_types.delete(name)
+		tc.fn_variadic.delete(name)
+		cloned_name := name.clone()
+		tc.fn_ret_types[cloned_name] = cloned_ret_type
+		tc.fn_param_types[cloned_name] = cloned_params
+		tc.fn_variadic[cloned_name] = is_variadic
+	}
+}
+
+fn clone_typechecker_scoped_additions_in_place(mut tc types.TypeChecker, ast &flat.FlatAst, parse_cache_enabled bool) {
+	tc.a = ast
+	clone_scoped_generated_signatures_in_place(mut tc)
+	tc.sparse_resolved_call_names = clone_int_string_map(tc.sparse_resolved_call_names)
+	tc.sparse_resolved_fn_values = clone_int_string_map(tc.sparse_resolved_fn_values)
+	tc.sparse_statement_nodes = tc.sparse_statement_nodes.clone()
+	tc.sparse_expr_type_values = clone_int_type_map(tc.sparse_expr_type_values)
+	tc.sparse_checking_nodes = tc.sparse_checking_nodes.clone()
+	tc.set_fresh_type_cache(parse_cache_enabled)
+}
+
 fn restored_fn_c_name(name string) string {
 	if name.starts_with('C.') {
 		return name[2..]
@@ -1125,6 +1244,9 @@ fn main() {
 	// currently relies on the serial function-item walk to retain those definitions.
 	cache_no_parallel_cgen := current_no_parallel || cache_manager.enabled
 	mut p := parser.Parser.new(prefs)
+	if scope_prealloc_selfhost {
+		p.reserve_selfhost_ast()
+	}
 
 	builtin_dir := builtin_dir_for_vroot(prefs.vroot)
 	mut builtin_defines := prefs.user_defines.clone()
@@ -1294,6 +1416,10 @@ fn main() {
 
 	// Mark used functions (dead-code elimination). This is done before transform
 	// so the transformer can skip function bodies that the C backend will prune.
+	mut markused_scope := unsafe { nil }
+	if scope_prealloc_selfhost {
+		markused_scope = prealloc_scope_begin_for_v3()
+	}
 	mut output_used_fns := map[string]bool{}
 	mut uses_generics := false
 	if test_files.len > 0 {
@@ -1309,6 +1435,14 @@ fn main() {
 			test_files, cache_state.source_body_modules)
 		uses_generics = uses_generics || cache_uses_generics
 	}
+	if scope_prealloc_selfhost {
+		parse_type_cache_enabled := pre_tc.type_cache_parse_enabled()
+		prealloc_scope_leave_for_v3(markused_scope)
+		output_used_fns = clone_string_bool_map(output_used_fns)
+		used_fns = clone_string_bool_map(used_fns)
+		pre_tc.set_fresh_type_cache(parse_type_cache_enabled)
+		prealloc_scope_free_for_v3(markused_scope)
+	}
 	b.step('markused')
 
 	// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
@@ -1319,19 +1453,34 @@ fn main() {
 	// Markused distinguishes reachable generic calls/types from generic templates
 	// that merely came along with an imported module (notably sync and rand).
 	skip_transform_generics := building_v || cmd_v_build || !uses_generics
-	mut scope_whole_transform := !current_parallel_transform
-	$if v3_no_parallel ? {
-		scope_whole_transform = true
-	}
-	if scope_prealloc_selfhost && scope_whole_transform {
+	if scope_prealloc_selfhost {
+		transform.reserve_parallel_transform_ast(mut a, skip_transform_generics)
+		pre_tc.begin_sparse_transform_node_caches()
+		base_transform_nodes := a.nodes.len
+		reserved_nodes_cap := a.nodes.cap
+		reserved_children_cap := a.children.cap
 		transform_scope := prealloc_scope_begin_for_v3()
-		used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
-			&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, false)
+		mut scoped_owned_base_nodes := []int{}
+		mut scoped_transform_worker_scopes := []voidptr{}
+		used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, scoped_transform_worker_scopes = transform.transform_with_used_opt_config_scoped_workers_checked_owned(mut a,
+			&pre_tc, used_fns, current_parallel_transform, skip_transform_generics,
+			current_parallel_transform)
+		parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 		prealloc_scope_leave_for_v3(transform_scope)
-		a = clone_flat_ast(a)
-		used_fns = clone_string_bool_map(used_fns)
-		transform_errors = clone_string_list(transform_errors)
-		clone_typechecker_after_scoped_transform(mut pre_tc, a)
+		if a.nodes.cap == reserved_nodes_cap && a.children.cap == reserved_children_cap {
+			clone_scoped_ast_strings_in_place(mut a, base_transform_nodes, scoped_owned_base_nodes)
+			used_fns = clone_string_bool_map(used_fns)
+			transform_errors = clone_string_list(transform_errors)
+			clone_typechecker_scoped_additions_in_place(mut pre_tc, a, parse_cache_enabled)
+		} else {
+			a = clone_flat_ast(a)
+			used_fns = clone_string_bool_map(used_fns)
+			transform_errors = clone_string_list(transform_errors)
+			clone_typechecker_after_scoped_transform(mut pre_tc, a)
+		}
+		for worker_scope in scoped_transform_worker_scopes {
+			prealloc_scope_free_for_v3(worker_scope)
+		}
 		prealloc_scope_free_for_v3(transform_scope)
 	} else {
 		used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,

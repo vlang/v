@@ -806,7 +806,21 @@ fn (mut t Transformer) collect_interface_call_boxes(call_id flat.NodeId, node fl
 	}
 }
 
-fn (t &Transformer) interface_box_call_param_maybe(param types.Type) bool {
+fn (mut t Transformer) interface_box_call_param_maybe(param types.Type) bool {
+	key := '${t.cur_module}:${param.name()}'
+	if !isnil(t.interface_box_param_cache) {
+		if cached := t.interface_box_param_cache.entries[key] {
+			return cached > 0
+		}
+	}
+	result := t.interface_box_call_param_maybe_uncached(param)
+	if !isnil(t.interface_box_param_cache) {
+		t.interface_box_param_cache.entries[key] = if result { i8(1) } else { i8(-1) }
+	}
+	return result
+}
+
+fn (t &Transformer) interface_box_call_param_maybe_uncached(param types.Type) bool {
 	if interface_box_expected_type(param) {
 		return true
 	}
@@ -6147,22 +6161,13 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 		t.copy_cloned_resolution_forked(src_idx, dst_idx)
 		return
 	}
-	if src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx]
-		&& !t.resolved_call_is_generic_fn(t.tc.resolved_call_names[src_idx]) {
-		for t.tc.resolved_call_names.len <= dst_idx {
-			t.tc.resolved_call_names << ''
-			t.tc.resolved_call_set << false
+	if call_name := t.tc.resolved_call_name(src_id) {
+		if !t.resolved_call_is_generic_fn(call_name) {
+			t.set_resolved_call_entry(dst_idx, call_name)
 		}
-		t.tc.resolved_call_names[dst_idx] = t.tc.resolved_call_names[src_idx]
-		t.tc.resolved_call_set[dst_idx] = true
 	}
-	if src_idx < t.tc.resolved_fn_value_set.len && t.tc.resolved_fn_value_set[src_idx] {
-		for t.tc.resolved_fn_value_names.len <= dst_idx {
-			t.tc.resolved_fn_value_names << ''
-			t.tc.resolved_fn_value_set << false
-		}
-		t.tc.resolved_fn_value_names[dst_idx] = t.tc.resolved_fn_value_names[src_idx]
-		t.tc.resolved_fn_value_set[dst_idx] = true
+	if fn_value := t.tc.resolved_fn_value_name(src_id) {
+		t.set_resolved_fn_value_entry(dst_idx, fn_value)
 	}
 }
 

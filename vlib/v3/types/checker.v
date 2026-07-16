@@ -361,20 +361,25 @@ pub mut:
 	// Scope depth at which each method-value local was marked, so a reassignment to a
 	// non-method value only clears the marker when it dominates later uses (same-or-shallower
 	// scope); a reassignment in a deeper conditional/loop scope keeps the maybe-method marker.
-	method_value_local_depth         map[string]int
-	fn_value_variadic_local_depth    map[string]int
-	capturing_fn_literal_local_depth map[string]int
-	cur_fn_node_id                   int = -1
-	cur_fn_mut_param_base_types      map[string]Type
-	cur_fn_mut_param_binding_owners  map[string]ScopeBindingOwner
-	cur_fn_mut_local_binding_owners  map[string]ScopeBindingOwner
-	cur_fn_shared_binding_owners     map[string][]ScopeBindingOwner
-	cur_generic_params               []string
-	cur_comptime_variant_loop_vars   []string
-	expr_type_values                 []Type // node_id -> complex/contextual resolved type
-	expr_type_set                    []bool
-	checking_nodes                   []bool
-	parallel_check_sparse            bool
+	method_value_local_depth            map[string]int
+	fn_value_variadic_local_depth       map[string]int
+	capturing_fn_literal_local_depth    map[string]int
+	cur_fn_node_id                      int = -1
+	cur_fn_mut_param_base_types         map[string]Type
+	cur_fn_mut_param_binding_owners     map[string]ScopeBindingOwner
+	cur_fn_mut_local_binding_owners     map[string]ScopeBindingOwner
+	cur_fn_shared_binding_owners        map[string][]ScopeBindingOwner
+	scratch_fn_mut_param_base_types     map[string]Type
+	scratch_fn_mut_param_binding_owners map[string]ScopeBindingOwner
+	scratch_fn_mut_local_binding_owners map[string]ScopeBindingOwner
+	scratch_fn_shared_binding_owners    map[string][]ScopeBindingOwner
+	cur_generic_params                  []string
+	cur_comptime_variant_loop_vars      []string
+	expr_type_values                    []Type // node_id -> complex/contextual resolved type
+	expr_type_set                       []bool
+	checking_nodes                      []bool
+	parallel_check_sparse               bool
+	transform_sparse_node_caches        bool
 	// Node id range [check_range_lo, check_range_hi] of the fn item currently
 	// being checked. Fn subtrees are disjoint contiguous ranges (each fn_decl at
 	// index i owns (prev_top_level_idx, i]), so while parallel_check_sparse is
@@ -491,36 +496,40 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		// reset_node_caches (allocating them here too paid for everything
 		// twice), and extend_node_caches grows them on demand for any checker
 		// used without a collect() call.
-		resolved_call_names:               []string{}
-		resolved_call_set:                 []bool{}
-		resolved_fn_value_names:           []string{}
-		resolved_fn_value_set:             []bool{}
-		statement_nodes:                   []bool{}
-		method_values_by_fn:               map[int][]string{}
-		method_value_locals:               map[string]bool{}
-		fn_value_variadic_locals:          map[string]bool{}
-		fn_value_variadic_local_owners:    map[string][]ScopeBindingOwner{}
-		capturing_fn_literal_locals:       map[string]bool{}
-		capturing_fn_literal_local_owners: map[string][]ScopeBindingOwner{}
-		method_value_local_depth:          map[string]int{}
-		fn_value_variadic_local_depth:     map[string]int{}
-		capturing_fn_literal_local_depth:  map[string]int{}
-		cur_fn_mut_param_base_types:       map[string]Type{}
-		cur_fn_mut_param_binding_owners:   map[string]ScopeBindingOwner{}
-		cur_fn_mut_local_binding_owners:   map[string]ScopeBindingOwner{}
-		cur_fn_shared_binding_owners:      map[string][]ScopeBindingOwner{}
-		expr_type_values:                  []Type{}
-		expr_type_set:                     []bool{}
-		checking_nodes:                    []bool{}
-		sparse_resolved_call_names:        map[int]string{}
-		sparse_resolved_fn_values:         map[int]string{}
-		sparse_statement_nodes:            map[int]bool{}
-		sparse_expr_type_values:           map[int]Type{}
-		sparse_checking_nodes:             map[int]bool{}
-		diagnostic_files:                  map[string]bool{}
-		selected_file_called_fns:          map[string]bool{}
-		smartcasts:                        map[string]Type{}
-		type_cache:                        &TypeCache{
+		resolved_call_names:                 []string{}
+		resolved_call_set:                   []bool{}
+		resolved_fn_value_names:             []string{}
+		resolved_fn_value_set:               []bool{}
+		statement_nodes:                     []bool{}
+		method_values_by_fn:                 map[int][]string{}
+		method_value_locals:                 map[string]bool{}
+		fn_value_variadic_locals:            map[string]bool{}
+		fn_value_variadic_local_owners:      map[string][]ScopeBindingOwner{}
+		capturing_fn_literal_locals:         map[string]bool{}
+		capturing_fn_literal_local_owners:   map[string][]ScopeBindingOwner{}
+		method_value_local_depth:            map[string]int{}
+		fn_value_variadic_local_depth:       map[string]int{}
+		capturing_fn_literal_local_depth:    map[string]int{}
+		cur_fn_mut_param_base_types:         map[string]Type{}
+		cur_fn_mut_param_binding_owners:     map[string]ScopeBindingOwner{}
+		cur_fn_mut_local_binding_owners:     map[string]ScopeBindingOwner{}
+		cur_fn_shared_binding_owners:        map[string][]ScopeBindingOwner{}
+		scratch_fn_mut_param_base_types:     map[string]Type{}
+		scratch_fn_mut_param_binding_owners: map[string]ScopeBindingOwner{}
+		scratch_fn_mut_local_binding_owners: map[string]ScopeBindingOwner{}
+		scratch_fn_shared_binding_owners:    map[string][]ScopeBindingOwner{}
+		expr_type_values:                    []Type{}
+		expr_type_set:                       []bool{}
+		checking_nodes:                      []bool{}
+		sparse_resolved_call_names:          map[int]string{}
+		sparse_resolved_fn_values:           map[int]string{}
+		sparse_statement_nodes:              map[int]bool{}
+		sparse_expr_type_values:             map[int]Type{}
+		sparse_checking_nodes:               map[int]bool{}
+		diagnostic_files:                    map[string]bool{}
+		selected_file_called_fns:            map[string]bool{}
+		smartcasts:                          map[string]Type{}
+		type_cache:                          &TypeCache{
 			parse_entries:              map[string]Type{}
 			c_entries:                  map[string]string{}
 			struct_field_entries:       map[string]Type{}
@@ -529,6 +538,19 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 			source_error_embed_entries: map[string]int{}
 		}
 	}
+}
+
+// begin_sparse_transform_node_caches keeps transform-created metadata out of
+// the dense source-node arrays, avoiding a full-array reallocation.
+pub fn (mut tc TypeChecker) begin_sparse_transform_node_caches() {
+	tc.transform_sparse_node_caches = true
+	// Generated lambda/helper signatures are added during transform. Reserve
+	// enough persistent backing before entering its disposable arena so those
+	// insertions cannot move the complete source-signature maps into the arena.
+	signature_headroom := 2048
+	tc.fn_ret_types.reserve(u32(tc.fn_ret_types.len + signature_headroom))
+	tc.fn_param_types.reserve(u32(tc.fn_param_types.len + signature_headroom))
+	tc.fn_variadic.reserve(u32(tc.fn_variadic.len + signature_headroom))
 }
 
 // fork_for_parallel_transform returns a TypeChecker that shares all of `tc`'s
@@ -542,6 +564,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChecker {
 	mut forked := *tc
 	forked.a = ast
+	forked.transform_sparse_node_caches = false
 	// The transformer propagates call/fn-value resolution metadata onto the call
 	// nodes it clones (Transformer.copy_cloned_resolution). In a worker those
 	// writes must not touch (or grow/realloc) the shared node-indexed arrays
@@ -670,10 +693,11 @@ fn (mut tc TypeChecker) reset_node_caches(n int) {
 	tc.expr_type_set = []bool{len: n}
 	tc.checking_nodes = []bool{len: n}
 	tc.parallel_check_sparse = false
+	tc.transform_sparse_node_caches = false
 }
 
 fn (mut tc TypeChecker) extend_node_caches(n int) {
-	if tc.parallel_check_sparse {
+	if tc.parallel_check_sparse || tc.transform_sparse_node_caches {
 		return
 	}
 	if n <= tc.resolved_call_names.len && n <= tc.resolved_fn_value_names.len
@@ -2914,6 +2938,11 @@ fn (tc &TypeChecker) in_check_range(idx int) bool {
 // cached_expr_type supports cached expr type handling for TypeChecker.
 fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 	idx := int(id)
+	if tc.transform_sparse_node_caches {
+		if typ := tc.sparse_expr_type_values[idx] {
+			return typ
+		}
+	}
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) {
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
@@ -2934,6 +2963,11 @@ fn (tc &TypeChecker) cached_resolved_call(id flat.NodeId) ?string {
 	idx := int(id)
 	if !isnil(tc.fork_overlay) {
 		if name := tc.fork_overlay.resolved_call_names[idx] {
+			return name
+		}
+	}
+	if tc.transform_sparse_node_caches {
+		if name := tc.sparse_resolved_call_names[idx] {
 			return name
 		}
 	}
@@ -3006,6 +3040,11 @@ pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 			return name
 		}
 	}
+	if tc.transform_sparse_node_caches {
+		if name := tc.sparse_resolved_fn_values[idx] {
+			return name
+		}
+	}
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) {
 			if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
@@ -3055,6 +3094,10 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 	if idx < 0 {
 		return
 	}
+	if tc.transform_sparse_node_caches {
+		tc.sparse_resolved_call_names[idx] = name
+		return
+	}
 	if tc.parallel_check_sparse {
 		if tc.in_check_range(idx) && idx < tc.resolved_call_names.len {
 			tc.resolved_call_names[idx] = name
@@ -3077,6 +3120,10 @@ fn (mut tc TypeChecker) remember_resolved_call(id flat.NodeId, name string) {
 fn (mut tc TypeChecker) remember_resolved_fn_value(id flat.NodeId, name string) {
 	idx := int(id)
 	if idx < 0 {
+		return
+	}
+	if tc.transform_sparse_node_caches {
+		tc.sparse_resolved_fn_values[idx] = name
 		return
 	}
 	if tc.parallel_check_sparse {
@@ -3121,6 +3168,10 @@ fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 	kind := if int(id) < tc.a.nodes.len { tc.a.nodes[int(id)].kind } else { flat.NodeKind.empty }
 	if should_cache_expr_type(kind, typ) {
 		idx := int(id)
+		if tc.transform_sparse_node_caches {
+			tc.sparse_expr_type_values[idx] = typ
+			return
+		}
 		if tc.parallel_check_sparse {
 			if tc.in_check_range(idx) && idx < tc.expr_type_values.len {
 				tc.expr_type_values[idx] = typ
@@ -15108,11 +15159,22 @@ fn (mut tc TypeChecker) expr_receiver_compatible(expr_id flat.NodeId, actual Typ
 	if !tc.receiver_compatible(actual, expected) {
 		return false
 	}
-	if actual is Pointer && expected !is Pointer
+	if actual is Pointer && expected !is Pointer && tc.expr_is_explicit_address_arg(expr_id)
 		&& !tc.explicit_address_arg_compatible(expr_id, actual, expected) {
 		return false
 	}
 	return tc.generic_expected_expr_fields_compatible(expr_id, expected)
+}
+
+fn (tc &TypeChecker) expr_is_explicit_address_arg(expr_id flat.NodeId) bool {
+	if int(expr_id) < 0 || int(expr_id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(expr_id)]
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.expr_is_explicit_address_arg(tc.a.child(&node, 0))
+	}
+	return node.kind == .prefix && node.op == .amp
 }
 
 fn (tc &TypeChecker) explicit_address_arg_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {

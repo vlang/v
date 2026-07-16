@@ -73,62 +73,68 @@ pub:
 // Transformer represents transformer data used by transform.
 pub struct Transformer {
 mut:
-	a                            &flat.FlatAst      = unsafe { nil }
-	tc                           &types.TypeChecker = unsafe { nil }
-	structs                      map[string]StructInfo
-	unique_fields                map[string]string
-	alias_methods                map[string]string
-	globals                      map[string]string
-	sum_types                    map[string][]string
-	sum_variant_parents          map[string][]string
-	sum_variant_names            map[string]bool
-	sum_variant_fields           map[string]string
-	qualified_types              map[string]string
-	fn_ret_types                 map[string]string
-	receiver_method_suffix_index map[string]string
-	const_suffixes               map[string]string
-	enum_types                   map[string][]string
-	enum_backing_types           map[string]string
-	cur_file                     string
-	cur_module                   string
-	cur_fn_name                  string
-	cur_fn_ret_type              string
-	cur_fn_is_generic            bool
-	skip_generics                bool
-	var_types                    []VarTypeBinding
-	fn_value_locals              map[string]string
-	mut_param_values             map[string]bool
-	mut_value_ident_nodes        map[int]bool
-	pointer_value_lvalues        map[string]bool
-	pointer_value_rvalues        map[string]bool
-	temp_counter                 int
-	pending_stmts                []flat.NodeId
-	smartcast_stack              []SmartcastContext
-	invalidated_smartcasts       map[string]bool
-	in_call_callee               bool
-	in_monomorphize_scan         bool
-	validating_generic_spec      bool
-	monomorph_errors             []string
-	monomorph_error_seen         map[string]bool
-	in_spawn_expr                bool
-	has_spawn_expr               bool
-	in_const_init                bool
-	in_return_expr               bool
-	expected_expr_node           int = -1
-	expected_expr_type           string
-	in_selector_base             bool
-	autolock_depth               int
-	alias_cache                  &AliasCache             = unsafe { nil }
-	sum_cache                    &AliasCache             = unsafe { nil }
-	generic_unresolved_cache     &GenericUnresolvedCache = unsafe { nil }
-	struct_field_type_cache      &LookupCache            = unsafe { nil }
-	variant_short_name_cache     &LookupCache            = unsafe { nil }
-	call_param_types_decl_cache  map[string][]types.Type
-	call_param_types_decl_misses map[string]bool
-	call_param_types_decl_index  map[string]FnParamDeclRef
-	call_param_types_index_ready bool
-	used_fns                     map[string]bool
-	comptime_reflected_params    map[string][]ParamMeta
+	a                             &flat.FlatAst      = unsafe { nil }
+	tc                            &types.TypeChecker = unsafe { nil }
+	structs                       map[string]StructInfo
+	struct_short_name_index       map[string]string
+	struct_short_name_index_ready bool
+	unique_fields                 map[string]string
+	alias_methods                 map[string]string
+	globals                       map[string]string
+	sum_types                     map[string][]string
+	sum_variant_parents           map[string][]string
+	sum_variant_names             map[string]bool
+	sum_variant_fields            map[string]string
+	qualified_types               map[string]string
+	fn_ret_types                  map[string]string
+	multi_return_fn_ret_types     map[string]types.Type
+	receiver_method_suffix_index  map[string]string
+	const_suffixes                map[string]string
+	enum_types                    map[string][]string
+	enum_backing_types            map[string]string
+	cur_file                      string
+	cur_module                    string
+	cur_fn_name                   string
+	cur_fn_ret_type               string
+	cur_fn_is_generic             bool
+	skip_generics                 bool
+	var_types                     []VarTypeBinding
+	var_type_indices              map[string]int
+	fn_value_locals               map[string]string
+	mut_param_values              map[string]bool
+	mut_value_ident_nodes         map[int]bool
+	pointer_value_lvalues         map[string]bool
+	pointer_value_rvalues         map[string]bool
+	temp_counter                  int
+	pending_stmts                 []flat.NodeId
+	smartcast_stack               []SmartcastContext
+	invalidated_smartcasts        map[string]bool
+	in_call_callee                bool
+	in_monomorphize_scan          bool
+	validating_generic_spec       bool
+	monomorph_errors              []string
+	monomorph_error_seen          map[string]bool
+	in_spawn_expr                 bool
+	has_spawn_expr                bool
+	in_const_init                 bool
+	in_return_expr                bool
+	expected_expr_node            int = -1
+	expected_expr_type            string
+	in_selector_base              bool
+	autolock_depth                int
+	alias_cache                   &AliasCache             = unsafe { nil }
+	sum_cache                     &AliasCache             = unsafe { nil }
+	generic_unresolved_cache      &GenericUnresolvedCache = unsafe { nil }
+	struct_field_type_cache       &LookupCache            = unsafe { nil }
+	variant_short_name_cache      &LookupCache            = unsafe { nil }
+	interface_box_param_cache     &BoolLookupCache        = unsafe { nil }
+	alias_receiver_method_cache   &LookupCache            = unsafe { nil }
+	call_param_types_decl_cache   map[string][]types.Type
+	call_param_types_decl_misses  map[string]bool
+	call_param_types_decl_index   map[string]FnParamDeclRef
+	call_param_types_index_ready  bool
+	used_fns                      map[string]bool
+	comptime_reflected_params     map[string][]ParamMeta
 	// sum_eq_types records sum types whose deep-equality helper fn
 	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
 	// module/file context of the requesting call site (type resolution inside
@@ -221,8 +227,11 @@ mut:
 	// Prealloc self-host builds put helper-thread scratch allocations in
 	// disposable arenas. The worker's surviving AST strings are cloned by the
 	// master before that arena is released.
-	scope_parallel_workers bool
-	worker_scope           voidptr
+	scope_parallel_workers  bool
+	worker_scope            voidptr
+	scoped_base_nodes       int = -1
+	scoped_owned_base_nodes map[int]bool
+	scoped_worker_scopes    []voidptr
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -240,6 +249,11 @@ struct LookupCache {
 mut:
 	entries map[string]string
 	misses  map[string]bool
+}
+
+struct BoolLookupCache {
+mut:
+	entries map[string]i8 // 1 = true, -1 = false
 }
 
 // GenericUnresolvedCache memoizes generic_arg_is_unresolved results. Lives on
@@ -348,36 +362,51 @@ pub fn transform_with_used_opt_config_scoped_workers(mut a flat.FlatAst, tc &typ
 // transform_with_used_opt_config_scoped_workers_checked also returns diagnostics selected while
 // normal comptime reflection loops are unrolled.
 pub fn transform_with_used_opt_config_scoped_workers_checked(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool) (map[string]bool, bool, []string) {
+	base_nodes := a.nodes.len
+	augmented, was_parallel, errors, owned_base_nodes, worker_scopes := transform_with_used_opt_config_scoped_workers_checked_owned(mut a,
+		tc, used_fns, want_parallel, skip_generics, scope_parallel_workers)
+	if worker_scopes.len > 0 {
+		for idx in owned_base_nodes {
+			if idx >= 0 && idx < base_nodes && idx < a.nodes.len {
+				clone_node_owned_fields_in_place(mut a.nodes[idx])
+			}
+		}
+		for idx in base_nodes .. a.nodes.len {
+			clone_node_owned_fields_in_place(mut a.nodes[idx])
+		}
+		for scope in worker_scopes {
+			transform_worker_scope_free(scope)
+		}
+	}
+	return augmented, was_parallel, errors
+}
+
+fn clone_node_owned_fields_in_place(mut node flat.Node) {
+	node.value = node.value.clone()
+	node.typ = node.typ.clone()
+	mut params := []string{cap: node.generic_params.len}
+	for param in node.generic_params {
+		params << param.clone()
+	}
+	node.generic_params = params
+}
+
+// transform_with_used_opt_config_scoped_workers_checked_owned additionally
+// reports base AST nodes whose owned fields were replaced and worker arenas
+// that the caller must release after copying the surviving data.
+pub fn transform_with_used_opt_config_scoped_workers_checked_owned(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool) (map[string]bool, bool, []string, []int, []voidptr) {
 	mut t := new_transformer(mut a, tc, used_fns)
 	t.skip_generics = skip_generics
 	t.scope_parallel_workers = scope_parallel_workers
 	t.prepare()
 	t.cache_comptime_param_reflection_metadata()
 	if want_parallel {
-		// Transform roughly grows the node/children arrays by ~75%. Reserve that capacity
-		// up front so they don't double past it (the parsed AST already overshoots to the
-		// next power of two, wasting ~40MB, and each doubling briefly holds both the old and
-		// new arrays — the dominant peak-RSS contributor under -gc none). The serial path is
-		// latency-sensitive and does not clone worker ASTs, so let it grow naturally.
-		// Nodes grow a bit less than children on large compiler inputs. Keeping their
-		// reserve below the next power-of-two cliff avoids retaining a mostly-empty
-		// doubled nodes array through annotate/CGen.
-		// The shared-base parallel path partitions this headroom into per-worker
-		// append regions, so it reserves ~2x the expected growth: untouched
-		// capacity pages are never written, so RSS does not grow with the
-		// extra reserve.
-		nodes_factor_num, nodes_factor_den := if skip_generics { 7, 3 } else { 5, 3 }
-		children_factor_num, children_factor_den := if skip_generics { 5, 2 } else { 7, 4 }
-		reserve_nodes := a.nodes.len * nodes_factor_num / nodes_factor_den - a.nodes.cap
-		if reserve_nodes > 0 {
-			unsafe { a.nodes.grow_cap(reserve_nodes) }
-		}
-		reserve_children := a.children.len * children_factor_num / children_factor_den - a.children.cap
-		if reserve_children > 0 {
-			unsafe { a.children.grow_cap(reserve_children) }
-		}
+		reserve_parallel_transform_ast(mut a, skip_generics)
 	}
 	base_node_count := t.a.nodes.len
+	if scope_parallel_workers {
+		t.scoped_base_nodes = base_node_count
+	}
 	t.transformed_fns = []bool{len: t.a.nodes.len}
 	was_parallel := t.transform_all_dispatch(want_parallel)
 	t.apply_ignored_comptime_for_nodes()
@@ -395,7 +424,26 @@ pub fn transform_with_used_opt_config_scoped_workers_checked(mut a flat.FlatAst,
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	t.run_sum_eq_synthesis_rounds(base_node_count)
 	t.apply_ignored_comptime_for_nodes()
-	return t.used_fns, was_parallel, t.monomorph_errors
+	return t.used_fns, was_parallel, t.monomorph_errors, t.scoped_owned_base_nodes.keys(), t.scoped_worker_scopes
+}
+
+// reserve_parallel_transform_ast reserves the shared append regions used by
+// the parallel transform. Self-host callers may do this before entering a
+// disposable arena so the transformed AST remains in its persistent backing.
+pub fn reserve_parallel_transform_ast(mut a flat.FlatAst, skip_generics bool) {
+	// Transform roughly grows the node/children arrays by ~75%. The shared-base
+	// path partitions the extra headroom between workers; untouched virtual pages
+	// do not contribute to resident memory.
+	nodes_factor_num, nodes_factor_den := if skip_generics { 7, 3 } else { 5, 3 }
+	children_factor_num, children_factor_den := if skip_generics { 5, 2 } else { 7, 4 }
+	reserve_nodes := a.nodes.len * nodes_factor_num / nodes_factor_den - a.nodes.cap
+	if reserve_nodes > 0 {
+		unsafe { a.nodes.grow_cap(reserve_nodes) }
+	}
+	reserve_children := a.children.len * children_factor_num / children_factor_den - a.children.cap
+	if reserve_children > 0 {
+		unsafe { a.children.grow_cap(reserve_children) }
+	}
 }
 
 // run_sum_eq_synthesis_rounds alternates sum-eq helper synthesis with the
@@ -575,6 +623,15 @@ fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[strin
 		comptime_reflected_params:        map[string][]ParamMeta{}
 		interface_boxed_types:            map[string]bool{}
 		interface_var_concrete_types:     map[string]string{}
+		scoped_owned_base_nodes:          map[int]bool{}
+		interface_box_param_cache:        &BoolLookupCache{
+			entries: map[string]i8{}
+		}
+		alias_receiver_method_cache:      &LookupCache{
+			entries: map[string]string{}
+			misses:  map[string]bool{}
+		}
+		var_type_indices:                 map[string]int{}
 	}
 }
 
@@ -617,6 +674,8 @@ fn local_method_fn_name_needs_module_prefix(name string) bool {
 
 fn (mut t Transformer) prepare() {
 	t.collect_types()
+	t.rebuild_struct_short_name_index()
+	t.collect_multi_return_fn_ret_types()
 	t.collect_const_suffixes()
 	t.collect_alias_methods()
 	t.rebuild_receiver_method_suffix_index()
@@ -636,6 +695,51 @@ fn (mut t Transformer) prepare() {
 	}
 }
 
+fn (mut t Transformer) collect_multi_return_fn_ret_types() {
+	if isnil(t.tc) {
+		return
+	}
+	t.multi_return_fn_ret_types = map[string]types.Type{}
+	for name, ret_type in t.tc.fn_ret_types {
+		if type_contains_multi_return(ret_type) {
+			t.multi_return_fn_ret_types[name] = ret_type
+		}
+	}
+}
+
+fn type_contains_multi_return(typ types.Type) bool {
+	if typ is types.MultiReturn {
+		return true
+	}
+	if typ is types.OptionType {
+		return type_contains_multi_return(typ.base_type)
+	}
+	if typ is types.ResultType {
+		return type_contains_multi_return(typ.base_type)
+	}
+	return false
+}
+
+const struct_short_name_ambiguous = '__v_struct_short_name_ambiguous__'
+
+fn (mut t Transformer) rebuild_struct_short_name_index() {
+	t.struct_short_name_index = map[string]string{}
+	for qualified in t.structs.keys() {
+		if !qualified.contains('.') {
+			continue
+		}
+		short_name := qualified.all_after_last('.')
+		if previous := t.struct_short_name_index[short_name] {
+			if previous != qualified {
+				t.struct_short_name_index[short_name] = struct_short_name_ambiguous
+			}
+		} else {
+			t.struct_short_name_index[short_name] = qualified
+		}
+	}
+	t.struct_short_name_index_ready = true
+}
+
 // base_write_allowed reports whether an in-place write to node slot `idx` is
 // safe right now: always outside the shared-base parallel region; inside it,
 // only appended nodes (>= shared_base_nodes) and slots of the fn subtree
@@ -650,6 +754,7 @@ fn (t &Transformer) base_write_allowed(idx int) bool {
 fn (mut t Transformer) set_node_typ(idx int, typ string) {
 	if t.base_write_allowed(idx) {
 		t.a.nodes[idx].typ = typ
+		t.mark_scoped_owned_base_node(idx)
 		return
 	}
 	if t.defer_oor_writes {
@@ -665,6 +770,7 @@ fn (mut t Transformer) set_node_typ(idx int, typ string) {
 fn (mut t Transformer) set_node_value(idx int, value string) {
 	if t.base_write_allowed(idx) {
 		t.a.nodes[idx].value = value
+		t.mark_scoped_owned_base_node(idx)
 		return
 	}
 	if t.defer_oor_writes {
@@ -680,6 +786,7 @@ fn (mut t Transformer) set_node_value(idx int, value string) {
 fn (mut t Transformer) set_node(idx int, node flat.Node) {
 	if t.base_write_allowed(idx) {
 		t.a.nodes[idx] = node
+		t.mark_scoped_owned_base_node(idx)
 		return
 	}
 	if t.defer_oor_writes {
@@ -728,6 +835,7 @@ fn (mut t Transformer) apply_ignored_comptime_for_nodes() {
 fn (mut t Transformer) set_node_generic_params(idx int, gparams []string) {
 	if t.base_write_allowed(idx) {
 		t.a.nodes[idx].generic_params = gparams
+		t.mark_scoped_owned_base_node(idx)
 		return
 	}
 	if t.defer_oor_writes {
@@ -736,6 +844,13 @@ fn (mut t Transformer) set_node_generic_params(idx int, gparams []string) {
 			kind:    3
 			gparams: gparams
 		}
+	}
+}
+
+@[inline]
+fn (mut t Transformer) mark_scoped_owned_base_node(idx int) {
+	if t.scope_parallel_workers && idx >= 0 && idx < t.scoped_base_nodes {
+		t.scoped_owned_base_nodes[idx] = true
 	}
 }
 
@@ -749,6 +864,8 @@ fn (mut t Transformer) flush_deferred_base_writes() {
 			2 { t.a.nodes[w.idx] = w.node }
 			else { t.a.nodes[w.idx].generic_params = w.gparams }
 		}
+
+		t.mark_scoped_owned_base_node(w.idx)
 	}
 	t.deferred_base_writes = []DeferredBaseWrite{}
 }
@@ -807,6 +924,7 @@ fn (mut t Transformer) set_receiver_method_suffix_index(key string, name string)
 // reset_var_types updates reset var types state for transform.
 fn (mut t Transformer) reset_var_types() {
 	t.var_types.clear()
+	t.var_type_indices.clear()
 	t.fn_value_locals.clear()
 	t.mut_param_values.clear()
 	t.interface_var_concrete_types.clear()
@@ -822,16 +940,17 @@ fn (mut t Transformer) set_var_type_with_raw(name string, typ string, raw_typ st
 		return
 	}
 	raw := if raw_typ.len > 0 { raw_typ } else { typ }
-	for i, binding in t.var_types {
-		if binding.name == name {
-			t.var_types[i] = VarTypeBinding{
-				name:    name
-				typ:     typ
-				raw_typ: raw
-			}
-			return
+	i := t.var_type_index(name)
+	if i >= 0 {
+		t.var_type_indices[name] = i
+		t.var_types[i] = VarTypeBinding{
+			name:    name
+			typ:     typ
+			raw_typ: raw
 		}
+		return
 	}
+	t.var_type_indices[name] = t.var_types.len
 	t.var_types << VarTypeBinding{
 		name:    name
 		typ:     typ
@@ -871,40 +990,58 @@ fn decl_assign_value_is_shared(value string) bool {
 
 // unset_var_type supports unset var type handling for Transformer.
 fn (mut t Transformer) unset_var_type(name string) {
-	for i, binding in t.var_types {
-		if binding.name == name {
-			t.var_types.delete(i)
-			t.fn_value_locals.delete(name)
-			t.interface_var_concrete_types.delete(name)
-			return
+	i := t.var_type_index(name)
+	if i >= 0 {
+		t.var_types.delete(i)
+		t.var_type_indices.delete(name)
+		for j in i .. t.var_types.len {
+			t.var_type_indices[t.var_types[j].name] = j
 		}
 	}
+	t.fn_value_locals.delete(name)
+	t.interface_var_concrete_types.delete(name)
 }
 
 // var_type supports var type handling for Transformer.
 fn (t &Transformer) var_type(name string) string {
-	for binding in t.var_types {
-		if binding.name == name {
-			return binding.typ
-		}
+	i := t.var_type_index(name)
+	if i >= 0 {
+		return t.var_types[i].typ
 	}
 	return ''
 }
 
 fn (t &Transformer) raw_var_type(name string) string {
-	for binding in t.var_types {
-		if binding.name == name {
-			if binding.raw_typ.len > 0 {
-				return binding.raw_typ
-			}
-			return binding.typ
-		}
+	i := t.var_type_index(name)
+	if i >= 0 {
+		binding := t.var_types[i]
+		return if binding.raw_typ.len > 0 { binding.raw_typ } else { binding.typ }
 	}
 	return ''
 }
 
+fn (t &Transformer) var_type_index(name string) int {
+	if i := t.var_type_indices[name] {
+		if i >= 0 && i < t.var_types.len && t.var_types[i].name == name {
+			return i
+		}
+	}
+	// Some focused transformer tests seed var_types directly. Keep that API
+	// shape working while production transformers use the O(1) index above.
+	for i, binding in t.var_types {
+		if binding.name == name {
+			return i
+		}
+	}
+	return -1
+}
+
 fn (mut t Transformer) restore_var_types(saved []VarTypeBinding) {
 	t.var_types = saved
+	t.var_type_indices.clear()
+	for i, binding in t.var_types {
+		t.var_type_indices[binding.name] = i
+	}
 }
 
 // --- type collection ---
@@ -1634,6 +1771,10 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.alias_receiver_method_cache = &LookupCache{
+		entries: map[string]string{}
+		misses:  map[string]bool{}
+	}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
@@ -1646,6 +1787,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.node_module_map_cache = []string{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
+	w.var_type_indices = map[string]int{}
 	w.mut_param_values = map[string]bool{}
 	w.smartcast_stack = []SmartcastContext{}
 	w.invalidated_smartcasts = map[string]bool{}
@@ -1659,7 +1801,6 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.generic_fn_specs_in_progress = map[string]bool{}
 	w.monomorph_errors = []string{}
 	w.monomorph_error_seen = map[string]bool{}
-	w.used_fns = t.used_fns.clone()
 	// Fields added after the fork/merge machinery was first written. They are
 	// mutated during body transforms (or lazily built), so each worker needs
 	// private backing storage — a plain struct copy would share the master's.
@@ -1676,6 +1817,7 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.deferred_base_writes = []DeferredBaseWrite{}
 	w.ignored_comptime_for_nodes = []bool{}
 	w.worker_scope = unsafe { nil }
+	w.scoped_owned_base_nodes = map[int]bool{}
 	// Workers do not record transformed fns (that would write the master's
 	// shared backing array); the master marks each worker's chunk items when it
 	// merges the worker.
@@ -1713,6 +1855,10 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.alias_receiver_method_cache = &LookupCache{
+		entries: map[string]string{}
+		misses:  map[string]bool{}
+	}
 	w.generic_fn_decls_cache = map[string]GenericFnDecl{}
 	w.generic_fn_decls_ready = false
 	w.generic_call_spec_cache = map[int]GenericCallSpec{}
@@ -1720,6 +1866,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.node_module_map_cache = []string{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
+	w.var_type_indices = map[string]int{}
 	w.mut_param_values = map[string]bool{}
 	w.smartcast_stack = []SmartcastContext{}
 	w.invalidated_smartcasts = map[string]bool{}
@@ -1774,28 +1921,6 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 	}
 }
 
-// clone_scoped_worker_node moves a node's owned fields from a helper arena to
-// the master's arena before the helper arena is released.
-fn (mut t Transformer) clone_scoped_worker_node(idx int) {
-	if idx < 0 || idx >= t.a.nodes.len {
-		return
-	}
-	mut node := unsafe { &t.a.nodes[idx] }
-	if node.value.len > 0 {
-		node.value = node.value.clone()
-	}
-	if node.typ.len > 0 {
-		node.typ = node.typ.clone()
-	}
-	if node.generic_params.len > 0 {
-		mut params := []string{cap: node.generic_params.len}
-		for param in node.generic_params {
-			params << param.clone()
-		}
-		node.generic_params = params
-	}
-}
-
 // merge_worker folds a finished worker's transformed output back into the master
 // AST. The worker created its new nodes/children at indices base_nodes/base_children
 // (matching the master at fork time); here they are appended to the master and every
@@ -1842,9 +1967,6 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			if t.a.nodes[k].children_start >= base_children {
 				t.a.nodes[k] = t.a.nodes[k].with_shifted_children(child_shift)
 			}
-			if w.worker_scope != unsafe { nil } {
-				t.clone_scoped_worker_node(k)
-			}
 		}
 	}
 	// Rewritten top-level function nodes keep their original index in the master.
@@ -1858,10 +1980,10 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 		if it.fn_idx >= 0 && it.fn_idx < t.transformed_fns.len {
 			t.transformed_fns[it.fn_idx] = true
 		}
-		if w.worker_scope != unsafe { nil } {
-			for idx in it.range_lo .. it.fn_idx + 1 {
-				t.clone_scoped_worker_node(idx)
-			}
+	}
+	if w.worker_scope != unsafe { nil } {
+		for idx in w.scoped_owned_base_nodes.keys() {
+			t.scoped_owned_base_nodes[idx] = true
 		}
 	}
 	// Replay the call/fn-value resolutions the worker recorded for its
@@ -1908,6 +2030,10 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 }
 
 fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
+	if t.tc.transform_sparse_node_caches {
+		t.tc.sparse_resolved_call_names[idx] = name
+		return
+	}
 	for t.tc.resolved_call_names.len <= idx {
 		t.tc.resolved_call_names << ''
 		t.tc.resolved_call_set << false
@@ -1917,6 +2043,10 @@ fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
 }
 
 fn (mut t Transformer) set_resolved_fn_value_entry(idx int, name string) {
+	if t.tc.transform_sparse_node_caches {
+		t.tc.sparse_resolved_fn_values[idx] = name
+		return
+	}
 	for t.tc.resolved_fn_value_names.len <= idx {
 		t.tc.resolved_fn_value_names << ''
 		t.tc.resolved_fn_value_set << false
@@ -6036,7 +6166,7 @@ fn (t &Transformer) find_multi_return_call_types(node flat.Node, expected_count 
 		return none
 	}
 	for candidate in candidates {
-		for key, ret in t.tc.fn_ret_types {
+		for key, ret in t.multi_return_fn_ret_types {
 			matches := if candidate.starts_with('.') {
 				key.ends_with(candidate)
 			} else {
@@ -8047,6 +8177,10 @@ fn (mut t Transformer) ensure_stringify_generic_instances_for_type(typ string) {
 		is_params: base_info.is_params
 		fields:    fields
 	}
+	// A later unqualified lookup must include this newly materialized generic
+	// struct, so fall back to the exact legacy scan after the collected index
+	// has changed.
+	t.struct_short_name_index_ready = false
 }
 
 fn (t &Transformer) struct_info_matches_generic_base(base string, info StructInfo) bool {
@@ -10000,7 +10134,7 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 			}
 			if !t.in_selector_base && t.pointer_value_rvalues[node.value] && typ.starts_with('&') {
 				deref := t.make_prefix(.mul, id)
-				t.a.nodes[int(deref)].typ = typ[1..]
+				t.set_node_typ(int(deref), typ[1..])
 				return deref
 			}
 			return id
@@ -10031,7 +10165,7 @@ fn (mut t Transformer) apply_smartcast_contexts(base flat.NodeId, typ string, co
 			// can be a pointer and would make cgen emit `->`), so pin the node's
 			// type back to the option before selecting `.value` from it.
 			if int(current) >= 0 && t.a.nodes[int(current)].kind in [.ident, .selector] {
-				t.a.nodes[int(current)].typ = '?${sc.variant_name}'
+				t.set_node_typ(int(current), '?${sc.variant_name}')
 			}
 			field_op := if current_type.starts_with('&?') { flat.Op.arrow } else { flat.Op.dot }
 			current = t.make_selector_op(current, 'value', sc.variant_name, field_op)

@@ -25,6 +25,8 @@ $if !windows {
 		results_ptr  voidptr // &[]BodyCalls
 		start        int
 		end          int
+	mut:
+		scope voidptr
 	}
 
 	// C.pthread_t declares C pthread t data used by markused.
@@ -48,14 +50,55 @@ $if !windows {
 
 	// markused_chunk_thread runs one worker's range of bodies.
 	fn markused_chunk_thread(arg voidptr) voidptr {
-		args := unsafe { &MarkusedChunkArgs(arg) }
+		mut args := unsafe { &MarkusedChunkArgs(arg) }
+		args.scope = markused_worker_scope_begin()
 		c := unsafe { &CallCollector(args.collector) }
 		body_ids := unsafe { &[]int(args.body_ids_ptr) }
 		modules := unsafe { &[]string(args.modules_ptr) }
 		mut results := unsafe { &[]BodyCalls(args.results_ptr) }
 		c.collect_bodies_range(*body_ids, *modules, args.imports, args.start, args.end, mut
 			*results)
+		markused_worker_scope_leave(args.scope)
 		return unsafe { nil }
+	}
+}
+
+fn markused_worker_scope_begin() voidptr {
+	$if prealloc {
+		return unsafe { prealloc_scope_begin() }
+	}
+	return unsafe { nil }
+}
+
+fn markused_worker_scope_leave(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_leave(scope) }
+		}
+	}
+}
+
+fn markused_worker_scope_free(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(scope) }
+		}
+	}
+}
+
+fn clone_body_calls(value BodyCalls) BodyCalls {
+	mut calls := []string{cap: value.calls.len}
+	for call in value.calls {
+		calls << call.clone()
+	}
+	mut refs := []string{cap: value.refs.len}
+	for ref in value.refs {
+		refs << ref.clone()
+	}
+	return BodyCalls{
+		calls:         calls
+		refs:          refs
+		uses_generics: value.uses_generics
 	}
 }
 
@@ -116,6 +159,12 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 			results)
 		for ci in 0 .. thread_count {
 			C.pthread_join(thread_ids[ci], unsafe { nil })
+			if args[ci].scope != unsafe { nil } {
+				for result_idx in args[ci].start .. args[ci].end {
+					results[result_idx] = clone_body_calls(results[result_idx])
+				}
+				markused_worker_scope_free(args[ci].scope)
+			}
 		}
 		return results
 	}

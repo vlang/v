@@ -348,24 +348,28 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
 	mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
 	saved_generic_params := tc.cur_generic_params.clone()
-	tc.cur_fn_mut_param_base_types = map[string]Type{}
-	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
-	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
-	tc.cur_fn_shared_binding_owners = map[string][]ScopeBindingOwner{}
+	tc.cur_fn_mut_param_base_types = tc.scratch_fn_mut_param_base_types.move()
+	tc.cur_fn_mut_param_binding_owners = tc.scratch_fn_mut_param_binding_owners.move()
+	tc.cur_fn_mut_local_binding_owners = tc.scratch_fn_mut_local_binding_owners.move()
+	tc.cur_fn_shared_binding_owners = tc.scratch_fn_shared_binding_owners.move()
+	tc.cur_fn_mut_param_base_types.clear()
+	tc.cur_fn_mut_param_binding_owners.clear()
+	tc.cur_fn_mut_local_binding_owners.clear()
+	tc.cur_fn_shared_binding_owners.clear()
 	tc.cur_file = file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope
 	tc.cur_generic_params = tc.infer_decl_generic_param_names(node)
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
 	tc.cur_fn_node_id = fn_idx
-	tc.method_value_locals = map[string]bool{}
-	tc.fn_value_variadic_locals = map[string]bool{}
-	tc.fn_value_variadic_local_owners = map[string][]ScopeBindingOwner{}
-	tc.capturing_fn_literal_locals = map[string]bool{}
-	tc.capturing_fn_literal_local_owners = map[string][]ScopeBindingOwner{}
-	tc.method_value_local_depth = map[string]int{}
-	tc.fn_value_variadic_local_depth = map[string]int{}
-	tc.capturing_fn_literal_local_depth = map[string]int{}
+	tc.method_value_locals.clear()
+	tc.fn_value_variadic_locals.clear()
+	tc.fn_value_variadic_local_owners.clear()
+	tc.capturing_fn_literal_locals.clear()
+	tc.capturing_fn_literal_local_owners.clear()
+	tc.method_value_local_depth.clear()
+	tc.fn_value_variadic_local_depth.clear()
+	tc.capturing_fn_literal_local_depth.clear()
 	$if ownership ? {
 		tc.ownership_begin_fn(node)
 	}
@@ -398,6 +402,10 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	}
 	tc.cur_fn_ret_type = Type(void_)
 	tc.cur_generic_params = saved_generic_params
+	tc.scratch_fn_mut_param_base_types = tc.cur_fn_mut_param_base_types.move()
+	tc.scratch_fn_mut_param_binding_owners = tc.cur_fn_mut_param_binding_owners.move()
+	tc.scratch_fn_mut_local_binding_owners = tc.cur_fn_mut_local_binding_owners.move()
+	tc.scratch_fn_shared_binding_owners = tc.cur_fn_shared_binding_owners.move()
 	tc.cur_fn_mut_param_base_types = saved_mut_params.move()
 	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
@@ -513,6 +521,10 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	w.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
 	w.cur_fn_shared_binding_owners = map[string][]ScopeBindingOwner{}
+	w.scratch_fn_mut_param_base_types = map[string]Type{}
+	w.scratch_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
+	w.scratch_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
+	w.scratch_fn_shared_binding_owners = map[string][]ScopeBindingOwner{}
 	w.generic_method_value_info = map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
 	w.cur_fn_ret_type = Type(void_)

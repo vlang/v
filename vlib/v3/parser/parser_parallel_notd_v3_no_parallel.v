@@ -44,6 +44,7 @@ $if !windows {
 		prepass_chunk voidptr // &ComptimeConstPrepassChunk
 		start         int
 		end           int
+		chunk_bytes   int
 	}
 
 	// C.pthread_t declares C pthread t data used by parser.
@@ -71,6 +72,8 @@ $if !windows {
 	fn parse_chunk_thread(arg voidptr) voidptr {
 		a := unsafe { &ParseChunkArgs(arg) }
 		mut w := unsafe { &Parser(a.worker) }
+		scope := parser_worker_scope_begin(w.scope_parallel_workers)
+		w.reserve_for_source(a.chunk_bytes)
 		paths := unsafe { &[]string(a.paths_ptr) }
 		mut starts := unsafe { &[]int(a.starts_ptr) }
 		for i in a.start .. a.end {
@@ -79,6 +82,8 @@ $if !windows {
 			}
 			w.parse_into((*paths)[i])
 		}
+		w.worker_scope = scope
+		parser_worker_scope_leave(scope)
 		return unsafe { nil }
 	}
 
@@ -91,6 +96,31 @@ $if !windows {
 			w.precollect_parallel_comptime_consts(*paths, a.start, a.end, mut chunk.decls)
 		}
 		return unsafe { nil }
+	}
+}
+
+fn parser_worker_scope_begin(enabled bool) voidptr {
+	$if prealloc {
+		if enabled {
+			return unsafe { prealloc_scope_begin() }
+		}
+	}
+	return unsafe { nil }
+}
+
+fn parser_worker_scope_leave(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_leave(scope) }
+		}
+	}
+}
+
+fn parser_worker_scope_free(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(scope) }
+		}
 	}
 }
 
@@ -126,13 +156,15 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		// per-file independent), so all of them are created up front. Each
 		// pre-reserves for its chunk's source bytes to avoid growth doubling.
 		mut workers := []&Parser{cap: thread_count}
+		mut worker_chunk_bytes := []int{len: thread_count}
 		for ci in 0 .. thread_count {
 			mut w := Parser.new(p.prefs)
 			mut chunk_bytes := i64(0)
 			for i in bounds[ci + 1] .. bounds[ci + 2] {
 				chunk_bytes += sizes[i]
 			}
-			w.reserve_for_source(int(chunk_bytes))
+			w.scope_parallel_workers = p.scope_parallel_workers
+			worker_chunk_bytes[ci] = int(chunk_bytes)
 			workers << w
 		}
 		mut args := []ParseChunkArgs{cap: thread_count}
@@ -144,6 +176,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 				prepass_chunk: voidptr(prepass_chunks[ci + 1])
 				start:         bounds[ci + 1]
 				end:           bounds[ci + 2]
+				chunk_bytes:   worker_chunk_bytes[ci]
 			}
 		}
 		mut thread_ids := []C.pthread_t{len: thread_count}
@@ -189,6 +222,7 @@ pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) 
 		for ci in 0 .. thread_count {
 			C.pthread_join(thread_ids[ci], unsafe { nil })
 			p.merge_parsed_worker(workers[ci], mut starts, bounds[ci + 1], bounds[ci + 2])
+			parser_worker_scope_free(workers[ci].worker_scope)
 		}
 		return starts, true
 	}
@@ -796,6 +830,18 @@ fn (mut p Parser) merge_parsed_worker(w &Parser, mut starts []int, chunk_start i
 					node.value = shifted_marker
 				}
 			}
+			if w.worker_scope != unsafe { nil } {
+				unsafe {
+					mut node := &p.a.nodes[k]
+					node.value = node.value.clone()
+					node.typ = node.typ.clone()
+					mut params := []string{cap: node.generic_params.len}
+					for param in node.generic_params {
+						params << param.clone()
+					}
+					node.generic_params = params
+				}
+			}
 		}
 	}
 	// Per-file region starts move by the merge offset.
@@ -812,21 +858,21 @@ fn (mut p Parser) merge_parsed_worker(w &Parser, mut starts []int, chunk_start i
 		if rec.name in p.a.disabled_fns || rec.qname in p.a.disabled_fns {
 			continue
 		}
-		p.a.export_fn_names[rec.qname] = rec.value
+		p.a.export_fn_names[rec.qname.clone()] = rec.value.clone()
 	}
 	for name, disabled in w.a.disabled_fns {
 		if disabled {
-			p.a.disabled_fns[name] = true
+			p.a.disabled_fns[name.clone()] = true
 		}
 	}
 	for name, is_noreturn in w.a.noreturn_fns {
 		if is_noreturn {
-			p.a.noreturn_fns[name] = true
+			p.a.noreturn_fns[name.clone()] = true
 		}
 	}
 	for key, value in w.comptime_const_values {
 		if key !in p.comptime_const_values {
-			p.comptime_const_values[key] = value
+			p.comptime_const_values[key.clone()] = value.clone()
 		}
 	}
 	p.parsed_v_files += w.parsed_v_files

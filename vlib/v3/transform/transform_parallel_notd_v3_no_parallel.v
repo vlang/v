@@ -140,58 +140,6 @@ fn transform_worker_scope_free(scope voidptr) {
 	}
 }
 
-// clone_deferred_worker_writes_from moves writes queued by merge_worker out of
-// a helper arena before that arena is released. In the shared-base path the
-// rewritten top-level fn node is deferred until every worker has joined, so
-// cloning the current master slot alone does not preserve its owned strings.
-fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
-	for i in start .. t.deferred_base_writes.len {
-		write := t.deferred_base_writes[i]
-		t.deferred_base_writes[i] = match write.kind {
-			0, 1 {
-				DeferredBaseWrite{
-					idx:  write.idx
-					kind: write.kind
-					str:  write.str.clone()
-				}
-			}
-			2 {
-				mut params := []string{cap: write.node.generic_params.len}
-				for param in write.node.generic_params {
-					params << param.clone()
-				}
-				DeferredBaseWrite{
-					idx:  write.idx
-					kind: write.kind
-					node: flat.Node{
-						value:          write.node.value.clone()
-						typ:            write.node.typ.clone()
-						generic_params: params
-						kind_id:        write.node.kind_id
-						pos:            write.node.pos
-						children_start: write.node.children_start
-						children_count: write.node.children_count
-						kind:           write.node.kind
-						op:             write.node.op
-						is_mut:         write.node.is_mut
-					}
-				}
-			}
-			else {
-				mut params := []string{cap: write.gparams.len}
-				for param in write.gparams {
-					params << param.clone()
-				}
-				DeferredBaseWrite{
-					idx:     write.idx
-					kind:    write.kind
-					gparams: params
-				}
-			}
-		}
-	}
-}
-
 // run_parallel_transform transforms the closure-free function bodies across
 // threads when there is enough work, otherwise serially. Returns whether threads
 // were actually used.
@@ -432,11 +380,9 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 			C.pthread_join(thread_ids[ci], unsafe { nil })
 			ww := unsafe { &Transformer(args[ci].worker) }
 			t.merge_worker_used_fns(ww)
-			deferred_start := t.deferred_base_writes.len
 			t.merge_worker(ww, chunks[ci + 1], node_starts[ci + 1], child_starts[ci + 1])
 			if ww.worker_scope != unsafe { nil } {
-				t.clone_deferred_worker_writes_from(deferred_start)
-				transform_worker_scope_free(ww.worker_scope)
+				t.scoped_worker_scopes << ww.worker_scope
 			}
 		}
 		t.base_write_intercept = false

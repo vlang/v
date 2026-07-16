@@ -378,10 +378,28 @@ fn (t &Transformer) resolve_alias_receiver_method(base_type string, method strin
 		return none
 	}
 	clean_base := t.normalize_type_alias(base_type)
+	cache_key := '${t.cur_module}\n${clean_base}\n${method}'
+	if !isnil(t.alias_receiver_method_cache) {
+		mut cache := t.alias_receiver_method_cache
+		if cached := cache.entries[cache_key] {
+			return cached
+		}
+		if cache.misses[cache_key] {
+			return none
+		}
+	}
 	if alias_method := t.alias_methods['${clean_base}.${method}'] {
+		if !isnil(t.alias_receiver_method_cache) {
+			mut cache := t.alias_receiver_method_cache
+			cache.entries[cache_key] = alias_method
+		}
 		return alias_method
 	}
 	if !t.is_integer_type_name(clean_base) {
+		if !isnil(t.alias_receiver_method_cache) {
+			mut cache := t.alias_receiver_method_cache
+			cache.misses[cache_key] = true
+		}
 		return none
 	}
 	for name, params in t.tc.fn_param_types {
@@ -394,8 +412,16 @@ fn (t &Transformer) resolve_alias_receiver_method(base_type string, method strin
 		}
 		param_name := params[0].name()
 		if t.alias_receiver_type_matches(clean_base, param_name) {
+			if !isnil(t.alias_receiver_method_cache) {
+				mut cache := t.alias_receiver_method_cache
+				cache.entries[cache_key] = name
+			}
 			return name
 		}
+	}
+	if !isnil(t.alias_receiver_method_cache) {
+		mut cache := t.alias_receiver_method_cache
+		cache.misses[cache_key] = true
 	}
 	return none
 }
@@ -1734,7 +1760,7 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		}
 	}
 	if arg_node.kind == .array_literal && arg_node.typ.len == 0 && param_type.starts_with('[]') {
-		arg_node.typ = param_type
+		t.set_node_typ(int(arg_id), param_type)
 	}
 	if transform_param_type_is_void_pointer(param_type)
 		&& t.call_arg_is_fn_pointer_value(arg_id, *arg_node) {

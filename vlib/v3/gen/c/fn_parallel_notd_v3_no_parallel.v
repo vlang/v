@@ -364,6 +364,18 @@ fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node flat.Node) ?types
 	if idx < 0 {
 		return none
 	}
+	if g.tc.transform_sparse_node_caches {
+		if t := g.tc.sparse_expr_type_values[idx] {
+			return t
+		}
+		if node.kind == .call {
+			if name := g.tc.sparse_resolved_call_names[idx] {
+				if t := g.tc.fn_ret_types[name] {
+					return t
+				}
+			}
+		}
+	}
 	if g.tc.parallel_check_sparse {
 		if t := g.tc.sparse_expr_type_values[idx] {
 			return t
