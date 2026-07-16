@@ -597,6 +597,11 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		for _, sub in sqlexpr.sub_structs {
 			walker.inspect(ast.Expr(sub), data, json_unmigratable_scan_visit)
 		}
+		for join in sqlexpr.joins {
+			// Each JOIN's `on` predicate is printed by sql_expr (f.expr(join.on_expr)) but
+			// is outside Node.children().
+			walker.inspect(join.on_expr, data, json_unmigratable_scan_visit)
+		}
 		walk_or_block(sqlexpr.or_expr, data)
 	} else if node is ast.Expr && node is ast.ArrayInit {
 		// The len:/cap:/init: exprs of `[]T{len: .., init: ..}` and the spread expr of

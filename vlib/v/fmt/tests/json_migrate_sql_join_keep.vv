@@ -1,0 +1,24 @@
+import json
+import db.sqlite
+
+struct Department {
+	id   int @[primary; sql: serial]
+	name string
+}
+
+struct User {
+	id            int @[primary; sql: serial]
+	name          string
+	department_id int
+}
+
+// A JOIN's `on` predicate is printed by sql_expr (f.expr(join.on_expr)) but lives on
+// SqlExpr.joins, outside Node.children(), so the unmigratable scan iterates the joins.
+// The predicate here holds a json.encode_pretty call, so the file is left unmigrated.
+fn query(db sqlite.DB, u User) []User {
+	users := sql db {
+		select from User
+		join Department on Department.name == json.encode_pretty(u)
+	} or { [] }
+	return users
+}
