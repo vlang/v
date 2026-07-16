@@ -1514,6 +1514,7 @@ fn main() {
 		}
 		exit(1)
 	}
+	pre_tc.freeze_interface_impl_names()
 	b.metric('AST nodes after transform', a.nodes.len, 'nodes')
 	b.metric('AST children after transform', a.children.len, 'edges')
 
@@ -2576,7 +2577,7 @@ fn test_file_has_executable_top_level_stmt(a &flat.FlatAst, node &flat.Node) boo
 		if int(child_id) < a.user_code_start {
 			continue
 		}
-		child := a.node(child_id)
+		child := a.nodes[int(child_id)]
 		if child.kind == .block {
 			if test_file_has_executable_top_level_stmt(a, child) {
 				return true
@@ -2609,7 +2610,7 @@ fn collect_test_harness_decl_ids(a &flat.FlatAst, node &flat.Node, mut ids []fla
 		if int(child_id) < a.user_code_start {
 			continue
 		}
-		child := a.node(child_id)
+		child := a.nodes[int(child_id)]
 		if child.kind == .fn_decl {
 			ids << child_id
 		} else if child.kind == .block {
@@ -3309,6 +3310,13 @@ fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name 
 }
 
 fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) string {
+	if importing_file.len > 0 {
+		local_modules_path := os.join_path(os.dir(importing_file), 'modules', mod_name.replace('.',
+			os.path_separator))
+		if os.is_dir(local_modules_path) {
+			return local_modules_path
+		}
+	}
 	if project_root.len > 0 {
 		project_path := os.join_path_single(project_root, mod_name.replace('.', os.path_separator))
 		if os.is_dir(project_path) {

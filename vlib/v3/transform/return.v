@@ -158,7 +158,14 @@ fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
 		return false
 	}
 	typ := node.typ
-	return typ == 'IError' || typ.ends_with('.IError')
+	if typ == 'IError' || typ.ends_with('.IError') {
+		return true
+	}
+	var_type := t.var_type('err')
+	if var_type.len > 0 {
+		return var_type == 'IError' || var_type.ends_with('.IError')
+	}
+	return false
 }
 
 fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.NodeId {
@@ -361,7 +368,50 @@ fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, act
 		|| actual_base.value_type.name() != expected_base.value_type.name()) {
 		return t.convert_forwarded_map(value_id, actual, actual_base, expected, expected_base)
 	}
+	if expected_base is types.SumType
+		&& t.sum_target_accepts_variant_type(expected_base.name, actual_base.name()) {
+		return t.wrap_sum_value(value_id, expected_base.name)
+	}
 	return t.transform_expr_for_type(value_id, expected.name())
+}
+
+fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expected types.Type) bool {
+	actual_base := forwarded_return_unalias_type(actual)
+	expected_base := forwarded_return_unalias_type(expected)
+	if actual_base.name() == expected_base.name() {
+		return false
+	}
+	if expected_base is types.Interface {
+		return true
+	}
+	if expected_base is types.SumType {
+		return t.sum_target_accepts_variant_type(expected_base.name, actual_base.name())
+			|| t.sum_target_accepts_variant_type(expected_base.name, actual.name())
+	}
+	if actual_base is types.OptionType && expected_base is types.OptionType {
+		return t.forwarded_slot_conversion_supported(actual_base.base_type, expected_base.base_type)
+	}
+	if actual_base is types.ResultType && expected_base is types.ResultType {
+		return t.forwarded_slot_conversion_supported(actual_base.base_type, expected_base.base_type)
+	}
+	if expected_base is types.Array {
+		if actual_base is types.Array {
+			return t.forwarded_slot_conversion_supported(actual_base.elem_type,
+				expected_base.elem_type)
+		}
+		if actual_base is types.ArrayFixed {
+			return t.forwarded_slot_conversion_supported(actual_base.elem_type,
+				expected_base.elem_type)
+		}
+	}
+	if actual_base is types.ArrayFixed && expected_base is types.ArrayFixed {
+		return t.forwarded_slot_conversion_supported(actual_base.elem_type, expected_base.elem_type)
+	}
+	if actual_base is types.Map && expected_base is types.Map {
+		return t.forwarded_slot_conversion_supported(actual_base.key_type, expected_base.key_type)
+			|| t.forwarded_slot_conversion_supported(actual_base.value_type, expected_base.value_type)
+	}
+	return false
 }
 
 fn (mut t Transformer) convert_forwarded_optional_result(value_id flat.NodeId, actual_type types.Type, actual_payload types.Type, expected_type types.Type, expected_wrapper types.Type, expected_payload types.Type) flat.NodeId {
@@ -749,13 +799,7 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 	} else {
 		tail_expr
 	}
-	// Convert a fixed-array branch value (e.g. a fixed-array const) to a dynamic
-	// array when the function returns `[]T`, matching a plain `return <expr>`.
-	ret_val := if converted := t.fixed_array_return_value(actual_tail) {
-		converted
-	} else {
-		t.wrap_sum_return_expr(actual_tail)
-	}
+	ret_val := t.transform_return_child(actual_tail, 0, 1)
 	t.drain_pending(mut all)
 	all << t.make_transformed_return(ret_val, ret_typ, source_return_id)
 	return t.make_block(all)

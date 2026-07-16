@@ -207,6 +207,18 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_interface_is_unresolved_pattern',
 		'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn check(s Shape) bool {\n\treturn s is MissingType\n}\nfn main() {}\n',
 		'unknown type `MissingType`')
+	run_bad(v3_bin, 'bad_empty_interface_is_array_pattern',
+		'interface Any {}\nfn check(x Any) bool {\n\treturn x is []string\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
+		'`[]string` is not compatible with interface `Any`')
+	run_bad(v3_bin, 'bad_empty_interface_is_map_pattern',
+		'interface Any {}\nfn check(x Any) bool {\n\treturn x is map[string]string\n}\nfn main() {\n\t_ := Any({\n\t\t"a": 1\n\t})\n}\n',
+		'`map[string]string` is not compatible with interface `Any`')
+	run_bad(v3_bin, 'bad_empty_interface_match_array_pattern',
+		'interface Any {}\nfn check(x Any) int {\n\treturn match x {\n\t\t[]string { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
+		'`[]string` is not compatible with interface `Any`')
+	run_bad(v3_bin, 'bad_empty_interface_as_array_pattern',
+		'interface Any {}\nfn check(x Any) []string {\n\treturn x as []string\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
+		'`[]string` is not compatible with interface `Any`')
 	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface',
 		"type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
 	assert alias_interface_out == 'test\nhehe'
@@ -389,6 +401,13 @@ fn test_type_checker_reports_core_semantic_errors() {
 	}, 'main.v')
 	assert !cross_module_array_append_c.contains('array_push_many(&xs')
 	assert cross_module_array_append_c.contains('array_push(&xs')
+}
+
+fn test_interface_method_rejects_narrowed_interface_param() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_interface_method_narrowed_interface_param',
+		'interface Base {\n\tbase() int\n}\n\ninterface Narrow {\n\tBase\n\tnarrow() int\n}\n\ninterface Handler {\n\thandle(x Base) int\n}\n\nstruct Service {}\n\nfn (s Service) handle(x Narrow) int {\n\treturn x.narrow()\n}\n\nfn main() {\n\t_ := Handler(Service{})\n}\n',
+		'does not implement interface')
 }
 
 fn test_review_generic_call_diagnostics() {
@@ -997,6 +1016,9 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 	assert statement_if == '1'
 	run_bad(v3_bin, 'bad_if_branch_primitive_mismatch',
 		"fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_if_branch_value_pointer_mismatch',
+		'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n',
 		'if-expression branch type mismatch')
 	run_bad(v3_bin, 'bad_option_if_error_branch',
 		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n",
@@ -1699,6 +1721,27 @@ fn test_pr_review_codegen_batch_twenty() {
 	ok := run_good(v3_bin, 'good_method_value_local_assign_direct_use', mv +
 		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut cb := c.report\n\tcb = c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
 	assert ok == '7'
+	iface_mv := 'interface Runner {\n\trun() int\n}\n\nstruct Job {\n\tid int\n}\n\nfn (j Job) run() int {\n\treturn j.id\n}\n\nstruct Holder {\nmut:\n\tcb fn () int\n}\n'
+	run_bad(v3_bin, 'bad_interface_method_value_struct_field_escape', iface_mv +
+		'fn main() {\n\tr := Runner(Job{\n\t\tid: 5\n\t})\n\t_ := Holder{\n\t\tcb: r.run\n\t}\n}\n',
+		'cannot escape its call site')
+	run_bad(v3_bin, 'bad_interface_method_value_struct_field_assign', iface_mv +
+		'fn main() {\n\tr := Runner(Job{\n\t\tid: 5\n\t})\n\tmut h := Holder{}\n\th.cb = r.run\n\tprintln(int_str(h.cb()))\n}\n',
+		'cannot escape its call site')
+	iface_ok := run_good(v3_bin, 'good_interface_method_value_direct_callback', iface_mv +
+		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tr := Runner(Job{\n\t\tid: 7\n\t})\n\tprintln(int_str(invoke(r.run)))\n}\n')
+	assert iface_ok == '7'
+	run_bad(v3_bin, 'bad_interface_method_value_captured_alias_return', iface_mv +
+		'fn escape(r Runner) fn () int {\n\tcb := r.run\n\treturn fn () fn () int {\n\t\treturn cb\n\t}()\n}\n\nfn main() {\n\t_ := escape(Runner(Job{\n\t\tid: 9\n\t}))\n}\n',
+		'cannot escape its call site')
+	iface_fn_literal_shadow := run_good(v3_bin,
+		'good_interface_method_value_fn_literal_shadow_scoped', iface_mv +
+		'fn plain() int {\n\treturn 11\n}\n\nfn outer(cb fn () int) fn () int {\n\t_ = fn () {\n\t\tr := Runner(Job{\n\t\t\tid: 5\n\t\t})\n\t\tcb := r.run\n\t\t_ = cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
+	assert iface_fn_literal_shadow == '11'
+	iface_lambda_shadow := run_good(v3_bin, 'good_interface_method_value_lambda_shadow_scoped',
+		iface_mv +
+		'fn plain() int {\n\treturn 13\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn outer(cb fn () int) fn () int {\n\tcall(|| {\n\t\tcb := Runner(Job{\n\t\t\tid: 7\n\t\t}).run\n\t})\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
+	assert iface_lambda_shadow == '13'
 }
 
 fn test_pr_review_codegen_batch_twentyone() {
@@ -1885,6 +1928,48 @@ fn test_pr_review_codegen_batch_twentyeight() {
 	local_collision := run_good(v3_bin, 'good_local_type_name_avoids_user_collision',
 		'struct Row__local_make {\n\tglobal int\n}\nfn make() int {\n\tstruct Row {\n\t\tlocal int\n\t}\n\tlocal := Row{\n\t\tlocal: 3\n\t}\n\tglobal := Row__local_make{\n\t\tglobal: 4\n\t}\n\treturn local.local + global.global\n}\nfn main() {\n\tprintln(int_str(make()))\n}\n')
 	assert local_collision == '7'
+}
+
+fn test_pr_review_codegen_batch_twentynine() {
+	v3_bin := build_v3()
+	// A local pointer initialized from a call must not be treated as an alias of the first
+	// same-pointee pointer argument: the callee can return another argument. Here `choose` returns
+	// `&y`, so returning `p` must not heap-copy `x`.
+	call_alias := run_good(v3_bin, 'good_call_return_pointer_alias_not_inferred',
+		'struct Box {\nmut:\n\tx int\n}\nfn choose(a &Box, b &Box) &Box {\n\t_ = a\n\treturn b\n}\nfn leak() &Box {\n\tmut x := Box{\n\t\tx: 1\n\t}\n\tmut y := Box{\n\t\tx: 2\n\t}\n\tp := choose(&x, &y)\n\treturn p\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
+	assert call_alias == '2'
+	// Reassigning a local pointer updates the stack-local alias source used when the pointer
+	// escapes. Returning `p` after `p = &y` must heap-copy `y`, not the initializer's `x`.
+	reassigned_alias := run_good(v3_bin, 'good_reassigned_pointer_alias_source',
+		'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut x := Box{\n\t\tx: 1\n\t}\n\tmut y := Box{\n\t\tx: 2\n\t}\n\tmut p := &x\n\tp = &y\n\treturn p\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
+	assert reassigned_alias == '2'
+	// Returning a pointer alias inside a child scope must copy through the pointer itself. Looking
+	// up the original source by bare name at the return site can resolve a shadowing local instead.
+	shadowed_alias := run_good(v3_bin, 'good_returned_pointer_alias_shadowed_source',
+		'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut a := Box{\n\t\tx: 1\n\t}\n\tp := &a\n\ta.x = 2\n\t{\n\t\tmut a := Box{\n\t\t\tx: 9\n\t\t}\n\t\ta.x = 10\n\t\treturn p\n\t}\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
+	assert shadowed_alias == '2'
+	// A pointer alias of a mut parameter already points at caller-owned storage. Returning the
+	// alias must preserve that identity instead of heap-copying the current pointee.
+	mut_param_alias := run_good(v3_bin, 'good_returned_mut_param_pointer_alias_identity',
+		'fn keep(mut x int) &int {\n\tp := &x\n\treturn p\n}\nfn main() {\n\tmut n := 1\n\tp := keep(mut n)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(int_str(n))\n}\n')
+	assert mut_param_alias == '7'
+	// Returning a pointer alias of an aligned local must use the aligned heap-copy helper, matching
+	// the free path for `&Aligned` values.
+	aligned_alias_source := '@[aligned: 64]\nstruct Aligned {\n\tx int\n}\nfn make() &Aligned {\n\tmut x := Aligned{\n\t\tx: 5\n\t}\n\tp := &x\n\treturn p\n}\nfn main() {\n\tp := make()\n\tprintln(int_str(p.x))\n\tunsafe {\n\t\tfree(p)\n\t}\n}\n'
+	aligned_c := gen_c_project(v3_bin, 'good_aligned_pointer_alias_heap_copy_c', {
+		'main.v': aligned_alias_source
+	}, 'main.v')
+	assert aligned_c.contains('v3_aligned_memdup('), aligned_c
+	assert !aligned_c.contains('memdup(p, sizeof(Aligned))'), aligned_c
+	assert aligned_c.contains('v3_aligned_free(p)'), aligned_c
+	aligned_alias := run_good(v3_bin, 'good_aligned_pointer_alias_heap_copy_run',
+		aligned_alias_source)
+	assert aligned_alias == '5'
+	// A capitalized field followed by a const-sized fixed array is a named field whose type is
+	// `[n]int`, not a failed generic embedded-field probe that skips `[n]` and leaves `int`.
+	fixed_field := run_good(v3_bin, 'good_capitalized_fixed_array_field',
+		'const n = 2\nstruct S {\n\tFoo [n]int\n}\nfn main() {\n\ts := S{\n\t\tFoo: [1, 2]!\n\t}\n\tprintln(int_str(s.Foo.len) + ":" + int_str(s.Foo[1]))\n}\n')
+	assert fixed_field == '2:2'
 }
 
 fn test_if_guard_rejects_or_handled_value() {

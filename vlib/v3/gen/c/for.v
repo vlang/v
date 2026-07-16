@@ -157,11 +157,23 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				return
 			}
 		} else {
-			container_type := g.usable_expr_type(g.a.child(&node, 2))
-			idx_var := if has_index {
-				g.c_loop_local_name(g.a.child_node(&node, 0).value)
+			container_id := g.a.child(&node, 2)
+			mut container_type := g.usable_expr_type(container_id)
+			if const_storage_type := g.const_storage_type_from_node(container) {
+				if fixed := array_fixed_type(types.unwrap_pointer(const_storage_type)) {
+					container_type = types.Type(fixed)
+				}
+			}
+			mut idx_var := ''
+			if has_index {
+				if idx_binding_name == '_' {
+					idx_var = '__for_idx_${g.tmp_count}'
+					g.tmp_count++
+				} else {
+					idx_var = g.c_loop_local_name(idx_binding_name)
+				}
 			} else {
-				'__iter_${var_name}'
+				idx_var = '__iter_${var_name}'
 			}
 			elem_var := if has_index {
 				g.c_loop_local_name(g.a.child_node(&node, 1).value)
@@ -272,7 +284,6 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				})
 			} else if container_type is types.Array {
 				c_elem := g.value_c_type(container_type.elem_type)
-				container_id := g.a.child(&node, 2)
 				container_node := g.a.nodes[int(container_id)]
 				mut container_str := if shared_payload := g.shared_array_payload_lvalue(container_id) {
 					shared_payload

@@ -605,6 +605,18 @@ fn test_uppercase_identifier_index_condition_before_block_is_not_struct_init() {
 	assert foo_index_count == 1
 }
 
+fn test_empty_struct_literals_parse_in_control_header_conditions() {
+	a := parse_parser_regression_source('empty_struct_literal_control_header',
+		'struct Foo {}\n\nfn main() {\n\tif Foo{} == Foo{} {\n\t\tprintln("if")\n\t}\n\tfor Foo{} == Foo{} {\n\t\tbreak\n\t}\n}\n')
+	mut foo_struct_inits := 0
+	for node in a.nodes {
+		if node.kind == .struct_init && node.value == 'Foo' {
+			foo_struct_inits++
+		}
+	}
+	assert foo_struct_inits == 4
+}
+
 fn test_local_sibling_types_are_predeclared_before_fields() {
 	a := parse_parser_regression_source('local_sibling_struct_fields',
 		'module main\n\nfn main() {\n\t_ := []struct {\n\t\tn int\n\t}{}\n\tstruct A {\n\t\tb &B\n\t}\n\tstruct B {\n\t\ta &A\n\t}\n}\n')

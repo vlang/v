@@ -152,7 +152,7 @@ fn forwarded_multi_return_drop() (int, int) {
 
 fn implicit_fn_exit_param_and_local(p Resource) {
 	r := Resource{17}
-	println('implicit ${p.id}:${r.id}')
+	println('implicit \${p.id}:\${r.id}')
 }
 
 fn labelled_continue_drop_once() {
@@ -179,7 +179,7 @@ fn maybe_resource_id(id int) ?Resource {
 
 fn if_guard_binding_drop() {
 	if r := maybe_resource() {
-		println('guard ${r.id}')
+		println('guard \${r.id}')
 	}
 }
 
@@ -214,13 +214,13 @@ fn optional_wrapper_local_drop() {
 fn c_for_init_normal_drop() {
 	mut keep_going := true
 	for r := Resource{26}; keep_going; keep_going = false {
-		println('for init ${r.id}')
+		println('for init \${r.id}')
 	}
 }
 
 fn c_for_init_break_drop() {
 	for r := Resource{27}; true; {
-		println('for break ${r.id}')
+		println('for break \${r.id}')
 		break
 	}
 }
@@ -228,7 +228,7 @@ fn c_for_init_break_drop() {
 fn c_for_init_labelled_break_drop() {
 	outer: for r := Resource{28}; true; {
 		for {
-			println('for labelled break ${r.id}')
+			println('for labelled break \${r.id}')
 			break outer
 		}
 	}
@@ -280,7 +280,7 @@ fn main() {
 	println(converted_optional_success() or { i64(-1) })
 	converted_optional_failure() or { println('converted none') }
 	a, b := forwarded_multi_return_drop()
-	println('${a}:${b}')
+	println('\${a}:\${b}')
 	labelled_continue_drop_once()
 	if_guard_binding_drop()
 	match_branch_drop(0)
