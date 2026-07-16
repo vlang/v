@@ -690,6 +690,7 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string
 			tc.specialized_generic_fns[owned_name] = true
 		}
 	}
+	tc.rebuild_scoped_transform_signature_maps()
 }
 
 fn v3_cache_compiler_signature(vroot string) string {

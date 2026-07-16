@@ -940,8 +940,10 @@ pub fn (mut tc TypeChecker) reserve_transform_node_caches(n int) {
 }
 
 // reserve_scoped_transform_metadata keeps tables that receive escaping
-// transform additions in the compilation arena while scratch allocations use
-// a disposable arena.
+// transform additions in the compilation arena in the common case while
+// scratch allocations use a disposable arena. The signature maps are rebuilt
+// after promotion, so this headroom is an optimization rather than an
+// ownership requirement.
 pub fn (mut tc TypeChecker) reserve_scoped_transform_metadata(n int, signature_headroom int) {
 	_ = n
 	tc.fn_ret_types.reserve(u32(tc.fn_ret_types.len + signature_headroom))
@@ -956,6 +958,15 @@ pub fn (mut tc TypeChecker) reserve_scoped_transform_metadata(n int, signature_h
 		mut symbols := tc.symbols
 		symbols.reserve(signature_headroom)
 	}
+}
+
+// rebuild_scoped_transform_signature_maps moves signature-map backing storage
+// into the current arena after a disposable transform scope has been left.
+pub fn (mut tc TypeChecker) rebuild_scoped_transform_signature_maps() {
+	tc.fn_ret_types = tc.fn_ret_types.clone()
+	tc.fn_param_types = tc.fn_param_types.clone()
+	tc.fn_variadic = tc.fn_variadic.clone()
+	tc.specialized_generic_fns = tc.specialized_generic_fns.clone()
 }
 
 // begin_sparse_transform_node_caches keeps source-node entries in their dense
