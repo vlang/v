@@ -12274,21 +12274,33 @@ pub fn (mut t Transformer) make_paren(expr flat.NodeId) flat.NodeId {
 
 // make_if builds make if data for transform.
 pub fn (mut t Transformer) make_if(cond flat.NodeId, then_block flat.NodeId, else_block flat.NodeId) flat.NodeId {
+	return t.make_if_with_ownership_drop_mode(cond, then_block, else_block, false)
+}
+
+// make_if_with_skip_ownership_drops builds a synthetic if that must not consume
+// ownership-drop metadata recorded for source control-flow nodes.
+pub fn (mut t Transformer) make_if_with_skip_ownership_drops(cond flat.NodeId, then_block flat.NodeId, else_block flat.NodeId) flat.NodeId {
+	return t.make_if_with_ownership_drop_mode(cond, then_block, else_block, true)
+}
+
+fn (mut t Transformer) make_if_with_ownership_drop_mode(cond flat.NodeId, then_block flat.NodeId, else_block flat.NodeId, skip_ownership_drops bool) flat.NodeId {
 	start := t.a.children.len
 	t.a.children << cond
 	t.a.children << then_block
 	if int(else_block) >= 0 {
 		t.a.children << else_block
 		return t.a.add_node(flat.Node{
-			kind:           .if_expr
-			children_start: start
-			children_count: 3
+			kind:                 .if_expr
+			children_start:       start
+			children_count:       3
+			skip_ownership_drops: skip_ownership_drops
 		})
 	}
 	return t.a.add_node(flat.Node{
-		kind:           .if_expr
-		children_start: start
-		children_count: 2
+		kind:                 .if_expr
+		children_start:       start
+		children_count:       2
+		skip_ownership_drops: skip_ownership_drops
 	})
 }
 

@@ -845,27 +845,30 @@ fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
 			g.writeln('${value}.msg = string__clone(${value}.msg);')
 			g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
 			g.writeln('${result}._object_is_boxed = true;')
-		} else if clone_method := g.resolve_method_name(concrete, 'clone') {
-			params := g.tc.fn_param_types[clone_method] or { []types.Type{} }
-			receiver := if params.len > 0 && params[0] is types.Pointer {
-				'((${concrete_ct}*)${object})'
-			} else {
-				'*((${concrete_ct}*)${object})'
-			}
-			return_type := g.tc.fn_ret_types[clone_method] or { concrete_type }
-			if return_type is types.Pointer {
-				g.writeln('${result}._object = ${g.cname(clone_method)}(${receiver});')
-				// A compatible pointer-returning clone creates independent owned storage.
-				g.writeln('${result}._object_is_boxed = true;')
-			} else {
-				value := '_clone_ierror_value${tmp}'
-				g.writeln('${concrete_ct} ${value} = ${g.cname(clone_method)}(${receiver});')
-				g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
-				g.writeln('${result}._object_is_boxed = true;')
-			}
 		} else {
-			g.writeln('${result}._object = memdup(${object}, sizeof(${concrete_ct}));')
-			g.writeln('${result}._object_is_boxed = true;')
+			clone_method := g.resolve_method_name(concrete, 'clone')
+			if clone_method.len > 0 {
+				params := g.tc.fn_param_types[clone_method] or { []types.Type{} }
+				receiver := if params.len > 0 && params[0] is types.Pointer {
+					'((${concrete_ct}*)${object})'
+				} else {
+					'*((${concrete_ct}*)${object})'
+				}
+				return_type := g.tc.fn_ret_types[clone_method] or { concrete_type }
+				if return_type is types.Pointer {
+					g.writeln('${result}._object = ${g.cname(clone_method)}(${receiver});')
+					// A compatible pointer-returning clone creates independent owned storage.
+					g.writeln('${result}._object_is_boxed = true;')
+				} else {
+					value := '_clone_ierror_value${tmp}'
+					g.writeln('${concrete_ct} ${value} = ${g.cname(clone_method)}(${receiver});')
+					g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
+					g.writeln('${result}._object_is_boxed = true;')
+				}
+			} else {
+				g.writeln('${result}._object = memdup(${object}, sizeof(${concrete_ct}));')
+				g.writeln('${result}._object_is_boxed = true;')
+			}
 		}
 		g.writeln('break;')
 		g.indent--

@@ -596,7 +596,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	} else {
 		transformed_body = t.transform_stmts(body_ids)
 	}
-	mut new_body := binding_clones
+	mut new_body := binding_clones.clone()
 	new_body << transformed_body
 	for bid in new_body {
 		ids << bid
@@ -613,9 +613,8 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
 		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(new_container),
 			'void'))
-		guarded_drop := t.make_if(t.make_ident(cleanup_guard_name),
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
 			t.make_block(arr1(deferred_drop)), t.make_empty())
-		t.a.nodes[int(guarded_drop)].skip_ownership_drops = true
 		defer_body := t.make_block(arr1(guarded_drop))
 		defer_start := t.a.children.len
 		t.a.children << defer_body
@@ -995,9 +994,8 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
 		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(cleanup_target),
 			'void'))
-		guarded_drop := t.make_if(t.make_ident(cleanup_guard_name),
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
 			t.make_block(arr1(deferred_drop)), t.make_empty())
-		t.a.nodes[int(guarded_drop)].skip_ownership_drops = true
 		defer_body := t.make_block(arr1(guarded_drop))
 		defer_start := t.a.children.len
 		t.a.children << defer_body

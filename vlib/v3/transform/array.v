@@ -1570,9 +1570,8 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 			t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void')),
 			t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(out_name)), 'void')),
 		]
-		guarded_drop := t.make_if(t.make_ident(cleanup_guard_name), t.make_block(deferred_drops),
-			t.make_empty())
-		t.a.nodes[int(guarded_drop)].skip_ownership_drops = true
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
+			t.make_block(deferred_drops), t.make_empty())
 		defer_body := t.make_block(arr1(guarded_drop))
 		defer_start := t.a.children.len
 		t.a.children << defer_body
@@ -1821,9 +1820,8 @@ fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, b
 			t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void')),
 			t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(out_name)), 'void')),
 		]
-		guarded_drop := t.make_if(t.make_ident(cleanup_guard_name), t.make_block(deferred_drops),
-			t.make_empty())
-		t.a.nodes[int(guarded_drop)].skip_ownership_drops = true
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
+			t.make_block(deferred_drops), t.make_empty())
 		defer_body := t.make_block(arr1(guarded_drop))
 		defer_start := t.a.children.len
 		t.a.children << defer_body
@@ -2196,9 +2194,8 @@ fn (mut t Transformer) lower_array_count_call(node flat.Node, fn_node flat.Node,
 		cleanup_guard_name = t.new_temp('count_source_live')
 		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
 		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
-		guarded_drop := t.make_if(t.make_ident(cleanup_guard_name),
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
 			t.make_block(arr1(deferred_drop)), t.make_empty())
-		t.a.nodes[int(guarded_drop)].skip_ownership_drops = true
 		defer_body := t.make_block(arr1(guarded_drop))
 		defer_start := t.a.children.len
 		t.a.children << defer_body
@@ -2284,9 +2281,8 @@ fn (mut t Transformer) lower_array_any_all_call(node flat.Node, fn_node flat.Nod
 		cleanup_guard_name = t.new_temp('${method}_source_live')
 		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
 		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
-		guarded_drop := t.make_if(t.make_ident(cleanup_guard_name),
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
 			t.make_block(arr1(deferred_drop)), t.make_empty())
-		t.a.nodes[int(guarded_drop)].skip_ownership_drops = true
 		defer_body := t.make_block(arr1(guarded_drop))
 		defer_start := t.a.children.len
 		t.a.children << defer_body

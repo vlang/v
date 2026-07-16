@@ -926,7 +926,7 @@ fn (g &FlatGen) interface_init_object_is_boxed(node flat.Node) bool {
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
 		if field.kind == .field_init && field.value == '_object' && field.children_count > 0 {
-			return g.interface_object_expr_is_boxed(g.a.child(&field, 0))
+			return g.interface_object_expr_is_boxed(g.a.child(field, 0))
 		}
 	}
 	return false

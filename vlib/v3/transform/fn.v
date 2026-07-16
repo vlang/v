@@ -6697,7 +6697,7 @@ fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeI
 		|| fn_node.children_count == 0 {
 		return none
 	}
-	base_id := t.a.child(&fn_node, 0)
+	base_id := t.a.child(fn_node, 0)
 	mut base_type := t.node_type(base_id)
 	if base_type.len == 0 {
 		base_type = t.lvalue_type(base_id)

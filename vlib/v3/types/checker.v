@@ -10303,17 +10303,17 @@ fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Ty
 	if groups.len == 0 {
 		return none
 	}
-	mut types := []Type{cap: count}
+	mut tail_types := []Type{cap: count}
 	for value_id in groups[0] {
 		typ := tc.expr_type(value_id) or { tc.resolve_type(value_id) }
 		if !type_has_runtime_value(typ) {
 			return none
 		}
-		types << typ
+		tail_types << typ
 	}
 	for i in 1 .. groups.len {
 		group := groups[i]
-		if group.len != types.len {
+		if group.len != tail_types.len {
 			return none
 		}
 		for j, value_id in group {
@@ -10321,11 +10321,11 @@ fn (tc &TypeChecker) multi_expr_tail_types(expr_id flat.NodeId, count int) ?[]Ty
 			if !type_has_runtime_value(actual) {
 				return none
 			}
-			promoted := tc.promoted_multi_tail_type(types[j], actual) or { return none }
-			types[j] = promoted
+			promoted := tc.promoted_multi_tail_type(tail_types[j], actual) or { return none }
+			tail_types[j] = promoted
 		}
 	}
-	return types
+	return tail_types
 }
 
 fn (mut tc TypeChecker) multi_expr_tail_assign_types(id flat.NodeId, expr_id flat.NodeId, lhs_ids []flat.NodeId) ?[]Type {
@@ -10363,7 +10363,7 @@ fn (tc &TypeChecker) match_multi_return_types(expr_id flat.NodeId, count int) ?[
 	if !tc.match_has_else_or_exhaustive_coverage(node) {
 		return none
 	}
-	mut types := []Type{}
+	mut match_types := []Type{}
 	mut saw_value_branch := false
 	for i in 1 .. node.children_count {
 		branch_id := tc.a.child(&node, i)
@@ -10392,12 +10392,12 @@ fn (tc &TypeChecker) match_multi_return_types(expr_id flat.NodeId, count int) ?[
 			}
 		}
 		if !saw_value_branch {
-			types = multi.types.clone()
+			match_types = multi.types.clone()
 			saw_value_branch = true
 			continue
 		}
 		for j, actual in multi.types {
-			if actual.name() != types[j].name() {
+			if actual.name() != match_types[j].name() {
 				return none
 			}
 		}
@@ -10405,7 +10405,7 @@ fn (tc &TypeChecker) match_multi_return_types(expr_id flat.NodeId, count int) ?[
 	if !saw_value_branch {
 		return none
 	}
-	return types
+	return match_types
 }
 
 fn (tc &TypeChecker) match_has_tuple_tail_values(expr_id flat.NodeId, count int) bool {
@@ -23311,12 +23311,12 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if typ.starts_with('(') && typ.contains(',') {
 		inner := typ[1..typ.len - 1]
 		parts := split_params(inner)
-		mut types := []Type{}
+		mut tuple_types := []Type{}
 		for p in parts {
-			types << tc.parse_type(p.trim_space())
+			tuple_types << tc.parse_type(p.trim_space())
 		}
 		return Type(MultiReturn{
-			types: types
+			types: tuple_types
 		})
 	}
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
@@ -24089,14 +24089,14 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 		if node.children_count == 1 {
 			return tc.resolve_type(tc.a.child(&node, 0))
 		}
-		mut types := []Type{cap: node.children_count}
+		mut expr_types := []Type{cap: node.children_count}
 		for i in 0 .. node.children_count {
 			value_id := tc.a.child(&node, i)
 			typ := tc.expr_type(value_id) or { tc.resolve_type(value_id) }
-			types << typ
+			expr_types << typ
 		}
 		return Type(MultiReturn{
-			types: types
+			types: expr_types
 		})
 	}
 	kind_id := node_kind_id(node)

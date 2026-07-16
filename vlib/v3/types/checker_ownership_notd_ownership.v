@@ -59,6 +59,10 @@ pub fn (tc &TypeChecker) ownership_expr_creates_owned_value(_ flat.NodeId) bool 
 	return false
 }
 
+pub fn (tc &TypeChecker) ownership_index_read_moves_value(_ flat.NodeId) bool {
+	return false
+}
+
 pub fn (tc &TypeChecker) ownership_fn_value_returns_owned(_ flat.NodeId, _ string, _ string) bool {
 	return false
 }

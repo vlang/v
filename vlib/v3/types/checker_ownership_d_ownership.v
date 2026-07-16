@@ -1116,13 +1116,13 @@ fn (tc &TypeChecker) ownership_drop_target_for_resolved_type(typ Type, optional_
 	}
 	if typ is OptionType {
 		return OwnershipDropTarget{
-			type_name:        typ.name()
+			type_name:        Type(typ).name()
 			optional_wrapper: optional_wrapper
 		}
 	}
 	if typ is ResultType {
 		return OwnershipDropTarget{
-			type_name:        typ.name()
+			type_name:        Type(typ).name()
 			optional_wrapper: optional_wrapper
 		}
 	}
@@ -2696,13 +2696,13 @@ fn (mut tc TypeChecker) ownership_prescan_merge_branch_states(base_owned map[str
 	mut merged_owned := map[string]bool{}
 	mut merged_types := base_types.clone()
 	for i, owned in branch_owned {
-		types := if i < branch_types.len { branch_types[i] } else { base_types }
+		owned_types := if i < branch_types.len { branch_types[i] } else { base_types }
 		for name, is_owned in owned {
 			if !is_owned || !ownership_prescan_branch_key_can_escape(name, base_owned, base_types) {
 				continue
 			}
 			merged_owned[name] = true
-			if typ := types[name] {
+			if typ := owned_types[name] {
 				merged_types[name] = typ
 			}
 		}
@@ -6870,19 +6870,20 @@ fn (mut tc TypeChecker) ownership_mark_array_literal_elements_with_mode(lhs_name
 		return false
 	}
 	mut marked := false
-	tc.ownership_state().array_lengths[lhs_name] = node.children_count
+	mut st := tc.ownership_state()
+	st.array_lengths[lhs_name] = node.children_count
 	for i in 0 .. node.children_count {
 		elem_id := tc.a.child(&node, i)
 		elem := tc.a.nodes[int(elem_id)]
 		if elem.kind == .prefix && elem.value == '...' && elem.children_count > 0 {
 			spread_type := array_type_from_receiver(tc.resolve_type(tc.a.child(&elem, 0))) or {
-				tc.ownership_state().array_lengths.delete(lhs_name)
+				st.array_lengths.delete(lhs_name)
 				continue
 			}
 			if tc.ownership_type_requires_destruction(spread_type.elem_type) {
 				marked = true
 			}
-			tc.ownership_state().array_lengths.delete(lhs_name)
+			st.array_lengths.delete(lhs_name)
 			continue
 		}
 		elem_key := '${lhs_name}[${i}]'
@@ -6896,7 +6897,6 @@ fn (mut tc TypeChecker) ownership_mark_array_literal_elements_with_mode(lhs_name
 		if !clear_unowned {
 			continue
 		}
-		mut st := tc.ownership_state()
 		st.owned_vars.delete(elem_key)
 		st.owned_var_types.delete(elem_key)
 		st.moved_vars.delete(elem_key)
@@ -7326,7 +7326,7 @@ fn (mut tc TypeChecker) ownership_mark_map_literal_entries_with_mode(lhs_name st
 	if node.children_count > 0 {
 		first := tc.a.child_node(&node, 0)
 		if first.kind == .prefix && first.value == '...' && first.children_count > 0 {
-			spread_type := unwrap_pointer(tc.resolve_type(tc.a.child(&first, 0)))
+			spread_type := unwrap_pointer(tc.resolve_type(tc.a.child(first, 0)))
 			if map_type := map_type_from_receiver(spread_type) {
 				if tc.ownership_type_requires_destruction(map_type.key_type)
 					|| tc.ownership_type_requires_destruction(map_type.value_type) {
@@ -9891,7 +9891,7 @@ pub fn (tc &TypeChecker) ownership_fn_value_returns_owned(id flat.NodeId, enclos
 	node := tc.a.nodes[int(id)]
 	parent_fn := ownership_qualify_fn_decl_name(module_name, enclosing_fn)
 	if node.kind == .fn_literal {
-		names << ownership_fn_literal_name(parent_fn, node)
+		names << ownership_fn_literal_name(parent_fn, id)
 	} else if node.kind == .lambda_expr {
 		names << '${parent_fn}__lambda_${node.pos.id}_${node.pos.offset}'
 	} else if node.kind == .ident && node.value.len > 0 {
