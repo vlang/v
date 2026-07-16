@@ -4449,6 +4449,12 @@ fn main() {
 		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\tif !isreftype(foo.Bar) {\n\t\tprintln("qualified type")\n\t}\n\tif isreftype(&foo.Bar) {\n\t\tprintln("qualified ptr type")\n\t}\n\tbar := foo.Bar{}\n\tif isreftype(bar) {\n\t\tprintln("bad expr")\n\t} else {\n\t\tprintln("qualified value expr")\n\t}\n}\n'
 	}, 'main.v')
 	assert qualified_out == 'qualified type\nqualified ptr type\nqualified value expr'
+	run_bad(v3_bin, 'isreftype_unknown_type_arg', 'fn main() {\n\t_ := isreftype(NoSuchType)\n}\n',
+		'unknown type `NoSuchType`')
+	run_bad(v3_bin, 'isreftype_unknown_array_elem_type_arg',
+		'fn main() {\n\t_ := isreftype([]MissingElem)\n}\n', 'unknown type `MissingElem`')
+	run_bad(v3_bin, 'isreftype_unknown_bracket_type_arg',
+		'fn main() {\n\t_ := isreftype[OtherMissing]()\n}\n', 'unknown type `OtherMissing`')
 }
 
 fn test_shadowed_global_local_rename_is_scoped_to_binding() {

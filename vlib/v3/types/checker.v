@@ -4446,6 +4446,14 @@ fn generic_param_names_from_map(params map[string]bool) []string {
 	return names
 }
 
+fn generic_param_map_from_names(names []string) map[string]bool {
+	mut params := map[string]bool{}
+	for name in names {
+		params[name] = true
+	}
+	return params
+}
+
 fn (tc &TypeChecker) active_generic_param(name string) bool {
 	for param in tc.fn_context.generic_params {
 		if param == name {
@@ -11942,13 +11950,20 @@ fn (mut tc TypeChecker) check_isreftype_arg(arg_id flat.NodeId) {
 	}
 	arg := tc.a.nodes[int(arg_id)]
 	if arg.kind == .sizeof_expr {
+		tc.check_isreftype_type_arg(arg.value, arg_id)
 		return
 	}
 	if arg.kind == .ident && (is_builtin_type_name(arg.value) || (arg.value.len > 0
 		&& arg.value[0] >= `A` && arg.value[0] <= `Z`)) {
+		tc.check_isreftype_type_arg(arg.value, arg_id)
 		return
 	}
 	tc.check_node(arg_id)
+}
+
+fn (mut tc TypeChecker) check_isreftype_type_arg(typ string, arg_id flat.NodeId) {
+	tc.check_type_string_for_unsupported_generics(typ, arg_id,
+		generic_param_map_from_names(tc.fn_context.generic_params))
 }
 
 // cur_fn_is_generic_template reports whether the function currently being
