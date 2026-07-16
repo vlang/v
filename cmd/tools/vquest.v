@@ -4,7 +4,7 @@ import os
 import cli
 import net.http
 import net.urllib
-import json
+import json2
 import rand
 import term
 
@@ -248,7 +248,7 @@ fn get_excluded_os_labels(user_os string) []string {
 fn fetch_issue_details(issue_number int) !IssueDetails {
 	url := '${issue_endpoint}/${issue_number}'
 	body := api_get(url)!
-	return json.decode(IssueDetails, body)!
+	return json2.decode[IssueDetails](body)!
 }
 
 fn format_bug_report(issue IssueDetails, user_os string) string {
@@ -306,7 +306,7 @@ fn run_document(_cmd cli.Command) ! {
 fn fetch_total_count(query string) !int {
 	url := build_search_url(query, 1, 1)
 	body := api_get(url)!
-	resp := json.decode(SearchResponse, body)!
+	resp := json2.decode[SearchResponse](body)!
 	return resp.total_count
 }
 
@@ -357,7 +357,7 @@ fn flag_is_set(cmd cli.Command, name string) bool {
 fn fetch_issue_from_page(query string, page int) !Issue {
 	url := build_search_url(query, page, per_page)
 	body := api_get(url)!
-	resp := json.decode(SearchResponse, body)!
+	resp := json2.decode[SearchResponse](body)!
 	if resp.items.len == 0 {
 		return error('no issues returned for page ${page}')
 	}

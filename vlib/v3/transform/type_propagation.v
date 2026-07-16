@@ -93,6 +93,11 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 	}
 	if int(id) >= 0 {
 		node := t.a.nodes[int(id)]
+		if node.kind == .struct_init {
+			if typ := t.checker_expr_type_name(id) {
+				return typ
+			}
+		}
 		if node.kind == .call {
 			if ret := t.checker_resolved_non_builtin_return_type(id, node) {
 				return ret
@@ -531,6 +536,23 @@ fn (t &Transformer) lookup_struct_field_raw_type(type_name string, field_name st
 	return none
 }
 
+fn (t &Transformer) lookup_struct_field_raw_type_with_owner(type_name string, field_name string) ?(string, string) {
+	lookup := t.lookup_struct_info_for_field(type_name, field_name) or { return none }
+	for f in lookup.info.fields {
+		if f.name == field_name {
+			raw := if f.raw_typ.len > 0 { f.raw_typ } else { f.typ }
+			owner_type := if lookup.owner_type.contains('.') || lookup.info.module.len == 0
+				|| lookup.info.module == 'main' || lookup.info.module == 'builtin' {
+				lookup.owner_type
+			} else {
+				'${lookup.info.module}.${lookup.owner_type}'
+			}
+			return raw, owner_type
+		}
+	}
+	return none
+}
+
 fn field_type_needs_checker_authority(typ string) bool {
 	return typ in ['Option', 'Result', 'Optional'] || typ.starts_with('Option_')
 		|| typ.starts_with('Result_') || typ.starts_with('Optional_')
@@ -758,8 +780,9 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 		return t.normalize_type_alias_uncached(typ)
 	}
 	mut c := t.alias_cache
-	if c.module != t.cur_module {
+	if c.module != t.cur_module || c.file != t.cur_file {
 		c.module = t.cur_module
+		c.file = t.cur_file
 		c.entries.clear()
 	}
 	if cached := c.entries[typ] {
@@ -801,6 +824,17 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 	}
 	if typ.starts_with('!') {
 		return '!' + t.normalize_type_alias(typ[1..])
+	}
+	// Resolve the importing file's alias before any short-name or suffix fallback.
+	// Two packages can both expose `tast.Value`; `other_tast.Value` and
+	// `tast.Value` must retain their exact canonical module identities.
+	if imported := t.resolve_imported_type_name(typ) {
+		if target := t.tc.type_aliases[imported] {
+			return t.normalize_type_alias(target)
+		}
+		if t.type_authority_has(imported) {
+			return imported
+		}
 	}
 	if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {
@@ -1285,7 +1319,7 @@ fn (t &Transformer) is_string_type(id flat.NodeId) bool {
 	if node.kind == .string_literal || node.kind == .string_interp {
 		return true
 	}
-	return t.node_type(id) == 'string'
+	return t.normalize_type_alias(t.node_type(id)) == 'string'
 }
 
 // is_array_type checks if a type string represents an array type (starts with `[]`).

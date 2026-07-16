@@ -459,6 +459,9 @@ fn (t &Transformer) smartcast_target_type(sc SmartcastContext) string {
 	if sc.sum_type_name == option_unwrap_marker {
 		return sc.variant_name
 	}
+	if sc.variant_name.starts_with('&') {
+		return '&' + t.resolve_variant(sc.sum_type_name, sc.variant_name[1..])
+	}
 	if t.is_interface_type_name(sc.sum_type_name) {
 		return t.interface_variant_type(sc.variant_name)
 	}
@@ -494,15 +497,27 @@ fn (t &Transformer) sum_type_variants_for_index(sum_name string) []string {
 }
 
 fn (t &Transformer) concrete_sum_variants_for_candidate(sum_name string) []string {
+	base, args, is_generic := generic_app_parts(sum_name)
 	if variants := t.sum_types[sum_name] {
+		if is_generic {
+			params := t.sum_generic_params_for_base(base)
+			if params.len == args.len && params.len > 0 {
+				return substitute_sum_variant_list(variants, args, params)
+			}
+		}
 		return variants
 	}
 	if !isnil(t.tc) {
 		if variants := t.tc.sum_types[sum_name] {
+			if is_generic {
+				params := t.sum_generic_params_for_base(base)
+				if params.len == args.len && params.len > 0 {
+					return substitute_sum_variant_list(variants, args, params)
+				}
+			}
 			return variants
 		}
 	}
-	base, args, is_generic := generic_app_parts(sum_name)
 	if !is_generic {
 		return []string{}
 	}
@@ -583,8 +598,7 @@ fn (mut t Transformer) transform_is_expr(id flat.NodeId, node flat.Node) flat.No
 		new_expr := t.stable_transformed_expr_for_reuse(new_expr0, expr_type, 'ierror_is')
 		op := if expr_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
 		typ := t.make_selector_op(new_expr, '_typ', 'int', op)
-		type_id := t.interface_impl_type_id(clean_type0, 'None__') or { 0 }
-		return t.make_infix(.eq, typ, t.make_int_literal(type_id))
+		return t.make_ierror_none_type_check(typ, clean_type0)
 	}
 	if t.is_interface_type_name(clean_type0) {
 		new_expr := t.transform_expr(expr_id)
@@ -690,20 +704,16 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	}
 	concrete := t.interface_concrete_impl_name(concrete_name) or { return none }
 	requested_qualified := concrete_name.contains('.') || concrete != concrete_name
-	// The 1-based position in the same implementation list cgen uses is the
-	// `_typ` id assigned when boxing; deriving it here keeps `is` checks and
-	// dispatch in sync (aliases included).
-	mut idx := 0
 	impl_names := if t.is_builtin_ierror_interface_name(iface) {
 		t.tc.ierror_impl_names()
 	} else {
 		t.tc.interface_impl_names(iface)
 	}
+	type_ids := types.stable_interface_type_ids(impl_names)
 	for impl_name in impl_names {
-		idx++
 		if impl_name == concrete || (!requested_qualified
 			&& impl_name.all_after_last('.') == concrete.all_after_last('.')) {
-			return idx
+			return type_ids[impl_name]
 		}
 	}
 	return none
@@ -760,7 +770,14 @@ fn (mut t Transformer) make_sum_is_check(expr flat.NodeId, expr_type string, sum
 
 // sum_variant_path supports sum variant path handling for Transformer.
 fn (t &Transformer) sum_variant_path(sum_name string, variant string) []string {
-	resolved_sum := t.resolve_sum_name(t.trim_pointer_type(sum_name))
+	clean_sum := t.trim_pointer_type(sum_name)
+	// Resolve against the concrete application before its declaration key.
+	// `Tree[int]` and `Maybe[int]` may be backed by `Tree`/`Maybe` entries whose
+	// stored variants still contain their generic parameter names.
+	if direct := t.sum_variant_name(clean_sum, variant) {
+		return [direct]
+	}
+	resolved_sum := t.resolve_sum_name(clean_sum)
 	if direct := t.sum_variant_name(resolved_sum, variant) {
 		return [direct]
 	}
@@ -771,6 +788,9 @@ fn (t &Transformer) sum_variant_path(sum_name string, variant string) []string {
 // sum_variant_path_inner supports sum variant path inner handling for Transformer.
 fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut visited map[string]bool) []string {
 	clean_sum := t.trim_pointer_type(sum_name)
+	if direct := t.sum_variant_name(clean_sum, variant) {
+		return [direct]
+	}
 	resolved_sum := t.resolve_sum_name(clean_sum)
 	if resolved_sum.len == 0 || resolved_sum in visited {
 		return []string{}
@@ -779,7 +799,10 @@ fn (t &Transformer) sum_variant_path_inner(sum_name string, variant string, mut 
 	if direct := t.sum_variant_name(resolved_sum, variant) {
 		return [direct]
 	}
-	variants := t.sum_types[resolved_sum] or { return []string{} }
+	variants := t.concrete_sum_variants_for_candidate(clean_sum)
+	if variants.len == 0 {
+		return []string{}
+	}
 	for direct in variants {
 		direct_sum := t.resolve_sum_name(t.trim_pointer_type(direct))
 		if direct_sum == resolved_sum || direct_sum !in t.sum_types {
@@ -1016,6 +1039,19 @@ fn (mut t Transformer) wrap_sum_value(expr_id flat.NodeId, target_sum string) fl
 		if enum_variant.len > 0 {
 			matches = true
 			matched_variant = enum_variant
+		}
+	}
+	if !matches {
+		path := t.sum_variant_path(resolved_sum, clean_variant)
+		if path.len == 1 {
+			matches = true
+			matched_variant = path[0]
+		} else if path.len > 1 {
+			nested_sum := t.resolve_sum_name(t.trim_pointer_type(path[0]))
+			if nested_sum.len > 0 && nested_sum in t.sum_types {
+				nested_value := t.wrap_sum_value(expr_id, nested_sum)
+				return t.make_sum_literal(resolved_sum, path[0], nested_value)
+			}
 		}
 	}
 	if !matches {

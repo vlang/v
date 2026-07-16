@@ -2981,6 +2981,26 @@ fn test_callback_lambda_lift_preserves_outer_captures() {
 	assert callee_out == '12'
 }
 
+fn test_callback_lambda_lift_forwards_optional_void_failures() {
+	v3_bin := build_v3()
+	result_out := run_good(v3_bin, 'callback_lambda_result_void_forward',
+		'fn takes(cb fn () !void) {\n\tcb() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n\tprintln("success")\n}\n\nfn maybe_fails() !void {\n\treturn error("fail")\n}\n\nfn main() {\n\ttakes(|| maybe_fails())\n}\n')
+	assert result_out == 'fail'
+	option_out := run_good(v3_bin, 'callback_lambda_option_void_forward',
+		'fn takes(cb fn () ?void) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ?void {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n')
+	assert option_out == 'none'
+}
+
+fn test_user_new_map_call_with_args_uses_renamed_symbol() {
+	v3_bin := build_v3()
+	source := 'fn new_map(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tprintln(int_str(new_map(41)))\n}\n'
+	c_source := gen_c(v3_bin, 'user_new_map_call_with_args', source)
+	assert c_source.contains('main__new_map(41)'), c_source
+	assert !c_source.contains('(new_map(41)'), c_source
+	out := run_good(v3_bin, 'user_new_map_call_with_args_run', source)
+	assert out == '42'
+}
+
 fn test_amp_interface_cast_heap_copies_concrete_source() {
 	v3_bin := build_v3()
 	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) value() int {\n\treturn b.n\n}\n\nfn make() &Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn &Reader(b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
@@ -3080,7 +3100,7 @@ fn test_latest_pr_review_codegen_regressions() {
 
 fn main() {
 	println(C.strlen(c'\\n'))
-	println(C.strlen(&c'\\n'))
+	println(C.strlen((c'\\n')))
 }
 ")
 	assert c_strings == '1\n1'
@@ -3300,4 +3320,75 @@ fn main() {
 }
 ")
 	assert comptime_types == 'pointer\nalias'
+}
+
+fn test_selected_compile_error_in_void_fn_has_clean_diagnostic() {
+	v3_bin := build_v3()
+	bad_src := '${tmp_test_path('selected_compile_error_void_fn')}.v'
+	os.write_file(bad_src, "fn main() {\n\t\$compile_error('bad')\n}\n") or { panic(err) }
+	bad_bin := tmp_test_path('selected_compile_error_void_fn')
+	compile := os.execute('${v3_bin} ${bad_src} -b c -o ${bad_bin}')
+	assert compile.exit_code != 0, compile.output
+	assert compile.output.contains('compile-time error: bad'), compile.output
+	assert !compile.output.contains('void function should not return a value'), compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+}
+
+fn test_comptime_flags_are_not_shadowed_by_cached_values() {
+	v3_bin := build_v3()
+	platform_flag := if os.user_os() == 'windows' { 'windows' } else { 'unix' }
+	out := run_good_with_flags(v3_bin, 'comptime_flags_shadow_cached_values', '-d myflag', "const myflag = false
+
+fn main() {
+	${platform_flag} := false
+	mut rows := []string{}
+	\$if ${platform_flag} {
+		rows << 'platform'
+	} \$else {
+		rows << 'wrong-platform'
+	}
+	\$if myflag ? {
+		rows << 'custom'
+	} \$else {
+		rows << 'wrong-custom'
+	}
+	println(rows.join('|'))
+}
+")
+	assert out == 'platform|custom'
+}
+
+fn test_non_generic_reflection_compile_error_waits_for_selected_branch() {
+	v3_bin := build_v3()
+	good := run_good(v3_bin, 'non_generic_reflection_unselected_compile_error', "struct App {}
+
+fn (app App) present() {
+	_ = app
+}
+
+fn main() {
+	\$for method in App.methods {
+		\$if method.name == 'missing' {
+			\$compile_error('missing method selected')
+		}
+	}
+	println('ok')
+}
+")
+	assert good == 'ok'
+	run_bad(v3_bin, 'non_generic_reflection_selected_compile_error', "struct App {}
+
+fn (app App) present() {
+	_ = app
+}
+
+fn main() {
+	\$for method in App.methods {
+		\$if method.name == 'present' {
+			\$compile_error('present method selected')
+		}
+	}
+}
+",
+		'compile-time error: present method selected')
 }

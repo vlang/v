@@ -55,13 +55,14 @@ fn test_parallel_parse_matches_serial() {
 		s := ps.a.nodes[i]
 		q := pp.a.nodes[i]
 		assert q.kind == s.kind, 'node ${i} kind differs'
-		assert q.kind_id == s.kind_id, 'node ${i} kind_id differs'
+		assert q.kind == s.kind, 'node ${i} kind differs'
 		assert q.value == s.value, 'node ${i} value differs'
 		assert q.typ == s.typ, 'node ${i} typ differs'
 		assert q.op == s.op, 'node ${i} op differs'
 		assert q.is_mut == s.is_mut, 'node ${i} is_mut differs'
-		assert q.generic_params == s.generic_params, 'node ${i} generic_params differs'
+		assert q.generic_params() == s.generic_params(), 'node ${i} generic_params differs'
 		assert q.pos.offset == s.pos.offset, 'node ${i} pos differs'
+		assert q.pos.id == s.pos.id, 'node ${i} file id differs'
 		assert q.children_count == s.children_count, 'node ${i} children_count differs'
 		if s.children_count != 0 {
 			assert q.children_start == s.children_start, 'node ${i} children_start differs'
@@ -73,6 +74,193 @@ fn test_parallel_parse_matches_serial() {
 	for qname, value in ps.a.export_fn_names {
 		assert pp.a.export_fn_names[qname] == value
 	}
+}
+
+// test_parallel_parse_falls_back_when_workers_cannot_start ensures every helper
+// chunk is parsed synchronously instead of being silently omitted.
+fn test_parallel_parse_falls_back_when_workers_cannot_start() {
+	$if !windows {
+		files := parallel_parse_input_files()
+		prefs := pref.new_preferences()
+		mut serial := parser.Parser.new(prefs)
+		serial_starts := serial.parse_files_with_starts(files)
+		old_failure := os.getenv_opt('V3_TEST_PTHREAD_CREATE_FAIL')
+		os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', 'parser:all', true)
+		defer {
+			if value := old_failure {
+				os.setenv('V3_TEST_PTHREAD_CREATE_FAIL', value, true)
+			} else {
+				os.unsetenv('V3_TEST_PTHREAD_CREATE_FAIL')
+			}
+		}
+		mut fallback := parser.Parser.new(prefs)
+		fallback_starts, was_parallel := fallback.parse_files_dispatch(files, true)
+		assert !was_parallel
+		assert fallback_starts == serial_starts
+		assert fallback.a.children == serial.a.children
+		assert fallback.a.nodes.len == serial.a.nodes.len
+		for i, node in serial.a.nodes {
+			got := fallback.a.nodes[i]
+			assert got.kind == node.kind
+			assert got.value == node.value
+			assert got.typ == node.typ
+			assert got.pos == node.pos
+			assert got.children_count == node.children_count
+			if node.children_count != 0 {
+				assert got.children_start == node.children_start
+			}
+		}
+	}
+}
+
+fn test_parallel_parse_seeds_cross_file_comptime_consts() {
+	dir := os.join_path(os.temp_dir(), 'v3_parallel_const_seed_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	mut files := []string{cap: 4}
+	for file_index in 0 .. 4 {
+		mut src := strings.new_builder(64_000)
+		src.writeln('module main')
+		src.writeln('')
+		if file_index == 0 {
+			src.writeln('\$if true &&')
+			src.writeln("    @LINE == '4' {")
+			src.writeln('\tconst line_position_gate = true')
+			src.writeln('}')
+			src.writeln('const enabled = true')
+			src.writeln("const flavor = 'vanilla'")
+			src.writeln("\$if r'enabled' == 'enabled' {")
+			src.writeln('\tconst raw_string_gate = true')
+			src.writeln('} \$else {')
+			src.writeln('\tconst raw_string_gate_leak = true')
+			src.writeln('}')
+			src.writeln('\$if v3_parallel_taken_const ? {')
+			src.writeln('\tconst branch_enabled = true')
+			src.writeln('} \$else {')
+			src.writeln('\tconst branch_enabled = false')
+			src.writeln('}')
+			src.writeln('\$if v3_parallel_untaken_const ? {')
+			src.writeln('\tconst branch_leak = true')
+			src.writeln('} \$else {')
+			src.writeln('\tconst branch_fallback = true')
+			src.writeln('}')
+			src.writeln('\$match flavor {')
+			src.writeln("\t'chocolate' { const match_branch_leak = true }")
+			src.writeln("\t'vanilla' { const match_branch_enabled = true }")
+			src.writeln('\t\$else { const match_branch_wrong_else = true }')
+			src.writeln('}')
+			src.writeln('\$match flavor {')
+			src.writeln("\t'missing' { const match_fallback_leak = true }")
+			src.writeln('\t\$else { const match_fallback_enabled = true }')
+			src.writeln('}')
+			src.writeln('@[if never ?]')
+			src.writeln('const disabled = true')
+			src.writeln('\$if future_enabled {')
+			src.writeln('\tfn leaked_future_const() {}')
+			src.writeln('} \$else {')
+			src.writeln('\tfn absent_future_const() {}')
+			src.writeln('}')
+			src.writeln('')
+		}
+		if file_index == 1 {
+			src.writeln('const enabled_alias = enabled')
+			src.writeln('')
+		}
+		if file_index == 2 {
+			src.writeln('const enabled_alias_2 = enabled_alias')
+			src.writeln('')
+		}
+		if file_index == 3 {
+			src.writeln('const future_enabled = true')
+			src.writeln('\$if line_position_gate {')
+			src.writeln('\tfn line_position_gate_enabled() {}')
+			src.writeln('}')
+			src.writeln('\$if raw_string_gate {')
+			src.writeln('\tfn raw_string_gate_enabled() {}')
+			src.writeln('}')
+			src.writeln('\$if raw_string_gate_leak {')
+			src.writeln('\tfn leaked_raw_string_gate() {}')
+			src.writeln('}')
+			src.writeln('\$if branch_enabled {')
+			src.writeln('\tfn branch_const_enabled() {}')
+			src.writeln('} \$else {')
+			src.writeln('\tfn branch_const_disabled() {}')
+			src.writeln('}')
+			src.writeln('\$if branch_leak {')
+			src.writeln('\tfn leaked_untaken_branch_const() {}')
+			src.writeln('}')
+			src.writeln('\$if branch_fallback {')
+			src.writeln('\tfn fallback_branch_const_enabled() {}')
+			src.writeln('}')
+			src.writeln('\$if match_branch_enabled {')
+			src.writeln('\tfn match_branch_const_enabled() {}')
+			src.writeln('}')
+			src.writeln('\$if match_branch_leak || match_branch_wrong_else || match_fallback_leak {')
+			src.writeln('\tfn leaked_match_branch_const() {}')
+			src.writeln('}')
+			src.writeln('\$if match_fallback_enabled {')
+			src.writeln('\tfn match_fallback_const_enabled() {}')
+			src.writeln('}')
+			src.writeln('\$if enabled {')
+			src.writeln('\tfn enabled_branch() {}')
+			src.writeln('} \$else {')
+			src.writeln('\tfn disabled_branch() {}')
+			src.writeln('}')
+			src.writeln('\$match flavor {')
+			src.writeln("\t'vanilla' { fn matched_branch() {} }")
+			src.writeln('\t\$else { fn unmatched_branch() {} }')
+			src.writeln('}')
+			src.writeln('\$if disabled {')
+			src.writeln('\tfn leaked_disabled_const() {}')
+			src.writeln('} \$else {')
+			src.writeln('\tfn absent_disabled_const() {}')
+			src.writeln('}')
+			src.writeln('\$if enabled_alias_2 {')
+			src.writeln('\tfn alias_enabled_branch() {}')
+			src.writeln('} \$else {')
+			src.writeln('\tfn alias_disabled_branch() {}')
+			src.writeln('}')
+			src.writeln('')
+		}
+		for i in 0 .. 1000 {
+			src.writeln('fn padding_${file_index}_${i}() int { return ${i} }')
+		}
+		path := os.join_path(dir, '${file_index}.v')
+		os.write_file(path, src.str()) or { panic(err) }
+		files << path
+	}
+	mut prefs := pref.new_preferences()
+	prefs.user_defines << 'v3_parallel_taken_const'
+	mut p := parser.Parser.new(prefs)
+	_, was_parallel := p.parse_files_dispatch(files, true)
+	$if !windows {
+		if runtime.nr_jobs() > 1 {
+			assert was_parallel
+		}
+	}
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'enabled_branch')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'line_position_gate_enabled')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'raw_string_gate_enabled')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'leaked_raw_string_gate')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'disabled_branch')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'matched_branch')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'unmatched_branch')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'leaked_disabled_const')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'absent_disabled_const')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'leaked_future_const')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'absent_future_const')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'alias_enabled_branch')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'alias_disabled_branch')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'branch_const_enabled')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'branch_const_disabled')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'leaked_untaken_branch_const')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'fallback_branch_const_enabled')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'match_branch_const_enabled')
+	assert !p.a.nodes.any(it.kind == .fn_decl && it.value == 'leaked_match_branch_const')
+	assert p.a.nodes.any(it.kind == .fn_decl && it.value == 'match_fallback_const_enabled')
 }
 
 // build_parallel_parser_v3 builds parallel parser v3 data for v3 tests.

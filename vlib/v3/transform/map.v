@@ -139,10 +139,12 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 
 // make_map_get_expr builds make map get expr data for transform.
 fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type string, key_name string, zero_name string, value_type string) flat.NodeId {
-	clean_value_type := if t.is_fixed_array_type(value_type) {
-		fixed_array_canonical_type(value_type)
+	fixed_value_type := fixed_array_map_value_type_text(value_type)
+	effective_value_type := if fixed_value_type.len > 0 { fixed_value_type } else { value_type }
+	clean_value_type := if t.is_fixed_array_type(effective_value_type) {
+		effective_value_type
 	} else {
-		value_type
+		effective_value_type
 	}
 	call := t.make_call_typed('map__get', arr3(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,
 		t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(zero_name))), 'voidptr')
@@ -1128,6 +1130,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 	if !map_type.starts_with('map[') {
 		return id
 	}
+	map_type = t.refine_map_init_type_for_fixed_array_values(map_type, node)
 	mut init_call := t.make_new_map_call(map_type)
 	if node.children_count == 0 {
 		return init_call
@@ -1172,7 +1175,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		value := if value_type.starts_with('&') && t.is_sum_type_name(value_type[1..]) {
 			t.transform_expr_for_type(value_id, value_type)
 		} else if value_type in t.sum_types || t.resolve_sum_name(value_type) in t.sum_types {
-			t.wrap_sum_value(value_id, value_type)
+			t.transform_sum_value_for_type(value_id, value_type)
 		} else {
 			t.transform_expr_for_type(value_id, value_type)
 		}
@@ -1203,4 +1206,71 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		}
 	}
 	return t.make_ident(tmp_name)
+}
+
+fn (mut t Transformer) refine_map_init_type_for_fixed_array_values(map_type string, node flat.Node) string {
+	key_type, value_type := t.map_type_parts(map_type)
+	value_fixed_type := fixed_array_map_value_type_text(value_type)
+	if key_type.len == 0 || value_type.len == 0 || value_fixed_type.len > 0
+		|| node.children_count < 2 {
+		if key_type.len > 0 && value_fixed_type.len > 0 && node.children_count >= 2 {
+			value_id := t.a.child(&node, 1)
+			if _ := t.fixed_array_map_value_literal_type(value_id) {
+				return 'map[${key_type}]${value_fixed_type}'
+			}
+			elem_type := fixed_array_elem_type(value_fixed_type)
+			actual_type := t.node_type(value_id)
+			if actual_type.len > 0
+				&& t.normalize_type_alias(actual_type) == t.normalize_type_alias(elem_type) {
+				return 'map[${key_type}]${elem_type}'
+			}
+		}
+		return map_type
+	}
+	fixed_type := t.fixed_array_map_value_literal_type(t.a.child(&node, 1)) or { return map_type }
+	elem_type := fixed_array_elem_type(fixed_type)
+	if t.normalize_type_alias(elem_type) != t.normalize_type_alias(value_type)
+		&& value_type !in ['map', 'Map'] {
+		return map_type
+	}
+	return 'map[${key_type}]${fixed_type}'
+}
+
+fn fixed_array_map_value_type_text(value_type string) string {
+	if value_type.starts_with('map[') {
+		elem, dims := transform_postfix_fixed_array_parts(value_type)
+		if dims.len > 0 {
+			return '[${dims[0]}]${elem}'
+		}
+		return ''
+	}
+	if value_type.starts_with('[') || (value_type.contains('[') && value_type.ends_with(']')) {
+		return value_type
+	}
+	return ''
+}
+
+fn (mut t Transformer) fixed_array_map_value_literal_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .postfix && node.op == .not && node.children_count > 0 {
+		child_id := t.a.child(&node, 0)
+		child := t.a.nodes[int(child_id)]
+		if child.kind == .array_literal && child.children_count > 0 {
+			elem_id := t.a.child(&child, 0)
+			elem_type := t.node_type(elem_id)
+			if elem_type.len > 0 {
+				return '[${child.children_count}]${elem_type}'
+			}
+		}
+	}
+	if node.kind == .array_init {
+		raw := if node.typ.len > 0 { node.typ } else { node.value }
+		if t.is_fixed_array_type(raw) {
+			return raw
+		}
+	}
+	return none
 }

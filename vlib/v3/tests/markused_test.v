@@ -1,4 +1,5 @@
 import os
+import strings
 import v3.flat
 import v3.gen.c as cgen
 import v3.markused
@@ -93,6 +94,180 @@ fn parse_checked_project_in_order(name string, rels []string, sources []string) 
 fn mark_used_source(name string, source string) map[string]bool {
 	a, tc := parse_checked_source(name, source)
 	return markused.mark_used(a, tc)
+}
+
+fn find_fn_node_id(a &flat.FlatAst, name string) int {
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value == name {
+			return i
+		}
+	}
+	return -1
+}
+
+// test_import_alias_context_is_file_local verifies that declarations retain
+// the imports of their own file even when later files reuse or omit an alias.
+fn test_import_alias_context_is_file_local() {
+	a, tc := parse_checked_project_in_order('file_local_import_context', [
+		'main/a.v',
+		'main/b.v',
+		'main/c.v',
+		'left/left.v',
+		'right/right.v',
+	], [
+		'module main
+
+import left as dep
+
+fn selected() dep.Box[int] {
+	return dep.make()
+}
+',
+		'module main
+
+import right as dep
+
+fn decoy() dep.Box {
+	return dep.make()
+}
+',
+		'module main
+
+fn main() {
+	_ := selected()
+}
+',
+		'module left
+
+pub struct Box[T] {
+	value T
+}
+
+pub fn make() Box[int] {
+	return Box[int]{
+		value: 1
+	}
+}
+',
+		'module right
+
+pub struct Box {
+	value int
+}
+
+pub fn make() Box {
+	return Box{
+		value: 2
+	}
+}
+',
+	])
+	selected_id := find_fn_node_id(a, 'selected')
+	assert selected_id >= 0
+	selected_dependencies := tc.direct_dependencies(selected_id)
+	assert 'left.make' in selected_dependencies
+	assert 'right.make' !in selected_dependencies
+	used, uses_generics := markused.mark_used_with_generic_usage(a, tc)
+	assert used['left.make']
+	assert !used['right.make']
+	assert uses_generics
+}
+
+// test_eager_markused_import_alias_context_is_file_local covers the eager,
+// parallel-capable body precollection path with the same per-file alias reuse.
+fn test_eager_markused_import_alias_context_is_file_local() {
+	mut first := strings.new_builder(100_000)
+	first.writeln('module main')
+	first.writeln('import left as dep')
+	first.writeln('fn selected() dep.Box[int] { return dep.make() }')
+	for i in 0 .. 2050 {
+		first.writeln('fn first_pad_${i}() int { return ${i} }')
+	}
+	mut second := strings.new_builder(100_000)
+	second.writeln('module main')
+	second.writeln('import right as dep')
+	second.writeln('fn decoy() dep.Box { return dep.make() }')
+	for i in 0 .. 2050 {
+		second.writeln('fn second_pad_${i}() int { return ${i} }')
+	}
+	a, tc := parse_checked_project_in_order('eager_file_local_import_context', [
+		'main/a.v',
+		'main/b.v',
+		'main/c.v',
+		'left/left.v',
+		'right/right.v',
+	], [first.str(), second.str(), 'module main
+
+fn main() {
+	_ := selected()
+}
+', 'module left
+
+pub struct Box[T] {
+	value T
+}
+
+pub fn make() Box[int] {
+	return Box[int]{value: 1}
+}
+',
+		'module right
+
+pub struct Box {
+	value int
+}
+
+pub fn make() Box {
+	return Box{value: 2}
+}
+'])
+	used, uses_generics := markused.mark_used_with_generic_usage(a, tc)
+	assert used['left.make']
+	assert !used['right.make']
+	assert uses_generics
+}
+
+fn test_top_level_initializer_keeps_file_import_context() {
+	a, tc := parse_checked_project_in_order('top_level_initializer_import_context', [
+		'main/main.v',
+		'support/support.v',
+	], [
+		'module main
+
+import support as dep
+
+__global answer = dep.make()
+
+fn main() {
+	_ := answer
+}
+',
+		'module support
+
+pub struct Box[T] {
+	value T
+}
+
+pub fn make() Box[int] {
+	return Box[int]{value: 42}
+}
+',
+	])
+	used, uses_generics := markused.mark_used_with_generic_usage(a, tc)
+	assert used['support.make']
+	assert uses_generics
+}
+
+fn test_local_generic_struct_init_requires_monomorphization() {
+	a, tc := parse_checked_source('local_generic_struct_init', '
+fn main() {
+	struct Inner {}
+	struct Box[T] {}
+	_ := Box[Inner]{}
+}
+')
+	_, uses_generics := markused.mark_used_with_generic_usage(a, tc)
+	assert uses_generics
 }
 
 // build_v3_bin builds v3 bin data for v3 tests.
@@ -663,7 +838,7 @@ pub fn (mut l ThreadSafeLog) free() {
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
 	assert c_code.contains('m__Logger__error(')
-	assert c_code.contains('case 1: m__ThreadSafeLog__error')
+	assert c_code.contains(': m__ThreadSafeLog__error')
 }
 
 fn test_unreachable_interface_dispatch_stub_is_not_emitted_after_used_filter_transform() {
@@ -998,6 +1173,64 @@ println(int_str(f() + 1))
 	assert run.output.trim_space() == '42'
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('helper('), c_code
+}
+
+fn test_nonlocal_sum_receiver_method_is_collected_before_variant_helpers() {
+	used := mark_used_source('nonlocal_sum_receiver_method', '
+struct A {}
+struct B {}
+
+type Choice = A | B
+
+fn make_choice() Choice {
+	return Choice(A{})
+}
+
+fn (choice Choice) foo() int {
+	return 7
+}
+
+fn (a A) foo() int {
+	return 1
+}
+
+fn (b B) foo() int {
+	return 2
+}
+
+fn main() {
+	_ := make_choice().foo()
+}
+')
+	assert used['Choice.foo'] || used['main.Choice.foo'] || used['main__Choice__foo'], used.str()
+}
+
+fn test_top_level_sum_receiver_method_is_collected_before_variant_helpers() {
+	used := mark_used_source('top_level_sum_receiver_method', '
+struct A {}
+struct B {}
+
+type Choice = A | B
+
+fn make_choice() Choice {
+	return Choice(A{})
+}
+
+fn (choice Choice) foo() int {
+	return 7
+}
+
+fn (a A) foo() int {
+	return 1
+}
+
+fn (b B) foo() int {
+	return 2
+}
+
+__global top = make_choice().foo()
+')
+	assert used['Choice.foo'] || used['main.Choice.foo'] || used['main__Choice__foo'], used.str()
 }
 
 fn test_same_module_unqualified_homonym_call_uses_qualified_key() {

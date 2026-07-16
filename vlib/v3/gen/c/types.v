@@ -10,8 +10,8 @@ fn enum_decl_is_flag(node flat.Node) bool {
 }
 
 fn enum_decl_backing_type(node flat.Node) ?string {
-	if node.generic_params.len > 0 && node.generic_params[0].len > 0 {
-		return node.generic_params[0]
+	if node.generic_params().len > 0 && node.generic_params()[0].len > 0 {
+		return node.generic_params()[0]
 	}
 	return none
 }
@@ -70,23 +70,24 @@ fn (g &FlatGen) enum_storage_c_type(enum_type types.Enum) string {
 
 // optional_type_name supports optional type name handling for FlatGen.
 fn (mut g FlatGen) optional_type_name(t types.Type) string {
-	if t is types.Pointer {
-		if t.base_type is types.OptionType || t.base_type is types.ResultType {
-			return g.optional_type_name(t.base_type) + '*'
+	clean_type := cgen_unalias_type(t)
+	if clean_type is types.Pointer {
+		if clean_type.base_type is types.OptionType || clean_type.base_type is types.ResultType {
+			return g.optional_type_name(clean_type.base_type) + '*'
 		}
 	}
 	mut base_type := types.Type(types.void_)
-	if t is types.OptionType {
-		base_type = t.base_type
-	} else if t is types.ResultType {
-		base_type = t.base_type
+	if clean_type is types.OptionType {
+		base_type = clean_type.base_type
+	} else if clean_type is types.ResultType {
+		base_type = clean_type.base_type
 	} else {
-		if t is types.MultiReturn {
+		if clean_type is types.MultiReturn {
 			// The checker-level name spells fn-type parts as `fn_ptr_void_void`;
 			// the emitted typedef uses the resolved `_fn_ptr_<hash>` form.
-			return g.multi_return_c_type_name(t)
+			return g.multi_return_c_type_name(clean_type)
 		}
-		return g.tc.c_type(t)
+		return g.tc.c_type(clean_type)
 	}
 
 	if base_type is types.Void {
@@ -116,28 +117,41 @@ fn (mut g FlatGen) optional_type_name_for_context(t types.Type, concrete_optiona
 }
 
 fn (mut g FlatGen) value_c_type(t types.Type) string {
-	if t is types.OptionType || t is types.ResultType {
-		return g.optional_type_name(t)
+	clean_type := cgen_unalias_type(t)
+	if clean_type is types.OptionType || clean_type is types.ResultType {
+		return g.optional_type_name(clean_type)
 	}
-	if t is types.Pointer {
-		if t.base_type is types.OptionType || t.base_type is types.ResultType {
-			return g.optional_type_name(t.base_type) + '*'
+	if clean_type is types.Pointer {
+		if clean_type.base_type is types.OptionType || clean_type.base_type is types.ResultType {
+			return g.optional_type_name(clean_type.base_type) + '*'
 		}
 	}
-	if t is types.MultiReturn {
-		return g.multi_return_c_type_name(t)
+	if clean_type is types.MultiReturn {
+		return g.multi_return_c_type_name(clean_type)
 	}
-	if t is types.Enum {
-		return g.enum_value_c_type(t)
+	if clean_type is types.Enum {
+		return g.enum_value_c_type(clean_type)
 	}
-	if t is types.ArrayFixed {
-		return g.fixed_array_c_type(t)
+	if clean_type is types.ArrayFixed {
+		return g.fixed_array_c_type(clean_type)
 	}
-	mut ct := g.tc.c_type(t)
+	mut ct := g.tc.c_type(clean_type)
 	if ct.starts_with('fn_ptr:') {
 		ct = g.resolve_fn_ptr_type(ct)
 	}
 	return ct
+}
+
+fn cgen_unalias_type(typ types.Type) types.Type {
+	mut current := typ
+	for _ in 0 .. 1000 {
+		if current is types.Alias {
+			current = current.base_type
+			continue
+		}
+		return current
+	}
+	return current
 }
 
 fn (mut g FlatGen) multi_return_c_type_name(t types.MultiReturn) string {
@@ -338,6 +352,12 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return g.type_contains_generic_placeholder(t.base_type)
 		}
 		types.Struct {
+			if type_name_is_unbound_generic_decl(t.name, g.struct_generic_params_for_name(t.name),
+
+				t.name in g.tc.structs || g.tc.qualify_name(t.name) in g.tc.structs)
+			{
+				return true
+			}
 			return g.type_name_contains_generic_placeholder(t.name)
 		}
 		types.Interface {
@@ -347,6 +367,12 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return g.type_name_contains_generic_placeholder(t.name)
 		}
 		types.SumType {
+			if type_name_is_unbound_generic_decl(t.name, g.sum_generic_params_for_name(t.name),
+
+				t.name in g.tc.sum_types || g.tc.qualify_name(t.name) in g.tc.sum_types)
+			{
+				return true
+			}
 			return g.type_name_contains_generic_placeholder(t.name)
 		}
 		types.Alias {
@@ -365,6 +391,39 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 			return false
 		}
 	}
+}
+
+fn (g &FlatGen) struct_generic_params_for_name(name string) []string {
+	base, _, ok := shared_generic_app_parts(name)
+	if !ok {
+		return []string{}
+	}
+	return g.tc.struct_generic_params[base] or {
+		g.tc.struct_generic_params[base.all_after_last('.')] or { []string{} }
+	}
+}
+
+fn (g &FlatGen) sum_generic_params_for_name(name string) []string {
+	base, _, ok := shared_generic_app_parts(name)
+	if !ok {
+		return []string{}
+	}
+	return g.tc.sum_generic_params[base] or {
+		g.tc.sum_generic_params[base.all_after_last('.')] or { []string{} }
+	}
+}
+
+fn type_name_is_unbound_generic_decl(name string, params []string, materialized bool) bool {
+	_, args, ok := shared_generic_app_parts(name)
+	if !ok || materialized || params.len == 0 {
+		return false
+	}
+	for arg in args {
+		if shared_type_text_uses_generic_params(arg, params) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (g &FlatGen) type_name_contains_generic_placeholder(name string) bool {

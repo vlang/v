@@ -60,6 +60,10 @@ fn helper() int {
 pub fn use_helper() int {
 	return helper() + 1
 }
+
+pub fn run(command string, args []string) string {
+	return command + args.join("")
+}
 ') or {
 		panic(err)
 	}
@@ -68,10 +72,19 @@ pub fn use_helper() int {
 import collisionmod
 import localmod
 
+struct Runner {}
+
+fn (mut r Runner) run() {
+	_ = r
+}
+
 fn main() {
 	holder := collisionmod.make(7)
 	assert collisionmod.value(holder) == 7
 	assert localmod.use_helper() == 42
+	command := 'module-'
+	args := ['call']
+	assert localmod.run(command, args) == 'module-call'
 	mut values := map[string]int{}
 	values['answer'] = 42
 	assert values['answer'] == 42
@@ -89,7 +102,7 @@ fn test_imported_module_fn_short_name_does_not_pollute_builtin_return_type() {
 	out := os.join_path(os.temp_dir(), 'v3_module_fn_collision_out_${os.getpid()}')
 	os.rm(out) or {}
 	os.rm(out + '.c') or {}
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${out}')
+	compile := os.execute('${v3_bin} -nocache ${main_path} -b c -o ${out}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -101,6 +114,8 @@ fn test_imported_module_fn_short_name_does_not_pollute_builtin_return_type() {
 	assert generated.contains('mapnode* z = new_node();'), generated
 	assert generated.contains('collisionmod__new_node_T_v_int'), generated
 	assert generated.contains('localmod__helper()'), generated
+	assert generated.contains('localmod__run(command, args)'), generated
+	assert !generated.contains('localmod__run(&command, args)'), generated
 	assert !generated.contains('collisionmod__Node_T* z = new_node();'), generated
 	assert !generated.contains('Array_fixed_collisionmod__Node_T* z = new_node();'), generated
 }

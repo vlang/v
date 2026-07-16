@@ -84,6 +84,20 @@ fn test_map_optional_element_or_uses_loaded_element_error() {
 	assert c_source.contains('IError err = __map_opt_'), 'map element failure branch does not use loaded optional err'
 }
 
+fn test_nested_optional_infix_or_uses_whole_expression_fallback() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'nested_optional_infix_or_fallback',
+		'__global left_calls int\n__global right_calls int\n\nfn none_int() ?int {\n\treturn none\n}\n\nfn some_int() ?int {\n\treturn 2\n}\n\nfn left_effect() int {\n\tleft_calls++\n\treturn 40\n}\n\nfn right_effect() int {\n\tright_calls++\n\treturn 40\n}\n\nfn main() {\n\tleft_calls = 0\n\tright_calls = 0\n\ta := (none_int() + right_effect()) or { 0 }\n\tprintln(int_str(a))\n\tprintln(int_str(right_calls))\n\tb := (left_effect() + none_int()) or { 0 }\n\tprintln(int_str(b))\n\tprintln(int_str(left_calls))\n\tc := (some_int() + right_effect()) or { 0 }\n\tprintln(int_str(c))\n\tprintln(int_str(right_calls))\n}\n')
+	assert out == '0\n0\n0\n1\n42\n1'
+}
+
+fn test_nested_optional_logical_or_preserves_short_circuiting() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'nested_optional_logical_or_short_circuit',
+		'__global calls int\n\nfn yes() ?bool {\n\treturn true\n}\n\nfn no() ?bool {\n\treturn false\n}\n\nfn fail_bool() ?bool {\n\tcalls++\n\treturn none\n}\n\nfn effect_true() ?bool {\n\tcalls++\n\treturn true\n}\n\nfn main() {\n\tcalls = 0\n\ta := (yes()? || fail_bool()?) or { false }\n\tprintln(if a { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\tb := (no()? && fail_bool()?) or { true }\n\tprintln(if b { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\tc := (no()? || effect_true()?) or { false }\n\tprintln(if c { "true" } else { "false" })\n\tprintln(int_str(calls))\n\tcalls = 0\n\td := (yes()? && effect_true()?) or { false }\n\tprintln(if d { "true" } else { "false" })\n\tprintln(int_str(calls))\n}\n')
+	assert out == 'true\n0\nfalse\n0\ntrue\n1\ntrue\n1'
+}
+
 fn test_user_defined_free_method_is_preserved() {
 	v3_bin := build_v3_or_review()
 	out := or_review_run(v3_bin, 'user_defined_free_method',

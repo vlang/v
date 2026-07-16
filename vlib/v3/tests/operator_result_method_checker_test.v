@@ -66,6 +66,20 @@ fn check_standalone_to_c(v3_bin string, name string, main_src string) os.Result 
 	return os.execute('${v3_bin} ${main_path} -b c -o ${c_path}')
 }
 
+fn run_standalone(v3_bin string, name string, main_src string) string {
+	main_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(main_path, main_src) or { panic(err) }
+	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
+	os.rm(bin_path) or {}
+	os.rm(bin_path + '.c') or {}
+	compile := os.execute('${v3_bin} ${main_path} -b c -o ${bin_path}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(bin_path)
+	assert run.exit_code == 0, run.output
+	return run.output.trim_space()
+}
+
 fn test_operator_result_type_is_used_before_method_resolution() {
 	v3_bin := build_v3()
 	good := 'module main
@@ -123,4 +137,25 @@ fn main() {
 	assert bad_res.exit_code != 0, bad_res.output
 	assert bad_res.output.contains('unknown function'), bad_res.output
 	assert bad_res.output.contains('bogus_method'), bad_res.output
+}
+
+fn test_string_alias_operator_overloads_are_preserved() {
+	v3_bin := build_v3()
+	out := run_standalone(v3_bin, 'string_alias_operator_overloads', "type S = string
+
+fn (a S) == (b S) bool {
+	return false
+}
+
+fn (a S) < (b S) bool {
+	return false
+}
+
+fn main() {
+	assert !(S('x') == S('x'))
+	assert !(S('a') < S('b'))
+	println('ok')
+}
+")
+	assert out == 'ok'
 }
