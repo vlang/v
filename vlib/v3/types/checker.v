@@ -10969,12 +10969,22 @@ fn (mut tc TypeChecker) check_postfix(id flat.NodeId, node flat.Node) {
 			'inferred fixed-array literal rows must have the same size', id)
 	}
 	if child.kind == .index && child.children_count >= 2 {
-		base_type := unwrap_pointer(tc.resolve_type(tc.a.child(&child, 0)))
+		base_type_raw := tc.resolve_type(tc.a.child(&child, 0))
+		base_type := unwrap_pointer(base_type_raw)
 		if base_type is Map && node.op in [.inc, .dec] && tc.reject_unlowered_map_mutation
 			&& tc.should_diagnose(id) {
 			tc.record_error(.assignment_mismatch,
 				'internal compiler error: unlowered map index postfix mutation reached post-transform checker',
 				id)
+		}
+		if node.op in [.inc, .dec] && tc.should_diagnose(id) {
+			if _ := tc.index_overload_call_info(base_type_raw, false) {
+				tc.record_error(.assignment_mismatch,
+					'postfix mutation is not supported for overloaded index expressions', id)
+			} else if _ := tc.index_overload_call_info(base_type_raw, true) {
+				tc.record_error(.assignment_mismatch,
+					'postfix mutation is not supported for overloaded index expressions', id)
+			}
 		}
 	}
 }

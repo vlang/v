@@ -5748,6 +5748,13 @@ fn (mut g FlatGen) gen_json_encode_call(node flat.Node) bool {
 	return true
 }
 
+struct JsonEncodeFieldExpr {
+	label string
+	typ   types.Type
+	expr  string
+	attrs []string
+}
+
 fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string {
 	clean := if typ is types.Alias { typ.base_type } else { typ }
 	if clean is types.Enum {
@@ -5829,15 +5836,12 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		return none
 	}
 	if clean is types.Struct {
-		fields := g.tc.structs[clean.name] or { return none }
-		if g.json_struct_has_encode_field_attrs(clean.name) {
-			return none
-		}
+		fields := g.json_encode_struct_field_exprs(clean.name, expr, []string{}) or { return none }
 		open := g.intern_string('{')
 		close := g.intern_string('}')
 		mut has_omitempty := false
 		for field in fields {
-			attrs := g.json_struct_field_attrs(clean.name, field.name)
+			attrs := field.attrs
 			if json_attrs_skip_field(attrs) {
 				continue
 			}
@@ -5854,14 +5858,14 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 			count := g.tmp_name()
 			mut body := '({ string ${res} = _str_${open}; int ${count} = 0; '
 			for field in fields {
-				attrs := g.json_struct_field_attrs(clean.name, field.name)
+				attrs := field.attrs
 				if json_attrs_skip_field(attrs) {
 					continue
 				}
-				label := json_struct_field_label(field.name, attrs)
+				label := field.label
 				prefix := g.intern_string(json_struct_field_label_prefix(label, ''))
 				prefix_with_separator := g.intern_string(json_struct_field_label_prefix(label, ','))
-				field_expr := '(${expr}).${g.cname(field.name)}'
+				field_expr := field.expr
 				encoded := g.json_encode_value_c_expr(field.typ, field_expr) or { return none }
 				append := '${res} = string__plus(string__plus(${res}, (${count} == 0 ? _str_${prefix} : _str_${prefix_with_separator})), ${encoded}); ${count}++;'
 				if json_attrs_have_name(attrs, 'omitempty') {
@@ -5877,19 +5881,67 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		mut result := '_str_${open}'
 		mut emitted_fields := 0
 		for field in fields {
-			attrs := g.json_struct_field_attrs(clean.name, field.name)
+			attrs := field.attrs
 			if json_attrs_skip_field(attrs) {
 				continue
 			}
-			label := json_struct_field_label(field.name, attrs)
+			label := field.label
 			separator := if emitted_fields == 0 { '' } else { ',' }
 			prefix := g.intern_string(json_struct_field_label_prefix(label, separator))
-			field_expr := '(${expr}).${g.cname(field.name)}'
+			field_expr := field.expr
 			encoded := g.json_encode_value_c_expr(field.typ, field_expr) or { return none }
 			result = 'string__plus(string__plus(${result}, _str_${prefix}), ${encoded})'
 			emitted_fields++
 		}
 		return 'string__plus(${result}, _str_${close})'
+	}
+	return none
+}
+
+fn (g &FlatGen) json_encode_struct_field_exprs(struct_name string, expr string, seen []string) ?[]JsonEncodeFieldExpr {
+	if struct_name in seen || g.json_struct_has_encode_field_attrs(struct_name) {
+		return none
+	}
+	fields := g.tc.structs[struct_name] or { return none }
+	mut next_seen := seen.clone()
+	next_seen << struct_name
+	mut out := []JsonEncodeFieldExpr{}
+	for field in fields {
+		attrs := g.json_struct_field_attrs(struct_name, field.name)
+		if json_attrs_skip_field(attrs) {
+			continue
+		}
+		field_expr := '(${expr}).${g.cname(field.name)}'
+		if embedded := g.json_encode_embedded_struct_field_type(field) {
+			if attrs.len > 0 {
+				return none
+			}
+			nested := g.json_encode_struct_field_exprs(embedded.name, field_expr, next_seen) or {
+				return none
+			}
+			out << nested
+			continue
+		}
+		out << JsonEncodeFieldExpr{
+			label: json_struct_field_label(field.name, attrs)
+			typ:   field.typ
+			expr:  field_expr
+			attrs: attrs
+		}
+	}
+	return out
+}
+
+fn (g &FlatGen) json_encode_embedded_struct_field_type(field types.StructField) ?types.Struct {
+	mut field_type := field.typ
+	if field_type is types.Alias {
+		field_type = field_type.base_type
+	}
+	if field_type is types.Pointer {
+		return none
+	}
+	if field_type is types.Struct && field.name == field_type.name.all_after_last('.') {
+		return field_type
 	}
 	return none
 }

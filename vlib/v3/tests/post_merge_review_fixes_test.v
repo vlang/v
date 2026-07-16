@@ -2775,6 +2775,40 @@ fn main() {
 	assert decoded == '{}\n[1,2]'
 }
 
+fn test_json_encode_embedded_structs_use_fast_path_flattening() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'json_encode_embedded_struct_flattening', 'import json
+
+struct Json3 {
+	embed f64
+}
+
+struct Json2 {
+	Json3
+	inner []f64
+}
+
+struct Json {
+	Json2
+	test f64
+}
+
+fn main() {
+	data := Json{
+		Json2: Json2{
+			Json3: Json3{
+				embed: 2.0
+			}
+			inner: [1.0, 2.0]
+		}
+		test: 1.0
+	}
+	println(json.encode(data))
+}
+')
+	assert out == '{"embed":2.0,"inner":[1.0,2.0],"test":1.0}'
+}
+
 fn test_json_encode_omitempty_field_attr_preserves_omission() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'json_encode_omitempty_field_attr', 'import json
@@ -4487,6 +4521,17 @@ fn main() {
 }
 ',
 		'compound overloaded index assignment requires `[]` return type compatible with `[]=` value parameter type')
+	run_bad(v3_bin, 'overloaded_index_postfix_mutation_rejected', getter_and_setter_src +
+		'
+
+fn main() {
+	mut d := Dict{
+		values: map[string]int{}
+	}
+	d["name"]++
+}
+',
+		'postfix mutation is not supported for overloaded index expressions')
 }
 
 fn test_generic_overloaded_index_uses_specialized_methods() {
