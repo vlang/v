@@ -343,11 +343,21 @@ fn struct_field_attr_needs_legacy_json(t &ast.Table, field ast.StructField) bool
 	if field.attrs.any(it.name == 'raw') {
 		return true
 	}
-	if field.attrs.any(it.name == 'omitempty')
-		&& t.final_sym(field.typ).kind in [.bool, .struct, .sum_type, .enum, .array_fixed, .any] {
-		// `.any` is an unresolved generic parameter (`val T @[omitempty]`): its concrete type
-		// is unknown at fmt time and could be one of the emitted-always kinds, so keep.
-		return true
+	if field.attrs.any(it.name == 'omitempty') {
+		// A composite (bool/struct/sum type/enum/fixed array) omitempty field is always
+		// emitted by json2 but omitted by legacy json when empty. `.any` is an unresolved
+		// generic parameter (`val T @[omitempty]`) whose concrete type is unknown at fmt
+		// time and could be one of those kinds, so keep it too.
+		if t.final_sym(field.typ).kind in [.bool, .struct, .sum_type, .enum, .array_fixed, .any] {
+			return true
+		}
+		// A defaulted omitempty field decodes differently regardless of type: json2 skips a
+		// present empty value (keeping the field default), while legacy json assigns the
+		// present value and only uses the default when the key is absent — so `{"name":""}`
+		// yields the default under json2 vs `''` under legacy.
+		if field.has_default_expr {
+			return true
+		}
 	}
 	return false
 }
