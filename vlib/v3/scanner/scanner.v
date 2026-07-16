@@ -11,6 +11,13 @@ pub enum Mode {
 	skip_interpolation
 }
 
+// Diagnostic describes a lexical error at a byte offset in the current source.
+pub struct Diagnostic {
+pub:
+	offset  int
+	message string
+}
+
 // Scanner represents scanner data used by scanner.
 pub struct Scanner {
 	pref               &pref.Preferences
@@ -28,6 +35,7 @@ pub mut:
 	in_str_inter        bool
 	str_inter_cbr_depth int
 	str_quote           u8
+	diagnostics         []Diagnostic
 }
 
 // peek_byte supports peek byte handling for Scanner.
@@ -61,8 +69,16 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.in_str_inter = false
 	s.str_inter_cbr_depth = 0
 	s.str_quote = 0
+	s.diagnostics = []Diagnostic{}
 	s.file = unsafe { file }
 	s.src = src
+}
+
+fn (mut s Scanner) error(message string, offset int) {
+	s.diagnostics << Diagnostic{
+		offset:  offset
+		message: message
+	}
 }
 
 @[inline]
@@ -77,13 +93,21 @@ fn (s &Scanner) source_lit(start int, end int) string {
 
 // scan_char_literal reads scan char literal input for scanner.
 fn (mut s Scanner) scan_char_literal(quote u8) token.Token {
+	start := s.pos
 	s.offset++
+	mut closed := false
 	for s.offset < s.src.len {
 		c2 := s.src[s.offset]
 		if c2 == quote {
+			closed = true
 			break
 		}
-		if c2 == `\\` && s.offset + 1 < s.src.len {
+		if c2 == `\\` {
+			if s.offset + 1 >= s.src.len {
+				s.error('unterminated escape in character literal', s.offset)
+				s.offset = s.src.len
+				break
+			}
 			s.offset += 2
 			continue
 		}
@@ -93,6 +117,9 @@ fn (mut s Scanner) scan_char_literal(quote u8) token.Token {
 	if s.offset < s.src.len && s.src[s.offset] == quote {
 		end = s.offset
 		s.offset++
+	}
+	if !closed {
+		s.error('unterminated character literal', start)
 	}
 	s.lit = s.source_lit(s.pos + 1, end)
 	s.insert_semi = true
@@ -116,7 +143,8 @@ pub fn (mut s Scanner) scan() token.Token {
 	}
 	start:
 	s.whitespace()
-	if s.offset == s.src.len {
+	if s.offset >= s.src.len {
+		s.offset = s.src.len
 		s.lit = ''
 		if s.insert_semi {
 			s.insert_semi = false
@@ -443,6 +471,7 @@ pub fn (mut s Scanner) scan() token.Token {
 			return .question
 		}
 		else {
+			s.error('unknown character `${c.ascii_str()}`', s.pos)
 			return .unknown
 		}
 	}
@@ -506,15 +535,20 @@ fn (mut s Scanner) comment() {
 				s.offset++
 			}
 		}
+		if ml_comment_depth > 0 {
+			s.error('unterminated block comment', s.pos)
+		}
 	}
 }
 
 @[direct_array_access]
 fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 	if scan_as_raw {
+		mut closed := false
 		for s.offset < s.src.len {
 			c := s.src[s.offset]
 			if c == c_quote {
+				closed = true
 				break
 			}
 			if c == `\n` {
@@ -526,11 +560,19 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 		if s.offset < s.src.len {
 			s.offset++
 		}
+		if !closed {
+			s.error('unterminated raw string literal', s.pos)
+		}
 		return
 	}
 	for s.offset < s.src.len {
 		c := s.src[s.offset]
 		if c == `\\` {
+			if s.offset + 1 >= s.src.len {
+				s.error('unterminated escape in string literal', s.offset)
+				s.offset = s.src.len
+				return
+			}
 			s.offset += 2
 			continue
 		} else if c == `\n` {
@@ -556,85 +598,97 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 			}
 		} else if c == c_quote && !s.in_str_inter {
 			s.offset++
-			break
+			return
 		}
 		s.offset++
 	}
+	s.error('unterminated string literal', s.pos)
 }
 
 @[direct_array_access]
 fn (mut s Scanner) number() {
-	if s.offset < s.src.len && s.src[s.offset] == `0` {
-		s.offset++
-		c := s.peek_byte(0)
+	if s.offset + 1 < s.src.len && s.src[s.offset] == `0` {
+		c := s.peek_byte(1)
 		if c == `b` || c == `B` {
-			s.offset++
-			for s.offset < s.src.len {
-				c2 := s.src[s.offset]
-				if c2 == `0` || c2 == `1` || c2 == `_` {
-					s.offset++
-					continue
-				}
-				return
+			s.offset += 2
+			if s.consume_digits(2) == 0 {
+				s.error('binary literal requires at least one digit', s.pos)
 			}
 			return
 		} else if c == `x` || c == `X` {
-			s.offset++
-			for s.offset < s.src.len {
-				c2 := s.src[s.offset]
-				if (c2 >= `0` && c2 <= `9`) || (c2 >= `a` && c2 <= `f`)
-					|| (c2 >= `A` && c2 <= `F`) || c2 == `_` {
-					s.offset++
-					continue
-				}
-				return
+			s.offset += 2
+			if s.consume_digits(16) == 0 {
+				s.error('hexadecimal literal requires at least one digit', s.pos)
 			}
 			return
 		} else if c == `o` || c == `O` {
-			s.offset++
-			for s.offset < s.src.len {
-				c2 := s.src[s.offset]
-				if (c2 >= `0` && c2 <= `7`) || c2 == `_` {
-					s.offset++
-					continue
-				}
-				return
+			s.offset += 2
+			if s.consume_digits(8) == 0 {
+				s.error('octal literal requires at least one digit', s.pos)
 			}
 			return
 		}
 	}
-	mut has_decimal := false
-	mut has_exponent := false
+	s.consume_digits(10)
+	if s.offset < s.src.len && s.src[s.offset] == `.` && s.peek_byte(1) != `.` {
+		next := s.peek_byte(1)
+		if (next >= `0` && next <= `9`) || next == `e` || next == `E` {
+			s.offset++
+			if next >= `0` && next <= `9` {
+				s.consume_digits(10)
+			}
+		}
+	}
+	if s.offset < s.src.len && (s.src[s.offset] == `e` || s.src[s.offset] == `E`) {
+		exponent_pos := s.offset
+		s.offset++
+		if s.offset < s.src.len && (s.src[s.offset] == `+` || s.src[s.offset] == `-`) {
+			s.offset++
+		}
+		if s.consume_digits(10) == 0 {
+			s.error('exponent requires at least one digit', exponent_pos)
+		}
+	}
+}
+
+@[direct_array_access]
+fn (mut s Scanner) consume_digits(base int) int {
+	mut digits := 0
+	mut previous_underscore := false
 	for s.offset < s.src.len {
 		c := s.src[s.offset]
-		if (c >= `0` && c <= `9`) || c == `_` {
+		if digit_value(c) < base {
+			digits++
+			previous_underscore = false
 			s.offset++
 			continue
-		} else if !has_decimal && c == `.` {
-			next := s.peek_byte(1)
-			mut has_dot_exponent := false
-			if next == `e` || next == `E` {
-				after_exp := s.peek_byte(2)
-				if after_exp == `+` || after_exp == `-` {
-					after_sign := s.peek_byte(3)
-					has_dot_exponent = after_sign >= `0` && after_sign <= `9`
-				} else {
-					has_dot_exponent = after_exp >= `0` && after_exp <= `9`
-				}
+		}
+		if c == `_` {
+			if digits == 0 || previous_underscore {
+				s.error('numeric separators must occur between digits', s.offset)
 			}
-			if next != `.` && ((next >= `0` && next <= `9`) || has_dot_exponent) {
-				has_decimal = true
-				s.offset++
-				continue
-			}
-		} else if !has_exponent && (c == `e` || c == `E`) {
-			has_exponent = true
+			previous_underscore = true
 			s.offset++
-			if s.offset < s.src.len && (s.src[s.offset] == `+` || s.src[s.offset] == `-`) {
-				s.offset++
-			}
 			continue
 		}
 		break
 	}
+	if previous_underscore {
+		s.error('numeric literal cannot end with a separator', s.offset - 1)
+	}
+	return digits
+}
+
+@[inline]
+fn digit_value(c u8) int {
+	if c >= `0` && c <= `9` {
+		return int(c - `0`)
+	}
+	if c >= `a` && c <= `f` {
+		return int(c - `a`) + 10
+	}
+	if c >= `A` && c <= `F` {
+		return int(c - `A`) + 10
+	}
+	return 256
 }

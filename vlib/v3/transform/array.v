@@ -1584,13 +1584,12 @@ fn (mut t Transformer) substitute_ident(id flat.NodeId, name string, replacement
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
 		op:             node.op
-		kind_id:        node.kind_id
 		children_start: start
 		children_count: flat.child_count(new_children.len)
 		pos:            node.pos
 		value:          node.value
 		typ:            node.typ
-		generic_params: node.generic_params.clone()
+		payload:        flat.node_payload(node.generic_params().clone())
 	})
 }
 
@@ -1622,13 +1621,12 @@ fn (mut t Transformer) substitute_ident_expr(id flat.NodeId, name string, replac
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
 		op:             node.op
-		kind_id:        node.kind_id
 		children_start: start
 		children_count: flat.child_count(new_children.len)
 		pos:            node.pos
 		value:          node.value
 		typ:            node.typ
-		generic_params: node.generic_params.clone()
+		payload:        flat.node_payload(node.generic_params().clone())
 	})
 }
 

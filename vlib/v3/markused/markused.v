@@ -52,13 +52,21 @@ pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 
 fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool) (map[string]bool, bool) {
 	mut cur_module := ''
-	mut imports := map[string]string{}
+	mut import_contexts := []map[string]string{cap: 256}
+	import_contexts << map[string]string{}
+	mut cur_import_context := 0
 	mut fn_decls := map[string]FnDeclInfo{}
 	mut fn_decl_lists := map[string][]FnDeclInfo{}
 	mut struct_decls := map[string]StructDeclInfo{}
 	mut const_decls := map[string]ConstDeclInfo{}
 	mut fn_name_suffixes := map[string]bool{}
 	mut const_name_suffixes := map[string]bool{}
+	mut generic_type_bases := map[string]bool{}
+	for node in a.nodes {
+		if node.kind in [.struct_decl, .type_decl] && node.generic_params().len > 0 {
+			generic_type_bases[node.value] = true
+		}
+	}
 
 	// Reverse index: short name (after last '.') -> list of full qualified names
 	mut suffix_map := map[string][]string{}
@@ -67,6 +75,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// for the parallel body-call precollection below.
 	mut body_ids := []int{cap: 8192}
 	mut body_modules := []string{cap: 8192}
+	mut body_import_contexts := []int{cap: 8192}
 	mut cache_roots := []string{}
 
 	mut fn_count := 0
@@ -76,6 +85,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		node := a.nodes[node_idx]
 		if node.kind == .file {
 			cur_module = ''
+			import_contexts << markused_top_level_file_imports(a, node)
+			cur_import_context = import_contexts.len - 1
 			continue
 		}
 		if node.kind == .module_decl {
@@ -83,14 +94,17 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			continue
 		}
 		if node.kind == .import_decl {
-			imports[node.typ] = node.value
+			if cur_import_context >= 0 && cur_import_context < import_contexts.len {
+				import_contexts[cur_import_context][node.typ] = node.value
+			}
 			continue
 		}
 		if node.kind == .struct_decl {
 			full_name := qualify_fn(cur_module, node.value)
 			info := StructDeclInfo{
-				node_id: flat.NodeId(node_idx)
-				module:  cur_module
+				node_id:        flat.NodeId(node_idx)
+				module:         cur_module
+				import_context: cur_import_context
 			}
 			struct_decls[full_name] = info
 			if node.value !in struct_decls {
@@ -106,8 +120,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					continue
 				}
 				info := ConstDeclInfo{
-					expr_id: a.child(field, 0)
-					module:  cur_module
+					expr_id:        a.child(field, 0)
+					module:         cur_module
+					import_context: cur_import_context
 				}
 				const_decls[field.value] = info
 				add_candidate_suffix(mut const_name_suffixes, field.value)
@@ -122,6 +137,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		if node.kind == .fn_decl || node.kind == .c_fn_decl {
 			body_ids << node_idx
 			body_modules << cur_module
+			body_import_contexts << cur_import_context
 			has_dot := node.value.contains('.')
 			can_suffix_match := !markused_fn_decl_is_generic_template(node, a)
 			if trace_markused {
@@ -134,8 +150,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			info := FnDeclInfo{
-				node_id: flat.NodeId(node_idx)
-				module:  cur_module
+				node_id:        flat.NodeId(node_idx)
+				module:         cur_module
+				import_context: cur_import_context
 			}
 			add_fn_decl_info(mut fn_decls, mut fn_decl_lists, node.value, info)
 			if can_suffix_match {
@@ -149,7 +166,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			qname := qualify_fn(cur_module, node.value)
-			if cache_mode && node.kind == .fn_decl && node.generic_params.len == 0
+			if cache_mode && node.kind == .fn_decl && node.generic_params().len == 0
 				&& cache_modules[cur_module] {
 				cache_roots << qname
 			}
@@ -278,8 +295,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		struct_decls:            struct_decls
 		const_decls:             const_decls
 		const_suffixes:          const_name_suffixes
+		import_contexts:         import_contexts
 		selective_alias_targets: markused_selective_alias_targets(tc)
 		iface_param_gate:        markused_interface_param_gate(tc)
+		generic_type_bases:      generic_type_bases
 	}
 	// Precollect every body's call/initializer-ref lists up front (across
 	// threads when available): the BFS below then only does the cheap
@@ -291,7 +310,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		for i, id in body_ids {
 			body_index[id] = i
 		}
-		body_results = precollect_body_calls(collector, body_ids, body_modules, imports)
+		body_results = precollect_body_calls(collector, body_ids, body_modules,
+			body_import_contexts)
 	}
 	has_entry_main := markused_has_entry_main_indexed(a, tc)
 	enqueue_detected_runtime_helpers(a, tc, mut used, mut queue)
@@ -301,8 +321,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	// function in `method_values_by_fn`; they are seeded inside the BFS below (only when
 	// that function is reached), so an unreachable function's method value never forces an
 	// otherwise-unused specialization to be transformed/emitted.
-	mut uses_generics := enqueue_initializer_calls(a, collector, imports, fn_decls, mut used, mut
-		queue, false)
+	mut uses_generics := enqueue_initializer_calls(a, collector, fn_decls, mut used, mut queue,
+		false)
 	uses_generics = enqueue_top_level_calls(a, collector, fn_decls, has_entry_main, mut used, mut
 		queue, uses_generics)
 	// Interface dispatch reachability: calling an interface method `Foo.m` may
@@ -372,6 +392,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			}
 			calls.clear()
 			initializer_refs.clear()
+			// Direct source-level call and function-value edges are authoritative:
+			// the checker recorded them with the exact file/import/type context.
+			// The body collector below remains responsible for implicit helpers
+			// introduced by lowering and for unresolved compatibility fallbacks.
+			for dependency in tc.direct_dependency_ids(node_key) {
+				calls << tc.symbol_name(dependency)
+			}
 			if body_i := body_index[node_key] {
 				body := body_results[body_i]
 				calls << body.calls
@@ -381,7 +408,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				// Not part of the precollected decl set (should not happen; the BFS
 				// resolves names through the same decl scan) — collect inline.
 				node := a.node(fn_info.node_id)
-				body := collector.collect_body(node, fn_info.module, imports)
+				body := collector.collect_body(node, fn_info.module,
+					collector.imports(fn_info.import_context))
 				calls << body.calls
 				initializer_refs << body.refs
 				uses_generics = uses_generics || body.uses_generics
@@ -391,7 +419,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				call_set[call] = true
 			}
 			for initializer_ref in initializer_refs {
-				enqueue_initializer_ref_calls(a, collector, imports, fn_decls, initializer_ref, mut
+				enqueue_initializer_ref_calls(a, collector, fn_decls, initializer_ref, mut
 					processed_initializer_refs, mut initializer_calls, mut used, mut queue)
 			}
 			total_callees += calls.len
@@ -486,7 +514,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		}
 	}
 	if !uses_generics {
-		uses_generics = collector.emitted_type_declarations_use_generics(imports)
+		uses_generics = collector.emitted_type_declarations_use_generics()
 	}
 	if trace_markused {
 		eprintln('total_callees:')
@@ -669,7 +697,7 @@ fn add_candidate_suffix(mut suffixes map[string]bool, name string) {
 }
 
 fn markused_fn_decl_is_generic_template(node flat.Node, a &flat.FlatAst) bool {
-	if node.generic_params.len > 0 || node.value.contains('[') || node.typ.contains('generic') {
+	if node.generic_params().len > 0 || node.value.contains('[') || node.typ.contains('generic') {
 		return true
 	}
 	for i in 0 .. node.children_count {
@@ -835,8 +863,9 @@ fn markused_clone_string_map(src map[string]string) map[string]string {
 }
 
 // enqueue_initializer_calls supports enqueue initializer calls handling for markused.
-fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports map[string]string, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string, initial_uses_generics bool) bool {
+fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, mut used map[string]bool, mut queue []string, initial_uses_generics bool) bool {
 	mut cur_module := ''
+	mut imports := map[string]string{}
 	mut calls := []string{cap: 32}
 	mut uses_generics := initial_uses_generics
 	for node_idx in collector.tc.top_level_idx {
@@ -844,9 +873,13 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports m
 		match node.kind {
 			.file {
 				cur_module = ''
+				imports = markused_top_level_file_imports(a, node)
 			}
 			.module_decl {
 				cur_module = node.value
+			}
+			.import_decl {
+				imports[node.typ] = node.value
 			}
 			.const_decl, .global_decl {
 				for i in 0 .. node.children_count {
@@ -872,14 +905,15 @@ fn enqueue_initializer_calls(a &flat.FlatAst, collector CallCollector, imports m
 	return uses_generics
 }
 
-fn enqueue_initializer_ref_calls(a &flat.FlatAst, collector CallCollector, imports map[string]string, fn_decls map[string]FnDeclInfo, initializer_ref string, mut processed map[string]bool, mut calls []string, mut used map[string]bool, mut queue []string) {
+fn enqueue_initializer_ref_calls(a &flat.FlatAst, collector CallCollector, fn_decls map[string]FnDeclInfo, initializer_ref string, mut processed map[string]bool, mut calls []string, mut used map[string]bool, mut queue []string) {
 	if initializer_ref in processed {
 		return
 	}
 	info := collector.const_decls[initializer_ref] or { return }
 	processed[initializer_ref] = true
 	calls.clear()
-	collector.collect_calls(a.node(info.expr_id), info.module, imports, '', '', mut calls)
+	collector.collect_calls(a.node(info.expr_id), info.module,
+		collector.imports(info.import_context), '', '', mut calls)
 	for callee in calls {
 		enqueue_initializer_callee(callee, fn_decls, a, mut used, mut queue)
 	}
@@ -1109,31 +1143,35 @@ fn enqueue(name string, mut used map[string]bool, mut queue []string) bool {
 
 // FnDeclInfo stores fn decl info metadata used by markused.
 struct FnDeclInfo {
-	node_id flat.NodeId
-	module  string
+	node_id        flat.NodeId
+	module         string
+	import_context int
 }
 
 // StructDeclInfo stores struct decl info metadata used by markused.
 struct StructDeclInfo {
-	node_id flat.NodeId
-	module  string
+	node_id        flat.NodeId
+	module         string
+	import_context int
 }
 
 // ConstDeclInfo stores const decl info metadata used by markused.
 struct ConstDeclInfo {
-	expr_id flat.NodeId
-	module  string
+	expr_id        flat.NodeId
+	module         string
+	import_context int
 }
 
 // CallCollector represents call collector data used by markused.
 struct CallCollector {
-	a              &flat.FlatAst      = unsafe { nil }
-	tc             &types.TypeChecker = unsafe { nil }
-	fn_decls       map[string]FnDeclInfo
-	fn_suffixes    map[string]bool
-	struct_decls   map[string]StructDeclInfo
-	const_decls    map[string]ConstDeclInfo
-	const_suffixes map[string]bool
+	a               &flat.FlatAst      = unsafe { nil }
+	tc              &types.TypeChecker = unsafe { nil }
+	fn_decls        map[string]FnDeclInfo
+	fn_suffixes     map[string]bool
+	struct_decls    map[string]StructDeclInfo
+	const_decls     map[string]ConstDeclInfo
+	const_suffixes  map[string]bool
+	import_contexts []map[string]string
 	// Unqualified selective-import symbol -> all known alias targets. This is
 	// global because generic detection only needs to know whether any target
 	// requires monomorphization.
@@ -1144,6 +1182,16 @@ struct CallCollector {
 	// per-call-node scan bail out with a couple of map probes instead of building
 	// signature-candidate spellings (c_name/qualify allocations) for every call.
 	iface_param_gate map[string]bool
+	// Includes scoped local declarations, which are intentionally absent from
+	// the checker's top-level generic declaration maps.
+	generic_type_bases map[string]bool
+}
+
+fn (c &CallCollector) imports(context int) map[string]string {
+	if context >= 0 && context < c.import_contexts.len {
+		return c.import_contexts[context]
+	}
+	return c.import_contexts[0]
 }
 
 // markused_interface_param_gate builds CallCollector.iface_param_gate. Any raw
@@ -1466,7 +1514,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 					fn_node := a.child_node(&node, 0)
 					if !needs_channel_str_helpers && fn_node.kind == .selector
 						&& fn_node.value == 'str' && fn_node.children_count > 0
-						&& markused_expr_stringifies_channel(a, tc, a.child(fn_node, 0), cur_module, mut channel_stringify_cache) {
+						&& markused_expr_stringifies_channel(tc, a.child(fn_node, 0), cur_module, mut channel_stringify_cache) {
 						needs_channel_str_helpers = true
 					}
 					if fn_node.kind == .ident
@@ -1491,7 +1539,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 						&& fn_node.value in ['print', 'println', 'eprint', 'eprintln']
 						&& node.children_count >= 2 {
 						if !needs_channel_str_helpers
-							&& markused_expr_stringifies_channel(a, tc, a.child(&node, 1), cur_module, mut channel_stringify_cache) {
+							&& markused_expr_stringifies_channel(tc, a.child(&node, 1), cur_module, mut channel_stringify_cache) {
 							needs_channel_str_helpers = true
 						}
 						enqueue_stringified_custom_str_method(a.child(&node, 1), cur_module, tc, mut
@@ -1539,7 +1587,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 				for i in 0 .. node.children_count {
 					part_id := a.child(&node, i)
 					if !needs_channel_str_helpers
-						&& markused_expr_stringifies_channel(a, tc, part_id, cur_module, mut channel_stringify_cache) {
+						&& markused_expr_stringifies_channel(tc, part_id, cur_module, mut channel_stringify_cache) {
 						needs_channel_str_helpers = true
 					}
 					enqueue_stringified_custom_str_method(part_id, cur_module, tc, mut used, mut
@@ -1772,7 +1820,7 @@ fn markused_type_is_f32(typ types.Type) bool {
 	return typ.name() == 'f32'
 }
 
-fn markused_expr_stringifies_channel(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, cur_module string, mut cache map[string]int) bool {
+fn markused_expr_stringifies_channel(tc &types.TypeChecker, id flat.NodeId, cur_module string, mut cache map[string]int) bool {
 	typ := tc.expr_type(id) or { tc.resolve_type(id) }
 	return markused_type_stringifies_channel(typ, cur_module, tc, mut cache)
 }
@@ -2000,6 +2048,15 @@ fn enqueue_stringified_custom_str_method(expr_id flat.NodeId, cur_module string,
 		if typ is types.ResultType {
 			typ = typ.base_type
 			continue
+		}
+		if typ is types.Pointer {
+			base := typ.base_type
+			if base is types.Struct || base is types.SumType || base is types.Interface
+				|| base is types.Enum {
+				typ = base
+				continue
+			}
+			return
 		}
 		break
 	}
@@ -2340,15 +2397,16 @@ fn (c &CallCollector) struct_fields_use_generics(name string, cur_module string,
 	qualified_name := qualify_fn(info.module, decl.value)
 	fields := c.tc.structs[qualified_name] or { return false }
 	field_module := if info.module.len > 0 { info.module } else { cur_module }
+	field_imports := c.imports(info.import_context)
 	for field in fields {
-		if c.type_text_uses_generics_depth(field.typ.name(), field_module, imports, depth) {
+		if c.type_text_uses_generics_depth(field.typ.name(), field_module, field_imports, depth) {
 			return true
 		}
 	}
 	return false
 }
 
-fn (c &CallCollector) emitted_type_declarations_use_generics(imports map[string]string) bool {
+fn (c &CallCollector) emitted_type_declarations_use_generics() bool {
 	for name, fields in c.tc.structs {
 		if name in c.tc.struct_generic_params {
 			continue
@@ -2377,14 +2435,19 @@ fn (c &CallCollector) emitted_type_declarations_use_generics(imports map[string]
 		}
 	}
 	mut cur_module := ''
+	mut imports := map[string]string{}
 	for node_idx in c.tc.top_level_idx {
 		node := c.a.nodes[node_idx]
 		match node.kind {
 			.file {
 				cur_module = ''
+				imports = markused_top_level_file_imports(c.a, node)
 			}
 			.module_decl {
 				cur_module = node.value
+			}
+			.import_decl {
+				imports[node.typ] = node.value
 			}
 			.const_decl, .global_decl {
 				for i in 0 .. node.children_count {
@@ -2486,11 +2549,12 @@ fn markused_type_name_start_byte(ch u8) bool {
 
 fn markused_generic_name_byte(ch u8) bool {
 	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
-		|| (ch >= `0` && ch <= `9`) || ch in [`_`, `.`]
+		|| (ch >= `0` && ch <= `9`) || ch in [`_`, `.`, `@`]
 }
 
 fn (c &CallCollector) generic_type_base_is_known(base string, cur_module string, imports map[string]string) bool {
-	if base in c.tc.struct_generic_params || base in c.tc.sum_generic_params {
+	if base in c.generic_type_bases || base in c.tc.struct_generic_params
+		|| base in c.tc.sum_generic_params {
 		return true
 	}
 	if !base.contains('.') {
@@ -3057,10 +3121,10 @@ fn (c &CallCollector) collect_body(node &flat.Node, cur_module string, imports m
 
 // collect_bodies_range fills results[start..end] for the given body list; the
 // per-worker unit of the parallel precollection (also the serial fallback).
-fn (c &CallCollector) collect_bodies_range(body_ids []int, body_modules []string, imports map[string]string, start int, end int, mut results []BodyCalls) {
+fn (c &CallCollector) collect_bodies_range(body_ids []int, body_modules []string, body_import_contexts []int, start int, end int, mut results []BodyCalls) {
 	for i in start .. end {
 		node := c.a.node(flat.NodeId(body_ids[i]))
-		results[i] = c.collect_body(node, body_modules[i], imports)
+		results[i] = c.collect_body(node, body_modules[i], c.imports(body_import_contexts[i]))
 	}
 }
 
@@ -3075,8 +3139,10 @@ fn (c &CallCollector) fork_with_tc(wtc &types.TypeChecker) CallCollector {
 		struct_decls:            c.struct_decls
 		const_decls:             c.const_decls
 		const_suffixes:          c.const_suffixes
+		import_contexts:         c.import_contexts
 		selective_alias_targets: c.selective_alias_targets
 		iface_param_gate:        c.iface_param_gate
+		generic_type_bases:      c.generic_type_bases
 	}
 }
 
@@ -3604,7 +3670,7 @@ fn (c &CallCollector) local_fn_param_type_names(node &flat.Node, cur_module stri
 }
 
 fn (c &CallCollector) local_decl_type_name(declared string, rhs_id flat.NodeId, cur_module string, imports map[string]string, local_types map[string]string) string {
-	declared_type := c.tc.parse_type(declared)
+	declared_type := c.tc.parse_canonical_type(declared)
 	if declared_type is types.Alias {
 		return declared_type.name
 	}
@@ -3613,7 +3679,7 @@ fn (c &CallCollector) local_decl_type_name(declared string, rhs_id flat.NodeId, 
 	if rhs_name.len == 0 {
 		return declared
 	}
-	rhs_type := c.tc.parse_type(rhs_name)
+	rhs_type := c.tc.parse_canonical_type(rhs_name)
 	if rhs_type is types.Alias && markused_alias_base_matches_type(c.tc, rhs_type, declared_type) {
 		return rhs_type.name
 	}
@@ -4175,7 +4241,7 @@ fn (c &CallCollector) generic_candidate_is_generic(name string) bool {
 	}
 	if info := c.fn_decls[name] {
 		node := c.a.node(info.node_id)
-		return node.kind == .fn_decl && node.generic_params.len > 0
+		return node.kind == .fn_decl && node.generic_params().len > 0
 	}
 	return false
 }
@@ -4184,7 +4250,7 @@ fn (c &CallCollector) generic_fn_param_names(name string, fn_node &flat.Node) []
 	if params := c.tc.fn_generic_params[name] {
 		return params
 	}
-	return fn_node.generic_params.clone()
+	return fn_node.generic_params().clone()
 }
 
 fn (c &CallCollector) generic_fn_param_type_texts(name string, fn_node &flat.Node) []string {
@@ -4312,7 +4378,7 @@ fn (c &CallCollector) alias_type_from_name(name string, cur_module string, impor
 	resolved := markused_resolve_imported_type_name(name, imports)
 	for candidate in markused_alias_type_candidates(resolved, name, cur_module) {
 		if candidate in c.tc.type_aliases {
-			return c.tc.parse_type(candidate)
+			return c.tc.parse_canonical_type(candidate)
 		}
 	}
 	return none
@@ -4777,7 +4843,7 @@ fn (c &CallCollector) top_level_index_elem_type_name(id flat.NodeId, cur_module 
 	if base_type_name.len == 0 {
 		return none
 	}
-	base_type := types.unwrap_pointer(c.tc.parse_type(base_type_name))
+	base_type := types.unwrap_pointer(c.tc.parse_canonical_type(base_type_name))
 	if base_type is types.Array {
 		return base_type.elem_type.name()
 	}
@@ -4876,7 +4942,7 @@ fn (c &CallCollector) operator_lhs_type(lhs_id flat.NodeId, local_types map[stri
 		lhs := c.a.node(lhs_id)
 		if lhs.kind == .ident {
 			if local_type := local_types[lhs.value] {
-				typ := c.tc.parse_type(local_type)
+				typ := c.tc.parse_canonical_type(local_type)
 				if typ !is types.Unknown && typ !is types.Void {
 					return typ
 				}
@@ -5701,7 +5767,8 @@ fn (c &CallCollector) value_type_name(name string, cur_module string, imports ma
 fn (c &CallCollector) const_initializer_type_name(info ConstDeclInfo) string {
 	expr := c.a.node(info.expr_id)
 	if expr.kind == .struct_init && expr.value.len > 0 {
-		return c.struct_lookup_name(expr.value, info.module)
+		resolved := markused_resolve_imported_type_name(expr.value, c.imports(info.import_context))
+		return c.struct_lookup_name(resolved, info.module)
 	}
 	type_name := resolve_type_name(c.node_type(info.expr_id))
 	if type_name.len > 0 {
@@ -5774,7 +5841,7 @@ fn zero_value_struct_type_name(typ types.Type) string {
 
 // collect_struct_default_calls updates collect struct default calls state for markused.
 fn (c &CallCollector) collect_struct_default_calls(init &flat.Node, cur_module string, imports map[string]string, mut calls []string) {
-	info := c.struct_decl_info(init.value, cur_module) or { return }
+	info := c.struct_decl_info_with_imports(init.value, cur_module, imports) or { return }
 	mut set_fields := map[string]bool{}
 	for i in 0 .. init.children_count {
 		field := c.a.child_node(init, i)
@@ -5782,13 +5849,13 @@ fn (c &CallCollector) collect_struct_default_calls(init &flat.Node, cur_module s
 			set_fields[field.value] = true
 		}
 	}
-	c.collect_struct_default_calls_from_info(info, set_fields, imports, mut calls)
+	c.collect_struct_default_calls_from_info(info, set_fields, mut calls)
 }
 
 // collect_struct_default_calls_for_type supports collect_struct_default_calls_for_type handling.
 fn (c &CallCollector) collect_struct_default_calls_for_type(type_name string, cur_module string, imports map[string]string, mut calls []string) {
-	info := c.struct_decl_info(type_name, cur_module) or { return }
-	c.collect_struct_default_calls_from_info(info, map[string]bool{}, imports, mut calls)
+	info := c.struct_decl_info_with_imports(type_name, cur_module, imports) or { return }
+	c.collect_struct_default_calls_from_info(info, map[string]bool{}, mut calls)
 }
 
 // struct_decl_info supports struct decl info handling for CallCollector.
@@ -5801,8 +5868,9 @@ fn (c &CallCollector) struct_decl_info(type_name string, cur_module string) ?Str
 }
 
 // collect_struct_default_calls_from_info supports collect_struct_default_calls_from_info handling.
-fn (c &CallCollector) collect_struct_default_calls_from_info(info StructDeclInfo, provided map[string]bool, imports map[string]string, mut calls []string) {
+fn (c &CallCollector) collect_struct_default_calls_from_info(info StructDeclInfo, provided map[string]bool, mut calls []string) {
 	node := c.a.node(info.node_id)
+	imports := c.imports(info.import_context)
 	for i in 0 .. node.children_count {
 		field := c.a.child_node(node, i)
 		if field.kind != .field_decl || field.children_count == 0 || field.value in provided {

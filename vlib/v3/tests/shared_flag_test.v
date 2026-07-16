@@ -284,14 +284,6 @@ fn shared_flag_remove_cached_objects(obj_path string) {
 }
 
 fn shared_flag_object_cache_prefix(path string) string {
-	base := path.all_before_last('.')
-	mut cache_path := path
-	for extension in ['.c', '.cpp', '.S'] {
-		source_path := base + extension
-		if os.is_file(source_path) {
-			cache_path = os.real_path(source_path)
-			break
-		}
-	}
-	return cache_path.replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_']) + '_'
+	return os.file_name(path).replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_']) +
+		'_'
 }

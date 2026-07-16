@@ -17,13 +17,32 @@ skips the other, so no AST nodes or transformer pass is needed for `$if` blocks.
 `#include` and `#flag` directives inside `$if` blocks are handled correctly: the
 scanner consumes the entire directive line as a single token, preventing the
 parser from reading past block boundaries. File selection filters out
-arch-specific files (`.arm64.v`, `.amd64.v`) and deduplicates function
+arch-specific files (`.arm64.v`, `.amd64.v`) against the selected target and deduplicates function
 definitions when both `.v` and `.c.v` files exist. C runtime functions
 (println, string ops, int_str, etc.) are still provided via a built-in preamble;
 builtin function bodies are skipped during C code generation. Maps use the
 builtin `map` type name and API (`new_map`, `map__set`, `map__get`,
 `map__delete`, etc.) with a simplified open-addressing implementation until v3
 can compile the full builtin map.v.
+
+## Target selection
+
+The C backend accepts `-os <name>` and `-arch <name>`. The target controls source-file suffix
+selection, `$if` conditions, target-qualified `#flag` and `#include` directives, shared-library
+suffixes, and third-party object-cache keys. Common aliases such as `darwin`, `x86_64`, and
+`aarch64` are normalized. Native linking currently supports the host target and macOS
+`amd64`/`arm64` cross-architecture builds through Clang's `-arch`; other cross targets can be
+emitted as C with `-o file.c` for compilation by an external target toolchain.
+
+The command line rejects unknown options, missing option values, unsupported backends, and
+multiple input paths. `-cc <executable>` selects the C compiler and `-gc none` is the only
+currently supported collector mode. Directory builds read `subdirs` through the canonical
+`v.mod` parser, including when other manifest strings contain punctuation resembling fields.
+
+Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` uses the
+platform's default thread stack and checks allocation, thread creation, and join failures. Since
+V's `spawn` expression has no error return, these runtime failures print a diagnostic and abort;
+packed arguments are released if thread creation fails.
 
 The type system (`types/`) uses a `Type` sum type with 20 variants instead of
 string-based type checks. Primitive types use a `Properties` flag enum with

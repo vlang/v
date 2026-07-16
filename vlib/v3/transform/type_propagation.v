@@ -780,8 +780,9 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 		return t.normalize_type_alias_uncached(typ)
 	}
 	mut c := t.alias_cache
-	if c.module != t.cur_module {
+	if c.module != t.cur_module || c.file != t.cur_file {
 		c.module = t.cur_module
+		c.file = t.cur_file
 		c.entries.clear()
 	}
 	if cached := c.entries[typ] {
@@ -823,6 +824,17 @@ fn (t &Transformer) normalize_type_alias_uncached(typ string) string {
 	}
 	if typ.starts_with('!') {
 		return '!' + t.normalize_type_alias(typ[1..])
+	}
+	// Resolve the importing file's alias before any short-name or suffix fallback.
+	// Two packages can both expose `tast.Value`; `other_tast.Value` and
+	// `tast.Value` must retain their exact canonical module identities.
+	if imported := t.resolve_imported_type_name(typ) {
+		if target := t.tc.type_aliases[imported] {
+			return t.normalize_type_alias(target)
+		}
+		if t.type_authority_has(imported) {
+			return imported
+		}
 	}
 	if !typ.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
 		&& t.cur_module != 'builtin' {

@@ -1992,8 +1992,8 @@ fn (mut tc TypeChecker) ownership_prescan_fn_return_node(fn_name string, fn_node
 	st.ownership_fn_value_vars = saved_fn_value_vars.clone()
 }
 
-fn (mut tc TypeChecker) ownership_prescan_returned_fn_literal(fn_name string, node flat.Node) {
-	literal_name := ownership_fn_literal_name(fn_name, node)
+fn (mut tc TypeChecker) ownership_prescan_returned_fn_literal(fn_name string, id flat.NodeId, node flat.Node) {
+	literal_name := ownership_fn_literal_name(fn_name, id)
 	tc.ownership_register_fn_literal_signature(literal_name, node)
 	tc.ownership_prescan_fn_return_node(literal_name, node)
 }
@@ -2022,7 +2022,7 @@ fn (mut tc TypeChecker) ownership_prescan_returns_in(fn_name string, id flat.Nod
 				expr_node := tc.a.nodes[int(clean_expr_id)]
 				if expr_node.kind == .fn_literal {
 					is_returned_fn_literal = true
-					tc.ownership_prescan_returned_fn_literal(fn_name, expr_node)
+					tc.ownership_prescan_returned_fn_literal(fn_name, clean_expr_id, expr_node)
 				}
 			}
 			if fn_value := tc.ownership_fn_value_name_from_expr(expr_id) {
@@ -3087,11 +3087,11 @@ fn (mut tc TypeChecker) ownership_prescan_fn_owned_call_params(fn_name string, f
 	st.ownership_fn_value_vars = saved_fn_value_vars.clone()
 }
 
-fn (mut tc TypeChecker) ownership_prescan_fn_literal_owned_call_params(node flat.Node) bool {
+fn (mut tc TypeChecker) ownership_prescan_fn_literal_owned_call_params(id flat.NodeId, node flat.Node) bool {
 	mut st := tc.ownership_state()
 	before := st.ownership_fn_params.len
 	before_descs := tc.ownership_fn_param_desc_count()
-	fn_name := ownership_fn_literal_name(st.cur_fn, node)
+	fn_name := ownership_fn_literal_name(st.cur_fn, id)
 	tc.ownership_register_fn_literal_signature(fn_name, node)
 	saved_cur_fn := st.cur_fn
 	saved_fn_value_vars := st.ownership_fn_value_vars.clone()
@@ -3509,7 +3509,7 @@ fn (mut tc TypeChecker) ownership_prescan_expr_for_owned_calls(id flat.NodeId, m
 				local_types)
 		}
 		.fn_literal {
-			_ := tc.ownership_prescan_fn_literal_owned_call_params(node)
+			_ := tc.ownership_prescan_fn_literal_owned_call_params(id, node)
 			return false
 		}
 		.struct_init {
@@ -4217,12 +4217,12 @@ fn (mut tc TypeChecker) ownership_begin_fn(node flat.Node) {
 	}
 }
 
-fn (mut tc TypeChecker) ownership_begin_fn_literal(node flat.Node) {
+fn (mut tc TypeChecker) ownership_begin_fn_literal(id flat.NodeId, node flat.Node) {
 	if tc.ownership_checks_suppressed() {
 		return
 	}
 	mut st := tc.ownership_state()
-	fn_name := ownership_fn_literal_name(st.cur_fn, node)
+	fn_name := ownership_fn_literal_name(st.cur_fn, id)
 	captures := tc.ownership_consume_fn_literal_captures(node, fn_name)
 	st.frames << OwnershipFrame{
 		cur_fn:          st.cur_fn
@@ -4307,16 +4307,16 @@ fn (mut tc TypeChecker) ownership_consume_fn_literal_capture(name string, fn_nam
 	return captures
 }
 
-fn ownership_fn_literal_name(cur_fn string, node flat.Node) string {
-	return '${cur_fn}__fn_literal_${node.pos.id}_${node.pos.offset}'
+fn ownership_fn_literal_name(cur_fn string, id flat.NodeId) string {
+	return '${cur_fn}__fn_literal_${int(id)}'
 }
 
-fn (mut tc TypeChecker) ownership_begin_lambda_expr(node flat.Node) {
+fn (mut tc TypeChecker) ownership_begin_lambda_expr(id flat.NodeId, node flat.Node) {
 	if tc.ownership_checks_suppressed() {
 		return
 	}
 	mut st := tc.ownership_state()
-	fn_name := '${st.cur_fn}__lambda_${node.pos.id}_${node.pos.offset}'
+	fn_name := '${st.cur_fn}__lambda_${int(id)}'
 	captures := tc.ownership_consume_lambda_captures(node, fn_name)
 	st.frames << OwnershipFrame{
 		cur_fn:          st.cur_fn
@@ -6157,7 +6157,7 @@ fn (mut tc TypeChecker) ownership_fn_value_name_from_expr(id flat.NodeId) ?strin
 	node := tc.a.nodes[int(clean_id)]
 	match node.kind {
 		.fn_literal {
-			fn_name := ownership_fn_literal_name(tc.ownership_state().cur_fn, node)
+			fn_name := ownership_fn_literal_name(tc.ownership_state().cur_fn, clean_id)
 			tc.ownership_register_fn_literal_signature(fn_name, node)
 			return fn_name
 		}
