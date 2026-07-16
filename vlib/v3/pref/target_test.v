@@ -78,6 +78,13 @@ fn test_comptime_flags_use_target_instead_of_host() {
 	prefs.target = target_from('linux', 'i386') or { panic(err) }
 	assert comptime_flag_value(prefs, 'i386')
 	assert comptime_flag_value(prefs, 'x86')
+	assert comptime_flag_value(prefs, 'x32')
+	prefs.target = target_from('linux', 'arm32') or { panic(err) }
+	assert comptime_flag_value(prefs, 'arm32')
+	assert !comptime_flag_value(prefs, 'x32')
+	prefs.target = target_from('wasm32_emscripten', 'wasm32') or { panic(err) }
+	assert comptime_flag_value(prefs, 'wasm32')
+	assert !comptime_flag_value(prefs, 'x32')
 }
 
 fn test_source_selection_uses_target_os_and_arch() {

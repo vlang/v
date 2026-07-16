@@ -717,7 +717,7 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return p.target.arch == 'amd64'
 		}
 		'x32' {
-			return p.target.pointer_bits == 32
+			return p.target.arch == 'x86'
 		}
 		'amd64' {
 			return p.target.arch == 'amd64'
