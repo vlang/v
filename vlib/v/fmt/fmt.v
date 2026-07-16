@@ -324,15 +324,17 @@ mut:
 // struct_field_attr_needs_legacy_json reports whether a struct field's attributes force
 // legacy json. A `@[raw]` field keeps the normalized subtree in json but the raw source
 // slice in json2. An `@[omitempty]` field is dropped by legacy json when it equals the
-// type default, but json2's check_not_empty only guards string/number/array/map/option/
-// pointer values and always emits bool / struct / sum type / enum fields — so migrating
-// would start emitting fields legacy json omitted.
+// type default, but json2's check_not_empty only guards string/number/(dynamic-)array/map/
+// option/pointer values and always emits bool / struct / sum type / enum / fixed-array
+// fields — so migrating would start emitting fields legacy json omitted. (json2's `$array`
+// emptiness check is a `.len` test that does not match a fixed array, while legacy json
+// compares the fixed array to its default value.)
 fn struct_field_attr_needs_legacy_json(t &ast.Table, field ast.StructField) bool {
 	if field.attrs.any(it.name == 'raw') {
 		return true
 	}
 	if field.attrs.any(it.name == 'omitempty')
-		&& t.final_sym(field.typ).kind in [.bool, .struct, .sum_type, .enum] {
+		&& t.final_sym(field.typ).kind in [.bool, .struct, .sum_type, .enum, .array_fixed] {
 		return true
 	}
 	return false
@@ -506,6 +508,24 @@ fn walk_sql_query_data_items(items []ast.SqlQueryDataItem, data voidptr) {
 			}
 		}
 	}
+}
+
+// json_asm_operand_scan_visit flags any `json.encode`/`json.decode`/`json.encode_pretty`
+// call inside an inline-asm operand. Unlike a normal call site, an asm operand is printed
+// verbatim (str()) rather than through call_expr, so even a migratable call cannot be
+// rewritten — the file must stay unmigrated whenever one appears there.
+fn json_asm_operand_scan_visit(node &ast.Node, data voidptr) bool {
+	mut s := unsafe { &JsonUnmigratableScan(data) }
+	if s.found {
+		return false
+	}
+	if node is ast.Expr && node is ast.CallExpr {
+		call := node as ast.CallExpr
+		if call.kind in [.json_encode, .json_decode, .json_encode_pretty] {
+			s.found = true
+		}
+	}
+	return true
 }
 
 fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
@@ -792,6 +812,19 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 			}
 		}
 		walk_or_block(sqlstmt.or_expr, data)
+	} else if node is ast.Stmt && node is ast.AsmStmt {
+		// An `asm { ... }` operand (`r (json.encode_pretty(u))`) is an AsmIO.expr that
+		// asm_ios prints verbatim via `${io.expr}` (its str()), bypassing call_expr — so it
+		// is both outside Node.children() and beyond the migration rewrite. Any json call
+		// there (even a normally-migratable `json.encode`) can never be rewritten, so keep
+		// the whole file unmigrated.
+		asm_stmt := node as ast.AsmStmt
+		for io in asm_stmt.output {
+			walker.inspect(io.expr, data, json_asm_operand_scan_visit)
+		}
+		for io in asm_stmt.input {
+			walker.inspect(io.expr, data, json_asm_operand_scan_visit)
+		}
 	}
 	return true
 }

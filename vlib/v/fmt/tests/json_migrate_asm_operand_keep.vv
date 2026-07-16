@@ -1,0 +1,20 @@
+import json
+
+struct User {
+	name string
+}
+
+// An inline-asm operand is printed verbatim (via the expr's str()), not through call_expr,
+// so a `json.*` call there is both outside Node.children() and beyond the migration
+// rewrite. Even a normally-migratable `json.encode` cannot be rewritten in this position,
+// so the whole file is left unmigrated.
+fn use_asm(u User) int {
+	mut out := 0
+	asm amd64 {
+		movq rax, rbx
+		; =r (out)
+		; r (json.encode(u).len)
+		; cc
+	}
+	return out
+}

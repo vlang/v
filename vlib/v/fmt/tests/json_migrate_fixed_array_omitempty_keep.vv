@@ -1,0 +1,15 @@
+import json
+
+// json2's `@[omitempty]` emptiness check is a `.len` test that matches dynamic arrays but
+// not fixed arrays, while legacy json compares a fixed array to its default value and omits
+// it when equal. So a default `[2]int{}` field would start being emitted after migration —
+// a payload with an `@[omitempty]` fixed-array field is left on legacy json. (A dynamic
+// `[]int @[omitempty]` field still migrates, since json2 guards it identically.)
+struct Rec {
+	codes [2]int @[omitempty]
+	name  string
+}
+
+fn to_json(r Rec) string {
+	return json.encode(r)
+}
