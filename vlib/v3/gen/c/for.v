@@ -192,6 +192,11 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				c_val := g.value_c_type(clean_container_type.value_type)
 				map_value_by_ref := node.op == .amp || container_type is types.Pointer
 				container_str := g.expr_to_string(g.a.child(&node, 2))
+				original_map_ref := if container_type is types.Pointer {
+					container_str
+				} else {
+					'&${container_str}'
+				}
 				iter_var := '__mi_${g.tmp_count}'
 				g.tmp_count++
 				key_var := if has_index { idx_var } else { '__mk_${g.tmp_count}' }
@@ -234,11 +239,6 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				if use_snapshot && map_value_by_ref {
 					val_slot_var := '__for_map_val_${g.tmp_count}'
 					g.tmp_count++
-					original_map_ref := if container_type is types.Pointer {
-						container_str
-					} else {
-						'&${container_str}'
-					}
 					g.writeln('void* ${val_slot_var} = map__get_check(${original_map_ref}, &${key_var});')
 					g.writeln('if (${val_slot_var} == 0) ${val_slot_var} = (void*)(${snapshot_val_slot});')
 					val_slot = val_slot_var
@@ -250,6 +250,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					val_is_fixed_copy = true
 					if node.op == .amp {
 						map_mut_value_copyback = 'memmove(${val_slot}, ${val_var_}, sizeof(${val_var_}));'
+						if use_snapshot {
+							map_mut_value_copyback = 'if (map__get_check(${original_map_ref}, &${key_var}) != 0) { ${map_mut_value_copyback} }'
+						}
 					}
 				} else if map_value_by_ref {
 					g.writeln('${c_val}* ${val_var_} = (${c_val}*)(${val_slot});')
@@ -257,6 +260,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					g.writeln('${c_val} ${val_var_} = *(${c_val}*)(${val_slot});')
 					if node.op == .amp {
 						map_mut_value_copyback = 'memmove(${val_slot}, &${val_var_}, sizeof(${val_var_}));'
+						if use_snapshot {
+							map_mut_value_copyback = 'if (map__get_check(${original_map_ref}, &${key_var}) != 0) { ${map_mut_value_copyback} }'
+						}
 					}
 				}
 				if has_index {

@@ -5245,6 +5245,9 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	if lowered := t.try_lower_pointer_value_assign(node) {
 		return lowered
 	}
+	if lowered := t.try_lower_fixed_array_map_index_assign(node) {
+		return lowered
+	}
 	if lowered := t.try_lower_nested_map_index_assign(node) {
 		return lowered
 	}
@@ -9308,6 +9311,9 @@ fn (mut t Transformer) transform_index_expr(id flat.NodeId, node flat.Node) flat
 			plain := t.make_plain_expr_for_smartcast(id)
 			return t.apply_smartcast_contexts(plain, t.original_expr_type(id), contexts)
 		}
+	}
+	if lowered := t.try_lower_fixed_array_map_value_index_expr(node) {
+		return lowered
 	}
 	if lowered := t.try_lower_map_index_expr(id, node) {
 		return lowered

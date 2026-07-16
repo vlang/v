@@ -524,6 +524,59 @@ fn test_map_literal_declaration_evaluates_entries_once() {
 	assert out == '10\n1,1'
 }
 
+fn test_map_assignment_captures_key_before_rhs_prelude() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'map_assignment_key_before_rhs_prelude', '__global events string
+
+fn next_key() string {
+	events = events + "K"
+	return "outer"
+}
+
+fn next_rhs_key() string {
+	events = events + "R"
+	return "inner"
+}
+
+fn main() {
+	mut values := map[string]map[string]int{}
+	values[next_key()] = {
+		next_rhs_key(): 7
+	}
+	println(events)
+	println(int_str(values["outer"]["inner"]))
+}
+')
+	assert out == 'KR\n7'
+}
+
+fn test_fixed_array_map_assignment_captures_key_before_rhs_prelude() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'fixed_array_map_assignment_key_before_rhs_prelude', '__global events string
+
+fn next_key() string {
+	events = events + "K"
+	return "outer"
+}
+
+fn next_rhs_key() string {
+	events = events + "R"
+	return "inner"
+}
+
+fn main() {
+	mut values := map[string][1]map[string]int{}
+	values["outer"] = [map[string]int{}]!
+	values[next_key()][0] = {
+		next_rhs_key(): 9
+	}
+	println(events)
+	println(int_str(values["outer"][0]["inner"]))
+}
+')
+	assert out == 'KR\n9'
+}
+
 fn test_fn_literal_preserves_mut_param_string_interpolation() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'fn_literal_mut_param_interp',
