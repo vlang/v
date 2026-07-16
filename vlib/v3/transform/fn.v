@@ -4589,7 +4589,8 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 		return t.make_call_typed('string__clone', arr1(source), 'string')
 	}
 	if clean.starts_with('[]') {
-		return t.make_compiler_default_array_clone_value(source, clean)
+		return t.make_compiler_default_array_clone_value(source, clean,
+			!t.expr_can_take_address(source))
 	}
 	if t.is_fixed_array_type(clean) {
 		return t.make_compiler_default_fixed_array_clone_value(source, clean)
@@ -4657,13 +4658,13 @@ fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ
 
 // make_compiler_default_array_clone_value clones the array storage and then replaces
 // each owning element with an independent clone. The initial element copies are not
-// owners and are deliberately overwritten without being dropped.
-fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeId, array_type string) flat.NodeId {
+// owners and are deliberately overwritten without being dropped. The caller classifies
+// the source lifetime before transformation can make a temporary addressable.
+fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeId, array_type string, source_is_owned_temporary bool) flat.NodeId {
 	elem_type := array_type[2..]
 	if !t.compiler_default_clone_type_needs_work(elem_type) {
 		return t.make_array_clone_value(source, array_type)
 	}
-	source_is_owned_temporary := !t.expr_can_take_address(source)
 	stable_source := t.stable_transformed_expr_for_reuse(source, array_type,
 		'derived_clone_array_source')
 	out_name := t.new_temp('derived_clone_array')

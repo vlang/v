@@ -249,7 +249,8 @@ fn (mut t Transformer) make_array_clone_call(base_id flat.NodeId, base_type stri
 			receiver = t.make_prefix(.mul, receiver)
 			t.set_node_typ(int(receiver), clean_type)
 		}
-		return t.make_compiler_default_array_clone_value(receiver, clean_type)
+		return t.make_compiler_default_array_clone_value(receiver, clean_type,
+			source_is_owned_temporary)
 	}
 	return t.make_array_clone_value(receiver, base_type)
 }
