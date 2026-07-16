@@ -353,8 +353,9 @@ pub mut:
 	// Local variables bound to a method value (`cb := c.report`) in the current function.
 	// Such an alias shares the same per-site static receiver slot as the bare selector, so it
 	// escapes (and corrupts other live callbacks) just like `return c.report`; the escape
-	// checks below treat a reference to one of these locals as a method value. Reset per fn.
+	// checks below treat a reference to one of these locals as a method value. Reset per fn decl.
 	method_value_locals               map[string]bool
+	method_value_local_owners         map[string][]ScopeBindingOwner
 	fn_value_variadic_locals          map[string]bool
 	fn_value_variadic_local_owners    map[string][]ScopeBindingOwner
 	capturing_fn_literal_locals       map[string]bool
@@ -500,6 +501,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		statement_nodes:                   []bool{}
 		method_values_by_fn:               map[int][]string{}
 		method_value_locals:               map[string]bool{}
+		method_value_local_owners:         map[string][]ScopeBindingOwner{}
 		fn_value_variadic_locals:          map[string]bool{}
 		fn_value_variadic_local_owners:    map[string][]ScopeBindingOwner{}
 		capturing_fn_literal_locals:       map[string]bool{}
@@ -8687,8 +8689,9 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
 	mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
-	mut saved_method_value_locals := tc.method_value_locals.move()
-	mut saved_method_value_local_depth := tc.method_value_local_depth.move()
+	saved_method_value_locals := tc.method_value_locals.clone()
+	saved_method_value_local_owners := clone_scope_binding_owner_map(tc.method_value_local_owners)
+	saved_method_value_local_depth := tc.method_value_local_depth.clone()
 	mut saved_capturing_fn_literal_locals := tc.capturing_fn_literal_locals.move()
 	mut saved_capturing_fn_literal_local_owners := tc.capturing_fn_literal_local_owners.move()
 	mut saved_capturing_fn_literal_local_depth := tc.capturing_fn_literal_local_depth.move()
@@ -8696,8 +8699,9 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_shared_binding_owners = map[string][]ScopeBindingOwner{}
-	tc.method_value_locals = map[string]bool{}
-	tc.method_value_local_depth = map[string]int{}
+	tc.method_value_locals = saved_method_value_locals.clone()
+	tc.method_value_local_owners = clone_scope_binding_owner_map(saved_method_value_local_owners)
+	tc.method_value_local_depth = saved_method_value_local_depth.clone()
 	tc.capturing_fn_literal_locals = map[string]bool{}
 	tc.capturing_fn_literal_local_owners = map[string][]ScopeBindingOwner{}
 	tc.capturing_fn_literal_local_depth = map[string]int{}
@@ -8727,8 +8731,9 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
 	tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
-	tc.method_value_locals = saved_method_value_locals.move()
-	tc.method_value_local_depth = saved_method_value_local_depth.move()
+	tc.method_value_locals = saved_method_value_locals.clone()
+	tc.method_value_local_owners = clone_scope_binding_owner_map(saved_method_value_local_owners)
+	tc.method_value_local_depth = saved_method_value_local_depth.clone()
 	tc.capturing_fn_literal_locals = saved_capturing_fn_literal_locals.move()
 	tc.capturing_fn_literal_local_owners = saved_capturing_fn_literal_local_owners.move()
 	tc.capturing_fn_literal_local_depth = saved_capturing_fn_literal_local_depth.move()
@@ -8740,13 +8745,15 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	expected_fn := tc.lambda_expected_fn_type(id)
-	mut saved_method_value_locals := tc.method_value_locals.move()
-	mut saved_method_value_local_depth := tc.method_value_local_depth.move()
+	saved_method_value_locals := tc.method_value_locals.clone()
+	saved_method_value_local_owners := clone_scope_binding_owner_map(tc.method_value_local_owners)
+	saved_method_value_local_depth := tc.method_value_local_depth.clone()
 	mut saved_capturing_fn_literal_locals := tc.capturing_fn_literal_locals.move()
 	mut saved_capturing_fn_literal_local_owners := tc.capturing_fn_literal_local_owners.move()
 	mut saved_capturing_fn_literal_local_depth := tc.capturing_fn_literal_local_depth.move()
-	tc.method_value_locals = map[string]bool{}
-	tc.method_value_local_depth = map[string]int{}
+	tc.method_value_locals = saved_method_value_locals.clone()
+	tc.method_value_local_owners = clone_scope_binding_owner_map(saved_method_value_local_owners)
+	tc.method_value_local_depth = saved_method_value_local_depth.clone()
 	tc.capturing_fn_literal_locals = map[string]bool{}
 	tc.capturing_fn_literal_local_owners = map[string][]ScopeBindingOwner{}
 	tc.capturing_fn_literal_local_depth = map[string]int{}
@@ -8775,8 +8782,9 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 	$if ownership ? {
 		tc.ownership_end_fn()
 	}
-	tc.method_value_locals = saved_method_value_locals.move()
-	tc.method_value_local_depth = saved_method_value_local_depth.move()
+	tc.method_value_locals = saved_method_value_locals.clone()
+	tc.method_value_local_owners = clone_scope_binding_owner_map(saved_method_value_local_owners)
+	tc.method_value_local_depth = saved_method_value_local_depth.clone()
 	tc.capturing_fn_literal_locals = saved_capturing_fn_literal_locals.move()
 	tc.capturing_fn_literal_local_owners = saved_capturing_fn_literal_local_owners.move()
 	tc.capturing_fn_literal_local_depth = saved_capturing_fn_literal_local_depth.move()
@@ -9129,6 +9137,14 @@ fn (tc &TypeChecker) cur_scope_depth() int {
 	return d
 }
 
+fn clone_scope_binding_owner_map(src map[string][]ScopeBindingOwner) map[string][]ScopeBindingOwner {
+	mut out := map[string][]ScopeBindingOwner{}
+	for name, owners in src {
+		out[name] = owners.clone()
+	}
+	return out
+}
+
 // track_method_value_local records (or clears) a local variable bound to a method value, so a
 // later `return cb` / `arr << cb` aliasing the same per-site static receiver is rejected as an
 // escape just like the bare `return c.report`.
@@ -9143,6 +9159,7 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 	if tc.expr_is_method_value(rhs_id) {
 		tc.method_value_locals[lhs.value] = true
 		tc.method_value_local_depth[lhs.value] = tc.cur_scope_depth()
+		tc.mark_method_value_local_owner(lhs.value)
 	} else if lhs.value in tc.method_value_locals {
 		// Reassigned to a non-method-value. Only clear the marker when this reassignment
 		// dominates later uses — at the same or a shallower scope than where the local was
@@ -9151,10 +9168,77 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 		// method value; keep the maybe-method marker and let the later escape be rejected.
 		marked_depth := tc.method_value_local_depth[lhs.value] or { 0 }
 		if tc.cur_scope_depth() <= marked_depth {
-			tc.method_value_locals.delete(lhs.value)
-			tc.method_value_local_depth.delete(lhs.value)
+			tc.unmark_current_method_value_local_owner(lhs.value)
 		}
 	}
+}
+
+fn (mut tc TypeChecker) mark_method_value_local_owner(name string) {
+	if tc.cur_scope == unsafe { nil } {
+		return
+	}
+	owner := tc.cur_scope.lookup_owner(name) or { return }
+	owner_key := owner.storage_key()
+	if owner_key.len == 0 {
+		return
+	}
+	mut owners := tc.method_value_local_owners[name] or { []ScopeBindingOwner{} }
+	for existing in owners {
+		if existing.storage_key() == owner_key {
+			return
+		}
+	}
+	owners << owner
+	tc.method_value_local_owners[name] = owners
+}
+
+fn (mut tc TypeChecker) unmark_current_method_value_local_owner(name string) {
+	if tc.cur_scope == unsafe { nil } {
+		return
+	}
+	owner := tc.cur_scope.lookup_owner(name) or { return }
+	owner_key := owner.storage_key()
+	if owner_key.len == 0 {
+		return
+	}
+	owners := tc.method_value_local_owners[name] or { return }
+	mut keep := []ScopeBindingOwner{cap: owners.len}
+	for existing in owners {
+		if existing.storage_key() != owner_key {
+			keep << existing
+		}
+	}
+	if keep.len == 0 {
+		tc.method_value_locals.delete(name)
+		tc.method_value_local_depth.delete(name)
+		tc.method_value_local_owners.delete(name)
+	} else {
+		tc.method_value_local_owners[name] = keep
+	}
+}
+
+fn (tc &TypeChecker) current_binding_is_method_value_local(name string) bool {
+	if name.len == 0 || name !in tc.method_value_locals {
+		return false
+	}
+	if tc.cur_scope == unsafe { nil } {
+		return true
+	}
+	owners := tc.method_value_local_owners[name] or { return true }
+	current_owner := tc.cur_scope.lookup_owner(name) or {
+		// Fn literals can be checked after their body has been lifted away from the
+		// lexical scope that declared the captured alias. If there is no nearer
+		// binding, keep treating the tracked name as the outer method-value local so
+		// `return fn () { return cb }()` is rejected before it reaches cgen.
+		return true
+	}
+	current_key := current_owner.storage_key()
+	for owner in owners {
+		if current_key.len > 0 && owner.storage_key() == current_key {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) track_variadic_fn_value_local(lhs_id flat.NodeId, rhs_id flat.NodeId) {
@@ -11475,7 +11559,11 @@ fn (tc &TypeChecker) expr_has_option_result_handler(id flat.NodeId) bool {
 // check_call validates check call state for types.
 fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	if node.children_count > 0 {
+		callee_id := tc.a.child(&node, 0)
 		callee := tc.a.child_node(&node, 0)
+		if callee.kind == .fn_literal || callee.kind == .lambda_expr {
+			tc.check_node(callee_id)
+		}
 		if callee.kind == .ident && callee.value == '__v_compile_error' {
 			message := if node.children_count > 1 {
 				arg := tc.a.child_node(&node, 1)
@@ -17792,7 +17880,7 @@ fn (tc &TypeChecker) expr_is_method_value(id flat.NodeId) bool {
 	// A local bound to a method value (`cb := c.report`) carries the same escape hazard as the
 	// bare selector, so a reference to it counts as a method value here too.
 	if node.kind == .ident {
-		return node.value in tc.method_value_locals
+		return tc.current_binding_is_method_value_local(node.value)
 	}
 	if node.kind != .selector || node.children_count == 0 {
 		return false

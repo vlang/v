@@ -361,6 +361,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
 	tc.cur_fn_node_id = fn_idx
 	tc.method_value_locals = map[string]bool{}
+	tc.method_value_local_owners = map[string][]ScopeBindingOwner{}
 	tc.fn_value_variadic_locals = map[string]bool{}
 	tc.fn_value_variadic_local_owners = map[string][]ScopeBindingOwner{}
 	tc.capturing_fn_literal_locals = map[string]bool{}
@@ -506,6 +507,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.sparse_checking_nodes = map[int]bool{}
 	w.method_values_by_fn = map[int][]string{}
 	w.method_value_locals = map[string]bool{}
+	w.method_value_local_owners = map[string][]ScopeBindingOwner{}
 	w.fn_value_variadic_locals = map[string]bool{}
 	w.fn_value_variadic_local_owners = map[string][]ScopeBindingOwner{}
 	w.capturing_fn_literal_locals = map[string]bool{}

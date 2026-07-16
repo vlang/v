@@ -1719,6 +1719,9 @@ fn test_pr_review_codegen_batch_twenty() {
 	iface_ok := run_good(v3_bin, 'good_interface_method_value_direct_callback', iface_mv +
 		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tr := Runner(Job{\n\t\tid: 7\n\t})\n\tprintln(int_str(invoke(r.run)))\n}\n')
 	assert iface_ok == '7'
+	run_bad(v3_bin, 'bad_interface_method_value_captured_alias_return', iface_mv +
+		'fn escape(r Runner) fn () int {\n\tcb := r.run\n\treturn fn () fn () int {\n\t\treturn cb\n\t}()\n}\n\nfn main() {\n\t_ := escape(Runner(Job{\n\t\tid: 9\n\t}))\n}\n',
+		'cannot escape its call site')
 	iface_fn_literal_shadow := run_good(v3_bin,
 		'good_interface_method_value_fn_literal_shadow_scoped', iface_mv +
 		'fn plain() int {\n\treturn 11\n}\n\nfn outer(cb fn () int) fn () int {\n\t_ = fn () {\n\t\tr := Runner(Job{\n\t\t\tid: 5\n\t\t})\n\t\tcb := r.run\n\t\t_ = cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
