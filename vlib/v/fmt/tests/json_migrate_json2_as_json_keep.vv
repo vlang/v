@@ -1,0 +1,19 @@
+import json2 as json
+
+struct User {
+	name string
+}
+
+// `import json2 as json` aliases the *new* module to the name `json`, so these are
+// already valid json2 calls. The parser still tags them with the `json.decode`/
+// `json.encode` call kind (it keys on the literal qualifier name), so migration must be
+// gated on the file actually importing the legacy `json` module — otherwise
+// `json.decode[User](s)` would be corrupted into `json.decode[s]()`. The file is left
+// byte-identical.
+fn from_json(s string) !User {
+	return json.decode[User](s)
+}
+
+fn to_json(u User) string {
+	return json.encode(u)
+}

@@ -6,6 +6,7 @@ module fmt
 import os
 import strings
 import v.ast
+import v.ast.walker
 import v.util
 import v.pref
 
@@ -66,6 +67,11 @@ pub mut:
 	source_text              string // can be set by `echo "println('hi')" | v fmt`, i.e. when processing source not from a file, but from stdin. In this case, it will contain the entire input text. You can use f.file.path otherwise, and read from that file.
 	global_processed_imports []string
 	branch_processed_imports []string
+	has_json2_import         bool // the file has a top-level `json2` import; used when migrating `import json`
+	json2_prefix             string = 'json2' // local name of `json2` at call sites (its alias, if imported as one)
+	keep_json_unmigrated     bool // the file has a json call the migration cannot rewrite losslessly (`encode_pretty`, or a `decode` with a commented type arg); its json usage is left as-is (see process_file_imports)
+	migrate_json_calls       bool // the file actually imports the legacy `json` module and it is being migrated, so `json.encode`/`json.decode` calls should be rewritten (guards against `import json2 as json`, whose json2 calls carry the same call kind)
+	migrate_json2            bool // opt-in master switch for the json->json2 migration (FmtOptions.migrate_json2); when false, plain `v fmt` leaves all json usage untouched
 	is_translated_module     bool // @[translated]
 	is_c_function            bool // C.func(...)
 }
@@ -73,7 +79,8 @@ pub mut:
 @[params]
 pub struct FmtOptions {
 pub:
-	source_text string
+	source_text   string
+	migrate_json2 bool // opt in to rewriting deprecated `json` module usage to `json2`; off by default so plain `v fmt` never changes json semantics
 }
 
 pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug bool, options FmtOptions) string {
@@ -85,6 +92,7 @@ pub fn fmt(file ast.File, mut table ast.Table, pref_ &pref.Preferences, is_debug
 		out:      strings.new_builder(1000)
 	}
 	f.source_text = options.source_text
+	f.migrate_json2 = options.migrate_json2
 	f.process_file_imports(file)
 	// Compensate for indent increase of toplevel stmts done in `f.stmts()`.
 	f.indent--
@@ -147,12 +155,352 @@ fn (f &Fmt) type_to_str(typ ast.Type) string {
 	return f.table.type_to_str(typ)
 }
 
+// JsonMigrateBlock is the state for file_blocks_json_migration.
+struct JsonMigrateBlock {
+	json2_prefix string
+mut:
+	blocked bool
+}
+
+// json_encoded_field_name returns the JSON key a struct field serialises to, or '' when the
+// field is not encoded (`@[skip]` / `@[json: '-']`).
+fn json_encoded_field_name(field ast.StructField) string {
+	for attr in field.attrs {
+		if attr.name == 'skip' {
+			return ''
+		}
+		if attr.name == 'json' {
+			return if attr.arg == '-' { '' } else { attr.arg }
+		}
+	}
+	return field.name
+}
+
+// file_has_embedded_field_collision reports whether the file declares a struct whose
+// flattened JSON fields — its own fields plus those of embedded structs, recursively —
+// contain a duplicate key. Legacy json emits colliding embedded fields under their original
+// names (producing duplicate keys), while json2 disambiguates them with `Outer.field`
+// prefixes, so migrating `json.encode(Bar{})` changes the serialized payload. Keep such
+// files on legacy json.
+fn (f &Fmt) file_has_embedded_field_collision(file &ast.File) bool {
+	for stmt in file.stmts {
+		if stmt !is ast.StructDecl {
+			continue
+		}
+		sym := f.table.find_sym((stmt as ast.StructDecl).name) or { continue }
+		if sym.info !is ast.Struct || (sym.info as ast.Struct).embeds.len == 0 {
+			continue
+		}
+		mut seen := map[string]bool{}
+		for field in f.table.struct_fields(sym) {
+			if field.is_embed {
+				continue
+			}
+			name := json_encoded_field_name(field)
+			if name == '' {
+				continue
+			}
+			if name in seen {
+				return true
+			}
+			seen[name] = true
+		}
+	}
+	return false
+}
+
+// file_blocks_json_migration reports two mechanical reasons a straight json->json2 rewrite
+// would break or lose source, beyond the import-level checks in process_file_imports:
+//   - the file declares an identifier named like the migrated qualifier `json2` — a
+//     parameter, function/const/global, `:=` local, a `for`/`$for` loop binder, an if-guard
+//     variable or a lambda parameter. Adding `import json2` and rewriting calls to
+//     `json2.x` would then either duplicate an imported symbol (rejected by the checker) or
+//     bind the call to that shadowing local instead of the module.
+//   - a `json.decode` call has a comment on its type argument; migration formats only the
+//     type expression inside `[]`, which would drop that user comment.
+fn (f &Fmt) file_blocks_json_migration(file &ast.File) bool {
+	mut s := JsonMigrateBlock{
+		json2_prefix: f.json2_prefix
+	}
+	walker.inspect(file, &s, json_migrate_block_visit)
+	return s.blocked
+}
+
+// assign_decl_shadows reports whether a `:=` declaration binds the name `n`.
+fn assign_decl_shadows(assign ast.AssignStmt, n string) bool {
+	if assign.op != .decl_assign {
+		return false
+	}
+	for lx in assign.left {
+		if lx is ast.Ident && lx.name == n {
+			return true
+		}
+	}
+	return false
+}
+
+fn json_migrate_block_visit(node &ast.Node, data voidptr) bool {
+	mut s := unsafe { &JsonMigrateBlock(data) }
+	if s.blocked {
+		return false
+	}
+	p := s.json2_prefix
+	if node is ast.Expr && node is ast.CallExpr {
+		call := node as ast.CallExpr
+		if call.kind == .json_decode && call.args.len >= 1 && call.args[0].comments.len > 0 {
+			s.blocked = true
+		}
+	} else if node is ast.Expr && node is ast.Ident {
+		// A legacy json function used as a *value* (`[1, 2].map(json.encode)`, `g :=
+		// json.decode`) is a plain qualified identifier, not a CallExpr, so it never reaches
+		// the call migration — yet imp_stmt_str would still rewrite `import json` to
+		// `import json2`, leaving the reference unresolved. Keep such files on legacy json.
+		// (A `json.encode(x)` call is a CallExpr with a resolved kind, not a bare Ident, so
+		// real calls still migrate.)
+		if (node as ast.Ident).name in ['json.encode', 'json.decode', 'json.encode_pretty'] {
+			s.blocked = true
+		}
+	} else if node is ast.Expr && node is ast.SelectorExpr {
+		// The same reference can also appear as a `json.encode` selector.
+		sel := node as ast.SelectorExpr
+		if sel.expr is ast.Ident
+			&& (sel.expr as ast.Ident).name == 'json' && sel.field_name in ['encode', 'decode', 'encode_pretty'] {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.FnDecl {
+		decl := node as ast.FnDecl
+		if decl.name.all_after_last('.') == p || decl.receiver.name == p
+			|| decl.params.any(it.name == p) {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.ConstDecl {
+		for field in (node as ast.ConstDecl).fields {
+			if field.name.all_after_last('.') == p {
+				s.blocked = true
+			}
+		}
+	} else if node is ast.Stmt && node is ast.GlobalDecl {
+		for field in (node as ast.GlobalDecl).fields {
+			if field.name == p {
+				s.blocked = true
+			}
+		}
+	} else if node is ast.Stmt && node is ast.AssignStmt {
+		if assign_decl_shadows(node as ast.AssignStmt, p) {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.ForStmt {
+		// The `for <cond> {}` condition is a loop-header expr outside children().
+		forstmt := node as ast.ForStmt
+		if !forstmt.is_inf {
+			walker.inspect(forstmt.cond, data, json_migrate_block_visit)
+		}
+	} else if node is ast.Stmt && node is ast.ForInStmt {
+		// `for json2 in users {}` / `for k, json2 in m {}` — binders live on the node.
+		fin := node as ast.ForInStmt
+		if fin.key_var == p || fin.val_var == p {
+			s.blocked = true
+		}
+		// The iterable and the range high are loop-header exprs outside children().
+		walker.inspect(fin.cond, data, json_migrate_block_visit)
+		if fin.is_range {
+			walker.inspect(fin.high, data, json_migrate_block_visit)
+		}
+	} else if node is ast.Stmt && node is ast.ComptimeFor {
+		// `$for json2 in T.fields {}`
+		if (node as ast.ComptimeFor).val_var == p {
+			s.blocked = true
+		}
+	} else if node is ast.Stmt && node is ast.ForCStmt {
+		// The init/cond/inc of a C-style for are loop-header fields outside children().
+		forc := node as ast.ForCStmt
+		if forc.has_init {
+			if forc.init is ast.AssignStmt && assign_decl_shadows(forc.init as ast.AssignStmt, p) {
+				s.blocked = true
+			}
+			walker.inspect(forc.init, data, json_migrate_block_visit)
+		}
+		if forc.has_cond {
+			walker.inspect(forc.cond, data, json_migrate_block_visit)
+		}
+		if forc.has_inc {
+			walker.inspect(forc.inc, data, json_migrate_block_visit)
+		}
+	} else if node is ast.Expr && node is ast.IfExpr {
+		// An `if json2 := opt() {}` guard is in the branch condition, which
+		// IfBranch.children() does not expose, so sub-walk each condition.
+		for branch in (node as ast.IfExpr).branches {
+			walker.inspect(branch.cond, data, json_migrate_block_visit)
+		}
+	} else if node is ast.Expr && node is ast.IfGuardExpr {
+		if (node as ast.IfGuardExpr).vars.any(it.name == p) {
+			s.blocked = true
+		}
+	} else if node is ast.Expr && node is ast.LambdaExpr {
+		// `|json2| json.encode(json2)`
+		if (node as ast.LambdaExpr).params.any(it.name == p) {
+			s.blocked = true
+		}
+	}
+	return true
+}
+
 pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	mut sb := strings.new_builder(128)
 	for imp in file.implied_imports {
 		sb.writeln('import ${imp}')
 	}
 	f.implied_import_str = sb.str()
+
+	// The json->json2 migration is opt-in (FmtOptions.migrate_json2, the `-migrate-json2`
+	// vfmt flag). When it is off, plain `v fmt` must leave all json usage untouched, so skip
+	// the whole detection block — no import rewrite, no call rewrite, no scanning I/O.
+	if f.migrate_json2 {
+		// Detect an existing top-level `json2` import, which the json->json2 migration
+		// reuses instead of emitting a duplicate `import json2` (see import_stmt). The
+		// migrated call sites are rewritten with that import's local name (its alias if
+		// `import json2 as x`, else `json2`), so they stay in scope and idempotent.
+		// Only top-level imports qualify: a branch-local (`$if { import json2 }`) one is
+		// nested inside a comptime-if statement rather than being a direct file.stmt, so
+		// it is not picked up here and a top-level `import json2` is emitted instead.
+		mut json2_alias_is_blank := false
+		mut toplevel_json2_positions := []int{}
+		mut toplevel_json_positions := []int{}
+		for stmt in file.stmts {
+			if stmt is ast.Import && stmt.source_name == 'json' {
+				toplevel_json_positions << stmt.pos.pos
+			}
+			if stmt is ast.Import && stmt.source_name == 'json2' {
+				toplevel_json2_positions << stmt.pos.pos
+				if !f.has_json2_import && !json2_alias_is_blank {
+					if stmt.alias == '_' {
+						// `import json2 as _` only silences unused-import warnings; `_` is not a
+						// usable qualifier and does not bring `json2` into scope, and a second
+						// plain `import json2` would be a duplicate import. So there is no way
+						// to emit valid `json2.x` calls — leave the file's json usage unmigrated.
+						json2_alias_is_blank = true
+					} else {
+						f.has_json2_import = true
+						f.json2_prefix = if stmt.alias != '' {
+							stmt.alias
+						} else {
+							stmt.source_name.all_after_last('.')
+						}
+					}
+				}
+			}
+		}
+		// A `json2` import inside a top-level `$if` branch is present in file.imports but
+		// is not a direct file.stmt (it is nested in a comptime-if). Migrating `import
+		// json` would add a plain top-level `import json2`, which then coexists with the
+		// branch import and trips the checker's duplicate-module error. The vfmt dedup
+		// cannot be relied on: a selective/aliased branch import has a different formatted
+		// string, and even a plain branch import emitted *before* the top-level one goes
+		// to branch_processed_imports (not global_processed_imports), so the later
+		// top-level import is not deduped. So leave the file unmigrated whenever any
+		// branch-local json2 import is present.
+		mut has_branch_local_json2 := false
+		for imp in file.imports {
+			if imp.source_name == 'json2' && imp.pos.pos !in toplevel_json2_positions {
+				has_branch_local_json2 = true
+				break
+			}
+		}
+		// A `json` import inside a top-level `$if` branch has the same problem: migrating it
+		// emits `import json2` into branch_processed_imports, which is not deduped against a
+		// top-level migrated `import json2` in global_processed_imports (e.g. a distinct
+		// top-level `import json as old` plus a branch `import json { encode }` both become
+		// `import json2`). Leave the file unmigrated when a branch-local json import exists.
+		mut has_branch_local_json := false
+		for imp in file.imports {
+			if imp.source_name == 'json' && imp.pos.pos !in toplevel_json_positions {
+				has_branch_local_json = true
+				break
+			}
+		}
+		// The migrated qualifier (f.json2_prefix) must be free. If another module is
+		// imported under that local name — e.g. `import rand as json2` — adding
+		// `import json2` and rewriting calls to `json2.x` would create two imports with
+		// the same alias (the checker's duplicate-import check compares aliases), and the
+		// calls would resolve to the wrong module. Leave the file unmigrated in that case.
+		mut json2_name_taken := false
+		for imp in file.imports {
+			if imp.source_name != 'json2' && imp.alias == f.json2_prefix {
+				json2_name_taken = true
+				break
+			}
+		}
+		// When the file already has a `json2` import, the migrated `import json` is dropped
+		// (merged) rather than rewritten. That drop path only re-emits the import's
+		// next_comments, so a same-line comment on the import (e.g. `import json // note`)
+		// would be lost. Leave such a file unmigrated so the comment is preserved.
+		mut json_import_has_line_comment := false
+		if f.has_json2_import {
+			for imp in file.imports {
+				if imp.source_name == 'json' && imp.comments.len > 0 {
+					json_import_has_line_comment = true
+					break
+				}
+			}
+		}
+		// Some `json` usage cannot be rewritten to `json2` without changing or losing
+		// source (see file_has_unmigratable_json_usage): `json.encode_pretty`, a
+		// `json.decode` with comments on its type argument, or a struct field whose JSON
+		// shape differs between the modules (`time.Time`, `@[raw]`). When the file has any
+		// such usage, leave its whole `json` usage unmigrated (see call_expr /
+		// imp_stmt_str), so calls and the `import json` stay byte-identical. Only scan
+		// when the file actually imports `json`, to avoid walking unrelated files.
+		// `file.imports` includes branch-local (`$if { import json }`) imports, so those
+		// are covered too — otherwise vfmt could migrate the branch import to `json2`
+		// while leaving an unmigrated `json.*` call behind.
+		// `json` can be present only in file.implied_imports when vfmt auto-adds a missing
+		// import. That path is left unmigrated: vfmt would emit the implied import verbatim
+		// (not through imp_stmt_str), and whether a `json.encode` there even rewrites
+		// depends on if `json` resolved as a module, so migrating risks an import/call
+		// mismatch. Treat implied json as a reason to keep the file's json usage as-is.
+		implied_json := 'json' in file.implied_imports
+		mut imports_json := implied_json
+		// An aliased legacy import (`import json as old`) qualifies its calls as
+		// `old.encode(...)`. Whether the parser tags those as the literal `json.encode`
+		// call kind that call_expr migrates depends on the alias being resolved to the
+		// canonical module, which is not guaranteed in every parse context — so migrating
+		// could drop the `old` alias (imp_stmt_str emits plain `import json2`) while
+		// leaving `old.encode(...)` behind. Leave such files unmigrated.
+		mut has_aliased_json_import := false
+		for imp in file.imports {
+			if imp.source_name == 'json' {
+				imports_json = true
+				if imp.alias != 'json' {
+					has_aliased_json_import = true
+				}
+			}
+		}
+		// Importing `json2` into a file whose own module is `json2` is rejected by the
+		// checker (cannot import a module into a module with the same name), so the
+		// qualifier is effectively taken — leave such a file unmigrated.
+		cur_module_is_json2 := file.mod.name == 'json2'
+		// The migration is mechanical: json2 has encode/decode/encode_pretty, so any file
+		// selected for migration (a non-test `.v` file, decided by file name in the vfmt
+		// tool) has its json usage rewritten unconditionally. The only reasons to keep a
+		// file's json usage are mechanical — cases where a straight rewrite would not compile
+		// or would drop source (a duplicate/aliased/self json2 import, a blank `as _`
+		// qualifier, a lost import comment); semantic differences between the modules are not
+		// preserved.
+		if imports_json {
+			f.keep_json_unmigrated = implied_json || json2_alias_is_blank || has_branch_local_json2
+				|| has_branch_local_json || has_aliased_json_import || json2_name_taken
+				|| json_import_has_line_comment || cur_module_is_json2
+				|| f.file_blocks_json_migration(file) || f.file_has_embedded_field_collision(file)
+		}
+		// Only rewrite `json.encode`/`json.decode` calls when the file actually imports the
+		// legacy `json` module and it is being migrated. The parser tags a call by its literal
+		// qualifier name, so a file using `import json2 as json` has its already-json2 calls
+		// (`json.decode[User](s)`) tagged with the same `.json_decode`/`.json_encode` kind;
+		// migrating those would corrupt them (e.g. `json.decode[User](s)` → `json.decode[s]()`,
+		// since json2_migrate_call reads the type from the legacy first argument). An implied
+		// json import keeps the file unmigrated, so it is excluded via keep_json_unmigrated.
+		f.migrate_json_calls = imports_json && !f.keep_json_unmigrated
+	}
 
 	for imp in file.imports {
 		f.mod2alias[imp.mod] = imp.alias
@@ -348,6 +696,16 @@ pub fn (mut f Fmt) import_stmt(imp ast.Import) {
 		// Skip hidden imports like preludes.
 		return
 	}
+	if imp.source_name == 'json' && f.has_json2_import && !f.keep_json_unmigrated {
+		// Migrating deprecated `import json` to `import json2`, but the file already
+		// has a top-level `json2` import (possibly with symbols or an alias, e.g.
+		// `import json2 { Any }` or `import json2 as j2`). Drop the migrated import
+		// so it merges into the existing one; the rewritten call sites use that
+		// import's local name (f.json2_prefix), so they stay in scope. Emitting a
+		// second `import json2` would be rejected by the checker as already imported.
+		f.import_comments(imp.next_comments)
+		return
+	}
 	imp_stmt := f.imp_stmt_str(imp)
 	if imp_stmt in f.global_processed_imports
 		|| (f.inside_comptime_if && imp_stmt in f.branch_processed_imports) {
@@ -375,6 +733,19 @@ pub fn (mut f Fmt) import_stmt(imp ast.Import) {
 }
 
 pub fn (f &Fmt) imp_stmt_str(imp ast.Import) string {
+	// The `json` module is deprecated; migrate any `import json` form to a plain
+	// `import json2`, to match the call rewriting done in json2_migrate_call.
+	// This also covers aliased imports (`import json as x`) and selective imports
+	// (`import json { decode }`): the alias/symbols are dropped, since json's whole
+	// public API (decode/encode/encode_pretty) is rewritten to qualified `json2.x`
+	// calls, so nothing needs to be brought into scope unqualified anymore.
+	// Exception: a file with a json call the migration can't rewrite losslessly is
+	// left unmigrated (see process_file_imports), so its `import json` is kept as-is.
+	// migrate_json_calls is `imports_json && !keep_json_unmigrated`, and is false unless the
+	// opt-in migration is enabled — so plain `v fmt` leaves `import json` untouched.
+	if imp.source_name == 'json' && f.migrate_json_calls {
+		return 'json2'
+	}
 	// Format / remove unused selective import symbols
 	// E.g.: `import foo { Foo }` || `import foo as f { Foo }`
 	has_alias := imp.alias != imp.source_name.all_after_last('.')
@@ -2228,6 +2599,17 @@ fn (mut f Fmt) write_static_method(_name string, short_name string) {
 }
 
 pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
+	// The `json` module is deprecated in favour of the pure V `json2` module, which has
+	// matching encode/decode/encode_pretty. vfmt migrates its calls automatically:
+	//   json.decode(T, s)     => json2.decode[T](s)
+	//   json.encode(x)        => json2.encode(x, escape_unicode: true)
+	//   json.encode_pretty(x) => json2.encode_pretty(x)
+	// Migration is gated by f.migrate_json_calls (a non-test file that imports the legacy
+	// `json` module; see process_file_imports).
+	if node.kind in [.json_decode, .json_encode, .json_encode_pretty] && f.migrate_json_calls {
+		f.json2_migrate_call(node)
+		return
+	}
 	mut is_method_newline := false
 	if node.is_method {
 		if ast.builtin_array_generic_methods_no_sort_matcher.matches(node.name) {
@@ -2274,6 +2656,61 @@ pub fn (mut f Fmt) call_expr(node ast.CallExpr) {
 	if is_method_newline {
 		f.indent--
 	}
+}
+
+// json2_migrate_call rewrites a call to the deprecated `json` module into the
+// equivalent call to the pure V `json2` module (see call_expr for the mapping).
+// The `json2` prefix follows f.json2_prefix, so an existing `import json2 as x`
+// is respected and the output stays in scope and idempotent.
+fn (mut f Fmt) json2_migrate_call(node ast.CallExpr) {
+	j2 := f.json2_prefix
+	match node.kind {
+		.json_decode {
+			// json.decode(T, s) => json2.decode[T](s)
+			// The first argument is the target type; the rest are forwarded.
+			// Guard against malformed calls, since vfmt runs on unchecked ASTs.
+			// A call whose type argument carries comments is never migrated (the file
+			// is left unmigrated, see file_has_unmigratable_json_call), because a
+			// comment inside the generic bracket cannot be re-parsed by vfmt.
+			if node.args.len >= 1 {
+				f.write('${j2}.decode[')
+				f.expr(node.args[0].expr)
+				f.write('](')
+				f.call_args(node.args[1..])
+				f.write(')')
+			} else {
+				f.write('${j2}.decode()')
+			}
+		}
+		.json_encode {
+			// json.encode(x) => json2.encode(x, escape_unicode: true)
+			// Legacy json.encode escapes non-ASCII as `\uXXXX`, while json2 defaults
+			// `escape_unicode` to false (raw unicode); pass it explicitly so the
+			// migrated call produces the exact same bytes for Unicode fields.
+			f.write('${j2}.encode(')
+			f.call_args(node.args)
+			if node.args.len > 0 {
+				f.write(', escape_unicode: true')
+			}
+			f.write(')')
+		}
+		.json_encode_pretty {
+			// json.encode_pretty(x) => json2.encode(x, prettify: true, escape_unicode: true).
+			// json2's own encode_pretty wrapper is deprecated in favour of the prettify
+			// option; escape_unicode matches legacy json's `\uXXXX` escaping (json2 defaults
+			// it to false), the same as the plain encode branch.
+			f.write('${j2}.encode(')
+			f.call_args(node.args)
+			if node.args.len > 0 {
+				f.write(', prettify: true, escape_unicode: true')
+			}
+			f.write(')')
+		}
+		else {}
+	}
+
+	f.or_expr(node.or_block)
+	f.comments(node.comments, has_nl: false)
 }
 
 fn (mut f Fmt) write_generic_call_if_require(node ast.CallExpr) {

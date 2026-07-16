@@ -1206,6 +1206,7 @@ fn test_mach_headers_are_emitted_headerlessly() {
 	assert !c_code.contains('#include <mach/mach.h>'), c_code
 	assert !c_code.contains('#include <mach/mach_time.h>'), c_code
 	assert !c_code.contains('#define panic mach_panic'), c_code
+	assert c_code.contains('#if defined(__APPLE__) && !defined(_MACH_TASK_INFO_H_)'), c_code
 	assert c_code.contains('typedef unsigned int task_t;'), c_code
 	assert c_code.contains('struct task_basic_info {'), c_code
 	assert c_code.contains('#define KERN_SUCCESS 0'), c_code

@@ -158,7 +158,14 @@ fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
 		return false
 	}
 	typ := node.typ
-	return typ == 'IError' || typ.ends_with('.IError')
+	if typ == 'IError' || typ.ends_with('.IError') {
+		return true
+	}
+	var_type := t.var_type('err')
+	if var_type.len > 0 {
+		return var_type == 'IError' || var_type.ends_with('.IError')
+	}
+	return false
 }
 
 fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.NodeId {
@@ -792,13 +799,7 @@ fn (mut t Transformer) match_branch_return_block(branch flat.Node, body_start_id
 	} else {
 		tail_expr
 	}
-	// Convert a fixed-array branch value (e.g. a fixed-array const) to a dynamic
-	// array when the function returns `[]T`, matching a plain `return <expr>`.
-	ret_val := if converted := t.fixed_array_return_value(actual_tail) {
-		converted
-	} else {
-		t.wrap_sum_return_expr(actual_tail)
-	}
+	ret_val := t.transform_return_child(actual_tail, 0, 1)
 	t.drain_pending(mut all)
 	all << t.make_transformed_return(ret_val, ret_typ, source_return_id)
 	return t.make_block(all)

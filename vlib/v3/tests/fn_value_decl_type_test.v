@@ -418,6 +418,29 @@ fn test_fn_value_expected_context_respects_value_shadowing() {
 	assert !struct_output.contains('main__foo'), struct_output
 }
 
+fn test_variadic_fn_value_marker_uses_nearest_binding() {
+	v3_bin := build_v3()
+	output := run_bad(v3_bin, 'variadic_fn_value_shadowed_by_plain_fn', 'fn variadic(values ...int) int {
+	return values.len
+}
+
+fn one(value int) int {
+	return value
+}
+
+fn main() {
+	cb := variadic
+	{
+		cb := one
+		_ := cb(1, 2)
+	}
+	assert cb(1, 2) == 2
+}
+')
+	assert output.contains('argument count mismatch'), output
+	assert output.contains('expected 1, got 2'), output
+}
+
 fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	v3_bin := build_v3()
 	optional_c := gen_c(v3_bin, 'fn_value_optional_void_local_c', optional_fn_src)

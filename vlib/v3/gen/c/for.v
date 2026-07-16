@@ -85,7 +85,13 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	if wrap_init {
 		g.writeln('{')
 		g.indent++
-		g.gen_node(g.a.child(&node, 0))
+		if init_node.kind == .block && init_node.value == 'for_init_expanded' {
+			for i in 0 .. init_node.children_count {
+				g.gen_node(g.a.child(init_node, i))
+			}
+		} else {
+			g.gen_node(g.a.child(&node, 0))
+		}
 	}
 
 	if init_node.kind == .empty && cond_node.kind == .empty && post_node.kind == .empty {
@@ -194,6 +200,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			if clean_container_type is types.Map {
 				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
 				c_val := g.value_c_type(clean_container_type.value_type)
+				map_value_by_ref := node.op == .amp || container_type is types.Pointer
 				container_str := g.expr_to_string(g.a.child(&node, 2))
 				iter_var := '__mi_${g.tmp_count}'
 				g.tmp_count++
@@ -231,13 +238,36 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 						g.writeln('${key_var} = string__clone(${key_var});')
 					}
 				}
-				val_slot := '${key_values}.values + ${iter_var} * ${key_values}.value_bytes'
+				snapshot_val_slot := '${key_values}.values + ${iter_var} * ${key_values}.value_bytes'
+				mut val_slot := snapshot_val_slot
+				mut val_is_fixed_copy := false
+				if use_snapshot && map_value_by_ref {
+					val_slot_var := '__for_map_val_${g.tmp_count}'
+					g.tmp_count++
+					original_map_ref := if container_type is types.Pointer {
+						container_str
+					} else {
+						'&${container_str}'
+					}
+					g.writeln('void* ${val_slot_var} = map__get_check(${original_map_ref}, &${key_var});')
+					g.writeln('if (${val_slot_var} == 0) ${val_slot_var} = (void*)(${snapshot_val_slot});')
+					val_slot = val_slot_var
+				}
 				if val_fixed := array_fixed_type(clean_container_type.value_type) {
 					c_elem, dims := g.fixed_array_decl_parts(val_fixed)
 					g.writeln('${c_elem} ${val_var_}${dims};')
 					g.writeln('memmove(${val_var_}, ${val_slot}, sizeof(${val_var_}));')
+					val_is_fixed_copy = true
+					if node.op == .amp {
+						map_mut_value_copyback = 'memmove(${val_slot}, ${val_var_}, sizeof(${val_var_}));'
+					}
+				} else if map_value_by_ref {
+					g.writeln('${c_val}* ${val_var_} = (${c_val}*)(${val_slot});')
 				} else {
 					g.writeln('${c_val} ${val_var_} = *(${c_val}*)(${val_slot});')
+					if node.op == .amp {
+						map_mut_value_copyback = 'memmove(${val_slot}, &${val_var_}, sizeof(${val_var_}));'
+					}
 				}
 				if has_index {
 					key_owner := g.tc.cur_scope.insert_with_owner(idx_binding_name,
@@ -246,10 +276,16 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 						clean_container_type.key_type is types.Pointer
 						|| c_type_is_pointer_storage(c_key))
 				}
-				val_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name,
-					clean_container_type.value_type)
-				g.declare_local_pointer_storage(val_owner,
-					clean_container_type.value_type is types.Pointer
+				val_scope_type := if map_value_by_ref && !val_is_fixed_copy {
+					types.Type(types.Pointer{
+						base_type: clean_container_type.value_type
+					})
+				} else {
+					clean_container_type.value_type
+				}
+				val_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, val_scope_type)
+				g.declare_local_pointer_storage(val_owner, val_scope_type is types.Pointer
+					|| (!val_is_fixed_copy && clean_container_type.value_type is types.Pointer)
 					|| c_type_is_pointer_storage(c_val))
 				if node.op == .amp {
 					map_writeback_target = if container_type is types.Pointer {

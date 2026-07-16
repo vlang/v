@@ -39,10 +39,7 @@ fn constant_fold(mut m ssa.Module) bool {
 						}
 						typ := m.values[val_id].typ
 						one_val := m.get_or_add_const(typ, '1')
-						mut shl_instr := m.instrs[m.values[val_id].index]
-						shl_instr.op = .shl
-						shl_instr.operands = [other_id, one_val]
-						m.instrs[m.values[val_id].index] = shl_instr
+						m.rewrite_instruction(val_id, .shl, [other_id, one_val])
 						changed = true
 						continue
 					} else if needs_zero {
@@ -295,12 +292,7 @@ fn branch_fold(mut m ssa.Module) bool {
 				if cond_val.kind == .constant {
 					cond_int := cond_val.name.i64()
 					target := if cond_int != 0 { term.operands[1] } else { term.operands[2] }
-					mut jmp_instr := m.instrs[m.values[term_val_id].index]
-					jmp_instr.op = .jmp
-					mut new_ops := []ssa.ValueID{}
-					new_ops << target
-					jmp_instr.operands = new_ops
-					m.instrs[m.values[term_val_id].index] = jmp_instr
+					m.rewrite_instruction(term_val_id, .jmp, [target])
 					changed = true
 				}
 			}

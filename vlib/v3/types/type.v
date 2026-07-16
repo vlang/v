@@ -179,6 +179,132 @@ pub:
 	types []Type
 }
 
+// clone_owned_type clones a type and all nested owned metadata.
+pub fn clone_owned_type(value Type) Type {
+	return match value {
+		Void {
+			Type(void_)
+		}
+		Unknown {
+			Type(Unknown{
+				reason: value.reason.clone()
+			})
+		}
+		Primitive {
+			Type(Primitive{
+				props: value.props
+				size:  value.size
+			})
+		}
+		String {
+			Type(string_)
+		}
+		Char {
+			Type(char_)
+		}
+		Rune {
+			Type(rune_)
+		}
+		ISize {
+			Type(isize_)
+		}
+		USize {
+			Type(usize_)
+		}
+		Nil {
+			Type(nil_)
+		}
+		None {
+			Type(none_)
+		}
+		Array {
+			Type(Array{
+				elem_type: clone_owned_type(value.elem_type)
+			})
+		}
+		ArrayFixed {
+			Type(ArrayFixed{
+				elem_type: clone_owned_type(value.elem_type)
+				len:       value.len
+				len_expr:  value.len_expr.clone()
+			})
+		}
+		Channel {
+			Type(Channel{
+				elem_type: clone_owned_type(value.elem_type)
+			})
+		}
+		Map {
+			Type(Map{
+				key_type:   clone_owned_type(value.key_type)
+				value_type: clone_owned_type(value.value_type)
+			})
+		}
+		Pointer {
+			Type(Pointer{
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		FnType {
+			Type(FnType{
+				params:      clone_owned_types(value.params)
+				return_type: clone_owned_type(value.return_type)
+			})
+		}
+		OptionType {
+			Type(OptionType{
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		ResultType {
+			Type(ResultType{
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		Struct {
+			Type(Struct{
+				name: value.name.clone()
+			})
+		}
+		Interface {
+			Type(Interface{
+				name: value.name.clone()
+			})
+		}
+		Enum {
+			Type(Enum{
+				name:    value.name.clone()
+				is_flag: value.is_flag
+			})
+		}
+		SumType {
+			Type(SumType{
+				name: value.name.clone()
+			})
+		}
+		Alias {
+			Type(Alias{
+				name:      value.name.clone()
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		MultiReturn {
+			Type(MultiReturn{
+				types: clone_owned_types(value.types)
+			})
+		}
+	}
+}
+
+// clone_owned_types clones a list of types and all nested owned metadata.
+pub fn clone_owned_types(values []Type) []Type {
+	mut cloned := []Type{cap: values.len}
+	for value in values {
+		cloned << clone_owned_type(value)
+	}
+	return cloned
+}
+
 // StructField represents struct field data used by types.
 pub struct StructField {
 pub:

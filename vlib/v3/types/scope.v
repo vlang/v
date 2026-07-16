@@ -128,6 +128,32 @@ pub fn (owner ScopeBindingOwner) storage_key() string {
 	return '${voidptr(owner.scope)}:${owner.lifetime}:${owner.index}:${owner.generation}'
 }
 
+// belongs_to_scope reports whether this binding owner was declared directly in `scope`.
+pub fn (owner ScopeBindingOwner) belongs_to_scope(scope &Scope) bool {
+	return owner.scope != unsafe { nil } && scope != unsafe { nil } && owner.scope == scope
+		&& owner.lifetime == scope.lifetime
+}
+
+// belongs_to_scope_chain_until reports whether this binding owner was declared
+// between `scope` and `stop`, inclusive.
+pub fn (owner ScopeBindingOwner) belongs_to_scope_chain_until(scope &Scope, stop &Scope) bool {
+	if owner.scope == unsafe { nil } || scope == unsafe { nil } || stop == unsafe { nil } {
+		return false
+	}
+	// Only the local pointer is reassigned; the scopes remain read-only.
+	mut cur := unsafe { &Scope(scope) }
+	for cur != unsafe { nil } {
+		if owner.belongs_to_scope(cur) {
+			return true
+		}
+		if cur == stop {
+			return false
+		}
+		cur = cur.parent
+	}
+	return false
+}
+
 // nearest_binding_owned_by reports whether the nearest visible binding for
 // `name` belongs to `owner`.
 pub fn (s &Scope) nearest_binding_owned_by(name string, owner ScopeBindingOwner) bool {

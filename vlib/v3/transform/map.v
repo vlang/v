@@ -152,7 +152,7 @@ fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type string,
 			fixed_array_canonical_type(value_type)
 		}
 	} else {
-		value_type
+		effective_value_type
 	}
 	call := t.make_call_typed('map__get', arr3(t.runtime_addr(map_expr, base_type), t.make_prefix(.amp,
 		t.make_ident(key_name)), t.make_prefix(.amp, t.make_ident(zero_name))), 'voidptr')
@@ -850,7 +850,7 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 		value := if value_type.starts_with('&') && t.is_sum_type_name(value_type[1..]) {
 			t.transform_expr_for_type(value_id, value_type)
 		} else if value_type in t.sum_types || t.resolve_sum_name(value_type) in t.sum_types {
-			t.wrap_sum_value(value_id, value_type)
+			t.transform_sum_value_for_type(value_id, value_type)
 		} else {
 			t.transform_expr_for_type(value_id, value_type)
 		}

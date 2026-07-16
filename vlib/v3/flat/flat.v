@@ -1,16 +1,20 @@
 module flat
 
 import v3.token
+import v3.workers
 
 // NodeId aliases node id values used by flat.
 pub type NodeId = int
+
+// TextId is the stable identity of one canonical AST text value.
+pub type TextId = u32
 
 pub const empty_node = NodeId(-1)
 
 const empty_node_value = Node{}
 
 // NodeKind lists node kind values used by flat.
-pub enum NodeKind {
+pub enum NodeKind as u8 {
 	empty
 	// expressions
 	int_literal
@@ -97,7 +101,7 @@ pub enum NodeKind {
 }
 
 // Op lists op values used by flat.
-pub enum Op {
+pub enum Op as u8 {
 	none
 	plus
 	minus
@@ -139,20 +143,53 @@ pub enum Op {
 	gated_index
 }
 
+// NodePayload holds the uncommon managed fields used only by declarations and
+// a handful of lowering markers. Keeping it out of Node makes the hot flat
+// header substantially smaller without changing string-facing phase APIs.
+@[heap]
+pub struct NodePayload {
+pub:
+	generic_params []string
+}
+
+// node_payload creates an uncommon node payload, or nil for an empty list.
+pub fn node_payload(generic_params []string) &NodePayload {
+	if generic_params.len == 0 {
+		return &NodePayload(unsafe { nil })
+	}
+	return &NodePayload{
+		generic_params: generic_params
+	}
+}
+
 // Node represents node data used by flat.
 pub struct Node {
 pub mut:
 	value          string
 	typ            string
-	generic_params []string
-	kind_id        int
+	payload        &NodePayload = unsafe { nil }
 	is_mut         bool
+	children_start i32
 pub:
 	pos            token.Pos
-	children_start i32
-	children_count i16
+	children_count i32
 	kind           NodeKind
 	op             Op
+}
+
+// generic_params returns this node's uncommon generic/attribute metadata.
+@[inline]
+pub fn (n &Node) generic_params() []string {
+	if isnil(n.payload) {
+		return []string{}
+	}
+	return n.payload.generic_params
+}
+
+// set_generic_params replaces this node's uncommon managed payload.
+@[inline]
+pub fn (mut n Node) set_generic_params(params []string) {
+	n.payload = node_payload(params)
 }
 
 // FlatAst represents flat ast data used by flat.
@@ -165,9 +202,95 @@ pub mut:
 	disabled_fns    map[string]bool
 	export_fn_names map[string]string
 	noreturn_fns    map[string]bool
+	source_files    map[int]&token.File
+	// source_buffers owns the storage behind zero-copy scanner strings retained
+	// by AST nodes. Keeping the buffers on the AST makes the lifetime boundary
+	// explicit and lets parser workers transfer ownership with their nodes.
+	source_buffers []string
+	// text_values/text_ids own one canonical copy of every non-empty string
+	// stored in a node payload. Nodes keep string compatibility views while
+	// semantic/compiler caches can use compact TextId identities.
+	text_values []string
+	text_ids    map[string]TextId
+	worker_pool &workers.Pool = unsafe { nil }
 	// specialized_fn_nodes identifies program-specific monomorphized function
 	// declarations appended after parsing. Module-cache cgen keeps them with main.
 	specialized_fn_nodes map[int]bool
+}
+
+// These layouts expose only the backing pointers needed to determine whether
+// text_ids rehashed inside a disposable prealloc scope. Keep them synchronized
+// with builtin.map and builtin.DenseArray.
+struct TextMapDenseArrayLayout {
+	key_bytes   int
+	value_bytes int
+mut:
+	cap         int
+	len         int
+	deletes     u32
+	all_deleted &u8 = unsafe { nil }
+	keys        &u8 = unsafe { nil }
+	values      &u8 = unsafe { nil }
+}
+
+struct TextMapLayout {
+	key_bytes   int
+	value_bytes int
+mut:
+	even_index      u32
+	cached_hashbits u8
+	shift           u8
+	key_values      TextMapDenseArrayLayout
+	metas           &u32 = unsafe { nil }
+	extra_metas     u32
+	has_string_keys bool
+	hash_fn         voidptr
+	key_eq_fn       voidptr
+	clone_fn        voidptr
+	free_fn         voidptr
+pub mut:
+	len int
+}
+
+fn text_id_map_storage_owned_by_scope(ids map[string]TextId, scope voidptr) bool {
+	$if prealloc {
+		layout := unsafe { &TextMapLayout(&ids) }
+		return unsafe { prealloc_scope_owns(scope, layout.key_values.keys) }
+			|| unsafe { prealloc_scope_owns(scope, layout.key_values.values) }
+			|| unsafe { prealloc_scope_owns(scope, layout.metas) }
+	}
+	return false
+}
+
+// close_workers stops the compilation-owned persistent worker pool.
+pub fn (mut a FlatAst) close_workers() {
+	if !isnil(a.worker_pool) {
+		a.worker_pool.close()
+	}
+}
+
+// worker_count reports the number of persistent compiler helper threads.
+pub fn (a &FlatAst) worker_count() int {
+	if isnil(a.worker_pool) {
+		return 0
+	}
+	return a.worker_pool.size()
+}
+
+// worker_tasks_run reports completed callbacks across all parallel phases.
+pub fn (a &FlatAst) worker_tasks_run() u64 {
+	if isnil(a.worker_pool) {
+		return 0
+	}
+	return a.worker_pool.tasks_run()
+}
+
+// worker_stats reports scheduling and utilization across compiler phases.
+pub fn (a &FlatAst) worker_stats() workers.Stats {
+	if isnil(a.worker_pool) {
+		return workers.Stats{}
+	}
+	return a.worker_pool.stats()
 }
 
 // set_node_is_mut updates a node's mut declaration marker in place.
@@ -190,16 +313,165 @@ pub fn FlatAst.new() FlatAst {
 		disabled_fns:         map[string]bool{}
 		export_fn_names:      map[string]string{}
 		noreturn_fns:         map[string]bool{}
+		source_files:         map[int]&token.File{}
+		text_ids:             map[string]TextId{}
 		specialized_fn_nodes: map[int]bool{}
 	}
+}
+
+// intern_text returns the canonical AST-owned copy and stable identity of text.
+pub fn (mut a FlatAst) intern_text(value string) (TextId, string) {
+	if value.len == 0 {
+		return TextId(0), ''
+	}
+	if id := a.text_ids[value] {
+		return id, a.text_values[int(id) - 1]
+	}
+	canonical := value.clone()
+	id := TextId(a.text_values.len + 1)
+	a.text_values << canonical
+	a.text_ids[canonical] = id
+	return id, a.text_values.last()
+}
+
+// reserve_transform_texts keeps canonical text-table backing in the
+// compilation arena before a disposable transform scope starts.
+pub fn (mut a FlatAst) reserve_transform_texts(headroom int) {
+	if headroom <= 0 {
+		return
+	}
+	unsafe { a.text_values.grow_cap(headroom) }
+	a.text_ids.reserve(u32(a.text_ids.len + headroom))
+}
+
+// promote_transform_texts_from moves canonical strings inserted by a scoped
+// transform into the current arena and rebuilds table backing only if it grew
+// into the disposable scope.
+pub fn (mut a FlatAst) promote_transform_texts_from(start int, scope voidptr) {
+	values_backing_scoped := scoped_text_storage_owned(scope, a.text_values.data)
+	ids_backing_scoped := text_id_map_storage_owned_by_scope(a.text_ids, scope)
+	first := if start < 0 { 0 } else { start }
+	for idx in first .. a.text_values.len {
+		value := a.text_values[idx]
+		$if prealloc {
+			if value.len == 0 || !unsafe { prealloc_scope_owns(scope, value.str) } {
+				continue
+			}
+			a.text_ids.delete(value)
+			canonical := value.clone()
+			a.text_values[idx] = canonical
+			a.text_ids[canonical] = TextId(idx + 1)
+		}
+	}
+	if values_backing_scoped || ids_backing_scoped {
+		mut values, mut ids := a.clone_text_table_owned()
+		a.text_values = values
+		a.text_ids = ids.move()
+	}
+}
+
+fn scoped_text_storage_owned(scope voidptr, ptr voidptr) bool {
+	$if prealloc {
+		return unsafe { prealloc_scope_owns(scope, ptr) }
+	}
+	return false
+}
+
+// clone_text_table_owned copies the canonical text table and rebuilds its
+// lookup map with storage owned by the current allocation arena.
+pub fn (a &FlatAst) clone_text_table_owned() ([]string, map[string]TextId) {
+	mut values := []string{cap: a.text_values.len}
+	mut ids := map[string]TextId{}
+	ids.reserve(u32(a.text_values.len))
+	for value in a.text_values {
+		canonical := value.clone()
+		values << canonical
+		ids[canonical] = TextId(values.len)
+	}
+	return values, ids
+}
+
+// text resolves a stable AST text identity.
+pub fn (a &FlatAst) text(id TextId) string {
+	idx := int(id) - 1
+	if idx < 0 || idx >= a.text_values.len {
+		return ''
+	}
+	return a.text_values[idx]
+}
+
+// text_count returns the number of unique non-empty AST text values.
+pub fn (a &FlatAst) text_count() int {
+	return a.text_values.len
+}
+
+// intern_node_texts_from canonicalizes managed payloads in nodes[start..].
+// This runs serially after parse/transform worker merges, so the text table
+// itself requires no synchronization and cannot retain worker-arena storage.
+pub fn (mut a FlatAst) intern_node_texts_from(start int) {
+	first := if start < 0 { 0 } else { start }
+	if first >= a.nodes.len {
+		return
+	}
+	for idx in first .. a.nodes.len {
+		_, value := a.intern_text(a.nodes[idx].value)
+		_, typ := a.intern_text(a.nodes[idx].typ)
+		a.nodes[idx].value = value
+		a.nodes[idx].typ = typ
+		params := a.nodes[idx].generic_params()
+		if params.len > 0 {
+			mut canonical_params := []string{cap: params.len}
+			for item in params {
+				_, param := a.intern_text(item)
+				canonical_params << param
+			}
+			a.nodes[idx].set_generic_params(canonical_params)
+		}
+	}
+}
+
+// intern_metadata_texts canonicalizes all source-derived FlatAst map keys and
+// values. Once this and intern_node_texts_from have run, source buffers are no
+// longer part of the AST representation and can be released.
+pub fn (mut a FlatAst) intern_metadata_texts() {
+	mut disabled_fns := map[string]bool{}
+	for name, disabled in a.disabled_fns {
+		_, canonical := a.intern_text(name)
+		disabled_fns[canonical] = disabled
+	}
+	a.disabled_fns = disabled_fns.move()
+	mut export_fn_names := map[string]string{}
+	for name, value in a.export_fn_names {
+		_, canonical_name := a.intern_text(name)
+		_, canonical_value := a.intern_text(value)
+		export_fn_names[canonical_name] = canonical_value
+	}
+	a.export_fn_names = export_fn_names.move()
+	mut noreturn_fns := map[string]bool{}
+	for name, is_noreturn in a.noreturn_fns {
+		_, canonical := a.intern_text(name)
+		noreturn_fns[canonical] = is_noreturn
+	}
+	a.noreturn_fns = noreturn_fns.move()
+}
+
+// source_position resolves an AST source position to file/line/column metadata.
+pub fn (a &FlatAst) source_position(pos token.Pos) ?token.Position {
+	if !pos.is_valid() {
+		return none
+	}
+	file := a.source_files[pos.id] or { return none }
+	if pos.offset < 0 || pos.offset > file.size {
+		return none
+	}
+	return file.position_at(pos.offset)
 }
 
 // add updates add state for FlatAst.
 pub fn (mut a FlatAst) add(kind NodeKind) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind:    kind
-		kind_id: int(kind)
+		kind: kind
 	}
 	return id
 }
@@ -208,8 +480,7 @@ pub fn (mut a FlatAst) add(kind NodeKind) NodeId {
 pub fn (mut a FlatAst) add_id(kind_id int) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind:    node_kind_from_id(kind_id)
-		kind_id: kind_id
+		kind: node_kind_from_id(kind_id)
 	}
 	return id
 }
@@ -224,9 +495,8 @@ pub fn node_kind_from_id(id int) NodeKind {
 pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind:    kind
-		kind_id: int(kind)
-		value:   value
+		kind:  kind
+		value: value
 	}
 	return id
 }
@@ -235,9 +505,8 @@ pub fn (mut a FlatAst) add_val(kind NodeKind, value string) NodeId {
 pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 	id := NodeId(a.nodes.len)
 	a.nodes << Node{
-		kind:    node_kind_from_id(kind_id)
-		kind_id: kind_id
-		value:   value
+		kind:  node_kind_from_id(kind_id)
+		value: value
 	}
 	return id
 }
@@ -250,10 +519,24 @@ pub fn (n Node) with_shifted_children(shift i32) Node {
 	return Node{
 		value:          n.value
 		typ:            n.typ
-		generic_params: n.generic_params
-		kind_id:        n.kind_id
+		payload:        n.payload
 		pos:            n.pos
 		children_start: n.children_start + shift
+		children_count: n.children_count
+		kind:           n.kind
+		op:             n.op
+		is_mut:         n.is_mut
+	}
+}
+
+// with_pos returns a copy of the node with source position `pos`.
+pub fn (n Node) with_pos(pos token.Pos) Node {
+	return Node{
+		value:          n.value
+		typ:            n.typ
+		payload:        n.payload
+		pos:            pos
+		children_start: n.children_start
 		children_count: n.children_count
 		kind:           n.kind
 		op:             n.op
@@ -264,20 +547,16 @@ pub fn (n Node) with_shifted_children(shift i32) Node {
 // add_node updates add node state for FlatAst.
 pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	id := NodeId(a.nodes.len)
-	mut n := node
-	if n.kind_id == 0 && int(n.kind) != 0 {
-		n.kind_id = int(n.kind)
-	}
-	a.nodes << n
+	a.nodes << node
 	return id
 }
 
 // child_count converts a dynamic child count to Node's compact storage type.
-pub fn child_count(count int) i16 {
-	if count > 32767 {
-		panic('flat node has too many children')
+pub fn child_count(count int) i32 {
+	if count < 0 {
+		panic('flat node cannot have a negative child count')
 	}
-	return i16(count)
+	return i32(count)
 }
 
 // begin_children supports begin children handling for FlatAst.

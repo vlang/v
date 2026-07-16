@@ -42,7 +42,11 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 	if name.len == 0 || isnil(t.tc) {
 		return ''
 	}
-	clean := t.trim_pointer_type(t.normalize_type_alias(name))
+	mut clean := t.trim_pointer_type(t.normalize_type_alias(name))
+	base, _, is_generic := generic_app_parts(clean)
+	if is_generic {
+		clean = base
+	}
 	if clean in t.tc.interface_names {
 		return clean
 	}
@@ -103,12 +107,24 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 			return t.transform_expr(id)
 		}
 	}
+	if target_is_ptr && t.expr_is_nil_like(id) {
+		expr := t.transform_expr(id)
+		if int(expr) >= 0 {
+			t.set_node_typ(int(expr), target_type)
+		}
+		return expr
+	}
 	// IError has bespoke handling (built via `error()`, fields accessed directly);
 	// do not route it through the generic interface boxing.
 	if t.is_builtin_ierror_interface_name(iface_name) {
 		return none
 	}
 	if node.kind == .nil_literal {
+		if target_is_ptr {
+			expr := t.transform_expr(id)
+			t.set_node_typ(int(expr), target_type)
+			return expr
+		}
 		return none
 	}
 	if target_is_ptr && node.kind == .ident
@@ -489,6 +505,18 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		t.transform_expr(source_id)
 	}
 	mut source := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_src')
+	normalized_source_type := t.normalize_type_alias(source_type)
+	source_is_pointer_alias := !source_type.starts_with('&')
+		&& normalized_source_type.starts_with('&')
+	if source_is_pointer_alias && !share_source
+		&& t.interface_pointer_alias_source_needs_heap_copy(id) {
+		pointee_type := normalized_source_type[1..]
+		dup := t.make_memdup_call_for_type(source, pointee_type)
+		copied := t.make_cast(normalized_source_type, dup, normalized_source_type)
+		tmp_name := t.new_temp('iface_ptr')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, copied, source_type)
+		source = t.make_ident(tmp_name)
+	}
 	is_ptr := source_type.starts_with('&')
 	concrete_type := if is_ptr { source_type[1..] } else { source_type }
 	t.mark_interface_boxed_type(iface_name, concrete_type)

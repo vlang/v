@@ -31,7 +31,7 @@ fn test_c_flag_target_filter_keeps_host_linux_and_drops_wasm() {
 
 	src := os.join_path(os.temp_dir(), 'v3_c_flag_target_filter_input_${pid}.v')
 	os.write_file(src,
-		"#flag linux -ldl\n#flag termux -L/data/data/com.termux/files/usr/lib -liconv\n#flag wasm32_emscripten --embed-file @VEXEROOT/README.md@/README.md\nfn main() {\n\tprintln('flag-filter-ok')\n}\n") or {
+		"#flag linux -ldl\n#flag termux -L/data/data/com.termux/files/usr/lib -liconv\n#flag qnx qnx_should_not_leak\n#flag haiku haiku_should_not_leak\n#flag serenity serenity_should_not_leak\n#flag vinix vinix_should_not_leak\n#flag wasm32_emscripten --embed-file @VEXEROOT/README.md@/README.md\nfn main() {\n\tprintln('flag-filter-ok')\n}\n") or {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_c_flag_target_filter_input_${pid}')
@@ -42,6 +42,10 @@ fn test_c_flag_target_filter_keeps_host_linux_and_drops_wasm() {
 	assert compile.output.contains('-ldl'), compile.output
 	assert !compile.output.contains('termux'), compile.output
 	assert !compile.output.contains('/data/data/com.termux'), compile.output
+	assert !compile.output.contains('qnx_should_not_leak'), compile.output
+	assert !compile.output.contains('haiku_should_not_leak'), compile.output
+	assert !compile.output.contains('serenity_should_not_leak'), compile.output
+	assert !compile.output.contains('vinix_should_not_leak'), compile.output
 	assert !compile.output.contains('wasm32_emscripten'), compile.output
 	assert !compile.output.contains('--embed-file'), compile.output
 

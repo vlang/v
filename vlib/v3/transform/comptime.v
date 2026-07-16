@@ -258,7 +258,7 @@ fn (mut t Transformer) cache_comptime_param_reflection_metadata() {
 	mut cur_file := ''
 	mut cur_module := ''
 	mut previous_top_level := -1
-	for top_level_idx in t.tc.top_level_idx {
+	for _, top_level_idx in t.tc.top_level_idx {
 		node := t.a.nodes[top_level_idx]
 		if node.kind == .file {
 			cur_file = node.value
@@ -537,7 +537,7 @@ fn (t &Transformer) comptime_node_raw_attribute_data(node_id int) RawAttributeDa
 	for node in t.a.nodes {
 		if node.kind == .directive && node.value == marker {
 			return RawAttributeData{
-				attrs: node.generic_params.clone()
+				attrs: node.generic_params().clone()
 				kinds: if node.typ.len > 0 {
 					node.typ.split(',').map(it.int())
 				} else {
@@ -711,12 +711,11 @@ fn (mut t Transformer) clone_attribute_subst_children_with_value(node flat.Node,
 	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		value:          value
 		typ:            node.typ
-		generic_params: node.generic_params.clone()
+		payload:        flat.node_payload(node.generic_params().clone())
 		is_mut:         node.is_mut
 		children_start: start
 		children_count: flat.child_count(children.len)
@@ -965,12 +964,11 @@ fn (mut t Transformer) clone_param_subst_children_with_value(node flat.Node, var
 	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		value:          value
 		typ:            node.typ
-		generic_params: node.generic_params.clone()
+		payload:        flat.node_payload(node.generic_params().clone())
 		is_mut:         node.is_mut
 		children_start: start
 		children_count: flat.child_count(children.len)
@@ -1392,12 +1390,11 @@ fn (mut t Transformer) clone_method_subst_children_with_value(node flat.Node, va
 	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		value:          value
 		typ:            typ
-		generic_params: node.generic_params.clone()
+		payload:        flat.node_payload(node.generic_params().clone())
 		is_mut:         node.is_mut
 		children_start: start
 		children_count: flat.child_count(children.len)
@@ -1636,7 +1633,7 @@ fn (t &Transformer) comptime_local_sum_variants(name string) ?[]string {
 		for i in 0 .. node.children_count {
 			variant := t.a.child_node(&node, i)
 			variants << t.normalize_sum_variant_type(variant.value, module_name,
-				node.generic_params)
+				node.generic_params())
 		}
 		return variants
 	}
@@ -1711,7 +1708,7 @@ fn (t &Transformer) enum_decl_value_metas(enum_name string) []EnumValueMeta {
 			fields << EnumDeclFieldValue{
 				name:    f.value
 				expr_id: expr_id
-				attrs:   f.generic_params.clone()
+				attrs:   f.generic_params().clone()
 			}
 			if int(expr_id) >= 0 {
 				field_exprs[f.value] = expr_id
@@ -2009,7 +2006,6 @@ fn (mut t Transformer) clone_value_subst(id flat.NodeId, var_name string, item E
 	}
 	clone_id := t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		value:          node.value
@@ -2281,7 +2277,6 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	}
 	clone_id := t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		value:          if node.kind == .is_expr && node.value == var_name {
@@ -2412,7 +2407,6 @@ fn (mut t Transformer) clone_node_preserving_children_with_type(node flat.Node, 
 	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		value:          node.value
@@ -2586,11 +2580,11 @@ fn (t &Transformer) struct_field_decl_metas(base_type string) map[string]FieldDe
 			mut is_mut := false
 			mut is_pub := false
 			mut attrs := []string{}
-			if f.generic_params.len > 0 {
-				flags := f.generic_params[0]
+			if f.generic_params().len > 0 {
+				flags := f.generic_params()[0]
 				is_mut = flags.contains('m')
 				is_pub = flags.contains('p')
-				attrs = f.generic_params[1..].clone()
+				attrs = f.generic_params()[1..].clone()
 			}
 			out[f.value] = FieldDeclMeta{
 				is_mut: is_mut
@@ -2908,7 +2902,6 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		}
 		return t.a.add_node(flat.Node{
 			kind:           node.kind
-			kind_id:        node.kind_id
 			op:             node.op
 			pos:            node.pos
 			value:          node.value
@@ -3154,7 +3147,6 @@ fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var
 	}
 	return t.a.add_node(flat.Node{
 		kind:           node.kind
-		kind_id:        node.kind_id
 		op:             node.op
 		pos:            node.pos
 		value:          cloned_value

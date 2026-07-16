@@ -13,7 +13,16 @@ fn parse2(s string) !Request {
 	return req
 }
 
+fn parse_arr(s string) ![]Request {
+	return json.decode([]Request, s)
+}
+
+fn to_json(r Request) string {
+	return json.encode(r)
+}
+
 fn main() {
 	println(parse('{"a": 22} ')!)
 	println(parse2('{"a": 22} ')!)
+	println(to_json(Request{ a: 1 }))
 }

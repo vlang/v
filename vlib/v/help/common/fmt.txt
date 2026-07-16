@@ -8,6 +8,14 @@ Usage:
 Formats the given V source files or recursively formats all files in the
 directory, then prints their formatted source to stdout.
 
+By default, `v fmt` also migrates usage of the deprecated `json` module to the
+pure V `json2` module (`import json` -> `import json2`,
+`json.decode(T, s)` -> `json2.decode[T](s)`,
+`json.encode(x)` -> `json2.encode(x, escape_unicode: true)`,
+`json.encode_pretty(x)` -> `json2.encode(x, prettify: true)`). Test files (`_test.v`) and
+vfmt fixtures (`.vv`) are left untouched, since they exercise the legacy module
+on purpose. Use `-no-migrate-json2` to disable the rewrite.
+
 Options:
   -c             Check if a file is already formatted. If not, print the
                  filepath and exit with code 2. Compared to -verify it is
@@ -39,6 +47,10 @@ Options:
 
   -new_int       Forcefully cast the `int` type in @[translated] modules or
                  in the definition of `C.func` to the `i32` type.
+
+  -no-migrate-json2
+                 Do not rewrite deprecated `json` module usage to `json2`.
+                 The migration is on by default for non-test `.v` files.
 
 Environment Variables:
   VDIFF_CMD      A custom tool and options that will be used for viewing the

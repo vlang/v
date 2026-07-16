@@ -38,6 +38,46 @@ fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
 	assert t.generic_call_arg_type_for_inference(ident_id) == 'Concrete'
 }
 
+fn test_lowered_generic_operator_call_records_operator_use() {
+	decls := {
+		'Box.+': GenericFnDecl{
+			node:   flat.Node{
+				kind:  .fn_decl
+				value: 'Box[T].+'
+			}
+			module: 'main'
+			key:    'Box.+'
+		}
+	}
+	specs := {
+		'Box[int]': 'Box'
+	}
+	mut indexer := Transformer{}
+	lowered_operator_uses := indexer.lowered_generic_struct_operator_uses_for_specs(specs, decls)
+	assert 'Box_int__plus' in lowered_operator_uses
+	assert lowered_operator_uses['Box_int__plus'] == ['Box[int].+']
+
+	mut a := flat.FlatAst.new()
+	callee_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'Box_int__plus'
+	})
+	call_start := a.children.len
+	a.children << callee_id
+	call_id := a.add_node(flat.Node{
+		kind:           .call
+		children_start: i32(call_start)
+		children_count: flat.child_count(1)
+	})
+	mut t := Transformer{
+		a: &a
+	}
+	assert t.record_lowered_generic_struct_operator_call(a.nodes[int(call_id)],
+		lowered_operator_uses)
+	assert t.used_struct_operator_fns['Box[int].+']
+	assert t.used_struct_operator_fns['Box_int__plus']
+}
+
 fn test_typeof_display_canonicalizes_fixed_array_map_values() {
 	assert typeof_display_type_text('map[string]int[3]') == 'map[string][3]int'
 	assert typeof_display_type_text('int[n]') == '[n]int'
@@ -93,6 +133,40 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	}
 	assert params.len == 1
 	assert params[0] is types.String
+}
+
+fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.begin_sparse_transform_node_caches(0)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	batch_tc := tc.fork_for_parallel_transform(&a)
+	mut batch := master.fork_scoped_batch_worker(&a, batch_tc)
+	batch.tc.fork_overlay.resolved_call_names[10] = 'main.resolved_call'
+	batch.tc.fork_overlay.resolved_fn_values[11] = 'main.resolved_fn_value'
+
+	master.absorb_scoped_batch(batch, unsafe { nil }, a.nodes.len)
+	assert tc.sparse_resolved_call_names[10] == 'main.resolved_call'
+	assert tc.sparse_resolved_fn_values[11] == 'main.resolved_fn_value'
+}
+
+fn test_frozen_interface_boxed_types_are_read_only_in_skip_generics_workers() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.skip_generics = true
+	master.interface_boxed_types['main.Reader\nmain.Source'] = true
+	master.interface_boxed_types_done = true
+	master.interface_boxed_types_frozen = true
+	mut worker := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
+
+	worker.mark_interface_boxed_type('main.Reader', 'main.Other')
+	assert 'main.Reader\nmain.Other' !in master.interface_boxed_types
+	assert 'main.Reader\nmain.Other' !in worker.interface_boxed_types
+
+	master.interface_boxed_types_frozen = false
+	master.mark_interface_boxed_type('main.Reader', 'main.Other')
+	assert master.interface_boxed_types['main.Reader\nmain.Other']
 }
 
 fn test_multi_return_selector_suffix_does_not_match_free_fn() {

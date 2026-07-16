@@ -1,5 +1,11 @@
 module transform
 
+// collect_interface_boxed_types_parallel keeps the interface scan serial when
+// v3 is built with the internal `v3_no_parallel` define.
+fn (mut t Transformer) collect_interface_boxed_types_parallel() bool {
+	return false
+}
+
 // run_parallel_transform falls back to the serial transform when v3 is built
 // with the internal `v3_no_parallel` define.
 fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, _ int, _ int) bool {
