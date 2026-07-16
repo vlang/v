@@ -2098,6 +2098,13 @@ fn (mut t Transformer) transform_builtin_addr_call(node flat.Node) ?flat.NodeId 
 }
 
 fn (mut t Transformer) builtin_addr_expr(arg_id flat.NodeId, arg_type string) flat.NodeId {
+	if t.expr_is_overloaded_index_result(arg_id) {
+		value := t.transform_expr(arg_id)
+		value_type := t.overloaded_index_result_type(arg_id) or { arg_type }
+		tmp_name := t.new_temp('addr')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, value_type)
+		return t.make_prefix(.amp, t.make_ident(tmp_name))
+	}
 	if !arg_type.starts_with('&') {
 		return t.runtime_addr(arg_id, arg_type)
 	}
@@ -2151,6 +2158,53 @@ fn (mut t Transformer) transform_implicit_ref_arg(arg_id flat.NodeId, param_type
 		current_type = addr_type
 	}
 	return none
+}
+
+fn (t &Transformer) overloaded_index_result_type(id flat.NodeId) ?string {
+	if isnil(t.tc) || int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.index {
+			if node.children_count == 0 {
+				return none
+			}
+			base_id := t.a.child(&node, 0)
+			method_name := t.resolve_receiver_method_name(base_id, '[]')
+			if method_name.len > 0 {
+				if ret := t.fn_ret_types[method_name] {
+					typ := t.normalize_type_alias(ret)
+					if decl_type_is_usable(typ) {
+						return typ
+					}
+				}
+				if ret := t.tc.fn_ret_types[method_name] {
+					typ := t.normalize_type_alias(ret.name())
+					if decl_type_is_usable(typ) {
+						return typ
+					}
+				}
+			}
+			base_type := t.tc.expr_type(base_id) or { t.tc.resolve_type(base_id) }
+			if info := t.tc.index_overload_call_info(base_type, false) {
+				typ := t.normalize_type_alias(info.return_type.name())
+				if decl_type_is_usable(typ) {
+					return typ
+				}
+			}
+			return none
+		}
+		.paren, .expr_stmt {
+			if node.children_count == 0 {
+				return none
+			}
+			return t.overloaded_index_result_type(t.a.child(&node, 0))
+		}
+		else {
+			return none
+		}
+	}
 }
 
 fn (t &Transformer) expr_is_overloaded_index_result(id flat.NodeId) bool {

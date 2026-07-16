@@ -2194,6 +2194,39 @@ fn test_builtin_addr_requires_unsafe_and_addresses_pointer_variables() {
 	assert out == '1\n7'
 }
 
+fn test_builtin_addr_overloaded_index_materializes_getter_result() {
+	v3_bin := build_v3()
+	source := 'struct Item {
+	n int
+}
+
+struct Dict {
+	values map[string]Item
+}
+
+fn (d Dict) [] (key string) Item {
+	return d.values[key]
+}
+
+fn main() {
+	d := Dict{
+		values: {
+			"a": Item{
+				n: 7
+			}
+		}
+	}
+	p := unsafe { __addr(d["a"]) }
+	println(int_str((*p).n))
+}
+'
+	c_source := gen_c(v3_bin, 'builtin_addr_overloaded_index_materializes_getter_result_c', source)
+	assert c_source.contains('addr'), c_source
+	assert !c_source.contains('&Dict__index('), c_source
+	out := run_good(v3_bin, 'builtin_addr_overloaded_index_materializes_getter_result', source)
+	assert out == '7'
+}
+
 fn test_array_alias_free_uses_array_builtin_inside_alias_method() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'array_alias_free_builtin',
