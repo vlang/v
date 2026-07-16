@@ -3501,9 +3501,9 @@ fn c_pkgconfig_flags(raw string) []string {
 
 fn c_flag_has_target_prefix(target string) bool {
 	return target in ['darwin', 'macos', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd',
-		'dragonfly', 'android', 'termux', 'ios', 'solaris', 'wasm32_emscripten', 'amd64', 'x64',
-		'x86_64', 'arm64', 'aarch64', 'x86', 'arm32', 'riscv64', 'ppc64', 'ppc64le', 's390x',
-		'loongarch64', 'wasm32']
+		'dragonfly', 'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix',
+		'wasm32_emscripten', 'amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'arm32', 'riscv64',
+		'ppc64', 'ppc64le', 's390x', 'loongarch64', 'wasm32']
 }
 
 fn c_flag_target_enabled(target string, platform pref.Target) bool {
@@ -3534,6 +3534,9 @@ fn c_flag_target_enabled(target string, platform pref.Target) bool {
 		}
 		'solaris' {
 			return platform.os == 'solaris'
+		}
+		'qnx', 'haiku', 'serenity', 'vinix' {
+			return platform.os == target
 		}
 		'termux' {
 			return platform.os == 'termux'
@@ -10059,6 +10062,8 @@ fn (mut g FlatGen) libc_compat_decls() {
 fn (mut g FlatGen) prealloc_atomic_compat_decls() {
 	g.writeln('static inline int v_prealloc_atomic_add_i32(int *ptr, int delta) { return __atomic_add_fetch(ptr, delta, 5); }')
 	g.writeln('static inline int v_prealloc_atomic_load_i32(int *ptr) { return __atomic_add_fetch(ptr, 0, 5); }')
+	g.writeln('static inline long long v_prealloc_atomic_add_i64(long long *ptr, long long delta) { return __atomic_add_fetch(ptr, delta, 5); }')
+	g.writeln('static inline long long v_prealloc_atomic_load_i64(long long *ptr) { return __atomic_add_fetch(ptr, 0, 5); }')
 	g.writeln('#ifdef __TINYC__')
 	g.writeln('static inline int v_prealloc_atomic_store_i32(int *ptr, int val) { return (int)__atomic_exchange_4((u32*)ptr, (u32)val, 5); }')
 	g.writeln('static inline int v_prealloc_atomic_cas_i32(int *ptr, int expected, int desired) { u32 e = (u32)expected; return __atomic_compare_exchange_4((u32*)ptr, &e, (u32)desired, 5, 5); }')
