@@ -1,0 +1,22 @@
+import json
+import time
+
+struct Event {
+	name string
+}
+
+fn make_event() Event {
+	return Event{}
+}
+
+// A `json.encode(x)` payload that is not a literal, cast, container or resolvable identifier
+// carries no checked type at fmt time. `time.now()` returns a root time.Time (Unix number in
+// legacy json vs an RFC3339 string in json2), and `make_event()`'s return type is unknown to
+// vfmt, so both are treated as unsafe and the file is left on legacy json.
+fn encode_now() string {
+	return json.encode(time.now())
+}
+
+fn encode_made() string {
+	return json.encode(make_event())
+}

@@ -511,52 +511,60 @@ fn encode_ident_needs_legacy_json(t &ast.Table, ident ast.Ident) bool {
 	return type_needs_legacy_json(t, typ)
 }
 
-// payload_expr_needs_legacy_json reports whether a `json.encode` payload expression is (or
-// contains) a typed literal whose type serialises differently under legacy json. A root
-// container literal (`json.encode([]time.Time{})`, `json.encode({'x': rune(..)})`) has no
-// struct field for the StructDecl scan to catch, and — without the checker — its own
-// `typ`/`elem_type`/`value_type` are often unresolved at fmt time, so recurse through the
-// literal and inspect each element/value literal or cast, which does carry a type.
-fn payload_expr_needs_legacy_json(t &ast.Table, expr ast.Expr) bool {
+// encode_payload_is_safe_to_migrate reports whether a `json.encode(x)` payload is *provably*
+// safe to migrate to json2 — vfmt can see its full type and none of it is legacy-sensitive.
+// The default is the opposite: anything it cannot fully reason about is left on legacy json,
+// so the JSON contract never changes silently. That covers a call (`json.encode(time.now())`,
+// `json.encode(make_event())`), a selector/index expression, an unresolved local, or an
+// imported/placeholder type — none of which carry a checked type at fmt time. Only typed
+// literals, safe containers of safe elements, resolved-safe identifiers and plain scalar
+// literals are treated as migratable.
+fn encode_payload_is_safe_to_migrate(t &ast.Table, expr ast.Expr) bool {
 	match expr {
 		ast.ParExpr {
-			// A parenthesised payload (`json.encode((rune(233)))`) hides the typed literal
-			// one level down; unwrap it so the StructInit/CastExpr below is still inspected.
-			return payload_expr_needs_legacy_json(t, expr.expr)
+			// A parenthesised payload (`json.encode((User{}))`) just wraps the real one.
+			return encode_payload_is_safe_to_migrate(t, expr.expr)
 		}
 		ast.StructInit {
-			return type_needs_legacy_json(t, expr.typ)
+			return expr.typ != 0 && !type_needs_legacy_json(t, expr.typ)
 		}
 		ast.CastExpr {
-			return type_needs_legacy_json(t, expr.typ)
+			return expr.typ != 0 && !type_needs_legacy_json(t, expr.typ)
 		}
 		ast.ArrayInit {
 			if type_needs_legacy_json(t, expr.typ) || type_needs_legacy_json(t, expr.elem_type) {
-				return true
+				return false
 			}
+			// Every element must itself be provably safe (a bare `[time.now()]` element is a
+			// call, so it is unsafe even though the array type is unknown).
 			for e in expr.exprs {
-				if payload_expr_needs_legacy_json(t, e) {
-					return true
+				if !encode_payload_is_safe_to_migrate(t, e) {
+					return false
 				}
 			}
-			return false
+			return true
 		}
 		ast.MapInit {
 			if type_needs_legacy_json(t, expr.typ) || type_needs_legacy_json(t, expr.key_type)
 				|| type_needs_legacy_json(t, expr.value_type) {
-				return true
-			}
-			for k in expr.keys {
-				if payload_expr_needs_legacy_json(t, k) {
-					return true
-				}
+				return false
 			}
 			for v in expr.vals {
-				if payload_expr_needs_legacy_json(t, v) {
-					return true
+				if !encode_payload_is_safe_to_migrate(t, v) {
+					return false
 				}
 			}
-			return false
+			return true
+		}
+		ast.Ident {
+			// A parameter's declared type is resolvable; an unresolved local is kept.
+			return !encode_ident_needs_legacy_json(t, expr)
+		}
+		ast.BoolLiteral, ast.IntegerLiteral, ast.FloatLiteral, ast.StringLiteral,
+		ast.StringInterLiteral {
+			// A plain scalar literal encodes identically in json and json2 (a float literal
+			// is always finite; a non-finite float can only arrive via a cast, handled above).
+			return true
 		}
 		else {
 			return false
@@ -656,14 +664,11 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 				}
 			}
 		} else if call.kind == .json_encode && call.args.len >= 1 {
-			// A root `time.Time`/rune/float/option encode payload also serialises
-			// differently. Inspect a literal payload and its element/value literals; for a
-			// plain identifier payload, resolve its declared type (parameters carry one) and
-			// keep the file on legacy json when it is unresolved or legacy-sensitive.
-			arg := call.args[0].expr
-			if payload_expr_needs_legacy_json(s.table, arg) {
-				s.found = true
-			} else if arg is ast.Ident && encode_ident_needs_legacy_json(s.table, arg) {
+			// A root `time.Time`/rune/float/option encode payload serialises differently, and
+			// vfmt has no checked type for a runtime payload. Keep the file on legacy json
+			// unless the payload is provably safe to migrate (a typed safe literal, a safe
+			// container, a resolved-safe identifier or a scalar literal).
+			if !encode_payload_is_safe_to_migrate(s.table, call.args[0].expr) {
 				s.found = true
 			}
 		}
