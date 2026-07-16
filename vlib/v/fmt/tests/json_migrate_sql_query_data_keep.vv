@@ -1,0 +1,19 @@
+import json
+
+struct User {
+	name string
+}
+
+// A dynamic ORM query-data expression (`{ if cond { leaf } }`) is a SqlQueryDataExpr,
+// whose leaf/branch condition expressions are printed by sql_query_data_expr but are
+// outside Node.children(). The leaf here holds a json.encode_pretty call json2 cannot
+// reproduce, so the file is left unmigrated.
+fn build(u User) {
+	tag := ''
+	where_expr := {
+		if tag != '' {
+			name == json.encode_pretty(u)
+		}
+	}
+	_ := where_expr
+}

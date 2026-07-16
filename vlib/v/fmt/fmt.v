@@ -450,6 +450,25 @@ fn walk_or_block(or_block ast.OrExpr, data voidptr) {
 	}
 }
 
+// walk_sql_query_data_items sub-walks the leaf/branch condition expressions of a dynamic
+// ORM query-data expression (`{ cond: value, if x { .. } }`). Node.children() has no
+// SqlQueryDataExpr case, but sql_query_data_expr prints these expressions unchanged.
+fn walk_sql_query_data_items(items []ast.SqlQueryDataItem, data voidptr) {
+	for item in items {
+		match item {
+			ast.SqlQueryDataLeaf {
+				walker.inspect(item.expr, data, json_unmigratable_scan_visit)
+			}
+			ast.SqlQueryDataIf {
+				for branch in item.branches {
+					walker.inspect(branch.cond, data, json_unmigratable_scan_visit)
+					walk_sql_query_data_items(branch.items, data)
+				}
+			}
+		}
+	}
+}
+
 fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 	mut s := unsafe { &JsonUnmigratableScan(data) }
 	if s.found {
@@ -596,6 +615,25 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		if ai.has_update_expr {
 			walker.inspect(ai.update_expr, data, json_unmigratable_scan_visit)
 		}
+	} else if node is ast.Expr && node is ast.StructInit {
+		// The spread/update expr of `User{ ...base(json.encode_pretty(u)), name: 'x' }` is
+		// on StructInit.update_expr, outside Node.children() (only fields are), but
+		// struct_init prints it unchanged.
+		si := node as ast.StructInit
+		if si.has_update_expr {
+			walker.inspect(si.update_expr, data, json_unmigratable_scan_visit)
+		}
+	} else if node is ast.Expr && node is ast.MapInit {
+		// Likewise the spread expr of `{ ...parts(json.encode_pretty(u)), 'x': 'y' }` is on
+		// MapInit.update_expr, outside Node.children().
+		mi := node as ast.MapInit
+		if mi.has_update_expr {
+			walker.inspect(mi.update_expr, data, json_unmigratable_scan_visit)
+		}
+	} else if node is ast.Expr && node is ast.SqlQueryDataExpr {
+		// The leaf/branch conditions of a dynamic ORM query-data expression are printed by
+		// sql_query_data_expr but are outside Node.children().
+		walk_sql_query_data_items((node as ast.SqlQueryDataExpr).items, data)
 	} else if node is ast.Expr && node is ast.Ident {
 		// `opt or { json.encode_pretty(u) }` — an identifier's `or {}` block is outside
 		// Node.children() (only CallExpr exposes its or-block), so sub-walk it.
@@ -674,6 +712,17 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 	} else if node is ast.Stmt && node is ast.ConstDecl {
 		cd := node as ast.ConstDecl
 		for field in cd.fields {
+			if field.name == s.json2_prefix || field.name.all_after_last('.') == s.json2_prefix {
+				s.found = true
+				break
+			}
+		}
+	} else if node is ast.Stmt && node is ast.GlobalDecl {
+		// Under `-enable-globals`, a `__global json2 ...` declaration is an existing
+		// identifier that would shadow the migrated qualifier, so `json2.encode` would
+		// resolve against the global value instead of the module.
+		gd := node as ast.GlobalDecl
+		for field in gd.fields {
 			if field.name == s.json2_prefix || field.name.all_after_last('.') == s.json2_prefix {
 				s.found = true
 				break

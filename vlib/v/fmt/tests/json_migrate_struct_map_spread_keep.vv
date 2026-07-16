@@ -1,0 +1,36 @@
+import json
+
+struct User {
+	name string
+	tag  string
+}
+
+fn base(s string) User {
+	return User{
+		tag: s
+	}
+}
+
+fn parts(s string) map[string]string {
+	return {
+		'a': s
+	}
+}
+
+// The spread/update expression of `T{ ...x }` / `{ ...x }` is stored on
+// StructInit.update_expr / MapInit.update_expr, outside Node.children() (which exposes
+// only fields/keys/values). Both spreads hold a json.encode_pretty call json2 cannot
+// reproduce, so the file is left unmigrated.
+fn build_struct(u User) User {
+	return User{
+		...base(json.encode_pretty(u))
+		name: 'x'
+	}
+}
+
+fn build_map(u User) map[string]string {
+	return {
+		...parts(json.encode_pretty(u))
+		'x': 'y'
+	}
+}
