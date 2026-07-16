@@ -21,11 +21,7 @@ fn drop_owned_result_error(err IError) {
 }
 
 fn drop_owned_map_key[K](key K) {
-	$if K.unaliased_typ is string {
-		_ = key
-	} $else {
-		drop_owned(key)
-	}
+	drop_owned(key)
 }
 
 // drop_owned destroys an owned value outside ownership mode.
