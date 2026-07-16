@@ -1,0 +1,14 @@
+import json
+
+struct User {
+	name string
+}
+
+// An assert message is stored on AssertStmt.extra, which is outside Node.children(),
+// so the unmigratable scan sub-walks it. This file uses json.encode_pretty as an
+// assert message, so it is left unmigrated.
+fn check(u User) {
+	ok := u.name != ''
+	assert ok, json.encode_pretty(u)
+	_ := json.encode(u)
+}

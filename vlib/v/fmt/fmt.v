@@ -463,6 +463,11 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 				break
 			}
 		}
+	} else if node is ast.Stmt && node is ast.AssertStmt {
+		// `assert ok, json.encode_pretty(u)` — the assert message (AssertStmt.extra) is
+		// outside Node.children(), so sub-walk it explicitly.
+		assert_stmt := node as ast.AssertStmt
+		walker.inspect(assert_stmt.extra, data, json_unmigratable_scan_visit)
 	}
 	return true
 }
