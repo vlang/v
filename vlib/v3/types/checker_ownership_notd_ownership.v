@@ -43,4 +43,28 @@ pub fn (tc &TypeChecker) ownership_drop_type_names() []string {
 	return []string{}
 }
 
+pub fn (tc &TypeChecker) ownership_type_requires_drop(_ Type) bool {
+	return false
+}
+
+pub fn (tc &TypeChecker) ownership_type_requires_destruction(_ Type) bool {
+	return false
+}
+
+pub fn (tc &TypeChecker) ownership_expr_moves_storage(_ flat.NodeId, _ flat.NodeId) bool {
+	return false
+}
+
+pub fn (tc &TypeChecker) ownership_expr_creates_owned_value(_ flat.NodeId) bool {
+	return false
+}
+
+pub fn (tc &TypeChecker) ownership_fn_value_returns_owned(_ flat.NodeId, _ string, _ string) bool {
+	return false
+}
+
+pub fn (tc &TypeChecker) ownership_default_clone_missing_method(_ Type) ?string {
+	return none
+}
+
 pub fn (mut tc TypeChecker) inherit_ownership_codegen_metadata_from(_ &TypeChecker) {}

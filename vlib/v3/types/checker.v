@@ -2103,7 +2103,20 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 	if tc.unqualified_type_symbol_is_builtin(name) {
 		return name
 	}
-	return tc.cur_module + '.' + name
+	qualified := tc.cur_module + '.' + name
+	if qualified in tc.structs || qualified in tc.interface_names || qualified in tc.sum_types
+		|| qualified in tc.enum_names || qualified in tc.flag_enums || qualified in tc.type_aliases {
+		return qualified
+	}
+	// A concrete generic argument can originate in another module and then be
+	// substituted into a generic declaration while that declaration's module is
+	// active. Preserve an already-known unqualified symbol (notably a `main`
+	// type) instead of incorrectly rebasing it into the generic's module.
+	if name in tc.structs || name in tc.interface_names || name in tc.sum_types
+		|| name in tc.enum_names || name in tc.flag_enums || name in tc.type_aliases {
+		return name
+	}
+	return qualified
 }
 
 // qualify_resolution_type_name qualifies a type name for RESOLUTION (not
@@ -8132,12 +8145,14 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.reject_stored_method_value(tc.a.child(&node, i))
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, i))
 		}
+		tc.check_ownership_array_spread_clone(id, node)
 	} else if node.kind == .map_init {
 		// children alternate key, value, key, value, ...; check the value positions.
 		for j := 1; j < node.children_count; j += 2 {
 			tc.reject_stored_method_value(tc.a.child(&node, j))
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, j))
 		}
+		tc.check_ownership_map_spread_clone(id, node)
 	} else if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
 		if unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array {
 			tc.reject_stored_method_value(tc.a.child(&node, 1))
@@ -8204,6 +8219,47 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			value_id := tc.a.child(&node, 1)
 			tc.ownership_consume_expr(value_id, 'channel send', id)
 		}
+	}
+}
+
+fn (mut tc TypeChecker) check_ownership_array_spread_clone(id flat.NodeId, node flat.Node) {
+	mut has_spread := false
+	for i in 0 .. node.children_count {
+		child := tc.a.child_node(&node, i)
+		if child.kind == .prefix && child.value == '...' && child.children_count > 0 {
+			has_spread = true
+			break
+		}
+	}
+	if !has_spread {
+		return
+	}
+	array_type := array_type_from_receiver(tc.resolve_type(id)) or { return }
+	if bad_type := tc.ownership_default_clone_missing_method(array_type.elem_type) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot clone array spread elements: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			id)
+	}
+}
+
+fn (mut tc TypeChecker) check_ownership_map_spread_clone(id flat.NodeId, node flat.Node) {
+	if node.children_count == 0 {
+		return
+	}
+	first := tc.a.child_node(&node, 0)
+	if first.kind != .prefix || first.value != '...' || first.children_count == 0 {
+		return
+	}
+	map_type := map_type_from_receiver(tc.resolve_type(id)) or { return }
+	if bad_type := tc.ownership_default_clone_missing_method(map_type.key_type) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot clone map spread keys: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			id)
+	}
+	if bad_type := tc.ownership_default_clone_missing_method(map_type.value_type) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot clone map spread values: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			id)
 	}
 }
 
@@ -9398,10 +9454,22 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 					container_id)
 			}
 		}
+		$if ownership ? {
+			if node.op != .amp {
+				tc.check_for_in_binding_clones(clean, key_id, val_id, has_val)
+			}
+			if clean is Map && tc.for_in_body_contains_map_delete(node, header, container_id) {
+				tc.check_map_delete_snapshot_clones(clean, container_id)
+			}
+		}
 	}
 	$if ownership ? {
 		tc.ownership_begin_loop_branch_group()
-		tc.ownership_bind_for_in_vars(key_id, val_id, container_id, has_val)
+		if node.op != .amp {
+			tc.ownership_bind_for_in_vars(key_id, val_id, container_id, has_val)
+		} else {
+			tc.ownership_bind_mut_for_in_var(key_id, val_id, container_id, has_val)
+		}
 	}
 	for i in header .. node.children_count {
 		tc.check_stmt_node(tc.a.child(&node, i))
@@ -9414,6 +9482,111 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.ownership_end_branch_group()
 	}
 	tc.pop_scope()
+}
+
+fn (tc &TypeChecker) for_in_body_contains_map_delete(node flat.Node, body_start int, container_id flat.NodeId) bool {
+	container_key := tc.for_in_map_storage_key(container_id)
+	if container_key.len == 0 {
+		return false
+	}
+	for i in body_start .. node.children_count {
+		if tc.for_in_node_contains_map_delete(tc.a.child(&node, i), container_key) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) for_in_node_contains_map_delete(id flat.NodeId, container_key string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return false
+	}
+	if node.kind == .call && node.children_count > 0 {
+		fn_node := tc.a.child_node(&node, 0)
+		if fn_node.kind == .selector && fn_node.value == 'delete' && fn_node.children_count > 0 {
+			receiver_id := tc.a.child(fn_node, 0)
+			if tc.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
+		}
+		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete']
+			&& node.children_count > 1 {
+			receiver_id := tc.a.child(&node, 1)
+			if tc.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if tc.for_in_node_contains_map_delete(tc.a.child(&node, i), container_key) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) for_in_map_storage_key(id flat.NodeId) string {
+	if !tc.valid_node_id(id) {
+		return ''
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && node.children_count > 0 {
+		return tc.for_in_map_storage_key(tc.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.op in [.amp, .mul] && node.children_count > 0 {
+		return tc.for_in_map_storage_key(tc.a.child(&node, 0))
+	}
+	return tc.expr_key(id)
+}
+
+fn (mut tc TypeChecker) check_map_delete_snapshot_clones(map_type Map, pos flat.NodeId) {
+	if bad_type := tc.ownership_default_clone_missing_method(map_type.key_type) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot snapshot map keys for iteration with delete: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			pos)
+	}
+	if bad_type := tc.ownership_default_clone_missing_method(map_type.value_type) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot snapshot map values for iteration with delete: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			pos)
+	}
+}
+
+fn (mut tc TypeChecker) check_for_in_binding_clones(container Type, key_id flat.NodeId, val_id flat.NodeId, has_val bool) {
+	match container {
+		Array {
+			target_id := if has_val { val_id } else { key_id }
+			tc.check_for_in_binding_clone(target_id, container.elem_type, 'array element')
+		}
+		ArrayFixed {
+			target_id := if has_val { val_id } else { key_id }
+			tc.check_for_in_binding_clone(target_id, container.elem_type, 'fixed-array element')
+		}
+		Map {
+			if has_val {
+				tc.check_for_in_binding_clone(key_id, container.key_type, 'map key')
+				tc.check_for_in_binding_clone(val_id, container.value_type, 'map value')
+			} else {
+				tc.check_for_in_binding_clone(key_id, container.value_type, 'map value')
+			}
+		}
+		else {}
+	}
+}
+
+fn (mut tc TypeChecker) check_for_in_binding_clone(target_id flat.NodeId, typ Type, role string) {
+	if !tc.valid_node_id(target_id) || tc.a.nodes[int(target_id)].value == '_' {
+		return
+	}
+	if bad_type := tc.ownership_default_clone_missing_method(typ) {
+		tc.record_error(.call_arg_mismatch,
+			'cannot iterate over ownership-bearing ${role}: `${bad_type}` requires ownership destruction but has no `clone()` method',
+			target_id)
+	}
 }
 
 fn (mut tc TypeChecker) check_storage_path_base_node(id flat.NodeId) {
@@ -10659,6 +10832,9 @@ fn (mut tc TypeChecker) check_assign(id flat.NodeId, node flat.Node) {
 				'cannot assign `${rhs_type.name()}` to `${expected_type.name()}`', id)
 		}
 		$if ownership ? {
+			tc.check_ownership_map_assignment_key(lhs_id, node.op)
+			tc.check_ownership_uncloneable_overlapping_map_assignment(lhs_id, rhs_id, lhs_type,
+				node.op, id)
 			ownership_lhs_ids << lhs_id
 			ownership_rhs_ids << rhs_id
 			ownership_lhs_types << lhs_type
@@ -12762,6 +12938,11 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				return tc.call_info(mname, true)
 			}
 			if fn_node.value in ['clone', 'reverse'] {
+				if bad_type := tc.ownership_default_clone_missing_method(clean_array.elem_type) {
+					tc.record_error(.call_arg_mismatch,
+						'cannot ${fn_node.value} array elements: `${bad_type}` requires ownership destruction but has no `clone()` method',
+						id)
+				}
 				return CallInfo{
 					name:         'array.${fn_node.value}'
 					params:       tarr1(base_type)
@@ -12772,7 +12953,6 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			}
 		}
 		if clean_map := map_type_from_receiver(clean) {
-			_ = clean_map
 			for mname in receiver_method_name_candidates(clean, fn_node.value, tc.cur_module) {
 				if checker_is_raw_collection_method_name(mname, 'map.') || mname !in tc.fn_ret_types {
 					continue
@@ -12784,6 +12964,16 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			}
 			match fn_node.value {
 				'clone' {
+					if bad_type := tc.ownership_default_clone_missing_method(clean_map.key_type) {
+						tc.record_error(.call_arg_mismatch,
+							'cannot clone map keys: `${bad_type}` requires ownership destruction but has no `clone()` method',
+							id)
+					}
+					if bad_type := tc.ownership_default_clone_missing_method(clean_map.value_type) {
+						tc.record_error(.call_arg_mismatch,
+							'cannot clone map values: `${bad_type}` requires ownership destruction but has no `clone()` method',
+							id)
+					}
 					return CallInfo{
 						name:         ''
 						params:       tarr1(base_type)
@@ -12797,6 +12987,11 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		}
 		if clean_map := map_type_from_receiver(clean) {
 			if fn_node.value == 'keys' {
+				if bad_type := tc.ownership_default_clone_missing_method(clean_map.key_type) {
+					tc.record_error(.call_arg_mismatch,
+						'cannot return independent map keys: `${bad_type}` requires ownership destruction but has no `clone()` method',
+						id)
+				}
 				return CallInfo{
 					name:         'map.keys'
 					params:       tarr1(base_type)
@@ -12808,6 +13003,11 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				}
 			}
 			if fn_node.value == 'values' {
+				if bad_type := tc.ownership_default_clone_missing_method(clean_map.value_type) {
+					tc.record_error(.call_arg_mismatch,
+						'cannot return independent map values: `${bad_type}` requires ownership destruction but has no `clone()` method',
+						id)
+				}
 				return CallInfo{
 					name:         'map.values'
 					params:       tarr1(base_type)
@@ -12829,6 +13029,13 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		if clean_array := array_like_type_for_method(clean, fn_node.value) {
 			match fn_node.value {
 				'first', 'last', 'pop', 'pop_left' {
+					if fn_node.value in ['first', 'last'] {
+						if bad_type := tc.ownership_default_clone_missing_method(clean_array.elem_type) {
+							tc.record_error(.call_arg_mismatch,
+								'cannot return an independent array element: `${bad_type}` requires ownership destruction but has no `clone()` method',
+								id)
+						}
+					}
 					return CallInfo{
 						name:         ''
 						params:       tarr1(base_type)
@@ -12877,6 +13084,11 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'repeat' {
+					if bad_type := tc.ownership_default_clone_missing_method(clean_array.elem_type) {
+						tc.record_error(.call_arg_mismatch,
+							'cannot repeat array elements: `${bad_type}` requires ownership destruction but has no `clone()` method',
+							id)
+					}
 					return CallInfo{
 						name:         'array.repeat_to_depth'
 						params:       tarr2(base_type, Type(int_))
@@ -12931,6 +13143,15 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'filter' {
+					$if ownership ? {
+						tc.check_array_dsl_fn_borrows_element(node, clean_array.elem_type, id,
+							'array.filter predicate')
+					}
+					if bad_type := tc.ownership_default_clone_missing_method(clean_array.elem_type) {
+						tc.record_error(.call_arg_mismatch,
+							'cannot filter array elements: `${bad_type}` requires ownership destruction but has no `clone()` method',
+							id)
+					}
 					// filtering a fixed array yields a dynamic array
 					filter_ret := if receiver_is_fixed_array(clean) {
 						Type(Array{
@@ -12949,6 +13170,17 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				}
 				'map' {
 					elem_type := tc.array_map_return_elem_type(node)
+					$if ownership ? {
+						tc.check_array_dsl_fn_borrows_element(node, clean_array.elem_type, id,
+							'array.map mapper')
+					}
+					if tc.array_map_result_borrows_element(node) {
+						if bad_type := tc.ownership_default_clone_missing_method(elem_type) {
+							tc.record_error(.call_arg_mismatch,
+								'cannot clone borrowed array.map result: `${bad_type}` requires ownership destruction but has no `clone()` method',
+								id)
+						}
+					}
 					return CallInfo{
 						name:         'array.map'
 						params:       tarr2(base_type, elem_type)
@@ -12960,6 +13192,10 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'any', 'all' {
+					$if ownership ? {
+						tc.check_array_dsl_fn_borrows_element(node, clean_array.elem_type, id,
+							'array.${fn_node.value} predicate')
+					}
 					return CallInfo{
 						name:         'array.${fn_node.value}'
 						params:       tarr2(base_type, Type(bool_))
@@ -12969,6 +13205,10 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 					}
 				}
 				'count' {
+					$if ownership ? {
+						tc.check_array_dsl_fn_borrows_element(node, clean_array.elem_type, id,
+							'array.count predicate')
+					}
 					return CallInfo{
 						name:         'array.count'
 						params:       tarr2(base_type, Type(bool_))
@@ -13231,6 +13471,11 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			}
 		}
 		if fn_node.value == 'clone' && tc.type_has_compiler_default_clone(clean) {
+			if bad_type := tc.ownership_default_clone_missing_method(clean) {
+				tc.record_error(.call_arg_mismatch,
+					'cannot generate default clone for `${clean.name()}`: `${bad_type}` requires ownership destruction but has no `clone()` method',
+					id)
+			}
 			// `#[derive(Clone)]` in Rust maps to `implements IClone` in the ownership
 			// translation, whose `clone()` is compiler-provided. V structs are value types,
 			// so `.clone()` yields a copy of the receiver: resolve it to the (unwrapped)
@@ -15424,6 +15669,51 @@ fn (mut tc TypeChecker) array_map_return_elem_type(node flat.Node) Type {
 	return elem_type
 }
 
+// array_map_result_borrows_element reports whether a mapper result must be made
+// independent before its source array is destroyed. Opaque function values are handled
+// conservatively because their body cannot be inspected at the call site.
+fn (tc &TypeChecker) array_map_result_borrows_element(node flat.Node) bool {
+	if node.children_count < 2 {
+		return false
+	}
+	arg_id := tc.call_arg_value(tc.a.child(&node, 1))
+	arg := tc.a.nodes[int(arg_id)]
+	if arg.kind == .fn_literal {
+		return true
+	}
+	mut body_id := arg_id
+	mut elem_name := 'it'
+	if arg.kind == .lambda_expr && arg.children_count > 0 {
+		body_id = tc.a.child(&arg, arg.children_count - 1)
+		if arg.children_count > 1 {
+			param := tc.a.child_node(&arg, 0)
+			if param.kind == .ident && param.value.len > 0 {
+				elem_name = param.value
+			}
+		}
+	} else if _ := fn_type_from_type(tc.resolve_type(arg_id)) {
+		return true
+	}
+	return tc.array_map_expr_references_ident(body_id, elem_name)
+		&& !tc.ownership_expr_creates_owned_value(body_id)
+}
+
+fn (tc &TypeChecker) array_map_expr_references_ident(id flat.NodeId, name string) bool {
+	if !tc.valid_node_id(id) || name.len == 0 {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .ident && node.value == name {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if tc.array_map_expr_references_ident(tc.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (tc &TypeChecker) array_contains_elem_type(base_node flat.Node, array_type Array) Type {
 	if base_node.kind == .selector && base_node.value == 'args' && base_node.children_count > 0 {
 		parent := tc.a.child_node(&base_node, 0)
@@ -15706,9 +15996,16 @@ fn (mut tc TypeChecker) push_array_dsl_scope(node flat.Node, name string) {
 	if is_array_sort_dsl_call_name(name) {
 		tc.cur_scope.insert('a', arr.elem_type)
 		tc.cur_scope.insert('b', arr.elem_type)
+		$if ownership ? {
+			tc.ownership_bind_array_dsl_element(node, 'a', arr.elem_type)
+			tc.ownership_bind_array_dsl_element(node, 'b', arr.elem_type)
+		}
 		return
 	}
 	tc.cur_scope.insert('it', arr.elem_type)
+	$if ownership ? {
+		tc.ownership_bind_array_dsl_element(node, 'it', arr.elem_type)
+	}
 }
 
 fn is_array_sort_dsl_call_name(name string) bool {
@@ -20896,6 +21193,26 @@ fn generic_type_suffix_for_signature(args []string) string {
 
 fn generic_type_arg_short_for_signature(type_arg string) string {
 	clean := type_arg.trim_space()
+	if clean.starts_with('[]') {
+		return 'Array_${generic_type_arg_short_for_signature(clean[2..])}'
+	}
+	if clean.starts_with('&') {
+		return 'ptr_${generic_type_arg_short_for_signature(clean[1..])}'
+	}
+	if clean.starts_with('map[') {
+		bracket_end := find_matching_bracket(clean, 3)
+		if bracket_end < clean.len - 1 {
+			key := generic_type_arg_short_for_signature(clean[4..bracket_end])
+			value := generic_type_arg_short_for_signature(clean[bracket_end + 1..])
+			return 'Map_${key}_${value}'
+		}
+	}
+	if clean.starts_with('?') {
+		return 'Option_${generic_type_arg_short_for_signature(clean[1..])}'
+	}
+	if clean.starts_with('!') {
+		return 'Result_${generic_type_arg_short_for_signature(clean[1..])}'
+	}
 	if clean.contains('.') {
 		return clean
 	}
@@ -21516,6 +21833,12 @@ fn (tc &TypeChecker) struct_fields_for_init(struct_name string) []StructField {
 		}
 	}
 	return concrete_fields
+}
+
+// struct_fields_for_type returns the fields of `struct_name`, with generic
+// parameters substituted when `struct_name` is a concrete generic instance.
+pub fn (tc &TypeChecker) struct_fields_for_type(struct_name string) []StructField {
+	return tc.struct_fields_for_init(struct_name)
 }
 
 fn (tc &TypeChecker) struct_field_type(struct_name string, field_name string) ?Type {

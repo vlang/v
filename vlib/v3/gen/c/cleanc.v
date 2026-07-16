@@ -5109,12 +5109,34 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 	ct := g.tc.c_type(sum_type0)
 	idx := g.sum_type_index(sum_name, variant)
 	field := g.sum_field_name(variant)
+	variant_type := g.tc.parse_type(variant)
+	clean_variant_type := select_receive_unalias_type(variant_type)
+	if clean_variant_type is types.Pointer && actual_type is types.Pointer
+		&& g.type_names_match(actual_type.base_type, clean_variant_type.base_type) {
+		g.write('(${ct}){.typ = ${idx}, .${field} = ')
+		if g.pointer_variant_expr_needs_heap_copy(id) {
+			pointer_ct := g.value_c_type(clean_variant_type.base_type)
+			g.write('(${pointer_ct}*)memdup(')
+			g.gen_expr(id)
+			g.write(', sizeof(${pointer_ct}))')
+		} else {
+			g.gen_expr(id)
+		}
+		if g.pointer_variant_expr_creates_owned_value(id) {
+			g.write(', ._pointer_variant_is_owned = true')
+		}
+		g.write('}')
+		return true
+	}
 	if g.variant_references_sum(variant, sum_name) {
-		inner_type := g.tc.parse_type(variant)
-		inner_ct := g.value_c_type(inner_type)
+		inner_ct := g.value_c_type(variant_type)
 		g.write('(${ct}){.typ = ${idx}, .${field} = (${inner_ct}*)memdup(')
-		g.gen_sum_variant_memdup_source(id, inner_type)
-		g.write(', sizeof(${inner_ct}))}')
+		g.gen_sum_variant_memdup_source(id, variant_type)
+		g.write(', sizeof(${inner_ct}))')
+		if clean_variant_type is types.Pointer && g.pointer_variant_expr_creates_owned_value(id) {
+			g.write(', ._pointer_variant_is_owned = true')
+		}
+		g.write('}')
 		return true
 	}
 	g.write('(${ct}){.typ = ${idx}, .${field} = ')
@@ -5256,18 +5278,24 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 	field := g.sum_field_name(variant_name)
 	ct := g.tc.c_type(target_type)
 	variant_type := g.tc.parse_type(variant_name)
-	variant_is_pointer_arg := actual_type is types.Pointer
-		&& g.type_names_match(actual_type.base_type, variant_type)
+	clean_variant_type := select_receive_unalias_type(variant_type)
+	variant_is_pointer := clean_variant_type is types.Pointer
+	variant_is_pointer_arg := actual_type is types.Pointer && clean_variant_type is types.Pointer
+		&& g.type_names_match(actual_type.base_type, clean_variant_type.base_type)
 	if g.variant_references_sum(variant_name, target_type.name) {
 		inner_ct := g.value_c_type(variant_type)
 		if variant_is_pointer_arg {
 			g.write('(${ct}){.typ = ${idx}, .${field} = ')
-			if g.pointer_variant_arg_needs_heap_copy(inner) {
-				g.write('(${inner_ct}*)memdup(')
+			if g.pointer_variant_expr_needs_heap_copy(inner_id) {
+				pointer_ct := g.value_c_type(clean_variant_type.base_type)
+				g.write('(${pointer_ct}*)memdup(')
 				g.gen_expr(inner_id)
-				g.write(', sizeof(${inner_ct}))')
+				g.write(', sizeof(${pointer_ct}))')
 			} else {
 				g.gen_expr(inner_id)
+			}
+			if variant_is_pointer && g.pointer_variant_expr_creates_owned_value(inner_id) {
+				g.write(', ._pointer_variant_is_owned = true')
 			}
 			g.write('}')
 		} else if inner.kind == .struct_init
@@ -5296,7 +5324,11 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 		} else {
 			g.write('(${ct}){.typ = ${idx}, .${field} = (${inner_ct}*)memdup(')
 			g.gen_sum_variant_memdup_source(inner_id, variant_type)
-			g.write(', sizeof(${inner_ct}))}')
+			g.write(', sizeof(${inner_ct}))')
+			if variant_is_pointer && g.pointer_variant_expr_creates_owned_value(inner_id) {
+				g.write(', ._pointer_variant_is_owned = true')
+			}
+			g.write('}')
 		}
 	} else {
 		g.write('(${ct}){.typ = ${idx}, .${field} = ')
@@ -5340,6 +5372,47 @@ fn (g &FlatGen) pointer_variant_arg_needs_heap_copy(node flat.Node) bool {
 	}
 	if _ := g.tc.cur_scope.lookup(child.value) {
 		return true
+	}
+	return false
+}
+
+fn (g &FlatGen) pointer_variant_expr_needs_heap_copy(id flat.NodeId) bool {
+	mut expr_id := id
+	for int(expr_id) >= 0 && int(expr_id) < g.a.nodes.len {
+		node := g.a.nodes[int(expr_id)]
+		if node.kind in [.paren, .expr_stmt, .cast_expr] && node.children_count > 0 {
+			expr_id = g.a.child(&node, 0)
+			continue
+		}
+		return g.pointer_variant_arg_needs_heap_copy(node)
+	}
+	return false
+}
+
+// pointer_variant_expr_creates_owned_value reports pointer expressions whose pointee is
+// independently owned by the sum. Borrowed call/selector results remain unmarked.
+fn (g &FlatGen) pointer_variant_expr_creates_owned_value(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	if g.tc.ownership_expr_creates_owned_value(id) {
+		return true
+	}
+	mut expr_id := id
+	for int(expr_id) >= 0 {
+		node := g.a.nodes[int(expr_id)]
+		if node.kind in [.paren, .expr_stmt, .cast_expr] && node.children_count > 0 {
+			expr_id = g.a.child(&node, 0)
+			continue
+		}
+		if g.pointer_variant_expr_needs_heap_copy(expr_id) {
+			return true
+		}
+		if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
+			return false
+		}
+		child := g.a.child_node(&node, 0)
+		return child.kind in [.struct_init, .assoc, .array_init, .array_literal]
 	}
 	return false
 }
@@ -6501,8 +6574,12 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				idx := g.sum_type_index(target_type.name, variant_name)
 				field := g.sum_field_name(variant_name)
 				inner_val := g.const_expr_to_string(inner_id, seen)
-				inner_ct := g.value_c_type(g.tc.parse_type(variant_name))
 				payload := if trimmed_space(inner_val).len == 0 { '0' } else { inner_val }
+				variant_type := select_receive_unalias_type(g.tc.parse_type(variant_name))
+				if variant_type is types.Pointer {
+					return '(${ct}){.typ = ${idx}, .${field} = ${payload}}'
+				}
+				inner_ct := g.value_c_type(variant_type)
 				return '(${ct}){.typ = ${idx}, .${field} = (${inner_ct}[]){${payload}}}'
 			}
 			if ct == 'map*' {

@@ -55,7 +55,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 			}
 		}
 		g.gen_defers_from(defer_start)
-		if !then_scope_drops_consumed {
+		if !cur.skip_ownership_drops && !then_scope_drops_consumed {
 			g.gen_scope_ownership_drop_count(then_scope_drop_prefix_count)
 			g.gen_scope_ownership_drops()
 		}
@@ -109,7 +109,7 @@ fn (mut g FlatGen) gen_if(node flat.Node) {
 				else_scope_drops_consumed = true
 			}
 			g.gen_defers_from(else_defer_start)
-			if !else_scope_drops_consumed {
+			if !cur.skip_ownership_drops && !else_scope_drops_consumed {
 				g.gen_scope_ownership_drop_count(else_scope_drop_prefix_count)
 				g.gen_scope_ownership_drops()
 			}

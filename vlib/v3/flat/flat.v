@@ -171,10 +171,11 @@ pub mut:
 	is_mut         bool
 	children_start i32
 pub:
-	pos            token.Pos
-	children_count i32
-	kind           NodeKind
-	op             Op
+	pos                  token.Pos
+	children_count       i32
+	kind                 NodeKind
+	op                   Op
+	skip_ownership_drops bool
 }
 
 // generic_params returns this node's uncommon generic/attribute metadata.
@@ -517,30 +518,32 @@ pub fn (mut a FlatAst) add_val_id(kind_id int, value string) NodeId {
 // a fresh node instead of mutating in place.
 pub fn (n Node) with_shifted_children(shift i32) Node {
 	return Node{
-		value:          n.value
-		typ:            n.typ
-		payload:        n.payload
-		pos:            n.pos
-		children_start: n.children_start + shift
-		children_count: n.children_count
-		kind:           n.kind
-		op:             n.op
-		is_mut:         n.is_mut
+		value:                n.value
+		typ:                  n.typ
+		payload:              n.payload
+		pos:                  n.pos
+		children_start:       n.children_start + shift
+		children_count:       n.children_count
+		kind:                 n.kind
+		op:                   n.op
+		is_mut:               n.is_mut
+		skip_ownership_drops: n.skip_ownership_drops
 	}
 }
 
 // with_pos returns a copy of the node with source position `pos`.
 pub fn (n Node) with_pos(pos token.Pos) Node {
 	return Node{
-		value:          n.value
-		typ:            n.typ
-		payload:        n.payload
-		pos:            pos
-		children_start: n.children_start
-		children_count: n.children_count
-		kind:           n.kind
-		op:             n.op
-		is_mut:         n.is_mut
+		value:                n.value
+		typ:                  n.typ
+		payload:              n.payload
+		pos:                  pos
+		children_start:       n.children_start
+		children_count:       n.children_count
+		kind:                 n.kind
+		op:                   n.op
+		is_mut:               n.is_mut
+		skip_ownership_drops: n.skip_ownership_drops
 	}
 }
 
