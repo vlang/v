@@ -6965,8 +6965,7 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 	}
 	target_ct := g.tc.c_type(types.unwrap_pointer(expected_type))
 	base_is_ptr := base_type is types.Pointer
-	base_node := g.a.nodes[int(base_id)]
-	if base_node.kind !in [.ident, .selector] {
+	if !g.interface_receiver_base_expr_is_reusable(base_id) {
 		source_ct := g.tc.c_type(base_type)
 		tmp := g.tmp_name()
 		g.write('({ ${source_ct} ${tmp} = ')
@@ -7009,6 +7008,20 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 	}
 	g.write('}')
 	return true
+}
+
+fn (g &FlatGen) interface_receiver_base_expr_is_reusable(base_id flat.NodeId) bool {
+	if int(base_id) < 0 || int(base_id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(base_id)]
+	if node.kind == .ident {
+		return true
+	}
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	return g.interface_receiver_base_expr_is_reusable(g.a.child(&node, 0))
 }
 
 fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, base_is_ptr bool, target_ct string, target_iface string, mappings []InterfaceReceiverIdMapping) {

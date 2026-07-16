@@ -3356,12 +3356,20 @@ fn make_alias() &Bare {
 		pa := make_param_alias(Bare{
 			x: 6
 		})
-		println(int_str(b.x + m.y + h.x + a.x + d.x + pa.x))
+		base := Bare{
+			x: 7
+		}
+		ha := &Bare{
+			...base
+			x: 8
+		}
+		println(int_str(b.x + m.y + h.x + a.x + d.x + pa.x + ha.x))
 		unsafe {
 			free(h)
 			free(a)
 			free(d)
 			free(pa)
+			free(ha)
 		}
 	}
 	'
@@ -3375,9 +3383,11 @@ fn make_alias() &Bare {
 	assert c_source.contains('v3_aligned_free(a)')
 	assert c_source.contains('v3_aligned_free(d)')
 	assert c_source.contains('v3_aligned_free(pa)')
+	assert c_source.contains('v3_aligned_free(ha)')
 	assert c_source.contains('v3_aligned_memdup(&x, sizeof(Bare), __alignof__(Bare))')
+	assert c_source.contains('v3_aligned_memdup(&__assoc_')
 	out := run_good(v3_bin, 'bare_aligned_attribute_cgen', source)
-	assert out == '21'
+	assert out == '29'
 }
 
 fn test_implicit_interface_str_dispatch_dereferences_pointer_scalar_fields() {
@@ -4492,8 +4502,60 @@ fn main() {
 	children := [make_child(9)]
 	println(int_str(take_base(children[0])))
 }
-')
+	')
 	assert out == '7\n8\n9'
+}
+
+fn test_selector_interface_upcast_caches_side_effectful_base() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'selector_interface_upcast_caches_side_effectful_base', 'interface Base {
+	value() int
+}
+
+interface Child {
+	Base
+	extra() int
+}
+
+struct Item {
+	n int
+}
+
+struct Holder {
+	child Child
+}
+
+__global (
+	calls int
+)
+
+fn (i Item) value() int {
+	return i.n
+}
+
+fn (i Item) extra() int {
+	return i.n + 100
+}
+
+fn next_holder() Holder {
+	calls = calls + 1
+	return Holder{
+		child: Child(Item{
+			n: calls
+		})
+	}
+}
+
+fn take_base(b Base) int {
+	return b.value()
+}
+
+fn main() {
+	println(int_str(take_base(next_holder().child)))
+	println(int_str(calls))
+}
+')
+	assert out == '1\n1'
 }
 
 fn test_non_generic_reflection_compile_error_waits_for_selected_branch() {

@@ -774,8 +774,7 @@ fn (mut t Transformer) transform_amp_assoc_expr_for_type(_id flat.NodeId, node f
 		return none
 	}
 	addr := t.make_prefix(.amp, value)
-	size := t.make_sizeof_type(value_type)
-	dup := t.make_call_typed('memdup', arr2(addr, size), 'voidptr')
+	dup := t.make_memdup_call_for_type(addr, value_type)
 	mut ptr_type := target_type
 	if ptr_type.len == 0 {
 		ptr_type = node.typ

@@ -3095,7 +3095,8 @@ fn (mut g FlatGen) gen_assoc_expr(node flat.Node) {
 // gen_heap_assoc_expr emits heap assoc expr output for c.
 fn (mut g FlatGen) gen_heap_assoc_expr(node flat.Node) {
 	target_name := g.assoc_target_type_name(node)
-	ct := g.tc.c_type(g.tc.parse_type(target_name))
+	target_type := g.tc.parse_type(target_name)
+	ct := g.tc.c_type(target_type)
 	tmp := g.tmp_name()
 	g.write('({')
 	g.gen_assoc_tmp_decl(node, tmp)
@@ -3112,7 +3113,36 @@ fn (mut g FlatGen) gen_heap_assoc_expr(node flat.Node) {
 			g.write(';')
 		}
 	}
-	g.write(' (${ct}*)memdup(&${tmp}, sizeof(${ct}));})')
+	if align := g.heap_assoc_struct_alignment(node, target_type, target_name, ct) {
+		align_arg := struct_decl_alignment_memdup_arg(align, ct)
+		g.write(' (${ct}*)v3_aligned_memdup(&${tmp}, sizeof(${ct}), ${align_arg});})')
+	} else {
+		g.write(' (${ct}*)memdup(&${tmp}, sizeof(${ct}));})')
+	}
+}
+
+fn (g &FlatGen) heap_assoc_struct_alignment(node flat.Node, target_type types.Type, target_name string, ct string) ?StructDeclAlignment {
+	mut names := []string{}
+	for name in [node.value, node.typ, target_name, types.unwrap_pointer(target_type).name(),
+		default_init_unalias_type(types.unwrap_pointer(target_type)).name(), ct] {
+		if name.len > 0 && name !in names {
+			names << name
+		}
+	}
+	if node.children_count > 0 {
+		source_type :=
+			default_init_unalias_type(types.unwrap_pointer(g.usable_expr_type(g.a.child(&node, 0))))
+		source_name := source_type.name()
+		if source_name.len > 0 && source_name !in names {
+			names << source_name
+		}
+	}
+	for name in names {
+		if align := g.struct_decl_alignment_for_name(name) {
+			return align
+		}
+	}
+	return none
 }
 
 fn (mut g FlatGen) gen_assoc_tmp_decl(node flat.Node, tmp string) {
