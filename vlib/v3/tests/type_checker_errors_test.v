@@ -1719,6 +1719,14 @@ fn test_pr_review_codegen_batch_twenty() {
 	iface_ok := run_good(v3_bin, 'good_interface_method_value_direct_callback', iface_mv +
 		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tr := Runner(Job{\n\t\tid: 7\n\t})\n\tprintln(int_str(invoke(r.run)))\n}\n')
 	assert iface_ok == '7'
+	iface_fn_literal_shadow := run_good(v3_bin,
+		'good_interface_method_value_fn_literal_shadow_scoped', iface_mv +
+		'fn plain() int {\n\treturn 11\n}\n\nfn outer(cb fn () int) fn () int {\n\t_ = fn () {\n\t\tr := Runner(Job{\n\t\t\tid: 5\n\t\t})\n\t\tcb := r.run\n\t\t_ = cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
+	assert iface_fn_literal_shadow == '11'
+	iface_lambda_shadow := run_good(v3_bin, 'good_interface_method_value_lambda_shadow_scoped',
+		iface_mv +
+		'fn plain() int {\n\treturn 13\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn outer(cb fn () int) fn () int {\n\tr := Runner(Job{\n\t\tid: 7\n\t})\n\tcall(|| {\n\t\tcb := r.run\n\t})\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
+	assert iface_lambda_shadow == '13'
 }
 
 fn test_pr_review_codegen_batch_twentyone() {

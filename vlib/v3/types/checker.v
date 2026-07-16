@@ -8687,6 +8687,8 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	mut saved_mut_param_owners := tc.cur_fn_mut_param_binding_owners.move()
 	mut saved_mut_local_owners := tc.cur_fn_mut_local_binding_owners.move()
 	mut saved_shared_owners := tc.cur_fn_shared_binding_owners.move()
+	mut saved_method_value_locals := tc.method_value_locals.move()
+	mut saved_method_value_local_depth := tc.method_value_local_depth.move()
 	mut saved_capturing_fn_literal_locals := tc.capturing_fn_literal_locals.move()
 	mut saved_capturing_fn_literal_local_owners := tc.capturing_fn_literal_local_owners.move()
 	mut saved_capturing_fn_literal_local_depth := tc.capturing_fn_literal_local_depth.move()
@@ -8694,6 +8696,8 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	tc.cur_fn_mut_param_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_mut_local_binding_owners = map[string]ScopeBindingOwner{}
 	tc.cur_fn_shared_binding_owners = map[string][]ScopeBindingOwner{}
+	tc.method_value_locals = map[string]bool{}
+	tc.method_value_local_depth = map[string]int{}
 	tc.capturing_fn_literal_locals = map[string]bool{}
 	tc.capturing_fn_literal_local_owners = map[string][]ScopeBindingOwner{}
 	tc.capturing_fn_literal_local_depth = map[string]int{}
@@ -8723,6 +8727,8 @@ fn (mut tc TypeChecker) check_fn_literal(node flat.Node) {
 	tc.cur_fn_mut_param_binding_owners = saved_mut_param_owners.move()
 	tc.cur_fn_mut_local_binding_owners = saved_mut_local_owners.move()
 	tc.cur_fn_shared_binding_owners = saved_shared_owners.move()
+	tc.method_value_locals = saved_method_value_locals.move()
+	tc.method_value_local_depth = saved_method_value_local_depth.move()
 	tc.capturing_fn_literal_locals = saved_capturing_fn_literal_locals.move()
 	tc.capturing_fn_literal_local_owners = saved_capturing_fn_literal_local_owners.move()
 	tc.capturing_fn_literal_local_depth = saved_capturing_fn_literal_local_depth.move()
@@ -8734,9 +8740,13 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 		return
 	}
 	expected_fn := tc.lambda_expected_fn_type(id)
+	mut saved_method_value_locals := tc.method_value_locals.move()
+	mut saved_method_value_local_depth := tc.method_value_local_depth.move()
 	mut saved_capturing_fn_literal_locals := tc.capturing_fn_literal_locals.move()
 	mut saved_capturing_fn_literal_local_owners := tc.capturing_fn_literal_local_owners.move()
 	mut saved_capturing_fn_literal_local_depth := tc.capturing_fn_literal_local_depth.move()
+	tc.method_value_locals = map[string]bool{}
+	tc.method_value_local_depth = map[string]int{}
 	tc.capturing_fn_literal_locals = map[string]bool{}
 	tc.capturing_fn_literal_local_owners = map[string][]ScopeBindingOwner{}
 	tc.capturing_fn_literal_local_depth = map[string]int{}
@@ -8765,6 +8775,8 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 	$if ownership ? {
 		tc.ownership_end_fn()
 	}
+	tc.method_value_locals = saved_method_value_locals.move()
+	tc.method_value_local_depth = saved_method_value_local_depth.move()
 	tc.capturing_fn_literal_locals = saved_capturing_fn_literal_locals.move()
 	tc.capturing_fn_literal_local_owners = saved_capturing_fn_literal_local_owners.move()
 	tc.capturing_fn_literal_local_depth = saved_capturing_fn_literal_local_depth.move()
