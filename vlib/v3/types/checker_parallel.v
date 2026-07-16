@@ -7,6 +7,7 @@ import v3.workers
 
 const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
+const scoped_check_worker_batches = 8
 // Extra share of the total work (in percent of an even bucket) pre-assigned to
 // the master's bucket; see split_check_items.
 const check_master_bias_pct = i64(60)
@@ -34,9 +35,51 @@ $if !windows {
 		a.scope = check_worker_scope_begin(a.scope_enabled)
 		mut w := unsafe { &TypeChecker(a.worker) }
 		items := unsafe { &[]CheckWorkItem(a.items_ptr) }
-		w.check_fn_items_serial(*items)
+		if a.scope_enabled {
+			w.check_scoped_batches(*items)
+		} else {
+			w.check_fn_items_serial(*items)
+		}
 		check_worker_scope_leave(a.scope)
 		return unsafe { nil }
+	}
+}
+
+// check_scoped_batches bounds each worker's temporary type-resolution state.
+// The receiver is a result accumulator; every batch uses a fresh checker fork,
+// then promotes only observable cache entries and diagnostics before its arena
+// is released.
+fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem) {
+	if items.len == 0 {
+		return
+	}
+	n_batches := if items.len < scoped_check_worker_batches {
+		items.len
+	} else {
+		scoped_check_worker_batches
+	}
+	mut total_cost := i64(0)
+	for item in items {
+		total_cost += i64(item.cost) + 1
+	}
+	mut start := 0
+	mut consumed_cost := i64(0)
+	for batch_idx in 0 .. n_batches {
+		mut end := start
+		target_cost := total_cost * i64(batch_idx + 1) / i64(n_batches)
+		for end < items.len
+			&& (batch_idx == n_batches - 1 || consumed_cost < target_cost || end == start) {
+			consumed_cost += i64(items[end].cost) + 1
+			end++
+		}
+		scratch_scope := check_worker_scope_begin(true)
+		mut batch := tc.fork_for_parallel_check()
+		batch.check_fn_items_serial(items[start..end])
+		check_worker_scope_leave(scratch_scope)
+		tc.clone_parallel_worker_node_caches(items[start..end])
+		tc.merge_parallel_check_worker_scoped(batch, true)
+		check_worker_scope_free(scratch_scope)
+		start = end
 	}
 }
 
@@ -205,21 +248,23 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		chunk_count := chunks.len
 		thread_count := chunk_count - 1
 		setup_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
-		mut checker_workers := []voidptr{cap: thread_count}
-		for _ in 0 .. thread_count {
+		worker_count := if tc.scope_parallel_check_workers { chunk_count } else { thread_count }
+		mut checker_workers := []voidptr{cap: worker_count}
+		for _ in 0 .. worker_count {
 			w := tc.fork_for_parallel_check()
 			checker_workers << voidptr(w)
 		}
 		mut args := []CheckChunkArgs{cap: chunk_count}
-		args << CheckChunkArgs{
-			worker:        voidptr(tc)
-			items_ptr:     unsafe { voidptr(&chunks[0]) }
-			scope_enabled: false
-		}
-		for ci in 0 .. thread_count {
+		for ci in 0 .. chunk_count {
+			mut worker := voidptr(tc)
+			if tc.scope_parallel_check_workers {
+				worker = checker_workers[ci]
+			} else if ci > 0 {
+				worker = checker_workers[ci - 1]
+			}
 			args << CheckChunkArgs{
-				worker:        checker_workers[ci]
-				items_ptr:     unsafe { voidptr(&chunks[ci + 1]) }
+				worker:        worker
+				items_ptr:     unsafe { voidptr(&chunks[ci]) }
 				scope_enabled: tc.scope_parallel_check_workers
 			}
 		}
@@ -228,7 +273,7 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		// master owns those slots), out-of-range ones into its sparse maps, which
 		// are replayed first after join so that worker merges overwrite them in
 		// the same order the old serial flow did.
-		tc.parallel_check_sparse = true
+		tc.parallel_check_sparse = !tc.scope_parallel_check_workers
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		mut tasks := []workers.Task{cap: chunk_count}
 		for ci in 0 .. chunk_count {
@@ -241,17 +286,21 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
 		}
 		check_worker_scope_leave(setup_scope)
 		any_started := ast.worker_pool.run(tasks)
-		tc.merge_own_sparse_caches()
+		if !tc.scope_parallel_check_workers {
+			tc.merge_own_sparse_caches()
+		}
 		tc.parallel_check_sparse = false
-		for ci in 0 .. thread_count {
-			mut w := unsafe { &TypeChecker(checker_workers[ci]) }
-			scoped := args[ci + 1].scope != unsafe { nil }
+		merge_start := if tc.scope_parallel_check_workers { 0 } else { 1 }
+		for ci in merge_start .. chunk_count {
+			worker_idx := if tc.scope_parallel_check_workers { ci } else { ci - 1 }
+			mut w := unsafe { &TypeChecker(checker_workers[worker_idx]) }
+			scoped := args[ci].scope != unsafe { nil }
 			if scoped {
-				tc.clone_parallel_worker_node_caches(chunks[ci + 1])
+				tc.clone_parallel_worker_node_caches(chunks[ci])
 			}
 			tc.merge_parallel_check_worker_scoped(w, scoped)
 			if scoped {
-				check_worker_scope_free(args[ci + 1].scope)
+				check_worker_scope_free(args[ci].scope)
 			} else {
 				w.free_parallel_check_worker_cache()
 			}

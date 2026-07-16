@@ -450,6 +450,250 @@ fn clone_string_list(values []string) []string {
 	return cloned
 }
 
+// clone_string_bool_map promotes a string-keyed set out of a disposable stage arena.
+fn clone_string_bool_map(values map[string]bool) map[string]bool {
+	mut cloned := map[string]bool{}
+	for key, value in values {
+		cloned[key.clone()] = value
+	}
+	return cloned
+}
+
+fn scoped_value_owned(scope voidptr, ptr voidptr) bool {
+	$if prealloc {
+		return unsafe { prealloc_scope_owns(scope, ptr) }
+	}
+	return false
+}
+
+fn promote_scoped_node(mut node flat.Node, scope voidptr) {
+	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
+		node.value = node.value.clone()
+	}
+	if node.typ.len > 0 && scoped_value_owned(scope, node.typ.str) {
+		node.typ = node.typ.clone()
+	}
+	old_params := node.generic_params()
+	if old_params.len == 0 {
+		return
+	}
+	mut needs_promotion := scoped_value_owned(scope, node.payload)
+		|| scoped_value_owned(scope, old_params.data)
+	if !needs_promotion {
+		for param in old_params {
+			if param.len > 0 && scoped_value_owned(scope, param.str) {
+				needs_promotion = true
+				break
+			}
+		}
+	}
+	if !needs_promotion {
+		return
+	}
+	mut params := []string{cap: old_params.len}
+	for param in old_params {
+		params << if param.len > 0 && scoped_value_owned(scope, param.str) {
+			param.clone()
+		} else {
+			param
+		}
+	}
+	node.set_generic_params(params)
+}
+
+fn promote_scoped_ast_nodes(mut ast flat.FlatAst, base_nodes int, new_end int, owned_base_nodes []int, scope voidptr) {
+	for idx in owned_base_nodes {
+		if idx >= 0 && idx < base_nodes && idx < ast.nodes.len {
+			promote_scoped_node(mut ast.nodes[idx], scope)
+		}
+	}
+	limit := if new_end < ast.nodes.len { new_end } else { ast.nodes.len }
+	for idx in base_nodes .. limit {
+		promote_scoped_node(mut ast.nodes[idx], scope)
+	}
+}
+
+fn canonicalize_scoped_node(mut ast flat.FlatAst, idx int, scope voidptr) {
+	if idx < 0 || idx >= ast.nodes.len {
+		return
+	}
+	mut node := unsafe { &ast.nodes[idx] }
+	if node.value.len > 0 && scoped_value_owned(scope, node.value.str) {
+		_, node.value = ast.intern_text(node.value)
+	}
+	if node.typ.len > 0 && scoped_value_owned(scope, node.typ.str) {
+		_, node.typ = ast.intern_text(node.typ)
+	}
+	old_params := node.generic_params()
+	if old_params.len == 0 {
+		return
+	}
+	mut needs_params := scoped_value_owned(scope, node.payload)
+		|| scoped_value_owned(scope, old_params.data)
+	if !needs_params {
+		for param in old_params {
+			if param.len > 0 && scoped_value_owned(scope, param.str) {
+				needs_params = true
+				break
+			}
+		}
+	}
+	if !needs_params {
+		return
+	}
+	mut params := []string{cap: old_params.len}
+	for param in old_params {
+		if param.len > 0 && scoped_value_owned(scope, param.str) {
+			_, canonical := ast.intern_text(param)
+			params << canonical
+		} else {
+			params << param
+		}
+	}
+	node.set_generic_params(params)
+}
+
+fn canonicalize_scoped_transform_region(mut ast flat.FlatAst, region transform.ScopedTransformRegion) {
+	canonicalize_scoped_transform_region_from_scope(mut ast, region, region.scope)
+}
+
+fn canonicalize_scoped_transform_region_from_scope(mut ast flat.FlatAst, region transform.ScopedTransformRegion, scope voidptr) {
+	for idx in region.base_nodes {
+		canonicalize_scoped_node(mut ast, idx, scope)
+	}
+	limit := if region.new_end < ast.nodes.len { region.new_end } else { ast.nodes.len }
+	for idx in region.new_start .. limit {
+		canonicalize_scoped_node(mut ast, idx, scope)
+	}
+}
+
+fn clone_scoped_transform_regions(regions []transform.ScopedTransformRegion) []transform.ScopedTransformRegion {
+	mut cloned := []transform.ScopedTransformRegion{cap: regions.len}
+	for region in regions {
+		cloned << transform.ScopedTransformRegion{
+			scope:      region.scope
+			new_start:  region.new_start
+			new_end:    region.new_end
+			base_nodes: region.base_nodes.clone()
+		}
+	}
+	return cloned
+}
+
+fn clone_flat_node_owned(node flat.Node) flat.Node {
+	mut params := []string{cap: node.generic_params().len}
+	for param in node.generic_params() {
+		params << param.clone()
+	}
+	return flat.Node{
+		value:          node.value.clone()
+		typ:            node.typ.clone()
+		payload:        flat.node_payload(params)
+		is_mut:         node.is_mut
+		children_start: node.children_start
+		pos:            node.pos
+		children_count: node.children_count
+		kind:           node.kind
+		op:             node.op
+	}
+}
+
+fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
+	mut nodes := []flat.Node{cap: ast.nodes.len}
+	for node in ast.nodes {
+		nodes << clone_flat_node_owned(node)
+	}
+	mut children := []flat.NodeId{cap: ast.children.len}
+	children << ast.children
+	text_values, text_ids := ast.clone_text_table_owned()
+	return &flat.FlatAst{
+		nodes:                nodes
+		children:             children
+		user_code_start:      ast.user_code_start
+		disabled_fns:         ast.disabled_fns
+		export_fn_names:      ast.export_fn_names
+		noreturn_fns:         ast.noreturn_fns
+		source_files:         ast.source_files
+		source_buffers:       ast.source_buffers
+		text_values:          text_values
+		text_ids:             text_ids
+		worker_pool:          ast.worker_pool
+		specialized_fn_nodes: ast.specialized_fn_nodes.clone()
+	}
+}
+
+fn clone_int_string_map(values map[int]string) map[int]string {
+	mut cloned := map[int]string{}
+	for idx, value in values {
+		cloned[idx] = value.clone()
+	}
+	return cloned
+}
+
+fn clone_int_type_map(values map[int]types.Type) map[int]types.Type {
+	mut cloned := map[int]types.Type{}
+	for idx, value in values {
+		cloned[idx] = types.clone_owned_type(value)
+	}
+	return cloned
+}
+
+fn promote_scoped_checker_node_additions(mut tc types.TypeChecker, base_nodes int, scope voidptr) {
+	for idx in base_nodes .. tc.resolved_call_names.len {
+		if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
+			name := tc.resolved_call_names[idx]
+			if name.len > 0 && scoped_value_owned(scope, name.str) {
+				tc.resolved_call_names[idx] = name.clone()
+			}
+		}
+		if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
+			name := tc.resolved_fn_value_names[idx]
+			if name.len > 0 && scoped_value_owned(scope, name.str) {
+				tc.resolved_fn_value_names[idx] = name.clone()
+			}
+		}
+		if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
+			tc.expr_type_values[idx] = types.clone_owned_type(tc.expr_type_values[idx])
+		}
+	}
+	tc.sparse_resolved_call_names = clone_int_string_map(tc.sparse_resolved_call_names)
+	tc.sparse_resolved_fn_values = clone_int_string_map(tc.sparse_resolved_fn_values)
+	tc.sparse_statement_nodes = tc.sparse_statement_nodes.clone()
+	tc.sparse_expr_type_values = clone_int_type_map(tc.sparse_expr_type_values)
+	tc.sparse_checking_nodes = tc.sparse_checking_nodes.clone()
+}
+
+fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string]bool) {
+	mut added_names := []string{}
+	for name in tc.fn_ret_types.keys() {
+		if name !in original_names {
+			added_names << name
+		}
+	}
+	for name in added_names {
+		ret := types.clone_owned_type(tc.fn_ret_types[name] or { continue })
+		params := if values := tc.fn_param_types[name] {
+			types.clone_owned_types(values)
+		} else {
+			[]types.Type{}
+		}
+		variadic := tc.fn_variadic[name]
+		specialized := tc.specialized_generic_fns[name]
+		tc.fn_ret_types.delete(name)
+		tc.fn_param_types.delete(name)
+		tc.fn_variadic.delete(name)
+		tc.specialized_generic_fns.delete(name)
+		owned_name := name.clone()
+		tc.fn_ret_types[owned_name] = ret
+		tc.fn_param_types[owned_name] = params
+		tc.fn_variadic[owned_name] = variadic
+		if specialized {
+			tc.specialized_generic_fns[owned_name] = true
+		}
+	}
+	tc.rebuild_scoped_transform_signature_maps()
+}
+
 fn v3_cache_compiler_signature(vroot string) string {
 	dir := os.join_path(vroot, 'vlib', 'v3')
 	if !os.is_dir(dir) {
@@ -816,6 +1060,14 @@ fn main() {
 	}
 	cmd_v_build := input_is_cmd_v(input_file)
 	scope_prealloc_selfhost := should_scope_prealloc_selfhost(building_v, cmd_v_build)
+	// The selective transform promotion path is designed around worker-owned
+	// result regions. Keep an explicitly serial transform in the compilation
+	// arena while retaining scoped parse/check/cgen scratch.
+	scope_prealloc_transform := scope_prealloc_selfhost && current_parallel_transform
+	// Markused can lazily create the compilation worker pool. When parsing was
+	// serial, keep that pool in the compilation arena so close_workers never
+	// observes a pool allocated in a released markused scope.
+	scope_prealloc_markused := scope_prealloc_selfhost && !current_no_parallel
 	if building_v || cmd_v_build {
 		if no_parallel {
 			user_defines = user_defines.filter(it != 'parallel')
@@ -1149,20 +1401,33 @@ fn main() {
 
 	// Mark used functions (dead-code elimination). This is done before transform
 	// so the transformer can skip function bodies that the C backend will prune.
+	mut markused_scope := unsafe { nil }
+	mut markused_tc := &pre_tc
+	if scope_prealloc_markused {
+		markused_scope = prealloc_scope_begin_for_v3()
+		markused_tc = pre_tc.fork_for_parallel_transform(a)
+		markused_tc.enable_scoped_parallel_workers()
+	}
 	mut output_used_fns := map[string]bool{}
 	mut uses_generics := false
 	if test_files.len > 0 {
-		output_used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a, pre_tc,
-			test_files)
+		output_used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a,
+			markused_tc, test_files)
 	} else {
-		output_used_fns, uses_generics = markused.mark_used_with_generic_usage(a, pre_tc)
+		output_used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
 	}
 	mut used_fns := output_used_fns.clone()
 	if cache_state.manager.enabled {
 		mut cache_uses_generics := false
-		used_fns, cache_uses_generics = markused.mark_used_for_cache_with_generic_usage(a, pre_tc,
-			test_files, cache_state.source_body_modules)
+		used_fns, cache_uses_generics = markused.mark_used_for_cache_with_generic_usage(a,
+			markused_tc, test_files, cache_state.source_body_modules)
 		uses_generics = uses_generics || cache_uses_generics
+	}
+	if scope_prealloc_markused {
+		prealloc_scope_leave_for_v3(markused_scope)
+		output_used_fns = clone_string_bool_map(output_used_fns)
+		used_fns = clone_string_bool_map(used_fns)
+		prealloc_scope_free_for_v3(markused_scope)
 	}
 	b.step('markused')
 	b.metric('reachable symbols', used_fns.len, 'symbols')
@@ -1172,17 +1437,75 @@ fn main() {
 	// and cgen.
 	mut transform_was_parallel := false
 	mut transform_errors := []string{}
+	mut transform_texts_canonical := false
 	// Markused distinguishes reachable generic calls/types from generic templates
 	// that merely came along with an imported module (notably sync and rand).
 	skip_transform_generics := building_v || cmd_v_build || !uses_generics
-	// Escaping AST/checker data is always allocated in the compilation arena.
-	// Parallel helpers may use disposable scratch arenas; their compact results
-	// are merged into the persistent result slabs before those arenas are freed.
-	// The serial path deliberately stays in the compilation arena instead of
-	// cloning the whole surviving program out of a stage-local arena.
-	used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
-		&pre_tc, used_fns, current_parallel_transform, skip_transform_generics,
-		scope_prealloc_selfhost)
+	if scope_prealloc_transform {
+		// Keep the large escaping AST/cache slabs in the compilation arena, while
+		// transformer indexes and per-body temporary state use a stage arena.
+		transform.reserve_parallel_transform_ast(mut a, skip_transform_generics)
+		a.reserve_transform_texts(65536)
+		pre_tc.begin_sparse_transform_node_caches(a.nodes.len)
+		pre_tc.reserve_scoped_transform_metadata(a.nodes.cap, 2048)
+		base_transform_nodes := a.nodes.len
+		reserved_nodes_cap := a.nodes.cap
+		reserved_children_cap := a.children.cap
+		base_specialized_fns := a.specialized_fn_nodes.len
+		base_type_count := pre_tc.type_count()
+		base_symbol_count := pre_tc.symbol_count()
+		base_text_count := a.text_values.len
+		mut original_signature_names := map[string]bool{}
+		for name in pre_tc.fn_ret_types.keys() {
+			original_signature_names[name] = true
+		}
+		transform_scope := prealloc_scope_begin_for_v3()
+		mut scoped_owned_base_nodes := []int{}
+		mut retained_transform_regions := []transform.ScopedTransformRegion{}
+		used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_with_used_opt_config_scoped_workers_checked_owned(mut a,
+			&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, true,
+			transform_scope)
+		parse_cache_enabled := pre_tc.type_cache_parse_enabled()
+		prealloc_scope_leave_for_v3(transform_scope)
+		retained_transform_regions = clone_scoped_transform_regions(retained_transform_regions)
+		pre_tc.promote_scoped_transform_interners(base_type_count, base_symbol_count,
+			transform_scope)
+		if a.nodes.cap == reserved_nodes_cap && a.children.cap == reserved_children_cap {
+			a.promote_transform_texts_from(base_text_count, transform_scope)
+			if retained_transform_regions.len > 0 {
+				outer_new_end := retained_transform_regions[0].new_start
+				promote_scoped_ast_nodes(mut a, base_transform_nodes, outer_new_end,
+					scoped_owned_base_nodes, transform_scope)
+				last_worker_end := retained_transform_regions.last().new_end
+				promote_scoped_ast_nodes(mut a, last_worker_end, a.nodes.len, []int{},
+					transform_scope)
+			} else {
+				a.intern_node_texts_from(0)
+				transform_texts_canonical = true
+			}
+		} else {
+			a = clone_flat_ast_after_transform(a)
+		}
+		if a.specialized_fn_nodes.len != base_specialized_fns {
+			a.specialized_fn_nodes = a.specialized_fn_nodes.clone()
+		}
+		promote_scoped_checker_node_additions(mut pre_tc, base_transform_nodes, transform_scope)
+		promote_scoped_signatures(mut pre_tc, original_signature_names)
+		used_fns = clone_string_bool_map(used_fns)
+		transform_errors = clone_string_list(transform_errors)
+		pre_tc.set_fresh_type_cache(parse_cache_enabled)
+		prealloc_scope_free_for_v3(transform_scope)
+		if retained_transform_regions.len > 0 {
+			for region in retained_transform_regions {
+				canonicalize_scoped_transform_region(mut a, region)
+				prealloc_scope_free_for_v3(region.scope)
+			}
+			transform_texts_canonical = true
+		}
+	} else {
+		used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
+			&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, false)
+	}
 	b.step_parallel('transform', transform_was_parallel)
 	if transform_errors.len > 0 {
 		eprintln('type checker found ${transform_errors.len} error(s):')
@@ -1253,7 +1576,9 @@ fn main() {
 	// Transform and monomorphization can synthesize or rewrite payload text.
 	// They run with private/arena-backed worker state; publish only canonical,
 	// compilation-owned strings after all worker merges are complete.
-	a.intern_node_texts_from(0)
+	if !transform_texts_canonical {
+		a.intern_node_texts_from(0)
+	}
 	b.step('monomorphize')
 	if cache_state.manager.enabled {
 		// The cache transform roots complete modules, but the ordinary `.c` artifact

@@ -58,3 +58,36 @@ fn (mut i SymbolInterner) len() int {
 	}
 	return i.names.len
 }
+
+fn (mut i SymbolInterner) reserve(headroom int) {
+	if headroom <= 0 {
+		return
+	}
+	unsafe { i.names.grow_cap(headroom) }
+	i.ids.reserve(u32(i.ids.len + headroom))
+}
+
+fn (mut i SymbolInterner) promote_from(start int, scope voidptr) {
+	i.lock.lock()
+	defer {
+		i.lock.unlock()
+	}
+	names_backing_scoped := scoped_transform_owns(scope, i.names.data)
+	first := if start < 0 { 0 } else { start }
+	for idx in first .. i.names.len {
+		name := i.names[idx]
+		if name.len == 0 || !scoped_transform_owns(scope, name.str) {
+			continue
+		}
+		i.ids.delete(name)
+		canonical := name.clone()
+		i.names[idx] = canonical
+		i.ids[canonical] = SymbolId(idx + 1)
+	}
+	if names_backing_scoped {
+		i.names = i.names.clone()
+	}
+	// Keep the hash index itself out of the disposable transform arena too;
+	// an insertion may have rehashed it despite the pre-transform reserve.
+	i.ids = i.ids.clone()
+}
