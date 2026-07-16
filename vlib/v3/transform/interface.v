@@ -573,8 +573,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	concrete_type := if is_ptr { source_type[1..] } else { source_type }
 	t.mark_interface_boxed_type(iface_name, concrete_type)
 	if is_ptr && !share_source && t.interface_pointer_source_needs_heap_copy(id) {
-		size := t.make_sizeof_type(concrete_type)
-		dup := t.make_call_typed('memdup', arr2(source, size), 'voidptr')
+		dup := t.make_memdup_call_for_type(source, concrete_type)
 		copied := t.make_cast('&${concrete_type}', dup, '&${concrete_type}')
 		tmp_name := t.new_temp('iface_obj')
 		t.pending_stmts << t.make_decl_assign_typed(tmp_name, copied, '&${concrete_type}')

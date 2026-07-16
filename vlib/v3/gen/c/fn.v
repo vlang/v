@@ -7040,7 +7040,7 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 		return false
 	}
 	target_ct := g.tc.c_type(types.unwrap_pointer(expected_type))
-	base_is_ptr := base_type is types.Pointer
+	base_is_ptr := cgen_type_is_pointer_like(base_type)
 	if !g.interface_receiver_base_expr_is_reusable(base_id) {
 		source_ct := g.tc.c_type(base_type)
 		tmp := g.tmp_name()

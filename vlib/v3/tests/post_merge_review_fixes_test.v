@@ -4064,13 +4064,54 @@ fn test_returned_interface_local_boxed_from_local_address_heap_copies_on_return(
 
 fn test_returned_interface_local_boxed_from_aligned_local_uses_aligned_memdup() {
 	v3_bin := build_v3()
-	source := '@[aligned: 64]\nstruct Aligned {\nmut:\n\tn int\n}\n\ninterface Reader {\n\tvalue() int\n}\n\nfn (a &Aligned) value() int {\n\treturn a.n\n}\n\nfn make() Reader {\n\tmut a := Aligned{\n\t\tn: 5\n\t}\n\tr := Reader(&a)\n\ta.n = 6\n\treturn r\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
+	source := '@[aligned: 64]
+struct Aligned {
+mut:
+	n int
+}
+
+interface Reader {
+	value() int
+}
+
+fn (a &Aligned) value() int {
+	return a.n
+}
+
+fn make() Reader {
+	mut a := Aligned{
+		n: 5
+	}
+	r := Reader(&a)
+	a.n = 6
+	return r
+}
+
+fn make_direct() Reader {
+	mut a := Aligned{
+		n: 7
+	}
+	a.n = 8
+	return Reader(&a)
+}
+
+fn main() {
+	r := make()
+	println(int_str(r.value()))
+	direct := make_direct()
+	println(int_str(direct.value()))
+}
+'
 	c_source := gen_c(v3_bin, 'interface_box_returned_aligned_local_heap_copy', source)
 	make_body := c_fn_body(c_source, 'Reader make(void) {')
 	assert make_body.contains('v3_aligned_memdup(') && make_body.contains('sizeof(Aligned)'), make_body
 	assert !make_body.contains('= memdup('), make_body
+	direct_body := c_fn_body(c_source, 'Reader make_direct(void) {')
+
+	assert direct_body.contains('v3_aligned_memdup(') && direct_body.contains('sizeof(Aligned)'), direct_body
+	assert !direct_body.contains('= memdup('), direct_body
 	out := run_good(v3_bin, 'interface_box_returned_aligned_local_heap_copy_run', source)
-	assert out == '6'
+	assert out == '6\n8'
 }
 
 fn test_optional_result_interface_local_boxed_from_local_address_heap_copies_on_return() {
@@ -4243,12 +4284,17 @@ fn use_ref(value &Base) int {
 	return value.get()
 }
 
+fn use_value(value Base) int {
+	return value.get()
+}
+
 fn main() {
 	child := Child(Item{
 		n: 17
 	})
 	ref := ChildRef(&child)
 	println(int_str(use_ref(ref)))
+	println(int_str(use_value(ref)))
 	println((ref is Base).str())
 }
 '
@@ -4257,7 +4303,7 @@ fn main() {
 	assert main_body.contains('ref->_typ') && main_body.contains('ref->_object'), main_body
 	assert !main_body.contains('ref._typ') && !main_body.contains('ref._object'), main_body
 	out := run_good(v3_bin, 'pointer_interface_alias_upcast_access', source)
-	assert out == '17\ntrue'
+	assert out == '17\n17\ntrue'
 }
 
 fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
