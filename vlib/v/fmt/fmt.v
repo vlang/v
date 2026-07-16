@@ -488,6 +488,29 @@ fn decode_target_expr_needs_legacy_json(t &ast.Table, cur_mod string, expr ast.E
 	return type_needs_legacy_json(t, typ)
 }
 
+// encode_ident_needs_legacy_json handles a `json.encode(x)` payload that is a plain
+// identifier (a parameter or variable) rather than a literal. A function parameter carries a
+// declared type at parse time, so resolve it and apply type_needs_legacy_json — this keeps
+// e.g. `fn f(e models.Event) string { return json.encode(e) }` on legacy json when
+// `models.Event` is (or contains) a legacy-sensitive field. A local variable's type is
+// usually unresolved without the checker; keep those too, since the payload cannot be
+// proven safe.
+fn encode_ident_needs_legacy_json(t &ast.Table, ident ast.Ident) bool {
+	mut typ := ast.Type(0)
+	if ident.obj is ast.Var {
+		typ = ident.obj.typ
+	}
+	if typ == 0 && ident.scope != unsafe { nil } {
+		if v := ident.scope.find_var(ident.name) {
+			typ = v.typ
+		}
+	}
+	if typ == 0 {
+		return true
+	}
+	return type_needs_legacy_json(t, typ)
+}
+
 // payload_expr_needs_legacy_json reports whether a `json.encode` payload expression is (or
 // contains) a typed literal whose type serialises differently under legacy json. A root
 // container literal (`json.encode([]time.Time{})`, `json.encode({'x': rune(..)})`) has no
@@ -634,10 +657,13 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 			}
 		} else if call.kind == .json_encode && call.args.len >= 1 {
 			// A root `time.Time`/rune/float/option encode payload also serialises
-			// differently. Only a literal carries a type at fmt time (a runtime value like
-			// `json.encode(time.utc())` has none — a known limit), so inspect the payload
-			// literal and its element/value literals.
-			if payload_expr_needs_legacy_json(s.table, call.args[0].expr) {
+			// differently. Inspect a literal payload and its element/value literals; for a
+			// plain identifier payload, resolve its declared type (parameters carry one) and
+			// keep the file on legacy json when it is unresolved or legacy-sensitive.
+			arg := call.args[0].expr
+			if payload_expr_needs_legacy_json(s.table, arg) {
+				s.found = true
+			} else if arg is ast.Ident && encode_ident_needs_legacy_json(s.table, arg) {
 				s.found = true
 			}
 		}
@@ -971,7 +997,13 @@ fn (f &Fmt) module_has_sibling_json_hook(file &ast.File) bool {
 // parsing the sibling file.
 fn source_declares_json_hook(src string) bool {
 	for line in src.split_into_lines() {
-		t := line.trim_space()
+		mut t := line.trim_space()
+		// Strip any leading same-line attributes, so a hook like
+		// `@[manualfree] fn (u User) to_json() string` is still recognised.
+		for t.starts_with('@[') {
+			attr_close := t.index(']') or { break }
+			t = t[attr_close + 1..].trim_space()
+		}
 		if !(t.starts_with('fn ') || t.starts_with('pub fn ')) {
 			continue
 		}
