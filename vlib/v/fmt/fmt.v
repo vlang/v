@@ -356,11 +356,36 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 	}
 	if node is ast.Expr && node is ast.CallExpr {
 		call := node as ast.CallExpr
-		// json.encode_pretty output cannot be reproduced by json2, and a json.decode
-		// with comments on its type argument cannot be re-parsed after migration.
-		if call.kind == .json_encode_pretty
-			|| (call.kind == .json_decode && call.args.len >= 1 && call.args[0].comments.len > 0) {
+		if call.kind == .json_encode_pretty {
+			// json.encode_pretty output cannot be reproduced by json2.
 			s.found = true
+		} else if call.kind == .json_decode && call.args.len >= 1 {
+			// A comment on the type arg cannot survive the migrated `[T]` bracket, and a
+			// decode target that is (or contains) `time.Time` serialises differently in
+			// json2 (RFC3339 via Time.to_json vs the legacy root path). The target is a
+			// known TypeNode, so check it here rather than only file-local struct fields.
+			if call.args[0].comments.len > 0 {
+				s.found = true
+			} else {
+				type_arg := call.args[0].expr
+				if type_arg is ast.TypeNode && type_mentions_time(s.table, type_arg.typ) {
+					s.found = true
+				}
+			}
+		} else if call.kind == .json_encode && call.args.len >= 1 {
+			// A root `time.Time` encode payload also serialises differently. Only a
+			// struct-literal / cast argument carries a type at fmt time; a runtime value
+			// like `json.encode(time.utc())` has none (a known type-resolution limit).
+			arg := call.args[0].expr
+			if arg is ast.StructInit {
+				if type_mentions_time(s.table, arg.typ) {
+					s.found = true
+				}
+			} else if arg is ast.CastExpr {
+				if type_mentions_time(s.table, arg.typ) {
+					s.found = true
+				}
+			}
 		}
 	} else if node is ast.Stmt && node is ast.StructDecl {
 		decl := node as ast.StructDecl
