@@ -3500,61 +3500,42 @@ fn c_pkgconfig_flags(raw string) []string {
 }
 
 fn c_flag_has_target_prefix(target string) bool {
-	return target in ['darwin', 'macos', 'linux', 'windows', 'freebsd', 'openbsd', 'netbsd',
-		'dragonfly', 'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix',
-		'wasm32_emscripten', 'amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'arm32', 'riscv64',
-		'ppc64', 'ppc64le', 's390x', 'loongarch64', 'wasm32']
+	if _ := c_flag_target_os(target) {
+		return true
+	}
+	if _ := c_flag_target_arch(target) {
+		return true
+	}
+	return false
 }
 
 fn c_flag_target_enabled(target string, platform pref.Target) bool {
-	match target {
-		'darwin', 'macos' {
-			return platform.os == 'macos'
-		}
-		'linux' {
-			return platform.os == 'linux'
-		}
-		'windows' {
-			return platform.os == 'windows'
-		}
-		'freebsd' {
-			return platform.os == 'freebsd'
-		}
-		'openbsd' {
-			return platform.os == 'openbsd'
-		}
-		'netbsd' {
-			return platform.os == 'netbsd'
-		}
-		'dragonfly' {
-			return platform.os == 'dragonfly'
-		}
-		'android' {
-			return platform.os == 'android'
-		}
-		'solaris' {
-			return platform.os == 'solaris'
-		}
-		'qnx', 'haiku', 'serenity', 'vinix' {
-			return platform.os == target
-		}
-		'termux' {
-			return platform.os == 'termux'
-		}
-		'ios' {
-			return platform.os == 'ios'
-		}
-		'wasm32_emscripten' {
-			return platform.os == 'wasm32_emscripten'
-		}
-		'amd64', 'x64', 'x86_64', 'arm64', 'aarch64', 'x86', 'arm32', 'riscv64', 'ppc64',
-		'ppc64le', 's390x', 'loongarch64', 'wasm32' {
-			return pref.normalized_arch(target) == platform.arch
-		}
-		else {
-			return true
-		}
+	if target_os := c_flag_target_os(target) {
+		return target_os == platform.os
 	}
+	if target_arch := c_flag_target_arch(target) {
+		return target_arch == platform.arch
+	}
+	return true
+}
+
+fn c_flag_target_os(target string) ?string {
+	normalized := pref.normalized_os(target)
+	if normalized in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
+		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix',
+		'wasm32_emscripten'] {
+		return normalized
+	}
+	return none
+}
+
+fn c_flag_target_arch(target string) ?string {
+	normalized := pref.normalized_arch(target)
+	if normalized in ['amd64', 'arm64', 'x86', 'arm32', 'riscv64', 'ppc64', 'ppc64le', 's390x',
+		'loongarch64', 'wasm32'] {
+		return normalized
+	}
+	return none
 }
 
 // fn_decl_module_key returns the collision-proof per-module key for a declared

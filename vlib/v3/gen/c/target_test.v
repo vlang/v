@@ -40,6 +40,18 @@ fn test_emscripten_c_directive_target_is_distinct_from_host() {
 	assert c_flag_args('wasm32_emscripten --embed-file asset.txt', '', '', linux).len == 0
 }
 
+fn test_c_directive_arch_aliases_use_canonical_targets() {
+	riscv64 := pref.target_from('linux', 'riscv64') or { panic(err) }
+	x86 := pref.target_from('linux', 'x86') or { panic(err) }
+	arm64 := pref.target_from('linux', 'arm64') or { panic(err) }
+	assert c_flag_args('rv64 -DRV64', '', '', riscv64) == ['-DRV64']
+	assert c_flag_args('risc-v64 -DRISCV64', '', '', riscv64) == ['-DRISCV64']
+	assert c_flag_args('rv64 -DRV64', '', '', arm64).len == 0
+	assert c_flag_args('i386 -DI386', '', '', x86) == ['-DI386']
+	assert c_flag_args('i686 -DI686', '', '', x86) == ['-DI686']
+	assert c_flag_args('i386 -DI386', '', '', arm64).len == 0
+}
+
 fn test_split_relative_c_flag_paths_resolve_from_source_directory() {
 	source_dir := os.join_path(os.vtmp_dir(), 'v3_split_c_flag_paths', 'source')
 	source_file := os.join_path(source_dir, 'main.v')
