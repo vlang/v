@@ -487,6 +487,11 @@ fn decode_target_expr_needs_legacy_json(t &ast.Table, cur_mod string, expr ast.E
 // literal and inspect each element/value literal or cast, which does carry a type.
 fn payload_expr_needs_legacy_json(t &ast.Table, expr ast.Expr) bool {
 	match expr {
+		ast.ParExpr {
+			// A parenthesised payload (`json.encode((rune(233)))`) hides the typed literal
+			// one level down; unwrap it so the StructInit/CastExpr below is still inspected.
+			return payload_expr_needs_legacy_json(t, expr.expr)
+		}
 		ast.StructInit {
 			return type_needs_legacy_json(t, expr.typ)
 		}
@@ -571,11 +576,12 @@ fn walk_sql_query_data_items(items []ast.SqlQueryDataItem, data voidptr) {
 	}
 }
 
-// json_asm_operand_scan_visit flags any `json.encode`/`json.decode`/`json.encode_pretty`
-// call inside an inline-asm operand. Unlike a normal call site, an asm operand is printed
-// verbatim (str()) rather than through call_expr, so even a migratable call cannot be
-// rewritten — the file must stay unmigrated whenever one appears there.
-fn json_asm_operand_scan_visit(node &ast.Node, data voidptr) bool {
+// json_verbatim_arg_scan_visit flags any `json.encode`/`json.decode`/`json.encode_pretty`
+// call inside an expression that the formatter prints verbatim (via str()) rather than
+// through call_expr — an inline-asm operand, or a comptime method-call argument (emitted by
+// comptime_call through call_arg_spread_str). Such a call can never be rewritten, so the
+// file must stay unmigrated whenever one appears there, even a normally-migratable one.
+fn json_verbatim_arg_scan_visit(node &ast.Node, data voidptr) bool {
 	mut s := unsafe { &JsonUnmigratableScan(data) }
 	if s.found {
 		return false
@@ -781,12 +787,14 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 	} else if node is ast.Expr && node is ast.PrefixExpr {
 		walk_or_block((node as ast.PrefixExpr).or_block, data)
 	} else if node is ast.Expr && node is ast.ComptimeCall {
-		// `app.$method(json.encode_pretty(u))` — ComptimeCall.args are printed by
-		// comptime_call (via call_arg_spread_str) but are outside Node.children(), so
-		// sub-walk each argument expression as well as the or-block.
+		// `app.$method(json.encode(u))` — comptime_call prints ComptimeCall.args verbatim via
+		// call_arg_spread_str (arg.str()), not call_expr, so a json call there can never be
+		// rewritten. Like an asm operand, any json call in an arg keeps the file unmigrated
+		// (the general scan would miss a normally-migratable json.encode). The or-block is
+		// printed normally, so it uses the migration-aware scan.
 		cc := node as ast.ComptimeCall
 		for arg in cc.args {
-			walker.inspect(arg.expr, data, json_unmigratable_scan_visit)
+			walker.inspect(arg.expr, data, json_verbatim_arg_scan_visit)
 		}
 		walk_or_block(cc.or_block, data)
 	} else if node is ast.Expr && node is ast.ComptimeSelector {
@@ -886,10 +894,10 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		// the whole file unmigrated.
 		asm_stmt := node as ast.AsmStmt
 		for io in asm_stmt.output {
-			walker.inspect(io.expr, data, json_asm_operand_scan_visit)
+			walker.inspect(io.expr, data, json_verbatim_arg_scan_visit)
 		}
 		for io in asm_stmt.input {
-			walker.inspect(io.expr, data, json_asm_operand_scan_visit)
+			walker.inspect(io.expr, data, json_verbatim_arg_scan_visit)
 		}
 	}
 	return true
