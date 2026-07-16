@@ -4808,9 +4808,14 @@ fn main() {
 	if isreftype([]int) {
 		println("array type")
 	}
+	if isreftype(chan int) {
+		println("chan type")
+	}
+	_ := isreftype(thread Foo)
+	println("thread type parsed")
 }
 ')
-	assert out == 'value expr\nptr expr\nptr type\nfn type\narray type'
+	assert out == 'value expr\nptr expr\nptr type\nfn type\narray type\nchan type\nthread type parsed'
 	qualified_out := run_good_project(v3_bin, 'isreftype_qualified_type_args', {
 		'v.mod':     "Module { name: 'isreftype_qualified_type_args' }\n"
 		'foo/foo.v': 'module foo\n\npub struct Bar {}\n'

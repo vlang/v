@@ -8310,7 +8310,8 @@ fn (mut p Parser) isreftype_paren_arg_starts_type() bool {
 }
 
 fn isreftype_name_can_start_type(name string) bool {
-	return is_builtin_type(name) || (name.len > 0 && name[0] >= `A` && name[0] <= `Z`)
+	return is_builtin_type(name) || name in ['chan', 'thread']
+		|| (name.len > 0 && name[0] >= `A` && name[0] <= `Z`)
 }
 
 fn (mut p Parser) isreftype_current_name_can_start_type() bool {
