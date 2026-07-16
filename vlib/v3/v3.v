@@ -492,119 +492,7 @@ fn clone_int_string_map(values map[int]string) map[int]string {
 
 // clone_type_value clones a type value and any nested owned type metadata.
 fn clone_type_value(value types.Type) types.Type {
-	return match value {
-		types.Void {
-			types.Type(types.void_)
-		}
-		types.Unknown {
-			types.Type(types.Unknown{
-				reason: value.reason.clone()
-			})
-		}
-		types.Primitive {
-			types.Type(types.Primitive{
-				props: value.props
-				size:  value.size
-			})
-		}
-		types.String {
-			types.Type(types.string_)
-		}
-		types.Char {
-			types.Type(types.char_)
-		}
-		types.Rune {
-			types.Type(types.rune_)
-		}
-		types.ISize {
-			types.Type(types.isize_)
-		}
-		types.USize {
-			types.Type(types.usize_)
-		}
-		types.Nil {
-			types.Type(types.nil_)
-		}
-		types.None {
-			types.Type(types.none_)
-		}
-		types.Array {
-			types.Type(types.Array{
-				elem_type: clone_type_value(value.elem_type)
-			})
-		}
-		types.ArrayFixed {
-			types.Type(types.ArrayFixed{
-				elem_type: clone_type_value(value.elem_type)
-				len:       value.len
-				len_expr:  value.len_expr.clone()
-			})
-		}
-		types.Channel {
-			types.Type(types.Channel{
-				elem_type: clone_type_value(value.elem_type)
-			})
-		}
-		types.Map {
-			types.Type(types.Map{
-				key_type:   clone_type_value(value.key_type)
-				value_type: clone_type_value(value.value_type)
-			})
-		}
-		types.Pointer {
-			types.Type(types.Pointer{
-				base_type: clone_type_value(value.base_type)
-			})
-		}
-		types.FnType {
-			types.Type(types.FnType{
-				params:      clone_type_list(value.params)
-				return_type: clone_type_value(value.return_type)
-			})
-		}
-		types.OptionType {
-			types.Type(types.OptionType{
-				base_type: clone_type_value(value.base_type)
-			})
-		}
-		types.ResultType {
-			types.Type(types.ResultType{
-				base_type: clone_type_value(value.base_type)
-			})
-		}
-		types.Struct {
-			types.Type(types.Struct{
-				name: value.name.clone()
-			})
-		}
-		types.Interface {
-			types.Type(types.Interface{
-				name: value.name.clone()
-			})
-		}
-		types.Enum {
-			types.Type(types.Enum{
-				name:    value.name.clone()
-				is_flag: value.is_flag
-			})
-		}
-		types.SumType {
-			types.Type(types.SumType{
-				name: value.name.clone()
-			})
-		}
-		types.Alias {
-			types.Type(types.Alias{
-				name:      value.name.clone()
-				base_type: clone_type_value(value.base_type)
-			})
-		}
-		types.MultiReturn {
-			types.Type(types.MultiReturn{
-				types: clone_type_list(value.types)
-			})
-		}
-	}
+	return types.clone_owned_type(value)
 }
 
 // clone_type_list clones a type slice out of a scoped prealloc arena.
@@ -612,11 +500,7 @@ fn clone_type_list(values []types.Type) []types.Type {
 	if values.len == 0 {
 		return []types.Type{}
 	}
-	mut cloned := []types.Type{cap: values.len}
-	for value in values {
-		cloned << clone_type_value(value)
-	}
-	return cloned
+	return types.clone_owned_types(values)
 }
 
 // clone_type_array clones active sparse type entries out of a scoped prealloc arena.
@@ -1353,6 +1237,9 @@ fn main() {
 	// (like v2: check runs before transform). The transformer reads cached
 	// per-expression types for type-dependent lowering.
 	mut pre_tc := types.TypeChecker.new(a)
+	if scope_prealloc_selfhost {
+		pre_tc.enable_scoped_parallel_workers()
+	}
 	pre_tc.reject_unsupported_generics = is_selfhost
 	set_diagnostic_files(mut pre_tc, user_files)
 	pre_tc.collect(a)

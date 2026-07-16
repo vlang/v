@@ -379,6 +379,7 @@ pub mut:
 	expr_type_set                       []bool
 	checking_nodes                      []bool
 	parallel_check_sparse               bool
+	scope_parallel_check_workers        bool
 	transform_sparse_node_caches        bool
 	// Node id range [check_range_lo, check_range_hi] of the fn item currently
 	// being checked. Fn subtrees are disjoint contiguous ranges (each fn_decl at
@@ -551,6 +552,14 @@ pub fn (mut tc TypeChecker) begin_sparse_transform_node_caches() {
 	tc.fn_ret_types.reserve(u32(tc.fn_ret_types.len + signature_headroom))
 	tc.fn_param_types.reserve(u32(tc.fn_param_types.len + signature_headroom))
 	tc.fn_variadic.reserve(u32(tc.fn_variadic.len + signature_headroom))
+}
+
+// enable_scoped_parallel_workers uses disposable compact prealloc arenas for
+// parallel checker helpers.
+pub fn (mut tc TypeChecker) enable_scoped_parallel_workers() {
+	$if !ownership ? {
+		tc.scope_parallel_check_workers = true
+	}
 }
 
 // fork_for_parallel_transform returns a TypeChecker that shares all of `tc`'s
