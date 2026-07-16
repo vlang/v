@@ -637,9 +637,10 @@ fn walk_sql_query_data_items(items []ast.SqlQueryDataItem, data voidptr) {
 
 // json_verbatim_arg_scan_visit flags any `json.encode`/`json.decode`/`json.encode_pretty`
 // call inside an expression that the formatter prints verbatim (via str()) rather than
-// through call_expr — an inline-asm operand, or a comptime method-call argument (emitted by
-// comptime_call through call_arg_spread_str). Such a call can never be rewritten, so the
-// file must stay unmigrated whenever one appears there, even a normally-migratable one.
+// through call_expr — an inline-asm operand, a comptime method-call argument (emitted by
+// comptime_call through call_arg_spread_str), or a non-call callee of a function-value call
+// (`handlers[json.encode(x)]()`). Such a call can never be rewritten, so the file must stay
+// unmigrated whenever one appears there, even a normally-migratable one.
 fn json_verbatim_arg_scan_visit(node &ast.Node, data voidptr) bool {
 	mut s := unsafe { &JsonUnmigratableScan(data) }
 	if s.found {
@@ -661,6 +662,13 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 	}
 	if node is ast.Expr && node is ast.CallExpr {
 		call := node as ast.CallExpr
+		// A function-value call whose callee is not itself a call — `handlers[json.encode(x)]()`
+		// — is printed verbatim by call_expr via `node.left.str()` (see the `mod == '' &&
+		// name == ''` branch there), bypassing the migration rewrite. Any json call in that
+		// callee can never be rewritten, so keep the file unmigrated.
+		if call.mod == '' && call.name == '' && call.left !is ast.CallExpr {
+			walker.inspect(call.left, data, json_verbatim_arg_scan_visit)
+		}
 		if call.kind == .json_encode_pretty {
 			// json.encode_pretty output cannot be reproduced by json2.
 			s.found = true

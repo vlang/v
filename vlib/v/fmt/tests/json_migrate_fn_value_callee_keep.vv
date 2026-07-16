@@ -1,0 +1,9 @@
+import json
+
+// A function-value call whose callee is not itself a call — here an index expression
+// `handlers[json.encode('x')]` — is printed verbatim by call_expr via `node.left.str()`, so
+// the nested `json.encode` is never rewritten. Migrating the import would leave `import json2`
+// with a stranded `json.encode` in the callee, so the file is kept unmigrated.
+fn run(handlers map[string]fn ()) {
+	handlers[json.encode('x')]()
+}
