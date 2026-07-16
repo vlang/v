@@ -23501,15 +23501,17 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 	return found
 }
 
-// invalidate_short_type_name_index drops the memoized short-name index; callers
-// that add or remove entries in the type-name maps after the checker ran (the
-// monomorphizer specializing generic structs/sum types) must invalidate it so
-// the next unique_qualified_type_name query rebuilds it.
+// invalidate_short_type_name_index drops memoized type-name-derived indexes;
+// callers that add or remove entries in the type-name maps after the checker ran
+// (the monomorphizer specializing generic structs/sum types) must invalidate them.
 pub fn (tc &TypeChecker) invalidate_short_type_name_index() {
 	if isnil(tc.type_cache) {
 		return
 	}
 	mut cache := tc.type_cache
+	cache.ierror_compat_entries.clear()
+	cache.ierror_impl_names.clear()
+	cache.ierror_impl_names_set = false
 	if cache.short_type_name_index_built {
 		cache.short_type_name_index_built = false
 		cache.short_type_name_index.clear()
