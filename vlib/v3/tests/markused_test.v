@@ -1535,6 +1535,88 @@ fn main() {
 	assert c_code.contains('string__plus(')
 }
 
+fn test_overloaded_index_compound_assignment_marks_generated_helpers() {
+	mut a, mut tc := parse_checked_source('overloaded_index_compound_string_helper', '
+struct Dict {
+mut:
+	values map[string]string
+}
+
+fn (d Dict) [] (key string) string {
+	return d.values[key]
+}
+
+fn (mut d Dict) []= (key string, value string) {
+	d.values[key] = value
+}
+
+fn main() {
+	mut d := Dict{
+		values: {
+			"name": "a"
+		}
+	}
+	d["name"] += "x"
+}
+')
+	mut used := markused.mark_used(a, tc)
+	assert used['string__plus']
+	used = transform.transform_with_used(mut a, tc, used)
+	tc.diagnose_unknown_calls = false
+	tc.reject_unlowered_map_mutation = true
+	tc.annotate_types()
+	mut g := cgen.FlatGen.new()
+	string_c := g.gen_with_used_options(a, used, tc, true)
+	assert string_c.contains('string__plus('), string_c
+
+	mut op_a, mut op_tc := parse_checked_source('overloaded_index_compound_struct_helper', '
+struct Num {
+	n int
+}
+
+fn (a Num) + (b Num) Num {
+	return Num{
+		n: a.n + b.n
+	}
+}
+
+struct Slot {
+mut:
+	value Num
+}
+
+fn (s Slot) [] (key string) Num {
+	_ := key
+	return s.value
+}
+
+fn (mut s Slot) []= (key string, value Num) {
+	_ := key
+	s.value = value
+}
+
+fn main() {
+	mut s := Slot{
+		value: Num{
+			n: 3
+		}
+	}
+	s["value"] += Num{
+		n: 4
+	}
+}
+')
+	mut op_used := markused.mark_used(op_a, op_tc)
+	assert op_used['Num.+'] || op_used['Num__plus'], op_used.str()
+	op_used = transform.transform_with_used(mut op_a, op_tc, op_used)
+	op_tc.diagnose_unknown_calls = false
+	op_tc.reject_unlowered_map_mutation = true
+	op_tc.annotate_types()
+	mut op_g := cgen.FlatGen.new()
+	op_c := op_g.gen_with_used_options(op_a, op_used, op_tc, true)
+	assert op_c.contains('Num__plus('), op_c
+}
+
 fn test_json_encode_fast_path_roots_generated_helpers() {
 	mut a, mut tc := parse_checked_source('json_encode_fast_path_helper_roots', '
 import json

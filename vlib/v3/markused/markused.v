@@ -5017,9 +5017,44 @@ fn (c &CallCollector) fn_return_type_name(name string, unwrap_optional_result bo
 	return ''
 }
 
+fn (c &CallCollector) fn_return_type_for_name(name string) ?types.Type {
+	if typ := c.tc.fn_ret_types[name] {
+		return typ
+	}
+	lowered := markused_c_name(name)
+	if lowered != name {
+		if typ := c.tc.fn_ret_types[lowered] {
+			return typ
+		}
+	}
+	return none
+}
+
+fn (c &CallCollector) fn_param_types_for_name(name string) ?[]types.Type {
+	if params := c.tc.fn_param_types[name] {
+		return params
+	}
+	lowered := markused_c_name(name)
+	if lowered != name {
+		if params := c.tc.fn_param_types[lowered] {
+			return params
+		}
+	}
+	return none
+}
+
+fn markused_index_overload_compound_type_is_string(typ types.Type) bool {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	return clean is types.String
+}
+
 // collect_struct_operator_call updates collect struct operator call state for markused.
 fn (c &CallCollector) collect_struct_operator_call(lhs_id flat.NodeId, op flat.Op, cur_module string, local_types map[string]string, mut calls []string) {
 	lhs_type := c.operator_lhs_type(lhs_id, local_types)
+	c.collect_struct_operator_call_for_type(lhs_type, op, cur_module, mut calls)
+}
+
+fn (c &CallCollector) collect_struct_operator_call_for_type(lhs_type types.Type, op flat.Op, cur_module string, mut calls []string) {
 	for receiver in c.struct_operator_receivers_for_call(lhs_type, cur_module) {
 		method_name := c.struct_operator_call_name(receiver, op) or { continue }
 		c.add_operator_call_name(method_name, mut calls)
@@ -5061,13 +5096,32 @@ fn (c &CallCollector) collect_index_overload_assignment_methods(node &flat.Node,
 		c.collect_index_overload_method(receiver, '[]=', cur_module, mut calls)
 		if node.op != .assign {
 			c.collect_index_overload_method(receiver, '[]', cur_module, mut calls)
+			c.collect_index_overload_compound_helpers(receiver, node.op, cur_module, mut calls)
 		}
 	}
 	if receiver := c.generic_index_overload_receiver(base_type, cur_module) {
 		c.collect_index_overload_method(receiver, '[]=', cur_module, mut calls)
 		if node.op != .assign {
 			c.collect_index_overload_method(receiver, '[]', cur_module, mut calls)
+			c.collect_index_overload_compound_helpers(receiver, node.op, cur_module, mut calls)
 		}
+	}
+}
+
+fn (c &CallCollector) collect_index_overload_compound_helpers(receiver string, op flat.Op, cur_module string, mut calls []string) {
+	compound_op := markused_assign_operator_symbol(op) or { return }
+	setter_name := c.index_overload_method_name(receiver, '[]=', cur_module) or { return }
+	getter_name := c.index_overload_method_name(receiver, '[]', cur_module) or { return }
+	getter_return := c.fn_return_type_for_name(getter_name) or { return }
+	setter_params := c.fn_param_types_for_name(setter_name) or { return }
+	if compound_op == .plus && (markused_index_overload_compound_type_is_string(getter_return)
+		|| (setter_params.len > 2
+		&& markused_index_overload_compound_type_is_string(setter_params[2]))) {
+		calls << 'string__plus'
+		return
+	}
+	if setter_params.len > 2 {
+		c.collect_struct_operator_call_for_type(getter_return, compound_op, cur_module, mut calls)
 	}
 }
 
@@ -5086,13 +5140,19 @@ fn (c &CallCollector) collect_index_overload_getter_method(node &flat.Node, cur_
 }
 
 fn (c &CallCollector) collect_index_overload_method(receiver string, method string, cur_module string, mut calls []string) {
-	if method_name := c.typed_receiver_method_name(receiver, method, cur_module) {
+	if method_name := c.index_overload_method_name(receiver, method, cur_module) {
 		c.add_typed_receiver_method_name(method_name, mut calls)
-		return
+	}
+}
+
+fn (c &CallCollector) index_overload_method_name(receiver string, method string, cur_module string) ?string {
+	if method_name := c.typed_receiver_method_name(receiver, method, cur_module) {
+		return method_name
 	}
 	if c.receiver_is_generic_struct_application(receiver, cur_module) {
-		c.add_typed_receiver_method_name('${receiver}.${method}', mut calls)
+		return '${receiver}.${method}'
 	}
+	return none
 }
 
 fn (c &CallCollector) is_generic_index_overload_call(name string, cur_module string) bool {

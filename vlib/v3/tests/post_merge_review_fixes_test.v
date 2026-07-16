@@ -3618,6 +3618,16 @@ fn test_interface_boxed_local_address_preserves_pointer_identity() {
 	assert out == '2'
 }
 
+fn test_by_value_interface_box_with_fields_heap_copies_addressable_source() {
+	v3_bin := build_v3()
+	source := 'interface HasName {\nmut:\n\tname string\n}\n\nstruct Item {\nmut:\n\tname string\n}\n\nfn save(value HasName) HasName {\n\treturn value\n}\n\nfn make() HasName {\n\tmut item := Item{\n\t\tname: "old"\n\t}\n\tboxed := save(item)\n\titem.name = "new"\n\treturn boxed\n}\n\nfn main() {\n\tprintln(make().name)\n}\n'
+	c_source := gen_c(v3_bin, 'by_value_interface_box_with_fields_heap_copy', source)
+	make_body := c_fn_body(c_source, 'HasName make(void) {')
+	assert make_body.contains('memdup(&item') && make_body.contains('sizeof(Item)'), make_body
+	out := run_good(v3_bin, 'by_value_interface_box_with_fields_heap_copy_run', source)
+	assert out == 'old'
+}
+
 fn test_interface_boxed_returned_local_address_still_heap_copies() {
 	v3_bin := build_v3()
 	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make() Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn Reader(&b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
@@ -3843,6 +3853,17 @@ fn test_implicit_ref_arg_rejects_multiple_pointer_levels() {
 fn main() {
 	mut n := 1
 	take(n)
+}
+',
+		'expected `&&int`')
+	run_bad(v3_bin, 'implicit_ref_arg_rejects_pointer_lvalue_depth_lift', 'fn take(value &&int) {
+	_ = value
+}
+
+fn main() {
+	mut n := 1
+	p := &n
+	take(p)
 }
 ',
 		'expected `&&int`')

@@ -5672,10 +5672,7 @@ fn (t &Transformer) interface_target_should_share_source(id flat.NodeId, target_
 	if !t.in_return_expr && t.interface_pointer_source_needs_heap_copy(id) {
 		return true
 	}
-	if (t.tc.interface_fields[iface_name] or { []types.StructField{} }).len == 0 {
-		return false
-	}
-	return t.expr_can_take_address(id)
+	return false
 }
 
 fn (mut t Transformer) transform_field_init_for_struct_type(id flat.NodeId, target_type string) ?flat.NodeId {

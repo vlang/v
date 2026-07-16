@@ -15692,6 +15692,10 @@ fn (tc &TypeChecker) receiver_compatible(actual Type, expected Type) bool {
 		return true
 	}
 	if expected is Pointer {
+		actual_depth, _ := type_pointer_depth_and_base(actual)
+		if actual_depth > 0 {
+			return false
+		}
 		return tc.type_compatible(actual, expected.base_type)
 	}
 	if actual is Pointer {
@@ -15890,6 +15894,9 @@ fn (tc &TypeChecker) implicit_ref_arg_compatible(expr_id flat.NodeId, actual Typ
 	}
 	actual_depth, actual_base := type_pointer_depth_and_base(actual)
 	expected_depth, expected_base := type_pointer_depth_and_base(expected)
+	if actual_depth > 0 {
+		return false
+	}
 	if expected_depth != actual_depth + 1 {
 		return false
 	}
