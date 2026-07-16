@@ -2017,7 +2017,7 @@ fn (mut g FlatGen) track_local_pointer_alias_source(lhs flat.Node, owner types.S
 		g.declare_local_pointer_alias_source(owner, '')
 		return
 	}
-	g.declare_local_pointer_alias_source(owner, source)
+	g.declare_local_pointer_alias_source_kind(owner, source, g.current_param_is_mut(source))
 }
 
 fn (g &FlatGen) local_pointer_alias_assignment_can_clear(owner types.ScopeBindingOwner) bool {
@@ -2067,6 +2067,9 @@ fn (mut g FlatGen) heap_local_address_expr(ret_id flat.NodeId, expected types.Ty
 			local_expr := g.expr_to_string(ret_id)
 			if local_expr.len == 0 {
 				return none
+			}
+			if g.local_pointer_alias_source_is_mut_param(node.value) {
+				return local_expr
 			}
 			return '(${local_expr} == NULL ? NULL : (${base_ct}*)memdup(${local_expr}, sizeof(${base_ct})))'
 		}
@@ -3583,7 +3586,7 @@ fn (mut g FlatGen) track_local_pointer_alias_assign(lhs flat.Node, rhs_id flat.N
 		g.clear_local_pointer_alias_source_for_assignment(owner)
 		return
 	}
-	g.declare_local_pointer_alias_source(owner, source)
+	g.declare_local_pointer_alias_source_kind(owner, source, g.current_param_is_mut(source))
 }
 
 fn (mut g FlatGen) track_ierror_array_push_call_alias(node flat.Node) {

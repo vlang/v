@@ -2770,6 +2770,8 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.local_c_type_by_owner = map[string]string{}
 	old_local_pointer_alias_by_owner := g.local_pointer_alias_by_owner.clone()
 	g.local_pointer_alias_by_owner = map[string]string{}
+	old_local_pointer_alias_mut_param := g.local_pointer_alias_mut_param.clone()
+	g.local_pointer_alias_mut_param = map[string]bool{}
 	old_local_shared_storage_by_owner := g.local_shared_storage_by_owner.clone()
 	g.local_shared_storage_by_owner = map[string]bool{}
 	old_shadowed_global_locals := g.shadowed_global_locals.clone()
@@ -2895,6 +2897,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.local_pointer_storage_by_owner = old_local_pointer_storage_by_owner.clone()
 	g.local_c_type_by_owner = old_local_c_type_by_owner.clone()
 	g.local_pointer_alias_by_owner = old_local_pointer_alias_by_owner.clone()
+	g.local_pointer_alias_mut_param = old_local_pointer_alias_mut_param.clone()
 	g.local_shared_storage_by_owner = old_local_shared_storage_by_owner.clone()
 	g.shadowed_global_locals = old_shadowed_global_locals.clone()
 }
@@ -2969,6 +2972,8 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.local_c_type_by_owner = map[string]string{}
 	old_local_pointer_alias_by_owner := g.local_pointer_alias_by_owner.clone()
 	g.local_pointer_alias_by_owner = map[string]string{}
+	old_local_pointer_alias_mut_param := g.local_pointer_alias_mut_param.clone()
+	g.local_pointer_alias_mut_param = map[string]bool{}
 	old_local_shared_storage_by_owner := g.local_shared_storage_by_owner.clone()
 	g.local_shared_storage_by_owner = map[string]bool{}
 	g.push_scope()
@@ -3031,6 +3036,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.local_pointer_storage_by_owner = old_local_pointer_storage_by_owner.clone()
 	g.local_c_type_by_owner = old_local_c_type_by_owner.clone()
 	g.local_pointer_alias_by_owner = old_local_pointer_alias_by_owner.clone()
+	g.local_pointer_alias_mut_param = old_local_pointer_alias_mut_param.clone()
 	g.local_shared_storage_by_owner = old_local_shared_storage_by_owner.clone()
 }
 

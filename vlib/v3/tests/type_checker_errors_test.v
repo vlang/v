@@ -1916,6 +1916,11 @@ fn test_pr_review_codegen_batch_twentynine() {
 	shadowed_alias := run_good(v3_bin, 'good_returned_pointer_alias_shadowed_source',
 		'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut a := Box{\n\t\tx: 1\n\t}\n\tp := &a\n\ta.x = 2\n\t{\n\t\tmut a := Box{\n\t\t\tx: 9\n\t\t}\n\t\ta.x = 10\n\t\treturn p\n\t}\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
 	assert shadowed_alias == '2'
+	// A pointer alias of a mut parameter already points at caller-owned storage. Returning the
+	// alias must preserve that identity instead of heap-copying the current pointee.
+	mut_param_alias := run_good(v3_bin, 'good_returned_mut_param_pointer_alias_identity',
+		'fn keep(mut x int) &int {\n\tp := &x\n\treturn p\n}\nfn main() {\n\tmut n := 1\n\tp := keep(mut n)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(int_str(n))\n}\n')
+	assert mut_param_alias == '7'
 	// A capitalized field followed by a const-sized fixed array is a named field whose type is
 	// `[n]int`, not a failed generic embedded-field probe that skips `[n]` and leaves `int`.
 	fixed_field := run_good(v3_bin, 'good_capitalized_fixed_array_field',

@@ -73,6 +73,7 @@ mut:
 	local_pointer_storage_by_owner map[string]bool     // exact scope binding owner -> C storage is already a pointer
 	local_c_type_by_owner          map[string]string   // exact scope binding owner -> emitted C declaration type
 	local_pointer_alias_by_owner   map[string]string   // exact scope binding owner -> stack local whose address is stored
+	local_pointer_alias_mut_param  map[string]bool     // exact scope binding owner -> alias source is a mut parameter
 	local_shared_storage_by_owner  map[string]bool     // exact scope binding owner -> C storage is a shared wrapper pointer
 	sum_name_lookup                map[string]string   // full/short sum type name -> canonical sum type name
 	module_init_fns                []string            // C names of module-level `init()` fns, in source order
@@ -366,14 +367,24 @@ fn (mut g FlatGen) declare_local_c_type(owner types.ScopeBindingOwner, c_type st
 }
 
 fn (mut g FlatGen) declare_local_pointer_alias_source(owner types.ScopeBindingOwner, source string) {
+	g.declare_local_pointer_alias_source_kind(owner, source, false)
+}
+
+fn (mut g FlatGen) declare_local_pointer_alias_source_kind(owner types.ScopeBindingOwner, source string, is_mut_param bool) {
 	key := owner.storage_key()
 	if key.len == 0 {
 		return
 	}
 	if source.len > 0 {
 		g.local_pointer_alias_by_owner[key] = source
+		if is_mut_param {
+			g.local_pointer_alias_mut_param[key] = true
+		} else {
+			g.local_pointer_alias_mut_param.delete(key)
+		}
 	} else {
 		g.local_pointer_alias_by_owner.delete(key)
+		g.local_pointer_alias_mut_param.delete(key)
 	}
 }
 
@@ -404,6 +415,14 @@ fn (g &FlatGen) local_pointer_alias_source(name string) ?string {
 	}
 	owner := g.local_storage_owner(name) or { return none }
 	return g.local_pointer_alias_by_owner[owner.storage_key()] or { none }
+}
+
+fn (g &FlatGen) local_pointer_alias_source_is_mut_param(name string) bool {
+	if name.len == 0 || g.local_pointer_alias_mut_param.len == 0 {
+		return false
+	}
+	owner := g.local_storage_owner(name) or { return false }
+	return g.local_pointer_alias_mut_param[owner.storage_key()] or { false }
 }
 
 fn (mut g FlatGen) declare_local_shared_storage(owner types.ScopeBindingOwner, is_shared bool) {
@@ -471,6 +490,7 @@ pub fn FlatGen.new() FlatGen {
 		local_pointer_storage_by_owner: map[string]bool{}
 		local_c_type_by_owner:          map[string]string{}
 		local_pointer_alias_by_owner:   map[string]string{}
+		local_pointer_alias_mut_param:  map[string]bool{}
 		local_shared_storage_by_owner:  map[string]bool{}
 		shadowed_global_locals:         map[string]bool{}
 		sum_name_lookup:                map[string]string{}
@@ -893,6 +913,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.local_pointer_storage_by_owner.clear()
 	g.local_c_type_by_owner.clear()
 	g.local_pointer_alias_by_owner.clear()
+	g.local_pointer_alias_mut_param.clear()
 	g.local_shared_storage_by_owner.clear()
 	g.shadowed_global_locals.clear()
 	g.sum_name_lookup.clear()
