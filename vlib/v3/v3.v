@@ -942,6 +942,9 @@ fn main() {
 	// currently relies on the serial function-item walk to retain those definitions.
 	cache_no_parallel_cgen := current_no_parallel || cache_manager.enabled
 	mut p := parser.Parser.new(prefs)
+	if scope_prealloc_selfhost {
+		p.reserve_selfhost_ast()
+	}
 
 	builtin_dir := builtin_dir_for_vroot(prefs.vroot)
 	mut builtin_defines := prefs.user_defines.clone()
@@ -1071,6 +1074,9 @@ fn main() {
 	// (like v2: check runs before transform). The transformer reads cached
 	// per-expression types for type-dependent lowering.
 	mut pre_tc := types.TypeChecker.new(a)
+	if scope_prealloc_selfhost {
+		pre_tc.enable_scoped_parallel_workers()
+	}
 	pre_tc.reject_unsupported_generics = is_selfhost
 	set_diagnostic_files(mut pre_tc, user_files)
 	pre_tc.collect(a)
@@ -1864,14 +1870,21 @@ fn restart_v3_without_cache() {
 }
 
 fn restart_v3_with_args(extra_args []string) {
-	mut command := [os.quoted_path(os.executable())]
-	for arg in extra_args {
-		command << os.quoted_path(arg)
+	executable := os.executable()
+	mut args := extra_args.clone()
+	args << os.args[1..]
+	$if js {
+		mut command := [os.quoted_path(executable)]
+		for arg in args {
+			command << os.quoted_path(arg)
+		}
+		exit(os.system(command.join(' ')))
+	} $else {
+		os.execvp(executable, args) or {
+			eprintln('failed to restart ${executable}: ${err.msg()}')
+			exit(1)
+		}
 	}
-	for arg in os.args[1..] {
-		command << os.quoted_path(arg)
-	}
-	exit(os.system(command.join(' ')))
 }
 
 fn cache_external_inputs_have_static_storage(inputs map[string][]string) bool {

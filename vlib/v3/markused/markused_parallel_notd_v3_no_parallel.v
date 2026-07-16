@@ -24,11 +24,15 @@ $if !windows {
 		results_ptr        voidptr // &[]BodyCalls
 		start              int
 		end                int
+		scope_enabled      bool
+	mut:
+		scope voidptr
 	}
 
 	// markused_chunk_thread runs one worker's range of bodies.
 	fn markused_chunk_thread(arg voidptr) voidptr {
-		args := unsafe { &MarkusedChunkArgs(arg) }
+		mut args := unsafe { &MarkusedChunkArgs(arg) }
+		args.scope = markused_worker_scope_begin(args.scope_enabled)
 		c := unsafe { &CallCollector(args.collector) }
 		body_ids := unsafe { &[]int(args.body_ids_ptr) }
 		modules := unsafe { &[]string(args.modules_ptr) }
@@ -36,7 +40,49 @@ $if !windows {
 		mut results := unsafe { &[]BodyCalls(args.results_ptr) }
 		c.collect_bodies_range(*body_ids, *modules, *import_contexts, args.start, args.end, mut
 			*results)
+		markused_worker_scope_leave(args.scope)
 		return unsafe { nil }
+	}
+}
+
+fn markused_worker_scope_begin(enabled bool) voidptr {
+	$if prealloc {
+		if enabled {
+			return unsafe { prealloc_scope_begin() }
+		}
+	}
+	return unsafe { nil }
+}
+
+fn markused_worker_scope_leave(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_leave(scope) }
+		}
+	}
+}
+
+fn markused_worker_scope_free(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(scope) }
+		}
+	}
+}
+
+fn clone_body_calls(value BodyCalls) BodyCalls {
+	mut calls := []string{cap: value.calls.len}
+	for call in value.calls {
+		calls << call.clone()
+	}
+	mut refs := []string{cap: value.refs.len}
+	for ref in value.refs {
+		refs << ref.clone()
+	}
+	return BodyCalls{
+		calls:         calls
+		refs:          refs
+		uses_generics: value.uses_generics
 	}
 }
 
@@ -82,6 +128,7 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 			results_ptr:        unsafe { voidptr(&results) }
 			start:              bounds[0]
 			end:                bounds[1]
+			scope_enabled:      false
 		}
 		for ci in 0 .. thread_count {
 			args << MarkusedChunkArgs{
@@ -92,6 +139,7 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 				results_ptr:        unsafe { voidptr(&results) }
 				start:              bounds[ci + 1]
 				end:                bounds[ci + 2]
+				scope_enabled:      true
 			}
 		}
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
@@ -105,6 +153,15 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 			}
 		}
 		ast.worker_pool.run(tasks)
+		for ci in 0 .. thread_count {
+			if args[ci + 1].scope == unsafe { nil } {
+				continue
+			}
+			for result_idx in args[ci + 1].start .. args[ci + 1].end {
+				results[result_idx] = clone_body_calls(results[result_idx])
+			}
+			markused_worker_scope_free(args[ci + 1].scope)
+		}
 		return results
 	}
 }

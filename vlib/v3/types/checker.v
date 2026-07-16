@@ -446,6 +446,7 @@ pub mut:
 	expr_type_set                  []bool
 	checking_nodes                 []bool
 	parallel_check_sparse          bool
+	scope_parallel_check_workers   bool
 	// Node id range [check_range_lo, check_range_hi] of the fn item currently
 	// being checked. Fn subtrees are disjoint contiguous ranges (each fn_decl at
 	// index i owns (prev_top_level_idx, i]), so while parallel_check_sparse is
@@ -505,6 +506,14 @@ mut:
 	type_cache    &TypeCache      = unsafe { nil }
 	type_interner &TypeInterner   = unsafe { nil }
 	symbols       &SymbolInterner = unsafe { nil }
+}
+
+// enable_scoped_parallel_workers uses disposable prealloc arenas for parallel
+// checker helpers. Ownership checking keeps its existing long-lived workers.
+pub fn (mut tc TypeChecker) enable_scoped_parallel_workers() {
+	$if !ownership ? {
+		tc.scope_parallel_check_workers = true
+	}
 }
 
 // new creates a TypeChecker value for types.

@@ -75,6 +75,14 @@ pub mut:
 	diagnostics    []Diagnostic
 }
 
+// reserve_selfhost_ast prepares the shared AST for a compiler-sized input
+// without retaining successively doubled backing arrays during transform.
+pub fn (mut p Parser) reserve_selfhost_ast() {
+	selfhost_ast_capacity := 2 * 1024 * 1024
+	p.a.nodes.ensure_cap(selfhost_ast_capacity)
+	p.a.children.ensure_cap(selfhost_ast_capacity)
+}
+
 // ExportRecord captures one accepted `@[export: name]` registration in file
 // order. The parallel-parse merge replays worker exports through these records
 // so they can be revalidated against disabled fns from earlier chunks (see

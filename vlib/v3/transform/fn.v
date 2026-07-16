@@ -414,10 +414,28 @@ fn (t &Transformer) resolve_alias_receiver_method(base_type string, method strin
 		return none
 	}
 	clean_base := t.normalize_type_alias(base_type)
+	cache_key := '${t.cur_module}\n${clean_base}\n${method}'
+	if !isnil(t.alias_receiver_method_cache) {
+		mut cache := t.alias_receiver_method_cache
+		if cached := cache.entries[cache_key] {
+			return cached
+		}
+		if cache.misses[cache_key] {
+			return none
+		}
+	}
 	if alias_method := t.alias_methods['${clean_base}.${method}'] {
+		if !isnil(t.alias_receiver_method_cache) {
+			mut cache := t.alias_receiver_method_cache
+			cache.entries[cache_key] = alias_method
+		}
 		return alias_method
 	}
 	if !t.is_integer_type_name(clean_base) {
+		if !isnil(t.alias_receiver_method_cache) {
+			mut cache := t.alias_receiver_method_cache
+			cache.misses[cache_key] = true
+		}
 		return none
 	}
 	for name, params in t.tc.fn_param_types {
@@ -430,8 +448,16 @@ fn (t &Transformer) resolve_alias_receiver_method(base_type string, method strin
 		}
 		param_name := params[0].name()
 		if t.alias_receiver_type_matches(clean_base, param_name) {
+			if !isnil(t.alias_receiver_method_cache) {
+				mut cache := t.alias_receiver_method_cache
+				cache.entries[cache_key] = name
+			}
 			return name
 		}
+	}
+	if !isnil(t.alias_receiver_method_cache) {
+		mut cache := t.alias_receiver_method_cache
+		cache.misses[cache_key] = true
 	}
 	return none
 }
@@ -1756,6 +1782,22 @@ fn (t &Transformer) decl_fn_type_param_in_module(param string, module_name strin
 
 // call_is_variadic updates call is variadic state for Transformer.
 fn (t &Transformer) call_is_variadic(call_name string) bool {
+	key := '${t.cur_file}\n${call_name}'
+	if !isnil(t.call_variadic_cache) {
+		mut cache := t.call_variadic_cache
+		if cached := cache.entries[key] {
+			return cached > 0
+		}
+	}
+	result := t.call_is_variadic_uncached(call_name)
+	if !isnil(t.call_variadic_cache) {
+		mut cache := t.call_variadic_cache
+		cache.entries[key] = if result { i8(1) } else { i8(-1) }
+	}
+	return result
+}
+
+fn (t &Transformer) call_is_variadic_uncached(call_name string) bool {
 	if call_name.len == 0 || isnil(t.tc) {
 		return false
 	}
@@ -1777,20 +1819,8 @@ fn (t &Transformer) call_is_variadic(call_name string) bool {
 				return is_variadic
 			}
 		}
-		suffix := '.' + call_name
-		mut suffix_match := false
-		mut suffix_variadic := false
-		for key, is_variadic in t.tc.fn_variadic {
-			if key.ends_with(suffix) {
-				if suffix_match {
-					return false
-				}
-				suffix_match = true
-				suffix_variadic = is_variadic
-			}
-		}
-		if suffix_match {
-			return suffix_variadic
+		if suffix_variadic := t.variadic_suffix_index[call_name] {
+			return suffix_variadic == 1
 		}
 	}
 	return false
@@ -1874,7 +1904,7 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		}
 	}
 	if arg_node.kind == .array_literal && arg_node.typ.len == 0 && param_type.starts_with('[]') {
-		arg_node.typ = param_type
+		t.set_node_typ(int(arg_id), param_type)
 	}
 	if transform_param_type_is_void_pointer(param_type)
 		&& t.call_arg_is_fn_pointer_value(arg_id, *arg_node) {
@@ -3974,19 +4004,44 @@ fn (t &Transformer) lookup_str_alias(clean_typ string) ?(string, string) {
 	if isnil(t.tc) || clean_typ.len == 0 {
 		return none
 	}
+	key := '${t.cur_module}\n${clean_typ}'
+	if !isnil(t.str_alias_cache) {
+		mut cache := t.str_alias_cache
+		if target := cache.entries[key] {
+			return clean_typ, target
+		}
+		if cache.misses[key] {
+			return none
+		}
+	}
+	if target := t.lookup_str_alias_uncached(clean_typ) {
+		if !isnil(t.str_alias_cache) {
+			mut cache := t.str_alias_cache
+			cache.entries[key] = target
+		}
+		return clean_typ, target
+	}
+	if !isnil(t.str_alias_cache) {
+		mut cache := t.str_alias_cache
+		cache.misses[key] = true
+	}
+	return none
+}
+
+fn (t &Transformer) lookup_str_alias_uncached(clean_typ string) ?string {
 	if alias := t.tc.type_aliases[clean_typ] {
-		return clean_typ, alias
+		return alias
 	}
 	if !clean_typ.contains('.') {
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 			qtyp := '${t.cur_module}.${clean_typ}'
 			if alias := t.tc.type_aliases[qtyp] {
-				return clean_typ, alias
+				return alias
 			}
 		}
 		for aname, target in t.tc.type_aliases {
 			if aname.all_after_last('.') == clean_typ {
-				return clean_typ, target
+				return target
 			}
 		}
 	}

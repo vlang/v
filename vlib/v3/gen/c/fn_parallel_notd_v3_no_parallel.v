@@ -7,8 +7,9 @@ import v3.flat
 import v3.types
 import v3.workers
 
-const max_flat_cgen_jobs = 10
+const max_flat_cgen_jobs = 4
 const min_flat_cgen_parallel_items = 1024
+const scoped_cgen_worker_batches = 96
 
 $if !windows {
 	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
@@ -44,10 +45,15 @@ $if !windows {
 		a := unsafe { &FlatCgenChunkArgs(arg) }
 		mut w := unsafe { &FlatGen(a.worker) }
 		items := unsafe { &[]FlatFnGenItem(a.work_items_ptr) }
-		scope := cgen_worker_scope_begin(w.scope_parallel_workers && !a.is_master)
-		w.gen_fn_items(*items)
-		w.worker_scope = scope
-		cgen_worker_scope_leave(scope)
+		if w.scope_parallel_workers {
+			if a.is_master {
+				w.gen_fn_items_scoped_master_batches(*items)
+			} else {
+				w.gen_fn_items_scoped_batches(*items)
+			}
+		} else {
+			w.gen_fn_items(*items)
+		}
 		return unsafe { nil }
 	}
 }
@@ -90,6 +96,168 @@ fn cgen_worker_scope_leave(scope voidptr) {
 		if scope != unsafe { nil } {
 			unsafe { prealloc_scope_leave(scope) }
 		}
+	}
+}
+
+fn cgen_worker_scope_free(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(scope) }
+		}
+	}
+}
+
+// absorb_scoped_cgen_batch copies a finished batch's output and observable
+// side tables into the helper's result arena before its scratch is released.
+fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen) {
+	mut b := unsafe { batch }
+	output := b.sb.str()
+	if output.len > 0 {
+		g.fn_segs << output
+	}
+	unsafe { b.sb.free() }
+	for opt_name, val_type in batch.needed_optional_types {
+		g.needed_optional_types[opt_name.clone()] = val_type.clone()
+	}
+	for encoded, name in batch.fn_ptr_types {
+		if encoded !in g.fn_ptr_types {
+			g.fn_ptr_types[encoded.clone()] = name.clone()
+		}
+	}
+	for encoded, used in batch.used_fn_ptr_types {
+		if used {
+			g.used_fn_ptr_types[encoded.clone()] = true
+		}
+	}
+	for name, enabled in batch.libc_compat_fns {
+		if enabled {
+			g.libc_compat_fns[name.clone()] = true
+		}
+	}
+	for key, name in batch.spawn_wrapper_names {
+		if key !in g.spawn_wrapper_names {
+			g.spawn_wrapper_names[key.clone()] = name.clone()
+		}
+	}
+	for def in batch.spawn_wrapper_defs {
+		g.add_spawn_wrapper_def(def.clone())
+	}
+	for key, name in batch.callback_wrapper_names {
+		if key !in g.callback_wrapper_names {
+			g.callback_wrapper_names[key.clone()] = name.clone()
+		}
+	}
+	for def in batch.callback_wrapper_defs {
+		g.add_callback_wrapper_def(def.clone())
+	}
+}
+
+// gen_fn_items_scoped_batches bounds helper scratch without adding worker-pool
+// barriers. Each batch gets fresh mutable generator/checker caches while its C
+// output is accumulated in a much smaller result arena.
+fn (mut g FlatGen) gen_fn_items_scoped_batches(items []FlatFnGenItem) {
+	result_scope := cgen_worker_scope_begin(true)
+	mut total_cost := i64(0)
+	for item in items {
+		total_cost += i64(item.cost) + 1
+	}
+	n_batches := if items.len < scoped_cgen_worker_batches {
+		items.len
+	} else {
+		scoped_cgen_worker_batches
+	}
+	mut start := 0
+	mut consumed_cost := i64(0)
+	for batch_idx in 0 .. n_batches {
+		mut end := start
+		target_cost := total_cost * i64(batch_idx + 1) / i64(n_batches)
+		for end < items.len
+			&& (batch_idx == n_batches - 1 || consumed_cost < target_cost || end == start) {
+			consumed_cost += i64(items[end].cost) + 1
+			end++
+		}
+		scratch_scope := cgen_worker_scope_begin(true)
+		mut batch := g.new_parallel_worker(batch_idx)
+		batch.gen_fn_items(items[start..end])
+		cgen_worker_scope_leave(scratch_scope)
+		g.absorb_scoped_cgen_batch(batch)
+		cgen_worker_scope_free(scratch_scope)
+		start = end
+	}
+	g.worker_scope = result_scope
+	cgen_worker_scope_leave(result_scope)
+}
+
+// gen_fn_items_scoped_master_batches publishes each caller-thread batch
+// directly into the already-scoped master generator, so its temporary caches
+// do not remain resident for the rest of cgen.
+fn (mut g FlatGen) gen_fn_items_scoped_master_batches(items []FlatFnGenItem) {
+	mut total_cost := i64(0)
+	for item in items {
+		total_cost += i64(item.cost) + 1
+	}
+	n_batches := if items.len < scoped_cgen_worker_batches {
+		items.len
+	} else {
+		scoped_cgen_worker_batches
+	}
+	mut start := 0
+	mut consumed_cost := i64(0)
+	for batch_idx in 0 .. n_batches {
+		mut end := start
+		target_cost := total_cost * i64(batch_idx + 1) / i64(n_batches)
+		for end < items.len
+			&& (batch_idx == n_batches - 1 || consumed_cost < target_cost || end == start) {
+			consumed_cost += i64(items[end].cost) + 1
+			end++
+		}
+		scratch_scope := cgen_worker_scope_begin(true)
+		mut batch := g.new_parallel_worker(batch_idx)
+		batch.gen_fn_items(items[start..end])
+		cgen_worker_scope_leave(scratch_scope)
+		g.absorb_scoped_cgen_batch(batch)
+		cgen_worker_scope_free(scratch_scope)
+		start = end
+	}
+}
+
+fn clone_param_types_by_short(values map[string][]types.Type) map[string][]types.Type {
+	mut cloned := map[string][]types.Type{}
+	for name, params in values {
+		cloned[name.clone()] = types.clone_owned_types(params)
+	}
+	return cloned
+}
+
+fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[string][]types.StructField {
+	mut cloned := map[string][]types.StructField{}
+	for name, fields in values {
+		mut owned_fields := []types.StructField{cap: fields.len}
+		for field in fields {
+			owned_fields << types.StructField{
+				name: field.name.clone()
+				typ:  types.clone_owned_type(field.typ)
+			}
+		}
+		cloned[name.clone()] = owned_fields
+	}
+	return cloned
+}
+
+fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
+	if fs_worker.worker_scope == unsafe { nil } {
+		g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
+		g.param_types_by_short = fs_worker.param_types_by_short.move()
+		g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
+		return
+	}
+	g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
+	g.param_types_by_short = clone_param_types_by_short(fs_worker.param_types_by_short)
+	g.embedded_fields_by_type = clone_embedded_fields_by_type(fs_worker.embedded_fields_by_type)
+	g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.clone()
+	if fs_worker.worker_scope != unsafe { nil } {
+		cgen_worker_scope_free(fs_worker.worker_scope)
+		fs_worker.worker_scope = unsafe { nil }
 	}
 }
 
@@ -137,8 +305,9 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			is_master:      true
 		}
 		mut cgen_workers := []voidptr{cap: thread_count}
+		worker_setup_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
 		for ci := 0; ci < thread_count; ci++ {
-			w := g.new_parallel_worker(ci + 1)
+			w := g.new_parallel_dispatch_worker(ci + 1)
 			cgen_workers << voidptr(w)
 		}
 		for ci := 0; ci < thread_count; ci++ {
@@ -147,7 +316,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 				work_items_ptr: unsafe { voidptr(&chunk_items[ci + 1]) }
 			}
 		}
-
+		cgen_worker_scope_leave(worker_setup_scope)
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		mut tasks := []workers.Task{cap: chunk_count}
 		for ci in 0 .. chunk_count {
@@ -160,12 +329,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			}
 		}
 		g.parallel_used = g.a.worker_pool.run(tasks)
-		for ci := 0; ci < thread_count; ci++ {
-			w := unsafe { &FlatGen(cgen_workers[ci]) }
-			if w.worker_scope != unsafe { nil } {
-				g.parallel_worker_scopes << w.worker_scope
-			}
-		}
 		master_output := g.sb.str()
 		unsafe { g.sb.free() }
 		g.sb = strings.new_builder(4096)
@@ -175,9 +338,14 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			unsafe { master_output.free() }
 		}
 		for ci := 0; ci < thread_count; ci++ {
-			w := unsafe { &FlatGen(cgen_workers[ci]) }
+			mut w := unsafe { &FlatGen(cgen_workers[ci]) }
 			g.merge_parallel_worker(w)
+			if w.worker_scope != unsafe { nil } {
+				cgen_worker_scope_free(w.worker_scope)
+				w.worker_scope = unsafe { nil }
+			}
 		}
+		cgen_worker_scope_free(worker_setup_scope)
 		g.tc.unfreeze_type_cache_after_forks()
 		// Synthetic main temps continue after the master's chunk[0] range.
 		g.gen_synthetic_main_after_fns()
@@ -468,14 +636,38 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 // bulk of each worker's clone cost — previously the whole table set was duplicated per
 // worker and, under -gc none, never freed.
 fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
+	return g.new_parallel_worker_config(worker_id, false)
+}
+
+// new_parallel_dispatch_worker selects the lightweight accumulator only when
+// scoped batching keeps all actual emission in fresh full workers.
+fn (g &FlatGen) new_parallel_dispatch_worker(worker_id int) &FlatGen {
+	if g.scope_parallel_workers {
+		return g.new_parallel_result_worker(worker_id)
+	}
+	return g.new_parallel_worker(worker_id)
+}
+
+// new_parallel_result_worker creates a non-emitting helper accumulator. Caches
+// that it only passes to fresh batch generators stay shared with the frozen
+// master snapshot; result tables remain private.
+fn (g &FlatGen) new_parallel_result_worker(worker_id int) &FlatGen {
+	return g.new_parallel_worker_config(worker_id, true)
+}
+
+fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &FlatGen {
 	return &FlatGen{
 		sb:                             strings.new_builder(64_000)
 		a:                              unsafe { g.a }
 		used_fns:                       g.used_fns
 		used_fn_names:                  g.used_fn_names
-		test_files:                     g.test_files.clone()
-		str_lits:                       g.str_lits.clone()
-		str_lit_ids:                    g.str_lit_ids.clone()
+		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
+		str_lits:                       if result_only { g.str_lits } else { g.str_lits.clone() }
+		str_lit_ids:                    if result_only {
+			g.str_lit_ids
+		} else {
+			g.str_lit_ids.clone()
+		}
 		global_types:                   g.global_types
 		global_raw_type_texts:          g.global_raw_type_texts
 		enum_vals:                      g.enum_vals
@@ -503,7 +695,11 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		module_init_fn_modules:         g.module_init_fn_modules
 		module_imports:                 g.module_imports
 		libc_compat_fns:                g.libc_compat_fns.clone()
-		tc:                             g.clone_parallel_type_checker()
+		tc:                             if result_only {
+			unsafe { g.tc }
+		} else {
+			g.clone_parallel_type_checker()
+		}
 		has_builtins:                   g.has_builtins
 		cache_split:                    g.cache_split
 		tmp_count:                      (worker_id + 1) * 100_000
@@ -528,16 +724,48 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		struct_decl_infos:              g.struct_decl_infos
 		struct_decl_short_infos:        g.struct_decl_short_infos
 		shared_type_names:              g.shared_type_names
-		const_runtime_inits:            g.const_runtime_inits.clone()
-		runtime_inits:                  g.runtime_inits.clone()
+		const_runtime_inits:            if result_only {
+			g.const_runtime_inits
+		} else {
+			g.const_runtime_inits.clone()
+		}
+		runtime_inits:                  if result_only {
+			g.runtime_inits
+		} else {
+			g.runtime_inits.clone()
+		}
 		compiler_vroot:                 g.compiler_vroot
 		compiler_vexe:                  g.compiler_vexe
-		cur_param_names:                g.cur_param_names.clone()
-		cur_param_type_values:          g.cur_param_type_values.clone()
-		cur_param_types:                g.cur_param_types.clone()
-		cur_concrete_optional_params:   g.cur_concrete_optional_params.clone()
-		cur_mut_params:                 g.cur_mut_params.clone()
-		cur_mut_param_owners:           g.cur_mut_param_owners.clone()
+		cur_param_names:                if result_only {
+			g.cur_param_names
+		} else {
+			g.cur_param_names.clone()
+		}
+		cur_param_type_values:          if result_only {
+			g.cur_param_type_values
+		} else {
+			g.cur_param_type_values.clone()
+		}
+		cur_param_types:                if result_only {
+			g.cur_param_types
+		} else {
+			g.cur_param_types.clone()
+		}
+		cur_concrete_optional_params:   if result_only {
+			g.cur_concrete_optional_params
+		} else {
+			g.cur_concrete_optional_params.clone()
+		}
+		cur_mut_params:                 if result_only {
+			g.cur_mut_params
+		} else {
+			g.cur_mut_params.clone()
+		}
+		cur_mut_param_owners:           if result_only {
+			g.cur_mut_param_owners
+		} else {
+			g.cur_mut_param_owners.clone()
+		}
 		cur_fn_ret:                     g.cur_fn_ret
 		cur_fn_ret_is_optional:         g.cur_fn_ret_is_optional
 		cur_fn_ret_base:                g.cur_fn_ret_base
@@ -545,10 +773,26 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 		expected_expr_type:             g.expected_expr_type
 		expected_enum:                  g.expected_enum
 		needed_optional_types:          g.needed_optional_types.clone()
-		emitted_optional_types:         g.emitted_optional_types.clone()
-		emitted_fns:                    g.emitted_fns.clone()
-		array_method_cache:             g.array_method_cache.clone()
-		param_types_cache:              g.param_types_cache.clone()
+		emitted_optional_types:         if result_only {
+			g.emitted_optional_types
+		} else {
+			g.emitted_optional_types.clone()
+		}
+		emitted_fns:                    if result_only {
+			g.emitted_fns
+		} else {
+			g.emitted_fns.clone()
+		}
+		array_method_cache:             if result_only {
+			g.array_method_cache
+		} else {
+			g.array_method_cache.clone()
+		}
+		param_types_cache:              if result_only {
+			g.param_types_cache
+		} else {
+			g.param_types_cache.clone()
+		}
 		embedded_fields_by_type:        g.embedded_fields_by_type
 		param_types_by_short:           g.param_types_by_short
 		generic_method_candidates:      g.generic_method_candidates
@@ -582,13 +826,9 @@ fn (g &FlatGen) new_parallel_worker(worker_id int) &FlatGen {
 // Only genuinely per-worker mutable state is given its own copy: the scope chain (gen pushes
 // child scopes) and `errors` (avoid a concurrent append race, though gen does not emit any).
 fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
-	mut fs := types.new_scope(unsafe { nil })
-	fs.names = g.tc.file_scope.names.clone()
-	fs.types = g.tc.file_scope.types.clone()
-	fs.name_indexes = g.tc.file_scope.name_indexes.clone()
-	fs.generations = g.tc.file_scope.generations.clone()
-	fs.next_generation = g.tc.file_scope.next_generation
-	fs.lifetime = g.tc.file_scope.lifetime
+	// Cgen only reads file-level bindings. Give each worker an empty child scope
+	// over the immutable checked scope instead of cloning the full symbol table.
+	fs := types.new_scope(g.tc.file_scope)
 	mut wtc := &types.TypeChecker{
 		a:                                  unsafe { g.tc.a }
 		fn_ret_types:                       g.tc.fn_ret_types
@@ -684,22 +924,25 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	}
 	// The ordered segment owns the copied output; release the worker builder.
 	unsafe { ww.sb.free() }
+	for segment in w.fn_segs {
+		g.fn_segs << segment.clone()
+	}
 	for opt_name, val_type in w.needed_optional_types {
-		g.needed_optional_types[opt_name] = val_type
+		g.needed_optional_types[opt_name.clone()] = val_type.clone()
 	}
 	for encoded, name in w.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
-			g.fn_ptr_types[encoded] = name
+			g.fn_ptr_types[encoded.clone()] = name.clone()
 		}
 	}
 	for encoded, used in w.used_fn_ptr_types {
 		if used {
-			g.used_fn_ptr_types[encoded] = true
+			g.used_fn_ptr_types[encoded.clone()] = true
 		}
 	}
 	for name, enabled in w.libc_compat_fns {
 		if enabled {
-			g.libc_compat_fns[name] = true
+			g.libc_compat_fns[name.clone()] = true
 		}
 	}
 	// Spawn wrappers (thread arg structs + trampoline fns) are generated on demand
@@ -707,19 +950,19 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	// master must also emit. Deduplicate by their deterministic key/def.
 	for key, name in w.spawn_wrapper_names {
 		if key !in g.spawn_wrapper_names {
-			g.spawn_wrapper_names[key] = name
+			g.spawn_wrapper_names[key.clone()] = name.clone()
 		}
 	}
 	for def in w.spawn_wrapper_defs {
-		g.add_spawn_wrapper_def(def)
+		g.add_spawn_wrapper_def(def.clone())
 	}
 	for key, name in w.callback_wrapper_names {
 		if key !in g.callback_wrapper_names {
-			g.callback_wrapper_names[key] = name
+			g.callback_wrapper_names[key.clone()] = name.clone()
 		}
 	}
 	for def in w.callback_wrapper_defs {
-		g.add_callback_wrapper_def(def)
+		g.add_callback_wrapper_def(def.clone())
 	}
 }
 
@@ -738,6 +981,14 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		if isnil(g.a.worker_pool) {
 			g.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
+		if g.scope_parallel_workers {
+			g.collect_fixed_storage_consts()
+			g.precompute_embedded_fields()
+			g.precompute_param_type_index()
+			g.precompute_concrete_optional_abi_fns()
+			g.prepare_pre_dispatch_master()
+			return true
+		}
 		mut fs_worker := g.new_parallel_worker(0)
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
 		g.a.worker_pool.run([
@@ -752,15 +1003,7 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 				force_sync: true
 			},
 		])
-		if fs_worker.worker_scope != unsafe { nil } {
-			g.parallel_worker_scopes << fs_worker.worker_scope
-		}
-		g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
-		// The helper also built these precomputes; hand them to the master so
-		// later worker forks (and master-side emission) do not run with empty
-		// maps. The fork is discarded, so a move is safe.
-		g.param_types_by_short = fs_worker.param_types_by_short.move()
-		g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
+		g.publish_fixed_storage_scan(mut fs_worker)
 		return true
 	}
 }

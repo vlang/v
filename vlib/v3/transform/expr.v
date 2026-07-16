@@ -2280,9 +2280,9 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 	})
 	mut stmts := []flat.NodeId{}
 	lhs_value := t.make_ident('__sum_eq_a')
-	t.a.nodes[int(lhs_value)].typ = clean_sum
+	t.set_node_typ(int(lhs_value), clean_sum)
 	rhs_value := t.make_ident('__sum_eq_b')
-	t.a.nodes[int(rhs_value)].typ = clean_sum
+	t.set_node_typ(int(rhs_value), clean_sum)
 	tag_ne := t.make_infix(.ne, t.make_sum_tag_selector(lhs_value, .dot),
 		t.make_sum_tag_selector(rhs_value, .dot))
 	ret_false := t.make_return(t.make_bool_literal(false), 'bool')
@@ -2301,9 +2301,9 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 		mut rhs_payload := t.make_selector_op(rhs_value, field, field_typ, .dot)
 		if use_ptr {
 			lhs_payload = t.make_prefix(.mul, lhs_payload)
-			t.a.nodes[int(lhs_payload)].typ = qv
+			t.set_node_typ(int(lhs_payload), qv)
 			rhs_payload = t.make_prefix(.mul, rhs_payload)
-			t.a.nodes[int(rhs_payload)].typ = qv
+			t.set_node_typ(int(rhs_payload), qv)
 		}
 		pending_start := t.pending_stmts.len
 		payload_eq := if t.is_sum_type_name(qv) && t.resolve_sum_name(qv) == clean_sum {
@@ -2322,7 +2322,7 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 		stmts << t.make_if(guard, t.make_block(body_stmts), t.make_empty())
 	}
 	ret_result := t.make_ident(result_name)
-	t.a.nodes[int(ret_result)].typ = 'bool'
+	t.set_node_typ(int(ret_result), 'bool')
 	stmts << t.make_return(ret_result, 'bool')
 	t.pending_stmts = saved_pending
 	// Keep the helper in its request's output segment. This is normally the requesting
