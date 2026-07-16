@@ -5940,10 +5940,20 @@ fn (g &FlatGen) json_encode_embedded_struct_field_type(field types.StructField) 
 	if field_type is types.Pointer {
 		return none
 	}
-	if field_type is types.Struct && field.name == field_type.name.all_after_last('.') {
+	if field_type is types.Struct && g.json_struct_field_is_embedded(field, field_type.name) {
 		return field_type
 	}
 	return none
+}
+
+fn (g &FlatGen) json_struct_field_is_embedded(field types.StructField, type_name string) bool {
+	if g.embedded_field_type_name(field).len > 0 {
+		return true
+	}
+	short_field := if field.name.contains('.') { field.name.all_after_last('.') } else { field.name }
+	short_type := if type_name.contains('.') { type_name.all_after_last('.') } else { type_name }
+	return field.name == type_name || short_field == short_type
+		|| embedded_field_c_names_match(field.name, type_name)
 }
 
 fn (g &FlatGen) json_encode_omitempty_supported(typ types.Type) bool {
@@ -6336,7 +6346,7 @@ fn (g &FlatGen) json_decode_struct_field_is_embedded(field types.StructField) bo
 	}
 	field_type = types.unwrap_pointer(field_type)
 	if field_type is types.Struct {
-		return field.name == field_type.name.all_after_last('.')
+		return g.json_struct_field_is_embedded(field, field_type.name)
 	}
 	return false
 }

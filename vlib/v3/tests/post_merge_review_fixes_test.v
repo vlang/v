@@ -2846,6 +2846,11 @@ fn main() {
 }
 ')
 	assert out == '{"embed":2.0,"inner":[1.0,2.0],"test":1.0}'
+	qualified := run_good_project(v3_bin, 'json_qualified_embedded_struct_flattening', {
+		'other/other.v': 'module other\n\npub struct Inner {\npub:\n\tembed f64\n\tname string\n}\n'
+		'main.v':        'module main\n\nimport json\nimport other\n\nstruct Outer {\n\tother.Inner\n\tn int\n}\n\nfn main() {\n\tdata := Outer{\n\t\tother.Inner{\n\t\t\tembed: 2.0\n\t\t\tname:  "Ada"\n\t\t}\n\t\tn: 3\n\t}\n\tprintln(json.encode(data))\n\tdecoded := json.decode(Outer, "{\\"embed\\":4.0,\\"name\\":\\"Bea\\",\\"n\\":5}")!\n\tprintln(decoded.name)\n\tprintln(int_str(int(decoded.embed)) + ":" + int_str(decoded.n))\n}\n'
+	}, 'main.v')
+	assert qualified == '{"embed":2.0,"name":"Ada","n":3}\nBea\n4:5'
 }
 
 fn test_json_encode_omitempty_field_attr_preserves_omission() {
