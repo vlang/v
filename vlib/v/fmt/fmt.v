@@ -262,10 +262,19 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	// mismatch. Treat implied json as a reason to keep the file's json usage as-is.
 	implied_json := 'json' in file.implied_imports
 	mut imports_json := implied_json
+	// An aliased legacy import (`import json as old`) qualifies its calls as
+	// `old.encode(...)`. Whether the parser tags those as the literal `json.encode`
+	// call kind that call_expr migrates depends on the alias being resolved to the
+	// canonical module, which is not guaranteed in every parse context — so migrating
+	// could drop the `old` alias (imp_stmt_str emits plain `import json2`) while
+	// leaving `old.encode(...)` behind. Leave such files unmigrated.
+	mut has_aliased_json_import := false
 	for imp in file.imports {
 		if imp.source_name == 'json' {
 			imports_json = true
-			break
+			if imp.alias != 'json' {
+				has_aliased_json_import = true
+			}
 		}
 	}
 	// Importing `json2` into a file whose own module is `json2` is rejected by the
@@ -274,9 +283,9 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 	cur_module_is_json2 := file.mod.name == 'json2'
 	if imports_json {
 		f.keep_json_unmigrated = implied_json || json2_alias_is_blank || has_branch_local_json2
-			|| has_branch_local_json || json2_name_taken || json_import_has_line_comment
-			|| cur_module_is_json2 || f.file_has_vfmt_off_region()
-			|| f.file_has_unmigratable_json_usage(file)
+			|| has_branch_local_json || has_aliased_json_import || json2_name_taken
+			|| json_import_has_line_comment || cur_module_is_json2
+			|| f.file_has_vfmt_off_region() || f.file_has_unmigratable_json_usage(file)
 	}
 
 	for imp in file.imports {
