@@ -371,6 +371,13 @@ fn type_needs_legacy_json_rec(t &ast.Table, typ ast.Type, mut visited []int) boo
 	if sym.name in ['time.Time', 'rune', 'f32', 'f64'] {
 		return true
 	}
+	if sym.kind == .placeholder {
+		// v fmt parses only the current file, so an imported payload type (`models.Event`)
+		// resolves only to a placeholder here, with no field info. Its fields may be
+		// legacy-sensitive (a time.Time, a `@[raw]`/`@[omitempty]` field, ...), so keep such
+		// unresolved payloads on legacy json rather than risk silently changing the contract.
+		return true
+	}
 	// A recursive type (`type Val = []Val | int`, `type Tree = []Tree | int`) would
 	// otherwise loop forever through its self-referential variant/element. A repeat of a
 	// type index cannot introduce a new legacy-sensitive leaf (any such leaf is caught by

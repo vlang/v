@@ -1,0 +1,11 @@
+import json
+import net.http
+
+// v fmt parses only the current file, so an imported payload type resolves here to a bare
+// placeholder with no field info. `http.Cookie`, for instance, contains a `time.Time`
+// field that vfmt cannot see, and time.Time's legacy JSON contract (a Unix number) differs
+// from json2's RFC3339 string. Since an unresolved payload's fields may be legacy-sensitive,
+// the file is conservatively left on legacy `json` rather than risk changing the contract.
+fn to_json() string {
+	return json.encode(http.Cookie{})
+}
