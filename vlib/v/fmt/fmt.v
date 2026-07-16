@@ -162,6 +162,53 @@ mut:
 	blocked bool
 }
 
+// json_encoded_field_name returns the JSON key a struct field serialises to, or '' when the
+// field is not encoded (`@[skip]` / `@[json: '-']`).
+fn json_encoded_field_name(field ast.StructField) string {
+	for attr in field.attrs {
+		if attr.name == 'skip' {
+			return ''
+		}
+		if attr.name == 'json' {
+			return if attr.arg == '-' { '' } else { attr.arg }
+		}
+	}
+	return field.name
+}
+
+// file_has_embedded_field_collision reports whether the file declares a struct whose
+// flattened JSON fields — its own fields plus those of embedded structs, recursively —
+// contain a duplicate key. Legacy json emits colliding embedded fields under their original
+// names (producing duplicate keys), while json2 disambiguates them with `Outer.field`
+// prefixes, so migrating `json.encode(Bar{})` changes the serialized payload. Keep such
+// files on legacy json.
+fn (f &Fmt) file_has_embedded_field_collision(file &ast.File) bool {
+	for stmt in file.stmts {
+		if stmt !is ast.StructDecl {
+			continue
+		}
+		sym := f.table.find_sym((stmt as ast.StructDecl).name) or { continue }
+		if sym.info !is ast.Struct || (sym.info as ast.Struct).embeds.len == 0 {
+			continue
+		}
+		mut seen := map[string]bool{}
+		for field in f.table.struct_fields(sym) {
+			if field.is_embed {
+				continue
+			}
+			name := json_encoded_field_name(field)
+			if name == '' {
+				continue
+			}
+			if name in seen {
+				return true
+			}
+			seen[name] = true
+		}
+	}
+	return false
+}
+
 // file_blocks_json_migration reports two mechanical reasons a straight json->json2 rewrite
 // would break or lose source, beyond the import-level checks in process_file_imports:
 //   - the file declares an identifier named like the migrated qualifier `json2` — a
@@ -443,7 +490,7 @@ pub fn (mut f Fmt) process_file_imports(file &ast.File) {
 			f.keep_json_unmigrated = implied_json || json2_alias_is_blank || has_branch_local_json2
 				|| has_branch_local_json || has_aliased_json_import || json2_name_taken
 				|| json_import_has_line_comment || cur_module_is_json2
-				|| f.file_blocks_json_migration(file)
+				|| f.file_blocks_json_migration(file) || f.file_has_embedded_field_collision(file)
 		}
 		// Only rewrite `json.encode`/`json.decode` calls when the file actually imports the
 		// legacy `json` module and it is being migrated. The parser tags a call by its literal
