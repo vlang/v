@@ -1388,7 +1388,7 @@ fn (mut g FlatGen) interface_alias_custom_str_expr(expr string, typ types.Type) 
 	}
 	clean := typ
 	if clean is types.Alias {
-		if str_expr := g.interface_custom_str_expr(expr, clean.name, clean.base_type) {
+		if str_expr := g.interface_custom_str_expr(expr, clean.name, clean) {
 			return str_expr
 		}
 		return g.interface_alias_custom_str_expr(expr, clean.base_type)
@@ -1663,7 +1663,7 @@ fn (mut g FlatGen) interface_implicit_struct_str_value(expr string, name string,
 fn (mut g FlatGen) interface_implicit_str_expr(expr string, typ types.Type) ?string {
 	clean := types.unwrap_pointer(typ)
 	if clean is types.Alias {
-		if str_expr := g.interface_custom_str_expr(expr, clean.name, clean.base_type) {
+		if str_expr := g.interface_custom_str_expr(expr, clean.name, clean) {
 			return str_expr
 		}
 		return g.interface_implicit_str_expr(expr, clean.base_type)

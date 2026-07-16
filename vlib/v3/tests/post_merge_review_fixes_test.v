@@ -3470,6 +3470,51 @@ fn main() {
 	assert out == 'Foo{\n    name: name:Ada\n    missing: &nil\n    code: code:7\n}'
 }
 
+fn test_implicit_interface_str_dispatch_preserves_pointer_alias_receiver_custom_str() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_alias_receiver_custom_str', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+type Ref = &Bar
+
+fn (r Ref) str() string {
+	return "ref:" + int_str(r.x)
+}
+
+type RefBox = &Bar
+
+fn (r &RefBox) str() string {
+	value := *r
+	return "refbox:" + int_str(value.x)
+}
+
+struct Foo {
+	ref    Ref
+	refbox RefBox
+}
+
+fn main() {
+	bar := &Bar{
+		x: 7
+	}
+	other := &Bar{
+		x: 9
+	}
+	value := Printable(Foo{
+		ref: bar
+		refbox: other
+	})
+	println(value.str())
+}
+')
+	assert out == 'Foo{\n    ref: ref:7\n    refbox: refbox:9\n}'
+}
+
 fn test_implicit_interface_str_dispatch_dereferences_pointer_struct_fields() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_struct_fields', 'interface Printable {
