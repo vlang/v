@@ -2981,6 +2981,26 @@ fn test_callback_lambda_lift_preserves_outer_captures() {
 	assert callee_out == '12'
 }
 
+fn test_callback_lambda_lift_forwards_optional_void_failures() {
+	v3_bin := build_v3()
+	result_out := run_good(v3_bin, 'callback_lambda_result_void_forward',
+		'fn takes(cb fn () !void) {\n\tcb() or {\n\t\tprintln(err.msg())\n\t\treturn\n\t}\n\tprintln("success")\n}\n\nfn maybe_fails() !void {\n\treturn error("fail")\n}\n\nfn main() {\n\ttakes(|| maybe_fails())\n}\n')
+	assert result_out == 'fail'
+	option_out := run_good(v3_bin, 'callback_lambda_option_void_forward',
+		'fn takes(cb fn () ?void) {\n\tcb() or {\n\t\tprintln("none")\n\t\treturn\n\t}\n\tprintln("some")\n}\n\nfn maybe_none() ?void {\n\treturn none\n}\n\nfn main() {\n\ttakes(|| maybe_none())\n}\n')
+	assert option_out == 'none'
+}
+
+fn test_user_new_map_call_with_args_uses_renamed_symbol() {
+	v3_bin := build_v3()
+	source := 'fn new_map(x int) int {\n\treturn x + 1\n}\n\nfn main() {\n\tprintln(int_str(new_map(41)))\n}\n'
+	c_source := gen_c(v3_bin, 'user_new_map_call_with_args', source)
+	assert c_source.contains('main__new_map(41)'), c_source
+	assert !c_source.contains('(new_map(41)'), c_source
+	out := run_good(v3_bin, 'user_new_map_call_with_args_run', source)
+	assert out == '42'
+}
+
 fn test_amp_interface_cast_heap_copies_concrete_source() {
 	v3_bin := build_v3()
 	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) value() int {\n\treturn b.n\n}\n\nfn make() &Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn &Reader(b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'

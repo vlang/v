@@ -168,6 +168,17 @@ fn (mut g FlatGen) gen_pointer_arg_from_array_literal(node flat.Node, expected t
 // gen_fixed_array_data_arg emits fixed array data arg output for c.
 fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed) {
 	node := g.a.nodes[int(id)]
+	if node.kind == .block && node.children_count == 1 {
+		stmt_id := g.a.child(&node, 0)
+		stmt := g.a.nodes[int(stmt_id)]
+		expr_id := if stmt.kind == .expr_stmt && stmt.children_count == 1 {
+			g.a.child(&stmt, 0)
+		} else {
+			stmt_id
+		}
+		g.gen_fixed_array_data_arg(expr_id, arr)
+		return
+	}
 	if node.kind == .array_literal {
 		c_elem := g.value_c_type(arr.elem_type)
 		g.write('(${c_elem}[]){')
@@ -175,9 +186,28 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 			if i > 0 {
 				g.write(', ')
 			}
-			g.gen_expr(g.a.child(&node, i))
+			g.gen_expr_with_expected_type(g.a.child(&node, i), arr.elem_type)
 		}
 		g.write('}')
+		return
+	}
+	if node.kind == .array_init {
+		c_elem := g.value_c_type(arr.elem_type)
+		if init_id := g.array_init_field_value(node, 'init') {
+			if len_value := g.tc.fixed_array_len_value(arr) {
+				uses_index := g.node_contains_ident(init_id, 'index')
+				g.write('(${c_elem}[]){')
+				for i in 0 .. len_value {
+					if i > 0 {
+						g.write(', ')
+					}
+					g.gen_fixed_array_init_expr(init_id, arr.elem_type, i, uses_index)
+				}
+				g.write('}')
+				return
+			}
+		}
+		g.write('(${c_elem}[]){0}')
 		return
 	}
 	if node.kind == .paren && node.children_count > 0 {
@@ -217,6 +247,42 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		return
 	}
 	g.gen_expr(id)
+}
+
+fn (mut g FlatGen) gen_fixed_array_init_expr(init_id flat.NodeId, elem_type types.Type, index int, uses_index bool) {
+	if !uses_index {
+		g.gen_expr_with_expected_type(init_id, elem_type)
+		return
+	}
+	g.write('({ int index = ${index}; ')
+	g.gen_expr_with_expected_type(init_id, elem_type)
+	g.write('; })')
+}
+
+fn (g &FlatGen) node_contains_ident(id flat.NodeId, name string) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .ident && node.value == name {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if g.node_contains_ident(g.a.child(&node, i), name) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (g &FlatGen) array_init_field_value(node flat.Node, field_name string) ?flat.NodeId {
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.kind == .field_init && field.value == field_name && field.children_count > 0 {
+			return g.a.child(field, 0)
+		}
+	}
+	return none
 }
 
 fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected types.Type) bool {
@@ -359,13 +425,19 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 		}
 		'last' {
 			g.write('*(${c_elem}*)array_get(')
+			if is_ptr {
+				g.write('*')
+			}
 			g.gen_expr(base_id)
 			g.write(', ')
 			g.gen_expr(base_id)
-			g.write('.len - 1)')
+			g.write('${dot}len - 1)')
 		}
 		'first' {
 			g.write('*(${c_elem}*)array_get(')
+			if is_ptr {
+				g.write('*')
+			}
 			g.gen_expr(base_id)
 			g.write(', 0)')
 		}

@@ -344,6 +344,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_file = file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope
+	tc.fn_context.generic_params = tc.infer_decl_generic_param_names(node)
 	tc.fn_context.return_type = tc.parse_type(node.typ)
 	tc.fn_context.node_id = fn_idx
 	$if ownership ? {

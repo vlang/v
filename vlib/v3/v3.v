@@ -2223,12 +2223,12 @@ fn validate_test_file_harness_inputs(a &flat.FlatAst, tc &types.TypeChecker, tes
 	return errors
 }
 
-fn test_file_has_executable_top_level_stmt(a &flat.FlatAst, node flat.Node) bool {
+fn test_file_has_executable_top_level_stmt(a &flat.FlatAst, node &flat.Node) bool {
 	if node.kind != .file && node.kind != .block {
 		return false
 	}
 	for i in 0 .. node.children_count {
-		child_id := a.child(&node, i)
+		child_id := a.child(node, i)
 		if int(child_id) < a.user_code_start {
 			continue
 		}
@@ -2244,7 +2244,7 @@ fn test_file_has_executable_top_level_stmt(a &flat.FlatAst, node flat.Node) bool
 	return false
 }
 
-fn test_file_is_executable_top_level_stmt(node flat.Node) bool {
+fn test_file_is_executable_top_level_stmt(node &flat.Node) bool {
 	return match node.kind {
 		.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign, .for_stmt,
 		.for_in_stmt, .if_expr, .match_stmt, .assert_stmt, .defer_stmt {
@@ -2256,12 +2256,12 @@ fn test_file_is_executable_top_level_stmt(node flat.Node) bool {
 	}
 }
 
-fn collect_test_harness_decl_ids(a &flat.FlatAst, node flat.Node, mut ids []flat.NodeId) {
+fn collect_test_harness_decl_ids(a &flat.FlatAst, node &flat.Node, mut ids []flat.NodeId) {
 	if node.kind != .file && node.kind != .block {
 		return
 	}
 	for i in 0 .. node.children_count {
-		child_id := a.child(&node, i)
+		child_id := a.child(node, i)
 		if int(child_id) < a.user_code_start {
 			continue
 		}

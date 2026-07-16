@@ -257,7 +257,7 @@ fn (mut t Transformer) cache_comptime_param_reflection_metadata() {
 	mut cur_file := ''
 	mut cur_module := ''
 	mut previous_top_level := -1
-	for top_level_idx in t.tc.top_level_idx {
+	for _, top_level_idx in t.tc.top_level_idx {
 		node := t.a.nodes[top_level_idx]
 		if node.kind == .file {
 			cur_file = node.value

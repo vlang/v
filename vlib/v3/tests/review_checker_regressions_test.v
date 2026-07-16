@@ -58,6 +58,16 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'cannot initialize field `x` with `&int`; expected `int`')
 }
 
+fn test_reject_lvalue_addresses_for_by_value_args() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_lvalue_address_by_value_arg',
+		'fn take(n int) {}\n\nfn main() {\n\tmut n := 1\n\ttake(&n)\n}\n',
+		'cannot use `&int` as argument 1 to `take`; expected `int`')
+	out := run_good(v3_bin, 'good_addressed_rvalue_by_value_arg',
+		'struct Box {\n\tn int\n}\n\nfn make_box() Box {\n\treturn Box{\n\t\tn: 7\n\t}\n}\n\nfn take(b Box) int {\n\treturn b.n\n}\n\nfn main() {\n\tprintln(int_str(take(&make_box())))\n}\n')
+	assert out == '7'
+}
+
 fn test_multi_return_tail_slots_use_return_compatibility() {
 	v3_bin := build_v3_review_checker()
 	if_out := run_good(v3_bin, 'good_multi_return_if_pointer_value_tail',
@@ -106,6 +116,22 @@ fn test_voidptr_params_reject_non_pointer_values() {
 	out := run_good(v3_bin, 'good_voidptr_pointer_arg',
 		'fn f(p voidptr) int {\n\t_ = p\n\treturn 7\n}\n\nfn main() {\n\tx := 1\n\tprintln(int_str(f(&x)))\n}\n')
 	assert out == '7'
+}
+
+fn test_shared_receiver_and_arg_require_shared_bindings() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_shared_receiver_plain_value',
+		'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n',
+		'cannot use non-shared `St` as receiver')
+	run_bad(v3_bin, 'bad_shared_arg_shadowed_local',
+		'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\tshared s := St{}\n\tif true {\n\t\ts := St{}\n\t\ttake(s)\n\t}\n}\n',
+		'cannot use non-shared `St` as argument 1')
+	run_bad(v3_bin, 'bad_explicit_shared_arg_plain_local',
+		'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\ts := St{}\n\ttake(shared s)\n}\n',
+		'cannot use non-shared `St` as argument 1')
+	out := run_good(v3_bin, 'good_shared_arg_and_receiver',
+		'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(s) + s.f()))\n}\n')
+	assert out == '3'
 }
 
 fn test_restrict_synthetic_hex_fallback_receivers() {
@@ -223,8 +249,14 @@ fn test_reject_escaping_capturing_fn_literals() {
 	run_bad(v3_bin, 'bad_return_capturing_fn_literal',
 		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {}\n',
 		'capturing fn literal cannot be stored or returned')
-	run_bad(v3_bin, 'bad_store_capturing_fn_literal_alias',
-		'fn main() {\n\tx := 1\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\tmut cbs := []fn () int{}\n\tcbs << f\n}\n',
+	run_bad(v3_bin, 'bad_return_capturing_fn_literal_alias',
+		'fn make(x int) fn () int {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn f\n}\nfn main() {}\n',
+		'capturing fn literal cannot be stored or returned')
+	run_bad(v3_bin, 'bad_struct_field_capturing_fn_literal',
+		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\treturn Holder{\n\t\tcb: fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t}\n}\nfn main() {}\n',
+		'capturing fn literal cannot be stored or returned')
+	run_bad(v3_bin, 'bad_struct_field_capturing_fn_literal_alias',
+		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn Holder{\n\t\tcb: f\n\t}\n}\nfn main() {}\n',
 		'capturing fn literal cannot be stored or returned')
 }
 
