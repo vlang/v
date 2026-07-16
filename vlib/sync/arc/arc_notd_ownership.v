@@ -1,5 +1,7 @@
 module arc
 
+$compile_error('sync.arc requires ownership mode (`-d ownership`) so Arc handles are released at scope exit')
+
 // Arc provides shared ownership of a heap-allocated value of type `T`.
 // Cloning an Arc increments its atomic strong count instead of cloning `T`.
 pub struct Arc[T] {

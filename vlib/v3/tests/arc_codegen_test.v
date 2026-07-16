@@ -268,7 +268,6 @@ fn main() {
 		panic(err)
 	}
 	nonownership_compile := os.execute('${v3_bin} ${nonownership_src} -b c -o ${nonownership_out}')
-	assert nonownership_compile.exit_code == 0, nonownership_compile.output
-	nonownership_run := os.execute(nonownership_out)
-	assert nonownership_run.exit_code == 0, nonownership_run.output
+	assert nonownership_compile.exit_code != 0, nonownership_compile.output
+	assert nonownership_compile.output.contains('sync.arc requires ownership mode (`-d ownership`) so Arc handles are released at scope exit'), nonownership_compile.output
 }
