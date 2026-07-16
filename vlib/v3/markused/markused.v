@@ -1,5 +1,6 @@
 module markused
 
+import strings
 import v3.flat
 import v3.gen.c.naming
 import v3.types
@@ -5810,14 +5811,114 @@ fn markused_json_attrs_skip_field(attrs []string) bool {
 
 fn markused_json_attr_label(raw_value string) string {
 	mut value := raw_value.trim_space()
+	mut is_raw := false
 	if value.len >= 3 && value[0] == `r` && value[1] in [`'`, `"`]
 		&& value[value.len - 1] == value[1] {
+		is_raw = true
 		value = value[1..]
 	}
 	if value.len < 2 || value[0] !in [`'`, `"`] || value[value.len - 1] != value[0] {
 		return value
 	}
-	return value[1..value.len - 1]
+	inner := value[1..value.len - 1]
+	if is_raw || !inner.contains('\\') {
+		return inner
+	}
+	return markused_json_attr_label_unescape(inner)
+}
+
+fn markused_json_attr_label_unescape(value string) string {
+	mut out := strings.new_builder(value.len)
+	mut i := 0
+	for i < value.len {
+		if value[i] != `\\` || i + 1 >= value.len {
+			out.write_u8(value[i])
+			i++
+			continue
+		}
+		next := value[i + 1]
+		hex_len := match next {
+			`x` { 2 }
+			`u` { 4 }
+			`U` { 8 }
+			else { 0 }
+		}
+
+		if hex_len > 0 && i + 2 + hex_len <= value.len {
+			if code := markused_json_attr_hex(value, i + 2, hex_len) {
+				if next == `x` {
+					out.write_u8(u8(code))
+				} else {
+					out.write_rune(rune(code))
+				}
+				i += 2 + hex_len
+				continue
+			}
+		}
+		match next {
+			`n` {
+				out.write_u8(`\n`)
+			}
+			`t` {
+				out.write_u8(`\t`)
+			}
+			`r` {
+				out.write_u8(`\r`)
+			}
+			`\\` {
+				out.write_u8(`\\`)
+			}
+			`'` {
+				out.write_u8(`'`)
+			}
+			`"` {
+				out.write_u8(`"`)
+			}
+			`$` {
+				out.write_u8(`$`)
+			}
+			`0` {
+				out.write_u8(0)
+			}
+			`a` {
+				out.write_u8(7)
+			}
+			`b` {
+				out.write_u8(8)
+			}
+			`f` {
+				out.write_u8(12)
+			}
+			`v` {
+				out.write_u8(11)
+			}
+			else {
+				out.write_u8(`\\`)
+				out.write_u8(next)
+			}
+		}
+
+		i += 2
+	}
+	return out.str()
+}
+
+fn markused_json_attr_hex(value string, start int, count int) ?u32 {
+	mut code := u32(0)
+	for i in 0 .. count {
+		ch := value[start + i]
+		digit := if ch >= `0` && ch <= `9` {
+			int(ch - `0`)
+		} else if ch >= `a` && ch <= `f` {
+			int(ch - `a`) + 10
+		} else if ch >= `A` && ch <= `F` {
+			int(ch - `A`) + 10
+		} else {
+			return none
+		}
+		code = (code << 4) | u32(digit)
+	}
+	return code
 }
 
 fn markused_json_encode_omitempty_supported(typ types.Type) bool {

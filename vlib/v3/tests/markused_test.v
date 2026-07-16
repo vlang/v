@@ -1689,6 +1689,7 @@ import json
 
 struct User {
 	unsupported map[int]int @[json: "-"]
+	escaped     map[int]int @[json: "\\x2d"]
 	age         i64
 }
 
@@ -1696,6 +1697,9 @@ fn main() {
 	_ := json.encode(User{
 		unsupported: {
 			1: 2
+		}
+		escaped: {
+			3: 4
 		}
 		age: 3
 	})
@@ -1712,6 +1716,7 @@ fn main() {
 	c_code := g.gen_with_used_options(a, used, tc, true)
 	assert c_code.contains('i64__str((i64)')
 	assert !c_code.contains('"-":')
+	assert !c_code.contains('"escaped":')
 }
 
 // test_string_interpolation_lowers_to_formatter_after_used_filter_transform
