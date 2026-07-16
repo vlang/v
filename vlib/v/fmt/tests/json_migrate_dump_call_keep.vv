@@ -1,0 +1,13 @@
+import json
+
+struct User {
+	name string
+}
+
+// A `dump(...)` expression stores its inner expression on DumpExpr.expr, which is
+// outside Node.children(), so the unmigratable scan sub-walks it. This file dumps a
+// json.encode_pretty result, so it is left unmigrated.
+fn check(u User) {
+	dump(json.encode_pretty(u))
+	_ := json.encode(u)
+}

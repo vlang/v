@@ -306,6 +306,14 @@ fn type_mentions_time(t &ast.Table, typ ast.Type) bool {
 		return type_mentions_time(t, sym.info.key_type) || type_mentions_time(t, sym.info.value_type)
 	} else if sym.info is ast.Chan {
 		return type_mentions_time(t, sym.info.elem_type)
+	} else if sym.info is ast.GenericInst {
+		// A generic instantiation like `Box[time.Time]` carries `time.Time` only in its
+		// concrete type arguments, so inspect those (e.g. `struct User { box Box[time.Time] }`).
+		for concrete in sym.info.concrete_types {
+			if type_mentions_time(t, concrete) {
+				return true
+			}
+		}
 	}
 	return false
 }
@@ -405,6 +413,10 @@ fn json_unmigratable_scan_visit(node &ast.Node, data voidptr) bool {
 		// `go json.encode_pretty(u)` — GoExpr.call_expr is likewise outside children().
 		go_expr := node as ast.GoExpr
 		walker.inspect(ast.Expr(go_expr.call_expr), data, json_unmigratable_scan_visit)
+	} else if node is ast.Expr && node is ast.DumpExpr {
+		// `dump(json.encode_pretty(u))` — DumpExpr.expr is outside Node.children().
+		dump_expr := node as ast.DumpExpr
+		walker.inspect(dump_expr.expr, data, json_unmigratable_scan_visit)
 	} else if node is ast.Expr && node is ast.ArrayInit {
 		// The len:/cap:/init: exprs of `[]T{len: .., init: ..}` are outside
 		// ArrayInit.children() (only elements are), so sub-walk them.
