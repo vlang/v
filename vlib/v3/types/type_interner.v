@@ -76,6 +76,44 @@ fn (mut i TypeInterner) len() int {
 	return i.types.len
 }
 
+fn (mut i TypeInterner) reserve(headroom int) {
+	if headroom <= 0 {
+		return
+	}
+	unsafe {
+		i.types.grow_cap(headroom)
+		i.names.grow_cap(headroom)
+	}
+	i.buckets.reserve(u32(i.buckets.len + headroom))
+}
+
+fn (mut i TypeInterner) promote_from(start int, scope voidptr) {
+	i.lock.lock()
+	defer {
+		i.lock.unlock()
+	}
+	first := if start < 0 { 0 } else { start }
+	for idx in first .. i.types.len {
+		i.types[idx] = clone_owned_type(i.types[idx])
+	}
+	for idx, name in i.names {
+		if name.len > 0 && scoped_transform_owns(scope, name.str) {
+			i.names[idx] = name.clone()
+		}
+	}
+	// A scoped insertion can rehash even after the caller reserves headroom.
+	// Rebuild the index after leaving the scope so its backing storage cannot
+	// remain owned by the disposable transform arena.
+	i.buckets = i.buckets.clone()
+}
+
+fn scoped_transform_owns(scope voidptr, ptr voidptr) bool {
+	$if prealloc {
+		return unsafe { prealloc_scope_owns(scope, ptr) }
+	}
+	return false
+}
+
 fn semantic_type_hash(t Type) u64 {
 	mut hash := u64(14_695_981_039_346_656_037)
 	match t {

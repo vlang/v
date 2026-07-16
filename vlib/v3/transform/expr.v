@@ -1153,10 +1153,10 @@ fn (t &Transformer) is_known_operator_fn_name(name string, require_used bool) bo
 	if !t.is_known_fn_name(name) {
 		return false
 	}
-	if !require_used || t.used_fns.len == 0 {
+	if !require_used || !t.has_any_used_fns() {
 		return true
 	}
-	return name in t.used_fns || c_name(name) in t.used_fns
+	return t.used_fn_contains_name(name) || t.used_fn_contains_name(c_name(name))
 }
 
 // has_struct_operator_fn reports whether has struct operator fn applies in transform.
@@ -2926,7 +2926,7 @@ pub fn (mut t Transformer) make_call_typed(fn_name string, args []flat.NodeId, t
 }
 
 fn (mut t Transformer) mark_fn_used(fn_name string) {
-	if fn_name.len == 0 || t.used_fns.len == 0 {
+	if fn_name.len == 0 || !t.has_any_used_fns() {
 		return
 	}
 	t.mark_used_fn_key(fn_name)

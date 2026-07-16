@@ -290,6 +290,34 @@ pub fn (mut a FlatAst) intern_text(value string) (TextId, string) {
 	return id, a.text_values.last()
 }
 
+// reserve_transform_texts keeps canonical text-table backing in the
+// compilation arena before a disposable transform scope starts.
+pub fn (mut a FlatAst) reserve_transform_texts(headroom int) {
+	if headroom <= 0 {
+		return
+	}
+	unsafe { a.text_values.grow_cap(headroom) }
+	a.text_ids.reserve(u32(a.text_ids.len + headroom))
+}
+
+// promote_transform_texts_from moves canonical strings inserted by a scoped
+// transform into the current arena without rebuilding the complete text table.
+pub fn (mut a FlatAst) promote_transform_texts_from(start int, scope voidptr) {
+	first := if start < 0 { 0 } else { start }
+	for idx in first .. a.text_values.len {
+		value := a.text_values[idx]
+		$if prealloc {
+			if value.len == 0 || !unsafe { prealloc_scope_owns(scope, value.str) } {
+				continue
+			}
+			a.text_ids.delete(value)
+			canonical := value.clone()
+			a.text_values[idx] = canonical
+			a.text_ids[canonical] = TextId(idx + 1)
+		}
+	}
+}
+
 // text resolves a stable AST text identity.
 pub fn (a &FlatAst) text(id TextId) string {
 	idx := int(id) - 1

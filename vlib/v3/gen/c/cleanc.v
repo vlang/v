@@ -8,6 +8,31 @@ import v3.gen.c.naming
 import v3.pref
 import v3.types
 
+fn cgen_worker_scope_begin(enabled bool) voidptr {
+	$if prealloc {
+		if enabled {
+			return unsafe { prealloc_scope_begin() }
+		}
+	}
+	return unsafe { nil }
+}
+
+fn cgen_worker_scope_leave(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_leave(scope) }
+		}
+	}
+}
+
+fn cgen_worker_scope_free(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(scope) }
+		}
+	}
+}
+
 struct ActiveLock {
 	mutexes_var string
 	modes_var   string
@@ -203,6 +228,9 @@ mut:
 	c_extern_refs                  map[string]bool
 	c_extern_refs_ready            bool
 	parallel_prepared              bool
+	scoped_fn_items_scope          voidptr
+	scoped_fn_output_path          string
+	scoped_fn_output_paths         []string
 	const_short_index              &ConstShortIndex = unsafe { nil }
 	mut_recv_facts                 &FnNameFactCache = unsafe { nil }
 	want_parallel_prep             bool
@@ -883,6 +911,152 @@ pub fn (mut g FlatGen) gen_to_file_with_used_test_options(path string, a &flat.F
 	}
 }
 
+fn (mut g FlatGen) write_scoped_output_chunk(path string, append bool, scope voidptr) bool {
+	mut output := unsafe { g.sb.reuse_as_plain_u8_array() }
+	if append {
+		mut file := os.open_append(path) or {
+			g.output_error = err.msg()
+			unsafe { output.free() }
+			cgen_worker_scope_free(scope)
+			return false
+		}
+		unsafe {
+			file.write_full_buffer(output.data, usize(output.len)) or {
+				g.output_error = err.msg()
+				file.close()
+				output.free()
+				cgen_worker_scope_free(scope)
+				return false
+			}
+		}
+		file.close()
+	} else {
+		os.write_file_array(path, output) or {
+			g.output_error = err.msg()
+			unsafe { output.free() }
+			cgen_worker_scope_free(scope)
+			return false
+		}
+	}
+	unsafe { output.free() }
+	cgen_worker_scope_free(scope)
+	return true
+}
+
+fn (mut g FlatGen) start_scoped_output_builder(cap int) voidptr {
+	scope := cgen_worker_scope_begin(true)
+	g.sb = strings.new_builder(cap)
+	cgen_worker_scope_leave(scope)
+	return scope
+}
+
+fn (mut g FlatGen) flush_and_restart_scoped_output(path string, append bool, scope voidptr, cap int) !voidptr {
+	if !g.write_scoped_output_chunk(path, append, scope) {
+		g.sb = strings.new_builder(4096)
+		return error(g.output_error)
+	}
+	return g.start_scoped_output_builder(cap)
+}
+
+fn (mut g FlatGen) release_scoped_fn_items() {
+	if g.scoped_fn_items_scope == unsafe { nil } {
+		return
+	}
+	scope := g.scoped_fn_items_scope
+	g.fn_gen_items = []FlatFnGenItem{}
+	g.emitted_fns = map[string]bool{}
+	g.tc.cur_file = ''
+	g.tc.cur_module = ''
+	g.scoped_fn_items_scope = unsafe { nil }
+	cgen_worker_scope_free(scope)
+}
+
+fn (mut g FlatGen) write_scoped_function_output(path string, fn_code string) bool {
+	mut initial_file := os.create(path) or {
+		g.output_error = err.msg()
+		return false
+	}
+	initial_file.close()
+	for chunk_path in g.scoped_fn_output_paths {
+		if !g.append_scoped_output_file(path, chunk_path) {
+			return false
+		}
+		os.rm(chunk_path) or {}
+	}
+	g.scoped_fn_output_path = ''
+	g.scoped_fn_output_paths = []string{}
+	mut file := os.open_append(path) or {
+		g.output_error = err.msg()
+		return false
+	}
+	if g.fn_segs.len > 0 {
+		for segment in g.fn_segs {
+			file.write_string(segment) or {
+				g.output_error = err.msg()
+				file.close()
+				return false
+			}
+			unsafe { segment.free() }
+		}
+		g.fn_segs = []string{}
+	} else {
+		file.write_string(fn_code) or {
+			g.output_error = err.msg()
+			file.close()
+			return false
+		}
+		unsafe { fn_code.free() }
+	}
+	file.close()
+	return true
+}
+
+fn (mut g FlatGen) append_scoped_output_file(path string, source_path string) bool {
+	mut source := os.open(source_path) or {
+		g.output_error = err.msg()
+		return false
+	}
+	mut output := os.open_append(path) or {
+		g.output_error = err.msg()
+		source.close()
+		return false
+	}
+	mut buffer := []u8{len: 64 * 1024}
+	for {
+		n_read := source.read(mut buffer) or {
+			if err is os.Eof {
+				break
+			}
+			g.output_error = err.msg()
+			output.close()
+			source.close()
+			return false
+		}
+		if n_read == 0 {
+			break
+		}
+		unsafe {
+			output.write_full_buffer(buffer.data, usize(n_read)) or {
+				g.output_error = err.msg()
+				output.close()
+				source.close()
+				return false
+			}
+		}
+	}
+	output.close()
+	source.close()
+	return true
+}
+
+fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path string) {
+	os.rm(stream_path) or {}
+	os.rm(fn_stream_path) or {}
+	for chunk_path in g.scoped_fn_output_paths {
+		os.rm(chunk_path) or {}
+	}
+}
+
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	g.a = a
@@ -1000,6 +1174,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_extern_refs.clear()
 	g.c_extern_refs_ready = false
 	g.parallel_prepared = false
+	g.scoped_fn_items_scope = unsafe { nil }
+	g.scoped_fn_output_path = ''
+	g.scoped_fn_output_paths = []string{}
 	g.const_short_index = &ConstShortIndex{}
 	g.mut_recv_facts = &FnNameFactCache{}
 	g.want_parallel_prep = false
@@ -1043,6 +1220,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// signatures, returns and call sites all agree on the wrapped types.
 	g.populate_fixed_array_ret_wrappers()
 	const_code := g.precompute_consts()
+	stream_scoped_output := g.output_path.len > 0 && !g.cache_split && g.scope_parallel_workers
+	stream_path := if stream_scoped_output { '${g.output_path}.v3-stream.tmp' } else { '' }
+	fn_stream_path := if stream_scoped_output { '${g.output_path}.v3-fns.tmp' } else { '' }
+	if stream_scoped_output {
+		g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+	}
 	orig_sb := g.sb
 	orig_line_start := g.line_start
 	g.sb = strings.new_builder(4096)
@@ -1057,8 +1240,23 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	for segment in g.fn_segs {
 		known_output_len += segment.len
 	}
-	// Leave headroom for the small body-dependent supplement emitted below.
-	g.sb.ensure_cap(known_output_len + 1024 * 1024)
+	if stream_scoped_output && !g.write_scoped_function_output(fn_stream_path, fn_code) {
+		g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+		return ''
+	}
+	mut stream_started := false
+	mut output_scope := unsafe { nil }
+	if stream_scoped_output {
+		existing_output := if g.sb.len > 0 { g.sb.str() } else { '' }
+		output_scope = g.start_scoped_output_builder(640 * 1024)
+		if existing_output.len > 0 {
+			g.sb.write_string(existing_output)
+			unsafe { existing_output.free() }
+		}
+	} else {
+		// Leave headroom for the small body-dependent supplement emitted below.
+		g.sb.ensure_cap(known_output_len + 1024 * 1024)
+	}
 	g.c99_feature_test_macros()
 	g.emit_preserved_c_directives()
 	g.preamble()
@@ -1066,6 +1264,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.enum_decls()
 	g.type_alias_decls()
 	g.type_forward_decls()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+		stream_started = true
+	}
 	// Forward-declare multi-return structs before fn-ptr typedefs, which may name a
 	// multi-return as a by-value return type (full bodies come after struct_decls).
 	g.multi_return_forward_decls()
@@ -1075,6 +1281,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fixed_array_early_typedefs()
 	g.fn_ptr_typedefs()
 	g.struct_decls()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.fixed_array_typedefs()
 	g.multi_return_typedefs()
 	g.optional_typedefs()
@@ -1082,13 +1295,49 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.builtin_abi_decls()
 	g.test_failure_helpers()
 	g.global_decls()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.forward_decls()
+	g.release_scoped_fn_items()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.cached_header_forward_decls()
 	g.interface_method_forward_decls()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.shared_dup_fns()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.enum_str_forward_decls()
 	g.callback_wrapper_decls()
 	g.spawn_wrapper_decls()
+	if stream_scoped_output {
+		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
+			640 * 1024) or {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+	}
 	g.register_interface_strings()
 	g.string_literals()
 	if !g.cache_split {
@@ -1122,6 +1371,25 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	if g.cache_split {
 		g.interface_method_stubs()
+	}
+	if stream_scoped_output {
+		if !g.write_scoped_output_chunk(stream_path, stream_started, output_scope) {
+			g.sb = strings.new_builder(4096)
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+		g.sb = strings.new_builder(4096)
+		if !g.append_scoped_output_file(stream_path, fn_stream_path) {
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+		os.mv(stream_path, g.output_path) or {
+			g.output_error = err.msg()
+			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
+			return ''
+		}
+		os.rm(fn_stream_path) or {}
+		return ''
 	}
 	if g.fn_segs.len > 0 {
 		for segment in g.fn_segs {
@@ -1610,8 +1878,8 @@ fn (mut g FlatGen) collect_gen_info() {
 	}
 	if g.has_shared_params {
 		for full_name, flags in preferred_shared_fn_params {
-			g.fn_decl_shared_params[full_name] = flags.clone()
-			g.fn_decl_shared_params[g.cname(full_name)] = flags.clone()
+			g.fn_decl_shared_params[full_name] = flags
+			g.fn_decl_shared_params[g.cname(full_name)] = flags
 		}
 		for i, name in nonshared_fn_short_names {
 			if name in g.fn_decl_shared_params {
@@ -3549,39 +3817,53 @@ fn fn_decl_module_key(module_name string, name string) string {
 // register_fn_decl_param_types updates register fn decl param types state for c.
 fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, ptypes []types.Type, is_variadic bool) {
 	module_key := fn_decl_module_key(g.tc.cur_module, name)
-	g.fn_decl_param_types[module_key] = ptypes.clone()
-	g.fn_decl_variadic[module_key] = is_variadic
+	g.fn_decl_param_types[module_key] = ptypes
+	if is_variadic {
+		g.fn_decl_variadic[module_key] = true
+	}
 	short_name := name.all_after_last('.')
 	g.fn_decl_variadic_short_counts[short_name] = g.fn_decl_variadic_short_counts[short_name] + 1
 	if name !in g.fn_decl_param_types {
-		g.fn_decl_param_types[name] = ptypes.clone()
-		g.fn_decl_variadic[name] = is_variadic
+		g.fn_decl_param_types[name] = ptypes
+		if is_variadic {
+			g.fn_decl_variadic[name] = true
+		}
 	}
 	cname := g.cname(name)
 	if cname !in g.fn_decl_param_types {
-		g.fn_decl_param_types[cname] = ptypes.clone()
-		g.fn_decl_variadic[cname] = is_variadic
+		g.fn_decl_param_types[cname] = ptypes
+		if is_variadic {
+			g.fn_decl_variadic[cname] = true
+		}
 	}
 	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
 		dotted_name := '${g.tc.cur_module}.${name}'
 		if dotted_name !in g.fn_decl_param_types {
-			g.fn_decl_param_types[dotted_name] = ptypes.clone()
-			g.fn_decl_variadic[dotted_name] = is_variadic
+			g.fn_decl_param_types[dotted_name] = ptypes
+			if is_variadic {
+				g.fn_decl_variadic[dotted_name] = true
+			}
 		}
 		cdotted_name := g.cname(dotted_name)
 		if cdotted_name !in g.fn_decl_param_types {
-			g.fn_decl_param_types[cdotted_name] = ptypes.clone()
-			g.fn_decl_variadic[cdotted_name] = is_variadic
+			g.fn_decl_param_types[cdotted_name] = ptypes
+			if is_variadic {
+				g.fn_decl_variadic[cdotted_name] = true
+			}
 		}
 	}
 	if full_name !in g.fn_decl_param_types {
-		g.fn_decl_param_types[full_name] = ptypes.clone()
-		g.fn_decl_variadic[full_name] = is_variadic
+		g.fn_decl_param_types[full_name] = ptypes
+		if is_variadic {
+			g.fn_decl_variadic[full_name] = true
+		}
 	}
 	cfull_name := g.cname(full_name)
 	if cfull_name !in g.fn_decl_param_types {
-		g.fn_decl_param_types[cfull_name] = ptypes.clone()
-		g.fn_decl_variadic[cfull_name] = is_variadic
+		g.fn_decl_param_types[cfull_name] = ptypes
+		if is_variadic {
+			g.fn_decl_variadic[cfull_name] = true
+		}
 	}
 }
 
@@ -3600,28 +3882,28 @@ fn (mut g FlatGen) register_fn_decl_shared_params(name string, full_name string,
 	// stops fn_param_is_shared's short-name fallback from borrowing the shared
 	// flags of an unrelated same-named declaration in another module.
 	if name !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[name] = flags.clone()
+		g.fn_decl_shared_params[name] = flags
 	}
 	cname := g.cname(name)
 	if cname !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[cname] = flags.clone()
+		g.fn_decl_shared_params[cname] = flags
 	}
 	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
 		dotted_name := '${g.tc.cur_module}.${name}'
 		if dotted_name !in g.fn_decl_shared_params {
-			g.fn_decl_shared_params[dotted_name] = flags.clone()
+			g.fn_decl_shared_params[dotted_name] = flags
 		}
 		cdotted_name := g.cname(dotted_name)
 		if cdotted_name !in g.fn_decl_shared_params {
-			g.fn_decl_shared_params[cdotted_name] = flags.clone()
+			g.fn_decl_shared_params[cdotted_name] = flags
 		}
 	}
 	if full_name !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[full_name] = flags.clone()
+		g.fn_decl_shared_params[full_name] = flags
 	}
 	cfull_name := g.cname(full_name)
 	if cfull_name !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[cfull_name] = flags.clone()
+		g.fn_decl_shared_params[cfull_name] = flags
 	}
 }
 

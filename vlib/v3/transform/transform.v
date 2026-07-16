@@ -134,6 +134,7 @@ mut:
 	call_param_types_decl_index   map[string]FnParamDeclRef
 	call_param_types_index_ready  bool
 	used_fns                      map[string]bool
+	used_fns_parent               &map[string]bool = unsafe { nil }
 	comptime_reflected_params     map[string][]ParamMeta
 	// sum_eq_types records sum types whose deep-equality helper fn
 	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
@@ -168,7 +169,9 @@ mut:
 	// ignored_comptime_for_nodes marks source `$for` subtrees replaced by concrete
 	// unrolled nodes. Keeping the marker outside the shared flat AST lets parallel
 	// workers record their own discarded nodes without racing.
-	ignored_comptime_for_nodes []bool
+	ignored_comptime_for_nodes  []bool
+	ignored_comptime_for_log    []int
+	ignored_comptime_log_active bool
 	// cloning_generic_fn_depth > 0 while a generic specialization is cloned with a live,
 	// seeded parameter scope. Ident inference should use that scope rather than scan annotations.
 	cloning_generic_fn_depth int
@@ -232,6 +235,11 @@ mut:
 	worker_scope            voidptr
 	scoped_base_nodes       int = -1
 	scoped_owned_base_nodes map[int]bool
+	scoped_owned_base_log   []int
+	scoped_base_log_active  bool
+	retain_worker_results   bool
+	retained_worker_regions []ScopedTransformRegion
+	stage_scope             voidptr
 }
 
 // AliasCache memoizes normalize_type_alias results. It lives on the heap so the
@@ -323,6 +331,16 @@ struct FnParamDeclRef {
 	module string
 }
 
+// ScopedTransformRegion describes AST payloads owned by one retained worker
+// arena. The driver canonicalizes this region before releasing the arena.
+pub struct ScopedTransformRegion {
+pub:
+	scope      voidptr
+	new_start  int
+	new_end    int
+	base_nodes []int
+}
+
 // --- entry point ---
 
 // transform supports transform handling for transform.
@@ -363,36 +381,37 @@ pub fn transform_with_used_opt_config_scoped_workers(mut a flat.FlatAst, tc &typ
 // transform_with_used_opt_config_scoped_workers_checked also returns diagnostics selected while
 // normal comptime reflection loops are unrolled.
 pub fn transform_with_used_opt_config_scoped_workers_checked(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool) (map[string]bool, bool, []string) {
+	augmented, was_parallel, errors, _, _ := transform_with_used_opt_config_scoped_workers_checked_impl(mut a,
+		tc, used_fns, want_parallel, skip_generics, scope_parallel_workers, false, unsafe { nil })
+	return augmented, was_parallel, errors
+}
+
+// transform_with_used_opt_config_scoped_workers_checked_owned additionally
+// reports source AST nodes whose owned payloads were replaced during a scoped
+// transform, so the driver can promote exactly those escaping values.
+pub fn transform_with_used_opt_config_scoped_workers_checked_owned(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
+	return transform_with_used_opt_config_scoped_workers_checked_impl(mut a, tc, used_fns,
+		want_parallel, skip_generics, scope_parallel_workers, true, stage_scope)
+}
+
+fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, retain_worker_results bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
 	mut t := new_transformer(mut a, tc, used_fns)
 	t.skip_generics = skip_generics
 	t.scope_parallel_workers = scope_parallel_workers
+	t.retain_worker_results = retain_worker_results
+	t.stage_scope = stage_scope
+	if scope_parallel_workers {
+		t.scoped_base_nodes = t.a.nodes.len
+	}
 	t.prepare()
 	t.cache_comptime_param_reflection_metadata()
 	if want_parallel {
-		// Transform roughly grows the node/children arrays by ~75%. Reserve that capacity
-		// up front so they don't double past it (the parsed AST already overshoots to the
-		// next power of two, wasting ~40MB, and each doubling briefly holds both the old and
-		// new arrays — the dominant peak-RSS contributor under -gc none). The serial path is
-		// latency-sensitive and does not clone worker ASTs, so let it grow naturally.
-		// Nodes grow a bit less than children on large compiler inputs. Keeping their
-		// reserve below the next power-of-two cliff avoids retaining a mostly-empty
-		// doubled nodes array through annotate/CGen.
-		// The shared-base parallel path partitions this headroom into per-worker
-		// append regions, so it reserves ~2x the expected growth: untouched
-		// capacity pages are never written, so RSS does not grow with the
-		// extra reserve.
-		nodes_factor_num, nodes_factor_den := if skip_generics { 7, 3 } else { 5, 3 }
-		children_factor_num, children_factor_den := if skip_generics { 5, 2 } else { 7, 4 }
-		reserve_nodes := a.nodes.len * nodes_factor_num / nodes_factor_den - a.nodes.cap
-		if reserve_nodes > 0 {
-			unsafe { a.nodes.grow_cap(reserve_nodes) }
-		}
-		reserve_children := a.children.len * children_factor_num / children_factor_den - a.children.cap
-		if reserve_children > 0 {
-			unsafe { a.children.grow_cap(reserve_children) }
-		}
+		reserve_parallel_transform_ast(mut a, skip_generics)
 	}
 	base_node_count := t.a.nodes.len
+	if scope_parallel_workers {
+		t.scoped_base_nodes = base_node_count
+	}
 	t.transformed_fns = []bool{len: t.a.nodes.len}
 	was_parallel := t.transform_all_dispatch(want_parallel)
 	t.apply_ignored_comptime_for_nodes()
@@ -410,7 +429,51 @@ pub fn transform_with_used_opt_config_scoped_workers_checked(mut a flat.FlatAst,
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	t.run_sum_eq_synthesis_rounds(base_node_count)
 	t.apply_ignored_comptime_for_nodes()
-	return t.used_fns, was_parallel, t.monomorph_errors
+	return t.used_fns, was_parallel, t.monomorph_errors, t.scoped_owned_base_nodes.keys(), t.retained_worker_regions
+}
+
+// reserve_parallel_transform_ast reserves persistent append regions before a
+// disposable transform arena is entered.
+pub fn reserve_parallel_transform_ast(mut a flat.FlatAst, skip_generics bool) {
+	// The shared-base parallel path partitions this headroom between workers.
+	// Untouched virtual pages do not contribute to resident memory.
+	nodes_factor_num, nodes_factor_den := if skip_generics { 7, 3 } else { 5, 3 }
+	children_factor_num, children_factor_den := if skip_generics { 5, 2 } else { 7, 4 }
+	reserve_nodes := a.nodes.len * nodes_factor_num / nodes_factor_den - a.nodes.cap
+	if reserve_nodes > 0 {
+		unsafe { a.nodes.grow_cap(reserve_nodes) }
+	}
+	reserve_children := a.children.len * children_factor_num / children_factor_den - a.children.cap
+	if reserve_children > 0 {
+		unsafe { a.children.grow_cap(reserve_children) }
+	}
+}
+
+// transform_worker_scope_begin starts a helper-local disposable arena in
+// prealloc self-host builds. Ordinary builds retain their existing allocator.
+fn transform_worker_scope_begin(enabled bool) voidptr {
+	$if prealloc {
+		if enabled {
+			return unsafe { prealloc_scope_begin() }
+		}
+	}
+	return unsafe { nil }
+}
+
+fn transform_worker_scope_leave(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_leave(scope) }
+		}
+	}
+}
+
+fn transform_worker_scope_free(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(scope) }
+		}
+	}
 }
 
 // run_sum_eq_synthesis_rounds alternates sum-eq helper synthesis with the
@@ -635,10 +698,25 @@ fn (mut t Transformer) mark_fn_used_name(name string) {
 // mark_used_fn_key inserts one spelling into used_fns, recording first-time
 // insertions in used_fns_log while the late-used-fn-bodies pass is running.
 fn (mut t Transformer) mark_used_fn_key(key string) {
-	if t.used_fns_log_active && !t.used_fns[key] {
+	if t.used_fn_contains_name(key) {
+		return
+	}
+	if t.used_fns_log_active {
 		t.used_fns_log << key
 	}
 	t.used_fns[key] = true
+}
+
+fn (t &Transformer) has_any_used_fns() bool {
+	return t.used_fns.len > 0 || (!isnil(t.used_fns_parent) && t.used_fns_parent.len > 0)
+}
+
+fn (t &Transformer) used_fn_count() int {
+	return t.used_fns.len + if isnil(t.used_fns_parent) {
+		0
+	} else {
+		t.used_fns_parent.len
+	}
 }
 
 fn local_method_fn_name_needs_module_prefix(name string) bool {
@@ -785,6 +863,14 @@ fn (mut t Transformer) ignore_comptime_for_subtree(id flat.NodeId) {
 	if idx < 0 || idx >= t.a.nodes.len {
 		return
 	}
+	if t.ignored_comptime_log_active {
+		t.ignored_comptime_for_log << idx
+		node := t.a.nodes[idx]
+		for i in 0 .. node.children_count {
+			t.ignore_comptime_for_subtree(t.a.child(&node, i))
+		}
+		return
+	}
 	if t.ignored_comptime_for_nodes.len < t.a.nodes.len {
 		t.ignored_comptime_for_nodes << []bool{len: t.a.nodes.len - t.ignored_comptime_for_nodes.len}
 	}
@@ -832,7 +918,11 @@ fn (mut t Transformer) set_node_generic_params(idx int, gparams []string) {
 @[inline]
 fn (mut t Transformer) mark_scoped_owned_base_node(idx int) {
 	if t.scope_parallel_workers && idx >= 0 && idx < t.scoped_base_nodes {
-		t.scoped_owned_base_nodes[idx] = true
+		if t.scoped_base_log_active {
+			t.scoped_owned_base_log << idx
+		} else {
+			t.scoped_owned_base_nodes[idx] = true
+		}
 	}
 }
 
@@ -1586,7 +1676,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	// Collect source-level interface conversions before any worker rewrites its
 	// private AST. Equality and automatic string lowering can then generate the
 	// same bounded tag dispatch independently of worker scheduling.
-	t.collect_interface_boxed_types()
+	t.collect_interface_boxed_types_dispatch(want_parallel)
 	if !want_parallel {
 		t.transform_all()
 		return false
@@ -1605,6 +1695,33 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 		t.transform_top_level_user_stmts()
 	}
 	return was_parallel
+}
+
+fn (mut t Transformer) collect_interface_boxed_types_dispatch(want_parallel bool) {
+	if t.interface_boxed_types_done {
+		return
+	}
+	if !want_parallel || !t.scope_parallel_workers {
+		t.collect_interface_boxed_types()
+		return
+	}
+	if t.collect_interface_boxed_types_parallel() {
+		return
+	}
+	t.tc.freeze_type_cache_for_forks()
+	scratch_scope := transform_worker_scope_begin(true)
+	scan_tc := t.tc.fork_for_parallel_transform(t.a)
+	mut scan := t.fork_scan_worker(scan_tc)
+	scan.collect_interface_boxed_types()
+	transform_worker_scope_leave(scratch_scope)
+	mut boxed_types := map[string]bool{}
+	for key, value in scan.interface_boxed_types {
+		boxed_types[key.clone()] = value
+	}
+	t.interface_boxed_types = boxed_types.move()
+	t.interface_boxed_types_done = true
+	transform_worker_scope_free(scratch_scope)
+	t.tc.unfreeze_type_cache_after_forks()
 }
 
 fn (t &Transformer) has_fn_literal_nodes() bool {
@@ -1763,7 +1880,23 @@ fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.Flat
 // per-function mutable state, helper-root tracking, used-fn additions, and
 // memoization caches are reset/private so the worker can run on its own thread.
 fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Transformer {
-	mut w := t.fork_program_view(ast, wtc, t.used_fns)
+	return t.fork_worker_config(ast, wtc, true)
+}
+
+fn (t &Transformer) fork_scoped_batch_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Transformer {
+	return t.fork_worker_config(ast, wtc, false)
+}
+
+fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker, copy_used_fns bool) &Transformer {
+	used := if copy_used_fns {
+		t.used_fns
+	} else {
+		map[string]bool{}
+	}
+	mut w := t.fork_program_view(ast, wtc, used)
+	if !copy_used_fns {
+		w.used_fns_parent = unsafe { &t.used_fns }
+	}
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
@@ -1797,7 +1930,6 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	// start. Keep the shared read-only index and signature cache; rebuilding
 	// either would read fn_decl nodes while shared-base workers rewrite them.
 	// Misses stay private because unknown call names can still be queried.
-	w.call_param_types_decl_misses = t.call_param_types_decl_misses.clone()
 	w.node_module_map_cache = []string{}
 	w.node_module_map_nodes = -1
 	w.var_types = []VarTypeBinding{}
@@ -1811,29 +1943,27 @@ fn (t &Transformer) fork_worker(ast &flat.FlatAst, wtc &types.TypeChecker) &Tran
 	w.escaping_amp_ptrs = map[string]bool{}
 	w.escaping_amp_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
-	w.generic_specialization_args = t.generic_specialization_args.clone()
 	w.generic_fn_specs_in_progress = map[string]bool{}
 	w.monomorph_errors = []string{}
 	w.monomorph_error_seen = map[string]bool{}
-	w.used_fns = t.used_fns.clone()
 	// Fields added after the fork/merge machinery was first written. They are
 	// mutated during body transforms (or lazily built), so each worker needs
 	// private backing storage — a plain struct copy would share the master's.
 	w.stringify_stack = []string{}
-	w.interface_var_concrete_types = t.interface_var_concrete_types.clone()
-	w.interface_boxed_types = t.interface_boxed_types.clone()
 	w.interface_boxed_types_done = true
-	w.sum_eq_types = t.sum_eq_types.clone()
-	w.sum_eq_synthesized = t.sum_eq_synthesized.clone()
 	w.sum_eq_helper_module = ''
 	w.generic_receiver_methods_by_name = map[string][]string{}
 	w.used_fns_log = []string{}
 	w.used_fns_log_active = false
 	w.deferred_base_writes = []DeferredBaseWrite{}
 	w.ignored_comptime_for_nodes = []bool{}
+	w.ignored_comptime_for_log = []int{}
+	w.ignored_comptime_log_active = false
 	w.worker_scope = unsafe { nil }
 	w.scoped_base_nodes = t.shared_base_nodes
 	w.scoped_owned_base_nodes = map[int]bool{}
+	w.scoped_owned_base_log = []int{}
+	w.scoped_base_log_active = false
 	// Workers do not record transformed fns (that would write the master's
 	// shared backing array); the master marks each worker's chunk items when it
 	// merges the worker.
@@ -1954,9 +2084,17 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		call_param_types_index_ready:     t.call_param_types_index_ready
 		comptime_reflected_params:        t.comptime_reflected_params.clone()
 		used_struct_operator_fns:         t.used_struct_operator_fns
-		generic_specialization_args:      t.generic_specialization_args.clone()
+		generic_specialization_args:      if t.skip_generics {
+			t.generic_specialization_args
+		} else {
+			t.generic_specialization_args.clone()
+		}
 		interface_var_concrete_types:     t.interface_var_concrete_types.clone()
-		interface_boxed_types:            t.interface_boxed_types.clone()
+		interface_boxed_types:            if t.skip_generics {
+			t.interface_boxed_types
+		} else {
+			t.interface_boxed_types.clone()
+		}
 		sum_eq_types:                     t.sum_eq_types.clone()
 		sum_eq_synthesized:               t.sum_eq_synthesized.clone()
 		used_fns:                         used_fns.clone()
@@ -1979,6 +2117,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		shared_base_nodes:                t.shared_base_nodes
 		scoped_base_nodes:                t.scoped_base_nodes
 		scope_parallel_workers:           t.scope_parallel_workers
+		retain_worker_results:            t.retain_worker_results
+		stage_scope:                      t.stage_scope
 	}
 }
 
@@ -1986,7 +2126,7 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 	scoped := w.worker_scope != unsafe { nil }
 	for name, used in w.used_fns {
 		if used {
-			owned_name := if scoped { name.clone() } else { name }
+			owned_name := if scoped && !t.retain_worker_results { name.clone() } else { name }
 			t.used_fns[owned_name] = true
 		}
 	}
@@ -2003,6 +2143,18 @@ fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 			}
 		}
 	}
+}
+
+fn (mut t Transformer) clone_sum_eq_types_owned() {
+	mut cloned := map[string]SumEqRequest{}
+	for name, req in t.sum_eq_types {
+		cloned[name.clone()] = SumEqRequest{
+			module:        req.module.clone()
+			file:          req.file.clone()
+			helper_module: req.helper_module.clone()
+		}
+	}
+	t.sum_eq_types = cloned.move()
 }
 
 @[inline]
@@ -2030,7 +2182,8 @@ fn (mut t Transformer) clone_scoped_worker_node(idx int, scope voidptr) {
 	}
 	old_params := node.generic_params()
 	if old_params.len > 0 {
-		mut needs_owned_params := transform_scope_owns(scope, old_params.data)
+		mut needs_owned_params := transform_scope_owns(scope, node.payload)
+			|| transform_scope_owns(scope, old_params.data)
 		if !needs_owned_params {
 			for param in old_params {
 				if param.len > 0 && transform_scope_owns(scope, param.str) {
@@ -2100,7 +2253,7 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			if t.a.nodes[k].children_start >= base_children {
 				t.a.nodes[k] = t.a.nodes[k].with_shifted_children(child_shift)
 			}
-			if w.worker_scope != unsafe { nil } {
+			if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
 				t.clone_scoped_worker_node(k, w.worker_scope)
 			}
 		}
@@ -2116,12 +2269,15 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 		if it.fn_idx >= 0 && it.fn_idx < t.transformed_fns.len {
 			t.transformed_fns[it.fn_idx] = true
 		}
-		if w.worker_scope != unsafe { nil } {
+		if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
 			t.clone_scoped_worker_node(it.fn_idx, w.worker_scope)
 		}
 	}
-	if w.worker_scope != unsafe { nil } {
+	if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
 		for idx in w.scoped_owned_base_nodes.keys() {
+			t.clone_scoped_worker_node(idx, w.worker_scope)
+		}
+		for idx in w.scoped_owned_base_log {
 			t.clone_scoped_worker_node(idx, w.worker_scope)
 		}
 	}
@@ -2133,17 +2289,29 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 	if !isnil(w.tc.fork_overlay) {
 		for idx, name in w.tc.fork_overlay.resolved_call_names {
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
-			owned_name := if w.worker_scope != unsafe { nil } { name.clone() } else { name }
+			owned_name := if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
+				name.clone()
+			} else {
+				name
+			}
 			t.set_resolved_call_entry(shifted, owned_name)
 		}
 		for idx, name in w.tc.fork_overlay.resolved_fn_values {
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
-			owned_name := if w.worker_scope != unsafe { nil } { name.clone() } else { name }
+			owned_name := if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
+				name.clone()
+			} else {
+				name
+			}
 			t.set_resolved_fn_value_entry(shifted, owned_name)
 		}
 	}
 	for message in w.monomorph_errors {
-		owned_message := if w.worker_scope != unsafe { nil } { message.clone() } else { message }
+		owned_message := if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
+			message.clone()
+		} else {
+			message
+		}
 		t.record_monomorph_error(owned_message)
 	}
 	if w.ignored_comptime_for_nodes.len > 0 {
@@ -2160,9 +2328,24 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			}
 		}
 	}
+	if w.ignored_comptime_for_log.len > 0 {
+		if t.ignored_comptime_for_nodes.len < t.a.nodes.len {
+			t.ignored_comptime_for_nodes << []bool{len: t.a.nodes.len - t.ignored_comptime_for_nodes.len}
+		}
+		for idx in w.ignored_comptime_for_log {
+			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
+			if shifted >= 0 && shifted < t.ignored_comptime_for_nodes.len {
+				t.ignored_comptime_for_nodes[shifted] = true
+			}
+		}
+	}
 }
 
 fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
+	if t.tc.parallel_check_sparse && idx >= t.tc.resolved_call_names.len {
+		t.tc.sparse_resolved_call_names[idx] = t.tc.canonical_symbol(name)
+		return
+	}
 	for t.tc.resolved_call_names.len <= idx {
 		t.tc.resolved_call_names << ''
 		t.tc.resolved_call_set << false
@@ -2172,6 +2355,10 @@ fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
 }
 
 fn (mut t Transformer) set_resolved_fn_value_entry(idx int, name string) {
+	if t.tc.parallel_check_sparse && idx >= t.tc.resolved_fn_value_names.len {
+		t.tc.sparse_resolved_fn_values[idx] = t.tc.canonical_symbol(name)
+		return
+	}
 	for t.tc.resolved_fn_value_names.len <= idx {
 		t.tc.resolved_fn_value_names << ''
 		t.tc.resolved_fn_value_set << false
@@ -2496,7 +2683,7 @@ fn (t &Transformer) late_name_was_used_before(name string, log_start int) bool {
 }
 
 fn (t &Transformer) late_spelling_was_used_before(spelling string, log_start int) bool {
-	if !t.used_fns[spelling] {
+	if !t.used_fn_contains_name(spelling) {
 		return false
 	}
 	for i in log_start .. t.used_fns_log.len {
@@ -2552,11 +2739,20 @@ fn late_used_fn_contains_in_module(used map[string]bool, name string, module_nam
 }
 
 fn (t &Transformer) has_used_fn_filter() bool {
-	return t.used_fns.len > 0 && t.used_fns['main']
+	return t.has_any_used_fns() && t.used_fn_contains_name('main')
 }
 
 fn (t &Transformer) used_fn_contains_name(name string) bool {
-	return name.len > 0 && t.used_fns[name]
+	if name.len == 0 {
+		return false
+	}
+	if t.used_fns[name] {
+		return true
+	}
+	if isnil(t.used_fns_parent) {
+		return false
+	}
+	return unsafe { t.used_fns_parent[name] }
 }
 
 fn (t &Transformer) used_fn_contains_in_module(name string, module_name string) bool {
