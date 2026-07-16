@@ -13,6 +13,12 @@ fn pool_test_task(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+fn test_pool_preserves_recursive_phase_stack_size() {
+	$if !windows {
+		assert compiler_worker_stack_size == 64 * 1024 * 1024
+	}
+}
+
 fn test_pool_runs_persistent_batches_and_sync_fallbacks() {
 	mut pool := new(2)
 	mut args := []&PoolTestArg{cap: 4}

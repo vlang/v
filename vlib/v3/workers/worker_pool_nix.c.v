@@ -5,10 +5,10 @@ import time
 
 #include "@VEXEROOT/vlib/v3/pthread_helper.h"
 
-// C generation has deep recursive paths. A bounded 8 MiB stack preserves the
-// proven phase requirement while the persistent pool avoids reserving a new
-// set of large stacks for every compiler phase.
-const compiler_worker_stack_size = 8 * 1024 * 1024
+// Parser, checker, transform, mark-used, and C generation have deep recursive
+// paths. Preserve their former 64 MiB worker stack while the persistent pool
+// avoids reserving a new set of stacks for every compiler phase.
+const compiler_worker_stack_size = 64 * 1024 * 1024
 
 // Task is one type-erased compiler phase callback submitted to Pool.
 pub struct Task {
