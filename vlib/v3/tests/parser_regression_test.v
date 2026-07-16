@@ -214,6 +214,61 @@ $if arm64 {
 	assert !a.nodes.any(it.kind == .int_literal && it.value == '32')
 }
 
+fn test_file_const_guarded_inline_asm_selects_software_fallback() {
+	src := os.join_path(os.temp_dir(), 'v3_file_const_guarded_architecture_asm.v')
+	os.write_file(src, 'module main
+
+const use_asm = true
+$if use_asm {
+	$if arm64 {
+		fn selected() int {
+			asm arm64 { nop }
+			return 0
+		}
+	} $else {
+		fn selected() int { return 42 }
+	}
+}
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(src)
+	assert p.diagnostics.len == 0
+	assert a.nodes.count(it.kind == .asm_stmt) == 0
+	assert a.nodes.any(it.kind == .int_literal && it.value == '42')
+}
+
+fn test_false_file_const_inline_asm_does_not_disable_target_branch() {
+	src := os.join_path(os.temp_dir(), 'v3_false_file_const_guarded_architecture_asm.v')
+	os.write_file(src, 'module main
+
+const use_asm = false
+$if use_asm {
+	fn experimental_hint() {
+		asm arm64 { nop }
+	}
+}
+$if arm64 {
+	fn selected() int { return 64 }
+} $else {
+	fn selected() int { return 32 }
+}
+') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(src)
+	assert p.diagnostics.len == 0
+	assert a.nodes.count(it.kind == .asm_stmt) == 0
+	assert a.nodes.any(it.kind == .int_literal && it.value == '64')
+	assert !a.nodes.any(it.kind == .int_literal && it.value == '32')
+}
+
 fn test_inline_asm_detection_ignores_comments_and_strings() {
 	src := os.join_path(os.temp_dir(), 'v3_ignored_architecture_asm_text.v')
 	os.write_file(src, '// asm arm64 {

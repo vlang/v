@@ -3281,11 +3281,17 @@ struct InlineAsmScanResult {
 	next  int
 }
 
-// Tokenize only asm-shaped sources and follow parse-time-known `$if` branches.
-// Deferred generic conditions remain conservative because either branch may survive later.
+// Tokenize only asm-shaped sources, precollect ordered file constants, and follow
+// parse-time-known `$if` branches. Deferred generic conditions remain conservative.
 fn (mut p Parser) source_contains_active_target_inline_asm(source string, target_arch string) bool {
 	if !source_contains_target_inline_asm(source, target_arch) {
 		return false
+	}
+	saved_module := p.cur_module
+	mut saved_const_values := p.comptime_const_values.clone()
+	defer {
+		p.cur_module = saved_module
+		p.comptime_const_values = saved_const_values.move()
 	}
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file('<inline asm scan>', -1, source.len)
@@ -3304,14 +3310,25 @@ fn (mut p Parser) source_contains_active_target_inline_asm(source string, target
 			break
 		}
 	}
-	return p.inline_asm_scan_range(source, tokens, 0, tokens.len - 1, target_arch)
+	return p.inline_asm_scan_range(source, tokens, 0, tokens.len - 1, target_arch, true)
 }
 
-fn (mut p Parser) inline_asm_scan_range(source string, tokens []InlineAsmScanToken, start int, end int, target_arch string) bool {
+fn (mut p Parser) inline_asm_scan_range(source string, tokens []InlineAsmScanToken, start int, end int, target_arch string, collect_consts bool) bool {
 	mut i := start
 	for i < end {
+		if collect_consts && tokens[i].kind == .key_module && i + 1 < end
+			&& tokens[i + 1].kind == .name {
+			p.cur_module = tokens[i + 1].lit
+			i += 2
+			continue
+		}
+		if collect_consts && tokens[i].kind == .key_const {
+			i = p.inline_asm_collect_const_decl(tokens, i, end)
+			continue
+		}
 		if tokens[i].kind == .dollar && i + 1 < end && tokens[i + 1].kind == .key_if {
-			result := p.inline_asm_scan_comptime_if(source, tokens, i, end, target_arch, true)
+			result := p.inline_asm_scan_comptime_if(source, tokens, i, end, target_arch, true,
+				collect_consts)
 			if result.found {
 				return true
 			}
@@ -3326,7 +3343,7 @@ fn (mut p Parser) inline_asm_scan_range(source string, tokens []InlineAsmScanTok
 	return false
 }
 
-fn (mut p Parser) inline_asm_scan_comptime_if(source string, tokens []InlineAsmScanToken, start int, end int, target_arch string, inspect bool) InlineAsmScanResult {
+fn (mut p Parser) inline_asm_scan_comptime_if(source string, tokens []InlineAsmScanToken, start int, end int, target_arch string, inspect bool, collect_consts bool) InlineAsmScanResult {
 	open := inline_asm_comptime_open_brace(tokens, start + 2, end)
 	if open >= end {
 		return InlineAsmScanResult{
@@ -3348,7 +3365,8 @@ fn (mut p Parser) inline_asm_scan_comptime_if(source string, tokens []InlineAsmS
 		known, taken = p.inline_asm_comptime_condition(condition)
 	}
 	if inspect && (!known || taken)
-		&& p.inline_asm_scan_range(source, tokens, open + 1, close, target_arch) {
+		&& p.inline_asm_scan_range(source, tokens, open + 1, close, target_arch, collect_consts
+		&& known && taken) {
 		return InlineAsmScanResult{
 			found: true
 			next:  close + 1
@@ -3363,7 +3381,7 @@ fn (mut p Parser) inline_asm_scan_comptime_if(source string, tokens []InlineAsmS
 	next = inline_asm_skip_semicolons(tokens, next + 2, end)
 	if next + 1 < end && tokens[next].kind == .dollar && tokens[next + 1].kind == .key_if {
 		return p.inline_asm_scan_comptime_if(source, tokens, next, end, target_arch, inspect
-			&& (!known || !taken))
+			&& (!known || !taken), collect_consts && inspect && known && !taken)
 	}
 	if next >= end || tokens[next].kind != .lcbr {
 		return InlineAsmScanResult{
@@ -3372,7 +3390,8 @@ fn (mut p Parser) inline_asm_scan_comptime_if(source string, tokens []InlineAsmS
 	}
 	else_close := inline_asm_matching_close_brace(tokens, next, end)
 	if inspect && (!known || !taken) && else_close < end
-		&& p.inline_asm_scan_range(source, tokens, next + 1, else_close, target_arch) {
+		&& p.inline_asm_scan_range(source, tokens, next + 1, else_close, target_arch, collect_consts
+		&& known && !taken) {
 		return InlineAsmScanResult{
 			found: true
 			next:  else_close + 1
@@ -3380,6 +3399,106 @@ fn (mut p Parser) inline_asm_scan_comptime_if(source string, tokens []InlineAsmS
 	}
 	return InlineAsmScanResult{
 		next: if else_close < end { else_close + 1 } else { end }
+	}
+}
+
+fn (mut p Parser) inline_asm_collect_const_decl(tokens []InlineAsmScanToken, start int, end int) int {
+	mut i := start + 1
+	grouped := i < end && tokens[i].kind == .lpar
+	if grouped {
+		i++
+	}
+	for i < end {
+		for i < end && tokens[i].kind == .semicolon {
+			i++
+		}
+		if i >= end || (grouped && tokens[i].kind == .rpar) {
+			return if i < end { i + 1 } else { i }
+		}
+		if tokens[i].kind != .name {
+			return i
+		}
+		name := tokens[i].lit
+		i++
+		if i >= end || tokens[i].kind != .assign {
+			return i
+		}
+		i++
+		value_start := i
+		mut paren_depth := 0
+		mut bracket_depth := 0
+		mut brace_depth := 0
+		for i < end {
+			kind := tokens[i].kind
+			if kind == .semicolon && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0 {
+				break
+			}
+			if kind == .rpar && paren_depth == 0 && bracket_depth == 0 && brace_depth == 0
+				&& grouped {
+				break
+			}
+			if kind == .lpar {
+				paren_depth++
+			} else if kind == .rpar && paren_depth > 0 {
+				paren_depth--
+			} else if kind == .lsbr {
+				bracket_depth++
+			} else if kind == .rsbr && bracket_depth > 0 {
+				bracket_depth--
+			} else if kind == .lcbr {
+				brace_depth++
+			} else if kind == .rcbr && brace_depth > 0 {
+				brace_depth--
+			}
+			i++
+		}
+		if value := p.inline_asm_const_value(tokens[value_start..i]) {
+			p.comptime_const_values[comptime_const_value_key(p.cur_module, name)] = value
+		}
+		if !grouped || i >= end {
+			return if i < end { i + 1 } else { i }
+		}
+		if tokens[i].kind == .rpar {
+			return i + 1
+		}
+		i++
+	}
+	return i
+}
+
+fn (p &Parser) inline_asm_const_value(tokens []InlineAsmScanToken) ?string {
+	mut start := 0
+	mut end := tokens.len
+	for end - start >= 2 && tokens[start].kind == .lpar && tokens[end - 1].kind == .rpar {
+		start++
+		end--
+	}
+	if end - start != 1 {
+		return none
+	}
+	t := tokens[start]
+	return match t.kind {
+		.number {
+			t.lit
+		}
+		.key_true {
+			'true'
+		}
+		.key_false {
+			'false'
+		}
+		.char {
+			'`${t.lit}`'
+		}
+		.string {
+			comptime_cond_quoted_string(strip_quotes(t.lit))
+		}
+		.name {
+			p.comptime_value(t.lit)
+		}
+		else {
+			none
+		}
 	}
 }
 
