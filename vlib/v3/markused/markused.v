@@ -408,7 +408,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					uses_generics = true
 					continue
 				}
-				if callee == 'string__plus' {
+				if markused_generated_c_helper_name(callee) {
 					enqueue(callee, mut used, mut queue)
 					continue
 				}
@@ -830,6 +830,10 @@ fn markused_is_unqualified_receiver_method_name(name string) bool {
 // valid_symbol_name supports valid symbol name handling for markused.
 fn valid_symbol_name(name string) bool {
 	return name.len > 0 && name.len < 512
+}
+
+fn markused_generated_c_helper_name(name string) bool {
+	return name in ['string__plus', 'v3_c_lit', 'v3_json_encode_string', 'array__get']
 }
 
 // markused_clone_bool_map returns a value clone even when the source is passed
@@ -5512,11 +5516,35 @@ fn (c &CallCollector) collect_json_encode_type_helpers(typ types.Type, cur_modul
 	if clean is types.Enum {
 		if cast := c.json_enum_number_cast(clean.name) {
 			markused_json_push_int_str_helpers(cast == 'u64', mut helpers)
+		} else {
+			helpers << 'v3_json_encode_string'
 		}
 		return true
 	}
 	if clean is types.String {
+		helpers << 'v3_json_encode_string'
 		return true
+	}
+	if clean is types.Array {
+		helpers << 'string__plus'
+		helpers << 'v3_c_lit'
+		helpers << 'array.get'
+		helpers << 'array__get'
+		return c.collect_json_encode_type_helpers(clean.elem_type, cur_module, mut helpers)
+	}
+	if clean is types.Map {
+		key_clean := if clean.key_type is types.Alias {
+			clean.key_type.base_type
+		} else {
+			clean.key_type
+		}
+		if key_clean !is types.String {
+			return false
+		}
+		helpers << 'string__plus'
+		helpers << 'v3_c_lit'
+		helpers << 'v3_json_encode_string'
+		return c.collect_json_encode_type_helpers(clean.value_type, cur_module, mut helpers)
 	}
 	if clean is types.Primitive {
 		if clean.props.has(.boolean) {
@@ -5542,7 +5570,7 @@ fn (c &CallCollector) collect_json_encode_type_helpers(typ types.Type, cur_modul
 		helpers << 'string__plus'
 		for field in fields {
 			attrs := c.json_struct_field_attrs(info, field.name)
-			if markused_json_attrs_have_name(attrs, 'skip') {
+			if markused_json_attrs_skip_field(attrs) {
 				continue
 			}
 			if markused_json_attrs_have_name(attrs, 'omitempty')
@@ -5637,6 +5665,30 @@ fn markused_json_attrs_have_name(attrs []string, name string) bool {
 		}
 	}
 	return false
+}
+
+fn markused_json_attrs_skip_field(attrs []string) bool {
+	if markused_json_attrs_have_name(attrs, 'skip') {
+		return true
+	}
+	for attr in attrs {
+		if attr.starts_with('json:') && markused_json_attr_label(attr.all_after(':')) == '-' {
+			return true
+		}
+	}
+	return false
+}
+
+fn markused_json_attr_label(raw_value string) string {
+	mut value := raw_value.trim_space()
+	if value.len >= 3 && value[0] == `r` && value[1] in [`'`, `"`]
+		&& value[value.len - 1] == value[1] {
+		value = value[1..]
+	}
+	if value.len < 2 || value[0] !in [`'`, `"`] || value[value.len - 1] != value[0] {
+		return value
+	}
+	return value[1..value.len - 1]
 }
 
 fn markused_json_encode_omitempty_supported(typ types.Type) bool {
