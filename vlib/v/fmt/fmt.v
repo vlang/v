@@ -552,6 +552,12 @@ fn encode_payload_is_safe_to_migrate(t &ast.Table, expr ast.Expr) bool {
 				|| type_needs_legacy_json(t, expr.value_type) {
 				return false
 			}
+			// A spread (`{ ...times }`) is stored on update_expr, outside `vals`, and its
+			// typ/key/value are usually zero at fmt time — a spread of `map[string]time.Time`
+			// is a legacy-sensitive payload with no explicit values.
+			if expr.has_update_expr && !encode_payload_is_safe_to_migrate(t, expr.update_expr) {
+				return false
+			}
 			for v in expr.vals {
 				if !encode_payload_is_safe_to_migrate(t, v) {
 					return false
