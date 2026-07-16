@@ -1887,7 +1887,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			g.gen_select(id, node, false)
 		}
 		.break_stmt {
-			g.gen_loop_control_writebacks(node.value)
+			g.gen_loop_control_copybacks(node.value)
 			g.gen_branch_lock_cleanup(node.value)
 			g.gen_loop_control_ownership_drops()
 			if node.value.len > 0 {
@@ -1897,7 +1897,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 			}
 		}
 		.continue_stmt {
-			g.gen_loop_control_writebacks(node.value)
+			g.gen_loop_control_copybacks(node.value)
 			g.gen_branch_lock_cleanup(node.value)
 			g.gen_loop_control_ownership_drops()
 			if node.value.len > 0 {
@@ -4593,8 +4593,6 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 		} else if node.op == .left_shift_assign && lhs.kind == .ident
 			&& node.value in ['push', 'push_many'] {
 			if node.value == 'push_many' {
-				lhs_id := g.a.child(&node, i)
-				rhs_id := g.a.child(&node, i + 1)
 				lhs_arr_type := types.unwrap_pointer(g.usable_expr_type(lhs_id))
 				if lhs_arr := array_like_type(lhs_arr_type) {
 					if g.array_push_rhs_is_sum_variant_value(rhs_id, lhs_arr.elem_type) {

@@ -1178,6 +1178,37 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			c_key := g.map_key_temp_c_type(clean_base.key_type)
 			c_val := g.value_c_type(clean_base.value_type)
 			is_ptr := base_type is types.Pointer
+			if g.map_loop_copyback_guards.len > 0 {
+				map_tmp := '__map_set_target_${g.tmp_count}'
+				g.tmp_count++
+				key_tmp := '__map_set_key_${g.tmp_count}'
+				g.tmp_count++
+				g.write('map* ${map_tmp} = ')
+				if !is_ptr {
+					g.write('&')
+				}
+				g.gen_expr(base_id)
+				g.writeln(';')
+				key_id := g.a.child(&lhs, 1)
+				mut key_ref := '&${key_tmp}'
+				if key_fixed := array_fixed_type(clean_base.key_type) {
+					c_elem, dims := g.fixed_array_decl_parts(key_fixed)
+					g.writeln('${c_elem} ${key_tmp}${dims};')
+					g.write('memmove(${key_tmp}, ')
+					g.gen_expr_with_expected_type(key_id, clean_base.key_type)
+					g.writeln(', sizeof(${key_tmp}));')
+					key_ref = key_tmp
+				} else {
+					g.write('${c_key} ${key_tmp} = ')
+					g.gen_expr_with_expected_type(key_id, clean_base.key_type)
+					g.writeln(';')
+				}
+				g.gen_map_loop_copyback_dirty_checks(map_tmp, key_ref)
+				g.write('map__set(${map_tmp}, ${key_ref}, &(${c_val}[]){')
+				g.gen_expr_with_expected_type(g.a.child(&node, 1), clean_base.value_type)
+				g.writeln('});')
+				return
+			}
 			if is_ptr {
 				g.write('map__set(')
 			} else {

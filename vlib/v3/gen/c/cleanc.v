@@ -27,9 +27,15 @@ mut:
 	prev_depth int
 }
 
-struct LoopControlWriteback {
+struct LoopControlCopyback {
 	loop_depth int
 	stmt       string
+}
+
+struct MapLoopCopybackGuard {
+	map_ref   string
+	key_ref   string
+	dirty_var string
 }
 
 struct FixedStorageConstRefItem {
@@ -181,7 +187,8 @@ mut:
 	conditional_branch_depths    []int
 	conditional_branch_depth     int
 	loop_label_depths            map[string]int
-	loop_control_writebacks      []LoopControlWriteback
+	loop_control_copybacks       []LoopControlCopyback
+	map_loop_copyback_guards     []MapLoopCopybackGuard
 	goto_label_lock_scopes       map[string][]int
 	pending_loop_label           string
 	// in_return is true only while generating a `return` statement's value, so a bare
@@ -610,6 +617,7 @@ pub fn FlatGen.new() FlatGen {
 		conditional_branch_depths:      []int{}
 		loop_label_depths:              map[string]int{}
 		loop_control_copybacks:         []LoopControlCopyback{}
+		map_loop_copyback_guards:       []MapLoopCopybackGuard{}
 		goto_label_lock_scopes:         map[string][]int{}
 		ownership_seen_return_sources:  map[string]bool{}
 		needed_optional_types:          map[string]string{}
@@ -1212,6 +1220,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.conditional_branch_depth = 0
 	g.loop_label_depths.clear()
 	g.loop_control_copybacks = []LoopControlCopyback{}
+	g.map_loop_copyback_guards = []MapLoopCopybackGuard{}
 	g.goto_label_lock_scopes.clear()
 	g.pending_loop_label = ''
 	g.needed_optional_types.clear()

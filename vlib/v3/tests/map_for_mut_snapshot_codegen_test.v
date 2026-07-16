@@ -51,6 +51,60 @@ fn test_mut_map_iteration_snapshot_updates_original_values() {
 	assert out == 'ok'
 }
 
+fn test_mut_map_iteration_delete_current_key_preserves_deletion() {
+	v3_bin := map_for_mut_build_v3()
+	out := map_for_mut_run_good(v3_bin, 'map_for_mut_delete_current_key', 'fn main() {
+		mut m := map[string][2]int{}
+		m["a"] = [1, 0]!
+		m["b"] = [2, 0]!
+		for key, mut v in m {
+			v[0] = 9
+			m.delete(key)
+		}
+		assert m.len == 0
+		println("ok")
+	}
+	')
+	assert out == 'ok'
+}
+
+fn test_mut_map_iteration_delete_reinsert_equal_value_is_not_clobbered() {
+	v3_bin := map_for_mut_build_v3()
+	out := map_for_mut_run_good(v3_bin, 'map_for_mut_delete_reinsert_equal_value', 'fn main() {
+		mut m := map[string][2]int{}
+		m["a"] = [1, 0]!
+		for key, mut v in m {
+			v[0] = 9
+			m.delete(key)
+			m[key] = [1, 0]!
+		}
+		assert m["a"][0] == 1
+		println("ok")
+	}
+	')
+	assert out == 'ok'
+}
+
+fn test_mut_map_iteration_explicit_update_is_not_clobbered() {
+	v3_bin := map_for_mut_build_v3()
+	out := map_for_mut_run_good(v3_bin, 'map_for_mut_explicit_update_not_clobbered', 'fn main() {
+		mut m := map[string][2]int{}
+		m["a"] = [1, 0]!
+		m["b"] = [2, 0]!
+		for key, mut v in m {
+			if key == "a" {
+				v[0] = 9
+				m[key] = [3, 0]!
+			}
+			m.delete("missing")
+		}
+		assert m["a"][0] == 3
+		println("ok")
+	}
+	')
+	assert out == 'ok'
+}
+
 fn test_mut_map_fixed_array_value_copyback_runs_before_continue() {
 	v3_bin := map_for_mut_build_v3()
 	out := map_for_mut_run_good(v3_bin, 'map_for_mut_fixed_array_continue_copyback', 'fn main() {
@@ -111,6 +165,27 @@ fn main() {
 }
 ')
 	assert out == 'ok'
+}
+
+fn test_mut_map_scalar_return_reads_updated_value() {
+	v3_bin := map_for_mut_build_v3()
+	out := map_for_mut_run_good(v3_bin, 'map_for_mut_scalar_return_reads_update', '__global values map[string]int
+
+fn return_int_from_map() int {
+	for _, mut v in values {
+		v = 7
+		return values["x"]
+	}
+	return 0
+}
+
+fn main() {
+	values = map[string]int{}
+	values["x"] = 1
+	println(int_str(return_int_from_map()))
+}
+')
+	assert out == '7'
 }
 
 fn test_mut_map_fixed_array_return_reads_copied_back_value() {

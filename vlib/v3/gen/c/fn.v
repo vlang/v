@@ -3106,6 +3106,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.cur_return_drops = []types.OwnershipDropEntry{}
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
+	g.map_loop_copyback_guards = []MapLoopCopybackGuard{}
 	mut prelude_scan := g.collect_fn_prelude_scan(node)
 	g.goto_label_lock_scopes = prelude_scan.goto_label_lock_scopes.move()
 	g.pending_loop_label = ''
@@ -3244,6 +3245,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.cur_mut_param_owners = old_mut_param_owners.clone()
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
+	g.map_loop_copyback_guards = []MapLoopCopybackGuard{}
 	g.goto_label_lock_scopes = map[string][]int{}
 	g.pending_loop_label = ''
 	g.pop_scope()
@@ -3316,6 +3318,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_fn_name = 'main'
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
+	g.map_loop_copyback_guards = []MapLoopCopybackGuard{}
 	mut prelude_scan := g.collect_top_level_prelude_scan(stmts)
 	g.goto_label_lock_scopes = prelude_scan.goto_label_lock_scopes.move()
 	g.pending_loop_label = ''
@@ -3384,6 +3387,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_fn_name = old_fn_name
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
+	g.map_loop_copyback_guards = []MapLoopCopybackGuard{}
 	g.goto_label_lock_scopes = map[string][]int{}
 	g.pending_loop_label = ''
 	g.tc.cur_file = old_tc_file
@@ -3864,6 +3868,43 @@ fn (g &FlatGen) main_runtime_shadow_call_c_name(node flat.Node, fn_node flat.Nod
 	return none
 }
 
+fn (mut g FlatGen) gen_map_mutation_call_with_loop_copyback_guard(node flat.Node, fn_name string, target_name string, resolved_target_name string) bool {
+	if g.map_loop_copyback_guards.len == 0 {
+		return false
+	}
+	is_map_delete := fn_name == 'map__delete' || target_name == 'map__delete'
+		|| resolved_target_name == 'map__delete'
+	is_map_set := fn_name == 'map__set' || target_name == 'map__set'
+		|| resolved_target_name == 'map__set'
+	if (!is_map_delete && !is_map_set) || (is_map_delete && node.children_count != 3)
+		|| (is_map_set && node.children_count != 4) {
+		return false
+	}
+	map_tmp := '__map_mut_target_${g.tmp_count}'
+	g.tmp_count++
+	key_tmp := '__map_mut_key_${g.tmp_count}'
+	g.tmp_count++
+	g.write('({ map* ${map_tmp} = ')
+	g.gen_expr(g.a.child(&node, 1))
+	g.write('; void* ${key_tmp} = ')
+	g.gen_expr(g.a.child(&node, 2))
+	mut val_tmp := ''
+	if is_map_set {
+		val_tmp = '__map_mut_val_${g.tmp_count}'
+		g.tmp_count++
+		g.write('; void* ${val_tmp} = ')
+		g.gen_expr(g.a.child(&node, 3))
+	}
+	g.writeln(';')
+	g.gen_map_loop_copyback_dirty_checks(map_tmp, key_tmp)
+	if is_map_set {
+		g.write('map__set(${map_tmp}, ${key_tmp}, ${val_tmp}); })')
+	} else {
+		g.write('map__delete(${map_tmp}, ${key_tmp}); })')
+	}
+	return true
+}
+
 // gen_call emits call output for c.
 fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	mut fn_node := g.a.child_node(&node, 0)
@@ -3890,6 +3931,11 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		return
 	}
 	resolved_target_name := g.tc.resolved_call_name(id) or { '' }
+	if g.gen_map_mutation_call_with_loop_copyback_guard(node, fn_name, target_name,
+		resolved_target_name)
+	{
+		return
+	}
 	if fn_node.kind == .index && fn_node.value != 'range' {
 		runtime_start := 1
 		arg_count := int(node.children_count) - runtime_start
