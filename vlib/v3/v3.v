@@ -919,6 +919,7 @@ fn main() {
 		'vexe=${prefs.vexe}',
 		'backend=${backend}',
 		'target=${prefs.normalized_target_os()}',
+		'target_arch=${prefs.normalized_target_arch()}',
 		'prod=${is_prod}',
 		'shared=${is_shared}',
 		'selfhost=${is_selfhost}',
