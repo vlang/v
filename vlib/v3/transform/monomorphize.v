@@ -3446,6 +3446,7 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 		}
 		t.infer_generic_sum_literal_args(child.typ, arg_id, mut inferred)
 		t.infer_generic_struct_init_args(child.typ, arg_id, mut inferred)
+		t.infer_generic_short_struct_init_args(child.typ, arg_id, node, mut inferred)
 		param_idx++
 	}
 	mut args := []string{cap: param_names.len}
@@ -4922,6 +4923,7 @@ fn (mut t Transformer) infer_generic_call_args(decl GenericFnDecl, _id flat.Node
 		}
 		t.infer_generic_sum_literal_args(child.typ, arg_id, mut inferred)
 		t.infer_generic_struct_init_args(child.typ, arg_id, mut inferred)
+		t.infer_generic_short_struct_init_args(child.typ, arg_id, node, mut inferred)
 		param_idx++
 	}
 	ret := t.node_type(_id)
@@ -4989,6 +4991,60 @@ fn (mut t Transformer) infer_generic_struct_init_args(param_type string, arg_id 
 		} else if i < info.fields.len {
 			info.fields[i].name
 		} else {
+			continue
+		}
+		mut field_type := ''
+		for struct_field in info.fields {
+			if struct_field.name == field_name {
+				field_type = struct_field.typ
+				break
+			}
+		}
+		if field_type.len == 0 {
+			continue
+		}
+		value_id := t.a.child(field, 0)
+		value_type := t.generic_call_arg_type_for_inference(value_id)
+		if value_type.len > 0 {
+			infer_generic_type_args(field_type, value_type, mut inferred)
+		}
+	}
+}
+
+// infer_generic_short_struct_init_args handles the short struct-init call
+// syntax for a generic struct param, e.g. `take_input(a: xs, b: 3)` for
+// `fn take_input[T](p Params[T])`. In that form the named arguments are parsed
+// as `field_init` children directly on the call node (not wrapped in a
+// `struct_init`), so `infer_generic_struct_init_args` cannot see them; map each
+// field to the generic struct's declared field type and infer `T` from it.
+fn (mut t Transformer) infer_generic_short_struct_init_args(param_type string, arg_id flat.NodeId, node flat.Node, mut inferred map[string]string) {
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return
+	}
+	if t.a.nodes[int(arg_id)].kind != .field_init {
+		return
+	}
+	param_base, param_args, is_generic_struct := generic_app_parts(param_type.trim_space())
+	if !is_generic_struct || param_args.len == 0 {
+		return
+	}
+	info := t.lookup_struct_info(param_base) or { return }
+	mut field_idx := 0
+	for i in 0 .. int(node.children_count) {
+		field := t.a.child_node(&node, i)
+		if field.kind != .field_init {
+			continue
+		}
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if field_idx < info.fields.len {
+			info.fields[field_idx].name
+		} else {
+			field_idx++
+			continue
+		}
+		field_idx++
+		if field.children_count == 0 {
 			continue
 		}
 		mut field_type := ''
