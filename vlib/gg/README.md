@@ -37,7 +37,8 @@ fn frame(mut ctx gg.Context) {
 
 `gg.App` is an additive multi-window facade for programs that need to manage
 more than one native window from the same `gg` application. It is opt-in and is
-compiled only when the program is built with `-d gg_multiwindow`:
+compiled only when the program is built with `-d gg_multiwindow`.
+`examples/gg/multiwindow.v` is the interactive example:
 
 ```sh
 v -d gg_multiwindow run examples/gg/multiwindow.v
@@ -46,9 +47,9 @@ v -d gg_multiwindow run examples/gg/multiwindow.v
 The existing single-window `gg.Context` API and behavior are unchanged. A normal
 `import gg` program that uses `gg.new_context()` does not load the native
 multi-window implementation. Without `-d gg_multiwindow`, the opt-in API surface
-is kept as a lightweight compatibility stub so accidental `gg.App` calls report
-a clear "compile with `-d gg_multiwindow`" error instead of pulling in
-`x.multiwindow` or native backend code.
+is a non-render compatibility stub: accidental `gg.App` calls report a clear
+"compile with `-d gg_multiwindow`" error instead of pulling in `x.multiwindow`
+or native backend code.
 
 Users normally import only `gg`. [`x.multiwindow`](../x/multiwindow/README.md)
 is the lower-level lifecycle, window and render-surface layer used by the facade,
@@ -101,13 +102,21 @@ Lifecycle-only applications can run with just `event_fn`; they do not require a
 renderer. `frame_fn` and `draw_window()` require an already render-capable app;
 they do not re-run `.auto` backend selection. Programs that plan to render
 should use `gg.new_app(require_renderer: true)` or verify
-`app.capabilities().explicit_swapchain` before rendering. Each `draw_window()`
-call records and commits work for that window while its native surface is
-current. Linux X11 rendering, including under Xvfb, needs both flags:
+`app.capabilities().explicit_swapchain` before rendering. Linux X11 rendering,
+including under Xvfb, needs both flags:
 
 ```sh
 xvfb-run -a v -d gg_multiwindow -d x_multiwindow_x11 run examples/gg/multiwindow.v
 ```
+
+`examples/gg/multiwindow_render_runtime.v` is an unattended CI probe, not an
+interactive launch target. Backend lanes compile it with `-d gg_multiwindow`
+plus `-d x_multiwindow_x11`, `-d sokol_wayland`, `-d sokol_metal`, or
+`-d sokol_d3d11` as appropriate, and select the matching backend through
+`V_MULTIWINDOW_PROBE_BACKEND`. A process-tree watchdog supplies the private
+parent gate, enforces the deadline, and checks process cleanup. After all window
+and renderer cleanup succeeds, the probe emits
+`{"example":"multiwindow_render_runtime","status":"PASS","cleanup":"complete"}`.
 
 ### Multi-Window Events
 
@@ -186,6 +195,43 @@ schedule owner-side work with `app.post()` or `app.try_post()` and let the run
 loop drain it. A `gg.App` render owner cannot coexist with an active legacy
 `gg.Context` renderer owner in the same process, but the legacy `gg.Context` API
 remains available for normal single-window programs.
+
+### Per-Window Render API
+
+With `-d gg_multiwindow`, `WindowConfig` provides per-window clear color,
+redraw mode, sample count, and init/frame/cleanup callbacks. Callback contexts
+provide immutable metrics and target snapshots, bounded frame/pass authority,
+app- and window-scoped managed resource IDs, pass methods, and the recording
+subset of `WindowSglContext`. `RunConfig` also provides app-resource lifecycle
+callbacks for resources shared by multiple windows.
+
+Multi-window render targets support exactly `sample_count: 1`. A different
+sample count is rejected when a renderer is required or active. Readback is not
+available on the native backends: `Capabilities.readback`,
+`WindowReadbackCapabilities.offscreen_image`, and
+`WindowReadbackCapabilities.window_capture` are false. Calls to
+`request_window_capture()` or `request_image_readback()` return
+`gg.multiwindow: requested readback is not supported`.
+
+Managed IDs are scoped to their app and, where applicable, their window. Stale,
+foreign, or expired IDs and callback leases return errors instead of exposing
+raw `gfx.Environment`, `gfx.Swapchain`, native drawable, command-buffer, or
+present authority. Rendering uses owner-thread batches, backend-issued ready
+credits, late target acquisition, ordered finalization, and one global commit
+per submitted batch.
+
+Renderer behavior is exercised in the dedicated X11, Wayland, AppKit, and Win32
+CI lanes. Those lanes set `VGG_MULTIWINDOW_RUNTIME_PROBES=1`,
+`VGG_MULTIWINDOW_RUNTIME_BACKEND`, and `V_MULTIWINDOW_PROBE_BACKEND`; compile
+with the matching native flag; and run tests and probes through the process-tree
+watchdog. The checks cover multi-window submission, resource cleanup and
+replacement, stale leases, callback-driven teardown, recovery, and native fault
+paths. A normal legacy `gg.Context` import remains isolated from
+`x.multiwindow` and native multi-window backend dependencies. The implementation
+follows the V-vendored Sokol revision and matching pinned
+[sokol_gfx.h](https://raw.githubusercontent.com/floooh/sokol/c0e0563/sokol_gfx.h)
+and [sokol_gl.h](https://raw.githubusercontent.com/floooh/sokol/c0e0563/util/sokol_gl.h)
+contracts.
 
 ## Troubleshooting
 
