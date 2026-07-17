@@ -251,6 +251,33 @@ fn test_empty_fixed_array_of_function_arrays_resolves_element_type() {
 	assert out == '0\n0'
 }
 
+fn test_indexed_shift_assignments_guard_oversized_counts() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'indexed_shift_assign_oversized_counts', 'fn next(mut calls int) int {
+	calls++
+	return 0
+}
+
+fn shift(mut calls int) u64 {
+	calls++
+	return 64
+}
+
+fn main() {
+	mut calls := 0
+	mut left := [u64(1)]
+	left[next(mut calls)] <<= shift(mut calls)
+	println(int_str(calls))
+	println(left[0].str())
+	mut right := [u64(8)]
+	right[next(mut calls)] >>= shift(mut calls)
+	println(int_str(calls))
+	println(right[0].str())
+}
+')
+	assert out == '2\n0\n4\n0'
+}
+
 fn test_multi_return_assignment_requires_option_result_handling() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'unhandled_result_multi_decl_assign',

@@ -1531,10 +1531,16 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 				}
 			}
 			g.write('; array__set(_a${tmp}, _i${tmp}, &(${c_elem}[]){')
-			if node.op == .right_shift_unsigned_assign {
+			if node.op in [.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
+				shift_op := match node.op {
+					.left_shift_assign { flat.Op.left_shift }
+					.right_shift_assign { flat.Op.right_shift }
+					else { flat.Op.right_shift_unsigned }
+				}
+
 				lhs_text := '*(${c_elem}*)array_get(*_a${tmp}, _i${tmp})'
-				g.gen_unsigned_right_shift_from_text(lhs_text, g.a.child(&node, 1),
-					arr_type.elem_type)
+				g.gen_guarded_shift_from_text(lhs_text, g.a.child(&node, 1), arr_type.elem_type,
+					shift_op)
 			} else if op := compound_assign_to_infix_op(node.op) {
 				if arr_type.elem_type is types.String && op == .plus {
 					g.write('string__plus(')
