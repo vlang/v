@@ -42,7 +42,6 @@ vlib/math/big/big_division_test.v
 vlib/math/big/big_test.v
 vlib/math/big/division_array_ops_test.v
 vlib/math/big/special_array_ops_test.v
-vlib/math/fractions/fraction_test.v
 vlib/math/interpolation_test.v
 vlib/math/vec/vec2_test.v
 vlib/math/vec/vec3_test.v
@@ -51,23 +50,16 @@ vlib/mcp/mcp_test.v
 vlib/mcp/server_test.v
 vlib/mcp/spec_compliance_test.v
 vlib/ncurses/ncurses_test.v
-vlib/os/file_le_be_test.v
 vlib/os/filepath_test.v
 vlib/os/inode_test.v
 vlib/os/join_path_test.v
-vlib/os/signal_test.v
 vlib/pico_http_parser/pico_http_parser_test.v
 vlib/picoev/picoev_test.v
-vlib/picohttpparser/misc_test.v
-vlib/picohttpparser/request_test.v
 vlib/pool/connection_test.v
 vlib/rand/cuid2/cuid2_test.v
 vlib/rand/random_numbers_test.v
-vlib/readline/readline_test.v
-vlib/regex/regex_anchor_test.v
 vlib/regex/regex_test.v
 vlib/runtime/runtime_test.v
-vlib/runtime/used_memory_test.v
 vlib/sokol/gfx/gfx_test.v
 vlib/strconv/format_test.v
 vlib/sync/channel_array_mut_test.v
@@ -78,7 +70,6 @@ vlib/sync/channel_select_fifo_test.v
 vlib/sync/select_close_test.v
 vlib/sync/struct_chan_init_test.v
 vlib/sync/tls_test.v
-vlib/term/term_test.v
 vlib/term/ui/1_term_and_ui_compilation_test.v
 vlib/term/ui/2_term_and_ui_compilation_test.v
 vlib/term/ui/input_nix_test.v
@@ -90,7 +81,6 @@ vlib/toml/tests/array_of_tables_2_level_test.v
 vlib/toml/tests/array_of_tables_array_test.v
 vlib/toml/tests/array_of_tables_edge_case_1_test.v
 vlib/toml/tests/array_of_tables_edge_case_2_test.v
-vlib/toml/tests/default_value_test.v
 vlib/toml/tests/encode_and_decode_test.v
 vlib/toml/tests/json_test.v
 vlib/toml/tests/key_test.v
@@ -98,8 +88,5 @@ vlib/toml/tests/reflect_test.v
 vlib/toml/tests/toml_attrs_test.v
 vlib/toml/tests/toml_bom_test.v
 vlib/wasm/tests/patch_test.v
-vlib/wasm/tests/var_test.v
-vlib/yaml/yaml_conformance_test.v
 vlib/yaml/yaml_edge_cases_test.v
-vlib/yaml/yaml_json_roundtrip_test.v
 vlib/yaml/yaml_test.v

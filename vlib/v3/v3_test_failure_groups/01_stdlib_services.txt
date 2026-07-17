@@ -9,7 +9,6 @@ vlib/crypto/ed25519/internal/edwards25519/extra_test.v
 vlib/crypto/ed25519/internal/edwards25519/scalar_alias_test.v
 vlib/crypto/ed25519/internal/edwards25519/scalar_test.v
 vlib/crypto/ed25519/internal/edwards25519/scalarmult_test.v
-vlib/crypto/hkdf/example_test.v
 vlib/crypto/hkdf/hkdf_test.v
 vlib/crypto/pem/pem_test.v
 vlib/crypto/ripemd160/ripemd160_test.v
@@ -27,7 +26,6 @@ vlib/db/sqlite/sqlite_orm_test.v
 vlib/db/sqlite/sqlite_vfs_lowlevel_test.v
 vlib/net/conv/conv_test.v
 vlib/net/http/build_request_headers_test.v
-vlib/net/http/cookie_test.v
 vlib/net/http/h2_client_test.v
 vlib/net/http/h2_conn_test.v
 vlib/net/http/h2_frame_test.v
@@ -80,13 +78,11 @@ vlib/orm/orm_fn_test.v
 vlib/orm/orm_func_test.v
 vlib/orm/orm_generic_struct_field_test.v
 vlib/orm/orm_generic_where_shadow_test.v
-vlib/orm/orm_insert_reserved_name_test.v
 vlib/orm/orm_insert_test.v
 vlib/orm/orm_interface_test.v
 vlib/orm/orm_join_test.v
 vlib/orm/orm_last_id_test.v
 vlib/orm/orm_mut_connection_test.v
-vlib/orm/orm_mut_db_test.v
 vlib/orm/orm_nested_struct_test.v
 vlib/orm/orm_null_test.v
 vlib/orm/orm_option_array_test.v
