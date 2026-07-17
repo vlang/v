@@ -20,7 +20,6 @@ vlib/v/tests/comptime/comptime_match_assign_test.v
 vlib/v/tests/comptime/comptime_match_ret_test.v
 vlib/v/tests/comptime/comptime_type_accessors_zero_new_test.v
 vlib/v/tests/comptime/comptime_var_unwrap_test.v
-vlib/v/tests/comptime/comptime_variant_interp_test.v
 vlib/v/tests/comptime_generic_comptime_variant_test.v
 vlib/v/tests/comptime_pseudo_fn_with_dollar_test.v
 vlib/v/tests/option_struct_eq_test.v
@@ -29,7 +28,6 @@ vlib/v/tests/options/option_array_submodule_test.v
 vlib/v/tests/options/option_auto_heap_test.v
 vlib/v/tests/options/option_compvar_val_test.v
 vlib/v/tests/options/option_concatexpr_test.v
-vlib/v/tests/options/option_diff_alias_arg_test.v
 vlib/v/tests/options/option_fixed_array_test.v
 vlib/v/tests/options/option_fn_multi_ret_test.v
 vlib/v/tests/options/option_fn_variadic_test.v

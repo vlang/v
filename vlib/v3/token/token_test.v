@@ -4,6 +4,7 @@ fn test_operator_properties_are_owned_by_tokens() {
 	assert Token.plus.is_infix()
 	assert Token.plus.left_binding_power() == .add
 	assert Token.mul.left_binding_power() == .product
+	assert int(Token.left_shift.left_binding_power()) > int(Token.plus.left_binding_power())
 	assert Token.logical_or.left_binding_power() == .logical_or
 	assert Token.logical_or.right_binding_power() == .logical_and
 	assert Token.eq.is_comparison()

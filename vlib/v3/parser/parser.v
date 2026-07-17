@@ -6159,7 +6159,7 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 			mut rhs := p.expr(token.BindingPower.bit_or)
 			if p.tok == .dotdot {
 				p.next()
-				range_rhs := p.expr(.lowest)
+				range_rhs := p.expr(.bit_or)
 				rstart := p.add_children2(rhs, range_rhs)
 				rhs = p.add_node(flat.Node{
 					kind:           .range
@@ -6196,7 +6196,7 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 			mut rhs := p.expr(token.BindingPower.bit_or)
 			if p.tok == .dotdot {
 				p.next()
-				range_rhs := p.expr(.lowest)
+				range_rhs := p.expr(.bit_or)
 				rstart := p.add_children2(rhs, range_rhs)
 				rhs = p.add_node(flat.Node{
 					kind:           .range

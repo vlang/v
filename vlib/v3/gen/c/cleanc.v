@@ -1874,11 +1874,11 @@ fn (mut g FlatGen) collect_gen_info() {
 				g.global_modules[f.value] = cur_module
 				g.global_modules[qname] = cur_module
 				g.global_files[qname] = cur_file
+				g.global_init_order << qname
 				if f.children_count > 0 {
 					val_id := g.a.child(f, 0)
 					if int(val_id) >= 0 {
 						g.global_inits[qname] = val_id
-						g.global_init_order << qname
 					}
 				}
 				g.tc.file_scope.insert(f.value, ft)
@@ -3411,6 +3411,11 @@ fn (mut g FlatGen) queue_const_runtime_init(line string) {
 fn (mut g FlatGen) queue_runtime_init(line string) {
 	g.runtime_inits << line
 	g.runtime_init_modules << g.tc.cur_module
+}
+
+fn (mut g FlatGen) queue_runtime_init_for_module(line string, init_module string) {
+	g.runtime_inits << line
+	g.runtime_init_modules << init_module
 }
 
 // visit_module_init updates visit module init state for FlatGen.
@@ -7359,11 +7364,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			old_expected_enum := g.expected_enum
 			lhs_type := g.usable_expr_type(lhs_id)
 			rhs_type := g.usable_expr_type(rhs_id)
-			if node.op == .right_shift_unsigned {
-				g.gen_unsigned_right_shift(lhs_id, rhs_id, lhs_type)
-				g.expected_enum = old_expected_enum
-				return
-			}
 			// An int-literal shift by >= 31 would be performed at C `int` width
 			// and wrap (`u64(1 << 40)`); widen the lhs so the shift is 64-bit.
 			if node.op == .left_shift && g.shift_needs_64bit_widening(&node) {
@@ -7372,6 +7372,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.write(') << (')
 				g.gen_expr(rhs_id)
 				g.write('))')
+				g.expected_enum = old_expected_enum
+				return
+			}
+			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
+				g.gen_guarded_shift(lhs_id, rhs_id, lhs_type, node.op)
 				g.expected_enum = old_expected_enum
 				return
 			}
@@ -7397,6 +7402,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			}
 			lhs_node := g.a.nodes[int(lhs_id)]
 			rhs_node := g.a.nodes[int(rhs_id)]
+			if node.op in [.eq, .ne, .lt, .gt, .le, .ge]
+				&& g.gen_mixed_sign_integer_comparison(lhs_id, rhs_id, lhs_type, rhs_type, node.op) {
+				g.expected_enum = old_expected_enum
+				return
+			}
 			if node.op in [.eq, .ne]
 				&& ((rhs_node.kind == .char_literal && rhs_node.value.starts_with('c:')
 				&& lhs_type !is types.Pointer)
@@ -11525,6 +11535,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline string v3_i64_zpad(i64 n, int width) { string s = i64__str(n); if (n < 0) return s; while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln('static inline string v3_u64_zpad(u64 n, int width) { string s = u64__str(n); while (s.len < width) s = string__plus(v3_c_lit("0", 1), s); return s; }')
 	g.writeln("static inline string v3_string_zpad(string s, int width) { if (s.len >= width) return s; int sign = s.len > 0 && s.str[0] == '-'; int pad = width - s.len; u8* out = malloc_noscan((ptrdiff_t)width + 1); int pos = 0; if (sign) out[pos++] = '-'; memset(out + pos, '0', (size_t)pad); pos += pad; memcpy(out + pos, s.str + sign, (size_t)(s.len - sign)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
+	g.writeln("static inline string v3_string_rpad_zero(string s, int width) { if (s.len >= width) return s; u8* out = malloc_noscan((ptrdiff_t)width + 1); memcpy(out, s.str, (size_t)s.len); memset(out + s.len, '0', (size_t)(width - s.len)); out[width] = 0; return (string){.str = out, .len = width, .is_lit = 0}; }")
 	// Length-aware JSON string escaper: honors string.len so embedded NUL bytes are
 	// escaped rather than truncating like a C NUL-terminated string. ASCII
 	// codes are used to avoid escaping quirks; 92=\ 34=" 98=b 102=f 110=n 114=r 116=t 117=u 48=0.
@@ -12367,6 +12378,82 @@ fn (mut g FlatGen) global_decls() {
 	g.emit_global_inits()
 }
 
+// queue_global_struct_default_init applies source-level field defaults to a global
+// struct that has no explicit initializer. C's static zero initialization alone is
+// insufficient for defaults that call functions or initialize fixed-array fields.
+fn (mut g FlatGen) queue_global_struct_default_init(name string, typ types.Type) {
+	if name in g.global_inits {
+		return
+	}
+	if g.tc.diagnostic_files.len > 0 {
+		file := g.global_files[name] or { return }
+		if file !in g.tc.diagnostic_files {
+			return
+		}
+	}
+	clean := default_init_unalias_type(typ)
+	struct_name := if clean is types.Struct { clean.name } else { return }
+	if !g.struct_needs_default_init(struct_name) {
+		return
+	}
+	mut visited := map[string]bool{}
+	init_module := g.global_modules[name] or { g.tc.cur_module }
+	g.queue_global_struct_field_defaults(g.cname(name), struct_name, init_module, mut visited)
+}
+
+fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name string, init_module string, mut visited map[string]bool) {
+	if struct_name in visited {
+		return
+	}
+	visited[struct_name] = true
+	info := g.find_struct_decl(struct_name) or { return }
+	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
+	old_default_module := g.struct_default_module
+	g.tc.cur_module = info.module
+	g.tc.cur_file = info.file
+	g.struct_default_module = info.module
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind != .field_decl {
+			continue
+		}
+		field_type := g.struct_default_field_type(info, field)
+		field_target := '${target}.${g.cname(field.value)}'
+		if field.children_count == 0 {
+			clean_field_type := default_init_unalias_type(field_type)
+			if clean_field_type is types.Struct && !clean_field_type.name.starts_with('C.')
+				&& g.struct_needs_default_init(clean_field_type.name) {
+				g.queue_global_struct_field_defaults(field_target, clean_field_type.name,
+					init_module, mut visited)
+			}
+			continue
+		}
+		old_sb := g.sb
+		old_line_start := g.line_start
+		g.sb = strings.new_builder(128)
+		g.line_start = true
+		g.gen_struct_field_expr_for_field(g.a.child(field, 0), info.full_name, field.value,
+			field_type)
+		expr := g.sb.str()
+		g.sb = old_sb
+		g.line_start = old_line_start
+		if trimmed_space(expr).len == 0 {
+			continue
+		}
+		if _ := array_fixed_type(field_type) {
+			g.queue_runtime_init_for_module('\tmemmove(${field_target}, ${expr}, sizeof(${field_target}));',
+				init_module)
+		} else {
+			g.queue_runtime_init_for_module('\t${field_target} = ${expr};', init_module)
+		}
+	}
+	g.tc.cur_module = old_module
+	g.tc.cur_file = old_file
+	g.struct_default_module = old_default_module
+	visited.delete(struct_name)
+}
+
 fn (mut g FlatGen) global_storage_type(name string, typ types.Type) types.Type {
 	if typ is types.Struct && typ.name == 'Optional' {
 		if val_id := g.global_inits[name] {
@@ -12419,11 +12506,10 @@ fn (mut g FlatGen) test_failure_helpers() {
 	g.writeln('')
 }
 
-// emit_global_inits queues assignments for `__global x = expr` declarations into
-// _vinit. The C globals are emitted zero-initialized above; their initializer
-// expressions (often function calls like `new_timers(...)`) cannot be C static
-// initializers, so they must run at startup. Without this, such globals stay
-// NULL/zero and the first access segfaults.
+// emit_global_inits queues explicit `__global x = expr` assignments and implicit
+// struct-field defaults into _vinit in source declaration order. The C globals are
+// emitted zero-initialized above; initializer expressions (often function calls like
+// `new_timers(...)`) cannot be C static initializers, so they must run at startup.
 //
 // Plain initializers are emitted as `name = expr;`. Fixed-array globals are
 // copied from a generated compound literal with `memmove`, since C arrays are
@@ -12438,17 +12524,6 @@ fn (mut g FlatGen) emit_global_inits() {
 		g.tc.cur_file = old_file
 	}
 	for qname in g.global_init_order {
-		val_id := g.global_inits[qname] or { continue }
-		if int(val_id) < 0 {
-			continue
-		}
-		// g_main_argc/g_main_argv are filled in by main's preamble (from argc/argv)
-		// *before* _vinit runs, and are zero by default in C anyway. Re-emitting their
-		// `= 0` initializer here would clobber the real argv, leaving os.args empty.
-		cqname := g.cname(qname)
-		if cqname == 'g_main_argc' || cqname == 'g_main_argv' {
-			continue
-		}
 		if mod := g.global_modules[qname] {
 			g.tc.cur_module = mod
 		} else {
@@ -12461,6 +12536,22 @@ fn (mut g FlatGen) emit_global_inits() {
 			g.tc.cur_file = file
 		} else {
 			g.tc.cur_file = old_file
+		}
+		val_id := g.global_inits[qname] or {
+			if typ := g.global_types[qname] {
+				g.queue_global_struct_default_init(qname, typ)
+			}
+			continue
+		}
+		if int(val_id) < 0 {
+			continue
+		}
+		// g_main_argc/g_main_argv are filled in by main's preamble (from argc/argv)
+		// *before* _vinit runs, and are zero by default in C anyway. Re-emitting their
+		// `= 0` initializer here would clobber the real argv, leaving os.args empty.
+		cqname := g.cname(qname)
+		if cqname == 'g_main_argc' || cqname == 'g_main_argv' {
+			continue
 		}
 		if typ := g.global_types[qname] {
 			if typ is types.ArrayFixed {
@@ -13236,6 +13327,11 @@ fn (mut g FlatGen) write_empty_fixed_array_initializer(mut builder strings.Build
 }
 
 fn (mut g FlatGen) write_fixed_array_default_elem_initializer(mut builder strings.Builder, elem_type types.Type) {
+	if elem_type is types.Array {
+		c_elem := g.value_c_type(elem_type.elem_type)
+		builder.write_string('array_new(sizeof(${c_elem}), 0, 0)')
+		return
+	}
 	if elem_type is types.Struct {
 		builder.write_string(g.expr_to_string_with_expected_type(g.a.add_node(flat.Node{
 			kind:  .struct_init
@@ -13288,7 +13384,7 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		return
 	}
 	if node.kind == .array_init && clean_elem_type is types.Array {
-		c_elem := g.tc.c_type(clean_elem_type.elem_type)
+		c_elem := g.value_c_type(clean_elem_type.elem_type)
 		builder.write_string('array_new(sizeof(${c_elem}), 0, 0)')
 		return
 	}
@@ -13665,7 +13761,7 @@ fn (g &FlatGen) shift_needs_64bit_widening(node &flat.Node) bool {
 		return false
 	}
 	rhs_value := g.shift_count_const_value(g.a.child(node, 1), []string{}) or { return false }
-	return rhs_value >= 31
+	return rhs_value >= 31 && rhs_value < 64
 }
 
 fn (g &FlatGen) shift_count_const_value(id flat.NodeId, seen []string) ?int {
@@ -13753,6 +13849,10 @@ fn (mut g FlatGen) gen_unsigned_right_shift(lhs_id flat.NodeId, rhs_id flat.Node
 	g.gen_unsigned_right_shift_from_text(g.expr_to_string(lhs_id), rhs_id, lhs_type)
 }
 
+fn (mut g FlatGen) gen_guarded_shift(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, op flat.Op) {
+	g.gen_guarded_shift_from_text(g.expr_to_string(lhs_id), rhs_id, lhs_type, op)
+}
+
 // gen_unsigned_right_shift_from_text is gen_unsigned_right_shift with the lhs
 // already rendered as a C expression (used by `>>>=` to shift through a
 // pointer temp so the lvalue is evaluated exactly once).
@@ -13783,16 +13883,83 @@ fn (mut g FlatGen) unsigned_shift_type_parts(typ types.Type) (string, string) {
 }
 
 fn (mut g FlatGen) gen_unsigned_right_shift_from_text(lhs_text string, rhs_id flat.NodeId, lhs_type types.Type) {
+	g.gen_guarded_shift_from_text(lhs_text, rhs_id, lhs_type, .right_shift_unsigned)
+}
+
+fn (mut g FlatGen) gen_guarded_shift_from_text(lhs_text string, rhs_id flat.NodeId, lhs_type types.Type, op flat.Op) {
 	ut, bits := g.unsigned_shift_type_parts(lhs_type)
-	// The result stays in the unsigned counterpart: casting back to a signed
-	// type would sign-extend under C's integer promotion, so
-	// `i8(-1) >>> 0 == u8(255)` would compare -1 against 255. A `>>>=`
-	// assignment converts back implicitly when storing into the target.
+	value_type := g.value_c_type(unsigned_shift_unalias_type(lhs_type))
+	result_type := if op == .right_shift_unsigned { ut } else { value_type }
+	lhs_type_name := if op == .right_shift_unsigned { ut } else { value_type }
+	op_text := if op == .left_shift { '<<' } else { '>>' }
+	if count := g.shift_count_const_value(rhs_id, []string{}) {
+		if width := fixed_integer_c_type_width(value_type) {
+			if count >= 0 && count < width {
+				g.write('(${result_type})(((${lhs_type_name})(${lhs_text})) ${op_text} (')
+				g.gen_expr(rhs_id)
+				g.write('))')
+				return
+			}
+		}
+	}
 	lhs_tmp := g.tmp_name()
 	rhs_tmp := g.tmp_name()
-	g.write('({ ${ut} ${lhs_tmp} = (${ut})(${lhs_text}); u64 ${rhs_tmp} = (u64)(')
+	g.write('({ ${lhs_type_name} ${lhs_tmp} = (${lhs_type_name})(${lhs_text}); u64 ${rhs_tmp} = (u64)(')
 	g.gen_expr(rhs_id)
-	g.write('); ${rhs_tmp} >= ${bits} ? (${ut})0 : (${ut})(${lhs_tmp} >> ${rhs_tmp}); })')
+	g.write('); ${rhs_tmp} >= ${bits} ? (${result_type})0 : (${result_type})(${lhs_tmp} ${op_text} ${rhs_tmp}); })')
+}
+
+fn fixed_integer_c_type_width(c_type string) ?int {
+	return match c_type {
+		'i8', 'u8' { 8 }
+		'i16', 'u16' { 16 }
+		'int', 'i32', 'u32' { 32 }
+		'i64', 'u64' { 64 }
+		else { none }
+	}
+}
+
+fn integer_sign_kind(typ types.Type) int {
+	if typ is types.Alias {
+		return integer_sign_kind(typ.base_type)
+	}
+	if typ is types.Primitive && typ.props.has(.integer) {
+		return if typ.props.has(.unsigned) { 1 } else { -1 }
+	}
+	return 0
+}
+
+fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type, op flat.Op) bool {
+	lhs_sign := integer_sign_kind(lhs_type)
+	rhs_sign := integer_sign_kind(rhs_type)
+	if lhs_sign == 0 || rhs_sign == 0 || lhs_sign == rhs_sign {
+		return false
+	}
+	// Untyped positive integer literals inherit a narrow semantic `int` type, but
+	// C gives large hexadecimal literals an unsigned type. Preserve that constant
+	// behavior instead of narrowing `0xffff_ffff_ffff_ffff` to signed `int` first.
+	if (lhs_sign < 0 && g.a.nodes[int(lhs_id)].kind == .int_literal)
+		|| (rhs_sign < 0 && g.a.nodes[int(rhs_id)].kind == .int_literal) {
+		return false
+	}
+	lhs_ct := g.value_c_type(unsigned_shift_unalias_type(lhs_type))
+	rhs_ct := g.value_c_type(unsigned_shift_unalias_type(rhs_type))
+	lhs_tmp := g.tmp_name()
+	rhs_tmp := g.tmp_name()
+	g.write('({ ${lhs_ct} ${lhs_tmp} = (${lhs_ct})(')
+	g.gen_expr(lhs_id)
+	g.write('); ${rhs_ct} ${rhs_tmp} = (${rhs_ct})(')
+	g.gen_expr(rhs_id)
+	g.write('); ')
+	if lhs_sign < 0 {
+		negative_result := if op in [.ne, .lt, .le] { '1' } else { '0' }
+		g.write('${lhs_tmp} < 0 ? ${negative_result} : ')
+	} else {
+		negative_result := if op in [.ne, .gt, .ge] { '1' } else { '0' }
+		g.write('${rhs_tmp} < 0 ? ${negative_result} : ')
+	}
+	g.write('((u64)(${lhs_tmp}) ${g.op_str(op)} (u64)(${rhs_tmp})); })')
+	return true
 }
 
 fn (g &FlatGen) op_str(op flat.Op) string {

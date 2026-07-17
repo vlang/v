@@ -138,6 +138,12 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 		if clean_type.base_type is types.OptionType || clean_type.base_type is types.ResultType {
 			return g.optional_type_name(clean_type.base_type) + '*'
 		}
+		if fn_type := fn_type_from(clean_type.base_type) {
+			// `fn_ptr:void|void*` is ambiguous: it can mean `&fn ()` or
+			// `fn (voidptr)`. Resolve the function itself first, then add the
+			// pointer declarator explicitly.
+			return g.resolve_fn_ptr_type(g.tc.c_type(fn_type)) + '*'
+		}
 	}
 	if clean_type is types.MultiReturn {
 		return g.multi_return_c_type_name(clean_type)
