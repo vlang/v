@@ -20,11 +20,24 @@ fn extended_asm() u64 {
 	return a
 }
 
+fn goto_asm() {
+	// `asm goto` blocks are emitted as extended assembly even without any
+	// output/input/clobber operands, so they need the escaped `%%` form too
+	asm goto amd64 {
+		mov rax, gs:[16]
+		cmp rax, 0
+		jne over
+		; ; ; ; over
+	}
+	over:
+}
+
 fn main() {
 	// guard the calls behind a runtime condition, so that running the
 	// program does not actually dereference the segmented addresses
 	if arguments().len > 1000 {
 		basic_asm()
 		println(extended_asm())
+		goto_asm()
 	}
 }

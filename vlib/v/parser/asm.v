@@ -289,15 +289,17 @@ fn (mut p Parser) asm_stmt(is_top_level bool) ast.AsmStmt {
 	scope.end_pos = p.prev_tok.pos
 
 	return ast.AsmStmt{
-		arch:          arch
-		is_goto:       is_goto
-		is_volatile:   is_volatile
-		templates:     templates
-		output:        output
-		input:         input
-		clobbered:     clobbered
-		pos:           pos.extend(p.prev_tok.pos())
-		is_basic:      is_top_level || output.len + input.len + clobbered.len == 0
+		arch:        arch
+		is_goto:     is_goto
+		is_volatile: is_volatile
+		templates:   templates
+		output:      output
+		input:       input
+		clobbered:   clobbered
+		pos:         pos.extend(p.prev_tok.pos())
+		// `asm goto` blocks are always emitted as extended assembly (they need the
+		// label section), even when they have no output/input/clobber operands
+		is_basic:      is_top_level || (!is_goto && output.len + input.len + clobbered.len == 0)
 		scope:         scope
 		global_labels: global_labels
 		local_labels:  local_labels
