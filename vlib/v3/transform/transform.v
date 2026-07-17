@@ -5228,7 +5228,7 @@ fn (t &Transformer) mark_const_ref_descendants(mut ids map[int]bool, id flat.Nod
 }
 
 fn (t &Transformer) const_ref_matches_key_in_context(id flat.NodeId, module_name string, file string, key string) bool {
-	if !t.const_ref_may_match_key(id, key) {
+	if !t.const_ref_may_match_key(id, key, file) {
 		return false
 	}
 	name := t.expr_key(id)
@@ -5264,13 +5264,13 @@ fn (t &Transformer) const_ref_matches_key_in_context(id flat.NodeId, module_name
 	return false
 }
 
-fn (t &Transformer) const_ref_may_match_key(id flat.NodeId, key string) bool {
+fn (t &Transformer) const_ref_may_match_key(id flat.NodeId, key string, file string) bool {
 	if int(id) < 0 || int(id) >= t.a.nodes.len || key.len == 0 {
 		return false
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind in [.as_expr, .paren] && node.children_count > 0 {
-		return t.const_ref_may_match_key(t.a.child(&node, 0), key)
+		return t.const_ref_may_match_key(t.a.child(&node, 0), key, file)
 	}
 	if node.kind !in [.ident, .selector] || node.value.len == 0 {
 		return false
@@ -5279,7 +5279,16 @@ fn (t &Transformer) const_ref_may_match_key(id flat.NodeId, key string) bool {
 		&& key.ends_with(node.value)) {
 		return true
 	}
-	return (t.const_suffixes[node.value] or { '' }) == key
+	if (t.const_suffixes[node.value] or { '' }) == key {
+		return true
+	}
+	if node.kind == .ident && node.value.contains('.') && !isnil(t.tc) {
+		base := node.value.all_before_last('.')
+		if resolved_base := t.tc.file_imports[file_import_key(file, base)] {
+			return qualified_const_key_matches(key, resolved_base, node.value.all_after_last('.'))
+		}
+	}
+	return false
 }
 
 fn qualified_const_key_matches(key string, qualifier string, name string) bool {
