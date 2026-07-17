@@ -10,6 +10,32 @@ import time
 // avoids reserving a new set of stacks for every compiler phase.
 const compiler_worker_stack_size = 64 * 1024 * 1024
 
+// The pool reserves compiler_worker_stack_size per worker, so a full pool can
+// reserve a large amount of address space. V3_WORKER_STACK_MB overrides the
+// per-worker stack (in MiB) for hosts that have measured a lower high-water use
+// or that need more headroom. Values below min_worker_stack_size are clamped so
+// a mistuned setting cannot hand the recursive phases a too-small stack.
+const min_worker_stack_size = 4 * 1024 * 1024
+
+// worker_stack_size resolves the per-worker stack size, honoring the
+// V3_WORKER_STACK_MB override and falling back to the default when it is unset,
+// non-numeric, or non-positive.
+fn worker_stack_size() usize {
+	requested_mb := os.getenv('V3_WORKER_STACK_MB')
+	if requested_mb.len == 0 {
+		return usize(compiler_worker_stack_size)
+	}
+	mb := requested_mb.int()
+	if mb <= 0 {
+		return usize(compiler_worker_stack_size)
+	}
+	mut bytes := i64(mb) * 1024 * 1024
+	if bytes < min_worker_stack_size {
+		bytes = min_worker_stack_size
+	}
+	return usize(bytes)
+}
+
 // Task is one type-erased compiler phase callback submitted to Pool.
 pub struct Task {
 pub:
@@ -100,12 +126,13 @@ pub fn new(size int) &Pool {
 		started_at_ns:        time.sys_mono_now()
 	}
 	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+	stack_size := worker_stack_size()
 	for idx in 0 .. wanted {
 		mut thread_id := C.pthread_t{}
 		result := if fail == 'pool:all' || fail == 'pool:${idx}' {
 			11
 		} else {
-			C.v3_pthread_create(&thread_id, compiler_worker_stack_size, pool_worker, voidptr(pool))
+			C.v3_pthread_create(&thread_id, stack_size, pool_worker, voidptr(pool))
 		}
 		if result == 0 {
 			pool.threads << thread_id

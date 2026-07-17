@@ -219,50 +219,6 @@ pub mut:
 	specialized_fn_nodes map[int]bool
 }
 
-// These layouts expose only the backing pointers needed to determine whether
-// text_ids rehashed inside a disposable prealloc scope. Keep them synchronized
-// with builtin.map and builtin.DenseArray.
-struct TextMapDenseArrayLayout {
-	key_bytes   int
-	value_bytes int
-mut:
-	cap         int
-	len         int
-	deletes     u32
-	all_deleted &u8 = unsafe { nil }
-	keys        &u8 = unsafe { nil }
-	values      &u8 = unsafe { nil }
-}
-
-struct TextMapLayout {
-	key_bytes   int
-	value_bytes int
-mut:
-	even_index      u32
-	cached_hashbits u8
-	shift           u8
-	key_values      TextMapDenseArrayLayout
-	metas           &u32 = unsafe { nil }
-	extra_metas     u32
-	has_string_keys bool
-	hash_fn         voidptr
-	key_eq_fn       voidptr
-	clone_fn        voidptr
-	free_fn         voidptr
-pub mut:
-	len int
-}
-
-fn text_id_map_storage_owned_by_scope(ids map[string]TextId, scope voidptr) bool {
-	$if prealloc {
-		layout := unsafe { &TextMapLayout(&ids) }
-		return unsafe { prealloc_scope_owns(scope, layout.key_values.keys) }
-			|| unsafe { prealloc_scope_owns(scope, layout.key_values.values) }
-			|| unsafe { prealloc_scope_owns(scope, layout.metas) }
-	}
-	return false
-}
-
 // close_workers stops the compilation-owned persistent worker pool.
 pub fn (mut a FlatAst) close_workers() {
 	if !isnil(a.worker_pool) {
@@ -349,22 +305,21 @@ pub fn (mut a FlatAst) reserve_transform_texts(headroom int) {
 // transform into the current arena and rebuilds table backing only if it grew
 // into the disposable scope.
 pub fn (mut a FlatAst) promote_transform_texts_from(start int, scope voidptr) {
-	values_backing_scoped := scoped_text_storage_owned(scope, a.text_values.data)
-	ids_backing_scoped := text_id_map_storage_owned_by_scope(a.text_ids, scope)
 	first := if start < 0 { 0 } else { start }
-	for idx in first .. a.text_values.len {
-		value := a.text_values[idx]
-		$if prealloc {
-			if value.len == 0 || !unsafe { prealloc_scope_owns(scope, value.str) } {
-				continue
-			}
-			a.text_ids.delete(value)
-			canonical := value.clone()
-			a.text_values[idx] = canonical
-			a.text_ids[canonical] = TextId(idx + 1)
+	mut rebuild := scoped_text_storage_owned(scope, a.text_values.data)
+	$if prealloc {
+		// Any string interned inside the disposable scope may have placed its
+		// bytes — or grown the lookup map's internal backing — into that scope.
+		// There is no supported API to inspect a `map`'s backing pointers, so
+		// rather than mirror the private builtin.map/DenseArray ABI we rebuild
+		// the whole text table into the current arena whenever the scope interned
+		// anything. This is a superset of the cases where storage was actually
+		// scoped, so it is always safe.
+		if a.text_values.len > first {
+			rebuild = true
 		}
 	}
-	if values_backing_scoped || ids_backing_scoped {
+	if rebuild {
 		mut values, mut ids := a.clone_text_table_owned()
 		a.text_values = values
 		a.text_ids = ids.move()

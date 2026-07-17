@@ -9541,6 +9541,12 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#if !defined(_OFF_T) && !defined(_OFF_T_DEFINED) && !defined(__off_t_defined) && !defined(_BSD_OFF_T_DEFINED_) && !defined(_OFF_T_DECLARED)')
 	g.writeln('typedef long long off_t;')
 	g.writeln('#endif')
+	// Fallback pthread declarations for the headerless build. They are only
+	// emitted when the platform's real <pthread.h> guards are absent, so when the
+	// system header is included its exact types win. The opaque unions are
+	// deliberately oversized (and over-aligned) to safely back the real objects
+	// on mainstream targets; a platform whose pthread objects exceed these sizes
+	// must be built with its real <pthread.h> in scope.
 	g.writeln('#if !defined(_BITS_PTHREADTYPES_COMMON_H) && !defined(_PTHREAD_H) && !defined(_PTHREADTYPES_H_) && !defined(_PTHREADTYPES_H) && !defined(__pthread_t_defined)')
 	g.writeln('typedef void* pthread_t;')
 	g.writeln('typedef union { unsigned char _opaque[64]; long long _align; } pthread_attr_t;')
@@ -9596,7 +9602,13 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('int fflush(FILE* stream);')
 	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
-	g.writeln('static const size_t __v_thread_stack_size = 8388608;')
+	// The spawned-thread stack defaults to 8 MiB but is overridable at C compile
+	// time (e.g. `-DV_THREAD_STACK_SIZE=...`) so it is a tunable default rather
+	// than a universal constant.
+	g.writeln('#ifndef V_THREAD_STACK_SIZE')
+	g.writeln('#define V_THREAD_STACK_SIZE 8388608')
+	g.writeln('#endif')
+	g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
 	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) { fprintf(stderr, "V thread allocation failed\\n"); abort(); } return p; }')
 	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
 	g.writeln('\t__v_thread result;')

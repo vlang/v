@@ -57,12 +57,16 @@ fn test_promote_transform_texts_rebuilds_scoped_table_growth() {
 			ast.intern_text('promoted_text_${i}')
 		}
 		assert unsafe { prealloc_scope_owns(scope, ast.text_values.data) }
-		assert text_id_map_storage_owned_by_scope(ast.text_ids, scope)
 		unsafe { prealloc_scope_leave(scope) }
 
 		ast.promote_transform_texts_from(0, scope)
+		// After promotion the values array must be detached from the scope, and
+		// the lookup map must remain usable once the scope is freed — which it
+		// cannot be if any of the map's backing were still owned by the scope.
 		assert !unsafe { prealloc_scope_owns(scope, ast.text_values.data) }
-		assert !text_id_map_storage_owned_by_scope(ast.text_ids, scope)
+		for idx in [0, 128, 255] {
+			assert !unsafe { prealloc_scope_owns(scope, ast.text_values[idx].str) }
+		}
 		unsafe { prealloc_scope_free_after(scope) }
 
 		for idx in [0, 128, 255] {
