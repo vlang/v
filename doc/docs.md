@@ -3512,19 +3512,15 @@ fn calc() {
 The `pub` keyword is only allowed before the `const` keyword and cannot be used inside
 a `const ( )` block.
 
-Outside from module main all constants need to be prefixed with the module name.
+Constants can be referenced without a module prefix from within the module where they are
+defined. To access a public constant from another module, prefix it with the module name.
 
 ### Required module prefix
 
-When naming constants, `snake_case` must be used. In order to distinguish consts
-from local variables, the full path to consts must be specified. For example,
-to access the PI const, full `math.pi` name must be used both outside the `math`
-module, and inside it. That restriction is relaxed only for the `main` module
-(the one containing your `fn main()`), where you can use the unqualified name of
-constants defined there, i.e. `numbers`, rather than `main.numbers`.
-
-vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
-and vfmt will automatically update it to `println(math.pi)`.
+When naming constants, `snake_case` must be used. Outside the module where a constant is
+defined, its full path must be specified. For example, use `math.pi` to access the public
+`pi` constant from another module. Inside the `math` module, the unqualified name `pi` can
+be used.
 
 <!--
 Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work

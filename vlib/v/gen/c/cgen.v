@@ -4146,6 +4146,10 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					if stmt.expr is ast.ArrayInit && stmt.expr.is_fixed {
 						is_array_fixed_init = true
 						ret_type = stmt.expr.typ
+					} else if stmt.expr is ast.StructInit
+						&& g.table.final_sym(g.unwrap_generic(stmt.typ)).kind == .array_fixed {
+						is_array_fixed_init = true
+						ret_type = stmt.typ
 					} else {
 						expr_typ := g.unwrap_generic(g.recheck_concrete_type(stmt.typ))
 						if expr_typ != ast.void_type && expr_typ != 0
