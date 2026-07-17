@@ -73,16 +73,25 @@ pub fn write_snapshot_to(path string) {
 	for i := start_alloc; i < profiler_state.allocs.len; i++ {
 		alloc := profiler_state.allocs[i]
 		freed_val := if alloc.freed { '1' } else { '0' }
-		// ptr,size,frame,freed,free_frame,file,line
-		sb << '${u64(alloc.ptr)},${alloc.size},${alloc.frame},${freed_val},${alloc.free_frame},${alloc.file},${alloc.line}\n'.bytes()
+		// The file path is emitted last and its line-breaking characters are
+		// stripped, so a path containing commas cannot be mistaken for extra
+		// fields by the comma-splitting reader.
+		safe_file := alloc.file.replace('\n', ' ').replace('\r', ' ')
+		// ptr,size,frame,freed,free_frame,line,file
+		sb << '${u64(alloc.ptr)},${alloc.size},${alloc.frame},${freed_val},${alloc.free_frame},${alloc.line},${safe_file}\n'.bytes()
 	}
 
 	sb << 'END\n'.bytes()
 
-	// Write atomically by writing to temp file then renaming
-	tmp_path := path + '.tmp'
+	// Write atomically by writing to a per-writer temp file then renaming. The
+	// name must be unique per writer so concurrent snapshot writers do not
+	// clobber one another's temp file mid-write.
+	tmp_path := '${path}.tmp.${os.getpid()}.${time.sys_mono_now()}'
 	os.write_file(tmp_path, sb.bytestr()) or { return }
-	os.rename(tmp_path, path) or { return }
+	os.rename(tmp_path, path) or {
+		os.rm(tmp_path) or {}
+		return
+	}
 }
 
 // read_snapshot reads profiler state from the shared file
@@ -143,14 +152,16 @@ pub fn read_snapshot_from(path string) ?Snapshot {
 			}
 			parts := lines[line_idx].split(',')
 			if parts.len >= 7 {
+				// ptr,size,frame,freed,free_frame,line,file — the file is last
+				// and may itself contain commas, so rejoin the trailing fields.
 				snap.allocs << AllocRecord{
 					ptr:        unsafe { voidptr(u64(parts[0].i64())) }
 					size:       parts[1].int()
 					frame:      u64(parts[2].i64())
 					freed:      parts[3] == '1'
 					free_frame: u64(parts[4].i64())
-					file:       parts[5]
-					line:       parts[6].int()
+					line:       parts[5].int()
+					file:       parts[6..].join(',')
 				}
 			}
 			line_idx++

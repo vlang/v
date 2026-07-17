@@ -47,6 +47,7 @@ mut:
 	lit                               string
 	tok_pos                           int
 	tok_end                           int
+	prev_tok_end                      int
 	peek_tok                          token.Token = .eof
 	peek_lit                          string
 	peek_pos                          int
@@ -206,6 +207,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.next_file_id++
 	p.tok_pos = 0
 	p.tok_end = 0
+	p.prev_tok_end = 0
 	p.peek_pos = 0
 	p.peek_end = 0
 	p.cur_module = ''
@@ -351,6 +353,38 @@ fn (mut p Parser) add_val_id(kind_id int, value string) flat.NodeId {
 	})
 }
 
+// span_start returns the clamped start offset of the current (not-yet-consumed)
+// token. Capture it before consuming a construct so the node's span reflects the
+// construct's own location rather than whatever token happens to be current when
+// the node is finally created.
+fn (p &Parser) span_start() int {
+	return clamp_source_offset(p.tok_pos, p.s.src.len)
+}
+
+// span_to builds a half-open span from a previously captured start offset to the
+// end of the most recently consumed token (prev_tok_end).
+fn (p &Parser) span_to(start int) token.Pos {
+	end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
+	return token.new_span(p.cur_file_id, start, end)
+}
+
+// add_val_id_at builds a leaf value node with an explicit, already-captured span.
+fn (mut p Parser) add_val_id_at(kind_id int, value string, pos token.Pos) flat.NodeId {
+	return p.a.add_node(flat.Node{
+		kind:  flat.node_kind_from_id(kind_id)
+		value: value
+		pos:   pos
+	})
+}
+
+// add_id_at builds a leaf node (no value) with an explicit, already-captured span.
+fn (mut p Parser) add_id_at(kind_id int, pos token.Pos) flat.NodeId {
+	return p.a.add_node(flat.Node{
+		kind: flat.node_kind_from_id(kind_id)
+		pos:  pos
+	})
+}
+
 fn (mut p Parser) record_diagnostic(message string, offset int) {
 	clamped_offset := clamp_source_offset(offset, p.s.src.len)
 	mut line := 1
@@ -421,6 +455,9 @@ fn vmod_root_for_file(path string) string {
 // next supports next handling for Parser.
 @[inline]
 fn (mut p Parser) next() {
+	// Remember the end of the token being consumed so a production can build a
+	// span that ends at the last token it actually consumed.
+	p.prev_tok_end = p.tok_end
 	if p.has_peek {
 		p.tok = p.peek_tok
 		p.lit = p.peek_lit
@@ -4953,7 +4990,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 	// A comma after the first name is ambiguous with C-style multi-init
 	// (`for h, t := ...`), so handle it after parsing the first expression.
 	if p.tok == .name && p.peek() == .key_in {
-		first_expr := p.expr(.bit_or)
+		first_expr := p.expr(.sum)
 		return p.for_in(first_expr, false)
 	}
 	if p.tok == .key_mut {
@@ -5118,7 +5155,7 @@ fn (mut p Parser) for_comma_header(first_expr flat.NodeId, first_is_mut bool) fl
 			p.next()
 			value_is_mut = true
 		}
-		next_lhs := p.expr(.bit_or)
+		next_lhs := p.expr(.sum)
 		lhs_ids << next_lhs
 		if lhs_ids.len == 2 {
 			val_id = next_lhs
@@ -6421,10 +6458,10 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 				break
 			}
 			p.next()
-			mut rhs := p.expr(token.BindingPower.bit_or)
+			mut rhs := p.expr(token.BindingPower.sum)
 			if p.tok == .dotdot {
 				p.next()
-				range_rhs := p.expr(.bit_or)
+				range_rhs := p.expr(.sum)
 				rstart := p.add_children2(rhs, range_rhs)
 				rhs = p.add_node(flat.Node{
 					kind:           .range
@@ -6458,10 +6495,10 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 			}
 			p.next() // skip !
 			p.next() // skip in
-			mut rhs := p.expr(token.BindingPower.bit_or)
+			mut rhs := p.expr(token.BindingPower.sum)
 			if p.tok == .dotdot {
 				p.next()
-				range_rhs := p.expr(.bit_or)
+				range_rhs := p.expr(.sum)
 				rstart := p.add_children2(rhs, range_rhs)
 				rhs = p.add_node(flat.Node{
 					kind:           .range
@@ -6953,6 +6990,10 @@ fn is_float_number_literal(val string) bool {
 }
 
 fn (mut p Parser) prefix_expr() flat.NodeId {
+	// Capture the leading token's span before consuming it so leaf literals keep
+	// their own location and prefix operators can span from here to the operand.
+	start_pos := p.current_pos()
+	op_start := p.span_start()
 	tok_id := int(p.tok)
 	if tok_id == 92 {
 		val := p.lit
@@ -6962,7 +7003,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		} else {
 			1
 		}
-		return p.add_val_id(kind_id, val)
+		return p.add_val_id_at(kind_id, val, start_pos)
 	}
 	if tok_id == 107 {
 		return p.string_literal()
@@ -6970,43 +7011,45 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	if tok_id == 7 {
 		val := p.lit
 		p.next()
-		return p.add_val_id(4, val)
+		return p.add_val_id_at(4, val, start_pos)
 	}
 	if tok_id == 66 {
 		p.next()
-		return p.add_val_id(3, 'true')
+		return p.add_val_id_at(3, 'true', start_pos)
 	}
 	if tok_id == 36 {
 		p.next()
-		return p.add_val_id(3, 'false')
+		return p.add_val_id_at(3, 'false', start_pos)
 	}
 	if tok_id == 53 {
 		p.next()
-		return p.add_id(28)
+		return p.add_id_at(28, start_pos)
 	}
 	if tok_id == 54 {
 		p.next()
-		return p.add_id(29)
+		return p.add_id_at(29, start_pos)
 	}
 	if tok_id == 3 {
 		p.next()
 		inner := p.expr(.highest)
-		return p.add_node(flat.Node{
+		return p.a.add_node(flat.Node{
 			kind:           .prefix
 			op:             .arrow
 			children_start: p.add_child(inner)
 			children_count: 1
+			pos:            p.span_to(op_start)
 		})
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
 		p.next()
 		operand := p.expr(.highest)
 		pstart := p.add_child(operand)
-		return p.add_node(flat.Node{
+		return p.a.add_node(flat.Node{
 			kind:           .prefix
 			op:             token_id_to_op(tok_id)
 			children_start: pstart
 			children_count: 1
+			pos:            p.span_to(op_start)
 		})
 	}
 	match p.tok {
@@ -7018,7 +7061,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			} else {
 				1
 			}
-			return p.add_val_id(kind_id, val)
+			return p.add_val_id_at(kind_id, val, start_pos)
 		}
 		.string {
 			return p.string_literal()
@@ -7026,32 +7069,33 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.char {
 			val := p.lit
 			p.next()
-			return p.add_val_id(4, val)
+			return p.add_val_id_at(4, val, start_pos)
 		}
 		.key_true {
 			p.next()
-			return p.add_val_id(3, 'true')
+			return p.add_val_id_at(3, 'true', start_pos)
 		}
 		.key_false {
 			p.next()
-			return p.add_val_id(3, 'false')
+			return p.add_val_id_at(3, 'false', start_pos)
 		}
 		.key_nil {
 			p.next()
-			return p.add_id(28)
+			return p.add_id_at(28, start_pos)
 		}
 		.key_none {
 			p.next()
-			return p.add_id(29)
+			return p.add_id_at(29, start_pos)
 		}
 		.arrow {
 			p.next()
 			inner := p.expr(.highest)
-			return p.add_node(flat.Node{
+			return p.a.add_node(flat.Node{
 				kind:           .prefix
 				op:             .arrow
 				children_start: p.add_child(inner)
 				children_count: 1
+				pos:            p.span_to(op_start)
 			})
 		}
 		.logical_or {
@@ -7851,6 +7895,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 }
 
 fn (mut p Parser) lambda_expr_no_args() flat.NodeId {
+	op_start := p.span_start()
 	p.next()
 	lambda_body := p.expr(.lowest)
 	lstart := p.add_child(lambda_body)
@@ -7858,10 +7903,12 @@ fn (mut p Parser) lambda_expr_no_args() flat.NodeId {
 		kind:           .lambda_expr
 		children_start: lstart
 		children_count: 1
+		pos:            p.span_to(op_start)
 	})
 }
 
 fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
+	op_start := p.span_start()
 	p.next()
 	mut lambda_params := []flat.NodeId{}
 	if p.tok != .pipe && p.tok != .eof {
@@ -7880,6 +7927,7 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		kind:           .lambda_expr
 		children_start: lstart
 		children_count: flat.child_count(ids.len)
+		pos:            p.span_to(op_start)
 	})
 }
 
@@ -7889,7 +7937,13 @@ fn (mut p Parser) lambda_param_ident() flat.NodeId {
 		is_mut = true
 		p.next()
 	}
-	id := p.a.add_val(.ident, p.expect_name())
+	name_pos := p.current_pos()
+	name := p.expect_name()
+	id := p.a.add_node(flat.Node{
+		kind:  .ident
+		value: name
+		pos:   name_pos
+	})
 	if is_mut {
 		p.a.set_node_is_mut(id, true)
 	}

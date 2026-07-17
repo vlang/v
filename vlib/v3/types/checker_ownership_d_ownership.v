@@ -4685,12 +4685,20 @@ fn ownership_fn_literal_name(cur_fn string, id flat.NodeId) string {
 	return '${cur_fn}__fn_literal_${int(id)}'
 }
 
+// ownership_lambda_name derives the ownership identity of a lambda from the
+// enclosing function name and the lambda's flat-AST NodeId. Semantic identity
+// must key on NodeId, never on presentation position (`node.pos`), so this must
+// be the single source of the name at both the registration and lookup sites.
+fn ownership_lambda_name(cur_fn string, id flat.NodeId) string {
+	return '${cur_fn}__lambda_${int(id)}'
+}
+
 fn (mut tc TypeChecker) ownership_begin_lambda_expr(id flat.NodeId, node flat.Node) {
 	if tc.ownership_checks_suppressed() {
 		return
 	}
 	mut st := tc.ownership_state()
-	fn_name := '${st.cur_fn}__lambda_${int(id)}'
+	fn_name := ownership_lambda_name(st.cur_fn, id)
 	captures := tc.ownership_consume_lambda_captures(node, fn_name)
 	st.frames << OwnershipFrame{
 		cur_fn:          st.cur_fn
@@ -9893,7 +9901,7 @@ pub fn (tc &TypeChecker) ownership_fn_value_returns_owned(id flat.NodeId, enclos
 	if node.kind == .fn_literal {
 		names << ownership_fn_literal_name(parent_fn, id)
 	} else if node.kind == .lambda_expr {
-		names << '${parent_fn}__lambda_${node.pos.id}_${node.pos.offset}'
+		names << ownership_lambda_name(parent_fn, id)
 	} else if node.kind == .ident && node.value.len > 0 {
 		names << node.value
 		names << ownership_qualify_name(module_name, node.value)
