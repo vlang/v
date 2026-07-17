@@ -1172,7 +1172,12 @@ fn (mut t Transformer) make_sum_type_pattern_check(expr flat.NodeId, expr_type s
 	if path.len == 0 {
 		return none
 	}
-	mut current := expr
+	stable_expr := if path.len > 1 {
+		t.stable_transformed_expr_for_reuse(expr, expr_type, 'sum_is')
+	} else {
+		expr
+	}
+	mut current := stable_expr
 	mut current_type := expr_type
 	mut current_sum := clean_sum
 	mut chain := flat.empty_node

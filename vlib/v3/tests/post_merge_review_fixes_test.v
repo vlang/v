@@ -260,8 +260,8 @@ fn main() {
 fn test_is_check_preserves_pointer_sum_variants() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'is_pointer_sum_variant', 'struct Foo {
-	value int
-}
+		value int
+	}
 
 type Item = &Foo | int
 
@@ -289,11 +289,41 @@ fn main() {
 		'`&Foo` is not a variant of sum type `Item`')
 }
 
+fn test_nested_sum_is_check_evaluates_subject_once() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'nested_sum_is_subject_once', '__global calls int
+
+struct Leaf {
+	n int
+}
+
+type Inner = Leaf | int
+type Outer = Inner | string
+
+fn make_outer() Outer {
+	calls++
+	return Outer(Inner(Leaf{
+		n: 7
+	}))
+}
+
+fn main() {
+	calls = 0
+	if make_outer() is Leaf {
+		println(int_str(calls))
+	} else {
+		println("missing")
+	}
+}
+')
+	assert out == '1'
+}
+
 fn test_is_check_treats_pointer_aliases_as_pointers() {
 	v3_bin := build_v3()
 	sum_out := run_good(v3_bin, 'is_pointer_alias_sum', 'struct Foo {
-	value int
-}
+		value int
+	}
 
 struct Bar {}
 
