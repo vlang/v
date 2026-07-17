@@ -7885,18 +7885,25 @@ fn generic_matching_bracket(s string, start int) int {
 
 fn split_generic_args(s string) []string {
 	mut parts := []string{}
-	mut depth := 0
+	mut bracket_depth := 0
+	mut paren_depth := 0
 	mut start := 0
 	for i in 0 .. s.len {
 		match s[i] {
 			`[` {
-				depth++
+				bracket_depth++
 			}
 			`]` {
-				depth--
+				bracket_depth--
+			}
+			`(` {
+				paren_depth++
+			}
+			`)` {
+				paren_depth--
 			}
 			`,` {
-				if depth == 0 {
+				if bracket_depth == 0 && paren_depth == 0 {
 					parts << s[start..i].trim_space()
 					start = i + 1
 				}

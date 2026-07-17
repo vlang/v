@@ -54,6 +54,18 @@ fn run_good_with_flags(v3_bin string, name string, flags string, src string) str
 	return run.output.trim_space()
 }
 
+fn run_good_with_env(v3_bin string, name string, env string, src string) string {
+	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(good_src, src) or { panic(err) }
+	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	compile := os.execute('${env} ${v3_bin} ${good_src} -b c -o ${good_bin}')
+	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
+	return run.output.trim_space()
+}
+
 fn gen_c_from_source(v3_bin string, name string, src string) string {
 	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
@@ -778,6 +790,40 @@ fn test_generic_string_literal_matching_typeof_marker_is_preserved() {
 	out := run_good(v3_bin, 'generic_marker_string_literal',
 		"fn marker_and_type[T](value T) string {\n\tmarker := '__v3_generic_type_name:T'\n\treturn marker + '|' + typeof(value).name\n}\n\nfn main() {\n\tprintln(marker_and_type(7))\n}\n")
 	assert out == '__v3_generic_type_name:T|int'
+}
+
+fn test_parallel_monomorphization_grows_uneven_worker_regions() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut declarations := []string{cap: 40}
+	mut calls := []string{cap: 40}
+	for i in 0 .. 40 {
+		declarations << 'struct MonoGrow${i} { value int }'
+		calls << '\ttotal += outer(MonoGrow${i}{value: ${i}})'
+	}
+	src := '${declarations.join('\n')}\n\nfn inner[T](value T) int {\n\t_ = value\n\treturn 1\n}\n\nfn outer[T](value T) int {\n\treturn inner(value)\n}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n'
+	out := run_good_with_env(v3_bin, 'parallel_monomorph_grow', 'V3_TEST_MONOMORPH_GROW=1', src)
+	assert out == '40'
+}
+
+fn test_generic_function_type_arguments_keep_parameter_commas() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_function_type_argument', "fn identity[T](value T) T {
+	return value
+}
+
+fn accepts(value int, label string) bool {
+	return value == label.len
+}
+
+fn main() {
+	callback := identity(accepts)
+	println(callback(3, 'abc'))
+}
+")
+	assert out == 'true'
 }
 
 fn test_typeof_function_fixed_array_types_keep_function_shape() {

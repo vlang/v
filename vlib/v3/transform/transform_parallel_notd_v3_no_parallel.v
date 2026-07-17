@@ -66,10 +66,14 @@ struct SharedChunkArgs {
 }
 
 struct MonomorphChunkArgs {
-	worker    voidptr // &Transformer
-	specs_ptr voidptr // &[]PendingGenericFnSpec
-	claims    &MonomorphClaimState = unsafe { nil }
-	is_master bool
+	worker        voidptr // &Transformer
+	specs_ptr     voidptr // &[]PendingGenericFnSpec
+	claims        &MonomorphClaimState = unsafe { nil }
+	is_master     bool
+	base_nodes    int
+	base_children int
+	node_start    int
+	child_start   int
 mut:
 	roots         []flat.NodeId
 	emitted_specs []PendingGenericFnSpec
@@ -101,11 +105,17 @@ $if !windows {
 		mut work := specs.clone()
 		mut roots := []flat.NodeId{cap: work.len}
 		mut emitted_specs := []PendingGenericFnSpec{cap: work.len}
+		mut private_region := false
 		mut claims := a.claims
 		mut work_idx := 0
 		for work_idx < work.len {
 			spec := work[work_idx]
 			work_idx++
+			if !private_region && !w.monomorph_worker_has_headroom(spec) {
+				w.detach_monomorph_worker_region(a.base_nodes, a.base_children, a.node_start,
+					a.child_start, spec)
+				private_region = true
+			}
 			root := w.emit_generic_fn_specialization(spec.decl, spec.args)
 			w.generated_fn_used_names(spec.decl, root, spec.args)
 			roots << root
@@ -134,6 +144,7 @@ $if !windows {
 			}
 		}
 		if !a.is_master {
+			w.worker_scope = scope
 			transform_worker_scope_leave(scope)
 		}
 		a.roots = roots
@@ -202,8 +213,14 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		t.a.nodes.ensure_cap(base_nodes + node_reserve)
 		t.a.children.ensure_cap(base_children + child_reserve)
 		t.monomorph_profile('mono capacity: ${time.ticks() - debug_started} ms')
-		node_pool := t.a.nodes.cap - base_nodes
-		child_pool := t.a.children.cap - base_children
+		mut node_pool := t.a.nodes.cap - base_nodes
+		mut child_pool := t.a.children.cap - base_children
+		// The regression test deliberately makes every region tiny so private
+		// growth is covered without needing a multi-million-node input.
+		if os.getenv('V3_TEST_MONOMORPH_GROW') == '1' {
+			node_pool = n_jobs * 64
+			child_pool = n_jobs * 64
+		}
 		mut node_starts := []int{len: n_jobs + 1}
 		mut child_starts := []int{len: n_jobs + 1}
 		for i in 0 .. n_jobs + 1 {
@@ -211,6 +228,10 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			child_starts[i] = base_children + child_pool * i / n_jobs
 		}
 
+		// Monomorphization uses a fresh Transformer, so its declaration cache has
+		// not been warmed by the earlier function-body transform. Build it before
+		// the forks; lazy initialization from several workers corrupts the map.
+		t.prepare_parallel_call_param_types()
 		t.tc.freeze_type_cache_for_forks()
 		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		decls := t.cached_generic_fn_decls()
@@ -222,10 +243,14 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		}
 		mut args := []MonomorphChunkArgs{len: n_jobs}
 		args[0] = MonomorphChunkArgs{
-			worker:    voidptr(t)
-			specs_ptr: unsafe { voidptr(&chunks[0]) }
-			claims:    claims
-			is_master: true
+			worker:        voidptr(t)
+			specs_ptr:     unsafe { voidptr(&chunks[0]) }
+			claims:        claims
+			is_master:     true
+			base_nodes:    base_nodes
+			base_children: base_children
+			node_start:    node_starts[0]
+			child_start:   child_starts[0]
 		}
 		for ci in 1 .. n_jobs {
 			mut view := shared_region_view(t.a, node_starts[ci], node_starts[ci + 1],
@@ -243,9 +268,13 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			w.generic_fn_decls_ready = true
 			w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
 			args[ci] = MonomorphChunkArgs{
-				worker:    voidptr(w)
-				specs_ptr: unsafe { voidptr(&chunks[ci]) }
-				claims:    claims
+				worker:        voidptr(w)
+				specs_ptr:     unsafe { voidptr(&chunks[ci]) }
+				claims:        claims
+				base_nodes:    base_nodes
+				base_children: base_children
+				node_start:    node_starts[ci]
+				child_start:   child_starts[ci]
 			}
 		}
 
@@ -257,6 +286,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		t.receiver_method_suffix_index = shared_receiver_index.clone()
 		original_nodes_cap := t.a.nodes.cap
 		original_children_cap := t.a.children.cap
+		original_nodes_data := t.a.nodes.data
+		original_children_data := t.a.children.data
 		unsafe {
 			t.a.nodes.cap = node_starts[1]
 			t.a.nodes.flags.set(.nogrow)
@@ -276,9 +307,13 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		any_started := t.a.worker_pool.run(tasks)
 		t.monomorph_profile('mono workers: ${time.ticks() - debug_started} ms')
 		unsafe {
-			t.a.nodes.cap = original_nodes_cap
+			if t.a.nodes.data == original_nodes_data {
+				t.a.nodes.cap = original_nodes_cap
+			}
 			t.a.nodes.flags.clear(.nogrow)
-			t.a.children.cap = original_children_cap
+			if t.a.children.data == original_children_data {
+				t.a.children.cap = original_children_cap
+			}
 			t.a.children.flags.clear(.nogrow)
 		}
 		master_fn_ret_types := t.fn_ret_types.move()
@@ -351,6 +386,91 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		t.monomorph_profile('mono merge: ${time.ticks() - debug_started} ms')
 		return any_started
 	}
+}
+
+fn (t &Transformer) monomorph_worker_has_headroom(spec PendingGenericFnSpec) bool {
+	cost := i64(t.generic_decl_source_cost(spec.decl))
+	node_headroom := i64(65536) + cost * 64
+	child_headroom := i64(98304) + cost * 80
+	return i64(t.a.nodes.len) + node_headroom <= i64(t.a.nodes.cap)
+		&& i64(t.a.children.len) + child_headroom <= i64(t.a.children.cap)
+}
+
+fn (mut t Transformer) detach_monomorph_worker_region(base_nodes int, base_children int, node_start int, child_start int, spec PendingGenericFnSpec) {
+	cost := i64(t.generic_decl_source_cost(spec.decl))
+	node_headroom := int(i64(65536) + cost * 64)
+	child_headroom := int(i64(98304) + cost * 80)
+	node_cap := monomorph_private_region_cap(t.a.nodes.len, node_headroom)
+	child_cap := monomorph_private_region_cap(t.a.children.len, child_headroom)
+	mut nodes := clone_monomorph_node_region(t.a.nodes, base_nodes, node_start, node_cap)
+	mut children := clone_monomorph_child_region(t.a.children, base_children, child_start,
+		child_cap)
+	unsafe {
+		// These descriptors alias the master's allocation. Never release it when
+		// replacing them; other workers can still be appending to their regions.
+		t.a.nodes.flags.set(.nofree)
+		t.a.children.flags.set(.nofree)
+	}
+	t.a.nodes = nodes
+	t.a.children = children
+}
+
+fn monomorph_private_region_cap(current_len int, headroom int) int {
+	required := current_len + headroom
+	grown := current_len + current_len / 2
+	return if grown > required { grown } else { required }
+}
+
+fn clone_monomorph_node_region(source []flat.Node, base_count int, region_start int, new_cap int) []flat.Node {
+	// The gap between the immutable base and this worker's region belongs to
+	// other workers in shared storage. Keep it empty in the private copy: some
+	// generic helpers scan the full AST and must not observe uninitialized nodes.
+	mut result := []flat.Node{len: source.len, cap: new_cap}
+	unsafe {
+		if base_count > 0 {
+			vmemcpy(result.data, source.data, base_count * int(sizeof(flat.Node)))
+		}
+		own_count := source.len - region_start
+		if own_count > 0 {
+			vmemcpy(&result[region_start], &source[region_start],
+				own_count * int(sizeof(flat.Node)))
+		}
+	}
+	return result
+}
+
+fn clone_monomorph_child_region(source []flat.NodeId, base_count int, region_start int, new_cap int) []flat.NodeId {
+	mut result := []flat.NodeId{len: source.len, cap: new_cap}
+	unsafe {
+		if base_count > 0 {
+			vmemcpy(result.data, source.data, base_count * int(sizeof(flat.NodeId)))
+		}
+		own_count := source.len - region_start
+		if own_count > 0 {
+			vmemcpy(&result[region_start], &source[region_start],
+				own_count * int(sizeof(flat.NodeId)))
+		}
+	}
+	return result
+}
+
+fn (t &Transformer) generic_decl_source_cost(decl GenericFnDecl) int {
+	idx := int(decl.id)
+	if idx < 0 || isnil(t.tc) || t.tc.top_level_idx.len == 0 {
+		return int(decl.node.children_count) + 1
+	}
+	mut low := 0
+	mut high := t.tc.top_level_idx.len
+	for low < high {
+		mid := (low + high) / 2
+		if t.tc.top_level_idx[mid] < idx {
+			low = mid + 1
+		} else {
+			high = mid
+		}
+	}
+	previous := if low > 0 { t.tc.top_level_idx[low - 1] } else { -1 }
+	return if idx > previous { idx - previous } else { int(decl.node.children_count) + 1 }
 }
 
 // collect_interface_boxed_types_parallel scans independent AST ranges with
