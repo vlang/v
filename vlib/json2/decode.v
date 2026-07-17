@@ -993,8 +993,8 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 									field_can_match := field_info.is_required
 										&& !(field_info.is_omitempty
 										&& decoder.is_empty_value(decoder.current_node.next.value))
-									field_name_matches := key_info.length - 2 == field_info.json_name_len && unsafe {
-										vmemcmp(decoder.json.str + key_info.position + 1, field_info.json_name_ptr, field_info.json_name_len) == 0
+									field_name_matches := key_len == field_info.json_name_len && unsafe {
+										vmemcmp(key_ptr, field_info.json_name_ptr, field_info.json_name_len) == 0
 									}
 									if field_can_match && field_name_matches {
 										decoder.current_node = decoder.current_node.next
