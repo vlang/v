@@ -2566,7 +2566,17 @@ fn (t &Transformer) struct_field_decl_metas(base_type string) map[string]FieldDe
 		} else {
 			node.value
 		}
-		if decl_name != node.value && decl_name != qualified {
+		mut matches_decl := decl_name == node.value || decl_name == qualified
+		if !matches_decl && node.generic_params().len > 0 {
+			for prefix in [node.value, qualified, c_name(node.value),
+				c_name(qualified)] {
+				if prefix.len > 0 && decl_name.starts_with('${prefix}_') {
+					matches_decl = true
+					break
+				}
+			}
+		}
+		if !matches_decl {
 			continue
 		}
 		for i in 0 .. node.children_count {

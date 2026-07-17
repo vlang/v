@@ -283,6 +283,9 @@ fn (t &Transformer) contextual_array_comparison_type(id flat.NodeId, own_type st
 	}
 	own_elem := own_type[2..]
 	other_elem := other_type[2..]
+	if t.is_sum_type_name(other_elem) && t.sum_target_accepts_variant_type(other_elem, own_elem) {
+		return other_type
+	}
 	other_iface := t.resolve_interface_type_name(other_elem)
 	if other_iface.len > 0 {
 		if !t.array_append_interface_has_requirements(other_iface) {

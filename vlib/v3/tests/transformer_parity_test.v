@@ -587,7 +587,7 @@ fn main() {
 	assert count.value == '!int'
 	created := decl_rhs(a, 'main', 'created')
 	assert created.kind == .struct_init
-	assert created.value == '!void'
+	assert created.value == '!int'
 }
 
 // test_or_expr_lowers_to_temp_and_if validates this v3 regression case.

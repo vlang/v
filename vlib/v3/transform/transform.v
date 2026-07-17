@@ -110,6 +110,8 @@ mut:
 	pointer_value_lvalues         map[string]bool
 	pointer_value_rvalues         map[string]bool
 	addr_lvalue_pointer_locals    map[string]bool
+	orm_initialized_fields        map[string][]string
+	sql_query_data_aliases        map[string][]string
 	bound_method_arrays           map[string]BoundMethodArrayInfo
 	temp_counter                  int
 	global_temp_counter           int
@@ -635,6 +637,7 @@ pub fn monomorphize_with_used_checked(mut a flat.FlatAst, tc &types.TypeChecker,
 			late_names << name
 		}
 	}
+	t.materialize_generic_structs(false)
 	// Monomorphization adds concrete generic functions after markused. Scan the
 	// augmented set so calls introduced by their transformed/comptime-unrolled
 	// bodies also root their non-generic helpers.
@@ -645,7 +648,7 @@ pub fn monomorphize_with_used_checked(mut a flat.FlatAst, tc &types.TypeChecker,
 	t.lower_remaining_matches_in_used_fns()
 	remaining_match_names := newly_used_fn_names(used_before_remaining_matches, t.used_fns)
 	t.transform_late_used_fn_bodies(remaining_match_names, base_node_count)
-	t.materialize_generic_structs()
+	t.materialize_generic_structs(true)
 	t.run_sum_eq_synthesis_rounds(base_node_count)
 	t.apply_ignored_comptime_for_nodes()
 	return t.used_fns, t.monomorph_errors
@@ -671,6 +674,8 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		pointer_value_lvalues:            map[string]bool{}
 		pointer_value_rvalues:            map[string]bool{}
 		addr_lvalue_pointer_locals:       map[string]bool{}
+		orm_initialized_fields:           map[string][]string{}
+		sql_query_data_aliases:           map[string][]string{}
 		bound_method_arrays:              map[string]BoundMethodArrayInfo{}
 		invalidated_smartcasts:           map[string]bool{}
 		escaping_amp_ptrs:                map[string]bool{}
@@ -1056,6 +1061,8 @@ fn (mut t Transformer) reset_var_types() {
 	t.fixed_array_param_values.clear()
 	t.interface_var_concrete_types.clear()
 	t.addr_lvalue_pointer_locals.clear()
+	t.orm_initialized_fields.clear()
+	t.sql_query_data_aliases.clear()
 }
 
 fn (mut t Transformer) rebuild_variadic_suffix_index() {
@@ -1166,6 +1173,111 @@ fn (t &Transformer) raw_var_type(name string) string {
 		return if binding.raw_typ.len > 0 { binding.raw_typ } else { binding.typ }
 	}
 	return ''
+}
+
+fn (mut t Transformer) record_orm_initialized_fields(name string, rhs_id flat.NodeId) {
+	if name.len == 0 || int(rhs_id) < 0 || int(rhs_id) >= t.a.nodes.len {
+		return
+	}
+	rhs := t.a.nodes[int(rhs_id)]
+	if rhs.kind != .struct_init {
+		t.orm_initialized_fields.delete(name)
+		return
+	}
+	mut fields := []string{}
+	for i in 0 .. rhs.children_count {
+		field := t.a.child_node(&rhs, i)
+		if field.kind == .field_init && field.value.len > 0 && field.value !in fields {
+			fields << field.value
+		}
+	}
+	t.orm_initialized_fields[name] = fields
+}
+
+fn (mut t Transformer) record_sql_query_data_alias(name string, rhs_id flat.NodeId) {
+	if name.len == 0 || int(rhs_id) < 0 || int(rhs_id) >= t.a.nodes.len {
+		return
+	}
+	rhs := t.a.nodes[int(rhs_id)]
+	if rhs.kind != .sql_expr {
+		t.sql_query_data_aliases.delete(name)
+		return
+	}
+	tokens := sql_clean_tokens(rhs.value.split(' '))
+	if tokens.len == 0 || tokens[0] != 'querydata' {
+		t.sql_query_data_aliases.delete(name)
+		return
+	}
+	t.sql_query_data_aliases[name] = tokens[1..].clone()
+}
+
+fn (mut t Transformer) update_sql_query_data_aliases_for_assignment(node flat.Node) {
+	if node.children_count < 2 {
+		return
+	}
+	mut i := 0
+	for i + 1 < node.children_count {
+		lhs_id := t.a.child(&node, i)
+		rhs_id := t.a.child(&node, i + 1)
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind == .ident && lhs.value.len > 0 {
+			if node.op == .assign {
+				t.record_sql_query_data_alias(lhs.value, rhs_id)
+			} else {
+				t.sql_query_data_aliases.delete(lhs.value)
+			}
+		}
+		i += 2
+	}
+}
+
+fn (mut t Transformer) update_orm_initialized_fields_for_assignment(node flat.Node) {
+	if node.children_count < 2 {
+		return
+	}
+	mut i := 0
+	for i + 1 < node.children_count {
+		lhs_id := t.a.child(&node, i)
+		rhs_id := t.a.child(&node, i + 1)
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind == .ident && lhs.value.len > 0 {
+			if node.op == .assign {
+				t.record_orm_initialized_fields(lhs.value, rhs_id)
+			} else {
+				t.orm_initialized_fields.delete(lhs.value)
+			}
+		} else if root_name := t.orm_initialized_lvalue_root(lhs_id) {
+			t.orm_initialized_fields.delete(root_name)
+		}
+		i += 2
+	}
+}
+
+fn (t &Transformer) orm_initialized_lvalue_root(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			if node.value.len > 0 {
+				return node.value
+			}
+		}
+		.selector, .index, .paren {
+			if node.children_count > 0 {
+				return t.orm_initialized_lvalue_root(t.a.child(&node, 0))
+			}
+		}
+		.prefix {
+			if node.op == .mul && node.children_count > 0 {
+				return t.orm_initialized_lvalue_root(t.a.child(&node, 0))
+			}
+		}
+		else {}
+	}
+
+	return none
 }
 
 @[inline]
@@ -2009,6 +2121,8 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.pending_stmts = []flat.NodeId{}
 	w.pointer_value_lvalues = map[string]bool{}
 	w.pointer_value_rvalues = map[string]bool{}
+	w.orm_initialized_fields = map[string][]string{}
+	w.sql_query_data_aliases = map[string][]string{}
 	w.escaping_amp_ptrs = map[string]bool{}
 	w.escaping_amp_sources = map[string]bool{}
 	w.heaped_amp_locals = map[string]bool{}
@@ -2184,6 +2298,8 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		mut_param_values:                 map[string]bool{}
 		pointer_value_lvalues:            map[string]bool{}
 		pointer_value_rvalues:            map[string]bool{}
+		orm_initialized_fields:           map[string][]string{}
+		sql_query_data_aliases:           map[string][]string{}
 		invalidated_smartcasts:           map[string]bool{}
 		escaping_amp_ptrs:                map[string]bool{}
 		escaping_amp_sources:             map[string]bool{}
@@ -3827,6 +3943,13 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 				&& lhs.value.len > 0 && !lhs_marks_interface_box {
 				interface_boxes.delete(lhs.value)
 			}
+			if lhs.kind == .ident && lhs.value.len > 0 {
+				for source_name in t.escape_aggregate_address_sources(rhs_id, amp_sources,
+					ptr_aliases) {
+					add_escape_amp_source(mut amp_sources, lhs.value, source_name)
+					amp_ptrs[lhs.value] = true
+				}
+			}
 			i += 2
 		}
 		for name in declared_names {
@@ -3843,6 +3966,40 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 			interface_boxes, mut returned, mut local_stack_names, mut local_stack_added,
 			can_clear_interface_boxes)
 	}
+}
+
+fn (t &Transformer) escape_aggregate_address_sources(id flat.NodeId, amp_sources map[string][]string, ptr_aliases map[string]string) []string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return []string{}
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.prefix {
+			if node.op == .amp && node.children_count > 0 {
+				return t.escape_address_sources(t.a.child(&node, 0), amp_sources, ptr_aliases)
+			}
+			return []string{}
+		}
+		.ident {
+			return escape_alias_sources(node.value, amp_sources, ptr_aliases)
+		}
+		.field_init, .paren, .cast_expr, .as_expr, .struct_init, .array_literal, .array_init,
+		.map_init {
+			mut sources := []string{}
+			for i in 0 .. node.children_count {
+				for source_name in t.escape_aggregate_address_sources(t.a.child(&node, i),
+					amp_sources, ptr_aliases) {
+					if source_name !in sources {
+						sources << source_name
+					}
+				}
+			}
+			return sources
+		}
+		else {}
+	}
+
+	return []string{}
 }
 
 fn (mut t Transformer) scan_for_in_escape_pass(node flat.Node, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string, can_clear_interface_boxes bool) {
@@ -6107,6 +6264,8 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 	if expanded := t.try_expand_plain_multi_assign(node) {
 		return expanded
 	}
+	t.update_orm_initialized_fields_for_assignment(node)
+	t.update_sql_query_data_aliases_for_assignment(node)
 	if lowered := t.try_lower_sum_shared_field_assign(node) {
 		return lowered
 	}
@@ -7852,6 +8011,8 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 	if node.children_count == 2 {
 		lhs := t.a.child_node(&node, 0)
 		if lhs.kind == .ident && lhs.value.len > 0 {
+			t.record_orm_initialized_fields(lhs.value, t.a.child(&node, 1))
+			t.record_sql_query_data_alias(lhs.value, t.a.child(&node, 1))
 			mut typ := t.infer_decl_type(node)
 			rhs_id := t.a.child(&node, 1)
 			rhs := t.a.nodes[int(rhs_id)]
@@ -7902,7 +8063,9 @@ fn (mut t Transformer) transform_decl_assign_stmt(id flat.NodeId, node flat.Node
 				}
 			} else if rhs.kind == .or_expr && rhs.children_count > 0 {
 				or_source_id := t.a.child(&rhs, 0)
-				if info := t.map_index_info(or_source_id) {
+				if aggregate_type := t.sql_or_expr_aggregate_optional_type(rhs) {
+					typ = aggregate_type
+				} else if info := t.map_index_info(or_source_id) {
 					typ = info.value_type
 					if t.map_value_type_is_optional(info.value_type) {
 						or_body_id := if rhs.children_count > 1 {
@@ -11498,6 +11661,9 @@ fn (mut t Transformer) transform_or_expr(id flat.NodeId, node flat.Node) flat.No
 	if t.is_channel_receive_or_expr(node) {
 		return t.transform_channel_receive_or_expr(id, node)
 	}
+	if sql_aggregate := t.transform_sql_aggregate_or_expr(id, node) {
+		return sql_aggregate
+	}
 	if t.is_array_index_or_expr(node) {
 		return t.transform_array_index_or_expr(id, node)
 	}
@@ -12554,6 +12720,11 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 			if t.mut_param_values[expr.value] {
 				typ = typ.trim_string_left('&')
 			}
+		}
+	}
+	if typ.len == 0 && expr.kind == .selector {
+		if raw_field_type := t.raw_selector_field_type(expr_id) {
+			typ = raw_field_type
 		}
 	}
 	if typ.len == 0 {

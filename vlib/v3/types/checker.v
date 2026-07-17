@@ -9142,6 +9142,79 @@ fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
 	}
 }
 
+fn (tc &TypeChecker) sql_aggregate_or_expr_type(node flat.Node) ?Type {
+	if node.kind != .or_expr || node.value != '!' || node.children_count < 1 {
+		return none
+	}
+	child_id := tc.a.child(&node, 0)
+	if int(child_id) < 0 || int(child_id) >= tc.a.nodes.len {
+		return none
+	}
+	child := tc.a.nodes[int(child_id)]
+	if child.kind != .sql_expr {
+		return none
+	}
+	tokens := child.value.split(' ')
+	mut start := 0
+	if tokens.len > 0 && tokens[0] == 'dynamic' {
+		start = 1
+		if tokens.len <= start {
+			return none
+		}
+	}
+	mut select_start := start + 1
+	if tokens.len > select_start && tokens[select_start] == 'distinct' {
+		select_start = start + 2
+	}
+	if tokens.len <= select_start || tokens[start] != 'select'
+		|| tokens[select_start] !in ['sum', 'avg', 'min', 'max'] {
+		return none
+	}
+	if select_start + 5 >= tokens.len || tokens[select_start + 1] != '('
+		|| tokens[select_start + 3] != ')' || tokens[select_start + 4] != 'from' {
+		return none
+	}
+	field_name := tokens[select_start + 2]
+	table_name := tokens[select_start + 5]
+	field_type := tc.sql_aggregate_field_type(table_name, field_name) or { return none }
+	return tc.parse_canonical_type(sql_aggregate_optional_type_name(tokens[select_start],
+		field_type))
+}
+
+fn (tc &TypeChecker) sql_aggregate_field_type(table_name string, field_name string) ?Type {
+	for candidate in [table_name, tc.qualify_name(table_name)] {
+		fields := tc.structs[candidate] or { continue }
+		for field in fields {
+			if field.name == field_name {
+				return field.typ
+			}
+		}
+	}
+	return none
+}
+
+fn sql_aggregate_optional_type_name(aggregate string, field_type Type) string {
+	if field_type is OptionType {
+		return sql_aggregate_optional_type_name(aggregate, field_type.base_type)
+	}
+	if field_type is Alias {
+		return sql_aggregate_optional_type_name(aggregate, field_type.base_type)
+	}
+	if aggregate == 'avg' {
+		return '?f64'
+	}
+	if field_type is String {
+		return '?string'
+	}
+	if field_type is Struct && field_type.name == 'time.Time' {
+		return '?time.Time'
+	}
+	if field_type is Primitive && field_type.props.has(.float) {
+		return '?f64'
+	}
+	return '?int'
+}
+
 fn (mut tc TypeChecker) check_or_fallback_branch_node(id flat.NodeId) {
 	if !tc.valid_node_id(id) {
 		return
@@ -15219,6 +15292,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected) {
+			if tc.receiver_compatible(actual, expected) {
+				continue
+			}
 			if tc.c_call_arg_compatible(info.name, arg_id, expected) {
 				continue
 			}
@@ -24903,6 +24979,9 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 		return t
 	}
 	if kind_id == 22 {
+		if aggregate_type := tc.sql_aggregate_or_expr_type(node) {
+			return aggregate_type
+		}
 		inner := tc.resolve_type(tc.a.child(&node, 0))
 		if inner is OptionType {
 			return inner.base_type
@@ -25469,6 +25548,9 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			return tc.resolve_type(tc.a.child(&node, 0))
 		}
 		.or_expr {
+			if aggregate_type := tc.sql_aggregate_or_expr_type(node) {
+				return aggregate_type
+			}
 			inner := tc.resolve_type(tc.a.child(&node, 0))
 			if inner is OptionType {
 				return inner.base_type
