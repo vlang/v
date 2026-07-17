@@ -572,22 +572,391 @@ fn (mut g FlatGen) gen_loop_iteration_ownership_drops() {
 
 fn (mut g FlatGen) gen_ownership_drops(entries []types.OwnershipDropEntry) {
 	for entry in entries {
-		method := g.resolve_method_name(entry.type_name, 'drop')
-		if method.len == 0 {
-			g.writeln('#error missing generated Drop method for ${entry.type_name}')
-			continue
-		}
 		cname := g.cname(entry.name)
 		if entry.optional_wrapper {
 			g.writeln('if (${cname}.ok) {')
 			g.indent++
-			g.writeln('${g.cname(method)}(&${cname}.value);')
+			g.gen_ownership_drop_value(g.tc.parse_type(entry.type_name), '${cname}.value', 0)
 			g.indent--
 			g.writeln('}')
 			continue
 		}
-		g.writeln('${g.cname(method)}(&${cname});')
+		g.gen_ownership_drop_value(g.tc.parse_type(entry.type_name), cname, 0)
 	}
+}
+
+fn (mut g FlatGen) gen_ownership_drop_value(typ types.Type, expr string, depth int) {
+	if depth > 64 || expr.len == 0 {
+		return
+	}
+	match typ {
+		types.Alias {
+			g.gen_ownership_drop_value(typ.base_type, expr, depth + 1)
+		}
+		types.OptionType {
+			g.writeln('if ((${expr}).ok) {')
+			g.indent++
+			if g.ownership_type_requires_destruction(typ.base_type, depth + 1) {
+				g.gen_ownership_drop_value(typ.base_type, '(${expr}).value', depth + 1)
+			}
+			g.indent--
+			g.writeln('} else {')
+			g.indent++
+			g.gen_ownership_drop_result_error('(${expr}).err', depth + 1)
+			g.indent--
+			g.writeln('}')
+		}
+		types.ResultType {
+			g.writeln('if ((${expr}).ok) {')
+			g.indent++
+			if g.ownership_type_requires_destruction(typ.base_type, depth + 1) {
+				g.gen_ownership_drop_value(typ.base_type, '(${expr}).value', depth + 1)
+			}
+			g.indent--
+			g.writeln('} else {')
+			g.indent++
+			g.gen_ownership_drop_result_error('(${expr}).err', depth + 1)
+			g.indent--
+			g.writeln('}')
+		}
+		types.String {
+			g.writeln('string__free(&(${expr}));')
+		}
+		types.Array {
+			g.writeln('if (((${expr}).flags & ArrayFlags__is_slice) == 0) {')
+			g.indent++
+			if g.ownership_type_requires_destruction(typ.elem_type, depth + 1) {
+				idx := g.tmp_count
+				g.tmp_count++
+				elem_ct := g.value_c_type(typ.elem_type)
+				g.writeln('for (int _drop_i${idx} = 0; _drop_i${idx} < (${expr}).len; _drop_i${idx}++) {')
+				g.indent++
+				g.gen_ownership_drop_value(typ.elem_type,
+					'*((${elem_ct}*)array_get(${expr}, _drop_i${idx}))', depth + 1)
+				g.indent--
+				g.writeln('}')
+			}
+			g.writeln('array__free(&(${expr}));')
+			g.indent--
+			g.writeln('}')
+		}
+		types.ArrayFixed {
+			if g.ownership_type_requires_destruction(typ.elem_type, depth + 1) {
+				idx := g.tmp_count
+				g.tmp_count++
+				g.writeln('for (int _drop_i${idx} = 0; _drop_i${idx} < ${typ.len}; _drop_i${idx}++) {')
+				g.indent++
+				g.gen_ownership_drop_value(typ.elem_type, '(${expr})[_drop_i${idx}]', depth + 1)
+				g.indent--
+				g.writeln('}')
+			}
+		}
+		types.Map {
+			key_values := '(${expr}).key_values'
+			if g.ownership_type_requires_destruction(typ.key_type, depth + 1)
+				|| g.ownership_type_requires_destruction(typ.value_type, depth + 1) {
+				idx := g.tmp_count
+				g.tmp_count++
+				g.writeln('for (int _drop_i${idx} = 0; _drop_i${idx} < ${key_values}.len; _drop_i${idx}++) {')
+				g.indent++
+				g.writeln('if (${key_values}.all_deleted && ${key_values}.all_deleted[_drop_i${idx}]) continue;')
+				if g.ownership_type_requires_destruction(typ.key_type, depth + 1)
+					&& typ.key_type !is types.String {
+					key_ct := g.map_key_temp_c_type(typ.key_type)
+					key_slot := '${key_values}.keys + _drop_i${idx} * ${key_values}.key_bytes'
+					g.gen_ownership_drop_value(typ.key_type, '*(${key_ct}*)(${key_slot})',
+						depth + 1)
+				}
+				if g.ownership_type_requires_destruction(typ.value_type, depth + 1) {
+					value_ct := g.value_c_type(typ.value_type)
+					value_slot := '${key_values}.values + _drop_i${idx} * ${key_values}.value_bytes'
+					g.gen_ownership_drop_value(typ.value_type, '*(${value_ct}*)(${value_slot})',
+
+						depth + 1)
+				}
+				g.indent--
+				g.writeln('}')
+			}
+			g.writeln('map__free(&(${expr}));')
+		}
+		types.Struct {
+			method := g.resolve_method_name(typ.name, 'drop')
+			if method.len > 0 {
+				g.writeln('${g.cname(method)}(&(${expr}));')
+				return
+			}
+			for field in g.tc.struct_fields_for_type(typ.name) {
+				if g.ownership_type_requires_destruction(field.typ, depth + 1) {
+					g.gen_ownership_drop_value(field.typ, '(${expr}).${g.cname(field.name)}',
+
+						depth + 1)
+				}
+			}
+		}
+		types.Interface {
+			if g.is_ierror_type_name(typ.name) {
+				g.gen_ownership_drop_result_error(expr, depth + 1)
+				return
+			}
+			mut iface_name := typ.name
+			if iface_name !in g.iface_impls {
+				qualified := g.tc.qualify_name(iface_name)
+				if qualified in g.iface_impls {
+					iface_name = qualified
+				}
+			}
+			object := '((${expr})._object)'
+			g.writeln('if ((${expr})._object_is_boxed && ${object} != NULL) {')
+			g.indent++
+			g.writeln('switch ((${expr})._typ) {')
+			for concrete in g.iface_impls[iface_name] or { []string{} } {
+				id := g.iface_type_id(iface_name, concrete)
+				concrete_type := g.tc.parse_type(concrete)
+				if id == 0 || !g.ownership_type_requires_destruction(concrete_type, depth + 1) {
+					continue
+				}
+				concrete_ct := g.value_c_type(concrete_type)
+				g.writeln('case ${id}:')
+				g.indent++
+				g.gen_ownership_drop_value(concrete_type, '*((${concrete_ct}*)${object})',
+					depth + 1)
+				g.writeln('break;')
+				g.indent--
+			}
+			g.writeln('default: break;')
+			g.writeln('}')
+			g.writeln('free(${object});')
+			g.writeln('(${expr})._object = NULL;')
+			g.writeln('(${expr})._object_is_boxed = false;')
+			g.indent--
+			g.writeln('}')
+		}
+		types.SumType {
+			sum_name := g.resolve_sum_name(typ.name)
+			variants := g.tc.sum_types[sum_name] or { []string{} }
+			g.writeln('switch ((${expr}).typ) {')
+			for variant in variants {
+				resolved_variant := g.resolve_variant(sum_name, variant)
+				variant_type := g.tc.parse_type(resolved_variant)
+				idx := g.sum_type_index(sum_name, resolved_variant)
+				g.writeln('case ${idx}:')
+				g.indent++
+				clean_variant_type := select_receive_unalias_type(variant_type)
+				if clean_variant_type is types.Pointer {
+					field := g.sum_field_name(resolved_variant)
+					payload := '((${expr}).${field})'
+					g.writeln('if ((${expr})._pointer_variant_is_owned && ${payload} != NULL) {')
+					g.indent++
+					g.gen_ownership_drop_value(clean_variant_type.base_type, '*${payload}', depth +
+						1)
+					g.writeln('free(${payload});')
+					g.indent--
+					g.writeln('}')
+					g.writeln('break;')
+					g.indent--
+					continue
+				}
+				field := g.sum_field_name(resolved_variant)
+				payload := '((${expr}).${field})'
+				g.writeln('if (${payload} != NULL) {')
+				g.indent++
+				g.gen_ownership_drop_value(variant_type, '*${payload}', depth + 1)
+				g.writeln('free(${payload});')
+				g.indent--
+				g.writeln('}')
+				g.writeln('break;')
+				g.indent--
+			}
+			g.writeln('default: break;')
+			g.writeln('}')
+		}
+		else {}
+	}
+}
+
+// gen_ownership_drop_result_error destroys the owned IError stored by a failed result.
+// Direct error messages and owned concrete objects are released. Borrowed pointer-backed
+// interfaces and the process-wide none and error-sentinel objects remain untouched.
+fn (mut g FlatGen) gen_ownership_drop_result_error(expr string, depth int) {
+	object := '((${expr})._object)'
+	g.writeln('string__free(&((${expr}).message));')
+	g.writeln('if ((${expr})._object_is_boxed && ${object} != NULL && ${object} != builtin__none__._object && ${object} != builtin__error_sentinel._object) {')
+	g.indent++
+	g.writeln('switch ((${expr})._typ) {')
+	mut iface_name := 'IError'
+	if iface_name !in g.iface_impls && 'builtin.IError' in g.iface_impls {
+		iface_name = 'builtin.IError'
+	}
+	for concrete in g.iface_impls[iface_name] or { []string{} } {
+		id := g.iface_type_id(iface_name, concrete)
+		concrete_type := g.tc.parse_type(concrete)
+		if id == 0 || !g.ownership_type_requires_destruction(concrete_type, depth + 1) {
+			continue
+		}
+		concrete_ct := g.value_c_type(concrete_type)
+		g.writeln('case ${id}:')
+		g.indent++
+		g.gen_ownership_drop_value(concrete_type, '*((${concrete_ct}*)${object})', depth + 1)
+		g.writeln('break;')
+		g.indent--
+	}
+	g.writeln('default: break;')
+	g.writeln('}')
+	g.writeln('free(${object});')
+	g.writeln('(${expr})._object = NULL;')
+	g.writeln('(${expr})._object_is_boxed = false;')
+	g.indent--
+	g.writeln('}')
+}
+
+// gen_ownership_clone_ierror clones a failed result's IError without erasing its dynamic
+// payload type. Result errors own pointer-backed implementations, so even an unboxed source
+// receives independent storage in the clone.
+fn (mut g FlatGen) gen_ownership_clone_ierror(id flat.NodeId) {
+	tmp := g.tmp_count
+	g.tmp_count++
+	source := '_clone_ierror_source${tmp}'
+	result := '_clone_ierror_result${tmp}'
+	object := '${source}._object'
+	g.write('({ IError ${source} = ')
+	g.gen_expr(id)
+	g.writeln(';')
+	g.writeln('IError ${result} = ${source};')
+	g.writeln('${result}.message = string__clone(${source}.message);')
+	g.writeln('if (${object} != NULL && ${object} != builtin__none__._object && ${object} != builtin__error_sentinel._object) {')
+	g.indent++
+	g.writeln('switch (${source}._typ) {')
+	mut iface_name := 'IError'
+	if iface_name !in g.iface_impls && 'builtin.IError' in g.iface_impls {
+		iface_name = 'builtin.IError'
+	}
+	for concrete in g.iface_impls[iface_name] or { []string{} } {
+		type_id := g.iface_type_id(iface_name, concrete)
+		if type_id == 0 {
+			continue
+		}
+		concrete_type := g.tc.parse_type(concrete)
+		concrete_ct := g.value_c_type(concrete_type)
+		g.writeln('case ${type_id}: {')
+		g.indent++
+		if concrete in ['MessageError', 'builtin.MessageError'] {
+			value := '_clone_ierror_value${tmp}'
+			g.writeln('${concrete_ct} ${value} = *((${concrete_ct}*)${object});')
+			g.writeln('${value}.msg = string__clone(${value}.msg);')
+			g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
+			g.writeln('${result}._object_is_boxed = true;')
+		} else {
+			clone_method := g.resolve_method_name(concrete, 'clone')
+			if clone_method.len > 0 {
+				params := g.tc.fn_param_types[clone_method] or { []types.Type{} }
+				receiver := if params.len > 0 && params[0] is types.Pointer {
+					'((${concrete_ct}*)${object})'
+				} else {
+					'*((${concrete_ct}*)${object})'
+				}
+				return_type := g.tc.fn_ret_types[clone_method] or { concrete_type }
+				if return_type is types.Pointer {
+					g.writeln('${result}._object = ${g.cname(clone_method)}(${receiver});')
+					// A compatible pointer-returning clone creates independent owned storage.
+					g.writeln('${result}._object_is_boxed = true;')
+				} else {
+					value := '_clone_ierror_value${tmp}'
+					g.writeln('${concrete_ct} ${value} = ${g.cname(clone_method)}(${receiver});')
+					g.writeln('${result}._object = memdup(&${value}, sizeof(${concrete_ct}));')
+					g.writeln('${result}._object_is_boxed = true;')
+				}
+			} else {
+				g.writeln('${result}._object = memdup(${object}, sizeof(${concrete_ct}));')
+				g.writeln('${result}._object_is_boxed = true;')
+			}
+		}
+		g.writeln('break;')
+		g.indent--
+		g.writeln('}')
+	}
+	g.writeln('default: break;')
+	g.writeln('}')
+	g.indent--
+	g.writeln('}')
+	g.write('${result}; })')
+}
+
+fn (g &FlatGen) ownership_type_requires_destruction(typ types.Type, depth int) bool {
+	if depth > 64 {
+		return false
+	}
+	match typ {
+		types.String, types.Array, types.Map, types.Interface, types.OptionType, types.ResultType,
+		types.SumType {
+			return true
+		}
+		types.Alias {
+			return g.ownership_type_requires_destruction(typ.base_type, depth + 1)
+		}
+		types.ArrayFixed {
+			return g.ownership_type_requires_destruction(typ.elem_type, depth + 1)
+		}
+		types.Struct {
+			if g.resolve_method_name(typ.name, 'drop').len > 0 {
+				return true
+			}
+			for field in g.tc.struct_fields_for_type(typ.name) {
+				if g.ownership_type_requires_destruction(field.typ, depth + 1) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
+}
+
+fn (g &FlatGen) ownership_type_needs_drop(typ types.Type, depth int) bool {
+	if depth > 64 {
+		return false
+	}
+	match typ {
+		types.Alias {
+			return g.ownership_type_needs_drop(typ.base_type, depth + 1)
+		}
+		types.OptionType {
+			return g.ownership_type_needs_drop(typ.base_type, depth + 1)
+		}
+		types.ResultType {
+			return g.ownership_type_needs_drop(typ.base_type, depth + 1)
+		}
+		types.Array {
+			return g.ownership_type_needs_drop(typ.elem_type, depth + 1)
+		}
+		types.ArrayFixed {
+			return g.ownership_type_needs_drop(typ.elem_type, depth + 1)
+		}
+		types.Map {
+			return g.ownership_type_needs_drop(typ.key_type, depth + 1)
+				|| g.ownership_type_needs_drop(typ.value_type, depth + 1)
+		}
+		types.SumType {
+			for variant in g.tc.sum_types[g.resolve_sum_name(typ.name)] or { []string{} } {
+				if g.ownership_type_needs_drop(g.tc.parse_type(variant), depth + 1) {
+					return true
+				}
+			}
+		}
+		types.Struct {
+			if g.resolve_method_name(typ.name, 'drop').len > 0 {
+				return true
+			}
+			for field in g.tc.struct_fields_for_type(typ.name) {
+				if g.ownership_type_needs_drop(field.typ, depth + 1) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
 }
 
 fn (mut g FlatGen) gen_lock_stmt(id flat.NodeId, node flat.Node) {
@@ -1264,7 +1633,8 @@ fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.
 		} else {
 			'memdup(&${expr}, sizeof(${concrete_ct}))'
 		}
-		g.write('(${ct}){._typ = ${type_id}, ._object = ${object}, .message = _str_${empty_sid}, .code = 0}')
+		boxed := actual !is types.Pointer
+		g.write('(${ct}){._typ = ${type_id}, ._object = ${object}, ._object_is_boxed = ${boxed}, .message = _str_${empty_sid}, .code = 0}')
 		return true
 	}
 	fields := g.tc.interface_fields[iface.name] or { []types.StructField{} }
@@ -1272,12 +1642,12 @@ fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.
 		tmp := g.tmp_count
 		g.tmp_count++
 		if actual is types.Pointer {
-			g.write('({ ${concrete_ct}* _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}')
+			g.write('({ ${concrete_ct}* _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}, ._object_is_boxed = false')
 			for field in fields {
 				g.write(', .${g.cname(field.name)} = _iface${tmp}->${g.cname(field.name)}')
 			}
 		} else {
-			g.write('({ ${concrete_ct} _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = memdup(&_iface${tmp}, sizeof(${concrete_ct}))')
+			g.write('({ ${concrete_ct} _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = memdup(&_iface${tmp}, sizeof(${concrete_ct})), ._object_is_boxed = true')
 			for field in fields {
 				g.write(', .${g.cname(field.name)} = _iface${tmp}.${g.cname(field.name)}')
 			}
@@ -1287,9 +1657,9 @@ fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.
 	}
 	g.write('(${ct}){._typ = ${type_id}, ._object = ')
 	if actual is types.Pointer {
-		g.write(expr)
+		g.write('${expr}, ._object_is_boxed = false')
 	} else {
-		g.write('memdup(&${expr}, sizeof(${concrete_ct}))')
+		g.write('memdup(&${expr}, sizeof(${concrete_ct})), ._object_is_boxed = true')
 	}
 	g.write('}')
 	return true
