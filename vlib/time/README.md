@@ -69,6 +69,37 @@ Omitted `month` and `day` values default to `1`, and out-of-range values panic.
 Use `t.is_zero()` to check whether a `time.Time` is still its zero value before formatting or
 serializing it.
 
+IANA time zone data can be loaded by name and used to convert Unix timestamps
+or UTC `Time` values to that location's calendar time. `load_location` searches
+`ZONEINFO`, system zoneinfo paths, and V's installed `zoneinfo.zip`. Programs
+that need embedded time zone data (no system zoneinfo, portable binaries) can
+import `time.tzdata`.
+
+```v
+import time
+import time.tzdata as _
+
+shanghai := time.load_location('Asia/Shanghai')!
+local := time.unix(1_704_067_200).in(shanghai)!
+assert local.format_ss() == '2024-01-01 08:00:00'
+assert local.unix() == 1_704_067_200
+assert (local.zone()!).offset == 28_800
+```
+
+IANA-zoned values keep `unix` as the absolute UTC epoch instant. Calendar
+fields (`year`, `hour`, ...) are wall time in that location. Prefer
+`t.location()` / `t.zone()` over the older `is_local` flag: `is_local` only
+marks system-local wall time with a fixed process offset and is left `false`
+on IANA-zoned `Time` values.
+
+The bundled `vlib/time/tzdata/zoneinfo.zip` is a store-only (uncompressed) zip
+of IANA zoneinfo files for offline use via `import time.tzdata`. Refresh it
+from a system zoneinfo tree when updating tzdata, for example:
+
+```sh
+cd /usr/share/zoneinfo && zip -0 -r /path/to/v/vlib/time/tzdata/zoneinfo.zip .
+```
+
 Another very useful feature of the `time` module is the stop watch,
 for when you want to measure short time periods, elapsed while you
 executed other tasks. [See](https://play.vlang.io/?query=f6c008bc34):
