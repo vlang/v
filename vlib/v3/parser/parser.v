@@ -5953,7 +5953,7 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 			continue
 		}
 		// module-qualified struct init: module.Type{} or module.Type{field: val, ...}
-		if !p.in_for_container && p.tok == .lcbr {
+		if p.tok == .lcbr && (!p.in_for_container || p.current_lcbr_is_attached()) {
 			lhs_node := p.a.nodes[int(lhs)]
 			if lhs_node.kind == .index {
 				if full_name := p.generic_struct_init_type_name(lhs) {
@@ -8708,6 +8708,11 @@ fn (mut p Parser) current_lcbr_looks_struct_init() bool {
 	p.peek_pos = saved_peek_pos
 	p.has_peek = saved_has_peek
 	return looks_struct_init
+}
+
+fn (p &Parser) current_lcbr_is_attached() bool {
+	return p.tok == .lcbr && p.tok_pos > 0 && p.tok_pos <= p.s.src.len
+		&& !p.s.src[p.tok_pos - 1].is_space()
 }
 
 fn (mut p Parser) current_generic_suffix_args_followed_by_lcbr() ?[]string {
