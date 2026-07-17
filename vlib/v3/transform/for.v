@@ -130,13 +130,14 @@ fn (mut t Transformer) transform_for_body(id flat.NodeId, node flat.Node) []flat
 	}
 	count := t.a.children.len - start
 	new_id := t.a.add_node(flat.Node{
-		kind:           .for_stmt
-		op:             node.op
-		children_start: start
-		children_count: flat.child_count(count)
-		pos:            node.pos
-		value:          node.value
-		typ:            node.typ
+		kind:                 .for_stmt
+		op:                   node.op
+		children_start:       start
+		children_count:       flat.child_count(count)
+		pos:                  node.pos
+		value:                node.value
+		typ:                  node.typ
+		skip_ownership_drops: node.skip_ownership_drops
 	})
 	if synthetic_continue_label.len > 0 {
 		return [
@@ -358,7 +359,7 @@ fn (mut t Transformer) transform_for_in_body(id flat.NodeId, node flat.Node) []f
 		return t.rebuild_for_in_stmt(id, node)
 	}
 	has_index := int(val_id) >= 0
-	if iter_type.starts_with('map[') {
+	if t.clean_map_type(iter_type).starts_with('map[') {
 		return t.rebuild_for_in_stmt(id, node)
 	}
 	if pool_iter := t.pool_get_results_iter_type(container_id) {
@@ -426,7 +427,40 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	key_id := t.a.child(&node, 0)
 	val_id := t.a.child(&node, 1)
 	container_id := t.a.child(&node, 2)
-	new_container := t.transform_expr(container_id)
+	raw_iter_type := t.detect_for_in_type(node)
+	iter_type := t.normalize_type_alias(raw_iter_type)
+	map_iter_type := t.clean_map_type(iter_type)
+	body_ids := t.a.children_of(&node)[header_count..].clone()
+	source_is_owned_temporary := !raw_iter_type.starts_with('&')
+		&& !t.expr_can_take_address(container_id)
+	mut new_container := if map_iter_type.starts_with('map[') && source_is_owned_temporary {
+		t.stable_expr_for_reuse(container_id)
+	} else {
+		t.transform_expr(container_id)
+	}
+	mut cleanup_owned_snapshot := false
+	if map_iter_type.starts_with('map[') && !isnil(t.tc)
+		&& t.for_in_body_contains_map_delete(body_ids, container_id) {
+		// C generation takes a structural snapshot for delete-capable map loops, but its
+		// values are shallow copies. First clone destructible entries here so deleting from
+		// the source map cannot invalidate an unvisited snapshot binding.
+		key_type, value_type := t.map_type_parts(map_iter_type)
+		key_needs_clone := t.normalize_type_alias(key_type).trim_space() != 'string'
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
+		value_needs_clone := t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type))
+		keys_are_cloneable := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(key_type)) == none
+		values_are_cloneable := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(value_type)) == none
+		if (key_needs_clone || value_needs_clone) && keys_are_cloneable && values_are_cloneable {
+			mut snapshot_source := new_container
+			if raw_iter_type.starts_with('&') {
+				snapshot_source = t.make_prefix(.mul, snapshot_source)
+				t.set_node_typ(int(snapshot_source), map_iter_type)
+			}
+			new_container = t.make_compiler_default_map_clone_value(snapshot_source, map_iter_type,
+				source_is_owned_temporary)
+			cleanup_owned_snapshot = true
+		}
+	}
 	mut new_range_end := flat.NodeId(-1)
 	if header_count == 4 {
 		range_end_id := t.a.child(&node, 3)
@@ -434,10 +468,9 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	}
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
-	raw_iter_type := t.detect_for_in_type(node)
-	iter_type := t.normalize_type_alias(raw_iter_type)
 	if int(new_container) >= 0 && iter_type.len > 0 {
-		t.set_node_typ(int(new_container), iter_type)
+		new_container_type := if cleanup_owned_snapshot { map_iter_type } else { iter_type }
+		t.set_node_typ(int(new_container), new_container_type)
 	}
 	has_index := int(val_id) >= 0
 	container_is_range := if int(container_id) >= 0 {
@@ -463,12 +496,11 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		// two loop vars: child0 = key/index, child1 = value/element
 		key_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
 		val_name := if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
-		if iter_type.starts_with('map[') || iter_type.starts_with('&map[') {
+		if map_iter_type.starts_with('map[') {
 			// map[K]V: child0 (key) -> key type, child1 (val) -> value type
-			map_type := if iter_type.starts_with('&map[') { iter_type[1..] } else { iter_type }
-			bracket_end := map_type.index(']') or { 0 }
+			bracket_end := map_iter_type.index(']') or { 0 }
 			if key_name.len > 0 && bracket_end > 4 {
-				t.set_var_type(key_name, map_type[4..bracket_end])
+				t.set_var_type(key_name, map_iter_type[4..bracket_end])
 			}
 		} else if iter_type.starts_with('[]') || iter_type == 'string' {
 			// []E: child0 (index) -> 'int'
@@ -477,7 +509,11 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			}
 		}
 		if val_name.len > 0 {
-			elem_type := t.infer_for_in_elem_type(iter_type, node)
+			elem_type := if map_iter_type.starts_with('map[') {
+				t.map_value_type(map_iter_type)
+			} else {
+				t.infer_for_in_elem_type(iter_type, node)
+			}
 			if elem_type.len > 0 {
 				val_type := if node.op == .amp || iter_type.starts_with('&map[') {
 					'&${elem_type}'
@@ -492,11 +528,31 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		if int(key_id) >= 0 {
 			key_name := t.a.nodes[int(key_id)].value
 			if key_name.len > 0 {
-				elem_type := t.infer_for_in_elem_type(iter_type, node)
+				elem_type := if map_iter_type.starts_with('map[') {
+					t.map_value_type(map_iter_type)
+				} else {
+					t.infer_for_in_elem_type(iter_type, node)
+				}
 				if elem_type.len > 0 {
 					t.set_var_type(key_name, elem_type)
 				}
 			}
+		}
+	}
+
+	mut binding_clones := []flat.NodeId{}
+	if map_iter_type.starts_with('map[') {
+		key_type, value_type := t.map_type_parts(map_iter_type)
+		if has_index {
+			key_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+			if t.normalize_type_alias(key_type).trim_space() != 'string' {
+				binding_clones << t.make_for_in_binding_clone(key_name, key_type)
+			}
+			value_name := if int(val_id) >= 0 { t.a.nodes[int(val_id)].value } else { '' }
+			binding_clones << t.make_for_in_binding_clone(value_name, value_type)
+		} else {
+			value_name := if int(key_id) >= 0 { t.a.nodes[int(key_id)].value } else { '' }
+			binding_clones << t.make_for_in_binding_clone(value_name, value_type)
 		}
 	}
 
@@ -507,8 +563,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	if header_count == 4 {
 		ids << new_range_end
 	}
-	body_ids := t.a.children_of(&node)[header_count..].clone()
-	mut new_body := []flat.NodeId{}
+	mut transformed_body := []flat.NodeId{}
 	mut pointer_value_name := ''
 	if node.op == .amp {
 		bind_id := if has_index { val_id } else { key_id }
@@ -527,7 +582,7 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 		had_pointer_value_rvalue := t.pointer_value_rvalues[pointer_value_name] or { false }
 		t.pointer_value_lvalues[pointer_value_name] = true
 		t.pointer_value_rvalues[pointer_value_name] = true
-		new_body = t.transform_stmts(body_ids)
+		transformed_body = t.transform_stmts(body_ids)
 		if had_pointer_value_lvalue {
 			t.pointer_value_lvalues[pointer_value_name] = true
 		} else {
@@ -539,8 +594,10 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 			t.pointer_value_rvalues.delete(pointer_value_name)
 		}
 	} else {
-		new_body = t.transform_stmts(body_ids)
+		transformed_body = t.transform_stmts(body_ids)
 	}
+	mut new_body := binding_clones.clone()
+	new_body << transformed_body
 	for bid in new_body {
 		ids << bid
 	}
@@ -548,16 +605,128 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 	for cid in ids {
 		t.a.children << cid
 	}
+	cleanup_owned_container := cleanup_owned_snapshot
+		|| (map_iter_type.starts_with('map[') && source_is_owned_temporary)
+	mut cleanup_guard_name := ''
+	if cleanup_owned_container {
+		cleanup_guard_name = t.new_temp('for_map_container_live')
+		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
+		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(new_container),
+			'void'))
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
+			t.make_block(arr1(deferred_drop)), t.make_empty())
+		defer_body := t.make_block(arr1(guarded_drop))
+		defer_start := t.a.children.len
+		t.a.children << defer_body
+		prefix << t.a.add_node(flat.Node{
+			kind:           .defer_stmt
+			children_start: defer_start
+			children_count: 1
+		})
+	}
 	prefix << t.a.add_node(flat.Node{
-		kind:           .for_in_stmt
-		op:             node.op
-		children_start: start
-		children_count: flat.child_count(ids.len)
-		pos:            node.pos
-		value:          node.value
-		typ:            if iter_type.len > 0 { iter_type } else { node.typ }
+		kind:                 .for_in_stmt
+		op:                   node.op
+		children_start:       start
+		children_count:       flat.child_count(ids.len)
+		pos:                  node.pos
+		value:                node.value
+		typ:                  if iter_type.len > 0 { iter_type } else { node.typ }
+		skip_ownership_drops: node.skip_ownership_drops
 	})
+	if cleanup_owned_container {
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(new_container), 'void'))
+		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
+	}
 	return prefix
+}
+
+fn (t &Transformer) for_in_body_contains_map_delete(body []flat.NodeId, container_id flat.NodeId) bool {
+	container_key := t.for_in_map_storage_key(container_id)
+	if container_key.len == 0 {
+		return false
+	}
+	for id in body {
+		if t.for_in_node_contains_map_delete(id, container_key) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) for_in_node_contains_map_delete(id flat.NodeId, container_key string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.fn_literal, .lambda_expr, .fn_decl] {
+		return false
+	}
+	if node.kind == .call && node.children_count > 0 {
+		fn_node := t.a.child_node(&node, 0)
+		if fn_node.kind == .selector && fn_node.value == 'delete' && fn_node.children_count > 0 {
+			receiver_id := t.a.child(fn_node, 0)
+			if t.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
+		}
+		if fn_node.kind == .ident && fn_node.value in ['map.delete', 'map__delete']
+			&& node.children_count > 1 {
+			receiver_id := t.a.child(&node, 1)
+			if t.for_in_map_storage_key(receiver_id) == container_key {
+				return true
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if t.for_in_node_contains_map_delete(t.a.child(&node, i), container_key) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (t &Transformer) for_in_map_storage_key(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.paren, .expr_stmt, .cast_expr, .as_expr] && node.children_count > 0 {
+		return t.for_in_map_storage_key(t.a.child(&node, 0))
+	}
+	if node.kind == .prefix && node.op in [.amp, .mul] && node.children_count > 0 {
+		return t.for_in_map_storage_key(t.a.child(&node, 0))
+	}
+	return t.expr_key(id)
+}
+
+// make_for_in_binding_clone turns a shallow container iteration copy into an independent
+// owner before the user loop body runs. The ownership checker records that cloned binding
+// for the iteration-tail drop.
+fn (mut t Transformer) make_for_in_binding_clone(name string, typ string) []flat.NodeId {
+	if name.len == 0 || name == '_' || !t.ownership_for_in_type_needs_clone(typ) {
+		return []flat.NodeId{}
+	}
+	pending_start := t.pending_stmts.len
+	cloned := t.make_compiler_default_clone_value(t.make_ident(name), typ, true)
+	mut stmts := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	stmts << t.make_assign(t.make_ident(name), cloned)
+	return stmts
+}
+
+fn (t &Transformer) ownership_for_in_type_needs_clone(typ string) bool {
+	if isnil(t.tc) || typ.len == 0 {
+		return false
+	}
+	parsed := t.tc.parse_type(typ)
+	if !t.tc.ownership_type_requires_destruction(parsed) {
+		return false
+	}
+	if _ := t.tc.ownership_default_clone_missing_method(parsed) {
+		return false
+	}
+	return t.compiler_default_clone_type_needs_work(typ)
 }
 
 fn (t &Transformer) iterator_for_in_info(iter_type string) ?IteratorForInInfo {
@@ -689,6 +858,16 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	if key.kind != .ident || key.value.len == 0 {
 		return arr1(id)
 	}
+	raw_container_type := t.raw_checker_node_type(container_id)
+	source_container_type := if t.node_type(container_id).len > 0 {
+		t.node_type(container_id)
+	} else if raw_container_type.len > 0 {
+		raw_container_type
+	} else {
+		iter_type
+	}
+	source_is_owned_temporary := !source_container_type.starts_with('&')
+		&& !t.expr_can_take_address(container_id)
 	container_node := if int(container_id) >= 0 { t.a.nodes[int(container_id)] } else { flat.Node{} }
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
 	mut container := if direct_map_index_container {
@@ -699,7 +878,6 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	mut prefix := []flat.NodeId{}
 	t.drain_pending(mut prefix)
 	mut actual_iter_type := iter_type
-	raw_container_type := t.raw_checker_node_type(container_id)
 	mut optional_container := flat.empty_node
 	if payload_type := for_iter_optional_payload_type(raw_container_type) {
 		if payload_type == actual_iter_type {
@@ -765,7 +943,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
 	cond := t.make_infix(.lt, t.make_ident(idx_name), len_expr)
 	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
-	elem_expr := if elem_needs_ref && actual_iter_type.starts_with('[]') {
+	mut elem_expr := if elem_needs_ref && actual_iter_type.starts_with('[]') {
 		t.array_get_ptr(container, t.make_ident(idx_name), elem_type)
 	} else if elem_needs_ref {
 		t.make_prefix(.amp, t.make_index(container, t.make_ident(idx_name), elem_type))
@@ -773,6 +951,13 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		t.array_get_value(container, t.make_ident(idx_name), elem_type)
 	} else {
 		t.make_index(container, t.make_ident(idx_name), elem_type)
+	}
+	mut binding_clones := []flat.NodeId{}
+	if elem_name != '_' && !elem_needs_ref && t.ownership_for_in_type_needs_clone(elem_type) {
+		pending_start := t.pending_stmts.len
+		elem_expr = t.make_compiler_default_clone_value(elem_expr, elem_type, true)
+		binding_clones = t.pending_stmts[pending_start..].clone()
+		t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	}
 	elem_decl := t.make_decl_assign_typed(elem_name, elem_expr, elem_var_type)
 	mut transformed_body := []flat.NodeId{}
@@ -796,14 +981,41 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		transformed_body = t.transform_stmts(body_ids)
 	}
 	mut new_body := []flat.NodeId{}
+	new_body << binding_clones
 	new_body << elem_decl
 	new_body << transformed_body
+	cleanup_target := if int(optional_container) >= 0 { optional_container } else { container }
+	cleanup_type := if int(optional_container) >= 0 { raw_container_type } else { actual_iter_type }
+	container_needs_drop := !isnil(t.tc) && cleanup_type.len > 0
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(cleanup_type))
+	cleanup_temporary := source_is_owned_temporary && container_needs_drop
+	mut cleanup_guard_name := ''
+	if cleanup_temporary {
+		cleanup_guard_name = t.new_temp('for_container_live')
+		prefix << t.make_decl_assign_typed(cleanup_guard_name, t.make_bool_literal(true), 'bool')
+		deferred_drop := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(cleanup_target),
+			'void'))
+		guarded_drop := t.make_if_with_skip_ownership_drops(t.make_ident(cleanup_guard_name),
+			t.make_block(arr1(deferred_drop)), t.make_empty())
+		defer_body := t.make_block(arr1(guarded_drop))
+		defer_start := t.a.children.len
+		t.a.children << defer_body
+		prefix << t.a.add_node(flat.Node{
+			kind:           .defer_stmt
+			children_start: defer_start
+			children_count: 1
+		})
+	}
 	for_stmt := t.make_for_stmt(init, cond, post, new_body, node)
 	if int(optional_container) >= 0 {
 		ok_cond := t.make_selector(optional_container, 'ok', 'bool')
 		prefix << t.make_if(ok_cond, t.make_block(arr1(for_stmt)), t.make_empty())
 	} else {
 		prefix << for_stmt
+	}
+	if cleanup_temporary {
+		prefix << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(cleanup_target), 'void'))
+		prefix << t.make_assign(t.make_ident(cleanup_guard_name), t.make_bool_literal(false))
 	}
 	return prefix
 }
@@ -851,12 +1063,13 @@ fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post fl
 		t.a.children << id
 	}
 	return t.a.add_node(flat.Node{
-		kind:           .for_stmt
-		op:             src.op
-		children_start: start
-		children_count: flat.child_count(3 + body.len)
-		pos:            src.pos
-		typ:            src.typ
+		kind:                 .for_stmt
+		op:                   src.op
+		children_start:       start
+		children_count:       flat.child_count(3 + body.len)
+		pos:                  src.pos
+		typ:                  src.typ
+		skip_ownership_drops: src.skip_ownership_drops || src.kind == .empty
 	})
 }
 

@@ -1394,23 +1394,24 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		'strings.Builder.free', 'strings.Builder.last_n', 'Builder.write_string', 'Builder.writeln',
 		'Builder.str', 'Builder.write_ptr', 'Builder.write_u8', 'Builder.write_runes', 'Builder.free',
 		'Builder.last_n', 'new_map', 'map__set', 'map__get', 'map__exists', 'map__get_check',
-		'map__get_or_set', 'map__delete', 'map__clear', 'map__clone', 'map__move', 'map__free',
-		'map__reserve', 'map__keys', 'map__values', 'v3_map_find', 'v3_map_set_sized', 'u8.is_digit',
-		'u8.is_letter', 'u8.is_alnum', 'u8.is_capital', 'bytestr', '[]u8.bytestr', '[]u8.hex',
-		'[]rune.string', 'Array_u8__bytestr', 'Array_u8__hex', 'Array_rune__string',
-		'array.repeat_to_depth', 'string.all_before_last', 'string__all_before_last',
-		'all_before_last', 'string.all_after_last', 'string__all_after_last', 'all_after_last',
-		'_ht_alloc', '_ht_free', 'f32_to_str_l', 'f32_to_str_l_with_dot', 'f64_to_str_l',
-		'f64_to_str_l_with_dot', 'print', 'println', 'eprint', 'eprintln', 'arguments', 'at_exit',
-		'tos2', 'tos3', 'tos_clone', 'v_prealloc_atomic_add_i32', 'v_prealloc_atomic_load_i32',
-		'v_prealloc_atomic_store_i32', 'v_prealloc_atomic_cas_i32', 'FD_ZERO', 'FD_SET', 'FD_ISSET',
-		'v_signal_with_handler_cast', 'normalize_path_in_builder', 'check_fwrite', 'check_fread',
-		'os.check_fwrite', 'os.check_fread', 'array_eq_raw', 'array_eq_string', 'array_eq_array',
-		'fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot', 'u8.vstring', 'u8.vstring_with_len',
-		'char.vstring', 'char.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len',
-		'charptr.vstring', 'charptr.vstring_with_len', 'u8.vstring_literal',
-		'u8.vstring_literal_with_len', 'char.vstring_literal', 'char.vstring_literal_with_len',
-		'byteptr.vstring_literal', 'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
+		'map__get_key_check', 'map__get_or_set', 'map__delete', 'map__clear', 'map__clone',
+		'map__move', 'map__free', 'map__reserve', 'map__keys', 'map__values', 'v3_map_find',
+		'v3_map_set_sized', 'u8.is_digit', 'u8.is_letter', 'u8.is_alnum', 'u8.is_capital', 'bytestr',
+		'[]u8.bytestr', '[]u8.hex', '[]rune.string', 'Array_u8__bytestr', 'Array_u8__hex',
+		'Array_rune__string', 'array.repeat_to_depth', 'string.all_before_last',
+		'string__all_before_last', 'all_before_last', 'string.all_after_last',
+		'string__all_after_last', 'all_after_last', '_ht_alloc', '_ht_free', 'f32_to_str_l',
+		'f32_to_str_l_with_dot', 'f64_to_str_l', 'f64_to_str_l_with_dot', 'print', 'println',
+		'eprint', 'eprintln', 'arguments', 'at_exit', 'tos2', 'tos3', 'tos_clone',
+		'v_prealloc_atomic_add_i32', 'v_prealloc_atomic_load_i32', 'v_prealloc_atomic_store_i32',
+		'v_prealloc_atomic_cas_i32', 'FD_ZERO', 'FD_SET', 'FD_ISSET', 'v_signal_with_handler_cast',
+		'normalize_path_in_builder', 'check_fwrite', 'check_fread', 'os.check_fwrite',
+		'os.check_fread', 'array_eq_raw', 'array_eq_string', 'array_eq_array', 'fxx_to_str_l_parse',
+		'fxx_to_str_l_parse_with_dot', 'u8.vstring', 'u8.vstring_with_len', 'char.vstring',
+		'char.vstring_with_len', 'byteptr.vstring', 'byteptr.vstring_with_len', 'charptr.vstring',
+		'charptr.vstring_with_len', 'u8.vstring_literal', 'u8.vstring_literal_with_len',
+		'char.vstring_literal', 'char.vstring_literal_with_len', 'byteptr.vstring_literal',
+		'byteptr.vstring_literal_with_len', 'charptr.vstring_literal',
 		'charptr.vstring_literal_with_len'] {
 		return true
 	}
@@ -2729,6 +2730,8 @@ fn (mut b Builder) register_map_runtime_stubs() {
 	p2_map_key << ptr_i8
 	get_check_id := b.register_synthetic_function('map__get_check', ptr_i8, p2_map_key)
 	b.generate_map_get_check_body(get_check_id)
+	get_key_check_id := b.register_synthetic_function('map__get_key_check', ptr_i8, p2_map_key)
+	b.generate_map_get_key_check_body(get_key_check_id)
 	get_or_set_id := b.register_synthetic_function('map__get_or_set', ptr_i8, p3)
 	b.generate_map_get_body(get_or_set_id)
 
@@ -4293,6 +4296,34 @@ fn (mut b Builder) generate_map_get_check_body(func_id int) {
 	val_size := b.block_instr1(.load, blk_found, b.i64_type, val_size_ptr)
 	offset := b.block_instr2(.mul, blk_found, b.i64_type, idx, val_size)
 	result := b.block_instr2(.add, blk_found, ptr_i8, vals, offset)
+	b.block_instr1(.ret, blk_found, b.void_type, result)
+
+	zero_ptr := b.m.get_or_add_const(ptr_i8, '0')
+	b.block_instr1(.ret, blk_missing, b.void_type, zero_ptr)
+}
+
+fn (mut b Builder) generate_map_get_key_check_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_map := b.m.type_store.get_ptr(b.map_type)
+	entry := b.m.add_block(func_id, 'entry')
+	map_ptr := b.func_add_argument(func_id, ptr_map, 'map')
+	key_ptr := b.func_add_argument(func_id, ptr_i8, 'key')
+	find_ref := b.m.add_value(.func_ref, b.void_type, 'v3_map_find', b.fn_ids['v3_map_find'])
+	idx := b.block_instr3(.call, entry, b.i64_type, find_ref, map_ptr, key_ptr)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	found := b.block_instr2(.ge, entry, b.i1_type, idx, zero)
+
+	blk_found := b.m.add_block(func_id, 'map_get_key_check_found')
+	blk_missing := b.m.add_block(func_id, 'map_get_key_check_missing')
+	b.block_instr3(.br, entry, b.void_type, found, ValueID(blk_found), ValueID(blk_missing))
+
+	state := b.map_state_ptr(blk_found, map_ptr)
+	keys_ptr := b.map_state_field_ptr(blk_found, state, 0)
+	key_size_ptr := b.map_state_field_ptr(blk_found, state, 4)
+	keys := b.block_instr1(.load, blk_found, ptr_i8, keys_ptr)
+	key_size := b.block_instr1(.load, blk_found, b.i64_type, key_size_ptr)
+	offset := b.block_instr2(.mul, blk_found, b.i64_type, idx, key_size)
+	result := b.block_instr2(.add, blk_found, ptr_i8, keys, offset)
 	b.block_instr1(.ret, blk_found, b.void_type, result)
 
 	zero_ptr := b.m.get_or_add_const(ptr_i8, '0')

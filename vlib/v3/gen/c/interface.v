@@ -10,9 +10,15 @@ fn (mut g FlatGen) emit_sum_type(name string) {
 	variants := g.tc.sum_types[name]
 	g.writeln('struct ${g.cname(name)} {')
 	g.writeln('\tint typ;')
+	g.writeln('\tbool _pointer_variant_is_owned;')
 	g.writeln('\tunion {')
 	for v in variants {
-		ct := g.value_c_type(g.tc.parse_canonical_type(v))
+		variant_type := select_receive_unalias_type(g.tc.parse_canonical_type(v))
+		ct := if variant_type is types.Pointer {
+			g.value_c_type(variant_type.base_type)
+		} else {
+			g.value_c_type(variant_type)
+		}
 		field := g.sum_field_name(v)
 		g.writeln('\t\t${ct}* ${field};')
 	}
@@ -810,7 +816,7 @@ fn (mut g FlatGen) gen_ierror_from_expr(id flat.NodeId) bool {
 fn (mut g FlatGen) ierror_none_literal_string() string {
 	type_id := g.ierror_type_id_for_pattern('None__')
 	empty_sid := g.intern_string('')
-	return '(IError){._typ = ${type_id}, ._object = memdup(&(None__){0}, sizeof(None__)), .message = _str_${empty_sid}, .code = 0}'
+	return '(IError){._typ = ${type_id}, ._object = memdup(&(None__){0}, sizeof(None__)), ._object_is_boxed = true, .message = _str_${empty_sid}, .code = 0}'
 }
 
 fn (mut g FlatGen) ierror_from_expr_string(id flat.NodeId) ?string {
@@ -841,6 +847,8 @@ fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual type
 	}
 	expr := g.expr_to_string(id)
 	concrete_ct := g.tc.c_type(g.tc.parse_canonical_type(concrete))
+	pointer_object_is_owned := actual is types.Pointer
+		&& g.ierror_pointer_payload_creates_owned_object(node)
 	object := if actual is types.Pointer {
 		if g.ierror_pointer_payload_needs_heap_copy(node)
 			|| g.ierror_pointer_payload_alias_needs_heap_copy(node) {
@@ -852,7 +860,20 @@ fn (mut g FlatGen) ierror_from_expr_string_with_type(id flat.NodeId, actual type
 		'memdup((${concrete_ct}[]){${expr}}, sizeof(${concrete_ct}))'
 	}
 	empty_sid := g.intern_string('')
-	return '(IError){._typ = ${type_id}, ._object = ${object}, .message = _str_${empty_sid}, .code = 0}'
+	boxed := pointer_object_is_owned || object.starts_with('memdup(')
+	return '(IError){._typ = ${type_id}, ._object = ${object}, ._object_is_boxed = ${boxed}, .message = _str_${empty_sid}, .code = 0}'
+}
+
+// ierror_pointer_payload_creates_owned_object reports pointer expressions whose C
+// lowering allocates independent storage. Result/interface destruction must release
+// these objects even though ordinary pointer-backed interface values are borrowed.
+fn (g &FlatGen) ierror_pointer_payload_creates_owned_object(node flat.Node) bool {
+	clean := g.ierror_pointer_payload_unwrapped_node(node)
+	if clean.kind != .prefix || clean.op != .amp || clean.children_count == 0 {
+		return false
+	}
+	child := g.ierror_pointer_payload_unwrapped_node(g.a.nodes[int(g.a.child(&clean, 0))])
+	return child.kind in [.struct_init, .assoc]
 }
 
 fn (g &FlatGen) ierror_pointer_payload_needs_heap_copy(node flat.Node) bool {
@@ -1057,7 +1078,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 		if actual is types.Pointer {
 			g.write('({ ${concrete_ct}* _iface${tmp} = ')
 			g.gen_expr(id)
-			g.write('; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}')
+			g.write('; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}, ._object_is_boxed = false')
 			for field in fields {
 				g.write(', .${g.cname(field.name)} = _iface${tmp}->${g.cname(field.name)}')
 			}
@@ -1065,7 +1086,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 		} else {
 			g.write('({ ${concrete_ct} _iface${tmp} = ')
 			g.gen_expr(id)
-			g.write('; (${ct}){._typ = ${type_id}, ._object = memdup(&_iface${tmp}, sizeof(${concrete_ct}))')
+			g.write('; (${ct}){._typ = ${type_id}, ._object = memdup(&_iface${tmp}, sizeof(${concrete_ct})), ._object_is_boxed = true')
 			for field in fields {
 				g.write(', .${g.cname(field.name)} = _iface${tmp}.${g.cname(field.name)}')
 			}
@@ -1076,14 +1097,15 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	g.write('(${ct}){._typ = ${type_id}, ._object = ')
 	if actual is types.Pointer {
 		g.gen_expr(id)
+		g.write(', ._object_is_boxed = false')
 	} else if node.kind in [.ident, .selector, .index] {
 		g.write('memdup(&')
 		g.gen_expr(id)
-		g.write(', sizeof(${concrete_ct}))')
+		g.write(', sizeof(${concrete_ct})), ._object_is_boxed = true')
 	} else {
 		g.write('memdup((${concrete_ct}[]){')
 		g.gen_expr(id)
-		g.write('}, sizeof(${concrete_ct}))')
+		g.write('}, sizeof(${concrete_ct})), ._object_is_boxed = true')
 	}
 	g.write('}')
 	return true
@@ -1130,6 +1152,33 @@ fn (g &FlatGen) interface_init_typ_id(node flat.Node) ?int {
 		}
 	}
 	return none
+}
+
+// interface_init_object_is_boxed reports whether an interface literal's `_object`
+// field owns a heap copy produced by memdup rather than borrowing a concrete pointer.
+fn (g &FlatGen) interface_init_object_is_boxed(node flat.Node) bool {
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.kind == .field_init && field.value == '_object' && field.children_count > 0 {
+			return g.interface_object_expr_is_boxed(g.a.child(field, 0))
+		}
+	}
+	return false
+}
+
+fn (g &FlatGen) interface_object_expr_is_boxed(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .call && node.children_count > 0 {
+		callee := g.a.child_node(&node, 0)
+		return callee.kind == .ident && callee.value == 'memdup'
+	}
+	if node.kind in [.cast_expr, .paren, .expr_stmt] && node.children_count > 0 {
+		return g.interface_object_expr_is_boxed(g.a.child(&node, 0))
+	}
+	return false
 }
 
 // interface_method_stubs emits a dispatch function for every abstract interface

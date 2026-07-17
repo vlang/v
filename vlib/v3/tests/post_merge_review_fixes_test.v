@@ -5610,3 +5610,10 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 		'const n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
 	assert fixed_field_out == '7'
 }
+
+fn test_discard_assignment_preserves_array_return_type() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'discard_array_return_no_context',
+		"fn values() []string {\n\treturn ['a', 'b']\n}\n\nfn main() {\n\t_ = values()\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
+}

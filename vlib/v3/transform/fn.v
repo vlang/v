@@ -6189,16 +6189,339 @@ fn (mut t Transformer) try_lower_struct_clone_method_call(_call_id flat.NodeId, 
 	if isnil(t.tc) || !t.tc.named_type_implements_marker(base_type, 'IClone') {
 		return none
 	}
-	// A user-defined clone() would have been lowered already; only supply the default copy.
+	// A concrete generic receiver can have a handwritten clone() on its open
+	// generic declaration. Leave that call intact for monomorphization instead
+	// of replacing it with the compiler-provided field clone.
+	if base_type.contains('[') && base_type.ends_with(']') {
+		if _ := t.tc.resolve_generic_struct_method(base_type, 'clone') {
+			return none
+		}
+	}
+	// A user-defined clone() would have been lowered already; only supply the default clone.
 	if t.resolve_receiver_method_name(base_id, 'clone').len > 0 {
 		return none
+	}
+	// The checker reports the concrete ownership-bearing field that has no safe clone.
+	// Do not turn the rejected default clone into a shallow aggregate copy while
+	// transforming the invalid program.
+	if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(base_type)) {
+		return t.make_empty()
 	}
 	mut receiver := t.transform_expr(base_id)
 	if raw_base_type.starts_with('&') {
 		receiver = t.make_prefix(.mul, receiver)
 		t.set_node_typ(int(receiver), base_type)
 	}
-	return receiver
+	return t.make_compiler_default_clone_value(receiver, base_type, false)
+}
+
+// make_compiler_default_clone_value recursively clones the storage-owning fields of a
+// compiler-provided IClone value. The initial aggregate copy preserves scalar/reference
+// fields, and each owning field is then replaced with its independent clone.
+fn (mut t Transformer) make_compiler_default_clone_value(source flat.NodeId, typ string, allow_method bool) flat.NodeId {
+	clean := t.normalize_type_alias(typ).trim_space()
+	if clean.len == 0 || clean.starts_with('&') {
+		return source
+	}
+	// Options and results both store successful values behind the `ok` flag.
+	if clean.starts_with('?') || clean.starts_with('!') {
+		inner := t.optional_base_type(t.qualify_optional_type(clean))
+		inner_needs_work := t.compiler_default_clone_type_needs_work(inner)
+		tmp_name := t.new_temp('derived_clone_opt')
+		t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, clean)
+		tmp := t.make_ident(tmp_name)
+		mut body := []flat.NodeId{}
+		if inner_needs_work {
+			source_value := t.make_selector(tmp, 'value', inner)
+			pending_start := t.pending_stmts.len
+			cloned_value := t.make_compiler_default_clone_value(source_value, inner, true)
+			body = t.pending_stmts[pending_start..].clone()
+			t.pending_stmts = t.pending_stmts[..pending_start].clone()
+			body << t.make_assign(t.make_selector(t.make_ident(tmp_name), 'value', inner),
+				cloned_value)
+		}
+		source_err := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
+		t.mark_fn_used('string__clone')
+		if !isnil(t.tc) {
+			for concrete in t.tc.ierror_impl_names() {
+				if clone_method := t.tc.concrete_method_signature_key(concrete, 'clone') {
+					t.mark_fn_used_name(clone_method)
+				}
+			}
+		}
+		cloned_err := t.make_call_typed('__v3_clone_owned_ierror', arr1(source_err), 'IError')
+		else_branch := t.make_block(arr1(t.make_assign(t.make_selector(t.make_ident(tmp_name),
+			'err', 'IError'), cloned_err)))
+		t.pending_stmts << t.make_if(t.make_selector(tmp, 'ok', 'bool'), t.make_block(body),
+			else_branch)
+		return t.make_ident(tmp_name)
+	}
+	if clean == 'string' {
+		t.mark_fn_used('string__clone')
+		return t.make_call_typed('string__clone', arr1(source), 'string')
+	}
+	if clean.starts_with('[]') {
+		return t.make_compiler_default_array_clone_value(source, clean,
+			!t.expr_can_take_address(source))
+	}
+	if t.is_fixed_array_type(clean) {
+		return t.make_compiler_default_fixed_array_clone_value(source, clean)
+	}
+	if clean.starts_with('map[') {
+		return t.make_compiler_default_map_clone_value(source, clean,
+			!t.expr_can_take_address(source))
+	}
+	if allow_method {
+		if !isnil(t.tc) && clean.contains('[') && clean.ends_with(']') {
+			if _ := t.tc.resolve_generic_struct_method(clean, 'clone') {
+				call := t.make_method_call(source, 'clone', []flat.NodeId{})
+				t.set_node_typ(int(call), clean)
+				return call
+			}
+		}
+		method_name := t.resolve_receiver_method_name(source, 'clone')
+		if method_name.len > 0 {
+			params := t.call_param_types(method_name)
+			mut receiver := source
+			if params.len > 0 && params[0].name().starts_with('&') {
+				receiver = t.runtime_addr(source, clean)
+			}
+			t.mark_fn_used_name(method_name)
+			return t.make_call_typed(method_name, arr1(receiver), t.receiver_method_return_type(method_name,
+				clean))
+		}
+	}
+	if isnil(t.tc) || !t.tc.named_type_implements_marker(clean, 'IClone') {
+		return source
+	}
+	info := t.lookup_struct_info(clean) or { return source }
+	mut owning_fields := []FieldInfo{}
+	for field in info.fields {
+		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
+		if t.compiler_default_clone_type_needs_work(field_type) {
+			owning_fields << field
+		}
+	}
+	if owning_fields.len == 0 {
+		return source
+	}
+	// An addressable source keeps owning its fields, so the aggregate copy below is
+	// only a non-owning template. A temporary source transfers its fields into the
+	// aggregate and those originals must be destroyed after their clones are saved.
+	source_fields_are_owned := !t.expr_can_take_address(source)
+	tmp_name := t.new_temp('derived_clone')
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, source, clean)
+	for field in owning_fields {
+		field_type := if field.typ.len > 0 { field.typ } else { field.raw_typ }
+		source_field := t.make_selector(t.make_ident(tmp_name), field.name, field_type)
+		mut cloned_field := t.make_compiler_default_clone_value(source_field, field_type, true)
+		if source_fields_are_owned {
+			cloned_name := t.new_temp('derived_clone_field')
+			t.pending_stmts << t.make_decl_assign_typed(cloned_name, cloned_field, field_type)
+			drop_call := t.make_call_typed('drop_owned', arr1(source_field), 'void')
+			t.pending_stmts << t.make_expr_stmt(drop_call)
+			cloned_field = t.make_ident(cloned_name)
+		}
+		t.pending_stmts << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.name,
+			field_type), cloned_field)
+	}
+	return t.make_ident(tmp_name)
+}
+
+// make_compiler_default_array_clone_value clones the array storage and then replaces
+// each owning element with an independent clone. The initial element copies are not
+// owners and are deliberately overwritten without being dropped. The caller classifies
+// the source lifetime before transformation can make a temporary addressable.
+fn (mut t Transformer) make_compiler_default_array_clone_value(source flat.NodeId, array_type string, source_is_owned_temporary bool) flat.NodeId {
+	elem_type := array_type[2..]
+	if !t.compiler_default_clone_type_needs_work(elem_type) {
+		return t.make_array_clone_value(source, array_type)
+	}
+	stable_source := t.stable_transformed_expr_for_reuse(source, array_type,
+		'derived_clone_array_source')
+	out_name := t.new_temp('derived_clone_array')
+	idx_name := t.new_temp('derived_clone_array_idx')
+	t.mark_fn_used('array__clone')
+	storage_clone := t.make_call_typed('array__clone', arr1(t.runtime_addr(stable_source,
+		array_type)), array_type)
+	t.pending_stmts << t.make_decl_assign_typed(out_name, storage_clone, array_type)
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(t.make_ident(out_name),
+		'len', 'int'))
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	source_elem := t.array_get_value(stable_source, t.make_ident(idx_name), elem_type)
+	pending_start := t.pending_stmts.len
+	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
+	mut body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
+		cloned_elem)
+	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
+		skip_ownership_drops: true
+	})
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+	}
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), array_type)
+	return result
+}
+
+// make_compiler_default_fixed_array_clone_value copies the fixed-array storage and
+// replaces each owning element with an independent clone. The initial element copies
+// are non-owning and are overwritten without being dropped.
+fn (mut t Transformer) make_compiler_default_fixed_array_clone_value(source flat.NodeId, raw_fixed_type string) flat.NodeId {
+	fixed_type := t.resolved_fixed_array_canonical_type(raw_fixed_type)
+	elem_type := fixed_array_elem_type(fixed_type)
+	if !t.compiler_default_clone_type_needs_work(elem_type) {
+		return source
+	}
+	source_is_owned_temporary := !t.expr_can_take_address(source)
+	stable_source := t.stable_transformed_expr_for_reuse(source, fixed_type,
+		'derived_clone_fixed_array_source')
+	out_name := t.new_temp('derived_clone_fixed_array')
+	idx_name := t.new_temp('derived_clone_fixed_array_idx')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, stable_source, fixed_type)
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), t.make_fixed_array_len_expr(fixed_type))
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	source_elem := t.make_index(stable_source, t.make_ident(idx_name), elem_type)
+	pending_start := t.pending_stmts.len
+	cloned_elem := t.make_compiler_default_clone_value(source_elem, elem_type, true)
+	mut body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	body << t.make_assign(t.make_index(t.make_ident(out_name), t.make_ident(idx_name), elem_type),
+		cloned_elem)
+	t.pending_stmts << t.make_for_stmt(init, cond, post, body, flat.Node{
+		skip_ownership_drops: true
+	})
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+	}
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), fixed_type)
+	return result
+}
+
+// make_compiler_default_map_clone_value constructs a fresh map, recursively clones
+// owning non-string keys and values, and lets map key callbacks clone string keys.
+// The source lifetime is classified by the caller before transformation can turn a
+// temporary literal into an addressable synthetic identifier.
+fn (mut t Transformer) make_compiler_default_map_clone_value(source flat.NodeId, map_type string, source_is_owned_temporary bool) flat.NodeId {
+	key_type, value_type := t.map_type_parts(map_type)
+	clean_key_type := t.normalize_type_alias(key_type).trim_space()
+	key_needs_clone := clean_key_type != 'string'
+		&& t.compiler_default_clone_type_needs_work(key_type)
+	value_needs_clone := t.compiler_default_clone_type_needs_work(value_type)
+	stable_source := t.stable_transformed_expr_for_reuse(source, map_type,
+		'derived_clone_map_source')
+	if key_type.len == 0 || value_type.len == 0 || (!key_needs_clone && !value_needs_clone) {
+		t.mark_fn_used('map__clone')
+		storage_clone := t.make_call_typed('map__clone', arr1(t.runtime_addr(stable_source,
+			map_type)), map_type)
+		if !source_is_owned_temporary {
+			return storage_clone
+		}
+		out_name := t.new_temp('derived_clone_map')
+		t.pending_stmts << t.make_decl_assign_typed(out_name, storage_clone, map_type)
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+		result := t.make_ident(out_name)
+		t.set_node_typ(int(result), map_type)
+		return result
+	}
+	out_name := t.new_temp('derived_clone_map')
+	key_name := t.new_temp('derived_clone_map_key')
+	source_value_name := t.new_temp('derived_clone_map_source_value')
+	cloned_key_name := t.new_temp('derived_clone_map_cloned_key')
+	value_name := t.new_temp('derived_clone_map_value')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, t.make_new_map_call(map_type), map_type)
+	key_storage_type := t.map_key_storage_type(key_type)
+	t.set_var_type(key_name, key_storage_type)
+	t.set_var_type(source_value_name, value_type)
+	pending_start := t.pending_stmts.len
+	cloned_key := if key_needs_clone {
+		t.make_compiler_default_clone_value(t.make_ident(key_name), key_type, true)
+	} else {
+		t.make_ident(key_name)
+	}
+	cloned_value := if value_needs_clone {
+		t.make_compiler_default_clone_value(t.make_ident(source_value_name), value_type, true)
+	} else {
+		t.make_ident(source_value_name)
+	}
+	mut body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	map_key_name := if key_needs_clone { cloned_key_name } else { key_name }
+	if key_needs_clone {
+		body << t.make_decl_assign_typed(cloned_key_name, cloned_key, key_storage_type)
+	}
+	body << t.make_decl_assign_typed(value_name, cloned_value, value_type)
+	body << t.make_map_set_stmt(t.make_ident(out_name), map_type, map_key_name, value_name)
+	if clean_key_type == 'string' {
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(key_name)),
+			'void'))
+	}
+	start := t.a.children.len
+	t.a.children << t.make_ident(key_name)
+	t.a.children << t.make_ident(source_value_name)
+	t.a.children << stable_source
+	for stmt in body {
+		t.a.children << stmt
+	}
+	t.pending_stmts << t.a.add_node(flat.Node{
+		kind:                 .for_in_stmt
+		children_start:       start
+		children_count:       flat.child_count(3 + body.len)
+		value:                '3'
+		skip_ownership_drops: true
+	})
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+	}
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), map_type)
+	return result
+}
+
+fn (t &Transformer) compiler_default_clone_type_needs_work(typ string) bool {
+	clean := t.normalize_type_alias(typ).trim_space()
+	if clean.len == 0 || clean.starts_with('&') {
+		return false
+	}
+	if clean.starts_with('!') {
+		return true
+	}
+	if clean.starts_with('?') {
+		return true
+	}
+	if t.is_fixed_array_type(clean) {
+		return t.compiler_default_clone_type_needs_work(fixed_array_elem_type(clean))
+	}
+	if clean == 'string' || clean.starts_with('[]') || clean.starts_with('map[') {
+		return true
+	}
+	if !isnil(t.tc) {
+		parsed := t.tc.parse_type(clean)
+		if t.tc.ownership_type_requires_destruction(parsed)
+			|| t.tc.named_type_implements_marker(clean, 'IClone') {
+			return true
+		}
+	}
+	if clean in t.structs || clean in t.sum_types {
+		for name, _ in t.fn_ret_types {
+			if name == '${clean}.clone' {
+				return true
+			}
+		}
+		if !isnil(t.tc) && '${clean}.clone' in t.tc.fn_ret_types {
+			return true
+		}
+	}
+	return false
 }
 
 // try_lower_array_method_call supports try lower array method call handling for Transformer.
@@ -6547,12 +6870,16 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return t.make_array_clone_call(base_id, base_type)
 		}
 		'reverse' {
-			mut receiver := t.transform_expr(base_id)
-			if base_type.starts_with('&') {
-				receiver = t.make_prefix(.mul, receiver)
-				t.set_node_typ(int(receiver), clean_base_type)
+			method_name := t.resolve_collection_receiver_method_name(base_id, fn_node.value,
+				clean_base_type)
+			if method_name.len > 0 && t.call_resolved_to_method(call_id, method_name)
+				&& !t.receiver_method_name_is_open_generic(method_name) {
+				args := t.transform_receiver_method_args(node, base_id, method_name)
+				ret_type := t.receiver_method_return_type(method_name, node.typ)
+				t.mark_fn_used(method_name)
+				return t.make_call_typed(method_name, args, ret_type)
 			}
-			return t.make_call_typed('array__reverse', arr1(receiver), clean_base_type)
+			return t.make_array_reverse_call(base_id, base_type)
 		}
 		'contains' {
 			if node.children_count < 2 {
@@ -6618,6 +6945,16 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					&& !t.validate_cgen_array_method_args(node, base_id, clean_base_type, fn_node.value) {
 					return t.make_empty()
 				}
+				if lowered := t.lower_owned_array_accessor_call(base_id, base_type, elem_type,
+					fn_node.value)
+				{
+					return lowered
+				}
+				if lowered := t.lower_owned_array_removal_call(node, base_id, base_type, elem_type,
+					fn_node.value)
+				{
+					return lowered
+				}
 				if array_method_stays_in_cgen_needs_runtime_mark(fn_node.value) {
 					t.mark_fn_used('array__${fn_node.value}')
 				}
@@ -6633,6 +6970,16 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 					t.mark_fn_used(method_name)
 					return t.make_call_typed(method_name, args, ret_type)
 				}
+				if lowered := t.lower_owned_array_accessor_call(base_id, base_type, elem_type,
+					fn_node.value)
+				{
+					return lowered
+				}
+				if lowered := t.lower_owned_array_removal_call(node, base_id, base_type, elem_type,
+					fn_node.value)
+				{
+					return lowered
+				}
 				args := t.transform_receiver_method_args(node, base_id, array_builtin_method)
 				ret_type := t.receiver_method_return_type(array_builtin_method, node.typ)
 				return t.make_call_typed(array_builtin_method, args, ret_type)
@@ -6640,6 +6987,277 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 			return none
 		}
 	}
+}
+
+// lower_owned_array_accessor_call returns an independent clone for a non-removing array
+// accessor. The stored element remains owned by the array and will be destroyed with it.
+fn (mut t Transformer) lower_owned_array_accessor_call(base_id flat.NodeId, base_type string, elem_type string, method string) ?flat.NodeId {
+	if method !in ['first', 'last'] || isnil(t.tc) {
+		return none
+	}
+	elem := t.tc.parse_type(elem_type)
+	if !t.tc.ownership_type_requires_destruction(elem) {
+		return none
+	}
+	if _ := t.tc.ownership_default_clone_missing_method(elem) {
+		// The checker rejects this accessor. Do not fall through to the raw shallow
+		// first()/last() path while transforming the invalid program.
+		return t.make_empty()
+	}
+	source_is_owned_temporary := !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
+	base := t.stable_expr_for_reuse(base_id)
+	clean_base_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	mut array_value := base
+	if base_type.starts_with('&') {
+		array_value = t.make_prefix(.mul, base)
+		t.set_node_typ(int(array_value), clean_base_type)
+	}
+	empty := t.make_infix(.eq, t.make_selector(array_value, 'len', 'int'), t.make_int_literal(0))
+	t.pending_stmts << t.make_if(empty,
+		t.make_block(arr1(t.make_panic_stmt('array.${method}: array is empty'))), t.make_empty())
+	index := if method == 'first' {
+		t.make_int_literal(0)
+	} else {
+		t.make_infix(.minus, t.make_selector(array_value, 'len', 'int'), t.make_int_literal(1))
+	}
+	stored := t.make_index(array_value, index, elem_type)
+	cloned := t.make_compiler_default_clone_value(stored, elem_type, true)
+	if !source_is_owned_temporary {
+		return cloned
+	}
+	result_name := t.new_temp('array_accessor_result')
+	t.pending_stmts << t.make_decl_assign_typed(result_name, cloned, elem_type)
+	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(array_value), 'void'))
+	return t.make_ident(result_name)
+}
+
+// lower_owned_array_removal_call drops ownership-bearing elements before a raw array
+// operation removes them from the range visited by the scope-exit destructor.
+fn (mut t Transformer) lower_owned_array_removal_call(node flat.Node, base_id flat.NodeId, base_type string, elem_type string, method string) ?flat.NodeId {
+	if method !in ['delete', 'delete_many', 'clear', 'free', 'trim', 'drop', 'delete_last']
+		|| isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+		return none
+	}
+	base := t.stable_expr_for_reuse(base_id)
+	clean_base_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
+	mut array_value := base
+	if base_type.starts_with('&') {
+		array_value = t.make_prefix(.mul, base)
+		t.set_node_typ(int(array_value), clean_base_type)
+	}
+	mut args := []flat.NodeId{}
+	mut drop_stmts := []flat.NodeId{}
+	mut valid_drop_range := flat.empty_node
+	match method {
+		'delete' {
+			if node.children_count < 2 {
+				return none
+			}
+			index := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 1),
+				'int'), 'int', 'array_delete_index')
+			args << index
+			drop_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_index(array_value,
+				index, elem_type)), 'void'))
+			valid_drop_range = t.make_infix(.logical_and, t.make_infix(.ge, index,
+				t.make_int_literal(0)), t.make_infix(.lt, index, t.make_selector(array_value,
+				'len', 'int')))
+		}
+		'delete_many' {
+			if node.children_count < 3 {
+				return none
+			}
+			index := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 1),
+				'int'), 'int', 'array_delete_index')
+			size := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 2),
+				'int'), 'int', 'array_delete_size')
+			args << index
+			args << size
+			t.append_owned_array_drop_range(array_value, elem_type, index, t.make_infix(.plus,
+				index, size), mut drop_stmts)
+			end := t.make_infix(.plus, t.make_cast('i64', index, 'i64'), t.make_cast('i64', size,
+				'i64'))
+			valid_drop_range = t.make_infix(.logical_and, t.make_infix(.ge, index,
+				t.make_int_literal(0)), t.make_infix(.le, end, t.make_cast('i64', t.make_selector(array_value,
+				'len', 'int'), 'i64')))
+		}
+		'clear', 'free' {
+			t.append_owned_array_drop_range(array_value, elem_type, t.make_int_literal(0), t.make_selector(array_value,
+				'len', 'int'), mut drop_stmts)
+		}
+		'trim' {
+			if node.children_count < 2 {
+				return none
+			}
+			index := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 1),
+				'int'), 'int', 'array_trim_index')
+			args << index
+			t.append_owned_array_drop_range(array_value, elem_type, index, t.make_selector(array_value,
+				'len', 'int'), mut drop_stmts)
+		}
+		'drop' {
+			if node.children_count < 2 {
+				return none
+			}
+			count := t.stable_transformed_expr_for_reuse(t.transform_expr_for_type(t.a.child(&node, 1),
+				'int'), 'int', 'array_drop_count')
+			args << count
+			t.append_owned_array_drop_prefix(array_value, elem_type, count, mut drop_stmts)
+		}
+		'delete_last' {
+			last := t.make_infix(.minus, t.make_selector(array_value, 'len', 'int'),
+				t.make_int_literal(1))
+			drop_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_index(array_value,
+				last, elem_type)), 'void'))
+			valid_drop_range = t.make_infix(.gt, t.make_selector(array_value, 'len', 'int'),
+				t.make_int_literal(0))
+		}
+		else {
+			return none
+		}
+	}
+
+	if drop_stmts.len > 0 {
+		needs_unique_shrink := t.make_method_call(array_value, 'needs_unique_shrink',
+			[]flat.NodeId{})
+		t.set_node_typ(int(needs_unique_shrink), 'bool')
+		t.mark_fn_used('array.needs_unique_shrink')
+		mut should_drop := t.make_prefix(.not, needs_unique_shrink)
+		if int(valid_drop_range) >= 0 {
+			should_drop = t.make_infix(.logical_and, valid_drop_range, should_drop)
+		}
+		start := t.a.children.len
+		t.a.children << should_drop
+		t.a.children << t.make_block(drop_stmts)
+		t.pending_stmts << t.a.add_node(flat.Node{
+			kind:                 .if_expr
+			children_start:       start
+			children_count:       2
+			skip_ownership_drops: true
+		})
+	}
+
+	if array_method_stays_in_cgen_needs_runtime_mark(method) {
+		t.mark_fn_used('array__${method}')
+	}
+	call := t.make_method_call(base, method, args)
+	t.set_node_typ(int(call), node.typ)
+	if method == 'free' {
+		// Keep scope-exit destruction safe even when the raw backend free does not
+		// mutate the original header in place.
+		t.pending_stmts << t.make_expr_stmt(call)
+		t.pending_stmts << t.make_assign(array_value, t.zero_value_for_type(clean_base_type))
+		return t.make_empty()
+	}
+	return call
+}
+
+fn (mut t Transformer) append_owned_array_drop_prefix(array_value flat.NodeId, elem_type string, count flat.NodeId, mut stmts []flat.NodeId) {
+	idx_name := t.new_temp('array_drop_index')
+	init := t.make_decl_assign_typed(idx_name, t.make_int_literal(0), 'int')
+	below_count := t.make_infix(.lt, t.make_ident(idx_name), count)
+	below_len := t.make_infix(.lt, t.make_ident(idx_name), t.make_selector(array_value, 'len',
+		'int'))
+	cond := t.make_infix(.logical_and, below_count, below_len)
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	elem := t.make_index(array_value, t.make_ident(idx_name), elem_type)
+	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(elem), 'void'))
+	stmts << t.make_for_stmt(init, cond, post, arr1(drop_stmt), flat.Node{
+		skip_ownership_drops: true
+	})
+}
+
+fn (mut t Transformer) append_owned_array_drop_range(array_value flat.NodeId, elem_type string, start flat.NodeId, end flat.NodeId, mut stmts []flat.NodeId) {
+	idx_name := t.new_temp('array_drop_index')
+	init := t.make_decl_assign_typed(idx_name, start, 'int')
+	cond := t.make_infix(.lt, t.make_ident(idx_name), end)
+	post := t.make_expr_stmt(t.make_postfix(t.make_ident(idx_name), .inc))
+	elem := t.make_index(array_value, t.make_ident(idx_name), elem_type)
+	drop_stmt := t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(elem), 'void'))
+	stmts << t.make_for_stmt(init, cond, post, arr1(drop_stmt), flat.Node{
+		skip_ownership_drops: true
+	})
+}
+
+// try_lower_ignored_owned_array_pop_stmt destroys an owned array element result when the
+// source program ignores it. Pop methods transfer the removed element from owning arrays,
+// while slices and arrays with live slice views still alias shared backing storage.
+// First/last produce the independent clone supplied by lower_owned_array_accessor_call.
+fn (mut t Transformer) try_lower_ignored_owned_array_pop_stmt(call_id flat.NodeId, node flat.Node) ?[]flat.NodeId {
+	if node.kind != .call || node.children_count == 0 || isnil(t.tc) {
+		return none
+	}
+	fn_node := t.a.child_node(&node, 0)
+	if fn_node.kind != .selector || fn_node.value !in ['first', 'last', 'pop', 'pop_left']
+		|| fn_node.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(fn_node, 0)
+	mut base_type := t.node_type(base_id)
+	if base_type.len == 0 {
+		base_type = t.lvalue_type(base_id)
+	}
+	clean_base_type := t.normalize_type_alias(base_type.trim_left('&'))
+	if !clean_base_type.starts_with('[]') {
+		return none
+	}
+	elem_type := clean_base_type[2..]
+	if !t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type)) {
+		return none
+	}
+	array_builtin_method := t.array_builtin_method_name(fn_node.value) or { '' }
+	method_name := t.resolve_collection_receiver_method_name(base_id, fn_node.value,
+		clean_base_type)
+	if method_name.len > 0 && method_name != array_builtin_method
+		&& t.call_resolved_to_method(call_id, method_name)
+		&& !t.receiver_method_name_is_open_generic(method_name) {
+		return none
+	}
+	mut result := []flat.NodeId{}
+	mut popped := flat.empty_node
+	mut array_value := flat.empty_node
+	mut drop_result_guard_name := ''
+	if fn_node.value in ['pop', 'pop_left'] {
+		base := t.stable_expr_for_reuse(base_id)
+		t.drain_pending(mut result)
+		array_value = base
+		if base_type.starts_with('&') {
+			array_value = t.make_prefix(.mul, base)
+			t.set_node_typ(int(array_value), clean_base_type)
+		}
+		needs_unique_shrink := t.make_method_call(array_value, 'needs_unique_shrink',
+			[]flat.NodeId{})
+		t.set_node_typ(int(needs_unique_shrink), 'bool')
+		t.mark_fn_used('array.needs_unique_shrink')
+		drop_result_guard_name = t.new_temp('ignored_array_pop_can_drop')
+		result << t.make_decl_assign_typed(drop_result_guard_name, t.make_prefix(.not,
+			needs_unique_shrink), 'bool')
+		popped = t.make_method_call(array_value, fn_node.value, []flat.NodeId{})
+		t.set_node_typ(int(popped), elem_type)
+		if fn_node.value == 'pop' {
+			t.mark_fn_used('array__pop')
+		}
+	} else {
+		popped = t.transform_expr(call_id)
+		t.drain_pending(mut result)
+	}
+	popped_name := t.new_temp('ignored_array_pop')
+	result << t.make_decl_assign_typed(popped_name, popped, elem_type)
+	drop_result := t.make_expr_stmt(t.make_call_typed('drop_owned',
+		arr1(t.make_ident(popped_name)), 'void'))
+	if fn_node.value in ['pop', 'pop_left'] {
+		start := t.a.children.len
+		t.a.children << t.make_ident(drop_result_guard_name)
+		t.a.children << t.make_block(arr1(drop_result))
+		result << t.a.add_node(flat.Node{
+			kind:                 .if_expr
+			children_start:       start
+			children_count:       2
+			skip_ownership_drops: true
+		})
+	} else {
+		result << drop_result
+	}
+	return result
 }
 
 fn (t &Transformer) array_builtin_method_name(method string) ?string {
@@ -6800,11 +7418,63 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		t.mark_fn_used(method_name)
 		return t.make_call_typed(method_name, args, ret_type)
 	}
+	if fn_node.value == 'clone' {
+		key_type, value_type := t.map_type_parts(clean_type)
+		if key_type.len == 0 || value_type.len == 0 {
+			return none
+		}
+		mut clean_base_type := t.normalize_type_alias(base_type).trim_space()
+		for clean_base_type.starts_with('shared ') {
+			clean_base_type = clean_base_type[7..].trim_space()
+		}
+		source_is_owned_temporary := !clean_base_type.starts_with('&')
+			&& !t.expr_can_take_address(base_id)
+		mut source := t.transform_expr(base_id)
+		if clean_base_type.starts_with('&') {
+			source = t.make_prefix(.mul, source)
+			t.set_node_typ(int(source), clean_type)
+		}
+		if isnil(t.tc) || !t.tc.ownership_type_requires_destruction(t.tc.parse_type(clean_type)) {
+			t.mark_fn_used('map__clone')
+			return t.make_call_typed('map__clone', arr1(t.runtime_addr(source, clean_type)),
+				clean_type)
+		}
+		// The checker rejects this call. Do not lower it to the unsafe raw clone while
+		// processing the invalid program.
+		if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(key_type)) {
+			return source
+		}
+		if _ := t.tc.ownership_default_clone_missing_method(t.tc.parse_type(value_type)) {
+			return source
+		}
+		return t.make_compiler_default_map_clone_value(source, clean_type,
+			source_is_owned_temporary)
+	}
+	source_is_owned_temporary := !base_type.starts_with('&') && !t.expr_can_take_address(base_id)
 	base := t.stable_expr_for_reuse(base_id)
 	if map_method_needs_runtime_addr_only(fn_node.value) {
+		key_type, value_type := t.map_type_parts(clean_type)
+		if key_type.len > 0 && value_type.len > 0 {
+			t.append_owned_map_entries_drop_before_reset(base, base_type, key_type, value_type,
+				fn_node.value)
+		}
 		t.mark_fn_used('map__${fn_node.value}')
-		return t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
+		call := t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
 			'void')
+		if fn_node.value == 'free' && !isnil(t.tc)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(clean_type)) {
+			mut map_value := base
+			if base_type.starts_with('&') {
+				map_value = t.make_prefix(.mul, base)
+				t.set_node_typ(int(map_value), clean_type)
+			}
+			// Keep scope-exit destruction safe after the raw runtime free leaves the
+			// original map header unchanged.
+			t.pending_stmts << t.make_expr_stmt(call)
+			t.pending_stmts << t.make_assign(map_value, t.zero_value_for_type(clean_type))
+			return t.make_empty()
+		}
+		return call
 	}
 	if fn_node.value == 'move' {
 		t.mark_fn_used('map__move')
@@ -6823,17 +7493,39 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 		if node.children_count < 2 {
 			return none
 		}
-		key_type := t.map_key_type(clean_type)
-		if key_type.len == 0 {
+		key_type, value_type := t.map_type_parts(clean_type)
+		if key_type.len == 0 || value_type.len == 0 {
 			return none
 		}
 		t.mark_fn_used('map__delete')
+		key_id := t.a.child(&node, 1)
+		cleanup_key := !isnil(t.tc) && t.map_key_expr_creates_owned_value(key_id, key_type)
+			&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type))
 		key_name := t.new_temp('map_key')
 		key_storage_type := t.map_key_storage_type(key_type)
-		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(t.a.child(&node, 1),
+		t.pending_stmts << t.make_decl_assign_typed(key_name, t.transform_expr_for_type(key_id,
 			key_type), key_storage_type)
-		return t.make_call_typed('map__delete', arr2(t.runtime_addr(base, base_type), t.make_prefix(.amp,
+		handled_delete := t.append_owned_map_entry_delete_with_drops(base, base_type, key_name,
+			key_type, value_type)
+		if handled_delete {
+			if cleanup_key {
+				t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
+					arr1(t.make_ident(key_name)), 'void'))
+			}
+			return t.make_empty()
+		}
+		delete_call := t.make_call_typed('map__delete', arr2(t.runtime_addr(base, base_type), t.make_prefix(.amp,
 			t.make_ident(key_name))), 'void')
+		if cleanup_key {
+			t.pending_stmts << t.make_expr_stmt(delete_call)
+			t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned',
+				arr1(t.make_ident(key_name)), 'void'))
+			return t.make_empty()
+		}
+		return delete_call
+	}
+	if fn_node.value !in ['keys', 'values'] {
+		return none
 	}
 	elem_type := if fn_node.value == 'keys' {
 		t.map_key_type(clean_type)
@@ -6843,15 +7535,206 @@ fn (mut t Transformer) try_lower_map_method_call(call_id flat.NodeId, node flat.
 	if elem_type.len == 0 {
 		return none
 	}
+	if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(elem_type))
+		&& t.compiler_default_clone_type_needs_work(elem_type)
+		&& (fn_node.value == 'values' || t.normalize_type_alias(elem_type).trim_space() != 'string') {
+		return t.make_owned_map_items_value(base, clean_type, elem_type, fn_node.value == 'keys',
+			source_is_owned_temporary)
+	}
 	t.mark_fn_used('map__${fn_node.value}')
-	return t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
+	items := t.make_call_typed('map__${fn_node.value}', arr1(t.runtime_addr(base, base_type)),
 		'[]${elem_type}')
+	if !source_is_owned_temporary || isnil(t.tc)
+		|| !t.tc.ownership_type_requires_destruction(t.tc.parse_type(clean_type)) {
+		return items
+	}
+	// Preserve the returned array before destroying a map receiver that was materialized
+	// after ownership analysis. Raw keys()/values() still allocate independent array storage,
+	// even when their scalar items need no per-entry clone work.
+	out_name := t.new_temp('map_items')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, items, '[]${elem_type}')
+	t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(base), 'void'))
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), '[]${elem_type}')
+	return result
+}
+
+// make_owned_map_items_value builds an independent keys()/values() array by cloning every
+// ownership-bearing item instead of accepting map__values' shallow byte copies.
+fn (mut t Transformer) make_owned_map_items_value(source flat.NodeId, map_type string, item_type string, take_keys bool, source_is_owned_temporary bool) flat.NodeId {
+	key_type, value_type := t.map_type_parts(map_type)
+	stable_source := t.stable_transformed_expr_for_reuse(source, map_type, 'map_items_source')
+	out_name := t.new_temp('map_items')
+	key_name := t.new_temp('map_items_key')
+	value_name := t.new_temp('map_items_value')
+	item_name := t.new_temp('map_items_item')
+	t.pending_stmts << t.make_decl_assign_typed(out_name, t.make_array_new_call(item_type,
+		t.make_int_literal(0), t.make_selector(stable_source, 'len', 'int')), '[]${item_type}')
+	t.set_var_type(key_name, t.map_key_storage_type(key_type))
+	t.set_var_type(value_name, value_type)
+	source_item := if take_keys { t.make_ident(key_name) } else { t.make_ident(value_name) }
+	pending_start := t.pending_stmts.len
+	cloned_item := t.make_compiler_default_clone_value(source_item, item_type, true)
+	mut body := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	body << t.make_decl_assign_typed(item_name, cloned_item, item_type)
+	body << t.make_expr_stmt(t.make_call_typed('array_push', arr2(t.runtime_addr(t.make_ident(out_name),
+		'[]${item_type}'), t.make_prefix(.amp, t.make_ident(item_name))), 'void'))
+	t.mark_fn_used('array_push')
+	start := t.a.children.len
+	if take_keys {
+		t.a.children << t.make_ident(key_name)
+		t.a.children << t.make_ident(value_name)
+	} else {
+		t.a.children << t.make_ident(value_name)
+		t.a.children << flat.empty_node
+	}
+	t.a.children << stable_source
+	for stmt in body {
+		t.a.children << stmt
+	}
+	t.pending_stmts << t.a.add_node(flat.Node{
+		kind:                 .for_in_stmt
+		children_start:       start
+		children_count:       flat.child_count(3 + body.len)
+		value:                '3'
+		skip_ownership_drops: true
+	})
+	if source_is_owned_temporary {
+		t.pending_stmts << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stable_source),
+			'void'))
+	}
+	result := t.make_ident(out_name)
+	t.set_node_typ(int(result), '[]${item_type}')
+	return result
+}
+
+// append_owned_map_entries_drop_before_reset releases live stored entries before clear/free
+// makes them unavailable to the normal scope-exit map destructor.
+fn (mut t Transformer) append_owned_map_entries_drop_before_reset(map_expr flat.NodeId, map_type string, key_type_name string, value_type_name string, method string) {
+	if isnil(t.tc) {
+		return
+	}
+	clean_key_type := t.normalize_type_alias(key_type_name).trim_space()
+	key_requires_drop := t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type_name))
+		&& !(method == 'free' && clean_key_type == 'string')
+	value_requires_drop :=
+		t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type_name))
+	if !key_requires_drop && !value_requires_drop {
+		return
+	}
+	key_name := t.new_temp('map_reset_key')
+	value_name := t.new_temp('map_reset_value')
+	t.set_var_type(key_name, t.map_key_storage_type(key_type_name))
+	t.set_var_type(value_name, value_type_name)
+	mut body := []flat.NodeId{}
+	if key_requires_drop {
+		t.mark_fn_used('map__get_key_check')
+		key_ptr_name := t.new_temp('map_reset_key_ptr')
+		body << t.make_decl_assign_typed(key_ptr_name, t.make_map_get_key_check_expr(map_expr,
+			map_type, key_name), 'voidptr')
+		stored_key_ptr := t.make_cast('&${key_type_name}', t.make_ident(key_ptr_name),
+			'&${key_type_name}')
+		stored_key := t.make_prefix(.mul, stored_key_ptr)
+		t.set_node_typ(int(stored_key), key_type_name)
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(stored_key), 'void'))
+		if clean_key_type == 'string' {
+			body << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(key_name)),
+				'void'))
+		}
+	}
+	if value_requires_drop {
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned', arr1(t.make_ident(value_name)),
+			'void'))
+	}
+	start := t.a.children.len
+	if key_requires_drop {
+		t.a.children << t.make_ident(key_name)
+		t.a.children << t.make_ident(value_name)
+	} else {
+		t.a.children << t.make_ident(value_name)
+		t.a.children << flat.empty_node
+	}
+	t.a.children << map_expr
+	for stmt in body {
+		t.a.children << stmt
+	}
+	t.pending_stmts << t.a.add_node(flat.Node{
+		kind:                 .for_in_stmt
+		children_start:       start
+		children_count:       flat.child_count(3 + body.len)
+		value:                '3'
+		skip_ownership_drops: true
+	})
+}
+
+// append_owned_map_entry_delete_with_drops snapshots ownership-bearing stored values,
+// removes the entry, and only then destroys the snapshots so key mutation cannot prevent
+// map__delete from finding the entry.
+fn (mut t Transformer) append_owned_map_entry_delete_with_drops(map_expr flat.NodeId, map_type string, key_name string, key_type_name string, value_type_name string) bool {
+	if isnil(t.tc) {
+		return false
+	}
+	clean_key_type := t.normalize_type_alias(key_type_name).trim_space()
+	key_requires_drop := clean_key_type != 'string'
+		&& t.tc.ownership_type_requires_destruction(t.tc.parse_type(key_type_name))
+	value_requires_drop :=
+		t.tc.ownership_type_requires_destruction(t.tc.parse_type(value_type_name))
+	if !key_requires_drop && !value_requires_drop {
+		return false
+	}
+	value_ptr_name := t.new_temp('map_delete_value')
+	value_ptr := t.make_map_get_check_expr(map_expr, map_type, key_name)
+	t.pending_stmts << t.make_decl_assign_typed(value_ptr_name, value_ptr, 'voidptr')
+	mut body := []flat.NodeId{}
+	mut saved_key_name := ''
+	if key_requires_drop {
+		t.mark_fn_used('map__get_key_check')
+		key_ptr_name := t.new_temp('map_delete_key')
+		body << t.make_decl_assign_typed(key_ptr_name, t.make_map_get_key_check_expr(map_expr,
+			map_type, key_name), 'voidptr')
+		key_ptr := t.make_cast('&${key_type_name}', t.make_ident(key_ptr_name), '&${key_type_name}')
+		stored_key := t.make_prefix(.mul, key_ptr)
+		t.set_node_typ(int(stored_key), key_type_name)
+		saved_key_name = t.new_temp('map_deleted_key')
+		body << t.make_decl_assign_typed(saved_key_name, stored_key, key_type_name)
+	}
+	mut saved_value_name := ''
+	if value_requires_drop {
+		stored_value_ptr := t.make_cast('&${value_type_name}', t.make_ident(value_ptr_name),
+			'&${value_type_name}')
+		stored_value := t.make_prefix(.mul, stored_value_ptr)
+		t.set_node_typ(int(stored_value), value_type_name)
+		saved_value_name = t.new_temp('map_deleted_value')
+		body << t.make_decl_assign_typed(saved_value_name, stored_value, value_type_name)
+	}
+	body << t.make_expr_stmt(t.make_call_typed('map__delete', arr2(t.runtime_addr(map_expr,
+		map_type), t.make_prefix(.amp, t.make_ident(key_name))), 'void'))
+	if key_requires_drop {
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned',
+			arr1(t.make_ident(saved_key_name)), 'void'))
+	}
+	if value_requires_drop {
+		body << t.make_expr_stmt(t.make_call_typed('drop_owned',
+			arr1(t.make_ident(saved_value_name)), 'void'))
+	}
+	found := t.make_infix(.ne, t.make_ident(value_ptr_name), t.a.add(.nil_literal))
+	start := t.a.children.len
+	t.a.children << found
+	t.a.children << t.make_block(body)
+	t.pending_stmts << t.a.add_node(flat.Node{
+		kind:                 .if_expr
+		children_start:       start
+		children_count:       2
+		skip_ownership_drops: true
+	})
+	return true
 }
 
 fn map_method_is_lowered_by_transform(method string) bool {
 	return match method.len {
 		4 { method == 'keys' || method == 'free' || method == 'move' }
-		5 { method == 'clear' }
+		5 { method == 'clear' || method == 'clone' }
 		6 { method == 'values' || method == 'delete' }
 		7 { method == 'reserve' }
 		else { false }
@@ -9280,6 +10163,7 @@ fn is_array_runtime_helper_method_name(name string, start int, len int) bool {
 		6 { name_part_eq(name, start, 'insert') }
 		7 { name_part_eq(name, start, 'reverse') || name_part_eq(name, start, 'prepend') }
 		9 { name_part_eq(name, start, 'push_many') }
+		16 { name_part_eq(name, start, 'reverse_in_place') }
 		18 { name_part_eq(name, start, 'needs_unique_shift') }
 		else { false }
 	}

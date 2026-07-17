@@ -341,6 +341,13 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 			g.write('._typ = ${tid}')
 			has_field = true
 		}
+		if g.interface_init_object_is_boxed(node) {
+			if has_field {
+				g.write(', ')
+			}
+			g.write('._object_is_boxed = true')
+			has_field = true
+		}
 	}
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
@@ -741,14 +748,22 @@ fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 		return false
 	}
 	name := g.tc.c_type(g.tc.parse_type(sum_name))
+	mut pointer_variant_is_owned := false
 	g.write('(${name}){')
 	for i in 0 .. node.children_count {
 		field := g.a.child_node(&node, i)
+		if field.value != 'typ' && field.typ.len > 0
+			&& select_receive_unalias_type(g.tc.parse_type(field.typ)) is types.Pointer {
+			pointer_variant_is_owned = true
+		}
 		if i > 0 {
 			g.write(', ')
 		}
 		g.write('.${g.lowered_sum_c_field_name(sum_name, field)} = ')
 		g.gen_lowered_sum_field_value(sum_name, field)
+	}
+	if pointer_variant_is_owned {
+		g.write(', ._pointer_variant_is_owned = true')
 	}
 	g.write('}')
 	return true
@@ -921,6 +936,13 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	if g.is_interface_type_name(node.value) && !g.struct_init_has_named_field(node, '_typ') {
 		if tid := g.interface_init_typ_id(node) {
 			g.write('._typ = ${tid}')
+			has_field = true
+		}
+		if g.interface_init_object_is_boxed(node) {
+			if has_field {
+				g.write(', ')
+			}
+			g.write('._object_is_boxed = true')
 			has_field = true
 		}
 	}
@@ -1127,8 +1149,12 @@ fn (mut g FlatGen) gen_default_value_for_type(typ types.Type) {
 		variants := g.tc.sum_types[sum_name] or { []string{} }
 		if variants.len > 0 {
 			variant := variants[0]
-			variant_type := g.tc.parse_type(variant)
+			variant_type := select_receive_unalias_type(g.tc.parse_type(variant))
 			ct := g.value_c_type(clean_typ)
+			if variant_type is types.Pointer {
+				g.write('(${ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = NULL}')
+				return
+			}
 			inner_ct := g.value_c_type(variant_type)
 			g.write('(${ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${g.sum_field_name(variant)} = (${inner_ct}*)memdup(&(${inner_ct}[]){')
 			g.gen_default_value_for_type(variant_type)
@@ -3617,14 +3643,14 @@ fn (mut g FlatGen) emit_interface_struct(name string) {
 	g.emit_struct_option_typedefs(iface_fields)
 	cn := g.cname(name)
 	g.writeln('struct ${cn} {')
+	// Keep the common interface header ABI-compatible with the regular C backend.
+	// `_object` either owns a boxed concrete value or borrows a concrete pointer.
+	g.writeln('\tvoid* _object;')
 	g.writeln('\tint _typ;')
+	g.writeln('\tbool _object_is_boxed;')
 	if g.is_ierror_type_name(name) {
-		g.writeln('\tvoid* _object;')
 		g.writeln('\tstring message;')
 		g.writeln('\tint code;')
-	} else {
-		// pointer to the boxed concrete value, used by method dispatch
-		g.writeln('\tvoid* _object;')
 	}
 	for field in iface_fields {
 		mut ct := if field.typ is types.OptionType || field.typ is types.ResultType {

@@ -109,20 +109,25 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 		g.auto_fn_definitions << fn_builder.str()
 	}
 	fn_builder.writeln('${g.static_non_parallel}void ${fn_name}(${styp}* it) {')
-	for t in info.types {
+	for t in info.implementor_types(true) {
 		typ_ := g.unwrap_generic(t)
 		sub_sym := g.table.sym(typ_)
 		if sub_sym.kind !in [.string, .array, .map, .struct] {
 			continue
 		}
-		if !sub_sym.has_method_with_generic_parent('free') {
+		if sub_sym.kind == .string {
+			fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { builtin__string_free(it->_${sub_sym.cname}); return; }')
 			continue
 		}
 		type_styp := g.gen_type_name_for_free_call(typ_)
-		free_fn_name := if sub_sym.is_builtin() {
-			'builtin__${type_styp}_free'
-		} else {
+		has_free_method := sub_sym.has_method_with_generic_parent('free')
+		mut free_fn_name := if has_free_method {
 			'${type_styp}_free'
+		} else {
+			g.gen_free_method(typ_)
+		}
+		if has_free_method && sub_sym.is_builtin() {
+			free_fn_name = 'builtin__${free_fn_name}'
 		}
 		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${free_fn_name}(it->_${sub_sym.cname}); return; }')
 	}
