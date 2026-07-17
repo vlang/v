@@ -190,6 +190,10 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		}
 	}
 	unsafe { b.sb.free() }
+	// Preserve worker-only literals at the IDs already written into batch output.
+	for literal in batch.str_lits[g.str_lits.len..] {
+		g.intern_string(literal.clone())
+	}
 	for opt_name, val_type in batch.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
 	}
@@ -231,9 +235,9 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 // output is accumulated in a much smaller result arena.
 fn (mut g FlatGen) gen_fn_items_scoped_batches(items []FlatFnGenItem) {
 	result_scope := cgen_worker_scope_begin(true)
-	mut total_cost := i64(0)
+	mut total_cost := i64(items.len)
 	for item in items {
-		total_cost += i64(item.cost) + 1
+		total_cost += item.cost
 	}
 	n_batches := if items.len < scoped_cgen_worker_batches {
 		items.len
@@ -272,9 +276,9 @@ fn (mut g FlatGen) gen_fn_items_scoped_batches(items []FlatFnGenItem) {
 // directly into the already-scoped master generator, so its temporary caches
 // do not remain resident for the rest of cgen.
 fn (mut g FlatGen) gen_fn_items_scoped_master_batches(items []FlatFnGenItem) {
-	mut total_cost := i64(0)
+	mut total_cost := i64(items.len)
 	for item in items {
-		total_cost += i64(item.cost) + 1
+		total_cost += item.cost
 	}
 	n_batches := if items.len < scoped_cgen_worker_batches {
 		items.len
@@ -341,10 +345,8 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	g.param_types_by_short = clone_param_types_by_short(fs_worker.param_types_by_short)
 	g.embedded_fields_by_type = clone_embedded_fields_by_type(fs_worker.embedded_fields_by_type)
 	g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.clone()
-	if fs_worker.worker_scope != unsafe { nil } {
-		cgen_worker_scope_free(fs_worker.worker_scope)
-		fs_worker.worker_scope = unsafe { nil }
-	}
+	cgen_worker_scope_free(fs_worker.worker_scope)
+	fs_worker.worker_scope = unsafe { nil }
 }
 
 // gen_fns_dispatch emits fns dispatch output for c.
@@ -364,16 +366,13 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		if isnil(g.a.worker_pool) {
 			g.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
-		mut n_jobs := flat_cgen_job_count(g.a.worker_pool.size() + 1, n_items)
-		if g.scope_parallel_workers {
-			n_jobs = 1
-		}
+		n_jobs := flat_cgen_job_count(g.a.worker_pool.size() + 1, n_items)
 		if g.output_path.len > 0 && !g.cache_split && g.scope_parallel_workers {
 			g.scoped_fn_output_path = '${g.output_path}.v3-fns.tmp.0'
 			g.scoped_fn_output_paths = [g.scoped_fn_output_path]
 			os.rm(g.scoped_fn_output_path) or {}
 		}
-		if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
+		if g.scope_parallel_workers || n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 			if g.scope_parallel_workers {
 				g.gen_fn_items_scoped_master_batches(items)
 			} else {
