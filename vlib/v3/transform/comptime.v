@@ -2100,8 +2100,12 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 	spec_value := specialized_generic_fn_value(decl.node.value, args)
 	spec_name := transform_qualified_fn_name(decl.module, spec_value)
 	if spec_name !in t.fn_ret_types {
-		clone_id := t.emit_generic_fn_specialization(decl, args)
-		t.generated_fn_used_names(decl, clone_id, args)
+		if t.defer_nested_generic_emissions {
+			t.request_generic_fn_specialization(decl, args)
+		} else {
+			clone_id := t.emit_generic_fn_specialization(decl, args)
+			t.generated_fn_used_names(decl, clone_id, args)
+		}
 	}
 	if is_receiver {
 		receiver := t.a.child(&callee, 0)
@@ -2514,7 +2518,10 @@ struct FieldDeclMeta {
 }
 
 // comptime_field_metas derives FieldData for every field of the concrete struct type.
-fn (t &Transformer) comptime_field_metas(base_type string) []FieldMeta {
+fn (mut t Transformer) comptime_field_metas(base_type string) []FieldMeta {
+	if cached := t.comptime_field_metas_cache[base_type] {
+		return cached
+	}
 	// A monomorphized generic struct instance (`Box[int]`) is stored in the struct table under
 	// its generic declaration name (`Box`), so a direct lookup misses; resolve it through the
 	// generic-struct field substitution path before giving up.
@@ -2538,73 +2545,62 @@ fn (t &Transformer) comptime_field_metas(base_type string) []FieldMeta {
 		}
 		metas << t.field_meta_for(f.name, ftyp, f.typ, info.module, f.is_embedded, extra)
 	}
+	t.comptime_field_metas_cache[base_type] = metas
 	return metas
 }
 
-// struct_field_decl_metas scans the declaration of `base_type` (resolving a generic instance such
-// as `Box[int]` to its base `Box`, module-aware like enum lookup) and returns each field's real
-// `is_mut`/`is_pub`/attrs, which the parser recorded on the `field_decl` node.
+fn (mut t Transformer) build_struct_field_decl_metas_cache() {
+	mut cache := map[string]map[string]FieldDeclMeta{}
+	mut cur_mod := ''
+	for node in t.a.nodes {
+		if node.kind == .module_decl {
+			cur_mod = node.value
+			continue
+		}
+		if node.kind != .struct_decl {
+			continue
+		}
+		mut fields := map[string]FieldDeclMeta{}
+		for i in 0 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind == .field_decl {
+				fields[field.value] = field_decl_meta(field)
+			}
+		}
+		if node.value !in cache {
+			cache[node.value] = fields.clone()
+		}
+		if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+			cache['${cur_mod}.${node.value}'] = fields.clone()
+		}
+	}
+	t.struct_field_decl_metas_cache = cache.move()
+}
+
+fn field_decl_meta(field flat.Node) FieldDeclMeta {
+	params := field.generic_params()
+	if params.len == 0 {
+		return FieldDeclMeta{}
+	}
+	flags := params[0]
+	return FieldDeclMeta{
+		is_mut: flags.contains('m')
+		is_pub: flags.contains('p')
+		attrs:  params[1..].clone()
+	}
+}
+
+// struct_field_decl_metas returns parser metadata for the declaration of `base_type`, resolving a
+// generic instance such as `Box[int]` to its base `Box`.
 fn (t &Transformer) struct_field_decl_metas(base_type string) map[string]FieldDeclMeta {
-	mut out := map[string]FieldDeclMeta{}
 	mut decl_name := base_type.trim_space()
 	if idx := decl_name.index('[') {
 		decl_name = decl_name[..idx]
 	}
-	mut cur_mod := ''
-	for idx in 0 .. t.a.nodes.len {
-		kind := t.a.nodes[idx].kind
-		if kind == .module_decl {
-			cur_mod = t.a.nodes[idx].value
-			continue
-		}
-		if kind != .struct_decl {
-			continue
-		}
-		node := t.a.nodes[idx]
-		qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
-			'${cur_mod}.${node.value}'
-		} else {
-			node.value
-		}
-		mut matches_decl := decl_name == node.value || decl_name == qualified
-		if !matches_decl && node.generic_params().len > 0 {
-			for prefix in [node.value, qualified, c_name(node.value),
-				c_name(qualified)] {
-				if prefix.len > 0 && decl_name.starts_with('${prefix}_') {
-					matches_decl = true
-					break
-				}
-			}
-		}
-		if !matches_decl {
-			continue
-		}
-		for i in 0 .. node.children_count {
-			f := t.a.child_node(&node, i)
-			if f.kind != .field_decl {
-				continue
-			}
-			// The parser packs field metadata into generic_params: element 0 is a flag string
-			// (`m` = mut, `p` = pub), the rest are attributes. An empty list is the default
-			// (private, immutable, no attrs).
-			mut is_mut := false
-			mut is_pub := false
-			mut attrs := []string{}
-			if f.generic_params().len > 0 {
-				flags := f.generic_params()[0]
-				is_mut = flags.contains('m')
-				is_pub = flags.contains('p')
-				attrs = f.generic_params()[1..].clone()
-			}
-			out[f.value] = FieldDeclMeta{
-				is_mut: is_mut
-				is_pub: is_pub
-				attrs:  attrs
-			}
-		}
-		return out
+	if cached := t.struct_field_decl_metas_cache[decl_name] {
+		return cached
 	}
-	return out
+	return map[string]FieldDeclMeta{}
 }
 
 fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string, decl_module string, is_embed bool, extra FieldDeclMeta) FieldMeta {
@@ -2853,6 +2849,7 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 	return t.clone_field_subst_scoped(id, var_name, fm, []string{})
 }
 
+@[direct_array_access]
 fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string, fm FieldMeta, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
@@ -2875,6 +2872,9 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 	}
 	if node.kind == .ident && node.value == var_name {
 		return t.make_field_data_literal(fm)
+	}
+	if node.children_count == 0 {
+		return t.a.add_node(node)
 	}
 	if node.kind == .prefix && node.op == .amp && node.children_count > 0
 		&& t.subtree_has_reflected_typeof_idx(t.a.child(&node, 0), var_name) {
@@ -3153,6 +3153,7 @@ fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name strin
 	return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, node.value)
 }
 
+@[direct_array_access]
 fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var_name string, fm FieldMeta, inner_vars []string, value string) ?flat.NodeId {
 	child_inner_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}

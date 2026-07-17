@@ -2,6 +2,8 @@ module transform
 
 import os
 import runtime
+import sync
+import time
 import v3.flat
 import v3.workers
 
@@ -63,7 +65,84 @@ struct SharedChunkArgs {
 	is_master bool
 }
 
+struct MonomorphChunkArgs {
+	worker    voidptr // &Transformer
+	specs_ptr voidptr // &[]PendingGenericFnSpec
+	claims    &MonomorphClaimState = unsafe { nil }
+	is_master bool
+mut:
+	roots         []flat.NodeId
+	emitted_specs []PendingGenericFnSpec
+	scan_nodes    []int
+	scope         voidptr
+}
+
+@[heap]
+struct MonomorphClaimState {
+mut:
+	mu      sync.Mutex
+	claimed map[string]bool
+}
+
 $if !windows {
+	fn monomorph_chunk_thread(arg voidptr) voidptr {
+		mut a := unsafe { &MonomorphChunkArgs(arg) }
+		mut w := unsafe { &Transformer(a.worker) }
+		specs := unsafe { &[]PendingGenericFnSpec(a.specs_ptr) }
+		mut scope := unsafe { nil }
+		if !a.is_master {
+			scope = transform_worker_scope_begin(w.scope_parallel_workers)
+		}
+		w.parallel_monomorph_worker = true
+		w.generic_signatures_pre_registered = true
+		w.defer_nested_generic_emissions = true
+		w.generic_clone_children.ensure_cap(65536)
+		generated_start := w.a.nodes.len
+		mut work := specs.clone()
+		mut roots := []flat.NodeId{cap: work.len}
+		mut emitted_specs := []PendingGenericFnSpec{cap: work.len}
+		mut claims := a.claims
+		mut work_idx := 0
+		for work_idx < work.len {
+			spec := work[work_idx]
+			work_idx++
+			root := w.emit_generic_fn_specialization(spec.decl, spec.args)
+			w.generated_fn_used_names(spec.decl, root, spec.args)
+			roots << root
+			emitted_specs << spec
+			pending := w.pending_generic_fn_specs
+			w.pending_generic_fn_specs = []PendingGenericFnSpec{}
+			for request in pending {
+				mut won := false
+				claims.mu.lock()
+				if !claims.claimed[request.key] {
+					claims.claimed[request.key] = true
+					won = true
+				}
+				claims.mu.unlock()
+				if won {
+					work << request
+				} else {
+					w.pending_generic_fn_spec_keys.delete(request.key)
+				}
+			}
+		}
+		mut scan_nodes := []int{cap: (w.a.nodes.len - generated_start) / 8}
+		for i in generated_start .. w.a.nodes.len {
+			if w.a.nodes[i].kind in [.call, .index, .index_assign] {
+				scan_nodes << i
+			}
+		}
+		if !a.is_master {
+			transform_worker_scope_leave(scope)
+		}
+		a.roots = roots
+		a.emitted_specs = emitted_specs
+		a.scan_nodes = scan_nodes.clone()
+		a.scope = scope
+		return unsafe { nil }
+	}
+
 	struct InterfaceBoxScanArgs {
 		source voidptr // &Transformer
 		start  int
@@ -91,6 +170,186 @@ $if !windows {
 		a.worker = voidptr(scan)
 		a.scope = scope
 		return unsafe { nil }
+	}
+}
+
+fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted map[string]bool) bool {
+	$if windows {
+		return false
+	} $else {
+		if specs.len < 2 {
+			return false
+		}
+		if isnil(t.a.worker_pool) {
+			t.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
+		}
+		n_jobs := shared_transform_job_count(t.a.worker_pool.size() + 1, specs.len)
+		if n_jobs <= 1 {
+			return false
+		}
+		debug_started := time.ticks()
+		mut chunks := [][]PendingGenericFnSpec{len: n_jobs}
+		for idx, spec in specs {
+			chunks[idx % n_jobs] << spec
+		}
+		base_nodes := t.a.nodes.len
+		base_children := t.a.children.len
+		// Initial call sites can expose a much larger nested generic closure.
+		// Give every append-only worker region enough headroom for that closure;
+		// the arrays still retain only the nodes actually merged by the master.
+		node_reserve := specs.len * 4096 + 262144
+		child_reserve := specs.len * 5120 + 393216
+		t.a.nodes.ensure_cap(base_nodes + node_reserve)
+		t.a.children.ensure_cap(base_children + child_reserve)
+		t.monomorph_profile('mono capacity: ${time.ticks() - debug_started} ms')
+		node_pool := t.a.nodes.cap - base_nodes
+		child_pool := t.a.children.cap - base_children
+		mut node_starts := []int{len: n_jobs + 1}
+		mut child_starts := []int{len: n_jobs + 1}
+		for i in 0 .. n_jobs + 1 {
+			node_starts[i] = base_nodes + node_pool * i / n_jobs
+			child_starts[i] = base_children + child_pool * i / n_jobs
+		}
+
+		t.tc.freeze_type_cache_for_forks()
+		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
+		decls := t.cached_generic_fn_decls()
+		mut claims := &MonomorphClaimState{
+			claimed: map[string]bool{}
+		}
+		for spec in specs {
+			claims.claimed[spec.key] = true
+		}
+		mut args := []MonomorphChunkArgs{len: n_jobs}
+		args[0] = MonomorphChunkArgs{
+			worker:    voidptr(t)
+			specs_ptr: unsafe { voidptr(&chunks[0]) }
+			claims:    claims
+			is_master: true
+		}
+		for ci in 1 .. n_jobs {
+			mut view := shared_region_view(t.a, node_starts[ci], node_starts[ci + 1],
+				child_starts[ci], child_starts[ci + 1])
+			view.specialized_fn_nodes = map[int]bool{}
+			mut wtc := t.tc.fork_for_parallel_transform(view)
+			wtc.fn_ret_types = t.tc.fn_ret_types.clone()
+			wtc.fn_param_types = t.tc.fn_param_types.clone()
+			wtc.fn_variadic = t.tc.fn_variadic.clone()
+			wtc.specialized_generic_fns = t.tc.specialized_generic_fns.clone()
+			mut w := t.fork_worker(view, wtc)
+			w.fn_ret_types = t.fn_ret_types.clone()
+			w.receiver_method_suffix_index = t.receiver_method_suffix_index.clone()
+			w.generic_fn_decls_cache = decls.clone()
+			w.generic_fn_decls_ready = true
+			w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
+			args[ci] = MonomorphChunkArgs{
+				worker:    voidptr(w)
+				specs_ptr: unsafe { voidptr(&chunks[ci]) }
+				claims:    claims
+			}
+		}
+
+		mut shared_fn_ret_types := t.fn_ret_types.move()
+		mut shared_receiver_index := t.receiver_method_suffix_index.move()
+		t.parallel_monomorph_scan_nodes = []int{}
+		t.parallel_monomorph_scan_start = base_nodes
+		t.fn_ret_types = shared_fn_ret_types.clone()
+		t.receiver_method_suffix_index = shared_receiver_index.clone()
+		original_nodes_cap := t.a.nodes.cap
+		original_children_cap := t.a.children.cap
+		unsafe {
+			t.a.nodes.cap = node_starts[1]
+			t.a.nodes.flags.set(.nogrow)
+			t.a.children.cap = child_starts[1]
+			t.a.children.flags.set(.nogrow)
+		}
+		mut tasks := []workers.Task{cap: n_jobs}
+		for ci in 0 .. n_jobs {
+			tasks << workers.Task{
+				run:        monomorph_chunk_thread
+				arg:        unsafe { voidptr(&args[ci]) }
+				force_sync: ci == 0
+			}
+		}
+		transform_worker_scope_leave(setup_scope)
+		t.monomorph_profile('mono setup: ${time.ticks() - debug_started} ms')
+		any_started := t.a.worker_pool.run(tasks)
+		t.monomorph_profile('mono workers: ${time.ticks() - debug_started} ms')
+		unsafe {
+			t.a.nodes.cap = original_nodes_cap
+			t.a.nodes.flags.clear(.nogrow)
+			t.a.children.cap = original_children_cap
+			t.a.children.flags.clear(.nogrow)
+		}
+		master_fn_ret_types := t.fn_ret_types.move()
+		master_receiver_index := t.receiver_method_suffix_index.move()
+		t.fn_ret_types = shared_fn_ret_types.move()
+		t.receiver_method_suffix_index = shared_receiver_index.move()
+		for name, ret in master_fn_ret_types {
+			t.fn_ret_types[name] = ret
+		}
+		for name, receiver in master_receiver_index {
+			t.receiver_method_suffix_index[name] = receiver
+		}
+
+		for ci in 0 .. n_jobs {
+			mut w := if ci == 0 {
+				unsafe { t }
+			} else {
+				unsafe { &Transformer(args[ci].worker) }
+			}
+			t.monomorph_profile('mono worker ${ci}: ${args[ci].emitted_specs.len} specs, ${w.a.nodes.len - node_starts[ci]} nodes, ${w.a.children.len - child_starts[ci]} children')
+			mut node_shift := 0
+			if ci > 0 {
+				node_shift = t.a.nodes.len - node_starts[ci]
+				t.merge_worker_used_fns(w)
+				t.merge_worker(w, []FnWorkItem{}, node_starts[ci], child_starts[ci])
+				for name, ret in w.fn_ret_types {
+					t.fn_ret_types[name.clone()] = ret.clone()
+				}
+				for name, receiver in w.receiver_method_suffix_index {
+					t.receiver_method_suffix_index[name.clone()] = receiver.clone()
+				}
+				for name, spec_args in w.generic_specialization_args {
+					if name !in t.generic_specialization_args {
+						t.generic_specialization_args[name.clone()] = spec_args.clone()
+					}
+				}
+			}
+			for idx in args[ci].scan_nodes {
+				t.parallel_monomorph_scan_nodes << idx + node_shift
+			}
+			for idx, spec in args[ci].emitted_specs {
+				root := flat.NodeId(int(args[ci].roots[idx]) + node_shift)
+				if !t.generic_specialization_registered(spec.decl, spec.args) {
+					value := specialized_generic_fn_value(spec.decl.node.value, spec.args)
+					t.register_specialized_fn_signature_value(spec.decl, value, spec.args)
+				}
+				t.generic_fn_spec_nodes[spec.key.clone()] = root
+				t.a.specialized_fn_nodes[int(root)] = true
+				emitted[generic_fn_spec_key(spec.decl.key, spec.args)] = true
+				t.pending_generic_fn_spec_keys.delete(spec.key)
+			}
+			if ci > 0 {
+				for pending in w.pending_generic_fn_specs {
+					mut owned_args := []string{cap: pending.args.len}
+					for item in pending.args {
+						owned_args << item.clone()
+					}
+					t.request_generic_fn_specialization(pending.decl, owned_args)
+				}
+				if args[ci].scope != unsafe { nil } {
+					transform_worker_scope_free(args[ci].scope)
+				}
+			}
+		}
+		t.parallel_monomorph_worker = false
+		t.generic_signatures_pre_registered = false
+		t.parallel_monomorph_scan_end = t.a.nodes.len
+		t.tc.unfreeze_type_cache_after_forks()
+		transform_worker_scope_free(setup_scope)
+		t.monomorph_profile('mono merge: ${time.ticks() - debug_started} ms')
+		return any_started
 	}
 }
 

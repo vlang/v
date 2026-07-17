@@ -258,6 +258,14 @@ mut:
 	local_fn_decl_last_module string
 }
 
+// ResolutionTypeViewCache reuses the lookup-only, unscoped checker views used
+// to parse compiler-generated qualified type text. The views are keyed by file
+// because selective imports remain file-local.
+struct ResolutionTypeViewCache {
+mut:
+	by_file map[string]&TypeChecker
+}
+
 // TypeCacheStats reports semantic cache effectiveness for compiler telemetry.
 pub struct TypeCacheStats {
 pub:
@@ -367,6 +375,7 @@ pub:
 pub struct TypeChecker {
 pub mut:
 	a                            &flat.FlatAst = unsafe { nil }
+	verbose                      bool
 	fn_ret_types                 map[string]Type
 	fn_param_types               map[string][]Type
 	fn_shared_params             map[string][]bool
@@ -532,10 +541,11 @@ pub mut:
 mut:
 	// Includes method-value aliases and binding-owner maps; all backing maps are
 	// replaced together at every function/worker boundary.
-	fn_context    FunctionCheckContext
-	type_cache    &TypeCache      = unsafe { nil }
-	type_interner &TypeInterner   = unsafe { nil }
-	symbols       &SymbolInterner = unsafe { nil }
+	fn_context            FunctionCheckContext
+	type_cache            &TypeCache               = unsafe { nil }
+	resolution_type_views &ResolutionTypeViewCache = unsafe { nil }
+	type_interner         &TypeInterner            = unsafe { nil }
+	symbols               &SymbolInterner          = unsafe { nil }
 }
 
 // enable_scoped_parallel_workers uses disposable prealloc arenas for parallel
@@ -652,6 +662,9 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 			ierror_compat_entries:      map[string]int{}
 			source_error_embed_entries: map[string]int{}
 		}
+		resolution_type_views:                   &ResolutionTypeViewCache{
+			by_file: map[string]&TypeChecker{}
+		}
 		type_interner:                           type_interner
 		symbols:                                 symbols
 	}
@@ -760,6 +773,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		ownership:                          tc.ownership
 		selfhost:                           tc.selfhost
 		fn_context:                         new_function_check_context()
+		resolution_type_views:              &ResolutionTypeViewCache{
+			by_file: map[string]&TypeChecker{}
+		}
 		type_interner:                      tc.type_interner
 		symbols:                            tc.symbols
 	}
@@ -2321,9 +2337,34 @@ fn (tc &TypeChecker) qualify_resolution_type_text(typ string) string {
 // generic arguments from another module.
 pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 	qualified := tc.qualify_resolution_type_text(typ)
+	if isnil(tc.resolution_type_views) {
+		mut unscoped := tc.fork_type_parse_view(tc.cur_file, '')
+		unscoped.resolution_type_mode = false
+		return unscoped.parse_type(qualified)
+	}
+	mut views := unsafe { tc.resolution_type_views }
+	if cached := views.by_file[tc.cur_file] {
+		return cached.parse_type(qualified)
+	}
 	mut unscoped := tc.fork_type_parse_view(tc.cur_file, '')
 	unscoped.resolution_type_mode = false
-	return unscoped.parse_type(qualified)
+	view := &unscoped
+	views.by_file[tc.cur_file] = view
+	return view.parse_type(qualified)
+}
+
+// reset_resolution_type_view_cache discards lookup views that may have been
+// created inside a completed scoped parallel phase.
+pub fn (mut tc TypeChecker) reset_resolution_type_view_cache() {
+	tc.resolution_type_views = &ResolutionTypeViewCache{
+		by_file: map[string]&TypeChecker{}
+	}
+}
+
+// disable_resolution_type_view_cache prevents a scoped cache from escaping the
+// phase that allocated it.
+pub fn (mut tc TypeChecker) disable_resolution_type_view_cache() {
+	tc.resolution_type_views = unsafe { nil }
 }
 
 fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string {

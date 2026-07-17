@@ -1,5 +1,6 @@
 module transform
 
+import time
 import v3.flat
 import v3.gen.c.naming
 import v3.types
@@ -141,6 +142,10 @@ mut:
 	alias_receiver_method_cache   &LookupCache            = unsafe { nil }
 	call_variadic_cache           &BoolLookupCache        = unsafe { nil }
 	str_alias_cache               &LookupCache            = unsafe { nil }
+	generic_alias_names           map[string]bool
+	local_decl_nodes_by_name      map[string][]int
+	struct_field_decl_metas_cache map[string]map[string]FieldDeclMeta
+	comptime_field_metas_cache    map[string][]FieldMeta
 	call_param_types_decl_cache   map[string][]types.Type
 	call_param_types_decl_misses  map[string]bool
 	call_param_types_decl_index   map[string]FnParamDeclRef
@@ -208,19 +213,33 @@ mut:
 	// escaping_interface_box_locals holds interface locals boxed from stack-backed pointer
 	// sources and later returned. The box can alias the stack value while in scope, but its
 	// `_object` needs a heap copy before the interface value leaves the frame.
-	escaping_interface_box_locals    map[string]bool
-	active_specialization_args       []string
-	generic_specialization_args      map[string][]string
-	generic_fn_specs_in_progress     map[string]bool
-	generic_fn_decls_cache           map[string]GenericFnDecl
-	generic_receiver_methods_by_name map[string][]string
-	generic_fn_decls_ready           bool
-	generic_call_spec_cache          map[int]GenericCallSpec
-	generic_call_spec_misses         map[int]bool
-	stringify_stack                  []string
-	node_module_map_cache            []string
-	node_file_map_cache              []string
-	node_module_map_nodes            int = -1
+	escaping_interface_box_locals     map[string]bool
+	active_specialization_args        []string
+	generic_specialization_args       map[string][]string
+	generic_fn_specs_in_progress      map[string]bool
+	generic_fn_spec_nodes             map[string]flat.NodeId
+	generic_clone_children            []flat.NodeId
+	defer_nested_generic_emissions    bool
+	parallel_monomorph_worker         bool
+	generic_signatures_pre_registered bool
+	pending_generic_fn_specs          []PendingGenericFnSpec
+	pending_generic_fn_spec_keys      map[string]bool
+	generic_fn_decls_cache            map[string]GenericFnDecl
+	generic_receiver_methods_by_name  map[string][]string
+	generic_fn_decls_ready            bool
+	generic_struct_specs_cache        map[string]string
+	generic_sum_specs_cache           map[string]GenericSpecContext
+	generic_materialization_scan_from int
+	generic_materialization_ready     bool
+	parallel_monomorph_scan_nodes     []int
+	parallel_monomorph_scan_start     int
+	parallel_monomorph_scan_end       int
+	generic_call_spec_cache           map[int]GenericCallSpec
+	generic_call_spec_misses          map[int]bool
+	stringify_stack                   []string
+	node_module_map_cache             []string
+	node_file_map_cache               []string
+	node_module_map_nodes             int = -1
 	// used_fns_log records names newly inserted into used_fns while the
 	// late-used-fn-bodies pass runs, so that pass can tell "was this name
 	// already used before the current body's transform" without cloning the
@@ -630,6 +649,12 @@ fn newly_used_fn_names(before map[string]bool, after map[string]bool) []string {
 	return names
 }
 
+fn (t &Transformer) monomorph_profile(message string) {
+	if !isnil(t.tc) && t.tc.verbose {
+		eprintln(message)
+	}
+}
+
 pub fn monomorphize_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) map[string]bool {
 	result, _ := monomorphize_with_used_checked(mut a, tc, used_fns)
 	return result
@@ -638,11 +663,14 @@ pub fn monomorphize_with_used(mut a flat.FlatAst, tc &types.TypeChecker, used_fn
 // monomorphize_with_used_checked also reports semantic errors that can only be
 // resolved after generic parameters have concrete types.
 pub fn monomorphize_with_used_checked(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) (map[string]bool, []string) {
+	debug_started := time.ticks()
 	mut augmented_used_fns := used_fns.clone()
 	mut t := new_transformer(mut a, tc, augmented_used_fns)
 	t.prepare()
+	t.monomorph_profile('mono wrapper prepare: ${time.ticks() - debug_started} ms')
 	base_node_count := t.a.nodes.len
 	generated_names := t.monomorphize_pass()
+	t.monomorph_profile('mono wrapper pass: ${time.ticks() - debug_started} ms')
 	mut late_names := []string{}
 	for name in generated_names {
 		was_used := used_fns[name] || used_fns[c_name(name)]
@@ -655,19 +683,27 @@ pub fn monomorphize_with_used_checked(mut a flat.FlatAst, tc &types.TypeChecker,
 		}
 	}
 	t.materialize_generic_structs(false)
+	t.monomorph_profile('mono wrapper generated: ${time.ticks() - debug_started} ms')
 	// Monomorphization adds concrete generic functions after markused. Scan the
 	// augmented set so calls introduced by their transformed/comptime-unrolled
 	// bodies also root their non-generic helpers.
 	late_names << t.new_call_names_from_used_fn_bodies(t.used_fns, t.a.nodes.len)
 	late_names << newly_used_fn_names(used_fns, t.used_fns)
+	t.monomorph_profile('mono wrapper calls: ${time.ticks() - debug_started} ms')
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
+	t.monomorph_profile('mono wrapper late: ${time.ticks() - debug_started} ms')
 	used_before_remaining_matches := t.used_fns.clone()
 	t.lower_remaining_matches_in_used_fns()
+	t.monomorph_profile('mono wrapper matches: ${time.ticks() - debug_started} ms')
 	remaining_match_names := newly_used_fn_names(used_before_remaining_matches, t.used_fns)
 	t.transform_late_used_fn_bodies(remaining_match_names, base_node_count)
+	t.monomorph_profile('mono wrapper late matches: ${time.ticks() - debug_started} ms')
 	t.materialize_generic_structs(true)
+	t.monomorph_profile('mono wrapper structs: ${time.ticks() - debug_started} ms')
 	t.run_sum_eq_synthesis_rounds(base_node_count)
+	t.monomorph_profile('mono wrapper sums: ${time.ticks() - debug_started} ms')
 	t.apply_ignored_comptime_for_nodes()
+	t.monomorph_profile('mono wrapper ignored: ${time.ticks() - debug_started} ms')
 	return t.used_fns, t.monomorph_errors
 }
 
@@ -694,6 +730,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		orm_initialized_fields:           map[string][]string{}
 		sql_query_data_aliases:           map[string][]string{}
 		bound_method_arrays:              map[string]BoundMethodArrayInfo{}
+		comptime_field_metas_cache:       map[string][]FieldMeta{}
 		invalidated_smartcasts:           map[string]bool{}
 		escaping_amp_ptrs:                map[string]bool{}
 		escaping_amp_sources:             map[string]bool{}
@@ -701,6 +738,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		escaping_interface_box_locals:    map[string]bool{}
 		generic_specialization_args:      map[string][]string{}
 		generic_fn_specs_in_progress:     map[string]bool{}
+		generic_fn_spec_nodes:            map[string]flat.NodeId{}
 		generic_receiver_methods_by_name: map[string][]string{}
 		generic_call_spec_cache:          map[int]GenericCallSpec{}
 		generic_call_spec_misses:         map[int]bool{}
@@ -817,6 +855,9 @@ fn (mut t Transformer) prepare() {
 	t.collect_alias_methods()
 	t.rebuild_receiver_method_suffix_index()
 	t.rebuild_variadic_suffix_index()
+	t.build_generic_alias_name_index()
+	t.build_local_decl_index()
+	t.build_struct_field_decl_metas_cache()
 	// Enable the alias cache only now that the type maps are fully populated.
 	// During collection those maps are incomplete, so caching there would poison
 	// entries with results computed against a partial view.
@@ -2344,6 +2385,10 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		const_suffixes:                   t.const_suffixes
 		enum_types:                       t.enum_types
 		enum_backing_types:               t.enum_backing_types
+		generic_alias_names:              t.generic_alias_names
+		local_decl_nodes_by_name:         t.local_decl_nodes_by_name
+		struct_field_decl_metas_cache:    t.struct_field_decl_metas_cache
+		comptime_field_metas_cache:       map[string][]FieldMeta{}
 		call_param_types_decl_cache:      t.call_param_types_decl_cache
 		call_param_types_decl_misses:     t.call_param_types_decl_misses.clone()
 		call_param_types_decl_index:      t.call_param_types_decl_index
@@ -15536,7 +15581,10 @@ fn (mut t Transformer) lower_remaining_matches_in_used_fns() {
 	limit := t.a.nodes.len
 	for i in 0 .. limit {
 		node := t.a.nodes[i]
-		if node.kind != .fn_decl || t.fn_decl_has_unresolved_generics(node, t.node_module_or(i, '')) {
+		if node.kind != .fn_decl
+			|| (i < t.transformed_fns.len && t.transformed_fns[i])
+			|| t.a.specialized_fn_nodes[i]
+			|| t.fn_decl_has_unresolved_generics(node, t.node_module_or(i, '')) {
 			continue
 		}
 		t.cur_module = t.node_module_or(i, '')

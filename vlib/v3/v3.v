@@ -389,6 +389,7 @@ fn cli_usage() string {
 		'  -os <name> -arch <name>     target platform\n' +
 		'  -cc <compiler>               C compiler executable\n' +
 		'  -prod -c99 -shared -strict  C build modes\n' +
+		'  -v                           verbose stage profiling\n' +
 		'  -d <name>                    compile-time define'
 }
 
@@ -905,6 +906,7 @@ fn main() {
 	mut parallel_transform := true
 	mut building_v := false
 	mut ownership_mode := false
+	mut verbose := false
 	mut c99 := false
 	mut all_backends := false
 	mut compile_backends := []string{}
@@ -1018,6 +1020,9 @@ fn main() {
 			i += 2
 		} else if args[i] == '-g' {
 			user_c_flags << '-g'
+			i++
+		} else if args[i] == '-v' {
+			verbose = true
 			i++
 		} else if args[i] in ['-stats', '-show-timings', '-showcc', '-keepc', '-w'] {
 			// v3 already reports phase metrics, prints the C command, retains generated C,
@@ -1209,6 +1214,7 @@ fn main() {
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
 	prefs.is_prod = is_prod
+	prefs.verbose = verbose
 	host_target := pref.host_target()
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !c_compiler_explicit
 		&& target.os == host_target.os && target.arch == host_target.arch
@@ -1377,6 +1383,7 @@ fn main() {
 	// (like v2: check runs before transform). The transformer reads cached
 	// per-expression types for type-dependent lowering.
 	mut pre_tc := types.TypeChecker.new(a)
+	pre_tc.verbose = prefs.verbose
 	if scope_prealloc_stages {
 		pre_tc.enable_scoped_parallel_workers()
 	}

@@ -1,6 +1,7 @@
 module transform
 
 import strings
+import time
 import v3.flat
 import v3.types
 
@@ -31,6 +32,12 @@ struct GenericCallSite {
 	module string
 }
 
+struct PendingGenericFnSpec {
+	decl GenericFnDecl
+	args []string
+	key  string
+}
+
 fn (mut t Transformer) is_generic_fn(name string) bool {
 	if t.skip_generics {
 		return false
@@ -54,13 +61,28 @@ fn (mut t Transformer) is_generic_struct(name string) bool {
 }
 
 fn (mut t Transformer) monomorphize_pass() []string {
+	debug_started := time.ticks()
+	t.tc.reset_resolution_type_view_cache()
+	defer {
+		t.tc.disable_resolution_type_view_cache()
+		t.defer_nested_generic_emissions = false
+		t.pending_generic_fn_specs.clear()
+		t.pending_generic_fn_spec_keys.clear()
+	}
+	t.defer_nested_generic_emissions = true
 	decls := t.cached_generic_fn_decls()
+	t.monomorph_profile('mono driver decls: ${time.ticks() - debug_started} ms')
 	if decls.len == 0 {
 		return []string{}
 	}
+	// Generic cloning is recursive. Reuse one stack-shaped child-id buffer instead
+	// of allocating a temporary array for every cloned AST node.
+	t.generic_clone_children.ensure_cap(t.a.nodes.len)
 	struct_decls := t.collect_generic_struct_decls()
+	t.materialize_generic_sum_types(false)
 	t.seed_generic_specialization_args(struct_decls)
-	t.materialize_generic_struct_specs(t.generic_struct_specs(struct_decls), struct_decls)
+	sum_decls := t.collect_generic_sum_decls()
+	t.materialize_generic_struct_specs(t.generic_struct_specs_cache, struct_decls)
 	mut ignored_nodes := t.monomorphize_ignored_nodes(decls)
 	mut emitted := map[string]bool{}
 	mut generated := []string{}
@@ -69,13 +91,31 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	mut changed := true
 	mut scan_start := 0
 	mut used_fns_at_scan := t.used_fn_count()
+	mut generic_struct_specs := if t.generic_materialization_ready {
+		t.generic_struct_specs_cache.clone()
+	} else {
+		t.generic_struct_specs(struct_decls)
+	}
+	mut generic_sum_specs := if t.generic_materialization_ready {
+		t.generic_sum_specs_cache.clone()
+	} else {
+		map[string]GenericSpecContext{}
+	}
+	mut generic_struct_specs_scan_start := t.a.nodes.len
+	mut lowered_operator_uses := t.lowered_generic_struct_operator_uses_for_specs(generic_struct_specs,
+		decls)
+	t.monomorph_profile('mono driver setup: ${time.ticks() - debug_started} ms')
 	t.in_monomorphize_scan = true
 	defer {
 		t.in_monomorphize_scan = false
 	}
+	mut debug_round := 0
 	for changed {
+		debug_round++
+		debug_round_started := time.ticks()
 		changed = false
 		t.ensure_node_module_map()
+		t.monomorph_profile('mono round ${debug_round} modules: ${time.ticks() - debug_round_started} ms')
 		node_count := t.a.nodes.len
 		// A previous round can mark an until-then unused fn as used (a clone
 		// or comptime unroll now calls it); its subtree left the ignore set
@@ -92,12 +132,32 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			ignored_nodes = unsafe { new_ignored }
 		}
 		used_fns_at_scan = t.used_fn_count()
-		generic_struct_specs := t.generic_struct_specs(struct_decls)
-		lowered_operator_uses := t.lowered_generic_struct_operator_uses_for_specs(generic_struct_specs,
-			decls)
-		for scan_idx in 0 .. rescan.len + (node_count - scan_start) {
+		t.monomorph_profile('mono round ${debug_round} ignored: ${time.ticks() - debug_round_started} ms')
+		if generic_struct_specs_scan_start < node_count {
+			spec_count := generic_struct_specs.len
+			t.collect_generic_struct_specs_range(struct_decls, mut generic_struct_specs,
+				generic_struct_specs_scan_start, node_count)
+			t.collect_generic_sum_specs_range(sum_decls, mut generic_sum_specs,
+				generic_struct_specs_scan_start, node_count)
+			generic_struct_specs_scan_start = node_count
+			if generic_struct_specs.len != spec_count {
+				lowered_operator_uses = t.lowered_generic_struct_operator_uses_for_specs(generic_struct_specs,
+					decls)
+			}
+		}
+		t.monomorph_profile('mono round ${debug_round} specs: ${time.ticks() - debug_round_started} ms')
+		use_parallel_scan := t.parallel_monomorph_scan_start == scan_start
+			&& t.parallel_monomorph_scan_end == node_count
+		new_scan_count := if use_parallel_scan {
+			t.parallel_monomorph_scan_nodes.len
+		} else {
+			node_count - scan_start
+		}
+		for scan_idx in 0 .. rescan.len + new_scan_count {
 			i := if scan_idx < rescan.len {
 				rescan[scan_idx]
+			} else if use_parallel_scan {
+				t.parallel_monomorph_scan_nodes[scan_idx - rescan.len]
 			} else {
 				scan_start + (scan_idx - rescan.len)
 			}
@@ -132,8 +192,11 @@ fn (mut t Transformer) monomorphize_pass() []string {
 					if emitted[spec_key] {
 						continue
 					}
-					generated << t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl,
-						concrete_args), concrete_args)
+					if t.generic_specialization_registered(decl, concrete_args) {
+						emitted[spec_key] = true
+						continue
+					}
+					t.request_generic_fn_specialization(decl, concrete_args)
 					emitted[spec_key] = true
 					changed = true
 				}
@@ -154,31 +217,101 @@ fn (mut t Transformer) monomorphize_pass() []string {
 				else {}
 			}
 		}
+		t.monomorph_profile('mono round ${debug_round} scan: ${time.ticks() - debug_round_started} ms (${node_count - scan_start} new)')
 		scan_start = node_count
+		if use_parallel_scan {
+			t.parallel_monomorph_scan_nodes = []int{}
+			t.parallel_monomorph_scan_start = 0
+			t.parallel_monomorph_scan_end = 0
+		}
+		t.generic_struct_specs_cache = generic_struct_specs.clone()
+		t.generic_sum_specs_cache = generic_sum_specs.clone()
+		t.generic_materialization_scan_from = node_count
+		t.generic_materialization_ready = true
 		// Specialize methods of instantiated generic structs that are never reached
 		// through an explicit call node — notably operator overloads (`a + b`), which
 		// are infix expressions lowered to method calls only later in the pipeline.
-		if t.specialize_generic_struct_methods(generic_struct_specs, decls, mut emitted, mut
-			generated)
-		{
+		if t.specialize_generic_struct_methods(generic_struct_specs, decls, mut emitted) {
 			changed = true
 		}
+		t.monomorph_profile('mono round ${debug_round} methods: ${time.ticks() - debug_round_started} ms')
+		if t.drain_pending_generic_fn_specs(mut emitted, mut generated) {
+			changed = true
+		}
+		t.monomorph_profile('mono round ${debug_round} drain: ${time.ticks() - debug_round_started} ms')
 	}
+	t.monomorph_profile('mono driver rounds: ${time.ticks() - debug_started} ms')
 	t.rewrite_generic_call_sites(decls, generic_call_sites)
+	t.monomorph_profile('mono driver rewrite: ${time.ticks() - debug_started} ms')
 	if t.refresh_decl_assign_types_after_generic_rewrite() {
+		t.monomorph_profile('mono driver refresh: ${time.ticks() - debug_started} ms')
+		mut missed_call_sites := []int{cap: t.generic_call_spec_misses.len}
+		for id, missed in t.generic_call_spec_misses {
+			if missed {
+				missed_call_sites << id
+			}
+		}
+		missed_call_sites.sort()
 		t.generic_call_spec_misses = map[int]bool{}
-		extra_call_sites := t.collect_generic_call_sites_after_type_refresh(struct_decls, decls,
-			ignored_nodes, mut emitted, mut generated, mut recorded_call_sites)
+		extra_call_sites := t.collect_generic_call_sites_after_type_refresh(generic_struct_specs,
+			decls, ignored_nodes, missed_call_sites, mut emitted, mut recorded_call_sites)
 		if extra_call_sites.len > 0 {
 			t.rewrite_generic_call_sites(decls, extra_call_sites)
 			t.refresh_decl_assign_types_after_generic_rewrite()
 		}
 	}
+	t.monomorph_profile('mono driver extra: ${time.ticks() - debug_started} ms')
 	t.erase_generic_fn_decls(decls)
+	t.generic_struct_specs_cache = generic_struct_specs.move()
+	t.generic_sum_specs_cache = generic_sum_specs.move()
+	t.generic_materialization_scan_from = t.a.nodes.len
+	t.generic_materialization_ready = true
+	t.monomorph_profile('mono driver erase: ${time.ticks() - debug_started} ms')
 	return generated
 }
 
-fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(struct_decls map[string]GenericStructDecl, decls map[string]GenericFnDecl, ignored_nodes []bool, mut emitted map[string]bool, mut generated []string, mut recorded_call_sites map[int]bool) []GenericCallSite {
+fn (mut t Transformer) request_generic_fn_specialization(decl GenericFnDecl, args []string) {
+	concrete_args := t.canonical_generic_specialization_args(args)
+	key := t.generic_specialization_progress_key(decl, concrete_args)
+	if key in t.generic_fn_spec_nodes || t.generic_fn_specs_in_progress[key]
+		|| t.pending_generic_fn_spec_keys[key] {
+		return
+	}
+	t.pending_generic_fn_spec_keys[key] = true
+	value := specialized_generic_fn_value(decl.node.value, concrete_args)
+	t.register_specialized_fn_signature_value(decl, value, concrete_args)
+	t.pending_generic_fn_specs << PendingGenericFnSpec{
+		decl: decl
+		args: concrete_args
+		key:  key
+	}
+}
+
+fn (mut t Transformer) drain_pending_generic_fn_specs(mut emitted map[string]bool, mut generated []string) bool {
+	if t.pending_generic_fn_specs.len == 0 {
+		return false
+	}
+	specs := t.pending_generic_fn_specs
+	t.pending_generic_fn_specs = []PendingGenericFnSpec{}
+	$if !v3_no_parallel ? {
+		if specs.len >= 32 && t.run_parallel_monomorphize_specs(specs, mut emitted) {
+			return true
+		}
+	}
+	for spec in specs {
+		if spec.key in t.generic_fn_spec_nodes {
+			t.pending_generic_fn_spec_keys.delete(spec.key)
+			continue
+		}
+		clone_id := t.emit_generic_fn_specialization(spec.decl, spec.args)
+		generated << t.generated_fn_used_names(spec.decl, clone_id, spec.args)
+		emitted[generic_fn_spec_key(spec.decl.key, spec.args)] = true
+		t.pending_generic_fn_spec_keys.delete(spec.key)
+	}
+	return true
+}
+
+fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(generic_struct_specs map[string]string, decls map[string]GenericFnDecl, ignored_nodes []bool, candidate_ids []int, mut emitted map[string]bool, mut recorded_call_sites map[int]bool) []GenericCallSite {
 	mut sites := []GenericCallSite{}
 	t.ensure_node_module_map()
 	old_in_scan := t.in_monomorphize_scan
@@ -186,9 +319,12 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(struct_decl
 	defer {
 		t.in_monomorphize_scan = old_in_scan
 	}
-	node_count := t.a.nodes.len
-	lowered_operator_uses := t.lowered_generic_struct_operator_uses(struct_decls, decls)
-	for i in 0 .. node_count {
+	lowered_operator_uses := t.lowered_generic_struct_operator_uses_for_specs(generic_struct_specs,
+		decls)
+	for i in candidate_ids {
+		if i < 0 || i >= t.a.nodes.len {
+			continue
+		}
 		if (i < ignored_nodes.len && ignored_nodes[i])
 			|| (i < t.ignored_comptime_for_nodes.len && t.ignored_comptime_for_nodes[i]) {
 			continue
@@ -220,8 +356,11 @@ fn (mut t Transformer) collect_generic_call_sites_after_type_refresh(struct_decl
 		if emitted[spec_key] {
 			continue
 		}
-		generated << t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl,
-			concrete_args), concrete_args)
+		if t.generic_specialization_registered(decl, concrete_args) {
+			emitted[spec_key] = true
+			continue
+		}
+		t.request_generic_fn_specialization(decl, concrete_args)
 		emitted[spec_key] = true
 	}
 	return sites
@@ -231,7 +370,12 @@ fn (mut t Transformer) seed_generic_specialization_args(decls map[string]Generic
 	if decls.len == 0 {
 		return
 	}
-	specs, _ := t.collect_generic_materialization_specs(decls, map[string]GenericSumDecl{})
+	specs := if t.generic_materialization_ready {
+		t.generic_struct_specs_cache
+	} else {
+		all_specs, _ := t.collect_generic_materialization_specs(decls, map[string]GenericSumDecl{})
+		all_specs
+	}
 	for spec, base in specs {
 		decl := decls[base] or { continue }
 		_, args, ok := generic_app_parts(spec)
@@ -506,7 +650,7 @@ fn (mut t Transformer) record_index_operator_fn_name(node flat.Node, method stri
 // `vec__Vec4_f32__one`, ...). It only handles methods whose generic parameters are
 // exactly the struct's parameters (no extra method-level `[U]`); those are left to
 // the call-driven path. Returns whether any new specialization was emitted.
-fn (mut t Transformer) specialize_generic_struct_methods(specs map[string]string, decls map[string]GenericFnDecl, mut emitted map[string]bool, mut generated []string) bool {
+fn (mut t Transformer) specialize_generic_struct_methods(specs map[string]string, decls map[string]GenericFnDecl, mut emitted map[string]bool) bool {
 	if !t.needs_generic_struct_method_specialization(decls) {
 		return false
 	}
@@ -561,8 +705,11 @@ fn (mut t Transformer) specialize_generic_struct_methods(specs map[string]string
 			if emitted[spec_key] {
 				continue
 			}
-			generated << t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl,
-				concrete_args), concrete_args)
+			if t.generic_specialization_registered(decl, concrete_args) {
+				emitted[spec_key] = true
+				continue
+			}
+			t.request_generic_fn_specialization(decl, concrete_args)
 			emitted[spec_key] = true
 			any = true
 		}
@@ -1570,20 +1717,37 @@ fn interface_boxed_type_key(iface_name string, concrete_type string) string {
 }
 
 fn (mut t Transformer) materialize_generic_structs(erase_templates bool) {
+	debug_started := time.ticks()
 	if isnil(t.tc) {
 		return
 	}
 	decls := t.collect_generic_struct_decls()
 	sum_decls := t.collect_generic_sum_decls()
+	t.monomorph_profile('mono materialize decls: ${time.ticks() - debug_started} ms')
 	if decls.len == 0 && sum_decls.len == 0 {
 		return
 	}
-	specs, sum_specs := t.collect_generic_materialization_specs(decls, sum_decls)
+	mut specs := map[string]string{}
+	mut sum_specs := map[string]GenericSpecContext{}
+	if t.generic_materialization_ready {
+		specs = t.generic_struct_specs_cache.clone()
+		sum_specs = t.generic_sum_specs_cache.clone()
+		t.collect_generic_struct_specs_range(decls, mut specs, t.generic_materialization_scan_from,
+			t.a.nodes.len)
+		t.collect_generic_sum_specs_range(sum_decls, mut sum_specs,
+			t.generic_materialization_scan_from, t.a.nodes.len)
+		t.expand_generic_materialization_specs(decls, sum_decls, mut specs, mut sum_specs)
+	} else {
+		specs, sum_specs = t.collect_generic_materialization_specs(decls, sum_decls)
+	}
+	t.monomorph_profile('mono materialize specs: ${time.ticks() - debug_started} ms (${specs.len}/${sum_specs.len})')
 	for spec, context in sum_specs {
 		decl := sum_decls[context.base] or { continue }
 		t.materialize_generic_sum_spec(spec, decl, context)
 	}
+	t.monomorph_profile('mono materialize sums: ${time.ticks() - debug_started} ms')
 	t.materialize_generic_struct_specs(specs, decls)
+	t.monomorph_profile('mono materialize structs: ${time.ticks() - debug_started} ms')
 	if erase_templates {
 		t.erase_generic_sum_templates(sum_decls)
 		for _, decl in decls {
@@ -1593,6 +1757,7 @@ fn (mut t Transformer) materialize_generic_structs(erase_templates bool) {
 		}
 	}
 	t.tc.invalidate_short_type_name_index()
+	t.monomorph_profile('mono materialize erase: ${time.ticks() - debug_started} ms')
 }
 
 fn (mut t Transformer) materialize_generic_struct_specs(specs map[string]string, decls map[string]GenericStructDecl) {
@@ -1612,9 +1777,18 @@ fn (mut t Transformer) materialize_generic_sum_types(erase_templates bool) {
 	decls := t.collect_generic_struct_decls()
 	sum_decls := t.collect_generic_sum_decls()
 	if sum_decls.len == 0 {
+		specs, _ := t.collect_generic_materialization_specs(decls, sum_decls)
+		t.generic_struct_specs_cache = specs.clone()
+		t.generic_sum_specs_cache = map[string]GenericSpecContext{}
+		t.generic_materialization_scan_from = t.a.nodes.len
+		t.generic_materialization_ready = true
 		return
 	}
-	_, sum_specs := t.collect_generic_materialization_specs(decls, sum_decls)
+	specs, sum_specs := t.collect_generic_materialization_specs(decls, sum_decls)
+	t.generic_struct_specs_cache = specs.clone()
+	t.generic_sum_specs_cache = sum_specs.clone()
+	t.generic_materialization_scan_from = t.a.nodes.len
+	t.generic_materialization_ready = true
 	for spec, context in sum_specs {
 		decl := sum_decls[context.base] or { continue }
 		t.materialize_generic_sum_spec(spec, decl, context)
@@ -1641,6 +1815,11 @@ fn (mut t Transformer) collect_generic_materialization_specs(decls map[string]Ge
 	mut sum_specs := map[string]GenericSpecContext{}
 	t.collect_generic_struct_specs(decls, mut specs)
 	t.collect_generic_sum_specs(sum_decls, mut sum_specs)
+	t.expand_generic_materialization_specs(decls, sum_decls, mut specs, mut sum_specs)
+	return specs, sum_specs
+}
+
+fn (mut t Transformer) expand_generic_materialization_specs(decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut specs map[string]string, mut sum_specs map[string]GenericSpecContext) {
 	for _ in 0 .. 40 {
 		before := specs.len
 		before_sums := sum_specs.len
@@ -1685,7 +1864,6 @@ fn (mut t Transformer) collect_generic_materialization_specs(decls map[string]Ge
 			break
 		}
 	}
-	return specs, sum_specs
 }
 
 fn (mut t Transformer) collect_generic_struct_decls() map[string]GenericStructDecl {
@@ -1773,23 +1951,17 @@ fn (mut t Transformer) collect_generic_struct_specs(decls map[string]GenericStru
 	for _, target in t.tc.type_aliases {
 		t.collect_generic_struct_spec_from_type(target, '', '', decls, mut specs)
 	}
-	mut file_name := ''
-	mut module_name := ''
-	for node_idx, node in t.a.nodes {
-		match node.kind {
-			.file {
-				file_name = node.value
-				module_name = t.tc.file_modules[file_name] or { '' }
-			}
-			.module_decl {
-				module_name = node.value
-			}
-			else {}
-		}
+	t.collect_generic_struct_specs_range(decls, mut specs, 0, t.a.nodes.len)
+}
 
-		node_module := t.node_module_or(node_idx, module_name)
-		node_file := t.node_file_or(node_idx, file_name)
-
+fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]GenericStructDecl, mut specs map[string]string, start int, end int) {
+	t.ensure_node_module_map()
+	safe_start := if start < 0 { 0 } else { start }
+	safe_end := if end > t.a.nodes.len { t.a.nodes.len } else { end }
+	for node_idx in safe_start .. safe_end {
+		node := t.a.nodes[node_idx]
+		node_module := t.node_module_or(node_idx, '')
+		node_file := t.node_file_or(node_idx, '')
 		if node.typ.len > 0 {
 			t.collect_generic_struct_spec_from_type(node.typ, node_module, node_file, decls, mut
 				specs)
@@ -1951,23 +2123,20 @@ fn (mut t Transformer) collect_generic_sum_specs(decls map[string]GenericSumDecl
 	for _, target in t.tc.type_aliases {
 		t.collect_generic_sum_spec_from_type(target, '', '', decls, mut specs)
 	}
-	mut file_name := ''
-	mut module_name := ''
-	for node_idx, node in t.a.nodes {
-		match node.kind {
-			.file {
-				file_name = node.value
-				module_name = t.tc.file_modules[file_name] or { '' }
-			}
-			.module_decl {
-				module_name = node.value
-			}
-			else {}
-		}
+	t.collect_generic_sum_specs_range(decls, mut specs, 0, t.a.nodes.len)
+}
 
-		node_module := t.node_module_or(node_idx, module_name)
-		node_file := t.node_file_or(node_idx, file_name)
-
+fn (mut t Transformer) collect_generic_sum_specs_range(decls map[string]GenericSumDecl, mut specs map[string]GenericSpecContext, start int, end int) {
+	if decls.len == 0 {
+		return
+	}
+	t.ensure_node_module_map()
+	safe_start := if start < 0 { 0 } else { start }
+	safe_end := if end > t.a.nodes.len { t.a.nodes.len } else { end }
+	for node_idx in safe_start .. safe_end {
+		node := t.a.nodes[node_idx]
+		node_module := t.node_module_or(node_idx, '')
+		node_file := t.node_file_or(node_idx, '')
 		if node.typ.len > 0 {
 			t.collect_generic_sum_spec_from_type(node.typ, node_module, node_file, decls, mut specs)
 		}
@@ -2487,6 +2656,9 @@ fn (mut t Transformer) collect_node_subtree_flags(id flat.NodeId, mut nodes []bo
 fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args []string) flat.NodeId {
 	concrete_args := t.canonical_generic_specialization_args(args)
 	spec_key := t.generic_specialization_progress_key(decl, concrete_args)
+	if clone_id := t.generic_fn_spec_nodes[spec_key] {
+		return clone_id
+	}
 	if t.generic_fn_specs_in_progress[spec_key] {
 		return flat.empty_node
 	}
@@ -2560,11 +2732,13 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.cur_fn_ret_type = old_clone_ret_type
 	t.cloning_generic_fn_depth--
 	t.a.specialized_fn_nodes[int(clone_id)] = true
+	t.generic_fn_spec_nodes[spec_key] = clone_id
 	t.restore_var_types(old_clone_var_types)
 	t.specialize_cloned_fn_signature(clone_id, decl, concrete_args)
 	clone := t.a.nodes[int(clone_id)]
-	t.register_specialized_fn_signature(decl, clone, concrete_args)
-	t.materialize_generic_sum_types(false)
+	if !t.generic_signatures_pre_registered {
+		t.register_specialized_fn_signature(decl, clone, concrete_args)
+	}
 	t.active_generic_params = old_params
 	t.transform_specialized_fn_body(clone_id, decl.module, decl.file, concrete_args)
 	t.ensure_node_context_map_capacity()
@@ -2723,6 +2897,18 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, mut 
 		call_name := t.generated_call_name_for_used(id, node)
 		if call_name.len > 0 {
 			t.push_generated_used_name(call_name, mut names, mut seen)
+		}
+		if t.defer_nested_generic_emissions {
+			decls := t.cached_generic_fn_decls()
+			if decl_key, args := t.cached_generic_call_specialization(id, node, t.cur_module, decls) {
+				if decl := decls[decl_key] {
+					concrete_args := t.canonical_generic_specialization_args(args)
+					if !t.generic_specialization_registered(decl, concrete_args)
+						&& !t.generic_specialization_in_progress(decl, concrete_args) {
+						t.request_generic_fn_specialization(decl, concrete_args)
+					}
+				}
+			}
 		}
 	} else if fn_value_name := t.generated_fn_value_name_for_used(id, node) {
 		t.push_generated_used_name(fn_value_name, mut names, mut seen)
@@ -3024,6 +3210,10 @@ fn (mut t Transformer) specialize_cloned_fn_signature(clone_id flat.NodeId, decl
 }
 
 fn (mut t Transformer) register_specialized_fn_signature(decl GenericFnDecl, clone flat.Node, args []string) {
+	t.register_specialized_fn_signature_value(decl, clone.value, args)
+}
+
+fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDecl, clone_value string, args []string) {
 	old_module := t.cur_module
 	old_file := t.cur_file
 	old_tc_module := if isnil(t.tc) { '' } else { t.tc.cur_module }
@@ -3056,13 +3246,13 @@ fn (mut t Transformer) register_specialized_fn_signature(decl GenericFnDecl, clo
 			params << t.tc.parse_resolution_type(param_type)
 		}
 	}
-	qname := transform_qualified_fn_name(decl.module, clone.value)
-	t.fn_ret_types[clone.value] = ret_name
+	qname := transform_qualified_fn_name(decl.module, clone_value)
+	t.fn_ret_types[clone_value] = ret_name
 	t.fn_ret_types[qname] = ret_name
-	t.add_receiver_method_suffix_index(clone.value)
+	t.add_receiver_method_suffix_index(clone_value)
 	t.add_receiver_method_suffix_index(qname)
 	if !isnil(t.tc) {
-		mut names := [clone.value, qname, c_name(clone.value),
+		mut names := [clone_value, qname, c_name(clone_value),
 			c_name(qname)]
 		names << specialized_generic_fn_signature_aliases(decl, args)
 		for name in names {
@@ -5346,21 +5536,45 @@ fn strip_decl_module_from_generic_base(name string, module_name string) string {
 	return short
 }
 
+fn (mut t Transformer) build_generic_alias_name_index() {
+	mut names := map[string]bool{}
+	if !isnil(t.tc) {
+		for alias, _ in t.tc.type_aliases {
+			names[alias] = true
+			names[alias.all_after_last('.')] = true
+		}
+	}
+	t.generic_alias_names = names.move()
+}
+
+fn (mut t Transformer) build_local_decl_index() {
+	mut decls := map[string][]int{}
+	for idx, node in t.a.nodes {
+		if node.kind != .decl_assign || node.children_count < 2 {
+			continue
+		}
+		lhs_id := t.a.child(&node, 0)
+		if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
+			continue
+		}
+		lhs := t.a.nodes[int(lhs_id)]
+		if lhs.kind == .ident && lhs.value.len > 0 {
+			decls[lhs.value] << idx
+		}
+	}
+	t.local_decl_nodes_by_name = decls.move()
+}
+
 fn (t &Transformer) generic_arg_is_alias_name(arg string, module_name string) bool {
 	clean := arg.trim_space()
 	if clean.len == 0 || isnil(t.tc) {
 		return false
 	}
-	if clean in t.tc.type_aliases {
+	if t.generic_alias_names[clean] {
 		return true
 	}
 	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		if '${module_name}.${clean}' in t.tc.type_aliases {
-			return true
-		}
-	}
-	for alias, _ in t.tc.type_aliases {
-		if alias.all_after_last('.') == clean {
+		if t.generic_alias_names['${module_name}.${clean}'] {
 			return true
 		}
 	}
@@ -5863,10 +6077,10 @@ fn (t &Transformer) local_decl_type_before(name string, before flat.NodeId) ?str
 	mut best := ''
 	limit := int(before)
 	mut start := 0
-	for i in 0 .. limit {
-		node := t.a.nodes[i]
-		if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+	for i := limit - 1; i >= 0; i-- {
+		if t.a.nodes[i].kind in [.fn_decl, .fn_literal, .lambda_expr] {
 			start = i
+			break
 		}
 	}
 	for i in start .. limit {
@@ -5904,8 +6118,10 @@ fn (t &Transformer) local_decl_type_before(name string, before flat.NodeId) ?str
 			}
 		}
 	}
-	if better := t.local_decl_type_before_by_pos(name, before, start, best) {
-		best = better
+	if best.len == 0 {
+		if better := t.local_decl_type_before_by_pos(name, before, start, best) {
+			best = better
+		}
 	}
 	if best.len == 0 {
 		return none
@@ -5928,10 +6144,10 @@ fn (t &Transformer) local_decl_type_before_by_pos(name string, before flat.NodeI
 	} else {
 		0
 	}
-	for i, node in t.a.nodes {
-		if i < start || node.kind != .decl_assign || node.children_count < 2 || !node.pos.is_valid()
-			|| node.pos.id != before_node.pos.id || node.pos.offset < start_pos
-			|| node.pos.offset >= before_node.pos.offset {
+	for i in t.local_decl_nodes_by_name[name] {
+		node := t.a.nodes[i]
+		if i < start || !node.pos.is_valid() || node.pos.id != before_node.pos.id
+			|| node.pos.offset < start_pos || node.pos.offset >= before_node.pos.offset {
 			continue
 		}
 		lhs_id := t.a.child(&node, 0)
@@ -5976,10 +6192,8 @@ fn (t &Transformer) local_decl_type_before_pos(name string, before flat.Node) ?s
 	}
 	mut best := ''
 	mut best_offset := -1
-	for node in t.a.nodes {
-		if node.kind != .decl_assign || node.children_count < 2 {
-			continue
-		}
+	for idx in t.local_decl_nodes_by_name[name] {
+		node := t.a.nodes[idx]
 		if node.pos.offset <= fn_start || node.pos.offset >= before.pos.offset
 			|| node.pos.offset <= best_offset {
 			continue
@@ -6384,6 +6598,7 @@ fn (mut t Transformer) clone_generic_fn_node(node flat.Node, args []string) flat
 	return t.clone_generic_node_from(node, args, true)
 }
 
+@[direct_array_access]
 fn (mut t Transformer) clone_generic_node(id flat.NodeId, args []string) flat.NodeId {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return id
@@ -6394,6 +6609,7 @@ fn (mut t Transformer) clone_generic_node(id flat.NodeId, args []string) flat.No
 	return clone_id
 }
 
+@[direct_array_access]
 fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is_root bool) flat.NodeId {
 	if node.kind == .selector && node.children_count > 0 {
 		base_id := t.a.child(&node, 0)
@@ -6454,6 +6670,11 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			return t.make_string_literal(generic_type_name_display(reflected))
 		}
 	}
+	if node.children_count == 0
+		&& node.kind in [.empty, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal, .nil_literal, .none_expr, .break_stmt, .continue_stmt]
+		&& !generic_text_contains_param(node.typ, t.active_generic_params) {
+		return t.a.add_node(node)
+	}
 	// Calls nested inside a `$for` body must not be specialized during the clone: the loop
 	// variable's members are not resolved yet, so mono would infer a garbage type argument and
 	// emit an uncalled, uncompilable specialization. The comptime unroll (or its skip) handles
@@ -6464,10 +6685,15 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		loop_var, _ := comptime_for_parts(node.value)
 		t.cloning_comptime_for_vars << loop_var
 	}
-	mut children := []flat.NodeId{cap: int(node.children_count)}
-	for i in 0 .. node.children_count {
-		children << t.clone_generic_node(t.a.child(&node, i), args)
+	scratch_start := t.generic_clone_children.len
+	for _ in 0 .. node.children_count {
+		t.generic_clone_children << flat.empty_node
 	}
+	for i in 0 .. node.children_count {
+		child := t.clone_generic_node(t.a.child(&node, i), args)
+		t.generic_clone_children[scratch_start + i] = child
+	}
+	mut children := t.generic_clone_children[scratch_start..scratch_start + int(node.children_count)]
 	if is_comptime_for {
 		t.cloning_comptime_for_vars = t.cloning_comptime_for_vars[..t.cloning_comptime_for_vars.len - 1]
 		t.cloning_comptime_for_depth--
@@ -6480,7 +6706,9 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	} else {
 		t.subst_type(node.typ, args)
 	}
-	mut cloned_typ := if t.generic_type_text_contains_alias(substituted_node_type, t.cur_module) {
+	mut cloned_typ := if substituted_node_type == node.typ {
+		node.typ
+	} else if t.generic_type_text_contains_alias(substituted_node_type, t.cur_module) {
 		substituted_node_type
 	} else if node.kind == .directive && node.value == 'string_interp_format' {
 		substituted_node_type
@@ -6595,6 +6823,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		if node.kind == .ident && t.mut_param_values[node.value] {
 			t.mut_value_ident_nodes[int(clone_id)] = true
 		}
+		t.generic_clone_children = t.generic_clone_children[..scratch_start]
 		return clone_id
 	}
 	cloned_typ = t.retarget_cloned_map_key_storage_type(node, mut children, cloned_typ)
@@ -6609,6 +6838,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		cloned_typ
 	}
 	if fn_value_id := t.retarget_cloned_generic_fn_value(node, children, final_typ) {
+		t.generic_clone_children = t.generic_clone_children[..scratch_start]
 		return fn_value_id
 	}
 	start := t.a.children.len
@@ -6666,6 +6896,7 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 		// annotation erases the alias identity from their arguments.
 		t.retarget_cloned_implicit_generic_call(clone_id, node, args)
 	}
+	t.generic_clone_children = t.generic_clone_children[..scratch_start]
 	return clone_id
 }
 
@@ -7040,8 +7271,12 @@ fn (mut t Transformer) retarget_cloned_generic_fn_value(node flat.Node, children
 		}
 		if !t.generic_specialization_registered(decl, concrete_args)
 			&& !t.generic_specialization_in_progress(decl, concrete_args) {
-			t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl, concrete_args),
-				concrete_args)
+			if t.defer_nested_generic_emissions {
+				t.request_generic_fn_specialization(decl, concrete_args)
+			} else {
+				t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl,
+					concrete_args), concrete_args)
+			}
 		}
 		spec_value := specialized_generic_fn_value(decl.node.value, concrete_args)
 		qualified_spec := transform_qualified_fn_name(decl.module, spec_value)
@@ -7194,8 +7429,12 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 	concrete_call_args := t.canonical_generic_specialization_args(call_args)
 	if !t.generic_specialization_registered(decl, concrete_call_args)
 		&& !t.generic_specialization_in_progress(decl, concrete_call_args) {
-		t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl, concrete_call_args),
-			concrete_call_args)
+		if t.defer_nested_generic_emissions {
+			t.request_generic_fn_specialization(decl, concrete_call_args)
+		} else {
+			t.generated_fn_used_names(decl, t.emit_generic_fn_specialization(decl,
+				concrete_call_args), concrete_call_args)
+		}
 	}
 	if is_receiver {
 		t.rewrite_generic_method_call(clone_id, clone, decl, concrete_call_args)
@@ -7736,6 +7975,9 @@ fn substitute_generic_expr_text_with_params(text string, args []string, params [
 	if text.len == 0 || args.len == 0 {
 		return text
 	}
+	if params.len > 0 && !generic_text_contains_param(text, params) {
+		return text
+	}
 	mut out := strings.new_builder(text.len)
 	mut i := 0
 	for i < text.len {
@@ -7776,12 +8018,51 @@ fn substitute_generic_expr_ident(ident string, args []string, params []string) s
 	return ident
 }
 
+@[inline]
 fn generic_expr_ident_start(ch u8) bool {
 	return (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`) || ch == `_`
 }
 
+@[inline]
 fn generic_expr_ident_char(ch u8) bool {
 	return generic_expr_ident_start(ch) || (ch >= `0` && ch <= `9`) || ch == `.`
+}
+
+@[direct_array_access; inline]
+fn generic_text_contains_param(text string, params []string) bool {
+	if text.len == 0 || params.len == 0 {
+		return false
+	}
+	mut i := 0
+	for i < text.len {
+		if !generic_expr_ident_start(text[i]) {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < text.len
+			&& (generic_expr_ident_start(text[i]) || (text[i] >= `0` && text[i] <= `9`)) {
+			i++
+		}
+		token_len := i - start
+		for param in params {
+			if param.len != token_len {
+				continue
+			}
+			mut matches := true
+			for j in 0 .. token_len {
+				if text[start + j] != param[j] {
+					matches = false
+					break
+				}
+			}
+			if matches {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn substitute_generic_type_text(typ string, args []string) string {
@@ -7854,10 +8135,14 @@ fn substitute_generic_type_text(typ string, args []string) string {
 	return clean
 }
 
+@[direct_array_access]
 fn substitute_generic_type_text_with_params(typ string, args []string, params []string) string {
 	clean := typ.trim_space()
 	if clean.len == 0 || args.len == 0 {
 		return typ
+	}
+	if params.len > 0 && !generic_text_contains_param(clean, params) {
+		return clean
 	}
 	if fixed := substitute_generic_fixed_array_type_text(clean, args, params) {
 		return fixed
