@@ -1386,6 +1386,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fixed_array_typedefs()
 	g.multi_return_typedefs()
 	g.optional_typedefs()
+	g.emit_c_source_directives()
 	g.c_extern_forward_decls()
 	g.builtin_abi_decls()
 	g.test_failure_helpers()
@@ -2102,6 +2103,27 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			return true
 		}
 		include_dirs := c_flag_include_dirs(g.c_flags)
+		if c_include_arg_is_source_file(include_arg) {
+			paths := c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs)
+			if paths.len > 0 {
+				if source_text := os.read_file(paths[0]) {
+					g.collect_inlined_c_structs(source_text)
+					g.collect_inlined_c_fns(source_text)
+					g.collect_inlined_c_declared_fns(source_text)
+				}
+				mut source_directive := '#include "${paths[0]}"'
+				if paths[0].ends_with('.m') || paths[0].ends_with('.mm') {
+					source_directive = '#include <Cocoa/Cocoa.h>\n${source_directive}'
+					if '-x' !in g.c_flags || 'objective-c' !in g.c_flags {
+						g.c_flags << ['-x', 'objective-c']
+					}
+				}
+				g.add_c_directive(module_name, source_directive, before_import)
+			} else {
+				g.add_c_directive(module_name, '#include ${include_arg}', before_import)
+			}
+			return true
+		}
 		if header := c_inline_header_text(include_arg, g.compiler_vroot, source_file, include_dirs,
 			g.use_system_stdint)
 		{
@@ -2479,7 +2501,7 @@ fn c_should_preserve_uninlined_include(include_arg string) bool {
 		return false
 	}
 	if clean[0] == `<` {
-		return false
+		return clean in ['<dlfcn.h>', '<limits.h>', '<math.h>', '<ucontext.h>']
 	}
 	return true
 }
@@ -2499,6 +2521,9 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 }
 
 fn c_preserved_system_include_declared_fns(include_arg string) []string {
+	if include_arg == '<dlfcn.h>' {
+		return ['dlclose', 'dlerror', 'dlopen', 'dlsym']
+	}
 	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
 		return [
 			'host_page_size',
@@ -3174,6 +3199,15 @@ fn c_include_arg_is_literal(include_arg string) bool {
 		|| (clean[0] == `<` && clean[clean.len - 1] == `>`)
 }
 
+fn c_include_arg_is_source_file(include_arg string) bool {
+	clean := trimmed_space(include_arg)
+	if clean.len < 3 || clean[0] != `"` || clean[clean.len - 1] != `"` {
+		return false
+	}
+	path := clean[1..clean.len - 1]
+	return path.ends_with('.c') || path.ends_with('.m') || path.ends_with('.mm')
+}
+
 fn c_include_file_paths(include_arg string, vroot string, source_file string, include_dirs []string) []string {
 	clean := trimmed_space(include_arg)
 	if clean.len < 2 {
@@ -3461,7 +3495,8 @@ fn (mut g FlatGen) ordered_c_directives() []string {
 fn (mut g FlatGen) emit_c_directives() {
 	mut emitted := false
 	for directive in g.ordered_c_directives() {
-		if c_contains_preserved_system_include_directive(directive) {
+		if c_contains_preserved_system_include_directive(directive)
+			|| c_is_source_include_directive(directive) {
 			continue
 		}
 		g.writeln(directive)
@@ -3470,6 +3505,42 @@ fn (mut g FlatGen) emit_c_directives() {
 	if emitted {
 		g.writeln('')
 	}
+}
+
+fn (mut g FlatGen) emit_c_source_directives() {
+	mut emitted := false
+	for directive in g.ordered_c_directives() {
+		if !c_is_source_include_directive(directive) {
+			continue
+		}
+		g.writeln(directive)
+		emitted = true
+	}
+	if emitted {
+		g.writeln('')
+	}
+}
+
+fn c_is_source_include_directive(directive string) bool {
+	clean := trimmed_space(directive)
+	if clean.contains('\n') {
+		for line in clean.split_into_lines() {
+			if c_is_source_include_directive(line) {
+				return true
+			}
+		}
+		return false
+	}
+	if c_directive_name(clean) != 'include' {
+		return false
+	}
+	mut arg := c_directive_arg(clean)
+	if arg.len < 3 || arg[0] != `"` {
+		return false
+	}
+	end := arg.index_after('"', 1) or { return false }
+	arg = arg[1..end]
+	return arg.ends_with('.c') || arg.ends_with('.m') || arg.ends_with('.mm')
 }
 
 fn (mut g FlatGen) emit_preserved_c_directives() {
@@ -5872,6 +5943,23 @@ fn (mut g FlatGen) sizeof_target(value string) string {
 	if value.starts_with('fn_ptr:') {
 		return g.resolve_fn_ptr_type(value)
 	}
+	// Transformer-produced fixed-array names use postfix dimensions. For an
+	// array of pointers `[N]&Elem`, that canonical spelling is `&Elem[N]`.
+	// Keep the pointer on the element when forming a C type declarator.
+	if value.starts_with('&') && value.ends_with(']') {
+		bracket := value.index_u8(`[`)
+		if bracket > 1 {
+			return '${g.sizeof_target(value[1..bracket])}*${value[bracket..]}'
+		}
+	}
+	// Canonical fixed-array pointer element spellings can reach sizeof as
+	// `Elem[N]*`; C declares an array of pointers as `Elem*[N]`.
+	if value.ends_with('*') {
+		bracket := value.index_u8(`[`)
+		if bracket > 0 {
+			return '${value[..bracket]}*${value[bracket..value.len - 1]}'
+		}
+	}
 	if value.starts_with('&') {
 		return '${g.sizeof_target(value[1..].trim_space())}*'
 	}
@@ -7255,9 +7343,22 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
-			looked_up := g.tc.cur_scope.lookup(node.value) or { types.Type(types.void_) }
-			is_local := looked_up !is types.Void
-			const_name := if !is_local { g.const_ref_name(node.value) } else { '' }
+			is_local := if owner := g.tc.cur_scope.lookup_owner(node.value) {
+				!owner.belongs_to_scope(g.tc.file_scope)
+			} else {
+				false
+			}
+			is_current_module_global := if global_module := g.global_modules[node.value] {
+				global_module == g.tc.cur_module
+					|| (global_module in ['', 'main'] && g.tc.cur_module in ['', 'main'])
+			} else {
+				false
+			}
+			const_name := if !is_local && !is_current_module_global {
+				g.const_ref_name(node.value)
+			} else {
+				''
+			}
 			if const_name.len > 0 {
 				g.write(g.const_ident_c_name(const_name))
 			} else if g.local_storage_is_shared(node.value) {
@@ -8560,6 +8661,36 @@ fn (mut g FlatGen) gen_pointer_cast_from_array_ref(arg_id flat.NodeId, target_ty
 }
 
 fn (mut g FlatGen) gen_typeof_name(node flat.Node) {
+	if node.value.len == 0 && node.children_count > 0 {
+		expr_id := g.a.child(&node, 0)
+		mut expr_type := g.usable_expr_type(expr_id)
+		mut is_pointer := false
+		if expr_type is types.Pointer {
+			is_pointer = true
+			expr_type = expr_type.base_type
+		}
+		if expr_type is types.SumType {
+			sum_name := g.resolve_sum_name(expr_type.name)
+			variants := g.tc.sum_types[sum_name] or { []string{} }
+			if variants.len > 0 {
+				unknown_name := 'unknown ' + typeof_display_type_name(sum_name)
+				unknown_sid := g.intern_string(unknown_name)
+				g.write('((string[]){_str_${unknown_sid}')
+				for variant in variants {
+					mut display_name := typeof_display_type_name(variant)
+					if display_name.starts_with('main.') {
+						display_name = display_name[5..]
+					}
+					sid := g.intern_string(display_name)
+					g.write(', _str_${sid}')
+				}
+				g.write('})[(')
+				g.gen_expr(expr_id)
+				g.write(if is_pointer { ')->typ]' } else { ').typ]' })
+				return
+			}
+		}
+	}
 	type_name := g.typeof_type_name(node)
 	sid := g.intern_string(type_name)
 	g.write('_str_${sid}')
@@ -9126,7 +9257,7 @@ fn (mut g FlatGen) gen_fixed_array_infix_eq(node flat.Node, lhs_id flat.NodeId, 
 	g.gen_expr_with_expected_type(lhs_id, types.Type(fixed))
 	g.write(', ')
 	g.gen_expr_with_expected_type(rhs_id, types.Type(fixed))
-	g.write(', sizeof(${g.value_sizeof_target(types.Type(fixed))})) == 0)')
+	g.write(', sizeof(${g.sizeof_target(g.value_sizeof_target(types.Type(fixed)))})) == 0)')
 	return true
 }
 

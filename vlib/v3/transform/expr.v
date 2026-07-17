@@ -2339,7 +2339,10 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 			continue
 		}
 		field := t.sum_field_name(qv)
-		use_ptr := t.variant_references_sum(qv, clean_sum)
+		// Value variants are boxed in the sum payload and must be dereferenced
+		// before comparison. Pointer variants already are the payload value
+		// itself (`voidptr` is emitted as `void *`, not `void **`).
+		use_ptr := t.variant_references_sum(qv, clean_sum) && !sum_variant_is_direct_pointer(qv)
 		field_typ := if use_ptr { '&${qv}' } else { qv }
 		mut lhs_payload := t.make_selector_op(lhs_value, field, field_typ, .dot)
 		mut rhs_payload := t.make_selector_op(rhs_value, field, field_typ, .dot)
@@ -2392,6 +2395,11 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 	t.register_sum_eq_helper_signature(helper, clean_sum)
 }
 
+fn sum_variant_is_direct_pointer(variant string) bool {
+	clean := variant.trim_space()
+	return clean.starts_with('&') || clean in ['voidptr', 'byteptr', 'charptr']
+}
+
 fn (mut t Transformer) register_sum_eq_helper_signature(helper string, clean_sum string) {
 	t.fn_ret_types[helper] = 'bool'
 	t.mark_fn_used_name(helper)
@@ -2437,8 +2445,12 @@ fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.
 	lhs_value_field := t.make_selector(lhs_value, 'value', lhs_value_type)
 	rhs_value_field := t.make_selector(rhs_value, 'value', rhs_field_type)
 	pending_start := t.pending_stmts.len
-	value_eq := t.make_membership_eq_expr_with_seen(lhs_value_field, rhs_value_field,
-		lhs_value_type, seen)
+	value_eq := if lhs_value_type.starts_with('&') && rhs_field_type.starts_with('&') {
+		t.make_optional_pointer_payload_eq_expr(lhs_value_field, rhs_value_field,
+			lhs_value_type[1..], seen)
+	} else {
+		t.make_membership_eq_expr_with_seen(lhs_value_field, rhs_value_field, lhs_value_type, seen)
+	}
 	mut body_stmts := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	if body_stmts.len == 0 {
@@ -2457,6 +2469,20 @@ fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), 'bool')
 	return result
+}
+
+fn (mut t Transformer) make_optional_pointer_payload_eq_expr(lhs flat.NodeId, rhs flat.NodeId, pointee_type string, seen []string) flat.NodeId {
+	ptr_same := t.make_infix(.eq, lhs, rhs)
+	lhs_non_nil := t.make_infix(.ne, lhs, t.a.add(.nil_literal))
+	rhs_non_nil := t.make_infix(.ne, rhs, t.a.add(.nil_literal))
+	lhs_value := t.make_prefix(.mul, lhs)
+	t.set_node_typ(int(lhs_value), pointee_type)
+	rhs_value := t.make_prefix(.mul, rhs)
+	t.set_node_typ(int(rhs_value), pointee_type)
+	pointee_eq := t.make_membership_eq_expr_with_seen(lhs_value, rhs_value, pointee_type, seen)
+	both_non_nil := t.make_infix(.logical_and, lhs_non_nil, rhs_non_nil)
+	deep_eq := t.make_infix(.logical_and, both_non_nil, pointee_eq)
+	return t.make_infix(.logical_or, ptr_same, deep_eq)
 }
 
 fn (t &Transformer) array_elem_needs_element_eq(elem_type string) bool {

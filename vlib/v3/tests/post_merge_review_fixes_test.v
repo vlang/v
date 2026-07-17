@@ -5679,3 +5679,37 @@ fn test_discard_assignment_preserves_array_return_type() {
 		"fn values() []string {\n\treturn ['a', 'b']\n}\n\nfn main() {\n\t_ = values()\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
 }
+
+fn test_late_resolution_and_promoted_init_regressions() {
+	v3_bin := build_v3()
+	typeof_out := run_good(v3_bin, 'runtime_sum_typeof', 'type Value = int | string
+
+fn main() {
+	a := Value(7)
+	b := Value("v3")
+	println(unsafe { typeof(a) })
+	println(unsafe { typeof(b) })
+}
+')
+	assert typeof_out == 'int\nstring'
+	promoted_out := run_good(v3_bin, 'promoted_embed_struct_init', 'struct Inner {
+	value int
+}
+
+struct Outer {
+	Inner
+}
+
+fn main() {
+	value := Outer{
+		value: 7
+	}
+	heap := &Outer{
+		value: 8
+	}
+	println(int_str(value.value))
+	println(int_str(heap.value))
+}
+')
+	assert promoted_out == '7\n8'
+}

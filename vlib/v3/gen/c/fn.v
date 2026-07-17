@@ -5379,6 +5379,12 @@ fn (g &FlatGen) ownership_drop_intrinsic_name(name string) bool {
 		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_') {
 		return true
 	}
+	if name in ['drop_owned_v3_interface', 'builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
+		|| name.starts_with('drop_owned_v3_interface_T_')
+		|| name.starts_with('builtin.drop_owned_v3_interface_T_')
+		|| name.starts_with('builtin__drop_owned_v3_interface_T_') {
+		return true
+	}
 	if name != 'drop_owned' && !name.starts_with('drop_owned_T_') {
 		return false
 	}

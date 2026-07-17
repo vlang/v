@@ -2876,6 +2876,13 @@ fn (mut t Transformer) transform_late_candidate(ci int, mut candidates []LateFnC
 			t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut queued)
 		}
 	}
+	// Transforming a late body can root implementation methods indirectly (for
+	// example, when lowering an interface call). Those insertions are not always
+	// represented by a direct call node in the transformed body, so enqueue the
+	// insertion log too and recursively transform their bodies.
+	for i in log_start .. t.used_fns_log.len {
+		add_late_used_fn_name(t.used_fns_log[i], mut late, mut pending, mut queued)
+	}
 }
 
 // LateFnCandidate is a non-generic fn_decl reachable by the late-used-fn-bodies
@@ -12741,6 +12748,20 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 	}
 	if typ.contains('typeof(') {
 		typ = t.resolve_typeof_type_text(typ)
+	}
+	if !isnil(t.tc) && t.tc.parse_type(typ) is types.SumType {
+		// The active variant of a sum type is only known at runtime. Keep the
+		// typeof node for cgen instead of folding it to the declared sum name.
+		transformed_expr := t.transform_expr(expr_id)
+		start := t.a.children.len
+		t.a.children << transformed_expr
+		return t.a.add_node(flat.Node{
+			kind:           .typeof_expr
+			typ:            'string'
+			pos:            node.pos
+			children_start: start
+			children_count: 1
+		})
 	}
 	if t.cur_fn_is_generic && is_generic_fn_placeholder_name(typ) {
 		return t.a.add_node(flat.Node{
