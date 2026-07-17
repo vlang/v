@@ -4770,10 +4770,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	final_left_sym := g.table.final_sym(left_type)
 	// In generic functions node.from_embed_types may be stale: the checker overwrites
 	// it on each instantiation pass, so the state of the last checked concrete type
-	// wins. Re-resolve it for the current concrete receiver type.
+	// wins (including a possibly empty state). Re-resolve it for the current
+	// concrete receiver type.
 	mut effective_embed_types := node.from_embed_types.clone()
-	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && effective_embed_types.len > 0
-		&& left_sym.kind != .interface && final_left_sym.info is ast.Struct {
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && left_sym.kind != .interface
+		&& final_left_sym.info is ast.Struct {
 		if left_sym.has_method(method_name) || final_left_sym.has_method(method_name)
 			|| final_left_sym.has_method_with_generic_parent(method_name) {
 			effective_embed_types = []

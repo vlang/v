@@ -70,6 +70,23 @@ fn test_direct_and_embedded_methods_in_generic_fn() {
 	assert cs.keys() == ['seo1']
 }
 
+fn ids_of[T](items []T) []string {
+	mut res := []string{}
+	for item in items {
+		res << item.id().s
+	}
+	return res
+}
+
+// the embedded receivers are instantiated first here, so the state of the
+// last checked (direct) instantiations remains on the shared AST nodes
+fn test_embedded_methods_first_direct_methods_last_in_generic_fn() {
+	assert ids_of([CategorySEO{SEO{ID{'s1'}}}]) == ['s1']
+	assert ids_of([ProductImage{Image{ID{'i1'}}}]) == ['i1']
+	assert ids_of([Category{ID{'c1'}}]) == ['c1']
+	assert ids_of([InventoryItem{ID{'n1'}}]) == ['n1']
+}
+
 struct Base {
 mut:
 	n int
