@@ -216,24 +216,21 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	abs_importer := os.real_path(importing_file_path)
 	importer_dir := os.dir(abs_importer)
 	// 1. relative to the importing file's directory
-	relative_path := os.join_path_single(importer_dir, mod_path)
-	if dir_is_module(relative_path) {
+	if relative_path := module_path_from_search_root(mod, mod_path, importer_dir) {
 		return relative_path
 	}
 	// 2. local modules/ directory beside the importing file
-	local_modules_path := os.join_path_single(os.join_path_single(importer_dir, 'modules'),
-		mod_path)
-	if dir_is_module(local_modules_path) {
+	local_modules_root := os.join_path_single(importer_dir, 'modules')
+	if local_modules_path := module_path_from_search_root(mod, mod_path, local_modules_root) {
 		return local_modules_path
 	}
 	// 3. vlib
-	vlib_path := os.join_path_single(os.join_path_single(p.vroot, 'vlib'), mod_path)
-	if dir_is_module(vlib_path) {
+	vlib_root := os.join_path_single(p.vroot, 'vlib')
+	if vlib_path := module_path_from_search_root(mod, mod_path, vlib_root) {
 		return vlib_path
 	}
 	// 4. ~/.vmodules (or $VMODULES)
-	vmodules_path := os.join_path_single(vmodules_dir(), mod_path)
-	if dir_is_module(vmodules_path) {
+	if vmodules_path := module_path_from_search_root(mod, mod_path, vmodules_dir()) {
 		return vmodules_path
 	}
 	// 5. walk up the parent directories of the importing file, like V1's
@@ -241,13 +238,11 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	// `viper` from ~/code/doka/doka.v resolves to ~/code/viper.
 	mut current_dir := importer_dir
 	for {
-		try_path := os.join_path_single(current_dir, mod_path)
-		if dir_is_module(try_path) {
+		if try_path := module_path_from_search_root(mod, mod_path, current_dir) {
 			return try_path
 		}
-		try_modules_path := os.join_path_single(os.join_path_single(current_dir, 'modules'),
-			mod_path)
-		if dir_is_module(try_modules_path) {
+		modules_root := os.join_path_single(current_dir, 'modules')
+		if try_modules_path := module_path_from_search_root(mod, mod_path, modules_root) {
 			return try_modules_path
 		}
 		parent_dir := os.dir(current_dir)
@@ -257,6 +252,97 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		current_dir = parent_dir
 	}
 	return ''
+}
+
+fn module_path_from_search_root(mod string, mod_path string, search_root string) ?string {
+	if alias_path := resolve_module_alias_path(search_root, mod) {
+		return alias_path
+	}
+	path := os.join_path_single(search_root, mod_path)
+	if dir_is_module(path) {
+		return path
+	}
+	return none
+}
+
+// resolve_module_alias_path resolves `@[alias: 'path'] module name` declarations
+// stored in `alias.v`. An alias applies to submodules as well.
+fn resolve_module_alias_path(search_root string, mod string) ?string {
+	parts := mod.split('.')
+	for part_count := parts.len; part_count > 0; part_count-- {
+		alias_dir := os.join_path_single(search_root, parts[..part_count].join(os.path_separator))
+		alias_file := os.join_path_single(alias_dir, 'alias.v')
+		if !os.is_file(alias_file) {
+			continue
+		}
+		source := os.read_file(alias_file) or { continue }
+		mut target_dir := module_alias_target_from_source(source) or { continue }
+		if target_dir.contains('@VMODROOT') {
+			vmod_root := vmod_root_for_dir(alias_dir) or { continue }
+			target_dir = target_dir.replace('@VMODROOT', vmod_root)
+		}
+		if !os.is_abs_path(target_dir) {
+			target_dir = os.join_path_single(alias_dir, target_dir)
+		}
+		if part_count < parts.len {
+			target_dir = os.join_path_single(target_dir,
+				parts[part_count..].join(os.path_separator))
+		}
+		target_dir = os.real_path(target_dir)
+		if dir_is_module(target_dir) {
+			return target_dir
+		}
+	}
+	return none
+}
+
+fn module_alias_target_from_source(source string) ?string {
+	marker := '@[alias'
+	marker_pos := source.index(marker) or { return none }
+	mut rest := source[marker_pos + marker.len..].trim_space()
+	if !rest.starts_with(':') {
+		return none
+	}
+	rest = rest[1..].trim_space()
+	if rest.len < 2 || rest[0] !in [`'`, `"`] {
+		return none
+	}
+	quote := rest[0]
+	mut end := 1
+	for end < rest.len && rest[end] != quote {
+		end++
+	}
+	if end >= rest.len {
+		return none
+	}
+	target := rest[1..end]
+	if target.len == 0 {
+		return none
+	}
+	rest = rest[end + 1..].trim_space()
+	if !rest.starts_with(']') {
+		return none
+	}
+	rest = rest[1..].trim_space()
+	if !rest.starts_with('module ') {
+		return none
+	}
+	return target
+}
+
+fn vmod_root_for_dir(start string) ?string {
+	mut dir := os.real_path(start)
+	for {
+		if os.is_file(os.join_path_single(dir, 'v.mod')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			return none
+		}
+		dir = parent
+	}
+	return none
 }
 
 // vlib_module_path maps an import name to its directory below vlib.

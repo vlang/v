@@ -3382,6 +3382,9 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 fn (mut g FlatGen) gen_export_wrapper_for_fn(node flat.Node, module_name string) {
 	export_name := g.export_fn_name_in_module(module_name, node.value) or { return }
 	canonical_name := g.fn_c_name_in_module(module_name, node.value)
+	if export_name == canonical_name {
+		return
+	}
 	ret_type := g.fn_node_return_type(node, module_name)
 	ret_ct := g.fn_return_type_name(ret_type)
 	g.write(ret_ct)

@@ -30,6 +30,22 @@ enum Kind {
 	end
 }
 
+enum Header {
+	authority
+	content_type
+	authorization
+}
+
+struct Locker {}
+
+fn (Locker) lock() int {
+	return 5
+}
+
+fn header_count(headers map[Header]string) int {
+	return headers.len
+}
+
 fn bump(unix i64) i64 {
 	return unix + 1
 }
@@ -75,6 +91,12 @@ fn main() {
 	item.block_size = block_size
 	mut block_size := 1
 	println(int_str(access(item.@type + @true + @false + stdin + stderr + stdout + int(item.unix) + item.block_size + item.typeof + int(Kind.@asm) + block_size) + read() + close() + fabs(1)))
+	println(int_str(header_count({
+		.authority: "example.com"
+		.content_type: "application/json"
+		.authorization: "secret"
+	})))
+	println(int_str(Locker{}.@lock()))
 }
 ') or {
 		panic(err)
@@ -110,7 +132,7 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '124'
+	assert run.output.trim_space() == '124\n3\n5'
 
 	csym_src := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_csym_${pid}.v')
 	os.write_file(csym_src, 'fn C.unix(i64) i64

@@ -4201,9 +4201,11 @@ fn (mut tc TypeChecker) check_export_attrs() {
 					export_symbols[export_name] = qname
 				}
 				if existing := natural_symbols[export_name] {
-					tc.record_error_unfiltered(.unsupported_generic,
-						'export name `${export_name}` for `${qname}` collides with `${existing}`',
-						flat.NodeId(i))
+					if existing != qname {
+						tc.record_error_unfiltered(.unsupported_generic,
+							'export name `${export_name}` for `${qname}` collides with `${existing}`',
+							flat.NodeId(i))
+					}
 				}
 			}
 			else {}
