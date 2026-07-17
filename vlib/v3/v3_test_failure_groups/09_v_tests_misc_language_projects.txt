@@ -52,16 +52,6 @@ vlib/v/tests/mut_arg_struct_pointer_rebind_test.v
 vlib/v/tests/nested_if_expr_method_call_test.v
 vlib/v/tests/nested_if_return_test.v
 vlib/v/tests/net_http_request_proxy_interpolation_test.v
-vlib/v/tests/orm_array_field_test.v
-vlib/v/tests/orm_bulk_insert_update_test.v
-vlib/v/tests/orm_enum_test.v
-vlib/v/tests/orm_generic_struct_select_test.v
-vlib/v/tests/orm_option_field_issue_18333_test.v
-vlib/v/tests/orm_stmt_wrong_return_checking_test.v
-vlib/v/tests/orm_sub_array_struct_test.v
-vlib/v/tests/orm_sub_struct_test.v
-vlib/v/tests/orm_type_alias_test.v
-vlib/v/tests/orm_update_test.v
 vlib/v/tests/power_operator_test.v
 vlib/v/tests/prefix_expr_test.v
 vlib/v/tests/printing/dump_interface_circular_test.v
