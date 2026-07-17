@@ -887,6 +887,7 @@ fn (mut t Transformer) build_return_match_type_branch_chain(match_expr_id flat.N
 	is_id := t.a.add_node(flat.Node{
 		kind:           .is_expr
 		value:          variant_name
+		typ:            'match_exact'
 		children_start: is_start
 		children_count: 1
 	})

@@ -689,19 +689,6 @@ fn (mut g FlatGen) preseed_parallel_fn_ptr_type(typ types.Type) {
 	}
 }
 
-// fn_ptr_type_key supports fn ptr type key handling for FlatGen.
-fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
-	ret := if typ.return_type is types.Void { 'void' } else { g.tc.c_type(typ.return_type) }
-	if typ.params.len == 0 {
-		return 'fn_ptr:${ret}|void'
-	}
-	mut params := []string{}
-	for param in typ.params {
-		params << g.tc.c_type(param)
-	}
-	return 'fn_ptr:${ret}|${params.join(', ')}'
-}
-
 // new_parallel_worker builds a per-worker FlatGen for parallel codegen.
 //
 // The lookup tables populated before gen_fns_dispatch (in collect_gen_info,
@@ -762,6 +749,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		enum_backing_infos:             g.enum_backing_infos
 		iface_impls:                    g.iface_impls
 		iface_type_ids:                 g.iface_type_ids
+		interface_boxed_types:          g.interface_boxed_types
+		interface_boxed_types_done:     g.interface_boxed_types_done
 		ierror_method_emit_names:       g.ierror_method_emit_names
 		ierror_stack_pointer_aliases:   []map[string]bool{}
 		local_pointer_storage_by_owner: map[string]bool{}

@@ -423,7 +423,11 @@ pub fn (t Type) name() string {
 		if t.len_expr.len > 0 {
 			len_text = t.len_expr
 		}
-		return '${nested_type_name(t.elem_type)}[${len_text}]'
+		elem_type := nested_type_name(t.elem_type)
+		if t.elem_type is FnType {
+			return '[${len_text}]${elem_type}'
+		}
+		return '${elem_type}[${len_text}]'
 	}
 	if t is Channel {
 		return 'chan ${nested_type_name(t.elem_type)}'

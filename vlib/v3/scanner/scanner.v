@@ -33,6 +33,7 @@ pub mut:
 	lit                 string
 	in_str_incomplete   bool
 	in_str_inter        bool
+	in_str_inter_format bool
 	str_inter_cbr_depth int
 	str_quote           u8
 	diagnostics         []Diagnostic
@@ -67,6 +68,7 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.insert_semi = false
 	s.in_str_incomplete = false
 	s.in_str_inter = false
+	s.in_str_inter_format = false
 	s.str_inter_cbr_depth = 0
 	s.str_quote = 0
 	s.diagnostics = []Diagnostic{}
@@ -443,6 +445,7 @@ pub fn (mut s Scanner) scan() token.Token {
 				if s.str_inter_cbr_depth == 0 {
 					s.in_str_incomplete = true
 					s.in_str_inter = false
+					s.in_str_inter_format = false
 				}
 			}
 			s.insert_semi = true
@@ -646,6 +649,10 @@ fn (mut s Scanner) number() {
 			s.offset++
 		}
 		if s.consume_digits(10) == 0 {
+			if s.in_str_inter_format {
+				s.offset = exponent_pos
+				return
+			}
 			s.error('exponent requires at least one digit', exponent_pos)
 		}
 	}

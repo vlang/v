@@ -693,7 +693,7 @@ fn (mut p Parser) precollect_parallel_const_decl(mut s scanner.Scanner, module_n
 		if tok != .assign {
 			return
 		}
-		mut value_tokens := []ComptimeConstPrepassToken{cap: 3}
+		mut value_tokens := []ComptimeConstPrepassToken{}
 		mut paren_depth := 0
 		mut bracket_depth := 0
 		mut brace_depth := 0

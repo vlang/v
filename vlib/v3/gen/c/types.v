@@ -109,14 +109,27 @@ fn (mut g FlatGen) optional_type_name(t types.Type) string {
 	return opt_name
 }
 
+fn optional_result_unalias_type(t types.Type) types.Type {
+	if t is types.Alias {
+		base := optional_result_unalias_type(t.base_type)
+		if base is types.OptionType || base is types.ResultType {
+			return base
+		}
+	}
+	return t
+}
+
 fn (mut g FlatGen) optional_type_name_for_context(t types.Type, concrete_optional bool) string {
-	if concrete_optional && (t is types.OptionType || t is types.ResultType) {
+	if concrete_optional && type_is_optional_result(t) {
 		return g.concrete_optional_type_name(t)
 	}
 	return g.optional_type_name(t)
 }
 
 fn (mut g FlatGen) value_c_type(t types.Type) string {
+	if shared_alias_ptr := g.shared_alias_pointer_type(t) {
+		return g.tc.c_type(shared_alias_ptr)
+	}
 	clean_type := cgen_unalias_type(t)
 	if clean_type is types.OptionType || clean_type is types.ResultType {
 		return g.optional_type_name(clean_type)
@@ -157,9 +170,19 @@ fn cgen_unalias_type(typ types.Type) types.Type {
 fn (mut g FlatGen) multi_return_c_type_name(t types.MultiReturn) string {
 	mut parts := []string{cap: t.types.len}
 	for item in t.types {
-		parts << naming.type_name_part(g.multi_return_field_c_type(item))
+		parts << naming.type_name_part(g.multi_return_field_name_type(item))
 	}
 	return 'multi_return_${parts.join('_')}'
+}
+
+fn (mut g FlatGen) multi_return_field_name_type(t types.Type) string {
+	if t is types.FnType {
+		return g.tc.c_type(t)
+	}
+	if t is types.Alias && t.base_type is types.FnType {
+		return g.tc.c_type(t.base_type)
+	}
+	return g.multi_return_field_c_type(t)
 }
 
 fn (mut g FlatGen) multi_return_field_c_type(t types.Type) string {
@@ -188,16 +211,17 @@ fn (mut g FlatGen) cast_c_type(t types.Type) string {
 
 // optional_value_ct supports optional value ct handling for FlatGen.
 fn (mut g FlatGen) optional_value_ct(t types.Type) (string, types.Type) {
-	if t is types.OptionType {
-		if t.base_type is types.Void {
+	clean_t := optional_result_unalias_type(t)
+	if clean_t is types.OptionType {
+		if clean_t.base_type is types.Void {
 			return 'int', types.Type(types.int_)
 		}
-		return g.optional_payload_c_type(t.base_type), t.base_type
-	} else if t is types.ResultType {
-		if t.base_type is types.Void {
+		return g.optional_payload_c_type(clean_t.base_type), clean_t.base_type
+	} else if clean_t is types.ResultType {
+		if clean_t.base_type is types.Void {
 			return 'int', types.Type(types.int_)
 		}
-		return g.optional_payload_c_type(t.base_type), t.base_type
+		return g.optional_payload_c_type(clean_t.base_type), clean_t.base_type
 	}
 	return 'int', types.Type(types.int_)
 }

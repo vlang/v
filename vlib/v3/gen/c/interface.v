@@ -39,6 +39,234 @@ fn (g &FlatGen) sum_type_contains_struct(sum_name string, struct_name string) bo
 	return false
 }
 
+// sum_type_index supports sum type index handling for FlatGen.
+fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
+	mut resolved_sum := sum_name
+	if resolved_sum !in g.tc.sum_types && resolved_sum.contains('.') {
+		// Resolve an import-aliased sum name (`tast.Value` for module `sub.tast`)
+		// exactly first. Use suffix and bare-name fallbacks only when unique.
+		aliased_sum := g.tc.qualify_name(resolved_sum)
+		if aliased_sum in g.tc.sum_types {
+			resolved_sum = aliased_sum
+		} else {
+			suffix := '.' + resolved_sum
+			mut suffix_match := ''
+			mut suffix_ambiguous := false
+			for key, _ in g.tc.sum_types {
+				if key.ends_with(suffix) {
+					if suffix_match.len > 0 && suffix_match != key {
+						suffix_ambiguous = true
+						break
+					}
+					suffix_match = key
+				}
+			}
+			if !suffix_ambiguous && suffix_match.len > 0 {
+				resolved_sum = suffix_match
+			} else if suffix_match.len == 0 {
+				short_sum := resolved_sum.all_after_last('.')
+				mut short_match := ''
+				mut ambiguous := false
+				for key, _ in g.tc.sum_types {
+					if key == short_sum || key.all_after_last('.') == short_sum {
+						if short_match.len > 0 && short_match != key {
+							ambiguous = true
+							break
+						}
+						short_match = key
+					}
+				}
+				if !ambiguous && short_match.len > 0 {
+					resolved_sum = short_match
+				}
+			}
+		}
+	}
+	return g.sum_type_index_resolved(resolved_sum, variant)
+}
+
+fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
+	if sum_name in g.tc.sum_types {
+		for i, v in g.tc.sum_types[sum_name] {
+			if v == variant {
+				return i + 1
+			}
+		}
+		resolved_variant := g.tc.qualify_name(variant)
+		if resolved_variant != variant {
+			for i, v in g.tc.sum_types[sum_name] {
+				if v == resolved_variant {
+					return i + 1
+				}
+			}
+		}
+		for i, v in g.tc.sum_types[sum_name] {
+			if v.all_after_last('.') == variant {
+				return i + 1
+			}
+		}
+		// Container variants written through an import alias (`map[string]ast.Value`
+		// vs the registered `map[string]toml.ast.Value`) match on the
+		// module-stripped spelling only when that spelling is unambiguous.
+		if variant.contains('.') || variant.contains('[') {
+			short_variant := short_module_type_text(variant)
+			mut short_match := 0
+			for i, v in g.tc.sum_types[sum_name] {
+				if short_module_type_text(v) == short_variant {
+					if short_match != 0 {
+						return 0
+					}
+					short_match = i + 1
+				}
+			}
+			return short_match
+		}
+	}
+	return 0
+}
+
+fn (mut g FlatGen) interface_tmp(prefix string) string {
+	name := '_${prefix}_${g.tmp_count}'
+	g.tmp_count++
+	return name
+}
+
+fn (g &FlatGen) interface_str_lit(text string) string {
+	return 'v3_c_lit("${c_escape(text)}", ${text.len})'
+}
+
+fn (g &FlatGen) interface_str_plus(left string, right string) string {
+	return 'string__plus(${left}, ${right})'
+}
+
+fn (mut g FlatGen) interface_dispatch_def_string(iface_name string, cn string, method string) string {
+	saved_sb := g.sb
+	saved_line_start := g.line_start
+	g.sb = strings.new_builder(2048)
+	g.line_start = true
+	g.gen_interface_dispatch_with_fallback(iface_name, cn, method, false)
+	body := g.sb.str()
+	unsafe { g.sb.free() }
+	g.sb = saved_sb
+	g.line_start = saved_line_start
+	return body
+}
+
+fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_params []types.Type, wants_ptr bool) string {
+	cct := g.interface_concrete_storage_c_type(concrete)
+	if concrete_params.len == 0 {
+		return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
+	}
+	concrete_type := g.interface_concrete_type(concrete)
+	expected_type := concrete_params[0]
+	if path := g.embedded_receiver_path_for_expected(concrete_type, expected_type) {
+		base := '(${cct}*)i->_object'
+		mut access := base
+		mut access_is_ptr := true
+		for field in path {
+			op := if access_is_ptr { '->' } else { '.' }
+			access = '(${access})${op}${c_field_name(field.name)}'
+			access_is_ptr = field.typ is types.Pointer
+		}
+		if access_is_ptr == wants_ptr {
+			return access
+		}
+		return if wants_ptr { '&(${access})' } else { '*(${access})' }
+	}
+	return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
+}
+
+fn (g &FlatGen) interface_arg_conversion_expr(name string, source_type types.Type, target_type types.Type) ?string {
+	if source_type is types.Pointer || target_type is types.Pointer {
+		return none
+	}
+	source_iface := g.interface_receiver_name(source_type)
+	target_iface := g.interface_receiver_name(target_type)
+	if source_iface.len == 0 || target_iface.len == 0 || source_iface == target_iface {
+		return none
+	}
+	mappings := g.interface_receiver_type_id_mappings(source_iface, target_iface)
+	if mappings.len == 0 {
+		return none
+	}
+	target_ct := g.tc.c_type(types.unwrap_pointer(target_type))
+	mut expr := '(${target_ct}){._typ = '
+	for mapping in mappings {
+		expr += '(${name}._typ == ${mapping.source_id} ? ${mapping.target_id} : '
+	}
+	expr += '0'
+	for _ in mappings {
+		expr += ')'
+	}
+	expr += ', ._object = ${name}._object'
+	for field in g.tc.interface_fields[target_iface] or { []types.StructField{} } {
+		field_ct := g.tc.c_type(field.typ)
+		expr += ', .${g.cname(field.name)} = '
+		for mapping in mappings {
+			field_expr := g.interface_impl_field_access_expr('${name}._object', mapping.impl,
+				field.name)
+			expr += '(${name}._typ == ${mapping.source_id} ? ${field_expr} : '
+		}
+		expr += '(${field_ct}){0}'
+		for _ in mappings {
+			expr += ')'
+		}
+	}
+	expr += '}'
+	return expr
+}
+
+fn (g &FlatGen) interface_method_signature_key(iface_name string, method string) ?string {
+	key := '${iface_name}.${method}'
+	if key in g.tc.fn_ret_types || key in g.tc.fn_param_types {
+		return key
+	}
+	for embed in g.tc.interface_embeds[iface_name] or { []string{} } {
+		if found := g.interface_method_signature_key(embed, method) {
+			return found
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) interface_dispatch_target_is_emitted(concrete_key string) bool {
+	if !g.has_used_fn_filter() {
+		return true
+	}
+	if g.used_interface_dispatch_key(concrete_key) {
+		return true
+	}
+	receiver_name := concrete_key.all_before_last('.')
+	if receiver_name.contains('.') {
+		return false
+	}
+	method := concrete_key.all_after_last('.')
+	short_key := '${receiver_name.all_after_last('.')}.${method}'
+	return short_key != concrete_key
+		&& g.interface_dispatch_target_short_name_is_unambiguous(short_key, method)
+		&& g.used_interface_dispatch_key(short_key)
+}
+
+fn (g &FlatGen) interface_dispatch_target_short_name_is_unambiguous(short_name string, method string) bool {
+	mut seen := map[string]bool{}
+	mut matches := 0
+	for _, impls in g.iface_impls {
+		for concrete in impls {
+			if seen[concrete] {
+				continue
+			}
+			seen[concrete] = true
+			if '${concrete.all_after_last('.')}.${method}' == short_name {
+				matches++
+				if matches > 1 {
+					return false
+				}
+			}
+		}
+	}
+	return matches == 1
+}
+
 // variant_references_sum supports variant references sum handling for FlatGen.
 fn (g &FlatGen) variant_references_sum(variant string, sum_name string) bool {
 	_ = variant
@@ -362,23 +590,29 @@ fn (g &FlatGen) iface_type_id(iface string, concrete string) int {
 }
 
 fn (g &FlatGen) iface_type_id_for_pattern(iface string, pattern string) int {
-	id := g.iface_type_id(iface, pattern)
+	pattern_key := if pattern.contains('.')
+		&& types.is_builtin_type_name(pattern.all_after_last('.')) {
+		pattern.all_after_last('.')
+	} else {
+		pattern
+	}
+	id := g.iface_type_id(iface, pattern_key)
 	if id != 0 {
 		return id
 	}
-	qpattern := g.tc.qualify_name(pattern)
-	if qpattern != pattern {
+	qpattern := g.tc.qualify_name(pattern_key)
+	if qpattern != pattern_key {
 		qid := g.iface_type_id(iface, qpattern)
 		if qid != 0 {
 			return qid
 		}
 	}
-	if pattern.contains('.') {
+	if pattern_key.contains('.') {
 		return 0
 	}
 	mut found := 0
 	for concrete in g.iface_impls[iface] or { []string{} } {
-		if concrete.all_after_last('.') != pattern {
+		if concrete.all_after_last('.') != pattern_key {
 			continue
 		}
 		cid := g.iface_type_id(iface, concrete)
@@ -836,7 +1070,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	}
 	type_id := g.iface_type_id_for_concrete(iface.name, actual_clean)
 	ct := g.tc.c_type(iface)
-	fields := g.tc.interface_fields[iface.name] or { []types.StructField{} }
+	fields := g.tc.interface_field_list(iface.name)
 	concrete_ct := g.tc.c_type(actual_base)
 	if fields.len > 0 {
 		tmp := g.tmp_count
@@ -1269,11 +1503,20 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 		g.write(', ${pct} ${an}')
 	}
 	g.writeln(') {')
+	str_dispatch_is_boxed_only := g.interface_dispatch_can_use_implicit_str(method, ret_ct,
+		sig_params)
 	if impls.len > 0 {
 		g.writeln('\tswitch (i->_typ) {')
 		for concrete in impls {
 			id := g.iface_type_id(iface_name, concrete)
 			if id == 0 {
+				continue
+			}
+			concrete_type_for_dispatch := g.interface_concrete_type(concrete)
+			concrete_is_fn_type := g.interface_unaliased_type(concrete_type_for_dispatch) is types.FnType
+			if str_dispatch_is_boxed_only && concrete !in g.tc.interface_names
+				&& !concrete_is_fn_type
+				&& !g.interface_boxed_type_marked_for_dispatch(iface_name, concrete) {
 				continue
 			}
 			if concrete in g.tc.interface_names {
@@ -1283,8 +1526,14 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 					continue
 				}
 				concrete_params := g.tc.fn_param_types[decl] or { []types.Type{} }
+				recv_is_ptr := concrete_params.len > 0 && concrete_params[0] is types.Pointer
+				recv := if recv_is_ptr {
+					'(${g.cname(concrete)}*)i->_object'
+				} else {
+					'*(${g.cname(concrete)}*)i->_object'
+				}
 				g.write('\t\tcase ${id}: ')
-				mut call := '${g.cname(concrete)}__${method}((${g.cname(concrete)}*)i->_object'
+				mut call := '${g.cname(concrete)}__${method}(${recv}'
 				for ai, an in arg_names {
 					arg_idx := ai + 1
 					concrete_param := if arg_idx < concrete_params.len {
@@ -1301,10 +1550,6 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 						call += ', &${an}'
 					} else if concrete_param !is types.Pointer && dispatch_param is types.Pointer {
 						call += ', *${an}'
-					} else if converted := g.interface_arg_conversion_expr(an, dispatch_param,
-						concrete_param)
-					{
-						call += ', ${converted}'
 					} else {
 						call += ', ${an}'
 					}
@@ -1321,9 +1566,12 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 			method_key := g.tc.concrete_method_signature_key(concrete, method) or { concrete_key }
 			if method_key !in g.tc.fn_param_types
 				|| !g.interface_dispatch_target_is_emitted(method_key) {
-				if method == 'str' && g.tc.type_has_implicit_str_method(concrete) {
-					if g.gen_interface_implicit_str_dispatch_case(id, concrete) {
-						continue
+				if str_dispatch_is_boxed_only {
+					mut str_stack := []string{}
+					if str_expr := g.interface_implicit_str_expr(g.interface_concrete_type(concrete),
+						g.interface_dispatch_boxed_value_expr(concrete), false, mut str_stack)
+					{
+						g.writeln('\t\tcase ${id}: return ${str_expr};')
 					}
 				}
 				continue
@@ -1378,704 +1626,115 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 	g.writeln('}')
 }
 
-fn c_string_lit_expr(s string) string {
-	return 'v3_c_lit("${c_escape(s)}", ${s.len})'
-}
-
-fn interface_str_indent(level int) string {
-	return '    '.repeat(level)
-}
-
-fn interface_str_needs_quotes(typ types.Type) bool {
-	clean := types.unwrap_pointer(typ)
-	if clean is types.Alias {
-		return interface_str_needs_quotes(clean.base_type)
-	}
-	return clean is types.String
-}
-
-fn interface_str_clean_type(typ types.Type) types.Type {
-	clean := types.unwrap_pointer(typ)
-	if clean is types.Alias {
-		return interface_str_clean_type(clean.base_type)
-	}
-	return clean
-}
-
-fn interface_str_type_is_pointer(typ types.Type) bool {
-	if typ is types.Pointer {
+fn (mut g FlatGen) interface_boxed_type_marked_for_dispatch(iface_name string, concrete string) bool {
+	g.collect_interface_boxed_types_for_dispatch()
+	if g.interface_boxed_types['${iface_name}::${concrete}']
+		|| g.interface_boxed_types['${iface_name}::${c_name(concrete)}']
+		|| g.interface_boxed_types['${iface_name}::${concrete.all_after_last('.')}'] {
 		return true
 	}
-	if typ is types.Alias {
-		return interface_str_type_is_pointer(typ.base_type)
+	for candidate in [concrete, g.tc.qualify_name(concrete)] {
+		if target := g.tc.type_aliases[candidate] {
+			if g.interface_boxed_types['${iface_name}::${target}']
+				|| g.interface_boxed_types['${iface_name}::${c_name(target)}']
+				|| g.interface_boxed_types['${iface_name}::${target.all_after_last('.')}'] {
+				return true
+			}
+		}
 	}
 	return false
 }
 
-fn interface_str_pointer_base_type(typ types.Type) ?types.Type {
-	if typ is types.Pointer {
-		return typ.base_type
+fn (mut g FlatGen) collect_interface_boxed_types_for_dispatch() {
+	if g.interface_boxed_types_done {
+		return
 	}
-	if typ is types.Alias {
-		return interface_str_pointer_base_type(typ.base_type)
-	}
-	return none
-}
-
-fn (mut g FlatGen) interface_alias_custom_str_expr(expr string, typ types.Type) ?string {
-	if typ is types.Pointer {
-		base := typ.base_type
-		if base is types.Alias {
-			if str_expr := g.interface_custom_str_expr(expr, base.name, typ) {
-				return str_expr
-			}
-			return g.interface_alias_custom_str_expr(expr, types.Type(types.Pointer{
-				base_type: base.base_type
-			}))
+	g.interface_boxed_types_done = true
+	for node in g.a.nodes {
+		if node.kind != .struct_init || node.children_count == 0 {
+			continue
 		}
-		return none
-	}
-	clean := typ
-	if clean is types.Alias {
-		if str_expr := g.interface_custom_str_expr(expr, clean.name, clean) {
-			return str_expr
+		iface_name := if node.value in g.interfaces {
+			node.value
+		} else {
+			g.tc.qualify_name(node.value)
 		}
-		return g.interface_alias_custom_str_expr(expr, clean.base_type)
-	}
-	return none
-}
-
-fn (mut g FlatGen) gen_interface_implicit_str_dispatch_case(id int, concrete string) bool {
-	typ := g.tc.parse_type(concrete)
-	clean := types.unwrap_pointer(typ)
-	if clean is types.Struct {
-		return g.gen_interface_implicit_struct_str_dispatch_case(id, clean.name, types.Type(clean),
-			clean)
-	}
-	if clean is types.Alias {
-		base := types.unwrap_pointer(clean.base_type)
-		if base is types.Struct {
-			return g.gen_interface_implicit_struct_str_dispatch_case(id, clean.name, typ, base)
+		if iface_name !in g.interfaces {
+			continue
 		}
-		if base is types.Array || base is types.ArrayFixed || base is types.Map {
-			return g.gen_interface_implicit_collection_str_dispatch_case(id, typ)
-		}
-	}
-	ct := g.value_c_type(typ)
-	expr := '*(${ct}*)i->_object'
-	if str_expr := g.interface_implicit_str_expr(expr, typ) {
-		g.writeln('\t\tcase ${id}: return ${str_expr};')
-		return true
-	}
-	lit := '${concrete.all_after_last('.')}{}'
-	g.writeln('\t\tcase ${id}: return ${c_string_lit_expr(lit)};')
-	return true
-}
-
-fn (mut g FlatGen) gen_interface_implicit_struct_str_dispatch_case(id int, display_name string, storage_type types.Type, struct_type types.Struct) bool {
-	fields := g.struct_fields_for_type(struct_type.name) or { []types.StructField{} }
-	display := display_name.all_after_last('.')
-	if fields.len == 0 {
-		lit := '${display}{}'
-		g.writeln('\t\tcase ${id}: return ${c_string_lit_expr(lit)};')
-		return true
-	}
-	ct := g.value_c_type(storage_type)
-	g.writeln('\t\tcase ${id}: {')
-	g.writeln('\t\t\t${ct}* __v3_iface_str_value = (${ct}*)i->_object;')
-	g.writeln('\t\t\tstring __v3_iface_str = ${c_string_lit_expr('${display}{\n')};')
-	mut seen := [struct_type.name]
-	mut temp_idx := [0]
-	for field in fields {
-		field_name := g.cname(field.name)
-		field_expr := g.interface_implicit_struct_field_str_expr('__v3_iface_str_value->${field_name}',
-			field.typ, 1, mut seen, mut temp_idx)
-		g.writeln('\t\t\t__v3_iface_str = string__plus(__v3_iface_str, ${c_string_lit_expr('    ${field.name}: ')});')
-		g.writeln('\t\t\t__v3_iface_str = string__plus(__v3_iface_str, ${field_expr});')
-		g.writeln('\t\t\t__v3_iface_str = string__plus(__v3_iface_str, ${c_string_lit_expr('\n')});')
-	}
-	g.writeln('\t\t\treturn string__plus(__v3_iface_str, ${c_string_lit_expr('}')});')
-	g.writeln('\t\t}')
-	return true
-}
-
-fn (mut g FlatGen) gen_interface_implicit_collection_str_dispatch_case(id int, storage_type types.Type) bool {
-	ct := g.value_c_type(storage_type)
-	g.writeln('\t\tcase ${id}: {')
-	g.writeln('\t\t\t${ct}* __v3_iface_str_value = (${ct}*)i->_object;')
-	mut seen := []string{}
-	mut temp_idx := [0]
-	str_expr := g.interface_implicit_struct_field_str_expr('*__v3_iface_str_value', storage_type,
-		0, mut seen, mut temp_idx)
-	g.writeln('\t\t\treturn ${str_expr};')
-	g.writeln('\t\t}')
-	return true
-}
-
-fn (mut g FlatGen) interface_implicit_struct_field_str_expr(expr string, typ types.Type, indent int, mut seen []string, mut temp_idx []int) string {
-	if str_expr := g.interface_alias_custom_str_expr(expr, typ) {
-		return str_expr
-	}
-	clean := interface_str_clean_type(typ)
-	is_pointer := interface_str_type_is_pointer(typ)
-	if clean is types.Struct {
-		if str_expr := g.interface_custom_str_expr(expr, clean.name, typ) {
-			return str_expr
-		}
-		if !is_pointer {
-			return g.interface_implicit_struct_str_value(expr, clean.name, indent, mut seen, mut
-				temp_idx)
-		}
-	}
-	if !is_pointer {
-		if clean is types.Array {
-			return g.interface_implicit_array_str_value(expr, clean, mut seen, mut temp_idx)
-		}
-		if clean is types.ArrayFixed {
-			return g.interface_implicit_fixed_array_str_value(expr, clean, mut seen, mut temp_idx)
-		}
-		if clean is types.Map {
-			return g.interface_implicit_map_str_expr(expr, clean, mut seen, mut temp_idx)
-		}
-		if clean is types.OptionType {
-			return g.interface_implicit_optional_str_expr(expr, typ, clean.base_type, mut seen, mut
-				temp_idx)
-		}
-		if clean is types.ResultType {
-			return g.interface_implicit_optional_str_expr(expr, typ, clean.base_type, mut seen, mut
-				temp_idx)
-		}
-	}
-	if is_pointer {
-		pointer_base := interface_str_pointer_base_type(typ) or { return c_string_lit_expr('&nil') }
-		value_expr := '*(${expr})'
-		if clean is types.Struct {
-			return g.interface_implicit_pointer_struct_str_expr(expr, value_expr, clean.name,
-				indent, mut seen, mut temp_idx)
-		}
-		if clean is types.Array {
-			return g.interface_implicit_pointer_array_str_expr(expr, value_expr, clean, mut seen, mut
-				temp_idx)
-		}
-		if clean is types.ArrayFixed {
-			return g.interface_implicit_pointer_fixed_array_str_expr(expr, value_expr, clean, mut
-				seen, mut temp_idx)
-		}
-		if clean is types.Map {
-			return g.interface_implicit_pointer_map_str_expr(expr, value_expr, clean, mut seen, mut
-				temp_idx)
-		}
-		if clean !is types.Struct && clean !is types.Array && clean !is types.ArrayFixed
-			&& clean !is types.Map {
-			mut field_expr := g.interface_implicit_str_expr(value_expr, pointer_base) or {
-				clean_name := types.unwrap_pointer(pointer_base).name()
-				return c_string_lit_expr('${clean_name.all_after_last('.')}{}')
-			}
-			if interface_str_needs_quotes(pointer_base) {
-				quote_lit := c_string_lit_expr("'")
-				field_expr = 'string__plus(string__plus(${quote_lit}, ${field_expr}), ${quote_lit})'
-			}
-			return '((${expr}) == NULL ? ${c_string_lit_expr('&nil')} : ${field_expr})'
-		}
-	}
-	field_expr := g.interface_implicit_str_expr(expr, typ) or {
-		clean_name := types.unwrap_pointer(typ).name()
-		return c_string_lit_expr('${clean_name.all_after_last('.')}{}')
-	}
-	if interface_str_needs_quotes(typ) {
-		quote_lit := c_string_lit_expr("'")
-		return 'string__plus(string__plus(${quote_lit}, ${field_expr}), ${quote_lit})'
-	}
-	return field_expr
-}
-
-fn (mut g FlatGen) interface_implicit_pointer_struct_str_expr(expr string, value_expr string, name string, indent int, mut seen []string, mut temp_idx []int) string {
-	id := temp_idx[0]
-	temp_idx[0] = temp_idx[0] + 1
-	str_var := '__v3_iface_str_${id}'
-	g.writeln('\t\t\tstring ${str_var};')
-	g.writeln('\t\t\tif (${expr} == NULL) {')
-	g.writeln('\t\t\t\t${str_var} = ${c_string_lit_expr('&nil')};')
-	g.writeln('\t\t\t} else {')
-	field_expr := g.interface_implicit_struct_str_value(value_expr, name, indent, mut seen, mut
-		temp_idx)
-	g.writeln('\t\t\t\t${str_var} = ${field_expr};')
-	g.writeln('\t\t\t}')
-	return str_var
-}
-
-fn (mut g FlatGen) interface_implicit_pointer_array_str_expr(expr string, value_expr string, arr types.Array, mut seen []string, mut temp_idx []int) string {
-	id := temp_idx[0]
-	temp_idx[0] = temp_idx[0] + 1
-	str_var := '__v3_iface_str_${id}'
-	g.writeln('\t\t\tstring ${str_var};')
-	g.writeln('\t\t\tif (${expr} == NULL) {')
-	g.writeln('\t\t\t\t${str_var} = ${c_string_lit_expr('&nil')};')
-	g.writeln('\t\t\t} else {')
-	field_expr := g.interface_implicit_array_str_value(value_expr, arr, mut seen, mut temp_idx)
-	g.writeln('\t\t\t\t${str_var} = ${field_expr};')
-	g.writeln('\t\t\t}')
-	return str_var
-}
-
-fn (mut g FlatGen) interface_implicit_pointer_fixed_array_str_expr(expr string, value_expr string, arr types.ArrayFixed, mut seen []string, mut temp_idx []int) string {
-	id := temp_idx[0]
-	temp_idx[0] = temp_idx[0] + 1
-	str_var := '__v3_iface_str_${id}'
-	g.writeln('\t\t\tstring ${str_var};')
-	g.writeln('\t\t\tif (${expr} == NULL) {')
-	g.writeln('\t\t\t\t${str_var} = ${c_string_lit_expr('&nil')};')
-	g.writeln('\t\t\t} else {')
-	field_expr := g.interface_implicit_fixed_array_str_value(value_expr, arr, mut seen, mut
-		temp_idx)
-	g.writeln('\t\t\t\t${str_var} = ${field_expr};')
-	g.writeln('\t\t\t}')
-	return str_var
-}
-
-fn (mut g FlatGen) interface_implicit_pointer_map_str_expr(expr string, value_expr string, m types.Map, mut seen []string, mut temp_idx []int) string {
-	id := temp_idx[0]
-	temp_idx[0] = temp_idx[0] + 1
-	str_var := '__v3_iface_str_${id}'
-	g.writeln('\t\t\tstring ${str_var};')
-	g.writeln('\t\t\tif (${expr} == NULL) {')
-	g.writeln('\t\t\t\t${str_var} = ${c_string_lit_expr('&nil')};')
-	g.writeln('\t\t\t} else {')
-	field_expr := g.interface_implicit_map_str_expr(value_expr, m, mut seen, mut temp_idx)
-	g.writeln('\t\t\t\t${str_var} = ${field_expr};')
-	g.writeln('\t\t\t}')
-	return str_var
-}
-
-fn (mut g FlatGen) interface_implicit_array_str_value(expr string, arr types.Array, mut seen []string, mut temp_idx []int) string {
-	id := temp_idx[0]
-	temp_idx[0] = temp_idx[0] + 1
-	str_var := '__v3_iface_str_${id}'
-	idx_var := '__v3_iface_str_i_${id}'
-	elem_ct := g.value_c_type(arr.elem_type)
-	g.writeln('\t\t\tstring ${str_var} = ${c_string_lit_expr('[')};')
-	g.writeln('\t\t\tfor (int ${idx_var} = 0; ${idx_var} < (${expr}).len; ++${idx_var}) {')
-	g.writeln('\t\t\t\tif (${idx_var} > 0) ${str_var} = string__plus(${str_var}, ${c_string_lit_expr(', ')});')
-	elem_expr := '*(${elem_ct}*)array_get(${expr}, ${idx_var})'
-	elem_str := g.interface_implicit_struct_field_str_expr(elem_expr, arr.elem_type, 0, mut seen, mut
-		temp_idx)
-	g.writeln('\t\t\t\t${str_var} = string__plus(${str_var}, ${elem_str});')
-	g.writeln('\t\t\t}')
-	g.writeln('\t\t\t${str_var} = string__plus(${str_var}, ${c_string_lit_expr(']')});')
-	return str_var
-}
-
-fn (mut g FlatGen) interface_implicit_fixed_array_str_value(expr string, arr types.ArrayFixed, mut seen []string, mut temp_idx []int) string {
-	id := temp_idx[0]
-	temp_idx[0] = temp_idx[0] + 1
-	str_var := '__v3_iface_str_${id}'
-	idx_var := '__v3_iface_str_i_${id}'
-	len_expr := g.fixed_array_len_value(arr)
-	g.writeln('\t\t\tstring ${str_var} = ${c_string_lit_expr('[')};')
-	g.writeln('\t\t\tfor (int ${idx_var} = 0; ${idx_var} < ${len_expr}; ++${idx_var}) {')
-	g.writeln('\t\t\t\tif (${idx_var} > 0) ${str_var} = string__plus(${str_var}, ${c_string_lit_expr(', ')});')
-	elem_expr := '(${expr})[${idx_var}]'
-	elem_str := g.interface_implicit_struct_field_str_expr(elem_expr, arr.elem_type, 0, mut seen, mut
-		temp_idx)
-	g.writeln('\t\t\t\t${str_var} = string__plus(${str_var}, ${elem_str});')
-	g.writeln('\t\t\t}')
-	g.writeln('\t\t\t${str_var} = string__plus(${str_var}, ${c_string_lit_expr(']')});')
-	return str_var
-}
-
-fn (mut g FlatGen) interface_implicit_map_str_expr(expr string, m types.Map, mut seen []string, mut temp_idx []int) string {
-	key_kind := map_str_kind(g.tc, m.key_type)
-	val_kind := map_str_kind(g.tc, m.value_type)
-	fixed_len := map_str_fixed_len(m.value_type)
-	if key_kind != 0 && val_kind != 0 {
-		return 'v3_map_str(${expr}, ${key_kind}, ${val_kind}, ${fixed_len})'
-	}
-	id := temp_idx[0]
-	temp_idx[0] = temp_idx[0] + 1
-	str_var := '__v3_iface_str_${id}'
-	idx_var := '__v3_iface_str_i_${id}'
-	first_var := '__v3_iface_str_first_${id}'
-	map_expr := '(${expr})'
-	key_ct := g.value_c_type(m.key_type)
-	val_ct := g.value_c_type(m.value_type)
-	g.writeln('\t\t\tstring ${str_var} = ${c_string_lit_expr('{')};')
-	g.writeln('\t\t\tbool ${first_var} = true;')
-	g.writeln('\t\t\tfor (int ${idx_var} = 0; ${idx_var} < ${map_expr}.key_values.len; ++${idx_var}) {')
-	g.writeln('\t\t\t\tif (${map_expr}.key_values.deletes != 0 && ${map_expr}.key_values.all_deleted != 0 && ${map_expr}.key_values.all_deleted[${idx_var}] != 0) continue;')
-	g.writeln('\t\t\t\tif (!${first_var}) ${str_var} = string__plus(${str_var}, ${c_string_lit_expr(', ')});')
-	key_expr := '*(${key_ct}*)(${map_expr}.key_values.keys + ${idx_var} * ${map_expr}.key_values.key_bytes)'
-	val_expr := '*(${val_ct}*)(${map_expr}.key_values.values + ${idx_var} * ${map_expr}.key_values.value_bytes)'
-	key_str := g.interface_implicit_struct_field_str_expr(key_expr, m.key_type, 0, mut seen, mut
-		temp_idx)
-	val_str := g.interface_implicit_struct_field_str_expr(val_expr, m.value_type, 0, mut seen, mut
-		temp_idx)
-	g.writeln('\t\t\t\t${str_var} = string__plus(${str_var}, ${key_str});')
-	g.writeln('\t\t\t\t${str_var} = string__plus(${str_var}, ${c_string_lit_expr(': ')});')
-	g.writeln('\t\t\t\t${str_var} = string__plus(${str_var}, ${val_str});')
-	g.writeln('\t\t\t\t${first_var} = false;')
-	g.writeln('\t\t\t}')
-	g.writeln('\t\t\t${str_var} = string__plus(${str_var}, ${c_string_lit_expr('}')});')
-	return str_var
-}
-
-fn (mut g FlatGen) interface_implicit_optional_str_expr(expr string, typ types.Type, base_type types.Type, mut seen []string, mut temp_idx []int) string {
-	id := temp_idx[0]
-	temp_idx[0] = temp_idx[0] + 1
-	opt_var := '__v3_iface_opt_${id}'
-	str_var := '__v3_iface_opt_str_${id}'
-	opt_ct := g.optional_type_name(typ)
-	g.writeln('\t\t\t${opt_ct} ${opt_var} = ${expr};')
-	g.writeln('\t\t\tstring ${str_var} = ${c_string_lit_expr('Option(none)')};')
-	if base_type is types.Void {
-		return str_var
-	}
-	g.writeln('\t\t\tif (${opt_var}.ok) {')
-	value_str := g.interface_implicit_struct_field_str_expr('${opt_var}.value', base_type, 0, mut
-		seen, mut temp_idx)
-	g.writeln('\t\t\t\t${str_var} = string__plus(string__plus(${c_string_lit_expr('Option(')}, ${value_str}), ${c_string_lit_expr(')')});')
-	g.writeln('\t\t\t}')
-	return str_var
-}
-
-fn (mut g FlatGen) interface_implicit_struct_str_value(expr string, name string, indent int, mut seen []string, mut temp_idx []int) string {
-	display := name.all_after_last('.')
-	fields := g.struct_fields_for_type(name) or { []types.StructField{} }
-	if fields.len == 0 || name in seen {
-		return c_string_lit_expr('${display}{}')
-	}
-	seen << name
-	defer {
-		seen.delete_last()
-	}
-	field_indent := interface_str_indent(indent + 1)
-	closing_indent := interface_str_indent(indent)
-	str_var := '__v3_iface_str_${temp_idx[0]}'
-	temp_idx[0] = temp_idx[0] + 1
-	g.writeln('\t\t\tstring ${str_var} = ${c_string_lit_expr('${display}{\n')};')
-	for field in fields {
-		field_name := g.cname(field.name)
-		field_expr := g.interface_implicit_struct_field_str_expr('(${expr}).${field_name}',
-			field.typ, indent + 1, mut seen, mut temp_idx)
-		g.writeln('\t\t\t${str_var} = string__plus(${str_var}, ${c_string_lit_expr(field_indent +
-			field.name + ': ')});')
-		g.writeln('\t\t\t${str_var} = string__plus(${str_var}, ${field_expr});')
-		g.writeln('\t\t\t${str_var} = string__plus(${str_var}, ${c_string_lit_expr('\n')});')
-	}
-	g.writeln('\t\t\t${str_var} = string__plus(${str_var}, ${c_string_lit_expr(closing_indent + '}')});')
-	return str_var
-}
-
-fn (mut g FlatGen) interface_implicit_str_expr(expr string, typ types.Type) ?string {
-	clean := types.unwrap_pointer(typ)
-	if clean is types.Alias {
-		if str_expr := g.interface_custom_str_expr(expr, clean.name, clean) {
-			return str_expr
-		}
-		return g.interface_implicit_str_expr(expr, clean.base_type)
-	}
-	match clean {
-		types.String {
-			return expr
-		}
-		types.Primitive {
-			return g.interface_implicit_primitive_str_expr(expr, clean)
-		}
-		types.Char {
-			return 'rune__str((u32)(${expr}))'
-		}
-		types.Rune {
-			return 'rune__str(${expr})'
-		}
-		types.ISize {
-			return 'strconv__format_int((i64)(${expr}), 10)'
-		}
-		types.USize {
-			return 'strconv__format_uint((u64)(${expr}), 10)'
-		}
-		types.Enum {
-			return '${g.cname(clean.name)}__autostr(${expr})'
-		}
-		types.Struct {
-			if str_expr := g.interface_custom_str_expr(expr, clean.name, clean) {
-				return str_expr
-			}
-			lit := '${clean.name.all_after_last('.')}{}'
-			return c_string_lit_expr(lit)
-		}
-		types.SumType {
-			if str_expr := g.interface_custom_str_expr(expr, clean.name, clean) {
-				return str_expr
-			}
-		}
-		else {}
-	}
-
-	return none
-}
-
-fn (g &FlatGen) interface_implicit_primitive_str_expr(expr string, typ types.Primitive) string {
-	name := types.Type(typ).name()
-	if typ.props.has(.boolean) {
-		return 'bool__str(${expr})'
-	}
-	if typ.props.has(.integer) {
-		if typ.props.has(.unsigned) {
-			if name == 'u64' {
-				return 'u64__str(${expr})'
-			}
-			return 'strconv__format_uint((u64)(${expr}), 10)'
-		}
-		if name in ['i8', 'i16', 'i32', 'int', 'i64'] {
-			method_name := '${name}.str'
-			return '${g.cname(method_name)}(${expr})'
-		}
-		return 'strconv__format_int((i64)(${expr}), 10)'
-	}
-	if typ.props.has(.float) {
-		if name == 'f32' {
-			return 'f32__str(${expr})'
-		}
-		return 'f64__str(${expr})'
-	}
-	method_name := '${name}.str'
-	return '${g.cname(method_name)}(${expr})'
-}
-
-fn (mut g FlatGen) interface_custom_str_expr(expr string, name string, typ types.Type) ?string {
-	str_key := '${name}.str'
-	c_key := '${g.cname(name)}__str'
-	mut key := ''
-	if str_key in g.tc.fn_ret_types && g.interface_dispatch_target_is_emitted(str_key) {
-		key = str_key
-	} else if c_key in g.tc.fn_ret_types && g.interface_dispatch_target_is_emitted(c_key) {
-		key = c_key
-	} else {
-		return none
-	}
-	params := g.tc.fn_param_types[key] or { []types.Type{} }
-	recv_is_ptr := params.len > 0 && params[0] is types.Pointer
-	if typ is types.Pointer {
-		call := if recv_is_ptr { '${g.cname(key)}(${expr})' } else { '${g.cname(key)}(*(${expr}))' }
-		return '((${expr}) == NULL ? ${c_string_lit_expr('&nil')} : ${call})'
-	}
-	if recv_is_ptr && typ !is types.Pointer {
-		return '${g.cname(key)}(&(${expr}))'
-	}
-	return '${g.cname(key)}(${expr})'
-}
-
-fn (mut g FlatGen) interface_dispatch_def_string(iface_name string, cn string, method string) string {
-	saved_sb := g.sb
-	saved_line_start := g.line_start
-	g.sb = strings.new_builder(2048)
-	g.line_start = true
-	g.gen_interface_dispatch_with_fallback(iface_name, cn, method, false)
-	body := g.sb.str()
-	unsafe { g.sb.free() }
-	g.sb = saved_sb
-	g.line_start = saved_line_start
-	return body
-}
-
-fn (g &FlatGen) interface_dispatch_receiver_expr(concrete string, concrete_params []types.Type, wants_ptr bool) string {
-	concrete_type := g.tc.parse_canonical_type(concrete)
-	cct := g.tc.c_type(concrete_type)
-	if concrete_params.len == 0 {
-		return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
-	}
-	expected_type := concrete_params[0]
-	if path := g.embedded_receiver_path_for_expected(concrete_type, expected_type) {
-		base := '(${cct}*)i->_object'
-		mut access := base
-		mut access_is_ptr := true
-		for field in path {
-			op := if access_is_ptr { '->' } else { '.' }
-			access = '(${access})${op}${c_field_name(field.name)}'
-			access_is_ptr = field.typ is types.Pointer
-		}
-		if access_is_ptr == wants_ptr {
-			return access
-		}
-		return if wants_ptr { '&(${access})' } else { '*(${access})' }
-	}
-	return if wants_ptr { '(${cct}*)i->_object' } else { '*(${cct}*)i->_object' }
-}
-
-fn (g &FlatGen) interface_arg_conversion_expr(name string, source_type types.Type, target_type types.Type) ?string {
-	if source_type is types.Pointer || target_type is types.Pointer {
-		return none
-	}
-	source_iface := g.interface_receiver_name(source_type)
-	target_iface := g.interface_receiver_name(target_type)
-	if source_iface.len == 0 || target_iface.len == 0 || source_iface == target_iface {
-		return none
-	}
-	mappings := g.interface_receiver_type_id_mappings(source_iface, target_iface)
-	if mappings.len == 0 {
-		return none
-	}
-	target_ct := g.tc.c_type(types.unwrap_pointer(target_type))
-	mut expr := '(${target_ct}){._typ = '
-	for mapping in mappings {
-		expr += '(${name}._typ == ${mapping.source_id} ? ${mapping.target_id} : '
-	}
-	expr += '0'
-	for _ in mappings {
-		expr += ')'
-	}
-	expr += ', ._object = ${name}._object'
-	for field in g.tc.interface_fields[target_iface] or { []types.StructField{} } {
-		field_ct := g.tc.c_type(field.typ)
-		expr += ', .${g.cname(field.name)} = '
-		for mapping in mappings {
-			field_expr := g.interface_impl_field_access_expr('${name}._object', mapping.impl,
-				field.name)
-			expr += '(${name}._typ == ${mapping.source_id} ? ${field_expr} : '
-		}
-		expr += '(${field_ct}){0}'
-		for _ in mappings {
-			expr += ')'
-		}
-	}
-	expr += '}'
-	return expr
-}
-
-fn (g &FlatGen) interface_method_signature_key(iface_name string, method string) ?string {
-	key := '${iface_name}.${method}'
-	if key in g.tc.fn_ret_types || key in g.tc.fn_param_types {
-		return key
-	}
-	for embed in g.tc.interface_embeds[iface_name] or { []string{} } {
-		if found := g.interface_method_signature_key(embed, method) {
-			return found
-		}
-	}
-	return none
-}
-
-fn (g &FlatGen) interface_dispatch_target_is_emitted(concrete_key string) bool {
-	if !g.has_used_fn_filter() {
-		return true
-	}
-	if g.used_interface_dispatch_key(concrete_key) {
-		return true
-	}
-	receiver_name := concrete_key.all_before_last('.')
-	if receiver_name.contains('.') {
-		return false
-	}
-	method := concrete_key.all_after_last('.')
-	short_key := '${receiver_name.all_after_last('.')}.${method}'
-	return short_key != concrete_key
-		&& g.interface_dispatch_target_short_name_is_unambiguous(short_key, method)
-		&& g.used_interface_dispatch_key(short_key)
-}
-
-fn (g &FlatGen) interface_dispatch_target_short_name_is_unambiguous(short_name string, method string) bool {
-	mut seen := map[string]bool{}
-	mut matches := 0
-	for _, impls in g.iface_impls {
-		for concrete in impls {
-			if seen[concrete] {
+		for i in 0 .. node.children_count {
+			field := g.a.child_node(&node, i)
+			if field.kind != .field_init || field.value != '_object' || field.children_count == 0 {
 				continue
 			}
-			seen[concrete] = true
-			if '${concrete.all_after_last('.')}.${method}' == short_name {
-				matches++
-				if matches > 1 {
-					return false
-				}
+			obj_type := g.tc.resolve_type(g.a.child(field, 0))
+			concrete := types.unwrap_pointer(obj_type)
+			concrete_name := concrete.name()
+			if concrete_name.len == 0 {
+				continue
 			}
+			g.mark_interface_boxed_type_for_dispatch(iface_name, concrete_name)
 		}
 	}
-	return matches == 1
 }
 
-// sum_type_index supports sum type index handling for FlatGen.
-fn (g &FlatGen) sum_type_index(sum_name string, variant string) int {
-	mut resolved_sum := sum_name
-	if resolved_sum !in g.tc.sum_types && resolved_sum.contains('.') {
-		// Resolve an import-aliased sum name (`tast.Value` for module `sub.tast`)
-		// exactly first. Use suffix and bare-name fallbacks only when unique.
-		aliased_sum := g.tc.qualify_name(resolved_sum)
-		if aliased_sum in g.tc.sum_types {
-			resolved_sum = aliased_sum
-		} else {
-			suffix := '.' + resolved_sum
-			mut suffix_match := ''
-			mut suffix_ambiguous := false
-			for key, _ in g.tc.sum_types {
-				if key.ends_with(suffix) {
-					if suffix_match.len > 0 && suffix_match != key {
-						suffix_ambiguous = true
-						break
-					}
-					suffix_match = key
-				}
-			}
-			if !suffix_ambiguous && suffix_match.len > 0 {
-				resolved_sum = suffix_match
-			} else if suffix_match.len == 0 {
-				short_sum := resolved_sum.all_after_last('.')
-				mut short_match := ''
-				mut ambiguous := false
-				for key, _ in g.tc.sum_types {
-					if key == short_sum || key.all_after_last('.') == short_sum {
-						if short_match.len > 0 && short_match != key {
-							ambiguous = true
-							break
-						}
-						short_match = key
-					}
-				}
-				if !ambiguous && short_match.len > 0 {
-					resolved_sum = short_match
-				}
-			}
-		}
-	}
-	return g.sum_type_index_resolved(resolved_sum, variant)
+fn (mut g FlatGen) mark_interface_boxed_type_for_dispatch(iface_name string, concrete_name string) {
+	g.interface_boxed_types['${iface_name}::${concrete_name}'] = true
+	g.interface_boxed_types['${iface_name}::${c_name(concrete_name)}'] = true
+	g.interface_boxed_types['${iface_name}::${concrete_name.all_after_last('.')}'] = true
 }
 
-fn (g &FlatGen) sum_type_index_resolved(sum_name string, variant string) int {
-	if sum_name in g.tc.sum_types {
-		for i, v in g.tc.sum_types[sum_name] {
-			if v == variant {
-				return i + 1
-			}
+fn (g &FlatGen) interface_dispatch_can_use_implicit_str(method string, ret_ct string, sig_params []types.Type) bool {
+	return method == 'str' && ret_ct == 'string' && sig_params.len == 1
+}
+
+fn (g &FlatGen) interface_dispatch_boxed_value_expr(concrete string) string {
+	ct := g.interface_concrete_storage_c_type(concrete)
+	return '*(${ct}*)i->_object'
+}
+
+fn (g &FlatGen) interface_concrete_storage_c_type(concrete string) string {
+	concrete_type := g.interface_concrete_type(concrete)
+	return if concrete_type is types.Unknown {
+		g.cname(concrete)
+	} else {
+		g.tc.c_type(concrete_type)
+	}
+}
+
+fn (g &FlatGen) interface_concrete_type(concrete string) types.Type {
+	if types.is_builtin_type_name(concrete) {
+		return g.tc.parse_type(concrete)
+	}
+	for candidate in [concrete, g.tc.qualify_name(concrete)] {
+		if candidate in g.tc.type_aliases {
+			return types.Type(types.Alias{
+				name:      candidate
+				base_type: g.tc.parse_type(g.tc.type_aliases[candidate])
+			})
 		}
-		resolved_variant := g.tc.qualify_name(variant)
-		if resolved_variant != variant {
-			for i, v in g.tc.sum_types[sum_name] {
-				if v == resolved_variant {
-					return i + 1
-				}
-			}
+		if candidate in g.tc.structs {
+			return types.Type(types.Struct{
+				name: candidate
+			})
 		}
-		for i, v in g.tc.sum_types[sum_name] {
-			if v.all_after_last('.') == variant {
-				return i + 1
-			}
+		if candidate in g.tc.interface_names {
+			return types.Type(types.Interface{
+				name: candidate
+			})
 		}
-		// Container variants written through an import alias (`map[string]ast.Value`
-		// vs the registered `map[string]toml.ast.Value`) match on the
-		// module-stripped spelling only when that spelling is unambiguous.
-		if variant.contains('.') || variant.contains('[') {
-			short_variant := short_module_type_text(variant)
-			mut short_match := 0
-			for i, v in g.tc.sum_types[sum_name] {
-				if short_module_type_text(v) == short_variant {
-					if short_match != 0 {
-						return 0
-					}
-					short_match = i + 1
-				}
-			}
-			return short_match
+		if candidate in g.tc.sum_types {
+			return types.Type(types.SumType{
+				name: candidate
+			})
+		}
+		if candidate in g.tc.enum_names {
+			return types.Type(types.Enum{
+				name: candidate
+			})
 		}
 	}
-	return 0
+	return g.tc.parse_type(concrete)
 }
 
 // short_module_type_text strips module qualifiers from every identifier in a
@@ -2104,4 +1763,188 @@ fn short_module_type_text(text string) string {
 		i++
 	}
 	return out.bytestr()
+}
+
+fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quote_string bool, mut stack []string) ?string {
+	clean := g.interface_unaliased_type(typ)
+	if typ is types.Alias {
+		if custom := g.interface_custom_str_expr(typ.name, typ, expr) {
+			return custom
+		}
+	}
+	match clean {
+		types.String {
+			if quote_string {
+				return g.interface_str_plus(g.interface_str_plus(g.interface_str_lit("'"), expr),
+					g.interface_str_lit("'"))
+			}
+			return expr
+		}
+		types.Char, types.Rune {
+			inner := 'rune__str((u32)(${expr}))'
+			return g.interface_str_plus(g.interface_str_plus(g.interface_str_lit('`'), inner),
+				g.interface_str_lit('`'))
+		}
+		types.ISize {
+			return 'v3_i64_zpad((i64)(${expr}), 0)'
+		}
+		types.USize {
+			return 'u64__str((u64)(${expr}))'
+		}
+		types.Primitive {
+			name := types.Type(clean).name()
+			if clean.props.has(.float) {
+				return 'f64__str((double)(${expr}))'
+			}
+			if name == 'bool' {
+				return '((${expr}) ? ${g.interface_str_lit('true')} : ${g.interface_str_lit('false')})'
+			}
+			if name in ['i8', 'i16', 'i32', 'i64', 'int'] {
+				return 'v3_i64_zpad((i64)(${expr}), 0)'
+			}
+			if name in ['u8', 'byte', 'u16', 'u32', 'u64'] {
+				return 'u64__str((u64)(${expr}))'
+			}
+			return none
+		}
+		types.Pointer {
+			return g.interface_pointer_str_expr(clean.base_type, expr, mut stack)
+		}
+		types.FnType {
+			return g.interface_str_lit(types.Type(clean).name().replace('fn(', 'fn ('))
+		}
+		types.Array {
+			return g.interface_array_str_expr(clean, expr, mut stack)
+		}
+		types.ArrayFixed {
+			return g.interface_fixed_array_str_expr(clean, expr, mut stack)
+		}
+		types.Map {
+			key_kind := map_str_kind(g.tc, clean.key_type)
+			value_kind := map_str_kind(g.tc, clean.value_type)
+			fixed_len := map_str_fixed_len(clean.value_type)
+			return 'v3_map_str(${expr}, ${key_kind}, ${value_kind}, ${fixed_len})'
+		}
+		types.Enum {
+			return '${g.cname(clean.name)}__autostr(${expr})'
+		}
+		types.Struct {
+			if custom := g.interface_custom_str_expr(clean.name, types.Type(clean), expr) {
+				return custom
+			}
+			return g.interface_struct_str_expr(clean.name, expr, mut stack)
+		}
+		else {
+			return none
+		}
+	}
+}
+
+fn (g &FlatGen) interface_unaliased_type(typ types.Type) types.Type {
+	mut clean := typ
+	for _ in 0 .. 100 {
+		if clean is types.Alias {
+			clean = clean.base_type
+			continue
+		}
+		break
+	}
+	return clean
+}
+
+fn (mut g FlatGen) interface_custom_str_expr(type_name string, typ types.Type, expr string) ?string {
+	method_key := g.tc.concrete_method_signature_key(type_name, 'str') or { return none }
+	if method_key !in g.tc.fn_param_types || !g.interface_dispatch_target_is_emitted(method_key) {
+		return none
+	}
+	params := g.tc.fn_param_types[method_key] or { []types.Type{} }
+	wants_ptr := params.len > 0 && params[0] is types.Pointer
+	arg := if wants_ptr {
+		if typ is types.Pointer { expr } else { '&(${expr})' }
+	} else {
+		if typ is types.Pointer { '*(${expr})' } else { expr }
+	}
+	return '${g.cname(method_key)}(${arg})'
+}
+
+fn (mut g FlatGen) interface_pointer_str_expr(base_type types.Type, expr string, mut stack []string) ?string {
+	ptr_type := types.Type(types.Pointer{
+		base_type: base_type
+	})
+	ptr_ct := g.tc.c_type(ptr_type)
+	tmp := g.interface_tmp('iface_str_ptr')
+	out := g.interface_tmp('iface_str_out')
+	mut inner := ''
+	if custom := g.interface_custom_str_expr(base_type.name(), ptr_type, tmp) {
+		inner = custom
+	} else {
+		inner = g.interface_implicit_str_expr(base_type, '*${tmp}', false, mut stack) or {
+			'ptr_str(${tmp})'
+		}
+	}
+	return '({ ${ptr_ct} ${tmp} = (${ptr_ct})(${expr}); string ${out} = ${g.interface_str_lit('&nil')}; if (${tmp} != 0) { ${out} = ${g.interface_str_plus(g.interface_str_lit('&'),
+		inner)}; } ${out}; })'
+}
+
+fn (mut g FlatGen) interface_array_str_expr(arr types.Array, expr string, mut stack []string) ?string {
+	elem_ct := g.tc.c_type(arr.elem_type)
+	tmp := g.interface_tmp('iface_str_arr')
+	out := g.interface_tmp('iface_str_out')
+	idx := g.interface_tmp('iface_str_i')
+	item := '*(${elem_ct}*)((u8*)${tmp}.data + ${idx} * ${tmp}.element_size)'
+	item_str := g.interface_implicit_str_expr(arr.elem_type, item, true, mut stack) or {
+		g.interface_str_lit('<array value>')
+	}
+	return '({ Array ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('[')}; for (int ${idx} = 0; ${idx} < ${tmp}.len; ++${idx}) { if (${idx} > 0) ${out} = ${g.interface_str_plus(out,
+		g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, item_str)}; } ${g.interface_str_plus(out,
+		g.interface_str_lit(']'))}; })'
+}
+
+fn (mut g FlatGen) interface_fixed_array_str_expr(arr types.ArrayFixed, expr string, mut stack []string) ?string {
+	elem_ct := g.tc.c_type(arr.elem_type)
+	tmp := g.interface_tmp('iface_str_fixed')
+	out := g.interface_tmp('iface_str_out')
+	idx := g.interface_tmp('iface_str_i')
+	item := '${tmp}[${idx}]'
+	item_str := g.interface_implicit_str_expr(arr.elem_type, item, true, mut stack) or {
+		g.interface_str_lit('<array value>')
+	}
+	return '({ ${elem_ct}* ${tmp} = (${elem_ct}*)(${expr}); string ${out} = ${g.interface_str_lit('[')}; for (int ${idx} = 0; ${idx} < ${arr.len}; ++${idx}) { if (${idx} > 0) ${out} = ${g.interface_str_plus(out,
+		g.interface_str_lit(', '))}; ${out} = ${g.interface_str_plus(out, item_str)}; } ${g.interface_str_plus(out,
+		g.interface_str_lit(']'))}; })'
+}
+
+fn (mut g FlatGen) interface_struct_str_expr(struct_name string, expr string, mut stack []string) ?string {
+	display_name := struct_name.all_after_last('.')
+	empty_struct := '${display_name}{}'
+	if struct_name in stack {
+		return g.interface_str_lit(empty_struct)
+	}
+	fields := g.tc.structs[struct_name] or { return none }
+	if fields.len == 0 {
+		return g.interface_str_lit(empty_struct)
+	}
+	stack << struct_name
+	defer {
+		stack.delete_last()
+	}
+	tmp := g.interface_tmp('iface_str_struct')
+	out := g.interface_tmp('iface_str_out')
+	ct := g.cname(struct_name)
+	mut body := '${ct} ${tmp} = ${expr}; string ${out} = ${g.interface_str_lit('${display_name} {\n')};'
+	for field in fields {
+		field_expr := '${tmp}.${c_field_name(field.name)}'
+		field_clean_type := g.interface_unaliased_type(field.typ)
+		mut field_str := if field_clean_type.name() == struct_name {
+			g.interface_str_lit(empty_struct)
+		} else {
+			g.interface_implicit_str_expr(field.typ, field_expr, field_clean_type is types.String, mut
+				stack) or { g.interface_str_lit('<field value>') }
+		}
+		body += ' ${out} = ${g.interface_str_plus(out, g.interface_str_lit('    ${field.name}: '))};'
+		body += ' ${out} = ${g.interface_str_plus(out, field_str)};'
+		body += ' ${out} = ${g.interface_str_plus(out, g.interface_str_lit('\n'))};'
+	}
+	body += ' ${g.interface_str_plus(out, g.interface_str_lit('}'))};'
+	return '({ ${body} })'
 }

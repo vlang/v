@@ -1569,188 +1569,88 @@ fn main() {
 	assert c_code.contains('string__plus(')
 }
 
-fn test_overloaded_index_compound_assignment_marks_generated_helpers() {
-	mut a, mut tc := parse_checked_source('overloaded_index_compound_string_helper', '
-struct Dict {
-mut:
-	values map[string]string
+// test_implicit_interface_str_dispatch_seeds_generated_helpers validates this v3 regression case.
+fn test_implicit_interface_str_dispatch_seeds_generated_helpers() {
+	mut a, mut tc := parse_checked_source('implicit_interface_str_dispatch_helpers', '
+interface Printable {
+	str() string
 }
 
-fn (d Dict) [] (key string) string {
-	return d.values[key]
+struct Inner {
+	n int
 }
 
-fn (mut d Dict) []= (key string, value string) {
-	d.values[key] = value
+struct Foo {
+	n      int
+	u      u8
+	ratio  f64
+	ch     rune
+	nums   []int
+	lookup map[string]u64
+	inner  Inner
 }
 
 fn main() {
-	mut d := Dict{
-		values: {
-			"name": "a"
+	value := Printable(Foo{
+		n:      1
+		u:      2
+		ratio:  1.25
+		ch:     `x`
+		nums:   [3, 4]
+		lookup: {
+			"a": u64(5)
 		}
-	}
-	d["name"] += "x"
+		inner:  Inner{
+			n: 6
+		}
+	})
+	println(value.str())
 }
 ')
 	mut used := markused.mark_used(a, tc)
-	assert used['string__plus']
+	for helper in ['string__plus', 'i64__str', 'u64__str', 'f64__str', 'rune__str'] {
+		assert used[helper], helper
+	}
 	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
-	string_c := g.gen_with_used_options(a, used, tc, true)
-	assert string_c.contains('string__plus('), string_c
-
-	mut op_a, mut op_tc := parse_checked_source('overloaded_index_compound_struct_helper', '
-struct Num {
-	n int
+	c_code := g.gen_with_used_options(a, used, tc, true)
+	assert c_code.contains('string__plus('), c_code
+	assert c_code.contains('v3_map_str('), c_code
+	assert c_code.contains('f64__str('), c_code
 }
 
-fn (a Num) + (b Num) Num {
-	return Num{
-		n: a.n + b.n
-	}
-}
-
-struct Slot {
-mut:
-	value Num
-}
-
-fn (s Slot) [] (key string) Num {
-	_ := key
-	return s.value
-}
-
-fn (mut s Slot) []= (key string, value Num) {
-	_ := key
-	s.value = value
-}
-
-fn main() {
-	mut s := Slot{
-		value: Num{
-			n: 3
-		}
-	}
-	s["value"] += Num{
-		n: 4
-	}
-}
-')
-	mut op_used := markused.mark_used(op_a, op_tc)
-	assert op_used['Num.+'] || op_used['Num__plus'], op_used.str()
-	op_used = transform.transform_with_used(mut op_a, op_tc, op_used)
-	op_tc.diagnose_unknown_calls = false
-	op_tc.reject_unlowered_map_mutation = true
-	op_tc.annotate_types()
-	mut op_g := cgen.FlatGen.new()
-	op_c := op_g.gen_with_used_options(op_a, op_used, op_tc, true)
-	assert op_c.contains('Num__plus('), op_c
-}
-
-fn test_json_encode_fast_path_roots_generated_helpers() {
-	mut a, mut tc := parse_checked_source('json_encode_fast_path_helper_roots', '
+fn test_json_encode_fast_path_seeds_generated_helpers() {
+	mut a, mut tc := parse_checked_source('json_encode_fast_path_helpers', '
 import json
 
-struct User {
-	age   i64
+struct Payload {
+	n     int
 	score f64
 }
 
 fn main() {
-	_ := json.encode(User{
-		age:   1
+	_ := json.encode(Payload{
+		n:     7
 		score: 1.5
 	})
 }
 ')
 	mut used := markused.mark_used(a, tc)
-	assert used['string__plus']
-	assert used['i64.str']
-	assert used['f64.str']
+	for helper in ['string__plus', 'i64__str', 'f64__str'] {
+		assert used[helper], helper
+	}
 	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('i64__str((i64)')
-	assert c_code.contains('f64__str((double)')
-}
-
-fn test_json_encode_fast_path_roots_collection_helpers() {
-	mut a, mut tc := parse_checked_source('json_encode_fast_path_collection_helper_roots', '
-import json
-
-struct User {
-	items  []string
-	counts map[string]int
-}
-
-fn main() {
-	_ := json.encode([1, 2])
-	_ := json.encode(User{
-		items:  ["x"]
-		counts: {
-			"n": 3
-		}
-	})
-}
-')
-	mut used := markused.mark_used(a, tc)
-	assert used['string__plus']
-	assert used['array.get']
-	assert used['v3_c_lit']
-	assert used['v3_json_encode_string']
-	assert used['i64.str']
-	used = transform.transform_with_used(mut a, tc, used)
-	tc.diagnose_unknown_calls = false
-	tc.reject_unlowered_map_mutation = true
-	tc.annotate_types()
-	mut g := cgen.FlatGen.new()
-	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('array_get(')
-	assert c_code.contains('v3_json_encode_string(')
-	assert c_code.contains('i64__str((i64)')
-}
-
-fn test_json_encode_fast_path_markused_skips_json_dash_fields() {
-	mut a, mut tc := parse_checked_source('json_encode_fast_path_markused_json_dash_skip', '
-import json
-
-struct User {
-	unsupported map[int]int @[json: "-"]
-	escaped     map[int]int @[json: "\\x2d"]
-	age         i64
-}
-
-fn main() {
-	_ := json.encode(User{
-		unsupported: {
-			1: 2
-		}
-		escaped: {
-			3: 4
-		}
-		age: 3
-	})
-}
-')
-	mut used := markused.mark_used(a, tc)
-	assert used['string__plus']
-	assert used['i64.str']
-	used = transform.transform_with_used(mut a, tc, used)
-	tc.diagnose_unknown_calls = false
-	tc.reject_unlowered_map_mutation = true
-	tc.annotate_types()
-	mut g := cgen.FlatGen.new()
-	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('i64__str((i64)')
-	assert !c_code.contains('"-":')
-	assert !c_code.contains('"escaped":')
+	assert c_code.contains('string__plus('), c_code
+	assert c_code.contains('i64__str('), c_code
+	assert c_code.contains('f64__str('), c_code
 }
 
 // test_string_interpolation_lowers_to_formatter_after_used_filter_transform

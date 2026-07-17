@@ -220,17 +220,23 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 	if dir_is_module(relative_path) {
 		return relative_path
 	}
-	// 2. vlib
+	// 2. local modules/ directory beside the importing file
+	local_modules_path := os.join_path_single(os.join_path_single(importer_dir, 'modules'),
+		mod_path)
+	if dir_is_module(local_modules_path) {
+		return local_modules_path
+	}
+	// 3. vlib
 	vlib_path := os.join_path_single(os.join_path_single(p.vroot, 'vlib'), mod_path)
 	if dir_is_module(vlib_path) {
 		return vlib_path
 	}
-	// 3. ~/.vmodules (or $VMODULES)
+	// 4. ~/.vmodules (or $VMODULES)
 	vmodules_path := os.join_path_single(vmodules_dir(), mod_path)
 	if dir_is_module(vmodules_path) {
 		return vmodules_path
 	}
-	// 4. walk up the parent directories of the importing file, like V1's
+	// 5. walk up the parent directories of the importing file, like V1's
 	// Builder.find_module_path. This finds sibling projects: e.g. importing
 	// `viper` from ~/code/doka/doka.v resolves to ~/code/viper.
 	mut current_dir := importer_dir
@@ -238,6 +244,11 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		try_path := os.join_path_single(current_dir, mod_path)
 		if dir_is_module(try_path) {
 			return try_path
+		}
+		try_modules_path := os.join_path_single(os.join_path_single(current_dir, 'modules'),
+			mod_path)
+		if dir_is_module(try_modules_path) {
+			return try_modules_path
 		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {

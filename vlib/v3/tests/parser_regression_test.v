@@ -86,249 +86,31 @@ fn cast_expr_values(a &flat.FlatAst) []string {
 	return values
 }
 
-fn test_nested_inferred_fixed_array_literal_keeps_literal_out_of_type_suffix() {
-	a := parse_parser_regression_source('nested_inferred_fixed_array',
-		'fn main() { values := [..][..]int[[1, 2], [3, 4]] }')
-	mut fixed_types := []string{}
+fn selector_values(a &flat.FlatAst) []string {
+	mut values := []string{}
 	for node in a.nodes {
-		if node.kind == .postfix && node.op == .not {
-			assert node.value != 'ragged_inferred_fixed_array'
-			fixed_types << node.typ
+		if node.kind == .selector {
+			values << node.value
 		}
 	}
-	assert fixed_types == ['[2]int', '[2]int', '[2][2]int']
+	return values
 }
 
-fn test_architecture_qualified_asm_is_consumed_as_one_statement() {
-	src := os.join_path(os.temp_dir(), 'v3_architecture_asm.v')
-	os.write_file(src, 'fn mul(x u64, y u64) u64 {
-	asm arm64 {
-		mul x, x, y
-		; =&r (x)
-		; r (x)
-		  r (y)
-		; cc
-	}
-	return x * y
-}
-') or {
-		panic(err)
-	}
-	mut prefs := pref.new_preferences()
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_file(src)
-	assert a.nodes.count(it.kind == .asm_stmt) == 1
-	assert !a.nodes.any(it.kind == .ident && it.value in ['arm64', 'mul', 'cc'])
-	assert p.diagnostics.len == 1
-	assert p.diagnostics[0].message.contains('inline assembly is not supported')
-}
-
-fn test_guarded_inline_asm_selects_software_fallback() {
-	src := os.join_path(os.temp_dir(), 'v3_guarded_architecture_asm.v')
-	os.write_file(src, '$if arm64 && !tinyc {
-	fn mul() int {
-		asm arm64 { nop }
-		return 0
-	}
-} $else {
-	fn mul() int { return 42 }
-}
-') or {
-		panic(err)
-	}
-	mut prefs := pref.new_preferences()
-	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_file(src)
-	assert p.diagnostics.len == 0
-	assert a.nodes.count(it.kind == .asm_stmt) == 0
-	assert a.nodes.any(it.kind == .int_literal && it.value == '42')
-}
-
-fn test_guarded_volatile_inline_asm_selects_software_fallback() {
-	src := os.join_path(os.temp_dir(), 'v3_guarded_volatile_architecture_asm.v')
-	os.write_file(src, '$if arm64 && !tinyc {
-	fn spin_hint() int {
-		asm volatile arm64 { yield }
-		return 0
-	}
-} $else {
-	fn spin_hint() int { return 84 }
-}
-') or {
-		panic(err)
-	}
-	mut prefs := pref.new_preferences()
-	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_file(src)
-	assert p.diagnostics.len == 0
-	assert a.nodes.count(it.kind == .asm_stmt) == 0
-	assert a.nodes.any(it.kind == .int_literal && it.value == '84')
-}
-
-fn test_guarded_rv64_inline_asm_selects_software_fallback() {
-	src := os.join_path(os.temp_dir(), 'v3_guarded_rv64_architecture_asm.v')
-	os.write_file(src, '$if rv64 && !tinyc {
-	fn spin_hint() int {
-		asm rv64 { nop }
-		return 0
-	}
-} $else {
-	fn spin_hint() int { return 128 }
-}
-') or {
-		panic(err)
-	}
-	mut prefs := pref.new_preferences()
-	prefs.target = pref.target_from('linux', 'rv64') or { panic(err) }
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_file(src)
-	assert p.diagnostics.len == 0
-	assert a.nodes.count(it.kind == .asm_stmt) == 0
-	assert a.nodes.any(it.kind == .int_literal && it.value == '128')
-}
-
-fn test_inactive_inline_asm_does_not_disable_later_target_branch() {
-	src := os.join_path(os.temp_dir(), 'v3_inactive_guarded_architecture_asm.v')
-	os.write_file(src, '$if experimental ? {
-	fn experimental_hint() {
-		asm arm64 { nop }
-	}
-}
-$if arm64 {
-	fn selected() int { return 64 }
-} $else {
-	fn selected() int { return 32 }
-}
-') or {
-		panic(err)
-	}
-	mut prefs := pref.new_preferences()
-	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_file(src)
-	assert p.diagnostics.len == 0
-	assert a.nodes.count(it.kind == .asm_stmt) == 0
-	assert a.nodes.any(it.kind == .int_literal && it.value == '64')
-	assert !a.nodes.any(it.kind == .int_literal && it.value == '32')
-}
-
-fn test_file_const_guarded_inline_asm_selects_software_fallback() {
-	src := os.join_path(os.temp_dir(), 'v3_file_const_guarded_architecture_asm.v')
-	os.write_file(src, 'module main
-
-const use_asm = true
-$if use_asm {
-	$if arm64 {
-		fn selected() int {
-			asm arm64 { nop }
-			return 0
+fn has_addressed_index_base(a &flat.FlatAst, base_name string) bool {
+	for node in a.nodes {
+		if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+			continue
 		}
-	} $else {
-		fn selected() int { return 42 }
+		index_node := a.child_node(&node, 0)
+		if index_node.kind != .index || index_node.children_count == 0 {
+			continue
+		}
+		base := a.child_node(index_node, 0)
+		if base.kind == .ident && base.value == base_name {
+			return true
+		}
 	}
-}
-') or {
-		panic(err)
-	}
-	mut prefs := pref.new_preferences()
-	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_file(src)
-	assert p.diagnostics.len == 0
-	assert a.nodes.count(it.kind == .asm_stmt) == 0
-	assert a.nodes.any(it.kind == .int_literal && it.value == '42')
-}
-
-fn test_false_file_const_inline_asm_does_not_disable_target_branch() {
-	src := os.join_path(os.temp_dir(), 'v3_false_file_const_guarded_architecture_asm.v')
-	os.write_file(src, 'module main
-
-const use_asm = false
-$if use_asm {
-	fn experimental_hint() {
-		asm arm64 { nop }
-	}
-}
-$if arm64 {
-	fn selected() int { return 64 }
-} $else {
-	fn selected() int { return 32 }
-}
-') or {
-		panic(err)
-	}
-	mut prefs := pref.new_preferences()
-	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_file(src)
-	assert p.diagnostics.len == 0
-	assert a.nodes.count(it.kind == .asm_stmt) == 0
-	assert a.nodes.any(it.kind == .int_literal && it.value == '64')
-	assert !a.nodes.any(it.kind == .int_literal && it.value == '32')
-}
-
-fn test_inline_asm_fallback_keeps_unrelated_target_branches() {
-	src := os.join_path(os.temp_dir(), 'v3_scoped_architecture_asm_fallback.v')
-	os.write_file(src, 'module main
-
-$if arm64 {
-	fn before_asm() int { return 64 }
-} $else {
-	fn before_asm() int { return 32 }
-}
-$if arm64 && !tinyc {
-	fn guarded_asm() int {
-		asm arm64 { nop }
-		return 0
-	}
-} $else {
-	fn guarded_asm() int { return 42 }
-}
-$if arm64 {
-	fn after_asm() int { return 128 }
-} $else {
-	fn after_asm() int { return 16 }
-}
-') or {
-		panic(err)
-	}
-	mut prefs := pref.new_preferences()
-	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_file(src)
-	assert p.diagnostics.len == 0
-	assert a.nodes.count(it.kind == .asm_stmt) == 0
-	assert a.nodes.any(it.kind == .int_literal && it.value == '64')
-	assert a.nodes.any(it.kind == .int_literal && it.value == '42')
-	assert a.nodes.any(it.kind == .int_literal && it.value == '128')
-	assert !a.nodes.any(it.kind == .int_literal && it.value in ['32', '0', '16'])
-}
-
-fn test_inline_asm_detection_ignores_comments_and_strings() {
-	src := os.join_path(os.temp_dir(), 'v3_ignored_architecture_asm_text.v')
-	os.write_file(src, '// asm arm64 {
-/* outer comment
-	/* asm arm64 { */
-*/
-fn marker() string { return "asm arm64 {" }
-fn raw_marker() string { return r"asm arm64 {" }
-$if arm64 {
-	fn selected() int { return 64 }
-} $else {
-	fn selected() int { return 32 }
-}
-') or {
-		panic(err)
-	}
-	mut prefs := pref.new_preferences()
-	prefs.target = pref.target_from('linux', 'arm64') or { panic(err) }
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_file(src)
-	assert p.diagnostics.len == 0
-	assert a.nodes.any(it.kind == .int_literal && it.value == '64')
-	assert !a.nodes.any(it.kind == .int_literal && it.value == '32')
+	return false
 }
 
 // test_interface_method_generic_type_only_param_is_not_parsed_as_name
@@ -356,6 +138,39 @@ fn test_lifetime_generic_struct_init_suffixes_are_erased() {
 	a := parse_parser_regression_source('lifetime_generic_struct_init_suffixes',
 		'struct Candidate {}\nstruct Slot[T] {}\n\nfn make[^a]() {\n\t_ := Candidate[^a]{}\n\t_ := Slot[int, ^a]{}\n}\n')
 	assert struct_init_values(a) == ['Candidate', 'Slot[int]']
+}
+
+fn test_for_in_container_generic_index_keeps_loop_body() {
+	a := parse_parser_regression_source('for_in_generic_index_keeps_body',
+		'const Foo = [1, 2]\n\nfn main() {\n\tfor x in Foo[int] {\n\t\tprintln(x)\n\t}\n}\n')
+	assert 'Foo[int]' !in struct_init_values(a)
+	mut saw_for_in := false
+	for node in a.nodes {
+		if node.kind == .for_in_stmt {
+			saw_for_in = true
+			assert int(node.children_count) > 3
+		}
+	}
+	assert saw_for_in
+}
+
+fn test_address_of_capitalized_index_keeps_postfix_on_operand() {
+	a := parse_parser_regression_source('address_capitalized_index_operand',
+		'const Foo = [1, 2]\n\nfn main() {\n\tp := &Foo[0]\n\t_ = p\n}\n')
+	assert has_addressed_index_base(a, 'Foo')
+}
+
+fn test_isreftype_qualified_type_names_parse_as_types() {
+	a := parse_parser_regression_source('isreftype_qualified_type_names',
+		'module main\n\nfn main() {\n\t_ = isreftype(foo.Bar)\n\t_ = isreftype(&foo.Bar)\n}\n')
+	assert 'Bar' !in selector_values(a)
+	mut false_literals := 0
+	for node in a.nodes {
+		if node.kind == .bool_literal && node.value == 'false' {
+			false_literals++
+		}
+	}
+	assert false_literals == 2
 }
 
 fn test_c_pointer_cast_selector_parses_cast_before_selector() {

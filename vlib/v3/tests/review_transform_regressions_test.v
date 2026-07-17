@@ -54,6 +54,35 @@ fn run_good_with_flags(v3_bin string, name string, flags string, src string) str
 	return run.output.trim_space()
 }
 
+fn gen_c_from_source(v3_bin string, name string, src string) string {
+	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src_path, src) or { panic(err) }
+	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	os.rm(c_path) or {}
+	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	assert compile.exit_code == 0, '${name}: ${compile.output}'
+	assert os.exists(c_path)
+	return os.read_file(c_path) or { panic(err) }
+}
+
+fn c_fn_body(c_source string, signature string) string {
+	start := c_source.index(signature) or { return '' }
+	open_rel := c_source[start..].index('{') or { return '' }
+	body_start := start + open_rel
+	mut depth := 0
+	for i in body_start .. c_source.len {
+		if c_source[i] == `{` {
+			depth++
+		} else if c_source[i] == `}` {
+			depth--
+			if depth == 0 {
+				return c_source[start..i + 1]
+			}
+		}
+	}
+	return c_source[start..]
+}
+
 fn write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
@@ -227,6 +256,18 @@ fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
 	out := run_good(v3_bin, 'heap_escaping_amp_alias',
 		'struct S {\n\tn int\n}\n\nfn leak() &S {\n\tmut s := S{\n\t\tn: 1\n\t}\n\tp := &s\n\ts = S{\n\t\tn: 2\n\t}\n\treturn p\n}\n\nfn main() {\n\tp := leak()\n\tprintln(int_str(p.n))\n}\n')
 	assert out == '2'
+}
+
+fn test_heap_escaping_amp_reassignment_moves_current_source() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'heap_escaping_amp_reassign_source',
+		'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n')
+	assert out == '20'
+	c_source := gen_c_from_source(v3_bin, 'heap_escaping_amp_reassign_source_c',
+		'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\t_ := make()\n}\n')
+	body := c_fn_body(c_source, 'int* make(void) {')
+	assert body.contains('int* b ='), body
+	assert !body.contains('p = &b;'), body
 }
 
 fn test_imported_result_array_return_or_preserves_success_value() {
@@ -622,6 +663,200 @@ fn main() {
 	assert out == 'Foo\ntrue\nBar\ntrue'
 }
 
+fn test_mut_map_for_in_writeback_survives_continue_and_break() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'mut_map_for_in_writeback_continue_break', 'struct Box {
+mut:
+	n int
+}
+
+fn main() {
+	mut items := map[string]Box{}
+	items["a"] = Box{n: 1}
+	items["b"] = Box{n: 2}
+	for _, mut value in items {
+		value.n += 10
+		continue
+	}
+	println(items["a"].n)
+	println(items["b"].n)
+	mut once := map[string]Box{}
+	once["x"] = Box{n: 3}
+	for _, mut value in once {
+		value.n = 9
+		break
+	}
+	println(once["x"].n)
+}
+')
+	assert out == '11\n12\n9'
+}
+
+fn test_interface_to_interface_conversion_preserves_fields() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_to_interface_preserves_fields', 'interface Named {
+	name string
+}
+
+interface Rich {
+	name string
+	describe() string
+}
+
+struct User {
+	name string
+}
+
+fn (u User) describe() string {
+	return "user:" + u.name
+}
+
+fn read_named(n Named) string {
+	return n.name
+}
+
+fn main() {
+	rich := Rich(User{
+		name: "Ada"
+	})
+	println(read_named(rich))
+	named := Named(rich)
+	println(named.name)
+}
+')
+	assert out == 'Ada\nAda'
+}
+
+fn test_pointer_interface_conversion_heap_copies_converted_interface() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_interface_conversion_heap_copy', 'interface Named {
+	name string
+}
+
+interface Rich {
+	name string
+	describe() string
+}
+
+struct User {
+	name string
+}
+
+fn (u User) describe() string {
+	return "user:" + u.name
+}
+
+fn make_named(r Rich) &Named {
+	return &Named(r)
+}
+
+fn read_named(n &Named) string {
+	return n.name
+}
+
+fn main() {
+	rich := Rich(User{
+		name: "Ada"
+	})
+	named := make_named(rich)
+	println(read_named(named))
+	println(named.name)
+}
+')
+	assert out == 'Ada\nAda'
+}
+
+fn test_interface_implicit_str_dispatch_preserves_receiver_values() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_implicit_str_receiver_values', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+struct Custom {
+	x int
+}
+
+fn (c &Custom) str() string {
+	return "custom:" + int_str(c.x)
+}
+
+type Name = string
+
+fn (n &Name) str() string {
+	return "alias:" + string(*n)
+}
+
+struct Foo {
+	x int
+	bar Bar
+	nums []int
+	lookup map[string]int
+	p &int
+	custom &Custom
+	name &Name
+}
+
+fn main() {
+	mut n := 11
+	mut custom := Custom{
+		x: 12
+	}
+	mut name := Name("Ada")
+	value := Printable(Foo{
+		x: 7
+		bar: Bar{
+			x: 8
+		}
+		nums: [1, 2]
+		lookup: {
+			"a": 3
+		}
+		p: &n
+		custom: &custom
+		name: &name
+	})
+	text := value.str()
+	println(text.contains("x: 7"))
+	println(text.contains("Bar"))
+	println(text.contains("x: 8"))
+	println(text.contains("[1, 2]"))
+	println(text.contains("a"))
+	println(text.contains("3"))
+	println(text.contains("11"))
+	println(text.contains("custom:12"))
+	println(text.contains("alias:Ada"))
+}
+')
+	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
+}
+
+fn test_interface_implicit_str_dispatch_stringifies_collection_aliases() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_implicit_str_collection_aliases', 'interface Printable {
+	str() string
+}
+
+type Items = []int
+type Counts = map[string]int
+
+fn main() {
+	items := Printable(Items([1, 2]))
+	mut raw_counts := map[string]int{}
+	raw_counts["a"] = 3
+	counts := Printable(Counts(raw_counts))
+	count_text := counts.str()
+	println(items.str())
+	println(count_text.contains("a"))
+	println(count_text.contains("3"))
+}
+')
+	assert out == '[1, 2]\ntrue\ntrue'
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',
@@ -667,4 +902,11 @@ fn test_hierarchical_import_runtime_inits_before_importer_init() {
 		'unrelated/other.v': 'module other\n\npub fn value() int {\n\treturn 0\n}\n'
 	}, 'main.v')
 	assert out == '41'
+}
+
+fn test_lowered_generic_operator_call_records_specialization() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'lowered_generic_operator_call_records_specialization',
+		'struct Box[T] {\n\tv T\n}\n\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\n\nfn main() {\n\tleft := Box[int]{\n\t\tv: 2\n\t}\n\tright := Box[int]{\n\t\tv: 5\n\t}\n\tresult := left + right\n\tprintln(int_str(result.v))\n}\n')
+	assert out == '7'
 }

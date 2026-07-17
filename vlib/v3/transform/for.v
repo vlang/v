@@ -892,12 +892,13 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		&& !(t.is_fixed_array_type(actual_iter_type) && !t.is_fixed_array_type(container_type)) {
 		actual_iter_type = container_type
 	}
-	iterates_by_ref := actual_iter_type.starts_with('&[]')
-		|| (container_type.starts_with('&[]') && actual_iter_type != 'string')
-		|| (container_type.starts_with('&[') && t.is_fixed_array_type(container_type[1..]))
 	if actual_iter_type.starts_with('&[]') {
-		container = t.make_prefix(.mul, container)
-		t.set_node_typ(int(container), actual_iter_type[1..])
+		if t.for_in_container_is_shared_array_pointer(id, container_id) {
+			t.set_node_typ(int(container), actual_iter_type[1..])
+		} else {
+			container = t.make_prefix(.mul, container)
+			t.set_node_typ(int(container), actual_iter_type[1..])
+		}
 		actual_iter_type = actual_iter_type[1..]
 	}
 	if container_type.starts_with('&[') && t.is_fixed_array_type(container_type[1..]) {
@@ -910,7 +911,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		return arr1(id)
 	}
 	mut idx_name := key.value
-	if !has_index || idx_name == '_' {
+	if !has_index || key.value == '_' {
 		idx_name = t.new_temp('for_idx')
 	}
 	mut elem_name := key.value
@@ -925,7 +926,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		elem_name = val.value
 	}
 	t.set_var_type(idx_name, 'int')
-	elem_is_mut := (node.op == .amp || iterates_by_ref) && actual_iter_type != 'string'
+	elem_is_mut := node.op == .amp && actual_iter_type != 'string'
 	elem_needs_ref := elem_is_mut && !elem_type.starts_with('&')
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
 	t.set_var_type(elem_name, elem_var_type)
@@ -964,7 +965,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		had_pointer_value_lvalue := t.pointer_value_lvalues[elem_name] or { false }
 		had_pointer_value_rvalue := t.pointer_value_rvalues[elem_name] or { false }
 		t.pointer_value_lvalues[elem_name] = true
-		t.pointer_value_rvalues[elem_name] = true
+		t.pointer_value_rvalues.delete(elem_name)
 		transformed_body = t.transform_stmts(body_ids)
 		if had_pointer_value_lvalue {
 			t.pointer_value_lvalues[elem_name] = true
@@ -1036,6 +1037,22 @@ fn (mut t Transformer) fixed_array_map_index_for_in_container(container_id flat.
 	return t.make_map_get_expr(map_expr, info.base_type, key_name, zero_name, info.value_type)
 }
 
+fn (t &Transformer) for_in_container_is_shared_array_pointer(for_id flat.NodeId, container_id flat.NodeId) bool {
+	if int(container_id) < 0 || int(container_id) >= t.a.nodes.len {
+		return false
+	}
+	container := t.a.nodes[int(container_id)]
+	if container.kind != .ident || container.value.len == 0 {
+		return false
+	}
+	raw_type := t.raw_var_type(container.value)
+	typ := if raw_type.len > 0 { raw_type } else { t.var_type(container.value) }
+	if typ.trim_space().starts_with('shared ') {
+		return true
+	}
+	return t.local_decl_is_shared_before(container.value, for_id)
+}
+
 // make_for_stmt builds make for stmt data for transform.
 fn (mut t Transformer) make_for_stmt(init flat.NodeId, cond flat.NodeId, post flat.NodeId, body []flat.NodeId, src flat.Node) flat.NodeId {
 	start := t.a.children.len
@@ -1064,6 +1081,14 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 		iter_id := t.a.child(&node, container_idx)
 		if fixed_array_type := t.detect_for_in_global_fixed_array_type(iter_id) {
 			return fixed_array_type
+		}
+		iter_node := t.a.nodes[int(iter_id)]
+		if iter_node.kind == .ident && iter_node.value.len > 0 {
+			local_type := t.normalize_type_alias(t.var_type(iter_node.value))
+			if local_type.len > 0 && for_iter_type_is_container(local_type) {
+				t.set_node_typ(int(iter_id), local_type)
+				return local_type
+			}
 		}
 		checker_type := t.raw_checker_node_type(iter_id)
 		if checker_type.len > 0 {

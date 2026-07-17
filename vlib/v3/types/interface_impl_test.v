@@ -29,15 +29,10 @@ fn test_stable_interface_type_ids_resolve_hash_collisions() {
 	assert ids['main.TZjXQlDs6'] != ids['main.T2nAMbYQH']
 }
 
-fn test_interface_type_ids_preserve_snapshot_when_late_impl_collides() {
-	mut a := flat.FlatAst.new()
-	mut tc := TypeChecker.new(&a)
-	tc.interface_impl_name_snapshots['Any'] = ['Twvlzleh']
-	tc.structs['Twvlzleh'] = []StructField{}
-	tc.structs['Tnndxrxb'] = []StructField{}
-
-	snapshot_ids := stable_interface_type_ids(['Twvlzleh'])
-	combined_ids := tc.interface_type_ids('Any')
-	assert combined_ids['Twvlzleh'] == snapshot_ids['Twvlzleh']
-	assert combined_ids['Tnndxrxb'] != combined_ids['Twvlzleh']
+fn test_stable_interface_type_ids_preserve_existing_ids_after_late_collisions() {
+	assert stable_interface_type_id_hash('Tnndxrxb') == stable_interface_type_id_hash('Twvlzleh')
+	before := stable_interface_type_ids(['Twvlzleh'])
+	after := stable_interface_type_ids(['Twvlzleh', 'Tnndxrxb'])
+	assert after['Twvlzleh'] == before['Twvlzleh']
+	assert after['Tnndxrxb'] != before['Twvlzleh']
 }
