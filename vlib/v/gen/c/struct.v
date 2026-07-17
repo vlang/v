@@ -85,6 +85,18 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 	} else if sym.kind == .map || (sym.kind == .array && node.init_fields.len == 0) {
 		g.write(g.type_default(unwrapped_typ))
 		return
+	} else if g.is_amp && sym.kind == .array_fixed && node.init_fields.len == 0
+		&& !node.typ.has_flag(.option) {
+		// `&Alias{}` of a fixed array alias: HEAP() cannot handle array typedefs,
+		// so delegate to array_init, which hoists a tmp var and memdup()s it —
+		// the same C that is generated for a non-aliased `&[N]T{}`.
+		g.array_init(ast.ArrayInit{
+			pos:       node.pos
+			is_fixed:  true
+			typ:       g.table.unaliased_type(unwrapped_typ)
+			elem_type: sym.array_fixed_info().elem_type
+		}, '')
+		return
 	}
 	is_amp := g.is_amp
 	is_multiline := node.init_fields.len > 5
@@ -470,6 +482,12 @@ fn (mut g Gen) struct_init(node ast.StructInit) {
 					g.write(c_name(field.name))
 				}
 			} else {
+				// V-side declarations of C structs are descriptive and may be partial
+				// or inexact, so never name fields the user did not set — C99 6.7.9p19
+				// zero-initializes the remaining members anyway.
+				if sym.language == .c && !field.has_default_expr {
+					continue
+				}
 				if !g.zero_struct_field(field) {
 					nr_fields--
 					continue
