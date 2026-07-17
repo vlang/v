@@ -740,6 +740,27 @@ fn transformed_fn_is_used(name string, module_name string, used_fns map[string]b
 	return used_fns[qname] || used_fns[restored_fn_c_name(qname)]
 }
 
+fn transformed_used_fns_need_monomorphize(used_fns map[string]bool) bool {
+	for name, used in used_fns {
+		if !used {
+			continue
+		}
+		if name.starts_with('orm.new_query_T_') || name.starts_with('orm__new_query_T_') {
+			return true
+		}
+	}
+	return false
+}
+
+fn ast_contains_sql_expr(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind == .sql_expr {
+			return true
+		}
+	}
+	return false
+}
+
 fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst, used_fns map[string]bool) {
 	for tc.expr_type_values.len < a.nodes.len {
 		tc.expr_type_values << types.Type(types.void_)
@@ -1448,9 +1469,12 @@ fn main() {
 	mut transform_was_parallel := false
 	mut transform_errors := []string{}
 	mut transform_texts_canonical := false
+	if !building_v && !cmd_v_build && !uses_generics && ast_contains_sql_expr(a) {
+		uses_generics = true
+	}
 	// Markused distinguishes reachable generic calls/types from generic templates
 	// that merely came along with an imported module (notably sync and rand).
-	skip_transform_generics := building_v || cmd_v_build || !uses_generics
+	mut skip_transform_generics := building_v || cmd_v_build || !uses_generics
 	if scope_prealloc_transform {
 		// Keep the large escaping AST/cache slabs in the compilation arena, while
 		// transformer indexes and per-body temporary state use a stage arena.
@@ -1514,6 +1538,11 @@ fn main() {
 	} else {
 		used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
 			&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, false)
+	}
+	if !building_v && !cmd_v_build && !uses_generics
+		&& transformed_used_fns_need_monomorphize(used_fns) {
+		uses_generics = true
+		skip_transform_generics = false
 	}
 	b.step_parallel('transform', transform_was_parallel)
 	if transform_errors.len > 0 {

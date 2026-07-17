@@ -8154,9 +8154,7 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			g.gen_map_init(id, node)
 		}
 		.sql_expr {
-			if !g.gen_sql_expr(id, node) {
-				panic('internal error: SQL expression reached C backend after transform')
-			}
+			panic('internal error: SQL expression reached C backend after transform')
 		}
 		.cast_expr {
 			target_type := g.tc.parse_type(node.value)

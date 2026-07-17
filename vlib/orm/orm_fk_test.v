@@ -104,6 +104,111 @@ fn test_fkey_insert_as_assignment_expr() {
 	assert res.len == 2
 }
 
+enum ScalarFkeyKind {
+	zero
+	one
+	two
+}
+
+struct ScalarFkeyParent {
+	id                int                       @[primary]
+	u32_children      []ScalarFkeyU32Child      @[fkey: 'parent_id']
+	optional_children []ScalarFkeyOptionalChild @[fkey: 'parent_id']
+	bool_children     []ScalarFkeyBoolChild     @[fkey: 'parent_id']
+	f32_children      []ScalarFkeyF32Child      @[fkey: 'parent_id']
+	enum_children     []ScalarFkeyEnumChild     @[fkey: 'parent_id']
+}
+
+struct ScalarFkeyU32Child {
+	id        int @[primary]
+	parent_id u32
+}
+
+struct ScalarFkeyOptionalChild {
+	id        int @[primary]
+	parent_id ?u16
+}
+
+struct ScalarFkeyBoolChild {
+	id        int @[primary]
+	parent_id bool
+}
+
+struct ScalarFkeyF32Child {
+	id        int @[primary]
+	parent_id f32
+}
+
+struct ScalarFkeyEnumChild {
+	id        int @[primary]
+	parent_id ScalarFkeyKind
+}
+
+fn test_insert_child_relations_assigns_scalar_fkey_types() {
+	mut db := sqlite.connect(':memory:') or { panic(err) }
+	defer {
+		db.close() or {}
+	}
+
+	sql db {
+		create table ScalarFkeyU32Child
+		create table ScalarFkeyOptionalChild
+		create table ScalarFkeyBoolChild
+		create table ScalarFkeyF32Child
+		create table ScalarFkeyEnumChild
+		create table ScalarFkeyParent
+	}!
+
+	parent := ScalarFkeyParent{
+		id:                2
+		u32_children:      [ScalarFkeyU32Child{
+			id: 1
+		}]
+		optional_children: [ScalarFkeyOptionalChild{
+			id: 1
+		}]
+		bool_children:     [ScalarFkeyBoolChild{
+			id: 1
+		}]
+		f32_children:      [ScalarFkeyF32Child{
+			id: 1
+		}]
+		enum_children:     [ScalarFkeyEnumChild{
+			id: 1
+		}]
+	}
+
+	sql db {
+		insert parent into ScalarFkeyParent
+	}!
+
+	u32_children := sql db {
+		select from ScalarFkeyU32Child
+	}!
+	assert u32_children[0].parent_id == u32(2)
+
+	optional_children := sql db {
+		select from ScalarFkeyOptionalChild
+	}!
+	optional_parent_id := optional_children[0].parent_id or { u16(0) }
+	assert optional_parent_id == u16(2)
+
+	bool_children := sql db {
+		select from ScalarFkeyBoolChild
+	}!
+	assert bool_children[0].parent_id
+
+	f32_children := sql db {
+		select from ScalarFkeyF32Child
+	}!
+	assert f32_children[0].parent_id == f32(2.0)
+
+	enum_children := sql db {
+		select from ScalarFkeyEnumChild
+	}!
+	assert enum_children[0].parent_id == .two
+}
+
 struct Foo2 {
 	id       int @[primary; sql: serial]
 	name     string
