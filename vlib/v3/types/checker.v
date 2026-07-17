@@ -916,20 +916,20 @@ pub fn (tc &TypeChecker) type_cache_parse_enabled() bool {
 }
 
 pub fn (tc &TypeChecker) clear_field_lookup_cache() {
-	if isnil(tc.type_cache) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
 		return
 	}
-	mut cache := tc.type_cache
 	cache.struct_field_entries.clear()
 	cache.struct_field_misses.clear()
 }
 
 // clear_interface_impl_cache invalidates memoized implementer lists after a type-table change.
 pub fn (tc &TypeChecker) clear_interface_impl_cache() {
-	if isnil(tc.type_cache) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
 		return
 	}
-	mut cache := tc.type_cache
 	cache.interface_impl_entries.clear()
 }
 
@@ -21633,8 +21633,9 @@ fn (tc &TypeChecker) type_has_compiler_default_clone(t Type) bool {
 // stay first so transform-emitted interface IDs are preserved; later
 // implementers are appended in deterministic discovery order.
 pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
-	if !isnil(tc.type_cache) {
-		if cached := tc.type_cache.interface_impl_entries[iface_name] {
+	mut cache := tc.type_cache
+	if !isnil(cache) {
+		if cached := cache.interface_impl_entries[iface_name] {
 			return cached
 		}
 	}
@@ -21657,8 +21658,9 @@ pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 	} else {
 		impls = tc.interface_impl_names_uncached(iface_name)
 	}
-	if !isnil(tc.type_cache) {
-		mut cache := tc.type_cache
+	if !isnil(cache) {
+		// reserve also initializes zero-value maps in lightweight cache overlays.
+		cache.interface_impl_entries.reserve(1)
 		cache.interface_impl_entries[iface_name] = impls
 	}
 	return impls
@@ -24665,10 +24667,10 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 	// called from qualify_name and sum-variant pattern checks. Build the
 	// short-name index once per checker (memoized in the heap-allocated
 	// type_cache, so forked parallel workers each build their own).
-	if isnil(tc.type_cache) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
 		return tc.unique_qualified_type_name_scan(short_name)
 	}
-	mut cache := tc.type_cache
 	if !cache.short_type_name_index_built {
 		if !isnil(cache.base) && cache.base.short_type_name_index_built {
 			found := cache.base.short_type_name_index[short_name] or { return none }
@@ -24692,10 +24694,10 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 // callers that add or remove entries in the type-name maps after the checker ran
 // (the monomorphizer specializing generic structs/sum types) must invalidate them.
 pub fn (tc &TypeChecker) invalidate_short_type_name_index() {
-	if isnil(tc.type_cache) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
 		return
 	}
-	mut cache := tc.type_cache
 	cache.ierror_compat_entries.clear()
 	cache.ierror_impl_names.clear()
 	cache.ierror_impl_names_set = false
