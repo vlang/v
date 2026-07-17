@@ -86,6 +86,7 @@ mut:
 	dependency_files          int
 	dependency_scan_fallbacks int
 	publish_races             int
+	input_snapshot_races      int
 	temporary_objects         []string
 }
 
@@ -206,12 +207,32 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	stats.misses++
 	trace_c_object_cache('miss', cache_key, 'no published content-key entry',
 		dependencies.files.len)
+	// Snapshot the exact arguments that produced cache_key so the post-compile
+	// digest is computed over the same inputs (temp_obj/-c must not perturb it).
+	key_args := args.clone()
 	temp_obj := '${cached_obj}.tmp.${os.getpid()}.${rand.ulid()}'
 	args << ['-o', temp_obj, '-c', source_file]
 	res := cmdexec.run(compiler, args)
 	if res.exit_code != 0 {
 		os.rm(temp_obj) or {}
 		return error('failed to build C object ${obj_path} from ${source_file}:\n${res.output}')
+	}
+	// Re-hash the inputs after compilation. If a source or header changed while
+	// the compiler was running, the object no longer corresponds to cache_key;
+	// publishing it would certify content it was not built from. Use it as a
+	// build-local, uncached object instead.
+	post_key := c_object_cache_name(obj_path, compiler, key_args, dependencies.files, target)
+	if post_key != cache_key {
+		stats.input_snapshot_races++
+		trace_c_object_cache('bypass', cache_key,
+			'inputs changed during compilation; using build-local object', dependencies.files.len)
+		uncached_obj := os.join_path(uncached_dir, 'input_snapshot_race_${os.getpid()}_${rand.ulid()}.o')
+		os.mv(temp_obj, uncached_obj) or {
+			os.rm(temp_obj) or {}
+			return error('failed to stage build-local C object ${uncached_obj}: ${err}')
+		}
+		stats.temporary_objects << uncached_obj
+		return uncached_obj
 	}
 	os.mv(temp_obj, cached_obj) or {
 		os.rm(temp_obj) or {}
@@ -232,23 +253,56 @@ fn trace_c_object_cache(status string, key string, reason string, dependency_cou
 
 fn c_object_dependencies(compiler string, compile_args []string, source_file string) CObjectDependencies {
 	mut args := compile_args.clone()
-	args << ['-M', '-MT', 'v3cache', source_file]
+	mt_target := 'v3cache'
+	marker := '${mt_target}:'
+	args << ['-M', '-MT', mt_target, source_file]
 	result := cmdexec.run(compiler, args)
+	// Fail closed: any output we cannot fully and unambiguously interpret must
+	// use a build-local, uncached object. A malformed or unexpected depfile that
+	// is silently accepted as a valid, source-only dependency set would let a
+	// later build certify a stale object as current.
+	fallback := CObjectDependencies{
+		files:         [source_file]
+		used_fallback: true
+	}
 	if result.exit_code != 0 {
-		return CObjectDependencies{
-			files:         [source_file]
-			used_fallback: true
-		}
+		return fallback
+	}
+	if !result.output.contains(marker) {
+		// The `-MT` target marker is missing, so `all_after` would return the
+		// entire compiler output and tokenize it as bogus dependencies.
+		return fallback
 	}
 	continuation := '\\' + '\n'
-	dep_text := result.output.replace(continuation, ' ').all_after('v3cache:')
-	mut dependencies := cmdexec.split_args(dep_text) or { []string{} }
-	if source_file !in dependencies {
-		dependencies << source_file
+	dep_text := result.output.replace(continuation, ' ').all_after(marker)
+	dependencies := cmdexec.split_args(dep_text) or { return fallback }
+	if dependencies.len == 0 {
+		return fallback
 	}
-	dependencies.sort()
+	// Every listed path must resolve to a readable file, and the source file
+	// itself must be among them; otherwise the dependency set is untrustworthy.
+	source_real := os.real_path(source_file)
+	mut canonical_deps := []string{cap: dependencies.len}
+	mut saw_source := false
+	for dep in dependencies {
+		if dep.len == 0 {
+			continue
+		}
+		canonical := os.real_path(dep)
+		if !os.is_file(canonical) {
+			return fallback
+		}
+		canonical_deps << dep
+		if canonical == source_real {
+			saw_source = true
+		}
+	}
+	if !saw_source {
+		return fallback
+	}
+	canonical_deps.sort()
 	return CObjectDependencies{
-		files: dependencies
+		files: canonical_deps
 	}
 }
 
@@ -703,6 +757,17 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names []string) 
 	}
 }
 
+// default_cc_identity returns the resolved path and version banner of the
+// default `cc`. Module objects in the persistent cache are compiled with literal
+// `cc` (only the default compiler is cacheable), so this must be part of the
+// cache salt: a `cc` upgrade or a retargeted `cc` symlink otherwise leaves stale
+// objects certified as current.
+fn default_cc_identity() string {
+	cc_path := os.find_abs_path_of_executable('cc') or { 'cc' }
+	cc_version := cmdexec.run('cc', ['--version']).output
+	return '${cc_path}\t${cc_version.replace('\n', ' ')}'
+}
+
 fn v3_cache_compiler_signature(vroot string) string {
 	dir := os.join_path(vroot, 'vlib', 'v3')
 	if !os.is_dir(dir) {
@@ -744,6 +809,27 @@ fn transformed_fn_is_used(name string, module_name string, used_fns map[string]b
 	}
 	qname := '${module_name}.${name}'
 	return used_fns[qname] || used_fns[restored_fn_c_name(qname)]
+}
+
+fn transformed_used_fns_need_monomorphize(used_fns map[string]bool) bool {
+	for name, used in used_fns {
+		if !used {
+			continue
+		}
+		if name.starts_with('orm.new_query_T_') || name.starts_with('orm__new_query_T_') {
+			return true
+		}
+	}
+	return false
+}
+
+fn ast_contains_sql_expr(a &flat.FlatAst) bool {
+	for node in a.nodes {
+		if node.kind == .sql_expr {
+			return true
+		}
+	}
+	return false
 }
 
 fn restore_transformed_fn_value_types(mut tc types.TypeChecker, a &flat.FlatAst, used_fns map[string]bool) {
@@ -1180,8 +1266,10 @@ fn main() {
 	host_target := pref.host_target()
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !c_compiler_explicit
 		&& target.os == host_target.os && target.arch == host_target.arch
+	cc_identity := if cache_enabled { default_cc_identity() } else { '' }
 	cache_salt := [
 		'compiler=${v3_cache_compiler_signature(prefs.vroot)}',
+		'cc=${cc_identity}',
 		'vexe=${prefs.vexe}',
 		'backend=${backend}',
 		'target=${prefs.normalized_target_os()}',
@@ -1454,9 +1542,12 @@ fn main() {
 	mut transform_was_parallel := false
 	mut transform_errors := []string{}
 	mut transform_texts_canonical := false
+	if !building_v && !cmd_v_build && !uses_generics && ast_contains_sql_expr(a) {
+		uses_generics = true
+	}
 	// Markused distinguishes reachable generic calls/types from generic templates
 	// that merely came along with an imported module (notably sync and rand).
-	skip_transform_generics := building_v || cmd_v_build || !uses_generics
+	mut skip_transform_generics := building_v || cmd_v_build || !uses_generics
 	if scope_prealloc_transform {
 		// Keep the large escaping AST/cache slabs in the compilation arena, while
 		// transformer indexes and per-body temporary state use a stage arena.
@@ -1518,6 +1609,11 @@ fn main() {
 	} else {
 		used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
 			&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, false)
+	}
+	if !building_v && !cmd_v_build && !uses_generics
+		&& transformed_used_fns_need_monomorphize(used_fns) {
+		uses_generics = true
+		skip_transform_generics = false
 	}
 	b.step_parallel('transform', transform_was_parallel)
 	if transform_errors.len > 0 {
@@ -1919,6 +2015,8 @@ fn main() {
 	b.metric('C object dep-scan fallbacks', c_object_cache_stats.dependency_scan_fallbacks,
 		'objects')
 	b.metric('C object publish races', c_object_cache_stats.publish_races, 'objects')
+	b.metric('C object input-snapshot races', c_object_cache_stats.input_snapshot_races,
+		'objects')
 	b.print_report()
 }
 

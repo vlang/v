@@ -831,6 +831,11 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 			return t.canonical_or_expr_types(raw_type)
 		}
 	}
+	if expr_node.kind == .sql_expr {
+		if sql_type := t.sql_expr_result_type(expr_node) {
+			return t.canonical_or_expr_types(sql_type)
+		}
+	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
 			if current_ret := t.current_generic_receiver_call_return_type(expr_node) {

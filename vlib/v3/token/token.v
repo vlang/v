@@ -116,16 +116,19 @@ pub enum Token {
 }
 
 // BindingPower lists binding power values used by token.
+// The levels mirror V's documented operator precedence (see the language
+// reference, Appendix II): `+ - | ^` all share the `sum` level and
+// `* / % << >> >>> &` all share the `product` level. Do not split these into
+// finer levels — doing so changes the parse of expressions that mix operators
+// of the same documented precedence, e.g. `1 | 2 ^ 3` must fold to `(1 | 2) ^ 3`
+// at `sum` and `a << b * c` must fold to `(a << b) * c` at `product`.
 pub enum BindingPower {
 	lowest
 	logical_or  // ||
 	logical_and // &&
 	compare     // ==, !=, <, <=, >, >=, in, !in, is, !is
-	bit_or      // |
-	bit_xor     // ^
-	add         // +, -
-	shift       // <<, >>, >>>
-	product     // *, /, %, &
+	sum         // +, -, |, ^
+	product     // *, /, %, <<, >>, >>>, &
 	highest
 }
 
@@ -136,26 +139,24 @@ pub fn (t Token) left_binding_power() BindingPower {
 		.logical_or { .logical_or }
 		.and { .logical_and }
 		.eq, .ne, .lt, .le, .gt, .ge, .key_in, .not_in, .key_is, .not_is { .compare }
-		.pipe { .bit_or }
-		.xor { .bit_xor }
-		.left_shift, .right_shift, .right_shift_unsigned { .shift }
-		.plus, .minus { .add }
-		.mul, .div, .mod, .amp { .product }
+		.plus, .minus, .pipe, .xor { .sum }
+		.mul, .div, .mod, .amp, .left_shift, .right_shift, .right_shift_unsigned { .product }
 		else { .lowest }
 	}
 }
 
 // right_binding_power supports right binding power handling for Token.
+// Every binary operator here is left-associative, so the right binding power is
+// the level immediately above the operator's own level: parsing the right
+// operand stops as soon as it sees another operator at the same level, which
+// hands that operator back to the outer loop and folds left.
 @[inline]
 pub fn (t Token) right_binding_power() BindingPower {
 	return match t.left_binding_power() {
 		.logical_or { .logical_and }
 		.logical_and { .compare }
-		.compare { .bit_or }
-		.bit_or { .bit_xor }
-		.bit_xor { .add }
-		.add { .shift }
-		.shift { .product }
+		.compare { .sum }
+		.sum { .product }
 		.product { .highest }
 		else { .lowest }
 	}

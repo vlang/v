@@ -60,6 +60,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	}
 	struct_decls := t.collect_generic_struct_decls()
 	t.seed_generic_specialization_args(struct_decls)
+	t.materialize_generic_struct_specs(t.generic_struct_specs(struct_decls), struct_decls)
 	mut ignored_nodes := t.monomorphize_ignored_nodes(decls)
 	mut emitted := map[string]bool{}
 	mut generated := []string{}
@@ -1568,7 +1569,7 @@ fn interface_boxed_type_key(iface_name string, concrete_type string) string {
 	return '${iface_name}\n${concrete_type}'
 }
 
-fn (mut t Transformer) materialize_generic_structs() {
+fn (mut t Transformer) materialize_generic_structs(erase_templates bool) {
 	if isnil(t.tc) {
 		return
 	}
@@ -1582,17 +1583,26 @@ fn (mut t Transformer) materialize_generic_structs() {
 		decl := sum_decls[context.base] or { continue }
 		t.materialize_generic_sum_spec(spec, decl, context)
 	}
+	t.materialize_generic_struct_specs(specs, decls)
+	if erase_templates {
+		t.erase_generic_sum_templates(sum_decls)
+		for _, decl in decls {
+			t.tc.structs.delete(decl.key)
+			t.tc.unions.delete(decl.key)
+			t.tc.params_structs.delete(decl.key)
+		}
+	}
+	t.tc.invalidate_short_type_name_index()
+}
+
+fn (mut t Transformer) materialize_generic_struct_specs(specs map[string]string, decls map[string]GenericStructDecl) {
+	if isnil(t.tc) {
+		return
+	}
 	for spec, base in specs {
 		decl := decls[base] or { continue }
 		t.materialize_generic_struct_spec(spec, decl)
 	}
-	t.erase_generic_sum_templates(sum_decls)
-	for _, decl in decls {
-		t.tc.structs.delete(decl.key)
-		t.tc.unions.delete(decl.key)
-		t.tc.params_structs.delete(decl.key)
-	}
-	t.tc.invalidate_short_type_name_index()
 	t.tc.clear_interface_impl_cache()
 }
 
@@ -1786,12 +1796,83 @@ fn (mut t Transformer) collect_generic_struct_specs(decls map[string]GenericStru
 				specs)
 		}
 		match node.kind {
+			.sql_expr {
+				t.collect_generic_struct_specs_from_sql_expr(node.value, node_module, node_file,
+					decls, mut specs)
+			}
 			.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
 				t.collect_generic_struct_spec_from_type(node.value, node_module, node_file, decls, mut
 					specs)
 			}
 			else {}
 		}
+	}
+}
+
+fn (mut t Transformer) collect_generic_struct_specs_from_sql_expr(value string, module_name string, file_name string, decls map[string]GenericStructDecl, mut specs map[string]string) {
+	tokens := sql_clean_tokens(value.split(' '))
+	mut i := 0
+	for i < tokens.len {
+		if i + 2 < tokens.len && tokens[i] in ['create', 'drop'] && tokens[i + 1] == 'table' {
+			table_token, next_idx := sql_table_type_token_from(tokens, i + 2) or {
+				i++
+				continue
+			}
+			t.collect_generic_struct_spec_from_type(table_token, module_name, file_name, decls, mut
+				specs)
+			i = next_idx
+			continue
+		}
+		if i + 3 < tokens.len && tokens[i] in ['insert', 'upsert'] && tokens[i + 2] == 'into' {
+			table_token, next_idx := sql_table_type_token_from(tokens, i + 3) or {
+				i++
+				continue
+			}
+			t.collect_generic_struct_spec_from_type(table_token, module_name, file_name, decls, mut
+				specs)
+			i = next_idx
+			continue
+		}
+		if tokens[i] == 'select'
+			|| (i + 1 < tokens.len && tokens[i] == 'dynamic' && tokens[i + 1] == 'select') {
+			is_dynamic := tokens[i] == 'dynamic'
+			start := if is_dynamic { i + 1 } else { i }
+			end := sql_stmt_end(tokens, if is_dynamic { i + 2 } else { i + 1 })
+			stmt_tokens := tokens[start..end]
+			from_idx := sql_token_index(stmt_tokens, 'from')
+			if from_idx >= 0 && from_idx + 1 < stmt_tokens.len {
+				if table_token, _ := sql_table_type_token_from(stmt_tokens, from_idx + 1) {
+					t.collect_generic_struct_spec_from_type(table_token, module_name, file_name,
+						decls, mut specs)
+				}
+			}
+			i = end
+			continue
+		}
+		if i + 2 < tokens.len && tokens[i] == 'delete' && tokens[i + 1] == 'from' {
+			end := sql_stmt_end(tokens, i + 1)
+			stmt_tokens := tokens[i..end]
+			if table_token, _ := sql_table_type_token_from(stmt_tokens, 2) {
+				t.collect_generic_struct_spec_from_type(table_token, module_name, file_name, decls, mut
+					specs)
+			}
+			i = end
+			continue
+		}
+		if tokens[i] == 'update'
+			|| (i + 1 < tokens.len && tokens[i] == 'dynamic' && tokens[i + 1] == 'update') {
+			is_dynamic := tokens[i] == 'dynamic'
+			start := if is_dynamic { i + 1 } else { i }
+			end := sql_stmt_end(tokens, if is_dynamic { i + 2 } else { i + 1 })
+			stmt_tokens := tokens[start..end]
+			if table_token, _ := sql_table_type_token_from(stmt_tokens, 1) {
+				t.collect_generic_struct_spec_from_type(table_token, module_name, file_name, decls, mut
+					specs)
+			}
+			i = end
+			continue
+		}
+		i++
 	}
 }
 
@@ -2184,11 +2265,24 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_name string, decl Ge
 		}
 	}
 	t.tc.structs[spec_name] = fields
+	cspec_name := c_name(spec_name)
+	if cspec_name != spec_name {
+		t.tc.structs[cspec_name] = fields
+		if decl.module.len > 0 {
+			t.tc.struct_modules[cspec_name] = decl.module
+		}
+	}
 	if decl.key in t.tc.unions {
 		t.tc.unions[spec_name] = true
+		if cspec_name != spec_name {
+			t.tc.unions[cspec_name] = true
+		}
 	}
 	if decl.key in t.tc.params_structs {
 		t.tc.params_structs[spec_name] = true
+		if cspec_name != spec_name {
+			t.tc.params_structs[cspec_name] = true
+		}
 	}
 	t.tc.invalidate_short_type_name_index()
 	t.cur_module = old_module
@@ -7982,10 +8076,39 @@ fn (t &Transformer) subst_node_value(node flat.Node, args []string) string {
 		.comptime_if {
 			return t.subst_comptime_type_condition(node.value, args)
 		}
+		.sql_expr {
+			return t.subst_sql_expr_value(node.value, args)
+		}
 		else {
 			return node.value
 		}
 	}
+}
+
+fn (t &Transformer) subst_sql_expr_value(value string, args []string) string {
+	if value.len == 0 || args.len == 0 || t.active_generic_params.len == 0 {
+		return value
+	}
+	tokens := sql_clean_tokens(value.split(' '))
+	mut out := []string{cap: tokens.len}
+	for token in tokens {
+		out << t.subst_sql_expr_token(token, args)
+	}
+	return out.join(' ')
+}
+
+fn (t &Transformer) subst_sql_expr_token(token string, args []string) string {
+	clean := token.trim_space()
+	if clean.len == 0 {
+		return token
+	}
+	for param in t.active_generic_params {
+		if clean == param || clean.contains('[${param}]') || clean.contains(', ${param}')
+			|| clean.contains('${param},') {
+			return t.subst_type(clean, args)
+		}
+	}
+	return token
 }
 
 fn (t &Transformer) resolve_substituted_type_text(typ string) string {

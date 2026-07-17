@@ -10,6 +10,24 @@ import v3.token
 
 const max_parse_diagnostics = 100
 
+const sql_query_data_alias_reserved_tokens = [
+	'select',
+	'from',
+	'where',
+	'set',
+	'insert',
+	'update',
+	'delete',
+	'create',
+	'drop',
+	'table',
+	'order',
+	'by',
+	'limit',
+	'offset',
+	'dynamic',
+]
+
 // Diagnostic is a structured source-ingestion, lexical, or parse diagnostic.
 pub struct Diagnostic {
 pub:
@@ -29,6 +47,7 @@ mut:
 	lit                               string
 	tok_pos                           int
 	tok_end                           int
+	prev_tok_end                      int
 	peek_tok                          token.Token = .eof
 	peek_lit                          string
 	peek_pos                          int
@@ -68,6 +87,7 @@ mut:
 	local_type_scopes                 []string
 	anonymous_struct_types            map[string][]string
 	anonymous_struct_count            int
+	sql_query_data_aliases            map[string]bool
 	export_records                    []ExportRecord
 pub mut:
 	a              &flat.FlatAst = unsafe { nil }
@@ -114,6 +134,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		comptime_const_values:         map[string]string{}
 		comptime_local_values:         map[string]string{}
 		unsupported_inline_asm_guards: map[int]bool{}
+		sql_query_data_aliases:        map[string]bool{}
 		a:                             &flat.FlatAst{
 			nodes:                []flat.Node{cap: 256}
 			children:             []flat.NodeId{cap: 512}
@@ -186,6 +207,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.next_file_id++
 	p.tok_pos = 0
 	p.tok_end = 0
+	p.prev_tok_end = 0
 	p.peek_pos = 0
 	p.peek_end = 0
 	p.cur_module = ''
@@ -211,6 +233,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.local_type_scopes = []string{}
 	p.anonymous_struct_types = map[string][]string{}
 	p.anonymous_struct_count = 0
+	p.sql_query_data_aliases.clear()
 	// File marker before content so import resolver can track source files
 	p.add_node(flat.Node{
 		kind:  .file
@@ -237,6 +260,9 @@ pub fn (mut p Parser) parse_into(path string) {
 	file.index_lines(stable_src)
 	p.a.source_files[p.cur_file_id] = file
 	p.s.init(file, stable_src)
+	if stable_src.contains('dynamic') && stable_src.contains('sql') {
+		p.collect_sql_query_data_aliases()
+	}
 	p.next()
 
 	mut ids := []flat.NodeId{}
@@ -327,6 +353,38 @@ fn (mut p Parser) add_val_id(kind_id int, value string) flat.NodeId {
 	})
 }
 
+// span_start returns the clamped start offset of the current (not-yet-consumed)
+// token. Capture it before consuming a construct so the node's span reflects the
+// construct's own location rather than whatever token happens to be current when
+// the node is finally created.
+fn (p &Parser) span_start() int {
+	return clamp_source_offset(p.tok_pos, p.s.src.len)
+}
+
+// span_to builds a half-open span from a previously captured start offset to the
+// end of the most recently consumed token (prev_tok_end).
+fn (p &Parser) span_to(start int) token.Pos {
+	end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
+	return token.new_span(p.cur_file_id, start, end)
+}
+
+// add_val_id_at builds a leaf value node with an explicit, already-captured span.
+fn (mut p Parser) add_val_id_at(kind_id int, value string, pos token.Pos) flat.NodeId {
+	return p.a.add_node(flat.Node{
+		kind:  flat.node_kind_from_id(kind_id)
+		value: value
+		pos:   pos
+	})
+}
+
+// add_id_at builds a leaf node (no value) with an explicit, already-captured span.
+fn (mut p Parser) add_id_at(kind_id int, pos token.Pos) flat.NodeId {
+	return p.a.add_node(flat.Node{
+		kind: flat.node_kind_from_id(kind_id)
+		pos:  pos
+	})
+}
+
 fn (mut p Parser) record_diagnostic(message string, offset int) {
 	clamped_offset := clamp_source_offset(offset, p.s.src.len)
 	mut line := 1
@@ -397,6 +455,9 @@ fn vmod_root_for_file(path string) string {
 // next supports next handling for Parser.
 @[inline]
 fn (mut p Parser) next() {
+	// Remember the end of the token being consumed so a production can build a
+	// span that ends at the last token it actually consumed.
+	p.prev_tok_end = p.tok_end
 	if p.has_peek {
 		p.tok = p.peek_tok
 		p.lit = p.peek_lit
@@ -4929,7 +4990,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 	// A comma after the first name is ambiguous with C-style multi-init
 	// (`for h, t := ...`), so handle it after parsing the first expression.
 	if p.tok == .name && p.peek() == .key_in {
-		first_expr := p.expr(.bit_or)
+		first_expr := p.expr(.sum)
 		return p.for_in(first_expr, false)
 	}
 	if p.tok == .key_mut {
@@ -5094,7 +5155,7 @@ fn (mut p Parser) for_comma_header(first_expr flat.NodeId, first_is_mut bool) fl
 			p.next()
 			value_is_mut = true
 		}
-		next_lhs := p.expr(.bit_or)
+		next_lhs := p.expr(.sum)
 		lhs_ids << next_lhs
 		if lhs_ids.len == 2 {
 			val_id = next_lhs
@@ -5660,7 +5721,12 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 
 	if p.tok == .decl_assign {
 		p.next()
-		rhs := p.expr(.lowest)
+		rhs := if p.lhs_is_dynamic_sql_expr_alias(lhs) && p.tok == .lcbr
+			&& p.current_lcbr_looks_query_data_literal() {
+			p.sql_query_data_literal_expr()
+		} else {
+			p.expr(.lowest)
+		}
 		p.remember_comptime_decl_value(lhs, rhs)
 		if p.tok == .semicolon {
 			p.next()
@@ -5709,6 +5775,242 @@ fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
 		children_start: estart
 		children_count: 1
 	})
+}
+
+fn (p &Parser) lhs_is_dynamic_sql_expr_alias(lhs flat.NodeId) bool {
+	if int(lhs) < 0 || int(lhs) >= p.a.nodes.len {
+		return false
+	}
+	node := p.a.nodes[int(lhs)]
+	return node.kind == .ident && node.value in p.sql_query_data_aliases
+}
+
+fn (mut p Parser) collect_sql_query_data_aliases() {
+	saved_s := p.s
+	saved_tok := p.tok
+	saved_lit := p.lit
+	saved_tok_pos := p.tok_pos
+	saved_tok_end := p.tok_end
+	saved_peek_tok := p.peek_tok
+	saved_peek_lit := p.peek_lit
+	saved_peek_pos := p.peek_pos
+	saved_peek_end := p.peek_end
+	saved_has_peek := p.has_peek
+	p.has_peek = false
+	p.next()
+	for p.tok != .eof {
+		if p.tok == .name && p.lit == 'sql' {
+			p.next()
+			if p.advance_to_sql_block_lcbr() {
+				p.collect_sql_query_data_aliases_from_tokens(p.sql_block_tokens())
+				continue
+			}
+			continue
+		}
+		p.next()
+	}
+	p.s = saved_s
+	p.tok = saved_tok
+	p.lit = saved_lit
+	p.tok_pos = saved_tok_pos
+	p.tok_end = saved_tok_end
+	p.peek_tok = saved_peek_tok
+	p.peek_lit = saved_peek_lit
+	p.peek_pos = saved_peek_pos
+	p.peek_end = saved_peek_end
+	p.has_peek = saved_has_peek
+}
+
+fn (mut p Parser) advance_to_sql_block_lcbr() bool {
+	if p.tok != .name {
+		return false
+	}
+	p.next()
+	for p.tok == .dot {
+		p.next()
+		if p.tok != .name && !p.tok.is_keyword() {
+			return false
+		}
+		p.next()
+	}
+	return p.tok == .lcbr
+}
+
+fn (mut p Parser) collect_sql_query_data_aliases_from_tokens(tokens []string) {
+	mut i := 0
+	for i < tokens.len {
+		if tokens[i] == 'dynamic' && i + 1 < tokens.len {
+			stmt_start := i + 1
+			stmt_end := sql_next_statement_start(tokens, stmt_start + 1)
+			match tokens[stmt_start] {
+				'select' {
+					p.collect_dynamic_sql_where_aliases(tokens[stmt_start + 1..stmt_end])
+				}
+				'update' {
+					p.collect_dynamic_sql_update_aliases(tokens[stmt_start + 1..stmt_end])
+				}
+				else {}
+			}
+
+			i = stmt_end
+			continue
+		}
+		i++
+	}
+}
+
+fn (mut p Parser) collect_dynamic_sql_update_aliases(tokens []string) {
+	mut i := 0
+	for i < tokens.len {
+		if tokens[i] == 'set' {
+			end := sql_dynamic_update_set_clause_end(tokens, i + 1)
+			p.collect_sql_query_data_alias(tokens[i + 1..end])
+			i = end
+			continue
+		}
+		if tokens[i] == 'where' {
+			end := sql_dynamic_where_clause_end(tokens, i + 1)
+			p.collect_sql_query_data_alias(tokens[i + 1..end])
+			i = end
+			continue
+		}
+		i++
+	}
+}
+
+fn (mut p Parser) collect_dynamic_sql_where_aliases(tokens []string) {
+	mut i := 0
+	for i < tokens.len {
+		if tokens[i] == 'where' {
+			end := sql_dynamic_where_clause_end(tokens, i + 1)
+			p.collect_sql_query_data_alias(tokens[i + 1..end])
+			i = end
+			continue
+		}
+		i++
+	}
+}
+
+fn (mut p Parser) collect_sql_query_data_alias(tokens []string) {
+	if tokens.len == 1 && sql_query_data_alias_token(tokens[0]) {
+		p.sql_query_data_aliases[tokens[0]] = true
+	}
+}
+
+fn sql_next_statement_start(tokens []string, start int) int {
+	mut depth := 0
+	for i in start .. tokens.len {
+		tok := tokens[i]
+		if tok in ['{', '(', '['] {
+			depth++
+		} else if tok in ['}', ')', ']'] {
+			if depth > 0 {
+				depth--
+			}
+		}
+		if depth == 0 && sql_token_starts_statement(tokens, i) {
+			if i > 0 && tokens[i - 1] == 'dynamic' && sql_token_starts_statement(tokens, i - 1) {
+				continue
+			}
+			return i
+		}
+	}
+	return tokens.len
+}
+
+fn sql_dynamic_where_clause_end(tokens []string, start int) int {
+	return sql_dynamic_clause_end(tokens, start, ['order', 'limit', 'offset'])
+}
+
+fn sql_dynamic_update_set_clause_end(tokens []string, start int) int {
+	return sql_dynamic_clause_end(tokens, start, ['where'])
+}
+
+fn sql_dynamic_clause_end(tokens []string, start int, stop_tokens []string) int {
+	mut depth := 0
+	for i in start .. tokens.len {
+		tok := tokens[i]
+		if tok in ['{', '(', '['] {
+			depth++
+		} else if tok in ['}', ')', ']'] {
+			if depth > 0 {
+				depth--
+			}
+		}
+		if depth == 0 && tok in stop_tokens {
+			return i
+		}
+	}
+	return tokens.len
+}
+
+fn sql_query_data_alias_token(name string) bool {
+	if name.len == 0 || name[0].is_digit() || name in sql_query_data_alias_reserved_tokens {
+		return false
+	}
+	for ch in name.bytes() {
+		if !((ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
+			|| (ch >= `0` && ch <= `9`) || ch == `_`) {
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut p Parser) current_lcbr_looks_query_data_literal() bool {
+	if p.tok != .lcbr {
+		return false
+	}
+	saved_s := p.s
+	saved_tok := p.tok
+	saved_lit := p.lit
+	saved_tok_pos := p.tok_pos
+	saved_tok_end := p.tok_end
+	saved_peek_tok := p.peek_tok
+	saved_peek_lit := p.peek_lit
+	saved_peek_pos := p.peek_pos
+	saved_peek_end := p.peek_end
+	saved_has_peek := p.has_peek
+	p.next()
+	mut depth := 1
+	mut looks_query_data := false
+	for depth > 0 && p.tok != .eof {
+		if p.tok == .lcbr {
+			depth++
+			p.next()
+			continue
+		}
+		if p.tok == .rcbr {
+			depth--
+			if depth == 0 {
+				break
+			}
+			p.next()
+			continue
+		}
+		if depth == 1 {
+			if p.tok == .colon {
+				looks_query_data = false
+				break
+			}
+			if p.tok in [.assign, .eq, .ne, .lt, .le, .gt, .ge, .key_in, .not_in, .key_is, .not_is, .key_if]
+				|| (p.tok == .name && p.lit in ['like', 'ilike']) {
+				looks_query_data = true
+			}
+		}
+		p.next()
+	}
+	p.s = saved_s
+	p.tok = saved_tok
+	p.lit = saved_lit
+	p.tok_pos = saved_tok_pos
+	p.tok_end = saved_tok_end
+	p.peek_tok = saved_peek_tok
+	p.peek_lit = saved_peek_lit
+	p.peek_pos = saved_peek_pos
+	p.peek_end = saved_peek_end
+	p.has_peek = saved_has_peek
+	return looks_query_data
 }
 
 fn (mut p Parser) assign_or_expr_inline() flat.NodeId {
@@ -6156,10 +6458,10 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 				break
 			}
 			p.next()
-			mut rhs := p.expr(token.BindingPower.bit_or)
+			mut rhs := p.expr(token.BindingPower.sum)
 			if p.tok == .dotdot {
 				p.next()
-				range_rhs := p.expr(.bit_or)
+				range_rhs := p.expr(.sum)
 				rstart := p.add_children2(rhs, range_rhs)
 				rhs = p.add_node(flat.Node{
 					kind:           .range
@@ -6193,10 +6495,10 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 			}
 			p.next() // skip !
 			p.next() // skip in
-			mut rhs := p.expr(token.BindingPower.bit_or)
+			mut rhs := p.expr(token.BindingPower.sum)
 			if p.tok == .dotdot {
 				p.next()
-				range_rhs := p.expr(.bit_or)
+				range_rhs := p.expr(.sum)
 				rstart := p.add_children2(rhs, range_rhs)
 				rhs = p.add_node(flat.Node{
 					kind:           .range
@@ -6291,6 +6593,15 @@ fn (mut p Parser) sql_expr() flat.NodeId {
 	})
 }
 
+fn (mut p Parser) sql_query_data_literal_expr() flat.NodeId {
+	tokens := p.sql_block_tokens()
+	return p.add_node(flat.Node{
+		kind:  .sql_expr
+		value: 'querydata ${tokens.join(' ')}'
+		typ:   'orm.QueryData'
+	})
+}
+
 fn (mut p Parser) starts_sql_expr() bool {
 	if p.tok != .name {
 		return false
@@ -6345,6 +6656,13 @@ fn (mut p Parser) sql_block_tokens() []string {
 			}
 		}
 		if depth > 0 {
+			if p.tok == .string && p.peek() == .str_dollar {
+				text := p.sql_interpolated_string_token_text()
+				if text.len > 0 {
+					tokens << text
+				}
+				continue
+			}
 			text := p.sql_token_text()
 			if text.len > 0 {
 				tokens << text
@@ -6355,17 +6673,109 @@ fn (mut p Parser) sql_block_tokens() []string {
 	return tokens
 }
 
+fn (mut p Parser) sql_interpolated_string_token_text() string {
+	lit := p.lit
+	mut quote := u8(`'`)
+	if lit.len > 0 {
+		if lit[0] == `r` && lit.len > 1 {
+			quote = lit[1]
+		} else if lit[0] == `'` || lit[0] == `"` {
+			quote = lit[0]
+		}
+	}
+	mut value := strip_interp_start_quotes(lit)
+	p.next()
+	for p.tok == .str_dollar {
+		p.next()
+		p.check(.lcbr)
+		mut expr_tokens := []string{}
+		mut depth := 1
+		for depth > 0 && p.tok != .eof {
+			if p.tok == .lcbr {
+				depth++
+			} else if p.tok == .rcbr {
+				depth--
+				if depth == 0 {
+					break
+				}
+			}
+			text := p.sql_token_text()
+			if text.len > 0 {
+				expr_tokens << text
+			}
+			p.next()
+		}
+		value += '\${' + sql_clean_interp_tokens(expr_tokens).join(' ') + '}'
+		p.check(.rcbr)
+		if p.tok == .string {
+			value += strip_interp_quotes(p.lit, quote)
+			p.next()
+		}
+	}
+	return quote.ascii_str() + value + quote.ascii_str()
+}
+
+fn sql_clean_interp_tokens(tokens []string) []string {
+	mut clean := []string{cap: tokens.len}
+	mut i := 0
+	for i < tokens.len {
+		if tokens[i] == '.' && clean.len > 0 && i + 1 < tokens.len {
+			clean[clean.len - 1] += '.${tokens[i + 1]}'
+			i += 2
+			continue
+		}
+		clean << tokens[i]
+		i++
+	}
+	return clean
+}
+
 fn (p &Parser) sql_token_text() string {
+	if p.tok == .string {
+		if (p.lit.starts_with("'") && p.lit.ends_with("'"))
+			|| (p.lit.starts_with('"') && p.lit.ends_with('"')) {
+			return p.lit
+		}
+		return "'${p.lit}'"
+	}
 	if p.lit.len > 0 {
 		return p.lit
 	}
 	return match p.tok {
 		.key_select { 'select' }
 		.key_in { 'in' }
+		.not_in { '!in' }
+		.key_is { 'is' }
+		.not_is { '!is' }
 		.key_or { 'or' }
 		.key_as { 'as' }
+		.key_nil { 'nil' }
+		.key_none { 'none' }
 		.key_true { 'true' }
 		.key_false { 'false' }
+		.comma { ',' }
+		.dot { '.' }
+		.assign { '=' }
+		.decl_assign { ':=' }
+		.eq { '==' }
+		.ne { '!=' }
+		.lt { '<' }
+		.le { '<=' }
+		.gt { '>' }
+		.ge { '>=' }
+		.plus { '+' }
+		.minus { '-' }
+		.mul { '*' }
+		.div { '/' }
+		.mod { '%' }
+		.and { '&&' }
+		.logical_or { '||' }
+		.lpar { '(' }
+		.rpar { ')' }
+		.lcbr { '{' }
+		.rcbr { '}' }
+		.lsbr { '[' }
+		.rsbr { ']' }
 		else { '' }
 	}
 }
@@ -6374,21 +6784,178 @@ fn sql_result_type(tokens []string) string {
 	if tokens.len == 0 {
 		return '!void'
 	}
-	if tokens[0] != 'select' {
+	return sql_statement_result_type(tokens[sql_last_statement_start(tokens)..])
+}
+
+fn sql_last_statement_start(tokens []string) int {
+	mut start := 0
+	mut depth := 0
+	for i, tok in tokens {
+		if tok in ['{', '(', '['] {
+			depth++
+		} else if tok in ['}', ')', ']'] {
+			if depth > 0 {
+				depth--
+			}
+		}
+		if depth == 0 && sql_token_starts_statement(tokens, i) {
+			if i > 0 && tokens[i - 1] == 'dynamic' && sql_token_starts_statement(tokens, i - 1) {
+				continue
+			}
+			start = i
+		}
+	}
+	return start
+}
+
+fn sql_token_starts_statement(tokens []string, idx int) bool {
+	if idx < 0 || idx >= tokens.len {
+		return false
+	}
+	if tokens[idx] == 'dynamic' {
+		return idx + 1 < tokens.len && sql_token_starts_statement(tokens, idx + 1)
+	}
+	match tokens[idx] {
+		'create', 'drop' {
+			return idx + 1 < tokens.len && tokens[idx + 1] == 'table'
+		}
+		'insert', 'upsert' {
+			return idx + 2 < tokens.len && tokens[idx + 2] == 'into'
+		}
+		'update' {
+			return sql_statement_has_top_level_token(tokens, idx + 1, 'set')
+		}
+		'delete' {
+			return idx + 1 < tokens.len && tokens[idx + 1] == 'from'
+		}
+		'select' {
+			return sql_statement_has_top_level_token(tokens, idx + 1, 'from')
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn sql_statement_has_top_level_token(tokens []string, start int, needle string) bool {
+	mut depth := 0
+	for i := start; i < tokens.len; i++ {
+		tok := tokens[i]
+		if tok in ['{', '(', '['] {
+			depth++
+			continue
+		}
+		if tok in ['}', ')', ']'] {
+			if depth > 0 {
+				depth--
+			}
+			continue
+		}
+		if depth == 0 && tok == needle {
+			return true
+		}
+		if depth == 0 && i > start && sql_token_starts_statement(tokens, i) {
+			return false
+		}
+	}
+	return false
+}
+
+fn sql_statement_result_type(tokens []string) string {
+	if tokens.len == 0 {
 		return '!void'
 	}
-	if tokens.len > 1 && tokens[1] == 'count' {
+	mut start := 0
+	if tokens[0] == 'dynamic' {
+		start = 1
+		if tokens.len <= start {
+			return '!void'
+		}
+	}
+	if tokens[start] in ['insert', 'upsert', 'update', 'delete'] {
 		return '!int'
+	}
+	if tokens[start] in ['create', 'drop'] {
+		return '!int'
+	}
+	if tokens[start] != 'select' {
+		return '!void'
+	}
+	mut select_start := start + 1
+	if tokens.len > select_start && tokens[select_start] == 'distinct' {
+		select_start++
+	}
+	if tokens.len > select_start && tokens[select_start] == 'count' {
+		return '!int'
+	}
+	if tokens.len > select_start && tokens[select_start] in ['sum', 'avg', 'min', 'max'] {
+		return '!orm.AggregateValue'
 	}
 	for i, tok in tokens {
 		if tok == 'from' && i + 1 < tokens.len {
-			table := sql_type_name(tokens[i + 1])
+			table := sql_table_type_name_from(tokens, i + 1)
 			if table.len > 0 {
 				return '![]${table}'
 			}
 		}
 	}
 	return '![]int'
+}
+
+fn sql_table_type_name_from(tokens []string, start int) string {
+	if start < 0 || start >= tokens.len {
+		return ''
+	}
+	mut table := sql_type_name(tokens[start])
+	if table.len == 0 {
+		return ''
+	}
+	mut end := start
+	for end + 2 < tokens.len && tokens[end + 1] == '.' {
+		part := sql_type_name(tokens[end + 2])
+		if part.len == 0 {
+			break
+		}
+		table += '.${part}'
+		end += 2
+	}
+	if end + 1 < tokens.len && tokens[end + 1] == '[' {
+		close_idx := sql_type_matching_pair(tokens, end + 1, '[', ']') or { return table }
+		if close_idx <= end + 2 {
+			return table
+		}
+		args := sql_type_name_tokens(tokens[end + 2..close_idx])
+		if args.len > 0 {
+			return '${table}[${args}]'
+		}
+	}
+	return table
+}
+
+fn sql_type_matching_pair(tokens []string, open_idx int, open string, close string) ?int {
+	if open_idx < 0 || open_idx >= tokens.len || tokens[open_idx] != open {
+		return none
+	}
+	mut depth := 0
+	for i in open_idx .. tokens.len {
+		if tokens[i] == open {
+			depth++
+		} else if tokens[i] == close {
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return none
+}
+
+fn sql_type_name_tokens(tokens []string) string {
+	mut out := strings.new_builder(tokens.len * 4)
+	for token in tokens {
+		out.write_string(sql_type_name(token))
+	}
+	return out.str()
 }
 
 fn (mut p Parser) keyword_ident_expr() flat.NodeId {
@@ -6401,7 +6968,8 @@ fn sql_type_name(raw string) string {
 	mut out := strings.new_builder(raw.len)
 	for ch in raw {
 		if (ch >= `a` && ch <= `z`) || (ch >= `A` && ch <= `Z`)
-			|| (ch >= `0` && ch <= `9`) || ch == `_` || ch == `.` {
+			|| (ch >= `0` && ch <= `9`) || ch == `_` || ch == `.` || ch == `[`
+			|| ch == `]` || ch == `,` {
 			out.write_u8(ch)
 		} else {
 			break
@@ -6422,6 +6990,10 @@ fn is_float_number_literal(val string) bool {
 }
 
 fn (mut p Parser) prefix_expr() flat.NodeId {
+	// Capture the leading token's span before consuming it so leaf literals keep
+	// their own location and prefix operators can span from here to the operand.
+	start_pos := p.current_pos()
+	op_start := p.span_start()
 	tok_id := int(p.tok)
 	if tok_id == 92 {
 		val := p.lit
@@ -6431,7 +7003,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		} else {
 			1
 		}
-		return p.add_val_id(kind_id, val)
+		return p.add_val_id_at(kind_id, val, start_pos)
 	}
 	if tok_id == 107 {
 		return p.string_literal()
@@ -6439,43 +7011,45 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	if tok_id == 7 {
 		val := p.lit
 		p.next()
-		return p.add_val_id(4, val)
+		return p.add_val_id_at(4, val, start_pos)
 	}
 	if tok_id == 66 {
 		p.next()
-		return p.add_val_id(3, 'true')
+		return p.add_val_id_at(3, 'true', start_pos)
 	}
 	if tok_id == 36 {
 		p.next()
-		return p.add_val_id(3, 'false')
+		return p.add_val_id_at(3, 'false', start_pos)
 	}
 	if tok_id == 53 {
 		p.next()
-		return p.add_id(28)
+		return p.add_id_at(28, start_pos)
 	}
 	if tok_id == 54 {
 		p.next()
-		return p.add_id(29)
+		return p.add_id_at(29, start_pos)
 	}
 	if tok_id == 3 {
 		p.next()
 		inner := p.expr(.highest)
-		return p.add_node(flat.Node{
+		return p.a.add_node(flat.Node{
 			kind:           .prefix
 			op:             .arrow
 			children_start: p.add_child(inner)
 			children_count: 1
+			pos:            p.span_to(op_start)
 		})
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
 		p.next()
 		operand := p.expr(.highest)
 		pstart := p.add_child(operand)
-		return p.add_node(flat.Node{
+		return p.a.add_node(flat.Node{
 			kind:           .prefix
 			op:             token_id_to_op(tok_id)
 			children_start: pstart
 			children_count: 1
+			pos:            p.span_to(op_start)
 		})
 	}
 	match p.tok {
@@ -6487,7 +7061,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			} else {
 				1
 			}
-			return p.add_val_id(kind_id, val)
+			return p.add_val_id_at(kind_id, val, start_pos)
 		}
 		.string {
 			return p.string_literal()
@@ -6495,32 +7069,33 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.char {
 			val := p.lit
 			p.next()
-			return p.add_val_id(4, val)
+			return p.add_val_id_at(4, val, start_pos)
 		}
 		.key_true {
 			p.next()
-			return p.add_val_id(3, 'true')
+			return p.add_val_id_at(3, 'true', start_pos)
 		}
 		.key_false {
 			p.next()
-			return p.add_val_id(3, 'false')
+			return p.add_val_id_at(3, 'false', start_pos)
 		}
 		.key_nil {
 			p.next()
-			return p.add_id(28)
+			return p.add_id_at(28, start_pos)
 		}
 		.key_none {
 			p.next()
-			return p.add_id(29)
+			return p.add_id_at(29, start_pos)
 		}
 		.arrow {
 			p.next()
 			inner := p.expr(.highest)
-			return p.add_node(flat.Node{
+			return p.a.add_node(flat.Node{
 				kind:           .prefix
 				op:             .arrow
 				children_start: p.add_child(inner)
 				children_count: 1
+				pos:            p.span_to(op_start)
 			})
 		}
 		.logical_or {
@@ -7320,6 +7895,7 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 }
 
 fn (mut p Parser) lambda_expr_no_args() flat.NodeId {
+	op_start := p.span_start()
 	p.next()
 	lambda_body := p.expr(.lowest)
 	lstart := p.add_child(lambda_body)
@@ -7327,10 +7903,12 @@ fn (mut p Parser) lambda_expr_no_args() flat.NodeId {
 		kind:           .lambda_expr
 		children_start: lstart
 		children_count: 1
+		pos:            p.span_to(op_start)
 	})
 }
 
 fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
+	op_start := p.span_start()
 	p.next()
 	mut lambda_params := []flat.NodeId{}
 	if p.tok != .pipe && p.tok != .eof {
@@ -7349,6 +7927,7 @@ fn (mut p Parser) pipe_lambda_expr() flat.NodeId {
 		kind:           .lambda_expr
 		children_start: lstart
 		children_count: flat.child_count(ids.len)
+		pos:            p.span_to(op_start)
 	})
 }
 
@@ -7358,7 +7937,13 @@ fn (mut p Parser) lambda_param_ident() flat.NodeId {
 		is_mut = true
 		p.next()
 	}
-	id := p.a.add_val(.ident, p.expect_name())
+	name_pos := p.current_pos()
+	name := p.expect_name()
+	id := p.a.add_node(flat.Node{
+		kind:  .ident
+		value: name
+		pos:   name_pos
+	})
 	if is_mut {
 		p.a.set_node_is_mut(id, true)
 	}

@@ -232,3 +232,126 @@ fn main() { println(int_str(C.fallback_value())) }
 	assert cmdexec.run(second_out, []string{}).output.trim_space() == '9'
 	assert second.output.contains('C object cache bypass:'), second.output
 }
+
+// A `cc -M` that succeeds but emits no `-MT` target marker must not be accepted
+// as a valid, source-only dependency set: `all_after` would return the whole
+// output, tokenize it into bogus paths, and let the header edit go unnoticed.
+// The dependency scan must fail closed to a build-local object instead.
+fn test_c_object_cache_falls_back_when_dependency_marker_is_missing() {
+	$if windows {
+		return
+	}
+	v3_bin := build_secure_command_v3()
+	root := secure_temp_path('object_cache_missing_marker')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.unsetenv('V3_CACHE_TRACE')
+		os.rmdir_all(root) or {}
+		os.rm(v3_bin) or {}
+	}
+	// On `-M` this wrapper succeeds but prints unrelated text with no `v3cache:`
+	// marker; every other invocation delegates to the real `cc`.
+	compiler := os.join_path(root, 'cc_without_marker')
+	os.write_file(compiler, '#!/bin/sh
+for arg in "\$@"; do
+	if [ "\$arg" = "-M" ]; then
+		echo "no dependency marker here"
+		exit 0
+	fi
+done
+exec cc "\$@"
+') or {
+		panic(err)
+	}
+	os.chmod(compiler, 0o700) or { panic(err) }
+	header := os.join_path(root, 'value.h')
+	c_source := os.join_path(root, 'helper.c')
+	v_source := os.join_path(root, 'main.v')
+	os.write_file(header, '#define MARKER_VALUE 7\n') or { panic(err) }
+	os.write_file(c_source, '#include "value.h"\nint marker_value(void) { return MARKER_VALUE; }\n') or {
+		panic(err)
+	}
+	os.write_file(v_source, 'module main
+#flag @DIR/helper.o
+fn C.marker_value() int
+fn main() { println(int_str(C.marker_value())) }
+') or {
+		panic(err)
+	}
+	os.setenv('V3_CACHE_TRACE', '1', true)
+	first_out := os.join_path(root, 'first')
+	first := cmdexec.run(v3_bin, [v_source, '-cc', compiler, '-prod', '-o', first_out])
+	assert first.exit_code == 0, first.output
+	assert cmdexec.run(first_out, []string{}).output.trim_space() == '7'
+	assert first.output.contains('C object cache bypass:'), first.output
+	// The header change must be reflected because the object was never cached.
+	os.write_file(header, '#define MARKER_VALUE 9\n') or { panic(err) }
+	second_out := os.join_path(root, 'second')
+	second := cmdexec.run(v3_bin, [v_source, '-cc', compiler, '-prod', '-o', second_out])
+	assert second.exit_code == 0, second.output
+	assert cmdexec.run(second_out, []string{}).output.trim_space() == '9'
+	assert second.output.contains('C object cache bypass:'), second.output
+}
+
+// If a dependency changes between the moment the cache key is computed and the
+// moment compilation finishes, the object no longer matches the key. The cache
+// must detect this by re-hashing inputs after compilation and use a build-local
+// object rather than certifying the stale content under that key.
+fn test_c_object_cache_detects_input_change_during_compile() {
+	$if windows {
+		return
+	}
+	v3_bin := build_secure_command_v3()
+	root := secure_temp_path('object_cache_input_race')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.unsetenv('V3_CACHE_TRACE')
+		os.rmdir_all(root) or {}
+		os.rm(v3_bin) or {}
+	}
+	header := os.join_path(root, 'value.h')
+	c_source := os.join_path(root, 'helper.c')
+	v_source := os.join_path(root, 'main.v')
+	// This wrapper delegates to the real `cc`, but on the object compile (`-c`)
+	// it mutates the header AFTER building the object — simulating a source edit
+	// that lands while the compiler is running.
+	compiler := os.join_path(root, 'cc_mutating_header')
+	os.write_file(compiler, '#!/bin/sh
+is_compile=0
+for arg in "\$@"; do
+	if [ "\$arg" = "-c" ]; then
+		is_compile=1
+	fi
+done
+cc "\$@"
+rc=\$?
+if [ "\$is_compile" = "1" ]; then
+	printf "#define RACE_VALUE 7\\n" > "${header}"
+fi
+exit \$rc
+') or {
+		panic(err)
+	}
+	os.chmod(compiler, 0o700) or { panic(err) }
+	os.write_file(header, '#define RACE_VALUE 1\n') or { panic(err) }
+	os.write_file(c_source, '#include "value.h"\nint race_value(void) { return RACE_VALUE; }\n') or {
+		panic(err)
+	}
+	os.write_file(v_source, 'module main
+#flag @DIR/helper.o
+fn C.race_value() int
+fn main() { println(int_str(C.race_value())) }
+') or {
+		panic(err)
+	}
+	os.setenv('V3_CACHE_TRACE', '1', true)
+	first_out := os.join_path(root, 'first')
+	first := cmdexec.run(v3_bin, [v_source, '-cc', compiler, '-prod', '-o', first_out])
+	assert first.exit_code == 0, first.output
+	// The object was built from RACE_VALUE 1; the mid-compile edit to 7 means the
+	// object must not be published under the key that hashed the original header.
+	assert first.output.contains('inputs changed during compilation'), first.output
+	assert cmdexec.run(first_out, []string{}).output.trim_space() == '1'
+}
