@@ -14,7 +14,7 @@ Groups:
 - 08_v_tests_types_interfaces_sumtypes.txt: interfaces, structs, pointers, unions,
   and sum types (19)
 - 09_v_tests_misc_language_projects.txt: remaining vlib/v/tests language/project
-  tests (111)
+  tests (110)
 
 When a session fixes a group, re-check that group and update both the master
 pass/failure lists and the relevant group file.

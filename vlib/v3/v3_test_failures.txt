@@ -411,7 +411,6 @@ vlib/v/tests/multiple_comptime_tmpl_in_one_fn_test.v
 vlib/v/tests/mut_arg_struct_pointer_rebind_test.v
 vlib/v/tests/nested_if_expr_method_call_test.v
 vlib/v/tests/nested_if_return_test.v
-vlib/v/tests/nested_multiline_comments_test.v
 vlib/v/tests/net_http_request_proxy_interpolation_test.v
 vlib/v/tests/option_struct_eq_test.v
 vlib/v/tests/options/option_array_fixed_interface_sumtype_test.v

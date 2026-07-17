@@ -51,7 +51,6 @@ vlib/v/tests/multiple_comptime_tmpl_in_one_fn_test.v
 vlib/v/tests/mut_arg_struct_pointer_rebind_test.v
 vlib/v/tests/nested_if_expr_method_call_test.v
 vlib/v/tests/nested_if_return_test.v
-vlib/v/tests/nested_multiline_comments_test.v
 vlib/v/tests/net_http_request_proxy_interpolation_test.v
 vlib/v/tests/orm_array_field_test.v
 vlib/v/tests/orm_bulk_insert_update_test.v

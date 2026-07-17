@@ -525,7 +525,10 @@ fn (mut s Scanner) comment() {
 			c3 := s.peek_byte(1)
 			if c2 == `\n` {
 				s.offset++
-			} else if c2 == `/` && c3 == `*` {
+			} else if c2 == `/` && c3 == `*` && s.peek_byte(2) != `/` {
+				// A `/*` only opens a nested comment when it is not immediately
+				// followed by `/`. This keeps the `//*/` / `/*/` idioms (used to
+				// close a block comment) from being misread as a nested opener.
 				s.offset += 2
 				ml_comment_depth++
 			} else if c2 == `*` && c3 == `/` {
