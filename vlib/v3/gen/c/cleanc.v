@@ -6086,11 +6086,13 @@ fn (g &FlatGen) const_ref_name_from_node_cached_for_collect(node flat.Node, uniq
 		if base.kind != .ident {
 			return ''
 		}
-		cache_key := '${g.tc.cur_module}|selector|${base.value}|${node.value}'
+		cache_key := '${g.tc.cur_file}|${g.tc.cur_module}|selector|${base.value}|${node.value}'
 		if cache_key in cache {
 			return cache[cache_key]
 		}
-		const_name := g.const_ref_name_fast_for_collect('${base.value}.${node.value}', unique_index)
+		resolved_base := g.import_alias_module(base.value) or { base.value }
+		const_name := g.const_ref_name_fast_for_collect('${resolved_base}.${node.value}',
+			unique_index)
 		cache[cache_key] = const_name
 		return const_name
 	}

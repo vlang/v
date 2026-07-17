@@ -29,6 +29,7 @@ $if !skip_wasm ? {
 }
 
 const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
+const scoped_transform_signature_headroom = 2048
 
 struct V3ModuleCacheState {
 	manager             modulecache.Manager
@@ -691,7 +692,9 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string
 			tc.specialized_generic_fns[owned_name] = true
 		}
 	}
-	tc.rebuild_scoped_transform_signature_maps()
+	if added_names.len > scoped_transform_signature_headroom {
+		tc.rebuild_scoped_transform_signature_maps()
+	}
 }
 
 fn v3_cache_compiler_signature(vroot string) string {
@@ -1404,6 +1407,7 @@ fn main() {
 			return
 		}
 	}
+	_ = pre_tc.ierror_impl_names()
 
 	// Mark used functions (dead-code elimination). This is done before transform
 	// so the transformer can skip function bodies that the C backend will prune.
@@ -1451,9 +1455,8 @@ fn main() {
 		// Keep the large escaping AST/cache slabs in the compilation arena, while
 		// transformer indexes and per-body temporary state use a stage arena.
 		transform.reserve_parallel_transform_ast(mut a, skip_transform_generics)
-		a.reserve_transform_texts(65536)
 		pre_tc.begin_sparse_transform_node_caches(a.nodes.len)
-		pre_tc.reserve_scoped_transform_metadata(a.nodes.cap, 2048)
+		pre_tc.reserve_scoped_transform_metadata(scoped_transform_signature_headroom)
 		base_transform_nodes := a.nodes.len
 		reserved_nodes_cap := a.nodes.cap
 		reserved_children_cap := a.children.cap

@@ -168,14 +168,14 @@ pub mut:
 	value          string
 	typ            string
 	payload        &NodePayload = unsafe { nil }
-	is_mut         bool
 	children_start i32
+	is_mut         bool
 pub:
-	pos                  token.Pos
-	children_count       i32
 	kind                 NodeKind
 	op                   Op
 	skip_ownership_drops bool
+	children_count       i32
+	pos                  token.Pos
 }
 
 // generic_params returns this node's uncommon generic/attribute metadata.

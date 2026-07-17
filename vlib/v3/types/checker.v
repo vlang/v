@@ -950,8 +950,7 @@ pub fn (mut tc TypeChecker) reserve_transform_node_caches(n int) {
 // scratch allocations use a disposable arena. The signature maps are rebuilt
 // after promotion, so this headroom is an optimization rather than an
 // ownership requirement.
-pub fn (mut tc TypeChecker) reserve_scoped_transform_metadata(n int, signature_headroom int) {
-	_ = n
+pub fn (mut tc TypeChecker) reserve_scoped_transform_metadata(signature_headroom int) {
 	tc.fn_ret_types.reserve(u32(tc.fn_ret_types.len + signature_headroom))
 	tc.fn_param_types.reserve(u32(tc.fn_param_types.len + signature_headroom))
 	tc.fn_variadic.reserve(u32(tc.fn_variadic.len + signature_headroom))
@@ -1999,10 +1998,21 @@ fn (tc &TypeChecker) local_fn_decl_exists(name string) bool {
 	// appends fn_decls), resuming the module tracking where the last build
 	// stopped.
 	mut cache := tc.type_cache
+	lookup_key := '${tc.cur_module}\x01${name}'
+	if lookup_key in cache.local_fn_decl_index {
+		return true
+	}
+	if !isnil(cache.base) && lookup_key in cache.base.local_fn_decl_index {
+		return true
+	}
+	// Parallel forks only append transformed expressions to their private AST
+	// regions; declarations remain the frozen master's authority. Scanning the
+	// artificial shared-region length would index transformed fn_decl copies in
+	// every helper and retain tens of megabytes of duplicate keys.
+	if !isnil(cache.base) {
+		return false
+	}
 	if cache.local_fn_decl_indexed_len < tc.a.nodes.len {
-		if !isnil(cache.base) && cache.base.local_fn_decl_indexed_len >= tc.a.nodes.len {
-			return '${tc.cur_module}\x01${name}' in cache.base.local_fn_decl_index
-		}
 		mut cur_module := cache.local_fn_decl_last_module
 		mut scan_start := cache.local_fn_decl_indexed_len
 		if scan_start == 0 && tc.top_level_idx.len > 0 {
@@ -2023,6 +2033,8 @@ fn (tc &TypeChecker) local_fn_decl_exists(name string) bool {
 			}
 			scan_start = tc.top_level_idx_nodes_len
 		}
+		incremental_transform_scan := tc.top_level_idx_nodes_len > 0
+			&& scan_start >= tc.top_level_idx_nodes_len
 		for i in scan_start .. tc.a.nodes.len {
 			node := tc.a.nodes[i]
 			match node.kind {
@@ -2030,6 +2042,9 @@ fn (tc &TypeChecker) local_fn_decl_exists(name string) bool {
 					cur_module = node.value
 				}
 				.fn_decl {
+					if incremental_transform_scan && !local_fn_decl_is_transform_created(node.value) {
+						continue
+					}
 					cache.local_fn_decl_index['${cur_module}\x01${node.value}'] = true
 				}
 				else {}
@@ -2038,7 +2053,12 @@ fn (tc &TypeChecker) local_fn_decl_exists(name string) bool {
 		cache.local_fn_decl_last_module = cur_module
 		cache.local_fn_decl_indexed_len = tc.a.nodes.len
 	}
-	return '${tc.cur_module}\x01${name}' in cache.local_fn_decl_index
+	return lookup_key in cache.local_fn_decl_index
+}
+
+fn local_fn_decl_is_transform_created(name string) bool {
+	return name.starts_with('__v3_') || name.starts_with('__anon_fn_')
+		|| name.contains('.__anon_fn_') || (name.contains('[') && name.contains(']'))
 }
 
 // local_fn_decl_exists_scan is the uncached fallback used when no type_cache is
@@ -23804,15 +23824,17 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 	return found
 }
 
-// invalidate_short_type_name_index drops the memoized short-name index; callers
-// that add or remove entries in the type-name maps after the checker ran (the
-// monomorphizer specializing generic structs/sum types) must invalidate it so
-// the next unique_qualified_type_name query rebuilds it.
+// invalidate_short_type_name_index drops memoized type-name-derived indexes;
+// callers that add or remove entries in the type-name maps after the checker ran
+// (the monomorphizer specializing generic structs/sum types) must invalidate them.
 pub fn (tc &TypeChecker) invalidate_short_type_name_index() {
 	if isnil(tc.type_cache) {
 		return
 	}
 	mut cache := tc.type_cache
+	cache.ierror_compat_entries.clear()
+	cache.ierror_impl_names.clear()
+	cache.ierror_impl_names_set = false
 	if cache.short_type_name_index_built {
 		cache.short_type_name_index_built = false
 		cache.short_type_name_index.clear()
