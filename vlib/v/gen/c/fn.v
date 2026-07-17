@@ -7481,6 +7481,9 @@ fn (mut g Gen) ref_or_deref_arg_ex(arg ast.CallArg, expected_type_ ast.Type, lan
 				g.write('(${g.styp(arg.expr.typ)})')
 			}
 		}
+	} else if arg.expr is ast.StructInit
+		&& g.table.final_sym(g.unwrap_generic(arg.expr.typ)).kind == .array_fixed {
+		g.write('(${g.styp(arg.expr.typ)})')
 	} else if arg.expr is ast.ComptimeSelector && arg_typ.has_flag(.option)
 		&& !expected_type.has_flag(.option) {
 		// allow to pass val.$(filed.name) where T is expected, doing automatic unwrap in this case
