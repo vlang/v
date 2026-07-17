@@ -60,15 +60,13 @@ pub:
 	size int
 mut:
 	line_offsets []int = [0]
-	id_counter   &int  = unsafe { nil }
 }
 
 // FileSet represents file set data used by token.
 pub struct FileSet {
 mut:
-	base       int = 1
-	id_counter int
-	files      []&File
+	base  int = 1
+	files []&File
 }
 
 // new creates a FileSet value for token.
@@ -83,10 +81,9 @@ pub fn (mut fs FileSet) add_file(filename string, base_ int, size int) &File {
 		panic('invalid base ${base} (should be >= ${fs.base}')
 	}
 	file := &File{
-		name:       filename
-		base:       base
-		size:       size
-		id_counter: &fs.id_counter
+		name: filename
+		base: base
+		size: size
 	}
 	if size < 0 {
 		panic('invalid size ${size} (should be >= 0)')
@@ -161,26 +158,6 @@ pub fn (f &File) line_start(line int) int {
 // line supports line handling for File.
 pub fn (f &File) line(pos Pos) int {
 	return f.find_line(pos.offset - f.base)
-}
-
-// pos supports pos handling for File.
-pub fn (mut f File) pos(offset int) Pos {
-	if offset > f.size {
-		panic('invalid offset')
-	}
-	mut current_id := 0
-	mut next_id := 0
-	unsafe {
-		current_id = *f.id_counter
-	}
-	next_id = current_id + 1
-	unsafe {
-		*f.id_counter = next_id
-	}
-	return Pos{
-		offset: f.base + offset
-		id:     next_id
-	}
 }
 
 // position supports position handling for File.
