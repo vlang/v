@@ -1874,11 +1874,11 @@ fn (mut g FlatGen) collect_gen_info() {
 				g.global_modules[f.value] = cur_module
 				g.global_modules[qname] = cur_module
 				g.global_files[qname] = cur_file
+				g.global_init_order << qname
 				if f.children_count > 0 {
 					val_id := g.a.child(f, 0)
 					if int(val_id) >= 0 {
 						g.global_inits[qname] = val_id
-						g.global_init_order << qname
 					}
 				}
 				g.tc.file_scope.insert(f.value, ft)
@@ -3411,6 +3411,11 @@ fn (mut g FlatGen) queue_const_runtime_init(line string) {
 fn (mut g FlatGen) queue_runtime_init(line string) {
 	g.runtime_inits << line
 	g.runtime_init_modules << g.tc.cur_module
+}
+
+fn (mut g FlatGen) queue_runtime_init_for_module(line string, init_module string) {
+	g.runtime_inits << line
+	g.runtime_init_modules << init_module
 }
 
 // visit_module_init updates visit module init state for FlatGen.
@@ -12365,7 +12370,6 @@ fn (mut g FlatGen) global_decls() {
 			continue
 		}
 		g.writeln('${ct} ${g.cname(name)}${init};')
-		g.queue_global_struct_default_init(name, decl_typ)
 	}
 	g.tc.cur_module = old_module
 	if g.global_types.len > 0 {
@@ -12393,10 +12397,11 @@ fn (mut g FlatGen) queue_global_struct_default_init(name string, typ types.Type)
 		return
 	}
 	mut visited := map[string]bool{}
-	g.queue_global_struct_field_defaults(g.cname(name), struct_name, mut visited)
+	init_module := g.global_modules[name] or { g.tc.cur_module }
+	g.queue_global_struct_field_defaults(g.cname(name), struct_name, init_module, mut visited)
 }
 
-fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name string, mut visited map[string]bool) {
+fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name string, init_module string, mut visited map[string]bool) {
 	if struct_name in visited {
 		return
 	}
@@ -12419,8 +12424,8 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 			clean_field_type := default_init_unalias_type(field_type)
 			if clean_field_type is types.Struct && !clean_field_type.name.starts_with('C.')
 				&& g.struct_needs_default_init(clean_field_type.name) {
-				g.queue_global_struct_field_defaults(field_target, clean_field_type.name, mut
-					visited)
+				g.queue_global_struct_field_defaults(field_target, clean_field_type.name,
+					init_module, mut visited)
 			}
 			continue
 		}
@@ -12437,9 +12442,10 @@ fn (mut g FlatGen) queue_global_struct_field_defaults(target string, struct_name
 			continue
 		}
 		if _ := array_fixed_type(field_type) {
-			g.queue_runtime_init('\tmemmove(${field_target}, ${expr}, sizeof(${field_target}));')
+			g.queue_runtime_init_for_module('\tmemmove(${field_target}, ${expr}, sizeof(${field_target}));',
+				init_module)
 		} else {
-			g.queue_runtime_init('\t${field_target} = ${expr};')
+			g.queue_runtime_init_for_module('\t${field_target} = ${expr};', init_module)
 		}
 	}
 	g.tc.cur_module = old_module
@@ -12500,11 +12506,10 @@ fn (mut g FlatGen) test_failure_helpers() {
 	g.writeln('')
 }
 
-// emit_global_inits queues assignments for `__global x = expr` declarations into
-// _vinit. The C globals are emitted zero-initialized above; their initializer
-// expressions (often function calls like `new_timers(...)`) cannot be C static
-// initializers, so they must run at startup. Without this, such globals stay
-// NULL/zero and the first access segfaults.
+// emit_global_inits queues explicit `__global x = expr` assignments and implicit
+// struct-field defaults into _vinit in source declaration order. The C globals are
+// emitted zero-initialized above; initializer expressions (often function calls like
+// `new_timers(...)`) cannot be C static initializers, so they must run at startup.
 //
 // Plain initializers are emitted as `name = expr;`. Fixed-array globals are
 // copied from a generated compound literal with `memmove`, since C arrays are
@@ -12519,17 +12524,6 @@ fn (mut g FlatGen) emit_global_inits() {
 		g.tc.cur_file = old_file
 	}
 	for qname in g.global_init_order {
-		val_id := g.global_inits[qname] or { continue }
-		if int(val_id) < 0 {
-			continue
-		}
-		// g_main_argc/g_main_argv are filled in by main's preamble (from argc/argv)
-		// *before* _vinit runs, and are zero by default in C anyway. Re-emitting their
-		// `= 0` initializer here would clobber the real argv, leaving os.args empty.
-		cqname := g.cname(qname)
-		if cqname == 'g_main_argc' || cqname == 'g_main_argv' {
-			continue
-		}
 		if mod := g.global_modules[qname] {
 			g.tc.cur_module = mod
 		} else {
@@ -12542,6 +12536,22 @@ fn (mut g FlatGen) emit_global_inits() {
 			g.tc.cur_file = file
 		} else {
 			g.tc.cur_file = old_file
+		}
+		val_id := g.global_inits[qname] or {
+			if typ := g.global_types[qname] {
+				g.queue_global_struct_default_init(qname, typ)
+			}
+			continue
+		}
+		if int(val_id) < 0 {
+			continue
+		}
+		// g_main_argc/g_main_argv are filled in by main's preamble (from argc/argv)
+		// *before* _vinit runs, and are zero by default in C anyway. Re-emitting their
+		// `= 0` initializer here would clobber the real argv, leaving os.args empty.
+		cqname := g.cname(qname)
+		if cqname == 'g_main_argc' || cqname == 'g_main_argv' {
+			continue
 		}
 		if typ := g.global_types[qname] {
 			if typ is types.ArrayFixed {
@@ -13318,7 +13328,7 @@ fn (mut g FlatGen) write_empty_fixed_array_initializer(mut builder strings.Build
 
 fn (mut g FlatGen) write_fixed_array_default_elem_initializer(mut builder strings.Builder, elem_type types.Type) {
 	if elem_type is types.Array {
-		c_elem := g.tc.c_type(elem_type.elem_type)
+		c_elem := g.value_c_type(elem_type.elem_type)
 		builder.write_string('array_new(sizeof(${c_elem}), 0, 0)')
 		return
 	}
@@ -13374,7 +13384,7 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		return
 	}
 	if node.kind == .array_init && clean_elem_type is types.Array {
-		c_elem := g.tc.c_type(clean_elem_type.elem_type)
+		c_elem := g.value_c_type(clean_elem_type.elem_type)
 		builder.write_string('array_new(sizeof(${c_elem}), 0, 0)')
 		return
 	}

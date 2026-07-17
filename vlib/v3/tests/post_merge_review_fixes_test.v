@@ -216,6 +216,41 @@ fn test_imported_module_call_in_struct_default_has_no_receiver_arg() {
 	assert out == '42'
 }
 
+fn test_global_struct_defaults_follow_global_declaration_order() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'global_struct_default_declaration_order', 'struct State {
+	value int = seed
+}
+
+__global (
+	seed = 7
+	state State
+)
+
+fn main() {
+	println(int_str(state.value))
+}
+')
+	assert out == '7'
+	module_out := run_good_project(v3_bin, 'global_struct_default_owner_module', {
+		'v.mod':               "Module { name: 'global_struct_default_owner_module' }\n"
+		'defaults/defaults.v': 'module defaults\n\n__global base_value = 1\n\npub struct State {\npub:\n\tvalue int = base_value\n}\n\nfn init() {\n\tbase_value = 7\n}\n'
+		'main.v':              'module main\n\nimport defaults\n\n__global state defaults.State\n\nfn main() {\n\tprintln(int_str(state.value))\n}\n'
+	}, 'main.v')
+	assert module_out == '7'
+}
+
+fn test_empty_fixed_array_of_function_arrays_resolves_element_type() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'empty_fixed_array_of_function_arrays', 'fn main() {
+	callbacks := [2][]fn (){}
+	println(int_str(callbacks[0].len))
+	println(int_str(callbacks[1].len))
+}
+')
+	assert out == '0\n0'
+}
+
 fn test_multi_return_assignment_requires_option_result_handling() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'unhandled_result_multi_decl_assign',
