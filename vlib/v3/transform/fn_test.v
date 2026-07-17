@@ -135,6 +135,19 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	assert params[0] is types.String
 }
 
+fn test_pending_generic_specialization_keys_are_private_initialized_maps() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.pending_generic_fn_spec_keys['master'] = true
+	assert master.pending_generic_fn_spec_keys['master']
+
+	mut worker := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
+	worker.pending_generic_fn_spec_keys['worker'] = true
+	assert worker.pending_generic_fn_spec_keys['worker']
+	assert 'worker' !in master.pending_generic_fn_spec_keys
+}
+
 fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
