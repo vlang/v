@@ -108,6 +108,23 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run.output.trim_space()
 }
 
+fn gen_c_from_project(v3_bin string, name string, files map[string]string, input string) string {
+	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
+	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	os.rm(c_path) or {}
+	compile := os.execute('${v3_bin} ${input_path} -b c -o ${c_path}')
+	assert compile.exit_code == 0, '${name}: C generation failed\n${compile.output}'
+	return os.read_file(c_path) or { panic(err) }
+}
+
 fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'lifted_literal_mut_param_interpolation',
@@ -131,6 +148,126 @@ fn test_import_aliased_variadic_call_uses_exact_module() {
 		'main.v':        'module main\n\nimport a.http as other_http\nimport b.http as http\n\nfn main() {\n\t_ := other_http.total([1, 2])\n\tprintln(int_str(http.total(3, 4, 5)))\n}\n'
 	}, 'main.v')
 	assert out == '3'
+}
+
+fn test_array_field_stringification_prefers_local_type_over_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'array_field_string_local_type_collision', {
+		'v.mod':       "Module { name: 'array_field_string_local_type_collision' }\n"
+		'other/mod.v': 'module other\n\npub struct Event {\npub:\n\tname string\n}\n'
+		'main.v':      "module main\n\nimport other\n\nstruct Event {\n\tkind int\n}\n\nstruct App {\n\tevents []Event\n}\n\nfn main() {\n\t_ := other.Event{\n\t\tname: 'imported'\n\t}\n\tapp := App{\n\t\tevents: [Event{\n\t\t\tkind: 7\n\t\t}]\n\t}\n\tprintln(app.events)\n}\n"
+	}, 'main.v')
+	assert out == '[Event{\n    kind: 7\n}]'
+}
+
+fn test_array_stringification_prefers_local_struct_over_imported_alias() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'array_str_local_struct_imported_alias_collision', {
+		'v.mod':         "Module { name: 'array_str_local_struct_imported_alias_collision' }\n"
+		'other/event.v': 'module other\n\npub struct ForeignEvent {\npub:\n\ttouches int\n}\n\npub type Event = ForeignEvent\n'
+		'main.v':        "module main\n\nimport other\n\nstruct Event {\n\tkind int\n\targ string\n}\n\nfn main() {\n\t_ := other.Event(other.ForeignEvent{\n\t\ttouches: 3\n\t})\n\tevents := [Event{\n\t\tkind: 7\n\t\targ: 'ok'\n\t}]\n\tprintln(events)\n}\n"
+	}, 'main.v')
+	assert out == "[Event{\n    kind: 7\n    arg: 'ok'\n}]"
+}
+
+fn test_for_in_smartcast_interface_field_keeps_interface_element_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'for_in_smartcast_interface_field',
+		'interface Widget {\n\tid int\n}\n\nstruct Stack {\n\tid       int\n\tchildren []Widget\n}\n\nstruct Leaf {\n\tid int\n}\n\nfn total(w Widget) int {\n\tif w is Stack {\n\t\tmut value := w.id\n\t\tfor child in w.children {\n\t\t\tvalue += total(child)\n\t\t}\n\t\treturn value\n\t}\n\treturn w.id\n}\n\nfn main() {\n\tw := Widget(Stack{\n\t\tid: 1\n\t\tchildren: [Widget(Leaf{\n\t\t\tid: 2\n\t\t})]\n\t})\n\tprintln(int_str(total(w)))\n}\n')
+	assert out == '3'
+}
+
+fn test_interface_smartcast_rebuilds_richer_interface_fields() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_smartcast_richer_fields',
+		'interface Base {\n\tx int\n}\n\ninterface Extended {\n\tBase\n\ty    int\n\tnext ?Extended\n}\n\nstruct Item {\n\tx    int\n\ty    int\n\tnext ?Extended\n}\n\nfn value(base Base) int {\n\tif base is Extended {\n\t\treturn base.x + base.y\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(int_str(value(Base(Item{\n\t\tx: 2\n\t\ty: 3\n\t}))))\n}\n')
+	assert out == '5'
+}
+
+fn test_mut_interface_smartcast_field_assignment_uses_storage_interface() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'mut_interface_smartcast_field_assignment', 'interface Base {
+mut:
+	x int
+}
+
+interface Rich {
+	Base
+mut:
+	y int
+}
+
+struct Item {
+mut:
+	x int
+	y int
+}
+
+fn update(mut base Base) {
+	if mut base is Rich {
+		base.y = 9
+	}
+}
+
+fn main() {
+	mut base := Base(Item{
+		x: 1
+		y: 2
+	})
+	update(mut base)
+	if base is Rich {
+		println(int_str(base.y))
+	}
+}
+')
+	assert out == '9'
+}
+
+fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization() {
+	v3_bin := build_v3_review_transform()
+	generated := gen_c_from_project(v3_bin, 'nested_generic_main_type_collision', {
+		'v.mod':         "Module { name: 'nested_generic_main_type_collision' }\n"
+		'codec/codec.v': 'module codec\n\npub struct Decoder {}\n\npub fn decode[T]() T {\n\tmut result := T{}\n\tdecoder := Decoder{}\n\tdecoder.decode_value(mut result)\n\treturn result\n}\n\nfn (decoder Decoder) decode_value[T](mut value T) {\n\t_ = decoder\n\t_ = value\n}\n'
+		'other/other.v': 'module other\n\npub struct Item {\npub:\n\tname string\n}\n'
+		'main.v':        'module main\n\nimport codec\nimport other\n\nstruct Item {\n\tvalue int\n}\n\nfn main() {\n\t_ := other.Item{}\n\titem := codec.decode[Item]()\n\tprintln(int_str(item.value))\n}\n'
+	}, 'main.v')
+	assert generated.contains('codec__Decoder_Item__decode_value'), generated
+	assert !generated.contains('codec__Decoder_other__Item__decode_value'), generated
+}
+
+fn test_optional_if_guard_prefers_local_type_over_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'optional_if_guard_local_type_collision', {
+		'v.mod':         "Module { name: 'optional_if_guard_local_type_collision' }\n"
+		'other/other.v': 'module other\n\npub struct Server {\npub:\n\tname string\n}\n'
+		'main.v':        "module main\n\nimport other\n\nstruct Server {\n\tid int\n}\n\nfn find_server() ?Server {\n\treturn Server{\n\t\tid: 9\n\t}\n}\n\nfn main() {\n\t_ := other.Server{\n\t\tname: 'imported'\n\t}\n\tif server := find_server() {\n\t\tprintln(int_str(server.id))\n\t}\n}\n"
+	}, 'main.v')
+	assert out == '9'
+}
+
+fn test_fixed_array_alias_is_not_requalified_in_importing_module() {
+	v3_bin := build_v3_review_transform()
+	generated := gen_c_from_source(v3_bin, 'fixed_array_alias_import_context',
+		'import gg\nimport sokol.gfx\n\nfn main() {\n\t_ := gg.Color{}\n\t_ := gfx.ImageData{}\n}\n')
+	assert generated.contains('Array_fixed_struct_sg_range_16'), generated
+	assert !generated.contains('Array_fixed_gg__Range_16'), generated
+}
+
+fn test_nested_string_array_literal_keeps_alias_element_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'nested_string_array_alias', {
+		'v.mod':           "Module { name: 'nested_string_array_alias' }\n"
+		'syntax/syntax.v': "module syntax\n\ntype MapArrayStrings = map[string][][]string\n\npub struct Highlighter {\npub mut:\n\tmultiline map[string]MapArrayStrings\n}\n\npub fn (mut h Highlighter) load() {\n\th.multiline['v'] = {\n\t\t'comment': [['/*', '*/']]\n\t}\n}\n"
+		'main.v':          "module main\n\nimport syntax\n\nfn main() {\n\tmut h := syntax.Highlighter{}\n\th.load()\n\tprintln(h.multiline['v']['comment'][0][0])\n\tprintln(h.multiline['v']['comment'][0][1])\n}\n"
+	}, 'main.v')
+	assert out == '/*\n*/'
+}
+
+fn test_generic_array_retyping_is_scoped_to_the_lowered_literal() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_array_retype_temp_scope',
+		"enum ChildSize {\n\tcompact\n}\n\nfn delimiters() [][]string {\n\treturn [['/*', '*/']]\n}\n\nfn child_sizes(len int) []ChildSize {\n\treturn [ChildSize.compact].repeat(len)\n}\n\nfn main() {\n\tvalues := delimiters()\n\tsizes := child_sizes(2)\n\tprintln(values[0][0])\n\tprintln(values[0][1])\n\tprintln(int_str(sizes.len))\n}\n")
+	assert out == '/*\n*/\n2'
 }
 
 fn test_generic_specializations_keep_full_aliased_import_paths() {
@@ -270,6 +407,13 @@ fn test_heap_escaping_amp_reassignment_moves_current_source() {
 	assert !body.contains('p = &b;'), body
 }
 
+fn test_return_address_of_pointer_backed_field_preserves_identity() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'return_pointer_backed_field_address',
+		'struct Node[T] {\nmut:\n\tvalue T\n}\n\nstruct List[T] {\nmut:\n\ttail &Node[T] = unsafe { nil }\n}\n\nfn (list &List[T]) last() &T {\n\treturn &list.tail.value\n}\n\nfn main() {\n\tmut node := &Node[int]{\n\t\tvalue: 1\n\t}\n\tlist := List[int]{\n\t\ttail: node\n\t}\n\tmut last := list.last()\n\t*last = 9\n\tprintln(int_str(node.value))\n}\n')
+	assert out == '9'
+}
+
 fn test_imported_result_array_return_or_preserves_success_value() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'imported_result_array_return_or', {
@@ -383,6 +527,16 @@ fn test_map_pointer_equality_uses_pointer_identity() {
 	assert out == 'false\ntrue\ntrue\ntrue'
 }
 
+fn test_cyclic_interface_default_does_not_deref_nil_global() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'cyclic_interface_default', {
+		'v.mod':         "Module { name: 'cyclic_interface_default' }\n"
+		'cycle/cycle.v': "module cycle\n\ninterface Named {\n\tid string\n}\n\nconst empty_stack = stack(id: 'empty')\n\nstruct Stack {\n\tparent Named = empty_stack\n\tid     string\n}\n\nfn stack(id string) &Stack {\n\treturn &Stack{\n\t\tid: id\n\t}\n}\n\npub fn empty_id() string {\n\treturn empty_stack.id\n}\n"
+		'main.v':        "module main\n\nimport cycle\n\nfn main() {\n\t_ = cycle.empty_id()\n\tprintln('alive')\n}\n"
+	}, 'main.v')
+	assert out == 'alive'
+}
+
 fn test_fixed_array_values_compare_semantically() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'fixed_array_semantic_equality',
@@ -441,6 +595,23 @@ fn test_comptime_type_conditions_qualify_module_aliases() {
 		'foo/foo.v': "module foo\n\ntype ID = int\n\npub fn check() string {\n\t\$if ID is \$alias {\n\t\treturn 'alias'\n\t} \$else {\n\t\treturn 'not alias'\n\t}\n}\n"
 	}, 'main.v')
 	assert out == 'alias'
+}
+
+fn test_imported_generic_indirections_conditions_keep_integer_literals() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_indirections_integer_literals', {
+		'v.mod':         "Module { name: 'generic_indirections_integer_literals' }\n"
+		'probe/probe.v': 'module probe\n\npub fn depth[T](value T) int {\n\t_ = value\n\t$if T.indirections == 0 {\n\t\treturn 0\n\t} $else $if T.indirections == 1 {\n\t\treturn 1\n\t}\n\treturn 2\n}\n'
+		'main.v':        'module main\n\nimport probe\n\nfn main() {\n\tn := 7\n\tprintln(int_str(probe.depth(n)))\n\tprintln(int_str(probe.depth(&n)))\n}\n'
+	}, 'main.v')
+	assert out == '0\n1'
+}
+
+fn test_nested_comptime_field_names_do_not_replace_each_other() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_comptime_field_name_prefixes',
+		'struct Embedded {\n\tn int\n}\n\nstruct Item {\n\tEmbedded\n\tname string\n}\n\nfn normal_fields[T]() int {\n\tmut count := 0\n\t$for field in T.fields {\n\t\t$if field.is_embed {\n\t\t\t$for reserved_field in T.fields {\n\t\t\t\t$if !reserved_field.is_embed {\n\t\t\t\t\tcount++\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\treturn count\n}\n\nfn main() {\n\tprintln(int_str(normal_fields[Item]()))\n}\n')
+	assert out == '1'
 }
 
 fn test_struct_equality_compares_pointer_fields_as_pointers() {

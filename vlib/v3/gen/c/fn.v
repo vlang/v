@@ -429,10 +429,10 @@ fn is_generated_fn_after_markused(name string) bool {
 
 // used_fn_contains reports whether used fn contains applies in c.
 fn (g &FlatGen) used_fn_contains(name string) bool {
-	if name.len == 0 {
+	if name.len == 0 || isnil(g.used_fns) {
 		return false
 	}
-	return g.used_fns[name]
+	return (*g.used_fns)[name]
 }
 
 fn (g &FlatGen) used_fn_contains_in_module(name string, module_name string) bool {
@@ -463,7 +463,7 @@ fn (g &FlatGen) used_fn_contains_in_module(name string, module_name string) bool
 
 // has_used_fn_filter reports whether has used fn filter applies in c.
 fn (g &FlatGen) has_used_fn_filter() bool {
-	return g.used_fns.len > 0 && g.used_fn_contains('main')
+	return !isnil(g.used_fns) && g.used_fns.len > 0 && g.used_fn_contains('main')
 }
 
 // emitted_fn_contains reports whether emitted fn contains applies in c.
@@ -535,6 +535,9 @@ fn (g &FlatGen) qualified_fn_name_in_module_c(module_name string, name string) s
 	if module_name == 'builtin' && name == 'free' {
 		return 'v_free'
 	}
+	if name == 'panic' {
+		return 'v_panic'
+	}
 	if name.starts_with('__v3_sum_eq_') {
 		return g.cname(name)
 	}
@@ -553,6 +556,9 @@ fn (g &FlatGen) qualified_fn_name_in_module_c(module_name string, name string) s
 fn qualified_fn_name_in_module(module_name string, name string) string {
 	if module_name == 'builtin' && name == 'free' {
 		return 'v_free'
+	}
+	if name == 'panic' {
+		return 'v_panic'
 	}
 	if name.starts_with('__v3_sum_eq_') {
 		return c_name(name)
@@ -3272,7 +3278,7 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 		param_id := g.a.child(&node, i)
 		p := g.a.node(param_id)
 		if p.kind == .param {
-			decl_param_type := g.tc.parse_type(p.typ)
+			decl_param_type := g.tc.parse_resolution_type(p.typ)
 			param_type := if shared_alias_ptr := g.shared_alias_pointer_type_from_text(p.typ) {
 				shared_alias_ptr
 			} else if !concrete_optional_params && p.typ.len > 0
@@ -4366,7 +4372,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 		'panic' {
-			g.write('panic(')
+			g.write('v_panic(')
 			if node.children_count > 1 {
 				arg_id := g.a.child(&node, 1)
 				arg_type := g.tc.resolve_type(arg_id)
@@ -7419,6 +7425,9 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 	g.gen_interface_receiver_base_expr(base_id, base_is_ptr)
 	g.write('${op}_object')
 	for field in g.tc.interface_fields[target_iface] or { []types.StructField{} } {
+		if interface_field_type_contains_self_by_value(field.typ, target_iface) {
+			continue
+		}
 		field_ct := g.tc.c_type(field.typ)
 		g.write(', .${g.cname(field.name)} = ')
 		for mapping in mappings {
@@ -7464,6 +7473,9 @@ fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, b
 	}
 	g.write(', ._object = ${base_expr}${op}_object')
 	for field in g.tc.interface_fields[target_iface] or { []types.StructField{} } {
+		if interface_field_type_contains_self_by_value(field.typ, target_iface) {
+			continue
+		}
 		field_ct := g.tc.c_type(field.typ)
 		g.write(', .${g.cname(field.name)} = ')
 		for mapping in mappings {
@@ -7741,7 +7753,7 @@ fn (mut g FlatGen) fn_node_param_types_or_decl(node flat.Node, module_name strin
 	for i in 0 .. node.children_count {
 		child := g.a.child_node(&node, i)
 		if child.kind == .param {
-			result << g.tc.parse_type(child.typ)
+			result << g.tc.parse_resolution_type(child.typ)
 		}
 	}
 	return result
@@ -11571,6 +11583,9 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	if cfn.contains('.') {
 		return false
 	}
+	if g.c_directives_use_system_libc() && cfn in c_system_header_declared_fns {
+		return false
+	}
 	if g.cache_split && cfn in c_cache_system_header_declared_fns {
 		return false
 	}
@@ -11593,6 +11608,67 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 		return false
 	}
 	return true
+}
+
+const c_system_header_declared_fns = {
+	'X509_free':                     true
+	'__builtin_ctz':                 true
+	'__builtin_ctzll':               true
+	'abs':                           true
+	'atomic_thread_fence':           true
+	'chmod':                         true
+	'clock_gettime_nsec_np':         true
+	'clock_gettime':                 true
+	'closedir':                      true
+	'connect':                       true
+	'cosf':                          true
+	'exit':                          true
+	'fdopen':                        true
+	'feof':                          true
+	'ferror':                        true
+	'fputs':                         true
+	'freeaddrinfo':                  true
+	'gai_strerror':                  true
+	'getaddrinfo':                   true
+	'getcwd':                        true
+	'getpid':                        true
+	'gettimeofday':                  true
+	'inet_ntop':                     true
+	'isatty':                        true
+	'localtime_r':                   true
+	'log':                           true
+	'lstat':                         true
+	'mkdir':                         true
+	'mmap':                          true
+	'objc_msgSend':                  true
+	'opendir':                       true
+	'popen':                         true
+	'printf':                        true
+	'pthread_mutex_trylock':         true
+	'pthread_cond_timedwait':        true
+	'pthread_rwlock_init':           true
+	'pthread_rwlock_rdlock':         true
+	'pthread_rwlock_unlock':         true
+	'pthread_rwlock_wrlock':         true
+	'pthread_rwlockattr_init':       true
+	'pthread_rwlockattr_setkind_np': true
+	'rand':                          true
+	'readdir':                       true
+	'recv':                          true
+	'rewind':                        true
+	'send':                          true
+	'sendto':                        true
+	'setsockopt':                    true
+	'shutdown':                      true
+	'sin':                           true
+	'sinf':                          true
+	'socket':                        true
+	'sscanf':                        true
+	'strerror':                      true
+	'sysconf':                       true
+	'system':                        true
+	'waitpid':                       true
+	'write':                         true
 }
 
 const c_preamble_declared_extern_symbols = {
@@ -12294,7 +12370,7 @@ fn (mut g FlatGen) fn_node_return_type(node flat.Node, module_name string) types
 	if info := g.generic_receiver_method_call_info(node.value) {
 		return info.return_type
 	}
-	return g.tc.parse_type(node.typ)
+	return g.tc.parse_resolution_type(node.typ)
 }
 
 fn (mut g FlatGen) fn_node_return_type_from_signatures(node flat.Node, module_name string) ?types.Type {
@@ -12537,7 +12613,7 @@ fn (mut g FlatGen) write_fn_node_params(node flat.Node) {
 		pt := if param_idx < typed_params.len {
 			typed_params[param_idx]
 		} else {
-			g.tc.parse_type(p.typ)
+			g.tc.parse_resolution_type(p.typ)
 		}
 		param_idx++
 		if concrete_optional_params && type_is_optional_result(pt) && p.value.len > 0 {

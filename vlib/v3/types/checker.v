@@ -356,6 +356,12 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 	}
 }
 
+pub struct InterfaceImplIndex {
+pub:
+	names []string
+	ids   map[string]int
+}
+
 // TypeChecker represents type checker data used by types.
 @[heap]
 pub struct TypeChecker {
@@ -406,6 +412,11 @@ pub mut:
 	interface_embeds              map[string][]string
 	interface_abstract_methods    map[string][]string // iface -> abstract (declared) method names
 	interface_impl_name_snapshots map[string][]string
+	interface_method_names_index  map[string][]string
+	interface_abstract_index      map[string][]string
+	interface_field_list_index    map[string][]StructField
+	interface_impl_indexes        map[string]&InterfaceImplIndex
+	interface_query_indexes_ready bool
 
 	c_globals               map[string]Type
 	const_types             map[string]Type
@@ -586,6 +597,10 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		interface_embeds:                   map[string][]string{}
 		interface_abstract_methods:         map[string][]string{}
 		interface_impl_name_snapshots:      map[string][]string{}
+		interface_method_names_index:       map[string][]string{}
+		interface_abstract_index:           map[string][]string{}
+		interface_field_list_index:         map[string][]StructField{}
+		interface_impl_indexes:             map[string]&InterfaceImplIndex{}
 		c_globals:                          map[string]Type{}
 		const_types:                        map[string]Type{}
 		const_exprs:                        map[string]flat.NodeId{}
@@ -688,6 +703,11 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		interface_fields:                   tc.interface_fields
 		interface_embeds:                   tc.interface_embeds
 		interface_abstract_methods:         tc.interface_abstract_methods
+		interface_method_names_index:       tc.interface_method_names_index
+		interface_abstract_index:           tc.interface_abstract_index
+		interface_field_list_index:         tc.interface_field_list_index
+		interface_impl_indexes:             tc.interface_impl_indexes
+		interface_query_indexes_ready:      tc.interface_query_indexes_ready
 		c_globals:                          tc.c_globals
 		const_types:                        tc.const_types
 		const_exprs:                        tc.const_exprs
@@ -990,13 +1010,30 @@ pub fn (mut tc TypeChecker) reserve_scoped_transform_metadata(signature_headroom
 	}
 }
 
-// rebuild_scoped_transform_signature_maps moves signature-map backing storage
-// into the current arena after a disposable transform scope has been left.
+// rebuild_scoped_transform_signature_maps moves signature maps, keys, and nested
+// type metadata into the current arena after a disposable transform scope has
+// been left.
 pub fn (mut tc TypeChecker) rebuild_scoped_transform_signature_maps() {
-	tc.fn_ret_types = tc.fn_ret_types.clone()
-	tc.fn_param_types = tc.fn_param_types.clone()
-	tc.fn_variadic = tc.fn_variadic.clone()
-	tc.specialized_generic_fns = tc.specialized_generic_fns.clone()
+	mut ret_types := map[string]Type{}
+	for name, ret in tc.fn_ret_types {
+		ret_types[name.clone()] = clone_owned_type(ret)
+	}
+	mut param_types := map[string][]Type{}
+	for name, params in tc.fn_param_types {
+		param_types[name.clone()] = clone_owned_types(params)
+	}
+	mut variadic := map[string]bool{}
+	for name, is_variadic in tc.fn_variadic {
+		variadic[name.clone()] = is_variadic
+	}
+	mut specialized := map[string]bool{}
+	for name, is_specialized in tc.specialized_generic_fns {
+		specialized[name.clone()] = is_specialized
+	}
+	tc.fn_ret_types = ret_types.move()
+	tc.fn_param_types = param_types.move()
+	tc.fn_variadic = variadic.move()
+	tc.specialized_generic_fns = specialized.move()
 }
 
 // begin_sparse_transform_node_caches keeps source-node entries in their dense
@@ -1278,7 +1315,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				tc.register_selective_imports(node)
 			}
 			.enum_decl {
-				qn := tc.qualify_name(node.value)
+				qn := tc.qualify_decl_name(node.value)
 				tc.enum_names[qn] = true
 				mut fields := []string{}
 				for i in 0 .. node.children_count {
@@ -1293,7 +1330,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 			}
 			.struct_decl {
-				qname := tc.qualify_name(node.value)
+				qname := tc.qualify_decl_name(node.value)
 				if qname !in tc.structs {
 					tc.structs[qname] = []StructField{}
 				}
@@ -1326,7 +1363,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						v := a.child_node(&node, i)
 						variants << tc.qualify_sum_variant_name(v.value, node.generic_params())
 					}
-					qname := tc.qualify_name(node.value)
+					qname := tc.qualify_decl_name(node.value)
 					tc.sum_types[qname] = variants
 					if node.generic_params().len > 0 {
 						tc.sum_generic_params[qname] = node.generic_params().clone()
@@ -1341,7 +1378,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						for part in sum_variant_texts {
 							variants << tc.qualify_sum_variant_name(part, node.generic_params())
 						}
-						qname := tc.qualify_name(node.value)
+						qname := tc.qualify_decl_name(node.value)
 						tc.sum_types[qname] = variants
 						if node.generic_params().len > 0 {
 							tc.sum_generic_params[qname] = node.generic_params().clone()
@@ -1351,7 +1388,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						}
 						continue
 					}
-					qname := tc.qualify_name(node.value)
+					qname := tc.qualify_decl_name(node.value)
 					tc.type_aliases[qname] = tc.qualify_type_text(node.typ)
 					if c_abi_fn := tc.c_abi_fn_ptr_type_from_text(node.typ) {
 						tc.type_alias_c_abi_fns[qname] = c_abi_fn
@@ -1365,7 +1402,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 			}
 			.interface_decl {
-				tc.interface_names[tc.qualify_name(node.value)] = true
+				tc.interface_names[tc.qualify_decl_name(node.value)] = true
 			}
 			else {}
 		}
@@ -1478,7 +1515,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						typ:  typ
 					}
 				}
-				qname := tc.qualify_name(node.value)
+				qname := tc.qualify_decl_name(node.value)
 				// A `C.` struct denotes a single external C type, but several modules may
 				// mirror it with partial or imprecise field views (e.g. `C.termios` in both
 				// `term` and `term.termios`). codegen emits one C struct, so the field table
@@ -1540,7 +1577,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 			}
 			.interface_decl {
-				iface_name := tc.qualify_name(node.value)
+				iface_name := tc.qualify_decl_name(node.value)
 				for i in 0 .. node.children_count {
 					f := a.child_node(&node, i)
 					if f.kind != .interface_field {
@@ -1628,6 +1665,12 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	$if ownership ? {
 		tc.ownership_after_collect()
 	}
+}
+
+// rebind_ast updates the AST view after the driver clones transformed storage.
+// All collected declaration/type metadata remains valid because cloning preserves node ids.
+pub fn (mut tc TypeChecker) rebind_ast(a &flat.FlatAst) {
+	tc.a = a
 }
 
 fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
@@ -2164,6 +2207,18 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 	return qualified
 }
 
+// qualify_decl_name gives a declaration its stable owner-module name without
+// consulting declarations collected earlier in the same pass.
+fn (tc &TypeChecker) qualify_decl_name(name string) string {
+	if name.contains('.') {
+		return tc.resolve_imported_type_text(name)
+	}
+	if tc.cur_module.len == 0 || tc.cur_module in ['main', 'builtin'] {
+		return name
+	}
+	return '${tc.cur_module}.${name}'
+}
+
 // qualify_resolution_type_name qualifies a type name for RESOLUTION (not
 // registration): a bare capitalized name that does not exist under the current
 // module but does exist globally (a generic arg substituted from another
@@ -2232,8 +2287,13 @@ fn (tc &TypeChecker) qualify_sum_variant_name(name string, generic_params []stri
 	if bracket > 0 {
 		bracket_end := find_matching_bracket(clean, bracket)
 		if bracket_end < clean.len {
+			inner := clean[bracket + 1..bracket_end].trim_space()
+			if is_fixed_array_len_text(inner) || is_builtin_type_name(clean[..bracket]) {
+				return tc.qualify_sum_variant_name(clean[..bracket], generic_params) +
+					clean[bracket..]
+			}
 			mut parts := []string{}
-			for part in split_params(clean[bracket + 1..bracket_end]) {
+			for part in split_params(inner) {
 				parts << tc.qualify_sum_variant_name(part, generic_params)
 			}
 			return tc.qualify_name(clean[..bracket]) + '[' + parts.join(', ') + ']' +
@@ -2299,6 +2359,18 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string 
 	if clean.starts_with('[]') {
 		return '[]' + tc.qualify_type_text_impl(clean[2..], resolution)
 	}
+	if clean == 'chan' {
+		return clean
+	}
+	if clean.starts_with('chan ') {
+		return 'chan ' + tc.qualify_type_text_impl(clean[5..], resolution)
+	}
+	if clean == 'thread' {
+		return clean
+	}
+	if clean.starts_with('thread ') {
+		return 'thread ' + tc.qualify_type_text_impl(clean[7..], resolution)
+	}
 	if clean.starts_with('map[') {
 		bracket_end := find_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
@@ -2328,8 +2400,12 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string 
 	if bracket > 0 {
 		bracket_end := find_matching_bracket(clean, bracket)
 		if bracket_end < clean.len {
+			inner := clean[bracket + 1..bracket_end].trim_space()
+			if is_fixed_array_len_text(inner) || is_builtin_type_name(clean[..bracket]) {
+				return tc.qualify_type_text_impl(clean[..bracket], resolution) + clean[bracket..]
+			}
 			mut parts := []string{}
-			for part in split_params(clean[bracket + 1..bracket_end]) {
+			for part in split_params(inner) {
 				parts << tc.qualify_type_text_impl(part, resolution)
 			}
 			return tc.qualify_type_text_impl(clean[..bracket], resolution) + '[' +
@@ -3404,6 +3480,16 @@ fn (tc &TypeChecker) cached_resolved_call(id flat.NodeId) ?string {
 // resolved_call_name returns the checker-resolved function name for a call node.
 pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 	return tc.cached_resolved_call(id)
+}
+
+// reset_resolved_calls_for_reannotation discards pre-transform call-name
+// bindings before the transformed AST is annotated again. The annotation walk
+// resolves and records every reachable call against the final AST/signatures.
+pub fn (mut tc TypeChecker) reset_resolved_calls_for_reannotation() {
+	for idx in 0 .. tc.resolved_call_set.len {
+		tc.resolved_call_set[idx] = false
+	}
+	tc.sparse_resolved_call_names.clear()
 }
 
 // fn_param_types_for_name returns the collected parameter types for a resolved call name.
@@ -8215,14 +8301,18 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.reject_stored_method_value(tc.a.child(&node, i))
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, i))
 		}
-		tc.check_ownership_array_spread_clone(id, node)
+		$if ownership ? {
+			tc.check_ownership_array_spread_clone(id, node)
+		}
 	} else if node.kind == .map_init {
 		// children alternate key, value, key, value, ...; check the value positions.
 		for j := 1; j < node.children_count; j += 2 {
 			tc.reject_stored_method_value(tc.a.child(&node, j))
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, j))
 		}
-		tc.check_ownership_map_spread_clone(id, node)
+		$if ownership ? {
+			tc.check_ownership_map_spread_clone(id, node)
+		}
 	} else if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
 		if unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array {
 			tc.reject_stored_method_value(tc.a.child(&node, 1))
@@ -22452,8 +22542,53 @@ fn (tc &TypeChecker) is_builtin_error_struct_name_in_scope(name string, file str
 	return false
 }
 
+// prepare_interface_query_indexes publishes immutable interface requirements for
+// transform workers. Interface declarations no longer change after semantic
+// checking, so compatibility scans can reuse these lists safely across threads.
+pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
+	tc.interface_query_indexes_ready = false
+	tc.interface_method_names_index = map[string][]string{}
+	tc.interface_abstract_index = map[string][]string{}
+	tc.interface_field_list_index = map[string][]StructField{}
+	tc.interface_impl_indexes = map[string]&InterfaceImplIndex{}
+	for iface_name in tc.interface_names.keys() {
+		mut seen_methods := map[string]bool{}
+		methods := tc.interface_method_names_inner(iface_name, mut seen_methods)
+		mut seen_abstract := map[string]bool{}
+		abstract_methods := tc.interface_abstract_method_names_inner(iface_name, mut seen_abstract)
+		mut seen_fields := map[string]bool{}
+		fields := tc.interface_field_list_inner(iface_name, mut seen_fields)
+		resolved := tc.interface_metadata_name(iface_name)
+		for key in [iface_name, resolved] {
+			if key.len == 0 {
+				continue
+			}
+			tc.interface_method_names_index[key] = methods
+			tc.interface_abstract_index[key] = abstract_methods
+			tc.interface_field_list_index[key] = fields
+		}
+	}
+	tc.interface_query_indexes_ready = true
+	for iface_name in tc.interface_names.keys() {
+		impls := if is_builtin_ierror_name(iface_name) {
+			tc.ierror_impl_names()
+		} else {
+			tc.interface_impl_names(iface_name)
+		}
+		tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
+			names: impls
+			ids:   stable_interface_type_ids(impls)
+		}
+	}
+}
+
 // interface_method_names supports interface method names handling for TypeChecker.
 fn (tc &TypeChecker) interface_method_names(iface_name string) []string {
+	if tc.interface_query_indexes_ready {
+		if methods := tc.interface_method_names_index[iface_name] {
+			return methods
+		}
+	}
 	mut seen := map[string]bool{}
 	return tc.interface_method_names_inner(iface_name, mut seen)
 }
@@ -22462,6 +22597,11 @@ fn (tc &TypeChecker) interface_method_names(iface_name string) []string {
 // the interface's own declared (abstract) methods plus those of any embedded
 // interfaces. Default methods defined directly on the interface are excluded.
 pub fn (tc &TypeChecker) interface_abstract_method_names(iface_name string) []string {
+	if tc.interface_query_indexes_ready {
+		if methods := tc.interface_abstract_index[iface_name] {
+			return methods
+		}
+	}
 	mut seen := map[string]bool{}
 	return tc.interface_abstract_method_names_inner(iface_name, mut seen)
 }
@@ -22560,6 +22700,11 @@ fn (tc &TypeChecker) interface_receiver_method_call_info(iface_name string, meth
 
 // interface_field_list supports interface field list handling for TypeChecker.
 pub fn (tc &TypeChecker) interface_field_list(iface_name string) []StructField {
+	if tc.interface_query_indexes_ready {
+		if fields := tc.interface_field_list_index[iface_name] {
+			return fields
+		}
+	}
 	mut seen := map[string]bool{}
 	return tc.interface_field_list_inner(iface_name, mut seen)
 }

@@ -190,6 +190,14 @@ fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target
 	if t.is_builtin_ierror_interface_name(iface_name) {
 		return none
 	}
+	// An explicit `source as TargetInterface` cast already carries the exact
+	// interface conversion requested by the program. Transform it before using
+	// the checker's source type below; otherwise a smartcasted selector can be
+	// converted a second time as though it still had its storage-interface type.
+	if !target_is_ptr && node.kind == .as_expr
+		&& t.interface_cast_matches_target(node.value, iface_name) {
+		return t.transform_as_expr(id, node)
+	}
 	if node.kind == .nil_literal {
 		if target_is_ptr {
 			expr := t.transform_expr(id)
@@ -304,48 +312,71 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 	if matching.len == 0 {
 		return none
 	}
-	if !t.source_interface_carries_target_fields(source_iface, target_iface) {
-		return none
-	}
+	source_carries_fields := t.source_interface_carries_target_fields(source_iface, target_iface)
 	base := t.stable_transformed_expr_for_reuse(source_expr, source_type, 'iface_cast')
 	op := if source_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
 	object := t.make_selector_op(base, '_object', 'voidptr', op)
-	mut fields := [
-		t.make_sum_literal_field('_typ', t.make_int_literal(0), 'int'),
-		t.make_sum_literal_field('_object', object, 'voidptr'),
-	]
-	for field in t.tc.interface_field_list(target_iface) {
-		field_type := t.normalize_type_alias(field.typ.name())
-		field_value := t.make_selector_op(base, field.name, field_type, op)
-		fields << t.make_sum_literal_field(field.name, field_value, field_type)
+	init := if source_carries_fields {
+		mut fields := [
+			t.make_sum_literal_field('_typ', t.make_int_literal(0), 'int'),
+			t.make_sum_literal_field('_object', object, 'voidptr'),
+		]
+		for field in t.interface_runtime_field_list(target_iface) {
+			field_type := t.normalize_type_alias(field.typ.name())
+			field_value := t.make_selector_op(base, field.name, field_type, op)
+			fields << t.make_sum_literal_field(field.name, field_value, field_type)
+		}
+		t.make_interface_conversion_init(target_iface, fields)
+	} else {
+		t.make_struct_init(target_iface)
 	}
-	start := t.a.children.len
-	for field in fields {
-		t.a.children << field
-	}
-	init := t.a.add_node(flat.Node{
-		kind:           .struct_init
-		children_start: start
-		children_count: flat.child_count(fields.len)
-		value:          target_iface
-		typ:            target_iface
-	})
 	out_name := t.new_temp('iface_cast')
 	t.pending_stmts << t.make_decl_assign_typed(out_name, init, target_iface)
 	source_typ := t.make_selector_op(base, '_typ', 'int', op)
-	out_typ := t.make_selector(t.make_ident(out_name), '_typ', 'int')
 	for mapping in matching {
 		cond := t.make_infix(.eq, source_typ, t.make_int_literal(mapping.source_id))
-		assign := t.make_assign(out_typ, t.make_int_literal(mapping.target_id))
-		t.pending_stmts << t.make_if(cond, t.make_block([assign]), t.make_empty())
+		body := if source_carries_fields {
+			out_typ := t.make_selector(t.make_ident(out_name), '_typ', 'int')
+			[t.make_assign(out_typ, t.make_int_literal(mapping.target_id))]
+		} else {
+			impl_name := t.interface_concrete_impl_name(mapping.impl) or { mapping.impl }
+			impl_ptr_type := '&${impl_name}'
+			impl_ptr := t.make_cast(impl_ptr_type, object, impl_ptr_type)
+			mut fields := [
+				t.make_sum_literal_field('_typ', t.make_int_literal(mapping.target_id), 'int'),
+				t.make_sum_literal_field('_object', object, 'voidptr'),
+			]
+			for field in t.interface_runtime_field_list(target_iface) {
+				field_type := t.normalize_type_alias(field.typ.name())
+				impl_field := t.make_selector_op(impl_ptr, field.name, field_type, .arrow)
+				fields << t.make_sum_literal_field(field.name, impl_field, field_type)
+			}
+			mapping_init := t.make_interface_conversion_init(target_iface, fields)
+			[t.make_assign(t.make_ident(out_name), mapping_init)]
+		}
+		t.pending_stmts << t.make_if(cond, t.make_block(body), t.make_empty())
 	}
 	result := t.make_ident(out_name)
 	t.set_node_typ(int(result), target_iface)
 	return result
 }
 
+fn (mut t Transformer) make_interface_conversion_init(iface string, fields []flat.NodeId) flat.NodeId {
+	start := t.a.children.len
+	for field in fields {
+		t.a.children << field
+	}
+	return t.a.add_node(flat.Node{
+		kind:           .struct_init
+		children_start: start
+		children_count: flat.child_count(fields.len)
+		value:          iface
+		typ:            iface
+	})
+}
+
 fn (t &Transformer) source_interface_carries_target_fields(source_iface string, target_iface string) bool {
-	target_fields := t.tc.interface_field_list(target_iface)
+	target_fields := t.interface_runtime_field_list(target_iface)
 	if target_fields.len == 0 {
 		return true
 	}
@@ -365,7 +396,18 @@ fn (t &Transformer) source_interface_carries_target_fields(source_iface string, 
 	return true
 }
 
+fn (t &Transformer) interface_runtime_field_list(iface string) []types.StructField {
+	mut fields := []types.StructField{}
+	for field in t.tc.interface_field_list(iface) {
+		if !transform_interface_field_type_contains_self_by_value(field.typ, iface) {
+			fields << field
+		}
+	}
+	return fields
+}
+
 struct InterfaceImplMapping {
+	impl      string
 	source_id int
 	target_id int
 }
@@ -375,18 +417,19 @@ fn (mut t Transformer) interface_conversion_impl_mappings(source_iface string, t
 	if source_iface.len == 0 || target_iface.len == 0 || isnil(t.tc) {
 		return result
 	}
-	impls := if t.is_builtin_ierror_interface_name(source_iface) {
-		t.tc.ierror_impl_names()
-	} else {
-		t.tc.interface_impl_names(source_iface)
-	}
-	for impl in impls {
-		if !t.interface_impl_satisfies_target(impl, target_iface) {
-			continue
+	source_index := t.interface_impl_index_for_transform(source_iface)
+	target_index := t.interface_impl_index_for_transform(target_iface)
+	for impl in source_index.names {
+		source_id := source_index.ids[impl] or { continue }
+		target_id := target_index.ids[impl] or {
+			// Alias spellings can differ between equivalent interface snapshots.
+			if !t.interface_impl_satisfies_target(impl, target_iface) {
+				continue
+			}
+			t.interface_impl_type_id(target_iface, impl) or { continue }
 		}
-		source_id := t.interface_impl_type_id(source_iface, impl) or { continue }
-		target_id := t.interface_impl_type_id(target_iface, impl) or { continue }
 		result << InterfaceImplMapping{
+			impl:      impl
 			source_id: source_id
 			target_id: target_id
 		}
@@ -525,9 +568,25 @@ fn (t &Transformer) heaped_amp_local_address_child(id flat.NodeId) ?flat.NodeId 
 	return none
 }
 
+fn (mut t Transformer) null_safe_interface_pointer_field(source flat.NodeId, value flat.NodeId, field_type string) flat.NodeId {
+	cond := t.make_infix(.ne, source, t.a.add(.nil_literal))
+	then_block := t.make_block(arr1(t.make_expr_stmt(value)))
+	else_block := t.make_block(arr1(t.make_expr_stmt(t.zero_value_for_type(field_type))))
+	start := t.a.children.len
+	t.a.children << cond
+	t.a.children << then_block
+	t.a.children << else_block
+	return t.a.add_node(flat.Node{
+		kind:           .if_expr
+		children_start: start
+		children_count: 3
+		typ:            field_type
+	})
+}
+
 // make_interface_literal_from_expr converts make interface literal from expr data for transform.
 fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_name string, share_source bool) ?flat.NodeId {
-	fields := t.tc.interface_field_list(iface_name)
+	fields := t.interface_runtime_field_list(iface_name)
 	mut source_id := id
 	mut source_type := t.node_type(id)
 	mut source_is_heaped_amp_child := false
@@ -640,7 +699,10 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	field_ids << t.make_sum_literal_field('_object', object_expr, '&${concrete_type}')
 	for field in fields {
 		field_type := t.normalize_type_alias(field.typ.name())
-		field_value := t.make_selector(field_base, field.name, field_type)
+		mut field_value := t.make_selector(field_base, field.name, field_type)
+		if is_ptr {
+			field_value = t.null_safe_interface_pointer_field(source, field_value, field_type)
+		}
 		field_ids << t.make_sum_literal_field(field.name, field_value, field_type)
 	}
 	start := t.a.children.len

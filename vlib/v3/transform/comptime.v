@@ -2966,6 +2966,21 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 			return t.make_selector(receiver, fm.name, fm.comptime_typ)
 		}
 	}
+	// A normal `if !field.attrs.contains('skip')` inside a reflected field loop is
+	// compile-time data even though V exposes `attrs` as an array. Fold it before
+	// generic discovery so calls in a skipped field's branch do not instantiate
+	// serializers for types that can never be visited at runtime.
+	if node.kind == .if_expr && node.children_count >= 2 {
+		cond_id := t.a.child(&node, 0)
+		if taken := t.comptime_field_attrs_condition(cond_id, var_name, fm) {
+			branch_idx := if taken { 1 } else { 2 }
+			if branch_idx >= int(node.children_count) {
+				return none
+			}
+			return t.clone_field_subst_scoped(t.a.child(&node, branch_idx), var_name, fm,
+				inner_vars)
+		}
+	}
 	// `$if`/`$else $if` referencing the loop variable: evaluate now, keep the taken branch.
 	if node.kind == .comptime_if {
 		substituted := t.subst_field_cond(node.value, var_name, fm)
@@ -2986,6 +3001,36 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, cond)
 	}
 	return t.clone_field_subst_children(node, var_name, fm, inner_vars)
+}
+
+fn (t &Transformer) comptime_field_attrs_condition(id flat.NodeId, var_name string, fm FieldMeta) ?bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .prefix && node.op == .not && node.children_count == 1 {
+		value := t.comptime_field_attrs_condition(t.a.child(&node, 0), var_name, fm) or {
+			return none
+		}
+		return !value
+	}
+	if node.kind != .call || node.children_count != 2 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.value != 'contains' || callee.children_count == 0 {
+		return none
+	}
+	attrs := t.a.child_node(callee, 0)
+	if attrs.kind != .selector || attrs.value != 'attrs' || attrs.children_count == 0 {
+		return none
+	}
+	base := t.a.child_node(attrs, 0)
+	needle := t.a.child_node(&node, 1)
+	if base.kind != .ident || base.value != var_name || needle.kind != .string_literal {
+		return none
+	}
+	return needle.value in fm.attrs
 }
 
 // direct_reflected_field_selector reports whether an iterable is exactly
@@ -3297,25 +3342,25 @@ fn (t &Transformer) subst_field_cond(cond string, var_name string, fm FieldMeta)
 fn (t &Transformer) subst_unquoted_field_cond(cond string, var_name string, fm FieldMeta) string {
 	mut c := cond
 	if t.cur_module.len > 0 {
-		c = c.replace('${t.cur_module}.${var_name}', var_name)
+		c = comptime_cond_replace_unquoted(c, '${t.cur_module}.${var_name}', var_name)
 	}
-	c = c.replace('${var_name}.unaliased_typ', fm.comptime_unaliased)
-	c = c.replace('${var_name}.indirections', fm.indirections.str())
-	c = c.replace('${var_name}.is_option', fm.is_option.str())
-	c = c.replace('${var_name}.is_opt', fm.is_option.str())
-	c = c.replace('${var_name}.is_embed', fm.is_embed.str())
-	c = c.replace('${var_name}.is_array', fm.is_array.str())
-	c = c.replace('${var_name}.is_map', fm.is_map.str())
-	c = c.replace('${var_name}.is_chan', fm.is_chan.str())
-	c = c.replace('${var_name}.is_struct', fm.is_struct.str())
-	c = c.replace('${var_name}.is_enum', fm.is_enum.str())
-	c = c.replace('${var_name}.is_alias', fm.is_alias.str())
-	c = c.replace('${var_name}.is_shared', fm.is_shared.str())
-	c = c.replace('${var_name}.is_atomic', fm.is_atomic.str())
-	c = c.replace('${var_name}.is_mut', fm.is_mut.str())
-	c = c.replace('${var_name}.is_pub', fm.is_pub.str())
-	c = c.replace('${var_name}.typ', fm.comptime_typ)
-	c = c.replace('${var_name}.name', "'${fm.name}'")
+	c = comptime_cond_replace_unquoted(c, '${var_name}.unaliased_typ', fm.comptime_unaliased)
+	c = comptime_cond_replace_unquoted(c, '${var_name}.indirections', fm.indirections.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_option', fm.is_option.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_opt', fm.is_option.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_embed', fm.is_embed.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_array', fm.is_array.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_map', fm.is_map.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_chan', fm.is_chan.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_struct', fm.is_struct.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_enum', fm.is_enum.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_alias', fm.is_alias.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_shared', fm.is_shared.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_atomic', fm.is_atomic.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_mut', fm.is_mut.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_pub', fm.is_pub.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.typ', fm.comptime_typ)
+	c = comptime_cond_replace_unquoted(c, '${var_name}.name', "'${fm.name}'")
 	c = comptime_cond_replace_bare_ident(c, var_name, fm.comptime_typ)
 	return c
 }

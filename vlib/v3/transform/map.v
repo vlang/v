@@ -1113,9 +1113,15 @@ fn (mut t Transformer) lower_map_index_append_with_info(info MapIndexInfo, map_e
 		working_name = t.new_temp('map_append_value')
 		result << t.make_decl_assign_typed(working_name, cloned, info.value_type)
 	}
-	append := t.make_infix(.left_shift, t.make_ident(working_name), t.transform_expr(rhs_id))
+	append := t.make_infix(.left_shift, t.make_ident(working_name), rhs_id)
 	t.annotate_left_shift(append)
-	result << t.make_expr_stmt(append)
+	if lowered := t.try_lower_array_append_stmt(append) {
+		for stmt in lowered {
+			result << stmt
+		}
+	} else {
+		result << t.make_expr_stmt(append)
+	}
 	t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
 		result)
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, working_name)

@@ -47,15 +47,17 @@ fn test_rebuild_scoped_transform_signature_maps_after_growth() {
 	$if prealloc {
 		a := flat.FlatAst.new()
 		mut tc := TypeChecker.new(&a)
-		mut names := []string{cap: 4096}
-		for i in 0 .. 4096 {
-			names << 'generated_signature_${i}'
-		}
-
 		scope := unsafe { prealloc_scope_begin() }
-		for name in names {
-			tc.fn_ret_types[name] = Type(int_)
-			tc.fn_param_types[name] = []Type{}
+		for i in 0 .. 4096 {
+			name := 'generated_signature_${i}'
+			tc.fn_ret_types[name] = Type(Struct{
+				name: 'GeneratedResult_${i}'
+			})
+			tc.fn_param_types[name] = [
+				Type(Struct{
+					name: 'GeneratedParam_${i}'
+				}),
+			]
 			tc.fn_variadic[name] = false
 			tc.specialized_generic_fns[name] = true
 		}
@@ -81,11 +83,34 @@ fn test_rebuild_scoped_transform_signature_maps_after_growth() {
 		unsafe { prealloc_scope_free_after(scope) }
 
 		for idx in [0, 2048, 4095] {
-			name := names[idx]
-			assert tc.fn_ret_types[name] or { Type(void_) } is Primitive
-			assert name in tc.fn_param_types
+			name := 'generated_signature_${idx}'
+			ret := tc.fn_ret_types[name] or { Type(void_) }
+			assert ret is Struct
+			assert ret.name == 'GeneratedResult_${idx}'
+			params := tc.fn_param_types[name] or { []Type{} }
+			assert params.len == 1
+			param := params[0]
+			assert param is Struct
+			assert param.name == 'GeneratedParam_${idx}'
 			assert !tc.fn_variadic[name]
 			assert tc.specialized_generic_fns[name]
 		}
+	}
+}
+
+fn test_type_qualification_preserves_channel_and_thread_wrappers() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'worker'
+
+	assert tc.qualify_type_text('chan bool') == 'chan bool'
+	assert tc.qualify_type_text('[]chan bool') == '[]chan bool'
+	assert tc.qualify_type_text('thread int') == 'thread int'
+
+	channel_type := tc.parse_resolution_type('chan bool')
+	if channel_type is Channel {
+		assert channel_type.elem_type is Primitive
+	} else {
+		assert false, 'expected channel type, got `${channel_type.name()}`'
 	}
 }

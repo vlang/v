@@ -106,6 +106,16 @@ fn (g &FlatGen) struct_init_effective_type_name(node flat.Node) string {
 			return expected.name
 		}
 	}
+	// A bare literal can collide with an imported type of the same short name.
+	// The checker has already resolved the surrounding expected type, so retain
+	// its qualified name instead of letting cgen's global short-name fallback
+	// select an unrelated declaration (for example gg.Size vs ui.Size).
+	if node.value.len > 0 && !node.value.contains('.') {
+		expected := default_init_unalias_type(types.unwrap_pointer(g.expected_expr_type))
+		if expected is types.Struct && expected.name.all_after_last('.') == node.value {
+			return expected.name
+		}
+	}
 	return node.value
 }
 
@@ -265,7 +275,8 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		g.gen_channel_init(node)
 		return
 	}
-	if g.gen_lowered_sum_init(node) {
+	effective_type := default_init_unalias_type(types.unwrap_pointer(g.tc.parse_type(init_value)))
+	if effective_type !is types.Struct && g.gen_lowered_sum_init(node) {
 		return
 	}
 	mut name := g.struct_init_c_type_name(init_value)
@@ -2300,6 +2311,9 @@ fn (g &FlatGen) atomic_helper_suffix(typ types.Type) string {
 
 fn (mut g FlatGen) shared_type_forward_decls() {
 	for name in g.sorted_shared_wrapper_names() {
+		if name == 'mach_timebase_info_data_t' {
+			continue
+		}
 		g.writeln('typedef struct ${name} ${name};')
 		g.writeln('static inline void* __dup${name}(void* src, int sz);')
 	}
@@ -2489,6 +2503,9 @@ fn (mut g FlatGen) gen_shared_interface_field_expr(value_id flat.NodeId, expecte
 	iface_ct := g.tc.c_type(iface)
 	g.write('(${info.wrapper}*)__dup${info.wrapper}(&(${info.wrapper}){.mtx = {0}, .mtx_ptr = &${storage}->mtx, .val = (${iface_ct}){._typ = ${type_id}, ._object = &${storage}->val')
 	for field in g.tc.interface_fields[iface.name] or { []types.StructField{} } {
+		if interface_field_type_contains_self_by_value(field.typ, iface.name) {
+			continue
+		}
 		g.write(', .${g.cname(field.name)} = ${storage}->val.${g.cname(field.name)}')
 	}
 	g.write('}}, sizeof(${info.wrapper}))')
@@ -3540,8 +3557,28 @@ fn (g &FlatGen) map_callback_names(key_type types.Type) (string, string, string,
 
 // skip_builtin_struct supports skip builtin struct handling for FlatGen.
 fn (g &FlatGen) skip_builtin_struct(name string) bool {
+	if g.inlined_c_structs[name] {
+		return true
+	}
+	resolved_name := g.struct_cname(name).trim_string_left('struct ').trim_string_left('union ')
+	if resolved_name == 'mach_timebase_info_data_t' {
+		return true
+	}
+	if g.inlined_c_structs[resolved_name] {
+		return true
+	}
 	if name.starts_with('C.') && g.inlined_c_structs[name[2..]] {
 		return true
+	}
+	if name.starts_with('C.') {
+		for iface_name in g.interfaces.keys() {
+			if g.cname(iface_name) == resolved_name {
+				return true
+			}
+		}
+		if g.c_directives_use_system_libc() && name[2..] in c_system_header_struct_names {
+			return true
+		}
 	}
 	if g.cache_split {
 		system_name := if name.starts_with('C.') { name[2..] } else { name }
@@ -3550,6 +3587,11 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		}
 	}
 	return name in c_preamble_defined_structs
+}
+
+const c_system_header_struct_names = {
+	'__stat64':  true
+	'sigaction': true
 }
 
 const c_preamble_defined_structs = {
@@ -3639,7 +3681,7 @@ fn (g &FlatGen) struct_decl_head(name string) string {
 
 // emit_interface_struct emits emit interface struct output for c.
 fn (mut g FlatGen) emit_interface_struct(name string) {
-	iface_fields := g.tc.interface_field_list(name)
+	iface_fields := g.interface_cached_fields(name)
 	g.emit_struct_option_typedefs(iface_fields)
 	cn := g.cname(name)
 	g.writeln('struct ${cn} {')
@@ -3667,6 +3709,39 @@ fn (mut g FlatGen) emit_interface_struct(name string) {
 	g.writeln('')
 }
 
+fn (g &FlatGen) interface_cached_fields(name string) []types.StructField {
+	mut fields := []types.StructField{}
+	for field in g.tc.interface_field_list(name) {
+		if !interface_field_type_contains_self_by_value(field.typ, name) {
+			fields << field
+		}
+	}
+	return fields
+}
+
+fn interface_field_type_contains_self_by_value(typ types.Type, name string) bool {
+	match typ {
+		types.Interface {
+			return typ.name == name
+		}
+		types.OptionType {
+			return interface_field_type_contains_self_by_value(typ.base_type, name)
+		}
+		types.ResultType {
+			return interface_field_type_contains_self_by_value(typ.base_type, name)
+		}
+		types.Alias {
+			return interface_field_type_contains_self_by_value(typ.base_type, name)
+		}
+		types.ArrayFixed {
+			return interface_field_type_contains_self_by_value(typ.elem_type, name)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 // struct_decls supports struct decls handling for FlatGen.
 fn (mut g FlatGen) struct_decls() {
 	// Fixed-array typedefs whose element is a struct are emitted interleaved with the
@@ -3684,7 +3759,9 @@ fn (mut g FlatGen) struct_decls() {
 				&& name[2..] in c_cache_system_header_struct_names) {
 				ityp := if name in g.tc.unions { 'union' } else { 'struct' }
 				cn := g.struct_cname(name)
-				g.writeln('typedef ${ityp} ${cn} ${cn};')
+				if cn != 'mach_timebase_info_data_t' {
+					g.writeln('typedef ${ityp} ${cn} ${cn};')
+				}
 			}
 			continue
 		}
@@ -3693,13 +3770,24 @@ fn (mut g FlatGen) struct_decls() {
 		}
 		tag := if name in g.tc.unions { 'union' } else { 'struct' }
 		cn := g.struct_cname(name)
+		if cn == 'mach_timebase_info_data_t' {
+			continue
+		}
 		g.writeln('typedef ${tag} ${cn} ${cn};')
 	}
 	for name in g.tc.sum_types.keys() {
-		g.writeln('typedef struct ${g.cname(name)} ${g.cname(name)};')
+		cn := g.cname(name)
+		if cn == 'mach_timebase_info_data_t' {
+			continue
+		}
+		g.writeln('typedef struct ${cn} ${cn};')
 	}
 	for name in g.interfaces.keys() {
-		g.writeln('typedef struct ${g.cname(name)} ${g.cname(name)};')
+		cn := g.cname(name)
+		if cn == 'mach_timebase_info_data_t' {
+			continue
+		}
+		g.writeln('typedef struct ${cn} ${cn};')
 	}
 	g.shared_type_forward_decls()
 	if g.has_builtins {
@@ -3772,6 +3860,9 @@ fn (mut g FlatGen) struct_decls() {
 			// Option/result fields embed their payload by value in the Optional_T
 			// typedef, so the dependency is the payload type, not the wrapper.
 			for field in g.tc.interface_field_list(name) {
+				if interface_field_type_contains_self_by_value(field.typ, name) {
+					continue
+				}
 				if field.typ is types.Pointer {
 					continue
 				}
@@ -3958,13 +4049,24 @@ fn (mut g FlatGen) type_forward_decls() {
 		}
 		tag := if name in g.tc.unions { 'union' } else { 'struct' }
 		cn := g.struct_cname(name)
+		if cn == 'mach_timebase_info_data_t' {
+			continue
+		}
 		g.writeln('typedef ${tag} ${cn} ${cn};')
 	}
 	for name in g.tc.sum_types.keys() {
-		g.writeln('typedef struct ${g.cname(name)} ${g.cname(name)};')
+		cn := g.cname(name)
+		if cn == 'mach_timebase_info_data_t' {
+			continue
+		}
+		g.writeln('typedef struct ${cn} ${cn};')
 	}
 	for name in g.interfaces.keys() {
-		g.writeln('typedef struct ${g.cname(name)} ${g.cname(name)};')
+		cn := g.cname(name)
+		if cn == 'mach_timebase_info_data_t' {
+			continue
+		}
+		g.writeln('typedef struct ${cn} ${cn};')
 	}
 	g.shared_type_forward_decls()
 	if g.has_builtins {

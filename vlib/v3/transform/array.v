@@ -660,10 +660,37 @@ fn (t &Transformer) array_literal_checker_alias_type(id flat.NodeId) ?string {
 		return none
 	}
 	elem := name[2..]
+	if local_elem := t.array_literal_local_struct_elem_name(t.a.nodes[int(id)]) {
+		if elem.all_after_last('.') == local_elem {
+			return '[]${local_elem}'
+		}
+	}
 	if !t.generic_arg_is_alias_name(elem, t.cur_module) {
 		return none
 	}
 	return '[]${t.array_literal_qualified_alias_name(elem)}'
+}
+
+fn (t &Transformer) array_literal_local_struct_elem_name(node flat.Node) ?string {
+	if node.kind != .array_literal || node.children_count == 0 {
+		return none
+	}
+	first_id := t.array_literal_alias_expr_id(t.a.child(&node, 0))
+	first := t.a.nodes[int(first_id)]
+	if first.kind == .struct_init {
+		for candidate in [first.value, first.typ] {
+			if t.bare_struct_name_is_local_to_current_module(candidate) {
+				return candidate
+			}
+		}
+	}
+	if first.kind == .ident {
+		raw_type := t.raw_var_type(first.value)
+		if t.bare_struct_name_is_local_to_current_module(raw_type) {
+			return raw_type
+		}
+	}
+	return none
 }
 
 fn (t &Transformer) array_literal_qualified_alias_name(name string) string {
@@ -1025,6 +1052,48 @@ fn (mut t Transformer) transform_array_value_for_dynamic_target(value_id flat.No
 }
 
 // try_lower_array_append_stmt supports try lower array append stmt handling for Transformer.
+fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.NodeId {
+	if node.kind != .or_expr || node.children_count < 2 {
+		return none
+	}
+	append_id := t.a.child(&node, 0)
+	append := t.a.nodes[int(append_id)]
+	if append.kind != .infix || append.op != .left_shift || append.children_count < 2 {
+		return none
+	}
+	rhs_id := t.a.child(&append, 1)
+	expr_type, value_type := t.or_expr_types(rhs_id, node.typ)
+	if !t.is_optional_type_name(expr_type) || value_type.len == 0 || value_type == 'void' {
+		return none
+	}
+	or_start := t.a.children.len
+	t.a.children << rhs_id
+	t.a.children << t.a.child(&node, 1)
+	rhs_or_id := t.a.add_node(flat.Node{
+		kind:           .or_expr
+		op:             node.op
+		children_start: or_start
+		children_count: 2
+		pos:            node.pos
+		value:          node.value
+		typ:            value_type
+	})
+	unwrapped_rhs := t.lower_or_expr_to_temp(rhs_or_id, t.a.nodes[int(rhs_or_id)])
+	append_start := t.a.children.len
+	t.a.children << t.a.child(&append, 0)
+	t.a.children << unwrapped_rhs
+	lowered_id := t.a.add_node(flat.Node{
+		kind:           .infix
+		op:             .left_shift
+		children_start: append_start
+		children_count: 2
+		pos:            append.pos
+		value:          append.value
+		typ:            append.typ
+	})
+	return t.try_lower_array_append_stmt(lowered_id)
+}
+
 fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeId {
 	if int(id) < 0 {
 		return none

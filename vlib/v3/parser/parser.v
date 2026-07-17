@@ -3117,7 +3117,13 @@ fn comptime_cond_has_type_test(cond string) bool {
 }
 
 fn comptime_cond_has_type_metadata(cond string) bool {
-	return cond.contains('.indirections')
+	for member in ['.indirections', '.typ', '.unaliased_typ', '.key_type', '.value_type',
+		'.element_type', '.pointee_type', '.payload_type', '.variant_types'] {
+		if cond.contains(member) {
+			return true
+		}
+	}
+	return false
 }
 
 // comptime_cond_has_builtin_threads reports whether a condition contains the bare builtin

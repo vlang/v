@@ -476,6 +476,24 @@ fn (t &Transformer) lookup_struct_info(name string) ?StructInfo {
 	return none
 }
 
+fn (t &Transformer) bare_struct_name_is_local_to_current_module(name string) bool {
+	if name.len == 0 || name.contains('.') {
+		return false
+	}
+	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		qname := '${t.cur_module}.${name}'
+		return qname in t.structs || (!isnil(t.tc) && qname in t.tc.structs)
+	}
+	if info := t.structs[name] {
+		return info.module.len == 0 || info.module in ['main', 'builtin']
+	}
+	if isnil(t.tc) || name !in t.tc.structs {
+		return false
+	}
+	module_name := t.tc.struct_modules[name] or { '' }
+	return module_name.len == 0 || module_name in ['main', 'builtin']
+}
+
 fn (t &Transformer) checker_struct_lookup_name(name string) string {
 	if isnil(t.tc) || name.len == 0 {
 		return ''

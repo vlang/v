@@ -11,13 +11,14 @@ import v3.workers
 // deterministic.
 
 const min_parallel_transform_items = 256
-const max_parallel_transform_jobs = 6
+const max_parallel_transform_jobs = 7
 // Shared-base (clone-free) transform: workers share the master arrays and
 // append into pre-partitioned capacity regions, so extra threads cost no
 // clone memory; cap by core count only.
 const max_shared_transform_jobs = 7
 const scoped_transform_worker_batches = 48
 const scoped_transform_master_batches = 48
+const scoped_transform_max_batch_items = 8
 
 $if !windows {
 	// TransformChunkArgs is the payload handed to each persistent worker.
@@ -180,12 +181,10 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 		return
 	}
 	mut node := unsafe { &t.a.nodes[idx] }
-	if node.value.len > 0 && (transform_scope_owns(scope, node.value.str)
-		|| transform_scope_owns(t.stage_scope, node.value.str)) {
+	if node.value.len > 0 && transform_scope_owns(scope, node.value.str) {
 		node.value = t.promote_scoped_result_text(node.value)
 	}
-	if node.typ.len > 0 && (transform_scope_owns(scope, node.typ.str)
-		|| transform_scope_owns(t.stage_scope, node.typ.str)) {
+	if node.typ.len > 0 && transform_scope_owns(scope, node.typ.str) {
 		node.typ = t.promote_scoped_result_text(node.typ)
 	}
 	old_params := node.generic_params()
@@ -194,12 +193,9 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	}
 	mut needs_owned_params := transform_scope_owns(scope, node.payload)
 		|| transform_scope_owns(scope, old_params.data)
-		|| transform_scope_owns(t.stage_scope, node.payload)
-		|| transform_scope_owns(t.stage_scope, old_params.data)
 	if !needs_owned_params {
 		for param in old_params {
-			if param.len > 0 && (transform_scope_owns(scope, param.str)
-				|| transform_scope_owns(t.stage_scope, param.str)) {
+			if param.len > 0 && transform_scope_owns(scope, param.str) {
 				needs_owned_params = true
 				break
 			}
@@ -210,8 +206,7 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	}
 	mut params := []string{cap: old_params.len}
 	for param in old_params {
-		if param.len > 0 && (transform_scope_owns(scope, param.str)
-			|| transform_scope_owns(t.stage_scope, param.str)) {
+		if param.len > 0 && transform_scope_owns(scope, param.str) {
 			params << t.promote_scoped_result_text(param)
 		} else {
 			params << param
@@ -254,7 +249,12 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		t.scoped_owned_base_log << idx
 	}
 	for name in batch.used_fns_log {
-		t.used_fns[t.promote_scoped_result_text(name)] = true
+		t.mark_used_fn_key(t.promote_scoped_result_text(name))
+	}
+	for name, used in batch.used_struct_operator_fns {
+		if used && name !in t.used_struct_operator_fns {
+			t.used_struct_operator_fns[t.promote_scoped_result_text(name)] = true
+		}
 	}
 	for name, req in batch.sum_eq_types {
 		if name !in t.sum_eq_types {
@@ -310,21 +310,27 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 	for item in items {
 		total_cost += i64(item.cost) + 1
 	}
-	n_batches := if items.len < max_batches {
+	target_batches := if items.len < max_batches {
 		items.len
 	} else {
 		max_batches
 	}
+	target_cost := if target_batches > 0 {
+		(total_cost + i64(target_batches) - 1) / i64(target_batches)
+	} else {
+		i64(1)
+	}
 	mut start := 0
-	mut consumed_cost := i64(0)
-	for batch_idx in 0 .. n_batches {
+	mut batch_idx := 0
+	for start < items.len {
 		mut end := start
-		target_cost := total_cost * i64(batch_idx + 1) / i64(n_batches)
-		for end < items.len
-			&& (batch_idx == n_batches - 1 || consumed_cost < target_cost || end == start) {
-			consumed_cost += i64(items[end].cost) + 1
+		mut batch_cost := i64(0)
+		for end < items.len && end - start < scoped_transform_max_batch_items
+			&& (batch_cost < target_cost || end == start) {
+			batch_cost += i64(items[end].cost) + 1
 			end++
 		}
+		text_start := t.a.text_values.len
 		scratch_scope := transform_worker_scope_begin(true)
 		batch_tc := t.tc.fork_for_parallel_transform(t.a)
 		mut batch := t.fork_scoped_batch_worker(t.a, batch_tc)
@@ -334,12 +340,101 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		new_node_start := t.a.nodes.len
 		batch.transform_pure_items_serial(items[start..end])
 		transform_worker_scope_leave(scratch_scope)
+		t.a.promote_transform_texts_from(text_start, scratch_scope)
 		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
+		// absorb_scoped_batch publishes every appended node and every base-node
+		// mutation recorded by the batch. Avoid rescanning the continuously growing
+		// AST after each small batch; that makes scoped transform quadratic.
 		transform_worker_scope_free(scratch_scope)
 		start = end
+		batch_idx++
 	}
 	t.worker_scope = result_scope
 	transform_worker_scope_leave(result_scope)
+}
+
+// transform_late_candidates_scoped lowers dynamically discovered function bodies in bounded
+// scratch arenas. The dependency queue and candidate index stay in the parent arena; only the
+// allocation-heavy per-function transformer forks are discarded after each batch.
+fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[string][]int, mut candidates []LateFnCandidate, mut late map[string]bool, mut pending []string, mut queued map[string]bool) {
+	for pending.len > 0 {
+		mut selected := []int{cap: scoped_transform_max_batch_items}
+		for pending.len > 0 && selected.len < scoped_transform_max_batch_items {
+			name := pending.pop()
+			spellings := [name, c_name(name)]
+			mut retry_name := false
+			for key in spellings {
+				for ci in candidate_index[key] {
+					if candidates[ci].processed {
+						continue
+					}
+					node := t.a.nodes[candidates[ci].idx]
+					if !late_used_fn_matches(late, node, candidates[ci].module) {
+						continue
+					}
+					candidates[ci].processed = true
+					selected << ci
+					if selected.len == scoped_transform_max_batch_items {
+						retry_name = true
+						break
+					}
+				}
+				if retry_name {
+					break
+				}
+			}
+			if retry_name {
+				pending << name
+			}
+		}
+		if selected.len == 0 {
+			continue
+		}
+		log_start := t.used_fns_log.len
+		mut node_starts := []int{len: selected.len + 1}
+		text_start := t.a.text_values.len
+		scratch_scope := transform_worker_scope_begin(true)
+		batch_tc := t.tc.fork_for_parallel_transform(t.a)
+		mut batch := t.fork_scoped_batch_worker(t.a, batch_tc)
+		batch.used_fns_log_active = true
+		batch.scoped_base_log_active = true
+		batch.ignored_comptime_log_active = true
+		new_node_start := t.a.nodes.len
+		for si, ci in selected {
+			node_starts[si] = t.a.nodes.len
+			batch.cur_file = candidates[ci].file
+			batch.cur_module = candidates[ci].module
+			batch.transform_fn_body(candidates[ci].idx)
+		}
+		node_starts[selected.len] = t.a.nodes.len
+		transform_worker_scope_leave(scratch_scope)
+		t.a.promote_transform_texts_from(text_start, scratch_scope)
+		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
+		transform_worker_scope_free(scratch_scope)
+		for si, ci in selected {
+			idx := candidates[ci].idx
+			if idx >= 0 && idx < t.transformed_fns.len {
+				t.transformed_fns[idx] = true
+			}
+			t.cur_file = candidates[ci].file
+			t.cur_module = candidates[ci].module
+			for call_name in t.generated_fn_body_call_names(flat.NodeId(idx)) {
+				t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut
+					queued)
+			}
+			for j in node_starts[si] .. node_starts[si + 1] {
+				generated := t.a.nodes[j]
+				if generated.kind != .fn_decl
+					|| !transform_is_generated_fn_after_markused(generated.value) {
+					continue
+				}
+				for call_name in t.generated_fn_body_call_names(flat.NodeId(j)) {
+					t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut
+						queued)
+				}
+			}
+		}
+	}
 }
 
 // clone_deferred_worker_writes_from moves writes queued by merge_worker out of

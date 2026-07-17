@@ -84,8 +84,8 @@ pub struct FlatGen {
 mut:
 	sb                             strings.Builder
 	indent                         int
-	a                              &flat.FlatAst = unsafe { nil }
-	used_fns                       map[string]bool
+	a                              &flat.FlatAst    = unsafe { nil }
+	used_fns                       &map[string]bool = unsafe { nil }
 	used_fn_names                  []string
 	fn_gen_items                   []FlatFnGenItem
 	fn_segs                        []string
@@ -276,6 +276,7 @@ struct CDirective {
 	module        string
 	text          string
 	before_import bool
+	late          bool
 }
 
 struct CInlineHeader {
@@ -560,7 +561,6 @@ fn (g &FlatGen) local_storage_is_pointer(name string) bool {
 pub fn FlatGen.new() FlatGen {
 	return FlatGen{
 		sb:                             strings.new_builder(4096)
-		used_fns:                       map[string]bool{}
 		fn_gen_items:                   []FlatFnGenItem{}
 		fn_segs:                        []string{}
 		test_files:                     map[string]bool{}
@@ -1147,7 +1147,10 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 // gen_with_used_options emits with used options output for c.
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	g.a = a
-	g.used_fns = used_fns.clone()
+	// Mark-used is immutable during cgen. Sharing this potentially very large
+	// post-monomorph map matches the worker path and avoids a full-program clone
+	// at the cgen memory peak.
+	g.used_fns = &used_fns
 	g.used_fn_names = []string{}
 	g.fn_gen_items = []FlatFnGenItem{}
 	g.fn_segs = []string{}
@@ -1355,7 +1358,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c99_feature_test_macros()
 	g.emit_preserved_c_directives()
 	g.preamble()
-	g.emit_c_directives()
+	g.emit_c_directives(false)
 	g.enum_decls()
 	g.type_alias_decls()
 	g.type_forward_decls()
@@ -1390,6 +1393,11 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.builtin_abi_decls()
 	g.test_failure_helpers()
 	g.global_decls()
+	// Objective-C implementation files commonly use complete V structs in their
+	// function signatures and bodies. Their framework imports are lifted above
+	// the headerless preamble, but the implementation itself belongs after the V
+	// type declarations.
+	g.emit_c_directives(true)
 	if stream_scoped_output {
 		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
 			640 * 1024) or {
@@ -1716,11 +1724,6 @@ fn (mut g FlatGen) collect_gen_info() {
 	mut preferred_shared_fn_params := map[string][]bool{}
 	for node_idx in 0 .. g.a.nodes.len {
 		node := g.a.nodes[node_idx]
-		if node.kind == .string_literal {
-			g.intern_string(node.value)
-		} else if node.kind == .string_interp && node.children_count == 0 {
-			g.intern_string('')
-		}
 		match node.kind {
 			.file, .module_decl, .fn_decl, .struct_decl, .global_decl, .const_decl, .enum_decl,
 			.interface_decl, .import_decl, .directive {}
@@ -1747,14 +1750,14 @@ fn (mut g FlatGen) collect_gen_info() {
 		}
 		if kind_id == 61 {
 			full_name := qualify_name_in_module(cur_module, node.value)
-			if g.skip_generics && g.has_used_fn_filter()
-				&& !g.used_fn_contains_in_module(node.value, cur_module) {
+			if g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, cur_module) {
 				g.preseed_unused_fn_ptr_param_types(node, cur_module, cur_file)
 				continue
 			}
 			g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
 			typed_params := g.fn_node_param_types(node, cur_module)
-			mut ptypes := []types.Type{cap: int(node.children_count)}
+			param_cap := if node.children_count < 64 { int(node.children_count) } else { 64 }
+			mut ptypes := []types.Type{cap: param_cap}
 			mut shared_params := []bool{}
 			mut decl_is_variadic := false
 			mut first_param_is_mut := false
@@ -1768,7 +1771,7 @@ fn (mut g FlatGen) collect_gen_info() {
 					if child.typ.starts_with('...') {
 						decl_is_variadic = true
 					}
-					raw_pt := g.tc.parse_type(child.typ)
+					raw_pt := g.tc.parse_resolution_type(child.typ)
 					mut pt := raw_pt
 					if shared_alias_ptr := g.shared_alias_pointer_type_from_text(child.typ) {
 						pt = shared_alias_ptr
@@ -2106,6 +2109,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			g.use_system_stdint)
 		{
 			header_text := header.text
+			late_source := c_include_is_late_source(include_arg)
 			g.collect_inlined_c_structs(header_text)
 			g.collect_inlined_c_fns(header_text)
 			g.collect_inlined_c_declared_fns(header_text)
@@ -2115,7 +2119,13 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				g.add_c_directive(module_name, directive, before_import)
 			}
 			if header_text.len > 0 {
-				g.add_c_directive(module_name, header_text, before_import)
+				if late_source {
+					late_includes := c_late_source_system_includes(header_text)
+					if late_includes.len > 0 {
+						g.add_c_directive(module_name, late_includes, before_import)
+					}
+				}
+				g.add_c_directive_at(module_name, header_text, before_import, late_source)
 			}
 		} else if c_should_preserve_uninlined_include(include_arg) || (g.cache_split
 			&& include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>']) {
@@ -2189,7 +2199,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 	for line in text.split_into_lines() {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
-		if c_directive_name(clean) == 'include' {
+		if c_directive_name(clean) in ['include', 'import'] {
 			include_arg := c_include_arg(c_directive_arg(clean), vroot, source_file)
 			if replacement := c_system_include_replacement(include_arg, use_system_stdint) {
 				lines << replacement
@@ -2215,7 +2225,8 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 					break
 				}
 			}
-			if !inlined && c_include_should_remain_in_inlined_text(include_arg) {
+			if !inlined && (trimmed_space(include_arg).starts_with('<')
+				|| c_include_should_remain_in_inlined_text(include_arg)) {
 				lines << '#include ${include_arg}'
 				preserved_c_fns << c_preserved_system_include_declared_fns(include_arg)
 				preserved_c_structs << c_preserved_system_include_struct_names(include_arg)
@@ -2479,9 +2490,38 @@ fn c_should_preserve_uninlined_include(include_arg string) bool {
 		return false
 	}
 	if clean[0] == `<` {
-		return false
+		return c_is_apple_framework_include(clean)
 	}
 	return true
+}
+
+fn c_is_apple_framework_include(include_arg string) bool {
+	clean := trimmed_space(include_arg)
+	if clean.len < 4 || clean[0] != `<` || clean[clean.len - 1] != `>` {
+		return false
+	}
+	inner := clean[1..clean.len - 1]
+	return inner.contains('/') && inner[0] >= `A` && inner[0] <= `Z`
+}
+
+fn c_include_is_late_source(include_arg string) bool {
+	clean := trimmed_space(include_arg).trim('"\'')
+	return clean.ends_with('.m') || clean.ends_with('.mm')
+}
+
+fn c_late_source_system_includes(text string) string {
+	mut includes := []string{}
+	for line in text.split_into_lines() {
+		clean := trimmed_space(line)
+		if c_directive_name(clean) !in ['include', 'import'] {
+			continue
+		}
+		arg := c_directive_arg(clean)
+		if arg.starts_with('<') && arg.ends_with('>') {
+			includes << '#include ${arg}'
+		}
+	}
+	return includes.join('\n')
 }
 
 fn c_include_should_remain_in_inlined_text(include_arg string) bool {
@@ -2490,6 +2530,12 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 		return false
 	}
 	if clean[0] == `"` {
+		return true
+	}
+	// Macro includes (for example FreeType's `#include FT_FREETYPE_H`) depend
+	// on definitions earlier in the same header and cannot be lifted into the
+	// translation-unit preamble.
+	if clean[0] != `<` {
 		return true
 	}
 	// System headers whose macros have per-OS values (RTLD_*, CHAR_BIT) cannot be
@@ -3214,6 +3260,10 @@ fn c_include_file_paths(include_arg string, vroot string, source_file string, in
 }
 
 fn (mut g FlatGen) add_c_directive(module_name string, text string, before_import bool) {
+	g.add_c_directive_at(module_name, text, before_import, false)
+}
+
+fn (mut g FlatGen) add_c_directive_at(module_name string, text string, before_import bool, late bool) {
 	if text.len == 0 {
 		return
 	}
@@ -3221,6 +3271,7 @@ fn (mut g FlatGen) add_c_directive(module_name string, text string, before_impor
 		module:        module_name
 		text:          text
 		before_import: before_import
+		late:          late
 	}
 }
 
@@ -3439,10 +3490,13 @@ fn (g &FlatGen) visit_module_init(mod string, module_to_init map[string]string, 
 	}
 }
 
-fn (mut g FlatGen) ordered_c_directives() []string {
+fn (mut g FlatGen) ordered_c_directives(late bool) []string {
 	mut directives_by_module := map[string][]CDirective{}
 	mut module_order := []string{}
 	for directive in g.c_directives {
+		if directive.late != late {
+			continue
+		}
 		if directive.module !in directives_by_module {
 			directives_by_module[directive.module] = []CDirective{}
 			module_order << directive.module
@@ -3458,9 +3512,9 @@ fn (mut g FlatGen) ordered_c_directives() []string {
 	return dedupe_top_level_c_includes(result)
 }
 
-fn (mut g FlatGen) emit_c_directives() {
+fn (mut g FlatGen) emit_c_directives(late bool) {
 	mut emitted := false
-	for directive in g.ordered_c_directives() {
+	for directive in g.ordered_c_directives(late) {
 		if c_contains_preserved_system_include_directive(directive) {
 			continue
 		}
@@ -3476,7 +3530,7 @@ fn (mut g FlatGen) emit_preserved_c_directives() {
 	mut emitted := false
 	mut emitted_includes := map[string]bool{}
 	mut has_mach_headers := false
-	directives := g.ordered_c_directives()
+	directives := g.ordered_c_directives(false)
 	for i, directive in directives {
 		if !c_contains_preserved_system_include_directive(directive) {
 			continue
@@ -3594,7 +3648,8 @@ fn c_is_liftable_include_context_directive(directive string) bool {
 
 fn c_is_preserved_system_include_directive(directive string) bool {
 	clean := trimmed_space(directive)
-	return clean.starts_with('#include <') && clean.ends_with('>') && !clean.contains('\n')
+	return (clean.starts_with('#include <') || clean.starts_with('#import <'))
+		&& clean.ends_with('>') && !clean.contains('\n')
 }
 
 fn c_contains_preserved_system_include_directive(directive string) bool {
@@ -3654,7 +3709,7 @@ fn dedupe_top_level_c_includes(directives []string) []string {
 	mut depth := 0
 	for directive in directives {
 		clean := trimmed_space(directive)
-		if depth == 0 && c_directive_name(clean) == 'include' {
+		if depth == 0 && c_directive_name(clean) in ['include', 'import'] {
 			if clean in seen_includes {
 				continue
 			}
@@ -3735,33 +3790,101 @@ fn c_include_arg_for_target(raw string, vroot string, source_file string, target
 }
 
 fn c_flag_args(raw string, vroot string, source_file string, target pref.Target) []string {
-	mut args := cmdexec.split_args(raw.trim_space()) or { return []string{} }
-	if args.len == 0 {
+	mut clean := raw.trim_space()
+	if clean.len == 0 {
 		return []string{}
 	}
-	if c_flag_has_target_prefix(args[0]) {
-		if !c_flag_target_enabled(args[0], target) || args.len < 2 {
+	mut first_end := 0
+	for first_end < clean.len && !clean[first_end].is_space() {
+		first_end++
+	}
+	first := clean[..first_end]
+	if c_flag_has_target_prefix(first) {
+		if !c_flag_target_enabled(first, target) || first_end >= clean.len {
 			return []string{}
 		}
-		args = args[1..].clone()
+		clean = clean[first_end..].trim_space()
 	}
+	clean = c_resolve_pseudo_paths(clean, vroot, source_file)
+	clean = c_expand_existing_path_macros(clean) or { return []string{} }
+	args := cmdexec.split_args(clean) or { return []string{} }
 	base_dir := if source_file.len > 0 { os.dir(source_file) } else { '' }
 	mut resolved := []string{cap: args.len}
 	mut resolve_next_path := false
 	for arg in args {
-		with_pseudo_paths := c_resolve_pseudo_paths(arg, vroot, source_file)
 		if base_dir.len > 0 {
 			if resolve_next_path {
-				resolved << c_resolve_split_flag_path_token(with_pseudo_paths, base_dir)
+				resolved << c_resolve_split_flag_path_token(arg, base_dir)
 			} else {
-				resolved << c_resolve_flag_path_token(with_pseudo_paths, base_dir)
+				resolved << c_resolve_flag_path_token(arg, base_dir)
 			}
 		} else {
-			resolved << with_pseudo_paths
+			resolved << arg
 		}
-		resolve_next_path = c_flag_takes_path_operand(with_pseudo_paths)
+		resolve_next_path = c_flag_takes_path_operand(arg)
 	}
 	return resolved
+}
+
+fn c_expand_existing_path_macros(raw string) ?string {
+	mut result := raw
+	for {
+		first_idx := result.index(r'$first_existing') or { -1 }
+		when_idx := result.index(r'$when_first_existing') or { -1 }
+		if first_idx < 0 && when_idx < 0 {
+			return result
+		}
+		is_when := when_idx >= 0 && (first_idx < 0 || when_idx < first_idx)
+		idx := if is_when { when_idx } else { first_idx }
+		literal := if is_when { r'$when_first_existing' } else { r'$first_existing' }
+		open_idx := idx + literal.len
+		if open_idx >= result.len || result[open_idx] != `(` {
+			return result
+		}
+		close_idx := c_existing_path_macro_close(result, open_idx)
+		if close_idx < 0 {
+			return result
+		}
+		mut selected := ''
+		mut candidates := []string{}
+		for value in result[open_idx + 1..close_idx].split(',') {
+			path := value.trim(' \t\r\n\'"')
+			if path.len == 0 {
+				continue
+			}
+			candidates << path
+			if selected.len == 0 && os.exists(path) {
+				selected = path
+			}
+		}
+		if selected.len == 0 {
+			if is_when {
+				return none
+			}
+			panic('none of the paths ${candidates} exist')
+		}
+		result = result[..idx] + os.quoted_path(selected) + result[close_idx + 1..]
+	}
+	return result
+}
+
+fn c_existing_path_macro_close(text string, open_idx int) int {
+	mut quote := u8(0)
+	for i := open_idx + 1; i < text.len; i++ {
+		ch := text[i]
+		if ch in [`'`, `"`] {
+			if quote == 0 {
+				quote = ch
+			} else if quote == ch {
+				quote = 0
+			}
+			continue
+		}
+		if ch == `)` && quote == 0 {
+			return i
+		}
+	}
+	return -1
 }
 
 fn c_flag_takes_path_operand(flag string) bool {
@@ -4021,7 +4144,7 @@ fn (mut g FlatGen) register_fn_decl_mut_receiver(name string, full_name string, 
 // variants), so the return type can be looked up in O(1) instead of scanning all AST
 // nodes per call (see fn_decl_return_type_for_call_name).
 fn (mut g FlatGen) register_fn_decl_ret_type(name string, full_name string, ret_typ string) {
-	rt := g.tc.parse_type(ret_typ)
+	rt := g.tc.parse_resolution_type(ret_typ)
 	module_key := fn_decl_module_key(g.tc.cur_module, name)
 	g.fn_decl_ret_types[module_key] = rt
 	if name !in g.fn_decl_ret_types {
@@ -4306,7 +4429,7 @@ fn (mut g FlatGen) gen_amp_c_string_literal(id flat.NodeId, node flat.Node) bool
 		// `&c'...'` always denotes the C string pointer; emit the literal
 		// directly so a byte-valued expected type can't deref a single-char
 		// `c'\n'` into `*"\n"` here.
-		g.write('"${node.value[2..]}"')
+		g.write('"${escape_c_string_literal_quotes(node.value[2..])}"')
 		return true
 	}
 	if node.kind != .char_literal && node.kind != .string_literal {
@@ -4725,7 +4848,8 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		}
 	}
 	if expected is types.String && actual is types.Pointer
-		&& g.pointer_stringifies_as_address(actual.base_type) {
+		&& g.pointer_stringifies_as_address(actual.base_type)
+		&& !g.type_names_match(actual.base_type, expected) {
 		g.write('ptr_str(')
 		g.gen_expr(id)
 		g.write(')')
@@ -7200,10 +7324,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 							g.write('*"${cv}"')
 						}
 					} else {
-						g.write('"${cv}"')
+						g.write('"${escape_c_string_literal_quotes(cv)}"')
 					}
 				} else {
-					g.write('"${cv}"')
+					g.write('"${escape_c_string_literal_quotes(cv)}"')
 				}
 			} else if v.len == 0 {
 				g.write("' '")
@@ -9227,6 +9351,26 @@ fn c_char_literal_byte_value(s string) ?int {
 	return none
 }
 
+fn escape_c_string_literal_quotes(s string) string {
+	if !s.contains('"') {
+		return s
+	}
+	mut out := strings.new_builder(s.len + 4)
+	mut preceding_backslashes := 0
+	for ch in s.bytes() {
+		if ch == `"` && preceding_backslashes % 2 == 0 {
+			out.write_u8(`\\`)
+		}
+		out.write_u8(ch)
+		if ch == `\\` {
+			preceding_backslashes++
+		} else {
+			preceding_backslashes = 0
+		}
+	}
+	return out.str()
+}
+
 fn parse_hex_codepoint(hex string) ?int {
 	if hex.len == 0 {
 		return none
@@ -9274,6 +9418,10 @@ fn (g &FlatGen) is_module_qualified_enum(base flat.Node) bool {
 }
 
 fn (mut g FlatGen) preamble() {
+	use_system_libc := g.c_directives_use_system_libc()
+	if use_system_libc {
+		g.system_libc_headers()
+	}
 	g.writeln('typedef signed char i8;')
 	g.writeln('typedef short i16;')
 	g.writeln('typedef int i32;')
@@ -9323,7 +9471,11 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#ifndef false')
 	g.writeln('#define false 0')
 	g.writeln('#endif')
-	g.headerless_libc_preamble()
+	if use_system_libc {
+		g.system_libc_preamble()
+	} else {
+		g.headerless_libc_preamble()
+	}
 	g.write_arch_macros()
 	g.writeln('')
 	if !g.has_builtins {
@@ -9341,6 +9493,81 @@ fn (mut g FlatGen) preamble() {
 	}
 	g.writeln('typedef struct Array { void* data; int len; int cap; int elem_size; } Array;')
 	g.writeln('')
+}
+
+fn (g &FlatGen) c_directives_use_system_libc() bool {
+	for directive in g.c_directives {
+		for line in directive.text.split_into_lines() {
+			clean := trimmed_space(line)
+			if c_directive_name(clean) in ['include', 'import'] {
+				arg := c_directive_arg(clean)
+				if arg.starts_with('<') && arg.ends_with('>') {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+fn (mut g FlatGen) system_libc_headers() {
+	for header in ['assert.h', 'ctype.h', 'errno.h', 'float.h', 'inttypes.h', 'limits.h', 'math.h',
+		'setjmp.h', 'signal.h', 'stdarg.h', 'stdatomic.h', 'stdbool.h', 'stddef.h', 'stdint.h',
+		'stdio.h', 'stdlib.h', 'string.h', 'time.h', 'wchar.h'] {
+		g.writeln('#include <${header}>')
+	}
+	g.writeln('#ifdef _WIN32')
+	g.writeln('#include <io.h>')
+	g.writeln('#include <process.h>')
+	g.writeln('#include <windows.h>')
+	g.writeln('#else')
+	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
+		'arpa/inet.h', 'semaphore.h', 'sys/ioctl.h', 'sys/mman.h', 'sys/resource.h', 'sys/socket.h',
+		'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h', 'sys/utsname.h', 'sys/un.h',
+		'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
+		g.writeln('#include <${header}>')
+	}
+	g.writeln('#endif')
+	g.writeln('#ifdef __APPLE__')
+	g.writeln('#include <mach/mach_time.h>')
+	g.writeln('#include <mach-o/dyld.h>')
+	g.writeln('#endif')
+	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
+	g.writeln('#include <sys/epoll.h>')
+	g.writeln('#endif')
+	g.writeln('')
+}
+
+fn (mut g FlatGen) system_libc_preamble() {
+	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
+	g.collect_preserved_c_fns([
+		'mach_timebase_info',
+		'nanosleep',
+		'pthread_condattr_destroy',
+		'pthread_condattr_init',
+		'pthread_condattr_setpshared',
+		'pthread_self',
+	])
+	g.collect_preserved_c_structs(c_preserved_system_include_struct_names('<mach/mach_time.h>'))
+	g.collect_preserved_c_structs(['__stat64', 'sigaction'])
+	g.writeln('typedef struct { pthread_t handle; } __v_thread;')
+	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+	g.writeln('static const size_t __v_thread_stack_size = 8388608;')
+	g.writeln('static void* __v_thread_alloc(size_t size) { void* p = malloc(size); if (!p) { fprintf(stderr, "V thread allocation failed\\n"); abort(); } return p; }')
+	g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+	g.writeln('\t__v_thread result;')
+	g.writeln('\tpthread_attr_t attr;')
+	g.writeln('\tint rc = pthread_attr_init(&attr);')
+	g.writeln('\tif (rc != 0) { if (cleanup) cleanup(arg); fprintf(stderr, "V thread attribute initialization failed: %d\\n", rc); abort(); }')
+	g.writeln('\trc = pthread_attr_setstacksize(&attr, __v_thread_stack_size);')
+	g.writeln('\tif (rc != 0) { pthread_attr_destroy(&attr); if (cleanup) cleanup(arg); fprintf(stderr, "V thread stack size setup failed: %d\\n", rc); abort(); }')
+	g.writeln('\trc = pthread_create(&result.handle, &attr, (void*)start, arg);')
+	g.writeln('\tint attr_rc = pthread_attr_destroy(&attr);')
+	g.writeln('\tif (rc != 0) { if (cleanup) cleanup(arg); fprintf(stderr, "V thread creation failed: %d\\n", rc); abort(); }')
+	g.writeln('\tif (attr_rc != 0) { fprintf(stderr, "V thread attribute cleanup failed: %d\\n", attr_rc); abort(); }')
+	g.writeln('\treturn result;')
+	g.writeln('}')
+	g.writeln('static void* __v_thread_join(__v_thread thread) { void* result = NULL; int rc = pthread_join(thread.handle, &result); if (rc != 0) { fprintf(stderr, "V thread join failed: %d\\n", rc); abort(); } return result; }')
 }
 
 fn (mut g FlatGen) c99_feature_test_macros() {
@@ -9636,8 +9863,10 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#endif')
 	g.headerless_windows_console_structs()
 	g.headerless_winsize_struct()
-	g.headerless_addrinfo_struct()
-	g.headerless_sockaddr_structs()
+	if !g.c_directives_provide_posix_socket_structs() {
+		g.headerless_addrinfo_struct()
+		g.headerless_sockaddr_structs()
+	}
 	g.headerless_epoll_structs()
 	g.headerless_kevent_struct()
 	g.headerless_dirent_struct()
@@ -9646,6 +9875,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.headerless_rusage_struct()
 	g.headerless_timespec_struct()
 	g.headerless_darwin_task_info_struct()
+	g.writeln('#ifdef __APPLE__')
+	g.writeln('typedef struct mach_timebase_info_data_t { u32 numer; u32 denom; } mach_timebase_info_data_t;')
+	g.writeln('#endif')
 	g.headerless_utsname_struct()
 	g.headerless_stat_struct()
 	g.writeln('int stat(char* path, struct stat* buf);')
@@ -9864,6 +10096,23 @@ fn (mut g FlatGen) headerless_windows_console_structs() {
 
 fn (mut g FlatGen) headerless_winsize_struct() {
 	g.writeln('struct winsize { unsigned short ws_row; unsigned short ws_col; unsigned short ws_xpixel; unsigned short ws_ypixel; };')
+}
+
+fn (g &FlatGen) c_directives_provide_posix_socket_structs() bool {
+	for directive in g.c_directives {
+		for line in directive.text.split_into_lines() {
+			clean := trimmed_space(line)
+			if c_directive_name(clean) !in ['include', 'import'] {
+				continue
+			}
+			include_arg := c_directive_arg(clean)
+			if c_is_apple_framework_include(include_arg)
+				|| include_arg in ['<netdb.h>', '<sys/socket.h>', '<netinet/in.h>', '<sys/un.h>'] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut g FlatGen) headerless_addrinfo_struct() {
@@ -11487,6 +11736,11 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline u64 wyhash(const void* key, size_t len, u64 seed, const u64* secret) { const unsigned char* p = (const unsigned char*)key; u64 h = seed ^ secret[0] ^ (u64)len; for (size_t i = 0; i < len; i++) h = wyhash64(h ^ (u64)p[i], secret[(i + 1) & 3]); return h; }')
 	g.writeln('#define v_signal_with_handler_cast(sig, handler) signal((sig), ((void (*)(int))(handler)))')
 	g.writeln('string string__clone(string a);')
+	// C inserts written for the v1 ABI commonly reference builtin functions with
+	// their old module prefix. Keep those source-level spellings link-compatible
+	// with v3's unprefixed builtin symbols.
+	g.writeln('#define builtin__string_clone string__clone')
+	g.writeln('#define builtin__tos2 tos2')
 	g.writeln('void string__free(string* s);')
 	g.writeln('string string__plus(string s, string a);')
 	g.writeln('string int__str(int n);')
@@ -12037,6 +12291,12 @@ fn fixed_array_typedef_module_priority(module_name string) int {
 
 fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, source_module string, mut needed map[string]FixedArrayTypedefInfo) {
 	if typ is types.ArrayFixed {
+		// A raw AST type can be revisited under an importing module's context. If a
+		// bare alias such as gfx.Range is then parsed as a nonexistent gg.Range,
+		// do not materialize an unusable fixed-array typedef for that phantom struct.
+		if g.fixed_array_type_has_unknown_struct(typ.elem_type) {
+			return
+		}
 		old_module := g.tc.cur_module
 		g.tc.cur_module = source_module
 		name := g.fixed_array_c_type(typ)
@@ -12079,6 +12339,28 @@ fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, source_module str
 			g.collect_fixed_array_typedef(item, source_module, mut needed)
 		}
 	}
+}
+
+fn (g &FlatGen) fixed_array_type_has_unknown_struct(typ types.Type) bool {
+	if typ is types.Struct {
+		return typ.name !in g.tc.structs
+	}
+	if typ is types.ArrayFixed {
+		return g.fixed_array_type_has_unknown_struct(typ.elem_type)
+	}
+	if typ is types.Pointer {
+		return g.fixed_array_type_has_unknown_struct(typ.base_type)
+	}
+	if typ is types.Alias {
+		return g.fixed_array_type_has_unknown_struct(typ.base_type)
+	}
+	if typ is types.OptionType {
+		return g.fixed_array_type_has_unknown_struct(typ.base_type)
+	}
+	if typ is types.ResultType {
+		return g.fixed_array_type_has_unknown_struct(typ.base_type)
+	}
+	return false
 }
 
 fn (mut g FlatGen) collect_fixed_array_typedef_text(type_text string, source_module string, mut needed map[string]FixedArrayTypedefInfo) {
@@ -13533,6 +13815,11 @@ fn startup_module_key(mod string) string {
 }
 
 fn (g &FlatGen) is_const_expr(id flat.NodeId) bool {
+	mut visiting := map[int]bool{}
+	return g.is_const_expr_inner(id, mut visiting)
+}
+
+fn (g &FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool) bool {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
@@ -13546,25 +13833,26 @@ fn (g &FlatGen) is_const_expr(id flat.NodeId) bool {
 			if node.op == .amp {
 				false
 			} else {
-				g.is_const_expr(g.a.child(&node, 0))
+				g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
 			}
 		}
 		.infix {
-			g.is_const_expr(g.a.child(&node, 0)) && g.is_const_expr(g.a.child(&node, 1))
+			g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
+				&& g.is_const_expr_inner(g.a.child(&node, 1), mut visiting)
 		}
 		.paren {
-			g.is_const_expr(g.a.child(&node, 0))
+			g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
 		}
 		.cast_expr {
-			g.is_const_expr(g.a.child(&node, 0))
+			g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
 		}
 		.ident {
-			g.const_ref_name(node.value).len > 0
+			g.const_ref_is_static(node.value, mut visiting)
 		}
 		.selector {
 			const_name := g.const_ref_name_from_node(node)
 			if const_name.len > 0 {
-				true
+				g.const_ref_is_static(const_name, mut visiting)
 			} else if node.children_count > 0 {
 				base := g.a.child_node(&node, 0)
 				base.kind == .ident && base.value == 'C'
@@ -13575,7 +13863,7 @@ fn (g &FlatGen) is_const_expr(id flat.NodeId) bool {
 		.array_literal {
 			mut all_const := true
 			for ci in 0 .. node.children_count {
-				if !g.is_const_expr(g.a.child(&node, ci)) {
+				if !g.is_const_expr_inner(g.a.child(&node, ci), mut visiting) {
 					all_const = false
 					break
 				}
@@ -13594,7 +13882,8 @@ fn (g &FlatGen) is_const_expr(id flat.NodeId) bool {
 						}
 					}
 				}
-				if child.children_count > 0 && !g.is_const_expr(g.a.child(child, 0)) {
+				if child.children_count > 0
+					&& !g.is_const_expr_inner(g.a.child(child, 0), mut visiting) {
 					all_const = false
 					break
 				}
@@ -13605,6 +13894,22 @@ fn (g &FlatGen) is_const_expr(id flat.NodeId) bool {
 			false
 		}
 	}
+}
+
+fn (g &FlatGen) const_ref_is_static(name string, mut visiting map[int]bool) bool {
+	const_name := g.const_ref_name(name)
+	if const_name.len == 0 {
+		return false
+	}
+	val_id := g.const_vals[const_name] or { return false }
+	idx := int(val_id)
+	if visiting[idx] {
+		return false
+	}
+	visiting[idx] = true
+	is_static := g.is_const_expr_inner(val_id, mut visiting)
+	visiting.delete(idx)
+	return is_static
 }
 
 fn (g &FlatGen) is_string_plus_call(node flat.Node) bool {

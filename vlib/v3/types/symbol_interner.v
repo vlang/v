@@ -72,22 +72,19 @@ fn (mut i SymbolInterner) promote_from(start int, scope voidptr) {
 	defer {
 		i.lock.unlock()
 	}
-	names_backing_scoped := scoped_transform_owns(scope, i.names.data)
-	first := if start < 0 { 0 } else { start }
-	for idx in first .. i.names.len {
-		name := i.names[idx]
-		if name.len == 0 || !scoped_transform_owns(scope, name.str) {
-			continue
-		}
-		i.ids.delete(name)
+	_ = start
+	_ = scope
+	// Forks may return an existing canonical spelling whose bytes came from a
+	// retained worker arena rather than the outer scope. Rebuild the complete
+	// table while every arena is still alive so both names and index storage are
+	// owned by the caller's current compilation arena.
+	mut names := []string{cap: i.names.len}
+	mut ids := map[string]SymbolId{}
+	for idx, name in i.names {
 		canonical := name.clone()
-		i.names[idx] = canonical
-		i.ids[canonical] = SymbolId(idx + 1)
+		names << canonical
+		ids[canonical] = SymbolId(idx + 1)
 	}
-	if names_backing_scoped {
-		i.names = i.names.clone()
-	}
-	// Keep the hash index itself out of the disposable transform arena too;
-	// an insertion may have rehashed it despite the pre-transform reserve.
-	i.ids = i.ids.clone()
+	i.names = names
+	i.ids = ids.move()
 }

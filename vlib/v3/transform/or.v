@@ -987,9 +987,18 @@ fn (t &Transformer) qualify_type(name string) string {
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		qname := '${t.cur_module}.${name}'
-		if qname in t.sum_types || qname in t.structs {
+		if qname in t.sum_types || qname in t.structs || qname in t.enum_types
+			|| (!isnil(t.tc) && (qname in t.tc.type_aliases || qname in t.tc.interface_names)) {
 			return qname
 		}
+	}
+	// A bare type declared by main wins over an imported homonym. The global
+	// short-name index is intentionally lossy and may point at the import.
+	if name in t.structs || name in t.sum_types || name in t.enum_types {
+		return name
+	}
+	if !isnil(t.tc) && (name in t.tc.type_aliases || name in t.tc.interface_names) {
+		return name
 	}
 	if qualified := t.qualified_types[name] {
 		return qualified
@@ -1478,8 +1487,14 @@ fn (mut t Transformer) nested_optional_value_type(expr_id flat.NodeId, fallback 
 	if typ.len == 0 || typ.contains('unknown') {
 		typ = fallback
 	}
+	if typ.all_after_last('.') in ['Optional', 'Result'] {
+		return 'void'
+	}
 	if t.is_optional_type_name(typ) {
 		typ = t.optional_base_type(typ)
+	}
+	if typ.all_after_last('.') in ['Optional', 'Result'] {
+		return 'void'
 	}
 	return typ
 }

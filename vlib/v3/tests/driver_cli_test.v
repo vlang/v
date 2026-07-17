@@ -129,6 +129,12 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	c_source := os.read_file(c_output)!
 	assert c_source.len > 100
 	assert c_source.contains('typedef signed char i8;')
+	compat_output := os.join_path(root, 'hello_compat')
+	compat_compile := cmdexec.run(v3_bin, ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
+		'-g', '-cflags', '-w', '-enable-globals', '-o', compat_output, source])
+	assert compat_compile.exit_code == 0, compat_compile.output
+	assert os.is_file(compat_output)
+	assert os.is_file(compat_output + '.c')
 	wasm_c_output := os.join_path(root, 'hello_emscripten.c')
 	wasm_compile := cmdexec.run(v3_bin, ['-os', 'wasm32_emscripten', '-o', wasm_c_output, source])
 	assert wasm_compile.exit_code == 0, wasm_compile.output
@@ -176,12 +182,41 @@ fn main() {
 		"  description: 'subdirs: [wrong, value]'\n" + "  subdirs: ['one', 'two']\n" + '}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(project, 'main.v'),
-		'module main\n\nfn main() { println(one() + two()) }\n') or { panic(err) }
+	os.write_file(os.join_path(project, 'main.v'), 'module main
+
+import collision
+
+struct App {
+	value int
+	other string
+}
+
+fn main() {
+	app := App{value: one()}
+	println(app.value + collision.value())
+}
+') or {
+		panic(err)
+	}
 	os.write_file(os.join_path(project, 'one', 'one.v'),
 		'module main\n\nfn one() int { return 40 }\n') or { panic(err) }
 	os.write_file(os.join_path(project, 'two', 'two.v'),
 		'module main\n\nfn two() int { return 2 }\n') or { panic(err) }
+	collision_dir := os.join_path(project, 'collision')
+	os.mkdir_all(collision_dir) or { panic(err) }
+	os.write_file(os.join_path(collision_dir, 'collision.v'), 'module collision
+
+pub struct App {
+pub:
+	value int
+}
+
+pub fn value() int {
+	return App{value: 2}.value
+}
+') or {
+		panic(err)
+	}
 
 	compile := cmdexec.run_in(v3_bin, [project], work_dir)
 	assert compile.exit_code == 0, compile.output

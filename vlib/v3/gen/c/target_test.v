@@ -78,6 +78,22 @@ fn test_split_relative_c_flag_paths_resolve_from_source_directory() {
 	assert c_flag_include_dirs(flags) == [include_dir, system_dir]
 }
 
+fn test_c_flag_existing_path_macros() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_c_flag_existing_path_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	missing := os.join_path(dir, 'missing')
+	assert c_flag_args('-I\$when_first_existing(\'${missing}\', \'${dir}\')', '', '',
+		pref.host_target()) == ['-I${dir}']
+	assert c_flag_args('-I\$when_first_existing(\'${missing}\')', '', '', pref.host_target()).len == 0
+	assert c_flag_args('\$first_existing(\'${missing}\', \'${dir}\')', '', '', pref.host_target()) == [
+		dir,
+	]
+}
+
 fn test_split_forced_include_flags_are_cache_inputs() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_split_forced_include_flags')
 	os.rmdir_all(dir) or {}
