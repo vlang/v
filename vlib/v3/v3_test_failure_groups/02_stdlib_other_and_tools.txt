@@ -14,7 +14,6 @@ vlib/datatypes/doubly_linked_list_test.v
 vlib/datatypes/linked_list_test.v
 vlib/datatypes/lockfree/ringbuffer_test.v
 vlib/encoding/binary/serialize_test.v
-vlib/encoding/cbor/tests/generic_test.v
 vlib/encoding/cbor/tests/hardening_test.v
 vlib/encoding/cbor/tests/upstream_appendix_a_test.v
 vlib/encoding/iconv/iconv_test.v
@@ -38,14 +37,10 @@ vlib/io/fs/fs_test.v
 vlib/io/string_reader/string_reader_test.v
 vlib/log/log_test.v
 vlib/math/big/array_ops_test.v
-vlib/math/big/big_division_test.v
 vlib/math/big/big_test.v
 vlib/math/big/division_array_ops_test.v
 vlib/math/big/special_array_ops_test.v
 vlib/math/interpolation_test.v
-vlib/math/vec/vec2_test.v
-vlib/math/vec/vec3_test.v
-vlib/math/vec/vec4_test.v
 vlib/mcp/mcp_test.v
 vlib/mcp/server_test.v
 vlib/mcp/spec_compliance_test.v
@@ -59,7 +54,6 @@ vlib/pool/connection_test.v
 vlib/rand/cuid2/cuid2_test.v
 vlib/rand/random_numbers_test.v
 vlib/regex/regex_test.v
-vlib/runtime/runtime_test.v
 vlib/sokol/gfx/gfx_test.v
 vlib/strconv/format_test.v
 vlib/sync/channel_array_mut_test.v

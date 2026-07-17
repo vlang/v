@@ -1029,7 +1029,11 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	if int(id) < 0 {
 		return none
 	}
-	node := t.a.nodes[int(id)]
+	normalized_id := t.normalize_array_append_add_rhs(id)
+	if int(normalized_id) < 0 {
+		return none
+	}
+	node := t.a.nodes[int(normalized_id)]
 	if node.kind != .infix || node.op != .left_shift || node.children_count < 2 {
 		return none
 	}
@@ -1126,6 +1130,59 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	}
 	result << t.make_expr_stmt(push_call)
 	return result
+}
+
+// normalize_array_append_add_rhs restores the append-specific grouping of
+// `items << value + suffix` after `<<` gained its numeric shift precedence.
+// Numeric shifts remain grouped before `+`; only a statement whose left-shift
+// lhs is known to be an array is rotated to `items << (value + suffix)`.
+fn (mut t Transformer) normalize_array_append_add_rhs(id flat.NodeId) flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return id
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .infix || node.children_count < 2 {
+		return id
+	}
+	if node.op == .left_shift {
+		lhs_id := t.a.child(&node, 0)
+		lhs_type := t.clean_array_append_lhs_type(t.lvalue_type(lhs_id))
+		return if lhs_type.starts_with('[]') { id } else { flat.empty_node }
+	}
+	if node.op !in [.plus, .minus] {
+		return flat.empty_node
+	}
+	lhs_id := t.a.child(&node, 0)
+	append_id := t.normalize_array_append_add_rhs(lhs_id)
+	if int(append_id) < 0 {
+		return flat.empty_node
+	}
+	append := t.a.nodes[int(append_id)]
+	append_rhs := t.a.child(&append, 1)
+	new_rhs_start := t.a.children.len
+	t.a.children << append_rhs
+	t.a.children << t.a.child(&node, 1)
+	new_rhs := t.a.add_node(flat.Node{
+		kind:           .infix
+		op:             node.op
+		children_start: new_rhs_start
+		children_count: 2
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+	})
+	new_append_start := t.a.children.len
+	t.a.children << t.a.child(&append, 0)
+	t.a.children << new_rhs
+	return t.a.add_node(flat.Node{
+		kind:           .infix
+		op:             .left_shift
+		children_start: new_append_start
+		children_count: 2
+		pos:            append.pos
+		value:          append.value
+		typ:            append.typ
+	})
 }
 
 fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId) ?[]flat.NodeId {

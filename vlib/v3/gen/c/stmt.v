@@ -4210,6 +4210,11 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			semantic_v_type := cgen_unalias_type(v_type)
 			ct0 := if semantic_v_type is types.MultiReturn {
 				g.value_c_type(v_type)
+			} else if fn_ptr_decl_pointer_depth(v_type) > 0 {
+				// Keep the encoded fn type until the declarator is split below. Resolving
+				// `fn_ptr:void|void*` here would mistake the pointer suffix for a `void*`
+				// parameter and turn `&fn_value` into a different function signature.
+				g.tc.c_type(v_type)
 			} else if v_type is types.SumType {
 				g.tc.c_type(v_type)
 			} else if rhs.kind == .struct_init
@@ -5125,8 +5130,13 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 						}
 					}
 				}
-				if node.op == .right_shift_unsigned_assign {
-					// `x >>>= y` -> `x = (T)((UT)(x) >> (y))` (logical shift).
+				if node.op in [.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
+					shift_op := match node.op {
+						.left_shift_assign { flat.Op.left_shift }
+						.right_shift_assign { flat.Op.right_shift }
+						else { flat.Op.right_shift_unsigned }
+					}
+
 					lhs_assign_id := g.a.child(&node, i)
 					if g.a.nodes[int(lhs_assign_id)].kind == .ident {
 						mut lhs_text := g.expr_to_string(lhs_assign_id)
@@ -5134,7 +5144,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 							lhs_text = '*${lhs_text}'
 						}
 						g.write('${lhs_text} = ')
-						g.gen_unsigned_right_shift_from_text(lhs_text, rhs_id, lhs_type)
+						g.gen_guarded_shift_from_text(lhs_text, rhs_id, lhs_type, shift_op)
 						g.writeln(';')
 					} else {
 						// Compound assignment evaluates its lvalue once; spill the
@@ -5144,7 +5154,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 						g.write('{ ${lhs_ct}* ${addr_tmp} = &(')
 						g.gen_expr(lhs_assign_id)
 						g.write('); *${addr_tmp} = ')
-						g.gen_unsigned_right_shift_from_text('*${addr_tmp}', rhs_id, lhs_type)
+						g.gen_guarded_shift_from_text('*${addr_tmp}', rhs_id, lhs_type, shift_op)
 						g.writeln('; }')
 					}
 					g.expected_enum = ''

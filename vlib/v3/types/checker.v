@@ -2584,6 +2584,23 @@ fn (tc &TypeChecker) resolve_imported_type_text(typ string) string {
 	return typ
 }
 
+// imported_type_short_name returns the semantic short name for an active imported
+// module prefix. Some legacy module collections intentionally retain short symbols;
+// qualified source spelling still has to resolve to those symbols.
+fn (tc &TypeChecker) imported_type_short_name(typ string) ?string {
+	if !typ.contains('.') || typ.starts_with('C.') {
+		return none
+	}
+	dot := typ.index_u8(`.`)
+	if dot <= 0 {
+		return none
+	}
+	if _ := tc.resolve_import_alias(typ[..dot]) {
+		return typ.all_after_last('.')
+	}
+	return none
+}
+
 // has_active_import reports whether has active import applies in types.
 fn (tc &TypeChecker) has_active_import(alias string) bool {
 	info := tc.file_imports_by_file[tc.cur_file] or { return false }
@@ -5132,6 +5149,11 @@ fn (tc &TypeChecker) type_name_known(typ string) bool {
 	if !typ.contains('.') {
 		if resolved := tc.resolve_selective_import_type_symbol(typ) {
 			return tc.type_symbol_known(resolved)
+		}
+	} else if short := tc.imported_type_short_name(typ) {
+		if short in tc.type_aliases || short in tc.structs || short in tc.interface_names
+			|| short in tc.enum_names || short in tc.sum_types {
+			return true
 		}
 	}
 	return qtyp in tc.type_aliases || qtyp in tc.structs || qtyp in tc.interface_names
@@ -15583,7 +15605,17 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 		fn_node := tc.a.child_node(&node, 0)
 		if fn_node.kind == .selector && fn_node.children_count > 0 {
 			recv_id := tc.a.child(fn_node, 0)
-			actual := tc.resolve_type(recv_id)
+			resolved_receiver := tc.resolve_type(recv_id)
+			// resolve_generic_struct_method has already substituted receiver type
+			// arguments. Keep that declared specialization for aliases such as
+			// `type Vec4 = vec.Vec4[f32]`; a short struct initializer can otherwise
+			// make the expression cache look like `Vec4[int]` from its literal fields.
+			actual := if info.name.contains('[') && info.params.len > 0
+				&& !generic_semantic_type_has_placeholder(info.params[0]) {
+				info.params[0]
+			} else {
+				resolved_receiver
+			}
 			tc.infer_generic_type_text_from_type(param_texts[0], actual, generic_params, mut
 				inferred)
 			tc.infer_generic_type_value_from_type(param_texts[0], actual, generic_params, mut
@@ -18899,8 +18931,10 @@ fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []Local
 fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	init_type := tc.parse_type(node.value)
 	if init_struct := struct_type_from_type(init_type) {
-		if inferred_type := tc.infer_generic_struct_init_type(node) {
-			tc.remember_expr_type(id, inferred_type)
+		if init_type !is Alias {
+			if inferred_type := tc.infer_generic_struct_init_type(node) {
+				tc.remember_expr_type(id, inferred_type)
+			}
 		}
 		init_name := tc.struct_init_field_lookup_name(node.value, init_struct.name)
 		fields := tc.struct_fields_for_init(init_name)
@@ -24234,6 +24268,11 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			qbase = tc.resolve_imported_type_text(resolved_base)
 		}
 		allow_bare_generic_base := qbase == resolved_base
+		if qbase in tc.struct_generic_params {
+			return Type(Struct{
+				name: qbase + struct_generic_suffix
+			})
+		}
 		if qbase in tc.type_aliases {
 			return Type(Alias{
 				name:      qbase
@@ -24254,6 +24293,32 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 			return Type(SumType{
 				name: qbase + sum_generic_suffix
 			})
+		}
+		if short := tc.imported_type_short_name(resolved_base) {
+			// A colliding main-module alias can make legacy module collection retain
+			// the imported generic declaration under its semantic short name. Prefer
+			// that generic declaration over the same-named alias.
+			if short in tc.struct_generic_params || short in tc.structs {
+				return Type(Struct{
+					name: short + struct_generic_suffix
+				})
+			}
+			if short in tc.sum_generic_params || short in tc.sum_types {
+				return Type(SumType{
+					name: short + sum_generic_suffix
+				})
+			}
+			if short in tc.interface_names {
+				return Type(Interface{
+					name: short
+				})
+			}
+			if short in tc.type_aliases {
+				return Type(Alias{
+					name:      short
+					base_type: tc.parse_type(tc.type_aliases[short])
+				})
+			}
 		}
 		if !resolved_base.contains('.') {
 			if resolved := tc.resolve_selective_import_type_symbol(resolved_base) {
@@ -25992,6 +26057,16 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 			}
 			return raw
 		}
+		base, _, is_generic := generic_type_application_parts(t.name)
+		if is_generic {
+			if !base.contains('.') && base in tc.type_aliases {
+				if module_name := tc.struct_modules[base] {
+					if module_name !in ['', 'main', 'builtin'] {
+						return tc.c_struct_type_name('${module_name}.${t.name}')
+					}
+				}
+			}
+		}
 		if t.name.contains('.') && t.name !in tc.structs && t.name !in tc.type_aliases {
 			// An import-alias prefix (`json.Any` for `import x.json2 as json`)
 			// can survive in recorded types; resolve by unique short name.
@@ -26180,20 +26255,31 @@ pub fn (tc &TypeChecker) resolve_generic_struct_method(type_name string, method 
 		if candidate_params.len == 0 || candidate_params.len != candidate_concrete_args.len {
 			continue
 		}
-		candidate_key := '${candidate}[${candidate_params.join(', ')}].${method}'
-		if candidate_key in tc.fn_ret_types {
-			generic_base = candidate
-			params = candidate_params.clone()
-			concrete_args = candidate_concrete_args.clone()
-			generic_key = candidate_key
-			break
+		mut method_bases := [candidate]
+		if module_name := tc.struct_modules[candidate] {
+			if module_name !in ['', 'main', 'builtin'] && !candidate.contains('.') {
+				method_bases << '${module_name}.${candidate}'
+			}
 		}
-		plain_candidate_key := '${candidate}.${method}'
-		if plain_candidate_key in tc.fn_ret_types {
-			generic_base = candidate
-			params = candidate_params.clone()
-			concrete_args = candidate_concrete_args.clone()
-			generic_key = plain_candidate_key
+		for method_base in method_bases {
+			candidate_key := '${method_base}[${candidate_params.join(', ')}].${method}'
+			if candidate_key in tc.fn_ret_types {
+				generic_base = candidate
+				params = candidate_params.clone()
+				concrete_args = candidate_concrete_args.clone()
+				generic_key = candidate_key
+				break
+			}
+			plain_candidate_key := '${method_base}.${method}'
+			if plain_candidate_key in tc.fn_ret_types {
+				generic_base = candidate
+				params = candidate_params.clone()
+				concrete_args = candidate_concrete_args.clone()
+				generic_key = plain_candidate_key
+				break
+			}
+		}
+		if generic_key.len > 0 {
 			break
 		}
 	}

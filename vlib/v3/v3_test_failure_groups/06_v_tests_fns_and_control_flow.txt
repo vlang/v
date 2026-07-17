@@ -4,7 +4,6 @@ vlib/v/tests/concurrency/shared_array_test.v
 vlib/v/tests/conditions/ifs/if_expr_of_option_test.v
 vlib/v/tests/conditions/ifs/if_smartcast_test.v
 vlib/v/tests/conditions/ifs/in_expression_test.v
-vlib/v/tests/conditions/matches/match_expression_with_fn_names_in_branches_test.v
 vlib/v/tests/fns/anon_fn_in_generic_call_with_match_and_inner_generic_call_test.v
 vlib/v/tests/fns/array_fixed_unresolved_ret_test.v
 vlib/v/tests/fns/call_on_anon_test.v
@@ -15,10 +14,7 @@ vlib/v/tests/fns/closure_with_fixed_array_var_test.v
 vlib/v/tests/fns/closure_with_sumtype_var_test.v
 vlib/v/tests/fns/fn_call_mut_ref_args_test.v
 vlib/v/tests/fns/fn_call_with_newline_opening_brace_test.v
-vlib/v/tests/fns/fn_ptr_deref_test.v
 vlib/v/tests/fns/fn_voidptr_param_call_with_nonpointer_rvalue_test.v
-vlib/v/tests/fns/iter_alias_fn_test.v
 vlib/v/tests/fns/mut_closure_fixed_array_thread_test.v
 vlib/v/tests/fns/variadic_interface_array_arg_test.v
-vlib/v/tests/loops/for_in_mut_val_test.v
 vlib/v/tests/loops/for_loop_with_option_test.v

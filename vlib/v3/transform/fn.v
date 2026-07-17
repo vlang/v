@@ -5114,6 +5114,11 @@ fn (mut t Transformer) wrap_formatted_string_conversion(expr flat.NodeId, typ st
 		return t.make_call_typed('v3_string_zpad', arr2(converted,
 			t.make_int_literal(base_format.width)), 'string')
 	}
+	if width := left_zero_padded_decimal_width(format) {
+		converted := t.wrap_formatted_string_conversion(expr, typ, 'd')
+		return t.make_call_typed('v3_string_rpad_zero', arr2(converted, t.make_int_literal(width)),
+			'string')
+	}
 	if width := zero_padded_decimal_width(format) {
 		if clean_typ in ['int', 'i8', 'i16', 'i32', 'i64', 'isize', 'rune', 'usize', 'u8', 'byte',
 			'u16', 'u32', 'u64'] {
@@ -5522,6 +5527,28 @@ fn zero_padded_decimal_width(format string) ?int {
 	}
 	mut width := 0
 	for i in 1 .. end {
+		ch := format[i]
+		if ch < `0` || ch > `9` {
+			return none
+		}
+		width = width * 10 + int(ch - `0`)
+	}
+	if width <= 0 {
+		return none
+	}
+	return width
+}
+
+fn left_zero_padded_decimal_width(format string) ?int {
+	if format.len < 3 || !format.starts_with('-0') {
+		return none
+	}
+	mut end := format.len
+	if format[end - 1] == `d` {
+		end--
+	}
+	mut width := 0
+	for i in 2 .. end {
 		ch := format[i]
 		if ch < `0` || ch > `9` {
 			return none

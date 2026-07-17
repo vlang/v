@@ -39,7 +39,6 @@ vlib/v/tests/generics/generic_match_expr_test.v
 vlib/v/tests/generics/generic_method_lambda_arg_test.v
 vlib/v/tests/generics/generic_options_with_reserved_ident_test.v
 vlib/v/tests/generics/generic_selector_test.v
-vlib/v/tests/generics/generic_selector_type_test.v
 vlib/v/tests/generics/generic_spawn_test.v
 vlib/v/tests/generics/generic_struct_default_interface_field_test.v
 vlib/v/tests/generics/generic_struct_init_ptr_test.v
@@ -52,7 +51,6 @@ vlib/v/tests/generics/generics_T_typ_test.v
 vlib/v/tests/generics/generics_array_of_threads_test.v
 vlib/v/tests/generics/generics_fn_return_generic_interface_test.v
 vlib/v/tests/generics/generics_fn_variable_1_test.v
-vlib/v/tests/generics/generics_fn_variable_2_test.v
 vlib/v/tests/generics/generics_fn_variable_3_test.v
 vlib/v/tests/generics/generics_from_modules/infer_generic_struct_test.v
 vlib/v/tests/generics/generics_interface_cross_module_recheck_test.v
@@ -67,7 +65,6 @@ vlib/v/tests/generics/generics_map_with_reference_arg_test.v
 vlib/v/tests/generics/generics_method_call_with_short_syntax_args_test.v
 vlib/v/tests/generics/generics_method_chaining_call_test.v
 vlib/v/tests/generics/generics_method_on_nested_struct_test.v
-vlib/v/tests/generics/generics_method_on_receiver_aliases_types_test.v
 vlib/v/tests/generics/generics_method_returning_option_test.v
 vlib/v/tests/generics/generics_method_variable_test.v
 vlib/v/tests/generics/generics_method_with_diff_generic_names_test.v
@@ -76,8 +73,6 @@ vlib/v/tests/generics/generics_method_with_multi_types_test.v
 vlib/v/tests/generics/generics_mutual_recursive_struct_reference_test.v
 vlib/v/tests/generics/generics_option_fn_concrete_type_test.v
 vlib/v/tests/generics/generics_return_closure_test.v
-vlib/v/tests/generics/generics_return_generics_struct_test.v
-vlib/v/tests/generics/generics_return_inconsistent_types_generics_struct_test.v
 vlib/v/tests/generics/generics_str_intp_test.v
 vlib/v/tests/generics/generics_struct_anon_fn_type_test.v
 vlib/v/tests/generics/generics_struct_field_with_default_fn_type_test.v

@@ -123,8 +123,8 @@ pub enum BindingPower {
 	compare     // ==, !=, <, <=, >, >=, in, !in, is, !is
 	bit_or      // |
 	bit_xor     // ^
-	shift       // <<, >>, >>>
 	add         // +, -
+	shift       // <<, >>, >>>
 	product     // *, /, %, &
 	highest
 }
@@ -153,9 +153,9 @@ pub fn (t Token) right_binding_power() BindingPower {
 		.logical_and { .compare }
 		.compare { .bit_or }
 		.bit_or { .bit_xor }
-		.bit_xor { .shift }
-		.shift { .add }
-		.add { .product }
+		.bit_xor { .add }
+		.add { .shift }
+		.shift { .product }
 		.product { .highest }
 		else { .lowest }
 	}

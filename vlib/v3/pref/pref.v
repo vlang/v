@@ -725,10 +725,10 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 				|| tos == 'dragonfly'
 		}
 		'x64' {
-			return p.target.arch == 'amd64'
+			return p.target.pointer_bits == 64
 		}
 		'x32' {
-			return p.target.arch == 'x86'
+			return p.target.pointer_bits == 32
 		}
 		'amd64' {
 			return p.target.arch == 'amd64'

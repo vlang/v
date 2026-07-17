@@ -1,4 +1,3 @@
-vlib/crypto/aes/aes_gcm_test.v
 vlib/crypto/blake3/blake3_test.v
 vlib/crypto/ecdsa/ecdsa_test.v
 vlib/crypto/ecdsa/example/ecdsa_seed_test.v
@@ -24,7 +23,6 @@ vlib/db/sqlite/prod_gcc_orm_create_table_regression_test.v
 vlib/db/sqlite/sqlite_f32_test.v
 vlib/db/sqlite/sqlite_orm_test.v
 vlib/db/sqlite/sqlite_vfs_lowlevel_test.v
-vlib/net/conv/conv_test.v
 vlib/net/http/build_request_headers_test.v
 vlib/net/http/h2_client_test.v
 vlib/net/http/h2_conn_test.v
