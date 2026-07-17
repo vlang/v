@@ -54,6 +54,21 @@ fn (mut g Gen) resolved_if_guard_expr_type(expr ast.Expr, default_type ast.Type)
 			return value_type
 		}
 	}
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+		// In generic functions default_type may be stale: the checker overwrites
+		// it on each instantiation pass. Re-resolve it from the guard expression.
+		resolved := g.resolved_expr_type(expr, default_type)
+		if resolved != 0 && resolved != ast.void_type && !resolved.has_flag(.generic)
+			&& !g.type_has_unresolved_generic_parts(resolved) {
+			mut typ := g.unwrap_generic(resolved)
+			if default_type.has_flag(.option) && !typ.has_flag(.option) {
+				typ = typ.set_flag(.option)
+			} else if default_type.has_flag(.result) && !typ.has_flag(.result) {
+				typ = typ.set_flag(.result)
+			}
+			return typ
+		}
+	}
 	return g.unwrap_generic(g.recheck_concrete_type(default_type))
 }
 
@@ -893,6 +908,8 @@ fn (mut g Gen) if_expr(node ast.IfExpr) {
 					} else {
 						cond.expr_type
 					}
+				} else if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+					g.resolved_if_guard_expr_type(cond.expr, cond.expr_type)
 				} else {
 					cond.expr_type
 				}
