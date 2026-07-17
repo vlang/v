@@ -1809,9 +1809,7 @@ fn (mut g FlatGen) collect_gen_info() {
 			if shared_params.len > 0 {
 				shared_params = g.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
 			}
-			g.register_fn_decl_param_types(node.value, ptypes, decl_is_variadic)
 			if shared_params.len > 0 {
-				g.register_fn_decl_shared_params(node.value, shared_params)
 				file_rank := c_backend_fn_file_rank(cur_file)
 				if full_name !in preferred_shared_fn_file_ranks
 					|| file_rank > preferred_shared_fn_file_ranks[full_name] {
@@ -1828,8 +1826,8 @@ fn (mut g FlatGen) collect_gen_info() {
 				nonshared_fn_file_ranks << c_backend_fn_file_rank(cur_file)
 				nonshared_fn_node_indexes << node_idx
 			}
-			g.register_fn_decl_mut_receiver(node.value, first_param_is_mut)
-			g.register_fn_decl_ret_type(node.value, node.typ)
+			g.register_fn_decl_signature(node.value, full_name, ptypes, shared_params,
+				decl_is_variadic, first_param_is_mut, node.typ)
 			// Module-level `init()` functions run once at startup. Collect their C
 			// names so _vinit can invoke them (V semantics).
 			if node.value == 'init' && ptypes.len == 0
@@ -3927,79 +3925,58 @@ fn fn_decl_module_key(module_name string, name string) string {
 	return '${module_name}\x01${name}'
 }
 
-// register_fn_decl_param_types updates register fn decl param types state for c.
-fn (mut g FlatGen) register_fn_decl_param_types(name string, ptypes []types.Type, is_variadic bool) {
+fn (mut g FlatGen) register_fn_decl_signature_alias(alias string, ptypes []types.Type, shared_params []bool, is_variadic bool, is_mut bool, rt types.Type) {
+	if alias !in g.fn_decl_param_types {
+		g.fn_decl_param_types[alias] = ptypes
+		if is_variadic {
+			g.fn_decl_variadic[alias] = true
+		}
+	}
+	// All-false declarations are registered too: their exact-name entry stops
+	// short-name fallback from borrowing flags from an unrelated declaration.
+	if shared_params.len > 0 && alias !in g.fn_decl_shared_params {
+		g.fn_decl_shared_params[alias] = shared_params
+	}
+	if is_mut {
+		g.fn_decl_mut_receivers[alias] = true
+	}
+	if alias !in g.fn_decl_ret_types {
+		g.fn_decl_ret_types[alias] = rt
+	}
+}
+
+// register_fn_decl_signature indexes every spelling used by CGen call lookup
+// while retaining the collision-proof per-module parameter/return entries.
+fn (mut g FlatGen) register_fn_decl_signature(name string, full_name string, ptypes []types.Type, shared_params []bool, is_variadic bool, is_mut bool, ret_typ string) {
+	rt := g.tc.parse_type(ret_typ)
 	module_key := fn_decl_module_key(g.tc.cur_module, name)
 	g.fn_decl_param_types[module_key] = ptypes
+	g.fn_decl_ret_types[module_key] = rt
 	if is_variadic {
 		g.fn_decl_variadic[module_key] = true
 	}
 	short_name := name.all_after_last('.')
 	g.fn_decl_variadic_short_counts[short_name] = g.fn_decl_variadic_short_counts[short_name] + 1
-	if is_variadic {
-		g.fn_decl_variadic[name] = true
-		g.fn_decl_variadic[g.cname(name)] = true
-		if g.tc.cur_module.len > 0 && g.tc.cur_module !in ['main', 'builtin'] {
-			dotted_name := '${g.tc.cur_module}.${name}'
-			g.fn_decl_variadic[dotted_name] = true
-			g.fn_decl_variadic[g.cname(dotted_name)] = true
-		}
-	}
-}
-
-fn (mut g FlatGen) register_fn_decl_shared_params(name string, flags []bool) {
-	mut has_shared := false
-	for flag in flags {
+	for flag in shared_params {
 		if flag {
-			has_shared = true
+			g.has_shared_params = true
 			break
 		}
 	}
-	if has_shared {
-		g.has_shared_params = true
-	}
-	// All-false declarations are registered too: their exact-name entry is what
-	// stops fn_param_is_shared's short-name fallback from borrowing the shared
-	// flags of an unrelated same-named declaration in another module.
-	if name !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[name] = flags
-	}
+	g.register_fn_decl_signature_alias(name, ptypes, shared_params, is_variadic, is_mut, rt)
 	cname := g.cname(name)
-	if cname !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[cname] = flags
-	}
+	g.register_fn_decl_signature_alias(cname, ptypes, shared_params, is_variadic, is_mut, rt)
 	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
 		dotted_name := '${g.tc.cur_module}.${name}'
-		if dotted_name !in g.fn_decl_shared_params {
-			g.fn_decl_shared_params[dotted_name] = flags
-		}
+		g.register_fn_decl_signature_alias(dotted_name, ptypes, shared_params, is_variadic, is_mut,
+			rt)
 		cdotted_name := g.cname(dotted_name)
-		if cdotted_name !in g.fn_decl_shared_params {
-			g.fn_decl_shared_params[cdotted_name] = flags
-		}
+		g.register_fn_decl_signature_alias(cdotted_name, ptypes, shared_params, is_variadic,
+			is_mut, rt)
 	}
-}
-
-fn (mut g FlatGen) register_fn_decl_mut_receiver(name string, is_mut bool) {
-	if !is_mut {
-		return
-	}
-	g.fn_decl_mut_receivers[name] = true
-	g.fn_decl_mut_receivers[g.cname(name)] = true
-	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
-		dotted_name := '${g.tc.cur_module}.${name}'
-		g.fn_decl_mut_receivers[dotted_name] = true
-		g.fn_decl_mut_receivers[g.cname(dotted_name)] = true
-	}
-}
-
-// register_fn_decl_ret_type indexes a fn decl's return type by its name (and qualified
-// variants), so the return type can be looked up in O(1) instead of scanning all AST
-// nodes per call (see fn_decl_return_type_for_call_name).
-fn (mut g FlatGen) register_fn_decl_ret_type(name string, ret_typ string) {
-	rt := g.tc.parse_type(ret_typ)
-	module_key := fn_decl_module_key(g.tc.cur_module, name)
-	g.fn_decl_ret_types[module_key] = rt
+	g.register_fn_decl_signature_alias(full_name, ptypes, shared_params, is_variadic, is_mut, rt)
+	cfull_name := g.cname(full_name)
+	g.register_fn_decl_signature_alias(cfull_name, ptypes, shared_params, is_variadic, is_mut, rt)
 }
 
 fn (mut g FlatGen) register_fn_decl_node(name string, module_name string, id flat.NodeId) {
