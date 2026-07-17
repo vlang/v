@@ -249,7 +249,6 @@ vlib/v/tests/comptime/comptime_kinds_test.v
 vlib/v/tests/comptime/comptime_match_assign_test.v
 vlib/v/tests/comptime/comptime_match_ret_test.v
 vlib/v/tests/comptime/comptime_type_accessors_zero_new_test.v
-vlib/v/tests/comptime/comptime_var_unwrap_test.v
 vlib/v/tests/comptime_generic_comptime_variant_test.v
 vlib/v/tests/comptime_pseudo_fn_with_dollar_test.v
 vlib/v/tests/concurrency/autolock_array1_test.v
@@ -328,7 +327,6 @@ vlib/v/tests/generics/generic_interface_test.v
 vlib/v/tests/generics/generic_lambda_expr_test.v
 vlib/v/tests/generics/generic_match_expr_test.v
 vlib/v/tests/generics/generic_method_lambda_arg_test.v
-vlib/v/tests/generics/generic_options_with_reserved_ident_test.v
 vlib/v/tests/generics/generic_selector_test.v
 vlib/v/tests/generics/generic_spawn_test.v
 vlib/v/tests/generics/generic_struct_default_interface_field_test.v

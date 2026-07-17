@@ -1126,6 +1126,7 @@ vlib/v/tests/comptime/comptime_var_assignment_test.v
 vlib/v/tests/comptime/comptime_var_is_check_test.v
 vlib/v/tests/comptime/comptime_var_on_multiple_args_test.v
 vlib/v/tests/comptime/comptime_var_param_test.v
+vlib/v/tests/comptime/comptime_var_unwrap_test.v
 vlib/v/tests/comptime/comptime_variant_interp_test.v
 vlib/v/tests/comptime/comptime_variant_test.v
 vlib/v/tests/comptime/comptime_voidptr_unsafe_nil_test.v
@@ -1612,6 +1613,7 @@ vlib/v/tests/generics/generic_method_with_variadic_generic_args_test.v
 vlib/v/tests/generics/generic_muls_test.v
 vlib/v/tests/generics/generic_mut_pointer_param_test.v
 vlib/v/tests/generics/generic_operator_overload_test.v
+vlib/v/tests/generics/generic_options_with_reserved_ident_test.v
 vlib/v/tests/generics/generic_pointer_indirect_test.v
 vlib/v/tests/generics/generic_receiver_embed_test.v
 vlib/v/tests/generics/generic_recursive_fn_test.v

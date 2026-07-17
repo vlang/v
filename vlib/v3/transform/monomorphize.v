@@ -6107,12 +6107,17 @@ fn infer_generic_type_args(param_type string, arg_type string, mut inferred map[
 		}
 		return
 	}
-	if param.starts_with('?') && arg.starts_with('?') {
-		infer_generic_type_args(param[1..], arg[1..], mut inferred)
+	if param.starts_with('?') {
+		// A `?T` parameter also binds a plain by-value argument (the arg is
+		// auto-promoted to the option), so strip the `?` from the parameter
+		// regardless of whether the argument itself carries one.
+		arg_inner := if arg.starts_with('?') { arg[1..] } else { arg }
+		infer_generic_type_args(param[1..], arg_inner, mut inferred)
 		return
 	}
-	if param.starts_with('!') && arg.starts_with('!') {
-		infer_generic_type_args(param[1..], arg[1..], mut inferred)
+	if param.starts_with('!') {
+		arg_inner := if arg.starts_with('!') { arg[1..] } else { arg }
+		infer_generic_type_args(param[1..], arg_inner, mut inferred)
 		return
 	}
 	if param.starts_with('fn') && arg.starts_with('fn') {

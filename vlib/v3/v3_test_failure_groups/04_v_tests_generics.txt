@@ -34,7 +34,6 @@ vlib/v/tests/generics/generic_interface_test.v
 vlib/v/tests/generics/generic_lambda_expr_test.v
 vlib/v/tests/generics/generic_match_expr_test.v
 vlib/v/tests/generics/generic_method_lambda_arg_test.v
-vlib/v/tests/generics/generic_options_with_reserved_ident_test.v
 vlib/v/tests/generics/generic_selector_test.v
 vlib/v/tests/generics/generic_spawn_test.v
 vlib/v/tests/generics/generic_struct_default_interface_field_test.v
