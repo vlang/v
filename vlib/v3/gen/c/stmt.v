@@ -1794,6 +1794,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 										g.gen_expr_with_expected_type(ret_id, base)
 									}
 								}
+								g.writeln('};')
 							}
 						}
 					}
@@ -3267,6 +3268,14 @@ fn (g &FlatGen) fn_value_type_for_ident(name string) ?types.Type {
 			params:      params.clone()
 			return_type: ret
 		})
+	}
+	return none
+}
+
+fn (g &FlatGen) decl_rhs_fn_value_type(rhs_id flat.NodeId) ?types.Type {
+	rhs_type := g.usable_expr_type(rhs_id)
+	if _ := fn_type_from(rhs_type) {
+		return rhs_type
 	}
 	return none
 }
@@ -5060,6 +5069,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 		val_ct0
 	}
 	val_ct = g.optional_payload_c_type_for_optional_ct(opt_ct, val_ct)
+	lhs_name := g.local_decl_cname(lhs.value)
 	owner := g.tc.cur_scope.insert_with_owner(lhs.value, val_type)
 	g.track_local_pointer_storage_decl(lhs, owner, val_type, val_ct)
 	g.write('${opt_ct} ${tmp} = ')

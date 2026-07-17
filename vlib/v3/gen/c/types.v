@@ -70,12 +70,12 @@ fn (g &FlatGen) enum_storage_c_type(enum_type types.Enum) string {
 
 // optional_type_name supports optional type name handling for FlatGen.
 fn (mut g FlatGen) optional_type_name(t types.Type) string {
-	clean_t := optional_result_unalias_type(t)
+	clean_type := cgen_unalias_type(t)
 	mut base_type := types.Type(types.void_)
-	if clean_t is types.OptionType {
-		base_type = clean_t.base_type
-	} else if clean_t is types.ResultType {
-		base_type = clean_t.base_type
+	if clean_type is types.OptionType {
+		base_type = clean_type.base_type
+	} else if clean_type is types.ResultType {
+		base_type = clean_type.base_type
 	} else {
 		if clean_type is types.MultiReturn {
 			// The checker-level name spells fn-type parts as `fn_ptr_void_void`;
@@ -125,8 +125,9 @@ fn (mut g FlatGen) value_c_type(t types.Type) string {
 	if shared_alias_ptr := g.shared_alias_pointer_type(t) {
 		return g.tc.c_type(shared_alias_ptr)
 	}
-	if t is types.OptionType || t is types.ResultType {
-		return g.optional_type_name(t)
+	clean_type := cgen_unalias_type(t)
+	if clean_type is types.OptionType || clean_type is types.ResultType {
+		return g.optional_type_name(clean_type)
 	}
 	if clean_type is types.MultiReturn {
 		return g.multi_return_c_type_name(clean_type)

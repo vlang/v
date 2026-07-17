@@ -1221,6 +1221,17 @@ fn (t &Transformer) single_expr_stmt_child(id flat.NodeId) ?flat.NodeId {
 	return t.a.child(&node, 0)
 }
 
+fn (t &Transformer) if_value_branch_tail_has_no_value(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .call && t.is_noreturn_call(id) {
+		return true
+	}
+	return t.node_type(id) == 'void'
+}
+
 // transform_if_branch_value transforms transform if branch value data for transform.
 fn (mut t Transformer) transform_if_branch_value(id flat.NodeId, target_type string) flat.NodeId {
 	if t.is_sum_type_name(target_type) {
@@ -1776,6 +1787,21 @@ fn (t &Transformer) extract_else_branch_smartcasts(cond_id flat.NodeId) []IsExpr
 	return []IsExprInfo{}
 }
 
+// extract_none_eq_exprs returns option-unwrap contexts that apply to the ELSE
+// branch of an if: `if x == none { ... } else { <x unwrapped here> }`.
+fn (t &Transformer) extract_none_eq_exprs(cond_id flat.NodeId) []IsExprInfo {
+	if int(cond_id) < 0 {
+		return []IsExprInfo{}
+	}
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind == .infix && cond.op == .eq && cond.children_count >= 2 {
+		if info := t.option_none_cmp_info(cond) {
+			return [info]
+		}
+	}
+	return []IsExprInfo{}
+}
+
 // extract_is_expr supports extract is expr handling for Transformer.
 fn (t &Transformer) extract_is_expr(cond_id flat.NodeId) IsExprInfo {
 	if int(cond_id) < 0 {
@@ -1810,21 +1836,13 @@ fn (t &Transformer) extract_is_expr(cond_id flat.NodeId) IsExprInfo {
 
 // sum_type_for_is_expr supports sum type for is expr handling for Transformer.
 fn (t &Transformer) sum_type_for_is_expr(expr_type string, variant string) string {
-	clean_expr_type := t.trim_pointer_type(expr_type)
+	clean_expr_type := t.trim_all_pointer_type(expr_type)
+	clean_variant := t.trim_pointer_type(variant)
 	if t.is_interface_type_name(clean_expr_type) {
-		if _ := t.resolve_interface_pattern(variant, clean_expr_type) {
+		if _ := t.resolve_interface_pattern(clean_variant, clean_expr_type) {
 			return clean_expr_type
 		}
-		if _ := t.resolve_interface_pattern_interface(variant) {
-			return clean_expr_type
-		}
-	}
-	if _ := t.resolve_sum_variant_pattern_for_subject(clean_expr_type, variant) {
-		return clean_expr_type
-	}
-	resolved_expr_sum := t.resolve_sum_name(clean_expr_type)
-	if resolved_expr_sum in t.sum_types {
-		if _ := t.sum_variant_name(resolved_expr_sum, variant) {
+		if _ := t.resolve_interface_pattern_interface(clean_variant) {
 			return clean_expr_type
 		}
 	}

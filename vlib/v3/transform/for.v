@@ -714,9 +714,6 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		&& !(t.is_fixed_array_type(actual_iter_type) && !t.is_fixed_array_type(container_type)) {
 		actual_iter_type = container_type
 	}
-	iterates_by_ref := actual_iter_type.starts_with('&[]')
-		|| (container_type.starts_with('&[]') && actual_iter_type != 'string')
-		|| (container_type.starts_with('&[') && t.is_fixed_array_type(container_type[1..]))
 	if actual_iter_type.starts_with('&[]') {
 		if t.for_in_container_is_shared_array_pointer(id, container_id) {
 			t.set_node_typ(int(container), actual_iter_type[1..])
@@ -751,7 +748,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		elem_name = val.value
 	}
 	t.set_var_type(idx_name, 'int')
-	elem_is_mut := (node.op == .amp || iterates_by_ref) && actual_iter_type != 'string'
+	elem_is_mut := node.op == .amp && actual_iter_type != 'string'
 	elem_needs_ref := elem_is_mut && !elem_type.starts_with('&')
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
 	t.set_var_type(elem_name, elem_var_type)
@@ -783,7 +780,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		had_pointer_value_lvalue := t.pointer_value_lvalues[elem_name] or { false }
 		had_pointer_value_rvalue := t.pointer_value_rvalues[elem_name] or { false }
 		t.pointer_value_lvalues[elem_name] = true
-		t.pointer_value_rvalues[elem_name] = true
+		t.pointer_value_rvalues.delete(elem_name)
 		transformed_body = t.transform_stmts(body_ids)
 		if had_pointer_value_lvalue {
 			t.pointer_value_lvalues[elem_name] = true
@@ -809,6 +806,23 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 		prefix << for_stmt
 	}
 	return prefix
+}
+
+fn (mut t Transformer) fixed_array_map_index_for_in_container(container_id flat.NodeId, mut prefix []flat.NodeId) ?flat.NodeId {
+	info := t.map_index_info(container_id) or { return none }
+	if !t.is_fixed_array_type(info.value_type) {
+		return none
+	}
+	map_expr := t.stable_expr_for_reuse(info.base_id)
+	t.drain_pending(mut prefix)
+	key_name := t.new_temp('map_key')
+	key_expr := t.transform_expr_for_type(info.key_id, info.key_type)
+	t.drain_pending(mut prefix)
+	prefix << t.make_decl_assign_typed(key_name, key_expr, info.key_storage_type)
+	zero_name := t.new_temp('map_zero')
+	prefix << t.make_decl_assign_typed(zero_name, t.zero_value_for_type(info.value_type),
+		info.value_type)
+	return t.make_map_get_expr(map_expr, info.base_type, key_name, zero_name, info.value_type)
 }
 
 fn (t &Transformer) for_in_container_is_shared_array_pointer(for_id flat.NodeId, container_id flat.NodeId) bool {

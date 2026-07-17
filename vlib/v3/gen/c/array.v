@@ -203,7 +203,8 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 	}
 	if node.kind in [.array_init, .struct_init] && node.children_count == 0 {
 		c_elem, dims := g.fixed_array_decl_parts(arr)
-		g.write('(${c_elem}${dims}){0}')
+		g.write('(${c_elem}${dims})')
+		g.write(g.empty_fixed_array_initializer_string(arr))
 		return
 	}
 	if node.kind == .paren && node.children_count > 0 {
@@ -955,6 +956,259 @@ fn (mut g FlatGen) gen_map_ref_arg(base_id flat.NodeId, base_type types.Type) {
 		g.write('&')
 		g.gen_expr(base_id)
 	}
+}
+
+fn (mut g FlatGen) gen_index_overload_call(node flat.Node, base_id flat.NodeId, base_type types.Type, info types.CallInfo) {
+	g.write(g.cname(info.name))
+	g.write('(')
+	g.gen_index_overload_receiver_arg(base_id, base_type, info)
+	if info.params.len > 1 {
+		g.write(', ')
+		g.gen_index_overload_index_arg(node, info.params[1])
+	}
+	g.write(')')
+}
+
+fn (mut g FlatGen) gen_index_overload_set(node flat.Node, lhs flat.Node, base_id flat.NodeId, base_type types.Type, info types.CallInfo) {
+	if info.params.len < 3 {
+		g.gen_assign(node)
+		return
+	}
+	rhs_id := g.a.child(&node, 1)
+	if op := compound_assign_to_infix_op(node.op) {
+		if getter := g.tc.index_overload_call_info(base_type, false) {
+			g.gen_index_overload_compound_set(lhs, base_id, base_type, info, getter, node.op, op,
+				rhs_id)
+			return
+		}
+	}
+	g.write(g.cname(info.name))
+	g.write('(')
+	g.gen_index_overload_receiver_arg(base_id, base_type, info)
+	g.write(', ')
+	g.gen_index_overload_index_arg(lhs, info.params[1])
+	g.write(', ')
+	if op := compound_assign_to_infix_op(node.op) {
+		g.write('(')
+		if getter := g.tc.index_overload_call_info(base_type, false) {
+			g.gen_index_overload_call(lhs, base_id, base_type, getter)
+		} else {
+			g.gen_expr(g.a.child(&node, 0))
+		}
+		g.write(' ${g.op_str(op)} ')
+		g.gen_expr_with_expected_type(rhs_id, info.params[2])
+		g.write(')')
+	} else {
+		g.gen_expr_with_expected_type(rhs_id, info.params[2])
+	}
+	g.writeln(');')
+}
+
+fn (mut g FlatGen) gen_index_overload_compound_set(lhs flat.Node, base_id flat.NodeId, base_type types.Type, setter types.CallInfo, getter types.CallInfo, assign_op flat.Op, infix_op flat.Op, rhs_id flat.NodeId) {
+	recv_tmp := g.tmp_name()
+	index_tmp := g.tmp_name()
+	recv_type := if base_type is types.Pointer { base_type.base_type } else { base_type }
+	recv_ct := g.value_c_type(recv_type)
+	index_ct := g.value_c_type(setter.params[1])
+	g.write('{ ${recv_ct}* ${recv_tmp} = ')
+	if base_type is types.Pointer {
+		g.gen_expr(base_id)
+	} else {
+		g.write('&')
+		g.gen_expr(base_id)
+	}
+	g.write('; ${index_ct} ${index_tmp} = ')
+	g.gen_index_overload_index_arg(lhs, setter.params[1])
+	g.write('; ${g.cname(setter.name)}(')
+	g.gen_index_overload_cached_receiver_arg(recv_tmp, setter)
+	g.write(', ${index_tmp}, ')
+	g.gen_index_overload_compound_value_expr(recv_tmp, index_tmp, setter, getter, assign_op,
+		infix_op, rhs_id)
+	g.writeln('); }')
+}
+
+fn (mut g FlatGen) gen_index_overload_compound_value_expr(recv_tmp string, index_tmp string, setter types.CallInfo, getter types.CallInfo, assign_op flat.Op, infix_op flat.Op, rhs_id flat.NodeId) {
+	if infix_op == .plus && (index_overload_compound_type_is_string(getter.return_type)
+		|| (setter.params.len > 2 && index_overload_compound_type_is_string(setter.params[2]))) {
+		g.write('string__plus(')
+		g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
+		g.write(', ')
+		g.gen_expr_as_string(rhs_id)
+		g.write(')')
+		return
+	}
+	if setter.params.len > 2 {
+		if method_name := g.assign_struct_operator_method(getter.return_type, assign_op) {
+			g.write('${g.cname(method_name)}(')
+			g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
+			g.write(', ')
+			g.gen_expr(rhs_id)
+			g.write(')')
+			return
+		}
+	}
+	g.write('(')
+	g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
+	g.write(' ${g.op_str(infix_op)} ')
+	if setter.params.len > 2 {
+		g.gen_expr_with_expected_type(rhs_id, setter.params[2])
+	} else {
+		g.gen_expr(rhs_id)
+	}
+	g.write(')')
+}
+
+fn (mut g FlatGen) gen_index_overload_cached_getter_call(recv_tmp string, index_tmp string, getter types.CallInfo) {
+	g.write(g.cname(getter.name))
+	g.write('(')
+	g.gen_index_overload_cached_receiver_arg(recv_tmp, getter)
+	g.write(', ${index_tmp})')
+}
+
+fn index_overload_compound_type_is_string(typ types.Type) bool {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	return clean is types.String
+}
+
+fn (mut g FlatGen) gen_index_overload_receiver_arg(base_id flat.NodeId, base_type types.Type, info types.CallInfo) {
+	if info.params.len > 0 && info.params[0] is types.Pointer && base_type !is types.Pointer {
+		g.write('&')
+		g.gen_expr(base_id)
+		return
+	}
+	if info.params.len > 0 {
+		g.gen_expr_with_expected_type(base_id, info.params[0])
+		return
+	}
+	g.gen_expr(base_id)
+}
+
+fn (mut g FlatGen) gen_index_overload_cached_receiver_arg(recv_tmp string, info types.CallInfo) {
+	if info.params.len > 0 && info.params[0] is types.Pointer {
+		g.write(recv_tmp)
+		return
+	}
+	g.write('*${recv_tmp}')
+}
+
+fn (mut g FlatGen) gen_index_overload_index_arg(node flat.Node, expected types.Type) {
+	if cgen_is_builtin_slice_index_type(expected) {
+		if node.value == 'range' {
+			g.gen_slice_index_value_from_index_range(node)
+		} else if node.children_count > 1 {
+			g.gen_slice_index_value(g.a.child(&node, 1))
+		} else {
+			g.gen_default_value_for_type(expected)
+		}
+		return
+	}
+	if elem := cgen_builtin_slice_index_array_elem(expected) {
+		g.gen_slice_index_array_value(node, elem)
+		return
+	}
+	if node.children_count > 1 {
+		g.gen_expr_with_expected_type(g.a.child(&node, 1), expected)
+	} else {
+		g.gen_default_value_for_type(expected)
+	}
+}
+
+fn (mut g FlatGen) gen_slice_index_array_value(node flat.Node, elem_type types.Type) {
+	ct := g.value_c_type(elem_type)
+	count := if node.value == 'range' {
+		1
+	} else if node.children_count > 0 {
+		int(node.children_count) - 1
+	} else {
+		0
+	}
+	g.write('new_array_from_c_array(${count}, ${count}, sizeof(${ct}), (${ct}[]){')
+	if node.value == 'range' {
+		g.gen_slice_index_value_from_index_range(node)
+	} else {
+		for i in 1 .. node.children_count {
+			if i > 1 {
+				g.write(', ')
+			}
+			g.gen_slice_index_value(g.a.child(&node, i))
+		}
+	}
+	g.write('})')
+}
+
+fn (mut g FlatGen) gen_slice_index_value_from_index_range(node flat.Node) {
+	slice_type := g.tc.parse_type('SliceIndex')
+	ct := g.value_c_type(slice_type)
+	g.write('(${ct}){.is_range = true')
+	if node.children_count > 1 {
+		low_id := g.a.child(&node, 1)
+		low := g.a.nodes[int(low_id)]
+		if low.kind != .empty {
+			g.write(', .low = ')
+			g.gen_expr(low_id)
+			g.write(', .has_low = true')
+		}
+	}
+	if node.children_count > 2 {
+		high_id := g.a.child(&node, 2)
+		high := g.a.nodes[int(high_id)]
+		if high.kind != .empty {
+			g.write(', .high = ')
+			g.gen_expr(high_id)
+			g.write(', .has_high = true')
+		}
+	}
+	g.write('}')
+}
+
+fn (mut g FlatGen) gen_slice_index_value(id flat.NodeId) {
+	slice_type := g.tc.parse_type('SliceIndex')
+	ct := g.value_c_type(slice_type)
+	if int(id) < 0 {
+		g.write('(${ct}){0}')
+		return
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind != .range {
+		g.write('(${ct}){.value = ')
+		g.gen_expr(id)
+		g.write('}')
+		return
+	}
+	g.write('(${ct}){.is_range = true')
+	if node.children_count > 0 {
+		low_id := g.a.child(&node, 0)
+		low := g.a.nodes[int(low_id)]
+		if low.kind != .empty {
+			g.write(', .low = ')
+			g.gen_expr(low_id)
+			g.write(', .has_low = true')
+		}
+	}
+	if node.children_count > 1 {
+		high_id := g.a.child(&node, 1)
+		high := g.a.nodes[int(high_id)]
+		if high.kind != .empty {
+			g.write(', .high = ')
+			g.gen_expr(high_id)
+			g.write(', .has_high = true')
+		}
+	}
+	g.write('}')
+}
+
+fn cgen_is_builtin_slice_index_type(typ types.Type) bool {
+	clean0 := select_receive_unalias_type(typ)
+	clean := types.unwrap_pointer(clean0)
+	return clean.name() in ['SliceIndex', 'builtin.SliceIndex']
+}
+
+fn cgen_builtin_slice_index_array_elem(typ types.Type) ?types.Type {
+	clean := select_receive_unalias_type(typ)
+	if clean is types.Array && cgen_is_builtin_slice_index_type(clean.elem_type) {
+		return clean.elem_type
+	}
+	return none
 }
 
 fn (mut g FlatGen) gen_index_operator_get_call(node flat.Node) bool {

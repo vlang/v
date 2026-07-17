@@ -1172,6 +1172,60 @@ fn (mut t Transformer) lower_or_expr_to_temp(id flat.NodeId, node flat.Node) fla
 	return t.make_ident(val_tmp)
 }
 
+fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.Node) flat.NodeId {
+	if node.children_count < 2 {
+		return id
+	}
+	expr_id := t.a.child(&node, 0)
+	body_id := t.a.child(&node, 1)
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	new_expr := t.transform_expr(expr_id)
+	mut prelude := []flat.NodeId{}
+	t.drain_pending(mut prelude)
+	t.pending_stmts = outer_pending
+	for stmt in prelude {
+		t.pending_stmts << stmt
+	}
+
+	saved_var_types := t.var_types.clone()
+	t.set_var_type('err', 'IError')
+	new_body := t.transform_or_body_for_codegen(body_id)
+	t.restore_var_types(saved_var_types)
+
+	start := t.a.children.len
+	t.a.children << new_expr
+	t.a.children << new_body
+	return t.a.add_node(flat.Node{
+		kind:           .or_expr
+		op:             node.op
+		children_start: start
+		children_count: 2
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+	})
+}
+
+fn (mut t Transformer) transform_or_body_for_codegen(body_id flat.NodeId) flat.NodeId {
+	if int(body_id) < 0 || int(body_id) >= t.a.nodes.len {
+		return body_id
+	}
+	body := t.a.nodes[int(body_id)]
+	if body.kind == .block {
+		return t.make_block(t.transform_stmts(t.a.children_of(&body)))
+	}
+	if t.is_stmt_kind_id(node_kind_id(body)) {
+		return t.make_block(t.transform_stmt(body_id))
+	}
+	new_expr := t.transform_expr(body_id)
+	return t.make_block(arr1(t.make_expr_stmt(new_expr)))
+}
+
+fn (mut t Transformer) transform_nested_optional_or_expr(_expr_id flat.NodeId, _or_node flat.Node) ?flat.NodeId {
+	return none
+}
+
 fn (t &Transformer) shared_alias_storage_type(typ string) string {
 	if isnil(t.tc) {
 		return typ

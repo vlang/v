@@ -952,6 +952,31 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	return none
 }
 
+fn (t &Transformer) interface_impl_type_id_iface_candidates(iface string) []string {
+	mut candidates := []string{}
+	short_name := iface.all_after_last('.')
+	if short_name != iface && (iface.starts_with('main.') || iface.starts_with('builtin.')) {
+		candidates << short_name
+	}
+	candidates << iface
+	if !iface.contains('.') {
+		qname := t.tc.qualify_name(iface)
+		if qname != iface {
+			candidates << qname
+		}
+	}
+	mut result := []string{}
+	for candidate in candidates {
+		if candidate.len == 0 || candidate in result {
+			continue
+		}
+		if t.is_builtin_ierror_interface_name(candidate) || candidate in t.tc.interface_names {
+			result << candidate
+		}
+	}
+	return result
+}
+
 fn (t &Transformer) interface_impl_type_ids(iface_name string, concrete_name string) []int {
 	mut ids := []int{}
 	for candidate in t.interface_alias_equivalent_names(concrete_name) {

@@ -1689,6 +1689,91 @@ fn (mut t Transformer) lower_array_filter_call(node flat.Node, fn_node flat.Node
 	return t.make_ident(out_name)
 }
 
+fn (t &Transformer) resolve_fn_value_expr(id flat.NodeId, node flat.Node) ?string {
+	if !isnil(t.tc) {
+		if name := t.tc.resolved_fn_value_name(id) {
+			return name
+		}
+	}
+	if node.kind == .ident {
+		return t.resolve_fn_value_ident(node.value)
+	}
+	if node.kind == .selector {
+		return t.resolve_fn_value_selector(node)
+	}
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return t.resolve_fn_value_expr(t.a.child(&node, 0), t.a.child_node(&node, 0))
+	}
+	return none
+}
+
+fn (t &Transformer) resolve_fn_value_selector(node flat.Node) ?string {
+	if node.children_count == 0 || node.value.len == 0 || isnil(t.tc) {
+		return none
+	}
+	base := t.a.child_node(&node, 0)
+	if base.kind == .ident {
+		if t.var_type(base.value).len > 0 {
+			return none
+		}
+		if resolved := t.resolve_static_fn_value_for_type(base.value, node.value) {
+			return resolved
+		}
+		key := '${base.value}.${node.value}'
+		if key in t.tc.fn_ret_types {
+			return key
+		}
+		return none
+	}
+	if base.kind == .selector && base.children_count > 0 {
+		inner := t.a.child_node(base, 0)
+		if inner.kind == .ident {
+			type_name := '${inner.value}.${base.value}'
+			if resolved := t.resolve_static_fn_value_for_type(type_name, node.value) {
+				return resolved
+			}
+			key := '${type_name}.${node.value}'
+			if key in t.tc.fn_ret_types {
+				return key
+			}
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) resolve_static_fn_value_for_type(type_name string, method string) ?string {
+	if type_name.len == 0 || method.len == 0 || isnil(t.tc) {
+		return none
+	}
+	mut candidates := []string{}
+	t.add_static_fn_value_type_candidate(mut candidates, type_name)
+	if !type_name.contains('.') && t.cur_module.len > 0 && t.cur_module != 'main'
+		&& t.cur_module != 'builtin' {
+		t.add_static_fn_value_type_candidate(mut candidates, '${t.cur_module}.${type_name}')
+	}
+	for candidate in candidates {
+		key := '${candidate}.${method}'
+		if key in t.tc.fn_ret_types {
+			return key
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) add_static_fn_value_type_candidate(mut candidates []string, name string) {
+	if name.len == 0 || isnil(t.tc) {
+		return
+	}
+	if name !in candidates {
+		candidates << name
+	}
+	if target := t.tc.type_aliases[name] {
+		if target !in candidates {
+			candidates << target
+		}
+	}
+}
+
 // lower_array_map_call builds lower array map call data for transform.
 fn (mut t Transformer) lower_array_map_call(node flat.Node, fn_node flat.Node, base_type string) ?flat.NodeId {
 	if node.children_count < 2 || !base_type.starts_with('[]') {

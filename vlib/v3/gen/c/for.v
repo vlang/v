@@ -273,7 +273,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.declare_local_pointer_storage(val_owner, val_scope_type is types.Pointer
 					|| (!val_is_fixed_copy && clean_container_type.value_type is types.Pointer)
 					|| c_type_is_pointer_storage(c_val))
-				if node.op == .amp {
+				if node.op == .amp && val_is_fixed_copy {
 					map_writeback_target = if container_type is types.Pointer {
 						container_str
 					} else {

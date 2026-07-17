@@ -37,6 +37,77 @@ fn (mut t Transformer) heap_copy_interface_expr(expr flat.NodeId, iface_name str
 	return cast
 }
 
+fn (t &Transformer) interface_pointer_source_needs_heap_copy(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .amp || node.children_count != 1 {
+		return false
+	}
+	child_id := t.a.child(&node, 0)
+	if int(child_id) < 0 || int(child_id) >= t.a.nodes.len {
+		return false
+	}
+	return t.interface_pointer_source_root_is_local(child_id)
+}
+
+fn (t &Transformer) interface_pointer_source_root_is_local(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value.len > 0 && t.var_type(node.value).len > 0
+		}
+		.selector {
+			if node.children_count == 0 {
+				return false
+			}
+			base_id := t.a.child(&node, 0)
+			if address_expr_base_is_indirect_storage(t.address_expr_type_name(base_id)) {
+				return false
+			}
+			return t.interface_pointer_source_root_is_local(base_id)
+		}
+		.index {
+			if node.children_count == 0 {
+				return false
+			}
+			base_id := t.a.child(&node, 0)
+			base_type := t.normalize_type_alias(t.address_expr_type_name(base_id))
+			if !t.is_fixed_array_type(base_type) {
+				return false
+			}
+			return t.interface_pointer_source_root_is_local(base_id)
+		}
+		.paren {
+			if node.children_count == 0 {
+				return false
+			}
+			return t.interface_pointer_source_root_is_local(t.a.child(&node, 0))
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn (t &Transformer) interface_target_should_share_source(id flat.NodeId, target_type string) bool {
+	if int(id) < 0 || target_type.len == 0 || isnil(t.tc) {
+		return false
+	}
+	iface_name := t.resolve_interface_type_name(target_type)
+	if iface_name.len == 0 {
+		return false
+	}
+	if !t.in_return_expr && t.interface_pointer_source_needs_heap_copy(id) {
+		return true
+	}
+	return false
+}
+
 // resolve_interface_type_name resolves resolve interface type name information for transform.
 fn (t &Transformer) resolve_interface_type_name(name string) string {
 	if name.len == 0 || isnil(t.tc) {
@@ -597,6 +668,29 @@ fn (t &Transformer) interface_box_object_cast_needs_raw_call(concrete_type strin
 		}
 	}
 	return t.normalize_type_alias(target).starts_with('map[')
+}
+
+fn (t &Transformer) interface_pointer_alias_source_needs_heap_copy(id flat.NodeId) bool {
+	if t.interface_pointer_source_needs_heap_copy(id) {
+		return true
+	}
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .cast_expr || node.children_count == 0 || node.value.starts_with('&')
+		|| !t.normalize_type_alias(node.value).starts_with('&') {
+		return false
+	}
+	arg_id := t.a.child(&node, 0)
+	if int(arg_id) < 0 || int(arg_id) >= t.a.nodes.len {
+		return false
+	}
+	arg := t.a.nodes[int(arg_id)]
+	if arg.kind != .prefix || arg.op != .amp || arg.children_count == 0 {
+		return false
+	}
+	return t.interface_pointer_source_root_is_local(t.a.child(&arg, 0))
 }
 
 fn (t &Transformer) ident_is_global_pointer_to_interface(name string, iface_name string) bool {

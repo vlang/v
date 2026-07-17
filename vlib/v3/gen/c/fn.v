@@ -368,8 +368,24 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 	if module_name == 'builtin' && node.value == 'u8.vbytes' {
 		return false
 	}
-	if node.value.starts_with('__anon_fn_') || qfn.contains('__anon_fn_') {
+	if module_name == 'c' && file_name.ends_with('/gen/c/interface.v') {
 		return true
+	}
+	if node.value in ['sum_type_index', 'sum_type_index_resolved', 'FlatGen.sum_type_index', 'FlatGen.sum_type_index_resolved']
+		|| node.value.ends_with('.sum_type_index')
+		|| node.value.ends_with('.sum_type_index_resolved')
+		|| qfn.ends_with('__FlatGen__sum_type_index')
+		|| qfn.ends_with('__FlatGen__sum_type_index_resolved') {
+		return true
+	}
+	is_anon_fn := node.value.starts_with('__anon_fn_') || qfn.contains('__anon_fn_')
+	if is_anon_fn {
+		if !g.has_used_fn_filter() || module_name in ['', 'main'] || g.test_files[file_name]
+			|| g.cache_program_files[file_name]
+			|| g.used_fn_contains_in_module(node.value, module_name) {
+			return true
+		}
+		return false
 	}
 	if node.generic_params().len == 0 && cgen_is_operator_overload_fn(node.value)
 		&& g.test_files[file_name] {
@@ -2722,8 +2738,7 @@ fn (mut g FlatGen) spawn_packed_arg_for_call_param(fn_name string, arg_id flat.N
 	if g.fn_param_is_shared_for_call(field_idx, fn_name, '', '', '')
 		|| g.spawn_arg_has_shared_marker(arg_id) || g.spawn_arg_is_shared_local(arg_id) {
 		if expr := g.shared_arg_storage_c_expr(arg_id) {
-			inner := g.shared_qualify_type_text(expected.name(), g.tc.cur_module)
-			wrapper_ct := '${g.shared_wrapper_c_name(inner)}*'
+			wrapper_ct := g.shared_spawn_wrapper_c_type(expected)
 			return SpawnPackedArg{
 				field_ct:    wrapper_ct
 				assign_expr: expr
@@ -2766,10 +2781,15 @@ fn (mut g FlatGen) spawn_arg_c_type(expected types.Type) string {
 	return g.value_c_type(expected)
 }
 
+fn (mut g FlatGen) shared_spawn_wrapper_c_type(expected types.Type) string {
+	value_type := shared_local_value_type(expected)
+	inner := g.shared_qualify_type_text(value_type.name(), g.tc.cur_module)
+	return '${g.shared_wrapper_c_name(inner)}*'
+}
+
 fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types.Type, expected_ct string, field_idx int) SpawnPackedArg {
 	if expr := g.shared_lowered_spawn_arg_storage_c_expr(arg_id) {
-		inner := g.shared_qualify_type_text(expected.name(), g.tc.cur_module)
-		wrapper_ct := '${g.shared_wrapper_c_name(inner)}*'
+		wrapper_ct := g.shared_spawn_wrapper_c_type(expected)
 		return SpawnPackedArg{
 			field_ct:    wrapper_ct
 			assign_expr: expr
@@ -2787,9 +2807,7 @@ fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types
 	if spawn_c_type_is_pointer(expected_ct) {
 		arg_node := g.a.nodes[int(arg_id)]
 		if storage := g.spawn_shared_value_arg_storage(arg_id) {
-			value_type := types.unwrap_pointer(expected)
-			inner := g.shared_qualify_type_text(value_type.name(), g.tc.cur_module)
-			wrapper_ct := '${g.shared_wrapper_c_name(inner)}*'
+			wrapper_ct := g.shared_spawn_wrapper_c_type(expected)
 			return SpawnPackedArg{
 				field_ct:    wrapper_ct
 				assign_expr: storage
@@ -2844,8 +2862,7 @@ fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types
 	}
 	assign_expr := g.expr_to_string_with_expected_type(arg_id, expected)
 	if storage_expr := shared_storage_from_payload_value_expr(assign_expr) {
-		inner := g.shared_qualify_type_text(expected.name(), g.tc.cur_module)
-		wrapper_ct := '${g.shared_wrapper_c_name(inner)}*'
+		wrapper_ct := g.shared_spawn_wrapper_c_type(expected)
 		return SpawnPackedArg{
 			field_ct:    wrapper_ct
 			assign_expr: storage_expr
@@ -2857,6 +2874,60 @@ fn (mut g FlatGen) spawn_packed_arg_for_param(arg_id flat.NodeId, expected types
 		assign_expr: assign_expr
 		call_expr:   'p->a${field_idx}'
 	}
+}
+
+fn shared_storage_from_payload_value_expr(expr string) ?string {
+	clean := expr.trim_space()
+	if !clean.starts_with('*') || !clean.ends_with('->val') {
+		return none
+	}
+	storage := clean[1..clean.len - 5].trim_space()
+	if storage.len == 0 || storage.contains(' ') || storage.contains('(') || storage.contains(')') {
+		return none
+	}
+	return storage
+}
+
+fn (mut g FlatGen) gen_shared_array_push_arg(marker string, arg_id flat.NodeId) bool {
+	if !marker.starts_with('shared_array_push:') {
+		return false
+	}
+	if int(arg_id) < 0 || int(arg_id) >= g.a.nodes.len {
+		return false
+	}
+	inner := marker['shared_array_push:'.len..].trim_space()
+	if inner.len == 0 {
+		return false
+	}
+	qualified := g.shared_qualify_type_text(inner, g.tc.cur_module)
+	wrapper := g.shared_wrapper_c_name(qualified)
+	mut value_id := arg_id
+	arg := g.a.nodes[int(arg_id)]
+	if arg.kind == .prefix && arg.op == .amp && arg.children_count > 0 {
+		value_id = g.a.child(&arg, 0)
+	}
+	value_type := g.tc.parse_type(qualified)
+	g.write('&(${wrapper}*[]){(${wrapper}*)__dup${wrapper}(&(${wrapper}){.mtx = {0}, .val = ')
+	g.gen_expr_with_expected_type(value_id, value_type)
+	g.write('}, sizeof(${wrapper}))}')
+	return true
+}
+
+fn (g &FlatGen) shared_lowered_spawn_arg_storage_c_expr(arg_id flat.NodeId) ?string {
+	if int(arg_id) < 0 || int(arg_id) >= g.a.nodes.len {
+		return none
+	}
+	arg := g.a.nodes[int(arg_id)]
+	if arg.kind == .paren && arg.children_count > 0 {
+		return g.shared_lowered_spawn_arg_storage_c_expr(g.a.child(&arg, 0))
+	}
+	if arg.kind == .prefix && arg.value == 'shared' && arg.children_count > 0 {
+		return g.shared_local_arg_c_expr(g.a.child(&arg, 0))
+	}
+	if arg.kind == .prefix && arg.op == .mul && arg.children_count > 0 {
+		return g.shared_payload_deref_storage_c_expr(g.a.child(&arg, 0))
+	}
+	return none
 }
 
 fn (g &FlatGen) spawn_shared_value_arg_storage(arg_id flat.NodeId) ?string {
@@ -3973,7 +4044,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 		arg_id := g.a.child(&node, 1)
 		arg_node := g.a.nodes[int(arg_id)]
 		if !g.gen_isnil_fn_value_arg(arg_id, arg_node) {
-			if arg_node.kind == .ident {
+			if arg_node.kind == .ident || cgen_type_is_pointer_like(g.tc.resolve_type(arg_id)) {
 				g.gen_expr(arg_id)
 			} else {
 				g.gen_call_args('isnil', node, 1)
@@ -4250,6 +4321,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			mut method_name := ''
 			mut base_id := flat.NodeId(0)
 			mut emitted_callee_name := ''
+			mut emitted_param_name := ''
 			if g.is_explicit_generic_method_call_selector(fn_node, resolved_target_name,
 				target_name)
 			{
@@ -5989,13 +6061,7 @@ fn (mut g FlatGen) json_encode_value_c_expr(typ types.Type, expr string) ?string
 		return none
 	}
 	if clean is types.Struct {
-		// The shortcut keys the wire format off the raw field name and always emits
-		// every field, so any struct carrying json field attributes (`@[json: 'x']`,
-		// `@[skip]`, `@[omitempty]`, ...) must use normal codegen.
-		if g.json_struct_has_field_attrs(clean.name) {
-			return none
-		}
-		fields := g.tc.structs[clean.name] or { return none }
+		fields := g.json_encode_struct_field_exprs(clean.name, expr, []string{}) or { return none }
 		open := g.intern_string('{')
 		close := g.intern_string('}')
 		mut has_omitempty := false
@@ -7204,6 +7270,9 @@ fn (mut g FlatGen) gen_embedded_method_receiver(base_id flat.NodeId, base_type t
 }
 
 fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_type types.Type, expected_type types.Type, wants_ptr bool) bool {
+	if wants_ptr {
+		return false
+	}
 	source_iface := g.interface_receiver_name(base_type)
 	target_iface := g.interface_receiver_name(expected_type)
 	if source_iface.len == 0 || target_iface.len == 0 || source_iface == target_iface {
@@ -7217,28 +7286,18 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 		return false
 	}
 	target_ct := g.tc.c_type(types.unwrap_pointer(expected_type))
-	if wants_ptr {
-		g.write('&((${target_ct}[]){')
-		g.gen_embedded_interface_receiver(base_id, base_type, types.unwrap_pointer(expected_type),
-			false)
-		g.write('})[0]')
-		return true
-	}
-	base_node := g.a.nodes[int(base_id)]
-	if base_node.kind !in [.ident, .selector] {
-		base_is_ptr := base_type is types.Pointer
+	base_is_ptr := cgen_type_is_pointer_like(base_type)
+	if !g.interface_receiver_base_expr_is_reusable(base_id) {
 		source_ct := g.tc.c_type(base_type)
-		tmp := g.tmp_count
-		g.tmp_count++
-		g.write('({ ${source_ct} _iface_up${tmp} = ')
+		tmp := g.tmp_name()
+		g.write('({ ${source_ct} ${tmp} = ')
 		g.gen_expr(base_id)
 		g.write('; ')
-		g.gen_embedded_interface_receiver_from_expr('_iface_up${tmp}', base_is_ptr, target_iface,
-			expected_type, mappings)
+		g.gen_embedded_interface_receiver_from_expr(tmp, base_is_ptr, target_ct, target_iface,
+			mappings)
 		g.write('; })')
 		return true
 	}
-	base_is_ptr := base_type is types.Pointer
 	op := if base_is_ptr { '->' } else { '.' }
 	g.write('(${target_ct}){._typ = ')
 	for mapping in mappings {
@@ -7253,7 +7312,7 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 	g.write(', ._object = ')
 	g.gen_interface_receiver_base_expr(base_id, base_is_ptr)
 	g.write('${op}_object')
-	for field in g.tc.interface_field_list(target_iface) {
+	for field in g.tc.interface_fields[target_iface] or { []types.StructField{} } {
 		field_ct := g.tc.c_type(field.typ)
 		g.write(', .${g.cname(field.name)} = ')
 		for mapping in mappings {
@@ -7262,7 +7321,7 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 			g.gen_interface_receiver_base_expr(base_id, base_is_ptr)
 			g.write('${op}_typ == ${mapping.source_id} ? ((${impl_ct}*)')
 			g.gen_interface_receiver_base_expr(base_id, base_is_ptr)
-			g.write('${op}_object)->${g.cname(field.name)} : ')
+			g.write('${op}_object)${g.interface_impl_field_access_suffix(mapping.impl, field.name)} : ')
 		}
 		g.write('(${field_ct}){0}')
 		for _ in mappings {
@@ -7273,8 +7332,21 @@ fn (mut g FlatGen) gen_embedded_interface_receiver(base_id flat.NodeId, base_typ
 	return true
 }
 
-fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, base_is_ptr bool, target_iface string, expected_type types.Type, mappings []InterfaceReceiverIdMapping) {
-	target_ct := g.tc.c_type(types.unwrap_pointer(expected_type))
+fn (g &FlatGen) interface_receiver_base_expr_is_reusable(base_id flat.NodeId) bool {
+	if int(base_id) < 0 || int(base_id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(base_id)]
+	if node.kind == .ident {
+		return true
+	}
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	return g.interface_receiver_base_expr_is_reusable(g.a.child(&node, 0))
+}
+
+fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, base_is_ptr bool, target_ct string, target_iface string, mappings []InterfaceReceiverIdMapping) {
 	op := if base_is_ptr { '->' } else { '.' }
 	g.write('(${target_ct}){._typ = ')
 	for mapping in mappings {
@@ -7285,12 +7357,13 @@ fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, b
 		g.write(')')
 	}
 	g.write(', ._object = ${base_expr}${op}_object')
-	for field in g.tc.interface_field_list(target_iface) {
+	for field in g.tc.interface_fields[target_iface] or { []types.StructField{} } {
 		field_ct := g.tc.c_type(field.typ)
 		g.write(', .${g.cname(field.name)} = ')
 		for mapping in mappings {
 			impl_ct := g.tc.c_type(g.tc.parse_type(mapping.impl))
-			g.write('(${base_expr}${op}_typ == ${mapping.source_id} ? ((${impl_ct}*)${base_expr}${op}_object)->${g.cname(field.name)} : ')
+			field_suffix := g.interface_impl_field_access_suffix(mapping.impl, field.name)
+			g.write('(${base_expr}${op}_typ == ${mapping.source_id} ? ((${impl_ct}*)${base_expr}${op}_object)${field_suffix} : ')
 		}
 		g.write('(${field_ct}){0}')
 		for _ in mappings {
@@ -7298,6 +7371,22 @@ fn (mut g FlatGen) gen_embedded_interface_receiver_from_expr(base_expr string, b
 		}
 	}
 	g.write('}')
+}
+
+fn (g &FlatGen) interface_impl_field_access_suffix(impl_name string, field_name string) string {
+	if g.direct_struct_field_exists(impl_name, field_name) {
+		return '->${g.cname(field_name)}'
+	}
+	if suffix := g.struct_promoted_field_suffix(impl_name, field_name, true) {
+		return suffix
+	}
+	return '->${g.cname(field_name)}'
+}
+
+fn (g &FlatGen) interface_impl_field_access_expr(object_expr string, impl_name string, field_name string) string {
+	impl_ct := g.tc.c_type(g.tc.parse_type(impl_name))
+	return '((${impl_ct}*)${object_expr})${g.interface_impl_field_access_suffix(impl_name,
+		field_name)}'
 }
 
 struct InterfaceReceiverIdMapping {
@@ -8916,6 +9005,9 @@ fn (mut g FlatGen) specialized_generic_plain_fn_name_for_call(id flat.NodeId, no
 	if name.len == 0 || name.contains('[') || node.children_count == 0 {
 		return none
 	}
+	if specialized := g.existing_specialized_generic_plain_fn_name(name) {
+		return specialized
+	}
 	// A transformed receiver call is an already-resolved qualified concrete
 	// function. Do not reinterpret its short method name as an unrelated plain
 	// generic (for example `sync.WaitGroup.add` versus a user `add[T]`).
@@ -8956,6 +9048,124 @@ fn (mut g FlatGen) specialized_generic_plain_fn_name_for_call(id flat.NodeId, no
 		}
 	}
 	return none
+}
+
+fn (g &FlatGen) existing_specialized_generic_plain_fn_name(name string) ?string {
+	if !g.resolved_name_is_generic_plain(name) {
+		return none
+	}
+	mut candidates := [name]
+	if name.contains('__') {
+		candidates << name.replace('__', '.')
+	}
+	if !name.contains('.') && g.tc.cur_module.len > 0 && g.tc.cur_module !in ['', 'main', 'builtin'] {
+		candidates << '${g.tc.cur_module}.${name}'
+	}
+	for candidate in candidates {
+		if candidate in g.tc.fn_ret_types || candidate in g.tc.fn_param_types {
+			return candidate
+		}
+		c_name_candidate := g.cname(candidate)
+		if c_name_candidate != candidate
+			&& (c_name_candidate in g.tc.fn_ret_types || c_name_candidate in g.tc.fn_param_types) {
+			return c_name_candidate
+		}
+	}
+	return none
+}
+
+fn (mut g FlatGen) specialized_generic_plain_fn_name_for_explicit_call(id flat.NodeId, fn_node flat.Node, name string) ?string {
+	if name.len == 0 || name.contains('[') {
+		return none
+	}
+	if g.plain_concrete_fn_name_shadows_generic(name) {
+		return none
+	}
+	base := g.generic_plain_fn_base_for_call(id, name) or { return none }
+	generic_params := g.tc.fn_generic_params[base] or { return none }
+	args := g.explicit_generic_call_type_arg_names(fn_node)
+	if args.len == 0 || args.len != generic_params.len {
+		return none
+	}
+	for arg in args {
+		if codegen_generic_arg_is_unresolved(arg) {
+			return none
+		}
+	}
+	for candidate in g.specialized_generic_plain_fn_candidates(base, args) {
+		if candidate in g.tc.fn_param_types || candidate in g.tc.fn_ret_types {
+			return candidate
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) explicit_generic_call_type_arg_names(fn_node flat.Node) []string {
+	if fn_node.kind != .index || fn_node.children_count < 2 || fn_node.value == 'range' {
+		return []string{}
+	}
+	mut args := []string{}
+	for i in 1 .. fn_node.children_count {
+		arg := g.generic_call_type_arg_name(g.a.child(&fn_node, i))
+		if arg.len == 0 {
+			return []string{}
+		}
+		args << arg
+	}
+	return args
+}
+
+fn (g &FlatGen) generic_call_type_arg_name(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return ''
+	}
+	node := g.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return node.value
+			}
+			base := g.generic_call_type_arg_name(g.a.child(&node, 0))
+			if base.len == 0 {
+				return node.value
+			}
+			return '${base}.${node.value}'
+		}
+		.prefix {
+			if node.op == .amp && node.children_count > 0 {
+				inner := g.generic_call_type_arg_name(g.a.child(&node, 0))
+				if inner.len > 0 {
+					return '&${inner}'
+				}
+			}
+		}
+		.index {
+			if node.value != 'range' && node.children_count > 0 {
+				base := g.generic_call_type_arg_name(g.a.child(&node, 0))
+				if base.len == 0 {
+					return ''
+				}
+				mut args := []string{}
+				for i in 1 .. node.children_count {
+					arg := g.generic_call_type_arg_name(g.a.child(&node, i))
+					if arg.len == 0 {
+						return ''
+					}
+					args << arg
+				}
+				return '${base}[${args.join(',')}]'
+			}
+		}
+		else {}
+	}
+
+	if node.typ.len > 0 {
+		return node.typ
+	}
+	return node.value
 }
 
 fn (g &FlatGen) infer_codegen_generic_call_type_args(node flat.Node, base string, param_texts []string, mut inferred map[string]string) {
@@ -12271,12 +12481,12 @@ fn (g &FlatGen) is_specialized_generic_fn_node(node flat.Node) bool {
 }
 
 fn (mut g FlatGen) concrete_optional_type_name(t types.Type) string {
-	clean_t := optional_result_unalias_type(t)
+	clean_type := cgen_unalias_type(t)
 	mut base_type := types.Type(types.void_)
-	if clean_t is types.OptionType {
-		base_type = clean_t.base_type
-	} else if clean_t is types.ResultType {
-		base_type = clean_t.base_type
+	if clean_type is types.OptionType {
+		base_type = clean_type.base_type
+	} else if clean_type is types.ResultType {
+		base_type = clean_type.base_type
 	} else {
 		return g.tc.c_type(clean_type)
 	}
@@ -12376,6 +12586,9 @@ fn (mut g FlatGen) emit_fn_ptr_typedef(encoded string, name string, mut emitted 
 		return
 	}
 	emitted[encoded] = true
+	if !encoded.starts_with('fn_ptr:') {
+		return
+	}
 	ret, params := fn_ptr_typedef_parts(encoded)
 	if ret.starts_with('Array_fixed_') && ret !in g.fixed_array_ret_wrappers {
 		return
@@ -12706,6 +12919,19 @@ fn (mut g FlatGen) register_fn_ptr_type(typ string) string {
 	name := fn_ptr_type_name(typ)
 	g.fn_ptr_types[typ] = name
 	return name
+}
+
+// fn_ptr_type_key returns the normalized key used for function-pointer typedefs.
+fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
+	ret := if typ.return_type is types.Void { 'void' } else { g.tc.c_type(typ.return_type) }
+	if typ.params.len == 0 {
+		return 'fn_ptr:${ret}|void'
+	}
+	mut params := []string{}
+	for param in typ.params {
+		params << g.tc.c_type(param)
+	}
+	return 'fn_ptr:${ret}|${params.join(', ')}'
 }
 
 fn fn_ptr_type_name(typ string) string {

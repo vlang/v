@@ -145,11 +145,13 @@ fn (mut t Transformer) map_index_info(index_id flat.NodeId) ?MapIndexInfo {
 
 // make_map_get_expr builds make map get expr data for transform.
 fn (mut t Transformer) make_map_get_expr(map_expr flat.NodeId, base_type string, key_name string, zero_name string, value_type string) flat.NodeId {
-	clean_value_type := if t.is_fixed_array_type(value_type) {
-		if t.fixed_array_type_contains_map(value_type) {
-			value_type
+	fixed_value_type := fixed_array_map_value_type_text(value_type)
+	effective_value_type := if fixed_value_type.len > 0 { fixed_value_type } else { value_type }
+	clean_value_type := if t.is_fixed_array_type(effective_value_type) {
+		if t.fixed_array_type_contains_map(effective_value_type) {
+			effective_value_type
 		} else {
-			fixed_array_canonical_type(value_type)
+			fixed_array_canonical_type(effective_value_type)
 		}
 	} else {
 		effective_value_type
@@ -772,6 +774,20 @@ fn (mut t Transformer) try_lower_map_index_append_stmt(id flat.NodeId) ?[]flat.N
 	return result
 }
 
+fn fixed_array_map_value_type_text(value_type string) string {
+	if value_type.starts_with('map[') {
+		elem, dims := transform_postfix_fixed_array_parts(value_type)
+		if dims.len > 0 {
+			return '[${dims[0]}]${elem}'
+		}
+		return ''
+	}
+	if value_type.starts_with('[') || (value_type.contains('[') && value_type.ends_with(']')) {
+		return value_type
+	}
+	return ''
+}
+
 // lower_map_init_to_runtime converts lower map init to runtime data for transform.
 // resolve_type_text_import_aliases rewrites `alias.Type` segments in a type
 // text to their canonical module (`json.Any` -> `json2.Any` under
@@ -864,8 +880,11 @@ fn (mut t Transformer) lower_map_init_to_runtime(id flat.NodeId, node flat.Node)
 
 fn (t &Transformer) refine_map_init_fixed_array_value_type(node flat.Node, map_type string) string {
 	key_type, value_type := t.map_type_parts(map_type)
-	if key_type.len == 0 || value_type.len == 0 || t.is_fixed_array_type(value_type) {
+	if key_type.len == 0 || value_type.len == 0 {
 		return map_type
+	}
+	if t.is_fixed_array_type(value_type) {
+		return t.refine_fixed_array_map_init_scalar_value_type(node, key_type, value_type, map_type)
 	}
 	mut i := 0
 	for i + 1 < node.children_count {
@@ -883,6 +902,43 @@ fn (t &Transformer) refine_map_init_fixed_array_value_type(node flat.Node, map_t
 			return 'map[${key_type}]${value_typ}'
 		}
 		i += 2
+	}
+	return map_type
+}
+
+fn (t &Transformer) refine_fixed_array_map_init_scalar_value_type(node flat.Node, key_type string, value_type string, map_type string) string {
+	elem_type := t.normalize_type_alias(fixed_array_elem_type(value_type))
+	if elem_type.len == 0 {
+		return map_type
+	}
+	mut saw_value := false
+	mut i := 0
+	for i + 1 < node.children_count {
+		key_id := t.a.child(&node, i)
+		key := t.a.nodes[int(key_id)]
+		if key.kind == .prefix && key.value == '...' && key.children_count > 0 {
+			i += 2
+			continue
+		}
+		value_id := t.a.child(&node, i + 1)
+		if fixed_value := t.fixed_array_literal_type_from_syntax(value_id) {
+			if t.normalize_type_alias(fixed_value) == value_type {
+				return map_type
+			}
+		}
+		mut actual := t.node_type(value_id)
+		if actual.len == 0 {
+			actual = t.resolve_expr_type(value_id)
+		}
+		actual = t.normalize_type_alias(actual)
+		if actual.len == 0 || actual != elem_type {
+			return map_type
+		}
+		saw_value = true
+		i += 2
+	}
+	if saw_value {
+		return 'map[${key_type}]${elem_type}'
 	}
 	return map_type
 }

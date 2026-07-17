@@ -437,6 +437,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope
 	tc.cur_fn_ret_type = tc.parse_type(node.typ)
+	tc.fn_context.return_type = tc.cur_fn_ret_type
 	tc.cur_fn_node_id = fn_idx
 	tc.method_value_locals = map[string]bool{}
 	tc.method_value_local_depth = map[string]int{}

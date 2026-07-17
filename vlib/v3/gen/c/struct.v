@@ -322,9 +322,6 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		g.write(g.scalar_zero_init(name))
 		return
 	}
-	if is_optional_init && g.gen_optional_fixed_array_struct_init(node, name) {
-		return
-	}
 	if !g.is_interface_type_name(node.value)
 		&& g.struct_init_has_fixed_array_field(node, lookup_name) {
 		g.gen_struct_init_with_fixed_array_fields(node, name, init_module)
@@ -436,27 +433,67 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	g.write('}')
 }
 
-fn (mut g FlatGen) gen_optional_fixed_array_struct_init(node flat.Node, name string) bool {
-	if name.len == 0 {
-		return false
-	}
-	for i in 0 .. node.children_count {
-		field := g.a.child_node(&node, i)
-		if field.value != 'value' || field.children_count == 0 {
-			continue
-		}
-		value_id := g.a.child(field, 0)
-		mut value_type := g.usable_expr_type(value_id)
-		if value_type is types.Alias {
-			value_type = value_type.base_type
-		}
-		fixed := array_fixed_type(value_type) or { return false }
-		g.write('({ ${name} __opt = {.ok = true}; memcpy(__opt.value, ')
-		g.gen_fixed_array_copy_source(value_id, types.Type(fixed))
-		g.write(', sizeof(__opt.value)); __opt; })')
+fn (mut g FlatGen) gen_optional_fixed_array_struct_init(node flat.Node, name string, init_type types.Type) bool {
+	payload_type := g.optional_struct_init_payload_type(init_type) or { return false }
+	if _ := array_fixed_type(payload_type) {
+		value_id := g.optional_struct_init_value_id(node) or { return false }
+		tmp := g.tmp_name()
+		g.write('({ ${name} ${tmp} = {.ok = true}; memcpy(${tmp}.value, ')
+		g.gen_fixed_array_copy_source(value_id, payload_type)
+		g.write(', sizeof(${tmp}.value)); ${tmp}; })')
 		return true
 	}
 	return false
+}
+
+fn (g &FlatGen) optional_struct_init_value_id(node flat.Node) ?flat.NodeId {
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.kind == .field_init && field.value == 'value' && field.children_count > 0 {
+			return g.a.child(field, 0)
+		}
+	}
+	return none
+}
+
+fn (g &FlatGen) optional_struct_init_payload_type(init_type types.Type) ?types.Type {
+	if g.expected_expr_type is types.OptionType {
+		return g.expected_expr_type.base_type
+	}
+	if g.expected_expr_type is types.ResultType {
+		return g.expected_expr_type.base_type
+	}
+	if init_type is types.OptionType {
+		return init_type.base_type
+	}
+	if init_type is types.ResultType {
+		return init_type.base_type
+	}
+	return none
+}
+
+fn (g &FlatGen) optional_success_error_payload_err_expr(node flat.Node) ?flat.NodeId {
+	mut has_true_ok := false
+	mut value_id := flat.empty_node
+	for i in 0 .. node.children_count {
+		field := g.a.child_node(&node, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		child_id := g.a.child(field, 0)
+		if field.value == 'ok' {
+			child := g.a.nodes[int(child_id)]
+			if child.kind == .bool_literal && child.value == 'true' {
+				has_true_ok = true
+			}
+		} else if field.value == 'value' {
+			value_id = child_id
+		}
+	}
+	if !has_true_ok || int(value_id) < 0 {
+		return none
+	}
+	return g.optional_error_payload_err_expr(value_id)
 }
 
 fn (mut g FlatGen) struct_init_has_fixed_array_field(node flat.Node, type_name string) bool {
@@ -1453,6 +1490,21 @@ fn shared_inner_type_text(raw string) ?string {
 		return trimmed_space(clean[7..])
 	}
 	return none
+}
+
+fn shared_array_inner_type_text(raw string) ?string {
+	mut clean := trimmed_space(raw)
+	for clean.starts_with('&') {
+		clean = trimmed_space(clean[1..])
+	}
+	if !clean.starts_with('[]') {
+		return none
+	}
+	return shared_inner_type_text(trimmed_space(clean[2..]))
+}
+
+fn shared_array_raw_is_ptr(raw string) bool {
+	return trimmed_space(raw).starts_with('&')
 }
 
 fn (g &FlatGen) shared_alias_pointer_type_from_text(raw string) ?types.Type {

@@ -3424,7 +3424,7 @@ fn (mut p Parser) precollect_unsupported_inline_asm_guards(source string, target
 	mut file := file_set.add_file('<inline asm scan>', -1, source.len)
 	mut s := scanner.new_scanner(p.prefs, .skip_interpolation)
 	s.init(file, source)
-	mut tokens := []InlineAsmScanToken{cap: source.len / 4}
+	mut tokens := []InlineAsmScanToken{}
 	for {
 		kind := s.scan()
 		tokens << InlineAsmScanToken{
@@ -7724,12 +7724,15 @@ fn (mut p Parser) string_interp(first_part string, quote u8) flat.NodeId {
 		mut part_id := expr_id
 		// format spec: :fmt
 		if p.tok == .colon {
+			old_format := p.s.in_str_inter_format
+			p.s.in_str_inter_format = true
 			p.next()
 			mut fmt := ''
 			for p.tok != .rcbr && p.tok != .eof {
 				fmt += if p.lit.len > 0 { p.lit } else { p.tok.str() }
 				p.next()
 			}
+			p.s.in_str_inter_format = old_format
 			if fmt.len > 0 {
 				start := p.add_child(expr_id)
 				part_id = p.add_node(flat.Node{
@@ -9162,21 +9165,16 @@ fn (mut p Parser) anonymous_struct_type_for_literal(init flat.Node) ?string {
 	mut can_infer_types := true
 	for i in 0 .. init.children_count {
 		field := p.a.child_node(&init, i)
-		if field.value.len == 0 || field.children_count == 0 {
+		if field.kind != .field_init || field.value.len == 0 || field.children_count == 0 {
 			return none
 		}
 		value := p.a.child_node(field, 0)
 		field_type := p.infer_anonymous_struct_literal_type(value) or {
-			types_known = false
+			can_infer_types = false
 			''
 		}
 		field_names << field.value
-		value_id := p.a.child(field, 0)
-		if field_type := p.anonymous_struct_literal_field_type(value_id) {
-			field_types << field_type
-		} else {
-			can_infer_types = false
-		}
+		field_types << field_type
 	}
 	name_key := anonymous_struct_name_shape_key(field_names)
 	if can_infer_types {
@@ -9203,20 +9201,14 @@ fn (mut p Parser) anonymous_struct_type_for_literal(init flat.Node) ?string {
 				typ:   field_types[i]
 			})
 		}
-		return p.register_anonymous_struct_type(ids, field_names, field_types, true)
+		return p.register_anonymous_aggregate_type(ids, field_names, field_types, true, false)
 	}
 	if candidates := p.anonymous_struct_types[name_key] {
-		if candidates.len == 1 {
-			return candidates[0]
-		}
-		return none
-	}
-	name_shape := anonymous_struct_name_shape(field_names)
-	if candidates := p.anonymous_struct_types[name_shape] {
 		if candidates.len == 1
 			&& p.anonymous_struct_literal_matches_candidate(init, field_names, candidates[0]) {
 			return candidates[0]
 		}
+		return none
 	}
 	return none
 }
@@ -9241,7 +9233,7 @@ fn (mut p Parser) create_anonymous_struct_type_for_literal(init flat.Node) ?stri
 }
 
 fn (p &Parser) anonymous_struct_literal_has_contextual_candidate(init flat.Node, field_names []string) bool {
-	candidates := p.anonymous_struct_types[anonymous_struct_name_shape(field_names)] or {
+	candidates := p.anonymous_struct_types[anonymous_struct_name_shape_key(field_names)] or {
 		return false
 	}
 	if candidates.len <= 1 {
@@ -9347,7 +9339,7 @@ fn (mut p Parser) register_anonymous_struct_type(field_names []string, field_typ
 			return none
 		}
 	}
-	shape := anonymous_struct_shape(field_names, field_types)
+	shape := anonymous_struct_typed_shape_key(field_names, field_types)
 	if candidates := p.anonymous_struct_types[shape] {
 		if candidates.len == 1 {
 			return candidates[0]
@@ -9361,25 +9353,8 @@ fn (mut p Parser) register_anonymous_struct_type(field_names []string, field_typ
 			typ:   field_types[i]
 		})
 	}
-	p.anonymous_struct_count++
-	name := 'AnonStruct_${local_type_scope_part(p.cur_file)}_${p.anonymous_struct_count}'
-	start := p.add_children(ids)
-	p.a.add_node(flat.Node{
-		kind:           .struct_decl
-		value:          name
-		children_start: start
-		children_count: flat.child_count(ids.len)
-	})
-	mut candidates := p.anonymous_struct_types[shape] or { []string{} }
-	candidates << name
-	p.anonymous_struct_types[shape] = candidates
-	if allow_name_shape {
-		name_shape := anonymous_struct_name_shape(field_names)
-		mut name_candidates := p.anonymous_struct_types[name_shape] or { []string{} }
-		name_candidates << name
-		p.anonymous_struct_types[name_shape] = name_candidates
-	}
-	return name
+	return p.register_anonymous_aggregate_type(ids, field_names, field_types, !allow_name_shape,
+		false)
 }
 
 fn (p &Parser) infer_anonymous_struct_literal_type(node flat.Node) ?string {
@@ -9573,10 +9548,10 @@ fn (mut p Parser) parse_anonymous_aggregate_type(is_union bool) string {
 		}
 	}
 	p.check(.rcbr)
-	return p.register_anonymous_struct_type(ids, field_names, field_types, false)
+	return p.register_anonymous_aggregate_type(ids, field_names, field_types, false, is_union)
 }
 
-fn (mut p Parser) register_anonymous_struct_type(ids []flat.NodeId, field_names []string, field_types []string, inferred bool) string {
+fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_names []string, field_types []string, inferred bool, is_union bool) string {
 	p.anonymous_struct_count++
 	name_prefix := if is_union { 'AnonUnion' } else { 'AnonStruct' }
 	name := '${name_prefix}_${local_type_scope_part(p.cur_file)}_${p.anonymous_struct_count}'

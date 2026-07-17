@@ -74,64 +74,78 @@ pub:
 // Transformer represents transformer data used by transform.
 pub struct Transformer {
 mut:
-	a                            &flat.FlatAst      = unsafe { nil }
-	tc                           &types.TypeChecker = unsafe { nil }
-	structs                      map[string]StructInfo
-	unique_fields                map[string]string
-	alias_methods                map[string]string
-	globals                      map[string]string
-	sum_types                    map[string][]string
-	sum_variant_parents          map[string][]string
-	sum_variant_names            map[string]bool
-	sum_variant_fields           map[string]string
-	qualified_types              map[string]string
-	fn_ret_types                 map[string]string
-	receiver_method_suffix_index map[string]string
-	const_suffixes               map[string]string
-	enum_types                   map[string][]string
-	enum_backing_types           map[string]string
-	cur_file                     string
-	cur_module                   string
-	cur_fn_name                  string
-	cur_fn_ret_type              string
-	cur_fn_is_generic            bool
-	skip_generics                bool
-	var_types                    []VarTypeBinding
-	mut_param_values             map[string]bool
-	fixed_array_param_values     map[string]bool
-	mut_value_ident_nodes        map[int]bool
-	pointer_value_lvalues        map[string]bool
-	pointer_value_rvalues        map[string]bool
-	bound_method_arrays          map[string]BoundMethodArrayInfo
-	temp_counter                 int
-	pending_stmts                []flat.NodeId
-	smartcast_stack              []SmartcastContext
-	invalidated_smartcasts       map[string]bool
-	in_call_callee               bool
-	in_monomorphize_scan         bool
-	validating_generic_spec      bool
-	monomorph_errors             []string
-	monomorph_error_seen         map[string]bool
-	in_spawn_expr                bool
-	has_spawn_expr               bool
-	in_const_init                bool
-	in_return_expr               bool
-	in_string_interp_part        bool
-	expected_expr_node           int = -1
-	expected_expr_type           string
-	in_selector_base             bool
-	autolock_depth               int
-	alias_cache                  &AliasCache             = unsafe { nil }
-	sum_cache                    &AliasCache             = unsafe { nil }
-	generic_unresolved_cache     &GenericUnresolvedCache = unsafe { nil }
-	struct_field_type_cache      &LookupCache            = unsafe { nil }
-	variant_short_name_cache     &LookupCache            = unsafe { nil }
-	call_param_types_decl_cache  map[string][]types.Type
-	call_param_types_decl_misses map[string]bool
-	call_param_types_decl_index  map[string]FnParamDeclRef
-	call_param_types_index_ready bool
-	used_fns                     map[string]bool
-	comptime_reflected_params    map[string][]ParamMeta
+	a                             &flat.FlatAst      = unsafe { nil }
+	tc                            &types.TypeChecker = unsafe { nil }
+	structs                       map[string]StructInfo
+	struct_short_name_index       map[string]string
+	struct_short_name_index_ready bool
+	unique_fields                 map[string]string
+	alias_methods                 map[string]string
+	globals                       map[string]string
+	sum_types                     map[string][]string
+	sum_variant_parents           map[string][]string
+	sum_variant_names             map[string]bool
+	sum_variant_fields            map[string]string
+	qualified_types               map[string]string
+	fn_ret_types                  map[string]string
+	multi_return_fn_ret_types     map[string]types.Type
+	receiver_method_suffix_index  map[string]string
+	variadic_suffix_index         map[string]i8
+	const_suffixes                map[string]string
+	enum_types                    map[string][]string
+	enum_backing_types            map[string]string
+	cur_file                      string
+	cur_module                    string
+	cur_fn_name                   string
+	cur_fn_ret_type               string
+	cur_fn_is_generic             bool
+	skip_generics                 bool
+	var_types                     []VarTypeBinding
+	var_type_indices              map[string]int
+	refined_node_types            map[int]string
+	fn_value_locals               map[string]string
+	mut_param_values              map[string]bool
+	fixed_array_param_values      map[string]bool
+	mut_value_ident_nodes         map[int]bool
+	pointer_value_lvalues         map[string]bool
+	pointer_value_rvalues         map[string]bool
+	addr_lvalue_pointer_locals    map[string]bool
+	bound_method_arrays           map[string]BoundMethodArrayInfo
+	temp_counter                  int
+	global_temp_counter           int
+	pending_stmts                 []flat.NodeId
+	smartcast_stack               []SmartcastContext
+	invalidated_smartcasts        map[string]bool
+	in_call_callee                bool
+	in_monomorphize_scan          bool
+	validating_generic_spec       bool
+	monomorph_errors              []string
+	monomorph_error_seen          map[string]bool
+	in_spawn_expr                 bool
+	has_spawn_expr                bool
+	in_const_init                 bool
+	in_return_expr                bool
+	in_string_interp_part         bool
+	expected_expr_node            int = -1
+	expected_expr_type            string
+	in_selector_base              bool
+	autolock_depth                int
+	alias_cache                   &AliasCache             = unsafe { nil }
+	sum_cache                     &AliasCache             = unsafe { nil }
+	generic_unresolved_cache      &GenericUnresolvedCache = unsafe { nil }
+	struct_field_type_cache       &LookupCache            = unsafe { nil }
+	variant_short_name_cache      &LookupCache            = unsafe { nil }
+	interface_box_param_cache     &BoolLookupCache        = unsafe { nil }
+	alias_receiver_method_cache   &LookupCache            = unsafe { nil }
+	call_variadic_cache           &BoolLookupCache        = unsafe { nil }
+	str_alias_cache               &LookupCache            = unsafe { nil }
+	call_param_types_decl_cache   map[string][]types.Type
+	call_param_types_decl_misses  map[string]bool
+	call_param_types_decl_index   map[string]FnParamDeclRef
+	call_param_types_index_ready  bool
+	used_fns                      map[string]bool
+	used_fns_parent               &map[string]bool = unsafe { nil }
+	comptime_reflected_params     map[string][]ParamMeta
 	// sum_eq_types records sum types whose deep-equality helper fn
 	// (__v3_sum_eq_<name>) is called somewhere, keyed by sum name with the
 	// module/file context of the requesting call site (type resolution inside
@@ -653,6 +667,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		mut_value_ident_nodes:            map[int]bool{}
 		pointer_value_lvalues:            map[string]bool{}
 		pointer_value_rvalues:            map[string]bool{}
+		addr_lvalue_pointer_locals:       map[string]bool{}
 		bound_method_arrays:              map[string]BoundMethodArrayInfo{}
 		invalidated_smartcasts:           map[string]bool{}
 		escaping_amp_ptrs:                map[string]bool{}
@@ -670,6 +685,8 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		call_param_types_decl_index:      map[string]FnParamDeclRef{}
 		enum_backing_types:               map[string]string{}
 		sum_variant_names:                map[string]bool{}
+		receiver_method_suffix_index:     map[string]string{}
+		variadic_suffix_index:            map[string]i8{}
 		used_fns:                         used_fns.clone()
 		comptime_reflected_params:        map[string][]ParamMeta{}
 		interface_boxed_types:            map[string]bool{}
@@ -3736,19 +3753,64 @@ fn (mut t Transformer) scan_escape_pointer_write(lhs flat.Node, rhs flat.Node, m
 // names in `amp_sources[p]`), (b) plain pointer copies `q := p`/`q = p` into
 // `ptr_aliases[q] = p`, and (c) every ident name appearing inside a return statement
 // into `returned`.
-fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string, mut returned map[string]bool) {
+fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string, can_clear_interface_boxes bool) {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return
 	}
 	node := t.a.nodes[int(id)]
-	if node.kind == .decl_assign && node.children_count == 2 {
-		lhs := t.a.nodes[int(t.a.child(&node, 0))]
-		rhs := t.a.nodes[int(t.a.child(&node, 1))]
-		t.scan_escape_pointer_write(lhs, rhs, mut amp_ptrs, mut amp_sources, mut ptr_aliases)
-	} else if node.kind == .assign && node.op == .assign && node.children_count == 2 {
-		lhs := t.a.nodes[int(t.a.child(&node, 0))]
-		rhs := t.a.nodes[int(t.a.child(&node, 1))]
-		t.scan_escape_pointer_write(lhs, rhs, mut amp_ptrs, mut amp_sources, mut ptr_aliases)
+	if node.kind in [.if_expr, .match_stmt, .match_branch, .for_stmt] {
+		for i in 0 .. node.children_count {
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
+				interface_boxes, mut returned, mut local_stack_names, mut local_stack_added, false)
+		}
+		return
+	}
+	if node.kind == .block {
+		scope_mark := local_stack_added.len
+		for i in 0 .. node.children_count {
+			t.scan_escape_pass(t.a.child(&node, i), mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
+				interface_boxes, mut returned, mut local_stack_names, mut local_stack_added,
+				can_clear_interface_boxes)
+		}
+		pop_escape_local_stack_names(scope_mark, mut local_stack_names, mut local_stack_added)
+		return
+	}
+	if node.kind == .for_in_stmt {
+		t.scan_for_in_escape_pass(node, mut amp_ptrs, mut amp_sources, mut ptr_aliases, mut
+			interface_boxes, mut returned, mut local_stack_names, mut local_stack_added,
+			can_clear_interface_boxes)
+		return
+	}
+	if node.kind in [.decl_assign, .assign] && node.children_count >= 2 {
+		mut declared_names := []string{}
+		mut i := 0
+		for i + 1 < node.children_count {
+			lhs := t.a.nodes[int(t.a.child(&node, i))]
+			rhs_id := t.a.child(&node, i + 1)
+			rhs := t.a.nodes[int(rhs_id)]
+			mut lhs_marks_interface_box := false
+			if node.kind == .decl_assign && lhs.kind == .ident && lhs.value.len > 0 {
+				declared_names << lhs.value
+			}
+			t.scan_escape_pointer_write(lhs, rhs, mut amp_ptrs, mut amp_sources, mut ptr_aliases)
+			if lhs.kind == .ident && lhs.value.len > 0 && rhs.kind == .ident && rhs.value.len > 0
+				&& rhs.value in interface_boxes {
+				interface_boxes[lhs.value] = true
+				lhs_marks_interface_box = true
+			} else if lhs.kind == .ident && lhs.value.len > 0
+				&& t.interface_box_from_stack_pointer_source(rhs_id, amp_ptrs, ptr_aliases, local_stack_names) {
+				interface_boxes[lhs.value] = true
+				lhs_marks_interface_box = true
+			}
+			if can_clear_interface_boxes && node.kind == .assign && lhs.kind == .ident
+				&& lhs.value.len > 0 && !lhs_marks_interface_box {
+				interface_boxes.delete(lhs.value)
+			}
+			i += 2
+		}
+		for name in declared_names {
+			add_escape_local_stack_name(name, mut local_stack_names, mut local_stack_added)
+		}
 	}
 	if node.kind == .return_stmt {
 		for i in 0 .. node.children_count {
@@ -3762,7 +3824,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	}
 }
 
-fn (mut t Transformer) scan_for_in_escape_pass(node flat.Node, mut amp_ptrs map[string]bool, mut amp_sources map[string]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string, can_clear_interface_boxes bool) {
+fn (mut t Transformer) scan_for_in_escape_pass(node flat.Node, mut amp_ptrs map[string]bool, mut amp_sources map[string][]string, mut ptr_aliases map[string]string, mut interface_boxes map[string]bool, mut returned map[string]bool, mut local_stack_names map[string]bool, mut local_stack_added []string, can_clear_interface_boxes bool) {
 	header_count := node.value.int()
 	header_end := if header_count > 0 && header_count <= int(node.children_count) {
 		header_count
@@ -9879,7 +9941,9 @@ fn (mut t Transformer) transform_call_expr(id flat.NodeId, node flat.Node) flat.
 		resolved_typ = t.new_map_call_type(call_node)
 	}
 	if resolved_typ.len == 0 {
-		resolved_typ = t.fn_value_call_return_type(call_node)
+		if ret := t.fn_value_call_return_type(call_node) {
+			resolved_typ = t.call_return_type_name(ret, call_node)
+		}
 	}
 	if resolved_typ.len == 0 {
 		resolved_typ = t.get_call_return_type(call_id, call_node)
@@ -9967,15 +10031,6 @@ fn (t &Transformer) bound_method_array_expr_info(id flat.NodeId) ?BoundMethodArr
 
 fn (t &Transformer) bound_method_array_key(name string) string {
 	return '${t.cur_file}|${t.cur_module}|${t.cur_fn_name}|${name}'
-}
-
-fn (t &Transformer) fn_value_call_return_type(node flat.Node) string {
-	if node.kind != .call || node.children_count == 0 {
-		return ''
-	}
-	callee_id := t.a.child(&node, 0)
-	callee_type := t.node_type(callee_id)
-	return t.local_fn_value_return_type_from_type(callee_type) or { '' }
 }
 
 fn (mut t Transformer) record_selected_compile_error_call(node flat.Node) {
@@ -12814,9 +12869,10 @@ fn (t &Transformer) generated_variant_access_type(id flat.NodeId) ?string {
 	node := t.a.nodes[int(id)]
 	match node.kind {
 		.selector {
-			for i, param in node.generic_params {
-				if param == generated_variant_access_marker && i + 1 < node.generic_params.len {
-					return node.generic_params[i + 1]
+			params := node.generic_params()
+			for i, param in params {
+				if param == generated_variant_access_marker && i + 1 < params.len {
+					return params[i + 1]
 				}
 			}
 			variant := t.variant_type_from_sum_field_name(node.value) or {
@@ -12864,10 +12920,10 @@ fn (mut t Transformer) mark_generated_variant_access(id flat.NodeId, variant str
 	if int(id) < 0 || variant.len == 0 {
 		return
 	}
-	mut params := t.a.nodes[int(id)].generic_params.clone()
+	mut params := t.a.nodes[int(id)].generic_params().clone()
 	params << generated_variant_access_marker
 	params << variant
-	t.a.nodes[int(id)].generic_params = params
+	t.set_node_generic_params(int(id), params)
 }
 
 // original_expr_type supports original expr type handling for Transformer.
@@ -14161,6 +14217,49 @@ fn (t &Transformer) array_literal_child_elem_type(child_id flat.NodeId) string {
 		}
 	}
 	return t.node_type(child_id)
+}
+
+fn (t &Transformer) array_literal_pointer_value_elem_type(node flat.Node) ?string {
+	mut elem_type := ''
+	for i in 0 .. node.children_count {
+		child_type := t.pointer_value_expr_type(t.a.child(&node, i)) or { continue }
+		if elem_type.len == 0 {
+			elem_type = child_type
+			continue
+		}
+		if elem_type != child_type {
+			return none
+		}
+	}
+	if elem_type.len > 0 {
+		return elem_type
+	}
+	return none
+}
+
+fn (t &Transformer) array_literal_child_value_type(id flat.NodeId) string {
+	if typ := t.pointer_value_expr_type(id) {
+		return typ
+	}
+	return t.node_type(id)
+}
+
+fn (t &Transformer) pointer_value_expr_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .ident || node.value.len == 0 {
+		return none
+	}
+	if !t.pointer_value_rvalues[node.value] && !t.mut_param_values[node.value] {
+		return none
+	}
+	typ := t.var_type(node.value)
+	if !typ.starts_with('&') {
+		return none
+	}
+	return typ[1..]
 }
 
 fn (t &Transformer) is_untyped_float_literal_expr(node flat.Node) bool {

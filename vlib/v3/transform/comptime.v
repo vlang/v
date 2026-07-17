@@ -1314,7 +1314,7 @@ fn (mut t Transformer) make_comptime_method_selector(receiver flat.NodeId, metho
 		children_count: 1
 		value:          method.name
 		typ:            method.return_type
-		generic_params: [comptime_method_selector_marker]
+		payload:        flat.node_payload([comptime_method_selector_marker])
 	})
 }
 

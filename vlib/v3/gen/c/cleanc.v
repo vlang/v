@@ -10,6 +10,31 @@ import v3.types
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
 
+fn cgen_worker_scope_begin(enabled bool) voidptr {
+	$if prealloc {
+		if enabled {
+			return unsafe { prealloc_scope_begin() }
+		}
+	}
+	return unsafe { nil }
+}
+
+fn cgen_worker_scope_leave(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_leave(scope) }
+		}
+	}
+}
+
+fn cgen_worker_scope_free(scope voidptr) {
+	$if prealloc {
+		if scope != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(scope) }
+		}
+	}
+}
+
 struct ActiveLock {
 	mutexes_var string
 	modes_var   string
@@ -1983,26 +2008,19 @@ fn (mut g FlatGen) collect_gen_info() {
 }
 
 fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name string, file string) {
-	typed_params := g.fn_node_param_types(node, module_name)
 	g.tc.cur_module = module_name
 	g.tc.cur_file = file
-	mut param_idx := 0
 	for i in 0 .. node.children_count {
 		child := g.a.child_node(&node, i)
 		if node_kind_id(child) != 75 {
 			continue
 		}
 		raw_type := g.tc.parse_type(child.typ)
-		param_type := if raw_type !is types.Pointer && param_idx < typed_params.len {
-			typed_params[param_idx]
-		} else {
-			raw_type
-		}
-		param_idx++
+		param_type := cgen_unalias_type(raw_type)
 		if param_type is types.FnType {
 			// Keep the canonical name available for a later concrete use without
 			// emitting a typedef solely for a function that mark-used discarded.
-			g.register_fn_ptr_type(g.tc.c_type(param_type))
+			g.register_fn_ptr_type(g.fn_ptr_type_key(param_type))
 		}
 	}
 }
@@ -4716,7 +4734,7 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 		return
 	}
 	semantic_actual := cgen_unalias_type(actual)
-	if semantic_expected is types.String && g.gen_map_str_expr(id, actual) {
+	if semantic_expected is types.String && g.gen_map_str_expr(id, semantic_actual) {
 		g.expected_expr_type = old_expected
 		g.expected_enum = old_expected_enum
 		return
@@ -4872,8 +4890,125 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 	g.expected_enum = old_expected_enum
 }
 
+fn (mut g FlatGen) gen_sum_pointer_default_expr(node flat.Node, expected types.Type) bool {
+	ptr_type := if expected is types.Pointer { expected } else { return false }
+	if node.kind != .struct_init || node.children_count != 0 {
+		return false
+	}
+	base_type := default_init_unalias_type(ptr_type.base_type)
+	if base_type !is types.SumType {
+		return false
+	}
+	if node.value.len > 0 {
+		init_type := default_init_unalias_type(g.tc.parse_type(node.value))
+		if init_type is types.Pointer {
+			init_base := default_init_unalias_type(init_type.base_type)
+			if !g.type_names_match(init_base, base_type) {
+				return false
+			}
+		} else if !g.type_names_match(init_type, base_type) {
+			return false
+		}
+	}
+	g.gen_default_value_for_type(expected)
+	return true
+}
+
+fn (g &FlatGen) pointer_stringifies_as_address(base types.Type) bool {
+	if base is types.Alias {
+		return g.pointer_stringifies_as_address(base.base_type)
+	}
+	return base is types.String || base is types.Primitive || base is types.Char
+		|| base is types.Rune || base is types.ISize || base is types.USize
+}
+
+fn (mut g FlatGen) gen_pointer_alias_value_cast_addr(id flat.NodeId, expected types.Pointer) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.node(id)
+	if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
+		return false
+	}
+	child_id := g.a.child(node, 0)
+	child := g.a.node(child_id)
+	if child.kind != .cast_expr || child.children_count == 0 {
+		return false
+	}
+	target_type := g.tc.parse_type(child.value)
+	if target_type !is types.Alias {
+		return false
+	}
+	target_alias := target_type as types.Alias
+	base_type := target_alias.base_type
+	if base_type is types.Pointer {
+		return false
+	}
+	target_ct := g.value_c_type(base_type)
+	expected_ct := g.value_c_type(expected.base_type)
+	if expected_ct != target_ct && !g.type_names_match(expected.base_type, target_type) {
+		return false
+	}
+	value_expr := g.expr_to_string(g.a.child(child, 0))
+	source_expr := '(${target_ct}[]){${value_expr}}[0]'
+	copy_expr := g.heap_local_memdup_expr(source_expr, base_type, target_ct, false)
+	if expected_ct == target_ct {
+		g.write(copy_expr)
+	} else {
+		g.write('(${expected_ct}*)(${copy_expr})')
+	}
+	return true
+}
+
+fn (mut g FlatGen) gen_pointer_alias_value_cast_expr(id flat.NodeId, expected types.Pointer) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.node(id)
+	if node.kind != .cast_expr || node.children_count == 0 {
+		return false
+	}
+	target_type := g.tc.parse_type(node.value)
+	if target_type !is types.Pointer {
+		return false
+	}
+	target_pointer := target_type as types.Pointer
+	target_base := target_pointer.base_type
+	if target_base !is types.Alias {
+		return false
+	}
+	target_alias := target_base as types.Alias
+	base_type := target_alias.base_type
+	if base_type is types.Pointer {
+		return false
+	}
+	child_id := g.a.child(node, 0)
+	child := g.a.node(child_id)
+	if child.kind == .nil_literal {
+		return false
+	}
+	actual := g.usable_expr_type(child_id)
+	if actual is types.Pointer {
+		return false
+	}
+	target_ct := g.value_c_type(base_type)
+	expected_ct := g.value_c_type(expected.base_type)
+	if expected_ct != target_ct && !g.type_names_match(expected.base_type, target_base) {
+		return false
+	}
+	value_expr := g.expr_to_string(child_id)
+	source_expr := '(${target_ct}[]){${value_expr}}[0]'
+	copy_expr := g.heap_local_memdup_expr(source_expr, base_type, target_ct, false)
+	if expected_ct == target_ct {
+		g.write(copy_expr)
+	} else {
+		g.write('(${expected_ct}*)(${copy_expr})')
+	}
+	return true
+}
+
 fn (g &FlatGen) array_index_type_for_expected_arg(actual types.Type, node flat.Node) types.Type {
-	if spread_index_expected_type_marker !in node.generic_params {
+	if spread_index_expected_type_marker !in node.generic_params() {
 		return actual
 	}
 	expected := g.expected_expr_type
@@ -5356,6 +5491,35 @@ fn (g &FlatGen) sum_variant_shared_field_type(variant string, field string, seen
 		return g.sum_shared_field_type_inner(g.tc.parse_type(nested_sum), field, seen)
 	}
 	return none
+}
+
+fn (g &FlatGen) struct_promoted_field_type(type_name string, field string) ?types.Type {
+	path := g.embedded_field_path_for_promoted_field(type_name, field) or { return none }
+	if path.len == 0 {
+		return none
+	}
+	owner := g.embedded_field_type_name(path[path.len - 1])
+	if owner.len == 0 {
+		return none
+	}
+	return g.struct_field_type(owner, field)
+}
+
+fn (g &FlatGen) struct_promoted_field_suffix(type_name string, field string, initial_ptr bool) ?string {
+	path := g.embedded_field_path_for_promoted_field(type_name, field) or { return none }
+	if path.len == 0 {
+		return none
+	}
+	mut suffix := ''
+	mut is_ptr := initial_ptr
+	for embedded in path {
+		suffix += if is_ptr { '->' } else { '.' }
+		suffix += g.cname(embedded.name)
+		is_ptr = embedded.typ is types.Pointer
+	}
+	suffix += if is_ptr { '->' } else { '.' }
+	suffix += g.cname(field)
+	return suffix
 }
 
 fn (g &FlatGen) sum_unique_variant_field_info(base_type0 types.Type, field string) ?SumUniqueFieldInfo {
@@ -7304,9 +7468,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					g.write('(${ct}*)NULL')
 					return
 				}
-				if map_str_clean_type(target_type) is types.Map
-					&& g.gen_map_pointer_cast_from_value_address(g.a.child(&child, 0)) {
-					return
+				if target_type is types.Pointer {
+					if map_str_clean_type(target_type.base_type) is types.Map
+						&& g.gen_map_pointer_cast_from_value_address(g.a.child(&child, 0), target_type) {
+						return
+					}
 				}
 				if target_type is types.SumType {
 					g.write('(${ct}*)memdup(&')
@@ -8214,6 +8380,29 @@ fn (g &FlatGen) fixed_array_index_base_needs_paren(base_id flat.NodeId) bool {
 	}
 	node := g.a.nodes[int(base_id)]
 	return node.kind !in [.ident, .selector]
+}
+
+fn (mut g FlatGen) gen_struct_default_global_selector(base flat.Node, field string, op flat.Op) bool {
+	if g.struct_default_module.len == 0 || base.kind != .ident || base.value.len == 0 {
+		return false
+	}
+	qname := qualify_name_in_module(g.struct_default_module, base.value)
+	if qname !in g.global_types && base.value !in g.global_types {
+		return false
+	}
+	global_name := if g.struct_default_module in ['', 'main', 'builtin'] {
+		base.value
+	} else {
+		qname
+	}
+	g.write(g.cname(global_name))
+	if op == .arrow {
+		g.write('->')
+	} else {
+		g.write('.')
+	}
+	g.write(g.cname(field))
+	return true
 }
 
 fn (mut g FlatGen) gen_pointer_cast_fixed_array_literal(arg_id flat.NodeId, target_type types.Pointer, ct string) bool {
