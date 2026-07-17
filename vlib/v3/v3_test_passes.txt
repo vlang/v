@@ -1952,6 +1952,7 @@ vlib/v/tests/nested_fors_with_labels_test.v
 vlib/v/tests/nested_map_index_test.v
 vlib/v/tests/nested_map_of_fn_call_test.v
 vlib/v/tests/nested_map_test.v
+vlib/v/tests/nested_multiline_comments_test.v
 vlib/v/tests/nested_or_in_assign_decl_test.v
 vlib/v/tests/old_generic_scanner_test.v
 vlib/v/tests/option_result_alias_fn_ret_test.v
