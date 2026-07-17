@@ -57,6 +57,9 @@ pub fn utc() Time {
 }
 
 fn time_with_unix(t Time) Time {
+	if _ := t.loc {
+		return t
+	}
 	if t.unix != 0 {
 		return t
 	}
