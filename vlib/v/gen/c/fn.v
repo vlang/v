@@ -4399,6 +4399,14 @@ fn (mut g Gen) unwrap_receiver_type(node ast.CallExpr) (ast.Type, &ast.TypeSymbo
 			resolved_left_type := g.resolve_current_fn_generic_param_type(node.left.name)
 			if resolved_left_type != 0 {
 				left_type = resolved_left_type
+			} else if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 {
+				// node.left_type may be stale from a previous generic instantiation
+				// (the checker overwrites it on each pass); re-resolve it from the scope
+				scope_type := g.resolved_scope_var_type(node.left)
+				if scope_type != 0 && !scope_type.has_flag(.generic)
+					&& !g.type_has_unresolved_generic_parts(scope_type) {
+					left_type = scope_type
+				}
 			}
 		}
 	} else if node.left is ast.StructInit {
@@ -4760,6 +4768,24 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 	left_sym := g.table.sym(left_type)
 	final_left_sym := g.table.final_sym(left_type)
+	// In generic functions node.from_embed_types may be stale: the checker overwrites
+	// it on each instantiation pass, so the state of the last checked concrete type
+	// wins. Re-resolve it for the current concrete receiver type.
+	mut effective_embed_types := node.from_embed_types.clone()
+	if g.cur_fn != unsafe { nil } && g.cur_concrete_types.len > 0 && effective_embed_types.len > 0
+		&& left_sym.kind != .interface && final_left_sym.info is ast.Struct {
+		if left_sym.has_method(method_name) || final_left_sym.has_method(method_name)
+			|| final_left_sym.has_method_with_generic_parent(method_name) {
+			effective_embed_types = []
+		} else {
+			_, embed_types := g.table.find_method_from_embeds(final_left_sym, method_name) or {
+				ast.Fn{}, []ast.Type{}
+			}
+			if embed_types.len > 0 {
+				effective_embed_types = embed_types.clone()
+			}
+		}
+	}
 	mut use_builtin_array_sort := false
 	if final_left_sym.kind == .array && node.kind in [.sort, .sorted] && node.args.len > 0 {
 		if method := left_sym.find_method(method_name) {
@@ -5471,7 +5497,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 	}
 
 	if free_receiver_heap_copy == '' && receiver_needs_ref && (!left_type.is_ptr()
-		|| node.from_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.kind != .str)) {
+		|| effective_embed_types.len != 0 || (left_type.has_flag(.shared_f) && node.kind != .str)) {
 		// The receiver is a reference, but the caller provided a value
 		// Add `&` automatically.
 		// TODO: same logic in call_args()
@@ -5499,11 +5525,11 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 		}
 	} else if free_receiver_heap_copy == '' && !receiver_needs_ref && left_type.is_ptr()
-		&& node.kind != .str && node.from_embed_types.len == 0 {
+		&& node.kind != .str && effective_embed_types.len == 0 {
 		if !left_type.has_flag(.shared_f) {
 			g.write('*'.repeat(left_type.nr_muls()))
 		}
-	} else if free_receiver_heap_copy == '' && !is_range_slice && node.from_embed_types.len == 0
+	} else if free_receiver_heap_copy == '' && !is_range_slice && effective_embed_types.len == 0
 		&& node.kind != .str {
 		diff := left_type.nr_muls() - receiver_type.nr_muls()
 		if diff > 0 {
@@ -5524,7 +5550,7 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			g.write('(map[]){')
 			g.expr(ast.Expr(node.left))
 			g.write('}[0]')
-		} else if !is_interface && node.from_embed_types.len > 0 {
+		} else if !is_interface && effective_embed_types.len > 0 {
 			// For mut generic params where the concrete type resolves
 			// to a multi-pointer (e.g. mut ctx X where X = &Context →
 			// C param is Context**), fn_decl_params adds .ref() which
@@ -5547,29 +5573,29 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			} else {
 				g.expr(ast.Expr(node.left))
 			}
-		} else if is_interface && node.from_embed_types.len > 0 {
+		} else if is_interface && effective_embed_types.len > 0 {
 			if g.out.last_n(1) == '&' {
 				g.go_back(1)
 			}
 			if receiver_type.is_ptr() && left_type.is_ptr() {
 				// (main__IFoo*)bar
-				g.write2('(', g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('(', g.table.sym(effective_embed_types.last()).cname)
 				g.write('*)')
 				g.expr(ast.Expr(node.left))
 			} else if receiver_type.is_ptr() && !left_type.is_ptr() {
 				// (main__IFoo*)&bar
-				g.write2('(', g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('(', g.table.sym(effective_embed_types.last()).cname)
 				g.write('*)&')
 				g.expr(ast.Expr(node.left))
 			} else if !receiver_type.is_ptr() && left_type.is_ptr() {
 				// *((main__IFoo*)bar)
-				g.write2('*((', g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('*((', g.table.sym(effective_embed_types.last()).cname)
 				g.write('*)')
 				g.expr(ast.Expr(node.left))
 				g.write(')')
 			} else {
 				// *((main__IFoo*)&bar)
-				g.write2('*((', g.table.sym(node.from_embed_types.last()).cname)
+				g.write2('*((', g.table.sym(effective_embed_types.last()).cname)
 				g.write('*)&')
 				g.expr(node.left)
 				g.write(')')
@@ -5580,8 +5606,8 @@ fn (mut g Gen) method_call(node ast.CallExpr) {
 			}
 			g.expr(node.left)
 		}
-		if !is_interface || node.from_embed_types.len == 0 {
-			mut node_embed_types := node.from_embed_types.clone()
+		if !is_interface || effective_embed_types.len == 0 {
+			mut node_embed_types := effective_embed_types.clone()
 			if node.left is ast.Ident && g.comptime.get_ct_type_var(node.left) == .generic_var
 				&& !final_left_sym.has_method(method_name)
 				&& !final_left_sym.has_method_with_generic_parent(method_name) {
