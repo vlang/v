@@ -1588,9 +1588,6 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 	if call_name.len == 0 || isnil(t.tc) {
 		return none
 	}
-	if params := t.call_param_types_decl_cache[call_name] {
-		return params
-	}
 	if t.call_param_types_decl_misses[call_name] {
 		return none
 	}
@@ -1598,6 +1595,9 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 	decl := t.call_param_types_decl_index[call_name] or {
 		t.call_param_types_decl_misses[call_name] = true
 		return none
+	}
+	if params := t.call_param_types_decl_cache[decl.idx] {
+		return params
 	}
 	node := t.a.nodes[decl.idx]
 	mut params := []types.Type{}
@@ -1619,7 +1619,7 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 		}
 		params << param_type
 	}
-	t.call_param_types_decl_cache[call_name] = params.clone()
+	t.call_param_types_decl_cache[decl.idx] = params.clone()
 	return params
 }
 

@@ -1593,6 +1593,7 @@ fn (mut t Transformer) materialize_generic_structs() {
 		t.tc.params_structs.delete(decl.key)
 	}
 	t.tc.invalidate_short_type_name_index()
+	t.tc.clear_interface_impl_cache()
 }
 
 fn (mut t Transformer) materialize_generic_sum_types(erase_templates bool) {
@@ -5217,20 +5218,28 @@ fn (t &Transformer) generic_arg_is_alias_name(arg string, module_name string) bo
 	if clean.len == 0 || isnil(t.tc) {
 		return false
 	}
-	if clean in t.tc.type_aliases {
-		return true
-	}
-	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		if '${module_name}.${clean}' in t.tc.type_aliases {
-			return true
+	key := '\ngeneric-alias\n${module_name}\n${clean}'
+	if !isnil(t.str_alias_cache) {
+		mut cache := t.str_alias_cache
+		if cached := cache.entries[key] {
+			return cached.len > 0
 		}
 	}
-	for alias, _ in t.tc.type_aliases {
-		if alias.all_after_last('.') == clean {
-			return true
+	mut found := clean in t.tc.type_aliases || (module_name.len > 0
+		&& module_name !in ['main', 'builtin'] && '${module_name}.${clean}' in t.tc.type_aliases)
+	if !found {
+		for alias, _ in t.tc.type_aliases {
+			if alias.all_after_last('.') == clean {
+				found = true
+				break
+			}
 		}
 	}
-	return false
+	if !isnil(t.str_alias_cache) {
+		mut cache := t.str_alias_cache
+		cache.entries[key] = if found { clean } else { '' }
+	}
+	return found
 }
 
 fn (t &Transformer) generic_args_contain_alias(args []string, module_name string) bool {

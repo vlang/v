@@ -11315,17 +11315,59 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 
 // forward_decls supports forward decls handling for FlatGen.
 fn (mut g FlatGen) forward_decls() {
-	mut forwarded := map[string]bool{}
-	for item in g.ensure_fn_gen_items() {
+	items := g.ensure_fn_gen_items()
+	mut forwarded_exports := []string{cap: g.a.export_fn_names.len}
+	if !g.scope_parallel_workers {
+		g.forward_decl_items(items, mut forwarded_exports)
+		g.writeln('')
+		return
+	}
+	for start := 0; start < items.len; start += 256 {
+		end := if start + 256 < items.len { start + 256 } else { items.len }
+		output_sb := g.sb
+		master_tc := g.tc
+		master_c_name_cache := g.c_name_cache
+		mut master_concrete_optional_params := g.cur_concrete_optional_params.move()
+		mut master_needed_optional_types := g.needed_optional_types.move()
+		mut master_fn_ptr_types := g.fn_ptr_types.move()
+		mut master_used_fn_ptr_types := g.used_fn_ptr_types.move()
+		scratch_scope := cgen_worker_scope_begin(true)
+		g.sb = strings.new_builder(16384)
+		g.line_start = true
+		g.tc = g.clone_parallel_type_checker()
+		g.c_name_cache = &CNameCache{}
+		g.cur_concrete_optional_params = map[string]bool{}
+		g.needed_optional_types = map[string]string{}
+		g.fn_ptr_types = master_fn_ptr_types.clone()
+		g.used_fn_ptr_types = map[string]bool{}
+		g.forward_decl_items(items[start..end], mut forwarded_exports)
+		mut batch_output := unsafe { g.sb.reuse_as_plain_u8_array() }
+		cgen_worker_scope_leave(scratch_scope)
+		g.sb = output_sb
+		g.line_start = true
+		g.tc = master_tc
+		g.c_name_cache = master_c_name_cache
+		g.cur_concrete_optional_params = master_concrete_optional_params.move()
+		g.needed_optional_types = master_needed_optional_types.move()
+		g.fn_ptr_types = master_fn_ptr_types.move()
+		g.used_fn_ptr_types = master_used_fn_ptr_types.move()
+		unsafe { g.sb.write_ptr(batch_output.data, batch_output.len) }
+		unsafe { batch_output.free() }
+		cgen_worker_scope_free(scratch_scope)
+	}
+	g.writeln('')
+}
+
+fn (mut g FlatGen) forward_decl_items(items []FlatFnGenItem, mut forwarded_exports []string) {
+	for item in items {
 		node := g.a.nodes[int(item.node_id)]
 		if is_main_fn_in_main_module(item.module, node.value) && g.test_files.len == 0 {
 			continue
 		}
 		qfn := item.c_name
-		if forwarded[qfn] {
+		if qfn in forwarded_exports {
 			continue
 		}
-		forwarded[qfn] = true
 		g.tc.cur_file = item.file
 		g.tc.cur_module = item.module
 		ret_type := g.fn_node_return_type(node, item.module)
@@ -11336,8 +11378,8 @@ fn (mut g FlatGen) forward_decls() {
 		g.write_fn_node_params(node)
 		g.writeln(');')
 		if export_name := g.export_fn_name_in_module(item.module, node.value) {
-			if !forwarded[export_name] {
-				forwarded[export_name] = true
+			if export_name != qfn && export_name !in forwarded_exports {
+				forwarded_exports << export_name
 				g.write(g.fn_return_type_name(ret_type))
 				g.write(' ')
 				g.write(export_name)
@@ -11347,7 +11389,6 @@ fn (mut g FlatGen) forward_decls() {
 			}
 		}
 	}
-	g.writeln('')
 }
 
 fn (mut g FlatGen) cached_header_forward_decls() {

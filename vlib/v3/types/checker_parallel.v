@@ -535,6 +535,9 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 	for k, v in overlay.ierror_compat_entries {
 		base.ierror_compat_entries[k] = v
 	}
+	for k, v in overlay.interface_impl_entries {
+		base.interface_impl_entries[k] = v
+	}
 	if overlay.source_error_embed_indexed && !base.source_error_embed_indexed {
 		base.source_error_embed_entries = overlay.source_error_embed_entries.move()
 		base.source_error_embed_indexed = true
@@ -754,6 +757,7 @@ fn (mut tc TypeChecker) free_parallel_check_worker_cache() {
 			cache.struct_field_entries.free()
 			cache.struct_field_misses.free()
 			cache.ierror_compat_entries.free()
+			cache.interface_impl_entries.free()
 			cache.source_error_embed_entries.free()
 		}
 	}
