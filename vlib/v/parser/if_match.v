@@ -613,7 +613,10 @@ fn (mut p Parser) match_expr(is_comptime bool, is_expr bool) ast.MatchExpr {
 		len:     match_last_pos.pos - match_first_pos.pos + match_last_pos.len
 		col:     match_first_pos.col
 	}
-	pos.update_last_line(match_last_pos.line_nr)
+	// match_last_pos is a Pos (already 0-based), so update_last_line (which expects
+	// a 1-based token line) would leave last_line one line short of the closing `}`,
+	// making vfmt insert a bogus empty line after the match statement.
+	pos.last_line = match_last_pos.last_line
 	return ast.MatchExpr{
 		is_comptime: is_comptime
 		is_expr:     is_expr_
