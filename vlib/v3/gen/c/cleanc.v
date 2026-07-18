@@ -8672,11 +8672,11 @@ fn (mut g FlatGen) gen_pointer_cast_from_array_ref(arg_id flat.NodeId, target_ty
 fn (mut g FlatGen) gen_typeof_name(node flat.Node) {
 	if node.value.len == 0 && node.children_count > 0 {
 		expr_id := g.a.child(&node, 0)
-		mut expr_type := g.usable_expr_type(expr_id)
+		mut expr_type := cgen_unalias_type(g.usable_expr_type(expr_id))
 		mut is_pointer := false
 		if expr_type is types.Pointer {
 			is_pointer = true
-			expr_type = expr_type.base_type
+			expr_type = cgen_unalias_type(expr_type.base_type)
 		}
 		if expr_type is types.SumType {
 			sum_name := g.resolve_sum_name(expr_type.name)

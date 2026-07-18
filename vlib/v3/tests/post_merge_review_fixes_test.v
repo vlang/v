@@ -5720,6 +5720,27 @@ fn main() {
 }
 ')
 	assert promoted_out == '3\n7\n0\n3\n8\n0'
+	fixed_promoted_out := run_good(v3_bin, 'promoted_fixed_array_struct_init', 'struct FixedInner {
+	values [2]int
+}
+
+struct FixedOuter {
+	FixedInner
+}
+
+fn main() {
+	values := [1, 2]!
+	value := FixedOuter{
+		values: values
+	}
+	heap := &FixedOuter{
+		values: [3, 4]!
+	}
+	println(int_str(value.FixedInner.values[0] + value.FixedInner.values[1]))
+	println(int_str(heap.FixedInner.values[0] + heap.FixedInner.values[1]))
+}
+')
+	assert fixed_promoted_out == '3\n7'
 	pointer_promoted_out := run_good(v3_bin, 'promoted_pointer_embed_struct_init', 'struct PointerInner {
 	count int = 4
 	items []int
@@ -5748,12 +5769,41 @@ fn main() {
 }
 ')
 	assert pointer_promoted_out == '4\n9\n0\n4\n10\n0'
+	alias_typeof_out := run_good(v3_bin, 'runtime_sum_pointer_alias_typeof', 'type AliasValue = int | string
+type AliasValueRef = &AliasValue
+
+fn main() {
+	value := AliasValue("alias")
+	ref := AliasValueRef(&value)
+	println(unsafe { typeof(ref) })
+	println(typeof(ref).name)
+}
+')
+	assert alias_typeof_out == 'string\nstring'
 	include_out := run_good_project(v3_bin, 'quoted_source_include_from_include_dir', {
 		'v.mod':          "Module { name: 'quoted_source_include_from_include_dir' }\n"
 		'include/shim.c': 'int answer_from_shim(void) { return 42; }\n'
 		'main.v':         'module main\n\n#flag -I @DIR/include\n#include "shim.c"\n\nfn C.answer_from_shim() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_shim()))\n}\n'
 	}, 'main.v')
 	assert include_out == '42'
+}
+
+fn test_review_fixed_array_alias_clone_dispatch() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'fixed_array_alias_clone_dispatch', 'type FixedClone = [2]int
+
+fn (value FixedClone) clone() FixedClone {
+	return FixedClone([value[1], value[0]]!)
+}
+
+fn main() {
+	value := FixedClone([1, 2]!)
+	cloned := value.clone()
+	println(int_str(cloned[0]))
+	println(int_str(cloned[1]))
+}
+')
+	assert out == '2\n1'
 }
 
 fn test_followup_review_pointer_call_and_equality_semantics() {

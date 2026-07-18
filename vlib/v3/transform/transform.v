@@ -12750,7 +12750,12 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 		typ = t.resolve_typeof_type_text(typ)
 	}
 	parsed_type := if !isnil(t.tc) { t.tc.parse_type(typ) } else { types.Type(types.void_) }
-	runtime_type := if parsed_type is types.Pointer { parsed_type.base_type } else { parsed_type }
+	unaliased_type := forwarded_return_unalias_type(parsed_type)
+	runtime_type := if unaliased_type is types.Pointer {
+		forwarded_return_unalias_type(unaliased_type.base_type)
+	} else {
+		unaliased_type
+	}
 	if runtime_type is types.SumType {
 		// The active variant of a sum type is only known at runtime. Keep the
 		// typeof node for cgen instead of folding it to the declared sum name.
