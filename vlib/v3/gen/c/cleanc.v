@@ -2582,6 +2582,12 @@ fn c_preserved_system_include_declared_fns(include_arg string) []string {
 			'task_info',
 		]
 	}
+	if include_arg in ['<openssl/ssl.h>', '<openssl/x509.h>'] {
+		return ['X509_free']
+	}
+	if include_arg == '<objc/message.h>' {
+		return ['objc_msgSend']
+	}
 	return []string{}
 }
 

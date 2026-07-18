@@ -1225,6 +1225,25 @@ fn test_vmodroot_c_flag_preserves_project_path_with_spaces() {
 	assert run.output.trim_space() == '57'
 }
 
+fn test_unrelated_system_include_keeps_c_extern_declaration() {
+	v3_bin := build_v3_review_transform()
+	header_name := 'v3_unrelated_system_include.h'
+	header_path := os.join_path(os.temp_dir(), header_name)
+	os.write_file(header_path, '#include <stdio.h>\n') or { panic(err) }
+	defer {
+		os.rm(header_path) or {}
+	}
+	c_source := gen_c_from_source(v3_bin, 'unrelated_system_include_c_extern', '#insert "${header_name}"
+
+fn C.X509_free(voidptr)
+
+fn main() {
+	C.X509_free(voidptr(0))
+}
+')
+	assert c_source.contains('void X509_free(void*'), c_source
+}
+
 fn test_statement_array_append_consumes_rhs_expression() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'statement_array_append_rhs_expression',

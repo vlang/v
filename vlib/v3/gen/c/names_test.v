@@ -96,3 +96,14 @@ fn test_guarded_preamble_externs_keep_explicit_declarations() {
 	assert g.should_emit_c_extern_decl('chmod')
 	assert g.should_emit_c_extern_decl('symlink')
 }
+
+fn test_preserved_system_include_declarations_are_header_specific() {
+	assert c_preserved_system_include_declared_fns('<stdio.h>').len == 0
+	assert c_preserved_system_include_declared_fns('<openssl/ssl.h>') == ['X509_free']
+	assert c_preserved_system_include_declared_fns('<openssl/x509.h>') == [
+		'X509_free',
+	]
+	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
+		'objc_msgSend',
+	]
+}
