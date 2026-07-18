@@ -5916,6 +5916,19 @@ fn main() {
 	assert out == '2\n1'
 }
 
+fn test_review_generic_pointer_sizeof() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'generic_pointer_sizeof', 'struct SizeBox[T] {
+	value T
+}
+
+fn main() {
+	println(sizeof(&SizeBox[int]) == sizeof(voidptr))
+}
+')
+	assert out == 'true'
+}
+
 fn test_followup_review_pointer_call_and_equality_semantics() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'c_voidptr_does_not_auto_address', 'fn C.take(voidptr)

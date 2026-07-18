@@ -6025,17 +6025,23 @@ fn (mut g FlatGen) sizeof_target(value string) string {
 	// array of pointers `[N]&Elem`, that canonical spelling is `&Elem[N]`.
 	// Keep the pointer on the element when forming a C type declarator.
 	if value.starts_with('&') && value.ends_with(']') {
-		bracket := value.index_u8(`[`)
-		if bracket > 1 {
-			return '${g.sizeof_target(value[1..bracket])}*${value[bracket..]}'
+		parsed_pointer := g.tc.parse_type(value)
+		if parsed_pointer is types.Pointer && parsed_pointer.base_type is types.ArrayFixed {
+			bracket := value.index_u8(`[`)
+			if bracket > 1 {
+				return '${g.sizeof_target(value[1..bracket])}*${value[bracket..]}'
+			}
 		}
 	}
 	// Canonical fixed-array pointer element spellings can reach sizeof as
 	// `Elem[N]*`; C declares an array of pointers as `Elem*[N]`.
 	if value.ends_with('*') {
-		bracket := value.index_u8(`[`)
-		if bracket > 0 {
-			return '${value[..bracket]}*${value[bracket..value.len - 1]}'
+		parsed_array := g.tc.parse_type(value[..value.len - 1])
+		if parsed_array is types.ArrayFixed {
+			bracket := value.index_u8(`[`)
+			if bracket > 0 {
+				return '${value[..bracket]}*${value[bracket..value.len - 1]}'
+			}
 		}
 	}
 	if value.starts_with('&') {
