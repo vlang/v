@@ -1,5 +1,5 @@
 fn main() {
-    for i in 4 .. 2 {
-        println(i)
-    }
+	for i in 4 .. 2 {
+		println(i)
+	}
 }
