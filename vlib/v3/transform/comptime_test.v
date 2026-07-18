@@ -38,3 +38,62 @@ fn test_mangled_generic_struct_field_metadata_resolves_declaration() {
 		assert meta.attrs == ['skip']
 	}
 }
+
+fn test_comptime_field_metadata_cache_uses_resolved_module() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a:                             &a
+		comptime_field_metas_cache:    map[string][]FieldMeta{}
+		struct_field_decl_metas_cache: {
+			'first.Config':  {
+				'first': FieldDeclMeta{
+					is_pub: true
+					attrs:  ['first_attr']
+				}
+			}
+			'second.Config': {
+				'second': FieldDeclMeta{
+					is_mut: true
+					attrs:  ['second_attr']
+				}
+			}
+		}
+		structs:                       {
+			'first.Config':  StructInfo{
+				name:   'Config'
+				module: 'first'
+				fields: [
+					FieldInfo{
+						name:    'first'
+						typ:     'int'
+						raw_typ: 'int'
+					},
+				]
+			}
+			'second.Config': StructInfo{
+				name:   'Config'
+				module: 'second'
+				fields: [
+					FieldInfo{
+						name:    'second'
+						typ:     'string'
+						raw_typ: 'string'
+					},
+				]
+			}
+		}
+	}
+	t.cur_module = 'first'
+	first := t.comptime_field_metas('Config')
+	assert first.len == 1
+	assert first[0].name == 'first'
+	assert first[0].attrs == ['first_attr']
+	assert first[0].is_pub
+
+	t.cur_module = 'second'
+	second := t.comptime_field_metas('Config')
+	assert second.len == 1
+	assert second[0].name == 'second'
+	assert second[0].attrs == ['second_attr']
+	assert second[0].is_mut
+}

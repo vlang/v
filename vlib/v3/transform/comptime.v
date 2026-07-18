@@ -2519,16 +2519,17 @@ struct FieldDeclMeta {
 
 // comptime_field_metas derives FieldData for every field of the concrete struct type.
 fn (mut t Transformer) comptime_field_metas(base_type string) []FieldMeta {
-	if cached := t.comptime_field_metas_cache[base_type] {
-		return cached
-	}
 	// A monomorphized generic struct instance (`Box[int]`) is stored in the struct table under
 	// its generic declaration name (`Box`), so a direct lookup misses; resolve it through the
 	// generic-struct field substitution path before giving up.
 	info := t.lookup_struct_info(base_type) or {
 		t.generic_struct_info_for_stringify(base_type) or { return []FieldMeta{} }
 	}
-	decl_metas := t.struct_field_decl_metas(base_type)
+	cache_key := comptime_struct_info_cache_key(info)
+	if cached := t.comptime_field_metas_cache[cache_key] {
+		return cached
+	}
+	decl_metas := t.struct_field_decl_metas_in_module(cache_key, info.module)
 	mut metas := []FieldMeta{cap: info.fields.len}
 	for f in info.fields {
 		// V's `field.typ` is the type as written (`MyInt`, `?[]int`); `raw_typ` preserves that,
@@ -2545,8 +2546,16 @@ fn (mut t Transformer) comptime_field_metas(base_type string) []FieldMeta {
 		}
 		metas << t.field_meta_for(f.name, ftyp, f.typ, info.module, f.is_embedded, extra)
 	}
-	t.comptime_field_metas_cache[base_type] = metas
+	t.comptime_field_metas_cache[cache_key] = metas
 	return metas
+}
+
+fn comptime_struct_info_cache_key(info StructInfo) string {
+	if info.module.len == 0 || info.name.starts_with('${info.module}.')
+		|| info.name.starts_with('${c_name(info.module)}__') {
+		return info.name
+	}
+	return '${info.module}.${info.name}'
 }
 
 fn (mut t Transformer) build_struct_field_decl_metas_cache() {
@@ -2593,12 +2602,28 @@ fn field_decl_meta(field flat.Node) FieldDeclMeta {
 // struct_field_decl_metas returns parser metadata for the declaration of `base_type`, resolving a
 // generic instance such as `Box[int]` to its base `Box`.
 fn (t &Transformer) struct_field_decl_metas(base_type string) map[string]FieldDeclMeta {
+	return t.struct_field_decl_metas_in_module(base_type, '')
+}
+
+fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_module string) map[string]FieldDeclMeta {
 	mut decl_name := base_type.trim_space()
 	if idx := decl_name.index('[') {
 		decl_name = decl_name[..idx]
 	}
+	if decl_module.len > 0 && decl_module !in ['main', 'builtin'] {
+		short_name := if decl_name.starts_with('${decl_module}.') {
+			decl_name[decl_module.len + 1..]
+		} else {
+			decl_name
+		}
+		if cached := t.struct_field_decl_metas_cache['${decl_module}.${short_name}'] {
+			return cached
+		}
+	}
 	if cached := t.struct_field_decl_metas_cache[decl_name] {
-		return cached
+		if decl_module.len == 0 || decl_module in ['main', 'builtin'] {
+			return cached
+		}
 	}
 	// Materialized generic instances can reach comptime expansion under their C
 	// name (`Box_int`, `mod__Box_int`) rather than bracket syntax. The cache is
@@ -2610,6 +2635,9 @@ fn (t &Transformer) struct_field_decl_metas(base_type string) map[string]FieldDe
 			continue
 		}
 		if node.kind != .struct_decl || node.generic_params().len == 0 {
+			continue
+		}
+		if decl_module.len > 0 && cur_mod != decl_module {
 			continue
 		}
 		qualified := if cur_mod.len > 0 && cur_mod !in ['main', 'builtin'] {
