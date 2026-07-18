@@ -2800,7 +2800,7 @@ fn (mut g FlatGen) heap_local_address_expr(ret_id flat.NodeId, expected types.Ty
 		return local_expr
 	}
 	root_type := g.local_ident_type(root_name) or { return none }
-	if root_type is types.Pointer {
+	if child.kind == .selector && root_type is types.Pointer {
 		return '&${local_expr}'
 	}
 	return g.heap_local_memdup_expr(local_expr, local_type, base_ct, false)

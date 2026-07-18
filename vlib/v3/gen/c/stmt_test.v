@@ -258,3 +258,27 @@ fn test_heap_local_memdup_expr_uses_aligned_memdup_for_aligned_structs() {
 	})
 	assert g.heap_local_memdup_expr('p', plain_type, 'Plain', true) == '(Plain*)memdup(p, sizeof(Plain))'
 }
+
+fn test_heap_local_address_expr_copies_pointer_local_slot() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	int_ptr := types.Type(types.Pointer{
+		base_type: types.Type(types.int_)
+	})
+	int_ptr_ptr := types.Type(types.Pointer{
+		base_type: int_ptr
+	})
+	tc.push_scope()
+	tc.cur_scope.insert_with_owner('p', int_ptr)
+	p_id := stmt_test_node(mut a, .ident, 'p', [])
+	amp_p_id := stmt_test_prefix(mut a, .amp, p_id)
+	heap_expr := g.heap_local_address_expr(amp_p_id, int_ptr_ptr) or {
+		assert false, 'expected the address of a pointer local to escape through a heap copy'
+		return
+	}
+	assert heap_expr == '(int**)memdup(&p, sizeof(int*))'
+	tc.pop_scope()
+}
