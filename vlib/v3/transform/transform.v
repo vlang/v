@@ -11290,7 +11290,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	base_node0 := t.a.nodes[int(base_id0)]
 	if base_node0.kind == .typeof_expr {
 		if node.value == 'name' {
-			return t.transform_typeof_expr(base_id0, base_node0)
+			return t.transform_typeof_name_expr(base_id0, base_node0)
 		}
 		if node.value == 'idx' {
 			return t.transform_typeof_idx_expr(base_node0)
@@ -12686,6 +12686,14 @@ fn typeof_display_is_param_name(name string) bool {
 }
 
 fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	return t.transform_typeof_expr_mode(id, node, true)
+}
+
+fn (mut t Transformer) transform_typeof_name_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	return t.transform_typeof_expr_mode(id, node, false)
+}
+
+fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node, runtime_sum bool) flat.NodeId {
 	if node.value.len > 0 {
 		return t.make_string_literal(typeof_fn_type_display(node.value))
 	}
@@ -12756,7 +12764,7 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 	} else {
 		unaliased_type
 	}
-	if runtime_type is types.SumType {
+	if runtime_sum && runtime_type is types.SumType {
 		// The active variant of a sum type is only known at runtime. Keep the
 		// typeof node for cgen instead of folding it to the declared sum name.
 		transformed_expr := t.transform_expr(expr_id)

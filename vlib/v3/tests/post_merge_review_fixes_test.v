@@ -5719,7 +5719,14 @@ fn test_discard_assignment_preserves_array_return_type() {
 
 fn test_late_resolution_and_promoted_init_regressions() {
 	v3_bin := build_v3()
-	typeof_out := run_good(v3_bin, 'runtime_sum_typeof', 'type Value = int | string
+	typeof_out := run_good(v3_bin, 'runtime_sum_typeof', '__global typeof_calls int
+
+type Value = int | string
+
+fn make_typeof_value() Value {
+	typeof_calls++
+	return Value(9)
+}
 
 fn main() {
 	a := Value(7)
@@ -5729,10 +5736,13 @@ fn main() {
 	println(unsafe { typeof(a) })
 	println(unsafe { typeof(b) })
 	println(unsafe { typeof(p) })
+	println(unsafe { typeof(nil_pointer) })
 	println(typeof(nil_pointer).name)
+	println(typeof(make_typeof_value()).name)
+	println(int_str(typeof_calls))
 }
 ')
-	assert typeof_out == 'int\nstring\nstring\nunknown Value'
+	assert typeof_out == 'int\nstring\nstring\nunknown Value\n&Value\nValue\n0'
 	promoted_out := run_good(v3_bin, 'promoted_embed_struct_init', 'struct Inner {
 	count int = 3
 	items []int
@@ -6007,7 +6017,7 @@ fn main() {
 	println(typeof(ref).name)
 }
 ')
-	assert alias_typeof_out == 'string\nstring'
+	assert alias_typeof_out == 'string\nAliasValueRef'
 	include_out := run_good_project(v3_bin, 'quoted_source_include_from_include_dir', {
 		'v.mod':          "Module { name: 'quoted_source_include_from_include_dir' }\n"
 		'include/shim.c': 'int answer_from_shim(void) { return 42; }\n'
