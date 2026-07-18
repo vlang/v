@@ -349,7 +349,8 @@ fn (mut t Transformer) convert_interface_expr_to_interface(source_expr flat.Node
 			for field in t.interface_runtime_field_list(target_iface) {
 				field_type := t.normalize_type_alias(field.typ.name())
 				impl_field := t.make_selector_op(impl_ptr, field.name, field_type, .arrow)
-				fields << t.make_sum_literal_field(field.name, impl_field, field_type)
+				field_value := t.null_safe_interface_pointer_field(object, impl_field, field_type)
+				fields << t.make_sum_literal_field(field.name, field_value, field_type)
 			}
 			mapping_init := t.make_interface_conversion_init(target_iface, fields)
 			[t.make_assign(t.make_ident(out_name), mapping_init)]

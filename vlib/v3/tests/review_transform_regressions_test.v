@@ -196,6 +196,40 @@ fn test_interface_smartcast_rebuilds_richer_interface_fields() {
 	assert out == '5'
 }
 
+fn test_interface_smartcast_nil_pointer_zero_fills_richer_fields() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_smartcast_nil_pointer_richer_fields', 'interface Base {
+	value() int
+}
+
+interface Rich {
+	Base
+	x int
+}
+
+struct Item {
+	x int
+}
+
+fn (item Item) value() int {
+	return item.x
+}
+
+fn read(base Base) int {
+	if base is Rich {
+		return base.x
+	}
+	return -1
+}
+
+fn main() {
+	item := unsafe { &Item(nil) }
+	println(int_str(read(Base(item))))
+}
+')
+	assert out == '0'
+}
+
 fn test_mut_interface_smartcast_field_assignment_uses_storage_interface() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'mut_interface_smartcast_field_assignment', 'interface Base {
