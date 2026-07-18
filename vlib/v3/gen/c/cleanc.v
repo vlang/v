@@ -2119,7 +2119,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			mut source_text := ''
 			for path in paths {
 				if text := os.read_file(path) {
-					source_path = path
+					source_path = os.real_path(path)
 					source_text = text
 					break
 				}
@@ -2150,7 +2150,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				g.collect_inlined_c_structs(source_text)
 				g.collect_inlined_c_fns(source_text)
 				g.collect_inlined_c_declared_fns(source_text)
-				source_directive := '#include "${source_path}"'
+				source_directive := c_native_source_context_include(source_path)
 				if source_path.ends_with('.m') {
 					if g.c_source_defines_used_c_type(source_text) {
 						g.early_c_source_directives[source_directive] = true

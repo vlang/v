@@ -154,6 +154,27 @@ fn run_good_project_with_flags(v3_bin string, name string, flags string, files m
 	return run.output.trim_space()
 }
 
+fn run_good_project_relative_input(v3_bin string, name string, flags string, files map[string]string, input string) string {
+	workspace := '${tmp_test_path(name)}_workspace'
+	root := os.join_path(workspace, 'project')
+	if os.exists(workspace) {
+		os.rmdir_all(workspace) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := os.join_path('project', input)
+	good_bin := tmp_test_path(name)
+	compile :=
+		os.execute('cd ${os.quoted_path(workspace)} && ${os.quoted_path(v3_bin)} ${flags} ${os.quoted_path(input_path)} -b c -o ${os.quoted_path(good_bin)}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, run.output
+	return run.output.trim_space()
+}
+
 fn run_bad_project(v3_bin string, name string, files map[string]string, inputs []string, expected string) {
 	root := '${tmp_test_path(name)}_project'
 	if os.exists(root) {
@@ -6025,6 +6046,14 @@ fn main() {
 		'main.v': 'module main\n\n#define V3_DELAYED_OBJECTIVE_C_VALUE 57\n#ifdef V3_DELAYED_OBJECTIVE_C_VALUE\n#include "shim.m"\n#endif\n#undef V3_DELAYED_OBJECTIVE_C_VALUE\n\nfn C.answer_from_delayed_objective_c_macro() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_delayed_objective_c_macro()))\n}\n'
 	}, 'main.v')
 	assert delayed_objective_c_macro_out == '57'
+	relative_source_include_out := run_good_project_relative_input(v3_bin, 'relative_source_input',
+		'-cc clang', {
+		'v.mod':  "Module { name: 'relative_source_input' }\n"
+		'shim.c': 'int answer_from_relative_c(void) { return 58; }\n'
+		'shim.m': 'int answer_from_relative_objective_c(void) { return 1; }\n'
+		'main.v': 'module main\n\n#include "shim.c"\n#include "shim.m"\n\nfn C.answer_from_relative_c() int\nfn C.answer_from_relative_objective_c() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_relative_c() + C.answer_from_relative_objective_c()))\n}\n'
+	}, 'main.v')
+	assert relative_source_include_out == '59'
 	cpp_runtime_out := run_good_project_with_flags(v3_bin, 'cpp_source_runtime', '-cc clang', {
 		'v.mod':    "Module { name: 'cpp_source_runtime' }\n"
 		'shim.cpp': '#include <string>\nextern "C" int answer_from_cpp_runtime(void) { std::string answer(44, \'x\'); return int(answer.size()); }\n'
