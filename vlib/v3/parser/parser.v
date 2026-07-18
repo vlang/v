@@ -7978,11 +7978,13 @@ fn (mut p Parser) call_args(fn_expr flat.NodeId) flat.NodeId {
 	}
 	p.check(.rpar)
 	cstart := p.add_children(ids)
-	return p.add_node(flat.Node{
+	// Anchor the completed call at its callee (fn_expr) so unknown-function and
+	// argument diagnostics point at the call, not the token after `)`.
+	return p.add_node_from(flat.Node{
 		kind:           .call
 		children_start: cstart
 		children_count: flat.child_count(ids.len)
-	})
+	}, fn_expr)
 }
 
 fn (mut p Parser) lambda_expr_no_args() flat.NodeId {
@@ -9119,6 +9121,7 @@ fn (mut p Parser) sizeof_expr() flat.NodeId {
 }
 
 fn (mut p Parser) isreftype_expr() flat.NodeId {
+	iref_start := p.span_start() // start offset of `isreftype`
 	p.next() // skip 'isreftype'
 	mut arg := flat.empty_node
 	if p.tok == .lsbr {
@@ -9147,6 +9150,7 @@ fn (mut p Parser) isreftype_expr() flat.NodeId {
 		children_start: start
 		children_count: 2
 		typ:            'bool'
+		pos:            p.span_to(iref_start)
 	})
 }
 

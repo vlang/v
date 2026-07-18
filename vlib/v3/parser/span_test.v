@@ -121,6 +121,26 @@ fn test_dynamic_array_init_spans_from_bracket() {
 	assert saw
 }
 
+// Call nodes are completed after the closing `)` is consumed, so they must be
+// anchored at the callee — the checker reports unknown-function diagnostics on
+// the call node, which should point at the call, not the following token.
+fn test_call_node_spans_from_callee() {
+	ast, src := parse_span_source('call', 'fn main() {
+	missing()
+	x := foo(1, 2)
+	_ = x
+}
+')
+	mut spans := []string{}
+	for node in ast.nodes {
+		if node.kind == .call {
+			spans << span_text(src, node)
+		}
+	}
+	assert 'missing()' in spans
+	assert 'foo(1, 2)' in spans
+}
+
 // Address-of expressions (`&Foo{}`, `&[]T{}`, `&T(x)`) span from the `&` through
 // the whole operand; the pointer/array-init variants build their nodes directly
 // on the flat AST, so they must still carry a valid, full span.
