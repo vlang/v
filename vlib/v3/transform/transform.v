@@ -166,6 +166,7 @@ mut:
 	interface_boxed_types_done   bool
 	interface_boxed_types_frozen bool
 	interface_impl_indexes       map[string]&types.InterfaceImplIndex
+	interface_impl_spec_count    int
 	ierror_none_type_id          int
 	interface_var_concrete_types map[string]string
 	// used_struct_operator_fns holds the callee names of direct calls seen during
@@ -886,6 +887,24 @@ fn (mut t Transformer) prepare_interface_impl_indexes() {
 		return
 	}
 	t.interface_impl_indexes = t.tc.interface_impl_indexes.clone()
+}
+
+fn (mut t Transformer) refresh_interface_impl_indexes() {
+	if isnil(t.tc) {
+		return
+	}
+	mut refreshed := t.interface_impl_indexes.clone()
+	for iface_name in t.tc.interface_names.keys() {
+		if t.is_builtin_ierror_interface_name(iface_name) {
+			continue
+		}
+		impls := t.tc.interface_impl_names(iface_name)
+		refreshed[iface_name] = &types.InterfaceImplIndex{
+			names: impls
+			ids:   t.tc.interface_type_ids(iface_name)
+		}
+	}
+	t.interface_impl_indexes = refreshed.move()
 }
 
 fn (t &Transformer) interface_impl_index_for_transform(iface_name string) &types.InterfaceImplIndex {
@@ -2413,6 +2432,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		interface_boxed_types_done:       t.interface_boxed_types_done
 		interface_boxed_types_frozen:     t.interface_boxed_types_frozen
 		interface_impl_indexes:           t.interface_impl_indexes
+		interface_impl_spec_count:        t.interface_impl_spec_count
 		ierror_none_type_id:              t.ierror_none_type_id
 		sum_eq_types:                     t.sum_eq_types.clone()
 		sum_eq_synthesized:               t.sum_eq_synthesized.clone()

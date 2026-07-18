@@ -1770,6 +1770,10 @@ fn (mut t Transformer) materialize_generic_struct_specs(specs map[string]string,
 		t.materialize_generic_struct_spec(spec, decl)
 	}
 	t.tc.clear_interface_impl_cache()
+	if specs.len > t.interface_impl_spec_count {
+		t.refresh_interface_impl_indexes()
+		t.interface_impl_spec_count = specs.len
+	}
 }
 
 fn (mut t Transformer) materialize_generic_sum_types(erase_templates bool) {
