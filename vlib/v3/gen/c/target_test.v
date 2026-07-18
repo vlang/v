@@ -40,6 +40,8 @@ fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 	assert !active_negated_unix
 	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, false, linux)
 	assert c_native_source_context_definitely_inactive(['#if !unix'], []string{}, false, linux)
+	assert c_native_source_context_definitely_inactive(['#if linux', '#else'], []string{}, false,
+		linux)
 	known_c99_linux, active_c99_linux := c_preprocessor_condition_state('linux', empty, empty,
 		empty, false, true, linux)
 	assert !known_c99_linux
@@ -54,6 +56,15 @@ fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 	assert active_c99_underscored
 	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, true, linux)
 	assert !c_native_source_context_definitely_inactive(['#if !unix'], []string{}, true, linux)
+	assert !c_native_source_context_definitely_inactive(['#if linux', '#else'], [
+		'-std=c99',
+	], false, linux)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], ['-std=c11'], false, linux)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], ['-std=c99', '-std=gnu11'],
+		false, linux)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], ['-std=gnu11', '-std=c99'],
+		false, linux)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], ['-std=gnu11'], true, linux)
 	known_unset, active_unset := c_preprocessor_condition_state('SOME_UNSET_MACRO', empty, empty,
 		empty, false, false, linux)
 	assert known_unset
