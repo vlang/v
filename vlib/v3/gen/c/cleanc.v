@@ -3943,12 +3943,29 @@ fn c_source_directive_emission(directives []string, early_source_directives map[
 	mut skip_early := map[int]bool{}
 	mut emit_late := map[int]bool{}
 	mut active_macro_definitions := map[string]int{}
+	mut active_pragma_pushes := map[string][]int{}
 	for i, directive in directives {
 		macro_directive, macro_name := c_macro_directive_info(directive)
 		if macro_directive == 'define' {
 			active_macro_definitions[macro_name] = i
 		} else if macro_directive == 'undef' {
 			active_macro_definitions.delete(macro_name)
+		}
+		pragma_action, pragma_key := c_pragma_directive_info(directive)
+		if pragma_action == 'push' {
+			mut pushes := active_pragma_pushes[pragma_key] or { []int{} }
+			pushes << i
+			active_pragma_pushes[pragma_key] = pushes
+		} else if pragma_action == 'pop' {
+			mut pushes := active_pragma_pushes[pragma_key] or { []int{} }
+			if pushes.len > 0 {
+				pushes.delete_last()
+			}
+			if pushes.len == 0 {
+				active_pragma_pushes.delete(pragma_key)
+			} else {
+				active_pragma_pushes[pragma_key] = pushes
+			}
 		}
 		if c_is_late_source_include_directive(directive) && directive !in early_source_directives {
 			mut start := i
@@ -3960,9 +3977,9 @@ fn c_source_directive_emission(directives []string, early_source_directives map[
 				end++
 			}
 			for delayed_index in start .. end {
-				skip_early[delayed_index] = true
 				emit_late[delayed_index] = true
 			}
+			skip_early[i] = true
 			// The early pass may emit a later `#undef` before this source is replayed.
 			// Re-emit the active definitions and their later transitions so the include
 			// sees its original macro state and the late pass restores the final state.
@@ -3971,6 +3988,17 @@ fn c_source_directive_emission(directives []string, early_source_directives map[
 				for later_index in i + 1 .. directives.len {
 					_, later_name := c_macro_directive_info(directives[later_index])
 					if later_name == active_name {
+						emit_late[later_index] = true
+					}
+				}
+			}
+			for active_key, pushes in active_pragma_pushes {
+				for push_index in pushes {
+					emit_late[push_index] = true
+				}
+				for later_index in i + 1 .. directives.len {
+					_, later_key := c_pragma_directive_info(directives[later_index])
+					if later_key == active_key {
 						emit_late[later_index] = true
 					}
 				}
@@ -4036,6 +4064,26 @@ fn c_macro_directive_info(directive string) (string, string) {
 		return '', ''
 	}
 	return name, parts[0].all_before('(')
+}
+
+fn c_pragma_directive_info(directive string) (string, string) {
+	clean := trimmed_space(directive)
+	if clean.contains('\n') || c_directive_name(clean) != 'pragma' {
+		return '', ''
+	}
+	arg := c_directive_arg(clean)
+	compact := arg.replace(' ', '').replace('\t', '')
+	if push_pos := compact.index('(push') {
+		return 'push', compact[..push_pos]
+	}
+	if pop_pos := compact.index('(pop') {
+		return 'pop', compact[..pop_pos]
+	}
+	fields := arg.fields()
+	if fields.len < 2 || fields[fields.len - 1] !in ['push', 'pop'] {
+		return '', ''
+	}
+	return fields[fields.len - 1], fields[..fields.len - 1].join(' ')
 }
 
 fn c_is_conditional_directive(directive string) bool {

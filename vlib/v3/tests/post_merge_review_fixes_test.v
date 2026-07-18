@@ -6052,6 +6052,14 @@ fn main() {
 		'main.v': 'module main\n\n#define V3_DELAYED_OBJECTIVE_C_VALUE 57\n#ifdef V3_DELAYED_OBJECTIVE_C_VALUE\n#include "shim.m"\n#endif\n#undef V3_DELAYED_OBJECTIVE_C_VALUE\n\nfn C.answer_from_delayed_objective_c_macro() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_delayed_objective_c_macro()))\n}\n'
 	}, 'main.v')
 	assert delayed_objective_c_macro_out == '57'
+	noncontiguous_source_context_out := run_good_project_with_flags(v3_bin,
+		'noncontiguous_source_context', '-cc clang', {
+		'v.mod':  "Module { name: 'noncontiguous_source_context' }\n"
+		'defs.h': 'typedef int v3_noncontiguous_context_header_type;\n'
+		'shim.m': '#ifndef V3_NONCONTIGUOUS_CONTEXT_VALUE\n#error missing non-contiguous macro context\n#endif\nstatic int answer_from_noncontiguous_context(void) { return V3_NONCONTIGUOUS_CONTEXT_VALUE; }\n'
+		'main.v': 'module main\n\n#define V3_NONCONTIGUOUS_CONTEXT_VALUE 61\n#pragma pack(push, 1)\n#include "defs.h"\n#include "shim.m"\n#pragma pack(pop)\n#undef V3_NONCONTIGUOUS_CONTEXT_VALUE\n\nstruct V3DelayedContextLayout {\n\tfirst u8\n\tsecond u64\n}\n\nfn C.answer_from_noncontiguous_context() int\n\nfn main() {\n\tprintln(int_str(int(sizeof(V3DelayedContextLayout))))\n\tprintln(int_str(C.answer_from_noncontiguous_context()))\n}\n'
+	}, 'main.v')
+	assert noncontiguous_source_context_out == '16\n61'
 	relative_source_include_out := run_good_project_relative_input(v3_bin, 'relative_source_input',
 		'-cc clang', {
 		'v.mod':  "Module { name: 'relative_source_input' }\n"
