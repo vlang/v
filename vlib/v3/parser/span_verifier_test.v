@@ -44,6 +44,8 @@ fn main() {
 	inferred2 := [..][..]int[[1], [2, 3]]
 	sl := xs[1..3]
 	sl2 := xs[..2]
+	sl3 := xs[1..]
+	sl4 := xs[..]
 	init := []int{len: 3, init: 0}
 	if total.len > 0 && c == .red {
 		println(s)
@@ -73,6 +75,8 @@ fn main() {
 	_ = inferred2
 	_ = sl
 	_ = sl2
+	_ = sl3
+	_ = sl4
 	_ = init
 	_ = y
 	_ = r

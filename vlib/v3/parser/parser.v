@@ -8027,6 +8027,9 @@ fn (mut p Parser) index_expr(lhs flat.NodeId) flat.NodeId {
 
 fn (mut p Parser) index_part_expr() flat.NodeId {
 	if p.tok == .dotdot {
+		// open-low range (`..high` / `..`): `low` is synthetic and has no span,
+		// so anchor the range at the `..` token to cover `..2` / `..`.
+		dotdot_start := p.span_start()
 		p.next()
 		low := p.a.add(flat.NodeKind.empty)
 		high := if p.tok != .comma && p.tok != .rsbr && p.tok != .eof {
@@ -8034,37 +8037,39 @@ fn (mut p Parser) index_part_expr() flat.NodeId {
 		} else {
 			flat.empty_node
 		}
-		return p.make_index_range_part(low, high)
+		return p.make_index_range_part(low, high, dotdot_start)
 	}
 	low := p.expr(.logical_or)
 	if p.tok == .dotdot {
+		low_start := p.node_start(low)
+		start := if low_start >= 0 { low_start } else { p.span_start() }
 		p.next()
 		high := if p.tok != .comma && p.tok != .rsbr && p.tok != .eof {
 			p.expr(.lowest)
 		} else {
 			flat.empty_node
 		}
-		return p.make_index_range_part(low, high)
+		return p.make_index_range_part(low, high, start)
 	}
 	return low
 }
 
-fn (mut p Parser) make_index_range_part(low flat.NodeId, high flat.NodeId) flat.NodeId {
+// make_index_range_part builds the `.range` node for a slice bound. `start` is
+// the offset the range should span from: the low bound's start for `low..high`,
+// or the `..` token for an open-low range whose `low` is synthetic.
+fn (mut p Parser) make_index_range_part(low flat.NodeId, high flat.NodeId, start int) flat.NodeId {
 	mut ids := []flat.NodeId{}
 	ids << low
 	if int(high) >= 0 {
 		ids << high
 	}
-	start := p.add_children(ids)
-	mut anchor := low
-	if p.node_start(anchor) < 0 {
-		anchor = high
-	}
-	return p.add_node_from(flat.Node{
+	cstart := p.add_children(ids)
+	return p.a.add_node(flat.Node{
 		kind:           .range
-		children_start: start
+		children_start: cstart
 		children_count: flat.child_count(ids.len)
-	}, anchor)
+		pos:            p.span_to(start)
+	})
 }
 
 fn (mut p Parser) index_range_expr(lhs flat.NodeId, range_id flat.NodeId, gated_op flat.Op) flat.NodeId {

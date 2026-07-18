@@ -82,6 +82,34 @@ fn test_prefix_expression_spans_operator_to_operand() {
 	assert saw_prefix
 }
 
+// Slice range bounds must span the whole `low..high`, including open-low ranges
+// (`..high` / `..`) whose synthetic low bound has no span — those anchor at the
+// `..` token rather than collapsing onto the high bound or the closing `]`.
+fn test_slice_range_bounds_span_full_range() {
+	ast, src := parse_span_source('ranges', 'fn main() {
+	xs := [1, 2, 3, 4]
+	a := xs[..2]
+	b := xs[..]
+	c := xs[1..3]
+	d := xs[1..]
+	_ = a
+	_ = b
+	_ = c
+	_ = d
+}
+')
+	mut ranges := []string{}
+	for node in ast.nodes {
+		if node.kind == .range {
+			ranges << span_text(src, node)
+		}
+	}
+	assert '..2' in ranges
+	assert '..' in ranges
+	assert '1..3' in ranges
+	assert '1..' in ranges
+}
+
 // Inferred-size fixed array literals (`[..]T[...]`) build their array/postfix
 // nodes only after the value list is consumed, so they must span from the outer
 // opening `[` rather than the following token, and each inner row must span from
