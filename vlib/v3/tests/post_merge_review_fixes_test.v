@@ -6062,7 +6062,7 @@ fn main() {
 	inactive_defined_guard_out := run_good_project(v3_bin, 'inactive_defined_objective_c_guard', {
 		'v.mod':      "Module { name: 'inactive_defined_objective_c_guard' }\n"
 		'disabled.m': '#error defined() guarded Objective-C source must not be compiled\n'
-		'main.v':     'module main\n\n#if defined(V3_NEVER_DEFINED_FOR_OBJECTIVE_C)\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error inactive defined() guard must not enable Objective-C\n#endif\n\nfn main() {\n\tprintln(int_str(63))\n}\n'
+		'main.v':     'module main\n\n#if defined(V3_NEVER_DEFINED_FOR_OBJECTIVE_C)\n#include "disabled.m"\n#endif\n\n#if 0\n#elif 0\n#include "disabled.m"\n#endif\n\n#if 1\n#elif 0\n#else\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error inactive guards must not enable Objective-C\n#endif\n\nfn main() {\n\tprintln(int_str(63))\n}\n'
 	}, 'main.v')
 	assert inactive_defined_guard_out == '63'
 	noncontiguous_source_context_out := run_good_project_with_flags(v3_bin,

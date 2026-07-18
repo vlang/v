@@ -3498,6 +3498,10 @@ fn c_native_source_context_definitely_inactive(directives []CDirective, module_n
 	}
 	mut condition_known := []bool{}
 	mut condition_active := []bool{}
+	// Keep the cumulative state of each branch chain so `#elif` and `#else`
+	// can distinguish an inactive condition from an earlier branch that already ran.
+	mut condition_taken_known := []bool{}
+	mut condition_taken := []bool{}
 	for directive in directives {
 		if directive.module != module_name {
 			continue
@@ -3514,6 +3518,8 @@ fn c_native_source_context_definitely_inactive(directives []CDirective, module_n
 				}
 				condition_known << known
 				condition_active << (if known { active } else { true })
+				condition_taken_known << known
+				condition_taken << (if known { active } else { true })
 				continue
 			}
 			if name == 'if' {
@@ -3522,21 +3528,55 @@ fn c_native_source_context_definitely_inactive(directives []CDirective, module_n
 					target)
 				condition_known << known
 				condition_active << (if known { active } else { true })
+				condition_taken_known << known
+				condition_taken << (if known { active } else { true })
 				continue
 			}
-			if name in ['else', 'elif'] && condition_known.len > 0 {
+			if name == 'elif' && condition_known.len > 0 {
 				last := condition_known.len - 1
-				if name == 'else' && condition_known[last] {
-					condition_active[last] = !condition_active[last]
+				prior_known := condition_taken_known[last]
+				prior_taken := condition_taken[last]
+				known, active := c_preprocessor_condition_state(c_directive_arg(clean), defined,
+					undefined, uncertain, target)
+				if (prior_known && prior_taken) || (known && !active) {
+					condition_known[last] = true
+					condition_active[last] = false
+				} else if prior_known && known {
+					condition_known[last] = true
+					condition_active[last] = true
 				} else {
 					condition_known[last] = false
 					condition_active[last] = true
 				}
+				if (prior_known && prior_taken) || (known && active) {
+					condition_taken_known[last] = true
+					condition_taken[last] = true
+				} else if prior_known && known {
+					condition_taken_known[last] = true
+					condition_taken[last] = false
+				} else {
+					condition_taken_known[last] = false
+					condition_taken[last] = true
+				}
+				continue
+			}
+			if name == 'else' && condition_known.len > 0 {
+				last := condition_known.len - 1
+				condition_known[last] = condition_taken_known[last]
+				condition_active[last] = if condition_taken_known[last] {
+					!condition_taken[last]
+				} else {
+					true
+				}
+				condition_taken_known[last] = true
+				condition_taken[last] = true
 				continue
 			}
 			if name == 'endif' && condition_known.len > 0 {
 				condition_known.delete_last()
 				condition_active.delete_last()
+				condition_taken_known.delete_last()
+				condition_taken.delete_last()
 				continue
 			}
 			if name !in ['define', 'undef'] {
