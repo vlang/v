@@ -5971,10 +5971,17 @@ fn test_review_generic_pointer_sizeof() {
 }
 
 fn main() {
+	first := &SizeBox[int]{
+		value: 1
+	}
+	lhs := [2]&SizeBox[int]{init: first}
+	rhs := [2]&SizeBox[int]{init: first}
 	println(sizeof(&SizeBox[int]) == sizeof(voidptr))
+	println(sizeof([2]&SizeBox[int]) == 2 * sizeof(voidptr))
+	println(lhs == rhs)
 }
 ')
-	assert out == 'true'
+	assert out == 'true\ntrue\ntrue'
 }
 
 fn test_followup_review_pointer_call_and_equality_semantics() {
@@ -5987,6 +5994,19 @@ fn main() {
 }
 ',
 		'cannot use `int` as argument')
+	run_bad(v3_bin, 'v_voidptr_enum_value_does_not_auto_address', 'enum Color {
+	red
+}
+
+fn take(value voidptr) {
+	_ = value
+}
+
+fn main() {
+	take(Color.red)
+}
+',
+		'cannot use `Color` as argument')
 	v_call_out := run_good(v3_bin, 'v_voidptr_auto_address', 'const voidptr_const_value = 9
 
 fn take(value voidptr) int {

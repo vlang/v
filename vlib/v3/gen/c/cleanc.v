@@ -6052,10 +6052,10 @@ fn (mut g FlatGen) sizeof_target(value string) string {
 	// Keep the pointer on the element when forming a C type declarator.
 	if value.starts_with('&') && value.ends_with(']') {
 		parsed_pointer := g.tc.parse_type(value)
-		if parsed_pointer is types.Pointer && parsed_pointer.base_type is types.ArrayFixed {
-			bracket := value.index_u8(`[`)
-			if bracket > 1 {
-				return '${g.sizeof_target(value[1..bracket])}*${value[bracket..]}'
+		if parsed_pointer is types.Pointer {
+			if fixed := array_fixed_type(parsed_pointer.base_type) {
+				c_elem, dims := g.fixed_array_decl_parts(fixed)
+				return '${c_elem}*${dims}'
 			}
 		}
 	}
@@ -6063,11 +6063,9 @@ fn (mut g FlatGen) sizeof_target(value string) string {
 	// `Elem[N]*`; C declares an array of pointers as `Elem*[N]`.
 	if value.ends_with('*') {
 		parsed_array := g.tc.parse_type(value[..value.len - 1])
-		if parsed_array is types.ArrayFixed {
-			bracket := value.index_u8(`[`)
-			if bracket > 0 {
-				return '${value[..bracket]}*${value[bracket..value.len - 1]}'
-			}
+		if fixed := array_fixed_type(parsed_array) {
+			c_elem, dims := g.fixed_array_decl_parts(fixed)
+			return '${c_elem}*${dims}'
 		}
 	}
 	if value.starts_with('&') {

@@ -14691,6 +14691,9 @@ fn (tc &TypeChecker) expr_can_take_address(id flat.NodeId) bool {
 			if node.children_count == 0 {
 				return false
 			}
+			if tc.enum_selector_type(&node) != none {
+				return false
+			}
 			return tc.expr_can_take_address(tc.a.child(&node, 0))
 		}
 		.prefix {
