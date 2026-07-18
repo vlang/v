@@ -11943,7 +11943,16 @@ fn (mut g Gen) check_expr_is_const(expr ast.Expr) bool {
 			return g.check_expr_is_const(expr.left) && g.check_expr_is_const(expr.right)
 		}
 		ast.Ident {
-			return expr.kind == .function || g.table.final_sym(expr.obj.typ).kind != .array_fixed
+			if expr.kind == .function {
+				return true
+			}
+			// An ident naming a V const is a valid C constant expression
+			// only when that const is emitted as a simple #define'd
+			// literal (char/float/int literals). Struct, string and array
+			// consts are runtime-initialized globals, and referencing
+			// them in a static initializer produces
+			// "initializer element is not constant".
+			return expr.obj.is_simple_define_const()
 		}
 		ast.StructInit {
 			// String fields expand to the `_S()` compound literal, which strict
