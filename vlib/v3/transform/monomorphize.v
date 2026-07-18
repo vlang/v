@@ -3515,6 +3515,45 @@ fn (mut t Transformer) infer_generic_variadic_call_arg(param_type string, elem_p
 		infer_generic_type_args(elem_param_type, arg_type, mut inferred)
 	}
 	t.infer_generic_struct_init_args(elem_param_type, arg_id, mut inferred)
+	// The short struct-init call syntax for a variadic generic struct param
+	// (`f(a: x, b: y)` for `fn f[T](items ...Params[T])`) packs the element's
+	// fields as bare `field_init` args rather than a wrapped `struct_init`, so
+	// `infer_generic_struct_init_args` above cannot see them. Infer T from the
+	// field's declared type the same way the non-variadic path does.
+	t.infer_generic_field_init_type_arg(elem_param_type, arg_id, mut inferred)
+}
+
+// infer_generic_field_init_type_arg infers generic type args from a single
+// named `field_init` argument mapped onto a generic struct's declared field
+// type (used by the variadic short struct-init call path).
+fn (mut t Transformer) infer_generic_field_init_type_arg(param_type string, field_id flat.NodeId, mut inferred map[string]string) {
+	if int(field_id) < 0 || int(field_id) >= t.a.nodes.len {
+		return
+	}
+	field := t.a.nodes[int(field_id)]
+	if field.kind != .field_init || field.value.len == 0 || field.children_count == 0 {
+		return
+	}
+	param_base, param_args, is_generic_struct := generic_app_parts(param_type.trim_space())
+	if !is_generic_struct || param_args.len == 0 {
+		return
+	}
+	info := t.lookup_struct_info(param_base) or { return }
+	mut field_type := ''
+	for struct_field in info.fields {
+		if struct_field.name == field.value {
+			field_type = struct_field.typ
+			break
+		}
+	}
+	if field_type.len == 0 {
+		return
+	}
+	value_id := t.a.child(&field, 0)
+	value_type := t.generic_call_arg_type_for_inference(value_id)
+	if value_type.len > 0 {
+		infer_generic_type_args(field_type, value_type, mut inferred)
+	}
 }
 
 fn (t &Transformer) generic_call_spread_arg_child(arg_id flat.NodeId) ?flat.NodeId {
