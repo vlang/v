@@ -5793,10 +5793,11 @@ fn main() {
 	objective_cpp_out := run_good_project_with_flags(v3_bin, 'objective_cpp_source_include',
 		'-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_source_include' }\n"
+		'shim.m':  'int answer_from_objective_c(void) { return 1; }\n'
 		'shim.mm': 'extern "C" int answer_from_objective_cpp(void) { auto answer = []() { return new int(43); }; auto value = answer(); int result = *value; delete value; return result; }\n'
-		'main.v':  'module main\n\n#include "shim.mm"\n\nfn C.answer_from_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_objective_cpp()))\n}\n'
+		'main.v':  'module main\n\n#include "shim.m"\n#include "shim.mm"\n\nfn C.answer_from_objective_c() int\nfn C.answer_from_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_objective_c() + C.answer_from_objective_cpp()))\n}\n'
 	}, 'main.v')
-	assert objective_cpp_out == '43'
+	assert objective_cpp_out == '44'
 }
 
 fn test_review_fixed_array_alias_clone_dispatch() {
@@ -5886,4 +5887,26 @@ fn main() {
 }
 ')
 	assert optional_pointer_out == 'false\ntrue\ntrue\nfalse\ntrue\ntrue\ntrue\nfalse\ntrue'
+	sum_pointer_alias_out := run_good(v3_bin, 'sum_pointer_alias_equality_semantics', 'struct Item {
+	value int
+}
+
+type ItemRef = &Item
+type Value = ItemRef | int
+
+fn main() {
+	first := &Item{
+		value: 7
+	}
+	second := &Item{
+		value: 7
+	}
+	lhs := Value(ItemRef(first))
+	different_address := Value(ItemRef(second))
+	same_address := Value(ItemRef(first))
+	println(lhs == different_address)
+	println(lhs == same_address)
+}
+')
+	assert sum_pointer_alias_out == 'false\ntrue'
 }

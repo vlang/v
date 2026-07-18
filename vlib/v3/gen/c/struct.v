@@ -796,7 +796,13 @@ fn (mut g FlatGen) gen_lowered_sum_init(node flat.Node) bool {
 		field := g.a.child_node(&node, i)
 		if field.value != 'typ' && field.typ.len > 0
 			&& select_receive_unalias_type(g.tc.parse_type(field.typ)) is types.Pointer {
-			pointer_variant_is_owned = true
+			child_id := g.a.child(field, 0)
+			if g.lowered_sum_field_is_direct_pointer(sum_name, field) {
+				pointer_variant_is_owned = pointer_variant_is_owned
+					|| g.pointer_variant_expr_creates_owned_value(child_id)
+			} else {
+				pointer_variant_is_owned = true
+			}
 		}
 		if i > 0 {
 			g.write(', ')
@@ -872,6 +878,20 @@ fn (g &FlatGen) lowered_sum_c_field_name(sum_name string, field &flat.Node) stri
 	return c_field_name(field.value)
 }
 
+fn (g &FlatGen) lowered_sum_field_is_direct_pointer(sum_name string, field &flat.Node) bool {
+	variant := g.lowered_sum_field_variant(sum_name, field) or { return false }
+	variant_type := select_receive_unalias_type(g.tc.parse_type(variant))
+	if variant_type !is types.Pointer {
+		return false
+	}
+	pointer_variant := variant_type as types.Pointer
+	child_type := select_receive_unalias_type(g.tc.resolve_type(g.a.child(field, 0)))
+	if child_type is types.Pointer {
+		return g.type_names_match(child_type.base_type, pointer_variant.base_type)
+	}
+	return false
+}
+
 // gen_lowered_sum_field_value emits lowered sum field value output for c.
 fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node) {
 	child_id := g.a.child(field, 0)
@@ -882,6 +902,19 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name string, field &flat.Node
 			inner_ct := g.value_c_type(inner_type)
 			if is_borrowed_ref {
 				g.gen_expr(child_id)
+				return
+			}
+			if g.lowered_sum_field_is_direct_pointer(sum_name, field) {
+				clean_inner_type := select_receive_unalias_type(inner_type)
+				if clean_inner_type is types.Pointer
+					&& g.pointer_variant_expr_needs_heap_copy(child_id) {
+					pointer_ct := g.value_c_type(clean_inner_type.base_type)
+					g.write('(${pointer_ct}*)memdup(')
+					g.gen_expr(child_id)
+					g.write(', sizeof(${pointer_ct}))')
+				} else {
+					g.gen_expr(child_id)
+				}
 				return
 			}
 			child_type := g.tc.resolve_type(child_id)

@@ -2342,7 +2342,7 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 		// Value variants are boxed in the sum payload and must be dereferenced
 		// before comparison. Pointer variants already are the payload value
 		// itself (`voidptr` is emitted as `void *`, not `void **`).
-		use_ptr := t.variant_references_sum(qv, clean_sum) && !sum_variant_is_direct_pointer(qv)
+		use_ptr := t.variant_references_sum(qv, clean_sum) && !t.sum_variant_is_direct_pointer(qv)
 		field_typ := if use_ptr { '&${qv}' } else { qv }
 		mut lhs_payload := t.make_selector_op(lhs_value, field, field_typ, .dot)
 		mut rhs_payload := t.make_selector_op(rhs_value, field, field_typ, .dot)
@@ -2395,8 +2395,8 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 	t.register_sum_eq_helper_signature(helper, clean_sum)
 }
 
-fn sum_variant_is_direct_pointer(variant string) bool {
-	clean := variant.trim_space()
+fn (t &Transformer) sum_variant_is_direct_pointer(variant string) bool {
+	clean := t.normalize_type_alias(variant).trim_space()
 	return clean.starts_with('&') || clean in ['voidptr', 'byteptr', 'charptr']
 }
 

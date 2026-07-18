@@ -98,8 +98,18 @@ struct CObjectDependencies {
 fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
+	mut skip_language := false
 	for flag in flags {
+		if skip_language {
+			skip_language = false
+			continue
+		}
 		clean := flag.trim_space()
+		if clean == '-x' {
+			// Language selection applies to compiler inputs, not the later object link.
+			skip_language = true
+			continue
+		}
 		if c_flag_is_object_file(clean) {
 			stats.requests++
 			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag, target_args,
@@ -200,15 +210,17 @@ fn compile_cached_c_source_object(obj_path string, source_file string, support_f
 	}
 	compiler := if is_cpp && c_compiler == 'cc' { 'c++' } else { c_compiler }
 	mut args := [std_flag]
-	if source_file.ends_with('.mm') {
-		args << ['-x', 'objective-c++']
-	}
 	args << target_args
 	if pic_flag.len > 0 {
 		args << pic_flag
 	}
 	args << '-w'
 	args << support_flags
+	if source_file.ends_with('.mm') {
+		// A mixed .m/.mm build contributes `-x objective-c` through support_flags.
+		// Keep the source-specific Objective-C++ selection last so it wins.
+		args << ['-x', 'objective-c++']
+	}
 	dependencies := c_object_dependencies(compiler, args, source_file)
 	stats.dependency_files += dependencies.files.len
 	if dependencies.used_fallback {
@@ -1891,13 +1903,13 @@ fn main() {
 		} else {
 			['-w']
 		}
+		needs_objective_c := c_flags_need_objective_c(generated_c_flags)
 		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
 			target_args, prefs.target, c_compiler, cc_dir, mut c_object_cache_stats) or {
 			eprintln(err.msg())
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
-		needs_objective_c := c_flags_need_objective_c(resolved_c_flags)
 		mut cached_objects := []string{}
 		if cache_state.manager.enabled {
 			generated_source := os.read_file(cache_plan_file) or {

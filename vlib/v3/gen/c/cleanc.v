@@ -5250,8 +5250,9 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 	field := g.sum_field_name(variant)
 	variant_type := g.tc.parse_type(variant)
 	clean_variant_type := select_receive_unalias_type(variant_type)
-	if clean_variant_type is types.Pointer && actual_type is types.Pointer
-		&& g.type_names_match(actual_type.base_type, clean_variant_type.base_type) {
+	actual_value_type := select_receive_unalias_type(actual_type)
+	if clean_variant_type is types.Pointer && actual_value_type is types.Pointer
+		&& g.type_names_match(actual_value_type.base_type, clean_variant_type.base_type) {
 		g.write('(${ct}){.typ = ${idx}, .${field} = ')
 		if g.pointer_variant_expr_needs_heap_copy(id) {
 			pointer_ct := g.value_c_type(clean_variant_type.base_type)
@@ -5270,7 +5271,8 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 	if g.variant_references_sum(variant, sum_name) {
 		inner_ct := g.value_c_type(variant_type)
 		g.write('(${ct}){.typ = ${idx}, .${field} = ')
-		if actual_type is types.Pointer && g.type_names_match(actual_type.base_type, variant_type) {
+		if actual_value_type is types.Pointer && clean_variant_type is types.Pointer
+			&& g.type_names_match(actual_value_type.base_type, clean_variant_type.base_type) {
 			if g.pointer_variant_expr_needs_heap_copy(id) {
 				g.write('(${inner_ct}*)memdup(')
 				g.gen_expr(id)
@@ -5429,14 +5431,15 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 	ct := g.tc.c_type(target_type)
 	variant_type := g.tc.parse_type(variant_name)
 	clean_variant_type := select_receive_unalias_type(variant_type)
+	actual_value_type := select_receive_unalias_type(actual_type)
 	variant_is_pointer := clean_variant_type is types.Pointer
 	pointer_base_type := if clean_variant_type is types.Pointer {
 		clean_variant_type.base_type
 	} else {
 		types.Type(types.void_)
 	}
-	variant_is_pointer_arg := if actual_type is types.Pointer {
-		variant_is_pointer && g.type_names_match(actual_type.base_type, pointer_base_type)
+	variant_is_pointer_arg := if actual_value_type is types.Pointer {
+		variant_is_pointer && g.type_names_match(actual_value_type.base_type, pointer_base_type)
 	} else {
 		false
 	}
