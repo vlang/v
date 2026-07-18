@@ -569,7 +569,11 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 								} $else {
 									mut unwrapped_val := $zero(field.typ.payload_type)
 									decoder.decode_value(mut unwrapped_val)!
-									new_val.$(field.name) = unwrapped_val
+									$if unwrapped_val is $map {
+										new_val.$(field.name) = unwrapped_val.move()
+									} $else {
+										new_val.$(field.name) = unwrapped_val
+									}
 								}
 							}
 						} $else $if field.unaliased_typ is $array_dynamic {
