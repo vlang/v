@@ -94,6 +94,13 @@ fn test_c_flag_existing_path_macros() {
 	]
 }
 
+fn test_disabled_c_flag_does_not_expand_existing_path_macros() {
+	target := pref.target_from('macos', 'arm64') or { panic(err) }
+	missing := os.join_path(os.vtmp_dir(), 'v3_disabled_c_flag_missing_${os.getpid()}')
+	os.rmdir_all(missing) or {}
+	assert c_flag_args('linux \$first_existing(\'${missing}\')', '', '', target).len == 0
+}
+
 fn test_split_forced_include_flags_are_cache_inputs() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_split_forced_include_flags')
 	os.rmdir_all(dir) or {}

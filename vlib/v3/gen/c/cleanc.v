@@ -3806,18 +3806,11 @@ fn c_include_arg_for_target(raw string, vroot string, source_file string, target
 }
 
 fn c_flag_args(raw string, vroot string, source_file string, target pref.Target) []string {
-	clean := c_expand_existing_path_macros(raw.trim_space(), vroot, source_file) or {
-		return []string{}
-	}
-	mut args := cmdexec.split_args(clean) or { return []string{} }
+	target_arg := c_directive_arg_for_target(raw.trim_space(), target) or { return []string{} }
+	clean := c_expand_existing_path_macros(target_arg, vroot, source_file) or { return []string{} }
+	args := cmdexec.split_args(clean) or { return []string{} }
 	if args.len == 0 {
 		return []string{}
-	}
-	if c_flag_has_target_prefix(args[0]) {
-		if !c_flag_target_enabled(args[0], target) || args.len < 2 {
-			return []string{}
-		}
-		args = args[1..].clone()
 	}
 	base_dir := if source_file.len > 0 { os.dir(source_file) } else { '' }
 	mut resolved := []string{cap: args.len}
@@ -3935,17 +3928,26 @@ fn c_flag_path_is_relative(p string) bool {
 }
 
 fn c_directive_arg_for_target(raw string, target pref.Target) ?string {
-	parts := raw.fields()
-	if parts.len == 0 {
+	clean := raw.trim_space()
+	if clean.len == 0 {
 		return none
 	}
-	if c_flag_has_target_prefix(parts[0]) {
-		if !c_flag_target_enabled(parts[0], target) || parts.len < 2 {
+	mut prefix_end := 0
+	for prefix_end < clean.len && !clean[prefix_end].is_space() {
+		prefix_end++
+	}
+	prefix := clean[..prefix_end]
+	if c_flag_has_target_prefix(prefix) {
+		if !c_flag_target_enabled(prefix, target) || prefix_end >= clean.len {
 			return none
 		}
-		return parts[1..].join(' ')
+		arg := clean[prefix_end..].trim_space()
+		if arg.len == 0 {
+			return none
+		}
+		return arg
 	}
-	return raw
+	return clean
 }
 
 fn c_resolve_pseudo_paths(raw string, vroot string, source_file string) string {
