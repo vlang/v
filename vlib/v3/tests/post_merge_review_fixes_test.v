@@ -6044,6 +6044,13 @@ fn main() {
 		'main.v': 'module main\n\n#include "shim.m"\n\nstruct ObjectiveCTypeHolder {\n\tvalue C.V3ObjectiveCType\n}\n\nfn C.v3_objective_c_type_value(C.V3ObjectiveCType) int\n\nfn main() {\n\tholder := ObjectiveCTypeHolder{\n\t\tvalue: C.V3ObjectiveCType{\n\t\t\tvalue: 56\n\t\t}\n\t}\n\tprintln(int_str(C.v3_objective_c_type_value(holder.value)))\n}\n'
 	}, 'main.v')
 	assert objective_c_type_out == '56'
+	objective_c_typedef_out := run_good_project_with_flags(v3_bin, 'objective_c_typedef_provider',
+		'-cc clang', {
+		'v.mod':  "Module { name: 'objective_c_typedef_provider' }\n"
+		'shim.m': 'typedef enum { V3_KIND_ZERO = 0 } V3Kind;\ntypedef unsigned long V3Plain;\n'
+		'main.v': 'module main\n\n#include "shim.m"\n\nstruct ObjectiveCTypedefHolder {\n\tkind C.V3Kind\n\tvalue C.V3Plain\n}\n\nfn main() {\n\t_ := ObjectiveCTypedefHolder{}\n\tprintln(int_str(66))\n}\n'
+	}, 'main.v')
+	assert objective_c_typedef_out == '66'
 	objective_cpp_out := run_good_project_with_flags(v3_bin, 'objective_cpp_source_include',
 		'-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_source_include' }\n"

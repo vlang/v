@@ -2752,6 +2752,14 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 		g.inlined_c_structs[alias] = true
 		g.inlined_c_typedef_names[alias] = true
 	}
+	for alias in c_typedef_enum_aliases(text) {
+		g.inlined_c_structs[alias] = true
+		g.inlined_c_typedef_names[alias] = true
+	}
+	for alias in c_typedef_plain_aliases(text) {
+		g.inlined_c_structs[alias] = true
+		g.inlined_c_typedef_names[alias] = true
+	}
 	for alias in c_typedef_fn_aliases(text) {
 		g.inlined_c_structs[alias] = true
 		g.inlined_c_typedef_names[alias] = true
@@ -2764,6 +2772,12 @@ fn (g &FlatGen) c_source_defines_used_c_type(text string) bool {
 		names[alias] = true
 	}
 	for alias in c_typedef_union_aliases(text) {
+		names[alias] = true
+	}
+	for alias in c_typedef_enum_aliases(text) {
+		names[alias] = true
+	}
+	for alias in c_typedef_plain_aliases(text) {
 		names[alias] = true
 	}
 	for alias in c_typedef_fn_aliases(text) {
@@ -3114,6 +3128,47 @@ fn c_typedef_struct_aliases(text string) []string {
 
 fn c_typedef_union_aliases(text string) []string {
 	return c_typedef_aggregate_aliases(text, 'union')
+}
+
+fn c_typedef_enum_aliases(text string) []string {
+	return c_typedef_aggregate_aliases(text, 'enum')
+}
+
+fn c_typedef_plain_aliases(text string) []string {
+	mut aliases := []string{}
+	mut start := 0
+	for start < text.len {
+		rel_idx := text[start..].index('typedef') or { break }
+		idx := start + rel_idx
+		pos := idx + 'typedef'.len
+		if (idx > 0 && c_ident_char(text[idx - 1])) || (pos < text.len && c_ident_char(text[pos])) {
+			start = pos
+			continue
+		}
+		semi_rel := text[pos..].index_u8(`;`)
+		if semi_rel < 0 {
+			break
+		}
+		declaration := trimmed_space(text[pos..pos + semi_rel])
+		start = pos + semi_rel + 1
+		if declaration.starts_with('struct ') || declaration.starts_with('union ')
+			|| declaration.starts_with('enum ') || declaration.contains('(')
+			|| declaration.contains('{') {
+			continue
+		}
+		for part in declaration.split(',') {
+			mut declarator := trimmed_space(part)
+			bracket := declarator.index_u8(`[`)
+			if bracket >= 0 {
+				declarator = trimmed_space(declarator[..bracket])
+			}
+			alias := c_last_ident(declarator)
+			if alias.len > 0 && c_header_struct_tag(alias) == alias {
+				aliases << alias
+			}
+		}
+	}
+	return aliases
 }
 
 fn c_typedef_aggregate_aliases(text string, kind string) []string {
