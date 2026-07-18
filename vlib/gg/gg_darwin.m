@@ -232,7 +232,7 @@ static NSDictionary* darwin_measure_attrs(void) {
 	return attrs;
 }
 
-int darwin_text_width(string s) {
+static int darwin_text_width_with_attrs(string s, NSDictionary* attrs) {
 	// println('text_width "${s}" len=${s.len}')
 	NSString* n = @"";
 	CFStringRef cf = nil;
@@ -246,12 +246,20 @@ int darwin_text_width(string s) {
 		}
 		n = (__bridge NSString*)cf;
 	}
-	NSSize size = [n sizeWithAttributes:darwin_measure_attrs()];
+	NSSize size = [n sizeWithAttributes:attrs];
 	if (cf != nil) {
 		CFRelease(cf);
 	}
 	// # printf("!!!%f\n", ceil(size.width));
 	return (int)(ceil(size.width));
+}
+
+int darwin_text_width(string s) {
+	return darwin_text_width_with_attrs(s, darwin_measure_attrs());
+}
+
+int darwin_text_width_with_cfg(string s, gg__TextCfg cfg) {
+	return darwin_text_width_with_attrs(s, darwin_text_attrs(cfg));
 }
 
 void darwin_draw_rect(float x, float y, float width, float height, gg__Color c) {
