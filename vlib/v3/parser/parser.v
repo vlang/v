@@ -7840,12 +7840,12 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 			p.a.add_val(.ident, resolved_name)
 		}
 		sel_start := p.add_children2(lhs, inner)
-		sel := p.add_node(flat.Node{
+		sel := p.add_node_from(flat.Node{
 			kind:           .selector
 			value:          selector_value
 			children_start: sel_start
 			children_count: 2
-		})
+		}, lhs)
 		if p.tok == .lpar {
 			return p.call_args(sel)
 		}
@@ -7853,12 +7853,14 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 	}
 	field_name := p.expect_name_or_keyword()
 	sel_start := p.add_child(lhs)
-	sel := p.add_node(flat.Node{
+	// Anchor the selector at its receiver (lhs) so it spans `recv.field` rather
+	// than the `(`/`[` that follows; call/index nodes built on it inherit this.
+	sel := p.add_node_from(flat.Node{
 		kind:           .selector
 		value:          field_name
 		children_start: sel_start
 		children_count: 1
-	})
+	}, lhs)
 	if p.tok == .lpar {
 		lhs_node := p.a.nodes[int(lhs)]
 		if lhs_node.kind == .ident && lhs_node.value != 'C' && field_name.len > 0
@@ -7868,12 +7870,12 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 			inner := p.expr(.lowest)
 			p.check(.rpar)
 			cstart := p.add_child(inner)
-			return p.add_node(flat.Node{
+			return p.add_node_from(flat.Node{
 				kind:           .cast_expr
 				value:          full_name
 				children_start: cstart
 				children_count: 1
-			})
+			}, lhs)
 		}
 		return p.call_args(sel)
 	}

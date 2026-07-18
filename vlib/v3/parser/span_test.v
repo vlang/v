@@ -146,22 +146,33 @@ fn test_dynamic_array_init_spans_from_bracket() {
 
 // Call nodes are completed after the closing `)` is consumed, so they must be
 // anchored at the callee — the checker reports unknown-function diagnostics on
-// the call node, which should point at the call, not the following token.
+// the call node, which should point at the call, not the following token. For
+// selector method calls (`recv.method()`) the callee is a `.selector`, which
+// must itself span `recv.method` so the call covers the whole `recv.method()`.
 fn test_call_node_spans_from_callee() {
-	ast, src := parse_span_source('call', 'fn main() {
+	ast, src := parse_span_source('call', 'struct Obj { x int }
+fn main() {
 	missing()
 	x := foo(1, 2)
+	o := Obj{x: 1}
+	y := o.missing(1, 2)
 	_ = x
+	_ = y
 }
 ')
-	mut spans := []string{}
+	mut call_spans := []string{}
+	mut selector_spans := []string{}
 	for node in ast.nodes {
 		if node.kind == .call {
-			spans << span_text(src, node)
+			call_spans << span_text(src, node)
+		} else if node.kind == .selector {
+			selector_spans << span_text(src, node)
 		}
 	}
-	assert 'missing()' in spans
-	assert 'foo(1, 2)' in spans
+	assert 'missing()' in call_spans
+	assert 'foo(1, 2)' in call_spans
+	assert 'o.missing(1, 2)' in call_spans
+	assert 'o.missing' in selector_spans
 }
 
 // Address-of expressions (`&Foo{}`, `&[]T{}`, `&T(x)`) span from the `&` through
