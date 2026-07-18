@@ -3510,8 +3510,10 @@ fn (mut g FlatGen) ordered_c_directives() []string {
 
 fn (mut g FlatGen) emit_c_directives() {
 	mut emitted := false
-	for directive in g.ordered_c_directives() {
-		if c_contains_preserved_system_include_directive(directive)
+	directives := g.ordered_c_directives()
+	delayed := c_delayed_source_directive_indices(directives)
+	for i, directive in directives {
+		if i in delayed || c_contains_preserved_system_include_directive(directive)
 			|| c_is_source_include_directive(directive) {
 			continue
 		}
@@ -3525,8 +3527,10 @@ fn (mut g FlatGen) emit_c_directives() {
 
 fn (mut g FlatGen) emit_c_source_directives() {
 	mut emitted := false
-	for directive in g.ordered_c_directives() {
-		if !c_is_source_include_directive(directive) {
+	directives := g.ordered_c_directives()
+	delayed := c_delayed_source_directive_indices(directives)
+	for i, directive in directives {
+		if i !in delayed {
 			continue
 		}
 		g.writeln(directive)
@@ -3535,6 +3539,47 @@ fn (mut g FlatGen) emit_c_source_directives() {
 	if emitted {
 		g.writeln('')
 	}
+}
+
+fn c_delayed_source_directive_indices(directives []string) map[int]bool {
+	mut delayed := map[int]bool{}
+	mut condition_starts := []int{}
+	mut condition_has_source := []bool{}
+	for i, directive in directives {
+		clean := trimmed_space(directive)
+		name := c_directive_name(clean)
+		if name in ['if', 'ifdef', 'ifndef'] {
+			condition_starts << i
+			condition_has_source << false
+		}
+		if c_is_source_include_directive(directive) {
+			if condition_starts.len == 0 {
+				delayed[i] = true
+			} else {
+				for depth in 0 .. condition_has_source.len {
+					condition_has_source[depth] = true
+				}
+			}
+		}
+		if name == 'endif' && condition_starts.len > 0 {
+			last := condition_starts.len - 1
+			if condition_has_source[last] {
+				for delayed_index in condition_starts[last] .. i + 1 {
+					delayed[delayed_index] = true
+				}
+			}
+			condition_starts.delete_last()
+			condition_has_source.delete_last()
+		}
+	}
+	for depth, start in condition_starts {
+		if condition_has_source[depth] {
+			for delayed_index in start .. directives.len {
+				delayed[delayed_index] = true
+			}
+		}
+	}
+	return delayed
 }
 
 fn c_is_source_include_directive(directive string) bool {

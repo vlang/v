@@ -5816,6 +5816,12 @@ fn main() {
 		'main.v':         'module main\n\n#flag -I @DIR/include\n#include "shim.c"\n\nfn C.answer_from_shim() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_shim()))\n}\n'
 	}, 'main.v')
 	assert include_out == '42'
+	guarded_include_out := run_good_project(v3_bin, 'guarded_quoted_source_include', {
+		'v.mod':  "Module { name: 'guarded_quoted_source_include' }\n"
+		'shim.c': 'int answer_from_guarded_shim(void) { return V3_GUARDED_SHIM_VALUE; }\n'
+		'main.v': 'module main\n\n#define V3_GUARDED_SOURCE\n#ifdef V3_GUARDED_SOURCE\n#define V3_GUARDED_SHIM_VALUE 45\n#include "shim.c"\n#undef V3_GUARDED_SHIM_VALUE\n#endif\n\nfn C.answer_from_guarded_shim() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_guarded_shim()))\n}\n'
+	}, 'main.v')
+	assert guarded_include_out == '45'
 	objective_cpp_out := run_good_project_with_flags(v3_bin, 'objective_cpp_source_include',
 		'-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_source_include' }\n"
