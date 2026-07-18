@@ -689,6 +689,12 @@ fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string
 		}
 		return g.cname(name)
 	}
+	// Monomorphization has already selected this exact concrete method. Do not
+	// run overload-style candidate matching again: same-named types from two
+	// modules can have indistinguishable container arguments at C ABI level.
+	if name in g.tc.specialized_generic_fns {
+		return g.direct_call_name(name)
+	}
 	if alias := g.flattened_generic_method_short_alias(name) {
 		return g.cname(alias)
 	}
@@ -699,6 +705,9 @@ fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string
 }
 
 fn (mut g FlatGen) direct_call_name_for_call_node(id flat.NodeId, node flat.Node, name string) string {
+	if name in g.tc.specialized_generic_fns {
+		return g.direct_call_name(name)
+	}
 	if specialized := g.specialized_generic_method_name_for_call_args(node, name,
 		int(node.children_count) - 1)
 	{

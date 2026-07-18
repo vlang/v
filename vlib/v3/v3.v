@@ -1788,6 +1788,7 @@ fn main() {
 	} else {
 		erase_unreachable_generic_type_templates(mut pre_tc)
 	}
+	pre_tc.clear_c_type_cache()
 	// Transform and monomorphization can synthesize or rewrite payload text.
 	// They run with private/arena-backed worker state; publish only canonical,
 	// compilation-owned strings after all worker merges are complete.
@@ -1967,11 +1968,17 @@ fn main() {
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
-		warn_args := if is_strict {
+		mut warn_args := if is_strict {
 			['-Wall', '-Wextra', '-Werror=implicit-function-declaration', '-Wno-unused-variable',
 				'-Wno-unused-parameter', '-Wno-int-conversion', '-Wno-missing-braces']
 		} else {
 			['-w']
+		}
+		// Match the normal V driver's macOS compatibility flags. Apple SDK and
+		// third-party headers commonly add const qualifiers to callback typedefs,
+		// and Clang otherwise treats assignments from V's C declarations as errors.
+		if prefs.normalized_target_os() == 'macos' {
+			warn_args << ['-Wno-incompatible-function-pointer-types', '-Wno-typedef-redefinition']
 		}
 		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
 			target_args, prefs.target, c_compiler, cc_dir, mut c_object_cache_stats) or {
@@ -2903,12 +2910,13 @@ fn erase_unreachable_generic_type_templates(mut tc types.TypeChecker) {
 		tc.structs.delete(name)
 		tc.unions.delete(name)
 		tc.params_structs.delete(name)
+		tc.unregister_short_type_name(name)
 	}
 	for name in tc.sum_generic_params.keys() {
 		tc.sum_types.delete(name)
 		tc.sum_generic_params.delete(name)
+		tc.unregister_short_type_name(name)
 	}
-	tc.invalidate_short_type_name_index()
 }
 
 fn set_unsupported_generic_files(mut tc types.TypeChecker, a &flat.FlatAst, include_imports bool, diagnostic_root string) {

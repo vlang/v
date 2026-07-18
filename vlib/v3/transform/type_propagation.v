@@ -792,7 +792,7 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 	if type_is_generic_app {
 		mut field_base := base
 		if !field_base.contains('.') && owner_type.contains('.') {
-			owner_mod := owner_type.all_before_last('.')
+			owner_mod := field_owner_module(owner_type)
 			qbase := '${owner_mod}.${field_base}'
 			if t.type_authority_has(qbase) {
 				field_base = qbase
@@ -812,7 +812,7 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 	if typ.contains('.') || !owner_type.contains('.') {
 		return t.normalize_type_alias(typ)
 	}
-	owner_mod := owner_type.all_before_last('.')
+	owner_mod := field_owner_module(owner_type)
 	qtyp := '${owner_mod}.${typ}'
 	if t.type_authority_has(qtyp) {
 		return t.normalize_type_alias(qtyp)
@@ -823,6 +823,15 @@ fn (t &Transformer) normalize_field_type(typ string, owner_type string) string {
 		}
 	}
 	return t.normalize_type_alias(typ)
+}
+
+fn field_owner_module(owner_type string) string {
+	for foreign_prefix in ['.C.', '.JS.'] {
+		if idx := owner_type.index(foreign_prefix) {
+			return owner_type[..idx]
+		}
+	}
+	return owner_type.all_before_last('.')
 }
 
 fn (t &Transformer) generic_struct_param_names_for_base(base string) []string {
@@ -1111,6 +1120,19 @@ fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
 	}
 	if clean.starts_with('chan ') {
 		return 'chan ' + t.normalize_type_in_module(clean[5..], mod)
+	}
+	if clean.starts_with('fn(') || clean.starts_with('fn (') {
+		params, ret := fn_type_text_parts(clean) or { return clean }
+		mut normalized_params := []string{cap: params.len}
+		for param in params {
+			normalized_params << t.normalize_type_in_module(generic_fn_type_param_payload(param), mod)
+		}
+		normalized_ret := t.normalize_type_in_module(ret, mod)
+		return if normalized_ret.len > 0 {
+			'fn (${normalized_params.join(', ')}) ${normalized_ret}'
+		} else {
+			'fn (${normalized_params.join(', ')})'
+		}
 	}
 	if clean.contains('.') || mod.len == 0 || mod == 'main' || mod == 'builtin' {
 		return t.normalize_type_alias(clean)

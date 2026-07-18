@@ -2086,7 +2086,11 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 			|| is_generic_fn_placeholder_name(arg_type) {
 			arg_type = fm.comptime_typ
 		}
-		infer_generic_type_args(param.typ, arg_type, mut inferred)
+		mut inference_type := t.comptime_normalize_type_alias_chain(arg_type)
+		if inference_type.len == 0 || inference_type == arg_type {
+			inference_type = fm.comptime_unaliased
+		}
+		infer_generic_type_args(param.typ, inference_type, mut inferred)
 		param_idx++
 	}
 	mut inferred_args := []string{cap: param_names.len}
@@ -2789,8 +2793,11 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 	if core.len == 0 {
 		return ''
 	}
-	if core.starts_with('?') {
-		return '?' + t.comptime_field_type_id_key(core[1..], decl_module)
+	if core.starts_with('?') || core.starts_with('!') {
+		return core[..1] + t.comptime_field_type_id_key(core[1..], decl_module)
+	}
+	if core.starts_with('mut ') {
+		return 'mut ' + t.comptime_field_type_id_key(core[4..], decl_module)
 	}
 	if core.starts_with('shared ') {
 		return 'shared ' + t.comptime_field_type_id_key(core[7..], decl_module)
@@ -2833,6 +2840,31 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 			}
 			return out
 		}
+	}
+	if core.starts_with('fn(') || core.starts_with('fn (') {
+		params, ret := fn_type_text_parts(core) or { return core }
+		mut qualified_params := []string{cap: params.len}
+		for param in params {
+			qualified_params << t.comptime_field_type_id_key(param, decl_module)
+		}
+		qualified_ret := t.comptime_field_type_id_key(ret, decl_module)
+		return if qualified_ret.len > 0 {
+			'fn(${qualified_params.join(', ')}) ${qualified_ret}'
+		} else {
+			'fn(${qualified_params.join(', ')})'
+		}
+	}
+	base, args, is_generic := generic_app_parts(core)
+	if is_generic {
+		qualified_base := t.comptime_field_type_id_key(base, decl_module)
+		mut qualified_args := []string{cap: args.len}
+		for arg in args {
+			qualified_args << t.comptime_field_type_id_key(arg, decl_module)
+		}
+		return '${qualified_base}[${qualified_args.join(', ')}]'
+	}
+	if is_generic_fn_placeholder_name(core) {
+		return core
 	}
 	if comptime_is_primitive_type(core) || core.contains('.') || core.contains('[')
 		|| core.contains(' ') || decl_module.len == 0 || decl_module in ['main', 'builtin'] {

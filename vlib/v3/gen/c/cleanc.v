@@ -1786,6 +1786,15 @@ fn (mut g FlatGen) collect_gen_info() {
 					mut pt := raw_pt
 					if shared_alias_ptr := g.cached_shared_alias_pointer_type_from_text(child.typ) {
 						pt = shared_alias_ptr
+					} else if raw_pt is types.Pointer && param_idx < typed_params.len {
+						typed_pt := typed_params[param_idx]
+						if typed_pt is types.Pointer && raw_pt.base_type is types.FnType
+							&& typed_pt.base_type is types.FnType {
+							// Specialized `mut T` parameters keep a pointer-to-function type in
+							// the flat declaration. The registered signature retains the concrete
+							// module identity when same-named callback parameter types coexist.
+							pt = typed_pt
+						}
 					} else if raw_pt !is types.Pointer && param_idx < typed_params.len {
 						pt = typed_params[param_idx]
 					}
@@ -4898,7 +4907,8 @@ fn (mut g FlatGen) gen_expr_with_expected_type(id flat.NodeId, expected types.Ty
 	}
 	if !expected_is_shared_alias && expected !is types.Pointer && expected !is types.Void
 		&& expected !is types.OptionType && expected !is types.ResultType && actual is types.Pointer
-		&& g.type_names_match(actual.base_type, expected) {
+		&& g.type_names_match(actual.base_type, expected) && !(node.kind == .ident
+		&& g.local_storage_is_shared(node.value)) {
 		needs_paren := node.kind !in [.ident, .selector, .call, .index]
 		g.write('*')
 		if needs_paren {
@@ -12338,7 +12348,8 @@ fn (g &FlatGen) fixed_array_type_has_unknown_struct(typ types.Type) bool {
 		return g.fixed_array_type_has_unknown_struct(typ.elem_type)
 	}
 	if typ is types.Pointer {
-		return g.fixed_array_type_has_unknown_struct(typ.base_type)
+		// C can declare a pointer without a complete definition of its pointee.
+		return false
 	}
 	if typ is types.Alias {
 		return g.fixed_array_type_has_unknown_struct(typ.base_type)

@@ -321,6 +321,33 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			}
 			t.a.children.flags.clear(.nogrow)
 		}
+		// Worker regions still alias the original backing arrays. Compacting an
+		// uneven earlier region in place can extend into a later region before it
+		// is merged. Move the master's prefix to a final-sized private allocation
+		// first, leaving every worker source untouched until its merge.
+		mut merged_nodes_cap := base_nodes
+		mut merged_children_cap := base_children
+		for ci in 0 .. n_jobs {
+			w := unsafe { &Transformer(args[ci].worker) }
+			merged_nodes_cap += w.a.nodes.len - node_starts[ci]
+			merged_children_cap += w.a.children.len - child_starts[ci]
+		}
+		if t.a.nodes.data == original_nodes_data {
+			nodes := clone_monomorph_node_region(t.a.nodes, base_nodes, base_nodes,
+				merged_nodes_cap)
+			unsafe {
+				t.a.nodes.flags.set(.nofree)
+			}
+			t.a.nodes = nodes
+		}
+		if t.a.children.data == original_children_data {
+			children := clone_monomorph_child_region(t.a.children, base_children, base_children,
+				merged_children_cap)
+			unsafe {
+				t.a.children.flags.set(.nofree)
+			}
+			t.a.children = children
+		}
 		master_fn_ret_types := t.fn_ret_types.move()
 		master_receiver_index := t.receiver_method_suffix_index.move()
 		t.fn_ret_types = shared_fn_ret_types.move()
@@ -344,9 +371,6 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 				node_shift = t.a.nodes.len - node_starts[ci]
 				t.merge_worker_used_fns(w)
 				t.merge_worker(w, []FnWorkItem{}, node_starts[ci], child_starts[ci])
-				for name, ret in w.fn_ret_types {
-					t.fn_ret_types[name.clone()] = ret.clone()
-				}
 				for name, receiver in w.receiver_method_suffix_index {
 					t.receiver_method_suffix_index[name.clone()] = receiver.clone()
 				}
@@ -359,6 +383,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			for idx in args[ci].scan_nodes {
 				t.parallel_monomorph_scan_nodes << idx + node_shift
 			}
+			t.ensure_node_context_map_capacity()
 			for idx, spec in args[ci].emitted_specs {
 				root := flat.NodeId(int(args[ci].roots[idx]) + node_shift)
 				if !t.generic_specialization_registered(spec.decl, spec.args) {
@@ -367,10 +392,14 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 				}
 				t.generic_fn_spec_nodes[spec.key.clone()] = root
 				t.a.specialized_fn_nodes[int(root)] = true
+				t.mark_node_context(root, spec.decl.module, spec.decl.file)
 				emitted[generic_fn_spec_key(spec.decl.key, spec.args)] = true
 				t.pending_generic_fn_spec_keys.delete(spec.key)
 			}
 			if ci > 0 {
+				for name, ret in w.fn_ret_types {
+					t.fn_ret_types[name.clone()] = ret.clone()
+				}
 				for pending in w.pending_generic_fn_specs {
 					mut owned_args := []string{cap: pending.args.len}
 					for item in pending.args {

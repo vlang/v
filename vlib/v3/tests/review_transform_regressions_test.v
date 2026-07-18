@@ -281,6 +281,24 @@ fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization()
 	assert !generated.contains('codec__Decoder_other__Item__decode_value'), generated
 }
 
+fn test_generic_struct_default_for_pointer_type_uses_heap_storage() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_pointer_struct_default', 'struct Item {
+	value int = 7
+}
+
+fn make_default[T]() T {
+	return T{}
+}
+
+fn main() {
+	item := make_default[&Item]()
+	println(item.value)
+}
+')
+	assert out == '7'
+}
+
 fn test_optional_if_guard_prefers_local_type_over_imported_homonym() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'optional_if_guard_local_type_collision', {
@@ -865,6 +883,22 @@ fn test_parallel_monomorphization_grows_uneven_worker_regions() {
 	assert out == '40'
 }
 
+fn test_parallel_monomorphization_registers_worker_fixed_array_signatures() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut declarations := []string{cap: 40}
+	mut calls := []string{cap: 40}
+	for i in 0 .. 40 {
+		declarations << 'struct MonoSignature${i} {}'
+		calls << '\ttotal += fixed_pair(MonoSignature${i}{})[0]'
+	}
+	src := '${declarations.join('\n')}\n\nfn fixed_pair[T](value T) [2]int {\n\t_ = value\n\treturn [1, 2]!\n}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n'
+	out := run_good_with_env(v3_bin, 'parallel_monomorph_signatures', 'VJOBS=4', src)
+	assert out == '40'
+}
+
 fn test_generic_function_type_arguments_keep_parameter_commas() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_function_type_argument', "fn identity[T](value T) T {
@@ -1295,6 +1329,13 @@ fn main() {
 	assert out == 'true\n7'
 }
 
+fn test_optional_map_append_evaluates_key_before_rhs() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_map_append_evaluation_order',
+		'fn select_key(key string, mut trace string) string {\n\ttrace += "key"\n\treturn key\n}\n\nfn next_value(mut key string, mut trace string) ?int {\n\ttrace += "rhs"\n\tkey = "changed"\n\treturn 7\n}\n\nfn main() {\n\tmut trace := ""\n\tmut key := "original"\n\tmut values := map[string][]int{}\n\tvalues[select_key(key, mut trace)] << next_value(mut key, mut trace) or { return }\n\tprintln(trace)\n\tprintln(int_str(values["original"][0]))\n\tprintln("changed" in values)\n}\n')
+	assert out == 'keyrhs\n7\nfalse'
+}
+
 fn test_optional_append_to_shared_array_is_autolocked() {
 	v3_bin := build_v3_review_transform()
 	source := 'fn next_value() ?int {
@@ -1321,6 +1362,139 @@ fn test_json2_skipped_pointer_field_does_not_specialize_decoder() {
 	out := run_good(v3_bin, 'json2_skipped_pointer_field',
 		'import gg\nimport x.json2\n\nstruct Config {\n\tcontext &gg.Context @[skip]\n\tname string\n}\n\nfn main() {\n\tconfig := json2.decode[Config]("{\\"name\\":\\"ok\\"}") or { Config{} }\n\tprintln(config.name)\n}\n')
 	assert out == 'ok'
+}
+
+fn test_comptime_field_generic_calls_keep_resolved_field_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'comptime_field_resolved_types', {
+		'v.mod':         "Module { name: 'comptime_field_resolved_types' }\n"
+		'model/model.v': 'module model\n\npub enum KeyCode {\n\tenter\n}\n\npub type Callback = fn (int)\n\n@[typedef]\npub struct C.model_event {\npub:\n\tkey KeyCode\n\tcb Callback\n}\n\npub type Event = C.model_event\n'
+		'codec/codec.v': 'module codec\n\npub fn visit[T](mut value T) {\n\t$for field in T.fields {\n\t\ttouch(mut value.$(field.name))\n\t}\n}\n\nfn touch[T](mut value T) {\n\t_ = value\n}\n'
+		'main.v':        'module main\n\nimport codec\nimport model\n\nfn main() {\n\tmut event := model.Event{}\n\tcodec.visit(mut event)\n\tprintln(int_str(int(event.key)))\n}\n'
+	}, 'main.v')
+	assert out == '0'
+}
+
+fn test_imported_struct_default_qualifies_function_alias_cast() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_project(v3_bin, 'imported_struct_default_fn_alias', {
+		'v.mod':           "Module { name: 'imported_struct_default_fn_alias' }\n"
+		'widget/widget.v': 'module widget\n\npub type Callback = fn (int)\n\npub struct Config {\npub:\n\tcallback Callback = unsafe { Callback(0) }\n}\n'
+		'main.v':          'module main\n\nimport widget\n\nfn main() {\n\tconfig := widget.Config{}\n\tprintln(config.callback == unsafe { nil })\n}\n'
+	}, 'main.v')
+	assert !c_source.contains('(Callback)'), c_source
+}
+
+fn test_json2_c_alias_fields_keep_declaring_module_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_c_alias_field_types',
+		'import sokol.sapp\nimport x.json2\n\nfn main() {\n\tevent := json2.decode[sapp.Event]("{}") or { sapp.Event{} }\n\tprintln(int_str(int(event.frame_count)))\n}\n')
+	assert out == '0'
+}
+
+fn test_json2_reflected_map_alias_infers_value_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'json2_reflected_map_alias', {
+		'v.mod':         "Module { name: 'json2_reflected_map_alias' }\n"
+		'model/model.v': 'module model\n\npub type Values = map[string]int\n\npub struct Config {\npub mut:\n\tvalues Values\n}\n'
+		'main.v':        'module main\n\nimport model\nimport x.json2\n\nfn main() {\n\tconfig := json2.decode[model.Config](r\'{"values":{"answer":42}}\')!\n\tprintln(config.values["answer"])\n}\n'
+	}, 'main.v')
+	assert out == '42'
+}
+
+fn test_json2_reflected_main_type_does_not_use_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'json2_reflected_main_type_collision', {
+		'v.mod':             "Module { name: 'json2_reflected_main_type_collision' }\n"
+		'discord/discord.v': 'module discord\n\npub struct Discord {\npub:\n\tname string\n}\n'
+		'main.v':            'module main\n\nimport discord\nimport x.json2\n\nstruct Discord {\n\tvalue int\n}\n\nstruct Chat {\n\tdiscord_apis []Discord\n}\n\nfn main() {\n\t_ = json2.encode(discord.Discord{})\n\tchat := json2.decode[Chat](r\'{"discord_apis":[{"value":42}]}\')!\n\tencoded := json2.encode(chat)\n\tprintln(json2.decode[Chat](encoded)!.discord_apis[0].value)\n}\n'
+	}, 'main.v')
+	assert out == '42'
+}
+
+fn test_json2_encode_keeps_independent_array_element_specializations() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_independent_array_element_specializations',
+		'import x.json2\n\nstruct Event {\n\tvalue int\n}\n\nstruct Payload {\n\tflags [][]bool\n\tevents []Event\n}\n\nfn main() {\n\tpayload := Payload{\n\t\tflags: [[true]]\n\t\tevents: [Event{\n\t\t\tvalue: 42\n\t\t}]\n\t}\n\tencoded := json2.encode(payload)\n\tprintln(json2.decode[Payload](encoded)!.events[0].value)\n}\n')
+	assert out == '42'
+}
+
+fn test_json2_encode_array_keeps_main_type_with_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_array_main_type_imported_homonym',
+		'import gg\nimport x.json2\n\nstruct Event {\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.encode([gg.Event{}])\n\tencoded := json2.encode([Event{\n\t\tvalue: 42\n\t}])\n\tprintln(encoded)\n}\n')
+	assert out.contains('"value":42')
+}
+
+fn test_json2_decode_keeps_main_type_with_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_decode_main_type_imported_homonym',
+		'import gg\nimport x.json2\n\nstruct Event {\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.decode[gg.Event]("{}") or { gg.Event{} }\n\tevent := json2.decode[Event](r\'{"value":42}\')!\n\tprintln(event.value)\n}\n')
+	assert out == '42'
+}
+
+fn test_json2_encode_shared_struct_field_uses_locked_value_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_shared_struct_field_value',
+		'import x.json2\n\nstruct State {\n\tvalue int\n}\n\nstruct Client {\n\tstate shared State\n}\n\nfn main() {\n\tclient := Client{}\n\tprintln(json2.encode(client))\n}\n')
+	assert out == '{"state":{"value":0}}'
+}
+
+fn test_json2_decode_any_map_keeps_sum_value_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_any_map_value',
+		'import x.json2\n\nfn main() {\n\tvalues := json2.decode[map[string]json2.Any](r\'{"ok":true}\')!\n\tprintln(values["ok"] or { json2.Any(false) })\n}\n')
+	assert out == 'true'
+}
+
+fn test_json2_callback_field_keeps_declaring_module_and_pointer_depth() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'json2_callback_field_module', {
+		'v.mod':         "Module { name: 'json2_callback_field_module' }\n"
+		'model/model.v': 'module model\n\npub struct Event {}\n\npub type Callback = fn (voidptr, &Event)\n\npub struct Config {\npub:\n\tcallback Callback\n}\n'
+		'main.v':        'module main\n\nimport model\nimport x.json2\n\nstruct Event {}\n\ntype Callback = fn (voidptr, &Event)\n\nstruct Config {\n\tcallback Callback\n}\n\nfn main() {\n\t_ := json2.decode[Config]("{}") or { Config{} }\n\tconfig := json2.decode[model.Config]("{}") or { model.Config{} }\n\tprintln(config.callback == unsafe { nil })\n}\n'
+	}, 'main.v')
+	assert out == 'true'
+}
+
+fn test_json2_explicit_generic_type_keeps_calling_module() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'json2_explicit_generic_calling_module', {
+		'v.mod':             "Module { name: 'json2_explicit_generic_calling_module' }\n"
+		'discord/discord.v': 'module discord\n\nimport x.json2\n\npub struct Packet {\npub:\n\tvalue int\n}\n\npub fn encode_packet(value int) string {\n\treturn json2.encode[Packet](Packet{\n\t\tvalue: value\n\t})\n}\n\npub fn decode_packet(src string) Packet {\n\treturn json2.decode[Packet](src)!\n}\n'
+		'main.v':            'module main\n\nimport discord\n\nfn main() {\n\tsrc := discord.encode_packet(42)\n\tprintln(discord.decode_packet(src).value)\n}\n'
+	}, 'main.v')
+	assert out == '42'
+}
+
+fn test_parallel_json2_specializations_emit_registered_bodies() {
+	v3_bin := build_v3_review_transform()
+	mut declarations := []string{cap: 40}
+	mut decodes := []string{cap: 40}
+	for i in 0 .. 40 {
+		declarations << 'struct Payload${i} {\n\tvalue int\n}'
+		decodes << '\tvalue${i} := json2.decode[Payload${i}](r\'{"value":${i}}\')!\n\t_ = json2.encode(value${i})'
+	}
+	src := 'import discord\nimport x.json2\n\n${declarations.join('\n\n')}\n\nstruct Discord {\n\tvalue int\n}\n\nstruct Chat {\n\tdiscord_apis []Discord\n}\n\nfn main() {\n${decodes.join('\n')}\n\t_ = json2.encode(["hello"])\n\t_ = json2.encode(discord.Discord{})\n\t_ = json2.decode[map[string]bool](r\'{"ok":true}\')!\n\tany_values := json2.decode[map[string]json2.Any](r\'{"ok":true}\')!\n\tassert (any_values["ok"] or { json2.Any(false) }).str() == "true"\n\tchat := Chat{\n\t\tdiscord_apis: [Discord{\n\t\t\tvalue: 42\n\t\t}]\n\t}\n\tencoded := json2.encode(chat)\n\tprintln(json2.decode[Chat](encoded)!.discord_apis[0].value)\n}\n'
+	out := run_good_project(v3_bin, 'parallel_json2_registered_bodies', {
+		'v.mod':             "Module { name: 'parallel_json2_registered_bodies' }\n"
+		'discord/discord.v': 'module discord\n\npub struct Discord {\npub:\n\tname string\n}\n'
+		'main.v':            src
+	}, 'main.v')
+	assert out == '42'
+}
+
+fn test_module_local_const_array_struct_types_do_not_use_previous_module() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'module_local_const_array_struct_types', 'import encoding.utf8
+import hash.crc32
+
+fn main() {
+	_ := crc32.sum([u8(1), 2, 3])
+	println(utf8.is_number(`7`))
+}
+')
+	assert out == 'true'
 }
 
 fn test_moved_module_alias_uses_target_module_identity() {

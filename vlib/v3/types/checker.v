@@ -960,6 +960,22 @@ pub fn (tc &TypeChecker) clear_field_lookup_cache() {
 	cache.struct_field_misses.clear()
 }
 
+// clear_c_type_cache invalidates C spellings after monomorphization changes
+// concrete type identities and adds materialized generic types.
+pub fn (tc &TypeChecker) clear_c_type_cache() {
+	mut cache := tc.type_cache
+	if isnil(cache) {
+		return
+	}
+	cache.c_entries.clear()
+	cache.c_name_entries.clear()
+	if !isnil(cache.base) {
+		mut base := cache.base
+		base.c_entries.clear()
+		base.c_name_entries.clear()
+	}
+}
+
 // clear_interface_impl_cache invalidates memoized implementer lists after a type-table change.
 pub fn (tc &TypeChecker) clear_interface_impl_cache() {
 	mut cache := tc.type_cache
@@ -1471,6 +1487,12 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			else {}
 		}
 	}
+	// Pass 1 can parse callback aliases before later modules with same-named
+	// types have been indexed. Rebuild name-derived caches from the complete
+	// declaration table before collecting concrete signatures in pass 2.
+	tc.type_cache.c_entries.clear()
+	tc.type_cache.c_name_entries.clear()
+	tc.invalidate_short_type_name_index()
 	tc.check_c_struct_redeclarations(a)
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
 	tc.type_cache.parse_enabled = true
@@ -24975,24 +24997,74 @@ pub fn (tc &TypeChecker) invalidate_short_type_name_index() {
 	}
 }
 
-fn (tc &TypeChecker) build_short_type_name_index(mut index map[string]string) {
-	tc.index_short_type_names(tc.type_aliases.keys(), mut index)
-	tc.index_short_type_names(tc.structs.keys(), mut index)
-	tc.index_short_type_names(tc.interface_names.keys(), mut index)
-	tc.index_short_type_names(tc.enum_names.keys(), mut index)
-	tc.index_short_type_names(tc.sum_types.keys(), mut index)
+// register_short_type_name extends an already-built short-name index after
+// monomorphization adds a concrete type. A scoped transform must not rebuild
+// the entire index from maps whose strings may belong to the checked arena.
+pub fn (tc &TypeChecker) register_short_type_name(name string) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
+		return
+	}
+	if !cache.short_type_name_index_built {
+		if isnil(cache.base) || !cache.base.short_type_name_index_built {
+			return
+		}
+		cache.short_type_name_index = cache.base.short_type_name_index.clone()
+		cache.short_type_name_index_built = true
+	}
+	index_short_type_name(name, mut cache.short_type_name_index)
 }
 
-fn (tc &TypeChecker) index_short_type_names(names []string, mut index map[string]string) {
-	for name in names {
-		short := name.all_after_last('.')
-		if prev := index[short] {
-			if prev != name {
-				index[short] = ''
-			}
-		} else {
-			index[short] = name
+// unregister_short_type_name removes an exact cached entry when a generic
+// template is erased. Ambiguous entries stay conservative until the next
+// compilation-wide index build.
+pub fn (tc &TypeChecker) unregister_short_type_name(name string) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
+		return
+	}
+	if !cache.short_type_name_index_built {
+		if isnil(cache.base) || !cache.base.short_type_name_index_built {
+			return
 		}
+		cache.short_type_name_index = cache.base.short_type_name_index.clone()
+		cache.short_type_name_index_built = true
+	}
+	short := name.all_after_last('.')
+	if cached := cache.short_type_name_index[short] {
+		if cached == name {
+			cache.short_type_name_index.delete(short)
+		}
+	}
+}
+
+fn (tc &TypeChecker) build_short_type_name_index(mut index map[string]string) {
+	for name, _ in tc.type_aliases {
+		index_short_type_name(name, mut index)
+	}
+	for name, _ in tc.structs {
+		index_short_type_name(name, mut index)
+	}
+	for name, _ in tc.interface_names {
+		index_short_type_name(name, mut index)
+	}
+	for name, _ in tc.enum_names {
+		index_short_type_name(name, mut index)
+	}
+	for name, _ in tc.sum_types {
+		index_short_type_name(name, mut index)
+	}
+}
+
+fn index_short_type_name(name string, mut index map[string]string) {
+	short := name.all_after_last('.')
+	if short in index {
+		prev := index[short]
+		if prev != name {
+			index[short] = ''
+		}
+	} else {
+		index[short] = name
 	}
 }
 

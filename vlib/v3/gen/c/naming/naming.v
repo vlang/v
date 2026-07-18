@@ -265,8 +265,11 @@ pub fn sanitize(name string) string {
 			b.write_string('_v_')
 		} else if c == `,` || c == ` ` {
 			b.write_u8(`_`)
-		} else {
+		} else if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+			|| (c >= `0` && c <= `9`) || c == `_` {
 			b.write_u8(c)
+		} else {
+			b.write_u8(`_`)
 		}
 		i++
 	}

@@ -56,3 +56,12 @@ fn test_stable_interface_type_ids_preserve_existing_ids_after_late_collisions() 
 	assert after['Twvlzleh'] == before['Twvlzleh']
 	assert after['Tnndxrxb'] != before['Twvlzleh']
 }
+
+fn test_short_type_name_ambiguity_remains_sticky() {
+	mut index := map[string]string{}
+	index_short_type_name('first.Event', mut index)
+	index_short_type_name('second.Event', mut index)
+	index_short_type_name('third.Event', mut index)
+	assert 'Event' in index
+	assert index['Event'] == ''
+}

@@ -216,6 +216,7 @@ mut:
 	// `_object` needs a heap copy before the interface value leaves the frame.
 	escaping_interface_box_locals     map[string]bool
 	active_specialization_args        []string
+	active_specialization_main_types  map[string]bool
 	generic_specialization_args       map[string][]string
 	generic_fn_specs_in_progress      map[string]bool
 	generic_fn_spec_nodes             map[string]flat.NodeId
@@ -3191,6 +3192,14 @@ fn transform_qualified_fn_name(mod string, name string) string {
 // so that const-level lowering (e.g. string concatenation in the prelude's
 // embedded data tables) happens in the transformer rather than the backend.
 fn (mut t Transformer) transform_const_decl(node flat.Node) {
+	old_tc_file := t.tc.cur_file
+	old_tc_module := t.tc.cur_module
+	t.tc.cur_file = t.cur_file
+	t.tc.cur_module = t.cur_module
+	defer {
+		t.tc.cur_file = old_tc_file
+		t.tc.cur_module = old_tc_module
+	}
 	old_in_const_init := t.in_const_init
 	t.in_const_init = true
 	for ci in 0 .. node.children_count {
@@ -3302,6 +3311,14 @@ fn (mut t Transformer) transform_const_or_expr(_id flat.NodeId, node flat.Node, 
 
 // transform_global_decl transforms transform global decl data for transform.
 fn (mut t Transformer) transform_global_decl(node flat.Node) {
+	old_tc_file := t.tc.cur_file
+	old_tc_module := t.tc.cur_module
+	t.tc.cur_file = t.cur_file
+	t.tc.cur_module = t.cur_module
+	defer {
+		t.tc.cur_file = old_tc_file
+		t.tc.cur_module = old_tc_module
+	}
 	for ci in 0 .. node.children_count {
 		gf_id := t.a.child(&node, ci)
 		if int(gf_id) < 0 {
@@ -7419,6 +7436,16 @@ fn (mut t Transformer) transform_sum_value_for_type(rhs_id flat.NodeId, sum_targ
 	if rhs.kind == .match_stmt {
 		return t.transform_expr_for_type(rhs_id, sum_target)
 	}
+	if rhs.kind == .call {
+		concrete_ret := t.concrete_generic_call_return_type(rhs_id, rhs)
+		if concrete_ret.len > 0
+			&& t.resolve_sum_name(concrete_ret) == t.resolve_sum_name(sum_target) {
+			// A cloned generic call can still carry the return annotation of an
+			// earlier specialization. Resolve/retype it before deciding whether its
+			// value needs to be boxed as a sum variant.
+			return t.transform_expr_for_type(rhs_id, sum_target)
+		}
+	}
 	return t.wrap_sum_value(rhs_id, sum_target)
 }
 
@@ -7821,8 +7848,17 @@ fn (mut t Transformer) coerce_transformed_expr_to_type(expr flat.NodeId, source_
 	if expr_type == target_type {
 		return expr
 	}
+	shared_raw_expr_type := expr_type.trim_space()
 	mut target := t.normalize_type_alias(target_type)
 	if target.len == 0 {
+		return expr
+	}
+	// Shared identifiers already lower to the lock wrapper's `.val` expression.
+	// Coercing `shared T` to `T` therefore changes only the semantic type; adding
+	// a pointer dereference would produce `*wrapper->val` even though `.val` is a value.
+	if shared_raw_expr_type.starts_with('shared ')
+		&& t.normalize_type_alias(shared_raw_expr_type[7..].trim_space()) == target {
+		t.set_node_typ(int(expr), target)
 		return expr
 	}
 	expr_type = t.normalize_type_alias(expr_type)
@@ -9879,6 +9915,13 @@ fn comptime_condition_top_level_index(s string, needle string) int {
 		}
 
 		if paren_depth == 0 && bracket_depth == 0 && s[i..i + needle.len] == needle {
+			// A type can start with `&&` (for example `&&char`). That is two pointer
+			// indirections, not a logical AND with an empty left operand. Keep looking
+			// for a real binary operator later in the condition.
+			if needle in ['&&', '||']
+				&& (s[..i].trim_space().len == 0 || s[i + needle.len..].trim_space().len == 0) {
+				continue
+			}
 			return i
 		}
 	}
@@ -12180,6 +12223,16 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	if node.op == .mul && node.children_count == 1 {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
+		// A shared value is represented by a pointer to a lock wrapper, but an
+		// expression naming it already lowers to the wrapper's `.val`. The generic
+		// `T.indirections == 1` branch can still spell that expression as `*val`;
+		// discard the source dereference so cgen emits `val->val`, not `*val->val`.
+		if child.kind == .ident {
+			raw_child_type := t.raw_var_type(child.value).trim_space()
+			if raw_child_type.starts_with('shared ') {
+				return t.transform_expr(child_id)
+			}
+		}
 		mut child_type := t.node_type(child_id)
 		if child_type.len == 0 {
 			child_type = t.original_expr_type(child_id)
@@ -12911,8 +12964,8 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		children_start: start
 		children_count: node.children_count
 		pos:            node.pos
-		value:          node.value
-		typ:            node.typ
+		value:          target_type
+		typ:            if node.typ.len > 0 { t.normalize_type_alias(node.typ) } else { target_type }
 	})
 }
 

@@ -838,6 +838,13 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
+			if expr_node.children_count > 0 {
+				callee := t.a.child_node(&expr_node, 0)
+				if callee.kind == .ident && t.generic_callee_is_specialization(callee.value)
+					&& t.is_optional_type_name(expr_node.typ) {
+					return t.canonical_or_expr_types(expr_node.typ)
+				}
+			}
 			if current_ret := t.current_generic_receiver_call_return_type(expr_node) {
 				if t.is_optional_type_name(current_ret) {
 					return t.canonical_or_expr_types(current_ret)

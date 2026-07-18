@@ -275,6 +275,14 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		g.gen_channel_init(node)
 		return
 	}
+	// A generic `T{}` can specialize to `&Struct`. The literal must then escape
+	// on the heap; `(Struct*){...}` is neither valid C nor durable storage.
+	if init_value.starts_with('&') {
+		mut heap_node := node
+		heap_node.value = init_value[1..]
+		g.gen_heap_struct_init(heap_node)
+		return
+	}
 	effective_type := default_init_unalias_type(types.unwrap_pointer(g.tc.parse_type(init_value)))
 	if effective_type !is types.Struct && g.gen_lowered_sum_init(node) {
 		return

@@ -1078,7 +1078,10 @@ fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.No
 		value:          node.value
 		typ:            value_type
 	})
+	pending_start := t.pending_stmts.len
 	unwrapped_rhs := t.lower_or_expr_to_temp(rhs_or_id, t.a.nodes[int(rhs_or_id)])
+	rhs_pending := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	append_start := t.a.children.len
 	t.a.children << t.a.child(&append, 0)
 	t.a.children << unwrapped_rhs
@@ -1091,8 +1094,11 @@ fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.No
 		value:          append.value
 		typ:            append.typ
 	})
-	if lowered := t.try_lower_map_index_append_stmt(lowered_id) {
+	if lowered := t.try_lower_map_index_append_stmt_with_prelude(lowered_id, rhs_pending) {
 		return lowered
+	}
+	for stmt in rhs_pending {
+		t.pending_stmts << stmt
 	}
 	if lowered := t.try_lower_shared_array_append_autolock_stmt(lowered_id) {
 		return lowered

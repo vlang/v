@@ -3,6 +3,21 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_generic_app_parts_distinguishes_postfix_fixed_arrays() {
+	_, _, numeric_fixed := generic_app_parts('C.sg_color_attachment_action[4]')
+	assert !numeric_fixed
+	_, _, const_fixed := generic_app_parts('http.HeaderKV[max_headers]')
+	assert !const_fixed
+	base, args, generic := generic_app_parts('json2.StructKeyDecodeResult[Item]')
+	assert generic
+	assert base == 'json2.StructKeyDecodeResult'
+	assert args == ['Item']
+	c_base, c_args, c_generic := generic_app_parts('json2.StructKeyDecodeResult[C.sg_pass_action]')
+	assert c_generic
+	assert c_base == 'json2.StructKeyDecodeResult'
+	assert c_args == ['C.sg_pass_action']
+}
+
 fn test_flattened_generic_receiver_short_variants() {
 	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',

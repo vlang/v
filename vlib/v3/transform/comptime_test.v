@@ -2,6 +2,39 @@ module transform
 
 import v3.flat
 
+fn test_comptime_field_function_type_keeps_declaring_module() {
+	mut a := flat.FlatAst.new()
+	t := Transformer{
+		a: &a
+	}
+	qualified := t.comptime_field_type_id_key('?fn (mut SSLListener, string) !&SSLCerts', 'mbedtls')
+	assert qualified == '?fn(mut mbedtls.SSLListener, string) !&mbedtls.SSLCerts'
+	assert t.comptime_field_type_id_key('Registry[string]', 'eventbus') == 'eventbus.Registry[string]'
+	assert t.comptime_field_type_id_key('Container[T]', 'eventbus') == 'eventbus.Container[T]'
+}
+
+fn test_comptime_condition_distinguishes_pointer_depth_from_logical_and() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a: &a
+	}
+	is_array := t.eval_field_cond('&&char is $array_dynamic') or {
+		assert false, 'double-pointer type condition should be decidable'
+		return
+	}
+	is_pointer := t.eval_field_cond('&&char is $pointer') or {
+		assert false, 'double-pointer type condition should be decidable'
+		return
+	}
+	pointer_and_true := t.eval_field_cond('&&char is $pointer && true') or {
+		assert false, 'logical AND after a double-pointer type should be decidable'
+		return
+	}
+	assert !is_array
+	assert is_pointer
+	assert pointer_and_true
+}
+
 fn test_mangled_generic_struct_field_metadata_resolves_declaration() {
 	mut a := flat.FlatAst.new()
 	a.add_val(.module_decl, 'sample')
