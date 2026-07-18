@@ -2105,14 +2105,21 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		include_dirs := c_flag_include_dirs(g.c_flags)
 		if c_include_arg_is_source_file(include_arg) {
 			paths := c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs)
-			if paths.len > 0 {
-				if source_text := os.read_file(paths[0]) {
-					g.collect_inlined_c_structs(source_text)
-					g.collect_inlined_c_fns(source_text)
-					g.collect_inlined_c_declared_fns(source_text)
+			mut source_path := ''
+			mut source_text := ''
+			for path in paths {
+				if text := os.read_file(path) {
+					source_path = path
+					source_text = text
+					break
 				}
-				mut source_directive := '#include "${paths[0]}"'
-				if paths[0].ends_with('.m') || paths[0].ends_with('.mm') {
+			}
+			if source_path.len > 0 {
+				g.collect_inlined_c_structs(source_text)
+				g.collect_inlined_c_fns(source_text)
+				g.collect_inlined_c_declared_fns(source_text)
+				mut source_directive := '#include "${source_path}"'
+				if source_path.ends_with('.m') || source_path.ends_with('.mm') {
 					source_directive = '#include <Cocoa/Cocoa.h>\n${source_directive}'
 					if '-x' !in g.c_flags || 'objective-c' !in g.c_flags {
 						g.c_flags << ['-x', 'objective-c']

@@ -6,6 +6,7 @@ import v3.types
 
 struct PromotedStructInitField {
 	root       string
+	root_type  string
 	owner      string
 	designator string
 	typ        types.Type
@@ -342,6 +343,9 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		}
 	}
 	mut set_fields := map[string]bool{}
+	mut promoted_set_fields := map[string]bool{}
+	mut promoted_roots := []PromotedStructInitField{}
+	mut seen_promoted_roots := map[string]bool{}
 	mut has_field := false
 	if g.is_interface_type_name(node.value) && !g.struct_init_has_named_field(node, '_typ') {
 		if tid := g.interface_init_typ_id(node) {
@@ -435,11 +439,16 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 				}
 			}
 
-			set_fields[if promoted.root.len > 0 {
-				promoted.root
+			if promoted.root.len > 0 {
+				set_fields[promoted.root] = true
+				promoted_set_fields[promoted.designator] = true
+				if !seen_promoted_roots[promoted.root] {
+					seen_promoted_roots[promoted.root] = true
+					promoted_roots << promoted
+				}
 			} else {
-				field.value
-			}] = true
+				set_fields[field.value] = true
+			}
 		}
 		has_field = true
 	}
@@ -454,6 +463,10 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	if is_union_init {
 		g.write('}')
 		return
+	}
+	for promoted in promoted_roots {
+		has_field = g.gen_promoted_struct_defaults(promoted.root_type, c_field_name(promoted.root),
+			promoted_set_fields, has_field)
 	}
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
 	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
@@ -961,6 +974,9 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		}
 	}
 	mut set_fields := map[string]bool{}
+	mut promoted_set_fields := map[string]bool{}
+	mut promoted_roots := []PromotedStructInitField{}
+	mut seen_promoted_roots := map[string]bool{}
 	mut has_field := false
 	if g.is_interface_type_name(node.value) && !g.struct_init_has_named_field(node, '_typ') {
 		if tid := g.interface_init_typ_id(node) {
@@ -1049,11 +1065,16 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 			}
 		}
 
-		set_fields[if promoted.root.len > 0 {
-			promoted.root
+		if promoted.root.len > 0 {
+			set_fields[promoted.root] = true
+			promoted_set_fields[promoted.designator] = true
+			if !seen_promoted_roots[promoted.root] {
+				seen_promoted_roots[promoted.root] = true
+				promoted_roots << promoted
+			}
 		} else {
-			field.value
-		}] = true
+			set_fields[field.value] = true
+		}
 		has_field = true
 	}
 	after_fields_module := g.tc.cur_module
@@ -1067,6 +1088,10 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 			g.write('}, sizeof(${name}))')
 		}
 		return
+	}
+	for promoted in promoted_roots {
+		has_field = g.gen_promoted_struct_defaults(promoted.root_type, c_field_name(promoted.root),
+			promoted_set_fields, has_field)
 	}
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
 	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { sname }
@@ -1144,6 +1169,76 @@ fn (mut g FlatGen) gen_struct_default_fields(type_name string, mut set_fields ma
 	g.tc.cur_module = old_module
 	g.tc.cur_file = old_file
 	g.struct_default_module = old_default_module
+	return has
+}
+
+fn promoted_struct_init_has_descendant(set_fields map[string]bool, designator string) bool {
+	prefix := '${designator}.'
+	for field, _ in set_fields {
+		if field.starts_with(prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// gen_promoted_struct_defaults emits the defaults that remain inside a partially
+// initialized embedded struct. Nested designators keep the promoted expressions in
+// source order while avoiding a second initializer for the whole embedded field.
+fn (mut g FlatGen) gen_promoted_struct_defaults(type_name string, designator_prefix string, promoted_set_fields map[string]bool, has_field bool) bool {
+	mut has := has_field
+	lookup_name := g.struct_init_fields_key(type_name, type_name)
+	mut explicitly_defaulted := map[string]bool{}
+	if info := g.find_struct_decl(type_name) {
+		old_module := g.tc.cur_module
+		old_file := g.tc.cur_file
+		old_default_module := g.struct_default_module
+		g.tc.cur_module = info.module
+		g.tc.cur_file = info.file
+		g.struct_default_module = info.module
+		for i in 0 .. info.node.children_count {
+			field := g.a.child_node(&info.node, i)
+			if field.kind != .field_decl || field.children_count == 0 {
+				continue
+			}
+			field_designator := '${designator_prefix}.${c_field_name(field.value)}'
+			if field_designator in promoted_set_fields
+				|| promoted_struct_init_has_descendant(promoted_set_fields, field_designator) {
+				continue
+			}
+			if has {
+				g.write(', ')
+			}
+			g.write('.${field_designator} = ')
+			g.gen_struct_field_expr_for_field(g.a.child(field, 0), info.full_name, field.value, g.struct_default_field_type(info,
+				field))
+			explicitly_defaulted[field.value] = true
+			has = true
+		}
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+		g.struct_default_module = old_default_module
+	}
+	defaults_key := if lookup_name in g.tc.structs { lookup_name } else { type_name }
+	if defaults_key !in g.tc.structs {
+		return has
+	}
+	for field in g.tc.structs[defaults_key] {
+		field_designator := '${designator_prefix}.${c_field_name(field.name)}'
+		if field_designator in promoted_set_fields || field.name in explicitly_defaulted {
+			continue
+		}
+		if promoted_struct_init_has_descendant(promoted_set_fields, field_designator) {
+			clean_type := default_init_unalias_type(field.typ)
+			if clean_type is types.Struct {
+				has = g.gen_promoted_struct_defaults(clean_type.name, field_designator,
+					promoted_set_fields, has)
+			}
+			continue
+		}
+		has = g.gen_unset_struct_field_default(defaults_key, field.name, field.typ,
+			field_designator, has)
+	}
 	return has
 }
 
@@ -3135,6 +3230,7 @@ fn (g &FlatGen) promoted_struct_init_field(type_name string, field_name string) 
 	parts << c_field_name(field_name)
 	return PromotedStructInitField{
 		root:       path[0].name
+		root_type:  g.embedded_field_type_name(path[0])
 		owner:      owner
 		designator: parts.join('.')
 		typ:        field_type

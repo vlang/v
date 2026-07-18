@@ -5693,6 +5693,8 @@ fn main() {
 ')
 	assert typeof_out == 'int\nstring'
 	promoted_out := run_good(v3_bin, 'promoted_embed_struct_init', 'struct Inner {
+	count int = 3
+	items []int
 	value int
 }
 
@@ -5707,9 +5709,19 @@ fn main() {
 	heap := &Outer{
 		value: 8
 	}
+	println(int_str(value.count))
 	println(int_str(value.value))
+	println(int_str(value.items.len))
+	println(int_str(heap.count))
 	println(int_str(heap.value))
+	println(int_str(heap.items.len))
 }
 ')
-	assert promoted_out == '7\n8'
+	assert promoted_out == '3\n7\n0\n3\n8\n0'
+	include_out := run_good_project(v3_bin, 'quoted_source_include_from_include_dir', {
+		'v.mod':          "Module { name: 'quoted_source_include_from_include_dir' }\n"
+		'include/shim.c': 'int answer_from_shim(void) { return 42; }\n'
+		'main.v':         'module main\n\n#flag -I @DIR/include\n#include "shim.c"\n\nfn C.answer_from_shim() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_shim()))\n}\n'
+	}, 'main.v')
+	assert include_out == '42'
 }
