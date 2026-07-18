@@ -2935,7 +2935,8 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					content := os.read_file(vmod_file) or {
 						message := p.a.add_val_id(5,
 							'@VMOD_FILE can only be used in projects that have a v.mod file')
-						call := p.make_compile_error_call(message, p.span_start())
+						// pseudo_pos is the comptime condition's source offset.
+						call := p.make_compile_error_call(message, pseudo_pos)
 						_ = p.make_top_level_compile_error(call)
 						''
 					}
@@ -7162,7 +7163,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				content := os.read_file(vmod_file) or {
 					message := p.add_val_id(5,
 						'@VMOD_FILE can only be used in projects that have a v.mod file')
-					return p.make_compile_error_call(message, p.span_start())
+					// name_pos was captured before @VMOD_FILE was consumed, so the
+					// sentinel call is reported at the directive, not the next token.
+					return p.make_compile_error_call(message, name_pos)
 				}
 				return p.add_val_id(5, content.replace('\r\n', '\n'))
 			}
@@ -8534,13 +8537,16 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		}
 		// single-element array: [expr]
 		if p.tok == .not {
+			// The literal spans up to `]`; capture it before consuming `!`, which
+			// belongs to the postfix parent.
+			lit_pos := p.span_to(bracket_start)
 			p.next()
 			start := p.add_child(ids[0])
 			lit := p.add_node(flat.Node{
 				kind:           .array_literal
 				children_start: start
 				children_count: 1
-				pos:            p.span_to(bracket_start)
+				pos:            lit_pos
 			})
 			pstart := p.add_child(lit)
 			return p.add_node(flat.Node{
@@ -8581,6 +8587,9 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		ids << p.expr(.lowest)
 	}
 	p.check(.rsbr)
+	// The literal spans up to `]`; capture it before a postfix `!` is consumed so
+	// the `!` is owned by the postfix parent, not the literal.
+	lit_pos := p.span_to(bracket_start)
 	// check for `!` (fixed array with values)
 	mut is_fixed_literal := false
 	if p.tok == .not {
@@ -8592,7 +8601,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		kind:           .array_literal
 		children_start: start
 		children_count: flat.child_count(ids.len)
-		pos:            p.span_to(bracket_start)
+		pos:            lit_pos
 	})
 	if is_fixed_literal {
 		pstart := p.add_child(lit)

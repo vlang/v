@@ -163,6 +163,32 @@ fn test_explicit_fixed_array_value_literal_spans_from_type_prefix() {
 	assert saw
 }
 
+// A postfix `!` fixed-array literal (`[1, 2, 3]!`) must keep the `!` on the
+// `.postfix` parent: the child `.array_literal` spans only `[1, 2, 3]`, while the
+// postfix spans the whole `[1, 2, 3]!`.
+fn test_postfix_fixed_array_literal_excludes_bang_from_child() {
+	ast, src := parse_span_source('bang', 'fn main() {
+	a := [1, 2, 3]!
+	b := [42]!
+	_ = a
+	_ = b
+}
+')
+	mut literals := []string{}
+	mut postfixes := []string{}
+	for node in ast.nodes {
+		if node.kind == .array_literal {
+			literals << span_text(src, node)
+		} else if node.kind == .postfix && node.op == .not {
+			postfixes << span_text(src, node)
+		}
+	}
+	assert '[1, 2, 3]' in literals
+	assert '[42]' in literals
+	assert '[1, 2, 3]!' in postfixes
+	assert '[42]!' in postfixes
+}
+
 // The `$compile_error(...)` sentinel call is a compiler-only `.call` node that
 // the checker reports diagnostics against, so it must carry the directive's span
 // (from the leading `$`) rather than a zero position.
