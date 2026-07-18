@@ -1487,7 +1487,7 @@ fn (mut t Transformer) collect_types() {
 						typ:          field_typ
 						raw_typ:      raw_field_typ
 						default_expr: default_expr
-						is_embedded:  field_decl_is_embedded(f.value, field_typ)
+						is_embedded:  field_decl_is_embedded(f.value, raw_field_typ)
 					}
 				}
 				info := StructInfo{
@@ -3056,6 +3056,13 @@ fn (mut t Transformer) transform_late_candidate(ci int, mut candidates []LateFnC
 		for call_name in t.generated_fn_body_call_names(flat.NodeId(j)) {
 			t.enqueue_late_used_call_name(call_name, log_start, mut late, mut pending, mut queued)
 		}
+	}
+	// Transforming a late body can root implementation methods indirectly (for
+	// example, when lowering an interface call). Those insertions are not always
+	// represented by a direct call node in the transformed body, so enqueue the
+	// insertion log too and recursively transform their bodies.
+	for i in log_start .. t.used_fns_log.len {
+		add_late_used_fn_name(t.used_fns_log[i], mut late, mut pending, mut queued)
 	}
 }
 
@@ -11781,7 +11788,7 @@ fn (mut t Transformer) transform_selector_expr(id flat.NodeId, node flat.Node) f
 	base_node0 := t.a.nodes[int(base_id0)]
 	if base_node0.kind == .typeof_expr {
 		if node.value == 'name' {
-			return t.transform_typeof_expr(base_id0, base_node0)
+			return t.transform_typeof_name_expr(base_id0, base_node0)
 		}
 		if node.value == 'idx' {
 			return t.transform_typeof_idx_expr(base_node0)
@@ -13217,6 +13224,14 @@ fn typeof_display_is_param_name(name string) bool {
 }
 
 fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	return t.transform_typeof_expr_mode(id, node, true)
+}
+
+fn (mut t Transformer) transform_typeof_name_expr(id flat.NodeId, node flat.Node) flat.NodeId {
+	return t.transform_typeof_expr_mode(id, node, false)
+}
+
+fn (mut t Transformer) transform_typeof_expr_mode(id flat.NodeId, node flat.Node, runtime_sum bool) flat.NodeId {
 	if node.value.len > 0 {
 		return t.make_string_literal(typeof_fn_type_display(node.value))
 	}
@@ -13279,6 +13294,27 @@ fn (mut t Transformer) transform_typeof_expr(id flat.NodeId, node flat.Node) fla
 	}
 	if typ.contains('typeof(') {
 		typ = t.resolve_typeof_type_text(typ)
+	}
+	parsed_type := if !isnil(t.tc) { t.tc.parse_type(typ) } else { types.Type(types.void_) }
+	unaliased_type := forwarded_return_unalias_type(parsed_type)
+	runtime_type := if unaliased_type is types.Pointer {
+		forwarded_return_unalias_type(unaliased_type.base_type)
+	} else {
+		unaliased_type
+	}
+	if runtime_sum && runtime_type is types.SumType {
+		// The active variant of a sum type is only known at runtime. Keep the
+		// typeof node for cgen instead of folding it to the declared sum name.
+		transformed_expr := t.transform_expr(expr_id)
+		start := t.a.children.len
+		t.a.children << transformed_expr
+		return t.a.add_node(flat.Node{
+			kind:           .typeof_expr
+			typ:            'string'
+			pos:            node.pos
+			children_start: start
+			children_count: 1
+		})
 	}
 	if t.cur_fn_is_generic && is_generic_fn_placeholder_name(typ) {
 		return t.a.add_node(flat.Node{

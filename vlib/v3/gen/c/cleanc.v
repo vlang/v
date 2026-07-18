@@ -9,6 +9,13 @@ import v3.pref
 import v3.types
 
 const spread_index_expected_type_marker = '__v3_spread_index_expected_type'
+const c_inline_header_size_limit = 262_144
+
+struct CHeaderTreeSize {
+mut:
+	seen       map[string]bool
+	total_size i64
+}
 
 fn cgen_worker_scope_begin(enabled bool) voidptr {
 	$if prealloc {
@@ -132,6 +139,10 @@ mut:
 	module_init_fn_modules         map[string]string   // C init fn name -> V module name
 	module_imports                 map[string][]string // module -> imported modules
 	c_directives                   []CDirective
+	early_c_source_directives      map[string]bool
+	native_source_contexts         map[string][]NativeSourceContextDirective
+	objective_cpp_source_requests  []ObjectiveCppSourceRequest
+	native_source_wrapper_index    int
 	inlined_c_structs              map[string]bool
 	inlined_c_typedef_names        map[string]bool
 	inlined_c_fns                  map[string]bool
@@ -279,6 +290,17 @@ struct CDirective {
 	text          string
 	before_import bool
 	late          bool
+}
+
+struct NativeSourceContextDirective {
+	text          string
+	before_import bool
+}
+
+struct ObjectiveCppSourceRequest {
+	module        string
+	source_path   string
+	local_context []NativeSourceContextDirective
 }
 
 struct CInlineHeader {
@@ -606,6 +628,9 @@ pub fn FlatGen.new() FlatGen {
 		module_init_fn_modules:         map[string]string{}
 		module_imports:                 map[string][]string{}
 		c_directives:                   []CDirective{}
+		early_c_source_directives:      map[string]bool{}
+		native_source_contexts:         map[string][]NativeSourceContextDirective{}
+		objective_cpp_source_requests:  []ObjectiveCppSourceRequest{}
 		inlined_c_structs:              map[string]bool{}
 		inlined_c_fns:                  map[string]bool{}
 		inlined_c_declared_fns:         map[string]bool{}
@@ -1208,6 +1233,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.module_init_fn_modules.clear()
 	g.module_imports.clear()
 	g.c_directives = []CDirective{}
+	g.early_c_source_directives.clear()
+	g.native_source_contexts.clear()
+	g.objective_cpp_source_requests = []ObjectiveCppSourceRequest{}
+	g.native_source_wrapper_index = 0
 	g.inlined_c_structs.clear()
 	g.inlined_c_fns.clear()
 	g.inlined_c_declared_fns.clear()
@@ -1399,6 +1428,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fixed_array_typedefs()
 	g.multi_return_typedefs()
 	g.optional_typedefs()
+	g.emit_c_source_directives()
 	g.c_extern_forward_decls()
 	g.builtin_abi_decls()
 	g.test_failure_helpers()
@@ -2025,6 +2055,7 @@ fn (mut g FlatGen) collect_gen_info() {
 		}
 	}
 	g.modules['strings'] = 'strings'
+	g.materialize_objective_cpp_sources()
 	g.collect_const_init_order_from_files()
 }
 
@@ -2139,6 +2170,75 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			return true
 		}
 		include_dirs := c_flag_include_dirs(g.c_flags)
+		// `#insert` is an explicit request to inline the source text. Delay only
+		// ordinary source includes until after generated type declarations.
+		if node.value == 'include' && c_include_arg_is_source_file(include_arg) {
+			paths := c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs)
+			mut source_path := ''
+			mut source_text := ''
+			for path in paths {
+				if text := os.read_file(path) {
+					source_path = os.real_path(path)
+					source_text = text
+					break
+				}
+			}
+			if source_path.len > 0 {
+				// Generated V output is not C++ compatible, so Objective-C++ sources use
+				// separate native-language wrappers. Keep active Objective-C includes in the
+				// main unit for internal-linkage helpers; definitely inactive ones can be
+				// omitted without forcing the generated unit into Objective-C mode.
+				if source_path.ends_with('.mm') {
+					g.objective_cpp_source_requests << ObjectiveCppSourceRequest{
+						module:        module_name
+						source_path:   source_path
+						local_context: (g.native_source_contexts[module_name] or {
+							[]NativeSourceContextDirective{}
+						}).clone()
+					}
+					return true
+				}
+				if source_path.ends_with('.m') {
+					local_context := g.native_source_contexts[module_name] or {
+						[]NativeSourceContextDirective{}
+					}
+					context_directives := g.ordered_native_source_context(module_name,
+						local_context)
+					if context_directives.len > 0
+						&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.target) {
+						return true
+					}
+				}
+				g.collect_inlined_c_structs(source_text)
+				g.collect_inlined_c_fns(source_text)
+				g.collect_inlined_c_declared_fns(source_text)
+				source_directive := c_native_source_context_include(source_path)
+				if source_path.ends_with('.m') {
+					if g.c_source_defines_used_c_type(source_text) {
+						g.early_c_source_directives[source_directive] = true
+					}
+					if 'objective-c' !in g.c_flags {
+						g.c_flags << ['-x', 'objective-c', '-x', 'none']
+					}
+				}
+				g.add_c_directive(module_name, source_directive, before_import)
+			} else {
+				g.add_c_directive(module_name, '#include ${include_arg}', before_import)
+			}
+			return true
+		}
+		if !c_include_arg_is_source_file(include_arg) {
+			g.add_native_source_context_directive(module_name, c_native_source_context_header_include(include_arg,
+				g.compiler_vroot, source_file, include_dirs), before_import)
+		}
+		// Resolved angle headers already have a compiler search path. Preserve the
+		// include and scan their tree for declaration metadata without recursively
+		// materializing every header body into the generated translation unit.
+		if trimmed_space(include_arg).starts_with('<')
+			&& g.collect_preserved_header_tree(include_arg, source_file, include_dirs) {
+			g.add_c_directive(module_name, '#include ${include_arg}', before_import)
+			return true
+		}
 		if header := c_inline_header_text(include_arg, g.compiler_vroot, source_file, include_dirs,
 			g.use_system_stdint)
 		{
@@ -2171,11 +2271,87 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	}
 	if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma',
 		'error', 'warning'] {
-		g.add_c_directive(module_name, c_preprocessor_directive_line(node.value, node.typ),
-			before_import)
+		directive := c_preprocessor_directive_line(node.value, node.typ)
+		g.add_native_source_context_directive(module_name, directive, before_import)
+		g.add_c_directive(module_name, directive, before_import)
 		return true
 	}
 	return false
+}
+
+fn (mut g FlatGen) collect_preserved_header_tree(include_arg string, source_file string, include_dirs []string) bool {
+	mut seen := map[string]bool{}
+	for path in c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs) {
+		mut tree_size := CHeaderTreeSize{}
+		if os.is_file(path)
+			&& c_header_tree_exceeds_inline_limit(path, g.compiler_vroot, include_dirs, mut tree_size) {
+			g.collect_preserved_header_file(path, include_dirs, mut seen)
+			return true
+		}
+	}
+	return false
+}
+
+fn c_header_tree_exceeds_inline_limit(path string, vroot string, include_dirs []string, mut tree_size CHeaderTreeSize) bool {
+	real_path := os.real_path(path)
+	if real_path.len == 0 || tree_size.seen[real_path] || !os.is_file(real_path) {
+		return false
+	}
+	tree_size.seen[real_path] = true
+	tree_size.total_size += os.file_size(real_path)
+	if tree_size.total_size > c_inline_header_size_limit {
+		return true
+	}
+	text := os.read_file(real_path) or { return false }
+	mut in_block_comment := false
+	for line in text.split_into_lines() {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		if c_directive_name(clean) !in ['include', 'import'] {
+			continue
+		}
+		include_arg := c_include_arg(c_directive_arg(clean), vroot, real_path)
+		for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
+			if c_header_tree_exceeds_inline_limit(nested_path, vroot, include_dirs, mut tree_size) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn (mut g FlatGen) collect_preserved_header_file(path string, include_dirs []string, mut seen map[string]bool) {
+	real_path := os.real_path(path)
+	if real_path.len == 0 || seen[real_path] {
+		return
+	}
+	seen[real_path] = true
+	text := os.read_file(real_path) or { return }
+	g.collect_inlined_c_structs(text)
+	g.collect_inlined_c_fns(text)
+	g.collect_inlined_c_declared_fns(text)
+	mut in_block_comment := false
+	for line in text.split_into_lines() {
+		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
+		in_block_comment = next_in_block_comment
+		if c_directive_name(clean) !in ['include', 'import'] {
+			continue
+		}
+		include_arg := c_include_arg(c_directive_arg(clean), g.compiler_vroot, real_path)
+		mut found := false
+		for nested_path in c_include_file_paths(include_arg, g.compiler_vroot, real_path,
+			include_dirs) {
+			if os.is_file(nested_path) {
+				g.collect_preserved_header_file(nested_path, include_dirs, mut seen)
+				found = true
+				break
+			}
+		}
+		if !found {
+			g.collect_preserved_c_fns(c_preserved_system_include_declared_fns(include_arg))
+			g.collect_preserved_c_structs(c_preserved_system_include_struct_names(include_arg))
+		}
+	}
 }
 
 fn c_inline_header_text(include_arg string, vroot string, source_file string, include_dirs []string, translation_unit_uses_inttypes bool) ?CInlineHeader {
@@ -2190,16 +2366,23 @@ fn c_inline_header_text(include_arg string, vroot string, source_file string, in
 		mut scan_seen := map[string]bool{}
 		use_system_stdint := translation_unit_uses_inttypes
 			|| c_inline_header_tree_uses_inttypes(path, vroot, include_dirs, mut scan_seen)
+		mut output := strings.new_builder(4096)
 		if header := c_inline_header_file(path, vroot, include_dirs, false, use_system_stdint, mut
-			seen, mut inlining)
+			seen, mut inlining, mut output)
 		{
-			return header
+			return CInlineHeader{
+				text:                 output.str()
+				preserved_directives: header.preserved_directives
+				preserved_c_fns:      header.preserved_c_fns
+				preserved_c_structs:  header.preserved_c_structs
+			}
 		}
+		unsafe { output.free() }
 	}
 	return none
 }
 
-fn c_inline_header_file(path string, vroot string, include_dirs []string, conditional bool, use_system_stdint bool, mut seen map[string]bool, mut inlining map[string]bool) ?CInlineHeader {
+fn c_inline_header_file(path string, vroot string, include_dirs []string, conditional bool, use_system_stdint bool, mut seen map[string]bool, mut inlining map[string]bool, mut output strings.Builder) ?CInlineHeader {
 	if path.len == 0 || !os.exists(path) {
 		return none
 	}
@@ -2216,14 +2399,13 @@ fn c_inline_header_file(path string, vroot string, include_dirs []string, condit
 	text := os.read_file(real_path) or { return none }
 	inlining[real_path] = true
 	header := c_inline_header_file_text(text, vroot, real_path, include_dirs, conditional,
-		use_system_stdint, mut seen, mut inlining)
+		use_system_stdint, mut seen, mut inlining, mut output)
 	inlining.delete(real_path)
 	return header
 }
 
-fn c_inline_header_file_text(text string, vroot string, source_file string, include_dirs []string, conditional bool, use_system_stdint bool, mut seen map[string]bool, mut inlining map[string]bool) CInlineHeader {
+fn c_inline_header_file_text(text string, vroot string, source_file string, include_dirs []string, conditional bool, use_system_stdint bool, mut seen map[string]bool, mut inlining map[string]bool, mut output strings.Builder) CInlineHeader {
 	guard_name := c_header_guard_name(text)
-	mut lines := []string{}
 	mut preserved_directives := []string{}
 	mut preserved_c_fns := []string{}
 	mut preserved_c_structs := []string{}
@@ -2236,7 +2418,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 		if c_directive_name(clean) in ['include', 'import'] {
 			include_arg := c_include_arg(c_directive_arg(clean), vroot, source_file)
 			if replacement := c_system_include_replacement(include_arg, use_system_stdint) {
-				lines << replacement
+				output.writeln(replacement)
 				continue
 			}
 			nested_conditional := conditional
@@ -2244,11 +2426,8 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 			mut inlined := false
 			for path in c_include_file_paths(include_arg, vroot, source_file, include_dirs) {
 				if nested := c_inline_header_file(path, vroot, include_dirs, nested_conditional,
-					use_system_stdint, mut seen, mut inlining)
+					use_system_stdint, mut seen, mut inlining, mut output)
 				{
-					if nested.text.len > 0 {
-						lines << nested.text
-					}
 					for directive in nested.preserved_directives {
 						preserved_directives << c_wrap_preserved_nested_directive(directive,
 							include_context, include_prefix)
@@ -2261,7 +2440,7 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 			}
 			if !inlined && (trimmed_space(include_arg).starts_with('<')
 				|| c_include_should_remain_in_inlined_text(include_arg)) {
-				lines << '#include ${include_arg}'
+				output.writeln('#include ${include_arg}')
 				preserved_c_fns << c_preserved_system_include_declared_fns(include_arg)
 				preserved_c_structs << c_preserved_system_include_struct_names(include_arg)
 			} else if !inlined && c_should_preserve_uninlined_include(include_arg) {
@@ -2272,12 +2451,11 @@ fn c_inline_header_file_text(text string, vroot string, source_file string, incl
 			}
 			continue
 		}
-		lines << line
+		output.writeln(line)
 		c_update_nested_include_context(clean, line, mut include_context)
 		c_update_nested_include_prefix(clean, line, mut include_prefix)
 	}
 	return CInlineHeader{
-		text:                 lines.join('\n')
 		preserved_directives: preserved_directives
 		preserved_c_fns:      preserved_c_fns
 		preserved_c_structs:  preserved_c_structs
@@ -2350,9 +2528,13 @@ fn c_preprocessor_directive_scan_line(line string, in_block_comment bool) (strin
 // c_header_guard_name returns the macro of a classic `#ifndef X` / `#define X`
 // include guard when it opens the header, or '' when there is no such guard.
 fn c_header_guard_name(text string) string {
+	return c_header_guard_name_from_lines(text.split_into_lines())
+}
+
+fn c_header_guard_name_from_lines(lines []string) string {
 	mut in_block_comment := false
 	mut guard := ''
-	for line in text.split_into_lines() {
+	for line in lines {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
@@ -2524,7 +2706,8 @@ fn c_should_preserve_uninlined_include(include_arg string) bool {
 		return false
 	}
 	if clean[0] == `<` {
-		return c_is_apple_framework_include(clean)
+		return clean in ['<dlfcn.h>', '<limits.h>', '<math.h>', '<ucontext.h>']
+			|| c_is_apple_framework_include(clean)
 	}
 	return true
 }
@@ -2579,6 +2762,9 @@ fn c_include_should_remain_in_inlined_text(include_arg string) bool {
 }
 
 fn c_preserved_system_include_declared_fns(include_arg string) []string {
+	if include_arg == '<dlfcn.h>' {
+		return ['dlclose', 'dlerror', 'dlopen', 'dlsym']
+	}
 	if include_arg in ['<mach/mach.h>', '<mach/task.h>', '<mach/mach_time.h>'] {
 		return [
 			'host_page_size',
@@ -2760,10 +2946,149 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 		g.inlined_c_structs[alias] = true
 		g.inlined_c_typedef_names[alias] = true
 	}
+	for alias in c_typedef_enum_aliases(text) {
+		g.inlined_c_structs[alias] = true
+		g.inlined_c_typedef_names[alias] = true
+	}
+	for alias in c_typedef_plain_aliases(text) {
+		g.inlined_c_structs[alias] = true
+		g.inlined_c_typedef_names[alias] = true
+	}
 	for alias in c_typedef_fn_aliases(text) {
 		g.inlined_c_structs[alias] = true
 		g.inlined_c_typedef_names[alias] = true
 	}
+}
+
+fn (g &FlatGen) c_source_defines_used_c_type(text string) bool {
+	mut names := map[string]bool{}
+	for alias in c_typedef_struct_aliases(text) {
+		names[alias] = true
+	}
+	for alias in c_typedef_union_aliases(text) {
+		names[alias] = true
+	}
+	for alias in c_typedef_enum_aliases(text) {
+		names[alias] = true
+	}
+	for alias in c_typedef_plain_aliases(text) {
+		names[alias] = true
+	}
+	for alias in c_typedef_fn_aliases(text) {
+		names[alias] = true
+	}
+	for line in text.split_into_lines() {
+		clean := trimmed_space(line)
+		mut rest := ''
+		if clean.starts_with('struct ') {
+			rest = clean['struct '.len..]
+		} else if clean.starts_with('union ') {
+			rest = clean['union '.len..]
+		} else {
+			continue
+		}
+		name := c_header_struct_tag(rest)
+		if name.len > 0 {
+			names[name] = true
+		}
+	}
+	for name, _ in names {
+		full_name := 'C.${name}'
+		if full_name in g.tc.structs || full_name in g.tc.unions || full_name in g.tc.type_aliases
+			|| full_name in g.tc.enum_names {
+			return true
+		}
+	}
+	for _, fields in g.tc.structs {
+		for field in fields {
+			if c_type_uses_declared_name(field.typ, names) {
+				return true
+			}
+		}
+	}
+	for _, fields in g.tc.interface_fields {
+		for field in fields {
+			if c_type_uses_declared_name(field.typ, names) {
+				return true
+			}
+		}
+	}
+	for _, variants in g.tc.sum_types {
+		for variant in variants {
+			mut clean := variant.trim_space()
+			for clean.starts_with('&') {
+				clean = clean[1..].trim_space()
+			}
+			if clean.starts_with('C.') && clean['C.'.len..] in names {
+				return true
+			}
+		}
+	}
+	for _, return_type in g.tc.fn_ret_types {
+		if c_type_uses_declared_name(return_type, names) {
+			return true
+		}
+	}
+	for _, param_types in g.tc.fn_param_types {
+		for param_type in param_types {
+			if c_type_uses_declared_name(param_type, names) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn c_type_uses_declared_name(typ types.Type, names map[string]bool) bool {
+	match typ {
+		types.Array {
+			return c_type_uses_declared_name(typ.elem_type, names)
+		}
+		types.ArrayFixed {
+			return c_type_uses_declared_name(typ.elem_type, names)
+		}
+		types.Channel {
+			return c_type_uses_declared_name(typ.elem_type, names)
+		}
+		types.Map {
+			return c_type_uses_declared_name(typ.key_type, names)
+				|| c_type_uses_declared_name(typ.value_type, names)
+		}
+		types.Pointer {
+			return c_type_uses_declared_name(typ.base_type, names)
+		}
+		types.FnType {
+			for param_type in typ.params {
+				if c_type_uses_declared_name(param_type, names) {
+					return true
+				}
+			}
+			return c_type_uses_declared_name(typ.return_type, names)
+		}
+		types.OptionType {
+			return c_type_uses_declared_name(typ.base_type, names)
+		}
+		types.ResultType {
+			return c_type_uses_declared_name(typ.base_type, names)
+		}
+		types.Struct, types.Interface, types.Enum, types.SumType {
+			return typ.name.starts_with('C.') && typ.name['C.'.len..] in names
+		}
+		types.Alias {
+			return (typ.name.starts_with('C.') && typ.name['C.'.len..] in names)
+				|| c_type_uses_declared_name(typ.base_type, names)
+		}
+		types.MultiReturn {
+			for return_type in typ.types {
+				if c_type_uses_declared_name(return_type, names) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
 }
 
 // c_typedef_fn_aliases collects the alias names of function typedefs such as
@@ -3002,6 +3327,23 @@ fn c_header_struct_tag(rest string) string {
 	return rest[..end]
 }
 
+fn c_header_struct_tag_at(text string, start int) string {
+	mut end := start
+	for end < text.len && c_ident_char(text[end]) {
+		end++
+	}
+	return text[start..end]
+}
+
+fn c_index_u8_after(text string, needle u8, start int) int {
+	for i in start .. text.len {
+		if text[i] == needle {
+			return i
+		}
+	}
+	return -1
+}
+
 fn c_typedef_struct_aliases(text string) []string {
 	return c_typedef_aggregate_aliases(text, 'struct')
 }
@@ -3010,13 +3352,52 @@ fn c_typedef_union_aliases(text string) []string {
 	return c_typedef_aggregate_aliases(text, 'union')
 }
 
+fn c_typedef_enum_aliases(text string) []string {
+	return c_typedef_aggregate_aliases(text, 'enum')
+}
+
+fn c_typedef_plain_aliases(text string) []string {
+	mut aliases := []string{}
+	mut start := 0
+	for start < text.len {
+		idx := text.index_after('typedef', start) or { break }
+		pos := idx + 'typedef'.len
+		if (idx > 0 && c_ident_char(text[idx - 1])) || (pos < text.len && c_ident_char(text[pos])) {
+			start = pos
+			continue
+		}
+		semi_idx := c_index_u8_after(text, `;`, pos)
+		if semi_idx < 0 {
+			break
+		}
+		declaration := trimmed_space(text[pos..semi_idx])
+		start = semi_idx + 1
+		if declaration.starts_with('struct ') || declaration.starts_with('union ')
+			|| declaration.starts_with('enum ') || declaration.contains('(')
+			|| declaration.contains('{') {
+			continue
+		}
+		for part in declaration.split(',') {
+			mut declarator := trimmed_space(part)
+			bracket := declarator.index_u8(`[`)
+			if bracket >= 0 {
+				declarator = trimmed_space(declarator[..bracket])
+			}
+			alias := c_last_ident(declarator)
+			if alias.len > 0 && c_header_struct_tag(alias) == alias {
+				aliases << alias
+			}
+		}
+	}
+	return aliases
+}
+
 fn c_typedef_aggregate_aliases(text string, kind string) []string {
 	mut aliases := []string{}
 	prefix := 'typedef ${kind}'
 	mut start := 0
 	for start < text.len {
-		rel_idx := text[start..].index(prefix) or { break }
-		idx := start + rel_idx
+		idx := text.index_after(prefix, start) or { break }
 		mut pos := idx + prefix.len
 		if pos < text.len && c_ident_char(text[pos]) {
 			start = pos + 1
@@ -3027,7 +3408,7 @@ fn c_typedef_aggregate_aliases(text string, kind string) []string {
 		}
 		mut had_tag := false
 		if pos < text.len && text[pos] != `{` {
-			tag := c_header_struct_tag(text[pos..])
+			tag := c_header_struct_tag_at(text, pos)
 			if tag.len == 0 {
 				start = pos + 1
 				continue
@@ -3042,12 +3423,12 @@ fn c_typedef_aggregate_aliases(text string, kind string) []string {
 			// Bodyless alias form: `typedef struct tag Alias;` also names the
 			// alias, so a `struct C.Alias {}` guess typedef must be suppressed.
 			if had_tag {
-				semi_rel := text[pos..].index_u8(`;`)
-				if semi_rel >= 0 {
-					for alias in c_typedef_declarator_aliases(text[pos..pos + semi_rel]) {
+				semi_idx := c_index_u8_after(text, `;`, pos)
+				if semi_idx >= 0 {
+					for alias in c_typedef_declarator_aliases(text[pos..semi_idx]) {
 						aliases << alias
 					}
-					start = pos + semi_rel + 1
+					start = semi_idx + 1
 					continue
 				}
 			}
@@ -3058,11 +3439,10 @@ fn c_typedef_aggregate_aliases(text string, kind string) []string {
 		if close_idx < 0 {
 			break
 		}
-		semi_rel_idx := text[close_idx + 1..].index_u8(`;`)
-		if semi_rel_idx < 0 {
+		semi_idx := c_index_u8_after(text, `;`, close_idx + 1)
+		if semi_idx < 0 {
 			break
 		}
-		semi_idx := close_idx + 1 + semi_rel_idx
 		for alias in c_typedef_declarator_aliases(text[close_idx + 1..semi_idx]) {
 			aliases << alias
 		}
@@ -3260,6 +3640,15 @@ fn c_include_arg_is_literal(include_arg string) bool {
 		|| (clean[0] == `<` && clean[clean.len - 1] == `>`)
 }
 
+fn c_include_arg_is_source_file(include_arg string) bool {
+	clean := trimmed_space(include_arg)
+	if clean.len < 3 || clean[0] != `"` || clean[clean.len - 1] != `"` {
+		return false
+	}
+	path := clean[1..clean.len - 1]
+	return path.ends_with('.c') || path.ends_with('.m') || path.ends_with('.mm')
+}
+
 fn c_include_file_paths(include_arg string, vroot string, source_file string, include_dirs []string) []string {
 	clean := trimmed_space(include_arg)
 	if clean.len < 2 {
@@ -3313,6 +3702,389 @@ fn (mut g FlatGen) add_c_directive_at(module_name string, text string, before_im
 		before_import: before_import
 		late:          late
 	}
+}
+
+fn (mut g FlatGen) add_native_source_context_directive(module_name string, text string, before_import bool) {
+	if text.len == 0 {
+		return
+	}
+	mut directives := g.native_source_contexts[module_name] or { []NativeSourceContextDirective{} }
+	directives << NativeSourceContextDirective{
+		text:          text
+		before_import: before_import
+	}
+	g.native_source_contexts[module_name] = directives
+}
+
+fn (g &FlatGen) ordered_native_source_context(module_name string, local_context []NativeSourceContextDirective) []string {
+	mut result := []string{}
+	mut visiting := map[string]bool{}
+	mut visited := map[string]bool{}
+	g.visit_native_source_context_module(module_name, module_name, local_context, mut visiting, mut
+		visited, mut result)
+	return result
+}
+
+fn (g &FlatGen) visit_native_source_context_module(module_name string, root_module string, root_context []NativeSourceContextDirective, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
+	if module_name in visited || module_name in visiting {
+		return
+	}
+	visiting[module_name] = true
+	directives := if module_name == root_module {
+		root_context
+	} else {
+		g.native_source_contexts[module_name] or { []NativeSourceContextDirective{} }
+	}
+	for directive in directives {
+		if directive.before_import {
+			result << directive.text
+		}
+	}
+	for dependency in g.module_imports[module_name] or { []string{} } {
+		if dependency in g.native_source_contexts || dependency in g.module_imports {
+			g.visit_native_source_context_module(dependency, root_module, root_context, mut
+				visiting, mut visited, mut result)
+		}
+	}
+	visiting.delete(module_name)
+	visited[module_name] = true
+	for directive in directives {
+		if !directive.before_import {
+			result << directive.text
+		}
+	}
+}
+
+fn c_native_source_context_header_include(include_arg string, vroot string, source_file string, include_dirs []string) string {
+	clean := trimmed_space(include_arg)
+	if clean.len > 1 && clean[0] == `"` {
+		for path in c_include_file_paths(clean, vroot, source_file, include_dirs) {
+			if os.is_file(path) {
+				return c_native_source_context_include(path)
+			}
+		}
+	}
+	return '#include ${clean}'
+}
+
+fn c_native_source_context_include(path string) string {
+	clean := os.real_path(path).replace('\\', '/').replace('"', '\\"')
+	return '#include "${clean}"'
+}
+
+fn c_native_source_context_depth(directives []string) int {
+	mut depth := 0
+	for directive in directives {
+		for line in directive.split_into_lines() {
+			name := c_directive_name(trimmed_space(line))
+			if name in ['if', 'ifdef', 'ifndef'] {
+				depth++
+			} else if name == 'endif' && depth > 0 {
+				depth--
+			}
+		}
+	}
+	return depth
+}
+
+fn c_native_source_context_definitely_inactive(directives []string, flags []string, target pref.Target) bool {
+	mut defined := map[string]bool{}
+	mut undefined := map[string]bool{}
+	mut uncertain := map[string]bool{}
+	mut i := 0
+	for i < flags.len {
+		clean := trimmed_space(flags[i])
+		mut definition := ''
+		mut is_undef := false
+		if clean == '-D' && i + 1 < flags.len {
+			definition = trimmed_space(flags[i + 1])
+			i++
+		} else if clean.starts_with('-D') {
+			definition = clean[2..]
+		} else if clean == '-U' && i + 1 < flags.len {
+			definition = trimmed_space(flags[i + 1])
+			is_undef = true
+			i++
+		} else if clean.starts_with('-U') {
+			definition = clean[2..]
+			is_undef = true
+		}
+		name := definition.all_before('=').trim_space()
+		if name.len > 0 {
+			if is_undef {
+				defined.delete(name)
+				undefined[name] = true
+			} else {
+				undefined.delete(name)
+				defined[name] = true
+			}
+		}
+		i++
+	}
+	mut condition_known := []bool{}
+	mut condition_active := []bool{}
+	// Keep the cumulative state of each branch chain so `#elif` and `#else`
+	// can distinguish an inactive condition from an earlier branch that already ran.
+	mut condition_taken_known := []bool{}
+	mut condition_taken := []bool{}
+	for directive in directives {
+		for line in directive.split_into_lines() {
+			clean := trimmed_space(line)
+			name := c_directive_name(clean)
+			if name in ['ifdef', 'ifndef'] {
+				macro_name := c_directive_arg(clean).fields()[0] or { '' }
+				known, mut active := c_preprocessor_macro_state(macro_name, defined, undefined,
+					uncertain, target)
+				if name == 'ifndef' {
+					active = !active
+				}
+				condition_known << known
+				condition_active << (if known { active } else { true })
+				condition_taken_known << known
+				condition_taken << (if known { active } else { true })
+				continue
+			}
+			if name == 'if' {
+				arg := c_directive_arg(clean)
+				known, active := c_preprocessor_condition_state(arg, defined, undefined, uncertain,
+					target)
+				condition_known << known
+				condition_active << (if known { active } else { true })
+				condition_taken_known << known
+				condition_taken << (if known { active } else { true })
+				continue
+			}
+			if name == 'elif' && condition_known.len > 0 {
+				last := condition_known.len - 1
+				prior_known := condition_taken_known[last]
+				prior_taken := condition_taken[last]
+				known, active := c_preprocessor_condition_state(c_directive_arg(clean), defined,
+					undefined, uncertain, target)
+				if (prior_known && prior_taken) || (known && !active) {
+					condition_known[last] = true
+					condition_active[last] = false
+				} else if prior_known && known {
+					condition_known[last] = true
+					condition_active[last] = true
+				} else {
+					condition_known[last] = false
+					condition_active[last] = true
+				}
+				if (prior_known && prior_taken) || (known && active) {
+					condition_taken_known[last] = true
+					condition_taken[last] = true
+				} else if prior_known && known {
+					condition_taken_known[last] = true
+					condition_taken[last] = false
+				} else {
+					condition_taken_known[last] = false
+					condition_taken[last] = true
+				}
+				continue
+			}
+			if name == 'else' && condition_known.len > 0 {
+				last := condition_known.len - 1
+				condition_known[last] = condition_taken_known[last]
+				condition_active[last] = if condition_taken_known[last] {
+					!condition_taken[last]
+				} else {
+					true
+				}
+				condition_taken_known[last] = true
+				condition_taken[last] = true
+				continue
+			}
+			if name == 'endif' && condition_known.len > 0 {
+				condition_known.delete_last()
+				condition_active.delete_last()
+				condition_taken_known.delete_last()
+				condition_taken.delete_last()
+				continue
+			}
+			if name !in ['define', 'undef'] {
+				continue
+			}
+			parts := c_directive_arg(clean).fields()
+			if parts.len == 0 {
+				continue
+			}
+			macro_name := parts[0].all_before('(')
+			mut definitely_active := true
+			mut possibly_active := true
+			for depth in 0 .. condition_known.len {
+				if condition_known[depth] && !condition_active[depth] {
+					definitely_active = false
+					possibly_active = false
+					break
+				}
+				if !condition_known[depth] {
+					definitely_active = false
+				}
+			}
+			if definitely_active {
+				uncertain.delete(macro_name)
+				if name == 'define' {
+					undefined.delete(macro_name)
+					defined[macro_name] = true
+				} else {
+					defined.delete(macro_name)
+					undefined[macro_name] = true
+				}
+			} else if possibly_active {
+				defined.delete(macro_name)
+				undefined.delete(macro_name)
+				uncertain[macro_name] = true
+			}
+		}
+	}
+	for depth in 0 .. condition_known.len {
+		if condition_known[depth] && !condition_active[depth] {
+			return true
+		}
+	}
+	return false
+}
+
+fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, target pref.Target) (bool, bool) {
+	if name in defined {
+		return true, true
+	}
+	if name in undefined {
+		return true, false
+	}
+	if name in uncertain {
+		return false, true
+	}
+	match name {
+		'__APPLE__', '__MACH__' { return true, target.os in ['macos', 'ios'] }
+		'__linux__', '__linux' { return true, target.os == 'linux' }
+		'_WIN32' { return true, target.os == 'windows' }
+		'_WIN64' { return true, target.os == 'windows' && target.pointer_bits == 64 }
+		'__FreeBSD__' { return true, target.os == 'freebsd' }
+		'__OpenBSD__' { return true, target.os == 'openbsd' }
+		'__NetBSD__' { return true, target.os == 'netbsd' }
+		else {}
+	}
+
+	if name.starts_with('_') {
+		return false, true
+	}
+	return true, false
+}
+
+fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, target pref.Target) (bool, bool) {
+	mut clean := raw.trim_space()
+	mut negated := false
+	if clean.starts_with('!') {
+		negated = true
+		clean = clean[1..].trim_space()
+	}
+	if clean in ['0', '1'] {
+		mut active := clean == '1'
+		if negated {
+			active = !active
+		}
+		return true, active
+	}
+	if !clean.starts_with('defined') || (clean.len > 'defined'.len && clean['defined'.len] != `(`
+		&& !clean['defined'.len].is_space()) {
+		return false, true
+	}
+	rest := clean['defined'.len..].trim_space()
+	mut macro_name := ''
+	if rest.starts_with('(') {
+		close := rest.index_u8(`)`)
+		if close < 0 {
+			return false, true
+		}
+		if close + 1 < rest.len && rest[close + 1..].trim_space().len > 0 {
+			return false, true
+		}
+		macro_name = rest[1..close].trim_space()
+	} else {
+		parts := rest.fields()
+		if parts.len != 1 {
+			return false, true
+		}
+		macro_name = parts[0]
+	}
+	if macro_name.len == 0 || c_header_struct_tag(macro_name) != macro_name {
+		return false, true
+	}
+	known, mut active := c_preprocessor_macro_state(macro_name, defined, undefined, uncertain,
+		target)
+	if negated {
+		active = !active
+	}
+	return known, active
+}
+
+fn (mut g FlatGen) materialize_objective_cpp_sources() {
+	for request in g.objective_cpp_source_requests {
+		context_directives := g.ordered_native_source_context(request.module, request.local_context)
+		if context_directives.len > 0
+			&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.target) {
+			continue
+		}
+		if context_directives.len > 0
+			|| c_source_include_has_preprocessor_context(context_directives) {
+			g.add_native_source_context_wrapper(request.source_path, context_directives)
+		} else if request.source_path !in g.c_flags {
+			g.c_flags << request.source_path
+		}
+	}
+}
+
+fn (mut g FlatGen) add_native_source_context_wrapper(source_path string, directives []string) {
+	if g.output_path.len == 0 {
+		g.output_error = 'cannot materialize native source directive context without an output path'
+		return
+	}
+	mut wrapper_lines := directives.clone()
+	wrapper_lines << c_native_source_context_include(source_path)
+	for _ in 0 .. c_native_source_context_depth(directives) {
+		wrapper_lines << '#endif'
+	}
+	extension := source_path.all_after_last('.')
+	wrapper_path := '${g.output_path}.v3_native_source_context_${g.native_source_wrapper_index}.${extension}'
+	g.native_source_wrapper_index++
+	os.write_file(wrapper_path, wrapper_lines.join('\n') + '\n') or {
+		g.output_error = err.msg()
+		return
+	}
+	g.c_flags << wrapper_path
+}
+
+fn c_source_include_has_preprocessor_context(directives []string) bool {
+	mut conditional_depth := 0
+	mut active_macros := map[string]bool{}
+	for directive in directives {
+		lines := directive.split_into_lines()
+		header_guard := c_header_guard_name_from_lines(lines)
+		for line in lines {
+			clean := trimmed_space(line)
+			name := c_directive_name(clean)
+			if name in ['if', 'ifdef', 'ifndef'] {
+				conditional_depth++
+			} else if name == 'endif' && conditional_depth > 0 {
+				conditional_depth--
+			}
+			if name in ['define', 'undef'] {
+				parts := c_directive_arg(clean).fields()
+				if parts.len > 0 {
+					macro_name := parts[0].all_before('(')
+					if name == 'define' {
+						if macro_name != header_guard {
+							active_macros[macro_name] = true
+						}
+					} else {
+						active_macros.delete(macro_name)
+					}
+				}
+			}
+		}
+	}
+	return conditional_depth > 0 || active_macros.len > 0
 }
 
 fn c_preprocessor_directive_line(name string, raw string) string {
@@ -3554,8 +4326,26 @@ fn (mut g FlatGen) ordered_c_directives(late bool) []string {
 
 fn (mut g FlatGen) emit_c_directives(late bool) {
 	mut emitted := false
-	for directive in g.ordered_c_directives(late) {
-		if c_contains_preserved_system_include_directive(directive) {
+	directives := g.ordered_c_directives(late)
+	if late {
+		for directive in directives {
+			if c_contains_preserved_system_include_directive(directive) {
+				continue
+			}
+			g.writeln(directive)
+			emitted = true
+		}
+		if emitted {
+			g.writeln('')
+		}
+		return
+	}
+	source_emission := c_source_directive_emission(directives, g.early_c_source_directives)
+	for i, directive in directives {
+		if i in source_emission.skip_early
+			|| c_contains_preserved_system_include_directive(directive)
+			|| (c_is_late_source_include_directive(directive)
+			&& directive !in g.early_c_source_directives) {
 			continue
 		}
 		g.writeln(directive)
@@ -3564,6 +4354,270 @@ fn (mut g FlatGen) emit_c_directives(late bool) {
 	if emitted {
 		g.writeln('')
 	}
+}
+
+fn (mut g FlatGen) emit_c_source_directives() {
+	mut emitted := false
+	directives := g.ordered_c_directives(false)
+	source_emission := c_source_directive_emission(directives, g.early_c_source_directives)
+	for i, directive in directives {
+		if i !in source_emission.emit_late {
+			continue
+		}
+		g.writeln(directive)
+		emitted = true
+	}
+	if emitted {
+		g.writeln('')
+	}
+}
+
+struct CSourceDirectiveEmission {
+	skip_early map[int]bool
+	emit_late  map[int]bool
+}
+
+fn c_source_directive_emission(directives []string, early_source_directives map[string]bool) CSourceDirectiveEmission {
+	mut skip_early := map[int]bool{}
+	mut emit_late := map[int]bool{}
+	mut active_macro_contexts := map[string][]int{}
+	mut active_pragma_pushes := map[string][]int{}
+	mut condition_known := []bool{}
+	mut condition_active := []bool{}
+	for i, directive in directives {
+		clean := trimmed_space(directive)
+		directive_name := c_directive_name(clean)
+		if directive_name in ['if', 'ifdef', 'ifndef'] {
+			arg := c_directive_arg(clean)
+			known := directive_name == 'if' && arg in ['0', '1']
+			condition_known << known
+			condition_active << (if known { arg == '1' } else { true })
+		} else if directive_name in ['else', 'elif'] && condition_known.len > 0 {
+			last := condition_known.len - 1
+			if directive_name == 'else' && condition_known[last] {
+				condition_active[last] = !condition_active[last]
+			} else {
+				condition_known[last] = false
+				condition_active[last] = true
+			}
+		} else if directive_name == 'endif' && condition_known.len > 0 {
+			condition_known.delete_last()
+			condition_active.delete_last()
+		}
+		mut definitely_inactive := false
+		mut condition_uncertain := false
+		for depth in 0 .. condition_known.len {
+			if condition_known[depth] && !condition_active[depth] {
+				definitely_inactive = true
+				break
+			}
+			if !condition_known[depth] {
+				condition_uncertain = true
+			}
+		}
+		macro_directive, macro_name := c_macro_directive_info(directive)
+		if macro_directive.len > 0 {
+			if !definitely_inactive {
+				if condition_uncertain {
+					mut contexts := active_macro_contexts[macro_name] or { []int{} }
+					contexts << i
+					active_macro_contexts[macro_name] = contexts
+				} else if macro_directive == 'define' {
+					active_macro_contexts[macro_name] = [i]
+				} else {
+					active_macro_contexts.delete(macro_name)
+				}
+			}
+		}
+		pragma_action, pragma_key := c_pragma_directive_info(directive)
+		if pragma_action.len > 0 && condition_uncertain && !definitely_inactive {
+			mut contexts := active_pragma_pushes[pragma_key] or { []int{} }
+			contexts << i
+			active_pragma_pushes[pragma_key] = contexts
+		} else if pragma_action == 'push' && !definitely_inactive {
+			mut pushes := active_pragma_pushes[pragma_key] or { []int{} }
+			pushes << i
+			active_pragma_pushes[pragma_key] = pushes
+		} else if pragma_action == 'pop' && !definitely_inactive {
+			mut pushes := active_pragma_pushes[pragma_key] or { []int{} }
+			if pushes.len > 0 {
+				pushes.delete_last()
+			}
+			if pushes.len == 0 {
+				active_pragma_pushes.delete(pragma_key)
+			} else {
+				active_pragma_pushes[pragma_key] = pushes
+			}
+		}
+		if c_is_late_source_include_directive(directive) && directive !in early_source_directives {
+			mut start := i
+			for start > 0 && c_is_source_context_directive(directives[start - 1]) {
+				start--
+			}
+			mut end := i + 1
+			for end < directives.len && c_is_source_context_directive(directives[end]) {
+				end++
+			}
+			for delayed_index in start .. end {
+				emit_late[delayed_index] = true
+			}
+			skip_early[i] = true
+			// The early pass may emit a later `#undef` before this source is replayed.
+			// Re-emit the active macro contexts and their later transitions so the include
+			// sees its original macro state and the late pass restores the final state.
+			for active_name, context_indices in active_macro_contexts {
+				for context_index in context_indices {
+					emit_late[context_index] = true
+				}
+				for later_index in i + 1 .. directives.len {
+					_, later_name := c_macro_directive_info(directives[later_index])
+					if later_name == active_name {
+						emit_late[later_index] = true
+					}
+				}
+			}
+			for active_key, pushes in active_pragma_pushes {
+				for push_index in pushes {
+					emit_late[push_index] = true
+				}
+				for later_index in i + 1 .. directives.len {
+					_, later_key := c_pragma_directive_info(directives[later_index])
+					if later_key == active_key {
+						emit_late[later_index] = true
+					}
+				}
+			}
+		}
+	}
+	c_add_late_conditional_context(directives, mut emit_late)
+	return CSourceDirectiveEmission{
+		skip_early: skip_early
+		emit_late:  emit_late
+	}
+}
+
+fn c_add_late_conditional_context(directives []string, mut emit_late map[int]bool) {
+	mut condition_starts := []int{}
+	mut condition_has_late_directive := []bool{}
+	for i, directive in directives {
+		name := c_directive_name(trimmed_space(directive))
+		if name in ['if', 'ifdef', 'ifndef'] {
+			condition_starts << i
+			condition_has_late_directive << false
+		}
+		if i in emit_late {
+			for depth in 0 .. condition_has_late_directive.len {
+				condition_has_late_directive[depth] = true
+			}
+		}
+		if name == 'endif' && condition_starts.len > 0 {
+			last := condition_starts.len - 1
+			if condition_has_late_directive[last] {
+				for context_index in condition_starts[last] .. i + 1 {
+					if c_is_conditional_directive(directives[context_index]) {
+						emit_late[context_index] = true
+					}
+				}
+			}
+			condition_starts.delete_last()
+			condition_has_late_directive.delete_last()
+		}
+	}
+	for depth, start in condition_starts {
+		if condition_has_late_directive[depth] {
+			for context_index in start .. directives.len {
+				if c_is_conditional_directive(directives[context_index]) {
+					emit_late[context_index] = true
+				}
+			}
+		}
+	}
+}
+
+fn c_macro_directive_info(directive string) (string, string) {
+	clean := trimmed_space(directive)
+	if clean.contains('\n') {
+		return '', ''
+	}
+	name := c_directive_name(clean)
+	if name !in ['define', 'undef'] {
+		return '', ''
+	}
+	parts := c_directive_arg(clean).fields()
+	if parts.len == 0 {
+		return '', ''
+	}
+	return name, parts[0].all_before('(')
+}
+
+fn c_pragma_directive_info(directive string) (string, string) {
+	clean := trimmed_space(directive)
+	if clean.contains('\n') || c_directive_name(clean) != 'pragma' {
+		return '', ''
+	}
+	arg := c_directive_arg(clean)
+	compact := arg.replace(' ', '').replace('\t', '')
+	if push_pos := compact.index('(push') {
+		return 'push', compact[..push_pos]
+	}
+	if pop_pos := compact.index('(pop') {
+		return 'pop', compact[..pop_pos]
+	}
+	fields := arg.fields()
+	if fields.len < 2 || fields[fields.len - 1] !in ['push', 'pop'] {
+		return '', ''
+	}
+	return fields[fields.len - 1], fields[..fields.len - 1].join(' ')
+}
+
+fn c_is_conditional_directive(directive string) bool {
+	return c_directive_name(trimmed_space(directive)) in ['if', 'ifdef', 'ifndef', 'elif', 'else',
+		'endif']
+}
+
+fn c_is_source_context_directive(directive string) bool {
+	return c_directive_name(trimmed_space(directive)) in ['define', 'undef', 'pragma']
+}
+
+fn c_is_source_include_directive(directive string) bool {
+	clean := trimmed_space(directive)
+	if clean.contains('\n') {
+		for line in clean.split_into_lines() {
+			if c_is_source_include_directive(line) {
+				return true
+			}
+		}
+		return false
+	}
+	if c_directive_name(clean) != 'include' {
+		return false
+	}
+	mut arg := c_directive_arg(clean)
+	if arg.len < 3 || arg[0] != `"` {
+		return false
+	}
+	end := arg.index_after('"', 1) or { return false }
+	arg = arg[1..end]
+	return arg.ends_with('.c') || arg.ends_with('.m') || arg.ends_with('.mm')
+}
+
+fn c_is_late_source_include_directive(directive string) bool {
+	clean := trimmed_space(directive)
+	if clean.contains('\n') {
+		for line in clean.split_into_lines() {
+			if c_is_late_source_include_directive(line) {
+				return true
+			}
+		}
+		return false
+	}
+	if !c_is_source_include_directive(clean) {
+		return false
+	}
+	mut arg := c_directive_arg(clean)
+	end := arg.index_after('"', 1) or { return false }
+	arg = arg[1..end]
+	return arg.ends_with('.m') || arg.ends_with('.mm')
 }
 
 fn (mut g FlatGen) emit_preserved_c_directives() {
@@ -3749,7 +4803,8 @@ fn dedupe_top_level_c_includes(directives []string) []string {
 	mut depth := 0
 	for directive in directives {
 		clean := trimmed_space(directive)
-		if depth == 0 && c_directive_name(clean) in ['include', 'import'] {
+		if depth == 0 && c_directive_name(clean) in ['include', 'import']
+			&& !c_is_source_include_directive(clean) {
 			if clean in seen_includes {
 				continue
 			}
@@ -4658,7 +5713,7 @@ fn (mut g FlatGen) gen_map_pointer_cast_from_value_address(id flat.NodeId, targe
 	} else {
 		g.usable_expr_type(id)
 	}
-	if actual0 is types.Pointer && map_str_clean_type(actual0.base_type) is types.Map {
+	if actual0 is types.Pointer {
 		ct := g.tc.c_type(target)
 		g.write('(${ct})(')
 		g.gen_expr(id)
@@ -5248,8 +6303,9 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 	field := g.sum_field_name(variant)
 	variant_type := g.tc.parse_type(variant)
 	clean_variant_type := select_receive_unalias_type(variant_type)
-	if clean_variant_type is types.Pointer && actual_type is types.Pointer
-		&& g.type_names_match(actual_type.base_type, clean_variant_type.base_type) {
+	actual_value_type := select_receive_unalias_type(actual_type)
+	if clean_variant_type is types.Pointer && actual_value_type is types.Pointer
+		&& g.type_names_match(actual_value_type.base_type, clean_variant_type.base_type) {
 		g.write('(${ct}){.typ = ${idx}, .${field} = ')
 		if g.pointer_variant_expr_needs_heap_copy(id) {
 			pointer_ct := g.value_c_type(clean_variant_type.base_type)
@@ -5268,7 +6324,8 @@ fn (mut g FlatGen) gen_sum_value_expr(id flat.NodeId, expected types.Type) bool 
 	if g.variant_references_sum(variant, sum_name) {
 		inner_ct := g.value_c_type(variant_type)
 		g.write('(${ct}){.typ = ${idx}, .${field} = ')
-		if actual_type is types.Pointer && g.type_names_match(actual_type.base_type, variant_type) {
+		if actual_value_type is types.Pointer && clean_variant_type is types.Pointer
+			&& g.type_names_match(actual_value_type.base_type, clean_variant_type.base_type) {
 			if g.pointer_variant_expr_needs_heap_copy(id) {
 				g.write('(${inner_ct}*)memdup(')
 				g.gen_expr(id)
@@ -5427,14 +6484,15 @@ fn (mut g FlatGen) gen_sum_cast_expr(target_type types.SumType, inner_id flat.No
 	ct := g.tc.c_type(target_type)
 	variant_type := g.tc.parse_type(variant_name)
 	clean_variant_type := select_receive_unalias_type(variant_type)
+	actual_value_type := select_receive_unalias_type(actual_type)
 	variant_is_pointer := clean_variant_type is types.Pointer
 	pointer_base_type := if clean_variant_type is types.Pointer {
 		clean_variant_type.base_type
 	} else {
 		types.Type(types.void_)
 	}
-	variant_is_pointer_arg := if actual_type is types.Pointer {
-		variant_is_pointer && g.type_names_match(actual_type.base_type, pointer_base_type)
+	variant_is_pointer_arg := if actual_value_type is types.Pointer {
+		variant_is_pointer && g.type_names_match(actual_value_type.base_type, pointer_base_type)
 	} else {
 		false
 	}
@@ -5956,6 +7014,27 @@ fn (mut g FlatGen) type_name_c_type(type_name string) string {
 fn (mut g FlatGen) sizeof_target(value string) string {
 	if value.starts_with('fn_ptr:') {
 		return g.resolve_fn_ptr_type(value)
+	}
+	// Transformer-produced fixed-array names use postfix dimensions. For an
+	// array of pointers `[N]&Elem`, that canonical spelling is `&Elem[N]`.
+	// Keep the pointer on the element when forming a C type declarator.
+	if value.starts_with('&') && value.ends_with(']') {
+		parsed_pointer := g.tc.parse_type(value)
+		if parsed_pointer is types.Pointer {
+			if fixed := array_fixed_type(parsed_pointer.base_type) {
+				c_elem, dims := g.fixed_array_decl_parts(fixed)
+				return '${c_elem}*${dims}'
+			}
+		}
+	}
+	// Canonical fixed-array pointer element spellings can reach sizeof as
+	// `Elem[N]*`; C declares an array of pointers as `Elem*[N]`.
+	if value.ends_with('*') {
+		parsed_array := g.tc.parse_type(value[..value.len - 1])
+		if fixed := array_fixed_type(parsed_array) {
+			c_elem, dims := g.fixed_array_decl_parts(fixed)
+			return '${c_elem}*${dims}'
+		}
 	}
 	if value.starts_with('&') {
 		return '${g.sizeof_target(value[1..].trim_space())}*'
@@ -7340,9 +8419,22 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					return
 				}
 			}
-			looked_up := g.tc.cur_scope.lookup(node.value) or { types.Type(types.void_) }
-			is_local := looked_up !is types.Void
-			const_name := if !is_local { g.const_ref_name(node.value) } else { '' }
+			is_local := if owner := g.tc.cur_scope.lookup_owner(node.value) {
+				!owner.belongs_to_scope(g.tc.file_scope)
+			} else {
+				false
+			}
+			is_current_module_global := if global_module := g.global_modules[node.value] {
+				global_module == g.tc.cur_module
+					|| (global_module in ['', 'main'] && g.tc.cur_module in ['', 'main'])
+			} else {
+				false
+			}
+			const_name := if !is_local && !is_current_module_global {
+				g.const_ref_name(node.value)
+			} else {
+				''
+			}
 			if const_name.len > 0 {
 				g.write(g.const_ident_c_name(const_name))
 			} else if g.local_storage_is_shared(node.value) {
@@ -8645,6 +9737,43 @@ fn (mut g FlatGen) gen_pointer_cast_from_array_ref(arg_id flat.NodeId, target_ty
 }
 
 fn (mut g FlatGen) gen_typeof_name(node flat.Node) {
+	if node.value.len == 0 && node.children_count > 0 {
+		expr_id := g.a.child(&node, 0)
+		mut expr_type := cgen_unalias_type(g.usable_expr_type(expr_id))
+		mut is_pointer := false
+		if expr_type is types.Pointer {
+			is_pointer = true
+			expr_type = cgen_unalias_type(expr_type.base_type)
+		}
+		if expr_type is types.SumType {
+			sum_name := g.resolve_sum_name(expr_type.name)
+			variants := g.tc.sum_types[sum_name] or { []string{} }
+			if variants.len > 0 {
+				unknown_name := 'unknown ' + typeof_display_type_name(sum_name)
+				unknown_sid := g.intern_string(unknown_name)
+				g.write('((string[]){_str_${unknown_sid}')
+				for variant in variants {
+					mut display_name := typeof_display_type_name(variant)
+					if display_name.starts_with('main.') {
+						display_name = display_name[5..]
+					}
+					sid := g.intern_string(display_name)
+					g.write(', _str_${sid}')
+				}
+				g.write('})[')
+				if is_pointer {
+					g.write('v3_sum_ptr_type_idx(')
+					g.gen_expr(expr_id)
+					g.write(')]')
+				} else {
+					g.write('(')
+					g.gen_expr(expr_id)
+					g.write(').typ]')
+				}
+				return
+			}
+		}
+	}
 	type_name := g.typeof_type_name(node)
 	sid := g.intern_string(type_name)
 	g.write('_str_${sid}')
@@ -9483,9 +10612,9 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#include <windows.h>')
 	g.writeln('#else')
 	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
-		'arpa/inet.h', 'semaphore.h', 'sys/ioctl.h', 'sys/mman.h', 'sys/resource.h', 'sys/socket.h',
-		'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h', 'sys/utsname.h', 'sys/un.h',
-		'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
+		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/ioctl.h', 'sys/mman.h', 'sys/resource.h',
+		'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h', 'sys/utsname.h',
+		'sys/un.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
 		g.writeln('#include <${header}>')
 	}
 	g.writeln('#endif')
@@ -11725,6 +12854,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	// clash against that file's own non-static prototype.
 	g.writeln('__attribute__((weak)) void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
 	g.writeln('__attribute__((weak)) void vheap_free(void* p) { (void)p; }')
+	g.writeln('static inline int v3_sum_ptr_type_idx(const void* p) { return p == NULL ? 0 : *(const int*)p; }')
 	g.prealloc_atomic_compat_decls()
 	g.atomic_builtin_compat_decls()
 	g.writeln('static inline double math__abs(double a) { return a < 0 ? -a : a; }')

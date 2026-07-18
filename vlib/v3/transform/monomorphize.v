@@ -69,6 +69,8 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		t.pending_generic_fn_specs.clear()
 		t.pending_generic_fn_spec_keys.clear()
 	}
+	// Generic cloning reuses one scratch child buffer, so nested specializations
+	// must be queued until the current clone has finished using that buffer.
 	t.defer_nested_generic_emissions = true
 	decls := t.cached_generic_fn_decls()
 	t.monomorph_profile('mono driver decls: ${time.ticks() - debug_started} ms')
@@ -2966,8 +2968,7 @@ fn (mut t Transformer) collect_generated_fn_body_call_names(id flat.NodeId, mut 
 			if decl_key, args := t.cached_generic_call_specialization(id, node, t.cur_module, decls) {
 				if decl := decls[decl_key] {
 					concrete_args := t.canonical_generic_specialization_args(args)
-					if !t.generic_specialization_registered(decl, concrete_args)
-						&& !t.generic_specialization_in_progress(decl, concrete_args) {
+					if !t.generic_specialization_in_progress(decl, concrete_args) {
 						t.request_generic_fn_specialization(decl, concrete_args)
 					}
 				}
@@ -4395,6 +4396,9 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 							&& node.typ != ret_type {
 							t.set_node_typ(idx, ret_type)
 							t.clear_typechecker_node_cache(idx)
+						}
+						if t.generic_specialization_progress_key(decl, exact) !in t.generic_fn_spec_nodes {
+							return spec.decl_key, exact
 						}
 						return none
 					}

@@ -1,5 +1,6 @@
 module c
 
+import os
 import v3.flat
 import v3.types
 
@@ -110,12 +111,19 @@ fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {
 }
 
 fn test_guarded_preamble_externs_keep_explicit_declarations() {
-	g := FlatGen.new()
+	mut g := FlatGen.new()
 	assert g.should_emit_c_extern_decl('fseeko')
 	assert g.should_emit_c_extern_decl('ftello')
 	assert g.should_emit_c_extern_decl('mkdir')
 	assert g.should_emit_c_extern_decl('chmod')
 	assert g.should_emit_c_extern_decl('symlink')
+	assert g.should_emit_c_extern_decl('request')
+	g.c_directives << CDirective{
+		text: '#include <math.h>'
+	}
+	for name in ['accept', 'bind', 'chdir', 'execve', 'getuid', 'gmtime_r', 'ioctl', 'rmdir'] {
+		assert !g.should_emit_c_extern_decl(name)
+	}
 }
 
 fn test_preserved_system_include_declarations_are_header_specific() {
@@ -127,4 +135,24 @@ fn test_preserved_system_include_declarations_are_header_specific() {
 	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
 		'objc_msgSend',
 	]
+}
+
+fn test_large_transitive_header_tree_is_preserved() {
+	root := os.join_path(os.temp_dir(), 'v3_large_transitive_header_tree_test')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	padding := 'x'.repeat(140_000)
+	os.write_file(os.join_path(root, 'a.h'), '/*${padding}*/\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'b.h'), '/*${padding}*/\n') or { panic(err) }
+	one_path := os.join_path(root, 'one.h')
+	two_path := os.join_path(root, 'two.h')
+	os.write_file(one_path, '#include "a.h"\n') or { panic(err) }
+	os.write_file(two_path, '#include "a.h"\n#include "b.h"\n') or { panic(err) }
+	mut one_size := CHeaderTreeSize{}
+	assert !c_header_tree_exceeds_inline_limit(one_path, '', []string{}, mut one_size)
+	mut two_size := CHeaderTreeSize{}
+	assert c_header_tree_exceeds_inline_limit(two_path, '', []string{}, mut two_size)
 }

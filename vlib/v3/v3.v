@@ -95,40 +95,183 @@ struct CObjectDependencies {
 	used_fallback bool
 }
 
+fn cpp_runtime_link_flag(target pref.Target) string {
+	return if target.os in ['macos', 'ios'] { '-lc++' } else { '-lstdc++' }
+}
+
 fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
-	for flag in flags {
+	mut active_language := ''
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
 		clean := flag.trim_space()
+		if clean == '-x' {
+			active_language = if i + 1 < flags.len { flags[i + 1].trim_space() } else { '' }
+			prepared << flag
+			if i + 1 < flags.len {
+				prepared << flags[i + 1]
+			}
+			i += 2
+			continue
+		}
 		if c_flag_is_object_file(clean) {
 			stats.requests++
-			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag, target_args,
-				target, c_compiler, uncached_dir, mut stats)!
+			adjacent_cpp_source := if !os.exists(clean) {
+				if source_file := c_source_from_object_file(clean) {
+					c_source_language(source_file, active_language) in ['c++', 'objective-c++']
+				} else {
+					false
+				}
+			} else {
+				false
+			}
+			object_path := ensure_c_object_file(clean, active_language, support_flags, c99,
+				pic_flag, target_args, target, c_compiler, uncached_dir, mut stats)!
+			append_c_link_object(mut prepared, object_path, active_language)
+			if adjacent_cpp_source {
+				cpp_runtime := cpp_runtime_link_flag(target)
+				if cpp_runtime !in flags && cpp_runtime !in prepared {
+					prepared << cpp_runtime
+				}
+			}
+		} else if clean.ends_with('.mm') {
+			stats.requests++
+			language := c_source_language(clean, active_language)
+			object_path := ensure_c_source_object(clean, active_language, support_flags, c99,
+				pic_flag, target_args, target, c_compiler, uncached_dir, mut stats)!
+			append_c_link_object(mut prepared, object_path, active_language)
+			if c_generated_native_source_context(clean, uncached_dir) {
+				os.rm(clean) or {}
+			}
+			if language in ['c++', 'objective-c++'] {
+				cpp_runtime := cpp_runtime_link_flag(target)
+				if cpp_runtime !in flags && cpp_runtime !in prepared {
+					prepared << cpp_runtime
+				}
+			}
+		} else if c_flag_is_c_source_file(clean) {
+			prepared << flag
 		} else {
 			prepared << flag
+		}
+		i++
+	}
+	if c_link_flags_use_non_c_language(prepared) {
+		cpp_runtime := cpp_runtime_link_flag(target)
+		if cpp_runtime !in flags && cpp_runtime !in prepared {
+			prepared << cpp_runtime
 		}
 	}
 	return prepared
 }
 
+fn append_c_link_object(mut flags []string, object_path string, active_language string) {
+	if active_language.len > 0 && active_language != 'none' {
+		flags << ['-x', 'none']
+	}
+	flags << object_path
+	if active_language.len > 0 && active_language != 'none' {
+		flags << ['-x', active_language]
+	}
+}
+
+fn c_generated_native_source_context(path string, build_dir string) bool {
+	base := os.base(path)
+	return os.dir(path) == build_dir && base.contains('.v3_native_source_context_')
+		&& (base.ends_with('.m') || base.ends_with('.mm'))
+}
+
+fn c_link_flags_use_non_c_language(flags []string) bool {
+	mut language := ''
+	mut skip_operand := false
+	mut i := 0
+	for i < flags.len {
+		clean := flags[i].trim_space()
+		if skip_operand {
+			skip_operand = false
+			i++
+			continue
+		}
+		if clean == '-x' && i + 1 < flags.len {
+			language = flags[i + 1].trim_space()
+			i += 2
+			continue
+		}
+		if c_flag_consumes_next_operand(clean) {
+			skip_operand = true
+			i++
+			continue
+		}
+		if c_flag_is_c_source_file(clean) {
+			if language in ['c++', 'objective-c++'] {
+				return true
+			}
+			if language in ['', 'none'] && (clean.ends_with('.cc') || clean.ends_with('.cpp')) {
+				return true
+			}
+		} else if language in ['c++', 'objective-c++'] && c_flag_is_existing_file(clean) {
+			return true
+		}
+		i++
+	}
+	return false
+}
+
+fn c_flag_consumes_next_operand(flag string) bool {
+	return flag in ['-I', '-L', '-F', '-D', '-U', '-include', '-imacros', '-isystem', '-iquote',
+		'-idirafter', '-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot',
+		'-target', '-arch', '-framework', '-weak_framework', '-Xlinker', '-force_load', '-o', '-MF',
+		'-MT', '-MQ']
+}
+
+fn c_flag_is_existing_file(flag string) bool {
+	clean := flag.trim(' \t\r\n"\'')
+	return clean.len > 0 && clean[0] != `-` && os.is_file(clean)
+}
+
 fn c_object_compile_flags(flags []string) []string {
 	mut compile_flags := []string{}
 	mut skip_link_operand := false
-	for flag in flags {
+	mut preserve_operand := false
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
 		part := flag.trim_space()
 		if skip_link_operand {
 			skip_link_operand = false
+			i++
+			continue
+		}
+		if preserve_operand {
+			compile_flags << flag
+			preserve_operand = false
+			i++
+			continue
+		}
+		if part == '-x' {
+			i += 2
 			continue
 		}
 		if part in ['-l', '-L', '-Xlinker', '-framework', '-weak_framework', '-force_load'] {
 			skip_link_operand = true
+			i++
+			continue
+		}
+		if c_flag_consumes_next_operand(part) {
+			compile_flags << flag
+			preserve_operand = true
+			i++
 			continue
 		}
 		if part.len == 0 || c_flag_token_is_link_only(part) || c_flag_is_object_file(part)
-			|| c_flag_is_c_source_file(part) {
+			|| c_flag_is_c_source_file(part) || c_flag_is_existing_file(part) {
+			i++
 			continue
 		}
 		compile_flags << flag
+		i++
 	}
 	return compile_flags
 }
@@ -160,18 +303,53 @@ fn c_flags_need_objective_c(flags []string) bool {
 	return false
 }
 
-fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn ensure_c_object_file(obj_path string, source_language string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
 	if os.exists(obj_path) {
 		stats.direct_objects++
 		return obj_path
 	}
 	source_file := c_source_from_object_file(obj_path) or {
-		return error('missing C object ${obj_path}, and no adjacent .c/.cpp/.S source was found')
+		return error('missing C object ${obj_path}, and no adjacent .c/.cc/.cpp/.m/.mm/.S source was found')
 	}
+	return compile_cached_c_source_object(obj_path, source_file, source_language, support_flags,
+		c99, pic_flag, target_args, target, c_compiler, uncached_dir, mut stats)
+}
+
+fn ensure_c_source_object(source_file string, source_language string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
+	if !os.exists(source_file) {
+		return error('missing C source ${source_file}')
+	}
+	return compile_cached_c_source_object('${source_file}.o', source_file, source_language,
+		support_flags, c99, pic_flag, target_args, target, c_compiler, uncached_dir, mut stats)
+}
+
+fn c_source_language(source_file string, source_language string) string {
+	if source_language.len > 0 && source_language != 'none' {
+		return source_language
+	}
+	if source_file.ends_with('.mm') {
+		return 'objective-c++'
+	}
+	if source_file.ends_with('.m') {
+		return 'objective-c'
+	}
+	if source_file.ends_with('.cc') || source_file.ends_with('.cpp') {
+		return 'c++'
+	}
+	return ''
+}
+
+fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
-	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { c_standard_flag(c99) }
-	compiler := if source_file.ends_with('.cpp') && c_compiler == 'cc' { 'c++' } else { c_compiler }
+	language := c_source_language(source_file, source_language)
+	is_cpp := language in ['c++', 'objective-c++']
+	std_flag := if is_cpp {
+		if c99 { '-std=c++11' } else { '-std=gnu++11' }
+	} else {
+		c_standard_flag(c99)
+	}
+	compiler := if is_cpp && c_compiler == 'cc' { 'c++' } else { c_compiler }
 	mut args := [std_flag]
 	args << target_args
 	if pic_flag.len > 0 {
@@ -179,6 +357,9 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	}
 	args << '-w'
 	args << support_flags
+	if language.len > 0 {
+		args << ['-x', language]
+	}
 	dependencies := c_object_dependencies(compiler, args, source_file)
 	stats.dependency_files += dependencies.files.len
 	if dependencies.used_fallback {
@@ -309,7 +490,7 @@ fn c_object_dependencies(compiler string, compile_args []string, source_file str
 
 fn c_source_from_object_file(obj_path string) ?string {
 	base := obj_path.all_before_last('.')
-	for ext in ['.c', '.cpp', '.S'] {
+	for ext in ['.c', '.cc', '.cpp', '.m', '.mm', '.S'] {
 		source_file := base + ext
 		if os.exists(source_file) {
 			return source_file
@@ -350,6 +531,7 @@ fn c_flag_is_object_file(flag string) bool {
 
 fn c_flag_is_c_source_file(flag string) bool {
 	return flag.ends_with('.c') || flag.ends_with('.cc') || flag.ends_with('.cpp')
+		|| flag.ends_with('.m') || flag.ends_with('.mm')
 }
 
 fn c_standard_flag(c99 bool) string {
@@ -465,9 +647,19 @@ fn with_shared_library_postfix(path string, target_os string) string {
 	return path + postfix
 }
 
-// should_scope_prealloc_stages reports whether allocation-heavy compiler stages can use
-// disposable arenas. This keeps preallocated v3 binaries bounded on large user programs too.
-fn should_scope_prealloc_stages() bool {
+// should_scope_prealloc_stages reports whether compiler self-host stages can use disposable
+// arenas. User programs retain normal allocation ownership until every stage promotion path can
+// safely preserve their generic and comptime metadata.
+fn should_scope_prealloc_stages(building_v bool, cmd_v_build bool) bool {
+	$if prealloc {
+		return building_v || cmd_v_build
+	}
+	return false
+}
+
+// should_scope_prealloc_cgen reports whether cgen scratch/output chunks can use disposable
+// arenas. Unlike transform metadata, cgen state does not escape after its flags are copied.
+fn should_scope_prealloc_cgen() bool {
 	$if prealloc {
 		return true
 	}
@@ -1213,7 +1405,8 @@ fn main() {
 		building_v = true
 	}
 	cmd_v_build := input_is_cmd_v(input_file)
-	scope_prealloc_stages := should_scope_prealloc_stages()
+	scope_prealloc_stages := should_scope_prealloc_stages(building_v, cmd_v_build)
+	scope_prealloc_cgen := should_scope_prealloc_cgen()
 	// The selective transform promotion path is designed around worker-owned
 	// results outside the disposable stage arena.
 	scope_prealloc_transform := scope_prealloc_stages
@@ -1863,7 +2056,7 @@ fn main() {
 		}
 		mut generated_c_flags := []string{}
 		mut cgen_was_parallel := false
-		if scope_prealloc_stages {
+		if scope_prealloc_cgen {
 			cgen_scope := prealloc_scope_begin_for_v3()
 			mut g := cgen.FlatGen.new()
 			g.set_initial_c_flags(user_c_flags)
@@ -1980,13 +2173,19 @@ fn main() {
 		if prefs.normalized_target_os() == 'macos' {
 			warn_args << ['-Wno-incompatible-function-pointer-types', '-Wno-typedef-redefinition']
 		}
+		needs_objective_c := c_flags_need_objective_c(generated_c_flags)
 		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
 			target_args, prefs.target, c_compiler, cc_dir, mut c_object_cache_stats) or {
 			eprintln(err.msg())
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
-		needs_objective_c := c_flags_need_objective_c(resolved_c_flags)
+		link_uses_non_c_language := c_link_flags_use_non_c_language(resolved_c_flags)
+		link_c_standard := if link_uses_non_c_language {
+			''
+		} else {
+			c_standard
+		}
 		mut cached_objects := []string{}
 		if cache_state.manager.enabled {
 			generated_source := os.read_file(cache_plan_file) or {
@@ -2025,15 +2224,18 @@ fn main() {
 		// program translation unit and emit a broken executable. Compile and link
 		// the much smaller cached main unit with the system C compiler so the same
 		// undeclared-function diagnostics remain enforced.
-		if !is_prod && !needs_objective_c && target_args.len == 0 && !c_compiler_explicit
-			&& !cache_state.manager.enabled {
+		if !is_prod && !needs_objective_c && !link_uses_non_c_language && target_args.len == 0
+			&& !c_compiler_explicit && !cache_state.manager.enabled {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			mut tcc_args := [c_standard]
+			mut tcc_args := []string{}
+			if link_c_standard.len > 0 {
+				tcc_args << link_c_standard
+			}
 			if pic_flag.len > 0 {
 				tcc_args << pic_flag
 			}
@@ -2055,7 +2257,9 @@ fn main() {
 		if is_prod || !tried_tcc || result.exit_code != 0 {
 			mut cc_args := []string{}
 			cc_args << target_args
-			cc_args << c_standard
+			if link_c_standard.len > 0 {
+				cc_args << link_c_standard
+			}
 			if is_prod {
 				cc_args << '-O2'
 			}
@@ -2095,6 +2299,12 @@ fn main() {
 		}
 		for temporary_object in c_object_cache_stats.temporary_objects {
 			os.rm(temporary_object) or {}
+		}
+		for source_flag in generated_c_flags {
+			clean := source_flag.trim_space()
+			if c_generated_native_source_context(clean, cc_dir) {
+				os.rm(clean) or {}
+			}
 		}
 		os.rm(cc_src) or {}
 		os.rmdir(cc_dir) or {}

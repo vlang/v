@@ -6,7 +6,6 @@ vlib/v/tests/interfaces/interface_generic_multi_return_test.v
 vlib/v/tests/interfaces/interface_generic_pool_cast_multi_type_test.v
 vlib/v/tests/interfaces/interface_match_smartcast_array_test.v
 vlib/v/tests/interfaces/interface_method_closure_test.v
-vlib/v/tests/interfaces/interface_test.v
 vlib/v/tests/pointers/deref_mut_variable_in_if_expr_test.v
 vlib/v/tests/pointers/heap_struct_test.v
 vlib/v/tests/pointers/multi_ref_call_arg_test.v

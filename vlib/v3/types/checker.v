@@ -2282,6 +2282,12 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 		|| qualified in tc.enum_names || qualified in tc.flag_enums || qualified in tc.type_aliases {
 		return qualified
 	}
+	// A declaration in the active source scope shadows an already-collected
+	// unqualified symbol (notably `errors.Error` shadows `builtin.Error`).
+	// Keep it module-qualified before the resolution-only generic fallback below.
+	if tc.source_declares_type_in_scope(name, tc.cur_file, tc.cur_module) {
+		return qualified
+	}
 	// A concrete generic argument can originate in another module and then be
 	// substituted into a generic declaration while that declaration's module is
 	// active. Preserve an already-known unqualified symbol (notably a `main`
@@ -5388,7 +5394,8 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node flat.Node) {
 			continue
 		}
 		default_id := tc.a.child(field, 0)
-		expected := tc.parse_type(field.typ)
+		field_type := if field.typ.len > 0 { field.typ } else { field.value }
+		expected := tc.parse_type(field_type)
 		tc.check_node(default_id)
 		actual := tc.resolve_expr(default_id, expected)
 		if !tc.expr_compatible(default_id, actual, expected)
@@ -7140,6 +7147,10 @@ fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.No
 				continue
 			}
 			if voidptr_arg_compatible(expected, actual) {
+				continue
+			}
+			if !info.name.starts_with('C.') && fn_param_is_voidptr_type(expected)
+				&& tc.expr_can_take_address(arg_id) {
 				continue
 			}
 			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
@@ -11907,7 +11918,7 @@ fn (mut tc TypeChecker) check_return(id flat.NodeId, node flat.Node) {
 				return
 			}
 			actual := tc.resolve_expr(child_id, expected)
-			if tc.type_compatible(actual, expected) {
+			if tc.return_type_compatible(child_id, actual, expected) {
 				$if ownership ? {
 					tc.ownership_after_return(id, node)
 				}
@@ -13368,6 +13379,21 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			return info
 		}
 		if clean is Alias {
+			// Methods declared on an alias take precedence over methods inherited
+			// from its underlying collection. In particular, a fixed-array alias
+			// can provide a clone() that preserves the alias type instead of using
+			// the builtin fixed-array clone, which returns a dynamic array.
+			for mname in receiver_method_name_candidates(clean, fn_node.value, tc.cur_module) {
+				if checker_is_raw_collection_method_name(mname, 'array.')
+					|| checker_is_raw_collection_method_name(mname, 'map.')
+					|| mname !in tc.fn_ret_types {
+					continue
+				}
+				if !tc.method_can_be_called_on_receiver(base_type, fn_node.value, mname) {
+					continue
+				}
+				return tc.call_info(mname, true)
+			}
 			alias_target_name := resolve_type_name_for_method(clean.base_type)
 			if alias_target_name.len > 0 {
 				if info := tc.resolve_generic_struct_method(alias_target_name, fn_node.value) {
@@ -14868,6 +14894,9 @@ fn (tc &TypeChecker) expr_can_take_address(id flat.NodeId) bool {
 			if node.children_count == 0 {
 				return false
 			}
+			if tc.enum_selector_type(&node) != none {
+				return false
+			}
 			return tc.expr_can_take_address(tc.a.child(&node, 0))
 		}
 		.prefix {
@@ -15517,6 +15546,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		}
 		if !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected) {
+			if base := tc.mut_param_expr_base(arg_id, actual) {
+				if tc.type_compatible(base, expected)
+					|| tc.pointer_value_compatible(actual, expected) {
+					continue
+				}
+			}
 			if tc.receiver_compatible(actual, expected) {
 				continue
 			}
@@ -15539,6 +15574,10 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 				continue
 			}
 			if voidptr_arg_compatible(expected, actual) {
+				continue
+			}
+			if !info.name.starts_with('C.') && fn_param_is_voidptr_type(expected)
+				&& tc.expr_can_take_address(arg_id) {
 				continue
 			}
 			if tc.array_insert_prepend_many_arg_compatible(node, info, param_idx, actual) {
@@ -20218,11 +20257,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		tc.register_synth_type(id, unknown_type('generic placeholder `${node.value}`'))
 		return
 	}
-	if typ := tc.cur_scope.lookup(node.value) {
-		tc.register_synth_type(id, typ)
-		return
-	}
-	if typ := tc.file_scope.lookup(node.value) {
+	if typ := tc.non_file_scope_type(node.value) {
 		tc.register_synth_type(id, typ)
 		return
 	}
@@ -20238,6 +20273,12 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if typ := tc.const_types[qname] {
+		tc.register_synth_type(id, typ)
+		return
+	}
+	// A module-local const shadows an unrelated bare global collected from
+	// another module (notably `time.seconds_per_minute` vs a main global).
+	if typ := tc.file_scope.lookup(node.value) {
 		tc.register_synth_type(id, typ)
 		return
 	}
@@ -20263,6 +20304,14 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 	if tc.should_diagnose(id) {
 		tc.record_error(.unknown_ident, 'unknown identifier `${node.value}`', id)
 	}
+}
+
+fn (tc &TypeChecker) non_file_scope_type(name string) ?Type {
+	owner := tc.cur_scope.lookup_owner(name) or { return none }
+	if owner.belongs_to_scope(tc.file_scope) {
+		return none
+	}
+	return tc.cur_scope.lookup(name)
 }
 
 // resolve_expr resolves resolve expr information for types.
@@ -20870,6 +20919,9 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	if actual.name() == expected.name() {
 		return true
 	}
+	if thread_handle_type_names_match(actual.name(), expected.name()) {
+		return true
+	}
 	if fn_param_is_voidptr_type(actual) && fn_param_is_voidptr_type(expected) {
 		return true
 	}
@@ -21048,6 +21100,27 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		}
 	}
 	return false
+}
+
+fn thread_handle_type_names_match(actual string, expected string) bool {
+	if !actual.starts_with('thread') || !expected.starts_with('thread') {
+		return false
+	}
+	return canonical_thread_handle_type_name(actual) == canonical_thread_handle_type_name(expected)
+}
+
+fn canonical_thread_handle_type_name(name string) string {
+	clean := name.trim_space()
+	if clean == 'thread void' {
+		return 'thread'
+	}
+	if clean == 'thread !' {
+		return 'thread !void'
+	}
+	if clean == 'thread ?' {
+		return 'thread ?void'
+	}
+	return clean
 }
 
 fn type_contains_unknown(typ Type) bool {
@@ -25454,10 +25527,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			if smart_type := tc.smartcast_type(id) {
 				return smart_type
 			}
-			if typ := tc.cur_scope.lookup(node.value) {
-				return typ
-			}
-			if typ := tc.file_scope.lookup(node.value) {
+			if typ := tc.non_file_scope_type(node.value) {
 				return typ
 			}
 			qname := tc.qualify_name(node.value)
@@ -25468,6 +25538,9 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 			}
 			if qname in tc.const_types {
 				return tc.const_types[qname] or { unknown_type('unknown const `${qname}`') }
+			}
+			if typ := tc.file_scope.lookup(node.value) {
+				return typ
 			}
 			if node.value in tc.const_types {
 				return tc.const_types[node.value] or {

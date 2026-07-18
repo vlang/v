@@ -132,6 +132,19 @@ fn write_project_file(root string, rel string, src string) {
 }
 
 fn run_good_project(v3_bin string, name string, files map[string]string, input string) string {
+	return run_good_project_with_flags(v3_bin, name, '', files, input)
+}
+
+struct GoodProjectRun {
+	run_output     string
+	compile_output string
+}
+
+fn run_good_project_with_flags(v3_bin string, name string, flags string, files map[string]string, input string) string {
+	return run_good_project_result(v3_bin, name, flags, files, input).run_output
+}
+
+fn run_good_project_result(v3_bin string, name string, flags string, files map[string]string, input string) GoodProjectRun {
 	root := '${tmp_test_path(name)}_project'
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -142,7 +155,31 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	good_bin := tmp_test_path(name)
-	compile := os.execute('${v3_bin} ${input_path} -b c -o ${good_bin}')
+	compile := os.execute('${v3_bin} ${flags} ${input_path} -b c -o ${good_bin}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('C compilation failed'), compile.output
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, run.output
+	return GoodProjectRun{
+		run_output:     run.output.trim_space()
+		compile_output: compile.output
+	}
+}
+
+fn run_good_project_relative_input(v3_bin string, name string, flags string, files map[string]string, input string) string {
+	workspace := '${tmp_test_path(name)}_workspace'
+	root := os.join_path(workspace, 'project')
+	if os.exists(workspace) {
+		os.rmdir_all(workspace) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := os.join_path('project', input)
+	good_bin := tmp_test_path(name)
+	compile :=
+		os.execute('cd ${os.quoted_path(workspace)} && ${os.quoted_path(v3_bin)} ${flags} ${os.quoted_path(input_path)} -b c -o ${os.quoted_path(good_bin)}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(good_bin)
@@ -4026,13 +4063,18 @@ fn keep(p &M) &M {
 	return &M(p)
 }
 
+fn from_void(p voidptr) &M {
+	return &M(p)
+}
+
 fn main() {
 	mut m := {
 		"a": 1
 	}
 	p := keep(&M(m))
+	q := from_void(voidptr(p))
 	unsafe {
-		(*p)["b"] = 2
+		(*q)["b"] = 2
 	}
 	println(int_str(m["b"]))
 }
@@ -4041,6 +4083,9 @@ fn main() {
 	body := c_fn_body(c_source, 'map* keep(map* p) {')
 	assert body.contains('return (map*)(p);'), body
 	assert !body.contains('map _t') && !body.contains('&_t') && !body.contains('&p'), body
+	void_body := c_fn_body(c_source, 'map* from_void(void* p) {')
+	assert void_body.contains('return (map*)(p);'), void_body
+	assert !void_body.contains('&p'), void_body
 	out := run_good(v3_bin, 'map_pointer_alias_cast_preserves_existing_pointer', source)
 	assert out == '2'
 }
@@ -5678,4 +5723,722 @@ fn test_discard_assignment_preserves_array_return_type() {
 	out := run_good(v3_bin, 'discard_array_return_no_context',
 		"fn values() []string {\n\treturn ['a', 'b']\n}\n\nfn main() {\n\t_ = values()\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
+}
+
+fn test_late_resolution_and_promoted_init_regressions() {
+	v3_bin := build_v3()
+	typeof_out := run_good(v3_bin, 'runtime_sum_typeof', '__global typeof_calls int
+
+type Value = int | string
+
+fn make_typeof_value() Value {
+	typeof_calls++
+	return Value(9)
+}
+
+fn main() {
+	a := Value(7)
+	b := Value("v3")
+	p := &Value("pointer")
+	nil_pointer := unsafe { &Value(nil) }
+	println(unsafe { typeof(a) })
+	println(unsafe { typeof(b) })
+	println(unsafe { typeof(p) })
+	println(unsafe { typeof(nil_pointer) })
+	println(typeof(nil_pointer).name)
+	println(typeof(make_typeof_value()).name)
+	println(int_str(typeof_calls))
+}
+')
+	assert typeof_out == 'int\nstring\nstring\nunknown Value\n&Value\nValue\n0'
+	promoted_out := run_good(v3_bin, 'promoted_embed_struct_init', 'struct Inner {
+	count int = 3
+	items []int
+	value int
+}
+
+struct Outer {
+	Inner
+}
+
+fn main() {
+	value := Outer{
+		value: 7
+	}
+	heap := &Outer{
+		value: 8
+	}
+	println(int_str(value.count))
+	println(int_str(value.value))
+	println(int_str(value.items.len))
+	println(int_str(heap.count))
+	println(int_str(heap.value))
+	println(int_str(heap.items.len))
+}
+')
+	assert promoted_out == '3\n7\n0\n3\n8\n0'
+	promoted_declared_default_out := run_good(v3_bin, 'promoted_embed_declared_struct_default', 'struct DefaultInner {
+	a int
+	b int
+}
+
+struct DefaultOuter {
+	DefaultInner = DefaultInner{
+		a: 3
+		b: 4
+	}
+}
+
+struct NestedDefaultInner {
+	x int
+	y int
+}
+
+struct NestedDefaultMid {
+	NestedDefaultInner
+}
+
+struct NestedDefaultOuter {
+	NestedDefaultMid = NestedDefaultMid{
+		NestedDefaultInner: NestedDefaultInner{
+			x: 1
+			y: 2
+		}
+	}
+}
+
+fn main() {
+	value := DefaultOuter{
+		b: 7
+	}
+	heap := &DefaultOuter{
+		b: 8
+	}
+	println(int_str(value.a))
+	println(int_str(value.b))
+	println(int_str(heap.a))
+	println(int_str(heap.b))
+	nested := NestedDefaultOuter{
+		x: 9
+	}
+	nested_heap := &NestedDefaultOuter{
+		x: 10
+	}
+	println(int_str(nested.x))
+	println(int_str(nested.y))
+	println(int_str(nested_heap.x))
+	println(int_str(nested_heap.y))
+}
+')
+	assert promoted_declared_default_out == '3\n7\n3\n8\n9\n2\n10\n2'
+	promoted_cross_module_default_out := run_good_project(v3_bin,
+		'promoted_cross_module_struct_default', {
+		'v.mod':            "Module { name: 'promoted_cross_module_struct_default' }\n"
+		'defaults/types.v': 'module defaults\n\npub const default_a = 3\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = Inner{\n\t\ta: default_a\n\t\tb: 4\n\t}\n}\n'
+		'main.v':           'module main\n\nimport defaults\n\nconst default_a = 99\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
+	}, 'main.v')
+	assert promoted_cross_module_default_out == '3\n7'
+	promoted_import_alias_call_default_out := run_good_project(v3_bin,
+		'promoted_import_alias_call_default', {
+		'v.mod':             "Module { name: 'promoted_import_alias_call_default' }\n"
+		'helpers/helpers.v': 'module helpers\n\npub fn default_a() int {\n\treturn 3\n}\n'
+		'defaults/types.v':  'module defaults\n\nimport helpers as h\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = make_inner(h.default_a())\n}\n\nfn make_inner(a int) Inner {\n\treturn Inner{\n\t\ta: a\n\t\tb: 4\n\t}\n}\n'
+		'main.v':            'module main\n\nimport defaults\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
+	}, 'main.v')
+	assert promoted_import_alias_call_default_out == '3\n7'
+	promoted_value_prelude_out := run_good(v3_bin, 'promoted_default_value_prelude', 'struct PromotedArrayInner {
+	promoted_values []int
+}
+
+fn make_promoted_array_inner() PromotedArrayInner {
+	return PromotedArrayInner{
+		promoted_values: [0]
+	}
+}
+
+struct PromotedArrayOuter {
+	PromotedArrayInner = make_promoted_array_inner()
+}
+
+fn main() {
+	value := PromotedArrayOuter{
+		promoted_values: [2, 3]
+	}
+	println(int_str(value.PromotedArrayInner.promoted_values.len))
+	println(int_str(value.PromotedArrayInner.promoted_values[0]))
+}
+')
+	assert promoted_value_prelude_out == '2\n2'
+	promoted_positional_default_out := run_good(v3_bin, 'promoted_embed_positional_default', 'struct PositionalInner {
+	a int
+	b int
+}
+
+struct PositionalOuter {
+	PositionalInner = PositionalInner{3, 4}
+}
+
+fn main() {
+	value := PositionalOuter{
+		a: 7
+	}
+	heap := &PositionalOuter{
+		a: 8
+	}
+	println(int_str(value.a))
+	println(int_str(value.b))
+	println(int_str(heap.a))
+	println(int_str(heap.b))
+}
+')
+	assert promoted_positional_default_out == '7\n4\n8\n4'
+	promoted_call_default_out := run_good(v3_bin, 'promoted_embed_call_default', '__global calls int
+
+struct CallInner {
+	a int
+	b int
+}
+
+struct CallOuter {
+	CallInner = make_call_inner()
+}
+
+fn make_call_inner() CallInner {
+	calls++
+	return CallInner{
+		a: 5
+		b: 6
+	}
+}
+
+fn main() {
+	value := CallOuter{
+		b: 7
+	}
+	heap := &CallOuter{
+		b: 8
+	}
+	println(int_str(value.a))
+	println(int_str(value.b))
+	println(int_str(heap.a))
+	println(int_str(heap.b))
+	println(int_str(calls))
+}
+')
+	assert promoted_call_default_out == '5\n7\n5\n8\n2'
+	fixed_promoted_out := run_good(v3_bin, 'promoted_fixed_array_struct_init', 'struct FixedInner {
+	values [2]int
+}
+
+struct FixedOuter {
+	FixedInner
+}
+
+fn main() {
+	values := [1, 2]!
+	value := FixedOuter{
+		values: values
+	}
+	heap := &FixedOuter{
+		values: [3, 4]!
+	}
+	println(int_str(value.FixedInner.values[0] + value.FixedInner.values[1]))
+	println(int_str(heap.FixedInner.values[0] + heap.FixedInner.values[1]))
+}
+')
+	assert fixed_promoted_out == '3\n7'
+	fixed_c_struct_eq_out := run_good_project(v3_bin, 'fixed_array_c_struct_equality', {
+		'v.mod':  "Module { name: 'fixed_array_c_struct_equality' }\n"
+		'shim.h': 'struct v3_lowercase_tag { int value; };\n'
+		'main.v': 'module main\n\n#include "shim.h"\n\nfn main() {\n\tleft := [2]C.v3_lowercase_tag{}\n\tright := [2]C.v3_lowercase_tag{}\n\tprintln(left == right)\n}\n'
+	}, 'main.v')
+	assert fixed_c_struct_eq_out == 'true'
+	pointer_promoted_out := run_good(v3_bin, 'promoted_pointer_embed_struct_init', 'struct PointerInner {
+	count int = 4
+	items []int
+	value int
+}
+
+type PointerInnerRef = &PointerInner
+
+struct PointerOuter {
+	PointerInnerRef
+}
+
+fn main() {
+	value := PointerOuter{
+		value: 9
+	}
+	heap := &PointerOuter{
+		value: 10
+	}
+	println(int_str(value.PointerInnerRef.count))
+	println(int_str(value.PointerInnerRef.value))
+	println(int_str(value.PointerInnerRef.items.len))
+	println(int_str(heap.PointerInnerRef.count))
+	println(int_str(heap.PointerInnerRef.value))
+	println(int_str(heap.PointerInnerRef.items.len))
+}
+')
+	assert pointer_promoted_out == '4\n9\n0\n4\n10\n0'
+	pointer_promoted_default_out := run_good(v3_bin, 'promoted_pointer_embed_call_default_escape', 'struct EscapingPointerInner {
+	a int
+	b int
+}
+
+type EscapingPointerInnerRef = &EscapingPointerInner
+
+struct EscapingPointerOuter {
+	EscapingPointerInnerRef = make_escaping_pointer_inner()
+}
+
+fn make_escaping_pointer_inner() EscapingPointerInnerRef {
+	return &EscapingPointerInner{
+		a: 5
+		b: 6
+	}
+}
+
+fn make_escaping_pointer_outer(b int) EscapingPointerOuter {
+	return EscapingPointerOuter{
+		b: b
+	}
+}
+
+fn main() {
+	first := make_escaping_pointer_outer(7)
+	second := make_escaping_pointer_outer(8)
+	println(int_str(first.EscapingPointerInnerRef.a))
+	println(int_str(first.EscapingPointerInnerRef.b))
+	println(int_str(second.EscapingPointerInnerRef.a))
+	println(int_str(second.EscapingPointerInnerRef.b))
+}
+')
+	assert pointer_promoted_default_out == '5\n7\n5\n8'
+	alias_typeof_out := run_good(v3_bin, 'runtime_sum_pointer_alias_typeof', 'type AliasValue = int | string
+type AliasValueRef = &AliasValue
+
+fn main() {
+	value := AliasValue("alias")
+	ref := AliasValueRef(&value)
+	println(unsafe { typeof(ref) })
+	println(typeof(ref).name)
+}
+')
+	assert alias_typeof_out == 'string\nAliasValueRef'
+	include_out := run_good_project(v3_bin, 'quoted_source_include_from_include_dir', {
+		'v.mod':          "Module { name: 'quoted_source_include_from_include_dir' }\n"
+		'include/shim.c': 'int answer_from_shim(void) { return 42; }\n'
+		'main.v':         'module main\n\n#flag -I @DIR/include\n#include "shim.c"\n\nfn C.answer_from_shim() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_shim()))\n}\n'
+	}, 'main.v')
+	assert include_out == '42'
+	guarded_include_out := run_good_project(v3_bin, 'guarded_quoted_source_include', {
+		'v.mod':         "Module { name: 'guarded_quoted_source_include' }\n"
+		'packed.c':      'typedef struct { char first; int second; } V3ReviewPacked;\nint v3_review_packed_size(void) { return sizeof(V3ReviewPacked); }\n'
+		'shim.c':        'int answer_from_guarded_shim(void) { return V3_GUARDED_SHIM_VALUE; }\n'
+		'toplevel.c':    'int answer_from_toplevel_shim(void) { return V3_TOPLEVEL_SHIM_VALUE; }\n'
+		'specialized.c': '#if V3_SOURCE_VARIANT == 1\nint answer_from_source_variant_one(void) { return 1; }\n#elif V3_SOURCE_VARIANT == 2\nint answer_from_source_variant_two(void) { return 2; }\n#endif\n'
+		'main.v':        'module main\n\n#define V3_TOPLEVEL_SHIM_VALUE 46\n#include "toplevel.c"\n#undef V3_TOPLEVEL_SHIM_VALUE\n\n#define V3_GUARDED_SOURCE\n#ifdef V3_GUARDED_SOURCE\n#define V3_GUARDED_SHIM_VALUE 45\n#include "shim.c"\n#undef V3_GUARDED_SHIM_VALUE\n#endif\n\n#define V3_SOURCE_VARIANT 1\n#include "specialized.c"\n#undef V3_SOURCE_VARIANT\n#define V3_SOURCE_VARIANT 2\n#include "specialized.c"\n#undef V3_SOURCE_VARIANT\n\n#pragma pack(push, 1)\n#include "packed.c"\n#pragma pack(pop)\n\nfn C.answer_from_guarded_shim() int\nfn C.answer_from_toplevel_shim() int\nfn C.answer_from_source_variant_one() int\nfn C.answer_from_source_variant_two() int\nfn C.v3_review_packed_size() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_guarded_shim() + C.answer_from_toplevel_shim() + C.answer_from_source_variant_one() + C.answer_from_source_variant_two()))\n\tprintln(int_str(C.v3_review_packed_size()))\n}\n'
+	}, 'main.v')
+	assert guarded_include_out == '94\n5'
+	guarded_header_before_source_out := run_good_project(v3_bin,
+		'guarded_header_before_source_include', {
+		'v.mod':   "Module { name: 'guarded_header_before_source_include' }\n"
+		'types.h': 'typedef struct { int value; } V3GuardedHeaderType;\n'
+		'impl.c':  'V3GuardedHeaderType v3_make_guarded_header_type(void) { return (V3GuardedHeaderType){50}; }\nint v3_guarded_header_type_value(V3GuardedHeaderType value) { return value.value; }\n'
+		'main.v':  'module main\n\n#define V3_USE_GUARDED_HEADER\n#ifdef V3_USE_GUARDED_HEADER\n#include "types.h"\n#include "impl.c"\n#endif\n\nstruct GuardedHeaderHolder {\n\tvalue C.V3GuardedHeaderType\n}\n\nfn C.v3_make_guarded_header_type() C.V3GuardedHeaderType\nfn C.v3_guarded_header_type_value(C.V3GuardedHeaderType) int\n\nfn main() {\n\tholder := GuardedHeaderHolder{\n\t\tvalue: C.v3_make_guarded_header_type()\n\t}\n\tprintln(int_str(C.v3_guarded_header_type_value(holder.value)))\n}\n'
+	}, 'main.v')
+	assert guarded_header_before_source_out == '50'
+	source_type_out := run_good_project(v3_bin, 'source_include_type_before_v_declaration', {
+		'v.mod':  "Module { name: 'source_include_type_before_v_declaration' }\n"
+		'shim.c': 'typedef struct { int value; } V3SourceType;\nint v3_source_type_value(V3SourceType value) { return value.value; }\n'
+		'main.v': 'module main\n\n#include "shim.c"\n\nstruct SourceTypeHolder {\n\tvalue C.V3SourceType\n}\n\nfn C.v3_source_type_value(C.V3SourceType) int\n\nfn main() {\n\tholder := SourceTypeHolder{\n\t\tvalue: C.V3SourceType{\n\t\t\tvalue: 51\n\t\t}\n\t}\n\tprintln(int_str(C.v3_source_type_value(holder.value)))\n}\n'
+	}, 'main.v')
+	assert source_type_out == '51'
+	objective_c_type_out := run_good_project_with_flags(v3_bin, 'objective_c_type_provider',
+		'-cc clang', {
+		'v.mod':  "Module { name: 'objective_c_type_provider' }\n"
+		'shim.m': 'typedef struct { int value; } V3ObjectiveCType;\nint v3_objective_c_type_value(V3ObjectiveCType value) { return value.value; }\n'
+		'main.v': 'module main\n\n#include "shim.m"\n\nstruct ObjectiveCTypeHolder {\n\tvalue C.V3ObjectiveCType\n}\n\nfn C.v3_objective_c_type_value(C.V3ObjectiveCType) int\n\nfn main() {\n\tholder := ObjectiveCTypeHolder{\n\t\tvalue: C.V3ObjectiveCType{\n\t\t\tvalue: 56\n\t\t}\n\t}\n\tprintln(int_str(C.v3_objective_c_type_value(holder.value)))\n}\n'
+	}, 'main.v')
+	assert objective_c_type_out == '56'
+	objective_c_typedef_out := run_good_project_with_flags(v3_bin, 'objective_c_typedef_provider',
+		'-cc clang', {
+		'v.mod':  "Module { name: 'objective_c_typedef_provider' }\n"
+		'shim.m': 'typedef enum { V3_KIND_ZERO = 0 } V3Kind;\ntypedef unsigned long V3Plain;\n'
+		'main.v': 'module main\n\n#include "shim.m"\n\nstruct ObjectiveCTypedefHolder {\n\tkind C.V3Kind\n\tvalue C.V3Plain\n}\n\nfn main() {\n\t_ := ObjectiveCTypedefHolder{}\n\tprintln(int_str(66))\n}\n'
+	}, 'main.v')
+	assert objective_c_typedef_out == '66'
+	objective_c_sum_typedef_out := run_good_project_with_flags(v3_bin,
+		'objective_c_sum_typedef_provider', '-cc clang', {
+		'v.mod':  "Module { name: 'objective_c_sum_typedef_provider' }\n"
+		'shim.m': 'typedef struct { int value; } V3Obj;\n'
+		'main.v': 'module main\n\n#include "shim.m"\n\ntype ObjectiveCSumValue = C.V3Obj | int\n\nfn main() {\n\t_ := ObjectiveCSumValue(67)\n\tprintln(int_str(67))\n}\n'
+	}, 'main.v')
+	assert objective_c_sum_typedef_out == '67'
+	objective_cpp_out := run_good_project_with_flags(v3_bin, 'objective_cpp_source_include',
+		'-cc clang', {
+		'v.mod':   "Module { name: 'objective_cpp_source_include' }\n"
+		'shim.cc': '#include <string>\nextern "C" int answer_from_cpp(void) { std::string answer(2, \'x\'); return int(answer.size()); }\n'
+		'shim.m':  'int answer_from_objective_c(void) { return 1; }\n'
+		'shim.mm': 'extern "C" int answer_from_objective_cpp(void) { auto answer = []() { return new int(43); }; auto value = answer(); int result = *value; delete value; return result; }\n'
+		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n#include "shim.m"\n#include "shim.mm"\n\nfn C.answer_from_cpp() int\nfn C.answer_from_objective_c() int\nfn C.answer_from_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp() + C.answer_from_objective_c() + C.answer_from_objective_cpp()))\n}\n'
+	}, 'main.v')
+	assert objective_cpp_out == '46'
+	objective_cpp_object_fallback_out := run_good_project_with_flags(v3_bin,
+		'objective_cpp_object_fallback', '-cc clang', {
+		'v.mod':   "Module { name: 'objective_cpp_object_fallback' }\n"
+		'shim.mm': '#include <string>\nextern "C" int answer_from_objective_cpp_object(void) { std::string answer(49, \'x\'); return int(answer.size()); }\n'
+		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n\nfn C.answer_from_objective_cpp_object() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_objective_cpp_object()))\n}\n'
+	}, 'main.v')
+	assert objective_cpp_object_fallback_out == '49'
+	objective_c_object_fallback_out := run_good_project_with_flags(v3_bin,
+		'objective_c_object_fallback', '-cc clang', {
+		'v.mod':  "Module { name: 'objective_c_object_fallback' }\n"
+		'shim.m': 'int answer_from_objective_c_object(void) { return 64; }\n'
+		'main.v': 'module main\n\n#flag @VMODROOT/shim.o\n\nfn C.answer_from_objective_c_object() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_objective_c_object()))\n}\n'
+	}, 'main.v')
+	assert objective_c_object_fallback_out == '64'
+	objective_cpp_after_guarded_header_out := run_good_project_with_flags(v3_bin,
+		'objective_cpp_after_guarded_header', '-cc clang', {
+		'v.mod':   "Module { name: 'objective_cpp_after_guarded_header' }\n"
+		'shim.h':  '#ifndef V3_REVIEW_SHIM_H\n#define V3_REVIEW_SHIM_H\ntypedef int v3_review_header_int;\n#endif\n'
+		'shim.mm': 'extern "C" int answer_after_guarded_header(void) { v3_review_header_int value = 48; auto answer = [value]() { return value; }; return answer(); }\n'
+		'main.v':  'module main\n\n#include "shim.h"\n#include "shim.mm"\n\nfn C.answer_after_guarded_header() int\n\nfn main() {\n\tprintln(int_str(C.answer_after_guarded_header()))\n}\n'
+	}, 'main.v')
+	assert objective_cpp_after_guarded_header_out == '48'
+	guarded_objective_cpp_out := run_good_project_with_flags(v3_bin,
+		'guarded_objective_cpp_source_include', '-cc clang', {
+		'v.mod':          "Module { name: 'guarded_objective_cpp_source_include' }\n"
+		'disabled.m':     '#error disabled Objective-C source must not be compiled\n'
+		'disabled.mm':    '#error disabled Objective-C++ source must not be compiled\n'
+		'defs.h':         'typedef int v3_intervening_header_type;\n'
+		'macro_value.mm': '#ifndef V3_OBJECTIVE_CPP_VALUE\n#error missing include macro context\n#endif\nextern "C" int answer_from_macro_objective_cpp(void) { auto answer = []() { return V3_OBJECTIVE_CPP_VALUE; }; return answer(); }\n'
+		'main.v':         'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.mm"\n#endif\n\n#define V3_OBJECTIVE_CPP_VALUE 47\n#include "defs.h"\n#include "macro_value.mm"\n#undef V3_OBJECTIVE_CPP_VALUE\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error generated V translation unit must remain C\n#endif\n\nfn C.answer_from_macro_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_macro_objective_cpp()))\n}\n'
+	}, 'main.v')
+	assert guarded_objective_cpp_out == '47'
+	inactive_objective_c_out := run_good_project(v3_bin, 'inactive_objective_c_source', {
+		'v.mod':      "Module { name: 'inactive_objective_c_source' }\n"
+		'disabled.m': '#error inactive Objective-C source must not be compiled\n'
+		'main.v':     'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\nfn main() {\n\tprintln(int_str(60))\n}\n'
+	}, 'main.v')
+	assert inactive_objective_c_out == '60'
+	inactive_objective_cpp := run_good_project_result(v3_bin, 'inactive_objective_cpp_source', '', {
+		'v.mod':       "Module { name: 'inactive_objective_cpp_source' }\n"
+		'disabled.mm': '#error inactive Objective-C++ source must not be compiled\n'
+		'main.v':      'module main\n\n#if 0\n#include "disabled.mm"\n#endif\n\n#ifdef V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(65))\n}\n'
+	}, 'main.v')
+	assert inactive_objective_cpp.run_output == '65'
+	assert !inactive_objective_cpp.compile_output.contains('v3_native_source_context_'), inactive_objective_cpp.compile_output
+
+	guarded_objective_c_static_out := run_good_project_with_flags(v3_bin,
+		'guarded_objective_c_static', '-cc clang', {
+		'v.mod':  "Module { name: 'guarded_objective_c_static' }\n"
+		'shim.m': '#ifndef V3_OBJECTIVE_C_STATIC_VALUE\n#error missing guarded Objective-C context\n#endif\nstatic int answer_from_guarded_objective_c_static(void) { return V3_OBJECTIVE_C_STATIC_VALUE; }\n'
+		'main.v': 'module main\n\n#define V3_OBJECTIVE_C_STATIC_VALUE 55\n#ifdef V3_OBJECTIVE_C_STATIC_VALUE\n#include "shim.m"\n#endif\n\nfn C.answer_from_guarded_objective_c_static() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_guarded_objective_c_static()))\n}\n'
+	}, 'main.v')
+	assert guarded_objective_c_static_out == '55'
+	delayed_objective_c_macro_out := run_good_project_with_flags(v3_bin,
+		'delayed_objective_c_macro', '-cc clang', {
+		'v.mod':  "Module { name: 'delayed_objective_c_macro' }\n"
+		'shim.m': '#ifndef V3_DELAYED_OBJECTIVE_C_VALUE\n#error missing delayed Objective-C macro context\n#endif\nstatic int answer_from_delayed_objective_c_macro(void) { return V3_DELAYED_OBJECTIVE_C_VALUE; }\n'
+		'main.v': 'module main\n\n#define V3_DELAYED_OBJECTIVE_C_VALUE 57\n#ifdef V3_DELAYED_OBJECTIVE_C_VALUE\n#include "shim.m"\n#endif\n#undef V3_DELAYED_OBJECTIVE_C_VALUE\n\nfn C.answer_from_delayed_objective_c_macro() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_delayed_objective_c_macro()))\n}\n'
+	}, 'main.v')
+	assert delayed_objective_c_macro_out == '57'
+	inactive_undef_context_out := run_good_project_with_flags(v3_bin, 'inactive_undef_context',
+		'-cc clang', {
+		'v.mod':  "Module { name: 'inactive_undef_context' }\n"
+		'shim.m': '#ifndef V3_ACTIVE_THROUGH_INACTIVE_UNDEF\n#error active macro was lost through inactive undef\n#endif\nstatic int answer_after_inactive_undef(void) { return V3_ACTIVE_THROUGH_INACTIVE_UNDEF; }\n'
+		'main.v': 'module main\n\n#define V3_ACTIVE_THROUGH_INACTIVE_UNDEF 62\n#if 0\n#undef V3_ACTIVE_THROUGH_INACTIVE_UNDEF\n#endif\n#include "shim.m"\n#undef V3_ACTIVE_THROUGH_INACTIVE_UNDEF\n\nfn C.answer_after_inactive_undef() int\n\nfn main() {\n\tprintln(int_str(C.answer_after_inactive_undef()))\n}\n'
+	}, 'main.v')
+	assert inactive_undef_context_out == '62'
+	inactive_defined_guard_out := run_good_project(v3_bin, 'inactive_defined_objective_c_guard', {
+		'v.mod':      "Module { name: 'inactive_defined_objective_c_guard' }\n"
+		'disabled.m': '#error defined() guarded Objective-C source must not be compiled\n'
+		'main.v':     'module main\n\n#if defined(V3_NEVER_DEFINED_FOR_OBJECTIVE_C)\n#include "disabled.m"\n#endif\n\n#if 0\n#elif 0\n#include "disabled.m"\n#endif\n\n#if 1\n#elif 0\n#else\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error inactive guards must not enable Objective-C\n#endif\n\nfn main() {\n\tprintln(int_str(63))\n}\n'
+	}, 'main.v')
+	assert inactive_defined_guard_out == '63'
+	noncontiguous_source_context_out := run_good_project_with_flags(v3_bin,
+		'noncontiguous_source_context', '-cc clang', {
+		'v.mod':  "Module { name: 'noncontiguous_source_context' }\n"
+		'defs.h': 'typedef int v3_noncontiguous_context_header_type;\n'
+		'shim.m': '#ifndef V3_NONCONTIGUOUS_CONTEXT_VALUE\n#error missing non-contiguous macro context\n#endif\nstatic int answer_from_noncontiguous_context(void) { return V3_NONCONTIGUOUS_CONTEXT_VALUE; }\n'
+		'main.v': 'module main\n\n#define V3_NONCONTIGUOUS_CONTEXT_VALUE 61\n#pragma pack(push, 1)\n#include "defs.h"\n#include "shim.m"\n#pragma pack(pop)\n#undef V3_NONCONTIGUOUS_CONTEXT_VALUE\n\nstruct V3DelayedContextLayout {\n\tfirst u8\n\tsecond u64\n}\n\nfn C.answer_from_noncontiguous_context() int\n\nfn main() {\n\tprintln(int_str(int(sizeof(V3DelayedContextLayout))))\n\tprintln(int_str(C.answer_from_noncontiguous_context()))\n}\n'
+	}, 'main.v')
+	assert noncontiguous_source_context_out == '16\n61'
+	relative_source_include_out := run_good_project_relative_input(v3_bin, 'relative_source_input',
+		'-cc clang', {
+		'v.mod':  "Module { name: 'relative_source_input' }\n"
+		'shim.c': 'int answer_from_relative_c(void) { return 58; }\n'
+		'shim.m': 'int answer_from_relative_objective_c(void) { return 1; }\n'
+		'main.v': 'module main\n\n#include "shim.c"\n#include "shim.m"\n\nfn C.answer_from_relative_c() int\nfn C.answer_from_relative_objective_c() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_relative_c() + C.answer_from_relative_objective_c()))\n}\n'
+	}, 'main.v')
+	assert relative_source_include_out == '59'
+	cpp_runtime_out := run_good_project_with_flags(v3_bin, 'cpp_source_runtime', '-cc clang', {
+		'v.mod':    "Module { name: 'cpp_source_runtime' }\n"
+		'shim.cpp': '#include <string>\nextern "C" int answer_from_cpp_runtime(void) { std::string answer(44, \'x\'); return int(answer.size()); }\n'
+		'main.v':   'module main\n\n#flag @VMODROOT/shim.cpp\n\nfn C.answer_from_cpp_runtime() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp_runtime()))\n}\n'
+	}, 'main.v')
+	assert cpp_runtime_out == '44'
+	explicit_language_out := run_good_project_with_flags(v3_bin, 'explicit_language_source_flag',
+		'-cc clang', {
+		'v.mod':  "Module { name: 'explicit_language_source_flag' }\n"
+		'shim.c': '#include <string>\nextern "C" int answer_from_explicit_cpp(void) { std::string answer(44, \'x\'); return int(answer.size()); }\n'
+		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim.c\n\nfn C.answer_from_explicit_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_explicit_cpp()))\n}\n'
+	}, 'main.v')
+	assert explicit_language_out == '44'
+	explicit_object_language_out := run_good_project_with_flags(v3_bin,
+		'explicit_object_fallback_language', '-cc clang', {
+		'v.mod':  "Module { name: 'explicit_object_fallback_language' }\n"
+		'shim.c': '#include <string>\nextern "C" int answer_from_explicit_object_cpp(void) { std::string answer(52, \'x\'); return int(answer.size()); }\n'
+		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim.o\n\nfn C.answer_from_explicit_object_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_explicit_object_cpp()))\n}\n'
+	}, 'main.v')
+	assert explicit_object_language_out == '52'
+	extensionless_language_out := run_good_project_with_flags(v3_bin,
+		'extensionless_explicit_language', '-cc clang', {
+		'v.mod':  "Module { name: 'extensionless_explicit_language' }\n"
+		'shim':   '#include <string>\nextern "C" int answer_from_extensionless_cpp(void) { std::string answer(53, \'x\'); return int(answer.size()); }\n'
+		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim\n\nfn C.answer_from_extensionless_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_extensionless_cpp()))\n}\n'
+	}, 'main.v')
+	assert extensionless_language_out == '53'
+	objective_cpp_c_override_out := run_good_project_with_flags(v3_bin, 'objective_cpp_c_override',
+		'-cc clang', {
+		'v.mod':   "Module { name: 'objective_cpp_c_override' }\n"
+		'shim.mm': 'int answer_from_mm_compiled_as_c(void) { void* raw = 0; int* typed = raw; return typed == 0 ? 54 : 0; }\n'
+		'main.v':  'module main\n\n#flag -x c\n#flag @VMODROOT/shim.mm\n\nfn C.answer_from_mm_compiled_as_c() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_mm_compiled_as_c()))\n}\n'
+	}, 'main.v')
+	assert objective_cpp_c_override_out == '54'
+}
+
+fn test_imported_objective_cpp_wrapper_context() {
+	v3_bin := build_v3()
+	out := run_good_project_with_flags(v3_bin, 'imported_objective_cpp_wrapper_context',
+		'-cc clang', {
+		'v.mod':                   "Module { name: 'imported_objective_cpp_wrapper_context' }\n"
+		'nativecontext/context.v': 'module nativecontext\n\n#define V3_IMPORTED_OBJECTIVE_CPP_VALUE 68\n#include "types.h"\n\npub fn keep_context_module() {}\n'
+		'nativecontext/types.h':   'typedef int v3_imported_objective_cpp_int;\n'
+		'consumer/consumer.v':     'module consumer\n\nimport nativecontext\n\n#include "shim.mm"\n\nfn C.answer_from_imported_objective_cpp_context() int\n\npub fn answer() int {\n\tnativecontext.keep_context_module()\n\treturn C.answer_from_imported_objective_cpp_context()\n}\n'
+		'consumer/shim.mm':        '#ifndef V3_IMPORTED_OBJECTIVE_CPP_VALUE\n#error missing imported Objective-C++ macro context\n#endif\nextern "C" int answer_from_imported_objective_cpp_context(void) { v3_imported_objective_cpp_int value = V3_IMPORTED_OBJECTIVE_CPP_VALUE; auto answer = [value]() { return value; }; return answer(); }\n'
+		'main.v':                  'module main\n\nimport consumer\n\nfn main() {\n\tprintln(int_str(consumer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '68'
+}
+
+fn test_review_fixed_array_alias_clone_dispatch() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'fixed_array_alias_clone_dispatch', 'type FixedClone = [2]int
+
+fn (value FixedClone) clone() FixedClone {
+	return FixedClone([value[1], value[0]]!)
+}
+
+fn main() {
+	value := FixedClone([1, 2]!)
+	cloned := value.clone()
+	println(int_str(cloned[0]))
+	println(int_str(cloned[1]))
+}
+')
+	assert out == '2\n1'
+}
+
+fn test_review_generic_pointer_sizeof() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'generic_pointer_sizeof', 'struct SizeBox[T] {
+	value T
+}
+
+fn main() {
+	first := &SizeBox[int]{
+		value: 1
+	}
+	lhs := [2]&SizeBox[int]{init: first}
+	rhs := [2]&SizeBox[int]{init: first}
+	println(sizeof(&SizeBox[int]) == sizeof(voidptr))
+	println(sizeof([2]&SizeBox[int]) == 2 * sizeof(voidptr))
+	println(lhs == rhs)
+}
+')
+	assert out == 'true\ntrue\ntrue'
+}
+
+fn test_followup_review_pointer_call_and_equality_semantics() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'c_voidptr_does_not_auto_address', 'fn C.take(voidptr)
+
+fn main() {
+	value := 7
+	C.take(value)
+}
+',
+		'cannot use `int` as argument')
+	run_bad(v3_bin, 'v_voidptr_enum_value_does_not_auto_address', 'enum Color {
+	red
+}
+
+fn take(value voidptr) {
+	_ = value
+}
+
+fn main() {
+	take(Color.red)
+}
+',
+		'cannot use `Color` as argument')
+	v_call_out := run_good(v3_bin, 'v_voidptr_auto_address', 'const voidptr_const_value = 9
+
+fn take(value voidptr) int {
+	return unsafe { *(&int(value)) }
+}
+
+fn main() {
+	value := 7
+	println(int_str(take(value)))
+	println(int_str(take(voidptr_const_value)))
+}
+')
+	assert v_call_out == '7\n9'
+	pointer_for_out := run_good(v3_bin, 'mut_pointer_for_in_arg', 'struct PointerItem {
+mut:
+	value int
+}
+
+fn increment(mut item PointerItem) {
+	item.value++
+}
+
+fn main() {
+	mut first := PointerItem{
+		value: 1
+	}
+	mut second := PointerItem{
+		value: 2
+	}
+	mut items := [&first, &second]
+	for mut item in items {
+		increment(mut item)
+	}
+	println(int_str(first.value))
+	println(int_str(second.value))
+}
+')
+	assert pointer_for_out == '2\n3'
+	optional_pointer_out := run_good(v3_bin, 'optional_pointer_equality_semantics', 'struct Item {
+	value int
+}
+
+struct Bag {
+	items []int
+}
+
+type BagRef = &Bag
+
+fn main() {
+	a := 7
+	b := 7
+	item_a := Item{
+		value: 7
+	}
+	item_b := Item{
+		value: 7
+	}
+	opt_a := unsafe { ?&int(&a) }
+	opt_b := unsafe { ?&int(&b) }
+	opt_item_a := unsafe { ?&Item(&item_a) }
+	opt_item_b := unsafe { ?&Item(&item_b) }
+	bag_a := &Bag{
+		items: [1]
+	}
+	bag_b := &Bag{
+		items: [1]
+	}
+	nil_bag := &Bag(unsafe { nil })
+	opt_bag_a := unsafe { ?&Bag(bag_a) }
+	opt_bag_b := unsafe { ?&Bag(bag_b) }
+	opt_nil_bag := unsafe { ?&Bag(nil_bag) }
+	opt_alias_bag_a := unsafe { ?BagRef(BagRef(bag_a)) }
+	opt_alias_bag_b := unsafe { ?BagRef(BagRef(bag_b)) }
+	opt_alias_nil_bag := unsafe { ?BagRef(BagRef(nil_bag)) }
+	println(opt_a == opt_b)
+	println(opt_a == opt_a)
+	println(opt_item_a == opt_item_b)
+	println(opt_nil_bag == opt_bag_a)
+	println(opt_nil_bag == opt_nil_bag)
+	println(opt_bag_a == opt_bag_b)
+	println(opt_alias_bag_a == opt_alias_bag_b)
+	println(opt_alias_nil_bag == opt_alias_bag_a)
+	println(opt_alias_nil_bag == opt_alias_nil_bag)
+}
+')
+	assert optional_pointer_out == 'false\ntrue\ntrue\nfalse\ntrue\ntrue\ntrue\nfalse\ntrue'
+	sum_pointer_alias_out := run_good(v3_bin, 'sum_pointer_alias_equality_semantics', 'struct Item {
+	value int
+}
+
+type ItemRef = &Item
+type Value = ItemRef | int
+
+fn main() {
+	first := &Item{
+		value: 7
+	}
+	second := &Item{
+		value: 7
+	}
+	lhs := Value(ItemRef(first))
+	different_address := Value(ItemRef(second))
+	same_address := Value(ItemRef(first))
+	println(lhs == different_address)
+	println(lhs == same_address)
+}
+')
+	assert sum_pointer_alias_out == 'false\ntrue'
+	mut_pointer_iteration_out := run_good(v3_bin, 'mut_pointer_iteration_rebinds_slots', 'struct Item {
+mut:
+	value int
+}
+
+fn increment(mut item Item) {
+	item.value++
+}
+
+fn main() {
+	first := &Item{
+		value: 1
+	}
+	mut second := &Item{
+		value: 2
+	}
+	mut dynamic := [first]
+	for mut item in dynamic {
+		item = second
+		increment(mut item)
+	}
+	mut fixed := [first]!
+	for mut item in fixed {
+		item = second
+		increment(mut *item)
+	}
+	second.value = 9
+	println(int_str(dynamic[0].value))
+	println(int_str(fixed[0].value))
+}
+')
+	assert mut_pointer_iteration_out == '9\n9'
+	run_bad(v3_bin, 'ordinary_pointer_rejected_for_value_param', 'struct PointerCallItem {
+	value int
+}
+
+fn take_value(item PointerCallItem) int {
+	return item.value
+}
+
+fn main() {
+	item := &PointerCallItem{
+		value: 7
+	}
+	println(int_str(take_value(item)))
+}
+',
+		'cannot use `&PointerCallItem` as argument 1 to `take_value`; expected `PointerCallItem`')
 }

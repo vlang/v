@@ -137,6 +137,12 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			field_ids << child_id
 		}
 	}
+	if promoted_fields.len > 0 {
+		for stmt in prelude {
+			t.pending_stmts << stmt
+		}
+		prelude.clear()
+	}
 	for key, promoted in promoted_fields {
 		path := promoted_paths[key] or { []FieldInfo{} }
 		if path.len == 0 {
@@ -172,12 +178,282 @@ fn promoted_field_path_key(path []FieldInfo) string {
 	return parts.join('\n')
 }
 
+fn (t &Transformer) promoted_struct_init_type(field FieldInfo) string {
+	return t.trim_pointer_type(t.normalize_type_alias(field.typ))
+}
+
+struct PromotedStructDefaultMerge {
+	init         flat.NodeId
+	materialized bool
+}
+
+fn (mut t Transformer) clone_promoted_default_in_decl_scope(id flat.NodeId, module_name string, file string) flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return id
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind in [.ident, .selector] {
+		name := t.expr_key(id)
+		if name.len > 0 {
+			if key := t.const_type_key_in_context(name, module_name, file) {
+				return t.a.add_node(flat.Node{
+					kind:                 .ident
+					op:                   node.op
+					pos:                  node.pos
+					value:                key
+					typ:                  node.typ
+					is_mut:               node.is_mut
+					skip_ownership_drops: node.skip_ownership_drops
+				})
+			}
+		}
+	}
+	mut children := []flat.NodeId{cap: int(node.children_count)}
+	for i in 0 .. node.children_count {
+		children << t.clone_promoted_default_in_decl_scope(t.a.child(&node, i), module_name, file)
+	}
+	start := t.a.children.len
+	for child in children {
+		t.a.children << child
+	}
+	return t.a.add_node(flat.Node{
+		kind:                 node.kind
+		op:                   node.op
+		pos:                  node.pos
+		value:                node.value
+		typ:                  node.typ
+		payload:              node.payload
+		is_mut:               node.is_mut
+		children_start:       start
+		children_count:       flat.child_count(children.len)
+		skip_ownership_drops: node.skip_ownership_drops
+	})
+}
+
+fn (mut t Transformer) promoted_struct_init_field_value(field FieldInfo, init flat.NodeId, materialized bool) flat.NodeId {
+	normalized_type := t.normalize_type_alias(field.typ)
+	if !normalized_type.starts_with('&') {
+		return init
+	}
+	value := t.make_prefix(.amp, init)
+	if materialized {
+		pointee_type := t.trim_pointer_type(normalized_type)
+		dup := t.make_memdup_call_for_type(value, pointee_type)
+		return t.make_cast(normalized_type, dup, normalized_type)
+	}
+	t.set_node_typ(int(value), normalized_type)
+	return value
+}
+
+fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, default_id flat.NodeId, struct_type string) PromotedStructDefaultMerge {
+	if int(default_id) < 0 {
+		return PromotedStructDefaultMerge{
+			init: init_id
+		}
+	}
+	default_init := t.a.nodes[int(default_id)]
+	if default_init.kind != .struct_init {
+		return PromotedStructDefaultMerge{
+			init:         t.materialize_promoted_struct_default(init_id, default_id, struct_type)
+			materialized: true
+		}
+	}
+	init := t.a.nodes[int(init_id)]
+	mut provided := map[string]flat.NodeId{}
+	mut merged_provided := map[string]flat.NodeId{}
+	info := t.lookup_struct_info(struct_type) or { StructInfo{} }
+	for i in 0 .. init.children_count {
+		field_id := t.a.child(&init, i)
+		field := t.a.nodes[int(field_id)]
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < info.fields.len {
+			info.fields[i].name
+		} else {
+			''
+		}
+		if field_name.len > 0 {
+			provided[field_name] = field_id
+		}
+	}
+	mut missing_defaults := []flat.NodeId{}
+	old_module := t.cur_module
+	old_file := t.cur_file
+	if info.module.len > 0 {
+		t.cur_module = info.module
+	}
+	for i in 0 .. default_init.children_count {
+		field_id := t.a.child(&default_init, i)
+		field := t.a.nodes[int(field_id)]
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < info.fields.len {
+			info.fields[i].name
+		} else {
+			''
+		}
+		if field_name.len == 0 {
+			continue
+		}
+		if provided_id := provided[field_name] {
+			provided_field := t.a.nodes[int(provided_id)]
+			if field.kind == .field_init && field.children_count > 0
+				&& provided_field.kind == .field_init && provided_field.children_count > 0 {
+				// A promoted child initializer is partial; recursively retain fields from
+				// the parent aggregate's declared struct-literal default.
+				default_value_id := t.a.child(&field, 0)
+				provided_value_id := t.a.child(&provided_field, 0)
+				default_value := t.a.nodes[int(default_value_id)]
+				provided_value := t.a.nodes[int(provided_value_id)]
+				if default_value.kind == .struct_init && provided_value.kind == .struct_init {
+					field_type := t.lookup_struct_field_type(struct_type, field_name) or {
+						field.typ
+					}
+					child_type := t.trim_pointer_type(t.normalize_type_alias(field_type))
+					merged_child := t.merge_promoted_struct_default(provided_value_id,
+						default_value_id, child_type)
+					child_start := t.a.children.len
+					t.a.children << merged_child.init
+					merged_provided[field_name] = t.a.add_node(flat.Node{
+						kind:           .field_init
+						op:             provided_field.op
+						children_start: child_start
+						children_count: 1
+						pos:            provided_field.pos
+						value:          field_name
+						typ:            if provided_field.typ.len > 0 {
+							provided_field.typ
+						} else {
+							field_type
+						}
+					})
+				}
+			}
+			continue
+		}
+		mut missing_id := field_id
+		if field.kind == .field_init && field.children_count > 0 {
+			field_type := t.lookup_struct_field_type(struct_type, field_name) or { field.typ }
+			default_value_id := t.a.child(&field, 0)
+			if source_file := t.a.source_files[field.pos.id] {
+				t.cur_file = source_file.name
+			}
+			decl_value_id := t.clone_promoted_default_in_decl_scope(default_value_id, info.module,
+				t.cur_file)
+			default_value := t.a.nodes[int(decl_value_id)]
+			enum_field_type := t.enum_type_name_for_expected(field_type, info.module)
+			new_value := if default_value.kind == .enum_val && enum_field_type.len > 0 {
+				t.transform_enum_shorthand(decl_value_id, default_value, enum_field_type)
+			} else if t.is_sum_type_name(field_type) {
+				t.wrap_sum_value(decl_value_id, field_type)
+			} else {
+				t.transform_expr_for_type(decl_value_id, field_type)
+			}
+			field_start := t.a.children.len
+			t.a.children << new_value
+			missing_id = t.a.add_node(flat.Node{
+				kind:           .field_init
+				op:             field.op
+				children_start: field_start
+				children_count: 1
+				pos:            field.pos
+				value:          field_name
+				typ:            if field.typ.len > 0 { field.typ } else { field_type }
+			})
+		}
+		missing_defaults << missing_id
+		provided[field_name] = missing_id
+	}
+	t.cur_module = old_module
+	t.cur_file = old_file
+	if missing_defaults.len == 0 && merged_provided.len == 0 {
+		return PromotedStructDefaultMerge{
+			init: init_id
+		}
+	}
+	start := t.a.children.len
+	for field_id in missing_defaults {
+		t.a.children << field_id
+	}
+	for i in 0 .. init.children_count {
+		field_id := t.a.child(&init, i)
+		field := t.a.nodes[int(field_id)]
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < info.fields.len {
+			info.fields[i].name
+		} else {
+			''
+		}
+		t.a.children << (merged_provided[field_name] or { field_id })
+	}
+	return PromotedStructDefaultMerge{
+		init: t.a.add_node(flat.Node{
+			kind:           .struct_init
+			op:             init.op
+			children_start: start
+			children_count: missing_defaults.len + int(init.children_count)
+			pos:            init.pos
+			value:          init.value
+			typ:            init.typ
+		})
+	}
+}
+
+fn (mut t Transformer) materialize_promoted_struct_default(init_id flat.NodeId, default_id flat.NodeId, struct_type string) flat.NodeId {
+	init := t.a.nodes[int(init_id)]
+	if init.kind != .struct_init {
+		return init_id
+	}
+	info := t.lookup_struct_info(struct_type) or { return init_id }
+	old_module := t.cur_module
+	old_file := t.cur_file
+	if info.module.len > 0 {
+		t.cur_module = info.module
+	}
+	default_node := t.a.nodes[int(default_id)]
+	if source_file := t.a.source_files[default_node.pos.id] {
+		t.cur_file = source_file.name
+		if !isnil(t.tc) {
+			t.cur_module = t.tc.file_modules[t.cur_file] or { t.cur_module }
+		}
+	}
+	default_value := t.transform_expr_for_type(default_id, struct_type)
+	t.cur_module = old_module
+	t.cur_file = old_file
+	tmp_name := t.new_temp('promoted_default')
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, default_value, struct_type)
+	for i in 0 .. init.children_count {
+		field := t.a.child_node(&init, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < info.fields.len {
+			info.fields[i].name
+		} else {
+			''
+		}
+		if field_name.len == 0 {
+			continue
+		}
+		field_type := t.lookup_struct_field_type(struct_type, field_name) or { field.typ }
+		value := t.a.child(field, 0)
+		selector := t.make_selector(t.make_ident(tmp_name), field_name, field_type)
+		t.pending_stmts << t.make_assign(selector, value)
+	}
+	result := t.make_ident(tmp_name)
+	t.set_node_typ(int(result), struct_type)
+	return result
+}
+
 fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fields []flat.NodeId) flat.NodeId {
 	mut init_start := t.a.children.len
 	for fid in leaf_fields {
 		t.a.children << fid
 	}
-	mut cur_type := path[path.len - 1].typ
+	mut cur_type := t.promoted_struct_init_type(path[path.len - 1])
 	mut cur_init := t.a.add_node(flat.Node{
 		kind:           .struct_init
 		children_start: init_start
@@ -185,12 +461,17 @@ fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fi
 		value:          cur_type
 		typ:            cur_type
 	})
+	mut merged := t.merge_promoted_struct_default(cur_init, path[path.len - 1].default_expr,
+		cur_type)
+	cur_init = merged.init
+	mut cur_init_materialized := merged.materialized
 	for rev in 0 .. path.len - 1 {
 		idx := path.len - 2 - rev
 		parent := path[idx]
 		child := path[idx + 1]
+		field_value := t.promoted_struct_init_field_value(child, cur_init, cur_init_materialized)
 		field_start := t.a.children.len
-		t.a.children << cur_init
+		t.a.children << field_value
 		field := t.a.add_node(flat.Node{
 			kind:           .field_init
 			children_start: field_start
@@ -200,7 +481,7 @@ fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fi
 		})
 		init_start = t.a.children.len
 		t.a.children << field
-		cur_type = parent.typ
+		cur_type = t.promoted_struct_init_type(parent)
 		cur_init = t.a.add_node(flat.Node{
 			kind:           .struct_init
 			children_start: init_start
@@ -208,10 +489,14 @@ fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fi
 			value:          cur_type
 			typ:            cur_type
 		})
+		merged = t.merge_promoted_struct_default(cur_init, parent.default_expr, cur_type)
+		cur_init = merged.init
+		cur_init_materialized = merged.materialized
 	}
 	root := path[0]
+	root_value := t.promoted_struct_init_field_value(root, cur_init, cur_init_materialized)
 	field_start := t.a.children.len
-	t.a.children << cur_init
+	t.a.children << root_value
 	return t.a.add_node(flat.Node{
 		kind:           .field_init
 		children_start: field_start

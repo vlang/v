@@ -2087,7 +2087,7 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 			arg_type = fm.comptime_typ
 		}
 		mut inference_type := t.comptime_normalize_type_alias_chain(arg_type)
-		if inference_type.len == 0 || inference_type == arg_type {
+		if inference_type.len == 0 {
 			inference_type = fm.comptime_unaliased
 		}
 		infer_generic_type_args(param.typ, inference_type, mut inferred)

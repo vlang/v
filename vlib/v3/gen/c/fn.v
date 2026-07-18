@@ -1881,6 +1881,39 @@ fn c_type_is_pointer_like(typ types.Type) bool {
 	return false
 }
 
+// voidptr_value_arg_needs_address mirrors the checker rule that lets a non-C
+// voidptr parameter borrow an addressable value. Keep this explicit even though
+// the general pointer-parameter path below also handles most value types.
+fn (g &FlatGen) voidptr_value_arg_needs_address(arg_id flat.NodeId, arg_node flat.Node, actual types.Type, expected types.Type) bool {
+	if !type_is_void_pointer(expected) || c_type_is_pointer_like(actual)
+		|| g.arg_is_null_pointer_literal(arg_id, arg_node)
+		|| g.fn_value_arg_passes_direct_to_voidptr(arg_id, arg_node, actual, expected)
+		|| !g.expr_is_addressable(arg_id) {
+		return false
+	}
+	if arg_node.kind == .ident {
+		if g.local_storage_is_pointer(arg_node.value) {
+			return false
+		}
+		if global_type := g.global_type_for_ident(arg_node.value) {
+			if c_type_is_pointer_like(global_type) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+fn (g &FlatGen) addressed_const_arg_value_type(arg_id flat.NodeId, expected types.Type) types.Type {
+	if type_is_void_pointer(expected) {
+		actual := g.usable_expr_type(arg_id)
+		if actual !is types.Unknown && actual !is types.Void {
+			return actual
+		}
+	}
+	return types.unwrap_pointer(expected)
+}
+
 fn (g &FlatGen) c_char_literal_arg(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
@@ -5279,6 +5312,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						needs_addr = false
 					}
 				}
+				if !is_c_call && arg_idx < typed_param_count
+					&& g.voidptr_value_arg_needs_address(arg_id, arg_node, g.usable_expr_type(arg_id), param_types[arg_idx]) {
+					needs_addr = true
+				}
 				if !is_c_call && !needs_addr && arg_idx == 0
 					&& (g.mut_receiver_arg_wants_addr(actual_fn, arg_id)
 					|| g.mut_receiver_arg_wants_addr(emitted_callee_name, arg_id)
@@ -5314,10 +5351,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					|| (arg_node.kind == .index && arg_node.value == 'range')
 					|| g.arg_is_const_ident(arg_node)
 				if needs_addr && g.arg_is_const_ident(arg_node) {
-					pt := param_types[arg_idx]
-					ct := g.tc.c_type(types.unwrap_pointer(pt))
+					value_type := g.addressed_const_arg_value_type(arg_id, param_types[arg_idx])
+					ct := g.tc.c_type(value_type)
 					g.write('(${ct}[]){')
-					g.gen_expr_with_expected_type(arg_id, types.unwrap_pointer(pt))
+					g.gen_expr_with_expected_type(arg_id, value_type)
 					g.write('}')
 				} else if needs_addr && is_rvalue {
 					pt := param_types[arg_idx]
@@ -5397,6 +5434,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 fn (g &FlatGen) ownership_drop_intrinsic_name(name string) bool {
 	if name in ['builtin.drop_owned', 'builtin__drop_owned']
 		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_') {
+		return true
+	}
+	if name in ['drop_owned_v3_interface', 'builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
+		|| name.starts_with('drop_owned_v3_interface_T_')
+		|| name.starts_with('builtin.drop_owned_v3_interface_T_')
+		|| name.starts_with('builtin__drop_owned_v3_interface_T_') {
 		return true
 	}
 	if name != 'drop_owned' && !name.starts_with('drop_owned_T_') {
@@ -10554,14 +10597,18 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 					&& (g.local_storage_is_pointer(arg_node.value) || arg_is_pointer_global))
 			}
 		}
+		if !is_c_call && arg_idx < typed_param_count
+			&& g.voidptr_value_arg_needs_address(arg_id, arg_node, g.usable_expr_type(arg_id), param_types[arg_idx]) {
+			needs_addr = true
+		}
 		is_rvalue := arg_node.kind == .call
 			|| (arg_node.kind == .index && arg_node.value == 'range')
 			|| g.arg_is_const_ident(arg_node)
 		if needs_addr && g.arg_is_const_ident(arg_node) {
-			pt := param_types[arg_idx]
-			ct := g.tc.c_type(types.unwrap_pointer(pt))
+			value_type := g.addressed_const_arg_value_type(arg_id, param_types[arg_idx])
+			ct := g.tc.c_type(value_type)
 			g.write('(${ct}[]){')
-			g.gen_expr_with_expected_type(arg_id, types.unwrap_pointer(pt))
+			g.gen_expr_with_expected_type(arg_id, value_type)
 			g.write('}')
 		} else if needs_addr && is_rvalue {
 			pt := param_types[arg_idx]
@@ -11501,7 +11548,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			&& !referenced_c_externs[raw_cfn] && !referenced_c_externs[cfn] {
 			continue
 		}
-		if !g.should_emit_c_extern_decl(cfn) {
+		if !g.should_emit_c_extern_decl_from_file(cfn, cur_file) {
 			continue
 		}
 		if cfn == 'syscall' {
@@ -11665,6 +11712,15 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	return true
 }
 
+fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string) bool {
+	// builtin/cfns.c.v declares the static vschannel helper supplied by its C header.
+	// A user C.request declaration is unrelated and still needs an extern prototype.
+	if cfn == 'request' && source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v') {
+		return false
+	}
+	return g.should_emit_c_extern_decl(cfn)
+}
+
 // c_system_libc_preamble_declared_fns contains only symbols declared by the fixed
 // header set in system_libc_headers(). Declarations from other system headers are
 // tracked per include through inlined_c_declared_fns.
@@ -11672,13 +11728,17 @@ const c_system_libc_preamble_declared_fns = {
 	'__builtin_ctz':                 true
 	'__builtin_ctzll':               true
 	'abs':                           true
+	'accept':                        true
 	'atomic_thread_fence':           true
+	'bind':                          true
+	'chdir':                         true
 	'chmod':                         true
 	'clock_gettime_nsec_np':         true
 	'clock_gettime':                 true
 	'closedir':                      true
 	'connect':                       true
 	'cosf':                          true
+	'execve':                        true
 	'exit':                          true
 	'fdopen':                        true
 	'feof':                          true
@@ -11690,7 +11750,10 @@ const c_system_libc_preamble_declared_fns = {
 	'getcwd':                        true
 	'getpid':                        true
 	'gettimeofday':                  true
+	'getuid':                        true
+	'gmtime_r':                      true
 	'inet_ntop':                     true
+	'ioctl':                         true
 	'isatty':                        true
 	'localtime_r':                   true
 	'log':                           true
@@ -11712,6 +11775,7 @@ const c_system_libc_preamble_declared_fns = {
 	'readdir':                       true
 	'recv':                          true
 	'rewind':                        true
+	'rmdir':                         true
 	'send':                          true
 	'sendto':                        true
 	'setsockopt':                    true

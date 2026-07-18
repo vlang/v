@@ -975,7 +975,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		file_imports:                       g.tc.file_imports
 		file_selective_imports:             g.tc.file_selective_imports
 		file_modules:                       g.tc.file_modules
-		file_scope:                         fs
+		file_scope:                         g.tc.file_scope
 		cur_scope:                          fs
 		scope_pool:                         []&types.Scope{}
 		has_builtins:                       g.tc.has_builtins

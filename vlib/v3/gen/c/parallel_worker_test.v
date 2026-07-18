@@ -52,6 +52,16 @@ fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	assert g.parallel_cached_expr_type(flat.NodeId(1), tc.a.nodes[1]) or { types.Type(types.void_) } is types.String
 }
 
+fn test_parallel_checker_clone_keeps_checked_file_scope_identity() {
+	g, mut tc := parallel_worker_test_gen(true)
+	tc.file_scope.insert('file_value', types.Type(types.int_))
+	w := g.clone_parallel_type_checker()
+	assert w.file_scope == tc.file_scope
+	assert w.cur_scope != w.file_scope
+	owner := w.cur_scope.lookup_owner('file_value') or { panic('missing file binding') }
+	assert owner.belongs_to_scope(w.file_scope)
+}
+
 fn test_scoped_cgen_batch_preserves_worker_interned_literals() {
 	mut g, _ := parallel_worker_test_gen(true)
 	assert g.intern_string('source') == 0

@@ -34,6 +34,11 @@ fn test_flattened_generic_receiver_short_variants() {
 	]
 }
 
+fn test_receiver_method_guard_accepts_short_name_for_qualified_type() {
+	t := Transformer{}
+	assert t.receiver_method_matches_type_name('Thing.str', 'pkg.Thing')
+}
+
 fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
 	mut a := flat.FlatAst.new()
 	ident_id := a.add_node(flat.Node{

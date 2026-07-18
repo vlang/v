@@ -2247,6 +2247,16 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	}
 	if param_type.starts_with('&') && !t.is_sum_type_name(param_type[1..])
 		&& !t.is_interface_type(param_type) {
+		if arg_node.kind == .ident && t.pointer_value_lvalues[arg_node.value] {
+			arg_type := t.node_type(arg_id)
+			if arg_type.starts_with('&')
+				&& t.normalize_type_alias(arg_type[1..]) == t.normalize_type_alias(param_type) {
+				value := t.transform_expr_preserving_pointer_value(arg_id)
+				deref := t.make_prefix(.mul, value)
+				t.set_node_typ(int(deref), param_type)
+				return deref
+			}
+		}
 		if implicit_ref := t.transform_implicit_ref_arg(arg_id, param_type) {
 			return implicit_ref
 		}
@@ -3977,7 +3987,9 @@ fn (t &Transformer) str_method_has_pointer_receiver(str_fn string) bool {
 
 fn (t &Transformer) aggregate_str_method_name(aggregate string) ?string {
 	if method := t.resolve_receiver_method_for_type(aggregate, 'str') {
-		return method
+		if t.receiver_method_matches_type_name(method, aggregate) {
+			return method
+		}
 	}
 	c_name_fn := '${c_name(aggregate)}__str'
 	v_name_fn := '${aggregate}.str'
@@ -6668,13 +6680,16 @@ fn (mut t Transformer) try_lower_array_method_call(call_id flat.NodeId, node fla
 		}
 		for raw_base_type in raw_base_types {
 			if method_name := t.resolve_receiver_method_for_type(raw_base_type, 'str') {
-				args := t.transform_receiver_method_args(node, base_id, method_name)
-				ret_type := t.receiver_method_return_type(method_name, node.typ)
-				t.mark_fn_used_name(method_name)
-				return t.make_call_typed(method_name, args, ret_type)
+				if t.receiver_method_matches_type_name(method_name, raw_base_type) {
+					args := t.transform_receiver_method_args(node, base_id, method_name)
+					ret_type := t.receiver_method_return_type(method_name, node.typ)
+					t.mark_fn_used_name(method_name)
+					return t.make_call_typed(method_name, args, ret_type)
+				}
 			}
 			method_name := '${raw_base_type}.str'
-			if t.is_known_fn_name(method_name) {
+			if t.is_known_fn_name(method_name)
+				&& t.receiver_method_matches_type_name(method_name, raw_base_type) {
 				args := t.transform_receiver_method_args(node, base_id, method_name)
 				ret_type := t.receiver_method_return_type(method_name, node.typ)
 				t.mark_fn_used_name(method_name)
@@ -8172,6 +8187,10 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 			t.add_receiver_method_suffix_index(qname)
 		}
 	}
+	// Fn literals are materialized after markused has already walked the parsed
+	// declarations. Root the generated declaration explicitly so module-local
+	// callbacks are not referenced without a prototype/body in the C output.
+	t.mark_fn_used_name(name)
 	fn_value_type := fn_literal_value_type_text(param_types, ret_type)
 	mut ident := flat.empty_node
 	if file_module.len > 0 && file_module != 'main' && file_module != 'builtin' {
@@ -8904,6 +8923,11 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	if base_type.len == 0 {
 		return none
+	}
+	iface_name := t.resolve_interface_type_name(base_type)
+	if iface_name.len > 0 {
+		t.mark_fn_used_name('${iface_name}.${method}')
+		t.mark_interface_method_implementers_used(iface_name, method)
 	}
 	if method == 'close' && !isnil(t.tc) {
 		if resolved_method := t.tc.resolved_call_name(id) {
@@ -9975,6 +9999,10 @@ fn (mut t Transformer) embedded_receiver_base(base_id flat.NodeId, method_name s
 		is_ptr = true
 		base_type = base_type[1..]
 	}
+	// Check the embedding path before transforming the receiver. Transforming it
+	// speculatively can emit pending statements; falling back afterward would
+	// transform and evaluate a side-effecting receiver a second time.
+	_ := t.embedded_receiver_path(base_type, param_type) or { return none }
 	return t.embedded_receiver_base_for_type(t.transform_expr(base_id), if is_ptr {
 		'&${base_type}'
 	} else {
@@ -10157,6 +10185,29 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 		return true
 	}
 	return false
+}
+
+fn (t &Transformer) receiver_method_matches_type_name(method_name string, typ string) bool {
+	receiver_name := method_name.all_before_last('.')
+	if receiver_name.len == 0 {
+		return true
+	}
+	mut clean := typ.trim_space()
+	for clean.starts_with('&') {
+		clean = clean[1..]
+	}
+	mut candidates := [clean]
+	if clean.contains('.') {
+		candidates << clean.all_after_last('.')
+	}
+	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		candidates << '${t.cur_module}.${clean}'
+	}
+	normalized := t.normalize_type_alias(clean)
+	if normalized.len > 0 && normalized !in candidates {
+		candidates << normalized
+	}
+	return receiver_name in candidates
 }
 
 fn (t &Transformer) checker_selected_receiver_method_name(call_id flat.NodeId, builtin_name string) ?string {
