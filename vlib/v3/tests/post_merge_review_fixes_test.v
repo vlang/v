@@ -5750,6 +5750,13 @@ fn main() {
 }
 ')
 	assert promoted_declared_default_out == '3\n7\n3\n8'
+	promoted_cross_module_default_out := run_good_project(v3_bin,
+		'promoted_cross_module_struct_default', {
+		'v.mod':            "Module { name: 'promoted_cross_module_struct_default' }\n"
+		'defaults/types.v': 'module defaults\n\npub const default_a = 3\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = Inner{\n\t\ta: default_a\n\t\tb: 4\n\t}\n}\n'
+		'main.v':           'module main\n\nimport defaults\n\nconst default_a = 99\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
+	}, 'main.v')
+	assert promoted_cross_module_default_out == '3\n7'
 	promoted_positional_default_out := run_good(v3_bin, 'promoted_embed_positional_default', 'struct PositionalInner {
 	a int
 	b int
