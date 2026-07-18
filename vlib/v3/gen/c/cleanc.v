@@ -2122,10 +2122,10 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				}
 			}
 			if source_path.len > 0 {
-				// Generated V output is C, not C++ compatible. Compile Objective-C++ sources
-				// as separate objects instead of including them in the C translation unit. For
-				// guarded/macro-dependent Objective-C sources, compile a small native-language
-				// wrapper that replays the original directive context around the source include.
+				// Generated V output is not C++ compatible, so Objective-C++ sources use
+				// separate native-language wrappers. Keep active Objective-C includes in the
+				// main unit for internal-linkage helpers; definitely inactive ones can stay in
+				// wrappers without forcing the generated unit into Objective-C mode.
 				if source_path.ends_with('.mm') {
 					context_directives := g.native_source_contexts[module_name] or { []string{} }
 					if context_directives.len > 0
@@ -2139,7 +2139,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				if source_path.ends_with('.m') {
 					context_directives := g.native_source_contexts[module_name] or { []string{} }
 					if context_directives.len > 0
-						|| c_source_include_has_preprocessor_context(g.c_directives, module_name) {
+						&& c_native_source_context_definitely_inactive(g.c_directives, module_name, g.c_flags, g.target) {
 						g.add_native_source_context_wrapper(module_name, source_path)
 						return true
 					}
@@ -3341,6 +3341,153 @@ fn c_native_source_context_depth(directives []string) int {
 		}
 	}
 	return depth
+}
+
+fn c_native_source_context_definitely_inactive(directives []CDirective, module_name string, flags []string, target pref.Target) bool {
+	mut defined := map[string]bool{}
+	mut undefined := map[string]bool{}
+	mut uncertain := map[string]bool{}
+	mut i := 0
+	for i < flags.len {
+		clean := trimmed_space(flags[i])
+		mut definition := ''
+		mut is_undef := false
+		if clean == '-D' && i + 1 < flags.len {
+			definition = trimmed_space(flags[i + 1])
+			i++
+		} else if clean.starts_with('-D') {
+			definition = clean[2..]
+		} else if clean == '-U' && i + 1 < flags.len {
+			definition = trimmed_space(flags[i + 1])
+			is_undef = true
+			i++
+		} else if clean.starts_with('-U') {
+			definition = clean[2..]
+			is_undef = true
+		}
+		name := definition.all_before('=').trim_space()
+		if name.len > 0 {
+			if is_undef {
+				defined.delete(name)
+				undefined[name] = true
+			} else {
+				undefined.delete(name)
+				defined[name] = true
+			}
+		}
+		i++
+	}
+	mut condition_known := []bool{}
+	mut condition_active := []bool{}
+	for directive in directives {
+		if directive.module != module_name {
+			continue
+		}
+		for line in directive.text.split_into_lines() {
+			clean := trimmed_space(line)
+			name := c_directive_name(clean)
+			if name in ['ifdef', 'ifndef'] {
+				macro_name := c_directive_arg(clean).fields()[0] or { '' }
+				known, mut active := c_preprocessor_macro_state(macro_name, defined, undefined,
+					uncertain, target)
+				if name == 'ifndef' {
+					active = !active
+				}
+				condition_known << known
+				condition_active << (if known { active } else { true })
+				continue
+			}
+			if name == 'if' {
+				arg := c_directive_arg(clean)
+				known := arg in ['0', '1']
+				condition_known << known
+				condition_active << (if known { arg == '1' } else { true })
+				continue
+			}
+			if name in ['else', 'elif'] && condition_known.len > 0 {
+				last := condition_known.len - 1
+				if name == 'else' && condition_known[last] {
+					condition_active[last] = !condition_active[last]
+				} else {
+					condition_known[last] = false
+					condition_active[last] = true
+				}
+				continue
+			}
+			if name == 'endif' && condition_known.len > 0 {
+				condition_known.delete_last()
+				condition_active.delete_last()
+				continue
+			}
+			if name !in ['define', 'undef'] {
+				continue
+			}
+			parts := c_directive_arg(clean).fields()
+			if parts.len == 0 {
+				continue
+			}
+			macro_name := parts[0].all_before('(')
+			mut definitely_active := true
+			mut possibly_active := true
+			for depth in 0 .. condition_known.len {
+				if condition_known[depth] && !condition_active[depth] {
+					definitely_active = false
+					possibly_active = false
+					break
+				}
+				if !condition_known[depth] {
+					definitely_active = false
+				}
+			}
+			if definitely_active {
+				uncertain.delete(macro_name)
+				if name == 'define' {
+					undefined.delete(macro_name)
+					defined[macro_name] = true
+				} else {
+					defined.delete(macro_name)
+					undefined[macro_name] = true
+				}
+			} else if possibly_active {
+				defined.delete(macro_name)
+				undefined.delete(macro_name)
+				uncertain[macro_name] = true
+			}
+		}
+	}
+	for depth in 0 .. condition_known.len {
+		if condition_known[depth] && !condition_active[depth] {
+			return true
+		}
+	}
+	return false
+}
+
+fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, target pref.Target) (bool, bool) {
+	if name in defined {
+		return true, true
+	}
+	if name in undefined {
+		return true, false
+	}
+	if name in uncertain {
+		return false, true
+	}
+	match name {
+		'__APPLE__', '__MACH__' { return true, target.os in ['macos', 'ios'] }
+		'__linux__', '__linux' { return true, target.os == 'linux' }
+		'_WIN32' { return true, target.os == 'windows' }
+		'_WIN64' { return true, target.os == 'windows' && target.pointer_bits == 64 }
+		'__FreeBSD__' { return true, target.os == 'freebsd' }
+		'__OpenBSD__' { return true, target.os == 'openbsd' }
+		'__NetBSD__' { return true, target.os == 'netbsd' }
+		else {}
+	}
+
+	if name.starts_with('_') {
+		return false, true
+	}
+	return true, false
 }
 
 fn (mut g FlatGen) add_native_source_context_wrapper(module_name string, source_path string) {
