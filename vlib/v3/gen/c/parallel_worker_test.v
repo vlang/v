@@ -76,6 +76,29 @@ fn test_scoped_cgen_batch_preserves_worker_interned_literals() {
 	assert g.str_lits == ['source', 'generated_a', 'generated_b']
 }
 
+fn test_scoped_cgen_worker_merge_publishes_generated_literals() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+
+	mut helper := g.new_parallel_dispatch_worker(1)
+	mut helper_batch := helper.new_parallel_worker(0)
+	assert helper_batch.intern_string('helper generated') == 1
+	helper_batch.sb.write_string('helper(_str_1); "_str_1"; /* _str_1 */')
+	helper_batch.add_spawn_wrapper_def('spawn_helper(_str_1);')
+	helper.absorb_scoped_cgen_batch(helper_batch, false)
+
+	mut master_batch := g.new_parallel_worker(0)
+	assert master_batch.intern_string('master generated') == 1
+	master_batch.sb.write_string('master(_str_1);')
+	g.absorb_scoped_cgen_batch(master_batch, false)
+	g.merge_parallel_worker(helper)
+
+	assert g.str_lits == ['source', 'master generated', 'helper generated']
+	assert g.str_lit_ids['helper generated'] == 2
+	assert g.fn_segs == ['master(_str_1);', 'helper(_str_2); "_str_1"; /* _str_1 */']
+	assert g.spawn_wrapper_defs == ['spawn_helper(_str_2);']
+}
+
 fn test_fused_parallel_prep_interns_body_string_literals() {
 	mut g, _ := parallel_worker_test_gen(false)
 	g.a.nodes = [
