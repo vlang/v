@@ -2600,6 +2600,36 @@ fn (t &Transformer) struct_field_decl_metas(base_type string) map[string]FieldDe
 	if cached := t.struct_field_decl_metas_cache[decl_name] {
 		return cached
 	}
+	// Materialized generic instances can reach comptime expansion under their C
+	// name (`Box_int`, `mod__Box_int`) rather than bracket syntax. The cache is
+	// keyed by source declarations, so recover the generic declaration prefix.
+	mut cur_mod := ''
+	for node in t.a.nodes {
+		if node.kind == .module_decl {
+			cur_mod = node.value
+			continue
+		}
+		if node.kind != .struct_decl || node.generic_params().len == 0 {
+			continue
+		}
+		qualified := if cur_mod.len > 0 && cur_mod !in ['main', 'builtin'] {
+			'${cur_mod}.${node.value}'
+		} else {
+			node.value
+		}
+		for prefix in [node.value, qualified, c_name(node.value),
+			c_name(qualified)] {
+			if prefix.len == 0 || !decl_name.starts_with('${prefix}_') {
+				continue
+			}
+			if cached := t.struct_field_decl_metas_cache[qualified] {
+				return cached
+			}
+			if cached := t.struct_field_decl_metas_cache[node.value] {
+				return cached
+			}
+		}
+	}
 	return map[string]FieldDeclMeta{}
 }
 
