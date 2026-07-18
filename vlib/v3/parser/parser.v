@@ -8496,6 +8496,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 				value:          '[]${elem_type}'
 				children_start: cstart
 				children_count: 1
+				pos:            p.span_to(bracket_start)
 			})
 		}
 		// array init: []Type{len: n, cap: c, init: v}
@@ -8538,6 +8539,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 					value:          fixed_type
 					children_start: cstart
 					children_count: 1
+					pos:            p.span_to(bracket_start)
 				})
 			}
 			if p.tok == .lsbr {

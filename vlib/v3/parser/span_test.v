@@ -103,6 +103,29 @@ fn test_c_style_for_post_clause_spans() {
 	assert stmt_spans.filter(it == 'i++, j++').len == 0
 }
 
+// Array cast expressions (`[N]T(x)`, `[]T(x)`) are built after the `[N]T`/`[]T`
+// prefix and `(x)` are consumed, so they must span from the opening `[` — the
+// fixed-array variant builds its node directly on the flat AST and previously had
+// no span at all.
+fn test_array_cast_spans_from_bracket() {
+	ast, src := parse_span_source('array_cast', 'fn main() {
+	p := unsafe { nil }
+	a := [3]int(p)
+	b := []int(p)
+	_ = a
+	_ = b
+}
+')
+	mut spans := []string{}
+	for node in ast.nodes {
+		if node.kind == .cast_expr && node.value.contains('int') {
+			spans << span_text(src, node)
+		}
+	}
+	assert '[3]int(p)' in spans
+	assert '[]int(p)' in spans
+}
+
 // Dynamic array initializers (`[]T{...}`) are parsed after the `[]T` prefix is
 // consumed, so the array_init node must span from the opening `[`, not the `{`.
 fn test_dynamic_array_init_spans_from_bracket() {

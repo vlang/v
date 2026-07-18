@@ -48,6 +48,8 @@ fn main() {
 	sl3 := xs[1..]
 	sl4 := xs[..]
 	init := []int{len: 3, init: 0}
+	fixed_cast := [3]int(&p)
+	dyn_cast := []int(&p)
 	if total.len > 0 && c == .red {
 		println(s)
 	} else {
@@ -87,6 +89,8 @@ fn main() {
 	_ = sl3
 	_ = sl4
 	_ = init
+	_ = fixed_cast
+	_ = dyn_cast
 	_ = y
 	_ = r
 }
