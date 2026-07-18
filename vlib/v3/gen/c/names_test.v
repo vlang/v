@@ -32,6 +32,13 @@ fn test_c_name_libc_collision_abs() {
 	assert c_name('C.abs') == 'abs'
 }
 
+fn test_c_name_generated_string_symbol_collision() {
+	assert c_name('_str_1') == 'v__str_1'
+	assert c_name('_str_002') == 'v__str_002'
+	assert c_name('_str_value') == '_str_value'
+	assert c_name('C._str_3') == '_str_3'
+}
+
 fn test_cgen_flattened_generic_receiver_short_variants() {
 	assert cgen_flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',
