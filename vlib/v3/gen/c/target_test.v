@@ -79,7 +79,7 @@ fn test_split_relative_c_flag_paths_resolve_from_source_directory() {
 }
 
 fn test_c_flag_existing_path_macros() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_c_flag_existing_path_${os.getpid()}')
+	dir := os.join_path(os.vtmp_dir(), 'v3 c flag existing path ${os.getpid()}')
 	os.rmdir_all(dir) or {}
 	os.mkdir_all(dir) or { panic(err) }
 	defer {

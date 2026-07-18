@@ -1127,3 +1127,57 @@ fn test_lowered_generic_operator_call_records_specialization() {
 		'struct Box[T] {\n\tv T\n}\n\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\n\nfn main() {\n\tleft := Box[int]{\n\t\tv: 2\n\t}\n\tright := Box[int]{\n\t\tv: 5\n\t}\n\tresult := left + right\n\tprintln(int_str(result.v))\n}\n')
 	assert out == '7'
 }
+
+fn test_late_inferred_generic_call_emits_specialization() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'late_inferred_generic_call_emits_specialization',
+		'fn make[T]() T {\n\treturn T(41)\n}\n\nfn use[T](value T) T {\n\treturn value + T(1)\n}\n\nfn main() {\n\tx := make[int]()\n\tprintln(int_str(use(x)))\n}\n')
+	assert out == '42'
+}
+
+fn test_module_qualified_panic_keeps_module_symbol() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'module_qualified_panic_symbol', {
+		'v.mod':     "Module { name: 'module_qualified_panic_symbol' }\n"
+		'foo/foo.v': "module foo\n\npub fn panic() string {\n\treturn 'module panic'\n}\n"
+		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\tprintln(foo.panic())\n}\n'
+	}, 'main.v')
+	assert out == 'module panic'
+}
+
+fn test_vmodroot_c_flag_preserves_project_path_with_spaces() {
+	v3_bin := build_v3_review_transform()
+	root := os.join_path(os.temp_dir(), 'v3 flag pseudo path project')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'v.mod', "Module { name: 'flag_pseudo_path' }\n")
+	write_project_file(root, 'main.v',
+		'module main\n\n#flag -I @VMODROOT/include\n#insert "flag_value.c"\n\nfn C.flag_value() int\n\nfn main() {\n\tprintln(int_str(C.flag_value()))\n}\n')
+	write_project_file(root, 'include/flag_value.c',
+		'#include <flag_value.h>\n\nstatic inline int flag_value(void) {\n\treturn flag_value_inner();\n}\n')
+	write_project_file(root, 'include/flag_value.h',
+		'static inline int flag_value_inner(void) {\n\treturn 57;\n}\n')
+	bin := os.join_path(os.temp_dir(), 'v3_flag_pseudo_path')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(bin)}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(os.quoted_path(bin))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '57'
+}
+
+fn test_statement_array_append_consumes_rhs_expression() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'statement_array_append_rhs_expression',
+		'fn main() {\n\tmut value := u32(0x123)\n\tmut values := []u32{}\n\tvalues << value & 0xff\n\tprintln(int_str(int(values[0])))\n}\n')
+	assert out == '35'
+}
+
+fn test_json2_skipped_pointer_field_does_not_specialize_decoder() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_skipped_pointer_field',
+		'import gg\nimport x.json2\n\nstruct Config {\n\tcontext &gg.Context @[skip]\n\tname string\n}\n\nfn main() {\n\tconfig := json2.decode[Config]("{\\"name\\":\\"ok\\"}") or { Config{} }\n\tprintln(config.name)\n}\n')
+	assert out == 'ok'
+}

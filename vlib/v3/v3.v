@@ -517,6 +517,14 @@ fn clone_string_bool_map(values map[string]bool) map[string]bool {
 	return cloned
 }
 
+fn clone_string_string_map(values map[string]string) map[string]string {
+	mut cloned := map[string]string{}
+	for key, value in values {
+		cloned[key.clone()] = value.clone()
+	}
+	return cloned
+}
+
 fn scoped_value_owned(scope voidptr, ptr voidptr) bool {
 	$if prealloc {
 		return unsafe { prealloc_scope_owns(scope, ptr) }
@@ -721,6 +729,7 @@ fn clone_string_list_map(values map[string][]string) map[string][]string {
 
 fn promote_scoped_monomorph_metadata(mut tc types.TypeChecker) {
 	tc.structs = clone_struct_field_map(tc.structs)
+	tc.struct_modules = clone_string_string_map(tc.struct_modules)
 	tc.unions = clone_string_bool_map(tc.unions)
 	tc.params_structs = clone_string_bool_map(tc.params_structs)
 	tc.sum_types = clone_string_list_map(tc.sum_types)

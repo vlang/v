@@ -208,8 +208,13 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		// Initial call sites can expose a much larger nested generic closure.
 		// Give every append-only worker region enough headroom for that closure;
 		// the arrays still retain only the nodes actually merged by the master.
-		node_reserve := specs.len * 4096 + 262144
-		child_reserve := specs.len * 5120 + 393216
+		// Keep a full nested-specialization cushion per worker. A single shared
+		// cushion gets divided into tiny regions and makes normal compiler-sized
+		// batches detach, copying the entire immutable base AST in every worker.
+		// The private growing fallback below remains available for truly uneven
+		// batches that exceed their region.
+		node_reserve := specs.len * 4096 + n_jobs * 262144
+		child_reserve := specs.len * 5120 + n_jobs * 393216
 		t.a.nodes.ensure_cap(base_nodes + node_reserve)
 		t.a.children.ensure_cap(base_children + child_reserve)
 		t.monomorph_profile('mono capacity: ${time.ticks() - debug_started} ms')

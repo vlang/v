@@ -535,7 +535,8 @@ fn (g &FlatGen) qualified_fn_name_in_module_c(module_name string, name string) s
 	if module_name == 'builtin' && name == 'free' {
 		return 'v_free'
 	}
-	if name == 'panic' {
+	if name == 'panic'
+		&& (module_name.len == 0 || module_name == 'main' || module_name == 'builtin') {
 		return 'v_panic'
 	}
 	if name.starts_with('__v3_sum_eq_') {
@@ -557,7 +558,8 @@ fn qualified_fn_name_in_module(module_name string, name string) string {
 	if module_name == 'builtin' && name == 'free' {
 		return 'v_free'
 	}
-	if name == 'panic' {
+	if name == 'panic'
+		&& (module_name.len == 0 || module_name == 'main' || module_name == 'builtin') {
 		return 'v_panic'
 	}
 	if name.starts_with('__v3_sum_eq_') {

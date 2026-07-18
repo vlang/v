@@ -256,6 +256,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		extra_call_sites := t.collect_generic_call_sites_after_type_refresh(generic_struct_specs,
 			decls, ignored_nodes, missed_call_sites, mut emitted, mut recorded_call_sites)
 		if extra_call_sites.len > 0 {
+			for t.drain_pending_generic_fn_specs(mut emitted, mut generated) {}
 			t.rewrite_generic_call_sites(decls, extra_call_sites)
 			t.refresh_decl_assign_types_after_generic_rewrite()
 		}
@@ -2802,14 +2803,17 @@ fn (mut t Transformer) generated_fn_used_names(decl GenericFnDecl, clone_id flat
 	t.record_generic_specialization_args_for_names(names, args)
 	old_module := t.cur_module
 	old_file := t.cur_file
+	old_specialization_args := t.active_specialization_args
 	t.cur_module = decl.module
 	t.cur_file = decl.file
+	t.active_specialization_args = args
 	names << t.generated_fn_body_call_names(clone_id)
 	for name in names {
 		t.mark_fn_used_name(name)
 	}
 	t.cur_module = old_module
 	t.cur_file = old_file
+	t.active_specialization_args = old_specialization_args
 	return names
 }
 
@@ -8914,6 +8918,10 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg string) string {
 	if clean.len == 0 {
 		return clean
 	}
+	if t.substituted_type_belongs_to_main_generic(clean)
+		&& t.current_specialization_has_generic_arg(clean) {
+		return clean
+	}
 	if clean.starts_with('&') {
 		return '&' + t.canonical_generic_specialization_arg(clean[1..])
 	}
@@ -9029,8 +9037,8 @@ fn (t &Transformer) canonical_suffix_fixed_array_arg(arg string) ?string {
 		return none
 	}
 	mut clean_len := len_text
-	mut len_resolved := false
-	if !isnil(t.tc) {
+	mut len_resolved := is_decimal_text(len_text)
+	if !len_resolved && !isnil(t.tc) {
 		if value := t.tc.const_int_value(len_text, []string{}) {
 			clean_len = value.str()
 			len_resolved = true

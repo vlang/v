@@ -3790,28 +3790,24 @@ fn c_include_arg_for_target(raw string, vroot string, source_file string, target
 }
 
 fn c_flag_args(raw string, vroot string, source_file string, target pref.Target) []string {
-	mut clean := raw.trim_space()
-	if clean.len == 0 {
+	clean := c_expand_existing_path_macros(raw.trim_space(), vroot, source_file) or {
 		return []string{}
 	}
-	mut first_end := 0
-	for first_end < clean.len && !clean[first_end].is_space() {
-		first_end++
+	mut args := cmdexec.split_args(clean) or { return []string{} }
+	if args.len == 0 {
+		return []string{}
 	}
-	first := clean[..first_end]
-	if c_flag_has_target_prefix(first) {
-		if !c_flag_target_enabled(first, target) || first_end >= clean.len {
+	if c_flag_has_target_prefix(args[0]) {
+		if !c_flag_target_enabled(args[0], target) || args.len < 2 {
 			return []string{}
 		}
-		clean = clean[first_end..].trim_space()
+		args = args[1..].clone()
 	}
-	clean = c_resolve_pseudo_paths(clean, vroot, source_file)
-	clean = c_expand_existing_path_macros(clean) or { return []string{} }
-	args := cmdexec.split_args(clean) or { return []string{} }
 	base_dir := if source_file.len > 0 { os.dir(source_file) } else { '' }
 	mut resolved := []string{cap: args.len}
 	mut resolve_next_path := false
-	for arg in args {
+	for raw_arg in args {
+		arg := c_resolve_pseudo_paths(raw_arg, vroot, source_file)
 		if base_dir.len > 0 {
 			if resolve_next_path {
 				resolved << c_resolve_split_flag_path_token(arg, base_dir)
@@ -3826,7 +3822,7 @@ fn c_flag_args(raw string, vroot string, source_file string, target pref.Target)
 	return resolved
 }
 
-fn c_expand_existing_path_macros(raw string) ?string {
+fn c_expand_existing_path_macros(raw string, vroot string, source_file string) ?string {
 	mut result := raw
 	for {
 		first_idx := result.index(r'$first_existing') or { -1 }
@@ -3848,7 +3844,8 @@ fn c_expand_existing_path_macros(raw string) ?string {
 		mut selected := ''
 		mut candidates := []string{}
 		for value in result[open_idx + 1..close_idx].split(',') {
-			path := value.trim(' \t\r\n\'"')
+			raw_path := value.trim(' \t\r\n\'"')
+			path := c_resolve_pseudo_paths(raw_path, vroot, source_file)
 			if path.len == 0 {
 				continue
 			}

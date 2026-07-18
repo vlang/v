@@ -5647,7 +5647,7 @@ fn (mut p Parser) parse_block_body() []flat.NodeId {
 }
 
 fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
-	lhs := p.expr(.lowest)
+	lhs := p.stmt_expr()
 
 	// multi-assign: a, b := expr1, expr2
 	if p.tok == .comma {
@@ -6240,10 +6240,20 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 
 fn (mut p Parser) expr(min_bp token.BindingPower) flat.NodeId {
 	lhs := p.prefix_expr()
-	return p.expr_with_lhs(lhs, min_bp)
+	return p.expr_with_lhs_context(lhs, min_bp, false)
 }
 
 fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) flat.NodeId {
+	return p.expr_with_lhs_context(first, min_bp, false)
+}
+
+fn (mut p Parser) stmt_expr() flat.NodeId {
+	is_stmt_ident := p.tok == .name
+	lhs := p.prefix_expr()
+	return p.expr_with_lhs_context(lhs, .lowest, is_stmt_ident)
+}
+
+fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingPower, is_stmt_ident bool) flat.NodeId {
 	mut lhs := first
 	for {
 		// A newline (scanned as `;`) directly followed by `.` continues the
@@ -6544,6 +6554,23 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		}
 		if token_is_assignment(p.tok) {
 			break
+		}
+		// At the start of an identifier statement, `<<` is array append syntax.
+		// Its right side is the whole remaining expression, matching V's parser:
+		// `values << value & mask` appends `value & mask`, rather than shifting
+		// the array and then applying `&`.
+		if p.tok == .left_shift && is_stmt_ident {
+			op_id := int(p.tok)
+			p.next()
+			rhs := p.expr(.lowest)
+			istart := p.add_children2(lhs, rhs)
+			lhs = p.add_node(flat.Node{
+				kind:           .infix
+				op:             token_id_to_op(op_id)
+				children_start: istart
+				children_count: 2
+			})
+			continue
 		}
 		// infix operators
 		if !token_is_infix(p.tok) {
