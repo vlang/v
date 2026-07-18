@@ -38,6 +38,42 @@ struct NestedHolder {
 	o NestedOuter
 }
 
+type RecursiveDefaultSum = RecursiveDefaultBranch | RecursiveDefaultLeaf
+
+struct RecursiveDefaultBranch {
+	x     int
+	child RecursiveDefaultSum
+}
+
+struct RecursiveDefaultLeaf {
+	x int
+}
+
+struct RecursiveDefaultHolder {
+	node RecursiveDefaultSum
+}
+
+type RecursiveNestedDefaultSum = RecursiveNestedDefaultInner | RecursiveNestedDefaultLeaf
+
+type RecursiveNestedDefaultInner = RecursiveNestedDefaultBranch | RecursiveNestedDefaultOther
+
+struct RecursiveNestedDefaultBranch {
+	x     int
+	child RecursiveNestedDefaultSum
+}
+
+struct RecursiveNestedDefaultOther {
+	x int
+}
+
+struct RecursiveNestedDefaultLeaf {
+	x int
+}
+
+struct RecursiveNestedDefaultHolder {
+	node RecursiveNestedDefaultSum
+}
+
 fn test_default_sumtype_common_field_is_accessible() {
 	holder := DefaultHolder{}
 	assert holder.s.x == 0
@@ -46,4 +82,29 @@ fn test_default_sumtype_common_field_is_accessible() {
 fn test_default_nested_sumtype_common_field_is_accessible() {
 	holder := NestedHolder{}
 	assert holder.o.x == 0
+}
+
+fn test_recursive_default_sumtype_common_field_is_accessible() {
+	holder := RecursiveDefaultHolder{}
+	node := holder.node
+	assert node is RecursiveDefaultBranch
+	assert node.x == 0
+	if node is RecursiveDefaultBranch {
+		assert node.child is RecursiveDefaultBranch
+		assert node.child.x == 0
+	}
+}
+
+fn test_nested_recursive_default_sumtype_common_field_is_accessible() {
+	holder := RecursiveNestedDefaultHolder{}
+	node := holder.node
+	assert node is RecursiveNestedDefaultInner
+	assert node.x == 0
+	if node is RecursiveNestedDefaultInner {
+		assert node is RecursiveNestedDefaultBranch
+		if node is RecursiveNestedDefaultBranch {
+			assert node.child is RecursiveNestedDefaultInner
+			assert node.child.x == 0
+		}
+	}
 }
