@@ -3986,6 +3986,14 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 		}
 		return true, active
 	}
+	if clean.len > 0 && c_identifier_start(clean[0]) && c_header_struct_tag(clean) == clean {
+		known, mut active := c_preprocessor_macro_state(clean, defined, undefined, uncertain,
+			target)
+		if negated {
+			active = !active
+		}
+		return known, active
+	}
 	if !clean.starts_with('defined') || (clean.len > 'defined'.len && clean['defined'.len] != `(`
 		&& !clean['defined'.len].is_space()) {
 		return false, true

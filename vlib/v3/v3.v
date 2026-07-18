@@ -158,7 +158,7 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 		}
 		i++
 	}
-	if c_link_flags_use_non_c_language(prepared) {
+	if c_link_flags_use_cpp_language(prepared) {
 		cpp_runtime := cpp_runtime_link_flag(target)
 		if cpp_runtime !in flags && cpp_runtime !in prepared {
 			prepared << cpp_runtime
@@ -184,6 +184,14 @@ fn c_generated_native_source_context(path string, build_dir string) bool {
 }
 
 fn c_link_flags_use_non_c_language(flags []string) bool {
+	return c_link_flags_use_language(flags, true)
+}
+
+fn c_link_flags_use_cpp_language(flags []string) bool {
+	return c_link_flags_use_language(flags, false)
+}
+
+fn c_link_flags_use_language(flags []string, include_objective_c bool) bool {
 	mut language := ''
 	mut skip_operand := false
 	mut i := 0
@@ -205,14 +213,20 @@ fn c_link_flags_use_non_c_language(flags []string) bool {
 			continue
 		}
 		if c_flag_is_c_source_file(clean) {
-			if language in ['c++', 'objective-c++'] {
+			if language in ['c++', 'objective-c++']
+				|| (include_objective_c && language == 'objective-c') {
 				return true
 			}
-			if language in ['', 'none'] && (clean.ends_with('.cc') || clean.ends_with('.cpp')) {
+			if language in ['', 'none'] && (clean.ends_with('.cc') || clean.ends_with('.cpp')
+				|| clean.ends_with('.mm')
+				|| (include_objective_c && clean.ends_with('.m'))) {
 				return true
 			}
-		} else if language in ['c++', 'objective-c++'] && c_flag_is_existing_file(clean) {
-			return true
+		} else if c_flag_is_existing_file(clean) {
+			if language in ['c++', 'objective-c++']
+				|| (include_objective_c && language == 'objective-c') {
+				return true
+			}
 		}
 		i++
 	}
