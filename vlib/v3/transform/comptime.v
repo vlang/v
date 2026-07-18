@@ -2565,7 +2565,13 @@ fn comptime_struct_info_cache_key(info StructInfo) string {
 fn (mut t Transformer) build_struct_field_decl_metas_cache() {
 	mut cache := map[string]map[string]FieldDeclMeta{}
 	mut cur_mod := ''
+	mut cur_file_id := 0
 	for node in t.a.nodes {
+		if node.pos.id > 0 && node.pos.id != cur_file_id {
+			cur_file_id = node.pos.id
+			// Files without an explicit module declaration belong to main.
+			cur_mod = 'main'
+		}
 		if node.kind == .module_decl {
 			cur_mod = node.value
 			continue
@@ -2580,11 +2586,13 @@ fn (mut t Transformer) build_struct_field_decl_metas_cache() {
 				fields[field.value] = field_decl_meta(field)
 			}
 		}
-		if node.value !in cache {
-			cache[node.value] = fields.clone()
-		}
-		if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+		if cur_mod.len > 0 {
 			cache['${cur_mod}.${node.value}'] = fields.clone()
+		}
+		// Bare names are used for unqualified/main lookups. Builtin is parsed before
+		// main, so let a main declaration replace an earlier builtin homonym.
+		if cur_mod == 'main' || node.value !in cache {
+			cache[node.value] = fields.clone()
 		}
 	}
 	t.struct_field_decl_metas_cache = cache.move()
@@ -2622,7 +2630,7 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 			short_name = decl_name[c_name(decl_module).len + 2..]
 		}
 	}
-	if decl_module.len > 0 && decl_module !in ['main', 'builtin'] {
+	if decl_module.len > 0 {
 		if cached := t.struct_field_decl_metas_cache['${decl_module}.${short_name}'] {
 			return cached
 		}
@@ -2637,7 +2645,12 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 	// name (`Box_int`, `mod__Box_int`) rather than bracket syntax. The cache is
 	// keyed by source declarations, so recover the generic declaration prefix.
 	mut cur_mod := ''
+	mut cur_file_id := 0
 	for node in t.a.nodes {
+		if node.pos.id > 0 && node.pos.id != cur_file_id {
+			cur_file_id = node.pos.id
+			cur_mod = 'main'
+		}
 		if node.kind == .module_decl {
 			cur_mod = node.value
 			continue
@@ -2648,7 +2661,7 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 		if decl_module.len > 0 && cur_mod != decl_module {
 			continue
 		}
-		qualified := if cur_mod.len > 0 && cur_mod !in ['main', 'builtin'] {
+		qualified := if cur_mod.len > 0 {
 			'${cur_mod}.${node.value}'
 		} else {
 			node.value
@@ -2658,10 +2671,12 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 			if prefix.len == 0 || !lookup_name.starts_with('${prefix}_') {
 				continue
 			}
-			if cached := t.struct_field_decl_metas_cache[qualified] {
-				return cached
+			if decl_module.len == 0 {
+				if cached := t.struct_field_decl_metas_cache[node.value] {
+					return cached
+				}
 			}
-			if cached := t.struct_field_decl_metas_cache[node.value] {
+			if cached := t.struct_field_decl_metas_cache[qualified] {
 				return cached
 			}
 		}

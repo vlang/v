@@ -1464,6 +1464,26 @@ fn test_json2_reflected_main_type_does_not_use_imported_homonym() {
 	assert out == '42'
 }
 
+fn test_comptime_main_fielddata_uses_main_field_metadata() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_main_fielddata_metadata', 'struct FieldData {
+pub mut:
+	@[main_attr]
+	value int
+}
+
+fn main() {
+	$for field in FieldData.fields {
+		println(field.name)
+		println(field.is_pub)
+		println(field.is_mut)
+		println(field.attrs.join(","))
+	}
+}
+')
+	assert out == 'value\ntrue\ntrue\nmain_attr'
+}
+
 fn test_json2_encode_keeps_independent_array_element_specializations() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'json2_independent_array_element_specializations',

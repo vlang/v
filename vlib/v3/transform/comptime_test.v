@@ -161,3 +161,68 @@ fn test_comptime_field_metadata_cache_normalizes_main_qualified_name() {
 	assert metas.len == 1
 	assert metas[0].attrs == ['skip']
 }
+
+fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'builtin')
+	mut builtin_field := flat.Node{
+		kind:  .field_decl
+		value: 'builtin_value'
+		typ:   'int'
+	}
+	builtin_field.set_generic_params(['p', 'builtin_attr'])
+	builtin_field_id := a.add_node(builtin_field)
+	builtin_children_start := a.children.len
+	a.children << builtin_field_id
+	a.add_node(flat.Node{
+		kind:           .struct_decl
+		value:          'FieldData'
+		children_start: i32(builtin_children_start)
+		children_count: 1
+	})
+
+	a.add_val(.module_decl, 'main')
+	mut main_field := flat.Node{
+		kind:  .field_decl
+		value: 'main_value'
+		typ:   'string'
+	}
+	main_field.set_generic_params(['mp', 'main_attr'])
+	main_field_id := a.add_node(main_field)
+	main_children_start := a.children.len
+	a.children << main_field_id
+	a.add_node(flat.Node{
+		kind:           .struct_decl
+		value:          'FieldData'
+		children_start: i32(main_children_start)
+		children_count: 1
+	})
+
+	mut t := Transformer{
+		a: &a
+	}
+	t.build_struct_field_decl_metas_cache()
+	main_metas := t.struct_field_decl_metas_in_module('FieldData', 'main')
+	main_meta := main_metas['main_value'] or {
+		assert false, 'missing main FieldData metadata'
+		return
+	}
+	assert main_meta.is_mut
+	assert main_meta.is_pub
+	assert main_meta.attrs == ['main_attr']
+	assert 'builtin_value' !in main_metas
+
+	builtin_metas := t.struct_field_decl_metas_in_module('FieldData', 'builtin')
+	builtin_meta := builtin_metas['builtin_value'] or {
+		assert false, 'missing builtin FieldData metadata'
+		return
+	}
+	assert !builtin_meta.is_mut
+	assert builtin_meta.is_pub
+	assert builtin_meta.attrs == ['builtin_attr']
+	assert 'main_value' !in builtin_metas
+
+	bare_metas := t.struct_field_decl_metas('FieldData')
+	assert 'main_value' in bare_metas
+	assert 'builtin_value' !in bare_metas
+}
