@@ -2086,7 +2086,11 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 			|| is_generic_fn_placeholder_name(arg_type) {
 			arg_type = fm.comptime_typ
 		}
-		infer_generic_type_args(param.typ, arg_type, mut inferred)
+		mut inference_type := t.comptime_normalize_type_alias_chain(arg_type)
+		if inference_type.len == 0 || inference_type == arg_type {
+			inference_type = fm.comptime_unaliased
+		}
+		infer_generic_type_args(param.typ, inference_type, mut inferred)
 		param_idx++
 	}
 	mut inferred_args := []string{cap: param_names.len}
@@ -2100,8 +2104,12 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 	spec_value := specialized_generic_fn_value(decl.node.value, args)
 	spec_name := transform_qualified_fn_name(decl.module, spec_value)
 	if spec_name !in t.fn_ret_types {
-		clone_id := t.emit_generic_fn_specialization(decl, args)
-		t.generated_fn_used_names(decl, clone_id, args)
+		if t.defer_nested_generic_emissions {
+			t.request_generic_fn_specialization(decl, args)
+		} else {
+			clone_id := t.emit_generic_fn_specialization(decl, args)
+			t.generated_fn_used_names(decl, clone_id, args)
+		}
 	}
 	if is_receiver {
 		receiver := t.a.child(&callee, 0)
@@ -2514,14 +2522,18 @@ struct FieldDeclMeta {
 }
 
 // comptime_field_metas derives FieldData for every field of the concrete struct type.
-fn (t &Transformer) comptime_field_metas(base_type string) []FieldMeta {
+fn (mut t Transformer) comptime_field_metas(base_type string) []FieldMeta {
 	// A monomorphized generic struct instance (`Box[int]`) is stored in the struct table under
 	// its generic declaration name (`Box`), so a direct lookup misses; resolve it through the
 	// generic-struct field substitution path before giving up.
 	info := t.lookup_struct_info(base_type) or {
 		t.generic_struct_info_for_stringify(base_type) or { return []FieldMeta{} }
 	}
-	decl_metas := t.struct_field_decl_metas(base_type)
+	cache_key := comptime_struct_info_cache_key(info)
+	if cached := t.comptime_field_metas_cache[cache_key] {
+		return cached
+	}
+	decl_metas := t.struct_field_decl_metas_in_module(cache_key, info.module)
 	mut metas := []FieldMeta{cap: info.fields.len}
 	for f in info.fields {
 		// V's `field.typ` is the type as written (`MyInt`, `?[]int`); `raw_typ` preserves that,
@@ -2538,73 +2550,138 @@ fn (t &Transformer) comptime_field_metas(base_type string) []FieldMeta {
 		}
 		metas << t.field_meta_for(f.name, ftyp, f.typ, info.module, f.is_embedded, extra)
 	}
+	t.comptime_field_metas_cache[cache_key] = metas
 	return metas
 }
 
-// struct_field_decl_metas scans the declaration of `base_type` (resolving a generic instance such
-// as `Box[int]` to its base `Box`, module-aware like enum lookup) and returns each field's real
-// `is_mut`/`is_pub`/attrs, which the parser recorded on the `field_decl` node.
+fn comptime_struct_info_cache_key(info StructInfo) string {
+	if info.module.len == 0 || info.name.starts_with('${info.module}.')
+		|| info.name.starts_with('${c_name(info.module)}__') {
+		return info.name
+	}
+	return '${info.module}.${info.name}'
+}
+
+fn (mut t Transformer) build_struct_field_decl_metas_cache() {
+	mut cache := map[string]map[string]FieldDeclMeta{}
+	mut cur_mod := ''
+	mut cur_file_id := 0
+	for node in t.a.nodes {
+		if node.pos.id > 0 && node.pos.id != cur_file_id {
+			cur_file_id = node.pos.id
+			// Files without an explicit module declaration belong to main.
+			cur_mod = 'main'
+		}
+		if node.kind == .module_decl {
+			cur_mod = node.value
+			continue
+		}
+		if node.kind != .struct_decl {
+			continue
+		}
+		mut fields := map[string]FieldDeclMeta{}
+		for i in 0 .. node.children_count {
+			field := t.a.child_node(&node, i)
+			if field.kind == .field_decl {
+				fields[field.value] = field_decl_meta(field)
+			}
+		}
+		if cur_mod.len > 0 {
+			cache['${cur_mod}.${node.value}'] = fields.clone()
+		}
+		// Bare names are used for unqualified/main lookups. Builtin is parsed before
+		// main, so let a main declaration replace an earlier builtin homonym.
+		if cur_mod == 'main' || node.value !in cache {
+			cache[node.value] = fields.clone()
+		}
+	}
+	t.struct_field_decl_metas_cache = cache.move()
+}
+
+fn field_decl_meta(field flat.Node) FieldDeclMeta {
+	params := field.generic_params()
+	if params.len == 0 {
+		return FieldDeclMeta{}
+	}
+	flags := params[0]
+	return FieldDeclMeta{
+		is_mut: flags.contains('m')
+		is_pub: flags.contains('p')
+		attrs:  params[1..].clone()
+	}
+}
+
+// struct_field_decl_metas returns parser metadata for the declaration of `base_type`, resolving a
+// generic instance such as `Box[int]` to its base `Box`.
 fn (t &Transformer) struct_field_decl_metas(base_type string) map[string]FieldDeclMeta {
-	mut out := map[string]FieldDeclMeta{}
+	return t.struct_field_decl_metas_in_module(base_type, '')
+}
+
+fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_module string) map[string]FieldDeclMeta {
 	mut decl_name := base_type.trim_space()
 	if idx := decl_name.index('[') {
 		decl_name = decl_name[..idx]
 	}
+	mut short_name := decl_name
+	if decl_module.len > 0 {
+		if decl_name.starts_with('${decl_module}.') {
+			short_name = decl_name[decl_module.len + 1..]
+		} else if decl_name.starts_with('${c_name(decl_module)}__') {
+			short_name = decl_name[c_name(decl_module).len + 2..]
+		}
+	}
+	if decl_module.len > 0 {
+		if cached := t.struct_field_decl_metas_cache['${decl_module}.${short_name}'] {
+			return cached
+		}
+	}
+	lookup_name := if decl_module in ['main', 'builtin'] { short_name } else { decl_name }
+	if cached := t.struct_field_decl_metas_cache[lookup_name] {
+		if decl_module.len == 0 || decl_module in ['main', 'builtin'] {
+			return cached
+		}
+	}
+	// Materialized generic instances can reach comptime expansion under their C
+	// name (`Box_int`, `mod__Box_int`) rather than bracket syntax. The cache is
+	// keyed by source declarations, so recover the generic declaration prefix.
 	mut cur_mod := ''
-	for idx in 0 .. t.a.nodes.len {
-		kind := t.a.nodes[idx].kind
-		if kind == .module_decl {
-			cur_mod = t.a.nodes[idx].value
+	mut cur_file_id := 0
+	for node in t.a.nodes {
+		if node.pos.id > 0 && node.pos.id != cur_file_id {
+			cur_file_id = node.pos.id
+			cur_mod = 'main'
+		}
+		if node.kind == .module_decl {
+			cur_mod = node.value
 			continue
 		}
-		if kind != .struct_decl {
+		if node.kind != .struct_decl || node.generic_params().len == 0 {
 			continue
 		}
-		node := t.a.nodes[idx]
-		qualified := if cur_mod.len > 0 && cur_mod != 'main' && cur_mod != 'builtin' {
+		if decl_module.len > 0 && cur_mod != decl_module {
+			continue
+		}
+		qualified := if cur_mod.len > 0 {
 			'${cur_mod}.${node.value}'
 		} else {
 			node.value
 		}
-		mut matches_decl := decl_name == node.value || decl_name == qualified
-		if !matches_decl && node.generic_params().len > 0 {
-			for prefix in [node.value, qualified, c_name(node.value),
-				c_name(qualified)] {
-				if prefix.len > 0 && decl_name.starts_with('${prefix}_') {
-					matches_decl = true
-					break
-				}
-			}
-		}
-		if !matches_decl {
-			continue
-		}
-		for i in 0 .. node.children_count {
-			f := t.a.child_node(&node, i)
-			if f.kind != .field_decl {
+		for prefix in [node.value, qualified, c_name(node.value),
+			c_name(qualified)] {
+			if prefix.len == 0 || !lookup_name.starts_with('${prefix}_') {
 				continue
 			}
-			// The parser packs field metadata into generic_params: element 0 is a flag string
-			// (`m` = mut, `p` = pub), the rest are attributes. An empty list is the default
-			// (private, immutable, no attrs).
-			mut is_mut := false
-			mut is_pub := false
-			mut attrs := []string{}
-			if f.generic_params().len > 0 {
-				flags := f.generic_params()[0]
-				is_mut = flags.contains('m')
-				is_pub = flags.contains('p')
-				attrs = f.generic_params()[1..].clone()
+			if decl_module.len == 0 {
+				if cached := t.struct_field_decl_metas_cache[node.value] {
+					return cached
+				}
 			}
-			out[f.value] = FieldDeclMeta{
-				is_mut: is_mut
-				is_pub: is_pub
-				attrs:  attrs
+			if cached := t.struct_field_decl_metas_cache[qualified] {
+				return cached
 			}
 		}
-		return out
 	}
-	return out
+	return map[string]FieldDeclMeta{}
 }
 
 fn (t &Transformer) field_meta_for(name string, ftyp string, resolved_typ string, decl_module string, is_embed bool, extra FieldDeclMeta) FieldMeta {
@@ -2735,8 +2812,11 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 	if core.len == 0 {
 		return ''
 	}
-	if core.starts_with('?') {
-		return '?' + t.comptime_field_type_id_key(core[1..], decl_module)
+	if core.starts_with('?') || core.starts_with('!') {
+		return core[..1] + t.comptime_field_type_id_key(core[1..], decl_module)
+	}
+	if core.starts_with('mut ') {
+		return 'mut ' + t.comptime_field_type_id_key(core[4..], decl_module)
 	}
 	if core.starts_with('shared ') {
 		return 'shared ' + t.comptime_field_type_id_key(core[7..], decl_module)
@@ -2779,6 +2859,31 @@ fn (t &Transformer) comptime_field_type_id_key(typ string, decl_module string) s
 			}
 			return out
 		}
+	}
+	if core.starts_with('fn(') || core.starts_with('fn (') {
+		params, ret := fn_type_text_parts(core) or { return core }
+		mut qualified_params := []string{cap: params.len}
+		for param in params {
+			qualified_params << t.comptime_field_type_id_key(param, decl_module)
+		}
+		qualified_ret := t.comptime_field_type_id_key(ret, decl_module)
+		return if qualified_ret.len > 0 {
+			'fn(${qualified_params.join(', ')}) ${qualified_ret}'
+		} else {
+			'fn(${qualified_params.join(', ')})'
+		}
+	}
+	base, args, is_generic := generic_app_parts(core)
+	if is_generic {
+		qualified_base := t.comptime_field_type_id_key(base, decl_module)
+		mut qualified_args := []string{cap: args.len}
+		for arg in args {
+			qualified_args << t.comptime_field_type_id_key(arg, decl_module)
+		}
+		return '${qualified_base}[${qualified_args.join(', ')}]'
+	}
+	if is_generic_fn_placeholder_name(core) {
+		return core
 	}
 	if comptime_is_primitive_type(core) || core.contains('.') || core.contains('[')
 		|| core.contains(' ') || decl_module.len == 0 || decl_module in ['main', 'builtin'] {
@@ -2853,6 +2958,7 @@ fn (mut t Transformer) clone_field_subst(id flat.NodeId, var_name string, fm Fie
 	return t.clone_field_subst_scoped(id, var_name, fm, []string{})
 }
 
+@[direct_array_access]
 fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string, fm FieldMeta, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
@@ -2875,6 +2981,9 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 	}
 	if node.kind == .ident && node.value == var_name {
 		return t.make_field_data_literal(fm)
+	}
+	if node.children_count == 0 {
+		return t.a.add_node(node)
 	}
 	if node.kind == .prefix && node.op == .amp && node.children_count > 0
 		&& t.subtree_has_reflected_typeof_idx(t.a.child(&node, 0), var_name) {
@@ -2966,6 +3075,21 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 			return t.make_selector(receiver, fm.name, fm.comptime_typ)
 		}
 	}
+	// A normal `if !field.attrs.contains('skip')` inside a reflected field loop is
+	// compile-time data even though V exposes `attrs` as an array. Fold it before
+	// generic discovery so calls in a skipped field's branch do not instantiate
+	// serializers for types that can never be visited at runtime.
+	if node.kind == .if_expr && node.children_count >= 2 {
+		cond_id := t.a.child(&node, 0)
+		if taken := t.comptime_field_attrs_condition(cond_id, var_name, fm) {
+			branch_idx := if taken { 1 } else { 2 }
+			if branch_idx >= int(node.children_count) {
+				return none
+			}
+			return t.clone_field_subst_scoped(t.a.child(&node, branch_idx), var_name, fm,
+				inner_vars)
+		}
+	}
 	// `$if`/`$else $if` referencing the loop variable: evaluate now, keep the taken branch.
 	if node.kind == .comptime_if {
 		substituted := t.subst_field_cond(node.value, var_name, fm)
@@ -2986,6 +3110,36 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, cond)
 	}
 	return t.clone_field_subst_children(node, var_name, fm, inner_vars)
+}
+
+fn (t &Transformer) comptime_field_attrs_condition(id flat.NodeId, var_name string, fm FieldMeta) ?bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .prefix && node.op == .not && node.children_count == 1 {
+		value := t.comptime_field_attrs_condition(t.a.child(&node, 0), var_name, fm) or {
+			return none
+		}
+		return !value
+	}
+	if node.kind != .call || node.children_count != 2 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.value != 'contains' || callee.children_count == 0 {
+		return none
+	}
+	attrs := t.a.child_node(callee, 0)
+	if attrs.kind != .selector || attrs.value != 'attrs' || attrs.children_count == 0 {
+		return none
+	}
+	base := t.a.child_node(attrs, 0)
+	needle := t.a.child_node(&node, 1)
+	if base.kind != .ident || base.value != var_name || needle.kind != .string_literal {
+		return none
+	}
+	return needle.value in fm.attrs
 }
 
 // direct_reflected_field_selector reports whether an iterable is exactly
@@ -3108,6 +3262,7 @@ fn (mut t Transformer) clone_field_subst_children(node flat.Node, var_name strin
 	return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, node.value)
 }
 
+@[direct_array_access]
 fn (mut t Transformer) clone_field_subst_children_with_value(node flat.Node, var_name string, fm FieldMeta, inner_vars []string, value string) ?flat.NodeId {
 	child_inner_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
@@ -3297,25 +3452,25 @@ fn (t &Transformer) subst_field_cond(cond string, var_name string, fm FieldMeta)
 fn (t &Transformer) subst_unquoted_field_cond(cond string, var_name string, fm FieldMeta) string {
 	mut c := cond
 	if t.cur_module.len > 0 {
-		c = c.replace('${t.cur_module}.${var_name}', var_name)
+		c = comptime_cond_replace_unquoted(c, '${t.cur_module}.${var_name}', var_name)
 	}
-	c = c.replace('${var_name}.unaliased_typ', fm.comptime_unaliased)
-	c = c.replace('${var_name}.indirections', fm.indirections.str())
-	c = c.replace('${var_name}.is_option', fm.is_option.str())
-	c = c.replace('${var_name}.is_opt', fm.is_option.str())
-	c = c.replace('${var_name}.is_embed', fm.is_embed.str())
-	c = c.replace('${var_name}.is_array', fm.is_array.str())
-	c = c.replace('${var_name}.is_map', fm.is_map.str())
-	c = c.replace('${var_name}.is_chan', fm.is_chan.str())
-	c = c.replace('${var_name}.is_struct', fm.is_struct.str())
-	c = c.replace('${var_name}.is_enum', fm.is_enum.str())
-	c = c.replace('${var_name}.is_alias', fm.is_alias.str())
-	c = c.replace('${var_name}.is_shared', fm.is_shared.str())
-	c = c.replace('${var_name}.is_atomic', fm.is_atomic.str())
-	c = c.replace('${var_name}.is_mut', fm.is_mut.str())
-	c = c.replace('${var_name}.is_pub', fm.is_pub.str())
-	c = c.replace('${var_name}.typ', fm.comptime_typ)
-	c = c.replace('${var_name}.name', "'${fm.name}'")
+	c = comptime_cond_replace_unquoted(c, '${var_name}.unaliased_typ', fm.comptime_unaliased)
+	c = comptime_cond_replace_unquoted(c, '${var_name}.indirections', fm.indirections.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_option', fm.is_option.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_opt', fm.is_option.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_embed', fm.is_embed.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_array', fm.is_array.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_map', fm.is_map.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_chan', fm.is_chan.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_struct', fm.is_struct.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_enum', fm.is_enum.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_alias', fm.is_alias.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_shared', fm.is_shared.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_atomic', fm.is_atomic.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_mut', fm.is_mut.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.is_pub', fm.is_pub.str())
+	c = comptime_cond_replace_unquoted(c, '${var_name}.typ', fm.comptime_typ)
+	c = comptime_cond_replace_unquoted(c, '${var_name}.name', "'${fm.name}'")
 	c = comptime_cond_replace_bare_ident(c, var_name, fm.comptime_typ)
 	return c
 }

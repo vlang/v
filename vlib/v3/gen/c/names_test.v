@@ -19,6 +19,13 @@ fn test_c_name_sanitize_escaped_keywords() {
 	assert c_name('Kind.@asm') == 'Kind___v_asm'
 }
 
+fn test_c_name_sanitizes_compound_generic_type_arguments() {
+	name :=
+		c_name('json2.StructKeyDecodeResult[fn(&mbedtls.SSLListener, string) !&mbedtls.SSLCerts]')
+	assert name.bytes().all((it >= `a` && it <= `z`) || (it >= `A` && it <= `Z`)
+		|| (it >= `0` && it <= `9`) || it == `_`)
+}
+
 fn test_c_name_libc_collision_abs() {
 	assert c_name('abs') == 'v_abs'
 	assert c_name('C.abs') == 'abs'
@@ -49,6 +56,20 @@ fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
 		len:       3
 	})
 	assert typeof_display_resolved_type_name(fixed_maps) == '[3]map[string]int'
+}
+
+fn test_fixed_array_typedef_allows_opaque_pointer_elements() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.tc = &tc
+	opaque := types.Type(types.Struct{
+		name: 'C.Foo'
+	})
+	assert g.fixed_array_type_has_unknown_struct(opaque)
+	assert !g.fixed_array_type_has_unknown_struct(types.Type(types.Pointer{
+		base_type: opaque
+	}))
 }
 
 fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
@@ -95,4 +116,15 @@ fn test_guarded_preamble_externs_keep_explicit_declarations() {
 	assert g.should_emit_c_extern_decl('mkdir')
 	assert g.should_emit_c_extern_decl('chmod')
 	assert g.should_emit_c_extern_decl('symlink')
+}
+
+fn test_preserved_system_include_declarations_are_header_specific() {
+	assert c_preserved_system_include_declared_fns('<stdio.h>').len == 0
+	assert c_preserved_system_include_declared_fns('<openssl/ssl.h>') == ['X509_free']
+	assert c_preserved_system_include_declared_fns('<openssl/x509.h>') == [
+		'X509_free',
+	]
+	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
+		'objc_msgSend',
+	]
 }

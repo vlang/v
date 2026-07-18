@@ -80,6 +80,7 @@ mut:
 	pending_decl_attrs                []string
 	pending_decl_attr_kinds           []int
 	in_for_container                  bool
+	in_map_value                      int
 	unsupported_inline_asm_guards     map[int]bool
 	parsing_inferred_fixed_array_type bool
 	diagnostic_limit_reached          bool
@@ -225,6 +226,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.pending_fn_pub = false
 	p.pending_decl_attrs.clear()
 	p.pending_decl_attr_kinds.clear()
+	p.in_map_value = 0
 	p.comptime_local_values.clear()
 	p.comptime_value_undos.clear()
 	p.comptime_value_scopes.clear()
@@ -3192,7 +3194,13 @@ fn comptime_cond_has_type_test(cond string) bool {
 }
 
 fn comptime_cond_has_type_metadata(cond string) bool {
-	return cond.contains('.indirections')
+	for member in ['.indirections', '.typ', '.unaliased_typ', '.key_type', '.value_type',
+		'.element_type', '.pointee_type', '.payload_type', '.variant_types'] {
+		if cond.contains(member) {
+			return true
+		}
+	}
+	return false
 }
 
 // comptime_cond_has_builtin_threads reports whether a condition contains the bare builtin
@@ -5679,7 +5687,7 @@ fn (mut p Parser) parse_block_body() []flat.NodeId {
 }
 
 fn (mut p Parser) assign_or_expr_stmt() flat.NodeId {
-	lhs := p.expr(.lowest)
+	lhs := p.stmt_expr()
 
 	// multi-assign: a, b := expr1, expr2
 	if p.tok == .comma {
@@ -6299,16 +6307,30 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 
 fn (mut p Parser) expr(min_bp token.BindingPower) flat.NodeId {
 	lhs := p.prefix_expr()
-	return p.expr_with_lhs(lhs, min_bp)
+	return p.expr_with_lhs_context(lhs, min_bp, false)
 }
 
 fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) flat.NodeId {
+	return p.expr_with_lhs_context(first, min_bp, false)
+}
+
+fn (mut p Parser) stmt_expr() flat.NodeId {
+	is_stmt_ident := p.tok == .name
+	lhs := p.prefix_expr()
+	return p.expr_with_lhs_context(lhs, .lowest, is_stmt_ident)
+}
+
+fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingPower, is_stmt_ident bool) flat.NodeId {
 	mut lhs := first
 	for {
 		// A newline (scanned as `;`) directly followed by `.` continues the
 		// expression: `expr or { ... }` / `expr` on one line, `.method()` on
-		// the next. Statements can never start with `.`, so this is unambiguous.
+		// the next. Inside a map literal, however, `.member:` can begin the next
+		// enum-keyed entry, so leave that semicolon for the map parser.
 		if p.tok == .semicolon && p.peek() == .dot {
+			if p.in_map_value > 0 && p.newline_dot_starts_map_entry() {
+				break
+			}
 			p.next()
 			continue
 		}
@@ -6600,6 +6622,23 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 		if token_is_assignment(p.tok) {
 			break
 		}
+		// At the start of an identifier statement, `<<` is array append syntax.
+		// Its right side is the whole remaining expression, matching V's parser:
+		// `values << value & mask` appends `value & mask`, rather than shifting
+		// the array and then applying `&`.
+		if p.tok == .left_shift && is_stmt_ident {
+			op_id := int(p.tok)
+			p.next()
+			rhs := p.expr(.lowest)
+			istart := p.add_children2(lhs, rhs)
+			lhs = p.add_node(flat.Node{
+				kind:           .infix
+				op:             token_id_to_op(op_id)
+				children_start: istart
+				children_count: 2
+			})
+			continue
+		}
 		// infix operators
 		if !token_is_infix(p.tok) {
 			break
@@ -6635,6 +6674,47 @@ fn (p &Parser) expr_can_continue_with_newline_call(id flat.NodeId) bool {
 		return false
 	}
 	return p.column_for_pos(p.peek_pos) > p.line_indent_for_pos(node.pos.offset)
+}
+
+fn (mut p Parser) newline_dot_starts_map_entry() bool {
+	saved_s := p.s
+	saved_tok := p.tok
+	saved_lit := p.lit
+	saved_tok_pos := p.tok_pos
+	saved_tok_end := p.tok_end
+	saved_peek_tok := p.peek_tok
+	saved_peek_lit := p.peek_lit
+	saved_peek_pos := p.peek_pos
+	saved_peek_end := p.peek_end
+	saved_has_peek := p.has_peek
+	p.next() // semicolon -> dot
+	p.next() // dot -> member
+	if !p.tok_can_be_decl_name() {
+		p.s = saved_s
+		p.tok = saved_tok
+		p.lit = saved_lit
+		p.tok_pos = saved_tok_pos
+		p.tok_end = saved_tok_end
+		p.peek_tok = saved_peek_tok
+		p.peek_lit = saved_peek_lit
+		p.peek_pos = saved_peek_pos
+		p.peek_end = saved_peek_end
+		p.has_peek = saved_has_peek
+		return false
+	}
+	p.next()
+	is_entry := p.tok == .colon
+	p.s = saved_s
+	p.tok = saved_tok
+	p.lit = saved_lit
+	p.tok_pos = saved_tok_pos
+	p.tok_end = saved_tok_end
+	p.peek_tok = saved_peek_tok
+	p.peek_lit = saved_peek_lit
+	p.peek_pos = saved_peek_pos
+	p.peek_end = saved_peek_end
+	p.has_peek = saved_has_peek
+	return is_entry
 }
 
 fn (mut p Parser) sql_expr() flat.NodeId {
@@ -7301,7 +7381,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						}
 						k := p.expr(.lowest)
 						p.check(.colon)
+						p.in_map_value++
 						v := p.expr(.lowest)
+						p.in_map_value--
 						ids << k
 						ids << v
 						if p.tok == .comma || p.tok == .semicolon {
@@ -7374,7 +7456,9 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				}
 				k := p.expr(.lowest)
 				p.check(.colon)
+				p.in_map_value++
 				v := p.expr(.lowest)
+				p.in_map_value--
 				ids << k
 				ids << v
 				if p.tok == .comma || p.tok == .semicolon {
@@ -7863,6 +7947,9 @@ fn (mut p Parser) selector_or_method(lhs flat.NodeId) flat.NodeId {
 		children_count: 1
 	}, lhs)
 	if p.tok == .lpar {
+		if field_name.starts_with('@') {
+			p.a.nodes[int(sel)].value = field_name[1..]
+		}
 		lhs_node := p.a.nodes[int(lhs)]
 		if lhs_node.kind == .ident && lhs_node.value != 'C' && field_name.len > 0
 			&& field_name[0] >= `A` && field_name[0] <= `Z` {

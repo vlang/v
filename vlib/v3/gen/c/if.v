@@ -755,10 +755,10 @@ fn (mut g FlatGen) if_expr_type(node &flat.Node) types.Type {
 
 // gen_if_expr_stmt emits if expr stmt output for c.
 fn (mut g FlatGen) gen_if_expr_stmt(node flat.Node) {
-	ret_type := if g.expected_expr_type !is types.Void {
-		g.expected_expr_type
-	} else if node.typ.len > 0 {
+	ret_type := if node.typ.len > 0 {
 		g.tc.parse_type(node.typ)
+	} else if g.expected_expr_type !is types.Void {
+		g.expected_expr_type
 	} else {
 		g.if_expr_type(&node)
 	}

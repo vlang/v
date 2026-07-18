@@ -78,6 +78,29 @@ fn test_split_relative_c_flag_paths_resolve_from_source_directory() {
 	assert c_flag_include_dirs(flags) == [include_dir, system_dir]
 }
 
+fn test_c_flag_existing_path_macros() {
+	dir := os.join_path(os.vtmp_dir(), 'v3 c flag existing path ${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	missing := os.join_path(dir, 'missing')
+	assert c_flag_args('-I\$when_first_existing(\'${missing}\', \'${dir}\')', '', '',
+		pref.host_target()) == ['-I${dir}']
+	assert c_flag_args('-I\$when_first_existing(\'${missing}\')', '', '', pref.host_target()).len == 0
+	assert c_flag_args('\$first_existing(\'${missing}\', \'${dir}\')', '', '', pref.host_target()) == [
+		dir,
+	]
+}
+
+fn test_disabled_c_flag_does_not_expand_existing_path_macros() {
+	target := pref.target_from('macos', 'arm64') or { panic(err) }
+	missing := os.join_path(os.vtmp_dir(), 'v3_disabled_c_flag_missing_${os.getpid()}')
+	os.rmdir_all(missing) or {}
+	assert c_flag_args('linux \$first_existing(\'${missing}\')', '', '', target).len == 0
+}
+
 fn test_split_forced_include_flags_are_cache_inputs() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_split_forced_include_flags')
 	os.rmdir_all(dir) or {}
@@ -123,9 +146,66 @@ fn test_cache_input_scan_uses_requested_target_flags() {
 	a := p.parse_file(source)
 	inputs, has_untracked := cache_external_input_files(a, '', {
 		'sample': true
-	}, target)
+	}, [], target)
 	assert !has_untracked
 	assert inputs['sample'] == [os.real_path(header)]
+}
+
+fn test_cache_input_scan_uses_initial_cflags() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_target_cli_cache_inputs_${os.getpid()}')
+	include_dir := os.join_path(dir, 'CLI include with spaces')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(include_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header := os.join_path(include_dir, 'cli_only.h')
+	forced_header := os.join_path(include_dir, 'forced_cli.h')
+	os.write_file(header, '#define CLI_ONLY_VALUE 1\n') or { panic(err) }
+	os.write_file(forced_header, '#define FORCED_CLI_VALUE 2\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample
+#include "cli_only.h"
+') or { panic(err) }
+	target := pref.host_target()
+	mut prefs := pref.new_preferences()
+	prefs.target = target
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, ['-I', include_dir, '-include', 'forced_cli.h'], target)
+	assert !has_untracked
+	assert inputs['sample'] == [os.real_path(header)]
+	assert inputs['__v3_c_flags__'] == [os.real_path(forced_header)]
+}
+
+fn test_cache_input_scan_tracks_imported_headers() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_imported_header_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	imported_header := os.join_path(dir, 'imported.h')
+	os.write_file(outer_header, '#import "imported.h"\n') or { panic(err) }
+	os.write_file(imported_header, '#define IMPORTED_VALUE 1\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample
+#include "outer.h"
+') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert !has_untracked
+	mut expected := [os.real_path(outer_header), os.real_path(imported_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
 }
 
 fn test_termux_comptime_branch_uses_canonical_target() {
