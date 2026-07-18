@@ -5835,6 +5835,8 @@ struct Bag {
 	items []int
 }
 
+type BagRef = &Bag
+
 fn main() {
 	a := 7
 	b := 7
@@ -5858,13 +5860,19 @@ fn main() {
 	opt_bag_a := unsafe { ?&Bag(bag_a) }
 	opt_bag_b := unsafe { ?&Bag(bag_b) }
 	opt_nil_bag := unsafe { ?&Bag(nil_bag) }
+	opt_alias_bag_a := unsafe { ?BagRef(BagRef(bag_a)) }
+	opt_alias_bag_b := unsafe { ?BagRef(BagRef(bag_b)) }
+	opt_alias_nil_bag := unsafe { ?BagRef(BagRef(nil_bag)) }
 	println(opt_a == opt_b)
 	println(opt_a == opt_a)
 	println(opt_item_a == opt_item_b)
 	println(opt_nil_bag == opt_bag_a)
 	println(opt_nil_bag == opt_nil_bag)
 	println(opt_bag_a == opt_bag_b)
+	println(opt_alias_bag_a == opt_alias_bag_b)
+	println(opt_alias_nil_bag == opt_alias_bag_a)
+	println(opt_alias_nil_bag == opt_alias_nil_bag)
 }
 ')
-	assert optional_pointer_out == 'false\ntrue\ntrue\nfalse\ntrue\ntrue'
+	assert optional_pointer_out == 'false\ntrue\ntrue\nfalse\ntrue\ntrue\ntrue\nfalse\ntrue'
 }

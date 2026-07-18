@@ -2445,10 +2445,12 @@ fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.
 	lhs_value_field := t.make_selector(lhs_value, 'value', lhs_value_type)
 	rhs_value_field := t.make_selector(rhs_value, 'value', rhs_field_type)
 	pending_start := t.pending_stmts.len
-	value_eq := if lhs_value_type.starts_with('&') && rhs_field_type.starts_with('&')
-		&& t.struct_lookup_name(lhs_value_type[1..]).len > 0 {
+	lhs_payload_type := t.normalize_type_alias(lhs_value_type)
+	rhs_payload_type := t.normalize_type_alias(rhs_field_type)
+	value_eq := if lhs_payload_type.starts_with('&') && rhs_payload_type.starts_with('&')
+		&& t.struct_lookup_name(lhs_payload_type[1..]).len > 0 {
 		t.make_optional_pointer_payload_eq_expr(lhs_value_field, rhs_value_field,
-			lhs_value_type[1..], seen)
+			lhs_payload_type[1..], seen)
 	} else {
 		t.make_membership_eq_expr_with_seen(lhs_value_field, rhs_value_field, lhs_value_type, seen)
 	}
