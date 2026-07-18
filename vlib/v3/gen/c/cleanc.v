@@ -10003,7 +10003,7 @@ fn (mut g FlatGen) gen_fixed_array_infix_eq(node flat.Node, lhs_id flat.NodeId, 
 	g.gen_expr_with_expected_type(lhs_id, types.Type(fixed))
 	g.write(', ')
 	g.gen_expr_with_expected_type(rhs_id, types.Type(fixed))
-	g.write(', sizeof(${g.sizeof_target(g.value_sizeof_target(types.Type(fixed)))})) == 0)')
+	g.write(', sizeof(${g.value_sizeof_target(types.Type(fixed))})) == 0)')
 	return true
 }
 

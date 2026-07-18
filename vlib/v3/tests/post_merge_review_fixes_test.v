@@ -5929,6 +5929,12 @@ fn main() {
 }
 ')
 	assert fixed_promoted_out == '3\n7'
+	fixed_c_struct_eq_out := run_good_project(v3_bin, 'fixed_array_c_struct_equality', {
+		'v.mod':  "Module { name: 'fixed_array_c_struct_equality' }\n"
+		'shim.h': 'struct v3_lowercase_tag { int value; };\n'
+		'main.v': 'module main\n\n#include "shim.h"\n\nfn main() {\n\tleft := [2]C.v3_lowercase_tag{}\n\tright := [2]C.v3_lowercase_tag{}\n\tprintln(left == right)\n}\n'
+	}, 'main.v')
+	assert fixed_c_struct_eq_out == 'true'
 	pointer_promoted_out := run_good(v3_bin, 'promoted_pointer_embed_struct_init', 'struct PointerInner {
 	count int = 4
 	items []int
