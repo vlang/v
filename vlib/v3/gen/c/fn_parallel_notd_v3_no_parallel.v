@@ -1035,7 +1035,7 @@ fn (mut g FlatGen) publish_scoped_worker_string_literals(w &FlatGen) map[int]int
 	return remap
 }
 
-fn remap_scoped_worker_string_symbols(source string, remap map[int]int) string {
+fn remap_scoped_worker_string_symbols(source string, remap map[int]int, user_c_symbols map[string]bool) string {
 	if remap.len == 0 {
 		return source.clone()
 	}
@@ -1089,7 +1089,7 @@ fn remap_scoped_worker_string_symbols(source string, remap map[int]int) string {
 				i++
 			}
 			identifier := source[start..i]
-			if cache_numbered_string_symbol(identifier) {
+			if cache_numbered_string_symbol(identifier) && !user_c_symbols[identifier] {
 				mut local_id := 0
 				for digit in identifier[5..].bytes() {
 					local_id = local_id * 10 + int(digit - `0`)
@@ -1119,10 +1119,16 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	} else {
 		map[int]int{}
 	}
+	user_c_symbols := if string_id_remap.len > 0 {
+		g.cache_user_c_string_symbols()
+	} else {
+		map[string]bool{}
+	}
 	worker_output := ww.sb.str()
 	if worker_output.len > 0 {
 		if string_id_remap.len > 0 {
-			g.fn_segs << remap_scoped_worker_string_symbols(worker_output, string_id_remap)
+			g.fn_segs << remap_scoped_worker_string_symbols(worker_output, string_id_remap,
+				user_c_symbols)
 			unsafe { worker_output.free() }
 		} else {
 			g.fn_segs << worker_output
@@ -1134,7 +1140,7 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	unsafe { ww.sb.free() }
 	for segment in w.fn_segs {
 		g.fn_segs << if string_id_remap.len > 0 {
-			remap_scoped_worker_string_symbols(segment, string_id_remap)
+			remap_scoped_worker_string_symbols(segment, string_id_remap, user_c_symbols)
 		} else {
 			segment.clone()
 		}
@@ -1167,7 +1173,7 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	}
 	for def in w.spawn_wrapper_defs {
 		g.add_spawn_wrapper_def(if string_id_remap.len > 0 {
-			remap_scoped_worker_string_symbols(def, string_id_remap)
+			remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
 		} else {
 			def.clone()
 		})
@@ -1179,7 +1185,7 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	}
 	for def in w.callback_wrapper_defs {
 		g.add_callback_wrapper_def(if string_id_remap.len > 0 {
-			remap_scoped_worker_string_symbols(def, string_id_remap)
+			remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
 		} else {
 			def.clone()
 		})

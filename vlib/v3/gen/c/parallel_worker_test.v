@@ -99,6 +99,19 @@ fn test_scoped_cgen_worker_merge_publishes_generated_literals() {
 	assert g.spawn_wrapper_defs == ['spawn_helper(_str_2);']
 }
 
+fn test_scoped_cgen_string_remap_preserves_user_c_identifiers() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.c_extern_refs['_str_999'] = true
+	g.c_extern_refs_ready = true
+	user_c_symbols := g.cache_user_c_string_symbols()
+	remap := {
+		1:   2
+		999: 1000
+	}
+	source := 'helper(_str_1); _str_999(); "_str_1"; /* _str_999 */'
+	assert remap_scoped_worker_string_symbols(source, remap, user_c_symbols) == 'helper(_str_2); _str_999(); "_str_1"; /* _str_999 */'
+}
+
 fn test_fused_parallel_prep_interns_body_string_literals() {
 	mut g, _ := parallel_worker_test_gen(false)
 	g.a.nodes = [
