@@ -38,7 +38,7 @@ pub const days_before = [
 @[markused]
 pub struct Time {
 	unix i64
-	loc  ?&Location
+	loc  ?Location
 pub:
 	year       int
 	month      int

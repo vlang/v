@@ -1,6 +1,6 @@
 module time
 
-struct C.TIME_ZONE_INFORMATION {
+struct TimeZoneInformation {
 pub mut:
 	bias          i32
 	standard_name [32]u16
@@ -11,10 +11,10 @@ pub mut:
 	daylight_bias i32
 }
 
-fn C.GetTimeZoneInformation(&C.TIME_ZONE_INFORMATION) u32
+fn C.GetTimeZoneInformation(&TimeZoneInformation) u32
 
-fn windows_local_location() !&Location {
-	mut info := C.TIME_ZONE_INFORMATION{}
+fn local_location() !&Location {
+	mut info := TimeZoneInformation{}
 	C.GetTimeZoneInformation(&info)
 	std_name := unsafe { string_from_wide(&u16(&info.standard_name[0])) }
 	dst_name := unsafe { string_from_wide(&u16(&info.daylight_name[0])) }

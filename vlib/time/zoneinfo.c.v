@@ -42,7 +42,6 @@ struct ZoneTransition {
 // A `Time` with a non-none `location()` carries IANA zone rules. Prefer that
 // over the older `is_local` flag, which only means "system local wall time
 // with a fixed process offset" and does not model DST transitions by name.
-@[heap]
 pub struct Location {
 pub:
 	name string
@@ -140,7 +139,7 @@ pub fn (loc &Location) unix_nanosecond_to_local(unix_time i64, nanosecond int) !
 	zone := loc.zone_at(unix_time)!
 	local := unix_nanosecond(unix_time + i64(zone.offset), nanosecond)
 	return Time{
-		loc:        loc
+		loc:        *loc
 		unix:       unix_time
 		year:       local.year
 		month:      local.month
@@ -158,7 +157,7 @@ pub fn (t Time) in(loc &Location) !Time {
 }
 
 // location returns the IANA location associated with `t`, if any.
-pub fn (t Time) location() ?&Location {
+pub fn (t Time) location() ?Location {
 	return t.loc
 }
 
@@ -166,60 +165,6 @@ pub fn (t Time) location() ?&Location {
 pub fn (t Time) zone() !Zone {
 	loc := t.loc or { return error('time has no IANA location') }
 	return loc.zone_at(t.unix())
-}
-
-fn local_location() !&Location {
-	$if windows {
-		return windows_local_location()
-	}
-	tz := os.getenv('TZ')
-	if tz != '' {
-		if tz.starts_with(':') {
-			path := tz[1..]
-			if path != '' {
-				if data := os.read_bytes(path) {
-					return parse_tzif_location('Local', data) or { fixed_local_location() }
-				}
-				if !os.is_abs_path(path) {
-					return load_location(path) or { fixed_local_location() }
-				}
-			}
-		} else {
-			return load_location(tz) or { fixed_local_location() }
-		}
-	}
-	localtime := '/etc/localtime'
-	if os.is_link(localtime) {
-		target := os.readlink(localtime) or { '' }
-		if target != '' {
-			if name := zoneinfo_name_from_path(target) {
-				return load_location(name) or { fixed_local_location() }
-			}
-		}
-	}
-	// Regular file or symlink whose target is not under .../zoneinfo/...
-	if os.exists(localtime) {
-		if data := os.read_bytes(localtime) {
-			return parse_tzif_location('Local', data) or { fixed_local_location() }
-		}
-	}
-	return fixed_local_location()
-}
-
-fn fixed_local_location() &Location {
-	return &Location{
-		name:  'Local'
-		zones: [Zone{
-			name:   'Local'
-			offset: offset()
-		}]
-	}
-}
-
-fn zoneinfo_name_from_path(path string) ?string {
-	marker := '/zoneinfo/'
-	index := path.index(marker) or { return none }
-	return path[index + marker.len..]
 }
 
 fn (loc &Location) first_standard_zone_index() int {
