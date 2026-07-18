@@ -2150,7 +2150,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				source_directive := '#include "${source_path}"'
 				if source_path.ends_with('.m') {
 					if 'objective-c' !in g.c_flags {
-						g.c_flags << ['-x', 'objective-c']
+						g.c_flags << ['-x', 'objective-c', '-x', 'none']
 					}
 				}
 				g.add_c_directive(module_name, source_directive, before_import)

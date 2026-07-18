@@ -6024,6 +6024,20 @@ fn main() {
 		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim.o\n\nfn C.answer_from_explicit_object_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_explicit_object_cpp()))\n}\n'
 	}, 'main.v')
 	assert explicit_object_language_out == '52'
+	extensionless_language_out := run_good_project_with_flags(v3_bin,
+		'extensionless_explicit_language', '-cc clang', {
+		'v.mod':  "Module { name: 'extensionless_explicit_language' }\n"
+		'shim':   '#include <string>\nextern "C" int answer_from_extensionless_cpp(void) { std::string answer(53, \'x\'); return int(answer.size()); }\n'
+		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim\n\nfn C.answer_from_extensionless_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_extensionless_cpp()))\n}\n'
+	}, 'main.v')
+	assert extensionless_language_out == '53'
+	objective_cpp_c_override_out := run_good_project_with_flags(v3_bin, 'objective_cpp_c_override',
+		'-cc clang', {
+		'v.mod':   "Module { name: 'objective_cpp_c_override' }\n"
+		'shim.mm': 'int answer_from_mm_compiled_as_c(void) { void* raw = 0; int* typed = raw; return typed == 0 ? 54 : 0; }\n'
+		'main.v':  'module main\n\n#flag -x c\n#flag @VMODROOT/shim.mm\n\nfn C.answer_from_mm_compiled_as_c() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_mm_compiled_as_c()))\n}\n'
+	}, 'main.v')
+	assert objective_cpp_c_override_out == '54'
 }
 
 fn test_review_fixed_array_alias_clone_dispatch() {
