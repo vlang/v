@@ -1864,6 +1864,29 @@ fn c_type_is_pointer_like(typ types.Type) bool {
 	return false
 }
 
+// voidptr_value_arg_needs_address mirrors the checker rule that lets a non-C
+// voidptr parameter borrow an addressable value. Keep this explicit even though
+// the general pointer-parameter path below also handles most value types.
+fn (g &FlatGen) voidptr_value_arg_needs_address(arg_id flat.NodeId, arg_node flat.Node, actual types.Type, expected types.Type) bool {
+	if !type_is_void_pointer(expected) || c_type_is_pointer_like(actual)
+		|| g.arg_is_null_pointer_literal(arg_id, arg_node)
+		|| g.fn_value_arg_passes_direct_to_voidptr(arg_id, arg_node, actual, expected)
+		|| !g.expr_is_addressable(arg_id) {
+		return false
+	}
+	if arg_node.kind == .ident {
+		if g.local_storage_is_pointer(arg_node.value) {
+			return false
+		}
+		if global_type := g.global_type_for_ident(arg_node.value) {
+			if c_type_is_pointer_like(global_type) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 fn (g &FlatGen) c_char_literal_arg(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
@@ -5258,6 +5281,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					if needs_addr && g.voidptr_method_value_arg(arg_id, param_types[arg_idx]) {
 						needs_addr = false
 					}
+				}
+				if !is_c_call && arg_idx < typed_param_count
+					&& g.voidptr_value_arg_needs_address(arg_id, arg_node, g.usable_expr_type(arg_id), param_types[arg_idx]) {
+					needs_addr = true
 				}
 				if !is_c_call && !needs_addr && arg_idx == 0
 					&& (g.mut_receiver_arg_wants_addr(actual_fn, arg_id)
@@ -10533,6 +10560,10 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 				needs_addr = !(arg_node.kind == .ident
 					&& (g.local_storage_is_pointer(arg_node.value) || arg_is_pointer_global))
 			}
+		}
+		if !is_c_call && arg_idx < typed_param_count
+			&& g.voidptr_value_arg_needs_address(arg_id, arg_node, g.usable_expr_type(arg_id), param_types[arg_idx]) {
+			needs_addr = true
 		}
 		is_rvalue := arg_node.kind == .call
 			|| (arg_node.kind == .index && arg_node.value == 'range')
