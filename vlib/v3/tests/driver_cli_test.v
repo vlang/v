@@ -123,8 +123,9 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	help := cmdexec.run(v3_bin, ['--help'])
 	assert help.exit_code == 0
 	assert help.output.contains('-cc <compiler>')
+	assert help.output.contains('-no-memory-limit')
 	c_output := os.join_path(root, 'hello.c')
-	c_compile := cmdexec.run(v3_bin, ['-o', c_output, source])
+	c_compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', c_output, source])
 	assert c_compile.exit_code == 0, c_compile.output
 	c_source := os.read_file(c_output)!
 	assert c_source.len > 100
