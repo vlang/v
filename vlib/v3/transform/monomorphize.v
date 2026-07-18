@@ -79,10 +79,13 @@ fn (mut t Transformer) monomorphize_pass() []string {
 	// of allocating a temporary array for every cloned AST node.
 	t.generic_clone_children.ensure_cap(t.a.nodes.len)
 	struct_decls := t.collect_generic_struct_decls()
+	t.monomorph_profile('mono driver struct decls: ${time.ticks() - debug_started} ms')
 	t.materialize_generic_sum_types(false)
+	t.monomorph_profile('mono driver sum materialize: ${time.ticks() - debug_started} ms')
 	t.seed_generic_specialization_args(struct_decls)
 	sum_decls := t.collect_generic_sum_decls()
 	t.materialize_generic_struct_specs(t.generic_struct_specs_cache, struct_decls)
+	t.monomorph_profile('mono driver struct materialize: ${time.ticks() - debug_started} ms')
 	mut ignored_nodes := t.monomorphize_ignored_nodes(decls)
 	mut emitted := map[string]bool{}
 	mut generated := []string{}
@@ -133,12 +136,25 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		}
 		used_fns_at_scan = t.used_fn_count()
 		t.monomorph_profile('mono round ${debug_round} ignored: ${time.ticks() - debug_round_started} ms')
+		use_parallel_scan := t.parallel_monomorph_scan_start == scan_start
+			&& t.parallel_monomorph_scan_end == node_count
 		if generic_struct_specs_scan_start < node_count {
 			spec_count := generic_struct_specs.len
-			t.collect_generic_struct_specs_range(struct_decls, mut generic_struct_specs,
-				generic_struct_specs_scan_start, node_count)
-			t.collect_generic_sum_specs_range(sum_decls, mut generic_sum_specs,
-				generic_struct_specs_scan_start, node_count)
+			if use_parallel_scan && generic_struct_specs_scan_start == scan_start {
+				for spec, base in t.parallel_monomorph_struct_specs {
+					generic_struct_specs[spec] = base
+				}
+				for spec, context in t.parallel_monomorph_sum_specs {
+					generic_sum_specs[spec] = context
+				}
+				t.parallel_monomorph_struct_specs.clear()
+				t.parallel_monomorph_sum_specs.clear()
+			} else {
+				t.collect_generic_struct_specs_range(struct_decls, mut generic_struct_specs,
+					generic_struct_specs_scan_start, node_count)
+				t.collect_generic_sum_specs_range(sum_decls, mut generic_sum_specs,
+					generic_struct_specs_scan_start, node_count)
+			}
 			generic_struct_specs_scan_start = node_count
 			if generic_struct_specs.len != spec_count {
 				lowered_operator_uses = t.lowered_generic_struct_operator_uses_for_specs(generic_struct_specs,
@@ -146,8 +162,6 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			}
 		}
 		t.monomorph_profile('mono round ${debug_round} specs: ${time.ticks() - debug_round_started} ms')
-		use_parallel_scan := t.parallel_monomorph_scan_start == scan_start
-			&& t.parallel_monomorph_scan_end == node_count
 		new_scan_count := if use_parallel_scan {
 			t.parallel_monomorph_scan_nodes.len
 		} else {
@@ -238,7 +252,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 			changed = true
 		}
 		t.monomorph_profile('mono round ${debug_round} methods: ${time.ticks() - debug_round_started} ms')
-		if t.drain_pending_generic_fn_specs(mut emitted, mut generated) {
+		if t.drain_pending_generic_fn_specs(struct_decls, sum_decls, mut emitted, mut generated) {
 			changed = true
 		}
 		t.monomorph_profile('mono round ${debug_round} drain: ${time.ticks() - debug_round_started} ms')
@@ -259,7 +273,9 @@ fn (mut t Transformer) monomorphize_pass() []string {
 		extra_call_sites := t.collect_generic_call_sites_after_type_refresh(generic_struct_specs,
 			decls, ignored_nodes, missed_call_sites, mut emitted, mut recorded_call_sites)
 		if extra_call_sites.len > 0 {
-			for t.drain_pending_generic_fn_specs(mut emitted, mut generated) {}
+			for t.drain_pending_generic_fn_specs(struct_decls, sum_decls, mut emitted, mut
+				generated) {
+			}
 			t.rewrite_generic_call_sites(decls, extra_call_sites)
 			t.refresh_decl_assign_types_after_generic_rewrite()
 		}
@@ -291,14 +307,15 @@ fn (mut t Transformer) request_generic_fn_specialization(decl GenericFnDecl, arg
 	}
 }
 
-fn (mut t Transformer) drain_pending_generic_fn_specs(mut emitted map[string]bool, mut generated []string) bool {
+fn (mut t Transformer) drain_pending_generic_fn_specs(struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut emitted map[string]bool, mut generated []string) bool {
 	if t.pending_generic_fn_specs.len == 0 {
 		return false
 	}
 	specs := t.pending_generic_fn_specs
 	t.pending_generic_fn_specs = []PendingGenericFnSpec{}
 	$if !v3_no_parallel ? {
-		if specs.len >= 32 && t.run_parallel_monomorphize_specs(specs, mut emitted) {
+		if specs.len >= 32
+			&& t.run_parallel_monomorphize_specs(specs, struct_decls, sum_decls, mut emitted) {
 			return true
 		}
 	}
@@ -1775,11 +1792,13 @@ fn (mut t Transformer) materialize_generic_struct_specs(specs map[string]string,
 		decl := decls[base] or { continue }
 		t.materialize_generic_struct_spec(spec, decl)
 	}
+	started := time.ticks()
 	t.tc.clear_interface_impl_cache()
 	if specs.len > t.interface_impl_spec_count {
-		t.refresh_interface_impl_indexes()
+		t.refresh_interface_impl_indexes_for_generic_specs(specs)
 		t.interface_impl_spec_count = specs.len
 	}
+	t.monomorph_profile('mono materialize interfaces: ${time.ticks() - started} ms')
 }
 
 fn (mut t Transformer) materialize_generic_sum_types(erase_templates bool) {
@@ -1974,21 +1993,24 @@ fn (mut t Transformer) collect_generic_struct_specs_range(decls map[string]Gener
 		node := t.a.nodes[node_idx]
 		node_module := t.node_module_or(node_idx, '')
 		node_file := t.node_file_or(node_idx, '')
-		if node.typ.len > 0 {
-			t.collect_generic_struct_spec_from_type(node.typ, node_module, node_file, decls, mut
+		t.collect_generic_struct_specs_from_node(node, node_module, node_file, decls, mut specs)
+	}
+}
+
+fn (mut t Transformer) collect_generic_struct_specs_from_node(node flat.Node, module_name string, file_name string, decls map[string]GenericStructDecl, mut specs map[string]string) {
+	if node.typ.len > 0 {
+		t.collect_generic_struct_spec_from_type(node.typ, module_name, file_name, decls, mut specs)
+	}
+	match node.kind {
+		.sql_expr {
+			t.collect_generic_struct_specs_from_sql_expr(node.value, module_name, file_name, decls, mut
 				specs)
 		}
-		match node.kind {
-			.sql_expr {
-				t.collect_generic_struct_specs_from_sql_expr(node.value, node_module, node_file,
-					decls, mut specs)
-			}
-			.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
-				t.collect_generic_struct_spec_from_type(node.value, node_module, node_file, decls, mut
-					specs)
-			}
-			else {}
+		.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
+			t.collect_generic_struct_spec_from_type(node.value, module_name, file_name, decls, mut
+				specs)
 		}
+		else {}
 	}
 }
 
@@ -2149,16 +2171,23 @@ fn (mut t Transformer) collect_generic_sum_specs_range(decls map[string]GenericS
 		node := t.a.nodes[node_idx]
 		node_module := t.node_module_or(node_idx, '')
 		node_file := t.node_file_or(node_idx, '')
-		if node.typ.len > 0 {
-			t.collect_generic_sum_spec_from_type(node.typ, node_module, node_file, decls, mut specs)
+		t.collect_generic_sum_specs_from_node(node, node_module, node_file, decls, mut specs)
+	}
+}
+
+fn (mut t Transformer) collect_generic_sum_specs_from_node(node flat.Node, module_name string, file_name string, decls map[string]GenericSumDecl, mut specs map[string]GenericSpecContext) {
+	if decls.len == 0 {
+		return
+	}
+	if node.typ.len > 0 {
+		t.collect_generic_sum_spec_from_type(node.typ, module_name, file_name, decls, mut specs)
+	}
+	match node.kind {
+		.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
+			t.collect_generic_sum_spec_from_type(node.value, module_name, file_name, decls, mut
+				specs)
 		}
-		match node.kind {
-			.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
-				t.collect_generic_sum_spec_from_type(node.value, node_module, node_file, decls, mut
-					specs)
-			}
-			else {}
-		}
+		else {}
 	}
 }
 
@@ -4409,10 +4438,7 @@ fn (mut t Transformer) cached_generic_call_specialization(id flat.NodeId, node f
 	if t.generic_call_spec_misses[idx] {
 		return none
 	}
-	decl_key, args := t.generic_call_specialization(id, node, module_name, decls) or {
-		t.generic_call_spec_misses[idx] = true
-		return none
-	}
+	decl_key, args := t.generic_call_specialization(id, node, module_name, decls) or { return none }
 	t.generic_call_spec_cache[idx] = GenericCallSpec{
 		decl_key: decl_key
 		args:     args
@@ -4562,6 +4588,10 @@ fn (mut t Transformer) generic_call_specialization(id flat.NodeId, node flat.Nod
 			return decl_key, scoped
 		}
 	}
+	// Only generic calls whose arguments are not inferable yet need another pass
+	// after declaration-assignment types have been refreshed. Recording every
+	// ordinary call here makes that late pass scan most of a large program.
+	t.generic_call_spec_misses[int(id)] = true
 	return none
 }
 

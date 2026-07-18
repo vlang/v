@@ -130,3 +130,34 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 	assert second[0].attrs == ['second_attr']
 	assert second[0].is_mut
 }
+
+fn test_comptime_field_metadata_cache_normalizes_main_qualified_name() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a:                             &a
+		comptime_field_metas_cache:    map[string][]FieldMeta{}
+		struct_field_decl_metas_cache: {
+			'Config': {
+				'skipped': FieldDeclMeta{
+					attrs: ['skip']
+				}
+			}
+		}
+		structs:                       {
+			'main.Config': StructInfo{
+				name:   'main.Config'
+				module: 'main'
+				fields: [
+					FieldInfo{
+						name:    'skipped'
+						typ:     '&App'
+						raw_typ: '&App'
+					},
+				]
+			}
+		}
+	}
+	metas := t.comptime_field_metas('main.Config')
+	assert metas.len == 1
+	assert metas[0].attrs == ['skip']
+}

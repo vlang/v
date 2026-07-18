@@ -11350,6 +11350,9 @@ fn (mut g FlatGen) forward_decls() {
 	}
 	for start := 0; start < items.len; start += 256 {
 		end := if start + 256 < items.len { start + 256 } else { items.len }
+		// Map lookups below can return batch-owned string values. Do not retain them after the
+		// scratch arena is freed; duplicate compatible C prototypes across batches are harmless.
+		forwarded_exports.clear()
 		output_sb := g.sb
 		master_tc := g.tc
 		master_c_name_cache := g.c_name_cache

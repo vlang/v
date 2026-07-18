@@ -1385,6 +1385,16 @@ fn test_imported_struct_default_qualifies_function_alias_cast() {
 	assert !c_source.contains('(Callback)'), c_source
 }
 
+fn test_imported_struct_defaults_keep_declaring_module_constants() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_struct_default_constants', {
+		'v.mod':           "Module { name: 'imported_struct_default_constants' }\n"
+		'widget/widget.v': "module widget\n\npub const no_style = 'none'\npub const origin = [0.0, 0.0]\n\npub struct Config {\npub:\n\tstyle  string = no_style\n\torigin []f64  = origin\n}\n"
+		'main.v':          'module main\n\nimport widget\n\nfn main() {\n\tconfig := widget.Config{}\n\tprintln(config.style)\n\tprintln(config.origin.len)\n}\n'
+	}, 'main.v')
+	assert out == 'none\n2'
+}
+
 fn test_json2_c_alias_fields_keep_declaring_module_types() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'json2_c_alias_field_types',

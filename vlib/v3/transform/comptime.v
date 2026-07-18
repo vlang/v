@@ -2614,17 +2614,21 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 	if idx := decl_name.index('[') {
 		decl_name = decl_name[..idx]
 	}
-	if decl_module.len > 0 && decl_module !in ['main', 'builtin'] {
-		short_name := if decl_name.starts_with('${decl_module}.') {
-			decl_name[decl_module.len + 1..]
-		} else {
-			decl_name
+	mut short_name := decl_name
+	if decl_module.len > 0 {
+		if decl_name.starts_with('${decl_module}.') {
+			short_name = decl_name[decl_module.len + 1..]
+		} else if decl_name.starts_with('${c_name(decl_module)}__') {
+			short_name = decl_name[c_name(decl_module).len + 2..]
 		}
+	}
+	if decl_module.len > 0 && decl_module !in ['main', 'builtin'] {
 		if cached := t.struct_field_decl_metas_cache['${decl_module}.${short_name}'] {
 			return cached
 		}
 	}
-	if cached := t.struct_field_decl_metas_cache[decl_name] {
+	lookup_name := if decl_module in ['main', 'builtin'] { short_name } else { decl_name }
+	if cached := t.struct_field_decl_metas_cache[lookup_name] {
 		if decl_module.len == 0 || decl_module in ['main', 'builtin'] {
 			return cached
 		}
@@ -2651,7 +2655,7 @@ fn (t &Transformer) struct_field_decl_metas_in_module(base_type string, decl_mod
 		}
 		for prefix in [node.value, qualified, c_name(node.value),
 			c_name(qualified)] {
-			if prefix.len == 0 || !decl_name.starts_with('${prefix}_') {
+			if prefix.len == 0 || !lookup_name.starts_with('${prefix}_') {
 				continue
 			}
 			if cached := t.struct_field_decl_metas_cache[qualified] {

@@ -236,6 +236,8 @@ mut:
 	parallel_monomorph_scan_nodes     []int
 	parallel_monomorph_scan_start     int
 	parallel_monomorph_scan_end       int
+	parallel_monomorph_struct_specs   map[string]string
+	parallel_monomorph_sum_specs      map[string]GenericSpecContext
 	generic_call_spec_cache           map[int]GenericCallSpec
 	generic_call_spec_misses          map[int]bool
 	stringify_stack                   []string
@@ -689,10 +691,9 @@ pub fn monomorphize_with_used_checked(mut a flat.FlatAst, tc &types.TypeChecker,
 	}
 	t.materialize_generic_structs(false)
 	t.monomorph_profile('mono wrapper generated: ${time.ticks() - debug_started} ms')
-	// Monomorphization adds concrete generic functions after markused. Scan the
-	// augmented set so calls introduced by their transformed/comptime-unrolled
-	// bodies also root their non-generic helpers.
-	late_names << t.new_call_names_from_used_fn_bodies(t.used_fns, t.a.nodes.len)
+	// generated_fn_used_names records callees while each specialization is
+	// transformed. Seed the late-body queue from those new names; that queue
+	// follows further callees recursively as it transforms each body.
 	late_names << newly_used_fn_names(used_fns, t.used_fns)
 	t.monomorph_profile('mono wrapper calls: ${time.ticks() - debug_started} ms')
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
@@ -890,7 +891,7 @@ fn (mut t Transformer) prepare_interface_impl_indexes() {
 	t.interface_impl_indexes = t.tc.interface_impl_indexes.clone()
 }
 
-fn (mut t Transformer) refresh_interface_impl_indexes() {
+fn (mut t Transformer) refresh_interface_impl_indexes_for_generic_specs(specs map[string]string) {
 	if isnil(t.tc) {
 		return
 	}
@@ -899,10 +900,33 @@ fn (mut t Transformer) refresh_interface_impl_indexes() {
 		if t.is_builtin_ierror_interface_name(iface_name) {
 			continue
 		}
-		impls := t.tc.interface_impl_names(iface_name)
+		old_index := t.interface_impl_indexes[iface_name] or {
+			&types.InterfaceImplIndex{
+				names: []string{}
+				ids:   map[string]int{}
+			}
+		}
+		mut impls := old_index.names.clone()
+		mut seen := map[string]bool{}
+		for name in impls {
+			seen[name] = true
+		}
+		mut added := []string{}
+		for spec, _ in specs {
+			for candidate in [spec, c_name(spec)] {
+				if candidate.len == 0 || seen[candidate]
+					|| !t.tc.named_type_implements_interface(candidate, iface_name) {
+					continue
+				}
+				seen[candidate] = true
+				added << candidate
+			}
+		}
+		added.sort()
+		impls << added
 		refreshed[iface_name] = &types.InterfaceImplIndex{
 			names: impls
-			ids:   t.tc.interface_type_ids(iface_name)
+			ids:   types.stable_interface_type_ids_preserving_prefix(old_index.names, impls)
 		}
 	}
 	t.interface_impl_indexes = refreshed.move()
@@ -2557,7 +2581,7 @@ fn (mut t Transformer) clone_scoped_worker_node(idx int, scope voidptr) {
 // reference to a worker-local new node or new children block is shifted by the
 // distance the block moved. `items` lists the function indices this worker owned, so
 // their rewritten top-level nodes can be copied into place.
-fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nodes int, base_children int) {
+fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nodes int, base_children int, clear_node_caches bool) {
 	node_shift := i32(t.a.nodes.len - base_nodes)
 	child_shift := i32(t.a.children.len - base_children)
 	// New children: bulk-copy the worker block, then relocate references to
@@ -2593,7 +2617,9 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 				new_nodes * int(sizeof(flat.Node)))
 		}
 		for k in nodes_old_len .. t.a.nodes.len {
-			t.clear_typechecker_node_cache(k)
+			if clear_node_caches {
+				t.clear_typechecker_node_cache(k)
+			}
 			if t.a.nodes[k].children_start >= base_children {
 				t.a.nodes[k] = t.a.nodes[k].with_shifted_children(child_shift)
 			}
