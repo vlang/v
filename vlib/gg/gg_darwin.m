@@ -222,12 +222,12 @@ static NSDictionary* darwin_measure_attrs(void) {
 	if (g_gg_force_mono) {
 		if (attrs_mono == nil) {
 			// Keep in sync with darwin_text_attrs: force-mono draws Menlo at size - 1.
-			attrs_mono = @{ NSFontAttributeName : [NSFont fontWithName:@"Menlo" size:15] };
+			attrs_mono = [@{ NSFontAttributeName : [NSFont fontWithName:@"Menlo" size:15] } copy];
 		}
 		return attrs_mono;
 	}
 	if (attrs == nil) {
-		attrs = @{ NSFontAttributeName : [NSFont userFontOfSize:16] };
+		attrs = [@{ NSFontAttributeName : [NSFont userFontOfSize:16] } copy];
 	}
 	return attrs;
 }
