@@ -5970,6 +5970,13 @@ fn main() {
 		'main.v': 'module main\n\n#include "shim.c"\n\nstruct SourceTypeHolder {\n\tvalue C.V3SourceType\n}\n\nfn C.v3_source_type_value(C.V3SourceType) int\n\nfn main() {\n\tholder := SourceTypeHolder{\n\t\tvalue: C.V3SourceType{\n\t\t\tvalue: 51\n\t\t}\n\t}\n\tprintln(int_str(C.v3_source_type_value(holder.value)))\n}\n'
 	}, 'main.v')
 	assert source_type_out == '51'
+	objective_c_type_out := run_good_project_with_flags(v3_bin, 'objective_c_type_provider',
+		'-cc clang', {
+		'v.mod':  "Module { name: 'objective_c_type_provider' }\n"
+		'shim.m': 'typedef struct { int value; } V3ObjectiveCType;\nint v3_objective_c_type_value(V3ObjectiveCType value) { return value.value; }\n'
+		'main.v': 'module main\n\n#include "shim.m"\n\nstruct ObjectiveCTypeHolder {\n\tvalue C.V3ObjectiveCType\n}\n\nfn C.v3_objective_c_type_value(C.V3ObjectiveCType) int\n\nfn main() {\n\tholder := ObjectiveCTypeHolder{\n\t\tvalue: C.V3ObjectiveCType{\n\t\t\tvalue: 56\n\t\t}\n\t}\n\tprintln(int_str(C.v3_objective_c_type_value(holder.value)))\n}\n'
+	}, 'main.v')
+	assert objective_c_type_out == '56'
 	objective_cpp_out := run_good_project_with_flags(v3_bin, 'objective_cpp_source_include',
 		'-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_source_include' }\n"

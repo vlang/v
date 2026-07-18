@@ -131,6 +131,7 @@ mut:
 	module_init_fn_modules         map[string]string   // C init fn name -> V module name
 	module_imports                 map[string][]string // module -> imported modules
 	c_directives                   []CDirective
+	early_c_source_directives      map[string]bool
 	native_source_contexts         map[string][]string
 	native_source_wrapper_index    int
 	inlined_c_structs              map[string]bool
@@ -601,6 +602,7 @@ pub fn FlatGen.new() FlatGen {
 		module_init_fn_modules:         map[string]string{}
 		module_imports:                 map[string][]string{}
 		c_directives:                   []CDirective{}
+		early_c_source_directives:      map[string]bool{}
 		native_source_contexts:         map[string][]string{}
 		inlined_c_structs:              map[string]bool{}
 		inlined_c_fns:                  map[string]bool{}
@@ -1198,6 +1200,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.module_init_fn_modules.clear()
 	g.module_imports.clear()
 	g.c_directives = []CDirective{}
+	g.early_c_source_directives.clear()
 	g.native_source_contexts.clear()
 	g.native_source_wrapper_index = 0
 	g.inlined_c_structs.clear()
@@ -2149,6 +2152,9 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				g.collect_inlined_c_declared_fns(source_text)
 				source_directive := '#include "${source_path}"'
 				if source_path.ends_with('.m') {
+					if g.c_source_defines_used_c_type(source_text) {
+						g.early_c_source_directives[source_directive] = true
+					}
 					if 'objective-c' !in g.c_flags {
 						g.c_flags << ['-x', 'objective-c', '-x', 'none']
 					}
@@ -2747,6 +2753,120 @@ fn (mut g FlatGen) collect_inlined_c_structs(text string) {
 		g.inlined_c_structs[alias] = true
 		g.inlined_c_typedef_names[alias] = true
 	}
+}
+
+fn (g &FlatGen) c_source_defines_used_c_type(text string) bool {
+	mut names := map[string]bool{}
+	for alias in c_typedef_struct_aliases(text) {
+		names[alias] = true
+	}
+	for alias in c_typedef_union_aliases(text) {
+		names[alias] = true
+	}
+	for alias in c_typedef_fn_aliases(text) {
+		names[alias] = true
+	}
+	for line in text.split_into_lines() {
+		clean := trimmed_space(line)
+		mut rest := ''
+		if clean.starts_with('struct ') {
+			rest = clean['struct '.len..]
+		} else if clean.starts_with('union ') {
+			rest = clean['union '.len..]
+		} else {
+			continue
+		}
+		name := c_header_struct_tag(rest)
+		if name.len > 0 {
+			names[name] = true
+		}
+	}
+	for name, _ in names {
+		full_name := 'C.${name}'
+		if full_name in g.tc.structs || full_name in g.tc.unions || full_name in g.tc.type_aliases
+			|| full_name in g.tc.enum_names {
+			return true
+		}
+	}
+	for _, fields in g.tc.structs {
+		for field in fields {
+			if c_type_uses_declared_name(field.typ, names) {
+				return true
+			}
+		}
+	}
+	for _, fields in g.tc.interface_fields {
+		for field in fields {
+			if c_type_uses_declared_name(field.typ, names) {
+				return true
+			}
+		}
+	}
+	for _, return_type in g.tc.fn_ret_types {
+		if c_type_uses_declared_name(return_type, names) {
+			return true
+		}
+	}
+	for _, param_types in g.tc.fn_param_types {
+		for param_type in param_types {
+			if c_type_uses_declared_name(param_type, names) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+fn c_type_uses_declared_name(typ types.Type, names map[string]bool) bool {
+	match typ {
+		types.Array {
+			return c_type_uses_declared_name(typ.elem_type, names)
+		}
+		types.ArrayFixed {
+			return c_type_uses_declared_name(typ.elem_type, names)
+		}
+		types.Channel {
+			return c_type_uses_declared_name(typ.elem_type, names)
+		}
+		types.Map {
+			return c_type_uses_declared_name(typ.key_type, names)
+				|| c_type_uses_declared_name(typ.value_type, names)
+		}
+		types.Pointer {
+			return c_type_uses_declared_name(typ.base_type, names)
+		}
+		types.FnType {
+			for param_type in typ.params {
+				if c_type_uses_declared_name(param_type, names) {
+					return true
+				}
+			}
+			return c_type_uses_declared_name(typ.return_type, names)
+		}
+		types.OptionType {
+			return c_type_uses_declared_name(typ.base_type, names)
+		}
+		types.ResultType {
+			return c_type_uses_declared_name(typ.base_type, names)
+		}
+		types.Struct, types.Interface, types.Enum, types.SumType {
+			return typ.name.starts_with('C.') && typ.name['C.'.len..] in names
+		}
+		types.Alias {
+			return (typ.name.starts_with('C.') && typ.name['C.'.len..] in names)
+				|| c_type_uses_declared_name(typ.base_type, names)
+		}
+		types.MultiReturn {
+			for return_type in typ.types {
+				if c_type_uses_declared_name(return_type, names) {
+					return true
+				}
+			}
+		}
+		else {}
+	}
+
+	return false
 }
 
 // c_typedef_fn_aliases collects the alias names of function typedefs such as
@@ -3783,11 +3903,12 @@ fn (mut g FlatGen) ordered_c_directives() []string {
 fn (mut g FlatGen) emit_c_directives() {
 	mut emitted := false
 	directives := g.ordered_c_directives()
-	source_emission := c_source_directive_emission(directives)
+	source_emission := c_source_directive_emission(directives, g.early_c_source_directives)
 	for i, directive in directives {
 		if i in source_emission.skip_early
 			|| c_contains_preserved_system_include_directive(directive)
-			|| c_is_late_source_include_directive(directive) {
+			|| (c_is_late_source_include_directive(directive)
+			&& directive !in g.early_c_source_directives) {
 			continue
 		}
 		g.writeln(directive)
@@ -3801,7 +3922,7 @@ fn (mut g FlatGen) emit_c_directives() {
 fn (mut g FlatGen) emit_c_source_directives() {
 	mut emitted := false
 	directives := g.ordered_c_directives()
-	source_emission := c_source_directive_emission(directives)
+	source_emission := c_source_directive_emission(directives, g.early_c_source_directives)
 	for i, directive in directives {
 		if i !in source_emission.emit_late {
 			continue
@@ -3819,7 +3940,7 @@ struct CSourceDirectiveEmission {
 	emit_late  map[int]bool
 }
 
-fn c_source_directive_emission(directives []string) CSourceDirectiveEmission {
+fn c_source_directive_emission(directives []string, early_source_directives map[string]bool) CSourceDirectiveEmission {
 	mut skip_early := map[int]bool{}
 	mut emit_late := map[int]bool{}
 	mut condition_starts := []int{}
@@ -3831,7 +3952,7 @@ fn c_source_directive_emission(directives []string) CSourceDirectiveEmission {
 			condition_starts << i
 			condition_has_source << false
 		}
-		if c_is_late_source_include_directive(directive) {
+		if c_is_late_source_include_directive(directive) && directive !in early_source_directives {
 			mut start := i
 			for start > 0 && c_is_source_context_directive(directives[start - 1]) {
 				start--
