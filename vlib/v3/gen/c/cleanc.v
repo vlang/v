@@ -3640,7 +3640,7 @@ fn (mut g FlatGen) emit_c_directives() {
 	for i, directive in directives {
 		if i in source_emission.skip_early
 			|| c_contains_preserved_system_include_directive(directive)
-			|| c_is_source_include_directive(directive) {
+			|| c_is_late_source_include_directive(directive) {
 			continue
 		}
 		g.writeln(directive)
@@ -3684,7 +3684,7 @@ fn c_source_directive_emission(directives []string) CSourceDirectiveEmission {
 			condition_starts << i
 			condition_has_source << false
 		}
-		if c_is_source_include_directive(directive) {
+		if c_is_late_source_include_directive(directive) {
 			mut start := i
 			for start > 0 && c_is_source_context_directive(directives[start - 1]) {
 				start--
@@ -3760,6 +3760,25 @@ fn c_is_source_include_directive(directive string) bool {
 	end := arg.index_after('"', 1) or { return false }
 	arg = arg[1..end]
 	return arg.ends_with('.c') || arg.ends_with('.m') || arg.ends_with('.mm')
+}
+
+fn c_is_late_source_include_directive(directive string) bool {
+	clean := trimmed_space(directive)
+	if clean.contains('\n') {
+		for line in clean.split_into_lines() {
+			if c_is_late_source_include_directive(line) {
+				return true
+			}
+		}
+		return false
+	}
+	if !c_is_source_include_directive(clean) {
+		return false
+	}
+	mut arg := c_directive_arg(clean)
+	end := arg.index_after('"', 1) or { return false }
+	arg = arg[1..end]
+	return arg.ends_with('.m') || arg.ends_with('.mm')
 }
 
 fn (mut g FlatGen) emit_preserved_c_directives() {

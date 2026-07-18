@@ -116,16 +116,18 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 			stats.requests++
 			adjacent_cpp_source := if !os.exists(clean) {
 				if source_file := c_source_from_object_file(clean) {
-					source_file.ends_with('.cc') || source_file.ends_with('.cpp')
-						|| source_file.ends_with('.mm')
+					active_language in ['c++', 'objective-c++']
+						|| (active_language in ['', 'none'] && (source_file.ends_with('.cc')
+						|| source_file.ends_with('.cpp')
+						|| source_file.ends_with('.mm')))
 				} else {
 					false
 				}
 			} else {
 				false
 			}
-			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag, target_args,
-				target, c_compiler, uncached_dir, mut stats)!
+			prepared << ensure_c_object_file(clean, active_language, support_flags, c99, pic_flag,
+				target_args, target, c_compiler, uncached_dir, mut stats)!
 			if adjacent_cpp_source {
 				cpp_runtime := cpp_runtime_link_flag(target)
 				if cpp_runtime !in flags && cpp_runtime !in prepared {
@@ -134,8 +136,8 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 			}
 		} else if clean.ends_with('.mm') {
 			stats.requests++
-			object_path := ensure_c_source_object(clean, support_flags, c99, pic_flag, target_args,
-				target, c_compiler, uncached_dir, mut stats)!
+			object_path := ensure_c_source_object(clean, '', support_flags, c99, pic_flag,
+				target_args, target, c_compiler, uncached_dir, mut stats)!
 			prepared << object_path
 			if c_generated_native_source_context(clean, uncached_dir) {
 				os.rm(clean) or {}
@@ -218,7 +220,18 @@ fn c_object_compile_flags(flags []string) []string {
 }
 
 fn c_object_compile_support_flags(flags []string) []string {
-	return c_object_compile_flags(flags)
+	compile_flags := c_object_compile_flags(flags)
+	mut support_flags := []string{}
+	mut i := 0
+	for i < compile_flags.len {
+		if compile_flags[i].trim_space() == '-x' {
+			i += 2
+			continue
+		}
+		support_flags << compile_flags[i]
+		i++
+	}
+	return support_flags
 }
 
 fn c_flag_token_is_link_only(token string) bool {
@@ -244,7 +257,7 @@ fn c_flags_need_objective_c(flags []string) bool {
 	return false
 }
 
-fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn ensure_c_object_file(obj_path string, source_language string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
 	if os.exists(obj_path) {
 		stats.direct_objects++
 		return obj_path
@@ -252,23 +265,31 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	source_file := c_source_from_object_file(obj_path) or {
 		return error('missing C object ${obj_path}, and no adjacent .c/.cc/.cpp/.mm/.S source was found')
 	}
-	return compile_cached_c_source_object(obj_path, source_file, support_flags, c99, pic_flag,
-		target_args, target, c_compiler, uncached_dir, mut stats)
+	return compile_cached_c_source_object(obj_path, source_file, source_language, support_flags,
+		c99, pic_flag, target_args, target, c_compiler, uncached_dir, mut stats)
 }
 
-fn ensure_c_source_object(source_file string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn ensure_c_source_object(source_file string, source_language string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
 	if !os.exists(source_file) {
 		return error('missing C source ${source_file}')
 	}
-	return compile_cached_c_source_object('${source_file}.o', source_file, support_flags, c99,
-		pic_flag, target_args, target, c_compiler, uncached_dir, mut stats)
+	return compile_cached_c_source_object('${source_file}.o', source_file, source_language,
+		support_flags, c99, pic_flag, target_args, target, c_compiler, uncached_dir, mut stats)
 }
 
-fn compile_cached_c_source_object(obj_path string, source_file string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
+fn compile_cached_c_source_object(obj_path string, source_file string, source_language string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
-	is_cpp := source_file.ends_with('.cc') || source_file.ends_with('.cpp')
-		|| source_file.ends_with('.mm')
+	language := if source_language.len > 0 && source_language != 'none' {
+		source_language
+	} else if source_file.ends_with('.mm') {
+		'objective-c++'
+	} else if source_file.ends_with('.cc') || source_file.ends_with('.cpp') {
+		'c++'
+	} else {
+		''
+	}
+	is_cpp := language in ['c++', 'objective-c++']
 	std_flag := if is_cpp {
 		if c99 { '-std=c++11' } else { '-std=gnu++11' }
 	} else {
@@ -282,10 +303,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, support_f
 	}
 	args << '-w'
 	args << support_flags
-	if is_cpp {
-		// A mixed-language build can contribute `-x objective-c` through support_flags.
-		// Keep the source-specific C++ selection last so it wins.
-		language := if source_file.ends_with('.mm') { 'objective-c++' } else { 'c++' }
+	if language.len > 0 {
 		args << ['-x', language]
 	}
 	dependencies := c_object_dependencies(compiler, args, source_file)
