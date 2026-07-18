@@ -78,12 +78,12 @@ fn (mut g Gen) get_str_fn(typ ast.Type) string {
 			}
 		}
 	}
-	// Option aliases share their parent's C wrapper and auto-str function.
+	// Option aliases share their immediate parent's C wrapper and auto-str function.
 	option_alias_sym := g.table.sym(unwrapped)
 	if unwrapped.has_flag(.option) && option_alias_sym.info is ast.Alias
 		&& option_alias_sym.info.parent_type.has_flag(.option)
 		&& !option_alias_sym.has_method('str') {
-		unwrapped = g.table.fully_unaliased_type(unwrapped)
+		unwrapped = option_alias_sym.info.parent_type.derive_add_muls(unwrapped)
 	}
 	styp := g.styp(unwrapped)
 	mut sym := g.table.sym(unwrapped)
