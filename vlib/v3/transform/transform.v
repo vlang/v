@@ -2424,6 +2424,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		escaping_amp_sources:             map[string]bool{}
 		heaped_amp_locals:                map[string]bool{}
 		generic_fn_specs_in_progress:     map[string]bool{}
+		generic_fn_spec_nodes:            map[string]flat.NodeId{}
 		pending_generic_fn_spec_keys:     map[string]bool{}
 		generic_receiver_methods_by_name: map[string][]string{}
 		generic_call_spec_cache:          map[int]GenericCallSpec{}

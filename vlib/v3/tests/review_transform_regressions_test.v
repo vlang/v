@@ -804,7 +804,8 @@ fn test_parallel_monomorphization_grows_uneven_worker_regions() {
 		calls << '\ttotal += outer(MonoGrow${i}{value: ${i}})'
 	}
 	src := '${declarations.join('\n')}\n\nfn inner[T](value T) int {\n\t_ = value\n\treturn 1\n}\n\nfn outer[T](value T) int {\n\treturn inner(value)\n}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n'
-	out := run_good_with_env(v3_bin, 'parallel_monomorph_grow', 'V3_TEST_MONOMORPH_GROW=1', src)
+	out :=
+		run_good_with_env(v3_bin, 'parallel_monomorph_grow', 'VJOBS=4 V3_TEST_MONOMORPH_GROW=1', src)
 	assert out == '40'
 }
 
