@@ -3554,7 +3554,17 @@ fn c_delayed_source_directive_indices(directives []string) map[int]bool {
 		}
 		if c_is_source_include_directive(directive) {
 			if condition_starts.len == 0 {
-				delayed[i] = true
+				mut start := i
+				for start > 0 && c_is_source_macro_context_directive(directives[start - 1]) {
+					start--
+				}
+				mut end := i + 1
+				for end < directives.len && c_is_source_macro_context_directive(directives[end]) {
+					end++
+				}
+				for delayed_index in start .. end {
+					delayed[delayed_index] = true
+				}
 			} else {
 				for depth in 0 .. condition_has_source.len {
 					condition_has_source[depth] = true
@@ -3580,6 +3590,10 @@ fn c_delayed_source_directive_indices(directives []string) map[int]bool {
 		}
 	}
 	return delayed
+}
+
+fn c_is_source_macro_context_directive(directive string) bool {
+	return c_directive_name(trimmed_space(directive)) in ['define', 'undef']
 }
 
 fn c_is_source_include_directive(directive string) bool {
