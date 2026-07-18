@@ -156,14 +156,16 @@ pub fn (f &File) line_start(line int) int {
 }
 
 // line supports line handling for File.
+// Pos.offset is already file-local (the safe constructors store the byte offset
+// within this file, not a FileSet-global offset), so it is used directly.
 pub fn (f &File) line(pos Pos) int {
-	return f.find_line(pos.offset - f.base)
+	return f.find_line(pos.offset)
 }
 
 // position supports position handling for File.
+// Pos.offset is file-local, matching position_at/FlatAst.source_position.
 pub fn (f &File) position(pos Pos) Position {
-	offset := pos.offset - f.base
-	return f.position_at(offset)
+	return f.position_at(pos.offset)
 }
 
 // position_at resolves a file-local byte offset to a presentation position.
