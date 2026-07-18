@@ -11548,7 +11548,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			&& !referenced_c_externs[raw_cfn] && !referenced_c_externs[cfn] {
 			continue
 		}
-		if !g.should_emit_c_extern_decl(cfn) {
+		if !g.should_emit_c_extern_decl_from_file(cfn, cur_file) {
 			continue
 		}
 		if cfn == 'syscall' {
@@ -11710,6 +11710,15 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 		return false
 	}
 	return true
+}
+
+fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string) bool {
+	// builtin/cfns.c.v declares the static vschannel helper supplied by its C header.
+	// A user C.request declaration is unrelated and still needs an extern prototype.
+	if cfn == 'request' && source_file.replace('\\', '/').ends_with('/builtin/cfns.c.v') {
+		return false
+	}
+	return g.should_emit_c_extern_decl(cfn)
 }
 
 // c_system_libc_preamble_declared_fns contains only symbols declared by the fixed
@@ -11942,7 +11951,6 @@ const c_static_helper_symbols = {
 	'posix_spawnp':                        true
 	'read':                                true
 	'realpath':                            true
-	'request':                             true
 	'setenv':                              true
 	'signal':                              true
 	'snprintf':                            true

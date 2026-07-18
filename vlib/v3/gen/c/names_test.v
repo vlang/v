@@ -117,7 +117,7 @@ fn test_guarded_preamble_externs_keep_explicit_declarations() {
 	assert g.should_emit_c_extern_decl('mkdir')
 	assert g.should_emit_c_extern_decl('chmod')
 	assert g.should_emit_c_extern_decl('symlink')
-	assert !g.should_emit_c_extern_decl('request')
+	assert g.should_emit_c_extern_decl('request')
 	g.c_directives << CDirective{
 		text: '#include <math.h>'
 	}
