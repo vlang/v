@@ -685,6 +685,7 @@ vlib/v/tests/assert_alias_array_test.v
 vlib/v/tests/assert_short_circuit_test.v
 vlib/v/tests/assign/assert_fn_call_with_parentheses_test.v
 vlib/v/tests/assign/assert_fn_ret_option_test.v
+vlib/v/tests/assign/assert_if_guard_expr_test.v
 vlib/v/tests/assign/assert_should_evaluate_args_just_once_test.v
 vlib/v/tests/assign/assert_with_newlines_test.v
 vlib/v/tests/assign/assign_array_fixed_from_union_test.v
