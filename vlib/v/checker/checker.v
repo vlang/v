@@ -2158,6 +2158,40 @@ fn (c &Checker) generic_names_for_type_parent(typ_sym &ast.TypeSymbol) []string 
 	return []string{}
 }
 
+// sym_has_unresolved_placeholder reports whether `sym` is
+// itself an unresolved `.placeholder` type symbol (e.g. an undeclared type)
+// or a generic instantiation whose parent type or any of its concrete types is
+// (possibly transitively) an unresolved placeholder.
+fn (c &Checker) sym_has_unresolved_placeholder(sym &ast.TypeSymbol) bool {
+	if sym.kind == .placeholder && sym.language != .c {
+		return true
+	}
+	if sym.info is ast.GenericInst {
+		parent_sym := c.table.sym_by_idx(sym.info.parent_idx)
+		if c.sym_has_unresolved_placeholder(parent_sym) {
+			return true
+		}
+	}
+	// monomorphized generic instantiations (e.g. `Box[Missing]`)
+	// keep the concrete types that were used to build them on their own `.info`,
+	// regardless of whether the symbol itself ends up a struct, interface,
+	// sumtype or generic_inst; reject them if any concrete type is unresolved.
+	concrete_types := match sym.info {
+		ast.GenericInst { sym.info.concrete_types }
+		ast.Struct { sym.info.concrete_types }
+		ast.Interface { sym.info.concrete_types }
+		ast.SumType { sym.info.concrete_types }
+		else { []ast.Type{} }
+	}
+
+	for concrete_type in concrete_types {
+		if c.sym_has_unresolved_placeholder(c.table.sym(concrete_type)) {
+			return true
+		}
+	}
+	return false
+}
+
 fn (mut c Checker) type_implements(typ ast.Type, interface_type ast.Type, pos token.Pos) bool {
 	return c.type_implements_with_mut_receiver(typ, interface_type, pos, false)
 }
@@ -2177,8 +2211,9 @@ fn (mut c Checker) type_implements_with_mut_receiver(typ ast.Type, interface_typ
 	utyp := c.unwrap_generic(typ)
 	styp := c.table.type_to_str(utyp)
 	typ_sym := c.table.sym(utyp)
-	if typ_sym.kind == .placeholder && typ_sym.language != .c {
-		// `typ` is unresolved (undeclared), so never implements anything.
+	if c.sym_has_unresolved_placeholder(typ_sym) {
+		// `typ` is unresolved (undeclared), or a generic instantiation of an
+		// unresolved type, so it never implements anything.
 		// Callers report the error themselves to avoid duplicate messages.
 		return false
 	}
