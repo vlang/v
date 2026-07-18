@@ -99,6 +99,17 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				high_pos)
 		}
 
+		if narrow_max := narrow_int_type_max(typ_idx) {
+			if high_const := c.eval_comptime_const_expr(node.high, 0) {
+				if high_val := high_const.i64() {
+					if high_val > narrow_max {
+						c.error('`high` value `${high_val}` does not fit in the range value type `${c.table.type_to_str(typ)}` (max `${narrow_max}`); the loop variable would overflow and the loop would never terminate',
+							cond_pos.extend(high_pos))
+					}
+				}
+			}
+		}
+
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ
 		} else {
@@ -367,5 +378,23 @@ fn (mut c Checker) for_stmt(mut node ast.ForStmt) {
 	c.in_for_count--
 	if c.smartcast_mut_pos != token.Pos{} {
 		c.smartcast_mut_pos = token.Pos{}
+	}
+}
+
+// narrow_int_type_max returns the maximum value representable by a fixed-width
+// integer type that is narrower than `int`/`i64`/`u64`, or none if `typ_idx`
+// is not one of those narrow types (or is not an integer type at all).
+// This is used to detect `for x in low .. high` loops where `high` is a
+// compile-time constant that does not fit in the (narrower) type of `low`,
+// which would make the loop variable wrap around and the loop never terminate.
+fn narrow_int_type_max(typ_idx int) ?i64 {
+	return match typ_idx {
+		ast.i8_type_idx { i64(max_i8) }
+		ast.i16_type_idx { i64(max_i16) }
+		ast.i32_type_idx { i64(max_i32) }
+		ast.u8_type_idx { i64(max_u8) }
+		ast.u16_type_idx { i64(max_u16) }
+		ast.u32_type_idx { i64(max_u32) }
+		else { none }
 	}
 }
