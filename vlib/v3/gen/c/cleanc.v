@@ -2118,8 +2118,11 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			}
 			if source_path.len > 0 {
 				// Generated V output is C, not C++ compatible. Compile Objective-C++ sources
-				// as separate objects instead of including them in the C translation unit.
-				if source_path.ends_with('.mm') {
+				// as separate objects instead of including them in the C translation unit. An
+				// include under a preprocessor guard or next to a macro definition must stay in
+				// the translation unit, otherwise extracting it loses that directive context.
+				if source_path.ends_with('.mm')
+					&& !c_source_include_has_preprocessor_context(g.c_directives, module_name) {
 					if source_path !in g.c_flags {
 						g.c_flags << source_path
 					}
@@ -3272,6 +3275,29 @@ fn (mut g FlatGen) add_c_directive(module_name string, text string, before_impor
 		text:          text
 		before_import: before_import
 	}
+}
+
+fn c_source_include_has_preprocessor_context(directives []CDirective, module_name string) bool {
+	mut conditional_depth := 0
+	mut previous := ''
+	for directive in directives {
+		if directive.module != module_name {
+			continue
+		}
+		for line in directive.text.split_into_lines() {
+			clean := trimmed_space(line)
+			name := c_directive_name(clean)
+			if name in ['if', 'ifdef', 'ifndef'] {
+				conditional_depth++
+			} else if name == 'endif' && conditional_depth > 0 {
+				conditional_depth--
+			}
+			if clean.len > 0 {
+				previous = clean
+			}
+		}
+	}
+	return conditional_depth > 0 || c_is_source_macro_context_directive(previous)
 }
 
 fn c_preprocessor_directive_line(name string, raw string) string {

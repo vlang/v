@@ -5856,6 +5856,40 @@ fn main() {
 }
 ')
 	assert pointer_promoted_out == '4\n9\n0\n4\n10\n0'
+	pointer_promoted_default_out := run_good(v3_bin, 'promoted_pointer_embed_call_default_escape', 'struct EscapingPointerInner {
+	a int
+	b int
+}
+
+type EscapingPointerInnerRef = &EscapingPointerInner
+
+struct EscapingPointerOuter {
+	EscapingPointerInnerRef = make_escaping_pointer_inner()
+}
+
+fn make_escaping_pointer_inner() EscapingPointerInnerRef {
+	return &EscapingPointerInner{
+		a: 5
+		b: 6
+	}
+}
+
+fn make_escaping_pointer_outer(b int) EscapingPointerOuter {
+	return EscapingPointerOuter{
+		b: b
+	}
+}
+
+fn main() {
+	first := make_escaping_pointer_outer(7)
+	second := make_escaping_pointer_outer(8)
+	println(int_str(first.EscapingPointerInnerRef.a))
+	println(int_str(first.EscapingPointerInnerRef.b))
+	println(int_str(second.EscapingPointerInnerRef.a))
+	println(int_str(second.EscapingPointerInnerRef.b))
+}
+')
+	assert pointer_promoted_default_out == '5\n7\n5\n8'
 	alias_typeof_out := run_good(v3_bin, 'runtime_sum_pointer_alias_typeof', 'type AliasValue = int | string
 type AliasValueRef = &AliasValue
 
@@ -5889,6 +5923,14 @@ fn main() {
 		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n#include "shim.m"\n#include "shim.mm"\n\nfn C.answer_from_cpp() int\nfn C.answer_from_objective_c() int\nfn C.answer_from_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp() + C.answer_from_objective_c() + C.answer_from_objective_cpp()))\n}\n'
 	}, 'main.v')
 	assert objective_cpp_out == '46'
+	guarded_objective_cpp_out := run_good_project_with_flags(v3_bin,
+		'guarded_objective_cpp_source_include', '-cc clang', {
+		'v.mod':          "Module { name: 'guarded_objective_cpp_source_include' }\n"
+		'disabled.mm':    '#error disabled Objective-C++ source must not be compiled\n'
+		'macro_value.mm': '#ifndef V3_OBJECTIVE_CPP_VALUE\n#error missing include macro context\n#endif\nint answer_from_macro_objective_cpp(void) { return V3_OBJECTIVE_CPP_VALUE; }\n'
+		'main.v':         'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.mm"\n#endif\n\n#define V3_OBJECTIVE_CPP_VALUE 47\n#include "macro_value.mm"\n#undef V3_OBJECTIVE_CPP_VALUE\n\nfn C.answer_from_macro_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_macro_objective_cpp()))\n}\n'
+	}, 'main.v')
+	assert guarded_objective_cpp_out == '47'
 	cpp_runtime_out := run_good_project_with_flags(v3_bin, 'cpp_source_runtime', '-cc clang', {
 		'v.mod':    "Module { name: 'cpp_source_runtime' }\n"
 		'shim.cpp': '#include <string>\nextern "C" int answer_from_cpp_runtime(void) { std::string answer(44, \'x\'); return int(answer.size()); }\n'

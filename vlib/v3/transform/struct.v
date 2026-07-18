@@ -176,23 +176,38 @@ fn (t &Transformer) promoted_struct_init_type(field FieldInfo) string {
 	return t.trim_pointer_type(t.normalize_type_alias(field.typ))
 }
 
-fn (mut t Transformer) promoted_struct_init_field_value(field FieldInfo, init flat.NodeId) flat.NodeId {
+struct PromotedStructDefaultMerge {
+	init         flat.NodeId
+	materialized bool
+}
+
+fn (mut t Transformer) promoted_struct_init_field_value(field FieldInfo, init flat.NodeId, materialized bool) flat.NodeId {
 	normalized_type := t.normalize_type_alias(field.typ)
 	if !normalized_type.starts_with('&') {
 		return init
 	}
 	value := t.make_prefix(.amp, init)
+	if materialized {
+		pointee_type := t.trim_pointer_type(normalized_type)
+		dup := t.make_memdup_call_for_type(value, pointee_type)
+		return t.make_cast(normalized_type, dup, normalized_type)
+	}
 	t.set_node_typ(int(value), normalized_type)
 	return value
 }
 
-fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, default_id flat.NodeId, struct_type string) flat.NodeId {
+fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, default_id flat.NodeId, struct_type string) PromotedStructDefaultMerge {
 	if int(default_id) < 0 {
-		return init_id
+		return PromotedStructDefaultMerge{
+			init: init_id
+		}
 	}
 	default_init := t.a.nodes[int(default_id)]
 	if default_init.kind != .struct_init {
-		return t.materialize_promoted_struct_default(init_id, default_id, struct_type)
+		return PromotedStructDefaultMerge{
+			init:         t.materialize_promoted_struct_default(init_id, default_id, struct_type)
+			materialized: true
+		}
 	}
 	init := t.a.nodes[int(init_id)]
 	mut provided := map[string]bool{}
@@ -241,7 +256,9 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 		}
 	}
 	if missing_defaults.len == 0 {
-		return init_id
+		return PromotedStructDefaultMerge{
+			init: init_id
+		}
 	}
 	start := t.a.children.len
 	for field_id in missing_defaults {
@@ -250,15 +267,17 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 	for i in 0 .. init.children_count {
 		t.a.children << t.a.child(&init, i)
 	}
-	return t.a.add_node(flat.Node{
-		kind:           .struct_init
-		op:             init.op
-		children_start: start
-		children_count: missing_defaults.len + int(init.children_count)
-		pos:            init.pos
-		value:          init.value
-		typ:            init.typ
-	})
+	return PromotedStructDefaultMerge{
+		init: t.a.add_node(flat.Node{
+			kind:           .struct_init
+			op:             init.op
+			children_start: start
+			children_count: missing_defaults.len + int(init.children_count)
+			pos:            init.pos
+			value:          init.value
+			typ:            init.typ
+		})
+	}
 }
 
 fn (mut t Transformer) materialize_promoted_struct_default(init_id flat.NodeId, default_id flat.NodeId, struct_type string) flat.NodeId {
@@ -313,12 +332,15 @@ fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fi
 		value:          cur_type
 		typ:            cur_type
 	})
-	cur_init = t.merge_promoted_struct_default(cur_init, path[path.len - 1].default_expr, cur_type)
+	mut merged := t.merge_promoted_struct_default(cur_init, path[path.len - 1].default_expr,
+		cur_type)
+	cur_init = merged.init
+	mut cur_init_materialized := merged.materialized
 	for rev in 0 .. path.len - 1 {
 		idx := path.len - 2 - rev
 		parent := path[idx]
 		child := path[idx + 1]
-		field_value := t.promoted_struct_init_field_value(child, cur_init)
+		field_value := t.promoted_struct_init_field_value(child, cur_init, cur_init_materialized)
 		field_start := t.a.children.len
 		t.a.children << field_value
 		field := t.a.add_node(flat.Node{
@@ -338,10 +360,12 @@ fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fi
 			value:          cur_type
 			typ:            cur_type
 		})
-		cur_init = t.merge_promoted_struct_default(cur_init, parent.default_expr, cur_type)
+		merged = t.merge_promoted_struct_default(cur_init, parent.default_expr, cur_type)
+		cur_init = merged.init
+		cur_init_materialized = merged.materialized
 	}
 	root := path[0]
-	root_value := t.promoted_struct_init_field_value(root, cur_init)
+	root_value := t.promoted_struct_init_field_value(root, cur_init, cur_init_materialized)
 	field_start := t.a.children.len
 	t.a.children << root_value
 	return t.a.add_node(flat.Node{
