@@ -3279,7 +3279,7 @@ fn (mut g FlatGen) add_c_directive(module_name string, text string, before_impor
 
 fn c_source_include_has_preprocessor_context(directives []CDirective, module_name string) bool {
 	mut conditional_depth := 0
-	mut previous := ''
+	mut active_macros := map[string]bool{}
 	for directive in directives {
 		if directive.module != module_name {
 			continue
@@ -3292,12 +3292,20 @@ fn c_source_include_has_preprocessor_context(directives []CDirective, module_nam
 			} else if name == 'endif' && conditional_depth > 0 {
 				conditional_depth--
 			}
-			if clean.len > 0 {
-				previous = clean
+			if name in ['define', 'undef'] {
+				parts := c_directive_arg(clean).fields()
+				if parts.len > 0 {
+					macro_name := parts[0].all_before('(')
+					if name == 'define' {
+						active_macros[macro_name] = true
+					} else {
+						active_macros.delete(macro_name)
+					}
+				}
 			}
 		}
 	}
-	return conditional_depth > 0 || c_is_source_macro_context_directive(previous)
+	return conditional_depth > 0 || active_macros.len > 0
 }
 
 fn c_preprocessor_directive_line(name string, raw string) string {
