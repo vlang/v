@@ -3147,7 +3147,9 @@ fn (mut g FlatGen) collect_inlined_c_fns(text string) {
 			continue
 		}
 		if pending_definition.len > 0 {
-			if clean.starts_with('{') {
+			brace := clean.index_u8(`{`)
+			close := clean.last_index_u8(`)`)
+			if clean.starts_with('{') || (brace >= 0 && close >= 0 && brace > close) {
 				g.inlined_c_fns[pending_definition] = true
 				pending_definition = ''
 				continue
@@ -4386,7 +4388,10 @@ fn c_source_directive_emission(directives []string, early_source_directives map[
 	mut condition_active := []bool{}
 	for i, directive in directives {
 		clean := trimmed_space(directive)
-		directive_name := c_directive_name(clean)
+		// Inlined headers are stored as one multi-line directive entry. Their first
+		// line may open an internal conditional that is closed later in the same
+		// entry, so it must not affect the surrounding top-level context.
+		directive_name := if clean.contains('\n') { '' } else { c_directive_name(clean) }
 		if directive_name in ['if', 'ifdef', 'ifndef'] {
 			arg := c_directive_arg(clean)
 			known := directive_name == 'if' && arg in ['0', '1']
@@ -4500,7 +4505,11 @@ fn c_add_late_conditional_context(directives []string, mut emit_late map[int]boo
 	mut condition_starts := []int{}
 	mut condition_has_late_directive := []bool{}
 	for i, directive in directives {
-		name := c_directive_name(trimmed_space(directive))
+		name := if directive.contains('\n') {
+			''
+		} else {
+			c_directive_name(trimmed_space(directive))
+		}
 		if name in ['if', 'ifdef', 'ifndef'] {
 			condition_starts << i
 			condition_has_late_directive << false
@@ -4571,12 +4580,14 @@ fn c_pragma_directive_info(directive string) (string, string) {
 }
 
 fn c_is_conditional_directive(directive string) bool {
-	return c_directive_name(trimmed_space(directive)) in ['if', 'ifdef', 'ifndef', 'elif', 'else',
-		'endif']
+	clean := trimmed_space(directive)
+	return !clean.contains('\n')
+		&& c_directive_name(clean) in ['if', 'ifdef', 'ifndef', 'elif', 'else', 'endif']
 }
 
 fn c_is_source_context_directive(directive string) bool {
-	return c_directive_name(trimmed_space(directive)) in ['define', 'undef', 'pragma']
+	clean := trimmed_space(directive)
+	return !clean.contains('\n') && c_directive_name(clean) in ['define', 'undef', 'pragma']
 }
 
 fn c_is_source_include_directive(directive string) bool {
@@ -10579,6 +10590,11 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('#define elem_size element_size')
 	g.writeln('#define c_name types__c_name')
 	if g.has_builtins {
+		// C inserts written for the v1 ABI commonly reference builtin functions with
+		// their old module prefix. Emit these aliases before any C source include so
+		// both early type providers and delayed native implementations see them.
+		g.writeln('#define builtin__string_clone string__clone')
+		g.writeln('#define builtin__tos2 tos2')
 		return
 	}
 	g.writeln('typedef struct Array { void* data; int len; int cap; int elem_size; } Array;')
@@ -12865,11 +12881,6 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	g.writeln('static inline u64 wyhash(const void* key, size_t len, u64 seed, const u64* secret) { const unsigned char* p = (const unsigned char*)key; u64 h = seed ^ secret[0] ^ (u64)len; for (size_t i = 0; i < len; i++) h = wyhash64(h ^ (u64)p[i], secret[(i + 1) & 3]); return h; }')
 	g.writeln('#define v_signal_with_handler_cast(sig, handler) signal((sig), ((void (*)(int))(handler)))')
 	g.writeln('string string__clone(string a);')
-	// C inserts written for the v1 ABI commonly reference builtin functions with
-	// their old module prefix. Keep those source-level spellings link-compatible
-	// with v3's unprefixed builtin symbols.
-	g.writeln('#define builtin__string_clone string__clone')
-	g.writeln('#define builtin__tos2 tos2')
 	g.writeln('void string__free(string* s);')
 	g.writeln('string string__plus(string s, string a);')
 	g.writeln('string int__str(int n);')
