@@ -1244,6 +1244,30 @@ fn main() {
 	assert c_source.contains('void X509_free(void*'), c_source
 }
 
+fn test_imported_header_tree_uses_real_stdint_with_inttypes() {
+	v3_bin := build_v3_review_transform()
+	outer_name := 'v3_import_inttypes_outer.h'
+	inner_name := 'v3_import_inttypes_inner.h'
+	outer_path := os.join_path(os.temp_dir(), outer_name)
+	inner_path := os.join_path(os.temp_dir(), inner_name)
+	os.write_file(outer_path, '#import "${inner_name}"\n') or { panic(err) }
+	os.write_file(inner_path,
+		'#include <inttypes.h>\n#include <stdint.h>\ntypedef uint64_t ImportedWord;\n') or {
+		panic(err)
+	}
+	defer {
+		os.rm(outer_path) or {}
+		os.rm(inner_path) or {}
+	}
+	c_source := gen_c_from_source(v3_bin, 'imported_header_inttypes_scan', '#insert "${outer_name}"
+
+fn main() {}
+')
+	assert c_source.contains('#include <inttypes.h>'), c_source
+	assert c_source.contains('#include <stdint.h>'), c_source
+	assert !c_source.contains('#define __V_HEADERLESS_STDINT_H'), c_source
+}
+
 fn test_statement_array_append_consumes_rhs_expression() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'statement_array_append_rhs_expression',
