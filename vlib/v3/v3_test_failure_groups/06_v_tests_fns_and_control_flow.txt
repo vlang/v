@@ -4,7 +4,6 @@ vlib/v/tests/concurrency/shared_array_test.v
 vlib/v/tests/conditions/ifs/if_expr_of_option_test.v
 vlib/v/tests/conditions/ifs/if_smartcast_test.v
 vlib/v/tests/conditions/ifs/in_expression_test.v
-vlib/v/tests/fns/anon_fn_in_generic_call_with_match_and_inner_generic_call_test.v
 vlib/v/tests/fns/array_fixed_unresolved_ret_test.v
 vlib/v/tests/fns/call_on_anon_test.v
 vlib/v/tests/fns/call_with_nil_test.v
