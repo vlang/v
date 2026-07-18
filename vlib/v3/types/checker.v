@@ -15342,10 +15342,10 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			continue
 		}
 		if !tc.expr_receiver_compatible(arg_id, actual, expected)
-			&& !tc.expr_compatible(arg_id, actual, expected)
-			&& !tc.pointer_value_compatible(actual, expected) {
+			&& !tc.expr_compatible(arg_id, actual, expected) {
 			if base := tc.mut_param_expr_base(arg_id, actual) {
-				if tc.type_compatible(base, expected) {
+				if tc.type_compatible(base, expected)
+					|| tc.pointer_value_compatible(actual, expected) {
 					continue
 				}
 			}

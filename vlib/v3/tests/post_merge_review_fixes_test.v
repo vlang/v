@@ -5757,6 +5757,14 @@ fn main() {
 		'main.v':           'module main\n\nimport defaults\n\nconst default_a = 99\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
 	}, 'main.v')
 	assert promoted_cross_module_default_out == '3\n7'
+	promoted_import_alias_call_default_out := run_good_project(v3_bin,
+		'promoted_import_alias_call_default', {
+		'v.mod':             "Module { name: 'promoted_import_alias_call_default' }\n"
+		'helpers/helpers.v': 'module helpers\n\npub fn default_a() int {\n\treturn 3\n}\n'
+		'defaults/types.v':  'module defaults\n\nimport helpers as h\n\npub struct Inner {\npub:\n\ta int\n\tb int\n}\n\npub struct Outer {\npub:\n\tInner = make_inner(h.default_a())\n}\n\nfn make_inner(a int) Inner {\n\treturn Inner{\n\t\ta: a\n\t\tb: 4\n\t}\n}\n'
+		'main.v':            'module main\n\nimport defaults\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
+	}, 'main.v')
+	assert promoted_import_alias_call_default_out == '3\n7'
 	promoted_value_prelude_out := run_good(v3_bin, 'promoted_default_value_prelude', 'struct PromotedArrayInner {
 	promoted_values []int
 }
@@ -6189,4 +6197,20 @@ fn main() {
 }
 ')
 	assert mut_pointer_iteration_out == '9\n9'
+	run_bad(v3_bin, 'ordinary_pointer_rejected_for_value_param', 'struct PointerCallItem {
+	value int
+}
+
+fn take_value(item PointerCallItem) int {
+	return item.value
+}
+
+fn main() {
+	item := &PointerCallItem{
+		value: 7
+	}
+	println(int_str(take_value(item)))
+}
+',
+		'cannot use `&PointerCallItem` as argument 1 to `take_value`; expected `PointerCallItem`')
 }

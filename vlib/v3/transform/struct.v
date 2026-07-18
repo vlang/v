@@ -359,11 +359,20 @@ fn (mut t Transformer) materialize_promoted_struct_default(init_id flat.NodeId, 
 	}
 	info := t.lookup_struct_info(struct_type) or { return init_id }
 	old_module := t.cur_module
+	old_file := t.cur_file
 	if info.module.len > 0 {
 		t.cur_module = info.module
 	}
+	default_node := t.a.nodes[int(default_id)]
+	if source_file := t.a.source_files[default_node.pos.id] {
+		t.cur_file = source_file.name
+		if !isnil(t.tc) {
+			t.cur_module = t.tc.file_modules[t.cur_file] or { t.cur_module }
+		}
+	}
 	default_value := t.transform_expr_for_type(default_id, struct_type)
 	t.cur_module = old_module
+	t.cur_file = old_file
 	tmp_name := t.new_temp('promoted_default')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, default_value, struct_type)
 	for i in 0 .. init.children_count {
