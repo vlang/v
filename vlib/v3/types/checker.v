@@ -22682,6 +22682,10 @@ pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
 			ids:   stable_interface_type_ids(impls)
 		}
 	}
+	// The immutable transform indexes above preserve the pre-monomorphization
+	// order. Do not leave the same lists in the mutable query cache: generic
+	// materialization can add implementers before cgen queries it again.
+	tc.clear_interface_impl_cache()
 }
 
 // interface_method_names supports interface method names handling for TypeChecker.

@@ -34,6 +34,16 @@ fn test_interface_impl_cache_is_explicitly_invalidated_after_type_table_growth()
 	assert 'LateType' in tc.interface_impl_names('Any')
 }
 
+fn test_prepared_interface_indexes_do_not_stale_late_implementers() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.interface_names['Any'] = true
+	tc.prepare_interface_query_indexes()
+	tc.structs['LateType'] = []StructField{}
+	tc.freeze_interface_impl_names()
+	assert 'LateType' in tc.interface_impl_names('Any')
+}
+
 fn test_stable_interface_type_ids_resolve_hash_collisions() {
 	ids := stable_interface_type_ids(['main.TZjXQlDs6', 'main.T2nAMbYQH'])
 	assert ids['main.TZjXQlDs6'] != ids['main.T2nAMbYQH']
