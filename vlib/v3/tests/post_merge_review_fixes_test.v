@@ -5725,3 +5725,49 @@ fn main() {
 	}, 'main.v')
 	assert include_out == '42'
 }
+
+fn test_followup_review_pointer_call_and_equality_semantics() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'c_voidptr_does_not_auto_address', 'fn C.take(voidptr)
+
+fn main() {
+	value := 7
+	C.take(value)
+}
+',
+		'cannot use `int` as argument')
+	v_call_out := run_good(v3_bin, 'v_voidptr_auto_address', 'fn take(value voidptr) int {
+	_ = value
+	return 7
+}
+
+fn main() {
+	value := 1
+	println(int_str(take(value)))
+}
+')
+	assert v_call_out == '7'
+	optional_pointer_out := run_good(v3_bin, 'optional_pointer_equality_semantics', 'struct Item {
+	value int
+}
+
+fn main() {
+	a := 7
+	b := 7
+	item_a := Item{
+		value: 7
+	}
+	item_b := Item{
+		value: 7
+	}
+	opt_a := unsafe { ?&int(&a) }
+	opt_b := unsafe { ?&int(&b) }
+	opt_item_a := unsafe { ?&Item(&item_a) }
+	opt_item_b := unsafe { ?&Item(&item_b) }
+	println(opt_a == opt_b)
+	println(opt_a == opt_a)
+	println(opt_item_a == opt_item_b)
+}
+')
+	assert optional_pointer_out == 'false\ntrue\ntrue'
+}

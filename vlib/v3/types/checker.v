@@ -6949,7 +6949,8 @@ fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.No
 			if voidptr_arg_compatible(expected, actual) {
 				continue
 			}
-			if fn_param_is_voidptr_type(expected) && tc.expr_can_take_address(arg_id) {
+			if !info.name.starts_with('C.') && fn_param_is_voidptr_type(expected)
+				&& tc.expr_can_take_address(arg_id) {
 				continue
 			}
 			tc.type_mismatch(.call_arg_mismatch, 'cannot use `${actual.name()}` as argument ${
@@ -15363,7 +15364,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			if voidptr_arg_compatible(expected, actual) {
 				continue
 			}
-			if fn_param_is_voidptr_type(expected) && tc.expr_can_take_address(arg_id) {
+			if !info.name.starts_with('C.') && fn_param_is_voidptr_type(expected)
+				&& tc.expr_can_take_address(arg_id) {
 				continue
 			}
 			if tc.array_insert_prepend_many_arg_compatible(node, info, param_idx, actual) {
