@@ -5687,11 +5687,13 @@ fn test_late_resolution_and_promoted_init_regressions() {
 fn main() {
 	a := Value(7)
 	b := Value("v3")
+	p := &Value("pointer")
 	println(unsafe { typeof(a) })
 	println(unsafe { typeof(b) })
+	println(unsafe { typeof(p) })
 }
 ')
-	assert typeof_out == 'int\nstring'
+	assert typeof_out == 'int\nstring\nstring'
 	promoted_out := run_good(v3_bin, 'promoted_embed_struct_init', 'struct Inner {
 	count int = 3
 	items []int
