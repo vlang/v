@@ -6224,6 +6224,19 @@ fn test_imported_objective_cpp_wrapper_context() {
 	assert out == '68'
 }
 
+fn test_bare_macro_objective_c_guards_stay_inactive() {
+	v3_bin := build_v3()
+	result := run_good_project_result(v3_bin, 'bare_macro_objective_c_guards', '', {
+		'v.mod':       "Module { name: 'bare_macro_objective_c_guards' }\n"
+		'disabled.m':  '#error inactive Objective-C source must not be compiled\n'
+		'disabled.mm': '#error inactive Objective-C++ source must not be compiled\n'
+		'main.v':      'module main\n\n#if V3_NEVER_DEFINED_OBJECTIVE_C\n#include "disabled.m"\n#endif\n\n#if V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(70))\n}\n'
+	}, 'main.v')
+	assert result.run_output == '70'
+	assert result.compile_output.contains('tcc.exe'), result.compile_output
+	assert !result.compile_output.contains('v3_native_source_context_'), result.compile_output
+}
+
 fn test_review_fixed_array_alias_clone_dispatch() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'fixed_array_alias_clone_dispatch', 'type FixedClone = [2]int

@@ -110,3 +110,51 @@ fn test_objective_c_flags_skip_tcc_and_select_objective_c_language() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'objc-flag-ok'
 }
+
+fn test_direct_objective_c_source_flag_skips_tcc() {
+	$if !macos {
+		return
+	}
+	pid := os.getpid()
+	root := os.join_path(os.vtmp_dir(), 'v3_direct_objective_c_source_${pid}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := os.join_path(root, 'v3_direct_objective_c_driver')
+	build :=
+		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	assert build.exit_code == 0, build.output
+	os.write_file(os.join_path(root, 'shim.m'), '@interface V3DirectObjectiveC
++ (int)answer;
+@end
+@implementation V3DirectObjectiveC
++ (int)answer { return 69; }
+@end
+int v3_direct_objective_c_answer(void) { return [V3DirectObjectiveC answer]; }
+') or {
+		panic(err)
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'module main
+
+#flag @DIR/shim.m
+#flag darwin -lobjc
+
+fn C.v3_direct_objective_c_answer() int
+
+fn main() {
+	println(C.v3_direct_objective_c_answer())
+}
+') or {
+		panic(err)
+	}
+	output := os.join_path(root, 'direct_objective_c_source')
+	compile := os.execute('${v3_bin} -nocache -o ${output} ${source}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('tcc.exe'), compile.output
+	run := os.execute(output)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '69'
+}
