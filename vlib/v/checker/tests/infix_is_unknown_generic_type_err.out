@@ -1,0 +1,7 @@
+vlib/v/checker/tests/infix_is_unknown_generic_type_err.vv:5:10: error: is: type `Nil[int]` does not exist
+    3 | fn main() {
+    4 |     v := Value(1)
+    5 |     if v is Nil[int] {
+      |             ~~~
+    6 |         println('yes')
+    7 |     }

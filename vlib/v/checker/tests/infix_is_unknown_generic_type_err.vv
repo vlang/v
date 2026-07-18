@@ -1,0 +1,8 @@
+interface Value {}
+
+fn main() {
+	v := Value(1)
+	if v is Nil[int] {
+		println('yes')
+	}
+}

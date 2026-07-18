@@ -981,8 +981,11 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 					c.error('${node.left} is an Optional, it needs to be unwrapped first',
 						node.left.pos())
 				}
-				if typ_sym.kind == .placeholder {
-					c.error('${op}: type `${typ_sym.name}` does not exist', right_expr.pos())
+				if c.sym_has_unresolved_placeholder(typ_sym) {
+					err_pos := c.table.unresolved_generic_inst_pos[typ_sym.name] or {
+						right_expr.pos()
+					}
+					c.error('${op}: type `${typ_sym.name}` does not exist', err_pos)
 				}
 				mut left_sumtype_check_type := left_type
 				if mut left_sym.info is ast.Aggregate {
@@ -1025,7 +1028,7 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 						}
 					}
 				} else if left_sym.info is ast.Interface {
-					if typ_sym.kind !in [.interface, .placeholder]
+					if typ_sym.kind != .interface && !c.sym_has_unresolved_placeholder(typ_sym)
 						&& !c.type_implements(typ, left_type, right_pos) {
 						c.error("`${typ_sym.name}` doesn't implement interface `${left_sym.name}`",
 							right_pos)
