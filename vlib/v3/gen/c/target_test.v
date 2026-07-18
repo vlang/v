@@ -180,6 +180,34 @@ fn test_cache_input_scan_uses_initial_cflags() {
 	assert inputs['__v3_c_flags__'] == [os.real_path(forced_header)]
 }
 
+fn test_cache_input_scan_tracks_imported_headers() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_imported_header_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	imported_header := os.join_path(dir, 'imported.h')
+	os.write_file(outer_header, '#import "imported.h"\n') or { panic(err) }
+	os.write_file(imported_header, '#define IMPORTED_VALUE 1\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample
+#include "outer.h"
+') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert !has_untracked
+	mut expected := [os.real_path(outer_header), os.real_path(imported_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
+}
+
 fn test_termux_comptime_branch_uses_canonical_target() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_termux_comptime_${os.getpid()}')
 	os.rmdir_all(dir) or {}

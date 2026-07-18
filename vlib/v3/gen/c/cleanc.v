@@ -918,7 +918,7 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 	for line in text.split_into_lines() {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
-		if c_directive_name(clean) != 'include' {
+		if c_directive_name(clean) !in ['include', 'import'] {
 			continue
 		}
 		include_arg := c_include_arg(c_directive_arg(clean), vroot, real_path)

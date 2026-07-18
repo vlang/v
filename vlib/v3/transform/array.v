@@ -1103,7 +1103,13 @@ fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.No
 	if lowered := t.try_lower_shared_array_append_autolock_stmt(lowered_id) {
 		return lowered
 	}
-	return t.try_lower_array_append_stmt(lowered_id)
+	if lowered := t.try_lower_array_append_stmt(lowered_id) {
+		return lowered
+	}
+	// This helper is only a probe. A non-array `<<` expression must fall back to
+	// normal `or` lowering without retaining the optional RHS prelude here.
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	return none
 }
 
 fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeId {

@@ -1357,6 +1357,23 @@ fn main() {
 	assert unlock_rel >= 0, body
 }
 
+fn test_failed_optional_append_probe_does_not_evaluate_rhs_twice() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_shift_rhs_evaluated_once', 'fn next_value(mut calls int) ?int {
+	calls++
+	return 1
+}
+
+fn main() {
+	mut calls := 0
+	flags := 2
+	flags << next_value(mut calls) or { return }
+	println(int_str(calls))
+}
+')
+	assert out == '1'
+}
+
 fn test_json2_skipped_pointer_field_does_not_specialize_decoder() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'json2_skipped_pointer_field',
