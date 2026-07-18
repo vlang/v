@@ -137,6 +137,12 @@ fn (mut t Transformer) transform_struct_fields(id flat.NodeId, node flat.Node) f
 			field_ids << child_id
 		}
 	}
+	if promoted_fields.len > 0 {
+		for stmt in prelude {
+			t.pending_stmts << stmt
+		}
+		prelude.clear()
+	}
 	for key, promoted in promoted_fields {
 		path := promoted_paths[key] or { []FieldInfo{} }
 		if path.len == 0 {

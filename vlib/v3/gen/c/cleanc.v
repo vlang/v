@@ -2346,9 +2346,13 @@ fn c_preprocessor_directive_scan_line(line string, in_block_comment bool) (strin
 // c_header_guard_name returns the macro of a classic `#ifndef X` / `#define X`
 // include guard when it opens the header, or '' when there is no such guard.
 fn c_header_guard_name(text string) string {
+	return c_header_guard_name_from_lines(text.split_into_lines())
+}
+
+fn c_header_guard_name_from_lines(lines []string) string {
 	mut in_block_comment := false
 	mut guard := ''
-	for line in text.split_into_lines() {
+	for line in lines {
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		name := c_directive_name(clean)
@@ -3284,7 +3288,9 @@ fn c_source_include_has_preprocessor_context(directives []CDirective, module_nam
 		if directive.module != module_name {
 			continue
 		}
-		for line in directive.text.split_into_lines() {
+		lines := directive.text.split_into_lines()
+		header_guard := c_header_guard_name_from_lines(lines)
+		for line in lines {
 			clean := trimmed_space(line)
 			name := c_directive_name(clean)
 			if name in ['if', 'ifdef', 'ifndef'] {
@@ -3297,7 +3303,9 @@ fn c_source_include_has_preprocessor_context(directives []CDirective, module_nam
 				if parts.len > 0 {
 					macro_name := parts[0].all_before('(')
 					if name == 'define' {
-						active_macros[macro_name] = true
+						if macro_name != header_guard {
+							active_macros[macro_name] = true
+						}
 					} else {
 						active_macros.delete(macro_name)
 					}

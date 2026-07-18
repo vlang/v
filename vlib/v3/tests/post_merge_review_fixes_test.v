@@ -5757,6 +5757,29 @@ fn main() {
 		'main.v':           'module main\n\nimport defaults\n\nconst default_a = 99\n\nfn main() {\n\tvalue := defaults.Outer{\n\t\tb: 7\n\t}\n\tprintln(int_str(value.Inner.a))\n\tprintln(int_str(value.Inner.b))\n}\n'
 	}, 'main.v')
 	assert promoted_cross_module_default_out == '3\n7'
+	promoted_value_prelude_out := run_good(v3_bin, 'promoted_default_value_prelude', 'struct PromotedArrayInner {
+	promoted_values []int
+}
+
+fn make_promoted_array_inner() PromotedArrayInner {
+	return PromotedArrayInner{
+		promoted_values: [0]
+	}
+}
+
+struct PromotedArrayOuter {
+	PromotedArrayInner = make_promoted_array_inner()
+}
+
+fn main() {
+	value := PromotedArrayOuter{
+		promoted_values: [2, 3]
+	}
+	println(int_str(value.PromotedArrayInner.promoted_values.len))
+	println(int_str(value.PromotedArrayInner.promoted_values[0]))
+}
+')
+	assert promoted_value_prelude_out == '2\n2'
 	promoted_positional_default_out := run_good(v3_bin, 'promoted_embed_positional_default', 'struct PositionalInner {
 	a int
 	b int
@@ -5931,6 +5954,14 @@ fn main() {
 		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n#include "shim.m"\n#include "shim.mm"\n\nfn C.answer_from_cpp() int\nfn C.answer_from_objective_c() int\nfn C.answer_from_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp() + C.answer_from_objective_c() + C.answer_from_objective_cpp()))\n}\n'
 	}, 'main.v')
 	assert objective_cpp_out == '46'
+	objective_cpp_after_guarded_header_out := run_good_project_with_flags(v3_bin,
+		'objective_cpp_after_guarded_header', '-cc clang', {
+		'v.mod':   "Module { name: 'objective_cpp_after_guarded_header' }\n"
+		'shim.h':  '#ifndef V3_REVIEW_SHIM_H\n#define V3_REVIEW_SHIM_H\ntypedef int v3_review_header_int;\n#endif\n'
+		'shim.mm': 'extern "C" int answer_after_guarded_header(void) { auto answer = []() { return 48; }; return answer(); }\n'
+		'main.v':  'module main\n\n#include "shim.h"\n#include "shim.mm"\n\nfn C.answer_after_guarded_header() int\n\nfn main() {\n\tprintln(int_str(C.answer_after_guarded_header()))\n}\n'
+	}, 'main.v')
+	assert objective_cpp_after_guarded_header_out == '48'
 	guarded_objective_cpp_out := run_good_project_with_flags(v3_bin,
 		'guarded_objective_cpp_source_include', '-cc clang', {
 		'v.mod':          "Module { name: 'guarded_objective_cpp_source_include' }\n"
