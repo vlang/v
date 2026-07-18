@@ -3518,9 +3518,10 @@ fn c_native_source_context_definitely_inactive(directives []CDirective, module_n
 			}
 			if name == 'if' {
 				arg := c_directive_arg(clean)
-				known := arg in ['0', '1']
+				known, active := c_preprocessor_condition_state(arg, defined, undefined, uncertain,
+					target)
 				condition_known << known
-				condition_active << (if known { arg == '1' } else { true })
+				condition_active << (if known { active } else { true })
 				continue
 			}
 			if name in ['else', 'elif'] && condition_known.len > 0 {
@@ -3607,6 +3608,53 @@ fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined ma
 		return false, true
 	}
 	return true, false
+}
+
+fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, target pref.Target) (bool, bool) {
+	mut clean := raw.trim_space()
+	mut negated := false
+	if clean.starts_with('!') {
+		negated = true
+		clean = clean[1..].trim_space()
+	}
+	if clean in ['0', '1'] {
+		mut active := clean == '1'
+		if negated {
+			active = !active
+		}
+		return true, active
+	}
+	if !clean.starts_with('defined') || (clean.len > 'defined'.len && clean['defined'.len] != `(`
+		&& !clean['defined'.len].is_space()) {
+		return false, true
+	}
+	rest := clean['defined'.len..].trim_space()
+	mut macro_name := ''
+	if rest.starts_with('(') {
+		close := rest.index_u8(`)`)
+		if close < 0 {
+			return false, true
+		}
+		if close + 1 < rest.len && rest[close + 1..].trim_space().len > 0 {
+			return false, true
+		}
+		macro_name = rest[1..close].trim_space()
+	} else {
+		parts := rest.fields()
+		if parts.len != 1 {
+			return false, true
+		}
+		macro_name = parts[0]
+	}
+	if macro_name.len == 0 || c_header_struct_tag(macro_name) != macro_name {
+		return false, true
+	}
+	known, mut active := c_preprocessor_macro_state(macro_name, defined, undefined, uncertain,
+		target)
+	if negated {
+		active = !active
+	}
+	return known, active
 }
 
 fn (mut g FlatGen) add_native_source_context_wrapper(module_name string, source_path string) {
@@ -3942,21 +3990,65 @@ struct CSourceDirectiveEmission {
 fn c_source_directive_emission(directives []string, early_source_directives map[string]bool) CSourceDirectiveEmission {
 	mut skip_early := map[int]bool{}
 	mut emit_late := map[int]bool{}
-	mut active_macro_definitions := map[string]int{}
+	mut active_macro_contexts := map[string][]int{}
 	mut active_pragma_pushes := map[string][]int{}
+	mut condition_known := []bool{}
+	mut condition_active := []bool{}
 	for i, directive in directives {
+		clean := trimmed_space(directive)
+		directive_name := c_directive_name(clean)
+		if directive_name in ['if', 'ifdef', 'ifndef'] {
+			arg := c_directive_arg(clean)
+			known := directive_name == 'if' && arg in ['0', '1']
+			condition_known << known
+			condition_active << (if known { arg == '1' } else { true })
+		} else if directive_name in ['else', 'elif'] && condition_known.len > 0 {
+			last := condition_known.len - 1
+			if directive_name == 'else' && condition_known[last] {
+				condition_active[last] = !condition_active[last]
+			} else {
+				condition_known[last] = false
+				condition_active[last] = true
+			}
+		} else if directive_name == 'endif' && condition_known.len > 0 {
+			condition_known.delete_last()
+			condition_active.delete_last()
+		}
+		mut definitely_inactive := false
+		mut condition_uncertain := false
+		for depth in 0 .. condition_known.len {
+			if condition_known[depth] && !condition_active[depth] {
+				definitely_inactive = true
+				break
+			}
+			if !condition_known[depth] {
+				condition_uncertain = true
+			}
+		}
 		macro_directive, macro_name := c_macro_directive_info(directive)
-		if macro_directive == 'define' {
-			active_macro_definitions[macro_name] = i
-		} else if macro_directive == 'undef' {
-			active_macro_definitions.delete(macro_name)
+		if macro_directive.len > 0 {
+			if !definitely_inactive {
+				if condition_uncertain {
+					mut contexts := active_macro_contexts[macro_name] or { []int{} }
+					contexts << i
+					active_macro_contexts[macro_name] = contexts
+				} else if macro_directive == 'define' {
+					active_macro_contexts[macro_name] = [i]
+				} else {
+					active_macro_contexts.delete(macro_name)
+				}
+			}
 		}
 		pragma_action, pragma_key := c_pragma_directive_info(directive)
-		if pragma_action == 'push' {
+		if pragma_action.len > 0 && condition_uncertain && !definitely_inactive {
+			mut contexts := active_pragma_pushes[pragma_key] or { []int{} }
+			contexts << i
+			active_pragma_pushes[pragma_key] = contexts
+		} else if pragma_action == 'push' && !definitely_inactive {
 			mut pushes := active_pragma_pushes[pragma_key] or { []int{} }
 			pushes << i
 			active_pragma_pushes[pragma_key] = pushes
-		} else if pragma_action == 'pop' {
+		} else if pragma_action == 'pop' && !definitely_inactive {
 			mut pushes := active_pragma_pushes[pragma_key] or { []int{} }
 			if pushes.len > 0 {
 				pushes.delete_last()
@@ -3981,10 +4073,12 @@ fn c_source_directive_emission(directives []string, early_source_directives map[
 			}
 			skip_early[i] = true
 			// The early pass may emit a later `#undef` before this source is replayed.
-			// Re-emit the active definitions and their later transitions so the include
+			// Re-emit the active macro contexts and their later transitions so the include
 			// sees its original macro state and the late pass restores the final state.
-			for active_name, definition_index in active_macro_definitions {
-				emit_late[definition_index] = true
+			for active_name, context_indices in active_macro_contexts {
+				for context_index in context_indices {
+					emit_late[context_index] = true
+				}
 				for later_index in i + 1 .. directives.len {
 					_, later_name := c_macro_directive_info(directives[later_index])
 					if later_name == active_name {

@@ -6052,6 +6052,19 @@ fn main() {
 		'main.v': 'module main\n\n#define V3_DELAYED_OBJECTIVE_C_VALUE 57\n#ifdef V3_DELAYED_OBJECTIVE_C_VALUE\n#include "shim.m"\n#endif\n#undef V3_DELAYED_OBJECTIVE_C_VALUE\n\nfn C.answer_from_delayed_objective_c_macro() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_delayed_objective_c_macro()))\n}\n'
 	}, 'main.v')
 	assert delayed_objective_c_macro_out == '57'
+	inactive_undef_context_out := run_good_project_with_flags(v3_bin, 'inactive_undef_context',
+		'-cc clang', {
+		'v.mod':  "Module { name: 'inactive_undef_context' }\n"
+		'shim.m': '#ifndef V3_ACTIVE_THROUGH_INACTIVE_UNDEF\n#error active macro was lost through inactive undef\n#endif\nstatic int answer_after_inactive_undef(void) { return V3_ACTIVE_THROUGH_INACTIVE_UNDEF; }\n'
+		'main.v': 'module main\n\n#define V3_ACTIVE_THROUGH_INACTIVE_UNDEF 62\n#if 0\n#undef V3_ACTIVE_THROUGH_INACTIVE_UNDEF\n#endif\n#include "shim.m"\n#undef V3_ACTIVE_THROUGH_INACTIVE_UNDEF\n\nfn C.answer_after_inactive_undef() int\n\nfn main() {\n\tprintln(int_str(C.answer_after_inactive_undef()))\n}\n'
+	}, 'main.v')
+	assert inactive_undef_context_out == '62'
+	inactive_defined_guard_out := run_good_project(v3_bin, 'inactive_defined_objective_c_guard', {
+		'v.mod':      "Module { name: 'inactive_defined_objective_c_guard' }\n"
+		'disabled.m': '#error defined() guarded Objective-C source must not be compiled\n'
+		'main.v':     'module main\n\n#if defined(V3_NEVER_DEFINED_FOR_OBJECTIVE_C)\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error inactive defined() guard must not enable Objective-C\n#endif\n\nfn main() {\n\tprintln(int_str(63))\n}\n'
+	}, 'main.v')
+	assert inactive_defined_guard_out == '63'
 	noncontiguous_source_context_out := run_good_project_with_flags(v3_bin,
 		'noncontiguous_source_context', '-cc clang', {
 		'v.mod':  "Module { name: 'noncontiguous_source_context' }\n"
