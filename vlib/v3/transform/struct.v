@@ -186,6 +186,67 @@ fn (mut t Transformer) promoted_struct_init_field_value(field FieldInfo, init fl
 	return value
 }
 
+fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, default_id flat.NodeId, struct_type string) flat.NodeId {
+	if int(default_id) < 0 {
+		return init_id
+	}
+	default_init := t.a.nodes[int(default_id)]
+	if default_init.kind != .struct_init {
+		return init_id
+	}
+	init := t.a.nodes[int(init_id)]
+	mut provided := map[string]bool{}
+	info := t.lookup_struct_info(struct_type) or { StructInfo{} }
+	for i in 0 .. init.children_count {
+		field := t.a.child_node(&init, i)
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < info.fields.len {
+			info.fields[i].name
+		} else {
+			''
+		}
+		if field_name.len > 0 {
+			provided[field_name] = true
+		}
+	}
+	mut missing_defaults := []flat.NodeId{}
+	for i in 0 .. default_init.children_count {
+		field_id := t.a.child(&default_init, i)
+		field := t.a.nodes[int(field_id)]
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < info.fields.len {
+			info.fields[i].name
+		} else {
+			''
+		}
+		if field_name.len > 0 && field_name !in provided {
+			missing_defaults << field_id
+			provided[field_name] = true
+		}
+	}
+	if missing_defaults.len == 0 {
+		return init_id
+	}
+	start := t.a.children.len
+	for field_id in missing_defaults {
+		t.a.children << field_id
+	}
+	for i in 0 .. init.children_count {
+		t.a.children << t.a.child(&init, i)
+	}
+	return t.a.add_node(flat.Node{
+		kind:           .struct_init
+		op:             init.op
+		children_start: start
+		children_count: missing_defaults.len + int(init.children_count)
+		pos:            init.pos
+		value:          init.value
+		typ:            init.typ
+	})
+}
+
 fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fields []flat.NodeId) flat.NodeId {
 	mut init_start := t.a.children.len
 	for fid in leaf_fields {
@@ -199,6 +260,7 @@ fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fi
 		value:          cur_type
 		typ:            cur_type
 	})
+	cur_init = t.merge_promoted_struct_default(cur_init, path[path.len - 1].default_expr, cur_type)
 	for rev in 0 .. path.len - 1 {
 		idx := path.len - 2 - rev
 		parent := path[idx]
@@ -223,6 +285,7 @@ fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fi
 			value:          cur_type
 			typ:            cur_type
 		})
+		cur_init = t.merge_promoted_struct_default(cur_init, parent.default_expr, cur_type)
 	}
 	root := path[0]
 	root_value := t.promoted_struct_init_field_value(root, cur_init)

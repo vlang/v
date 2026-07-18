@@ -465,7 +465,9 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		return
 	}
 	for promoted in promoted_roots {
-		has_field = g.gen_promoted_struct_defaults(promoted.root_type, c_field_name(promoted.root),
+		has_field = g.gen_promoted_root_declared_default(sname, promoted.root, promoted.root_type,
+			c_field_name(promoted.root), mut promoted_set_fields, has_field)
+		has_field = g.gen_promoted_struct_defaults(promoted.root_type, c_field_name(promoted.root), mut
 			promoted_set_fields, has_field)
 	}
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
@@ -1123,7 +1125,9 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 		return
 	}
 	for promoted in promoted_roots {
-		has_field = g.gen_promoted_struct_defaults(promoted.root_type, c_field_name(promoted.root),
+		has_field = g.gen_promoted_root_declared_default(sname, promoted.root, promoted.root_type,
+			c_field_name(promoted.root), mut promoted_set_fields, has_field)
+		has_field = g.gen_promoted_struct_defaults(promoted.root_type, c_field_name(promoted.root), mut
 			promoted_set_fields, has_field)
 	}
 	has_field = g.gen_struct_default_fields(sname, mut set_fields, has_field)
@@ -1215,10 +1219,78 @@ fn promoted_struct_init_has_descendant(set_fields map[string]bool, designator st
 	return false
 }
 
+fn (mut g FlatGen) gen_promoted_root_declared_default(owner_type string, field_name string, field_type string, designator_prefix string, mut initialized_fields map[string]bool, has_field bool) bool {
+	info := g.find_struct_decl(owner_type) or { return has_field }
+	old_module := g.tc.cur_module
+	old_file := g.tc.cur_file
+	old_default_module := g.struct_default_module
+	g.tc.cur_module = info.module
+	g.tc.cur_file = info.file
+	g.struct_default_module = info.module
+	mut has := has_field
+	for i in 0 .. info.node.children_count {
+		field := g.a.child_node(&info.node, i)
+		if field.kind != .field_decl || field.children_count == 0 {
+			continue
+		}
+		if field.value != field_name && c_field_name(field.value) != c_field_name(field_name) {
+			continue
+		}
+		has = g.gen_promoted_struct_literal_default(g.a.child(field, 0), field_type,
+			designator_prefix, mut initialized_fields, has)
+		break
+	}
+	g.tc.cur_module = old_module
+	g.tc.cur_file = old_file
+	g.struct_default_module = old_default_module
+	return has
+}
+
+fn (mut g FlatGen) gen_promoted_struct_literal_default(value_id flat.NodeId, type_name string, designator_prefix string, mut initialized_fields map[string]bool, has_field bool) bool {
+	value := g.a.node(value_id)
+	if value.kind != .struct_init {
+		return has_field
+	}
+	lookup_name := g.struct_init_fields_key(g.struct_init_lookup_type_name(value.value), type_name)
+	mut has := has_field
+	for i in 0 .. value.children_count {
+		field := g.a.child_node(value, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		field_info := if field.value.len > 0 {
+			g.struct_field_named(lookup_name, field.value) or { continue }
+		} else {
+			g.struct_field_at(lookup_name, i) or { continue }
+		}
+		field_designator := '${designator_prefix}.${c_field_name(field_info.name)}'
+		if field_designator in initialized_fields {
+			continue
+		}
+		value_child := g.a.child(field, 0)
+		if promoted_struct_init_has_descendant(initialized_fields, field_designator) {
+			clean_type := default_init_unalias_type(field_info.typ)
+			if clean_type is types.Struct {
+				has = g.gen_promoted_struct_literal_default(value_child, clean_type.name,
+					field_designator, mut initialized_fields, has)
+			}
+			continue
+		}
+		if has {
+			g.write(', ')
+		}
+		g.write('.${field_designator} = ')
+		g.gen_struct_field_expr_for_field(value_child, lookup_name, field_info.name, field_info.typ)
+		initialized_fields[field_designator] = true
+		has = true
+	}
+	return has
+}
+
 // gen_promoted_struct_defaults emits the defaults that remain inside a partially
 // initialized embedded struct. Nested designators keep the promoted expressions in
 // source order while avoiding a second initializer for the whole embedded field.
-fn (mut g FlatGen) gen_promoted_struct_defaults(type_name string, designator_prefix string, promoted_set_fields map[string]bool, has_field bool) bool {
+fn (mut g FlatGen) gen_promoted_struct_defaults(type_name string, designator_prefix string, mut promoted_set_fields map[string]bool, has_field bool) bool {
 	mut has := has_field
 	lookup_name := g.struct_init_fields_key(type_name, type_name)
 	mut explicitly_defaulted := map[string]bool{}
@@ -1235,8 +1307,16 @@ fn (mut g FlatGen) gen_promoted_struct_defaults(type_name string, designator_pre
 				continue
 			}
 			field_designator := '${designator_prefix}.${c_field_name(field.value)}'
-			if field_designator in promoted_set_fields
-				|| promoted_struct_init_has_descendant(promoted_set_fields, field_designator) {
+			if field_designator in promoted_set_fields {
+				continue
+			}
+			if promoted_struct_init_has_descendant(promoted_set_fields, field_designator) {
+				field_type := g.struct_default_field_type(info, field)
+				clean_type := default_init_unalias_type(field_type)
+				if clean_type is types.Struct {
+					has = g.gen_promoted_struct_literal_default(g.a.child(field, 0),
+						clean_type.name, field_designator, mut promoted_set_fields, has)
+				}
 				continue
 			}
 			if has {
@@ -1264,7 +1344,7 @@ fn (mut g FlatGen) gen_promoted_struct_defaults(type_name string, designator_pre
 		if promoted_struct_init_has_descendant(promoted_set_fields, field_designator) {
 			clean_type := default_init_unalias_type(field.typ)
 			if clean_type is types.Struct {
-				has = g.gen_promoted_struct_defaults(clean_type.name, field_designator,
+				has = g.gen_promoted_struct_defaults(clean_type.name, field_designator, mut
 					promoted_set_fields, has)
 			}
 			continue
@@ -3356,6 +3436,16 @@ fn (g &FlatGen) type_lookup_name(typ types.Type) string {
 		return g.struct_init_import_alias_type_name(clean_type.base_type.name())
 	}
 	return g.struct_init_import_alias_type_name(clean_type.name())
+}
+
+fn (g &FlatGen) struct_field_named(type_name string, field_name string) ?types.StructField {
+	fields := g.struct_fields_for_type(type_name) or { return none }
+	for field in fields {
+		if field.name == field_name {
+			return field
+		}
+	}
+	return none
 }
 
 // struct_field_at supports struct field at handling for FlatGen.

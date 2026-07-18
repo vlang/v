@@ -5195,7 +5195,8 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node flat.Node) {
 			continue
 		}
 		default_id := tc.a.child(field, 0)
-		expected := tc.parse_type(field.typ)
+		field_type := if field.typ.len > 0 { field.typ } else { field.value }
+		expected := tc.parse_type(field_type)
 		tc.check_node(default_id)
 		actual := tc.resolve_expr(default_id, expected)
 		if !tc.expr_compatible(default_id, actual, expected)
