@@ -2819,6 +2819,17 @@ fn (g &FlatGen) c_source_defines_used_c_type(text string) bool {
 			}
 		}
 	}
+	for _, variants in g.tc.sum_types {
+		for variant in variants {
+			mut clean := variant.trim_space()
+			for clean.starts_with('&') {
+				clean = clean[1..].trim_space()
+			}
+			if clean.starts_with('C.') && clean['C.'.len..] in names {
+				return true
+			}
+		}
+	}
 	for _, return_type in g.tc.fn_ret_types {
 		if c_type_uses_declared_name(return_type, names) {
 			return true

@@ -6051,6 +6051,13 @@ fn main() {
 		'main.v': 'module main\n\n#include "shim.m"\n\nstruct ObjectiveCTypedefHolder {\n\tkind C.V3Kind\n\tvalue C.V3Plain\n}\n\nfn main() {\n\t_ := ObjectiveCTypedefHolder{}\n\tprintln(int_str(66))\n}\n'
 	}, 'main.v')
 	assert objective_c_typedef_out == '66'
+	objective_c_sum_typedef_out := run_good_project_with_flags(v3_bin,
+		'objective_c_sum_typedef_provider', '-cc clang', {
+		'v.mod':  "Module { name: 'objective_c_sum_typedef_provider' }\n"
+		'shim.m': 'typedef struct { int value; } V3Obj;\n'
+		'main.v': 'module main\n\n#include "shim.m"\n\ntype ObjectiveCSumValue = C.V3Obj | int\n\nfn main() {\n\t_ := ObjectiveCSumValue(67)\n\tprintln(int_str(67))\n}\n'
+	}, 'main.v')
+	assert objective_c_sum_typedef_out == '67'
 	objective_cpp_out := run_good_project_with_flags(v3_bin, 'objective_cpp_source_include',
 		'-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_source_include' }\n"
