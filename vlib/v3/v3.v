@@ -309,7 +309,7 @@ fn ensure_c_object_file(obj_path string, source_language string, support_flags [
 		return obj_path
 	}
 	source_file := c_source_from_object_file(obj_path) or {
-		return error('missing C object ${obj_path}, and no adjacent .c/.cc/.cpp/.mm/.S source was found')
+		return error('missing C object ${obj_path}, and no adjacent .c/.cc/.cpp/.m/.mm/.S source was found')
 	}
 	return compile_cached_c_source_object(obj_path, source_file, source_language, support_flags,
 		c99, pic_flag, target_args, target, c_compiler, uncached_dir, mut stats)
@@ -329,6 +329,9 @@ fn c_source_language(source_file string, source_language string) string {
 	}
 	if source_file.ends_with('.mm') {
 		return 'objective-c++'
+	}
+	if source_file.ends_with('.m') {
+		return 'objective-c'
 	}
 	if source_file.ends_with('.cc') || source_file.ends_with('.cpp') {
 		return 'c++'
@@ -487,7 +490,7 @@ fn c_object_dependencies(compiler string, compile_args []string, source_file str
 
 fn c_source_from_object_file(obj_path string) ?string {
 	base := obj_path.all_before_last('.')
-	for ext in ['.c', '.cc', '.cpp', '.mm', '.S'] {
+	for ext in ['.c', '.cc', '.cpp', '.m', '.mm', '.S'] {
 		source_file := base + ext
 		if os.exists(source_file) {
 			return source_file

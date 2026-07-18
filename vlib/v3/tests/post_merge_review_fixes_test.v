@@ -6014,6 +6014,13 @@ fn main() {
 		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n\nfn C.answer_from_objective_cpp_object() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_objective_cpp_object()))\n}\n'
 	}, 'main.v')
 	assert objective_cpp_object_fallback_out == '49'
+	objective_c_object_fallback_out := run_good_project_with_flags(v3_bin,
+		'objective_c_object_fallback', '-cc clang', {
+		'v.mod':  "Module { name: 'objective_c_object_fallback' }\n"
+		'shim.m': 'int answer_from_objective_c_object(void) { return 64; }\n'
+		'main.v': 'module main\n\n#flag @VMODROOT/shim.o\n\nfn C.answer_from_objective_c_object() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_objective_c_object()))\n}\n'
+	}, 'main.v')
+	assert objective_c_object_fallback_out == '64'
 	objective_cpp_after_guarded_header_out := run_good_project_with_flags(v3_bin,
 		'objective_cpp_after_guarded_header', '-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_after_guarded_header' }\n"
