@@ -5759,6 +5759,24 @@ struct DefaultOuter {
 	}
 }
 
+struct NestedDefaultInner {
+	x int
+	y int
+}
+
+struct NestedDefaultMid {
+	NestedDefaultInner
+}
+
+struct NestedDefaultOuter {
+	NestedDefaultMid = NestedDefaultMid{
+		NestedDefaultInner: NestedDefaultInner{
+			x: 1
+			y: 2
+		}
+	}
+}
+
 fn main() {
 	value := DefaultOuter{
 		b: 7
@@ -5770,9 +5788,19 @@ fn main() {
 	println(int_str(value.b))
 	println(int_str(heap.a))
 	println(int_str(heap.b))
+	nested := NestedDefaultOuter{
+		x: 9
+	}
+	nested_heap := &NestedDefaultOuter{
+		x: 10
+	}
+	println(int_str(nested.x))
+	println(int_str(nested.y))
+	println(int_str(nested_heap.x))
+	println(int_str(nested_heap.y))
 }
 ')
-	assert promoted_declared_default_out == '3\n7\n3\n8'
+	assert promoted_declared_default_out == '3\n7\n3\n8\n9\n2\n10\n2'
 	promoted_cross_module_default_out := run_good_project(v3_bin,
 		'promoted_cross_module_struct_default', {
 		'v.mod':            "Module { name: 'promoted_cross_module_struct_default' }\n"
