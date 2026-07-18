@@ -2205,7 +2205,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 					context_directives := g.ordered_native_source_context(module_name,
 						local_context)
 					if context_directives.len > 0
-						&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target) {
+						&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target, g.native_source_context_has_macro_inputs(module_name)) {
 						return true
 					}
 				}
@@ -3725,6 +3725,32 @@ fn (g &FlatGen) ordered_native_source_context(module_name string, local_context 
 	return result
 }
 
+fn (g &FlatGen) native_source_context_has_macro_inputs(module_name string) bool {
+	mut visiting := map[string]bool{}
+	return g.visit_native_source_macro_input_module(module_name, mut visiting)
+}
+
+fn (g &FlatGen) visit_native_source_macro_input_module(module_name string, mut visiting map[string]bool) bool {
+	if module_name in visiting {
+		return false
+	}
+	for directive in g.c_directives {
+		clean := trimmed_space(directive.text)
+		if directive.module == module_name && c_directive_name(clean) == 'include'
+			&& c_include_arg_is_source_file(c_directive_arg(clean)) {
+			return true
+		}
+	}
+	visiting[module_name] = true
+	for dependency in g.module_imports[module_name] or { []string{} } {
+		if g.visit_native_source_macro_input_module(dependency, mut visiting) {
+			return true
+		}
+	}
+	visiting.delete(module_name)
+	return false
+}
+
 fn (g &FlatGen) visit_native_source_context_module(module_name string, root_module string, root_context []NativeSourceContextDirective, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
 	if module_name in visited || module_name in visiting {
 		return
@@ -3827,11 +3853,11 @@ fn c_effective_strict_iso_mode(flags []string, c99_mode bool) bool {
 	return strict_iso_mode
 }
 
-fn c_native_source_context_definitely_inactive(directives []string, flags []string, c99_mode bool, target pref.Target) bool {
+fn c_native_source_context_definitely_inactive(directives []string, flags []string, c99_mode bool, target pref.Target, source_macros_possible bool) bool {
 	mut defined := map[string]bool{}
 	mut undefined := map[string]bool{}
 	mut uncertain := map[string]bool{}
-	mut external_macros_possible := c_forced_include_inputs(flags).len > 0
+	mut external_macros_possible := source_macros_possible || c_forced_include_inputs(flags).len > 0
 	strict_iso_mode := c_effective_strict_iso_mode(flags, c99_mode)
 	mut i := 0
 	for i < flags.len {
@@ -4128,7 +4154,7 @@ fn (mut g FlatGen) materialize_objective_cpp_sources() {
 	for request in g.objective_cpp_source_requests {
 		context_directives := g.ordered_native_source_context(request.module, request.local_context)
 		if context_directives.len > 0
-			&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target) {
+			&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target, g.native_source_context_has_macro_inputs(request.module)) {
 			continue
 		}
 		if context_directives.len > 0
