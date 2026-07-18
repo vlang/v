@@ -5889,10 +5889,16 @@ fn main() {
 		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n#include "shim.m"\n#include "shim.mm"\n\nfn C.answer_from_cpp() int\nfn C.answer_from_objective_c() int\nfn C.answer_from_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp() + C.answer_from_objective_c() + C.answer_from_objective_cpp()))\n}\n'
 	}, 'main.v')
 	assert objective_cpp_out == '46'
+	cpp_runtime_out := run_good_project_with_flags(v3_bin, 'cpp_source_runtime', '-cc clang', {
+		'v.mod':    "Module { name: 'cpp_source_runtime' }\n"
+		'shim.cpp': '#include <string>\nextern "C" int answer_from_cpp_runtime(void) { std::string answer(44, \'x\'); return int(answer.size()); }\n'
+		'main.v':   'module main\n\n#flag @VMODROOT/shim.cpp\n\nfn C.answer_from_cpp_runtime() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp_runtime()))\n}\n'
+	}, 'main.v')
+	assert cpp_runtime_out == '44'
 	explicit_language_out := run_good_project_with_flags(v3_bin, 'explicit_language_source_flag',
 		'-cc clang', {
 		'v.mod':  "Module { name: 'explicit_language_source_flag' }\n"
-		'shim.c': 'extern "C" int answer_from_explicit_cpp(void) { auto answer = []() { return 44; }; return answer(); }\n'
+		'shim.c': '#include <string>\nextern "C" int answer_from_explicit_cpp(void) { std::string answer(44, \'x\'); return int(answer.size()); }\n'
 		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim.c\n\nfn C.answer_from_explicit_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_explicit_cpp()))\n}\n'
 	}, 'main.v')
 	assert explicit_language_out == '44'

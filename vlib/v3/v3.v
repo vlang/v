@@ -95,6 +95,10 @@ struct CObjectDependencies {
 	used_fallback bool
 }
 
+fn cpp_runtime_link_flag(target pref.Target) string {
+	return if target.os in ['macos', 'ios'] { '-lc++' } else { '-lstdc++' }
+}
+
 fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
@@ -116,7 +120,7 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 			stats.requests++
 			prepared << ensure_c_source_object(clean, support_flags, c99, pic_flag, target_args,
 				target, c_compiler, uncached_dir, mut stats)!
-			cpp_runtime := if target.os in ['macos', 'ios'] { '-lc++' } else { '-lstdc++' }
+			cpp_runtime := cpp_runtime_link_flag(target)
 			if cpp_runtime !in flags && cpp_runtime !in prepared {
 				prepared << cpp_runtime
 			}
@@ -132,6 +136,12 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 			prepared << flag
 		}
 		i++
+	}
+	if c_link_flags_use_non_c_language(prepared) {
+		cpp_runtime := cpp_runtime_link_flag(target)
+		if cpp_runtime !in flags && cpp_runtime !in prepared {
+			prepared << cpp_runtime
+		}
 	}
 	return prepared
 }
@@ -1941,7 +1951,8 @@ fn main() {
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
-		link_c_standard := if c_link_flags_use_non_c_language(resolved_c_flags) {
+		link_uses_non_c_language := c_link_flags_use_non_c_language(resolved_c_flags)
+		link_c_standard := if link_uses_non_c_language {
 			''
 		} else {
 			c_standard
@@ -1984,8 +1995,8 @@ fn main() {
 		// program translation unit and emit a broken executable. Compile and link
 		// the much smaller cached main unit with the system C compiler so the same
 		// undeclared-function diagnostics remain enforced.
-		if !is_prod && !needs_objective_c && target_args.len == 0 && !c_compiler_explicit
-			&& !cache_state.manager.enabled {
+		if !is_prod && !needs_objective_c && !link_uses_non_c_language && target_args.len == 0
+			&& !c_compiler_explicit && !cache_state.manager.enabled {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
