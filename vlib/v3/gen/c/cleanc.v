@@ -2103,7 +2103,9 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			return true
 		}
 		include_dirs := c_flag_include_dirs(g.c_flags)
-		if c_include_arg_is_source_file(include_arg) {
+		// `#insert` is an explicit request to inline the source text. Delay only
+		// ordinary source includes until after generated type declarations.
+		if node.value == 'include' && c_include_arg_is_source_file(include_arg) {
 			paths := c_include_file_paths(include_arg, g.compiler_vroot, source_file, include_dirs)
 			mut source_path := ''
 			mut source_text := ''
