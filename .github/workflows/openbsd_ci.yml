@@ -23,6 +23,10 @@ on:
       - '!ci/openbsd_ci.vsh'
       - '!cmd/tools/builders/**.v'
 
+concurrency:
+  group: openbsd-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 ### See https://github.com/cross-platform-actions/action
 ### for a description of the used fields here
 
