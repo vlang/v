@@ -102,93 +102,467 @@ jobs:
         run: v run ci/linux_ci.vsh all_code_is_formatted_gcc
       - name: Install dependencies for examples and tools
         run: v run ci/linux_ci.vsh install_dependencies_for_examples_and_tools_gcc
-      - name: Multiwindow Linux checks
+      - name: Install headless Wayland compositor
+        run: v retry -- sudo apt install --quiet -y weston
+      - name: Prepare multiwindow process-tree watchdog
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/multiwindow_ci_watchdog.v" <<'EOF'
+          module main
+
+          import gg.testdata.multiwindow_probe_watchdog
+          import os
+          import time
+
+          fn main() {
+              run_ci_watchdog() or {
+                  eprintln(err.msg())
+                  exit(1)
+              }
+          }
+
+          fn run_ci_watchdog() ! {
+              if os.args.len < 4 {
+                  return error('usage: multiwindow_ci_watchdog timeout-seconds expected-final-line executable [args...]')
+              }
+              timeout_seconds := os.args[1].int()
+              if timeout_seconds <= 0 {
+                  return error('multiwindow CI watchdog timeout must be positive')
+              }
+              expected_final_line := os.args[2]
+              gate_path := os.join_path(os.temp_dir(), 'multiwindow_ci_gate_${os.getpid()}_${time.now().unix_nano()}')
+              defer {
+                  os.rm(gate_path) or {}
+              }
+              result := multiwindow_probe_watchdog.run(
+                  executable: os.args[3]
+                  args:       os.args[4..]
+                  timeout:    timeout_seconds * time.second
+                  start_file: gate_path
+              )!
+              if result.stdout != '' {
+                  print(result.stdout)
+              }
+              if result.stderr != '' {
+                  eprint(result.stderr)
+              }
+              if result.timed_out {
+                  return error('multiwindow CI child timed out after ${timeout_seconds} seconds')
+              }
+              if !result.reaped {
+                  return error('multiwindow CI child leader was not reaped')
+              }
+              if !result.confinement_empty {
+                  return error('multiwindow CI child process confinement is not empty')
+              }
+              if result.forced_cleanup {
+                  return error('multiwindow CI child required forced cleanup')
+              }
+              if result.exit_code != 0 {
+                  return error('multiwindow CI child exited with ${result.exit_code}')
+              }
+              if expected_final_line == '-' {
+                  return
+              }
+              mut actual_final_line := ''
+              for line in result.stdout.split_into_lines() {
+                  if line.trim_space() != '' {
+                      actual_final_line = line.trim_space()
+                  }
+              }
+              if actual_final_line != expected_final_line {
+                  return error('multiwindow CI final record mismatch: expected `${expected_final_line}`, got `${actual_final_line}`')
+              }
+          }
+          EOF
+          ./v -cc gcc -o "$RUNNER_TEMP/multiwindow_ci_watchdog" "$RUNNER_TEMP/multiwindow_ci_watchdog.v"
+
+          cat > "$RUNNER_TEMP/multiwindow_x11_command.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          gate_path="${V_MULTIWINDOW_PROBE_WATCHDOG_GATE:?missing watchdog start gate}"
+          for _ in {1..400}; do
+            if [ -f "$gate_path" ]; then
+              break
+            fi
+            sleep 0.01
+          done
+          if [ ! -f "$gate_path" ]; then
+            echo "parent watchdog did not release $gate_path" >&2
+            exit 1
+          fi
+
+          runtime_dir="$(mktemp -d)"
+          xvfb_pid=''
+          xvfb_log="$runtime_dir/xvfb.log"
+          display_file="$runtime_dir/xvfb-display"
+          cleanup_done=0
+
+          stop_xvfb() {
+            local pid="$1"
+            if [ -z "$pid" ]; then
+              return 0
+            fi
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -TERM "$pid" 2>/dev/null || true
+              for _ in {1..500}; do
+                if ! kill -0 "$pid" 2>/dev/null; then
+                  break
+                fi
+                sleep 0.01
+              done
+            fi
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -KILL "$pid" 2>/dev/null || true
+            fi
+            wait "$pid" 2>/dev/null || true
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "Xvfb process $pid remains alive after cleanup" >&2
+              return 1
+            fi
+          }
+
+          cleanup_x11() {
+            local status="$1"
+            trap - EXIT INT TERM
+            if [ "$cleanup_done" -eq 1 ]; then
+              return 0
+            fi
+            cleanup_done=1
+            local cleanup_failed=0
+            stop_xvfb "$xvfb_pid" || cleanup_failed=1
+            if [ "$status" -ne 0 ] || [ "$cleanup_failed" -ne 0 ]; then
+              echo '----- Xvfb log -----' >&2
+              cat "$xvfb_log" >&2 || true
+            fi
+            if ! rm -rf "$runtime_dir"; then
+              cleanup_failed=1
+            fi
+            return "$cleanup_failed"
+          }
+
+          on_exit() {
+            local status="$?"
+            local cleanup_status=0
+            cleanup_x11 "$status" || cleanup_status=$?
+            if [ "$status" -eq 0 ] && [ "$cleanup_status" -ne 0 ]; then
+              status="$cleanup_status"
+            fi
+            exit "$status"
+          }
+
+          on_int() {
+            cleanup_x11 130 || true
+            exit 130
+          }
+
+          on_term() {
+            cleanup_x11 143 || true
+            exit 143
+          }
+
+          trap on_exit EXIT
+          trap on_int INT
+          trap on_term TERM
+
+          chmod 700 "$runtime_dir"
+          Xvfb -displayfd 1 -screen 0 1280x1024x24 -nolisten tcp >"$display_file" 2>"$xvfb_log" &
+          xvfb_pid=$!
+
+          display_ready=0
+          x_display=''
+          for _ in {1..1000}; do
+            if [ -s "$display_file" ]; then
+              display_number="$(tr -d '\r\n' <"$display_file")"
+              case "$display_number" in
+                ''|*[!0-9]*) ;;
+                *)
+                  x_display=":$display_number"
+                  display_ready=1
+                  break
+                  ;;
+              esac
+            fi
+            if ! kill -0 "$xvfb_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 0.01
+          done
+          if [ "$display_ready" -ne 1 ]; then
+            echo 'Xvfb did not publish a display number' >&2
+            exit 1
+          fi
+
+          set +e
+          DISPLAY="$x_display" "$@"
+          command_status=$?
+          set -e
+          if ! kill -0 "$xvfb_pid" 2>/dev/null; then
+            echo 'Xvfb exited before the X11 command completed' >&2
+            if [ "$command_status" -eq 0 ]; then
+              command_status=1
+            fi
+          fi
+          exit "$command_status"
+          EOF
+          chmod +x "$RUNNER_TEMP/multiwindow_x11_command.sh"
+
+          cat > "$RUNNER_TEMP/multiwindow_weston_command.sh" <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          gate_path="${V_MULTIWINDOW_PROBE_WATCHDOG_GATE:?missing watchdog start gate}"
+          for _ in {1..400}; do
+            if [ -f "$gate_path" ]; then
+              break
+            fi
+            sleep 0.01
+          done
+          if [ ! -f "$gate_path" ]; then
+            echo "parent watchdog did not release $gate_path" >&2
+            exit 1
+          fi
+
+          runtime_dir="$(mktemp -d)"
+          xvfb_pid=''
+          weston_pid=''
+          xvfb_log="$runtime_dir/xvfb.log"
+          weston_log="$runtime_dir/weston.log"
+          display_file="$runtime_dir/xvfb-display"
+          wayland_display=wayland-multiwindow-ci
+
+          stop_child() {
+            local pid="$1"
+            if [ -z "$pid" ]; then
+              return
+            fi
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -TERM "$pid" 2>/dev/null || true
+              for _ in {1..500}; do
+                if ! kill -0 "$pid" 2>/dev/null; then
+                  break
+                fi
+                sleep 0.01
+              done
+            fi
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -KILL "$pid" 2>/dev/null || true
+            fi
+            wait "$pid" 2>/dev/null || true
+          }
+
+          cleanup_display_servers() {
+            local status="$1"
+            trap - EXIT INT TERM
+            stop_child "$weston_pid"
+            stop_child "$xvfb_pid"
+            if [ "$status" -ne 0 ]; then
+              echo '----- Xvfb log -----' >&2
+              cat "$xvfb_log" >&2 || true
+              echo '----- Weston log -----' >&2
+              cat "$weston_log" >&2 || true
+            fi
+            rm -rf "$runtime_dir" || true
+            exit "$status"
+          }
+          trap 'cleanup_display_servers $?' EXIT
+          trap 'exit 130' INT
+          trap 'exit 143' TERM
+
+          chmod 700 "$runtime_dir"
+          Xvfb -displayfd 1 -screen 0 1280x1024x24 >"$display_file" 2>"$xvfb_log" &
+          xvfb_pid=$!
+
+          display_ready=0
+          x_display=''
+          for _ in {1..1000}; do
+            if [ -s "$display_file" ]; then
+              display_number="$(tr -d '\r\n' <"$display_file")"
+              case "$display_number" in
+                ''|*[!0-9]*) ;;
+                *)
+                  x_display=":$display_number"
+                  display_ready=1
+                  break
+                  ;;
+              esac
+            fi
+            if ! kill -0 "$xvfb_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 0.01
+          done
+          if [ "$display_ready" -ne 1 ]; then
+            echo 'Xvfb did not publish a display number' >&2
+            exit 1
+          fi
+
+          XDG_RUNTIME_DIR="$runtime_dir" DISPLAY="$x_display" LIBGL_ALWAYS_SOFTWARE=true \
+            weston --backend=x11-backend.so --renderer=gl \
+              --socket="$wayland_display" --idle-time=0 >"$weston_log" 2>&1 &
+          weston_pid=$!
+
+          ready=0
+          for _ in {1..1000}; do
+            if [ -S "$runtime_dir/$wayland_display" ]; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$weston_pid" 2>/dev/null; then
+              break
+            fi
+            sleep 0.01
+          done
+          if [ "$ready" -ne 1 ]; then
+            echo "Weston X11 did not publish $runtime_dir/$wayland_display" >&2
+            exit 1
+          fi
+
+          env -u DISPLAY \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            WAYLAND_DISPLAY="$wayland_display" \
+            XDG_SESSION_TYPE=wayland \
+            LIBGL_ALWAYS_SOFTWARE=true \
+            "$@"
+          EOF
+          chmod +x "$RUNNER_TEMP/multiwindow_weston_command.sh"
+      - name: Multiwindow portable and mock regressions
         run: |
           set -euo pipefail
 
           env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-            ./v test vlib/gg/legacy_import_multiwindow_isolation_test.v
+            ./v -cc gcc test vlib/gg/legacy_import_multiwindow_isolation_test.v
+
+          tests=(
+            vlib/x/multiwindow/event_sequence_exhaustion_test.v
+            vlib/x/multiwindow/event_terminal_delivery_test.v
+            vlib/x/multiwindow/internal_fault_matrix_test.v
+            vlib/x/multiwindow/multiwindow_test.v
+            vlib/x/multiwindow/native_operation_proof_test.v
+            vlib/x/multiwindow/render_scheduler_test.v
+            vlib/x/multiwindow/render_target_lease_test.v
+            vlib/x/multiwindow/teardown_contract_test.v
+            vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_runtime_contract_test.v
+            vlib/gg/frame_pacing_test.v
+            vlib/gg/draw_fns_api_test.v
+            vlib/gg/draw_rect_empty_test.v
+          )
+          for test in "${tests[@]}"; do
+            "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+              env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
+              ./v -cc gcc -d gg_multiwindow test "$test"
+          done
+
+          ./v -cc gcc -d gg_multiwindow \
+            -o /tmp/gg_multiwindow_default examples/gg/multiwindow.v
+          ./v -cc gcc -d gg_multiwindow \
+            -o /tmp/gg_multiwindow_render_runtime_default examples/gg/multiwindow_render_runtime.v
 
           env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-            ./v -d gg_multiwindow test \
-              vlib/x/multiwindow \
-              vlib/gg/multiwindow_api_d_gg_multiwindow_test.v \
-              vlib/gg/frame_pacing_test.v \
-              vlib/gg/draw_fns_api_test.v \
-              vlib/gg/draw_rect_empty_test.v
+            VGG_MULTIWINDOW_EXAMPLE_UNATTENDED=mock \
+            "$RUNNER_TEMP/multiwindow_ci_watchdog" 60 \
+              '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' \
+              /tmp/gg_multiwindow_default
+      - name: Multiwindow X11 native regressions
+        env:
+          VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
+          VGG_MULTIWINDOW_RUNTIME_BACKEND: x11
+          VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: x11
+          V_MULTIWINDOW_PROBE_BACKEND: x11
+        run: |
+          set -euo pipefail
 
-          env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-            ./v -d gg_multiwindow -d sokol_wayland test \
-              vlib/x/multiwindow \
-              vlib/gg/multiwindow_api_d_gg_multiwindow_test.v \
-              vlib/gg/frame_pacing_test.v \
-              vlib/gg/draw_fns_api_test.v \
-              vlib/gg/draw_rect_empty_test.v
+          ./v -cc gcc -d gg_multiwindow -d x_multiwindow_x11 \
+            -o /tmp/gg_multiwindow_x11 examples/gg/multiwindow.v
+          ./v -cc gcc -d gg_multiwindow -d x_multiwindow_x11 \
+            -o /tmp/gg_multiwindow_render_runtime_x11 examples/gg/multiwindow_render_runtime.v
 
-          xvfb-run -a -s "-screen 0 1280x1024x24" \
-            env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
-            ./v -d gg_multiwindow -d x_multiwindow_x11 test \
-              vlib/x/multiwindow \
-              vlib/gg/multiwindow_api_d_gg_multiwindow_test.v \
-              vlib/gg/frame_pacing_test.v \
-              vlib/gg/draw_fns_api_test.v \
-              vlib/gg/draw_rect_empty_test.v
-
-          ./v -d gg_multiwindow -o /tmp/gg_multiwindow_default examples/gg/multiwindow.v
-          ./v -d gg_multiwindow -d x_multiwindow_x11 -o /tmp/gg_multiwindow_x11 examples/gg/multiwindow.v
-          ./v -d gg_multiwindow -d sokol_wayland -o /tmp/gg_multiwindow_wayland examples/gg/multiwindow.v
-
-          run_headless_example() {
-            label="$1"
-            binary="$2"
-            stdout="$(mktemp)"
-            stderr="$(mktemp)"
-            env -u DISPLAY -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE \
-              "$binary" >"$stdout" 2>"$stderr"
-            echo "::group::${label} stdout"
-            cat "$stdout"
-            echo "::endgroup::"
-            echo "::group::${label} stderr"
-            cat "$stderr"
-            echo "::endgroup::"
-            grep -Fq "gg multi-window backend: mock" "$stdout"
-            grep -Fq "capability families:" "$stdout"
-            grep -Fq "mock backend selected; stopping after initial lifecycle events" "$stdout"
-            grep -Fq "live windows:" "$stdout"
-            grep -Fq "window created:" "$stdout"
-          }
-
-          run_x11_example() {
-            label="$1"
-            binary="$2"
-            stdout="$(mktemp)"
-            stderr="$(mktemp)"
-            set +e
-            xvfb-run -a -s "-screen 0 1280x1024x24" \
+          tests=(
+            vlib/x/multiwindow/event_sequence_exhaustion_test.v
+            vlib/x/multiwindow/event_terminal_delivery_test.v
+            vlib/x/multiwindow/internal_fault_matrix_test.v
+            vlib/x/multiwindow/multiwindow_test.v
+            vlib/x/multiwindow/native_operation_proof_test.v
+            vlib/x/multiwindow/render_scheduler_test.v
+            vlib/x/multiwindow/render_target_lease_test.v
+            vlib/x/multiwindow/teardown_contract_test.v
+            vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_runtime_contract_test.v
+            vlib/gg/frame_pacing_test.v
+            vlib/gg/draw_fns_api_test.v
+            vlib/gg/draw_rect_empty_test.v
+          )
+          for test in "${tests[@]}"; do
+            "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+              "$RUNNER_TEMP/multiwindow_x11_command.sh" \
               env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
-              timeout 12s stdbuf -oL -eL "$binary" >"$stdout" 2>"$stderr"
-            status=$?
-            set -e
-            echo "::group::${label} stdout"
-            cat "$stdout"
-            echo "::endgroup::"
-            echo "::group::${label} stderr"
-            cat "$stderr"
-            echo "::endgroup::"
-            grep -Fq "gg multi-window backend:" "$stdout"
-            grep -Fq "capability families:" "$stdout"
-            grep -Fq "live windows:" "$stdout"
-            grep -Fq "window created:" "$stdout"
-            if [ "$status" -eq 124 ]; then
-              echo "X11 example reached the controlled timeout after producing expected launch logs."
-              return 0
-            fi
-            return "$status"
-          }
+              ./v -cc gcc -d gg_multiwindow -d x_multiwindow_x11 test "$test"
+          done
 
-          run_headless_example "gg multiwindow headless mock" /tmp/gg_multiwindow_default
-          run_headless_example "gg multiwindow Wayland-build headless mock" /tmp/gg_multiwindow_wayland
-          run_x11_example "gg multiwindow Xvfb/X11" /tmp/gg_multiwindow_x11
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
+            '{"example":"multiwindow_render_runtime","status":"PASS","cleanup":"complete"}' \
+            "$RUNNER_TEMP/multiwindow_x11_command.sh" \
+            env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
+            /tmp/gg_multiwindow_render_runtime_x11
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
+            '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' \
+            "$RUNNER_TEMP/multiwindow_x11_command.sh" \
+            env -u WAYLAND_DISPLAY -u XDG_SESSION_TYPE LIBGL_ALWAYS_SOFTWARE=true \
+            /tmp/gg_multiwindow_x11
+      - name: Multiwindow Wayland native regressions
+        env:
+          VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
+          VGG_MULTIWINDOW_RUNTIME_BACKEND: wayland
+          VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: wayland
+          V_MULTIWINDOW_PROBE_BACKEND: wayland
+        run: |
+          set -euo pipefail
+
+          ./v -cc gcc -d gg_multiwindow -d sokol_wayland \
+            -o /tmp/gg_multiwindow_wayland examples/gg/multiwindow.v
+          ./v -cc gcc -d gg_multiwindow -d sokol_wayland \
+            -o /tmp/gg_multiwindow_render_runtime_wayland examples/gg/multiwindow_render_runtime.v
+
+          tests=(
+            vlib/x/multiwindow/event_sequence_exhaustion_test.v
+            vlib/x/multiwindow/event_terminal_delivery_test.v
+            vlib/x/multiwindow/internal_fault_matrix_test.v
+            vlib/x/multiwindow/multiwindow_test.v
+            vlib/x/multiwindow/native_operation_proof_test.v
+            vlib/x/multiwindow/render_scheduler_test.v
+            vlib/x/multiwindow/render_target_lease_test.v
+            vlib/x/multiwindow/teardown_contract_test.v
+            vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_runtime_contract_test.v
+            vlib/gg/frame_pacing_test.v
+            vlib/gg/draw_fns_api_test.v
+            vlib/gg/draw_rect_empty_test.v
+          )
+          for test in "${tests[@]}"; do
+            "$RUNNER_TEMP/multiwindow_ci_watchdog" 300 - \
+              "$RUNNER_TEMP/multiwindow_weston_command.sh" \
+              ./v -cc gcc -d gg_multiwindow -d sokol_wayland test "$test"
+          done
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
+            '{"example":"multiwindow_render_runtime","status":"PASS","cleanup":"complete"}' \
+            "$RUNNER_TEMP/multiwindow_weston_command.sh" \
+            /tmp/gg_multiwindow_render_runtime_wayland
+
+          "$RUNNER_TEMP/multiwindow_ci_watchdog" 120 \
+            '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' \
+            "$RUNNER_TEMP/multiwindow_weston_command.sh" \
+            /tmp/gg_multiwindow_wayland
       - name: Recompile V with -cstrict and gcc
         run: v run ci/linux_ci.vsh recompile_v_with_cstrict_gcc
       - name: Valgrind v.c

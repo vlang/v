@@ -5,25 +5,177 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/mman.h>
 #include <unistd.h>
-#include <EGL/egl.h>
 #include <wayland-client.h>
 #include <wayland-egl.h>
+#include "linux_egl_native_helpers.h"
 
-#ifndef EGL_CONTEXT_MAJOR_VERSION
-#define EGL_CONTEXT_MAJOR_VERSION 0x3098
+#define V_MULTIWINDOW_WAYLAND_ANCHOR_RELEASE_PROTOCOL_DESTROY UINT64_C(1)
+#define V_MULTIWINDOW_WAYLAND_ANCHOR_RELEASE_LOCAL_PROXY_DESTROY UINT64_C(2)
+
+static inline void v_multiwindow_wayland_result(VMultiwindowNativePrimitive *out_result,
+		int result, int native_errno) {
+	if (out_result == NULL) {
+		return;
+	}
+	memset(out_result, 0, sizeof(*out_result));
+	out_result->valid_mask = V_MULTIWINDOW_NATIVE_VALID_RETURN_VALUE;
+	out_result->return_value = (int64_t)result;
+	if (result < 0) {
+		out_result->valid_mask |= V_MULTIWINDOW_NATIVE_VALID_ERRNO;
+		out_result->native_errno = (int64_t)native_errno;
+	}
+}
+
+static inline void v_multiwindow_wayland_reset(VMultiwindowNativePrimitive *out_result) {
+	if (out_result == NULL) {
+		return;
+	}
+	memset(out_result, 0, sizeof(*out_result));
+}
+
+static inline void v_multiwindow_wayland_proxy_destroy_local(void *proxy) {
+	if (proxy != NULL) {
+#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST) \
+		&& defined(V_MULTIWINDOW_NATIVE_WAYLAND_RELEASE_ORACLE_HELPERS_H)
+		uint64_t identity = (uint64_t)(uintptr_t)proxy;
 #endif
-#ifndef EGL_CONTEXT_MINOR_VERSION
-#define EGL_CONTEXT_MINOR_VERSION 0x30FB
+		wl_proxy_destroy((struct wl_proxy *)proxy);
+#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST) \
+		&& defined(V_MULTIWINDOW_NATIVE_WAYLAND_RELEASE_ORACLE_HELPERS_H)
+		v_multiwindow_test_wayland_local_proxy_destroyed(identity);
 #endif
-#ifndef EGL_CONTEXT_OPENGL_PROFILE_MASK
-#define EGL_CONTEXT_OPENGL_PROFILE_MASK 0x30FD
+	}
+}
+
+static inline void v_multiwindow_wayland_display_disconnect(
+		struct wl_display *display) {
+#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST) \
+	&& defined(V_MULTIWINDOW_NATIVE_WAYLAND_RELEASE_ORACLE_HELPERS_H)
+	uint64_t identity = (uint64_t)(uintptr_t)display;
 #endif
-#ifndef EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT
-#define EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT 0x00000001
+	wl_display_disconnect(display);
+#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST) \
+	&& defined(V_MULTIWINDOW_NATIVE_WAYLAND_RELEASE_ORACLE_HELPERS_H)
+	v_multiwindow_test_wayland_display_disconnected(identity);
 #endif
+}
+
+static inline void v_multiwindow_wayland_display_error(struct wl_display *display,
+		VMultiwindowNativePrimitive *out_result) {
+	v_multiwindow_wayland_reset(out_result);
+	if (out_result != NULL && display != NULL) {
+		out_result->valid_mask = V_MULTIWINDOW_NATIVE_VALID_WAYLAND_DISPLAY_ERROR;
+		out_result->wayland_display_error = (int64_t)wl_display_get_error(display);
+	}
+}
+
+static inline void v_multiwindow_wayland_flush(struct wl_display *display,
+		VMultiwindowNativePrimitive *out_result) {
+	if (display == NULL) {
+		v_multiwindow_wayland_reset(out_result);
+		return;
+	}
+	errno = 0;
+	int result = wl_display_flush(display);
+	int native_errno = result < 0 ? errno : 0;
+	v_multiwindow_wayland_result(out_result, result, native_errno);
+}
+
+static inline void v_multiwindow_wayland_roundtrip(struct wl_display *display,
+		VMultiwindowNativePrimitive *out_result) {
+	if (display == NULL) {
+		v_multiwindow_wayland_reset(out_result);
+		return;
+	}
+	errno = 0;
+	int result = wl_display_roundtrip(display);
+	int native_errno = result < 0 ? errno : 0;
+	v_multiwindow_wayland_result(out_result, result, native_errno);
+}
+
+static inline void v_multiwindow_wayland_dispatch_pending(struct wl_display *display,
+		VMultiwindowNativePrimitive *out_result) {
+	if (display == NULL) {
+		v_multiwindow_wayland_reset(out_result);
+		return;
+	}
+	errno = 0;
+	int result = wl_display_dispatch_pending(display);
+	int native_errno = result < 0 ? errno : 0;
+	v_multiwindow_wayland_result(out_result, result, native_errno);
+}
+
+static inline void v_multiwindow_wayland_prepare_read(struct wl_display *display,
+		VMultiwindowNativePrimitive *out_result) {
+	if (display == NULL) {
+		v_multiwindow_wayland_reset(out_result);
+		return;
+	}
+	int result = wl_display_prepare_read(display);
+	v_multiwindow_wayland_result(out_result, result, 0);
+	if (out_result != NULL) {
+		out_result->valid_mask &= ~V_MULTIWINDOW_NATIVE_VALID_ERRNO;
+	}
+}
+
+static inline void v_multiwindow_wayland_cancel_read(struct wl_display *display,
+		VMultiwindowNativePrimitive *out_result) {
+	if (display == NULL) {
+		v_multiwindow_wayland_reset(out_result);
+		return;
+	}
+	wl_display_cancel_read(display);
+	v_multiwindow_wayland_reset(out_result);
+}
+
+static inline void v_multiwindow_wayland_read_events(struct wl_display *display,
+		VMultiwindowNativePrimitive *out_result) {
+	if (display == NULL) {
+		v_multiwindow_wayland_reset(out_result);
+		return;
+	}
+	errno = 0;
+	int result = wl_display_read_events(display);
+	int native_errno = result < 0 ? errno : 0;
+	v_multiwindow_wayland_result(out_result, result, native_errno);
+}
+
+static inline void v_multiwindow_wayland_get_fd(struct wl_display *display,
+		VMultiwindowNativePrimitive *out_result) {
+	if (display == NULL) {
+		v_multiwindow_wayland_reset(out_result);
+		return;
+	}
+	errno = 0;
+	int result = wl_display_get_fd(display);
+	int native_errno = result < 0 ? errno : 0;
+	v_multiwindow_wayland_result(out_result, result, native_errno);
+}
+
+static inline void v_multiwindow_wayland_poll(struct pollfd *fds, uint64_t count,
+		int timeout, VMultiwindowNativePrimitive *out_result) {
+	errno = 0;
+	int result = poll(fds, (nfds_t)count, timeout);
+	int native_errno = result < 0 ? errno : 0;
+	uint64_t observed_flags = UINT64_C(0);
+	if (result >= 0 && fds != NULL) {
+		for (uint64_t i = 0; i < count; i++) {
+			observed_flags |= (uint64_t)(uint16_t)fds[i].revents;
+		}
+	}
+	v_multiwindow_wayland_result(out_result, result, native_errno);
+	if (out_result != NULL && result >= 0) {
+		out_result->valid_mask |= V_MULTIWINDOW_NATIVE_VALID_OBSERVED_FLAGS;
+		out_result->observed_flags = observed_flags;
+	}
+}
+
 
 void v_multiwindow_wayland_registry_handle_global(voidptr data, struct wl_registry *registry, u32 name, char *iface, u32 version);
 void v_multiwindow_wayland_registry_handle_global_remove(voidptr data, struct wl_registry *registry, u32 name);
@@ -49,6 +201,8 @@ void v_multiwindow_wayland_touch_down(void *data, void *touch, uint32_t serial, 
 void v_multiwindow_wayland_touch_up(void *data, void *touch, uint32_t serial, uint32_t time, int32_t id);
 void v_multiwindow_wayland_touch_motion(void *data, void *touch, uint32_t time, int32_t id, double x, double y);
 void v_multiwindow_wayland_touch_cancel(void *data, void *touch);
+int v_multiwindow_wayland_frame_done(void *data, void *callback, uint32_t time);
+void v_multiwindow_wayland_frame_destroyed(void *data, void *callback);
 void v_multiwindow_wayland_data_offer_offer(void *data, void *offer, char *mime_type);
 void v_multiwindow_wayland_data_offer_source_actions(void *data, void *offer, uint32_t source_actions);
 void v_multiwindow_wayland_data_offer_action(void *data, void *offer, uint32_t dnd_action);
@@ -379,6 +533,18 @@ static void v_multiwindow_wayland_buffer_release_trampoline(void *data, struct w
 	v_multiwindow_wayland_buffer_release(data, (void *)buffer);
 }
 
+static void v_multiwindow_wayland_frame_done_trampoline(void *data, struct wl_callback *callback, uint32_t time) {
+	int authorization = v_multiwindow_wayland_frame_done(data, (void *)callback, time);
+	if (authorization != 0) {
+		if (authorization == 1) {
+			wl_callback_destroy(callback);
+		} else {
+			v_multiwindow_wayland_proxy_destroy_local((void *)callback);
+		}
+		v_multiwindow_wayland_frame_destroyed(data, (void *)callback);
+	}
+}
+
 static const struct wl_registry_listener v_multiwindow_wayland_registry_listener = {
 	v_multiwindow_wayland_registry_handle_global_trampoline,
 	v_multiwindow_wayland_registry_handle_global_remove_trampoline,
@@ -452,6 +618,10 @@ static const struct wl_buffer_listener v_multiwindow_wayland_buffer_listener = {
 	v_multiwindow_wayland_buffer_release_trampoline,
 };
 
+static const struct wl_callback_listener v_multiwindow_wayland_frame_listener = {
+	v_multiwindow_wayland_frame_done_trampoline,
+};
+
 static const struct zxdg_toplevel_decoration_v1_listener v_multiwindow_wayland_xdg_toplevel_decoration_listener = {
 	v_multiwindow_wayland_xdg_toplevel_decoration_configure_trampoline,
 };
@@ -464,9 +634,25 @@ static inline uint32_t v_multiwindow_wayland_seat_bind_version(uint32_t version)
 	return version < 5 ? version : 5;
 }
 
+static uint64_t v_multiwindow_wayland_event_sequence = 1;
+static int v_multiwindow_wayland_event_sequence_exhausted_flag = 0;
+
 static inline uint64_t v_multiwindow_wayland_next_event_sequence(void) {
-	static uint64_t sequence = 1;
-	return sequence++;
+	if (v_multiwindow_wayland_event_sequence_exhausted_flag) {
+		return 0;
+	}
+	uint64_t sequence = v_multiwindow_wayland_event_sequence;
+	if (sequence == UINT64_MAX) {
+		v_multiwindow_wayland_event_sequence = 0;
+		v_multiwindow_wayland_event_sequence_exhausted_flag = 1;
+	} else {
+		v_multiwindow_wayland_event_sequence++;
+	}
+	return sequence;
+}
+
+static inline int v_multiwindow_wayland_event_sequence_exhausted(void) {
+	return v_multiwindow_wayland_event_sequence_exhausted_flag;
 }
 
 static inline void *v_multiwindow_wayland_bind_compositor(struct wl_registry *registry, uint32_t name, uint32_t version) {
@@ -577,6 +763,40 @@ static inline int v_multiwindow_wayland_add_keyboard_listener(struct wl_keyboard
 
 static inline int v_multiwindow_wayland_add_touch_listener(struct wl_touch *touch, void *data) {
 	return wl_touch_add_listener(touch, &v_multiwindow_wayland_touch_listener, data);
+}
+
+static inline void v_multiwindow_wayland_surface_frame(struct wl_surface *surface,
+		VMultiwindowNativePrimitive *out_result) {
+	v_multiwindow_wayland_reset(out_result);
+	if (surface == NULL) {
+		return;
+	}
+	struct wl_callback *callback = wl_surface_frame(surface);
+	if (out_result != NULL) {
+		out_result->valid_mask |= V_MULTIWINDOW_NATIVE_VALID_HANDLE;
+		out_result->handle = (uint64_t)(uintptr_t)callback;
+	}
+}
+
+static inline void v_multiwindow_wayland_add_frame_listener(struct wl_callback *callback,
+		void *data, VMultiwindowNativePrimitive *out_result) {
+	if (callback == NULL) {
+		v_multiwindow_wayland_reset(out_result);
+		return;
+	}
+	errno = 0;
+	int result = wl_callback_add_listener(callback, &v_multiwindow_wayland_frame_listener,
+		data);
+	int native_errno = result < 0 ? errno : 0;
+	v_multiwindow_wayland_result(out_result, result, native_errno);
+}
+
+static inline void v_multiwindow_wayland_destroy_frame_callback(void *callback,
+		VMultiwindowNativePrimitive *out_result) {
+	v_multiwindow_wayland_reset(out_result);
+	if (callback != NULL) {
+		wl_callback_destroy((struct wl_callback *)callback);
+	}
 }
 
 static inline int v_multiwindow_wayland_add_data_device_listener(struct wl_data_device *device, void *data) {
@@ -860,104 +1080,76 @@ static inline void v_multiwindow_wayland_xdg_toplevel_destroy(struct xdg_topleve
 	wl_proxy_marshal_flags((struct wl_proxy *)toplevel, XDG_TOPLEVEL_DESTROY, NULL, wl_proxy_get_version((struct wl_proxy *)toplevel), WL_MARSHAL_FLAG_DESTROY);
 }
 
-static inline void *v_multiwindow_wayland_egl_get_display(struct wl_display *display) {
-	return (void *)eglGetDisplay((EGLNativeDisplayType)display);
-}
-
-static inline int v_multiwindow_wayland_egl_initialize(void *egl_display) {
-	return eglInitialize((EGLDisplay)egl_display, NULL, NULL) == EGL_TRUE ? 1 : 0;
-}
-
-static inline int v_multiwindow_wayland_egl_bind_opengl_api(void) {
-	return eglBindAPI(EGL_OPENGL_API) == EGL_TRUE ? 1 : 0;
-}
-
-static inline int v_multiwindow_wayland_egl_choose_config(void *egl_display, void **out_config) {
-	const EGLint attrs[] = {
-		EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
-		EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT,
-		EGL_RED_SIZE, 8,
-		EGL_GREEN_SIZE, 8,
-		EGL_BLUE_SIZE, 8,
-		EGL_ALPHA_SIZE, 8,
-		EGL_DEPTH_SIZE, 24,
-		EGL_STENCIL_SIZE, 8,
-		EGL_NONE
-	};
-	EGLConfig config = NULL;
-	EGLint config_count = 0;
-	if (eglChooseConfig((EGLDisplay)egl_display, attrs, &config, 1, &config_count) != EGL_TRUE || config_count == 0) {
-		return 0;
+static inline void v_multiwindow_wayland_create_anchor_surface(
+		struct wl_compositor *compositor, VMultiwindowNativePrimitive *out_result) {
+	v_multiwindow_wayland_reset(out_result);
+	if (compositor == NULL) {
+		return;
 	}
-	*out_config = (void *)config;
-	return 1;
-}
-
-static inline void *v_multiwindow_wayland_egl_create_context(void *egl_display, void *egl_config) {
-	const EGLint core_attrs[] = {
-		EGL_CONTEXT_MAJOR_VERSION, 3,
-		EGL_CONTEXT_MINOR_VERSION, 3,
-		EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
-		EGL_NONE
-	};
-	EGLContext context = eglCreateContext((EGLDisplay)egl_display, (EGLConfig)egl_config, EGL_NO_CONTEXT, core_attrs);
-	if (context == EGL_NO_CONTEXT) {
-		const EGLint fallback_attrs[] = { EGL_NONE };
-		context = eglCreateContext((EGLDisplay)egl_display, (EGLConfig)egl_config, EGL_NO_CONTEXT, fallback_attrs);
+	struct wl_surface *surface = wl_compositor_create_surface(compositor);
+	if (out_result != NULL) {
+		out_result->valid_mask = V_MULTIWINDOW_NATIVE_VALID_HANDLE;
+		out_result->handle = (uint64_t)(uintptr_t)surface;
 	}
-	return context == EGL_NO_CONTEXT ? NULL : (void *)context;
 }
 
-static inline void *v_multiwindow_wayland_egl_create_window(struct wl_surface *surface, int width, int height) {
+static inline void v_multiwindow_wayland_destroy_anchor_surface(void *surface,
+		int marshal, VMultiwindowNativePrimitive *out_result) {
+	v_multiwindow_wayland_reset(out_result);
+	if (surface == NULL) {
+		return;
+	}
+	const uint64_t surface_identity = (uint64_t)(uintptr_t)surface;
+	uint64_t release_mode;
+	if (marshal) {
+		wl_surface_destroy((struct wl_surface *)surface);
+		release_mode = V_MULTIWINDOW_WAYLAND_ANCHOR_RELEASE_PROTOCOL_DESTROY;
+	} else {
+		wl_proxy_destroy((struct wl_proxy *)surface);
+		release_mode = V_MULTIWINDOW_WAYLAND_ANCHOR_RELEASE_LOCAL_PROXY_DESTROY;
+	}
+	if (out_result != NULL) {
+		out_result->valid_mask = V_MULTIWINDOW_NATIVE_VALID_OBSERVED_FLAGS;
+		out_result->observed_flags = release_mode;
+	}
+	#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST) \
+		&& defined(V_MULTIWINDOW_NATIVE_WAYLAND_RELEASE_ORACLE_HELPERS_H)
+	v_multiwindow_test_wayland_anchor_surface_destroyed(
+		surface_identity, release_mode);
+	#endif
+}
+
+static inline void v_multiwindow_wayland_egl_create_window(struct wl_surface *surface, int width,
+		int height, VMultiwindowNativePrimitive *out_result) {
+	v_multiwindow_wayland_reset(out_result);
+	if (surface == NULL) {
+		return;
+	}
 	struct wl_egl_window *window = wl_egl_window_create(surface, width, height);
-	return window == NULL ? NULL : (void *)window;
-}
-
-static inline void v_multiwindow_wayland_egl_resize_window(void *egl_window, int width, int height) {
-	if (egl_window != NULL) {
-		wl_egl_window_resize((struct wl_egl_window *)egl_window, width, height, 0, 0);
+	if (out_result != NULL) {
+		out_result->valid_mask = V_MULTIWINDOW_NATIVE_VALID_HANDLE;
+		out_result->handle = (uint64_t)(uintptr_t)window;
 	}
 }
 
-static inline void v_multiwindow_wayland_egl_destroy_window(void *egl_window) {
-	if (egl_window != NULL) {
-		wl_egl_window_destroy((struct wl_egl_window *)egl_window);
+static inline void v_multiwindow_wayland_egl_resize_window(void *egl_window, int width,
+		int height, VMultiwindowNativePrimitive *out_result) {
+	if (egl_window == NULL) {
+		v_multiwindow_wayland_reset(out_result);
+		return;
 	}
+	wl_egl_window_resize((struct wl_egl_window *)egl_window, width, height, 0, 0);
+	v_multiwindow_wayland_reset(out_result);
 }
 
-static inline void *v_multiwindow_wayland_egl_create_window_surface(void *egl_display, void *egl_config, void *egl_window) {
-	EGLSurface surface = eglCreateWindowSurface((EGLDisplay)egl_display, (EGLConfig)egl_config, (EGLNativeWindowType)egl_window, NULL);
-	return surface == EGL_NO_SURFACE ? NULL : (void *)surface;
-}
-
-static inline int v_multiwindow_wayland_egl_make_current(void *egl_display, void *egl_surface, void *egl_context) {
-	return eglMakeCurrent((EGLDisplay)egl_display, (EGLSurface)egl_surface, (EGLSurface)egl_surface, (EGLContext)egl_context) == EGL_TRUE ? 1 : 0;
-}
-
-static inline void v_multiwindow_wayland_egl_clear_current(void *egl_display) {
-	eglMakeCurrent((EGLDisplay)egl_display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-}
-
-static inline int v_multiwindow_wayland_egl_swap_buffers(void *egl_display, void *egl_surface) {
-	return eglSwapBuffers((EGLDisplay)egl_display, (EGLSurface)egl_surface) == EGL_TRUE ? 1 : 0;
-}
-
-static inline void v_multiwindow_wayland_egl_destroy_surface(void *egl_display, void *egl_surface) {
-	if (egl_surface != NULL) {
-		eglDestroySurface((EGLDisplay)egl_display, (EGLSurface)egl_surface);
+static inline void v_multiwindow_wayland_egl_destroy_window(void *egl_window,
+		VMultiwindowNativePrimitive *out_result) {
+	if (egl_window == NULL) {
+		v_multiwindow_wayland_reset(out_result);
+		return;
 	}
-}
-
-static inline void v_multiwindow_wayland_egl_destroy_context(void *egl_display, void *egl_context) {
-	if (egl_context != NULL) {
-		eglDestroyContext((EGLDisplay)egl_display, (EGLContext)egl_context);
-	}
-}
-
-static inline void v_multiwindow_wayland_egl_terminate(void *egl_display) {
-	if (egl_display != NULL) {
-		eglTerminate((EGLDisplay)egl_display);
-	}
+	wl_egl_window_destroy((struct wl_egl_window *)egl_window);
+	v_multiwindow_wayland_reset(out_result);
 }
 
 #endif
