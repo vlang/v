@@ -2117,13 +2117,20 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				}
 			}
 			if source_path.len > 0 {
+				// Generated V output is C, not C++ compatible. Compile Objective-C++ sources
+				// as separate objects instead of including them in the C translation unit.
+				if source_path.ends_with('.mm') {
+					if source_path !in g.c_flags {
+						g.c_flags << source_path
+					}
+					return true
+				}
 				g.collect_inlined_c_structs(source_text)
 				g.collect_inlined_c_fns(source_text)
 				g.collect_inlined_c_declared_fns(source_text)
-				mut source_directive := '#include "${source_path}"'
-				if source_path.ends_with('.m') || source_path.ends_with('.mm') {
-					source_directive = '#include <Cocoa/Cocoa.h>\n${source_directive}'
-					if '-x' !in g.c_flags || 'objective-c' !in g.c_flags {
+				source_directive := '#include "${source_path}"'
+				if source_path.ends_with('.m') {
+					if 'objective-c' !in g.c_flags {
 						g.c_flags << ['-x', 'objective-c']
 					}
 				}

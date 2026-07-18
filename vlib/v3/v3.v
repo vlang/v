@@ -104,6 +104,14 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 			stats.requests++
 			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag, target_args,
 				target, c_compiler, uncached_dir, mut stats)!
+		} else if clean.ends_with('.mm') {
+			stats.requests++
+			prepared << ensure_c_source_object(clean, support_flags, c99, pic_flag, target_args,
+				target, c_compiler, uncached_dir, mut stats)!
+			cpp_runtime := if target.os in ['macos', 'ios'] { '-lc++' } else { '-lstdc++' }
+			if cpp_runtime !in flags && cpp_runtime !in prepared {
+				prepared << cpp_runtime
+			}
 		} else {
 			prepared << flag
 		}
@@ -168,11 +176,33 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 	source_file := c_source_from_object_file(obj_path) or {
 		return error('missing C object ${obj_path}, and no adjacent .c/.cpp/.S source was found')
 	}
+	return compile_cached_c_source_object(obj_path, source_file, support_flags, c99, pic_flag,
+		target_args, target, c_compiler, uncached_dir, mut stats)
+}
+
+fn ensure_c_source_object(source_file string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
+	if !os.exists(source_file) {
+		return error('missing C source ${source_file}')
+	}
+	return compile_cached_c_source_object('${source_file}.o', source_file, support_flags, c99,
+		pic_flag, target_args, target, c_compiler, uncached_dir, mut stats)
+}
+
+fn compile_cached_c_source_object(obj_path string, source_file string, support_flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) !string {
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	os.mkdir_all(cache_dir)!
-	std_flag := if source_file.ends_with('.cpp') { '-std=c++11' } else { c_standard_flag(c99) }
-	compiler := if source_file.ends_with('.cpp') && c_compiler == 'cc' { 'c++' } else { c_compiler }
+	is_cpp := source_file.ends_with('.cc') || source_file.ends_with('.cpp')
+		|| source_file.ends_with('.mm')
+	std_flag := if is_cpp {
+		if c99 { '-std=c++11' } else { '-std=gnu++11' }
+	} else {
+		c_standard_flag(c99)
+	}
+	compiler := if is_cpp && c_compiler == 'cc' { 'c++' } else { c_compiler }
 	mut args := [std_flag]
+	if source_file.ends_with('.mm') {
+		args << ['-x', 'objective-c++']
+	}
 	args << target_args
 	if pic_flag.len > 0 {
 		args << pic_flag
@@ -226,7 +256,8 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 		stats.input_snapshot_races++
 		trace_c_object_cache('bypass', cache_key,
 			'inputs changed during compilation; using build-local object', dependencies.files.len)
-		uncached_obj := os.join_path(uncached_dir, 'input_snapshot_race_${os.getpid()}_${rand.ulid()}.o')
+		uncached_obj := os.join_path(uncached_dir,
+			'input_snapshot_race_${os.getpid()}_${rand.ulid()}.o')
 		os.mv(temp_obj, uncached_obj) or {
 			os.rm(temp_obj) or {}
 			return error('failed to stage build-local C object ${uncached_obj}: ${err}')
@@ -349,6 +380,7 @@ fn c_flag_is_object_file(flag string) bool {
 
 fn c_flag_is_c_source_file(flag string) bool {
 	return flag.ends_with('.c') || flag.ends_with('.cc') || flag.ends_with('.cpp')
+		|| flag.ends_with('.m') || flag.ends_with('.mm')
 }
 
 fn c_standard_flag(c99 bool) string {
@@ -2011,8 +2043,7 @@ fn main() {
 	b.metric('C object dep-scan fallbacks', c_object_cache_stats.dependency_scan_fallbacks,
 		'objects')
 	b.metric('C object publish races', c_object_cache_stats.publish_races, 'objects')
-	b.metric('C object input-snapshot races', c_object_cache_stats.input_snapshot_races,
-		'objects')
+	b.metric('C object input-snapshot races', c_object_cache_stats.input_snapshot_races, 'objects')
 	b.print_report()
 }
 
