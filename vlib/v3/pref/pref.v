@@ -267,7 +267,7 @@ fn module_path_from_search_root(mod string, mod_path string, search_root string)
 
 // resolve_module_alias_path resolves `@[alias: 'path'] module name` declarations
 // stored in `alias.v`. An alias applies to submodules as well.
-fn resolve_module_alias_path(search_root string, mod string) ?string {
+pub fn resolve_module_alias_path(search_root string, mod string) ?string {
 	parts := mod.split('.')
 	for part_count := parts.len; part_count > 0; part_count-- {
 		alias_dir := os.join_path_single(search_root, parts[..part_count].join(os.path_separator))

@@ -3437,6 +3437,9 @@ fn import_module_identity_cached(prefs &pref.Preferences, import_path string, im
 }
 
 fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string, mut path_cache map[string]string) string {
+	if alias_identity := aliased_import_module_identity(prefs, import_path, import_dir) {
+		return alias_identity
+	}
 	if !import_path.contains('.') {
 		return import_path
 	}
@@ -3465,6 +3468,24 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 	return short_name
 }
 
+fn aliased_import_module_identity(prefs &pref.Preferences, import_path string, import_dir string) ?string {
+	if import_path.len == 0 || import_dir.len == 0 || !os.is_dir(import_dir) {
+		return none
+	}
+	module_root := module_root_for_import_dir(import_path, import_dir)
+	requested_dir := os.join_path_single(module_root, import_path.replace('.', os.path_separator))
+	if os.real_path(requested_dir) == os.real_path(import_dir) {
+		return none
+	}
+	for file in pref.get_v_files_from_dir_for_target(import_dir, prefs.user_defines, prefs.target) {
+		module_name := declared_module_in_file(file)
+		if module_name.len > 0 {
+			return module_name
+		}
+	}
+	return none
+}
+
 fn module_root_for_import_dir(import_path string, import_dir string) string {
 	mut root := import_dir
 	for _ in import_path.split('.') {
@@ -3489,13 +3510,24 @@ fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name 
 
 fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) string {
 	if importing_file.len > 0 {
-		local_modules_path := os.join_path(os.dir(importing_file), 'modules', mod_name.replace('.',
+		importer_dir := os.dir(importing_file)
+		if alias_path := pref.resolve_module_alias_path(importer_dir, mod_name) {
+			return alias_path
+		}
+		local_modules_root := os.join_path_single(importer_dir, 'modules')
+		if alias_path := pref.resolve_module_alias_path(local_modules_root, mod_name) {
+			return alias_path
+		}
+		local_modules_path := os.join_path_single(local_modules_root, mod_name.replace('.',
 			os.path_separator))
 		if os.is_dir(local_modules_path) {
 			return local_modules_path
 		}
 	}
 	if project_root.len > 0 {
+		if alias_path := pref.resolve_module_alias_path(project_root, mod_name) {
+			return alias_path
+		}
 		project_path := os.join_path_single(project_root, mod_name.replace('.', os.path_separator))
 		if os.is_dir(project_path) {
 			return project_path

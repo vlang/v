@@ -1182,3 +1182,14 @@ fn test_json2_skipped_pointer_field_does_not_specialize_decoder() {
 		'import gg\nimport x.json2\n\nstruct Config {\n\tcontext &gg.Context @[skip]\n\tname string\n}\n\nfn main() {\n\tconfig := json2.decode[Config]("{\\"name\\":\\"ok\\"}") or { Config{} }\n\tprintln(config.name)\n}\n')
 	assert out == 'ok'
 }
+
+fn test_moved_module_alias_uses_target_module_identity() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'moved_module_alias_identity', {
+		'v.mod':                      "Module { name: 'moved_module_alias_identity' }\n"
+		'modules/legacy/alias.v':     "@[alias: '@VMODROOT/modules/canonical'] module legacy\n"
+		'modules/canonical/module.v': 'module canonical\n\npub fn answer() int {\n\treturn 42\n}\n'
+		'main.v':                     'module main\n\nimport legacy\n\nfn main() {\n\tprintln(int_str(legacy.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '42'
+}
