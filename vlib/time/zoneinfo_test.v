@@ -97,6 +97,17 @@ fn test_time_in_keeps_nanosecond() {
 	assert local.nanosecond == 123_456_789
 }
 
+fn test_location_time_utc_formats_use_instant() {
+	loc := time.load_location('Asia/Shanghai')!
+	local := time.unix_nanosecond(1_704_067_200, 123_456_789).in(loc)!
+	assert local.year == 2024
+	assert local.hour == 8
+	assert local.format_rfc3339() == '2024-01-01T00:00:00.123Z'
+	assert local.format_rfc3339_micro() == '2024-01-01T00:00:00.123456Z'
+	assert local.format_rfc3339_nano() == '2024-01-01T00:00:00.123456789Z'
+	assert local.http_header_string() == 'Mon, 01 Jan 2024 00:00:00 GMT'
+}
+
 fn test_location_time_add_keeps_instant_and_location() {
 	loc := time.load_location('Asia/Shanghai')!
 	local := time.unix_nanosecond(1_704_067_200, 123_456_789).in(loc)!
@@ -187,6 +198,16 @@ fn test_load_location_posix_future_dst() {
 	assert summer_local.hour == 1
 }
 
+fn test_load_location_posix_julian_future_rule() {
+	// Africa/Casablanca uses a TZif POSIX tail with day-of-year and Julian
+	// transition rules (`0/0,J365/23`) for far-future transitions.
+	loc := time.load_location('Africa/Casablanca')!
+	start_of_year := loc.zone_at(2_524_608_000)! // 2050-01-01 00:00 UTC
+	end_of_year := loc.zone_at(2_556_057_600)! // 2050-12-31 00:00 UTC
+	assert start_of_year.offset == 3_600
+	assert end_of_year.offset == 3_600
+}
+
 fn test_fixed_offset_etc_gmt() {
 	// Note: Etc/GMT+N uses POSIX sign (opposite of civil intuition).
 	loc := time.load_location('Etc/GMT+5')!
@@ -213,4 +234,18 @@ fn test_unknown_location_name() {
 	} else {
 		assert err.msg().contains('unknown time zone location')
 	}
+}
+
+fn test_load_location_local_ignores_tz_local() {
+	old_tz := os.getenv_opt('TZ')
+	os.setenv('TZ', 'Local', true)
+	defer {
+		if old := old_tz {
+			os.setenv('TZ', old, true)
+		} else {
+			os.unsetenv('TZ')
+		}
+	}
+	loc := time.load_location('Local')!
+	assert loc.name.len > 0
 }

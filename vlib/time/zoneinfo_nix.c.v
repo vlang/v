@@ -15,7 +15,7 @@ fn local_location() !&Location {
 					return load_location(path) or { fixed_local_location() }
 				}
 			}
-		} else {
+		} else if tz != 'Local' {
 			return load_location(tz) or { fixed_local_location() }
 		}
 	}
