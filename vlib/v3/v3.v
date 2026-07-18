@@ -117,6 +117,7 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 			adjacent_cpp_source := if !os.exists(clean) {
 				if source_file := c_source_from_object_file(clean) {
 					source_file.ends_with('.cc') || source_file.ends_with('.cpp')
+						|| source_file.ends_with('.mm')
 				} else {
 					false
 				}
@@ -249,7 +250,7 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 		return obj_path
 	}
 	source_file := c_source_from_object_file(obj_path) or {
-		return error('missing C object ${obj_path}, and no adjacent .c/.cc/.cpp/.S source was found')
+		return error('missing C object ${obj_path}, and no adjacent .c/.cc/.cpp/.mm/.S source was found')
 	}
 	return compile_cached_c_source_object(obj_path, source_file, support_flags, c99, pic_flag,
 		target_args, target, c_compiler, uncached_dir, mut stats)
@@ -417,7 +418,7 @@ fn c_object_dependencies(compiler string, compile_args []string, source_file str
 
 fn c_source_from_object_file(obj_path string) ?string {
 	base := obj_path.all_before_last('.')
-	for ext in ['.c', '.cc', '.cpp', '.S'] {
+	for ext in ['.c', '.cc', '.cpp', '.mm', '.S'] {
 		source_file := base + ext
 		if os.exists(source_file) {
 			return source_file

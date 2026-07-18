@@ -5963,6 +5963,13 @@ fn main() {
 		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n#include "shim.m"\n#include "shim.mm"\n\nfn C.answer_from_cpp() int\nfn C.answer_from_objective_c() int\nfn C.answer_from_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp() + C.answer_from_objective_c() + C.answer_from_objective_cpp()))\n}\n'
 	}, 'main.v')
 	assert objective_cpp_out == '46'
+	objective_cpp_object_fallback_out := run_good_project_with_flags(v3_bin,
+		'objective_cpp_object_fallback', '-cc clang', {
+		'v.mod':   "Module { name: 'objective_cpp_object_fallback' }\n"
+		'shim.mm': '#include <string>\nextern "C" int answer_from_objective_cpp_object(void) { std::string answer(49, \'x\'); return int(answer.size()); }\n'
+		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n\nfn C.answer_from_objective_cpp_object() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_objective_cpp_object()))\n}\n'
+	}, 'main.v')
+	assert objective_cpp_object_fallback_out == '49'
 	objective_cpp_after_guarded_header_out := run_good_project_with_flags(v3_bin,
 		'objective_cpp_after_guarded_header', '-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_after_guarded_header' }\n"
