@@ -216,6 +216,68 @@ fn test_imported_module_call_in_struct_default_has_no_receiver_arg() {
 	assert out == '42'
 }
 
+fn test_global_struct_defaults_follow_global_declaration_order() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'global_struct_default_declaration_order', 'struct State {
+	value int = seed
+}
+
+__global (
+	seed = 7
+	state State
+)
+
+fn main() {
+	println(int_str(state.value))
+}
+')
+	assert out == '7'
+	module_out := run_good_project(v3_bin, 'global_struct_default_owner_module', {
+		'v.mod':               "Module { name: 'global_struct_default_owner_module' }\n"
+		'defaults/defaults.v': 'module defaults\n\n__global base_value = 1\n\npub struct State {\npub:\n\tvalue int = base_value\n}\n\nfn init() {\n\tbase_value = 7\n}\n'
+		'main.v':              'module main\n\nimport defaults\n\n__global state defaults.State\n\nfn main() {\n\tprintln(int_str(state.value))\n}\n'
+	}, 'main.v')
+	assert module_out == '7'
+}
+
+fn test_empty_fixed_array_of_function_arrays_resolves_element_type() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'empty_fixed_array_of_function_arrays', 'fn main() {
+	callbacks := [2][]fn (){}
+	println(int_str(callbacks[0].len))
+	println(int_str(callbacks[1].len))
+}
+')
+	assert out == '0\n0'
+}
+
+fn test_indexed_shift_assignments_guard_oversized_counts() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'indexed_shift_assign_oversized_counts', 'fn next(mut calls int) int {
+	calls++
+	return 0
+}
+
+fn shift(mut calls int) u64 {
+	calls++
+	return 64
+}
+
+fn main() {
+	mut calls := 0
+	mut left := [u64(1)]
+	left[next(mut calls)] <<= shift(mut calls)
+	println(int_str(calls))
+	println(left[0].str())
+	mut right := [u64(8)]
+	right[next(mut calls)] >>= shift(mut calls)
+	println(int_str(calls))
+	println(right[0].str())
+}
+')
+	assert out == '2\n0\n4\n0'
+}
+
 fn test_multi_return_assignment_requires_option_result_handling() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'unhandled_result_multi_decl_assign',
@@ -260,8 +322,8 @@ fn main() {
 fn test_is_check_preserves_pointer_sum_variants() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'is_pointer_sum_variant', 'struct Foo {
-	value int
-}
+		value int
+	}
 
 type Item = &Foo | int
 
@@ -289,11 +351,41 @@ fn main() {
 		'`&Foo` is not a variant of sum type `Item`')
 }
 
+fn test_nested_sum_is_check_evaluates_subject_once() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'nested_sum_is_subject_once', '__global calls int
+
+struct Leaf {
+	n int
+}
+
+type Inner = Leaf | int
+type Outer = Inner | string
+
+fn make_outer() Outer {
+	calls++
+	return Outer(Inner(Leaf{
+		n: 7
+	}))
+}
+
+fn main() {
+	calls = 0
+	if make_outer() is Leaf {
+		println(int_str(calls))
+	} else {
+		println("missing")
+	}
+}
+')
+	assert out == '1'
+}
+
 fn test_is_check_treats_pointer_aliases_as_pointers() {
 	v3_bin := build_v3()
 	sum_out := run_good(v3_bin, 'is_pointer_alias_sum', 'struct Foo {
-	value int
-}
+		value int
+	}
 
 struct Bar {}
 
@@ -2855,8 +2947,24 @@ fn main() {
 		score: 1.5
 	}))
 }
-')
+	')
 	assert encoded == '{"age":1,"ok":true,"score":1.5}'
+
+	omitempty_c := gen_c(v3_bin, 'json_encode_omitempty_field_falls_back', 'import json
+
+struct Payload {
+	keep int
+	omit int @[omitempty]
+}
+
+fn main() {
+	println(json.encode(Payload{
+		keep: 1
+	}))
+}
+')
+	omitempty_main := c_fn_body(omitempty_c, 'int main(int argc, char** argv)')
+	assert omitempty_main.contains('json__encode(&(Payload)')
 
 	decoded := run_good(v3_bin, 'json_decode_composites_to_strings', 'import json
 
@@ -4022,216 +4130,148 @@ fn test_amp_interface_cast_heap_copies_concrete_source() {
 	assert out == '5'
 }
 
-fn test_interface_boxed_local_address_preserves_pointer_identity() {
+fn test_interface_cast_from_local_address_preserves_pointer_identity() {
 	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\tprintln(int_str(r.value()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_box_local_address_identity', source)
+	source := 'interface Reader {\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) get() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\tprintln(int_str(r.get()))\n}\n'
+	c_source := gen_c(v3_bin, 'interface_local_address_identity', source)
 	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
-	assert !main_body.contains('memdup(') && !main_body.contains('sizeof(Box)'), main_body
-	out := run_good(v3_bin, 'interface_box_local_address_identity_run', source)
+	assert main_body.contains('._object = __iface_src_'), main_body
+	assert !main_body.contains('memdup(&b, sizeof(Box))'), main_body
+	out := run_good(v3_bin, 'interface_local_address_identity_run', source)
 	assert out == '2'
+	mut_source := 'interface Writer {\nmut:\n\tset(n int)\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (mut b Box) set(n int) {\n\tb.n = n\n}\n\nfn (b Box) get() int {\n\treturn b.n\n}\n\nfn main() {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tmut w := Writer(&b)\n\tw.set(3)\n\tprintln(int_str(b.n))\n\tprintln(int_str(w.get()))\n}\n'
+	mut_out := run_good(v3_bin, 'interface_local_address_identity_mut_run', mut_source)
+	assert mut_out == '3\n3'
+	escape_source := 'interface Reader {\n\tget() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) get() int {\n\treturn b.n\n}\n\nfn make_reader() Reader {\n\tmut b := Box{\n\t\tn: 5\n\t}\n\tr := Reader(&b)\n\tb.n = 6\n\treturn r\n}\n\nfn main() {\n\tr := make_reader()\n\tprintln(int_str(r.get()))\n}\n'
+	escape_c := gen_c(v3_bin, 'interface_local_address_escape_box', escape_source)
+	make_reader_body := c_fn_body(escape_c, '\nReader make_reader(void) {')
+	assert make_reader_body.contains('Box* b ='), make_reader_body
+	assert make_reader_body.contains('memdup'), make_reader_body
+	assert !make_reader_body.contains('Box b ='), make_reader_body
+	escape_out := run_good(v3_bin, 'interface_local_address_escape_box_run', escape_source)
+	assert escape_out == '6'
+	escape_variants := run_good(v3_bin, 'interface_local_address_escape_variants', 'interface Reader {
+	get() int
 }
 
-fn test_by_value_interface_box_with_fields_heap_copies_addressable_source() {
-	v3_bin := build_v3()
-	source := 'interface HasName {\nmut:\n\tname string\n}\n\nstruct Item {\nmut:\n\tname string\n}\n\nfn save(value HasName) HasName {\n\treturn value\n}\n\nfn make() HasName {\n\tmut item := Item{\n\t\tname: "old"\n\t}\n\tboxed := save(item)\n\titem.name = "new"\n\treturn boxed\n}\n\nfn main() {\n\tprintln(make().name)\n}\n'
-	c_source := gen_c(v3_bin, 'by_value_interface_box_with_fields_heap_copy', source)
-	make_body := c_fn_body(c_source, 'HasName make(void) {')
-	assert make_body.contains('memdup(&item') && make_body.contains('sizeof(Item)'), make_body
-	out := run_good(v3_bin, 'by_value_interface_box_with_fields_heap_copy_run', source)
-	assert out == 'old'
-}
-
-fn test_interface_boxed_returned_local_address_still_heap_copies() {
-	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make() Reader {\n\tb := Box{\n\t\tn: 5\n\t}\n\treturn Reader(&b)\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_box_returned_local_address_heap_copy', source)
-	make_body := c_fn_body(c_source, 'Reader make(void) {')
-	assert make_body.contains('memdup(') && make_body.contains('sizeof(Box)'), make_body
-	out := run_good(v3_bin, 'interface_box_returned_local_address_heap_copy_run', source)
-	assert out == '5'
-}
-
-fn test_returned_interface_local_boxed_from_local_address_heap_copies_on_return() {
-	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make() Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\treturn r\n}\n\nfn main() {\n\tr := make()\n\tprintln(int_str(r.value()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_box_returned_local_alias_heap_copy', source)
-	make_body := c_fn_body(c_source, 'Reader make(void) {')
-	assert make_body.contains('memdup(') && make_body.contains('sizeof(Box)'), make_body
-	out := run_good(v3_bin, 'interface_box_returned_local_alias_heap_copy_run', source)
-	assert out == '2'
-}
-
-fn test_returned_interface_local_boxed_from_aligned_local_uses_aligned_memdup() {
-	v3_bin := build_v3()
-	source := '@[aligned: 64]
-struct Aligned {
+struct Box {
 mut:
 	n int
 }
 
-interface Reader {
-	value() int
+struct Holder {
+mut:
+	inner Box
 }
 
-fn (a &Aligned) value() int {
-	return a.n
+struct StaticReader {
+	n int
 }
 
-fn make() Reader {
-	mut a := Aligned{
+__global fallback Box
+__global global_box Box
+
+fn (b &Box) get() int {
+	return b.n
+}
+
+fn (s StaticReader) get() int {
+	return s.n
+}
+
+fn make_aggregate_reader() []Reader {
+	mut b := Box{
 		n: 5
 	}
-	r := Reader(&a)
-	a.n = 6
+	r := Reader(&b)
+	b.n = 6
+	return [r]
+}
+
+fn make_assigned_reader() Reader {
+	mut b := Box{
+		n: 7
+	}
+	mut r := Reader(StaticReader{
+		n: 0
+	})
+	r = Reader(&b)
+	b.n = 8
 	return r
 }
 
-fn make_direct() Reader {
-	mut a := Aligned{
-		n: 7
+fn make_pointer_alias_reader() Reader {
+	mut b := Box{
+		n: 9
 	}
-	a.n = 8
-	return Reader(&a)
+	p := &b
+	q := p
+	r := Reader(q)
+	b.n = 10
+	return r
+}
+
+fn make_field_reader() Reader {
+	mut holder := Holder{
+		inner: Box{
+			n: 11
+		}
+	}
+	r := Reader(&holder.inner)
+	holder.inner.n = 12
+	return r
+}
+
+fn make_pointer_alias_field_reader() Reader {
+	mut holder := Holder{
+		inner: Box{
+			n: 18
+		}
+	}
+	p := &holder
+	q := p
+	r := Reader(&q.inner)
+	holder.inner.n = 19
+	return r
+}
+
+fn make_conditional_reader(use_global bool) Reader {
+	mut b := Box{
+		n: 13
+	}
+	mut r := Reader(&b)
+	if use_global {
+		r = Reader(&fallback)
+	}
+	b.n = 14
+	return r
+}
+
+fn make_global_reader() Reader {
+	r := Reader(&global_box)
+	return r
 }
 
 fn main() {
-	r := make()
-	println(int_str(r.value()))
-	direct := make_direct()
-	println(int_str(direct.value()))
-}
-'
-	c_source := gen_c(v3_bin, 'interface_box_returned_aligned_local_heap_copy', source)
-	make_body := c_fn_body(c_source, 'Reader make(void) {')
-	assert make_body.contains('v3_aligned_memdup(') && make_body.contains('sizeof(Aligned)'), make_body
-	assert !make_body.contains('= memdup('), make_body
-	direct_body := c_fn_body(c_source, 'Reader make_direct(void) {')
-
-	assert direct_body.contains('v3_aligned_memdup(') && direct_body.contains('sizeof(Aligned)'), direct_body
-	assert !direct_body.contains('= memdup('), direct_body
-	out := run_good(v3_bin, 'interface_box_returned_aligned_local_heap_copy_run', source)
-	assert out == '6\n8'
-}
-
-fn test_optional_result_interface_local_boxed_from_local_address_heap_copies_on_return() {
-	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make_optional() ?Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\treturn r\n}\n\nfn make_result() !Reader {\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tr := Reader(&b)\n\tb.n = 4\n\treturn r\n}\n\nfn main() {\n\topt := make_optional() or { return }\n\tprintln(int_str(opt.value()))\n\tres := make_result() or { return }\n\tprintln(int_str(res.value()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_box_optional_result_return_heap_copy', source)
-	assert c_source.count('memdup(__iface_ret_') >= 2 && c_source.contains('sizeof(Box)'), c_source
-
-	out := run_good(v3_bin, 'interface_box_optional_result_return_heap_copy_run', source)
-	assert out == '2\n4'
-}
-
-fn test_control_flow_interface_local_boxed_from_local_address_heap_copies_on_return() {
-	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make_if(use_local bool) Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\treturn if use_local {\n\t\tr\n\t} else {\n\t\tReader(&Box{\n\t\t\tn: 30\n\t\t})\n\t}\n}\n\nfn make_match(n int) Reader {\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tr := Reader(&b)\n\tb.n = 4\n\treturn match n {\n\t\t0 { r }\n\t\telse { Reader(&Box{\n\t\t\tn: 40\n\t\t}) }\n\t}\n}\n\nfn main() {\n\tprintln(int_str(make_if(true).value()))\n\tprintln(int_str(make_if(false).value()))\n\tprintln(int_str(make_match(0).value()))\n\tprintln(int_str(make_match(1).value()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_box_control_flow_return_heap_copy', source)
-	assert c_source.count('memdup(__iface_ret_') >= 2 && c_source.contains('sizeof(Box)'), c_source
-
-	out := run_good(v3_bin, 'interface_box_control_flow_return_heap_copy_run', source)
-	assert out == '2\n30\n4\n40'
-}
-
-fn test_returned_interface_local_boxed_from_local_address_heap_copies_in_aggregates_and_assignments() {
-	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nstruct Holder {\n\treader Reader\n}\n\nfn make_array() []Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tr := Reader(&b)\n\tb.n = 2\n\treturn [r]\n}\n\nfn make_holder() Holder {\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tr := Reader(&b)\n\tb.n = 4\n\treturn Holder{\n\t\treader: r\n\t}\n}\n\nfn make_reassigned() Reader {\n\tmut r := Reader(&Box{\n\t\tn: 0\n\t})\n\tmut b := Box{\n\t\tn: 5\n\t}\n\tr = Reader(&b)\n\tb.n = 6\n\treturn r\n}\n\nfn main() {\n\tarr := make_array()\n\tprintln(int_str(arr[0].value()))\n\tholder := make_holder()\n\tprintln(int_str(holder.reader.value()))\n\treader := make_reassigned()\n\tprintln(int_str(reader.value()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_box_returned_aggregate_heap_copy', source)
-	for signature in ['Array make_array(void) {', 'Holder make_holder(void) {',
-		'Reader make_reassigned(void) {'] {
-		body := c_fn_body(c_source, signature)
-		assert body.contains('memdup(') && body.contains('sizeof(Box)'), body
+	fallback = Box{
+		n: 15
 	}
-	out := run_good(v3_bin, 'interface_box_returned_aggregate_heap_copy_run', source)
-	assert out == '2\n4\n6'
-}
-
-fn test_returned_interface_boxed_from_global_address_preserves_identity() {
-	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\n__global global_box Box\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make_direct() Reader {\n\tr := Reader(&global_box)\n\treturn r\n}\n\nfn make_alias() Reader {\n\tp := &global_box\n\tr := Reader(p)\n\treturn r\n}\n\nfn make_reassigned() Reader {\n\tb := Box{\n\t\tn: 3\n\t}\n\tmut r := Reader(&b)\n\tr = Reader(&global_box)\n\treturn r\n}\n\nfn make_conditional(use_global bool) Reader {\n\tmut b := Box{\n\t\tn: 21\n\t}\n\tmut r := Reader(&b)\n\tif use_global {\n\t\tr = Reader(&global_box)\n\t}\n\tb.n = 22\n\treturn r\n}\n\nfn main() {\n\tglobal_box.n = 1\n\tr := make_direct()\n\tglobal_box.n = 7\n\tprintln(int_str(r.value()))\n\talias := make_alias()\n\tglobal_box.n = 9\n\tprintln(int_str(alias.value()))\n\tglobal_box.n = 11\n\treassigned := make_reassigned()\n\tglobal_box.n = 13\n\tprintln(int_str(reassigned.value()))\n\tconditional := make_conditional(false)\n\tprintln(int_str(conditional.value()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_box_global_address_identity', source)
-	for signature in ['Reader make_direct(void) {', 'Reader make_alias(void) {',
-		'Reader make_reassigned(void) {'] {
-		body := c_fn_body(c_source, signature)
-		assert !body.contains('memdup(') && !body.contains('sizeof(Box)'), body
+	global_box = Box{
+		n: 16
 	}
-	conditional_body := c_fn_body(c_source, 'Reader make_conditional(bool use_global) {')
-	assert conditional_body.contains('memdup(') && conditional_body.contains('sizeof(Box)'), conditional_body
-
-	out := run_good(v3_bin, 'interface_box_global_address_identity_run', source)
-	assert out == '7\n9\n13\n22'
+	global_reader := make_global_reader()
+	global_box.n = 17
+	println(int_str(make_aggregate_reader()[0].get()))
+	println(int_str(make_assigned_reader().get()))
+	println(int_str(make_pointer_alias_reader().get()))
+	println(int_str(make_field_reader().get()))
+	println(int_str(make_pointer_alias_field_reader().get()))
+	println(int_str(make_conditional_reader(false).get()))
+	println(int_str(make_conditional_reader(true).get()))
+	println(int_str(global_reader.get()))
 }
-
-fn test_embedded_interface_fields_lower_to_concrete_object() {
-	v3_bin := build_v3()
-	source := "interface Base {\nmut:\n\tname string\n}\n\ninterface Child {\n\tBase\n}\n\nstruct Item {\nmut:\n\tname string\n}\n\nfn main() {\n\tmut child := Child(Item{\n\t\tname: 'old'\n\t})\n\tprintln(child.name)\n\tchild.name = 'new'\n\tprintln(child.name)\n}\n"
-	out := run_good(v3_bin, 'embedded_interface_field_lowering', source)
-	assert out == 'old\nnew'
-}
-
-fn test_returned_interface_local_boxed_from_pointer_alias_heap_copies_on_return() {
-	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make() Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tp := &b\n\tq := p\n\tr := Reader(q)\n\tb.n = 2\n\treturn r\n}\n\nfn main() {\n\tprintln(int_str(make().value()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_box_returned_pointer_alias_heap_copy', source)
-	make_body := c_fn_body(c_source, 'Reader make(void) {')
-	assert make_body.contains('memdup(') && make_body.contains('sizeof(Box)'), make_body
-	out := run_good(v3_bin, 'interface_box_returned_pointer_alias_heap_copy_run', source)
-	assert out == '2'
-}
-
-fn test_returned_interface_boxed_from_pointer_type_alias_heap_copies_pointee() {
-	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\ntype Ref = &Box\n\nfn (r Ref) value() int {\n\treturn r.n\n}\n\nfn make_alias() Reader {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tp := Ref(&b)\n\tb.n = 2\n\treturn Reader(p)\n}\n\nfn make_direct() Reader {\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tb.n = 4\n\treturn Reader(Ref(&b))\n}\n\nfn main() {\n\tprintln(int_str(make_alias().value()))\n\tprintln(int_str(make_direct().value()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_box_returned_pointer_type_alias_heap_copy', source)
-	alias_body := c_fn_body(c_source, 'Reader make_alias(void) {')
-	assert alias_body.contains('Box* b = (Box*)memdup(') && alias_body.contains('Box* p = b')
-		&& alias_body.contains('._object = (Box**)(memdup(&p, sizeof(Box*)))'), alias_body
-	direct_body := c_fn_body(c_source, 'Reader make_direct(void) {')
-	assert direct_body.contains('memdup(__iface_src_') && direct_body.contains('sizeof(Box)'), direct_body
-
-	out := run_good(v3_bin, 'interface_box_returned_pointer_type_alias_heap_copy_run', source)
-	assert out == '2\n4'
-}
-
-fn test_returned_pointer_copy_alias_heap_moves_stack_source() {
-	v3_bin := build_v3()
-	source := 'struct Box {\nmut:\n\tn int\n}\n\nfn make_stack() &Box {\n\tmut b := Box{\n\t\tn: 1\n\t}\n\tp := &b\n\tq := p\n\tb.n = 2\n\treturn q\n}\n\nfn make_reassigned() &Box {\n\tmut b := Box{\n\t\tn: 4\n\t}\n\tmut other := Box{\n\t\tn: 9\n\t}\n\tp := &b\n\tmut q := &other\n\tq = p\n\tb.n = 6\n\treturn q\n}\n\nfn keep_param(mut b Box) &Box {\n\tp := &b\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tstack := make_stack()\n\tprintln(int_str(stack.n))\n\treassigned := make_reassigned()\n\tprintln(int_str(reassigned.n))\n\tmut b := Box{\n\t\tn: 3\n\t}\n\tparam := keep_param(mut b)\n\tparam.n = 5\n\tprintln(int_str(b.n))\n}\n'
-	c_source := gen_c(v3_bin, 'returned_pointer_copy_alias_heap_move', source)
-	stack_body := c_fn_body(c_source, 'Box* make_stack(void) {')
-	assert stack_body.contains('Box* b = (Box*)memdup(') && stack_body.contains('sizeof(Box)'), stack_body
-
-	reassigned_body := c_fn_body(c_source, 'Box* make_reassigned(void) {')
-
-	assert
-		reassigned_body.contains('Box* b = (Box*)memdup(') && reassigned_body.contains('sizeof(Box)'), reassigned_body
-	param_body := c_fn_body(c_source, 'Box* keep_param(Box* b) {')
-	assert !param_body.contains('memdup(') && param_body.contains('return q;'), param_body
-	out := run_good(v3_bin, 'returned_pointer_copy_alias_heap_move_run', source)
-	assert out == '2\n6\n5'
-}
-
-fn test_returned_interface_boxed_from_local_field_and_index_heap_copies() {
-	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nstruct Holder {\nmut:\n\tbox Box\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make_direct_field() Reader {\n\tmut holder := Holder{\n\t\tbox: Box{\n\t\t\tn: 3\n\t\t}\n\t}\n\tholder.box.n = 4\n\treturn Reader(&holder.box)\n}\n\nfn make_later_field() Reader {\n\tmut holder := Holder{\n\t\tbox: Box{\n\t\t\tn: 5\n\t\t}\n\t}\n\tr := Reader(&holder.box)\n\tholder.box.n = 6\n\treturn r\n}\n\nfn make_direct_index() Reader {\n\tmut boxes := [Box{\n\t\tn: 7\n\t}, Box{\n\t\tn: 8\n\t}]!\n\tboxes[1].n = 9\n\treturn Reader(&boxes[1])\n}\n\nfn make_later_index() Reader {\n\tmut boxes := [Box{\n\t\tn: 10\n\t}, Box{\n\t\tn: 11\n\t}]!\n\tr := Reader(&boxes[1])\n\tboxes[1].n = 12\n\treturn r\n}\n\nfn main() {\n\tprintln(int_str(make_direct_field().value()))\n\tprintln(int_str(make_later_field().value()))\n\tprintln(int_str(make_direct_index().value()))\n\tprintln(int_str(make_later_index().value()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_box_returned_field_index_heap_copy', source)
-	for signature in ['Reader make_direct_field(void) {', 'Reader make_later_field(void) {',
-		'Reader make_direct_index(void) {', 'Reader make_later_index(void) {'] {
-		body := c_fn_body(c_source, signature)
-		assert body.contains('memdup(') && body.contains('sizeof(Box)'), body
-	}
-	out := run_good(v3_bin, 'interface_box_returned_field_index_heap_copy_run', source)
-	assert out == '4\n6\n9\n12'
-}
-
-fn test_returned_interface_boxed_from_pointer_alias_field_heap_copies() {
-	v3_bin := build_v3()
-	source := 'interface Reader {\n\tvalue() int\n}\n\nstruct Box {\nmut:\n\tn int\n}\n\nstruct Holder {\nmut:\n\tbox Box\n}\n\nfn (b &Box) value() int {\n\treturn b.n\n}\n\nfn make() Reader {\n\tmut holder := Holder{\n\t\tbox: Box{\n\t\t\tn: 13\n\t\t}\n\t}\n\tp := &holder\n\tr := Reader(&p.box)\n\tholder.box.n = 14\n\treturn r\n}\n\nfn main() {\n\tprintln(int_str(make().value()))\n}\n'
-	c_source := gen_c(v3_bin, 'interface_box_returned_pointer_alias_field_heap_copy', source)
-	make_body := c_fn_body(c_source, 'Reader make(void) {')
-	assert make_body.contains('memdup(') && make_body.contains('sizeof(Box)'), make_body
-	out := run_good(v3_bin, 'interface_box_returned_pointer_alias_field_heap_copy_run', source)
-	assert out == '14'
+')
+	assert escape_variants == '6\n8\n10\n12\n19\n14\n15\n17'
 }
 
 fn test_mut_interface_argument_borrows_existing_interface_box() {
@@ -4241,32 +4281,11 @@ fn test_mut_interface_argument_borrows_existing_interface_box() {
 	assert c_source.contains('call(&visitor);')
 	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
 	out := run_good(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
-	assert out == '1'
-}
+	assert out == 'ok'
 
-fn test_pointer_interface_arg_upcasts_interface_lvalue_source() {
-	v3_bin := build_v3()
-	source := 'interface Base {\n\tget() int\n}\n\ninterface Child {\n\tBase\n\textra() int\n}\n\nstruct Item {\n\tn int\n}\n\nfn (i Item) get() int {\n\treturn i.n\n}\n\nfn (i Item) extra() int {\n\treturn i.n + 1\n}\n\nfn use(value &Base) int {\n\treturn value.get()\n}\n\nfn main() {\n\tchild := Child(Item{\n\t\tn: 13\n\t})\n\tprintln(int_str(use(child)))\n}\n'
-	c_source := gen_c(v3_bin, 'pointer_interface_lvalue_upcast_source', source)
-	assert !c_source.contains('&((Base[]){child})[0]')
-	assert c_source.contains('Base __iface_cast_')
-	assert c_source.contains('use((Base*)(memdup(&__iface_box_')
-	out := run_good(v3_bin, 'pointer_interface_lvalue_upcast_source_run', source)
-	assert out == '13'
-}
-
-fn test_pointer_interface_alias_upcasts_use_pointer_access() {
-	v3_bin := build_v3()
-	source := 'interface Base {
+	assign_source := 'interface Base {
 	get() int
 }
-
-interface Child {
-	Base
-	extra() int
-}
-
-type ChildRef = &Child
 
 struct Item {
 	n int
@@ -4276,34 +4295,25 @@ fn (i Item) get() int {
 	return i.n
 }
 
-fn (i Item) extra() int {
-	return i.n + 1
-}
-
-fn use_ref(value &Base) int {
-	return value.get()
-}
-
-fn use_value(value Base) int {
-	return value.get()
+fn update(mut x Base) {
+	x = Base(Item{
+		n: 7
+	})
 }
 
 fn main() {
-	child := Child(Item{
-		n: 17
+	mut b := Base(Item{
+		n: 1
 	})
-	ref := ChildRef(&child)
-	println(int_str(use_ref(ref)))
-	println(int_str(use_value(ref)))
-	println((ref is Base).str())
+	update(mut b)
+	println(int_str(b.get()))
 }
 '
-	c_source := gen_c(v3_bin, 'pointer_interface_alias_upcast_access_c', source)
-	main_body := c_fn_body(c_source, 'int main(int argc, char** argv)')
-	assert main_body.contains('ref->_typ') && main_body.contains('ref->_object'), main_body
-	assert !main_body.contains('ref._typ') && !main_body.contains('ref._object'), main_body
-	out := run_good(v3_bin, 'pointer_interface_alias_upcast_access', source)
-	assert out == '17\n17\ntrue'
+	assign_c := gen_c(v3_bin, 'mut_interface_arg_assignment_keeps_storage', assign_source)
+	assert assign_c.contains('update(&b);')
+	assert !assign_c.contains('update(&((Base[]){b})[0]);')
+	assign_out := run_good(v3_bin, 'mut_interface_arg_assignment_keeps_storage_run', assign_source)
+	assert assign_out == '7'
 }
 
 fn test_pointer_interface_arg_heap_copies_rvalue_interface_sources() {
@@ -4367,74 +4377,33 @@ fn take_grouped(value struct {
 	return value.x * 10 + value.y
 }
 
+fn call_late_i64() i64 {
+	return take_late_i64(struct { x: 11 })
+}
+
+fn take_late_i64(value struct {
+	x i64
+}) i64 {
+	return value.x
+}
+
 fn main() {
 	println(int_str(take_int(struct { x: 7 })))
 	println(take_string(struct { x: "right" }))
 	println(take_i64(struct { x: i64(9) }))
 	println(int_str(take_grouped(struct { x: 2, y: 3 })))
+	println(call_late_i64().str())
 	mut values := []struct {
 		x int
 	}{}
 	values << struct { x: 13 }
 	println(int_str(values[0].x))
 }
-')
-	assert out == '7\nright\n9\n23\n13'
-	inferred := run_good(v3_bin, 'anonymous_struct_inferred_literal_typed_shape', 'fn main() {
-	a := struct { x: 1 }
-	b := struct { x: "typed" }
-	println(int_str(a.x))
-	println(b.x)
-}
-')
-	assert inferred == '1\ntyped'
-}
-
-fn test_anonymous_struct_context_accepts_untyped_numeric_literal() {
-	v3_bin := build_v3()
-	out := run_good(v3_bin, 'anonymous_struct_context_untyped_numeric_literal', 'fn take_i64(value struct {
-	n i64
-}) i64 {
-	return value.n
-}
-
-fn take_str(value struct {
-	n string
-}) string {
-	return value.n
-}
-
-fn main() {
-	println(take_i64(struct { n: 1 }).str())
-	println(take_str(struct { n: "ok" }))
-}
-')
-	assert out == '1\nok'
-}
-
-fn test_implicit_ref_arg_rejects_multiple_pointer_levels() {
-	v3_bin := build_v3()
-	run_bad(v3_bin, 'implicit_ref_arg_rejects_multiple_pointer_levels', 'fn take(value &&int) {
-	_ = value
-}
-
-fn main() {
-	mut n := 1
-	take(n)
-}
-',
-		'expected `&&int`')
-	run_bad(v3_bin, 'implicit_ref_arg_rejects_pointer_lvalue_depth_lift', 'fn take(value &&int) {
-	_ = value
-}
-
-fn main() {
-	mut n := 1
-	p := &n
-	take(p)
-}
-',
-		'expected `&&int`')
+	')
+	assert out == '7\nright\n9\n23\n11\n13'
+	inferred_out := run_good(v3_bin, 'anonymous_struct_inferred_literal_typed_shape',
+		'fn main() {\n\ta := struct { x: 1 }\n\tb := struct { x: "typed" }\n\tprintln(int_str(a.x))\n\tprintln(b.x)\n}\n')
+	assert inferred_out == '1\ntyped'
 }
 
 fn test_latest_pr_review_codegen_regressions() {
@@ -5427,4 +5396,286 @@ fn main() {
 }
 ",
 		'compile-time error: present method selected')
+}
+
+fn test_review_index_overload_and_interface_regressions() {
+	v3_bin := build_v3()
+	overload_out := run_good(v3_bin, 'review_index_overload_regressions', "__global (
+	hits int
+)
+
+fn next() int {
+	hits++
+	return 0
+}
+
+type Key = string
+type Label = string
+
+fn next_key() Key {
+	hits++
+	return Key('name')
+}
+
+struct Dict {
+mut:
+	values map[string]int
+}
+
+fn (d Dict) [] (key string) int {
+	return d.values[key]
+}
+
+fn (mut d Dict) []= (key string, value int) {
+	d.values[key] = value
+}
+
+struct AliasDict {
+mut:
+	values map[string]int
+}
+
+fn (d AliasDict) [] (key Key) int {
+	return d.values[string(key)]
+}
+
+fn (mut d AliasDict) []= (key string, value int) {
+	d.values[key] = value
+}
+
+struct TextDict {
+mut:
+	values map[string]Label
+}
+
+fn (d TextDict) [] (key string) Label {
+	return d.values[key]
+}
+
+fn (mut d TextDict) []= (key string, value Label) {
+	d.values[key] = value
+}
+
+struct Amount {
+	n int
+}
+
+fn (a Amount) + (b Amount) Amount {
+	return Amount{
+		n: a.n + b.n
+	}
+}
+
+struct AmountDict {
+mut:
+	values map[string]Amount
+}
+
+fn (d AmountDict) [] (key string) Amount {
+	return d.values[key]
+}
+
+fn (mut d AmountDict) []= (key string, value Amount) {
+	d.values[key] = value
+}
+
+struct Bag {
+mut:
+	values []int
+}
+
+fn (b Bag) [] (i int) int {
+	return b.values[i]
+}
+
+fn (mut b Bag) []= (i int, value int) {
+	b.values[i] = value
+}
+
+fn main() {
+	mut d := Dict{
+		values: {
+			'name': 7
+		}
+	}
+	println(d['name'].str())
+	d['name'] += 5
+	println(d.values['name'].str())
+	mut alias_d := AliasDict{
+		values: {
+			'name': 4
+		}
+	}
+	alias_d[next_key()] += 6
+	println(hits.str())
+	println(alias_d.values['name'].str())
+	mut text_d := TextDict{
+		values: {
+			'name': Label('a')
+		}
+	}
+	text_d['name'] += Label('x')
+	println(text_d.values['name'])
+	mut amount_d := AmountDict{
+		values: {
+			'sum': Amount{
+				n: 2
+			}
+		}
+	}
+	amount_d['sum'] += Amount{
+		n: 3
+	}
+	println(amount_d.values['sum'].n.str())
+	mut b := Bag{
+		values: [1]
+	}
+	b[next()] += 4
+	println(hits.str())
+	println(b.values[0].str())
+}
+")
+	assert overload_out == '7\n12\n1\n10\nax\n5\n2\n5'
+	generic_index_out := run_good(v3_bin, 'review_generic_index_overload_specializes',
+		'struct Box[T] {\nmut:\n\tvalues []T\n}\n\nfn (b Box[T]) [] (i int) T {\n\treturn b.values[i]\n}\n\nfn (mut b Box[T]) []= (i int, value T) {\n\tb.values[i] = value\n}\n\nfn main() {\n\tmut b := Box[int]{\n\t\tvalues: [1, 2]\n\t}\n\tprintln(b[1].str())\n\tb[1] = 9\n\tprintln(b[1].str())\n}\n')
+	assert generic_index_out == '2\n9'
+	explicit_method_out := run_good(v3_bin, 'review_explicit_generic_method_callee',
+		'interface Named {\n\tname() string\n}\n\nstruct Config {\n\tx int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) name() string {\n\treturn u.name\n}\n\nstruct Runner {}\n\nfn (r Runner) type_name[T]() string {\n\t_ = r\n\treturn typeof[T]().name\n}\n\nfn (r Runner) make[T](cfg T) T {\n\t_ = r\n\treturn cfg\n}\n\nfn (r Runner) pass[T](value T) T {\n\t_ = r\n\treturn value\n}\n\nfn main() {\n\tr := Runner{}\n\tprintln(r.type_name[int]())\n\tcfg := r.make[Config](x: 7)\n\tprintln(int_str(cfg.x))\n\tnamed := r.pass[Named](User{\n\t\tname: "Ada"\n\t})\n\tprintln(named.name())\n}\n')
+	assert explicit_method_out == 'int\n7\nAda'
+	str_out := run_good(v3_bin, 'review_pointer_fields_implicit_str', "interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+struct Foo {
+	nums &[]int
+	m    &map[string]int
+	bar  &Bar
+}
+
+fn main() {
+	nums := [1, 2]
+	m := {
+		'a': 3
+	}
+	f := Printable(Foo{
+		nums: &nums
+		m:    &m
+		bar:  &Bar{
+			x: 7
+		}
+	})
+	println(f.str())
+}
+")
+	assert str_out.contains('nums: &[1, 2]'), str_out
+	assert str_out.contains("m: &{'a': 3}"), str_out
+	assert str_out.contains('bar: &Bar'), str_out
+	assert str_out.contains('x: 7'), str_out
+	run_bad(v3_bin, 'review_interface_method_value_escape', 'interface Runner {
+	run() int
+}
+
+struct Job {
+	n int
+}
+
+fn (j Job) run() int {
+	return j.n
+}
+
+struct Holder {
+	cb fn () int
+}
+
+fn main() {
+	r := Runner(Job{
+		n: 1
+	})
+	_ := Holder{
+		cb: r.run
+	}
+}
+',
+		'cannot escape its call site')
+	run_bad(v3_bin, 'review_voidptr_interface_cast', 'interface Sink {
+	sink()
+}
+
+struct S {}
+
+fn (s S) sink() {}
+
+fn main() {
+	x := 1
+	p := voidptr(&x)
+	_ := Sink(p)
+}
+	',
+		'does not implement interface')
+	rvalue_upcast_out := run_good(v3_bin, 'review_interface_rvalue_upcasts',
+		'interface Base {\n\tname string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn make_child(name string) Child {\n\treturn User{\n\t\tname: name\n\t}\n}\n\nfn take_base(b Base) string {\n\treturn b.name\n}\n\nfn main() {\n\tprintln(take_base(make_child("call")))\n\tcond := true\n\tprintln(take_base(if cond { make_child("if") } else { make_child("else") }))\n\titems := [make_child("index")]\n\tprintln(take_base(items[0]))\n}\n')
+	assert rvalue_upcast_out == 'call\nif\nindex'
+	embedded_interface_out := run_good(v3_bin, 'review_embedded_interface_fields_and_ptr_upcast',
+		'interface Base {\n\tname string\n\tlabel() string\n}\n\ninterface Child {\n\tBase\n\tchild() int\n}\n\nstruct User {\n\tname string\n}\n\nfn (u User) label() string {\n\treturn u.name + ":label"\n}\n\nfn (u User) child() int {\n\treturn u.name.len\n}\n\nfn use_ptr(b &Base) string {\n\treturn b.name + ":" + b.label()\n}\n\nfn describe(base Base) string {\n\treturn match base {\n\t\tChild { base.name + ":" + base.child().str() }\n\t\telse { "else" }\n\t}\n}\n\nfn main() {\n\tchild := Child(User{\n\t\tname: "Ada"\n\t})\n\tbase := Base(User{\n\t\tname: "Bea"\n\t})\n\tprintln(child.name)\n\tprintln(use_ptr(child))\n\tprintln(describe(base))\n}\n')
+	assert embedded_interface_out == 'Ada\nAda:Ada:label\nBea:3'
+}
+
+fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
+	v3_bin := build_v3()
+	shadow_out := run_good(v3_bin, 'review_shadowed_global_nested_scope',
+		'__global score int\n\nfn main() {\n\tscore = 10\n\tif true {\n\t\tscore := 3\n\t\tprintln(int_str(score))\n\t}\n\tscore += 2\n\tprintln(int_str(score))\n}\n')
+	assert shadow_out == '3\n12'
+	pointer_str_out := run_good(v3_bin, 'review_pointer_value_receiver_str',
+		"struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n")
+	assert pointer_str_out == 'custom:7'
+	run_bad(v3_bin, 'review_setter_only_compound_index_assignment',
+		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
+		'compound index assignment requires a `[]` overload')
+	run_bad(v3_bin, 'review_getter_only_index_assignment',
+		"struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] = 1\n}\n",
+		'index assignment requires a `[]=` overload')
+	run_bad(v3_bin, 'review_getter_only_compound_index_assignment',
+		"struct Dict {}\n\nfn (d Dict) [] (key string) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
+		'index assignment requires a `[]=` overload')
+	run_bad(v3_bin, 'review_compound_index_getter_key_mismatch',
+		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key int) int {\n\t_ = key\n\treturn 0\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
+		'index must be `int`, not `string`')
+	run_bad(v3_bin, 'review_compound_index_getter_value_mismatch',
+		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn (d Dict) [] (key string) string {\n\t_ = key\n\treturn 'bad'\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
+		'compound index assignment getter returns `string`, which cannot be used as setter value `int`')
+	pointer_depth_out := run_good(v3_bin, 'review_one_level_implicit_address',
+		'fn take(p &int) int {\n\treturn *p\n}\n\nfn main() {\n\tmut n := 3\n\tprintln(int_str(take(n)))\n}\n')
+	assert pointer_depth_out == '3'
+	run_bad(v3_bin, 'review_too_many_implicit_addresses',
+		'fn take(pp &&int) {\n\t_ = pp\n}\n\nfn main() {\n\tmut n := 1\n\ttake(n)\n}\n',
+		'expected `&&int`')
+	run_bad(v3_bin, 'review_pointer_arg_needs_unsupported_address',
+		'fn take(pp &&int) {\n\t_ = pp\n}\n\nfn main() {\n\tmut n := 1\n\tmut p := &n\n\ttake(p)\n}\n',
+		'expected `&&int`')
+	alias_str_out := run_good(v3_bin, 'review_alias_struct_implicit_interface_str',
+		"interface Printable {\n\tstr() string\n}\n\nstruct Foo {\n\tx int\n}\n\ntype AliasFoo = Foo\n\nfn main() {\n\tvalue := Printable(AliasFoo(Foo{\n\t\tx: 7\n\t}))\n\ttext := value.str()\n\tprintln(text.contains('Foo'))\n\tprintln(text.contains('x: 7'))\n}\n")
+	assert alias_str_out == 'true\ntrue'
+	alias_field_str_out := run_good(v3_bin, 'review_alias_fields_implicit_interface_str',
+		'interface Printable {\n\tstr() string\n}\n\nstruct Bar {\n\tx int\n}\n\ntype MyBar = Bar\ntype MyNums = []int\ntype MyFixed = [2]int\ntype MyName = string\n\nstruct Foo {\n\tbar   MyBar\n\tnums  MyNums\n\tfixed MyFixed\n\tname  MyName\n}\n\nfn main() {\n\tvalue := Printable(Foo{\n\t\tbar: MyBar(Bar{\n\t\t\tx: 7\n\t\t})\n\t\tnums: MyNums([1, 2])\n\t\tfixed: MyFixed([3, 4]!)\n\t\tname: MyName(\'Ada\')\n\t})\n\ttext := value.str()\n\tprintln(text.contains(\'x: 7\'))\n\tprintln(text.contains(\'[1, 2]\'))\n\tprintln(text.contains(\'[3, 4]\'))\n\tprintln(text.contains("\'Ada\'"))\n}\n')
+	assert alias_field_str_out == 'true\ntrue\ntrue\ntrue'
+	call_ptr_out := run_good(v3_bin, 'review_call_return_pointer_not_arg_alias',
+		'fn choose(a &int, b &int) &int {\n\t_ = a\n\treturn b\n}\n\nfn make() &int {\n\tx := 10\n\ty := 20\n\tp := choose(&x, &y)\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n')
+	assert call_ptr_out == '20'
+	mut_param_alias_out := run_good(v3_bin, 'review_mut_param_pointer_alias_return',
+		'fn keep(mut x int) &int {\n\tp := &x\n\treturn p\n}\n\nfn keep_chain(mut x int) &int {\n\tp := &x\n\tq := p\n\treturn q\n}\n\nfn main() {\n\tmut a := 1\n\tp := keep(mut a)\n\t*p = 7\n\tprintln(a.str())\n\tprintln((*p).str())\n\tmut b := 2\n\tq := keep_chain(mut b)\n\t*q = 8\n\tprintln(b.str())\n\tprintln((*q).str())\n}\n')
+	assert mut_param_alias_out == '7\n7\n8\n8'
+	fixed_field_out := run_good(v3_bin, 'review_capital_field_const_fixed_array',
+		'const n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
+	assert fixed_field_out == '7'
+}
+
+fn test_discard_assignment_preserves_array_return_type() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'discard_array_return_no_context',
+		"fn values() []string {\n\treturn ['a', 'b']\n}\n\nfn main() {\n\t_ = values()\n\tprintln('ok')\n}\n")
+	assert out == 'ok'
 }

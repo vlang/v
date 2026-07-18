@@ -14,12 +14,11 @@ from a JSON string in ISO 8601, RFC 3339, or Unix-timestamp form.
 
 ## Examples
 
-Here is an example of encoding and decoding a V struct with several fields.
-Note that you can specify different names in the json encoding for the fields,
-and that you can skip fields too, if needed.
+Here is an example of encoding and decoding a V struct with the recommended `json2` module.
+You can specify different JSON names for fields and skip fields when needed.
 
 ```v
-import json
+import json2
 
 enum JobTitle {
 	manager
@@ -41,16 +40,16 @@ mut:
 fn main() {
 	x := Employee{'Peter', 'Begins', 28, 95000.5, .worker, ''}
 	println(x)
-	s := json.encode(x)
+	s := json2.encode(x, escape_unicode: true)
 	println('JSON encoding of employee x: ${s}')
 	assert s == '{"name":"Peter","age":28,"salary":95000.5,"ETitle":"worker"}'
-	mut y := json.decode(Employee, s)!
+	mut y := json2.decode[Employee](s)!
 	assert y != x
 	assert y.family == ''
 	y.family = 'Begins'
 	assert y == x
 	println(y)
-	ss := json.encode(y)
+	ss := json2.encode(y, escape_unicode: true)
 	println('JSON encoding of employee y: ${ss}')
 	assert ss == s
 }
@@ -58,7 +57,7 @@ fn main() {
 
 ### JSON field attributes
 
-The `json` module supports a few field attributes for controlling how struct fields map to JSON:
+Both JSON modules support attributes that control how struct fields map to JSON:
 
 - `@[json: 'name']` uses a different JSON key for the field.
 - `@[json: '-']` skips the field.
@@ -68,7 +67,7 @@ The `json` module supports a few field attributes for controlling how struct fie
   field.
 
 ```v
-import json
+import json2
 
 struct Message {
 	payload string  @[raw]
@@ -76,12 +75,14 @@ struct Message {
 }
 
 fn main() {
-	msg := json.decode(Message, '{"payload":{"kind":"ping"},"note":""}')!
+	msg := json2.decode[Message]('{"payload":{"kind":"ping"},"note":""}')!
 	assert msg.payload == '{"kind":"ping"}'
 
-	out := json.encode(Message{
+	out := json2.encode(Message{
 		payload: '{"kind":"ping"}'
-	})
+	},
+		escape_unicode: true
+	)
 	assert out == '{"payload":"{\\"kind\\":\\"ping\\"}"}'
 }
 ```

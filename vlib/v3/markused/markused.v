@@ -53,6 +53,7 @@ pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 
 fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool) (map[string]bool, bool) {
 	mut cur_module := ''
+	mut cur_file := ''
 	mut import_contexts := []map[string]string{cap: 256}
 	import_contexts << map[string]string{}
 	mut cur_import_context := 0
@@ -78,6 +79,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	mut body_modules := []string{cap: 8192}
 	mut body_import_contexts := []int{cap: 8192}
 	mut cache_roots := []string{}
+	mut c_interface_roots := []string{}
 
 	mut fn_count := 0
 	mut fn_with_dot := 0
@@ -85,6 +87,7 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	for node_idx in tc.top_level_idx {
 		node := a.nodes[node_idx]
 		if node.kind == .file {
+			cur_file = node.value
 			cur_module = ''
 			import_contexts << markused_top_level_file_imports(a, node)
 			cur_import_context = import_contexts.len - 1
@@ -199,6 +202,16 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				short := qname.all_after_last('.')
 				add_suffix_candidate(mut suffix_map, short, qname)
 			}
+			if cur_module == 'c' && cur_file.ends_with('/gen/c/interface.v') {
+				c_interface_roots << node.value
+				if qname != node.value {
+					c_interface_roots << qname
+				}
+				lowered_qname := markused_c_name(qname)
+				if lowered_qname != qname {
+					c_interface_roots << lowered_qname
+				}
+			}
 		}
 	}
 
@@ -262,6 +275,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		used[seed] = true
 	}
 	for name in cache_roots {
+		enqueue(name, mut used, mut queue)
+	}
+	for name in c_interface_roots {
 		enqueue(name, mut used, mut queue)
 	}
 
@@ -438,7 +454,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 					continue
 				}
 				if markused_generated_c_helper_name(callee) {
-					enqueue(callee, mut used, mut queue)
+					for alias in markused_generated_c_helper_aliases(callee) {
+						enqueue(alias, mut used, mut queue)
+					}
 					continue
 				}
 				mut found_direct := false
@@ -495,7 +513,9 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 						method := iface_callee.all_after_last('.')
 						ensure_iface_impls(recv, fn_info.module, tc, mut iface_impls, mut
 							checked_iface_impls)
+						mut recv_iface := ''
 						if iface_name := interface_name_for_receiver(recv, fn_info.module, tc) {
+							recv_iface = iface_name
 							// Keep the dispatch stub (`Iface__method`) the transform will
 							// call; the call site may name the interface through an alias
 							// (`Expr.name` for `type Expr = Node`), which cgen's used-fn
@@ -511,6 +531,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 								short_impl := '${impl_method.all_before_last('.').all_after_last('.')}.${method}'
 								if short_impl != impl_method {
 									enqueue(short_impl, mut used, mut queue)
+								}
+								if recv_iface.len > 0 {
+									enqueue_implicit_interface_str_helpers_for_impl(recv_iface,
+										method, impl, tc, mut used, mut queue)
 								}
 							}
 						}
@@ -579,6 +603,8 @@ fn enqueue_used_interface_dispatch_implementers(tc &types.TypeChecker, mut used 
 				if short_impl != impl_method && enqueue(short_impl, mut used, mut queue) {
 					added = true
 				}
+				enqueue_implicit_interface_str_helpers_for_impl(iface_name, method, impl, tc, mut
+					used, mut queue)
 			}
 		}
 	}
@@ -862,7 +888,46 @@ fn valid_symbol_name(name string) bool {
 }
 
 fn markused_generated_c_helper_name(name string) bool {
-	return name in ['string__plus', 'v3_c_lit', 'v3_json_encode_string', 'array__get']
+	return name in ['string__plus', 'v3_c_lit', 'v3_json_encode_string', 'array__get',
+		'sum_type_index', 'sum_type_index_resolved', 'FlatGen.sum_type_index',
+		'FlatGen.sum_type_index_resolved', 'c.FlatGen.sum_type_index',
+		'c.FlatGen.sum_type_index_resolved', 'v3.gen.c.FlatGen.sum_type_index',
+		'v3.gen.c.FlatGen.sum_type_index_resolved', 'c__FlatGen__sum_type_index',
+		'c__FlatGen__sum_type_index_resolved']
+}
+
+fn markused_generated_c_helper_aliases(name string) []string {
+	if name.contains('sum_type_index_resolved') {
+		return markused_unique_helper_aliases([
+			name,
+			'sum_type_index_resolved',
+			'FlatGen.sum_type_index_resolved',
+			'c.FlatGen.sum_type_index_resolved',
+			'v3.gen.c.FlatGen.sum_type_index_resolved',
+			'c__FlatGen__sum_type_index_resolved',
+		])
+	}
+	if name.contains('sum_type_index') {
+		return markused_unique_helper_aliases([
+			name,
+			'sum_type_index',
+			'FlatGen.sum_type_index',
+			'c.FlatGen.sum_type_index',
+			'v3.gen.c.FlatGen.sum_type_index',
+			'c__FlatGen__sum_type_index',
+		])
+	}
+	return [name]
+}
+
+fn markused_unique_helper_aliases(names []string) []string {
+	mut result := []string{cap: names.len}
+	for name in names {
+		if name.len > 0 && name !in result {
+			result << name
+		}
+	}
+	return result
 }
 
 // markused_clone_bool_map returns a value clone even when the source is passed
@@ -1480,7 +1545,7 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 	mut ierror_equality_cache := map[string]int{}
 	mut cur_module := ''
 	mut imports := map[string]string{}
-	for node in a.nodes {
+	for node_idx, node in a.nodes {
 		if node.typ.len > 0 {
 			if !needs_channel_helpers && markused_type_text_is_channel(node.typ) {
 				needs_channel_helpers = true
@@ -1526,13 +1591,13 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			.call {
 				if node.children_count > 0 {
 					fn_node := a.child_node(&node, 0)
-					if fn_node.kind == .selector && fn_node.value == 'str'
-						&& fn_node.children_count > 0 {
-						base_type := types.unwrap_pointer(tc.resolve_type(a.child(fn_node, 0)))
-						if base_type is types.Interface
-							&& tc.interface_accepts_implicit_str(base_type.name) {
-							enqueue_interface_str_methods(base_type.name, tc, mut used, mut queue)
-						}
+					if node.children_count >= 2
+						&& markused_call_is_json_encode_fast_path(a, tc, flat.NodeId(node_idx), fn_node, cur_module, imports) {
+						arg_id := a.child(&node, 1)
+						arg_type := types.unwrap_pointer(tc.expr_type(arg_id) or {
+							tc.resolve_type(arg_id)
+						})
+						enqueue_json_encode_fast_path_helpers(arg_type, a, tc, mut used, mut queue)
 					}
 					if !needs_channel_str_helpers && fn_node.kind == .selector
 						&& fn_node.value == 'str' && fn_node.children_count > 0
@@ -1737,6 +1802,196 @@ fn enqueue_detected_runtime_helpers(a &flat.FlatAst, tc &types.TypeChecker, mut 
 			enqueue(helper, mut used, mut queue)
 		}
 	}
+}
+
+fn markused_call_is_json_encode_fast_path(a &flat.FlatAst, tc &types.TypeChecker, call_id flat.NodeId, fn_node flat.Node, cur_module string, imports map[string]string) bool {
+	if resolved := tc.resolved_call_name(call_id) {
+		if resolved in ['json.encode', 'json__encode'] {
+			return true
+		}
+	}
+	if fn_node.kind == .ident {
+		return fn_node.value in ['json.encode', 'json__encode']
+			|| (cur_module == 'json' && fn_node.value == 'encode')
+	}
+	if fn_node.kind != .selector || fn_node.value != 'encode' || fn_node.children_count == 0 {
+		return false
+	}
+	base := a.child_node(&fn_node, 0)
+	if base.kind != .ident {
+		return false
+	}
+	module_name := imports[base.value] or { base.value }
+	return module_name == 'json'
+}
+
+fn enqueue_json_encode_fast_path_helpers(typ types.Type, a &flat.FlatAst, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	mut helpers := map[string]bool{}
+	mut seen := map[string]bool{}
+	if !markused_json_encode_fast_path_helpers_for_type(typ, a, tc, mut helpers, mut seen) {
+		return
+	}
+	for helper, _ in helpers {
+		enqueue(helper, mut used, mut queue)
+	}
+}
+
+fn markused_json_encode_fast_path_helpers_for_type(typ types.Type, a &flat.FlatAst, tc &types.TypeChecker, mut helpers map[string]bool, mut seen map[string]bool) bool {
+	clean := if typ is types.Alias { typ.base_type } else { typ }
+	key := clean.name()
+	if key in seen {
+		return true
+	}
+	seen[key] = true
+	match clean {
+		types.Enum {
+			if cast := markused_json_enum_number_cast(clean.name, a) {
+				if cast == 'u64' {
+					markused_json_add_stringified_primitive_helpers('u64', mut helpers)
+				} else {
+					markused_json_add_stringified_primitive_helpers('i64', mut helpers)
+				}
+			}
+			return clean.name in tc.enum_names
+		}
+		types.String {
+			return true
+		}
+		types.Primitive {
+			if clean.props.has(.boolean) {
+				return true
+			}
+			if clean.props.has(.integer) {
+				if clean.props.has(.unsigned) {
+					markused_json_add_stringified_primitive_helpers('u64', mut helpers)
+				} else {
+					markused_json_add_stringified_primitive_helpers('i64', mut helpers)
+				}
+				return true
+			}
+			if clean.props.has(.float) {
+				markused_json_add_stringified_primitive_helpers('f64', mut helpers)
+				return true
+			}
+			return false
+		}
+		types.Struct {
+			if markused_json_struct_has_field_attrs(a, clean.name) {
+				return false
+			}
+			fields := tc.structs[clean.name] or { return false }
+			helpers['string__plus'] = true
+			for field in fields {
+				if !markused_json_encode_fast_path_helpers_for_type(field.typ, a, tc, mut helpers, mut
+					seen) {
+					return false
+				}
+			}
+			return true
+		}
+		types.Map {
+			if clean.key_type !is types.String {
+				return false
+			}
+			helpers['string__plus'] = true
+			return markused_json_encode_fast_path_helpers_for_type(clean.value_type, a, tc, mut
+				helpers, mut seen)
+		}
+		else {
+			return false
+		}
+	}
+}
+
+fn markused_json_add_stringified_primitive_helpers(type_name string, mut helpers map[string]bool) {
+	match type_name {
+		'i64' {
+			for helper in ['i64.str', 'i64__str', 'strconv__format_int'] {
+				helpers[helper] = true
+			}
+		}
+		'u64' {
+			for helper in ['u64.str', 'u64__str', 'strconv__format_uint'] {
+				helpers[helper] = true
+			}
+		}
+		'f64' {
+			for helper in ['f64.str', 'f64__str', 'strconv__f64_to_str_l'] {
+				helpers[helper] = true
+			}
+		}
+		else {}
+	}
+}
+
+fn markused_json_struct_has_field_attrs(a &flat.FlatAst, struct_name string) bool {
+	decl_name := markused_json_struct_decl_name(struct_name)
+	mut cur_module := ''
+	for node in a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .struct_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if decl_name != node.value && decl_name != qualified {
+			continue
+		}
+		for i in 0 .. node.children_count {
+			field := a.child_node(&node, i)
+			if field.kind == .field_decl && field.generic_params().len > 1 {
+				return true
+			}
+		}
+		return false
+	}
+	return false
+}
+
+fn markused_json_struct_decl_name(name string) string {
+	bracket := name.index_u8(`[`)
+	if bracket <= 0 {
+		return name
+	}
+	return name[..bracket]
+}
+
+fn markused_json_enum_number_cast(enum_name string, a &flat.FlatAst) ?string {
+	mut cur_module := ''
+	for node in a.nodes {
+		if node.kind == .module_decl {
+			cur_module = node.value
+			continue
+		}
+		if node.kind != .enum_decl {
+			continue
+		}
+		qualified := if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
+			'${cur_module}.${node.value}'
+		} else {
+			node.value
+		}
+		if enum_name != node.value && enum_name != qualified {
+			continue
+		}
+		node_params := node.generic_params()
+		if 'json_as_number' !in node_params {
+			return none
+		}
+		backing := if node_params.len > 0 { node_params[0] } else { '' }
+		return if backing in ['u8', 'byte', 'u16', 'u32', 'u64', 'usize'] {
+			'u64'
+		} else {
+			'i64'
+		}
+	}
+	return none
 }
 
 fn enqueue_ierror_equality_dispatch_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
@@ -2116,8 +2371,85 @@ fn enqueue_interface_str_methods(iface_name string, tc &types.TypeChecker, mut u
 		if short != method {
 			enqueue(short, mut used, mut queue)
 		}
+		enqueue_implicit_interface_str_helpers_for_impl(iface_name, 'str', impl, tc, mut used, mut
+			queue)
 	}
-	enqueue_implicit_interface_str_dispatch_helpers(iface_name, tc, mut used, mut queue)
+}
+
+fn enqueue_implicit_interface_str_helpers_for_impl(iface_name string, method string, impl string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	if method != 'str' || !markused_interface_method_is_plain_str(iface_name, tc) {
+		return
+	}
+	method_key := tc.concrete_method_signature_key(impl, method) or { '${impl}.${method}' }
+	if method_key in tc.fn_param_types || markused_c_name(method_key) in tc.fn_param_types {
+		return
+	}
+	enqueue_implicit_interface_str_helpers(tc.parse_type(impl), tc, mut used, mut queue)
+}
+
+fn enqueue_implicit_interface_str_helpers(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
+	mut seen := map[string]bool{}
+	enqueue_implicit_interface_str_helpers_inner(typ, tc, mut used, mut queue, mut seen)
+}
+
+fn markused_interface_method_is_plain_str(iface_name string, tc &types.TypeChecker) bool {
+	key := tc.interface_method_signature_key(iface_name, 'str') or { return false }
+	ret := tc.fn_ret_types[key] or { return false }
+	if ret.name() != 'string' {
+		return false
+	}
+	params := tc.fn_param_types[key] or { return false }
+	return params.len == 1
+}
+
+fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeChecker, mut used map[string]bool, mut queue []string, mut seen map[string]bool) {
+	enqueue('string__plus', mut used, mut queue)
+	typ_name := typ.name()
+	if typ_name in seen {
+		return
+	}
+	seen[typ_name] = true
+	match typ {
+		types.Alias {
+			enqueue_implicit_interface_str_helpers_inner(typ.base_type, tc, mut used, mut queue, mut
+				seen)
+		}
+		types.Pointer {
+			enqueue_implicit_interface_str_helpers_inner(typ.base_type, tc, mut used, mut queue, mut
+				seen)
+		}
+		types.Primitive, types.Rune, types.Char, types.ISize, types.USize, types.String {
+			enqueue_stringified_primitive_helpers(types.Type(typ).name(), mut used, mut queue)
+		}
+		types.Enum {
+			enqueue('${markused_c_name(typ.name)}__autostr', mut used, mut queue)
+		}
+		types.Array {
+			enqueue_implicit_interface_str_helpers_inner(typ.elem_type, tc, mut used, mut queue, mut
+				seen)
+		}
+		types.ArrayFixed {
+			enqueue_implicit_interface_str_helpers_inner(typ.elem_type, tc, mut used, mut queue, mut
+				seen)
+		}
+		types.Map {
+			for helper in ['i64.str', 'i64__str', 'u64.str', 'u64__str', 'f64.str', 'f64__str',
+				'rune.str', 'rune__str'] {
+				enqueue(helper, mut used, mut queue)
+			}
+			enqueue_implicit_interface_str_helpers_inner(typ.key_type, tc, mut used, mut queue, mut
+				seen)
+			enqueue_implicit_interface_str_helpers_inner(typ.value_type, tc, mut used, mut queue, mut
+				seen)
+		}
+		types.Struct {
+			for field in tc.structs[typ.name] or { []types.StructField{} } {
+				enqueue_implicit_interface_str_helpers_inner(field.typ, tc, mut used, mut queue, mut
+					seen)
+			}
+		}
+		else {}
+	}
 }
 
 fn enqueue_implicit_interface_str_dispatch_helpers(iface_name string, tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
@@ -2208,12 +2540,18 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 		'int', 'i8', 'i16', 'i32', 'i64' {
 			enqueue('${type_name}.str', mut used, mut queue)
 			enqueue(markused_c_name('${type_name}.str'), mut used, mut queue)
+			enqueue('i64.str', mut used, mut queue)
+			enqueue(markused_c_name('i64.str'), mut used, mut queue)
 			enqueue('strconv__format_int', mut used, mut queue)
 		}
 		'isize' {
+			enqueue('i64.str', mut used, mut queue)
+			enqueue(markused_c_name('i64.str'), mut used, mut queue)
 			enqueue('strconv__format_int', mut used, mut queue)
 		}
 		'u8', 'byte', 'u16', 'u32', 'usize' {
+			enqueue('u64.str', mut used, mut queue)
+			enqueue(markused_c_name('u64.str'), mut used, mut queue)
 			enqueue('strconv__format_uint', mut used, mut queue)
 		}
 		'u64' {
@@ -2224,6 +2562,8 @@ fn enqueue_stringified_primitive_helpers(type_name string, mut used map[string]b
 		'f32' {
 			enqueue('f32.str', mut used, mut queue)
 			enqueue(markused_c_name('f32.str'), mut used, mut queue)
+			enqueue('f64.str', mut used, mut queue)
+			enqueue(markused_c_name('f64.str'), mut used, mut queue)
 			enqueue('strconv__f32_to_str_l', mut used, mut queue)
 		}
 		'f64' {
@@ -3493,11 +3833,24 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			.string_interp {
 				calls << 'string_plus_many'
 			}
-			.assign, .selector_assign, .index_assign {
-				c.collect_assign_operator_call(child, cur_module, local_types, mut calls)
-			}
 			.index {
+				c.collect_index_operator_method(child_id, '[]', cur_module, imports, local_values,
+					local_types, mut calls)
 				c.collect_index_overload_getter_method(child, cur_module, local_types, mut calls)
+			}
+			.assign, .selector_assign, .index_assign {
+				if child.kind == .index_assign && child.children_count > 0 {
+					lhs_id := c.a.child(child, 0)
+					c.collect_index_operator_method(lhs_id, '[]=', cur_module, imports,
+						local_values, local_types, mut calls)
+					if child.op != .assign {
+						c.collect_index_operator_method(lhs_id, '[]', cur_module, imports,
+							local_values, local_types, mut calls)
+						c.collect_index_compound_update_helpers(child, cur_module, local_types, mut
+							calls)
+					}
+				}
+				c.collect_assign_operator_call(child, cur_module, local_types, mut calls)
 			}
 			.infix {
 				if child.op == .plus {
@@ -3582,7 +3935,7 @@ fn (c &CallCollector) call_callee_expr_to_collect(node &flat.Node) ?flat.NodeId 
 			return none
 		}
 		base_id := c.a.child(callee, 0)
-		if int(base_id) >= 0 && c.expr_contains_call(base_id) {
+		if int(base_id) >= 0 && (c.expr_contains_call(base_id) || c.expr_contains_index(base_id)) {
 			return base_id
 		}
 		return none
@@ -3594,6 +3947,27 @@ fn (c &CallCollector) call_callee_expr_to_collect(node &flat.Node) ?flat.NodeId 
 		return callee_id
 	}
 	return none
+}
+
+fn (c &CallCollector) expr_contains_index(id flat.NodeId) bool {
+	if int(id) < 0 {
+		return false
+	}
+	mut stack := [id]
+	for stack.len > 0 {
+		cur_id := stack.pop()
+		if int(cur_id) < 0 {
+			continue
+		}
+		node := c.a.node(cur_id)
+		if node.kind == .index {
+			return true
+		}
+		for i in 0 .. node.children_count {
+			stack << c.a.child(node, i)
+		}
+	}
+	return false
 }
 
 fn (c &CallCollector) expr_contains_call(id flat.NodeId) bool {
@@ -5073,6 +5447,44 @@ fn (c &CallCollector) collect_struct_operator_call_for_type(lhs_type types.Type,
 	}
 }
 
+fn (c &CallCollector) collect_index_compound_update_helpers(node &flat.Node, cur_module string, local_types map[string]string, mut calls []string) {
+	op := markused_assign_operator_symbol(node.op) or { return }
+	if node.children_count < 2 {
+		return
+	}
+	lhs_id := c.a.child(node, 0)
+	lhs_type := c.index_compound_value_type(lhs_id, local_types)
+	if op == .plus && markused_type_is_string_like(lhs_type) {
+		calls << 'string__plus'
+	}
+	c.collect_struct_operator_call_for_type(lhs_type, op, cur_module, mut calls)
+}
+
+fn (c &CallCollector) index_compound_value_type(lhs_id flat.NodeId, local_types map[string]string) types.Type {
+	if int(lhs_id) < 0 {
+		return types.Type(types.void_)
+	}
+	lhs := c.a.node(lhs_id)
+	if lhs.kind == .index && lhs.children_count >= 1 {
+		base_id := c.a.child(lhs, 0)
+		base_type := c.node_type(base_id)
+		if getter := c.tc.index_operator_call_info(base_type, '[]') {
+			return getter.return_type
+		}
+	}
+	return c.operator_lhs_type(lhs_id, local_types)
+}
+
+fn markused_type_is_string_like(typ types.Type) bool {
+	if typ is types.String {
+		return true
+	}
+	if typ is types.Alias {
+		return markused_type_is_string_like(typ.base_type)
+	}
+	return false
+}
+
 // collect_assign_operator_call adds operator overloads used through assignment operators.
 fn (c &CallCollector) collect_assign_operator_call(node &flat.Node, cur_module string, local_types map[string]string, mut calls []string) {
 	if node.kind == .index_assign {
@@ -5984,6 +6396,22 @@ fn (c &CallCollector) collect_sum_variant_receiver_methods(base_id flat.NodeId, 
 		}
 	}
 	return added
+}
+
+fn (c &CallCollector) collect_index_operator_method(index_id flat.NodeId, method string, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string, mut calls []string) bool {
+	if int(index_id) < 0 {
+		return false
+	}
+	index := c.a.node(index_id)
+	if index.kind != .index || index.value == 'range' || index.children_count < 2 {
+		return false
+	}
+	base_id := c.a.child(index, 0)
+	if int(base_id) < 0 {
+		return false
+	}
+	return c.collect_typed_receiver_method(base_id, method, cur_module, imports, local_values,
+		local_types, mut calls)
 }
 
 fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) string {

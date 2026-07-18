@@ -146,27 +146,21 @@ fn sqlite_stmt_worker(db DB, query string, data orm.QueryData, where orm.QueryDa
 
 // Binds all values of d in the prepared statement
 fn sqlite_stmt_binder(stmt Stmt, d orm.QueryData, query string, mut c &int) ! {
+	mut kind_index := 0
 	for data in d.data {
+		for kind_index < d.kinds.len && d.kinds[kind_index] in [.is_null, .is_not_null] {
+			kind_index++
+		}
+		array_operator := kind_index < d.kinds.len && d.kinds[kind_index] in [.in, .not_in]!
 		err := bind(stmt, mut c, data)
 
 		if err != 0 {
 			return stmt.db.error_message(err, query)
 		}
-		if !sqlite_primitive_is_array(data) {
+		if !array_operator {
 			c++
 		}
-	}
-}
-
-fn sqlite_primitive_is_array(data orm.Primitive) bool {
-	return match data {
-		[]orm.Primitive, []bool, []f32, []f64, []i16, []i64, []i8, []int, []string, []time.Time,
-		[]u16, []u32, []u64, []u8, []orm.InfixType {
-			true
-		}
-		else {
-			false
-		}
+		kind_index++
 	}
 }
 

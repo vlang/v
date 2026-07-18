@@ -16,8 +16,8 @@ const max_parallel_transform_jobs = 6
 // append into pre-partitioned capacity regions, so extra threads cost no
 // clone memory; cap by core count only.
 const max_shared_transform_jobs = 7
-const scoped_transform_worker_batches = 24
-const scoped_transform_master_batches = 24
+const scoped_transform_worker_batches = 48
+const scoped_transform_master_batches = 48
 
 $if !windows {
 	// TransformChunkArgs is the payload handed to each persistent worker.
@@ -182,11 +182,11 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	mut node := unsafe { &t.a.nodes[idx] }
 	if node.value.len > 0 && (transform_scope_owns(scope, node.value.str)
 		|| transform_scope_owns(t.stage_scope, node.value.str)) {
-		node.value = node.value.clone()
+		node.value = t.promote_scoped_result_text(node.value)
 	}
 	if node.typ.len > 0 && (transform_scope_owns(scope, node.typ.str)
 		|| transform_scope_owns(t.stage_scope, node.typ.str)) {
-		node.typ = node.typ.clone()
+		node.typ = t.promote_scoped_result_text(node.typ)
 	}
 	old_params := node.generic_params()
 	if old_params.len == 0 {
@@ -212,12 +212,31 @@ fn (mut t Transformer) promote_scoped_node_to_current(idx int, scope voidptr) {
 	for param in old_params {
 		if param.len > 0 && (transform_scope_owns(scope, param.str)
 			|| transform_scope_owns(t.stage_scope, param.str)) {
-			params << param.clone()
+			params << t.promote_scoped_result_text(param)
 		} else {
 			params << param
 		}
 	}
 	node.set_generic_params(params)
+}
+
+fn (mut t Transformer) promote_scoped_result_text(value string) string {
+	if value.len == 0 {
+		return ''
+	}
+	// Scoped self-host workers only read the parse-time text table. Reuse those
+	// compilation-owned strings before adding a worker-local canonical entry.
+	if t.retain_worker_results {
+		if id := t.a.text_ids[value] {
+			return t.a.text_values[int(id) - 1]
+		}
+	}
+	if canonical := t.scoped_promoted_texts[value] {
+		return canonical
+	}
+	canonical := value.clone()
+	t.scoped_promoted_texts[canonical] = canonical
+	return canonical
 }
 
 // absorb_scoped_batch publishes one batch's observable state into the helper's
@@ -235,19 +254,19 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 		t.scoped_owned_base_log << idx
 	}
 	for name in batch.used_fns_log {
-		t.used_fns[name.clone()] = true
+		t.used_fns[t.promote_scoped_result_text(name)] = true
 	}
 	for name, req in batch.sum_eq_types {
 		if name !in t.sum_eq_types {
-			t.sum_eq_types[name.clone()] = SumEqRequest{
-				module:        req.module.clone()
-				file:          req.file.clone()
-				helper_module: req.helper_module.clone()
+			t.sum_eq_types[t.promote_scoped_result_text(name)] = SumEqRequest{
+				module:        t.promote_scoped_result_text(req.module)
+				file:          t.promote_scoped_result_text(req.file)
+				helper_module: t.promote_scoped_result_text(req.helper_module)
 			}
 		}
 	}
 	for message in batch.monomorph_errors {
-		t.monomorph_errors << message.clone()
+		t.monomorph_errors << t.promote_scoped_result_text(message)
 	}
 	deferred_start := t.deferred_base_writes.len
 	for write in batch.deferred_base_writes {
@@ -256,7 +275,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	t.clone_deferred_worker_writes_from(deferred_start)
 	if !isnil(batch.tc.fork_overlay) {
 		for idx, name in batch.tc.fork_overlay.resolved_call_names {
-			owned_name := name.clone()
+			owned_name := t.promote_scoped_result_text(name)
 			if isnil(t.tc.fork_overlay) {
 				t.set_resolved_call_entry(idx, owned_name)
 			} else {
@@ -264,7 +283,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 			}
 		}
 		for idx, name in batch.tc.fork_overlay.resolved_fn_values {
-			owned_name := name.clone()
+			owned_name := t.promote_scoped_result_text(name)
 			if isnil(t.tc.fork_overlay) {
 				t.set_resolved_fn_value_entry(idx, owned_name)
 			} else {
@@ -335,20 +354,20 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 				DeferredBaseWrite{
 					idx:  write.idx
 					kind: write.kind
-					str:  write.str.clone()
+					str:  t.promote_scoped_result_text(write.str)
 				}
 			}
 			2 {
 				mut params := []string{cap: write.node.generic_params().len}
 				for param in write.node.generic_params() {
-					params << param.clone()
+					params << t.promote_scoped_result_text(param)
 				}
 				DeferredBaseWrite{
 					idx:  write.idx
 					kind: write.kind
 					node: flat.Node{
-						value:          write.node.value.clone()
-						typ:            write.node.typ.clone()
+						value:          t.promote_scoped_result_text(write.node.value)
+						typ:            t.promote_scoped_result_text(write.node.typ)
 						payload:        flat.node_payload(params)
 						pos:            write.node.pos
 						children_start: write.node.children_start
@@ -362,7 +381,7 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 			else {
 				mut params := []string{cap: write.gparams.len}
 				for param in write.gparams {
-					params << param.clone()
+					params << t.promote_scoped_result_text(param)
 				}
 				DeferredBaseWrite{
 					idx:     write.idx

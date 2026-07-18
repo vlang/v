@@ -17,7 +17,55 @@ struct RequestParams {
 	benchmark_page_generation bool
 }
 
-const http_ok_response = 'HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 0\r\nConnection: keep-alive\r\n\r\n'.bytes()
+const http_500_response = 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const http_400_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+
+// The va_scope_* helpers wrap V's -prealloc request-arena API so the append
+// handler can keep the same per-request bump-allocation behavior the legacy
+// fasthttp reactor provided. They compile to nothing without -prealloc.
+@[inline]
+fn va_scope_begin() voidptr {
+	$if prealloc {
+		return unsafe { prealloc_scope_begin() }
+	}
+	return unsafe { nil }
+}
+
+@[inline]
+fn va_scope_leave(arena voidptr) {
+	$if prealloc {
+		if arena != unsafe { nil } {
+			unsafe { prealloc_scope_leave(arena) }
+		}
+	}
+}
+
+@[inline]
+fn va_scope_free_after(arena voidptr) {
+	$if prealloc {
+		if arena != unsafe { nil } {
+			unsafe { prealloc_scope_free_after(arena) }
+		}
+	}
+}
+
+@[inline]
+fn va_scope_end(arena voidptr) {
+	$if prealloc {
+		if arena != unsafe { nil } {
+			unsafe { prealloc_scope_end(arena) }
+		}
+	}
+}
+
+@[inline]
+fn va_scope_abandon(arena voidptr) {
+	$if prealloc {
+		if arena != unsafe { nil } {
+			unsafe { prealloc_scope_abandon(arena) }
+		}
+	}
+}
 
 pub fn run_at[A, X](mut global_app A, params RunParams) ! {
 	run_new[A, X](mut global_app, params)!
@@ -50,7 +98,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 	mut server := fasthttp.new_server(fasthttp.ServerConfig{
 		family:                  params.family
 		port:                    params.port
-		handler:                 parallel_request_handler[A, X]
+		append_handler:          parallel_append_handler[A, X]
 		max_request_buffer_size: params.max_request_buffer_size
 		timeout_in_seconds:      params.timeout_in_seconds
 		user_data:               voidptr(request_params)
@@ -78,7 +126,16 @@ fn spawn_fasthttp_server_run(mut server fasthttp.Server) thread ! {
 	return spawn server.run()
 }
 
-fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpResponse {
+// parallel_append_handler is veb's fasthttp append handler (fasthttp.AppendHandler):
+// it parses and routes the request, then serializes the response DIRECTLY into
+// the connection's reused write buffer `out` — no intermediate response buffer —
+// and signals takeover / close / file streaming through `ctl`.
+fn parallel_append_handler[A, X](req fasthttp.HttpRequest, mut out []u8, worker_state voidptr, mut ctl fasthttp.ResponseControl) fasthttp.Step {
+	_ = worker_state // veb keeps shared state in user_data, not per-worker state
+	// Per-request bump arena (only compiled in under -prealloc); mirrors the arena
+	// the legacy fasthttp reactor used to open for the veb handler.
+	arena := va_scope_begin()
+
 	// Get parameters from user_data - copy to avoid use-after-free
 	params := unsafe { *(&RequestParams(req.user_data)) }
 	mut global_app := unsafe { &A(params.global_app) }
@@ -89,111 +146,68 @@ fn parallel_request_handler[A, X](req fasthttp.HttpRequest) !fasthttp.HttpRespon
 	head := req.buffer[..head_end].bytestr()
 	// Parse the request head into a standard `http.Request`, then copy just the body.
 	mut req2 := http.parse_request_head_str(head) or {
-		return fasthttp.HttpResponse{
-			content:       'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
-			content_owned: true
-		}
-	}
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'veb parsed http head') }
+		va_scope_leave(arena)
+		out << http_500_response
+		va_scope_free_after(arena)
+		ctl.should_close = true
+		return .close
 	}
 	if req.body.len > 0 {
 		req2.data = req.buffer[req.body.start..req.body.start + req.body.len].bytestr()
 	}
-	// If the request uses chunked transfer encoding, decode the chunked body
+	// If the request uses chunked transfer encoding, decode the chunked body.
 	if transfer_encoding_is_chunked(req2.header) {
 		req2.data = decode_chunked_body(req2.data) or {
-			return fasthttp.HttpResponse{
-				content:       'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
-				content_owned: true
-			}
+			va_scope_leave(arena)
+			out << http_400_response
+			va_scope_free_after(arena)
+			ctl.should_close = true
+			return .close
 		}
 	}
-	if invalid_resp := content_length_validation_response(req, req2) {
-		return invalid_resp
-	}
-	// Create and populate the `veb.Context`.
+	// Create and populate the `veb.Context` and route the request.
 	mut completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd, params)
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'veb handled route') }
-	}
 
 	match completed_context.takeover_mode {
 		.manual {
-			// The handler has taken over the connection (e.g. for SSE or WebSocket).
-			// The response was already sent directly over ctx.conn.
-			// Tell fasthttp to hand off the fd without closing it.
-			return fasthttp.HttpResponse{
-				takeover_mode: .manual
-			}
+			// The handler took over the connection (SSE / WebSocket) and already
+			// wrote the response over ctx.conn: hand the fd off without closing it.
+			// The takeover handler now owns any request-arena allocations.
+			va_scope_abandon(arena)
+			ctl.takeover_mode = .manual
+			return .done
 		}
 		.reusable {
-			should_close := should_close_connection(completed_context.req, completed_context.res,
-				completed_context.client_wants_to_close)
-			return fasthttp.HttpResponse{
-				takeover_mode: .reusable
-				should_close:  should_close
-			}
+			// The handler wrote the response itself but wants the connection kept.
+			ctl.takeover_mode = .reusable
+			ctl.should_close = should_close_connection(completed_context.req,
+				completed_context.res, completed_context.client_wants_to_close)
+			va_scope_end(arena)
+			return .done
 		}
 		.none {}
 	}
 
-	should_close := should_close_connection(completed_context.req, completed_context.res,
+	ctl.should_close = should_close_connection(completed_context.req, completed_context.res,
 		completed_context.client_wants_to_close)
-	content := completed_context.res.bytes()
-	$if trace_prealloc ? {
-		unsafe { prealloc_scope_checkpoint(c'veb serialized response') }
+	// Serialize the response head + body straight into the reused write buffer.
+	// Leave the arena first so the buffer growth (and the file_path clone below)
+	// allocate on the normal heap, not in the (about-to-be-freed) request scope.
+	va_scope_leave(arena)
+	if completed_context.return_type == .file {
+		// return_file is arena-allocated and the arena is freed below, but the
+		// reactor opens the file only AFTER this handler returns — clone it off the
+		// arena so the reactor never reads freed memory.
+		ctl.file_path = completed_context.return_file.clone()
 	}
+	// strings.Builder is a `[]u8`, so the reused write buffer can be the builder
+	// target directly — write_to appends into `out` with no intermediate buffer.
+	completed_context.res.write_to(mut out)
 	unsafe { completed_context.res.body.free() }
 	completed_context.res.body = ''
-	return_type := completed_context.return_type
-	return_file := completed_context.return_file
 	unsafe { free(completed_context) }
-
-	if return_type == .file {
-		return fasthttp.HttpResponse{
-			content:       content
-			content_owned: true
-			file_path:     return_file
-			should_close:  should_close
-		}
-	}
-
-	// The fasthttp server expects a complete response buffer to be returned.
-	return fasthttp.HttpResponse{
-		content:       content
-		content_owned: true
-		should_close:  should_close
-	}
-} // handle_request_and_route is a unified function that creates the context,
-
-fn content_length_validation_response(req fasthttp.HttpRequest, parsed http.Request) ?fasthttp.HttpResponse {
-	if transfer_encoding_is_chunked(parsed.header) {
-		return none
-	}
-	content_length := parsed.header.get(.content_length) or { return none }
-	expected_length := content_length.int()
-	actual_length := req.body.len
-	if actual_length == expected_length {
-		return none
-	}
-	if actual_length < expected_length {
-		return fasthttp.HttpResponse{
-			content:       http_408.bytes()
-			content_owned: true
-		}
-	}
-	return fasthttp.HttpResponse{
-		content:       http.new_response(
-			status: .bad_request
-			body:   'Mismatch of body length and Content-Length header'
-			header: http.new_header(
-				key:   .content_type
-				value: 'text/plain'
-			).join(headers_close)
-		).bytes()
-		content_owned: true
-	}
+	va_scope_free_after(arena)
+	return .done
 }
 
 // runs middleware, and finds the correct route for a request.

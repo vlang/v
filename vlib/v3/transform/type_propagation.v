@@ -59,11 +59,26 @@ fn decl_type_should_override_fallback(authority string, fallback string, rhs fla
 	if rhs.kind == .infix && rhs.op == .right_shift_unsigned {
 		return true
 	}
+	if map_value_starts_with_fixed_array(authority) && fallback.starts_with('map[') {
+		return true
+	}
 	return authority.starts_with('&') && !fallback.starts_with('&')
+}
+
+fn map_value_starts_with_fixed_array(typ string) bool {
+	clean := typ.trim_space()
+	if !clean.starts_with('map[') {
+		return false
+	}
+	bracket_end := generic_matching_bracket(clean, 3)
+	return bracket_end + 1 < clean.len && clean[bracket_end + 1] == `[`
 }
 
 fn decl_type_is_usable(typ string) bool {
 	if typ.len == 0 || typ in ['unknown', 'array', 'map'] || typ.contains('unknown') {
+		return false
+	}
+	if typ.contains('typeof(') {
 		return false
 	}
 	clean := typ.replace(' ', '')
@@ -76,7 +91,10 @@ fn (t &Transformer) checker_expr_type_name(id flat.NodeId) ?string {
 		return none
 	}
 	if typ := t.tc.expr_type(id) {
-		name := t.normalize_type_alias(typ.name())
+		mut name := t.normalize_type_alias(typ.name())
+		if name.contains('typeof(') {
+			name = t.normalize_type_alias(t.tc.resolve_type(id).name())
+		}
 		if decl_type_is_usable(name) && name != 'void' {
 			return name
 		}
@@ -93,9 +111,10 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 	}
 	if int(id) >= 0 {
 		node := t.a.nodes[int(id)]
-		if node.kind == .struct_init {
-			if typ := t.checker_expr_type_name(id) {
-				return typ
+		if node.kind == .cast_expr && node.value.len > 0 {
+			target := t.normalize_type_alias(node.value)
+			if t.is_sum_type_name(target) {
+				return target
 			}
 		}
 		if node.kind == .call {
@@ -119,9 +138,9 @@ fn (t &Transformer) map_expr_decl_type(id flat.NodeId) ?string {
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .map_init {
-		for candidate in [node.value, node.typ] {
+		for candidate in [node.value, node.typ, t.node_type(id)] {
 			if candidate.starts_with('map[') {
-				return candidate
+				return t.refine_map_init_fixed_array_value_type(node, candidate)
 			}
 		}
 	}
@@ -1133,6 +1152,10 @@ fn (t &Transformer) index_expr_type(id flat.NodeId, node flat.Node) string {
 	if resolved_elem_type == 'u8' {
 		return resolved_elem_type
 	}
+	if t.is_fixed_array_type(resolved_elem_type)
+		&& t.fixed_array_type_contains_map(resolved_elem_type) {
+		return resolved_elem_type
+	}
 	if !isnil(t.tc) {
 		if typ := t.tc.expr_type(id) {
 			name := typ.name()
@@ -1161,6 +1184,14 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 	}
 	resolved := t.resolve_expr_type(id)
 	if resolved.len > 0 {
+		if resolved.contains('typeof(') && !isnil(t.tc) {
+			if typ := t.tc.expr_type(id) {
+				name := t.normalize_type_alias(typ.name())
+				if decl_type_is_usable(name) {
+					return name
+				}
+			}
+		}
 		if t.generic_arg_is_unresolved(resolved) && node.typ.len > 0 {
 			node_typ := t.normalize_type_alias(node.typ)
 			if node_typ.len > 0 && !t.generic_arg_is_unresolved(node_typ) {
@@ -1240,6 +1271,9 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		mut name := ''
 		if typ := t.tc.expr_type(id) {
 			name = typ.name()
+		}
+		if name.contains('typeof(') {
+			name = t.tc.resolve_type(id).name()
 		}
 		if name.len == 0 || name == 'unknown' {
 			name = t.tc.resolve_type(id).name()

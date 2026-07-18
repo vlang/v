@@ -31,6 +31,15 @@ pub fn (resp Response) bytes() []u8 {
 	return unsafe { sb.reuse_as_plain_u8_array() }
 }
 
+// write_to appends the raw HTTP response bytes (status line, headers and body)
+// to `sb`, letting a caller serialize directly into an existing buffer instead of
+// allocating a fresh one via bytes()/bytestr(). Since strings.Builder is a []u8,
+// a server can reuse its per-connection write buffer as the target and avoid a
+// per-response allocation and copy.
+pub fn (resp Response) write_to(mut sb strings.Builder) {
+	resp.write_into_builder(mut sb)
+}
+
 // Formats resp to a string suitable for HTTP response transmission
 pub fn (resp Response) bytestr() string {
 	mut sb := strings.new_builder(resp.response_buffer_cap())

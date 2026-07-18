@@ -11,7 +11,6 @@ vlib/v/builder/gc_flags_test.v
 vlib/v/builder/icon_test.v
 vlib/v/builder/msvc_windows_test.v
 vlib/v/checker/pkgconfig_cross_compile_test.v
-vlib/v/debug/tests/trace/trace_test.v
 vlib/v/embed_file/tests/embed_file_with_variable_arg_test.v
 vlib/v/fmt/fmt_bin2v_test.v
 vlib/v/fmt/fmt_keep_test.v

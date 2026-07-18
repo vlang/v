@@ -162,12 +162,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 			}
 		} else {
 			container_id := g.a.child(&node, 2)
-			mut container_type := g.usable_expr_type(container_id)
-			if const_storage_type := g.const_storage_type_from_node(container) {
-				if fixed := array_fixed_type(types.unwrap_pointer(const_storage_type)) {
-					container_type = types.Type(fixed)
-				}
-			}
+			container_type := g.for_in_container_type(node, container_id)
 			mut idx_var := ''
 			if has_index {
 				if idx_binding_name == '_' {
@@ -190,18 +185,29 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					types.unwrap_pointer((clean_container_type as types.Alias).base_type)
 			}
 			mut map_snapshot_var := ''
-			mut map_mut_value_copyback := ''
+			mut map_writeback_target := ''
+			mut map_writeback_key := ''
+			mut map_writeback_value := ''
+			mut map_writeback_stmt := ''
+			mut map_copyback_dirty_var := ''
+			mut map_copyback_guard := MapLoopCopybackGuard{}
 			if clean_container_type is types.Map {
 				c_key := g.map_key_temp_c_type(clean_container_type.key_type)
 				c_val := g.value_c_type(clean_container_type.value_type)
 				map_value_by_ref := node.op == .amp || container_type is types.Pointer
 				container_str := g.expr_to_string(g.a.child(&node, 2))
+				original_map_ref := if container_type is types.Pointer {
+					container_str
+				} else {
+					'&${container_str}'
+				}
 				iter_var := '__mi_${g.tmp_count}'
 				g.tmp_count++
 				key_var := if has_index { idx_var } else { '__mk_${g.tmp_count}' }
 				val_var_ := if has_index { elem_var } else { var_name }
 				use_snapshot := g.for_in_body_contains_delete_call(node, body_start,
 					g.a.child(&node, 2))
+				mut key_ref := '&${key_var}'
 				key_values := if use_snapshot {
 					map_snapshot_var = '__for_map_${g.tmp_count}'
 					g.tmp_count++
@@ -227,6 +233,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					c_elem, dims := g.fixed_array_decl_parts(key_fixed)
 					g.writeln('${c_elem} ${key_var}${dims};')
 					g.writeln('memmove(${key_var}, ${key_slot}, sizeof(${key_var}));')
+					key_ref = key_var
 				} else {
 					g.writeln('${c_key} ${key_var} = *(${c_key}*)(${key_slot});')
 					if has_index && idx_binding_name != '_'
@@ -240,11 +247,6 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				if use_snapshot && map_value_by_ref {
 					val_slot_var := '__for_map_val_${g.tmp_count}'
 					g.tmp_count++
-					original_map_ref := if container_type is types.Pointer {
-						container_str
-					} else {
-						'&${container_str}'
-					}
 					g.writeln('void* ${val_slot_var} = map__get_check(${original_map_ref}, &${key_var});')
 					g.writeln('if (${val_slot_var} == 0) ${val_slot_var} = (void*)(${snapshot_val_slot});')
 					val_slot = val_slot_var
@@ -254,16 +256,10 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					g.writeln('${c_elem} ${val_var_}${dims};')
 					g.writeln('memmove(${val_var_}, ${val_slot}, sizeof(${val_var_}));')
 					val_is_fixed_copy = true
-					if node.op == .amp {
-						map_mut_value_copyback = 'memmove(${val_slot}, ${val_var_}, sizeof(${val_var_}));'
-					}
 				} else if map_value_by_ref {
 					g.writeln('${c_val}* ${val_var_} = (${c_val}*)(${val_slot});')
 				} else {
 					g.writeln('${c_val} ${val_var_} = *(${c_val}*)(${val_slot});')
-					if node.op == .amp {
-						map_mut_value_copyback = 'memmove(${val_slot}, &${val_var_}, sizeof(${val_var_}));'
-					}
 				}
 				if has_index {
 					key_owner := g.tc.cur_scope.insert_with_owner(idx_binding_name,
@@ -283,25 +279,34 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.declare_local_pointer_storage(val_owner, val_scope_type is types.Pointer
 					|| (!val_is_fixed_copy && clean_container_type.value_type is types.Pointer)
 					|| c_type_is_pointer_storage(c_val))
-				g.declare_local_c_type(val_owner, if map_value_by_ref && !val_is_fixed_copy {
-					'${c_val}*'
-				} else {
-					c_val
-				})
+				if node.op == .amp && val_is_fixed_copy {
+					map_writeback_target = if container_type is types.Pointer {
+						container_str
+					} else {
+						'&${container_str}'
+					}
+					map_writeback_key = key_var
+					map_writeback_value = val_var_
+					map_writeback_stmt = 'map__set(${map_writeback_target}, &${map_writeback_key}, &${map_writeback_value});'
+					if use_snapshot {
+						map_copyback_dirty_var = '__for_map_dirty_${g.tmp_count}'
+						g.tmp_count++
+						copyback_slot := '__for_map_copyback_${g.tmp_count}'
+						g.tmp_count++
+						map_writeback_stmt = 'if (!${map_copyback_dirty_var}) { void* ${copyback_slot} = map__get_check(${map_writeback_target}, &${map_writeback_key}); if (${copyback_slot} != 0) { map__set(${map_writeback_target}, &${map_writeback_key}, &${map_writeback_value}); } }'
+						map_copyback_guard = MapLoopCopybackGuard{
+							map_ref:   original_map_ref
+							key_ref:   key_ref
+							dirty_var: map_copyback_dirty_var
+						}
+					}
+				}
 			} else if container_type is types.Array {
 				c_elem := g.value_c_type(container_type.elem_type)
 				container_node := g.a.nodes[int(container_id)]
-				mut container_str := if shared_payload := g.shared_array_payload_lvalue(container_id) {
-					shared_payload
-				} else {
-					g.expr_to_string(container_id)
-				}
-				if storage_expr := shared_storage_from_payload_value_expr(container_str) {
-					container_str = '${storage_expr}->val'
-				}
-				clean_container_str := container_str.trim_space()
-				if clean_container_str.starts_with('*') && clean_container_str.ends_with('->val') {
-					container_str = clean_container_str[1..]
+				mut container_str := g.expr_to_string(container_id)
+				if container_str.starts_with('*') && container_str.contains('->val') {
+					container_str = container_str[1..]
 				}
 				// A call-valued container (e.g. `threads.wait()`, `xs.map(..)`) is not
 				// idempotent and is referenced multiple times below; bind it to a temp so
@@ -366,17 +371,24 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				g.gen_labelled_continue_skip_drops_var(label_state.label)
 			}
 			g.loop_depth++
-			if map_mut_value_copyback.len > 0 {
+			if map_copyback_guard.dirty_var.len > 0 {
+				g.writeln('bool ${map_copyback_guard.dirty_var} = false;')
+				g.map_loop_copyback_guards << map_copyback_guard
+			}
+			if map_writeback_stmt.len > 0 {
 				g.loop_control_copybacks << LoopControlCopyback{
-					stmt:       map_mut_value_copyback
 					loop_depth: g.loop_depth
+					stmt:       map_writeback_stmt
 				}
 			}
 			for i in body_start .. node.children_count {
 				g.gen_node(g.a.child(&node, i))
 			}
-			if map_mut_value_copyback.len > 0 {
-				g.writeln(map_mut_value_copyback)
+			if map_copyback_guard.dirty_var.len > 0 {
+				g.map_loop_copyback_guards.delete_last()
+			}
+			if map_writeback_stmt.len > 0 {
+				g.writeln(map_writeback_stmt)
 				g.loop_control_copybacks.delete_last()
 			}
 			if !node.skip_ownership_drops {
@@ -408,6 +420,16 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 	g.indent--
 	g.writeln('}')
 	g.pop_scope()
+}
+
+fn (g &FlatGen) for_in_container_type(node flat.Node, container_id flat.NodeId) types.Type {
+	if node.typ.starts_with('map[') {
+		typ := g.tc.parse_type(node.typ)
+		if typ is types.Map {
+			return typ
+		}
+	}
+	return g.usable_expr_type(container_id)
 }
 
 fn (g &FlatGen) for_in_array_literal_element_needs_ierror_copy(container flat.Node) bool {
@@ -511,6 +533,12 @@ fn (g &FlatGen) node_contains_delete_call(id flat.NodeId, container_key string) 
 		}
 	}
 	return false
+}
+
+fn (mut g FlatGen) gen_map_loop_copyback_dirty_checks(map_ptr_expr string, key_ptr_expr string) {
+	for guard in g.map_loop_copyback_guards {
+		g.writeln('if (!${guard.dirty_var} && (${map_ptr_expr}) == (${guard.map_ref}) && (${guard.map_ref})->key_eq_fn(${key_ptr_expr}, ${guard.key_ref})) ${guard.dirty_var} = true;')
+	}
 }
 
 fn (g &FlatGen) for_in_map_storage_key(id flat.NodeId) string {

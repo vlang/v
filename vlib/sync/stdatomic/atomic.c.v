@@ -11,15 +11,13 @@ module stdatomic
 // add_u64 adds provided delta as an atomic operation
 @[inline]
 pub fn add_u64(ptr &u64, delta int) u64 {
-	C.atomic_fetch_add_u64(voidptr(ptr), delta)
-	return *ptr
+	return C.atomic_fetch_add_u64(voidptr(ptr), u64(delta)) + u64(delta)
 }
 
 // sub_u64 subtracts provided delta as an atomic operation
 @[inline]
 pub fn sub_u64(ptr &u64, delta int) u64 {
-	C.atomic_fetch_sub_u64(voidptr(ptr), delta)
-	return *ptr
+	return C.atomic_fetch_sub_u64(voidptr(ptr), u64(delta)) - u64(delta)
 }
 
 // fetch_add_u64 atomically adds `delta` and returns the previous value.
@@ -37,15 +35,13 @@ pub fn fetch_sub_u64(ptr &u64, delta u64) u64 {
 // add_i64 adds provided delta as an atomic operation
 @[inline]
 pub fn add_i64(ptr &i64, delta int) i64 {
-	C.atomic_fetch_add_u64(voidptr(ptr), delta)
-	return *ptr
+	return i64(C.atomic_fetch_add_u64(voidptr(ptr), u64(delta)) + u64(delta))
 }
 
-// add_i64 subtracts provided delta as an atomic operation
+// sub_i64 subtracts provided delta as an atomic operation
 @[inline]
 pub fn sub_i64(ptr &i64, delta int) i64 {
-	C.atomic_fetch_sub_u64(voidptr(ptr), delta)
-	return *ptr
+	return i64(C.atomic_fetch_sub_u64(voidptr(ptr), u64(delta)) - u64(delta))
 }
 
 // atomic store/load operations have to be used when there might be another concurrent access

@@ -65,6 +65,36 @@ fn test_local_pointer_alias_clear_preserves_outer_branch_markers() {
 	tc.pop_scope()
 }
 
+fn test_fn_decl_signature_registration_preserves_call_name_aliases() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'pkg'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	name := 'Widget.call'
+	full_name := qualify_name_in_module(tc.cur_module, name)
+	params := [types.Type(types.int_)]
+	shared_flags := [true]
+	g.register_fn_decl_signature(name, full_name, params, shared_flags, true, true, 'int')
+	aliases := [
+		fn_decl_module_key(tc.cur_module, name),
+		name,
+		g.cname(name),
+		'${tc.cur_module}.${name}',
+		g.cname('${tc.cur_module}.${name}'),
+	]
+	for alias in aliases {
+		assert g.fn_decl_param_types[alias] == params
+		assert g.fn_decl_ret_types[alias] or { types.Type(types.void_) } == types.Type(types.int_)
+		assert g.fn_decl_variadic[alias]
+		if alias != fn_decl_module_key(tc.cur_module, name) {
+			assert g.fn_decl_shared_params[alias] == shared_flags
+			assert g.fn_decl_mut_receivers[alias]
+		}
+	}
+}
+
 fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

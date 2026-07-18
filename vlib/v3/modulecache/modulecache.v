@@ -1,6 +1,7 @@
 module modulecache
 
 import os
+import rand
 import strings
 import v3.flat
 import v3.types
@@ -491,7 +492,10 @@ pub fn (m &Manager) write_stamp(module_name string, source_files []string, depen
 }
 
 fn write_atomic(path string, content string) ! {
-	tmp := '${path}.tmp.${os.getpid()}'
+	// The temporary name must be unique per writer, not just per process: a
+	// persistent worker pool can publish the same cache path from several
+	// threads at once, and `${path}.tmp.${pid}` would collide between them.
+	tmp := '${path}.tmp.${os.getpid()}.${rand.ulid()}'
 	defer {
 		os.rm(tmp) or {}
 	}

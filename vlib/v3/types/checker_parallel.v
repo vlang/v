@@ -436,9 +436,14 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	tc.cur_file = file
 	tc.cur_module = module_name
 	tc.cur_scope = tc.file_scope
-	tc.fn_context.generic_params = tc.infer_decl_generic_param_names(node)
-	tc.fn_context.return_type = tc.parse_type(node.typ)
-	tc.fn_context.node_id = fn_idx
+	tc.cur_fn_ret_type = tc.parse_type(node.typ)
+	tc.fn_context.return_type = tc.cur_fn_ret_type
+	tc.cur_fn_node_id = fn_idx
+	tc.method_value_locals = map[string]bool{}
+	tc.method_value_local_depth = map[string]int{}
+	tc.capturing_fn_literal_locals = map[string]bool{}
+	tc.capturing_fn_literal_local_depth = map[string]int{}
+	tc.capturing_fn_literal_return_unsupported = map[string]bool{}
 	$if ownership ? {
 		tc.ownership_begin_fn(node)
 	}
@@ -529,6 +534,9 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 	}
 	for k, v in overlay.ierror_compat_entries {
 		base.ierror_compat_entries[k] = v
+	}
+	for k, v in overlay.interface_impl_entries {
+		base.interface_impl_entries[k] = v
 	}
 	if overlay.source_error_embed_indexed && !base.source_error_embed_indexed {
 		base.source_error_embed_entries = overlay.source_error_embed_entries.move()
@@ -749,6 +757,7 @@ fn (mut tc TypeChecker) free_parallel_check_worker_cache() {
 			cache.struct_field_entries.free()
 			cache.struct_field_misses.free()
 			cache.ierror_compat_entries.free()
+			cache.interface_impl_entries.free()
 			cache.source_error_embed_entries.free()
 		}
 	}
