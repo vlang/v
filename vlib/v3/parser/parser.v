@@ -8404,7 +8404,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 			dimensions++
 		}
 		elem_type := p.parse_fixed_array_literal_type_name()
-		lit, _ := p.inferred_fixed_array_literal_values(elem_type, dimensions)
+		lit, _ := p.inferred_fixed_array_literal_values(elem_type, dimensions, bracket_start)
 		return lit
 	}
 	// empty array or fixed array type: []Type{} or [N]Type{}
@@ -8745,7 +8745,11 @@ fn (mut p Parser) array_init_after_element_type(elem_type string) flat.NodeId {
 	})
 }
 
-fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dimensions int) (flat.NodeId, string) {
+// inferred_fixed_array_literal_values parses the value list of an inferred-size
+// fixed array (`[..]T[...]`). `start` is the offset the resulting nodes should
+// span from: the outer opening `[` for the top-level literal, and each row's own
+// opening `[` for the recursively-parsed inner dimensions.
+fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dimensions int, start int) (flat.NodeId, string) {
 	p.check(.lsbr)
 	mut vals := []flat.NodeId{}
 	mut elem_type := base_elem_type
@@ -8756,8 +8760,9 @@ fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dim
 			continue
 		}
 		if dimensions > 1 {
+			row_start := p.span_start()
 			val, nested_type := p.inferred_fixed_array_literal_values(base_elem_type,
-				dimensions - 1)
+				dimensions - 1, row_start)
 			vals << val
 			if vals.len == 1 {
 				elem_type = nested_type
@@ -8773,21 +8778,23 @@ fn (mut p Parser) inferred_fixed_array_literal_values(base_elem_type string, dim
 	}
 	p.check(.rsbr)
 	fixed_type := '[${vals.len}]${elem_type}'
-	start := p.add_children(vals)
-	lit := p.add_node(flat.Node{
+	cstart := p.add_children(vals)
+	lit := p.a.add_node(flat.Node{
 		kind:           .array_literal
 		typ:            fixed_type
-		children_start: start
+		children_start: cstart
 		children_count: flat.child_count(vals.len)
+		pos:            p.span_to(start)
 	})
 	pstart := p.add_child(lit)
-	return p.add_node(flat.Node{
+	return p.a.add_node(flat.Node{
 		kind:           .postfix
 		op:             .not
 		value:          if has_ragged_rows { 'ragged_inferred_fixed_array' } else { '' }
 		typ:            fixed_type
 		children_start: pstart
 		children_count: 1
+		pos:            p.span_to(start)
 	}), fixed_type
 }
 

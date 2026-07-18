@@ -82,6 +82,40 @@ fn test_prefix_expression_spans_operator_to_operand() {
 	assert saw_prefix
 }
 
+// Inferred-size fixed array literals (`[..]T[...]`) build their array/postfix
+// nodes only after the value list is consumed, so they must span from the outer
+// opening `[` rather than the following token, and each inner row must span from
+// its own opening `[`.
+fn test_inferred_fixed_array_spans_from_opening_bracket() {
+	ast, src := parse_span_source('inferred_fixed', 'fn main() {
+	a := [..]int[1, 2, 3]
+	b := [..][..]int[[1], [2, 3]]
+	_ = a
+	_ = b
+}
+')
+	mut saw_a := false
+	mut saw_b := false
+	mut saw_row := false
+	for node in ast.nodes {
+		if node.kind != .postfix || !node.typ.starts_with('[') {
+			continue
+		}
+		t := span_text(src, node)
+		if t == '[..]int[1, 2, 3]' {
+			saw_a = true
+		} else if t == '[..][..]int[[1], [2, 3]]' {
+			saw_b = true
+		} else if t == '[2, 3]' {
+			// an inner row of `b`, spanning from its own `[`
+			saw_row = true
+		}
+	}
+	assert saw_a
+	assert saw_b
+	assert saw_row
+}
+
 // Lambda nodes are built directly on the flat AST; they must still receive a
 // valid span covering the whole lambda rather than a zero position.
 fn test_lambda_nodes_have_valid_spans() {

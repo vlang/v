@@ -40,6 +40,8 @@ fn main() {
 	s := "hi ${p.sum()} ${answer}"
 	arr := [5]int{}
 	fixed := [1, 2, 3]!
+	inferred := [..]int[1, 2, 3]
+	inferred2 := [..][..]int[[1], [2, 3]]
 	sl := xs[1..3]
 	sl2 := xs[..2]
 	init := []int{len: 3, init: 0}
@@ -67,6 +69,8 @@ fn main() {
 	_ = m
 	_ = arr
 	_ = fixed
+	_ = inferred
+	_ = inferred2
 	_ = sl
 	_ = sl2
 	_ = init
