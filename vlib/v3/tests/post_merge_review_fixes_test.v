@@ -5908,12 +5908,13 @@ fn main() {
 	}, 'main.v')
 	assert include_out == '42'
 	guarded_include_out := run_good_project(v3_bin, 'guarded_quoted_source_include', {
-		'v.mod':      "Module { name: 'guarded_quoted_source_include' }\n"
-		'shim.c':     'int answer_from_guarded_shim(void) { return V3_GUARDED_SHIM_VALUE; }\n'
-		'toplevel.c': 'int answer_from_toplevel_shim(void) { return V3_TOPLEVEL_SHIM_VALUE; }\n'
-		'main.v':     'module main\n\n#define V3_TOPLEVEL_SHIM_VALUE 46\n#include "toplevel.c"\n#undef V3_TOPLEVEL_SHIM_VALUE\n\n#define V3_GUARDED_SOURCE\n#ifdef V3_GUARDED_SOURCE\n#define V3_GUARDED_SHIM_VALUE 45\n#include "shim.c"\n#undef V3_GUARDED_SHIM_VALUE\n#endif\n\nfn C.answer_from_guarded_shim() int\nfn C.answer_from_toplevel_shim() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_guarded_shim() + C.answer_from_toplevel_shim()))\n}\n'
+		'v.mod':         "Module { name: 'guarded_quoted_source_include' }\n"
+		'shim.c':        'int answer_from_guarded_shim(void) { return V3_GUARDED_SHIM_VALUE; }\n'
+		'toplevel.c':    'int answer_from_toplevel_shim(void) { return V3_TOPLEVEL_SHIM_VALUE; }\n'
+		'specialized.c': '#if V3_SOURCE_VARIANT == 1\nint answer_from_source_variant_one(void) { return 1; }\n#elif V3_SOURCE_VARIANT == 2\nint answer_from_source_variant_two(void) { return 2; }\n#endif\n'
+		'main.v':        'module main\n\n#define V3_TOPLEVEL_SHIM_VALUE 46\n#include "toplevel.c"\n#undef V3_TOPLEVEL_SHIM_VALUE\n\n#define V3_GUARDED_SOURCE\n#ifdef V3_GUARDED_SOURCE\n#define V3_GUARDED_SHIM_VALUE 45\n#include "shim.c"\n#undef V3_GUARDED_SHIM_VALUE\n#endif\n\n#define V3_SOURCE_VARIANT 1\n#include "specialized.c"\n#undef V3_SOURCE_VARIANT\n#define V3_SOURCE_VARIANT 2\n#include "specialized.c"\n#undef V3_SOURCE_VARIANT\n\nfn C.answer_from_guarded_shim() int\nfn C.answer_from_toplevel_shim() int\nfn C.answer_from_source_variant_one() int\nfn C.answer_from_source_variant_two() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_guarded_shim() + C.answer_from_toplevel_shim() + C.answer_from_source_variant_one() + C.answer_from_source_variant_two()))\n}\n'
 	}, 'main.v')
-	assert guarded_include_out == '91'
+	assert guarded_include_out == '94'
 	objective_cpp_out := run_good_project_with_flags(v3_bin, 'objective_cpp_source_include',
 		'-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_source_include' }\n"

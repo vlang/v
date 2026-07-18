@@ -3834,7 +3834,8 @@ fn dedupe_top_level_c_includes(directives []string) []string {
 	mut depth := 0
 	for directive in directives {
 		clean := trimmed_space(directive)
-		if depth == 0 && c_directive_name(clean) == 'include' {
+		if depth == 0 && c_directive_name(clean) == 'include'
+			&& !c_is_source_include_directive(clean) {
 			if clean in seen_includes {
 				continue
 			}
