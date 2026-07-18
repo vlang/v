@@ -83,8 +83,7 @@ fn test_c_style_for_post_clause_spans() {
 	for node in ast.nodes {
 		if node.kind == .ident && node.value == 'i' && span_text(src, node) == 'i' {
 			saw_ident = true
-		} else if node.kind == .postfix && node.op == .inc
-			&& span_text(src, node) == 'i++' {
+		} else if node.kind == .postfix && node.op == .inc && span_text(src, node) == 'i++' {
 			saw_postfix = true
 		} else if node.kind == .expr_stmt {
 			stmt_spans << span_text(src, node)

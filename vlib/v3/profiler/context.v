@@ -17,7 +17,7 @@ pub:
 // This allows all allocations in a scope to be tracked without explicit annotations
 
 @[thread_local]
-__global context = Context{}
+__global profiler_context = Context{}
 
 pub struct Context {
 pub mut:
@@ -44,18 +44,18 @@ fn default_realloc(ptr voidptr, new_size int, ctx voidptr) voidptr {
 	return unsafe { C.realloc(ptr, new_size) }
 }
 
-// User code calls these - they use context.allocator implicitly
+// User code calls these - they use the current allocator implicitly
 // This provides the Jai-like implicit allocation tracking
 pub fn alloc(size int) voidptr {
-	return context.allocator.alloc_fn(size, context.allocator.ctx)
+	return profiler_context.allocator.alloc_fn(size, profiler_context.allocator.ctx)
 }
 
 pub fn free(ptr voidptr) {
-	context.allocator.free_fn(ptr, context.allocator.ctx)
+	profiler_context.allocator.free_fn(ptr, profiler_context.allocator.ctx)
 }
 
 pub fn realloc(ptr voidptr, new_size int) voidptr {
-	return context.allocator.realloc_fn(ptr, new_size, context.allocator.ctx)
+	return profiler_context.allocator.realloc_fn(ptr, new_size, profiler_context.allocator.ctx)
 }
 
 // Scoped allocator helper - saves and restores the allocator
@@ -64,11 +64,11 @@ pub fn realloc(ptr voidptr, new_size int) voidptr {
 //   defer { profiler.pop_allocator(old) }
 //   // ... all allocations here use my_allocator
 pub fn push_allocator(a Allocator) Allocator {
-	old := context.allocator
-	context.allocator = a
+	old := profiler_context.allocator
+	profiler_context.allocator = a
 	return old
 }
 
 pub fn pop_allocator(old Allocator) {
-	context.allocator = old
+	profiler_context.allocator = old
 }

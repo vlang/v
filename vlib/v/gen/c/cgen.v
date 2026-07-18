@@ -7516,7 +7516,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		}
 	}
 	sym := g.table.sym(typ)
-	if sym.kind == .sum_type {
+	if sym.kind == .sum_type && !typ.has_flag(.option) {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
 		g.write('builtin__tos3(v_typeof_sumtype_${sym.cname}( (')
@@ -10720,17 +10720,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		} else if node_typ_is_option {
 			if sym.info is ast.Alias {
 				if sym.info.parent_type.has_flag(.option) {
-					cur_stmt := g.go_before_last_stmt()
-					g.empty_line = true
-					parent_type := sym.info.parent_type
-					tmp_var := g.new_tmp_var()
-					tmp_var2 := g.new_tmp_var()
-					g.writeln2('${styp} ${tmp_var};', '${g.styp(parent_type)} ${tmp_var2};')
-					g.write('builtin___option_ok(&(${g.base_type(parent_type)}[]) { ')
-					g.expr(node.expr)
-					g.writeln(' }, (${option_name}*)(&${tmp_var2}), sizeof(${g.base_type(parent_type)}));')
-					g.writeln('builtin___option_ok(&(${g.styp(parent_type)}[]) { ${tmp_var2} }, (${option_name}*)&${tmp_var}, sizeof(${g.styp(parent_type)}));')
-					g.write2(cur_stmt, tmp_var)
+					g.expr_with_opt(node.expr, expr_type, sym.info.parent_type)
 				} else if node.expr_type.has_flag(.option) {
 					g.expr_opt_with_alias(node.expr, expr_type, node_typ)
 				} else {

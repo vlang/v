@@ -2540,8 +2540,8 @@ fn (mut p Parser) make_compile_error_call(message flat.NodeId, start int, end in
 		value:          '__v_compile_error'
 		children_start: cstart
 		children_count: 2
-		pos:            token.new_span(p.cur_file_id, clamp_source_offset(start, p.s.src.len),
-			clamp_source_offset(end, p.s.src.len))
+		pos:            token.new_span(p.cur_file_id, clamp_source_offset(start, p.s.src.len), clamp_source_offset(end,
+			p.s.src.len))
 	})
 }
 
@@ -2942,7 +2942,8 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 						// The @VMOD_FILE token has not been consumed here, so derive its
 						// own span from the condition's source offset (pseudo_pos) plus
 						// the token's local bounds within the condition string.
-						call := p.make_compile_error_call(message, pseudo_pos + start, pseudo_pos + i)
+						call := p.make_compile_error_call(message, pseudo_pos + start, pseudo_pos +
+							i)
 						_ = p.make_top_level_compile_error(call)
 						''
 					}
@@ -6193,8 +6194,8 @@ fn (mut p Parser) for_post_expr_stmt_ending(expr flat.NodeId, end int) flat.Node
 	if start_off < 0 {
 		start_off = end
 	}
-	span := token.new_span(p.cur_file_id, clamp_source_offset(start_off, p.s.src.len),
-		clamp_source_offset(end, p.s.src.len))
+	span := token.new_span(p.cur_file_id, clamp_source_offset(start_off, p.s.src.len), clamp_source_offset(end,
+		p.s.src.len))
 	return p.a.add_node(flat.Node{
 		kind:           .expr_stmt
 		children_start: start

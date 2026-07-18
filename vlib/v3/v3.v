@@ -226,7 +226,8 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 		stats.input_snapshot_races++
 		trace_c_object_cache('bypass', cache_key,
 			'inputs changed during compilation; using build-local object', dependencies.files.len)
-		uncached_obj := os.join_path(uncached_dir, 'input_snapshot_race_${os.getpid()}_${rand.ulid()}.o')
+		uncached_obj := os.join_path(uncached_dir,
+			'input_snapshot_race_${os.getpid()}_${rand.ulid()}.o')
 		os.mv(temp_obj, uncached_obj) or {
 			os.rm(temp_obj) or {}
 			return error('failed to stage build-local C object ${uncached_obj}: ${err}')
@@ -2023,8 +2024,7 @@ fn main() {
 	b.metric('C object dep-scan fallbacks', c_object_cache_stats.dependency_scan_fallbacks,
 		'objects')
 	b.metric('C object publish races', c_object_cache_stats.publish_races, 'objects')
-	b.metric('C object input-snapshot races', c_object_cache_stats.input_snapshot_races,
-		'objects')
+	b.metric('C object input-snapshot races', c_object_cache_stats.input_snapshot_races, 'objects')
 	b.print_report()
 }
 
