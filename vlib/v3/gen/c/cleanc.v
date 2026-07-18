@@ -714,7 +714,7 @@ pub fn (mut g FlatGen) set_cache_program_files(files []string) {
 // module whose cached object incorporates their contents. Forced-include inputs
 // affect every object and are kept in a configuration-wide group. The second
 // result reports include forms whose dependencies cannot be resolved statically.
-pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool, target pref.Target) (map[string][]string, bool) {
+pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool, initial_c_flags []string, target pref.Target) (map[string][]string, bool) {
 	mut c_flags := []string{}
 	mut cur_file := ''
 	for node in a.nodes {
@@ -731,6 +731,7 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 			}
 		}
 	}
+	c_flags << initial_c_flags
 	include_dirs := c_flag_include_dirs(c_flags)
 	mut collect_modules := map[string]bool{}
 	for module_name, enabled in source_modules {

@@ -146,9 +146,38 @@ fn test_cache_input_scan_uses_requested_target_flags() {
 	a := p.parse_file(source)
 	inputs, has_untracked := cache_external_input_files(a, '', {
 		'sample': true
-	}, target)
+	}, [], target)
 	assert !has_untracked
 	assert inputs['sample'] == [os.real_path(header)]
+}
+
+fn test_cache_input_scan_uses_initial_cflags() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_target_cli_cache_inputs_${os.getpid()}')
+	include_dir := os.join_path(dir, 'CLI include with spaces')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(include_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header := os.join_path(include_dir, 'cli_only.h')
+	forced_header := os.join_path(include_dir, 'forced_cli.h')
+	os.write_file(header, '#define CLI_ONLY_VALUE 1\n') or { panic(err) }
+	os.write_file(forced_header, '#define FORCED_CLI_VALUE 2\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample
+#include "cli_only.h"
+') or { panic(err) }
+	target := pref.host_target()
+	mut prefs := pref.new_preferences()
+	prefs.target = target
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, ['-I', include_dir, '-include', 'forced_cli.h'], target)
+	assert !has_untracked
+	assert inputs['sample'] == [os.real_path(header)]
+	assert inputs['__v3_c_flags__'] == [os.real_path(forced_header)]
 }
 
 fn test_termux_comptime_branch_uses_canonical_target() {
