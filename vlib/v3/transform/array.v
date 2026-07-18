@@ -1091,6 +1091,12 @@ fn (mut t Transformer) try_lower_array_append_or_stmt(node flat.Node) ?[]flat.No
 		value:          append.value
 		typ:            append.typ
 	})
+	if lowered := t.try_lower_map_index_append_stmt(lowered_id) {
+		return lowered
+	}
+	if lowered := t.try_lower_shared_array_append_autolock_stmt(lowered_id) {
+		return lowered
+	}
 	return t.try_lower_array_append_stmt(lowered_id)
 }
 

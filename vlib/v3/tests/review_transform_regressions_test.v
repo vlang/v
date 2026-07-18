@@ -1232,6 +1232,47 @@ fn test_statement_array_append_consumes_rhs_expression() {
 	assert out == '35'
 }
 
+fn test_optional_append_to_map_value_copies_back_absent_entry() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_append_to_map_value_copyback', 'fn next_value() ?int {
+	return 7
+}
+
+fn append_value(mut values map[string][]int) {
+	values["new"] << next_value() or { return }
+}
+
+fn main() {
+	mut values := map[string][]int{}
+	append_value(mut values)
+	println("new" in values)
+	println(int_str(values["new"][0]))
+}
+')
+	assert out == 'true\n7'
+}
+
+fn test_optional_append_to_shared_array_is_autolocked() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn next_value() ?int {
+	return 7
+}
+
+fn main() {
+	shared values := []int{}
+	values << next_value() or { return }
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'optional_append_to_shared_array_autolock_c', source)
+	body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	push_idx := body.index('array_push(') or { -1 }
+	assert push_idx >= 0, body
+	lock_idx := body[..push_idx].last_index('sync__RwMutex__lock(') or { -1 }
+	assert lock_idx >= 0, body
+	unlock_rel := body[push_idx..].index('sync__RwMutex__unlock(') or { -1 }
+	assert unlock_rel >= 0, body
+}
+
 fn test_json2_skipped_pointer_field_does_not_specialize_decoder() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'json2_skipped_pointer_field',

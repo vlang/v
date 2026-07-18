@@ -9546,17 +9546,7 @@ fn (mut t Transformer) transform_expr_stmt(id flat.NodeId, node flat.Node) []fla
 			return t.transform_lock_stmt(auto_lock, t.a.nodes[int(auto_lock)])
 		}
 		if lock_id := t.shared_array_append_autolock_target(child_id) {
-			body := t.make_block([id])
-			start := t.a.children.len
-			t.a.children << lock_id
-			t.a.children << body
-			auto_lock := t.a.add_node(flat.Node{
-				kind:           .lock_expr
-				value:          'lock'
-				children_start: start
-				children_count: 2
-			})
-			return t.transform_lock_stmt(auto_lock, t.a.nodes[int(auto_lock)])
+			return t.lower_shared_array_append_autolock_stmt(lock_id, id)
 		}
 	}
 	if child.kind == .or_expr && !t.is_map_index_or_expr(child) && !t.is_array_index_or_expr(child)
@@ -9664,6 +9654,28 @@ fn (t &Transformer) shared_array_append_autolock_target(id flat.NodeId) ?flat.No
 		return none
 	}
 	return lhs_id
+}
+
+fn (mut t Transformer) try_lower_shared_array_append_autolock_stmt(append_id flat.NodeId) ?[]flat.NodeId {
+	if t.autolock_depth != 0 {
+		return none
+	}
+	lock_id := t.shared_array_append_autolock_target(append_id) or { return none }
+	return t.lower_shared_array_append_autolock_stmt(lock_id, t.make_expr_stmt(append_id))
+}
+
+fn (mut t Transformer) lower_shared_array_append_autolock_stmt(lock_id flat.NodeId, stmt_id flat.NodeId) []flat.NodeId {
+	body := t.make_block([stmt_id])
+	start := t.a.children.len
+	t.a.children << lock_id
+	t.a.children << body
+	auto_lock := t.a.add_node(flat.Node{
+		kind:           .lock_expr
+		value:          'lock'
+		children_start: start
+		children_count: 2
+	})
+	return t.transform_lock_stmt(auto_lock, t.a.nodes[int(auto_lock)])
 }
 
 fn (t &Transformer) local_decl_is_shared_before(name string, before flat.NodeId) bool {
