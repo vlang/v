@@ -140,7 +140,8 @@ mut:
 	module_imports                 map[string][]string // module -> imported modules
 	c_directives                   []CDirective
 	early_c_source_directives      map[string]bool
-	native_source_contexts         map[string][]string
+	native_source_contexts         map[string][]NativeSourceContextDirective
+	objective_cpp_source_requests  []ObjectiveCppSourceRequest
 	native_source_wrapper_index    int
 	inlined_c_structs              map[string]bool
 	inlined_c_typedef_names        map[string]bool
@@ -289,6 +290,17 @@ struct CDirective {
 	text          string
 	before_import bool
 	late          bool
+}
+
+struct NativeSourceContextDirective {
+	text          string
+	before_import bool
+}
+
+struct ObjectiveCppSourceRequest {
+	module        string
+	source_path   string
+	local_context []NativeSourceContextDirective
 }
 
 struct CInlineHeader {
@@ -617,7 +629,8 @@ pub fn FlatGen.new() FlatGen {
 		module_imports:                 map[string][]string{}
 		c_directives:                   []CDirective{}
 		early_c_source_directives:      map[string]bool{}
-		native_source_contexts:         map[string][]string{}
+		native_source_contexts:         map[string][]NativeSourceContextDirective{}
+		objective_cpp_source_requests:  []ObjectiveCppSourceRequest{}
 		inlined_c_structs:              map[string]bool{}
 		inlined_c_fns:                  map[string]bool{}
 		inlined_c_declared_fns:         map[string]bool{}
@@ -1222,6 +1235,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.c_directives = []CDirective{}
 	g.early_c_source_directives.clear()
 	g.native_source_contexts.clear()
+	g.objective_cpp_source_requests = []ObjectiveCppSourceRequest{}
 	g.native_source_wrapper_index = 0
 	g.inlined_c_structs.clear()
 	g.inlined_c_fns.clear()
@@ -2041,6 +2055,7 @@ fn (mut g FlatGen) collect_gen_info() {
 		}
 	}
 	g.modules['strings'] = 'strings'
+	g.materialize_objective_cpp_sources()
 	g.collect_const_init_order_from_files()
 }
 
@@ -2174,23 +2189,23 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				// main unit for internal-linkage helpers; definitely inactive ones can be
 				// omitted without forcing the generated unit into Objective-C mode.
 				if source_path.ends_with('.mm') {
-					context_directives := g.native_source_contexts[module_name] or { []string{} }
-					if context_directives.len > 0
-						&& c_native_source_context_definitely_inactive(g.c_directives, module_name, g.c_flags, g.target) {
-						return true
-					}
-					if context_directives.len > 0
-						|| c_source_include_has_preprocessor_context(g.c_directives, module_name) {
-						g.add_native_source_context_wrapper(module_name, source_path)
-					} else if source_path !in g.c_flags {
-						g.c_flags << source_path
+					g.objective_cpp_source_requests << ObjectiveCppSourceRequest{
+						module:        module_name
+						source_path:   source_path
+						local_context: (g.native_source_contexts[module_name] or {
+							[]NativeSourceContextDirective{}
+						}).clone()
 					}
 					return true
 				}
 				if source_path.ends_with('.m') {
-					context_directives := g.native_source_contexts[module_name] or { []string{} }
+					local_context := g.native_source_contexts[module_name] or {
+						[]NativeSourceContextDirective{}
+					}
+					context_directives := g.ordered_native_source_context(module_name,
+						local_context)
 					if context_directives.len > 0
-						&& c_native_source_context_definitely_inactive(g.c_directives, module_name, g.c_flags, g.target) {
+						&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.target) {
 						return true
 					}
 				}
@@ -2214,7 +2229,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 		}
 		if !c_include_arg_is_source_file(include_arg) {
 			g.add_native_source_context_directive(module_name, c_native_source_context_header_include(include_arg,
-				g.compiler_vroot, source_file, include_dirs))
+				g.compiler_vroot, source_file, include_dirs), before_import)
 		}
 		// Resolved angle headers already have a compiler search path. Preserve the
 		// include and scan their tree for declaration metadata without recursively
@@ -2257,7 +2272,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma',
 		'error', 'warning'] {
 		directive := c_preprocessor_directive_line(node.value, node.typ)
-		g.add_native_source_context_directive(module_name, directive)
+		g.add_native_source_context_directive(module_name, directive, before_import)
 		g.add_c_directive(module_name, directive, before_import)
 		return true
 	}
@@ -3689,13 +3704,55 @@ fn (mut g FlatGen) add_c_directive_at(module_name string, text string, before_im
 	}
 }
 
-fn (mut g FlatGen) add_native_source_context_directive(module_name string, text string) {
+fn (mut g FlatGen) add_native_source_context_directive(module_name string, text string, before_import bool) {
 	if text.len == 0 {
 		return
 	}
-	mut directives := g.native_source_contexts[module_name] or { []string{} }
-	directives << text
+	mut directives := g.native_source_contexts[module_name] or { []NativeSourceContextDirective{} }
+	directives << NativeSourceContextDirective{
+		text:          text
+		before_import: before_import
+	}
 	g.native_source_contexts[module_name] = directives
+}
+
+fn (g &FlatGen) ordered_native_source_context(module_name string, local_context []NativeSourceContextDirective) []string {
+	mut result := []string{}
+	mut visiting := map[string]bool{}
+	mut visited := map[string]bool{}
+	g.visit_native_source_context_module(module_name, module_name, local_context, mut visiting, mut
+		visited, mut result)
+	return result
+}
+
+fn (g &FlatGen) visit_native_source_context_module(module_name string, root_module string, root_context []NativeSourceContextDirective, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
+	if module_name in visited || module_name in visiting {
+		return
+	}
+	visiting[module_name] = true
+	directives := if module_name == root_module {
+		root_context
+	} else {
+		g.native_source_contexts[module_name] or { []NativeSourceContextDirective{} }
+	}
+	for directive in directives {
+		if directive.before_import {
+			result << directive.text
+		}
+	}
+	for dependency in g.module_imports[module_name] or { []string{} } {
+		if dependency in g.native_source_contexts || dependency in g.module_imports {
+			g.visit_native_source_context_module(dependency, root_module, root_context, mut
+				visiting, mut visited, mut result)
+		}
+	}
+	visiting.delete(module_name)
+	visited[module_name] = true
+	for directive in directives {
+		if !directive.before_import {
+			result << directive.text
+		}
+	}
 }
 
 fn c_native_source_context_header_include(include_arg string, vroot string, source_file string, include_dirs []string) string {
@@ -3730,7 +3787,7 @@ fn c_native_source_context_depth(directives []string) int {
 	return depth
 }
 
-fn c_native_source_context_definitely_inactive(directives []CDirective, module_name string, flags []string, target pref.Target) bool {
+fn c_native_source_context_definitely_inactive(directives []string, flags []string, target pref.Target) bool {
 	mut defined := map[string]bool{}
 	mut undefined := map[string]bool{}
 	mut uncertain := map[string]bool{}
@@ -3771,10 +3828,7 @@ fn c_native_source_context_definitely_inactive(directives []CDirective, module_n
 	mut condition_taken_known := []bool{}
 	mut condition_taken := []bool{}
 	for directive in directives {
-		if directive.module != module_name {
-			continue
-		}
-		for line in directive.text.split_into_lines() {
+		for line in directive.split_into_lines() {
 			clean := trimmed_space(line)
 			name := c_directive_name(clean)
 			if name in ['ifdef', 'ifndef'] {
@@ -3965,12 +4019,27 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 	return known, active
 }
 
-fn (mut g FlatGen) add_native_source_context_wrapper(module_name string, source_path string) {
+fn (mut g FlatGen) materialize_objective_cpp_sources() {
+	for request in g.objective_cpp_source_requests {
+		context_directives := g.ordered_native_source_context(request.module, request.local_context)
+		if context_directives.len > 0
+			&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.target) {
+			continue
+		}
+		if context_directives.len > 0
+			|| c_source_include_has_preprocessor_context(context_directives) {
+			g.add_native_source_context_wrapper(request.source_path, context_directives)
+		} else if request.source_path !in g.c_flags {
+			g.c_flags << request.source_path
+		}
+	}
+}
+
+fn (mut g FlatGen) add_native_source_context_wrapper(source_path string, directives []string) {
 	if g.output_path.len == 0 {
 		g.output_error = 'cannot materialize native source directive context without an output path'
 		return
 	}
-	directives := g.native_source_contexts[module_name] or { []string{} }
 	mut wrapper_lines := directives.clone()
 	wrapper_lines << c_native_source_context_include(source_path)
 	for _ in 0 .. c_native_source_context_depth(directives) {
@@ -3986,14 +4055,11 @@ fn (mut g FlatGen) add_native_source_context_wrapper(module_name string, source_
 	g.c_flags << wrapper_path
 }
 
-fn c_source_include_has_preprocessor_context(directives []CDirective, module_name string) bool {
+fn c_source_include_has_preprocessor_context(directives []string) bool {
 	mut conditional_depth := 0
 	mut active_macros := map[string]bool{}
 	for directive in directives {
-		if directive.module != module_name {
-			continue
-		}
-		lines := directive.text.split_into_lines()
+		lines := directive.split_into_lines()
 		header_guard := c_header_guard_name_from_lines(lines)
 		for line in lines {
 			clean := trimmed_space(line)

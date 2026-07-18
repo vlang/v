@@ -6210,6 +6210,20 @@ fn main() {
 	assert objective_cpp_c_override_out == '54'
 }
 
+fn test_imported_objective_cpp_wrapper_context() {
+	v3_bin := build_v3()
+	out := run_good_project_with_flags(v3_bin, 'imported_objective_cpp_wrapper_context',
+		'-cc clang', {
+		'v.mod':                   "Module { name: 'imported_objective_cpp_wrapper_context' }\n"
+		'nativecontext/context.v': 'module nativecontext\n\n#define V3_IMPORTED_OBJECTIVE_CPP_VALUE 68\n#include "types.h"\n\npub fn keep_context_module() {}\n'
+		'nativecontext/types.h':   'typedef int v3_imported_objective_cpp_int;\n'
+		'consumer/consumer.v':     'module consumer\n\nimport nativecontext\n\n#include "shim.mm"\n\nfn C.answer_from_imported_objective_cpp_context() int\n\npub fn answer() int {\n\tnativecontext.keep_context_module()\n\treturn C.answer_from_imported_objective_cpp_context()\n}\n'
+		'consumer/shim.mm':        '#ifndef V3_IMPORTED_OBJECTIVE_CPP_VALUE\n#error missing imported Objective-C++ macro context\n#endif\nextern "C" int answer_from_imported_objective_cpp_context(void) { v3_imported_objective_cpp_int value = V3_IMPORTED_OBJECTIVE_CPP_VALUE; auto answer = [value]() { return value; }; return answer(); }\n'
+		'main.v':                  'module main\n\nimport consumer\n\nfn main() {\n\tprintln(int_str(consumer.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '68'
+}
+
 fn test_review_fixed_array_alias_clone_dispatch() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'fixed_array_alias_clone_dispatch', 'type FixedClone = [2]int
