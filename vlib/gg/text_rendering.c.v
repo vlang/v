@@ -246,7 +246,7 @@ pub fn (ctx &Context) draw_text(x int, y int, text_ string, cfg TextCfg) {
 	$if macos {
 		if ctx.native_rendering {
 			if cfg.align == align_right {
-				width := ctx.text_width(text_)
+				width := C.darwin_text_width_with_cfg(text_, cfg)
 				// println('draw text ctx.height = ${ctx.height}')
 				C.darwin_draw_string(x - width, ctx.height - y, text_, cfg)
 			} else {
