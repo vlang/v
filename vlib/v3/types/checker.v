@@ -3049,7 +3049,7 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 		clean := tc.for_in_iterable_type(container_id)
 		yields_ref := node.op == .amp || tc.for_in_iterable_yields_ref(container_id)
 		if clean is Array {
-			elem_type := if yields_ref && clean.elem_type !is Pointer {
+			elem_type := if yields_ref {
 				Type(Pointer{
 					base_type: clean.elem_type
 				})
@@ -3071,7 +3071,7 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 				}
 			}
 		} else if clean is ArrayFixed {
-			elem_type := if yields_ref && clean.elem_type !is Pointer {
+			elem_type := if yields_ref {
 				Type(Pointer{
 					base_type: clean.elem_type
 				})
@@ -3093,7 +3093,7 @@ fn (mut tc TypeChecker) annotate_for_in(_id flat.NodeId, node flat.Node) {
 				}
 			}
 		} else if clean is Map {
-			value_type := if yields_ref && clean.value_type !is Pointer {
+			value_type := if yields_ref {
 				Type(Pointer{
 					base_type: clean.value_type
 				})
@@ -3917,7 +3917,7 @@ fn (mut tc TypeChecker) collect_selected_file_for_in_called_fns(node flat.Node) 
 		clean := tc.for_in_iterable_type(container_id)
 		yields_ref := node.op == .amp || tc.for_in_iterable_yields_ref(container_id)
 		if clean is Array {
-			elem_type := if yields_ref && clean.elem_type !is Pointer {
+			elem_type := if yields_ref {
 				Type(Pointer{
 					base_type: clean.elem_type
 				})
@@ -3931,7 +3931,7 @@ fn (mut tc TypeChecker) collect_selected_file_for_in_called_fns(node flat.Node) 
 				tc.insert_selected_file_decl_binding_type(key_id, elem_type)
 			}
 		} else if clean is ArrayFixed {
-			elem_type := if yields_ref && clean.elem_type !is Pointer {
+			elem_type := if yields_ref {
 				Type(Pointer{
 					base_type: clean.elem_type
 				})
@@ -3945,7 +3945,7 @@ fn (mut tc TypeChecker) collect_selected_file_for_in_called_fns(node flat.Node) 
 				tc.insert_selected_file_decl_binding_type(key_id, elem_type)
 			}
 		} else if clean is Map {
-			value_type := if yields_ref && clean.value_type !is Pointer {
+			value_type := if yields_ref {
 				Type(Pointer{
 					base_type: clean.value_type
 				})
@@ -9517,7 +9517,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		clean := tc.for_in_iterable_type(container_id)
 		yields_ref := node.op == .amp || tc.for_in_iterable_yields_ref(container_id)
 		if clean is Array {
-			elem_type := if yields_ref && clean.elem_type !is Pointer {
+			elem_type := if yields_ref {
 				Type(Pointer{
 					base_type: clean.elem_type
 				})
@@ -9539,7 +9539,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 				}
 			}
 		} else if clean is ArrayFixed {
-			elem_type := if yields_ref && clean.elem_type !is Pointer {
+			elem_type := if yields_ref {
 				Type(Pointer{
 					base_type: clean.elem_type
 				})
@@ -9561,7 +9561,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 				}
 			}
 		} else if clean is Map {
-			value_type := if yields_ref && clean.value_type !is Pointer {
+			value_type := if yields_ref {
 				Type(Pointer{
 					base_type: clean.value_type
 				})
@@ -15340,6 +15340,11 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 		if !tc.expr_receiver_compatible(arg_id, actual, expected)
 			&& !tc.expr_compatible(arg_id, actual, expected)
 			&& !tc.pointer_value_compatible(actual, expected) {
+			if base := tc.mut_param_expr_base(arg_id, actual) {
+				if tc.type_compatible(base, expected) {
+					continue
+				}
+			}
 			if tc.receiver_compatible(actual, expected) {
 				continue
 			}

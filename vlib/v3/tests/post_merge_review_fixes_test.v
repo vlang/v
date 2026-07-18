@@ -5793,11 +5793,12 @@ fn main() {
 	objective_cpp_out := run_good_project_with_flags(v3_bin, 'objective_cpp_source_include',
 		'-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_source_include' }\n"
+		'shim.cc': 'extern "C" int answer_from_cpp(void) { auto answer = []() { return 2; }; return answer(); }\n'
 		'shim.m':  'int answer_from_objective_c(void) { return 1; }\n'
 		'shim.mm': 'extern "C" int answer_from_objective_cpp(void) { auto answer = []() { return new int(43); }; auto value = answer(); int result = *value; delete value; return result; }\n'
-		'main.v':  'module main\n\n#include "shim.m"\n#include "shim.mm"\n\nfn C.answer_from_objective_c() int\nfn C.answer_from_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_objective_c() + C.answer_from_objective_cpp()))\n}\n'
+		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n#include "shim.m"\n#include "shim.mm"\n\nfn C.answer_from_cpp() int\nfn C.answer_from_objective_c() int\nfn C.answer_from_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp() + C.answer_from_objective_c() + C.answer_from_objective_cpp()))\n}\n'
 	}, 'main.v')
-	assert objective_cpp_out == '44'
+	assert objective_cpp_out == '46'
 }
 
 fn test_review_fixed_array_alias_clone_dispatch() {
@@ -5909,4 +5910,36 @@ fn main() {
 }
 ')
 	assert sum_pointer_alias_out == 'false\ntrue'
+	mut_pointer_iteration_out := run_good(v3_bin, 'mut_pointer_iteration_rebinds_slots', 'struct Item {
+mut:
+	value int
+}
+
+fn increment(mut item Item) {
+	item.value++
+}
+
+fn main() {
+	first := &Item{
+		value: 1
+	}
+	mut second := &Item{
+		value: 2
+	}
+	mut dynamic := [first]
+	for mut item in dynamic {
+		item = second
+		increment(mut item)
+	}
+	mut fixed := [first]!
+	for mut item in fixed {
+		item = second
+		increment(mut *item)
+	}
+	second.value = 9
+	println(int_str(dynamic[0].value))
+	println(int_str(fixed[0].value))
+}
+')
+	assert mut_pointer_iteration_out == '9\n9'
 }

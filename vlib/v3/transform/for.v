@@ -534,7 +534,12 @@ fn (mut t Transformer) rebuild_for_in_stmt(_id flat.NodeId, node flat.Node) []fl
 					t.infer_for_in_elem_type(iter_type, node)
 				}
 				if elem_type.len > 0 {
-					t.set_var_type(key_name, elem_type)
+					value_type := if node.op == .amp || iter_type.starts_with('&map[') {
+						'&${elem_type}'
+					} else {
+						elem_type
+					}
+					t.set_var_type(key_name, value_type)
 				}
 			}
 		}
@@ -927,7 +932,7 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	}
 	t.set_var_type(idx_name, 'int')
 	elem_is_mut := node.op == .amp && actual_iter_type != 'string'
-	elem_needs_ref := elem_is_mut && !elem_type.starts_with('&')
+	elem_needs_ref := elem_is_mut
 	elem_var_type := if elem_needs_ref { '&${elem_type}' } else { elem_type }
 	t.set_var_type(elem_name, elem_var_type)
 	if elem_needs_ref && t.is_fixed_array_type(actual_iter_type) {

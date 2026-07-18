@@ -2236,6 +2236,16 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	}
 	if param_type.starts_with('&') && !t.is_sum_type_name(param_type[1..])
 		&& !t.is_interface_type(param_type) {
+		if arg_node.kind == .ident && t.pointer_value_lvalues[arg_node.value] {
+			arg_type := t.node_type(arg_id)
+			if arg_type.starts_with('&')
+				&& t.normalize_type_alias(arg_type[1..]) == t.normalize_type_alias(param_type) {
+				value := t.transform_expr(arg_id)
+				deref := t.make_prefix(.mul, value)
+				t.set_node_typ(int(deref), param_type)
+				return deref
+			}
+		}
 		if implicit_ref := t.transform_implicit_ref_arg(arg_id, param_type) {
 			return implicit_ref
 		}

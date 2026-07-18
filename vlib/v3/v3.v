@@ -184,7 +184,7 @@ fn ensure_c_object_file(obj_path string, support_flags []string, c99 bool, pic_f
 		return obj_path
 	}
 	source_file := c_source_from_object_file(obj_path) or {
-		return error('missing C object ${obj_path}, and no adjacent .c/.cpp/.S source was found')
+		return error('missing C object ${obj_path}, and no adjacent .c/.cc/.cpp/.S source was found')
 	}
 	return compile_cached_c_source_object(obj_path, source_file, support_flags, c99, pic_flag,
 		target_args, target, c_compiler, uncached_dir, mut stats)
@@ -216,10 +216,11 @@ fn compile_cached_c_source_object(obj_path string, source_file string, support_f
 	}
 	args << '-w'
 	args << support_flags
-	if source_file.ends_with('.mm') {
-		// A mixed .m/.mm build contributes `-x objective-c` through support_flags.
-		// Keep the source-specific Objective-C++ selection last so it wins.
-		args << ['-x', 'objective-c++']
+	if is_cpp {
+		// A mixed-language build can contribute `-x objective-c` through support_flags.
+		// Keep the source-specific C++ selection last so it wins.
+		language := if source_file.ends_with('.mm') { 'objective-c++' } else { 'c++' }
+		args << ['-x', language]
 	}
 	dependencies := c_object_dependencies(compiler, args, source_file)
 	stats.dependency_files += dependencies.files.len
@@ -351,7 +352,7 @@ fn c_object_dependencies(compiler string, compile_args []string, source_file str
 
 fn c_source_from_object_file(obj_path string) ?string {
 	base := obj_path.all_before_last('.')
-	for ext in ['.c', '.cpp', '.S'] {
+	for ext in ['.c', '.cc', '.cpp', '.S'] {
 		source_file := base + ext
 		if os.exists(source_file) {
 			return source_file
