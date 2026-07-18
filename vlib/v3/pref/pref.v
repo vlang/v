@@ -18,6 +18,7 @@ pub mut:
 	selfhost     bool
 	building_v   bool // compiling the V compiler itself: no generics, skip monomorphization
 	is_prod      bool
+	is_debug     bool
 	is_test      bool // at least one compatible user test file is being compiled
 	// V3 backends currently do not lower V inline-assembly nodes. Keep this an
 	// explicit capability so guarded stdlib assembly selects its software path.
@@ -841,10 +842,7 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return p.target.endian == 'big'
 		}
 		'debug' {
-			$if debug {
-				return true
-			}
-			return false
+			return p.is_debug
 		}
 		'test' {
 			return p.is_test

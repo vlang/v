@@ -136,6 +136,23 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	assert compat_compile.exit_code == 0, compat_compile.output
 	assert os.is_file(compat_output)
 	assert os.is_file(compat_output + '.c')
+	debug_source := os.join_path(root, 'debug_comptime.v')
+	os.write_file(debug_source,
+		"fn main() {\n\t\$if debug {\n\t\tprintln('debug')\n\t} \$else {\n\t\tprintln('release')\n\t}\n}\n") or {
+		panic(err)
+	}
+	release_output := os.join_path(root, 'debug_comptime_release')
+	release_compile := cmdexec.run(v3_bin, ['-o', release_output, debug_source])
+	assert release_compile.exit_code == 0, release_compile.output
+	release_run := cmdexec.run(release_output, [])
+	assert release_run.exit_code == 0, release_run.output
+	assert release_run.output.trim_space() == 'release'
+	debug_output := os.join_path(root, 'debug_comptime_debug')
+	debug_compile := cmdexec.run(v3_bin, ['-g', '-o', debug_output, debug_source])
+	assert debug_compile.exit_code == 0, debug_compile.output
+	debug_run := cmdexec.run(debug_output, [])
+	assert debug_run.exit_code == 0, debug_run.output
+	assert debug_run.output.trim_space() == 'debug'
 	wasm_c_output := os.join_path(root, 'hello_emscripten.c')
 	wasm_compile := cmdexec.run(v3_bin, ['-os', 'wasm32_emscripten', '-o', wasm_c_output, source])
 	assert wasm_compile.exit_code == 0, wasm_compile.output

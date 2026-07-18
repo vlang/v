@@ -648,21 +648,7 @@ fn clone_scoped_transform_regions(regions []transform.ScopedTransformRegion) []t
 }
 
 fn clone_flat_node_owned(node flat.Node) flat.Node {
-	mut params := []string{cap: node.generic_params().len}
-	for param in node.generic_params() {
-		params << param.clone()
-	}
-	return flat.Node{
-		value:          node.value.clone()
-		typ:            node.typ.clone()
-		payload:        flat.node_payload(params)
-		is_mut:         node.is_mut
-		children_start: node.children_start
-		pos:            node.pos
-		children_count: node.children_count
-		kind:           node.kind
-		op:             node.op
-	}
+	return node.clone_owned()
 }
 
 fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
@@ -1023,6 +1009,7 @@ fn main() {
 	mut building_v := false
 	mut ownership_mode := false
 	mut verbose := false
+	mut is_debug := false
 	mut c99 := false
 	mut all_backends := false
 	mut compile_backends := []string{}
@@ -1135,6 +1122,7 @@ fn main() {
 			user_c_flags << parsed_c_flags
 			i += 2
 		} else if args[i] == '-g' {
+			is_debug = true
 			user_c_flags << '-g'
 			i++
 		} else if args[i] == '-v' {
@@ -1336,6 +1324,7 @@ fn main() {
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
 	prefs.is_prod = is_prod
+	prefs.is_debug = is_debug
 	prefs.verbose = verbose
 	host_target := pref.host_target()
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !c_compiler_explicit
@@ -1349,6 +1338,7 @@ fn main() {
 		'target=${prefs.normalized_target_os()}',
 		'target_arch=${prefs.normalized_target_arch()}',
 		'prod=${is_prod}',
+		'debug=${is_debug}',
 		'shared=${is_shared}',
 		'selfhost=${is_selfhost}',
 		'c99=${c99}',
