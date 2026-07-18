@@ -2127,8 +2127,8 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			if source_path.len > 0 {
 				// Generated V output is not C++ compatible, so Objective-C++ sources use
 				// separate native-language wrappers. Keep active Objective-C includes in the
-				// main unit for internal-linkage helpers; definitely inactive ones can stay in
-				// wrappers without forcing the generated unit into Objective-C mode.
+				// main unit for internal-linkage helpers; definitely inactive ones can be
+				// omitted without forcing the generated unit into Objective-C mode.
 				if source_path.ends_with('.mm') {
 					context_directives := g.native_source_contexts[module_name] or { []string{} }
 					if context_directives.len > 0
@@ -2143,7 +2143,6 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 					context_directives := g.native_source_contexts[module_name] or { []string{} }
 					if context_directives.len > 0
 						&& c_native_source_context_definitely_inactive(g.c_directives, module_name, g.c_flags, g.target) {
-						g.add_native_source_context_wrapper(module_name, source_path)
 						return true
 					}
 				}

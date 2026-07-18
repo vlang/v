@@ -6032,6 +6032,12 @@ fn main() {
 		'main.v':         'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.mm"\n#endif\n\n#define V3_OBJECTIVE_CPP_VALUE 47\n#include "defs.h"\n#include "macro_value.mm"\n#undef V3_OBJECTIVE_CPP_VALUE\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\n#ifdef __OBJC__\n#error generated V translation unit must remain C\n#endif\n\nfn C.answer_from_macro_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_macro_objective_cpp()))\n}\n'
 	}, 'main.v')
 	assert guarded_objective_cpp_out == '47'
+	inactive_objective_c_out := run_good_project(v3_bin, 'inactive_objective_c_source', {
+		'v.mod':      "Module { name: 'inactive_objective_c_source' }\n"
+		'disabled.m': '#error inactive Objective-C source must not be compiled\n'
+		'main.v':     'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\nfn main() {\n\tprintln(int_str(60))\n}\n'
+	}, 'main.v')
+	assert inactive_objective_c_out == '60'
 	guarded_objective_c_static_out := run_good_project_with_flags(v3_bin,
 		'guarded_objective_c_static', '-cc clang', {
 		'v.mod':  "Module { name: 'guarded_objective_c_static' }\n"
