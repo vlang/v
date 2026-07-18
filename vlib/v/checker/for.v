@@ -98,6 +98,16 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 			c.error('in a `for x in <range>` loop, the key or value iteration variable `${node.val_var}` can not be the same as the high variable',
 				high_pos)
 		}
+		
+		// Check for empty hardcoded integer ranges (e.g., 4 .. 2)
+        if node.cond is ast.IntegerLiteral && node.high is ast.IntegerLiteral {
+            low_val := node.cond.val.i64()
+            high_val := node.high.val.i64()
+            
+            if low_val >= high_val {
+                c.error('empty range: `${node.cond.val} .. ${node.high.val}` will never execute', cond_pos.extend(high_pos))
+            }
+        }
 
 		if high_type in [ast.int_type, ast.int_literal_type] {
 			node.val_type = typ

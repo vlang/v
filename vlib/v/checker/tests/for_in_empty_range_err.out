@@ -1,0 +1,6 @@
+for_in_empty_range_err.vv:2:11: error: empty range: `4 .. 2` will never execute
+    1 | fn main() {
+    2 |     for i in 4 .. 2 {
+      |              ~~~~~~
+    3 |         println(i)
+    4 |     }
