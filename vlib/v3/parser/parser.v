@@ -6178,11 +6178,12 @@ fn (mut p Parser) for_post_block_from_exprs(exprs []flat.NodeId) flat.NodeId {
 		stmts << p.for_post_expr_stmt(expr)
 	}
 	start := p.add_children(stmts)
-	return p.a.add_node(flat.Node{
+	anchor := if stmts.len > 0 { stmts[0] } else { flat.empty_node }
+	return p.add_node_from(flat.Node{
 		kind:           .block
 		children_start: start
 		children_count: flat.child_count(stmts.len)
-	})
+	}, anchor)
 }
 
 fn (mut p Parser) defer_stmt() flat.NodeId {
@@ -6356,36 +6357,36 @@ fn (mut p Parser) expr_with_lhs(first flat.NodeId, min_bp token.BindingPower) fl
 			op_id := int(p.tok)
 			p.next()
 			pstart := p.add_child(lhs)
-			lhs = p.add_node(flat.Node{
+			lhs = p.add_node_from(flat.Node{
 				kind:           .postfix
 				op:             token_id_to_op(op_id)
 				children_start: pstart
 				children_count: 1
-			})
+			}, lhs)
 			continue
 		}
 		// postfix `!` error propagation: expr!
 		if p.tok == .not {
 			p.next()
 			ostart := p.add_children2(lhs, p.add(flat.NodeKind.empty))
-			lhs = p.add_node(flat.Node{
+			lhs = p.add_node_from(flat.Node{
 				kind:           .or_expr
 				value:          '!'
 				children_start: ostart
 				children_count: 2
-			})
+			}, lhs)
 			continue
 		}
 		// postfix `?` optional propagation: expr?
 		if p.tok == .question {
 			p.next()
 			ostart := p.add_children2(lhs, p.add(flat.NodeKind.empty))
-			lhs = p.add_node(flat.Node{
+			lhs = p.add_node_from(flat.Node{
 				kind:           .or_expr
 				value:          '?'
 				children_start: ostart
 				children_count: 2
-			})
+			}, lhs)
 			continue
 		}
 		// `as` cast: expr as Type
@@ -7311,7 +7312,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					children_count: 1
 				})
 			}
-			return p.add_val(.ident, name)
+			// name_pos was captured before the name token was consumed, so the
+			// identifier spans the name itself rather than the following token.
+			return p.a.add_node(flat.Node{
+				kind:  .ident
+				value: name
+				pos:   p.span_to(name_pos)
+			})
 		}
 		.lpar {
 			p.next()
@@ -7515,6 +7522,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				p.peek_pos = saved_peek_pos
 				p.has_peek = saved_has_peek
 			} else if p.tok == .lsbr && p.peek() == .rsbr {
+				arr_start := p.span_start() // start offset of `[` in `[]T`
 				type_name := '&' + p.parse_type_name()
 				if p.tok == .lpar {
 					p.next()
@@ -7529,7 +7537,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 					})
 				}
 				if p.tok == .lcbr && type_name.starts_with('&[]') {
-					inner := p.array_init_after_element_type(type_name[3..])
+					inner := p.array_init_after_element_type(type_name[3..], arr_start)
 					return p.a.add_node(flat.Node{
 						kind:           .prefix
 						op:             .amp
@@ -8445,7 +8453,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 		}
 		// array init: []Type{len: n, cap: c, init: v}
 		if elem_type.len > 0 && p.tok == .lcbr {
-			return p.array_init_after_element_type(elem_type)
+			return p.array_init_after_element_type(elem_type, bracket_start)
 		}
 		return p.add_node(flat.Node{
 			kind:  .array_init
@@ -8729,8 +8737,11 @@ fn (mut p Parser) fixed_array_value_literal(fixed_type string, start int) flat.N
 	})
 }
 
-fn (mut p Parser) array_init_after_element_type(elem_type string) flat.NodeId {
-	init_start := p.span_start()
+// array_init_after_element_type parses a dynamic-array initializer (`[]T{...}`).
+// `start` is the outer opening `[` of the `[]T` prefix, which the caller has
+// already consumed, so the `.array_init` node spans the whole expression rather
+// than just the `{...}` initializer.
+fn (mut p Parser) array_init_after_element_type(elem_type string, start int) flat.NodeId {
 	p.check(.lcbr)
 	mut ids := []flat.NodeId{}
 	for p.tok != .rcbr && p.tok != .eof {
@@ -8764,7 +8775,7 @@ fn (mut p Parser) array_init_after_element_type(elem_type string) flat.NodeId {
 		typ:            if elem_type.starts_with('typeof(') { '' } else { '[]${elem_type}' }
 		children_start: p.add_children(ids)
 		children_count: flat.child_count(ids.len)
-		pos:            p.span_to(init_start)
+		pos:            p.span_to(start)
 	})
 }
 

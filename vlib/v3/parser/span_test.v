@@ -65,6 +65,54 @@ fn test_literal_nodes_span_their_own_source() {
 	assert saw_bool
 }
 
+// Identifiers span the name, and postfix `++`/`--` span operand..operator, so a
+// C-style for post clause and its wrapping block are positioned at the code, not
+// at the following token.
+fn test_c_style_for_post_clause_spans() {
+	ast, src := parse_span_source('for_post', 'fn main() {
+	n := 5
+	for i, j := 0, 0; i < n; i++, j++ {
+		println(i + j)
+	}
+}
+')
+	mut saw_ident := false
+	mut saw_postfix := false
+	mut saw_block := false
+	for node in ast.nodes {
+		if node.kind == .ident && node.value == 'i' && span_text(src, node) == 'i' {
+			saw_ident = true
+		} else if node.kind == .postfix && node.op == .inc
+			&& span_text(src, node) == 'i++' {
+			saw_postfix = true
+		} else if node.kind == .block && node.children_count == 2
+			&& span_text(src, node) == 'i++, j++' {
+			saw_block = true
+		}
+	}
+	assert saw_ident
+	assert saw_postfix
+	assert saw_block
+}
+
+// Dynamic array initializers (`[]T{...}`) are parsed after the `[]T` prefix is
+// consumed, so the array_init node must span from the opening `[`, not the `{`.
+fn test_dynamic_array_init_spans_from_bracket() {
+	ast, src := parse_span_source('array_init', 'fn main() {
+	a := []int{len: 3, init: 0}
+	_ = a
+}
+')
+	mut saw := false
+	for node in ast.nodes {
+		if node.kind == .array_init && node.value == 'int' {
+			saw = true
+			assert span_text(src, node) == '[]int{len: 3, init: 0}'
+		}
+	}
+	assert saw
+}
+
 // Prefix expressions span from the operator to the end of their operand.
 fn test_prefix_expression_spans_operator_to_operand() {
 	ast, src := parse_span_source('prefix', 'fn main() {

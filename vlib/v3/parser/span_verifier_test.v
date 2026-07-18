@@ -59,6 +59,9 @@ fn main() {
 	for i := 0; i < 3; i++ {
 		println(i)
 	}
+	for i, j := 0, 0; i < 3; i++, j++ {
+		println(i + j)
+	}
 	y := if answer > 0 { 1 } else { 2 }
 	match c {
 		.red { println("r") }
