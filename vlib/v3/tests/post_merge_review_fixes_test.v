@@ -5720,6 +5720,34 @@ fn main() {
 }
 ')
 	assert promoted_out == '3\n7\n0\n3\n8\n0'
+	pointer_promoted_out := run_good(v3_bin, 'promoted_pointer_embed_struct_init', 'struct PointerInner {
+	count int = 4
+	items []int
+	value int
+}
+
+type PointerInnerRef = &PointerInner
+
+struct PointerOuter {
+	PointerInnerRef
+}
+
+fn main() {
+	value := PointerOuter{
+		value: 9
+	}
+	heap := &PointerOuter{
+		value: 10
+	}
+	println(int_str(value.PointerInnerRef.count))
+	println(int_str(value.PointerInnerRef.value))
+	println(int_str(value.PointerInnerRef.items.len))
+	println(int_str(heap.PointerInnerRef.count))
+	println(int_str(heap.PointerInnerRef.value))
+	println(int_str(heap.PointerInnerRef.items.len))
+}
+')
+	assert pointer_promoted_out == '4\n9\n0\n4\n10\n0'
 	include_out := run_good_project(v3_bin, 'quoted_source_include_from_include_dir', {
 		'v.mod':          "Module { name: 'quoted_source_include_from_include_dir' }\n"
 		'include/shim.c': 'int answer_from_shim(void) { return 42; }\n'

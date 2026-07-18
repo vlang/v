@@ -172,12 +172,26 @@ fn promoted_field_path_key(path []FieldInfo) string {
 	return parts.join('\n')
 }
 
+fn (t &Transformer) promoted_struct_init_type(field FieldInfo) string {
+	return t.trim_pointer_type(t.normalize_type_alias(field.typ))
+}
+
+fn (mut t Transformer) promoted_struct_init_field_value(field FieldInfo, init flat.NodeId) flat.NodeId {
+	normalized_type := t.normalize_type_alias(field.typ)
+	if !normalized_type.starts_with('&') {
+		return init
+	}
+	value := t.make_prefix(.amp, init)
+	t.set_node_typ(int(value), normalized_type)
+	return value
+}
+
 fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fields []flat.NodeId) flat.NodeId {
 	mut init_start := t.a.children.len
 	for fid in leaf_fields {
 		t.a.children << fid
 	}
-	mut cur_type := path[path.len - 1].typ
+	mut cur_type := t.promoted_struct_init_type(path[path.len - 1])
 	mut cur_init := t.a.add_node(flat.Node{
 		kind:           .struct_init
 		children_start: init_start
@@ -189,8 +203,9 @@ fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fi
 		idx := path.len - 2 - rev
 		parent := path[idx]
 		child := path[idx + 1]
+		field_value := t.promoted_struct_init_field_value(child, cur_init)
 		field_start := t.a.children.len
-		t.a.children << cur_init
+		t.a.children << field_value
 		field := t.a.add_node(flat.Node{
 			kind:           .field_init
 			children_start: field_start
@@ -200,7 +215,7 @@ fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fi
 		})
 		init_start = t.a.children.len
 		t.a.children << field
-		cur_type = parent.typ
+		cur_type = t.promoted_struct_init_type(parent)
 		cur_init = t.a.add_node(flat.Node{
 			kind:           .struct_init
 			children_start: init_start
@@ -210,8 +225,9 @@ fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fi
 		})
 	}
 	root := path[0]
+	root_value := t.promoted_struct_init_field_value(root, cur_init)
 	field_start := t.a.children.len
-	t.a.children << cur_init
+	t.a.children << root_value
 	return t.a.add_node(flat.Node{
 		kind:           .field_init
 		children_start: field_start

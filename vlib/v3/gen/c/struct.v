@@ -3218,6 +3218,13 @@ fn (g &FlatGen) promoted_struct_init_field(type_name string, field_name string) 
 	if path.len == 0 {
 		return none
 	}
+	// Pointer embeds are lowered to nested `&Inner{...}` initializers by the transformer.
+	// A C designator cannot traverse pointer storage (`.Inner.value`).
+	for field in path {
+		if cgen_unalias_type(field.typ) is types.Pointer {
+			return none
+		}
+	}
 	owner := g.embedded_field_type_name(path[path.len - 1])
 	if owner.len == 0 {
 		return none
