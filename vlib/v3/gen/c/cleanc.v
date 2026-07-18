@@ -131,6 +131,8 @@ mut:
 	module_init_fn_modules         map[string]string   // C init fn name -> V module name
 	module_imports                 map[string][]string // module -> imported modules
 	c_directives                   []CDirective
+	objective_cpp_contexts         map[string][]string
+	objective_cpp_wrapper_index    int
 	inlined_c_structs              map[string]bool
 	inlined_c_typedef_names        map[string]bool
 	inlined_c_fns                  map[string]bool
@@ -599,6 +601,7 @@ pub fn FlatGen.new() FlatGen {
 		module_init_fn_modules:         map[string]string{}
 		module_imports:                 map[string][]string{}
 		c_directives:                   []CDirective{}
+		objective_cpp_contexts:         map[string][]string{}
 		inlined_c_structs:              map[string]bool{}
 		inlined_c_fns:                  map[string]bool{}
 		inlined_c_declared_fns:         map[string]bool{}
@@ -1195,6 +1198,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.module_init_fn_modules.clear()
 	g.module_imports.clear()
 	g.c_directives = []CDirective{}
+	g.objective_cpp_contexts.clear()
+	g.objective_cpp_wrapper_index = 0
 	g.inlined_c_structs.clear()
 	g.inlined_c_fns.clear()
 	g.inlined_c_declared_fns.clear()
@@ -2118,12 +2123,13 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 			}
 			if source_path.len > 0 {
 				// Generated V output is C, not C++ compatible. Compile Objective-C++ sources
-				// as separate objects instead of including them in the C translation unit. An
-				// include under a preprocessor guard or next to a macro definition must stay in
-				// the translation unit, otherwise extracting it loses that directive context.
-				if source_path.ends_with('.mm')
-					&& !c_source_include_has_preprocessor_context(g.c_directives, module_name) {
-					if source_path !in g.c_flags {
+				// as separate objects instead of including them in the C translation unit. For
+				// guarded/macro-dependent includes, compile a small Objective-C++ wrapper that
+				// replays the original directive context around the source include.
+				if source_path.ends_with('.mm') {
+					if c_source_include_has_preprocessor_context(g.c_directives, module_name) {
+						g.add_objective_cpp_context_wrapper(module_name, source_path)
+					} else if source_path !in g.c_flags {
 						g.c_flags << source_path
 					}
 					return true
@@ -2142,6 +2148,10 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				g.add_c_directive(module_name, '#include ${include_arg}', before_import)
 			}
 			return true
+		}
+		if !c_include_arg_is_source_file(include_arg) {
+			g.add_objective_cpp_context_directive(module_name, c_objective_cpp_context_header_include(include_arg,
+				g.compiler_vroot, source_file, include_dirs))
 		}
 		if header := c_inline_header_text(include_arg, g.compiler_vroot, source_file, include_dirs,
 			g.use_system_stdint)
@@ -2168,8 +2178,9 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 	}
 	if node.value in ['define', 'undef', 'ifdef', 'ifndef', 'if', 'elif', 'else', 'endif', 'pragma',
 		'error', 'warning'] {
-		g.add_c_directive(module_name, c_preprocessor_directive_line(node.value, node.typ),
-			before_import)
+		directive := c_preprocessor_directive_line(node.value, node.typ)
+		g.add_objective_cpp_context_directive(module_name, directive)
+		g.add_c_directive(module_name, directive, before_import)
 		return true
 	}
 	return false
@@ -3279,6 +3290,67 @@ fn (mut g FlatGen) add_c_directive(module_name string, text string, before_impor
 		text:          text
 		before_import: before_import
 	}
+}
+
+fn (mut g FlatGen) add_objective_cpp_context_directive(module_name string, text string) {
+	if text.len == 0 {
+		return
+	}
+	mut directives := g.objective_cpp_contexts[module_name] or { []string{} }
+	directives << text
+	g.objective_cpp_contexts[module_name] = directives
+}
+
+fn c_objective_cpp_context_header_include(include_arg string, vroot string, source_file string, include_dirs []string) string {
+	clean := trimmed_space(include_arg)
+	if clean.len > 1 && clean[0] == `"` {
+		for path in c_include_file_paths(clean, vroot, source_file, include_dirs) {
+			if os.is_file(path) {
+				return c_objective_cpp_context_source_include(path)
+			}
+		}
+	}
+	return '#include ${clean}'
+}
+
+fn c_objective_cpp_context_source_include(path string) string {
+	clean := os.real_path(path).replace('\\', '/').replace('"', '\\"')
+	return '#include "${clean}"'
+}
+
+fn c_objective_cpp_context_depth(directives []string) int {
+	mut depth := 0
+	for directive in directives {
+		for line in directive.split_into_lines() {
+			name := c_directive_name(trimmed_space(line))
+			if name in ['if', 'ifdef', 'ifndef'] {
+				depth++
+			} else if name == 'endif' && depth > 0 {
+				depth--
+			}
+		}
+	}
+	return depth
+}
+
+fn (mut g FlatGen) add_objective_cpp_context_wrapper(module_name string, source_path string) {
+	if g.output_path.len == 0 {
+		g.output_error = 'cannot materialize Objective-C++ directive context without an output path'
+		return
+	}
+	directives := g.objective_cpp_contexts[module_name] or { []string{} }
+	mut wrapper_lines := directives.clone()
+	wrapper_lines << c_objective_cpp_context_source_include(source_path)
+	for _ in 0 .. c_objective_cpp_context_depth(directives) {
+		wrapper_lines << '#endif'
+	}
+	wrapper_path := '${g.output_path}.v3_objcpp_context_${g.objective_cpp_wrapper_index}.mm'
+	g.objective_cpp_wrapper_index++
+	os.write_file(wrapper_path, wrapper_lines.join('\n') + '\n') or {
+		g.output_error = err.msg()
+		return
+	}
+	g.c_flags << wrapper_path
 }
 
 fn c_source_include_has_preprocessor_context(directives []CDirective, module_name string) bool {

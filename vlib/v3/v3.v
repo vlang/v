@@ -118,8 +118,12 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 				target, c_compiler, uncached_dir, mut stats)!
 		} else if clean.ends_with('.mm') {
 			stats.requests++
-			prepared << ensure_c_source_object(clean, support_flags, c99, pic_flag, target_args,
+			object_path := ensure_c_source_object(clean, support_flags, c99, pic_flag, target_args,
 				target, c_compiler, uncached_dir, mut stats)!
+			prepared << object_path
+			if c_generated_objective_cpp_context_source(clean, uncached_dir) {
+				os.rm(clean) or {}
+			}
 			cpp_runtime := cpp_runtime_link_flag(target)
 			if cpp_runtime !in flags && cpp_runtime !in prepared {
 				prepared << cpp_runtime
@@ -144,6 +148,12 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 		}
 	}
 	return prepared
+}
+
+fn c_generated_objective_cpp_context_source(path string, build_dir string) bool {
+	base := os.base(path)
+	return os.dir(path) == build_dir && base.contains('.v3_objcpp_context_')
+		&& base.ends_with('.mm')
 }
 
 fn c_link_flags_use_non_c_language(flags []string) bool {
