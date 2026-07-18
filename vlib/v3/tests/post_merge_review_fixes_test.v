@@ -5954,6 +5954,14 @@ fn main() {
 		'main.v':        'module main\n\n#define V3_TOPLEVEL_SHIM_VALUE 46\n#include "toplevel.c"\n#undef V3_TOPLEVEL_SHIM_VALUE\n\n#define V3_GUARDED_SOURCE\n#ifdef V3_GUARDED_SOURCE\n#define V3_GUARDED_SHIM_VALUE 45\n#include "shim.c"\n#undef V3_GUARDED_SHIM_VALUE\n#endif\n\n#define V3_SOURCE_VARIANT 1\n#include "specialized.c"\n#undef V3_SOURCE_VARIANT\n#define V3_SOURCE_VARIANT 2\n#include "specialized.c"\n#undef V3_SOURCE_VARIANT\n\n#pragma pack(push, 1)\n#include "packed.c"\n#pragma pack(pop)\n\nfn C.answer_from_guarded_shim() int\nfn C.answer_from_toplevel_shim() int\nfn C.answer_from_source_variant_one() int\nfn C.answer_from_source_variant_two() int\nfn C.v3_review_packed_size() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_guarded_shim() + C.answer_from_toplevel_shim() + C.answer_from_source_variant_one() + C.answer_from_source_variant_two()))\n\tprintln(int_str(C.v3_review_packed_size()))\n}\n'
 	}, 'main.v')
 	assert guarded_include_out == '94\n5'
+	guarded_header_before_source_out := run_good_project(v3_bin,
+		'guarded_header_before_source_include', {
+		'v.mod':   "Module { name: 'guarded_header_before_source_include' }\n"
+		'types.h': 'typedef struct { int value; } V3GuardedHeaderType;\n'
+		'impl.c':  'V3GuardedHeaderType v3_make_guarded_header_type(void) { return (V3GuardedHeaderType){50}; }\nint v3_guarded_header_type_value(V3GuardedHeaderType value) { return value.value; }\n'
+		'main.v':  'module main\n\n#define V3_USE_GUARDED_HEADER\n#ifdef V3_USE_GUARDED_HEADER\n#include "types.h"\n#include "impl.c"\n#endif\n\nstruct GuardedHeaderHolder {\n\tvalue C.V3GuardedHeaderType\n}\n\nfn C.v3_make_guarded_header_type() C.V3GuardedHeaderType\nfn C.v3_guarded_header_type_value(C.V3GuardedHeaderType) int\n\nfn main() {\n\tholder := GuardedHeaderHolder{\n\t\tvalue: C.v3_make_guarded_header_type()\n\t}\n\tprintln(int_str(C.v3_guarded_header_type_value(holder.value)))\n}\n'
+	}, 'main.v')
+	assert guarded_header_before_source_out == '50'
 	objective_cpp_out := run_good_project_with_flags(v3_bin, 'objective_cpp_source_include',
 		'-cc clang', {
 		'v.mod':   "Module { name: 'objective_cpp_source_include' }\n"

@@ -3636,9 +3636,10 @@ fn (mut g FlatGen) ordered_c_directives() []string {
 fn (mut g FlatGen) emit_c_directives() {
 	mut emitted := false
 	directives := g.ordered_c_directives()
-	delayed := c_delayed_source_directive_indices(directives)
+	source_emission := c_source_directive_emission(directives)
 	for i, directive in directives {
-		if i in delayed || c_contains_preserved_system_include_directive(directive)
+		if i in source_emission.skip_early
+			|| c_contains_preserved_system_include_directive(directive)
 			|| c_is_source_include_directive(directive) {
 			continue
 		}
@@ -3653,9 +3654,9 @@ fn (mut g FlatGen) emit_c_directives() {
 fn (mut g FlatGen) emit_c_source_directives() {
 	mut emitted := false
 	directives := g.ordered_c_directives()
-	delayed := c_delayed_source_directive_indices(directives)
+	source_emission := c_source_directive_emission(directives)
 	for i, directive in directives {
-		if i !in delayed {
+		if i !in source_emission.emit_late {
 			continue
 		}
 		g.writeln(directive)
@@ -3666,8 +3667,14 @@ fn (mut g FlatGen) emit_c_source_directives() {
 	}
 }
 
-fn c_delayed_source_directive_indices(directives []string) map[int]bool {
-	mut delayed := map[int]bool{}
+struct CSourceDirectiveEmission {
+	skip_early map[int]bool
+	emit_late  map[int]bool
+}
+
+fn c_source_directive_emission(directives []string) CSourceDirectiveEmission {
+	mut skip_early := map[int]bool{}
+	mut emit_late := map[int]bool{}
 	mut condition_starts := []int{}
 	mut condition_has_source := []bool{}
 	for i, directive in directives {
@@ -3678,19 +3685,19 @@ fn c_delayed_source_directive_indices(directives []string) map[int]bool {
 			condition_has_source << false
 		}
 		if c_is_source_include_directive(directive) {
-			if condition_starts.len == 0 {
-				mut start := i
-				for start > 0 && c_is_source_context_directive(directives[start - 1]) {
-					start--
-				}
-				mut end := i + 1
-				for end < directives.len && c_is_source_context_directive(directives[end]) {
-					end++
-				}
-				for delayed_index in start .. end {
-					delayed[delayed_index] = true
-				}
-			} else {
+			mut start := i
+			for start > 0 && c_is_source_context_directive(directives[start - 1]) {
+				start--
+			}
+			mut end := i + 1
+			for end < directives.len && c_is_source_context_directive(directives[end]) {
+				end++
+			}
+			for delayed_index in start .. end {
+				skip_early[delayed_index] = true
+				emit_late[delayed_index] = true
+			}
+			if condition_starts.len > 0 {
 				for depth in 0 .. condition_has_source.len {
 					condition_has_source[depth] = true
 				}
@@ -3699,8 +3706,10 @@ fn c_delayed_source_directive_indices(directives []string) map[int]bool {
 		if name == 'endif' && condition_starts.len > 0 {
 			last := condition_starts.len - 1
 			if condition_has_source[last] {
-				for delayed_index in condition_starts[last] .. i + 1 {
-					delayed[delayed_index] = true
+				for context_index in condition_starts[last] .. i + 1 {
+					if c_is_conditional_directive(directives[context_index]) {
+						emit_late[context_index] = true
+					}
 				}
 			}
 			condition_starts.delete_last()
@@ -3709,12 +3718,22 @@ fn c_delayed_source_directive_indices(directives []string) map[int]bool {
 	}
 	for depth, start in condition_starts {
 		if condition_has_source[depth] {
-			for delayed_index in start .. directives.len {
-				delayed[delayed_index] = true
+			for context_index in start .. directives.len {
+				if c_is_conditional_directive(directives[context_index]) {
+					emit_late[context_index] = true
+				}
 			}
 		}
 	}
-	return delayed
+	return CSourceDirectiveEmission{
+		skip_early: skip_early
+		emit_late:  emit_late
+	}
+}
+
+fn c_is_conditional_directive(directive string) bool {
+	return c_directive_name(trimmed_space(directive)) in ['if', 'ifdef', 'ifndef', 'elif', 'else',
+		'endif']
 }
 
 fn c_is_source_context_directive(directive string) bool {
