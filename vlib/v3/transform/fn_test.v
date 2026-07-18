@@ -18,6 +18,12 @@ fn test_generic_app_parts_distinguishes_postfix_fixed_arrays() {
 	assert c_args == ['C.sg_pass_action']
 }
 
+fn test_normalize_function_type_preserves_mut_parameter() {
+	t := Transformer{}
+	assert t.normalize_type_in_module('fn (mut Item)', 'main') == 'fn (&Item)'
+	assert t.normalize_type_in_module('fn (mut item Item) bool', 'main') == 'fn (&Item) bool'
+}
+
 fn test_flattened_generic_receiver_short_variants() {
 	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',

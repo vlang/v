@@ -917,6 +917,31 @@ fn main() {
 	assert out == 'true'
 }
 
+fn test_returned_mut_callback_preserves_pointer_parameter() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'returned_mut_callback_parameter', 'struct Item {
+mut:
+	value int
+}
+
+fn change(mut item Item) {
+	item.value = 7
+}
+
+fn get_callback() fn (mut Item) {
+	return change
+}
+
+fn main() {
+	mut item := Item{}
+	callback := get_callback()
+	callback(mut item)
+	println(int_str(item.value))
+}
+')
+	assert out == '7'
+}
+
 fn test_typeof_function_fixed_array_types_keep_function_shape() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'typeof_function_fixed_array_types', 'fn values() [3]int {

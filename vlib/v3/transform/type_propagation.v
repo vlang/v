@@ -1125,7 +1125,10 @@ fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
 		params, ret := fn_type_text_parts(clean) or { return clean }
 		mut normalized_params := []string{cap: params.len}
 		for param in params {
-			normalized_params << t.normalize_type_in_module(generic_fn_type_param_payload(param), mod)
+			raw_param := param.trim_space()
+			payload := generic_fn_type_param_payload(raw_param)
+			param_type := if raw_param.starts_with('mut ') { 'mut ${payload}' } else { payload }
+			normalized_params << t.normalize_type_in_module(param_type, mod)
 		}
 		normalized_ret := t.normalize_type_in_module(ret, mod)
 		return if normalized_ret.len > 0 {
