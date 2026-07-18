@@ -2127,7 +2127,9 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				// guarded/macro-dependent includes, compile a small Objective-C++ wrapper that
 				// replays the original directive context around the source include.
 				if source_path.ends_with('.mm') {
-					if c_source_include_has_preprocessor_context(g.c_directives, module_name) {
+					context_directives := g.objective_cpp_contexts[module_name] or { []string{} }
+					if context_directives.len > 0
+						|| c_source_include_has_preprocessor_context(g.c_directives, module_name) {
 						g.add_objective_cpp_context_wrapper(module_name, source_path)
 					} else if source_path !in g.c_flags {
 						g.c_flags << source_path

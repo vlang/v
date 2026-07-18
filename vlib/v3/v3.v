@@ -114,8 +114,23 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 		}
 		if c_flag_is_object_file(clean) {
 			stats.requests++
+			adjacent_cpp_source := if !os.exists(clean) {
+				if source_file := c_source_from_object_file(clean) {
+					source_file.ends_with('.cc') || source_file.ends_with('.cpp')
+				} else {
+					false
+				}
+			} else {
+				false
+			}
 			prepared << ensure_c_object_file(clean, support_flags, c99, pic_flag, target_args,
 				target, c_compiler, uncached_dir, mut stats)!
+			if adjacent_cpp_source {
+				cpp_runtime := cpp_runtime_link_flag(target)
+				if cpp_runtime !in flags && cpp_runtime !in prepared {
+					prepared << cpp_runtime
+				}
+			}
 		} else if clean.ends_with('.mm') {
 			stats.requests++
 			object_path := ensure_c_source_object(clean, support_flags, c99, pic_flag, target_args,
