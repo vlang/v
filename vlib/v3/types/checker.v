@@ -242,6 +242,7 @@ mut:
 	struct_field_entries       map[string]Type
 	struct_field_misses        map[string]bool
 	ierror_compat_entries      map[string]int
+	interface_impl_entries     map[string][]string
 	source_error_embed_entries map[string]int
 	source_error_embed_indexed bool
 	ierror_impl_names          []string
@@ -521,10 +522,11 @@ pub mut:
 mut:
 	// Includes method-value aliases and binding-owner maps; all backing maps are
 	// replaced together at every function/worker boundary.
-	fn_context    FunctionCheckContext
-	type_cache    &TypeCache      = unsafe { nil }
-	type_interner &TypeInterner   = unsafe { nil }
-	symbols       &SymbolInterner = unsafe { nil }
+	fn_context               FunctionCheckContext
+	type_cache               &TypeCache      = unsafe { nil }
+	pre_transform_type_cache &TypeCache      = unsafe { nil }
+	type_interner            &TypeInterner   = unsafe { nil }
+	symbols                  &SymbolInterner = unsafe { nil }
 }
 
 // enable_scoped_parallel_workers uses disposable prealloc arenas for parallel
@@ -852,6 +854,34 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 	if isnil(tc.symbols) {
 		tc.symbols = new_symbol_interner()
 	}
+	if !isnil(tc.pre_transform_type_cache) {
+		tc.type_cache = tc.pre_transform_type_cache
+		tc.pre_transform_type_cache = unsafe { nil }
+		mut cache := tc.type_cache
+		cache.base = unsafe { nil }
+		cache.parse_enabled = parse_enabled
+		cache.parse_hits = 0
+		cache.parse_misses = 0
+		cache.c_hits = 0
+		cache.c_misses = 0
+		cache.parse_entries.clear()
+		cache.c_entries.clear()
+		cache.c_name_entries.clear()
+		cache.struct_field_entries.clear()
+		cache.struct_field_misses.clear()
+		cache.ierror_compat_entries.clear()
+		cache.interface_impl_entries.clear()
+		cache.source_error_embed_entries.clear()
+		cache.source_error_embed_indexed = false
+		cache.ierror_impl_names.clear()
+		cache.ierror_impl_names_set = false
+		cache.short_type_name_index.clear()
+		cache.short_type_name_index_built = false
+		cache.local_fn_decl_index.clear()
+		cache.local_fn_decl_indexed_len = 0
+		cache.local_fn_decl_last_module = ''
+		return
+	}
 	tc.type_cache = &TypeCache{
 		parse_enabled: parse_enabled
 	}
@@ -886,12 +916,21 @@ pub fn (tc &TypeChecker) type_cache_parse_enabled() bool {
 }
 
 pub fn (tc &TypeChecker) clear_field_lookup_cache() {
-	if isnil(tc.type_cache) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
 		return
 	}
-	mut cache := tc.type_cache
 	cache.struct_field_entries.clear()
 	cache.struct_field_misses.clear()
+}
+
+// clear_interface_impl_cache invalidates memoized implementer lists after a type-table change.
+pub fn (tc &TypeChecker) clear_interface_impl_cache() {
+	mut cache := tc.type_cache
+	if isnil(cache) {
+		return
+	}
+	cache.interface_impl_entries.clear()
 }
 
 // free_parallel_transform_caches releases private memoization maps owned by a forked
@@ -909,6 +948,7 @@ pub fn (mut tc TypeChecker) free_parallel_transform_caches() {
 			tc.type_cache.struct_field_entries.free()
 			tc.type_cache.struct_field_misses.free()
 			tc.type_cache.ierror_compat_entries.free()
+			tc.type_cache.interface_impl_entries.free()
 			tc.type_cache.source_error_embed_entries.free()
 		}
 	}
@@ -1005,6 +1045,14 @@ pub fn (mut tc TypeChecker) begin_sparse_transform_node_caches(base_nodes int) {
 	tc.parallel_check_sparse = true
 	tc.check_range_lo = 0
 	tc.check_range_hi = base_nodes - 1
+	if tc.scope_parallel_check_workers && isnil(tc.pre_transform_type_cache)
+		&& !isnil(tc.type_cache) {
+		tc.pre_transform_type_cache = tc.type_cache
+		tc.type_cache = &TypeCache{
+			base:          tc.pre_transform_type_cache
+			parse_enabled: tc.pre_transform_type_cache.parse_enabled
+		}
+	}
 }
 
 // promote_scoped_transform_interners moves additions made by a scoped
@@ -21661,8 +21709,15 @@ fn (tc &TypeChecker) type_has_compiler_default_clone(t Type) bool {
 // stay first so transform-emitted interface IDs are preserved; later
 // implementers are appended in deterministic discovery order.
 pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
+	mut cache := tc.type_cache
+	if !isnil(cache) {
+		if cached := cache.interface_impl_entries[iface_name] {
+			return cached
+		}
+	}
+	mut impls := []string{}
 	if snapshot := tc.interface_impl_name_snapshots[iface_name] {
-		mut impls := snapshot.clone()
+		impls = snapshot.clone()
 		mut seen := map[string]bool{}
 		for name in impls {
 			seen[name] = true
@@ -21676,9 +21731,15 @@ pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 				impls << name
 			}
 		}
-		return impls
+	} else {
+		impls = tc.interface_impl_names_uncached(iface_name)
 	}
-	return tc.interface_impl_names_uncached(iface_name)
+	if !isnil(cache) {
+		// reserve also initializes zero-value maps in lightweight cache overlays.
+		cache.interface_impl_entries.reserve(1)
+		cache.interface_impl_entries[iface_name] = impls
+	}
+	return impls
 }
 
 // interface_type_ids returns the `_typ` dispatch IDs for an interface, preserving
@@ -21688,7 +21749,7 @@ pub fn (tc &TypeChecker) interface_type_ids(iface_name string) map[string]int {
 		return stable_interface_type_ids_preserving_prefix(snapshot,
 			tc.interface_impl_names(iface_name))
 	}
-	return stable_interface_type_ids(tc.interface_impl_names_uncached(iface_name))
+	return stable_interface_type_ids(tc.interface_impl_names(iface_name))
 }
 
 // freeze_interface_impl_names snapshots the interface implementation order used
@@ -24682,10 +24743,10 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 	// called from qualify_name and sum-variant pattern checks. Build the
 	// short-name index once per checker (memoized in the heap-allocated
 	// type_cache, so forked parallel workers each build their own).
-	if isnil(tc.type_cache) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
 		return tc.unique_qualified_type_name_scan(short_name)
 	}
-	mut cache := tc.type_cache
 	if !cache.short_type_name_index_built {
 		if !isnil(cache.base) && cache.base.short_type_name_index_built {
 			found := cache.base.short_type_name_index[short_name] or { return none }
@@ -24709,10 +24770,10 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 // callers that add or remove entries in the type-name maps after the checker ran
 // (the monomorphizer specializing generic structs/sum types) must invalidate them.
 pub fn (tc &TypeChecker) invalidate_short_type_name_index() {
-	if isnil(tc.type_cache) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
 		return
 	}
-	mut cache := tc.type_cache
 	cache.ierror_compat_entries.clear()
 	cache.ierror_impl_names.clear()
 	cache.ierror_impl_names_set = false

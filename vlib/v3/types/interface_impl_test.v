@@ -24,6 +24,16 @@ fn test_empty_interface_impl_names_include_enums() {
 	assert ids['Color'] > 0
 }
 
+fn test_interface_impl_cache_is_explicitly_invalidated_after_type_table_growth() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	assert 'LateType' !in tc.interface_impl_names('Any')
+	tc.structs['LateType'] = []StructField{}
+	tc.invalidate_short_type_name_index()
+	tc.clear_interface_impl_cache()
+	assert 'LateType' in tc.interface_impl_names('Any')
+}
+
 fn test_stable_interface_type_ids_resolve_hash_collisions() {
 	ids := stable_interface_type_ids(['main.TZjXQlDs6', 'main.T2nAMbYQH'])
 	assert ids['main.TZjXQlDs6'] != ids['main.T2nAMbYQH']

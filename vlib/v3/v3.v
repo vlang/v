@@ -718,10 +718,16 @@ fn promote_scoped_checker_node_additions(mut tc types.TypeChecker, base_nodes in
 	tc.sparse_checking_nodes = tc.sparse_checking_nodes.clone()
 }
 
-fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string]bool) {
+fn promote_scoped_signatures(mut tc types.TypeChecker, original_names []string) {
 	mut added_names := []string{}
-	for name in tc.fn_ret_types.keys() {
-		if name !in original_names {
+	mut current_names := tc.fn_ret_types.keys()
+	current_names.sort()
+	mut original_idx := 0
+	for name in current_names {
+		for original_idx < original_names.len && original_names[original_idx] < name {
+			original_idx++
+		}
+		if original_idx >= original_names.len || original_names[original_idx] != name {
 			added_names << name
 		}
 	}
@@ -1555,10 +1561,8 @@ fn main() {
 		base_type_count := pre_tc.type_count()
 		base_symbol_count := pre_tc.symbol_count()
 		base_text_count := a.text_values.len
-		mut original_signature_names := map[string]bool{}
-		for name in pre_tc.fn_ret_types.keys() {
-			original_signature_names[name] = true
-		}
+		mut original_signature_names := pre_tc.fn_ret_types.keys()
+		original_signature_names.sort()
 		transform_scope := prealloc_scope_begin_for_v3()
 		mut scoped_owned_base_nodes := []int{}
 		mut retained_transform_regions := []transform.ScopedTransformRegion{}

@@ -98,7 +98,7 @@ pub mut:
 // reserve_selfhost_ast prepares the shared AST for a compiler-sized input
 // without retaining successively doubled backing arrays during transform.
 pub fn (mut p Parser) reserve_selfhost_ast() {
-	selfhost_ast_capacity := 2 * 1024 * 1024
+	selfhost_ast_capacity := 2_097_152 // 2 MiB
 	p.a.nodes.ensure_cap(selfhost_ast_capacity)
 	p.a.children.ensure_cap(selfhost_ast_capacity)
 }

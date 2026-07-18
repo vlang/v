@@ -51,3 +51,17 @@ fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	assert g.parallel_cached_expr_type(flat.NodeId(0), tc.a.nodes[0]) or { types.Type(types.void_) } is types.Primitive
 	assert g.parallel_cached_expr_type(flat.NodeId(1), tc.a.nodes[1]) or { types.Type(types.void_) } is types.String
 }
+
+fn test_scoped_cgen_batch_preserves_worker_interned_literals() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+	for generated in ['generated_a', 'generated_b'] {
+		mut batch := g.new_parallel_worker(0)
+		generated_id := batch.intern_string(generated)
+		assert generated_id == g.str_lits.len
+		g.absorb_scoped_cgen_batch(batch, false)
+		assert g.str_lits[generated_id] == generated
+		assert g.str_lit_ids[generated] == generated_id
+	}
+	assert g.str_lits == ['source', 'generated_a', 'generated_b']
+}
