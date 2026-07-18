@@ -27,52 +27,66 @@ fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 	empty := map[string]bool{}
 	known_apple, active_apple := c_preprocessor_condition_state('__APPLE__', empty, empty, empty,
-		false, linux)
+		false, false, linux)
 	assert known_apple
 	assert !active_apple
 	known_linux, active_linux := c_preprocessor_condition_state('linux', empty, empty, empty,
-		false, linux)
+		false, false, linux)
 	assert known_linux
 	assert active_linux
 	known_negated_unix, active_negated_unix := c_preprocessor_condition_state('!unix', empty,
-		empty, empty, false, linux)
+		empty, empty, false, false, linux)
 	assert known_negated_unix
 	assert !active_negated_unix
-	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, linux)
-	assert c_native_source_context_definitely_inactive(['#if !unix'], []string{}, linux)
+	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, false, linux)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], []string{}, false, linux)
+	known_c99_linux, active_c99_linux := c_preprocessor_condition_state('linux', empty, empty,
+		empty, false, true, linux)
+	assert !known_c99_linux
+	assert active_c99_linux
+	known_c99_unix, active_c99_unix := c_preprocessor_condition_state('unix', empty, empty, empty,
+		false, true, linux)
+	assert !known_c99_unix
+	assert active_c99_unix
+	known_c99_underscored, active_c99_underscored := c_preprocessor_condition_state('__linux__',
+		empty, empty, empty, false, true, linux)
+	assert known_c99_underscored
+	assert active_c99_underscored
+	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, true, linux)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], []string{}, true, linux)
 	known_unset, active_unset := c_preprocessor_condition_state('SOME_UNSET_MACRO', empty, empty,
-		empty, false, linux)
+		empty, false, false, linux)
 	assert known_unset
 	assert !active_unset
 	known_negated, active_negated := c_preprocessor_condition_state('!SOME_UNSET_MACRO', empty,
-		empty, empty, false, linux)
+		empty, empty, false, false, linux)
 	assert known_negated
 	assert active_negated
 	known_defined, active_defined := c_preprocessor_condition_state('SOME_DEFINED_MACRO', {
 		'SOME_DEFINED_MACRO': true
-	}, empty, empty, false, linux)
+	}, empty, empty, false, false, linux)
 	assert !known_defined
 	assert active_defined
 	known_negated_defined, active_negated_defined := c_preprocessor_condition_state('!FEATURE', {
 		'FEATURE': true
-	}, empty, empty, false, linux)
+	}, empty, empty, false, false, linux)
 	assert !known_negated_defined
 	assert active_negated_defined
 	known_presence, active_presence := c_preprocessor_condition_state('defined(FEATURE)', {
 		'FEATURE': true
-	}, empty, empty, false, linux)
+	}, empty, empty, false, false, linux)
 	assert known_presence
 	assert active_presence
 	known_compound, active_compound := c_preprocessor_condition_state('SOME_UNSET_MACRO || 1',
-		empty, empty, empty, false, linux)
+		empty, empty, empty, false, false, linux)
 	assert !known_compound
 	assert active_compound
 	known_external, active_external := c_preprocessor_condition_state('HEADER_FEATURE', empty,
-		empty, empty, true, linux)
+		empty, empty, true, false, linux)
 	assert !known_external
 	assert active_external
 	known_external_target, active_external_target := c_preprocessor_condition_state('__APPLE__',
-		empty, empty, empty, true, linux)
+		empty, empty, empty, true, false, linux)
 	assert known_external_target
 	assert !active_external_target
 }
