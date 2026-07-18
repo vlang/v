@@ -10124,6 +10124,9 @@ fn (t &Transformer) receiver_method_matches_type_name(method_name string, typ st
 		clean = clean[1..]
 	}
 	mut candidates := [clean]
+	if clean.contains('.') {
+		candidates << clean.all_after_last('.')
+	}
 	if !clean.contains('.') && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		candidates << '${t.cur_module}.${clean}'
 	}
