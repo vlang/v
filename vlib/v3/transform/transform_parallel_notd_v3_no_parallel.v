@@ -845,15 +845,16 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 					idx:  write.idx
 					kind: write.kind
 					node: flat.Node{
-						value:          t.promote_scoped_result_text(write.node.value)
-						typ:            t.promote_scoped_result_text(write.node.typ)
-						payload:        flat.node_payload(params)
-						pos:            write.node.pos
-						children_start: write.node.children_start
-						children_count: write.node.children_count
-						kind:           write.node.kind
-						op:             write.node.op
-						is_mut:         write.node.is_mut
+						value:                t.promote_scoped_result_text(write.node.value)
+						typ:                  t.promote_scoped_result_text(write.node.typ)
+						payload:              flat.node_payload(params)
+						pos:                  write.node.pos
+						children_start:       write.node.children_start
+						children_count:       write.node.children_count
+						kind:                 write.node.kind
+						op:                   write.node.op
+						is_mut:               write.node.is_mut
+						skip_ownership_drops: write.node.skip_ownership_drops
 					}
 				}
 			}
