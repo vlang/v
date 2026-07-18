@@ -3972,6 +3972,18 @@ fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined ma
 	return true, false
 }
 
+fn c_preprocessor_bare_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, target pref.Target) (bool, bool) {
+	if name in undefined {
+		return true, false
+	}
+	// Definitions collected from directives and -D flags do not retain their values.
+	// They are sufficient for defined(NAME), but not for evaluating #if NAME.
+	if name in defined || name in uncertain {
+		return false, true
+	}
+	return c_preprocessor_macro_state(name, defined, undefined, uncertain, target)
+}
+
 fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, target pref.Target) (bool, bool) {
 	mut clean := raw.trim_space()
 	mut negated := false
@@ -3987,8 +3999,11 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 		return true, active
 	}
 	if clean.len > 0 && c_identifier_start(clean[0]) && c_header_struct_tag(clean) == clean {
-		known, mut active := c_preprocessor_macro_state(clean, defined, undefined, uncertain,
+		known, mut active := c_preprocessor_bare_macro_state(clean, defined, undefined, uncertain,
 			target)
+		if !known {
+			return false, true
+		}
 		if negated {
 			active = !active
 		}

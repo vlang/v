@@ -41,8 +41,18 @@ fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 	known_defined, active_defined := c_preprocessor_condition_state('SOME_DEFINED_MACRO', {
 		'SOME_DEFINED_MACRO': true
 	}, empty, empty, linux)
-	assert known_defined
+	assert !known_defined
 	assert active_defined
+	known_negated_defined, active_negated_defined := c_preprocessor_condition_state('!FEATURE', {
+		'FEATURE': true
+	}, empty, empty, linux)
+	assert !known_negated_defined
+	assert active_negated_defined
+	known_presence, active_presence := c_preprocessor_condition_state('defined(FEATURE)', {
+		'FEATURE': true
+	}, empty, empty, linux)
+	assert known_presence
+	assert active_presence
 	known_compound, active_compound := c_preprocessor_condition_state('SOME_UNSET_MACRO || 1',
 		empty, empty, empty, linux)
 	assert !known_compound
