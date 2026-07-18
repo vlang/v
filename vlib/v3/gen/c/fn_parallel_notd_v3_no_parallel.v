@@ -372,7 +372,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			g.scoped_fn_output_paths = [g.scoped_fn_output_path]
 			os.rm(g.scoped_fn_output_path) or {}
 		}
-		if g.scope_parallel_workers || n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
+		if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 			if g.scope_parallel_workers {
 				g.gen_fn_items_scoped_master_batches(items)
 			} else {
@@ -538,6 +538,9 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		}
 		node := g.a.nodes[idx]
 		cost++
+		if node.kind == .string_literal {
+			g.intern_string(node.value)
+		}
 		if node.kind == .selector {
 			g.collect_c_extern_ref_from_node(node)
 		}

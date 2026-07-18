@@ -75,3 +75,24 @@ fn test_scoped_cgen_batch_preserves_worker_interned_literals() {
 	}
 	assert g.str_lits == ['source', 'generated_a', 'generated_b']
 }
+
+fn test_fused_parallel_prep_interns_body_string_literals() {
+	mut g, _ := parallel_worker_test_gen(false)
+	g.a.nodes = [
+		flat.Node{
+			kind:           .fn_decl
+			children_start: 0
+			children_count: 1
+		},
+		flat.Node{
+			kind:  .string_literal
+			value: 'worker literal'
+		},
+	]
+	g.a.children = [flat.NodeId(1)]
+	mut stack := []flat.NodeId{}
+	mut type_text_cache := map[string]bool{}
+	g.fn_item_cost_and_prep(0, mut stack, mut type_text_cache)
+	assert g.str_lits == ['worker literal']
+	assert g.str_lit_ids['worker literal'] == 0
+}

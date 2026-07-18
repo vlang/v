@@ -1560,10 +1560,12 @@ fn main() {
 	// The cache generator emits complete module bodies, including late generic
 	// specializations that are not reachable from the entry program. Its split output
 	// currently relies on the serial function-item walk to retain those definitions.
+	// Compiler self-hosts skip generic lowering, so their cache split can still use cgen workers.
 	// Large generic user programs retain a substantially expanded AST after
 	// monomorphization. Stream them through the serial cgen path in preallocated
 	// builds so worker setup does not clone that retained state at the peak.
-	cache_no_parallel_cgen := current_no_parallel || cache_manager.enabled
+	cache_no_parallel_cgen := current_no_parallel
+		|| (cache_manager.enabled && !building_v && !cmd_v_build)
 		|| (scope_prealloc_stages && !building_v && !cmd_v_build)
 	mut p := parser.Parser.new(prefs)
 	if building_v || cmd_v_build {

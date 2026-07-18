@@ -20311,7 +20311,10 @@ fn (tc &TypeChecker) non_file_scope_type(name string) ?Type {
 	if owner.belongs_to_scope(tc.file_scope) {
 		return none
 	}
-	return tc.cur_scope.lookup(name)
+	if owner.scope == unsafe { nil } || owner.index < 0 || owner.index >= owner.scope.types.len {
+		return none
+	}
+	return owner.scope.types[owner.index]
 }
 
 // resolve_expr resolves resolve expr information for types.
