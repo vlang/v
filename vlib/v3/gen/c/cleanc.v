@@ -3984,9 +3984,20 @@ fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined ma
 	if name in uncertain {
 		return false, true
 	}
+	if name in ['__linux__', '__linux', 'linux'] {
+		return true, target.os in ['linux', 'android', 'termux']
+	}
+	if name == 'unix' {
+		if target.os in ['linux', 'android', 'termux'] {
+			return true, true
+		}
+		if target.os in ['windows', 'macos', 'ios'] {
+			return true, false
+		}
+		return false, true
+	}
 	match name {
 		'__APPLE__', '__MACH__' { return true, target.os in ['macos', 'ios'] }
-		'__linux__', '__linux' { return true, target.os == 'linux' }
 		'_WIN32' { return true, target.os == 'windows' }
 		'_WIN64' { return true, target.os == 'windows' && target.pointer_bits == 64 }
 		'__FreeBSD__' { return true, target.os == 'freebsd' }

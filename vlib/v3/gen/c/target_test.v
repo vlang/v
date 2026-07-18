@@ -30,6 +30,16 @@ fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 		false, linux)
 	assert known_apple
 	assert !active_apple
+	known_linux, active_linux := c_preprocessor_condition_state('linux', empty, empty, empty,
+		false, linux)
+	assert known_linux
+	assert active_linux
+	known_negated_unix, active_negated_unix := c_preprocessor_condition_state('!unix', empty,
+		empty, empty, false, linux)
+	assert known_negated_unix
+	assert !active_negated_unix
+	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, linux)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], []string{}, linux)
 	known_unset, active_unset := c_preprocessor_condition_state('SOME_UNSET_MACRO', empty, empty,
 		empty, false, linux)
 	assert known_unset
