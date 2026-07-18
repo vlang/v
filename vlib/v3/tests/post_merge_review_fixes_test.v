@@ -5692,12 +5692,14 @@ fn main() {
 	a := Value(7)
 	b := Value("v3")
 	p := &Value("pointer")
+	nil_pointer := unsafe { &Value(nil) }
 	println(unsafe { typeof(a) })
 	println(unsafe { typeof(b) })
 	println(unsafe { typeof(p) })
+	println(typeof(nil_pointer).name)
 }
 ')
-	assert typeof_out == 'int\nstring\nstring'
+	assert typeof_out == 'int\nstring\nstring\nunknown Value'
 	promoted_out := run_good(v3_bin, 'promoted_embed_struct_init', 'struct Inner {
 	count int = 3
 	items []int

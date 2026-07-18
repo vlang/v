@@ -8911,9 +8911,16 @@ fn (mut g FlatGen) gen_typeof_name(node flat.Node) {
 					sid := g.intern_string(display_name)
 					g.write(', _str_${sid}')
 				}
-				g.write('})[(')
-				g.gen_expr(expr_id)
-				g.write(if is_pointer { ')->typ]' } else { ').typ]' })
+				g.write('})[')
+				if is_pointer {
+					g.write('v3_sum_ptr_type_idx(')
+					g.gen_expr(expr_id)
+					g.write(')]')
+				} else {
+					g.write('(')
+					g.gen_expr(expr_id)
+					g.write(').typ]')
+				}
 				return
 			}
 		}
@@ -11847,6 +11854,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	// clash against that file's own non-static prototype.
 	g.writeln('__attribute__((weak)) void vheap_alloc(void* p, u64 n) { (void)p; (void)n; }')
 	g.writeln('__attribute__((weak)) void vheap_free(void* p) { (void)p; }')
+	g.writeln('static inline int v3_sum_ptr_type_idx(const void* p) { return p == NULL ? 0 : *(const int*)p; }')
 	g.prealloc_atomic_compat_decls()
 	g.atomic_builtin_compat_decls()
 	g.writeln('static inline double math__abs(double a) { return a < 0 ? -a : a; }')
