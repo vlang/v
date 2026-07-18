@@ -5750,6 +5750,40 @@ fn main() {
 }
 ')
 	assert promoted_declared_default_out == '3\n7\n3\n8'
+	promoted_call_default_out := run_good(v3_bin, 'promoted_embed_call_default', '__global calls int
+
+struct CallInner {
+	a int
+	b int
+}
+
+struct CallOuter {
+	CallInner = make_call_inner()
+}
+
+fn make_call_inner() CallInner {
+	calls++
+	return CallInner{
+		a: 5
+		b: 6
+	}
+}
+
+fn main() {
+	value := CallOuter{
+		b: 7
+	}
+	heap := &CallOuter{
+		b: 8
+	}
+	println(int_str(value.a))
+	println(int_str(value.b))
+	println(int_str(heap.a))
+	println(int_str(heap.b))
+	println(int_str(calls))
+}
+')
+	assert promoted_call_default_out == '5\n7\n5\n8\n2'
 	fixed_promoted_out := run_good(v3_bin, 'promoted_fixed_array_struct_init', 'struct FixedInner {
 	values [2]int
 }

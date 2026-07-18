@@ -192,7 +192,7 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 	}
 	default_init := t.a.nodes[int(default_id)]
 	if default_init.kind != .struct_init {
-		return init_id
+		return t.materialize_promoted_struct_default(init_id, default_id, struct_type)
 	}
 	init := t.a.nodes[int(init_id)]
 	mut provided := map[string]bool{}
@@ -245,6 +245,45 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 		value:          init.value
 		typ:            init.typ
 	})
+}
+
+fn (mut t Transformer) materialize_promoted_struct_default(init_id flat.NodeId, default_id flat.NodeId, struct_type string) flat.NodeId {
+	init := t.a.nodes[int(init_id)]
+	if init.kind != .struct_init {
+		return init_id
+	}
+	info := t.lookup_struct_info(struct_type) or { return init_id }
+	old_module := t.cur_module
+	if info.module.len > 0 {
+		t.cur_module = info.module
+	}
+	default_value := t.transform_expr_for_type(default_id, struct_type)
+	t.cur_module = old_module
+	tmp_name := t.new_temp('promoted_default')
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, default_value, struct_type)
+	for i in 0 .. init.children_count {
+		field := t.a.child_node(&init, i)
+		if field.kind != .field_init || field.children_count == 0 {
+			continue
+		}
+		field_name := if field.value.len > 0 {
+			field.value
+		} else if i < info.fields.len {
+			info.fields[i].name
+		} else {
+			''
+		}
+		if field_name.len == 0 {
+			continue
+		}
+		field_type := t.lookup_struct_field_type(struct_type, field_name) or { field.typ }
+		value := t.a.child(field, 0)
+		selector := t.make_selector(t.make_ident(tmp_name), field_name, field_type)
+		t.pending_stmts << t.make_assign(selector, value)
+	}
+	result := t.make_ident(tmp_name)
+	t.set_node_typ(int(result), struct_type)
+	return result
 }
 
 fn (mut t Transformer) make_promoted_struct_field_init(path []FieldInfo, leaf_fields []flat.NodeId) flat.NodeId {
