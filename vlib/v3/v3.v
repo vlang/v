@@ -98,16 +98,14 @@ struct CObjectDependencies {
 fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
 	mut prepared := []string{}
-	mut skip_language := false
-	for flag in flags {
-		if skip_language {
-			skip_language = false
-			continue
-		}
+	mut active_language := ''
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
 		clean := flag.trim_space()
 		if clean == '-x' {
-			// Language selection applies to compiler inputs, not the later object link.
-			skip_language = true
+			active_language = if i + 1 < flags.len { flags[i + 1].trim_space() } else { '' }
+			i += 2
 			continue
 		}
 		if c_flag_is_object_file(clean) {
@@ -122,11 +120,43 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 			if cpp_runtime !in flags && cpp_runtime !in prepared {
 				prepared << cpp_runtime
 			}
+		} else if c_flag_is_c_source_file(clean) {
+			if active_language.len > 0 && active_language != 'none' {
+				prepared << ['-x', active_language]
+			}
+			prepared << flag
+			if active_language.len > 0 && active_language != 'none' {
+				prepared << ['-x', 'none']
+			}
 		} else {
 			prepared << flag
 		}
+		i++
 	}
 	return prepared
+}
+
+fn c_link_flags_use_non_c_language(flags []string) bool {
+	mut language := ''
+	mut i := 0
+	for i < flags.len {
+		clean := flags[i].trim_space()
+		if clean == '-x' && i + 1 < flags.len {
+			language = flags[i + 1].trim_space()
+			i += 2
+			continue
+		}
+		if c_flag_is_c_source_file(clean) {
+			if language in ['c++', 'objective-c++'] {
+				return true
+			}
+			if language in ['', 'none'] && (clean.ends_with('.cc') || clean.ends_with('.cpp')) {
+				return true
+			}
+		}
+		i++
+	}
+	return false
 }
 
 fn c_object_compile_flags(flags []string) []string {
@@ -1911,6 +1941,11 @@ fn main() {
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
+		link_c_standard := if c_link_flags_use_non_c_language(resolved_c_flags) {
+			''
+		} else {
+			c_standard
+		}
 		mut cached_objects := []string{}
 		if cache_state.manager.enabled {
 			generated_source := os.read_file(cache_plan_file) or {
@@ -1957,7 +1992,10 @@ fn main() {
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
-			mut tcc_args := [c_standard]
+			mut tcc_args := []string{}
+			if link_c_standard.len > 0 {
+				tcc_args << link_c_standard
+			}
 			if pic_flag.len > 0 {
 				tcc_args << pic_flag
 			}
@@ -1979,7 +2017,9 @@ fn main() {
 		if is_prod || !tried_tcc || result.exit_code != 0 {
 			mut cc_args := []string{}
 			cc_args << target_args
-			cc_args << c_standard
+			if link_c_standard.len > 0 {
+				cc_args << link_c_standard
+			}
 			if is_prod {
 				cc_args << '-O2'
 			}

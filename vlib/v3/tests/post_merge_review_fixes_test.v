@@ -5825,6 +5825,13 @@ fn main() {
 		'main.v':  'module main\n\n#flag @VMODROOT/shim.o\n#include "shim.m"\n#include "shim.mm"\n\nfn C.answer_from_cpp() int\nfn C.answer_from_objective_c() int\nfn C.answer_from_objective_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_cpp() + C.answer_from_objective_c() + C.answer_from_objective_cpp()))\n}\n'
 	}, 'main.v')
 	assert objective_cpp_out == '46'
+	explicit_language_out := run_good_project_with_flags(v3_bin, 'explicit_language_source_flag',
+		'-cc clang', {
+		'v.mod':  "Module { name: 'explicit_language_source_flag' }\n"
+		'shim.c': 'extern "C" int answer_from_explicit_cpp(void) { auto answer = []() { return 44; }; return answer(); }\n'
+		'main.v': 'module main\n\n#flag -x c++\n#flag @VMODROOT/shim.c\n\nfn C.answer_from_explicit_cpp() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_explicit_cpp()))\n}\n'
+	}, 'main.v')
+	assert explicit_language_out == '44'
 }
 
 fn test_review_fixed_array_alias_clone_dispatch() {
@@ -5856,12 +5863,11 @@ fn main() {
 ',
 		'cannot use `int` as argument')
 	v_call_out := run_good(v3_bin, 'v_voidptr_auto_address', 'fn take(value voidptr) int {
-	_ = value
-	return 7
+	return unsafe { *(&int(value)) }
 }
 
 fn main() {
-	value := 1
+	value := 7
 	println(int_str(take(value)))
 }
 ')
