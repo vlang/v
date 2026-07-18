@@ -68,11 +68,15 @@ fn main() {
 		.green { println("g") }
 	}
 	ptr := &p
+	pheap := &Point{x: 1, y: 2}
+	parr := &[]int{len: 1}
 	unsafe {
 		println(ptr.x)
 	}
 	r := generic_id[int](7)
 	_ = m
+	_ = pheap
+	_ = parr
 	_ = arr
 	_ = fixed
 	_ = fixed_val

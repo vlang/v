@@ -2520,13 +2520,16 @@ fn (mut p Parser) parse_compile_error_call(directive_start int) flat.NodeId {
 	if p.tok == .semicolon {
 		p.next()
 	}
-	return p.make_compile_error_call(message, directive_start)
+	return p.make_compile_error_call(message, directive_start, p.prev_tok_end)
 }
 
 // make_compile_error_call builds the compiler-only `__v_compile_error` sentinel
-// call. `start` is the directive's source offset so the checker reports the
-// compile-error diagnostic against a positioned node instead of a zero span.
-fn (mut p Parser) make_compile_error_call(message flat.NodeId, start int) flat.NodeId {
+// call. `start`/`end` are the directive's source offsets so the checker reports
+// the compile-error diagnostic against a positioned node instead of a zero span.
+// Callers that have already consumed the directive can pass `p.prev_tok_end` as
+// `end`; callers resolving a directive out of a condition string (where the token
+// has not been consumed) must pass the token's own end.
+fn (mut p Parser) make_compile_error_call(message flat.NodeId, start int, end int) flat.NodeId {
 	// Keep this as a compiler-only sentinel call. The checker reports it immediately for a
 	// selected concrete branch, while a deferred generic branch keeps it until specialization;
 	// if that branch is selected, generic validation rejects the sentinel as well.
@@ -2537,7 +2540,8 @@ fn (mut p Parser) make_compile_error_call(message flat.NodeId, start int) flat.N
 		value:          '__v_compile_error'
 		children_start: cstart
 		children_count: 2
-		pos:            p.span_to(start)
+		pos:            token.new_span(p.cur_file_id, clamp_source_offset(start, p.s.src.len),
+			clamp_source_offset(end, p.s.src.len))
 	})
 }
 
@@ -2935,8 +2939,10 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					content := os.read_file(vmod_file) or {
 						message := p.a.add_val_id(5,
 							'@VMOD_FILE can only be used in projects that have a v.mod file')
-						// pseudo_pos is the comptime condition's source offset.
-						call := p.make_compile_error_call(message, pseudo_pos)
+						// The @VMOD_FILE token has not been consumed here, so derive its
+						// own span from the condition's source offset (pseudo_pos) plus
+						// the token's local bounds within the condition string.
+						call := p.make_compile_error_call(message, pseudo_pos + start, pseudo_pos + i)
 						_ = p.make_top_level_compile_error(call)
 						''
 					}
@@ -7191,7 +7197,8 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						'@VMOD_FILE can only be used in projects that have a v.mod file')
 					// name_pos was captured before @VMOD_FILE was consumed, so the
 					// sentinel call is reported at the directive, not the next token.
-					return p.make_compile_error_call(message, name_pos)
+					// prev_tok_end is the end of the just-consumed @VMOD_FILE token.
+					return p.make_compile_error_call(message, name_pos, p.prev_tok_end)
 				}
 				return p.add_val_id(5, content.replace('\r\n', '\n'))
 			}
@@ -7382,6 +7389,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 			})
 		}
 		.amp {
+			amp_start := p.span_start() // start offset of the leading `&`
 			p.next()
 			if p.tok == .amp {
 				p.next()
@@ -7404,6 +7412,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 							value:          type_name
 							children_start: cstart
 							children_count: 1
+							pos:            p.span_to(amp_start)
 						})
 					}
 					id := p.add_val(.ident, base_name)
@@ -7412,12 +7421,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						op:             .amp
 						children_start: p.add_child(id)
 						children_count: 1
+						pos:            p.span_to(amp_start)
 					})
 					return p.add_node(flat.Node{
 						kind:           .prefix
 						op:             .amp
 						children_start: p.add_child(first)
 						children_count: 1
+						pos:            p.span_to(amp_start)
 					})
 				}
 			} else if p.tok == .name && p.lit == 'C' && p.peek() == .dot {
@@ -7449,6 +7460,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 							typ:            '&${full_name}'
 							children_start: p.add_child(inner)
 							children_count: 1
+							pos:            p.span_to(amp_start)
 						})
 					}
 				}
@@ -7463,6 +7475,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						value:          type_name
 						children_start: cstart
 						children_count: 1
+						pos:            p.span_to(amp_start)
 					})
 				}
 				if p.tok == .lcbr {
@@ -7472,6 +7485,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						op:             .amp
 						children_start: p.add_child(inner)
 						children_count: 1
+						pos:            p.span_to(amp_start)
 					})
 				}
 				p.s = saved_s
@@ -7511,6 +7525,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 							op:             .amp
 							children_start: p.add_child(inner)
 							children_count: 1
+							pos:            p.span_to(amp_start)
 						})
 					}
 				}
@@ -7524,6 +7539,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						value:          '&${local_type_name}'
 						children_start: cstart
 						children_count: 1
+						pos:            p.span_to(amp_start)
 					})
 				}
 				if p.tok == .semicolon && p.peek() == .lcbr {
@@ -7536,6 +7552,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						op:             .amp
 						children_start: p.add_child(inner)
 						children_count: 1
+						pos:            p.span_to(amp_start)
 					})
 				}
 				p.s = saved_s
@@ -7559,6 +7576,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						value:          type_name
 						children_start: cstart
 						children_count: 1
+						pos:            p.span_to(amp_start)
 					})
 				}
 				if p.tok == .lcbr && type_name.starts_with('&[]') {
@@ -7569,16 +7587,18 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 						typ:            type_name
 						children_start: p.add_child(inner)
 						children_count: 1
+						pos:            p.span_to(amp_start)
 					})
 				}
 			}
 			operand := p.expr(.highest)
 			pstart := p.add_child(operand)
-			return p.add_node(flat.Node{
+			return p.a.add_node(flat.Node{
 				kind:           .prefix
 				op:             .amp
 				children_start: pstart
 				children_count: 1
+				pos:            p.span_to(amp_start)
 			})
 		}
 		.and {

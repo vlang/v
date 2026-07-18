@@ -121,6 +121,32 @@ fn test_dynamic_array_init_spans_from_bracket() {
 	assert saw
 }
 
+// Address-of expressions (`&Foo{}`, `&[]T{}`, `&T(x)`) span from the `&` through
+// the whole operand; the pointer/array-init variants build their nodes directly
+// on the flat AST, so they must still carry a valid, full span.
+fn test_address_of_prefix_spans_from_ampersand() {
+	ast, src := parse_span_source('addr_of', 'struct Foo { x int }
+fn main() {
+	a := &[]int{len: 1}
+	b := &Foo{x: 1}
+	c := &int(0)
+	_ = a
+	_ = b
+	_ = c
+}
+')
+	mut spans := []string{}
+	for node in ast.nodes {
+		if (node.kind == .prefix && node.op == .amp)
+			|| (node.kind == .cast_expr && node.value.starts_with('&')) {
+			spans << span_text(src, node)
+		}
+	}
+	assert '&[]int{len: 1}' in spans
+	assert '&Foo{x: 1}' in spans
+	assert '&int(0)' in spans
+}
+
 // Prefix expressions span from the operator to the end of their operand.
 fn test_prefix_expression_spans_operator_to_operand() {
 	ast, src := parse_span_source('prefix', 'fn main() {
