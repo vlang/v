@@ -19,13 +19,10 @@ vlib/v/tests/generics/generic_different_type_test.v
 vlib/v/tests/generics/generic_fn_call_by_generic_fn_test.v
 vlib/v/tests/generics/generic_fn_infer_variadic_test.v
 vlib/v/tests/generics/generic_fn_returning_option_and_result_test.v
-vlib/v/tests/generics/generic_fn_short_struct_init_reference_inference_test.v
 vlib/v/tests/generics/generic_fn_short_syntax_struct_param_test.v
 vlib/v/tests/generics/generic_fn_type_generic_method_test.v
 vlib/v/tests/generics/generic_fn_using_generic_type_in_if_test.v
 vlib/v/tests/generics/generic_fn_value_inference_test.v
-vlib/v/tests/generics/generic_fn_with_short_generic_struct_init_syntax_1_test.v
-vlib/v/tests/generics/generic_fn_with_short_generic_struct_init_syntax_2_test.v
 vlib/v/tests/generics/generic_function_error_propagation_test.v
 vlib/v/tests/generics/generic_interface_implements_concrete_type_test.v
 vlib/v/tests/generics/generic_interface_infer_test.v
@@ -37,7 +34,6 @@ vlib/v/tests/generics/generic_interface_test.v
 vlib/v/tests/generics/generic_lambda_expr_test.v
 vlib/v/tests/generics/generic_match_expr_test.v
 vlib/v/tests/generics/generic_method_lambda_arg_test.v
-vlib/v/tests/generics/generic_options_with_reserved_ident_test.v
 vlib/v/tests/generics/generic_selector_test.v
 vlib/v/tests/generics/generic_spawn_test.v
 vlib/v/tests/generics/generic_struct_default_interface_field_test.v
@@ -52,7 +48,6 @@ vlib/v/tests/generics/generics_array_of_threads_test.v
 vlib/v/tests/generics/generics_fn_return_generic_interface_test.v
 vlib/v/tests/generics/generics_fn_variable_1_test.v
 vlib/v/tests/generics/generics_fn_variable_3_test.v
-vlib/v/tests/generics/generics_from_modules/infer_generic_struct_test.v
 vlib/v/tests/generics/generics_interface_cross_module_recheck_test.v
 vlib/v/tests/generics/generics_interface_decl_test.v
 vlib/v/tests/generics/generics_interface_method_test.v

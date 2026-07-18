@@ -3,6 +3,8 @@ module bench
 import runtime
 import time
 
+const default_memory_limit_kb = i64(10) * 1024 * 1024
+
 // Step represents step data used by bench.
 pub struct Step {
 pub:
@@ -31,6 +33,7 @@ mut:
 	step_sw               time.StopWatch
 	last_allocation_count u64
 	last_allocated_bytes  u64
+	memory_limit_kb       i64
 }
 
 // new creates a new value for bench.
@@ -41,7 +44,13 @@ pub fn new() Bench {
 		step_sw:               time.new_stopwatch()
 		last_allocation_count: allocations.allocation_count
 		last_allocated_bytes:  allocations.allocated_bytes
+		memory_limit_kb:       default_memory_limit_kb
 	}
+}
+
+// disable_memory_limit disables the compiler RSS safety limit.
+pub fn (mut b Bench) disable_memory_limit() {
+	b.memory_limit_kb = 0
 }
 
 // step records a serial pipeline step.
@@ -53,12 +62,17 @@ pub fn (mut b Bench) step(name string) {
 // when the step actually ran across threads.
 pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	elapsed_us := b.step_sw.elapsed().microseconds()
+	label := if parallel { '${name} (parallel)' } else { name }
 	ram_kb := current_rss_kb()
 	peak_ram_kb := peak_rss_kb()
+	message := memory_limit_error(ram_kb, b.memory_limit_kb, label)
+	if message.len > 0 {
+		eprintln(message)
+		exit(1)
+	}
 	ram_mb := f64(ram_kb) / 1024.0
 	peak_ram_mb := f64(peak_ram_kb) / 1024.0
 	ms := f64(elapsed_us) / 1000.0
-	label := if parallel { '${name} (parallel)' } else { name }
 	allocations := current_allocation_stats()
 	allocation_count := allocations.allocation_count - b.last_allocation_count
 	allocated_bytes := allocations.allocated_bytes - b.last_allocated_bytes
@@ -82,6 +96,16 @@ pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	b.last_allocation_count = after_report.allocation_count
 	b.last_allocated_bytes = after_report.allocated_bytes
 	b.step_sw.restart()
+}
+
+fn memory_limit_error(ram_kb i64, limit_kb i64, step string) string {
+	if limit_kb <= 0 || ram_kb < limit_kb {
+		return ''
+	}
+	ram_mb := ram_kb / 1024
+	limit_gib := limit_kb / (1024 * 1024)
+	return 'error: v3 compiler memory usage reached ${ram_mb} MiB RSS after ${step} ' +
+		'(limit: ${limit_gib} GiB); use `-no-memory-limit` to disable this limit'
 }
 
 // metric records a structural compiler counter for the final benchmark report.

@@ -443,6 +443,7 @@ fn cli_usage() string {
 		'  -os <name> -arch <name>     target platform\n' +
 		'  -cc <compiler>               C compiler executable\n' +
 		'  -prod -c99 -shared -strict  C build modes\n' +
+		'  -no-memory-limit             disable the 10 GiB RSS safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
 
@@ -974,6 +975,7 @@ fn main() {
 	mut no_parallel := false
 	mut no_prealloc := false
 	mut no_cache := false
+	mut no_memory_limit := false
 	mut parallel_transform := true
 	mut building_v := false
 	mut ownership_mode := false
@@ -1081,6 +1083,9 @@ fn main() {
 			i++
 		} else if args[i] == '-nocache' || args[i] == '--no-cache' {
 			no_cache = true
+			i++
+		} else if args[i] == '-no-memory-limit' || args[i] == '--no-memory-limit' {
+			no_memory_limit = true
 			i++
 		} else if args[i] == '-prealloc' {
 			// Same effect as `v -prealloc`: activate the `$if prealloc {` arena
@@ -1250,6 +1255,9 @@ fn main() {
 	}
 
 	mut b := bench.new()
+	if no_memory_limit {
+		b.disable_memory_limit()
+	}
 	mut c_object_cache_stats := CObjectCacheStats{}
 	println('=== v3 benchmark ===')
 

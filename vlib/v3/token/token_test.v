@@ -22,6 +22,23 @@ fn test_operator_properties_are_owned_by_tokens() {
 	assert !Token.number.is_assignment()
 }
 
+fn test_file_position_resolves_file_local_offsets() {
+	src := 'line one\nsecond line\nthird\n'
+	mut fs := FileSet.new()
+	mut f := fs.add_file('x.v', src.len)
+	f.index_lines(src)
+	// Pos.offset is file-local: offset 0 is the file start, not fs.base.
+	start := f.position(new_pos(1, 0))
+	assert start.line == 1
+	assert start.column == 1
+	assert f.line(new_pos(1, 0)) == 1
+	// Offset 9 is the start of the second line (`line one\n` is 9 bytes).
+	second := f.position(new_pos(1, 9))
+	assert second.line == 2
+	assert second.column == 1
+	assert f.line(new_pos(1, 9)) == 2
+}
+
 fn test_keyword_property_does_not_depend_on_enum_ordinals() {
 	assert Token.key_as.is_keyword()
 	assert Token.key_unsafe.is_keyword()
