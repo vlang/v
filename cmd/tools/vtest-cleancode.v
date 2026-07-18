@@ -35,6 +35,8 @@ const vet_folders = [
 
 const verify_known_failing_exceptions = [
 	'vlib/veb/tests/graceful_shutdown_test.v',
+	// This file uses V3-only lifetime syntax, which the V1 formatter cannot parse.
+	'vlib/sync/arc/arc_d_ownership.v',
 ]
 
 const vfmt_verify_list = [

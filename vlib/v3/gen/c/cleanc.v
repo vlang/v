@@ -93,6 +93,7 @@ mut:
 	cache_program_files            map[string]bool
 	str_lits                       []string
 	str_lit_ids                    map[string]int
+	str_lits_shared                bool
 	global_types                   map[string]types.Type
 	global_raw_type_texts          map[string]string
 	enum_vals                      map[string]int
@@ -1108,7 +1109,7 @@ fn (mut g FlatGen) append_scoped_output_file(path string, source_path string) bo
 		source.close()
 		return false
 	}
-	mut buffer := []u8{len: 64 * 1024}
+	mut buffer := []u8{len: 65_536} // 64 KiB
 	for {
 		n_read := source.read(mut buffer) or {
 			if err is os.Eof {
@@ -1155,6 +1156,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.fn_gen_items = []FlatFnGenItem{}
 	g.fn_segs = []string{}
 	g.str_lits = []string{}
+	g.str_lits_shared = false
 	g.defers = []flat.NodeId{}
 	g.fn_defers = []flat.NodeId{}
 	g.fn_defer_counts.clear()
@@ -1346,14 +1348,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	mut output_scope := unsafe { nil }
 	if stream_scoped_output {
 		existing_output := if g.sb.len > 0 { g.sb.str() } else { '' }
-		output_scope = g.start_scoped_output_builder(640 * 1024)
+		output_scope = g.start_scoped_output_builder(2097152)
 		if existing_output.len > 0 {
 			g.sb.write_string(existing_output)
 			unsafe { existing_output.free() }
 		}
 	} else {
 		// Leave headroom for the small body-dependent supplement emitted below.
-		g.sb.ensure_cap(known_output_len + 1024 * 1024)
+		g.sb.ensure_cap(known_output_len + 1_048_576) // 1 MiB
 	}
 	g.c99_feature_test_macros()
 	g.emit_preserved_c_directives()
@@ -1364,7 +1366,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.type_forward_decls()
 	if stream_scoped_output {
 		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
-			640 * 1024) or {
+			2097152) or {
 			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
 			return ''
 		}
@@ -1381,7 +1383,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.struct_decls()
 	if stream_scoped_output {
 		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
-			640 * 1024) or {
+			2097152) or {
 			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
 			return ''
 		}
@@ -1400,7 +1402,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.emit_c_directives(true)
 	if stream_scoped_output {
 		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
-			640 * 1024) or {
+			2097152) or {
 			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
 			return ''
 		}
@@ -1409,7 +1411,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.release_scoped_fn_items()
 	if stream_scoped_output {
 		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
-			640 * 1024) or {
+			2097152) or {
 			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
 			return ''
 		}
@@ -1418,7 +1420,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.interface_method_forward_decls()
 	if stream_scoped_output {
 		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
-			640 * 1024) or {
+			2097152) or {
 			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
 			return ''
 		}
@@ -1426,7 +1428,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.shared_dup_fns()
 	if stream_scoped_output {
 		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
-			640 * 1024) or {
+			2097152) or {
 			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
 			return ''
 		}
@@ -1436,7 +1438,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.spawn_wrapper_decls()
 	if stream_scoped_output {
 		output_scope = g.flush_and_restart_scoped_output(stream_path, stream_started, output_scope,
-			640 * 1024) or {
+			2097152) or {
 			g.cleanup_scoped_output_files(stream_path, fn_stream_path)
 			return ''
 		}
@@ -1773,7 +1775,7 @@ fn (mut g FlatGen) collect_gen_info() {
 					}
 					raw_pt := g.tc.parse_resolution_type(child.typ)
 					mut pt := raw_pt
-					if shared_alias_ptr := g.shared_alias_pointer_type_from_text(child.typ) {
+					if shared_alias_ptr := g.cached_shared_alias_pointer_type_from_text(child.typ) {
 						pt = shared_alias_ptr
 					} else if raw_pt !is types.Pointer && param_idx < typed_params.len {
 						pt = typed_params[param_idx]
@@ -1810,9 +1812,7 @@ fn (mut g FlatGen) collect_gen_info() {
 			if shared_params.len > 0 {
 				shared_params = g.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
 			}
-			g.register_fn_decl_param_types(node.value, full_name, ptypes, decl_is_variadic)
 			if shared_params.len > 0 {
-				g.register_fn_decl_shared_params(node.value, full_name, shared_params)
 				file_rank := c_backend_fn_file_rank(cur_file)
 				if full_name !in preferred_shared_fn_file_ranks
 					|| file_rank > preferred_shared_fn_file_ranks[full_name] {
@@ -1829,8 +1829,8 @@ fn (mut g FlatGen) collect_gen_info() {
 				nonshared_fn_file_ranks << c_backend_fn_file_rank(cur_file)
 				nonshared_fn_node_indexes << node_idx
 			}
-			g.register_fn_decl_mut_receiver(node.value, full_name, first_param_is_mut)
-			g.register_fn_decl_ret_type(node.value, full_name, node.typ)
+			g.register_fn_decl_signature(node.value, full_name, ptypes, shared_params,
+				decl_is_variadic, first_param_is_mut, node.typ)
 			// Module-level `init()` functions run once at startup. Collect their C
 			// names so _vinit can invoke them (V semantics).
 			if node.value == 'init' && ptypes.len == 0
@@ -2008,6 +2008,22 @@ fn (mut g FlatGen) collect_gen_info() {
 	}
 	g.modules['strings'] = 'strings'
 	g.collect_const_init_order_from_files()
+}
+
+fn (mut g FlatGen) cached_shared_alias_pointer_type_from_text(raw string) ?types.Type {
+	key := '\x00shared-alias-pointer\x00${g.tc.cur_file}\x00${g.tc.cur_module}\x00${raw}'
+	if cached := g.param_types_cache[key] {
+		if cached.len > 0 {
+			return cached[0]
+		}
+		return none
+	}
+	resolved := g.shared_alias_pointer_type_from_text(raw) or {
+		g.param_types_cache[key] = []types.Type{}
+		return none
+	}
+	g.param_types_cache[key] = [resolved]
+	return resolved
 }
 
 fn (mut g FlatGen) preseed_unused_fn_ptr_param_types(node flat.Node, module_name string, file string) {
@@ -4029,137 +4045,58 @@ fn fn_decl_module_key(module_name string, name string) string {
 	return '${module_name}\x01${name}'
 }
 
-// register_fn_decl_param_types updates register fn decl param types state for c.
-fn (mut g FlatGen) register_fn_decl_param_types(name string, full_name string, ptypes []types.Type, is_variadic bool) {
+fn (mut g FlatGen) register_fn_decl_signature_alias(alias string, ptypes []types.Type, shared_params []bool, is_variadic bool, is_mut bool, rt types.Type) {
+	if alias !in g.fn_decl_param_types {
+		g.fn_decl_param_types[alias] = ptypes
+		if is_variadic {
+			g.fn_decl_variadic[alias] = true
+		}
+	}
+	// All-false declarations are registered too: their exact-name entry stops
+	// short-name fallback from borrowing flags from an unrelated declaration.
+	if shared_params.len > 0 && alias !in g.fn_decl_shared_params {
+		g.fn_decl_shared_params[alias] = shared_params
+	}
+	if is_mut {
+		g.fn_decl_mut_receivers[alias] = true
+	}
+	if alias !in g.fn_decl_ret_types {
+		g.fn_decl_ret_types[alias] = rt
+	}
+}
+
+// register_fn_decl_signature indexes every spelling used by CGen call lookup
+// while retaining the collision-proof per-module parameter/return entries.
+fn (mut g FlatGen) register_fn_decl_signature(name string, full_name string, ptypes []types.Type, shared_params []bool, is_variadic bool, is_mut bool, ret_typ string) {
+	rt := g.tc.parse_type(ret_typ)
 	module_key := fn_decl_module_key(g.tc.cur_module, name)
 	g.fn_decl_param_types[module_key] = ptypes
+	g.fn_decl_ret_types[module_key] = rt
 	if is_variadic {
 		g.fn_decl_variadic[module_key] = true
 	}
 	short_name := name.all_after_last('.')
 	g.fn_decl_variadic_short_counts[short_name] = g.fn_decl_variadic_short_counts[short_name] + 1
-	if name !in g.fn_decl_param_types {
-		g.fn_decl_param_types[name] = ptypes
-		if is_variadic {
-			g.fn_decl_variadic[name] = true
-		}
-	}
-	cname := g.cname(name)
-	if cname !in g.fn_decl_param_types {
-		g.fn_decl_param_types[cname] = ptypes
-		if is_variadic {
-			g.fn_decl_variadic[cname] = true
-		}
-	}
-	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
-		dotted_name := '${g.tc.cur_module}.${name}'
-		if dotted_name !in g.fn_decl_param_types {
-			g.fn_decl_param_types[dotted_name] = ptypes
-			if is_variadic {
-				g.fn_decl_variadic[dotted_name] = true
-			}
-		}
-		cdotted_name := g.cname(dotted_name)
-		if cdotted_name !in g.fn_decl_param_types {
-			g.fn_decl_param_types[cdotted_name] = ptypes
-			if is_variadic {
-				g.fn_decl_variadic[cdotted_name] = true
-			}
-		}
-	}
-	if full_name !in g.fn_decl_param_types {
-		g.fn_decl_param_types[full_name] = ptypes
-		if is_variadic {
-			g.fn_decl_variadic[full_name] = true
-		}
-	}
-	cfull_name := g.cname(full_name)
-	if cfull_name !in g.fn_decl_param_types {
-		g.fn_decl_param_types[cfull_name] = ptypes
-		if is_variadic {
-			g.fn_decl_variadic[cfull_name] = true
-		}
-	}
-}
-
-fn (mut g FlatGen) register_fn_decl_shared_params(name string, full_name string, flags []bool) {
-	mut has_shared := false
-	for flag in flags {
+	for flag in shared_params {
 		if flag {
-			has_shared = true
+			g.has_shared_params = true
 			break
 		}
 	}
-	if has_shared {
-		g.has_shared_params = true
-	}
-	// All-false declarations are registered too: their exact-name entry is what
-	// stops fn_param_is_shared's short-name fallback from borrowing the shared
-	// flags of an unrelated same-named declaration in another module.
-	if name !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[name] = flags
-	}
+	g.register_fn_decl_signature_alias(name, ptypes, shared_params, is_variadic, is_mut, rt)
 	cname := g.cname(name)
-	if cname !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[cname] = flags
-	}
+	g.register_fn_decl_signature_alias(cname, ptypes, shared_params, is_variadic, is_mut, rt)
 	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
 		dotted_name := '${g.tc.cur_module}.${name}'
-		if dotted_name !in g.fn_decl_shared_params {
-			g.fn_decl_shared_params[dotted_name] = flags
-		}
+		g.register_fn_decl_signature_alias(dotted_name, ptypes, shared_params, is_variadic, is_mut,
+			rt)
 		cdotted_name := g.cname(dotted_name)
-		if cdotted_name !in g.fn_decl_shared_params {
-			g.fn_decl_shared_params[cdotted_name] = flags
-		}
+		g.register_fn_decl_signature_alias(cdotted_name, ptypes, shared_params, is_variadic,
+			is_mut, rt)
 	}
-	if full_name !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[full_name] = flags
-	}
+	g.register_fn_decl_signature_alias(full_name, ptypes, shared_params, is_variadic, is_mut, rt)
 	cfull_name := g.cname(full_name)
-	if cfull_name !in g.fn_decl_shared_params {
-		g.fn_decl_shared_params[cfull_name] = flags
-	}
-}
-
-fn (mut g FlatGen) register_fn_decl_mut_receiver(name string, full_name string, is_mut bool) {
-	if !is_mut {
-		return
-	}
-	g.fn_decl_mut_receivers[name] = true
-	g.fn_decl_mut_receivers[g.cname(name)] = true
-	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
-		dotted_name := '${g.tc.cur_module}.${name}'
-		g.fn_decl_mut_receivers[dotted_name] = true
-		g.fn_decl_mut_receivers[g.cname(dotted_name)] = true
-	}
-	g.fn_decl_mut_receivers[full_name] = true
-	g.fn_decl_mut_receivers[g.cname(full_name)] = true
-}
-
-// register_fn_decl_ret_type indexes a fn decl's return type by its name (and qualified
-// variants), so the return type can be looked up in O(1) instead of scanning all AST
-// nodes per call (see fn_decl_return_type_for_call_name).
-fn (mut g FlatGen) register_fn_decl_ret_type(name string, full_name string, ret_typ string) {
-	rt := g.tc.parse_resolution_type(ret_typ)
-	module_key := fn_decl_module_key(g.tc.cur_module, name)
-	g.fn_decl_ret_types[module_key] = rt
-	if name !in g.fn_decl_ret_types {
-		g.fn_decl_ret_types[name] = rt
-	}
-	if g.tc.cur_module.len > 0 && g.tc.cur_module != 'main' && g.tc.cur_module != 'builtin' {
-		dotted_name := '${g.tc.cur_module}.${name}'
-		if dotted_name !in g.fn_decl_ret_types {
-			g.fn_decl_ret_types[dotted_name] = rt
-		}
-	}
-	if full_name !in g.fn_decl_ret_types {
-		g.fn_decl_ret_types[full_name] = rt
-	}
-	cname := g.cname(name)
-	if cname != name && cname !in g.fn_decl_ret_types {
-		g.fn_decl_ret_types[cname] = rt
-	}
+	g.register_fn_decl_signature_alias(cfull_name, ptypes, shared_params, is_variadic, is_mut, rt)
 }
 
 fn (mut g FlatGen) register_fn_decl_node(name string, module_name string, id flat.NodeId) {
@@ -13723,6 +13660,35 @@ fn (mut g FlatGen) precompute_consts() string {
 	old_line_start := g.line_start
 	g.sb = strings.new_builder(1024)
 	g.line_start = true
+	names := g.const_emission_order_owned()
+	for name in names {
+		val_id := g.const_vals[name]
+		g.emit_const(name, val_id)
+	}
+	if g.const_vals.len > 0 {
+		g.writeln('')
+	}
+	result := g.sb.str()
+	// `.str()` copies out of the temporary const builder.
+	unsafe { g.sb.free() }
+	g.sb = old_sb
+	g.line_start = old_line_start
+	return result
+}
+
+fn (mut g FlatGen) const_emission_order_owned() []string {
+	if !g.scope_parallel_workers {
+		return g.const_emission_order()
+	}
+	scope := cgen_worker_scope_begin(true)
+	scoped_names := g.const_emission_order()
+	cgen_worker_scope_leave(scope)
+	names := clone_cgen_string_list(scoped_names)
+	cgen_worker_scope_free(scope)
+	return names
+}
+
+fn (mut g FlatGen) const_emission_order() []string {
 	mut emitted := map[string]bool{}
 	mut deferred := []string{}
 	mut names := g.const_init_order.clone()
@@ -13733,6 +13699,7 @@ fn (mut g FlatGen) precompute_consts() string {
 		names << name
 	}
 	names = g.ordered_const_init_names(names)
+	mut result := []string{cap: names.len}
 	for name in names {
 		val_id := g.const_vals[name] or { continue }
 		if g.is_const_alias_name(name) {
@@ -13757,7 +13724,7 @@ fn (mut g FlatGen) precompute_consts() string {
 		if !all_met {
 			deferred << name
 		} else {
-			g.emit_const(name, val_id)
+			result << name
 			emitted[name] = true
 		}
 	}
@@ -13777,7 +13744,7 @@ fn (mut g FlatGen) precompute_consts() string {
 				}
 			}
 			if all_met {
-				g.emit_const(name, val_id)
+				result << name
 				emitted[name] = true
 			} else {
 				remaining << name
@@ -13785,17 +13752,7 @@ fn (mut g FlatGen) precompute_consts() string {
 		}
 		deferred = remaining.clone()
 	}
-	for name in deferred {
-		g.emit_const(name, g.const_vals[name])
-	}
-	if g.const_vals.len > 0 {
-		g.writeln('')
-	}
-	result := g.sb.str()
-	// `.str()` copies out of the temporary const builder.
-	unsafe { g.sb.free() }
-	g.sb = old_sb
-	g.line_start = old_line_start
+	result << deferred
 	return result
 }
 

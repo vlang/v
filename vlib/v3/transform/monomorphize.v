@@ -1769,6 +1769,7 @@ fn (mut t Transformer) materialize_generic_struct_specs(specs map[string]string,
 		decl := decls[base] or { continue }
 		t.materialize_generic_struct_spec(spec, decl)
 	}
+	t.tc.clear_interface_impl_cache()
 }
 
 fn (mut t Transformer) materialize_generic_sum_types(erase_templates bool) {

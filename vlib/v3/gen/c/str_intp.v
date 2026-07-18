@@ -361,6 +361,11 @@ fn (mut g FlatGen) intern_string(s string) int {
 	if s in g.str_lit_ids {
 		return g.str_lit_ids[s]
 	}
+	if g.str_lits_shared {
+		g.str_lits = g.str_lits.clone()
+		g.str_lit_ids = g.str_lit_ids.clone()
+		g.str_lits_shared = false
+	}
 	id := g.str_lits.len
 	g.str_lits << s
 	g.str_lit_ids[s] = id
