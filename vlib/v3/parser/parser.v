@@ -2446,6 +2446,7 @@ fn (mut p Parser) skip_top_level_stmt() {
 }
 
 fn (mut p Parser) parse_comptime_if() flat.NodeId {
+	dollar_start := p.span_start() // start offset of the leading `$`
 	p.next() // skip $
 	if p.tok != .key_if {
 		if p.tok == .key_for {
@@ -2455,7 +2456,7 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 			return p.parse_comptime_match(false)
 		}
 		if p.tok == .name && p.lit == 'compile_error' {
-			return p.parse_compile_error_stmt()
+			return p.parse_compile_error_stmt(dollar_start)
 		}
 		// other comptime — skip
 		for p.tok != .semicolon && p.tok != .eof {
@@ -2495,8 +2496,8 @@ fn (mut p Parser) parse_comptime_if() flat.NodeId {
 	}
 }
 
-fn (mut p Parser) parse_compile_error_stmt() flat.NodeId {
-	call := p.parse_compile_error_call()
+fn (mut p Parser) parse_compile_error_stmt(directive_start int) flat.NodeId {
+	call := p.parse_compile_error_call(directive_start)
 	return p.add_node_from(flat.Node{
 		kind:           .expr_stmt
 		children_start: p.add_child(call)
@@ -2504,7 +2505,7 @@ fn (mut p Parser) parse_compile_error_stmt() flat.NodeId {
 	}, call)
 }
 
-fn (mut p Parser) parse_compile_error_call() flat.NodeId {
+fn (mut p Parser) parse_compile_error_call(directive_start int) flat.NodeId {
 	p.next() // skip `compile_error`
 	p.check(.lpar)
 	message := if p.tok == .rpar {
@@ -2519,25 +2520,29 @@ fn (mut p Parser) parse_compile_error_call() flat.NodeId {
 	if p.tok == .semicolon {
 		p.next()
 	}
-	return p.make_compile_error_call(message)
+	return p.make_compile_error_call(message, directive_start)
 }
 
-fn (mut p Parser) make_compile_error_call(message flat.NodeId) flat.NodeId {
+// make_compile_error_call builds the compiler-only `__v_compile_error` sentinel
+// call. `start` is the directive's source offset so the checker reports the
+// compile-error diagnostic against a positioned node instead of a zero span.
+fn (mut p Parser) make_compile_error_call(message flat.NodeId, start int) flat.NodeId {
 	// Keep this as a compiler-only sentinel call. The checker reports it immediately for a
 	// selected concrete branch, while a deferred generic branch keeps it until specialization;
 	// if that branch is selected, generic validation rejects the sentinel as well.
 	callee := p.a.add_val(.ident, '__v_compile_error')
-	start := p.add_children2(callee, message)
+	cstart := p.add_children2(callee, message)
 	return p.a.add_node(flat.Node{
 		kind:           .call
 		value:          '__v_compile_error'
-		children_start: start
+		children_start: cstart
 		children_count: 2
+		pos:            p.span_to(start)
 	})
 }
 
-fn (mut p Parser) parse_top_level_compile_error() flat.NodeId {
-	call := p.parse_compile_error_call()
+fn (mut p Parser) parse_top_level_compile_error(directive_start int) flat.NodeId {
+	call := p.parse_compile_error_call(directive_start)
 	return p.make_top_level_compile_error(call)
 }
 
@@ -2595,13 +2600,14 @@ fn (mut p Parser) parse_comptime_for() flat.NodeId {
 }
 
 fn (mut p Parser) parse_top_level_comptime_if() flat.NodeId {
+	dollar_start := p.span_start() // start offset of the leading `$`
 	p.next() // skip $
 	if p.tok != .key_if {
 		if p.tok == .key_match {
 			return p.parse_comptime_match(true)
 		}
 		if p.tok == .name && p.lit == 'compile_error' {
-			return p.parse_top_level_compile_error()
+			return p.parse_top_level_compile_error(dollar_start)
 		}
 		// $for or other comptime - skip
 		if p.tok == .key_for {
@@ -2929,7 +2935,7 @@ fn (mut p Parser) resolve_comptime_at_values_at(cond string, pseudo_pos int) str
 					content := os.read_file(vmod_file) or {
 						message := p.a.add_val_id(5,
 							'@VMOD_FILE can only be used in projects that have a v.mod file')
-						call := p.make_compile_error_call(message)
+						call := p.make_compile_error_call(message, p.span_start())
 						_ = p.make_top_level_compile_error(call)
 						''
 					}
@@ -7156,7 +7162,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 				content := os.read_file(vmod_file) or {
 					message := p.add_val_id(5,
 						'@VMOD_FILE can only be used in projects that have a v.mod file')
-					return p.make_compile_error_call(message)
+					return p.make_compile_error_call(message, p.span_start())
 				}
 				return p.add_val_id(5, content.replace('\r\n', '\n'))
 			}
@@ -8477,7 +8483,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 				})
 			}
 			if p.tok == .lsbr {
-				return p.fixed_array_value_literal(fixed_type)
+				return p.fixed_array_value_literal(fixed_type, bracket_start)
 			}
 			// may have init
 			if p.tok == .lcbr {
@@ -8686,8 +8692,11 @@ fn (mut p Parser) parse_fixed_array_literal_type_name() string {
 	return p.parse_type_name()
 }
 
-fn (mut p Parser) fixed_array_value_literal(fixed_type string) flat.NodeId {
-	lit_start := p.span_start()
+// fixed_array_value_literal parses the value list of an explicit fixed-array
+// value literal (`[N]T[...]`). `start` is the outer opening `[` of the `[N]T`
+// prefix, so the resulting node spans the whole expression, not just the value
+// list — the `[N]T` prefix has already been consumed by the caller.
+fn (mut p Parser) fixed_array_value_literal(fixed_type string, start int) flat.NodeId {
 	p.check(.lsbr)
 	mut vals := []flat.NodeId{}
 	for p.tok != .rsbr && p.tok != .eof {
@@ -8701,13 +8710,13 @@ fn (mut p Parser) fixed_array_value_literal(fixed_type string) flat.NodeId {
 		}
 	}
 	p.check(.rsbr)
-	start := p.add_children(vals)
+	cstart := p.add_children(vals)
 	return p.a.add_node(flat.Node{
 		kind:           .array_literal
 		typ:            fixed_type
-		children_start: start
+		children_start: cstart
 		children_count: flat.child_count(vals.len)
-		pos:            p.span_to(lit_start)
+		pos:            p.span_to(start)
 	})
 }
 

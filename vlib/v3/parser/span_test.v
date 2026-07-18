@@ -144,6 +144,44 @@ fn test_inferred_fixed_array_spans_from_opening_bracket() {
 	assert saw_row
 }
 
+// Explicit fixed-array value literals (`[N]T[...]`) are parsed after the `[N]T`
+// prefix is consumed, so the array_literal node must span from the outer opening
+// `[` of the type prefix, not just the value list.
+fn test_explicit_fixed_array_value_literal_spans_from_type_prefix() {
+	ast, src := parse_span_source('fixed_value', 'fn main() {
+	a := [3]int[1, 2, 3]
+	_ = a
+}
+')
+	mut saw := false
+	for node in ast.nodes {
+		if node.kind == .array_literal && node.typ == '[3]int' {
+			saw = true
+			assert span_text(src, node) == '[3]int[1, 2, 3]'
+		}
+	}
+	assert saw
+}
+
+// The `$compile_error(...)` sentinel call is a compiler-only `.call` node that
+// the checker reports diagnostics against, so it must carry the directive's span
+// (from the leading `$`) rather than a zero position.
+fn test_compile_error_sentinel_call_has_directive_span() {
+	ast, src := parse_span_source('compile_error', 'fn main() {
+	\$compile_error("boom")
+}
+')
+	mut saw := false
+	for node in ast.nodes {
+		if node.kind == .call && node.value == '__v_compile_error' {
+			saw = true
+			assert node.pos.is_valid()
+			assert span_text(src, node) == '\$compile_error("boom")'
+		}
+	}
+	assert saw
+}
+
 // Lambda nodes are built directly on the flat AST; they must still receive a
 // valid span covering the whole lambda rather than a zero position.
 fn test_lambda_nodes_have_valid_spans() {
