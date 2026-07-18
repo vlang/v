@@ -96,3 +96,12 @@ inventory.
 | `macos-14` | Apple Silicon CI lanes. |
 | `macos-15-intel` | Intel macOS release artifact lane. |
 | `*-latest` | Small utility, smoke, or intentionally floating lanes. |
+
+Current release and artifact exceptions that intentionally use floating runners:
+
+- `release_ci.yml` uses `windows-latest` for `v_windows.zip` so the published
+  Windows artifact tracks GitHub's current hosted Windows toolchain.
+- `release_ci.yml` uses `ubuntu-latest` only for the release publishing job; the
+  job assembles already-built artifacts and does not compile platform binaries.
+- `prebuilt.yml` uses `macos-latest` and `windows-latest` to smoke-test the
+  published release ZIPs against GitHub's current hosted macOS and Windows images.
