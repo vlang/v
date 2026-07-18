@@ -3549,6 +3549,12 @@ fn (mut t Transformer) infer_generic_field_init_type_arg(param_type string, fiel
 	if field_type.len == 0 {
 		return
 	}
+	// Rebase the struct's own generic parameter names onto the applied args so
+	// e.g. `[]A` (from `struct Params[A]`) becomes `[]T` for `...Params[T]`.
+	struct_params := t.struct_generic_params_for_base(param_base)
+	if struct_params.len > 0 && struct_params != param_args {
+		field_type = substitute_generic_type_text_with_params(field_type, param_args, struct_params)
+	}
 	value_id := t.a.child(&field, 0)
 	value_type := t.generic_call_arg_type_for_inference(value_id)
 	if value_type.len > 0 {
@@ -5068,6 +5074,11 @@ fn (mut t Transformer) infer_generic_short_struct_init_args(param_type string, a
 		return
 	}
 	info := t.lookup_struct_info(param_base) or { return }
+	// The struct declares its fields in its own generic parameter names
+	// (`struct Params[A] { a []A }`) while the call must infer the function's
+	// parameters (`fn f[T](p Params[T])`). Rebase the field types onto the
+	// applied args so `[]A` becomes `[]T` before inference.
+	struct_params := t.struct_generic_params_for_base(param_base)
 	mut field_idx := 0
 	for i in 0 .. int(node.children_count) {
 		field := t.a.child_node(&node, i)
@@ -5096,12 +5107,30 @@ fn (mut t Transformer) infer_generic_short_struct_init_args(param_type string, a
 		if field_type.len == 0 {
 			continue
 		}
+		if struct_params.len > 0 && struct_params != param_args {
+			field_type = substitute_generic_type_text_with_params(field_type, param_args,
+				struct_params)
+		}
 		value_id := t.a.child(field, 0)
 		value_type := t.generic_call_arg_type_for_inference(value_id)
 		if value_type.len > 0 {
 			infer_generic_type_args(field_type, value_type, mut inferred)
 		}
 	}
+}
+
+fn (t &Transformer) struct_generic_params_for_base(base string) []string {
+	if isnil(t.tc) {
+		return []string{}
+	}
+	if params := t.tc.struct_generic_params[base] {
+		return params
+	}
+	short := base.all_after_last('.')
+	if params := t.tc.struct_generic_params[short] {
+		return params
+	}
+	return []string{}
 }
 
 fn (t &Transformer) infer_generic_sum_variant_args(param_type string, arg_type string, mut inferred map[string]string) {
