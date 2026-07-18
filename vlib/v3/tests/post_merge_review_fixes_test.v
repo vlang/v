@@ -5939,6 +5939,31 @@ fn main() {
 }
 ')
 	assert v_call_out == '7\n9'
+	pointer_for_out := run_good(v3_bin, 'mut_pointer_for_in_arg', 'struct PointerItem {
+mut:
+	value int
+}
+
+fn increment(mut item PointerItem) {
+	item.value++
+}
+
+fn main() {
+	mut first := PointerItem{
+		value: 1
+	}
+	mut second := PointerItem{
+		value: 2
+	}
+	mut items := [&first, &second]
+	for mut item in items {
+		increment(mut item)
+	}
+	println(int_str(first.value))
+	println(int_str(second.value))
+}
+')
+	assert pointer_for_out == '2\n3'
 	optional_pointer_out := run_good(v3_bin, 'optional_pointer_equality_semantics', 'struct Item {
 	value int
 }

@@ -2240,7 +2240,7 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 			arg_type := t.node_type(arg_id)
 			if arg_type.starts_with('&')
 				&& t.normalize_type_alias(arg_type[1..]) == t.normalize_type_alias(param_type) {
-				value := t.transform_expr(arg_id)
+				value := t.transform_expr_preserving_pointer_value(arg_id)
 				deref := t.make_prefix(.mul, value)
 				t.set_node_typ(int(deref), param_type)
 				return deref
