@@ -21,6 +21,10 @@ on:
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
 
+concurrency:
+  group: s390x-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   s390x_linux:
     # The host should always be Linux
