@@ -1,7 +1,5 @@
 cmd/tools/vcreate/vcreate_web_test.v
 examples/dynamic_library_loader/use_test.v
-examples/dynamic_library_loading/use_library_test.v
-vlib/clipboard/clipboard_test.v
 vlib/context/cause_test.v
 vlib/context/empty_test.v
 vlib/context/value_test.v
@@ -47,7 +45,6 @@ vlib/math/big/special_array_ops_test.v
 vlib/mcp/mcp_test.v
 vlib/mcp/server_test.v
 vlib/mcp/spec_compliance_test.v
-vlib/ncurses/ncurses_test.v
 vlib/net/http/build_request_headers_test.v
 vlib/net/http/h2_client_test.v
 vlib/net/http/h2_conn_test.v
@@ -90,7 +87,6 @@ vlib/pool/connection_test.v
 vlib/rand/cuid2/cuid2_test.v
 vlib/rand/random_numbers_test.v
 vlib/regex/regex_test.v
-vlib/sokol/gfx/gfx_test.v
 vlib/sync/channel_array_mut_test.v
 vlib/sync/channel_close_test.v
 vlib/sync/channel_push_or_1_test.v
@@ -172,7 +168,6 @@ vlib/v/tests/enums/enum_on_array_init_test.v
 vlib/v/tests/enums/enum_test.v
 vlib/v/tests/error_void_test.v
 vlib/v/tests/fixed_array_2_dims_init_test.v
-vlib/v/tests/fixed_array_update_c_struct_alias_test.v
 vlib/v/tests/fns/array_fixed_unresolved_ret_test.v
 vlib/v/tests/fns/call_on_anon_test.v
 vlib/v/tests/fns/call_with_nil_test.v
@@ -242,9 +237,7 @@ vlib/v/tests/generics/generics_method_with_multi_types_test.v
 vlib/v/tests/generics/generics_mutual_recursive_struct_reference_test.v
 vlib/v/tests/generics/generics_option_fn_concrete_type_test.v
 vlib/v/tests/generics/generics_return_closure_test.v
-vlib/v/tests/generics/generics_struct_anon_fn_type_test.v
 vlib/v/tests/generics/generics_struct_field_with_default_fn_type_test.v
-vlib/v/tests/generics/generics_struct_field_with_generics_struct_elements_test.v
 vlib/v/tests/generics/generics_struct_types_infer_test.v
 vlib/v/tests/generics/generics_test.v
 vlib/v/tests/generics/generics_unused_specialized_fn_array_param_test.v
@@ -262,7 +255,6 @@ vlib/v/tests/if_expr_in_or_block_test.v
 vlib/v/tests/indexexpr_with_anon_fn_test.v
 vlib/v/tests/init_global_test.v
 vlib/v/tests/interfaces/array_of_empty_interface_result_regression_test.v
-vlib/v/tests/interfaces/interface_closure_test.v
 vlib/v/tests/interfaces/interface_edge_cases/voidptr_casted_as_an_interface_test.v
 vlib/v/tests/interfaces/interface_embedding_with_interface_para_test.v
 vlib/v/tests/interfaces/interface_generic_multi_return_test.v
@@ -280,7 +272,6 @@ vlib/v/tests/modules/methods_struct_another_module/methods_struct_test.v
 vlib/v/tests/multi_return_test.v
 vlib/v/tests/nested_if_expr_method_call_test.v
 vlib/v/tests/nested_if_return_test.v
-vlib/v/tests/net_http_request_proxy_interpolation_test.v
 vlib/v/tests/options/option_array_fixed_interface_sumtype_test.v
 vlib/v/tests/options/option_array_submodule_test.v
 vlib/v/tests/options/option_auto_heap_test.v
@@ -290,7 +281,6 @@ vlib/v/tests/options/option_fn_multi_ret_test.v
 vlib/v/tests/options/option_generic_array_field_test.v
 vlib/v/tests/options/option_generic_array_mut_test.v
 vlib/v/tests/options/option_generic_method_ret_ptr_none_assert_test.v
-vlib/v/tests/options/option_generic_sumtype_test.v
 vlib/v/tests/options/option_if_infer_test.v
 vlib/v/tests/options/option_if_unwrap_test.v
 vlib/v/tests/options/option_init_ptr_test.v
@@ -307,7 +297,6 @@ vlib/v/tests/options/option_optional_param_test.v
 vlib/v/tests/options/option_or_result_fixed_arr_test.v
 vlib/v/tests/options/option_ptr_arg_heap_test.v
 vlib/v/tests/options/option_ptr_arg_test.v
-vlib/v/tests/options/option_ptr_test.v
 vlib/v/tests/options/option_ptr_zero_test.v
 vlib/v/tests/options/option_reference_of_option_test.v
 vlib/v/tests/options/option_reference_params_test.v
@@ -348,14 +337,11 @@ vlib/v/tests/selector_indexexpr_fn_type_assign_test.v
 vlib/v/tests/serialisation/json_serialisation_of_fixed_arrays_test.v
 vlib/v/tests/serialisation/json_with_struct_having_fields_with_default_values_test.v
 vlib/v/tests/sizeof_packed_struct_union_const_test.v
-vlib/v/tests/sql_statement_inside_fn_call_test.v
 vlib/v/tests/static_vars_test.v
 vlib/v/tests/structs/mut_test.v
-vlib/v/tests/structs/operator_overloading_type_alias_generic_parent_test.v
 vlib/v/tests/structs/struct_embed_fn_type_test.v
 vlib/v/tests/structs/struct_embed_test.v
 vlib/v/tests/sumtypes/json2_map_to_any_cgen_regression_test.v
-vlib/v/tests/sumtypes/sumtype_cast_from_voidptr_test.v
 vlib/v/tests/sumtypes/voidptr_sumtype_test.v
 vlib/v/tests/testdata/assert_with_scoped_defer_cleanup_failing_test.v
 vlib/v/tests/testdata/sizeof_used_in_assert_test.v
@@ -373,7 +359,6 @@ vlib/v/tests/tmpl_with_single_quotes_test.v
 vlib/v/tests/translated_test.v
 vlib/v/tests/type_idx_test.v
 vlib/v/tests/typeof_indirections_test.v
-vlib/v/tests/typeof_simple_types_test.v
 vlib/v/tests/typeof_test.v
 vlib/v/tests/typeof_unaliased_typ_test.v
 vlib/v/tests/va_arg_test.v
@@ -428,14 +413,9 @@ vlib/x/atomics/i32_test.v
 vlib/x/atomics/i64_test.v
 vlib/x/atomics/u32_test.v
 vlib/x/atomics/u64_test.v
-vlib/x/crypto/chacha20/chacha_64bitctr_test.v
 vlib/x/crypto/chacha20/chacha_test.v
 vlib/x/crypto/chacha20/stream_test.v
-vlib/x/crypto/chacha20/xchacha_test.v
-vlib/x/crypto/chacha20poly1305/chacha20poly1305_test.v
 vlib/x/crypto/chacha20poly1305/psiv_test.v
-vlib/x/crypto/chacha20poly1305/usage_test.v
-vlib/x/crypto/chacha20poly1305/xchacha20poly1305_test.v
 vlib/x/crypto/curve25519/curve25519_test.v
 vlib/x/crypto/mldsa/mldsa_test.v
 vlib/x/crypto/mldsa/usage_test.v
@@ -464,6 +444,5 @@ vlib/x/sessions/tests/db_store_test.v
 vlib/x/sessions/tests/session_app_test.v
 vlib/x/templating/dtm/dynamic_template_manager_cache_system_test.v
 vlib/x/templating/dtm/dynamic_template_manager_test.v
-vlib/x/templating/dtm2/dynamic_template_manager2_test.v
 vlib/yaml/yaml_edge_cases_test.v
 vlib/yaml/yaml_test.v
