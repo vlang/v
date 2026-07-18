@@ -3943,14 +3943,13 @@ struct CSourceDirectiveEmission {
 fn c_source_directive_emission(directives []string, early_source_directives map[string]bool) CSourceDirectiveEmission {
 	mut skip_early := map[int]bool{}
 	mut emit_late := map[int]bool{}
-	mut condition_starts := []int{}
-	mut condition_has_source := []bool{}
+	mut active_macro_definitions := map[string]int{}
 	for i, directive in directives {
-		clean := trimmed_space(directive)
-		name := c_directive_name(clean)
-		if name in ['if', 'ifdef', 'ifndef'] {
-			condition_starts << i
-			condition_has_source << false
+		macro_directive, macro_name := c_macro_directive_info(directive)
+		if macro_directive == 'define' {
+			active_macro_definitions[macro_name] = i
+		} else if macro_directive == 'undef' {
+			active_macro_definitions.delete(macro_name)
 		}
 		if c_is_late_source_include_directive(directive) && directive !in early_source_directives {
 			mut start := i
@@ -3965,15 +3964,44 @@ fn c_source_directive_emission(directives []string, early_source_directives map[
 				skip_early[delayed_index] = true
 				emit_late[delayed_index] = true
 			}
-			if condition_starts.len > 0 {
-				for depth in 0 .. condition_has_source.len {
-					condition_has_source[depth] = true
+			// The early pass may emit a later `#undef` before this source is replayed.
+			// Re-emit the active definitions and their later transitions so the include
+			// sees its original macro state and the late pass restores the final state.
+			for active_name, definition_index in active_macro_definitions {
+				emit_late[definition_index] = true
+				for later_index in i + 1 .. directives.len {
+					_, later_name := c_macro_directive_info(directives[later_index])
+					if later_name == active_name {
+						emit_late[later_index] = true
+					}
 				}
+			}
+		}
+	}
+	c_add_late_conditional_context(directives, mut emit_late)
+	return CSourceDirectiveEmission{
+		skip_early: skip_early
+		emit_late:  emit_late
+	}
+}
+
+fn c_add_late_conditional_context(directives []string, mut emit_late map[int]bool) {
+	mut condition_starts := []int{}
+	mut condition_has_late_directive := []bool{}
+	for i, directive in directives {
+		name := c_directive_name(trimmed_space(directive))
+		if name in ['if', 'ifdef', 'ifndef'] {
+			condition_starts << i
+			condition_has_late_directive << false
+		}
+		if i in emit_late {
+			for depth in 0 .. condition_has_late_directive.len {
+				condition_has_late_directive[depth] = true
 			}
 		}
 		if name == 'endif' && condition_starts.len > 0 {
 			last := condition_starts.len - 1
-			if condition_has_source[last] {
+			if condition_has_late_directive[last] {
 				for context_index in condition_starts[last] .. i + 1 {
 					if c_is_conditional_directive(directives[context_index]) {
 						emit_late[context_index] = true
@@ -3981,11 +4009,11 @@ fn c_source_directive_emission(directives []string, early_source_directives map[
 				}
 			}
 			condition_starts.delete_last()
-			condition_has_source.delete_last()
+			condition_has_late_directive.delete_last()
 		}
 	}
 	for depth, start in condition_starts {
-		if condition_has_source[depth] {
+		if condition_has_late_directive[depth] {
 			for context_index in start .. directives.len {
 				if c_is_conditional_directive(directives[context_index]) {
 					emit_late[context_index] = true
@@ -3993,10 +4021,22 @@ fn c_source_directive_emission(directives []string, early_source_directives map[
 			}
 		}
 	}
-	return CSourceDirectiveEmission{
-		skip_early: skip_early
-		emit_late:  emit_late
+}
+
+fn c_macro_directive_info(directive string) (string, string) {
+	clean := trimmed_space(directive)
+	if clean.contains('\n') {
+		return '', ''
 	}
+	name := c_directive_name(clean)
+	if name !in ['define', 'undef'] {
+		return '', ''
+	}
+	parts := c_directive_arg(clean).fields()
+	if parts.len == 0 {
+		return '', ''
+	}
+	return name, parts[0].all_before('(')
 }
 
 fn c_is_conditional_directive(directive string) bool {

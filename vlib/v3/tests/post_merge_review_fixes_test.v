@@ -6018,6 +6018,13 @@ fn main() {
 		'main.v': 'module main\n\n#define V3_OBJECTIVE_C_STATIC_VALUE 55\n#ifdef V3_OBJECTIVE_C_STATIC_VALUE\n#include "shim.m"\n#endif\n\nfn C.answer_from_guarded_objective_c_static() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_guarded_objective_c_static()))\n}\n'
 	}, 'main.v')
 	assert guarded_objective_c_static_out == '55'
+	delayed_objective_c_macro_out := run_good_project_with_flags(v3_bin,
+		'delayed_objective_c_macro', '-cc clang', {
+		'v.mod':  "Module { name: 'delayed_objective_c_macro' }\n"
+		'shim.m': '#ifndef V3_DELAYED_OBJECTIVE_C_VALUE\n#error missing delayed Objective-C macro context\n#endif\nstatic int answer_from_delayed_objective_c_macro(void) { return V3_DELAYED_OBJECTIVE_C_VALUE; }\n'
+		'main.v': 'module main\n\n#define V3_DELAYED_OBJECTIVE_C_VALUE 57\n#ifdef V3_DELAYED_OBJECTIVE_C_VALUE\n#include "shim.m"\n#endif\n#undef V3_DELAYED_OBJECTIVE_C_VALUE\n\nfn C.answer_from_delayed_objective_c_macro() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_delayed_objective_c_macro()))\n}\n'
+	}, 'main.v')
+	assert delayed_objective_c_macro_out == '57'
 	cpp_runtime_out := run_good_project_with_flags(v3_bin, 'cpp_source_runtime', '-cc clang', {
 		'v.mod':    "Module { name: 'cpp_source_runtime' }\n"
 		'shim.cpp': '#include <string>\nextern "C" int answer_from_cpp_runtime(void) { std::string answer(44, \'x\'); return int(answer.size()); }\n'
