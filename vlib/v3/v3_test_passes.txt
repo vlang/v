@@ -685,6 +685,7 @@ vlib/v/tests/assert_alias_array_test.v
 vlib/v/tests/assert_short_circuit_test.v
 vlib/v/tests/assign/assert_fn_call_with_parentheses_test.v
 vlib/v/tests/assign/assert_fn_ret_option_test.v
+vlib/v/tests/assign/assert_if_guard_expr_test.v
 vlib/v/tests/assign/assert_should_evaluate_args_just_once_test.v
 vlib/v/tests/assign/assert_with_newlines_test.v
 vlib/v/tests/assign/assign_array_fixed_from_union_test.v
@@ -1126,6 +1127,7 @@ vlib/v/tests/comptime/comptime_var_assignment_test.v
 vlib/v/tests/comptime/comptime_var_is_check_test.v
 vlib/v/tests/comptime/comptime_var_on_multiple_args_test.v
 vlib/v/tests/comptime/comptime_var_param_test.v
+vlib/v/tests/comptime/comptime_var_unwrap_test.v
 vlib/v/tests/comptime/comptime_variant_interp_test.v
 vlib/v/tests/comptime/comptime_variant_test.v
 vlib/v/tests/comptime/comptime_voidptr_unsafe_nil_test.v
@@ -1583,6 +1585,7 @@ vlib/v/tests/generics/generic_fn_multi_return_test.v
 vlib/v/tests/generics/generic_fn_param_test.v
 vlib/v/tests/generics/generic_fn_ref_level_test.v
 vlib/v/tests/generics/generic_fn_returning_type_with_T_test.v
+vlib/v/tests/generics/generic_fn_short_struct_init_reference_inference_test.v
 vlib/v/tests/generics/generic_fn_struct_test.v
 vlib/v/tests/generics/generic_fn_type_with_different_generic_type_test.v
 vlib/v/tests/generics/generic_fn_typeof_name_test.v
@@ -1590,6 +1593,8 @@ vlib/v/tests/generics/generic_fn_upper_name_type_test.v
 vlib/v/tests/generics/generic_fn_with_anon_fn_test.v
 vlib/v/tests/generics/generic_fn_with_comptime_for_test.v
 vlib/v/tests/generics/generic_fn_with_nested_generic_fn_call_test.v
+vlib/v/tests/generics/generic_fn_with_short_generic_struct_init_syntax_1_test.v
+vlib/v/tests/generics/generic_fn_with_short_generic_struct_init_syntax_2_test.v
 vlib/v/tests/generics/generic_for_mut_val_test.v
 vlib/v/tests/generics/generic_function_argument_inference_test.v
 vlib/v/tests/generics/generic_functions_with_normal_function_test.v
@@ -1609,6 +1614,7 @@ vlib/v/tests/generics/generic_method_with_variadic_generic_args_test.v
 vlib/v/tests/generics/generic_muls_test.v
 vlib/v/tests/generics/generic_mut_pointer_param_test.v
 vlib/v/tests/generics/generic_operator_overload_test.v
+vlib/v/tests/generics/generic_options_with_reserved_ident_test.v
 vlib/v/tests/generics/generic_pointer_indirect_test.v
 vlib/v/tests/generics/generic_receiver_embed_test.v
 vlib/v/tests/generics/generic_recursive_fn_test.v
@@ -1667,6 +1673,7 @@ vlib/v/tests/generics/generics_fn_return_result_test.v
 vlib/v/tests/generics/generics_fn_return_types_with_generic_struct_test.v
 vlib/v/tests/generics/generics_fn_variable_2_test.v
 vlib/v/tests/generics/generics_for_in_iterate_test.v
+vlib/v/tests/generics/generics_from_modules/infer_generic_struct_test.v
 vlib/v/tests/generics/generics_from_modules/inference_test.v
 vlib/v/tests/generics/generics_in_big_struct_method_test.v
 vlib/v/tests/generics/generics_in_generics_test.v

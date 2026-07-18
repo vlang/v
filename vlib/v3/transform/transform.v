@@ -4725,7 +4725,7 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 		return t.transform_defer_stmt(id, node)
 	}
 	if kind_id == 53 {
-		return t.transform_children_stmt(id, node)
+		return t.transform_assert_stmt(id, node)
 	}
 	if kind_id == 56 {
 		return t.transform_select_stmt(node)
@@ -4768,7 +4768,7 @@ pub fn (mut t Transformer) transform_stmt(id flat.NodeId) []flat.NodeId {
 			return t.transform_defer_stmt(id, node)
 		}
 		.assert_stmt {
-			return t.transform_children_stmt(id, node)
+			return t.transform_assert_stmt(id, node)
 		}
 		.select_stmt {
 			return t.transform_select_stmt(node)
@@ -10204,6 +10204,50 @@ fn (mut t Transformer) transform_children_stmt(id flat.NodeId, node flat.Node) [
 		if t.is_stmt_kind_id(node_kind_id(child)) {
 			expanded := t.transform_stmt(child_id)
 			for eid in expanded {
+				new_children << eid
+			}
+		} else {
+			new_children << t.transform_expr(child_id)
+		}
+	}
+	start := t.a.children.len
+	for nc in new_children {
+		t.a.children << nc
+	}
+	count := new_children.len
+	new_id := t.a.add_node(flat.Node{
+		kind:           node.kind
+		op:             node.op
+		children_start: start
+		children_count: flat.child_count(count)
+		pos:            node.pos
+		value:          node.value
+		typ:            node.typ
+	})
+	return arr1(new_id)
+}
+
+// transform_assert_stmt lowers a value `if`/`match` used as the assert
+// condition into a temp bool (with its guard/branch prelude) before the
+// assert. Without this, cgen calls `gen_expr` on the bare `if`-expression,
+// which is not a C expression, and emits an empty `if (!())` condition.
+fn (mut t Transformer) transform_assert_stmt(id flat.NodeId, node flat.Node) []flat.NodeId {
+	if node.children_count == 0 {
+		return arr1(id)
+	}
+	cond_id := t.a.child(&node, 0)
+	cond := t.a.nodes[int(cond_id)]
+	if cond.kind !in [.if_expr, .match_stmt] {
+		return t.transform_children_stmt(id, node)
+	}
+	lowered := t.transform_expr_for_type(cond_id, 'bool')
+	mut new_children := []flat.NodeId{cap: int(node.children_count)}
+	new_children << lowered
+	for i in 1 .. node.children_count {
+		child_id := t.a.child(&node, i)
+		child := t.a.nodes[int(child_id)]
+		if t.is_stmt_kind_id(node_kind_id(child)) {
+			for eid in t.transform_stmt(child_id) {
 				new_children << eid
 			}
 		} else {

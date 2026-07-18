@@ -19,7 +19,6 @@ vlib/v/tests/comptime/comptime_kinds_test.v
 vlib/v/tests/comptime/comptime_match_assign_test.v
 vlib/v/tests/comptime/comptime_match_ret_test.v
 vlib/v/tests/comptime/comptime_type_accessors_zero_new_test.v
-vlib/v/tests/comptime/comptime_var_unwrap_test.v
 vlib/v/tests/comptime_generic_comptime_variant_test.v
 vlib/v/tests/comptime_pseudo_fn_with_dollar_test.v
 vlib/v/tests/option_struct_eq_test.v

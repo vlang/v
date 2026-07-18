@@ -1,7 +1,6 @@
 vlib/v/tests/array_fixed_none_init_test.v
 vlib/v/tests/arrays_closure_fixed_array_test.v
 vlib/v/tests/assign/array_fixed_init_with_call_test.v
-vlib/v/tests/assign/assert_if_guard_expr_test.v
 vlib/v/tests/assign/assert_sumtype_test.v
 vlib/v/tests/assign/assert_with_array_ref_test.v
 vlib/v/tests/assign/assign_literal_with_closure_test.v
