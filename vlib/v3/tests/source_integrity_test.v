@@ -10,7 +10,7 @@ import v3.types
 fn scan_source_diagnostics(source string) []scanner.Diagnostic {
 	prefs := pref.new_preferences()
 	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('scanner_input.v', -1, source.len)
+	mut file := file_set.add_file('scanner_input.v', source.len)
 	file.index_lines(source)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)

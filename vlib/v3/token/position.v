@@ -52,11 +52,12 @@ pub fn (p Position) str() string {
 }
 
 // File represents file data used by token.
+// Positions into a File use file-local byte offsets (Pos.offset), so a File no
+// longer carries a FileSet-global base offset.
 @[heap]
 pub struct File {
 pub:
 	name string
-	base int
 	size int
 mut:
 	line_offsets []int = [0]
@@ -65,7 +66,6 @@ mut:
 // FileSet represents file set data used by token.
 pub struct FileSet {
 mut:
-	base  int = 1
 	files []&File
 }
 
@@ -74,54 +74,19 @@ pub fn FileSet.new() &FileSet {
 	return &FileSet{}
 }
 
-// add_file updates add file state for FileSet.
-pub fn (mut fs FileSet) add_file(filename string, base_ int, size int) &File {
-	mut base := if base_ < 0 { fs.base } else { base_ }
-	if base < fs.base {
-		panic('invalid base ${base} (should be >= ${fs.base}')
-	}
-	file := &File{
-		name: filename
-		base: base
-		size: size
-	}
+// add_file registers a source file with the set. Under the file-local position
+// representation there is no global base offset to assign; the caller keys the
+// returned file by its stable Pos.id (e.g. FlatAst.source_files).
+pub fn (mut fs FileSet) add_file(filename string, size int) &File {
 	if size < 0 {
 		panic('invalid size ${size} (should be >= 0)')
 	}
-	base += size + 1
-	if base < 0 {
-		panic('token.Pos offset overflow (> 2G of source code in file set)')
+	file := &File{
+		name: filename
+		size: size
 	}
-	fs.base = base
 	fs.files << file
 	return file
-}
-
-// search_files supports search files handling for token.
-fn search_files(files []&File, x int) int {
-	mut min, mut max := 0, files.len
-	for min < max {
-		mid := (min + max) / 2
-		if files[mid].base <= x {
-			min = mid + 1
-		} else {
-			max = mid
-		}
-	}
-	return min - 1
-}
-
-// file supports file handling for FileSet.
-pub fn (mut fs FileSet) file(pos Pos) &File {
-	i := search_files(fs.files, pos.offset)
-	if i >= 0 {
-		file := fs.files[i]
-		if pos.offset <= file.base + file.size {
-			return file
-		}
-	}
-	dump(fs)
-	panic('cannot find file for pos: ${pos}')
 }
 
 // add_line updates add line state for File.

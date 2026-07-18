@@ -25,7 +25,7 @@ fn test_operator_properties_are_owned_by_tokens() {
 fn test_file_position_resolves_file_local_offsets() {
 	src := 'line one\nsecond line\nthird\n'
 	mut fs := FileSet.new()
-	mut f := fs.add_file('x.v', -1, src.len)
+	mut f := fs.add_file('x.v', src.len)
 	f.index_lines(src)
 	// Pos.offset is file-local: offset 0 is the file start, not fs.base.
 	start := f.position(new_pos(1, 0))

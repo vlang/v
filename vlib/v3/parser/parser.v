@@ -256,7 +256,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	}
 	p.reserve_for_source(stable_src.len)
 	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, -1, stable_src.len)
+	mut file := file_set.add_file(path, stable_src.len)
 	file.index_lines(stable_src)
 	p.a.source_files[p.cur_file_id] = file
 	p.s.init(file, stable_src)
@@ -3521,7 +3521,7 @@ fn (mut p Parser) precollect_unsupported_inline_asm_guards(source string, target
 		p.comptime_const_values = saved_const_values.move()
 	}
 	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file('<inline asm scan>', -1, source.len)
+	mut file := file_set.add_file('<inline asm scan>', source.len)
 	mut s := scanner.new_scanner(p.prefs, .skip_interpolation)
 	s.init(file, source)
 	mut tokens := []InlineAsmScanToken{}
