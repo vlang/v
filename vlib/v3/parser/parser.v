@@ -6080,11 +6080,17 @@ fn (mut p Parser) assign_or_expr_inline() flat.NodeId {
 
 fn (mut p Parser) for_post_clause() flat.NodeId {
 	mut exprs := []flat.NodeId{}
+	// Capture each expression's end token as it is parsed; a comma-separated post
+	// clause is only wrapped after all of them are consumed, when prev_tok_end no
+	// longer reflects the individual expressions.
+	mut ends := []int{}
 	exprs << p.expr(.lowest)
+	ends << p.prev_tok_end
 	if p.tok == .comma {
 		for p.tok == .comma {
 			p.next()
 			exprs << p.expr(.lowest)
+			ends << p.prev_tok_end
 			if token_is_assignment(p.tok) {
 				break
 			}
@@ -6092,7 +6098,7 @@ fn (mut p Parser) for_post_clause() flat.NodeId {
 		if token_is_assignment(p.tok) {
 			return p.for_post_multi_assign(exprs)
 		}
-		return p.for_post_block_from_exprs(exprs)
+		return p.for_post_block_from_exprs(exprs, ends)
 	}
 	if token_is_assignment(p.tok) {
 		return p.for_post_assign(exprs[0])
@@ -6172,10 +6178,29 @@ fn (mut p Parser) for_post_expr_stmt(expr flat.NodeId) flat.NodeId {
 	}, expr)
 }
 
-fn (mut p Parser) for_post_block_from_exprs(exprs []flat.NodeId) flat.NodeId {
+// for_post_expr_stmt_ending wraps a post-clause expression whose end token is no
+// longer current (the following comma-separated expressions have been parsed), so
+// the wrapper spans just this expression rather than the whole clause.
+fn (mut p Parser) for_post_expr_stmt_ending(expr flat.NodeId, end int) flat.NodeId {
+	start := p.add_child(expr)
+	mut start_off := p.node_start(expr)
+	if start_off < 0 {
+		start_off = end
+	}
+	span := token.new_span(p.cur_file_id, clamp_source_offset(start_off, p.s.src.len),
+		clamp_source_offset(end, p.s.src.len))
+	return p.a.add_node(flat.Node{
+		kind:           .expr_stmt
+		children_start: start
+		children_count: 1
+		pos:            span
+	})
+}
+
+fn (mut p Parser) for_post_block_from_exprs(exprs []flat.NodeId, ends []int) flat.NodeId {
 	mut stmts := []flat.NodeId{cap: exprs.len}
-	for expr in exprs {
-		stmts << p.for_post_expr_stmt(expr)
+	for i, expr in exprs {
+		stmts << p.for_post_expr_stmt_ending(expr, ends[i])
 	}
 	start := p.add_children(stmts)
 	anchor := if stmts.len > 0 { stmts[0] } else { flat.empty_node }

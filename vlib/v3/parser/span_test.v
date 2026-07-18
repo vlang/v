@@ -79,12 +79,15 @@ fn test_c_style_for_post_clause_spans() {
 	mut saw_ident := false
 	mut saw_postfix := false
 	mut saw_block := false
+	mut stmt_spans := []string{}
 	for node in ast.nodes {
 		if node.kind == .ident && node.value == 'i' && span_text(src, node) == 'i' {
 			saw_ident = true
 		} else if node.kind == .postfix && node.op == .inc
 			&& span_text(src, node) == 'i++' {
 			saw_postfix = true
+		} else if node.kind == .expr_stmt {
+			stmt_spans << span_text(src, node)
 		} else if node.kind == .block && node.children_count == 2
 			&& span_text(src, node) == 'i++, j++' {
 			saw_block = true
@@ -93,6 +96,11 @@ fn test_c_style_for_post_clause_spans() {
 	assert saw_ident
 	assert saw_postfix
 	assert saw_block
+	// Each post expression is wrapped in its own statement spanning just that
+	// expression, not the whole comma-separated clause.
+	assert 'i++' in stmt_spans
+	assert 'j++' in stmt_spans
+	assert stmt_spans.filter(it == 'i++, j++').len == 0
 }
 
 // Dynamic array initializers (`[]T{...}`) are parsed after the `[]T` prefix is
