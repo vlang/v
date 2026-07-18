@@ -23,6 +23,93 @@ fn test_c_directive_targets_use_requested_platform() {
 	assert c_include_arg_for_target('windows <windows.h>', '', '', target) == ''
 }
 
+fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
+	empty := map[string]bool{}
+	known_apple, active_apple := c_preprocessor_condition_state('__APPLE__', empty, empty, empty,
+		false, false, linux)
+	assert known_apple
+	assert !active_apple
+	known_linux, active_linux := c_preprocessor_condition_state('linux', empty, empty, empty,
+		false, false, linux)
+	assert known_linux
+	assert active_linux
+	known_negated_unix, active_negated_unix := c_preprocessor_condition_state('!unix', empty,
+		empty, empty, false, false, linux)
+	assert known_negated_unix
+	assert !active_negated_unix
+	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, false, linux,
+		false)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], []string{}, false, linux,
+		false)
+	assert c_native_source_context_definitely_inactive(['#if linux', '#else'], []string{}, false,
+		linux, false)
+	known_c99_linux, active_c99_linux := c_preprocessor_condition_state('linux', empty, empty,
+		empty, false, true, linux)
+	assert !known_c99_linux
+	assert active_c99_linux
+	known_c99_unix, active_c99_unix := c_preprocessor_condition_state('unix', empty, empty, empty,
+		false, true, linux)
+	assert !known_c99_unix
+	assert active_c99_unix
+	known_c99_underscored, active_c99_underscored := c_preprocessor_condition_state('__linux__',
+		empty, empty, empty, false, true, linux)
+	assert known_c99_underscored
+	assert active_c99_underscored
+	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, true, linux,
+		false)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], []string{}, true, linux,
+		false)
+	assert !c_native_source_context_definitely_inactive(['#if linux', '#else'], [
+		'-std=c99',
+	], false, linux, false)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], ['-std=c11'], false, linux,
+		false)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], ['-std=c99', '-std=gnu11'],
+		false, linux, false)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], ['-std=gnu11', '-std=c99'],
+		false, linux, false)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], ['-std=gnu11'], true, linux,
+		false)
+	assert !c_native_source_context_definitely_inactive(['#if SOURCE_FEATURE'], []string{}, false,
+		linux, true)
+	known_unset, active_unset := c_preprocessor_condition_state('SOME_UNSET_MACRO', empty, empty,
+		empty, false, false, linux)
+	assert known_unset
+	assert !active_unset
+	known_negated, active_negated := c_preprocessor_condition_state('!SOME_UNSET_MACRO', empty,
+		empty, empty, false, false, linux)
+	assert known_negated
+	assert active_negated
+	known_defined, active_defined := c_preprocessor_condition_state('SOME_DEFINED_MACRO', {
+		'SOME_DEFINED_MACRO': true
+	}, empty, empty, false, false, linux)
+	assert !known_defined
+	assert active_defined
+	known_negated_defined, active_negated_defined := c_preprocessor_condition_state('!FEATURE', {
+		'FEATURE': true
+	}, empty, empty, false, false, linux)
+	assert !known_negated_defined
+	assert active_negated_defined
+	known_presence, active_presence := c_preprocessor_condition_state('defined(FEATURE)', {
+		'FEATURE': true
+	}, empty, empty, false, false, linux)
+	assert known_presence
+	assert active_presence
+	known_compound, active_compound := c_preprocessor_condition_state('SOME_UNSET_MACRO || 1',
+		empty, empty, empty, false, false, linux)
+	assert !known_compound
+	assert active_compound
+	known_external, active_external := c_preprocessor_condition_state('HEADER_FEATURE', empty,
+		empty, empty, true, false, linux)
+	assert !known_external
+	assert active_external
+	known_external_target, active_external_target := c_preprocessor_condition_state('__APPLE__',
+		empty, empty, empty, true, false, linux)
+	assert known_external_target
+	assert !active_external_target
+}
+
 fn test_termux_c_directive_target_is_distinct_from_android() {
 	termux := pref.target_from('termux', 'arm64') or { panic(err) }
 	android := pref.target_from('android', 'arm64') or { panic(err) }

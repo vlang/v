@@ -298,9 +298,10 @@ struct NativeSourceContextDirective {
 }
 
 struct ObjectiveCppSourceRequest {
-	module        string
-	source_path   string
-	local_context []NativeSourceContextDirective
+	module                 string
+	source_path            string
+	local_context          []NativeSourceContextDirective
+	source_macros_possible bool
 }
 
 struct CInlineHeader {
@@ -2190,9 +2191,10 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				// omitted without forcing the generated unit into Objective-C mode.
 				if source_path.ends_with('.mm') {
 					g.objective_cpp_source_requests << ObjectiveCppSourceRequest{
-						module:        module_name
-						source_path:   source_path
-						local_context: (g.native_source_contexts[module_name] or {
+						module:                 module_name
+						source_path:            source_path
+						source_macros_possible: g.native_source_context_has_macro_inputs(module_name)
+						local_context:          (g.native_source_contexts[module_name] or {
 							[]NativeSourceContextDirective{}
 						}).clone()
 					}
@@ -2205,7 +2207,7 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 					context_directives := g.ordered_native_source_context(module_name,
 						local_context)
 					if context_directives.len > 0
-						&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.target) {
+						&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target, g.native_source_context_has_macro_inputs(module_name)) {
 						return true
 					}
 				}
@@ -3727,6 +3729,32 @@ fn (g &FlatGen) ordered_native_source_context(module_name string, local_context 
 	return result
 }
 
+fn (g &FlatGen) native_source_context_has_macro_inputs(module_name string) bool {
+	mut visiting := map[string]bool{}
+	return g.visit_native_source_macro_input_module(module_name, mut visiting)
+}
+
+fn (g &FlatGen) visit_native_source_macro_input_module(module_name string, mut visiting map[string]bool) bool {
+	if module_name in visiting {
+		return false
+	}
+	for directive in g.c_directives {
+		clean := trimmed_space(directive.text)
+		if directive.module == module_name && c_directive_name(clean) == 'include'
+			&& c_include_arg_is_source_file(c_directive_arg(clean)) {
+			return true
+		}
+	}
+	visiting[module_name] = true
+	for dependency in g.module_imports[module_name] or { []string{} } {
+		if g.visit_native_source_macro_input_module(dependency, mut visiting) {
+			return true
+		}
+	}
+	visiting.delete(module_name)
+	return false
+}
+
 fn (g &FlatGen) visit_native_source_context_module(module_name string, root_module string, root_context []NativeSourceContextDirective, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
 	if module_name in visited || module_name in visiting {
 		return
@@ -3789,10 +3817,52 @@ fn c_native_source_context_depth(directives []string) int {
 	return depth
 }
 
-fn c_native_source_context_definitely_inactive(directives []string, flags []string, target pref.Target) bool {
+fn c_preprocessor_invalidate_macro_state(mut defined map[string]bool, mut undefined map[string]bool, mut uncertain map[string]bool) {
+	for name in defined.keys() {
+		uncertain[name] = true
+	}
+	for name in undefined.keys() {
+		uncertain[name] = true
+	}
+	defined.clear()
+	undefined.clear()
+}
+
+fn c_effective_strict_iso_mode(flags []string, c99_mode bool) bool {
+	mut strict_iso_mode := c99_mode
+	mut expect_standard := false
+	for flag in flags {
+		clean := trimmed_space(flag)
+		if expect_standard {
+			strict_iso_mode = !clean.to_lower().starts_with('gnu')
+			expect_standard = false
+			continue
+		}
+		if clean in ['-std', '--std'] {
+			expect_standard = true
+			continue
+		}
+		if clean == '-ansi' {
+			strict_iso_mode = true
+			continue
+		}
+		for prefix in ['-std=', '--std='] {
+			if clean.starts_with(prefix) && clean.len > prefix.len {
+				standard := clean[prefix.len..].to_lower()
+				strict_iso_mode = !standard.starts_with('gnu')
+				break
+			}
+		}
+	}
+	return strict_iso_mode
+}
+
+fn c_native_source_context_definitely_inactive(directives []string, flags []string, c99_mode bool, target pref.Target, source_macros_possible bool) bool {
 	mut defined := map[string]bool{}
 	mut undefined := map[string]bool{}
 	mut uncertain := map[string]bool{}
+	mut external_macros_possible := source_macros_possible || c_forced_include_inputs(flags).len > 0
+	strict_iso_mode := c_effective_strict_iso_mode(flags, c99_mode)
 	mut i := 0
 	for i < flags.len {
 		clean := trimmed_space(flags[i])
@@ -3823,6 +3893,9 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 		}
 		i++
 	}
+	if external_macros_possible {
+		c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+	}
 	mut condition_known := []bool{}
 	mut condition_active := []bool{}
 	// Keep the cumulative state of each branch chain so `#elif` and `#else`
@@ -3836,7 +3909,7 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 			if name in ['ifdef', 'ifndef'] {
 				macro_name := c_directive_arg(clean).fields()[0] or { '' }
 				known, mut active := c_preprocessor_macro_state(macro_name, defined, undefined,
-					uncertain, target)
+					uncertain, strict_iso_mode, target)
 				if name == 'ifndef' {
 					active = !active
 				}
@@ -3849,7 +3922,7 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 			if name == 'if' {
 				arg := c_directive_arg(clean)
 				known, active := c_preprocessor_condition_state(arg, defined, undefined, uncertain,
-					target)
+					external_macros_possible, strict_iso_mode, target)
 				condition_known << known
 				condition_active << (if known { active } else { true })
 				condition_taken_known << known
@@ -3861,7 +3934,7 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 				prior_known := condition_taken_known[last]
 				prior_taken := condition_taken[last]
 				known, active := c_preprocessor_condition_state(c_directive_arg(clean), defined,
-					undefined, uncertain, target)
+					undefined, uncertain, external_macros_possible, strict_iso_mode, target)
 				if (prior_known && prior_taken) || (known && !active) {
 					condition_known[last] = true
 					condition_active[last] = false
@@ -3901,6 +3974,20 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 				condition_active.delete_last()
 				condition_taken_known.delete_last()
 				condition_taken.delete_last()
+				continue
+			}
+			if name in ['include', 'insert'] {
+				mut possibly_active := true
+				for depth in 0 .. condition_known.len {
+					if condition_known[depth] && !condition_active[depth] {
+						possibly_active = false
+						break
+					}
+				}
+				if possibly_active {
+					c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+					external_macros_possible = true
+				}
 				continue
 			}
 			if name !in ['define', 'undef'] {
@@ -3947,7 +4034,7 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 	return false
 }
 
-fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, target pref.Target) (bool, bool) {
+fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
 	if name in defined {
 		return true, true
 	}
@@ -3957,9 +4044,29 @@ fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined ma
 	if name in uncertain {
 		return false, true
 	}
+	if name == '__linux__' {
+		return true, target.os in ['linux', 'android', 'termux']
+	}
+	if name in ['__linux', 'linux'] {
+		if strict_iso_mode {
+			return false, true
+		}
+		return true, target.os in ['linux', 'android', 'termux']
+	}
+	if name == 'unix' {
+		if strict_iso_mode {
+			return false, true
+		}
+		if target.os in ['linux', 'android', 'termux'] {
+			return true, true
+		}
+		if target.os in ['windows', 'macos', 'ios'] {
+			return true, false
+		}
+		return false, true
+	}
 	match name {
 		'__APPLE__', '__MACH__' { return true, target.os in ['macos', 'ios'] }
-		'__linux__', '__linux' { return true, target.os == 'linux' }
 		'_WIN32' { return true, target.os == 'windows' }
 		'_WIN64' { return true, target.os == 'windows' && target.pointer_bits == 64 }
 		'__FreeBSD__' { return true, target.os == 'freebsd' }
@@ -3974,7 +4081,22 @@ fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined ma
 	return true, false
 }
 
-fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, target pref.Target) (bool, bool) {
+fn c_preprocessor_bare_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, external_macros_possible bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
+	if name in undefined {
+		return true, false
+	}
+	// Definitions collected from directives and -D flags do not retain their values.
+	// They are sufficient for defined(NAME), but not for evaluating #if NAME.
+	if name in defined || name in uncertain {
+		return false, true
+	}
+	if external_macros_possible && !name.starts_with('_') {
+		return false, true
+	}
+	return c_preprocessor_macro_state(name, defined, undefined, uncertain, strict_iso_mode, target)
+}
+
+fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, external_macros_possible bool, strict_iso_mode bool, target pref.Target) (bool, bool) {
 	mut clean := raw.trim_space()
 	mut negated := false
 	if clean.starts_with('!') {
@@ -3987,6 +4109,17 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 			active = !active
 		}
 		return true, active
+	}
+	if clean.len > 0 && c_identifier_start(clean[0]) && c_header_struct_tag(clean) == clean {
+		known, mut active := c_preprocessor_bare_macro_state(clean, defined, undefined, uncertain,
+			external_macros_possible, strict_iso_mode, target)
+		if !known {
+			return false, true
+		}
+		if negated {
+			active = !active
+		}
+		return known, active
 	}
 	if !clean.starts_with('defined') || (clean.len > 'defined'.len && clean['defined'.len] != `(`
 		&& !clean['defined'.len].is_space()) {
@@ -4014,7 +4147,7 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 		return false, true
 	}
 	known, mut active := c_preprocessor_macro_state(macro_name, defined, undefined, uncertain,
-		target)
+		strict_iso_mode, target)
 	if negated {
 		active = !active
 	}
@@ -4025,7 +4158,7 @@ fn (mut g FlatGen) materialize_objective_cpp_sources() {
 	for request in g.objective_cpp_source_requests {
 		context_directives := g.ordered_native_source_context(request.module, request.local_context)
 		if context_directives.len > 0
-			&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.target) {
+			&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target, request.source_macros_possible) {
 			continue
 		}
 		if context_directives.len > 0

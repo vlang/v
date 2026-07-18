@@ -6124,9 +6124,10 @@ fn main() {
 	}, 'main.v')
 	assert inactive_objective_c_out == '60'
 	inactive_objective_cpp := run_good_project_result(v3_bin, 'inactive_objective_cpp_source', '', {
-		'v.mod':       "Module { name: 'inactive_objective_cpp_source' }\n"
-		'disabled.mm': '#error inactive Objective-C++ source must not be compiled\n'
-		'main.v':      'module main\n\n#if 0\n#include "disabled.mm"\n#endif\n\n#ifdef V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(65))\n}\n'
+		'v.mod':        "Module { name: 'inactive_objective_cpp_source' }\n"
+		'disabled.mm':  '#error inactive Objective-C++ source must not be compiled\n'
+		'later_defs.c': '#define V3_NEVER_DEFINED_OBJECTIVE_CPP 1\n'
+		'main.v':       'module main\n\n#if 0\n#include "disabled.mm"\n#endif\n\n#ifdef V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\n#include "later_defs.c"\n\nfn main() {\n\tprintln(int_str(65))\n}\n'
 	}, 'main.v')
 	assert inactive_objective_cpp.run_output == '65'
 	assert !inactive_objective_cpp.compile_output.contains('v3_native_source_context_'), inactive_objective_cpp.compile_output
@@ -6222,6 +6223,46 @@ fn test_imported_objective_cpp_wrapper_context() {
 		'main.v':                  'module main\n\nimport consumer\n\nfn main() {\n\tprintln(int_str(consumer.answer()))\n}\n'
 	}, 'main.v')
 	assert out == '68'
+}
+
+fn test_bare_macro_objective_c_guards_stay_inactive() {
+	v3_bin := build_v3()
+	result := run_good_project_result(v3_bin, 'bare_macro_objective_c_guards', '', {
+		'v.mod':       "Module { name: 'bare_macro_objective_c_guards' }\n"
+		'disabled.m':  '#error inactive Objective-C source must not be compiled\n'
+		'disabled.mm': '#error inactive Objective-C++ source must not be compiled\n'
+		'main.v':      'module main\n\n#if V3_NEVER_DEFINED_OBJECTIVE_C\n#include "disabled.m"\n#endif\n\n#if V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(70))\n}\n'
+	}, 'main.v')
+	assert result.run_output == '70'
+	assert result.compile_output.contains('tcc.exe'), result.compile_output
+	assert !result.compile_output.contains('v3_native_source_context_'), result.compile_output
+}
+
+fn test_valued_bare_macro_objective_c_guards_remain_possible() {
+	v3_bin := build_v3()
+	out := run_good_project_with_flags(v3_bin, 'valued_bare_macro_objective_c_guards', '-cc clang', {
+		'v.mod':     "Module { name: 'valued_bare_macro_objective_c_guards' }\n"
+		'active.m':  'static int answer_from_valued_m_guard(void) { return 1; }\n'
+		'active.mm': 'extern "C" int answer_from_valued_mm_guard(void) { auto answer = []() { return 70; }; return answer(); }\n'
+		'main.v':    'module main\n\n#flag -DV3_MM_FEATURE=0\n\n#define V3_M_FEATURE 0\n#if !V3_M_FEATURE\n#include "active.m"\n#endif\n\n#if !V3_MM_FEATURE\n#include "active.mm"\n#endif\n\nfn C.answer_from_valued_m_guard() int\nfn C.answer_from_valued_mm_guard() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_valued_m_guard() + C.answer_from_valued_mm_guard()))\n}\n'
+	}, 'main.v')
+	assert out == '71'
+}
+
+fn test_external_bare_macro_objective_c_guards_remain_possible() {
+	v3_bin := build_v3()
+	out := run_good_project_with_flags(v3_bin, 'external_bare_macro_objective_c_guards',
+		'-cc clang', {
+		'v.mod':           "Module { name: 'external_bare_macro_objective_c_guards' }\n"
+		'config.h':        '#define V3_HEADER_FEATURE 1\n'
+		'forced.h':        '#define V3_FORCED_FEATURE 1\n'
+		'source_defs.c':   '#define V3_SOURCE_FEATURE 1\n'
+		'active.m':        'static int answer_from_header_macro_guard(void) { return 2; }\n'
+		'active.mm':       'extern "C" int answer_from_forced_macro_guard(void) { auto answer = []() { return 70; }; return answer(); }\n'
+		'source_active.m': 'static int answer_from_source_macro_guard(void) { return 3; }\n'
+		'main.v':          'module main\n\n#flag -UV3_FORCED_FEATURE\n#flag -include @VMODROOT/forced.h\n\n#undef V3_HEADER_FEATURE\n#include "config.h"\n#if V3_HEADER_FEATURE\n#include "active.m"\n#endif\n\n#include "source_defs.c"\n#if V3_SOURCE_FEATURE\n#include "source_active.m"\n#endif\n\n#if V3_FORCED_FEATURE\n#include "active.mm"\n#endif\n\nfn C.answer_from_header_macro_guard() int\nfn C.answer_from_source_macro_guard() int\nfn C.answer_from_forced_macro_guard() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_header_macro_guard() + C.answer_from_source_macro_guard() + C.answer_from_forced_macro_guard()))\n}\n'
+	}, 'main.v')
+	assert out == '75'
 }
 
 fn test_review_fixed_array_alias_clone_dispatch() {
