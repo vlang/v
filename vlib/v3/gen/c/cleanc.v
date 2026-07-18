@@ -298,9 +298,10 @@ struct NativeSourceContextDirective {
 }
 
 struct ObjectiveCppSourceRequest {
-	module        string
-	source_path   string
-	local_context []NativeSourceContextDirective
+	module                 string
+	source_path            string
+	local_context          []NativeSourceContextDirective
+	source_macros_possible bool
 }
 
 struct CInlineHeader {
@@ -2190,9 +2191,10 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				// omitted without forcing the generated unit into Objective-C mode.
 				if source_path.ends_with('.mm') {
 					g.objective_cpp_source_requests << ObjectiveCppSourceRequest{
-						module:        module_name
-						source_path:   source_path
-						local_context: (g.native_source_contexts[module_name] or {
+						module:                 module_name
+						source_path:            source_path
+						source_macros_possible: g.native_source_context_has_macro_inputs(module_name)
+						local_context:          (g.native_source_contexts[module_name] or {
 							[]NativeSourceContextDirective{}
 						}).clone()
 					}
@@ -4154,7 +4156,7 @@ fn (mut g FlatGen) materialize_objective_cpp_sources() {
 	for request in g.objective_cpp_source_requests {
 		context_directives := g.ordered_native_source_context(request.module, request.local_context)
 		if context_directives.len > 0
-			&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target, g.native_source_context_has_macro_inputs(request.module)) {
+			&& c_native_source_context_definitely_inactive(context_directives, g.c_flags, g.c99_mode, g.target, request.source_macros_possible) {
 			continue
 		}
 		if context_directives.len > 0
