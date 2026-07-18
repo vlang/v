@@ -1,8 +1,8 @@
 module parser
 
 import os
-import flat
-import pref
+import v3.flat
+import v3.pref
 
 // Parses `src` on its own and returns the flat AST plus the exact bytes the
 // parser saw, so a node's [offset, end) span can be checked against the source.

@@ -1,8 +1,7 @@
 module parser
 
 import os
-import flat
-import pref
+import v3.pref
 
 const verifier_src = r'module main
 
