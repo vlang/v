@@ -59,10 +59,140 @@ jobs:
           .\v.exe symlink
       - name: Legacy gg import multiwindow isolation
         run: v -cc msvc test vlib/gg/legacy_import_multiwindow_isolation_test.v
-      - name: Multiwindow D3D11 smoke
-        run: v -cc msvc -d gg_multiwindow -d sokol_d3d11 test vlib/x/multiwindow vlib/gg/multiwindow_api_d_gg_multiwindow_test.v vlib/gg/frame_pacing_test.v vlib/gg/draw_fns_api_test.v vlib/gg/draw_rect_empty_test.v
-      - name: Compile gg multiwindow example with D3D11
-        run: v -cc msvc -d gg_multiwindow -d sokol_d3d11 -o "$env:TEMP\gg_multiwindow.exe" examples/gg/multiwindow.v
+      - name: Prepare multiwindow Job Object watchdog
+        shell: pwsh
+        run: |
+          $source = Join-Path $env:RUNNER_TEMP 'multiwindow_ci_watchdog.v'
+          $runner = Join-Path $env:RUNNER_TEMP 'multiwindow_ci_watchdog.exe'
+          @'
+          module main
+
+          import gg.testdata.multiwindow_probe_watchdog
+          import os
+          import time
+
+          fn main() {
+              run_ci_watchdog() or {
+                  eprintln(err.msg())
+                  exit(1)
+              }
+          }
+
+          fn run_ci_watchdog() ! {
+              if os.args.len < 4 {
+                  return error('usage: multiwindow_ci_watchdog timeout-seconds expected-final-line executable [args...]')
+              }
+              timeout_seconds := os.args[1].int()
+              if timeout_seconds <= 0 {
+                  return error('multiwindow CI watchdog timeout must be positive')
+              }
+              expected_final_line := os.args[2]
+              gate_path := os.join_path(os.temp_dir(), 'multiwindow_ci_gate_${os.getpid()}_${time.now().unix_nano()}')
+              defer {
+                  os.rm(gate_path) or {}
+              }
+              result := multiwindow_probe_watchdog.run(
+                  executable: os.args[3]
+                  args:       os.args[4..]
+                  timeout:    timeout_seconds * time.second
+                  start_file: gate_path
+              )!
+              if result.stdout != '' {
+                  print(result.stdout)
+              }
+              if result.stderr != '' {
+                  eprint(result.stderr)
+              }
+              if result.timed_out {
+                  return error('multiwindow CI child timed out after ${timeout_seconds} seconds')
+              }
+              if !result.reaped {
+                  return error('multiwindow CI child leader was not reaped')
+              }
+              if !result.confinement_empty {
+                  return error('multiwindow CI child process confinement is not empty')
+              }
+              if result.forced_cleanup {
+                  return error('multiwindow CI child required forced cleanup')
+              }
+              if result.exit_code != 0 {
+                  return error('multiwindow CI child exited with ${result.exit_code}')
+              }
+              if expected_final_line == '-' {
+                  return
+              }
+              mut actual_final_line := ''
+              for line in result.stdout.split_into_lines() {
+                  if line.trim_space() != '' {
+                      actual_final_line = line.trim_space()
+                  }
+              }
+              if actual_final_line != expected_final_line {
+                  return error('multiwindow CI final record mismatch: expected `${expected_final_line}`, got `${actual_final_line}`')
+              }
+          }
+          '@ | Set-Content -Encoding utf8 $source
+          .\v.exe -cc msvc -o $runner $source
+          if ($LASTEXITCODE -ne 0) {
+            throw "multiwindow watchdog compile failed with exit code $LASTEXITCODE"
+          }
+      - name: Multiwindow D3D11 WARP regressions and runtime probes
+        shell: pwsh
+        env:
+          VFLAGS: -cc msvc -d gg_multiwindow_d3d11_warp
+          VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
+          VGG_MULTIWINDOW_RUNTIME_BACKEND: win32
+          VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: win32
+          V_MULTIWINDOW_PROBE_BACKEND: win32
+        run: |
+          $runner = Join-Path $env:RUNNER_TEMP 'multiwindow_ci_watchdog.exe'
+          $vexe = (Resolve-Path .\v.exe).Path
+          $interactive = Join-Path $env:RUNNER_TEMP 'gg_multiwindow.exe'
+          $runtime = Join-Path $env:RUNNER_TEMP 'gg_multiwindow_render_runtime.exe'
+
+          .\v.exe -cc msvc -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp -subsystem console -o $interactive examples/gg/multiwindow.v
+          if ($LASTEXITCODE -ne 0) {
+            throw "interactive multiwindow example compile failed with exit code $LASTEXITCODE"
+          }
+          .\v.exe -cc msvc -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp -subsystem console -o $runtime examples/gg/multiwindow_render_runtime.v
+          if ($LASTEXITCODE -ne 0) {
+            throw "runtime multiwindow example compile failed with exit code $LASTEXITCODE"
+          }
+
+          $tests = @(
+            'vlib/x/multiwindow/event_sequence_exhaustion_test.v',
+            'vlib/x/multiwindow/event_terminal_delivery_test.v',
+            'vlib/x/multiwindow/internal_fault_matrix_test.v',
+            'vlib/x/multiwindow/multiwindow_test.v',
+            'vlib/x/multiwindow/native_operation_proof_test.v',
+            'vlib/x/multiwindow/render_scheduler_test.v',
+            'vlib/x/multiwindow/render_target_lease_test.v',
+            'vlib/x/multiwindow/teardown_contract_test.v',
+            'vlib/x/multiwindow/win32_render_metrics_test.v',
+            'vlib/gg/multiwindow_api_d_gg_multiwindow_test.v',
+            'vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v',
+            'vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v',
+            'vlib/gg/multiwindow_render_runtime_contract_test.v',
+            'vlib/gg/frame_pacing_test.v',
+            'vlib/gg/draw_fns_api_test.v',
+            'vlib/gg/draw_rect_empty_test.v'
+          )
+          foreach ($test in $tests) {
+            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' 'test' $test
+            if ($LASTEXITCODE -ne 0) {
+              throw "multiwindow D3D11 WARP test '$test' failed with exit code $LASTEXITCODE"
+            }
+          }
+
+          & $runner 120 '{"example":"multiwindow_render_runtime","status":"PASS","cleanup":"complete"}' $runtime
+          if ($LASTEXITCODE -ne 0) {
+            throw "multiwindow D3D11 WARP runtime example failed with exit code $LASTEXITCODE"
+          }
+
+          & $runner 120 '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' $interactive
+          if ($LASTEXITCODE -ne 0) {
+            throw "interactive multiwindow D3D11 WARP example failed with exit code $LASTEXITCODE"
+          }
       - name: All code is formatted
         run: v -silent test-cleancode
       - name: Test -cc msvc works

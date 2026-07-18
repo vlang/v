@@ -1,5 +1,6 @@
 module c
 
+import os
 import v3.flat
 import v3.types
 
@@ -17,6 +18,13 @@ fn test_c_name_sanitize_escaped_keywords() {
 	assert c_name('@true') == '_v_true'
 	assert c_name('@false') == '_v_false'
 	assert c_name('Kind.@asm') == 'Kind___v_asm'
+}
+
+fn test_c_name_sanitizes_compound_generic_type_arguments() {
+	name :=
+		c_name('json2.StructKeyDecodeResult[fn(&mbedtls.SSLListener, string) !&mbedtls.SSLCerts]')
+	assert name.bytes().all((it >= `a` && it <= `z`) || (it >= `A` && it <= `Z`)
+		|| (it >= `0` && it <= `9`) || it == `_`)
 }
 
 fn test_c_name_libc_collision_abs() {
@@ -49,6 +57,20 @@ fn test_cgen_typeof_display_canonicalizes_fixed_array_generic_args() {
 		len:       3
 	})
 	assert typeof_display_resolved_type_name(fixed_maps) == '[3]map[string]int'
+}
+
+fn test_fixed_array_typedef_allows_opaque_pointer_elements() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.tc = &tc
+	opaque := types.Type(types.Struct{
+		name: 'C.Foo'
+	})
+	assert g.fixed_array_type_has_unknown_struct(opaque)
+	assert !g.fixed_array_type_has_unknown_struct(types.Type(types.Pointer{
+		base_type: opaque
+	}))
 }
 
 fn test_sum_type_index_rejects_ambiguous_qualified_suffix() {
@@ -89,10 +111,48 @@ fn test_fn_decl_variadic_resolves_alias_before_short_fallback() {
 }
 
 fn test_guarded_preamble_externs_keep_explicit_declarations() {
-	g := FlatGen.new()
+	mut g := FlatGen.new()
 	assert g.should_emit_c_extern_decl('fseeko')
 	assert g.should_emit_c_extern_decl('ftello')
 	assert g.should_emit_c_extern_decl('mkdir')
 	assert g.should_emit_c_extern_decl('chmod')
 	assert g.should_emit_c_extern_decl('symlink')
+	assert !g.should_emit_c_extern_decl('request')
+	g.c_directives << CDirective{
+		text: '#include <math.h>'
+	}
+	for name in ['accept', 'bind', 'chdir', 'execve', 'getuid', 'gmtime_r', 'ioctl', 'rmdir'] {
+		assert !g.should_emit_c_extern_decl(name)
+	}
+}
+
+fn test_preserved_system_include_declarations_are_header_specific() {
+	assert c_preserved_system_include_declared_fns('<stdio.h>').len == 0
+	assert c_preserved_system_include_declared_fns('<openssl/ssl.h>') == ['X509_free']
+	assert c_preserved_system_include_declared_fns('<openssl/x509.h>') == [
+		'X509_free',
+	]
+	assert c_preserved_system_include_declared_fns('<objc/message.h>') == [
+		'objc_msgSend',
+	]
+}
+
+fn test_large_transitive_header_tree_is_preserved() {
+	root := os.join_path(os.temp_dir(), 'v3_large_transitive_header_tree_test')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	padding := 'x'.repeat(140_000)
+	os.write_file(os.join_path(root, 'a.h'), '/*${padding}*/\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'b.h'), '/*${padding}*/\n') or { panic(err) }
+	one_path := os.join_path(root, 'one.h')
+	two_path := os.join_path(root, 'two.h')
+	os.write_file(one_path, '#include "a.h"\n') or { panic(err) }
+	os.write_file(two_path, '#include "a.h"\n#include "b.h"\n') or { panic(err) }
+	mut one_size := CHeaderTreeSize{}
+	assert !c_header_tree_exceeds_inline_limit(one_path, '', []string{}, mut one_size)
+	mut two_size := CHeaderTreeSize{}
+	assert c_header_tree_exceeds_inline_limit(two_path, '', []string{}, mut two_size)
 }

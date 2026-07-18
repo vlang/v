@@ -24,6 +24,30 @@ fn test_node_uses_compact_header_and_uncommon_payload() {
 	assert sizeof(Node) <= 72
 }
 
+fn test_node_owned_clone_preserves_semantic_flags_and_payload() {
+	node := Node{
+		value:                'value'
+		typ:                  '[]string'
+		payload:              node_payload(['T'])
+		children_start:       12
+		children_count:       3
+		kind:                 .for_stmt
+		op:                   .plus
+		is_mut:               true
+		skip_ownership_drops: true
+	}
+	cloned := node.clone_owned()
+	assert cloned.value == node.value
+	assert cloned.typ == node.typ
+	assert cloned.generic_params() == ['T']
+	assert cloned.children_start == node.children_start
+	assert cloned.children_count == node.children_count
+	assert cloned.kind == node.kind
+	assert cloned.op == node.op
+	assert cloned.is_mut
+	assert cloned.skip_ownership_drops
+}
+
 fn test_clone_text_table_owned_detaches_scoped_storage() {
 	$if prealloc {
 		mut ast := FlatAst.new()

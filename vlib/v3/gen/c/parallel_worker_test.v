@@ -51,3 +51,27 @@ fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	assert g.parallel_cached_expr_type(flat.NodeId(0), tc.a.nodes[0]) or { types.Type(types.void_) } is types.Primitive
 	assert g.parallel_cached_expr_type(flat.NodeId(1), tc.a.nodes[1]) or { types.Type(types.void_) } is types.String
 }
+
+fn test_parallel_checker_clone_keeps_checked_file_scope_identity() {
+	g, mut tc := parallel_worker_test_gen(true)
+	tc.file_scope.insert('file_value', types.Type(types.int_))
+	w := g.clone_parallel_type_checker()
+	assert w.file_scope == tc.file_scope
+	assert w.cur_scope != w.file_scope
+	owner := w.cur_scope.lookup_owner('file_value') or { panic('missing file binding') }
+	assert owner.belongs_to_scope(w.file_scope)
+}
+
+fn test_scoped_cgen_batch_preserves_worker_interned_literals() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+	for generated in ['generated_a', 'generated_b'] {
+		mut batch := g.new_parallel_worker(0)
+		generated_id := batch.intern_string(generated)
+		assert generated_id == g.str_lits.len
+		g.absorb_scoped_cgen_batch(batch, false)
+		assert g.str_lits[generated_id] == generated
+		assert g.str_lit_ids[generated] == generated_id
+	}
+	assert g.str_lits == ['source', 'generated_a', 'generated_b']
+}

@@ -65,6 +65,36 @@ fn test_local_pointer_alias_clear_preserves_outer_branch_markers() {
 	tc.pop_scope()
 }
 
+fn test_fn_decl_signature_registration_preserves_call_name_aliases() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'pkg'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	name := 'Widget.call'
+	full_name := qualify_name_in_module(tc.cur_module, name)
+	params := [types.Type(types.int_)]
+	shared_flags := [true]
+	g.register_fn_decl_signature(name, full_name, params, shared_flags, true, true, 'int')
+	aliases := [
+		fn_decl_module_key(tc.cur_module, name),
+		name,
+		g.cname(name),
+		'${tc.cur_module}.${name}',
+		g.cname('${tc.cur_module}.${name}'),
+	]
+	for alias in aliases {
+		assert g.fn_decl_param_types[alias] == params
+		assert g.fn_decl_ret_types[alias] or { types.Type(types.void_) } == types.Type(types.int_)
+		assert g.fn_decl_variadic[alias]
+		if alias != fn_decl_module_key(tc.cur_module, name) {
+			assert g.fn_decl_shared_params[alias] == shared_flags
+			assert g.fn_decl_mut_receivers[alias]
+		}
+	}
+}
+
 fn test_local_pointer_alias_branch_assignment_merges_outer_markers() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -227,4 +257,75 @@ fn test_heap_local_memdup_expr_uses_aligned_memdup_for_aligned_structs() {
 		name: 'Plain'
 	})
 	assert g.heap_local_memdup_expr('p', plain_type, 'Plain', true) == '(Plain*)memdup(p, sizeof(Plain))'
+}
+
+fn test_heap_local_address_expr_copies_pointer_local_slot() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	int_ptr := types.Type(types.Pointer{
+		base_type: types.Type(types.int_)
+	})
+	int_ptr_ptr := types.Type(types.Pointer{
+		base_type: int_ptr
+	})
+	tc.push_scope()
+	tc.cur_scope.insert_with_owner('p', int_ptr)
+	p_id := stmt_test_node(mut a, .ident, 'p', [])
+	amp_p_id := stmt_test_prefix(mut a, .amp, p_id)
+	heap_expr := g.heap_local_address_expr(amp_p_id, int_ptr_ptr) or {
+		assert false, 'expected the address of a pointer local to escape through a heap copy'
+		return
+	}
+	assert heap_expr == '(int**)memdup(&p, sizeof(int*))'
+	tc.pop_scope()
+}
+
+fn test_heap_local_address_expr_copies_selector_from_stack_alias() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	int_type := types.Type(types.int_)
+	struct_type := types.Type(types.Struct{
+		name: 'S'
+	})
+	struct_ptr := types.Type(types.Pointer{
+		base_type: struct_type
+	})
+	int_ptr := types.Type(types.Pointer{
+		base_type: int_type
+	})
+	tc.structs['S'] = [types.StructField{
+		name: 'x'
+		typ:  int_type
+	}]
+	tc.push_scope()
+	tc.cur_scope.insert_with_owner('s', struct_type)
+	p_owner := tc.cur_scope.insert_with_owner('p', struct_ptr)
+	g.declare_local_pointer_alias_source(p_owner, 's')
+	p_id := stmt_test_node(mut a, .ident, 'p', [])
+	selector_id := stmt_test_node(mut a, .selector, 'x', [p_id])
+	amp_selector_id := stmt_test_prefix(mut a, .amp, selector_id)
+	heap_expr := g.heap_local_address_expr(amp_selector_id, int_ptr) or {
+		assert false, 'expected a selected field in stack-aliased storage to escape through a heap copy'
+		return
+	}
+	assert heap_expr == '(int*)memdup(&p->x, sizeof(int))'
+	g.declare_local_pointer_alias_source_kind(p_owner, 'arg', true)
+	mut_param_expr := g.heap_local_address_expr(amp_selector_id, int_ptr) or {
+		assert false, 'expected a selected field backed by a mut parameter to keep its address'
+		return
+	}
+	assert mut_param_expr == '&p->x'
+	g.declare_local_pointer_alias_source(p_owner, '')
+	external_expr := g.heap_local_address_expr(amp_selector_id, int_ptr) or {
+		assert false, 'expected a selected field in non-stack storage to keep its address'
+		return
+	}
+	assert external_expr == '&p->x'
+	tc.pop_scope()
 }

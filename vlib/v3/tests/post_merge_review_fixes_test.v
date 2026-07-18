@@ -4063,13 +4063,18 @@ fn keep(p &M) &M {
 	return &M(p)
 }
 
+fn from_void(p voidptr) &M {
+	return &M(p)
+}
+
 fn main() {
 	mut m := {
 		"a": 1
 	}
 	p := keep(&M(m))
+	q := from_void(voidptr(p))
 	unsafe {
-		(*p)["b"] = 2
+		(*q)["b"] = 2
 	}
 	println(int_str(m["b"]))
 }
@@ -4078,6 +4083,9 @@ fn main() {
 	body := c_fn_body(c_source, 'map* keep(map* p) {')
 	assert body.contains('return (map*)(p);'), body
 	assert !body.contains('map _t') && !body.contains('&_t') && !body.contains('&p'), body
+	void_body := c_fn_body(c_source, 'map* from_void(void* p) {')
+	assert void_body.contains('return (map*)(p);'), void_body
+	assert !void_body.contains('&p'), void_body
 	out := run_good(v3_bin, 'map_pointer_alias_cast_preserves_existing_pointer', source)
 	assert out == '2'
 }

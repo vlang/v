@@ -242,6 +242,7 @@ mut:
 	struct_field_entries       map[string]Type
 	struct_field_misses        map[string]bool
 	ierror_compat_entries      map[string]int
+	interface_impl_entries     map[string][]string
 	source_error_embed_entries map[string]int
 	source_error_embed_indexed bool
 	ierror_impl_names          []string
@@ -256,6 +257,14 @@ mut:
 	local_fn_decl_index       map[string]bool
 	local_fn_decl_indexed_len int
 	local_fn_decl_last_module string
+}
+
+// ResolutionTypeViewCache reuses the lookup-only, unscoped checker views used
+// to parse compiler-generated qualified type text. The views are keyed by file
+// because selective imports remain file-local.
+struct ResolutionTypeViewCache {
+mut:
+	by_file map[string]&TypeChecker
 }
 
 // TypeCacheStats reports semantic cache effectiveness for compiler telemetry.
@@ -356,11 +365,18 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 	}
 }
 
+pub struct InterfaceImplIndex {
+pub:
+	names []string
+	ids   map[string]int
+}
+
 // TypeChecker represents type checker data used by types.
 @[heap]
 pub struct TypeChecker {
 pub mut:
 	a                            &flat.FlatAst = unsafe { nil }
+	verbose                      bool
 	fn_ret_types                 map[string]Type
 	fn_param_types               map[string][]Type
 	fn_shared_params             map[string][]bool
@@ -406,6 +422,11 @@ pub mut:
 	interface_embeds              map[string][]string
 	interface_abstract_methods    map[string][]string // iface -> abstract (declared) method names
 	interface_impl_name_snapshots map[string][]string
+	interface_method_names_index  map[string][]string
+	interface_abstract_index      map[string][]string
+	interface_field_list_index    map[string][]StructField
+	interface_impl_indexes        map[string]&InterfaceImplIndex
+	interface_query_indexes_ready bool
 
 	c_globals               map[string]Type
 	const_types             map[string]Type
@@ -521,10 +542,12 @@ pub mut:
 mut:
 	// Includes method-value aliases and binding-owner maps; all backing maps are
 	// replaced together at every function/worker boundary.
-	fn_context    FunctionCheckContext
-	type_cache    &TypeCache      = unsafe { nil }
-	type_interner &TypeInterner   = unsafe { nil }
-	symbols       &SymbolInterner = unsafe { nil }
+	fn_context               FunctionCheckContext
+	type_cache               &TypeCache               = unsafe { nil }
+	pre_transform_type_cache &TypeCache               = unsafe { nil }
+	resolution_type_views    &ResolutionTypeViewCache = unsafe { nil }
+	type_interner            &TypeInterner            = unsafe { nil }
+	symbols                  &SymbolInterner          = unsafe { nil }
 }
 
 // enable_scoped_parallel_workers uses disposable prealloc arenas for parallel
@@ -586,6 +609,10 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		interface_embeds:                   map[string][]string{}
 		interface_abstract_methods:         map[string][]string{}
 		interface_impl_name_snapshots:      map[string][]string{}
+		interface_method_names_index:       map[string][]string{}
+		interface_abstract_index:           map[string][]string{}
+		interface_field_list_index:         map[string][]StructField{}
+		interface_impl_indexes:             map[string]&InterfaceImplIndex{}
 		c_globals:                          map[string]Type{}
 		const_types:                        map[string]Type{}
 		const_exprs:                        map[string]flat.NodeId{}
@@ -636,6 +663,9 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 			struct_field_misses:        map[string]bool{}
 			ierror_compat_entries:      map[string]int{}
 			source_error_embed_entries: map[string]int{}
+		}
+		resolution_type_views:                   &ResolutionTypeViewCache{
+			by_file: map[string]&TypeChecker{}
 		}
 		type_interner:                           type_interner
 		symbols:                                 symbols
@@ -688,6 +718,11 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		interface_fields:                   tc.interface_fields
 		interface_embeds:                   tc.interface_embeds
 		interface_abstract_methods:         tc.interface_abstract_methods
+		interface_method_names_index:       tc.interface_method_names_index
+		interface_abstract_index:           tc.interface_abstract_index
+		interface_field_list_index:         tc.interface_field_list_index
+		interface_impl_indexes:             tc.interface_impl_indexes
+		interface_query_indexes_ready:      tc.interface_query_indexes_ready
 		c_globals:                          tc.c_globals
 		const_types:                        tc.const_types
 		const_exprs:                        tc.const_exprs
@@ -740,6 +775,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		ownership:                          tc.ownership
 		selfhost:                           tc.selfhost
 		fn_context:                         new_function_check_context()
+		resolution_type_views:              &ResolutionTypeViewCache{
+			by_file: map[string]&TypeChecker{}
+		}
 		type_interner:                      tc.type_interner
 		symbols:                            tc.symbols
 	}
@@ -852,6 +890,34 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 	if isnil(tc.symbols) {
 		tc.symbols = new_symbol_interner()
 	}
+	if !isnil(tc.pre_transform_type_cache) {
+		tc.type_cache = tc.pre_transform_type_cache
+		tc.pre_transform_type_cache = unsafe { nil }
+		mut cache := tc.type_cache
+		cache.base = unsafe { nil }
+		cache.parse_enabled = parse_enabled
+		cache.parse_hits = 0
+		cache.parse_misses = 0
+		cache.c_hits = 0
+		cache.c_misses = 0
+		cache.parse_entries.clear()
+		cache.c_entries.clear()
+		cache.c_name_entries.clear()
+		cache.struct_field_entries.clear()
+		cache.struct_field_misses.clear()
+		cache.ierror_compat_entries.clear()
+		cache.interface_impl_entries.clear()
+		cache.source_error_embed_entries.clear()
+		cache.source_error_embed_indexed = false
+		cache.ierror_impl_names.clear()
+		cache.ierror_impl_names_set = false
+		cache.short_type_name_index.clear()
+		cache.short_type_name_index_built = false
+		cache.local_fn_decl_index.clear()
+		cache.local_fn_decl_indexed_len = 0
+		cache.local_fn_decl_last_module = ''
+		return
+	}
 	tc.type_cache = &TypeCache{
 		parse_enabled: parse_enabled
 	}
@@ -886,12 +952,37 @@ pub fn (tc &TypeChecker) type_cache_parse_enabled() bool {
 }
 
 pub fn (tc &TypeChecker) clear_field_lookup_cache() {
-	if isnil(tc.type_cache) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
 		return
 	}
-	mut cache := tc.type_cache
 	cache.struct_field_entries.clear()
 	cache.struct_field_misses.clear()
+}
+
+// clear_c_type_cache invalidates C spellings after monomorphization changes
+// concrete type identities and adds materialized generic types.
+pub fn (tc &TypeChecker) clear_c_type_cache() {
+	mut cache := tc.type_cache
+	if isnil(cache) {
+		return
+	}
+	cache.c_entries.clear()
+	cache.c_name_entries.clear()
+	if !isnil(cache.base) {
+		mut base := cache.base
+		base.c_entries.clear()
+		base.c_name_entries.clear()
+	}
+}
+
+// clear_interface_impl_cache invalidates memoized implementer lists after a type-table change.
+pub fn (tc &TypeChecker) clear_interface_impl_cache() {
+	mut cache := tc.type_cache
+	if isnil(cache) {
+		return
+	}
+	cache.interface_impl_entries.clear()
 }
 
 // free_parallel_transform_caches releases private memoization maps owned by a forked
@@ -909,6 +1000,7 @@ pub fn (mut tc TypeChecker) free_parallel_transform_caches() {
 			tc.type_cache.struct_field_entries.free()
 			tc.type_cache.struct_field_misses.free()
 			tc.type_cache.ierror_compat_entries.free()
+			tc.type_cache.interface_impl_entries.free()
 			tc.type_cache.source_error_embed_entries.free()
 		}
 	}
@@ -990,13 +1082,30 @@ pub fn (mut tc TypeChecker) reserve_scoped_transform_metadata(signature_headroom
 	}
 }
 
-// rebuild_scoped_transform_signature_maps moves signature-map backing storage
-// into the current arena after a disposable transform scope has been left.
+// rebuild_scoped_transform_signature_maps moves signature maps, keys, and nested
+// type metadata into the current arena after a disposable transform scope has
+// been left.
 pub fn (mut tc TypeChecker) rebuild_scoped_transform_signature_maps() {
-	tc.fn_ret_types = tc.fn_ret_types.clone()
-	tc.fn_param_types = tc.fn_param_types.clone()
-	tc.fn_variadic = tc.fn_variadic.clone()
-	tc.specialized_generic_fns = tc.specialized_generic_fns.clone()
+	mut ret_types := map[string]Type{}
+	for name, ret in tc.fn_ret_types {
+		ret_types[name.clone()] = clone_owned_type(ret)
+	}
+	mut param_types := map[string][]Type{}
+	for name, params in tc.fn_param_types {
+		param_types[name.clone()] = clone_owned_types(params)
+	}
+	mut variadic := map[string]bool{}
+	for name, is_variadic in tc.fn_variadic {
+		variadic[name.clone()] = is_variadic
+	}
+	mut specialized := map[string]bool{}
+	for name, is_specialized in tc.specialized_generic_fns {
+		specialized[name.clone()] = is_specialized
+	}
+	tc.fn_ret_types = ret_types.move()
+	tc.fn_param_types = param_types.move()
+	tc.fn_variadic = variadic.move()
+	tc.specialized_generic_fns = specialized.move()
 }
 
 // begin_sparse_transform_node_caches keeps source-node entries in their dense
@@ -1005,6 +1114,14 @@ pub fn (mut tc TypeChecker) begin_sparse_transform_node_caches(base_nodes int) {
 	tc.parallel_check_sparse = true
 	tc.check_range_lo = 0
 	tc.check_range_hi = base_nodes - 1
+	if tc.scope_parallel_check_workers && isnil(tc.pre_transform_type_cache)
+		&& !isnil(tc.type_cache) {
+		tc.pre_transform_type_cache = tc.type_cache
+		tc.type_cache = &TypeCache{
+			base:          tc.pre_transform_type_cache
+			parse_enabled: tc.pre_transform_type_cache.parse_enabled
+		}
+	}
 }
 
 // promote_scoped_transform_interners moves additions made by a scoped
@@ -1278,7 +1395,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				tc.register_selective_imports(node)
 			}
 			.enum_decl {
-				qn := tc.qualify_name(node.value)
+				qn := tc.qualify_decl_name(node.value)
 				tc.enum_names[qn] = true
 				mut fields := []string{}
 				for i in 0 .. node.children_count {
@@ -1293,7 +1410,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 			}
 			.struct_decl {
-				qname := tc.qualify_name(node.value)
+				qname := tc.qualify_decl_name(node.value)
 				if qname !in tc.structs {
 					tc.structs[qname] = []StructField{}
 				}
@@ -1326,7 +1443,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						v := a.child_node(&node, i)
 						variants << tc.qualify_sum_variant_name(v.value, node.generic_params())
 					}
-					qname := tc.qualify_name(node.value)
+					qname := tc.qualify_decl_name(node.value)
 					tc.sum_types[qname] = variants
 					if node.generic_params().len > 0 {
 						tc.sum_generic_params[qname] = node.generic_params().clone()
@@ -1341,7 +1458,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						for part in sum_variant_texts {
 							variants << tc.qualify_sum_variant_name(part, node.generic_params())
 						}
-						qname := tc.qualify_name(node.value)
+						qname := tc.qualify_decl_name(node.value)
 						tc.sum_types[qname] = variants
 						if node.generic_params().len > 0 {
 							tc.sum_generic_params[qname] = node.generic_params().clone()
@@ -1351,7 +1468,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						}
 						continue
 					}
-					qname := tc.qualify_name(node.value)
+					qname := tc.qualify_decl_name(node.value)
 					tc.type_aliases[qname] = tc.qualify_type_text(node.typ)
 					if c_abi_fn := tc.c_abi_fn_ptr_type_from_text(node.typ) {
 						tc.type_alias_c_abi_fns[qname] = c_abi_fn
@@ -1365,11 +1482,17 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 			}
 			.interface_decl {
-				tc.interface_names[tc.qualify_name(node.value)] = true
+				tc.interface_names[tc.qualify_decl_name(node.value)] = true
 			}
 			else {}
 		}
 	}
+	// Pass 1 can parse callback aliases before later modules with same-named
+	// types have been indexed. Rebuild name-derived caches from the complete
+	// declaration table before collecting concrete signatures in pass 2.
+	tc.type_cache.c_entries.clear()
+	tc.type_cache.c_name_entries.clear()
+	tc.invalidate_short_type_name_index()
 	tc.check_c_struct_redeclarations(a)
 	// Pass 2: collect struct fields, function signatures (type aliases now available)
 	tc.type_cache.parse_enabled = true
@@ -1478,7 +1601,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						typ:  typ
 					}
 				}
-				qname := tc.qualify_name(node.value)
+				qname := tc.qualify_decl_name(node.value)
 				// A `C.` struct denotes a single external C type, but several modules may
 				// mirror it with partial or imprecise field views (e.g. `C.termios` in both
 				// `term` and `term.termios`). codegen emits one C struct, so the field table
@@ -1540,7 +1663,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 			}
 			.interface_decl {
-				iface_name := tc.qualify_name(node.value)
+				iface_name := tc.qualify_decl_name(node.value)
 				for i in 0 .. node.children_count {
 					f := a.child_node(&node, i)
 					if f.kind != .interface_field {
@@ -1628,6 +1751,12 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	$if ownership ? {
 		tc.ownership_after_collect()
 	}
+}
+
+// rebind_ast updates the AST view after the driver clones transformed storage.
+// All collected declaration/type metadata remains valid because cloning preserves node ids.
+pub fn (mut tc TypeChecker) rebind_ast(a &flat.FlatAst) {
+	tc.a = a
 }
 
 fn (mut tc TypeChecker) resolve_inferred_global_types(a &flat.FlatAst) {
@@ -2170,6 +2299,18 @@ pub fn (tc &TypeChecker) qualify_name(name string) string {
 	return qualified
 }
 
+// qualify_decl_name gives a declaration its stable owner-module name without
+// consulting declarations collected earlier in the same pass.
+fn (tc &TypeChecker) qualify_decl_name(name string) string {
+	if name.contains('.') {
+		return tc.resolve_imported_type_text(name)
+	}
+	if tc.cur_module.len == 0 || tc.cur_module in ['main', 'builtin'] {
+		return name
+	}
+	return '${tc.cur_module}.${name}'
+}
+
 // qualify_resolution_type_name qualifies a type name for RESOLUTION (not
 // registration): a bare capitalized name that does not exist under the current
 // module but does exist globally (a generic arg substituted from another
@@ -2238,8 +2379,13 @@ fn (tc &TypeChecker) qualify_sum_variant_name(name string, generic_params []stri
 	if bracket > 0 {
 		bracket_end := find_matching_bracket(clean, bracket)
 		if bracket_end < clean.len {
+			inner := clean[bracket + 1..bracket_end].trim_space()
+			if is_fixed_array_len_text(inner) || is_builtin_type_name(clean[..bracket]) {
+				return tc.qualify_sum_variant_name(clean[..bracket], generic_params) +
+					clean[bracket..]
+			}
 			mut parts := []string{}
-			for part in split_params(clean[bracket + 1..bracket_end]) {
+			for part in split_params(inner) {
 				parts << tc.qualify_sum_variant_name(part, generic_params)
 			}
 			return tc.qualify_name(clean[..bracket]) + '[' + parts.join(', ') + ']' +
@@ -2267,9 +2413,34 @@ fn (tc &TypeChecker) qualify_resolution_type_text(typ string) string {
 // generic arguments from another module.
 pub fn (tc &TypeChecker) parse_resolution_type(typ string) Type {
 	qualified := tc.qualify_resolution_type_text(typ)
+	if isnil(tc.resolution_type_views) {
+		mut unscoped := tc.fork_type_parse_view(tc.cur_file, '')
+		unscoped.resolution_type_mode = false
+		return unscoped.parse_type(qualified)
+	}
+	mut views := unsafe { tc.resolution_type_views }
+	if cached := views.by_file[tc.cur_file] {
+		return cached.parse_type(qualified)
+	}
 	mut unscoped := tc.fork_type_parse_view(tc.cur_file, '')
 	unscoped.resolution_type_mode = false
-	return unscoped.parse_type(qualified)
+	view := &unscoped
+	views.by_file[tc.cur_file] = view
+	return view.parse_type(qualified)
+}
+
+// reset_resolution_type_view_cache discards lookup views that may have been
+// created inside a completed scoped parallel phase.
+pub fn (mut tc TypeChecker) reset_resolution_type_view_cache() {
+	tc.resolution_type_views = &ResolutionTypeViewCache{
+		by_file: map[string]&TypeChecker{}
+	}
+}
+
+// disable_resolution_type_view_cache prevents a scoped cache from escaping the
+// phase that allocated it.
+pub fn (mut tc TypeChecker) disable_resolution_type_view_cache() {
+	tc.resolution_type_views = unsafe { nil }
 }
 
 fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string {
@@ -2305,6 +2476,18 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string 
 	if clean.starts_with('[]') {
 		return '[]' + tc.qualify_type_text_impl(clean[2..], resolution)
 	}
+	if clean == 'chan' {
+		return clean
+	}
+	if clean.starts_with('chan ') {
+		return 'chan ' + tc.qualify_type_text_impl(clean[5..], resolution)
+	}
+	if clean == 'thread' {
+		return clean
+	}
+	if clean.starts_with('thread ') {
+		return 'thread ' + tc.qualify_type_text_impl(clean[7..], resolution)
+	}
 	if clean.starts_with('map[') {
 		bracket_end := find_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
@@ -2334,8 +2517,12 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string 
 	if bracket > 0 {
 		bracket_end := find_matching_bracket(clean, bracket)
 		if bracket_end < clean.len {
+			inner := clean[bracket + 1..bracket_end].trim_space()
+			if is_fixed_array_len_text(inner) || is_builtin_type_name(clean[..bracket]) {
+				return tc.qualify_type_text_impl(clean[..bracket], resolution) + clean[bracket..]
+			}
 			mut parts := []string{}
-			for part in split_params(clean[bracket + 1..bracket_end]) {
+			for part in split_params(inner) {
 				parts << tc.qualify_type_text_impl(part, resolution)
 			}
 			return tc.qualify_type_text_impl(clean[..bracket], resolution) + '[' +
@@ -3412,6 +3599,16 @@ pub fn (tc &TypeChecker) resolved_call_name(id flat.NodeId) ?string {
 	return tc.cached_resolved_call(id)
 }
 
+// reset_resolved_calls_for_reannotation discards pre-transform call-name
+// bindings before the transformed AST is annotated again. The annotation walk
+// resolves and records every reachable call against the final AST/signatures.
+pub fn (mut tc TypeChecker) reset_resolved_calls_for_reannotation() {
+	for idx in 0 .. tc.resolved_call_set.len {
+		tc.resolved_call_set[idx] = false
+	}
+	tc.sparse_resolved_call_names.clear()
+}
+
 // fn_param_types_for_name returns the collected parameter types for a resolved call name.
 pub fn (tc &TypeChecker) fn_param_types_for_name(name string) []Type {
 	if params := tc.fn_param_types[name] {
@@ -4207,9 +4404,11 @@ fn (mut tc TypeChecker) check_export_attrs() {
 					export_symbols[export_name] = qname
 				}
 				if existing := natural_symbols[export_name] {
-					tc.record_error_unfiltered(.unsupported_generic,
-						'export name `${export_name}` for `${qname}` collides with `${existing}`',
-						flat.NodeId(i))
+					if existing != qname {
+						tc.record_error_unfiltered(.unsupported_generic,
+							'export name `${export_name}` for `${qname}` collides with `${existing}`',
+							flat.NodeId(i))
+					}
 				}
 			}
 			else {}
@@ -8224,14 +8423,18 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 			tc.reject_stored_method_value(tc.a.child(&node, i))
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, i))
 		}
-		tc.check_ownership_array_spread_clone(id, node)
+		$if ownership ? {
+			tc.check_ownership_array_spread_clone(id, node)
+		}
 	} else if node.kind == .map_init {
 		// children alternate key, value, key, value, ...; check the value positions.
 		for j := 1; j < node.children_count; j += 2 {
 			tc.reject_stored_method_value(tc.a.child(&node, j))
 			tc.reject_stored_capturing_fn_literal(tc.a.child(&node, j))
 		}
-		tc.check_ownership_map_spread_clone(id, node)
+		$if ownership ? {
+			tc.check_ownership_map_spread_clone(id, node)
+		}
 	} else if node.kind == .infix && node.op == .left_shift && node.children_count >= 2 {
 		if unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0))) is Array {
 			tc.reject_stored_method_value(tc.a.child(&node, 1))
@@ -21734,8 +21937,15 @@ fn (tc &TypeChecker) type_has_compiler_default_clone(t Type) bool {
 // stay first so transform-emitted interface IDs are preserved; later
 // implementers are appended in deterministic discovery order.
 pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
+	mut cache := tc.type_cache
+	if !isnil(cache) {
+		if cached := cache.interface_impl_entries[iface_name] {
+			return cached
+		}
+	}
+	mut impls := []string{}
 	if snapshot := tc.interface_impl_name_snapshots[iface_name] {
-		mut impls := snapshot.clone()
+		impls = snapshot.clone()
 		mut seen := map[string]bool{}
 		for name in impls {
 			seen[name] = true
@@ -21749,9 +21959,15 @@ pub fn (tc &TypeChecker) interface_impl_names(iface_name string) []string {
 				impls << name
 			}
 		}
-		return impls
+	} else {
+		impls = tc.interface_impl_names_uncached(iface_name)
 	}
-	return tc.interface_impl_names_uncached(iface_name)
+	if !isnil(cache) {
+		// reserve also initializes zero-value maps in lightweight cache overlays.
+		cache.interface_impl_entries.reserve(1)
+		cache.interface_impl_entries[iface_name] = impls
+	}
+	return impls
 }
 
 // interface_type_ids returns the `_typ` dispatch IDs for an interface, preserving
@@ -21761,7 +21977,7 @@ pub fn (tc &TypeChecker) interface_type_ids(iface_name string) map[string]int {
 		return stable_interface_type_ids_preserving_prefix(snapshot,
 			tc.interface_impl_names(iface_name))
 	}
-	return stable_interface_type_ids(tc.interface_impl_names_uncached(iface_name))
+	return stable_interface_type_ids(tc.interface_impl_names(iface_name))
 }
 
 // freeze_interface_impl_names snapshots the interface implementation order used
@@ -22523,8 +22739,57 @@ fn (tc &TypeChecker) is_builtin_error_struct_name_in_scope(name string, file str
 	return false
 }
 
+// prepare_interface_query_indexes publishes immutable interface requirements for
+// transform workers. Interface declarations no longer change after semantic
+// checking, so compatibility scans can reuse these lists safely across threads.
+pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
+	tc.interface_query_indexes_ready = false
+	tc.interface_method_names_index = map[string][]string{}
+	tc.interface_abstract_index = map[string][]string{}
+	tc.interface_field_list_index = map[string][]StructField{}
+	tc.interface_impl_indexes = map[string]&InterfaceImplIndex{}
+	for iface_name in tc.interface_names.keys() {
+		mut seen_methods := map[string]bool{}
+		methods := tc.interface_method_names_inner(iface_name, mut seen_methods)
+		mut seen_abstract := map[string]bool{}
+		abstract_methods := tc.interface_abstract_method_names_inner(iface_name, mut seen_abstract)
+		mut seen_fields := map[string]bool{}
+		fields := tc.interface_field_list_inner(iface_name, mut seen_fields)
+		resolved := tc.interface_metadata_name(iface_name)
+		for key in [iface_name, resolved] {
+			if key.len == 0 {
+				continue
+			}
+			tc.interface_method_names_index[key] = methods
+			tc.interface_abstract_index[key] = abstract_methods
+			tc.interface_field_list_index[key] = fields
+		}
+	}
+	tc.interface_query_indexes_ready = true
+	for iface_name in tc.interface_names.keys() {
+		impls := if is_builtin_ierror_name(iface_name) {
+			tc.ierror_impl_names()
+		} else {
+			tc.interface_impl_names(iface_name)
+		}
+		tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
+			names: impls
+			ids:   stable_interface_type_ids(impls)
+		}
+	}
+	// The immutable transform indexes above preserve the pre-monomorphization
+	// order. Do not leave the same lists in the mutable query cache: generic
+	// materialization can add implementers before cgen queries it again.
+	tc.clear_interface_impl_cache()
+}
+
 // interface_method_names supports interface method names handling for TypeChecker.
 fn (tc &TypeChecker) interface_method_names(iface_name string) []string {
+	if tc.interface_query_indexes_ready {
+		if methods := tc.interface_method_names_index[iface_name] {
+			return methods
+		}
+	}
 	mut seen := map[string]bool{}
 	return tc.interface_method_names_inner(iface_name, mut seen)
 }
@@ -22533,6 +22798,11 @@ fn (tc &TypeChecker) interface_method_names(iface_name string) []string {
 // the interface's own declared (abstract) methods plus those of any embedded
 // interfaces. Default methods defined directly on the interface are excluded.
 pub fn (tc &TypeChecker) interface_abstract_method_names(iface_name string) []string {
+	if tc.interface_query_indexes_ready {
+		if methods := tc.interface_abstract_index[iface_name] {
+			return methods
+		}
+	}
 	mut seen := map[string]bool{}
 	return tc.interface_abstract_method_names_inner(iface_name, mut seen)
 }
@@ -22631,6 +22901,11 @@ fn (tc &TypeChecker) interface_receiver_method_call_info(iface_name string, meth
 
 // interface_field_list supports interface field list handling for TypeChecker.
 pub fn (tc &TypeChecker) interface_field_list(iface_name string) []StructField {
+	if tc.interface_query_indexes_ready {
+		if fields := tc.interface_field_list_index[iface_name] {
+			return fields
+		}
+	}
 	mut seen := map[string]bool{}
 	return tc.interface_field_list_inner(iface_name, mut seen)
 }
@@ -24755,10 +25030,10 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 	// called from qualify_name and sum-variant pattern checks. Build the
 	// short-name index once per checker (memoized in the heap-allocated
 	// type_cache, so forked parallel workers each build their own).
-	if isnil(tc.type_cache) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
 		return tc.unique_qualified_type_name_scan(short_name)
 	}
-	mut cache := tc.type_cache
 	if !cache.short_type_name_index_built {
 		if !isnil(cache.base) && cache.base.short_type_name_index_built {
 			found := cache.base.short_type_name_index[short_name] or { return none }
@@ -24782,10 +25057,10 @@ fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 // callers that add or remove entries in the type-name maps after the checker ran
 // (the monomorphizer specializing generic structs/sum types) must invalidate them.
 pub fn (tc &TypeChecker) invalidate_short_type_name_index() {
-	if isnil(tc.type_cache) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
 		return
 	}
-	mut cache := tc.type_cache
 	cache.ierror_compat_entries.clear()
 	cache.ierror_impl_names.clear()
 	cache.ierror_impl_names_set = false
@@ -24795,24 +25070,74 @@ pub fn (tc &TypeChecker) invalidate_short_type_name_index() {
 	}
 }
 
-fn (tc &TypeChecker) build_short_type_name_index(mut index map[string]string) {
-	tc.index_short_type_names(tc.type_aliases.keys(), mut index)
-	tc.index_short_type_names(tc.structs.keys(), mut index)
-	tc.index_short_type_names(tc.interface_names.keys(), mut index)
-	tc.index_short_type_names(tc.enum_names.keys(), mut index)
-	tc.index_short_type_names(tc.sum_types.keys(), mut index)
+// register_short_type_name extends an already-built short-name index after
+// monomorphization adds a concrete type. A scoped transform must not rebuild
+// the entire index from maps whose strings may belong to the checked arena.
+pub fn (tc &TypeChecker) register_short_type_name(name string) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
+		return
+	}
+	if !cache.short_type_name_index_built {
+		if isnil(cache.base) || !cache.base.short_type_name_index_built {
+			return
+		}
+		cache.short_type_name_index = cache.base.short_type_name_index.clone()
+		cache.short_type_name_index_built = true
+	}
+	index_short_type_name(name, mut cache.short_type_name_index)
 }
 
-fn (tc &TypeChecker) index_short_type_names(names []string, mut index map[string]string) {
-	for name in names {
-		short := name.all_after_last('.')
-		if prev := index[short] {
-			if prev != name {
-				index[short] = ''
-			}
-		} else {
-			index[short] = name
+// unregister_short_type_name removes an exact cached entry when a generic
+// template is erased. Ambiguous entries stay conservative until the next
+// compilation-wide index build.
+pub fn (tc &TypeChecker) unregister_short_type_name(name string) {
+	mut cache := tc.type_cache
+	if isnil(cache) {
+		return
+	}
+	if !cache.short_type_name_index_built {
+		if isnil(cache.base) || !cache.base.short_type_name_index_built {
+			return
 		}
+		cache.short_type_name_index = cache.base.short_type_name_index.clone()
+		cache.short_type_name_index_built = true
+	}
+	short := name.all_after_last('.')
+	if cached := cache.short_type_name_index[short] {
+		if cached == name {
+			cache.short_type_name_index.delete(short)
+		}
+	}
+}
+
+fn (tc &TypeChecker) build_short_type_name_index(mut index map[string]string) {
+	for name, _ in tc.type_aliases {
+		index_short_type_name(name, mut index)
+	}
+	for name, _ in tc.structs {
+		index_short_type_name(name, mut index)
+	}
+	for name, _ in tc.interface_names {
+		index_short_type_name(name, mut index)
+	}
+	for name, _ in tc.enum_names {
+		index_short_type_name(name, mut index)
+	}
+	for name, _ in tc.sum_types {
+		index_short_type_name(name, mut index)
+	}
+}
+
+fn index_short_type_name(name string, mut index map[string]string) {
+	short := name.all_after_last('.')
+	if short in index {
+		prev := index[short]
+		if prev != name {
+			index[short] = ''
+		}
+	} else {
+		index[short] = name
 	}
 }
 

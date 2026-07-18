@@ -92,34 +92,25 @@ fn (mut i TypeInterner) promote_from(start int, scope voidptr) {
 	defer {
 		i.lock.unlock()
 	}
-	types_backing_scoped := scoped_transform_owns(scope, i.types.data)
-	names_backing_scoped := scoped_transform_owns(scope, i.names.data)
-	first := if start < 0 { 0 } else { start }
-	for idx in first .. i.types.len {
-		i.types[idx] = clone_owned_type(i.types[idx])
+	_ = start
+	_ = scope
+	// Canonical types can contain strings originating in retained worker arenas,
+	// not only additions owned by the outer transform scope. Deep-copy the full
+	// stable-id table before any of those arenas are released.
+	mut owned_types := []Type{cap: i.types.len}
+	for typ in i.types {
+		owned_types << clone_owned_type(typ)
 	}
-	for idx, name in i.names {
-		if name.len > 0 && scoped_transform_owns(scope, name.str) {
-			i.names[idx] = name.clone()
-		}
+	mut owned_names := []string{cap: i.names.len}
+	for name in i.names {
+		owned_names << name.clone()
 	}
-	if types_backing_scoped {
-		i.types = i.types.clone()
-	}
-	if names_backing_scoped {
-		i.names = i.names.clone()
-	}
+	i.types = owned_types
+	i.names = owned_names
 	// A scoped insertion can rehash even after the caller reserves headroom.
 	// Rebuild the index after leaving the scope so its backing storage cannot
 	// remain owned by the disposable transform arena.
 	i.buckets = i.buckets.clone()
-}
-
-fn scoped_transform_owns(scope voidptr, ptr voidptr) bool {
-	$if prealloc {
-		return unsafe { prealloc_scope_owns(scope, ptr) }
-	}
-	return false
 }
 
 fn semantic_type_hash(t Type) u64 {

@@ -1,10 +1,6 @@
 module multiwindow
 
 import os
-
-$if gg_multiwindow ? || x_multiwindow_render ? {
-	import sokol.gfx
-}
 import time
 
 fn test_window_id_generation_rejects_stale_after_slot_reuse() {
@@ -21,12 +17,12 @@ fn test_window_id_generation_rejects_stale_after_slot_reuse() {
 	assert second.slot == first.slot
 	assert second.generation == first.generation + 1
 
-	app.destroy_window(first) or {
+	app.window_status(first) or {
 		assert err.msg() == err_stale_window
 		app.stop()!
 		return
 	}
-	assert false, 'destroy_window accepted a stale WindowId'
+	assert false, 'window_status accepted a stale WindowId after slot reuse'
 }
 
 fn test_destroy_child_keeps_app_and_other_windows_alive() {
@@ -509,11 +505,17 @@ fn test_owner_queue_runs_jobs_and_rejects_destroyed_window_work() {
 
 	app.destroy_window(win)!
 	app.post(fn [win] (mut queued_app App) ! {
-		queued_app.destroy_window(win)!
+		queued_app.set_window_title(win, 'Destroyed queued window')!
 	})!
 	app.drain_pending(1) or {
 		assert err.msg() == err_stale_window
-		app.stop()!
+		mut stop_rejected := false
+		app.stop() or {
+			assert err.msg() == '${err_render_terminal_aggregate}: ${err_stale_window}'
+			stop_rejected = true
+		}
+		assert stop_rejected
+		assert app.status() == .stopped
 		return
 	}
 	assert false, 'queued work accepted a destroyed WindowId'
@@ -609,34 +611,19 @@ fn test_invalid_app_and_window_config_are_rejected() {
 	assert false, 'create_window accepted zero width'
 }
 
-fn test_new_app_starts_backend_on_stable_app_backend_before_owner_queue_source_guard() {
-	source := multiwindow_source_file('app.v')
-	body :=
-		source.all_after('pub fn new_app(config Config) !&App {').all_before('// status reports')
-
-	assert body.contains('mut app := &App{')
-	assert body.contains('app.backend.start(config.require_renderer)!')
-	assert body.contains('mut owner := executor.new(queue_size: config.queue_size) or {')
-	assert body.contains('app.backend.stop() or {}')
-	assert body.contains('app.owner = owner')
-	assert !body.contains('\n\tbackend.start(config.require_renderer)!')
-	assert_source_order(body, 'mut app := &App{', 'app.backend.start(config.require_renderer)!')
-	assert_source_order(body, 'app.backend.start(config.require_renderer)!',
-		'mut owner := executor.new(queue_size: config.queue_size) or {')
-	owner_failure_body := body.all_after('mut owner := executor.new(queue_size: config.queue_size) or {')
-		.all_before('app.owner = owner')
-	assert_source_order(owner_failure_body, 'app.backend.stop() or {}', 'return err')
-	assert_source_order(body, 'mut owner := executor.new(queue_size: config.queue_size) or {',
-		'app.owner = owner')
-}
-
 fn test_unknown_and_stale_window_ids_are_rejected() {
 	mut app := new_app()!
 	unknown := WindowId{
-		slot:       42
-		generation: 1
+		app_instance: app.instance_id()
+		slot:         42
+		generation:   1
 	}
-	app.destroy_window(unknown) or { assert err.msg() == err_window_not_found }
+	mut unknown_destroy_rejected := false
+	app.destroy_window(unknown) or {
+		assert err.msg() == err_window_not_found
+		unknown_destroy_rejected = true
+	}
+	assert unknown_destroy_rejected
 
 	first := app.create_window(title: 'First')!
 	app.destroy_window(first)!
@@ -795,8 +782,9 @@ fn test_window_info_and_mutation_validate_window_ids() {
 	assert rejected_destroyed_resize
 
 	unknown := WindowId{
-		slot:       99
-		generation: 1
+		app_instance: app.instance_id()
+		slot:         99
+		generation:   1
 	}
 	mut rejected_unknown_info := false
 	app.window_info(unknown) or {
@@ -826,23 +814,33 @@ fn test_capabilities_for_backend_uses_backend_seam_without_app() {
 	assert caps.touch_events
 }
 
-fn test_mock_render_seam_reports_renderer_unsupported() {
+fn test_mock_opaque_renderer_start_reports_renderer_unsupported() {
 	$if gg_multiwindow ? || x_multiwindow_render ? {
 		mut app := new_app()!
-		win := app.create_window(title: 'No renderer')!
-		mut rejected_environment := false
-		app.render_environment(win) or {
+		mut rejected_first_start := false
+		app.start_renderer(RendererConfig{}) or {
 			assert err.msg() == err_renderer_unsupported
-			rejected_environment = true
+			rejected_first_start = true
 		}
-		assert rejected_environment
-		mut rejected_begin := false
-		app.begin_render(win) or {
+		assert rejected_first_start
+		assert app.render_runtime.renderer_terminal == ''
+		assert app.render_bridge == unsafe { nil }
+
+		mut rejected_second_start := false
+		app.start_renderer(RendererConfig{}) or {
 			assert err.msg() == err_renderer_unsupported
-			rejected_begin = true
+			rejected_second_start = true
 		}
-		assert rejected_begin
+		assert rejected_second_start
+		assert app.render_runtime.renderer_terminal == ''
+		assert app.render_bridge == unsafe { nil }
+
 		app.stop()!
+		assert app.render_runtime.renderer_terminal == ''
+		assert app.render_bridge == unsafe { nil }
+		app.stop()!
+		assert app.render_runtime.renderer_terminal == ''
+		assert app.render_bridge == unsafe { nil }
 	} $else {
 		return
 	}
@@ -1394,13 +1392,17 @@ fn test_win32_render_capabilities_probe_d3d_on_windows_only() {
 	}
 }
 
-fn test_win32_d3d11_present_status_mapping_treats_occluded_as_nonfatal() {
-	win32_d3d11_check_present_status(0)!
-	win32_d3d11_check_present_status(4)!
-	assert_win32_d3d11_present_status_error(2, err_win32_d3d_device_removed)
-	assert_win32_d3d11_present_status_error(3, err_win32_d3d_device_reset)
-	assert_win32_d3d11_present_status_error(1, err_win32_d3d_present_failed)
-	assert_win32_d3d11_present_status_error(99, err_win32_d3d_present_failed)
+$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if windows && sokol_d3d11 ? {
+		fn test_win32_d3d11_present_hresult_mapping_treats_occluded_as_nonfatal() {
+			assert_win32_d3d11_present_disposition(0, .ok)
+			assert_win32_d3d11_present_disposition(i64(u32(0x087a0001)), .not_presented)
+			assert_win32_d3d11_present_disposition(i64(u32(0x887a0005)), .renderer_lost)
+			assert_win32_d3d11_present_disposition(i64(u32(0x887a0007)), .renderer_lost)
+			assert_win32_d3d11_present_disposition(i64(u32(0x80004005)), .operation_failed)
+			assert_win32_d3d11_present_disposition(i64(u32(0x80070057)), .operation_failed)
+		}
+	}
 }
 
 fn test_win32_min_size_plumbing_is_present() {
@@ -1424,8 +1426,14 @@ fn test_win32_input_events_are_queued_and_capability_scoped_source_guard() {
 	backend_source := multiwindow_source_file('backend.v')
 	win32_backend_source := multiwindow_source_file('win32_backend.c.v')
 	win32_helper_source := multiwindow_source_file('win32_backend_helpers.h')
+	backend_poll_body :=
+		backend_source.all_after('fn (mut backend Backend) poll_queued_events() ![]QueuedEvent').all_before('fn (mut backend Backend) event_sequence_terminal_error')
+	compact_backend_poll_body :=
+		backend_poll_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	compact_win32_backend_source :=
+		win32_backend_source.replace(' ', '').replace('\t', '').replace('\n', '')
 
-	assert backend_source.contains('.win32 {\n\t\t\treturn backend.win32.poll_queued_events()!')
+	assert compact_backend_poll_body.contains('.win32{backend.win32.poll_queued_events()!}')
 	assert win32_backend_source.contains('struct Win32NativeQueuedEvent')
 	assert win32_backend_source.contains('queued_events')
 	assert win32_backend_source.contains('[]Win32NativeQueuedEvent')
@@ -1449,8 +1457,8 @@ fn test_win32_input_events_are_queued_and_capability_scoped_source_guard() {
 	assert win32_backend_source.contains('focus_events:       true')
 	assert win32_backend_source.contains('drop_events:        true')
 	assert win32_backend_source.contains('touch_events:       true')
-	assert win32_backend_source.contains('pending_dropped_files  []string')
-	assert win32_backend_source.contains('dropped_files:      record.pending_dropped_files.clone()')
+	assert compact_win32_backend_source.contains('pending_dropped_files[]string')
+	assert compact_win32_backend_source.contains('dropped_files:record.pending_dropped_files.clone()')
 	assert win32_backend_source.contains('.files_dropped')
 	assert win32_backend_source.contains('InputEventKind.clipboard_pasted')
 	assert win32_backend_source.contains('InputEventKind.touches_began')
@@ -1463,7 +1471,7 @@ fn test_win32_input_events_are_queued_and_capability_scoped_source_guard() {
 	assert win32_backend_source.contains('fn win32_window_touch_event')
 	assert win32_backend_source.contains('tos_clone(&u8(path))')
 	assert !win32_backend_source.contains('cstring_to_vstring(path)')
-	assert win32_backend_source.contains('iconified              bool')
+	assert compact_win32_backend_source.contains('iconifiedbool')
 	assert win32_backend_source.contains('12 { InputEventKind.iconified }')
 	assert win32_backend_source.contains('13 { InputEventKind.restored }')
 	assert win32_backend_source.contains('if record.iconified')
@@ -1639,17 +1647,6 @@ fn test_appkit_capabilities_for_backend_are_platform_scoped() {
 	}
 }
 
-fn test_appkit_metal_renderer_is_disabled_for_darwin_glcore_source_guard() {
-	source := multiwindow_source_file('appkit_backend.c.v')
-	assert source.contains('fn appkit_metal_supported() bool')
-	assert source.contains('$if darwin_sokol_glcore33 ? {')
-	assert source.contains('return error(err_renderer_unsupported)')
-	assert source.contains('explicit_swapchain: appkit_metal_supported() && backend.renderer_ready()')
-	assert source.contains('metal:              appkit_metal_supported() && backend.renderer_ready()')
-	assert_source_order(source, 'if require_renderer {', 'if !appkit_metal_supported()')
-	assert_source_order(source, 'if !appkit_metal_supported()', 'backend.init_renderer()!')
-}
-
 fn test_appkit_sharedlive_source_excludes_objc_implementation() {
 	source := multiwindow_source_file('appkit_backend.c.v')
 	assert source.contains('#insert "@VMODROOT/vlib/x/multiwindow/appkit_backend_helpers.h"')
@@ -1664,11 +1661,15 @@ fn test_appkit_prototype_header_is_c_only_and_shared_with_implementation() {
 	implementation := multiwindow_source_file('appkit_backend.m')
 
 	assert header.contains('int v_multiwindow_appkit_is_main_thread(void);')
-	assert header.contains('int v_multiwindow_appkit_create_window(void *device_ptr, const char *title')
-	assert header.contains('int v_multiwindow_appkit_resize_window(void *state_ptr, int width, int height')
-	assert header.contains('int v_multiwindow_appkit_begin_frame(void *state_ptr, void *device_ptr')
-	assert header.contains('void v_multiwindow_appkit_end_frame(void *state_ptr);')
-	assert header.contains('void v_multiwindow_appkit_abort_frame(void *state_ptr);')
+	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr, const char *title, int width, int height, int min_width, int min_height, int resizable, int visible, int high_dpi, int borderless, int fullscreen, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);')
+	assert header.contains('int v_multiwindow_appkit_resize_window(void *state_ptr, int width, int height, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);')
+	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_begin_frame(void *state_ptr, void *device_ptr);')
+	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_end_frame(void *state_ptr, void *drawable_ptr);')
+	assert header.contains('VMultiwindowNativePrimitive v_multiwindow_appkit_abort_frame(void *state_ptr, void *drawable_ptr);')
+	assert !header.contains('int v_multiwindow_appkit_create_window(')
+	assert !header.contains('int v_multiwindow_appkit_begin_frame(')
+	assert !header.contains('void v_multiwindow_appkit_end_frame(void *state_ptr);')
+	assert !header.contains('void v_multiwindow_appkit_abort_frame(void *state_ptr);')
 	assert !header.contains('@interface')
 	assert !header.contains('@implementation')
 	assert !header.contains('VMultiwindowAppKitWindowState')
@@ -1738,8 +1739,12 @@ fn test_appkit_input_events_are_queued_and_capability_scoped_source_guard() {
 	appkit_backend_source := multiwindow_source_file('appkit_backend.c.v')
 	appkit_header_source := multiwindow_source_file('appkit_backend_helpers.h')
 	appkit_impl_source := multiwindow_source_file('appkit_backend.m')
+	backend_poll_body :=
+		backend_source.all_after('fn (mut backend Backend) poll_queued_events() ![]QueuedEvent').all_before('fn (mut backend Backend) event_sequence_terminal_error')
+	compact_backend_poll_body :=
+		backend_poll_body.replace(' ', '').replace('\t', '').replace('\n', '')
 
-	assert backend_source.contains('.appkit {\n\t\t\treturn backend.appkit.poll_queued_events()!')
+	assert compact_backend_poll_body.contains('.appkit{backend.appkit.poll_queued_events()!}')
 	assert appkit_backend_source.contains('struct AppKitNativeQueuedEvent')
 	assert appkit_backend_source.contains('fn (mut backend AppKitBackend) poll_queued_events() ![]QueuedEvent')
 	assert appkit_backend_source.contains('appkit_sort_native_events(mut native_events)')
@@ -1966,69 +1971,6 @@ fn test_appkit_title_and_resize_on_darwin() {
 	}
 }
 
-fn test_appkit_render_begin_abort_and_end_on_darwin_when_metal_is_available() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
-		$if darwin {
-			$if darwin_sokol_glcore33 ? {
-				capabilities_for_backend_with_renderer(.appkit, true) or {
-					assert err.msg() == err_renderer_unsupported
-					return
-				}
-				assert false, 'appkit render smoke succeeded with darwin_sokol_glcore33'
-				return
-			}
-			render_caps := capabilities_for_backend_with_renderer(.appkit, true) or {
-				if err.msg() == err_appkit_metal_device_failed {
-					eprintln('skip appkit render smoke: Metal device is unavailable')
-					return
-				}
-				assert false, 'unexpected appkit render capability error: ${err.msg()}'
-				return
-			}
-			assert render_caps.backend == .appkit
-			assert render_caps.native
-			assert render_caps.explicit_swapchain
-			assert render_caps.metal
-
-			mut app := new_app(backend: .appkit, require_renderer: true)!
-			win := app.create_window(
-				title:  'V x.multiwindow AppKit Metal render'
-				width:  128
-				height: 96
-			)!
-			app.poll_events()!
-			env := app.render_environment(win)!
-			assert env.defaults.color_format == gfx.PixelFormat.bgra8
-			assert env.defaults.depth_format == gfx.PixelFormat.depth_stencil
-			assert env.defaults.sample_count == 1
-			assert env.metal.device != unsafe { nil }
-
-			aborted_frame := app.begin_render(win)!
-			assert aborted_frame.window_id == win
-			assert aborted_frame.swapchain.width > 0
-			assert aborted_frame.swapchain.height > 0
-			assert aborted_frame.swapchain.color_format == gfx.PixelFormat.bgra8
-			assert aborted_frame.swapchain.depth_format == gfx.PixelFormat.depth_stencil
-			assert aborted_frame.swapchain.metal.current_drawable != unsafe { nil }
-			assert aborted_frame.swapchain.metal.depth_stencil_texture != unsafe { nil }
-			app.abort_render(aborted_frame)!
-
-			frame := app.begin_render(win)!
-			assert frame.window_id == win
-			assert frame.swapchain.width > 0
-			assert frame.swapchain.height > 0
-			assert frame.swapchain.color_format == gfx.PixelFormat.bgra8
-			assert frame.swapchain.depth_format == gfx.PixelFormat.depth_stencil
-			assert frame.swapchain.metal.current_drawable != unsafe { nil }
-			assert frame.swapchain.metal.depth_stencil_texture != unsafe { nil }
-			app.end_render(frame)!
-			app.stop()!
-		}
-	} $else {
-		return
-	}
-}
-
 fn test_x11_capabilities_for_backend_do_not_require_display_on_linux() {
 	$if linux {
 		$if !x_multiwindow_x11 ? {
@@ -2054,58 +1996,6 @@ fn test_x11_capabilities_for_backend_do_not_require_display_on_linux() {
 			return
 		}
 		assert false, 'x11 capabilities succeeded on an unsupported OS'
-	}
-}
-
-fn test_x11_render_smoke_when_display_is_available() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
-		$if linux {
-			$if !x_multiwindow_x11 ? {
-				new_app(backend: .x11, require_renderer: true) or {
-					assert err.msg() == err_backend_unsupported
-					return
-				}
-				assert false, 'x11 render app creation succeeded without -d x_multiwindow_x11'
-				return
-			}
-			if os.getenv('DISPLAY') == '' {
-				eprintln('skip x11 render smoke: DISPLAY is not set')
-				return
-			}
-			mut app := new_app(backend: .x11, require_renderer: true) or {
-				if err.msg() == err_x11_open_display_failed {
-					eprintln('skip x11 render smoke: DISPLAY could not be opened')
-					return
-				}
-				panic(err.msg())
-			}
-			caps := app.capabilities()
-			assert caps.explicit_swapchain
-			assert caps.gl
-			win := app.create_window(title: 'V x.multiwindow X11 render', width: 160, height: 96)!
-			env := app.render_environment(win)!
-			assert env.defaults.color_format == gfx.PixelFormat.rgba8
-			assert env.defaults.depth_format == gfx.PixelFormat.depth_stencil
-			assert env.defaults.sample_count == 1
-			frame := app.begin_render(win)!
-			assert frame.window_id == win
-			assert frame.swapchain.width == 160
-			assert frame.swapchain.height == 96
-			assert frame.swapchain.sample_count == 1
-			assert frame.swapchain.color_format == gfx.PixelFormat.rgba8
-			assert frame.swapchain.depth_format == gfx.PixelFormat.depth_stencil
-			assert frame.swapchain.gl.framebuffer == 0
-			app.end_render(frame)!
-			app.stop()!
-		} $else {
-			new_app(backend: .x11, require_renderer: true) or {
-				assert err.msg() == err_backend_unsupported
-				return
-			}
-			assert false, 'x11 render app creation succeeded on an unsupported OS'
-		}
-	} $else {
-		return
 	}
 }
 
@@ -2207,20 +2097,28 @@ fn test_x11_native_handle_aliases_follow_xlib_unsigned_long_source_guard() {
 
 fn test_x11_backend_native_deps_are_flag_gated_source_guard() {
 	source := multiwindow_source_file('x11_backend.c.v')
-	assert source.contains('$if linux && x_multiwindow_x11 ? {\n\t#flag linux -lX11')
-	assert source.contains('#flag linux -lEGL')
-	assert source.contains('#flag linux -lGL')
+	guarded_native_deps :=
+		source.all_after('$if linux && x_multiwindow_x11 ? {').all_before('\n}\n\nconst x11_client_message')
+	assert guarded_native_deps.contains('#flag linux -lX11')
+	assert guarded_native_deps.contains('#flag linux -lEGL')
+	assert guarded_native_deps.contains('#flag linux -lGL')
+	assert source.count('#flag linux -lX11') == 1
+	assert source.count('#flag linux -lEGL') == 1
+	assert source.count('#flag linux -lGL') == 1
 	assert source.contains('$if gg_multiwindow ? || x_multiwindow_render ? {\n\timport sokol.gfx')
-	assert_source_order(source, '$if linux && x_multiwindow_x11 ? {\n\t#flag linux -lX11',
-		'#include <X11/Xlib.h>')
+	assert_source_order(guarded_native_deps, '#flag linux -lX11', '#include <X11/Xlib.h>')
 }
 
 fn test_x11_input_support_queues_key_char_and_focus_source_guard() {
 	backend_source := multiwindow_source_file('backend.v')
 	x11_backend_source := multiwindow_source_file('x11_backend.c.v')
 	x11_helper_source := multiwindow_source_file('x11_egl_backend_helpers.h')
+	backend_poll_body :=
+		backend_source.all_after('fn (mut backend Backend) poll_queued_events() ![]QueuedEvent').all_before('fn (mut backend Backend) event_sequence_terminal_error')
+	compact_backend_poll_body :=
+		backend_poll_body.replace(' ', '').replace('\t', '').replace('\n', '')
 
-	assert backend_source.contains('.x11 {\n\t\t\treturn backend.x11.poll_queued_events()!')
+	assert compact_backend_poll_body.contains('.x11{backend.x11.poll_queued_events()!}')
 	assert x11_backend_source.contains('input_events:       true')
 	assert x11_backend_source.contains('mouse_events:       true')
 	assert x11_backend_source.contains('keyboard_events:    true')
@@ -2438,7 +2336,10 @@ fn test_x11_config_hints_are_applied_before_mapping() {
 		'fn (mut backend X11Backend) resize_window', 'C.XSync(backend.display, 0)',
 		'C.v_multiwindow_x11_get_window_size')
 	assert_source_order(x11_backend_source, 'if C.v_multiwindow_x11_apply_config_hints',
-		'C.XMapWindow(backend.display, window)')
+		'C.XMapWindow(backend.display, backend.pending_window.window)')
+	assert_source_order_after_marker(x11_backend_source,
+		'fn (mut backend X11Backend) create_window', 'backend.pending_window = X11WindowRecord{',
+		'C.XSelectInput(backend.display, backend.pending_window.window')
 	assert x11_helper_source.contains('XSizeHints')
 	assert x11_helper_source.contains('XWindowAttributes')
 	assert x11_helper_source.contains('XGetWindowAttributes')
@@ -2482,26 +2383,28 @@ fn test_wayland_capabilities_for_backend_do_not_require_display_on_linux() {
 
 fn test_wayland_hidden_windows_are_rejected_before_mapping() {
 	wayland_source := multiwindow_source_file('wayland_backend.c.v')
-	assert wayland_source.contains('if !config.visible')
-	assert wayland_source.contains('return error(err_capability_unsupported)')
-	assert_source_order_after_marker(wayland_source,
-		'fn (mut backend WaylandBackend) create_window', 'if !config.visible',
+	create_window_body :=
+		wayland_source.all_after('fn (mut backend WaylandBackend) create_window').all_before('fn (mut backend WaylandBackend) destroy_window')
+	assert create_window_body.contains('if !config.visible')
+	assert create_window_body.contains('return error(err_capability_unsupported)')
+	assert_source_order(create_window_body, 'if !config.visible',
 		'surface := C.wl_compositor_create_surface')
-	assert_source_order_after_marker(wayland_source,
-		'fn (mut backend WaylandBackend) create_window', 'if !config.visible',
-		'C.wl_surface_commit(surface)')
-	assert_source_order_after_marker(wayland_source,
-		'fn (mut backend WaylandBackend) create_window', 'if !config.visible',
-		'C.wl_display_roundtrip(display)')
+	assert_source_order(create_window_body, 'C.wl_surface_commit(surface)',
+		'backend.attempt_wayland_flush(window_seed)')
+	assert_source_order(create_window_body, 'backend.attempt_wayland_flush(window_seed)',
+		'backend.attempt_wayland_roundtrip(window_seed)')
 }
 
 fn test_wayland_initial_size_is_clamped_before_mapping() {
 	wayland_source := multiwindow_source_file('wayland_backend.c.v')
+	create_window_body :=
+		wayland_source.all_after('fn (mut backend WaylandBackend) create_window').all_before('fn (mut backend WaylandBackend) destroy_window')
+	compact_create_window_body := create_window_body.replace(' ', '').replace('\t', '')
 	assert wayland_source.contains('actual_size := window_size_for_config(config, config.width, config.height)')
-	assert wayland_source.contains('width:        actual_size.width')
-	assert wayland_source.contains('height:       actual_size.height')
-	assert wayland_source.contains('min_width:    record_min_width')
-	assert wayland_source.contains('min_height:   record_min_height')
+	assert compact_create_window_body.contains('width:actual_size.width')
+	assert compact_create_window_body.contains('height:actual_size.height')
+	assert compact_create_window_body.contains('min_width:record_min_width')
+	assert compact_create_window_body.contains('min_height:record_min_height')
 	assert wayland_source.contains('width = window_extent_for_minimum(width, record.min_width)')
 	assert wayland_source.contains('height = window_extent_for_minimum(height, record.min_height)')
 	assert wayland_source.contains('C.v_multiwindow_wayland_xdg_toplevel_set_min_size(xdg_toplevel, i32(actual_size.width),')
@@ -2510,74 +2413,8 @@ fn test_wayland_initial_size_is_clamped_before_mapping() {
 		'fn (mut backend WaylandBackend) create_window',
 		'actual_size := window_size_for_config(config, config.width, config.height)',
 		'mut record := &WaylandWindowRecord')
-	assert_source_order_after_marker(wayland_source,
-		'fn (mut backend WaylandBackend) create_window', 'width:        actual_size.width',
+	assert_source_order(compact_create_window_body, 'width:actual_size.width',
 		'C.wl_surface_commit(surface)')
-}
-
-fn test_wayland_lifecycle_windows_attach_shm_buffer_source_guard() {
-	wayland_source := multiwindow_source_file('wayland_backend.c.v')
-	wayland_helper_source := multiwindow_source_file('wayland_backend_helpers.h')
-	create_window_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) create_window').all_before('fn (mut backend WaylandBackend) destroy_window')
-	poll_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) poll_queued_events').all_before('fn (mut record WaylandWindowRecord) enqueue_native_event')
-	lifecycle_buffer_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) ensure_lifecycle_buffer').all_before('fn (mut backend WaylandBackend) close_connection')
-	release_buffer_body :=
-		wayland_source.all_after('fn (mut record WaylandWindowRecord) release_fallback_buffer').all_before('fn (mut backend WaylandBackend) close_connection')
-
-	assert wayland_source.contains('shm                          voidptr')
-	assert wayland_source.contains('fallback_buffers')
-	assert wayland_source.contains('fallback_current_buffer')
-	assert wayland_source.contains('const wayland_max_fallback_buffers = 3')
-	assert wayland_source.contains('C.v_multiwindow_wayland_bind_shm')
-	assert wayland_source.contains('fn (mut backend WaylandBackend) ensure_lifecycle_buffer')
-	assert wayland_source.contains('C.v_multiwindow_wayland_create_shm_buffer')
-	assert wayland_source.contains('C.v_multiwindow_wayland_attach_buffer')
-	assert wayland_source.contains('C.v_multiwindow_wayland_add_buffer_listener')
-	assert wayland_source.contains('C.v_multiwindow_wayland_buffer_destroy')
-	assert wayland_source.contains("@[export: 'v_multiwindow_wayland_buffer_release']")
-	assert wayland_source.contains('fn (mut record WaylandWindowRecord) release_fallback_buffer')
-	assert lifecycle_buffer_body.contains('record := backend.windows[index]')
-	assert lifecycle_buffer_body.contains('if record.fallback_buffer_width == width && record.fallback_buffer_height == height {')
-	assert !lifecycle_buffer_body.contains('&& record.fallback_current_buffer != unsafe { nil }')
-	assert lifecycle_buffer_body.contains('record.fallback_buffers.len >= wayland_max_fallback_buffers')
-	assert lifecycle_buffer_body.contains('C.v_multiwindow_wayland_add_buffer_listener')
-	assert lifecycle_buffer_body.contains('backend.windows[index].fallback_buffers << buffer')
-	assert lifecycle_buffer_body.contains('backend.windows[index].fallback_current_buffer = buffer')
-	assert lifecycle_buffer_body.contains('backend.windows[index].fallback_buffer_width = width')
-	assert lifecycle_buffer_body.contains('backend.windows[index].fallback_buffer_height = height')
-	assert !lifecycle_buffer_body.contains('mut record := backend.windows[index]')
-	assert !lifecycle_buffer_body.contains('record.fallback_buffers << buffer')
-	assert !lifecycle_buffer_body.contains('record.fallback_buffer_width = width')
-	assert !lifecycle_buffer_body.contains('record.fallback_buffer_height = height')
-	assert lifecycle_buffer_body.contains('record.fallback_buffers.delete(i)')
-	assert release_buffer_body.contains('record.fallback_current_buffer = unsafe { nil }')
-	assert !release_buffer_body.contains('record.fallback_buffer_width = 0')
-	assert !release_buffer_body.contains('record.fallback_buffer_height = 0')
-	assert_source_order(lifecycle_buffer_body, 'C.v_multiwindow_wayland_add_buffer_listener',
-		'C.v_multiwindow_wayland_attach_buffer')
-	assert create_window_body.contains('if !backend.renderer_ready()')
-	assert create_window_body.contains('backend.ensure_lifecycle_buffer(index) or {')
-	assert_source_order(create_window_body, 'C.wl_display_roundtrip(display)',
-		'backend.ensure_lifecycle_buffer(index)')
-	assert_source_order(create_window_body, 'backend.ensure_lifecycle_buffer(index)',
-		'return WindowSize')
-	assert poll_body.contains('backend.ensure_lifecycle_buffers()!')
-	assert_source_order(poll_body, 'backend.dispatch_pending_nonblocking()!',
-		'backend.ensure_lifecycle_buffers()!')
-	assert_source_order(poll_body, 'backend.ensure_lifecycle_buffers()!',
-		'backend.drain_pending_data_offer_drop()')
-
-	for required_helper in ['v_multiwindow_wayland_create_shm_buffer', 'wl_shm_create_pool',
-		'wl_shm_pool_create_buffer', 'WL_SHM_FORMAT_XRGB8888', 'v_multiwindow_wayland_attach_buffer',
-		'wl_buffer_listener', 'wl_buffer_add_listener',
-		'v_multiwindow_wayland_buffer_release_trampoline',
-		'v_multiwindow_wayland_add_buffer_listener', 'wl_surface_attach', 'wl_surface_damage',
-		'wl_surface_commit', 'v_multiwindow_wayland_buffer_destroy'] {
-		assert wayland_helper_source.contains(required_helper)
-	}
 }
 
 fn test_wayland_server_side_decorations_are_requested_source_guard() {
@@ -2587,7 +2424,8 @@ fn test_wayland_server_side_decorations_are_requested_source_guard() {
 	create_window_body :=
 		wayland_source.all_after('fn (mut backend WaylandBackend) create_window').all_before('fn (mut backend WaylandBackend) destroy_window')
 	destroy_window_record_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) destroy_window_record').all_before('fn (mut backend WaylandBackend) ensure_data_device')
+		wayland_source.all_after('fn (mut backend WaylandBackend) destroy_window_record').all_before('fn (mut backend WaylandBackend) destroy_window_slot')
+	compact_wayland_source := wayland_source.replace(' ', '').replace('\t', '')
 	decoration_configure_body :=
 		wayland_source.all_after("@[export: 'v_multiwindow_wayland_xdg_toplevel_decoration_configure']").all_before("@[export: 'v_multiwindow_wayland_seat_capabilities']")
 	decorated_window_body :=
@@ -2608,7 +2446,7 @@ fn test_wayland_server_side_decorations_are_requested_source_guard() {
 	assert wayland_source.contains('toplevel_decoration')
 	assert wayland_source.contains('toplevel_decoration_configured bool')
 	assert wayland_source.contains('toplevel_decoration_mode')
-	assert wayland_source.contains('decoration_manager           voidptr')
+	assert compact_wayland_source.contains('decoration_managervoidptr')
 	assert wayland_source.contains('C.v_multiwindow_wayland_bind_xdg_decoration_manager')
 	assert wayland_source.contains("C.strcmp(iface, c'zxdg_decoration_manager_v1') == 0")
 	assert wayland_source.contains('backend.destroy_xdg_decoration_manager()')
@@ -2654,31 +2492,6 @@ fn test_wayland_server_side_decorations_are_requested_source_guard() {
 	assert server_side_decoration_body.contains('wayland_xdg_toplevel_decoration_mode_server_side')
 	assert client_side_decoration_body.contains('record.toplevel_decoration == unsafe { nil }')
 	assert client_side_decoration_body.contains('wayland_xdg_toplevel_decoration_mode_client_side')
-}
-
-fn test_interactive_move_resize_core_source_guard() {
-	types_source := multiwindow_source_file('types.v')
-	app_source := multiwindow_source_file('app.v')
-	backend_source := multiwindow_source_file('backend.v')
-	move_backend_body :=
-		backend_source.all_after('fn (mut backend Backend) begin_window_move').all_before('fn (mut backend Backend) begin_window_resize')
-	resize_backend_body :=
-		backend_source.all_after('fn (mut backend Backend) begin_window_resize').all_before('fn (mut backend Backend) poll_events')
-
-	assert types_source.contains('pub enum WindowResizeEdge {')
-	for edge_name in ['top', 'bottom', 'left', 'right', 'top_left', 'top_right', 'bottom_left',
-		'bottom_right'] {
-		assert types_source.contains('\t${edge_name}')
-	}
-	assert types_source.contains('interactive_move_resize bool')
-	assert types_source.contains('native_decorations      bool')
-	assert app_source.contains('pub fn (mut app App) begin_window_move(id WindowId) !')
-	assert app_source.contains('pub fn (mut app App) begin_window_resize(id WindowId, edge WindowResizeEdge) !')
-	assert app_source.contains('if !app.windows[index].config.resizable')
-	assert move_backend_body.contains('.wayland { backend.wayland.begin_window_move(id)! }')
-	assert move_backend_body.contains('else { return error(err_capability_unsupported) }')
-	assert resize_backend_body.contains('.wayland { backend.wayland.begin_window_resize(id, edge)! }')
-	assert resize_backend_body.contains('else { return error(err_capability_unsupported) }')
 }
 
 fn test_cursor_shape_core_source_guard() {
@@ -2762,7 +2575,7 @@ fn test_cursor_shape_core_source_guard() {
 	assert wayland_cursor_body.contains('C.v_multiwindow_wayland_cursor_shape_device_set_shape')
 	assert wayland_cursor_body.contains('backend.pointer_enter_serial')
 	assert wayland_cursor_body.contains('wayland_cursor_shape_for_shape(shape)')
-	assert wayland_cursor_body.contains('C.wl_display_flush(display)')
+	assert wayland_cursor_body.contains('backend.attempt_wayland_flush(')
 	assert wayland_cursor_body.contains('return error(err_capability_unsupported)')
 	assert wayland_cursor_shape_mapping_body.contains('.pointer { wayland_cursor_shape_pointer }')
 	assert wayland_cursor_shape_mapping_body.contains('.move { wayland_cursor_shape_move }')
@@ -2811,70 +2624,14 @@ fn test_cursor_shape_core_source_guard() {
 	assert appkit_objc_source.contains('[NSCursor resizeUpDownCursor]')
 }
 
-fn test_wayland_interactive_move_resize_source_guard() {
+fn test_wayland_interactive_move_resize_forbidden_paths_are_absent() {
+	backend_source := multiwindow_source_file('backend.v')
 	wayland_source := multiwindow_source_file('wayland_backend.c.v')
 	wayland_helper_source := multiwindow_source_file('wayland_backend_helpers.h')
 	decoration_private_source := multiwindow_source_file('wayland_xdg_decoration_private.c')
-	pointer_button_body :=
-		wayland_source.all_after("@[export: 'v_multiwindow_wayland_pointer_button']").all_before("@[export: 'v_multiwindow_wayland_pointer_axis']")
-	keyboard_key_body :=
-		wayland_source.all_after("@[export: 'v_multiwindow_wayland_keyboard_key']").all_before("@[export: 'v_multiwindow_wayland_keyboard_modifiers']")
-	touch_down_body :=
-		wayland_source.all_after("@[export: 'v_multiwindow_wayland_touch_down']").all_before("@[export: 'v_multiwindow_wayland_touch_up']")
-	resize_window_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) resize_window').all_before('fn (mut backend WaylandBackend) begin_window_move')
-	begin_move_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) begin_window_move').all_before('fn (mut backend WaylandBackend) begin_window_resize')
-	begin_resize_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) begin_window_resize').all_before('fn (mut backend WaylandBackend) poll_events')
-	edge_mapping_body :=
-		wayland_source.all_after('fn wayland_resize_edge(edge WindowResizeEdge) u32').all_before('fn wayland_is_clipboard_paste')
 
-	assert wayland_helper_source.contains('#define XDG_TOPLEVEL_MOVE 5')
-	assert wayland_helper_source.contains('#define XDG_TOPLEVEL_RESIZE 6')
-	assert wayland_helper_source.contains('v_multiwindow_wayland_xdg_toplevel_move')
-	assert wayland_helper_source.contains('v_multiwindow_wayland_xdg_toplevel_resize')
-	assert wayland_helper_source.contains('XDG_TOPLEVEL_MOVE')
-	assert wayland_helper_source.contains('XDG_TOPLEVEL_RESIZE')
-	for edge_constant in ['XDG_TOPLEVEL_RESIZE_EDGE_TOP', 'XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM',
-		'XDG_TOPLEVEL_RESIZE_EDGE_LEFT', 'XDG_TOPLEVEL_RESIZE_EDGE_RIGHT',
-		'XDG_TOPLEVEL_RESIZE_EDGE_TOP_LEFT', 'XDG_TOPLEVEL_RESIZE_EDGE_TOP_RIGHT',
-		'XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_LEFT', 'XDG_TOPLEVEL_RESIZE_EDGE_BOTTOM_RIGHT'] {
-		assert wayland_helper_source.contains(edge_constant)
-	}
-
-	assert edge_mapping_body.contains('.top { wayland_xdg_toplevel_resize_edge_top }')
-	assert edge_mapping_body.contains('.bottom { wayland_xdg_toplevel_resize_edge_bottom }')
-	assert edge_mapping_body.contains('.left { wayland_xdg_toplevel_resize_edge_left }')
-	assert edge_mapping_body.contains('.right { wayland_xdg_toplevel_resize_edge_right }')
-	assert edge_mapping_body.contains('.top_left { wayland_xdg_toplevel_resize_edge_top_left }')
-	assert edge_mapping_body.contains('.top_right { wayland_xdg_toplevel_resize_edge_top_right }')
-	assert edge_mapping_body.contains('.bottom_left { wayland_xdg_toplevel_resize_edge_bottom_left }')
-	assert edge_mapping_body.contains('.bottom_right { wayland_xdg_toplevel_resize_edge_bottom_right }')
-
-	assert !pointer_button_body.contains('_ = serial')
-	assert !pointer_button_body.contains('mut record := backend.windows[index]')
-	assert pointer_button_body.contains('backend.windows[index].store_user_action_serial(serial, backend.poll_generation)')
-	assert !keyboard_key_body.contains('_ = serial')
-	assert !keyboard_key_body.contains('mut record := backend.windows[index]')
-	assert keyboard_key_body.contains('backend.windows[index].store_user_action_serial(serial, backend.poll_generation)')
-	assert !touch_down_body.contains('_ = serial')
-	assert !touch_down_body.contains('mut record := backend.windows[index]')
-	assert touch_down_body.contains('backend.windows[index].store_user_action_serial(serial, backend.poll_generation)')
-	assert !begin_move_body.contains('mut record := backend.windows[index]')
-	assert !begin_resize_body.contains('mut record := backend.windows[index]')
-	assert begin_move_body.contains('serial := backend.windows[index].take_user_action_serial(backend.poll_generation) or {')
-	assert begin_resize_body.contains('serial := backend.windows[index].take_user_action_serial(backend.poll_generation) or {')
-	assert wayland_source.contains('fn (mut record WaylandWindowRecord) take_user_action_serial')
-	assert wayland_source.contains('fn (mut backend WaylandBackend) expire_user_action_serials')
-	assert wayland_source.contains('backend.poll_generation++')
-	assert wayland_source.contains('interactive_move_resize: backend.can_begin_interactive_move_resize()')
-	assert wayland_source.contains('native_decorations:      backend.has_server_side_decorated_window()')
-	assert !wayland_source.contains('native_decorations:      backend.decoration_manager != unsafe { nil }')
-
-	assert resize_window_body.contains('return error(err_capability_unsupported)')
-	assert begin_resize_body.contains('if !backend.windows[index].resizable')
-	assert begin_resize_body.contains('C.v_multiwindow_wayland_xdg_toplevel_resize')
+	assert !backend_source.contains('fn (mut backend Backend) poll_events()')
+	assert !wayland_source.contains('fn (mut backend WaylandBackend) poll_events()')
 
 	for forbidden in ['gtk_shell1', 'xdg_toplevel_drag_manager_v1'] {
 		assert !wayland_source.contains(forbidden)
@@ -2883,20 +2640,120 @@ fn test_wayland_interactive_move_resize_source_guard() {
 	}
 }
 
+fn test_wayland_user_action_serial_is_one_shot_and_poll_generation_scoped() {
+	mut record := WaylandWindowRecord{}
+	record.store_user_action_serial(41, 7)
+	first := record.take_user_action_serial(7) or {
+		assert false, 'current-generation user-action serial was unavailable'
+		return
+	}
+	assert first == 41
+	assert !record.user_action_serial_valid
+	assert record.user_action_serial == 0
+	assert record.user_action_poll == 0
+	if replayed := record.take_user_action_serial(7) {
+		assert false, 'one-shot user-action serial replayed as ${replayed}'
+	}
+
+	record.store_user_action_serial(42, 8)
+	if stale := record.take_user_action_serial(9) {
+		assert false, 'stale-generation user-action serial was accepted as ${stale}'
+	}
+	assert !record.user_action_serial_valid
+	if resurrected := record.take_user_action_serial(8) {
+		assert false, 'rejected user-action serial was retained as ${resurrected}'
+	}
+}
+
+fn test_wayland_poll_path_advances_user_action_generation() {
+	if os.getenv('VGG_MULTIWINDOW_RUNTIME_PROBES') != '1'
+		|| os.getenv('VGG_MULTIWINDOW_RUNTIME_BACKEND') != 'wayland' {
+		return
+	}
+	$if linux && sokol_wayland ? {
+		mut app := new_app(backend: .wayland)!
+		defer {
+			app.stop() or {
+				assert false, 'failed to stop Wayland poll-generation probe app: ${err.msg()}'
+			}
+		}
+		old_window := app.create_window(title: 'Wayland old serial', width: 160, height: 120)!
+		current_window := app.create_window(
+			title:  'Wayland current serial'
+			width:  160
+			height: 120
+		)!
+		old_index := app.backend.wayland.window_record_index(old_window) or {
+			assert false, 'old Wayland poll-generation window record was not retained'
+			return
+		}
+		current_index := app.backend.wayland.window_record_index(current_window) or {
+			assert false, 'current Wayland poll-generation window record was not retained'
+			return
+		}
+		generation_before := app.backend.wayland.poll_generation
+
+		app.poll_events()!
+
+		generation_after := app.backend.wayland.poll_generation
+		assert generation_after == generation_before + 1
+		app.backend.wayland.windows[old_index].store_user_action_serial(61, generation_before)
+		app.backend.wayland.windows[current_index].store_user_action_serial(62, generation_after)
+		app.backend.wayland.expire_user_action_serials()
+
+		assert !app.backend.wayland.windows[old_index].user_action_serial_valid
+		assert app.backend.wayland.windows[old_index].user_action_serial == 0
+		assert app.backend.wayland.windows[old_index].user_action_poll == 0
+		assert app.backend.wayland.windows[current_index].user_action_serial_valid
+		assert app.backend.wayland.windows[current_index].user_action_serial == 62
+		assert app.backend.wayland.windows[current_index].user_action_poll == generation_after
+		retained := app.backend.wayland.windows[current_index].take_user_action_serial(generation_after) or {
+			assert false, 'current poll-generation serial was expired'
+			return
+		}
+		assert retained == 62
+		if replayed := app.backend.wayland.windows[current_index].take_user_action_serial(generation_after) {
+			assert false, 'current poll-generation serial replayed as ${replayed}'
+		}
+		if stale := app.backend.wayland.windows[old_index].take_user_action_serial(generation_after) {
+			assert false, 'expired poll-generation serial remained consumable as ${stale}'
+		}
+	} $else {
+		assert false, 'forced Wayland runtime serial probe requires linux and -d sokol_wayland'
+	}
+}
+
+fn test_wayland_resize_edges_map_to_xdg_toplevel_values() {
+	edges := [WindowResizeEdge.top, .bottom, .left, .right, .top_left, .top_right, .bottom_left,
+		.bottom_right]
+	expected := [u32(1), 2, 4, 8, 5, 9, 6, 10]
+	assert edges.len == expected.len
+	for index, edge in edges {
+		assert wayland_resize_edge(edge) == expected[index]
+	}
+
+	// Native xdg_toplevel move/resize delivery and display flushing remain mandatory
+	// runtime-lane proofs; source layout is not evidence for those operations.
+}
+
 fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 	backend_source := multiwindow_source_file('backend.v')
 	wayland_source := multiwindow_source_file('wayland_backend.c.v')
 	wayland_helper_source := multiwindow_source_file('wayland_backend_helpers.h')
+	compact_wayland_source := wayland_source.replace(' ', '').replace('\t', '').replace('\n', '')
 	capabilities_body :=
 		wayland_source.all_after('fn (backend &WaylandBackend) capabilities() Capabilities').all_before('fn (backend &WaylandBackend) can_deliver_drop_events')
+	backend_poll_body :=
+		backend_source.all_after('fn (mut backend Backend) poll_queued_events() ![]QueuedEvent').all_before('fn (mut backend Backend) event_sequence_terminal_error')
+	compact_backend_poll_body :=
+		backend_poll_body.replace(' ', '').replace('\t', '').replace('\n', '')
 
-	assert backend_source.contains('.wayland {\n\t\t\treturn backend.wayland.poll_queued_events()!')
+	assert compact_backend_poll_body.contains('.wayland{backend.wayland.poll_queued_events()!}')
 	assert wayland_source.contains('fn (mut backend WaylandBackend) poll_queued_events() ![]QueuedEvent')
 	assert wayland_source.contains('pending_events')
 	assert wayland_source.contains('[]QueuedEvent')
 	assert wayland_source.contains('queued_lifecycle_event')
 	assert wayland_source.contains('queued_input_event')
-	assert wayland_source.contains('events := backend.poll_queued_events()!')
 	assert !wayland_source.contains('resize_event_pending')
 	assert !wayland_source.contains('close_requested         bool')
 	assert !wayland_source.contains('mut close_requested_windows := []WindowId{}')
@@ -2933,6 +2790,8 @@ fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 		wayland_source.all_after('fn (mut backend WaylandBackend) start_key_repeat').all_before('fn (mut backend WaylandBackend) stop_key_repeat')
 	poll_body :=
 		wayland_source.all_after('fn (mut backend WaylandBackend) poll_queued_events() ![]QueuedEvent').all_before('fn (mut record WaylandWindowRecord) enqueue_native_event')
+	compact_poll_body := poll_body.replace(' ', '').replace('\t', '').replace('\n', '')
+	assert compact_poll_body.count('for_,mutrecordinbackend.windows{fornative_eventinrecord.pending_events{native_events<<native_event}record.pending_events.clear()}') == 2
 	keyboard_leave_body :=
 		wayland_source.all_after("@[export: 'v_multiwindow_wayland_keyboard_leave']").all_before("@[export: 'v_multiwindow_wayland_keyboard_keymap']")
 	clear_keys_down_body :=
@@ -2959,11 +2818,11 @@ fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 	assert key_repeats_body.contains('if backend.xkb_keymap == unsafe { nil }')
 	assert key_repeats_body.contains('C.xkb_keymap_key_repeats(unsafe { &C.xkb_keymap(backend.xkb_keymap) }')
 	assert key_repeats_body.contains('raw_key) != 0')
-	for repeat_field in ['keyboard_repeat_rate         int', 'keyboard_repeat_delay        int',
-		'keyboard_repeat_active       bool', 'keyboard_repeat_raw_key      u32',
-		'keyboard_repeat_key_code     int', 'keyboard_repeat_window       WindowId',
-		'keyboard_repeat_next_ns      u64', 'keyboard_repeat_interval_ns  u64'] {
-		assert wayland_source.contains(repeat_field)
+	for repeat_field in ['keyboard_repeat_rateint', 'keyboard_repeat_delayint',
+		'keyboard_repeat_activebool', 'keyboard_repeat_raw_keyu32', 'keyboard_repeat_key_codeint',
+		'keyboard_repeat_windowWindowId', 'keyboard_repeat_next_nsu64',
+		'keyboard_repeat_interval_nsu64'] {
+		assert compact_wayland_source.contains(repeat_field)
 	}
 	assert !wayland_source.contains('keyboard_repeat_modifiers')
 	assert !wayland_source.contains('keyboard_repeat_char_code')
@@ -3054,7 +2913,11 @@ fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 	assert wayland_source.contains('C.poll(&poll_fd, u64(1), 0)')
 	assert wayland_source.contains('for _ in 0 .. wayland_data_offer_max_read_chunks')
 	assert wayland_source.contains('backend.drain_pending_data_offer_drop()')
-	assert_source_order(wayland_source, 'backend.dispatch_pending_nonblocking()!',
+	assert_source_order(poll_body, 'dispatch := backend.dispatch_pending_nonblocking()',
+		'if !dispatch.succeeded()')
+	assert_source_order(poll_body, 'if !dispatch.succeeded()',
+		'deferred_error = dispatch.error_text')
+	assert_source_order(poll_body, 'deferred_error = dispatch.error_text',
 		'backend.drain_pending_data_offer_drop()')
 	assert wayland_source.contains('.files_dropped')
 	assert wayland_source.contains('dropped_files_from_uri_list(payload)')
@@ -3179,6 +3042,23 @@ fn test_wayland_registry_global_remove_and_optional_callbacks_are_guarded_source
 	assert has_compositor_name
 	assert has_wm_base_name
 	assert has_seat_name
+	wm_base_listener_registration :=
+		wayland_source.all_after('wm_base := unsafe { &C.xdg_wm_base(backend.wm_base) }').all_before('if backend.seat != unsafe { nil }')
+	assert wm_base_listener_registration.contains('C.v_multiwindow_wayland_add_xdg_wm_base_listener')
+	assert wm_base_listener_registration.contains('backend.registry_listener_data()')
+	assert !wm_base_listener_registration.contains('unsafe { nil }')
+
+	ping_body :=
+		wayland_source.all_after('fn wayland_xdg_wm_base_ping').all_before("@[export: 'v_multiwindow_wayland_xdg_surface_configure']")
+	ping_after_nil_guard := ping_body.all_after('if data == unsafe { nil }')
+	assert ping_after_nil_guard.all_before('backend := unsafe { &WaylandBackend(data) }').contains('return')
+	ping_after_backend :=
+		ping_after_nil_guard.all_after('backend := unsafe { &WaylandBackend(data) }')
+	ping_after_transport_guard :=
+		ping_after_backend.all_after('if !backend.transport_can_marshal()')
+	assert ping_after_transport_guard.all_before('C.v_multiwindow_wayland_xdg_wm_base_pong').contains('return')
+	assert ping_body.count('C.v_multiwindow_wayland_xdg_wm_base_pong') == 1
+	assert ping_after_transport_guard.contains('C.v_multiwindow_wayland_xdg_wm_base_pong(unsafe { &C.xdg_wm_base(wm_base) }, serial)')
 
 	global_remove_body :=
 		wayland_source.all_after('fn wayland_registry_handle_global_remove').all_before("@[export: 'v_multiwindow_wayland_xdg_wm_base_ping']")
@@ -3192,30 +3072,6 @@ fn test_wayland_registry_global_remove_and_optional_callbacks_are_guarded_source
 	assert wm_base_remove_body.contains('backend.wm_base_name = 0')
 	assert wm_base_remove_body.contains('backend.destroy_removed_wm_base_if_unused()')
 	assert !wm_base_remove_body.contains('C.v_multiwindow_wayland_xdg_wm_base_destroy')
-	if wm_base_remove_body.contains('backend.wm_base = unsafe { nil }') {
-		assert_source_order(wm_base_remove_body, 'backend.destroy_removed_wm_base_if_unused()',
-			'backend.wm_base = unsafe { nil }')
-	}
-	removed_wm_base_cleanup_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) destroy_removed_wm_base_if_unused()').all_before('fn (mut backend WaylandBackend) destroy_seat_devices')
-	assert removed_wm_base_cleanup_body.contains('backend.wm_base_name != 0')
-	assert removed_wm_base_cleanup_body.contains('backend.wm_base == unsafe { nil }')
-	assert removed_wm_base_cleanup_body.contains('backend.windows.len != 0')
-	assert removed_wm_base_cleanup_body.contains('C.v_multiwindow_wayland_xdg_wm_base_destroy')
-	assert removed_wm_base_cleanup_body.contains('backend.wm_base = unsafe { nil }')
-		|| removed_wm_base_cleanup_body.contains('return true')
-	assert_source_order(removed_wm_base_cleanup_body, 'backend.windows.len != 0',
-		'C.v_multiwindow_wayland_xdg_wm_base_destroy')
-	destroy_window_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) destroy_window').all_before('fn (mut backend WaylandBackend) set_window_title')
-	assert_source_order(destroy_window_body, 'backend.windows.delete(index)',
-		'backend.destroy_removed_wm_base_if_unused()')
-	close_connection_body :=
-		wayland_source.all_after('fn (mut backend WaylandBackend) close_connection').all_before('fn (mut backend WaylandBackend) destroy_removed_wm_base_if_unused')
-	assert_source_order(close_connection_body, 'for backend.windows.len > 0',
-		'backend.destroy_removed_wm_base_if_unused()')
-	assert_source_order(close_connection_body, 'backend.destroy_removed_wm_base_if_unused()',
-		'if backend.wm_base != unsafe { nil }')
 	compositor_remove_body := global_remove_body.all_after('name == backend.compositor_name')
 	assert compositor_remove_body.contains('backend.compositor_name = 0')
 	assert compositor_remove_body.contains('backend.compositor = unsafe { nil }')
@@ -3330,59 +3186,6 @@ fn test_gg_import_only_windows_build_keeps_win32_callback_record_declaration() {
 	assert c_source.contains('struct x__multiwindow__Win32WindowRecord {')
 	assert_source_order(c_source, 'struct x__multiwindow__Win32WindowRecord {',
 		'VV_LOC void x__multiwindow__win32_window_close_requested(voidptr data, u64 sequence)')
-}
-
-fn test_wayland_render_smoke_when_display_is_available() {
-	$if gg_multiwindow ? || x_multiwindow_render ? {
-		$if linux {
-			$if !sokol_wayland ? {
-				new_app(backend: .wayland, require_renderer: true) or {
-					assert err.msg() == err_backend_unsupported
-					return
-				}
-				assert false, 'wayland render app creation succeeded without -d sokol_wayland'
-				return
-			}
-			if os.getenv('WAYLAND_DISPLAY') == '' {
-				eprintln('skip wayland render smoke: WAYLAND_DISPLAY is not set')
-				return
-			}
-			mut app := new_app(backend: .wayland, require_renderer: true) or {
-				if err.msg() == err_wayland_connect_failed {
-					eprintln('skip wayland render smoke: Wayland display connection failed')
-					return
-				}
-				panic(err.msg())
-			}
-			caps := app.capabilities()
-			assert caps.explicit_swapchain
-			assert caps.gl
-			win :=
-				app.create_window(title: 'V x.multiwindow Wayland render', width: 160, height: 96)!
-			env := app.render_environment(win)!
-			assert env.defaults.color_format == gfx.PixelFormat.rgba8
-			assert env.defaults.depth_format == gfx.PixelFormat.depth_stencil
-			assert env.defaults.sample_count == 1
-			frame := app.begin_render(win)!
-			assert frame.window_id == win
-			assert frame.swapchain.width > 0
-			assert frame.swapchain.height > 0
-			assert frame.swapchain.sample_count == 1
-			assert frame.swapchain.color_format == gfx.PixelFormat.rgba8
-			assert frame.swapchain.depth_format == gfx.PixelFormat.depth_stencil
-			assert frame.swapchain.gl.framebuffer == 0
-			app.end_render(frame)!
-			app.stop()!
-		} $else {
-			new_app(backend: .wayland, require_renderer: true) or {
-				assert err.msg() == err_backend_unsupported
-				return
-			}
-			assert false, 'wayland render app creation succeeded on an unsupported OS'
-		}
-	} $else {
-		return
-	}
 }
 
 fn test_wayland_runtime_create_destroy_when_display_is_available() {
@@ -3781,6 +3584,32 @@ fn multiwindow_source_file(name string) string {
 	return os.read_file(os.join_path(@DIR, name)) or { panic(err) }
 }
 
+fn test_wayland_renderer_anchor_secondary_architecture_source_guard() {
+	runtime_source := multiwindow_source_file('wayland_render_runtime.c.v')
+	marker := 'fn (mut backend WaylandBackend) create_private_renderer_anchor'
+	assert runtime_source.contains(marker)
+	anchor_body :=
+		runtime_source.all_after(marker).all_before('fn (mut backend WaylandBackend) create_renderer_anchor')
+	// Native proof tests establish acquisition, rollback, ownership, and release order.
+	for forbidden in ['wl_surface_commit', 'xdg_', 'display_flush', 'frame_callback', 'swap_buffers',
+		'WindowId'] {
+		assert !anchor_body.contains(forbidden)
+	}
+
+	egl_source := multiwindow_source_file('linux_egl_native_helpers.h')
+	wayland_config :=
+		egl_source.all_after('v_multiwindow_linux_egl_choose_wayland_config').all_before('v_multiwindow_linux_egl_get_native_visual')
+	for required in ['EGL_WINDOW_BIT', 'EGL_OPENGL_BIT', 'EGL_RED_SIZE, 8', 'EGL_GREEN_SIZE, 8',
+		'EGL_BLUE_SIZE, 8', 'EGL_ALPHA_SIZE, 8', 'EGL_DEPTH_SIZE, 24', 'EGL_STENCIL_SIZE, 8',
+		'EGL_SAMPLE_BUFFERS, 0', 'EGL_SAMPLES, 0', 'eglGetConfigAttrib'] {
+		assert wayland_config.contains(required)
+	}
+	assert !wayland_config.contains('EGL_PBUFFER_BIT')
+	x11_config :=
+		egl_source.all_after('v_multiwindow_linux_egl_choose_config').all_before('v_multiwindow_linux_egl_choose_wayland_config')
+	assert x11_config.contains('EGL_WINDOW_BIT | EGL_PBUFFER_BIT')
+}
+
 fn assert_source_order(source string, before string, after string) {
 	before_index := source.index(before) or {
 		assert false, 'source does not contain `${before}`'
@@ -3802,12 +3631,26 @@ fn assert_source_order_after_marker(source string, marker string, before string,
 	assert_source_order(section, before, after)
 }
 
-fn assert_win32_d3d11_present_status_error(status int, expected string) {
-	win32_d3d11_check_present_status(status) or {
-		assert err.msg() == expected
-		return
+$if gg_multiwindow ? || x_multiwindow_render ? {
+	$if windows && sokol_d3d11 ? {
+		fn assert_win32_d3d11_present_disposition(hresult i64, expected NativeRenderDisposition) {
+			context := NativeOperationContext{
+				domain:    .dxgi
+				operation: .present
+				scope:     .window_target
+			}
+			evidence := NativePrimitiveEvidence{
+				valid_mask:   native_valid_return_value
+				return_value: hresult
+			}
+			result := native_result_from_dxgi(context, NativePrimitiveCapture{
+				actual:    evidence
+				effective: evidence
+			}, .none)
+			assert result.disposition == expected
+			assert u32(result.native_code) == u32(hresult)
+		}
 	}
-	assert false, 'D3D11 Present status ${status} did not fail with ${expected}'
 }
 
 fn assert_no_bool_signal(signal chan bool, message string) {

@@ -502,6 +502,26 @@ pub fn (n Node) with_pos(pos token.Pos) Node {
 	}
 }
 
+// clone_owned returns a deep copy whose managed text and payload survive scoped arenas.
+pub fn (n Node) clone_owned() Node {
+	mut params := []string{cap: n.generic_params().len}
+	for param in n.generic_params() {
+		params << param.clone()
+	}
+	return Node{
+		value:                n.value.clone()
+		typ:                  n.typ.clone()
+		payload:              node_payload(params)
+		pos:                  n.pos
+		children_start:       n.children_start
+		children_count:       n.children_count
+		kind:                 n.kind
+		op:                   n.op
+		is_mut:               n.is_mut
+		skip_ownership_drops: n.skip_ownership_drops
+	}
+}
+
 // add_node updates add node state for FlatAst.
 pub fn (mut a FlatAst) add_node(node Node) NodeId {
 	id := NodeId(a.nodes.len)

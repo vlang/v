@@ -253,7 +253,7 @@ fn (mut p Parser) precollect_parallel_comptime_consts(paths []string, start int,
 			continue
 		}
 		mut file_set := token.FileSet.new()
-		file := file_set.add_file(path, -1, src.len)
+		file := file_set.add_file(path, src.len)
 		mut s := scanner.new_scanner(p.prefs, .normal)
 		s.init(file, src)
 		mut module_name := ''
@@ -581,7 +581,7 @@ fn (p &Parser) new_parallel_comptime_prepass_resolver(src string, path string, m
 	resolver.cur_file = path
 	resolver.cur_module = module_name
 	mut file_set := token.FileSet.new()
-	mut file := file_set.add_file(path, -1, src.len)
+	mut file := file_set.add_file(path, src.len)
 	file.index_lines(src)
 	resolver.s.init(file, src)
 	return resolver
@@ -921,7 +921,7 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 			}
 			source := w.a.source_buffers[source_idx]
 			mut file_set := token.FileSet.new()
-			mut stored_file := file_set.add_file(file.name.clone(), file.base, file.size)
+			mut stored_file := file_set.add_file(file.name.clone(), file.size)
 			stored_file.index_lines(source)
 			p.a.source_files[file_id] = stored_file
 		}

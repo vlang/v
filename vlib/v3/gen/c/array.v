@@ -182,6 +182,19 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		return
 	}
 	if node.kind == .array_literal {
+		if elem_fixed := array_fixed_type(arr.elem_type) {
+			mut needs_runtime_copy := false
+			for i in 0 .. node.children_count {
+				if g.fixed_array_initializer_string(g.a.child(&node, i), elem_fixed).len == 0 {
+					needs_runtime_copy = true
+					break
+				}
+			}
+			if needs_runtime_copy {
+				g.gen_nested_fixed_array_literal_copy(node, arr, elem_fixed)
+				return
+			}
+		}
 		c_elem := g.value_c_type(arr.elem_type)
 		g.write('(${c_elem}[]){')
 		for i in 0 .. node.children_count {
@@ -253,6 +266,20 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		return
 	}
 	g.gen_expr(id)
+}
+
+// gen_nested_fixed_array_literal_copy materializes nested fixed-array elements that cannot be
+// represented as C initializers, such as calls returning fixed-array wrapper structs.
+fn (mut g FlatGen) gen_nested_fixed_array_literal_copy(node flat.Node, arr types.ArrayFixed, elem_fixed types.ArrayFixed) {
+	c_elem, dims := g.fixed_array_decl_parts(arr)
+	tmp := g.tmp_name()
+	g.write('({ ${c_elem} ${tmp}${dims} = {0}; ')
+	for i in 0 .. node.children_count {
+		g.write('memmove(${tmp}[${i}], ')
+		g.gen_fixed_array_data_arg(g.a.child(&node, i), elem_fixed)
+		g.write(', sizeof(${tmp}[${i}])); ')
+	}
+	g.write('${tmp}; })')
 }
 
 fn fixed_array_option_payload_type(typ types.Type) ?types.ArrayFixed {

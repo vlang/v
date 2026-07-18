@@ -914,6 +914,26 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	requested_qualified := concrete_name.contains('.') || concrete != concrete_name
 	iface_candidates := t.interface_impl_type_id_iface_candidates(iface)
 	for impl_iface in iface_candidates {
+		if impl_index := t.interface_impl_indexes[impl_iface] {
+			if type_id := impl_index.ids[concrete] {
+				return type_id
+			}
+		}
+	}
+	if !requested_qualified {
+		for impl_iface in iface_candidates {
+			impl_index := t.interface_impl_indexes[impl_iface] or { continue }
+			for impl_name in impl_index.names {
+				if impl_name.all_after_last('.') == concrete.all_after_last('.') {
+					return impl_index.ids[impl_name]
+				}
+			}
+		}
+	}
+	// Generic specialization can introduce a concrete implementation after the
+	// immutable transform indexes were prepared. Fall back to the live checker
+	// only for those late names.
+	for impl_iface in iface_candidates {
 		impl_names := if t.is_builtin_ierror_interface_name(impl_iface) {
 			t.tc.ierror_impl_names()
 		} else {
@@ -1211,11 +1231,26 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 		return id
 	}
 	expr_id := t.a.child(&node, 0)
-	expr_type := t.node_type(expr_id)
+	// `as` converts from the expression's storage type. Inside an `is` branch,
+	// `node_type` reports the smartcast target instead; using that here makes an
+	// interface-to-interface cast look like a no-op and leaves the source box on
+	// the RHS (for example `layout as Widget`).
+	mut expr_type := t.raw_expr_type_without_smartcast(expr_id)
+	if expr_type.len == 0 {
+		expr_type = t.node_type(expr_id)
+	}
 	clean_type0 := t.trim_pointer_type(expr_type)
 	if t.is_interface_type_name(clean_type0) {
 		if target_iface := t.resolve_interface_pattern_interface(node.value) {
-			child := t.transform_expr(expr_id)
+			// Use the raw interface expression here. Applying the active smartcast
+			// first would build the target interface once, then the explicit `as`
+			// conversion would incorrectly treat that value as the original source
+			// (including using pointer selectors for a value temporary).
+			child := if t.expr_has_smartcast(expr_id) {
+				t.make_plain_expr_for_smartcast(expr_id)
+			} else {
+				t.transform_expr(expr_id)
+			}
 			if converted := t.convert_interface_expr_to_interface(child, expr_type, target_iface) {
 				return converted
 			}

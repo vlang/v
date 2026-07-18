@@ -330,6 +330,9 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	rhs_id := t.a.children[node.children_start + 1]
 	lhs_type := t.map_comparison_expr_type(lhs_id)
 	rhs_type := t.map_comparison_expr_type(rhs_id)
+	if t.equality_type_is_map_pointer(lhs_type) && t.equality_type_is_map_pointer(rhs_type) {
+		return none
+	}
 	mut lhs_map_type := t.clean_map_type(lhs_type)
 	mut rhs_map_type := t.clean_map_type(rhs_type)
 	if !lhs_map_type.starts_with('map[') && rhs_map_type.starts_with('map[')
@@ -2739,7 +2742,7 @@ fn (mut t Transformer) make_interface_semantic_eq_expr(lhs flat.NodeId, rhs flat
 	impl_names := if t.is_builtin_ierror_interface_name(iface) {
 		t.tc.ierror_impl_names()
 	} else {
-		t.tc.interface_impl_names(iface)
+		t.interface_impl_index_for_transform(iface).names
 	}
 	for impl_name in impl_names {
 		if !t.interface_boxed_type_marked(iface, impl_name) {

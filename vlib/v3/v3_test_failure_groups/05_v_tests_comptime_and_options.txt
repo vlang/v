@@ -9,7 +9,6 @@ vlib/v/tests/comptime/comptime_kinds_test.v
 vlib/v/tests/comptime/comptime_match_assign_test.v
 vlib/v/tests/comptime/comptime_match_ret_test.v
 vlib/v/tests/comptime/comptime_type_accessors_zero_new_test.v
-vlib/v/tests/comptime/comptime_var_unwrap_test.v
 vlib/v/tests/comptime_pseudo_fn_with_dollar_test.v
 vlib/v/tests/options/option_array_fixed_interface_sumtype_test.v
 vlib/v/tests/options/option_array_submodule_test.v

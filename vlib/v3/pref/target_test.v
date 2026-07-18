@@ -88,6 +88,13 @@ fn test_comptime_flags_use_target_instead_of_host() {
 	assert comptime_flag_value(prefs, 'x32')
 }
 
+fn test_debug_comptime_flag_uses_target_preferences() {
+	mut prefs := new_preferences()
+	assert !comptime_flag_value(prefs, 'debug')
+	prefs.is_debug = true
+	assert comptime_flag_value(prefs, 'debug')
+}
+
 fn test_source_selection_uses_target_os_and_arch() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_target_pref_${os.getpid()}')
 	os.rmdir_all(dir) or {}

@@ -15,7 +15,8 @@ fn test_snapshot_roundtrips_file_paths_with_commas() {
 	ptr := profiler_alloc_with_location(64, '/tmp/weird,path/with,commas.v', 42)
 	assert ptr != unsafe { nil }
 
-	path := os.join_path(os.temp_dir(), 'v3_profiler_ipc_test_${os.getpid()}_${time.sys_mono_now()}.dat')
+	path := os.join_path(os.temp_dir(),
+		'v3_profiler_ipc_test_${os.getpid()}_${time.sys_mono_now()}.dat')
 	defer {
 		os.rm(path) or {}
 	}

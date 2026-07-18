@@ -626,6 +626,8 @@ fn cli_usage() string {
 		'  -os <name> -arch <name>     target platform\n' +
 		'  -cc <compiler>               C compiler executable\n' +
 		'  -prod -c99 -shared -strict  C build modes\n' +
+		'  -v                           verbose stage profiling\n' +
+		'  -no-memory-limit             disable the 10 GiB RSS safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
 
@@ -645,10 +647,21 @@ fn with_shared_library_postfix(path string, target_os string) string {
 	return path + postfix
 }
 
-// should_scope_prealloc_selfhost reports whether self-host stages need disposable arenas.
-fn should_scope_prealloc_selfhost(building_v bool, cmd_v_build bool) bool {
+// should_scope_prealloc_stages reports whether compiler self-host stages can use disposable
+// arenas. User programs retain normal allocation ownership until every stage promotion path can
+// safely preserve their generic and comptime metadata.
+fn should_scope_prealloc_stages(building_v bool, cmd_v_build bool) bool {
 	$if prealloc {
 		return building_v || cmd_v_build
+	}
+	return false
+}
+
+// should_scope_prealloc_cgen reports whether cgen scratch/output chunks can use disposable
+// arenas. Unlike transform metadata, cgen state does not escape after its flags are copied.
+fn should_scope_prealloc_cgen() bool {
+	$if prealloc {
+		return true
 	}
 	return false
 }
@@ -693,6 +706,14 @@ fn clone_string_bool_map(values map[string]bool) map[string]bool {
 	mut cloned := map[string]bool{}
 	for key, value in values {
 		cloned[key.clone()] = value
+	}
+	return cloned
+}
+
+fn clone_string_string_map(values map[string]string) map[string]string {
+	mut cloned := map[string]string{}
+	for key, value in values {
+		cloned[key.clone()] = value.clone()
 	}
 	return cloned
 }
@@ -819,21 +840,7 @@ fn clone_scoped_transform_regions(regions []transform.ScopedTransformRegion) []t
 }
 
 fn clone_flat_node_owned(node flat.Node) flat.Node {
-	mut params := []string{cap: node.generic_params().len}
-	for param in node.generic_params() {
-		params << param.clone()
-	}
-	return flat.Node{
-		value:          node.value.clone()
-		typ:            node.typ.clone()
-		payload:        flat.node_payload(params)
-		is_mut:         node.is_mut
-		children_start: node.children_start
-		pos:            node.pos
-		children_count: node.children_count
-		kind:           node.kind
-		op:             node.op
-	}
+	return node.clone_owned()
 }
 
 fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
@@ -876,17 +883,49 @@ fn clone_int_type_map(values map[int]types.Type) map[int]types.Type {
 	return cloned
 }
 
-fn promote_scoped_checker_node_additions(mut tc types.TypeChecker, base_nodes int, scope voidptr) {
-	for idx in base_nodes .. tc.resolved_call_names.len {
+fn clone_struct_field_map(values map[string][]types.StructField) map[string][]types.StructField {
+	mut cloned := map[string][]types.StructField{}
+	for name, fields in values {
+		mut owned_fields := []types.StructField{cap: fields.len}
+		for field in fields {
+			owned_fields << types.StructField{
+				name: field.name.clone()
+				typ:  types.clone_owned_type(field.typ)
+			}
+		}
+		cloned[name.clone()] = owned_fields
+	}
+	return cloned
+}
+
+fn clone_string_list_map(values map[string][]string) map[string][]string {
+	mut cloned := map[string][]string{}
+	for name, items in values {
+		cloned[name.clone()] = clone_string_list(items)
+	}
+	return cloned
+}
+
+fn promote_scoped_monomorph_metadata(mut tc types.TypeChecker) {
+	tc.structs = clone_struct_field_map(tc.structs)
+	tc.struct_modules = clone_string_string_map(tc.struct_modules)
+	tc.unions = clone_string_bool_map(tc.unions)
+	tc.params_structs = clone_string_bool_map(tc.params_structs)
+	tc.sum_types = clone_string_list_map(tc.sum_types)
+	tc.sum_generic_params = clone_string_list_map(tc.sum_generic_params)
+}
+
+fn promote_scoped_checker_node_caches(mut tc types.TypeChecker) {
+	for idx in 0 .. tc.resolved_call_names.len {
 		if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
 			name := tc.resolved_call_names[idx]
-			if name.len > 0 && scoped_value_owned(scope, name.str) {
+			if name.len > 0 {
 				tc.resolved_call_names[idx] = name.clone()
 			}
 		}
 		if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
 			name := tc.resolved_fn_value_names[idx]
-			if name.len > 0 && scoped_value_owned(scope, name.str) {
+			if name.len > 0 {
 				tc.resolved_fn_value_names[idx] = name.clone()
 			}
 		}
@@ -901,10 +940,16 @@ fn promote_scoped_checker_node_additions(mut tc types.TypeChecker, base_nodes in
 	tc.sparse_checking_nodes = tc.sparse_checking_nodes.clone()
 }
 
-fn promote_scoped_signatures(mut tc types.TypeChecker, original_names map[string]bool) {
+fn promote_scoped_signatures(mut tc types.TypeChecker, original_names []string) {
 	mut added_names := []string{}
-	for name in tc.fn_ret_types.keys() {
-		if name !in original_names {
+	mut current_names := tc.fn_ret_types.keys()
+	current_names.sort()
+	mut original_idx := 0
+	for name in current_names {
+		for original_idx < original_names.len && original_names[original_idx] < name {
+			original_idx++
+		}
+		if original_idx >= original_names.len || original_names[original_idx] != name {
 			added_names << name
 		}
 	}
@@ -1151,13 +1196,17 @@ fn main() {
 	mut no_parallel := false
 	mut no_prealloc := false
 	mut no_cache := false
+	mut no_memory_limit := false
 	mut parallel_transform := true
 	mut building_v := false
 	mut ownership_mode := false
+	mut verbose := false
+	mut is_debug := false
 	mut c99 := false
 	mut all_backends := false
 	mut compile_backends := []string{}
 	mut user_defines := []string{}
+	mut user_c_flags := []string{}
 	mut should_run := false
 	mut is_test_command := false
 	mut run_args := []string{}
@@ -1175,6 +1224,10 @@ fn main() {
 		if args[i] in ['-o', '-b', '-os', '-arch', '-compile-backend', '--compile-backend', '-d', '-gc', '-cc']
 			&& (i + 1 >= args.len || args[i + 1].starts_with('-')) {
 			eprintln('option `${args[i]}` requires a value')
+			exit(1)
+		}
+		if args[i] == '-cflags' && i + 1 >= args.len {
+			eprintln('option `-cflags` requires a value')
 			exit(1)
 		}
 		if args[i] == 'run' && input_file.len == 0 && !should_run {
@@ -1253,11 +1306,32 @@ fn main() {
 			c_compiler = args[i + 1]
 			c_compiler_explicit = true
 			i += 2
+		} else if args[i] == '-cflags' && i + 1 < args.len {
+			parsed_c_flags := cmdexec.split_args(args[i + 1]) or {
+				eprintln('invalid `-cflags` value: ${err.msg()}')
+				exit(1)
+			}
+			user_c_flags << parsed_c_flags
+			i += 2
+		} else if args[i] == '-g' {
+			is_debug = true
+			user_c_flags << '-g'
+			i++
+		} else if args[i] == '-v' {
+			verbose = true
+			i++
+		} else if args[i] in ['-stats', '-show-timings', '-showcc', '-keepc', '-w'] {
+			// v3 already reports phase metrics, prints the C command, retains generated C,
+			// and suppresses C warnings. Accept the corresponding V flags for compatibility.
+			i++
 		} else if args[i] == '-no-prealloc' || args[i] == '--no-prealloc' {
 			no_prealloc = true
 			i++
 		} else if args[i] == '-nocache' || args[i] == '--no-cache' {
 			no_cache = true
+			i++
+		} else if args[i] == '-no-memory-limit' || args[i] == '--no-memory-limit' {
+			no_memory_limit = true
 			i++
 		} else if args[i] == '-prealloc' {
 			// Same effect as `v -prealloc`: activate the `$if prealloc {` arena
@@ -1331,15 +1405,15 @@ fn main() {
 		building_v = true
 	}
 	cmd_v_build := input_is_cmd_v(input_file)
-	scope_prealloc_selfhost := should_scope_prealloc_selfhost(building_v, cmd_v_build)
+	scope_prealloc_stages := should_scope_prealloc_stages(building_v, cmd_v_build)
+	scope_prealloc_cgen := should_scope_prealloc_cgen()
 	// The selective transform promotion path is designed around worker-owned
-	// result regions. Keep an explicitly serial transform in the compilation
-	// arena while retaining scoped parse/check/cgen scratch.
-	scope_prealloc_transform := scope_prealloc_selfhost && current_parallel_transform
+	// results outside the disposable stage arena.
+	scope_prealloc_transform := scope_prealloc_stages
 	// Markused can lazily create the compilation worker pool. When parsing was
 	// serial, keep that pool in the compilation arena so close_workers never
 	// observes a pool allocated in a released markused scope.
-	scope_prealloc_markused := scope_prealloc_selfhost && !current_no_parallel
+	scope_prealloc_markused := scope_prealloc_stages && !current_no_parallel
 	if building_v || cmd_v_build {
 		if no_parallel {
 			user_defines = user_defines.filter(it != 'parallel')
@@ -1427,6 +1501,9 @@ fn main() {
 	}
 
 	mut b := bench.new()
+	if no_memory_limit {
+		b.disable_memory_limit()
+	}
 	mut c_object_cache_stats := CObjectCacheStats{}
 	println('=== v3 benchmark ===')
 
@@ -1440,6 +1517,8 @@ fn main() {
 	prefs.selfhost = is_selfhost
 	prefs.building_v = building_v
 	prefs.is_prod = is_prod
+	prefs.is_debug = is_debug
+	prefs.verbose = verbose
 	host_target := pref.host_target()
 	cache_enabled := backend == 'c' && !c_only && !no_cache && !c_compiler_explicit
 		&& target.os == host_target.os && target.arch == host_target.arch
@@ -1452,6 +1531,7 @@ fn main() {
 		'target=${prefs.normalized_target_os()}',
 		'target_arch=${prefs.normalized_target_arch()}',
 		'prod=${is_prod}',
+		'debug=${is_debug}',
 		'shared=${is_shared}',
 		'selfhost=${is_selfhost}',
 		'c99=${c99}',
@@ -1466,9 +1546,13 @@ fn main() {
 	// The cache generator emits complete module bodies, including late generic
 	// specializations that are not reachable from the entry program. Its split output
 	// currently relies on the serial function-item walk to retain those definitions.
+	// Large generic user programs retain a substantially expanded AST after
+	// monomorphization. Stream them through the serial cgen path in preallocated
+	// builds so worker setup does not clone that retained state at the peak.
 	cache_no_parallel_cgen := current_no_parallel || cache_manager.enabled
+		|| (scope_prealloc_stages && !building_v && !cmd_v_build)
 	mut p := parser.Parser.new(prefs)
-	if scope_prealloc_selfhost {
+	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
 	}
 
@@ -1606,7 +1690,8 @@ fn main() {
 	// (like v2: check runs before transform). The transformer reads cached
 	// per-expression types for type-dependent lowering.
 	mut pre_tc := types.TypeChecker.new(a)
-	if scope_prealloc_selfhost {
+	pre_tc.verbose = prefs.verbose
+	if scope_prealloc_stages {
 		pre_tc.enable_scoped_parallel_workers()
 	}
 	pre_tc.reject_unsupported_generics = is_selfhost
@@ -1615,7 +1700,7 @@ fn main() {
 	pre_tc.diagnose_unknown_calls = true
 	pre_tc.prepare_threads_condition()
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-	check_was_parallel := pre_tc.check_semantics_opt(current_parallel_transform)
+	check_was_parallel := pre_tc.check_semantics_opt(!current_no_parallel)
 	if pre_tc.errors.len > 0 {
 		print_type_errors(pre_tc.errors)
 		exit(1)
@@ -1635,7 +1720,7 @@ fn main() {
 		}
 		cache_input_modules['main'] = true
 		external_inputs, has_untracked_c_include := cgen.cache_external_input_files(a, prefs.vroot,
-			cache_input_modules, prefs.target)
+			cache_input_modules, user_c_flags, prefs.target)
 		cache_state.module_external_inputs = external_inputs.clone()
 		if has_untracked_c_include
 			|| cache_external_inputs_have_static_storage(cache_state.module_external_inputs) {
@@ -1655,6 +1740,7 @@ fn main() {
 			restart_v3_after_cache_invalidation()
 		}
 	}
+	pre_tc.prepare_interface_query_indexes()
 	b.step_parallel('check', check_was_parallel)
 	b.metric('functions collected', pre_tc.fn_ret_types.len, 'symbols')
 	b.metric('structs collected', pre_tc.structs.len, 'types')
@@ -1738,10 +1824,8 @@ fn main() {
 		base_type_count := pre_tc.type_count()
 		base_symbol_count := pre_tc.symbol_count()
 		base_text_count := a.text_values.len
-		mut original_signature_names := map[string]bool{}
-		for name in pre_tc.fn_ret_types.keys() {
-			original_signature_names[name] = true
-		}
+		mut original_signature_names := pre_tc.fn_ret_types.keys()
+		original_signature_names.sort()
 		transform_scope := prealloc_scope_begin_for_v3()
 		mut scoped_owned_base_nodes := []int{}
 		mut retained_transform_regions := []transform.ScopedTransformRegion{}
@@ -1753,12 +1837,23 @@ fn main() {
 		retained_transform_regions = clone_scoped_transform_regions(retained_transform_regions)
 		pre_tc.promote_scoped_transform_interners(base_type_count, base_symbol_count,
 			transform_scope)
-		if a.nodes.cap == reserved_nodes_cap && a.children.cap == reserved_children_cap {
+		// Generic lowering can rewrite arbitrary pre-existing nodes while processing
+		// late-reachable bodies. Clone the completed AST out of all stage/worker
+		// arenas instead of relying on a selective base-node ownership log.
+		if skip_transform_generics && a.nodes.cap == reserved_nodes_cap
+			&& a.children.cap == reserved_children_cap {
 			a.promote_transform_texts_from(base_text_count, transform_scope)
 			if retained_transform_regions.len > 0 {
 				outer_new_end := retained_transform_regions[0].new_start
 				promote_scoped_ast_nodes(mut a, base_transform_nodes, outer_new_end,
 					scoped_owned_base_nodes, transform_scope)
+				// Late lowering can rewrite nodes that live in a retained worker region
+				// while allocating their replacement text in the outer transform arena.
+				// Publish those strings before releasing that arena; the worker-owned
+				// fields in the same regions are canonicalized below from their own scope.
+				for region in retained_transform_regions {
+					canonicalize_scoped_transform_region_from_scope(mut a, region, transform_scope)
+				}
 				last_worker_end := retained_transform_regions.last().new_end
 				promote_scoped_ast_nodes(mut a, last_worker_end, a.nodes.len, []int{},
 					transform_scope)
@@ -1768,11 +1863,12 @@ fn main() {
 			}
 		} else {
 			a = clone_flat_ast_after_transform(a)
+			pre_tc.rebind_ast(a)
 		}
 		if a.specialized_fn_nodes.len != base_specialized_fns {
 			a.specialized_fn_nodes = a.specialized_fn_nodes.clone()
 		}
-		promote_scoped_checker_node_additions(mut pre_tc, base_transform_nodes, transform_scope)
+		promote_scoped_checker_node_caches(mut pre_tc)
 		promote_scoped_signatures(mut pre_tc, original_signature_names)
 		used_fns = clone_string_bool_map(used_fns)
 		transform_errors = clone_string_list(transform_errors)
@@ -1814,6 +1910,10 @@ fn main() {
 	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
 	if !building_v && !cmd_v_build {
 		if uses_generics {
+			// Generic lowering rewrites and clones call nodes in disposable arenas.
+			// Resolve their final names from the owned transformed AST instead of
+			// retaining pre-transform canonical string views across arena release.
+			pre_tc.reset_resolved_calls_for_reannotation()
 			pre_tc.annotate_types_with_used(used_fns)
 		} else {
 			restore_transformed_fn_value_types(mut pre_tc, a, used_fns)
@@ -1848,8 +1948,28 @@ fn main() {
 	if building_v {
 		used_fns = transform.erase_generic_templates(mut a, &pre_tc, used_fns)
 	} else if uses_generics {
-		mut monomorph_used_fns, monomorph_errors := transform.monomorphize_with_used_checked(mut a,
-			&pre_tc, used_fns)
+		mut monomorph_used_fns := map[string]bool{}
+		mut monomorph_errors := []string{}
+		if scope_prealloc_stages {
+			monomorph_scope := prealloc_scope_begin_for_v3()
+			monomorph_used_fns, monomorph_errors = transform.monomorphize_with_used_checked(mut a,
+				&pre_tc, used_fns)
+			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
+			prealloc_scope_leave_for_v3(monomorph_scope)
+			a = clone_flat_ast_after_transform(a)
+			pre_tc.rebind_ast(a)
+			promote_scoped_checker_node_caches(mut pre_tc)
+			pre_tc.rebuild_scoped_transform_signature_maps()
+			pre_tc.promote_scoped_transform_interners(0, 0, monomorph_scope)
+			promote_scoped_monomorph_metadata(mut pre_tc)
+			monomorph_used_fns = clone_string_bool_map(monomorph_used_fns)
+			monomorph_errors = clone_string_list(monomorph_errors)
+			pre_tc.set_fresh_type_cache(parse_cache_enabled)
+			prealloc_scope_free_for_v3(monomorph_scope)
+		} else {
+			monomorph_used_fns, monomorph_errors = transform.monomorphize_with_used_checked(mut a,
+				&pre_tc, used_fns)
+		}
 		used_fns = monomorph_used_fns.move()
 		if monomorph_errors.len > 0 {
 			eprintln('type checker found ${monomorph_errors.len} error(s):')
@@ -1861,6 +1981,7 @@ fn main() {
 	} else {
 		erase_unreachable_generic_type_templates(mut pre_tc)
 	}
+	pre_tc.clear_c_type_cache()
 	// Transform and monomorphization can synthesize or rewrite payload text.
 	// They run with private/arena-backed worker state; publish only canonical,
 	// compilation-owned strings after all worker merges are complete.
@@ -1935,9 +2056,10 @@ fn main() {
 		}
 		mut generated_c_flags := []string{}
 		mut cgen_was_parallel := false
-		if scope_prealloc_selfhost {
+		if scope_prealloc_cgen {
 			cgen_scope := prealloc_scope_begin_for_v3()
 			mut g := cgen.FlatGen.new()
+			g.set_initial_c_flags(user_c_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
@@ -1958,6 +2080,7 @@ fn main() {
 			g.free_parallel_worker_scopes()
 			if cache_state.manager.enabled {
 				mut output_g := cgen.FlatGen.new()
+				output_g.set_initial_c_flags(user_c_flags)
 				output_g.set_c99_mode(prefs.c99)
 				output_g.set_prealloc('prealloc' in prefs.user_defines)
 				output_g.set_skip_generics(skip_transform_generics)
@@ -1979,6 +2102,7 @@ fn main() {
 			prealloc_scope_free_for_v3(cgen_scope)
 		} else {
 			mut g := cgen.FlatGen.new()
+			g.set_initial_c_flags(user_c_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
@@ -1997,6 +2121,7 @@ fn main() {
 			generated_c_flags = g.c_flags()
 			if cache_state.manager.enabled {
 				mut output_g := cgen.FlatGen.new()
+				output_g.set_initial_c_flags(user_c_flags)
 				output_g.set_c99_mode(prefs.c99)
 				output_g.set_prealloc('prealloc' in prefs.user_defines)
 				output_g.set_skip_generics(skip_transform_generics)
@@ -2036,11 +2161,17 @@ fn main() {
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
-		warn_args := if is_strict {
+		mut warn_args := if is_strict {
 			['-Wall', '-Wextra', '-Werror=implicit-function-declaration', '-Wno-unused-variable',
 				'-Wno-unused-parameter', '-Wno-int-conversion', '-Wno-missing-braces']
 		} else {
 			['-w']
+		}
+		// Match the normal V driver's macOS compatibility flags. Apple SDK and
+		// third-party headers commonly add const qualifiers to callback typedefs,
+		// and Clang otherwise treats assignments from V's C declarations as errors.
+		if prefs.normalized_target_os() == 'macos' {
+			warn_args << ['-Wno-incompatible-function-pointer-types', '-Wno-typedef-redefinition']
 		}
 		needs_objective_c := c_flags_need_objective_c(generated_c_flags)
 		resolved_c_flags := prepare_c_flags_for_link(generated_c_flags, prefs.c99, pic_flag,
@@ -2989,12 +3120,13 @@ fn erase_unreachable_generic_type_templates(mut tc types.TypeChecker) {
 		tc.structs.delete(name)
 		tc.unions.delete(name)
 		tc.params_structs.delete(name)
+		tc.unregister_short_type_name(name)
 	}
 	for name in tc.sum_generic_params.keys() {
 		tc.sum_types.delete(name)
 		tc.sum_generic_params.delete(name)
+		tc.unregister_short_type_name(name)
 	}
-	tc.invalidate_short_type_name_index()
 }
 
 fn set_unsupported_generic_files(mut tc types.TypeChecker, a &flat.FlatAst, include_imports bool, diagnostic_root string) {
@@ -3565,6 +3697,9 @@ fn import_module_identity_cached(prefs &pref.Preferences, import_path string, im
 }
 
 fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string, mut path_cache map[string]string) string {
+	if alias_identity := aliased_import_module_identity(prefs, import_path, import_dir) {
+		return alias_identity
+	}
 	if !import_path.contains('.') {
 		return import_path
 	}
@@ -3593,6 +3728,24 @@ fn import_module_identity_with_path_cache(prefs &pref.Preferences, import_path s
 	return short_name
 }
 
+fn aliased_import_module_identity(prefs &pref.Preferences, import_path string, import_dir string) ?string {
+	if import_path.len == 0 || import_dir.len == 0 || !os.is_dir(import_dir) {
+		return none
+	}
+	module_root := module_root_for_import_dir(import_path, import_dir)
+	requested_dir := os.join_path_single(module_root, import_path.replace('.', os.path_separator))
+	if os.real_path(requested_dir) == os.real_path(import_dir) {
+		return none
+	}
+	for file in pref.get_v_files_from_dir_for_target(import_dir, prefs.user_defines, prefs.target) {
+		module_name := declared_module_in_file(file)
+		if module_name.len > 0 {
+			return module_name
+		}
+	}
+	return none
+}
+
 fn module_root_for_import_dir(import_path string, import_dir string) string {
 	mut root := import_dir
 	for _ in import_path.split('.') {
@@ -3617,13 +3770,24 @@ fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name 
 
 fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) string {
 	if importing_file.len > 0 {
-		local_modules_path := os.join_path(os.dir(importing_file), 'modules', mod_name.replace('.',
+		importer_dir := os.dir(importing_file)
+		if alias_path := pref.resolve_module_alias_path(importer_dir, mod_name) {
+			return alias_path
+		}
+		local_modules_root := os.join_path_single(importer_dir, 'modules')
+		if alias_path := pref.resolve_module_alias_path(local_modules_root, mod_name) {
+			return alias_path
+		}
+		local_modules_path := os.join_path_single(local_modules_root, mod_name.replace('.',
 			os.path_separator))
 		if os.is_dir(local_modules_path) {
 			return local_modules_path
 		}
 	}
 	if project_root.len > 0 {
+		if alias_path := pref.resolve_module_alias_path(project_root, mod_name) {
+			return alias_path
+		}
 		project_path := os.join_path_single(project_root, mod_name.replace('.', os.path_separator))
 		if os.is_dir(project_path) {
 			return project_path

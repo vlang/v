@@ -2,8 +2,17 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include <math.h>
 #include <windows.h>
 #include <shellapi.h>
+
+#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
+#include "native_render_result.h"
+#define V_MULTIWINDOW_TEST_WIN32_PROCESS_COMMIT UINT64_C(17)
+static inline void v_multiwindow_test_win32_oracle_record(uint64_t kind,
+	uint64_t identity, uint64_t parent_identity,
+	const VMultiwindowNativePrimitive *raw);
+#endif
 
 #ifndef WM_TOUCH
 #define WM_TOUCH 0x0240
@@ -176,9 +185,25 @@ static inline int v_multiwindow_win32_adjusted_size(int width, int height, DWORD
 	return 1;
 }
 
+static uint64_t v_multiwindow_win32_event_sequence = 1;
+static int v_multiwindow_win32_event_sequence_exhausted_flag = 0;
+
 static inline uint64_t v_multiwindow_win32_next_event_sequence(void) {
-	static uint64_t sequence = 1;
-	return sequence++;
+	if (v_multiwindow_win32_event_sequence_exhausted_flag) {
+		return 0;
+	}
+	uint64_t sequence = v_multiwindow_win32_event_sequence;
+	if (sequence == UINT64_MAX) {
+		v_multiwindow_win32_event_sequence = 0;
+		v_multiwindow_win32_event_sequence_exhausted_flag = 1;
+	} else {
+		v_multiwindow_win32_event_sequence++;
+	}
+	return sequence;
+}
+
+static inline int v_multiwindow_win32_event_sequence_exhausted(void) {
+	return v_multiwindow_win32_event_sequence_exhausted_flag;
 }
 
 static inline int v_multiwindow_win32_lparam_x(LPARAM lparam) {
@@ -845,10 +870,23 @@ static inline int v_multiwindow_win32_register_class(void) {
 	wndclass.hCursor = LoadCursorW(NULL, IDC_ARROW);
 	wndclass.hIcon = LoadIconW(NULL, IDI_APPLICATION);
 	wndclass.lpszClassName = v_multiwindow_win32_class_name;
+#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
+	ATOM registration = RegisterClassExW(&wndclass);
+	int registered = registration != 0;
+	if (!registered) {
+		registered = GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+	}
+	if (registered) {
+		v_multiwindow_test_win32_oracle_record(V_MULTIWINDOW_TEST_WIN32_PROCESS_COMMIT,
+			(uint64_t)(uintptr_t)wndclass.hInstance, UINT64_C(0), NULL);
+	}
+	return registered;
+#else
 	if (RegisterClassExW(&wndclass) != 0) {
 		return 1;
 	}
 	return GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
+#endif
 }
 
 static inline void *v_multiwindow_win32_create_window(const wchar_t *title, int width, int height, int min_width, int min_height, int resizable, int borderless, int fullscreen, int visible, void *data) {
@@ -946,4 +984,192 @@ static inline int v_multiwindow_win32_pump_messages(void) {
 		count++;
 	}
 	return count;
+}
+
+typedef BOOL (WINAPI *VMultiwindowLogicalToPhysicalPointForPerMonitorDPI)(HWND, LPPOINT);
+typedef BOOL (WINAPI *VMultiwindowPhysicalToLogicalPointForPerMonitorDPI)(HWND, LPPOINT);
+typedef UINT (WINAPI *VMultiwindowGetDpiForWindow)(HWND);
+
+#if defined(V_MULTIWINDOW_WIN32_RENDER_METRICS_TEST)
+typedef struct VMultiwindowWin32RenderMetricsTestState {
+	int enabled;
+	int client_width;
+	int client_height;
+	int visible;
+	int minimized;
+	UINT dpi;
+	int conversion_mode;
+} VMultiwindowWin32RenderMetricsTestState;
+
+static VMultiwindowWin32RenderMetricsTestState v_multiwindow_win32_render_metrics_test_state = {0};
+
+static BOOL WINAPI v_multiwindow_test_win32_conversion_failure(HWND hwnd, LPPOINT point) {
+	(void)hwnd;
+	(void)point;
+	return FALSE;
+}
+
+static inline void v_multiwindow_test_win32_configure_render_fixture(int client_width, int client_height, int visible, int minimized, UINT dpi, int conversion_mode) {
+	v_multiwindow_win32_render_metrics_test_state.enabled = 1;
+	v_multiwindow_win32_render_metrics_test_state.client_width = client_width;
+	v_multiwindow_win32_render_metrics_test_state.client_height = client_height;
+	v_multiwindow_win32_render_metrics_test_state.visible = visible;
+	v_multiwindow_win32_render_metrics_test_state.minimized = minimized;
+	v_multiwindow_win32_render_metrics_test_state.dpi = dpi;
+	v_multiwindow_win32_render_metrics_test_state.conversion_mode = conversion_mode;
+}
+
+static inline void v_multiwindow_test_win32_reset_render_fixture(void) {
+	v_multiwindow_win32_render_metrics_test_state.enabled = 0;
+	v_multiwindow_win32_render_metrics_test_state.client_width = 0;
+	v_multiwindow_win32_render_metrics_test_state.client_height = 0;
+	v_multiwindow_win32_render_metrics_test_state.visible = 0;
+	v_multiwindow_win32_render_metrics_test_state.minimized = 0;
+	v_multiwindow_win32_render_metrics_test_state.dpi = 0;
+	v_multiwindow_win32_render_metrics_test_state.conversion_mode = 0;
+}
+#endif
+
+static inline int v_multiwindow_win32_render_client_rect(HWND hwnd, RECT *rect) {
+#if defined(V_MULTIWINDOW_WIN32_RENDER_METRICS_TEST)
+	if (v_multiwindow_win32_render_metrics_test_state.enabled) {
+		rect->left = 0;
+		rect->top = 0;
+		rect->right = v_multiwindow_win32_render_metrics_test_state.client_width;
+		rect->bottom = v_multiwindow_win32_render_metrics_test_state.client_height;
+		return 1;
+	}
+#endif
+	return GetClientRect(hwnd, rect) != 0;
+}
+
+static inline int v_multiwindow_win32_render_window_visible(HWND hwnd) {
+#if defined(V_MULTIWINDOW_WIN32_RENDER_METRICS_TEST)
+	if (v_multiwindow_win32_render_metrics_test_state.enabled) {
+		return v_multiwindow_win32_render_metrics_test_state.visible;
+	}
+#endif
+	return IsWindowVisible(hwnd) ? 1 : 0;
+}
+
+static inline int v_multiwindow_win32_render_window_minimized(HWND hwnd) {
+#if defined(V_MULTIWINDOW_WIN32_RENDER_METRICS_TEST)
+	if (v_multiwindow_win32_render_metrics_test_state.enabled) {
+		return v_multiwindow_win32_render_metrics_test_state.minimized;
+	}
+#endif
+	return IsIconic(hwnd) ? 1 : 0;
+}
+
+static inline UINT v_multiwindow_win32_render_window_dpi(HWND hwnd) {
+#if defined(V_MULTIWINDOW_WIN32_RENDER_METRICS_TEST)
+	if (v_multiwindow_win32_render_metrics_test_state.enabled) {
+		return v_multiwindow_win32_render_metrics_test_state.dpi;
+	}
+#endif
+	HMODULE user32 = GetModuleHandleW(L"user32.dll");
+	VMultiwindowGetDpiForWindow get_dpi_for_window = user32 ?
+		(VMultiwindowGetDpiForWindow)GetProcAddress(user32, "GetDpiForWindow") : NULL;
+	UINT dpi = get_dpi_for_window ? get_dpi_for_window(hwnd) : 0;
+	if (dpi != 0) {
+		return dpi;
+	}
+
+	// GetDeviceCaps(LOGPIXELSX) is the documented compatibility path for
+	// systems predating GetDpiForWindow.
+	HDC dc = GetDC(hwnd);
+	if (dc) {
+		int fallback_dpi = GetDeviceCaps(dc, LOGPIXELSX);
+		ReleaseDC(hwnd, dc);
+		if (fallback_dpi > 0) {
+			return (UINT)fallback_dpi;
+		}
+	}
+	return 96;
+}
+
+static inline void v_multiwindow_win32_resolve_conversion_apis(VMultiwindowLogicalToPhysicalPointForPerMonitorDPI *out_logical_to_physical, VMultiwindowPhysicalToLogicalPointForPerMonitorDPI *out_physical_to_logical) {
+	*out_logical_to_physical = NULL;
+	*out_physical_to_logical = NULL;
+#if defined(V_MULTIWINDOW_WIN32_RENDER_METRICS_TEST)
+	if (v_multiwindow_win32_render_metrics_test_state.enabled) {
+		if (v_multiwindow_win32_render_metrics_test_state.conversion_mode == 2) {
+			*out_logical_to_physical = v_multiwindow_test_win32_conversion_failure;
+			*out_physical_to_logical = v_multiwindow_test_win32_conversion_failure;
+		}
+		return;
+	}
+#endif
+	HMODULE user32 = GetModuleHandleW(L"user32.dll");
+	if (!user32) {
+		return;
+	}
+	*out_logical_to_physical =
+		(VMultiwindowLogicalToPhysicalPointForPerMonitorDPI)GetProcAddress(user32, "LogicalToPhysicalPointForPerMonitorDPI");
+	*out_physical_to_logical =
+		(VMultiwindowPhysicalToLogicalPointForPerMonitorDPI)GetProcAddress(user32, "PhysicalToLogicalPointForPerMonitorDPI");
+}
+
+static inline int v_multiwindow_win32_render_snapshot(void *hwnd_ptr, int *out_visible, int *out_minimized, int *out_logical_width, int *out_logical_height, int *out_framebuffer_width, int *out_framebuffer_height, float *out_scale, int *out_conversion_available) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	RECT rect = {0, 0, 0, 0};
+	if (!hwnd || !v_multiwindow_win32_render_client_rect(hwnd, &rect)) {
+		return 0;
+	}
+	int framebuffer_width = rect.right - rect.left;
+	int framebuffer_height = rect.bottom - rect.top;
+	UINT dpi = v_multiwindow_win32_render_window_dpi(hwnd);
+	float scale = dpi > 0 ? (float)dpi / 96.0f : 1.0f;
+	if (!(scale > 0.0f)) {
+		scale = 1.0f;
+	}
+	int logical_width = framebuffer_width > 0 ?
+		(int)floorf(((float)framebuffer_width / scale) + 0.5f) : framebuffer_width;
+	int logical_height = framebuffer_height > 0 ?
+		(int)floorf(((float)framebuffer_height / scale) + 0.5f) : framebuffer_height;
+	VMultiwindowLogicalToPhysicalPointForPerMonitorDPI logical_to_physical = NULL;
+	VMultiwindowPhysicalToLogicalPointForPerMonitorDPI physical_to_logical = NULL;
+	v_multiwindow_win32_resolve_conversion_apis(&logical_to_physical, &physical_to_logical);
+	int conversion_available = logical_to_physical && physical_to_logical;
+	if (out_visible) *out_visible = v_multiwindow_win32_render_window_visible(hwnd);
+	if (out_minimized) *out_minimized = v_multiwindow_win32_render_window_minimized(hwnd);
+	if (out_logical_width) *out_logical_width = logical_width;
+	if (out_logical_height) *out_logical_height = logical_height;
+	if (out_framebuffer_width) *out_framebuffer_width = framebuffer_width;
+	if (out_framebuffer_height) *out_framebuffer_height = framebuffer_height;
+	if (out_scale) *out_scale = scale;
+	if (out_conversion_available) *out_conversion_available = conversion_available;
+	return 1;
+}
+
+static inline int v_multiwindow_win32_logical_to_pixel_rect(void *hwnd_ptr, float x, float y, float width, float height, int *out_x, int *out_y, int *out_width, int *out_height) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	VMultiwindowLogicalToPhysicalPointForPerMonitorDPI convert = NULL;
+	VMultiwindowPhysicalToLogicalPointForPerMonitorDPI reverse = NULL;
+	v_multiwindow_win32_resolve_conversion_apis(&convert, &reverse);
+	if (!hwnd || !convert || !reverse) return 0;
+	POINT first = {(LONG)floorf(x), (LONG)floorf(y)};
+	POINT last = {(LONG)ceilf(x + width), (LONG)ceilf(y + height)};
+	if (!convert(hwnd, &first) || !convert(hwnd, &last)) return 0;
+	if (out_x) *out_x = first.x;
+	if (out_y) *out_y = first.y;
+	if (out_width) *out_width = last.x - first.x;
+	if (out_height) *out_height = last.y - first.y;
+	return 1;
+}
+
+static inline int v_multiwindow_win32_pixel_to_logical_rect(void *hwnd_ptr, int x, int y, int width, int height, float *out_x, float *out_y, float *out_width, float *out_height) {
+	HWND hwnd = (HWND)hwnd_ptr;
+	VMultiwindowLogicalToPhysicalPointForPerMonitorDPI reverse = NULL;
+	VMultiwindowPhysicalToLogicalPointForPerMonitorDPI convert = NULL;
+	v_multiwindow_win32_resolve_conversion_apis(&reverse, &convert);
+	if (!hwnd || !reverse || !convert) return 0;
+	POINT first = {x, y};
+	POINT last = {x + width, y + height};
+	if (!convert(hwnd, &first) || !convert(hwnd, &last)) return 0;
+	if (out_x) *out_x = (float)first.x;
+	if (out_y) *out_y = (float)first.y;
+	if (out_width) *out_width = (float)(last.x - first.x);
+	if (out_height) *out_height = (float)(last.y - first.y);
+	return 1;
 }

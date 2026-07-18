@@ -1095,6 +1095,18 @@ fn (mut t Transformer) detect_for_in_type(node flat.Node) string {
 				return local_type
 			}
 		}
+		// The checker records selectors rooted in an interface at the interface level.
+		// Inside an `if w is Concrete` branch, resolve the selector again while the
+		// transformer's smartcast is active so `w.children` keeps its declared `[]Widget`
+		// element type instead of degrading to `[]void`.
+		if iter_node.kind == .selector {
+			raw_selector_type := t.resolve_selector_type(iter_node)
+			selector_type := t.normalize_type_alias(raw_selector_type)
+			if selector_type.len > 0 && for_iter_type_is_container(selector_type) {
+				t.set_node_typ(int(iter_id), selector_type)
+				return selector_type
+			}
+		}
 		checker_type := t.raw_checker_node_type(iter_id)
 		if checker_type.len > 0 {
 			checker_payload := for_iter_payload_type(checker_type)

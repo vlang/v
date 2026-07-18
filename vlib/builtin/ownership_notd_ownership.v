@@ -43,13 +43,6 @@ pub fn drop_owned[T](value T) {
 		} else {
 			drop_owned_result_error(owned.err)
 		}
-	} $else $if T.unaliased_typ.payload_type != 0 {
-		// After the option branch, the remaining wrapper with a payload type is a result.
-		if payload := owned {
-			drop_owned(payload)
-		} else {
-			drop_owned_result_error(owned.err)
-		}
 	} $else $if T.unaliased_typ is $sumtype {
 		$for variant in T.variants {
 			if owned is variant {
@@ -57,7 +50,7 @@ pub fn drop_owned[T](value T) {
 			}
 		}
 	} $else $if T.unaliased_typ is $array_dynamic {
-		mut raw_array := unsafe { &array(owned) }
+		mut raw_array := unsafe { &array(&owned) }
 		if !raw_array.flags.has(.is_slice) {
 			for i in 0 .. owned.len {
 				drop_owned(owned[i])
@@ -74,6 +67,14 @@ pub fn drop_owned[T](value T) {
 			drop_owned(item)
 		}
 		unsafe { owned.free() }
+	} $else $if T.unaliased_typ.payload_type != 0 {
+		// Container types also expose element metadata through payload_type. Check
+		// them first; after those branches, a remaining payload wrapper is a result.
+		if payload := owned {
+			drop_owned(payload)
+		} else {
+			drop_owned_result_error(owned.err)
+		}
 	} $else $if T.unaliased_typ is $struct {
 		$for field in T.fields {
 			drop_owned(owned.$(field.name))

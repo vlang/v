@@ -5289,15 +5289,13 @@ fn main() {
 
 ## JSON
 
-Because of the ubiquitous nature of JSON, support for it is built directly into V.
-
-V generates code for JSON encoding and decoding.
-No runtime reflection is used. This results in much better performance.
+Because of the ubiquitous nature of JSON, V provides the pure V `json2` module for encoding and
+decoding. It uses compile-time reflection instead of runtime reflection.
 
 ### Decoding JSON
 
 ```v
-import json
+import json2
 
 struct Foo {
 	x int
@@ -5313,14 +5311,14 @@ struct User {
 	age  int
 	// Use the `@[skip]` attribute to skip certain fields.
 	// You can also use `@[json: '-']`, and `@[sql: '-']`, which will cause only
-	// the `json` module to skip the field, or only the SQL orm to skip it.
+	// the JSON encoder to skip the field, or only the SQL ORM to skip it.
 	foo Foo @[skip]
 	// If the field name is different in JSON, it can be specified
 	last_name string @[json: lastName]
 }
 
 data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25, "nullable": null }'
-user := json.decode(User, data) or {
+user := json2.decode[User](data) or {
 	eprintln('Failed to decode json, error: ${err}')
 	return
 }
@@ -5329,19 +5327,18 @@ println(user.last_name)
 println(user.age)
 // You can also decode JSON arrays:
 sfoos := '[{"x":123},{"x":456}]'
-foos := json.decode([]Foo, sfoos)!
+foos := json2.decode[[]Foo](sfoos)!
 println(foos[0].x)
 println(foos[1].x)
 ```
 
-The `json.decode` function takes two arguments:
-the first is the type into which the JSON value should be decoded and
-the second is a string containing the JSON data.
+The `json2.decode` function takes the target type as a generic type argument and the JSON data as
+a string argument.
 
 ### Encoding JSON
 
 ```v
-import json
+import json2
 
 struct User {
 	name  string
@@ -5357,12 +5354,12 @@ user := &User{
 data['x'] = 42
 data['y'] = 360
 
-println(json.encode(data)) // {"x":42,"y":360}
-println(json.encode(user)) // {"name":"Pierre","score":1024}
+println(json2.encode(data, escape_unicode: true)) // {"x":42,"y":360}
+println(json2.encode(user, escape_unicode: true)) // {"name":"Pierre","score":1024}
 ```
 
-The json module also supports anonymous struct fields, which helps with complex JSON apis with lots
-of levels.
+The `json2` module also supports anonymous struct fields, which helps with complex JSON APIs with
+many levels.
 
 ## Testing
 

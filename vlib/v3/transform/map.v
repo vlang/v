@@ -1097,6 +1097,11 @@ fn (mut t Transformer) lower_map_index_postfix_with_info(info MapIndexInfo, map_
 
 // lower_map_index_append_with_info builds lower map index append with info data for transform.
 fn (mut t Transformer) lower_map_index_append_with_info(info MapIndexInfo, map_expr flat.NodeId, key_name string, rhs_id flat.NodeId, mut result []flat.NodeId) bool {
+	return t.lower_map_index_append_with_info_and_prelude(info, map_expr, key_name, rhs_id,
+		[]flat.NodeId{}, mut result)
+}
+
+fn (mut t Transformer) lower_map_index_append_with_info_and_prelude(info MapIndexInfo, map_expr flat.NodeId, key_name string, rhs_id flat.NodeId, pre_append_stmts []flat.NodeId, mut result []flat.NodeId) bool {
 	current_name := t.load_map_index_current(info, map_expr, key_name, mut result)
 	mut working_name := current_name
 	if !isnil(t.tc) && t.tc.ownership_type_requires_destruction(t.tc.parse_type(info.value_type)) {
@@ -1113,9 +1118,18 @@ fn (mut t Transformer) lower_map_index_append_with_info(info MapIndexInfo, map_e
 		working_name = t.new_temp('map_append_value')
 		result << t.make_decl_assign_typed(working_name, cloned, info.value_type)
 	}
-	append := t.make_infix(.left_shift, t.make_ident(working_name), t.transform_expr(rhs_id))
+	for stmt in pre_append_stmts {
+		result << stmt
+	}
+	append := t.make_infix(.left_shift, t.make_ident(working_name), rhs_id)
 	t.annotate_left_shift(append)
-	result << t.make_expr_stmt(append)
+	if lowered := t.try_lower_array_append_stmt(append) {
+		for stmt in lowered {
+			result << stmt
+		}
+	} else {
+		result << t.make_expr_stmt(append)
+	}
 	t.append_map_value_drop_before_set(map_expr, info.base_type, key_name, info.value_type, mut
 		result)
 	result << t.make_map_set_stmt(map_expr, info.base_type, key_name, working_name)
@@ -1146,6 +1160,10 @@ fn (mut t Transformer) try_lower_map_index_postfix_stmt(id flat.NodeId) ?[]flat.
 // try_lower_map_index_append_stmt
 // supports helper handling in transform.
 fn (mut t Transformer) try_lower_map_index_append_stmt(id flat.NodeId) ?[]flat.NodeId {
+	return t.try_lower_map_index_append_stmt_with_prelude(id, []flat.NodeId{})
+}
+
+fn (mut t Transformer) try_lower_map_index_append_stmt_with_prelude(id flat.NodeId, pre_append_stmts []flat.NodeId) ?[]flat.NodeId {
 	if int(id) < 0 {
 		return none
 	}
@@ -1178,8 +1196,8 @@ fn (mut t Transformer) try_lower_map_index_append_stmt(id flat.NodeId) ?[]flat.N
 	result << t.make_decl_assign_typed(key_name, key_value, info.key_storage_type)
 	cleanup_key, existing_key_name := t.prepare_owned_map_set_key_cleanup(key_is_owned,
 		info.key_type, map_expr, info.base_type, key_name, mut result)
-	if !t.lower_map_index_append_with_info(info, map_expr, key_name, t.a.child(&node, 1), mut
-		result) {
+	if !t.lower_map_index_append_with_info_and_prelude(info, map_expr, key_name,
+		t.a.child(&node, 1), pre_append_stmts, mut result) {
 		return []flat.NodeId{}
 	}
 	t.append_owned_map_set_key_cleanup(key_name, cleanup_key, existing_key_name, mut result)
