@@ -1865,6 +1865,7 @@ fn main() {
 		if scope_prealloc_stages {
 			cgen_scope := prealloc_scope_begin_for_v3()
 			mut g := cgen.FlatGen.new()
+			g.set_initial_c_flags(user_c_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
@@ -1885,6 +1886,7 @@ fn main() {
 			g.free_parallel_worker_scopes()
 			if cache_state.manager.enabled {
 				mut output_g := cgen.FlatGen.new()
+				output_g.set_initial_c_flags(user_c_flags)
 				output_g.set_c99_mode(prefs.c99)
 				output_g.set_prealloc('prealloc' in prefs.user_defines)
 				output_g.set_skip_generics(skip_transform_generics)
@@ -1906,6 +1908,7 @@ fn main() {
 			prealloc_scope_free_for_v3(cgen_scope)
 		} else {
 			mut g := cgen.FlatGen.new()
+			g.set_initial_c_flags(user_c_flags)
 			g.set_c99_mode(prefs.c99)
 			g.set_prealloc('prealloc' in prefs.user_defines)
 			g.set_skip_generics(skip_transform_generics)
@@ -1924,6 +1927,7 @@ fn main() {
 			generated_c_flags = g.c_flags()
 			if cache_state.manager.enabled {
 				mut output_g := cgen.FlatGen.new()
+				output_g.set_initial_c_flags(user_c_flags)
 				output_g.set_c99_mode(prefs.c99)
 				output_g.set_prealloc('prealloc' in prefs.user_defines)
 				output_g.set_skip_generics(skip_transform_generics)
@@ -1939,7 +1943,6 @@ fn main() {
 				cgen_was_parallel = cgen_was_parallel || output_g.was_parallel()
 			}
 		}
-		generated_c_flags << user_c_flags
 		b.step_parallel('cgen', cgen_was_parallel)
 		b.metric('generated C size', os.file_size(cc_src), 'bytes')
 		if c_only {

@@ -20,6 +20,59 @@ fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	assert result.output.contains(message), result.output
 }
 
+fn test_driver_cflags_include_dir_is_visible_to_header_inliner() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_cflags_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	include_dir := os.join_path(root, 'headers with spaces')
+	os.mkdir_all(include_dir) or { panic(err) }
+	os.write_file(os.join_path(include_dir, 'cli_header.h'), 'typedef struct CliHeaderValue {
+	int value;
+} CliHeaderValue;
+
+static inline int cli_header_value(CliHeaderValue* item) {
+	return item->value;
+}
+') or {
+		panic(err)
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'module main
+
+#include "cli_header.h"
+
+@[typedef]
+struct C.CliHeaderValue {
+	value int
+}
+
+fn C.cli_header_value(item &C.CliHeaderValue) int
+
+fn main() {
+	mut item := C.CliHeaderValue{
+		value: 73
+	}
+	println(C.cli_header_value(&item))
+}
+') or {
+		panic(err)
+	}
+	output := os.join_path(root, 'cli_header_program')
+	compile := cmdexec.run(v3_bin, ['-nocache', '-keepc', '-cflags', '-I "${include_dir}"', '-o',
+		output, source])
+	assert compile.exit_code == 0, compile.output
+	generated_c := os.read_file(output + '.c')!
+	assert !generated_c.contains('#include "cli_header.h"'), generated_c
+	assert generated_c.contains('static inline int cli_header_value(CliHeaderValue* item)')
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '73'
+}
+
 fn run_driver_with_stdin_file(v3_bin string, args []string, stdin_path string) os.Result {
 	mut process := os.new_process(v3_bin)
 	process.set_args(args)

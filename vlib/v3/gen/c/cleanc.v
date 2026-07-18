@@ -136,6 +136,7 @@ mut:
 	inlined_c_typedef_names        map[string]bool
 	inlined_c_fns                  map[string]bool
 	inlined_c_declared_fns         map[string]bool
+	initial_c_flags                []string
 	c_flags                        []string
 	use_system_stdint              bool
 	libc_compat_fns                map[string]bool
@@ -294,6 +295,11 @@ pub fn (g &FlatGen) was_parallel() bool {
 
 pub fn (g &FlatGen) c_flags() []string {
 	return g.c_flags.clone()
+}
+
+// set_initial_c_flags makes command-line C flags available while collecting directives.
+pub fn (mut g FlatGen) set_initial_c_flags(flags []string) {
+	g.initial_c_flags = flags.clone()
 }
 
 // set_c99_mode configures whether generated C should support strict C99 builds.
@@ -604,6 +610,7 @@ pub fn FlatGen.new() FlatGen {
 		inlined_c_fns:                  map[string]bool{}
 		inlined_c_declared_fns:         map[string]bool{}
 		inlined_c_typedef_names:        map[string]bool{}
+		initial_c_flags:                []string{}
 		c_flags:                        []string{}
 		libc_compat_fns:                map[string]bool{}
 		modules:                        map[string]string{}
@@ -1712,6 +1719,7 @@ fn node_kind_id(node flat.Node) int {
 // collect_gen_info updates collect gen info state for c.
 fn (mut g FlatGen) collect_gen_info() {
 	g.collect_c_flags_from_directives()
+	g.c_flags << g.initial_c_flags
 	g.use_system_stdint = g.translation_unit_uses_inttypes()
 	mut cur_module := 'main'
 	mut cur_file := ''
