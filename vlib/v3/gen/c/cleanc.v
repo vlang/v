@@ -2132,6 +2132,10 @@ fn (mut g FlatGen) collect_c_directive(module_name string, node flat.Node, sourc
 				if source_path.ends_with('.mm') {
 					context_directives := g.native_source_contexts[module_name] or { []string{} }
 					if context_directives.len > 0
+						&& c_native_source_context_definitely_inactive(g.c_directives, module_name, g.c_flags, g.target) {
+						return true
+					}
+					if context_directives.len > 0
 						|| c_source_include_has_preprocessor_context(g.c_directives, module_name) {
 						g.add_native_source_context_wrapper(module_name, source_path)
 					} else if source_path !in g.c_flags {

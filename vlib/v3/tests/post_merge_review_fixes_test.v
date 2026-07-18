@@ -135,7 +135,16 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run_good_project_with_flags(v3_bin, name, '', files, input)
 }
 
+struct GoodProjectRun {
+	run_output     string
+	compile_output string
+}
+
 fn run_good_project_with_flags(v3_bin string, name string, flags string, files map[string]string, input string) string {
+	return run_good_project_result(v3_bin, name, flags, files, input).run_output
+}
+
+fn run_good_project_result(v3_bin string, name string, flags string, files map[string]string, input string) GoodProjectRun {
 	root := '${tmp_test_path(name)}_project'
 	if os.exists(root) {
 		os.rmdir_all(root) or { panic(err) }
@@ -151,7 +160,10 @@ fn run_good_project_with_flags(v3_bin string, name string, flags string, files m
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(good_bin)
 	assert run.exit_code == 0, run.output
-	return run.output.trim_space()
+	return GoodProjectRun{
+		run_output:     run.output.trim_space()
+		compile_output: compile.output
+	}
 }
 
 fn run_good_project_relative_input(v3_bin string, name string, flags string, files map[string]string, input string) string {
@@ -6073,6 +6085,14 @@ fn main() {
 		'main.v':     'module main\n\n#ifdef V3_NEVER_DEFINED\n#include "disabled.m"\n#endif\n\nfn main() {\n\tprintln(int_str(60))\n}\n'
 	}, 'main.v')
 	assert inactive_objective_c_out == '60'
+	inactive_objective_cpp := run_good_project_result(v3_bin, 'inactive_objective_cpp_source', '', {
+		'v.mod':       "Module { name: 'inactive_objective_cpp_source' }\n"
+		'disabled.mm': '#error inactive Objective-C++ source must not be compiled\n'
+		'main.v':      'module main\n\n#if 0\n#include "disabled.mm"\n#endif\n\n#ifdef V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(65))\n}\n'
+	}, 'main.v')
+	assert inactive_objective_cpp.run_output == '65'
+	assert !inactive_objective_cpp.compile_output.contains('v3_native_source_context_'), inactive_objective_cpp.compile_output
+
 	guarded_objective_c_static_out := run_good_project_with_flags(v3_bin,
 		'guarded_objective_c_static', '-cc clang', {
 		'v.mod':  "Module { name: 'guarded_objective_c_static' }\n"
