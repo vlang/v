@@ -27,36 +27,44 @@ fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
 	linux := pref.target_from('linux', 'amd64') or { panic(err) }
 	empty := map[string]bool{}
 	known_apple, active_apple := c_preprocessor_condition_state('__APPLE__', empty, empty, empty,
-		linux)
+		false, linux)
 	assert known_apple
 	assert !active_apple
 	known_unset, active_unset := c_preprocessor_condition_state('SOME_UNSET_MACRO', empty, empty,
-		empty, linux)
+		empty, false, linux)
 	assert known_unset
 	assert !active_unset
 	known_negated, active_negated := c_preprocessor_condition_state('!SOME_UNSET_MACRO', empty,
-		empty, empty, linux)
+		empty, empty, false, linux)
 	assert known_negated
 	assert active_negated
 	known_defined, active_defined := c_preprocessor_condition_state('SOME_DEFINED_MACRO', {
 		'SOME_DEFINED_MACRO': true
-	}, empty, empty, linux)
+	}, empty, empty, false, linux)
 	assert !known_defined
 	assert active_defined
 	known_negated_defined, active_negated_defined := c_preprocessor_condition_state('!FEATURE', {
 		'FEATURE': true
-	}, empty, empty, linux)
+	}, empty, empty, false, linux)
 	assert !known_negated_defined
 	assert active_negated_defined
 	known_presence, active_presence := c_preprocessor_condition_state('defined(FEATURE)', {
 		'FEATURE': true
-	}, empty, empty, linux)
+	}, empty, empty, false, linux)
 	assert known_presence
 	assert active_presence
 	known_compound, active_compound := c_preprocessor_condition_state('SOME_UNSET_MACRO || 1',
-		empty, empty, empty, linux)
+		empty, empty, empty, false, linux)
 	assert !known_compound
 	assert active_compound
+	known_external, active_external := c_preprocessor_condition_state('HEADER_FEATURE', empty,
+		empty, empty, true, linux)
+	assert !known_external
+	assert active_external
+	known_external_target, active_external_target := c_preprocessor_condition_state('__APPLE__',
+		empty, empty, empty, true, linux)
+	assert known_external_target
+	assert !active_external_target
 }
 
 fn test_termux_c_directive_target_is_distinct_from_android() {

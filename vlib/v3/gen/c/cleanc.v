@@ -3787,10 +3787,22 @@ fn c_native_source_context_depth(directives []string) int {
 	return depth
 }
 
+fn c_preprocessor_invalidate_macro_state(mut defined map[string]bool, mut undefined map[string]bool, mut uncertain map[string]bool) {
+	for name in defined.keys() {
+		uncertain[name] = true
+	}
+	for name in undefined.keys() {
+		uncertain[name] = true
+	}
+	defined.clear()
+	undefined.clear()
+}
+
 fn c_native_source_context_definitely_inactive(directives []string, flags []string, target pref.Target) bool {
 	mut defined := map[string]bool{}
 	mut undefined := map[string]bool{}
 	mut uncertain := map[string]bool{}
+	mut external_macros_possible := c_forced_include_inputs(flags).len > 0
 	mut i := 0
 	for i < flags.len {
 		clean := trimmed_space(flags[i])
@@ -3821,6 +3833,9 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 		}
 		i++
 	}
+	if external_macros_possible {
+		c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+	}
 	mut condition_known := []bool{}
 	mut condition_active := []bool{}
 	// Keep the cumulative state of each branch chain so `#elif` and `#else`
@@ -3847,7 +3862,7 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 			if name == 'if' {
 				arg := c_directive_arg(clean)
 				known, active := c_preprocessor_condition_state(arg, defined, undefined, uncertain,
-					target)
+					external_macros_possible, target)
 				condition_known << known
 				condition_active << (if known { active } else { true })
 				condition_taken_known << known
@@ -3859,7 +3874,7 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 				prior_known := condition_taken_known[last]
 				prior_taken := condition_taken[last]
 				known, active := c_preprocessor_condition_state(c_directive_arg(clean), defined,
-					undefined, uncertain, target)
+					undefined, uncertain, external_macros_possible, target)
 				if (prior_known && prior_taken) || (known && !active) {
 					condition_known[last] = true
 					condition_active[last] = false
@@ -3899,6 +3914,20 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 				condition_active.delete_last()
 				condition_taken_known.delete_last()
 				condition_taken.delete_last()
+				continue
+			}
+			if name in ['include', 'insert'] {
+				mut possibly_active := true
+				for depth in 0 .. condition_known.len {
+					if condition_known[depth] && !condition_active[depth] {
+						possibly_active = false
+						break
+					}
+				}
+				if possibly_active {
+					c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
+					external_macros_possible = true
+				}
 				continue
 			}
 			if name !in ['define', 'undef'] {
@@ -3972,7 +4001,7 @@ fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined ma
 	return true, false
 }
 
-fn c_preprocessor_bare_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, target pref.Target) (bool, bool) {
+fn c_preprocessor_bare_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, external_macros_possible bool, target pref.Target) (bool, bool) {
 	if name in undefined {
 		return true, false
 	}
@@ -3981,10 +4010,13 @@ fn c_preprocessor_bare_macro_state(name string, defined map[string]bool, undefin
 	if name in defined || name in uncertain {
 		return false, true
 	}
+	if external_macros_possible && !name.starts_with('_') {
+		return false, true
+	}
 	return c_preprocessor_macro_state(name, defined, undefined, uncertain, target)
 }
 
-fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, target pref.Target) (bool, bool) {
+fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, external_macros_possible bool, target pref.Target) (bool, bool) {
 	mut clean := raw.trim_space()
 	mut negated := false
 	if clean.starts_with('!') {
@@ -4000,7 +4032,7 @@ fn c_preprocessor_condition_state(raw string, defined map[string]bool, undefined
 	}
 	if clean.len > 0 && c_identifier_start(clean[0]) && c_header_struct_tag(clean) == clean {
 		known, mut active := c_preprocessor_bare_macro_state(clean, defined, undefined, uncertain,
-			target)
+			external_macros_possible, target)
 		if !known {
 			return false, true
 		}
