@@ -24,33 +24,33 @@ mut:
 
 // load_location loads an IANA time zone location.
 pub fn load_location(name string) !&Location {
-	return error('IANA time zone locations are not supported by the JS backend')
+	return error('IANA time zone locations are not supported by the WASM backend')
 }
 
 // zone_at returns the active zone rule for `unix_time`.
 pub fn (loc &Location) zone_at(unix_time i64) !Zone {
-	return error('IANA time zone locations are not supported by the JS backend')
+	return error('IANA time zone locations are not supported by the WASM backend')
 }
 
 // offset_at returns the UTC offset in seconds for `unix_time` in the location.
 pub fn (loc &Location) offset_at(unix_time i64) !int {
-	return error('IANA time zone locations are not supported by the JS backend')
+	return error('IANA time zone locations are not supported by the WASM backend')
 }
 
 // unix_to_local resolves a Unix timestamp to a Time in the location.
 pub fn (loc &Location) unix_to_local(unix_time i64) !Time {
-	return error('IANA time zone locations are not supported by the JS backend')
+	return error('IANA time zone locations are not supported by the WASM backend')
 }
 
 // unix_nanosecond_to_local resolves a Unix timestamp and nanosecond to a Time
 // in the location.
 pub fn (loc &Location) unix_nanosecond_to_local(unix_time i64, nanosecond int) !Time {
-	return error('IANA time zone locations are not supported by the JS backend')
+	return error('IANA time zone locations are not supported by the WASM backend')
 }
 
 // in resolves `t` as a Time in `loc`.
 pub fn (t Time) in(loc &Location) !Time {
-	return error('IANA time zone locations are not supported by the JS backend')
+	return error('IANA time zone locations are not supported by the WASM backend')
 }
 
 // location returns the IANA location associated with `t`, if any.
@@ -60,5 +60,5 @@ pub fn (t Time) location() ?Location {
 
 // zone returns the active zone rule for `t`, if it has an IANA location.
 pub fn (t Time) zone() !Zone {
-	return error('IANA time zone locations are not supported by the JS backend')
+	return error('IANA time zone locations are not supported by the WASM backend')
 }

@@ -44,8 +44,10 @@ fn local_location() !&Location {
 		is_dst: true
 	}
 	mut loc := &Location{
-		name:  'Local'
-		zones: [std_zone, dst_zone]
+		name:      'Local'
+		zones:     [std_zone, dst_zone]
+		posix:     windows_posix_rule(std_zone, dst_zone, info)
+		has_posix: true
 	}
 	current_year := utc().year
 	for year in current_year - 100 .. current_year + 101 {
@@ -72,6 +74,28 @@ fn local_location() !&Location {
 		}
 	}
 	return loc
+}
+
+fn windows_posix_rule(std_zone Zone, dst_zone Zone, info TimeZoneInformation) PosixZoneRule {
+	return PosixZoneRule{
+		std_name:   std_zone.name
+		std_offset: std_zone.offset
+		dst_name:   dst_zone.name
+		dst_offset: dst_zone.offset
+		start:      windows_system_time_rule(info.daylight_date)
+		end:        windows_system_time_rule(info.standard_date)
+	}
+}
+
+fn windows_system_time_rule(st SystemTime) PosixRule {
+	return PosixRule{
+		kind:    .month_week_day
+		month:   int(st.month)
+		week:    int(st.day)
+		weekday: int(st.day_of_week)
+		seconds: int(st.hour) * seconds_per_hour + int(st.minute) * seconds_per_minute +
+			int(st.second)
+	}
 }
 
 fn windows_transition_utc(year int, st SystemTime, offset_before int) i64 {

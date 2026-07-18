@@ -61,10 +61,18 @@ struct PosixZoneRule {
 	end        PosixRule
 }
 
+enum PosixRuleKind {
+	month_week_day
+	julian_no_leap
+	day_of_year
+}
+
 struct PosixRule {
+	kind    PosixRuleKind
 	month   int
 	week    int
 	weekday int
+	day     int
 	seconds int
 }
 
@@ -438,23 +446,74 @@ fn parse_posix_offset(text string, start int) !(int, int) {
 fn parse_posix_rule(text string) !PosixRule {
 	rule_parts := text.split('/')
 	date := rule_parts[0]
-	if !date.starts_with('M') {
-		return error('unsupported POSIX time zone date rule "${text}"')
+	seconds := if rule_parts.len > 1 {
+		parse_posix_time(rule_parts[1])!
+	} else {
+		2 * seconds_per_hour
 	}
-	date_parts := date[1..].split('.')
-	if date_parts.len != 3 {
+	if date.starts_with('M') {
+		date_parts := date[1..].split('.')
+		if date_parts.len != 3 {
+			return error('unsupported POSIX time zone date rule "${text}"')
+		}
+		return PosixRule{
+			kind:    .month_week_day
+			month:   date_parts[0].int()
+			week:    date_parts[1].int()
+			weekday: date_parts[2].int()
+			seconds: seconds
+		}
+	}
+	if date.starts_with('J') {
+		day := date[1..].int()
+		if day < 1 || day > 365 {
+			return error('unsupported POSIX time zone date rule "${text}"')
+		}
+		return PosixRule{
+			kind:    .julian_no_leap
+			day:     day
+			seconds: seconds
+		}
+	}
+	day := date.int()
+	if day < 0 || day > 365 {
 		return error('unsupported POSIX time zone date rule "${text}"')
 	}
 	return PosixRule{
-		month:   date_parts[0].int()
-		week:    date_parts[1].int()
-		weekday: date_parts[2].int()
-		seconds: if rule_parts.len > 1 {
-			parse_posix_time(rule_parts[1])!
-		} else {
-			2 * seconds_per_hour
+		kind:    .day_of_year
+		day:     day
+		seconds: seconds
+	}
+}
+
+fn posix_rule_month_day(year int, rule PosixRule) (int, int) {
+	match rule.kind {
+		.month_week_day {
+			return rule.month, posix_month_week_day(year, rule)
+		}
+		.julian_no_leap {
+			mut ordinal := rule.day
+			if is_leap_year(year) && ordinal >= 60 {
+				ordinal++
+			}
+			return month_day_from_year_day(year, ordinal)
+		}
+		.day_of_year {
+			return month_day_from_year_day(year, rule.day + 1)
 		}
 	}
+}
+
+fn month_day_from_year_day(year int, ordinal int) (int, int) {
+	mut day := ordinal
+	for month in 1 .. 13 {
+		days := month_days[month - 1] + if month == 2 && is_leap_year(year) { 1 } else { 0 }
+		if day <= days {
+			return month, day
+		}
+		day -= days
+	}
+	return 12, 31
 }
 
 fn parse_posix_time(text string) !int {
@@ -502,19 +561,13 @@ fn (rule PosixZoneRule) zone_at(unix_time i64) Zone {
 }
 
 fn (rule PosixZoneRule) transition_utc(year int, date_rule PosixRule, offset_before int) i64 {
-	day := posix_month_week_day(year, date_rule)
-	hour_value := date_rule.seconds / seconds_per_hour
-	minute_value := (date_rule.seconds % seconds_per_hour) / seconds_per_minute
-	second_value := date_rule.seconds % seconds_per_minute
+	month, day := posix_rule_month_day(year, date_rule)
 	local := time_fields_to_unix(Time{
-		year:   year
-		month:  date_rule.month
-		day:    day
-		hour:   hour_value
-		minute: minute_value
-		second: second_value
+		year:  year
+		month: month
+		day:   day
 	})
-	return local - i64(offset_before)
+	return local + i64(date_rule.seconds) - i64(offset_before)
 }
 
 fn posix_month_week_day(year int, rule PosixRule) int {
