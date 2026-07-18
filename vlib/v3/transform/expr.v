@@ -2474,16 +2474,26 @@ fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.
 
 fn (mut t Transformer) make_optional_pointer_payload_eq_expr(lhs flat.NodeId, rhs flat.NodeId, pointee_type string, seen []string) flat.NodeId {
 	ptr_same := t.make_infix(.eq, lhs, rhs)
+	result_name := t.new_temp('opt_ptr_eq')
+	t.pending_stmts << t.make_decl_assign_typed(result_name, ptr_same, 'bool')
 	lhs_non_nil := t.make_infix(.ne, lhs, t.a.add(.nil_literal))
 	rhs_non_nil := t.make_infix(.ne, rhs, t.a.add(.nil_literal))
+	both_non_nil := t.make_infix(.logical_and, lhs_non_nil, rhs_non_nil)
+	compare_pointees := t.make_infix(.logical_and, t.make_prefix(.not, t.make_ident(result_name)),
+		both_non_nil)
 	lhs_value := t.make_prefix(.mul, lhs)
 	t.set_node_typ(int(lhs_value), pointee_type)
 	rhs_value := t.make_prefix(.mul, rhs)
 	t.set_node_typ(int(rhs_value), pointee_type)
+	pending_start := t.pending_stmts.len
 	pointee_eq := t.make_membership_eq_expr_with_seen(lhs_value, rhs_value, pointee_type, seen)
-	both_non_nil := t.make_infix(.logical_and, lhs_non_nil, rhs_non_nil)
-	deep_eq := t.make_infix(.logical_and, both_non_nil, pointee_eq)
-	return t.make_infix(.logical_or, ptr_same, deep_eq)
+	mut body_stmts := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	body_stmts << t.make_assign(t.make_ident(result_name), pointee_eq)
+	t.pending_stmts << t.make_if(compare_pointees, t.make_block(body_stmts), t.make_empty())
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), 'bool')
+	return result
 }
 
 fn (t &Transformer) array_elem_needs_element_eq(elem_type string) bool {
