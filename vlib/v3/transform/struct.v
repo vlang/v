@@ -222,7 +222,21 @@ fn (mut t Transformer) merge_promoted_struct_default(init_id flat.NodeId, defaul
 			''
 		}
 		if field_name.len > 0 && field_name !in provided {
-			missing_defaults << field_id
+			mut missing_id := field_id
+			if field.kind == .field_init && field.value.len == 0 && field.children_count > 0 {
+				field_start := t.a.children.len
+				t.a.children << t.a.child(&field, 0)
+				missing_id = t.a.add_node(flat.Node{
+					kind:           .field_init
+					op:             field.op
+					children_start: field_start
+					children_count: 1
+					pos:            field.pos
+					value:          field_name
+					typ:            field.typ
+				})
+			}
+			missing_defaults << missing_id
 			provided[field_name] = true
 		}
 	}

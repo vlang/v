@@ -5750,6 +5750,29 @@ fn main() {
 }
 ')
 	assert promoted_declared_default_out == '3\n7\n3\n8'
+	promoted_positional_default_out := run_good(v3_bin, 'promoted_embed_positional_default', 'struct PositionalInner {
+	a int
+	b int
+}
+
+struct PositionalOuter {
+	PositionalInner = PositionalInner{3, 4}
+}
+
+fn main() {
+	value := PositionalOuter{
+		a: 7
+	}
+	heap := &PositionalOuter{
+		a: 8
+	}
+	println(int_str(value.a))
+	println(int_str(value.b))
+	println(int_str(heap.a))
+	println(int_str(heap.b))
+}
+')
+	assert promoted_positional_default_out == '7\n4\n8\n4'
 	promoted_call_default_out := run_good(v3_bin, 'promoted_embed_call_default', '__global calls int
 
 struct CallInner {
@@ -5903,16 +5926,19 @@ fn main() {
 }
 ',
 		'cannot use `int` as argument')
-	v_call_out := run_good(v3_bin, 'v_voidptr_auto_address', 'fn take(value voidptr) int {
+	v_call_out := run_good(v3_bin, 'v_voidptr_auto_address', 'const voidptr_const_value = 9
+
+fn take(value voidptr) int {
 	return unsafe { *(&int(value)) }
 }
 
 fn main() {
 	value := 7
 	println(int_str(take(value)))
+	println(int_str(take(voidptr_const_value)))
 }
 ')
-	assert v_call_out == '7'
+	assert v_call_out == '7\n9'
 	optional_pointer_out := run_good(v3_bin, 'optional_pointer_equality_semantics', 'struct Item {
 	value int
 }

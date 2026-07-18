@@ -1887,6 +1887,16 @@ fn (g &FlatGen) voidptr_value_arg_needs_address(arg_id flat.NodeId, arg_node fla
 	return true
 }
 
+fn (g &FlatGen) addressed_const_arg_value_type(arg_id flat.NodeId, expected types.Type) types.Type {
+	if type_is_void_pointer(expected) {
+		actual := g.usable_expr_type(arg_id)
+		if actual !is types.Unknown && actual !is types.Void {
+			return actual
+		}
+	}
+	return types.unwrap_pointer(expected)
+}
+
 fn (g &FlatGen) c_char_literal_arg(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
@@ -5321,10 +5331,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					|| (arg_node.kind == .index && arg_node.value == 'range')
 					|| g.arg_is_const_ident(arg_node)
 				if needs_addr && g.arg_is_const_ident(arg_node) {
-					pt := param_types[arg_idx]
-					ct := g.tc.c_type(types.unwrap_pointer(pt))
+					value_type := g.addressed_const_arg_value_type(arg_id, param_types[arg_idx])
+					ct := g.tc.c_type(value_type)
 					g.write('(${ct}[]){')
-					g.gen_expr_with_expected_type(arg_id, types.unwrap_pointer(pt))
+					g.gen_expr_with_expected_type(arg_id, value_type)
 					g.write('}')
 				} else if needs_addr && is_rvalue {
 					pt := param_types[arg_idx]
@@ -10569,10 +10579,10 @@ fn (mut g FlatGen) gen_call_args(fn_name string, node flat.Node, start int) {
 			|| (arg_node.kind == .index && arg_node.value == 'range')
 			|| g.arg_is_const_ident(arg_node)
 		if needs_addr && g.arg_is_const_ident(arg_node) {
-			pt := param_types[arg_idx]
-			ct := g.tc.c_type(types.unwrap_pointer(pt))
+			value_type := g.addressed_const_arg_value_type(arg_id, param_types[arg_idx])
+			ct := g.tc.c_type(value_type)
 			g.write('(${ct}[]){')
-			g.gen_expr_with_expected_type(arg_id, types.unwrap_pointer(pt))
+			g.gen_expr_with_expected_type(arg_id, value_type)
 			g.write('}')
 		} else if needs_addr && is_rvalue {
 			pt := param_types[arg_idx]
