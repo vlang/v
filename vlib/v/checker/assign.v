@@ -32,13 +32,30 @@ fn assign_expr_is_auto_deref(expr ast.Expr) bool {
 // of an `or {}` unwrap can never be mutated later (so a copy of its map cannot
 // observe a later mutation of the original). Only the plainly-immutable roots are
 // recognised; anything unknown returns false, keeping the map-copy guard.
+// A pointer/reference anywhere in the chain is treated as mutable/unknown, since
+// an immutable pointer can still alias storage that its owner mutates later
+// (e.g. `mut c := ...; p := &c; x := p.f or { ... }; c.f?[k] = v`).
 fn assign_or_unwrap_source_is_immutable(expr ast.Expr) bool {
 	return match expr {
-		ast.Ident { !expr.is_mut() }
-		ast.SelectorExpr { assign_or_unwrap_source_is_immutable(expr.expr) }
-		ast.IndexExpr { assign_or_unwrap_source_is_immutable(expr.left) }
-		ast.ParExpr { assign_or_unwrap_source_is_immutable(expr.expr) }
-		else { false }
+		ast.Ident {
+			if expr.obj is ast.Var {
+				!expr.is_mut() && !expr.obj.typ.is_ptr()
+			} else {
+				!expr.is_mut()
+			}
+		}
+		ast.SelectorExpr {
+			!expr.expr_type.is_ptr() && assign_or_unwrap_source_is_immutable(expr.expr)
+		}
+		ast.IndexExpr {
+			!expr.left_type.is_ptr() && assign_or_unwrap_source_is_immutable(expr.left)
+		}
+		ast.ParExpr {
+			assign_or_unwrap_source_is_immutable(expr.expr)
+		}
+		else {
+			false
+		}
 	}
 }
 
