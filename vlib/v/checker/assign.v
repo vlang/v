@@ -881,23 +881,30 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
-		// An `or {}` block unwraps an option/result into a fresh value, so the
-		// unwrapped expression is not an lvalue that aliases the original map
-		// (see vlang/v issue #27867). This mirrors the already allowed `get() or {}`
-		// call and option array field cases.
-		right_has_or_block := match right {
-			ast.Ident { right.or_expr.kind != .absent }
-			ast.IndexExpr { right.or_expr.kind != .absent }
-			ast.SelectorExpr { right.or_block.kind != .absent }
-			else { false }
-		}
-		right_is_lvalue := !right_has_or_block && if right is ast.ComptimeSelector {
+		right_is_lvalue := if right is ast.ComptimeSelector {
 			right.left.is_lvalue()
 		} else {
 			right.is_lvalue()
 		}
+		// `x := opt_map or { ... }` unwraps an option/result into a new immutable
+		// variable, so `x` can never become a mutable alias of the underlying map
+		// and the shallow copy is safe. This mirrors how V already accepts the
+		// equivalent immutable `x := opt_array_field or { ... }`. A mutable
+		// destination (`mut x := m[k] or { ... }`, `x = m[k] or { ... }`) keeps
+		// the guard, so aliasing container/field storage still requires a
+		// `clone`/`move`. See vlang/v issue #27867.
+		mut right_is_immutable_or_unwrap := false
+		if node.op == .decl_assign && left is ast.Ident && !left.is_mut {
+			unwrapped_right := right.remove_par()
+			right_is_immutable_or_unwrap = match unwrapped_right {
+				ast.Ident { unwrapped_right.or_expr.kind != .absent }
+				ast.IndexExpr { unwrapped_right.or_expr.kind != .absent }
+				ast.SelectorExpr { unwrapped_right.or_block.kind != .absent }
+				else { false }
+			}
+		}
 		if left_sym.kind == .map && is_assign && right_sym.kind == .map && !c.inside_unsafe
-			&& !left.is_blank_ident() && right_is_lvalue
+			&& !left.is_blank_ident() && right_is_lvalue && !right_is_immutable_or_unwrap
 			&& (!right_type.is_ptr() || (right is ast.Ident && assign_expr_is_auto_deref(right))) {
 			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',

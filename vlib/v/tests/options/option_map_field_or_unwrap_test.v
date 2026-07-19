@@ -1,6 +1,9 @@
 // Regression test for https://github.com/vlang/v/issues/27867
-// or-unwrapping an option map (struct field, variable, index) used to fail
-// with `cannot copy map: call move or clone method (or use a reference)`.
+// or-unwrapping an option map (struct field, variable, index, parenthesized)
+// into an immutable variable used to fail with
+// `cannot copy map: call move or clone method (or use a reference)`.
+// The mutable form (`mut x := m or { ... }`) still errors on purpose, see
+// vlib/v/checker/tests/option_map_or_unwrap_mut_alias_err.vv.
 struct Translation {
 	title string
 }
@@ -52,4 +55,16 @@ fn test_option_map_index_or_unwrap() {
 	}
 	inner := m['a'] or { panic('expected') }
 	assert inner['b'] == 2
+}
+
+fn test_option_map_field_paren_or_unwrap() {
+	c := Category{
+		translations: {
+			'en': Translation{
+				title: 'Hello'
+			}
+		}
+	}
+	translations := (c.translations or { panic('expected') })
+	assert translations['en'].title == 'Hello'
 }

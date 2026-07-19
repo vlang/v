@@ -1,0 +1,29 @@
+// Or-unwrapping an option map into a *mutable* destination would let the new
+// variable alias the container/field storage, so it must still require an
+// explicit `clone`/`move`. See vlang/v issue #27867 (the immutable
+// `x := opt_map or { ... }` form is allowed, the mutable form is not).
+struct Category {
+mut:
+	translations ?map[string]int
+}
+
+fn main() {
+	mut xs := [{
+		'x': 1
+	}]
+	mut a := xs[0] or { panic('missing') }
+	a['x'] = 2
+
+	mut c := Category{
+		translations: {
+			'x': 1
+		}
+	}
+	mut b := c.translations or { panic('missing') }
+	b['x'] = 2
+
+	println(xs)
+	println(c)
+	println(a)
+	println(b)
+}

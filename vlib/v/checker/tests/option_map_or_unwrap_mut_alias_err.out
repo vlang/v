@@ -1,0 +1,14 @@
+vlib/v/checker/tests/option_map_or_unwrap_mut_alias_err.vv:14:17: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   12 |         'x': 1
+   13 |     }]
+   14 |     mut a := xs[0] or { panic('missing') }
+      |                    ~~~~~~~~~~~~~~~~~~~~~~~
+   15 |     a['x'] = 2
+   16 |
+vlib/v/checker/tests/option_map_or_unwrap_mut_alias_err.vv:22:13: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   20 |         }
+   21 |     }
+   22 |     mut b := c.translations or { panic('missing') }
+      |                ~~~~~~~~~~~~
+   23 |     b['x'] = 2
+   24 |
