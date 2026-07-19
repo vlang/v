@@ -42,6 +42,12 @@ jobs:
         run: |
           .\makev.bat -tcc
           .\v.exe symlink
+      - name: Pkg-config regression (TCC dynamic isolation)
+        run: |
+          .\v.exe -cc tcc -no-retry-compilation test vlib\v\checker\pkgconfig_static_mode_test.v
+          if ($LASTEXITCODE -ne 0) {
+            throw "pkg-config TCC isolation regression failed with exit code $LASTEXITCODE"
+          }
       - name: All code is formatted
         run: v -silent test-cleancode
       - name: Test new v.c

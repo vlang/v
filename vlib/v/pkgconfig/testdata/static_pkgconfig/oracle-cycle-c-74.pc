@@ -1,0 +1,6 @@
+Name: oracle-cycle-c-74
+Description: Third public cycle node
+Version: 1.0.0
+Requires: oracle-cycle-a-74
+Libs: -loracle_cycle_c
+Cflags: -DORACLE_CYCLE_C

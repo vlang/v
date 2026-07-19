@@ -1,0 +1,5 @@
+Name: transitive-link-error-root-74
+Description: Root transitive static parser error fixture
+Version: 1.0.0
+Requires: transitive-link-error-middle-74
+Libs: -lissue74_transitive_error_root

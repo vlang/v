@@ -1,0 +1,8 @@
+Name : spaced-fields-74
+Description : Static field-name whitespace regression
+Version : 1.0.0
+Requires.private : static-private-74
+Libs : -lissue74_spaced_root
+Libs.private : -lissue74_spaced_root_private
+Cflags : -DISSUE74_SPACED_ROOT
+Cflags.private : -DISSUE74_SPACED_ROOT_PRIVATE

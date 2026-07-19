@@ -57,6 +57,20 @@ jobs:
           echo $VFLAGS
           .\makev.bat -msvc
           .\v.exe symlink
+      - name: Pkg-config regressions (MSVC dynamic isolation)
+        run: |
+          $tests = @(
+            'vlib\v\pkgconfig\pkgconfig_static_test.v'
+            'vlib\v\checker\pkgconfig_static_mode_test.v'
+            'vlib\v\checker\pkgconfig_cross_compile_test.v'
+            'vlib\v\builder\pkgconfig_link_segment_test.v'
+          )
+          foreach ($test in $tests) {
+            .\v.exe -cc msvc -no-retry-compilation test $test
+            if ($LASTEXITCODE -ne 0) {
+              throw "pkg-config regression failed for $test with exit code $LASTEXITCODE"
+            }
+          }
       - name: Legacy gg import multiwindow isolation
         run: v -cc msvc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Prepare multiwindow Job Object watchdog

@@ -15,6 +15,11 @@ pub fn should_find_windows_host_c_compiler(pref_ &pref.Preferences) bool {
 	return pref_.backend == .c && pref_.os == .windows && !pref_.output_cross_c
 }
 
+fn resolve_ccompiler_type_and_pkgconfig_mode(mut prefs pref.Preferences) {
+	prefs.ccompiler_type = resolve_ccompiler_type(prefs.ccompiler, prefs.ccompiler_type)
+	prefs.resolve_pkgconfig_mode()
+}
+
 pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
 	if pref_.is_test {
 		disable_c_error_bug_reports()
@@ -31,7 +36,7 @@ pub fn compile(command string, pref_ &pref.Preferences, backend_cb FnBackend) {
 		}
 	}
 	mut pref_ref := unsafe { pref_ }
-	pref_ref.ccompiler_type = resolve_ccompiler_type(pref_ref.ccompiler, pref_ref.ccompiler_type)
+	resolve_ccompiler_type_and_pkgconfig_mode(mut pref_ref)
 	// Construct the V object from command line arguments
 	mut b := new_builder(pref_)
 	if b.should_rebuild() {

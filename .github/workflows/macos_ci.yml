@@ -48,6 +48,17 @@ jobs:
             brew-${{ matrix.os }}-
       - name: Build V
         run: make -j4 && ./v symlink
+      - name: Pkg-config regressions (Clang, no static executable)
+        run: |
+          set -euo pipefail
+          for test in \
+            vlib/v/pkgconfig/pkgconfig_static_test.v \
+            vlib/v/checker/pkgconfig_static_mode_test.v \
+            vlib/v/checker/pkgconfig_cross_compile_test.v \
+            vlib/v/builder/pkgconfig_link_segment_test.v
+          do
+            ./v -cc clang -no-retry-compilation test "$test"
+          done
       - name: Legacy gg import multiwindow isolation
         run: ./v test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Prepare multiwindow process-tree watchdog

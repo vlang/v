@@ -1,0 +1,6 @@
+Name: uppercase-private-root-74
+Description: Uppercase private cflags oracle root
+Version: 1.0.0
+Requires.private: uppercase-private-provider-74
+Libs: -luppercase_private_root
+Cflags: -DISSUE74_UPPERCASE_ROOT

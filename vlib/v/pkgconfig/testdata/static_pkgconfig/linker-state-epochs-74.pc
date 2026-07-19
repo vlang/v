@@ -1,0 +1,4 @@
+Name: linker-state-epochs-74
+Description: Linker state merge-back regression
+Version: 1.0.0
+Libs: -lissue74_state -lissue74_state -Wl,--as-needed -lissue74_state -lissue74_state -Wl,--no-as-needed -lissue74_state -lissue74_state

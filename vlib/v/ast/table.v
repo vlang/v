@@ -60,6 +60,13 @@ pub fn (mut uf UsedFeatures) free() {
 	}
 }
 
+pub struct LinkFlagSegment {
+pub:
+	is_pkgconfig bool
+pub mut:
+	flags []cflag.CFlag
+}
+
 @[heap; minify]
 pub struct Table {
 mut:
@@ -74,6 +81,7 @@ pub mut:
 	modules                     []string       // Topologically sorted list of all modules registered by the application
 	global_scope                &Scope = unsafe { nil }
 	cflags                      []cflag.CFlag
+	link_flag_segments          []LinkFlagSegment
 	redefined_fns               []string
 	fn_generic_types            map[string][][]Type // for generic functions
 	structured_receiver_methods map[string][]Fn
@@ -139,6 +147,10 @@ pub fn (mut t Table) free() {
 		t.imports.free()
 		t.modules.free()
 		t.cflags.free()
+		for mut segment in t.link_flag_segments {
+			segment.flags.free()
+		}
+		t.link_flag_segments.free()
 		t.redefined_fns.free()
 		t.fn_generic_types.free()
 		t.cmod_prefix.free()
