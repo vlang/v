@@ -34,6 +34,48 @@ fn test_posix_last_weekday_stays_in_month() {
 	assert zone.is_dst == true
 }
 
+fn test_parse_posix_rule_rejects_invalid_numbers() {
+	if _ := parse_posix_zone_rule('EST5EDT,Mx.2.0,M11.1.0') {
+		assert false
+	} else {
+		assert err.msg().contains('POSIX')
+	}
+	if _ := parse_posix_zone_rule('EST5EDT,M13.2.0,M11.1.0') {
+		assert false
+	} else {
+		assert err.msg().contains('POSIX')
+	}
+	if _ := parse_posix_zone_rule('EST5EDT,M3.2.0/2:99,M11.1.0') {
+		assert false
+	} else {
+		assert err.msg().contains('POSIX')
+	}
+}
+
+fn test_parse_posix_negative_transition_time_with_minutes() {
+	rule := parse_posix_zone_rule('<-02>2<-01>,M3.5.0/-1:30,M10.5.0/0')!
+	transition := rule.transition_utc(2050, rule.start, rule.std_offset)
+	expected := time_fields_to_unix(Time{
+		year:   2050
+		month:  3
+		day:    27
+		hour:   0
+		minute: 30
+	})
+	assert transition == expected
+}
+
+fn test_tzif_rejects_negative_counts() {
+	mut data := []u8{len: 44}
+	copy(mut data[0..4], 'TZif'.bytes())
+	data[40] = 0xff
+	if _ := parse_tzif_location('Bad/Zone', data) {
+		assert false
+	} else {
+		assert err.msg().contains('invalid TZif header counts')
+	}
+}
+
 fn test_tzif_v4_uses_64bit_data_and_posix_tail() {
 	mut data := load_zoneinfo_from_source(zoneinfo_vroot_zip, 'Europe/London')!
 	data[4] = `4`
