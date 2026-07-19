@@ -88,13 +88,53 @@ The largest, highest-risk phase. Sub-phases, in build order:
       message bytes, no record-layer framing (RFC 8446 §4.4.1 / RFC 9001
       §4), both extracted from the raw RFC text programmatically, not
       hand-transcribed.
-- [ ] **2c — Messages + state machine** (`tls13_messages.v`,
-      `tls13_handshake.v`): ClientHello…Finished, the `quic_transport_parameters`
-      extension (0x39), client state machine. Use mbedTLS's `mbedtls_pk_verify_ext`
-      for CertificateVerify validation (reserve the new OpenSSL P-256 binding
-      for ECDHE only) — **confirm during implementation whether mbedTLS's PSS
-      salt-length handling matches `rsae` semantics**; if not, fall back to the
-      `rsa_pss` module for that one signature scheme.
+- **2c — Messages + state machine** (`tls13_messages.v`, `tls13_handshake.v`):
+  ClientHello…Finished, the `quic_transport_parameters` extension (0x39),
+  client state machine. In progress — sub-items:
+  - [x] Generic handshake message framing (`HandshakeType` enum — the real
+        RFC 8446 §B.3 v1.3 set only, TLS-1.2-era RESERVED values correctly
+        rejected, not silently accepted as unused variants —
+        `encode_handshake_message`/`parse_handshake_message`, 1-byte type +
+        3-byte length per RFC 8446 §4). Incremental/resumable by design:
+        `parse_handshake_message` peels off exactly one message and reports
+        bytes consumed, since QUIC's CRYPTO stream can deliver messages
+        split across packets (Phase 4's reassembly job, not this file's).
+  - [x] Finished message MAC (RFC 8446 §4.4.4) —
+        `compute_finished_verify_data`/`verify_finished`, side-agnostic
+        (caller picks client vs. server traffic secret). Uses
+        `crypto.hmac.equal` (constant-time) for the peer-supplied
+        verify_data comparison, not `==` — Phase-R verified this specific
+        wiring by forcing `verify_finished` to always return `true` and
+        confirming three negative tests (tampered data, wrong base secret,
+        stale transcript checkpoint) all caught it. Verified against an
+        RFC 8448 §3 vector extended with EncryptedExtensions/Certificate/
+        CertificateVerify bytes (needed to compute the real transcript hash
+        the server's Finished authenticates) — first extraction attempt was
+        silently corrupted by RFC page-break footer text ("[Page 7]",
+        "January 2019" — "20"/"19" parsed as valid hex byte pairs) landing
+        inside the Certificate line range; caught via a byte-count mismatch
+        (451 extracted vs. 445 octets the RFC itself labels the block) and
+        a failed end-to-end HMAC cross-check, both before trusting the
+        vector, not after.
+  - [ ] `quic_transport_parameters` extension (0x39, RFC 9001 §8.2) —
+        encode/decode; unknown parameter IDs ignored not rejected;
+        `ack_delay_exponent`/`max_udp_payload_size` validity-checked;
+        `initial_source_connection_id` cross-check against the packet
+        header's SCID deferred to Phase 9 (`QuicConn` owns the header).
+  - [ ] ClientHello construction (our own key_share via Phase 1's P-256
+        ECDH, supported_versions/groups/signature_algorithms,
+        quic_transport_parameters, server_name).
+  - [ ] ServerHello / EncryptedExtensions / Certificate / CertificateVerify
+        parsing. Use mbedTLS's `mbedtls_pk_verify_ext` for CertificateVerify
+        validation (reserve the OpenSSL P-256 binding for ECDHE only) —
+        **confirm during implementation whether mbedTLS's PSS salt-length
+        handling matches `rsae` semantics**; if not, fall back to the
+        `rsa_pss` module for that one signature scheme. `CertificateRequest`
+        rejected with a clear error (no client-cert auth in v1).
+  - [ ] Client state machine (`tls13_handshake.v`) wiring the above together
+        with transcript accumulation, including second-HelloRetryRequest
+        rejection and the TLS-alert-to-QUIC-CONNECTION_CLOSE mapping
+        (0x0100-0x01ff, RFC 9001 §4.8).
 - [ ] Author an RFC-8448-style TLS 1.3 test vector suite from scratch
       (`vlib/net/quic/testdata/tls13_vectors/`) — RFC 8448 itself is non-QUIC
       TLS 1.3 and not directly reusable. Capture from a reference client/server
