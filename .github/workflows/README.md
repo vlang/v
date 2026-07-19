@@ -1,4 +1,4 @@
-# GitHub Actions runner policy
+# GitHub Actions CI policy
 
 This directory contains the GitHub Actions workflows for the V repository.
 
@@ -7,7 +7,43 @@ compilers. Runner selection should therefore be intentional: use stable runner
 images where reproducibility matters, and use newer runner images where the goal is
 early compatibility feedback.
 
-## General guidance
+## CI lanes
+
+V's CI should keep fast contributor feedback while preserving the broad portability
+coverage needed for a compiler and runtime project. Prefer small, focused workflow
+changes, and avoid removing coverage without a replacement lane.
+
+Use these lanes when adding, moving, or splitting checks:
+
+| Lane | Trigger | Blocking? | Purpose |
+| --- | --- | --- | --- |
+| Fast PR | every PR | yes | Quick build, formatting, docs, and critical smoke checks. |
+| Standard PR | every PR or broad code paths | usually | Main Linux, macOS, and Windows compiler coverage. |
+| Specialized PR | relevant paths | maybe | Domain checks such as docs, db, graphics, wasm, C2V, or VPM. |
+| Slow PR | label, manual, or high-risk paths | usually no | Expensive portability and deep regression checks. |
+| Master push | every merge to `master` | monitoring | Full confidence after merge and early regression detection. |
+| Scheduled | cron | no | Nightly or periodic portability, ecosystem, and performance sweeps. |
+
+When classifying a workflow:
+
+- Keep every PR covered by a small fast lane with clear failure signal.
+- Keep required branch protection checks stable unless maintainers intentionally change
+  the required check list at the same time.
+- Prefer `paths` for workflows that only validate a subsystem, and include the workflow
+  file itself in the path list so CI changes are self-tested.
+- Keep `workflow_dispatch` on slow or rare-platform workflows so maintainers can rerun
+  them directly.
+- Keep broad post-merge coverage on `master` before moving expensive PR checks to path,
+  label, manual, or scheduled execution.
+- Document exceptions in the workflow when a slow check must block every PR.
+
+Current slow-lane candidates include FreeBSD, OpenBSD, Termux, `riscv64`, `s390x`,
+the full sanitizer matrix, and full ecosystem compilation workflows. These checks are
+valuable; the policy is to run them where they provide useful signal, not to remove them.
+
+## Runner policy
+
+### General guidance
 
 - Prefer explicit runner versions for important CI lanes.
 - Use `ubuntu-latest`, `windows-latest`, or `macos-latest` only when image drift is
@@ -21,7 +57,7 @@ early compatibility feedback.
 - When changing a runner image, check whether the workflow depends on bundled tools,
   SDKs, compiler versions, package repositories, or architecture-specific behavior.
 
-## Linux runners
+### Linux runners
 
 Use a pinned Ubuntu version when the workflow depends on packages, compiler versions,
 or distro behavior. This makes failures easier to reproduce and avoids unexpected
@@ -38,7 +74,7 @@ Examples of reasons to pin Linux runners:
 - the workflow uses architecture emulation or containers that are sensitive to host
   image changes.
 
-## Windows runners
+### Windows runners
 
 Windows runner images include different SDKs, toolchains, and bundled compiler
 versions. Use an explicit Windows version when a workflow depends on a known MSVC,
@@ -48,7 +84,7 @@ Use different Windows versions only when the coverage difference is intentional.
 similar workflows use different Windows runner images, document why in the workflow or
 in this README.
 
-## macOS runners
+### macOS runners
 
 macOS runner names can imply both OS version and CPU architecture. For example, some
 workflows intentionally use Apple Silicon runners while others need Intel runners.
@@ -60,7 +96,7 @@ toolchain behavior.
 Avoid switching macOS runners in broad CI changes unless the PR explains the expected
 architecture and toolchain impact.
 
-## Rare platform and architecture lanes
+### Rare platform and architecture lanes
 
 Workflows for FreeBSD, OpenBSD, Termux, `riscv64`, `s390x`, and similar lanes often
 depend on hosted runner behavior plus containers, VMs, or emulation layers. Treat their
@@ -69,7 +105,7 @@ runner image as part of the tested environment.
 When changing these workflows, prefer small PRs and keep `workflow_dispatch` available
 so maintainers can rerun the lane directly.
 
-## Updating runner images
+### Updating runner images
 
 Before updating a runner image:
 
@@ -82,7 +118,7 @@ Before updating a runner image:
 If a runner update is needed because GitHub deprecated an image, mention the deprecation
 notice or upstream issue in the PR body.
 
-## Current examples
+### Current examples
 
 These examples document observed runner choices. They are not a complete workflow
 inventory.
