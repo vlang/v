@@ -1,0 +1,14 @@
+vlib/v/checker/tests/option_map_or_unwrap_immut_default_alias_err.vv:13:7: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   11 |     opt := maybe_none()
+   12 |     // immutable parameter fallback: `x` can alias the caller's map.
+   13 |     x := opt or { fallback }
+      |          ~~~
+   14 |     return x
+   15 | }
+vlib/v/checker/tests/option_map_or_unwrap_immut_default_alias_err.vv:23:7: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   21 |     opt := maybe_none()
+   22 |     // immutable local lvalue fallback is rejected too (cannot prove freshness).
+   23 |     y := opt or { local }
+      |          ~~~
+   24 | 
+   25 |     println(pick({

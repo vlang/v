@@ -74,10 +74,12 @@ fn assign_expr_or_block(expr ast.Expr) ast.OrExpr {
 
 // assign_or_block_default_is_safe conservatively reports whether the value an
 // `or {}` block falls back to cannot alias mutable storage. `x := opt or { d }`
-// makes `x` the block's value `d` when the option is empty, so if `d` is a
-// mutable map lvalue (e.g. `or { fallback }`) then `x` aliases it. Only a fresh
-// value (map literal / by-value call), an immutable lvalue, or a block that
-// yields no value (diverges via `return`/`panic`/... or just propagates) is safe.
+// makes `x` the block's value `d` when the option is empty, so if `d` is any map
+// lvalue (e.g. `or { fallback }`) then `x` aliases it. Even an immutable lvalue
+// is unsafe: an immutable map parameter/field can alias caller-owned storage the
+// caller mutates later (the same copy `x := d` would reject). Only a fresh/owned
+// value (map literal / by-value call) or a block that yields no value (diverges
+// via `return`/`panic`/... or just propagates) is safe.
 fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
 	if or_expr.kind != .block || or_expr.stmts.len == 0 {
 		return true
@@ -89,9 +91,6 @@ fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
 	return match (last as ast.ExprStmt).expr {
 		ast.MapInit, ast.CallExpr {
 			true
-		}
-		ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.ParExpr {
-			c.assign_or_unwrap_source_is_immutable((last as ast.ExprStmt).expr)
 		}
 		else {
 			false

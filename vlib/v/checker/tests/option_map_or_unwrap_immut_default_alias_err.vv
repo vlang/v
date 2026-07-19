@@ -1,0 +1,29 @@
+// An `or {}` block whose fallback is an immutable map lvalue is still unsafe:
+// an immutable map parameter (or any immutable alias) can point at caller-owned
+// storage the caller mutates later, so `x := opt or { fallback }` would alias it
+// — the same copy `x := fallback` rejects. Only fresh/owned fallbacks (map
+// literal / by-value call) are exempted. See vlang/v issue #27867.
+fn maybe_none() ?map[string]int {
+	return none
+}
+
+fn pick(fallback map[string]int) map[string]int {
+	opt := maybe_none()
+	// immutable parameter fallback: `x` can alias the caller's map.
+	x := opt or { fallback }
+	return x
+}
+
+fn main() {
+	local := {
+		'y': 9
+	}
+	opt := maybe_none()
+	// immutable local lvalue fallback is rejected too (cannot prove freshness).
+	y := opt or { local }
+
+	println(pick({
+		'x': 1
+	}))
+	println(y)
+}
