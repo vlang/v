@@ -25,6 +25,8 @@ on:
       - 'vlib/net/**'
       - 'vlib/crypto/rand/**'
       - 'vlib/picoev/**'
+      - 'vlib/db/**'
+      - 'vlib/sokol/**'
       - 'vlib/math/**'
       - 'vlib/compress/**'
       - 'vlib/veb/**'
