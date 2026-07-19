@@ -28,6 +28,20 @@ fn assign_expr_is_auto_deref(expr ast.Expr) bool {
 	return expr.is_auto_deref_var()
 }
 
+// assign_or_unwrap_source_is_immutable conservatively reports whether the source
+// of an `or {}` unwrap can never be mutated later (so a copy of its map cannot
+// observe a later mutation of the original). Only the plainly-immutable roots are
+// recognised; anything unknown returns false, keeping the map-copy guard.
+fn assign_or_unwrap_source_is_immutable(expr ast.Expr) bool {
+	return match expr {
+		ast.Ident { !expr.is_mut() }
+		ast.SelectorExpr { assign_or_unwrap_source_is_immutable(expr.expr) }
+		ast.IndexExpr { assign_or_unwrap_source_is_immutable(expr.left) }
+		ast.ParExpr { assign_or_unwrap_source_is_immutable(expr.expr) }
+		else { false }
+	}
+}
+
 fn (c &Checker) auto_deref_source_type_is_pointer(expr ast.Expr) bool {
 	if expr !is ast.Ident || c.table.cur_fn == unsafe { nil } || !expr.is_auto_deref_var() {
 		return false
@@ -889,23 +903,31 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		// `x := opt_map or { ... }` unwraps an option/result into a new immutable
 		// variable, so `x` can never become a mutable alias of the underlying map
 		// and the shallow copy is safe. This mirrors how V already accepts the
-		// equivalent immutable `x := opt_array_field or { ... }`. A mutable
-		// destination (`mut x := m[k] or { ... }`, `x = m[k] or { ... }`) keeps
-		// the guard, so aliasing container/field storage still requires a
-		// `clone`/`move`. The `or` must actually clear the option/result: for
-		// `map[K]?map[...]`, `v := m[k] or { none }` keeps the option-map type,
-		// so `v` is still an option handle aliasing the map in `m` and the guard
-		// must stay. See vlang/v issue #27867.
+		// equivalent immutable `x := opt_array_field or { ... }`. Several things
+		// must hold for the copy to be safe, otherwise the guard is kept so
+		// aliasing still requires a `clone`/`move`:
+		//   - the destination is a new immutable variable (a mutable `mut x := ...`
+		//     or a reassignment `x = ...` could still mutate through `x`);
+		//   - the `or` actually clears the option/result — for `map[K]?map[...]`,
+		//     `v := m[k] or { none }` keeps the option-map type, so `v` is still an
+		//     option handle aliasing the map in `m`;
+		//   - the unwrapped source itself is immutable — otherwise a later mutation
+		//     of the source (e.g. `mut opt := ...; x := opt or { ... }; opt?[k] = v`)
+		//     would be observed through `x`.
+		// See vlang/v issue #27867.
 		mut right_is_immutable_or_unwrap := false
 		if node.op == .decl_assign && left is ast.Ident && !left.is_mut
 			&& !right_type.has_flag(.option) && !right_type.has_flag(.result) {
 			unwrapped_right := right.remove_par()
-			right_is_immutable_or_unwrap = match unwrapped_right {
+			has_or_block := match unwrapped_right {
 				ast.Ident { unwrapped_right.or_expr.kind != .absent }
 				ast.IndexExpr { unwrapped_right.or_expr.kind != .absent }
 				ast.SelectorExpr { unwrapped_right.or_block.kind != .absent }
 				else { false }
 			}
+
+			right_is_immutable_or_unwrap = has_or_block
+				&& assign_or_unwrap_source_is_immutable(unwrapped_right)
 		}
 		if left_sym.kind == .map && is_assign && right_sym.kind == .map && !c.inside_unsafe
 			&& !left.is_blank_ident() && right_is_lvalue && !right_is_immutable_or_unwrap
