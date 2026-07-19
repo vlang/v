@@ -84,6 +84,7 @@ fn windows_posix_rule(std_zone Zone, dst_zone Zone, info TimeZoneInformation) Po
 		dst_offset: dst_zone.offset
 		start:      windows_system_time_rule(info.daylight_date)
 		end:        windows_system_time_rule(info.standard_date)
+		has_dst:    true
 	}
 }
 

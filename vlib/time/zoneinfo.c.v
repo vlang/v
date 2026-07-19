@@ -59,6 +59,7 @@ struct PosixZoneRule {
 	dst_offset int
 	start      PosixRule
 	end        PosixRule
+	has_dst    bool
 }
 
 enum PosixRuleKind {
@@ -371,6 +372,12 @@ fn parse_posix_zone_rule(text string) !PosixZoneRule {
 	std_name, mut pos := parse_posix_name(text, 0)!
 	std_offset, next_pos := parse_posix_offset(text, pos)!
 	pos = next_pos
+	if pos == text.len {
+		return PosixZoneRule{
+			std_name:   std_name
+			std_offset: std_offset
+		}
+	}
 	dst_name, dst_name_end := parse_posix_name(text, pos)!
 	pos = dst_name_end
 	mut dst_offset := std_offset + seconds_per_hour
@@ -393,6 +400,7 @@ fn parse_posix_zone_rule(text string) !PosixZoneRule {
 		dst_offset: dst_offset
 		start:      parse_posix_rule(parts[0])!
 		end:        parse_posix_rule(parts[1])!
+		has_dst:    true
 	}
 }
 
@@ -539,6 +547,12 @@ fn parse_posix_number(text string, start int) !(int, int) {
 }
 
 fn (rule PosixZoneRule) zone_at(unix_time i64) Zone {
+	if !rule.has_dst {
+		return Zone{
+			name:   rule.std_name
+			offset: rule.std_offset
+		}
+	}
 	year := unix(unix_time).year
 	start := rule.transition_utc(year, rule.start, rule.std_offset)
 	end := rule.transition_utc(year, rule.end, rule.dst_offset)
