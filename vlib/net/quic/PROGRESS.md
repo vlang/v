@@ -116,11 +116,24 @@ The largest, highest-risk phase. Sub-phases, in build order:
         (451 extracted vs. 445 octets the RFC itself labels the block) and
         a failed end-to-end HMAC cross-check, both before trusting the
         vector, not after.
-  - [ ] `quic_transport_parameters` extension (0x39, RFC 9001 §8.2) —
-        encode/decode; unknown parameter IDs ignored not rejected;
-        `ack_delay_exponent`/`max_udp_payload_size` validity-checked;
+  - [x] `quic_transport_parameters` extension inner payload (RFC 9000 §18,
+        `transport_parameters.v`) — all 17 §18.2 parameters (including the
+        nested `preferred_address` struct), unknown IDs ignored not
+        rejected (also exercises the §18.1 "31*N+27" grease pattern),
+        `ack_delay_exponent`/`max_udp_payload_size`/`max_ack_delay`/
+        `active_connection_id_limit` validity-checked against the spec's
+        own stated bounds (accept+reject boundary-pair tests for all 4).
+        Duplicate parameter IDs rejected (a defensive addition beyond an
+        explicit RFC MUST, Phase-R verified). The u64-space-before-
+        truncating-cast pattern from the Phase 1 `header.v` fix is applied
+        to the length bounds check here too — this is the first Phase 2
+        file that parses a loop of peer-controlled wire bytes, so it's the
+        first place that exact bug class could have recurred.
         `initial_source_connection_id` cross-check against the packet
-        header's SCID deferred to Phase 9 (`QuicConn` owns the header).
+        header's SCID, and the outer TLS extension_type=0x39 + length-
+        prefix wrapping (RFC 9001 §8.2), remain: the former needs Phase 9's
+        `QuicConn` (owns the packet header), the latter is
+        ClientHello/EncryptedExtensions' job below.
   - [ ] ClientHello construction (our own key_share via Phase 1's P-256
         ECDH, supported_versions/groups/signature_algorithms,
         quic_transport_parameters, server_name).
