@@ -1,206 +1,210 @@
 # fasthttp
 
-The `fasthttp` module is a high-performance HTTP server library for V that provides low-level socket management and non-blocking I/O.
+`fasthttp` is a low-level, high-performance HTTP/1.1 server for V built on
+platform-native I/O multiplexing. It gives you raw control over request bytes and
+response bytes with a small, explicit API, and is the parallel backend used by
+[`veb`](../veb).
 
 ## Features
 
-- **High Performance**: Uses platform-specific I/O multiplexing:
-  - `epoll` on Linux for efficient connection handling
-  - `kqueue` on macOS and BSD for high-performance event notification
-- **Non-blocking I/O**: Handles multiple concurrent connections efficiently
-- **Simple API**: Easy-to-use request handler pattern
-- **Cross-platform**: Supports Linux, macOS, FreeBSD, OpenBSD, NetBSD and DragonFly
+- **Native I/O multiplexing**: `epoll` on Linux, `kqueue` on macOS/BSD, IOCP on
+  Windows. On Linux each worker owns its own `SO_REUSEPORT` listener (kernel load
+  balancing across cores).
+- **Zero per-request allocation on the hot path** (Linux): each connection owns a
+  read buffer and a write buffer that are **reused for its whole lifetime**, and
+  closed connections return their state — buffers included — to a per-worker
+  free-list. No per-connection hash maps, no per-request buffer churn.
+- **HTTP/1.1 pipelining**: several requests arriving in one read are framed
+  individually and answered into one batched write. TCP-fragmented requests are
+  reassembled deterministically via exact-length framing.
+- **Two handler contracts**:
+  - **Append handler** (recommended): write the raw response straight into the
+    connection's reused buffer — no response object, no copy.
+  - **Classic handler**: build and return an `HttpResponse`.
+- **Lock-free per-worker state**: an optional `make_state` hook gives each worker
+  thread its own state (a DB connection, a reused scratch buffer) with no mutex.
+- **Takeover**: hand a connection off to your own code (SSE / WebSocket) or write
+  the response yourself and keep the connection alive.
+- **Zero-copy file bodies**: return a `file_path` and the body is streamed with
+  `sendfile(2)`.
+- **Graceful shutdown**: drain in-flight responses, then stop.
 
 ## Installation
 
-The module is part of the standard V library. Import it in your V code:
+Part of the standard library:
 
 ```v
 import fasthttp
 ```
 
-## Quick Start
+## Quick start (append handler)
 
-Here's a minimal HTTP server example:
+The append handler appends the complete raw HTTP response (status line + headers
++ body) into the reused `out` buffer and returns a `Step`. It is the zero-copy,
+pipelining-friendly contract.
 
-```v oksyntax
+```v
 import fasthttp
 
-fn handle_request(req fasthttp.HttpRequest) ![]u8 {
+fn handle(req fasthttp.HttpRequest, mut out []u8, ws voidptr, mut ctl fasthttp.ResponseControl) fasthttp.Step {
 	path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
-
-	mut body := ''
-	mut status_line := ''
-
 	if path == '/' {
-		body = 'Hello, World!\n'
-		status_line = 'HTTP/1.1 200 OK'
+		out << 'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\n\r\nHello, World!'.bytes()
 	} else {
-		body = '${path} not found\n'
-		status_line = 'HTTP/1.1 404 Not Found'
+		out << 'HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n'.bytes()
 	}
+	return .done
+}
 
-	headers := [
-		status_line,
-		'Content-Type: text/plain',
-		'Content-Length: ${body.len}',
-		'Connection: close',
-	]
-	header_string := headers.join('\r\n')
+fn main() {
+	mut server := fasthttp.new_server(fasthttp.ServerConfig{
+		port:           3000
+		append_handler: handle
+	}) or {
+		eprintln('failed to create server: ${err}')
+		return
+	}
+	println('listening on http://localhost:3000/')
+	server.run() or { eprintln('error: ${err}') }
+}
+```
 
-	return '${header_string}\r\n\r\n${body}'.bytes()
+## Quick start (classic handler)
+
+The classic handler builds and returns an `HttpResponse`. It is simpler when you
+already have the response bytes in hand.
+
+```v
+import fasthttp
+
+fn handle(req fasthttp.HttpRequest) !fasthttp.HttpResponse {
+	return fasthttp.HttpResponse{
+		content: 'HTTP/1.1 200 OK\r\nContent-Length: 13\r\n\r\nHello, World!'.bytes()
+	}
 }
 
 fn main() {
 	mut server := fasthttp.new_server(fasthttp.ServerConfig{
 		port:    3000
-		handler: handle_request
+		handler: handle
 	}) or {
-		eprintln('Failed to create server: ${err}')
+		eprintln('failed to create server: ${err}')
 		return
 	}
-
-	println('Server listening on http://localhost:3000')
 	server.run() or { eprintln('error: ${err}') }
 }
 ```
 
-## API Reference
+Set **exactly one** of `handler` or `append_handler`; `new_server` returns an
+error otherwise.
 
-### `HttpRequest` Struct
+## Reading the request
 
-Represents an incoming HTTP request.
-
-**Fields:**
-
-- `buffer: []u8` - The raw request buffer containing the complete HTTP request
-- `method: Slice` - The HTTP method (GET, POST, etc.)
-- `path: Slice` - The request path
-- `version: Slice` - The HTTP version (e.g., "HTTP/1.1")
-- `client_conn_fd: int` - Internal socket file descriptor
-
-### `Slice` Struct
-
-Represents a slice of the request buffer.
-
-**Fields:**
-
-- `start: int` - Starting index in the buffer
-- `len: int` - Length of the slice
-
-**Usage:**
+`HttpRequest` exposes zero-copy `Slice`s (`start`, `len`) into `buffer`:
 
 ```v ignore
 method := req.buffer[req.method.start..req.method.start + req.method.len].bytestr()
 path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
+body := req.buffer[req.body.start..req.body.start + req.body.len]
 ```
 
-## Request Handler Pattern
+The parser fills `method`, `path`, `version`, `header_fields` and `body`. The
+request-framing helpers (`frame_request_length`, `frame_expected_total`,
+`frame_head_len`) are the pure functions the read loop uses to split pipelined
+requests; they are exported for testing and for building your own reader.
 
-The handler function receives an `HttpRequest` and must return either:
-
-- `[]u8` - A byte array containing the HTTP response body
-- An error if processing failed
-
-The handler should extract method and path information from the request and route accordingly.
-
-**Example:**
+## The append-handler contract
 
 ```v ignore
-fn my_handler(req fasthttp.HttpRequest) ![]u8 {
-	method := req.buffer[req.method.start..req.method.start + req.method.len].bytestr()
-	path := req.buffer[req.path.start..req.path.start + req.path.len].bytestr()
+pub type AppendHandler = fn (req HttpRequest, mut out []u8, worker_state voidptr, mut ctl ResponseControl) Step
+```
 
-	match method {
-		'GET' {
-			if path == '/' {
-				return 'Home page'.bytes()
-			}
-		}
-		'POST' {
-			if path == '/api/data' {
-				return 'Data received'.bytes()
-			}
-		}
-		else {}
-	}
+- `out` — the connection's persistent write buffer. Append the complete raw HTTP
+  response. Everything appended during one readiness event is sent in a single
+  write; the buffer is reused across requests — never free it or keep a reference.
+- `worker_state` — the value `ServerConfig.make_state` returned on this worker
+  thread (see below); `nil` if unset.
+- `ctl ResponseControl` — out-of-band controls:
+  - `takeover_mode` — `.manual` hands the fd off (you own it, e.g. SSE/WebSocket);
+    `.reusable` means you wrote the response yourself but want keep-alive.
+  - `should_close` — close the connection after this response.
+  - `file_path` — stream this file after the appended bytes (`sendfile`).
+- Return `Step`:
+  - `.done` — response complete in `out`; keep the connection alive.
+  - `.close` — send `out`, then close.
+  - `.suspend` — reserved for future async handlers (no watch reactor yet, so it
+    currently drops the connection).
 
-	return '404 Not Found'.bytes()
+## Lock-free per-worker state
+
+`ServerConfig.make_state` is called once per worker thread; its return value
+reaches every request on that worker as `worker_state`. Because each worker gets
+its own instance, no locking is needed:
+
+```v ignore
+struct WorkerState {
+mut:
+	scratch []u8 // reused per-request render buffer
 }
+
+fn make_state() voidptr {
+	return &WorkerState{}
+}
+
+fn handle(req fasthttp.HttpRequest, mut out []u8, ws voidptr, mut ctl fasthttp.ResponseControl) fasthttp.Step {
+	mut st := unsafe { &WorkerState(ws) }
+	st.scratch.clear()
+	// ... build into st.scratch, then `out << st.scratch` ...
+	return .done
+}
+
+// fasthttp.ServerConfig{ ..., append_handler: handle, make_state: make_state }
 ```
 
-## Response Format
+## Configuration
 
-Responses should be returned as byte arrays.
-The server will send them directly to the client as HTTP response bodies.
+`ServerConfig` fields: `family` (`.ip` / `.ip6`), `port`,
+`max_request_buffer_size` (bounds the request head; an oversized head gets `413`),
+`timeout_in_seconds` (read/write deadlines; a stalled request gets `408`),
+`user_data` (an opaque pointer surfaced as `HttpRequest.user_data`), `handler` /
+`append_handler`, and `make_state`.
+
+## Lifecycle
 
 ```v ignore
-// Simple text response
-return 'Hello, World!'.bytes()
-
-// HTML response
-return '<html><body>Hello</body></html>'.bytes()
-
-// JSON response
-return '{"message": "success"}'.bytes()
+mut server := fasthttp.new_server(config)!
+handle := server.handle()
+spawn server.run()
+handle.wait_till_running()!            // block until the listener is bound
+// ... serve ...
+handle.shutdown(timeout: 5 * time.second)! // drain in-flight, then stop
 ```
 
-## Example
+## Platform support
 
-See the complete example in `examples/fasthttp/` for a more
-detailed server implementation with multiple routes and controllers.
-
-```sh
-./v examples/fasthttp
-./examples/fasthttp/fasthttp
-```
-
-## Platform Support
-
-- **Linux**: Uses `epoll` for high-performance I/O multiplexing
-- **macOS**: Uses `kqueue` for event notification
-- **Windows**: Currently not supported
-
-## Performance Considerations
-
-- The `fasthttp` module is designed for high throughput and low latency
-- Handler functions should be efficient; blocking operations will affect other connections
-- Use goroutines within handlers if you need to perform long-running operations without
-  blocking the I/O loop
+| Platform | Backend | Pooling + pipelining | Append handler | make_state |
+|---|---|---|---|---|
+| Linux   | epoll  | yes | yes | yes |
+| macOS/BSD | kqueue | one request per read | yes | yes |
+| Windows | IOCP   | one request per read | yes | not yet (`run` WIP) |
 
 ## Request-scoped allocation with `-prealloc`
 
-When an application is compiled with `-prealloc`, `fasthttp` starts a scoped
-prealloc arena for each request before decoding the HTTP request and before
-calling the request handler. All V allocations made by the request parser, the
-handler, and code called by the handler use that request arena while the handler
-is running.
-
-The arena is freed as a unit after the response no longer needs request-owned
-data. On Linux the normal response path sends the response synchronously, then
-ends the request arena. On macOS and BSD the response buffer can be kept by the
-connection until `kqueue` finishes writing it; in that case `fasthttp` detaches
-the scope from the request thread and frees it after the write completes.
-
-This means request-local V allocations are cheap bump-pointer allocations, and
-freeing them does not require walking individual objects. Startup state, server
-state, and allocations made directly by C libraries are not part of a request
-arena. If a handler starts V `spawn` work while the request scope is active, the
-generated thread wrapper retains that scope until the spawned function returns;
-void spawned functions also run inside their own scoped arena, which is freed at
-thread exit. Manual takeover responses transfer ownership to user code and
-currently abandon the request arena, so long-lived takeover handlers should
-manage their own allocation lifetime explicitly.
-
-To inspect request arena usage while developing, build with:
+When compiled with `-prealloc`, the **classic** handler path runs each request
+inside a scoped bump arena, freed as a unit after the response is sent. The
+**append** handler path does not open a reactor arena (growing the reused write
+buffer inside a scope would free it out from under the connection); an append
+handler that wants request-scoped arenas manages its own and leaves it before
+writing into `out`. To trace arena usage:
 
 ```sh
 v -prealloc -d trace_prealloc run .
 ```
 
-## Notes
+## Example
 
-- HTTP headers are currently not parsed; the entire request is available in the buffer
-- Only the request method, path, and version are parsed automatically
-- Response status codes and headers must be manually constructed if needed
-- The module provides low-level access for maximum control and performance
+See `examples/fasthttp/` for a small multi-route server:
+
+```sh
+./v run examples/fasthttp
+```

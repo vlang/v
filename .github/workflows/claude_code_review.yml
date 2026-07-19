@@ -33,8 +33,8 @@ concurrency:
 
 jobs:
   review:
-    # Skip draft PRs; the `ready_for_review` trigger picks them up later.
-    if: github.event.pull_request.draft == false
+    # Skip draft PRs, forks and Dependabot runs that cannot access repository secrets.
+    if: github.event.pull_request.draft == false && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read

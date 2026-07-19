@@ -38,6 +38,9 @@ fn C.realloc(a voidptr, b usize) voidptr
 fn C.free(ptr voidptr)
 
 fn C.mmap(addr_length voidptr, length usize, prot i32, flags i32, fd i32, offset isize) voidptr
+
+// C.munmap releases a memory mapping created by C.mmap.
+fn C.munmap(addr_length voidptr, len usize) i32
 fn C.mprotect(addr_length voidptr, len usize, prot i32) i32
 
 fn C.aligned_alloc(align usize, size usize) voidptr

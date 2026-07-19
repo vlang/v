@@ -50,9 +50,6 @@ fn wait_header_gen_c(v3_bin string, name string, source string) string {
 fn wait_header_has_include_directive(c_code string) bool {
 	for line in c_code.split_into_lines() {
 		trimmed := line.trim_space()
-		if trimmed == '#include <mach/mach_time.h>' {
-			continue
-		}
 		if trimmed.starts_with('#include') {
 			return true
 		}
@@ -183,6 +180,8 @@ fn main() {
 	assert with_os.c_code.contains('struct stat { u64 st_ino; i64 st_size; u64 st_dev; u64 st_rdev;'), with_os.c_code
 	assert with_os.c_code.contains('#elif defined(__BIGENDIAN__)'), with_os.c_code
 	assert with_os.c_code.contains('#error unsupported headerless Unix struct stat layout for this platform'), with_os.c_code
+	assert with_os.c_code.contains('int stat(const char* path, struct stat* buf);'), with_os.c_code
+	assert !with_os.c_code.contains('i32 stat(char*, void*);'), with_os.c_code
 	assert with_os.c_code.contains('i64 st_birthtime;'), with_os.c_code
 	assert with_os.c_code.contains('struct rusage { struct timeval ru_utime; struct timeval ru_stime; long ru_maxrss; long ru_ixrss; long ru_idrss;'), with_os.c_code
 	assert with_os.c_code.contains('#if !defined(_STRUCT_TIMESPEC) && !defined(_TIMESPEC_DEFINED) && !defined(_TIMESPEC_DECLARED) && !defined(__timespec_defined)'), with_os.c_code
@@ -796,11 +795,9 @@ fn main() {
 	assert run.output.trim_space() == 'true\ntrue\ntrue', run.output
 }
 
-// The same system header may legitimately appear under different guards. The
-// preserved-include dedupe must key on the lifted guard context, not just the
-// raw `#include` line, or the second, differently-guarded include is dropped
-// (and its guard left dangling).
-fn test_same_system_include_under_different_guards_is_kept() {
+// The same system header may appear under different guards. v3 drops system
+// includes in both contexts while preserving the surrounding C directives.
+fn test_same_system_include_under_different_guards_is_dropped() {
 	$if windows {
 		return
 	}
@@ -818,8 +815,8 @@ fn main() {
 	println('ok')
 }
 ")
-	// Both guarded copies survive.
-	assert c_code.count('#include <sys/v3dup_guard.h>') == 2, c_code
-	assert c_code.contains('#ifdef __linux__\n#include <sys/v3dup_guard.h>\n#endif'), c_code
-	assert c_code.contains('#ifdef __APPLE__\n#include <sys/v3dup_guard.h>\n#endif'), c_code
+	assert !wait_header_has_include_directive(c_code), c_code
+	assert c_code.count('#include <sys/v3dup_guard.h>') == 0, c_code
+	assert c_code.contains('#ifdef __linux__\n#endif'), c_code
+	assert c_code.contains('#ifdef __APPLE__\n#endif'), c_code
 }

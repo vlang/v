@@ -675,7 +675,10 @@ fn (mut g Gen) resolved_scope_var_type(expr ast.Ident) ast.Type {
 	if g.has_active_call_generic_context() {
 		return g.resolved_scope_var_type_uncached(expr)
 	}
-	cache_key := g.expr_resolution_cache_key(expr.pos.pos, 0, cgen_scope_var_type_cache_salt)
+	mut cache_key := g.expr_resolution_cache_key(expr.pos.pos, 0, cgen_scope_var_type_cache_salt)
+	if cache_key != 0 {
+		cache_key = cgen_resolution_hash_mix(cache_key, fnv1a.sum64_string(expr.name))
+	}
 	if cache_key != 0 {
 		if cached := g.resolved_scope_var_type_cache[cache_key] {
 			return cached
@@ -764,6 +767,16 @@ fn (mut g Gen) matching_sumtype_variant_types(parent_type ast.Type, target_type 
 		}
 	}
 	return [target_type]
+}
+
+fn (mut g Gen) matching_sumtype_match_branch_variant_types(parent_type ast.Type, target_type ast.Type) []ast.Type {
+	variants := g.sumtype_runtime_variants(parent_type)
+	for variant in variants {
+		if g.is_exact_sumtype_variant_match(variant, target_type) {
+			return [variant]
+		}
+	}
+	return g.matching_sumtype_variant_types(parent_type, target_type)
 }
 
 fn (mut g Gen) matching_sumtype_variant_type_idx_exprs(parent_type ast.Type, target_type ast.Type) []string {

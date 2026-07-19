@@ -670,6 +670,31 @@ fn (m &map) get_check(key voidptr) voidptr {
 	return 0
 }
 
+// If `key` matches the key of an element in the container,
+// the method returns a reference to the stored key.
+// If not, a zero pointer is returned.
+fn (m &map) get_key_check(key voidptr) voidptr {
+	if m.len == 0 {
+		return 0
+	}
+	mut index, mut meta := m.key_to_index(key)
+	for {
+		if meta == unsafe { m.metas[index] } {
+			kv_index := int(unsafe { m.metas[index + 1] })
+			pkey := unsafe { m.key_values.key(kv_index) }
+			if m.key_eq_fn(key, pkey) {
+				return unsafe { &u8(pkey) }
+			}
+		}
+		index += 2
+		meta += probe_inc
+		if meta > unsafe { m.metas[index] } {
+			break
+		}
+	}
+	return 0
+}
+
 // Checks whether a particular key exists in the map.
 fn (m &map) exists(key voidptr) bool {
 	if m.len == 0 {

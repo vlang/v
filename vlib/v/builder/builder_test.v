@@ -296,6 +296,53 @@ fn main() {
 	assert res.output.contains('defined as module `foo`'), res.output
 }
 
+fn test_module_alias_imports_canonical_module_and_submodule() {
+	project_dir := os.join_path(test_path, 'module_alias_import')
+	modules_dir := os.join_path(project_dir, 'modules')
+	canonical_dir := os.join_path(modules_dir, 'canonical')
+	os.rmdir_all(project_dir) or {}
+	defer {
+		os.rmdir_all(project_dir) or {}
+	}
+	os.mkdir_all(os.join_path(canonical_dir, 'sub'))!
+	os.mkdir_all(os.join_path(modules_dir, 'legacy'))!
+	os.write_file(os.join_path(project_dir, 'v.mod'),
+		"Module {\n\tname: 'module_alias_import'\n}\n")!
+	os.write_file(os.join_path(canonical_dir, 'canonical.v'), 'module canonical
+
+pub struct Token {
+pub:
+	value int
+}
+')!
+	os.write_file(os.join_path(canonical_dir, 'sub', 'sub.v'), 'module sub
+
+pub fn value() int {
+	return 2
+}
+')!
+	os.write_file(os.join_path(modules_dir, 'legacy', 'alias.v'),
+		"@[alias: '@VMODROOT/modules/canonical'] module legacy\n")!
+	os.write_file(os.join_path(project_dir, 'main.v'), 'module main
+
+import canonical
+import legacy
+import legacy.sub
+
+fn main() {
+	a := canonical.Token{value: 1}
+	b := legacy.Token{value: 1}
+	assert a == b
+	println(a.value + sub.value())
+}
+')!
+
+	main_path := os.join_path(project_dir, 'main.v')
+	res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(main_path)}')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == '3'
+}
+
 fn test_removed_src_layout_error_mentions_vmod_subdirs() {
 	os.chdir(test_path)!
 	project_dir := os.join_path(test_path, 'run_removed_src_project')

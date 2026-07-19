@@ -54,6 +54,47 @@ fn run_good_with_flags(v3_bin string, name string, flags string, src string) str
 	return run.output.trim_space()
 }
 
+fn run_good_with_env(v3_bin string, name string, env string, src string) string {
+	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(good_src, src) or { panic(err) }
+	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
+	compile := os.execute('${env} ${v3_bin} ${good_src} -b c -o ${good_bin}')
+	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
+	run := os.execute(good_bin)
+	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
+	return run.output.trim_space()
+}
+
+fn gen_c_from_source(v3_bin string, name string, src string) string {
+	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src_path, src) or { panic(err) }
+	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	os.rm(c_path) or {}
+	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	assert compile.exit_code == 0, '${name}: ${compile.output}'
+	assert os.exists(c_path)
+	return os.read_file(c_path) or { panic(err) }
+}
+
+fn c_fn_body(c_source string, signature string) string {
+	start := c_source.index(signature) or { return '' }
+	open_rel := c_source[start..].index('{') or { return '' }
+	body_start := start + open_rel
+	mut depth := 0
+	for i in body_start .. c_source.len {
+		if c_source[i] == `{` {
+			depth++
+		} else if c_source[i] == `}` {
+			depth--
+			if depth == 0 {
+				return c_source[start..i + 1]
+			}
+		}
+	}
+	return c_source[start..]
+}
+
 fn write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
@@ -79,11 +120,239 @@ fn run_good_project(v3_bin string, name string, files map[string]string, input s
 	return run.output.trim_space()
 }
 
+fn gen_c_from_project(v3_bin string, name string, files map[string]string, input string) string {
+	root := os.join_path(os.temp_dir(), 'v3_${name}_project')
+	if os.exists(root) {
+		os.rmdir_all(root) or { panic(err) }
+	}
+	os.mkdir_all(root) or { panic(err) }
+	for rel, src in files {
+		write_project_file(root, rel, src)
+	}
+	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
+	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
+	os.rm(c_path) or {}
+	compile := os.execute('${v3_bin} ${input_path} -b c -o ${c_path}')
+	assert compile.exit_code == 0, '${name}: C generation failed\n${compile.output}'
+	return os.read_file(c_path) or { panic(err) }
+}
+
 fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'lifted_literal_mut_param_interpolation',
 		'fn main() {\n\tmut n := 7\n\tf := fn (mut x int) {\n\t\tprintln("\${x}")\n\t}\n\tf(mut n)\n}\n')
 	assert out == '7'
+}
+
+fn test_folded_string_constant_ifs_keep_branch_scopes() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'folded_string_constant_if_branch_scopes',
+		"fn main() {\n\tif 'left' == 'left' {\n\t\tx := 20\n\t\tprintln(int_str(x))\n\t}\n\tif 'right' == 'right' {\n\t\tx := 22\n\t\tprintln(int_str(x))\n\t}\n}\n")
+	assert out == '20\n22'
+}
+
+fn test_import_aliased_variadic_call_uses_exact_module() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'import_aliased_variadic_call', {
+		'v.mod':         "Module { name: 'import_aliased_variadic_call' }\n"
+		'a/http/http.v': 'module http\n\npub fn total(values []int) int {\n\treturn values.len\n}\n'
+		'b/http/http.v': 'module http\n\npub fn total(values ...int) int {\n\treturn values.len\n}\n'
+		'main.v':        'module main\n\nimport a.http as other_http\nimport b.http as http\n\nfn main() {\n\t_ := other_http.total([1, 2])\n\tprintln(int_str(http.total(3, 4, 5)))\n}\n'
+	}, 'main.v')
+	assert out == '3'
+}
+
+fn test_array_field_stringification_prefers_local_type_over_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'array_field_string_local_type_collision', {
+		'v.mod':       "Module { name: 'array_field_string_local_type_collision' }\n"
+		'other/mod.v': 'module other\n\npub struct Event {\npub:\n\tname string\n}\n'
+		'main.v':      "module main\n\nimport other\n\nstruct Event {\n\tkind int\n}\n\nstruct App {\n\tevents []Event\n}\n\nfn main() {\n\t_ := other.Event{\n\t\tname: 'imported'\n\t}\n\tapp := App{\n\t\tevents: [Event{\n\t\t\tkind: 7\n\t\t}]\n\t}\n\tprintln(app.events)\n}\n"
+	}, 'main.v')
+	assert out == '[Event{\n    kind: 7\n}]'
+}
+
+fn test_array_stringification_prefers_local_struct_over_imported_alias() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'array_str_local_struct_imported_alias_collision', {
+		'v.mod':         "Module { name: 'array_str_local_struct_imported_alias_collision' }\n"
+		'other/event.v': 'module other\n\npub struct ForeignEvent {\npub:\n\ttouches int\n}\n\npub type Event = ForeignEvent\n'
+		'main.v':        "module main\n\nimport other\n\nstruct Event {\n\tkind int\n\targ string\n}\n\nfn main() {\n\t_ := other.Event(other.ForeignEvent{\n\t\ttouches: 3\n\t})\n\tevents := [Event{\n\t\tkind: 7\n\t\targ: 'ok'\n\t}]\n\tprintln(events)\n}\n"
+	}, 'main.v')
+	assert out == "[Event{\n    kind: 7\n    arg: 'ok'\n}]"
+}
+
+fn test_for_in_smartcast_interface_field_keeps_interface_element_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'for_in_smartcast_interface_field',
+		'interface Widget {\n\tid int\n}\n\nstruct Stack {\n\tid       int\n\tchildren []Widget\n}\n\nstruct Leaf {\n\tid int\n}\n\nfn total(w Widget) int {\n\tif w is Stack {\n\t\tmut value := w.id\n\t\tfor child in w.children {\n\t\t\tvalue += total(child)\n\t\t}\n\t\treturn value\n\t}\n\treturn w.id\n}\n\nfn main() {\n\tw := Widget(Stack{\n\t\tid: 1\n\t\tchildren: [Widget(Leaf{\n\t\t\tid: 2\n\t\t})]\n\t})\n\tprintln(int_str(total(w)))\n}\n')
+	assert out == '3'
+}
+
+fn test_interface_smartcast_rebuilds_richer_interface_fields() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_smartcast_richer_fields',
+		'interface Base {\n\tx int\n}\n\ninterface Extended {\n\tBase\n\ty    int\n\tnext ?Extended\n}\n\nstruct Item {\n\tx    int\n\ty    int\n\tnext ?Extended\n}\n\nfn value(base Base) int {\n\tif base is Extended {\n\t\treturn base.x + base.y\n\t}\n\treturn 0\n}\n\nfn main() {\n\tprintln(int_str(value(Base(Item{\n\t\tx: 2\n\t\ty: 3\n\t}))))\n}\n')
+	assert out == '5'
+}
+
+fn test_interface_smartcast_nil_pointer_zero_fills_richer_fields() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_smartcast_nil_pointer_richer_fields', 'interface Base {
+	value() int
+}
+
+interface Rich {
+	Base
+	x int
+}
+
+struct Item {
+	x int
+}
+
+fn (item Item) value() int {
+	return item.x
+}
+
+fn read(base Base) int {
+	if base is Rich {
+		return base.x
+	}
+	return -1
+}
+
+fn main() {
+	item := unsafe { &Item(nil) }
+	println(int_str(read(Base(item))))
+}
+')
+	assert out == '0'
+}
+
+fn test_mut_interface_smartcast_field_assignment_uses_storage_interface() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'mut_interface_smartcast_field_assignment', 'interface Base {
+mut:
+	x int
+}
+
+interface Rich {
+	Base
+mut:
+	y int
+}
+
+struct Item {
+mut:
+	x int
+	y int
+}
+
+fn update(mut base Base) {
+	if mut base is Rich {
+		base.y = 9
+	}
+}
+
+fn main() {
+	mut base := Base(Item{
+		x: 1
+		y: 2
+	})
+	update(mut base)
+	if base is Rich {
+		println(int_str(base.y))
+	}
+}
+')
+	assert out == '9'
+}
+
+fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization() {
+	v3_bin := build_v3_review_transform()
+	generated := gen_c_from_project(v3_bin, 'nested_generic_main_type_collision', {
+		'v.mod':         "Module { name: 'nested_generic_main_type_collision' }\n"
+		'codec/codec.v': 'module codec\n\npub struct Decoder {}\n\npub fn decode[T]() T {\n\tmut result := T{}\n\tdecoder := Decoder{}\n\tdecoder.decode_value(mut result)\n\treturn result\n}\n\nfn (decoder Decoder) decode_value[T](mut value T) {\n\t_ = decoder\n\t_ = value\n}\n'
+		'other/other.v': 'module other\n\npub struct Item {\npub:\n\tname string\n}\n'
+		'main.v':        'module main\n\nimport codec\nimport other\n\nstruct Item {\n\tvalue int\n}\n\nfn main() {\n\t_ := other.Item{}\n\titem := codec.decode[Item]()\n\tprintln(int_str(item.value))\n}\n'
+	}, 'main.v')
+	assert generated.contains('codec__Decoder_Item__decode_value'), generated
+	assert !generated.contains('codec__Decoder_other__Item__decode_value'), generated
+}
+
+fn test_generic_struct_default_for_pointer_type_uses_heap_storage() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_pointer_struct_default', 'struct Item {
+	value int = 7
+}
+
+fn make_default[T]() T {
+	return T{}
+}
+
+fn main() {
+	item := make_default[&Item]()
+	println(item.value)
+}
+')
+	assert out == '7'
+}
+
+fn test_optional_if_guard_prefers_local_type_over_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'optional_if_guard_local_type_collision', {
+		'v.mod':         "Module { name: 'optional_if_guard_local_type_collision' }\n"
+		'other/other.v': 'module other\n\npub struct Server {\npub:\n\tname string\n}\n'
+		'main.v':        "module main\n\nimport other\n\nstruct Server {\n\tid int\n}\n\nfn find_server() ?Server {\n\treturn Server{\n\t\tid: 9\n\t}\n}\n\nfn main() {\n\t_ := other.Server{\n\t\tname: 'imported'\n\t}\n\tif server := find_server() {\n\t\tprintln(int_str(server.id))\n\t}\n}\n"
+	}, 'main.v')
+	assert out == '9'
+}
+
+fn test_fixed_array_alias_is_not_requalified_in_importing_module() {
+	v3_bin := build_v3_review_transform()
+	generated := gen_c_from_source(v3_bin, 'fixed_array_alias_import_context',
+		'import gg\nimport sokol.gfx\n\nfn main() {\n\t_ := gg.Color{}\n\t_ := gfx.ImageData{}\n}\n')
+	assert generated.contains('Array_fixed_struct_sg_range_16'), generated
+	assert !generated.contains('Array_fixed_gg__Range_16'), generated
+}
+
+fn test_nested_string_array_literal_keeps_alias_element_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'nested_string_array_alias', {
+		'v.mod':           "Module { name: 'nested_string_array_alias' }\n"
+		'syntax/syntax.v': "module syntax\n\ntype MapArrayStrings = map[string][][]string\n\npub struct Highlighter {\npub mut:\n\tmultiline map[string]MapArrayStrings\n}\n\npub fn (mut h Highlighter) load() {\n\th.multiline['v'] = {\n\t\t'comment': [['/*', '*/']]\n\t}\n}\n"
+		'main.v':          "module main\n\nimport syntax\n\nfn main() {\n\tmut h := syntax.Highlighter{}\n\th.load()\n\tprintln(h.multiline['v']['comment'][0][0])\n\tprintln(h.multiline['v']['comment'][0][1])\n}\n"
+	}, 'main.v')
+	assert out == '/*\n*/'
+}
+
+fn test_generic_array_retyping_is_scoped_to_the_lowered_literal() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_array_retype_temp_scope',
+		"enum ChildSize {\n\tcompact\n}\n\nfn delimiters() [][]string {\n\treturn [['/*', '*/']]\n}\n\nfn child_sizes(len int) []ChildSize {\n\treturn [ChildSize.compact].repeat(len)\n}\n\nfn main() {\n\tvalues := delimiters()\n\tsizes := child_sizes(2)\n\tprintln(values[0][0])\n\tprintln(values[0][1])\n\tprintln(int_str(sizes.len))\n}\n")
+	assert out == '/*\n*/\n2'
+}
+
+fn test_generic_specializations_keep_full_aliased_import_paths() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_specialization_aliased_import_paths', {
+		'v.mod':          "Module { name: 'generic_specialization_aliased_import_paths' }\n"
+		'a/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'b/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\ttext string\n}\n'
+		'main.v':         "module main\n\nimport a.tast as left\nimport b.tast as tast\n\nfn keep[T](value T) T {\n\treturn value\n}\n\nfn main() {\n\tleft_value := keep(left.Value{\n\t\tn: 41\n\t})\n\tright_value := keep(tast.Value{\n\t\ttext: 'ok'\n\t})\n\tprintln(int_str(left_value.n))\n\tprintln(right_value.text)\n}\n"
+	}, 'main.v')
+	assert out == '41\nok'
+}
+
+fn test_nested_inferred_fixed_array_literal_parses() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_inferred_fixed_array_literal',
+		'fn main() {\n\tvalues := [..][..]int[[1, 2], [3, 4]]\n\tprintln(int_str(values[0][0] + values[0][1] + values[1][0] + values[1][1]))\n}\n')
+	assert out == '10'
+	run_bad(v3_bin, 'ragged_nested_inferred_fixed_array_literal',
+		'fn main() {\n\t_ := [..][..]int[[1], [2, 3]]\n}\n',
+		'inferred fixed-array literal rows must have the same size')
 }
 
 fn test_shared_field_without_sync_import_compiles_and_locks() {
@@ -120,6 +389,9 @@ fn test_reject_dynamic_arrays_for_fixed_array_expectations() {
 	const_indexed := run_good(v3_bin, 'good_fixed_array_const_init_index',
 		'const n = 4\n\nfn main() {\n\ta := [n]int{init: index * index}\n\tprintln(int_str(a[0]) + "," + int_str(a[1]) + "," + int_str(a[2]) + "," + int_str(a[3]))\n}\n')
 	assert const_indexed == '0,1,4,9'
+	arg_indexed := run_good(v3_bin, 'good_fixed_array_arg_init_index',
+		'fn take(a [4]int) int {\n\treturn a[0] + a[1] + a[2] + a[3]\n}\n\nfn main() {\n\tprintln(int_str(take([4]int{init: index * index})))\n}\n')
+	assert arg_indexed == '14'
 }
 
 fn test_array_equality_uses_semantic_element_comparison() {
@@ -187,6 +459,25 @@ fn test_heap_escaping_amp_alias_keeps_heap_pointer() {
 	assert out == '2'
 }
 
+fn test_heap_escaping_amp_reassignment_moves_current_source() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'heap_escaping_amp_reassign_source',
+		'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\tprintln(int_str(*make()))\n}\n')
+	assert out == '20'
+	c_source := gen_c_from_source(v3_bin, 'heap_escaping_amp_reassign_source_c',
+		'fn make() &int {\n\tmut a := 10\n\tmut b := 20\n\tmut p := &a\n\tp = &b\n\treturn p\n}\n\nfn main() {\n\t_ := make()\n}\n')
+	body := c_fn_body(c_source, 'int* make(void) {')
+	assert body.contains('int* b ='), body
+	assert !body.contains('p = &b;'), body
+}
+
+fn test_return_address_of_pointer_backed_field_preserves_identity() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'return_pointer_backed_field_address',
+		'struct Node[T] {\nmut:\n\tvalue T\n}\n\nstruct List[T] {\nmut:\n\ttail &Node[T] = unsafe { nil }\n}\n\nfn (list &List[T]) last() &T {\n\treturn &list.tail.value\n}\n\nfn main() {\n\tmut node := &Node[int]{\n\t\tvalue: 1\n\t}\n\tlist := List[int]{\n\t\ttail: node\n\t}\n\tmut last := list.last()\n\t*last = 9\n\tprintln(int_str(node.value))\n}\n')
+	assert out == '9'
+}
+
 fn test_imported_result_array_return_or_preserves_success_value() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'imported_result_array_return_or', {
@@ -226,6 +517,28 @@ fn test_generic_interface_method_body_marks_log_debug_dispatch() {
 	out := run_good_with_flags(v3_bin, 'generic_interface_log_debug_dispatch', '-ownership',
 		"import log\n\ninterface Sink {\n\tbinary_data()\n}\n\nstruct Box[T] {}\n\nfn (mut b Box[T]) binary_data() {\n\t_ = b\n\tlog.debug('hidden')\n}\n\nstruct Runner {}\n\nfn (mut r Runner) run(mut s Sink) {\n\t_ = r\n\ts.binary_data()\n}\n\nstruct Worker {\nmut:\n\trunner Runner\n}\n\nfn main() {\n\tmut worker := Worker{\n\t\trunner: Runner{}\n\t}\n\tmut b := Box[int]{}\n\tworker.runner.run(mut b)\n\tprintln('ok')\n}\n")
 	assert out == 'ok'
+}
+
+fn test_specialized_generic_body_sees_materialized_interface_implementer() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_body_materialized_interface_implementer', 'interface Any {}
+
+struct Box[T] {
+	value T
+}
+
+fn render[T](value T) string {
+	boxed := Any(value)
+	return boxed.type_name() + ":" + boxed.str()
+}
+
+fn main() {
+	println(render[Box[int]](Box[int]{
+		value: 7
+	}))
+}
+')
+	assert out == 'Box[int]:Any(Box[int]{\n    value: 7\n})'
 }
 
 fn test_array_literal_separator_handling() {
@@ -300,6 +613,16 @@ fn test_map_pointer_equality_uses_pointer_identity() {
 	assert out == 'false\ntrue\ntrue\ntrue'
 }
 
+fn test_cyclic_interface_default_does_not_deref_nil_global() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'cyclic_interface_default', {
+		'v.mod':         "Module { name: 'cyclic_interface_default' }\n"
+		'cycle/cycle.v': "module cycle\n\ninterface Named {\n\tid string\n}\n\nconst empty_stack = stack(id: 'empty')\n\nstruct Stack {\n\tparent Named = empty_stack\n\tid     string\n}\n\nfn stack(id string) &Stack {\n\treturn &Stack{\n\t\tid: id\n\t}\n}\n\npub fn empty_id() string {\n\treturn empty_stack.id\n}\n"
+		'main.v':        "module main\n\nimport cycle\n\nfn main() {\n\t_ = cycle.empty_id()\n\tprintln('alive')\n}\n"
+	}, 'main.v')
+	assert out == 'alive'
+}
+
 fn test_fixed_array_values_compare_semantically() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'fixed_array_semantic_equality',
@@ -358,6 +681,23 @@ fn test_comptime_type_conditions_qualify_module_aliases() {
 		'foo/foo.v': "module foo\n\ntype ID = int\n\npub fn check() string {\n\t\$if ID is \$alias {\n\t\treturn 'alias'\n\t} \$else {\n\t\treturn 'not alias'\n\t}\n}\n"
 	}, 'main.v')
 	assert out == 'alias'
+}
+
+fn test_imported_generic_indirections_conditions_keep_integer_literals() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_indirections_integer_literals', {
+		'v.mod':         "Module { name: 'generic_indirections_integer_literals' }\n"
+		'probe/probe.v': 'module probe\n\npub fn depth[T](value T) int {\n\t_ = value\n\t$if T.indirections == 0 {\n\t\treturn 0\n\t} $else $if T.indirections == 1 {\n\t\treturn 1\n\t}\n\treturn 2\n}\n'
+		'main.v':        'module main\n\nimport probe\n\nfn main() {\n\tn := 7\n\tprintln(int_str(probe.depth(n)))\n\tprintln(int_str(probe.depth(&n)))\n}\n'
+	}, 'main.v')
+	assert out == '0\n1'
+}
+
+fn test_nested_comptime_field_names_do_not_replace_each_other() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_comptime_field_name_prefixes',
+		'struct Embedded {\n\tn int\n}\n\nstruct Item {\n\tEmbedded\n\tname string\n}\n\nfn normal_fields[T]() int {\n\tmut count := 0\n\t$for field in T.fields {\n\t\t$if field.is_embed {\n\t\t\t$for reserved_field in T.fields {\n\t\t\t\t$if !reserved_field.is_embed {\n\t\t\t\t\tcount++\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\treturn count\n}\n\nfn main() {\n\tprintln(int_str(normal_fields[Item]()))\n}\n')
+	assert out == '1'
 }
 
 fn test_struct_equality_compares_pointer_fields_as_pointers() {
@@ -447,6 +787,20 @@ fn test_map_str_normalizes_alias_key_and_value_types() {
 	assert out == "{23: 'id'}\n{'price': 1.25}"
 }
 
+fn test_chained_array_alias_stringification_uses_outer_alias_only() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'chained_array_alias_str',
+		"type A = []int\n\ntype B = A\n\nfn main() {\n\tvalue := B([1, 2])\n\tprintln('\${value}')\n}\n")
+	assert out == 'B([1, 2])'
+}
+
+fn test_alias_pointer_receiver_str_gets_addressable_value() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'alias_pointer_receiver_str',
+		"type Number = int\n\nfn (n &Number) str() string {\n\treturn 'number:' + int_str(int(*n))\n}\n\nstruct Point {\n\tx int\n}\n\ntype NamedPoint = Point\n\nfn (p &NamedPoint) str() string {\n\treturn 'point:' + int_str(p.x)\n}\n\nfn main() {\n\tn := Number(7)\n\tp := NamedPoint(Point{\n\t\tx: 9\n\t})\n\tprintln('\${n}')\n\tprintln('\${Number(8)}')\n\tprintln('\${p}')\n\tprintln('\${NamedPoint(Point{x: 10})}')\n}\n")
+	assert out == 'number:7\nnumber:8\npoint:9\npoint:10'
+}
+
 fn test_mut_map_param_interpolation_preserves_pointer() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'mut_map_param_interpolation',
@@ -459,6 +813,13 @@ fn test_map_literal_stringification_evaluates_entries_once() {
 	out := run_good(v3_bin, 'map_literal_str_side_effects',
 		"__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'k' + int_str(key_calls)\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tprintln({\n\t\tnext_key(): next_val()\n\t})\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
 	assert out == "{'k1': 10}\n1,1"
+}
+
+fn test_map_literal_declaration_evaluates_entries_once() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'map_literal_decl_side_effects',
+		"__global key_calls int\n__global val_calls int\n\nfn next_key() string {\n\tkey_calls++\n\treturn 'key'\n}\n\nfn next_val() int {\n\tval_calls++\n\treturn val_calls * 10\n}\n\nfn main() {\n\tvalues := {\n\t\tnext_key(): next_val()\n\t}\n\tprintln(int_str(values['key']))\n\tprintln(int_str(key_calls) + ',' + int_str(val_calls))\n}\n")
+	assert out == '10\n1,1'
 }
 
 fn test_fn_literal_preserves_mut_param_string_interpolation() {
@@ -505,6 +866,330 @@ fn test_generic_string_literal_matching_typeof_marker_is_preserved() {
 	assert out == '__v3_generic_type_name:T|int'
 }
 
+fn test_parallel_monomorphization_grows_uneven_worker_regions() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut declarations := []string{cap: 40}
+	mut calls := []string{cap: 40}
+	for i in 0 .. 40 {
+		declarations << 'struct MonoGrow${i} { value int }'
+		calls << '\ttotal += outer(MonoGrow${i}{value: ${i}})'
+	}
+	src := '${declarations.join('\n')}\n\nfn inner[T](value T) int {\n\t_ = value\n\treturn 1\n}\n\nfn outer[T](value T) int {\n\treturn inner(value)\n}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n'
+	out :=
+		run_good_with_env(v3_bin, 'parallel_monomorph_grow', 'VJOBS=4 V3_TEST_MONOMORPH_GROW=1', src)
+	assert out == '40'
+}
+
+fn test_parallel_monomorphization_registers_worker_fixed_array_signatures() {
+	$if windows {
+		return
+	}
+	v3_bin := build_v3_review_transform()
+	mut declarations := []string{cap: 40}
+	mut calls := []string{cap: 40}
+	for i in 0 .. 40 {
+		declarations << 'struct MonoSignature${i} {}'
+		calls << '\ttotal += fixed_pair(MonoSignature${i}{})[0]'
+	}
+	src := '${declarations.join('\n')}\n\nfn fixed_pair[T](value T) [2]int {\n\t_ = value\n\treturn [1, 2]!\n}\n\nfn main() {\n\tmut total := 0\n${calls.join('\n')}\n\tprintln(total)\n}\n'
+	out := run_good_with_env(v3_bin, 'parallel_monomorph_signatures', 'VJOBS=4', src)
+	assert out == '40'
+}
+
+fn test_generic_function_type_arguments_keep_parameter_commas() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_function_type_argument', "fn identity[T](value T) T {
+	return value
+}
+
+fn accepts(value int, label string) bool {
+	return value == label.len
+}
+
+fn main() {
+	callback := identity(accepts)
+	println(callback(3, 'abc'))
+}
+")
+	assert out == 'true'
+}
+
+fn test_returned_mut_callback_preserves_pointer_parameter() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'returned_mut_callback_parameter', 'struct Item {
+mut:
+	value int
+}
+
+fn change(mut item Item) {
+	item.value = 7
+}
+
+fn get_callback() fn (mut Item) {
+	return change
+}
+
+fn main() {
+	mut item := Item{}
+	callback := get_callback()
+	callback(mut item)
+	println(int_str(item.value))
+}
+')
+	assert out == '7'
+}
+
+fn test_typeof_function_fixed_array_types_keep_function_shape() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'typeof_function_fixed_array_types', 'fn values() [3]int {
+	return [1, 2, 3]!
+}
+
+fn first_two(input [3]int) [2]int {
+	return [input[0], input[1]]!
+}
+
+const values_fn_type_name = typeof(values).name
+const first_two_fn_type_name = typeof(first_two).name
+
+fn main() {
+	values_fn := values
+	first_two_fn := first_two
+	println(typeof(values_fn).name)
+	println(typeof(first_two_fn).name)
+	println(values_fn_type_name)
+	println(first_two_fn_type_name)
+}
+')
+	assert out == 'fn () [3]int\nfn ([3]int) [2]int\nfn () [3]int\nfn ([3]int) [2]int'
+}
+
+fn test_typeof_idx_uses_active_smartcast() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'typeof_idx_smartcast', 'struct Foo {}
+struct Bar {}
+
+type Value = Foo | Bar
+
+fn show(value Value) {
+	if value is Foo {
+		println(typeof(value).name)
+		println((typeof(value).idx == typeof[Foo]().idx).str())
+	}
+	match value {
+		Bar {
+			println(typeof(value).name)
+			println((typeof(value).idx == typeof[Bar]().idx).str())
+		}
+		else {}
+	}
+}
+
+fn main() {
+	show(Foo{})
+	show(Bar{})
+}
+')
+	assert out == 'Foo\ntrue\nBar\ntrue'
+}
+
+fn test_mut_map_for_in_writeback_survives_continue_and_break() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'mut_map_for_in_writeback_continue_break', 'struct Box {
+mut:
+	n int
+}
+
+fn main() {
+	mut items := map[string]Box{}
+	items["a"] = Box{n: 1}
+	items["b"] = Box{n: 2}
+	for _, mut value in items {
+		value.n += 10
+		continue
+	}
+	println(items["a"].n)
+	println(items["b"].n)
+	mut once := map[string]Box{}
+	once["x"] = Box{n: 3}
+	for _, mut value in once {
+		value.n = 9
+		break
+	}
+	println(once["x"].n)
+}
+')
+	assert out == '11\n12\n9'
+}
+
+fn test_interface_to_interface_conversion_preserves_fields() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_to_interface_preserves_fields', 'interface Named {
+	name string
+}
+
+interface Rich {
+	name string
+	describe() string
+}
+
+struct User {
+	name string
+}
+
+fn (u User) describe() string {
+	return "user:" + u.name
+}
+
+fn read_named(n Named) string {
+	return n.name
+}
+
+fn main() {
+	rich := Rich(User{
+		name: "Ada"
+	})
+	println(read_named(rich))
+	named := Named(rich)
+	println(named.name)
+}
+')
+	assert out == 'Ada\nAda'
+}
+
+fn test_pointer_interface_conversion_heap_copies_converted_interface() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_interface_conversion_heap_copy', 'interface Named {
+	name string
+}
+
+interface Rich {
+	name string
+	describe() string
+}
+
+struct User {
+	name string
+}
+
+fn (u User) describe() string {
+	return "user:" + u.name
+}
+
+fn make_named(r Rich) &Named {
+	return &Named(r)
+}
+
+fn read_named(n &Named) string {
+	return n.name
+}
+
+fn main() {
+	rich := Rich(User{
+		name: "Ada"
+	})
+	named := make_named(rich)
+	println(read_named(named))
+	println(named.name)
+}
+')
+	assert out == 'Ada\nAda'
+}
+
+fn test_interface_implicit_str_dispatch_preserves_receiver_values() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_implicit_str_receiver_values', 'interface Printable {
+	str() string
+}
+
+struct Bar {
+	x int
+}
+
+struct Custom {
+	x int
+}
+
+fn (c &Custom) str() string {
+	return "custom:" + int_str(c.x)
+}
+
+type Name = string
+
+fn (n &Name) str() string {
+	return "alias:" + string(*n)
+}
+
+struct Foo {
+	x int
+	bar Bar
+	nums []int
+	lookup map[string]int
+	p &int
+	custom &Custom
+	name &Name
+}
+
+fn main() {
+	mut n := 11
+	mut custom := Custom{
+		x: 12
+	}
+	mut name := Name("Ada")
+	value := Printable(Foo{
+		x: 7
+		bar: Bar{
+			x: 8
+		}
+		nums: [1, 2]
+		lookup: {
+			"a": 3
+		}
+		p: &n
+		custom: &custom
+		name: &name
+	})
+	text := value.str()
+	println(text.contains("x: 7"))
+	println(text.contains("Bar"))
+	println(text.contains("x: 8"))
+	println(text.contains("[1, 2]"))
+	println(text.contains("a"))
+	println(text.contains("3"))
+	println(text.contains("11"))
+	println(text.contains("custom:12"))
+	println(text.contains("alias:Ada"))
+}
+')
+	assert out == 'true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue'
+}
+
+fn test_interface_implicit_str_dispatch_stringifies_collection_aliases() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_implicit_str_collection_aliases', 'interface Printable {
+	str() string
+}
+
+type Items = []int
+type Counts = map[string]int
+
+fn main() {
+	items := Printable(Items([1, 2]))
+	mut raw_counts := map[string]int{}
+	raw_counts["a"] = 3
+	counts := Printable(Counts(raw_counts))
+	count_text := counts.str()
+	println(items.str())
+	println(count_text.contains("a"))
+	println(count_text.contains("3"))
+}
+')
+	assert out == '[1, 2]\ntrue\ntrue'
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',
@@ -519,6 +1204,27 @@ fn test_optional_nested_array_equality_guards_payload_work() {
 	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
 }
 
+fn test_wrapped_plus_minus_continuations_consume_auto_semicolon() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'wrapped_plus_minus_continuation',
+		'fn add(total int, delta int) int {\n\treturn total\n\t\t+ delta\n}\n\nfn sub(total int, delta int) int {\n\treturn total\n\t\t- delta\n}\n\nfn main() {\n\tprintln(int_str(add(3, 4)))\n\tprintln(int_str(sub(9, 2)))\n}\n')
+	assert out == '7\n7'
+}
+
+fn test_gated_optional_array_index_materializes_base_before_wrap() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'gated_optional_array_index_base_order',
+		"fn get_arr(ok bool) ?[]int {\n\tprintln('get')\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [3, 7, 11]\n}\n\nfn main() {\n\tprintln(int_str(get_arr(true)#[-1] or { 40 }))\n\tprintln(int_str(get_arr(true)#[9] or { 41 }))\n\tprintln(int_str(get_arr(false)#[-1] or { 42 }))\n}\n")
+	assert out == 'get\n11\nget\n41\nget\n42'
+}
+
+fn test_normalized_option_result_fixed_array_names_keep_outer_wrapper() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'normalized_option_result_fixed_array',
+		"struct Foo {\n\tn int\n}\n\nfn opt_values(ok bool) ?[2]int {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [1, 2]!\n}\n\nfn res_values(ok bool) ![2]Foo {\n\tif !ok {\n\t\treturn error('x')\n\t}\n\treturn [Foo{\n\t\tn: 3\n\t}, Foo{\n\t\tn: 4\n\t}]!\n}\n\nfn main() {\n\ta := opt_values(true) or { [0, 0]! }\n\tb := res_values(true) or { [Foo{\n\t\tn: 0\n\t}, Foo{\n\t\tn: 0\n\t}]! }\n\tmissing_a := opt_values(false) or { [5, 6]! }\n\tmissing_b := res_values(false) or { [Foo{\n\t\tn: 7\n\t}, Foo{\n\t\tn: 8\n\t}]! }\n\tprintln(int_str(a[0] + a[1] + b[0].n + b[1].n))\n\tprintln(int_str(missing_a[0] + missing_a[1] + missing_b[0].n + missing_b[1].n))\n}\n")
+	assert out == '10\n26'
+}
+
 fn test_hierarchical_import_runtime_inits_before_importer_init() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'hierarchical_runtime_init_order', {
@@ -529,4 +1235,347 @@ fn test_hierarchical_import_runtime_inits_before_importer_init() {
 		'unrelated/other.v': 'module other\n\npub fn value() int {\n\treturn 0\n}\n'
 	}, 'main.v')
 	assert out == '41'
+}
+
+fn test_lowered_generic_operator_call_records_specialization() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'lowered_generic_operator_call_records_specialization',
+		'struct Box[T] {\n\tv T\n}\n\nfn (a Box[T]) + (b Box[T]) Box[T] {\n\treturn Box[T]{\n\t\tv: a.v + b.v\n\t}\n}\n\nfn main() {\n\tleft := Box[int]{\n\t\tv: 2\n\t}\n\tright := Box[int]{\n\t\tv: 5\n\t}\n\tresult := left + right\n\tprintln(int_str(result.v))\n}\n')
+	assert out == '7'
+}
+
+fn test_late_inferred_generic_call_emits_specialization() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'late_inferred_generic_call_emits_specialization',
+		'fn make[T]() T {\n\treturn T(41)\n}\n\nfn use[T](value T) T {\n\treturn value + T(1)\n}\n\nfn main() {\n\tx := make[int]()\n\tprintln(int_str(use(x)))\n}\n')
+	assert out == '42'
+}
+
+fn test_module_qualified_panic_keeps_module_symbol() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'module_qualified_panic_symbol', {
+		'v.mod':     "Module { name: 'module_qualified_panic_symbol' }\n"
+		'foo/foo.v': "module foo\n\npub fn panic() string {\n\treturn 'module panic'\n}\n"
+		'main.v':    'module main\n\nimport foo\n\nfn main() {\n\tprintln(foo.panic())\n}\n'
+	}, 'main.v')
+	assert out == 'module panic'
+}
+
+fn test_vmodroot_c_flag_preserves_project_path_with_spaces() {
+	v3_bin := build_v3_review_transform()
+	root := os.join_path(os.temp_dir(), 'v3 flag pseudo path project')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_project_file(root, 'v.mod', "Module { name: 'flag_pseudo_path' }\n")
+	write_project_file(root, 'main.v',
+		'module main\n\n#flag -I @VMODROOT/include\n#insert "flag_value.c"\n\nfn C.flag_value() int\n\nfn main() {\n\tprintln(int_str(C.flag_value()))\n}\n')
+	write_project_file(root, 'include/flag_value.c',
+		'#include <flag_value.h>\n\nstatic inline int flag_value(void) {\n\treturn flag_value_inner();\n}\n')
+	write_project_file(root, 'include/flag_value.h',
+		'static inline int flag_value_inner(void) {\n\treturn 57;\n}\n')
+	bin := os.join_path(os.temp_dir(), 'v3_flag_pseudo_path')
+	compile :=
+		os.execute('${os.quoted_path(v3_bin)} ${os.quoted_path(os.join_path(root, 'main.v'))} -b c -o ${os.quoted_path(bin)}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(os.quoted_path(bin))
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '57'
+}
+
+fn test_unrelated_system_include_keeps_c_extern_declaration() {
+	v3_bin := build_v3_review_transform()
+	header_name := 'v3_unrelated_system_include.h'
+	header_path := os.join_path(os.temp_dir(), header_name)
+	os.write_file(header_path, '#include <stdio.h>\n') or { panic(err) }
+	defer {
+		os.rm(header_path) or {}
+	}
+	c_source := gen_c_from_source(v3_bin, 'unrelated_system_include_c_extern', '#insert "${header_name}"
+
+fn C.X509_free(voidptr)
+
+fn main() {
+	C.X509_free(voidptr(0))
+}
+')
+	assert c_source.contains('void X509_free(void*'), c_source
+}
+
+fn test_imported_header_tree_uses_real_stdint_with_inttypes() {
+	v3_bin := build_v3_review_transform()
+	outer_name := 'v3_import_inttypes_outer.h'
+	inner_name := 'v3_import_inttypes_inner.h'
+	outer_path := os.join_path(os.temp_dir(), outer_name)
+	inner_path := os.join_path(os.temp_dir(), inner_name)
+	os.write_file(outer_path, '#import "${inner_name}"\n') or { panic(err) }
+	os.write_file(inner_path,
+		'#include <inttypes.h>\n#include <stdint.h>\ntypedef uint64_t ImportedWord;\n') or {
+		panic(err)
+	}
+	defer {
+		os.rm(outer_path) or {}
+		os.rm(inner_path) or {}
+	}
+	c_source := gen_c_from_source(v3_bin, 'imported_header_inttypes_scan', '#insert "${outer_name}"
+
+fn main() {}
+')
+	assert c_source.contains('#include <inttypes.h>'), c_source
+	assert c_source.contains('#include <stdint.h>'), c_source
+	assert !c_source.contains('#define __V_HEADERLESS_STDINT_H'), c_source
+}
+
+fn test_statement_array_append_consumes_rhs_expression() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'statement_array_append_rhs_expression',
+		'fn main() {\n\tmut value := u32(0x123)\n\tmut values := []u32{}\n\tvalues << value & 0xff\n\tprintln(int_str(int(values[0])))\n}\n')
+	assert out == '35'
+}
+
+fn test_optional_append_to_map_value_copies_back_absent_entry() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_append_to_map_value_copyback', 'fn next_value() ?int {
+	return 7
+}
+
+fn append_value(mut values map[string][]int) {
+	values["new"] << next_value() or { return }
+}
+
+fn main() {
+	mut values := map[string][]int{}
+	append_value(mut values)
+	println("new" in values)
+	println(int_str(values["new"][0]))
+}
+')
+	assert out == 'true\n7'
+}
+
+fn test_optional_map_append_evaluates_key_before_rhs() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_map_append_evaluation_order',
+		'fn select_key(key string, mut trace string) string {\n\ttrace += "key"\n\treturn key\n}\n\nfn next_value(mut key string, mut trace string) ?int {\n\ttrace += "rhs"\n\tkey = "changed"\n\treturn 7\n}\n\nfn main() {\n\tmut trace := ""\n\tmut key := "original"\n\tmut values := map[string][]int{}\n\tvalues[select_key(key, mut trace)] << next_value(mut key, mut trace) or { return }\n\tprintln(trace)\n\tprintln(int_str(values["original"][0]))\n\tprintln("changed" in values)\n}\n')
+	assert out == 'keyrhs\n7\nfalse'
+}
+
+fn test_optional_append_to_shared_array_is_autolocked() {
+	v3_bin := build_v3_review_transform()
+	source := 'fn next_value() ?int {
+	return 7
+}
+
+fn main() {
+	shared values := []int{}
+	values << next_value() or { return }
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'optional_append_to_shared_array_autolock_c', source)
+	body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	push_idx := body.index('array_push(') or { -1 }
+	assert push_idx >= 0, body
+	lock_idx := body[..push_idx].last_index('sync__RwMutex__lock(') or { -1 }
+	assert lock_idx >= 0, body
+	unlock_rel := body[push_idx..].index('sync__RwMutex__unlock(') or { -1 }
+	assert unlock_rel >= 0, body
+}
+
+fn test_failed_optional_append_probe_does_not_evaluate_rhs_twice() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_shift_rhs_evaluated_once', 'fn next_value(mut calls int) ?int {
+	calls++
+	return 1
+}
+
+fn main() {
+	mut calls := 0
+	flags := 2
+	flags << next_value(mut calls) or { return }
+	println(int_str(calls))
+}
+')
+	assert out == '1'
+}
+
+fn test_json2_skipped_pointer_field_does_not_specialize_decoder() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_skipped_pointer_field',
+		'import gg\nimport x.json2\n\nstruct Config {\n\tcontext &gg.Context @[skip]\n\tname string\n}\n\nfn main() {\n\tconfig := json2.decode[Config]("{\\"name\\":\\"ok\\"}") or { Config{} }\n\tprintln(config.name)\n}\n')
+	assert out == 'ok'
+}
+
+fn test_comptime_field_generic_calls_keep_resolved_field_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'comptime_field_resolved_types', {
+		'v.mod':         "Module { name: 'comptime_field_resolved_types' }\n"
+		'model/model.v': 'module model\n\npub enum KeyCode {\n\tenter\n}\n\npub type Callback = fn (int)\n\n@[typedef]\npub struct C.model_event {\npub:\n\tkey KeyCode\n\tcb Callback\n}\n\npub type Event = C.model_event\n'
+		'codec/codec.v': 'module codec\n\npub fn visit[T](mut value T) {\n\t$for field in T.fields {\n\t\ttouch(mut value.$(field.name))\n\t}\n}\n\nfn touch[T](mut value T) {\n\t_ = value\n}\n'
+		'main.v':        'module main\n\nimport codec\nimport model\n\nfn main() {\n\tmut event := model.Event{}\n\tcodec.visit(mut event)\n\tprintln(int_str(int(event.key)))\n}\n'
+	}, 'main.v')
+	assert out == '0'
+}
+
+fn test_imported_struct_default_qualifies_function_alias_cast() {
+	v3_bin := build_v3_review_transform()
+	c_source := gen_c_from_project(v3_bin, 'imported_struct_default_fn_alias', {
+		'v.mod':           "Module { name: 'imported_struct_default_fn_alias' }\n"
+		'widget/widget.v': 'module widget\n\npub type Callback = fn (int)\n\npub struct Config {\npub:\n\tcallback Callback = unsafe { Callback(0) }\n}\n'
+		'main.v':          'module main\n\nimport widget\n\nfn main() {\n\tconfig := widget.Config{}\n\tprintln(config.callback == unsafe { nil })\n}\n'
+	}, 'main.v')
+	assert !c_source.contains('(Callback)'), c_source
+}
+
+fn test_imported_struct_defaults_keep_declaring_module_constants() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_struct_default_constants', {
+		'v.mod':           "Module { name: 'imported_struct_default_constants' }\n"
+		'widget/widget.v': "module widget\n\npub const no_style = 'none'\npub const origin = [0.0, 0.0]\n\npub struct Config {\npub:\n\tstyle  string = no_style\n\torigin []f64  = origin\n}\n"
+		'main.v':          'module main\n\nimport widget\n\nfn main() {\n\tconfig := widget.Config{}\n\tprintln(config.style)\n\tprintln(config.origin.len)\n}\n'
+	}, 'main.v')
+	assert out == 'none\n2'
+}
+
+fn test_json2_c_alias_fields_keep_declaring_module_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_c_alias_field_types',
+		'import sokol.sapp\nimport x.json2\n\nfn main() {\n\tevent := json2.decode[sapp.Event]("{}") or { sapp.Event{} }\n\tprintln(int_str(int(event.frame_count)))\n}\n')
+	assert out == '0'
+}
+
+fn test_json2_reflected_map_alias_infers_value_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'json2_reflected_map_alias', {
+		'v.mod':         "Module { name: 'json2_reflected_map_alias' }\n"
+		'model/model.v': 'module model\n\npub type Values = map[string]int\n\npub struct Config {\npub mut:\n\tvalues Values\n}\n'
+		'main.v':        'module main\n\nimport model\nimport x.json2\n\nfn main() {\n\tconfig := json2.decode[model.Config](r\'{"values":{"answer":42}}\')!\n\tprintln(config.values["answer"])\n}\n'
+	}, 'main.v')
+	assert out == '42'
+}
+
+fn test_json2_reflected_main_type_does_not_use_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'json2_reflected_main_type_collision', {
+		'v.mod':             "Module { name: 'json2_reflected_main_type_collision' }\n"
+		'discord/discord.v': 'module discord\n\npub struct Discord {\npub:\n\tname string\n}\n'
+		'main.v':            'module main\n\nimport discord\nimport x.json2\n\nstruct Discord {\n\tvalue int\n}\n\nstruct Chat {\n\tdiscord_apis []Discord\n}\n\nfn main() {\n\t_ = json2.encode(discord.Discord{})\n\tchat := json2.decode[Chat](r\'{"discord_apis":[{"value":42}]}\')!\n\tencoded := json2.encode(chat)\n\tprintln(json2.decode[Chat](encoded)!.discord_apis[0].value)\n}\n'
+	}, 'main.v')
+	assert out == '42'
+}
+
+fn test_comptime_main_fielddata_uses_main_field_metadata() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_main_fielddata_metadata', 'struct FieldData {
+pub mut:
+	@[main_attr]
+	value int
+}
+
+fn main() {
+	$for field in FieldData.fields {
+		println(field.name)
+		println(field.is_pub)
+		println(field.is_mut)
+		println(field.attrs.join(","))
+	}
+}
+')
+	assert out == 'value\ntrue\ntrue\nmain_attr'
+}
+
+fn test_json2_encode_keeps_independent_array_element_specializations() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_independent_array_element_specializations',
+		'import x.json2\n\nstruct Event {\n\tvalue int\n}\n\nstruct Payload {\n\tflags [][]bool\n\tevents []Event\n}\n\nfn main() {\n\tpayload := Payload{\n\t\tflags: [[true]]\n\t\tevents: [Event{\n\t\t\tvalue: 42\n\t\t}]\n\t}\n\tencoded := json2.encode(payload)\n\tprintln(json2.decode[Payload](encoded)!.events[0].value)\n}\n')
+	assert out == '42'
+}
+
+fn test_json2_encode_array_keeps_main_type_with_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_array_main_type_imported_homonym',
+		'import gg\nimport x.json2\n\nstruct Event {\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.encode([gg.Event{}])\n\tencoded := json2.encode([Event{\n\t\tvalue: 42\n\t}])\n\tprintln(encoded)\n}\n')
+	assert out.contains('"value":42')
+}
+
+fn test_json2_decode_keeps_main_type_with_imported_homonym() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_decode_main_type_imported_homonym',
+		'import gg\nimport x.json2\n\nstruct Event {\n\tvalue int\n}\n\nfn main() {\n\t_ = json2.decode[gg.Event]("{}") or { gg.Event{} }\n\tevent := json2.decode[Event](r\'{"value":42}\')!\n\tprintln(event.value)\n}\n')
+	assert out == '42'
+}
+
+fn test_json2_encode_shared_struct_field_uses_locked_value_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_shared_struct_field_value',
+		'import x.json2\n\nstruct State {\n\tvalue int\n}\n\nstruct Client {\n\tstate shared State\n}\n\nfn main() {\n\tclient := Client{}\n\tprintln(json2.encode(client))\n}\n')
+	assert out == '{"state":{"value":0}}'
+}
+
+fn test_json2_decode_any_map_keeps_sum_value_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'json2_any_map_value',
+		'import x.json2\n\nfn main() {\n\tvalues := json2.decode[map[string]json2.Any](r\'{"ok":true}\')!\n\tprintln(values["ok"] or { json2.Any(false) })\n}\n')
+	assert out == 'true'
+}
+
+fn test_json2_callback_field_keeps_declaring_module_and_pointer_depth() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'json2_callback_field_module', {
+		'v.mod':         "Module { name: 'json2_callback_field_module' }\n"
+		'model/model.v': 'module model\n\npub struct Event {}\n\npub type Callback = fn (voidptr, &Event)\n\npub struct Config {\npub:\n\tcallback Callback\n}\n'
+		'main.v':        'module main\n\nimport model\nimport x.json2\n\nstruct Event {}\n\ntype Callback = fn (voidptr, &Event)\n\nstruct Config {\n\tcallback Callback\n}\n\nfn main() {\n\t_ := json2.decode[Config]("{}") or { Config{} }\n\tconfig := json2.decode[model.Config]("{}") or { model.Config{} }\n\tprintln(config.callback == unsafe { nil })\n}\n'
+	}, 'main.v')
+	assert out == 'true'
+}
+
+fn test_json2_explicit_generic_type_keeps_calling_module() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'json2_explicit_generic_calling_module', {
+		'v.mod':             "Module { name: 'json2_explicit_generic_calling_module' }\n"
+		'discord/discord.v': 'module discord\n\nimport x.json2\n\npub struct Packet {\npub:\n\tvalue int\n}\n\npub fn encode_packet(value int) string {\n\treturn json2.encode[Packet](Packet{\n\t\tvalue: value\n\t})\n}\n\npub fn decode_packet(src string) Packet {\n\treturn json2.decode[Packet](src)!\n}\n'
+		'main.v':            'module main\n\nimport discord\n\nfn main() {\n\tsrc := discord.encode_packet(42)\n\tprintln(discord.decode_packet(src).value)\n}\n'
+	}, 'main.v')
+	assert out == '42'
+}
+
+fn test_parallel_json2_specializations_emit_registered_bodies() {
+	v3_bin := build_v3_review_transform()
+	mut declarations := []string{cap: 40}
+	mut decodes := []string{cap: 40}
+	for i in 0 .. 40 {
+		declarations << 'struct Payload${i} {\n\tvalue int\n}'
+		decodes << '\tvalue${i} := json2.decode[Payload${i}](r\'{"value":${i}}\')!\n\t_ = json2.encode(value${i})'
+	}
+	src := 'import discord\nimport x.json2\n\n${declarations.join('\n\n')}\n\nstruct Discord {\n\tvalue int\n}\n\nstruct Chat {\n\tdiscord_apis []Discord\n}\n\nfn main() {\n${decodes.join('\n')}\n\t_ = json2.encode(["hello"])\n\t_ = json2.encode(discord.Discord{})\n\t_ = json2.decode[map[string]bool](r\'{"ok":true}\')!\n\tany_values := json2.decode[map[string]json2.Any](r\'{"ok":true}\')!\n\tassert (any_values["ok"] or { json2.Any(false) }).str() == "true"\n\tchat := Chat{\n\t\tdiscord_apis: [Discord{\n\t\t\tvalue: 42\n\t\t}]\n\t}\n\tencoded := json2.encode(chat)\n\tprintln(json2.decode[Chat](encoded)!.discord_apis[0].value)\n}\n'
+	out := run_good_project(v3_bin, 'parallel_json2_registered_bodies', {
+		'v.mod':             "Module { name: 'parallel_json2_registered_bodies' }\n"
+		'discord/discord.v': 'module discord\n\npub struct Discord {\npub:\n\tname string\n}\n'
+		'main.v':            src
+	}, 'main.v')
+	assert out == '42'
+}
+
+fn test_module_local_const_array_struct_types_do_not_use_previous_module() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'module_local_const_array_struct_types', 'import encoding.utf8
+import hash.crc32
+
+fn main() {
+	_ := crc32.sum([u8(1), 2, 3])
+	println(utf8.is_number(`7`))
+}
+')
+	assert out == 'true'
+}
+
+fn test_moved_module_alias_uses_target_module_identity() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'moved_module_alias_identity', {
+		'v.mod':                      "Module { name: 'moved_module_alias_identity' }\n"
+		'modules/legacy/alias.v':     "@[alias: '@VMODROOT/modules/canonical'] module legacy\n"
+		'modules/canonical/module.v': 'module canonical\n\npub fn answer() int {\n\treturn 42\n}\n'
+		'main.v':                     'module main\n\nimport legacy\n\nfn main() {\n\tprintln(int_str(legacy.answer()))\n}\n'
+	}, 'main.v')
+	assert out == '42'
 }

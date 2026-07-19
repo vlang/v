@@ -30,7 +30,7 @@ concurrency:
 jobs:
   gcc-windows:
     runs-on: windows-2025
-    timeout-minutes: 110
+    timeout-minutes: 150
     env:
       VFLAGS: -cc gcc
       VTEST_SHOW_LONGEST_BY_RUNTIME: 3
@@ -59,6 +59,8 @@ jobs:
           .\makev.bat -gcc
           .\v.exe symlink
           .\v.exe -stats vlib/crypto/ecdsa/ecdsa_test.v
+      - name: Legacy gg import multiwindow isolation
+        run: v -cc gcc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Test v binaries
         run: v build-vbinaries
       - name: All code is formatted
@@ -99,9 +101,170 @@ jobs:
         run: v -o hi.js examples/js_hello_world.v && node hi.js
       - name: Build examples
         run: v build-examples
+      - name: Compile and run the veb example (fasthttp) and check its HTML
+        run: v run .github/workflows/veb_example_windows_smoke.v
       - name: v2 self compilation
         run: v -o v2.exe cmd/v && .\v2.exe -o v3.exe cmd/v
       - name: compile vdoctor.v with -prod
         run: v -showcc -prod cmd/tools/vdoctor.v
       - name: compile vup.v with -prod
         run: v -showcc -prod cmd/tools/vup.v
+      - name: Setup MinGW-w64 D3D11 headers for GCC
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          path-type: minimal
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc
+      - name: Verify MinGW-w64 D3D11 headers and import libraries
+        shell: msys2 {0}
+        run: |
+          set -euo pipefail
+          which gcc
+          gcc --version
+          d3d11_header=""
+          dxgi_header=""
+          for include_dir in /ucrt64/include /ucrt64/x86_64-w64-mingw32/include; do
+            if [ -f "$include_dir/d3d11.h" ] && [ -z "$d3d11_header" ]; then
+              d3d11_header="$include_dir/d3d11.h"
+            fi
+            if [ -f "$include_dir/dxgi.h" ] && [ -z "$dxgi_header" ]; then
+              dxgi_header="$include_dir/dxgi.h"
+            fi
+          done
+          if [ -z "$d3d11_header" ]; then
+            echo "d3d11.h not found in /ucrt64/include or /ucrt64/x86_64-w64-mingw32/include" >&2
+            exit 1
+          fi
+          if [ -z "$dxgi_header" ]; then
+            echo "dxgi.h not found in /ucrt64/include or /ucrt64/x86_64-w64-mingw32/include" >&2
+            exit 1
+          fi
+          test -f /ucrt64/lib/libd3d11.a
+          test -f /ucrt64/lib/libdxgi.a
+          echo "Found $d3d11_header"
+          echo "Found $dxgi_header"
+          echo "Found /ucrt64/lib/libd3d11.a"
+          echo "Found /ucrt64/lib/libdxgi.a"
+          printf '#include <d3d11.h>\n#include <dxgi.h>\nint main(void) { return 0; }\n' > /tmp/d3d11_probe.c
+          gcc /tmp/d3d11_probe.c -ld3d11 -ldxgi -o /tmp/d3d11_probe.exe
+      - name: Multiwindow D3D11 WARP regressions and runtime probes with GCC
+        shell: msys2 {0}
+        env:
+          VFLAGS: -cc gcc -d gg_multiwindow_d3d11_warp
+          VGG_MULTIWINDOW_RUNTIME_PROBES: '1'
+          VGG_MULTIWINDOW_RUNTIME_BACKEND: win32
+          VGG_MULTIWINDOW_EXAMPLE_UNATTENDED: win32
+          V_MULTIWINDOW_PROBE_BACKEND: win32
+        run: |
+          set -euo pipefail
+
+          runner_source=multiwindow_ci_watchdog_tmp.v
+          runner=multiwindow_ci_watchdog_tmp.exe
+          trap 'rm -f "$runner_source" "$runner" gg_multiwindow_gcc.exe gg_multiwindow_render_runtime_gcc.exe' EXIT
+          cat > "$runner_source" <<'EOF'
+          module main
+
+          import gg.testdata.multiwindow_probe_watchdog
+          import os
+          import time
+
+          fn main() {
+              run_ci_watchdog() or {
+                  eprintln(err.msg())
+                  exit(1)
+              }
+          }
+
+          fn run_ci_watchdog() ! {
+              if os.args.len < 4 {
+                  return error('usage: multiwindow_ci_watchdog timeout-seconds expected-final-line executable [args...]')
+              }
+              timeout_seconds := os.args[1].int()
+              if timeout_seconds <= 0 {
+                  return error('multiwindow CI watchdog timeout must be positive')
+              }
+              expected_final_line := os.args[2]
+              gate_path := os.join_path(os.temp_dir(), 'multiwindow_ci_gate_${os.getpid()}_${time.now().unix_nano()}')
+              defer {
+                  os.rm(gate_path) or {}
+              }
+              result := multiwindow_probe_watchdog.run(
+                  executable: os.args[3]
+                  args:       os.args[4..]
+                  timeout:    timeout_seconds * time.second
+                  start_file: gate_path
+              )!
+              if result.stdout != '' {
+                  print(result.stdout)
+              }
+              if result.stderr != '' {
+                  eprint(result.stderr)
+              }
+              if result.timed_out {
+                  return error('multiwindow CI child timed out after ${timeout_seconds} seconds')
+              }
+              if !result.reaped {
+                  return error('multiwindow CI child leader was not reaped')
+              }
+              if !result.confinement_empty {
+                  return error('multiwindow CI child process confinement is not empty')
+              }
+              if result.forced_cleanup {
+                  return error('multiwindow CI child required forced cleanup')
+              }
+              if result.exit_code != 0 {
+                  return error('multiwindow CI child exited with ${result.exit_code}')
+              }
+              if expected_final_line == '-' {
+                  return
+              }
+              mut actual_final_line := ''
+              for line in result.stdout.split_into_lines() {
+                  if line.trim_space() != '' {
+                      actual_final_line = line.trim_space()
+                  }
+              }
+              if actual_final_line != expected_final_line {
+                  return error('multiwindow CI final record mismatch: expected `${expected_final_line}`, got `${actual_final_line}`')
+              }
+          }
+          EOF
+
+          ./v.exe -cc gcc -o "$runner" "$runner_source"
+          ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp \
+            -o gg_multiwindow_gcc.exe examples/gg/multiwindow.v
+          ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp \
+            -o gg_multiwindow_render_runtime_gcc.exe examples/gg/multiwindow_render_runtime.v
+
+          tests=(
+            vlib/x/multiwindow/event_sequence_exhaustion_test.v
+            vlib/x/multiwindow/event_terminal_delivery_test.v
+            vlib/x/multiwindow/internal_fault_matrix_test.v
+            vlib/x/multiwindow/multiwindow_test.v
+            vlib/x/multiwindow/native_operation_proof_test.v
+            vlib/x/multiwindow/render_scheduler_test.v
+            vlib/x/multiwindow/render_target_lease_test.v
+            vlib/x/multiwindow/teardown_contract_test.v
+            vlib/x/multiwindow/win32_render_metrics_test.v
+            vlib/gg/multiwindow_api_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_buffer_cleanup_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_fault_matrix_d_gg_multiwindow_test.v
+            vlib/gg/multiwindow_render_runtime_contract_test.v
+            vlib/gg/frame_pacing_test.v
+            vlib/gg/draw_fns_api_test.v
+            vlib/gg/draw_rect_empty_test.v
+          )
+          for test in "${tests[@]}"; do
+            ./"$runner" 300 - ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 \
+              -d gg_multiwindow_d3d11_warp test "$test"
+          done
+
+          ./"$runner" 120 \
+            '{"example":"multiwindow_render_runtime","status":"PASS","cleanup":"complete"}' \
+            ./gg_multiwindow_render_runtime_gcc.exe
+
+          ./"$runner" 120 \
+            '{"example":"multiwindow","status":"PASS","cleanup":"complete"}' \
+            ./gg_multiwindow_gcc.exe

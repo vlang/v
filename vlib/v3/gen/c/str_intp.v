@@ -57,6 +57,10 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 				g.write('${g.cname('${typ.name()}.str')}(')
 				g.gen_string_interp_child_expr(expr_id)
 				g.write(')')
+			} else if typ is types.Enum {
+				g.write('${g.cname(typ.name)}__autostr(')
+				g.gen_string_interp_child_expr(expr_id)
+				g.write(')')
 			} else if typ is types.Interface {
 				str_key := '${typ.name}.str'
 				if str_key in g.tc.fn_ret_types {
@@ -174,6 +178,89 @@ fn (mut g FlatGen) gen_formatted_string_interp_child_expr(child_id flat.NodeId, 
 	f := parse_string_interp_format(format)
 	type_name := string_interp_type_name(typ)
 	left := if f.left { 1 } else { 0 }
+	// An unsigned-backed enum must format as unsigned so values >= 1<<63 are not
+	// rendered as negative; consult the enum backing type like the transformer does.
+	enum_unsigned := if typ is types.Enum {
+		enum_storage_c_type_is_unsigned(g.enum_storage_c_type(typ))
+	} else {
+		false
+	}
+	if (is_string_interp_signed_int_type(type_name) || is_string_interp_unsigned_int_type(type_name)
+		|| typ is types.Enum) && f.verb in [`b`, `o`, `x`, `X`] {
+		base := match f.verb {
+			`b` { 2 }
+			`o` { 8 }
+			else { 16 }
+		}
+
+		zero_pad := f.zero && f.width > 0
+		space_pad := !zero_pad && f.width > 0
+		if zero_pad {
+			g.write('v3_string_zpad(')
+		} else if space_pad {
+			g.write('v3_string_pad(')
+		}
+		if f.verb == `X` {
+			g.write('v3_string_upper_ascii(')
+		}
+		if is_string_interp_unsigned_int_type(type_name) || enum_unsigned {
+			g.write('strconv__format_uint((u64)(')
+		} else {
+			g.write('strconv__format_int((i64)(')
+		}
+		g.gen_string_interp_child_expr(child_id)
+		g.write('), ${base})')
+		if f.verb == `X` {
+			g.write(')')
+		}
+		if zero_pad {
+			g.write(', ${f.width})')
+		} else if space_pad {
+			g.write(', ${f.width}, ${left})')
+		}
+		return true
+	}
+	if typ is types.Enum && f.verb == 0 {
+		if f.zero && f.width > 0 {
+			g.write('v3_string_zpad(')
+		} else if f.width > 0 {
+			g.write('v3_string_pad(')
+		}
+		g.write('${g.cname(typ.name)}__autostr(')
+		g.gen_string_interp_child_expr(child_id)
+		g.write(')')
+		if f.zero && f.width > 0 {
+			g.write(', ${f.width})')
+		} else if f.width > 0 {
+			g.write(', ${f.width}, ${left})')
+		}
+		return true
+	}
+	if typ is types.Enum && f.verb == `d` {
+		zpad_fn := if enum_unsigned { 'v3_u64_zpad' } else { 'v3_i64_zpad' }
+		cast := if enum_unsigned { 'u64' } else { 'i64' }
+		str_fn := if enum_unsigned { 'u64__str' } else { 'i64__str' }
+		if f.zero && f.width > 0 {
+			g.write('${zpad_fn}((${cast})(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write('), ${f.width})')
+			return true
+		}
+		if f.width > 0 {
+			g.write('v3_string_pad(${str_fn}((${cast})(')
+			g.gen_string_interp_child_expr(child_id)
+			g.write(')), ${f.width}, ${left})')
+			return true
+		}
+		if enum_unsigned {
+			g.write('strconv__format_uint((u64)(')
+		} else {
+			g.write('strconv__format_int((i64)(')
+		}
+		g.gen_string_interp_child_expr(child_id)
+		g.write('), 10)')
+		return true
+	}
 	if is_string_interp_float_type(type_name) && (f.verb == `f` || f.verb == 0) && f.has_precision {
 		precision := if f.verb == `f` {
 			f.precision
@@ -261,7 +348,8 @@ fn (mut g FlatGen) string_literals_from(start int) {
 	for i := start; i < g.str_lits.len; i++ {
 		s := g.str_lits[i]
 		escaped := c_escape(s)
-		g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
+		storage := if g.cache_split { 'static ' } else { '' }
+		g.writeln('${storage}string _str_${i} = {"${escaped}", ${s.len}, 1};')
 	}
 	if g.str_lits.len > start {
 		g.writeln('')
@@ -272,6 +360,11 @@ fn (mut g FlatGen) string_literals_from(start int) {
 fn (mut g FlatGen) intern_string(s string) int {
 	if s in g.str_lit_ids {
 		return g.str_lit_ids[s]
+	}
+	if g.str_lits_shared {
+		g.str_lits = g.str_lits.clone()
+		g.str_lit_ids = g.str_lit_ids.clone()
+		g.str_lits_shared = false
 	}
 	id := g.str_lits.len
 	g.str_lits << s

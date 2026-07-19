@@ -7,41 +7,12 @@ import runtime
 import net
 import time
 
-#include <errno.h>
-
-$if !windows {
-	#include <fcntl.h>
-	#include <sys/socket.h>
-	#include <netinet/in.h>
-	#include <netinet/tcp.h>
-}
-
 const max_thread_pool_size = runtime.nr_cpus()
 const max_connection_size = 65536 // Max events per epoll_wait
 
 const tiny_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_444_response = 'HTTP/1.1 444 No Response\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const status_413_response = 'HTTP/1.1 413 Payload Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
-
-fn C.socket(domain i32, typ i32, protocol i32) i32
-
-fn C.bind(sockfd i32, addr &net.Addr, addrlen u32) i32
-
-fn C.send(__fd i32, __buf voidptr, __n usize, __flags i32) i32
-
-fn C.recv(__fd i32, __buf voidptr, __n usize, __flags i32) i32
-
-fn C.setsockopt(__fd i32, __level i32, __optname i32, __optval voidptr, __optlen u32) i32
-
-fn C.listen(__fd i32, __n i32) i32
-
-fn C.perror(s &u8)
-
-fn C.close(fd i32) i32
-
-fn C.htons(__hostshort u16) u16
-
-fn C.fcntl(fd i32, cmd i32, arg i32) i32
 
 pub struct Slice {
 pub:
@@ -53,14 +24,21 @@ pub:
 // TODO make fields immutable
 pub struct HttpRequest {
 pub mut:
-	buffer         []u8 // A V slice of the read buffer for convenience
-	method         Slice
-	path           Slice
-	version        Slice
-	header_fields  Slice
-	body           Slice
-	client_conn_fd int
-	user_data      voidptr // User-defined context data
+	buffer             []u8 // A V slice of the read buffer for convenience
+	method             Slice
+	path               Slice
+	version            Slice
+	header_fields      Slice
+	body               Slice
+	client_conn_fd     int
+	client_conn_handle usize
+	user_data          voidptr // User-defined context data (shared, set from ServerConfig.user_data)
+	// worker_state is the value ServerConfig.make_state returned on THIS worker
+	// thread (nil when no make_state is configured). It is thread-local by
+	// construction — one instance per worker thread — so a handler can keep
+	// per-worker resources (a DB connection, a reused render scratch buffer)
+	// without any locking: `unsafe { &MyState(req.worker_state) }`.
+	worker_state voidptr
 }
 
 pub enum ResponseTakeoverMode {
@@ -68,6 +46,48 @@ pub enum ResponseTakeoverMode {
 	manual
 	reusable
 }
+
+// Step is what an append-style handler (see ServerConfig.append_handler) returns
+// to the reactor, mirroring vanilla's handler contract:
+//   .done    — the response is complete in `out`; the reactor sends it and keeps
+//              the connection alive (unless ResponseControl.should_close is set).
+//   .close   — the reactor sends whatever is in `out`, then closes the connection.
+//   .suspend — reserved for async handlers that park on an external fd. There is
+//              no watch reactor yet, so a .suspend currently drops the connection
+//              (like vanilla's reactorless backends); it is defined now so the
+//              contract is stable when async support lands.
+pub enum Step {
+	done
+	close
+	suspend
+}
+
+// ResponseControl is the out-of-band channel for an append-style handler: the
+// handler appends the raw HTTP response bytes (status line + headers + body)
+// directly into the reused `out` buffer and sets these fields to influence how
+// the reactor treats the connection.
+pub struct ResponseControl {
+pub mut:
+	// takeover_mode lets the handler take over the socket instead of having the
+	// reactor send `out`: .manual hands the fd off entirely (SSE/WebSocket), and
+	// .reusable means the handler wrote the response itself but wants the reactor
+	// to keep serving the (kept-alive) connection.
+	takeover_mode ResponseTakeoverMode
+	// should_close asks the reactor to close the connection after this response.
+	should_close bool
+	// file_path, when set, is streamed (sendfile) after the bytes appended to
+	// `out` — the zero-copy static-file path.
+	file_path string
+}
+
+// AppendHandler is the zero-copy request handler contract: it appends the raw
+// HTTP response into the connection's reused write buffer `out` (rather than
+// allocating and returning a response), reads per-worker state via `worker_state`
+// (see ServerConfig.make_state), signals connection handling through `ctl`, and
+// returns a Step. Appending into `out` — which the reactor reuses across requests
+// and flushes for every pipelined request in one send — removes the per-request
+// response allocation that the return-a-response `handler` contract requires.
+pub type AppendHandler = fn (req HttpRequest, mut out []u8, worker_state voidptr, mut ctl ResponseControl) Step
 
 pub struct HttpResponse {
 pub mut:
@@ -150,8 +170,19 @@ pub:
 	port                    int            = 3000
 	max_request_buffer_size int            = 8192
 	timeout_in_seconds      int            = 30
-	handler                 fn (HttpRequest) !HttpResponse @[required]
-	user_data               voidptr
+	// handler is the classic contract: it builds and returns a full HttpResponse.
+	// Set exactly ONE of `handler` or `append_handler`.
+	handler   fn (HttpRequest) !HttpResponse = unsafe { nil }
+	user_data voidptr
+	// make_state, when set, is called ONCE per worker thread at startup; the value
+	// it returns reaches every request on that worker as HttpRequest.worker_state.
+	// It is the lock-free per-worker state hook: each worker gets its own instance
+	// (a DB connection, a reused scratch buffer) with no shared pool and no mutex.
+	make_state fn () voidptr = unsafe { nil }
+	// append_handler is the zero-copy contract (see AppendHandler): it appends the
+	// raw response into the connection's reused write buffer instead of returning
+	// one. When set, it is used instead of `handler`. Set exactly one of the two.
+	append_handler AppendHandler = unsafe { nil }
 }
 
 // ShutdownParams configures how long graceful shutdown should wait for in-flight requests.
@@ -187,11 +218,11 @@ pub fn (h ServerHandle) wait_till_running(params WaitTillRunningParams) !int {
 	if h.ptr == unsafe { nil } {
 		return error('server handle is not initialized')
 	}
-	$if linux || bsd {
+	$if linux || bsd || windows {
 		mut server := unsafe { &Server(h.ptr) }
 		return server.wait_till_running_impl(params)!
 	} $else {
-		return error('fasthttp server lifecycle control is only supported on linux and BSD-family OSes')
+		return error('fasthttp server lifecycle control is only supported on linux, Windows, and BSD-family OSes')
 	}
 }
 
@@ -200,15 +231,15 @@ pub fn (h ServerHandle) shutdown(params ShutdownParams) ! {
 	if h.ptr == unsafe { nil } {
 		return error('server handle is not initialized')
 	}
-	$if linux || bsd {
+	$if linux || bsd || windows {
 		mut server := unsafe { &Server(h.ptr) }
 		server.shutdown_impl(params)!
 	} $else {
-		return error('fasthttp server lifecycle control is only supported on linux and BSD-family OSes')
+		return error('fasthttp server lifecycle control is only supported on linux, Windows, and BSD-family OSes')
 	}
 }
 
-$if linux || bsd {
+$if linux || bsd || windows {
 	fn normalized_retry_period_ms(retry_period_ms int) int {
 		return if retry_period_ms > 0 { retry_period_ms } else { 1 }
 	}

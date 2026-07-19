@@ -1380,9 +1380,12 @@ memory location when the size increases thus becoming independent from the
 parent array (*copy on grow*). In particular pushing elements to a slice
 does not alter the parent:
 
-When a slice expression like `a[2..4]` is assigned to another array outside
-`unsafe`, V inserts an implicit `.clone()` and shows a notice. The
-shared-memory examples below therefore use `unsafe {}` intentionally.
+When a slice expression like `a[2..4]` is assigned outside `unsafe` and either
+the parent array or the resulting slice is mutable, V inserts an implicit
+`.clone()` and shows a notice. This prevents changes through one array from
+affecting the other. If both arrays are immutable, the slice safely reuses the
+parent array's memory without cloning. The shared-memory examples below
+therefore use `unsafe {}` intentionally.
 
 ```v
 mut a := [0, 1, 2, 3, 4, 5]
@@ -1433,9 +1436,11 @@ println(a) // [0, 1, 2, 3, 4, 5]
 println(b) // [7, 3]
 ```
 
-Note that, by default, V makes an implicit clone of the slice and displays a notice about this.
-So without the `.clone()` call the result of the code above will be the same.
-Make the slice in an `unsafe {}` block if you want to reuse memory,
+If either the parent array or the slice is mutable, V makes an implicit clone
+of the slice and displays a notice. Therefore, without the `.clone()` call,
+the result of the code above will be the same. When both arrays are immutable,
+the slice reuses the parent array's memory because neither array can be changed.
+Make the slice in an `unsafe {}` block if you want to share mutable memory;
 otherwise use explicit cloning.
 
 ##### Slices with negative indexes
@@ -3507,19 +3512,15 @@ fn calc() {
 The `pub` keyword is only allowed before the `const` keyword and cannot be used inside
 a `const ( )` block.
 
-Outside from module main all constants need to be prefixed with the module name.
+Constants can be referenced without a module prefix from within the module where they are
+defined. To access a public constant from another module, prefix it with the module name.
 
 ### Required module prefix
 
-When naming constants, `snake_case` must be used. In order to distinguish consts
-from local variables, the full path to consts must be specified. For example,
-to access the PI const, full `math.pi` name must be used both outside the `math`
-module, and inside it. That restriction is relaxed only for the `main` module
-(the one containing your `fn main()`), where you can use the unqualified name of
-constants defined there, i.e. `numbers`, rather than `main.numbers`.
-
-vfmt takes care of this rule, so you can type `println(pi)` inside the `math` module,
-and vfmt will automatically update it to `println(math.pi)`.
+When naming constants, `snake_case` must be used. Outside the module where a constant is
+defined, its full path must be specified. For example, use `math.pi` to access the public
+`pi` constant from another module. Inside the `math` module, the unqualified name `pi` can
+be used.
 
 <!--
 Many people prefer all caps consts: `TOP_CITIES`. This wouldn't work
@@ -3712,6 +3713,21 @@ myapp/
 
 `main.v` can use `import myapp.common`, and `structs.v` should still
 declare `module common`.
+
+### Module aliases
+
+When a module moves, an `alias.v` file can keep its old import path working without copying its
+implementation. The alias module contains only a module declaration with an `alias` attribute:
+
+```v ignore
+@[alias: '@VMODROOT/modules/new_name']
+module old_name
+```
+
+The attribute value is the path to the canonical module. Relative paths are resolved from the
+alias directory. `@VMODROOT` is resolved from the `v.mod` that contains `alias.v`. An alias also
+applies to submodules: if `old_name` aliases `new_name`, importing `old_name.sub` resolves to
+`new_name.sub`. The old and new import paths refer to the same module and use the same types.
 
 ### Special considerations for project folders
 
@@ -5273,15 +5289,13 @@ fn main() {
 
 ## JSON
 
-Because of the ubiquitous nature of JSON, support for it is built directly into V.
-
-V generates code for JSON encoding and decoding.
-No runtime reflection is used. This results in much better performance.
+Because of the ubiquitous nature of JSON, V provides the pure V `json2` module for encoding and
+decoding. It uses compile-time reflection instead of runtime reflection.
 
 ### Decoding JSON
 
 ```v
-import json
+import json2
 
 struct Foo {
 	x int
@@ -5297,14 +5311,14 @@ struct User {
 	age  int
 	// Use the `@[skip]` attribute to skip certain fields.
 	// You can also use `@[json: '-']`, and `@[sql: '-']`, which will cause only
-	// the `json` module to skip the field, or only the SQL orm to skip it.
+	// the JSON encoder to skip the field, or only the SQL ORM to skip it.
 	foo Foo @[skip]
 	// If the field name is different in JSON, it can be specified
 	last_name string @[json: lastName]
 }
 
 data := '{ "name": "Frodo", "lastName": "Baggins", "age": 25, "nullable": null }'
-user := json.decode(User, data) or {
+user := json2.decode[User](data) or {
 	eprintln('Failed to decode json, error: ${err}')
 	return
 }
@@ -5313,19 +5327,18 @@ println(user.last_name)
 println(user.age)
 // You can also decode JSON arrays:
 sfoos := '[{"x":123},{"x":456}]'
-foos := json.decode([]Foo, sfoos)!
+foos := json2.decode[[]Foo](sfoos)!
 println(foos[0].x)
 println(foos[1].x)
 ```
 
-The `json.decode` function takes two arguments:
-the first is the type into which the JSON value should be decoded and
-the second is a string containing the JSON data.
+The `json2.decode` function takes the target type as a generic type argument and the JSON data as
+a string argument.
 
 ### Encoding JSON
 
 ```v
-import json
+import json2
 
 struct User {
 	name  string
@@ -5341,12 +5354,12 @@ user := &User{
 data['x'] = 42
 data['y'] = 360
 
-println(json.encode(data)) // {"x":42,"y":360}
-println(json.encode(user)) // {"name":"Pierre","score":1024}
+println(json2.encode(data, escape_unicode: true)) // {"x":42,"y":360}
+println(json2.encode(user, escape_unicode: true)) // {"name":"Pierre","score":1024}
 ```
 
-The json module also supports anonymous struct fields, which helps with complex JSON apis with lots
-of levels.
+The `json2` module also supports anonymous struct fields, which helps with complex JSON APIs with
+many levels.
 
 ## Testing
 

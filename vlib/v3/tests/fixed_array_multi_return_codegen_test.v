@@ -165,6 +165,6 @@ fn main() {
 	assert run.output.trim_space() == '42'
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := compact_c_whitespace(generated)
-	assert compact.contains('{*&s,1}'), generated
+	assert compact.contains('{*&s,1}') || compact.contains('{*(&s),1}'), generated
 	assert !compact.contains('{&s,1}'), generated
 }

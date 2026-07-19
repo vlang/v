@@ -1,6 +1,6 @@
 import os
 import json
-import x.json2
+import json2
 import time
 import benchmark
 

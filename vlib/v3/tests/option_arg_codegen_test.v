@@ -57,6 +57,43 @@ fn test_error_call_argument_expected_ierror_not_result_wrapper() {
 	assert !c_code.contains('wrap((Optional_string)'), c_code
 }
 
+fn test_selector_named_error_expected_ierror_calls_method() {
+	v3_bin := build_v3()
+	source := "struct Stmt {}
+
+fn (stmt Stmt) error(code int) IError {
+	return error('stmt:' + int_str(code))
+}
+
+fn wrap(err IError) string {
+	return err.msg()
+}
+
+fn direct(stmt Stmt) IError {
+	return stmt.error(3)
+}
+
+fn result(stmt Stmt) !int {
+	return stmt.error(7)
+}
+
+fn main() {
+	stmt := Stmt{}
+	assert wrap(stmt.error(4)) == 'stmt:4'
+	err := direct(stmt)
+	assert err.msg() == 'stmt:3'
+	result(stmt) or {
+		assert err.msg() == 'stmt:7'
+		println('ok')
+		return
+	}
+	assert false
+}
+"
+	out := run_good(v3_bin, 'selector_named_error_expected_ierror', source)
+	assert out == 'ok'
+}
+
 fn test_ierror_parameter_method_call_inside_static_method_uses_interface_method() {
 	v3_bin := build_v3()
 	source := "struct CommandError {\n\tmessage string\n}\n\nfn CommandError.io(ioerr IError) CommandError {\n\treturn CommandError{\n\t\tmessage: ioerr.msg()\n\t}\n}\n\nfn (err CommandError) msg() string {\n\treturn err.message\n}\n\nfn (err CommandError) code() int {\n\treturn 0\n}\n\nfn main() {\n\terr := CommandError.io(error('ok'))\n\tassert err.msg() == 'ok'\n\tprintln('ok')\n}\n"

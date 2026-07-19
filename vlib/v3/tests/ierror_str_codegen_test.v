@@ -45,7 +45,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_str_codegen_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.execute('${v3_bin} -nocache ${src} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 

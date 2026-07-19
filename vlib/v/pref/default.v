@@ -238,14 +238,6 @@ pub fn (mut p Preferences) fill_with_defaults() {
 	}
 	npath := rpath.replace('\\', '/')
 	p.building_v = !p.is_repl && is_v_compiler_target(npath)
-	if !p.is_repl && !p.gc_set_by_flag && is_v2_compiler_target(npath) {
-		// v2 defaults to `-gc none`: the v2 compiler manages its own
-		// arenas/move semantics and the boehm collector slows it down
-		// and inflates peak memory (multi-GB for non-trivial builds).
-		// An explicit `-gc <mode>` from the user wins.
-		p.gc_mode = .no_gc
-		p.clear_gc_options()
-	}
 	if p.os == .linux {
 		$if !linux {
 			p.parse_define('cross_compile')
@@ -351,17 +343,8 @@ pub fn (mut p Preferences) fill_with_defaults() {
 
 fn is_v_compiler_target(npath string) bool {
 	target := npath.trim_right('/')
-	return target.ends_with('cmd/v') || target.ends_with('cmd/v/v.v') || target.ends_with('cmd/v2')
-		|| target.ends_with('cmd/v2/v2.v') || target.ends_with('cmd/tools/vfmt.v')
-}
-
-// is_v2_compiler_target reports whether the given resolved input path is
-// building the v2 compiler itself (the `cmd/v2` directory or its `v2.v`
-// entry point). Used to force `-gc none` for v2 since the v2 compiler
-// manages its own arenas and breaks under boehm.
-fn is_v2_compiler_target(npath string) bool {
-	target := npath.trim_right('/')
-	return target.ends_with('cmd/v2') || target.ends_with('cmd/v2/v2.v')
+	return target.ends_with('cmd/v') || target.ends_with('cmd/v/v.v')
+		|| target.ends_with('cmd/tools/vfmt.v')
 }
 
 // normalize_gc_defaults_for_resolved_ccompiler applies compiler-dependent
@@ -457,7 +440,7 @@ fn (mut p Preferences) find_cc_if_cross_compiling() {
 
 fn (mut p Preferences) try_to_use_tcc_by_default() {
 	preferred_tcc := default_tcc_compiler()
-	if p.ccompiler == 'tcc' {
+	if p.ccompiler in ['tcc', 'tinyc'] {
 		p.ccompiler = if preferred_tcc != '' { preferred_tcc } else { 'tcc' }
 		return
 	}

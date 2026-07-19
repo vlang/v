@@ -1,0 +1,53 @@
+#ifndef V_TCC_STDATOMIC_COMPAT_CLEANED
+#define V_TCC_STDATOMIC_COMPAT_CLEANED
+
+#undef _Atomic
+#undef atomic_thread_fence
+#undef __atomic_thread_fence
+#undef atomic_load
+#undef atomic_store
+#undef atomic_compare_exchange_weak
+#undef atomic_compare_exchange_strong
+#undef atomic_exchange
+#undef atomic_fetch_add
+#undef atomic_fetch_sub
+#undef atomic_fetch_and
+#undef atomic_fetch_or
+#undef atomic_fetch_xor
+#undef atomic_load_explicit
+#undef atomic_store_explicit
+#undef atomic_compare_exchange_weak_explicit
+#undef atomic_compare_exchange_strong_explicit
+#undef atomic_exchange_explicit
+#undef atomic_fetch_add_explicit
+#undef atomic_fetch_sub_explicit
+#undef memory_order_relaxed
+#undef memory_order_consume
+#undef memory_order_acquire
+#undef memory_order_release
+#undef memory_order_acq_rel
+#undef memory_order_seq_cst
+
+#undef atomic_load_ptr
+#undef atomic_store_ptr
+#undef atomic_compare_exchange_weak_ptr
+#undef atomic_compare_exchange_strong_ptr
+#undef atomic_exchange_ptr
+#undef atomic_fetch_add_ptr
+#undef atomic_fetch_sub_ptr
+#undef atomic_fetch_and_ptr
+#undef atomic_fetch_or_ptr
+#undef atomic_fetch_xor_ptr
+
+#define atomic_load_ptr v_tcc_compat_atomic_load
+#define atomic_store_ptr v_tcc_compat_atomic_store
+#define atomic_compare_exchange_weak_ptr v_tcc_compat_atomic_compare_exchange_weak
+#define atomic_compare_exchange_strong_ptr v_tcc_compat_atomic_compare_exchange_strong
+#define atomic_exchange_ptr v_tcc_compat_atomic_exchange
+#define atomic_fetch_add_ptr v_tcc_compat_atomic_fetch_add
+#define atomic_fetch_sub_ptr v_tcc_compat_atomic_fetch_sub
+#define atomic_fetch_and_ptr v_tcc_compat_atomic_fetch_and
+#define atomic_fetch_or_ptr v_tcc_compat_atomic_fetch_or
+#define atomic_fetch_xor_ptr v_tcc_compat_atomic_fetch_xor
+
+#endif

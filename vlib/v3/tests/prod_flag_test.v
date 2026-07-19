@@ -9,9 +9,6 @@ const hello_src = os.join_path(tests_dir, 'hello.v')
 fn has_non_runtime_include(c_code string) bool {
 	for line in c_code.split_into_lines() {
 		trimmed := line.trim_space()
-		if trimmed == '#include <mach/mach_time.h>' {
-			continue
-		}
 		if trimmed.starts_with('#include') {
 			return true
 		}

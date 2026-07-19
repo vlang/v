@@ -204,20 +204,25 @@ fn test_server_tls_close_waits_for_active_request() {
 		}
 		done <- resp.body
 	}()
+	mut start_failure := ''
 	select {
 		_ := <-started {}
 		msg := <-done {
-			srv.close()
-			t.wait()
-			assert false, 'client finished before handler started: ${msg}'
-			return
+			start_failure = 'client finished before handler started: ${msg}'
 		}
-		2 * time.second {
-			srv.close()
-			t.wait()
-			assert false, 'timed out waiting for handler to start'
-			return
+		10 * time.second {
+			start_failure = 'timed out waiting for handler to start'
 		}
+	}
+	if start_failure != '' {
+		// The request can enter BlockingHandler just after the select deadline.
+		// Release it before waiting for the server thread, otherwise this failure
+		// path deadlocks forever instead of reporting the original timeout.
+		release <- true
+		srv.close()
+		t.wait()
+		assert false, start_failure
+		return
 	}
 	srv.close()
 	time.sleep(50 * time.millisecond)

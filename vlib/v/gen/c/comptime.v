@@ -416,7 +416,9 @@ fn (mut g Gen) comptime_call(mut node ast.ComptimeCall) {
 						g.veb_filter_fn_name = 'veb__filter'
 					}
 					// insert stmts from veb_tmpl fn
+					g.clear_type_resolution_caches()
 					g.stmts(stmt.stmts.filter(it !is ast.Return))
+					g.clear_type_resolution_caches()
 					//
 					if is_html {
 						g.inside_veb_tmpl = prev_inside_veb_tmpl

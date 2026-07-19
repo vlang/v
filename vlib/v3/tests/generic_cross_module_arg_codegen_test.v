@@ -50,6 +50,15 @@ fn test_imported_generic_arg_uses_qualified_local_type_in_specialized_signature(
 	assert out == '7'
 }
 
+fn test_imported_generic_application_arg_keeps_caller_base_module() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_cross_module_application_arg', {
+		'wrap/wrap.v': 'module wrap\n\npub struct Wrapper[T] {\npub:\n\tvalues []T\n}\n\npub fn make[T]() Wrapper[T] {\n\treturn Wrapper[T]{}\n}\n'
+		'main.v':      'module main\n\nimport wrap\n\nstruct User {\n\tn int\n}\n\nstruct Box[T] {\n\tvalue T\n}\n\nfn main() {\n\twrapped := wrap.make[Box[User]]()\n\tprintln(int_str(wrapped.values.len))\n}\n'
+	})
+	assert out == '0'
+}
+
 fn test_nested_generic_return_infers_outer_static_method_arg() {
 	v3_bin := generic_cross_build_v3()
 	out := generic_cross_run_project(v3_bin, 'generic_nested_return_arg', {
@@ -98,6 +107,26 @@ fn test_generic_builder_call_infers_static_wrapped_nested_generic_arg() {
 		'main.v':          'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
 	})
 	assert out == '24'
+}
+
+fn test_static_generic_type_function_with_builtin_arg_uses_emitted_name() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_static_builtin_arg_builder_call', {
+		'worker/worker.v': 'module worker\n\npub struct Summary[W] {\npub:\n\tw W\n}\n\npub fn Summary.new[W](w W) Summary[W] {\n\treturn Summary[W]{\n\t\tw: w\n\t}\n}\n\npub enum PrinterKind {\n\tsummary\n}\n\npub struct Printer[W] {\npub:\n\tkind PrinterKind\n\tsummary Summary[W]\n}\n\npub fn Printer.summary[W](summary Summary[W]) Printer[W] {\n\treturn Printer[W]{\n\t\tkind: .summary\n\t\tsummary: summary\n\t}\n}\n\npub struct Worker[W] {\npub:\n\tprinter Printer[W]\n}\n\npub struct Builder {}\n\npub fn Builder.new() Builder {\n\treturn Builder{}\n}\n\npub fn (builder Builder) build[W](printer Printer[W]) Worker[W] {\n\t_ = builder\n\treturn Worker[W]{\n\t\tprinter: printer\n\t}\n}\n'
+		'user/user.v':     'module user\n\nimport worker\n\npub fn run() int {\n\tbuilder := worker.Builder.new()\n\tprinter := worker.Printer.summary(worker.Summary.new(7))\n\tw := builder.build(printer)\n\treturn w.printer.summary.w\n}\n'
+		'main.v':          'module main\n\nimport user\n\nfn main() {\n\tprintln(int_str(user.run()))\n}\n'
+	})
+	assert out == '7'
+}
+
+fn test_static_generic_type_function_with_imported_generic_arg_uses_emitted_name() {
+	v3_bin := generic_cross_build_v3()
+	out := generic_cross_run_project(v3_bin, 'generic_static_imported_arg_builder_call', {
+		'printer/printer.v': 'module printer\n\npub struct Standard[W] {\npub:\n\tw W\n}\n\npub fn Standard.new[W](w W) Standard[W] {\n\treturn Standard[W]{\n\t\tw: w\n\t}\n}\n'
+		'core/core.v':       'module core\n\nimport printer\n\nstruct BufferWriter {\n\tn int\n}\n\nstruct Printer[W] {\n\tstandard printer.Standard[W]\n}\n\nfn Printer.standard[W](standard printer.Standard[W]) Printer[W] {\n\treturn Printer[W]{\n\t\tstandard: standard\n\t}\n}\n\npub fn run() int {\n\tstandard := printer.Standard.new(BufferWriter{\n\t\tn: 61\n\t})\n\tprinter_ := Printer.standard(standard)\n\treturn printer_.standard.w.n\n}\n'
+		'main.v':            'module main\n\nimport core\n\nfn main() {\n\tprintln(int_str(core.run()))\n}\n'
+	})
+	assert out == '61'
 }
 
 fn test_generic_struct_interface_dispatch_emits_required_methods() {

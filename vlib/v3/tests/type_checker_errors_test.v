@@ -81,9 +81,9 @@ fn run_bad_project(v3_bin string, name string, files map[string]string, input st
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	bad_bin := unique_temp_path(name)
 	result := os.execute('${v3_bin} ${input_path} -b c -o ${bad_bin}')
-	assert result.exit_code != 0
-	assert result.output.contains(expected)
-	assert !result.output.contains('C compilation failed')
+	assert result.exit_code != 0, '${name}: expected compile failure, got success: ${result.output}'
+	assert result.output.contains(expected), '${name}: expected `${expected}` in ${result.output}'
+	assert !result.output.contains('C compilation failed'), '${name}: C compilation failed: ${result.output}'
 }
 
 // run_good_project supports run good project handling for v3 tests.
@@ -207,6 +207,18 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_interface_is_unresolved_pattern',
 		'interface Shape {\n\tarea() int\n}\nstruct Rect {\n\tw int\n}\nfn (r Rect) area() int {\n\treturn r.w\n}\nfn check(s Shape) bool {\n\treturn s is MissingType\n}\nfn main() {}\n',
 		'unknown type `MissingType`')
+	run_bad(v3_bin, 'bad_empty_interface_is_array_pattern',
+		'interface Any {}\nfn check(x Any) bool {\n\treturn x is []string\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
+		'`[]string` is not compatible with interface `Any`')
+	run_bad(v3_bin, 'bad_empty_interface_is_map_pattern',
+		'interface Any {}\nfn check(x Any) bool {\n\treturn x is map[string]string\n}\nfn main() {\n\t_ := Any({\n\t\t"a": 1\n\t})\n}\n',
+		'`map[string]string` is not compatible with interface `Any`')
+	run_bad(v3_bin, 'bad_empty_interface_match_array_pattern',
+		'interface Any {}\nfn check(x Any) int {\n\treturn match x {\n\t\t[]string { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
+		'`[]string` is not compatible with interface `Any`')
+	run_bad(v3_bin, 'bad_empty_interface_as_array_pattern',
+		'interface Any {}\nfn check(x Any) []string {\n\treturn x as []string\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
+		'`[]string` is not compatible with interface `Any`')
 	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface',
 		"type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
 	assert alias_interface_out == 'test\nhehe'
@@ -268,7 +280,7 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'main.v':      'module main\n\nimport moda\n\nfn main() {}\n'
 		'other.v':     'module main\n\nfn use_it() int {\n\treturn moda.answer()\n}\n'
 		'moda/moda.v': 'module moda\n\nfn answer() int {\n\treturn 7\n}\n'
-	}, '', 'unknown function `moda.answer`')
+	}, '', 'unknown identifier `moda`')
 	alias_out := run_good(v3_bin, 'alias_method',
 		'type UserId = int\n\nfn (id UserId) str() string {\n\treturn int_str(int(id))\n}\n\nfn main() {\n\tid := UserId(1)\n\tprintln(id.str())\n}\n')
 	assert alias_out == '1'
@@ -391,6 +403,551 @@ fn test_type_checker_reports_core_semantic_errors() {
 	assert cross_module_array_append_c.contains('array_push(&xs')
 }
 
+fn test_interface_method_rejects_narrowed_interface_param() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_interface_method_narrowed_interface_param',
+		'interface Base {\n\tbase() int\n}\n\ninterface Narrow {\n\tBase\n\tnarrow() int\n}\n\ninterface Handler {\n\thandle(x Base) int\n}\n\nstruct Service {}\n\nfn (s Service) handle(x Narrow) int {\n\treturn x.narrow()\n}\n\nfn main() {\n\t_ := Handler(Service{})\n}\n',
+		'does not implement interface')
+}
+
+fn test_review_generic_call_diagnostics() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_nongeneric_unknown_is_pattern', 'fn check(err IError) bool {
+	return err is T
+}
+
+fn main() {}
+',
+		'not compatible with `IError`')
+	run_bad(v3_bin, 'bad_nongeneric_unknown_receiver_call', 'fn main() {
+	missing.method()
+}
+',
+		'unknown identifier `missing`')
+	run_bad(v3_bin, 'bad_nongeneric_placeholder_call', 'fn main() {
+	missing[T]()
+}
+',
+		'unknown function `missing[T]`')
+	run_bad(v3_bin, 'bad_generic_missing_explicit_call', 'fn invoke[T]() {
+	missing[T]()
+}
+
+fn main() {
+	invoke[int]()
+}
+',
+		'unknown function `missing[T]`')
+	run_bad(v3_bin, 'bad_generic_missing_receiver_method', 'fn invoke[T](value T) {
+	value.no_such()
+}
+
+fn main() {
+	invoke(1)
+}
+',
+		'unknown function `value.no_such`')
+	run_bad(v3_bin, 'bad_generic_missing_array_receiver_method', 'fn invoke[T](value T) {
+	value.no_such()
+}
+
+fn main() {
+	invoke([]int{})
+}
+',
+		'unknown function `value.no_such`')
+	run_bad(v3_bin, 'bad_generic_array_pop_argument_count', 'fn invoke[T](mut value T) {
+	value.pop(1)
+}
+
+fn main() {
+	mut values := [1, 2]
+	invoke(mut values)
+}
+',
+		'argument count mismatch for `value.pop`: expected 0, got 1')
+	run_bad(v3_bin, 'bad_generic_array_trim_argument_type', 'fn invoke[T](mut value T) {
+	value.trim("bad")
+}
+
+fn main() {
+	mut values := [1, 2]
+	invoke(mut values)
+}
+',
+		'cannot use `string` as argument 1 to `value.trim`; expected `int`')
+	valid_array_methods := run_good(v3_bin, 'generic_cgen_array_method_arguments', 'fn invoke[T](mut value T) {
+	value.trim(1)
+	value.pop()
+}
+
+fn main() {
+	mut values := [1, 2]
+	invoke(mut values)
+	println(int_str(values.len))
+}
+')
+	assert valid_array_methods == '0'
+	run_bad(v3_bin, 'bad_generic_is_on_concrete_non_sum', 'fn matches[T](value int) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[string](1)
+}
+',
+		'`is` can only be used with sum type or interface values, not `int`')
+	run_bad(v3_bin, 'bad_generic_is_pattern_for_sum', 'struct Cat {}
+struct Dog {}
+
+type Animal = Cat | Dog
+
+fn matches[T](value Animal) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[string](Animal(Cat{}))
+}
+',
+		'`string` is not a variant of sum type `Animal`')
+	run_bad(v3_bin, 'bad_generic_is_pattern_for_interface', 'interface Shape {
+	area() int
+}
+
+struct Rect {}
+
+fn (r Rect) area() int {
+	return 1
+}
+
+struct Other {}
+
+fn matches[T](value Shape) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[Other](Rect{})
+}
+',
+		'`Other` is not compatible with interface `Shape`')
+	run_bad(v3_bin, 'bad_generic_is_pattern_for_ierror', 'struct NotError {}
+
+fn matches[T](value IError) bool {
+	return value is T
+}
+
+fn main() {
+	_ := matches[NotError](error("x"))
+}
+',
+		'`NotError` is not compatible with `IError`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_for_concrete_type', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+struct NoValue {}
+
+fn read[T](value T) int {
+	return value.value()
+}
+
+fn main() {
+	_ := read(NoValue{})
+}
+',
+		'unknown function `value.value`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_argument_count', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) int {
+	return value.value(1)
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'argument count mismatch for `value.value`: expected 0, got 1')
+	run_bad(v3_bin, 'bad_generic_receiver_method_argument_type', 'struct HasValue {}
+
+fn (v HasValue) value(n int) int {
+	return n
+}
+
+fn read[T](value T) int {
+	return value.value("bad")
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'cannot use `string` as argument 1 to `value.value`; expected `int`')
+	out := run_good(v3_bin, 'good_generic_receiver_method_for_concrete_type', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 7
+}
+
+fn read[T](value T) int {
+	return value.value()
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+}
+')
+	assert out == '7'
+	arg_out := run_good(v3_bin, 'good_generic_receiver_method_arguments', 'struct HasValue {}
+
+fn (v HasValue) value(n int) int {
+	return n
+}
+
+fn read[T](value T) int {
+	return value.value(8)
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+}
+')
+	assert arg_out == '8'
+	params_out := run_good(v3_bin, 'good_generic_receiver_params_struct_arguments', '@[params]
+struct ValueConfig {
+	a int
+	b int
+}
+
+struct HasValue {}
+
+fn (v HasValue) value(n int, cfg ValueConfig) int {
+	return n + cfg.a + cfg.b
+}
+
+fn read[T](value T) int {
+	return value.value(1, a: 2, b: 3)
+}
+
+fn read_defaults[T](value T) int {
+	return value.value(4)
+}
+
+fn main() {
+	println(int_str(read(HasValue{})))
+	println(int_str(read_defaults(HasValue{})))
+}
+')
+	assert params_out == '6\n4'
+	run_bad(v3_bin, 'bad_generic_receiver_method_return_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value()
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'cannot return `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_condition_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if value.value() {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_negated_condition', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if !(value.value()) {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_logical_condition', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	if true && value.value() {}
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_receiver_method_comparison_operand', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value() == true
+}
+
+fn main() {
+	_ := read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	comparison_out := run_good(v3_bin, 'good_generic_receiver_method_numeric_comparison', 'struct HasValue {}
+
+fn (v HasValue) value() u8 {
+	return 1
+}
+
+fn read[T](value T) bool {
+	return value.value() == 1
+}
+
+fn main() {
+	println(read(HasValue{}))
+}
+')
+	assert comparison_out == 'true'
+	run_bad(v3_bin, 'bad_generic_receiver_method_assignment_context', 'struct HasValue {}
+
+fn (v HasValue) value() int {
+	return 1
+}
+
+fn read[T](value T) {
+	mut ok := false
+	ok = value.value()
+}
+
+fn main() {
+	read(HasValue{})
+}
+',
+		'cannot use `int` as `bool`')
+	run_bad(v3_bin, 'bad_generic_function_field_argument', 'struct HasCallback {
+	cb fn (int)
+}
+
+fn invoke[T](value T) {
+	value.cb("bad")
+}
+
+fn main() {
+	invoke(HasCallback{
+		cb: fn (n int) {}
+	})
+}
+',
+		'cannot use `string` as argument 1 to `value.cb`; expected `int`')
+	run_bad(v3_bin, 'bad_generic_function_field_argument_count', 'struct HasCallback {
+	cb fn (int)
+}
+
+fn invoke[T](value T) {
+	value.cb()
+}
+
+fn main() {
+	invoke(HasCallback{
+		cb: fn (n int) {}
+	})
+}
+',
+		'argument count mismatch for `value.cb`: expected 1, got 0')
+	fn_field_out := run_good(v3_bin, 'good_generic_function_field_argument', 'struct HasCallback {
+	cb fn (int) int
+}
+
+fn invoke[T](value T) int {
+	return value.cb(3)
+}
+
+fn main() {
+	println(int_str(invoke(HasCallback{
+		cb: fn (n int) int {
+			return n + 1
+		}
+	})))
+}
+')
+	assert fn_field_out == '4'
+	run_bad(v3_bin, 'bad_generic_receiver_params_field_type', '@[params]
+struct OpenOptions {
+	limit int
+}
+
+struct Service {}
+
+fn (s Service) open(opts OpenOptions) {}
+
+fn invoke[T](service T) {
+	service.open(limit: "bad")
+}
+
+fn main() {
+	invoke(Service{})
+}
+',
+		'cannot initialize field `limit` with `string`; expected `int`')
+	run_bad(v3_bin, 'bad_generic_receiver_params_unknown_field', '@[params]
+struct OpenOptions {
+	limit int
+}
+
+struct Service {}
+
+fn (s Service) open(opts OpenOptions) {}
+
+fn invoke[T](service T) {
+	service.open(missing: 1)
+}
+
+fn main() {
+	invoke(Service{})
+}
+',
+		'unknown field `missing` in `OpenOptions`')
+	run_bad(v3_bin, 'bad_generic_receiver_narrow_unsigned_literal', 'struct Sink {}
+
+fn (s Sink) take(value u8) {}
+
+fn invoke[T](sink T) {
+	sink.take(300)
+}
+
+fn main() {
+	invoke(Sink{})
+}
+',
+		'cannot use `int` as argument 1 to `sink.take`; expected `u8`')
+	run_bad(v3_bin, 'bad_generic_receiver_narrow_signed_literal', 'struct Sink {}
+
+fn (s Sink) take(value i8) {}
+
+fn invoke[T](sink T) {
+	sink.take(128)
+}
+
+fn main() {
+	invoke(Sink{})
+}
+',
+		'cannot use `int` as argument 1 to `sink.take`; expected `i8`')
+	literal_out := run_good(v3_bin, 'good_generic_receiver_narrow_literal_boundaries', 'struct Sink {}
+
+fn (s Sink) take_unsigned(value u8) {}
+fn (s Sink) take_signed(value i8) {}
+
+fn invoke[T](sink T) {
+	sink.take_unsigned(255)
+	sink.take_signed(-128)
+}
+
+fn main() {
+	invoke(Sink{})
+	println("ok")
+}
+')
+	assert literal_out == 'ok'
+	run_bad(v3_bin, 'bad_generic_receiver_none_for_result', 'struct Sink {}
+
+fn (s Sink) take(value !int) {}
+
+fn invoke[T](sink T) {
+	sink.take(none)
+}
+
+fn main() {
+	invoke(Sink{})
+}
+',
+		'cannot use `none` as argument 1 to `sink.take`; expected `!int`')
+	result_error_out := run_good(v3_bin, 'good_generic_receiver_ierror_for_result', 'struct Sink {}
+
+fn (s Sink) take(value !int) {}
+
+fn invoke[T](sink T, err IError) {
+	sink.take(error("literal"))
+	sink.take(err)
+}
+
+fn main() {
+	invoke(Sink{}, error("value"))
+	println("ok")
+}
+')
+	assert result_error_out == 'ok'
+	option_out := run_good(v3_bin, 'good_generic_receiver_none_for_option', 'struct Sink {}
+
+fn (s Sink) take(value ?int) {}
+
+fn invoke[T](sink T) {
+	sink.take(none)
+}
+
+fn main() {
+	invoke(Sink{})
+	println("ok")
+}
+')
+	assert option_out == 'ok'
+	run_bad(v3_bin, 'bad_generic_receiver_variadic_spread_type', 'struct Sink {}
+
+fn (s Sink) take(values ...int) {}
+
+fn invoke[T](sink T, values []string) {
+	sink.take(...values)
+}
+
+fn main() {
+	invoke(Sink{}, ["bad"])
+}
+',
+		'cannot use `[]string` as argument 1 to `sink.take`; expected `[]int`')
+	variadic_out := run_good(v3_bin, 'good_generic_receiver_variadic_spread_type', 'struct Sink {}
+
+fn (s Sink) take(values ...int) {}
+
+fn invoke[T](sink T, values []int) {
+	sink.take(...values)
+}
+
+fn main() {
+	invoke(Sink{}, [1, 2])
+	println("ok")
+}
+')
+	assert variadic_out == 'ok'
+}
+
 // Regression tests for the post-PR review fixes: fixed-array literals must match
 // the expected fixed length, and genuine fixed-array if-branches of different
 // lengths must mismatch — while bare array literals stay length-agnostic.
@@ -460,6 +1017,18 @@ fn test_statement_if_branch_tails_are_not_value_checked() {
 	run_bad(v3_bin, 'bad_if_branch_primitive_mismatch',
 		"fn main() {\n\tc := true\n\t_ := if c { 1 } else { 'bad' }\n}\n",
 		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_if_branch_value_pointer_mismatch',
+		'struct Foo {}\n\nfn main() {\n\tc := true\n\t_ := if c { Foo{} } else { &Foo{} }\n}\n',
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_option_if_error_branch',
+		"fn f(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\nfn main() {}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_option_const_if_error_branch',
+		"fn f() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\nfn main() {}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_option_return_error',
+		"fn f() ?int {\n\treturn error('bad')\n}\nfn main() {}\n",
+		'cannot return `IError` as `?int`')
 }
 
 fn test_multi_return_if_tail_infers_common_type() {
@@ -530,7 +1099,7 @@ fn test_multi_rhs_if_expr_is_not_multi_return() {
 	assert assign_out == '5'
 }
 
-fn test_match_tuple_tail_multi_return_is_rejected() {
+fn test_match_multi_return_tails_require_explicit_tuple() {
 	v3_bin := build_v3()
 	match_call := run_good(v3_bin, 'good_multi_return_match_call_return',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn pick(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pick(false)\n\tprintln(int_str(a + b))\n}\n')
@@ -541,6 +1110,15 @@ fn test_match_tuple_tail_multi_return_is_rejected() {
 	match_assign := run_good(v3_bin, 'good_multi_return_match_call_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := false\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\tpair(3)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n')
 	assert match_assign == '7'
+	match_tuple_decl_assign := run_good(v3_bin, 'good_multi_return_match_tuple_decl_assign',
+		'fn main() {\n\tflag := false\n\ta, b := match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n')
+	assert match_tuple_decl_assign == '7'
+	match_tuple_assign := run_good(v3_bin, 'good_multi_return_match_tuple_assign',
+		'fn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue { 1, 2 }\n\t\tfalse { 3, 4 }\n\t}\n\tprintln(int_str(a + b))\n}\n')
+	assert match_tuple_assign == '3'
+	run_bad(v3_bin, 'bad_multi_return_match_overlong_tuple_tail_decl_assign',
+		'fn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue { 1, 2, 3 }\n\t\tfalse { 4, 5 }\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'match expression branches cannot produce multiple assignment values')
 	run_bad(v3_bin, 'bad_multi_return_match_call_non_exhaustive_decl_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
 		'match expression must be exhaustive')
@@ -556,6 +1134,12 @@ fn test_match_tuple_tail_multi_return_is_rejected() {
 	run_bad(v3_bin, 'bad_multi_return_match_call_mixed_tuple_tail_decl_assign',
 		'fn pair(n int) (int, int) {\n\treturn n, n + 1\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tpair(1)\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n\tprintln(int_str(a + b))\n}\n',
 		'match expression branches cannot produce multiple assignment values')
+	run_bad(v3_bin, 'bad_multi_return_match_preceding_expr_decl_assign',
+		"fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\ta, b := match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n",
+		'match expression branches cannot produce multiple assignment values')
+	run_bad(v3_bin, 'bad_multi_return_match_preceding_expr_assign',
+		"fn log() int {\n\tprintln('log')\n\treturn 9\n}\nfn main() {\n\tflag := true\n\tmut a := 0\n\tmut b := 0\n\ta, b = match flag {\n\t\ttrue {\n\t\t\tlog()\n\t\t\t1\n\t\t}\n\t\tfalse { 2, 3 }\n\t}\n\tprintln(int_str(a + b))\n}\n",
+		'match expression branches cannot produce multiple assignment values')
 	run_bad(v3_bin, 'bad_multi_return_match_tail_return',
 		'fn pair(flag bool) (int, int) {\n\treturn match flag {\n\t\ttrue {\n\t\t\t1\n\t\t\t2\n\t\t}\n\t\tfalse {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n',
 		'match expression branches cannot produce multiple return values')
@@ -566,6 +1150,31 @@ fn test_return_if_tuple_tail_multi_return_is_rejected() {
 	run_bad(v3_bin, 'bad_multi_return_if_tail_return',
 		'fn pair(flag bool) (int, int) {\n\treturn if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\t3\n\t\t4\n\t}\n}\nfn main() {\n\ta, b := pair(true)\n\tprintln(int_str(a + b))\n}\n',
 		'if expression branches cannot produce multiple return values')
+}
+
+fn test_pr_review_struct_sum_scope_and_gated_regressions() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_non_variadic_array_struct_field_args',
+		'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points []Point) int {\n\treturn points.len\n}\n\nfn main() {\n\t_ := total(x: 1, y: 2)\n}\n',
+		'cannot use `key: value` arguments as `[]Point`')
+	variadic_struct := run_good(v3_bin, 'good_variadic_struct_field_args',
+		'struct Point {\n\tx int\n\ty int\n}\n\nfn total(points ...Point) int {\n\treturn points[0].x + points[0].y\n}\n\nfn main() {\n\tprintln(int_str(total(x: 3, y: 4)))\n}\n')
+	assert variadic_struct == '7'
+	run_bad_project(v3_bin, 'bad_module_type_does_not_bind_main_type', {
+		'v.mod':  "Module { name: 'module_unknown_scope' }\n"
+		'main.v': 'module main\n\nimport m\n\nstruct Foo {}\n\nfn main() {\n\t_ = m.consume(Foo{})\n}\n'
+		'm/m.v':  'module m\n\npub const value = 1\n\npub fn consume(x Foo) int {\n\treturn value\n}\n'
+	}, 'main.v', 'expected `m.Foo`')
+	aliased_sum := run_good_project(v3_bin, 'good_aliased_sum_uses_full_suffix', {
+		'v.mod':           "Module { name: 'aliased_sum_full_suffix' }\n"
+		'main.v':          'module main\n\nimport other as _\nimport sub.tast as tast\n\nfn main() {\n\tvalue := tast.make_beta()\n\tif value is tast.Beta {\n\t\tprintln(int_str(value.n))\n\t} else {\n\t\tprintln("wrong")\n\t}\n}\n'
+		'other/other.v':   'module other\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Beta | Alpha\n'
+		'sub/tast/tast.v': 'module tast\n\npub struct Alpha {\npub:\n\tn int\n}\n\npub struct Beta {\npub:\n\tn int\n}\n\npub type Value = Alpha | Beta\n\npub fn make_beta() Value {\n\treturn Beta{\n\t\tn: 9\n\t}\n}\n'
+	}, 'main.v')
+	assert aliased_sum == '9'
+	gated := run_good(v3_bin, 'good_gated_scalar_and_fixed_array_indexes',
+		'struct Box {\n\titems [10]int\n}\n\nfn main() {\n\ta := [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]\n\tprintln(int_str(a#[-1]))\n\tprintln(int_str(a#[-11] or { 42 }))\n\tprintln(a#[-2..].str())\n\tprintln("0123456789"#[-1].ascii_str())\n\tfixed := [10]int{init: index}\n\tprintln(int_str(fixed#[-1]))\n\tprintln(fixed#[-2..].str())\n\tbox := Box{\n\t\titems: fixed\n\t}\n\tprintln(int_str(box.items#[-1]))\n}\n')
+	assert gated == '9\n42\n[8, 9]\n9\n9\n[8, 9]\n9'
 }
 
 fn test_local_type_names_include_nested_block_scope() {
@@ -1112,6 +1721,27 @@ fn test_pr_review_codegen_batch_twenty() {
 	ok := run_good(v3_bin, 'good_method_value_local_assign_direct_use', mv +
 		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\nfn main() {\n\tc := Counter{\n\t\tid: 7\n\t}\n\tmut cb := c.report\n\tcb = c.report\n\tprintln(int_str(invoke(cb)))\n}\n')
 	assert ok == '7'
+	iface_mv := 'interface Runner {\n\trun() int\n}\n\nstruct Job {\n\tid int\n}\n\nfn (j Job) run() int {\n\treturn j.id\n}\n\nstruct Holder {\nmut:\n\tcb fn () int\n}\n'
+	run_bad(v3_bin, 'bad_interface_method_value_struct_field_escape', iface_mv +
+		'fn main() {\n\tr := Runner(Job{\n\t\tid: 5\n\t})\n\t_ := Holder{\n\t\tcb: r.run\n\t}\n}\n',
+		'cannot escape its call site')
+	run_bad(v3_bin, 'bad_interface_method_value_struct_field_assign', iface_mv +
+		'fn main() {\n\tr := Runner(Job{\n\t\tid: 5\n\t})\n\tmut h := Holder{}\n\th.cb = r.run\n\tprintln(int_str(h.cb()))\n}\n',
+		'cannot escape its call site')
+	iface_ok := run_good(v3_bin, 'good_interface_method_value_direct_callback', iface_mv +
+		'fn invoke(cb fn () int) int {\n\treturn cb()\n}\n\nfn main() {\n\tr := Runner(Job{\n\t\tid: 7\n\t})\n\tprintln(int_str(invoke(r.run)))\n}\n')
+	assert iface_ok == '7'
+	run_bad(v3_bin, 'bad_interface_method_value_captured_alias_return', iface_mv +
+		'fn escape(r Runner) fn () int {\n\tcb := r.run\n\treturn fn () fn () int {\n\t\treturn cb\n\t}()\n}\n\nfn main() {\n\t_ := escape(Runner(Job{\n\t\tid: 9\n\t}))\n}\n',
+		'cannot escape its call site')
+	iface_fn_literal_shadow := run_good(v3_bin,
+		'good_interface_method_value_fn_literal_shadow_scoped', iface_mv +
+		'fn plain() int {\n\treturn 11\n}\n\nfn outer(cb fn () int) fn () int {\n\t_ = fn () {\n\t\tr := Runner(Job{\n\t\t\tid: 5\n\t\t})\n\t\tcb := r.run\n\t\t_ = cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
+	assert iface_fn_literal_shadow == '11'
+	iface_lambda_shadow := run_good(v3_bin, 'good_interface_method_value_lambda_shadow_scoped',
+		iface_mv +
+		'fn plain() int {\n\treturn 13\n}\n\nfn call(cb fn ()) {\n\tcb()\n}\n\nfn outer(cb fn () int) fn () int {\n\tcall(|| {\n\t\tcb := Runner(Job{\n\t\t\tid: 7\n\t\t}).run\n\t})\n\treturn cb\n}\n\nfn main() {\n\tf := outer(plain)\n\tprintln(int_str(f()))\n}\n')
+	assert iface_lambda_shadow == '13'
 }
 
 fn test_pr_review_codegen_batch_twentyone() {
@@ -1298,4 +1928,53 @@ fn test_pr_review_codegen_batch_twentyeight() {
 	local_collision := run_good(v3_bin, 'good_local_type_name_avoids_user_collision',
 		'struct Row__local_make {\n\tglobal int\n}\nfn make() int {\n\tstruct Row {\n\t\tlocal int\n\t}\n\tlocal := Row{\n\t\tlocal: 3\n\t}\n\tglobal := Row__local_make{\n\t\tglobal: 4\n\t}\n\treturn local.local + global.global\n}\nfn main() {\n\tprintln(int_str(make()))\n}\n')
 	assert local_collision == '7'
+}
+
+fn test_pr_review_codegen_batch_twentynine() {
+	v3_bin := build_v3()
+	// A local pointer initialized from a call must not be treated as an alias of the first
+	// same-pointee pointer argument: the callee can return another argument. Here `choose` returns
+	// `&y`, so returning `p` must not heap-copy `x`.
+	call_alias := run_good(v3_bin, 'good_call_return_pointer_alias_not_inferred',
+		'struct Box {\nmut:\n\tx int\n}\nfn choose(a &Box, b &Box) &Box {\n\t_ = a\n\treturn b\n}\nfn leak() &Box {\n\tmut x := Box{\n\t\tx: 1\n\t}\n\tmut y := Box{\n\t\tx: 2\n\t}\n\tp := choose(&x, &y)\n\treturn p\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
+	assert call_alias == '2'
+	// Reassigning a local pointer updates the stack-local alias source used when the pointer
+	// escapes. Returning `p` after `p = &y` must heap-copy `y`, not the initializer's `x`.
+	reassigned_alias := run_good(v3_bin, 'good_reassigned_pointer_alias_source',
+		'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut x := Box{\n\t\tx: 1\n\t}\n\tmut y := Box{\n\t\tx: 2\n\t}\n\tmut p := &x\n\tp = &y\n\treturn p\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
+	assert reassigned_alias == '2'
+	// Returning a pointer alias inside a child scope must copy through the pointer itself. Looking
+	// up the original source by bare name at the return site can resolve a shadowing local instead.
+	shadowed_alias := run_good(v3_bin, 'good_returned_pointer_alias_shadowed_source',
+		'struct Box {\nmut:\n\tx int\n}\nfn leak() &Box {\n\tmut a := Box{\n\t\tx: 1\n\t}\n\tp := &a\n\ta.x = 2\n\t{\n\t\tmut a := Box{\n\t\t\tx: 9\n\t\t}\n\t\ta.x = 10\n\t\treturn p\n\t}\n}\nfn main() {\n\tb := leak()\n\tprintln(int_str(b.x))\n}\n')
+	assert shadowed_alias == '2'
+	// A pointer alias of a mut parameter already points at caller-owned storage. Returning the
+	// alias must preserve that identity instead of heap-copying the current pointee.
+	mut_param_alias := run_good(v3_bin, 'good_returned_mut_param_pointer_alias_identity',
+		'fn keep(mut x int) &int {\n\tp := &x\n\treturn p\n}\nfn main() {\n\tmut n := 1\n\tp := keep(mut n)\n\tunsafe {\n\t\t*p = 7\n\t}\n\tprintln(int_str(n))\n}\n')
+	assert mut_param_alias == '7'
+	// Returning a pointer alias of an aligned local must use the aligned heap-copy helper, matching
+	// the free path for `&Aligned` values.
+	aligned_alias_source := '@[aligned: 64]\nstruct Aligned {\n\tx int\n}\nfn make() &Aligned {\n\tmut x := Aligned{\n\t\tx: 5\n\t}\n\tp := &x\n\treturn p\n}\nfn main() {\n\tp := make()\n\tprintln(int_str(p.x))\n\tunsafe {\n\t\tfree(p)\n\t}\n}\n'
+	aligned_c := gen_c_project(v3_bin, 'good_aligned_pointer_alias_heap_copy_c', {
+		'main.v': aligned_alias_source
+	}, 'main.v')
+	assert aligned_c.contains('v3_aligned_memdup('), aligned_c
+	assert !aligned_c.contains('memdup(p, sizeof(Aligned))'), aligned_c
+	assert aligned_c.contains('v3_aligned_free(p)'), aligned_c
+	aligned_alias := run_good(v3_bin, 'good_aligned_pointer_alias_heap_copy_run',
+		aligned_alias_source)
+	assert aligned_alias == '5'
+	// A capitalized field followed by a const-sized fixed array is a named field whose type is
+	// `[n]int`, not a failed generic embedded-field probe that skips `[n]` and leaves `int`.
+	fixed_field := run_good(v3_bin, 'good_capitalized_fixed_array_field',
+		'const n = 2\nstruct S {\n\tFoo [n]int\n}\nfn main() {\n\ts := S{\n\t\tFoo: [1, 2]!\n\t}\n\tprintln(int_str(s.Foo.len) + ":" + int_str(s.Foo[1]))\n}\n')
+	assert fixed_field == '2:2'
+}
+
+fn test_if_guard_rejects_or_handled_value() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_if_guard_or_handled_value',
+		'fn maybe() ?int {\n\treturn 1\n}\nfn main() {\n\tif value := maybe() or { return } {\n\t\tprintln(int_str(value))\n\t}\n}\n',
+		'if guard expression must be optional or result')
 }

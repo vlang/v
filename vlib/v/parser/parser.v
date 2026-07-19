@@ -1588,7 +1588,7 @@ fn (mut p Parser) ident(language ast.Language) ast.Ident {
 			scope:    p.scope
 		}
 	}
-	is_following_concrete_types := p.is_following_concrete_types()
+	is_following_concrete_types := !p.scope.known_var(name) && p.is_following_concrete_types()
 	mut concrete_types := []ast.Type{}
 	if p.expr_mod.len > 0 {
 		name = '${p.expr_mod}.${name}'

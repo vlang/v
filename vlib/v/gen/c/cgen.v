@@ -157,6 +157,7 @@ mut:
 	inside_map_index                     bool
 	inside_array_index                   bool
 	inside_array_fixed_struct            bool
+	inside_str_interp_s_fmt              bool // explicit `${x:s}` stringifies a scalar reference's value
 	inside_opt_or_res                    bool
 	inside_opt_data                      bool
 	inside_if_option                     bool
@@ -331,14 +332,15 @@ mut:
 	veb_filter_fn_name   string   // veb__filter, used by $veb.html() for escaping strings in templates
 	export_funcs         []string // for .dll export function names
 	//
-	type_default_impl_level int
-	preinclude_nodes        []&ast.HashStmtNode // allows hash stmts to go before `includes`
-	include_nodes           []&ast.HashStmtNode // all hash stmts to go `includes`
-	definition_nodes        []&ast.HashStmtNode // allows hash stmts to go `definitions`
-	postinclude_nodes       []&ast.HashStmtNode // allows hash stmts to go after all the rest of the code generation
-	curr_comptime_node      ast.Expr = ast.empty_expr // current `$if` expr
-	is_builtin_overflow_mod bool
-	do_int_overflow_checks  bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
+	type_default_impl_level    int
+	type_default_sumtype_stack []int
+	preinclude_nodes           []&ast.HashStmtNode // allows hash stmts to go before `includes`
+	include_nodes              []&ast.HashStmtNode // all hash stmts to go `includes`
+	definition_nodes           []&ast.HashStmtNode // allows hash stmts to go `definitions`
+	postinclude_nodes          []&ast.HashStmtNode // allows hash stmts to go after all the rest of the code generation
+	curr_comptime_node         ast.Expr = ast.empty_expr // current `$if` expr
+	is_builtin_overflow_mod    bool
+	do_int_overflow_checks     bool // outside a `@[ignore_overflow] fn abc() {}` or a function in `builtin.overflow`
 	//
 	tid                  string // the thread id of the file processor in the thread pool (log it to debug issues in parallel cgen)
 	fid                  int    // the index of ast.File that is currently processed (log it to debug issues in parallel cgen)
@@ -1323,6 +1325,7 @@ pub fn (mut g Gen) init() {
 	}
 	if g.pref.gc_mode in [.boehm_full, .boehm_incr, .boehm_full_opt, .boehm_incr_opt, .boehm_leak] {
 		g.comptime_definitions.writeln('#define _VGCBOEHM (1)')
+		g.includes.writeln(get_boehm_early_include_text())
 	}
 	if g.pref.is_debug {
 		g.comptime_definitions.writeln('#define _VDEBUG (1)')
@@ -4144,6 +4147,10 @@ fn (mut g Gen) stmts_with_tmp_var(stmts []ast.Stmt, tmp_var string) bool {
 					if stmt.expr is ast.ArrayInit && stmt.expr.is_fixed {
 						is_array_fixed_init = true
 						ret_type = stmt.expr.typ
+					} else if stmt.expr is ast.StructInit
+						&& g.table.final_sym(g.unwrap_generic(stmt.typ)).kind == .array_fixed {
+						is_array_fixed_init = true
+						ret_type = stmt.typ
 					} else {
 						expr_typ := g.unwrap_generic(g.recheck_concrete_type(stmt.typ))
 						if expr_typ != ast.void_type && expr_typ != 0
@@ -7510,7 +7517,7 @@ fn (mut g Gen) typeof_expr(node ast.TypeOf) {
 		}
 	}
 	sym := g.table.sym(typ)
-	if sym.kind == .sum_type {
+	if sym.kind == .sum_type && !typ.has_flag(.option) {
 		// When encountering a .sum_type, typeof() should be done at runtime,
 		// because the subtype of the expression may change:
 		g.write('builtin__tos3(v_typeof_sumtype_${sym.cname}( (')
@@ -7786,11 +7793,18 @@ fn (mut g Gen) selector_expr(node ast.SelectorExpr) {
 		}
 	}
 
+	mut selector_expr_expr := node.expr
 	mut selector_scope := node.scope
-	if g.file.scope != unsafe { nil } {
+	if selector_expr_expr is ast.Ident {
+		selector_ident := selector_expr_expr as ast.Ident
+		if (selector_scope == unsafe { nil }
+			|| selector_scope.find_var(selector_ident.name) == none)
+			&& g.file.scope != unsafe { nil } {
+			selector_scope = g.file.scope.innermost(node.pos.pos)
+		}
+	} else if selector_scope == unsafe { nil } && g.file.scope != unsafe { nil } {
 		selector_scope = g.file.scope.innermost(node.pos.pos)
 	}
-	mut selector_expr_expr := node.expr
 	// Sumtype smartcast idents dereference the variant pointer eagerly, so the
 	// selector receiver is already a value. Interface smartcasts are more
 	// context-sensitive and may still emit a pointer while inside selector codegen.
@@ -10251,6 +10265,21 @@ fn (mut g Gen) ident(node ast.Ident) {
 				} else {
 					g.table.final_sym(g.unwrap_generic(resolved_var.typ))
 				}
+				if runtime_option_type.has_flag(.option) && resolved_var.is_unwrapped
+					&& smartcast_types.len == 1 {
+					option_payload_type :=
+						g.unwrap_generic(g.recheck_concrete_type(runtime_option_type)).clear_option_and_result()
+					smartcast_payload_type :=
+						g.unwrap_generic(g.recheck_concrete_type(smartcast_types[0])).clear_option_and_result()
+					// A `none` guard on `?SumType` records the unwrapped sum type as a
+					// smartcast. It only removes the option wrapper; it does not select a
+					// sumtype variant, so bypass the variant-unwrapping loop below.
+					if g.table.final_sym(option_payload_type).kind == .sum_type
+						&& smartcast_payload_type == option_payload_type {
+						g.unwrap_option_type(runtime_option_type, ident_option_name, is_auto_heap)
+						return
+					}
+				}
 				interface_scalar_smartcast_needs_deref := interface_source_is_interface
 					&& smartcast_types.len > 0 && smartcast_types.last().is_ptr()
 					&& !g.inside_selector_lhs
@@ -10692,17 +10721,7 @@ fn (mut g Gen) cast_expr(node ast.CastExpr) {
 		} else if node_typ_is_option {
 			if sym.info is ast.Alias {
 				if sym.info.parent_type.has_flag(.option) {
-					cur_stmt := g.go_before_last_stmt()
-					g.empty_line = true
-					parent_type := sym.info.parent_type
-					tmp_var := g.new_tmp_var()
-					tmp_var2 := g.new_tmp_var()
-					g.writeln2('${styp} ${tmp_var};', '${g.styp(parent_type)} ${tmp_var2};')
-					g.write('builtin___option_ok(&(${g.base_type(parent_type)}[]) { ')
-					g.expr(node.expr)
-					g.writeln(' }, (${option_name}*)(&${tmp_var2}), sizeof(${g.base_type(parent_type)}));')
-					g.writeln('builtin___option_ok(&(${g.styp(parent_type)}[]) { ${tmp_var2} }, (${option_name}*)&${tmp_var}, sizeof(${g.styp(parent_type)}));')
-					g.write2(cur_stmt, tmp_var)
+					g.expr_with_opt(node.expr, expr_type, sym.info.parent_type)
 				} else if node.expr_type.has_flag(.option) {
 					g.expr_opt_with_alias(node.expr, expr_type, node_typ)
 				} else {
@@ -13335,6 +13354,16 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 	if typ_.has_flag(.option) {
 		return '(${g.styp(typ_)}){.state=2, .err=_const_none__, .data={E_STRUCT}}'
 	}
+	sumtype_idx := g.unwrap_generic(typ_).idx()
+	is_recursive := sumtype_idx in g.type_default_sumtype_stack
+	if !is_recursive {
+		g.type_default_sumtype_stack << sumtype_idx
+	}
+	defer {
+		if !is_recursive {
+			g.type_default_sumtype_stack.delete_last()
+		}
+	}
 	first_typ := g.unwrap_generic((sym.info as ast.SumType).variants[0])
 	first_sym := g.table.sym(first_typ)
 	first_styp := g.styp(first_typ)
@@ -13350,7 +13379,12 @@ fn (mut g Gen) type_default_sumtype(typ_ ast.Type, sym ast.TypeSymbol) string {
 	if sumtype_info.fields.len > 0 && !g.inside_global_decl && !g.inside_const {
 		// Route local defaults through the cast helper so common-field pointers stay valid.
 		fname := g.get_sumtype_casting_fn(first_typ, typ_)
-		mut first_default := g.type_default(first_typ)
+		// Reuse the shallow default when a non-sum variant refers back to this sum type.
+		mut first_default := if is_recursive && first_sym.kind != .sum_type {
+			default_str
+		} else {
+			g.type_default(first_typ)
+		}
 		if first_default[0] == `{` {
 			first_default = '(${first_styp})${first_default}'
 		}
@@ -14688,6 +14722,25 @@ fn (mut g Gen) panic_debug_info(pos token.Pos) (int, string, string, string) {
 	pafn := g.fn_decl.name.after('.')
 	pamod := g.fn_decl.modname()
 	return paline, pafile, pamod, pafn
+}
+
+fn get_boehm_early_include_text() string {
+	res := '
+	|#ifdef __TINYC__
+	|#include <gc/gc.h>
+	|#else
+	|#if defined(__has_include)
+	|#if __has_include(<gc/gc.h>)
+	|#include <gc/gc.h>
+	|#elif __has_include(<gc.h>)
+	|#include <gc.h>
+	|#endif
+	|#else
+	|#include <gc/gc.h>
+	|#endif
+	|#endif
+	'.strip_margin()
+	return res
 }
 
 // get_guarded_include_text returns C preprocessor code that includes `iname`

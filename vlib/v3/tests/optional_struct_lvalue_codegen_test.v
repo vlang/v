@@ -86,6 +86,21 @@ fn (mut cache LinkCache[^a]) get[^a]() ?&Link {
 	return unsafe { &cache.link? }
 }
 
+struct Stats {
+	n int
+}
+
+struct SearchResult {
+	stats ?Stats
+}
+
+fn (result &^a SearchResult) stats_ref[^a]() ?&^a Stats {
+	if result.stats != none {
+		return unsafe { &result.stats? }
+	}
+	return none
+}
+
 struct ResultHolder {
 mut:
 	res !Inner
@@ -171,6 +186,13 @@ fn main() {
 	mut cache := LinkCache.new(&cache_tag)
 	link := cache.get() or { panic('missing link') }
 	assert link.n == 41
+	search_result := SearchResult{
+		stats: Stats{
+			n: 7
+		}
+	}
+	stats := search_result.stats_ref() or { panic('missing stats') }
+	assert stats.n == 7
 	mut outer := ?Outer(Outer{})
 	outer?.inner.name = 'deep'
 	assert outer?.inner.name == 'deep'
@@ -218,6 +240,9 @@ fn main() {
 	assert c_code.contains('.opt = (Optional_Borrowed') && c_code.contains('.value = borrowed'), c_code
 	assert c_code.contains('if (!cache->link.ok)') || c_code.contains('if (!cache.link.ok)'), c_code
 	assert c_code.contains('&cache->link.value') || c_code.contains('&cache.link.value'), c_code
+	assert c_code.contains('&result->stats.value') || c_code.contains('&result.stats.value'), c_code
+	assert !c_code.contains('result->stats.value.ok'), c_code
+	assert !c_code.contains('result->stats.value.value'), c_code
 	assert c_code.contains('outer.value.inner.name ='), c_code
 	assert c_code.contains('holder->opt.value.name =') || c_code.contains('holder.opt.value.name ='), c_code
 

@@ -179,6 +179,132 @@ pub:
 	types []Type
 }
 
+// clone_owned_type clones a type and all nested owned metadata.
+pub fn clone_owned_type(value Type) Type {
+	return match value {
+		Void {
+			Type(void_)
+		}
+		Unknown {
+			Type(Unknown{
+				reason: value.reason.clone()
+			})
+		}
+		Primitive {
+			Type(Primitive{
+				props: value.props
+				size:  value.size
+			})
+		}
+		String {
+			Type(string_)
+		}
+		Char {
+			Type(char_)
+		}
+		Rune {
+			Type(rune_)
+		}
+		ISize {
+			Type(isize_)
+		}
+		USize {
+			Type(usize_)
+		}
+		Nil {
+			Type(nil_)
+		}
+		None {
+			Type(none_)
+		}
+		Array {
+			Type(Array{
+				elem_type: clone_owned_type(value.elem_type)
+			})
+		}
+		ArrayFixed {
+			Type(ArrayFixed{
+				elem_type: clone_owned_type(value.elem_type)
+				len:       value.len
+				len_expr:  value.len_expr.clone()
+			})
+		}
+		Channel {
+			Type(Channel{
+				elem_type: clone_owned_type(value.elem_type)
+			})
+		}
+		Map {
+			Type(Map{
+				key_type:   clone_owned_type(value.key_type)
+				value_type: clone_owned_type(value.value_type)
+			})
+		}
+		Pointer {
+			Type(Pointer{
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		FnType {
+			Type(FnType{
+				params:      clone_owned_types(value.params)
+				return_type: clone_owned_type(value.return_type)
+			})
+		}
+		OptionType {
+			Type(OptionType{
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		ResultType {
+			Type(ResultType{
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		Struct {
+			Type(Struct{
+				name: value.name.clone()
+			})
+		}
+		Interface {
+			Type(Interface{
+				name: value.name.clone()
+			})
+		}
+		Enum {
+			Type(Enum{
+				name:    value.name.clone()
+				is_flag: value.is_flag
+			})
+		}
+		SumType {
+			Type(SumType{
+				name: value.name.clone()
+			})
+		}
+		Alias {
+			Type(Alias{
+				name:      value.name.clone()
+				base_type: clone_owned_type(value.base_type)
+			})
+		}
+		MultiReturn {
+			Type(MultiReturn{
+				types: clone_owned_types(value.types)
+			})
+		}
+	}
+}
+
+// clone_owned_types clones a list of types and all nested owned metadata.
+pub fn clone_owned_types(values []Type) []Type {
+	mut cloned := []Type{cap: values.len}
+	for value in values {
+		cloned << clone_owned_type(value)
+	}
+	return cloned
+}
+
 // StructField represents struct field data used by types.
 pub struct StructField {
 pub:
@@ -222,6 +348,31 @@ pub fn (t Type) is_integer() bool {
 		return t.props.has(.integer)
 	}
 	return t is Rune || t is ISize || t is USize
+}
+
+// unsigned_shift_result_type returns the unsigned counterpart used as the result of `>>>`.
+pub fn unsigned_shift_result_type(t Type) Type {
+	if t is Alias {
+		return unsigned_shift_result_type(t.base_type)
+	}
+	if t is Primitive {
+		if !t.props.has(.integer) || t.props.has(.unsigned) {
+			return t
+		}
+		return match t.size {
+			8 { Type(u8_) }
+			16 { Type(u16_) }
+			64 { Type(u64_) }
+			else { Type(u32_) }
+		}
+	}
+	if t is Rune {
+		return Type(u32_)
+	}
+	if t is ISize {
+		return Type(usize_)
+	}
+	return t
 }
 
 // is_float reports whether is float applies in types.
@@ -272,7 +423,11 @@ pub fn (t Type) name() string {
 		if t.len_expr.len > 0 {
 			len_text = t.len_expr
 		}
-		return '${nested_type_name(t.elem_type)}[${len_text}]'
+		elem_type := nested_type_name(t.elem_type)
+		if t.elem_type is FnType {
+			return '[${len_text}]${elem_type}'
+		}
+		return '${elem_type}[${len_text}]'
 	}
 	if t is Channel {
 		return 'chan ${nested_type_name(t.elem_type)}'

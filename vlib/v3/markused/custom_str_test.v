@@ -259,6 +259,24 @@ fn main() {
 	assert used['string__plus']
 }
 
+fn test_channel_auto_str_seeds_inline_helpers() {
+	main_src := '
+module main
+
+import support
+
+fn main() {
+	ch := chan int{cap: support.capacity}
+	println(ch)
+}
+'
+	a, tc := parse_checked_two_file_source('channel_auto_str_helpers', main_src,
+		'support/support.v', 'module support\n\npub const capacity = 1\n')
+	mut used := mark_used(a, tc)
+	assert used['string__plus']
+	assert used['int__str']
+}
+
 // test_optional_struct_zero_seeds_imported_default_helper validates this v3 regression case.
 fn test_optional_struct_zero_seeds_imported_default_helper() {
 	a, tc := parse_checked_two_file_source('imported_struct_default_or',

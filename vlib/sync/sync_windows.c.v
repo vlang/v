@@ -214,25 +214,30 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 			return true
 		}
 	}
+	return sem.wait_for_available_count(timeout)
+}
+
+fn (mut sem Semaphore) wait_for_available_count(timeout time.Duration) bool {
 	mut ft_start := C._FILETIME{}
 	C.GetSystemTimeAsFileTime(&ft_start)
 	time_end := ((u64(ft_start.dwHighDateTime) << 32) | ft_start.dwLowDateTime) +
 		u64(timeout / (100 * time.nanosecond))
 	mut t_ms := u32(timeout.sys_milliseconds())
 	C.AcquireSRWLockExclusive(&sem.mtx)
-	mut res := 0
-	c = C.atomic_load_u32(&sem.count)
+	mut acquired := false
+	mut c := C.atomic_load_u32(&sem.count)
 
 	outer: for {
 		if c == 0 {
-			res = C.SleepConditionVariableSRW(&sem.cond, &sem.mtx, t_ms, 0)
-			if res == 0 {
+			sleep_result := C.SleepConditionVariableSRW(&sem.cond, &sem.mtx, t_ms, 0)
+			if sleep_result == 0 {
 				break outer
 			}
 			c = C.atomic_load_u32(&sem.count)
 		}
 		for c > 0 {
 			if C.atomic_compare_exchange_weak_u32(&sem.count, &c, c - 1) {
+				acquired = true
 				if c > 1 {
 					C.WakeConditionVariable(&sem.cond)
 				}
@@ -247,7 +252,7 @@ pub fn (mut sem Semaphore) timed_wait(timeout time.Duration) bool {
 		t_ms = u32((time_end - time_now) / 10000)
 	}
 	C.ReleaseSRWLockExclusive(&sem.mtx)
-	return res != 0
+	return acquired
 }
 
 pub fn (mut m RwMutex) destroy() {

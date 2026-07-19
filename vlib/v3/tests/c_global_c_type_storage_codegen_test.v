@@ -145,8 +145,9 @@ fn main() {
 	_ := wrap(mut reader)
 }
 ')
-	assert c_code.contains('FileReader* __iface_src_'), c_code
+	assert c_code.contains('._object = read_from'), c_code
 	assert c_code.contains('(Reader){._typ = '), c_code
+	assert !c_code.contains('._object = &read_from'), c_code
 	assert !c_code.contains('FileReader** __iface_src_'), c_code
 }
 

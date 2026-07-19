@@ -17,7 +17,7 @@ import v.markused
 import v.depgraph
 import v.callgraph
 import v.dotgraph
-// import x.json2
+// import json2
 
 fn append_map_array(mut items map[string][]string, key string, value string) {
 	if key !in items {

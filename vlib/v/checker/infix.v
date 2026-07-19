@@ -1158,7 +1158,13 @@ fn (mut c Checker) infix_expr(mut node ast.InfixExpr) ast.Type {
 	}
 
 	// Dual sides check (compatibility check)
-	if node.left !is ast.ComptimeCall && node.right !is ast.ComptimeCall {
+	// `$zero()`/`$new()` have a fully known result type, so they are checkable like any
+	// other expression (fix #27790); other comptime calls are skipped.
+	left_is_opaque_ct_call := node.left is ast.ComptimeCall
+		&& (node.left as ast.ComptimeCall).kind !in [.zero, .new]
+	right_is_opaque_ct_call := node.right is ast.ComptimeCall
+		&& (node.right as ast.ComptimeCall).kind !in [.zero, .new]
+	if !left_is_opaque_ct_call && !right_is_opaque_ct_call {
 		if left_type.has_flag(.generic) {
 			left_type = c.unwrap_generic(left_type)
 			left_sym = c.table.sym(left_type)

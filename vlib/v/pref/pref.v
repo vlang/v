@@ -94,7 +94,6 @@ pub mut:
 	output_mode         OutputMode = .stdout
 	// verbosity           VerboseLevel
 	is_verbose bool
-	use_v2     bool
 	// nofmt            bool   // disable vfmt
 	is_glibc           bool   // if GLIBC will be linked
 	is_musl            bool   // if MUSL will be linked
@@ -359,86 +358,6 @@ fn inline_icon_option_value(arg string) ?string {
 	return none
 }
 
-fn is_v2_passthrough_bool_flag(arg string) bool {
-	return arg in [
-		'--debug',
-		'--verbose',
-		'--skip-genv',
-		'--skip-builtin',
-		'--skip-imports',
-		'--skip-type-check',
-		'--no-parallel',
-		'--nocache',
-		'--nomarkused',
-		'-nomarkused',
-		'--showcc',
-		'--stats',
-		'-print-parsed-files',
-		'--print-parsed-files',
-		'--profile-alloc',
-		'-profile-alloc',
-		'--shared',
-		'-O0',
-		'--single-backend',
-		'-single-backend',
-		'--freestanding',
-		'-no-mos-tiny',
-	]
-}
-
-fn v2_delegation_option_takes_value(arg string) bool {
-	return arg in [
-		'-arch',
-		'-assert',
-		'-b',
-		'-backend',
-		'-cc',
-		'-cflags',
-		'-d',
-		'-define',
-		'-fhooks',
-		'-gc',
-		'-hot-fn',
-		'-message-limit',
-		'-o',
-		'-output',
-		'-os',
-		'-printfn',
-		'-thread-stack-size',
-	]
-}
-
-fn v2_compile_delegation_requested(args []string, known_external_commands []string) bool {
-	mut saw_v2 := false
-	for i := 0; i < args.len; i++ {
-		arg := args[i]
-		if arg == '' {
-			continue
-		}
-		if arg == '--' {
-			return false
-		}
-		if arg == '-v2' {
-			saw_v2 = true
-			continue
-		}
-		if arg.starts_with('-') {
-			if v2_delegation_option_takes_value(arg) {
-				i++
-			}
-			continue
-		}
-		if !saw_v2 {
-			return false
-		}
-		if arg in internal_v_commands || arg in known_external_commands {
-			return false
-		}
-		return is_source_file(arg) || os.exists(arg)
-	}
-	return false
-}
-
 fn set_icon_path(mut res Preferences, raw_path string, option_name string) {
 	if raw_path == '' {
 		eprintln_exit('missing value for `${option_name}`')
@@ -498,7 +417,6 @@ fn optional_arg_value(args []string, idx int, command string, known_external_com
 
 pub fn parse_args_and_show_errors(known_external_commands []string, args []string, show_output bool) (&Preferences, string) {
 	mut res := &Preferences{}
-	v2_passthrough_allowed := v2_compile_delegation_requested(args, known_external_commands)
 	detect_musl(mut res)
 	$if x64 {
 		res.m64 = true // follow V model by default
@@ -522,15 +440,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		arg := args[i]
 		if inline_icon_path := inline_icon_option_value(arg) {
 			set_icon_path(mut res, inline_icon_path, arg.all_before('='))
-			continue
-		}
-		if v2_passthrough_allowed && is_v2_passthrough_bool_flag(arg) {
-			continue
-		}
-		if v2_passthrough_allowed && arg == '-fhooks' {
-			value := cmdline.option(args[i..], arg, '')
-			res.build_options << '${arg} ${value}'
-			i++
 			continue
 		}
 		match arg {
@@ -615,18 +524,11 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 					command = 'version'
 				}
 			}
-			'-v2' {
-				if command == '' {
-					res.use_v2 = true
-				}
-			}
 			'-eval', '--eval' {
-				if !v2_passthrough_allowed {
-					eprintln_exit('use v -v2 -eval file.v')
-				}
+				eprintln_exit('The eval backend has been removed.')
 			}
 			'-ownership' {
-				// Passed through to v2 compiler for ownership checking
+				// Passed through to the V3 ownership compiler by cmd/v.
 			}
 			'-progress' {
 				// processed by testing tools in cmd/tools/modules/testing/common.v
@@ -1054,10 +956,10 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				res.build_options << arg
 			}
 			'-native' {
-				eprintln_exit('The native backend has been removed. Use `v -v2 -b arm64` or `v -v2 -b x64` instead.')
+				eprintln_exit('The native backend has been removed.')
 			}
 			'-interpret' {
-				eprintln_exit('use v -v2 -eval file.v')
+				eprintln_exit('The eval backend has been removed.')
 			}
 			'-W' {
 				res.warns_are_errors = true
@@ -1112,10 +1014,6 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 				target_os_kind := os_from_string(target_os) or {
 					if target_os == 'cross' {
 						res.output_cross_c = true
-						continue
-					}
-					if v2_passthrough_allowed && target_os == 'none' {
-						res.build_options << '${arg} ${target_os}'
 						continue
 					}
 					eprintln_exit('unknown operating system target `${target_os}`')
@@ -1192,14 +1090,8 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 			'-b', '-backend' {
 				sbackend := cmdline.option(args[i..], arg, 'c')
 				res.build_options << '${arg} ${sbackend}'
-				if v2_passthrough_allowed
-					&& sbackend in ['eval', 'cleanc', 'c', 'v', 'arm64', 'x64'] {
-					res.backend_set_by_flag = true
-					i++
-					continue
-				}
 				b := backend_from_string(sbackend) or {
-					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, js, js_node, js_browser, js_freestanding, wasm, arm64, x64')
+					eprintln_exit('Unknown V backend: ${sbackend}\nValid -backend choices are: c, js, js_node, js_browser, js_freestanding, wasm')
 				}
 				if b == .wasm {
 					res.compile_defines << 'wasm'
@@ -1411,7 +1303,7 @@ pub fn parse_args_and_show_errors(known_external_commands []string, args []strin
 		res.path = command
 		res.run_args = command_args
 	} else if command == 'interpret' {
-		eprintln_exit('use v -v2 -eval file.v')
+		eprintln_exit('The eval backend has been removed.')
 	}
 	if command == 'build-module' {
 		res.build_mode = .build_module
@@ -1504,13 +1396,13 @@ pub fn backend_from_string(s string) !Backend {
 	// + a separate option, to choose the wanted JS output.
 	return match s {
 		'c' { .c }
-		'eval', 'interpret' { eprintln_exit('use v -v2 -eval file.v') }
+		'eval', 'interpret' { eprintln_exit('The eval backend has been removed.') }
 		'js', 'js_node' { .js_node }
 		'js_browser' { .js_browser }
 		'js_freestanding' { .js_freestanding }
 		'wasm' { .wasm }
-		'native' { eprintln_exit('The native backend has been removed. Use `v -v2 -b arm64` or `v -v2 -b x64` instead.') }
-		'go', 'golang' { eprintln_exit('The Go backend has been removed. Use `v -v2 -b golang` instead.') }
+		'native' { eprintln_exit('The native backend has been removed.') }
+		'go', 'golang' { eprintln_exit('The Go backend has been removed.') }
 		else { error('Unknown backend type ${s}') }
 	}
 }

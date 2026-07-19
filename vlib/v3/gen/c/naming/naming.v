@@ -13,7 +13,6 @@ const reserved_words = {
 	'asm':      true
 	'const':    true
 	'continue': true
-	'copy':     true
 	'default':  true
 	'do':       true
 	'double':   true
@@ -126,19 +125,31 @@ pub fn c_name(name string) string {
 		return 'v_exit'
 	}
 	if is_plain_identifier(name) {
-		if name in reserved_words || name in libc_collisions {
+		if name in reserved_words || name in libc_collisions || is_string_literal_symbol(name) {
 			return 'v_${name}'
 		}
 		return name
 	}
 	n := sanitize(name)
-	if n in reserved_words || n in libc_collisions {
+	if n in reserved_words || n in libc_collisions || is_string_literal_symbol(n) {
 		if name.contains('@') {
 			return '_v_${n}'
 		}
 		return 'v_${n}'
 	}
 	return n
+}
+
+fn is_string_literal_symbol(name string) bool {
+	if name.len <= 5 || !name.starts_with('_str_') {
+		return false
+	}
+	for i in 5 .. name.len {
+		if name[i] < `0` || name[i] > `9` {
+			return false
+		}
+	}
+	return true
 }
 
 // sanitize converts a V symbol or type spelling into a C identifier spelling
@@ -161,6 +172,16 @@ pub fn sanitize(name string) string {
 		} else if c == `.` {
 			if i + 1 < name.len {
 				next := name[i + 1]
+				if next == `[` && i + 2 < name.len && name[i + 2] == `]` {
+					if i + 3 < name.len && name[i + 3] == `=` {
+						b.write_string('__op_index_set')
+						i += 4
+						continue
+					}
+					b.write_string('__op_index')
+					i += 3
+					continue
+				}
 				if next == `-` {
 					b.write_string('__minus')
 					i += 2
@@ -248,12 +269,19 @@ pub fn sanitize(name string) string {
 			b.write_string('__')
 		} else if c == `&` {
 			b.write_string('ptr')
+		} else if c == `?` {
+			b.write_string('Optional_')
+		} else if c == `!` {
+			b.write_string('Result_')
 		} else if c == `@` {
 			b.write_string('_v_')
 		} else if c == `,` || c == ` ` {
 			b.write_u8(`_`)
-		} else {
+		} else if (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+			|| (c >= `0` && c <= `9`) || c == `_` {
 			b.write_u8(c)
+		} else {
+			b.write_u8(`_`)
 		}
 		i++
 	}

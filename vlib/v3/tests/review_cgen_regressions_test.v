@@ -68,6 +68,29 @@ fn review_cgen_run_bad_project(v3_bin string, name string, files map[string]stri
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
 }
 
+fn test_numbered_string_identifiers_do_not_collide_with_literal_symbols() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'numbered_string_identifier_collision', 'struct Named {
+	_str_2 string
+}
+
+fn main() {
+	_str_1 := "local"
+	value := Named{
+		_str_2: "field"
+	}
+	println(_str_1 + ":" + value._str_2)
+}
+')
+	assert out == 'local:field'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_numbered_string_identifier_collision.c')) or {
+		panic(err)
+	}
+	assert c_code.contains('string v__str_1 = '), c_code
+	assert c_code.contains('.v__str_2 = '), c_code
+	assert c_code.contains('value.v__str_2'), c_code
+}
+
 fn test_module_qualified_free_call_is_not_rewritten_to_array_intrinsic() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good_project(v3_bin, 'module_qualified_free_call', {
@@ -112,6 +135,48 @@ pub fn free(values []int) int {
 '
 	}, 'main.v')
 	assert out == '5'
+}
+
+fn test_sum_container_variant_import_alias_collision_uses_exact_tag() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good_project(v3_bin, 'sum_container_variant_alias_collision', {
+		'v.mod':            'Module { name: "sum_container_variant_alias_collision" }\n'
+		'other/value.v':    'module other\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'sub/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
+		'main.v':           'module main\n\nimport other\nimport sub.tast as tast\n\ntype Mixed = map[string]other.Value | map[string]tast.Value\n\nfn score(value Mixed) int {\n\tif value is map[string]tast.Value {\n\t\titems := value as map[string]tast.Value\n\t\treturn items["x"].n\n\t}\n\treturn -1\n}\n\nfn main() {\n\tvalue := Mixed(map[string]tast.Value{\n\t\t"x": tast.Value{\n\t\t\tn: 71\n\t\t}\n\t})\n\tprintln(int_str(score(value)))\n}\n'
+	}, 'main.v')
+	assert out == '71'
+}
+
+fn test_sum_name_import_alias_collision_uses_exact_sum() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good_project(v3_bin, 'sum_name_import_alias_collision', {
+		'v.mod':         'Module { name: "sum_name_import_alias_collision" }\n'
+		'a/tast/tast.v': 'module tast\n\npub struct Target {}\npub struct Second {}\npub type Value = Target | Second\n'
+		'b/tast/tast.v': 'module tast\n\npub struct First {}\npub struct Target {\npub:\n\tn int\n}\npub type Value = First | Target\n'
+		'main.v':        'module main\n\nimport a.tast as other_tast\nimport b.tast as tast\n\nfn score(value tast.Value) int {\n\tif value is tast.Target {\n\t\ttarget := value as tast.Target\n\t\treturn target.n\n\t}\n\treturn -1\n}\n\nfn main() {\n\t_ := other_tast.Value(other_tast.Target{})\n\tvalue := tast.Value(tast.Target{\n\t\tn: 79\n\t})\n\tprintln(int_str(score(value)))\n}\n'
+	}, 'main.v')
+	assert out == '79'
+}
+
+fn test_user_defined_free_method_is_preserved() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'user_defined_free_method', 'struct Handle {
+mut:
+	freed bool
+}
+
+fn (mut h Handle) free() {
+	h.freed = true
+	println("freed")
+}
+
+fn main() {
+	mut h := Handle{}
+	h.free()
+}
+')
+	assert out == 'freed'
 }
 
 fn test_pointer_receiver_on_pointer_parameter_passes_parameter_directly() {

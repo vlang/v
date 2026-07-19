@@ -1,7 +1,7 @@
 module main
 
 import arrays
-import x.json2
+import json2
 
 enum EventType {
 	message

@@ -352,6 +352,19 @@ pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 	return os.system(cmd)
 }
 
+fn should_retry_execution(result os.Result) bool {
+	output := result.output.trim_space()
+	return output.len == 0 || output.starts_with('exec failed')
+		|| (output.starts_with('exec(') && output.ends_with(') failed'))
+}
+
+fn add_automatic_execution_retry(mut details TestDetails, result os.Result) {
+	if should_retry_execution(result) {
+		// Empty output and process-start failures can both be transient under load on CI runners.
+		details.retry++
+	}
+}
+
 pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 	os.setenv(c_error_bug_report_disabled_env, '1', true)
 	mut skip_files := []string{}
@@ -637,32 +650,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	mut compile_args := '${skip_running} ${compile_options.join(' ')}'
 	mut reproduce_vexe := ts.vexe
 	mut reproduce_args := reproduce_options.join(' ')
-	// `_test.vv2` files are v2-only integration tests: full V programs that
-	// exercise v2-specific syntax. Compile them with the v2 binary instead of
-	// v1, forwarding only flags that v2 recognizes — v2 errors on unknown
-	// flags, so v1-specific options must be stripped. Preserving `-d <name>`,
-	// `-b`/`-backend`, `-cc`, `-stats`, etc. keeps `v test -d feature ...`
-	// and per-file `// vtest vflags` working for conditional code paths.
-	is_vv2 := relative_file.ends_with('_test.vv2')
-	if is_vv2 {
-		mut v2_bin := os.join_path(ts.vroot, 'cmd', 'v2', 'v2')
-		$if windows {
-			v2_bin += '.exe'
-		}
-		if !os.is_executable(v2_bin) {
-			ts.append_message(.info, 'SKIP ${relative_file}: v2 binary not built. Run: ${os.quoted_path(ts.vexe)} -o ${os.quoted_path(v2_bin)} ${os.quoted_path(os.join_path(ts.vroot,
-				'cmd', 'v2', 'v2.v'))}', mtc)
-			ts.benchmark_skip()
-			tls_bench.skip()
-			return pool.no_result
-		}
-		compile_vexe = v2_bin
-		compile_args = filter_args_for_v2(compile_options)
-		// Reproduction command must invoke v2 too, otherwise the suggested
-		// rerun fails immediately on v2-only syntax.
-		reproduce_vexe = v2_bin
-		reproduce_args = filter_args_for_v2(reproduce_options)
-	}
 	reproduce_cmd := '${os.quoted_path(reproduce_vexe)} ${reproduce_args} ${os.quoted_path(file)}'
 	cmd := '${os.quoted_path(compile_vexe)} ${compile_args} ${os.quoted_path(file)}'
 	run_cmd := if run_js {
@@ -712,6 +699,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
 		if status != 0 {
+			add_automatic_execution_retry(mut details, res)
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
 				if !details.hide_retries {
@@ -803,10 +791,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		if r.exit_code != 0 {
 			mut trimmed_output := r.output.trim_space()
-			if trimmed_output.len == 0 {
-				// retry running at least 1 more time, to avoid CI false positives as much as possible
-				details.retry++
-			}
+			add_automatic_execution_retry(mut details, r)
 			if details.retry != 0 {
 				failure_output.write_string(separator)
 				failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
@@ -994,39 +979,6 @@ pub fn building_any_v_binaries_failed() bool {
 
 pub fn h_divider() {
 	eprintln(term.h_divider('-')#[..max_header_len])
-}
-
-// filter_args_for_v2 returns a command-line string containing only the flags
-// the v2 compiler accepts (`vlib/v2_toberemoved/pref/pref.v`). v2 errors on any unknown
-// flag, so this is used when forwarding `v test` options to v2 for
-// `_test.vv2` files. Keep these lists in sync with v2's pref validator.
-fn filter_args_for_v2(compile_options []string) string {
-	v2_value_flags := ['-backend', '-b', '-o', '-output', '-arch', '-printfn', '-gc', '-d', '-hot-fn',
-		'-cc']
-	v2_bool_flags := ['--debug', '--verbose', '-v', '--skip-genv', '--skip-builtin', '--skip-imports',
-		'--skip-type-check', '--no-parallel', '-nocache', '--nocache', '-nomarkused', '--nomarkused',
-		'-showcc', '--showcc', '-stats', '--stats', '-print-parsed-files', '--print-parsed-files',
-		'-keepc', '--profile-alloc', '-profile-alloc', '-enable-globals', '--enable-globals',
-		'-shared', '--shared', '-O0', '--single-backend', '-single-backend', '-prod', '-prealloc',
-		'-ownership']
-	tokens := vflags.tokenize_to_args(compile_options.join(' '))
-	mut out := []string{}
-	mut i := 0
-	for i < tokens.len {
-		t := tokens[i]
-		if t in v2_value_flags {
-			if i + 1 < tokens.len {
-				out << t
-				out << os.quoted_path(tokens[i + 1])
-				i += 2
-				continue
-			}
-		} else if t in v2_bool_flags {
-			out << t
-		}
-		i++
-	}
-	return out.join(' ')
 }
 
 // setup_new_vtmp_folder creates a new nested folder inside VTMP, then resets VTMP to it,

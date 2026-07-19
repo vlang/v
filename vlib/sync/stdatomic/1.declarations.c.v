@@ -8,7 +8,17 @@ $if windows {
 	#insert "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
 } $else {
 	#flag -I @VEXEROOT/thirdparty/stdatomic/nix
+	$if tinyc {
+		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_aliases.h"
+	}
 	#insert "@VEXEROOT/thirdparty/stdatomic/nix/atomic.h"
+	$if tinyc {
+		#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_cleanup.h"
+		#include <stdatomic.h>
+		$if linux {
+			#insert "@VEXEROOT/vlib/sync/stdatomic/tcc_compat_linux_fence.h"
+		}
+	}
 }
 
 $if linux {

@@ -58,6 +58,34 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'cannot initialize field `x` with `&int`; expected `int`')
 }
 
+fn test_if_expr_pointer_and_value_branches_are_incompatible() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_if_expr_pointer_value_branch',
+		'struct Foo {}\n\nfn main() {\n\t_ := if true {\n\t\tFoo{}\n\t} else {\n\t\t&Foo{}\n\t}\n}\n',
+		'if-expression branch type mismatch')
+}
+
+fn test_reject_narrowed_interface_method_parameters() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_narrowed_interface_method_param',
+		'interface A {\n\ta() string\n}\n\ninterface B {\n\tA\n\tb() string\n}\n\nstruct Impl {}\n\nfn (Impl) m(x B) {\n\t_ = x\n}\n\ninterface I {\n\tm(x A)\n}\n\nfn main() {\n\t_ := I(Impl{})\n}\n',
+		'type `Impl` does not implement interface `I`')
+}
+
+fn test_implicit_str_sum_does_not_satisfy_interface() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_implicit_str_sum_interface',
+		'interface Printable {\n\tstr() string\n}\ntype Value = int | string\nfn main() {\n\t_ := Printable(Value(1))\n}\n',
+		'does not implement interface')
+}
+
+fn test_implicit_str_unsupported_alias_does_not_satisfy_interface() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_implicit_str_fn_alias_interface',
+		'interface Printable {\n\tstr() string\n}\ntype Callback = fn ()\nfn noop() {}\nfn main() {\n\tcb := Callback(noop)\n\t_ := Printable(cb)\n}\n',
+		'does not implement interface')
+}
+
 fn test_multi_return_tail_slots_use_return_compatibility() {
 	v3_bin := build_v3_review_checker()
 	if_out := run_good(v3_bin, 'good_multi_return_if_pointer_value_tail',
@@ -106,6 +134,22 @@ fn test_voidptr_params_reject_non_pointer_values() {
 	out := run_good(v3_bin, 'good_voidptr_pointer_arg',
 		'fn f(p voidptr) int {\n\t_ = p\n\treturn 7\n}\n\nfn main() {\n\tx := 1\n\tprintln(int_str(f(&x)))\n}\n')
 	assert out == '7'
+}
+
+fn test_shared_receiver_and_arg_require_shared_bindings() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_shared_receiver_plain_value',
+		'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n',
+		'cannot use non-shared `St` as receiver')
+	run_bad(v3_bin, 'bad_shared_arg_shadowed_local',
+		'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\tshared s := St{}\n\tif true {\n\t\ts := St{}\n\t\ttake(s)\n\t}\n}\n',
+		'cannot use non-shared `St` as argument 1')
+	run_bad(v3_bin, 'bad_explicit_shared_arg_plain_local',
+		'struct St {}\n\nfn take(shared s St) {}\n\nfn main() {\n\ts := St{}\n\ttake(shared s)\n}\n',
+		'cannot use non-shared `St` as argument 1')
+	out := run_good(v3_bin, 'good_shared_arg_and_receiver',
+		'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(s) + s.f()))\n}\n')
+	assert out == '3'
 }
 
 fn test_restrict_synthetic_hex_fallback_receivers() {
@@ -223,9 +267,38 @@ fn test_reject_escaping_capturing_fn_literals() {
 	run_bad(v3_bin, 'bad_return_capturing_fn_literal',
 		'fn make(x int) fn () int {\n\treturn fn [x] () int {\n\t\treturn x\n\t}\n}\nfn main() {}\n',
 		'capturing fn literal cannot be stored or returned')
-	run_bad(v3_bin, 'bad_store_capturing_fn_literal_alias',
-		'fn main() {\n\tx := 1\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\tmut cbs := []fn () int{}\n\tcbs << f\n}\n',
+	run_bad(v3_bin, 'bad_return_capturing_fn_literal_alias',
+		'fn make(x int) fn () int {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn f\n}\nfn main() {}\n',
 		'capturing fn literal cannot be stored or returned')
+	run_bad(v3_bin, 'bad_struct_field_capturing_fn_literal',
+		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\treturn Holder{\n\t\tcb: fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t}\n}\nfn main() {}\n',
+		'capturing fn literal cannot be stored or returned')
+	run_bad(v3_bin, 'bad_struct_field_capturing_fn_literal_alias',
+		'struct Holder {\n\tcb fn () int\n}\nfn make(x int) Holder {\n\tf := fn [x] () int {\n\t\treturn x\n\t}\n\treturn Holder{\n\t\tcb: f\n\t}\n}\nfn main() {}\n',
+		'capturing fn literal cannot be stored or returned')
+}
+
+fn test_capturing_fn_literal_aliases_are_binding_scoped() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_capturing_fn_literal_inner_shadow',
+		'fn plain() int {\n\treturn 3\n}\n\nfn make(x int) fn () int {\n\tcb := plain\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make(0)()))\n}\n')
+	assert out == '3'
+	lambda_out := run_good(v3_bin, 'good_lambda_capturing_fn_literal_shadow',
+		'fn plain() int {\n\treturn 4\n}\n\nfn apply(cb fn (int) int) int {\n\treturn cb(1)\n}\n\nfn make() fn () int {\n\tcb := plain\n\t_ = apply(|n| if n > 0 {\n\t\tcb := fn [n] () int {\n\t\t\treturn n\n\t\t}\n\t\t_ = cb\n\t\tn\n\t} else {\n\t\tn\n\t})\n\treturn cb\n}\n\nfn main() {\n\tprintln(int_str(make()()))\n}\n')
+	assert lambda_out == '4'
+	run_bad(v3_bin, 'bad_outer_capturing_alias_survives_inner_shadow',
+		'fn make(x int) fn () int {\n\tcb := fn [x] () int {\n\t\treturn x\n\t}\n\tif x > 0 {\n\t\tcb := fn [x] () int {\n\t\t\treturn x + 1\n\t\t}\n\t\t_ = cb\n\t}\n\treturn cb\n}\nfn main() {}\n',
+		'capturing fn literal cannot be stored or returned')
+}
+
+fn test_reject_unsmartcasted_unique_sum_variant_field() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_unsmartcasted_unique_sum_field',
+		'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype K = A | B\nfn main() {\n\tk := K(B{})\n\t_ := k.only_on_a\n}\n',
+		'unknown field `only_on_a`')
+	out := run_good(v3_bin, 'good_smartcasted_unique_sum_field',
+		'struct A {\n\tonly_on_a int\n}\nstruct B {}\ntype K = A | B\nfn main() {\n\tk := K(A{\n\t\tonly_on_a: 7\n\t})\n\tif k is A {\n\t\tprintln(int_str(k.only_on_a))\n\t}\n}\n')
+	assert out == '7'
 }
 
 fn test_generic_functions_report_missing_return() {

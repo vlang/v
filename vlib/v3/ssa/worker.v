@@ -13,20 +13,6 @@ pub:
 	params   []ValueID // worker-local param value ids
 }
 
-// is_block_operand reports whether operand `idx` of this instruction names a
-// basic block (a raw block id) rather than an SSA value.
-pub fn (i &Instruction) is_block_operand(idx int) bool {
-	return match i.op {
-		.jmp { idx == 0 }
-		.br { idx == 1 || idx == 2 }
-		// switch_: cond, default_blk, [case_val, blk]... -> blocks at odd indices.
-		.switch_ { idx % 2 == 1 }
-		// phi: [val, blk]... -> blocks at odd indices.
-		.phi { idx % 2 == 1 }
-		else { false }
-	}
-}
-
 // new_worker_module creates a lightweight Module for parallel SSA building. The
 // worker gets a deep copy of the type store and is seeded with the main module's
 // values/instrs/blocks so ids produced in earlier (serial) phases stay valid.

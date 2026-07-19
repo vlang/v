@@ -202,3 +202,45 @@ fn main() {
 	assert compact.contains('constinta__vals[3]'), generated
 	assert compact.contains('constintb__vals[3]'), generated
 }
+
+fn test_aliased_import_dynamic_const_use_stays_dynamic() {
+	v3_bin := fixed_array_const_build_v3()
+	root := os.join_path(os.temp_dir(), 'v3_fixed_array_aliased_const_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'pkg')) or { panic(err) }
+	os.write_file(os.join_path(root, 'pkg', 'pkg.v'), 'module pkg
+
+pub const vals = [u32(1), 2, 3]
+
+pub fn indexed() u32 {
+	return vals[1]
+}
+') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+
+import pkg as p
+
+fn take(xs []u32) u32 {
+	return xs[2]
+}
+
+fn main() {
+	println((p.indexed() + take(p.vals)).str())
+}
+') or {
+		panic(err)
+	}
+	bin := os.join_path(root, 'app')
+	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	assert compile.exit_code == 0, compile.output
+	run := os.execute(bin)
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '5', run.output
+
+	generated := os.read_file(bin + '.c') or { panic(err) }
+	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert generated.contains('Array pkg__vals'), generated
+	assert !compact.contains('constu32pkg__vals[3]'), generated
+}

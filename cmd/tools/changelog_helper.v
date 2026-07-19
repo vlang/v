@@ -4,7 +4,7 @@ import os
 
 const delete_skipped = true
 
-const git_log_cmd = 'git log -n 500 --pretty=format:"%s" --simplify-merges'
+const git_log_cmd = 'git log --pretty=format:"%s" --simplify-merges'
 
 enum Category {
 	checker
@@ -49,6 +49,8 @@ const category_titles = '#### Improvements in the language
 #### C backend
 
 #### JavaScript backend
+
+#### Comptime
 
 #### vfmt
 
@@ -140,21 +142,12 @@ fn (mut app App) process_line(text string) ! {
 	if text == '' {
 		return
 	}
-	semicolon_pos := text.index(': ') or {
-		println('no `:` in commit, skipping: "${text}"')
-		return
-	}
-	prefix := text[..semicolon_pos]
 	// Get category based on keywords in the commit message/prefix
 	mut category := Category.examples
-	if text.contains('checker:') {
+	if is_checker(text) {
 		category = .checker
 	} else if is_interpreter(text) {
 		category = .interpreter
-	} else if is_examples(text) {
-		category = .examples
-		// println("Skipping line (example) ${text}")
-		// return
 	} else if is_skip(text) {
 		// Always skip cleanups, typos etc
 		println('Skipping line (cleanup/typo)\n${text}\n')
@@ -162,6 +155,8 @@ fn (mut app App) process_line(text string) ! {
 			delete_processed_line_from_log(text)!
 		}
 		return
+	} else if is_examples(text) {
+		category = .examples
 	} else if is_os_support(text) {
 		category = .os_support
 	} else if is_cgen(text) {
@@ -200,6 +195,8 @@ fn (mut app App) process_line(text string) ! {
 		return
 	}
 	println('process_line: cat=${category} "${text}"')
+	semicolon_pos := text.index(': ') or { text.len }
+	prefix := text[..semicolon_pos]
 
 	// Trim everything to the left of `:` for some commits (e.g. `checker: `)
 	mut s := text
@@ -208,7 +205,7 @@ fn (mut app App) process_line(text string) ! {
 	// exit(0)
 	//}
 	if (semicolon_pos < 15
-		&& prefix in ['checker', 'cgen', 'orm', 'parser', 'v.parser', 'native', 'ast', 'jsgen', 'v.gen.js', 'fmt', 'vfmt', 'tools', 'examples', 'eval'])
+		&& prefix in ['checker', 'cgen', 'fix', 'orm', 'parser', 'v.parser', 'native', 'ast', 'jsgen', 'v.gen.js', 'fmt', 'vfmt', 'tools', 'examples', 'eval'])
 		|| (semicolon_pos < 30 && prefix.contains(', ')) {
 		s = '- ' + text[semicolon_pos + 2..].capitalize()
 	}
@@ -305,7 +302,7 @@ fn (l Line) write_at_category(txt string) ?string {
 	second_half := txt[pos..]
 	if txt.contains(l.text) {
 		// Avoid duplicates (just in case)
-		println("Got a duplicate: '${txt}'")
+		println("Got a duplicate: '${l.text}'")
 		return txt
 	}
 	// Now insert the line in the middle, under the ### category title
@@ -335,9 +332,17 @@ fn (l Line) write_at_category(txt string) ?string {
 }
 
 fn delete_processed_line_from_log(line string) ! {
-	text := os.read_file(log_txt)!
-	new_text := text.replace_once(line, '')
-	os.write_file(log_txt, new_text)!
+	lines := os.read_lines(log_txt)!
+	mut new_lines := []string{cap: lines.len}
+	mut was_deleted := false
+	for existing_line in lines {
+		if !was_deleted && existing_line == line {
+			was_deleted = true
+			continue
+		}
+		new_lines << existing_line
+	}
+	os.write_file(log_txt, new_lines.join('\n'))!
 }
 
 const db_strings = [
@@ -345,6 +350,7 @@ const db_strings = [
 	'db.sqlite',
 	'db.mysql',
 	'db.pg',
+	'db.mssql',
 	'db.redis',
 	'pg:',
 	'mysql:',
@@ -356,12 +362,24 @@ const parser_strings = [
 ]
 
 const stdlib_strings = [
+	'aes-gcm',
+	'archive:',
+	'closure:',
+	'compress',
+	'context',
+	'dtm2:',
+	'encoding:',
+	'executor:',
+	'goroutines:',
 	'gg:',
+	'hash.',
+	'image:',
 	'json:',
 	'json2:',
 	'time:',
 	'sync:',
 	'datatypes:',
+	'datatypes.',
 	'math:',
 	'math.',
 	'math.big',
@@ -389,15 +407,24 @@ const stdlib_strings = [
 	'io:',
 	'io.',
 	'log:',
+	'lz:',
+	'maps:',
+	'mcp:',
 	'flag:',
 	'regex:',
 	'regex.',
 	'tmpl:',
 	'hash:',
 	'stbi:',
+	'snappy:',
+	'strings:',
+	'term.ui:',
 	'atomic:',
 	'context:',
 	'thirdparty',
+	'x.markdown:',
+	'data analysis tool library',
+	'yaml:',
 ]
 
 fn is_stdlib(text string) bool {
@@ -417,8 +444,11 @@ fn is_orm(text string) bool {
 }
 
 const cgen_strings = [
+	'c compilation error',
 	'cgen:',
 	'cgen,',
+	'gen/c:',
+	'preserve interface arrays',
 	'v.gen.c:',
 ]
 
@@ -437,6 +467,13 @@ fn is_js_backend(text string) bool {
 }
 
 const internal_strings = [
+	'ast,pref,genc:',
+	'compiler:',
+	'gen:',
+	'gc:',
+	'libgc:',
+	'native:',
+	'reflection:',
 	'scanner:',
 	'transformer:',
 	'markused:',
@@ -446,6 +483,14 @@ const internal_strings = [
 	'v.generic',
 	'v.comptime',
 	'table:',
+	'util:',
+	'v2:',
+	'v2/',
+	'v2 ',
+	'v3:',
+	'v3 ownership',
+	'vgc:',
+	'vlib,builder,v3:',
 ]
 
 fn is_internal(text string) bool {
@@ -453,7 +498,9 @@ fn is_internal(text string) bool {
 }
 
 const improvements_strings = [
+	'@[soa]',
 	'all:',
+	'c function wrappers',
 	'v:',
 	'coroutines:',
 	'autofree',
@@ -468,14 +515,42 @@ const examples_strings = [
 ]
 const skip_strings = [
 	'tests',
+	'test list',
+	'test pass',
+	'test_all',
+	'test failures',
+	'test failure',
+	'test fixes',
+	'test regressions',
+	'test ordering',
+	'test coverage',
+	'test:',
+	'library test',
 	'readme:',
+	'update docs',
+	'doc comment',
 	'.md:',
+	': format',
+	': vfmt',
+	'quick fmt',
+	'all code is formatted',
 	'typos',
 	' typo',
 	'cleanup',
 	'clean up',
 	'build(deps)',
-	'FUNDING',
+	'funding',
+	'master ci',
+	'fix ci',
+	'ci regressions',
+	'tools ci',
+	'benchmark',
+	'bench:',
+	'remove unused',
+	'removed unused',
+	'revert:',
+	'dynamic_template_manager_test',
+	'vtmp_cov',
 ]
 
 fn is_examples(text string) bool {
@@ -483,10 +558,21 @@ fn is_examples(text string) bool {
 }
 
 fn is_skip(text string) bool {
-	return is_xxx(text, skip_strings)
+	lower_text := text.to_lower()
+	return lower_text in ['fixes', 'ok'] || lower_text.starts_with('fix #')
+		|| (lower_text.contains('example') && (lower_text.contains('fix')
+		|| lower_text.contains('update'))) || is_xxx(text, skip_strings)
 }
 
 const tools_strings = [
+	'build:',
+	'cmd:',
+	'cmd/tools/',
+	'editors:',
+	'help:',
+	'make:',
+	'make.bat:',
+	'makev.bat:',
 	'tools:',
 	'vpm:',
 	'ci:',
@@ -503,6 +589,7 @@ const tools_strings = [
 	'Dockerfile',
 	'vcomplete',
 	'vwatch',
+	'vsh:',
 	'changelog',
 ]
 
@@ -515,7 +602,9 @@ fn is_parser(text string) bool {
 }
 
 const web_strings = [
+	'fasthttp',
 	'veb',
+	'vweb',
 	'websocket:',
 	'pico',
 	'x.sessions',
@@ -525,6 +614,7 @@ const web_strings = [
 	'net.',
 	'wasm:',
 	'http:',
+	'xsessions:',
 ]
 
 fn is_web(text string) bool {
@@ -532,6 +622,7 @@ fn is_web(text string) bool {
 }
 
 const vfmt_strings = [
+	'attribute call syntax in vfmt',
 	'vfmt:',
 	'fmt:',
 ]
@@ -551,6 +642,13 @@ const os_support_strings = [
 	'windows',
 	'Linux',
 	'linux',
+	'ios module',
+	'ppc64',
+	'raspberry pi',
+	'regqueryinfokeyw',
+	'sparc64',
+	'tcc/bionic',
+	'this app cannot run on your pc',
 	'msvc:',
 ]
 
@@ -559,16 +657,27 @@ fn is_os_support(text string) bool {
 }
 
 fn is_comptime(text string) bool {
-	return text.contains('comptime:')
+	lower_text := text.to_lower()
+	return lower_text.starts_with('comptime:') || lower_text.contains(': comptime ')
+		|| lower_text.starts_with('gen: fix comptime')
 }
 
 fn is_interpreter(text string) bool {
-	return text.starts_with('eval:')
+	lower_text := text.to_lower()
+	return lower_text.starts_with('eval:') || lower_text.starts_with('v2.eval:')
+		|| lower_text.contains('eval backend')
+}
+
+fn is_checker(text string) bool {
+	lower_text := text.to_lower()
+	return lower_text.contains('checker:') || lower_text.contains('checker(')
+		|| lower_text.contains('#26848')
 }
 
 fn is_xxx(text string, words []string) bool {
+	lower_text := text.to_lower()
 	for s in words {
-		if text.contains(s) {
+		if lower_text.contains(s.to_lower()) {
 			return true
 		}
 	}

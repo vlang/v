@@ -252,6 +252,7 @@ pub enum ValueKind {
 	argument
 	global
 	instruction
+	phi_result
 	basic_block
 	string_literal   // V string struct literal (by value)
 	c_string_literal // C string literal (raw char pointer)
@@ -289,6 +290,55 @@ pub mut:
 	pos        token.Pos
 	atomic_ord AtomicOrdering
 	inline     InlineHint // Inline hint for call instructions
+}
+
+// is_block_operand reports whether operand `idx` names a basic block rather
+// than an SSA value. Keep all mixed-layout instruction knowledge here so CFG,
+// optimizer, verifier, and worker code cannot disagree about operand roles.
+pub fn (i &Instruction) is_block_operand(idx int) bool {
+	if idx < 0 || idx >= i.operands.len {
+		return false
+	}
+	return match i.op {
+		.jmp { idx == 0 }
+		.br { idx == 1 || idx == 2 }
+		// switch_: cond, default_blk, [case_val, blk]...
+		.switch_ { idx % 2 == 1 }
+		// phi: [val, predecessor_blk]...
+		.phi { idx % 2 == 1 }
+		else { false }
+	}
+}
+
+// is_value_operand reports whether operand `idx` names an SSA value.
+pub fn (i &Instruction) is_value_operand(idx int) bool {
+	return idx >= 0 && idx < i.operands.len && !i.is_block_operand(idx)
+		&& !i.is_definition_operand(idx)
+}
+
+// is_definition_operand reports whether operand `idx` is defined by an
+// instruction rather than read by it. Phi lowering represents copies as
+// `assign destination, source`, so the destination must never participate in
+// use lists or replacement walks.
+pub fn (i &Instruction) is_definition_operand(idx int) bool {
+	if idx < 0 || idx >= i.operands.len {
+		return false
+	}
+	return i.op == .assign && idx == 0
+}
+
+// is_successor_operand reports whether operand `idx` is a CFG successor. Phi
+// block operands are predecessors, so they intentionally do not match here.
+pub fn (i &Instruction) is_successor_operand(idx int) bool {
+	if idx < 0 || idx >= i.operands.len {
+		return false
+	}
+	return match i.op {
+		.jmp { idx == 0 }
+		.br { idx == 1 || idx == 2 }
+		.switch_ { idx % 2 == 1 }
+		else { false }
+	}
 }
 
 // BasicBlock represents basic block data used by ssa.
@@ -415,7 +465,10 @@ pub fn (mut m Module) add_instr(op OpCode, block BlockID, typ TypeID, operands [
 	mut blk := m.blocks[block]
 	blk.instrs << val_id
 	m.blocks[block] = blk
-	for op_id in m.instrs[instr_idx].value_operands() {
+	for oi, op_id in m.instrs[instr_idx].operands {
+		if !m.instrs[instr_idx].is_value_operand(oi) {
+			continue
+		}
 		if op_id > 0 && op_id < m.values.len && val_id !in m.values[op_id].uses {
 			mut op_val := m.values[op_id]
 			op_val.uses << val_id
@@ -439,7 +492,10 @@ pub fn (mut m Module) add_instr_front(op OpCode, block BlockID, typ TypeID, oper
 	mut blk := m.blocks[block]
 	blk.instrs.prepend(val_id)
 	m.blocks[block] = blk
-	for op_id in m.instrs[instr_idx].value_operands() {
+	for oi, op_id in m.instrs[instr_idx].operands {
+		if !m.instrs[instr_idx].is_value_operand(oi) {
+			continue
+		}
 		if op_id > 0 && op_id < m.values.len && val_id !in m.values[op_id].uses {
 			mut op_val := m.values[op_id]
 			op_val.uses << val_id
@@ -450,13 +506,94 @@ pub fn (mut m Module) add_instr_front(op OpCode, block BlockID, typ TypeID, oper
 }
 
 // append_phi_operands appends a (val, block_id) pair to a phi instruction.
-pub fn (mut m Module) append_phi_operands(instr_idx int, val ValueID, block_id BlockID) {
+pub fn (mut m Module) append_phi_operands(phi_val_id ValueID, val ValueID, block_id BlockID) {
+	if phi_val_id <= 0 || phi_val_id >= m.values.len || m.values[phi_val_id].kind != .instruction {
+		return
+	}
+	instr_idx := m.values[phi_val_id].index
 	mut instr := m.instrs[instr_idx]
 	instr.operands << val
 	instr.operands << block_id
 	m.instrs[instr_idx] = instr
 	if val > 0 && val < m.values.len {
-		// keep use lists consistent: the phi value uses `val`
+		if phi_val_id !in m.values[val].uses {
+			mut op_val := m.values[val]
+			op_val.uses << phi_val_id
+			m.values[val] = op_val
+		}
+	}
+}
+
+// remove_value_user removes one instruction from a value's unique user list.
+pub fn (mut m Module) remove_value_user(value_id ValueID, user_id ValueID) {
+	if value_id <= 0 || value_id >= m.values.len {
+		return
+	}
+	mut value := m.values[value_id]
+	for idx := value.uses.len - 1; idx >= 0; idx-- {
+		if value.uses[idx] == user_id {
+			value.uses.delete(idx)
+		}
+	}
+	m.values[value_id] = value
+}
+
+// add_value_user records one instruction in a value's unique user list.
+pub fn (mut m Module) add_value_user(value_id ValueID, user_id ValueID) {
+	if value_id <= 0 || value_id >= m.values.len || user_id <= 0 || user_id >= m.values.len {
+		return
+	}
+	if user_id in m.values[value_id].uses {
+		return
+	}
+	mut value := m.values[value_id]
+	value.uses << user_id
+	m.values[value_id] = value
+}
+
+// rewrite_instruction changes an instruction while maintaining its value-use
+// edges. CFG edges remain the responsibility of callers that change a
+// terminator; they can rebuild or update the CFG once after batching edits.
+pub fn (mut m Module) rewrite_instruction(value_id ValueID, op OpCode, operands []ValueID) {
+	if value_id <= 0 || value_id >= m.values.len || m.values[value_id].kind != .instruction {
+		return
+	}
+	instr_idx := m.values[value_id].index
+	if instr_idx < 0 || instr_idx >= m.instrs.len {
+		return
+	}
+	old := m.instrs[instr_idx]
+	for operand_idx, operand in old.operands {
+		if old.is_value_operand(operand_idx) {
+			m.remove_value_user(operand, value_id)
+		}
+	}
+	mut rewritten := old
+	rewritten.op = op
+	rewritten.operands = operands
+	m.instrs[instr_idx] = rewritten
+	for operand_idx, operand in operands {
+		if rewritten.is_value_operand(operand_idx) {
+			m.add_value_user(operand, value_id)
+		}
+	}
+}
+
+// detach_instruction_uses removes every use edge contributed by an
+// instruction that is about to leave its block.
+pub fn (mut m Module) detach_instruction_uses(value_id ValueID) {
+	if value_id <= 0 || value_id >= m.values.len || m.values[value_id].kind != .instruction {
+		return
+	}
+	instr_idx := m.values[value_id].index
+	if instr_idx < 0 || instr_idx >= m.instrs.len {
+		return
+	}
+	instr := m.instrs[instr_idx]
+	for operand_idx, operand in instr.operands {
+		if instr.is_value_operand(operand_idx) {
+			m.remove_value_user(operand, value_id)
+		}
 	}
 }
 
@@ -745,10 +882,12 @@ fn (m &Module) type_align_for_layout_inner(typ_id TypeID, depth int) int {
 
 // replace_uses supports replace uses handling for Module.
 pub fn (mut m Module) replace_uses(old_id ValueID, new_id ValueID) {
-	if old_id <= 0 || old_id >= m.values.len {
+	if old_id == new_id || old_id <= 0 || old_id >= m.values.len || new_id <= 0
+		|| new_id >= m.values.len {
 		return
 	}
-	for user_id in m.values[old_id].uses {
+	users := m.values[old_id].uses.clone()
+	for user_id in users {
 		if user_id <= 0 || user_id >= m.values.len {
 			continue
 		}
@@ -757,48 +896,25 @@ pub fn (mut m Module) replace_uses(old_id ValueID, new_id ValueID) {
 			continue
 		}
 		mut instr := m.instrs[val.index]
+		mut changed := false
 		for i in 0 .. instr.operands.len {
-			if instr.operands[i] == old_id {
+			if instr.is_value_operand(i) && instr.operands[i] == old_id {
 				instr.operands[i] = new_id
+				changed = true
 			}
 		}
-		m.instrs[val.index] = instr
-	}
-}
-
-// value_operands returns value operands data for Instruction.
-pub fn (i &Instruction) value_operands() []ValueID {
-	if i.op == .br {
-		if i.operands.len > 0 {
-			mut r := []ValueID{}
-			r << i.operands[0]
-			return r
+		if changed {
+			m.instrs[val.index] = instr
+			if user_id !in m.values[new_id].uses {
+				mut new_val := m.values[new_id]
+				new_val.uses << user_id
+				m.values[new_id] = new_val
+			}
 		}
-		return []ValueID{}
 	}
-	if i.op == .jmp {
-		return []ValueID{}
-	}
-	if i.op == .switch_ {
-		// switch_ %val, default_block, [case_val, block]...
-		// Only %val and the case values are SSA values; blocks are raw block ids.
-		mut r := []ValueID{}
-		if i.operands.len > 0 {
-			r << i.operands[0]
-		}
-		for oi := 2; oi < i.operands.len; oi += 2 {
-			r << i.operands[oi]
-		}
-		return r
-	}
-	if i.op == .phi {
-		mut r := []ValueID{}
-		for oi := 0; oi < i.operands.len; oi += 2 {
-			r << i.operands[oi]
-		}
-		return r
-	}
-	return i.operands
+	mut old_val := m.values[old_id]
+	old_val.uses = []
+	m.values[old_id] = old_val
 }
 
 // struct_field_offset returns the byte offset of a field in a struct type.

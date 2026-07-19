@@ -23,7 +23,7 @@ mut:
 
 const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 
-const temporarily_disabled_self_test_vlib_dirs = ['v2_toberemoved', 'v3']
+const temporarily_disabled_self_test_vlib_dirs = ['v3']
 
 const essential_list = [
 	'cmd/tools/vvet/vet_test.v',
@@ -93,7 +93,7 @@ const essential_list = [
 	'vlib/v/gen/js/program_test.v',
 	'vlib/v/pkgconfig/pkgconfig_test.v',
 	'vlib/v/slow_tests/inout/compiler_test.v',
-	'vlib/x/json2/tests/json2_test.v',
+	'vlib/json2/tests/json2_test.v',
 ]
 const skip_with_fsanitize_memory = [
 	'do_not_remove',
@@ -114,6 +114,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/net/ssl/ssl_read_all_test.v',
 	'vlib/net/udp_test.v',
 	'vlib/net/tcp_test.v',
+	'vlib/context/onecontext/onecontext_test.v', // spawn + channels + IError default field; tripped by MSan padding tracking
 	'vlib/orm/orm_test.v',
 	'vlib/orm/orm_sql_or_blocks_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
@@ -140,6 +141,7 @@ const skip_with_fsanitize_memory = [
 	'vlib/orm/orm_save_test.v',
 	'vlib/orm/orm_upsert_test.v',
 	'vlib/orm/orm_func_test.v',
+	'vlib/db/driver_test.v', // MSan flags uninstrumented sqlite3BtreeOpen in libsqlite3.so
 	'vlib/db/sqlite/sqlite_test.v',
 	'vlib/db/sqlite/sqlite_orm_test.v',
 	'vlib/db/sqlite/sqlite_comptime_field_test.v',
@@ -195,8 +197,6 @@ const skip_with_fsanitize_address = [
 	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/shared_library_system_link_test.v', // ASan keeps Boehm GC symbols visible, breaking the export-symbol assertion
 	'vlib/veb/sse/sse_test.v', // long-lived event stream + sockets, ASan flake
-	'vlib/v2_toberemoved/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, ASan-incompatible
-	'vlib/v2_toberemoved/gen/x64/x64_backend_runtime_regression_manual_test.v', // V2 x64 backend runtime regression manual tests, ASan-incompatible
 ]
 const skip_with_fsanitize_undefined = [
 	'do_not_remove',
@@ -214,9 +214,6 @@ const skip_with_fsanitize_undefined = [
 	'vlib/v/tests/orm_or_test.v',
 	'vlib/v/tests/project_with_cpp_code/compiling_cpp_files_with_a_cplusplus_compiler_test.c.v', // fails compilation with: undefined reference to vtable for __cxxabiv1::__function_type_info'
 	'vlib/v/tests/shared_library_system_link_test.v', // UBSan keeps Boehm GC symbols visible, breaking the export-symbol assertion
-	'vlib/v2_toberemoved/gen/cleanc/flag_enum_codegen_test.v', // v2 self-host, UBSan-incompatible
-	'vlib/v2_toberemoved/gen/x64/x64_backend_runtime_regression_manual_test.v', // V2 x64 backend runtime regression manual tests, UBSan-incompatible
-	'vlib/v2_toberemoved/transformer/transformer_test.v', // v2 transformer, UBSan-incompatible
 	'vlib/yaml/yaml_conformance_test.v', // upstream libyaml-style integer overflow flagged by UBSan
 ]
 const skip_on_ubuntu_musl = [

@@ -802,7 +802,7 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 				// ensure that the sub expressions of the branch are actually checked, before anything else:
 				_ := c.expr(mut expr)
 			}
-			if expr is ast.TypeNode && cond_sym.kind == .struct {
+			if expr is ast.TypeNode && cond_sym.kind == .struct && !node.is_comptime {
 				c.error('struct instances cannot be matched by type name, they can only be matched to other instances of the same struct type',
 					branch.pos)
 			}

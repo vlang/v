@@ -1,3 +1,4 @@
+// vtest vflags: -w
 import json
 
 fn test_calling_functions_with_map_initializations_containing_arrays() {

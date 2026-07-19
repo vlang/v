@@ -12,6 +12,10 @@ on:
     paths:
       - '**/periodic_ci.yml'
 
+concurrency:
+  group: periodic-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   periodic-network:
     strategy:
