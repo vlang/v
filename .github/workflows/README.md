@@ -141,3 +141,25 @@ Current release and artifact exceptions that intentionally use floating runners:
   job assembles already-built artifacts and does not compile platform binaries.
 - `prebuilt.yml` uses `macos-latest` and `windows-latest` to smoke-test the
   published release ZIPs against GitHub's current hosted macOS and Windows images.
+
+## Apt package cache profiles
+
+Use `.github/actions/cache-apt-packages-action` with the smallest profile that covers
+the packages a job installs. Smaller profiles reduce cache restore time, cache size,
+and accidental coupling between unrelated workflows.
+
+Available profiles:
+
+| Profile | Use for |
+| --- | --- |
+| `common` | General compiler/tooling jobs that need common command-line packages. |
+| `docs` | Markdown checks that compile examples using docs, db, SSL, X11, or graphics deps. |
+| `db` | Jobs that need PostgreSQL, SQLite, or database development headers. |
+| `graphics` | Jobs that compile or run graphical, X11, OpenGL, or font-related examples. |
+| `sdl` | SDL-based workflows such as games or multimedia examples. |
+| `sanitizers` | Sanitizer jobs that need compiler, valgrind, db, and graphics deps. |
+| `full` | Compatibility default for jobs not migrated to a narrower profile yet. |
+
+When migrating a workflow, keep the job's explicit install step until CI proves the
+profile is sufficient. The cache action speeds up installs; it should not hide which
+packages the workflow actually needs.
