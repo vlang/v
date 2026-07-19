@@ -27,6 +27,9 @@ on:
       - 'vlib/picoev/**'
       - 'vlib/db/**'
       - 'vlib/sokol/**'
+      - 'vlib/gg/**'
+      - 'vlib/gx/**'
+      - 'vlib/fontstash/**'
       - 'vlib/math/**'
       - 'vlib/compress/**'
       - 'vlib/veb/**'
@@ -41,6 +44,8 @@ on:
       - 'ci/common/**'
       - 'GNUmakefile'
       - 'Makefile'
+      - '!**.md'
+      - '!**.yml'
       - '.github/workflows/openbsd_ci.yml'
 
 concurrency:

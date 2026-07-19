@@ -34,6 +34,8 @@ on:
       - 'GNUmakefile'
       - 'Makefile'
       - '.github/workflows/retry.sh'
+      - '!**.md'
+      - '!**.yml'
       - '.github/workflows/termux_ci.yml'
 
 concurrency:

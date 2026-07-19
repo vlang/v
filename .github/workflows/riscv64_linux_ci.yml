@@ -34,6 +34,8 @@ on:
       - 'v.mod'
       - 'GNUmakefile'
       - 'Makefile'
+      - '!**.md'
+      - '!**.yml'
       - '.github/workflows/riscv64_linux_ci.yml'
 
 concurrency:
