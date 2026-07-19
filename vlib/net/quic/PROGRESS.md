@@ -134,9 +134,25 @@ The largest, highest-risk phase. Sub-phases, in build order:
         prefix wrapping (RFC 9001 §8.2), remain: the former needs Phase 9's
         `QuicConn` (owns the packet header), the latter is
         ClientHello/EncryptedExtensions' job below.
-  - [ ] ClientHello construction (our own key_share via Phase 1's P-256
-        ECDH, supported_versions/groups/signature_algorithms,
-        quic_transport_parameters, server_name).
+  - [x] ClientHello construction (`tls13_client_hello.v`) — legacy_version
+        0x0303, empty legacy_session_id (RFC 9001 §8.4 PROHIBITS TLS 1.3
+        middlebox compatibility mode over QUIC — a client MUST NOT request
+        it, which a non-empty session ID would do), single cipher suite
+        (TLS_AES_128_GCM_SHA256), six extensions: server_name,
+        supported_versions, supported_groups (secp256r1 only),
+        signature_algorithms (ECDSA P-256 + RSA-PSS, matching planned
+        CertificateVerify support), key_share (Phase 1's P-256 ECDH
+        public key), quic_transport_parameters. Two exact RFC 8448 §3
+        cross-checks (supported_versions, and server_name with hostname
+        "server" — real sub-structures RFC 8448's own ClientHello happens
+        to share byte-for-byte with ours, despite the overall messages
+        differing). `/vreview` caught and fixed a real gap here:
+        `QuicTransportParameters` deliberately doesn't reject the four
+        server-only fields itself (documented as the client-side caller's
+        job) — `build_client_hello` is that caller and hadn't actually
+        done it, so a caller could have silently produced a ClientHello
+        violating RFC 9000 §18.2's "a client MUST NOT include any
+        server-only transport parameter." Fixed, Phase-R verified.
   - [ ] ServerHello / EncryptedExtensions / Certificate / CertificateVerify
         parsing. Use mbedTLS's `mbedtls_pk_verify_ext` for CertificateVerify
         validation (reserve the OpenSSL P-256 binding for ECDHE only) —
