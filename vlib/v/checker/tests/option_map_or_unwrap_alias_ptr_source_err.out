@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_map_or_unwrap_alias_ptr_source_err.vv:20:9: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   18 |     }
+   19 |     p := CategoryRef(&c)
+   20 |     x := p.translations or { panic('missing') }
+      |            ~~~~~~~~~~~~
+   21 |     c.translations?['x'] = 2
+   22 |     println(x)

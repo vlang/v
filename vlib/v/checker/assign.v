@@ -34,24 +34,27 @@ fn assign_expr_is_auto_deref(expr ast.Expr) bool {
 // recognised; anything unknown returns false, keeping the map-copy guard.
 // A pointer/reference anywhere in the chain is treated as mutable/unknown, since
 // an immutable pointer can still alias storage that its owner mutates later
-// (e.g. `mut c := ...; p := &c; x := p.f or { ... }; c.f?[k] = v`).
-fn assign_or_unwrap_source_is_immutable(expr ast.Expr) bool {
+// (e.g. `mut c := ...; p := &c; x := p.f or { ... }; c.f?[k] = v`). Types are
+// fully unaliased first, so a `type Ref = &T` receiver is treated as a pointer.
+fn (c &Checker) assign_or_unwrap_source_is_immutable(expr ast.Expr) bool {
 	return match expr {
 		ast.Ident {
 			if expr.obj is ast.Var {
-				!expr.is_mut() && !expr.obj.typ.is_ptr()
+				!expr.is_mut() && !c.table.fully_unaliased_type(expr.obj.typ).is_ptr()
 			} else {
 				!expr.is_mut()
 			}
 		}
 		ast.SelectorExpr {
-			!expr.expr_type.is_ptr() && assign_or_unwrap_source_is_immutable(expr.expr)
+			!c.table.fully_unaliased_type(expr.expr_type).is_ptr()
+				&& c.assign_or_unwrap_source_is_immutable(expr.expr)
 		}
 		ast.IndexExpr {
-			!expr.left_type.is_ptr() && assign_or_unwrap_source_is_immutable(expr.left)
+			!c.table.fully_unaliased_type(expr.left_type).is_ptr()
+				&& c.assign_or_unwrap_source_is_immutable(expr.left)
 		}
 		ast.ParExpr {
-			assign_or_unwrap_source_is_immutable(expr.expr)
+			c.assign_or_unwrap_source_is_immutable(expr.expr)
 		}
 		else {
 			false
@@ -75,7 +78,7 @@ fn assign_expr_or_block(expr ast.Expr) ast.OrExpr {
 // mutable map lvalue (e.g. `or { fallback }`) then `x` aliases it. Only a fresh
 // value (map literal / by-value call), an immutable lvalue, or a block that
 // yields no value (diverges via `return`/`panic`/... or just propagates) is safe.
-fn assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
+fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
 	if or_expr.kind != .block || or_expr.stmts.len == 0 {
 		return true
 	}
@@ -88,7 +91,7 @@ fn assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
 			true
 		}
 		ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.ParExpr {
-			assign_or_unwrap_source_is_immutable((last as ast.ExprStmt).expr)
+			c.assign_or_unwrap_source_is_immutable((last as ast.ExprStmt).expr)
 		}
 		else {
 			false
@@ -981,8 +984,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 			unwrapped_right := right.remove_par()
 			or_expr := assign_expr_or_block(unwrapped_right)
 			right_is_immutable_or_unwrap = or_expr.kind != .absent
-				&& assign_or_unwrap_source_is_immutable(unwrapped_right)
-				&& assign_or_block_default_is_safe(or_expr)
+				&& c.assign_or_unwrap_source_is_immutable(unwrapped_right)
+				&& c.assign_or_block_default_is_safe(or_expr)
 		}
 		if left_sym.kind == .map && is_assign && right_sym.kind == .map && !c.inside_unsafe
 			&& !left.is_blank_ident() && right_is_lvalue && !right_is_immutable_or_unwrap
