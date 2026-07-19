@@ -25,6 +25,18 @@ fn test_parallel_dispatch_worker_shares_checker_as_scoped_accumulator() {
 	assert w.tc == tc
 }
 
+fn test_scoped_parallel_dispatch_worker_owns_string_snapshot() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+	mut w := g.new_parallel_dispatch_worker(1)
+	assert !w.str_lits_shared
+	assert w.intern_string('worker generated') == 1
+	assert g.str_lits == ['source']
+	assert g.intern_string('master generated') == 1
+	assert w.str_lits == ['source', 'worker generated']
+	assert g.str_lits == ['source', 'master generated']
+}
+
 fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	g, mut tc := parallel_worker_test_gen(false)
 	tc.a.nodes = [flat.Node{
@@ -74,4 +86,61 @@ fn test_scoped_cgen_batch_preserves_worker_interned_literals() {
 		assert g.str_lit_ids[generated] == generated_id
 	}
 	assert g.str_lits == ['source', 'generated_a', 'generated_b']
+}
+
+fn test_scoped_cgen_worker_merge_publishes_generated_literals() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+
+	mut helper := g.new_parallel_dispatch_worker(1)
+	mut helper_batch := helper.new_parallel_worker(0)
+	assert helper_batch.intern_string('helper generated') == 1
+	helper_batch.sb.write_string('helper(_str_1); "_str_1"; /* _str_1 */')
+	helper_batch.add_spawn_wrapper_def('spawn_helper(_str_1);')
+	helper.absorb_scoped_cgen_batch(helper_batch, false)
+
+	mut master_batch := g.new_parallel_worker(0)
+	assert master_batch.intern_string('master generated') == 1
+	master_batch.sb.write_string('master(_str_1);')
+	g.absorb_scoped_cgen_batch(master_batch, false)
+	g.merge_parallel_worker(helper)
+
+	assert g.str_lits == ['source', 'master generated', 'helper generated']
+	assert g.str_lit_ids['helper generated'] == 2
+	assert g.fn_segs == ['master(_str_1);', 'helper(_str_2); "_str_1"; /* _str_1 */']
+	assert g.spawn_wrapper_defs == ['spawn_helper(_str_2);']
+}
+
+fn test_scoped_cgen_string_remap_preserves_user_c_identifiers() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.c_extern_refs['_str_999'] = true
+	g.c_extern_refs_ready = true
+	user_c_symbols := g.cache_user_c_string_symbols()
+	remap := {
+		1:   2
+		999: 1000
+	}
+	source := 'helper(_str_1); _str_999(); "_str_1"; /* _str_999 */'
+	assert remap_scoped_worker_string_symbols(source, remap, user_c_symbols) == 'helper(_str_2); _str_999(); "_str_1"; /* _str_999 */'
+}
+
+fn test_fused_parallel_prep_interns_body_string_literals() {
+	mut g, _ := parallel_worker_test_gen(false)
+	g.a.nodes = [
+		flat.Node{
+			kind:           .fn_decl
+			children_start: 0
+			children_count: 1
+		},
+		flat.Node{
+			kind:  .string_literal
+			value: 'worker literal'
+		},
+	]
+	g.a.children = [flat.NodeId(1)]
+	mut stack := []flat.NodeId{}
+	mut type_text_cache := map[string]bool{}
+	g.fn_item_cost_and_prep(0, mut stack, mut type_text_cache)
+	assert g.str_lits == ['worker literal']
+	assert g.str_lit_ids['worker literal'] == 0
 }

@@ -372,7 +372,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			g.scoped_fn_output_paths = [g.scoped_fn_output_path]
 			os.rm(g.scoped_fn_output_path) or {}
 		}
-		if g.scope_parallel_workers || n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
+		if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 			if g.scope_parallel_workers {
 				g.gen_fn_items_scoped_master_batches(items)
 			} else {
@@ -401,20 +401,12 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			work_items_ptr: unsafe { voidptr(&chunk_items[0]) }
 			is_master:      true
 		}
+		// Keep helper output in ordered result segments until the join so generated
+		// string IDs can be reconciled with literals emitted by the master chunk.
 		mut cgen_workers := []voidptr{cap: thread_count}
-		if g.scoped_fn_output_path.len > 0 {
-			for ci := 0; ci < thread_count; ci++ {
-				worker_path := '${g.scoped_fn_output_path}.${ci + 1}'
-				g.scoped_fn_output_paths << worker_path
-				os.rm(worker_path) or {}
-			}
-		}
 		worker_setup_scope := cgen_worker_scope_begin(g.scope_parallel_workers)
 		for ci := 0; ci < thread_count; ci++ {
 			mut w := g.new_parallel_dispatch_worker(ci + 1)
-			if g.scoped_fn_output_path.len > 0 {
-				w.scoped_fn_output_path = g.scoped_fn_output_paths[ci + 1]
-			}
 			cgen_workers << voidptr(w)
 		}
 		for ci := 0; ci < thread_count; ci++ {
@@ -538,6 +530,9 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		}
 		node := g.a.nodes[idx]
 		cost++
+		if node.kind == .string_literal {
+			g.intern_string(node.value)
+		}
 		if node.kind == .selector {
 			g.collect_c_extern_ref_from_node(node)
 		}
@@ -744,7 +739,9 @@ fn (g &FlatGen) new_parallel_dispatch_worker(worker_id int) &FlatGen {
 
 // new_parallel_result_worker creates a non-emitting helper accumulator. Caches
 // that it only passes to fresh batch generators stay shared with the frozen
-// master snapshot; result tables remain private.
+// master snapshot; result tables remain private. Its string tables are copied
+// eagerly because the master can extend its own table after tasks start, before
+// a helper's first copy-on-write intern.
 fn (g &FlatGen) new_parallel_result_worker(worker_id int) &FlatGen {
 	return g.new_parallel_worker_config(worker_id, true)
 }
@@ -756,17 +753,21 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		used_fns:                       g.used_fns
 		used_fn_names:                  g.used_fn_names
 		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
-		str_lits:                       if result_only || g.scope_parallel_workers {
+		str_lits:                       if result_only {
+			clone_cgen_string_list(g.str_lits)
+		} else if g.scope_parallel_workers {
 			g.str_lits
 		} else {
 			g.str_lits.clone()
 		}
-		str_lit_ids:                    if result_only || g.scope_parallel_workers {
+		str_lit_ids:                    if result_only {
+			clone_cgen_string_int_map(g.str_lit_ids)
+		} else if g.scope_parallel_workers {
 			g.str_lit_ids
 		} else {
 			g.str_lit_ids.clone()
 		}
-		str_lits_shared:                g.scope_parallel_workers
+		str_lits_shared:                g.scope_parallel_workers && !result_only
 		global_types:                   g.global_types
 		global_raw_type_texts:          g.global_raw_type_texts
 		enum_vals:                      g.enum_vals
@@ -1019,22 +1020,136 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	return wtc
 }
 
+fn (mut g FlatGen) publish_scoped_worker_string_literals(w &FlatGen) map[int]int {
+	mut remap := map[int]int{}
+	mut common_len := 0
+	for common_len < g.str_lits.len && common_len < w.str_lits.len
+		&& g.str_lits[common_len] == w.str_lits[common_len] {
+		common_len++
+	}
+	for local_id in common_len .. w.str_lits.len {
+		literal := w.str_lits[local_id]
+		global_id := if existing_id := g.str_lit_ids[literal] {
+			existing_id
+		} else {
+			g.intern_string(literal.clone())
+		}
+		if global_id != local_id {
+			remap[local_id] = global_id
+		}
+	}
+	return remap
+}
+
+fn remap_scoped_worker_string_symbols(source string, remap map[int]int, user_c_symbols map[string]bool) string {
+	if remap.len == 0 {
+		return source.clone()
+	}
+	mut out := strings.new_builder(source.len)
+	mut i := 0
+	for i < source.len {
+		if source[i] in [`"`, `'`] {
+			quote := source[i]
+			start := i
+			i++
+			for i < source.len {
+				if source[i] == `\\` && i + 1 < source.len {
+					i += 2
+					continue
+				}
+				i++
+				if source[i - 1] == quote {
+					break
+				}
+			}
+			out.write_string(source[start..i])
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `/` {
+			start := i
+			i += 2
+			for i < source.len && source[i] != `\n` {
+				i++
+			}
+			out.write_string(source[start..i])
+			continue
+		}
+		if i + 1 < source.len && source[i] == `/` && source[i + 1] == `*` {
+			start := i
+			i += 2
+			for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+				i++
+			}
+			if i + 1 < source.len {
+				i += 2
+			} else {
+				i = source.len
+			}
+			out.write_string(source[start..i])
+			continue
+		}
+		if c_identifier_start(source[i]) {
+			start := i
+			i++
+			for i < source.len && c_identifier_continue(source[i]) {
+				i++
+			}
+			identifier := source[start..i]
+			if cache_numbered_string_symbol(identifier) && !user_c_symbols[identifier] {
+				mut local_id := 0
+				for digit in identifier[5..].bytes() {
+					local_id = local_id * 10 + int(digit - `0`)
+				}
+				if global_id := remap[local_id] {
+					out.write_string('_str_${global_id}')
+					continue
+				}
+			}
+			out.write_string(identifier)
+			continue
+		}
+		out.write_u8(source[i])
+		i++
+	}
+	return out.str()
+}
+
 // merge_parallel_worker supports merge parallel worker handling for FlatGen.
 fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	mut ww := unsafe { w }
 	if g.output_error.len == 0 && w.output_error.len > 0 {
 		g.output_error = w.output_error.clone()
 	}
+	string_id_remap := if g.scope_parallel_workers {
+		g.publish_scoped_worker_string_literals(w)
+	} else {
+		map[int]int{}
+	}
+	user_c_symbols := if string_id_remap.len > 0 {
+		g.cache_user_c_string_symbols()
+	} else {
+		map[string]bool{}
+	}
 	worker_output := ww.sb.str()
 	if worker_output.len > 0 {
-		g.fn_segs << worker_output
+		if string_id_remap.len > 0 {
+			g.fn_segs << remap_scoped_worker_string_symbols(worker_output, string_id_remap,
+				user_c_symbols)
+			unsafe { worker_output.free() }
+		} else {
+			g.fn_segs << worker_output
+		}
 	} else {
 		unsafe { worker_output.free() }
 	}
 	// The ordered segment owns the copied output; release the worker builder.
 	unsafe { ww.sb.free() }
 	for segment in w.fn_segs {
-		g.fn_segs << segment.clone()
+		g.fn_segs << if string_id_remap.len > 0 {
+			remap_scoped_worker_string_symbols(segment, string_id_remap, user_c_symbols)
+		} else {
+			segment.clone()
+		}
 	}
 	for opt_name, val_type in w.needed_optional_types {
 		g.needed_optional_types[opt_name.clone()] = val_type.clone()
@@ -1063,7 +1178,11 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 		}
 	}
 	for def in w.spawn_wrapper_defs {
-		g.add_spawn_wrapper_def(def.clone())
+		g.add_spawn_wrapper_def(if string_id_remap.len > 0 {
+			remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
+		} else {
+			def.clone()
+		})
 	}
 	for key, name in w.callback_wrapper_names {
 		if key !in g.callback_wrapper_names {
@@ -1071,7 +1190,11 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 		}
 	}
 	for def in w.callback_wrapper_defs {
-		g.add_callback_wrapper_def(def.clone())
+		g.add_callback_wrapper_def(if string_id_remap.len > 0 {
+			remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
+		} else {
+			def.clone()
+		})
 	}
 }
 

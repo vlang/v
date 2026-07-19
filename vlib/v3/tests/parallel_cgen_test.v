@@ -22,7 +22,7 @@ fn build_parallel_prod_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_parallel_prod_cgen_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${vexe} -gc none -prod -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
+		os.execute('${vexe} -gc none -prealloc -prod -path "${parallel_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${parallel_v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

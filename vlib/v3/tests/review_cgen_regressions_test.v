@@ -68,6 +68,29 @@ fn review_cgen_run_bad_project(v3_bin string, name string, files map[string]stri
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
 }
 
+fn test_numbered_string_identifiers_do_not_collide_with_literal_symbols() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'numbered_string_identifier_collision', 'struct Named {
+	_str_2 string
+}
+
+fn main() {
+	_str_1 := "local"
+	value := Named{
+		_str_2: "field"
+	}
+	println(_str_1 + ":" + value._str_2)
+}
+')
+	assert out == 'local:field'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_numbered_string_identifier_collision.c')) or {
+		panic(err)
+	}
+	assert c_code.contains('string v__str_1 = '), c_code
+	assert c_code.contains('.v__str_2 = '), c_code
+	assert c_code.contains('value.v__str_2'), c_code
+}
+
 fn test_module_qualified_free_call_is_not_rewritten_to_array_intrinsic() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good_project(v3_bin, 'module_qualified_free_call', {
