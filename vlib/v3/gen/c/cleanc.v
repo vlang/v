@@ -3730,29 +3730,25 @@ fn (g &FlatGen) ordered_native_source_context(module_name string, local_context 
 }
 
 fn (g &FlatGen) native_source_context_has_macro_inputs(module_name string) bool {
-	mut visiting := map[string]bool{}
-	return g.visit_native_source_macro_input_module(module_name, mut visiting)
-}
-
-fn (g &FlatGen) visit_native_source_macro_input_module(module_name string, mut visiting map[string]bool) bool {
-	if module_name in visiting {
-		return false
-	}
+	mut directives_by_module := map[string][]CDirective{}
 	for directive in g.c_directives {
-		clean := trimmed_space(directive.text)
-		if directive.module == module_name && c_directive_name(clean) == 'include'
-			&& c_include_arg_is_source_file(c_directive_arg(clean)) {
-			return true
+		mut directives := directives_by_module[directive.module] or { []CDirective{} }
+		directives << directive
+		directives_by_module[directive.module] = directives
+	}
+	// Keep walking through modules without directives so transitive imports that do
+	// provide source includes remain part of the macro-input context.
+	for imported_module, _ in g.module_imports {
+		if imported_module !in directives_by_module {
+			directives_by_module[imported_module] = []CDirective{}
 		}
 	}
-	visiting[module_name] = true
-	for dependency in g.module_imports[module_name] or { []string{} } {
-		if g.visit_native_source_macro_input_module(dependency, mut visiting) {
-			return true
-		}
-	}
-	visiting.delete(module_name)
-	return false
+	mut visiting := map[string]bool{}
+	mut visited := map[string]bool{}
+	mut directives := []string{}
+	g.visit_c_directive_module(module_name, directives_by_module, mut visiting, mut visited, mut
+		directives)
+	return c_native_source_context_state(directives, g.c_flags, g.c99_mode, g.target, false).source_macros_possible
 }
 
 fn (g &FlatGen) visit_native_source_context_module(module_name string, root_module string, root_context []NativeSourceContextDirective, mut visiting map[string]bool, mut visited map[string]bool, mut result []string) {
@@ -3857,11 +3853,22 @@ fn c_effective_strict_iso_mode(flags []string, c99_mode bool) bool {
 	return strict_iso_mode
 }
 
+struct CNativeSourceContextState {
+	definitely_inactive    bool
+	source_macros_possible bool
+}
+
 fn c_native_source_context_definitely_inactive(directives []string, flags []string, c99_mode bool, target pref.Target, source_macros_possible bool) bool {
+	return c_native_source_context_state(directives, flags, c99_mode, target,
+		source_macros_possible).definitely_inactive
+}
+
+fn c_native_source_context_state(directives []string, flags []string, c99_mode bool, target pref.Target, source_macros_possible bool) CNativeSourceContextState {
 	mut defined := map[string]bool{}
 	mut undefined := map[string]bool{}
 	mut uncertain := map[string]bool{}
 	mut external_macros_possible := source_macros_possible || c_forced_include_inputs(flags).len > 0
+	mut active_source_include := false
 	strict_iso_mode := c_effective_strict_iso_mode(flags, c99_mode)
 	mut i := 0
 	for i < flags.len {
@@ -3985,6 +3992,9 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 					}
 				}
 				if possibly_active {
+					if name == 'include' && c_include_arg_is_source_file(c_directive_arg(clean)) {
+						active_source_include = true
+					}
 					c_preprocessor_invalidate_macro_state(mut defined, mut undefined, mut uncertain)
 					external_macros_possible = true
 				}
@@ -4028,10 +4038,15 @@ fn c_native_source_context_definitely_inactive(directives []string, flags []stri
 	}
 	for depth in 0 .. condition_known.len {
 		if condition_known[depth] && !condition_active[depth] {
-			return true
+			return CNativeSourceContextState{
+				definitely_inactive:    true
+				source_macros_possible: active_source_include
+			}
 		}
 	}
-	return false
+	return CNativeSourceContextState{
+		source_macros_possible: active_source_include
+	}
 }
 
 fn c_preprocessor_macro_state(name string, defined map[string]bool, undefined map[string]bool, uncertain map[string]bool, strict_iso_mode bool, target pref.Target) (bool, bool) {

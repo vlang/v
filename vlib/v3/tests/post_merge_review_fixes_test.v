@@ -6228,10 +6228,11 @@ fn test_imported_objective_cpp_wrapper_context() {
 fn test_bare_macro_objective_c_guards_stay_inactive() {
 	v3_bin := build_v3()
 	result := run_good_project_result(v3_bin, 'bare_macro_objective_c_guards', '', {
-		'v.mod':       "Module { name: 'bare_macro_objective_c_guards' }\n"
-		'disabled.m':  '#error inactive Objective-C source must not be compiled\n'
-		'disabled.mm': '#error inactive Objective-C++ source must not be compiled\n'
-		'main.v':      'module main\n\n#if V3_NEVER_DEFINED_OBJECTIVE_C\n#include "disabled.m"\n#endif\n\n#if V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(70))\n}\n'
+		'v.mod':           "Module { name: 'bare_macro_objective_c_guards' }\n"
+		'disabled.m':      '#error inactive Objective-C source must not be compiled\n'
+		'disabled.mm':     '#error inactive Objective-C++ source must not be compiled\n'
+		'inactive_defs.c': '#define V3_INACTIVE_SOURCE_FEATURE 1\n'
+		'main.v':          'module main\n\n#if V3_NEVER_DEFINED_OBJECTIVE_C\n#include "disabled.m"\n#endif\n\n#if 0\n#include "inactive_defs.c"\n#endif\n\n#if V3_INACTIVE_SOURCE_FEATURE\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(70))\n}\n'
 	}, 'main.v')
 	assert result.run_output == '70'
 	assert result.compile_output.contains('tcc.exe'), result.compile_output
