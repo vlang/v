@@ -25,6 +25,18 @@ fn test_parallel_dispatch_worker_shares_checker_as_scoped_accumulator() {
 	assert w.tc == tc
 }
 
+fn test_scoped_parallel_dispatch_worker_owns_string_snapshot() {
+	mut g, _ := parallel_worker_test_gen(true)
+	assert g.intern_string('source') == 0
+	mut w := g.new_parallel_dispatch_worker(1)
+	assert !w.str_lits_shared
+	assert w.intern_string('worker generated') == 1
+	assert g.str_lits == ['source']
+	assert g.intern_string('master generated') == 1
+	assert w.str_lits == ['source', 'worker generated']
+	assert g.str_lits == ['source', 'master generated']
+}
+
 fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	g, mut tc := parallel_worker_test_gen(false)
 	tc.a.nodes = [flat.Node{

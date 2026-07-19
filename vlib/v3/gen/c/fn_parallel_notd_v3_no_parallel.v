@@ -739,7 +739,9 @@ fn (g &FlatGen) new_parallel_dispatch_worker(worker_id int) &FlatGen {
 
 // new_parallel_result_worker creates a non-emitting helper accumulator. Caches
 // that it only passes to fresh batch generators stay shared with the frozen
-// master snapshot; result tables remain private.
+// master snapshot; result tables remain private. Its string tables are copied
+// eagerly because the master can extend its own table after tasks start, before
+// a helper's first copy-on-write intern.
 fn (g &FlatGen) new_parallel_result_worker(worker_id int) &FlatGen {
 	return g.new_parallel_worker_config(worker_id, true)
 }
@@ -751,17 +753,21 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		used_fns:                       g.used_fns
 		used_fn_names:                  g.used_fn_names
 		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
-		str_lits:                       if result_only || g.scope_parallel_workers {
+		str_lits:                       if result_only {
+			clone_cgen_string_list(g.str_lits)
+		} else if g.scope_parallel_workers {
 			g.str_lits
 		} else {
 			g.str_lits.clone()
 		}
-		str_lit_ids:                    if result_only || g.scope_parallel_workers {
+		str_lit_ids:                    if result_only {
+			clone_cgen_string_int_map(g.str_lit_ids)
+		} else if g.scope_parallel_workers {
 			g.str_lit_ids
 		} else {
 			g.str_lit_ids.clone()
 		}
-		str_lits_shared:                g.scope_parallel_workers
+		str_lits_shared:                g.scope_parallel_workers && !result_only
 		global_types:                   g.global_types
 		global_raw_type_texts:          g.global_raw_type_texts
 		enum_vals:                      g.enum_vals
