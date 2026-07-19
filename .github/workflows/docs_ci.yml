@@ -31,6 +31,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/cache-apt-packages-action
+        with:
+          profile: docs
       - name: Build V
         run: make
       - name: Install dependencies (some examples show how to use sqlite and the x11 clipboard)

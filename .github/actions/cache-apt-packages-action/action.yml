@@ -1,5 +1,11 @@
 name: 'Cache Apt Packages'
-description: 'Cache all commonly used apt packages to speed up CI jobs'
+description: 'Cache apt packages by dependency profile to speed up CI jobs'
+
+inputs:
+  profile:
+    description: 'Dependency profile to cache: common, docs, db, graphics, sdl, sanitizers, or full'
+    required: false
+    default: 'full'
 
 # imagemagick              : convert, mogrify
 # xvfb                     : xvfb
@@ -13,18 +19,45 @@ description: 'Cache all commonly used apt packages to speed up CI jobs'
 runs:
   using: 'composite'
   steps:
+    - name: Select apt package profile
+      id: package-profile
+      shell: bash
+      env:
+        PROFILE: ${{ inputs.profile }}
+      run: |
+        set -euo pipefail
+        case "$PROFILE" in
+          common)
+            packages='expect binutils clang valgrind'
+            ;;
+          docs)
+            packages='sqlite3 libssl-dev libsqlite3-dev libx11-dev'
+            ;;
+          db)
+            packages='postgresql sqlite3 libpq-dev libssl-dev libsqlite3-dev'
+            ;;
+          graphics)
+            packages='imagemagick openimageio-tools xvfb xsel xclip libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libx11-dev freeglut3-dev mesa-common-dev libgl1-mesa-dev libgl1-mesa-dri xfonts-75dpi xfonts-base'
+            ;;
+          sdl)
+            packages='libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-net-dev libpng-dev libsamplerate0-dev'
+            ;;
+          sanitizers)
+            packages='clang valgrind postgresql sqlite3 libpq-dev libssl-dev libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev'
+            ;;
+          full)
+            packages='expect binutils postgresql sqlite3 clang valgrind imagemagick openimageio-tools xvfb xsel xclip libsodium-dev libpq-dev libssl-dev libsqlite3-dev libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libx11-dev freeglut3-dev mesa-common-dev libgl1-mesa-dev libgl1-mesa-dri libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-net-dev libpng-dev libsamplerate0-dev xfonts-75dpi xfonts-base'
+            ;;
+          *)
+            echo "Unknown apt package profile: $PROFILE" >&2
+            exit 1
+            ;;
+        esac
+        echo "packages=$packages" >> "$GITHUB_OUTPUT"
     - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
       with:
-        version: 1.0
-        packages: expect binutils postgresql sqlite3 clang valgrind \
-          imagemagick openimageio-tools xvfb xsel xclip \
-          libsodium-dev libpq-dev libssl-dev libsqlite3-dev \
-          libfreetype6-dev libxi-dev libxcursor-dev \
-          libgl-dev libxrandr-dev libasound2-dev \
-          libx11-dev freeglut3-dev mesa-common-dev libgl1-mesa-dev libgl1-mesa-dri \
-          libsdl2-dev libsdl2-ttf-dev libsdl2-mixer-dev libsdl2-image-dev libsdl2-net-dev \
-          libpng-dev libsamplerate0-dev \
-          xfonts-75dpi xfonts-base
+        version: 1.0-${{ inputs.profile }}
+        packages: ${{ steps.package-profile.outputs.packages }}
     - name: Install common packages
-      run: echo "done installing packages"
+      run: echo "done installing ${{ inputs.profile }} apt packages"
       shell: bash
