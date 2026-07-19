@@ -153,7 +153,7 @@ Available profiles:
 | Profile | Use for |
 | --- | --- |
 | `common` | General compiler/tooling jobs that need common command-line packages. |
-| `docs` | Markdown checks that compile examples using docs, db, SSL, or X11 deps. |
+| `docs` | Markdown checks that compile examples using docs, db, SSL, X11, or graphics deps. |
 | `db` | Jobs that need PostgreSQL, SQLite, or database development headers. |
 | `graphics` | Jobs that compile or run graphical, X11, OpenGL, or font-related examples. |
 | `sdl` | SDL-based workflows such as games or multimedia examples. |

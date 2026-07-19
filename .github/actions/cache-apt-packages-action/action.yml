@@ -31,7 +31,7 @@ runs:
             packages='expect binutils clang valgrind'
             ;;
           docs)
-            packages='sqlite3 libpq-dev libssl-dev libsqlite3-dev libx11-dev'
+            packages='sqlite3 libpq-dev libssl-dev libsqlite3-dev libx11-dev libxi-dev libxcursor-dev libegl-dev libgl-dev libxrandr-dev'
             ;;
           db)
             packages='postgresql sqlite3 libpq-dev libssl-dev libsqlite3-dev'
