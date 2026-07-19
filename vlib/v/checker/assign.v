@@ -77,11 +77,12 @@ fn assign_expr_or_block(expr ast.Expr) ast.OrExpr {
 // makes `x` the block's value `d` when the option is empty, so if `d` is any map
 // lvalue (e.g. `or { fallback }`) then `x` aliases it. Even an immutable lvalue
 // is unsafe: an immutable map parameter/field can alias caller-owned storage the
-// caller mutates later (the same copy `x := d` would reject). Only a fresh/owned
-// value (map literal / by-value call), or a block that yields no value because
-// it diverges (`return`/`break`/`continue`; `panic`/`exit` are calls handled
-// above), is safe. Anything else — an lvalue value, or an unclassifiable last
-// statement — keeps the guard.
+// caller mutates later (the same copy `x := d` would reject). A call is unsafe
+// too unless it is known to produce fresh storage — an arbitrary map-returning
+// call may just return a caller-owned alias (`or { id(fallback) }`). Only a map
+// literal, a `clone`/`move` call, a `@[noreturn]` call (`panic`/`exit`), or a
+// block that yields no value by diverging (`return`/`break`/`continue`) is safe.
+// Anything else keeps the guard.
 fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
 	if or_expr.kind != .block {
 		return true
@@ -96,7 +97,8 @@ fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
 	return match last {
 		ast.ExprStmt {
 			match last.expr {
-				ast.MapInit, ast.CallExpr { true }
+				ast.MapInit { true }
+				ast.CallExpr { assign_call_default_produces_fresh_map(last.expr) }
 				else { false }
 			}
 		}
@@ -107,6 +109,19 @@ fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
 			false
 		}
 	}
+}
+
+// assign_call_default_produces_fresh_map reports whether a call used as an `or {}`
+// default cannot alias caller-owned map storage: a `clone`/`move` result (fresh
+// storage), or a `@[noreturn]` call such as `panic`/`exit` (yields no value at
+// all). Any other map-returning call may return a caller-owned alias, so it is
+// treated as unsafe and keeps the map-copy guard.
+fn assign_call_default_produces_fresh_map(expr ast.Expr) bool {
+	if expr is ast.CallExpr {
+		return expr.is_noreturn || expr.kind in [.clone, .clone_to_depth, .move]
+			|| (expr.is_method && expr.name in ['clone', 'move'])
+	}
+	return false
 }
 
 fn (c &Checker) auto_deref_source_type_is_pointer(expr ast.Expr) bool {

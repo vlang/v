@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_map_or_unwrap_call_default_alias_err.vv:19:7: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   17 |     }
+   18 |     opt := maybe_none()
+   19 |     x := opt or { id(fallback) }
+      |          ~~~
+   20 |     fallback['x'] = 2
+   21 |     println(x)
