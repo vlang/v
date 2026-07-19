@@ -98,7 +98,7 @@ fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
 		ast.ExprStmt {
 			match last.expr {
 				ast.MapInit { true }
-				ast.CallExpr { assign_call_default_produces_fresh_map(last.expr) }
+				ast.CallExpr { c.assign_call_default_produces_fresh_map(last.expr) }
 				else { false }
 			}
 		}
@@ -112,14 +112,19 @@ fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
 }
 
 // assign_call_default_produces_fresh_map reports whether a call used as an `or {}`
-// default cannot alias caller-owned map storage: a `clone`/`move` result (fresh
-// storage), or a `@[noreturn]` call such as `panic`/`exit` (yields no value at
-// all). Any other map-returning call may return a caller-owned alias, so it is
-// treated as unsafe and keeps the map-copy guard.
-fn assign_call_default_produces_fresh_map(expr ast.Expr) bool {
+// default cannot alias caller-owned map storage: a `@[noreturn]` call such as
+// `panic`/`exit` (yields no value at all), or the builtin map `clone`/`move`
+// (fresh storage). Only the builtin map operations qualify — a user-defined
+// function or method named `clone`/`move` (its `CallKind` also comes from the
+// name) may just return an aliased map, so it is checked by the map receiver
+// type. Any other map-returning call keeps the map-copy guard.
+fn (c &Checker) assign_call_default_produces_fresh_map(expr ast.Expr) bool {
 	if expr is ast.CallExpr {
-		return expr.is_noreturn || expr.kind in [.clone, .clone_to_depth, .move]
-			|| (expr.is_method && expr.name in ['clone', 'move'])
+		if expr.is_noreturn {
+			return true
+		}
+		return expr.is_method && expr.name in ['clone', 'move']
+			&& c.table.final_sym(expr.receiver_type).kind == .map
 	}
 	return false
 }
