@@ -932,8 +932,14 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		//     of the source (e.g. `mut opt := ...; x := opt or { ... }; opt?[k] = v`)
 		//     would be observed through `x`.
 		// See vlang/v issue #27867.
+		// A `shared`/`atomic` destination is mutable under `lock`, so it must never
+		// be exempted even though it is a `:=` declaration. Its `is_mut` flag is
+		// already set by the parser, but check `share` explicitly so this safety
+		// bypass does not depend on that incidental detail.
+		left_is_lockable_dest := left is ast.Ident && left.info is ast.IdentVar
+			&& left.info.share in [.shared_t, .atomic_t]
 		mut right_is_immutable_or_unwrap := false
-		if node.op == .decl_assign && left is ast.Ident && !left.is_mut
+		if node.op == .decl_assign && left is ast.Ident && !left.is_mut && !left_is_lockable_dest
 			&& !right_type.has_flag(.option) && !right_type.has_flag(.result) {
 			unwrapped_right := right.remove_par()
 			has_or_block := match unwrapped_right {

@@ -1,0 +1,23 @@
+// A `shared` (or `atomic`) destination is mutable under `lock`, so or-unwrapping
+// an option map into it must keep the map-copy guard: the shallow copy would
+// alias the map still stored in `c`, and `lock b { b['x'] = 2 }` could mutate it.
+// The immutable-destination exemption from issue #27867 must not apply here.
+struct Category {
+mut:
+	translations ?map[string]int
+}
+
+fn main() {
+	c := Category{
+		translations: {
+			'x': 1
+		}
+	}
+	shared b := c.translations or { panic('missing') }
+	lock b {
+		b['x'] = 2
+	}
+	println(rlock b {
+		b.clone()
+	})
+}
