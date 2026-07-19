@@ -70,10 +70,24 @@ The largest, highest-risk phase. Sub-phases, in build order:
       (full `original_dcid`/`current_dcid` tracking still lands in Phase 9's
       `QuicConn`; this sub-phase's test only proves the derivation itself is
       correctly DCID-sensitive).
-- [ ] **2b — Key schedule** (`tls13_keyschedule.v`): full RFC 8446 §7.1 chain
+- [x] **2b — Key schedule** (`tls13_keyschedule.v`): full RFC 8446 §7.1 chain
       (Early → Handshake → Master secret), pinned to `TLS_AES_128_GCM_SHA256`
-      only for v1. Transcript hash covers handshake message bytes only — no
-      TLS record-layer framing exists in QUIC. Support HelloRetryRequest.
+      only for v1. `derive_secret`/`derive_early_secret`/
+      `derive_handshake_secrets`/`derive_application_secrets` cover the
+      whole chain through both application traffic secrets_0;
+      `exporter_master_secret`/`resumption_master_secret` intentionally
+      omitted (v1 uses neither TLS exporters nor 0-RTT — see the doc
+      comment on `derive_application_secrets`). HelloRetryRequest's
+      synthetic-transcript rule (RFC 8446 §4.4.1) implemented as
+      `synthetic_client_hello1_hash`; wiring it into a real running
+      transcript is Phase 2c's job. Verified against RFC 8448 §3's own
+      published intermediate secrets (Early/Handshake/Master + all 4
+      traffic secrets), independent of the RFC 9001 vectors 2a uses —
+      including an end-to-end chained test and an independent
+      recomputation proving Transcript-Hash covers only raw handshake
+      message bytes, no record-layer framing (RFC 8446 §4.4.1 / RFC 9001
+      §4), both extracted from the raw RFC text programmatically, not
+      hand-transcribed.
 - [ ] **2c — Messages + state machine** (`tls13_messages.v`,
       `tls13_handshake.v`): ClientHello…Finished, the `quic_transport_parameters`
       extension (0x39), client state machine. Use mbedTLS's `mbedtls_pk_verify_ext`
