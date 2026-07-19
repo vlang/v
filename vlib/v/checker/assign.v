@@ -96,9 +96,11 @@ fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
 	last := valid_stmts.last()
 	return match last {
 		ast.ExprStmt {
-			match last.expr {
+			// harmless parentheses around the value must not change classification
+			default_expr := last.expr.remove_par()
+			match default_expr {
 				ast.MapInit { true }
-				ast.CallExpr { c.assign_call_default_produces_fresh_map(last.expr) }
+				ast.CallExpr { c.assign_call_default_produces_fresh_map(default_expr) }
 				else { false }
 			}
 		}

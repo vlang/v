@@ -68,3 +68,18 @@ fn test_option_map_field_paren_or_unwrap() {
 	translations := (c.translations or { panic('expected') })
 	assert translations['en'].title == 'Hello'
 }
+
+// Parentheses around a fresh `or {}` default must not change checker behavior:
+// these fresh defaults are accepted just like their unparenthesized forms.
+fn test_option_map_paren_fresh_default() {
+	src := get_option_map()
+
+	a := src or { (map[string]int{}) }
+	assert a['a'] == 1
+
+	fallback := {
+		'z': 9
+	}
+	b := src or { (fallback.clone()) }
+	assert b['a'] == 1
+}
