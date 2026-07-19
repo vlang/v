@@ -1,0 +1,16 @@
+// For `map[K]?map[...]`, an `or` block that returns `none` (or another `?map`)
+// does NOT clear the option: `v := m[k] or { none }` keeps the option-map type,
+// so `v` is still an option handle that aliases the map stored in `m`. The
+// map-copy guard must stay in that case, even though the destination is an
+// immutable declaration. See vlang/v issue #27867 (only the option-clearing
+// form `m[k] or { panic(...) }` is exempted).
+fn main() {
+	inner := {
+		'x': 1
+	}
+	m := {
+		'a': ?map[string]int(inner)
+	}
+	v := m['a'] or { none }
+	println(v)
+}

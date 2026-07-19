@@ -1,0 +1,7 @@
+vlib/v/checker/tests/option_map_or_unwrap_preserves_option_err.vv:14:14: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   12 |         'a': ?map[string]int(inner)
+   13 |     }
+   14 |     v := m['a'] or { none }
+      |                 ~~~~~~~~~~~
+   15 |     println(v)
+   16 | }

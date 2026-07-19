@@ -892,9 +892,13 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		// equivalent immutable `x := opt_array_field or { ... }`. A mutable
 		// destination (`mut x := m[k] or { ... }`, `x = m[k] or { ... }`) keeps
 		// the guard, so aliasing container/field storage still requires a
-		// `clone`/`move`. See vlang/v issue #27867.
+		// `clone`/`move`. The `or` must actually clear the option/result: for
+		// `map[K]?map[...]`, `v := m[k] or { none }` keeps the option-map type,
+		// so `v` is still an option handle aliasing the map in `m` and the guard
+		// must stay. See vlang/v issue #27867.
 		mut right_is_immutable_or_unwrap := false
-		if node.op == .decl_assign && left is ast.Ident && !left.is_mut {
+		if node.op == .decl_assign && left is ast.Ident && !left.is_mut
+			&& !right_type.has_flag(.option) && !right_type.has_flag(.result) {
 			unwrapped_right := right.remove_par()
 			right_is_immutable_or_unwrap = match unwrapped_right {
 				ast.Ident { unwrapped_right.or_expr.kind != .absent }
