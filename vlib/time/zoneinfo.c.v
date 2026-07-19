@@ -104,11 +104,12 @@ pub fn (loc &Location) zone_at(unix_time i64) !Zone {
 	if loc.zones.len == 0 {
 		return error('time zone location "${loc.name}" has no zone rules')
 	}
+	if loc.has_posix
+		&& (loc.transitions.len == 0 || unix_time >= loc.transitions[loc.transitions.len - 1].when) {
+		return loc.posix.zone_at(unix_time)
+	}
 	if loc.transitions.len == 0 {
 		return loc.zones[0]
-	}
-	if loc.has_posix && unix_time >= loc.transitions[loc.transitions.len - 1].when {
-		return loc.posix.zone_at(unix_time)
 	}
 	if unix_time < loc.transitions[0].when {
 		return loc.zones[loc.first_standard_zone_index()]
@@ -250,7 +251,7 @@ fn parse_tzif_location(name string, data []u8) !&Location {
 	mut pos := 0
 	header := read_tzif_header(data, pos)!
 	pos += 44
-	if header.version == `2` || header.version == `3` {
+	if header.version == `2` || header.version == `3` || header.version == `4` {
 		pos += tzif_data_size(header, 4)
 		header2 := read_tzif_header(data, pos)!
 		pos += 44
@@ -591,6 +592,9 @@ fn posix_month_week_day(year int, rule PosixRule) int {
 	if rule.week == 5 {
 		for day + 7 <= days {
 			day += 7
+		}
+		if day > days {
+			day -= 7
 		}
 	}
 	return day
