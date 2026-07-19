@@ -224,6 +224,52 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_mut_pointer_param_reassigns_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out := mut_param_reassign_run_good(v3_bin, 'mut_pointer_param_reassign', 'struct Item {
+	value int
+}
+
+fn replace(mut current &Item, replacement &Item) {
+	current = replacement
+}
+
+fn main() {
+	first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	mut current := &first
+	replace(mut current, &second)
+	println(int_str(current.value))
+}
+')
+	assert out == '9'
+	out_generic := mut_param_reassign_run_good(v3_bin, 'generic_mut_pointer_param_reassign', 'struct Item {
+	value int
+}
+
+fn replace[T](mut current &T, replacement &T) {
+	current = replacement
+}
+
+fn main() {
+	first := Item{
+		value: 2
+	}
+	second := Item{
+		value: 8
+	}
+	mut current := &first
+	replace(mut current, &second)
+	println(int_str(current.value))
+}
+')
+	assert out_generic == '8'
+}
+
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
 	v3_bin := mut_param_reassign_build_v3()
 	mut_param_reassign_run_bad(v3_bin, 'bad_same_scope_mut_string_param_redeclare', "fn shadow_read(mut s string) string {

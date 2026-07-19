@@ -54,9 +54,7 @@ vlib/v/tests/generics/generics_method_with_multi_types_test.v
 vlib/v/tests/generics/generics_mutual_recursive_struct_reference_test.v
 vlib/v/tests/generics/generics_option_fn_concrete_type_test.v
 vlib/v/tests/generics/generics_return_closure_test.v
-vlib/v/tests/generics/generics_struct_anon_fn_type_test.v
 vlib/v/tests/generics/generics_struct_field_with_default_fn_type_test.v
-vlib/v/tests/generics/generics_struct_field_with_generics_struct_elements_test.v
 vlib/v/tests/generics/generics_struct_types_infer_test.v
 vlib/v/tests/generics/generics_test.v
 vlib/v/tests/generics/generics_unused_specialized_fn_array_param_test.v

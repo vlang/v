@@ -1937,6 +1937,10 @@ fn main() {
 		}
 	}
 	b.step('annotate types')
+	if pre_tc.errors.len > 0 {
+		print_type_errors(pre_tc.errors)
+		exit(1)
+	}
 
 	if backend == 'wasm' {
 		$if !skip_wasm ? {

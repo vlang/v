@@ -1056,6 +1056,12 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 	if alias := t.function_alias_impl_name(name) {
 		return alias
 	}
+	if name.starts_with('[]') {
+		typ := t.tc.parse_type(name)
+		if typ is types.Array {
+			return types.Type(typ).name()
+		}
+	}
 	if name in ['bool', 'int', 'i8', 'i16', 'i32', 'i64', 'isize', 'usize', 'u8', 'byte', 'u16',
 		'u32', 'u64', 'f32', 'f64', 'string', 'char', 'rune'] {
 		return name

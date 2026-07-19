@@ -281,6 +281,17 @@ fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization()
 	assert !generated.contains('codec__Decoder_other__Item__decode_value'), generated
 }
 
+fn test_same_generic_specialization_name_in_different_modules_keeps_both_bodies() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_specialization_module_collision', {
+		'v.mod':  "Module { name: 'generic_specialization_module_collision' }\n"
+		'a/a.v':  'module a\n\npub fn id[T](value T) T {\n\treturn value\n}\n'
+		'b/b.v':  'module b\n\npub fn id[T](value T) T {\n\treturn value + 10\n}\n'
+		'main.v': 'module main\n\nimport a\nimport b\n\nfn main() {\n\tprintln(int_str(a.id[int](1)))\n\tprintln(int_str(b.id[int](2)))\n}\n'
+	}, 'main.v')
+	assert out == '1\n12'
+}
+
 fn test_generic_struct_default_for_pointer_type_uses_heap_storage() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_pointer_struct_default', 'struct Item {
@@ -1188,6 +1199,21 @@ fn main() {
 }
 ')
 	assert out == '[1, 2]\ntrue\ntrue'
+}
+
+fn test_empty_interface_stringification_distinguishes_array_element_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'empty_interface_mixed_array_stringification', 'interface Value {}
+
+fn main() {
+	values := [Value([1, 2]), Value(["x"])]
+	for value in values {
+		println(value)
+	}
+	println(values[0].type_idx() != values[1].type_idx())
+}
+')
+	assert out == "Value([1, 2])\nValue(['x'])\ntrue"
 }
 
 fn test_optional_string_equality_uses_payload_equality() {

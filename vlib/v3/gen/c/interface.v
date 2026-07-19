@@ -536,6 +536,19 @@ fn (mut g FlatGen) register_interface_strings() {
 // what the generated method-dispatch switch matches on.
 fn (mut g FlatGen) collect_interface_impls() {
 	g.ierror_method_emit_names = map[string]bool{}
+	g.collect_interface_boxed_types_for_dispatch()
+	mut boxed_arrays := map[string][]string{}
+	for key, _ in g.interface_boxed_types {
+		parts := key.split('::')
+		if parts.len != 2 || !parts[1].starts_with('[]') {
+			continue
+		}
+		mut concrete_types := boxed_arrays[parts[0]] or { []string{} }
+		if parts[1] !in concrete_types {
+			concrete_types << parts[1]
+			boxed_arrays[parts[0]] = concrete_types
+		}
+	}
 	mut iface_names := []string{}
 	for name, _ in g.interfaces {
 		iface_names << name
@@ -543,6 +556,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 	iface_names.sort()
 	for iface in iface_names {
 		mut impls := []string{}
+		mut base_impls := []string{}
 		if g.is_ierror_type_name(iface) {
 			impls = g.tc.ierror_impl_names()
 		} else {
@@ -550,10 +564,20 @@ fn (mut g FlatGen) collect_interface_impls() {
 			// must come from tc.interface_impl_names so the transform's `is`
 			// checks agree with the dispatch ids assigned here.
 			impls = g.tc.interface_impl_names(iface)
+			base_impls = impls.clone()
+			mut concrete_types := boxed_arrays[iface] or { []string{} }
+			concrete_types.sort()
+			for concrete in concrete_types {
+				if concrete !in impls {
+					impls << concrete
+				}
+			}
 		}
 		g.iface_impls[iface] = impls
 		type_ids := if g.is_ierror_type_name(iface) {
 			types.stable_interface_type_ids(impls)
+		} else if impls.len > base_impls.len {
+			types.stable_interface_type_ids_preserving_prefix(base_impls, impls)
 		} else {
 			g.tc.interface_type_ids(iface)
 		}
@@ -999,22 +1023,22 @@ fn (g &FlatGen) ierror_pointer_payload_root_needs_heap_copy(root flat.Node) bool
 // the direct lookup fails, fall back to the alias's base type, and from a base
 // type to the single alias implementer that resolves to it (if unambiguous).
 fn (g &FlatGen) iface_type_id_for_concrete(iface string, concrete types.Type) int {
+	concrete_name := concrete.name()
+	mut id := g.iface_type_id(iface, concrete_name)
+	if id != 0 {
+		return id
+	}
 	if concrete is types.Array {
-		id := g.iface_type_id(iface, 'array')
+		id = g.iface_type_id(iface, 'array')
 		if id != 0 {
 			return id
 		}
 	}
 	if concrete is types.Map {
-		id := g.iface_type_id(iface, 'map')
+		id = g.iface_type_id(iface, 'map')
 		if id != 0 {
 			return id
 		}
-	}
-	concrete_name := concrete.name()
-	mut id := g.iface_type_id(iface, concrete_name)
-	if id != 0 {
-		return id
 	}
 	if concrete_name.starts_with('main.') || concrete_name.starts_with('builtin.') {
 		id = g.iface_type_id(iface, concrete_name.all_after_last('.'))

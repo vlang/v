@@ -5676,7 +5676,10 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	assert shadow_out == '3\n12'
 	pointer_str_out := run_good(v3_bin, 'review_pointer_value_receiver_str',
 		"struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n")
-	assert pointer_str_out == 'custom:7'
+	assert pointer_str_out == '&custom:7'
+	interface_smartcast_str_out := run_good(v3_bin, 'review_interface_smartcast_pointer_str',
+		"interface Named {\n\tname() string\n}\n\nstruct Item {}\n\nfn (i Item) name() string {\n\treturn 'item'\n}\n\nfn (i Item) str() string {\n\treturn i.name()\n}\n\nfn describe(value Named) string {\n\treturn match value {\n\t\tItem { value.str() }\n\t\telse { 'unknown' }\n\t}\n}\n\nfn main() {\n\tvalue := Named(&Item{})\n\tprintln(describe(value))\n}\n")
+	assert interface_smartcast_str_out == '&item'
 	run_bad(v3_bin, 'review_setter_only_compound_index_assignment',
 		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
 		'compound index assignment requires a `[]` overload')
@@ -6483,4 +6486,30 @@ fn main() {
 }
 ',
 		'cannot use `&PointerCallItem` as argument 1 to `take_value`; expected `PointerCallItem`')
+}
+
+fn test_map_retains_address_of_local_after_return() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'map_retains_address_of_local_after_return', 'struct Item {
+	value int
+}
+
+fn make_cache() map[string]&Item {
+	mut cache := map[string]&Item{}
+	mut local := Item{
+		value: 7
+	}
+	ptr := &local
+	cache["alias"] = ptr
+	cache["direct"] = &local
+	return cache
+}
+
+fn main() {
+	cache := make_cache()
+	println(int_str(cache["alias"].value))
+	println(int_str(cache["direct"].value))
+}
+')
+	assert out == '7\n7'
 }

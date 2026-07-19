@@ -305,6 +305,15 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				c_elem := g.value_c_type(container_type.elem_type)
 				container_node := g.a.nodes[int(container_id)]
 				mut container_str := g.expr_to_string(container_id)
+				if container_node.kind == .ident {
+					if raw := g.local_storage_raw_type(container_node.value) {
+						clean_raw := raw.trim_space()
+						if clean_raw.starts_with('?')
+							&& clean_raw[1..].trim_space().starts_with('[]') {
+							container_str = '(${container_str}).value'
+						}
+					}
+				}
 				if container_str.starts_with('*') && container_str.contains('->val') {
 					container_str = container_str[1..]
 				}

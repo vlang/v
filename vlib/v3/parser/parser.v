@@ -1307,6 +1307,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 		}
 	}
 	mut typ := p.parse_type_name()
+	explicit_mut_ref := is_mut && typ.starts_with('&')
 	if is_mut && !typ.starts_with('&') {
 		typ = '&' + typ
 	}
@@ -1316,6 +1317,7 @@ fn (mut p Parser) parse_param_group(is_c_decl bool) []flat.NodeId {
 	for name in names {
 		ids << p.add_node(flat.Node{
 			kind:   .param
+			op:     if explicit_mut_ref { .amp } else { .none }
 			value:  name
 			typ:    typ
 			is_mut: is_mut
@@ -5106,6 +5108,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 		start := p.add_children(ids)
 		return p.add_node(flat.Node{
 			kind:           .for_stmt
+			value:          'c_style'
 			children_start: start
 			children_count: flat.child_count(ids.len)
 		})
@@ -5163,6 +5166,7 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 			start := p.add_children(ids)
 			return p.add_node(flat.Node{
 				kind:           .for_stmt
+				value:          'c_style'
 				children_start: start
 				children_count: flat.child_count(ids.len)
 			})
@@ -5308,6 +5312,7 @@ fn (mut p Parser) for_c_style_multi(lhs_ids []flat.NodeId) flat.NodeId {
 	for_start := p.add_children(for_ids)
 	for_id := p.add_node(flat.Node{
 		kind:           .for_stmt
+		value:          'c_style'
 		children_start: for_start
 		children_count: flat.child_count(for_ids.len)
 	})
@@ -5371,6 +5376,7 @@ fn (mut p Parser) for_c_style(lhs_expr flat.NodeId) flat.NodeId {
 	start := p.add_children(ids)
 	return p.add_node(flat.Node{
 		kind:           .for_stmt
+		value:          'c_style'
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})

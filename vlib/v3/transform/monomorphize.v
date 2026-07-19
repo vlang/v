@@ -2796,7 +2796,8 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.active_generic_params = old_params
 	t.active_specialization_args = old_specialization_args
 	t.active_specialization_main_types = old_specialization_main_types.move()
-	t.transform_specialized_fn_body(clone_id, decl.module, decl.file, concrete_args)
+	t.transform_specialized_fn_body(clone_id, decl.module, decl.file, t.generic_fn_param_names(decl.node,
+		decl.module), concrete_args)
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(clone_id, decl.module, decl.file)
 	t.cur_module = old_module
@@ -2808,7 +2809,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	return clone_id
 }
 
-fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, module_name string, file_name string, args []string) {
+fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, module_name string, file_name string, params []string, args []string) {
 	if int(clone_id) < 0 || int(clone_id) >= t.a.nodes.len {
 		return
 	}
@@ -2819,8 +2820,10 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, modul
 	old_ret_type := t.cur_fn_ret_type
 	old_var_types := t.var_types.clone()
 	old_is_generic := t.cur_fn_is_generic
+	old_generic_params := t.active_generic_params
 	old_specialization_args := t.active_specialization_args
 	old_specialization_main_types := t.active_specialization_main_types.clone()
+	t.active_generic_params = params
 	t.active_specialization_args = args
 	t.active_specialization_main_types = t.specialization_main_type_closure(args)
 	t.cur_module = module_name
@@ -2846,6 +2849,7 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, modul
 	t.cur_fn_ret_type = old_ret_type
 	t.restore_var_types(old_var_types)
 	t.cur_fn_is_generic = old_is_generic
+	t.active_generic_params = old_generic_params
 	t.active_specialization_args = old_specialization_args
 	t.active_specialization_main_types = old_specialization_main_types.clone()
 }
@@ -3302,7 +3306,8 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 		if child.kind != .param {
 			continue
 		}
-		param_type := t.specialized_signature_type_text(decl, child.typ, args, generic_params)
+		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl,
+			child.typ, args, generic_params))
 		if param_type.starts_with('...') {
 			variadic = true
 		}
@@ -3323,6 +3328,8 @@ fn (mut t Transformer) register_specialized_fn_signature_value(decl GenericFnDec
 			t.tc.fn_ret_types[name] = ret
 			t.tc.fn_param_types[name] = params.clone()
 			t.tc.fn_variadic[name] = variadic
+			t.tc.fn_type_modules[name] = decl.module
+			t.tc.fn_type_files[name] = decl.file
 			t.add_receiver_method_suffix_index(name)
 			t.tc.specialized_generic_fns[name] = true
 		}
@@ -3721,7 +3728,8 @@ fn (mut t Transformer) concrete_generic_call_param_types(id flat.NodeId, node fl
 		if child.kind != .param {
 			continue
 		}
-		param_type := t.specialized_signature_type_text(decl, child.typ, args, params)
+		param_type := explicit_mut_pointer_param_type_text(child, t.specialized_signature_type_text(decl,
+			child.typ, args, params))
 		result << t.tc.parse_canonical_type(param_type)
 	}
 	if result.len == 0 {
@@ -3814,6 +3822,11 @@ fn (mut t Transformer) infer_generic_call_args_from_params(decl GenericFnDecl, c
 			continue
 		}
 		mut inferred_arg_type := t.generic_call_arg_type_for_inference(arg_id)
+		if child.is_mut && child.op == .amp && inferred_arg_type.starts_with('&') {
+			// The explicit `mut p &T` marker addresses the caller's pointer slot;
+			// it is ABI indirection, not part of T's inferred source type.
+			inferred_arg_type = inferred_arg_type[1..]
+		}
 		if is_recv_param && t.call_is_selector_form(node)
 			&& t.generic_receiver_needs_decl_type_fallback(child.typ, inferred_arg_type) {
 			recv := t.a.nodes[int(arg_id)]
@@ -3985,6 +3998,7 @@ fn (mut t Transformer) rewrite_generic_plain_call(id flat.NodeId, node flat.Node
 		param_type := if param_idx < param_types.len { param_types[param_idx] } else { '' }
 		children << t.retype_generic_call_literal_arg(arg_id, param_type)
 	}
+	t.append_missing_specialized_params_struct_args(mut children, param_types, decl.module)
 	start := t.a.children.len
 	for child in children {
 		t.a.children << child
@@ -4043,9 +4057,17 @@ fn (mut t Transformer) specialized_generic_call_param_type_texts(decl GenericFnD
 		if child.kind != .param {
 			continue
 		}
-		result << t.specialized_call_target_type_text(decl, child.typ, args, params)
+		result << explicit_mut_pointer_param_type_text(child, t.specialized_call_target_type_text(decl,
+			child.typ, args, params))
 	}
 	return result
+}
+
+fn explicit_mut_pointer_param_type_text(param flat.Node, typ string) string {
+	if param.is_mut && param.op == .amp && typ.starts_with('&') {
+		return '&${typ}'
+	}
+	return typ
 }
 
 fn (mut t Transformer) specialized_call_target_type_text(decl GenericFnDecl, typ string, args []string, params []string) string {
@@ -4307,6 +4329,7 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 			i++
 		}
 	}
+	t.append_missing_specialized_params_struct_args(mut children, param_types, decl.module)
 	start := t.a.children.len
 	for child in children {
 		t.a.children << child
@@ -4321,6 +4344,23 @@ fn (mut t Transformer) rewrite_method_level_generic_call(id flat.NodeId, node fl
 		typ:            ret_typ
 	})
 	t.clear_resolved_call(id)
+}
+
+fn (mut t Transformer) append_missing_specialized_params_struct_args(mut children []flat.NodeId, param_types []string, decl_module string) {
+	mut param_idx := children.len - 1
+	for param_idx < param_types.len {
+		param_type := param_types[param_idx]
+		mut struct_type := t.params_struct_type_name(param_type) or { '' }
+		if struct_type.len == 0 && !param_type.contains('.') && decl_module.len > 0
+			&& decl_module !in ['main', 'builtin'] {
+			struct_type = t.params_struct_type_name('${decl_module}.${param_type}') or { '' }
+		}
+		if struct_type.len == 0 {
+			break
+		}
+		children << t.zero_value_for_type(struct_type)
+		param_idx++
+	}
 }
 
 fn (mut t Transformer) clear_resolved_call(id flat.NodeId) {
@@ -5511,6 +5551,11 @@ fn (mut t Transformer) infer_generic_call_args(decl GenericFnDecl, _id flat.Node
 			continue
 		}
 		mut inferred_arg_type := t.generic_call_arg_type_for_inference(arg_id)
+		if child.is_mut && child.op == .amp && inferred_arg_type.starts_with('&') {
+			// The explicit `mut p &T` marker addresses the caller's pointer slot;
+			// it is ABI indirection, not part of T's inferred source type.
+			inferred_arg_type = inferred_arg_type[1..]
+		}
 		if is_recv_param && t.call_is_selector_form(node)
 			&& t.generic_receiver_needs_decl_type_fallback(child.typ, inferred_arg_type) {
 			recv := t.a.nodes[int(arg_id)]
@@ -7964,7 +8009,15 @@ fn (mut t Transformer) retarget_cloned_implicit_generic_call(clone_id flat.NodeI
 fn (t &Transformer) generic_specialization_registered(decl GenericFnDecl, args []string) bool {
 	spec_value := specialized_generic_fn_value(decl.node.value, args)
 	qname := transform_qualified_fn_name(decl.module, spec_value)
-	for name in [spec_value, qname, c_name(spec_value), c_name(qname)] {
+	cspec_value := c_name(spec_value)
+	for name in [spec_value, qname, cspec_value, c_name(qname)] {
+		if !isnil(t.tc) && (name == spec_value || name == cspec_value) {
+			if registered_module := t.tc.fn_type_modules[name] {
+				if registered_module != decl.module {
+					continue
+				}
+			}
+		}
 		if name in t.fn_ret_types {
 			return true
 		}

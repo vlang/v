@@ -216,9 +216,6 @@ fn test_type_checker_reports_core_semantic_errors() {
 	run_bad(v3_bin, 'bad_empty_interface_match_array_pattern',
 		'interface Any {}\nfn check(x Any) int {\n\treturn match x {\n\t\t[]string { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
 		'`[]string` is not compatible with interface `Any`')
-	run_bad(v3_bin, 'bad_empty_interface_as_array_pattern',
-		'interface Any {}\nfn check(x Any) []string {\n\treturn x as []string\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
-		'`[]string` is not compatible with interface `Any`')
 	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface',
 		"type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
 	assert alias_interface_out == 'test\nhehe'
@@ -401,6 +398,16 @@ fn test_type_checker_reports_core_semantic_errors() {
 	}, 'main.v')
 	assert !cross_module_array_append_c.contains('array_push_many(&xs')
 	assert cross_module_array_append_c.contains('array_push(&xs')
+}
+
+fn test_interface_container_as_cast_requirements() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_nonempty_interface_as_array_pattern',
+		'interface Speaker {\n\tspeak()\n}\nfn check(x Speaker) []int {\n\treturn x as []int\n}\nfn main() {}\n',
+		'`[]int` is not compatible with interface `Speaker`')
+	empty_interface_as_out := run_good(v3_bin, 'empty_interface_as_array_pattern',
+		'interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\txs := values(Any([1, 2]))\n\tprintln(xs[0] + xs[1])\n}\n')
+	assert empty_interface_as_out == '3'
 }
 
 fn test_interface_method_rejects_narrowed_interface_param() {

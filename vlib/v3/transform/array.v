@@ -1166,15 +1166,20 @@ fn (mut t Transformer) try_lower_array_append_stmt(id flat.NodeId) ?[]flat.NodeI
 	mut rhs := flat.empty_node
 	if !push_many {
 		if !rhs_is_sum_variant {
-			if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
-				rhs = converted
-				rhs_type = array_type
-				push_many = true
+			if t.array_append_elem_is_interface(elem_type) {
+				rhs = t.transform_expr_for_type(rhs_id, elem_type)
 			} else {
-				rhs = if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-					t.wrap_sum_value(rhs_id, elem_type)
+				if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+					rhs = converted
+					rhs_type = array_type
+					push_many = true
 				} else {
-					t.transform_expr_for_type(rhs_id, elem_type)
+					rhs = if elem_type in t.sum_types
+						|| t.resolve_sum_name(elem_type) in t.sum_types {
+						t.wrap_sum_value(rhs_id, elem_type)
+					} else {
+						t.transform_expr_for_type(rhs_id, elem_type)
+					}
 				}
 			}
 		} else {
@@ -1321,15 +1326,20 @@ fn (mut t Transformer) try_lower_optional_array_append_stmt(_node flat.Node, lhs
 	mut rhs := flat.empty_node
 	if !push_many {
 		if !rhs_is_sum_variant {
-			if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
-				rhs_type = array_type
-				push_many = true
-				rhs = converted
+			if t.array_append_elem_is_interface(elem_type) {
+				rhs = t.transform_expr_for_type(rhs_id, elem_type)
 			} else {
-				rhs = if elem_type in t.sum_types || t.resolve_sum_name(elem_type) in t.sum_types {
-					t.wrap_sum_value(rhs_id, elem_type)
+				if converted := t.transform_array_value_for_dynamic_target(rhs_id, array_type) {
+					rhs_type = array_type
+					push_many = true
+					rhs = converted
 				} else {
-					t.transform_expr_for_type(rhs_id, elem_type)
+					rhs = if elem_type in t.sum_types
+						|| t.resolve_sum_name(elem_type) in t.sum_types {
+						t.wrap_sum_value(rhs_id, elem_type)
+					} else {
+						t.transform_expr_for_type(rhs_id, elem_type)
+					}
 				}
 			}
 		} else {
