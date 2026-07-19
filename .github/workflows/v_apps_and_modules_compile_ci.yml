@@ -19,6 +19,11 @@ on:
       - '!**/v_apps_and_modules_compile_ci.yml'
       - 'examples/**'
       - 'cmd/tools/vrepl.v'
+  schedule:
+    - cron: '37 2 * * *'
+
+permissions:
+  contents: read
 
 concurrency:
   group: v_apps-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -26,6 +31,7 @@ concurrency:
 
 jobs:
   v-apps-compile:
+    if: ${{ github.event_name != 'schedule' || (github.repository == 'vlang/v' && github.ref == 'refs/heads/master') }}
     strategy:
       matrix:
         os: [ubuntu-latest, macos-14]
@@ -67,6 +73,7 @@ jobs:
           fi
 
       - name: Build docs generator
+        if: ${{ github.event_name != 'pull_request' && success() }}
         run: |
           v retry -- v install markdown
           v retry -- git clone https://github.com/vlang/docs --branch generator --depth 1
@@ -74,7 +81,7 @@ jobs:
           v .
 
       - name: Test vtcc
-        if: runner.os == 'macOS'
+        if: ${{ github.event_name != 'pull_request' && runner.os == 'macOS' && success() }}
         run: .github/workflows/compile_v_with_vtcc.sh
 
       - name: Test vsql compilation and examples
@@ -91,7 +98,7 @@ jobs:
           v vsql/connection_test.v
 
       - name: Test vlang/gui
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
         run: .github/workflows/compile_vlang_gui_examples.sh
       - name: Test discord.v
         if: ${{ false && !cancelled() && steps.build.outcome == 'success' }} # disabled: upstream uses deprecated json2.raw_decode
@@ -110,7 +117,7 @@ jobs:
           v -g ~/.vmodules/vab
 
       - name: Build vlang/ved
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           v retry -- git clone --depth 1 https://github.com/vlang/ved
           cd ved && v -o ved .
@@ -123,14 +130,14 @@ jobs:
           cd ..
 
       - name: Build vlang/pdf
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           v retry -- v install pdf
           echo "PDF examples should compile"
           v should-compile-all ~/.vmodules/pdf/examples
 
       - name: Build vlang/libsodium
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Install the libsodium wrapper"
           v retry -- v install libsodium
@@ -138,7 +145,7 @@ jobs:
           VJOBS=1 v test ~/.vmodules/libsodium
 
       - name: Build vlang/coreutils
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone Coreutils"
           v retry -- git clone --depth 1 https://github.com/vlang/coreutils /tmp/coreutils
@@ -165,7 +172,7 @@ jobs:
           # # /tmp/gitly/gitly -ci_run
 
       - name: Build V UI examples
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           v retry -- v install ui
           v -no-parallel ~/.vmodules/ui/examples/rectangles.v
@@ -200,7 +207,7 @@ jobs:
           fi
 
       - name: Build vlang/go2v
-        if: ${{ !cancelled() && steps.build.outcome == 'success' && matrix.os != 'macos-14' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' && matrix.os != 'macos-14' }}
         run: |
           echo "Clone Go2V"
           v retry -- git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
@@ -218,7 +225,7 @@ jobs:
           v ~/.vmodules/ui/examples/build_examples.vsh
 
       - name: Build vlang/adventofcode
-        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone the AdventOfCode repo"
           v retry -- git clone --depth 1 https://github.com/vlang/adventofcode  /tmp/adventofcode
@@ -252,6 +259,7 @@ jobs:
       #     v test ~/.vmodules/nedpals/vex
 
   vpm-site-compile:
+    if: ${{ github.event_name != 'schedule' || (github.repository == 'vlang/v' && github.ref == 'refs/heads/master') }}
     strategy:
       matrix:
         os: [ubuntu-24.04, macos-14]
@@ -273,6 +281,7 @@ jobs:
   # sure a real veb/fasthttp app both builds and returns the expected HTML on
   # Windows (a regression test for the Windows fasthttp SOCKET truncation crash).
   gitly-windows:
+    if: ${{ github.event_name != 'schedule' || (github.repository == 'vlang/v' && github.ref == 'refs/heads/master') }}
     runs-on: windows-2025
     timeout-minutes: 60
     env:
