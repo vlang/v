@@ -1391,12 +1391,38 @@ static BOOL http_ci_equal(const CHAR *buf, int len, const CHAR *name, int name_l
 	return TRUE;
 }
 
-// http_ci_contains reports whether needle occurs case-insensitively anywhere
-// within buf[0..len).
-static BOOL http_ci_contains(const CHAR *buf, int len, const CHAR *needle, int needle_len) {
-	for(int i = 0; i + needle_len <= len; i++) {
-		if(http_ci_equal(buf + i, needle_len, needle, needle_len)) {
-			return TRUE;
+// http_has_transfer_coding reports whether the Transfer-Encoding value
+// buf[0..len) contains `coding` as a real comma-separated transfer-coding
+// token (any ";parameters" suffix stripped, OWS trimmed, ASCII
+// case-insensitive) -- deliberately matching net.http's own
+// parse_response/has_header_token semantics, so this C-level framing
+// decision and the V-level chunked-decode decision can never disagree. A
+// substring match is NOT sufficient: an extension coding merely CONTAINING
+// the word (e.g. "xchunked") must fall back to read-until-close framing,
+// not have chunk framing applied to a body whose raw bytes might
+// accidentally look like a complete chunked message.
+static BOOL http_has_transfer_coding(const CHAR *buf, int len, const CHAR *coding, int coding_len) {
+	int start = 0;
+	for(int i = 0; i <= len; i++) {
+		if(i == len || buf[i] == ',') {
+			int tok_start = start;
+			int tok_end = i;
+			for(int j = tok_start; j < tok_end; j++) {
+				if(buf[j] == ';') {
+					tok_end = j;
+					break;
+				}
+			}
+			while(tok_start < tok_end && (buf[tok_start] == ' ' || buf[tok_start] == '\t')) {
+				tok_start++;
+			}
+			while(tok_end > tok_start && (buf[tok_end - 1] == ' ' || buf[tok_end - 1] == '\t')) {
+				tok_end--;
+			}
+			if(http_ci_equal(buf + tok_start, tok_end - tok_start, coding, coding_len)) {
+				return TRUE;
+			}
+			start = i + 1;
 		}
 	}
 	return FALSE;
@@ -1404,8 +1430,10 @@ static BOOL http_ci_contains(const CHAR *buf, int len, const CHAR *needle, int n
 
 // http_find_header case-insensitively locates a "<name>: value" line within
 // buf[0..headers_end) (the response's header block) and returns a pointer to
-// the value (leading spaces/tabs trimmed), with its length in *out_len.
-// Returns NULL if the header is not present.
+// the value (spaces/tabs trimmed on BOTH sides -- RFC 7230's field-value
+// grammar allows OWS before and after, and real servers do emit e.g.
+// "Content-Length: 27 " with trailing whitespace), with its length in
+// *out_len. Returns NULL if the header is not present.
 static const CHAR* http_find_header(const CHAR *buf, int headers_end, const CHAR *name, int name_len, int *out_len) {
 	int i = 0;
 	while(i < headers_end) {
@@ -1425,6 +1453,9 @@ static const CHAR* http_find_header(const CHAR *buf, int headers_end, const CHAR
 			int val_len = line_end - (i + name_len + 1);
 			while(val_len > 0 && (*val == ' ' || *val == '\t')) {
 				val++;
+				val_len--;
+			}
+			while(val_len > 0 && (val[val_len - 1] == ' ' || val[val_len - 1] == '\t')) {
 				val_len--;
 			}
 			*out_len = val_len;
@@ -1565,10 +1596,10 @@ static BOOL http_response_complete(const CHAR *buf, int len) {
 	const CHAR *te = http_find_header(buf, headers_end, "Transfer-Encoding", 17, &te_len);
 	if(te != NULL) {
 		// RFC 7230 3.3.3: Transfer-Encoding, when present, overrides
-		// Content-Length. Only "chunked" is understood here; anything else
-		// falls back to the existing (always-correct) read-until-close
-		// behavior.
-		if(http_ci_contains(te, te_len, "chunked", 7)) {
+		// Content-Length. Only a real `chunked` transfer-coding token is
+		// understood here; anything else falls back to the existing
+		// (always-correct) read-until-close behavior.
+		if(http_has_transfer_coding(te, te_len, "chunked", 7)) {
 			return http_chunked_body_complete(buf + headers_end, len - headers_end);
 		}
 		return FALSE;
