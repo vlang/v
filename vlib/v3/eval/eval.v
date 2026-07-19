@@ -4284,7 +4284,7 @@ fn (mut e Eval) eval_or_expr(node &flat.Node) !Value {
 fn (mut e Eval) eval_or_expr_flow(node &flat.Node) !FlowSignal {
 	left_id := e.child(node, 0)
 	left_node := e.node(left_id)
-	if left_node.kind == .index {
+	if left_node.kind == .index && left_node.value != 'range' {
 		container_signal := e.eval_expr_flow(e.child(left_node, 0))!
 		if container_signal.kind != .normal {
 			return container_signal

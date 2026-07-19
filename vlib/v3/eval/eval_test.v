@@ -1100,6 +1100,26 @@ fn main() {
 	assert e.stdout() == '7\n3\n'
 }
 
+fn test_eval_range_index_or_uses_slice_path() {
+	mut e := create()
+	e.run_text('
+fn end(mut calls int) int {
+	calls++
+	return 3
+}
+
+fn main() {
+	mut calls := 0
+	s := "abcd"
+	println(s[1..end(mut calls)] or { "fallback" })
+	println(int_str(calls))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == 'bc\n1\n'
+}
+
 fn test_eval_postfix_index_target_evaluates_once() {
 	mut e := create()
 	e.run_text('
