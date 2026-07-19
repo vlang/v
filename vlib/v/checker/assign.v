@@ -881,7 +881,17 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 				}
 			}
 		}
-		right_is_lvalue := if right is ast.ComptimeSelector {
+		// An `or {}` block unwraps an option/result into a fresh value, so the
+		// unwrapped expression is not an lvalue that aliases the original map
+		// (see vlang/v issue #27867). This mirrors the already allowed `get() or {}`
+		// call and option array field cases.
+		right_has_or_block := match right {
+			ast.Ident { right.or_expr.kind != .absent }
+			ast.IndexExpr { right.or_expr.kind != .absent }
+			ast.SelectorExpr { right.or_block.kind != .absent }
+			else { false }
+		}
+		right_is_lvalue := !right_has_or_block && if right is ast.ComptimeSelector {
 			right.left.is_lvalue()
 		} else {
 			right.is_lvalue()
