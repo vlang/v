@@ -252,7 +252,11 @@ fn parse_tzif_location(name string, data []u8) !&Location {
 	header := read_tzif_header(data, pos)!
 	pos += 44
 	if header.version == `2` || header.version == `3` || header.version == `4` {
-		pos += tzif_data_size(header, 4)
+		size := tzif_data_size(header, 4)!
+		if pos + size > data.len {
+			return error('truncated TZif data for "${name}"')
+		}
+		pos += size
 		header2 := read_tzif_header(data, pos)!
 		pos += 44
 		return parse_tzif_data(name, data, pos, header2, 8)!
@@ -274,7 +278,7 @@ fn read_tzif_header(data []u8, offset int) !TzifHeader {
 	if offset + 44 > data.len || data[offset..offset + 4].bytestr() != 'TZif' {
 		return error('invalid TZif data')
 	}
-	return TzifHeader{
+	header := TzifHeader{
 		version:   data[offset + 4]
 		ttisgmt:   read_be_i32(data, offset + 20)
 		ttisstd:   read_be_i32(data, offset + 24)
@@ -283,18 +287,29 @@ fn read_tzif_header(data []u8, offset int) !TzifHeader {
 		typ:       read_be_i32(data, offset + 36)
 		character: read_be_i32(data, offset + 40)
 	}
+	if header.ttisgmt < 0 || header.ttisstd < 0 || header.leap < 0 || header.time < 0
+		|| header.typ < 0 || header.character < 0 {
+		return error('invalid TZif header counts')
+	}
+	return header
 }
 
-fn tzif_data_size(header TzifHeader, time_size int) int {
-	return header.time * time_size + header.time + header.typ * 6 + header.character +
-		header.leap * (time_size + 4) + header.ttisstd + header.ttisgmt
+fn tzif_data_size(header TzifHeader, time_size int) !int {
+	size := i64(header.time) * i64(time_size) + i64(header.time) + i64(header.typ) * 6 +
+		i64(header.character) + i64(header.leap) * i64(time_size + 4) + i64(header.ttisstd) +
+		i64(header.ttisgmt)
+	if size > i64(max_int) {
+		return error('TZif data is too large')
+	}
+	return int(size)
 }
 
 fn parse_tzif_data(name string, data []u8, start int, header TzifHeader, time_size int) !&Location {
 	if header.typ <= 0 {
 		return error('time zone location "${name}" has no zone rules')
 	}
-	if start + tzif_data_size(header, time_size) > data.len {
+	size := tzif_data_size(header, time_size)!
+	if start + size > data.len {
 		return error('truncated TZif data for "${name}"')
 	}
 	mut pos := start
@@ -454,6 +469,9 @@ fn parse_posix_offset(text string, start int) !(int, int) {
 
 fn parse_posix_rule(text string) !PosixRule {
 	rule_parts := text.split('/')
+	if rule_parts.len == 0 || rule_parts.len > 2 {
+		return error('unsupported POSIX time zone date rule "${text}"')
+	}
 	date := rule_parts[0]
 	seconds := if rule_parts.len > 1 {
 		parse_posix_time(rule_parts[1])!
@@ -465,16 +483,22 @@ fn parse_posix_rule(text string) !PosixRule {
 		if date_parts.len != 3 {
 			return error('unsupported POSIX time zone date rule "${text}"')
 		}
+		month := parse_posix_number_text(date_parts[0])!
+		week := parse_posix_number_text(date_parts[1])!
+		weekday := parse_posix_number_text(date_parts[2])!
+		if month < 1 || month > 12 || week < 1 || week > 5 || weekday < 0 || weekday > 6 {
+			return error('unsupported POSIX time zone date rule "${text}"')
+		}
 		return PosixRule{
 			kind:    .month_week_day
-			month:   date_parts[0].int()
-			week:    date_parts[1].int()
-			weekday: date_parts[2].int()
+			month:   month
+			week:    week
+			weekday: weekday
 			seconds: seconds
 		}
 	}
 	if date.starts_with('J') {
-		day := date[1..].int()
+		day := parse_posix_number_text(date[1..])!
 		if day < 1 || day > 365 {
 			return error('unsupported POSIX time zone date rule "${text}"')
 		}
@@ -484,7 +508,7 @@ fn parse_posix_rule(text string) !PosixRule {
 			seconds: seconds
 		}
 	}
-	day := date.int()
+	day := parse_posix_number_text(date)!
 	if day < 0 || day > 365 {
 		return error('unsupported POSIX time zone date rule "${text}"')
 	}
@@ -526,14 +550,35 @@ fn month_day_from_year_day(year int, ordinal int) (int, int) {
 }
 
 fn parse_posix_time(text string) !int {
-	parts := text.split(':')
-	if parts.len == 0 || parts.len > 3 {
+	if text == '' {
 		return error('unsupported POSIX time "${text}"')
 	}
-	hour_value := parts[0].int()
-	minute_value := if parts.len > 1 { parts[1].int() } else { 0 }
-	second_value := if parts.len > 2 { parts[2].int() } else { 0 }
-	return hour_value * seconds_per_hour + minute_value * seconds_per_minute + second_value
+	mut pos := 0
+	mut sign := 1
+	if text[pos] == `-` {
+		sign = -1
+		pos++
+	} else if text[pos] == `+` {
+		pos++
+	}
+	hour_value, hour_end := parse_posix_number(text, pos)!
+	pos = hour_end
+	mut minute_value := 0
+	mut second_value := 0
+	if pos < text.len && text[pos] == `:` {
+		minute_value, pos = parse_posix_number(text, pos + 1)!
+	}
+	if pos < text.len && text[pos] == `:` {
+		second_value, pos = parse_posix_number(text, pos + 1)!
+	}
+	if pos != text.len || minute_value > 59 || second_value > 59 {
+		return error('unsupported POSIX time "${text}"')
+	}
+	seconds := hour_value * seconds_per_hour + minute_value * seconds_per_minute + second_value
+	if seconds > 167 * seconds_per_hour {
+		return error('unsupported POSIX time "${text}"')
+	}
+	return sign * seconds
 }
 
 fn parse_posix_number(text string, start int) !(int, int) {
@@ -545,6 +590,14 @@ fn parse_posix_number(text string, start int) !(int, int) {
 		return error('missing POSIX number')
 	}
 	return text[start..pos].int(), pos
+}
+
+fn parse_posix_number_text(text string) !int {
+	value, pos := parse_posix_number(text, 0)!
+	if pos != text.len {
+		return error('missing POSIX number')
+	}
+	return value
 }
 
 fn (rule PosixZoneRule) zone_at(unix_time i64) Zone {

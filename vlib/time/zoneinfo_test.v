@@ -110,6 +110,21 @@ fn test_location_time_strftime_uses_wall_clock() {
 	assert local.strftime('%Y-%m-%d %H:%M:%S') == '2024-01-01 08:00:00'
 }
 
+fn test_location_time_strftime_uses_location_zone_directives() {
+	loc := time.load_location('America/New_York')!
+	local := time.unix(1_710_054_000).in(loc)!
+	assert local.strftime('%Y-%m-%d %H:%M:%S %Z %z') == '2024-03-10 03:00:00 EDT -0400'
+	assert local.strftime('%s') == '1710054000'
+	assert local.strftime('%%Z %Z') == '%Z EDT'
+}
+
+fn test_location_time_is_not_utc() {
+	loc := time.load_location('Asia/Shanghai')!
+	local := time.unix(1_704_067_200).in(loc)!
+	assert local.is_utc() == false
+	assert time.unix(1_704_067_200).is_utc() == true
+}
+
 fn test_location_time_add_keeps_instant_and_location() {
 	loc := time.load_location('Asia/Shanghai')!
 	local := time.unix_nanosecond(1_704_067_200, 123_456_789).in(loc)!

@@ -520,5 +520,5 @@ pub fn (t Time) as_utc() Time {
 // is_utc returns true, when the receiver `t` is a UTC time, and false otherwise.
 // See also #Time.utc_to_local .
 pub fn (t Time) is_utc() bool {
-	return !t.is_local
+	return !t.is_local && t.location() == none
 }
