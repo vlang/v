@@ -641,7 +641,7 @@ fn cli_usage() string {
 		'  -cc <compiler>               C compiler executable\n' +
 		'  -prod -c99 -shared -strict  C build modes\n' +
 		'  -v                           verbose stage profiling\n' +
-		'  -no-memory-limit             disable the 10 GiB RSS safety limit\n' +
+		'  -no-memory-limit             disable the 10 GiB memory safety limit\n' +
 		'  -d <name>                    compile-time define'
 }
 
@@ -1518,6 +1518,7 @@ fn main() {
 	if no_memory_limit {
 		b.disable_memory_limit()
 	}
+	b.start_memory_monitor()
 	mut c_object_cache_stats := CObjectCacheStats{}
 	println('=== v3 benchmark ===')
 
