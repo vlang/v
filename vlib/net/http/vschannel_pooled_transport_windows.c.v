@@ -181,6 +181,21 @@ fn (mut t VSchannelPooledTransport) close() {
 // so the caller falls back to the one-shot req.ssl_do instead (see
 // h2_fallback_h1).
 fn h2_dial_probe_vschannel(req &Request, host string, port int) !H2ProbeResult {
+	if C.vschannel_alpn_supported() == 0 {
+		// Pre-Windows 8.1 / Server 2012 R2 SChannel has no client-side ALPN:
+		// injecting the SECBUFFER_APPLICATION_PROTOCOLS buffer that
+		// new_vschannel_pooled_transport always installs can fail the whole
+		// handshake outright, so h2 is unreachable on those systems. Report
+		// the origin as h1-only WITHOUT dialing: the caller memoizes
+		// key_proto[key] = 1 and completes this (and every later) request
+		// via the one-shot req.ssl_do path, whose own vschannel_ssl_do guard
+		// (the sibling of this one) then dials plain HTTP/1.1 with no ALPN
+		// -- exactly the pre-pooling behavior (Codex P1, vlang/v#27712
+		// pullrequestreview-4729311285).
+		return H2ProbeResult{
+			is_h2: false
+		}
+	}
 	mut t := new_vschannel_pooled_transport(req, host, port)!
 	if t.negotiated_alpn() != 'h2' {
 		t.close()
