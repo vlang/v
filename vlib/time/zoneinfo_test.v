@@ -104,6 +104,12 @@ fn test_location_time_utc_formats_use_instant() {
 	assert local.http_header_string() == 'Mon, 01 Jan 2024 00:00:00 GMT'
 }
 
+fn test_location_time_strftime_uses_wall_clock() {
+	loc := time.load_location('Asia/Shanghai')!
+	local := time.unix(1_704_067_200).in(loc)!
+	assert local.strftime('%Y-%m-%d %H:%M:%S') == '2024-01-01 08:00:00'
+}
+
 fn test_location_time_add_keeps_instant_and_location() {
 	loc := time.load_location('Asia/Shanghai')!
 	local := time.unix_nanosecond(1_704_067_200, 123_456_789).in(loc)!
@@ -243,4 +249,25 @@ fn test_load_location_local_ignores_tz_local() {
 	}
 	loc := time.load_location('Local')!
 	assert loc.name.len > 0
+}
+
+fn test_load_location_local_posix_tz() {
+	old_tz := os.getenv_opt('TZ')
+	os.setenv('TZ', 'EST5EDT,M3.2.0,M11.1.0', true)
+	defer {
+		if old := old_tz {
+			os.setenv('TZ', old, true)
+		} else {
+			os.unsetenv('TZ')
+		}
+	}
+	loc := time.load_location('Local')!
+	winter := loc.zone_at(1_704_067_200)! // 2024-01-01 00:00 UTC
+	summer := loc.zone_at(1_719_792_000)! // 2024-06-30 20:00 UTC
+	assert winter.name == 'EST'
+	assert winter.offset == -18_000
+	assert winter.is_dst == false
+	assert summer.name == 'EDT'
+	assert summer.offset == -14_400
+	assert summer.is_dst == true
 }

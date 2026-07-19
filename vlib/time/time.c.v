@@ -140,11 +140,12 @@ fn convert_ctime(t C.tm, nanosecond int) Time {
 
 // strftime returns the formatted time using `strftime(3)`.
 pub fn (t Time) strftime(fmt string) string {
+	mut strftime_unix := if t.location() != none { t.local_unix() } else { t.unix }
 	mut tm := &C.tm{}
 	$if windows {
-		tm = C.gmtime(voidptr(&t.unix))
+		tm = C.gmtime(voidptr(&strftime_unix))
 	} $else {
-		C.gmtime_r(voidptr(&t.unix), tm)
+		C.gmtime_r(voidptr(&strftime_unix), tm)
 	}
 	mut buf := [1024]char{}
 	fmt_c := unsafe { &char(fmt.str) }

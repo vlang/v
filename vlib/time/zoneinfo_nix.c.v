@@ -16,7 +16,12 @@ fn local_location() !&Location {
 				}
 			}
 		} else if tz != 'Local' {
-			return load_location(tz) or { fixed_local_location() }
+			return load_location(tz) or {
+				if rule := parse_posix_zone_rule(tz) {
+					return location_from_posix_rule('Local', rule)
+				}
+				fixed_local_location()
+			}
 		}
 	}
 	localtime := '/etc/localtime'
@@ -44,6 +49,28 @@ fn fixed_local_location() &Location {
 			name:   'Local'
 			offset: offset()
 		}]
+	}
+}
+
+fn location_from_posix_rule(name string, rule PosixZoneRule) &Location {
+	mut zones := [
+		Zone{
+			name:   rule.std_name
+			offset: rule.std_offset
+		},
+	]
+	if rule.has_dst {
+		zones << Zone{
+			name:   rule.dst_name
+			offset: rule.dst_offset
+			is_dst: true
+		}
+	}
+	return &Location{
+		name:      name
+		zones:     zones
+		posix:     rule
+		has_posix: true
 	}
 }
 
