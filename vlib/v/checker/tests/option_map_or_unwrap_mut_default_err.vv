@@ -1,0 +1,18 @@
+// `x := opt or { fallback }` makes `x` the `or` block's value when the option is
+// empty, so if that default is a mutable map lvalue, `x` aliases it and observes
+// later mutations (`fallback['x'] = 2`). The immutable-destination exemption from
+// issue #27867 must not apply when the default path can return a mutable map
+// lvalue, even if the option source itself is immutable.
+fn maybe_none() ?map[string]int {
+	return none
+}
+
+fn main() {
+	mut fallback := {
+		'x': 1
+	}
+	opt := maybe_none()
+	x := opt or { fallback }
+	fallback['x'] = 2
+	println(x)
+}

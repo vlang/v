@@ -59,6 +59,43 @@ fn assign_or_unwrap_source_is_immutable(expr ast.Expr) bool {
 	}
 }
 
+// assign_expr_or_block returns the `or {}` block attached to `expr`, if any.
+fn assign_expr_or_block(expr ast.Expr) ast.OrExpr {
+	return match expr {
+		ast.Ident { expr.or_expr }
+		ast.IndexExpr { expr.or_expr }
+		ast.SelectorExpr { expr.or_block }
+		else { ast.OrExpr{} }
+	}
+}
+
+// assign_or_block_default_is_safe conservatively reports whether the value an
+// `or {}` block falls back to cannot alias mutable storage. `x := opt or { d }`
+// makes `x` the block's value `d` when the option is empty, so if `d` is a
+// mutable map lvalue (e.g. `or { fallback }`) then `x` aliases it. Only a fresh
+// value (map literal / by-value call), an immutable lvalue, or a block that
+// yields no value (diverges via `return`/`panic`/... or just propagates) is safe.
+fn assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
+	if or_expr.kind != .block || or_expr.stmts.len == 0 {
+		return true
+	}
+	last := or_expr.stmts.last()
+	if last !is ast.ExprStmt {
+		return true
+	}
+	return match (last as ast.ExprStmt).expr {
+		ast.MapInit, ast.CallExpr {
+			true
+		}
+		ast.Ident, ast.SelectorExpr, ast.IndexExpr, ast.ParExpr {
+			assign_or_unwrap_source_is_immutable((last as ast.ExprStmt).expr)
+		}
+		else {
+			false
+		}
+	}
+}
+
 fn (c &Checker) auto_deref_source_type_is_pointer(expr ast.Expr) bool {
 	if expr !is ast.Ident || c.table.cur_fn == unsafe { nil } || !expr.is_auto_deref_var() {
 		return false
@@ -942,15 +979,10 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		if node.op == .decl_assign && left is ast.Ident && !left.is_mut && !left_is_lockable_dest
 			&& !right_type.has_flag(.option) && !right_type.has_flag(.result) {
 			unwrapped_right := right.remove_par()
-			has_or_block := match unwrapped_right {
-				ast.Ident { unwrapped_right.or_expr.kind != .absent }
-				ast.IndexExpr { unwrapped_right.or_expr.kind != .absent }
-				ast.SelectorExpr { unwrapped_right.or_block.kind != .absent }
-				else { false }
-			}
-
-			right_is_immutable_or_unwrap = has_or_block
+			or_expr := assign_expr_or_block(unwrapped_right)
+			right_is_immutable_or_unwrap = or_expr.kind != .absent
 				&& assign_or_unwrap_source_is_immutable(unwrapped_right)
+				&& assign_or_block_default_is_safe(or_expr)
 		}
 		if left_sym.kind == .map && is_assign && right_sym.kind == .map && !c.inside_unsafe
 			&& !left.is_blank_ident() && right_is_lvalue && !right_is_immutable_or_unwrap
