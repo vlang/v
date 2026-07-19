@@ -5785,6 +5785,9 @@ fn (e &Eval) cast_value_in_module(value Value, type_name string, module_name str
 		return e.enum_value(name, source)
 	}
 	if name.starts_with('?') {
+		if source is VoidValue {
+			return source
+		}
 		inner_type := name[1..]
 		data := if inner_type.len > 0 {
 			e.adapt_value_to_type_name(source, inner_type)

@@ -1089,15 +1089,8 @@ fn main() {
 fn test_eval_array_optional_element_or_uses_fallback() {
 	mut e := create()
 	e.run_text('
-fn maybe(value int) ?int {
-	if value == 0 {
-		return none
-	}
-	return value
-}
-
 fn main() {
-	arr := [maybe(0), maybe(3)]
+	arr := [?int(none), ?int(3)]
 	println(int_str(arr[0] or { 7 }))
 	println(int_str(arr[1] or { 7 }))
 }
