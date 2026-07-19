@@ -99,19 +99,19 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				high_pos)
 		}
 
-		if narrow_max := narrow_int_type_max(typ_idx) {
-			if high_const := c.eval_comptime_const_expr(node.high, 0) {
-				if high_val := high_const.i64() {
-					if high_val > narrow_max {
-						c.error('`high` value `${high_val}` does not fit in the range value type `${c.table.type_to_str(typ)}` (max `${narrow_max}`); the loop variable would overflow and the loop would never terminate',
-							cond_pos.extend(high_pos))
+		if high_type in [ast.int_type, ast.int_literal_type] {
+			node.val_type = typ
+
+			if narrow_max := narrow_int_type_max(typ_idx) {
+				if high_const := c.eval_comptime_const_expr(node.high, 0) {
+					if high_val := high_const.u64() {
+						if high_val > u64(narrow_max) {
+							c.error('`high` value `${high_val}` does not fit in the range value type `${c.table.type_to_str(typ)}` (max `${narrow_max}`); the loop variable would overflow and the loop would never terminate',
+								cond_pos.extend(high_pos))
+						}
 					}
 				}
 			}
-		}
-
-		if high_type in [ast.int_type, ast.int_literal_type] {
-			node.val_type = typ
 		} else {
 			node.val_type = high_type
 		}
