@@ -10,8 +10,8 @@ fn test_c_name_sanitize_operator_overloads() {
 	assert c_name('Point.<=') == 'Point__le'
 	assert c_name('Point.>') == 'Point__gt'
 	assert c_name('Point.>=') == 'Point__ge'
-	assert c_name('Point.[]') == 'Point__index'
-	assert c_name('Point.[]=') == 'Point__index_set'
+	assert c_name('Point.[]') == 'Point__op_index'
+	assert c_name('Point.[]=') == 'Point__op_index_set'
 }
 
 fn test_c_name_sanitize_escaped_keywords() {
