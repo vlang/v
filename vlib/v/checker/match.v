@@ -995,9 +995,13 @@ fn (mut c Checker) match_exprs(mut node ast.MatchExpr, cond_type_sym ast.TypeSym
 								c.mark_as_referenced(mut &branch.exprs[k], true)
 							}
 						}
-					} else if c.sym_has_unresolved_placeholder(expr_type_sym) {
-						err_pos := c.table.unresolved_generic_inst_pos[expr_type_sym.name] or {
-							expr_pos
+					} else if unresolved_name := c.find_unresolved_placeholder_name(expr_type_sym) {
+						mut err_pos := expr_pos
+						if expr_type_sym.name.contains('[') {
+							// `expr_type_sym` is a generic instantiation (e.g. `Missing[int]`,
+							// `Box[Missing]`), not a plain unresolved identifier; point at
+							// the actual unresolved part instead of the whole expression.
+							err_pos = c.unresolved_type_error_pos(unresolved_name, err_pos)
 						}
 						c.error('unknown type `${expr_type_sym.name}`', err_pos)
 					}
