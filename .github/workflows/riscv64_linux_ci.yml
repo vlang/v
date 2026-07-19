@@ -31,6 +31,7 @@ on:
       - 'vlib/v/**'
       - 'thirdparty/**'
       - 'vc/**'
+      - 'v.mod'
       - 'GNUmakefile'
       - 'Makefile'
       - '.github/workflows/riscv64_linux_ci.yml'

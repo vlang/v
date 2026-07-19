@@ -30,6 +30,7 @@ on:
       - 'vlib/v/**'
       - 'thirdparty/**'
       - 'vc/**'
+      - 'v.mod'
       - 'GNUmakefile'
       - 'Makefile'
       - '.github/workflows/retry.sh'

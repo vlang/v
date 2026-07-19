@@ -31,6 +31,7 @@ on:
       - 'vlib/v/**'
       - 'thirdparty/**'
       - 'vc/**'
+      - 'v.mod'
       - 'GNUmakefile'
       - 'Makefile'
       - '.github/workflows/s390x_linux_ci.yml'
