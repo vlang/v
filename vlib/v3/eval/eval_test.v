@@ -1086,6 +1086,27 @@ fn main() {
 	assert e.stdout() == '7\n'
 }
 
+fn test_eval_array_optional_element_or_uses_fallback() {
+	mut e := create()
+	e.run_text('
+fn maybe(value int) ?int {
+	if value == 0 {
+		return none
+	}
+	return value
+}
+
+fn main() {
+	arr := [maybe(0), maybe(3)]
+	println(int_str(arr[0] or { 7 }))
+	println(int_str(arr[1] or { 7 }))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '7\n3\n'
+}
+
 fn test_eval_postfix_index_target_evaluates_once() {
 	mut e := create()
 	e.run_text('

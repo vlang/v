@@ -4310,7 +4310,11 @@ fn (mut e Eval) eval_or_expr_flow(node &flat.Node) !FlowSignal {
 		if !e.value_is_truthy(index) {
 			return e.eval_or_failure(node, index)
 		}
-		return value_flow(e.index_value(container, e.unwrap_option_like(index))!)
+		value := e.index_value(container, e.unwrap_option_like(index))!
+		if e.value_is_truthy(value) {
+			return value_flow(e.unwrap_option_like(value))
+		}
+		return e.eval_or_failure(node, value)
 	}
 	left_signal := e.eval_expr_flow(left_id)!
 	if left_signal.kind != .normal {
