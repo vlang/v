@@ -116,6 +116,17 @@ fn main() {
 	}
 	mut args_and_flags := util.join_env_vflags_and_os_args()[1..]
 	prefs, command := pref.parse_args_and_show_errors(external_tools, args_and_flags, true)
+	$if windows {
+		// Check an explicitly selected C compiler before dispatching the command, so
+		// invalid or missing commands do not hide the more useful `-cc` diagnostic.
+		if builder.should_find_windows_host_c_compiler(prefs) && prefs.ccompiler_set_by_flag
+			&& prefs.ccompiler != 'msvc' {
+			mut probe := builder.Builder{
+				pref: unsafe { prefs }
+			}
+			probe.find_win_cc() or { builder.verror(err.msg()) }
+		}
+	}
 	maybe_delegate_to_vvmrc(command, prefs)
 	maybe_delegate_to_ownership(command, prefs)
 	if prefs.use_cache && os.user_os() == 'windows' {
