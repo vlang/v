@@ -4,6 +4,7 @@ import runtime
 import time
 
 const default_memory_limit_kb = i64(10) * 1024 * 1024
+const memory_monitor_interval = 100 * time.millisecond
 
 // Step represents step data used by bench.
 pub struct Step {
@@ -22,6 +23,11 @@ pub:
 	name  string
 	value i64
 	unit  string
+}
+
+struct LimitMemory {
+	kb     i64
+	metric string
 }
 
 // Bench represents bench data used by bench.
@@ -48,9 +54,28 @@ pub fn new() Bench {
 	}
 }
 
-// disable_memory_limit disables the compiler RSS safety limit.
+// disable_memory_limit disables the compiler memory safety limit.
 pub fn (mut b Bench) disable_memory_limit() {
 	b.memory_limit_kb = 0
+}
+
+// start_memory_monitor starts the compiler memory safety watchdog.
+pub fn (b &Bench) start_memory_monitor() {
+	if b.memory_limit_kb > 0 {
+		spawn monitor_memory_limit(b.memory_limit_kb)
+	}
+}
+
+fn monitor_memory_limit(limit_kb i64) {
+	for {
+		time.sleep(memory_monitor_interval)
+		memory := current_limit_memory()
+		message := memory_limit_error(memory.kb, limit_kb, 'during compilation', memory.metric)
+		if message.len > 0 {
+			eprintln(message)
+			exit(1)
+		}
+	}
 }
 
 // step records a serial pipeline step.
@@ -65,13 +90,17 @@ pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	label := if parallel { '${name} (parallel)' } else { name }
 	ram_kb := current_rss_kb()
 	peak_ram_kb := peak_rss_kb()
-	message := memory_limit_error(ram_kb, b.memory_limit_kb, label)
-	if message.len > 0 {
-		eprintln(message)
-		exit(1)
+	memory := current_limit_memory()
+	if b.memory_limit_kb > 0 {
+		message := memory_limit_error(memory.kb, b.memory_limit_kb, 'after ${label}', memory.metric)
+		if message.len > 0 {
+			eprintln(message)
+			exit(1)
+		}
 	}
 	ram_mb := f64(ram_kb) / 1024.0
 	peak_ram_mb := f64(peak_ram_kb) / 1024.0
+	footprint_suffix := physical_footprint_suffix(memory)
 	ms := f64(elapsed_us) / 1000.0
 	allocations := current_allocation_stats()
 	allocation_count := allocations.allocation_count - b.last_allocation_count
@@ -82,7 +111,7 @@ pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	} else {
 		''
 	}
-	println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS   ${peak_ram_mb:6.0f} MB peak${allocation_suffix}')
+	println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS${footprint_suffix}   ${peak_ram_mb:6.0f} MB peak${allocation_suffix}')
 	b.steps << Step{
 		name:             label
 		time_us:          elapsed_us
@@ -98,13 +127,21 @@ pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	b.step_sw.restart()
 }
 
-fn memory_limit_error(ram_kb i64, limit_kb i64, step string) string {
-	if limit_kb <= 0 || ram_kb < limit_kb {
+fn physical_footprint_suffix(memory LimitMemory) string {
+	if memory.metric != 'physical footprint' {
 		return ''
 	}
-	ram_mb := ram_kb / 1024
+	footprint_mb := f64(memory.kb) / 1024.0
+	return '   ${footprint_mb:6.0f} MB physical footprint'
+}
+
+fn memory_limit_error(memory_kb i64, limit_kb i64, context string, metric string) string {
+	if limit_kb <= 0 || memory_kb < limit_kb {
+		return ''
+	}
+	memory_mb := memory_kb / 1024
 	limit_gib := limit_kb / (1024 * 1024)
-	return 'error: v3 compiler memory usage reached ${ram_mb} MiB RSS after ${step} ' +
+	return 'error: v3 compiler memory usage reached ${memory_mb} MiB ${metric} ${context} ' +
 		'(limit: ${limit_gib} GiB); use `-no-memory-limit` to disable this limit'
 }
 

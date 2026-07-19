@@ -38,8 +38,10 @@ The command line rejects unknown options, missing option values, unsupported bac
 multiple input paths. `-cc <executable>` selects the C compiler and `-gc none` is the only
 currently supported collector mode. Directory builds read `subdirs` through the canonical
 `v.mod` parser, including when other manifest strings contain punctuation resembling fields.
-The driver checks current RSS after each compiler phase and exits when it reaches 10 GiB.
-Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
+The driver monitors compiler memory throughout the build and exits when it reaches 10 GiB.
+On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
+current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
+On macOS, each stage benchmark prints physical footprint immediately after RSS.
 
 Generated C represents `thread` values with a typed wrapper around `pthread_t`. `spawn` uses the
 platform's default thread stack and checks allocation, thread creation, and join failures. Since

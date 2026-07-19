@@ -180,6 +180,12 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	c_output := os.join_path(root, 'hello.c')
 	c_compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', c_output, source])
 	assert c_compile.exit_code == 0, c_compile.output
+	$if macos {
+		rss_index := c_compile.output.index('MB RSS') or { -1 }
+		footprint_index := c_compile.output.index('MB physical footprint') or { -1 }
+		assert rss_index >= 0, c_compile.output
+		assert footprint_index > rss_index, c_compile.output
+	}
 	c_source := os.read_file(c_output)!
 	assert c_source.len > 100
 	assert c_source.contains('typedef signed char i8;')
