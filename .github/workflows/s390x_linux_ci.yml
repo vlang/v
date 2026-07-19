@@ -13,13 +13,27 @@ on:
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
   pull_request:
-    paths-ignore:
-      - 'vlib/v3/**'
-      - '**.md'
-      - '**.yml'
-      - '!**/s390x_linux_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
+    paths:
+      - 'cmd/v/**'
+      - 'cmd/tools/builders/**.v'
+      - 'vlib/builtin/**'
+      - 'vlib/encoding/binary/**'
+      - 'vlib/os/**'
+      - 'vlib/time/**'
+      - 'vlib/runtime/**'
+      - 'vlib/term/**'
+      - 'vlib/net/**'
+      - 'vlib/crypto/rand/**'
+      - 'vlib/picoev/**'
+      - 'vlib/strconv/**'
+      - 'vlib/strings/**'
+      - 'vlib/sync/**'
+      - 'vlib/v/**'
+      - 'thirdparty/**'
+      - 'vc/**'
+      - 'GNUmakefile'
+      - 'Makefile'
+      - '.github/workflows/s390x_linux_ci.yml'
 
 concurrency:
   group: s390x-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

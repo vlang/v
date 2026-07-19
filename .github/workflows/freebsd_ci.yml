@@ -14,14 +14,28 @@ on:
       - '!ci/freebsd_ci.vsh'
       - '!cmd/tools/builders/**.v'
   pull_request:
-    paths-ignore:
-      - 'vlib/v3/**'
-      - '**.md'
-      - '**.yml'
-      - 'cmd/tools/**'
-      - '!**/freebsd_ci.yml'
-      - '!ci/freebsd_ci.vsh'
-      - '!cmd/tools/builders/**.v'
+    paths:
+      - 'cmd/v/**'
+      - 'cmd/tools/builders/**.v'
+      - 'vlib/builtin/**'
+      - 'vlib/os/**'
+      - 'vlib/time/**'
+      - 'vlib/runtime/**'
+      - 'vlib/term/**'
+      - 'vlib/net/**'
+      - 'vlib/crypto/rand/**'
+      - 'vlib/picoev/**'
+      - 'vlib/strconv/**'
+      - 'vlib/strings/**'
+      - 'vlib/sync/**'
+      - 'vlib/v/**'
+      - 'thirdparty/**'
+      - 'vc/**'
+      - 'ci/freebsd_ci.vsh'
+      - 'ci/common/**'
+      - 'GNUmakefile'
+      - 'Makefile'
+      - '.github/workflows/freebsd_ci.yml'
 
 concurrency:
   group: freebsd-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
