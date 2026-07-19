@@ -55,13 +55,21 @@ checklist for exact status. Every checked item has passing tests under
 
 The largest, highest-risk phase. Sub-phases, in build order:
 
-- [ ] **2a — Initial secrets** (`initial_secrets.v`): RFC 9001 §5.2, fixed
-      public salt + HKDF (reuses `crypto.hkdf`, already exists). Fully
-      self-contained — no dependency on the state machine. Start here.
+- [x] **2a — Initial secrets** (`initial_secrets.v`): RFC 9001 §5.2, fixed
+      public salt + HKDF (reuses `crypto.hkdf`, already exists). Also
+      implements `hkdf_expand_label` (RFC 8446 §7.1) — the shared derivation
+      primitive 2b/2c and Phase 3 will all reuse; do not re-implement it
+      elsewhere. Verified against RFC 9001 Appendix A.1's own published test
+      vectors (`initial_secret`, `client_initial_secret`,
+      `server_initial_secret`, plus chained `quic key`/`quic iv`/`quic hp`
+      derivations, obtained from the raw RFC text directly, not
+      re-summarized) — exact match, not just internal self-consistency.
       Edge case: keyed off the **original** client DCID, even after a Retry
-      switches the wire DCID — needs distinct `original_dcid`/`current_dcid`
-      tracking (lands properly in Phase 9's `QuicConn`, but this sub-phase's
-      tests should exercise the distinction).
+      switches the wire DCID — covered by
+      `test_derive_initial_secrets_is_sensitive_to_which_dcid_is_passed`
+      (full `original_dcid`/`current_dcid` tracking still lands in Phase 9's
+      `QuicConn`; this sub-phase's test only proves the derivation itself is
+      correctly DCID-sensitive).
 - [ ] **2b — Key schedule** (`tls13_keyschedule.v`): full RFC 8446 §7.1 chain
       (Early → Handshake → Master secret), pinned to `TLS_AES_128_GCM_SHA256`
       only for v1. Transcript hash covers handshake message bytes only — no
