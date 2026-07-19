@@ -116,15 +116,17 @@ fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
 // `panic`/`exit` (yields no value at all), or the builtin map `clone`/`move`
 // (fresh storage). Only the builtin map operations qualify — a user-defined
 // function or method named `clone`/`move` (its `CallKind` also comes from the
-// name) may just return an aliased map, so it is checked by the map receiver
-// type. Any other map-returning call keeps the map-copy guard.
+// name) may just return an aliased map. The receiver type must be a map
+// *directly*, not via an alias: a map cannot carry user methods, but an alias
+// (`type M = map[...]`) can define its own `clone`/`move`, which `fn.v` resolves
+// before the map builtin. Any other map-returning call keeps the map-copy guard.
 fn (c &Checker) assign_call_default_produces_fresh_map(expr ast.Expr) bool {
 	if expr is ast.CallExpr {
 		if expr.is_noreturn {
 			return true
 		}
 		return expr.is_method && expr.name in ['clone', 'move']
-			&& c.table.final_sym(expr.receiver_type).kind == .map
+			&& c.table.sym(expr.receiver_type).kind == .map
 	}
 	return false
 }
