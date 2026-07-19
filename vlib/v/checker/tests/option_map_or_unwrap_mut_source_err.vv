@@ -10,10 +10,11 @@ mut:
 }
 
 fn main() {
-	mut opt := ?map[string]int(none)
-	opt = {
+	// mutable variable source (the exact case from the review): `a` aliases the
+	// map in `opt`, which can still be mutated later via `opt?['x'] = ...`.
+	mut opt := ?map[string]int({
 		'x': 1
-	}
+	})
 	a := opt or { panic('missing') }
 
 	mut c := Category{
