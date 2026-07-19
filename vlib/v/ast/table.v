@@ -110,9 +110,6 @@ pub mut:
 	new_int_fmt_fix     bool              // vfmt will fix `int` to `i32`
 	export_names        map[string]string // @[export] names
 	filelist            []string          // all files list
-	// name of a generic instantiation with an unresolved identifier -> position of that identifier (the base name or the concrete type argument)
-	// so the checker can report the "unknown type" error at the precise spot instead of at the last character (`]`)
-	unresolved_generic_inst_pos map[string]token.Pos
 }
 
 pub struct ComptTimeCondResult {

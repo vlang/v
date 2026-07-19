@@ -1061,14 +1061,12 @@ fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.T
 	mut bs_name := name
 	mut bs_cname := name
 	start_pos := p.tok.pos()
-	parent_was_unresolved := name !in p.table.type_idxs
 	p.next()
 	p.inside_generic_params = true
 	bs_name += '['
 	bs_cname += '_T_'
 	mut concrete_types := []ast.Type{}
 	mut is_instance := true
-	mut first_unresolved_concrete_pos := ?token.Pos(none)
 	for p.tok.kind != .eof {
 		mut type_pos := p.tok.pos()
 		gt := p.parse_type()
@@ -1082,9 +1080,6 @@ fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.T
 		gts := p.table.sym(gt)
 		if gts.kind == .multi_return {
 			p.error_with_pos('cannot use multi return as generic concrete type', type_pos)
-		}
-		if first_unresolved_concrete_pos == none && gts.kind == .placeholder && gts.language != .c {
-			first_unresolved_concrete_pos = type_pos
 		}
 		if gt.is_ptr() {
 			bs_name += '&'
@@ -1106,11 +1101,6 @@ fn (mut p Parser) parse_generic_inst_type(name string, name_pos token.Pos) ast.T
 	p.next()
 	p.inside_generic_params = false
 	bs_name += ']'
-	if parent_was_unresolved {
-		p.table.unresolved_generic_inst_pos[bs_name] = name_pos
-	} else if unresolved_pos := first_unresolved_concrete_pos {
-		p.table.unresolved_generic_inst_pos[bs_name] = unresolved_pos
-	}
 	// fmt operates on a per-file basis, so is_instance might be not set correctly. Thus it's ignored.
 	if (is_instance || p.pref.is_fmt) && concrete_types.len > 0 {
 		mut gt_idx := p.table.find_type_idx(bs_name)
