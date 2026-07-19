@@ -78,18 +78,29 @@ fn assign_expr_or_block(expr ast.Expr) ast.OrExpr {
 // lvalue (e.g. `or { fallback }`) then `x` aliases it. Even an immutable lvalue
 // is unsafe: an immutable map parameter/field can alias caller-owned storage the
 // caller mutates later (the same copy `x := d` would reject). Only a fresh/owned
-// value (map literal / by-value call) or a block that yields no value (diverges
-// via `return`/`panic`/... or just propagates) is safe.
+// value (map literal / by-value call), or a block that yields no value because
+// it diverges (`return`/`break`/`continue`; `panic`/`exit` are calls handled
+// above), is safe. Anything else — an lvalue value, or an unclassifiable last
+// statement — keeps the guard.
 fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
-	if or_expr.kind != .block || or_expr.stmts.len == 0 {
+	if or_expr.kind != .block {
 		return true
 	}
-	last := or_expr.stmts.last()
-	if last !is ast.ExprStmt {
+	// A trailing `;` leaves a `SemicolonStmt`; filter those out so the block's
+	// real value statement is classified, matching `check_or_expr`.
+	valid_stmts := or_expr.stmts.filter(it !is ast.SemicolonStmt)
+	if valid_stmts.len == 0 {
 		return true
 	}
-	return match (last as ast.ExprStmt).expr {
-		ast.MapInit, ast.CallExpr {
+	last := valid_stmts.last()
+	return match last {
+		ast.ExprStmt {
+			match last.expr {
+				ast.MapInit, ast.CallExpr { true }
+				else { false }
+			}
+		}
+		ast.Return, ast.BranchStmt {
 			true
 		}
 		else {
