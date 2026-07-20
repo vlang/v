@@ -1350,6 +1350,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.preseed_global_fn_ptr_types()
 	g.preseed_fn_signature_fn_ptr_types()
 	g.preseed_c_extern_fn_ptr_types()
+	g.preseed_struct_default_string_literals()
 	g.preseed_libc_compat_fns()
 	if !g.skip_generics {
 		g.precompute_generic_method_candidate_index()
@@ -1819,7 +1820,10 @@ fn (mut g FlatGen) collect_gen_info() {
 						pt = shared_alias_ptr
 					} else if raw_pt is types.Pointer && param_idx < typed_params.len {
 						typed_pt := typed_params[param_idx]
-						if typed_pt is types.Pointer && raw_pt.base_type is types.FnType
+						if child.is_mut && child.op == .amp && typed_pt is types.Pointer
+							&& typed_pt.base_type is types.Pointer {
+							pt = typed_pt
+						} else if typed_pt is types.Pointer && raw_pt.base_type is types.FnType
 							&& typed_pt.base_type is types.FnType {
 							// Specialized `mut T` parameters keep a pointer-to-function type in
 							// the flat declaration. The registered signature retains the concrete
@@ -5367,6 +5371,38 @@ fn (mut g FlatGen) register_struct_decl_info(name string, full_name string, modu
 	}
 }
 
+// preseed_struct_default_string_literals reserves strings that C generation can
+// copy from a struct declaration into an omitted/defaulted call argument. Those
+// declaration nodes are outside function subtrees, so parallel function prep
+// does not otherwise see them before worker-local string IDs are assigned.
+fn (mut g FlatGen) preseed_struct_default_string_literals() {
+	mut stack := []flat.NodeId{cap: 32}
+	for _, info in g.struct_decl_infos {
+		for i in 0 .. info.node.children_count {
+			field := g.a.child_node(&info.node, i)
+			if field.kind != .field_decl || field.children_count == 0 {
+				continue
+			}
+			stack.clear()
+			stack << g.a.child(field, 0)
+			for stack.len > 0 {
+				id := stack.pop()
+				idx := int(id)
+				if idx < 0 || idx >= g.a.nodes.len {
+					continue
+				}
+				node := g.a.nodes[idx]
+				if node.kind == .string_literal {
+					g.intern_string(node.value)
+				}
+				for child_idx := node.children_count - 1; child_idx >= 0; child_idx-- {
+					stack << g.a.children[node.children_start + child_idx]
+				}
+			}
+		}
+	}
+}
+
 // enum_value_for_type supports enum value for type handling for FlatGen.
 fn (g &FlatGen) enum_value_for_type(type_name string, field_name string) ?int {
 	if type_name.len == 0 || field_name.len == 0 {
@@ -8716,15 +8752,24 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_expected_enum
 				return
 			}
-			if node.op == .arrow && lhs_type is types.Channel {
-				elem_ct := g.tc.c_type(lhs_type.elem_type)
-				g.write('sync__Channel__push(')
-				g.gen_expr(lhs_id)
-				g.write(', &(${elem_ct}[]){')
-				g.gen_expr_with_expected_type(rhs_id, lhs_type.elem_type)
-				g.write('})')
-				g.expected_enum = old_expected_enum
-				return
+			if node.op == .arrow {
+				channel_type := concrete_receiver_type(lhs_type)
+				if channel_type is types.Channel {
+					rhs_node := g.a.nodes[int(rhs_id)]
+					if rhs_node.kind == .or_expr && rhs_node.children_count >= 2 {
+						g.gen_channel_send_or(lhs_id, channel_type, rhs_node)
+						g.expected_enum = old_expected_enum
+						return
+					}
+					elem_ct := g.tc.c_type(channel_type.elem_type)
+					g.write('sync__Channel__push(')
+					g.gen_channel_try_receiver(lhs_id)
+					g.write(', &(${elem_ct}[]){')
+					g.gen_expr_with_expected_type(rhs_id, channel_type.elem_type)
+					g.write('})')
+					g.expected_enum = old_expected_enum
+					return
+				}
 			}
 			if g.gen_array_infix_eq(node, lhs_id, rhs_id, lhs_type, rhs_type) {
 				g.expected_enum = old_expected_enum
@@ -10789,12 +10834,17 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#include <sys/epoll.h>')
 	g.writeln('#endif')
+	g.writeln('#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)')
+	g.writeln('#include <sys/event.h>')
+	g.writeln('#endif')
 	g.writeln('')
 }
 
 fn (mut g FlatGen) system_libc_preamble() {
 	g.collect_preserved_c_fns(c_headerless_libc_declared_fns)
 	g.collect_preserved_c_fns([
+		'kevent',
+		'kqueue',
 		'mach_timebase_info',
 		'nanosleep',
 		'pthread_condattr_destroy',
@@ -10803,7 +10853,7 @@ fn (mut g FlatGen) system_libc_preamble() {
 		'pthread_self',
 	])
 	g.collect_preserved_c_structs(c_preserved_system_include_struct_names('<mach/mach_time.h>'))
-	g.collect_preserved_c_structs(['__stat64', 'sigaction'])
+	g.collect_preserved_c_structs(['__stat64', 'kevent', 'sigaction'])
 	g.writeln('#ifdef _WIN32')
 	g.writeln('typedef struct { HANDLE handle; void* context; } __v_thread;')
 	g.writeln('typedef void* (*__v_thread_start_fn)(void*);')

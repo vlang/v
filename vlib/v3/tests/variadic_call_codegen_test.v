@@ -72,6 +72,8 @@ fn test_interface_variadic_forwarded_array_is_not_repacked() {
 	display() string
 }
 
+interface Any {}
+
 struct Item {
 	text string
 }
@@ -92,12 +94,18 @@ fn forward(items ...Displayable) string {
 	return sink(items)
 }
 
+fn count(values ...Any) int {
+	return values.len
+}
+
 fn main() {
 	println(forward(Item{
 		text: "a"
 	}, Item{
 		text: "b"
 	}))
+	xs := []Any{}
+	println(count(xs))
 }
 ') or {
 		panic(err)
@@ -110,5 +118,5 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ab', run.output
+	assert run.output.trim_space() == 'ab\n0', run.output
 }

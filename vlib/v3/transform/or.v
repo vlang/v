@@ -40,9 +40,10 @@ struct NestedOptionalPart {
 
 // EnumFromStringInfo stores enum from string info metadata used by transform.
 struct EnumFromStringInfo {
-	enum_type string
-	fields    []string
-	arg_id    flat.NodeId
+	enum_type    string
+	fields       []string
+	arg_id       flat.NodeId
+	accept_empty bool
 }
 
 fn (t &Transformer) enum_from_string_members(info EnumFromStringInfo) []EnumValueMeta {
@@ -642,7 +643,7 @@ fn (t &Transformer) or_body_is_none(body_id flat.NodeId) bool {
 }
 
 // enum_from_string_info converts enum from string info data for transform.
-fn (t &Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStringInfo {
+fn (mut t Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStringInfo {
 	if int(expr_id) < 0 {
 		return none
 	}
@@ -652,7 +653,8 @@ fn (t &Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStringIn
 	}
 	fn_id := t.a.child(&expr, 0)
 	fn_node := t.a.nodes[int(fn_id)]
-	if fn_node.kind != .selector || fn_node.value != 'from_string' || fn_node.children_count == 0 {
+	if fn_node.kind != .selector || fn_node.value !in ['from', 'from_string']
+		|| fn_node.children_count == 0 {
 		return none
 	}
 	if t.enum_from_string_call_uses_user_method(expr_id) {
@@ -660,14 +662,23 @@ fn (t &Transformer) enum_from_string_info(expr_id flat.NodeId) ?EnumFromStringIn
 	}
 	enum_id := t.a.child(&fn_node, 0)
 	enum_type := t.enum_type_from_node(enum_id) or { return none }
+	arg_id := t.a.child(&expr, 1)
+	mut arg_type := t.normalize_type_alias(t.node_type(arg_id)).trim_left('&')
+	if t.validating_generic_spec && arg_type in ['', 'unknown'] {
+		arg_type = t.normalize_type_alias(t.specialized_expr_type_name(arg_id)).trim_left('&')
+	}
+	if fn_node.value == 'from' && arg_type != 'string' {
+		return none
+	}
 	fields := t.enum_types[enum_type] or { return none }
 	if fields.len == 0 {
 		return none
 	}
 	return EnumFromStringInfo{
-		enum_type: enum_type
-		fields:    fields.clone()
-		arg_id:    t.a.child(&expr, 1)
+		enum_type:    enum_type
+		fields:       fields.clone()
+		arg_id:       arg_id
+		accept_empty: fn_node.value == 'from' && t.is_flag_enum_type(enum_type)
 	}
 }
 
@@ -686,19 +697,16 @@ fn (t &Transformer) enum_type_from_node(id flat.NodeId) ?string {
 	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .ident {
-		if node.value in t.enum_types {
-			return node.value
-		}
-		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			qname := '${t.cur_module}.${node.value}'
-			if qname in t.enum_types {
-				return qname
+		for i, param in t.active_generic_params {
+			if node.value == param && i < t.active_specialization_args.len {
+				concrete := t.active_specialization_args[i]
+				if enum_type := t.enum_type_from_name(concrete) {
+					return enum_type
+				}
 			}
 		}
-		for key, _ in t.enum_types {
-			if key.all_after_last('.') == node.value {
-				return key
-			}
+		if enum_type := t.enum_type_from_name(node.value) {
+			return enum_type
 		}
 	}
 	if node.kind == .selector && node.children_count > 0 {
@@ -706,14 +714,78 @@ fn (t &Transformer) enum_type_from_node(id flat.NodeId) ?string {
 		if base.kind == .ident {
 			qname := '${base.value}.${node.value}'
 			if resolved := t.resolve_import_alias_pattern(qname) {
-				if resolved in t.enum_types {
-					return resolved
+				if enum_type := t.enum_type_from_name(resolved) {
+					return enum_type
 				}
 			}
-			if qname in t.enum_types {
-				return qname
+			if enum_type := t.enum_type_from_name(qname) {
+				return enum_type
 			}
 		}
+	}
+	return none
+}
+
+fn (t &Transformer) enum_type_from_name(name string) ?string {
+	if name in t.enum_types {
+		return name
+	}
+	mut qname := name
+	if !name.contains('.') && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
+		qname = '${t.cur_module}.${name}'
+		if qname in t.enum_types {
+			return qname
+		}
+	}
+	if !isnil(t.tc) {
+		if !name.contains('.') && t.cur_file.len > 0 {
+			for candidate in t.tc.file_selective_imports[file_import_key(t.cur_file, name)] or {
+				[]string{}
+			} {
+				if candidate in t.enum_types {
+					return candidate
+				}
+				if target := t.enum_alias_target(candidate) {
+					return target
+				}
+			}
+		}
+		if target := t.enum_alias_target(name) {
+			return target
+		}
+		if qname != name {
+			if target := t.enum_alias_target(qname) {
+				return target
+			}
+		}
+	}
+	mut found := ''
+	for key, _ in t.enum_types {
+		if key.all_after_last('.') != name {
+			continue
+		}
+		if found.len > 0 && found != key {
+			return none
+		}
+		found = key
+	}
+	if found.len > 0 {
+		return found
+	}
+	return none
+}
+
+fn (t &Transformer) enum_alias_target(name string) ?string {
+	mut current := name
+	for _ in 0 .. 16 {
+		target := t.tc.type_aliases[current] or { return none }
+		if target == current {
+			return none
+		}
+		if target in t.enum_types {
+			return target
+		}
+		current = target
 	}
 	return none
 }
@@ -760,6 +832,11 @@ fn (mut t Transformer) transform_enum_from_string_or_expr(id flat.NodeId, node f
 		then_block := t.make_block(arr1(assign))
 		else_block = t.make_if(cond, then_block, else_block)
 	}
+	if info.accept_empty {
+		cond := t.make_call_typed('string__eq', arr2(t.make_ident(str_name),
+			t.make_string_literal('')), 'bool')
+		else_block = t.make_if(cond, t.make_block([]flat.NodeId{}), else_block)
+	}
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
@@ -798,6 +875,12 @@ fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _nod
 		then_block := t.make_block(arr2(assign_val, assign_ok))
 		else_block = t.make_if(cond, then_block, else_block)
 	}
+	if info.accept_empty {
+		cond := t.make_call_typed('string__eq', arr2(t.make_ident(str_name),
+			t.make_string_literal('')), 'bool')
+		assign_ok := t.make_assign(t.make_ident(ok_name), t.make_bool_literal(true))
+		else_block = t.make_if(cond, t.make_block(arr1(assign_ok)), else_block)
+	}
 	t.pending_stmts = outer_pending
 	for stmt in prelude {
 		t.pending_stmts << stmt
@@ -806,13 +889,16 @@ fn (mut t Transformer) try_lower_enum_from_string_call(call_id flat.NodeId, _nod
 
 	ok_field := t.make_sum_literal_field('ok', t.make_ident(ok_name), 'bool')
 	value_field := t.make_sum_literal_field('value', t.make_ident(val_name), info.enum_type)
+	err_expr := t.make_call_typed('error', arr1(t.make_string_literal('invalid value')), 'IError')
+	err_field := t.make_sum_literal_field('err', err_expr, 'IError')
 	start := t.a.children.len
 	t.a.children << ok_field
 	t.a.children << value_field
+	t.a.children << err_field
 	return t.a.add_node(flat.Node{
 		kind:           .struct_init
 		children_start: start
-		children_count: 2
+		children_count: 3
 		value:          optional_type
 		typ:            optional_type
 	})

@@ -224,6 +224,105 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_mut_pointer_param_reassigns_caller_slot() {
+	v3_bin := mut_param_reassign_build_v3()
+	out := mut_param_reassign_run_good(v3_bin, 'mut_pointer_param_reassign', 'struct Item {
+	value int
+}
+
+fn replace(mut current &Item, replacement &Item) {
+	current = replacement
+}
+
+fn main() {
+	first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	mut current := &first
+	replace(mut current, &second)
+	println(int_str(current.value))
+}
+')
+	assert out == '9'
+	out_generic := mut_param_reassign_run_good(v3_bin, 'generic_mut_pointer_param_reassign', 'struct Item {
+	value int
+}
+
+fn replace[T](mut current &T, replacement &T) {
+	current = replacement
+}
+
+fn main() {
+	first := Item{
+		value: 2
+	}
+	second := Item{
+		value: 8
+	}
+	mut current := &first
+	replace(mut current, &second)
+	println(int_str(current.value))
+}
+')
+	assert out_generic == '8'
+	out_lvalues := mut_param_reassign_run_good(v3_bin, 'mut_pointer_lvalue_slots', 'struct Item {
+	value int
+}
+
+struct Holder {
+mut:
+	current &Item
+}
+
+fn replace(mut current &Item, replacement &Item) {
+	current = replacement
+}
+
+fn main() {
+	first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	third := Item{
+		value: 7
+	}
+	mut items := [&first]
+	mut holder := Holder{
+		current: &first
+	}
+	replace(mut items[0], &second)
+	replace(mut holder.current, &third)
+	println(int_str(items[0].value))
+	println(int_str(holder.current.value))
+}
+')
+	assert out_lvalues == '9\n7'
+	mut_param_reassign_run_bad(v3_bin, 'generic_mut_pointer_param_requires_pointer_slot', 'struct Item {
+	value int
+}
+
+fn replace[T](mut current &T, replacement &T) {
+	current = replacement
+}
+
+fn main() {
+	mut current := Item{
+		value: 2
+	}
+	replacement := Item{
+		value: 8
+	}
+	replace[Item](mut current, &replacement)
+}
+',
+		'expected `&&Item`')
+}
+
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
 	v3_bin := mut_param_reassign_build_v3()
 	mut_param_reassign_run_bad(v3_bin, 'bad_same_scope_mut_string_param_redeclare', "fn shadow_read(mut s string) string {

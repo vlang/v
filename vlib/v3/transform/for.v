@@ -863,7 +863,14 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	if key.kind != .ident || key.value.len == 0 {
 		return arr1(id)
 	}
-	raw_container_type := t.raw_checker_node_type(container_id)
+	container_node := if int(container_id) >= 0 { t.a.nodes[int(container_id)] } else { flat.Node{} }
+	checker_container_type := t.raw_checker_node_type(container_id)
+	raw_container_type := if container_node.kind == .ident
+		&& t.var_type(container_node.value).trim_space().starts_with('?') {
+		t.var_type(container_node.value)
+	} else {
+		checker_container_type
+	}
 	source_container_type := if t.node_type(container_id).len > 0 {
 		t.node_type(container_id)
 	} else if raw_container_type.len > 0 {
@@ -873,7 +880,6 @@ fn (mut t Transformer) lower_indexed_for_in(id flat.NodeId, node flat.Node, key_
 	}
 	source_is_owned_temporary := !source_container_type.starts_with('&')
 		&& !t.expr_can_take_address(container_id)
-	container_node := if int(container_id) >= 0 { t.a.nodes[int(container_id)] } else { flat.Node{} }
 	direct_map_index_container := node.op == .amp && container_node.kind == .index
 	mut container := if direct_map_index_container {
 		container_id

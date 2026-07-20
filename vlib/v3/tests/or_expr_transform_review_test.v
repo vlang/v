@@ -131,3 +131,24 @@ fn test_pointer_channel_try_call_derefs_receiver() {
 	assert c_source.contains('sync__Channel__try_push(*(ch),'), 'try_push on pointer channel receiver does not dereference the channel handle'
 	assert c_source.contains('sync__Channel__try_pop(*(ch),'), 'try_pop on pointer channel receiver does not dereference the channel handle'
 }
+
+fn test_pointer_channel_send_or_derefs_receiver() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'pointer_channel_send_or_receiver',
+		'fn send(mut ch chan int) bool {\n\tch <- 7 or { return false }\n\treturn true\n}\n\nfn main() {\n\tmut ch := chan int{cap: 1}\n\tprintln(send(mut ch))\n\tprintln(int_str(<-ch))\n}\n')
+	assert out == 'true\n7'
+}
+
+fn test_channel_send_or_preserves_optional_result_and_fixed_array_storage() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'channel_send_or_storage',
+		'fn make_option() ?int {\n\treturn 3\n}\n\nfn make_result() !int {\n\treturn 7\n}\n\nfn main() {\n\toption_ch := chan ?int{cap: 1}\n\toption_value := make_option()\n\toption_ch <- option_value or { panic(err) }\n\n\tresult_ch := chan !int{cap: 1}\n\tresult_value := make_result()\n\tresult_ch <- result_value or { panic(err) }\n\n\tfixed_ch := chan [2]int{cap: 1}\n\tfixed_value := [11, 13]!\n\tfixed_ch <- fixed_value or { panic(err) }\n\tprintln("sent")\n}\n')
+	assert out == 'sent'
+}
+
+fn test_channel_send_or_binds_error_during_fallback_transform() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'channel_send_or_error_interpolation',
+		'fn main() {\n\terr := 7\n\tch := chan int{cap: 1}\n\tch.close()\n\tch <- 1 or {\n\t\tprintln("\${err}")\n\t}\n\tprintln(int_str(err))\n}\n')
+	assert out == 'channel closed\n7'
+}

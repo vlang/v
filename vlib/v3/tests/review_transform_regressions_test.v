@@ -281,6 +281,17 @@ fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization()
 	assert !generated.contains('codec__Decoder_other__Item__decode_value'), generated
 }
 
+fn test_same_generic_specialization_name_in_different_modules_keeps_both_bodies() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_specialization_module_collision', {
+		'v.mod':  "Module { name: 'generic_specialization_module_collision' }\n"
+		'a/a.v':  'module a\n\npub fn id[T](value T) T {\n\treturn value\n}\n'
+		'b/b.v':  'module b\n\npub fn id[T](value T) T {\n\treturn value + 10\n}\n'
+		'main.v': 'module main\n\nimport a\nimport b\n\nfn main() {\n\tprintln(int_str(a.id[int](1)))\n\tprintln(int_str(b.id[int](2)))\n}\n'
+	}, 'main.v')
+	assert out == '1\n12'
+}
+
 fn test_generic_struct_default_for_pointer_type_uses_heap_storage() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'generic_pointer_struct_default', 'struct Item {
@@ -469,6 +480,69 @@ fn test_heap_escaping_amp_reassignment_moves_current_source() {
 	body := c_fn_body(c_source, 'int* make(void) {')
 	assert body.contains('int* b ='), body
 	assert !body.contains('p = &b;'), body
+}
+
+fn test_map_index_selector_write_retains_local_address() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Item {
+mut:
+	value int
+}
+
+struct Slot {
+mut:
+	item &Item = unsafe { nil }
+}
+
+fn make_cache() map[string]Slot {
+	mut cache := map[string]Slot{}
+	cache["entry"] = Slot{}
+	mut local := Item{
+		value: 7
+	}
+	cache["entry"].item = &local
+	local.value = 9
+	return cache
+}
+
+fn main() {
+	cache := make_cache()
+	println(int_str(cache["entry"].item.value))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'map_index_selector_write_retains_local_address_c',
+		source)
+	body := c_fn_body(c_source, 'map make_cache(void) {')
+	assert body.contains('memdup'), body
+	out := run_good(v3_bin, 'map_index_selector_write_retains_local_address', source)
+	assert out == '9'
+}
+
+fn test_nested_generic_call_preserves_mut_pointer_param_rvalue() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_generic_mut_pointer_param_rvalue', 'struct Item {
+	value int
+}
+
+fn identity[U](value U) U {
+	return value
+}
+
+fn keep[T](mut current &T) &T {
+	return identity(current)
+}
+
+fn main() {
+	item := Item{
+		value: 17
+	}
+	mut current := &item
+	kept := keep[Item](mut current)
+	println((kept == current).str())
+	println(int_str(kept.value))
+}
+')
+	assert out == 'true\n17'
 }
 
 fn test_return_address_of_pointer_backed_field_preserves_identity() {
@@ -1188,6 +1262,21 @@ fn main() {
 }
 ')
 	assert out == '[1, 2]\ntrue\ntrue'
+}
+
+fn test_empty_interface_stringification_distinguishes_array_element_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'empty_interface_mixed_array_stringification', 'interface Value {}
+
+fn main() {
+	values := [Value([1, 2]), Value(["x"])]
+	for value in values {
+		println(value)
+	}
+	println(values[0].type_idx() != values[1].type_idx())
+}
+')
+	assert out == "Value([1, 2])\nValue(['x'])\ntrue"
 }
 
 fn test_optional_string_equality_uses_payload_equality() {

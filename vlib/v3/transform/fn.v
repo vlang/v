@@ -1622,7 +1622,11 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 			t.call_param_types_decl_misses[call_name] = true
 			return none
 		}
-		if (child.is_mut || child.typ.starts_with('mut ')
+		if child.is_mut && child.op == .amp && param_type is types.Pointer {
+			param_type = types.Type(types.Pointer{
+				base_type: param_type
+			})
+		} else if (child.is_mut || child.typ.starts_with('mut ')
 			|| child.typ.starts_with('&')) && param_type !is types.Pointer {
 			param_type = types.Type(types.Pointer{
 				base_type: param_type
@@ -3078,6 +3082,8 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 		t.transform_enum_shorthand(arg_id, arg, expected_elem)
 	} else if t.is_sum_type_name(expected_elem) {
 		t.wrap_sum_value(arg_id, expected_elem)
+	} else if t.resolve_interface_type_name(expected_elem).len > 0 {
+		t.transform_expr_for_type(arg_id, expected_elem)
 	} else {
 		t.transform_expr(arg_id)
 	}
@@ -3860,7 +3866,14 @@ fn (mut t Transformer) lower_interface_auto_str_with_nil(expr flat.NodeId, iface
 	for impl_name in impl_names {
 		mut concrete_types := []string{}
 		if impl_name in ['array', 'Array'] {
-			concrete_types = t.interface_boxed_runtime_types(iface_name, impl_name)
+			for concrete in impl_names {
+				if concrete.starts_with('[]') {
+					concrete_types << concrete
+				}
+			}
+			if concrete_types.len > 0 {
+				continue
+			}
 		}
 		if concrete_types.len == 0 {
 			if !t.interface_boxed_type_marked(iface_name, impl_name) {
@@ -3868,71 +3881,51 @@ fn (mut t Transformer) lower_interface_auto_str_with_nil(expr flat.NodeId, iface
 			}
 			concrete_types << impl_name
 		}
-		type_id := t.interface_impl_type_id(iface_name, impl_name) or { continue }
-		object := t.make_cast('&${impl_name}', t.make_selector(value, '_object', 'voidptr'),
-			'&${impl_name}')
-		concrete := t.make_prefix(.mul, object)
-		t.set_node_typ(int(concrete), impl_name)
-		saved := t.pending_stmts.clone()
-		t.pending_stmts.clear()
-		inner_type := if alias_target := t.tc.type_aliases[impl_name] {
-			if alias_target.starts_with('fn(') || alias_target.starts_with('fn ') {
-				alias_target
-			} else {
-				impl_name
+		for concrete_type in concrete_types {
+			type_id := t.interface_impl_type_id(iface_name, concrete_type) or {
+				t.interface_impl_type_id(iface_name, impl_name) or { continue }
 			}
-		} else {
-			impl_name
+			object := t.make_cast('&${concrete_type}',
+				t.make_selector(value, '_object', 'voidptr'), '&${concrete_type}')
+			concrete := t.make_prefix(.mul, object)
+			t.set_node_typ(int(concrete), concrete_type)
+			saved := t.pending_stmts.clone()
+			t.pending_stmts.clear()
+			inner_type := if alias_target := t.tc.type_aliases[concrete_type] {
+				if alias_target.starts_with('fn(') || alias_target.starts_with('fn ') {
+					alias_target
+				} else {
+					concrete_type
+				}
+			} else {
+				concrete_type
+			}
+			wrapped := if t.stringify_type_at_circular_limit(inner_type) {
+				t.make_string_literal('<circular>')
+			} else {
+				mut inner := t.wrap_string_conversion(concrete, inner_type)
+				quote_type := t.normalize_type_alias(inner_type)
+				if quote_type == 'string' {
+					inner = t.string_plus(t.string_plus(t.make_string_literal("'"), inner),
+						t.make_string_literal("'"))
+				} else if quote_type == 'rune' {
+					inner = t.string_plus(t.string_plus(t.make_string_literal('`'), inner),
+						t.make_string_literal('`'))
+				}
+				t.string_plus(t.string_plus(t.make_string_literal('${display_name}('), inner),
+					t.make_string_literal(')'))
+			}
+			mut then_body := []flat.NodeId{}
+			t.drain_pending(mut then_body)
+			t.pending_stmts = saved
+			assign := t.make_assign(t.make_ident(result_name), wrapped)
+			then_body << assign
+			cond := t.make_infix(.eq, tag, t.make_int_literal(type_id))
+			t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
 		}
-		wrapped := if t.stringify_type_at_circular_limit(inner_type) {
-			t.make_string_literal('<circular>')
-		} else {
-			inner := t.wrap_string_conversion(concrete, inner_type)
-			t.string_plus(t.string_plus(t.make_string_literal('${display_name}('), inner),
-				t.make_string_literal(')'))
-		}
-		mut then_body := []flat.NodeId{}
-		t.drain_pending(mut then_body)
-		t.pending_stmts = saved
-		assign := t.make_assign(t.make_ident(result_name), wrapped)
-		then_body << assign
-		cond := t.make_infix(.eq, tag, t.make_int_literal(type_id))
-		t.pending_stmts << t.make_if(cond, t.make_block(then_body), t.make_empty())
 	}
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), 'string')
-	return result
-}
-
-fn (mut t Transformer) interface_boxed_runtime_types(iface_name string, impl_name string) []string {
-	t.collect_interface_boxed_types()
-	mut iface_names := [iface_name]
-	short_name := iface_name.all_after_last('.')
-	if short_name != iface_name {
-		iface_names << short_name
-	}
-	resolved := t.resolve_interface_type_name(iface_name)
-	if resolved.len > 0 && resolved !in iface_names {
-		iface_names << resolved
-	}
-	mut result := []string{}
-	mut seen := map[string]bool{}
-	for key, _ in t.interface_boxed_types {
-		parts := key.split('\n')
-		if parts.len != 2 || parts[0] !in iface_names {
-			continue
-		}
-		concrete := parts[1]
-		if impl_name in ['array', 'Array'] && !concrete.starts_with('[]') {
-			continue
-		}
-		if concrete in seen {
-			continue
-		}
-		seen[concrete] = true
-		result << concrete
-	}
-	result.sort()
 	return result
 }
 
@@ -6116,20 +6109,48 @@ fn (mut t Transformer) string_plus(left flat.NodeId, right flat.NodeId) flat.Nod
 
 // is_flag_enum_type reports whether is flag enum type applies in transform.
 fn (t &Transformer) is_flag_enum_type(typ string) bool {
+	return t.resolve_flag_enum_type_name(typ) != none
+}
+
+fn (t &Transformer) resolve_flag_enum_type_name(typ string) ?string {
 	mut clean := typ
 	if clean.starts_with('&') {
 		clean = clean[1..]
 	}
 	if clean.len == 0 {
-		return false
+		return none
 	}
 	if !isnil(t.tc) {
 		parsed := t.tc.parse_type(clean)
 		if parsed is types.Enum {
-			return parsed.is_flag
+			if parsed.is_flag {
+				return parsed.name
+			}
+		}
+		if clean in t.tc.flag_enums {
+			return clean
+		}
+		qualified := t.tc.qualify_name(clean)
+		if qualified in t.tc.flag_enums {
+			return qualified
+		}
+		if !clean.contains('.') {
+			mut found := ''
+			for name, _ in t.tc.flag_enums {
+				if name.all_after_last('.') != clean {
+					continue
+				}
+				if found.len > 0 && found != name {
+					return none
+				}
+				found = name
+			}
+			if found.len > 0 {
+				return found
+			}
 		}
 	}
-	return false
+	return none
 }
 
 fn (t &Transformer) flag_enum_mask_for_type(typ string) int {
@@ -6239,7 +6260,7 @@ fn (mut t Transformer) try_lower_flag_enum_stmt(call_id flat.NodeId) ?flat.NodeI
 }
 
 // try_lower_flag_enum_call supports try lower flag enum call handling for Transformer.
-fn (mut t Transformer) try_lower_flag_enum_call(node flat.Node) ?flat.NodeId {
+fn (mut t Transformer) try_lower_flag_enum_call(call_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count == 1 {
 		fn_id := t.a.children[node.children_start]
 		fn_node := t.a.nodes[int(fn_id)]
@@ -6248,10 +6269,24 @@ fn (mut t Transformer) try_lower_flag_enum_call(node flat.Node) ?flat.NodeId {
 		}
 		base_id := t.a.children[fn_node.children_start]
 		base_node := t.a.nodes[int(base_id)]
-		if base_node.kind != .ident || !t.is_flag_enum_type(base_node.value) {
+		if base_node.kind != .ident {
 			return none
 		}
-		return t.make_cast(base_node.value, t.make_int_literal(0), base_node.value)
+		if t.var_type(base_node.value).len > 0 {
+			return none
+		}
+		if !isnil(t.tc) {
+			if resolved := t.tc.resolved_call_name(call_id) {
+				if t.is_known_fn_name(resolved) {
+					return none
+				}
+			}
+		}
+		if _ := t.static_assoc_fn_name(base_id, fn_node.value) {
+			return none
+		}
+		flag_type := t.resolve_flag_enum_type_name(base_node.value) or { return none }
+		return t.make_cast(flag_type, t.make_int_literal(0), flag_type)
 	}
 	if node.children_count < 2 {
 		return none
@@ -8293,7 +8328,7 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	if sum_cast_call := t.try_lower_generic_sum_constructor_call(node) {
 		return sum_cast_call
 	}
-	if flag_call := t.try_lower_flag_enum_call(node) {
+	if flag_call := t.try_lower_flag_enum_call(_id, node) {
 		return flag_call
 	}
 	if flag_default := t.try_lower_flag_default_value_call(node) {
@@ -8329,8 +8364,19 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	if iface_runtime_call := t.try_lower_interface_runtime_method_call(node) {
 		return iface_runtime_call
 	}
+	if !t.validate_specialized_enum_from_call(_id, node) {
+		return t.make_empty()
+	}
+	specialized_enum_type := if t.validating_generic_spec {
+		t.builtin_enum_from_type(_id, node) or { '' }
+	} else {
+		''
+	}
 	if enum_call := t.try_lower_enum_from_string_call(_id, node) {
 		return enum_call
+	}
+	if specialized_enum_type.len > 0 {
+		return t.lower_specialized_enum_from_call(node, specialized_enum_type)
 	}
 	if receiver_call := t.try_lower_receiver_method_call(_id, node) {
 		return receiver_call
@@ -8392,6 +8438,74 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	}
 }
 
+fn (mut t Transformer) lower_specialized_enum_from_call(node flat.Node, enum_type string) flat.NodeId {
+	arg := t.transform_expr(t.a.child(&node, 1))
+	base := t.make_ident(enum_type)
+	callee := t.make_selector(base, 'from', '')
+	return t.make_call_expr_typed(callee, arr1(arg), '?${enum_type}')
+}
+
+fn (mut t Transformer) validate_specialized_enum_from_call(call_id flat.NodeId, node flat.Node) bool {
+	if !t.validating_generic_spec {
+		return true
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind == .selector && callee.value == 'from' && callee.children_count > 0 {
+		enum_node := t.a.child_node(callee, 0)
+		if enum_node.kind == .ident {
+			for i, param in t.active_generic_params {
+				if enum_node.value != param || i >= t.active_specialization_args.len {
+					continue
+				}
+				concrete := t.active_specialization_args[i]
+				if _ := t.enum_type_from_name(concrete) {
+					break
+				}
+				t.record_monomorph_error('unknown function `${concrete}.from`')
+				return false
+			}
+		}
+	}
+	if !t.is_builtin_enum_from_call(call_id, node) {
+		return true
+	}
+	enum_id := t.a.child(callee, 0)
+	arg_id := t.a.child(&node, 1)
+	actual := t.normalize_type_alias(t.specialized_expr_type_name(arg_id))
+	if actual.len == 0 || actual == 'unknown' || actual == 'string'
+		|| t.is_integer_type_name(actual) {
+		return true
+	}
+	enum_node := t.a.nodes[int(enum_id)]
+	enum_name := if enum_node.kind == .ident && enum_node.value.len > 0 {
+		enum_node.value
+	} else {
+		t.node_type(enum_id)
+	}
+	t.record_monomorph_error('cannot use `${actual}` as argument 1 to `${enum_name}.from`; expected string or integer')
+	return false
+}
+
+fn (t &Transformer) is_builtin_enum_from_call(call_id flat.NodeId, node flat.Node) bool {
+	if _ := t.builtin_enum_from_type(call_id, node) {
+		return true
+	}
+	return false
+}
+
+fn (t &Transformer) builtin_enum_from_type(call_id flat.NodeId, node flat.Node) ?string {
+	if node.children_count != 2 {
+		return none
+	}
+	callee := t.a.child_node(&node, 0)
+	if callee.kind != .selector || callee.value != 'from' || callee.children_count == 0
+		|| t.enum_from_string_call_uses_user_method(call_id) {
+		return none
+	}
+	enum_id := t.a.child(callee, 0)
+	return t.enum_type_from_node(enum_id)
+}
+
 fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count == 0 {
 		return none
@@ -8411,6 +8525,17 @@ fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id 
 	args := t.transform_receiver_method_args(node, base_id, method_name)
 	ret_type := t.receiver_method_return_type(method_name, node.typ)
 	t.mark_fn_used_name(method_name)
+	if sc := t.find_smartcast(t.expr_key(base_id)) {
+		if t.is_interface_type_name(sc.sum_type_name) && args.len > 0 {
+			target := t.trim_pointer_type(t.smartcast_target_type(sc))
+			if aggregate := t.stringify_aggregate_type_name(target) {
+				value_ptr := t.make_prefix(.amp, args[0])
+				t.set_node_typ(int(value_ptr), '&${aggregate}')
+				return t.lower_ref_str_guarded(value_ptr, aggregate,
+					!t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
+			}
+		}
+	}
 	return t.make_call_typed(method_name, args, ret_type)
 }
 
@@ -8473,11 +8598,16 @@ fn (mut t Transformer) try_lower_pointer_str_method_call(call_id flat.NodeId, no
 	}
 	base_id := t.a.child(&fn_node, 0)
 	base_type := t.pointer_str_receiver_type(base_id) or { return none }
-	if t.checker_selected_custom_receiver_method(call_id, 'str') {
-		return none
-	}
 	clean_type := base_type[1..]
 	if aggregate := t.stringify_aggregate_type_name(clean_type) {
+		if t.checker_selected_custom_receiver_method(call_id, 'str') {
+			method_name := t.checker_selected_receiver_method_name(call_id, 'str') or {
+				return none
+			}
+			t.mark_fn_used_name(method_name)
+			return t.lower_ref_str_guarded(t.transform_expr(base_id), aggregate,
+				!t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
+		}
 		return t.lower_ref_str_prefixed(t.transform_expr(base_id), aggregate)
 	}
 	if clean_type.starts_with('[]') || t.is_fixed_array_type(clean_type) {

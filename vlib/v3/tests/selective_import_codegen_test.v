@@ -943,6 +943,75 @@ fn main() {
 	assert !generated.contains('is_on(70)'), generated
 }
 
+fn test_selective_import_enum_from_uses_selected_type() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_from', 'module main
+
+import geometry { Mode }
+import pixels
+
+fn main() {
+	mode := Mode.from(8) or { panic(err) }
+	println(mode)
+	string_mode := Mode.from("on") or { panic(err) }
+	println(string_mode)
+}
+',
+		selective_import_type_collision_modules())
+	assert output == 'off\non'
+	assert !generated.contains('unknown__from'), generated
+}
+
+fn test_module_qualified_enum_from_uses_imported_type() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'qualified_enum_from', 'module main
+
+import colors
+
+fn main() {
+	numeric := colors.Color.from(1) or { panic(err) }
+	println(numeric)
+	text := colors.Color.from("red") or { panic(err) }
+	println(text)
+}
+', {
+		'colors/colors.v': 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+'
+	})
+	assert output == 'blue\nred'
+	assert !generated.contains('unknown__from'), generated
+}
+
+fn test_selective_imported_enum_alias_from_string() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_alias_from_string', 'module main
+
+import colors { Hue }
+
+fn main() {
+	value := Hue.from("blue") or { panic(err) }
+	println(value)
+}
+', {
+		'colors/colors.v': 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+
+pub type Hue = Color
+'
+	})
+	assert output == 'blue'
+	assert !generated.contains('unknown__from'), generated
+}
+
 fn test_selective_import_resolves_flag_enum_collision() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run_with_extra(v3_bin, 'flag_enum_collision', 'module main

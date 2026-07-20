@@ -694,7 +694,14 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		source
 	}
 	mut field_ids := []flat.NodeId{cap: fields.len + 2}
-	if type_id := t.interface_impl_type_id(iface_name, concrete_type) {
+	type_id := t.interface_impl_type_id(iface_name, concrete_type) or {
+		if interface_pattern_is_collapsed_container_type(concrete_type) {
+			t.interface_container_cast_type_id(iface_name, concrete_type) or { 0 }
+		} else {
+			0
+		}
+	}
+	if type_id != 0 {
 		field_ids << t.make_sum_literal_field('_typ', t.make_int_literal(type_id), 'int')
 	}
 	field_ids << t.make_sum_literal_field('_object', object_expr, '&${concrete_type}')

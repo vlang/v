@@ -35,7 +35,7 @@ fn test_pointer_to_interface_stringification_uses_pointer_path() {
 	assert run.output.trim_space() == 'true'
 }
 
-fn test_explicit_pointer_str_uses_value_receiver_method_result() {
+fn test_explicit_pointer_str_prefixes_value_receiver_method_result() {
 	v3_bin := build_v3_pointer_interface_str()
 	src_path := '${tmp_pointer_interface_str_path('explicit_source')}.v'
 	bin_path := tmp_pointer_interface_str_path('explicit_bin')
@@ -63,7 +63,7 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(os.quoted_path(bin_path))
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'item:7'
+	assert run.output.trim_space() == '&item:7'
 }
 
 fn test_pointer_receiver_str_uses_pointer_argument() {
@@ -95,7 +95,7 @@ fn main() {
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.execute(os.quoted_path(bin_path))
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'ptr:9\nptr:9'
+	assert run.output.trim_space() == '&ptr:9\nptr:9'
 }
 
 fn test_custom_pointer_interpolation_guards_nil() {

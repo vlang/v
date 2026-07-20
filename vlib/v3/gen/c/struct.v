@@ -906,7 +906,11 @@ fn (g &FlatGen) lowered_sum_field_is_direct_pointer(sum_name string, field &flat
 		return false
 	}
 	pointer_variant := variant_type as types.Pointer
-	child_type := select_receive_unalias_type(g.tc.resolve_type(g.a.child(field, 0)))
+	// Expected-type propagation can cache the surrounding sum type on a local
+	// pointer used as the variant value. Recover the expression's declared type
+	// before deciding whether the sum field stores that pointer directly; treating
+	// it as a value variant adds an extra memdup box and changes pointer equality.
+	child_type := select_receive_unalias_type(g.usable_expr_type(g.a.child(field, 0)))
 	if child_type is types.Pointer {
 		return g.type_names_match(child_type.base_type, pointer_variant.base_type)
 	}
@@ -4067,7 +4071,8 @@ fn (mut g FlatGen) struct_decls() {
 				&& name[2..] in c_cache_system_header_struct_names) {
 				ityp := if name in g.tc.unions { 'union' } else { 'struct' }
 				cn := g.struct_cname(name)
-				if cn != 'mach_timebase_info_data_t' {
+				if cn != 'mach_timebase_info_data_t' && !cn.starts_with('struct ')
+					&& !cn.starts_with('union ') {
 					g.writeln('typedef ${ityp} ${cn} ${cn};')
 				}
 			}
@@ -4078,7 +4083,8 @@ fn (mut g FlatGen) struct_decls() {
 		}
 		tag := if name in g.tc.unions { 'union' } else { 'struct' }
 		cn := g.struct_cname(name)
-		if cn == 'mach_timebase_info_data_t' {
+		if cn == 'mach_timebase_info_data_t' || cn.starts_with('struct ')
+			|| cn.starts_with('union ') {
 			continue
 		}
 		g.writeln('typedef ${tag} ${cn} ${cn};')
@@ -4357,7 +4363,8 @@ fn (mut g FlatGen) type_forward_decls() {
 		}
 		tag := if name in g.tc.unions { 'union' } else { 'struct' }
 		cn := g.struct_cname(name)
-		if cn == 'mach_timebase_info_data_t' {
+		if cn == 'mach_timebase_info_data_t' || cn.starts_with('struct ')
+			|| cn.starts_with('union ') {
 			continue
 		}
 		g.writeln('typedef ${tag} ${cn} ${cn};')
