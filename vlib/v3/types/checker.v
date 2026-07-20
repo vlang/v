@@ -10796,6 +10796,20 @@ fn (tc &TypeChecker) multi_expr_branch_types(id flat.NodeId, count int) ?[]Type 
 			}
 			result << typ
 		}
+		for i in 1 .. groups.len {
+			group := groups[i]
+			if group.len != result.len {
+				return none
+			}
+			for j, value_id in group {
+				actual := tc.expr_type(value_id) or { tc.resolve_type(value_id) }
+				if !type_has_runtime_value(actual) {
+					return none
+				}
+				promoted := tc.promoted_multi_tail_type(result[j], actual) or { return none }
+				result[j] = promoted
+			}
+		}
 		return result
 	}
 	tail_id := tc.branch_tail_expr_id(id)

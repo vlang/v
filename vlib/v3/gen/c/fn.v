@@ -8964,7 +8964,12 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 			g.write('}')
 			return true
 		}
-		g.gen_expr(collapsed)
+		collapsed_type := g.usable_expr_type(collapsed)
+		if g.optional_type_name_for_expr(collapsed, collapsed_type) == g.optional_type_name(expected) {
+			g.gen_expr(collapsed)
+		} else {
+			g.gen_expr_with_expected_type(collapsed, expected)
+		}
 		return true
 	}
 	arg_node := g.a.nodes[int(arg_id)]
