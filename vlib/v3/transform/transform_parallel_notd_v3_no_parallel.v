@@ -22,7 +22,7 @@ const max_parallel_monomorph_jobs = 10
 const scoped_transform_worker_batches = 48
 const scoped_transform_master_batches = 48
 const scoped_transform_max_batch_items = 32
-const scoped_monomorph_batch_specs = 2
+const scoped_monomorph_batch_specs = 512
 const scoped_monomorph_scan_nodes = 32768
 
 $if !windows {
@@ -107,7 +107,10 @@ $if !windows {
 			scope = transform_worker_scope_begin(w.scope_parallel_workers)
 		}
 		w.parallel_monomorph_worker = true
-		w.generic_signatures_pre_registered = true
+		// A worker can discover a nested specialization that another worker will
+		// emit. Register that signature in the discovering worker immediately so
+		// it can transform the current call with the correct return type.
+		w.generic_signatures_pre_registered = false
 		w.defer_nested_generic_emissions = true
 		w.generic_clone_children.ensure_cap(65536)
 		generated_start := w.a.nodes.len
@@ -246,8 +249,13 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		// batches detach, copying the entire immutable base AST in every worker.
 		// The private growing fallback below remains available for truly uneven
 		// batches that exceed their region.
-		node_reserve := specs.len * 4096 + n_jobs * 262144
-		child_reserve := specs.len * 5120 + n_jobs * 393216
+		// Volt's measured closure averages about 1k nodes per specialization,
+		// with the largest hash partition below 130k nodes. Keep enough shared
+		// space for the normal closure without forcing the backing slabs to grow
+		// to several times their retained size. An unusually uneven partition
+		// still uses the private-region fallback below.
+		node_reserve := specs.len * 256 + n_jobs * 196608
+		child_reserve := specs.len * 320 + n_jobs * 229376
 		t.a.nodes.ensure_cap(base_nodes + node_reserve)
 		t.a.children.ensure_cap(base_children + child_reserve)
 		t.monomorph_profile('mono capacity: ${time.ticks() - debug_started} ms')
@@ -444,6 +452,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			t.ensure_node_context_map_capacity()
 			for idx, spec in args[ci].emitted_specs {
 				root := flat.NodeId(int(args[ci].roots[idx]) + node_shift)
+				t.record_monomorph_cache_spec(spec.key, spec.decl.key, spec.decl.module, spec.args)
 				if !t.generic_specialization_registered(spec.decl, spec.args) {
 					value := specialized_generic_fn_value(spec.decl.node.value, spec.args)
 					t.register_specialized_fn_signature_value(spec.decl, value, spec.args)
@@ -465,16 +474,48 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 					}
 					t.request_generic_fn_specialization(pending.decl, owned_args)
 				}
-				if args[ci].scope != unsafe { nil } {
-					transform_worker_scope_free(args[ci].scope)
-				}
 			}
 			t.monomorph_profile('mono merged worker ${ci}: ${time.ticks() - debug_started} ms')
+		}
+		// Nested specialization requests can be transferred between workers.
+		// A node emitted by one worker can therefore retain arguments allocated
+		// by another. Publish merged node payloads through the parent text table
+		// against every worker arena before releasing any of them.
+		for ci in 1 .. n_jobs {
+			if args[ci].scope == unsafe { nil } {
+				continue
+			}
+			for idx in 0 .. t.a.nodes.len {
+				t.clone_scoped_worker_node(idx, args[ci].scope)
+			}
+		}
+		for ci in 1 .. n_jobs {
+			if args[ci].scope != unsafe { nil } {
+				transform_worker_scope_free(args[ci].scope)
+			}
 		}
 		t.parallel_monomorph_worker = false
 		t.generic_signatures_pre_registered = false
 		t.parallel_monomorph_scan_end = t.a.nodes.len
 		t.tc.unfreeze_type_cache_after_forks()
+		t.parallel_monomorph_scan_nodes = t.parallel_monomorph_scan_nodes.clone()
+		mut owned_struct_specs := map[string]string{}
+		for spec, base in t.parallel_monomorph_struct_specs {
+			owned_struct_specs[spec.clone()] = base.clone()
+		}
+		t.parallel_monomorph_struct_specs = owned_struct_specs.move()
+		mut owned_sum_specs := map[string]GenericSpecContext{}
+		for spec, context in t.parallel_monomorph_sum_specs {
+			owned_sum_specs[spec.clone()] = GenericSpecContext{
+				base:   context.base.clone()
+				file:   context.file.clone()
+				module: context.module.clone()
+			}
+		}
+		t.parallel_monomorph_sum_specs = owned_sum_specs.move()
+		for idx in 0 .. t.a.nodes.len {
+			t.clone_scoped_worker_node(idx, setup_scope)
+		}
 		transform_worker_scope_free(setup_scope)
 		t.monomorph_profile('mono merge: ${time.ticks() - debug_started} ms')
 		return any_started

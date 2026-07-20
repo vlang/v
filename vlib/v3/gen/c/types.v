@@ -243,7 +243,10 @@ fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 fn (mut g FlatGen) optional_typedefs() {
 	g.collect_optional_typedefs()
 	mut wrote := false
-	for opt_name, val_type in g.needed_optional_types {
+	mut names := g.needed_optional_types.keys()
+	names.sort()
+	for opt_name in names {
+		val_type := g.needed_optional_types[opt_name]
 		if g.emit_optional_typedef(opt_name, val_type) {
 			wrote = true
 		}

@@ -306,6 +306,7 @@ fn (mut t Transformer) monomorphize_pass() []string {
 fn (mut t Transformer) request_generic_fn_specialization(decl GenericFnDecl, args []string) {
 	concrete_args := t.canonical_generic_specialization_args(args)
 	key := t.generic_specialization_progress_key(decl, concrete_args)
+	t.record_monomorph_cache_spec(key, decl.key, decl.module, concrete_args)
 	if key in t.generic_fn_spec_nodes || t.generic_fn_specs_in_progress[key]
 		|| t.pending_generic_fn_spec_keys[key] {
 		return
@@ -320,6 +321,52 @@ fn (mut t Transformer) request_generic_fn_specialization(decl GenericFnDecl, arg
 		args: concrete_args
 		key:  key
 	}
+}
+
+fn (mut t Transformer) record_monomorph_cache_spec(key string, decl_key string, module_name string, args []string) {
+	if key.len == 0 || decl_key.len == 0 || key in t.monomorph_cache_specs {
+		return
+	}
+	t.monomorph_cache_specs[key] = MonomorphCacheSpec{
+		decl_key: decl_key
+		module:   module_name
+		args:     args.clone()
+	}
+}
+
+fn (mut t Transformer) seed_cached_monomorph_specs(specs []MonomorphCacheSpec) {
+	if specs.len == 0 {
+		return
+	}
+	decls := t.cached_generic_fn_decls()
+	for spec in specs {
+		decl := decls[spec.decl_key] or { continue }
+		concrete_args := t.canonical_generic_specialization_args(spec.args)
+		if concrete_args.len == 0 || t.generic_args_have_placeholders(concrete_args) {
+			continue
+		}
+		key := t.generic_specialization_progress_key(decl, concrete_args)
+		t.record_monomorph_cache_spec(key, spec.decl_key, decl.module, concrete_args)
+		if !t.generic_specialization_registered(decl, concrete_args) {
+			value := specialized_generic_fn_value(decl.node.value, concrete_args)
+			t.register_specialized_fn_signature_value(decl, value, concrete_args)
+		}
+	}
+}
+
+fn (t &Transformer) sorted_monomorph_cache_specs() []MonomorphCacheSpec {
+	mut keys := t.monomorph_cache_specs.keys()
+	keys.sort()
+	mut specs := []MonomorphCacheSpec{cap: keys.len}
+	for key in keys {
+		spec := t.monomorph_cache_specs[key]
+		specs << MonomorphCacheSpec{
+			decl_key: spec.decl_key.clone()
+			module:   spec.module.clone()
+			args:     spec.args.clone()
+		}
+	}
+	return specs
 }
 
 fn (mut t Transformer) drain_pending_generic_fn_specs(mut emitted map[string]bool, mut generated []string) bool {

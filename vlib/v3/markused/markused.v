@@ -2840,9 +2840,6 @@ fn (c &CallCollector) type_text_uses_generics_depth(typ string, cur_module strin
 			} else if c.selective_alias_uses_generics(candidate, cur_module, imports, depth + 1) {
 				return true
 			}
-			if c.struct_fields_use_generics(candidate, cur_module, imports, depth + 1) {
-				return true
-			}
 		}
 		start = end
 	}

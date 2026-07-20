@@ -113,6 +113,19 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			} else {
 				cur_file
 			}
+			if g.program_body_only && !g.cache_program_files[fn_file] && fn_module !in ['', 'main'] {
+				continue
+			}
+			if g.incremental_fn_names.len > 0 {
+				qname := if fn_module in ['', 'main', 'builtin'] {
+					node.value
+				} else {
+					'${fn_module}.${node.value}'
+				}
+				if !g.incremental_fn_names[qname] && !g.incremental_fn_names[node.value] {
+					continue
+				}
+			}
 			if !g.should_emit_fn_node_in_module(node, i, fn_module, fn_file) {
 				continue
 			}
@@ -174,6 +187,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			is_program_specialization: program_specializations[candidate.preferred_name]
 		}
 	}
+	items.sort(a.c_name < b.c_name)
 	return items
 }
 
@@ -198,6 +212,17 @@ fn flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId) int {
 	return cost
 }
 
+fn cache_fn_marker_key(file string, module_name string, name string) string {
+	mut hash := u64(1469598103934665603)
+	for part in [file, module_name, name] {
+		for byte in part.bytes() {
+			hash = (hash ^ u64(byte)) * u64(1099511628211)
+		}
+		hash = (hash ^ u64(0xff)) * u64(1099511628211)
+	}
+	return hash.hex()
+}
+
 // gen_fn_items emits fn items output for c.
 fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 	for item in items {
@@ -217,16 +242,23 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		}
 		if g.cache_split {
 			// Generic templates are source-parsed even when their module object is
-			// cached. Their program-specific concrete specializations belong to the
-			// main translation unit, not to the source-stable module object.
-			module_name := if is_program_fn || item.module.len == 0 {
+			// cached. Program-specific concrete specializations are separated from
+			// both source-stable module objects and the frequently edited program
+			// translation unit, so the dev dylib can retain them across body edits.
+			module_name := if item.is_program_specialization && item.module !in ['', 'main'] {
+				'__v3_program_specializations'
+			} else if is_program_fn || item.module.len == 0 {
 				'main'
 			} else {
 				item.module
 			}
 			g.writeln('/* V3CACHE_MODULE ${module_name} */')
+			g.writeln('/* V3CACHE_FN_BEGIN ${cache_fn_marker_key(item.file, item.module, node.value)} */')
 		}
 		g.gen_fn_in_module(node, item.module)
+		if g.cache_split {
+			g.writeln('/* V3CACHE_FN_END ${cache_fn_marker_key(item.file, item.module, node.value)} */')
+		}
 	}
 }
 
@@ -11684,8 +11716,8 @@ fn (mut g FlatGen) forward_decl_items(items []FlatFnGenItem, mut forwarded_expor
 fn (mut g FlatGen) cached_header_forward_decls() {
 	mut cur_file := ''
 	mut cur_module := ''
-	mut forwarded := map[string]bool{}
-	for node in g.a.nodes {
+	mut items := []FlatFnGenItem{}
+	for node_idx, node in g.a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
 			cur_module = ''
@@ -11707,14 +11739,25 @@ fn (mut g FlatGen) cached_header_forward_decls() {
 		if !node.is_mut && (node.generic_params().len > 0 || node.value.contains('[')) {
 			continue
 		}
-		qfn := g.fn_c_name_in_module(cur_module, node.value)
+		items << FlatFnGenItem{
+			node_id: flat.NodeId(node_idx)
+			file:    cur_file
+			module:  cur_module
+			c_name:  g.fn_c_name_in_module(cur_module, node.value)
+		}
+	}
+	items.sort(a.c_name < b.c_name)
+	mut forwarded := map[string]bool{}
+	for item in items {
+		qfn := item.c_name
 		if forwarded[qfn] {
 			continue
 		}
 		forwarded[qfn] = true
-		g.tc.cur_file = cur_file
-		g.tc.cur_module = cur_module
-		ret_type := g.fn_node_return_type(node, cur_module)
+		node := g.a.nodes[int(item.node_id)]
+		g.tc.cur_file = item.file
+		g.tc.cur_module = item.module
+		ret_type := g.fn_node_return_type(node, item.module)
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
 		g.write(qfn)

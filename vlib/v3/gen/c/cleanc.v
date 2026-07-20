@@ -98,6 +98,7 @@ mut:
 	fn_segs                        []string
 	test_files                     map[string]bool
 	cache_program_files            map[string]bool
+	incremental_fn_names           map[string]bool
 	str_lits                       []string
 	str_lit_ids                    map[string]int
 	str_lits_shared                bool
@@ -273,6 +274,7 @@ mut:
 	mut_recv_facts                 &FnNameFactCache = unsafe { nil }
 	want_parallel_prep             bool
 	cache_split                    bool
+	program_body_only              bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
@@ -597,6 +599,7 @@ pub fn FlatGen.new() FlatGen {
 		fn_segs:                        []string{}
 		test_files:                     map[string]bool{}
 		cache_program_files:            map[string]bool{}
+		incremental_fn_names:           map[string]bool{}
 		str_lit_ids:                    map[string]int{}
 		global_types:                   map[string]types.Type{}
 		global_raw_type_texts:          map[string]string{}
@@ -731,6 +734,12 @@ pub fn (mut g FlatGen) set_cache_split(enabled bool) {
 	g.cache_split = enabled
 }
 
+// set_program_body_only omits the reusable declaration/type prefix. It is used
+// when that prefix has already been validated and loaded from the module cache.
+pub fn (mut g FlatGen) set_program_body_only(enabled bool) {
+	g.program_body_only = enabled
+}
+
 // set_cache_program_files assigns entry-module source files to the program
 // translation unit rather than an imported module cache object.
 pub fn (mut g FlatGen) set_cache_program_files(files []string) {
@@ -738,6 +747,12 @@ pub fn (mut g FlatGen) set_cache_program_files(files []string) {
 	for file in files {
 		g.cache_program_files[file] = true
 	}
+}
+
+// set_incremental_fn_names limits program-body generation to functions whose
+// parsed bodies changed. An empty map preserves normal whole-program emission.
+pub fn (mut g FlatGen) set_incremental_fn_names(names map[string]bool) {
+	g.incremental_fn_names = names.clone()
 }
 
 // cache_external_input_files returns local include/embed inputs grouped by the
@@ -1335,40 +1350,49 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.has_builtins = g.tc.has_builtins
 	g.collect_gen_info()
-	g.precompute_shared_param_index()
-	if !g.skip_generics {
-		g.precompute_non_generic_fn_index()
-		g.precompute_generic_fn_key_index()
-	}
-	// In the parallel path the fixed-storage scan runs on a helper thread,
-	// overlapped with the fn-item collection and parallel pre-seeding.
-	// The master emits selectors/inits itself (serial regions, postamble), so
-	// its embedded-fields map must be populated even when the worker-fork prep
-	// runs its own copy; do it before any helper thread can observe `g`.
-	g.precompute_embedded_fields()
-	parallel_prep_done := g.run_pre_dispatch_parallel(no_parallel)
-	if !parallel_prep_done {
-		g.collect_fixed_storage_consts()
+	if g.incremental_fn_names.len > 0 {
+		// Cached declarations already contain whole-program typedefs, wrappers,
+		// interface tables and shared-parameter metadata. A body-only update only
+		// needs indexes consulted while emitting the selected function.
+		g.precompute_embedded_fields()
 		g.precompute_param_type_index()
-		g.precompute_concrete_optional_abi_fns()
+		g.precompute_sum_name_lookup()
+	} else {
+		g.precompute_shared_param_index()
+		if !g.skip_generics {
+			g.precompute_non_generic_fn_index()
+			g.precompute_generic_fn_key_index()
+		}
+		// In the parallel path the fixed-storage scan runs on a helper thread,
+		// overlapped with the fn-item collection and parallel pre-seeding.
+		// The master emits selectors/inits itself (serial regions, postamble), so
+		// its embedded-fields map must be populated even when the worker-fork prep
+		// runs its own copy; do it before any helper thread can observe `g`.
+		g.precompute_embedded_fields()
+		parallel_prep_done := g.run_pre_dispatch_parallel(no_parallel)
+		if !parallel_prep_done {
+			g.collect_fixed_storage_consts()
+			g.precompute_param_type_index()
+			g.precompute_concrete_optional_abi_fns()
+		}
+		g.collect_shared_type_names()
+		g.collect_interface_impls()
+		g.precompute_sum_name_lookup()
+		g.preseed_struct_fn_ptr_types()
+		g.preseed_sum_fn_ptr_types()
+		g.preseed_global_fn_ptr_types()
+		g.preseed_fn_signature_fn_ptr_types()
+		g.preseed_c_extern_fn_ptr_types()
+		g.preseed_struct_default_string_literals()
+		g.preseed_libc_compat_fns()
+		if !g.skip_generics {
+			g.precompute_generic_method_candidate_index()
+		}
+		// Decide fixed-array return wrappers before generating function bodies, so
+		// signatures, returns and call sites all agree on the wrapped types.
+		g.populate_fixed_array_ret_wrappers()
 	}
-	g.collect_shared_type_names()
-	g.collect_interface_impls()
-	g.precompute_sum_name_lookup()
-	g.preseed_struct_fn_ptr_types()
-	g.preseed_sum_fn_ptr_types()
-	g.preseed_global_fn_ptr_types()
-	g.preseed_fn_signature_fn_ptr_types()
-	g.preseed_c_extern_fn_ptr_types()
-	g.preseed_struct_default_string_literals()
-	g.preseed_libc_compat_fns()
-	if !g.skip_generics {
-		g.precompute_generic_method_candidate_index()
-	}
-	// Decide fixed-array return wrappers before generating function bodies, so
-	// signatures, returns and call sites all agree on the wrapped types.
-	g.populate_fixed_array_ret_wrappers()
-	const_code := g.precompute_consts()
+	const_code := if g.program_body_only { '' } else { g.precompute_consts() }
 	stream_scoped_output := g.output_path.len > 0 && g.scope_parallel_workers
 	stream_path := if stream_scoped_output { '${g.output_path}.v3-stream.tmp' } else { '' }
 	fn_stream_path := if stream_scoped_output { '${g.output_path}.v3-fns.tmp' } else { '' }
@@ -1385,6 +1409,38 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	unsafe { g.sb.free() }
 	g.sb = orig_sb
 	g.line_start = orig_line_start
+	if g.program_body_only {
+		unsafe { const_code.free() }
+		g.release_scoped_fn_items()
+		g.sb.ensure_cap(fn_code.len + 262_144)
+		g.writeln('#define V3CACHE_PROGRAM_UNIT 1')
+		g.string_literals()
+		g.writeln('/* V3CACHE_BODY_BEGIN */')
+		g.writeln('/* V3CACHE_MODULE main */')
+		for segment in g.fn_segs {
+			g.sb.write_string(segment)
+			unsafe { segment.free() }
+		}
+		g.fn_segs = []string{}
+		if fn_code.len > 0 {
+			g.sb.write_string(fn_code)
+			unsafe { fn_code.free() }
+		}
+		g.writeln('/* V3CACHE_BODY_END */')
+		source := g.sb.str()
+		result := g.rewrite_cache_string_symbols(source)
+		unsafe {
+			source.free()
+			g.sb.free()
+		}
+		if g.output_path.len > 0 {
+			os.write_file(g.output_path, result) or { g.output_error = err.msg() }
+			unsafe { result.free() }
+			g.sb = strings.new_builder(4096)
+			return ''
+		}
+		return result
+	}
 	mut known_output_len := g.sb.len + fn_code.len + const_code.len
 	for segment in g.fn_segs {
 		known_output_len += segment.len
@@ -1522,26 +1578,13 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	unsafe { const_code.free() }
 	if g.cache_split {
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
-		// `_vinit` aggregates module and global initialization for the current
-		// entry program, so it must never be retained in a reusable module object.
-		g.writeln('/* V3CACHE_MODULE main */')
+		// `_vinit` and interface stubs depend on the complete entry program, but
+		// remain stable across function-body literal edits. Keep them with the
+		// program specialization cache instead of regenerating module globals in
+		// every edited translation unit.
+		g.writeln('/* V3CACHE_MODULE __v3_program_support */')
 	}
-	if g.const_runtime_inits.len > 0 || g.runtime_inits.len > 0 || g.module_init_fns.len > 0
-		|| g.global_inits.len > 0 {
-		g.writeln('void _vinit() {')
-		mut emitted_const := []bool{len: g.const_runtime_inits.len}
-		mut emitted_runtime := []bool{len: g.runtime_inits.len}
-		init_fns := g.module_init_fn_map()
-		for mod in g.ordered_startup_modules(init_fns) {
-			g.emit_runtime_inits_for_module(mod, mut emitted_const, mut emitted_runtime)
-			if init_fn := init_fns[mod] {
-				g.writeln('\t${init_fn}();')
-			}
-		}
-		g.emit_remaining_runtime_inits(mut emitted_const, mut emitted_runtime)
-		g.writeln('}')
-		g.writeln('')
-	}
+	g.gen_vinit()
 	if g.cache_split {
 		g.interface_method_stubs()
 	}
@@ -1632,6 +1675,26 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	// Keep only the returned C string, not the builder's copied backing array.
 	unsafe { g.sb.free() }
 	return result
+}
+
+fn (mut g FlatGen) gen_vinit() {
+	if g.const_runtime_inits.len == 0 && g.runtime_inits.len == 0 && g.module_init_fns.len == 0
+		&& g.global_inits.len == 0 {
+		return
+	}
+	g.writeln('void _vinit() {')
+	mut emitted_const := []bool{len: g.const_runtime_inits.len}
+	mut emitted_runtime := []bool{len: g.runtime_inits.len}
+	init_fns := g.module_init_fn_map()
+	for mod in g.ordered_startup_modules(init_fns) {
+		g.emit_runtime_inits_for_module(mod, mut emitted_const, mut emitted_runtime)
+		if init_fn := init_fns[mod] {
+			g.writeln('\t${init_fn}();')
+		}
+	}
+	g.emit_remaining_runtime_inits(mut emitted_const, mut emitted_runtime)
+	g.writeln('}')
+	g.writeln('')
 }
 
 fn (mut g FlatGen) rewrite_cache_string_symbols(source string) string {
@@ -1810,7 +1873,9 @@ fn node_kind_id(node flat.Node) int {
 // collect_gen_info updates collect gen info state for c.
 fn (mut g FlatGen) collect_gen_info() {
 	g.reserve_collect_gen_info_maps()
-	g.collect_c_flags_from_directives()
+	if g.incremental_fn_names.len == 0 {
+		g.collect_c_flags_from_directives()
+	}
 	g.c_flags << g.initial_c_flags
 	g.use_system_stdint = g.translation_unit_uses_inttypes()
 	mut cur_module := 'main'
@@ -1853,7 +1918,9 @@ fn (mut g FlatGen) collect_gen_info() {
 		if kind_id == 61 {
 			full_name := qualify_name_in_module(cur_module, node.value)
 			if g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, cur_module) {
-				g.preseed_unused_fn_ptr_param_types(node, cur_module, cur_file)
+				if g.incremental_fn_names.len == 0 {
+					g.preseed_unused_fn_ptr_param_types(node, cur_module, cur_file)
+				}
 				continue
 			}
 			g.register_fn_decl_node(node.value, cur_module, flat.NodeId(node_idx))
@@ -1958,6 +2025,9 @@ fn (mut g FlatGen) collect_gen_info() {
 				}
 				g.module_init_fn_modules[init_cname] = cur_module
 			}
+			continue
+		}
+		if g.incremental_fn_names.len > 0 && node.kind == .directive {
 			continue
 		}
 		if g.collect_c_directive(cur_module, node, cur_file, !seen_import_in_file) {
@@ -2136,10 +2206,13 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps() {
 	mut enum_field_count := 0
 	mut interface_count := 0
 	mut import_count := 0
+	incremental := g.incremental_fn_names.len > 0
 	for node in g.a.nodes {
 		match node.kind {
 			.fn_decl {
-				fn_count++
+				if !incremental || g.incremental_fn_names[node.value] {
+					fn_count++
+				}
 			}
 			.struct_decl {
 				struct_count++
@@ -2161,6 +2234,9 @@ fn (mut g FlatGen) reserve_collect_gen_info_maps() {
 			}
 			else {}
 		}
+	}
+	if incremental && fn_count < g.incremental_fn_names.len {
+		fn_count = g.incremental_fn_names.len
 	}
 	fn_alias_count := u32(fn_count * 7 + 1024)
 	fn_name_count := u32(fn_count * 2 + 1024)

@@ -2647,3 +2647,111 @@ fn main() {
 	assert cached.output.contains('cgen (cached)'), cached.output
 	assert run_module_cache_binary(cached_output) == '1\n2\ntrue\nfalse\nfalse\ntrue'
 }
+
+fn test_incremental_program_cache_recompiles_real_main_logic() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_program_logic_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', "module main
+
+import os
+
+fn identity[T](value T) T {
+\treturn value
+}
+
+fn message(value string) string {
+\treturn identity(value)
+}
+
+fn main() {
+\tprintln(message('before'))
+}
+")
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'before'
+
+	write_module_cache_file(root, 'main.v', "module main
+
+import os
+
+fn identity[T](value T) T {
+\treturn value
+}
+
+fn message(value string) string {
+\treturn identity(value)
+}
+
+fn main() {
+\tprintln(message('baseline'))
+}
+")
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == 'baseline'
+
+	write_module_cache_file(root, 'main.v', "module main
+
+import os
+
+fn identity[T](value T) T {
+\treturn value
+}
+
+fn message(value string) string {
+\treturn identity(value)
+}
+
+fn main() {
+\targ_count := os.args.len
+\t$if macos {
+\t\t_ = arg_count
+\t}
+\tprintln(message('snapshot logic'))
+}
+")
+	snapshot_output := os.join_path(root, 'snapshot')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, snapshot_output)
+	assert run_module_cache_binary(snapshot_output) == 'snapshot logic'
+
+	write_module_cache_file(root, 'main.v', "module main
+
+import os
+
+fn identity[T](value T) T {
+\treturn value
+}
+
+fn message(value string) string {
+\treturn identity(value)
+}
+
+fn main() {
+\targ_count := os.args.len
+\t$if macos {
+\t\t_ = arg_count
+\t}
+\tif arg_count > 0 {
+\t\tprintln(message('after real logic'))
+\t}
+}
+")
+	incremental_output := os.join_path(root, 'incremental')
+	incremental :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(incremental_output)} ${os.quoted_path(main_file)}')
+	assert incremental.exit_code == 0, incremental.output
+	assert incremental.output.contains('check (incremental)'), incremental.output
+	assert incremental.output.contains('cgen (incremental)'), incremental.output
+	assert run_module_cache_binary(incremental_output) == 'after real logic'
+}

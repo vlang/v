@@ -8,7 +8,7 @@ import v3.types
 import v3.workers
 
 const max_flat_cgen_jobs = 10
-const min_flat_cgen_parallel_items = 1024
+const min_flat_cgen_parallel_items = 128
 const scoped_cgen_worker_batches = 4
 
 $if !windows {
@@ -805,8 +805,10 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		a:                              unsafe { g.a }
 		used_fns:                       g.used_fns
 		used_fn_names:                  g.used_fn_names
+		fn_gen_items:                   g.fn_gen_items
 		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
 		cache_program_files:            g.cache_program_files
+		incremental_fn_names:           g.incremental_fn_names
 		str_lits:                       if result_only {
 			clone_cgen_string_list(g.str_lits)
 		} else if g.scope_parallel_workers {
@@ -960,6 +962,8 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		callback_wrapper_names:     g.callback_wrapper_names.clone()
 		callback_wrapper_defs:      g.callback_wrapper_defs.clone()
 		callback_wrapper_defs_seen: g.callback_wrapper_defs_seen.clone()
+		c_extern_refs:              g.c_extern_refs
+		c_extern_refs_ready:        g.c_extern_refs_ready
 		scope_parallel_workers:     g.scope_parallel_workers
 		c_name_cache:               &CNameCache{}
 		// The const short-name index is read-only after its first build (the

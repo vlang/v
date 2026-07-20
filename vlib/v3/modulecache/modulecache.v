@@ -9,7 +9,7 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-40'
+const cache_format = 'v3-module-cache-41'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -59,6 +59,37 @@ pub:
 	main   string
 	tcc    string
 	prefix string
+}
+
+// GenericProgramEntry contains program-specific dependency specializations that
+// remain valid across edits which do not change the program's generic ABI.
+pub struct GenericProgramEntry {
+pub:
+	specs        string
+	used         string
+	prefix       string
+	declarations string
+	body         string
+	literals     string
+	metadata     string
+	stamp        string
+}
+
+// IncrementalProgramEntry contains a complete program body split into stable
+// function sections plus the semantic/link metadata needed to regenerate only
+// functions whose parsed bodies changed.
+pub struct IncrementalProgramEntry {
+pub:
+	manifest         string
+	body             string
+	used             string
+	specs            string
+	prefix           string
+	declarations     string
+	tcc_declarations string
+	objects          string
+	metadata         string
+	stamp            string
 }
 
 // CSplit contains the declaration/runtime prefix and per-module C function bodies.
@@ -137,6 +168,38 @@ pub fn (m &Manager) cgen_entry(source_files []string) CgenEntry {
 		prepared_prefix:  '${base}.prefix.c'
 		prepared_objects: '${base}.objects'
 		prepared_stamp:   '${base}.prepared.stamp'
+	}
+}
+
+fn (m &Manager) generic_program_entry(source_files []string) GenericProgramEntry {
+	cgen := m.cgen_entry(source_files)
+	base := cgen.source.all_before_last('.c')
+	return GenericProgramEntry{
+		specs:        '${base}.generic.specs'
+		used:         '${base}.generic.used'
+		prefix:       '${base}.generic.prefix.c'
+		declarations: '${base}.generic.declarations.c'
+		body:         '${base}.generic.body.c'
+		literals:     '${base}.generic.literals'
+		metadata:     '${base}.generic.metadata'
+		stamp:        '${base}.generic.stamp'
+	}
+}
+
+fn (m &Manager) incremental_program_entry(source_files []string) IncrementalProgramEntry {
+	cgen := m.cgen_entry(source_files)
+	base := cgen.source.all_before_last('.c')
+	return IncrementalProgramEntry{
+		manifest:         '${base}.incremental.manifest'
+		body:             '${base}.incremental.body.c'
+		used:             '${base}.incremental.used'
+		specs:            '${base}.incremental.specs'
+		prefix:           '${base}.incremental.prefix.c'
+		declarations:     '${base}.incremental.declarations.c'
+		tcc_declarations: '${base}.incremental.tcc.declarations.c'
+		objects:          '${base}.incremental.objects'
+		metadata:         '${base}.incremental.metadata'
+		stamp:            '${base}.incremental.stamp'
 	}
 }
 
@@ -549,6 +612,27 @@ pub fn (m &Manager) valid_cgen(source_files []string, generation_signature strin
 	return entry
 }
 
+// valid_generic_program reports whether cached dependency specializations match
+// the program's type/call shape and all module cache inputs.
+pub fn (m &Manager) valid_generic_program(source_files []string, semantic_signature string, generation_signature string, dependency_inputs map[string]string) ?GenericProgramEntry {
+	if !m.enabled || source_files.len == 0 || semantic_signature.len == 0 {
+		return none
+	}
+	entry := m.generic_program_entry(source_files)
+	if !os.is_file(entry.specs) || !os.is_file(entry.used) || !os.is_file(entry.prefix)
+		|| !os.is_file(entry.declarations) || !os.is_file(entry.body) || !os.is_file(entry.literals)
+		|| !os.is_file(entry.metadata) || !os.is_file(entry.stamp) {
+		return none
+	}
+	stamp := os.read_file(entry.stamp) or { return none }
+	expected := cgen_entry_stamp(m.salt, semantic_signature, dependency_inputs,
+		'generic-v6\n${generation_signature}')
+	if stamp != expected {
+		return none
+	}
+	return entry
+}
+
 // write_cgen atomically commits a whole-program C plan and its generation metadata.
 pub fn (m &Manager) write_cgen(source_files []string, generation_signature string, dependency_inputs map[string]string, source string, metadata string) !CgenEntry {
 	if !m.ensure_dir() {
@@ -563,6 +647,76 @@ pub fn (m &Manager) write_cgen(source_files []string, generation_signature strin
 	write_atomic(entry.metadata, metadata)!
 	stamp := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs,
 		generation_signature)
+	write_atomic(entry.stamp, stamp)!
+	return entry
+}
+
+// write_generic_program atomically publishes dependency specialization
+// metadata. The stamp is written last so readers cannot observe mixed payloads.
+pub fn (m &Manager) write_generic_program(source_files []string, semantic_signature string, generation_signature string, dependency_inputs map[string]string, specs string, used string, prefix string, declarations string, body string, literals string, metadata string) !GenericProgramEntry {
+	if !m.ensure_dir() {
+		return error('v3 module cache directory is unavailable')
+	}
+	entry := m.generic_program_entry(source_files)
+	os.rm(entry.stamp) or {}
+	write_atomic(entry.specs, specs)!
+	write_atomic(entry.used, used)!
+	write_atomic(entry.prefix, prefix)!
+	write_atomic(entry.declarations, declarations)!
+	write_atomic(entry.body, body)!
+	write_atomic(entry.literals, literals)!
+	write_atomic(entry.metadata, metadata)!
+	stamp := cgen_entry_stamp(m.salt, semantic_signature, dependency_inputs,
+		'generic-v6\n${generation_signature}')
+	write_atomic(entry.stamp, stamp)!
+	return entry
+}
+
+// valid_incremental_program restores function-level artifacts when declarations,
+// compiler configuration, dependencies, and native inputs are unchanged.
+pub fn (m &Manager) valid_incremental_program(source_files []string, declaration_signature string, generation_signature string, dependency_inputs map[string]string) ?IncrementalProgramEntry {
+	if !m.enabled || source_files.len == 0 || declaration_signature.len == 0 {
+		return none
+	}
+	entry := m.incremental_program_entry(source_files)
+	if !os.is_file(entry.manifest) || !os.is_file(entry.body) || !os.is_file(entry.used)
+		|| !os.is_file(entry.specs) || !os.is_file(entry.prefix) || !os.is_file(entry.declarations)
+		|| !os.is_file(entry.tcc_declarations) || !os.is_file(entry.objects)
+		|| !os.is_file(entry.metadata) || !os.is_file(entry.stamp) {
+		return none
+	}
+	objects := os.read_lines(entry.objects) or { return none }
+	if objects.len == 0 || objects.any(it.len == 0 || !os.is_file(it)) {
+		return none
+	}
+	stamp := os.read_file(entry.stamp) or { return none }
+	expected := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs,
+		'incremental-v5\n${generation_signature}')
+	if stamp != expected {
+		return none
+	}
+	return entry
+}
+
+// write_incremental_program atomically publishes a function-level program
+// snapshot. The stamp is the commit marker and is written after every payload.
+pub fn (m &Manager) write_incremental_program(source_files []string, declaration_signature string, generation_signature string, dependency_inputs map[string]string, manifest string, body string, used string, specs string, prefix string, declarations string, tcc_declarations string, objects []string, metadata string) !IncrementalProgramEntry {
+	if !m.ensure_dir() {
+		return error('v3 module cache directory is unavailable')
+	}
+	entry := m.incremental_program_entry(source_files)
+	os.rm(entry.stamp) or {}
+	write_atomic(entry.manifest, manifest)!
+	write_atomic(entry.body, body)!
+	write_atomic(entry.used, used)!
+	write_atomic(entry.specs, specs)!
+	write_atomic(entry.prefix, prefix)!
+	write_atomic(entry.declarations, declarations)!
+	write_atomic(entry.tcc_declarations, tcc_declarations)!
+	write_atomic(entry.objects, objects.join('\n'))!
+	write_atomic(entry.metadata, metadata)!
+	stamp := cgen_entry_stamp(m.salt, declaration_signature, dependency_inputs,
+		'incremental-v5\n${generation_signature}')
 	write_atomic(entry.stamp, stamp)!
 	return entry
 }
@@ -878,6 +1032,90 @@ pub fn declaration_header(prefix string) string {
 		pos = body_end + section.end.len
 	}
 	return out.str()
+}
+
+// prune_unreferenced_static_string_definitions removes generated string storage
+// that is referenced only by the program body. Cached module objects carry
+// their own static copies, while the program translation unit retains the full
+// prefix. Keeping body-only strings out of the shared dylib prefix makes an
+// ordinary program literal edit reuse the same cached dylib.
+pub fn prune_unreferenced_static_string_definitions(prefix string) string {
+	mut references := map[string]int{}
+	for line in prefix.split_into_lines() {
+		for symbol in generated_string_symbols(line) {
+			references[symbol]++
+		}
+	}
+	mut out := strings.new_builder(prefix.len)
+	for line in prefix.split_into_lines() {
+		if symbol := generated_static_string_definition_symbol(line) {
+			if references[symbol] == 1 {
+				continue
+			}
+		}
+		out.writeln(line)
+	}
+	return out.str()
+}
+
+// static_string_definitions returns generated literal storage needed by the
+// current program body. Cached dependency declarations omit these records.
+pub fn static_string_definitions(source string) string {
+	mut out := strings.new_builder(4096)
+	for line in source.split_into_lines() {
+		if line.starts_with('static string _v3_lit_') {
+			out.writeln(line)
+		}
+	}
+	return out.str()
+}
+
+fn generated_static_string_definition_symbol(line string) ?string {
+	clean := line.trim_space()
+	prefix := 'static string '
+	if !clean.starts_with(prefix) {
+		return none
+	}
+	start := prefix.len
+	mut end := start
+	for end < clean.len && c_generated_identifier_byte(clean[end]) {
+		end++
+	}
+	if end == start || !clean[start..end].starts_with('_v3_lit_') {
+		return none
+	}
+	tail := clean[end..].trim_space()
+	if !tail.starts_with('=') {
+		return none
+	}
+	return clean[start..end]
+}
+
+fn generated_string_symbols(line string) []string {
+	mut symbols := []string{}
+	mut i := 0
+	for i < line.len {
+		relative := line[i..].index('_v3_lit_') or { break }
+		start := i + relative
+		if start > 0 && c_generated_identifier_byte(line[start - 1]) {
+			i = start + 1
+			continue
+		}
+		mut end := start + '_v3_lit_'.len
+		for end < line.len && c_generated_identifier_byte(line[end]) {
+			end++
+		}
+		if end > start + '_v3_lit_'.len
+			&& (end == line.len || !c_generated_identifier_byte(line[end])) {
+			symbols << line[start..end]
+		}
+		i = end
+	}
+	return symbols
+}
+
+fn c_generated_identifier_byte(c u8) bool {
+	return (c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`) || (c >= `0` && c <= `9`) || c == `_`
 }
 
 struct CDeclarationSection {

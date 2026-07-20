@@ -123,6 +123,25 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 	}
 }
 
+// check_semantics_selected validates declarations and only the named function
+// bodies. It is used by the function-level incremental compiler after it has
+// proven that every top-level declaration is unchanged.
+pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
+	tc.resolution_type_mode = false
+	tc.check_export_attrs()
+	items := tc.collect_parallel_check_items()
+	mut selected_items := []CheckWorkItem{cap: selected.len}
+	for item in items {
+		node := tc.a.nodes[item.fn_idx]
+		qname := checker_qualified_fn_name(item.module, node.value)
+		if selected[qname] || selected[node.value] {
+			selected_items << item
+		}
+	}
+	tc.check_fn_items_serial(selected_items)
+	tc.resolution_type_mode = true
+}
+
 fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	$if windows {
 		tc.check_semantics()

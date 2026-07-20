@@ -37,6 +37,23 @@ fn test_scoped_parallel_dispatch_worker_owns_string_snapshot() {
 	assert g.str_lits == ['source', 'master generated']
 }
 
+fn test_scoped_parallel_worker_reuses_preselected_functions_and_c_extern_refs() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.fn_gen_items = [FlatFnGenItem{
+		c_name: 'main__run'
+	}]
+	g.c_extern_refs['puts'] = true
+	g.c_extern_refs_ready = true
+
+	w := g.new_parallel_worker(1)
+	assert w.fn_gen_items.len == 1
+	assert w.fn_gen_items[0].c_name == 'main__run'
+	assert w.c_extern_refs == {
+		'puts': true
+	}
+	assert w.c_extern_refs_ready
+}
+
 fn test_parallel_checker_clone_preserves_sparse_transform_caches() {
 	g, mut tc := parallel_worker_test_gen(false)
 	tc.a.nodes = [flat.Node{

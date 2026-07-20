@@ -64,6 +64,16 @@ pub:
 	helper_module string
 }
 
+// MonomorphCacheSpec identifies one concrete generic function body. Dependency
+// specialization caches use it to restore signatures without cloning unchanged
+// module templates into the program AST.
+pub struct MonomorphCacheSpec {
+pub:
+	decl_key string
+	module   string
+	args     []string
+}
+
 // SmartcastContext stores smartcast context state used by transform.
 pub struct SmartcastContext {
 pub:
@@ -221,6 +231,7 @@ mut:
 	generic_specialization_args_parent &map[string][]string = unsafe { nil }
 	generic_fn_specs_in_progress       map[string]bool
 	generic_fn_spec_nodes              map[string]flat.NodeId
+	monomorph_cache_specs              map[string]MonomorphCacheSpec
 	generic_clone_children             []flat.NodeId
 	defer_nested_generic_emissions     bool
 	parallel_monomorphize              bool
@@ -450,6 +461,43 @@ pub fn transform_with_used_opt_config_scoped_workers_checked(mut a flat.FlatAst,
 pub fn transform_with_used_opt_config_scoped_workers_checked_owned(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
 	return transform_with_used_opt_config_scoped_workers_checked_impl(mut a, tc, used_fns,
 		want_parallel, skip_generics, scope_parallel_workers, true, stage_scope)
+}
+
+// transform_selected_functions lowers only the named function bodies after the
+// incremental driver has proved that declarations and every other body are
+// unchanged. Whole-program interface and comptime scans remain lazy: lowering a
+// selected body still triggers them if that body actually needs the metadata.
+pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, selected map[string]bool) (map[string]bool, []string) {
+	mut t := new_transformer(mut a, tc, selected)
+	t.skip_generics = true
+	t.prepare()
+	t.transformed_fns = []bool{len: t.a.nodes.len}
+	for i in 0 .. t.a.nodes.len {
+		node := t.a.nodes[i]
+		if node.kind == .file {
+			t.cur_file = node.value
+			t.cur_module = t.tc.file_modules[node.value] or { '' }
+			continue
+		}
+		if node.kind == .module_decl {
+			t.cur_module = node.value
+			continue
+		}
+		if node.kind != .fn_decl {
+			continue
+		}
+		qname := if t.cur_module in ['', 'main', 'builtin'] {
+			node.value
+		} else {
+			'${t.cur_module}.${node.value}'
+		}
+		if !selected[qname] && !selected[node.value] {
+			continue
+		}
+		t.transform_fn_body(i)
+	}
+	t.apply_ignored_comptime_for_nodes()
+	return t.used_fns, t.monomorph_errors
 }
 
 fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, retain_worker_results bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
@@ -713,6 +761,16 @@ pub fn monomorphize_with_used_checked_config(mut a flat.FlatAst, tc &types.TypeC
 // state in `stage_scope` while promoting escaping AST payloads directly to its
 // parent arena.
 pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr) (map[string]bool, []string) {
+	result, errors, _ := monomorphize_with_used_checked_config_scoped_cached(mut a, tc, used_fns,
+		parallel, stage_scope, []MonomorphCacheSpec{})
+	return result, errors
+}
+
+// monomorphize_with_used_checked_config_scoped_cached restores concrete generic
+// signatures from `cached_specs` and returns the complete specialization set.
+// A restored signature rewrites current program calls normally, while its
+// unchanged dependency body can remain in the persistent compiled prefix.
+pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr, cached_specs []MonomorphCacheSpec) (map[string]bool, []string, []MonomorphCacheSpec) {
 	debug_started := time.ticks()
 	mut augmented_used_fns := used_fns.clone()
 	mut t := new_transformer(mut a, tc, augmented_used_fns)
@@ -723,6 +781,7 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 		t.scope_parallel_workers = true
 	}
 	t.prepare()
+	t.seed_cached_monomorph_specs(cached_specs)
 	t.monomorph_profile('mono wrapper prepare: ${time.ticks() - debug_started} ms')
 	base_node_count := t.a.nodes.len
 	generated_names := t.monomorphize_pass()
@@ -766,7 +825,18 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 		}
 		transform_stage_scope_resume(stage_scope, parent_state)
 	}
-	return t.used_fns, t.monomorph_errors
+	return t.used_fns, t.monomorph_errors, t.sorted_monomorph_cache_specs()
+}
+
+// register_cached_monomorph_signatures installs persistent concrete signatures
+// before the disposable monomorphization arena is entered.
+pub fn register_cached_monomorph_signatures(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, cached_specs []MonomorphCacheSpec) {
+	if cached_specs.len == 0 {
+		return
+	}
+	mut t := new_transformer_view(a, tc, used_fns)
+	t.prepare()
+	t.seed_cached_monomorph_specs(cached_specs)
 }
 
 fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) Transformer {
@@ -801,6 +871,7 @@ fn new_transformer_view(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[str
 		generic_specialization_args:      map[string][]string{}
 		generic_fn_specs_in_progress:     map[string]bool{}
 		generic_fn_spec_nodes:            map[string]flat.NodeId{}
+		monomorph_cache_specs:            map[string]MonomorphCacheSpec{}
 		pending_generic_fn_spec_keys:     map[string]bool{}
 		generic_receiver_methods_by_name: map[string][]string{}
 		generic_call_spec_cache:          map[int]GenericCallSpec{}
@@ -16500,7 +16571,7 @@ fn (mut t Transformer) lower_one_match(node flat.Node) flat.NodeId {
 	mut match_prelude := []flat.NodeId{}
 
 	if needs_temp {
-		tmp_name := '__match_tmp_${int(match_expr_id)}'
+		tmp_name := t.new_temp('match_tmp')
 		mut match_type := t.node_type(match_expr_id)
 		outer_pending := t.pending_stmts.clone()
 		t.pending_stmts.clear()
@@ -16650,7 +16721,7 @@ fn (mut t Transformer) build_match_value_stmts(node flat.Node, target_name strin
 	mut actual_expr_id := match_expr_id
 	mut result := []flat.NodeId{}
 	if needs_temp {
-		tmp_name := '__match_tmp_${int(match_expr_id)}'
+		tmp_name := t.new_temp('match_tmp')
 		mut match_type := t.node_type(match_expr_id)
 		transformed_match_expr := if match_expr.kind == .or_expr
 			&& t.is_optional_type_name(match_type) {
