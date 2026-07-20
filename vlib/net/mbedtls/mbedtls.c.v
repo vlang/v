@@ -246,6 +246,39 @@ fn C.mbedtls_x509_crt_verify(&C.mbedtls_x509_crt, &C.mbedtls_x509_crt, &C.mbedtl
 
 fn C.mbedtls_pk_verify(&C.mbedtls_pk_context, i32, &u8, usize, &u8, usize) i32
 
+// mbedtls_pk_rsassa_pss_options mirrors mbedTLS's own struct (pk.h)
+// field-for-field rather than being kept opaque like mbedtls_x509_crt/
+// mbedtls_pk_context elsewhere in this file: unlike those, it has no
+// MBEDTLS_PRIVATE-wrapped fields and no internal invariants beyond "two
+// plain ints" -- safe to hand-replicate, unlike the cases this module
+// deliberately keeps behind C shims instead (see mbedtls_helpers.h).
+pub struct C.mbedtls_pk_rsassa_pss_options {
+mut:
+	mgf1_hash_id      int
+	expected_salt_len int
+}
+
+// mbedtls_pk_verify_ext verifies a signature with an explicit signature
+// type (inc. RSASSA-PSS) and optional type-specific options -- see
+// x509_standalone.v's verify_ecdsa_signature/verify_rsa_pss_signature for
+// the two call shapes this codebase actually uses.
+fn C.mbedtls_pk_verify_ext(i32, voidptr, &C.mbedtls_pk_context, i32, &u8, usize, &u8, usize) i32
+
+// mbedtls_pk_sign_ext is not called by any production code yet -- v1 is
+// client-only and never sends a client CertificateVerify (CertificateRequest
+// is rejected outright, see tls13_certificate.v). Bound now, alongside
+// verify_ext, because Phase 13's server role will eventually need it for the
+// server's own CertificateVerify signing, and because
+// x509_standalone_chain_test.v's round-trip test needs genuine RSA-PSS
+// signatures to validate verify_rsa_pss_signature against real cryptography,
+// not just reasoning about C-binding parameter marshaling.
+fn C.mbedtls_pk_sign_ext(i32, &C.mbedtls_pk_context, i32, &u8, usize, &u8, usize, &usize, fn (voidptr, &u8, usize) int, voidptr) i32
+
+// v_mbedtls_x509_crt_get_pk extracts the public-key context embedded in a
+// parsed certificate -- see mbedtls_helpers.h for why this needs a C shim
+// rather than direct field access from V.
+fn C.v_mbedtls_x509_crt_get_pk(&C.mbedtls_x509_crt) &C.mbedtls_pk_context
+
 fn C.mbedtls_high_level_strerr(i32) &char
 
 fn C.mbedtls_debug_set_threshold(level i32)

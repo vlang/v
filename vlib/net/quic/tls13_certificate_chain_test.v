@@ -83,3 +83,108 @@ fn test_verified_certificate_chain_free_is_idempotent() {
 	vcc.free()
 	vcc.free() // must not double-free
 }
+
+// test_verify_certificate_verify_signature_rejects_use_after_free is a
+// regression test for a /vreview finding: calling
+// verify_certificate_verify_signature on an already-freed
+// VerifiedCertificateChain used to be undefined behavior, not a clean
+// error. free() nulls c.chain; mbedtls.get_leaf_public_key's C shim then
+// computes `&crt->pk` (pointer arithmetic on a NULL crt), handing back a
+// small near-zero, non-null "pointer" that only actually crashes once
+// something dereferences it (confirmed by a standalone Phase-R probe:
+// mbedtls_pk_verify_ext reading `ctx->pk_info` through that pointer
+// segfaults reliably, address 0xa8 -- the pk field's offset in
+// mbedtls_x509_crt). The guard added alongside this test checks
+// `c.chain == unsafe { nil }` before ever reaching get_leaf_public_key.
+fn test_verify_certificate_verify_signature_rejects_use_after_free() {
+	der := chain_test_pem_to_der(chain_test_cert_pem)
+	real_chain := mbedtls.build_certificate_chain([der])!
+	mut vcc := &VerifiedCertificateChain{
+		chain: real_chain
+	}
+	vcc.free()
+
+	cv := ParsedCertificateVerify{
+		algorithm: sig_scheme_rsa_pss_rsae_sha256
+		signature: []u8{len: 8, init: 0x11}
+	}
+	vcc.verify_certificate_verify_signature(cv, .server, []u8{len: 32, init: 0xcd}) or {
+		assert err.msg().contains('freed VerifiedCertificateChain')
+		return
+	}
+	assert false, 'expected use-after-free to be rejected cleanly, not crash or silently proceed'
+}
+
+// test_verify_certificate_verify_signature_rejects_garbage exercises
+// verify_certificate_verify_signature's dispatch (algorithm ->
+// digest -> net.mbedtls call) and signed-content construction end to end,
+// for all four algorithms parse_certificate_verify can ever hand it. A
+// genuine POSITIVE case (a real signature that verifies) is deliberately
+// not attempted here: net.mbedtls's own
+// x509_standalone_signature_test.v already proves
+// verify_rsa_pss_signature/verify_ecdsa_signature work correctly against
+// real cryptography (a genuine RSA-PSS sign+verify round trip using this
+// same test certificate's matching private key), and reproducing that
+// round trip at this layer would need to reach into net.mbedtls's
+// RNG/key-parsing internals that are deliberately private to that module
+// (this codebase's own convention: net.quic only ever calls net.mbedtls's
+// pub API, never raw C.mbedtls_* symbols directly -- see
+// tls13_certificate_chain.v's free()/verify_server_certificate_chain,
+// neither of which touches a C.mbedtls_* symbol itself). What IS new and
+// worth testing at this layer is the DISPATCH and the
+// certificate_verify_signed_content construction that feeds it, which this
+// test exercises via the reject path for all four schemes.
+fn test_verify_certificate_verify_signature_rejects_garbage() {
+	der := chain_test_pem_to_der(chain_test_cert_pem)
+	// Built directly (not via verify_server_certificate_chain), same as
+	// test_verified_certificate_chain_free_is_idempotent above: this cert
+	// isn't a CA, so the trust-validating constructor always fails for it,
+	// and trust validation is orthogonal to what this test exercises
+	// (signature verification against the leaf key).
+	real_chain := mbedtls.build_certificate_chain([der])!
+	mut vcc := &VerifiedCertificateChain{
+		chain: real_chain
+	}
+	defer {
+		vcc.free()
+	}
+
+	transcript_hash := []u8{len: 32, init: 0xab}
+	garbage_signature := []u8{len: 64, init: 0x42}
+
+	for algorithm in [sig_scheme_ecdsa_secp256r1_sha256, sig_scheme_rsa_pss_rsae_sha256,
+		sig_scheme_rsa_pss_rsae_sha384, sig_scheme_rsa_pss_rsae_sha512] {
+		cv := ParsedCertificateVerify{
+			algorithm: algorithm
+			signature: garbage_signature
+		}
+		vcc.verify_certificate_verify_signature(cv, .server, transcript_hash) or { continue }
+		assert false, 'expected a garbage signature to be rejected for algorithm 0x${algorithm:04x}'
+	}
+}
+
+// test_verify_certificate_verify_signature_rejects_unknown_algorithm covers
+// the match's `else` arm -- unreachable via parse_certificate_verify's own
+// validation in real use, but ParsedCertificateVerify is a public struct
+// nothing stops a test (or a future caller who skips parse_certificate_verify)
+// from constructing directly with an out-of-range algorithm.
+fn test_verify_certificate_verify_signature_rejects_unknown_algorithm() {
+	der := chain_test_pem_to_der(chain_test_cert_pem)
+	real_chain := mbedtls.build_certificate_chain([der])!
+	mut vcc := &VerifiedCertificateChain{
+		chain: real_chain
+	}
+	defer {
+		vcc.free()
+	}
+
+	cv := ParsedCertificateVerify{
+		algorithm: 0x9999
+		signature: []u8{len: 8, init: 0x11}
+	}
+	vcc.verify_certificate_verify_signature(cv, .server, []u8{len: 32, init: 0xcd}) or {
+		assert err.msg().contains('no signature-verification dispatch')
+		return
+	}
+	assert false, 'expected an unrecognized algorithm to be rejected'
+}

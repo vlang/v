@@ -250,16 +250,51 @@ The largest, highest-risk phase. Sub-phases, in build order:
         correctly enforce RFC 8446 §4.2.3's `rsa_pss_rsae_*` requirement
         ("salt length MUST be equal to the length of the output of the
         digest algorithm"). No fallback to the `rsa_pss` module needed.
-        **Not yet built**: the `mbedtls_pk_verify_ext` CertificateVerify
-        signature verification itself (needs a small C shim —
-        `v_mbedtls_x509_crt_get_pk`-style, following the established
-        `mbedtls_helpers.h` pattern — to safely extract the leaf
+  - [x] `mbedtls_pk_verify_ext` CertificateVerify signature verification.
+        New `v_mbedtls_x509_crt_get_pk` C shim (`mbedtls_helpers.h`,
+        following the established pattern) safely extracts the leaf
         certificate's embedded public key without hand-replicating
-        mbedTLS's `MBEDTLS_PRIVATE`-wrapped struct layout), and
-        `CertificateRequest` rejection (no client-cert auth in v1) — both
-        belong with the state machine below, since both are about
-        *reacting* to a message type, not parsing/validating one we've
-        already decided to accept.
+        mbedTLS's struct layout — `mbedtls_x509_crt.pk` isn't
+        `MBEDTLS_PRIVATE`-wrapped, but the surrounding struct is still kept
+        opaque on the V side, so the shim is the one place that touches the
+        real field, resolved by the real C compiler. `net.mbedtls`
+        (`x509_standalone.v`) gained `get_leaf_public_key`/
+        `verify_ecdsa_signature`/`verify_rsa_pss_signature`; `net.quic`
+        (`tls13_certificate_chain.v`) gained
+        `VerifiedCertificateChain.verify_certificate_verify_signature`,
+        dispatching `ParsedCertificateVerify.algorithm` to the matching
+        digest (SHA-256/384/512) and mbedTLS call, feeding
+        `certificate_verify_signed_content`'s already-tested RFC 8446
+        §4.4.3 construction. `mbedtls_pk_rsassa_pss_options` is hand-
+        replicated (not a C shim) — confirmed via generated-C inspection
+        that V emits it as a designated initializer (`.field = value`),
+        so the real vendored struct layout resolves it, not a V-side
+        guess. RSA-PSS salt length is pinned to the exact digest length
+        (not `MBEDTLS_RSA_SALT_LEN_ANY`) per RFC 8446 §4.2.3; confirmed via
+        `rsa.c` source read that the check is real (not a PSA-crypto no-op,
+        `MBEDTLS_USE_PSA_CRYPTO` is disabled in this build) and matches
+        mbedTLS's own `ssl_tls13_generic.c` TLS 1.3 code doing the
+        identical thing. Tested with a **genuine RSA-PSS sign+verify round
+        trip** (`net.mbedtls/x509_standalone_signature_test.v`) using this
+        codebase's existing self-signed test cert's matching private key —
+        real cryptography, not reasoning about C-binding correctness — for
+        all three hash sizes, plus corrupted-signature and wrong-message
+        rejection. No EC private key exists anywhere in this repo, so the
+        ECDSA path is tested only via rejecting an incompatible (RSA-typed)
+        key, documented as an honest coverage gap rather than skipped
+        silently. `/vreview` caught and fixed one real bug: calling
+        `verify_certificate_verify_signature` on an already-`free()`d chain
+        dereferenced a garbage near-null pointer (UB) rather than erroring
+        cleanly — `free()` nulls the chain pointer, and the C shim's
+        pointer arithmetic on a null `crt` produces a small non-null
+        "pointer" that only crashes once something reads through it.
+        Phase-R confirmed this is a real, reliable segfault (not
+        theoretical) via an isolated throwaway probe before applying the
+        fix. Fixed with an explicit nil guard + a permanent regression
+        test. `CertificateRequest` rejection (no client-cert auth in v1)
+        remains deferred to the state machine below, since it's about
+        *reacting* to a message type, not verifying one we've already
+        decided to accept.
   - [ ] Client state machine (`tls13_handshake.v`) wiring the above together
         with transcript accumulation, including second-HelloRetryRequest
         rejection and the TLS-alert-to-QUIC-CONNECTION_CLOSE mapping

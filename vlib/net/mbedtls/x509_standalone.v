@@ -74,6 +74,85 @@ pub fn free_certificate_chain(chain &C.mbedtls_x509_crt) {
 	C.mbedtls_x509_crt_free(chain)
 }
 
+// MbedtlsMdType names the subset of mbedtls_md_type_t (md.h) this module's
+// signature-verification functions accept, as the exact enum values mbedTLS
+// itself defines (confirmed against the vendored header, not assumed) --
+// TLS 1.3's three mandatory-to-implement hash algorithms for
+// CertificateVerify (RFC 8446 §4.2.3: ecdsa_secp256r1_sha256 and the three
+// rsa_pss_rsae_* schemes) and nothing else, since nothing else is used
+// anywhere in this codebase yet.
+pub enum MbedtlsMdType {
+	sha256 = 0x09
+	sha384 = 0x0a
+	sha512 = 0x0b
+}
+
+// mbedtls_pk_type_t values (pk.h) needed to select mbedtls_pk_verify_ext's
+// signature-scheme dispatch. Not the full enum -- only these two are ever
+// used here (mbedtls_pk_verify_ext independently determines RSA-vs-EC
+// compatibility from the key itself via mbedtls_pk_can_do; these values only
+// pick which SIGNATURE ALGORITHM to check the key against).
+const pk_type_ecdsa = i32(4)
+const pk_type_rsassa_pss = i32(6)
+
+// get_leaf_public_key returns the public key of `chain`'s HEAD certificate
+// -- the "leaf"/end-entity certificate. build_certificate_chain always
+// parses the sender's own certificate first (RFC 8446 §4.4.2's own wire
+// order: "The sender's certificate MUST come in the first CertificateEntry
+// in the list"), and mbedtls_x509_crt_parse's chain-append walks forward
+// from that head node to link subsequent certificates -- so `chain` itself,
+// unwalked, already points at the leaf. The returned pointer's lifetime is
+// tied to `chain`: do not call this after free_certificate_chain.
+pub fn get_leaf_public_key(chain &C.mbedtls_x509_crt) &C.mbedtls_pk_context {
+	return C.v_mbedtls_x509_crt_get_pk(chain)
+}
+
+// verify_ecdsa_signature checks an ECDSA signature over `hash` -- a digest
+// the CALLER has already computed using the algorithm `md_alg` names; this
+// function does not hash `hash` itself. `pk` may be an MBEDTLS_PK_ECKEY
+// context (the type produced by parsing an EC certificate, not specifically
+// MBEDTLS_PK_ECDSA) -- confirmed against pk_wrap.c's eckey_can_do(), which
+// explicitly accepts MBEDTLS_PK_ECDSA verification requests against an
+// MBEDTLS_PK_ECKEY-typed key, not assumed from the type names alone.
+pub fn verify_ecdsa_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, hash []u8, signature []u8) ! {
+	ret := C.mbedtls_pk_verify_ext(pk_type_ecdsa, unsafe { nil }, pk, i32(md_alg), hash.data,
+		usize(hash.len), signature.data, usize(signature.len))
+	if ret != 0 {
+		return error_with_code('net.mbedtls: ECDSA signature verification failed, mbedtls ret: ${ret}',
+			ret)
+	}
+}
+
+// verify_rsa_pss_signature checks an RSASSA-PSS signature the same way,
+// with the salt length pinned to exactly `hash.len` (not
+// MBEDTLS_RSA_SALT_LEN_ANY) -- RFC 8446 §4.2.3 mandates this for TLS 1.3's
+// rsa_pss_rsae_* schemes ("the length of the Salt MUST equal the length of
+// the digest algorithm"), and this vendored build enforces it rather than
+// silently ignoring it: MBEDTLS_USE_PSA_CRYPTO is disabled (confirmed in
+// mbedtls_config.h, not assumed), so mbedtls_pk_verify_ext's documented
+// "salt length not verified under PSA crypto" caveat does not apply here.
+// The check itself is real, not a no-op: rsa.c's rsa_rsassa_pss_verify_ext
+// rejects a mismatch outright ("if (expected_salt_len !=
+// MBEDTLS_RSA_SALT_LEN_ANY && observed_salt_len != (size_t)
+// expected_salt_len) { ... fail }") whenever a specific length (not
+// MBEDTLS_RSA_SALT_LEN_ANY) is supplied -- confirmed by reading rsa.c, not
+// assumed from the header comment alone. mbedTLS's own TLS 1.3
+// implementation sets expected_salt_len the identical way for the identical
+// reason (ssl_tls13_generic.c: `rsassa_pss_options.expected_salt_len =
+// PSA_HASH_LENGTH(hash_alg)`), so this isn't a novel usage pattern.
+pub fn verify_rsa_pss_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, hash []u8, signature []u8) ! {
+	mut opts := C.mbedtls_pk_rsassa_pss_options{
+		mgf1_hash_id:      int(md_alg)
+		expected_salt_len: hash.len
+	}
+	ret := C.mbedtls_pk_verify_ext(pk_type_rsassa_pss, &opts, pk, i32(md_alg), hash.data,
+		usize(hash.len), signature.data, usize(signature.len))
+	if ret != 0 {
+		return error_with_code('net.mbedtls: RSA-PSS signature verification failed, mbedtls ret: ${ret}',
+			ret)
+	}
+}
+
 // verify_certificate_chain validates `chain` (from build_certificate_chain)
 // against `ca_bundle_pem`, one or more trusted CA certificates concatenated
 // in PEM format. This mirrors SSLConnectConfig.verify's existing contract
