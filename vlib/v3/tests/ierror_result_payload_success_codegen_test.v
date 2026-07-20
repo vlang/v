@@ -85,6 +85,22 @@ fn make_err() IError {
 	return error('boom')
 }
 
+fn no_ierror() ?IError {
+	return none
+}
+
+fn fallback_ierror() !IError {
+	return no_ierror() or {
+		MyErr{
+			label: 'fallback-ierror'
+		}
+	}
+}
+
+fn fail_ierror_payload() !IError {
+	return error('payload-error')
+}
+
 fn fail_interface() !int {
 	return make_err()
 }
@@ -121,6 +137,16 @@ fn main() {
 	}
 	println('IERR_DEFER_OK:' + j.msg())
 
+	k := fallback_ierror() or {
+		println('IERR_FALLBACK_ERR:' + err.msg())
+		return
+	}
+	println('IERR_FALLBACK_OK:' + k.msg())
+
+	fail_ierror_payload() or {
+		println('IERR_PAYLOAD_FAILURE:' + err.msg())
+	}
+
 	fail() or {
 		println('ERR:' + err.msg() + ':' + err.code().str())
 	}
@@ -150,7 +176,7 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'OK:payload\nOK:payload-defer\nIERR_OK:payload-ierror\nIERR_DEFER_OK:payload-ierror-defer\nERR:real-error:7\nFIXED_ERR:fixed-error\nIERR:boom\nIERR_DEFER:boom'
+	assert run.output.trim_space() == 'OK:payload\nOK:payload-defer\nIERR_OK:payload-ierror\nIERR_DEFER_OK:payload-ierror-defer\nIERR_FALLBACK_OK:fallback-ierror\nIERR_PAYLOAD_FAILURE:payload-error\nERR:real-error:7\nFIXED_ERR:fixed-error\nIERR:boom\nIERR_DEFER:boom'
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	payload_ierror_body := c_fn_body(c_code, 'Optional_IError payload_ierror(void) {')

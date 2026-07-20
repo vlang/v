@@ -148,30 +148,73 @@ fn (mut t Transformer) return_values_from_ids(ids []flat.NodeId) []flat.NodeId {
 	return vals
 }
 
-// return_expr_is_err supports return expr is err handling for Transformer.
-fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
-	if int(id) < 0 {
+fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_type string) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
 		return false
 	}
 	node := t.a.nodes[int(id)]
-	if t.is_ierror_type(t.node_type(id)) || t.is_ierror_type(node.typ) {
-		return true
-	}
-	if !isnil(t.tc) {
-		if typ := t.tc.expr_type(id) {
-			if t.is_ierror_type(typ.name()) {
-				return true
-			}
-		}
-	}
-	if node.kind != .ident || node.value != 'err' {
+	actual_type := t.return_ierror_expr_type(id)
+	if actual_type.len == 0 {
 		return false
 	}
-	var_type := t.var_type('err')
-	if var_type.len > 0 {
-		return var_type == 'IError' || var_type.ends_with('.IError')
+	// Explicit error construction and the implicit `err` binding always denote
+	// failure. Other IError-compatible values can instead be successful payloads
+	// when the surrounding result expects their type (for example `!IError`).
+	if t.is_error_call(node) || (node.kind == .ident && node.value == 'err') {
+		return true
 	}
-	return false
+	if payload_type.len == 0 || payload_type == 'unknown' || payload_type.contains('unknown') {
+		return true
+	}
+	return !t.resolved_receiver_arg_compatible(id, actual_type, payload_type)
+}
+
+fn (t &Transformer) return_ierror_expr_type(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	primary_type := match node.kind {
+		.struct_init, .cast_expr, .as_expr {
+			node.value
+		}
+		.ident {
+			t.var_type(node.value)
+		}
+		.call {
+			t.get_call_return_type(id, node)
+		}
+		else {
+			''
+		}
+	}
+	if typ := t.return_ierror_type_candidate(primary_type) {
+		return typ
+	}
+	for typ in [node.typ, t.raw_checker_node_type(id), t.original_expr_type(id),
+		t.node_type(id)] {
+		if candidate := t.return_ierror_type_candidate(typ) {
+			return candidate
+		}
+	}
+	return ''
+}
+
+fn (t &Transformer) return_ierror_type_candidate(typ string) ?string {
+	if typ.len == 0 || typ == 'unknown' || typ.contains('unknown') {
+		return none
+	}
+	if t.is_ierror_type(typ) {
+		return typ
+	}
+	if !t.is_type_alias_name(t.trim_pointer_type(typ)) {
+		return none
+	}
+	resolved := t.alias_str_resolved_base_type(typ)
+	if resolved != typ && t.is_ierror_type(resolved) {
+		return resolved
+	}
+	return none
 }
 
 fn (mut t Transformer) try_return_direct_optional_expr(node flat.Node) ?[]flat.NodeId {

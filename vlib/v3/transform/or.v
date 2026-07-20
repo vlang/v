@@ -2065,7 +2065,8 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 				result << t.make_return(inner_id, t.cur_fn_ret_type)
 			} else if inner.kind == .none_expr && t.is_optional_type_name(t.cur_fn_ret_type) {
 				result << t.make_none_return_stmt()
-			} else if t.return_expr_is_err(inner_id) && t.is_optional_type_name(t.cur_fn_ret_type) {
+			} else if t.is_optional_type_name(t.cur_fn_ret_type)
+				&& t.return_expr_is_propagated_err(inner_id, target_type) {
 				result << t.make_none_return_stmt_with_err_expr(t.transform_expr(inner_id))
 			} else if t.node_type(inner_id) == 'void' && target_name.len == 0 {
 				expanded := t.transform_stmt(child_id)
