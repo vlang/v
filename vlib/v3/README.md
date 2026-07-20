@@ -95,6 +95,9 @@ interfaces were parsed by that build. Required compile-time bodies are embedded 
 interface, so a warm cached build parses `.v` files only from the input program's directory; the
 `.v` list makes an unexpected module-cache miss visible. After successfully populating module
 objects, a cold build prints a hint that unchanged modules will not be recompiled on the next run.
+Third-party C objects retain dependency manifests, so warm builds verify each unique source or
+header once without launching a dependency-scanner process per object. This work is reported as
+the separate `C object cache` benchmark stage before `cc`.
 
 ## Architecture
 

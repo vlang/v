@@ -114,17 +114,30 @@ mut:
 	requests                  int
 	direct_objects            int
 	content_key_hits          int
+	dependency_manifest_hits  int
 	misses                    int
+	dependency_scans          int
 	dependency_files          int
+	dependency_file_reads     int
 	dependency_scan_fallbacks int
 	publish_races             int
 	input_snapshot_races      int
 	temporary_objects         []string
+	compiler_versions         map[string]string
+	file_signatures           map[string]string
 }
 
 struct CObjectDependencies {
 	files         []string
 	used_fallback bool
+}
+
+struct CLinkPlan {
+mut:
+	flags            []string
+	requests         int
+	direct_objects   int
+	dependency_files int
 }
 
 fn cpp_runtime_link_flag(target pref.Target) string {
@@ -133,6 +146,22 @@ fn cpp_runtime_link_flag(target pref.Target) string {
 
 fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, c_compiler string, uncached_dir string, mut stats CObjectCacheStats) ![]string {
 	support_flags := c_object_compile_support_flags(flags)
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
+	os.mkdir_all(cache_dir)!
+	plan_path := c_link_plan_path(cache_dir, flags, c99, pic_flag, target_args, target, c_compiler, mut
+		stats)
+	// Tracing intentionally walks the object manifests so every requested
+	// object's cache decision remains visible.
+	if os.getenv('V3_CACHE_TRACE') == '' {
+		if plan := valid_c_link_plan(plan_path, mut stats) {
+			stats.requests = plan.requests
+			stats.direct_objects = plan.direct_objects
+			stats.content_key_hits = plan.requests - plan.direct_objects
+			stats.dependency_manifest_hits = plan.requests - plan.direct_objects
+			stats.dependency_files = plan.dependency_files
+			return plan.flags
+		}
+	}
 	mut prepared := []string{}
 	mut active_language := ''
 	mut i := 0
@@ -196,7 +225,105 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 			prepared << cpp_runtime
 		}
 	}
+	if stats.dependency_scan_fallbacks == 0 && stats.temporary_objects.len == 0 {
+		write_c_link_plan(plan_path, prepared, stats) or {}
+	}
 	return prepared
+}
+
+fn c_link_plan_path(cache_dir string, flags []string, c99 bool, pic_flag string, target_args []string, target pref.Target, compiler string, mut stats CObjectCacheStats) string {
+	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
+	mut hash := u64(1469598103934665603)
+	for identity in ['v3-c-link-plan-v1', os.getwd(), flags.join('\x00'),
+		c99.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version, target.os,
+		target.arch, target.abi, target.endian, target.pointer_bits.str(), target.object_format] {
+		hash = c_hash_bytes(hash, identity.bytes())
+		hash = c_hash_bytes(hash, [u8(0xff)])
+	}
+	return os.join_path(cache_dir, 'link_${hash.hex()}.manifest')
+}
+
+fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
+	content := os.read_file(plan_path) or { return none }
+	lines := content.split_into_lines()
+	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v1' {
+		return none
+	}
+	mut plan := CLinkPlan{}
+	mut objects := []string{}
+	mut complete := false
+	mut saw_requests := false
+	mut saw_direct_objects := false
+	mut saw_dependency_files := false
+	for line in lines[1..] {
+		if line.starts_with('requests=') {
+			plan.requests = line.all_after('requests=').int()
+			saw_requests = true
+		} else if line.starts_with('direct_objects=') {
+			plan.direct_objects = line.all_after('direct_objects=').int()
+			saw_direct_objects = true
+		} else if line.starts_with('dependency_files=') {
+			plan.dependency_files = line.all_after('dependency_files=').int()
+			saw_dependency_files = true
+		} else if line.starts_with('flag=') {
+			plan.flags << line.all_after('flag=')
+		} else if line.starts_with('object=') {
+			objects << line.all_after('object=')
+		} else if line.starts_with('dependency=') {
+			entry := line.all_after('dependency=')
+			tab := entry.last_index('\t') or { return none }
+			path := entry[..tab]
+			expected_signature := entry[tab + 1..]
+			if path.len == 0 || expected_signature.len == 0 {
+				return none
+			}
+			actual_signature := c_object_file_signature(path, false, mut stats)
+			if actual_signature.len == 0 || actual_signature != expected_signature {
+				return none
+			}
+		} else if line == 'complete=1' {
+			complete = true
+		} else {
+			return none
+		}
+	}
+	if !complete || !saw_requests || !saw_direct_objects || !saw_dependency_files
+		|| plan.requests < 0 || plan.direct_objects < 0 || plan.direct_objects > plan.requests
+		|| plan.dependency_files < 0 || objects.len != plan.requests {
+		return none
+	}
+	for object_path in objects {
+		if !os.is_file(object_path) {
+			return none
+		}
+	}
+	return plan
+}
+
+fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
+	mut out := strings.new_builder(256 + flags.len * 64 + stats.file_signatures.len * 96)
+	out.writeln('format=v3-c-link-plan-v1')
+	out.writeln('requests=${stats.requests}')
+	out.writeln('direct_objects=${stats.direct_objects}')
+	out.writeln('dependency_files=${stats.dependency_files}')
+	for flag in flags {
+		out.writeln('flag=${flag}')
+		if c_flag_is_object_file(flag.trim_space()) && os.is_file(flag.trim_space()) {
+			out.writeln('object=${flag.trim_space()}')
+		}
+	}
+	mut dependencies := stats.file_signatures.keys()
+	dependencies.sort()
+	for dependency in dependencies {
+		out.writeln('dependency=${dependency}\t${stats.file_signatures[dependency]}')
+	}
+	out.writeln('complete=1')
+	temp_path := '${plan_path}.tmp.${os.getpid()}.${rand.ulid()}'
+	defer {
+		os.rm(temp_path) or {}
+	}
+	os.write_file(temp_path, out.str())!
+	os.mv(temp_path, plan_path)!
 }
 
 fn append_c_link_object(mut flags []string, object_path string, active_language string) {
@@ -406,6 +533,11 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if language.len > 0 {
 		args << ['-x', language]
 	}
+	manifest_path := c_object_manifest_path(cache_dir, obj_path, compiler, args, target, mut stats)
+	if cached_obj := valid_c_object_manifest(manifest_path, mut stats) {
+		return cached_obj
+	}
+	stats.dependency_scans++
 	dependencies := c_object_dependencies(compiler, args, source_file)
 	stats.dependency_files += dependencies.files.len
 	if dependencies.used_fallback {
@@ -423,12 +555,14 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		stats.temporary_objects << uncached_obj
 		return uncached_obj
 	}
-	cache_key := c_object_cache_name(obj_path, compiler, args, dependencies.files, target)
+	cache_key := c_object_cache_name(obj_path, compiler, args, dependencies.files, target, false, mut
+		stats)
 	cached_obj := os.join_path(cache_dir, cache_key)
 	if os.exists(cached_obj) {
 		stats.content_key_hits++
 		trace_c_object_cache('hit', cache_key,
 			'compiler, target, argv, and dependency contents matched', dependencies.files.len)
+		write_c_object_manifest(manifest_path, cached_obj, dependencies.files, mut stats) or {}
 		return cached_obj
 	}
 	stats.misses++
@@ -448,7 +582,8 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	// the compiler was running, the object no longer corresponds to cache_key;
 	// publishing it would certify content it was not built from. Use it as a
 	// build-local, uncached object instead.
-	post_key := c_object_cache_name(obj_path, compiler, key_args, dependencies.files, target)
+	post_key := c_object_cache_name(obj_path, compiler, key_args, dependencies.files, target, true, mut
+		stats)
 	if post_key != cache_key {
 		stats.input_snapshot_races++
 		trace_c_object_cache('bypass', cache_key,
@@ -469,7 +604,103 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		}
 		stats.publish_races++
 	}
+	write_c_object_manifest(manifest_path, cached_obj, dependencies.files, mut stats) or {}
 	return cached_obj
+}
+
+fn c_object_manifest_path(cache_dir string, obj_path string, compiler string, compile_args []string, target pref.Target, mut stats CObjectCacheStats) string {
+	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
+	mut hash := u64(1469598103934665603)
+	for identity in ['v3-c-object-manifest-v1', os.real_path(obj_path), compiler_path,
+		compiler_version, target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
+		target.object_format, compile_args.join('\x00')] {
+		hash = c_hash_bytes(hash, identity.bytes())
+		hash = c_hash_bytes(hash, [u8(0xff)])
+	}
+	return os.join_path(cache_dir, 'request_${hash.hex()}.manifest')
+}
+
+fn valid_c_object_manifest(manifest_path string, mut stats CObjectCacheStats) ?string {
+	content := os.read_file(manifest_path) or { return none }
+	lines := content.split_into_lines()
+	if lines.len < 3 || lines[0] != 'format=v3-c-object-manifest-v1'
+		|| !lines[1].starts_with('object=') {
+		return none
+	}
+	object_path := lines[1].all_after('object=')
+	if !os.is_file(object_path) {
+		return none
+	}
+	mut dependency_count := 0
+	for line in lines[2..] {
+		if !line.starts_with('dependency=') {
+			return none
+		}
+		entry := line.all_after('dependency=')
+		tab := entry.last_index('\t') or { return none }
+		path := entry[..tab]
+		expected_signature := entry[tab + 1..]
+		if path.len == 0 || expected_signature.len == 0 {
+			return none
+		}
+		actual_signature := c_object_file_signature(path, false, mut stats)
+		if actual_signature.len == 0 || actual_signature != expected_signature {
+			return none
+		}
+		dependency_count++
+	}
+	if dependency_count == 0 {
+		return none
+	}
+	stats.dependency_manifest_hits++
+	stats.content_key_hits++
+	stats.dependency_files += dependency_count
+	trace_c_object_cache('hit', os.base(object_path),
+		'compiler, target, argv, and dependency contents matched via manifest', dependency_count)
+	return object_path
+}
+
+fn write_c_object_manifest(manifest_path string, object_path string, dependencies []string, mut stats CObjectCacheStats) ! {
+	mut out := strings.new_builder(128 + dependencies.len * 96)
+	out.writeln('format=v3-c-object-manifest-v1')
+	out.writeln('object=${object_path}')
+	for dependency in dependencies {
+		signature := c_object_file_signature(dependency, false, mut stats)
+		if signature.len == 0 {
+			return error('failed to sign C object dependency ${dependency}')
+		}
+		out.writeln('dependency=${dependency}\t${signature}')
+	}
+	temp_path := '${manifest_path}.tmp.${os.getpid()}.${rand.ulid()}'
+	defer {
+		os.rm(temp_path) or {}
+	}
+	os.write_file(temp_path, out.str())!
+	os.mv(temp_path, manifest_path)!
+}
+
+fn c_object_compiler_identity(compiler string, mut stats CObjectCacheStats) (string, string) {
+	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
+	if compiler_path in stats.compiler_versions {
+		return compiler_path, stats.compiler_versions[compiler_path]
+	}
+	version := cmdexec.run(compiler, ['--version']).output
+	stats.compiler_versions[compiler_path] = version
+	return compiler_path, version
+}
+
+fn c_object_file_signature(path string, refresh bool, mut stats CObjectCacheStats) string {
+	canonical := os.real_path(path)
+	if refresh {
+		stats.file_signatures.delete(canonical)
+	} else if canonical in stats.file_signatures {
+		return stats.file_signatures[canonical]
+	}
+	content := os.read_bytes(canonical) or { return '' }
+	signature := c_hash_bytes(u64(1469598103934665603), content).hex()
+	stats.file_signatures[canonical] = signature
+	stats.dependency_file_reads++
+	return signature
 }
 
 fn trace_c_object_cache(status string, key string, reason string, dependency_count int) {
@@ -545,10 +776,9 @@ fn c_source_from_object_file(obj_path string) ?string {
 	return none
 }
 
-fn c_object_cache_name(path string, compiler string, compile_args []string, dependencies []string, target pref.Target) string {
+fn c_object_cache_name(path string, compiler string, compile_args []string, dependencies []string, target pref.Target, refresh bool, mut stats CObjectCacheStats) string {
 	base := os.base(path).replace_each(['/', '_', '\\', '_', ':', '_', '.', '_', ' ', '_'])
-	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
-	compiler_version := cmdexec.run(compiler, ['--version']).output
+	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
 	for identity in [os.real_path(path), compiler_path, compiler_version, target.os, target.arch,
 		target.abi, target.endian, target.pointer_bits.str(), target.object_format, compile_args.join('\x00')] {
@@ -557,8 +787,8 @@ fn c_object_cache_name(path string, compiler string, compile_args []string, depe
 	for dependency in dependencies {
 		canonical := os.real_path(dependency)
 		hash = c_hash_bytes(hash, canonical.bytes())
-		content := os.read_bytes(canonical) or { []u8{} }
-		hash = c_hash_bytes(hash, content)
+		signature := c_object_file_signature(canonical, refresh, mut stats)
+		hash = c_hash_bytes(hash, signature.bytes())
 	}
 	return '${base}_${hash.hex()}.o'
 }
@@ -2398,6 +2628,7 @@ fn main() {
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
 		}
+		b.step('C object cache')
 		link_uses_non_c_language := c_link_flags_use_non_c_language(resolved_c_flags)
 		link_c_standard := if link_uses_non_c_language {
 			''
@@ -2581,8 +2812,11 @@ fn main() {
 	b.metric('C object cache requests', c_object_cache_stats.requests, 'objects')
 	b.metric('C object cache direct', c_object_cache_stats.direct_objects, 'objects')
 	b.metric('C object content-key hits', c_object_cache_stats.content_key_hits, 'objects')
+	b.metric('C object manifest hits', c_object_cache_stats.dependency_manifest_hits, 'objects')
 	b.metric('C object cache misses', c_object_cache_stats.misses, 'objects')
+	b.metric('C object dependency scans', c_object_cache_stats.dependency_scans, 'objects')
 	b.metric('C object dependency files', c_object_cache_stats.dependency_files, 'files')
+	b.metric('C object dependency reads', c_object_cache_stats.dependency_file_reads, 'files')
 	b.metric('C object dep-scan fallbacks', c_object_cache_stats.dependency_scan_fallbacks,
 		'objects')
 	b.metric('C object publish races', c_object_cache_stats.publish_races, 'objects')
