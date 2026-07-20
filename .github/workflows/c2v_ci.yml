@@ -113,9 +113,11 @@ jobs:
           v retry -- sudo apt install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
       - name: Setup test tools
         run: |
-          # Fetch the free ~4MB DOOM1.WAD from the link at https://doomwiki.org/wiki/DOOM1.WAD
-          v retry -- v download https://distro.ibiblio.org/slitaz/sources/packages/d/doom1.wad
-          mv doom1.wad ~/doom1.wad
+          # Fetch the free shareware DOOM1.WAD from NetBSD's pkgsrc distfile mirror
+          v retry -- v download https://cdn.NetBSD.org/pub/pkgsrc/distfiles/doom1-1.9/shareware_doom_iwad.zip
+          echo '9fe5a32a24efa622ff7017303d3c8fdc7b4e6c4ec548e50bea402bfa9a1f320ce3f316f4a7f62e64786af876776d51b20fc7688f497896aa176f97b85ada30f9  shareware_doom_iwad.zip' | sha512sum --check
+          unzip -p shareware_doom_iwad.zip DOOM1.WAD > ~/doom1.wad
+          rm shareware_doom_iwad.zip
           # Get imgur upload script
           v retry -- v download https://raw.githubusercontent.com/tremby/imgur.sh/c98345d/imgur.sh
           chmod +x ./imgur.sh
