@@ -2793,8 +2793,10 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	t.active_generic_params = old_params
 	t.active_specialization_args = old_specialization_args
 	t.active_specialization_main_types = old_specialization_main_types.move()
-	t.transform_specialized_fn_body(clone_id, decl.module, decl.file, t.generic_fn_param_names(decl.node,
-		decl.module), concrete_args)
+	generic_params := t.generic_fn_param_names(decl.node, decl.module)
+	validate_return := t.generic_fn_return_depends_on_comptime_if(decl.node, generic_params)
+	t.transform_specialized_fn_body(clone_id, decl.module, decl.file, generic_params,
+		concrete_args, decl.node.value, validate_return)
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(clone_id, decl.module, decl.file)
 	t.cur_module = old_module
@@ -2806,7 +2808,7 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 	return clone_id
 }
 
-fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, module_name string, file_name string, params []string, args []string) {
+fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, module_name string, file_name string, params []string, args []string, source_name string, validate_return bool) {
 	if int(clone_id) < 0 || int(clone_id) >= t.a.nodes.len {
 		return
 	}
@@ -2835,6 +2837,9 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, modul
 	t.in_monomorphize_scan = false
 	t.validating_generic_spec = true
 	t.transform_fn_body(int(clone_id))
+	if validate_return {
+		t.validate_specialized_fn_return(clone_id, source_name)
+	}
 	t.in_monomorphize_scan = old_in_scan
 	t.validating_generic_spec = old_validating_specialization
 	t.cur_module = old_module
@@ -2849,6 +2854,36 @@ fn (mut t Transformer) transform_specialized_fn_body(clone_id flat.NodeId, modul
 	t.active_generic_params = old_generic_params
 	t.active_specialization_args = old_specialization_args
 	t.active_specialization_main_types = old_specialization_main_types.clone()
+}
+
+fn (t &Transformer) generic_fn_return_depends_on_comptime_if(node flat.Node, params []string) bool {
+	for i := int(node.children_count) - 1; i >= 0; i-- {
+		child := t.a.child_node(&node, i)
+		if child.kind == .param {
+			continue
+		}
+		return child.kind == .comptime_if && generic_text_contains_param(child.value, params)
+	}
+	return false
+}
+
+fn (mut t Transformer) validate_specialized_fn_return(clone_id flat.NodeId, source_name string) {
+	if isnil(t.tc) || int(clone_id) < 0 || int(clone_id) >= t.a.nodes.len {
+		return
+	}
+	ret := t.tc.parse_type(t.cur_fn_ret_type)
+	if ret is types.Void {
+		return
+	}
+	if ret is types.OptionType && ret.base_type is types.Void {
+		return
+	}
+	if ret is types.ResultType && ret.base_type is types.Void {
+		return
+	}
+	if !t.tc.fn_body_definitely_returns(t.a.nodes[int(clone_id)]) {
+		t.record_monomorph_error('missing return at end of function `${source_name}`; expected `${ret.name()}`')
+	}
 }
 
 fn (mut t Transformer) generated_fn_used_names(decl GenericFnDecl, clone_id flat.NodeId, args []string) []string {

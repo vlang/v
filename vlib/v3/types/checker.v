@@ -5682,7 +5682,7 @@ fn (mut tc TypeChecker) check_const_field_values(node flat.Node) {
 }
 
 // fn_body_definitely_returns supports fn body definitely returns handling for TypeChecker.
-fn (tc &TypeChecker) fn_body_definitely_returns(node flat.Node) bool {
+pub fn (tc &TypeChecker) fn_body_definitely_returns(node flat.Node) bool {
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
 		child := tc.a.child_node(&node, i)

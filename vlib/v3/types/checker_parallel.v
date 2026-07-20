@@ -523,6 +523,8 @@ fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_
 		|| !comptime_condition_references_generic_param(node.value, generic_params) {
 		return false
 	}
+	// A returning branch only makes completeness specialization-dependent. The
+	// monomorphizer rechecks the selected, pruned branch before emitting it.
 	for i in 0 .. node.children_count {
 		if tc.generic_comptime_branch_terminates(tc.a.child(&node, i)) {
 			return true
