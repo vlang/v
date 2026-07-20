@@ -314,6 +314,9 @@ fn test_generic_functions_report_missing_return() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {}\n',
 		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_called_generic_missing_return',
+		'fn f[T]() int {\n}\nfn main() {\n\t_ := f[int]()\n}\n',
+		'missing return at end of function `f`')
 }
 
 fn test_no_return_calls_satisfy_return_analysis() {

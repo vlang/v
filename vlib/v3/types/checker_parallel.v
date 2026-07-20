@@ -463,9 +463,12 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	}
 	tc.fn_context.node_id = -1
 	is_disabled_stub := node.value in tc.a.disabled_fns
-	// Return completeness for an open generic depends on the specialized body:
-	// comptime branches and propagated generic results can remove fallthrough.
+	// A terminal propagation whose payload still contains a generic placeholder
+	// and return control flow guarded by a generic `$if` are lowered against the
+	// concrete specialization. Keep those narrow deferrals without suppressing
+	// ordinary generic fallthrough.
 	has_deferred_generic_return := generic_params.len > 0
+		&& tc.fn_has_deferred_generic_return(node, generic_params)
 	if tc.fn_context.return_type !is Unknown
 		&& !type_allows_implicit_return(tc.fn_context.return_type)
 		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub && !has_deferred_generic_return
@@ -479,6 +482,109 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		tc.ownership_end_fn()
 	}
 	tc.fn_context = saved_fn_context
+}
+
+fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_params map[string]bool) bool {
+	mut last_stmt := flat.empty_node
+	for i := int(node.children_count) - 1; i >= 0; i-- {
+		child_id := tc.a.child(&node, i)
+		child := tc.a.nodes[int(child_id)]
+		if child.kind == .param {
+			continue
+		}
+		last_stmt = child_id
+		break
+	}
+	if last_stmt == flat.empty_node {
+		return false
+	}
+	if tc.stmt_is_generic_comptime_return(last_stmt, generic_params) {
+		return true
+	}
+	mode := if tc.fn_context.return_type is ResultType {
+		'!'
+	} else if tc.fn_context.return_type is OptionType {
+		'?'
+	} else {
+		return false
+	}
+	if !type_contains_unknown(tc.fn_context.return_type) {
+		return false
+	}
+	return tc.stmt_is_terminal_propagation(last_stmt, mode)
+}
+
+fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_params map[string]bool) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind != .comptime_if
+		|| !comptime_condition_references_generic_param(node.value, generic_params) {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if tc.generic_comptime_branch_terminates(tc.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
+}
+
+fn (mut tc TypeChecker) generic_comptime_branch_terminates(id flat.NodeId) bool {
+	if tc.stmt_definitely_returns(id) {
+		return true
+	}
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.block, .comptime_if {
+			for i in 0 .. node.children_count {
+				if tc.generic_comptime_branch_terminates(tc.a.child(&node, i)) {
+					return true
+				}
+			}
+		}
+		.expr_stmt, .paren, .call {
+			return tc.expr_never_returns_resolving(id)
+		}
+		else {}
+	}
+	return false
+}
+
+fn comptime_condition_references_generic_param(cond string, generic_params map[string]bool) bool {
+	for param, _ in generic_params {
+		mut offset := 0
+		for offset + param.len <= cond.len {
+			if cond[offset..offset + param.len] == param {
+				before_ok := offset == 0 || !comptime_cond_name_char(cond[offset - 1])
+				after := offset + param.len
+				after_ok := after >= cond.len || !comptime_cond_name_char(cond[after])
+				if before_ok && after_ok {
+					return true
+				}
+			}
+			offset++
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) stmt_is_terminal_propagation(id flat.NodeId, mode string) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	if node.kind == .or_expr {
+		return node.value == mode
+	}
+	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
+		return tc.stmt_is_terminal_propagation(tc.a.child(&node, 0), mode)
+	}
+	return false
 }
 
 // prewarm_shared_type_cache forces the lazily-built type_cache indexes that
