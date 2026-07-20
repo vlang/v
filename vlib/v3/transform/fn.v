@@ -987,6 +987,9 @@ fn (t &Transformer) variadic_interface_single_array_should_box(arg_type string, 
 	if !arg_type.starts_with('[]') {
 		return false
 	}
+	if t.normalize_type_alias(arg_type) == t.normalize_type_alias(types.Type(variadic_type).name()) {
+		return false
+	}
 	elem_type := variadic_type.elem_type
 	if elem_type is types.Interface {
 		return true
