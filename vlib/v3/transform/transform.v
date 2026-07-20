@@ -354,9 +354,10 @@ struct StructFieldLookup {
 
 // VarTypeBinding represents var type binding data used by transform.
 struct VarTypeBinding {
-	name    string
-	typ     string
-	raw_typ string
+	name            string
+	typ             string
+	raw_typ         string
+	is_implicit_err bool
 }
 
 struct BoundMethodArrayInfo {
@@ -1272,7 +1273,20 @@ fn (mut t Transformer) set_var_type(name string, typ string) {
 	t.set_var_type_with_raw(name, typ, typ)
 }
 
+fn (mut t Transformer) set_implicit_err_var_type() {
+	t.set_var_type_binding('err', 'IError', 'IError', true)
+}
+
+fn (t &Transformer) implicit_err_binding_active() bool {
+	i := t.var_type_index('err')
+	return i >= 0 && t.var_types[i].is_implicit_err
+}
+
 fn (mut t Transformer) set_var_type_with_raw(name string, typ string, raw_typ string) {
+	t.set_var_type_binding(name, typ, raw_typ, false)
+}
+
+fn (mut t Transformer) set_var_type_binding(name string, typ string, raw_typ string, is_implicit_err bool) {
 	if name.len == 0 {
 		return
 	}
@@ -1281,17 +1295,19 @@ fn (mut t Transformer) set_var_type_with_raw(name string, typ string, raw_typ st
 	if i >= 0 {
 		t.var_type_indices[name] = i
 		t.var_types[i] = VarTypeBinding{
-			name:    name
-			typ:     typ
-			raw_typ: raw
+			name:            name
+			typ:             typ
+			raw_typ:         raw
+			is_implicit_err: is_implicit_err
 		}
 		return
 	}
 	t.var_type_indices[name] = t.var_types.len
 	t.var_types << VarTypeBinding{
-		name:    name
-		typ:     typ
-		raw_typ: raw
+		name:            name
+		typ:             typ
+		raw_typ:         raw
+		is_implicit_err: is_implicit_err
 	}
 }
 
@@ -10997,7 +11013,7 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			lhs := t.transform_expr(t.a.child(&node, 0))
 			value := t.transform_expr(t.a.child(&rhs, 0))
 			saved_var_types := t.var_types.clone()
-			t.set_var_type('err', 'IError')
+			t.set_implicit_err_var_type()
 			body := t.transform_expr(t.a.child(&rhs, 1))
 			t.restore_var_types(saved_var_types)
 			or_start := t.a.children.len

@@ -1348,7 +1348,7 @@ fn (mut t Transformer) preserve_or_expr_for_codegen(id flat.NodeId, node flat.No
 	}
 
 	saved_var_types := t.var_types.clone()
-	t.set_var_type('err', 'IError')
+	t.set_implicit_err_var_type()
 	new_body := t.transform_or_body_for_codegen(body_id)
 	t.restore_var_types(saved_var_types)
 
@@ -1797,7 +1797,7 @@ fn (mut t Transformer) lower_or_body_to_multi_return_stmts_with_err_expr(body_id
 	}
 	body := t.a.nodes[int(body_id)]
 	saved_var_types := t.var_types.clone()
-	t.set_var_type('err', 'IError')
+	t.set_implicit_err_var_type()
 	err_value := if int(err_expr) >= 0 {
 		err_expr
 	} else {
@@ -2040,7 +2040,7 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 	// `err := 1`) survives and a subsequent `${err}` is not mis-typed as `IError`.
 	// Mirrors transform_if_guard_else_block.
 	saved_var_types := t.var_types.clone()
-	t.set_var_type('err', 'IError')
+	t.set_implicit_err_var_type()
 	err_value := if int(err_expr) >= 0 {
 		err_expr
 	} else {

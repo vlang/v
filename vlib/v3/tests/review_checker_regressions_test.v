@@ -63,6 +63,9 @@ fn test_reject_result_values_in_option_returns() {
 	run_bad(v3_bin, 'bad_result_value_in_option_return',
 		'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n',
 		'cannot return `!int` as `?int`')
+	run_bad(v3_bin, 'bad_result_value_in_optional_pointer_return',
+		'struct Item {}\n\nfn convert(res !Item) ?&Item {\n\treturn res\n}\n\nfn main() {}\n',
+		'cannot return `!Item` as `?&Item`')
 }
 
 fn test_optional_parameters_are_required() {

@@ -235,7 +235,7 @@ fn (t &Transformer) optional_type_name_from_type(typ types.Type) ?string {
 // transform_if_guard_else_block transforms transform if guard else block data for transform.
 fn (mut t Transformer) transform_if_guard_else_block(else_id flat.NodeId, else_node flat.Node, err_source string) flat.NodeId {
 	saved_var_types := t.var_types.clone()
-	t.set_var_type('err', 'IError')
+	t.set_implicit_err_var_type()
 	mut children := []flat.NodeId{}
 	err_value := if err_source.len > 0 {
 		t.make_selector(t.make_ident(err_source), 'err', 'IError')
@@ -452,7 +452,7 @@ fn (mut t Transformer) if_expr_guard_result_type(node flat.Node) ?string {
 	then_type := t.stmt_value_type(t.a.child(&node, 1))
 	t.restore_var_types(saved_var_types)
 
-	t.set_var_type('err', 'IError')
+	t.set_implicit_err_var_type()
 	else_id := t.a.child(&node, 2)
 	else_node := t.a.nodes[int(else_id)]
 	else_type := if else_node.kind == .if_expr {
@@ -956,7 +956,7 @@ fn (mut t Transformer) build_if_value_guard_chain(if_node flat.Node, target_name
 	err_value := t.make_selector(t.make_ident(tmp_name), 'err', 'IError')
 	err_decl := t.make_decl_assign_typed('err', err_value, 'IError')
 	saved_else_var_types := t.var_types.clone()
-	t.set_var_type('err', 'IError')
+	t.set_implicit_err_var_type()
 	else_block0 := if else_node.kind == .if_expr {
 		t.make_block(t.build_if_value_chain(else_id, target_name, target_type))
 	} else {

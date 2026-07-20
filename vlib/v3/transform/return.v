@@ -157,10 +157,11 @@ fn (mut t Transformer) return_expr_is_propagated_err(id flat.NodeId, payload_typ
 	if actual_type.len == 0 {
 		return false
 	}
-	// Explicit error construction and the implicit `err` binding always denote
+	// Explicit error construction and the active implicit `err` binding denote
 	// failure. Other IError-compatible values can instead be successful payloads
 	// when the surrounding result expects their type (for example `!IError`).
-	if t.is_error_call(node) || (node.kind == .ident && node.value == 'err') {
+	if t.is_error_call(node)
+		|| (node.kind == .ident && node.value == 'err' && t.implicit_err_binding_active()) {
 		return true
 	}
 	if payload_type.len == 0 || payload_type == 'unknown' || payload_type.contains('unknown') {

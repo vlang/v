@@ -12369,6 +12369,9 @@ fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected 
 }
 
 fn (tc &TypeChecker) optional_pointer_expr_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+	if actual is ResultType && expected is OptionType {
+		return false
+	}
 	expected_base := match expected {
 		OptionType { expected.base_type }
 		ResultType { expected.base_type }
