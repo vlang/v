@@ -11,7 +11,6 @@ vlib/v/builder/gc_flags_test.v
 vlib/v/builder/icon_test.v
 vlib/v/builder/msvc_windows_test.v
 vlib/v/checker/pkgconfig_cross_compile_test.v
-vlib/v/embed_file/tests/embed_file_with_variable_arg_test.v
 vlib/v/fmt/fmt_bin2v_test.v
 vlib/v/fmt/fmt_keep_test.v
 vlib/v/fmt/fmt_new_int_test.v
@@ -22,12 +21,10 @@ vlib/v/gen/c/custom_start_freestanding_test.v
 vlib/v/gen/c/freestanding_i386_test.v
 vlib/v/gen/c/freestanding_size_t_test.v
 vlib/v/gen/wasm/features_test.v
-vlib/v/generics/new_generics_regression_test.v
 vlib/v/parser/check_cross_variables_regression_test.v
 vlib/v/parser/enum_comptime_test.v
 vlib/v/parser/parenthesized_propagated_index_or_block_test.v
 vlib/v/parser/v_parser_test.v
-vlib/v/scanner/scanner_test.v
 vlib/v/slow_tests/assembly/asm_empty_statement_test.v
 vlib/v/token/token_test.v
 vlib/v/util/check_dflags_test.v

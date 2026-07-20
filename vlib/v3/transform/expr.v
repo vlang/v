@@ -330,6 +330,9 @@ fn (mut t Transformer) transform_infix_map_ops(_id flat.NodeId, node flat.Node) 
 	rhs_id := t.a.children[node.children_start + 1]
 	lhs_type := t.map_comparison_expr_type(lhs_id)
 	rhs_type := t.map_comparison_expr_type(rhs_id)
+	if t.equality_type_is_map_pointer(lhs_type) && t.equality_type_is_map_pointer(rhs_type) {
+		return none
+	}
 	mut lhs_map_type := t.clean_map_type(lhs_type)
 	mut rhs_map_type := t.clean_map_type(rhs_type)
 	if !lhs_map_type.starts_with('map[') && rhs_map_type.starts_with('map[')
@@ -2339,7 +2342,10 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 			continue
 		}
 		field := t.sum_field_name(qv)
-		use_ptr := t.variant_references_sum(qv, clean_sum)
+		// Value variants are boxed in the sum payload and must be dereferenced
+		// before comparison. Pointer variants already are the payload value
+		// itself (`voidptr` is emitted as `void *`, not `void **`).
+		use_ptr := t.variant_references_sum(qv, clean_sum) && !t.sum_variant_is_direct_pointer(qv)
 		field_typ := if use_ptr { '&${qv}' } else { qv }
 		mut lhs_payload := t.make_selector_op(lhs_value, field, field_typ, .dot)
 		mut rhs_payload := t.make_selector_op(rhs_value, field, field_typ, .dot)
@@ -2392,6 +2398,11 @@ fn (mut t Transformer) build_sum_eq_helper_fn(clean_sum string) {
 	t.register_sum_eq_helper_signature(helper, clean_sum)
 }
 
+fn (t &Transformer) sum_variant_is_direct_pointer(variant string) bool {
+	clean := t.normalize_type_alias(variant).trim_space()
+	return clean.starts_with('&') || clean in ['voidptr', 'byteptr', 'charptr']
+}
+
 fn (mut t Transformer) register_sum_eq_helper_signature(helper string, clean_sum string) {
 	t.fn_ret_types[helper] = 'bool'
 	t.mark_fn_used_name(helper)
@@ -2437,8 +2448,15 @@ fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.
 	lhs_value_field := t.make_selector(lhs_value, 'value', lhs_value_type)
 	rhs_value_field := t.make_selector(rhs_value, 'value', rhs_field_type)
 	pending_start := t.pending_stmts.len
-	value_eq := t.make_membership_eq_expr_with_seen(lhs_value_field, rhs_value_field,
-		lhs_value_type, seen)
+	lhs_payload_type := t.normalize_type_alias(lhs_value_type)
+	rhs_payload_type := t.normalize_type_alias(rhs_field_type)
+	value_eq := if lhs_payload_type.starts_with('&') && rhs_payload_type.starts_with('&')
+		&& t.struct_lookup_name(lhs_payload_type[1..]).len > 0 {
+		t.make_optional_pointer_payload_eq_expr(lhs_value_field, rhs_value_field,
+			lhs_payload_type[1..], seen)
+	} else {
+		t.make_membership_eq_expr_with_seen(lhs_value_field, rhs_value_field, lhs_value_type, seen)
+	}
 	mut body_stmts := t.pending_stmts[pending_start..].clone()
 	t.pending_stmts = t.pending_stmts[..pending_start].clone()
 	if body_stmts.len == 0 {
@@ -2454,6 +2472,30 @@ fn (mut t Transformer) make_optional_semantic_eq_expr(lhs flat.NodeId, rhs flat.
 	body_stmts << t.make_if(t.make_prefix(.not, t.make_paren(value_eq)),
 		t.make_block(arr1(set_false)), t.make_empty())
 	t.pending_stmts << t.make_if(compare_values, t.make_block(body_stmts), t.make_empty())
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), 'bool')
+	return result
+}
+
+fn (mut t Transformer) make_optional_pointer_payload_eq_expr(lhs flat.NodeId, rhs flat.NodeId, pointee_type string, seen []string) flat.NodeId {
+	ptr_same := t.make_infix(.eq, lhs, rhs)
+	result_name := t.new_temp('opt_ptr_eq')
+	t.pending_stmts << t.make_decl_assign_typed(result_name, ptr_same, 'bool')
+	lhs_non_nil := t.make_infix(.ne, lhs, t.a.add(.nil_literal))
+	rhs_non_nil := t.make_infix(.ne, rhs, t.a.add(.nil_literal))
+	both_non_nil := t.make_infix(.logical_and, lhs_non_nil, rhs_non_nil)
+	compare_pointees := t.make_infix(.logical_and, t.make_prefix(.not, t.make_ident(result_name)),
+		both_non_nil)
+	lhs_value := t.make_prefix(.mul, lhs)
+	t.set_node_typ(int(lhs_value), pointee_type)
+	rhs_value := t.make_prefix(.mul, rhs)
+	t.set_node_typ(int(rhs_value), pointee_type)
+	pending_start := t.pending_stmts.len
+	pointee_eq := t.make_membership_eq_expr_with_seen(lhs_value, rhs_value, pointee_type, seen)
+	mut body_stmts := t.pending_stmts[pending_start..].clone()
+	t.pending_stmts = t.pending_stmts[..pending_start].clone()
+	body_stmts << t.make_assign(t.make_ident(result_name), pointee_eq)
+	t.pending_stmts << t.make_if(compare_pointees, t.make_block(body_stmts), t.make_empty())
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), 'bool')
 	return result
@@ -2700,7 +2742,7 @@ fn (mut t Transformer) make_interface_semantic_eq_expr(lhs flat.NodeId, rhs flat
 	impl_names := if t.is_builtin_ierror_interface_name(iface) {
 		t.tc.ierror_impl_names()
 	} else {
-		t.tc.interface_impl_names(iface)
+		t.interface_impl_index_for_transform(iface).names
 	}
 	for impl_name in impl_names {
 		if !t.interface_boxed_type_marked(iface, impl_name) {

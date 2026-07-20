@@ -23,6 +23,93 @@ fn test_c_directive_targets_use_requested_platform() {
 	assert c_include_arg_for_target('windows <windows.h>', '', '', target) == ''
 }
 
+fn test_bare_macro_preprocessor_conditions_use_target_and_definition_state() {
+	linux := pref.target_from('linux', 'amd64') or { panic(err) }
+	empty := map[string]bool{}
+	known_apple, active_apple := c_preprocessor_condition_state('__APPLE__', empty, empty, empty,
+		false, false, linux)
+	assert known_apple
+	assert !active_apple
+	known_linux, active_linux := c_preprocessor_condition_state('linux', empty, empty, empty,
+		false, false, linux)
+	assert known_linux
+	assert active_linux
+	known_negated_unix, active_negated_unix := c_preprocessor_condition_state('!unix', empty,
+		empty, empty, false, false, linux)
+	assert known_negated_unix
+	assert !active_negated_unix
+	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, false, linux,
+		false)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], []string{}, false, linux,
+		false)
+	assert c_native_source_context_definitely_inactive(['#if linux', '#else'], []string{}, false,
+		linux, false)
+	known_c99_linux, active_c99_linux := c_preprocessor_condition_state('linux', empty, empty,
+		empty, false, true, linux)
+	assert !known_c99_linux
+	assert active_c99_linux
+	known_c99_unix, active_c99_unix := c_preprocessor_condition_state('unix', empty, empty, empty,
+		false, true, linux)
+	assert !known_c99_unix
+	assert active_c99_unix
+	known_c99_underscored, active_c99_underscored := c_preprocessor_condition_state('__linux__',
+		empty, empty, empty, false, true, linux)
+	assert known_c99_underscored
+	assert active_c99_underscored
+	assert !c_native_source_context_definitely_inactive(['#if linux'], []string{}, true, linux,
+		false)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], []string{}, true, linux,
+		false)
+	assert !c_native_source_context_definitely_inactive(['#if linux', '#else'], [
+		'-std=c99',
+	], false, linux, false)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], ['-std=c11'], false, linux,
+		false)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], ['-std=c99', '-std=gnu11'],
+		false, linux, false)
+	assert !c_native_source_context_definitely_inactive(['#if !unix'], ['-std=gnu11', '-std=c99'],
+		false, linux, false)
+	assert c_native_source_context_definitely_inactive(['#if !unix'], ['-std=gnu11'], true, linux,
+		false)
+	assert !c_native_source_context_definitely_inactive(['#if SOURCE_FEATURE'], []string{}, false,
+		linux, true)
+	known_unset, active_unset := c_preprocessor_condition_state('SOME_UNSET_MACRO', empty, empty,
+		empty, false, false, linux)
+	assert known_unset
+	assert !active_unset
+	known_negated, active_negated := c_preprocessor_condition_state('!SOME_UNSET_MACRO', empty,
+		empty, empty, false, false, linux)
+	assert known_negated
+	assert active_negated
+	known_defined, active_defined := c_preprocessor_condition_state('SOME_DEFINED_MACRO', {
+		'SOME_DEFINED_MACRO': true
+	}, empty, empty, false, false, linux)
+	assert !known_defined
+	assert active_defined
+	known_negated_defined, active_negated_defined := c_preprocessor_condition_state('!FEATURE', {
+		'FEATURE': true
+	}, empty, empty, false, false, linux)
+	assert !known_negated_defined
+	assert active_negated_defined
+	known_presence, active_presence := c_preprocessor_condition_state('defined(FEATURE)', {
+		'FEATURE': true
+	}, empty, empty, false, false, linux)
+	assert known_presence
+	assert active_presence
+	known_compound, active_compound := c_preprocessor_condition_state('SOME_UNSET_MACRO || 1',
+		empty, empty, empty, false, false, linux)
+	assert !known_compound
+	assert active_compound
+	known_external, active_external := c_preprocessor_condition_state('HEADER_FEATURE', empty,
+		empty, empty, true, false, linux)
+	assert !known_external
+	assert active_external
+	known_external_target, active_external_target := c_preprocessor_condition_state('__APPLE__',
+		empty, empty, empty, true, false, linux)
+	assert known_external_target
+	assert !active_external_target
+}
+
 fn test_termux_c_directive_target_is_distinct_from_android() {
 	termux := pref.target_from('termux', 'arm64') or { panic(err) }
 	android := pref.target_from('android', 'arm64') or { panic(err) }
@@ -78,6 +165,29 @@ fn test_split_relative_c_flag_paths_resolve_from_source_directory() {
 	assert c_flag_include_dirs(flags) == [include_dir, system_dir]
 }
 
+fn test_c_flag_existing_path_macros() {
+	dir := os.join_path(os.vtmp_dir(), 'v3 c flag existing path ${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	missing := os.join_path(dir, 'missing')
+	assert c_flag_args('-I\$when_first_existing(\'${missing}\', \'${dir}\')', '', '',
+		pref.host_target()) == ['-I${dir}']
+	assert c_flag_args('-I\$when_first_existing(\'${missing}\')', '', '', pref.host_target()).len == 0
+	assert c_flag_args('\$first_existing(\'${missing}\', \'${dir}\')', '', '', pref.host_target()) == [
+		dir,
+	]
+}
+
+fn test_disabled_c_flag_does_not_expand_existing_path_macros() {
+	target := pref.target_from('macos', 'arm64') or { panic(err) }
+	missing := os.join_path(os.vtmp_dir(), 'v3_disabled_c_flag_missing_${os.getpid()}')
+	os.rmdir_all(missing) or {}
+	assert c_flag_args('linux \$first_existing(\'${missing}\')', '', '', target).len == 0
+}
+
 fn test_split_forced_include_flags_are_cache_inputs() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_split_forced_include_flags')
 	os.rmdir_all(dir) or {}
@@ -123,9 +233,66 @@ fn test_cache_input_scan_uses_requested_target_flags() {
 	a := p.parse_file(source)
 	inputs, has_untracked := cache_external_input_files(a, '', {
 		'sample': true
-	}, target)
+	}, [], target)
 	assert !has_untracked
 	assert inputs['sample'] == [os.real_path(header)]
+}
+
+fn test_cache_input_scan_uses_initial_cflags() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_target_cli_cache_inputs_${os.getpid()}')
+	include_dir := os.join_path(dir, 'CLI include with spaces')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(include_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	header := os.join_path(include_dir, 'cli_only.h')
+	forced_header := os.join_path(include_dir, 'forced_cli.h')
+	os.write_file(header, '#define CLI_ONLY_VALUE 1\n') or { panic(err) }
+	os.write_file(forced_header, '#define FORCED_CLI_VALUE 2\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample
+#include "cli_only.h"
+') or { panic(err) }
+	target := pref.host_target()
+	mut prefs := pref.new_preferences()
+	prefs.target = target
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, ['-I', include_dir, '-include', 'forced_cli.h'], target)
+	assert !has_untracked
+	assert inputs['sample'] == [os.real_path(header)]
+	assert inputs['__v3_c_flags__'] == [os.real_path(forced_header)]
+}
+
+fn test_cache_input_scan_tracks_imported_headers() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_imported_header_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	imported_header := os.join_path(dir, 'imported.h')
+	os.write_file(outer_header, '#import "imported.h"\n') or { panic(err) }
+	os.write_file(imported_header, '#define IMPORTED_VALUE 1\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample
+#include "outer.h"
+') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert !has_untracked
+	mut expected := [os.real_path(outer_header), os.real_path(imported_header)]
+	expected.sort()
+	assert inputs['sample'] == expected
 }
 
 fn test_termux_comptime_branch_uses_canonical_target() {

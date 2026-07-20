@@ -20,6 +20,59 @@ fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	assert result.output.contains(message), result.output
 }
 
+fn test_driver_cflags_include_dir_is_visible_to_header_inliner() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_cflags_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	include_dir := os.join_path(root, 'headers with spaces')
+	os.mkdir_all(include_dir) or { panic(err) }
+	os.write_file(os.join_path(include_dir, 'cli_header.h'), 'typedef struct CliHeaderValue {
+	int value;
+} CliHeaderValue;
+
+static inline int cli_header_value(CliHeaderValue* item) {
+	return item->value;
+}
+') or {
+		panic(err)
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'module main
+
+#include "cli_header.h"
+
+@[typedef]
+struct C.CliHeaderValue {
+	value int
+}
+
+fn C.cli_header_value(item &C.CliHeaderValue) int
+
+fn main() {
+	mut item := C.CliHeaderValue{
+		value: 73
+	}
+	println(C.cli_header_value(&item))
+}
+') or {
+		panic(err)
+	}
+	output := os.join_path(root, 'cli_header_program')
+	compile := cmdexec.run(v3_bin, ['-nocache', '-keepc', '-cflags', '-I "${include_dir}"', '-o',
+		output, source])
+	assert compile.exit_code == 0, compile.output
+	generated_c := os.read_file(output + '.c')!
+	assert !generated_c.contains('#include "cli_header.h"'), generated_c
+	assert generated_c.contains('static inline int cli_header_value(CliHeaderValue* item)')
+	run := cmdexec.run(output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '73'
+}
+
 fn run_driver_with_stdin_file(v3_bin string, args []string, stdin_path string) os.Result {
 	mut process := os.new_process(v3_bin)
 	process.set_args(args)
@@ -127,9 +180,38 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	c_output := os.join_path(root, 'hello.c')
 	c_compile := cmdexec.run(v3_bin, ['-no-memory-limit', '-o', c_output, source])
 	assert c_compile.exit_code == 0, c_compile.output
+	$if macos {
+		rss_index := c_compile.output.index('MB RSS') or { -1 }
+		footprint_index := c_compile.output.index('MB physical footprint') or { -1 }
+		assert rss_index >= 0, c_compile.output
+		assert footprint_index > rss_index, c_compile.output
+	}
 	c_source := os.read_file(c_output)!
 	assert c_source.len > 100
 	assert c_source.contains('typedef signed char i8;')
+	compat_output := os.join_path(root, 'hello_compat')
+	compat_compile := cmdexec.run(v3_bin, ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
+		'-g', '-cflags', '-w', '-enable-globals', '-o', compat_output, source])
+	assert compat_compile.exit_code == 0, compat_compile.output
+	assert os.is_file(compat_output)
+	assert os.is_file(compat_output + '.c')
+	debug_source := os.join_path(root, 'debug_comptime.v')
+	os.write_file(debug_source,
+		"fn main() {\n\t\$if debug {\n\t\tprintln('debug')\n\t} \$else {\n\t\tprintln('release')\n\t}\n}\n") or {
+		panic(err)
+	}
+	release_output := os.join_path(root, 'debug_comptime_release')
+	release_compile := cmdexec.run(v3_bin, ['-o', release_output, debug_source])
+	assert release_compile.exit_code == 0, release_compile.output
+	release_run := cmdexec.run(release_output, [])
+	assert release_run.exit_code == 0, release_run.output
+	assert release_run.output.trim_space() == 'release'
+	debug_output := os.join_path(root, 'debug_comptime_debug')
+	debug_compile := cmdexec.run(v3_bin, ['-g', '-o', debug_output, debug_source])
+	assert debug_compile.exit_code == 0, debug_compile.output
+	debug_run := cmdexec.run(debug_output, [])
+	assert debug_run.exit_code == 0, debug_run.output
+	assert debug_run.output.trim_space() == 'debug'
 	wasm_c_output := os.join_path(root, 'hello_emscripten.c')
 	wasm_compile := cmdexec.run(v3_bin, ['-os', 'wasm32_emscripten', '-o', wasm_c_output, source])
 	assert wasm_compile.exit_code == 0, wasm_compile.output
@@ -177,12 +259,41 @@ fn main() {
 		"  description: 'subdirs: [wrong, value]'\n" + "  subdirs: ['one', 'two']\n" + '}\n') or {
 		panic(err)
 	}
-	os.write_file(os.join_path(project, 'main.v'),
-		'module main\n\nfn main() { println(one() + two()) }\n') or { panic(err) }
+	os.write_file(os.join_path(project, 'main.v'), 'module main
+
+import collision
+
+struct App {
+	value int
+	other string
+}
+
+fn main() {
+	app := App{value: one()}
+	println(app.value + collision.value())
+}
+') or {
+		panic(err)
+	}
 	os.write_file(os.join_path(project, 'one', 'one.v'),
 		'module main\n\nfn one() int { return 40 }\n') or { panic(err) }
 	os.write_file(os.join_path(project, 'two', 'two.v'),
 		'module main\n\nfn two() int { return 2 }\n') or { panic(err) }
+	collision_dir := os.join_path(project, 'collision')
+	os.mkdir_all(collision_dir) or { panic(err) }
+	os.write_file(os.join_path(collision_dir, 'collision.v'), 'module collision
+
+pub struct App {
+pub:
+	value int
+}
+
+pub fn value() int {
+	return App{value: 2}.value
+}
+') or {
+		panic(err)
+	}
 
 	compile := cmdexec.run_in(v3_bin, [project], work_dir)
 	assert compile.exit_code == 0, compile.output

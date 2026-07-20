@@ -2,6 +2,7 @@
 #define V_MULTIWINDOW_APPKIT_BACKEND_HELPERS_H
 
 #include <stdint.h>
+#include "native_render_result.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -76,20 +77,87 @@ typedef struct VMultiwindowAppKitQueuedEvent {
 
 int v_multiwindow_appkit_is_main_thread(void);
 int v_multiwindow_appkit_prepare_application(void);
-int v_multiwindow_appkit_create_metal_device(void **out_device);
-void v_multiwindow_appkit_release_metal_device(void *device);
-int v_multiwindow_appkit_create_window(void *device_ptr, const char *title, int width, int height, int min_width, int min_height, int resizable, int visible, int high_dpi, int borderless, int fullscreen, void **out_state, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);
-void v_multiwindow_appkit_destroy_window(void *state_ptr);
-void v_multiwindow_appkit_release_window(void *state_ptr);
+VMultiwindowNativePrimitive v_multiwindow_appkit_create_metal_device(void);
+VMultiwindowNativePrimitive v_multiwindow_appkit_release_metal_device(void *device);
+VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr, const char *title, int width, int height, int min_width, int min_height, int resizable, int visible, int high_dpi, int borderless, int fullscreen, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);
+VMultiwindowNativePrimitive v_multiwindow_appkit_configure_window_device(void *state_ptr, void *device_ptr);
+VMultiwindowNativePrimitive v_multiwindow_appkit_destroy_window(void *state_ptr);
+VMultiwindowNativePrimitive v_multiwindow_appkit_release_window(void *state_ptr);
 int v_multiwindow_appkit_set_window_title(void *state_ptr, const char *title);
 int v_multiwindow_appkit_set_cursor_shape(void *state_ptr, int shape);
 int v_multiwindow_appkit_resize_window(void *state_ptr, int width, int height, int *out_width, int *out_height, int *out_framebuffer_width, int *out_framebuffer_height);
 void v_multiwindow_appkit_poll_events(void);
+int v_multiwindow_appkit_event_sequence_exhausted(void);
 int v_multiwindow_appkit_take_queued_event(void *state_ptr, VMultiwindowAppKitQueuedEvent *out_event);
 void v_multiwindow_appkit_release_queued_event_resources(VMultiwindowAppKitQueuedEvent *event);
-int v_multiwindow_appkit_begin_frame(void *state_ptr, void *device_ptr, void **out_drawable, void **out_depth_texture, int *out_framebuffer_width, int *out_framebuffer_height);
-void v_multiwindow_appkit_end_frame(void *state_ptr);
-void v_multiwindow_appkit_abort_frame(void *state_ptr);
+VMultiwindowNativePrimitive v_multiwindow_appkit_create_renderer_anchor(void *device_ptr);
+VMultiwindowNativePrimitive v_multiwindow_appkit_destroy_renderer_anchor(void *state_ptr);
+VMultiwindowNativePrimitive v_multiwindow_appkit_begin_frame(void *state_ptr, void *device_ptr);
+VMultiwindowNativePrimitive v_multiwindow_appkit_end_frame(void *state_ptr, void *drawable_ptr);
+VMultiwindowNativePrimitive v_multiwindow_appkit_abort_frame(void *state_ptr, void *drawable_ptr);
+VMultiwindowNativePrimitive v_multiwindow_appkit_release_drawable(void *state_ptr, void *drawable_ptr);
+VMultiwindowNativePrimitive v_multiwindow_appkit_begin_render_batch(void);
+VMultiwindowNativePrimitive v_multiwindow_appkit_end_render_batch(void *pool);
+
+#if defined(SOKOL_TRACE_HOOKS) && defined(V_MULTIWINDOW_NATIVE_PROOF_TEST)
+#define V_MULTIWINDOW_APPKIT_SIDE_EFFECT_CAPACITY 256
+
+enum VMultiwindowAppKitSideEffectKind {
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_BRIDGE_RETAIN = 1,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_BRIDGE_RELEASE = 2,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_RELEASE_PROBE_DEALLOC = 3,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_POOL_PUSH = 4,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_POOL_PROBE_CREATE = 5,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_POOL_PROBE_DEALLOC = 6,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_POOL_POP = 7,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_NEXT_DRAWABLE = 8,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_CURRENT_DRAWABLE_CLEAR = 9,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_LAYER_DEVICE_SET_READ = 10
+};
+
+enum VMultiwindowAppKitSideEffectSubject {
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_SUBJECT_NONE = 0,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_SUBJECT_DEVICE_ROOT = 1,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_SUBJECT_WINDOW_ROOT = 2,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_SUBJECT_ANCHOR_ROOT = 3,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_SUBJECT_POOL = 4,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_SUBJECT_DRAWABLE = 5,
+	V_MULTIWINDOW_APPKIT_SIDE_EFFECT_SUBJECT_LAYER = 6
+};
+
+typedef struct VMultiwindowAppKitSideEffectRecord {
+	uint64_t generation;
+	uint64_t sequence;
+	uint64_t kind;
+	uint64_t subject;
+	uint64_t identity;
+	uint64_t parent_identity;
+	uint64_t before_identity;
+	uint64_t after_identity;
+	uint64_t auxiliary_identity;
+	uint64_t thread_identity;
+	uint64_t main_thread;
+} VMultiwindowAppKitSideEffectRecord;
+
+uint64_t v_multiwindow_appkit_side_effect_reset(void);
+uint64_t v_multiwindow_appkit_side_effect_generation(void);
+uint64_t v_multiwindow_appkit_side_effect_count(void);
+int v_multiwindow_appkit_side_effect_overflow(void);
+int v_multiwindow_appkit_side_effect_record(uint64_t index,
+	VMultiwindowAppKitSideEffectRecord *out_record);
+void *v_multiwindow_appkit_side_effect_create_release_probe(uint64_t subject);
+uint64_t v_multiwindow_appkit_side_effect_probe_generation(void *probe_ptr);
+uint64_t v_multiwindow_appkit_side_effect_probe_subject(void *probe_ptr);
+
+void *v_multiwindow_appkit_native_proof_install_physical_nil_drawable(
+	void *state_ptr,
+	void *expected_layer_ptr,
+	void *expected_device_ptr,
+	uint64_t expected_owner_thread);
+int v_multiwindow_appkit_native_proof_restore_physical_nil_drawable(
+	void *lease_ptr,
+	uint64_t expected_owner_thread);
+#endif
 
 #ifdef __cplusplus
 }

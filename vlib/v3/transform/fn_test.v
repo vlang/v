@@ -3,6 +3,27 @@ module transform
 import v3.flat
 import v3.types
 
+fn test_generic_app_parts_distinguishes_postfix_fixed_arrays() {
+	_, _, numeric_fixed := generic_app_parts('C.sg_color_attachment_action[4]')
+	assert !numeric_fixed
+	_, _, const_fixed := generic_app_parts('http.HeaderKV[max_headers]')
+	assert !const_fixed
+	base, args, generic := generic_app_parts('json2.StructKeyDecodeResult[Item]')
+	assert generic
+	assert base == 'json2.StructKeyDecodeResult'
+	assert args == ['Item']
+	c_base, c_args, c_generic := generic_app_parts('json2.StructKeyDecodeResult[C.sg_pass_action]')
+	assert c_generic
+	assert c_base == 'json2.StructKeyDecodeResult'
+	assert c_args == ['C.sg_pass_action']
+}
+
+fn test_normalize_function_type_preserves_mut_parameter() {
+	t := Transformer{}
+	assert t.normalize_type_in_module('fn (mut Item)', 'main') == 'fn (&Item)'
+	assert t.normalize_type_in_module('fn (mut item Item) bool', 'main') == 'fn (&Item) bool'
+}
+
 fn test_flattened_generic_receiver_short_variants() {
 	assert flattened_generic_receiver_short_variants('foo__Bar_baz__Qux') == [
 		'Bar_Qux',
@@ -11,6 +32,11 @@ fn test_flattened_generic_receiver_short_variants() {
 		'Bar_Qux',
 		'mod.Bar_Qux',
 	]
+}
+
+fn test_receiver_method_guard_accepts_short_name_for_qualified_type() {
+	t := Transformer{}
+	assert t.receiver_method_matches_type_name('Thing.str', 'pkg.Thing')
 }
 
 fn test_generic_inference_uses_seeded_mut_param_value_type_while_cloning() {
@@ -133,6 +159,19 @@ fn test_parallel_worker_reuses_prebuilt_call_param_decl_index() {
 	}
 	assert params.len == 1
 	assert params[0] is types.String
+}
+
+fn test_pending_generic_specialization_keys_are_private_initialized_maps() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	master.pending_generic_fn_spec_keys['master'] = true
+	assert master.pending_generic_fn_spec_keys['master']
+
+	mut worker := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
+	worker.pending_generic_fn_spec_keys['worker'] = true
+	assert worker.pending_generic_fn_spec_keys['worker']
+	assert 'worker' !in master.pending_generic_fn_spec_keys
 }
 
 fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {

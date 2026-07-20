@@ -1748,14 +1748,16 @@ fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.
 		g.write('(${ct}){._typ = ${type_id}, ._object = ${object}, ._object_is_boxed = ${boxed}, .message = _str_${empty_sid}, .code = 0}')
 		return true
 	}
-	fields := g.tc.interface_field_list(iface.name)
+	fields := g.interface_cached_fields(iface.name)
 	if fields.len > 0 {
 		tmp := g.tmp_count
 		g.tmp_count++
 		if actual is types.Pointer {
 			g.write('({ ${concrete_ct}* _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}, ._object_is_boxed = false')
 			for field in fields {
-				g.write(', .${g.cname(field.name)} = _iface${tmp}->${g.cname(field.name)}')
+				field_ct := g.tc.c_type(field.typ)
+				field_name := g.cname(field.name)
+				g.write(', .${field_name} = _iface${tmp} ? _iface${tmp}->${field_name} : (${field_ct}){0}')
 			}
 		} else {
 			g.write('({ ${concrete_ct} _iface${tmp} = ${expr}; (${ct}){._typ = ${type_id}, ._object = memdup(&_iface${tmp}, sizeof(${concrete_ct})), ._object_is_boxed = true')
@@ -1862,7 +1864,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 				} else if child.value == 'push' {
 					push_rhs_id := g.a.child(&child, 1)
 					mut c_elem := if child.typ.len > 0 {
-						g.tc.c_type(g.tc.parse_type(child.typ))
+						g.tc.c_type(g.tc.parse_resolution_type(child.typ))
 					} else {
 						'string'
 					}
@@ -2315,7 +2317,11 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 		}
 		.label_stmt {
 			if node.value.starts_with(pending_loop_label_marker) {
-				g.pending_loop_label = node.value[pending_loop_label_marker.len..]
+				mut label := node.value
+				for label.starts_with(pending_loop_label_marker) {
+					label = label[pending_loop_label_marker.len..]
+				}
+				g.pending_loop_label = label
 				return
 			}
 			old_indent := g.indent
@@ -2788,7 +2794,20 @@ fn (mut g FlatGen) heap_local_address_expr(ret_id flat.NodeId, expected types.Ty
 	}
 	local_expr := g.expr_to_string(child_id)
 	if g.current_param_is_mut(root_name) {
+		if child.kind == .selector {
+			return '&${local_expr}'
+		}
 		return local_expr
+	}
+	root_type := g.local_ident_type(root_name) or { return none }
+	if child.kind == .selector && root_type is types.Pointer {
+		if _ := g.local_pointer_alias_source(root_name) {
+			if g.local_pointer_alias_source_is_mut_param(root_name) {
+				return '&${local_expr}'
+			}
+		} else {
+			return '&${local_expr}'
+		}
 	}
 	return g.heap_local_memdup_expr(local_expr, local_type, base_ct, false)
 }
@@ -3942,7 +3961,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 				}
 			}
 			if node.typ.len > 0 {
-				decl_type := g.tc.parse_type(node.typ)
+				decl_type := g.tc.parse_resolution_type(node.typ)
 				if _ := array_like_type(decl_type) {
 					rhs_v_type = decl_type
 				} else if _ := array_fixed_type(decl_type) {
@@ -4007,7 +4026,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			mut init_type := raw_init_type
 			mut resolved_init_type := g.tc.resolve_type(rhs_id)
 			if node.typ.len > 0 {
-				decl_type := g.tc.parse_type(node.typ)
+				decl_type := g.tc.parse_resolution_type(node.typ)
 				if arr := array_like_type(decl_type) {
 					resolved_init_type = decl_type
 					init_type = arr.elem_type
@@ -4112,7 +4131,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			mut v_type := if rhs_fn_type := g.decl_rhs_fn_value_type(rhs_id) {
 				rhs_fn_type
 			} else if node.typ.len > 0 {
-				decl_type := g.tc.parse_type(node.typ)
+				decl_type := g.tc.parse_resolution_type(node.typ)
 				if decl_type is types.Struct && decl_type.name == 'array' {
 					g.usable_expr_type(rhs_id)
 				} else if sum_field_type := g.selector_sum_shared_field_type(rhs_id) {
@@ -4167,7 +4186,7 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 			if rhs.kind == .ident {
 				mut should_infer_fn_value := node.typ.len == 0
 				if node.typ.len > 0 {
-					decl_type := g.tc.parse_type(node.typ)
+					decl_type := g.tc.parse_resolution_type(node.typ)
 					if decl_annotation_is_unusable(decl_type, node.typ) {
 						should_infer_fn_value = true
 					}
@@ -4924,7 +4943,7 @@ fn (mut g FlatGen) gen_multi_return_or_rhs(or_node flat.Node, rhs_multi types.Mu
 			g.gen_propagation_return_cleanup()
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
-			g.writeln('panic(IError__str(err));')
+			g.writeln('v_panic(IError__str(err));')
 		}
 	} else {
 		g.gen_or_body_value(or_body, tmp, types.Type(rhs_multi))
@@ -5411,7 +5430,7 @@ fn (mut g FlatGen) gen_assign_or_expr(node flat.Node, lhs_idx int, or_node flat.
 			g.gen_propagation_return_cleanup()
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
-			g.writeln('panic(IError__str(err));')
+			g.writeln('v_panic(IError__str(err));')
 		}
 	} else {
 		for j in 0 .. or_body.children_count {
@@ -5473,7 +5492,7 @@ fn (mut g FlatGen) gen_decl_or_expr(lhs flat.Node, or_node flat.Node) {
 			g.gen_propagation_return_cleanup()
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
-			g.writeln('panic(IError__str(err));')
+			g.writeln('v_panic(IError__str(err));')
 		}
 	} else {
 		if or_body.children_count > 0 {
@@ -5642,7 +5661,7 @@ fn (mut g FlatGen) gen_or_expr(node flat.Node) {
 				g.gen_propagation_return_cleanup()
 				g.write('return (${fn_opt_ct}){.ok = false, .err = err};')
 			} else {
-				g.write('panic(IError__str(err));')
+				g.write('v_panic(IError__str(err));')
 			}
 		} else {
 			for i in 0 .. or_body.children_count {
@@ -5868,7 +5887,7 @@ fn (mut g FlatGen) gen_or_expr_stmt(node flat.Node) {
 			g.gen_propagation_return_cleanup()
 			g.writeln('return (${fn_opt_ct}){.ok = false, .err = err};')
 		} else {
-			g.writeln('panic(IError__str(err));')
+			g.writeln('v_panic(IError__str(err));')
 		}
 	} else {
 		for i in 0 .. or_body.children_count {

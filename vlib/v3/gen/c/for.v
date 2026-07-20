@@ -319,9 +319,15 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				}
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${container_str}.len; ${idx_var}++) {')
 				g.indent++
-				g.write('${c_elem} ${elem_var} = *(')
-				g.write(c_elem)
-				g.writeln('*)array_get(${container_str}, ${idx_var});')
+				if node.op == .amp {
+					g.write('${c_elem}* ${elem_var} = (')
+					g.write(c_elem)
+					g.writeln('*)array_get(${container_str}, ${idx_var});')
+				} else {
+					g.write('${c_elem} ${elem_var} = *(')
+					g.write(c_elem)
+					g.writeln('*)array_get(${container_str}, ${idx_var});')
+				}
 				elem_scope_type := if node.op == .amp {
 					types.Type(types.Pointer{
 						base_type: container_type.elem_type
@@ -348,11 +354,22 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				arr_len := g.fixed_array_len_value(af)
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < ${arr_len}; ${idx_var}++) {')
 				g.indent++
-				g.write('${c_elem} ${elem_var} = ')
+				if node.op == .amp {
+					g.write('${c_elem}* ${elem_var} = &')
+				} else {
+					g.write('${c_elem} ${elem_var} = ')
+				}
 				g.gen_expr(g.a.child(&node, 2))
 				g.writeln('[${idx_var}];')
-				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, af.elem_type)
-				g.declare_local_pointer_storage(elem_owner, af.elem_type is types.Pointer
+				elem_scope_type := if node.op == .amp {
+					types.Type(types.Pointer{
+						base_type: af.elem_type
+					})
+				} else {
+					af.elem_type
+				}
+				elem_owner := g.tc.cur_scope.insert_with_owner(elem_binding_name, elem_scope_type)
+				g.declare_local_pointer_storage(elem_owner, elem_scope_type is types.Pointer
 					|| c_type_is_pointer_storage(c_elem))
 			} else {
 				g.writeln('for (int ${idx_var} = 0; ${idx_var} < 0; ${idx_var}++) {')

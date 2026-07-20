@@ -33,6 +33,8 @@ fn test_c_variadic_calls_emit_real_args_without_v_pack_array() {
 	src := os.join_path(os.temp_dir(), 'v3_c_variadic_${os.getpid()}.v')
 	os.write_file(src, "module main
 
+import time
+
 struct C.FILE {}
 
 fn C.printf(fmt &char, args ...voidptr) int
@@ -51,14 +53,16 @@ fn sum(xs ...int) int {
 }
 
 fn main() {
-	C.printf(&c'plain\\n')
-	C.printf(&c'name=%s count=%d\\n', &c'ok', 7)
-	C.fprintf(C.stderr, &c'err=%d\\n', 9)
+	C.printf(c'plain\\n')
+	C.printf(c'name=%s count=%d\\n', c'ok', 7)
+	C.fprintf(C.stderr, c'err=%d\\n', 9)
 	C.fflush(C.stderr)
 	mut a := 0
 	mut b := 0
-	C.sscanf(&c'12 34', &c'%d %d', &a, &b)
+	C.sscanf(c'12 34', c'%d %d', &a, &b)
 	println(int_str(a + b + sum(1, 2, 3)))
+	parsed := time.parse_iso8601('2026-07-17T17:03:15.000Z')!
+	println(int_str(parsed.year))
 }
 ") or {
 		panic(err)
@@ -70,7 +74,8 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.contains('plain'), run.output
 	assert run.output.contains('name=ok count=7'), run.output
-	assert run.output.trim_space().ends_with('52'), run.output
+	assert run.output.contains('52\n'), run.output
+	assert run.output.trim_space().ends_with('2026'), run.output
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	c_lines := c_variadic_call_lines(generated, ['printf', 'fprintf', 'sscanf'])

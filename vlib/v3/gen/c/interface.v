@@ -200,6 +200,9 @@ fn (g &FlatGen) interface_arg_conversion_expr(name string, source_type types.Typ
 	}
 	expr += ', ._object = ${name}._object'
 	for field in g.tc.interface_fields[target_iface] or { []types.StructField{} } {
+		if interface_field_type_contains_self_by_value(field.typ, target_iface) {
+			continue
+		}
 		field_ct := g.tc.c_type(field.typ)
 		expr += ', .${g.cname(field.name)} = '
 		for mapping in mappings {
@@ -1070,7 +1073,7 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 	}
 	type_id := g.iface_type_id_for_concrete(iface.name, actual_clean)
 	ct := g.tc.c_type(iface)
-	fields := g.tc.interface_field_list(iface.name)
+	fields := g.interface_cached_fields(iface.name)
 	concrete_ct := g.tc.c_type(actual_base)
 	if fields.len > 0 {
 		tmp := g.tmp_count
@@ -1080,7 +1083,9 @@ fn (mut g FlatGen) gen_interface_value_expr(id flat.NodeId, expected types.Type)
 			g.gen_expr(id)
 			g.write('; (${ct}){._typ = ${type_id}, ._object = _iface${tmp}, ._object_is_boxed = false')
 			for field in fields {
-				g.write(', .${g.cname(field.name)} = _iface${tmp}->${g.cname(field.name)}')
+				field_ct := g.tc.c_type(field.typ)
+				field_name := g.cname(field.name)
+				g.write(', .${field_name} = _iface${tmp} ? _iface${tmp}->${field_name} : (${field_ct}){0}')
 			}
 			g.write('}; })')
 		} else {
@@ -1445,7 +1450,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 				g.writeln('\treturn i->code;')
 			}
 			else {
-				g.writeln('\tpanic(_str_${sid});')
+				g.writeln('\tv_panic(_str_${sid});')
 				g.writeln('\treturn (${ret_ct}){0};')
 			}
 		}
@@ -1616,7 +1621,7 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 		g.writeln('\t}')
 	}
 	if panic_on_default {
-		g.writeln('\tpanic(_str_${sid});')
+		g.writeln('\tv_panic(_str_${sid});')
 	} else if ret_ct == 'void' {
 		g.writeln('\treturn;')
 	}

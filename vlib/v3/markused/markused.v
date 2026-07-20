@@ -3652,10 +3652,14 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			.selector {
 				if c.collect_interface_method_value_selector(child, mut calls) {
 					// handled
-				} else if !c.selector_base_is_local(child, local_values) {
-					c.collect_fn_value_selector(child_id, child, cur_module, imports, mut calls)
 				} else if resolved := c.tc.resolved_fn_value_name(child_id) {
 					calls << resolved
+				} else {
+					// The checker normally records local receiver method values in
+					// method_values_by_fn. Keep a typed-selector fallback here too: large
+					// parallel checks can merge a body without that auxiliary entry, while
+					// cgen will still emit a wrapper that calls the concrete method.
+					c.collect_fn_value_selector(child_id, child, cur_module, imports, mut calls)
 				}
 			}
 			.call {

@@ -30,6 +30,28 @@ enum Kind {
 	end
 }
 
+enum Header {
+	authority
+	content_type
+	authorization
+}
+
+struct Locker {
+	n int
+}
+
+fn (locker Locker) lock() int {
+	return locker.n + 4
+}
+
+fn header_count(headers map[Header]string) int {
+	return headers.len
+}
+
+fn value_args(item Token, text string) int {
+	return item.typeof + text.len
+}
+
 fn bump(unix i64) i64 {
 	return unix + 1
 }
@@ -75,6 +97,16 @@ fn main() {
 	item.block_size = block_size
 	mut block_size := 1
 	println(int_str(access(item.@type + @true + @false + stdin + stderr + stdout + int(item.unix) + item.block_size + item.typeof + int(Kind.@asm) + block_size) + read() + close() + fabs(1)))
+	println(int_str(header_count({
+		.authority: "example.com"
+		.content_type: "application/json"
+		.authorization: "secret"
+	})))
+	println(int_str(Locker{n: 1}.@lock()))
+	item_ref := &item
+	label := "abc"
+	label_ref := &label
+	println(int_str(value_args(item_ref, label_ref)))
 }
 ') or {
 		panic(err)
@@ -110,7 +142,7 @@ fn main() {
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '124'
+	assert run.output.trim_space() == '124\n3\n5\n15'
 
 	csym_src := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_csym_${pid}.v')
 	os.write_file(csym_src, 'fn C.unix(i64) i64
@@ -129,4 +161,28 @@ fn main() {
 	assert csym_code.contains('unix(10)'), csym_code
 	assert !csym_code.contains('v_unix(10)'), csym_code
 	assert !csym_code.contains('C.unix'), csym_code
+
+	$if macos {
+		objc_src := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}.m')
+		os.write_file(objc_src,
+			'#include <Cocoa/Cocoa.h>\n\nint v3_point_sum(V3PointUnique p) {\n\treturn p.x + 1;\n}\n') or {
+			panic(err)
+		}
+		objc_v := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}.v')
+		os.write_file(objc_v,
+			'#flag darwin -fobjc-arc\n#flag darwin -framework Cocoa\n#include "${objc_src}"\n\nstruct V3PointUnique {\n\tx int\n}\n\nfn C.v3_point_sum(V3PointUnique) int\n\nfn main() {\n\tprintln(int_str(C.v3_point_sum(V3PointUnique{x: 8})))\n}\n') or {
+			panic(err)
+		}
+		objc_bin := os.join_path(os.temp_dir(), 'v3_c_identifier_hygiene_objc_${pid}')
+		objc_compile := os.execute('${v3_bin} ${objc_v} -b c -o ${objc_bin}')
+		assert objc_compile.exit_code == 0, objc_compile.output
+		objc_code := os.read_file(objc_bin + '.c') or { panic(err) }
+		type_pos := objc_code.index('struct V3PointUnique {') or { -1 }
+		body_pos := objc_code.index('int v3_point_sum(V3PointUnique p) {') or { -1 }
+		assert type_pos >= 0, objc_code
+		assert body_pos > type_pos, objc_code
+		objc_run := os.execute(objc_bin)
+		assert objc_run.exit_code == 0, objc_run.output
+		assert objc_run.output.trim_space() == '9'
+	}
 }

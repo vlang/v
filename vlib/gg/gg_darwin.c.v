@@ -8,6 +8,8 @@ fn C.darwin_draw_string(x i32, y i32, s string, cfg voidptr)
 
 fn C.darwin_text_width(s string) i32
 
+fn C.darwin_text_width_with_cfg(s string, cfg voidptr) i32
+
 fn C.darwin_text_width_runes(r []rune) i32
 
 fn C.darwin_window_refresh()
