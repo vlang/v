@@ -390,12 +390,77 @@ The largest, highest-risk phase. Sub-phases, in build order:
       own official worked values in `tls13_keyschedule_test.v`, a
       different but equally valid form of independent validation.
 
-## Phases 3-14 (NOT STARTED)
+## Phase 3 — Packet protection and header protection (done)
+
+- [x] `packet_protection.v` — `QuicPacketProtectionKeys` (quic_key/quic_iv/
+      quic_hp, RFC 9001 §5.1) derived via `hkdf_expand_label` (the same
+      primitive Phase 2a/2b already use) from any one level's one-directional
+      traffic secret; verified against the RFC 9001 Appendix A.1 vectors
+      already used directly against `hkdf_expand_label` in
+      `initial_secrets_test.v` (duplicated locally since V compiles each
+      `_test.v` file as its own independent unit — top-level consts aren't
+      shared across sibling test files in the same module).
+      `encrypt_packet_payload`/`decrypt_packet_payload` wrap
+      `crypto.aes.AesGcm`; the AEAD nonce XORs the packet's FULL,
+      RECONSTRUCTED packet number (never the truncated wire bytes) into the
+      low 8 bytes of the 12-byte IV. `protect_packet`/`unprotect_packet`
+      combine packet + header protection in the one correct order (encrypt
+      payload → sample ciphertext → derive mask → apply to header on the
+      send side; unprotect header first, since the packet number's length is
+      itself protected, → AEAD-decrypt on the receive side) so a future
+      caller can't accidentally sequence the two steps backwards — the
+      single most common bug class in this area.
+- [x] `header_protection.v` — AES-ECB mask derivation (RFC 9001 §5.4.3,
+      the only construction v1 needs, since `TLS_AES_128_GCM_SHA256` is
+      pinned throughout); sample always taken at a fixed 4-byte offset past
+      the packet-number field regardless of that field's real (still-
+      protected) length, per RFC 9001 §5.4.2. `unprotect_header` validates
+      the Reserved Bits are zero once unmasked (RFC 9000 §17.2/§17.3.1 MUST —
+      noted as intentionally deferred to this phase back in Phase 1's
+      `header.v` entry above) and returns a plain error for a receiver to
+      map to PROTOCOL_VIOLATION, distinct from an AEAD auth failure (which
+      callers must silently drop, never escalate to a connection close, per
+      RFC 9001's own security guidance — documented on
+      `decrypt_packet_payload`, enforced by a future phase's receive loop,
+      not this one).
+- [x] `/vreview` pass: found and fixed two gaps before commit — (1) the
+      missing Reserved Bits check above (RFC 9001/9000 MUST, no diff-driven
+      review would find an absent check without a requirements-driven read);
+      (2) `packet_protection_nonce` indexed its `iv` parameter without
+      validating its length, unlike the sibling `hp_key.len` check
+      `header_protection_mask` already has on the very same
+      `QuicPacketProtectionKeys` struct (whose fields are all `pub` and
+      externally constructible, not only ever produced by
+      `derive_packet_protection_keys`) — a too-short `iv` panicked (index
+      out of range) instead of returning a graceful error. Both fixed with
+      permanent regression tests, confirmed to fail on the pre-fix code via
+      Phase-R before landing.
+- [x] Known-answer test against a REAL captured packet: the very first UDP
+      datagram (`frame 1`, a single non-coalesced Client Initial, 1200 bytes)
+      from the SAME quiche capture Phase 2c's TLS-layer vectors came from
+      (`testdata/tls13_vectors/quiche_p256_handshake.pcap`), extracted with a
+      minimal standalone pcap/UDP parser (no Wireshark dependency needed
+      here, since only raw bytes are wanted, not TLS dissection). Initial
+      secrets are derived purely from the packet's own (always-visible)
+      DCID; after removing header protection and AEAD-decrypting, the
+      plaintext is checked for containing the EXACT ClientHello bytes
+      already independently verified in `tls13_quiche_vector_test.v` — the
+      SAME bytes obtained via a completely different extraction path there
+      (tshark/PDML TLS dissection vs. this file's raw UDP parsing), a small
+      independent cross-check that neither extraction made the same
+      mistake. A companion negative test flips one bit in the same real
+      packet's ciphertext and confirms AEAD authentication fails cleanly.
+      Fulfills the plan's own suggested Phase 3 test strategy ("known-answer
+      tests against Phase 2's captured Initial packets") without needing a
+      fresh capture.
+- [x] Self-consistency round-trip tests across all 4 packet-number lengths
+      and both header forms (long/short), plus negative tests for tampered
+      ciphertext and for decrypting with the wrong direction's keys.
+
+## Phases 4-14 (NOT STARTED)
 
 See the tracking issue for full detail on each. In order:
 
-3. Packet protection & header protection (RFC 9001 §5) — the AEAD
-   encrypt-then-mask ordering is the single most common bug class here.
 4. Initial packet exchange — CRYPTO frame reassembly, core frames, datagram
    coalescing, Retry/Version Negotiation handling.
 5. Full handshake completion — three independent packet number spaces (a
