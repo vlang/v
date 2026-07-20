@@ -224,6 +224,7 @@ fn test_cache_input_scan_uses_requested_target_flags() {
 	os.write_file(source, 'module sample
 #flag ${target_arch} -I target_include
 #include "target.h"
+#include macos <TargetConditionals.h>
 ') or {
 		panic(err)
 	}

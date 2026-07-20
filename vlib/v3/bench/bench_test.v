@@ -61,3 +61,14 @@ fn test_memory_monitor_exits_above_limit() {
 	assert error_output.contains('during compilation'), error_output
 	assert error_output.contains('limit: 0 GiB'), error_output
 }
+
+fn test_shorten_home_path() {
+	home := os.home_dir()
+	if home.len == 0 {
+		return
+	}
+	assert shorten_home_path(home) == '~'
+	assert shorten_home_path('${home}/code/project/main.v') == '~/code/project/main.v'
+	assert shorten_home_path('${home}_other/code/project/main.v') == '${home}_other/code/project/main.v'
+	assert shorten_home_path('/tmp/project/main.v') == '/tmp/project/main.v'
+}

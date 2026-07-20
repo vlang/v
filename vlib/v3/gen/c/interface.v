@@ -236,6 +236,13 @@ fn (g &FlatGen) interface_dispatch_target_is_emitted(concrete_key string) bool {
 	if !g.has_used_fn_filter() {
 		return true
 	}
+	if source_file := g.tc.fn_type_files[concrete_key] {
+		// Cache-header declarations are intentionally absent from the program's
+		// used-function set; their implementations live in linked module objects.
+		if source_file.ends_with('.vh') {
+			return true
+		}
+	}
 	if g.used_interface_dispatch_key(concrete_key) {
 		return true
 	}
@@ -1589,6 +1596,10 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 				call += ')'
 				if ret_ct == 'void' {
 					g.writeln('${call}; return;')
+				} else if g.gen_interface_dispatch_wrapped_return(call, ret_type, g.tc.fn_ret_types[decl] or {
+					ret_type
+				})
+				{
 				} else {
 					g.writeln('return ${call};')
 				}
@@ -1643,6 +1654,10 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 			call += ')'
 			if ret_ct == 'void' {
 				g.writeln('${call}; return;')
+			} else if g.gen_interface_dispatch_wrapped_return(call, ret_type, g.tc.fn_ret_types[method_key] or {
+				ret_type
+			})
+			{
 			} else {
 				g.writeln('return ${call};')
 			}
@@ -1659,6 +1674,68 @@ fn (mut g FlatGen) gen_interface_dispatch_with_fallback(iface_name string, cn st
 		g.writeln('\treturn (${ret_ct}){0};')
 	}
 	g.writeln('}')
+}
+
+// gen_interface_dispatch_wrapped_return adapts an option/result whose successful
+// concrete payload implements the interface returned by the dispatch signature.
+fn (mut g FlatGen) gen_interface_dispatch_wrapped_return(call string, expected types.Type, actual types.Type) bool {
+	expected_base := interface_dispatch_wrapped_base_type(expected) or { return false }
+	actual_base := interface_dispatch_wrapped_base_type(actual) or { return false }
+	expected_iface_type := cgen_unalias_type(expected_base)
+	if expected_iface_type !is types.Interface {
+		return false
+	}
+	expected_iface := expected_iface_type as types.Interface
+	actual_clean := cgen_unalias_type(actual_base)
+	actual_value := if actual_clean is types.Pointer { actual_clean.base_type } else { actual_clean }
+	if cgen_unalias_type(actual_value) is types.Interface {
+		return false
+	}
+	type_id := g.iface_type_id_for_concrete(expected_iface.name, actual_value)
+	if type_id == 0 {
+		return false
+	}
+	actual_ct := g.fn_return_type_name(actual)
+	expected_ct := g.fn_return_type_name(expected)
+	iface_ct := g.tc.c_type(expected_iface_type)
+	concrete_ct := g.tc.c_type(actual_value)
+	result := g.interface_tmp('iface_result')
+	out := g.interface_tmp('iface_result_out')
+	g.writeln('{')
+	g.writeln('\t\t\t${actual_ct} ${result} = ${call};')
+	g.writeln('\t\t\t${expected_ct} ${out} = { .ok = ${result}.ok, .err = ${result}.err };')
+	g.writeln('\t\t\tif (${result}.ok) {')
+	g.write('\t\t\t\t${out}.value = (${iface_ct}){._typ = ${type_id}, ._object = ')
+	if actual_clean is types.Pointer {
+		g.write('${result}.value, ._object_is_boxed = false')
+	} else {
+		g.write('memdup(&${result}.value, sizeof(${concrete_ct})), ._object_is_boxed = true')
+	}
+	for field in g.interface_cached_fields(expected_iface.name) {
+		field_ct := g.tc.c_type(field.typ)
+		field_name := g.cname(field.name)
+		if actual_clean is types.Pointer {
+			g.write(', .${field_name} = ${result}.value ? ${result}.value->${field_name} : (${field_ct}){0}')
+		} else {
+			g.write(', .${field_name} = ${result}.value.${field_name}')
+		}
+	}
+	g.writeln('};')
+	g.writeln('\t\t\t}')
+	g.writeln('\t\t\treturn ${out};')
+	g.writeln('\t\t}')
+	return true
+}
+
+fn interface_dispatch_wrapped_base_type(typ types.Type) ?types.Type {
+	match typ {
+		types.OptionType, types.ResultType {
+			return typ.base_type
+		}
+		else {
+			return none
+		}
+	}
 }
 
 fn (mut g FlatGen) interface_boxed_type_marked_for_dispatch(iface_name string, concrete string) bool {

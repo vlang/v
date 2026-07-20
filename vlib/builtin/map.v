@@ -139,6 +139,24 @@ fn (mut d DenseArray) trim_deleted_tail() {
 	}
 }
 
+fn (mut d DenseArray) reserve(n int) {
+	if n <= d.cap {
+		return
+	}
+	old_cap := d.cap
+	old_key_size := d.key_bytes * old_cap
+	old_value_size := d.value_bytes * old_cap
+	d.cap = n
+	unsafe {
+		d.keys = realloc_data(d.keys, old_key_size, d.key_bytes * d.cap)
+		d.values = realloc_data(d.values, old_value_size, d.value_bytes * d.cap)
+		if d.deletes != 0 {
+			d.all_deleted = realloc_data(d.all_deleted, old_cap, d.cap)
+			vmemset(voidptr(d.all_deleted + d.len), 0, d.cap - d.len)
+		}
+	}
+}
+
 // Make space to append an element and return index
 // The growth-factor is roughly 1.125 `(x + (x >> 3))`
 @[inline]
@@ -565,6 +583,11 @@ pub fn (mut m map) reserve(n u32) {
 	for u64(n) * 5 > u64(m.even_index) * 2 {
 		m.expand()
 	}
+	dense_cap := u64(n) + u64(m.key_values.deletes)
+	if dense_cap > u64(max_int) {
+		panic('map.reserve: max_int will be exceeded')
+	}
+	m.key_values.reserve(int(dense_cap))
 }
 
 // cached_rehashd works like rehash. However, instead of rehashing the

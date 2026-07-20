@@ -86,9 +86,15 @@ declaration-only `.vh` file and a compiled `.o` file. A module object is rebuilt
 when its source content, compiler implementation, target, or relevant build
 configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
 `math.bits` share one `builtin.o`, matching the v2 core-cache layout. Cache files live under
-the V temporary directory by default; set `V3CACHE` to select another root, or
-pass `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c`
-builds do not use the object cache.
+the V temporary directory by default; set `V3CACHE` to select another root, or pass
+`-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c` builds do not use the
+object cache. The benchmark output prints counts for parsed `.vh` and `.v` files immediately
+after the parse stage, followed by each category's space-separated paths on one line. Paths below
+the current home directory use `~` as a prefix. A nonzero `.vh` count shows how many cached module
+interfaces were parsed by that build. Required compile-time bodies are embedded in the `.vh`
+interface, so a warm cached build parses `.v` files only from the input program's directory; the
+`.v` list makes an unexpected module-cache miss visible. After successfully populating module
+objects, a cold build prints a hint that unchanged modules will not be recompiled on the next run.
 
 ## Architecture
 
@@ -240,11 +246,21 @@ Compiling `v3.v` itself in the C self-host chain:
 Commands:
 
 ```sh
-v -gc none -prod -o v3 v3.v
+v -prod -prealloc -d parallel -o v3 v3.v
 ./v3 -o v4 v3.v
 ./v4 -o v5 v3.v
 ./v5 -o v6 v3.v
 ```
+
+v3 uses scoped bump arenas to release compiler-stage allocations explicitly. It refuses to build
+with any Boehm GC mode or VGC and must be built with `-gc none`; `-prealloc` enables those arenas
+and selects `-gc none` automatically. v3 also rejects collector modes and GC compile-time defines
+for generated programs, which support `-gc none` only.
+
+The standard v3 executable is built without `-d ownership`, so the ownership checker and its
+analysis stages are compiled out. It rejects both `-ownership` and `-d ownership`; the main V
+driver builds a separate ownership-enabled v3 executable only for an explicit `v -ownership`
+invocation.
 
 The table uses the first v3-generated C stage, `./v3 -o v4 v3.v`. The plain
 bootstrap includes thread support. v3 self-hosts parallel-capable successors by

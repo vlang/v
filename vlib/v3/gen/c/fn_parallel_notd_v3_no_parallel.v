@@ -195,7 +195,9 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		g.intern_string(literal.clone())
 	}
 	for opt_name, val_type in batch.needed_optional_types {
-		g.needed_optional_types[opt_name.clone()] = val_type.clone()
+		if opt_name !in g.needed_optional_types {
+			g.needed_optional_types[opt_name.clone()] = val_type.clone()
+		}
 	}
 	for encoded, name in batch.fn_ptr_types {
 		if encoded !in g.fn_ptr_types {
@@ -352,7 +354,16 @@ fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 // gen_fns_dispatch emits fns dispatch output for c.
 fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 	if no_parallel {
-		g.gen_fns()
+		if g.scope_parallel_workers {
+			items := g.ensure_fn_gen_items()
+			if items.len < min_flat_cgen_parallel_items {
+				g.gen_fn_items(items)
+			} else {
+				g.gen_fn_items_scoped_master_batches(items)
+			}
+		} else {
+			g.gen_fns()
+		}
 		g.gen_synthetic_main_after_fns()
 		return
 	}
@@ -374,7 +385,11 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		}
 		if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 			if g.scope_parallel_workers {
-				g.gen_fn_items_scoped_master_batches(items)
+				if n_items < min_flat_cgen_parallel_items {
+					g.gen_fn_items(items)
+				} else {
+					g.gen_fn_items_scoped_master_batches(items)
+				}
 			} else {
 				g.gen_fn_items(items)
 			}
@@ -753,6 +768,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		used_fns:                       g.used_fns
 		used_fn_names:                  g.used_fn_names
 		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
+		cache_program_files:            g.cache_program_files
 		str_lits:                       if result_only {
 			clone_cgen_string_list(g.str_lits)
 		} else if g.scope_parallel_workers {
@@ -934,78 +950,79 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 	// over the immutable checked scope instead of cloning the full symbol table.
 	fs := types.new_scope(g.tc.file_scope)
 	mut wtc := &types.TypeChecker{
-		a:                                  unsafe { g.tc.a }
-		fn_ret_types:                       g.tc.fn_ret_types
-		fn_param_types:                     g.tc.fn_param_types
-		fn_ret_type_texts:                  g.tc.fn_ret_type_texts
-		fn_param_type_texts:                g.tc.fn_param_type_texts
-		fn_type_files:                      g.tc.fn_type_files
-		fn_type_modules:                    g.tc.fn_type_modules
-		fn_generic_params:                  g.tc.fn_generic_params
-		specialized_generic_fns:            g.tc.specialized_generic_fns
-		fn_variadic:                        g.tc.fn_variadic
-		fn_implicit_veb_ctx:                g.tc.fn_implicit_veb_ctx
-		c_variadic_fns:                     g.tc.c_variadic_fns
-		structs:                            g.tc.structs
-		struct_modules:                     g.tc.struct_modules
-		struct_files:                       g.tc.struct_files
-		soa_structs:                        g.tc.soa_structs
-		struct_error_embeds_shadow_builtin: g.tc.struct_error_embeds_shadow_builtin
-		struct_generic_params:              g.tc.struct_generic_params
-		struct_field_c_abi_fns:             g.tc.struct_field_c_abi_fns
-		unions:                             g.tc.unions
-		type_aliases:                       g.tc.type_aliases
-		type_alias_generic_params:          g.tc.type_alias_generic_params
-		type_alias_c_abi_fns:               g.tc.type_alias_c_abi_fns
-		sum_types:                          g.tc.sum_types
-		sum_generic_params:                 g.tc.sum_generic_params
-		enum_names:                         g.tc.enum_names
-		enum_fields:                        g.tc.enum_fields
-		flag_enums:                         g.tc.flag_enums
-		interface_names:                    g.tc.interface_names
-		interface_fields:                   g.tc.interface_fields
-		interface_embeds:                   g.tc.interface_embeds
-		interface_abstract_methods:         g.tc.interface_abstract_methods
-		interface_impl_name_snapshots:      g.tc.interface_impl_name_snapshots
-		c_globals:                          g.tc.c_globals
-		const_types:                        g.tc.const_types
-		const_exprs:                        g.tc.const_exprs
-		const_modules:                      g.tc.const_modules
-		const_files:                        g.tc.const_files
-		const_suffixes:                     g.tc.const_suffixes
-		imports:                            g.tc.imports
-		file_imports:                       g.tc.file_imports
-		file_selective_imports:             g.tc.file_selective_imports
-		file_modules:                       g.tc.file_modules
-		file_scope:                         g.tc.file_scope
-		cur_scope:                          fs
-		scope_pool:                         []&types.Scope{}
-		has_builtins:                       g.tc.has_builtins
-		resolution_type_mode:               g.tc.resolution_type_mode
-		cur_module:                         g.tc.cur_module
-		cur_file:                           g.tc.cur_file
-		errors:                             g.tc.errors.clone()
-		resolved_call_names:                g.tc.resolved_call_names
-		resolved_call_set:                  g.tc.resolved_call_set
-		resolved_fn_value_names:            g.tc.resolved_fn_value_names
-		resolved_fn_value_set:              g.tc.resolved_fn_value_set
-		statement_nodes:                    g.tc.statement_nodes
-		expr_type_values:                   g.tc.expr_type_values
-		expr_type_set:                      g.tc.expr_type_set
-		checking_nodes:                     g.tc.checking_nodes
-		parallel_check_sparse:              g.tc.parallel_check_sparse
-		check_range_lo:                     g.tc.check_range_lo
-		check_range_hi:                     g.tc.check_range_hi
-		sparse_resolved_call_names:         g.tc.sparse_resolved_call_names
-		sparse_resolved_fn_values:          g.tc.sparse_resolved_fn_values
-		sparse_statement_nodes:             g.tc.sparse_statement_nodes
-		sparse_expr_type_values:            g.tc.sparse_expr_type_values
-		sparse_checking_nodes:              g.tc.sparse_checking_nodes
-		diagnose_unknown_calls:             g.tc.diagnose_unknown_calls
-		reject_unlowered_map_mutation:      g.tc.reject_unlowered_map_mutation
-		diagnostic_files:                   g.tc.diagnostic_files
-		selected_file_called_fns:           g.tc.selected_file_called_fns
-		smartcasts:                         g.tc.smartcasts
+		a:                                     unsafe { g.tc.a }
+		fn_ret_types:                          g.tc.fn_ret_types
+		fn_param_types:                        g.tc.fn_param_types
+		fn_ret_type_texts:                     g.tc.fn_ret_type_texts
+		fn_param_type_texts:                   g.tc.fn_param_type_texts
+		fn_type_files:                         g.tc.fn_type_files
+		fn_type_modules:                       g.tc.fn_type_modules
+		fn_generic_params:                     g.tc.fn_generic_params
+		specialized_generic_fns:               g.tc.specialized_generic_fns
+		fn_variadic:                           g.tc.fn_variadic
+		fn_implicit_veb_ctx:                   g.tc.fn_implicit_veb_ctx
+		c_variadic_fns:                        g.tc.c_variadic_fns
+		structs:                               g.tc.structs
+		struct_modules:                        g.tc.struct_modules
+		struct_files:                          g.tc.struct_files
+		soa_structs:                           g.tc.soa_structs
+		struct_error_embeds_shadow_builtin:    g.tc.struct_error_embeds_shadow_builtin
+		struct_generic_params:                 g.tc.struct_generic_params
+		struct_field_c_abi_fns:                g.tc.struct_field_c_abi_fns
+		unions:                                g.tc.unions
+		type_aliases:                          g.tc.type_aliases
+		type_alias_generic_params:             g.tc.type_alias_generic_params
+		type_alias_c_abi_fns:                  g.tc.type_alias_c_abi_fns
+		sum_types:                             g.tc.sum_types
+		sum_generic_params:                    g.tc.sum_generic_params
+		enum_names:                            g.tc.enum_names
+		enum_fields:                           g.tc.enum_fields
+		flag_enums:                            g.tc.flag_enums
+		interface_names:                       g.tc.interface_names
+		interface_fields:                      g.tc.interface_fields
+		interface_embeds:                      g.tc.interface_embeds
+		interface_abstract_methods:            g.tc.interface_abstract_methods
+		interface_impl_name_snapshots:         g.tc.interface_impl_name_snapshots
+		interface_impl_candidates_at_snapshot: g.tc.interface_impl_candidates_at_snapshot
+		c_globals:                             g.tc.c_globals
+		const_types:                           g.tc.const_types
+		const_exprs:                           g.tc.const_exprs
+		const_modules:                         g.tc.const_modules
+		const_files:                           g.tc.const_files
+		const_suffixes:                        g.tc.const_suffixes
+		imports:                               g.tc.imports
+		file_imports:                          g.tc.file_imports
+		file_selective_imports:                g.tc.file_selective_imports
+		file_modules:                          g.tc.file_modules
+		file_scope:                            g.tc.file_scope
+		cur_scope:                             fs
+		scope_pool:                            []&types.Scope{}
+		has_builtins:                          g.tc.has_builtins
+		resolution_type_mode:                  g.tc.resolution_type_mode
+		cur_module:                            g.tc.cur_module
+		cur_file:                              g.tc.cur_file
+		errors:                                g.tc.errors.clone()
+		resolved_call_names:                   g.tc.resolved_call_names
+		resolved_call_set:                     g.tc.resolved_call_set
+		resolved_fn_value_names:               g.tc.resolved_fn_value_names
+		resolved_fn_value_set:                 g.tc.resolved_fn_value_set
+		statement_nodes:                       g.tc.statement_nodes
+		expr_type_values:                      g.tc.expr_type_values
+		expr_type_set:                         g.tc.expr_type_set
+		checking_nodes:                        g.tc.checking_nodes
+		parallel_check_sparse:                 g.tc.parallel_check_sparse
+		check_range_lo:                        g.tc.check_range_lo
+		check_range_hi:                        g.tc.check_range_hi
+		sparse_resolved_call_names:            g.tc.sparse_resolved_call_names
+		sparse_resolved_fn_values:             g.tc.sparse_resolved_fn_values
+		sparse_statement_nodes:                g.tc.sparse_statement_nodes
+		sparse_expr_type_values:               g.tc.sparse_expr_type_values
+		sparse_checking_nodes:                 g.tc.sparse_checking_nodes
+		diagnose_unknown_calls:                g.tc.diagnose_unknown_calls
+		reject_unlowered_map_mutation:         g.tc.reject_unlowered_map_mutation
+		diagnostic_files:                      g.tc.diagnostic_files
+		selected_file_called_fns:              g.tc.selected_file_called_fns
+		smartcasts:                            g.tc.smartcasts
 		// Read-only map cgen uses to recover substituted signatures for generic-receiver
 		// method values (`Box[int].method` as a callback); without it a parallel worker
 		// sees an empty map and gen_method_value_closure falls through.

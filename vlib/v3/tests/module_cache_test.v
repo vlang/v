@@ -52,7 +52,7 @@ fn compile_module_cache_project(v3_bin string, cache_dir string, main_file strin
 
 fn run_module_cache_binary(path string) string {
 	result := os.execute(os.quoted_path(path))
-	assert result.exit_code == 0, result.output
+	assert result.exit_code == 0, '${path}: ${result.output}'
 	return result.output.trim_space()
 }
 
@@ -63,6 +63,52 @@ fn module_cache_object_hash(path string) u64 {
 		hash = (hash ^ u64(byte)) * u64(1099511628211)
 	}
 	return hash
+}
+
+fn test_cached_object_accepts_recorded_dependency_superset() {
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_dependency_superset_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	old_cache := os.getenv_opt('V3CACHE')
+	os.setenv('V3CACHE', root, true)
+	defer {
+		if value := old_cache {
+			os.setenv('V3CACHE', value, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'foo.v')
+	first_dependency := os.join_path(root, 'first.h')
+	extra_dependency := os.join_path(root, 'extra.h')
+	new_dependency := os.join_path(root, 'new.h')
+	write_module_cache_file(root, 'foo.v', 'module foo')
+	write_module_cache_file(root, 'first.h', '#define FIRST 1')
+	write_module_cache_file(root, 'extra.h', '#define EXTRA 1')
+	write_module_cache_file(root, 'new.h', '#define NEW 1')
+	manager := modulecache.new_manager(root, 'dependency-superset', true, '')
+	assert manager.ensure_dir()
+	compile_signature := 'flags'
+	entry := manager.object_entry('foo', [source], compile_signature)
+	os.write_file(entry.object, '') or { panic(err) }
+	manager.write_stamp('foo', [source], {
+		first_dependency: modulecache.file_signature(first_dependency)
+		extra_dependency: modulecache.file_signature(extra_dependency)
+	}, compile_signature) or { panic(err) }
+	_ := manager.valid_object_for_compile_signature('foo', [source], compile_signature, {
+		first_dependency: modulecache.file_signature(first_dependency)
+	}) or {
+		assert false, 'a recorded dependency superset should remain valid'
+		return
+	}
+	if _ := manager.valid_object_for_compile_signature('foo', [source], compile_signature, {
+		first_dependency: modulecache.file_signature(first_dependency)
+		new_dependency:   modulecache.file_signature(new_dependency)
+	})
+	{
+		assert false, 'a newly discovered dependency must invalidate the object'
+	}
 }
 
 fn module_cache_object_hashes(cache_dir string) map[string]u64 {
@@ -123,6 +169,431 @@ fn test_module_cache_declaration_header_preserves_preprocessor_after_comment() {
 	header := modulecache.declaration_header(prefix)
 	assert header.contains('/* embedded header */\n#ifndef CACHED_HEADER')
 	assert !header.contains('extern #ifndef')
+}
+
+fn test_module_cache_declaration_header_ignores_semicolons_inside_block_comments() {
+	prefix := '/*
+revision history:
+  feature works again;
+  #ifdef text inside the comment
+  another fix;
+*/
+int value = 1;
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.contains('extern int value;')
+	assert !header.contains('extern feature')
+	assert !header.contains('extern another')
+	assert !header.contains('#ifdef text')
+	assert !modulecache.c_source_has_static_storage(prefix)
+}
+
+fn test_module_cache_declaration_header_handles_extern_c_and_trailing_comments() {
+	prefix := '#ifdef __cplusplus
+extern "C" {
+#endif
+int cached_fn(int value); // public API
+typedef struct
+{
+	float x;
+	float y;
+} CachedPoint;
+#ifdef __cplusplus
+} // extern "C"
+#endif
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.contains('extern "C" {')
+	assert header.contains('int cached_fn(int value); // public API')
+	assert header.contains('float x;\n\tfloat y;\n} CachedPoint;')
+	assert !header.contains('typedef struct;')
+	assert header.contains('} // extern "C"')
+}
+
+fn test_module_cache_declaration_header_keeps_macro_function_conditionals_bounded() {
+	prefix := '#if defined(CACHED_EMSCRIPTEN)
+EM_JS(void, cached_js_fn, (void), {
+	if (Module.value) {
+		Module.value++;
+	}
+})
+#endif
+#if defined(CACHED_WINDOWS)
+void cached_windows_fn(bool enabled) {
+#if defined(CACHED_OPTION)
+	if (enabled) {
+		cached_js_fn();
+	}
+#endif
+}
+#endif
+int cached_after(void) {
+	return 1;
+}
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.count('#endif') == 2
+	assert header.contains('void cached_windows_fn(bool enabled);')
+	assert header.contains('int cached_after(void);')
+	assert !header.contains('extern Module.value')
+	assert !header.contains('extern return 1')
+}
+
+fn test_module_cache_declaration_header_keeps_native_headers_without_implementations() {
+	prefix := 'int generated_state = 1;
+/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */
+#define SOKOL_APP_IMPL
+#define STB_IMAGE_IMPLEMENTATION
+#define FEATURE_FLAG
+/* Usage:
+   #define STB_IMAGE_IMPLEMENTATION
+*/
+typedef struct NativeType { int value; } NativeType;
+#ifdef SOKOL_APP_IMPL
+int native_implementation(void) { return 1; }
+#endif
+/* V3CACHE_NATIVE_DIRECTIVES_END */
+/* V3CACHE_SOURCE_DIRECTIVES_BEGIN */
+int native_source_body(void) { return 2; }
+/* V3CACHE_SOURCE_DIRECTIVES_END */
+int generated_fn(void) { return 3; }
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.contains('extern int generated_state;')
+	assert header.contains('typedef struct NativeType { int value; } NativeType;')
+	assert header.contains('#define FEATURE_FLAG')
+	assert header.contains('/* Usage:\n   #define STB_IMAGE_IMPLEMENTATION\n*/')
+	assert header.contains('/* v3 cache omitted SOKOL_APP_IMPL */')
+	assert header.contains('/* v3 cache omitted STB_IMAGE_IMPLEMENTATION */')
+	assert !header.contains('#define SOKOL_APP_IMPL')
+	assert header.count('#define STB_IMAGE_IMPLEMENTATION') == 1
+	assert !header.contains('native_source_body')
+	assert header.contains('int generated_fn(void);')
+}
+
+fn test_module_cache_native_header_conditional_functions_become_declarations() {
+	prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */
+#if defined(CACHED_GL)
+int cached_readback(int value) {
+	return value;
+}
+#else
+int cached_readback(int value) {
+	return -value;
+}
+#endif
+/* V3CACHE_NATIVE_DIRECTIVES_END */
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.count('static int cached_readback(int value) {') == 2
+	assert header.contains('return value')
+	assert header.contains('return -value')
+}
+
+fn test_cached_header_preserves_include_search_path_names() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_include_search_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/include/cached_value.h', '#define CACHED_VALUE 42\n')
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+#flag -I @DIR/include
+#include "cached_value.h"
+
+pub fn value() int {
+	return C.CACHED_VALUE
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains('#include "cached_value.h"'), header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
+fn test_cached_unused_callback_declaration_emits_fn_pointer_typedef() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_unused_callback_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+pub fn apply(cb fn (int) int, value int) int {
+	return cb(value)
+}
+
+pub fn value() int {
+	return 42
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
+fn test_module_cache_static_inline_attributes_are_not_storage() {
+	source := 'static __inline void atomic_fence(int order __attribute__((unused))) {\n\t(void)order;\n}\n'
+	assert !modulecache.c_source_has_static_storage(source)
+	assert modulecache.c_source_has_static_storage('static int state = 1;\n')
+	assert modulecache.c_source_has_static_storage('static inline int next(void) {\n\tstatic int state;\n\treturn ++state;\n}\n')
+}
+
+fn test_module_cache_declaration_header_keeps_directives_inside_static_inline_functions() {
+	prefix := 'static inline void *aligned_alloc_for_target(void) {
+#ifdef _WIN32
+	return _aligned_malloc(16, 16);
+#else
+	return malloc(16);
+#endif
+}
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.contains('static inline void *aligned_alloc_for_target(void) {\n#ifdef _WIN32')
+	assert header.contains('#else\n\treturn malloc(16);\n#endif\n}')
+}
+
+fn test_stateful_native_module_is_cached_with_its_owner() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_stateful_native_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'native/native.v', 'module native
+
+#include "@DIR/native.c"
+
+fn C.native_value() int
+
+pub fn value() int {
+	identity := fn (value int) int {
+		return value
+	}
+	return identity(C.native_value())
+}
+')
+	write_module_cache_file(root, 'native/native.c', 'static int native_state = 40;
+
+int native_value(void) {
+	return ++native_state;
+}
+')
+	write_module_cache_file(root, 'cached/cached.v', 'module cached
+
+pub fn value() int {
+	return 1
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import cached
+import native
+
+fn main() {
+	println(cached.value() + native.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	assert module_cache_artifact(cache_dir, 'cached_', '.o').len > 0
+	assert module_cache_artifact(cache_dir, 'native_', '.o').len > 0
+	native_header := module_cache_artifact(cache_dir, 'native_', '.vh')
+	assert native_header.len > 0
+	assert !(os.read_file(native_header) or { panic(err) }).contains('compile source in program unit')
+
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert run_module_cache_binary(second_output) == '42'
+	vh_lines := second.output.split_into_lines().filter(it.contains('parsed .vh files'))
+	assert vh_lines.len == 1, second.output
+	fields := vh_lines[0].fields()
+	assert fields.len >= 4 && fields[3].int() > 0, second.output
+	vh_file_lines :=
+		second.output.split_into_lines().filter(it.trim_space().starts_with('.vh files:'))
+	assert vh_file_lines.len == 1, second.output
+	vh_files := vh_file_lines[0].all_after(':').trim_space().split(' ')
+	assert vh_files.len == fields[3].int(), second.output
+	assert vh_files.all(it.ends_with('.vh')), second.output
+	v_lines := second.output.split_into_lines().filter(it.contains('parsed .v files'))
+	assert v_lines.len == 1, second.output
+	v_fields := v_lines[0].fields()
+	assert v_fields.len >= 4 && v_fields[3].int() > 0, second.output
+	v_file_lines :=
+		second.output.split_into_lines().filter(it.trim_space().starts_with('.v files:'))
+	assert v_file_lines.len == 1, second.output
+	v_files := v_file_lines[0].all_after(':').trim_space().split(' ')
+	assert v_files.len == v_fields[3].int(), second.output
+	assert v_files == [main_file], second.output
+}
+
+fn test_cold_module_cache_prints_reuse_hint_only_once() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_cold_hint_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'cached/cached.v', 'module cached
+
+pub fn value() int {
+	return 42
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import cached
+
+fn main() {
+	println(cached.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	hint := 'will not be recompiled on the next run unless they change'
+	cold_stdout := os.join_path(root, 'cold.stdout')
+	cold_stderr := os.join_path(root, 'cold.stderr')
+	cold_output := os.join_path(root, 'cold')
+	cold :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(cold_output)} ${os.quoted_path(main_file)} > ${os.quoted_path(cold_stdout)} 2> ${os.quoted_path(cold_stderr)}')
+	assert cold.exit_code == 0, cold.output
+	cold_stdout_text := os.read_file(cold_stdout) or { panic(err) }
+	cold_stderr_text := os.read_file(cold_stderr) or { panic(err) }
+	assert cold_stdout_text.contains('Hint: cached '), cold_stdout_text
+	assert cold_stdout_text.contains(hint), cold_stdout_text
+	assert !cold_stderr_text.contains(hint), cold_stderr_text
+
+	warm_stdout := os.join_path(root, 'warm.stdout')
+	warm_output := os.join_path(root, 'warm')
+	warm :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(warm_output)} ${os.quoted_path(main_file)} > ${os.quoted_path(warm_stdout)}')
+	assert warm.exit_code == 0, warm.output
+	warm_stdout_text := os.read_file(warm_stdout) or { panic(err) }
+	assert !warm_stdout_text.contains(hint), warm_stdout_text
+}
+
+fn test_cached_native_source_fallback_declaration_is_not_in_program_unit() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_native_fallback_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'native/native.v', 'module native
+
+#include "@DIR/native.m"
+
+fn C.native_value(&int) int
+
+pub fn value() int {
+	n := 90
+	return C.native_value(&n)
+}
+')
+	write_module_cache_file(root, 'native/native.m', 'int native_value(const int* value) {
+	return *value;
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import native
+
+fn main() {
+	println(native.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '90'
+	assert module_cache_artifact(cache_dir, 'native_', '.o').len > 0
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '90'
+}
+
+fn test_cached_unused_function_handles_plain_multi_discard_assignment() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_multi_discard_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'cached/cached.v', 'module cached
+
+fn unused(key string, value string) {
+	_, _ = key, value
+}
+
+pub fn value() int {
+	return 42
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import cached
+
+fn main() {
+	println(cached.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	assert module_cache_artifact(cache_dir, 'cached_', '.o').len > 0
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
 }
 
 fn test_module_cache_string_symbol_rewrite_preserves_literal_bytes() {
@@ -976,7 +1447,7 @@ fn main() {
 	compile_module_cache_project(v3_bin, cache_dir, second_main, second_output)
 	assert run_module_cache_binary(second_output) == '42'
 	second_hashes := module_cache_object_hashes(cache_dir)
-	assert second_hashes.keys().filter(it.starts_with('builtin_')).len == 1
+	assert second_hashes.keys().filter(it.starts_with('builtin_')).len == 1, second_hashes.keys().str()
 }
 
 fn test_cached_headers_keep_full_module_identity() {
@@ -1075,25 +1546,147 @@ pub fn value() int {
 	return generic.identity[int](42)
 }
 ')
-	main_file := os.join_path(root, 'main.v')
-	write_module_cache_file(root, 'main.v', 'module main
+	write_module_cache_file(root, 'outer/outer.v', 'module outer
 
 import wrapper
 
+pub fn value() int {
+	return wrapper.value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import outer
+
 fn main() {
-	println(wrapper.value())
+	println(outer.value())
 }
 ')
 	cache_dir := os.join_path(root, 'cache')
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '42'
+	wrapper_header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
+	assert wrapper_header_path.len > 0
+	assert !modulecache.header_needs_source(modulecache.Entry{
+		header: wrapper_header_path
+	})
 	first_hashes := module_cache_object_hashes(cache_dir)
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
 	assert run_module_cache_binary(second_output) == '42'
 	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
+}
+
+fn test_cached_module_body_recreates_generic_receiver_specializations() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_generic_receiver_chain_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'genericbox/genericbox.v', 'module genericbox
+
+pub struct Box[T] {
+pub:
+	value T
+}
+
+pub fn (box Box[T]) get() T {
+	return box.value
+}
+')
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+import genericbox
+
+pub fn value() int {
+	return genericbox.Box[int]{
+		value: 45
+	}.get()
+}
+')
+	write_module_cache_file(root, 'outer/outer.v', 'module outer
+
+import wrapper
+
+pub fn value() int {
+	return wrapper.value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import outer
+
+fn main() {
+	println(outer.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '45'
+	wrapper_header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
+	assert wrapper_header_path.len > 0
+	wrapper_header := os.read_file(wrapper_header_path) or { panic(err) }
+	assert wrapper_header.contains('pub fn value() int {'), wrapper_header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '45'
+}
+
+fn test_cached_module_body_recreates_captured_callback_symbols() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_captured_callback_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'callbacks/callbacks.v', 'module callbacks
+
+pub fn value(input int) int {
+	offset := 3
+	add := fn [offset] (value int) int {
+		return offset + value
+	}
+	return add(input)
+}
+')
+	write_module_cache_file(root, 'outer/outer.v', 'module outer
+
+import callbacks
+
+pub fn value() int {
+	return callbacks.value(43)
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import outer
+
+fn main() {
+	println(outer.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '46'
+	callback_header_path := module_cache_artifact(cache_dir, 'callbacks_', '.vh')
+	assert callback_header_path.len > 0
+	callback_header := os.read_file(callback_header_path) or { panic(err) }
+	assert callback_header.contains('pub fn value(input int) int {'), callback_header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '46'
 }
 
 fn test_cached_generic_receiver_method_keeps_its_body() {
@@ -1134,9 +1727,11 @@ fn main() {
 	first_hashes := module_cache_object_hashes(cache_dir)
 	header_path := module_cache_artifact(cache_dir, 'genericbox_', '.vh')
 	assert header_path.len > 0
-	assert modulecache.header_needs_source(modulecache.Entry{
+	assert !modulecache.header_needs_source(modulecache.Entry{
 		header: header_path
 	})
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains('pub fn (box Box[T]) get() T {'), header
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
@@ -1243,6 +1838,63 @@ fn main() {
 	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
+fn test_cached_interface_implementer_with_embedded_body_has_forward_declaration() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_interface_embedded_body_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'contract/contract.v', 'module contract
+
+pub interface Writer {
+	write(value int) int
+}
+')
+	write_module_cache_file(root, 'writer/writer.v', 'module writer
+
+import contract
+
+pub struct NumberWriter {}
+
+fn identity[T](value T) T {
+	return value
+}
+
+pub fn (mut writer NumberWriter) write(value int) int {
+	_ = writer
+	return identity[int](value)
+}
+
+pub fn make() contract.Writer {
+	return &NumberWriter{}
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import writer
+
+fn main() {
+	mut output := writer.make()
+	println(output.write(44))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '44'
+	header_path := module_cache_artifact(cache_dir, 'writer_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains('fn (mut writer NumberWriter) write(value int) int {'), header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '44'
+}
+
 fn test_cached_header_preserves_comptime_struct_fields() {
 	mut a := flat.FlatAst.new()
 	module_id := a.add_node(flat.Node{
@@ -1293,7 +1945,7 @@ fn test_cached_header_preserves_comptime_struct_fields() {
 	assert header.contains('\tenabled bool')
 }
 
-fn test_cached_struct_default_with_unsupported_initializer_keeps_source() {
+fn test_cached_struct_default_with_unsupported_initializer_is_embedded() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_struct_default_index_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1305,6 +1957,7 @@ fn test_cached_struct_default_with_unsupported_initializer_keeps_source() {
 
 const values = [41, 42]
 
+@[params]
 pub struct Config {
 pub:
 	first int = values[0]
@@ -1312,6 +1965,10 @@ pub:
 
 pub fn cached_value() int {
 	return Config{}.first
+}
+
+pub fn configured(config Config) int {
+	return config.first
 }
 ')
 	main_file := os.join_path(root, 'main.v')
@@ -1322,26 +1979,77 @@ import defaulted
 fn main() {
 	println(defaulted.Config{}.first)
 	println(defaulted.cached_value())
+	println(defaulted.configured())
 }
 ')
 	cache_dir := os.join_path(root, 'cache')
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
-	assert run_module_cache_binary(first_output) == '41\n41'
+	assert run_module_cache_binary(first_output) == '41\n41\n41'
 	header_path := module_cache_artifact(cache_dir, 'defaulted_', '.vh')
 	assert header_path.len > 0
-	assert modulecache.header_needs_source(modulecache.Entry{
+	assert !modulecache.header_needs_source(modulecache.Entry{
 		header: header_path
 	})
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.count('pub struct Config {') == 1, header
+	assert header.contains('@[params]\npub struct Config {'), header
+	assert header.contains('values = [41, 42].clone()'), header
 	first_hashes := module_cache_object_hashes(cache_dir)
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
-	assert run_module_cache_binary(second_output) == '41\n41'
+	assert run_module_cache_binary(second_output) == '41\n41\n41'
 	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
-fn test_cached_const_with_unsupported_initializer_keeps_source() {
+fn test_cached_const_preserves_positional_struct_initializers() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_positional_struct_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'records/records.v', 'module records
+
+pub struct Pair {
+pub:
+	left  int
+	right int
+}
+
+const pairs = [Pair{41, 42}]!
+
+pub fn first() int {
+	return pairs[0].left
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import records
+
+fn main() {
+	println(records.first())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '41'
+	header_path := module_cache_artifact(cache_dir, 'records_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains('Pair{41, 42}]!'), header
+	assert !header.contains('Pair{:'), header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '41'
+}
+
+fn test_cached_const_with_unsupported_initializer_is_embedded() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_const_index_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1374,16 +2082,19 @@ fn main() {
 	assert run_module_cache_binary(first_output) == '41\n41'
 	header_path := module_cache_artifact(cache_dir, 'indexed_', '.vh')
 	assert header_path.len > 0
-	assert modulecache.header_needs_source(modulecache.Entry{
+	assert !modulecache.header_needs_source(modulecache.Entry{
 		header: header_path
 	})
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains('pub const values = [41, 42].clone()'), header
+	assert header.contains('pub const first = values[0]'), header
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
 	assert run_module_cache_binary(second_output) == '41\n41'
 }
 
-fn test_cached_global_with_unsupported_initializer_keeps_source() {
+fn test_cached_global_with_unsupported_initializer_is_embedded() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_global_index_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1396,6 +2107,11 @@ fn test_cached_global_with_unsupported_initializer_keeps_source() {
 const values = [41, 42]
 
 __global first = values[0]
+
+pub union Holder {
+pub mut:
+	value int
+}
 
 pub fn cached_value() int {
 	return first
@@ -1416,9 +2132,11 @@ fn main() {
 	assert run_module_cache_binary(first_output) == '41'
 	header_path := module_cache_artifact(cache_dir, 'initialized_', '.vh')
 	assert header_path.len > 0
-	assert modulecache.header_needs_source(modulecache.Entry{
+	assert !modulecache.header_needs_source(modulecache.Entry{
 		header: header_path
 	})
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains('pub union Holder {'), header
 	first_hashes := module_cache_object_hashes(cache_dir)
 
 	second_output := os.join_path(root, 'second')
@@ -1436,6 +2154,12 @@ fn test_cached_header_preserves_noreturn_attribute() {
 		os.rmdir_all(root) or {}
 	}
 	write_module_cache_file(root, 'terminator/terminator.v', 'module terminator
+
+@[markused; params]
+pub struct ExitConfig {
+pub:
+	code int
+}
 
 @[noreturn]
 pub fn die() {
@@ -1459,7 +2183,9 @@ fn main() {}
 	header_path := module_cache_artifact(cache_dir, 'terminator_', '.vh')
 	assert header_path.len > 0
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains('@[noreturn]\nfn die()')
+	assert header.contains('@[noreturn]\npub fn die()'), header
+	assert header.contains('@[markused; params]\npub struct ExitConfig {'), header
+	assert !header.contains('@[markused; params]\n@[params]\npub struct ExitConfig {'), header
 	first_hashes := module_cache_object_hashes(cache_dir)
 
 	second_output := os.join_path(root, 'second')
@@ -1619,7 +2345,7 @@ fn main() {
 	assert foo_header_path.len > 0
 	foo_header := os.read_file(foo_header_path) or { panic(err) }
 	assert foo_header.contains('struct Item')
-	assert foo_header.contains('const (')
+	assert foo_header.contains('pub const answer = 21')
 	assert foo_header.contains('fn value() int')
 	assert !foo_header.contains('return answer')
 	assert module_cache_artifact(cache_dir, 'hash_', '.vh').len > 0

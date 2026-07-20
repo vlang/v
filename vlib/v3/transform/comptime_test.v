@@ -13,6 +13,15 @@ fn test_comptime_field_function_type_keeps_declaring_module() {
 	assert t.comptime_field_type_id_key('Container[T]', 'eventbus') == 'eventbus.Container[T]'
 }
 
+fn test_comptime_for_base_type_unwraps_storage_indirections() {
+	mut a := flat.FlatAst.new()
+	t := Transformer{
+		a: &a
+	}
+	assert t.comptime_for_base_type('&websocket.Server') == 'websocket.Server'
+	assert t.comptime_for_base_type('shared websocket.ClientState') == 'websocket.ClientState'
+}
+
 fn test_comptime_condition_distinguishes_pointer_depth_from_logical_and() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{

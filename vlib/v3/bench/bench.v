@@ -1,5 +1,6 @@
 module bench
 
+import os
 import runtime
 import time
 
@@ -154,6 +155,23 @@ pub fn (mut b Bench) metric(name string, value i64, unit string) {
 	}
 }
 
+// metric_items prints a structural counter and a one-line list of its items immediately.
+pub fn (_ &Bench) metric_items(name string, value i64, unit string, items_label string, items []string) {
+	metric := Metric{
+		name:  name
+		value: value
+		unit:  unit
+	}
+	print_metric(metric)
+	short_items := items.map(shorten_home_path(it))
+	println('      ${items_label}: ${short_items.join(' ')}')
+}
+
+fn print_metric(metric Metric) {
+	suffix := if metric.unit.len > 0 { ' ${metric.unit}' } else { '' }
+	println('    ${metric.name:-28s} ${metric.value}${suffix}')
+}
+
 // print_report updates print report state for Bench.
 pub fn (b &Bench) print_report() {
 	total_ms := f64(b.total_sw.elapsed().microseconds()) / 1000.0
@@ -161,11 +179,24 @@ pub fn (b &Bench) print_report() {
 	if b.metrics.len > 0 {
 		println('  metrics:')
 		for metric in b.metrics {
-			suffix := if metric.unit.len > 0 { ' ${metric.unit}' } else { '' }
-			println('    ${metric.name:-28s} ${metric.value}${suffix}')
+			print_metric(metric)
 		}
 	}
 	println('')
+}
+
+fn shorten_home_path(path string) string {
+	home := os.home_dir()
+	if home.len == 0 || !path.starts_with(home) {
+		return path
+	}
+	if path.len == home.len {
+		return '~'
+	}
+	if path[home.len] !in [`/`, `\\`] {
+		return path
+	}
+	return '~${path[home.len..]}'
 }
 
 // current_rss_kb returns current rss kb data for bench.

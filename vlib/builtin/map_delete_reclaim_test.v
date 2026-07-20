@@ -44,3 +44,17 @@ fn test_map_delete_reclaims_dense_array_tail() {
 		assert raw.key_values.all_deleted == unsafe { nil }
 	}
 }
+
+fn test_map_reserve_preallocates_dense_array() {
+	mut m := map[string]int{}
+	raw := unsafe { &MapLayoutForTest(&m) }
+	m.reserve(1000)
+	assert raw.key_values.cap >= 1000
+	keys := raw.key_values.keys
+	values := raw.key_values.values
+	for i in 0 .. 1000 {
+		m[i.str()] = i
+	}
+	assert raw.key_values.keys == keys
+	assert raw.key_values.values == values
+}

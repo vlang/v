@@ -23,7 +23,7 @@ fn build_v3_review_transform() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.execute('${vexe} -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -64,6 +64,173 @@ fn run_good_with_env(v3_bin string, name string, env string, src string) string 
 	run := os.execute(good_bin)
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
+}
+
+fn test_recursive_interface_equality_stops_expanding_seen_interfaces() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'recursive_interface_equality', 'interface Value {}
+
+struct Box {
+	values []Value
+}
+
+fn main() {
+	left := Value(Box{})
+	right := Value(Box{})
+	println(left == right)
+}
+')
+	assert out == 'true'
+}
+
+fn test_map_interface_equality_keeps_typed_map_get() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'map_interface_equality_typed_get', 'interface Value {
+	n int
+}
+
+struct Item {
+	n int
+}
+
+fn main() {
+	left := {
+		"item": Value(Item{
+			n: 7
+		})
+	}
+	right := {
+		"item": Value(Item{
+			n: 7
+		})
+	}
+	println(left == right)
+}
+')
+	assert out == 'true'
+}
+
+fn test_pointer_interface_field_as_interface_uses_storage_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_interface_field_as_interface_storage', 'interface Layout {
+	size() int
+}
+
+interface Widget {
+	size() int
+	draw()
+}
+
+interface Application {
+	layout &Layout
+}
+
+struct Item {}
+
+fn (_ Item) size() int {
+	return 7
+}
+
+fn (_ Item) draw() {}
+
+struct App {
+	layout &Layout
+}
+
+fn application_widget(app Application) Widget {
+	if app.layout is Widget {
+		widget := app.layout as Widget
+		return widget
+	}
+	return Widget(Item{})
+}
+
+fn main() {
+	layout := Layout(Item{})
+	app := Application(App{
+		layout: &layout
+	})
+	println(application_widget(app).size())
+}
+')
+	assert out == '7'
+}
+
+fn test_interface_dispatch_reboxes_result_pointer_payload() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_dispatch_result_pointer_payload', 'interface Connection {
+	close() !
+}
+
+struct TcpConn {}
+
+fn (_ &TcpConn) close() ! {}
+
+interface Dialer {
+	dial(string) !Connection
+}
+
+struct Proxy {}
+
+fn (_ &Proxy) dial(_ string) !&TcpConn {
+	return &TcpConn{}
+}
+
+fn main() {
+	dialer := Dialer(&Proxy{})
+	connection := dialer.dial("") or { panic(err) }
+	connection.close() or { panic(err) }
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
+fn test_generic_shared_parameter_value_copy_uses_inner_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_shared_parameter_value_copy', 'struct State {
+	label string
+}
+
+fn destroy(shared state State) {
+	drop_owned(state)
+}
+
+fn main() {
+	shared state := State{
+		label: "ok"
+	}
+	destroy(state)
+	println("done")
+}
+')
+	assert out == 'done'
+}
+
+fn test_c_pointer_zero_argument_stays_null() {
+	v3_bin := build_v3_review_transform()
+	generated := gen_c_from_source(v3_bin, 'c_pointer_zero_argument', 'fn C.wait(&int) int
+
+fn call_wait() int {
+	return C.wait(0)
+}
+
+fn main() {
+	_ = call_wait()
+}
+')
+	assert generated.contains('return wait(0);'), generated
+	assert !generated.contains('wait(&0)'), generated
+}
+
+fn test_system_libc_mode_preserves_ptrace_header() {
+	v3_bin := build_v3_review_transform()
+	generated := gen_c_from_source(v3_bin, 'system_libc_ptrace_header', '#include <math.h>
+#include <sys/ptrace.h>
+
+fn main() {}
+')
+	assert generated.contains('#include <sys/ptrace.h>'), generated
 }
 
 fn gen_c_from_source(v3_bin string, name string, src string) string {
@@ -1532,6 +1699,17 @@ fn test_comptime_field_generic_calls_keep_resolved_field_types() {
 		'main.v':        'module main\n\nimport codec\nimport model\n\nfn main() {\n\tmut event := model.Event{}\n\tcodec.visit(mut event)\n\tprintln(int_str(int(event.key)))\n}\n'
 	}, 'main.v')
 	assert out == '0'
+}
+
+fn test_comptime_pointer_field_generic_local_uses_call_return_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'comptime_pointer_field_call_return_type', {
+		'v.mod':         "Module { name: 'comptime_pointer_field_call_return_type' }\n"
+		'model/model.v': 'module model\n\npub struct App {\npub mut:\n\tvalue int\n}\n\npub struct Context {\npub mut:\n\tapp &App\n}\n'
+		'codec/codec.v': 'module codec\n\npub fn fill[T](mut value T) {\n\t$for field in T.fields {\n\t\t$if field.indirections == 1 {\n\t\t\tmut decoded_ptr := create_ptr(value.$(field.name))\n\t\t\tdecoded_ptr.value = 42\n\t\t\tvalue.$(field.name) = decoded_ptr\n\t\t}\n\t}\n}\n\nfn create_ptr[T](_ &T) &T {\n\treturn &T{}\n}\n'
+		'main.v':        'module main\n\nimport codec\nimport model\n\nfn main() {\n\tmut context := model.Context{}\n\tcodec.fill(mut context)\n\tprintln(context.app.value)\n}\n'
+	}, 'main.v')
+	assert out == '42'
 }
 
 fn test_imported_struct_default_qualifies_function_alias_cast() {
