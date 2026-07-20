@@ -82,7 +82,7 @@ fn test_c_flag_target_filter_drops_termux_off_termux() {
 	assert run.output.trim_space() == 'termux-filter-ok'
 }
 
-fn test_objective_c_flags_skip_tcc_and_select_objective_c_language() {
+fn test_objective_c_flags_are_confined_to_cached_dylib() {
 	$if !macos {
 		return
 	}
@@ -94,7 +94,8 @@ fn test_objective_c_flags_skip_tcc_and_select_objective_c_language() {
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_objective_c_flag_input_${pid}.v')
-	os.write_file(src, "#flag darwin -fobjc-arc\nfn main() {\n\tprintln('objc-flag-ok')\n}\n") or {
+	os.write_file(src,
+		"#flag darwin -fobjc-arc\n#flag darwin -lobjc\n#include <objc/message.h>\ntype Msg = fn (voidptr, voidptr) voidptr\nfn C.objc_msgSend(obj voidptr, sel voidptr) voidptr\nfn main() {\n\t_ := unsafe { Msg(C.objc_msgSend) }\n\tprintln('objc-flag-ok')\n}\n") or {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_objective_c_flag_input_${pid}')
@@ -102,9 +103,13 @@ fn test_objective_c_flags_skip_tcc_and_select_objective_c_language() {
 	os.rmdir_all(bin) or {}
 	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
 	assert compile.exit_code == 0, compile.output
-	assert !compile.output.contains('tcc.exe'), compile.output
-	assert compile.output.contains('-x objective-c'), compile.output
-	assert compile.output.contains('-x none'), compile.output
+	tcc_lines := compile.output.split_into_lines().filter(it.contains('tcc.exe'))
+	assert tcc_lines.len == 1, compile.output
+	tcc_line := tcc_lines[0]
+	assert tcc_line.contains('.dylib'), tcc_line
+	assert !tcc_line.contains('-fobjc-arc'), tcc_line
+	assert !tcc_line.contains('-x objective-c'), tcc_line
+	assert compile.output.contains('C dylib cache'), compile.output
 
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output

@@ -11439,6 +11439,9 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef union { unsigned char _opaque[16]; long long _align; } pthread_once_t;')
 	g.writeln('typedef unsigned long pthread_key_t;')
 	g.writeln('#endif')
+	g.writeln('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
+	g.writeln('void* pthread_getspecific(pthread_key_t key);')
+	g.writeln('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sem_t;')
 	g.writeln('#if !defined(__sigset_t_defined) && !defined(_SIGSET_T_DECLARED) && !defined(_SIGSET_T_DEFINED) && !defined(_SIGSET_T)')
 	g.writeln('typedef union { unsigned char _opaque[128]; long long _align; } sigset_t;')
@@ -14222,10 +14225,7 @@ fn (mut g FlatGen) global_decls() {
 			init := if g.has_zero_sized_leading_init_slot(decl_typ) { '' } else { ' = {0}' }
 			if is_fn_capture {
 				g.writeln('#if defined(__TINYC__)')
-				g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
-				g.writeln('void* pthread_getspecific(u64 key);')
-				g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
-				g.writeln('static u64 ${g.cname(name)}_key;')
+				g.writeln('static pthread_key_t ${g.cname(name)}_key;')
 				g.writeln('static void ${g.cname(name)}_key_init(void) __attribute__((constructor));')
 				g.writeln('static void ${g.cname(name)}_key_init(void) { pthread_key_create(&${g.cname(name)}_key, free); }')
 				g.writeln('static ${c_elem} (*${g.cname(name)}_slot(void))${dims} { void* p = pthread_getspecific(${g.cname(name)}_key); if (!p) { p = calloc(1, sizeof(*${g.cname(name)}_slot())); pthread_setspecific(${g.cname(name)}_key, p); } return p; }')
@@ -14263,10 +14263,7 @@ fn (mut g FlatGen) global_decls() {
 			cname := g.cname(name)
 			if shared_ct := g.fn_capture_shared_global_c_type(name) {
 				g.writeln('#if defined(__TINYC__)')
-				g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
-				g.writeln('void* pthread_getspecific(u64 key);')
-				g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
-				g.writeln('static u64 ${cname}_key;')
+				g.writeln('static pthread_key_t ${cname}_key;')
 				g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
 				g.writeln('static void ${cname}_key_init(void) { pthread_key_create(&${cname}_key, free); }')
 				g.writeln('static ${shared_ct}* ${cname}_slot(void) { void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${shared_ct})); pthread_setspecific(${cname}_key, p); } return (${shared_ct}*)p; }')
@@ -14277,10 +14274,7 @@ fn (mut g FlatGen) global_decls() {
 				continue
 			}
 			g.writeln('#if defined(__TINYC__)')
-			g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
-			g.writeln('void* pthread_getspecific(u64 key);')
-			g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
-			g.writeln('static u64 ${cname}_key;')
+			g.writeln('static pthread_key_t ${cname}_key;')
 			g.writeln('static void ${cname}_key_init(void) __attribute__((constructor));')
 			g.writeln('static void ${cname}_key_init(void) { pthread_key_create(&${cname}_key, free); }')
 			g.writeln('static ${ct}* ${cname}_slot(void) { void* p = pthread_getspecific(${cname}_key); if (!p) { p = calloc(1, sizeof(${ct})); pthread_setspecific(${cname}_key, p); } return (${ct}*)p; }')
@@ -14296,19 +14290,11 @@ fn (mut g FlatGen) global_decls() {
 		// TLS; tcc implements no _Thread_local, so it gets a pthread-key
 		// emulation behind an lvalue macro. The key setup needs no
 		// synchronization: the first allocation always happens on the main
-		// thread, long before any `spawn`. The key APIs are declared manually
-		// (V's generated C declares its own `pthread_t`, so <pthread.h> would
-		// conflict); the key out-param is stored in an 8-byte zeroed slot,
-		// which stays correct where pthread_key_t is 4 bytes (little-endian).
+		// thread, long before any `spawn`. The helpers use pthread_key_t so they
+		// agree with either the platform pthread header or the headerless fallback.
 		if g.prealloc && name == 'g_memory_block' {
 			g.writeln('#if defined(__TINYC__)')
-			// Shapes must match vlib's own C.pthread_* extern declarations
-			// exactly (u64/i32), or tcc rejects the redefinition when a module
-			// also declares them.
-			g.writeln('i32 pthread_key_create(u64* key, void (*dtor)(void*));')
-			g.writeln('void* pthread_getspecific(u64 key);')
-			g.writeln('i32 pthread_setspecific(u64 key, const void* const_ptr);')
-			g.writeln('static u64 g_memory_block_key = 0;')
+			g.writeln('static pthread_key_t g_memory_block_key = 0;')
 			g.writeln('static int g_memory_block_key_ready = 0;')
 			g.writeln('static ${ct}* g_memory_block_slot(void) {')
 			g.writeln('	void* p;')

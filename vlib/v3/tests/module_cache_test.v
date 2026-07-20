@@ -114,7 +114,10 @@ fn test_cached_object_accepts_recorded_dependency_superset() {
 fn module_cache_object_hashes(cache_dir string) map[string]u64 {
 	mut hashes := map[string]u64{}
 	for path in os.walk_ext(cache_dir, '.o') {
-		hashes[os.file_name(path)] = module_cache_object_hash(path)
+		name := os.file_name(path)
+		if !name.starts_with('program_prefix_') {
+			hashes[name] = module_cache_object_hash(path)
+		}
 	}
 	return hashes
 }
@@ -1295,10 +1298,20 @@ fn main() {
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert result.exit_code == 0, result.output
 	assert run_module_cache_binary(second_output) == '77'
-	link_lines := result.output.split_into_lines().filter(it.contains('> cc '))
+	mut link_lines := []string{}
+	$if macos {
+		link_lines = result.output.split_into_lines().filter(it.contains('tcc.exe'))
+	} $else {
+		link_lines = result.output.split_into_lines().filter(it.contains('> cc '))
+	}
 	assert link_lines.len > 0, result.output
 	link_line := link_lines.last()
-	object_pos := link_line.index(cache_dir) or { -1 }
+	mut object_pos := -1
+	$if macos {
+		object_pos = link_line.index('.dylib') or { -1 }
+	} $else {
+		object_pos = link_line.index(cache_dir) or { -1 }
+	}
 	library_pos := link_line.index('-lcacheorder') or { -1 }
 	assert object_pos >= 0, link_line
 	assert library_pos >= 0, link_line

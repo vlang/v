@@ -98,6 +98,13 @@ objects, a cold build prints a hint that unchanged modules will not be recompile
 Third-party C objects retain dependency manifests, so warm builds verify each unique source or
 header once without launching a dependency-scanner process per object. This work is reported as
 the separate `C object cache` benchmark stage before `cc`.
+On macOS, cached non-production executable builds combine the imported-module objects and
+generated runtime prefix into a content-keyed dylib with the system C compiler. The remaining
+current-directory program unit is compiled and linked against that dylib with bundled TinyCC.
+Objective-C and framework compilation flags stay on the cached dylib side. This work is reported
+as `C dylib cache`; the resulting development executable retains an absolute runtime dependency
+on that cache artifact. Production, shared-library, self-host, explicit `-cc`, and `-nocache`
+builds keep their existing direct-link behavior.
 When the whole-program C plan is unchanged, v3 validates it before generic specialization and
 reports `monomorphize (cached)`, avoiding construction of an AST that cached C generation will
 not consume. Source, imported-module, compiler, target, flag, or configuration changes invalidate
