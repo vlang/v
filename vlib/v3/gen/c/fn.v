@@ -2,6 +2,7 @@ module c
 
 import strings
 import v3.flat
+import v3.gen.c.naming
 import v3.types
 
 struct TestHarnessFn {
@@ -13463,7 +13464,7 @@ fn (mut g FlatGen) register_fn_ptr_type(typ string) string {
 	if typ in g.fn_ptr_types {
 		return g.fn_ptr_types[typ]
 	}
-	name := fn_ptr_type_name(typ)
+	name := naming.fn_ptr_type_name(typ)
 	g.fn_ptr_types[typ] = name
 	return name
 }
@@ -13479,12 +13480,4 @@ fn (mut g FlatGen) fn_ptr_type_key(typ types.FnType) string {
 		params << g.tc.c_type(param)
 	}
 	return 'fn_ptr:${ret}|${params.join(', ')}'
-}
-
-fn fn_ptr_type_name(typ string) string {
-	mut h := u64(1469598103934665603)
-	for c in typ.bytes() {
-		h = (h ^ u64(c)) * u64(1099511628211)
-	}
-	return '_fn_ptr_${h.hex()}'
 }

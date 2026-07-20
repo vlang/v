@@ -27054,7 +27054,10 @@ fn (tc &TypeChecker) optional_c_type_name(base_type Type) string {
 	if base_type is Void {
 		return 'Optional'
 	}
-	inner_ct := tc.c_type(base_type)
+	mut inner_ct := tc.c_type(base_type)
+	if inner_ct.starts_with('fn_ptr:') {
+		inner_ct = naming.fn_ptr_type_name(inner_ct)
+	}
 	if inner_ct == 'int' {
 		return 'Optional'
 	}

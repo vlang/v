@@ -207,6 +207,29 @@ const optional_fn_src = "fn main() {
 }
 "
 
+const optional_callback_param_src = 'fn accept_optional_callback(callback ?fn ()) {
+	_ = callback
+}
+
+fn run_optional_callback_handler(handler fn (?fn ())) {
+	handler(none)
+}
+
+fn accept_result_callback(callback !fn ()) {
+	_ = callback
+}
+
+fn run_result_callback_handler(handler fn (!fn ())) {
+	handler(fn () {})
+}
+
+fn main() {
+	run_optional_callback_handler(accept_optional_callback)
+	run_result_callback_handler(accept_result_callback)
+	println("callback-ok")
+}
+'
+
 const plain_fn_src = 'fn main() {
 	f := fn (i int) int {
 		return i + 2
@@ -356,6 +379,7 @@ println(int_str(take(foo)))
 fn test_local_fn_literal_decl_types_are_callable() {
 	v3_bin := build_v3()
 	assert run_good(v3_bin, 'fn_value_optional_void_local', optional_fn_src) == 'optional-ok'
+	assert run_good(v3_bin, 'fn_value_optional_callback_param', optional_callback_param_src) == 'callback-ok'
 	assert run_good(v3_bin, 'fn_value_plain_int_local', plain_fn_src) == '7'
 	assert run_good(v3_bin, 'fn_value_local_ident_shadow', local_ident_shadow_src) == '10'
 	assert run_good(v3_bin, 'fn_value_local_call_shadows_global_return',
@@ -448,6 +472,11 @@ fn test_local_fn_literal_decl_generates_fn_pointer_locals() {
 	assert !optional_c.contains('int f = __anon_fn'), optional_c
 	assert optional_c.contains('typedef struct Optional (*_fn_ptr_'), optional_c
 	assert optional_c.contains(' f = __anon_fn_'), optional_c
+
+	optional_callback_c := gen_c(v3_bin, 'fn_value_optional_callback_param_c',
+		optional_callback_param_src)
+	assert !optional_callback_c.contains('Optional_fn_ptr:'), optional_callback_c
+	assert optional_callback_c.contains('struct Optional__fn_ptr_'), optional_callback_c
 
 	plain_c := gen_c(v3_bin, 'fn_value_plain_int_local_c', plain_fn_src)
 	assert !plain_c.contains('Optional f = __anon_fn'), plain_c
