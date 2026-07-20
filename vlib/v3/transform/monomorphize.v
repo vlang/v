@@ -2767,7 +2767,8 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 		}
 		// `mut val T` params are recorded as `&T`; the declared language-level
 		// type is `T`, and that is what a by-value use of the param must infer.
-		if (param_child.is_mut || param_child.op == .amp) && param_raw.starts_with('&') {
+		// An explicit `mut val &T` keeps its `&T` rvalue type; only its ABI slot is `&&T`.
+		if param_child.is_mut && param_child.op != .amp && param_raw.starts_with('&') {
 			param_raw = param_raw[1..]
 		}
 		param_substituted := t.subst_type(param_raw, concrete_args)
@@ -7243,11 +7244,13 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 			cloned_typ = scoped_type
 		}
 	}
-	if node.kind == .ident && t.mut_param_values[node.value] && cloned_typ.starts_with('&') {
+	if node.kind == .ident && t.mut_param_values[node.value] && cloned_typ.starts_with('&')
+		&& !t.raw_var_type(node.value).starts_with('&') {
 		// A use of a `mut T` parameter is a T value even though the parameter's
 		// storage annotation is `&T`. Keeping the pointer annotation on cloned
 		// idents makes the later generic-call scan emit duplicate `&T`
-		// specializations instead of reusing the value-type specialization.
+		// specializations instead of reusing the value-type specialization. An
+		// explicit `mut p &T` has a scoped `&T` rvalue type and must retain it.
 		cloned_typ = cloned_typ[1..]
 	}
 	if node.kind == .struct_init && node.value == 'Optional'

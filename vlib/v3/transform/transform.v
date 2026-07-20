@@ -4214,8 +4214,7 @@ fn (mut t Transformer) scan_escape_pass(id flat.NodeId, mut amp_ptrs map[string]
 	if node.kind in [.assign, .selector_assign, .index_assign] && node.op == .assign
 		&& node.children_count == 2 {
 		lhs_id := t.a.child(&node, 0)
-		lhs := t.a.nodes[int(lhs_id)]
-		if lhs.kind == .index && t.escape_index_assign_retains_value(lhs_id) {
+		if t.escape_index_assign_retains_value(lhs_id) {
 			rhs_id := t.a.child(&node, 1)
 			// A map may retain its value after this stack frame returns. Track pointer aliases
 			// through `returned`, and record direct `&local` values immediately.
@@ -4236,7 +4235,14 @@ fn (t &Transformer) escape_index_assign_retains_value(lhs_id flat.NodeId) bool {
 	if int(lhs_id) < 0 || int(lhs_id) >= t.a.nodes.len {
 		return false
 	}
-	lhs := t.a.nodes[int(lhs_id)]
+	mut lhs := t.a.nodes[int(lhs_id)]
+	for lhs.kind == .selector && lhs.children_count > 0 {
+		base_id := t.a.child(&lhs, 0)
+		if int(base_id) < 0 || int(base_id) >= t.a.nodes.len {
+			return false
+		}
+		lhs = t.a.nodes[int(base_id)]
+	}
 	if lhs.kind != .index || lhs.children_count == 0 {
 		return false
 	}
@@ -4600,6 +4606,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	// Collect param types
 	mut param_idx := 0
 	mut source_mut_params := []string{}
+	mut source_pointer_value_params := []string{}
 	for i in 0 .. fn_node.children_count {
 		child_id := t.a.children[fn_node.children_start + i]
 		if int(child_id) < 0 {
@@ -4647,7 +4654,7 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 				t.mut_param_values[child.value] = true
 				source_mut_params << child.value
 				if child.op == .amp {
-					t.pointer_value_rvalues[child.value] = true
+					source_pointer_value_params << child.value
 				}
 			}
 			param_idx++
@@ -4671,6 +4678,9 @@ fn (mut t Transformer) transform_fn_body(fn_idx int) {
 	}
 	for name in source_mut_params {
 		t.pointer_value_lvalues[name] = true
+	}
+	for name in source_pointer_value_params {
+		t.pointer_value_rvalues[name] = true
 	}
 	new_body := t.transform_stmts(body_ids)
 	// Rebuild function children: params then new body

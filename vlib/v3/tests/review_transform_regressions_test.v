@@ -482,6 +482,69 @@ fn test_heap_escaping_amp_reassignment_moves_current_source() {
 	assert !body.contains('p = &b;'), body
 }
 
+fn test_map_index_selector_write_retains_local_address() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Item {
+mut:
+	value int
+}
+
+struct Slot {
+mut:
+	item &Item = unsafe { nil }
+}
+
+fn make_cache() map[string]Slot {
+	mut cache := map[string]Slot{}
+	cache["entry"] = Slot{}
+	mut local := Item{
+		value: 7
+	}
+	cache["entry"].item = &local
+	local.value = 9
+	return cache
+}
+
+fn main() {
+	cache := make_cache()
+	println(int_str(cache["entry"].item.value))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'map_index_selector_write_retains_local_address_c',
+		source)
+	body := c_fn_body(c_source, 'map make_cache(void) {')
+	assert body.contains('memdup'), body
+	out := run_good(v3_bin, 'map_index_selector_write_retains_local_address', source)
+	assert out == '9'
+}
+
+fn test_nested_generic_call_preserves_mut_pointer_param_rvalue() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_generic_mut_pointer_param_rvalue', 'struct Item {
+	value int
+}
+
+fn identity[U](value U) U {
+	return value
+}
+
+fn keep[T](mut current &T) &T {
+	return identity(current)
+}
+
+fn main() {
+	item := Item{
+		value: 17
+	}
+	mut current := &item
+	kept := keep[Item](mut current)
+	println((kept == current).str())
+	println(int_str(kept.value))
+}
+')
+	assert out == 'true\n17'
+}
+
 fn test_return_address_of_pointer_backed_field_preserves_identity() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'return_pointer_backed_field_address',
