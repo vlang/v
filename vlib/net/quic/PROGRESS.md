@@ -202,16 +202,64 @@ The largest, highest-risk phase. Sub-phases, in build order:
         so this wasn't an active interop break, but it was inconsistent
         with the file's own exact-RFC-fidelity approach — removed, and
         the test now asserts acceptance at that boundary instead.
-        **Not yet built** (the actual crypto integration, deliberately
-        split out as its own next step): mbedTLS X.509 chain validation
-        of the parsed `certificate_list`, and `mbedtls_pk_verify_ext`-based
-        CertificateVerify signature verification — **confirm during
-        implementation whether mbedTLS's PSS salt-length handling matches
-        `rsae` semantics**; if not, fall back to the `rsa_pss` module for
-        that one signature scheme. `CertificateRequest` rejected with a
-        clear error (no client-cert auth in v1) — not yet implemented,
-        belongs with the state machine below since it's about *reacting*
-        to a message type, not parsing one we've decided to accept.
+  - [x] mbedTLS X.509 chain validation, standalone (no `mbedtls_ssl_context`,
+        same discipline as Phase 0). New `net.mbedtls` public API
+        (`x509_standalone.v`: `build_certificate_chain`/
+        `verify_certificate_chain`/`free_certificate_chain`) rather than
+        `net.quic` reimplementing C bindings itself — matches how
+        `net.http`'s TLS clients already depend on `net.mbedtls` instead
+        of duplicating it. `net.quic`'s own
+        `verify_server_certificate_chain` (`tls13_certificate_chain.v`)
+        converts a `ParsedCertificate` into DER blobs and wraps the
+        result. Every C-interop calling convention was verified against
+        mbedTLS's actual vendored source (`x509_crt.c`), not memory or
+        assumption: DER certs need their EXACT length (not the +1
+        NUL-terminator convention this module's PEM helpers use — that
+        would be a real out-of-bounds read one byte past a V slice, not a
+        harmless extra byte, though this specific detail is verified by
+        source inspection only since mbedTLS's DER parser tolerates a
+        too-long buflen for well-formed input and no test can observe the
+        difference); `mbedtls_x509_crt_parse_der` always copies its input
+        (no dangling pointer back into caller-owned memory); repeated
+        parse calls on the same chain correctly append via a documented
+        walk-to-tail-and-link algorithm (also source-verified only — this
+        codebase has one real test cert fixture, so no functional test yet
+        exercises an actual 2+-certificate chain).
+        `/vreview` caught and fixed two real issues: (1)
+        `VerifiedCertificateChain.free()` was double-free-prone on a
+        second call — the exact class of bug `SSLConn.shutdown()` already
+        guards against with a documented comment, a sibling I should have
+        checked before writing this; fixed with a `mut` receiver that
+        nulls the pointer after freeing (also only reasoning-verified: a
+        double-free of this size doesn't reliably crash on this
+        platform's allocator, so no test can prove the difference
+        either). (2) `verify_certificate_chain`'s CA-bundle parse check
+        used `parse_ret < 0`, inconsistent with every other PEM-parsing
+        call site in `net.mbedtls` (`!= 0`) — a real gap, since
+        `mbedtls_x509_crt_parse` can return a *positive* count of
+        certs that failed to parse within an otherwise-valid PEM bundle;
+        `< 0` would have silently accepted that. Fixed to `!= 0`.
+        **Resolves the plan's flagged open question about mbedTLS's PSS
+        salt-length semantics, ahead of building the code that needs it**:
+        checked the vendored `mbedtls_config.h` — `MBEDTLS_USE_PSA_CRYPTO`
+        is disabled (commented out, no project override), so
+        `mbedtls_pk_verify_ext`'s documented "salt length not verified
+        under PSA crypto" caveat does not apply to this vendored build;
+        setting `mbedtls_pk_rsassa_pss_options.expected_salt_len` to the
+        exact digest output length (32/48/64 for SHA-256/384/512) will
+        correctly enforce RFC 8446 §4.2.3's `rsa_pss_rsae_*` requirement
+        ("salt length MUST be equal to the length of the output of the
+        digest algorithm"). No fallback to the `rsa_pss` module needed.
+        **Not yet built**: the `mbedtls_pk_verify_ext` CertificateVerify
+        signature verification itself (needs a small C shim —
+        `v_mbedtls_x509_crt_get_pk`-style, following the established
+        `mbedtls_helpers.h` pattern — to safely extract the leaf
+        certificate's embedded public key without hand-replicating
+        mbedTLS's `MBEDTLS_PRIVATE`-wrapped struct layout), and
+        `CertificateRequest` rejection (no client-cert auth in v1) — both
+        belong with the state machine below, since both are about
+        *reacting* to a message type, not parsing/validating one we've
+        already decided to accept.
   - [ ] Client state machine (`tls13_handshake.v`) wiring the above together
         with transcript accumulation, including second-HelloRetryRequest
         rejection and the TLS-alert-to-QUIC-CONNECTION_CLOSE mapping
