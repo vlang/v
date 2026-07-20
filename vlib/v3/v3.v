@@ -1372,6 +1372,15 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 			dependencies[entry.header_stamp] = modulecache.file_signature(entry.header_stamp)
 		}
 	}
+	mut external_input_modules := state.module_external_inputs.keys()
+	external_input_modules.sort()
+	for module_name in external_input_modules {
+		mut paths := state.module_external_inputs[module_name].clone()
+		paths.sort()
+		for path in paths {
+			dependencies['external:${module_name}:${path}'] = modulecache.file_signature(path)
+		}
+	}
 	mut source_files := source_set.keys()
 	source_files.sort()
 	return V3CgenCacheInput{
@@ -1815,105 +1824,6 @@ fn decode_cached_runtime_strings(encoded string) ?[]string {
 		i += size
 	}
 	return values
-}
-
-fn cached_c_string_symbol(value string) string {
-	mut hash := u64(1469598103934665603)
-	for c in value.bytes() {
-		hash = (hash ^ u64(c)) * u64(1099511628211)
-	}
-	return '_v3_lit_${value.len}_${hash.hex()}'
-}
-
-fn cached_c_escape(value string) string {
-	mut out := strings.new_builder(value.len * 2)
-	for b in value.bytes() {
-		match b {
-			`\\` {
-				out.write_string('\\\\')
-			}
-			`"` {
-				out.write_string('\\"')
-			}
-			`\n` {
-				out.write_string('\\n')
-			}
-			`\t` {
-				out.write_string('\\t')
-			}
-			`\r` {
-				out.write_string('\\r')
-			}
-			else {
-				if b < 32 || b == 127 {
-					out.write_u8(`\\`)
-					out.write_u8(u8(`0` + ((b >> 6) & 7)))
-					out.write_u8(u8(`0` + ((b >> 3) & 7)))
-					out.write_u8(u8(`0` + (b & 7)))
-				} else {
-					out.write_u8(b)
-				}
-			}
-		}
-	}
-	return out.str()
-}
-
-fn rewrite_cached_runtime_strings(cached_source string, old_values []string, new_values []string) ?string {
-	if old_values.len != new_values.len {
-		return none
-	}
-	mut replacements := map[string]string{}
-	for idx, old_value in old_values {
-		new_value := new_values[idx]
-		if old_value == new_value {
-			continue
-		}
-		if existing := replacements[old_value] {
-			if existing != new_value {
-				return none
-			}
-		} else {
-			replacements[old_value] = new_value
-		}
-	}
-	if replacements.len == 0 {
-		return cached_source.clone()
-	}
-	mut source := cached_source
-	mut definitions := []string{}
-	mut replacement_values := replacements.keys()
-	replacement_values.sort()
-	mut defined_symbols := map[string]bool{}
-	for old_value in replacement_values {
-		new_value := replacements[old_value]
-		old_symbol := cached_c_string_symbol(old_value)
-		if !source.contains(old_symbol) {
-			continue
-		}
-		new_symbol := cached_c_string_symbol(new_value)
-		old_definition := 'static string ${old_symbol} = {"${cached_c_escape(old_value)}", ${old_value.len}, 1};'
-		new_definition := 'static string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
-		if source.contains(old_definition) {
-			if source.contains(new_definition) || defined_symbols[new_symbol] {
-				source = source.replace('${old_definition}\n', '').replace(old_definition, '')
-			} else {
-				source = source.replace(old_definition, new_definition)
-				defined_symbols[new_symbol] = true
-			}
-		}
-		source = source.replace(old_symbol, new_symbol)
-		if !source.contains('static string ${new_symbol} =') && !defined_symbols[new_symbol] {
-			definitions << new_definition
-			defined_symbols[new_symbol] = true
-		}
-	}
-	if definitions.len == 0 {
-		return source
-	}
-	marker := '/* V3CACHE_BODY_BEGIN */'
-	marker_idx := source.index(marker) or { return none }
-	return source[..marker_idx] + definitions.join('\n') + '\n' + source[marker_idx..]
 }
 
 fn encode_monomorph_cache_specs(specs []transform.MonomorphCacheSpec) string {
@@ -3111,8 +3021,8 @@ fn main() {
 					cached_body := os.read_file(entry.body) or { '' }
 					metadata := os.read_file(entry.metadata) or { '' }
 					if old_literals := decode_cached_runtime_strings(old_literal_text) {
-						if rewritten := rewrite_cached_runtime_strings(cached_body, old_literals,
-							generic_cache_runtime_strings)
+						if rewritten := modulecache.rewrite_cached_runtime_strings(cached_body,
+							old_literals, generic_cache_runtime_strings)
 						{
 							if decoded := decode_v3_cgen_metadata(metadata) {
 								cgen_cache_entry = cache_state.manager.write_cgen(input.source_files,

@@ -726,6 +726,30 @@ fn main() {
 	assert run_module_cache_binary(output) == '_str_0'
 }
 
+fn module_cache_string_symbol(value string) string {
+	mut hash := u64(1469598103934665603)
+	for c in value.bytes() {
+		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
+	return '_v3_lit_${value.len}_${hash.hex()}'
+}
+
+fn test_module_cache_string_symbol_rewrite_handles_swapped_literals() {
+	alpha_symbol := module_cache_string_symbol('alpha')
+	beta_symbol := module_cache_string_symbol('beta')
+	alpha_definition := 'static string ${alpha_symbol} = {"alpha", 5, 1};'
+	beta_definition := 'static string ${beta_symbol} = {"beta", 4, 1};'
+	source := '${alpha_definition}\n${beta_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${alpha_symbol});\nconsume(${beta_symbol});\n'
+	rewritten := modulecache.rewrite_cached_runtime_strings(source, ['alpha', 'beta'], [
+		'beta',
+		'alpha',
+	]) or { panic('runtime string rewrite failed') }
+	body := rewritten.all_after('/* V3CACHE_BODY_BEGIN */')
+	assert body.contains('consume(${beta_symbol});\nconsume(${alpha_symbol});')
+	assert rewritten.count(alpha_definition) == 1
+	assert rewritten.count(beta_definition) == 1
+}
+
 fn test_module_cache_rebuilds_objects_when_c_flags_change() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_c_flags_${os.getpid()}')
@@ -1107,6 +1131,78 @@ fn main() {
 	changed := changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir))
 	assert changed.any(it.starts_with('assets_')), changed.str()
 	assert changed.any(it.starts_with('wrapper_')), changed.str()
+}
+
+fn test_whole_program_cgen_invalidates_when_main_external_input_changes() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_main_external_input_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'payload.txt', 'abc')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn main() {
+	println($embed_file("payload.txt").len)
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '3'
+
+	write_module_cache_file(root, 'payload.txt', 'abcdef')
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == '6'
+}
+
+fn test_whole_program_cgen_invalidates_when_forced_include_changes() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_forced_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'forced.h')
+	write_module_cache_file(root, 'forced.h', 'static inline int v3_forced_value(void) {
+	return 1;
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn C.v3_forced_value() int
+
+fn main() {
+	println(C.v3_forced_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	c_flags := '-include ${header}'
+	first_output := os.join_path(root, 'first')
+	first :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -cflags ${os.quoted_path(c_flags)} -o ${os.quoted_path(first_output)} ${os.quoted_path(main_file)}')
+	assert first.exit_code == 0, first.output
+	assert run_module_cache_binary(first_output) == '1'
+
+	write_module_cache_file(root, 'forced.h', 'static inline int v3_forced_value(void) {
+	return 2;
+}
+')
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -cflags ${os.quoted_path(c_flags)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == '2'
 }
 
 fn test_module_cache_rebuilds_modules_when_comptime_env_changes() {

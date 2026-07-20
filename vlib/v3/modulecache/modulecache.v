@@ -1034,6 +1034,125 @@ pub fn declaration_header(prefix string) string {
 	return out.str()
 }
 
+fn cached_c_string_symbol(value string) string {
+	mut hash := u64(1469598103934665603)
+	for c in value.bytes() {
+		hash = (hash ^ u64(c)) * u64(1099511628211)
+	}
+	return '_v3_lit_${value.len}_${hash.hex()}'
+}
+
+fn cached_c_escape(value string) string {
+	mut out := strings.new_builder(value.len * 2)
+	for b in value.bytes() {
+		match b {
+			`\\` {
+				out.write_string('\\\\')
+			}
+			`"` {
+				out.write_string('\\"')
+			}
+			`\n` {
+				out.write_string('\\n')
+			}
+			`\t` {
+				out.write_string('\\t')
+			}
+			`\r` {
+				out.write_string('\\r')
+			}
+			else {
+				if b < 32 || b == 127 {
+					out.write_u8(`\\`)
+					out.write_u8(u8(`0` + ((b >> 6) & 7)))
+					out.write_u8(u8(`0` + ((b >> 3) & 7)))
+					out.write_u8(u8(`0` + (b & 7)))
+				} else {
+					out.write_u8(b)
+				}
+			}
+		}
+	}
+	return out.str()
+}
+
+// rewrite_cached_runtime_strings updates cached C literal symbols as one simultaneous rewrite.
+pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string, new_values []string) ?string {
+	if old_values.len != new_values.len {
+		return none
+	}
+	mut replacements := map[string]string{}
+	for idx, old_value in old_values {
+		new_value := new_values[idx]
+		if old_value == new_value {
+			continue
+		}
+		if existing := replacements[old_value] {
+			if existing != new_value {
+				return none
+			}
+		} else {
+			replacements[old_value] = new_value
+		}
+	}
+	if replacements.len == 0 {
+		return cached_source.clone()
+	}
+	mut source := cached_source
+	mut replacement_values := replacements.keys()
+	replacement_values.sort()
+	mut symbol_replacements := map[string]string{}
+	mut target_definitions := map[string]string{}
+	mut target_definitions_present := map[string]bool{}
+	mut removed_definition_symbols := map[string]bool{}
+	for old_value in replacement_values {
+		new_value := replacements[old_value]
+		old_symbol := cached_c_string_symbol(old_value)
+		if !cached_source.contains(old_symbol) {
+			continue
+		}
+		new_symbol := cached_c_string_symbol(new_value)
+		old_definition := 'static string ${old_symbol} = {"${cached_c_escape(old_value)}", ${old_value.len}, 1};'
+		new_definition := 'static string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
+		if cached_source.contains(new_definition) {
+			target_definitions_present[new_symbol] = true
+		}
+		if source.contains(old_definition) {
+			source = source.replace('${old_definition}\n', '').replace(old_definition, '')
+			removed_definition_symbols[old_symbol] = true
+		}
+		symbol_replacements[old_symbol] = new_symbol
+		target_definitions[new_symbol] = new_definition
+	}
+	mut old_symbols := symbol_replacements.keys()
+	old_symbols.sort()
+	mut placeholders := map[string]string{}
+	for idx, old_symbol in old_symbols {
+		mut placeholder := '__V3CACHE_STRING_REWRITE_${idx}__'
+		for source.contains(placeholder) {
+			placeholder += '_'
+		}
+		placeholders[old_symbol] = placeholder
+		source = source.replace(old_symbol, placeholder)
+	}
+	for old_symbol in old_symbols {
+		source = source.replace(placeholders[old_symbol], symbol_replacements[old_symbol])
+	}
+	mut definitions := []string{}
+	mut target_symbols := target_definitions.keys()
+	target_symbols.sort()
+	for target_symbol in target_symbols {
+		if !target_definitions_present[target_symbol] || removed_definition_symbols[target_symbol] {
+			definitions << target_definitions[target_symbol]
+		}
+	}
+	if definitions.len == 0 {
+		return source
+	}
+	marker_idx := source.index(c_body_begin) or { return none }
+	return source[..marker_idx] + definitions.join('\n') + '\n' + source[marker_idx..]
+}
+
 // prune_unreferenced_static_string_definitions removes generated string storage
 // that is referenced only by the program body. Cached module objects carry
 // their own static copies, while the program translation unit retains the full
