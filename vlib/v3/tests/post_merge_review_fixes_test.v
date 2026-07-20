@@ -3548,6 +3548,24 @@ fn main() {
 	assert out == "[1, 2]\n{'a': 3}\n[4, 5]\n['x', 'y']"
 }
 
+fn test_empty_interface_str_dispatch_stringifies_boxed_map() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'empty_interface_str_dispatch_boxed_map', 'interface Any {}
+
+fn show(value Any) string {
+	return "\${value}"
+}
+
+fn main() {
+	value := Any({
+		"answer": 42
+	})
+	println(show(value))
+}
+')
+	assert out == "Any({'answer': 42})"
+}
+
 fn test_implicit_interface_str_dispatch_rejects_sum_without_dispatch_id() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'implicit_interface_str_dispatch_rejects_sum', 'interface Printable {

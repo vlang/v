@@ -268,6 +268,40 @@ fn main() {
 }
 ')
 	assert out_generic == '8'
+	out_lvalues := mut_param_reassign_run_good(v3_bin, 'mut_pointer_lvalue_slots', 'struct Item {
+	value int
+}
+
+struct Holder {
+mut:
+	current &Item
+}
+
+fn replace(mut current &Item, replacement &Item) {
+	current = replacement
+}
+
+fn main() {
+	first := Item{
+		value: 1
+	}
+	second := Item{
+		value: 9
+	}
+	third := Item{
+		value: 7
+	}
+	mut items := [&first]
+	mut holder := Holder{
+		current: &first
+	}
+	replace(mut items[0], &second)
+	replace(mut holder.current, &third)
+	println(int_str(items[0].value))
+	println(int_str(holder.current.value))
+}
+')
+	assert out_lvalues == '9\n7'
 	mut_param_reassign_run_bad(v3_bin, 'generic_mut_pointer_param_requires_pointer_slot', 'struct Item {
 	value int
 }

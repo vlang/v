@@ -537,16 +537,16 @@ fn (mut g FlatGen) register_interface_strings() {
 fn (mut g FlatGen) collect_interface_impls() {
 	g.ierror_method_emit_names = map[string]bool{}
 	g.collect_interface_boxed_types_for_dispatch()
-	mut boxed_arrays := map[string][]string{}
+	mut boxed_containers := map[string][]string{}
 	for key, _ in g.interface_boxed_types {
 		parts := key.split('::')
-		if parts.len != 2 || !parts[1].starts_with('[]') {
+		if parts.len != 2 || (!parts[1].starts_with('[]') && !parts[1].starts_with('map[')) {
 			continue
 		}
-		mut concrete_types := boxed_arrays[parts[0]] or { []string{} }
+		mut concrete_types := boxed_containers[parts[0]] or { []string{} }
 		if parts[1] !in concrete_types {
 			concrete_types << parts[1]
-			boxed_arrays[parts[0]] = concrete_types
+			boxed_containers[parts[0]] = concrete_types
 		}
 	}
 	mut iface_names := []string{}
@@ -565,7 +565,7 @@ fn (mut g FlatGen) collect_interface_impls() {
 			// checks agree with the dispatch ids assigned here.
 			impls = g.tc.interface_impl_names(iface)
 			base_impls = impls.clone()
-			mut concrete_types := boxed_arrays[iface] or { []string{} }
+			mut concrete_types := boxed_containers[iface] or { []string{} }
 			concrete_types.sort()
 			for concrete in concrete_types {
 				if concrete !in impls {

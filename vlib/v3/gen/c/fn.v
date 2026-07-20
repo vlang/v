@@ -11335,6 +11335,15 @@ fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.No
 			return true
 		}
 	}
+	if arg_node.is_mut && (arg_node.kind in [.index, .selector, .paren]
+		|| (arg_node.kind == .prefix && arg_node.op == .mul)) {
+		arg_type := g.usable_expr_type(arg_id)
+		if g.tc.c_type(arg_type) == g.tc.c_type(expected_base) {
+			g.write('&')
+			g.gen_expr(arg_id)
+			return true
+		}
+	}
 	if arg_node.kind != .prefix || arg_node.op != .amp || arg_node.children_count == 0 {
 		return false
 	}
