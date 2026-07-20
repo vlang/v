@@ -3194,6 +3194,22 @@ fn main() {
 		if generic_cache_hit && test_files.len == 0 {
 			used_fns = clone_string_bool_map(cached_program_used_fns)
 			uses_generics = true
+			if incremental_cache_hit {
+				current_used_fns, current_uses_generics := markused.mark_used_with_generic_usage(a,
+					markused_tc)
+				uses_generics = uses_generics || current_uses_generics
+				mut gained_reachability := false
+				for name, is_used in current_used_fns {
+					if is_used && !cached_program_used_fns[name] {
+						gained_reachability = true
+						break
+					}
+				}
+				if gained_reachability {
+					os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
+					restart_v3_after_cache_invalidation()
+				}
+			}
 		} else if test_files.len > 0 {
 			used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a,
 				markused_tc, test_files)
