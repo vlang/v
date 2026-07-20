@@ -63,6 +63,9 @@ fn make() ?&Item {
 	item := Item{
 		value: 29
 	}
+	defer {
+		_ := 0
+	}
 	return item
 }
 

@@ -268,6 +268,25 @@ fn main() {
 }
 ')
 	assert out_generic == '8'
+	mut_param_reassign_run_bad(v3_bin, 'generic_mut_pointer_param_requires_pointer_slot', 'struct Item {
+	value int
+}
+
+fn replace[T](mut current &T, replacement &T) {
+	current = replacement
+}
+
+fn main() {
+	mut current := Item{
+		value: 2
+	}
+	replacement := Item{
+		value: 8
+	}
+	replace[Item](mut current, &replacement)
+}
+',
+		'expected `&&Item`')
 }
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {

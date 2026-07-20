@@ -2134,6 +2134,7 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								g.pointer_payload_return_expr_matches(expr_value_type, base)
 							if expr_ct != base_ct && struct_init_ct != base_ct
 								&& pointer_value_expr.len == 0 && !pointer_payload_match
+								&& !g.bare_value_pointer_return_expr_matches(ret_id, base)
 								&& !is_alias_value && ret_node.kind !in [.cast_expr, .as_expr]
 								&& !g.type_names_match(expr_value_type, base)
 								&& !g.expr_is_nil_pointer_payload(ret_id, base)
@@ -2364,22 +2365,33 @@ fn (mut g FlatGen) gen_bare_value_pointer_return_expr(ret_id flat.NodeId, expect
 	return false
 }
 
+fn (g &FlatGen) bare_value_pointer_return_expr_matches(ret_id flat.NodeId, expected types.Type) bool {
+	expected0 := cgen_unalias_type(expected)
+	expected_ptr := match expected0 {
+		types.Pointer { expected0 }
+		else { return false }
+	}
+	source_id := g.pointer_value_return_source_id(ret_id)
+	if !g.expr_is_addressable(source_id) {
+		return false
+	}
+	base := cgen_unalias_type(expected_ptr.base_type)
+	actual := cgen_unalias_type(g.usable_expr_type(source_id))
+	return actual !is types.Pointer && (g.type_names_match(actual, base)
+		|| g.tc.c_type(actual) == g.tc.c_type(base))
+}
+
 fn (mut g FlatGen) bare_value_pointer_return_expr(ret_id flat.NodeId, expected types.Type) ?string {
+	if !g.bare_value_pointer_return_expr_matches(ret_id, expected) {
+		return none
+	}
 	expected0 := cgen_unalias_type(expected)
 	expected_ptr := match expected0 {
 		types.Pointer { expected0 }
 		else { return none }
 	}
 	source_id := g.pointer_value_return_source_id(ret_id)
-	if !g.expr_is_addressable(source_id) {
-		return none
-	}
 	base := cgen_unalias_type(expected_ptr.base_type)
-	actual := cgen_unalias_type(g.usable_expr_type(source_id))
-	if actual is types.Pointer || (!g.type_names_match(actual, base)
-		&& g.tc.c_type(actual) != g.tc.c_type(base)) {
-		return none
-	}
 	expr := g.expr_to_string(source_id).trim_space()
 	// Smartcasted pointer-backed interface values have a value type in the checker,
 	// but their C expression is already the address of the concrete payload.
@@ -2992,7 +3004,8 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 		pointer_value_expr := g.pointer_value_return_expr_string(ret_id, base) or { '' }
 		pointer_payload_match := g.pointer_payload_return_expr_matches(expr_value_type, base)
 		if expr_ct != base_ct && struct_init_ct != base_ct && pointer_value_expr.len == 0
-			&& !pointer_payload_match && !g.type_names_match(expr_value_type, base)
+			&& !pointer_payload_match && !g.bare_value_pointer_return_expr_matches(ret_id, base)
+			&& !g.type_names_match(expr_value_type, base)
 			&& !g.expr_is_nil_pointer_payload(ret_id, base)
 			&& !g.type_can_wrap_as_sum(expr_value_type, base)
 			&& !g.type_can_wrap_as_ierror_payload(expr_value_type, base)

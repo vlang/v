@@ -1535,7 +1535,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						} else {
 							tc.parse_type(param_type)
 						}
-						param_texts << child.typ
+						param_texts << param_type
 						shared_params << param_type_text_is_shared(child.typ)
 					}
 				}
@@ -15587,7 +15587,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			if tc.explicit_address_arg_compatible(arg_id, actual, expected) {
 				continue
 			}
-			if tc.explicit_mut_pointer_arg_compatible(arg_id, actual, expected) {
+			if tc.explicit_mut_pointer_arg_compatible(arg_id, expected) {
 				continue
 			}
 			if param_is_shared && tc.shared_arg_pointer_compatible(actual, expected) {
@@ -17146,18 +17146,16 @@ fn (tc &TypeChecker) explicit_address_arg_compatible(expr_id flat.NodeId, actual
 	return false
 }
 
-fn (tc &TypeChecker) explicit_mut_pointer_arg_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+fn (tc &TypeChecker) explicit_mut_pointer_arg_compatible(expr_id flat.NodeId, expected Type) bool {
 	if int(expr_id) < 0 || int(expr_id) >= tc.a.nodes.len {
 		return false
 	}
 	node := tc.a.nodes[int(expr_id)]
-	if !node.is_mut || node.kind != .prefix || node.op != .amp {
+	if !node.is_mut || expected !is Pointer || !tc.expr_root_is_mutable_lvalue(expr_id) {
 		return false
 	}
-	if actual is Pointer {
-		return tc.type_compatible(actual.base_type, expected)
-	}
-	return false
+	expected_ptr := expected as Pointer
+	return tc.type_compatible(tc.resolve_type(expr_id), expected_ptr.base_type)
 }
 
 fn (tc &TypeChecker) expr_is_addressed_byvalue_arg(expr_id flat.NodeId) bool {
