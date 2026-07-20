@@ -17782,11 +17782,11 @@ fn (tc &TypeChecker) if_branch_type_compatible_with_context(actual Type, tail_id
 			&& tc.branch_tail_is_none_literal(tail_id)
 	}
 	if is_result_void_type(actual) {
-		return (expected is ResultType || is_ierror_type(expected))
+		return (expected is OptionType || expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	if is_ierror_type(actual) {
-		return (expected is ResultType || is_ierror_type(expected))
+		return (expected is OptionType || expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	return tc.type_compatible(actual, expected)
@@ -17854,7 +17854,9 @@ fn (tc &TypeChecker) branch_failure_literal_matches_context(id flat.NodeId, expe
 		return expected is OptionType || is_ierror_type(expected)
 	}
 	if tc.branch_tail_is_error_literal(id) {
-		return expected is ResultType || is_ierror_type(expected)
+		// An error literal can initialize the failure state of an optional
+		// if/match expression without making arbitrary `!T` values compatible.
+		return expected is OptionType || expected is ResultType || is_ierror_type(expected)
 	}
 	return true
 }
@@ -21249,6 +21251,9 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	if fn_param_is_voidptr_type(actual) && fn_param_is_voidptr_type(expected) {
 		return true
 	}
+	if actual is ResultType && expected is OptionType {
+		return false
+	}
 	if actual is Unknown || expected is Unknown {
 		return true
 	}
@@ -21294,9 +21299,6 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	}
 	if expected is OptionType {
 		if actual is OptionType {
-			return tc.type_compatible(actual.base_type, expected.base_type)
-		}
-		if actual is ResultType {
 			return tc.type_compatible(actual.base_type, expected.base_type)
 		}
 		return tc.type_compatible(actual, expected.base_type)

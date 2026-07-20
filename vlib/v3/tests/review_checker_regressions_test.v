@@ -58,6 +58,13 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'cannot initialize field `x` with `&int`; expected `int`')
 }
 
+fn test_reject_result_values_in_option_returns() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_result_value_in_option_return',
+		'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n',
+		'cannot return `!int` as `?int`')
+}
+
 fn test_if_expr_pointer_and_value_branches_are_incompatible() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_if_expr_pointer_value_branch',
