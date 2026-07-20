@@ -16806,7 +16806,7 @@ fn (tc &TypeChecker) min_required_arg_count(info CallInfo) int {
 	mut n := info.params.len
 	for n > 0 {
 		param := info.params[n - 1]
-		if tc.is_params_struct_type(param) || unalias_type(param) is OptionType {
+		if tc.is_params_struct_type(param) {
 			n--
 			continue
 		}
@@ -17782,11 +17782,11 @@ fn (tc &TypeChecker) if_branch_type_compatible_with_context(actual Type, tail_id
 			&& tc.branch_tail_is_none_literal(tail_id)
 	}
 	if is_result_void_type(actual) {
-		return (expected is OptionType || expected is ResultType || is_ierror_type(expected))
+		return (expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	if is_ierror_type(actual) {
-		return (expected is OptionType || expected is ResultType || is_ierror_type(expected))
+		return (expected is ResultType || is_ierror_type(expected))
 			&& tc.branch_tail_is_error_literal(tail_id)
 	}
 	return tc.type_compatible(actual, expected)
@@ -17854,9 +17854,7 @@ fn (tc &TypeChecker) branch_failure_literal_matches_context(id flat.NodeId, expe
 		return expected is OptionType || is_ierror_type(expected)
 	}
 	if tc.branch_tail_is_error_literal(id) {
-		// An error literal can initialize the failure state of an optional
-		// if/match expression without making arbitrary `!T` values compatible.
-		return expected is OptionType || expected is ResultType || is_ierror_type(expected)
+		return expected is ResultType || is_ierror_type(expected)
 	}
 	return true
 }
@@ -18304,7 +18302,13 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 				return
 			}
 			if tc.if_branch_error_has_result_context(then_type, else_type) {
-				return
+				if expected := tc.expected_context_for_expr(id) {
+					if expected !is OptionType {
+						return
+					}
+				} else {
+					return
+				}
 			}
 			if tc.if_branch_enum_shorthand_compatible(then_type, then_tail, else_type, else_tail) {
 				return

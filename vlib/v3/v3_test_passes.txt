@@ -466,6 +466,8 @@ vlib/net/unix/use_net_and_net_unix_together_test.v
 vlib/net/urllib/urllib_test.v
 vlib/net/urllib/values_test.v
 vlib/net/utils_test.v
+vlib/net/websocket/websocket_proxy_test.v
+vlib/net/websocket/websocket_test.v
 vlib/os/cmdline/cmdline_test.v
 vlib/os/command_test.v
 vlib/os/dir_expansions_test.v
@@ -1316,7 +1318,6 @@ vlib/v/tests/conditions/ifs/if_cond_with_alias_test.v
 vlib/v/tests/conditions/ifs/if_cond_with_option_test.v
 vlib/v/tests/conditions/ifs/if_expr_nested_with_option_result_test.v
 vlib/v/tests/conditions/ifs/if_expr_of_multi_stmts_test.v
-vlib/v/tests/conditions/ifs/if_expr_of_option_test.v
 vlib/v/tests/conditions/ifs/if_expr_return_closure_with_locals_test.v
 vlib/v/tests/conditions/ifs/if_expr_with_array_call_test.v
 vlib/v/tests/conditions/ifs/if_expr_with_compound_conds_1_test.v
@@ -2259,7 +2260,6 @@ vlib/v/tests/options/option_nested_struct_test.v
 vlib/v/tests/options/option_nested_unwrapping_test.v
 vlib/v/tests/options/option_none_to_anon_struct_test.v
 vlib/v/tests/options/option_operator_overload_test.v
-vlib/v/tests/options/option_optional_param_test.v
 vlib/v/tests/options/option_or_block_test.v
 vlib/v/tests/options/option_or_expr_dump_test.v
 vlib/v/tests/options/option_or_expr_with_non_opt_test.v

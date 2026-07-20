@@ -65,6 +65,13 @@ fn test_reject_result_values_in_option_returns() {
 		'cannot return `!int` as `?int`')
 }
 
+fn test_optional_parameters_are_required() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_omitted_optional_parameter',
+		'fn consume(value ?int) {}\n\nfn main() {\n\tconsume()\n}\n',
+		'argument count mismatch for `consume`: expected 1, got 0')
+}
+
 fn test_if_expr_pointer_and_value_branches_are_incompatible() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_if_expr_pointer_value_branch',

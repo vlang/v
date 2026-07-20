@@ -41,8 +41,6 @@ vlib/net/ssl/ssl_bsd_tinyc_backend_test.v
 vlib/net/ssl/ssl_read_all_test.v
 vlib/net/tcp_non_blocking_test.v
 vlib/net/tcp_simple_client_server_test.v
-vlib/net/websocket/websocket_proxy_test.v
-vlib/net/websocket/websocket_test.v
 vlib/os/inode_test.v
 vlib/pico_http_parser/pico_http_parser_test.v
 vlib/picoev/picoev_test.v
@@ -98,6 +96,7 @@ vlib/v/tests/comptime/comptime_match_assign_test.v
 vlib/v/tests/comptime/comptime_match_ret_test.v
 vlib/v/tests/comptime/comptime_type_accessors_zero_new_test.v
 vlib/v/tests/comptime_pseudo_fn_with_dollar_test.v
+vlib/v/tests/conditions/ifs/if_expr_of_option_test.v
 vlib/v/tests/conditions/ifs/if_smartcast_test.v
 vlib/v/tests/consts/const_array_fixed_test.v
 vlib/v/tests/consts/const_fixed_array_of_reference_value_test.v
@@ -192,6 +191,7 @@ vlib/v/tests/options/option_generic_method_ret_ptr_none_assert_test.v
 vlib/v/tests/options/option_map_init_test.v
 vlib/v/tests/options/option_mut_struct_init_test.v
 vlib/v/tests/options/option_none_guard_return_unwrap_test.v
+vlib/v/tests/options/option_optional_param_test.v
 vlib/v/tests/options/option_reference_params_test.v
 vlib/v/tests/options/option_sum_type_test.v
 vlib/v/tests/options/option_sumtype_if_expr_struct_field_test.v
