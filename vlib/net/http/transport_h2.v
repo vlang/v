@@ -106,6 +106,95 @@ fn (mut t Transport) h2_round_trip(req &Request, key string, raw string, method 
 	return error('http.transport: h2 request failed after retrying on a fresh connection')
 }
 
+// H2TransportCloser lets h2_dial_and_do's close_transport closure call
+// close() on whichever pooled adapter backs a given H2MuxConn, without
+// widening H2Transport itself (h2_conn.v documents that interface as
+// deliberately close()-less: it must stay satisfiable by a bare
+// reader/writer pair for testability). H2PooledTransport and
+// VSchannelPooledTransport (Windows) both already have a matching close()
+// method, so this needs no changes to either adapter.
+interface H2TransportCloser {
+mut:
+	close()
+}
+
+// H2ProbeResult carries the outcome of the ALPN-probing dial, abstracted
+// over which TLS backend performed it -- the only backend-specific step in
+// h2_dial_and_do's otherwise fully shared singleflight/dial-id/eviction
+// machinery. transport/closer are option types, not bare interface fields:
+// a bare interface field must be initialized in EVERY struct literal (a
+// checker notice that CI's -N promotes to an error), and the non-h2 probe
+// outcome has nothing to initialize them with.
+struct H2ProbeResult {
+	is_h2     bool
+	transport ?H2Transport       // set only when is_h2
+	closer    ?H2TransportCloser // set only when is_h2
+	// ssl_probe carries the still-open probe connection when ALPN did not
+	// select h2, so the caller can complete its own request over it directly
+	// instead of dialing again -- mbedTLS/OpenSSL only. On native Windows,
+	// h2_dial_probe_vschannel closes its own probe before returning (h1-over-
+	// vschannel pooling is out of scope), so this stays nil there and the
+	// caller falls back to the one-shot req.ssl_do instead.
+	ssl_probe &ssl.SSLConn = unsafe { nil }
+}
+
+// h2_dial_probe performs the ALPN-probing dial itself, branching on the TLS
+// backend actually in use. This is the only backend-specific step of the
+// dial; every other concern (singleflight, dial-id tagging, orphan release,
+// idle-cap eviction) lives in h2_dial_and_do, unchanged regardless of which
+// branch runs here.
+fn h2_dial_probe(req &Request, host string, port int) !H2ProbeResult {
+	$if windows && !no_vschannel ? {
+		return h2_dial_probe_vschannel(req, host, port)
+	}
+	return h2_dial_probe_ssl(req, host, port)
+}
+
+// h2_dial_probe_ssl is the mbedTLS/OpenSSL ALPN-probing dial, extracted
+// verbatim (no behavior change) from h2_dial_and_do.
+fn h2_dial_probe_ssl(req &Request, host string, port int) !H2ProbeResult {
+	mut ssl_conn := ssl.new_ssl_conn(
+		verify:                 req.verify
+		cert:                   req.cert
+		cert_key:               req.cert_key
+		validate:               req.validate
+		in_memory_verification: req.in_memory_verification
+		alpn_protocols:         ['h2', 'http/1.1']
+	)!
+	ssl_conn.dial(host, port)!
+	if req.read_timeout > 0 {
+		ssl_conn.set_read_timeout(req.read_timeout)
+	}
+	if ssl_conn.negotiated_alpn() != 'h2' {
+		return H2ProbeResult{
+			is_h2:     false
+			ssl_probe: ssl_conn
+		}
+	}
+	pt := new_h2_pooled_transport(mut ssl_conn)
+	return H2ProbeResult{
+		is_h2:     true
+		transport: H2Transport(pt)
+		closer:    H2TransportCloser(pt)
+	}
+}
+
+// h2_fallback_h1 completes a request already known to be against an h1-only
+// origin, when there is no still-open probe connection to reuse (a waiter
+// behind someone else's dial, or -- on native Windows -- the dialer itself,
+// since h2_dial_probe_vschannel always closes its own probe rather than
+// leaving it open for h1-over-vschannel reuse, which is out of scope). On
+// native Windows this routes to the proven one-shot SChannel path instead of
+// h2_use_h1_pool_or_dial, which falls back to tls_fresh_round_trip -- an
+// mbedTLS/OpenSSL dial that would silently switch TLS backends for this
+// fallback if used here.
+fn (mut t Transport) h2_fallback_h1(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
+	$if windows && !no_vschannel ? {
+		return req.ssl_do(port, method, host, path, data, header)
+	}
+	return t.h2_use_h1_pool_or_dial(req, key, raw, method, host, port, path, data, header)
+}
+
 // h2_dial_and_do performs (or awaits) the singleflight ALPN-probing dial for
 // `key`, then completes the original request:
 //   - ALPN negotiates h2: registers a pooled H2MuxConn — releasing any
@@ -158,7 +247,7 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 		}
 	}
 	if proto == 1 {
-		return t.h2_use_h1_pool_or_dial(req, key, raw, method, host, port, path, data, header)
+		return t.h2_fallback_h1(req, key, raw, method, host, port, path, data, header)
 	}
 
 	t.mu.lock()
@@ -170,20 +259,9 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	t.dialing[key] = call
 	t.mu.unlock()
 
-	mut ssl_conn := ssl.new_ssl_conn(
-		verify:                 req.verify
-		cert:                   req.cert
-		cert_key:               req.cert_key
-		validate:               req.validate
-		in_memory_verification: req.in_memory_verification
-		alpn_protocols:         ['h2', 'http/1.1']
-	) or { return t.h2_dial_failed(key, mut call, err) }
-	ssl_conn.dial(host, port) or { return t.h2_dial_failed(key, mut call, err) }
-	if req.read_timeout > 0 {
-		ssl_conn.set_read_timeout(req.read_timeout)
-	}
+	probe := h2_dial_probe(req, host, port) or { return t.h2_dial_failed(key, mut call, err) }
 
-	if ssl_conn.negotiated_alpn() != 'h2' {
+	if !probe.is_h2 {
 		t.mu.lock()
 		t.key_proto[key] = 1
 		t.dialing.delete(key)
@@ -195,7 +273,7 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 		// other concurrent first-time caller to this origin behind however
 		// long THIS one's response takes — exactly what RFC 9112 §9.4 says
 		// multiple connections exist to avoid. Waiters now independently
-		// race for the h1 pool via h2_use_h1_pool_or_dial, the same helper
+		// race for the h1 pool via h2_fallback_h1, the same helper
 		// h2_dial_and_do's own registration-time recheck uses below (Codex
 		// P2, vlang/v#27643 pullrequestreview-4631763931, discussion
 		// 3525390892).
@@ -203,9 +281,16 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 		call.done = true
 		call.mu.unlock()
 		call.cv.broadcast()
+		if probe.ssl_probe == unsafe { nil } {
+			// Native Windows: the probe already closed itself (h1-over-
+			// vschannel pooling is out of scope). Complete this caller's own
+			// request the same way a waiter behind this dial would.
+			return t.h2_fallback_h1(req, key, raw, method, host, port, path, data, header)
+		}
+		mut ssl_probe := probe.ssl_probe
 		mut conn := &H1PooledConn{
 			key: key
-			ssl: ssl_conn
+			ssl: ssl_probe
 		}
 		resp, reusable := conn.exchange(req, raw) or {
 			conn.close_conn()
@@ -221,7 +306,21 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 		return resp
 	}
 
-	mut pt := new_h2_pooled_transport(mut ssl_conn)
+	// Unwrap the probe's h2-only fields before registering anything. is_h2
+	// guarantees both are set (every probe implementation fills them together
+	// with is_h2: true), so these branches are structurally unreachable — but
+	// they must still route through h2_dial_failed, not a bare return, so any
+	// waiters already parked on this dial call get woken rather than stranded.
+	transport := probe.transport or {
+		return t.h2_dial_failed(key, mut call,
+			error('http.transport: h2 dial probe returned no transport'))
+	}
+
+	mut closer := probe.closer or {
+		return t.h2_dial_failed(key, mut call,
+			error('http.transport: h2 dial probe returned no closer'))
+	}
+
 	t.mu.lock()
 	t.h2_dial_seq++
 	dial_id := t.h2_dial_seq
@@ -233,16 +332,16 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	// calls this closure's own close_transport, which itself takes t.mu —
 	// calling it here would self-deadlock.
 	mut orphan := t.h2_conns[key] or { &H2MuxConn(unsafe { nil }) }
-	close_transport := fn [mut t, key, dial_id, mut pt] () {
+	close_transport := fn [mut t, key, dial_id, mut closer] () {
 		t.mu.lock()
 		if t.h2_dial_id[key] or { 0 } == dial_id {
 			t.h2_conns.delete(key)
 			t.h2_dial_id.delete(key)
 		}
 		t.mu.unlock()
-		pt.close()
+		closer.close()
 	}
-	mut mux := new_h2_mux_conn(pt, close_transport)
+	mut mux := new_h2_mux_conn(transport, close_transport)
 	t.h2_conns[key] = mux
 	t.h2_dial_id[key] = dial_id
 	t.key_proto[key] = 2
@@ -336,7 +435,7 @@ fn (mut t Transport) h2_await_dial(mut call H2DialCall, req &Request, key string
 		return error(msg)
 	}
 	if !is_h2 {
-		return t.h2_use_h1_pool_or_dial(req, key, raw, method, host, port, path, data, header)
+		return t.h2_fallback_h1(req, key, raw, method, host, port, path, data, header)
 	}
 	return do_h2(req, mut conn, method, host, port, path, data, header)
 }
