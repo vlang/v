@@ -423,6 +423,59 @@ fn main() {
 		imported_fn_value_project_files()) == 'imported-ok'
 }
 
+fn test_imported_generic_fn_alias_keeps_parameters() {
+	v3_bin := build_v3()
+	out := run_project_good(v3_bin, 'fn_value_imported_generic_alias', {
+		'v.mod':                 "Module { name: 'fn_value_imported_generic_alias' }\n"
+		'callbacks/callbacks.v': 'module callbacks
+
+pub type Callback[T] = fn (T) int
+'
+		'main.v':                'module main
+
+import callbacks
+
+fn twice(value int) int {
+	return value * 2
+}
+
+fn invoke(callback callbacks.Callback[int]) int {
+	return callback(21)
+}
+
+fn main() {
+	println(int_str(invoke(twice)))
+}
+'
+	})
+	assert out == '42'
+	bad_output := run_project_bad(v3_bin, 'fn_value_imported_generic_alias_mismatch', {
+		'v.mod':                 "Module { name: 'fn_value_imported_generic_alias_mismatch' }\n"
+		'callbacks/callbacks.v': 'module callbacks
+
+pub type Callback[T] = fn (T) int
+'
+		'main.v':                'module main
+
+import callbacks
+
+fn wrong(value string) int {
+	return value.len
+}
+
+fn invoke(callback callbacks.Callback[int]) int {
+	return callback(21)
+}
+
+fn main() {
+	_ := invoke(wrong)
+}
+'
+	})
+	assert bad_output.contains('cannot use `fn(string) int`'), bad_output
+	assert bad_output.contains('expected `callbacks.Callback[int]`'), bad_output
+}
+
 fn test_fn_value_expected_context_respects_value_shadowing() {
 	v3_bin := build_v3()
 	ident_output := run_bad(v3_bin, 'fn_value_expected_ident_shadow',

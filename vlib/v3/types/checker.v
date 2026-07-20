@@ -1475,20 +1475,26 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 						continue
 					}
 					qname := tc.qualify_decl_name(node.value)
-					tc.type_aliases[qname] = tc.qualify_type_text(node.typ)
-					if node.generic_params().len > 0 {
-						tc.type_alias_generic_params[qname] = node.generic_params().clone()
+					generic_params := node.generic_params()
+					alias_target := if generic_params.len > 0 {
+						tc.qualify_type_text_with_generic_params(node.typ, generic_params)
+					} else {
+						tc.qualify_type_text(node.typ)
+					}
+					tc.type_aliases[qname] = alias_target
+					if generic_params.len > 0 {
+						tc.type_alias_generic_params[qname] = generic_params.clone()
 						if qname != node.value {
-							tc.type_alias_generic_params[node.value] = node.generic_params().clone()
+							tc.type_alias_generic_params[node.value] = generic_params.clone()
 						}
 					}
 					if c_abi_fn := tc.c_abi_fn_ptr_type_from_text(node.typ) {
 						tc.type_alias_c_abi_fns[qname] = c_abi_fn
 					}
 					if tc.cur_module in ['', 'main', 'builtin'] && node.value !in tc.type_aliases {
-						tc.type_aliases[node.value] = tc.qualify_type_text(node.typ)
-						if node.generic_params().len > 0 {
-							tc.type_alias_generic_params[node.value] = node.generic_params().clone()
+						tc.type_aliases[node.value] = alias_target
+						if generic_params.len > 0 {
+							tc.type_alias_generic_params[node.value] = generic_params.clone()
 						}
 						if c_abi_fn := tc.c_abi_fn_ptr_type_from_text(node.typ) {
 							tc.type_alias_c_abi_fns[node.value] = c_abi_fn
@@ -2449,7 +2455,11 @@ fn (tc &TypeChecker) qualify_sum_variant_name(name string, generic_params []stri
 // qualify_type_text qualifies a type text for registration: bare names always
 // get the current module prefix (order-independent during collect).
 fn (tc &TypeChecker) qualify_type_text(typ string) string {
-	return tc.qualify_type_text_impl(typ, false)
+	return tc.qualify_type_text_impl(typ, false, []string{})
+}
+
+fn (tc &TypeChecker) qualify_type_text_with_generic_params(typ string, generic_params []string) string {
+	return tc.qualify_type_text_impl(typ, false, generic_params)
 }
 
 // qualify_resolution_type_text qualifies a type text in a resolution-only
@@ -2457,7 +2467,7 @@ fn (tc &TypeChecker) qualify_type_text(typ string) string {
 // module's caller may stay bare when the module-qualified spelling does not
 // exist. Never use for registration.
 fn (tc &TypeChecker) qualify_resolution_type_text(typ string) string {
-	return tc.qualify_type_text_impl(typ, true)
+	return tc.qualify_type_text_impl(typ, true, []string{})
 }
 
 // parse_resolution_type parses type text that can mix declaration-local names with concrete
@@ -2494,56 +2504,59 @@ pub fn (mut tc TypeChecker) disable_resolution_type_view_cache() {
 	tc.resolution_type_views = unsafe { nil }
 }
 
-fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string {
+fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool, generic_params []string) string {
 	clean := typ.trim_space()
 	if clean.len == 0 {
 		return typ
 	}
+	if clean in generic_params {
+		return clean
+	}
 	if clean.starts_with('&') {
-		return '&' + tc.qualify_type_text_impl(clean[1..], resolution)
+		return '&' + tc.qualify_type_text_impl(clean[1..], resolution, generic_params)
 	}
 	if clean.starts_with('mut ') {
-		inner := tc.qualify_type_text_impl(clean[4..], resolution)
+		inner := tc.qualify_type_text_impl(clean[4..], resolution, generic_params)
 		if inner.starts_with('&') {
 			return inner
 		}
 		return '&' + inner
 	}
 	if clean.starts_with('shared ') {
-		return 'shared ' + tc.qualify_type_text_impl(clean[7..], resolution)
+		return 'shared ' + tc.qualify_type_text_impl(clean[7..], resolution, generic_params)
 	}
 	if clean.starts_with('atomic ') {
-		return 'atomic ' + tc.qualify_type_text_impl(clean[7..], resolution)
+		return 'atomic ' + tc.qualify_type_text_impl(clean[7..], resolution, generic_params)
 	}
 	if clean.starts_with('?') {
-		return '?' + tc.qualify_type_text_impl(clean[1..], resolution)
+		return '?' + tc.qualify_type_text_impl(clean[1..], resolution, generic_params)
 	}
 	if clean.starts_with('!') {
-		return '!' + tc.qualify_type_text_impl(clean[1..], resolution)
+		return '!' + tc.qualify_type_text_impl(clean[1..], resolution, generic_params)
 	}
 	if clean.starts_with('...') {
-		return '...' + tc.qualify_type_text_impl(clean[3..], resolution)
+		return '...' + tc.qualify_type_text_impl(clean[3..], resolution, generic_params)
 	}
 	if clean.starts_with('[]') {
-		return '[]' + tc.qualify_type_text_impl(clean[2..], resolution)
+		return '[]' + tc.qualify_type_text_impl(clean[2..], resolution, generic_params)
 	}
 	if clean == 'chan' {
 		return clean
 	}
 	if clean.starts_with('chan ') {
-		return 'chan ' + tc.qualify_type_text_impl(clean[5..], resolution)
+		return 'chan ' + tc.qualify_type_text_impl(clean[5..], resolution, generic_params)
 	}
 	if clean == 'thread' {
 		return clean
 	}
 	if clean.starts_with('thread ') {
-		return 'thread ' + tc.qualify_type_text_impl(clean[7..], resolution)
+		return 'thread ' + tc.qualify_type_text_impl(clean[7..], resolution, generic_params)
 	}
 	if clean.starts_with('map[') {
 		bracket_end := find_matching_bracket(clean, 3)
 		if bracket_end < clean.len {
-			key := tc.qualify_type_text_impl(clean[4..bracket_end], resolution)
-			val := tc.qualify_type_text_impl(clean[bracket_end + 1..], resolution)
+			key := tc.qualify_type_text_impl(clean[4..bracket_end], resolution, generic_params)
+			val := tc.qualify_type_text_impl(clean[bracket_end + 1..], resolution, generic_params)
 			return 'map[${key}]${val}'
 		}
 	}
@@ -2551,18 +2564,18 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string 
 		bracket_end := find_matching_bracket(clean, 0)
 		if bracket_end < clean.len {
 			return clean[..bracket_end + 1] + tc.qualify_type_text_impl(clean[bracket_end +
-				1..], resolution)
+				1..], resolution, generic_params)
 		}
 	}
 	if clean.starts_with('(') && clean.ends_with(')') && clean.contains(',') {
 		mut parts := []string{}
 		for part in split_params(clean[1..clean.len - 1]) {
-			parts << tc.qualify_type_text_impl(part, resolution)
+			parts << tc.qualify_type_text_impl(part, resolution, generic_params)
 		}
 		return '(' + parts.join(', ') + ')'
 	}
 	if clean.starts_with('fn(') || clean.starts_with('fn (') {
-		return tc.qualify_fn_type_text(clean)
+		return tc.qualify_fn_type_text(clean, generic_params)
 	}
 	bracket := clean.index_u8(`[`)
 	if bracket > 0 {
@@ -2570,13 +2583,14 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string 
 		if bracket_end < clean.len {
 			inner := clean[bracket + 1..bracket_end].trim_space()
 			if is_fixed_array_len_text(inner) || is_builtin_type_name(clean[..bracket]) {
-				return tc.qualify_type_text_impl(clean[..bracket], resolution) + clean[bracket..]
+				return tc.qualify_type_text_impl(clean[..bracket], resolution, generic_params) +
+					clean[bracket..]
 			}
 			mut parts := []string{}
 			for part in split_params(inner) {
-				parts << tc.qualify_type_text_impl(part, resolution)
+				parts << tc.qualify_type_text_impl(part, resolution, generic_params)
 			}
-			return tc.qualify_type_text_impl(clean[..bracket], resolution) + '[' +
+			return tc.qualify_type_text_impl(clean[..bracket], resolution, generic_params) + '[' +
 				parts.join(', ') + ']' + clean[bracket_end + 1..]
 		}
 	}
@@ -2592,7 +2606,7 @@ fn (tc &TypeChecker) qualify_type_text_impl(typ string, resolution bool) string 
 }
 
 // qualify_fn_type_text supports qualify fn type text handling for TypeChecker.
-fn (tc &TypeChecker) qualify_fn_type_text(typ string) string {
+fn (tc &TypeChecker) qualify_fn_type_text(typ string, generic_params []string) string {
 	params_start := typ.index_u8(`(`) + 1
 	mut depth := 1
 	mut params_end := params_start
@@ -2611,12 +2625,13 @@ fn (tc &TypeChecker) qualify_fn_type_text(typ string) string {
 	mut params := []string{}
 	if params_str.trim_space().len > 0 {
 		for part in split_params(params_str) {
-			params << tc.qualify_type_text(normalize_fn_type_param_text(part))
+			params << tc.qualify_type_text_impl(normalize_fn_type_param_text(part), false,
+				generic_params)
 		}
 	}
 	ret_str := typ[params_end + 1..].trim_space()
 	if ret_str.len > 0 {
-		return 'fn(${params.join(', ')}) ${tc.qualify_type_text(ret_str)}'
+		return 'fn(${params.join(', ')}) ${tc.qualify_type_text_impl(ret_str, false, generic_params)}'
 	}
 	return 'fn(${params.join(', ')})'
 }
