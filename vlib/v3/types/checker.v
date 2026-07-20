@@ -15255,11 +15255,11 @@ fn (tc &TypeChecker) mut_receiver_expr_is_mutable_lvalue(id flat.NodeId) bool {
 				&& tc.mut_receiver_expr_is_mutable_lvalue(tc.a.child(&node, 0))
 		}
 		.prefix {
-			if node.op == .amp {
+			if node.op in [.amp, .mul] {
 				return node.children_count > 0
 					&& tc.mut_receiver_expr_is_mutable_lvalue(tc.a.child(&node, 0))
 			}
-			return node.op == .mul
+			return false
 		}
 		else {
 			return false
