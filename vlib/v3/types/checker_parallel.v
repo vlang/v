@@ -463,9 +463,12 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	}
 	tc.fn_context.node_id = -1
 	is_disabled_stub := node.value in tc.a.disabled_fns
+	// Return completeness for an open generic depends on the specialized body:
+	// comptime branches and propagated generic results can remove fallthrough.
+	has_deferred_generic_return := generic_params.len > 0
 	if tc.fn_context.return_type !is Unknown
 		&& !type_allows_implicit_return(tc.fn_context.return_type)
-		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub
+		&& !tc.fn_body_definitely_returns(node) && !is_disabled_stub && !has_deferred_generic_return
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.record_error(.return_mismatch,
 			'missing return at end of function `${node.value}`; expected `${tc.fn_context.return_type.name()}`',

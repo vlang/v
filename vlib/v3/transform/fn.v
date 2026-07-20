@@ -1217,6 +1217,9 @@ fn (t &Transformer) params_struct_type_name(param_type string) ?string {
 	if typ.starts_with('&') {
 		typ = typ[1..]
 	}
+	if !isnil(t.tc) && typ in t.tc.params_structs {
+		return typ
+	}
 	if info := t.lookup_struct_info(typ) {
 		if info.is_params {
 			return typ
@@ -1224,6 +1227,9 @@ fn (t &Transformer) params_struct_type_name(param_type string) ?string {
 	}
 	normalized := t.normalize_type_alias(typ)
 	if normalized != typ {
+		if !isnil(t.tc) && normalized in t.tc.params_structs {
+			return normalized
+		}
 		if info := t.lookup_struct_info(normalized) {
 			if info.is_params {
 				return normalized
@@ -1497,7 +1503,12 @@ fn (mut t Transformer) try_lower_static_assoc_call(id flat.NodeId, node flat.Nod
 		return none
 	}
 	fn_id := t.a.child(&node, 0)
-	fn_node := t.a.nodes[int(fn_id)]
+	mut fn_node := t.a.nodes[int(fn_id)]
+	mut generic_args := node.value
+	if fn_node.kind == .index && fn_node.value != 'range' && fn_node.children_count > 1 {
+		generic_args = t.generic_call_type_args_name(fn_node)
+		fn_node = *t.a.child_node(&fn_node, 0)
+	}
 	if fn_node.kind != .selector || fn_node.children_count == 0 {
 		return none
 	}
@@ -1509,8 +1520,16 @@ fn (mut t Transformer) try_lower_static_assoc_call(id flat.NodeId, node flat.Nod
 	for i in 1 .. normalized_node.children_count {
 		args << t.a.child(&normalized_node, i)
 	}
-	ret_type := t.receiver_method_return_type(static_fn, node.typ)
-	return t.make_call_typed(static_fn, args, ret_type)
+	ret_type := if generic_args.len > 0 && node.typ.len > 0 {
+		node.typ
+	} else {
+		t.receiver_method_return_type(static_fn, node.typ)
+	}
+	call := t.make_call_typed(static_fn, args, ret_type)
+	if generic_args.len > 0 {
+		t.set_node_value(int(call), generic_args)
+	}
+	return call
 }
 
 // call_param_types updates call param types state for Transformer.
@@ -2131,6 +2150,13 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 	}
 	mut arg_node := &t.a.nodes[int(arg_id)]
 	if t.in_spawn_expr && t.call_arg_has_shared_marker(arg_id) {
+		return t.transform_expr(arg_id)
+	}
+	if param_type.starts_with('&')
+		&& ((arg_node.kind == .int_literal && (arg_node.value == '0' || arg_node.value.len == 0))
+		|| arg_node.kind == .nil_literal) {
+		// A zero/nil pointer argument is already the C null pointer value. It is
+		// not an addressable value to borrow (for example `C.wait(0)`).
 		return t.transform_expr(arg_id)
 	}
 	if param_type.starts_with('&') && arg_node.kind == .or_expr && arg_node.value == '?'
@@ -3228,6 +3254,13 @@ fn (mut t Transformer) stringify_expr(expr_id flat.NodeId) flat.NodeId {
 	}
 	if typ.len == 0 {
 		typ = t.node_type(expr_id)
+	}
+	if typ.len == 0 || typ == 'unknown' || t.generic_arg_is_unresolved(typ) {
+		checker_type := t.raw_checker_node_type(expr_id)
+		if checker_type.len > 0 && checker_type != 'unknown'
+			&& !t.generic_arg_is_unresolved(checker_type) {
+			typ = checker_type
+		}
 	}
 	if typ.len == 0 {
 		// Structural fallback for compound arguments (infix, prefix, cast,
@@ -8045,6 +8078,11 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				param_types << t.tc.parse_type(child.typ)
 			}
 		} else if child.kind == .ident {
+			// `fn [T] (...)` inside a generic declaration captures the type
+			// parameter for specialization, not a runtime value.
+			if child.value in t.active_generic_params {
+				continue
+			}
 			if child.value.len > 0 && child.value !in capture_names {
 				mut capture_type := t.var_type(child.value)
 				if capture_type.len == 0 {
@@ -8512,7 +8550,7 @@ fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id 
 	}
 	fn_id := t.a.child(&node, 0)
 	fn_node := t.a.nodes[int(fn_id)]
-	if fn_node.kind != .selector || fn_node.children_count == 0 || fn_node.value != 'str' {
+	if fn_node.kind != .selector || fn_node.children_count == 0 {
 		return none
 	}
 	base_id := t.a.child(&fn_node, 0)
@@ -8525,14 +8563,16 @@ fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id 
 	args := t.transform_receiver_method_args(node, base_id, method_name)
 	ret_type := t.receiver_method_return_type(method_name, node.typ)
 	t.mark_fn_used_name(method_name)
-	if sc := t.find_smartcast(t.expr_key(base_id)) {
-		if t.is_interface_type_name(sc.sum_type_name) && args.len > 0 {
-			target := t.trim_pointer_type(t.smartcast_target_type(sc))
-			if aggregate := t.stringify_aggregate_type_name(target) {
-				value_ptr := t.make_prefix(.amp, args[0])
-				t.set_node_typ(int(value_ptr), '&${aggregate}')
-				return t.lower_ref_str_guarded(value_ptr, aggregate,
-					!t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
+	if fn_node.value == 'str' {
+		if sc := t.find_smartcast(t.expr_key(base_id)) {
+			if t.is_interface_type_name(sc.sum_type_name) && args.len > 0 {
+				target := t.trim_pointer_type(t.smartcast_target_type(sc))
+				if aggregate := t.stringify_aggregate_type_name(target) {
+					value_ptr := t.make_prefix(.amp, args[0])
+					t.set_node_typ(int(value_ptr), '&${aggregate}')
+					return t.lower_ref_str_guarded(value_ptr, aggregate,
+						!t.str_method_has_pointer_receiver(method_name), method_name, '&nil')
+				}
 			}
 		}
 	}

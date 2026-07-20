@@ -1464,6 +1464,12 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		opt_type = t.node_type(opt_id)
 	}
 	if !t.is_optional_type_name(opt_type) {
+		opt_node := t.a.node(opt_id)
+		if opt_node.kind == .ident {
+			opt_type = t.raw_var_type(opt_node.value)
+		}
+	}
+	if !t.is_optional_type_name(opt_type) {
 		outer_pending := t.pending_stmts.clone()
 		t.pending_stmts.clear()
 		transformed_opt := t.transform_expr(opt_id)

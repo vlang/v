@@ -841,6 +841,24 @@ fn (t &Transformer) merge_if_expr_types(current string, next string) string {
 	if next.starts_with('[]') && !current.starts_with('[]') && next[2..] == current {
 		return next
 	}
+	if t.is_optional_type_name(current) && !t.is_optional_type_name(next) {
+		base := t.optional_base_type(current)
+		if base in ['void', 'unknown'] {
+			return current[..1] + next
+		}
+		if t.normalize_type_alias(base) == t.normalize_type_alias(next) {
+			return current
+		}
+	}
+	if t.is_optional_type_name(next) && !t.is_optional_type_name(current) {
+		base := t.optional_base_type(next)
+		if base in ['void', 'unknown'] {
+			return next[..1] + current
+		}
+		if t.normalize_type_alias(base) == t.normalize_type_alias(current) {
+			return next
+		}
+	}
 	return current
 }
 
@@ -1735,7 +1753,18 @@ fn (t &Transformer) option_none_cmp_info(cond flat.Node) ?IsExprInfo {
 	if ek.len == 0 {
 		return none
 	}
-	expr_type := t.original_expr_type(opt_id)
+	mut expr_type := t.original_expr_type(opt_id)
+	if !t.is_optional_type_name(expr_type) {
+		if sc := t.find_smartcast(ek) {
+			expr_type = t.smartcast_target_type(sc)
+		}
+	}
+	if !t.is_optional_type_name(expr_type) {
+		opt_node := t.a.node(opt_id)
+		if opt_node.kind == .ident {
+			expr_type = t.raw_var_type(opt_node.value)
+		}
+	}
 	if !t.is_optional_type_name(expr_type) {
 		return none
 	}

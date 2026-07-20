@@ -154,12 +154,18 @@ fn (t &Transformer) return_expr_is_err(id flat.NodeId) bool {
 		return false
 	}
 	node := t.a.nodes[int(id)]
+	if t.is_ierror_type(t.node_type(id)) || t.is_ierror_type(node.typ) {
+		return true
+	}
+	if !isnil(t.tc) {
+		if typ := t.tc.expr_type(id) {
+			if t.is_ierror_type(typ.name()) {
+				return true
+			}
+		}
+	}
 	if node.kind != .ident || node.value != 'err' {
 		return false
-	}
-	typ := node.typ
-	if typ == 'IError' || typ.ends_with('.IError') {
-		return true
 	}
 	var_type := t.var_type('err')
 	if var_type.len > 0 {

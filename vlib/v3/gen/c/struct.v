@@ -303,20 +303,26 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		name = inst
 	}
 	init_type := g.tc.parse_type(init_value)
+	node_type := g.tc.parse_type(node.typ)
 	is_optional_init := init_value == 'Optional' || init_type is types.OptionType
 		|| init_type is types.ResultType
 	has_expected_optional := g.expected_expr_type is types.OptionType
 		|| g.expected_expr_type is types.ResultType || g.expected_expr_is_optional_struct()
-	if init_value == 'Optional'
+	if is_optional_init && name == 'Optional'
 		&& (g.expected_expr_type is types.OptionType || g.expected_expr_type is types.ResultType) {
 		name = g.optional_type_name(g.expected_expr_type)
 	} else if init_value == 'Optional' && g.expected_expr_is_optional_struct() {
 		name = g.value_c_type(g.expected_expr_type)
+	} else if init_value == 'Optional'
+		&& (node_type is types.OptionType || node_type is types.ResultType) {
+		name = g.optional_type_name(node_type)
 	}
 	if is_optional_init {
 		if err_id := g.optional_success_error_payload_err_expr(node) {
 			g.write('(${name}){.ok = false, .err = ')
-			g.gen_expr(err_id)
+			if !g.gen_ierror_from_expr(err_id) {
+				g.gen_expr(err_id)
+			}
 			g.write('}')
 			return
 		}
@@ -4180,16 +4186,7 @@ fn (mut g FlatGen) struct_decls() {
 				if field.typ is types.Pointer {
 					continue
 				}
-				mut fct := ''
-				if field.typ is types.ArrayFixed {
-					fct = g.tc.c_type(field.typ.elem_type)
-				} else if field.typ is types.OptionType {
-					fct = g.tc.c_type(field.typ.base_type)
-				} else if field.typ is types.ResultType {
-					fct = g.tc.c_type(field.typ.base_type)
-				} else {
-					fct = g.tc.c_type(field.typ)
-				}
+				fct := g.by_value_field_dependency_c_type(field.typ)
 				if fct !in emitted && fct != cn && fct in remaining_cnames {
 					can_emit = false
 					break
@@ -4221,16 +4218,7 @@ fn (mut g FlatGen) struct_decls() {
 					if f.typ is types.Pointer {
 						continue
 					}
-					mut ct := ''
-					if f.typ is types.ArrayFixed {
-						ct = g.tc.c_type(f.typ.elem_type)
-					} else if f.typ is types.OptionType {
-						ct = g.tc.c_type(f.typ.base_type)
-					} else if f.typ is types.ResultType {
-						ct = g.tc.c_type(f.typ.base_type)
-					} else {
-						ct = g.tc.c_type(f.typ)
-					}
+					ct := g.by_value_field_dependency_c_type(f.typ)
 					if ct !in emitted && ct != cn && ct in remaining_cnames {
 						can_emit = false
 						break
@@ -4313,6 +4301,26 @@ fn (mut g FlatGen) struct_decls() {
 	}
 	g.soa_companion_decls()
 	g.shared_struct_decls()
+}
+
+fn (mut g FlatGen) by_value_field_dependency_c_type(typ types.Type) string {
+	match typ {
+		types.ArrayFixed {
+			return g.by_value_field_dependency_c_type(typ.elem_type)
+		}
+		types.OptionType {
+			return g.by_value_field_dependency_c_type(typ.base_type)
+		}
+		types.ResultType {
+			return g.by_value_field_dependency_c_type(typ.base_type)
+		}
+		types.Alias {
+			return g.by_value_field_dependency_c_type(typ.base_type)
+		}
+		else {
+			return g.tc.c_type(typ)
+		}
+	}
 }
 
 fn (mut g FlatGen) flattened_map_type_alias_decls() {

@@ -1537,7 +1537,9 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			c_elem := g.value_c_type(arr_type.elem_type)
 			tmp := g.tmp_count
 			g.tmp_count++
-			g.write('{ array* _a${tmp} = ')
+			// Use the public alias here: a source local named `array` hides the
+			// lowercase C typedef and turns `array* tmp` into an expression.
+			g.write('{ Array* _a${tmp} = ')
 			if g.array_assign_base_is_shared_value_selector(base_id) {
 				g.write('&')
 				g.gen_expr(base_id)

@@ -955,6 +955,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		struct_field_c_abi_fns:             g.tc.struct_field_c_abi_fns
 		unions:                             g.tc.unions
 		type_aliases:                       g.tc.type_aliases
+		type_alias_generic_params:          g.tc.type_alias_generic_params
 		type_alias_c_abi_fns:               g.tc.type_alias_c_abi_fns
 		sum_types:                          g.tc.sum_types
 		sum_generic_params:                 g.tc.sum_generic_params

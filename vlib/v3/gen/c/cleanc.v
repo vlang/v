@@ -3244,6 +3244,9 @@ fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
 	mut pending := ''
 	for line in c_strip_comments(text).split_into_lines() {
 		clean := line.trim_space()
+		for name in c_macro_declared_fn_names(clean) {
+			g.inlined_c_declared_fns[name] = true
+		}
 		if clean.len > 0 && clean[0] == `#` && c_directive_name(clean) == 'define' {
 			// Any macro (object- or function-like) named like a `fn C.x` makes
 			// an emitted extern prototype wrong after preprocessing; the
@@ -3282,6 +3285,51 @@ fn (mut g FlatGen) collect_inlined_c_declared_fns(text string) {
 			pending = clean
 		}
 	}
+}
+
+fn c_macro_declared_fn_names(line string) []string {
+	if !line.ends_with(')') {
+		return []string{}
+	}
+	open := line.index_u8(`(`)
+	if open < 0 || open + 1 >= line.len {
+		return []string{}
+	}
+	args := line[open + 1..line.len - 1].split(',')
+	if args.len == 0 {
+		return []string{}
+	}
+	mut name := ''
+	mut prefixes := []string{}
+	if line.starts_with('DECLARE_PEM_') {
+		name = args[0].trim_space()
+		if name.starts_with('OSSL_') {
+			if args.len < 2 {
+				return []string{}
+			}
+			name = args[1].trim_space()
+		}
+		prefixes = ['PEM_read_bio_', 'PEM_write_bio_', 'PEM_read_', 'PEM_write_']
+	} else if line.starts_with('DECLARE_ASN1_')
+		&& (line.contains('ENCODE_FUNCTIONS') || line.starts_with('DECLARE_ASN1_FUNCTIONS(')) {
+		name = args.last().trim_space()
+		prefixes = ['d2i_', 'i2d_']
+	} else {
+		return []string{}
+	}
+	if name.len == 0 {
+		return []string{}
+	}
+	for c in name {
+		if !c_ident_char(c) {
+			return []string{}
+		}
+	}
+	mut result := []string{cap: prefixes.len}
+	for prefix in prefixes {
+		result << prefix + name
+	}
+	return result
 }
 
 // c_header_declared_fn_start reports whether a line looks like the opening of
@@ -8067,7 +8115,11 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 		}
 		.cast_expr {
 			target_type := g.tc.parse_type(node.value)
-			mut ct := g.tc.c_type(target_type)
+			mut ct := if node.value.starts_with('fn_ptr:') {
+				g.resolve_fn_ptr_type(node.value)
+			} else {
+				g.tc.c_type(target_type)
+			}
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
 			}
@@ -9453,7 +9505,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						}
 						c_elem := g.value_c_type(index_type)
 						g.write('(*(${c_elem}*)array_get(')
-						if is_ptr {
+						base_node := g.a.nodes[int(base_id)]
+						if is_ptr && !(base_node.kind == .ident
+							&& g.local_ident_is_shared_wrapper(base_node.value)) {
 							g.write('*')
 						}
 						g.gen_expr(base_id)
@@ -9540,7 +9594,11 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 		.cast_expr {
 			target_type := g.tc.parse_type(node.value)
 			semantic_target := cgen_unalias_type(target_type)
-			mut ct := g.cast_c_type(target_type)
+			mut ct := if node.value.starts_with('fn_ptr:') {
+				g.resolve_fn_ptr_type(node.value)
+			} else {
+				g.cast_c_type(target_type)
+			}
 			if ct.starts_with('fn_ptr:') {
 				ct = g.resolve_fn_ptr_type(ct)
 			}
@@ -13584,7 +13642,16 @@ fn (g &FlatGen) fixed_array_type_defined(typ0 types.Type, emitted_structs map[st
 	if typ is types.ArrayFixed {
 		return g.fixed_array_type_defined(typ.elem_type, emitted_structs)
 	}
+	if typ is types.OptionType {
+		return g.fixed_array_type_defined(typ.base_type, emitted_structs)
+	}
+	if typ is types.ResultType {
+		return g.fixed_array_type_defined(typ.base_type, emitted_structs)
+	}
 	if typ is types.Struct {
+		return g.tc.c_type(typ) in emitted_structs
+	}
+	if typ is types.Interface || typ is types.SumType {
 		return g.tc.c_type(typ) in emitted_structs
 	}
 	if typ is types.String {
@@ -14664,10 +14731,13 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	} else {
 		g.const_storage_type_for_value(name, val_id, g.tc.resolve_type(val_id))
 	}
-	ct := if v_type is types.OptionType || v_type is types.ResultType {
+	mut ct := if v_type is types.OptionType || v_type is types.ResultType {
 		g.optional_type_name(v_type)
 	} else {
 		g.tc.c_type(v_type)
+	}
+	if ct.starts_with('fn_ptr:') {
+		ct = g.resolve_fn_ptr_type(ct)
 	}
 	qname := g.const_ident_c_name(name)
 	if qname == 'builtin__error_sentinel' {
