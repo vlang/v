@@ -295,10 +295,56 @@ The largest, highest-risk phase. Sub-phases, in build order:
         remains deferred to the state machine below, since it's about
         *reacting* to a message type, not verifying one we've already
         decided to accept.
-  - [ ] Client state machine (`tls13_handshake.v`) wiring the above together
-        with transcript accumulation, including second-HelloRetryRequest
-        rejection and the TLS-alert-to-QUIC-CONNECTION_CLOSE mapping
-        (0x0100-0x01ff, RFC 9001 §4.8).
+  - [x] Client state machine (`tls13_handshake.v`) — happy path complete:
+        `Tls13ClientHandshake.start` (ephemeral ECDHE keygen + ClientHello)
+        through `process_server_hello`/`process_encrypted_extensions`/
+        `process_certificate_or_request`/`process_certificate_verify`/
+        `process_finished`, deriving Handshake and Application secrets at
+        the correct transcript checkpoints and returning the client's own
+        framed Finished message. `TlsAlert` + `tls_alert_to_quic_error`
+        implement the RFC 9001 §4.8 mapping (0x100 + alert description);
+        every fatal path goes through `handshake_error`, which attaches
+        the mapped code via `error_with_code` so a future caller can read
+        it via `.code()` when building CONNECTION_CLOSE.
+        Second-HelloRetryRequest rejection is implemented (RFC 8446
+        §4.1.4); a **first** HelloRetryRequest is not — it needs
+        `build_client_hello` to speak a cookie extension it doesn't yet,
+        and RFC 8446 §4.4.1's synthetic `message_hash` transcript
+        substitution, deliberately deferred rather than half-built, and
+        reported as an explicit "not yet implemented" error rather than
+        silently mishandled. `CertificateRequest` is rejected outright
+        (no client-cert auth in v1), including the RFC 8446 §4.4.2
+        `certificate_request_context`-must-be-empty check for the
+        Certificate case (a `/vreview` finding — parsed but unchecked
+        before the fix).
+        Tested end-to-end with a **genuine fake TLS 1.3 server**
+        (`tls13_handshake_test.v`): real ECDHE (Phase 1's OpenSSL P-256
+        binding), real RSA-PSS CertificateVerify signing (mbedTLS, same
+        approach as `x509_standalone_signature_test.v`), real Finished
+        HMACs computed via this codebase's own key-schedule functions
+        acting as an independent "other side" — the fake server verifies
+        the client's own returned Finished, proving both sides agree, not
+        just that the client didn't crash. Certificate CHAIN TRUST is not
+        exercised end-to-end in this test (this repo has no CA-flagged
+        test certificate, the same limitation as Phase 2c part 6's own
+        tests) — one test drives to Certificate and asserts the expected
+        "not a CA" failure is propagated correctly; a second test installs
+        an already-verified chain directly (the same white-box technique
+        `tls13_certificate_chain_test.v` uses) to test CertificateVerify/
+        Finished independent of that gap.
+        `/vreview` caught and fixed two real bugs: (1) `free()` had no
+        idempotency guard — `VerifiedCertificateChain.free()` nulls its
+        own pointer so a second call safely no-ops, but
+        `ecdsa.PrivateKey.free()` has no equivalent, so a second `free()`
+        call double-freed the ephemeral ECDHE key. Phase-R confirmed via
+        an isolated probe that this is a **real, reliably reproducible
+        crash** (OpenSSL's `EVP_PKEY_free` aborts on a double-free,
+        unlike the mbedTLS double-free cases discussed elsewhere in this
+        file, which don't reliably crash) — fixed with a `freed bool`
+        guard matching `SSLConn.shutdown()`'s pattern. (2) the
+        `certificate_request_context` gap described above. Both have
+        permanent regression tests, confirmed to fail on the pre-fix code
+        via Phase-R before the fix landed.
 - [ ] Author an RFC-8448-style TLS 1.3 test vector suite from scratch
       (`vlib/net/quic/testdata/tls13_vectors/`) — RFC 8448 itself is non-QUIC
       TLS 1.3 and not directly reusable. Capture from a reference client/server
