@@ -43,9 +43,22 @@ pub:
 // CgenEntry contains the persistent whole-program C generation artifacts.
 pub struct CgenEntry {
 pub:
-	source   string
-	metadata string
-	stamp    string
+	source           string
+	metadata         string
+	stamp            string
+	prepared_main    string
+	prepared_tcc     string
+	prepared_prefix  string
+	prepared_objects string
+	prepared_stamp   string
+}
+
+// CgenPreparedEntry contains cache-marked C sources already split for linking.
+pub struct CgenPreparedEntry {
+pub:
+	main   string
+	tcc    string
+	prefix string
 }
 
 // CSplit contains the declaration/runtime prefix and per-module C function bodies.
@@ -114,10 +127,16 @@ pub fn (m &Manager) cgen_entry(source_files []string) CgenEntry {
 	mut paths := source_files.map(os.real_path(it))
 	paths.sort()
 	id := hash_text(paths.join('\n'))
+	base := os.join_path(m.dir, 'program_${id}')
 	return CgenEntry{
-		source:   os.join_path(m.dir, 'program_${id}.c')
-		metadata: os.join_path(m.dir, 'program_${id}.cflags')
-		stamp:    os.join_path(m.dir, 'program_${id}.c.stamp')
+		source:           '${base}.c'
+		metadata:         '${base}.cflags'
+		stamp:            '${base}.c.stamp'
+		prepared_main:    '${base}.main.c'
+		prepared_tcc:     '${base}.tcc.c'
+		prepared_prefix:  '${base}.prefix.c'
+		prepared_objects: '${base}.objects'
+		prepared_stamp:   '${base}.prepared.stamp'
 	}
 }
 
@@ -539,12 +558,68 @@ pub fn (m &Manager) write_cgen(source_files []string, generation_signature strin
 	// The stamp is the commit marker. Remove the previous one before replacing
 	// either payload so concurrent readers never accept a mixed generation.
 	os.rm(entry.stamp) or {}
+	os.rm(entry.prepared_stamp) or {}
 	write_atomic(entry.source, source)!
 	write_atomic(entry.metadata, metadata)!
 	stamp := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs,
 		generation_signature)
 	write_atomic(entry.stamp, stamp)!
 	return entry
+}
+
+// valid_cgen_prepared reports whether all pre-split C plan sources match entry's generation.
+pub fn (m &Manager) valid_cgen_prepared(entry CgenEntry) ?CgenPreparedEntry {
+	if !os.is_file(entry.prepared_main) || !os.is_file(entry.prepared_tcc)
+		|| !os.is_file(entry.prepared_prefix) || !os.is_file(entry.prepared_stamp) {
+		return none
+	}
+	stamp := os.read_file(entry.stamp) or { return none }
+	prepared_stamp := os.read_file(entry.prepared_stamp) or { return none }
+	if prepared_stamp != stamp {
+		return none
+	}
+	return CgenPreparedEntry{
+		main:   entry.prepared_main
+		tcc:    entry.prepared_tcc
+		prefix: entry.prepared_prefix
+	}
+}
+
+// write_cgen_prepared publishes pre-split C plan sources, committing their stamp last.
+pub fn (m &Manager) write_cgen_prepared(entry CgenEntry, main_source string, tcc_source string, prefix_source string) ! {
+	os.rm(entry.prepared_stamp) or {}
+	write_atomic(entry.prepared_main, main_source)!
+	write_atomic(entry.prepared_tcc, tcc_source)!
+	write_atomic(entry.prepared_prefix, prefix_source)!
+	stamp := os.read_file(entry.stamp)!
+	write_atomic(entry.prepared_stamp, stamp)!
+}
+
+// valid_cgen_prepared_objects restores the object set for one effective compile signature.
+pub fn (m &Manager) valid_cgen_prepared_objects(entry CgenEntry, compile_signature string) ?[]string {
+	path := '${entry.prepared_objects}.${hash_text(compile_signature)}'
+	content := os.read_file(path) or { return none }
+	lines := content.split_into_lines()
+	if lines.len < 2 {
+		return none
+	}
+	stamp := os.read_file(entry.stamp) or { return none }
+	if lines[0] != 'stamp=${hash_text(stamp)}' {
+		return none
+	}
+	objects := lines[1..].filter(it.len > 0)
+	if objects.len == 0 || objects.any(!os.is_file(it)) {
+		return none
+	}
+	return objects
+}
+
+// write_cgen_prepared_objects publishes the object set for one effective compile signature.
+pub fn (m &Manager) write_cgen_prepared_objects(entry CgenEntry, compile_signature string, objects []string) ! {
+	stamp := os.read_file(entry.stamp)!
+	content := 'stamp=${hash_text(stamp)}\n' + objects.join('\n') + '\n'
+	path := '${entry.prepared_objects}.${hash_text(compile_signature)}'
+	write_atomic(path, content)!
 }
 
 // write_stamp refreshes a cache stamp after the object and header are durable.

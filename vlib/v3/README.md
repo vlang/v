@@ -109,6 +109,7 @@ builds keep their existing direct-link behavior.
 When the whole-program C plan is unchanged, v3 validates it immediately after parsing and reports
 the check, mark-used, transform, type-annotation, monomorphization, and C generation stages as
 cached. This avoids semantic and lowering work whose only consumer would be the cached C plan.
+The pre-split main, TinyCC, and runtime-prefix sources are restored as `C module plan (cached)`.
 Source, imported-module, native-input, compiler, target, flag, or configuration changes invalidate
 the plan and run the complete diagnostic and generation pipeline normally.
 

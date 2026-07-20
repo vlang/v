@@ -192,6 +192,7 @@ fn main() {
 	assert second.output.contains('markused (cached)'), second.output
 	assert second.output.contains('transform (cached)'), second.output
 	assert second.output.contains('annotate types (cached)'), second.output
+	assert second.output.contains('C module plan (cached)'), second.output
 	assert second.output.contains('cgen (cached)'), second.output
 	assert second.output.contains('monomorphize (cached)'), second.output
 	assert run_module_cache_binary(second_output) == '42'

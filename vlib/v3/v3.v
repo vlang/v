@@ -2391,6 +2391,8 @@ fn main() {
 	mut cgen_cache_entry := modulecache.CgenEntry{}
 	mut cgen_cache_metadata := V3CgenCacheMetadata{}
 	mut cgen_cache_hit := false
+	mut cgen_prepared_entry := modulecache.CgenPreparedEntry{}
+	mut cgen_prepared_hit := false
 	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
 		&& cache_state.parsed_from_source.len == 0 {
 		if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_c_flags) {
@@ -2405,6 +2407,10 @@ fn main() {
 				cgen_cache_entry = entry
 				cgen_cache_metadata = decoded
 				cgen_cache_hit = true
+				if prepared := cache_state.manager.valid_cgen_prepared(entry) {
+					cgen_prepared_entry = prepared
+					cgen_prepared_hit = true
+				}
 			}
 		}
 	}
@@ -2845,7 +2851,7 @@ fn main() {
 		mut generated_c_flags := cgen_cache_metadata.flags.clone()
 		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
-		if cgen_cache_hit {
+		if cgen_cache_hit && !cgen_prepared_hit {
 			os.cp(cgen_cache_entry.source, cache_plan_file) or {
 				eprintln('error restoring cached C plan ${cgen_cache_entry.source}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
@@ -2951,44 +2957,92 @@ fn main() {
 		mut tcc_main_file := ''
 		if cache_state.manager.enabled {
 			cache_prepare_scope := prealloc_scope_begin_for_v3()
-			generated_source := os.read_file(cache_plan_file) or {
-				eprintln('error reading cache-marked C source ${cache_plan_file}: ${err.msg()}')
-				exit(1)
-			}
 			if interface_impl_signature.len == 0 {
 				interface_impl_signature = pre_tc.interface_impl_set_signature()
 			}
 			opt_flag := if is_prod { '-O2' } else { '' }
 			warning_flags := warn_args.join(' ')
-			prepared_cache := prepare_v3_module_cache(generated_source, c_standard, opt_flag,
-				pic_flag, warning_flags, resolved_c_flags, needs_objective_c,
-				interface_impl_signature, mut cache_state) or {
-				eprintln(err.msg())
-				cleanup_c_build_dir(cc_dir)
-				exit(1)
-			}
-			os.write_file(cc_src, prepared_cache.main_source) or {
-				eprintln('error writing cached main source ${cc_src}: ${err.msg()}')
-				cleanup_c_build_dir(cc_dir)
-				exit(1)
-			}
-			if !cgen_cache_hit {
-				published_cgen_cache_input := v3_cgen_cache_input(cache_state, user_files,
-					user_c_flags)
-				cache_state.manager.write_cgen(published_cgen_cache_input.source_files,
-					published_cgen_cache_input.generation_signature,
-					published_cgen_cache_input.dependency_inputs, generated_source, encode_v3_cgen_metadata(generated_c_flags,
-					interface_impl_signature)) or {}
+			compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag,
+				warning_flags, resolved_c_flags, needs_objective_c, interface_impl_signature)
+			mut prepared_plan_entry := cgen_cache_entry
+			mut prepared_cache := V3PreparedModuleCache{}
+			if cgen_prepared_hit {
+				prefix_source := os.read_file(cgen_prepared_entry.prefix) or {
+					eprintln('error reading cached program prefix ${cgen_prepared_entry.prefix}: ${err.msg()}')
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+				objects := cache_state.manager.valid_cgen_prepared_objects(cgen_cache_entry,
+					compile_signature) or {
+					if resolve_flag_specific_cache_objects(mut cache_state, compile_signature) {
+						os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+						restart_v3_after_cache_invalidation()
+					}
+					resolved_objects := cache_object_paths(cache_state.objects)
+					cache_state.manager.write_cgen_prepared_objects(cgen_cache_entry,
+						compile_signature, resolved_objects) or {}
+					resolved_objects
+				}
+				prepared_cache = V3PreparedModuleCache{
+					program_prefix_source: prefix_source
+					objects:               objects
+				}
+				os.cp(cgen_prepared_entry.main, cc_src) or {
+					eprintln('error restoring cached main source ${cgen_prepared_entry.main}: ${err.msg()}')
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+			} else {
+				generated_source := os.read_file(cache_plan_file) or {
+					eprintln('error reading cache-marked C source ${cache_plan_file}: ${err.msg()}')
+					exit(1)
+				}
+				prepared_cache = prepare_v3_module_cache(generated_source, c_standard, opt_flag,
+					pic_flag, warning_flags, resolved_c_flags, needs_objective_c,
+					interface_impl_signature, mut cache_state) or {
+					eprintln(err.msg())
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+				os.write_file(cc_src, prepared_cache.main_source) or {
+					eprintln('error writing cached main source ${cc_src}: ${err.msg()}')
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+				if !cgen_cache_hit {
+					published_cgen_cache_input := v3_cgen_cache_input(cache_state, user_files,
+						user_c_flags)
+					prepared_plan_entry = cache_state.manager.write_cgen(published_cgen_cache_input.source_files,
+						published_cgen_cache_input.generation_signature,
+						published_cgen_cache_input.dependency_inputs, generated_source, encode_v3_cgen_metadata(generated_c_flags,
+						interface_impl_signature)) or { modulecache.CgenEntry{} }
+				}
+				if prepared_plan_entry.stamp.len > 0 {
+					cache_state.manager.write_cgen_prepared(prepared_plan_entry,
+						prepared_cache.main_source, prepared_cache.tcc_main_source,
+						prepared_cache.program_prefix_source) or {}
+					cache_state.manager.write_cgen_prepared_objects(prepared_plan_entry,
+						compile_signature, prepared_cache.objects) or {}
+				}
 			}
 			prealloc_scope_leave_for_v3(cache_prepare_scope)
+			b.step(if cgen_prepared_hit { 'C module plan (cached)' } else { 'C module plan' })
 			cached_objects = clone_string_list(prepared_cache.objects)
 			newly_cached_module_count = prepared_cache.newly_cached_modules
 			if use_cached_dev_dylib {
 				tcc_main_file = os.join_path_single(cc_dir, 'main.c')
-				os.write_file(tcc_main_file, prepared_cache.tcc_main_source) or {
-					eprintln('error writing cached TinyCC program unit ${tcc_main_file}: ${err.msg()}')
-					cleanup_c_build_dir(cc_dir)
-					exit(1)
+				if cgen_prepared_hit {
+					os.cp(cgen_prepared_entry.tcc, tcc_main_file) or {
+						eprintln('error restoring cached TinyCC program unit ${cgen_prepared_entry.tcc}: ${err.msg()}')
+						cleanup_c_build_dir(cc_dir)
+						exit(1)
+					}
+				} else {
+					os.write_file(tcc_main_file, prepared_cache.tcc_main_source) or {
+						eprintln('error writing cached TinyCC program unit ${tcc_main_file}: ${err.msg()}')
+						cleanup_c_build_dir(cc_dir)
+						exit(1)
+					}
 				}
 				prefix_object := compile_v3_program_prefix(prepared_cache.program_prefix_source,
 					v3_program_prefix_external_input_paths(&cache_state), &cache_state.manager,
@@ -3320,6 +3374,16 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 		newly_cached_modules[module_name] = true
 	}
 
+	return V3PreparedModuleCache{
+		main_source:           main_source
+		tcc_main_source:       tcc_main
+		program_prefix_source: '#define V3CACHE_PROGRAM_UNIT 1\n' + main_prefix
+		objects:               cache_object_paths(object_paths)
+		newly_cached_modules:  newly_cached_modules.len
+	}
+}
+
+fn cache_object_paths(object_paths map[string]string) []string {
 	mut objects := []string{}
 	mut object_names := object_paths.keys()
 	object_names.sort()
@@ -3329,13 +3393,7 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 			objects << path
 		}
 	}
-	return V3PreparedModuleCache{
-		main_source:           main_source
-		tcc_main_source:       tcc_main
-		program_prefix_source: '#define V3CACHE_PROGRAM_UNIT 1\n' + main_prefix
-		objects:               objects
-		newly_cached_modules:  newly_cached_modules.len
-	}
+	return objects
 }
 
 fn cache_source_without_cached_native_inputs(source string, state &V3ModuleCacheState, keep_main bool) string {
