@@ -15241,6 +15241,32 @@ fn (tc &TypeChecker) flag_enum_receiver_is_mutable_lvalue(recv_id flat.NodeId) b
 	return tc.expr_root_is_mutable_lvalue(recv_id)
 }
 
+fn (tc &TypeChecker) mut_receiver_expr_is_mutable_lvalue(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return tc.ident_is_mutable_lvalue(node.value)
+		}
+		.index, .selector, .paren {
+			return node.children_count > 0
+				&& tc.mut_receiver_expr_is_mutable_lvalue(tc.a.child(&node, 0))
+		}
+		.prefix {
+			if node.op == .amp {
+				return node.children_count > 0
+					&& tc.mut_receiver_expr_is_mutable_lvalue(tc.a.child(&node, 0))
+			}
+			return node.op == .mul
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (tc &TypeChecker) expr_root_is_mutable_lvalue(id flat.NodeId) bool {
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return false
@@ -15633,8 +15659,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 		}
 		if tc.unsafe_depth == 0 && tc.mut_receiver_methods[info.name]
-			&& !tc.type_is_pointer_receiver(recv_type) && !tc.expr_root_is_mutable_lvalue(recv_id)
-			&& tc.should_diagnose(id) {
+			&& !tc.mut_receiver_expr_is_mutable_lvalue(recv_id) && tc.should_diagnose(id) {
 			tc.record_error(.call_arg_mismatch,
 				'method `${fn_node.value}` requires a mutable receiver', id)
 		}

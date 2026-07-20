@@ -173,6 +173,12 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 	run_bad(v3_bin, 'bad_generic_mut_receiver_immutable_value',
 		'struct Box[T] {\nmut:\n\tvalue T\n}\n\nfn (mut b Box[T]) set(value T) {\n\tb.value = value\n}\n\nfn main() {\n\tb := Box[int]{\n\t\tvalue: 1\n\t}\n\tb.set(2)\n}\n',
 		'method `set` requires a mutable receiver')
+	run_bad(v3_bin, 'bad_mut_receiver_address_of_immutable_value',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\t(&s).bump()\n}\n',
+		'method `bump` requires a mutable receiver')
+	run_bad(v3_bin, 'bad_mut_receiver_immutable_pointer_binding',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n}\n',
+		'method `bump` requires a mutable receiver')
 	run_bad(v3_bin, 'bad_shared_receiver_plain_value',
 		'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n',
 		'cannot use non-shared `St` as receiver')
@@ -188,6 +194,12 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 	mut_out := run_good(v3_bin, 'good_mut_receiver_mutable_value',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n')
 	assert mut_out == '1'
+	mut_address_out := run_good(v3_bin, 'good_mut_receiver_address_of_mutable_value',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\t(&s).bump()\n\tprintln(int_str(s.value))\n}\n')
+	assert mut_address_out == '1'
+	mut_pointer_out := run_good(v3_bin, 'good_mut_receiver_mutable_pointer_binding',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tmut p := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n')
+	assert mut_pointer_out == '1'
 	capture_out := run_good(v3_bin, 'good_mut_receiver_explicit_mut_capture',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tfn [mut s] () {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}()\n}\n')
 	assert capture_out == '1'
