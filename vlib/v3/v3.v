@@ -79,6 +79,12 @@ struct V3PreparedModuleCache {
 	newly_cached_modules int
 }
 
+struct V3CgenCacheInput {
+	source_files         []string
+	dependency_inputs    map[string]string
+	generation_signature string
+}
+
 fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	target_os := prefs.normalized_target_os()
 	mut link_atomic_s := false
@@ -750,6 +756,50 @@ fn clone_string_list(values []string) []string {
 		cloned << value.clone()
 	}
 	return cloned
+}
+
+fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_flags []string, interface_impl_signature string) V3CgenCacheInput {
+	mut source_set := map[string]bool{}
+	for file in user_files {
+		source_set[os.real_path(file)] = true
+	}
+	mut dependencies := map[string]string{}
+	mut module_names := state.module_sources.keys()
+	module_names.sort()
+	for module_name in module_names {
+		source_files := state.module_sources[module_name]
+		entry := state.manager.entry(module_name, source_files)
+		mut source_paths := source_files.map(os.real_path(it))
+		source_paths.sort()
+		dependencies['module:${module_name}'] =
+			modulecache.header_signature(source_paths.join('\n'))
+		if header := state.headers[module_name] {
+			dependencies[entry.header] = modulecache.header_signature(header)
+		} else if os.is_file(entry.header) {
+			dependencies[entry.header] = modulecache.file_signature(entry.header)
+		}
+		if os.is_file(entry.header_stamp) {
+			dependencies[entry.header_stamp] = modulecache.file_signature(entry.header_stamp)
+		}
+	}
+	mut source_files := source_set.keys()
+	source_files.sort()
+	return V3CgenCacheInput{
+		source_files:         source_files
+		dependency_inputs:    dependencies
+		generation_signature: interface_impl_signature + '\x00' + user_c_flags.join('\x00')
+	}
+}
+
+fn encode_v3_cgen_flags(flags []string) string {
+	return flags.join('\x00')
+}
+
+fn decode_v3_cgen_flags(metadata string) []string {
+	if metadata.len == 0 {
+		return []string{}
+	}
+	return metadata.split('\x00')
 }
 
 // clone_string_bool_map promotes a string-keyed set out of a disposable stage arena.
@@ -1664,16 +1714,9 @@ fn main() {
 	cache_manager := modulecache.new_manager(prefs.vroot, cache_salt, cache_enabled,
 		build_pseudo_values)
 	force_cache_source := os.getenv('V3_CACHE_FORCE_SOURCE') == '1'
-	// The cache generator emits complete module bodies, including late generic
-	// specializations that are not reachable from the entry program. Its split output
-	// currently relies on the serial function-item walk to retain those definitions.
-	// Compiler self-hosts skip generic lowering, so their cache split can still use cgen workers.
-	// Large generic user programs retain a substantially expanded AST after
-	// monomorphization. Stream them through the serial cgen path in preallocated
-	// builds so worker setup does not clone that retained state at the peak.
+	// Cache markers and scoped output are stable across ordered worker chunks, so cached
+	// and preallocated builds use the same parallel function-body generator.
 	cache_no_parallel_cgen := current_no_parallel
-		|| (cache_manager.enabled && !building_v && !cmd_v_build)
-		|| (scope_prealloc_stages && !building_v && !cmd_v_build)
 	mut p := parser.Parser.new(prefs)
 	if building_v || cmd_v_build {
 		p.reserve_selfhost_ast()
@@ -2242,7 +2285,33 @@ fn main() {
 		mut generated_c_flags := []string{}
 		mut interface_impl_signature := ''
 		mut cgen_was_parallel := false
-		if scope_prealloc_cgen {
+		mut cgen_cache_hit := false
+		mut cgen_cache_input := V3CgenCacheInput{}
+		if cache_state.manager.enabled {
+			interface_impl_signature = pre_tc.interface_impl_set_signature()
+			cgen_cache_input = v3_cgen_cache_input(cache_state, user_files, user_c_flags,
+				interface_impl_signature)
+			// Any imported module reparsed from source needs a fresh plan even when
+			// its public declaration header happens to remain byte-identical.
+			if !cache_state.force_source && cache_state.parsed_from_source.len == 0 {
+				if entry := cache_state.manager.valid_cgen(cgen_cache_input.source_files,
+					cgen_cache_input.generation_signature, cgen_cache_input.dependency_inputs)
+				{
+					mut metadata_ok := true
+					metadata := os.read_file(entry.metadata) or {
+						metadata_ok = false
+						''
+					}
+					mut source_ok := true
+					os.cp(entry.source, cache_plan_file) or { source_ok = false }
+					if metadata_ok && source_ok {
+						generated_c_flags = decode_v3_cgen_flags(metadata)
+						cgen_cache_hit = true
+					}
+				}
+			}
+		}
+		if !cgen_cache_hit && scope_prealloc_cgen {
 			cgen_parse_cache_enabled := pre_tc.type_cache_parse_enabled()
 			cgen_scope := prealloc_scope_begin_for_v3()
 			mut g := cgen.FlatGen.new()
@@ -2264,22 +2333,16 @@ fn main() {
 			}
 			cgen_was_parallel = g.was_parallel()
 			scoped_c_flags := g.c_flags()
-			scoped_interface_impl_signature := if cache_state.manager.enabled {
-				pre_tc.interface_impl_set_signature()
-			} else {
-				''
-			}
 			g.free_parallel_worker_scopes()
 			prealloc_scope_leave_for_v3(cgen_scope)
 			generated_c_flags = clone_string_list(scoped_c_flags)
-			interface_impl_signature = scoped_interface_impl_signature.clone()
 			// Cgen's synchronous type queries memoize through the shared checker.
 			// Reattach empty parent-owned interners and caches before releasing its
 			// stage arena; all of them can grow while servicing those queries.
 			pre_tc.reset_type_interners()
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
 			prealloc_scope_free_for_v3(cgen_scope)
-		} else {
+		} else if !cgen_cache_hit {
 			mut g := cgen.FlatGen.new()
 			g.set_initial_c_flags(user_c_flags)
 			g.set_c99_mode(prefs.c99)
@@ -2299,7 +2362,11 @@ fn main() {
 			cgen_was_parallel = g.was_parallel()
 			generated_c_flags = g.c_flags()
 		}
-		b.step_parallel('cgen', cgen_was_parallel)
+		if cgen_cache_hit {
+			b.step('cgen (cached)')
+		} else {
+			b.step_parallel('cgen', cgen_was_parallel)
+		}
 		if c_only {
 			b.metric('generated C size', os.file_size(cc_src), 'bytes')
 			b.print_report()
@@ -2360,6 +2427,14 @@ fn main() {
 				eprintln('error writing cached main source ${cc_src}: ${err.msg()}')
 				cleanup_c_build_dir(cc_dir)
 				exit(1)
+			}
+			if !cgen_cache_hit {
+				published_cgen_cache_input := v3_cgen_cache_input(cache_state, user_files,
+					user_c_flags, interface_impl_signature)
+				cache_state.manager.write_cgen(published_cgen_cache_input.source_files,
+					published_cgen_cache_input.generation_signature,
+					published_cgen_cache_input.dependency_inputs, generated_source,
+					encode_v3_cgen_flags(generated_c_flags)) or {}
 			}
 			prealloc_scope_leave_for_v3(cache_prepare_scope)
 			cached_objects = clone_string_list(prepared_cache.objects)

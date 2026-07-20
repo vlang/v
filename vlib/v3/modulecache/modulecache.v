@@ -40,6 +40,14 @@ pub:
 	c_source     string
 }
 
+// CgenEntry contains the persistent whole-program C generation artifacts.
+pub struct CgenEntry {
+pub:
+	source   string
+	metadata string
+	stamp    string
+}
+
 // CSplit contains the declaration/runtime prefix and per-module C function bodies.
 pub struct CSplit {
 pub:
@@ -98,6 +106,18 @@ pub fn (m &Manager) object_entry(module_name string, source_files []string, comp
 		header_stamp: entry.header_stamp
 		object_stamp: '${base}_${key}.o.stamp'
 		c_source:     '${base}_${key}.c'
+	}
+}
+
+// cgen_entry returns the artifact paths for one stable program source set.
+pub fn (m &Manager) cgen_entry(source_files []string) CgenEntry {
+	mut paths := source_files.map(os.real_path(it))
+	paths.sort()
+	id := hash_text(paths.join('\n'))
+	return CgenEntry{
+		source:   os.join_path(m.dir, 'program_${id}.c')
+		metadata: os.join_path(m.dir, 'program_${id}.cflags')
+		stamp:    os.join_path(m.dir, 'program_${id}.c.stamp')
 	}
 }
 
@@ -485,6 +505,42 @@ pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source
 	return entry
 }
 
+// valid_cgen reports whether a whole-program C plan matches its program sources,
+// imported module headers, and semantic generation signature.
+pub fn (m &Manager) valid_cgen(source_files []string, generation_signature string, dependency_inputs map[string]string) ?CgenEntry {
+	if !m.enabled || source_files.len == 0 {
+		return none
+	}
+	entry := m.cgen_entry(source_files)
+	if !os.is_file(entry.source) || !os.is_file(entry.metadata) || !os.is_file(entry.stamp) {
+		return none
+	}
+	stamp := os.read_file(entry.stamp) or { return none }
+	expected := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs,
+		generation_signature)
+	if stamp != expected {
+		return none
+	}
+	return entry
+}
+
+// write_cgen atomically commits a whole-program C plan and its generation metadata.
+pub fn (m &Manager) write_cgen(source_files []string, generation_signature string, dependency_inputs map[string]string, source string, metadata string) !CgenEntry {
+	if !m.ensure_dir() {
+		return error('v3 module cache directory is unavailable')
+	}
+	entry := m.cgen_entry(source_files)
+	// The stamp is the commit marker. Remove the previous one before replacing
+	// either payload so concurrent readers never accept a mixed generation.
+	os.rm(entry.stamp) or {}
+	write_atomic(entry.source, source)!
+	write_atomic(entry.metadata, metadata)!
+	stamp := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs,
+		generation_signature)
+	write_atomic(entry.stamp, stamp)!
+	return entry
+}
+
 // write_stamp refreshes a cache stamp after the object and header are durable.
 // dependency_inputs maps every transitive imported `.vh` and non-V input path
 // to the content signature that the object was compiled against.
@@ -517,6 +573,18 @@ fn object_entry_stamp(salt string, source_hash string, dependency_inputs map[str
 	mut out := strings.new_builder(256 + dependency_inputs.len * 96)
 	out.write_string(entry_stamp(salt, source_hash))
 	out.writeln('compile=${hash_text(compile_signature)}')
+	mut paths := dependency_inputs.keys()
+	paths.sort()
+	for path in paths {
+		out.writeln('dependency=${path}\t${dependency_inputs[path]}')
+	}
+	return out.str()
+}
+
+fn cgen_entry_stamp(salt string, source_hash string, dependency_inputs map[string]string, generation_signature string) string {
+	mut out := strings.new_builder(256 + dependency_inputs.len * 96)
+	out.write_string(entry_stamp(salt, source_hash))
+	out.writeln('generation=${hash_text(generation_signature)}')
 	mut paths := dependency_inputs.keys()
 	paths.sort()
 	for path in paths {

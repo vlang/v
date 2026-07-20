@@ -144,6 +144,73 @@ fn changed_module_cache_objects(before map[string]u64, after map[string]u64) []s
 	return changed
 }
 
+fn test_module_cache_reuses_and_invalidates_whole_program_cgen_plan() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_cgen_plan_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'cached/cached.v', 'module cached
+
+pub fn value() int {
+	return 40
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import cached
+
+fn main() {
+	println(cached.value() + 2)
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	first :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(first_output)} ${os.quoted_path(main_file)}')
+	assert first.exit_code == 0, first.output
+	assert !first.output.contains('cgen (cached)'), first.output
+	assert run_module_cache_binary(first_output) == '42'
+
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == '42'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+import cached
+
+fn main() {
+	println(cached.value() + 3)
+}
+')
+	changed_output := os.join_path(root, 'changed')
+	changed :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_output)} ${os.quoted_path(main_file)}')
+	assert changed.exit_code == 0, changed.output
+	assert !changed.output.contains('cgen (cached)'), changed.output
+	assert run_module_cache_binary(changed_output) == '43'
+
+	write_module_cache_file(root, 'cached/cached.v', 'module cached
+
+pub fn value() int {
+	return 41
+}
+')
+	changed_module_output := os.join_path(root, 'changed_module')
+	changed_module :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_module_output)} ${os.quoted_path(main_file)}')
+	assert changed_module.exit_code == 0, changed_module.output
+	assert !changed_module.output.contains('cgen (cached)'), changed_module.output
+	assert run_module_cache_binary(changed_module_output) == '44'
+}
+
 fn test_module_cache_split_uses_marker_lines() {
 	source := 'static string marker = {"/* V3CACHE_BODY_BEGIN */", 24};\n#ifdef __cplusplus\nextern "C" {\n#endif\nextern int cached_api(void *);\n#ifdef __cplusplus\n}\n#endif\n/* V3CACHE_BODY_BEGIN */\n/* V3CACHE_MODULE main */\nint main(void) { return 0; }\n/* V3CACHE_BODY_END */\n'
 	split := modulecache.split_generated_c(source) or { panic(err) }

@@ -7,9 +7,9 @@ import v3.flat
 import v3.types
 import v3.workers
 
-const max_flat_cgen_jobs = 2
+const max_flat_cgen_jobs = 10
 const min_flat_cgen_parallel_items = 1024
-const scoped_cgen_worker_batches = 256
+const scoped_cgen_worker_batches = 4
 
 $if !windows {
 	// FlatCgenChunkArgs represents flat cgen chunk args data used by c.
@@ -166,11 +166,30 @@ fn (mut g FlatGen) write_scoped_cgen_batch_output(batch &FlatGen) bool {
 		g.output_error = err.msg()
 		return false
 	}
-	unsafe {
-		file.write_full_buffer(batch.sb.data, usize(batch.sb.len)) or {
+	if batch.cache_split {
+		mut b := unsafe { batch }
+		source := b.sb.str()
+		stable_source := b.rewrite_cache_string_symbols(source)
+		file.write_string(stable_source) or {
 			g.output_error = err.msg()
 			file.close()
+			unsafe {
+				source.free()
+				stable_source.free()
+			}
 			return false
+		}
+		unsafe {
+			source.free()
+			stable_source.free()
+		}
+	} else {
+		unsafe {
+			file.write_full_buffer(batch.sb.data, usize(batch.sb.len)) or {
+				g.output_error = err.msg()
+				file.close()
+				return false
+			}
 		}
 	}
 	file.close()
@@ -220,7 +239,12 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		}
 	}
 	for def in batch.spawn_wrapper_defs {
-		g.add_spawn_wrapper_def(def.clone())
+		if batch.cache_split {
+			stable_def := b.rewrite_cache_string_symbols(def)
+			g.add_spawn_wrapper_def(stable_def)
+		} else {
+			g.add_spawn_wrapper_def(def.clone())
+		}
 	}
 	for key, name in batch.callback_wrapper_names {
 		if key !in g.callback_wrapper_names {
@@ -228,7 +252,12 @@ fn (mut g FlatGen) absorb_scoped_cgen_batch(batch &FlatGen, output_streamed bool
 		}
 	}
 	for def in batch.callback_wrapper_defs {
-		g.add_callback_wrapper_def(def.clone())
+		if batch.cache_split {
+			stable_def := b.rewrite_cache_string_symbols(def)
+			g.add_callback_wrapper_def(stable_def)
+		} else {
+			g.add_callback_wrapper_def(def.clone())
+		}
 	}
 }
 
@@ -378,7 +407,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 			g.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
 		n_jobs := flat_cgen_job_count(g.a.worker_pool.size() + 1, n_items)
-		if g.output_path.len > 0 && !g.cache_split && g.scope_parallel_workers {
+		if g.output_path.len > 0 && g.scope_parallel_workers {
 			g.scoped_fn_output_path = '${g.output_path}.v3-fns.tmp.0'
 			g.scoped_fn_output_paths = [g.scoped_fn_output_path]
 			os.rm(g.scoped_fn_output_path) or {}
@@ -570,6 +599,15 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 // prepare_parallel_items supports prepare parallel items handling for FlatGen.
 fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
 	mut stack := []flat.NodeId{cap: 256}
+	// Function bodies can materialize literals from declaration metadata (for
+	// example struct-field defaults) that lives outside every function subtree.
+	// Intern all source literals before workers fork so their numeric IDs remain
+	// valid regardless of which chunk first references that metadata.
+	for node in g.a.nodes {
+		if node.kind == .string_literal {
+			g.intern_string(node.value)
+		}
+	}
 	// The cache is keyed by the bare type text and reset whenever the
 	// file/module context changes (items are grouped by file, so resets are
 	// rare); the old composite '${file}\n${module}\n${typ}' key allocated a
@@ -1150,7 +1188,11 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	}
 	worker_output := ww.sb.str()
 	if worker_output.len > 0 {
-		if string_id_remap.len > 0 {
+		if g.cache_split {
+			stable_output := ww.rewrite_cache_string_symbols(worker_output)
+			g.fn_segs << stable_output
+			unsafe { worker_output.free() }
+		} else if string_id_remap.len > 0 {
 			g.fn_segs << remap_scoped_worker_string_symbols(worker_output, string_id_remap,
 				user_c_symbols)
 			unsafe { worker_output.free() }
@@ -1163,10 +1205,18 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 	// The ordered segment owns the copied output; release the worker builder.
 	unsafe { ww.sb.free() }
 	for segment in w.fn_segs {
-		g.fn_segs << if string_id_remap.len > 0 {
-			remap_scoped_worker_string_symbols(segment, string_id_remap, user_c_symbols)
+		if g.cache_split {
+			g.fn_segs << ww.rewrite_cache_string_symbols(segment)
+		} else if string_id_remap.len > 0 {
+			g.fn_segs << remap_scoped_worker_string_symbols(segment, string_id_remap,
+				user_c_symbols)
 		} else {
-			segment.clone()
+			g.fn_segs << segment.clone()
+		}
+	}
+	if g.cache_split {
+		for literal in w.str_lits {
+			g.intern_string(literal.clone())
 		}
 	}
 	for opt_name, val_type in w.needed_optional_types {
@@ -1196,11 +1246,14 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 		}
 	}
 	for def in w.spawn_wrapper_defs {
-		g.add_spawn_wrapper_def(if string_id_remap.len > 0 {
-			remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
+		if g.cache_split {
+			g.add_spawn_wrapper_def(ww.rewrite_cache_string_symbols(def))
+		} else if string_id_remap.len > 0 {
+			g.add_spawn_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap,
+				user_c_symbols))
 		} else {
-			def.clone()
-		})
+			g.add_spawn_wrapper_def(def.clone())
+		}
 	}
 	for key, name in w.callback_wrapper_names {
 		if key !in g.callback_wrapper_names {
@@ -1208,11 +1261,14 @@ fn (mut g FlatGen) merge_parallel_worker(w &FlatGen) {
 		}
 	}
 	for def in w.callback_wrapper_defs {
-		g.add_callback_wrapper_def(if string_id_remap.len > 0 {
-			remap_scoped_worker_string_symbols(def, string_id_remap, user_c_symbols)
+		if g.cache_split {
+			g.add_callback_wrapper_def(ww.rewrite_cache_string_symbols(def))
+		} else if string_id_remap.len > 0 {
+			g.add_callback_wrapper_def(remap_scoped_worker_string_symbols(def, string_id_remap,
+				user_c_symbols))
 		} else {
-			def.clone()
-		})
+			g.add_callback_wrapper_def(def.clone())
+		}
 	}
 }
 
@@ -1230,20 +1286,6 @@ fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 		}
 		if isnil(g.a.worker_pool) {
 			g.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
-		}
-		if g.scope_parallel_workers {
-			scan_scope := cgen_worker_scope_begin(true)
-			mut scan := g.new_parallel_worker(0)
-			scan.collect_fixed_storage_consts()
-			scan.precompute_param_type_index()
-			scan.precompute_concrete_optional_abi_fns()
-			cgen_worker_scope_leave(scan_scope)
-			g.fixed_storage_consts = scan.fixed_storage_consts.clone()
-			g.param_types_by_short = clone_param_types_by_short(scan.param_types_by_short)
-			g.concrete_optional_abi_fns = scan.concrete_optional_abi_fns.clone()
-			cgen_worker_scope_free(scan_scope)
-			g.prepare_pre_dispatch_master()
-			return true
 		}
 		mut fs_worker := g.new_parallel_worker(0)
 		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')

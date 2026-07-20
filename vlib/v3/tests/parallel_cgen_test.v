@@ -361,12 +361,12 @@ fn test_parallel_transform_lowers_top_level_stmts_without_main_once() {
 
 fn test_prealloc_keeps_parallel_transform_enabled() {
 	v3_bin := build_parallel_prealloc_prod_v3()
-	main_path :=
-		write_parallel_top_level_no_main_project('parallel_prealloc_transform_${os.getpid()}')
+	main_path := write_parallel_module_init_project('parallel_prealloc_cgen_${os.getpid()}')
 	c_out := os.join_path(os.temp_dir(), 'v3_parallel_prealloc_transform_${os.getpid()}.c')
 	compile := os.execute('VJOBS=2 ${v3_bin} -nocache -b c -o ${c_out} ${main_path}')
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('transform (parallel)'), compile.output
+	assert compile.output.contains('cgen (parallel)'), compile.output
 }
 
 fn test_parallel_transform_selfhost_builds_v3() {
