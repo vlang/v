@@ -581,13 +581,86 @@ The largest, highest-risk phase. Sub-phases, in build order:
       resolutions were computed before any commit. Has a regression test,
       Phase-R-verified to fail on the pre-fix code.
 
-## Phases 6-14 (NOT STARTED)
+## Phase 6 — Stream layer and flow control (done)
+
+- [x] `frame.v` extended — STREAM (0x08-0x0f, OFF/LEN/FIN bits), RESET_STREAM,
+      STOP_SENDING, MAX_DATA, MAX_STREAM_DATA, MAX_STREAMS (bidi/uni),
+      DATA_BLOCKED, STREAM_DATA_BLOCKED, STREAMS_BLOCKED (bidi/uni). A
+      length-less STREAM frame (LEN bit clear) correctly consumes the rest
+      of `parse_frames`' buffer, matching RFC 9000 §19.8's requirement that
+      it be the last frame in its packet — a natural consequence of the
+      wire format itself, not something requiring separate enforcement.
+- [x] `stream.v` — `StreamId` category derivation (RFC 9000 §2.1),
+      `QuicRole`-aware `is_locally_initiated`, `SendStreamState`/
+      `RecvStreamState` (RFC 9000 §3.1/§3.2) driven by local actions and
+      frame arrival respectively (ACK-driven and application-read-driven
+      transitions are documented hooks for Phase 7/9, not implemented
+      here). `QuicStream.send`/`recv` are nilable pointers (`&StreamSendHalf`/
+      `&StreamRecvHalf`, matching `Tls13ClientHandshake.verified_chain`'s
+      established convention) so every caller mutates the SAME shared half
+      directly — see the `/vreview` finding below for why this replaced an
+      earlier Optional-value design. `QuicStreamSet.get_or_create` auto-creates
+      peer-initiated streams (including every lower-numbered stream in the
+      same category, per RFC 9000 §2.1) while enforcing the caller-supplied
+      `max_streams` limit (STREAM_LIMIT_ERROR) and refusing to fabricate a
+      locally-initiated stream just because a frame references it
+      (STREAM_STATE_ERROR); `open_local_stream` is the send-side mirror,
+      allocating sequential IDs per category.
+- [x] `stream_reassembly.v` — per-stream offset-ordered reassembly, mirroring
+      Phase 4's `crypto_stream.v` design (validated-append + promote_ready,
+      tolerating out-of-order arrival and overlapping retransmissions),
+      extended with `note_final_size` reconciling a stream's final size
+      (from a FIN-carrying STREAM frame or RESET_STREAM) against everything
+      already received or buffered (FINAL_SIZE_ERROR on mismatch, RFC 9000
+      §4.5) — the one genuine difference from CRYPTO streams, which have no
+      final-size concept.
+- [x] `flow_control.v` — `FlowControlWindow` (send-side accounting against a
+      peer-raised limit) and `ReceiveWindow` (receive-side accounting with
+      an auto-growth heuristic: advertise a higher limit once the
+      application has consumed at least half the current window, avoiding
+      a throughput stall). `initial_send_limit_for_stream`/
+      `initial_receive_limit_for_stream` resolve RFC 9000 §4.1's
+      easy-to-invert peer-relative transport-parameter naming
+      (`initial_max_stream_data_bidi_local`/`_remote` mean opposite things
+      depending on whose parameters and which side of the stream you're
+      asking about) in one place, verified against a hand-derived worked
+      example for all 4 stream categories from the client's own
+      perspective, not just structurally.
+- [x] Integration test (`stream_layer_test.v`): three streams — a
+      client-opened bidi stream, a server-opened uni stream (the plan's own
+      "even client-first phase must receive server-initiated unidirectional
+      streams from day one"), and a second client-opened bidi stream — with
+      STREAM frames delivered genuinely interleaved (not grouped by stream),
+      each independently reassembled while one connection-level
+      `ReceiveWindow` tracks the running total across all three.
+- [x] `/vreview` pass: found and fixed one gap before commit —
+      `QuicStream.send`/`recv` were originally Optional VALUE fields
+      (`?StreamSendHalf`/`?StreamRecvHalf`); unwrapping via `s.recv or
+      {...}` copies the struct out, so mutating the copy via
+      `note_data()`/`note_size_known()` looks like in-place mutation but
+      silently doesn't persist unless the caller remembers to explicitly
+      reassign `s.recv = recv` afterward (the reassembler's own data
+      survives regardless, via its internal pointer field, but `state`/
+      `final_size` would silently revert). Fixed by switching to nilable
+      pointers before any real caller could hit this, eliminating the
+      whole bug class by construction rather than documenting the trap.
+      Two mechanical V-compiler quirks surfaced and fixed along the way,
+      unrelated to the finding above: `match` on a repeated array-index
+      expression (`frames[N]`) doesn't reliably narrow a sum type across
+      multiple field accesses within one arm once the sum type has enough
+      variants — affected both new Phase 6 tests and two PRE-EXISTING
+      tests in `frame_test.v`/`initial_exchange_test.v` that had worked
+      fine with fewer variants; fixed by binding to a local variable
+      before matching (the already-idiomatic pattern used everywhere
+      else). Separately, a pre-existing test's "frame type 0x08 is not
+      yet implemented" case became false once Phase 6 implemented STREAM
+      frames at that exact type value; retargeted to 0x1e
+      (HANDSHAKE_DONE), still genuinely unimplemented.
+
+## Phases 7-14 (NOT STARTED)
 
 See the tracking issue for full detail on each. In order:
 
-6. Stream layer — STREAM frames, connection+stream flow control interplay.
-   Note: even client-only v1 must receive server-initiated uni streams from
-   day one (HTTP/3's control/QPACK streams need this).
 7. Loss detection & NewReno congestion control (RFC 9002).
 8. Connection lifecycle — idle timeout, CONNECTION_CLOSE, stateless reset,
    ECN fallback, PMTU (pinned to 1200 bytes for v1).

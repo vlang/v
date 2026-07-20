@@ -83,9 +83,10 @@ fn test_full_initial_round_trip_over_fake_transport() {
 	frames := parse_frames(unprotected.payload)!
 	assert frames.len == 1
 	mut reassembler := new_crypto_stream_reassembler()
-	match frames[0] {
+	frame0 := frames[0]
+	match frame0 {
 		CryptoFrame {
-			reassembler.add(frames[0].offset, frames[0].data)!
+			reassembler.add(frame0.offset, frame0.data)!
 		}
 		else {
 			assert false, 'expected the payload to contain exactly one CryptoFrame'
