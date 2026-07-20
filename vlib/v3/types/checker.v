@@ -11856,7 +11856,7 @@ fn (mut tc TypeChecker) resolve_lvalue_type(lhs_id flat.NodeId) Type {
 		return tc.resolve_index_lvalue_type(lhs_id, .assign)
 	}
 	if lhs.kind == .prefix && lhs.op == .mul && lhs.children_count > 0 {
-		inner := tc.resolve_type(tc.a.child(&lhs, 0))
+		inner := unalias_type(tc.resolve_type(tc.a.child(&lhs, 0)))
 		if inner is Pointer {
 			return inner.base_type
 		}
@@ -26480,7 +26480,7 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 				})
 			}
 			if node.op == .mul {
-				inner := tc.resolve_type(tc.a.child(&node, 0))
+				inner := unalias_type(tc.resolve_type(tc.a.child(&node, 0)))
 				if inner is Pointer {
 					return inner.base_type
 				}

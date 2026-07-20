@@ -1307,6 +1307,13 @@ fn test_unannotated_optional_address_preserves_wrapper() {
 	assert out == '&?int\n42'
 }
 
+fn test_pointer_alias_lvalue_preserves_dereference() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_alias_lvalue_dereference',
+		'type IntPtr = &int\n\nfn main() {\n\tmut value := 0\n\tmut p := IntPtr(&value)\n\t*p = 7\n\tprintln(int_str(value))\n}\n')
+	assert out == '7'
+}
+
 fn test_optional_variant_to_optional_sum_cast_preserves_wrapper() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_variant_to_optional_sum_cast',

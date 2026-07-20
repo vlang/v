@@ -511,7 +511,7 @@ fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_p
 	if !type_contains_unknown(tc.fn_context.return_type) {
 		return false
 	}
-	return tc.stmt_is_terminal_propagation(last_stmt, mode)
+	return tc.stmt_is_terminal_void_propagation(last_stmt, mode)
 }
 
 fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_params map[string]bool) bool {
@@ -575,16 +575,16 @@ fn comptime_condition_references_generic_param(cond string, generic_params map[s
 	return false
 }
 
-fn (tc &TypeChecker) stmt_is_terminal_propagation(id flat.NodeId, mode string) bool {
+fn (mut tc TypeChecker) stmt_is_terminal_void_propagation(id flat.NodeId, mode string) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
 	node := tc.a.nodes[int(id)]
 	if node.kind == .or_expr {
-		return node.value == mode
+		return node.value == mode && tc.resolve_type(id) is Void
 	}
 	if node.kind in [.expr_stmt, .paren] && node.children_count == 1 {
-		return tc.stmt_is_terminal_propagation(tc.a.child(&node, 0), mode)
+		return tc.stmt_is_terminal_void_propagation(tc.a.child(&node, 0), mode)
 	}
 	return false
 }

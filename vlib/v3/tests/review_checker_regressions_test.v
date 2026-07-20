@@ -387,6 +387,12 @@ fn test_generic_functions_report_missing_return() {
 	run_bad(v3_bin, 'bad_generic_comptime_branch_missing_return',
 		'fn f[T]() int {\n\t$if T is int {\n\t\treturn 1\n\t}\n}\nfn main() {\n\t_ := f[string]()\n}\n',
 		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_generic_option_propagation_missing_return',
+		'fn f[T](value ?T) ?T {\n\tvalue?\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_generic_result_propagation_missing_return',
+		'fn f[T](value !T) !T {\n\tvalue!\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
 }
 
 fn test_no_return_calls_satisfy_return_analysis() {

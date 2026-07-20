@@ -5998,10 +5998,6 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 					return value
 				}
 				child := t.transform_expr(child_id)
-				child_type := t.node_type(child)
-				if child_type.len > 0 && !child_type.starts_with('&') {
-					return child
-				}
 				start := t.a.children.len
 				t.a.children << child
 				return t.a.add_node(flat.Node{
