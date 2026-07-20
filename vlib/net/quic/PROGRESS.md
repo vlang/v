@@ -534,12 +534,57 @@ The largest, highest-risk phase. Sub-phases, in build order:
       to a 32-bit `int` and so accidentally exercised a harmless
       allocation regardless of whether the fix was present).
 
-## Phases 5-14 (NOT STARTED)
+## Phase 5 — Full handshake completion (done)
+
+- [x] `packet_number_space.v` — formalizes the THREE INDEPENDENT packet
+      number spaces (Initial/Handshake/Application Data), flagged as the
+      most common implementation mistake to get wrong (treating packet
+      numbers as connection-global breaks ACK-frame interop with any
+      compliant peer). `PacketNumberSpaceState` tracks per-space
+      next-to-send/largest-received/largest-acked-by-peer, feeding directly
+      into Phase 1's `encode_packet_number`/`decode_packet_number` with no
+      adaptation. `QuicPacketNumberSpaces` groups the three as genuinely
+      independent struct fields — no shared mutable state to accidentally
+      conflate.
+- [x] `handshake_confirm.v` — models "complete" (own Finished sent AND
+      peer's Finished verified) and "confirmed" (HANDSHAKE_DONE received)
+      as two distinct checkpoints, each with its own key-discard trigger
+      (RFC 9001 §4.9.1/§4.9.2), plus a third, independent checkpoint for
+      discarding Initial keys (first Handshake-space packet sent). The
+      alternate ack-based confirmation path RFC 9001 permits is
+      deliberately not implemented — v1 always waits for HANDSHAKE_DONE.
+- [x] `key_update.v` — 1-RTT-only key phase bit rotation (RFC 9001 §6),
+      receive side only (client-initiated rotation deferred, per plan).
+      `resolve_read_keys` decides which keys to try decrypting an incoming
+      packet with — matching the current phase, the retained previous
+      phase (a reordered pre-update packet), or a freshly-derived next
+      phase (a genuine new update) — purely from the packet's phase bit
+      and packet number, per RFC 9001 §6.5, and never mutates state or
+      authenticates anything itself. `note_successful_decrypt` commits the
+      outcome only after the caller's own AEAD decryption has actually
+      succeeded. `max_key_updates_accepted` is a coarse, time-independent
+      cap standing in for RFC 9001 §6.1/§6.5's ack-plus-3xPTO pacing, which
+      needs RTT/PTO estimation this module doesn't have yet (Phase 7).
+- [x] `/vreview` pass: found and fixed one gap before commit —
+      `note_successful_decrypt` trusted `resolution.is_new_update`/
+      `is_previous_phase` at face value, but those flags are computed at
+      `resolve_read_keys` time and go stale if a caller resolves more than
+      one packet (e.g. two packets from the same coalesced datagram)
+      before committing either; committing the first packet's genuine
+      update flips the current phase, and a second, now-stale
+      `is_new_update` resolution for a packet that actually matches the
+      just-updated phase would otherwise be mis-committed as a SECOND
+      update, permanently desynchronizing decryption. Fixed by having
+      `note_successful_decrypt` re-derive its classification fresh from
+      the packet's own real phase bit against current state, rather than
+      trusting resolve-time flags — correct regardless of how many
+      resolutions were computed before any commit. Has a regression test,
+      Phase-R-verified to fail on the pre-fix code.
+
+## Phases 6-14 (NOT STARTED)
 
 See the tracking issue for full detail on each. In order:
 
-5. Full handshake completion — three independent packet number spaces (a
-   common implementation mistake to conflate), key discard, key update.
 6. Stream layer — STREAM frames, connection+stream flow control interplay.
    Note: even client-only v1 must receive server-initiated uni streams from
    day one (HTTP/3's control/QPACK streams need this).
