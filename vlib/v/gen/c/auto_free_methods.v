@@ -126,7 +126,7 @@ fn (mut g Gen) gen_free_for_interface(sym ast.TypeSymbol, info ast.Interface, st
 		} else {
 			g.gen_free_method(typ_)
 		}
-		if has_free_method && sub_sym.is_builtin() {
+		if sub_sym.is_builtin() {
 			free_fn_name = 'builtin__${free_fn_name}'
 		}
 		fn_builder.writeln('\tif (it->_typ == _${sym.cname}_${sub_sym.cname}_index) { ${free_fn_name}(it->_${sub_sym.cname}); return; }')
