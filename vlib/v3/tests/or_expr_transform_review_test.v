@@ -98,6 +98,13 @@ fn test_nested_optional_logical_or_preserves_short_circuiting() {
 	assert out == 'true\n0\nfalse\n0\ntrue\n1\ntrue\n1'
 }
 
+fn test_or_fallback_shadowed_noreturn_names_produce_values() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'or_fallback_shadowed_noreturn_names',
+		'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\texit := fn () int { return 7 }\n\tx := maybe() or { exit() }\n\tpanic := fn () int { return 9 }\n\ty := maybe() or { panic() }\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n')
+	assert out == '7\n9'
+}
+
 fn test_user_defined_free_method_is_preserved() {
 	v3_bin := build_v3_or_review()
 	out := or_review_run(v3_bin, 'user_defined_free_method',

@@ -4441,7 +4441,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			return
 		}
 	}
-	match fn_name {
+	dispatch_name := if callee_is_fn_value { '' } else { fn_name }
+	match dispatch_name {
 		'array_new' {
 			g.write('array_new(')
 			for i in 1 .. node.children_count {

@@ -2136,9 +2136,12 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 	if node.kind != .call || node.children_count == 0 {
 		return false
 	}
+	if t.tc.resolved_call_name(id) != none {
+		return t.tc.resolved_call_never_returns(id)
+	}
 	fn_node := t.a.child_node(&node, 0)
 	if fn_node.kind == .ident && fn_node.value in ['panic', 'exit'] {
-		return true
+		return t.var_type(fn_node.value).len == 0
 	}
-	return t.tc.resolved_call_never_returns(id)
+	return false
 }

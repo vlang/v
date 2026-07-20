@@ -129,6 +129,31 @@ fn main() {}
 		'cannot return `A` as `&Item`')
 }
 
+fn test_optional_value_to_pointer_return_heap_copies_payload() {
+	v3_bin := pointer_voidptr_build_v3()
+	out := pointer_voidptr_run_good(v3_bin, 'optional_value_to_pointer_return', 'struct Item {
+	value int
+}
+
+fn make() ?&Item {
+	maybe := ?Item(Item{
+		value: 47
+	})
+	converted := ?&Item(maybe)
+	return converted
+}
+
+fn main() {
+	item := make() or { return }
+	println(int_str(item.value))
+}
+')
+	assert out == '47'
+	c_path := os.join_path(os.temp_dir(), 'v3_optional_value_to_pointer_return_${os.getpid()}.c')
+	c_source := os.read_file(c_path) or { panic(err) }
+	assert c_source.contains('memdup(&maybe.value, sizeof(Item))'), c_source
+}
+
 fn test_wrapped_multi_return_bare_pointer_slots_are_heap_lowered() {
 	v3_bin := pointer_voidptr_build_v3()
 	out := pointer_voidptr_run_good(v3_bin, 'wrapped_multi_return_bare_pointer_slots', 'struct Item {

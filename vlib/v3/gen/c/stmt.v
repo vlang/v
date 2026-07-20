@@ -5703,14 +5703,18 @@ fn (g &FlatGen) noreturn_call_id(id flat.NodeId) ?flat.NodeId {
 // is_noreturn_call reports whether is noreturn call applies in c.
 fn (g &FlatGen) is_noreturn_call(id flat.NodeId) bool {
 	call_id := g.noreturn_call_id(id) or { return false }
+	if g.tc.resolved_call_name(call_id) != none {
+		return g.tc.resolved_call_never_returns(call_id)
+	}
 	call := g.a.nodes[int(call_id)]
 	if call.children_count > 0 {
 		fn_node := g.a.child_node(&call, 0)
 		if fn_node.kind == .ident && fn_node.value in ['panic', 'exit'] {
-			return true
+			local_type := g.tc.cur_scope.lookup(fn_node.value) or { types.Type(types.void_) }
+			return local_type is types.Void
 		}
 	}
-	return g.tc.resolved_call_never_returns(call_id)
+	return false
 }
 
 // tmp_name supports tmp name handling for FlatGen.
