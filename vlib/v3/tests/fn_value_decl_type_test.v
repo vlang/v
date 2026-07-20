@@ -476,6 +476,34 @@ fn main() {
 	assert bad_output.contains('expected `callbacks.Callback[int]`'), bad_output
 }
 
+fn test_resolved_fn_value_wins_over_imported_const_suffix() {
+	v3_bin := build_v3()
+	out := run_project_good(v3_bin, 'fn_value_imported_const_suffix', {
+		'v.mod':                 "Module { name: 'fn_value_imported_const_suffix' }\n"
+		'collision/collision.v': 'module collision
+
+pub const foo = 7
+'
+		'main.v':                'module main
+
+import collision
+
+fn foo() int {
+	return 42
+}
+
+fn take(callback fn () int) int {
+	return callback()
+}
+
+fn main() {
+	println(int_str(take(foo) + collision.foo))
+}
+'
+	})
+	assert out == '49'
+}
+
 fn test_fn_value_expected_context_respects_value_shadowing() {
 	v3_bin := build_v3()
 	ident_output := run_bad(v3_bin, 'fn_value_expected_ident_shadow',

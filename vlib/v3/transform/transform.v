@@ -14195,6 +14195,12 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 			if smartcasted := t.smartcast_ident_value(node.value) {
 				return smartcasted
 			}
+			if !t.in_call_callee && !isnil(t.tc) {
+				if fn_name := t.tc.resolved_fn_value_name(id) {
+					t.set_node_value(int(id), fn_name)
+					return id
+				}
+			}
 			typ := t.var_type(node.value)
 			if typ.len == 0 {
 				if key := t.const_type_key_in_context(node.value, t.cur_module, t.cur_file) {
