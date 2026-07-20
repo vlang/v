@@ -1967,6 +1967,102 @@ fn main() {
 	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
+fn test_cached_generic_body_resolves_relative_embed_file() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_generic_embed_file_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	payload_path := os.join_path(root, 'assets/payload.txt')
+	write_module_cache_file(root, 'assets/payload.txt', 'cached payload')
+	write_module_cache_file(root, 'assets/assets.v', 'module assets
+
+pub fn payload_len[T]() int {
+	_ = sizeof(T)
+	return $embed_file("payload.txt").len
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import assets
+
+fn main() {
+	println(assets.payload_len[int]())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '14'
+	header_path := module_cache_artifact(cache_dir, 'assets_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains(os.real_path(payload_path)), header
+	assert !header.contains('$embed_file("payload.txt")'), header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '14'
+}
+
+fn test_cached_comptime_body_resolves_relative_insert() {
+	$if windows {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_comptime_insert_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header_path := os.join_path(root, 'wrapper/api.h')
+	write_module_cache_file(root, 'wrapper/api.h', 'static inline int cached_comptime_value(void) {
+	return 42;
+}
+')
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+$if !windows {
+	#insert "@DIR/api.h"
+	fn C.cached_comptime_value() int
+}
+
+pub fn value() int {
+	$if !windows {
+		return C.cached_comptime_value()
+	} $else {
+		return 0
+	}
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	cache_header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
+	assert cache_header_path.len > 0
+	cache_header := os.read_file(cache_header_path) or { panic(err) }
+	assert cache_header.contains(os.real_path(header_path)), cache_header
+	assert !cache_header.contains('@DIR/api.h'), cache_header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_cached_header_preserves_immutable_reference_receiver() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_reference_receiver_${os.getpid()}')

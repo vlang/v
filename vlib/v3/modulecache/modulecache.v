@@ -2012,7 +2012,9 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 					}
 				}
 				mut text := if source_embedded {
-					declaration_source_text(a, node, file_node.value, mut source_cache) or { '' }
+					raw_source := declaration_source_text(a, node, file_node.value, mut
+						source_cache) or { '' }
+					cached_embedded_declaration_source(raw_source, vroot, file_node.value)
 				} else {
 					decl_text(a, tc, module_name, node, vroot, file_node.value, import_paths,
 						effective_attrs, source_is_public)
@@ -2298,6 +2300,225 @@ fn declaration_source_text(a &flat.FlatAst, node flat.Node, file_name string, mu
 		return none
 	}
 	return source[start..end]
+}
+
+struct CachedSourcePathEdit {
+	start       int
+	end         int
+	replacement string
+}
+
+fn cached_embedded_declaration_source(source string, vroot string, source_file string) string {
+	return cached_embedded_source_paths(source, vroot, source_file)
+}
+
+fn cached_embedded_directive_edit(source string, start int, vroot string, source_file string) ?CachedSourcePathEdit {
+	mut line_start := start
+	for line_start > 0 && source[line_start - 1] != `\n` {
+		line_start--
+	}
+	for i in line_start .. start {
+		if source[i] !in [` `, `\t`] {
+			return none
+		}
+	}
+	mut line_end := start + 1
+	for line_end < source.len && source[line_end] != `\n` {
+		line_end++
+	}
+	mut name_start := start + 1
+	for name_start < line_end && source[name_start] in [` `, `\t`] {
+		name_start++
+	}
+	mut name_end := name_start
+	for name_end < line_end && ((source[name_end] >= `a` && source[name_end] <= `z`)
+		|| source[name_end] == `_`) {
+		name_end++
+	}
+	if name_end == name_start {
+		return none
+	}
+	mut value_start := name_end
+	for value_start < line_end && source[value_start] in [` `, `\t`] {
+		value_start++
+	}
+	if value_start >= line_end {
+		return none
+	}
+	directive := source[name_start..name_end]
+	value := source[value_start..line_end]
+	resolved := cached_directive_value(directive, value, vroot, source_file)
+	if resolved == value {
+		return none
+	}
+	return CachedSourcePathEdit{
+		start:       value_start
+		end:         line_end
+		replacement: resolved
+	}
+}
+
+fn cached_embedded_source_paths(source string, vroot string, source_file string) string {
+	mut out := strings.new_builder(source.len + 128)
+	mut last := 0
+	mut i := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut line_comment := false
+	mut block_comment := false
+	for i < source.len {
+		c := source[i]
+		next := if i + 1 < source.len { source[i + 1] } else { u8(0) }
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			i++
+			continue
+		}
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+				i += 2
+				continue
+			}
+			i++
+			continue
+		}
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			i += 2
+			continue
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			i += 2
+			continue
+		}
+		if c == `#` {
+			if edit := cached_embedded_directive_edit(source, i, vroot, source_file) {
+				out.write_string(source[last..edit.start])
+				out.write_string(edit.replacement)
+				last = edit.end
+				i = edit.end
+				continue
+			}
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if c == `$` && i + 1 < source.len && source[i + 1..].starts_with('embed_file') {
+			if edit := cached_embed_file_path_edit(source, i, vroot, source_file) {
+				out.write_string(source[last..edit.start])
+				out.write_string(edit.replacement)
+				last = edit.end
+				i = edit.end
+				continue
+			}
+		}
+		i++
+	}
+	if last == 0 {
+		return source
+	}
+	out.write_string(source[last..])
+	return out.str()
+}
+
+fn cached_embed_file_path_edit(source string, start int, vroot string, source_file string) ?CachedSourcePathEdit {
+	mut pos := start + 1 + 'embed_file'.len
+	if pos > source.len || (pos < source.len && (source[pos].is_alnum() || source[pos] == `_`)) {
+		return none
+	}
+	for pos < source.len && source[pos].is_space() {
+		pos++
+	}
+	if pos >= source.len || source[pos] != `(` {
+		return none
+	}
+	pos++
+	for pos < source.len && source[pos].is_space() {
+		pos++
+	}
+	argument_start := pos
+	if pos + '@FILE'.len <= source.len && source[pos..].starts_with('@FILE') {
+		end := pos + '@FILE'.len
+		if end < source.len && (source[end].is_alnum() || source[end] == `_`) {
+			return none
+		}
+		path := os.real_path(source_file)
+		return CachedSourcePathEdit{
+			start:       argument_start
+			end:         end
+			replacement: "'${escape_v_string(path)}'"
+		}
+	}
+	mut is_raw := false
+	if pos + 1 < source.len && source[pos] == `r` && source[pos + 1] in [`'`, `"`] {
+		is_raw = true
+		pos++
+	}
+	if pos >= source.len || source[pos] !in [`'`, `"`] {
+		return none
+	}
+	quote := source[pos]
+	content_start := pos + 1
+	mut content_end := content_start
+	for content_end < source.len {
+		if !is_raw && source[content_end] == `\\` {
+			return none
+		}
+		if source[content_end] == quote {
+			break
+		}
+		content_end++
+	}
+	if content_end >= source.len {
+		return none
+	}
+	path := cached_resolve_embedded_source_path(source[content_start..content_end], vroot,
+		source_file) or { return none }
+	return CachedSourcePathEdit{
+		start:       argument_start
+		end:         content_end + 1
+		replacement: "'${escape_v_string(path)}'"
+	}
+}
+
+fn cached_resolve_embedded_source_path(path string, vroot string, source_file string) ?string {
+	if path.len == 0 || source_file.len == 0 {
+		return none
+	}
+	mut resolved := path
+	if resolved.starts_with('@VEXEROOT') && vroot.len > 0 {
+		resolved = vroot + resolved['@VEXEROOT'.len..]
+	}
+	if resolved.starts_with('@VROOT') {
+		resolved = '@VMODROOT' + resolved['@VROOT'.len..]
+	}
+	if resolved.starts_with('@VMODROOT') {
+		resolved = cached_vmod_root(source_file) + resolved['@VMODROOT'.len..]
+	}
+	if !os.is_abs_path(resolved) {
+		resolved = os.join_path_single(os.dir(source_file), resolved)
+	}
+	if !os.exists(resolved) {
+		return none
+	}
+	return os.real_path(resolved)
 }
 
 fn declaration_source_start(a &flat.FlatAst, source string, node flat.Node, anchor int) ?int {
