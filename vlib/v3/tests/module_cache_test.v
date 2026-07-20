@@ -163,8 +163,12 @@ pub fn value() int {
 
 import cached
 
+fn identity[T](value T) T {
+	return value
+}
+
 fn main() {
-	println(cached.value() + 2)
+	println(identity(cached.value() + 2))
 }
 ')
 	cache_dir := os.join_path(root, 'cache')
@@ -173,6 +177,7 @@ fn main() {
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(first_output)} ${os.quoted_path(main_file)}')
 	assert first.exit_code == 0, first.output
 	assert !first.output.contains('cgen (cached)'), first.output
+	assert !first.output.contains('monomorphize (cached)'), first.output
 	assert run_module_cache_binary(first_output) == '42'
 
 	second_output := os.join_path(root, 'second')
@@ -180,14 +185,19 @@ fn main() {
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
 	assert second.output.contains('cgen (cached)'), second.output
+	assert second.output.contains('monomorphize (cached)'), second.output
 	assert run_module_cache_binary(second_output) == '42'
 
 	write_module_cache_file(root, 'main.v', 'module main
 
 import cached
 
+fn identity[T](value T) T {
+	return value
+}
+
 fn main() {
-	println(cached.value() + 3)
+	println(identity(cached.value() + 3))
 }
 ')
 	changed_output := os.join_path(root, 'changed')
@@ -195,6 +205,7 @@ fn main() {
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_output)} ${os.quoted_path(main_file)}')
 	assert changed.exit_code == 0, changed.output
 	assert !changed.output.contains('cgen (cached)'), changed.output
+	assert !changed.output.contains('monomorphize (cached)'), changed.output
 	assert run_module_cache_binary(changed_output) == '43'
 
 	write_module_cache_file(root, 'cached/cached.v', 'module cached
@@ -208,6 +219,7 @@ pub fn value() int {
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_module_output)} ${os.quoted_path(main_file)}')
 	assert changed_module.exit_code == 0, changed_module.output
 	assert !changed_module.output.contains('cgen (cached)'), changed_module.output
+	assert !changed_module.output.contains('monomorphize (cached)'), changed_module.output
 	assert run_module_cache_binary(changed_module_output) == '44'
 }
 
@@ -2587,4 +2599,11 @@ fn main() {
 	output := os.join_path(root, 'out')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
 	assert run_module_cache_binary(output) == '1\n2\ntrue\nfalse\nfalse\ntrue'
+	cached_output := os.join_path(root, 'cached_out')
+	cached :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(cached_output)} ${os.quoted_path(main_file)}')
+	assert cached.exit_code == 0, cached.output
+	assert cached.output.contains('monomorphize (cached)'), cached.output
+	assert cached.output.contains('cgen (cached)'), cached.output
+	assert run_module_cache_binary(cached_output) == '1\n2\ntrue\nfalse\nfalse\ntrue'
 }

@@ -85,6 +85,11 @@ struct V3CgenCacheInput {
 	generation_signature string
 }
 
+struct V3CgenCacheMetadata {
+	interface_impl_signature string
+	flags                    []string
+}
+
 fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
 	target_os := prefs.normalized_target_os()
 	mut link_atomic_s := false
@@ -988,7 +993,7 @@ fn clone_string_list(values []string) []string {
 	return cloned
 }
 
-fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_flags []string, interface_impl_signature string) V3CgenCacheInput {
+fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_flags []string) V3CgenCacheInput {
 	mut source_set := map[string]bool{}
 	for file in user_files {
 		source_set[os.real_path(file)] = true
@@ -1017,19 +1022,25 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 	return V3CgenCacheInput{
 		source_files:         source_files
 		dependency_inputs:    dependencies
-		generation_signature: interface_impl_signature + '\x00' + user_c_flags.join('\x00')
+		generation_signature: user_c_flags.join('\x00')
 	}
 }
 
-fn encode_v3_cgen_flags(flags []string) string {
-	return flags.join('\x00')
+fn encode_v3_cgen_metadata(flags []string, interface_impl_signature string) string {
+	mut parts := ['v3-cgen-metadata-v2', interface_impl_signature]
+	parts << flags
+	return parts.join('\x00')
 }
 
-fn decode_v3_cgen_flags(metadata string) []string {
-	if metadata.len == 0 {
-		return []string{}
+fn decode_v3_cgen_metadata(metadata string) ?V3CgenCacheMetadata {
+	parts := metadata.split('\x00')
+	if parts.len < 2 || parts[0] != 'v3-cgen-metadata-v2' {
+		return none
 	}
-	return metadata.split('\x00')
+	return V3CgenCacheMetadata{
+		interface_impl_signature: parts[1]
+		flags:                    parts[2..].clone()
+	}
 }
 
 // clone_string_bool_map promotes a string-keyed set out of a disposable stage arena.
@@ -2380,11 +2391,35 @@ fn main() {
 		}
 	}
 
+	// A valid whole-program C plan no longer needs the specialized AST that
+	// produced it. Validate it before monomorphization so unchanged cached builds
+	// can skip cloning more than a million generic nodes.
+	mut cgen_cache_entry := modulecache.CgenEntry{}
+	mut cgen_cache_metadata := V3CgenCacheMetadata{}
+	mut cgen_cache_hit := false
+	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
+		&& cache_state.parsed_from_source.len == 0 {
+		input := v3_cgen_cache_input(cache_state, user_files, user_c_flags)
+		if entry := cache_state.manager.valid_cgen(input.source_files, input.generation_signature,
+			input.dependency_inputs)
+		{
+			metadata := os.read_file(entry.metadata) or { '' }
+			if decoded := decode_v3_cgen_metadata(metadata) {
+				cgen_cache_entry = entry
+				cgen_cache_metadata = decoded
+				cgen_cache_hit = true
+			}
+		}
+	}
+
 	// Monomorphization only adds specialized generic instantiations to `used_fns`. Skip
 	// it when markused found no reachable generic use; the small metadata cleanup keeps
 	// unreachable generic templates out of C without walking or rewriting their ASTs.
 	// Self-host builds retain their dedicated generic-function erasure pass.
-	if building_v {
+	if cgen_cache_hit {
+		// The cached C plan and metadata are the only consumers of the specialized
+		// AST and checker state on this path.
+	} else if building_v {
 		used_fns = transform.erase_generic_templates(mut a, &pre_tc, used_fns)
 	} else if uses_generics {
 		mut monomorph_used_fns := map[string]bool{}
@@ -2460,7 +2495,11 @@ fn main() {
 	if !transform_texts_canonical {
 		a.intern_node_texts_from(0)
 	}
-	b.step('monomorphize')
+	if cgen_cache_hit {
+		b.step('monomorphize (cached)')
+	} else {
+		b.step('monomorphize')
+	}
 	mut newly_cached_module_count := 0
 	if backend == 'arm64' {
 		$if !skip_arm64 ? {
@@ -2512,33 +2551,14 @@ fn main() {
 		} else {
 			''
 		}
-		mut generated_c_flags := []string{}
-		mut interface_impl_signature := ''
+		mut generated_c_flags := cgen_cache_metadata.flags.clone()
+		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
-		mut cgen_cache_hit := false
-		mut cgen_cache_input := V3CgenCacheInput{}
-		if cache_state.manager.enabled {
-			interface_impl_signature = pre_tc.interface_impl_set_signature()
-			cgen_cache_input = v3_cgen_cache_input(cache_state, user_files, user_c_flags,
-				interface_impl_signature)
-			// Any imported module reparsed from source needs a fresh plan even when
-			// its public declaration header happens to remain byte-identical.
-			if !cache_state.force_source && cache_state.parsed_from_source.len == 0 {
-				if entry := cache_state.manager.valid_cgen(cgen_cache_input.source_files,
-					cgen_cache_input.generation_signature, cgen_cache_input.dependency_inputs)
-				{
-					mut metadata_ok := true
-					metadata := os.read_file(entry.metadata) or {
-						metadata_ok = false
-						''
-					}
-					mut source_ok := true
-					os.cp(entry.source, cache_plan_file) or { source_ok = false }
-					if metadata_ok && source_ok {
-						generated_c_flags = decode_v3_cgen_flags(metadata)
-						cgen_cache_hit = true
-					}
-				}
+		if cgen_cache_hit {
+			os.cp(cgen_cache_entry.source, cache_plan_file) or {
+				eprintln('error restoring cached C plan ${cgen_cache_entry.source}: ${err.msg()}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
 			}
 		}
 		if !cgen_cache_hit && scope_prealloc_cgen {
@@ -2661,11 +2681,11 @@ fn main() {
 			}
 			if !cgen_cache_hit {
 				published_cgen_cache_input := v3_cgen_cache_input(cache_state, user_files,
-					user_c_flags, interface_impl_signature)
+					user_c_flags)
 				cache_state.manager.write_cgen(published_cgen_cache_input.source_files,
 					published_cgen_cache_input.generation_signature,
-					published_cgen_cache_input.dependency_inputs, generated_source,
-					encode_v3_cgen_flags(generated_c_flags)) or {}
+					published_cgen_cache_input.dependency_inputs, generated_source, encode_v3_cgen_metadata(generated_c_flags,
+					interface_impl_signature)) or {}
 			}
 			prealloc_scope_leave_for_v3(cache_prepare_scope)
 			cached_objects = clone_string_list(prepared_cache.objects)

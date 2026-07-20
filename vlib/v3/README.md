@@ -98,6 +98,10 @@ objects, a cold build prints a hint that unchanged modules will not be recompile
 Third-party C objects retain dependency manifests, so warm builds verify each unique source or
 header once without launching a dependency-scanner process per object. This work is reported as
 the separate `C object cache` benchmark stage before `cc`.
+When the whole-program C plan is unchanged, v3 validates it before generic specialization and
+reports `monomorphize (cached)`, avoiding construction of an AST that cached C generation will
+not consume. Source, imported-module, compiler, target, flag, or configuration changes invalidate
+the plan and run monomorphization normally.
 
 ## Architecture
 
