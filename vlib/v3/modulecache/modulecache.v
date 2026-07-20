@@ -9,7 +9,7 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-41'
+const cache_format = 'v3-module-cache-42'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -3578,6 +3578,8 @@ fn escape_v_string(value string) string {
 }
 
 fn escape_v_char(value string) string {
-	return value.replace('\\', '\\\\').replace('`', '\\`').replace('\n', '\\n').replace('\r', '\\r').replace('\t',
-		'\\t')
+	// The scanner keeps the original spelling between the backticks, including
+	// escape sequences. Escaping it again would turn `\\` into `\\\\` in a
+	// cached header and change the rune's value when that header is parsed.
+	return value
 }

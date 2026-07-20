@@ -2168,6 +2168,58 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '41'
 }
 
+fn test_cached_const_preserves_escaped_char_literals() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_escaped_chars_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'escaped/escaped.v', 'module escaped
+
+pub const chars = [`\\\\`, `\\n`, `\\t`, `*`]
+
+pub fn backslash() rune {
+	return chars[0]
+}
+
+pub fn newline() rune {
+	return chars[1]
+}
+
+pub fn tab() rune {
+	return chars[2]
+}
+
+pub fn star() rune {
+	return chars[3]
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import escaped
+
+fn main() {
+	println(int(escaped.backslash()))
+	println(int(escaped.newline()))
+	println(int(escaped.tab()))
+	println(int(escaped.star()))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '92\n10\n9\n42'
+	first_hashes := module_cache_object_hashes(cache_dir)
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '92\n10\n9\n42'
+	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
+}
+
 fn test_cached_const_with_unsupported_initializer_is_embedded() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_const_index_${os.getpid()}')
