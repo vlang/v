@@ -91,6 +91,35 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_generic_alias_substitutes_channel_element() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'generic_channel_alias_element', 'type Ch[T] = chan T
+
+fn receive(ch Ch[int]) int {
+	return <-ch
+}
+
+fn main() {
+	ch := chan int{cap: 1}
+	ch <- 42
+	println(int_str(receive(ch)))
+}
+')
+	assert out == '42'
+	run_bad(v3_bin, 'bad_generic_channel_alias_element', 'type Ch[T] = chan T
+
+fn receive(ch Ch[int]) int {
+	return <-ch
+}
+
+fn main() {
+	ch := chan string{cap: 1}
+	_ := receive(ch)
+}
+',
+		'cannot use `chan string`')
+}
+
 fn test_optional_parameters_are_required() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_omitted_optional_parameter',
