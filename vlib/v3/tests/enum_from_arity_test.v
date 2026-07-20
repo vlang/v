@@ -210,3 +210,66 @@ fn main() {
 ')
 	assert generic_enum_numeric_out == 'blue\ninvalid value'
 }
+
+fn test_user_enum_from_and_zero_methods_are_preserved() {
+	v3_bin := enum_from_arity_build_v3()
+	out := enum_from_arity_run_good(v3_bin, 'user_enum_from_and_zero_methods', '@[flag]
+enum Mode {
+	read
+	write
+}
+
+@[flag]
+enum BuiltinMode {
+	enabled
+}
+
+enum Color {
+	red
+	blue
+}
+
+struct StaticSource {}
+
+struct ValueSource {
+	label string
+}
+
+fn Color.from(value int) ?Color {
+	println("custom from \${value}")
+	if value == 99 {
+		return .blue
+	}
+	return none
+}
+
+fn Mode.zero() Mode {
+	println("custom enum zero")
+	return .read
+}
+
+fn StaticSource.zero() Mode {
+	println("custom static zero")
+	return .write
+}
+
+fn (source ValueSource) zero() Mode {
+	println("custom instance zero \${source.label}")
+	return .read
+}
+
+fn parse[T](value int) ?T {
+	return T.from(value)
+}
+
+fn main() {
+	println(int(Color.from(99) or { panic(err) }))
+	println(int(parse[Color](99) or { panic(err) }))
+	println(int(Mode.zero()))
+	println(int(StaticSource.zero()))
+	println(int(ValueSource{label: "value"}.zero()))
+	println(int(BuiltinMode.zero()))
+}
+')
+	assert out == 'custom from 99\n1\ncustom from 99\n1\ncustom enum zero\n1\ncustom static zero\n2\ncustom instance zero value\n1\n0'
+}

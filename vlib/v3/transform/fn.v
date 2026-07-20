@@ -6260,7 +6260,7 @@ fn (mut t Transformer) try_lower_flag_enum_stmt(call_id flat.NodeId) ?flat.NodeI
 }
 
 // try_lower_flag_enum_call supports try lower flag enum call handling for Transformer.
-fn (mut t Transformer) try_lower_flag_enum_call(node flat.Node) ?flat.NodeId {
+fn (mut t Transformer) try_lower_flag_enum_call(call_id flat.NodeId, node flat.Node) ?flat.NodeId {
 	if node.children_count == 1 {
 		fn_id := t.a.children[node.children_start]
 		fn_node := t.a.nodes[int(fn_id)]
@@ -6272,9 +6272,20 @@ fn (mut t Transformer) try_lower_flag_enum_call(node flat.Node) ?flat.NodeId {
 		if base_node.kind != .ident {
 			return none
 		}
-		flag_type := t.resolve_flag_enum_type_name(node.typ) or {
-			t.resolve_flag_enum_type_name(base_node.value) or { return none }
+		if t.var_type(base_node.value).len > 0 {
+			return none
 		}
+		if !isnil(t.tc) {
+			if resolved := t.tc.resolved_call_name(call_id) {
+				if t.is_known_fn_name(resolved) {
+					return none
+				}
+			}
+		}
+		if _ := t.static_assoc_fn_name(base_id, fn_node.value) {
+			return none
+		}
+		flag_type := t.resolve_flag_enum_type_name(base_node.value) or { return none }
 		return t.make_cast(flag_type, t.make_int_literal(0), flag_type)
 	}
 	if node.children_count < 2 {
@@ -8317,7 +8328,7 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	if sum_cast_call := t.try_lower_generic_sum_constructor_call(node) {
 		return sum_cast_call
 	}
-	if flag_call := t.try_lower_flag_enum_call(node) {
+	if flag_call := t.try_lower_flag_enum_call(_id, node) {
 		return flag_call
 	}
 	if flag_default := t.try_lower_flag_default_value_call(node) {

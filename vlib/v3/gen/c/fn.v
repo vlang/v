@@ -4340,7 +4340,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 	if g.gen_flag_enum_zero_call(id, fn_node, node) {
 		return
 	}
-	if g.gen_flag_enum_from_call(fn_node, node) {
+	if g.gen_flag_enum_from_call(id, fn_node, node) {
 		return
 	}
 	if target_name.starts_with('C.') {
@@ -11128,24 +11128,37 @@ fn (mut g FlatGen) gen_flag_enum_zero_call(id flat.NodeId, fn_node flat.Node, no
 	if fn_node.kind != .selector || fn_node.value != 'zero' || node.children_count != 1 {
 		return false
 	}
+	base := g.a.child_node(&fn_node, 0)
+	if base.kind != .ident || g.selector_base_is_value(base.value)
+		|| g.selector_call_resolves_to_user_fn(id, base.value, fn_node.value) {
+		return false
+	}
+	enum_name := g.enum_selector_base_name(base.value) or { return false }
+	if enum_name !in g.tc.flag_enums {
+		return false
+	}
 	mut typ := g.usable_expr_type(id)
 	if typ is types.Alias {
 		typ = typ.base_type
 	}
-	if typ is types.Enum && (typ.is_flag || typ.name in g.tc.flag_enums) {
+	if typ is types.Enum && (typ.name == enum_name || g.tc.qualify_name(typ.name) == enum_name) {
 		g.write('((${g.tc.c_type(typ)})0)')
 		return true
 	}
 	return false
 }
 
-fn (mut g FlatGen) gen_flag_enum_from_call(fn_node flat.Node, node flat.Node) bool {
+fn (mut g FlatGen) gen_flag_enum_from_call(id flat.NodeId, fn_node flat.Node, node flat.Node) bool {
 	if fn_node.kind != .selector || fn_node.value != 'from' || fn_node.children_count == 0
 		|| node.children_count < 2 {
 		return false
 	}
 	base := g.a.child_node(&fn_node, 0)
 	if base.kind != .ident {
+		return false
+	}
+	if g.selector_base_is_value(base.value)
+		|| g.selector_call_resolves_to_user_fn(id, base.value, fn_node.value) {
 		return false
 	}
 	enum_name := g.enum_selector_base_name(base.value) or { return false }
@@ -11182,6 +11195,18 @@ fn (mut g FlatGen) gen_flag_enum_from_call(fn_node flat.Node, node flat.Node) bo
 	}
 	g.write('({ u64 ${value_tmp} = (u64)(${arg}); bool ${ok_tmp} = ${valid_expr}; (${ct}){.ok = ${ok_tmp}, .value = (${value_ct})(${ok_tmp} ? (${storage_ct})${value_tmp} : (${storage_ct})0), .err = (IError){._typ = 0, ._object = NULL, .message = (string){.str = (u8*)"invalid value", .len = 13, .is_lit = 1}, .code = 0}}; })')
 	return true
+}
+
+fn (g &FlatGen) selector_call_resolves_to_user_fn(id flat.NodeId, base_name string, method string) bool {
+	if resolved := g.tc.resolved_call_name(id) {
+		if g.fn_key_registered(resolved) {
+			return true
+		}
+	}
+	if _ := g.static_method_fn_name(base_name, method) {
+		return true
+	}
+	return false
 }
 
 fn (g &FlatGen) flag_enum_mask_expr(enum_name string) string {
