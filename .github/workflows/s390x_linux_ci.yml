@@ -16,6 +16,7 @@ on:
     paths:
       - 'cmd/v/**'
       - 'cmd/tools/builders/**.v'
+      - 'vlib/arrays/**'
       - 'vlib/builtin/**'
       - 'vlib/encoding/binary/**'
       - 'vlib/os/**'
@@ -25,6 +26,7 @@ on:
       - 'vlib/net/**'
       - 'vlib/crypto/rand/**'
       - 'vlib/picoev/**'
+      - 'vlib/rand/**'
       - 'vlib/strconv/**'
       - 'vlib/strings/**'
       - 'vlib/sync/**'
