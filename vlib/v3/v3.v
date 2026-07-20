@@ -132,6 +132,7 @@ mut:
 	temporary_objects         []string
 	compiler_versions         map[string]string
 	file_signatures           map[string]string
+	link_plan_signature       string
 }
 
 struct CObjectDependencies {
@@ -161,6 +162,7 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 	// object's cache decision remains visible.
 	if os.getenv('V3_CACHE_TRACE') == '' {
 		if plan := valid_c_link_plan(plan_path, mut stats) {
+			stats.link_plan_signature = modulecache.file_signature(plan_path)
 			stats.requests = plan.requests
 			stats.direct_objects = plan.direct_objects
 			stats.content_key_hits = plan.requests - plan.direct_objects
@@ -234,6 +236,7 @@ fn prepare_c_flags_for_link(flags []string, c99 bool, pic_flag string, target_ar
 	}
 	if stats.dependency_scan_fallbacks == 0 && stats.temporary_objects.len == 0 {
 		write_c_link_plan(plan_path, prepared, stats) or {}
+		stats.link_plan_signature = modulecache.file_signature(plan_path)
 	}
 	return prepared
 }
@@ -253,7 +256,7 @@ fn c_link_plan_path(cache_dir string, flags []string, c99 bool, pic_flag string,
 fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	content := os.read_file(plan_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v1' {
+	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v2' {
 		return none
 	}
 	mut plan := CLinkPlan{}
@@ -278,15 +281,23 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 			objects << line.all_after('object=')
 		} else if line.starts_with('dependency=') {
 			entry := line.all_after('dependency=')
-			tab := entry.last_index('\t') or { return none }
-			path := entry[..tab]
-			expected_signature := entry[tab + 1..]
+			first_tab := entry.index('\t') or { return none }
+			last_tab := entry.last_index('\t') or { return none }
+			if first_tab == last_tab {
+				return none
+			}
+			path := entry[..first_tab]
+			expected_metadata := entry[first_tab + 1..last_tab]
+			expected_signature := entry[last_tab + 1..]
 			if path.len == 0 || expected_signature.len == 0 {
 				return none
 			}
-			actual_signature := c_object_file_signature(path, false, mut stats)
-			if actual_signature.len == 0 || actual_signature != expected_signature {
-				return none
+			actual_metadata := modulecache.file_metadata_signature(path)
+			if actual_metadata.len == 0 || actual_metadata != expected_metadata {
+				actual_signature := c_object_file_signature(path, false, mut stats)
+				if actual_signature.len == 0 || actual_signature != expected_signature {
+					return none
+				}
 			}
 		} else if line == 'complete=1' {
 			complete = true
@@ -309,7 +320,7 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 
 fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
 	mut out := strings.new_builder(256 + flags.len * 64 + stats.file_signatures.len * 96)
-	out.writeln('format=v3-c-link-plan-v1')
+	out.writeln('format=v3-c-link-plan-v2')
 	out.writeln('requests=${stats.requests}')
 	out.writeln('direct_objects=${stats.direct_objects}')
 	out.writeln('dependency_files=${stats.dependency_files}')
@@ -322,7 +333,8 @@ fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats)
 	mut dependencies := stats.file_signatures.keys()
 	dependencies.sort()
 	for dependency in dependencies {
-		out.writeln('dependency=${dependency}\t${stats.file_signatures[dependency]}')
+		metadata := modulecache.file_metadata_signature(dependency)
+		out.writeln('dependency=${dependency}\t${metadata}\t${stats.file_signatures[dependency]}')
 	}
 	out.writeln('complete=1')
 	temp_path := '${plan_path}.tmp.${os.getpid()}.${rand.ulid()}'
@@ -598,7 +610,7 @@ fn c_response_file_arg(arg string) string {
 	return '"${arg.replace('\\', '\\\\').replace('"', '\\"')}"'
 }
 
-fn compile_v3_program_prefix(source string, external_inputs []string, manager &modulecache.Manager, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, target_args []string, target pref.Target, c_compiler string, mut stats CObjectCacheStats) !string {
+fn compile_v3_program_prefix(source string, source_identity string, external_inputs []string, manager &modulecache.Manager, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, target_args []string, target pref.Target, c_compiler string, mut stats CObjectCacheStats) !string {
 	mut args := []string{}
 	if objective_c {
 		args << ['-x', 'objective-c']
@@ -616,7 +628,8 @@ fn compile_v3_program_prefix(source string, external_inputs []string, manager &m
 	args << c_object_compile_flags(generated_c_flags).filter(!c_flag_is_object_file(it))
 	compiler_path, compiler_version := c_object_compiler_identity(c_compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-cached-program-prefix-v1', source, compiler_path, compiler_version,
+	prefix_identity := if source_identity.len > 0 { source_identity } else { source }
+	for identity in ['v3-cached-program-prefix-v2', prefix_identity, compiler_path, compiler_version,
 		args.join('\x00'), target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
 		target.object_format] {
 		hash = c_hash_bytes(hash, identity.bytes())
@@ -657,6 +670,24 @@ fn compile_v3_program_prefix(source string, external_inputs []string, manager &m
 		}
 	}
 	return object_path
+}
+
+fn v3_program_prefix_source_identity(plan_stamp string, cached_objects []string) string {
+	if plan_stamp.len == 0 {
+		return ''
+	}
+	mut hash := u64(1469598103934665603)
+	for input in [plan_stamp, modulecache.file_signature(plan_stamp)] {
+		hash = c_hash_bytes(hash, input.bytes())
+		hash = c_hash_bytes(hash, [u8(0xff)])
+	}
+	for object in cached_objects {
+		stamp := '${object}.stamp'
+		input := if os.is_file(stamp) { stamp } else { object }
+		hash = c_hash_bytes(hash, input.bytes())
+		hash = c_hash_bytes(hash, modulecache.file_signature(input).bytes())
+	}
+	return hash.hex()
 }
 
 fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_c_flags []string, manager &modulecache.Manager, target_args []string, target pref.Target, c_compiler string, build_dir string, mut stats CObjectCacheStats) !string {
@@ -727,6 +758,52 @@ fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_
 		}
 	}
 	return dylib_path
+}
+
+fn v3_cache_file_identity(path string) string {
+	metadata := modulecache.file_metadata_signature(path)
+	if metadata.len > 0 {
+		return metadata
+	}
+	return modulecache.file_signature(path)
+}
+
+fn v3_cached_tcc_executable_path(manager &modulecache.Manager, source_identity string, link_plan_signature string, tcc_path string, tcc_lib_dir string, tcc_args []string) string {
+	mut hash := u64(1469598103934665603)
+	for identity in ['v3-cached-tcc-executable-v1', source_identity, link_plan_signature,
+		os.real_path(tcc_path), v3_cache_file_identity(tcc_path),
+		tcc_args.join('\x00')] {
+		hash = c_hash_bytes(hash, identity.bytes())
+		hash = c_hash_bytes(hash, [u8(0xff)])
+	}
+	mut inputs := os.walk_ext(tcc_lib_dir, '.h')
+	inputs << os.walk_ext(tcc_lib_dir, '.a')
+	for arg in tcc_args {
+		clean := arg.trim_space()
+		if os.is_file(clean) {
+			inputs << os.real_path(clean)
+		}
+	}
+	inputs.sort()
+	mut previous := ''
+	for input in inputs {
+		if input == previous {
+			continue
+		}
+		previous = input
+		hash = c_hash_bytes(hash, input.bytes())
+		hash = c_hash_bytes(hash, v3_cache_file_identity(input).bytes())
+	}
+	return os.join_path(manager.dir, 'dev_executable_${hash.hex()}')
+}
+
+fn publish_v3_cached_executable(source string, destination string) {
+	tmp := '${destination}.tmp.${os.getpid()}.${rand.ulid()}'
+	defer {
+		os.rm(tmp) or {}
+	}
+	os.cp(source, tmp) or { return }
+	os.mv(tmp, destination) or {}
 }
 
 fn c_flag_token_is_link_only(token string) bool {
@@ -1684,6 +1761,7 @@ fn v3_cache_compiler_signature(vroot string) string {
 		}
 		files << file
 	}
+	files << os.walk_ext(dir, '.h')
 	return modulecache.source_signature(files)
 }
 
@@ -2843,6 +2921,7 @@ fn main() {
 			cc_src = os.join_path_single(cc_dir, 'src.c')
 			cc_out = os.join_path_single(cc_dir, 'out')
 		}
+		mut published_c_source := cc_src
 		cache_plan_file := if cache_state.manager.enabled {
 			os.join_path_single(cc_dir, 'cache_plan.c')
 		} else {
@@ -2954,6 +3033,7 @@ fn main() {
 		}
 		mut cached_objects := []string{}
 		mut cached_dev_dylib := ''
+		mut prefix_source_identity := ''
 		mut tcc_main_file := ''
 		if cache_state.manager.enabled {
 			cache_prepare_scope := prealloc_scope_begin_for_v3()
@@ -2987,11 +3067,7 @@ fn main() {
 					program_prefix_source: prefix_source
 					objects:               objects
 				}
-				os.cp(cgen_prepared_entry.main, cc_src) or {
-					eprintln('error restoring cached main source ${cgen_prepared_entry.main}: ${err.msg()}')
-					cleanup_c_build_dir(cc_dir)
-					exit(1)
-				}
+				published_c_source = cgen_prepared_entry.main
 			} else {
 				generated_source := os.read_file(cache_plan_file) or {
 					eprintln('error reading cache-marked C source ${cache_plan_file}: ${err.msg()}')
@@ -3032,10 +3108,12 @@ fn main() {
 			if use_cached_dev_dylib {
 				tcc_main_file = os.join_path_single(cc_dir, 'main.c')
 				if cgen_prepared_hit {
-					os.cp(cgen_prepared_entry.tcc, tcc_main_file) or {
-						eprintln('error restoring cached TinyCC program unit ${cgen_prepared_entry.tcc}: ${err.msg()}')
-						cleanup_c_build_dir(cc_dir)
-						exit(1)
+					os.link(cgen_prepared_entry.tcc, tcc_main_file) or {
+						os.cp(cgen_prepared_entry.tcc, tcc_main_file) or {
+							eprintln('error restoring cached TinyCC program unit ${cgen_prepared_entry.tcc}: ${err.msg()}')
+							cleanup_c_build_dir(cc_dir)
+							exit(1)
+						}
 					}
 				} else {
 					os.write_file(tcc_main_file, prepared_cache.tcc_main_source) or {
@@ -3044,10 +3122,12 @@ fn main() {
 						exit(1)
 					}
 				}
+				prefix_source_identity = v3_program_prefix_source_identity(prepared_plan_entry.stamp,
+					prepared_cache.objects)
 				prefix_object := compile_v3_program_prefix(prepared_cache.program_prefix_source,
-					v3_program_prefix_external_input_paths(&cache_state), &cache_state.manager,
-					c_standard, opt_flag, pic_flag, warning_flags, resolved_c_flags,
-					needs_objective_c, target_args, prefs.target, c_compiler, mut
+					prefix_source_identity, v3_program_prefix_external_input_paths(&cache_state),
+					&cache_state.manager, c_standard, opt_flag, pic_flag, warning_flags,
+					resolved_c_flags, needs_objective_c, target_args, prefs.target, c_compiler, mut
 					c_object_cache_stats) or {
 					eprintln(err.msg())
 					cleanup_c_build_dir(cc_dir)
@@ -3067,9 +3147,9 @@ fn main() {
 		if use_cached_dev_dylib {
 			b.step('C dylib cache')
 		}
-		b.metric('generated C size', os.file_size(cc_src), 'bytes')
+		b.metric('generated C size', os.file_size(published_c_source), 'bytes')
 		published_c := '${output_file}.tmp.${os.getpid()}.${rand.ulid()}'
-		os.cp(cc_src, published_c) or {
+		os.cp(published_c_source, published_c) or {
 			eprintln('failed to stage generated C output ${output_file}: ${err}')
 			cleanup_c_build_dir(cc_dir)
 			exit(1)
@@ -3089,6 +3169,7 @@ fn main() {
 		// concurrent compilers targeting the same path from sharing partial files.
 		mut result := os.Result{}
 		mut tried_tcc := false
+		mut tcc_cache_hit := false
 		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
@@ -3109,8 +3190,24 @@ fn main() {
 			if '-lm' !in tcc_args {
 				tcc_args << '-lm'
 			}
-			println('  > ${cmdexec.display(tcc_path, tcc_args)}')
-			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+			tcc_cached_executable := v3_cached_tcc_executable_path(&cache_state.manager,
+				prefix_source_identity, c_object_cache_stats.link_plan_signature, tcc_path,
+				tcc_lib_dir, tcc_args)
+			if os.is_file(tcc_cached_executable) {
+				os.cp(tcc_cached_executable, cc_out) or {}
+				tcc_cache_hit = os.is_file(cc_out)
+			}
+			println('  > ${cmdexec.display(tcc_path, tcc_args)}${if tcc_cache_hit {
+				' (cached)'
+			} else {
+				''
+			}}')
+			if !tcc_cache_hit {
+				result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+				if result.exit_code == 0 {
+					publish_v3_cached_executable(cc_out, tcc_cached_executable)
+				}
+			}
 		}
 		// Cached module objects can make tcc accept an unresolved call in the
 		// program translation unit and emit a broken executable. Compile and link
@@ -3147,6 +3244,13 @@ fn main() {
 			result = cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 		}
 		if is_prod || !tried_tcc || result.exit_code != 0 {
+			if !os.is_file(cc_src) {
+				os.cp(published_c_source, cc_src) or {
+					eprintln('error restoring cached main source ${published_c_source}: ${err.msg()}')
+					cleanup_c_build_dir(cc_dir)
+					exit(1)
+				}
+			}
 			mut cc_args := []string{}
 			cc_args << target_args
 			if link_c_standard.len > 0 {
@@ -3198,9 +3302,10 @@ fn main() {
 				os.rm(clean) or {}
 			}
 		}
+		os.rm(tcc_main_file) or {}
 		os.rm(cc_src) or {}
 		os.rmdir(cc_dir) or {}
-		b.step('cc')
+		b.step(if tcc_cache_hit { 'cc (cached)' } else { 'cc' })
 		if should_run {
 			run_result := run_binary(bin_file, run_args)
 			if run_result != 0 {

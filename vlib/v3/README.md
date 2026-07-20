@@ -97,15 +97,18 @@ program's directory; the `.v` list makes an unexpected module-cache miss visible
 successfully populating module objects, a cold build prints a hint that unchanged modules will not
 be recompiled on the next run.
 Third-party C objects retain dependency manifests, so warm builds verify each unique source or
-header once without launching a dependency-scanner process per object. This work is reported as
-the separate `C object cache` benchmark stage before `cc`.
+header once without launching a dependency-scanner process per object. Unchanged inputs use
+nanosecond-resolution file metadata; a metadata change falls back to the recorded content hash.
+This work is reported as the separate `C object cache` benchmark stage before `cc`.
 On macOS, cached non-production executable builds combine the imported-module objects and
 generated runtime prefix into a content-keyed dylib with the system C compiler. The remaining
 current-directory program unit is compiled and linked against that dylib with bundled TinyCC.
 Objective-C and framework compilation flags stay on the cached dylib side. This work is reported
 as `C dylib cache`; the resulting development executable retains an absolute runtime dependency
-on that cache artifact. Production, shared-library, self-host, explicit `-cc`, and `-nocache`
-builds keep their existing direct-link behavior.
+on that cache artifact. An exact warm plan also restores its content-keyed TinyCC executable and
+reports `cc (cached)`; project source, module object, C dependency, TinyCC input, argument, or
+dylib changes invalidate it. Production, shared-library, self-host, explicit `-cc`, and
+`-nocache` builds keep their existing direct-link behavior.
 When the whole-program C plan is unchanged, v3 validates it immediately after parsing and reports
 the check, mark-used, transform, type-annotation, monomorphization, and C generation stages as
 cached. This avoids semantic and lowering work whose only consumer would be the cached C plan.
