@@ -88,13 +88,14 @@ configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
 `math.bits` share one `builtin.o`, matching the v2 core-cache layout. Cache files live under
 the V temporary directory by default; set `V3CACHE` to select another root, or pass
 `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c` builds do not use the
-object cache. The benchmark output prints counts for parsed `.vh` and `.v` files immediately
-after the parse stage, followed by each category's space-separated paths on one line. Paths below
-the current home directory use `~` as a prefix. A nonzero `.vh` count shows how many cached module
-interfaces were parsed by that build. Required compile-time bodies are embedded in the `.vh`
-interface, so a warm cached build parses `.v` files only from the input program's directory; the
-`.v` list makes an unexpected module-cache miss visible. After successfully populating module
-objects, a cold build prints a hint that unchanged modules will not be recompiled on the next run.
+object cache. The benchmark output prints counts for parsed `.vh` and `.v` files and their total
+line counts immediately after the parse stage, followed by each category's space-separated paths
+on one line. Paths below the current home directory use `~` as a prefix. A nonzero `.vh` count
+shows how many cached module interfaces were parsed by that build. Required compile-time bodies
+are embedded in the `.vh` interface, so a warm cached build parses `.v` files only from the input
+program's directory; the `.v` list makes an unexpected module-cache miss visible. After
+successfully populating module objects, a cold build prints a hint that unchanged modules will not
+be recompiled on the next run.
 Third-party C objects retain dependency manifests, so warm builds verify each unique source or
 header once without launching a dependency-scanner process per object. This work is reported as
 the separate `C object cache` benchmark stage before `cc`.
@@ -105,10 +106,11 @@ Objective-C and framework compilation flags stay on the cached dylib side. This 
 as `C dylib cache`; the resulting development executable retains an absolute runtime dependency
 on that cache artifact. Production, shared-library, self-host, explicit `-cc`, and `-nocache`
 builds keep their existing direct-link behavior.
-When the whole-program C plan is unchanged, v3 validates it before generic specialization and
-reports `monomorphize (cached)`, avoiding construction of an AST that cached C generation will
-not consume. Source, imported-module, compiler, target, flag, or configuration changes invalidate
-the plan and run monomorphization normally.
+When the whole-program C plan is unchanged, v3 validates it immediately after parsing and reports
+the check, mark-used, transform, type-annotation, monomorphization, and C generation stages as
+cached. This avoids semantic and lowering work whose only consumer would be the cached C plan.
+Source, imported-module, native-input, compiler, target, flag, or configuration changes invalidate
+the plan and run the complete diagnostic and generation pipeline normally.
 
 ## Architecture
 

@@ -1297,6 +1297,20 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 	}
 }
 
+fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAst, prefs &pref.Preferences, user_c_flags []string) bool {
+	mut cache_input_modules := map[string]bool{}
+	for module_name in state.module_sources.keys() {
+		cache_input_modules[module_name] = true
+	}
+	cache_input_modules['main'] = true
+	external_inputs, has_untracked_c_include := cgen.cache_external_input_files(a, prefs.vroot,
+		cache_input_modules, user_c_flags, prefs.target)
+	state.module_external_inputs = external_inputs.clone()
+	native_source_modules, can_scope_static_inputs := cache_external_input_owner_modules(state)
+	state.native_source_modules = native_source_modules.clone()
+	return !has_untracked_c_include && can_scope_static_inputs
+}
+
 fn encode_v3_cgen_metadata(flags []string, interface_impl_signature string) string {
 	mut parts := ['v3-cgen-metadata-v2', interface_impl_signature]
 	parts << flags
@@ -2349,9 +2363,8 @@ fn main() {
 		}
 		exit(1)
 	}
-	// Parsing workers own source buffers and private text tables. Canonicalize
-	// once more after implicit imports/import waves so every surviving payload
-	// uses the compilation table before semantic phases begin.
+	// Parsing workers canonicalize source-backed node text before their buffers
+	// are released. Metadata keys are finalized here before semantic phases begin.
 	p.release_source_storage()
 	diagnostic_root := if is_selfhost {
 		diagnostic_root_for_input(input_file, user_files)
@@ -2362,293 +2375,307 @@ fn main() {
 	b.step_parallel('parse', parse_was_parallel)
 	b.metric_items('parsed .vh files', p.parsed_v_header_files, 'files', '.vh files',
 		p.parsed_v_header_file_paths)
+	println('    ${'parsed .vh lines':-28s} ${source_file_line_count(p.parsed_v_header_file_paths)} lines')
 	b.metric_items('parsed .v files', p.parsed_v_files, 'files', '.v files', p.parsed_v_file_paths)
-	mut parsed_v_lines := 0
-	for path in p.parsed_v_file_paths {
-		source := os.read_file(path) or { continue }
-		if source.len == 0 {
-			continue
-		}
-		parsed_v_lines += source.count('\n')
-		if source[source.len - 1] != `\n` {
-			parsed_v_lines++
-		}
-	}
-	println('    ${'parsed .v lines':-28s} ${parsed_v_lines} lines')
+	println('    ${'parsed .v lines':-28s} ${source_file_line_count(p.parsed_v_file_paths)} lines')
 	b.metric('AST nodes after parse', a.nodes.len, 'nodes')
 	b.metric('AST children after parse', a.children.len, 'edges')
 	b.metric('canonical AST texts', a.text_count(), 'texts')
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
 
+	// An exact whole-program C plan hit already certifies the current user sources,
+	// cached module interfaces, compiler configuration, target, and native inputs.
+	// Validate it immediately after import resolution so an unchanged development
+	// build does not repeat semantic and lowering work whose only consumer is that
+	// cached C plan.
+	mut cgen_cache_entry := modulecache.CgenEntry{}
+	mut cgen_cache_metadata := V3CgenCacheMetadata{}
+	mut cgen_cache_hit := false
+	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
+		&& cache_state.parsed_from_source.len == 0 {
+		if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_c_flags) {
+			restart_v3_without_cache()
+		}
+		input := v3_cgen_cache_input(cache_state, user_files, user_c_flags)
+		if entry := cache_state.manager.valid_cgen(input.source_files, input.generation_signature,
+			input.dependency_inputs)
+		{
+			metadata := os.read_file(entry.metadata) or { '' }
+			if decoded := decode_v3_cgen_metadata(metadata) {
+				cgen_cache_entry = entry
+				cgen_cache_metadata = decoded
+				cgen_cache_hit = true
+			}
+		}
+	}
+
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
 	// (like v2: check runs before transform). The transformer reads cached
 	// per-expression types for type-dependent lowering.
 	mut pre_tc := types.TypeChecker.new(a)
-	pre_tc.verbose = prefs.verbose
-	if scope_prealloc_stages {
-		pre_tc.enable_scoped_parallel_workers()
-	}
-	pre_tc.reject_unsupported_generics = is_selfhost
-	set_diagnostic_files(mut pre_tc, user_files)
-	pre_tc.collect(a)
-	pre_tc.diagnose_unknown_calls = true
-	pre_tc.prepare_threads_condition()
-	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-	check_was_parallel := pre_tc.check_semantics_opt(!current_no_parallel)
-	if pre_tc.errors.len > 0 {
-		print_type_errors(pre_tc.errors)
-		exit(1)
-	}
-	pre_tc.prune_inactive_top_level_comptime(mut a)
-	test_harness_errors := validate_test_file_harness_inputs(a, pre_tc, test_files)
-	if test_harness_errors.len > 0 {
-		for msg in test_harness_errors {
-			eprintln(msg)
-		}
-		exit(1)
-	}
-	if cache_state.manager.enabled {
-		mut cache_input_modules := map[string]bool{}
-		for module_name in cache_state.module_sources.keys() {
-			cache_input_modules[module_name] = true
-		}
-		cache_input_modules['main'] = true
-		external_inputs, has_untracked_c_include := cgen.cache_external_input_files(a, prefs.vroot,
-			cache_input_modules, user_c_flags, prefs.target)
-		cache_state.module_external_inputs = external_inputs.clone()
-		native_source_modules, can_scope_static_inputs :=
-			cache_external_input_owner_modules(cache_state)
-		if has_untracked_c_include || !can_scope_static_inputs {
-			restart_v3_without_cache()
-		}
-		cache_state.native_source_modules = native_source_modules.clone()
-		for module_name, parsed in cache_state.parsed_from_source {
-			if !parsed {
-				continue
-			}
-			header := modulecache.module_header(a, pre_tc, module_name, prefs.vroot,
-				cache_state.module_import_paths)
-			if header.len > 0 {
-				cache_state.headers[module_name] = header
-			}
-		}
-		if invalidate_changed_cache_dependents(mut cache_state) {
-			restart_v3_after_cache_invalidation()
-		}
-	}
-	pre_tc.prepare_interface_query_indexes()
-	b.step_parallel('check', check_was_parallel)
-	b.metric('functions collected', pre_tc.fn_ret_types.len, 'symbols')
-	b.metric('structs collected', pre_tc.structs.len, 'types')
-	b.metric('canonical semantic types', pre_tc.type_count(), 'types')
-	b.metric('canonical resolved symbols', pre_tc.symbol_count(), 'symbols')
-	type_cache_stats := pre_tc.type_cache_stats()
-	b.metric('type parse cache hits', type_cache_stats.parse_hits, 'lookups')
-	b.metric('type parse cache misses', type_cache_stats.parse_misses, 'lookups')
-	b.metric('C type cache hits', type_cache_stats.c_hits, 'lookups')
-	b.metric('C type cache misses', type_cache_stats.c_misses, 'lookups')
-
-	if backend == 'eval' {
-		$if !skip_eval ? {
-			mut runner := eval.new(prefs)
-			runner.run_files(a) or {
-				eprintln('error: ${err.msg()}')
-				exit(1)
-			}
-			b.step('eval')
-			b.print_report()
-			return
-		}
-	}
-	_ = pre_tc.ierror_impl_names()
-
-	// Mark used functions (dead-code elimination). This is done before transform
-	// so the transformer can skip function bodies that the C backend will prune.
-	mut markused_scope := unsafe { nil }
-	mut markused_tc := &pre_tc
-	if scope_prealloc_markused {
-		markused_scope = prealloc_scope_begin_for_v3()
-		markused_tc = pre_tc.fork_for_parallel_transform(a)
-		markused_tc.enable_scoped_parallel_workers()
-	}
 	mut used_fns := map[string]bool{}
 	mut uses_generics := false
-	if test_files.len > 0 {
-		used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a, markused_tc,
-			test_files)
-	} else {
-		used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
-	}
-	if cache_state.manager.enabled {
-		mut cache_uses_generics := false
-		used_fns, cache_uses_generics = markused.mark_used_for_cache_with_generic_usage(a,
-			markused_tc, test_files, cache_state.source_body_modules)
-		uses_generics = uses_generics || cache_uses_generics
-	}
-	if scope_prealloc_markused {
-		prealloc_scope_leave_for_v3(markused_scope)
-		used_fns = clone_string_bool_map(used_fns)
-		prealloc_scope_free_for_v3(markused_scope)
-	}
-	b.step('markused')
-	b.metric('reachable symbols', used_fns.len, 'symbols')
-
-	// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
-	// by default for compatible builds, and `-no-parallel` disables both threaded transform
-	// and cgen.
-	mut transform_was_parallel := false
-	mut transform_errors := []string{}
-	mut transform_texts_canonical := false
-	if !building_v && !cmd_v_build && !uses_generics && ast_contains_sql_expr(a) {
-		uses_generics = true
-	}
-	// Markused distinguishes reachable generic calls/types from generic templates
-	// that merely came along with an imported module (notably sync and rand).
-	mut skip_transform_generics := building_v || cmd_v_build || !uses_generics
-	if scope_prealloc_transform {
-		// Keep the large escaping AST/cache slabs in the compilation arena, while
-		// transformer indexes and per-body temporary state use a stage arena.
-		transform.reserve_parallel_transform_ast(mut a, skip_transform_generics)
-		pre_tc.begin_sparse_transform_node_caches(a.nodes.len)
-		pre_tc.reserve_scoped_transform_metadata(scoped_transform_signature_headroom)
-		base_transform_nodes := a.nodes.len
-		reserved_nodes_cap := a.nodes.cap
-		reserved_children_cap := a.children.cap
-		base_specialized_fns := a.specialized_fn_nodes.len
-		base_type_count := pre_tc.type_count()
-		base_symbol_count := pre_tc.symbol_count()
-		base_text_count := a.text_values.len
-		mut original_signature_names := pre_tc.fn_ret_types.keys()
-		original_signature_names.sort()
-		transform_scope := prealloc_scope_begin_for_v3()
-		mut scoped_owned_base_nodes := []int{}
-		mut retained_transform_regions := []transform.ScopedTransformRegion{}
-		used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_with_used_opt_config_scoped_workers_checked_owned(mut a,
-			&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, true,
-			transform_scope)
-		parse_cache_enabled := pre_tc.type_cache_parse_enabled()
-		prealloc_scope_leave_for_v3(transform_scope)
-		retained_transform_regions = clone_scoped_transform_regions(retained_transform_regions)
-		pre_tc.promote_scoped_transform_interners(base_type_count, base_symbol_count,
-			transform_scope)
-		if a.nodes.cap == reserved_nodes_cap && a.children.cap == reserved_children_cap
-			&& !scoped_value_owned(transform_scope, a.nodes.data)
-			&& !scoped_value_owned(transform_scope, a.children.data) {
-			a.promote_transform_texts_from(base_text_count, transform_scope)
-			if !skip_transform_generics {
-				// Generic lowering can rewrite arbitrary pre-existing nodes. The backing
-				// slabs were reserved outside the stage arena, so scan their small payload
-				// fields and promote only values owned by that arena instead of cloning the
-				// entire AST and permanently retaining both copies.
-				for idx in 0 .. a.nodes.len {
-					canonicalize_scoped_node(mut a, idx, transform_scope)
-				}
-			} else if retained_transform_regions.len > 0 {
-				outer_new_end := retained_transform_regions[0].new_start
-				promote_scoped_ast_nodes(mut a, base_transform_nodes, outer_new_end,
-					scoped_owned_base_nodes, transform_scope)
-				// Late lowering can rewrite nodes that live in a retained worker region
-				// while allocating their replacement text in the outer transform arena.
-				// Publish those strings before releasing that arena; the worker-owned
-				// fields in the same regions are canonicalized below from their own scope.
-				for region in retained_transform_regions {
-					canonicalize_scoped_transform_region_from_scope(mut a, region, transform_scope)
-				}
-				last_worker_end := retained_transform_regions.last().new_end
-				promote_scoped_ast_nodes(mut a, last_worker_end, a.nodes.len, []int{},
-					transform_scope)
-			} else {
-				a.intern_node_texts_from(0)
-				transform_texts_canonical = true
+	mut skip_transform_generics := true
+	mut transform_texts_canonical := cgen_cache_hit
+	if !cgen_cache_hit {
+		pre_tc.verbose = prefs.verbose
+		if scope_prealloc_stages {
+			pre_tc.enable_scoped_parallel_workers()
+		}
+		pre_tc.reject_unsupported_generics = is_selfhost
+		set_diagnostic_files(mut pre_tc, user_files)
+		pre_tc.collect(a)
+		pre_tc.diagnose_unknown_calls = true
+		pre_tc.prepare_threads_condition()
+		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
+		check_was_parallel := pre_tc.check_semantics_opt(!current_no_parallel)
+		if pre_tc.errors.len > 0 {
+			print_type_errors(pre_tc.errors)
+			exit(1)
+		}
+		pre_tc.prune_inactive_top_level_comptime(mut a)
+		test_harness_errors := validate_test_file_harness_inputs(a, pre_tc, test_files)
+		if test_harness_errors.len > 0 {
+			for msg in test_harness_errors {
+				eprintln(msg)
 			}
+			exit(1)
+		}
+		if cache_state.manager.enabled {
+			if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_c_flags) {
+				restart_v3_without_cache()
+			}
+			for module_name, parsed in cache_state.parsed_from_source {
+				if !parsed {
+					continue
+				}
+				header := modulecache.module_header(a, pre_tc, module_name, prefs.vroot,
+					cache_state.module_import_paths)
+				if header.len > 0 {
+					cache_state.headers[module_name] = header
+				}
+			}
+			if invalidate_changed_cache_dependents(mut cache_state) {
+				restart_v3_after_cache_invalidation()
+			}
+		}
+		pre_tc.prepare_interface_query_indexes()
+		b.step_parallel('check', check_was_parallel)
+		b.metric('functions collected', pre_tc.fn_ret_types.len, 'symbols')
+		b.metric('structs collected', pre_tc.structs.len, 'types')
+		b.metric('canonical semantic types', pre_tc.type_count(), 'types')
+		b.metric('canonical resolved symbols', pre_tc.symbol_count(), 'symbols')
+		type_cache_stats := pre_tc.type_cache_stats()
+		b.metric('type parse cache hits', type_cache_stats.parse_hits, 'lookups')
+		b.metric('type parse cache misses', type_cache_stats.parse_misses, 'lookups')
+		b.metric('C type cache hits', type_cache_stats.c_hits, 'lookups')
+		b.metric('C type cache misses', type_cache_stats.c_misses, 'lookups')
+
+		if backend == 'eval' {
+			$if !skip_eval ? {
+				mut runner := eval.new(prefs)
+				runner.run_files(a) or {
+					eprintln('error: ${err.msg()}')
+					exit(1)
+				}
+				b.step('eval')
+				b.print_report()
+				return
+			}
+		}
+		_ = pre_tc.ierror_impl_names()
+
+		// Mark used functions (dead-code elimination). This is done before transform
+		// so the transformer can skip function bodies that the C backend will prune.
+		mut markused_scope := unsafe { nil }
+		mut markused_tc := &pre_tc
+		if scope_prealloc_markused {
+			markused_scope = prealloc_scope_begin_for_v3()
+			markused_tc = pre_tc.fork_for_parallel_transform(a)
+			markused_tc.enable_scoped_parallel_workers()
+		}
+		if test_files.len > 0 {
+			used_fns, uses_generics = markused.mark_used_for_tests_with_generic_usage(a,
+				markused_tc, test_files)
 		} else {
-			clone_flat_ast_storage(mut a)
-			pre_tc.rebind_ast(a)
+			used_fns, uses_generics = markused.mark_used_with_generic_usage(a, markused_tc)
 		}
-		if a.specialized_fn_nodes.len != base_specialized_fns {
-			a.specialized_fn_nodes = a.specialized_fn_nodes.clone()
+		if cache_state.manager.enabled {
+			mut cache_uses_generics := false
+			used_fns, cache_uses_generics = markused.mark_used_for_cache_with_generic_usage(a,
+				markused_tc, test_files, cache_state.source_body_modules)
+			uses_generics = uses_generics || cache_uses_generics
 		}
-		promote_scoped_checker_node_caches(mut pre_tc, transform_scope, base_transform_nodes)
-		promote_scoped_signatures(mut pre_tc, original_signature_names)
-		used_fns = clone_string_bool_map(used_fns)
-		transform_errors = clone_string_list(transform_errors)
-		pre_tc.set_fresh_type_cache(parse_cache_enabled)
-		prealloc_scope_free_for_v3(transform_scope)
-		if retained_transform_regions.len > 0 {
-			if p.parsed_v_header_files > 0 {
-				// Header-only warm builds are small enough that transform may not
-				// force the pre-reserved flat arrays to grow. Publish their backing
-				// once in the compilation arena before releasing retained helper
-				// arenas; individual node text is promoted below.
+		if scope_prealloc_markused {
+			prealloc_scope_leave_for_v3(markused_scope)
+			used_fns = clone_string_bool_map(used_fns)
+			prealloc_scope_free_for_v3(markused_scope)
+		}
+		b.step('markused')
+		b.metric('reachable symbols', used_fns.len, 'symbols')
+
+		// Transform (match lowering, string/in lowering, etc.). Threaded transform is enabled
+		// by default for compatible builds, and `-no-parallel` disables both threaded transform
+		// and cgen.
+		mut transform_was_parallel := false
+		mut transform_errors := []string{}
+		if !building_v && !cmd_v_build && !uses_generics && ast_contains_sql_expr(a) {
+			uses_generics = true
+		}
+		// Markused distinguishes reachable generic calls/types from generic templates
+		// that merely came along with an imported module (notably sync and rand).
+		skip_transform_generics = building_v || cmd_v_build || !uses_generics
+		if scope_prealloc_transform {
+			// Keep the large escaping AST/cache slabs in the compilation arena, while
+			// transformer indexes and per-body temporary state use a stage arena.
+			transform.reserve_parallel_transform_ast(mut a, skip_transform_generics)
+			pre_tc.begin_sparse_transform_node_caches(a.nodes.len)
+			pre_tc.reserve_scoped_transform_metadata(scoped_transform_signature_headroom)
+			base_transform_nodes := a.nodes.len
+			reserved_nodes_cap := a.nodes.cap
+			reserved_children_cap := a.children.cap
+			base_specialized_fns := a.specialized_fn_nodes.len
+			base_type_count := pre_tc.type_count()
+			base_symbol_count := pre_tc.symbol_count()
+			base_text_count := a.text_values.len
+			mut original_signature_names := pre_tc.fn_ret_types.keys()
+			original_signature_names.sort()
+			transform_scope := prealloc_scope_begin_for_v3()
+			mut scoped_owned_base_nodes := []int{}
+			mut retained_transform_regions := []transform.ScopedTransformRegion{}
+			used_fns, transform_was_parallel, transform_errors, scoped_owned_base_nodes, retained_transform_regions = transform.transform_with_used_opt_config_scoped_workers_checked_owned(mut a,
+				&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, true,
+				transform_scope)
+			parse_cache_enabled := pre_tc.type_cache_parse_enabled()
+			prealloc_scope_leave_for_v3(transform_scope)
+			retained_transform_regions = clone_scoped_transform_regions(retained_transform_regions)
+			pre_tc.promote_scoped_transform_interners(base_type_count, base_symbol_count,
+				transform_scope)
+			if a.nodes.cap == reserved_nodes_cap && a.children.cap == reserved_children_cap
+				&& !scoped_value_owned(transform_scope, a.nodes.data)
+				&& !scoped_value_owned(transform_scope, a.children.data) {
+				a.promote_transform_texts_from(base_text_count, transform_scope)
+				if !skip_transform_generics {
+					// Generic lowering can rewrite arbitrary pre-existing nodes. The backing
+					// slabs were reserved outside the stage arena, so scan their small payload
+					// fields and promote only values owned by that arena instead of cloning the
+					// entire AST and permanently retaining both copies.
+					for idx in 0 .. a.nodes.len {
+						canonicalize_scoped_node(mut a, idx, transform_scope)
+					}
+				} else if retained_transform_regions.len > 0 {
+					outer_new_end := retained_transform_regions[0].new_start
+					promote_scoped_ast_nodes(mut a, base_transform_nodes, outer_new_end,
+						scoped_owned_base_nodes, transform_scope)
+					// Late lowering can rewrite nodes that live in a retained worker region
+					// while allocating their replacement text in the outer transform arena.
+					// Publish those strings before releasing that arena; the worker-owned
+					// fields in the same regions are canonicalized below from their own scope.
+					for region in retained_transform_regions {
+						canonicalize_scoped_transform_region_from_scope(mut a, region,
+							transform_scope)
+					}
+					last_worker_end := retained_transform_regions.last().new_end
+					promote_scoped_ast_nodes(mut a, last_worker_end, a.nodes.len, []int{},
+						transform_scope)
+				} else {
+					a.intern_node_texts_from(0)
+					transform_texts_canonical = true
+				}
+			} else {
 				clone_flat_ast_storage(mut a)
 				pre_tc.rebind_ast(a)
 			}
-			for region in retained_transform_regions {
-				if skip_transform_generics {
-					canonicalize_scoped_transform_region(mut a, region)
-				} else {
-					// Bounded generic batches can publish rewrites to any source node
-					// through this result arena, so verify every flat payload before
-					// releasing it.
-					for idx in 0 .. a.nodes.len {
-						canonicalize_scoped_node(mut a, idx, region.scope)
-					}
-				}
-				if scoped_value_owned(region.scope, a.nodes.data)
-					|| scoped_value_owned(region.scope, a.children.data) {
-					a = clone_flat_ast_after_transform(a)
+			if a.specialized_fn_nodes.len != base_specialized_fns {
+				a.specialized_fn_nodes = a.specialized_fn_nodes.clone()
+			}
+			promote_scoped_checker_node_caches(mut pre_tc, transform_scope, base_transform_nodes)
+			promote_scoped_signatures(mut pre_tc, original_signature_names)
+			used_fns = clone_string_bool_map(used_fns)
+			transform_errors = clone_string_list(transform_errors)
+			pre_tc.set_fresh_type_cache(parse_cache_enabled)
+			prealloc_scope_free_for_v3(transform_scope)
+			if retained_transform_regions.len > 0 {
+				if p.parsed_v_header_files > 0 {
+					// Header-only warm builds are small enough that transform may not
+					// force the pre-reserved flat arrays to grow. Publish their backing
+					// once in the compilation arena before releasing retained helper
+					// arenas; individual node text is promoted below.
+					clone_flat_ast_storage(mut a)
 					pre_tc.rebind_ast(a)
 				}
-				prealloc_scope_free_for_v3(region.scope)
+				for region in retained_transform_regions {
+					if skip_transform_generics {
+						canonicalize_scoped_transform_region(mut a, region)
+					} else {
+						// Bounded generic batches can publish rewrites to any source node
+						// through this result arena, so verify every flat payload before
+						// releasing it.
+						for idx in 0 .. a.nodes.len {
+							canonicalize_scoped_node(mut a, idx, region.scope)
+						}
+					}
+					if scoped_value_owned(region.scope, a.nodes.data)
+						|| scoped_value_owned(region.scope, a.children.data) {
+						a = clone_flat_ast_after_transform(a)
+						pre_tc.rebind_ast(a)
+					}
+					prealloc_scope_free_for_v3(region.scope)
+				}
+				transform_texts_canonical = true
 			}
-			transform_texts_canonical = true
-		}
-	} else {
-		used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
-			&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, false)
-	}
-	if !building_v && !cmd_v_build && !uses_generics
-		&& transformed_used_fns_need_monomorphize(used_fns) {
-		uses_generics = true
-		skip_transform_generics = false
-	}
-	b.step_parallel('transform', transform_was_parallel)
-	if transform_errors.len > 0 {
-		eprintln('type checker found ${transform_errors.len} error(s):')
-		for message in transform_errors {
-			eprintln(message)
-		}
-		exit(1)
-	}
-	pre_tc.freeze_interface_impl_names()
-	b.metric('AST nodes after transform', a.nodes.len, 'nodes')
-	b.metric('AST children after transform', a.children.len, 'edges')
-
-	// Reuse the pre-transform checker for metadata only. Transform does not add
-	// declarations, and v1/v2 do not run a second semantic checker after lowering.
-	pre_tc.diagnose_unknown_calls = false
-	pre_tc.reject_unlowered_map_mutation = true
-	set_diagnostic_files(mut pre_tc, user_files)
-	set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-	if !building_v && !cmd_v_build {
-		if uses_generics {
-			if scope_prealloc_stages {
-				// Volt's reachable specialization set settles just below 4x the
-				// transformed node count. Reserving that bounded final size avoids
-				// growing 3x caches to 6x inside the disposable monomorph arena and
-				// then copying those oversized arrays back into the parent.
-				pre_tc.materialize_sparse_transform_node_caches(a.nodes.len, a.nodes.len * 4)
-			}
-			// Generic lowering rewrites and clones call nodes in disposable arenas.
-			// Resolve their final names from the owned transformed AST instead of
-			// retaining pre-transform canonical string views across arena release.
-			pre_tc.reset_resolved_calls_for_reannotation()
-			pre_tc.annotate_types_with_used(used_fns)
 		} else {
-			restore_transformed_fn_value_types(mut pre_tc, a, used_fns)
+			used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
+				&pre_tc, used_fns, current_parallel_transform, skip_transform_generics, false)
 		}
+		if !building_v && !cmd_v_build && !uses_generics
+			&& transformed_used_fns_need_monomorphize(used_fns) {
+			uses_generics = true
+			skip_transform_generics = false
+		}
+		b.step_parallel('transform', transform_was_parallel)
+		if transform_errors.len > 0 {
+			eprintln('type checker found ${transform_errors.len} error(s):')
+			for message in transform_errors {
+				eprintln(message)
+			}
+			exit(1)
+		}
+		pre_tc.freeze_interface_impl_names()
+		b.metric('AST nodes after transform', a.nodes.len, 'nodes')
+		b.metric('AST children after transform', a.children.len, 'edges')
+
+		// Reuse the pre-transform checker for metadata only. Transform does not add
+		// declarations, and v1/v2 do not run a second semantic checker after lowering.
+		pre_tc.diagnose_unknown_calls = false
+		pre_tc.reject_unlowered_map_mutation = true
+		set_diagnostic_files(mut pre_tc, user_files)
+		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
+		if !building_v && !cmd_v_build {
+			if uses_generics {
+				if scope_prealloc_stages {
+					// Volt's reachable specialization set settles just below 4x the
+					// transformed node count. Reserving that bounded final size avoids
+					// growing 3x caches to 6x inside the disposable monomorph arena and
+					// then copying those oversized arrays back into the parent.
+					pre_tc.materialize_sparse_transform_node_caches(a.nodes.len, a.nodes.len * 4)
+				}
+				// Generic lowering rewrites and clones call nodes in disposable arenas.
+				// Resolve their final names from the owned transformed AST instead of
+				// retaining pre-transform canonical string views across arena release.
+				pre_tc.reset_resolved_calls_for_reannotation()
+				pre_tc.annotate_types_with_used(used_fns)
+			} else {
+				restore_transformed_fn_value_types(mut pre_tc, a, used_fns)
+			}
+		}
+		b.step('annotate types')
+	} else {
+		b.step('check (cached)')
+		b.step('markused (cached)')
+		b.step('transform (cached)')
+		b.step('annotate types (cached)')
 	}
-	b.step('annotate types')
 	if pre_tc.errors.len > 0 {
 		print_type_errors(pre_tc.errors)
 		exit(1)
@@ -2671,27 +2698,6 @@ fn main() {
 			b.step('wasm gen')
 			b.print_report()
 			return
-		}
-	}
-
-	// A valid whole-program C plan no longer needs the specialized AST that
-	// produced it. Validate it before monomorphization so unchanged cached builds
-	// can skip cloning more than a million generic nodes.
-	mut cgen_cache_entry := modulecache.CgenEntry{}
-	mut cgen_cache_metadata := V3CgenCacheMetadata{}
-	mut cgen_cache_hit := false
-	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
-		&& cache_state.parsed_from_source.len == 0 {
-		input := v3_cgen_cache_input(cache_state, user_files, user_c_flags)
-		if entry := cache_state.manager.valid_cgen(input.source_files, input.generation_signature,
-			input.dependency_inputs)
-		{
-			metadata := os.read_file(entry.metadata) or { '' }
-			if decoded := decode_v3_cgen_metadata(metadata) {
-				cgen_cache_entry = entry
-				cgen_cache_metadata = decoded
-				cgen_cache_hit = true
-			}
 		}
 	}
 
@@ -4167,6 +4173,7 @@ mut:
 }
 
 fn seed_implicit_imports(mut a flat.FlatAst) {
+	start := a.nodes.len
 	mut scan := ImplicitImportScan{}
 	scan_implicit_imports(a, a.nodes.len, mut scan)
 	if scan.needs_sync && !scan.has_sync {
@@ -4175,6 +4182,7 @@ fn seed_implicit_imports(mut a flat.FlatAst) {
 	if scan.needs_embed && !scan.has_embed_import {
 		a.add_node(embed_file_import_node())
 	}
+	a.intern_node_texts_from(start)
 }
 
 fn sync_import_node() flat.Node {
@@ -4199,6 +4207,7 @@ fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool, builtin_
 	}
 	// Put cache warm-up imports in a private synthetic file/module scope. Without
 	// these boundaries the checker assigns them to the last parsed user file.
+	start := a.nodes.len
 	a.nodes << flat.Node{
 		kind:  .file
 		value: cache_bundle_import_file(builtin_dir)
@@ -4214,6 +4223,7 @@ fn seed_cached_builtin_bundle_imports(mut a flat.FlatAst, enabled bool, builtin_
 			typ:   import_path.all_after_last('.')
 		}
 	}
+	a.intern_node_texts_from(start)
 }
 
 fn cache_bundle_import_file(builtin_dir string) string {
@@ -4294,7 +4304,7 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 	mut ins_idx := 0
 	for i in 0 .. old_len {
 		for ins_idx < insertions.len && insertions[ins_idx].pos == i {
-			new_nodes << insertions[ins_idx].node
+			new_nodes << canonical_node_texts(mut a, insertions[ins_idx].node)
 			ins_idx++
 		}
 		new_nodes << a.nodes[i]
@@ -4302,7 +4312,7 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 	// Insertions at pos == old_len append at the very end (the last wave module's
 	// region ends at the array tail).
 	for ins_idx < insertions.len {
-		new_nodes << insertions[ins_idx].node
+		new_nodes << canonical_node_texts(mut a, insertions[ins_idx].node)
 		ins_idx++
 	}
 	a.nodes = new_nodes
@@ -4468,7 +4478,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			if module_identity := parsed_module_identities[mod_name] {
 				if module_identity.len > 0 {
-					a.nodes[node_idx].value = module_identity
+					set_node_value_canonical(mut a, node_idx, module_identity)
 				}
 				record_cache_module_dependency(mut cache_state, cur_module, module_identity)
 				node_idx++
@@ -4505,7 +4515,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 			}
 			if module_identity.len > 0 {
-				a.nodes[node_idx].value = module_identity
+				set_node_value_canonical(mut a, node_idx, module_identity)
 			}
 			cache_module := if module_identity.len > 0 { module_identity } else { mod_name }
 			record_cache_module_dependency(mut cache_state, cur_module, cache_module)
@@ -4682,11 +4692,39 @@ fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, end_nod
 		return
 	}
 	short_name := import_path.all_after_last('.')
+	_, canonical_path := a.intern_text(import_path)
 	for i in first_node .. end_node {
 		if a.nodes[i].kind == .module_decl && a.nodes[i].value == short_name {
-			a.nodes[i].value = import_path
+			a.nodes[i].value = canonical_path
 		}
 	}
+}
+
+fn set_node_value_canonical(mut a flat.FlatAst, idx int, value string) {
+	_, canonical := a.intern_text(value)
+	a.nodes[idx].value = canonical
+}
+
+fn canonical_node_texts(mut a flat.FlatAst, node flat.Node) flat.Node {
+	mut canonical := node
+	_, canonical.value = a.intern_text(node.value)
+	_, canonical.typ = a.intern_text(node.typ)
+	return canonical
+}
+
+fn source_file_line_count(paths []string) int {
+	mut lines := 0
+	for path in paths {
+		source := os.read_file(path) or { continue }
+		if source.len == 0 {
+			continue
+		}
+		lines += source.count('\n')
+		if source[source.len - 1] != `\n` {
+			lines++
+		}
+	}
+	return lines
 }
 
 fn import_module_identity_cached(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string, mut path_cache map[string]string, mut identity_cache map[string]string) string {

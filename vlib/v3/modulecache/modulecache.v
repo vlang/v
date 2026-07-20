@@ -219,6 +219,9 @@ fn signature_vmod_root(source_file string) (string, string) {
 }
 
 fn compile_time_env_names(source string) []string {
+	if !source.contains('\$env') {
+		return []
+	}
 	mut names := map[string]bool{}
 	mut pos := 0
 	for pos < source.len {
@@ -276,6 +279,9 @@ fn compile_time_env_names(source string) []string {
 }
 
 fn compile_time_pkgconfig_names(source string) []string {
+	if !source.contains('pkgconfig') {
+		return []
+	}
 	mut names := map[string]bool{}
 	mut pos := 0
 	for pos < source.len {

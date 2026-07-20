@@ -166,11 +166,10 @@ pub fn (mut p Parser) parse_files(paths []string) &flat.FlatAst {
 	return p.a
 }
 
-// release_source_storage canonicalizes every retained source slice and drops
-// parser/scanner references to raw file buffers. Source files keep only their
-// compact line indexes for later diagnostic lookup.
+// release_source_storage canonicalizes retained metadata and drops parser/scanner
+// references to raw file buffers. Parsed node text is canonicalized as each file
+// is completed and when parallel worker ASTs are merged.
 pub fn (mut p Parser) release_source_storage() {
-	p.a.intern_node_texts_from(0)
 	p.a.intern_metadata_texts()
 	p.lit = ''
 	p.peek_lit = ''
@@ -3449,7 +3448,7 @@ fn (p &Parser) eval_comptime_cond_with_target_override(cond string, disable_targ
 }
 
 fn source_contains_target_inline_asm(source string, target_arch string) bool {
-	if source.len < 3 {
+	if source.len < 3 || !source.contains('asm') {
 		return false
 	}
 	mut offset := 0

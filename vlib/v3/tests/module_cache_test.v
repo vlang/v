@@ -179,6 +179,7 @@ fn main() {
 	first :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(first_output)} ${os.quoted_path(main_file)}')
 	assert first.exit_code == 0, first.output
+	assert !first.output.contains('check (cached)'), first.output
 	assert !first.output.contains('cgen (cached)'), first.output
 	assert !first.output.contains('monomorphize (cached)'), first.output
 	assert run_module_cache_binary(first_output) == '42'
@@ -187,6 +188,10 @@ fn main() {
 	second :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
+	assert second.output.contains('check (cached)'), second.output
+	assert second.output.contains('markused (cached)'), second.output
+	assert second.output.contains('transform (cached)'), second.output
+	assert second.output.contains('annotate types (cached)'), second.output
 	assert second.output.contains('cgen (cached)'), second.output
 	assert second.output.contains('monomorphize (cached)'), second.output
 	assert run_module_cache_binary(second_output) == '42'
@@ -207,6 +212,7 @@ fn main() {
 	changed :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_output)} ${os.quoted_path(main_file)}')
 	assert changed.exit_code == 0, changed.output
+	assert !changed.output.contains('check (cached)'), changed.output
 	assert !changed.output.contains('cgen (cached)'), changed.output
 	assert !changed.output.contains('monomorphize (cached)'), changed.output
 	assert run_module_cache_binary(changed_output) == '43'
@@ -221,6 +227,7 @@ pub fn value() int {
 	changed_module :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_module_output)} ${os.quoted_path(main_file)}')
 	assert changed_module.exit_code == 0, changed_module.output
+	assert !changed_module.output.contains('check (cached)'), changed_module.output
 	assert !changed_module.output.contains('cgen (cached)'), changed_module.output
 	assert !changed_module.output.contains('monomorphize (cached)'), changed_module.output
 	assert run_module_cache_binary(changed_module_output) == '44'
@@ -539,6 +546,16 @@ fn main() {
 	vh_files := vh_file_lines[0].all_after(':').trim_space().split(' ')
 	assert vh_files.len == fields[3].int(), second.output
 	assert vh_files.all(it.ends_with('.vh')), second.output
+	mut expected_vh_lines := 0
+	for path in vh_files {
+		vh_source := os.read_file(path) or { panic(err) }
+		expected_vh_lines += vh_source.count('\n') + if vh_source.ends_with('\n') { 0 } else { 1 }
+	}
+	parsed_vh_line_metrics :=
+		second.output.split_into_lines().filter(it.contains('parsed .vh lines'))
+	assert parsed_vh_line_metrics.len == 1, second.output
+	vh_line_fields := parsed_vh_line_metrics[0].fields()
+	assert vh_line_fields.len >= 5 && vh_line_fields[3].int() == expected_vh_lines, second.output
 	v_lines := second.output.split_into_lines().filter(it.contains('parsed .v files'))
 	assert v_lines.len == 1, second.output
 	v_fields := v_lines[0].fields()
