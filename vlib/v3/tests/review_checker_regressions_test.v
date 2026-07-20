@@ -167,6 +167,12 @@ fn test_voidptr_params_reject_non_pointer_values() {
 
 fn test_shared_receiver_and_arg_require_shared_bindings() {
 	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_mut_receiver_immutable_value',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\ts.bump()\n}\n',
+		'method `bump` requires a mutable receiver')
+	run_bad(v3_bin, 'bad_generic_mut_receiver_immutable_value',
+		'struct Box[T] {\nmut:\n\tvalue T\n}\n\nfn (mut b Box[T]) set(value T) {\n\tb.value = value\n}\n\nfn main() {\n\tb := Box[int]{\n\t\tvalue: 1\n\t}\n\tb.set(2)\n}\n',
+		'method `set` requires a mutable receiver')
 	run_bad(v3_bin, 'bad_shared_receiver_plain_value',
 		'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n',
 		'cannot use non-shared `St` as receiver')
@@ -179,6 +185,15 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 	out := run_good(v3_bin, 'good_shared_arg_and_receiver',
 		'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(s) + s.f()))\n}\n')
 	assert out == '3'
+	mut_out := run_good(v3_bin, 'good_mut_receiver_mutable_value',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n')
+	assert mut_out == '1'
+	capture_out := run_good(v3_bin, 'good_mut_receiver_explicit_mut_capture',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tfn [mut s] () {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}()\n}\n')
+	assert capture_out == '1'
+	ptr_out := run_good(v3_bin, 'good_pointer_receiver_immutable_value',
+		'struct St {\n\tvalue int\n}\n\nfn (s &St) get() int {\n\treturn s.value\n}\n\nfn main() {\n\ts := St{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(s.get()))\n}\n')
+	assert ptr_out == '2'
 }
 
 fn test_restrict_synthetic_hex_fallback_receivers() {

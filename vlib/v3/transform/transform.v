@@ -6762,6 +6762,7 @@ fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rh
 	if !t.is_optional_type_name(lhs_type) {
 		return
 	}
+	t.invalidate_smartcast_for_lvalue(lhs_id)
 	base_type := t.optional_base_type(t.qualify_optional_type(lhs_type))
 	mut rhs_type := t.node_type(rhs_id)
 	if rhs_type.len == 0 {
@@ -6771,7 +6772,6 @@ fn (mut t Transformer) update_option_assignment_smartcast(lhs_id flat.NodeId, rh
 		|| t.normalize_type_alias(rhs_type) != t.normalize_type_alias(base_type) {
 		return
 	}
-	t.invalidate_smartcast_for_lvalue(lhs_id)
 	t.push_smartcast(key, base_type, option_unwrap_marker)
 }
 

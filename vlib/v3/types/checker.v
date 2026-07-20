@@ -380,6 +380,7 @@ pub mut:
 	fn_ret_types                 map[string]Type
 	fn_param_types               map[string][]Type
 	fn_shared_params             map[string][]bool
+	mut_receiver_methods         map[string]bool
 	fn_ret_type_texts            map[string]string   // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
 	fn_param_type_texts          map[string][]string // generic struct method key -> original param type texts (receiver first)
 	fn_type_files                map[string]string
@@ -575,6 +576,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_ret_types:                       map[string]Type{}
 		fn_param_types:                     map[string][]Type{}
 		fn_shared_params:                   map[string][]bool{}
+		mut_receiver_methods:               map[string]bool{}
 		fn_ret_type_texts:                  map[string]string{}
 		fn_param_type_texts:                map[string][]string{}
 		fn_type_files:                      map[string]string{}
@@ -687,6 +689,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		fn_ret_types:                       tc.fn_ret_types
 		fn_param_types:                     tc.fn_param_types
 		fn_shared_params:                   tc.fn_shared_params
+		mut_receiver_methods:               tc.mut_receiver_methods
 		fn_ret_type_texts:                  tc.fn_ret_type_texts
 		fn_param_type_texts:                tc.fn_param_type_texts
 		fn_type_files:                      tc.fn_type_files
@@ -1530,9 +1533,14 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				mut param_texts := []string{}
 				mut shared_params := []bool{}
 				mut is_variadic := false
+				mut has_mut_receiver := false
 				for i in 0 .. node.children_count {
 					child := a.child_node(&node, i)
 					if child.kind == .param {
+						if ptypes.len == 0 && node.value.contains('.') && child.is_mut
+							&& !param_type_text_is_shared(child.typ) {
+							has_mut_receiver = true
+						}
 						param_type := if child.is_mut && child.op == .amp
 							&& child.typ.starts_with('&') {
 							'&${child.typ}'
@@ -1556,12 +1564,18 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				shared_params = tc.fn_shared_params_with_implicit_veb_ctx(node, shared_params)
 				tc.register_fn_signature(qname, ret_type, ptypes, shared_params, is_variadic,
 					needs_ctx)
+				if has_mut_receiver {
+					tc.register_mut_receiver_method(qname)
+				}
 				tc.fn_ret_type_texts[qname] = node.typ
 				tc.fn_ret_type_texts[tc.cached_c_name(qname)] = node.typ
 				if tc.cur_module in ['', 'main', 'builtin'] && qname != node.value
 					&& node.value !in tc.fn_param_types {
 					tc.register_fn_signature(node.value, ret_type, ptypes, shared_params,
 						is_variadic, needs_ctx)
+					if has_mut_receiver {
+						tc.register_mut_receiver_method(node.value)
+					}
 					tc.fn_ret_type_texts[node.value] = node.typ
 					tc.fn_ret_type_texts[tc.cached_c_name(node.value)] = node.typ
 				}
@@ -2838,6 +2852,14 @@ fn (tc &TypeChecker) has_active_import(alias string) bool {
 }
 
 const receiver_method_suffix_ambiguous = '__v_receiver_method_suffix_ambiguous__'
+
+fn (mut tc TypeChecker) register_mut_receiver_method(name string) {
+	tc.mut_receiver_methods[name] = true
+	lowered_name := tc.cached_c_name(name)
+	if lowered_name != name {
+		tc.mut_receiver_methods[lowered_name] = true
+	}
+}
 
 // register_fn_signature updates register fn signature state for types.
 fn (mut tc TypeChecker) register_fn_signature(name string, ret_type Type, params []Type, shared_params []bool, is_variadic bool, implicit_veb_ctx bool) {
@@ -9550,6 +9572,11 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 	for i in 0 .. node.children_count {
 		child := tc.a.child_node(&node, i)
 		tc.insert_fn_param_binding(child)
+		if child.kind == .ident && child.is_mut && child.value.len > 0 {
+			if owner := tc.cur_scope.lookup_owner(child.value) {
+				tc.fn_context.mut_local_owners[child.value] = owner
+			}
+		}
 	}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
@@ -13317,12 +13344,16 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		}
 	}
 	if fn_node.kind == .selector {
-		callee_id := tc.a.child(&node, 0)
-		mut callee_type := tc.resolve_type(callee_id)
-		if smart_type := tc.smartcast_type(callee_id) {
-			callee_type = smart_type
+		base_id := tc.a.child(fn_node, 0)
+		base_node := tc.a.nodes[int(base_id)]
+		base_is_imported_module := base_node.kind == .ident
+			&& !tc.ident_resolves_to_value(base_node.value)
+			&& tc.resolve_import_alias(base_node.value) != none
+		if base_node.kind == .call {
+			tc.check_node(base_id)
 		}
-		if fn_typ := fn_type_from_type(callee_type) {
+		callee_id := tc.a.child(&node, 0)
+		if fn_typ := tc.selector_fn_type(fn_node) {
 			return CallInfo{
 				name:         ''
 				params:       fn_typ.params.clone()
@@ -13331,8 +13362,25 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				params_known: true
 			}
 		}
-		base_id := tc.a.child(fn_node, 0)
-		base_node := tc.a.nodes[int(base_id)]
+		mut use_resolved_fn_value_call := base_is_imported_module
+		if _ := tc.selector_wrapped_fn_type(fn_node) {
+			use_resolved_fn_value_call = true
+		}
+		if use_resolved_fn_value_call {
+			mut callee_type := tc.resolve_type(callee_id)
+			if smart_type := tc.smartcast_type(callee_id) {
+				callee_type = smart_type
+			}
+			if fn_typ := fn_type_from_type(callee_type) {
+				return CallInfo{
+					name:         ''
+					params:       fn_typ.params.clone()
+					return_type:  fn_typ.return_type
+					is_variadic:  tc.expr_is_variadic_fn_value(callee_id)
+					params_known: true
+				}
+			}
+		}
 		if base_node.kind == .ident && base_node.value == 'C' {
 			c_name := 'C.${fn_node.value}'
 			if c_name in tc.fn_ret_types {
@@ -15569,6 +15617,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					id)
 			}
 		}
+		if tc.unsafe_depth == 0 && tc.mut_receiver_methods[info.name]
+			&& !tc.type_is_pointer_receiver(recv_type) && !tc.expr_root_is_mutable_lvalue(recv_id)
+			&& tc.should_diagnose(id) {
+			tc.record_error(.call_arg_mismatch,
+				'method `${fn_node.value}` requires a mutable receiver', id)
+		}
 		if !receiver_matches {
 			tc.type_mismatch(.call_arg_mismatch,
 				'cannot use receiver `${recv_type.name()}` as `${info.params[0].name()}`', id)
@@ -17494,8 +17548,7 @@ fn struct_type_from_type(typ Type) ?Struct {
 	return none
 }
 
-// selector_fn_type supports selector fn type handling for TypeChecker.
-fn (tc &TypeChecker) selector_fn_type(node flat.Node) ?FnType {
+fn (tc &TypeChecker) selector_declared_value_type(node flat.Node) ?Type {
 	if node.children_count == 0 {
 		return none
 	}
@@ -17503,24 +17556,38 @@ fn (tc &TypeChecker) selector_fn_type(node flat.Node) ?FnType {
 		return none
 	}
 	if typ := tc.const_type_for_selector(node) {
-		if fn_typ := fn_type_from_type(typ) {
-			return fn_typ
-		}
+		return typ
 	}
 	base_id := tc.a.child(&node, 0)
 	base_type := tc.selector_fn_base_type(base_id) or { return none }
 	clean := unalias_and_unwrap_pointer_type(base_type)
 	if clean is Struct {
 		if typ := tc.struct_field_type(clean.name, node.value) {
-			return fn_type_from_type(typ)
+			return typ
 		}
 	}
 	if clean is Interface {
 		if typ := tc.interface_field_type(clean.name, node.value) {
-			return fn_type_from_type(typ)
+			return typ
 		}
 	}
 	return none
+}
+
+// selector_fn_type supports selector fn type handling for TypeChecker.
+fn (tc &TypeChecker) selector_fn_type(node flat.Node) ?FnType {
+	typ := tc.selector_declared_value_type(node) or { return none }
+	return fn_type_from_type(typ)
+}
+
+fn (tc &TypeChecker) selector_wrapped_fn_type(node flat.Node) ?FnType {
+	typ := tc.selector_declared_value_type(node) or { return none }
+	payload := match typ {
+		OptionType { typ.base_type }
+		ResultType { typ.base_type }
+		else { return none }
+	}
+	return fn_type_from_type(payload)
 }
 
 fn (tc &TypeChecker) method_value_type(receiver_name string, method string) ?Type {

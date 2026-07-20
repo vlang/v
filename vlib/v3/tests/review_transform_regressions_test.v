@@ -1293,6 +1293,13 @@ fn test_optional_nested_array_equality_guards_payload_work() {
 	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
 }
 
+fn test_optional_assignment_invalidates_payload_smartcast() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_assignment_invalidates_payload_smartcast',
+		'fn main() {\n\tmut value := ?int(none)\n\tvalue = 1\n\tvalue = none\n\tresolved := value or { 42 }\n\tprintln(int_str(resolved))\n}\n')
+	assert out == '42'
+}
+
 fn test_optional_variant_to_optional_sum_cast_preserves_wrapper() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_variant_to_optional_sum_cast',
