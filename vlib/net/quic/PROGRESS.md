@@ -345,11 +345,50 @@ The largest, highest-risk phase. Sub-phases, in build order:
         `certificate_request_context` gap described above. Both have
         permanent regression tests, confirmed to fail on the pre-fix code
         via Phase-R before the fix landed.
-- [ ] Author an RFC-8448-style TLS 1.3 test vector suite from scratch
-      (`vlib/net/quic/testdata/tls13_vectors/`) — RFC 8448 itself is non-QUIC
-      TLS 1.3 and not directly reusable. Capture from a reference client/server
-      (ngtcp2/quiche) via QUIC key-log export, cross-check independently before
-      trusting any fixture, document provenance (tool/version/date).
+- [x] Author an RFC-8448-style TLS 1.3 test vector suite from scratch
+      (`vlib/net/quic/testdata/tls13_vectors/`) — a real handshake captured
+      from Cloudflare quiche (`cloudflare/quiche-qns:latest`, pinned by
+      digest, via quic-interop-runner's published image reference — not
+      guessed), running in Docker: client + server + `tcpdump` on a bridge
+      network, `SSLKEYLOGFILE` set (an undocumented but functional env var
+      for quiche, confirmed empirically since neither `quiche-client
+      --help` nor `quiche-server --help` mentions it), decrypted and
+      dissected with `tshark` 4.6.6 using the keylog. `extract_handshake.py`
+      reconstructs each handshake message's exact raw bytes from tshark's
+      PDML tree — cross-checked against tshark's own independently-reported
+      per-message size for every message (the extraction script itself had
+      two real bugs, both caught by this check before anything was
+      trusted: Wireshark's tree shows some fields' bytes twice, once raw
+      and once under a friendly-named alias covering the identical span;
+      and a field with both its own raw value AND a child annotation node
+      needs its own value captured, not skipped by recursing past it).
+      Directory structure follows this repo's own established
+      `crypto/blake2b/testdata/` convention (README + raw fixture +
+      generation script, real test lives in the parent directory as a
+      normal `_test.v` file) rather than inventing a new one.
+      `tls13_quiche_vector_test.v` parses every real captured message
+      (ClientHello, ServerHello, EncryptedExtensions, Certificate,
+      CertificateVerify, both directions' Finished) with this module's own
+      production functions and cross-validates what a standard keylog
+      capture can actually prove (documented precisely in the README,
+      since it's a real, non-obvious boundary): message **parsing** against
+      an independent implementation's real wire bytes (not hand-constructed
+      or self-round-tripped, a genuinely new form of coverage); a REAL
+      ECDSA P-256 CertificateVerify signature verifying successfully —
+      closing the exact gap Phase 2c's own signature-verification work
+      documented (no EC private key exists anywhere in this repo, so
+      `net.mbedtls/x509_standalone_signature_test.v` could only exercise
+      ECDSA via a key-type-mismatch rejection, never a genuine accepted
+      signature); and both directions' real Finished MACs, using the
+      keylog's real `CLIENT_HANDSHAKE_TRAFFIC_SECRET`/
+      `SERVER_HANDSHAKE_TRAFFIC_SECRET` against the real captured Finished
+      bytes. **Not validated by this capture** (documented honestly, not
+      silently skipped): the Early Secret → Handshake Secret → traffic-
+      secret HKDF chain itself, since a standard keylog exports only the
+      already-derived traffic secrets, not the raw ECDHE shared secret —
+      that chain is already independently cross-checked against RFC 8448's
+      own official worked values in `tls13_keyschedule_test.v`, a
+      different but equally valid form of independent validation.
 
 ## Phases 3-14 (NOT STARTED)
 
