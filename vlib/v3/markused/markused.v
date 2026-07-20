@@ -237,6 +237,16 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 	used['gen_assign'] = true
 	queue << 'c.gen_assign'
 	used['c.gen_assign'] = true
+	// Parallel compiler callbacks and channel runtime helpers contain calls that
+	// are only selected after markused (by prealloc/worker lowering). Keep their
+	// concrete callees available for self-hosted compiler builds.
+	for seed in ['c.FlatGen.gen_fn_items_scoped_batches',
+		'markused.CallCollector.collect_bodies_scoped_batches',
+		'parser.Parser.precollect_parallel_comptime_consts', 'types.TypeChecker.check_scoped_batches',
+		'sync.Semaphore.timed_wait', 'sync.Semaphore.destroy'] {
+		queue << seed
+		used[seed] = true
+	}
 	for seed in ['__new_array', 'new_array_from_c_array', 'array.get', 'array.set', 'array.push',
 		'array.push_many', 'array.insert', 'array.insert_many', 'array.prepend', 'array.reverse',
 		'array.slice', 'array.slice_ni', 'string.substr_ni', 'array.pop_left', 'array.clone',
@@ -248,13 +258,14 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		'map.get_check', 'map.get_and_set', 'map.delete', 'map.clone', 'map.clear', 'map.keys',
 		'map.values', 'map.reserve', 'map_map_eq', 'memdup', 'strings.Builder.write_ptr',
 		'strings.Builder.write_runes', 'strings.Builder.free', 'strconv.format_int',
-		'strconv.format_uint', 'bool.str', 'int.str', 'u64.str', 'f32.str', 'f64.str', 'rune.str',
-		'string.+', 'ptr_str', 'strconv__f32_to_str_l', 'strconv__f64_to_str_l',
-		'os.join_path_single', 'panic', 'u8.is_letter', 'u8.is_capital', 'string.is_capital',
-		'string.to_lower_ascii', 'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex',
-		'data_to_hex_string', 'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4',
-		'map_hash_int_8', 'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4',
-		'map_eq_int_8', 'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4',
+		'strconv.format_uint', 'strconv.Dec32.get_string_32', 'strconv.Dec64.get_string_64',
+		'bool.str', 'int.str', 'u64.str', 'f32.str', 'f64.str', 'rune.str', 'string.+', 'ptr_str',
+		'strconv__f32_to_str_l', 'strconv__f64_to_str_l', 'os.join_path_single', 'panic',
+		'u8.is_letter', 'u8.is_capital', 'string.is_capital', 'string.to_lower_ascii',
+		'rune.to_lower', 'Array_u8__bytestr', 'Array_u8__hex', 'data_to_hex_string',
+		'map_hash_string', 'map_hash_int_1', 'map_hash_int_2', 'map_hash_int_4', 'map_hash_int_8',
+		'map_eq_string', 'map_eq_int_1', 'map_eq_int_2', 'map_eq_int_4', 'map_eq_int_8',
+		'map_clone_string', 'map_clone_int_1', 'map_clone_int_2', 'map_clone_int_4',
 		'map_clone_int_8', 'map_free_string', 'map_free_nop', '[]string.join', 'Array_string__join',
 		'embed_file.Decoder.decompress', 'exit', 'v_exit'] {
 		queue << seed
@@ -6420,6 +6431,16 @@ fn (c &CallCollector) collect_index_operator_method(index_id flat.NodeId, method
 
 fn (c &CallCollector) receiver_type_name(base_id flat.NodeId, cur_module string, imports map[string]string, local_values map[string]bool, local_types map[string]string) string {
 	base := c.a.node(base_id)
+	if base.kind == .struct_init && base.value.len > 0 {
+		return markused_resolve_imported_type_name(base.value, imports)
+	}
+	if base.kind == .call {
+		type_name := c.top_level_call_return_type_name(base_id, cur_module, imports, local_values,
+			local_types, false)
+		if type_name.len > 0 {
+			return type_name
+		}
+	}
 	base_type := c.node_type(base_id)
 	type_name := resolve_type_name(base_type)
 	if type_name.len > 0 {

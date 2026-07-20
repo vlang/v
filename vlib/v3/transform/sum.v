@@ -1269,6 +1269,25 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 	if expr_type.len == 0 {
 		expr_type = t.node_type(expr_id)
 	}
+	if t.is_optional_type_name(expr_type) {
+		optional_type := t.qualify_optional_type(expr_type)
+		payload_type := t.optional_base_type(optional_type)
+		source := t.transform_expr(expr_id)
+		value := t.make_selector(source, 'value', payload_type)
+		if t.normalize_type_alias(payload_type) == t.normalize_type_alias(node.value) {
+			return value
+		}
+		start := t.a.children.len
+		t.a.children << value
+		return t.transform_as_expr(id, flat.Node{
+			kind:           .as_expr
+			value:          node.value
+			typ:            node.typ
+			children_start: start
+			children_count: 1
+			pos:            node.pos
+		})
+	}
 	clean_type0 := t.trim_pointer_type(expr_type)
 	if t.is_interface_type_name(clean_type0) {
 		if target_iface := t.resolve_interface_pattern_interface(node.value) {

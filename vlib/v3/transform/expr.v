@@ -1464,6 +1464,15 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		opt_type = t.node_type(opt_id)
 	}
 	if !t.is_optional_type_name(opt_type) {
+		opt_node := t.a.node(opt_id)
+		if opt_node.kind == .ident {
+			opt_type = t.raw_var_type(opt_node.value)
+		}
+	}
+	if opt_type.starts_with('&') && t.is_optional_type_name(opt_type[1..]) {
+		opt_type = t.qualify_optional_type(opt_type[1..])
+	}
+	if !t.is_optional_type_name(opt_type) {
 		outer_pending := t.pending_stmts.clone()
 		t.pending_stmts.clear()
 		transformed_opt := t.transform_expr(opt_id)
@@ -1481,7 +1490,9 @@ fn (mut t Transformer) transform_infix_optional_none_ops(_id flat.NodeId, node f
 		opt_id = transformed_opt
 		opt_type = transformed_type
 	}
-	ok := t.make_selector(t.transform_expr(opt_id), 'ok', 'bool')
+	mut opt_expr := t.transform_expr(opt_id)
+	opt_expr = t.optional_source_value_expr(opt_id, opt_expr, opt_type)
+	ok := t.make_selector(opt_expr, 'ok', 'bool')
 	if node.op == .eq {
 		return t.make_prefix(.not, ok)
 	}

@@ -98,6 +98,13 @@ fn test_nested_optional_logical_or_preserves_short_circuiting() {
 	assert out == 'true\n0\nfalse\n0\ntrue\n1\ntrue\n1'
 }
 
+fn test_or_fallback_shadowed_noreturn_names_produce_values() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'or_fallback_shadowed_noreturn_names',
+		'fn maybe() ?int {\n\treturn none\n}\n\nfn main() {\n\texit := fn () int { return 7 }\n\tx := maybe() or { exit() }\n\tpanic := fn () int { return 9 }\n\ty := maybe() or { panic() }\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n')
+	assert out == '7\n9'
+}
+
 fn test_user_defined_free_method_is_preserved() {
 	v3_bin := build_v3_or_review()
 	out := or_review_run(v3_bin, 'user_defined_free_method',
@@ -151,4 +158,11 @@ fn test_channel_send_or_binds_error_during_fallback_transform() {
 	out := or_review_run(v3_bin, 'channel_send_or_error_interpolation',
 		'fn main() {\n\terr := 7\n\tch := chan int{cap: 1}\n\tch.close()\n\tch <- 1 or {\n\t\tprintln("\${err}")\n\t}\n\tprintln(int_str(err))\n}\n')
 	assert out == 'channel closed\n7'
+}
+
+fn test_optional_pointer_selector_or_dereferences_wrapper() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'optional_pointer_selector_or',
+		'struct Holder {\n\tfield &?int\n}\n\nfn holder(field &?int) Holder {\n\treturn Holder{\n\t\tfield: field\n\t}\n}\n\nfn main() {\n\tpresent := ?int(7)\n\tpresent_holder := holder(&present)\n\tpresent_holder.field or { println("unexpected") }\n\tprintln("present")\n\n\tmissing := ?int(none)\n\tmissing_holder := holder(&missing)\n\tmissing_holder.field or { println("missing") }\n}\n')
+	assert out == 'present\nmissing'
 }

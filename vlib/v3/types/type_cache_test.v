@@ -91,6 +91,13 @@ fn test_type_name_is_lazily_cached_by_type_id() {
 	assert first.str == second.str
 }
 
+fn test_generic_text_substitution_recurses_through_wrappers() {
+	assert subst_generic_text('chan T', ['int'], ['T']) == 'chan int'
+	assert subst_generic_text('thread T', ['string'], ['T']) == 'thread string'
+	assert subst_generic_text('atomic T', ['u64'], ['T']) == 'atomic u64'
+	assert subst_generic_text('chan ?[]T', ['i16'], ['T']) == 'chan ?[]i16'
+}
+
 fn test_resolved_symbols_have_stable_ids_and_storage() {
 	a := flat.FlatAst.new()
 	tc := TypeChecker.new(&a)

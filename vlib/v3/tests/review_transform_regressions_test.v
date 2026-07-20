@@ -1293,6 +1293,34 @@ fn test_optional_nested_array_equality_guards_payload_work() {
 	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
 }
 
+fn test_optional_assignment_invalidates_payload_smartcast() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_assignment_invalidates_payload_smartcast',
+		'fn main() {\n\tmut value := ?int(none)\n\tvalue = 1\n\tvalue = none\n\tresolved := value or { 42 }\n\tprintln(int_str(resolved))\n}\n')
+	assert out == '42'
+}
+
+fn test_unannotated_optional_address_preserves_wrapper() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'unannotated_optional_wrapper_address',
+		'fn main() {\n\tmut maybe := ?int(7)\n\twrapper := &maybe\n\tprintln(typeof(wrapper).name)\n\t*wrapper = none\n\tvalue := maybe or { 42 }\n\tprintln(int_str(value))\n}\n')
+	assert out == '&?int\n42'
+}
+
+fn test_pointer_alias_lvalue_preserves_dereference() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_alias_lvalue_dereference',
+		'type IntPtr = &int\n\nfn main() {\n\tmut value := 0\n\tmut p := IntPtr(&value)\n\t*p = 7\n\tprintln(int_str(value))\n}\n')
+	assert out == '7'
+}
+
+fn test_optional_variant_to_optional_sum_cast_preserves_wrapper() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_variant_to_optional_sum_cast',
+		"struct Cat {}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\nfn maybe_dog(ok bool) ?Dog {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn Dog{\n\t\tname: 'Rex'\n\t}\n}\n\nfn show(ok bool) string {\n\tmaybe_animal := ?Animal(maybe_dog(ok))\n\tanimal := maybe_animal or { return 'missing' }\n\tif animal is Dog {\n\t\treturn animal.name\n\t}\n\treturn 'cat'\n}\n\nfn main() {\n\tprintln(show(true))\n\tprintln(show(false))\n}\n")
+	assert out == 'Rex\nmissing'
+}
+
 fn test_wrapped_plus_minus_continuations_consume_auto_semicolon() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'wrapped_plus_minus_continuation',

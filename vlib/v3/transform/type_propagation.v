@@ -148,7 +148,16 @@ fn (t &Transformer) decl_rhs_type(id flat.NodeId) string {
 			}
 		}
 		if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
-			child_type := t.lvalue_type(t.a.child(&node, 0))
+			child_id := t.a.child(&node, 0)
+			child := t.a.nodes[int(child_id)]
+			child_type := t.lvalue_type(child_id)
+			if child.kind == .struct_init && t.is_optional_type_name(child_type) {
+				return '${child_type[..1]}&${t.optional_base_type(child_type)}'
+			}
+			prefix_type := t.node_type(id)
+			if decl_type_is_usable(prefix_type) {
+				return prefix_type
+			}
 			if child_type.len > 0 {
 				return '&${child_type}'
 			}
@@ -1276,6 +1285,9 @@ fn (t &Transformer) node_type(id flat.NodeId) string {
 		}
 		child_type := t.node_type(t.a.child(&node, 0))
 		if child_type.len > 0 {
+			if t.is_optional_type_name(child_type) {
+				return '${child_type[..1]}&${t.optional_base_type(child_type)}'
+			}
 			return '&${child_type}'
 		}
 	}

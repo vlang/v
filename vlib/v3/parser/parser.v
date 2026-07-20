@@ -80,6 +80,7 @@ mut:
 	pending_decl_attrs                []string
 	pending_decl_attr_kinds           []int
 	in_for_container                  bool
+	in_array_literal                  int
 	in_map_value                      int
 	unsupported_inline_asm_guards     map[int]bool
 	parsing_inferred_fixed_array_type bool
@@ -4664,7 +4665,8 @@ fn (mut p Parser) stmt() flat.NodeId {
 		}
 		.key_if {
 			if_id := p.if_stmt()
-			if token_is_infix(p.tok) || p.tok == .key_as {
+			if token_is_infix(p.tok) || p.tok in [.key_as, .dot, .lpar, .lsbr]
+				|| token_is_postfix(p.tok) || p.tok == .not {
 				expr_id := p.expr_with_lhs(if_id, .lowest)
 				if p.tok == .semicolon {
 					p.next()
@@ -6346,6 +6348,9 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 		}
 		// selector / method call
 		if p.tok == .dot {
+			if p.in_array_literal > 0 && p.spaced_dot_starts_array_enum_value(lhs) {
+				break
+			}
 			lhs = p.selector_or_method(lhs)
 			continue
 		}
@@ -6680,6 +6685,32 @@ fn (p &Parser) expr_can_continue_with_newline_call(id flat.NodeId) bool {
 		return false
 	}
 	return p.column_for_pos(p.peek_pos) > p.line_indent_for_pos(node.pos.offset)
+}
+
+fn (p &Parser) spaced_dot_starts_array_enum_value(id flat.NodeId) bool {
+	if p.tok != .dot || p.tok_pos <= p.prev_tok_end || p.tok_pos > p.s.src.len || int(id) < 0
+		|| int(id) >= p.a.nodes.len {
+		return false
+	}
+	if !p.s.src[p.tok_pos - 1].is_space() {
+		return false
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind == .enum_val {
+		return true
+	}
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	base := p.a.child_node(&node, 0)
+	type_part := if base.kind == .selector {
+		base.value
+	} else if base.kind == .ident {
+		base.value
+	} else {
+		''
+	}
+	return type_part.len > 0 && type_part[0] >= `A` && type_part[0] <= `Z`
 }
 
 fn (mut p Parser) newline_dot_starts_map_entry() bool {
@@ -7148,6 +7179,17 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	start_pos := p.current_pos()
 	op_start := p.span_start()
 	tok_id := int(p.tok)
+	if p.tok == .plus {
+		p.next()
+		operand := p.expr(.highest)
+		return p.a.add_node(flat.Node{
+			kind:           .prefix
+			op:             .plus
+			children_start: p.add_child(operand)
+			children_count: 1
+			pos:            p.span_to(op_start)
+		})
+	}
 	if tok_id == 92 {
 		val := p.lit
 		p.next()
@@ -8557,6 +8599,10 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	}
 	bracket_start := p.span_start() // start offset of the opening '['
 	p.next() // skip '['
+	p.in_array_literal++
+	defer {
+		p.in_array_literal--
+	}
 	// inferred-size fixed array literal: [..]u32[0x1, 0x2, ...]
 	if p.tok == .dotdot && p.peek() == .rsbr {
 		p.next()
@@ -8725,7 +8771,7 @@ fn (mut p Parser) array_literal() flat.NodeId {
 	// instead of merging operands; the stray tokens are then left to the
 	// (permissive) `p.check(.rsbr)` below, matching how this parser recovers
 	// from other malformed input.
-	for p.tok == .comma || p.tok == .semicolon {
+	for p.tok == .comma || p.tok == .semicolon || p.tok == .dot {
 		if p.tok == .comma {
 			p.next()
 		}

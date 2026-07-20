@@ -3528,6 +3528,9 @@ fn (g &FlatGen) expr_is_nil_value(id flat.NodeId) bool {
 		.nil_literal {
 			return true
 		}
+		.int_literal {
+			return node.value.len == 0 || node.value == '0'
+		}
 		.expr_stmt {
 			if node.children_count == 0 {
 				return false
@@ -4874,6 +4877,10 @@ fn (mut g FlatGen) gen_decl_init_expr(rhs_id flat.NodeId, rhs flat.Node, v_type 
 		}
 		return
 	}
+	if v_type is types.Pointer && rhs.kind == .ident && g.local_storage_is_shared(rhs.value) {
+		g.write('&(${g.local_cname(rhs.value)}->val)')
+		return
+	}
 	g.gen_expr_with_expected_type(rhs_id, v_type)
 }
 
@@ -5142,7 +5149,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 				continue
 			}
 			if rhs_node.kind == .array_literal {
-				lhs_type := types.unwrap_pointer(g.tc.resolve_type(lhs_id))
+				lhs_type := types.unwrap_pointer(g.usable_expr_type(lhs_id))
 				if lhs_type is types.ArrayFixed {
 					if g.gen_single_fixed_array_elem_assign_to_scalar_local(lhs, lhs_id, rhs_id,
 						lhs_type)
@@ -5696,7 +5703,18 @@ fn (g &FlatGen) noreturn_call_id(id flat.NodeId) ?flat.NodeId {
 // is_noreturn_call reports whether is noreturn call applies in c.
 fn (g &FlatGen) is_noreturn_call(id flat.NodeId) bool {
 	call_id := g.noreturn_call_id(id) or { return false }
-	return g.tc.resolved_call_never_returns(call_id)
+	if g.tc.resolved_call_name(call_id) != none {
+		return g.tc.resolved_call_never_returns(call_id)
+	}
+	call := g.a.nodes[int(call_id)]
+	if call.children_count > 0 {
+		fn_node := g.a.child_node(&call, 0)
+		if fn_node.kind == .ident && fn_node.value in ['panic', 'exit'] {
+			local_type := g.tc.cur_scope.lookup(fn_node.value) or { types.Type(types.void_) }
+			return local_type is types.Void
+		}
+	}
+	return false
 }
 
 // tmp_name supports tmp name handling for FlatGen.

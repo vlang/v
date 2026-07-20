@@ -58,6 +58,75 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'cannot initialize field `x` with `&int`; expected `int`')
 }
 
+fn test_reject_cross_wrapper_option_result_returns() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_result_value_in_option_return',
+		'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n',
+		'cannot return `!int` as `?int`')
+	run_bad(v3_bin, 'bad_result_value_in_optional_pointer_return',
+		'struct Item {}\n\nfn convert(res !Item) ?&Item {\n\treturn res\n}\n\nfn main() {}\n',
+		'cannot return `!Item` as `?&Item`')
+	run_bad(v3_bin, 'bad_option_value_in_result_pointer_return',
+		'struct Item {}\n\nfn convert(opt ?Item) !&Item {\n\treturn opt\n}\n\nfn main() {}\n',
+		'cannot return `?Item` as `&Item`')
+}
+
+fn test_optional_address_preserves_wrapper_shape() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'optional_address_wrapper_shape', 'fn take_wrapper(value &?int) {
+	_ = value
+}
+
+fn take_payload(value ?&int) {
+	_ = value
+}
+
+fn main() {
+	maybe := ?int(1)
+	take_wrapper(&maybe)
+	take_payload(&maybe?)
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
+fn test_generic_alias_substitutes_channel_element() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'generic_channel_alias_element', 'type Ch[T] = chan T
+
+fn receive(ch Ch[int]) int {
+	return <-ch
+}
+
+fn main() {
+	ch := chan int{cap: 1}
+	ch <- 42
+	println(int_str(receive(ch)))
+}
+')
+	assert out == '42'
+	run_bad(v3_bin, 'bad_generic_channel_alias_element', 'type Ch[T] = chan T
+
+fn receive(ch Ch[int]) int {
+	return <-ch
+}
+
+fn main() {
+	ch := chan string{cap: 1}
+	_ := receive(ch)
+}
+',
+		'cannot use `chan string`')
+}
+
+fn test_optional_parameters_are_required() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_omitted_optional_parameter',
+		'fn consume(value ?int) {}\n\nfn main() {\n\tconsume()\n}\n',
+		'argument count mismatch for `consume`: expected 1, got 0')
+}
+
 fn test_if_expr_pointer_and_value_branches_are_incompatible() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_if_expr_pointer_value_branch',
@@ -115,9 +184,18 @@ fn test_numeric_alias_returns_preserve_integer_float_direction() {
 	run_bad(v3_bin, 'bad_int_alias_float_return',
 		'type Id = int\n\nfn f() Id {\n\treturn 1.5\n}\n\nfn main() {}\n',
 		'cannot return `f64` as `Id`')
+	run_bad(v3_bin, 'bad_int_alias_float_variable_return',
+		'type Id = int\n\nfn f(x f64) Id {\n\treturn x\n}\n\nfn main() {}\n',
+		'cannot return `f64` as `Id`')
+	run_bad(v3_bin, 'bad_int_alias_float_expression_return',
+		'type Id = int\n\nfn f(x f64) Id {\n\treturn x + 1.0\n}\n\nfn main() {}\n',
+		'cannot return `f64` as `Id`')
 	out := run_good(v3_bin, 'good_float_alias_int_return',
 		'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n')
 	assert out == '1.0'
+	explicit_out := run_good(v3_bin, 'good_explicit_float_to_int_alias_return',
+		'type Id = int\n\nfn f(x f64) Id {\n\treturn Id(x)\n}\n\nfn main() {\n\tprintln(int_str(f(1.5)))\n}\n')
+	assert explicit_out == '1'
 }
 
 fn test_alias_with_nested_type_separator_stays_alias() {
@@ -138,6 +216,18 @@ fn test_voidptr_params_reject_non_pointer_values() {
 
 fn test_shared_receiver_and_arg_require_shared_bindings() {
 	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_mut_receiver_immutable_value',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\ts.bump()\n}\n',
+		'method `bump` requires a mutable receiver')
+	run_bad(v3_bin, 'bad_generic_mut_receiver_immutable_value',
+		'struct Box[T] {\nmut:\n\tvalue T\n}\n\nfn (mut b Box[T]) set(value T) {\n\tb.value = value\n}\n\nfn main() {\n\tb := Box[int]{\n\t\tvalue: 1\n\t}\n\tb.set(2)\n}\n',
+		'method `set` requires a mutable receiver')
+	run_bad(v3_bin, 'bad_mut_receiver_address_of_immutable_value',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\ts := St{}\n\t(&s).bump()\n}\n',
+		'method `bump` requires a mutable receiver')
+	run_bad(v3_bin, 'bad_mut_receiver_immutable_pointer_binding',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n}\n',
+		'method `bump` requires a mutable receiver')
 	run_bad(v3_bin, 'bad_shared_receiver_plain_value',
 		'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n',
 		'cannot use non-shared `St` as receiver')
@@ -150,6 +240,21 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 	out := run_good(v3_bin, 'good_shared_arg_and_receiver',
 		'struct St {}\n\nfn take(shared s St) int {\n\treturn 1\n}\n\nfn (shared s St) f() int {\n\treturn 2\n}\n\nfn main() {\n\tshared s := St{}\n\tprintln(int_str(take(s) + s.f()))\n}\n')
 	assert out == '3'
+	mut_out := run_good(v3_bin, 'good_mut_receiver_mutable_value',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\ts.bump()\n\tprintln(int_str(s.value))\n}\n')
+	assert mut_out == '1'
+	mut_address_out := run_good(v3_bin, 'good_mut_receiver_address_of_mutable_value',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\t(&s).bump()\n\tprintln(int_str(s.value))\n}\n')
+	assert mut_address_out == '1'
+	mut_pointer_out := run_good(v3_bin, 'good_mut_receiver_mutable_pointer_binding',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tmut p := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n')
+	assert mut_pointer_out == '1'
+	capture_out := run_good(v3_bin, 'good_mut_receiver_explicit_mut_capture',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tfn [mut s] () {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}()\n}\n')
+	assert capture_out == '1'
+	ptr_out := run_good(v3_bin, 'good_pointer_receiver_immutable_value',
+		'struct St {\n\tvalue int\n}\n\nfn (s &St) get() int {\n\treturn s.value\n}\n\nfn main() {\n\ts := St{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(s.get()))\n}\n')
+	assert ptr_out == '2'
 }
 
 fn test_restrict_synthetic_hex_fallback_receivers() {
@@ -304,6 +409,18 @@ fn test_reject_unsmartcasted_unique_sum_variant_field() {
 fn test_generic_functions_report_missing_return() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_called_generic_missing_return',
+		'fn f[T]() int {\n}\nfn main() {\n\t_ := f[int]()\n}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_generic_comptime_branch_missing_return',
+		'fn f[T]() int {\n\t$if T is int {\n\t\treturn 1\n\t}\n}\nfn main() {\n\t_ := f[string]()\n}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_generic_option_propagation_missing_return',
+		'fn f[T](value ?T) ?T {\n\tvalue?\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_generic_result_propagation_missing_return',
+		'fn f[T](value !T) !T {\n\tvalue!\n}\nfn main() {}\n',
 		'missing return at end of function `f`')
 }
 

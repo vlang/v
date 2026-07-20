@@ -514,7 +514,7 @@ fn (mut t Transformer) lower_map_or_body_to_stmts(body_id flat.NodeId, target_na
 		return result
 	}
 	saved_var_types := t.var_types.clone()
-	t.set_var_type('err', 'IError')
+	t.set_implicit_err_var_type()
 	err_value := if int(err_expr) >= 0 {
 		err_expr
 	} else {

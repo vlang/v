@@ -1102,6 +1102,9 @@ fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
 	nested_if_tail := run_good(v3_bin, 'good_nested_if_tail_decl_assign',
 		'fn main() {\n\tc := true\n\td := false\n\ta, b := if c {\n\t\tif d {\n\t\t\t1\n\t\t\t2\n\t\t} else {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n')
 	assert nested_if_tail == '7'
+	run_bad(v3_bin, 'bad_nested_mixed_tuple_tail_branch_type',
+		"fn pair() (int, string) {\n\treturn 1, 'pair'\n}\nfn main() {\n\touter := false\n\tinner := false\n\ta, b := if outer {\n\t\tpair()\n\t} else {\n\t\tif inner {\n\t\t\t1\n\t\t\t'a'\n\t\t} else {\n\t\t\ttrue\n\t\t\t'b'\n\t\t}\n\t}\n\tprintln(int_str(a) + b)\n}\n",
+		'multi-return assignment mismatch')
 	prefixed_block_tail := run_good(v3_bin, 'good_prefixed_nested_block_tail_decl_assign',
 		"fn main() {\n\tc := true\n\ta, b := if c {\n\t\t{\n\t\t\tprintln('side')\n\t\t\t1\n\t\t\t2\n\t\t}\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n")
 	assert prefixed_block_tail == 'side\n3'
