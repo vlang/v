@@ -5756,7 +5756,7 @@ fn (mut g FlatGen) gen_channel_send_or(channel_id flat.NodeId, channel_type type
 	channel_ct := g.tc.c_type(channel_type)
 	elem_ct := g.value_c_type(channel_type.elem_type)
 	g.write('({${channel_ct} ${channel_tmp} = ')
-	g.gen_expr(channel_id)
+	g.gen_channel_try_receiver(channel_id)
 	if fixed := array_fixed_type(channel_type.elem_type) {
 		src := g.fixed_array_copy_source_string(value_id, types.Type(fixed))
 		g.write('; ${elem_ct} ${value_tmp}; memmove(${value_tmp}, ${src}, sizeof(${value_tmp}))')

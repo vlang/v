@@ -132,6 +132,13 @@ fn test_pointer_channel_try_call_derefs_receiver() {
 	assert c_source.contains('sync__Channel__try_pop(*(ch),'), 'try_pop on pointer channel receiver does not dereference the channel handle'
 }
 
+fn test_pointer_channel_send_or_derefs_receiver() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'pointer_channel_send_or_receiver',
+		'fn send(mut ch chan int) bool {\n\tch <- 7 or { return false }\n\treturn true\n}\n\nfn main() {\n\tmut ch := chan int{cap: 1}\n\tprintln(send(mut ch))\n\tprintln(int_str(<-ch))\n}\n')
+	assert out == 'true\n7'
+}
+
 fn test_channel_send_or_preserves_optional_result_and_fixed_array_storage() {
 	v3_bin := build_v3_or_review()
 	out := or_review_run(v3_bin, 'channel_send_or_storage',

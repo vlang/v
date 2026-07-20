@@ -8752,21 +8752,24 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_expected_enum
 				return
 			}
-			if node.op == .arrow && lhs_type is types.Channel {
-				rhs_node := g.a.nodes[int(rhs_id)]
-				if rhs_node.kind == .or_expr && rhs_node.children_count >= 2 {
-					g.gen_channel_send_or(lhs_id, lhs_type, rhs_node)
+			if node.op == .arrow {
+				channel_type := concrete_receiver_type(lhs_type)
+				if channel_type is types.Channel {
+					rhs_node := g.a.nodes[int(rhs_id)]
+					if rhs_node.kind == .or_expr && rhs_node.children_count >= 2 {
+						g.gen_channel_send_or(lhs_id, channel_type, rhs_node)
+						g.expected_enum = old_expected_enum
+						return
+					}
+					elem_ct := g.tc.c_type(channel_type.elem_type)
+					g.write('sync__Channel__push(')
+					g.gen_channel_try_receiver(lhs_id)
+					g.write(', &(${elem_ct}[]){')
+					g.gen_expr_with_expected_type(rhs_id, channel_type.elem_type)
+					g.write('})')
 					g.expected_enum = old_expected_enum
 					return
 				}
-				elem_ct := g.tc.c_type(lhs_type.elem_type)
-				g.write('sync__Channel__push(')
-				g.gen_expr(lhs_id)
-				g.write(', &(${elem_ct}[]){')
-				g.gen_expr_with_expected_type(rhs_id, lhs_type.elem_type)
-				g.write('})')
-				g.expected_enum = old_expected_enum
-				return
 			}
 			if g.gen_array_infix_eq(node, lhs_id, rhs_id, lhs_type, rhs_type) {
 				g.expected_enum = old_expected_enum
