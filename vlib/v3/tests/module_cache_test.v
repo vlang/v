@@ -482,6 +482,19 @@ fn test_module_cache_declaration_header_keeps_directives_inside_static_inline_fu
 	assert header.contains('#else\n\treturn malloc(16);\n#endif\n}')
 }
 
+fn test_module_cache_declaration_header_keeps_directives_inside_type_blocks() {
+	prefix := 'typedef struct CachedConditional {
+#ifdef CACHED_WIDE_FIELD
+	long value;
+#else
+	int value;
+#endif
+} CachedConditional;
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.contains(prefix), header
+}
+
 fn test_stateful_native_module_is_cached_with_its_owner() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_stateful_native_${os.getpid()}')
@@ -2947,4 +2960,31 @@ fn main() {
 	assert second.exit_code == 0, second.output
 	assert !second.output.contains('cgen (incremental)'), second.output
 	assert run_module_cache_binary(second_output) == 'called'
+}
+
+fn test_incremental_program_cache_invalidates_for_top_level_statement_change() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_top_level_stmt_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'println(1)\n')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '1'
+
+	write_module_cache_file(root, 'main.v', 'println(2)\n')
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == '2'
 }

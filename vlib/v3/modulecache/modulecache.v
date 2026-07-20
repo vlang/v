@@ -1340,7 +1340,7 @@ fn c_declaration_header(prefix string) (string, bool) {
 			continue
 		}
 		if !in_block_comment && trimmed.starts_with('#') {
-			if brace_depth > 0 && is_function_block {
+			if brace_depth > 0 {
 				item.write_string(line)
 				in_preprocessor_directive = c_preprocessor_line_continues(raw_line)
 				preprocessor_in_item = in_preprocessor_directive

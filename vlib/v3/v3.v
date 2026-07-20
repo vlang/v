@@ -1667,7 +1667,12 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 						flat.NodeId(idx))}'
 				}
 			}
-			else {}
+			else {
+				if top_level_nodes[idx] {
+					declaration_parts << 'synthetic-main\t${node.kind}\t${cur_file}\t${cur_module}\t${incremental_node_tree_signature(a,
+						flat.NodeId(idx))}'
+				}
+			}
 		}
 	}
 	declaration_parts.sort()
