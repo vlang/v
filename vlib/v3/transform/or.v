@@ -1752,10 +1752,17 @@ fn (mut t Transformer) optional_source_value_expr(source_id flat.NodeId, expr fl
 		return expr
 	}
 	source := t.a.nodes[int(source_id)]
-	if source.kind != .ident {
-		return expr
+	raw_type := match source.kind {
+		.ident {
+			t.raw_var_type(source.value)
+		}
+		.selector {
+			t.raw_selector_field_type(source_id) or { return expr }
+		}
+		else {
+			return expr
+		}
 	}
-	raw_type := t.raw_var_type(source.value)
 	if !raw_type.starts_with('&') || !t.is_optional_type_name(raw_type[1..]) {
 		return expr
 	}

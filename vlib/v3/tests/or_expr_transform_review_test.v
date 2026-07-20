@@ -159,3 +159,10 @@ fn test_channel_send_or_binds_error_during_fallback_transform() {
 		'fn main() {\n\terr := 7\n\tch := chan int{cap: 1}\n\tch.close()\n\tch <- 1 or {\n\t\tprintln("\${err}")\n\t}\n\tprintln(int_str(err))\n}\n')
 	assert out == 'channel closed\n7'
 }
+
+fn test_optional_pointer_selector_or_dereferences_wrapper() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'optional_pointer_selector_or',
+		'struct Holder {\n\tfield &?int\n}\n\nfn holder(field &?int) Holder {\n\treturn Holder{\n\t\tfield: field\n\t}\n}\n\nfn main() {\n\tpresent := ?int(7)\n\tpresent_holder := holder(&present)\n\tpresent_holder.field or { println("unexpected") }\n\tprintln("present")\n\n\tmissing := ?int(none)\n\tmissing_holder := holder(&missing)\n\tmissing_holder.field or { println("missing") }\n}\n')
+	assert out == 'present\nmissing'
+}
