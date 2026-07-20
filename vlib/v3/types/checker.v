@@ -12220,7 +12220,7 @@ fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type,
 	if tc.expr_compatible(expr_id, actual, expected) {
 		return true
 	}
-	if tc.return_numeric_alias_compatible(actual, expected) {
+	if return_numeric_alias_compatible(actual, expected) {
 		return true
 	}
 	if tc.pointer_value_compatible(actual, expected) {
@@ -12348,16 +12348,18 @@ fn bare_type_names_match(actual string, expected string) bool {
 	return actual == expected
 }
 
-fn (tc &TypeChecker) return_numeric_alias_compatible(actual Type, expected Type) bool {
+fn return_numeric_alias_compatible(actual Type, expected Type) bool {
 	if expected is Alias {
-		return type_is_numeric(expected.base_type) && type_is_numeric(actual)
+		clean_actual := if actual is Alias { actual.base_type } else { actual }
+		clean_expected := expected.base_type
+		if clean_expected.is_float() {
+			return clean_actual.is_integer() || clean_actual.is_float()
+		}
+		if clean_expected.is_integer() {
+			return clean_actual.is_integer()
+		}
 	}
 	return false
-}
-
-fn type_is_numeric(typ Type) bool {
-	clean := if typ is Alias { typ.base_type } else { typ }
-	return clean.is_integer() || clean.is_float()
 }
 
 fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {

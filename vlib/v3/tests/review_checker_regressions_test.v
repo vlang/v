@@ -115,9 +115,18 @@ fn test_numeric_alias_returns_preserve_integer_float_direction() {
 	run_bad(v3_bin, 'bad_int_alias_float_return',
 		'type Id = int\n\nfn f() Id {\n\treturn 1.5\n}\n\nfn main() {}\n',
 		'cannot return `f64` as `Id`')
+	run_bad(v3_bin, 'bad_int_alias_float_variable_return',
+		'type Id = int\n\nfn f(x f64) Id {\n\treturn x\n}\n\nfn main() {}\n',
+		'cannot return `f64` as `Id`')
+	run_bad(v3_bin, 'bad_int_alias_float_expression_return',
+		'type Id = int\n\nfn f(x f64) Id {\n\treturn x + 1.0\n}\n\nfn main() {}\n',
+		'cannot return `f64` as `Id`')
 	out := run_good(v3_bin, 'good_float_alias_int_return',
 		'type Amount = f64\n\nfn f() Amount {\n\treturn 1\n}\n\nfn main() {\n\tprintln(f().str())\n}\n')
 	assert out == '1.0'
+	explicit_out := run_good(v3_bin, 'good_explicit_float_to_int_alias_return',
+		'type Id = int\n\nfn f(x f64) Id {\n\treturn Id(x)\n}\n\nfn main() {\n\tprintln(int_str(f(1.5)))\n}\n')
+	assert explicit_out == '1'
 }
 
 fn test_alias_with_nested_type_separator_stays_alias() {

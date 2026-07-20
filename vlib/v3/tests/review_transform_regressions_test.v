@@ -1293,6 +1293,13 @@ fn test_optional_nested_array_equality_guards_payload_work() {
 	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
 }
 
+fn test_optional_variant_to_optional_sum_cast_preserves_wrapper() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_variant_to_optional_sum_cast',
+		"struct Cat {}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\nfn maybe_dog(ok bool) ?Dog {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn Dog{\n\t\tname: 'Rex'\n\t}\n}\n\nfn show(ok bool) string {\n\tmaybe_animal := ?Animal(maybe_dog(ok))\n\tanimal := maybe_animal or { return 'missing' }\n\tif animal is Dog {\n\t\treturn animal.name\n\t}\n\treturn 'cat'\n}\n\nfn main() {\n\tprintln(show(true))\n\tprintln(show(false))\n}\n")
+	assert out == 'Rex\nmissing'
+}
+
 fn test_wrapped_plus_minus_continuations_consume_auto_semicolon() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'wrapped_plus_minus_continuation',

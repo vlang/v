@@ -7657,6 +7657,24 @@ fn (t &Transformer) pointer_value_assign_rhs_matches(lhs_value_type_raw string, 
 }
 
 // transform_expr_for_type transforms transform expr for type data for transform.
+fn (t &Transformer) optional_conversion_source_type(id flat.NodeId) string {
+	mut source_type := t.node_type(id)
+	original_source_type := t.original_expr_type(id)
+	if t.is_optional_type_name(source_type) && !t.is_optional_type_name(original_source_type)
+		&& original_source_type.len > 0 && original_source_type != 'unknown' {
+		return original_source_type
+	}
+	if source_type.len == 0 || source_type == 'unknown' || t.generic_arg_is_unresolved(source_type) {
+		checker_source_type := t.raw_checker_node_type(id)
+		if checker_source_type.len > 0 && checker_source_type != 'unknown'
+			&& !t.generic_arg_is_unresolved(checker_source_type) {
+			return checker_source_type
+		}
+		source_type = t.resolve_expr_type(id)
+	}
+	return source_type
+}
+
 fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type string) flat.NodeId {
 	old_expected_node := t.expected_expr_node
 	old_expected_type := t.expected_expr_type
@@ -7733,9 +7751,10 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 				}
 			}
 			target_payload := t.optional_base_type(optional_target)
-			mut source_type := t.node_type(id)
-			if source_type.len == 0 {
-				source_type = t.resolve_expr_type(id)
+			source_type := t.optional_conversion_source_type(id)
+			if t.is_optional_type_name(source_type)
+				&& t.qualify_optional_type(source_type) == optional_target {
+				return t.transform_expr(id)
 			}
 			if !t.is_optional_type_name(source_type) && t.is_interface_type(target_payload) {
 				share_source := t.interface_target_should_share_source(id, target_payload)
@@ -7747,10 +7766,18 @@ fn (mut t Transformer) transform_expr_for_type(id flat.NodeId, target_type strin
 				value := t.transform_expr_for_type(id, target_payload)
 				return t.make_optional_some(value, optional_target)
 			}
-			if t.is_optional_type_name(source_type) && t.is_sum_type_name(target_payload)
-				&& t.sum_target_accepts_variant_type(target_payload, source_type) {
-				value := t.wrap_sum_value(id, target_payload)
-				return t.make_optional_some(value, optional_target)
+			if t.is_optional_type_name(source_type) && t.is_sum_type_name(target_payload) {
+				if t.sum_target_accepts_variant_type(target_payload, source_type) {
+					value := t.wrap_sum_value(id, target_payload)
+					return t.make_optional_some(value, optional_target)
+				}
+				if t.sum_target_accepts_variant_type(target_payload,
+					t.optional_base_type(source_type))
+				{
+					if value := t.transform_optional_value_to_sum(id, source_type, optional_target) {
+						return value
+					}
+				}
 			}
 			if t.is_optional_type_name(source_type) && target_payload.starts_with('&')
 				&& !t.optional_base_type(source_type).starts_with('&') {
@@ -12594,7 +12621,11 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
 		mut child_type := t.node_type(child_id)
-		if child_type.len == 0 {
+		original_child_type := t.original_expr_type(child_id)
+		if t.is_optional_type_name(child_type) && !t.is_optional_type_name(original_child_type)
+			&& original_child_type.len > 0 && original_child_type != 'unknown' {
+			child_type = original_child_type
+		} else if child_type.len == 0 {
 			child_type = t.resolve_expr_type(child_id)
 		}
 		if child.kind == .struct_init && t.is_optional_type_name(child.value) {
@@ -12891,6 +12922,33 @@ fn (mut t Transformer) transform_optional_value_to_pointer(source_id flat.NodeId
 	t.pending_stmts << t.make_if(ok, t.make_block(arr1(assign)), t.make_empty())
 	result := t.make_ident(result_name)
 	t.set_node_typ(int(result), target_type)
+	return result
+}
+
+fn (mut t Transformer) transform_optional_value_to_sum(source_id flat.NodeId, source_type string, target_type string) ?flat.NodeId {
+	source_optional := t.qualify_optional_type(source_type)
+	target_optional := t.qualify_optional_type(target_type)
+	source_payload := t.optional_base_type(source_optional)
+	target_payload := t.optional_base_type(target_optional)
+	if !t.is_sum_type_name(target_payload)
+		|| !t.sum_target_accepts_variant_type(target_payload, source_payload) {
+		return none
+	}
+	source0 := t.transform_expr(source_id)
+	source := t.optional_source_value_expr(source_id, source0, source_optional)
+	source_value := t.stable_transformed_expr_for_reuse(source, source_optional, 'opt_sum')
+	result_name := t.new_temp('opt_sum_result')
+	err := t.make_selector(source_value, 'err', 'IError')
+	initial := t.make_optional_none_with_err(target_optional, err)
+	t.pending_stmts << t.make_decl_assign_typed(result_name, initial, target_optional)
+	payload := t.make_selector(source_value, 'value', source_payload)
+	sum_value := t.wrap_sum_value(payload, target_payload)
+	some := t.make_optional_some(sum_value, target_optional)
+	assign := t.make_assign(t.make_ident(result_name), some)
+	ok := t.make_selector(source_value, 'ok', 'bool')
+	t.pending_stmts << t.make_if(ok, t.make_block(arr1(assign)), t.make_empty())
+	result := t.make_ident(result_name)
+	t.set_node_typ(int(result), target_optional)
 	return result
 }
 
@@ -13318,11 +13376,11 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		if child.kind == .none_expr {
 			return t.make_optional_none(optional_target)
 		}
-		if t.is_sum_type_name(payload_type) {
+		child_type := t.optional_conversion_source_type(child_id)
+		if t.is_sum_type_name(payload_type) && !t.is_optional_type_name(child_type) {
 			value := t.wrap_sum_value(child_id, payload_type)
 			return t.make_optional_some(value, optional_target)
 		}
-		child_type := t.node_type(child_id)
 		expr := if t.is_optional_type_name(child_type) {
 			t.transform_expr_for_type(child_id, node.value)
 		} else {
