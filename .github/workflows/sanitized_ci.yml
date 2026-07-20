@@ -78,6 +78,14 @@ concurrency:
   group: sanitized-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+env:
+  SANITIZER_BASE_PACKAGES: >-
+    postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
+  SANITIZER_GRAPHICS_PACKAGES: >-
+    libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev
+    libasound2-dev libegl-dev
+  SANITIZER_CLANG_PACKAGES: clang
+
 jobs:
   sanitize-undefined-clang:
     runs-on: ubuntu-22.04
@@ -103,9 +111,9 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
-          ./v retry -- sudo apt install clang
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
@@ -139,8 +147,8 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=undefined)
@@ -175,9 +183,9 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
-          ./v retry -- sudo apt install clang
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
@@ -243,9 +251,9 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
-          ./v retry -- sudo apt install clang
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
@@ -280,9 +288,9 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
-          ./v retry -- sudo apt install clang
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with clang and -cstrict
         run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=memory)
@@ -307,9 +315,9 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
-          ./v retry -- sudo apt install clang
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with clang and -cstrict
         run: ./v -cc clang -cg -cstrict -o v cmd/v
       - name: Test vlib/v/tests/ (V compiled with -fsanitize=memory)
@@ -344,9 +352,9 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           ./v retry -- sudo apt update
-          ./v retry -- sudo apt install --quiet -y postgresql libpq-dev libssl-dev sqlite3 libsqlite3-dev valgrind
-          ./v retry -- sudo apt install --quiet -y libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev libegl-dev
-          ./v retry -- sudo apt install clang
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
+          ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
+          ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
       - name: Recompile V with -cstrict
         run: ./v -cg -cstrict -o v cmd/v
       - name: Self tests (-fsanitize=address)
