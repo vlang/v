@@ -75,6 +75,26 @@ fn main() {
 }
 ')
 	assert optional_out == '29'
+	result_out := pointer_voidptr_run_good(v3_bin, 'bare_result_pointer_return', 'struct Item {
+	value int
+}
+
+fn make() !&Item {
+	item := Item{
+		value: 31
+	}
+	defer {
+		_ := 0
+	}
+	return item
+}
+
+fn main() {
+	item := make() or { return }
+	println(int_str(item.value))
+}
+')
+	assert result_out == '31'
 	pointer_voidptr_run_bad(v3_bin, 'bare_interface_pointer_return', 'interface Reader {
 	read() int
 }

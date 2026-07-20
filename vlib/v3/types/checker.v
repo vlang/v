@@ -12154,6 +12154,10 @@ fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type,
 		if tc.pointer_value_compatible(actual, expected.base_type) {
 			return true
 		}
+		if expected.base_type is Pointer
+			&& tc.bare_value_pointer_return_compatible(expr_id, actual, expected.base_type.base_type) {
+			return true
+		}
 		if is_ierror_type(actual) || tc.type_embeds_error(actual) {
 			return true
 		}
@@ -12421,11 +12425,19 @@ fn (mut tc TypeChecker) invalid_ierror_return_expr_type_name(id flat.NodeId, exp
 	if tc.pointer_value_compatible(raw_type, expected.base_type) {
 		return none
 	}
+	if expected.base_type is Pointer
+		&& tc.bare_value_pointer_return_compatible(id, raw_type, expected.base_type.base_type) {
+		return none
+	}
 	payload_type := tc.resolve_expr(id, expected.base_type)
 	if tc.type_compatible(payload_type, expected.base_type) {
 		return none
 	}
 	if tc.pointer_value_compatible(payload_type, expected.base_type) {
+		return none
+	}
+	if expected.base_type is Pointer
+		&& tc.bare_value_pointer_return_compatible(id, payload_type, expected.base_type.base_type) {
 		return none
 	}
 	match node.kind {
