@@ -234,9 +234,9 @@ jobs:
 
           ./v.exe -cc gcc -o "$runner" "$runner_source"
           ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp \
-            -o gg_multiwindow_gcc.exe examples/gg/multiwindow.v
+            -subsystem console -o gg_multiwindow_gcc.exe examples/gg/multiwindow.v
           ./v.exe -cc gcc -d gg_multiwindow -d sokol_d3d11 -d gg_multiwindow_d3d11_warp \
-            -o gg_multiwindow_render_runtime_gcc.exe examples/gg/multiwindow_render_runtime.v
+            -subsystem console -o gg_multiwindow_render_runtime_gcc.exe examples/gg/multiwindow_render_runtime.v
 
           tests=(
             vlib/x/multiwindow/event_sequence_exhaustion_test.v

@@ -1,3 +1,5 @@
+// vtest build: !musl?
+
 module gfx
 
 import os
