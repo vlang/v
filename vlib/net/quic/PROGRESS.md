@@ -180,13 +180,38 @@ The largest, highest-risk phase. Sub-phases, in build order:
         checks already cover the practical case), second-HRR rejection,
         and cross-checking EncryptedExtensions against what was actually
         sent rather than only the unconditionally-wrong early_data case.
-  - [ ] Certificate / CertificateVerify parsing. Use mbedTLS's
-        `mbedtls_pk_verify_ext` for CertificateVerify validation (reserve
-        the OpenSSL P-256 binding for ECDHE only) — **confirm during
+  - [x] Certificate / CertificateVerify message parsing
+        (`tls13_certificate.v`) — `parse_certificate` (RFC 8446 §4.4.2:
+        certificate_request_context + a non-empty chain of
+        CertificateEntry, each a non-empty DER cert_data plus its own
+        per-entry extensions; v1 is client-only so "must always be
+        non-empty" is enforced unconditionally, not deferred to a
+        caller-supplied role), `parse_certificate_verify` (RFC 8446
+        §4.4.3: algorithm validated against the exact fixed set v1 itself
+        offers — a state-free check since that set never varies per
+        connection — + signature bytes), and
+        `certificate_verify_signed_content` (RFC 8446 §4.4.3's exact
+        64-byte-pad + context-string + separator + transcript-hash
+        construction, verified byte-for-byte against the RFC's own worked
+        example). `/vreview` caught and fixed an over-strict check: this
+        file initially rejected a zero-length `signature`, but RFC 8446
+        §4.4.3 declares `opaque signature<0..2^16-1>` — zero is
+        syntactically legal, unlike `cert_data<1..2^24-1>` and
+        `key_exchange<1..2^16-1>` (real minimums of 1, correctly enforced
+        elsewhere). No real implementation ever sends an empty signature,
+        so this wasn't an active interop break, but it was inconsistent
+        with the file's own exact-RFC-fidelity approach — removed, and
+        the test now asserts acceptance at that boundary instead.
+        **Not yet built** (the actual crypto integration, deliberately
+        split out as its own next step): mbedTLS X.509 chain validation
+        of the parsed `certificate_list`, and `mbedtls_pk_verify_ext`-based
+        CertificateVerify signature verification — **confirm during
         implementation whether mbedTLS's PSS salt-length handling matches
         `rsae` semantics**; if not, fall back to the `rsa_pss` module for
         that one signature scheme. `CertificateRequest` rejected with a
-        clear error (no client-cert auth in v1).
+        clear error (no client-cert auth in v1) — not yet implemented,
+        belongs with the state machine below since it's about *reacting*
+        to a message type, not parsing one we've decided to accept.
   - [ ] Client state machine (`tls13_handshake.v`) wiring the above together
         with transcript accumulation, including second-HelloRetryRequest
         rejection and the TLS-alert-to-QUIC-CONNECTION_CLOSE mapping
