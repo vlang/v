@@ -26457,21 +26457,24 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 						}
 					}
 				}
+				if child.kind == .or_expr && child.value in ['?', '!'] && child.children_count > 0 {
+					source := tc.resolve_type(tc.a.child(&child, 0))
+					if source is OptionType {
+						return Type(OptionType{
+							base_type: Type(Pointer{
+								base_type: source.base_type
+							})
+						})
+					}
+					if source is ResultType {
+						return Type(ResultType{
+							base_type: Type(Pointer{
+								base_type: source.base_type
+							})
+						})
+					}
+				}
 				inner := tc.resolve_type(child_id)
-				if inner is OptionType {
-					return Type(OptionType{
-						base_type: Type(Pointer{
-							base_type: inner.base_type
-						})
-					})
-				}
-				if inner is ResultType {
-					return Type(ResultType{
-						base_type: Type(Pointer{
-							base_type: inner.base_type
-						})
-					})
-				}
 				return Type(Pointer{
 					base_type: inner
 				})

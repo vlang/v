@@ -71,6 +71,26 @@ fn test_reject_cross_wrapper_option_result_returns() {
 		'cannot return `?Item` as `&Item`')
 }
 
+fn test_optional_address_preserves_wrapper_shape() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'optional_address_wrapper_shape', 'fn take_wrapper(value &?int) {
+	_ = value
+}
+
+fn take_payload(value ?&int) {
+	_ = value
+}
+
+fn main() {
+	maybe := ?int(1)
+	take_wrapper(&maybe)
+	take_payload(&maybe?)
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
 fn test_optional_parameters_are_required() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_omitted_optional_parameter',
