@@ -5852,6 +5852,68 @@ fn (mut t Transformer) rewrite_spawn_fn_value_alias(id flat.NodeId, node flat.No
 	})
 }
 
+fn (t &Transformer) pointer_optional_unwrap_lvalue_type(id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .prefix || node.op != .mul || node.children_count == 0 {
+		return none
+	}
+	or_id := t.a.child(&node, 0)
+	or_node := t.a.nodes[int(or_id)]
+	if or_node.kind != .or_expr || or_node.value !in ['?', '!'] || or_node.children_count < 2 {
+		return none
+	}
+	source_id := t.a.child(&or_node, 0)
+	mut source_type := t.raw_expr_type_without_smartcast(source_id)
+	if source_type.len == 0 {
+		source_type = t.original_expr_type(source_id)
+	}
+	if !source_type.starts_with('&') || !t.is_optional_type_name(source_type[1..]) {
+		return none
+	}
+	value_type := t.optional_base_type(t.qualify_optional_type(source_type[1..]))
+	if value_type.len == 0 || value_type == 'void' {
+		return none
+	}
+	return value_type
+}
+
+fn (mut t Transformer) transform_pointer_optional_unwrap_lvalue(id flat.NodeId) ?flat.NodeId {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return none
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind != .or_expr || node.value !in ['?', '!'] || node.children_count < 2 {
+		return none
+	}
+	source_id := t.a.child(&node, 0)
+	mut source_type := t.raw_expr_type_without_smartcast(source_id)
+	if source_type.len == 0 {
+		source_type = t.original_expr_type(source_id)
+	}
+	if !source_type.starts_with('&') || !t.is_optional_type_name(source_type[1..]) {
+		return none
+	}
+	optional_type := t.qualify_optional_type(source_type[1..])
+	value_type := t.optional_base_type(optional_type)
+	if value_type.len == 0 || value_type == 'void' {
+		return none
+	}
+	source := t.stable_transformed_expr_for_reuse(t.transform_expr(source_id), source_type,
+		'opt_lvalue')
+	wrapper := t.make_prefix(.mul, source)
+	t.set_node_typ(int(wrapper), optional_type)
+	err_expr := t.make_selector(wrapper, 'err', 'IError')
+	not_ok := t.make_prefix(.not, t.make_selector(wrapper, 'ok', 'bool'))
+	body_id := t.a.child(&node, 1)
+	else_block := t.make_block(t.lower_or_body_to_stmts_with_err_expr(body_id, '', '', node.value,
+		err_expr))
+	t.pending_stmts << t.make_if(not_ok, else_block, t.make_empty())
+	return t.make_selector(wrapper, 'value', value_type)
+}
+
 // transform_lvalue transforms transform lvalue data for transform.
 pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 	if int(id) < 0 {
@@ -5931,7 +5993,15 @@ pub fn (mut t Transformer) transform_lvalue(id flat.NodeId) flat.NodeId {
 		}
 		.prefix {
 			if node.op == .mul && node.children_count > 0 {
-				child := t.transform_expr(t.a.child(&node, 0))
+				child_id := t.a.child(&node, 0)
+				if value := t.transform_pointer_optional_unwrap_lvalue(child_id) {
+					return value
+				}
+				child := t.transform_expr(child_id)
+				child_type := t.node_type(child)
+				if child_type.len > 0 && !child_type.starts_with('&') {
+					return child
+				}
 				start := t.a.children.len
 				t.a.children << child
 				return t.a.add_node(flat.Node{
@@ -6675,6 +6745,9 @@ fn (mut t Transformer) transform_assign_stmt(id flat.NodeId, node flat.Node) []f
 			}
 			if lhs_type.len == 0 {
 				lhs_type = t.lvalue_type(lhs_id)
+			}
+			if value_type := t.pointer_optional_unwrap_lvalue_type(lhs_id) {
+				lhs_type = value_type
 			}
 			// A value local moved to the heap (its type became `&T`) is assigned by storing a
 			// value through the pointer (cgen emits `*v = ...`), so coerce the RHS to the value
@@ -12631,6 +12704,16 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 		if child_type.len == 0 {
 			child_type = t.original_expr_type(child_id)
 		}
+		if child.kind == .or_expr {
+			value := t.transform_expr(child_id)
+			value_type := t.node_type(value)
+			if !value_type.starts_with('&') {
+				return value
+			}
+			result := t.make_prefix(.mul, value)
+			t.set_node_typ(int(result), value_type[1..])
+			return result
+		}
 		if child.kind != .cast_expr && child_type.len > 0 && !child_type.starts_with('&') {
 			return t.transform_expr(child_id)
 		}
@@ -12884,10 +12967,10 @@ fn (mut t Transformer) transform_amp_optional_value(node flat.Node, child_id fla
 	}
 	target_type := if node.typ.len > 0 {
 		t.qualify_optional_type(node.typ)
-	} else if source_type.starts_with('!') {
-		'!&${payload_type}'
+	} else if child.kind == .struct_init {
+		'${source_type[..1]}&${payload_type}'
 	} else {
-		'?&${payload_type}'
+		return none
 	}
 	if !t.is_optional_type_name(target_type) || !t.optional_base_type(target_type).starts_with('&') {
 		return none

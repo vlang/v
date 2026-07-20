@@ -1300,6 +1300,13 @@ fn test_optional_assignment_invalidates_payload_smartcast() {
 	assert out == '42'
 }
 
+fn test_unannotated_optional_address_preserves_wrapper() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'unannotated_optional_wrapper_address',
+		'fn main() {\n\tmut maybe := ?int(7)\n\twrapper := &maybe\n\tprintln(typeof(wrapper).name)\n\t*wrapper = none\n\tvalue := maybe or { 42 }\n\tprintln(int_str(value))\n}\n')
+	assert out == '&?int\n42'
+}
+
 fn test_optional_variant_to_optional_sum_cast_preserves_wrapper() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_variant_to_optional_sum_cast',
