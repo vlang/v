@@ -2092,6 +2092,18 @@ fn main() {
 	b.metric_items('parsed .vh files', p.parsed_v_header_files, 'files', '.vh files',
 		p.parsed_v_header_file_paths)
 	b.metric_items('parsed .v files', p.parsed_v_files, 'files', '.v files', p.parsed_v_file_paths)
+	mut parsed_v_lines := 0
+	for path in p.parsed_v_file_paths {
+		source := os.read_file(path) or { continue }
+		if source.len == 0 {
+			continue
+		}
+		parsed_v_lines += source.count('\n')
+		if source[source.len - 1] != `\n` {
+			parsed_v_lines++
+		}
+	}
+	println('    ${'parsed .v lines':-28s} ${parsed_v_lines} lines')
 	b.metric('AST nodes after parse', a.nodes.len, 'nodes')
 	b.metric('AST children after parse', a.children.len, 'edges')
 	b.metric('canonical AST texts', a.text_count(), 'texts')

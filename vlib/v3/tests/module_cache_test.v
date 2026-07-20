@@ -546,6 +546,12 @@ fn main() {
 	v_files := v_file_lines[0].all_after(':').trim_space().split(' ')
 	assert v_files.len == v_fields[3].int(), second.output
 	assert v_files == [main_file], second.output
+	v_source := os.read_file(main_file) or { panic(err) }
+	expected_v_lines := v_source.count('\n') + if v_source.ends_with('\n') { 0 } else { 1 }
+	parsed_v_line_metrics := second.output.split_into_lines().filter(it.contains('parsed .v lines'))
+	assert parsed_v_line_metrics.len == 1, second.output
+	line_fields := parsed_v_line_metrics[0].fields()
+	assert line_fields.len >= 5 && line_fields[3].int() == expected_v_lines, second.output
 }
 
 fn test_cold_module_cache_prints_reuse_hint_only_once() {
