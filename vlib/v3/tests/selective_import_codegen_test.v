@@ -962,6 +962,31 @@ fn main() {
 	assert !generated.contains('unknown__from'), generated
 }
 
+fn test_module_qualified_enum_from_uses_imported_type() {
+	v3_bin := selective_import_build_v3()
+	output, generated := selective_import_compile_run_with_extra(v3_bin, 'qualified_enum_from', 'module main
+
+import colors
+
+fn main() {
+	numeric := colors.Color.from(1) or { panic(err) }
+	println(numeric)
+	text := colors.Color.from("red") or { panic(err) }
+	println(text)
+}
+', {
+		'colors/colors.v': 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+'
+	})
+	assert output == 'blue\nred'
+	assert !generated.contains('unknown__from'), generated
+}
+
 fn test_selective_imported_enum_alias_from_string() {
 	v3_bin := selective_import_build_v3()
 	output, generated := selective_import_compile_run_with_extra(v3_bin, 'enum_alias_from_string', 'module main

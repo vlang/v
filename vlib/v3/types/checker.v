@@ -13256,21 +13256,7 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 				if fn_node.value == 'from' {
 					enum_name := tc.resolve_enum_name(base_node.value) or { '' }
 					if enum_name.len > 0 {
-						return CallInfo{
-							name: ''
-							// Enum.from accepts one of two type families. The marker is validated
-							// after resolving the argument in check_call_arg_types.
-							params:       tarr1(Type(Unknown{
-								reason: 'enum from input'
-							}))
-							return_type:  Type(OptionType{
-								base_type: Type(Enum{
-									name:    enum_name
-									is_flag: enum_name in tc.flag_enums
-								})
-							})
-							params_known: true
-						}
+						return tc.enum_from_call_info(enum_name)
 					}
 				}
 			}
@@ -13303,6 +13289,11 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 							})
 							params_known: true
 						}
+					}
+				}
+				if fn_node.value == 'from' {
+					if enum_name := tc.resolve_enum_name('${mod_name}.${base_node.value}') {
+						return tc.enum_from_call_info(enum_name)
 					}
 				}
 			}
@@ -14100,6 +14091,24 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) enum_from_call_info(enum_name string) CallInfo {
+	return CallInfo{
+		name: ''
+		// Enum.from accepts one of two type families. The marker is validated
+		// after resolving the argument in check_call_arg_types.
+		params:       tarr1(Type(Unknown{
+			reason: 'enum from input'
+		}))
+		return_type:  Type(OptionType{
+			base_type: Type(Enum{
+				name:    enum_name
+				is_flag: enum_name in tc.flag_enums
+			})
+		})
+		params_known: true
+	}
 }
 
 fn (tc &TypeChecker) is_builtin_hex_receiver(typ Type) bool {

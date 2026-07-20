@@ -700,8 +700,8 @@ fn (t &Transformer) enum_type_from_node(id flat.NodeId) ?string {
 		for i, param in t.active_generic_params {
 			if node.value == param && i < t.active_specialization_args.len {
 				concrete := t.active_specialization_args[i]
-				if concrete in t.enum_types {
-					return concrete
+				if enum_type := t.enum_type_from_name(concrete) {
+					return enum_type
 				}
 			}
 		}

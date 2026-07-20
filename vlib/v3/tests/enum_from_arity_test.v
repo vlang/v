@@ -127,6 +127,17 @@ fn main() {
 }
 ',
 		'cannot use `Foo` as argument 1 to `Color.from`; expected string or integer')
+	enum_from_arity_run_bad(v3_bin, 'bad_generic_enum_from_non_enum_receiver', 'struct Foo {}
+
+fn parse[T](value int) ?T {
+	return T.from(value)
+}
+
+fn main() {
+	_ := parse[Foo](0)
+}
+',
+		'unknown function `Foo.from`')
 	out := enum_from_arity_run_good(v3_bin, 'numeric_enum_from_ierror', 'enum Color {
 	red
 	blue

@@ -11153,15 +11153,15 @@ fn (mut g FlatGen) gen_flag_enum_from_call(id flat.NodeId, fn_node flat.Node, no
 		|| node.children_count < 2 {
 		return false
 	}
-	base := g.a.child_node(&fn_node, 0)
-	if base.kind != .ident {
+	base_id := g.a.child(&fn_node, 0)
+	base := g.a.nodes[int(base_id)]
+	if base.kind == .ident && g.selector_base_is_value(base.value) {
 		return false
 	}
-	if g.selector_base_is_value(base.value)
-		|| g.selector_call_resolves_to_user_fn(id, base.value, fn_node.value) {
+	enum_name := g.enum_from_selector_base_name(base_id) or { return false }
+	if g.selector_call_resolves_to_user_fn(id, enum_name, fn_node.value) {
 		return false
 	}
-	enum_name := g.enum_selector_base_name(base.value) or { return false }
 	is_flag := enum_name in g.tc.flag_enums
 	enum_info := types.Enum{
 		name:    enum_name
@@ -11195,6 +11195,22 @@ fn (mut g FlatGen) gen_flag_enum_from_call(id flat.NodeId, fn_node flat.Node, no
 	}
 	g.write('({ u64 ${value_tmp} = (u64)(${arg}); bool ${ok_tmp} = ${valid_expr}; (${ct}){.ok = ${ok_tmp}, .value = (${value_ct})(${ok_tmp} ? (${storage_ct})${value_tmp} : (${storage_ct})0), .err = (IError){._typ = 0, ._object = NULL, .message = (string){.str = (u8*)"invalid value", .len = 13, .is_lit = 1}, .code = 0}}; })')
 	return true
+}
+
+fn (g &FlatGen) enum_from_selector_base_name(base_id flat.NodeId) ?string {
+	base := g.a.nodes[int(base_id)]
+	if base.kind == .ident {
+		return g.enum_selector_base_name(base.value)
+	}
+	if base.kind != .selector || base.children_count == 0 {
+		return none
+	}
+	module_node := g.a.child_node(&base, 0)
+	if module_node.kind != .ident || g.selector_base_is_value(module_node.value) {
+		return none
+	}
+	module_name := g.selector_base_module(module_node.value) or { return none }
+	return g.enum_selector_base_name('${module_name}.${base.value}')
 }
 
 fn (g &FlatGen) selector_call_resolves_to_user_fn(id flat.NodeId, base_name string, method string) bool {

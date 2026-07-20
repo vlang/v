@@ -8364,7 +8364,7 @@ fn (mut t Transformer) try_lower_builtin_call(_id flat.NodeId, node flat.Node) ?
 	if iface_runtime_call := t.try_lower_interface_runtime_method_call(node) {
 		return iface_runtime_call
 	}
-	if !t.validate_specialized_enum_from_arg(_id, node) {
+	if !t.validate_specialized_enum_from_call(_id, node) {
 		return t.make_empty()
 	}
 	specialized_enum_type := if t.validating_generic_spec {
@@ -8445,11 +8445,30 @@ fn (mut t Transformer) lower_specialized_enum_from_call(node flat.Node, enum_typ
 	return t.make_call_expr_typed(callee, arr1(arg), '?${enum_type}')
 }
 
-fn (mut t Transformer) validate_specialized_enum_from_arg(call_id flat.NodeId, node flat.Node) bool {
-	if !t.validating_generic_spec || !t.is_builtin_enum_from_call(call_id, node) {
+fn (mut t Transformer) validate_specialized_enum_from_call(call_id flat.NodeId, node flat.Node) bool {
+	if !t.validating_generic_spec {
 		return true
 	}
 	callee := t.a.child_node(&node, 0)
+	if callee.kind == .selector && callee.value == 'from' && callee.children_count > 0 {
+		enum_node := t.a.child_node(callee, 0)
+		if enum_node.kind == .ident {
+			for i, param in t.active_generic_params {
+				if enum_node.value != param || i >= t.active_specialization_args.len {
+					continue
+				}
+				concrete := t.active_specialization_args[i]
+				if _ := t.enum_type_from_name(concrete) {
+					break
+				}
+				t.record_monomorph_error('unknown function `${concrete}.from`')
+				return false
+			}
+		}
+	}
+	if !t.is_builtin_enum_from_call(call_id, node) {
+		return true
+	}
 	enum_id := t.a.child(callee, 0)
 	arg_id := t.a.child(&node, 1)
 	actual := t.normalize_type_alias(t.specialized_expr_type_name(arg_id))
