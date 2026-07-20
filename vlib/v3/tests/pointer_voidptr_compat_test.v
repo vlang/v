@@ -109,6 +109,45 @@ fn main() {}
 		'cannot return `A` as `&Item`')
 }
 
+fn test_wrapped_multi_return_bare_pointer_slots_are_heap_lowered() {
+	v3_bin := pointer_voidptr_build_v3()
+	out := pointer_voidptr_run_good(v3_bin, 'wrapped_multi_return_bare_pointer_slots', 'struct Item {
+	value int
+}
+
+fn make_option() ?(&Item, int) {
+	item := Item{
+		value: 31
+	}
+	return item, 37
+}
+
+fn make_result() !(&Item, int) {
+	item := Item{
+		value: 41
+	}
+	defer {
+		_ := 0
+	}
+	return item, 43
+}
+
+fn main() {
+	option_item, option_n := make_option() or { return }
+	println(int_str(option_item.value))
+	println(int_str(option_n))
+	result_item, result_n := make_result() or { return }
+	println(int_str(result_item.value))
+	println(int_str(result_n))
+}
+')
+	assert out == '31\n37\n41\n43'
+	c_path := os.join_path(os.temp_dir(),
+		'v3_wrapped_multi_return_bare_pointer_slots_${os.getpid()}.c')
+	c_source := os.read_file(c_path) or { panic(err) }
+	assert c_source.count('sizeof(Item)') >= 2, c_source
+}
+
 fn test_c_voidptr_struct_argument_passes_its_address() {
 	v3_bin := pointer_voidptr_build_v3()
 	header := os.join_path(os.temp_dir(), 'v3_c_voidptr_struct_${os.getpid()}.h')

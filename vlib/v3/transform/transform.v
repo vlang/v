@@ -10837,7 +10837,10 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 			t.mark_fn_used('sync__Channel__closed_error')
 			lhs := t.transform_expr(t.a.child(&node, 0))
 			value := t.transform_expr(t.a.child(&rhs, 0))
+			saved_var_types := t.var_types.clone()
+			t.set_var_type('err', 'IError')
 			body := t.transform_expr(t.a.child(&rhs, 1))
+			t.restore_var_types(saved_var_types)
 			or_start := t.a.children.len
 			t.a.children << value
 			t.a.children << body

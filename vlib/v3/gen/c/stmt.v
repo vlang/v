@@ -2042,7 +2042,13 @@ fn (mut g FlatGen) gen_node(id flat.NodeId) {
 								g.write(', ')
 							}
 							child_id := g.a.child(&node, i)
-							if i < base.types.len {
+							if i < base.types.len
+								&& g.gen_heap_local_address_expr(child_id, base.types[i]) {
+							} else if i < base.types.len
+								&& g.gen_bare_value_pointer_return_expr(child_id, base.types[i]) {
+							} else if i < base.types.len
+								&& g.gen_pointer_value_return_expr(child_id, base.types[i]) {
+							} else if i < base.types.len {
 								g.gen_expr_with_expected_type(child_id, base.types[i])
 							} else {
 								g.gen_expr(child_id)
@@ -2936,7 +2942,15 @@ fn (mut g FlatGen) return_expr_string(node flat.Node, ret_id flat.NodeId, ret_no
 			for i in 0 .. node.children_count {
 				child_id := g.a.child(&node, i)
 				if i < base.types.len {
-					parts << g.expr_to_string_with_expected_type(child_id, base.types[i])
+					if expr := g.heap_local_address_expr(child_id, base.types[i]) {
+						parts << expr
+					} else if expr := g.bare_value_pointer_return_expr(child_id, base.types[i]) {
+						parts << expr
+					} else if expr := g.pointer_value_return_expr_string(child_id, base.types[i]) {
+						parts << expr
+					} else {
+						parts << g.expr_to_string_with_expected_type(child_id, base.types[i])
+					}
 				} else {
 					parts << g.expr_to_string(child_id)
 				}
@@ -4885,7 +4899,11 @@ fn (mut g FlatGen) gen_multi_return_temp(ct string, ret_types []types.Type, node
 				continue
 			}
 			g.write('${field} = ')
-			g.gen_expr_with_expected_type(child_id, ret_types[i])
+			if !g.gen_heap_local_address_expr(child_id, ret_types[i])
+				&& !g.gen_bare_value_pointer_return_expr(child_id, ret_types[i])
+				&& !g.gen_pointer_value_return_expr(child_id, ret_types[i]) {
+				g.gen_expr_with_expected_type(child_id, ret_types[i])
+			}
 			g.writeln(';')
 			continue
 		}
