@@ -1,7 +1,0 @@
-vlib/v/checker/tests/option_map_or_unwrap_mut_default_err.vv:15:7: error: cannot copy map: call `move` or `clone` method (or use a reference)
-   13 |     }
-   14 |     opt := maybe_none()
-   15 |     x := opt or { fallback }
-      |          ~~~
-   16 |     fallback['x'] = 2
-   17 |     println(x)

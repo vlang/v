@@ -1,0 +1,21 @@
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:22:13: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   20 |         }
+   21 |     }
+   22 |     field := c.translations or { panic('none') }
+      |                ~~~~~~~~~~~~
+   23 | 
+   24 |     opt := get_opt()
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:25:14: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   23 | 
+   24 |     opt := get_opt()
+   25 |     variable := opt or { panic('none') }
+      |                 ~~~
+   26 | 
+   27 |     m := {
+vlib/v/checker/tests/option_map_or_unwrap_requires_clone_err.vv:30:18: error: cannot copy map: call `move` or `clone` method (or use a reference)
+   28 |         'k': get_opt()
+   29 |     }
+   30 |     index := m['k'] or { panic('none') }
+      |                     ~~~~~~~~~~~~~~~~~~~~
+   31 | 
+   32 |     println(field)

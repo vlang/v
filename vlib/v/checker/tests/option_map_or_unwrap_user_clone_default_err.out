@@ -1,7 +1,0 @@
-vlib/v/checker/tests/option_map_or_unwrap_user_clone_default_err.vv:26:7: error: cannot copy map: call `move` or `clone` method (or use a reference)
-   24 |     }
-   25 |     opt := maybe_none()
-   26 |     x := opt or { holder.clone() }
-      |          ~~~
-   27 |     holder.m['x'] = 2
-   28 |     println(x)

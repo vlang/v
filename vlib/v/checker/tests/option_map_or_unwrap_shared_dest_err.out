@@ -1,7 +1,0 @@
-vlib/v/checker/tests/option_map_or_unwrap_shared_dest_err.vv:16:16: error: cannot copy map: call `move` or `clone` method (or use a reference)
-   14 |         }
-   15 |     }
-   16 |     shared b := c.translations or { panic('missing') }
-      |                   ~~~~~~~~~~~~
-   17 |     lock b {
-   18 |         b['x'] = 2

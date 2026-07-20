@@ -28,111 +28,6 @@ fn assign_expr_is_auto_deref(expr ast.Expr) bool {
 	return expr.is_auto_deref_var()
 }
 
-// assign_or_unwrap_source_is_immutable conservatively reports whether the source
-// of an `or {}` unwrap can never be mutated later (so a copy of its map cannot
-// observe a later mutation of the original). Only the plainly-immutable roots are
-// recognised; anything unknown returns false, keeping the map-copy guard.
-// A pointer/reference anywhere in the chain is treated as mutable/unknown, since
-// an immutable pointer can still alias storage that its owner mutates later
-// (e.g. `mut c := ...; p := &c; x := p.f or { ... }; c.f?[k] = v`). Types are
-// fully unaliased first, so a `type Ref = &T` receiver is treated as a pointer.
-fn (c &Checker) assign_or_unwrap_source_is_immutable(expr ast.Expr) bool {
-	return match expr {
-		ast.Ident {
-			if expr.obj is ast.Var {
-				!expr.is_mut() && !c.table.fully_unaliased_type(expr.obj.typ).is_ptr()
-			} else {
-				!expr.is_mut()
-			}
-		}
-		ast.SelectorExpr {
-			!c.table.fully_unaliased_type(expr.expr_type).is_ptr()
-				&& c.assign_or_unwrap_source_is_immutable(expr.expr)
-		}
-		ast.IndexExpr {
-			!c.table.fully_unaliased_type(expr.left_type).is_ptr()
-				&& c.assign_or_unwrap_source_is_immutable(expr.left)
-		}
-		ast.ParExpr {
-			c.assign_or_unwrap_source_is_immutable(expr.expr)
-		}
-		else {
-			false
-		}
-	}
-}
-
-// assign_expr_or_block returns the `or {}` block attached to `expr`, if any.
-fn assign_expr_or_block(expr ast.Expr) ast.OrExpr {
-	return match expr {
-		ast.Ident { expr.or_expr }
-		ast.IndexExpr { expr.or_expr }
-		ast.SelectorExpr { expr.or_block }
-		else { ast.OrExpr{} }
-	}
-}
-
-// assign_or_block_default_is_safe conservatively reports whether the value an
-// `or {}` block falls back to cannot alias mutable storage. `x := opt or { d }`
-// makes `x` the block's value `d` when the option is empty, so if `d` is any map
-// lvalue (e.g. `or { fallback }`) then `x` aliases it. Even an immutable lvalue
-// is unsafe: an immutable map parameter/field can alias caller-owned storage the
-// caller mutates later (the same copy `x := d` would reject). A call is unsafe
-// too unless it is known to produce fresh storage — an arbitrary map-returning
-// call may just return a caller-owned alias (`or { id(fallback) }`). Only a map
-// literal, a `clone`/`move` call, a `@[noreturn]` call (`panic`/`exit`), or a
-// block that yields no value by diverging (`return`/`break`/`continue`) is safe.
-// Anything else keeps the guard.
-fn (c &Checker) assign_or_block_default_is_safe(or_expr ast.OrExpr) bool {
-	if or_expr.kind != .block {
-		return true
-	}
-	// A trailing `;` leaves a `SemicolonStmt`; filter those out so the block's
-	// real value statement is classified, matching `check_or_expr`.
-	valid_stmts := or_expr.stmts.filter(it !is ast.SemicolonStmt)
-	if valid_stmts.len == 0 {
-		return true
-	}
-	last := valid_stmts.last()
-	return match last {
-		ast.ExprStmt {
-			// harmless parentheses around the value must not change classification
-			default_expr := last.expr.remove_par()
-			match default_expr {
-				ast.MapInit { true }
-				ast.CallExpr { c.assign_call_default_produces_fresh_map(default_expr) }
-				else { false }
-			}
-		}
-		ast.Return, ast.BranchStmt {
-			true
-		}
-		else {
-			false
-		}
-	}
-}
-
-// assign_call_default_produces_fresh_map reports whether a call used as an `or {}`
-// default cannot alias caller-owned map storage: a `@[noreturn]` call such as
-// `panic`/`exit` (yields no value at all), or the builtin map `clone`/`move`
-// (fresh storage). Only the builtin map operations qualify — a user-defined
-// function or method named `clone`/`move` (its `CallKind` also comes from the
-// name) may just return an aliased map. The receiver type must be a map
-// *directly*, not via an alias: a map cannot carry user methods, but an alias
-// (`type M = map[...]`) can define its own `clone`/`move`, which `fn.v` resolves
-// before the map builtin. Any other map-returning call keeps the map-copy guard.
-fn (c &Checker) assign_call_default_produces_fresh_map(expr ast.Expr) bool {
-	if expr is ast.CallExpr {
-		if expr.is_noreturn {
-			return true
-		}
-		return expr.is_method && expr.name in ['clone', 'move']
-			&& c.table.sym(expr.receiver_type).kind == .map
-	}
-	return false
-}
-
 fn (c &Checker) auto_deref_source_type_is_pointer(expr ast.Expr) bool {
 	if expr !is ast.Ident || c.table.cur_fn == unsafe { nil } || !expr.is_auto_deref_var() {
 		return false
@@ -991,38 +886,8 @@ or use an explicit `unsafe{ a[..] }`, if you do not want a copy of the slice.',
 		} else {
 			right.is_lvalue()
 		}
-		// `x := opt_map or { ... }` unwraps an option/result into a new immutable
-		// variable, so `x` can never become a mutable alias of the underlying map
-		// and the shallow copy is safe. This mirrors how V already accepts the
-		// equivalent immutable `x := opt_array_field or { ... }`. Several things
-		// must hold for the copy to be safe, otherwise the guard is kept so
-		// aliasing still requires a `clone`/`move`:
-		//   - the destination is a new immutable variable (a mutable `mut x := ...`
-		//     or a reassignment `x = ...` could still mutate through `x`);
-		//   - the `or` actually clears the option/result — for `map[K]?map[...]`,
-		//     `v := m[k] or { none }` keeps the option-map type, so `v` is still an
-		//     option handle aliasing the map in `m`;
-		//   - the unwrapped source itself is immutable — otherwise a later mutation
-		//     of the source (e.g. `mut opt := ...; x := opt or { ... }; opt?[k] = v`)
-		//     would be observed through `x`.
-		// See vlang/v issue #27867.
-		// A `shared`/`atomic` destination is mutable under `lock`, so it must never
-		// be exempted even though it is a `:=` declaration. Its `is_mut` flag is
-		// already set by the parser, but check `share` explicitly so this safety
-		// bypass does not depend on that incidental detail.
-		left_is_lockable_dest := left is ast.Ident && left.info is ast.IdentVar
-			&& left.info.share in [.shared_t, .atomic_t]
-		mut right_is_immutable_or_unwrap := false
-		if node.op == .decl_assign && left is ast.Ident && !left.is_mut && !left_is_lockable_dest
-			&& !right_type.has_flag(.option) && !right_type.has_flag(.result) {
-			unwrapped_right := right.remove_par()
-			or_expr := assign_expr_or_block(unwrapped_right)
-			right_is_immutable_or_unwrap = or_expr.kind != .absent
-				&& c.assign_or_unwrap_source_is_immutable(unwrapped_right)
-				&& c.assign_or_block_default_is_safe(or_expr)
-		}
 		if left_sym.kind == .map && is_assign && right_sym.kind == .map && !c.inside_unsafe
-			&& !left.is_blank_ident() && right_is_lvalue && !right_is_immutable_or_unwrap
+			&& !left.is_blank_ident() && right_is_lvalue
 			&& (!right_type.is_ptr() || (right is ast.Ident && assign_expr_is_auto_deref(right))) {
 			// Do not allow `a = b`
 			c.error('cannot copy map: call `move` or `clone` method (or use a reference)',
