@@ -2219,6 +2219,11 @@ fn clone_string_list_map(values map[string][]string) map[string][]string {
 }
 
 fn promote_scoped_monomorph_metadata(mut tc types.TypeChecker) {
+	// Specialization records the source context for every generated function.
+	// These maps can grow inside the disposable monomorph arena, so move both
+	// their storage and string payloads before releasing that arena.
+	tc.fn_type_files = clone_string_string_map(tc.fn_type_files)
+	tc.fn_type_modules = clone_string_string_map(tc.fn_type_modules)
 	tc.structs = clone_struct_field_map(tc.structs)
 	tc.struct_modules = clone_string_string_map(tc.struct_modules)
 	tc.unions = clone_string_bool_map(tc.unions)

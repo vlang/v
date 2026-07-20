@@ -7305,7 +7305,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.pipe {
 			return p.pipe_lambda_expr()
 		}
-		.key_mut, .key_shared {
+		.key_mut {
+			p.next()
+			id := p.prefix_expr()
+			p.mark_node_mut(id)
+			return id
+		}
+		.key_shared {
 			p.next()
 			return p.prefix_expr()
 		}

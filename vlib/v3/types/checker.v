@@ -194,8 +194,9 @@ pub:
 
 // LocalBinding represents local binding data used by types.
 struct LocalBinding {
-	name string
-	typ  Type
+	name   string
+	typ    Type
+	is_mut bool
 }
 
 // ParseTypeCacheEntry keeps the identity components separate. The old
@@ -15322,7 +15323,17 @@ fn (tc &TypeChecker) mut_receiver_expr_is_mutable_lvalue(id flat.NodeId) bool {
 		.ident {
 			return tc.ident_is_mutable_lvalue(node.value)
 		}
-		.index, .selector, .paren {
+		.index, .selector {
+			// Mutating the pointee of a pointer-valued field or element does not
+			// mutate the binding that stores the pointer. This is common for
+			// application state such as `app.window.refresh()`.
+			if tc.type_is_pointer_receiver(tc.cached_expr_type(id) or { tc.resolve_type(id) }) {
+				return true
+			}
+			return node.children_count > 0
+				&& tc.mut_receiver_expr_is_mutable_lvalue(tc.a.child(&node, 0))
+		}
+		.paren {
 			return node.children_count > 0
 				&& tc.mut_receiver_expr_is_mutable_lvalue(tc.a.child(&node, 0))
 		}
@@ -15367,11 +15378,39 @@ fn (tc &TypeChecker) ident_is_mutable_lvalue(name string) bool {
 	if tc.mut_param_binding_matches_lvalue(name) {
 		return true
 	}
-	owner := tc.fn_context.mut_local_owners[name] or { return false }
 	if tc.cur_scope == unsafe { nil } {
 		return false
 	}
-	return tc.cur_scope.nearest_binding_owned_by(name, owner)
+	if owner := tc.fn_context.mut_local_owners[name] {
+		if tc.cur_scope.nearest_binding_owned_by(name, owner) {
+			return true
+		}
+	}
+	// Globals are mutable storage. Respect a nearer local binding first so an
+	// immutable local that shadows a global is still rejected.
+	if owner := tc.cur_scope.lookup_owner(name) {
+		return tc.binding_owner_is_global(owner)
+	}
+	qname := tc.qualify_name(name)
+	if qname != name {
+		if owner := tc.cur_scope.lookup_owner(qname) {
+			return tc.binding_owner_is_global(owner)
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) binding_owner_is_global(owner ScopeBindingOwner) bool {
+	// A parallel checker adds its private file scope in front of the collected
+	// program scope, so globals can live in any ancestor of `file_scope`.
+	mut scope := unsafe { &Scope(tc.file_scope) }
+	for scope != unsafe { nil } {
+		if owner.belongs_to_scope(scope) {
+			return true
+		}
+		scope = scope.parent
+	}
+	return false
 }
 
 fn (tc &TypeChecker) map_builtin_call_info(base_type Type, m Map, method string, mname string) ?CallInfo {
@@ -18426,7 +18465,10 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 		$if ownership ? {
 			tc.ownership_note_binding(binding.name, binding.typ, cond_id)
 		}
-		tc.cur_scope.insert(binding.name, binding.typ)
+		owner := tc.cur_scope.insert_with_owner(binding.name, binding.typ)
+		if binding.is_mut {
+			tc.fn_context.mut_local_owners[binding.name] = owner
+		}
 	}
 	tc.check_branch_node(then_id, value_context)
 	tc.pop_scope()
@@ -18850,8 +18892,9 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 			lhs := tc.a.nodes[int(lhs_id)]
 			if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
 				result << LocalBinding{
-					name: lhs.value
-					typ:  payload.types[i]
+					name:   lhs.value
+					typ:    payload.types[i]
+					is_mut: lhs.is_mut || node.is_mut
 				}
 			}
 		}
@@ -18862,8 +18905,9 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 		if lhs.kind == .ident && lhs.value.len > 0 && lhs.value != '_' {
 			mut result := []LocalBinding{}
 			result << LocalBinding{
-				name: lhs.value
-				typ:  payload
+				name:   lhs.value
+				typ:    payload
+				is_mut: lhs.is_mut || node.is_mut
 			}
 			return result
 		}

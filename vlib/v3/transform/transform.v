@@ -14435,7 +14435,7 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 				}
 			}
 			typ := t.var_type(node.value)
-			if typ.len == 0 {
+			if typ.len == 0 && (!t.in_call_callee || !t.ident_is_direct_function_callee(node.value)) {
 				if key := t.const_type_key_in_context(node.value, t.cur_module, t.cur_file) {
 					t.tc.clear_resolved_fn_value(id)
 					mut const_name := key
@@ -14774,6 +14774,18 @@ fn (t &Transformer) resolve_fn_value_ident(name string) ?string {
 		}
 	}
 	return none
+}
+
+fn (t &Transformer) ident_is_direct_function_callee(name string) bool {
+	if name.len == 0 || t.var_type(name).len > 0 {
+		return false
+	}
+	if t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] && !name.contains('.') {
+		if t.is_known_fn_name('${t.cur_module}.${name}') {
+			return true
+		}
+	}
+	return t.is_known_fn_name(name)
 }
 
 // --- helper methods ---
