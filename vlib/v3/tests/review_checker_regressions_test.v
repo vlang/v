@@ -58,7 +58,7 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'cannot initialize field `x` with `&int`; expected `int`')
 }
 
-fn test_reject_result_values_in_option_returns() {
+fn test_reject_cross_wrapper_option_result_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_result_value_in_option_return',
 		'fn make_result() !int {\n\treturn 7\n}\n\nfn make_option() ?int {\n\treturn make_result()\n}\n\nfn main() {}\n',
@@ -66,6 +66,9 @@ fn test_reject_result_values_in_option_returns() {
 	run_bad(v3_bin, 'bad_result_value_in_optional_pointer_return',
 		'struct Item {}\n\nfn convert(res !Item) ?&Item {\n\treturn res\n}\n\nfn main() {}\n',
 		'cannot return `!Item` as `?&Item`')
+	run_bad(v3_bin, 'bad_option_value_in_result_pointer_return',
+		'struct Item {}\n\nfn convert(opt ?Item) !&Item {\n\treturn opt\n}\n\nfn main() {}\n',
+		'cannot return `?Item` as `&Item`')
 }
 
 fn test_optional_parameters_are_required() {
