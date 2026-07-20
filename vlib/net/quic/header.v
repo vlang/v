@@ -95,6 +95,16 @@ pub fn parse_long_header(buf []u8) !(QuicLongHeader, int) {
 		return error('version 0 indicates a Version Negotiation packet; use parse_version_negotiation instead')
 	}
 
+	// The Fixed Bit (0x40) is always sent in the clear (unlike the reserved
+	// bits, which live inside the header-protected region and can only be
+	// checked after Phase 3's protection removal) and MUST be 1 for every
+	// real long-header packet except Version Negotiation, already excluded
+	// above. RFC 9000 §17.2: "Packets containing a zero value for this bit
+	// are not valid packets in this version and MUST be discarded."
+	if buf[0] & 0x40 == 0 {
+		return error('not a valid QUIC v1 packet: fixed bit (0x40) is clear')
+	}
+
 	typ := peek_long_header_type(buf[0])!
 
 	mut offset := 5
@@ -240,6 +250,15 @@ pub fn parse_short_header(buf []u8, dcid_len int) !(QuicShortHeader, int) {
 	}
 	if buf[0] & 0x80 != 0 {
 		return error('not a short header packet (top bit set)')
+	}
+	// The Fixed Bit (0x40) MUST be 1 for every short header packet (RFC
+	// 9000 §17.3.1) -- unlike a long header's Fixed Bit, there is no
+	// Version-Negotiation-style exemption here, since VN packets are always
+	// long-header. Checked here rather than left to header protection
+	// removal, since (unlike the reserved bits) this bit is always sent in
+	// the clear.
+	if buf[0] & 0x40 == 0 {
+		return error('not a valid QUIC v1 packet: fixed bit (0x40) is clear')
 	}
 	if buf.len < 1 + dcid_len {
 		return error('truncated short header: need ${1 + dcid_len} bytes, have ${buf.len}')
