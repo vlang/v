@@ -153,13 +153,40 @@ The largest, highest-risk phase. Sub-phases, in build order:
         done it, so a caller could have silently produced a ClientHello
         violating RFC 9000 §18.2's "a client MUST NOT include any
         server-only transport parameter." Fixed, Phase-R verified.
-  - [ ] ServerHello / EncryptedExtensions / Certificate / CertificateVerify
-        parsing. Use mbedTLS's `mbedtls_pk_verify_ext` for CertificateVerify
-        validation (reserve the OpenSSL P-256 binding for ECDHE only) —
-        **confirm during implementation whether mbedTLS's PSS salt-length
-        handling matches `rsae` semantics**; if not, fall back to the
-        `rsa_pss` module for that one signature scheme. `CertificateRequest`
-        rejected with a clear error (no client-cert auth in v1).
+  - [x] ServerHello / EncryptedExtensions parsing (`tls13_server_hello.v`).
+        Generic `parse_extension_list`/`find_extension` (RFC 8446 §4.2,
+        duplicate-extension rejection mirroring
+        `transport_parameters.v`'s duplicate-ID rejection).
+        `parse_server_hello` returns a `ParsedHelloRetryRequest |
+        ParsedServerHello` sum type, distinguished by RFC 8446 §4.1.3's
+        magic Random value (independently verified via a live SHA-256
+        computation of "HelloRetryRequest", not just transcribed —
+        Phase-R verified the discrimination logic itself, not just the
+        two happy-path shapes). Validates every statically-checkable RFC
+        8446 §4.1.3 MUST (legacy_version, empty legacy_session_id_echo,
+        legacy_compression_method, mandatory supported_versions/
+        key_share). `parse_encrypted_extensions` rejects early_data
+        (0-RTT not offered). Real happy-path test against RFC 8448 §3's
+        own ServerHello. `/vreview` caught and fixed a real gap: the
+        real-ServerHello key_share branch didn't reject an empty
+        key_exchange, even though RFC 8446 §4.2.8's
+        `opaque key_exchange<1..2^16-1>` requires at least 1 byte — the
+        parallel check already existed for the cookie extension but was
+        missed here. Fixed, Phase-R verified.
+        Deferred to Phase 2c's still-pending state machine (needs
+        connection-level state this parsing layer doesn't have): whether
+        cipher_suite/selected_version/key_share group was actually
+        offered (v1 only ever offers one of each, so today's fixed-value
+        checks already cover the practical case), second-HRR rejection,
+        and cross-checking EncryptedExtensions against what was actually
+        sent rather than only the unconditionally-wrong early_data case.
+  - [ ] Certificate / CertificateVerify parsing. Use mbedTLS's
+        `mbedtls_pk_verify_ext` for CertificateVerify validation (reserve
+        the OpenSSL P-256 binding for ECDHE only) — **confirm during
+        implementation whether mbedTLS's PSS salt-length handling matches
+        `rsae` semantics**; if not, fall back to the `rsa_pss` module for
+        that one signature scheme. `CertificateRequest` rejected with a
+        clear error (no client-cert auth in v1).
   - [ ] Client state machine (`tls13_handshake.v`) wiring the above together
         with transcript accumulation, including second-HelloRetryRequest
         rejection and the TLS-alert-to-QUIC-CONNECTION_CLOSE mapping
