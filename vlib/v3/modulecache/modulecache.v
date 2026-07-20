@@ -1081,11 +1081,22 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 	if old_values.len != new_values.len {
 		return none
 	}
+	mut unchanged_values := map[string]bool{}
+	for idx, old_value in old_values {
+		if old_value == new_values[idx] {
+			unchanged_values[old_value] = true
+		}
+	}
 	mut replacements := map[string]string{}
 	for idx, old_value in old_values {
 		new_value := new_values[idx]
 		if old_value == new_value {
 			continue
+		}
+		// Equal literals share one C symbol. Rewriting that symbol would also
+		// change occurrences whose literal stayed the same.
+		if unchanged_values[old_value] {
+			return none
 		}
 		if existing := replacements[old_value] {
 			if existing != new_value {

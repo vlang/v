@@ -1492,6 +1492,11 @@ fn monomorph_cache_semantic_signature(a &flat.FlatAst) string {
 	for child in a.children {
 		hash = c_hash_tag(hash, int(child))
 	}
+	return c_hash_function_metadata(hash, a).hex()
+}
+
+fn c_hash_function_metadata(initial u64, a &flat.FlatAst) u64 {
+	mut hash := initial
 	mut disabled_names := a.disabled_fns.keys()
 	disabled_names.sort()
 	for name in disabled_names {
@@ -1512,7 +1517,7 @@ fn monomorph_cache_semantic_signature(a &flat.FlatAst) string {
 		hash = c_hash_bytes(hash, name.bytes())
 		hash = c_hash_bytes(hash, [u8(a.noreturn_fns[name]), u8(0xfa)])
 	}
-	return hash.hex()
+	return hash
 }
 
 @[inline]
@@ -1681,6 +1686,7 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 		declaration_hash = c_hash_bytes(declaration_hash, part.bytes())
 		declaration_hash = c_hash_bytes(declaration_hash, [u8(0xff)])
 	}
+	declaration_hash = c_hash_function_metadata(declaration_hash, a)
 	return V3IncrementalSnapshot{
 		declaration_signature: declaration_hash.hex()
 		functions:             functions

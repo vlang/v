@@ -763,6 +763,19 @@ fn test_module_cache_string_symbol_rewrite_handles_swapped_literals() {
 	assert rewritten.count(beta_definition) == 1
 }
 
+fn test_module_cache_string_symbol_rewrite_rejects_partially_changed_duplicates() {
+	x_symbol := module_cache_string_symbol('x')
+	x_definition := 'static string ${x_symbol} = {"x", 1, 1};'
+	source := '${x_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${x_symbol});\nconsume(${x_symbol});\n'
+	if rewritten := modulecache.rewrite_cached_runtime_strings(source, ['x', 'x'], [
+		'y',
+		'x',
+	])
+	{
+		assert false, rewritten
+	}
+}
+
 fn test_module_cache_rebuilds_objects_when_c_flags_change() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_c_flags_${os.getpid()}')
@@ -3083,4 +3096,53 @@ fn test_incremental_program_cache_invalidates_for_top_level_statement_change() {
 	assert second.exit_code == 0, second.output
 	assert !second.output.contains('cgen (cached)'), second.output
 	assert run_module_cache_binary(second_output) == '2'
+}
+
+fn test_incremental_program_cache_invalidates_for_function_attribute_change() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_function_attribute_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+@[noreturn]
+fn stop() {
+	exit(0)
+}
+
+fn value() int {
+	stop()
+}
+
+fn main() {}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn stop() {
+	exit(0)
+}
+
+fn value() int {
+	stop()
+}
+
+fn main() {}
+')
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code != 0, second.output
+	assert second.output.contains('missing return'), second.output
+	assert !second.output.contains('check (incremental)'), second.output
 }
