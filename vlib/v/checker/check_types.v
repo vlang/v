@@ -1819,7 +1819,11 @@ fn (mut c Checker) infer_fn_generic_types(func &ast.Fn, mut node ast.CallExpr) {
 						}
 						if param_sym.info.func.return_type.has_flag(.generic)
 							&& c.table.sym(param_sym.info.func.return_type).name == gt_name {
-							typ = arg_sym.info.func.return_type.clear_option_and_result()
+							typ = if param_sym.info.func.return_type.has_option_or_result() {
+								arg_sym.info.func.return_type.clear_option_and_result()
+							} else {
+								arg_sym.info.func.return_type
+							}
 							if param_sym.info.func.return_type.nr_muls() > 0 && typ.nr_muls() > 0 {
 								typ = typ.set_nr_muls(0)
 							}
