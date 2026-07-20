@@ -61,6 +61,18 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn run_runtime_bad(v3_bin string, name string, src string, expected string) {
+	out := unique_temp_path(name)
+	src_path := out + '.v'
+	os.write_file(src_path, src) or { panic(err) }
+	compile := os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
+	run := os.execute(out)
+	assert run.exit_code != 0, '${name}: expected runtime failure, got success: ${run.output}'
+	assert run.output.contains(expected), '${name}: expected `${expected}` in ${run.output}'
+}
+
 // write_project_file writes project file output for v3 tests.
 fn write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
@@ -408,6 +420,18 @@ fn test_interface_container_as_cast_requirements() {
 	empty_interface_as_out := run_good(v3_bin, 'empty_interface_as_array_pattern',
 		'interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\txs := values(Any([1, 2]))\n\tprintln(xs[0] + xs[1])\n}\n')
 	assert empty_interface_as_out == '3'
+	run_runtime_bad(v3_bin, 'empty_interface_as_array_non_array_payload',
+		"interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\t_ := values(Any('not an array'))\n}\n",
+		'as cast: cannot cast interface value to `[]int`')
+	run_runtime_bad(v3_bin, 'empty_interface_as_array_wrong_element_payload',
+		"interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\t_ := values(Any(['wrong element type']))\n}\n",
+		'as cast: cannot cast interface value to `[]int`')
+	empty_interface_map_as_out := run_good(v3_bin, 'empty_interface_as_map_pattern',
+		"interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\tm := values(Any({'answer': 42}))\n\tprintln(m['answer'])\n}\n")
+	assert empty_interface_map_as_out == '42'
+	run_runtime_bad(v3_bin, 'empty_interface_as_map_wrong_value_payload',
+		"interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\t_ := values(Any({'answer': 'wrong value type'}))\n}\n",
+		'as cast: cannot cast interface value to `map[string]int`')
 }
 
 fn test_interface_method_rejects_narrowed_interface_param() {

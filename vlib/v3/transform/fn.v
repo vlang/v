@@ -987,9 +987,6 @@ fn (t &Transformer) variadic_interface_single_array_should_box(arg_type string, 
 	if !arg_type.starts_with('[]') {
 		return false
 	}
-	if t.normalize_type_alias(arg_type) == t.normalize_type_alias(types.Type(variadic_type).name()) {
-		return false
-	}
 	elem_type := variadic_type.elem_type
 	if elem_type is types.Interface {
 		return true
@@ -3082,6 +3079,8 @@ fn (mut t Transformer) append_variadic_arg_push(tmp_name string, arg_id flat.Nod
 		t.transform_enum_shorthand(arg_id, arg, expected_elem)
 	} else if t.is_sum_type_name(expected_elem) {
 		t.wrap_sum_value(arg_id, expected_elem)
+	} else if t.resolve_interface_type_name(expected_elem).len > 0 {
+		t.transform_expr_for_type(arg_id, expected_elem)
 	} else {
 		t.transform_expr(arg_id)
 	}

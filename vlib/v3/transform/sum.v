@@ -972,6 +972,24 @@ fn (t &Transformer) interface_impl_type_id(iface_name string, concrete_name stri
 	return none
 }
 
+fn (t &Transformer) interface_container_cast_type_id(iface_name string, target_name string) ?int {
+	if type_id := t.interface_impl_type_id(iface_name, target_name) {
+		return type_id
+	}
+	iface := t.resolve_interface_type_name(iface_name)
+	if iface.len == 0 {
+		return none
+	}
+	concrete := t.interface_concrete_impl_name(target_name) or { return none }
+	index := t.interface_impl_index_for_transform(iface)
+	mut impls := index.names.clone()
+	if concrete !in impls {
+		impls << concrete
+	}
+	ids := types.stable_interface_type_ids_preserving_prefix(index.names, impls)
+	return ids[concrete] or { none }
+}
+
 fn (t &Transformer) interface_impl_type_id_iface_candidates(iface string) []string {
 	mut candidates := []string{}
 	short_name := iface.all_after_last('.')
@@ -1059,6 +1077,12 @@ fn (t &Transformer) interface_concrete_impl_name(name string) ?string {
 	if name.starts_with('[]') {
 		typ := t.tc.parse_type(name)
 		if typ is types.Array {
+			return types.Type(typ).name()
+		}
+	}
+	if name.starts_with('map[') {
+		typ := t.tc.parse_type(name)
+		if typ is types.Map {
 			return types.Type(typ).name()
 		}
 	}
@@ -1269,6 +1293,26 @@ fn (mut t Transformer) transform_as_expr(id flat.NodeId, node flat.Node) flat.No
 			current := t.make_prefix(.mul, cast)
 			t.set_node_typ(int(current), qv)
 			return current
+		}
+		if interface_pattern_is_collapsed_container_type(node.value)
+			&& t.tc.interface_abstract_method_names(clean_type0).len == 0
+			&& t.tc.interface_field_list(clean_type0).len == 0 {
+			target_type := t.tc.parse_type(node.value).name()
+			if type_id := t.interface_container_cast_type_id(clean_type0, target_type) {
+				child := t.transform_expr(expr_id)
+				source := t.stable_transformed_expr_for_reuse(child, expr_type, 'iface_as')
+				field_op := if expr_type.starts_with('&') { flat.Op.arrow } else { flat.Op.dot }
+				actual_type_id := t.make_selector_op(source, '_typ', 'int', field_op)
+				mismatch := t.make_infix(.ne, actual_type_id, t.make_int_literal(type_id))
+				message := 'as cast: cannot cast interface value to `${target_type}`'
+				t.pending_stmts << t.make_if(mismatch,
+					t.make_block(arr1(t.make_panic_stmt(message))), t.make_empty())
+				object := t.make_selector_op(source, '_object', 'voidptr', field_op)
+				cast := t.make_cast('&${target_type}', object, '&${target_type}')
+				current := t.make_prefix(.mul, cast)
+				t.set_node_typ(int(current), target_type)
+				return current
+			}
 		}
 	}
 	clean_type := if clean_type0 in t.sum_types {

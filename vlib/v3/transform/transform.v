@@ -932,24 +932,24 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_generic_specs(specs ma
 	t.interface_impl_indexes = refreshed.move()
 }
 
-fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_arrays() {
+fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_containers() {
 	if isnil(t.tc) {
 		return
 	}
-	mut boxed_arrays := map[string][]string{}
+	mut boxed_containers := map[string][]string{}
 	for key, _ in t.interface_boxed_types {
 		parts := key.split('\n')
-		if parts.len != 2 || !parts[1].starts_with('[]') {
+		if parts.len != 2 || (!parts[1].starts_with('[]') && !parts[1].starts_with('map[')) {
 			continue
 		}
 		iface := t.resolve_interface_type_name(parts[0])
 		if iface.len == 0 {
 			continue
 		}
-		mut concrete_types := boxed_arrays[iface] or { []string{} }
+		mut concrete_types := boxed_containers[iface] or { []string{} }
 		if parts[1] !in concrete_types {
 			concrete_types << parts[1]
-			boxed_arrays[iface] = concrete_types
+			boxed_containers[iface] = concrete_types
 		}
 	}
 	mut refreshed := t.interface_impl_indexes.clone()
@@ -959,7 +959,7 @@ fn (mut t Transformer) refresh_interface_impl_indexes_for_boxed_arrays() {
 		old_index := t.interface_impl_indexes[iface_name] or { continue }
 		mut impls := old_index.names.clone()
 		resolved_iface := t.resolve_interface_type_name(iface_name)
-		mut concrete_types := boxed_arrays[resolved_iface] or { []string{} }
+		mut concrete_types := boxed_containers[resolved_iface] or { []string{} }
 		concrete_types.sort()
 		for concrete in concrete_types {
 			if concrete !in impls {
@@ -2032,7 +2032,7 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	// private AST. Equality and automatic string lowering can then generate the
 	// same bounded tag dispatch independently of worker scheduling.
 	t.collect_interface_boxed_types_dispatch(want_parallel)
-	t.refresh_interface_impl_indexes_for_boxed_arrays()
+	t.refresh_interface_impl_indexes_for_boxed_containers()
 	if !want_parallel {
 		if t.scope_parallel_workers && t.retain_worker_results {
 			$if !v3_no_parallel ? {
