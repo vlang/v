@@ -800,6 +800,27 @@ fn test_module_cache_string_symbol_rewrite_handles_swapped_literals() {
 	assert rewritten.count(beta_definition) == 1
 }
 
+fn test_module_cache_string_symbol_rewrite_skips_c_string_contents() {
+	old_value := 'before'
+	new_value := 'after'
+	old_symbol := module_cache_string_symbol(old_value)
+	new_symbol := module_cache_string_symbol(new_value)
+	unchanged_value := old_symbol
+	unchanged_symbol := module_cache_string_symbol(unchanged_value)
+	old_definition := 'static string ${old_symbol} = {"${old_value}", ${old_value.len}, 1};'
+	unchanged_definition := 'static string ${unchanged_symbol} = {"${unchanged_value}", ${unchanged_value.len}, 1};'
+	source := '${old_definition}\n${unchanged_definition}\n/* ${old_symbol} */\nint ${old_symbol}_suffix;\n/* V3CACHE_BODY_BEGIN */\nconsume(${old_symbol});\nconsume(${unchanged_symbol});\n'
+	rewritten := modulecache.rewrite_cached_runtime_strings(source, [old_value, unchanged_value], [
+		new_value,
+		unchanged_value,
+	]) or { panic('runtime string rewrite failed') }
+	body := rewritten.all_after('/* V3CACHE_BODY_BEGIN */')
+	assert body.contains('consume(${new_symbol});\nconsume(${unchanged_symbol});')
+	assert rewritten.contains(unchanged_definition)
+	assert rewritten.contains('/* ${old_symbol} */')
+	assert rewritten.contains('int ${old_symbol}_suffix;')
+}
+
 fn test_module_cache_string_symbol_rewrite_rejects_partially_changed_duplicates() {
 	x_symbol := module_cache_string_symbol('x')
 	x_definition := 'static string ${x_symbol} = {"x", 1, 1};'

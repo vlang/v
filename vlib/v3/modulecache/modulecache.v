@@ -1135,20 +1135,7 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 		symbol_replacements[old_symbol] = new_symbol
 		target_definitions[new_symbol] = new_definition
 	}
-	mut old_symbols := symbol_replacements.keys()
-	old_symbols.sort()
-	mut placeholders := map[string]string{}
-	for idx, old_symbol in old_symbols {
-		mut placeholder := '__V3CACHE_STRING_REWRITE_${idx}__'
-		for source.contains(placeholder) {
-			placeholder += '_'
-		}
-		placeholders[old_symbol] = placeholder
-		source = source.replace(old_symbol, placeholder)
-	}
-	for old_symbol in old_symbols {
-		source = source.replace(placeholders[old_symbol], symbol_replacements[old_symbol])
-	}
+	source = rewrite_c_identifier_tokens(source, symbol_replacements)
 	mut definitions := []string{}
 	mut target_symbols := target_definitions.keys()
 	target_symbols.sort()
@@ -1162,6 +1149,84 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 	}
 	marker_idx := source.index(c_body_begin) or { return none }
 	return source[..marker_idx] + definitions.join('\n') + '\n' + source[marker_idx..]
+}
+
+fn rewrite_c_identifier_tokens(source string, replacements map[string]string) string {
+	if replacements.len == 0 {
+		return source.clone()
+	}
+	mut out := strings.new_builder(source.len)
+	mut last := 0
+	mut i := 0
+	mut quote := u8(0)
+	mut escaped := false
+	mut line_comment := false
+	mut block_comment := false
+	for i < source.len {
+		c := source[i]
+		next := if i + 1 < source.len { source[i + 1] } else { u8(0) }
+		if line_comment {
+			if c == `\n` {
+				line_comment = false
+			}
+			i++
+			continue
+		}
+		if block_comment {
+			if c == `*` && next == `/` {
+				block_comment = false
+				i += 2
+				continue
+			}
+			i++
+			continue
+		}
+		if quote != 0 {
+			if escaped {
+				escaped = false
+			} else if c == `\\` {
+				escaped = true
+			} else if c == quote {
+				quote = 0
+			}
+			i++
+			continue
+		}
+		if c == `/` && next == `/` {
+			line_comment = true
+			i += 2
+			continue
+		}
+		if c == `/` && next == `*` {
+			block_comment = true
+			i += 2
+			continue
+		}
+		if c in [`'`, `"`] {
+			quote = c
+			i++
+			continue
+		}
+		if c_generated_identifier_byte(c) {
+			start := i
+			i++
+			for i < source.len && c_generated_identifier_byte(source[i]) {
+				i++
+			}
+			if replacement := replacements[source[start..i]] {
+				out.write_string(source[last..start])
+				out.write_string(replacement)
+				last = i
+			}
+			continue
+		}
+		i++
+	}
+	if last == 0 {
+		return source.clone()
+	}
+	out.write_string(source[last..])
+	return out.str()
 }
 
 // prune_unreferenced_static_string_definitions removes generated string storage
