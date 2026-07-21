@@ -3041,7 +3041,6 @@ fn main() {
 	mut incremental_changed_names := map[string]bool{}
 	mut incremental_cached_body := ''
 	mut incremental_tcc_declarations_path := ''
-	mut incremental_cached_objects := []string{}
 	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
 		&& cache_state.parsed_from_source.len == 0 {
 		if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_c_flags) {
@@ -3122,7 +3121,6 @@ fn main() {
 								incremental_changed_names = changed_names.clone()
 								incremental_cached_body = body_text
 								incremental_tcc_declarations_path = entry.tcc_declarations
-								incremental_cached_objects = os.read_lines(entry.objects) or { [] }
 								cached_monomorph_specs = clone_monomorph_cache_specs(decoded_specs)
 								cached_program_used_fns = clone_string_bool_map(decoded_used)
 								cgen_cache_metadata = decoded_metadata
@@ -3872,8 +3870,14 @@ fn main() {
 				}
 				if generic_cache_hit {
 					if incremental_cache_hit {
+						cached_prefix := os.read_file(generic_cache_entry.prefix) or {
+							eprintln('error reading cached incremental prefix ${generic_cache_entry.prefix}: ${err.msg()}')
+							cleanup_c_build_dir(cc_dir)
+							exit(1)
+						}
 						prepared_cache = prepare_v3_incremental_cached_body(cache_plan_file,
-							incremental_tcc_declarations_path, incremental_cached_objects) or {
+							incremental_tcc_declarations_path, cached_prefix, compile_signature, mut
+							cache_state) or {
 							eprintln(err.msg())
 							cleanup_c_build_dir(cc_dir)
 							exit(1)
@@ -4273,15 +4277,21 @@ fn v3_incremental_main_source(tcc_declarations_path string, body_path string) st
 	return '#define V3CACHE_PROGRAM_UNIT 1\n#include "${declarations_include}"\n#include "${body_include}"\n'
 }
 
-fn prepare_v3_incremental_cached_body(body_path string, tcc_declarations_path string, cached_objects []string) !V3PreparedModuleCache {
-	if !os.is_file(tcc_declarations_path) || cached_objects.len == 0 {
+fn prepare_v3_incremental_cached_body(body_path string, tcc_declarations_path string, cached_prefix string, compile_signature string, mut state V3ModuleCacheState) !V3PreparedModuleCache {
+	if resolve_flag_specific_cache_objects(mut state, compile_signature) {
+		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
+		restart_v3_after_cache_invalidation()
+	}
+	objects := cache_object_paths(state.objects)
+	if !os.is_file(tcc_declarations_path) || objects.len == 0 {
 		return error('v3 incremental C declarations are unavailable')
 	}
 	main_source := v3_incremental_main_source(tcc_declarations_path, body_path)
 	return V3PreparedModuleCache{
-		main_source:     main_source
-		tcc_main_source: main_source
-		objects:         cached_objects
+		main_source:           main_source
+		tcc_main_source:       main_source
+		program_prefix_source: cached_prefix
+		objects:               objects
 	}
 }
 

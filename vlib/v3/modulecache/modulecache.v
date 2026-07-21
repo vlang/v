@@ -2374,6 +2374,7 @@ fn cached_embedded_source_paths(source string, vroot string, source_file string)
 	mut last := 0
 	mut i := 0
 	mut quote := u8(0)
+	mut raw_string := false
 	mut escaped := false
 	mut line_comment := false
 	mut block_comment := false
@@ -2397,12 +2398,13 @@ fn cached_embedded_source_paths(source string, vroot string, source_file string)
 			continue
 		}
 		if quote != 0 {
-			if escaped {
+			if !raw_string && escaped {
 				escaped = false
-			} else if c == `\\` {
+			} else if !raw_string && c == `\\` {
 				escaped = true
 			} else if c == quote {
 				quote = 0
+				raw_string = false
 			}
 			i++
 			continue
@@ -2428,6 +2430,8 @@ fn cached_embedded_source_paths(source string, vroot string, source_file string)
 		}
 		if c in [`'`, `"`] {
 			quote = c
+			raw_string = i > 0 && source[i - 1] == `r` && (i < 2 || (!source[i - 2].is_alnum()
+				&& source[i - 2] != `_`))
 			i++
 			continue
 		}

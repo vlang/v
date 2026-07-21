@@ -1994,6 +1994,8 @@ fn test_cached_generic_body_resolves_relative_embed_file() {
 
 pub fn payload_len[T]() int {
 	_ = sizeof(T)
+	marker := r"trailing\\"
+	_ = marker
 	return $embed_file("payload.txt").len
 }
 ')
@@ -3024,6 +3026,94 @@ fn main() {
 	assert incremental.output.contains('check (incremental)'), incremental.output
 	assert incremental.output.contains('cgen (incremental)'), incremental.output
 	assert run_module_cache_binary(incremental_output) == 'after real logic'
+}
+
+fn test_incremental_program_cache_resolves_compile_signature_artifacts() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_compile_signature_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'cached/cached.v', 'module cached
+
+pub fn value() int {
+	return 40
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import cached
+
+fn adjusted_value() int {
+	return cached.value() + 1
+}
+
+fn main() {
+	println(adjusted_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '41'
+	// Warm once so the snapshot uses the stable cached-module source set.
+	write_module_cache_file(root, 'main.v', 'module main
+
+import cached
+
+fn adjusted_value() int {
+	return cached.value() + 2
+}
+
+fn main() {
+	println(adjusted_value())
+}
+')
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == '42'
+
+	// Populate strict module objects without replacing main.v's non-strict snapshot.
+	strict_seed_file := os.join_path(root, 'strict_seed.v')
+	write_module_cache_file(root, 'strict_seed.v', 'module main
+
+import cached
+
+fn main() {
+	println(cached.value())
+}
+')
+	strict_seed_output := os.join_path(root, 'strict_seed')
+	strict_seed :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -strict -o ${os.quoted_path(strict_seed_output)} ${os.quoted_path(strict_seed_file)}')
+	assert strict_seed.exit_code == 0, strict_seed.output
+	assert run_module_cache_binary(strict_seed_output) == '40'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+import cached
+
+fn adjusted_value() int {
+	return cached.value() + 3
+}
+
+fn main() {
+	println(adjusted_value())
+}
+')
+	strict_output := os.join_path(root, 'strict')
+	strict :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -strict -o ${os.quoted_path(strict_output)} ${os.quoted_path(main_file)}')
+	assert strict.exit_code == 0, strict.output
+	assert strict.output.contains('check (incremental)'), strict.output
+	assert strict.output.contains('cgen (incremental)'), strict.output
+	assert run_module_cache_binary(strict_output) == '43'
 }
 
 fn test_incremental_program_cache_falls_back_for_new_generic_type_argument() {
