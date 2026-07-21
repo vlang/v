@@ -44,10 +44,9 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 			} else if g.gen_map_str_expr(expr_id, typ) {
 				// emitted by gen_map_str_expr
 			} else if g.is_ierror_type_name(typ_name) {
-				// IError may resolve as Interface/Alias/Struct depending on context; match by
-				// name and interpolate its `.message` (mirrors the transformer's IError path).
-				g.gen_string_interp_child_expr(expr_id)
-				g.write('.message')
+				// IError may resolve as Interface/Alias/Struct depending on context. Dispatch
+				// through msg() so boxed MessageError values do not depend on the legacy cache.
+				g.gen_ierror_dynamic_method_expr(expr_id, typ, 'msg')
 			} else if typ is types.Primitive {
 				prim_name := types.Type(typ).name()
 				g.write('${g.cname('${prim_name}.str')}(')

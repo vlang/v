@@ -701,6 +701,17 @@ fn (g &FlatGen) is_ierror_type_name(name string) bool {
 	return name == 'IError' || name == 'builtin.IError'
 }
 
+fn (mut g FlatGen) gen_ierror_dynamic_method_expr(id flat.NodeId, typ types.Type, method string) {
+	tmp := g.tmp_count
+	g.tmp_count++
+	g.write('({ IError _ierror_${method}${tmp} = ')
+	if typ is types.Pointer {
+		g.write('*')
+	}
+	g.gen_expr(id)
+	g.write('; IError__${method}(&_ierror_${method}${tmp}); })')
+}
+
 fn (g &FlatGen) ierror_direct_method_name(concrete string, method string) ?string {
 	direct := '${concrete}.${method}'
 	if g.ierror_method_signature_matches(direct, concrete, method) {

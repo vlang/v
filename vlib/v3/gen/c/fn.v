@@ -5091,12 +5091,12 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					}
 					if !is_method && clean_type is types.Struct && clean_type.name == 'IError' {
 						if fn_node.value == 'msg' {
-							g.gen_expr(g.a.child(fn_node, 0))
-							g.write('.message')
+							g.gen_ierror_dynamic_method_expr(g.a.child(fn_node, 0), base_type,
+								'msg')
 							return
 						} else if fn_node.value == 'code' {
-							g.gen_expr(g.a.child(fn_node, 0))
-							g.write('.code')
+							g.gen_ierror_dynamic_method_expr(g.a.child(fn_node, 0), base_type,
+								'code')
 							return
 						}
 					}
