@@ -174,9 +174,12 @@ fn test_channel_send_or_binds_error_during_fallback_transform() {
 	assert out == 'channel closed\n7'
 }
 
-fn test_optional_pointer_selector_or_dereferences_wrapper() {
+fn test_optional_result_pointers_or_are_rejected() {
 	v3_bin := build_v3_or_review()
-	out := or_review_run(v3_bin, 'optional_pointer_selector_or',
-		'struct Holder {\n\tfield &?int\n}\n\nfn holder(field &?int) Holder {\n\treturn Holder{\n\t\tfield: field\n\t}\n}\n\nfn main() {\n\tpresent := ?int(7)\n\tpresent_holder := holder(&present)\n\tpresent_holder.field or { println("unexpected") }\n\tprintln("present")\n\n\tmissing := ?int(none)\n\tmissing_holder := holder(&missing)\n\tmissing_holder.field or { println("missing") }\n}\n')
-	assert out == 'present\nmissing'
+	option_output := or_review_compile_bad(v3_bin, 'optional_pointer_or_rejected',
+		'fn invalid(ptr &?int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n')
+	assert option_output.contains('unexpected `or` block'), option_output
+	result_output := or_review_compile_bad(v3_bin, 'result_pointer_or_rejected',
+		'fn invalid(ptr &!int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n')
+	assert result_output.contains('unexpected `or` block'), result_output
 }

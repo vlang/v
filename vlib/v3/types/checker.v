@@ -9754,18 +9754,12 @@ fn (tc &TypeChecker) or_expr_source_can_fail(id flat.NodeId) bool {
 			return base_type is Map
 		}
 	}
-	return type_contains_option_or_result(tc.resolve_type(id))
+	return type_is_option_or_result(tc.resolve_type(id))
 }
 
-fn type_contains_option_or_result(typ Type) bool {
+fn type_is_option_or_result(typ Type) bool {
 	clean := unalias_type(typ)
-	if clean is OptionType || clean is ResultType {
-		return true
-	}
-	if clean is Pointer {
-		return type_contains_option_or_result(clean.base_type)
-	}
-	return false
+	return clean is OptionType || clean is ResultType
 }
 
 fn (tc &TypeChecker) sql_aggregate_or_expr_type(node flat.Node) ?Type {
