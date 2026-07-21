@@ -455,6 +455,22 @@ fn test_const_array_allows_newline_separators_with_line_comments() {
 	assert out == '3\n2'
 }
 
+fn test_const_struct_channel_default_uses_runtime_init() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'const_struct_channel_default_runtime_init', 'struct Holder {
+	ch chan int
+}
+
+const holder = Holder{}
+
+fn main() {
+	holder.ch.close()
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
 fn test_mut_pointer_capture_is_not_over_dereferenced() {
 	v3_bin := build_v3_review_transform()
 	// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a

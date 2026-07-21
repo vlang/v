@@ -15125,7 +15125,8 @@ fn (mut g FlatGen) name_collides_with_struct_field(name string) bool {
 
 fn (g &FlatGen) const_expr_needs_runtime_storage(expr string) bool {
 	return expr.contains('array_new(') || expr.contains('new_map(') || expr.contains('({')
-		|| expr.contains('__map_') || expr.contains('_str_')
+		|| expr.contains('sync__new_channel_st(') || expr.contains('__map_')
+		|| expr.contains('_str_')
 }
 
 fn (mut g FlatGen) queue_map_literal_sets(target string, val_id flat.NodeId, map_type types.Map) {
@@ -15589,6 +15590,15 @@ fn (g &FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool) b
 			all_const
 		}
 		.struct_init {
+			if fields := g.struct_fields_for_type(node.value) {
+				for field in fields {
+					clean_type := default_init_unalias_type(field.typ)
+					if clean_type is types.Array || clean_type is types.Channel
+						|| clean_type is types.Map {
+						return false
+					}
+				}
+			}
 			mut all_const := true
 			for ci in 0 .. node.children_count {
 				child := g.a.child_node(&node, ci)
