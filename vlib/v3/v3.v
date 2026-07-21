@@ -482,11 +482,13 @@ fn c_object_compile_support_flags(flags []string) []string {
 
 fn c_dylib_link_flags(flags []string) []string {
 	mut link_flags := []string{}
+	mut language := ''
 	mut i := 0
 	for i < flags.len {
 		flag := flags[i]
 		clean := flag.trim_space()
 		if clean == '-x' {
+			language = if i + 1 < flags.len { flags[i + 1].trim_space() } else { '' }
 			i += 2
 			continue
 		}
@@ -505,7 +507,8 @@ fn c_dylib_link_flags(flags []string) []string {
 		}
 		if clean == '-pthread' || clean.starts_with('-F')
 			|| c_flag_token_is_link_only(clean) || c_flag_is_object_file(clean)
-			|| (c_flag_is_existing_file(clean) && !c_flag_is_c_source_file(clean)) {
+			|| (c_flag_is_existing_file(clean) && !c_flag_is_c_source_file(clean)
+			&& language != 'c') {
 			link_flags << flag
 		}
 		i++
@@ -625,11 +628,28 @@ fn tcc_dynamic_link_flags(flags []string) []string {
 
 fn tcc_native_c_source_flags(flags []string) []string {
 	mut sources := []string{}
-	for flag in flags {
+	mut language := ''
+	mut i := 0
+	for i < flags.len {
+		flag := flags[i]
 		clean := flag.trim(' \t\r\n"\'')
+		if clean == '-x' {
+			language = if i + 1 < flags.len { flags[i + 1].trim_space() } else { '' }
+			i += 2
+			continue
+		}
+		if c_flag_consumes_next_operand(clean) || clean in ['-l', '-weak_library'] {
+			i += 2
+			continue
+		}
 		if clean.ends_with('.c') {
 			sources << flag
+		} else if language == 'c' && clean.len > 0 && !clean.starts_with('-') {
+			// Preserve explicit language selection for extensionless inputs, then
+			// reset it before the following cached dylib argument.
+			sources << ['-x', 'c', flag, '-x', 'none']
 		}
+		i++
 	}
 	return sources
 }

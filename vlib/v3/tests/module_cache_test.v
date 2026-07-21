@@ -4180,6 +4180,49 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '79'
 }
 
+fn test_cached_dev_tcc_links_forced_c_source_operands() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_dev_forced_c_source_link_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'v.mod', "Module { name: 'cached_dev_forced_c_source_link' }\n")
+	write_module_cache_file(root, 'helper', 'int v3_cached_dev_forced_c_source_value(void) {
+	return 83;
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+#flag -x c @VMODROOT/helper -x none
+
+fn C.v3_cached_dev_forced_c_source_value() int
+
+fn main() {
+	println(C.v3_cached_dev_forced_c_source_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	first :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(first_output)} ${os.quoted_path(main_file)}')
+	assert first.exit_code == 0, first.output
+	assert first.output.contains('tcc.exe'), first.output
+	assert run_module_cache_binary(first_output) == '83'
+
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert second.output.contains('tcc.exe'), second.output
+	assert run_module_cache_binary(second_output) == '83'
+}
+
 fn test_incremental_program_cache_synthesizes_new_sum_equality_helpers() {
 	$if !macos {
 		return

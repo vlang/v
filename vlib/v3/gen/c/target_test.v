@@ -4,6 +4,21 @@ import os
 import v3.parser
 import v3.pref
 
+fn test_cached_support_declarations_ignore_comments_and_literals() {
+	mut g := FlatGen.new()
+	g.set_cached_support_declarations('typedef int ExistingSupport;
+// Array_fixed_comment_only
+/* _fn_ptr_block_comment_only */
+const char *text = "Option_string_only with \\"escaped\\" text";
+char quote = \'A\';
+')
+	assert g.cached_support_identifiers['ExistingSupport']
+	assert !g.cached_support_identifiers['Array_fixed_comment_only']
+	assert !g.cached_support_identifiers['_fn_ptr_block_comment_only']
+	assert !g.cached_support_identifiers['Option_string_only']
+	assert !g.cached_support_identifiers['escaped']
+}
+
 fn test_c_directive_targets_use_requested_platform() {
 	target := pref.target_from('macos', 'arm64') or { panic(err) }
 	android := pref.target_from('android', 'arm64') or { panic(err) }

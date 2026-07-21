@@ -763,6 +763,40 @@ pub fn (mut g FlatGen) set_cached_support_declarations(source string) {
 	g.cached_support_identifiers.clear()
 	mut i := 0
 	for i < source.len {
+		if source[i] == `/` && i + 1 < source.len {
+			if source[i + 1] == `/` {
+				i += 2
+				for i < source.len && source[i] != `\n` {
+					i++
+				}
+				continue
+			}
+			if source[i + 1] == `*` {
+				i += 2
+				for i + 1 < source.len && !(source[i] == `*` && source[i + 1] == `/`) {
+					i++
+				}
+				if i + 1 < source.len {
+					i += 2
+				}
+				continue
+			}
+		}
+		if source[i] in [`'`, `"`] {
+			quote := source[i]
+			i++
+			for i < source.len {
+				if source[i] == `\\` && i + 1 < source.len {
+					i += 2
+					continue
+				}
+				i++
+				if source[i - 1] == quote {
+					break
+				}
+			}
+			continue
+		}
 		if !c_identifier_start(source[i]) {
 			i++
 			continue
