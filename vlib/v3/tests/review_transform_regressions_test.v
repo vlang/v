@@ -144,6 +144,40 @@ fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
 	assert out == '7'
 }
 
+fn test_interface_fn_field_argument_keeps_parameter_offset_zero() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_fn_field_argument_offset', 'interface Value {
+	value() int
+}
+
+struct Item {
+	n int
+}
+
+fn (item Item) value() int {
+	return item.n
+}
+
+struct Handler {
+	callback fn (Value)
+}
+
+fn print_value(value Value) {
+	println(int_str(value.value()))
+}
+
+fn main() {
+	handler := Handler{
+		callback: print_value
+	}
+	handler.callback(Item{
+		n: 7
+	})
+}
+')
+	assert out == '7'
+}
+
 fn test_folded_string_constant_ifs_keep_branch_scopes() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'folded_string_constant_if_branch_scopes',

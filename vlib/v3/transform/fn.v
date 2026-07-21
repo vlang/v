@@ -845,7 +845,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		}
 	}
 	mut param_offset := t.call_param_offset(call_name, node, params)
-	if param_offset == 0 && params.len > 0 {
+	if param_offset == 0 && call_name.len > 0 && params.len > 0 {
 		if selector_id := t.call_selector_callee_id(node) {
 			selector := t.a.nodes[int(selector_id)]
 			if selector.children_count > 0 {

@@ -3291,8 +3291,7 @@ fn (g &FlatGen) spawn_stack_address_value(id flat.NodeId) ?flat.NodeId {
 	}
 	child_id := g.a.child(node, 0)
 	child := g.a.node(child_id)
-	if child.kind != .ident || node.is_mut || child.is_mut
-		|| g.local_storage_is_mutable(child.value) {
+	if child.kind != .ident || node.is_mut || child.is_mut {
 		return none
 	}
 	local_type := g.local_ident_type(child.value) or { return none }
