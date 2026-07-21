@@ -777,10 +777,11 @@ pub fn (mut g FlatGen) set_cached_support_declarations(source string) {
 }
 
 // cache_external_input_files returns local include/embed inputs grouped by the
-// module whose cached object incorporates their contents. Forced-include inputs
-// affect every object and are kept in a configuration-wide group. The second
-// result reports include forms whose dependencies cannot be resolved statically.
-pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool, initial_c_flags []string, target pref.Target) (map[string][]string, bool) {
+// module whose cached object incorporates their contents, plus the ordered root
+// native source includes for each module. Forced-include inputs affect every
+// object and are kept in a configuration-wide group. The last result reports
+// include forms whose dependencies cannot be resolved statically.
+pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules map[string]bool, initial_c_flags []string, target pref.Target) (map[string][]string, map[string][]string, bool) {
 	mut c_flags := []string{}
 	mut cur_file := ''
 	for node in a.nodes {
@@ -807,6 +808,7 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 		}
 	}
 	mut inputs := map[string][]string{}
+	mut native_source_roots := map[string][]string{}
 	mut has_untracked_include := false
 	mut cur_module := ''
 	cur_file = ''
@@ -837,6 +839,11 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 				if !os.is_file(path) {
 					continue
 				}
+				if c_include_arg_is_source_file(include_arg) {
+					mut roots := native_source_roots[owner_module]
+					roots << os.real_path(path)
+					native_source_roots[owner_module] = roots
+				}
 				mut seen := map[string]bool{}
 				mut files := []string{}
 				if c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files) {
@@ -865,7 +872,7 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 		sorted.sort()
 		inputs[module_name] = sorted
 	}
-	return inputs, has_untracked_include
+	return inputs, native_source_roots, has_untracked_include
 }
 
 // cache_c_flag_input_files returns forced include/macro files whose contents

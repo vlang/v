@@ -4078,6 +4078,54 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
+fn test_cached_native_source_reemits_only_root_include() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_native_root_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'native/native.v', 'module native
+
+#include "@DIR/root.c"
+
+fn C.native_nested_value() int
+
+pub fn value() int {
+	return C.native_nested_value()
+}
+')
+	write_module_cache_file(root, 'native/root.c', '#include "nested.c"
+
+int native_nested_value(void) {
+	return nested_static_value();
+}
+')
+	write_module_cache_file(root, 'native/nested.c', 'static int nested_static_value(void) {
+	return 42;
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import native
+
+fn main() {
+	println(native.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	assert module_cache_artifact(cache_dir, 'native_', '.o').len > 0
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
 fn test_cached_dev_dylib_invalidates_for_named_static_archive_change() {
 	$if !macos {
 		return

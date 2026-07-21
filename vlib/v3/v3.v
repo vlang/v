@@ -66,6 +66,7 @@ mut:
 	module_import_paths    map[string]string
 	module_dependencies    map[string][]string
 	module_external_inputs map[string][]string
+	module_native_roots    map[string][]string
 	parsed_from_source     map[string]bool
 	source_body_modules    map[string]bool
 	native_source_modules  map[string]bool
@@ -1448,9 +1449,10 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		cache_input_modules[module_name] = true
 	}
 	cache_input_modules['main'] = true
-	external_inputs, has_untracked_c_include := cgen.cache_external_input_files(a, prefs.vroot,
-		cache_input_modules, user_c_flags, prefs.target)
+	external_inputs, native_source_roots, has_untracked_c_include := cgen.cache_external_input_files(a,
+		prefs.vroot, cache_input_modules, user_c_flags, prefs.target)
 	state.module_external_inputs = external_inputs.clone()
+	state.module_native_roots = native_source_roots.clone()
 	native_source_modules, can_scope_static_inputs := cache_external_input_owner_modules(state)
 	state.native_source_modules = native_source_modules.clone()
 	return !has_untracked_c_include && can_scope_static_inputs
@@ -3046,6 +3048,7 @@ fn main() {
 		module_import_paths:    map[string]string{}
 		module_dependencies:    map[string][]string{}
 		module_external_inputs: map[string][]string{}
+		module_native_roots:    map[string][]string{}
 		parsed_from_source:     map[string]bool{}
 		source_body_modules:    map[string]bool{}
 		native_source_modules:  map[string]bool{}
@@ -4661,8 +4664,8 @@ fn cache_native_source_includes(state &V3ModuleCacheState, module_names []string
 	for module_name in module_names {
 		selected[module_name] = true
 	}
-	mut paths := map[string]bool{}
-	for raw_module_name, inputs in state.module_external_inputs {
+	mut out := strings.new_builder(module_names.len * 96)
+	for raw_module_name, roots in state.module_native_roots {
 		module_name := if raw_module_name == 'main' {
 			'main'
 		} else {
@@ -4671,18 +4674,10 @@ fn cache_native_source_includes(state &V3ModuleCacheState, module_names []string
 		if !selected[module_name] || !state.native_source_modules[module_name] {
 			continue
 		}
-		for input in inputs {
-			if c_flag_is_c_source_file(input) {
-				paths[os.real_path(input)] = true
-			}
+		for root in roots {
+			clean := os.real_path(root).replace('\\', '/').replace('"', '\\"')
+			out.writeln('#include "${clean}"')
 		}
-	}
-	mut sorted_paths := paths.keys()
-	sorted_paths.sort()
-	mut out := strings.new_builder(sorted_paths.len * 96)
-	for path in sorted_paths {
-		clean := path.replace('\\', '/').replace('"', '\\"')
-		out.writeln('#include "${clean}"')
 	}
 	return out.str()
 }
