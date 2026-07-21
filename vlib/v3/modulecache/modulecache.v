@@ -9,7 +9,7 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-43'
+const cache_format = 'v3-module-cache-44'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -954,7 +954,7 @@ fn object_entry_stamp(salt string, source_hash string, dependency_inputs map[str
 	mut paths := dependency_inputs.keys()
 	paths.sort()
 	for path in paths {
-		out.writeln('dependency=${path}\t${dependency_inputs[path]}')
+		out.writeln('dependency=${path}\t${dependency_inputs[path]}\t${file_metadata_signature(path)}')
 	}
 	return out.str()
 }
@@ -990,18 +990,43 @@ fn object_stamp_valid(stamp string, expected_entry string) bool {
 		if !line.starts_with('dependency=') {
 			return false
 		}
-		value := line['dependency='.len..]
-		tab := value.last_index_u8(`\t`)
-		if tab <= 0 || tab + 1 >= value.len {
-			return false
+		dependency := parse_object_stamp_dependency(line) or { return false }
+		if dependency.metadata.len > 0
+			&& file_metadata_signature(dependency.path) == dependency.metadata {
+			continue
 		}
-		path := value[..tab]
-		expected_signature := value[tab + 1..]
-		if file_signature(path) != expected_signature {
+		if file_signature(dependency.path) != dependency.signature {
 			return false
 		}
 	}
 	return has_compile_signature
+}
+
+struct ObjectStampDependency {
+	path      string
+	signature string
+	metadata  string
+}
+
+fn parse_object_stamp_dependency(line string) ?ObjectStampDependency {
+	if !line.starts_with('dependency=') {
+		return none
+	}
+	value := line['dependency='.len..]
+	metadata_tab := value.last_index_u8(`\t`)
+	if metadata_tab <= 0 {
+		return none
+	}
+	path_and_signature := value[..metadata_tab]
+	signature_tab := path_and_signature.last_index_u8(`\t`)
+	if signature_tab <= 0 || signature_tab + 1 >= path_and_signature.len {
+		return none
+	}
+	return ObjectStampDependency{
+		path:      path_and_signature[..signature_tab]
+		signature: path_and_signature[signature_tab + 1..]
+		metadata:  value[metadata_tab + 1..]
+	}
 }
 
 fn object_stamp_dependencies_match(stamp string, expected map[string]string) bool {
@@ -1010,16 +1035,11 @@ fn object_stamp_dependencies_match(stamp string, expected map[string]string) boo
 		if !line.starts_with('dependency=') {
 			continue
 		}
-		value := line['dependency='.len..]
-		tab := value.last_index_u8(`\t`)
-		if tab <= 0 || tab + 1 >= value.len {
+		dependency := parse_object_stamp_dependency(line) or { return false }
+		if dependency.path in actual {
 			return false
 		}
-		path := value[..tab]
-		if path in actual {
-			return false
-		}
-		actual[path] = value[tab + 1..]
+		actual[dependency.path] = dependency.signature
 	}
 	for path, signature in expected {
 		if path !in actual {

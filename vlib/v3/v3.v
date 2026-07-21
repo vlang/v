@@ -3420,11 +3420,19 @@ fn main() {
 	}
 
 	parse_total_us := b.current_step_time_us()
-	header_parse_us := if parse_timing.header_us < parse_total_us {
-		parse_timing.header_us
+	profiled_parse_us := parse_timing.header_us + parse_timing.source_us
+	parse_coordination_us := if profiled_parse_us < parse_total_us {
+		parse_total_us - profiled_parse_us
+	} else {
+		i64(0)
+	}
+	parse_scale_denominator := if profiled_parse_us > parse_total_us {
+		profiled_parse_us
 	} else {
 		parse_total_us
 	}
+	header_parse_us := parse_timing.header_us * parse_total_us / parse_scale_denominator
+	source_parse_us := parse_timing.source_us * parse_total_us / parse_scale_denominator
 	b.step_parts([
 		bench.StepPart{
 			name:     'parse .vh'
@@ -3433,8 +3441,12 @@ fn main() {
 		},
 		bench.StepPart{
 			name:     'parse .v'
-			time_us:  parse_total_us - header_parse_us
+			time_us:  source_parse_us
 			parallel: parse_timing.source_parallel
+		},
+		bench.StepPart{
+			name:    'parse setup/imports'
+			time_us: parse_coordination_us
 		},
 	])
 	b.metric_items('parsed .vh files', p.parsed_v_header_files, 'files', '.vh files',

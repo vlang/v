@@ -194,12 +194,23 @@ fn test_cached_object_accepts_recorded_dependency_superset() {
 		assert false, 'a recorded dependency superset should remain valid'
 		return
 	}
+	stamp := os.read_file(entry.object_stamp) or { panic(err) }
+	dependency_lines := stamp.split_into_lines().filter(it.starts_with('dependency='))
+	assert dependency_lines.len == 2
+	assert dependency_lines.all(it.count('\t') == 2)
 	if _ := manager.valid_object_for_compile_signature('foo', [source], compile_signature, {
 		first_dependency: modulecache.file_signature(first_dependency)
 		new_dependency:   modulecache.file_signature(new_dependency)
 	})
 	{
 		assert false, 'a newly discovered dependency must invalidate the object'
+	}
+	write_module_cache_file(root, 'first.h', '#define FIRST 2')
+	if _ := manager.valid_object_for_compile_signature('foo', [source], compile_signature, {
+		first_dependency: modulecache.file_signature(first_dependency)
+	})
+	{
+		assert false, 'a changed dependency must invalidate the object'
 	}
 }
 
