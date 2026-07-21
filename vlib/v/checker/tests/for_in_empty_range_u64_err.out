@@ -1,0 +1,13 @@
+vlib/v/checker/tests/for_in_empty_range_u64_err.vv:2:11: error: empty range: `18446744073709551615 .. 18446744073709551615` will never execute
+    1 | fn main() {
+    2 |     for i in 18446744073709551615 .. 18446744073709551615 {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    3 |         println(i)
+    4 |     }
+vlib/v/checker/tests/for_in_empty_range_u64_err.vv:6:11: error: empty range: `9223372036854775808 .. 9223372036854775808` will never execute
+    4 |     }
+    5 | 
+    6 |     for i in 9223372036854775808 .. 9223372036854775808 {
+      |              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    7 |         println(i)
+    8 |     }

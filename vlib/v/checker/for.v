@@ -99,14 +99,33 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				high_pos)
 		}
 
-		// Check for empty hardcoded integer ranges (e.g., 4 .. 2)
-		if node.cond is ast.IntegerLiteral && node.high is ast.IntegerLiteral {
-			low_val := node.cond.val.i64()
-			high_val := node.high.val.i64()
+		low_val := c.eval_comptime_const_expr(node.cond, 0)
+		high_val := c.eval_comptime_const_expr(node.high, 0)
 
-			if low_val >= high_val {
-				c.error('empty range: `${node.cond.val} .. ${node.high.val}` will never execute',
-					cond_pos.extend(high_pos))
+		// Check for empty ranges with comptime constant integer bounds
+		// TODO: fix case when a bound is overflowing (e.g. 0 .. max_u8 + 1)
+		// TODO: fix case where a bound is an operation with 2 different casts (e.g. 4 .. int(2) + u8(1))
+		if low_val != none && high_val != none && typ_idx in ast.integer_type_idxs
+			&& high_type_idx in ast.integer_type_idxs {
+			low_i64 := low_val.i64()
+			high_i64 := high_val.i64()
+
+			if low_i64 != none && high_i64 != none {
+				if low_i64 >= high_i64 {
+					c.error('empty range: `${low_i64} .. ${high_i64}` will never execute',
+						cond_pos.extend(high_pos))
+				}
+			} else {
+				// Fall back to an unsigned comparison for literals that overflow i64
+				low_u64 := low_val.u64()
+				high_u64 := high_val.u64()
+
+				if low_u64 != none && high_u64 != none {
+					if low_u64 >= high_u64 {
+						c.error('empty range: `${low_u64} .. ${high_u64}` will never execute',
+							cond_pos.extend(high_pos))
+					}
+				}
 			}
 		}
 
