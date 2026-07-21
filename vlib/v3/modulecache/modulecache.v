@@ -1200,6 +1200,46 @@ pub fn static_string_definitions(source string) string {
 	return out.str()
 }
 
+// materialize_cached_body_string_definitions restores body-only string storage
+// recorded as cache marker comments. Real definitions in source take precedence.
+pub fn materialize_cached_body_string_definitions(source string) string {
+	marker := '// V3CACHE_BASELINE '
+	if !source.contains(marker) {
+		return source.clone()
+	}
+	mut actual_symbols := map[string]bool{}
+	for line in source.split_into_lines() {
+		if line.starts_with(marker) {
+			continue
+		}
+		if symbol := generated_static_string_definition_symbol(line) {
+			actual_symbols[symbol] = true
+		}
+	}
+	mut emitted_symbols := map[string]bool{}
+	mut out := strings.new_builder(source.len)
+	for line in source.split_into_lines() {
+		if line.starts_with(marker) {
+			definition := line[marker.len..]
+			if symbol := generated_static_string_definition_symbol(definition) {
+				if !actual_symbols[symbol] && !emitted_symbols[symbol] {
+					out.writeln(definition)
+					emitted_symbols[symbol] = true
+				}
+				continue
+			}
+		}
+		if symbol := generated_static_string_definition_symbol(line) {
+			if emitted_symbols[symbol] {
+				continue
+			}
+			emitted_symbols[symbol] = true
+		}
+		out.writeln(line)
+	}
+	return out.str()
+}
+
 fn generated_static_string_definition_symbol(line string) ?string {
 	clean := line.trim_space()
 	prefix := 'static string '

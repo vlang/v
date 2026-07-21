@@ -3096,7 +3096,9 @@ fn main() {
 					generic_cache_entry = entry
 					generic_cache_hit = true
 					old_literal_text := os.read_file(entry.literals) or { '' }
-					cached_body := os.read_file(entry.body) or { '' }
+					cached_body := modulecache.materialize_cached_body_string_definitions(os.read_file(entry.body) or {
+						''
+					})
 					metadata := os.read_file(entry.metadata) or { '' }
 					if old_literals := decode_cached_runtime_strings(old_literal_text) {
 						if rewritten := modulecache.rewrite_cached_runtime_strings(cached_body,
@@ -4333,7 +4335,8 @@ fn prepare_v3_cached_generic_body(generated_source string, cached_prefix string,
 		os.setenv('V3_CACHE_FORCE_SOURCE', '1', true)
 		restart_v3_after_cache_invalidation()
 	}
-	split := modulecache.split_generated_c(generated_source)!
+	materialized_source := modulecache.materialize_cached_body_string_definitions(generated_source)
+	split := modulecache.split_generated_c(materialized_source)!
 	main_body := split.modules['main'] or { '' }
 	current_string_definitions := modulecache.static_string_definitions(split.prefix)
 	combined_declarations := cached_declarations + current_string_definitions

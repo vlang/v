@@ -747,6 +747,30 @@ fn module_cache_string_symbol(value string) string {
 	return '_v3_lit_${value.len}_${hash.hex()}'
 }
 
+fn test_module_cache_materializes_cached_body_string_definitions() {
+	stable_symbol := module_cache_string_symbol('stable')
+	before_symbol := module_cache_string_symbol('before')
+	after_symbol := module_cache_string_symbol('after')
+	stable_definition := 'static string ${stable_symbol} = {"stable", 6, 1};'
+	before_definition := 'static string ${before_symbol} = {"before", 6, 1};'
+	after_definition := 'static string ${after_symbol} = {"after", 5, 1};'
+	cached := '// V3CACHE_BASELINE ${stable_definition}\n// V3CACHE_BASELINE ${before_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${stable_symbol});\nconsume(${before_symbol});\n'
+	materialized := modulecache.materialize_cached_body_string_definitions(cached)
+	assert materialized.contains(stable_definition)
+	assert materialized.contains(before_definition)
+	assert !materialized.contains('// V3CACHE_BASELINE')
+	with_actual := modulecache.materialize_cached_body_string_definitions(before_definition + '\n' +
+		cached)
+	assert with_actual.count(before_definition) == 1
+	rewritten := modulecache.rewrite_cached_runtime_strings(materialized, ['stable', 'before'], [
+		'stable',
+		'after',
+	]) or { panic('runtime string rewrite failed') }
+	assert rewritten.contains(stable_definition)
+	assert rewritten.contains(after_definition)
+	assert !rewritten.contains(before_definition)
+}
+
 fn test_module_cache_string_symbol_rewrite_handles_swapped_literals() {
 	alpha_symbol := module_cache_string_symbol('alpha')
 	beta_symbol := module_cache_string_symbol('beta')
@@ -2918,6 +2942,87 @@ fn main() {
 	assert cached.output.contains('monomorphize (cached)'), cached.output
 	assert cached.output.contains('cgen (cached)'), cached.output
 	assert run_module_cache_binary(cached_output) == '1\n2\ntrue\nfalse\nfalse\ntrue'
+}
+
+fn test_generic_program_cache_rehydrates_body_string_literals() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_generic_body_strings_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', "module main
+
+fn identity[T](value T) T {
+\treturn value
+}
+
+fn main() {
+\tprintln(identity('seed'))
+\tprintln('initial')
+}
+")
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'seed\ninitial'
+
+	write_module_cache_file(root, 'main.v', "module main
+
+fn identity[T](value T) T {
+\treturn value
+}
+
+fn main() {
+\tprintln(identity('stable'))
+\tprintln('before')
+}
+")
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == 'stable\nbefore'
+
+	write_module_cache_file(root, 'main.v', "module main
+
+fn identity[T](value T) T {
+\treturn value
+}
+
+fn main() {
+\tprintln(identity('stable'))
+\tprintln('before')
+}
+
+// A source-only edit must retain both cached literal definitions.
+")
+	comment_output := os.join_path(root, 'comment')
+	comment :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(comment_output)} ${os.quoted_path(main_file)}')
+	assert comment.exit_code == 0, comment.output
+	assert comment.output.contains('cgen (cached)'), comment.output
+	assert run_module_cache_binary(comment_output) == 'stable\nbefore'
+
+	write_module_cache_file(root, 'main.v', "module main
+
+fn identity[T](value T) T {
+\treturn value
+}
+
+fn main() {
+\tprintln(identity('stable'))
+\tprintln('after')
+}
+")
+	changed_output := os.join_path(root, 'changed')
+	changed :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_output)} ${os.quoted_path(main_file)}')
+	assert changed.exit_code == 0, changed.output
+	assert run_module_cache_binary(changed_output) == 'stable\nafter'
 }
 
 fn test_incremental_program_cache_recompiles_real_main_logic() {
