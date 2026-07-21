@@ -799,8 +799,8 @@ fn (mut t Transformer) transform_pointer_value_struct_eq(node flat.Node, lhs_id 
 	}
 	lhs_type := t.node_type(lhs_id)
 	rhs_type := t.node_type(rhs_id)
-	lhs_clean := t.trim_all_pointer_type(lhs_type)
-	rhs_clean := t.trim_all_pointer_type(rhs_type)
+	lhs_clean := t.trim_pointer_type(lhs_type)
+	rhs_clean := t.trim_pointer_type(rhs_type)
 	lhs_struct := t.struct_lookup_name(lhs_clean)
 	rhs_struct := t.struct_lookup_name(rhs_clean)
 	if lhs_struct.len == 0 || rhs_struct.len == 0 {

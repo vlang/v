@@ -10614,6 +10614,9 @@ fn (g &FlatGen) selector_module_call_name(id flat.NodeId, fn_node flat.Node, nod
 	if base.kind != .ident {
 		return none
 	}
+	if g.selector_base_is_value(base.value) {
+		return none
+	}
 	if source_file := g.a.source_files[fn_node.pos.id] {
 		if lexical_module := g.tc.file_imports[source_file.name + '\n' + base.value] {
 			call_name := '${lexical_module}.${fn_node.value}'
@@ -10628,9 +10631,6 @@ fn (g &FlatGen) selector_module_call_name(id flat.NodeId, fn_node flat.Node, nod
 				return call_name
 			}
 		}
-	}
-	if g.selector_base_is_value(base.value) {
-		return none
 	}
 	mod_name := g.selector_base_module(base.value) or {
 		if base.value == g.tc.cur_module {

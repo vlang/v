@@ -659,6 +659,13 @@ fn test_struct_pointer_equality_is_semantic() {
 	assert out == 'true\nfalse\ntrue'
 }
 
+fn test_multilevel_struct_pointer_equality_uses_pointer_identity() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'multilevel_struct_pointer_identity_equality',
+		"struct Person {\n\tname string\n}\n\nfn main() {\n\tmut left := &Person{\n\t\tname: 'same'\n\t}\n\tmut right := &Person{\n\t\tname: 'same'\n\t}\n\tleft_slot := &left\n\tright_slot := &right\n\tsame_slot := left_slot\n\tprintln(left_slot == right_slot)\n\tprintln(left_slot != right_slot)\n\tprintln(left_slot == same_slot)\n\tprintln(*left_slot == *right_slot)\n}\n")
+	assert out == 'false\ntrue\ntrue\ntrue'
+}
+
 fn test_struct_equality_with_interface_field_compiles() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'struct_eq_interface_field',
