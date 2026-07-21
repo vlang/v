@@ -285,6 +285,61 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 	assert ptr_out == '2'
 }
 
+fn test_method_receiver_rejects_extra_pointer_layers() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_value_receiver_extra_pointer_layers', 'struct S {}
+
+fn (s S) value() int {
+	return 1
+}
+
+fn main() {
+	s := S{}
+	p := &s
+	pp := &p
+	_ := pp.value()
+}
+',
+		'cannot use receiver `&&S` as `S`')
+	run_bad(v3_bin, 'bad_pointer_receiver_extra_pointer_layers', 'struct S {}
+
+fn (s &S) value() int {
+	return 1
+}
+
+fn main() {
+	s := S{}
+	p := &s
+	pp := &p
+	ppp := &pp
+	_ := ppp.value()
+}
+',
+		'cannot use receiver `&&&S` as `&S`')
+	out := run_good(v3_bin, 'good_receiver_single_pointer_adjustment', 'struct S {
+	value int
+}
+
+fn (s S) by_value() int {
+	return s.value
+}
+
+fn (s &S) by_pointer() int {
+	return s.value
+}
+
+fn main() {
+	s := S{
+		value: 7
+	}
+	p := &s
+	println(int_str(p.by_value()))
+	println(int_str(s.by_pointer()))
+}
+')
+	assert out == '7\n7'
+}
+
 fn test_restrict_synthetic_hex_fallback_receivers() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_struct_hex_method', 'struct S {}\nfn main() {\n\t_ := S{}.hex()\n}\n',

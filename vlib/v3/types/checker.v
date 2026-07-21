@@ -18187,7 +18187,9 @@ fn (tc &TypeChecker) method_receiver_compatible(actual Type, expected Type, meth
 	}
 	actual_depth, actual_base := type_pointer_depth_and_base(actual)
 	expected_depth, expected_base := type_pointer_depth_and_base(expected)
-	if actual_depth > expected_depth && (tc.type_compatible(actual_base, expected_base)
+	// C receiver lowering can dereference a pointer for a value receiver, but it
+	// does not adjust depth when both the actual and expected receivers are pointers.
+	if actual_depth == 1 && expected_depth == 0 && (tc.type_compatible(actual_base, expected_base)
 		|| tc.generic_receiver_base_match(actual_base, expected_base)
 		|| tc.receiver_embeds(actual_base, expected_base)) {
 		return true

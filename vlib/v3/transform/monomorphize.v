@@ -2474,7 +2474,14 @@ fn (mut t Transformer) materialize_generic_struct_spec(spec_name string, decl Ge
 		}
 		field_type := substitute_generic_type_text_with_params(field.typ, args,
 			decl.node.generic_params())
-		normalized_field_type := t.normalize_type_alias(field_type)
+		// A field declared directly as its type parameter keeps the concrete
+		// argument's identity (and therefore alias methods/operators). Composite
+		// declarations still need normalization to expand aliases such as `Values[T]`.
+		normalized_field_type := if field.typ.trim_space() in decl.node.generic_params() {
+			field_type
+		} else {
+			t.normalize_type_alias(field_type)
+		}
 		fields << types.StructField{
 			name: field.value
 			typ:  t.tc.parse_resolution_type(normalized_field_type)
