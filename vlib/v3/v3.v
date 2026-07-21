@@ -623,6 +623,17 @@ fn tcc_dynamic_link_flags(flags []string) []string {
 	return link_flags
 }
 
+fn tcc_native_c_source_flags(flags []string) []string {
+	mut sources := []string{}
+	for flag in flags {
+		clean := flag.trim(' \t\r\n"\'')
+		if clean.ends_with('.c') {
+			sources << flag
+		}
+	}
+	return sources
+}
+
 fn tcc_cached_main_source(source string) string {
 	// Framework headers contain Objective-C syntax that TinyCC cannot parse.
 	// Their implementations and public native symbols live in the cached dylib;
@@ -4237,6 +4248,7 @@ fn main() {
 			if atomic_s.len > 0 {
 				tcc_args << atomic_s
 			}
+			tcc_args << tcc_native_c_source_flags(resolved_c_flags)
 			tcc_args << cached_dev_dylib
 			tcc_args << tcc_dynamic_link_flags(resolved_c_flags)
 			if '-lm' !in tcc_args {

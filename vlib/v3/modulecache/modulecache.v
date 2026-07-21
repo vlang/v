@@ -2717,12 +2717,8 @@ fn cached_source_pseudo_edit(source string, start int, source_file string, line_
 			vmod_content.replace('\r\n', '\n')
 		}
 		'@VMODROOT' {
-			vmod_root, vmod_file := signature_vmod_root(source_file)
-			if vmod_file.len == 0 {
-				'.'
-			} else {
-				vmod_root
-			}
+			vmod_root, _ := signature_vmod_root(source_file)
+			vmod_root
 		}
 		'@FILE_LINE' {
 			'${file}:${line_nr}'
