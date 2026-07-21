@@ -809,6 +809,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		test_files:                     if result_only { g.test_files } else { g.test_files.clone() }
 		cache_program_files:            g.cache_program_files
 		incremental_fn_names:           g.incremental_fn_names
+		cached_support_identifiers:     g.cached_support_identifiers
 		str_lits:                       if result_only {
 			clone_cgen_string_list(g.str_lits)
 		} else if g.scope_parallel_workers {

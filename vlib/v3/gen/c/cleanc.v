@@ -275,6 +275,7 @@ mut:
 	want_parallel_prep             bool
 	cache_split                    bool
 	program_body_only              bool
+	cached_support_identifiers     map[string]bool
 	// Set when the target is built with -prealloc / -d prealloc: the bump
 	// arena's base block pointer must be thread-local (matching V1's cgen),
 	// or every spawned thread would race on the same arena.
@@ -700,6 +701,7 @@ pub fn FlatGen.new() FlatGen {
 		callback_wrapper_names:         map[string]string{}
 		callback_wrapper_defs:          []string{}
 		callback_wrapper_defs_seen:     map[string]bool{}
+		cached_support_identifiers:     map[string]bool{}
 		str_lits:                       []string{}
 		defers:                         []flat.NodeId{}
 		fn_defers:                      []flat.NodeId{}
@@ -753,6 +755,25 @@ pub fn (mut g FlatGen) set_cache_program_files(files []string) {
 // parsed bodies changed. An empty map preserves normal whole-program emission.
 pub fn (mut g FlatGen) set_incremental_fn_names(names map[string]bool) {
 	g.incremental_fn_names = names.clone()
+}
+
+// set_cached_support_declarations records C identifiers already supplied by the
+// cached program prefix so body-only generation emits only newly needed typedefs.
+pub fn (mut g FlatGen) set_cached_support_declarations(source string) {
+	g.cached_support_identifiers.clear()
+	mut i := 0
+	for i < source.len {
+		if !c_identifier_start(source[i]) {
+			i++
+			continue
+		}
+		start := i
+		i++
+		for i < source.len && c_identifier_continue(source[i]) {
+			i++
+		}
+		g.cached_support_identifiers[source[start..i]] = true
+	}
 }
 
 // cache_external_input_files returns local include/embed inputs grouped by the
@@ -1415,6 +1436,14 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.sb.ensure_cap(fn_code.len + 262_144)
 		g.writeln('#define V3CACHE_PROGRAM_UNIT 1')
 		g.string_literals()
+		if g.incremental_fn_names.len > 0 {
+			g.writeln('/* V3CACHE_SUPPORT_BEGIN */')
+			g.fixed_array_early_typedefs()
+			g.fn_ptr_typedefs()
+			g.fixed_array_typedefs()
+			g.optional_typedefs()
+			g.writeln('/* V3CACHE_SUPPORT_END */')
+		}
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
 		g.writeln('/* V3CACHE_MODULE main */')
 		for segment in g.fn_segs {
@@ -14230,6 +14259,10 @@ fn (mut g FlatGen) fixed_array_typedef_has_unresolved_len(typ types.Type) bool {
 
 fn (mut g FlatGen) emit_fixed_array_typedef(name string, info FixedArrayTypedefInfo, needed map[string]FixedArrayTypedefInfo, mut emitted map[string]bool) {
 	if emitted[name] {
+		return
+	}
+	if g.cached_support_identifiers[name] {
+		emitted[name] = true
 		return
 	}
 	arr := info.arr

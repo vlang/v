@@ -1626,6 +1626,7 @@ fn incremental_top_level_nodes(a &flat.FlatAst) []bool {
 
 fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 	mut declaration_parts := []string{}
+	mut synthetic_main_parts := []string{}
 	mut functions := []V3IncrementalFn{}
 	mut cur_file := ''
 	mut cur_module := ''
@@ -1674,7 +1675,7 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 			}
 			else {
 				if top_level_nodes[idx] {
-					declaration_parts << 'synthetic-main\t${node.kind}\t${cur_file}\t${cur_module}\t${incremental_node_tree_signature(a,
+					synthetic_main_parts << 'synthetic-main\t${node.kind}\t${cur_file}\t${cur_module}\t${incremental_node_tree_signature(a,
 						flat.NodeId(idx))}'
 				}
 			}
@@ -1683,6 +1684,11 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 	declaration_parts.sort()
 	mut declaration_hash := u64(1469598103934665603)
 	for part in declaration_parts {
+		declaration_hash = c_hash_bytes(declaration_hash, part.bytes())
+		declaration_hash = c_hash_bytes(declaration_hash, [u8(0xff)])
+	}
+	declaration_hash = c_hash_bytes(declaration_hash, 'ordered-synthetic-main'.bytes())
+	for part in synthetic_main_parts {
 		declaration_hash = c_hash_bytes(declaration_hash, part.bytes())
 		declaration_hash = c_hash_bytes(declaration_hash, [u8(0xff)])
 	}
@@ -1770,11 +1776,15 @@ fn merge_incremental_program_body(cached_source string, changed_source string, c
 		new_section := changed_sections[key] or { return none }
 		merged = merged.replace(old_section, new_section)
 	}
+	support_declarations := incremental_c_support_declarations(changed_source) or { return none }
 	new_definitions := modulecache.static_string_definitions(changed_source)
-	if new_definitions.len == 0 {
-		return merged
+	mut additions := strings.new_builder(support_declarations.len + new_definitions.len)
+	if support_declarations.trim_space().len > 0 {
+		additions.write_string(support_declarations)
+		if !support_declarations.ends_with('\n') {
+			additions.writeln('')
+		}
 	}
-	mut additions := strings.new_builder(new_definitions.len)
 	for line in new_definitions.split_into_lines() {
 		if line.len > 0 && !merged.contains(line) {
 			additions.writeln(line)
@@ -1787,6 +1797,15 @@ fn merge_incremental_program_body(cached_source string, changed_source string, c
 	marker := '/* V3CACHE_BODY_BEGIN */'
 	marker_idx := merged.index(marker) or { return none }
 	return merged[..marker_idx] + new_text + merged[marker_idx..]
+}
+
+fn incremental_c_support_declarations(source string) ?string {
+	begin_marker := '/* V3CACHE_SUPPORT_BEGIN */'
+	end_marker := '/* V3CACHE_SUPPORT_END */'
+	begin := source.index(begin_marker) or { return none }
+	content_start := begin + begin_marker.len
+	relative_end := source[content_start..].index(end_marker) or { return none }
+	return source[content_start..content_start + relative_end]
 }
 
 fn incremental_static_string_markers(source string) string {
@@ -3691,6 +3710,15 @@ fn main() {
 		mut generated_c_flags := cgen_cache_metadata.flags.clone()
 		mut interface_impl_signature := cgen_cache_metadata.interface_impl_signature
 		mut cgen_was_parallel := false
+		incremental_c_declarations := if incremental_cache_hit {
+			os.read_file(incremental_tcc_declarations_path) or {
+				eprintln('error reading incremental C declarations ${incremental_tcc_declarations_path}: ${err.msg()}')
+				cleanup_c_build_dir(cc_dir)
+				exit(1)
+			}
+		} else {
+			''
+		}
 		cgen_used_fns := if incremental_cache_hit {
 			incremental_stage_used_fns
 		} else {
@@ -3717,6 +3745,7 @@ fn main() {
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(user_files)
 			g.set_incremental_fn_names(incremental_changed_names)
+			g.set_cached_support_declarations(incremental_c_declarations)
 			g.set_scope_parallel_workers(!generic_cache_hit)
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc,
@@ -3750,6 +3779,7 @@ fn main() {
 			g.set_program_body_only(generic_cache_hit)
 			g.set_cache_program_files(user_files)
 			g.set_incremental_fn_names(incremental_changed_names)
+			g.set_cached_support_declarations(incremental_c_declarations)
 			generated_path := if cache_state.manager.enabled { cache_plan_file } else { cc_src }
 			g.gen_to_file_with_used_test_options(generated_path, a, cgen_used_fns, &pre_tc,
 				cache_no_parallel_cgen, test_files) or {

@@ -3116,6 +3116,101 @@ fn main() {
 	assert run_module_cache_binary(strict_output) == '43'
 }
 
+fn test_incremental_program_cache_emits_new_body_support_typedefs() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_body_support_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn add_one(value int) int {
+	return value + 1
+}
+
+fn calculated_value() int {
+	return add_one(0)
+}
+
+fn main() {
+	println(calculated_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '1'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn add_one(value int) int {
+	return value + 1
+}
+
+fn calculated_value() int {
+	return add_one(1)
+}
+
+fn main() {
+	println(calculated_value())
+}
+')
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == '2'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn add_one(value int) int {
+	return value + 1
+}
+
+fn calculated_value() int {
+	values := [2]int{init: 40}
+	return add_one(values[0] + 1)
+}
+
+fn main() {
+	println(calculated_value())
+}
+')
+	fixed_array_output := os.join_path(root, 'fixed_array')
+	fixed_array :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(fixed_array_output)} ${os.quoted_path(main_file)}')
+	assert fixed_array.exit_code == 0, fixed_array.output
+	assert fixed_array.output.contains('cgen (incremental)'), fixed_array.output
+	assert run_module_cache_binary(fixed_array_output) == '42'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn add_one(value int) int {
+	return value + 1
+}
+
+fn calculated_value() int {
+	values := [2]int{init: 41}
+	callback := add_one
+	return callback(values[0])
+}
+
+fn main() {
+	println(calculated_value())
+}
+')
+	fn_pointer_output := os.join_path(root, 'fn_pointer')
+	fn_pointer :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(fn_pointer_output)} ${os.quoted_path(main_file)}')
+	assert fn_pointer.exit_code == 0, fn_pointer.output
+	assert fn_pointer.output.contains('cgen (incremental)'), fn_pointer.output
+	assert run_module_cache_binary(fn_pointer_output) == '42'
+}
+
 fn test_incremental_program_cache_falls_back_for_new_generic_type_argument() {
 	$if !macos {
 		return
@@ -3259,6 +3354,38 @@ fn test_incremental_program_cache_invalidates_for_top_level_statement_change() {
 	assert second.exit_code == 0, second.output
 	assert !second.output.contains('cgen (cached)'), second.output
 	assert run_module_cache_binary(second_output) == '2'
+}
+
+fn test_incremental_program_cache_preserves_top_level_statement_order() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_top_level_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', "println('cold first')\nprintln('cold second')\n")
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'cold first\ncold second'
+
+	write_module_cache_file(root, 'main.v', "println('first')\nprintln('second')\n")
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == 'first\nsecond'
+
+	write_module_cache_file(root, 'main.v', "println('second')\nprintln('first')\n")
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == 'second\nfirst'
 }
 
 fn test_incremental_program_cache_invalidates_for_function_attribute_change() {

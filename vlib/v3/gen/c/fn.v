@@ -13237,6 +13237,10 @@ fn (mut g FlatGen) emit_fn_ptr_typedef(encoded string, name string, mut emitted 
 	if emitted[encoded] {
 		return
 	}
+	if g.cached_support_identifiers[name] {
+		emitted[encoded] = true
+		return
+	}
 	emitted[encoded] = true
 	if !encoded.starts_with('fn_ptr:') {
 		return
