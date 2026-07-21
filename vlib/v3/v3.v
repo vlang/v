@@ -6572,7 +6572,11 @@ fn source_file_line_count(paths []string) int {
 }
 
 fn import_module_identity_cached(prefs &pref.Preferences, import_path string, importing_file string, project_root string, import_dir string, mut path_cache map[string]string, mut identity_cache map[string]string) string {
-	key := '${importing_file}\n${import_path}\n${import_dir}'
+	// Module lookup depends on the importer's directory, not its filename. A
+	// program commonly has many files in one directory importing the same module;
+	// using the full filename here defeated almost every cache lookup.
+	importing_dir := if importing_file.len > 0 { os.dir(importing_file) } else { '' }
+	key := '${importing_dir}\n${import_path}\n${import_dir}'
 	if identity := identity_cache[key] {
 		return identity
 	}
@@ -6645,16 +6649,22 @@ fn module_root_for_import_dir(import_path string, import_dir string) string {
 }
 
 fn resolve_project_or_pref_module_path_cached(prefs &pref.Preferences, mod_name string, importing_file string, project_root string, mut cache map[string]string) string {
-	key := '${importing_file}\n${mod_name}'
+	// Every resolution input derived from `importing_file` is directory scoped.
+	// Share the result between sibling source files instead of walking all module
+	// search roots once per file.
+	importing_dir := if importing_file.len > 0 { os.dir(importing_file) } else { '' }
+	key := '${importing_dir}\n${mod_name}'
 	if path := cache[key] {
 		return path
 	}
-	path := resolve_project_or_pref_module_path(prefs, mod_name, importing_file, project_root)
+	path := resolve_project_or_pref_module_path(prefs, mod_name, importing_file, project_root, mut
+		cache)
 	cache[key] = path
 	return path
 }
 
-fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string) string {
+fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string, importing_file string, project_root string, mut cache map[string]string) string {
+	mod_path := mod_name.replace('.', os.path_separator)
 	if importing_file.len > 0 {
 		importer_dir := os.dir(importing_file)
 		if alias_path := pref.resolve_module_alias_path(importer_dir, mod_name) {
@@ -6664,8 +6674,7 @@ fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string,
 		if alias_path := pref.resolve_module_alias_path(local_modules_root, mod_name) {
 			return alias_path
 		}
-		local_modules_path := os.join_path_single(local_modules_root, mod_name.replace('.',
-			os.path_separator))
+		local_modules_path := os.join_path_single(local_modules_root, mod_path)
 		if os.is_dir(local_modules_path) {
 			return local_modules_path
 		}
@@ -6674,10 +6683,64 @@ fn resolve_project_or_pref_module_path(prefs &pref.Preferences, mod_name string,
 		if alias_path := pref.resolve_module_alias_path(project_root, mod_name) {
 			return alias_path
 		}
-		project_path := os.join_path_single(project_root, mod_name.replace('.', os.path_separator))
+		project_path := os.join_path_single(project_root, mod_path)
 		if os.is_dir(project_path) {
 			return project_path
 		}
 	}
+	// Preserve the existing resolver priority: explicit local `modules/` and
+	// project-root modules precede a module beside the importing file.
+	if importing_file.len > 0 {
+		relative_path := os.join_path_single(os.dir(importing_file), mod_path)
+		if module_path_has_v_sources(relative_path) {
+			return relative_path
+		}
+	}
+	// vlib and the global module directory do not depend on the importing file.
+	// Resolve them once per import name instead of repeating the same alias probes
+	// and directory scans for every module that imports them.
+	global_key := '@global\n${mod_name}'
+	if global_key in cache {
+		global_path := cache[global_key]
+		if global_path.len > 0 {
+			return global_path
+		}
+	} else {
+		global_path := resolve_global_module_path(prefs, mod_name, mod_path)
+		cache[global_key] = global_path
+		if global_path.len > 0 {
+			return global_path
+		}
+	}
 	return prefs.get_module_path(mod_name, importing_file)
+}
+
+fn resolve_global_module_path(prefs &pref.Preferences, mod_name string, mod_path string) string {
+	vlib_root := os.join_path_single(prefs.vroot, 'vlib')
+	if alias_path := pref.resolve_module_alias_path(vlib_root, mod_name) {
+		return alias_path
+	}
+	vlib_path := os.join_path_single(vlib_root, mod_path)
+	if module_path_has_v_sources(vlib_path) {
+		return vlib_path
+	}
+	vmodules_root := os.getenv_opt('VMODULES') or {
+		os.join_path_single(os.home_dir(), '.vmodules')
+	}
+	if alias_path := pref.resolve_module_alias_path(vmodules_root, mod_name) {
+		return alias_path
+	}
+	vmodules_path := os.join_path_single(vmodules_root, mod_path)
+	if module_path_has_v_sources(vmodules_path) {
+		return vmodules_path
+	}
+	return ''
+}
+
+fn module_path_has_v_sources(path string) bool {
+	if path.len == 0 || !os.is_dir(path) {
+		return false
+	}
+	entries := os.ls(path) or { return false }
+	return entries.any(it.ends_with('.v'))
 }

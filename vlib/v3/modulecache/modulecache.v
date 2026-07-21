@@ -9,7 +9,7 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-44'
+const cache_format = 'v3-module-cache-45'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -33,6 +33,8 @@ pub:
 
 // Entry contains the persistent artifacts for one V module.
 pub struct Entry {
+	source_bodies       bool
+	source_bodies_known bool
 pub:
 	header       string
 	object       string
@@ -646,20 +648,21 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 		return none
 	}
 	entry := m.entry(module_name, source_files)
-	if !os.is_file(entry.header) || !os.is_file(entry.header_stamp)
-		|| !os.is_file(entry.object_stamp) {
+	if !os.is_file(entry.header) {
 		return none
 	}
 	stamp := os.read_file(entry.header_stamp) or { return none }
 	expected := entry_stamp(m.salt, m.source_signature(source_files))
-	if stamp != expected {
-		return none
-	}
+	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
 	object_stamp := os.read_file(entry.object_stamp) or { return none }
 	if !object_stamp_valid_with_metadata_cache(object_stamp, expected, mut dependency_metadata) {
 		return none
 	}
-	return entry
+	return Entry{
+		...entry
+		source_bodies:       source_bodies
+		source_bodies_known: true
+	}
 }
 
 // valid_header reports whether a declaration header matches its module sources.
@@ -668,21 +671,27 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 		return none
 	}
 	entry := m.entry(module_name, source_files)
-	if !os.is_file(entry.header) || !os.is_file(entry.header_stamp) {
+	if !os.is_file(entry.header) {
 		return none
 	}
 	stamp := os.read_file(entry.header_stamp) or { return none }
-	if stamp != entry_stamp(m.salt, m.source_signature(source_files)) {
-		return none
+	expected := entry_stamp(m.salt, m.source_signature(source_files))
+	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
+	return Entry{
+		...entry
+		source_bodies:       source_bodies
+		source_bodies_known: true
 	}
-	return entry
 }
 
 // header_needs_source reports whether a declaration header has bodies that must
 // remain available to per-program monomorphization.
 pub fn header_needs_source(entry Entry) bool {
-	header := os.read_file(entry.header) or { return true }
-	return header.contains(source_body_marker)
+	if !entry.source_bodies_known {
+		header := os.read_file(entry.header) or { return true }
+		return header.contains(source_body_marker)
+	}
+	return entry.source_bodies
 }
 
 // valid_object reports whether a cached object matches the supplied sources.
@@ -708,7 +717,8 @@ pub fn (m &Manager) write_entry(module_name string, source_files []string, heade
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
-	write_atomic(entry.header_stamp, entry_stamp(m.salt, m.source_signature(source_files)))!
+	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files),
+		header))!
 	return entry
 }
 
@@ -719,7 +729,8 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
-	write_atomic(entry.header_stamp, entry_stamp(m.salt, m.source_signature(source_files)))!
+	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files),
+		header))!
 	return entry
 }
 
@@ -955,6 +966,21 @@ fn entry_stamp(salt string, source_hash string) string {
 	return 'format=${cache_format}\nconfig=${hash_text(salt)}\nsource=${source_hash}\n'
 }
 
+fn header_entry_stamp(salt string, source_hash string, header string) string {
+	return entry_stamp(salt, source_hash) +
+		'source_bodies=${int(header.contains(source_body_marker))}\n'
+}
+
+fn header_stamp_source_bodies(stamp string, expected_entry string) ?bool {
+	if stamp == expected_entry + 'source_bodies=0\n' {
+		return false
+	}
+	if stamp == expected_entry + 'source_bodies=1\n' {
+		return true
+	}
+	return none
+}
+
 fn object_entry_stamp(salt string, source_hash string, dependency_inputs map[string]string, compile_signature string) string {
 	mut out := strings.new_builder(256 + dependency_inputs.len * 96)
 	out.write_string(entry_stamp(salt, source_hash))
@@ -1012,7 +1038,16 @@ fn object_stamp_valid_with_metadata_cache(stamp string, expected_entry string, m
 		if dependency.metadata.len > 0 && current_metadata == dependency.metadata {
 			continue
 		}
-		if file_signature(dependency.path) != dependency.signature {
+		// Headers produced later in a cold cache build can have no metadata in an
+		// earlier module's stamp. Hash each such dependency only once per compiler
+		// run even when it appears in many transitive object stamps.
+		signature_key := '\x00${dependency.path}'
+		current_signature := dependency_metadata[signature_key] or {
+			signature := file_signature(dependency.path)
+			dependency_metadata[signature_key] = signature
+			signature
+		}
+		if current_signature != dependency.signature {
 			return false
 		}
 	}
