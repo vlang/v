@@ -1375,10 +1375,12 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	if g.incremental_fn_names.len > 0 {
 		// Cached declarations already contain whole-program typedefs, wrappers,
 		// interface tables and shared-parameter metadata. A body-only update only
-		// needs indexes consulted while emitting the selected function.
+		// needs indexes consulted while emitting the selected function. Rebuild
+		// interface IDs too: newly boxed values must match the cached dispatch tables.
 		g.precompute_embedded_fields()
 		g.precompute_param_type_index()
 		g.precompute_sum_name_lookup()
+		g.collect_interface_impls()
 	} else {
 		g.precompute_shared_param_index()
 		if !g.skip_generics {

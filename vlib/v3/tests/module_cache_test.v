@@ -4146,3 +4146,291 @@ fn main() {
 	assert changed.exit_code == 0, changed.output
 	assert run_module_cache_binary(changed_output) == '2'
 }
+
+fn test_incremental_cgen_preserves_interface_type_ids() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_interface_ids_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+interface Speaker {
+	speak() string
+}
+
+struct Cat {}
+
+fn (cat Cat) speak() string {
+	_ = cat
+	return "cat"
+}
+
+struct Dog {}
+
+fn (dog Dog) speak() string {
+	_ = dog
+	return "dog"
+}
+
+fn dog_speaker() Speaker {
+	return Dog{}
+}
+
+fn cached_dispatch() string {
+	return dog_speaker().speak() + Cat{}.speak()
+}
+
+fn selected_speaker() Speaker {
+	speaker := dog_speaker()
+	return speaker
+}
+
+fn main() {
+	println(cached_dispatch())
+	println(selected_speaker().speak())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'dogcat\ndog'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+interface Speaker {
+	speak() string
+}
+
+struct Cat {}
+
+fn (cat Cat) speak() string {
+	_ = cat
+	return "cat"
+}
+
+struct Dog {}
+
+fn (dog Dog) speak() string {
+	_ = dog
+	return "dog"
+}
+
+fn dog_speaker() Speaker {
+	return Dog{}
+}
+
+fn cached_dispatch() string {
+	return dog_speaker().speak() + Cat{}.speak()
+}
+
+fn selected_speaker() Speaker {
+	return dog_speaker()
+}
+
+fn main() {
+	println(cached_dispatch())
+	println(selected_speaker().speak())
+}
+')
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == 'dogcat\ndog'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+interface Speaker {
+	speak() string
+}
+
+struct Cat {}
+
+fn (cat Cat) speak() string {
+	_ = cat
+	return "cat"
+}
+
+struct Dog {}
+
+fn (dog Dog) speak() string {
+	_ = dog
+	return "dog"
+}
+
+fn dog_speaker() Speaker {
+	return Dog{}
+}
+
+fn cached_dispatch() string {
+	return dog_speaker().speak() + Cat{}.speak()
+}
+
+fn selected_speaker() Speaker {
+	return Cat{}
+}
+
+fn main() {
+	println(cached_dispatch())
+	println(selected_speaker().speak())
+}
+')
+	incremental_output := os.join_path(root, 'incremental')
+	incremental :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(incremental_output)} ${os.quoted_path(main_file)}')
+	assert incremental.exit_code == 0, incremental.output
+	assert incremental.output.contains('cgen (incremental)'), incremental.output
+	assert run_module_cache_binary(incremental_output) == 'dogcat\ncat'
+}
+
+fn test_incremental_program_cache_preserves_import_order() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_import_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'initfirst/initfirst.v', 'module initfirst
+
+fn init() {
+	println("first")
+}
+
+pub fn marker() {}
+')
+	write_module_cache_file(root, 'initsecond/initsecond.v', 'module initsecond
+
+fn init() {
+	println("second")
+}
+
+pub fn marker() {}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import initfirst
+import initsecond
+
+fn main() {
+	initfirst.marker()
+	initsecond.marker()
+	println("cold")
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'first\nsecond\ncold'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+import initfirst
+import initsecond
+
+fn main() {
+	initfirst.marker()
+	initsecond.marker()
+	println("done")
+}
+')
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == 'first\nsecond\ndone'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+import initsecond
+import initfirst
+
+fn main() {
+	initfirst.marker()
+	initsecond.marker()
+	println("done")
+}
+')
+	reordered_output := os.join_path(root, 'reordered')
+	reordered :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(reordered_output)} ${os.quoted_path(main_file)}')
+	assert reordered.exit_code == 0, reordered.output
+	assert run_module_cache_binary(reordered_output) == 'second\nfirst\ndone'
+}
+
+fn test_incremental_program_cache_preserves_directive_order() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_directive_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+#define V3_INCREMENTAL_ORDER_VALUE 1
+#undef V3_INCREMENTAL_ORDER_VALUE
+#define V3_INCREMENTAL_ORDER_VALUE 2
+
+fn incremental_directive_value() int {
+	return C.V3_INCREMENTAL_ORDER_VALUE
+}
+
+fn main() {
+	println(incremental_directive_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '2'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+#define V3_INCREMENTAL_ORDER_VALUE 1
+#undef V3_INCREMENTAL_ORDER_VALUE
+#define V3_INCREMENTAL_ORDER_VALUE 2
+
+fn incremental_directive_value() int {
+	return C.V3_INCREMENTAL_ORDER_VALUE
+}
+
+fn main() {
+	println(incremental_directive_value() + 0)
+}
+')
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == '2'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+#define V3_INCREMENTAL_ORDER_VALUE 2
+#undef V3_INCREMENTAL_ORDER_VALUE
+#define V3_INCREMENTAL_ORDER_VALUE 1
+
+fn incremental_directive_value() int {
+	return C.V3_INCREMENTAL_ORDER_VALUE
+}
+
+fn main() {
+	println(incremental_directive_value() + 0)
+}
+')
+	reordered_output := os.join_path(root, 'reordered')
+	reordered :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(reordered_output)} ${os.quoted_path(main_file)}')
+	assert reordered.exit_code == 0, reordered.output
+	assert run_module_cache_binary(reordered_output) == '1'
+}

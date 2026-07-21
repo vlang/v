@@ -1696,6 +1696,7 @@ fn incremental_declaration_attribute_signatures(a &flat.FlatAst) map[int]string 
 
 fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 	mut declaration_parts := []string{}
+	mut ordered_import_directive_parts := []string{}
 	mut global_initializer_parts := []string{}
 	mut synthetic_main_parts := []string{}
 	mut functions := []V3IncrementalFn{}
@@ -1742,14 +1743,21 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 				part := '${node.kind}\t${cur_file}\t${cur_module}\t${incremental_node_tree_signature(a,
 					flat.NodeId(idx))}\t${attribute_signature}'
 				declaration_parts << part
+				if node.kind == .import_decl {
+					ordered_import_directive_parts << part
+				}
 				if node.kind == .global_decl {
 					global_initializer_parts << part
 				}
 			}
 			.directive, .comptime_if, .comptime_for, .asm_stmt, .sql_expr, .fn_literal {
 				if top_level_nodes[idx] {
-					declaration_parts << '${node.kind}\t${cur_file}\t${cur_module}\t${incremental_node_tree_signature(a,
+					part := '${node.kind}\t${cur_file}\t${cur_module}\t${incremental_node_tree_signature(a,
 						flat.NodeId(idx))}'
+					declaration_parts << part
+					if node.kind == .directive {
+						ordered_import_directive_parts << part
+					}
 				}
 			}
 			else {
@@ -1763,6 +1771,11 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 	declaration_parts.sort()
 	mut declaration_hash := u64(1469598103934665603)
 	for part in declaration_parts {
+		declaration_hash = c_hash_bytes(declaration_hash, part.bytes())
+		declaration_hash = c_hash_bytes(declaration_hash, [u8(0xff)])
+	}
+	declaration_hash = c_hash_bytes(declaration_hash, 'ordered-imports-directives'.bytes())
+	for part in ordered_import_directive_parts {
 		declaration_hash = c_hash_bytes(declaration_hash, part.bytes())
 		declaration_hash = c_hash_bytes(declaration_hash, [u8(0xff)])
 	}
