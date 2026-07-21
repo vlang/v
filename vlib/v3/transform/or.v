@@ -1604,7 +1604,7 @@ fn (mut t Transformer) lower_nested_optional_logical_infix_part(expr flat.Node, 
 	}
 }
 
-fn (mut t Transformer) lower_optional_leaf_with_outer_or(expr_id flat.NodeId, or_node flat.Node, _result_name string, _result_type string, ok_name string) ?NestedOptionalPart {
+fn (mut t Transformer) lower_optional_leaf_with_outer_or(expr_id flat.NodeId, or_node flat.Node, result_name string, result_type string, ok_name string) ?NestedOptionalPart {
 	if or_node.children_count < 2 {
 		return none
 	}
@@ -1632,10 +1632,9 @@ fn (mut t Transformer) lower_optional_leaf_with_outer_or(expr_id flat.NodeId, or
 	ok_cond := t.make_selector(opt_ident, 'ok', 'bool')
 	value_expr := t.make_selector(t.make_ident(opt_tmp), 'value', value_type)
 	then_block := t.make_block(arr1(t.make_assign(t.make_ident(val_tmp), value_expr)))
-	// The `or` body replaces this optional leaf, not the enclosing expression.
-	// For `lhs == optional() or { fallback }`, assign `fallback` to the leaf's
-	// value temp and let the outer comparison run normally.
-	else_stmts := t.lower_or_body_to_stmts(body_id, val_tmp, value_type, or_node.value, opt_tmp)
+	mut else_stmts := t.lower_or_body_to_stmts(body_id, result_name, result_type, or_node.value,
+		opt_tmp)
+	else_stmts << t.make_assign(t.make_ident(ok_name), t.make_bool_literal(false))
 	eval_stmts << t.make_if(ok_cond, then_block, t.make_block(else_stmts))
 	return NestedOptionalPart{
 		expr:    t.make_ident(val_tmp)

@@ -172,6 +172,24 @@ fn test_none_ierror_values_lower_to_builtin_none() {
 	assert out == 'option'
 }
 
+fn test_reject_non_optional_or_and_wrapped_string_concat() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_non_optional_literal_or_block', 'fn main() {\n\t_ := 1 or { 2 }\n}\n',
+		'unexpected `or` block')
+	run_bad(v3_bin, 'bad_non_optional_call_or_block',
+		'fn value() int {\n\treturn 1\n}\n\nfn main() {\n\tvalue() or { panic(err) }\n}\n',
+		'unexpected `or` block')
+	run_bad(v3_bin, 'bad_optional_string_concat',
+		"fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := 'hello ' + maybe_name()\n}\n",
+		'operator `+` cannot concatenate `string` and `?string`')
+	run_bad(v3_bin, 'bad_result_string_concat',
+		"fn result_name() !string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := result_name() + '!'\n}\n",
+		'operator `+` cannot concatenate `!string` and `string`')
+	out := run_good(v3_bin, 'good_map_or_and_unwrapped_string_concat',
+		"fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\tnames := {\n\t\t'first': 'Grace'\n\t}\n\tprintln(names['first'] or { 'unknown' })\n\tprintln('hello ' + (maybe_name() or { 'unknown' }))\n}\n")
+	assert out == 'Grace\nhello Ada'
+}
+
 fn test_rune_receiver_methods_resolve() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_rune_receiver_methods',

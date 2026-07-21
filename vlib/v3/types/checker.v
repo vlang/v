@@ -531,6 +531,7 @@ pub mut:
 	expected_expr_id        int  = -1
 	expected_expr_type      Type = Type(void_)
 	cur_fn_ret_type         Type = Type(void_)
+	channel_send_or_expr_id int  = -1
 	smartcasts              map[string]Type
 	ownership               &OwnershipState = unsafe { nil }
 	selfhost                bool
@@ -8666,7 +8667,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		return
 	}
 	if kind_id == 22 {
-		tc.check_or_expr(node)
+		tc.check_or_expr(id, node)
 		return
 	}
 	if kind_id == 50 {
@@ -8777,6 +8778,13 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
+		previous_channel_send_or_expr_id := tc.channel_send_or_expr_id
+		if node.kind == .infix && node.op == .arrow && i == 1 {
+			child := tc.a.node(child_id)
+			if child.kind == .or_expr {
+				tc.channel_send_or_expr_id = int(child_id)
+			}
+		}
 		$if ownership ? {
 			defer_append_rhs := node.kind == .infix && node.op == .left_shift
 				&& node.children_count >= 2 && i == 1
@@ -8785,6 +8793,7 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 		} $else {
 			tc.check_node(child_id)
 		}
+		tc.channel_send_or_expr_id = previous_channel_send_or_expr_id
 	}
 	if node.kind == .infix {
 		tc.check_infix(id, node)
@@ -9431,11 +9440,6 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	rhs_type := tc.infix_read_type(rhs_id)
 	lhs_is_string := type_is_string_like(lhs_type)
 	rhs_is_string := type_is_string_like(rhs_type)
-	lhs_is_optional_string := optional_payload_is_string(lhs_type)
-	rhs_is_optional_string := optional_payload_is_string(rhs_type)
-	if (lhs_is_string && rhs_is_optional_string) || (rhs_is_string && lhs_is_optional_string) {
-		return
-	}
 	if lhs_is_string == rhs_is_string {
 		return
 	}
@@ -9680,12 +9684,21 @@ fn (mut tc TypeChecker) check_array_init(node flat.Node) {
 }
 
 // check_or_expr validates check or expr state for types.
-fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
+fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	if node.children_count == 0 {
 		return
 	}
 	inner_id := tc.a.child(&node, 0)
 	tc.check_node(inner_id)
+	if node.children_count >= 2 && node.value !in ['!', '?']
+		&& int(id) != tc.channel_send_or_expr_id && !tc.or_expr_source_can_fail(inner_id) {
+		source_type := unalias_type(tc.resolve_type(inner_id))
+		if source_type !is Unknown && tc.should_diagnose(inner_id) {
+			tc.record_error(.assignment_mismatch,
+				'unexpected `or` block, expression of type `${source_type.name()}` is not an Option or a Result',
+				inner_id)
+		}
+	}
 	$if ownership ? {
 		if node.value in ['!', '?'] {
 			tc.ownership_record_propagation_drops()
@@ -9708,6 +9721,51 @@ fn (mut tc TypeChecker) check_or_expr(node flat.Node) {
 		tc.ownership_add_branch_group_base()
 		tc.ownership_end_branch_group()
 	}
+}
+
+fn (tc &TypeChecker) or_expr_source_can_fail(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind in [.paren, .expr_stmt] && node.children_count > 0 {
+		return tc.or_expr_source_can_fail(tc.a.child(node, 0))
+	}
+	if node.kind == .or_expr && node.value in ['!', '?'] && node.children_count > 0 {
+		return tc.or_expr_source_can_fail(tc.a.child(node, 0))
+	}
+	if node.kind == .infix && node.children_count >= 2 {
+		return tc.or_expr_source_can_fail(tc.a.child(node, 0))
+			|| tc.or_expr_source_can_fail(tc.a.child(node, 1))
+	}
+	if node.kind == .index && node.children_count > 0 {
+		base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(node, 0)))
+		return base_type is Map || base_type is Array || base_type is ArrayFixed
+			|| base_type is String
+	}
+	if node.kind == .prefix && node.op == .arrow && node.children_count > 0 {
+		source_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(node, 0)))
+		return source_type is Channel
+	}
+	if node.kind == .prefix && node.op == .amp && node.children_count > 0 {
+		index := tc.a.child_node(node, 0)
+		if index.kind == .index && index.children_count > 0 {
+			base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(index, 0)))
+			return base_type is Map
+		}
+	}
+	return type_contains_option_or_result(tc.resolve_type(id))
+}
+
+fn type_contains_option_or_result(typ Type) bool {
+	clean := unalias_type(typ)
+	if clean is OptionType || clean is ResultType {
+		return true
+	}
+	if clean is Pointer {
+		return type_contains_option_or_result(clean.base_type)
+	}
+	return false
 }
 
 fn (tc &TypeChecker) sql_aggregate_or_expr_type(node flat.Node) ?Type {
