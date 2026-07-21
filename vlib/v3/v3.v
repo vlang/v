@@ -5760,22 +5760,20 @@ fn path_is_in_dir(path string, dir string) bool {
 	return real_path == real_dir || real_path.starts_with(real_dir + os.path_separator)
 }
 
-// skipped_backend_modules lists the importable backend module names that the current
+// skipped_backend_module_groups lists the importable backend module groups that the current
 // configuration excludes (driven by the same `skip_*` defines that gate the dispatch in
-// main()). The arm64 backend is the only consumer of the SSA pipeline, so skipping it also
-// skips v3.ssa and v3.ssa.optimize.
-fn skipped_backend_modules(prefs &pref.Preferences) []string {
-	mut skipped := []string{}
+// main()). The arm64 backend is the only consumer of the SSA pipeline, so it shares a group
+// with v3.ssa and v3.ssa.optimize.
+fn skipped_backend_module_groups(prefs &pref.Preferences) [][]string {
+	mut skipped := [][]string{}
 	if 'skip_arm64' in prefs.user_defines {
-		skipped << 'v3.gen.arm64'
-		skipped << 'v3.ssa'
-		skipped << 'v3.ssa.optimize'
+		skipped << ['v3.gen.arm64', 'v3.ssa', 'v3.ssa.optimize']
 	}
 	if 'skip_wasm' in prefs.user_defines {
-		skipped << 'v3.gen.wasm'
+		skipped << ['v3.gen.wasm']
 	}
 	if 'skip_eval' in prefs.user_defines {
-		skipped << 'v3.eval'
+		skipped << ['v3.eval']
 	}
 	return skipped
 }
@@ -5970,8 +5968,18 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	// them as already handled, so neither v3.v's top-level imports nor any transitive
 	// import pulls them in. Skipping the arm64 group (v3.gen.arm64 + the v3.ssa SSA
 	// pipeline) and the wasm/eval backends avoids ~30k lines of work when self-hosting.
-	for skipped in skipped_backend_modules(prefs) {
-		if skipped !in explicit_initial_imports {
+	for skipped_group in skipped_backend_module_groups(prefs) {
+		mut group_requested := false
+		for skipped in skipped_group {
+			if skipped in explicit_initial_imports {
+				group_requested = true
+				break
+			}
+		}
+		if group_requested {
+			continue
+		}
+		for skipped in skipped_group {
 			parsed_modules[skipped] = true
 		}
 	}

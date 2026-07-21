@@ -73,6 +73,26 @@ fn test_standard_v3_excludes_ownership_checker() {
 		'ownership support is not compiled into this v3 executable')
 }
 
+fn test_explicit_arm64_import_unskips_ssa_dependencies() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_arm64_import_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'module main
+
+import v3.gen.arm64
+
+fn main() {}
+')!
+	output := os.join_path(root, 'arm64_import')
+	compile := cmdexec.run(v3_bin, ['-o', output, source])
+	assert compile.exit_code == 0, compile.output
+}
+
 fn test_driver_cflags_include_dir_is_visible_to_header_inliner() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_cflags_include_${os.getpid()}')
 	os.rmdir_all(root) or {}
