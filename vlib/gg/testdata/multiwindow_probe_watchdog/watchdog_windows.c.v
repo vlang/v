@@ -4,6 +4,10 @@ import os
 import time
 import gg.testdata.multiwindow_probe_gate
 
+$if windows && tinyc {
+	#flag windows @VMODROOT/vlib/gg/testdata/multiwindow_probe_watchdog/watchdog_windows_tcc.def
+}
+
 #insert "@VMODROOT/vlib/gg/testdata/multiwindow_probe_watchdog/watchdog_windows_helpers.h"
 
 fn C.v_multiwindow_watchdog_spawn(application &u16, command_line &u16, work_directory &u16, environment &u16) voidptr
