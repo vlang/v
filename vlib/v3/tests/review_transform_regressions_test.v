@@ -1195,6 +1195,32 @@ fn main() {
 	assert out == 'Foo\ntrue\nBar\ntrue'
 }
 
+fn test_generic_typeof_idx_comparison_prunes_dead_branch() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_typeof_idx_comparison', 'fn pick_idx[T]() int {
+	$if typeof[T]().idx == typeof[int]().idx {
+		return 42
+	} $else {
+		return T.missing_method()
+	}
+}
+
+fn concrete_idx() int {
+	$if typeof[int]().idx == typeof[int]().idx {
+		return 1
+	} $else {
+		return 2
+	}
+}
+
+fn main() {
+	println(concrete_idx())
+	println(pick_idx[int]())
+}
+')
+	assert out == '1\n42'
+}
+
 fn test_mut_map_for_in_writeback_survives_continue_and_break() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'mut_map_for_in_writeback_continue_break', 'struct Box {

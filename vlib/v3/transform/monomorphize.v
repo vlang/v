@@ -9473,6 +9473,7 @@ fn (t &Transformer) subst_comptime_type_operand(raw string, args []string) strin
 	if reflected_type, reflected_member := generic_comptime_typeof_operand(clean) {
 		substituted := t.resolve_substituted_type_text(t.subst_type(reflected_type, args))
 		return match reflected_member {
+			'idx' { t.comptime_field_type_id(substituted, t.cur_module).str() }
 			'unaliased_typ' { t.comptime_normalize_type_alias_chain(substituted) }
 			'typ' { substituted + '.typ' }
 			else { substituted }

@@ -10654,11 +10654,8 @@ fn (mut t Transformer) comptime_type_condition_value(cond string) ?bool {
 		}
 		left := clean[..op_idx].trim_space()
 		right := clean[op_idx + op.len..].trim_space()
-		if !comptime_is_int(left) || !comptime_is_int(right) {
-			continue
-		}
-		l := left.int()
-		r := right.int()
+		l := t.comptime_condition_int_value(left) or { continue }
+		r := t.comptime_condition_int_value(right) or { continue }
 		return match op {
 			' != ' { l != r }
 			' == ' { l == r }
@@ -10673,6 +10670,25 @@ fn (mut t Transformer) comptime_type_condition_value(cond string) ?bool {
 		return !value
 	}
 	return none
+}
+
+fn (t &Transformer) comptime_condition_int_value(raw string) ?int {
+	clean := raw.trim_space()
+	if comptime_is_int(clean) {
+		return clean.int()
+	}
+	if t.cur_fn_is_generic {
+		return none
+	}
+	reflected_type, reflected_member := generic_comptime_typeof_operand(clean) or { return none }
+	if reflected_member != 'idx' {
+		return none
+	}
+	resolved := t.resolve_substituted_type_text(reflected_type)
+	if resolved.len == 0 {
+		return none
+	}
+	return t.comptime_field_type_id(resolved, t.cur_module)
 }
 
 fn (mut t Transformer) comptime_type_matches(actual string, expected string) ?bool {
