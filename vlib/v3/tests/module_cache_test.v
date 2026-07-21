@@ -4061,6 +4061,59 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '21'
 }
 
+fn test_incremental_program_cache_preserves_runtime_const_initializer_order() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_runtime_const_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+const first_runtime_const = record_runtime_const("first", 1)
+const second_runtime_const = record_runtime_const("second", 2)
+
+fn record_runtime_const(label string, value int) int {
+	println(label)
+	return value
+}
+
+fn main() {
+	println(first_runtime_const + second_runtime_const)
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'first\nsecond\n3'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+const second_runtime_const = record_runtime_const("second", 2)
+const first_runtime_const = record_runtime_const("first", 1)
+
+fn record_runtime_const(label string, value int) int {
+	println(label)
+	return value
+}
+
+fn main() {
+	println(first_runtime_const + second_runtime_const)
+}
+')
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == 'second\nfirst\n3'
+}
+
 fn test_cgen_cache_invalidates_for_resolved_dynamic_flag_change() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_dynamic_c_flag_${os.getpid()}')

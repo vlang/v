@@ -1763,6 +1763,7 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 	mut declaration_parts := []string{}
 	mut ordered_import_directive_parts := []string{}
 	mut global_initializer_parts := []string{}
+	mut const_initializer_parts := []string{}
 	mut synthetic_main_parts := []string{}
 	mut functions := []V3IncrementalFn{}
 	mut cur_file := ''
@@ -1814,6 +1815,9 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 				if node.kind == .global_decl {
 					global_initializer_parts << part
 				}
+				if node.kind == .const_decl {
+					const_initializer_parts << part
+				}
 			}
 			.directive, .comptime_if, .comptime_for, .asm_stmt, .sql_expr, .fn_literal {
 				if top_level_nodes[idx] {
@@ -1846,6 +1850,11 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 	}
 	declaration_hash = c_hash_bytes(declaration_hash, 'ordered-global-initializers'.bytes())
 	for part in global_initializer_parts {
+		declaration_hash = c_hash_bytes(declaration_hash, part.bytes())
+		declaration_hash = c_hash_bytes(declaration_hash, [u8(0xff)])
+	}
+	declaration_hash = c_hash_bytes(declaration_hash, 'ordered-const-initializers'.bytes())
+	for part in const_initializer_parts {
 		declaration_hash = c_hash_bytes(declaration_hash, part.bytes())
 		declaration_hash = c_hash_bytes(declaration_hash, [u8(0xff)])
 	}
