@@ -36,6 +36,7 @@ on:
       - 'v.mod'
       - 'GNUmakefile'
       - 'Makefile'
+      - '.github/problem-matchers/**'
       - '!**.md'
       - '!**.yml'
       - '.github/workflows/riscv64_linux_ci.yml'

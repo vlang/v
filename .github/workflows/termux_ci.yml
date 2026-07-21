@@ -33,6 +33,7 @@ on:
       - 'v.mod'
       - 'GNUmakefile'
       - 'Makefile'
+      - '.github/problem-matchers/**'
       - '.github/workflows/retry.sh'
       - '!**.md'
       - '!**.yml'

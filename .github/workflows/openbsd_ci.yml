@@ -62,6 +62,7 @@ on:
       - 'ci/common/**'
       - 'GNUmakefile'
       - 'Makefile'
+      - '.github/problem-matchers/**'
       # Negated patterns MUST stay after all positive patterns (GitHub path-filter ordering).
       - '!**.md'
       - '!**.yml'
