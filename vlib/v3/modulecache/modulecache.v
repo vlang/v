@@ -2478,7 +2478,8 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, m
 				source := declaration_source_text(a, node, file_node.value, mut source_cache) or {
 					return false
 				}
-				if source.contains('@LOCATION') || source.contains('@COLUMN') {
+				if source.contains('@LOCATION') || source.contains('@COLUMN')
+					|| source.contains('@VMODHASH') {
 					return false
 				}
 			}
@@ -2692,7 +2693,7 @@ fn cached_embedded_source_paths(source string, vroot string, source_file string,
 
 fn cached_source_pseudo_edit(source string, start int, source_file string, line_nr int) ?CachedSourcePathEdit {
 	mut name := ''
-	for candidate in ['@FILE_LINE', '@FILE', '@DIR', '@LINE'] {
+	for candidate in ['@VMOD_FILE', '@VMODROOT', '@FILE_LINE', '@FILE', '@DIR', '@LINE'] {
 		if source[start..].starts_with(candidate) {
 			name = candidate
 			break
@@ -2707,10 +2708,34 @@ fn cached_source_pseudo_edit(source string, start int, source_file string, line_
 	}
 	file := os.real_path(source_file)
 	value := match name {
-		'@FILE_LINE' { '${file}:${line_nr}' }
-		'@FILE' { file }
-		'@DIR' { os.real_path(os.dir(source_file)) }
-		else { line_nr.str() }
+		'@VMOD_FILE' {
+			_, vmod_file := signature_vmod_root(source_file)
+			if vmod_file.len == 0 {
+				return none
+			}
+			vmod_content := os.read_file(vmod_file) or { return none }
+			vmod_content.replace('\r\n', '\n')
+		}
+		'@VMODROOT' {
+			vmod_root, vmod_file := signature_vmod_root(source_file)
+			if vmod_file.len == 0 {
+				'.'
+			} else {
+				vmod_root
+			}
+		}
+		'@FILE_LINE' {
+			'${file}:${line_nr}'
+		}
+		'@FILE' {
+			file
+		}
+		'@DIR' {
+			os.real_path(os.dir(source_file))
+		}
+		else {
+			line_nr.str()
+		}
 	}
 	return CachedSourcePathEdit{
 		start:       start

@@ -2378,6 +2378,51 @@ fn main() {
 	assert run_module_cache_binary(second_output) == first_run
 }
 
+fn test_cached_generic_body_preserves_vmod_pseudo_variables() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_generic_vmod_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'v.mod', "Module { name: 'cache_vmod_body' }\n")
+	write_module_cache_file(root, 'origin/origin.v', 'module origin
+
+pub fn module_location[T]() []string {
+	_ = sizeof(T)
+	return [@VMODROOT, @VMOD_FILE]
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import origin
+
+fn main() {
+	location := origin.module_location[int]()
+	println(location[0])
+	println(location[1].contains("cache_vmod_body"))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	first_run := run_module_cache_binary(first_output)
+	assert first_run == '${os.real_path(root)}\ntrue', first_run
+	header_path := module_cache_artifact(cache_dir, 'origin_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains(os.real_path(root)), header
+	assert header.contains('cache_vmod_body'), header
+	assert !header.contains('@VMODROOT'), header
+	assert !header.contains('@VMOD_FILE'), header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == first_run
+}
+
 fn test_cached_comptime_body_resolves_relative_insert() {
 	$if windows {
 		return
