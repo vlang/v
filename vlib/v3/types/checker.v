@@ -4018,7 +4018,11 @@ pub fn (mut tc TypeChecker) copy_cloned_resolution(src_id flat.NodeId, dst_id fl
 // resolve_fn_value_name_for_expected resolves and records a function value in an expected FnType context.
 fn (mut tc TypeChecker) resolve_fn_value_name_for_expected(id flat.NodeId, expected Type) ?string {
 	if name := tc.resolved_fn_value_name(id) {
-		return name
+		actual := tc.fn_type_from_key(name) or { return none }
+		if tc.fn_value_signature_compatible(actual, expected) {
+			return name
+		}
+		return none
 	}
 	if int(id) < 0 || int(id) >= tc.a.nodes.len {
 		return none
@@ -22077,25 +22081,28 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 
 // fn_value_match_key returns the single exact function declaration key accepted for a function value.
 fn (tc &TypeChecker) fn_value_match_key(node flat.Node, expected Type) ?string {
-	expected_fn := fn_type_from_type(expected) or { return none }
 	key := tc.fn_value_key(node) or { return none }
 	actual := tc.fn_type_from_key(key) or { return none }
-	if actual is FnType {
-		if actual.params.len != expected_fn.params.len {
-			return none
-		}
-		for i in 0 .. actual.params.len {
-			actual_param := fn_param_type(actual, i)
-			expected_param := fn_param_type(expected_fn, i)
-			if !tc.fn_param_compatible(actual_param, expected_param) {
-				return none
-			}
-		}
-		if tc.fn_return_compatible(actual.return_type, expected_fn.return_type) {
-			return key
-		}
+	if tc.fn_value_signature_compatible(actual, expected) {
+		return key
 	}
 	return none
+}
+
+fn (tc &TypeChecker) fn_value_signature_compatible(actual Type, expected Type) bool {
+	actual_fn := fn_type_from_type(actual) or { return false }
+	expected_fn := fn_type_from_type(expected) or { return false }
+	if actual_fn.params.len != expected_fn.params.len {
+		return false
+	}
+	for i in 0 .. actual_fn.params.len {
+		actual_param := fn_param_type(actual_fn, i)
+		expected_param := fn_param_type(expected_fn, i)
+		if !tc.fn_param_compatible(actual_param, expected_param) {
+			return false
+		}
+	}
+	return tc.fn_return_compatible(actual_fn.return_type, expected_fn.return_type)
 }
 
 // fn_value_key resolves a function value expression to one exact function declaration key.
@@ -22422,6 +22429,9 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	if type_contains_unknown(actual) || type_contains_unknown(expected) {
 		return true
 	}
+	if actual is FnType && expected is FnType {
+		return tc.fn_value_signature_compatible(Type(actual), Type(expected))
+	}
 	if (actual.name().contains('[') || expected.name().contains('['))
 		&& tc.generic_type_name_matches(actual.name(), expected.name()) {
 		return true
@@ -22674,7 +22684,7 @@ fn (tc &TypeChecker) fn_return_compatible(actual Type, expected Type) bool {
 	if actual.name() == expected.name() {
 		return true
 	}
-	if tc.c_type(actual) == tc.c_type(expected) {
+	if tc.c_type(actual) == tc.c_type(expected) && tc.type_compatible(actual, expected) {
 		return true
 	}
 	return fn_return_canonical_type_name(actual) == fn_return_canonical_type_name(expected)

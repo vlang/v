@@ -15533,12 +15533,12 @@ fn startup_module_key(mod string) string {
 	return mod
 }
 
-fn (g &FlatGen) is_const_expr(id flat.NodeId) bool {
+fn (mut g FlatGen) is_const_expr(id flat.NodeId) bool {
 	mut visiting := map[int]bool{}
 	return g.is_const_expr_inner(id, mut visiting)
 }
 
-fn (g &FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool) bool {
+fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool) bool {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
 		return false
 	}
@@ -15590,14 +15590,8 @@ fn (g &FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool) b
 			all_const
 		}
 		.struct_init {
-			if fields := g.struct_fields_for_type(node.value) {
-				for field in fields {
-					clean_type := default_init_unalias_type(field.typ)
-					if clean_type is types.Array || clean_type is types.Channel
-						|| clean_type is types.Map {
-						return false
-					}
-				}
+			if g.struct_needs_default_init(node.value) {
+				return false
 			}
 			mut all_const := true
 			for ci in 0 .. node.children_count {
@@ -15624,7 +15618,7 @@ fn (g &FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool) b
 	}
 }
 
-fn (g &FlatGen) const_ref_is_static(name string, mut visiting map[int]bool) bool {
+fn (mut g FlatGen) const_ref_is_static(name string, mut visiting map[int]bool) bool {
 	const_name := g.const_ref_name(name)
 	if const_name.len == 0 {
 		return false

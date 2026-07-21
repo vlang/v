@@ -544,6 +544,26 @@ fn main() {
 	assert out == 'ok'
 }
 
+fn test_const_nested_struct_channel_default_uses_runtime_init() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'const_nested_struct_channel_default_runtime_init', 'struct Inner {
+	ch chan int
+}
+
+struct Outer {
+	inner Inner
+}
+
+const outer = Outer{}
+
+fn main() {
+	outer.inner.ch.close()
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
 fn test_mut_pointer_capture_is_not_over_dereferenced() {
 	v3_bin := build_v3_review_transform()
 	// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a

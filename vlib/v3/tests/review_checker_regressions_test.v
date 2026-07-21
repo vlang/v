@@ -229,6 +229,13 @@ fn test_fn_value_integer_returns_require_matching_c_abi() {
 	assert out == '65'
 }
 
+fn test_fn_value_aggregate_returns_require_compatible_payloads() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_fn_value_array_return_payload',
+		'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n',
+		'cannot use `fn() []int`')
+}
+
 fn test_alias_with_nested_type_separator_stays_alias() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_alias_nested_type_separator',
