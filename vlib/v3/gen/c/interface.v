@@ -239,6 +239,9 @@ fn (g &FlatGen) interface_dispatch_target_is_emitted(concrete_key string) bool {
 	if g.used_interface_dispatch_key(concrete_key) {
 		return true
 	}
+	if g.interface_dispatch_method_is_required(concrete_key) {
+		return true
+	}
 	receiver_name := concrete_key.all_before_last('.')
 	if receiver_name.contains('.') {
 		return false
@@ -248,6 +251,30 @@ fn (g &FlatGen) interface_dispatch_target_is_emitted(concrete_key string) bool {
 	return short_key != concrete_key
 		&& g.interface_dispatch_target_short_name_is_unambiguous(short_key, method)
 		&& g.used_interface_dispatch_key(short_key)
+}
+
+fn (g &FlatGen) interface_dispatch_method_is_required(concrete_key string) bool {
+	if !concrete_key.contains('.') {
+		return false
+	}
+	method := concrete_key.all_after_last('.')
+	concrete_c_name := g.cname(concrete_key)
+	for iface_name, impls in g.iface_impls {
+		if !g.should_emit_interface_dispatch(iface_name, method) {
+			continue
+		}
+		for concrete in impls {
+			concrete_method := '${concrete}.${method}'
+			if concrete_method == concrete_key || g.cname(concrete_method) == concrete_c_name {
+				return true
+			}
+			expected := g.tc.concrete_method_signature_key(concrete, method) or { concrete_method }
+			if expected == concrete_key || g.cname(expected) == concrete_c_name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (g &FlatGen) interface_dispatch_target_short_name_is_unambiguous(short_name string, method string) bool {
@@ -1739,11 +1766,18 @@ fn (g &FlatGen) interface_dispatch_boxed_value_expr(concrete string) string {
 
 fn (g &FlatGen) interface_concrete_storage_c_type(concrete string) string {
 	concrete_type := g.interface_concrete_type(concrete)
-	return if concrete_type is types.Unknown {
+	ct := if concrete_type is types.Unknown {
 		g.cname(concrete)
 	} else {
 		g.tc.c_type(concrete_type)
 	}
+	if ct.starts_with('fn_ptr:') {
+		return naming.fn_ptr_type_name(ct)
+	}
+	if concrete.starts_with('fn_ptr:') {
+		return naming.fn_ptr_type_name(concrete)
+	}
+	return ct
 }
 
 fn (g &FlatGen) interface_concrete_type(concrete string) types.Type {

@@ -216,7 +216,9 @@ pub mut:
 	worker_pool &workers.Pool = unsafe { nil }
 	// specialized_fn_nodes identifies program-specific monomorphized function
 	// declarations appended after parsing. Module-cache cgen keeps them with main.
-	specialized_fn_nodes map[int]bool
+	specialized_fn_nodes   map[int]bool
+	specialized_fn_modules map[int]string
+	specialized_fn_files   map[int]string
 }
 
 // close_workers stops the compilation-owned persistent worker pool.
@@ -265,14 +267,16 @@ pub fn (mut a FlatAst) set_node_is_mut(id NodeId, is_mut bool) {
 // new creates a FlatAst value for flat.
 pub fn FlatAst.new() FlatAst {
 	return FlatAst{
-		nodes:                []Node{cap: 256}
-		children:             []NodeId{cap: 512}
-		disabled_fns:         map[string]bool{}
-		export_fn_names:      map[string]string{}
-		noreturn_fns:         map[string]bool{}
-		source_files:         map[int]&token.File{}
-		text_ids:             map[string]TextId{}
-		specialized_fn_nodes: map[int]bool{}
+		nodes:                  []Node{cap: 256}
+		children:               []NodeId{cap: 512}
+		disabled_fns:           map[string]bool{}
+		export_fn_names:        map[string]string{}
+		noreturn_fns:           map[string]bool{}
+		source_files:           map[int]&token.File{}
+		text_ids:               map[string]TextId{}
+		specialized_fn_nodes:   map[int]bool{}
+		specialized_fn_modules: map[int]string{}
+		specialized_fn_files:   map[int]string{}
 	}
 }
 

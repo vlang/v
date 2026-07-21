@@ -106,6 +106,9 @@ fn (mut t Transformer) array_get_call_info(call_id flat.NodeId) ?ArrayIndexInfo 
 	if fn_node.kind != .selector || fn_node.value != 'get' || fn_node.children_count == 0 {
 		return none
 	}
+	if _ := t.checker_selected_receiver_method_name(call_id, 'array.get') {
+		return none
+	}
 	return t.array_index_info_from_parts(t.a.child(fn_node, 0), t.a.child(&call, 1))
 }
 
@@ -267,7 +270,7 @@ fn (mut t Transformer) channel_receive_info(expr_id flat.NodeId) ?ChannelReceive
 		clean_type := types.unwrap_pointer(raw_type)
 		if clean_type is types.Channel {
 			value_type := t.normalize_type_alias(clean_type.elem_type.name())
-			if value_type.len > 0 {
+			if value_type.len > 0 && value_type !in ['void', 'unknown'] {
 				return ChannelReceiveInfo{
 					channel_id:  channel_id
 					value_type:  value_type
@@ -939,6 +942,9 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	}
 	if !isnil(t.tc) {
 		if expr_node.kind == .call {
+			if thread_ret := t.thread_wait_or_expr_type(expr_node) {
+				return t.canonical_or_expr_types(thread_ret)
+			}
 			if expr_node.children_count > 0 {
 				callee := t.a.child_node(&expr_node, 0)
 				if callee.kind == .ident && t.generic_callee_is_specialization(callee.value)
@@ -957,6 +963,19 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 			concrete_ret := t.concrete_generic_call_return_type(expr_id, expr_node)
 			if t.is_optional_type_name(concrete_ret) && !t.generic_arg_is_unresolved(concrete_ret) {
 				return t.canonical_or_expr_types(concrete_ret)
+			}
+			if typ := t.tc.expr_type(expr_id) {
+				mut prefix := ''
+				if typ is types.OptionType {
+					prefix = '?'
+				} else if typ is types.ResultType {
+					prefix = '!'
+				}
+				if prefix.len > 0 {
+					if multi_types := multi_return_types_from_type(typ, 0) {
+						return t.canonical_or_expr_types('${prefix}${t.multi_return_type_name(multi_types)}')
+					}
+				}
 			}
 			call_ret := t.get_call_return_type(expr_id, expr_node)
 			if t.is_optional_type_name(call_ret) && !t.generic_arg_is_unresolved(call_ret) {
@@ -1029,6 +1048,40 @@ fn (mut t Transformer) or_expr_types(expr_id flat.NodeId, fallback_type string) 
 	return expr_type, value_type
 }
 
+fn (mut t Transformer) thread_wait_or_expr_type(call flat.Node) ?string {
+	if call.children_count == 0 {
+		return none
+	}
+	callee := t.a.child_node(&call, 0)
+	if callee.kind != .selector || callee.value != 'wait' || callee.children_count == 0 {
+		return none
+	}
+	base_id := t.a.child(callee, 0)
+	base := t.a.nodes[int(base_id)]
+	mut base_type := if base.kind == .ident { t.raw_var_type(base.value) } else { '' }
+	if base_type.len == 0 {
+		base_type = t.resolve_expr_type(base_id)
+	}
+	clean := base_type.trim_space().trim_left('&').trim_space()
+	if t.is_fixed_array_type(clean) {
+		return thread_array_wait_return_type(fixed_array_elem_type(clean))
+	}
+	if clean.starts_with('[]') {
+		return thread_array_wait_return_type(clean[2..].trim_space())
+	}
+	if !clean.starts_with('thread ') {
+		return none
+	}
+	payload := clean[7..].trim_space()
+	if payload == '?' || payload == '!' {
+		return '${payload}void'
+	}
+	if payload.starts_with('?') || payload.starts_with('!') {
+		return payload
+	}
+	return none
+}
+
 fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 	mut clean_expr_type := expr_type
 	if !t.is_optional_type_name(clean_expr_type) {
@@ -1041,11 +1094,29 @@ fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 		return clean_expr_type, t.optional_base_type(clean_expr_type)
 	}
 	prefix := clean_expr_type[..1]
-	base := t.optional_base_type(clean_expr_type)
+	mut base := t.optional_base_type(clean_expr_type)
 	if base.len == 0 || base == 'void' || base == 'Optional' {
 		return '${prefix}void', 'void'
 	}
-	return clean_expr_type, base
+	// Monomorphized collection arguments can reach an or-expression in their
+	// flattened receiver spelling. Decode those names back to semantic V types so
+	// option wrappers use the runtime Array/map ABI instead of imaginary structs.
+	if base.starts_with('Array_') || base.starts_with('Map_') {
+		decoded := generic_type_arg_from_suffix_with_containers(base)
+		if decoded != base {
+			base = decoded
+		}
+	}
+	// Resolve import aliases and nested generic arguments in the payload. The
+	// optional wrapper and its lowered value temporary must use one canonical
+	// spelling (`json2.Any`, not the source alias `json.Any`).
+	if !isnil(t.tc) {
+		resolved := t.tc.parse_resolution_type(base)
+		if resolved !is types.Unknown && resolved !is types.Void {
+			base = resolved.name()
+		}
+	}
+	return '${prefix}${base}', base
 }
 
 fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat.Node) ?string {
@@ -1533,7 +1604,7 @@ fn (mut t Transformer) lower_nested_optional_logical_infix_part(expr flat.Node, 
 	}
 }
 
-fn (mut t Transformer) lower_optional_leaf_with_outer_or(expr_id flat.NodeId, or_node flat.Node, result_name string, result_type string, ok_name string) ?NestedOptionalPart {
+fn (mut t Transformer) lower_optional_leaf_with_outer_or(expr_id flat.NodeId, or_node flat.Node, _result_name string, _result_type string, ok_name string) ?NestedOptionalPart {
 	if or_node.children_count < 2 {
 		return none
 	}
@@ -1561,9 +1632,10 @@ fn (mut t Transformer) lower_optional_leaf_with_outer_or(expr_id flat.NodeId, or
 	ok_cond := t.make_selector(opt_ident, 'ok', 'bool')
 	value_expr := t.make_selector(t.make_ident(opt_tmp), 'value', value_type)
 	then_block := t.make_block(arr1(t.make_assign(t.make_ident(val_tmp), value_expr)))
-	mut else_stmts := t.lower_or_body_to_stmts(body_id, result_name, result_type, or_node.value,
-		opt_tmp)
-	else_stmts << t.make_assign(t.make_ident(ok_name), t.make_bool_literal(false))
+	// The `or` body replaces this optional leaf, not the enclosing expression.
+	// For `lhs == optional() or { fallback }`, assign `fallback` to the leaf's
+	// value temp and let the outer comparison run normally.
+	else_stmts := t.lower_or_body_to_stmts(body_id, val_tmp, value_type, or_node.value, opt_tmp)
 	eval_stmts << t.make_if(ok_cond, then_block, t.make_block(else_stmts))
 	return NestedOptionalPart{
 		expr:    t.make_ident(val_tmp)
@@ -2075,6 +2147,8 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 			} else if t.is_optional_type_name(t.cur_fn_ret_type)
 				&& t.return_expr_is_propagated_err(inner_id, target_type) {
 				result << t.make_none_return_stmt_with_err_expr(t.transform_expr(inner_id))
+			} else if inner.kind == .block && target_name.len > 0 {
+				result << t.if_value_branch_block(inner_id, target_name, target_type)
 			} else if t.node_type(inner_id) == 'void' && target_name.len == 0 {
 				expanded := t.transform_stmt(child_id)
 				t.drain_pending(mut result)
@@ -2097,6 +2171,8 @@ fn (mut t Transformer) lower_or_body_to_stmts_with_err_expr(body_id flat.NodeId,
 				t.drain_pending(mut result)
 				result << t.make_assign(t.make_ident(target_name), value)
 			}
+		} else if is_last && target_name.len > 0 && child.kind == .block {
+			result << t.if_value_branch_block(child_id, target_name, target_type)
 		} else if is_last && target_name.len > 0 && child.kind in [.if_expr, .match_stmt] {
 			value := if target_type in t.sum_types || t.resolve_sum_name(target_type) in t.sum_types {
 				t.wrap_sum_value(child_id, target_type)
@@ -2147,9 +2223,10 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 	if t.tc.resolved_call_name(id) != none {
 		return t.tc.resolved_call_never_returns(id)
 	}
-	fn_node := t.a.child_node(&node, 0)
-	if fn_node.kind == .ident && fn_node.value in ['panic', 'exit'] {
-		return t.var_type(fn_node.value).len == 0
+	callee := t.a.child_node(&node, 0)
+	if callee.kind == .ident && callee.value in ['panic', 'exit', 'v_panic'] {
+		return t.var_type(callee.value).len == 0
 	}
-	return false
+	name := t.resolve_call_name(node)
+	return name in ['panic', 'exit', 'os.exit', 'C.exit', 'builtin.panic']
 }

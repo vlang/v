@@ -306,7 +306,8 @@ fn (mut t Transformer) try_convert_forwarded_wrapped_multi_return(value_id flat.
 	}
 	mut needs_conversion := false
 	for i, actual_type in actual_types {
-		if actual_type.name() != expected_types[i].name() {
+		if actual_type.name() != expected_types[i].name()
+			&& t.forwarded_slot_conversion_supported(actual_type, expected_types[i]) {
 			needs_conversion = true
 			break
 		}
@@ -361,7 +362,8 @@ fn (mut t Transformer) try_expand_forwarded_multi_return(source_return_id flat.N
 	actual_types := t.multi_return_types_for_expr(value_id, expected_types.len) or { return none }
 	mut needs_conversion := false
 	for i, actual_type in actual_types {
-		if actual_type.name() != expected_types[i].name() {
+		if actual_type.name() != expected_types[i].name()
+			&& t.forwarded_slot_conversion_supported(actual_type, expected_types[i]) {
 			needs_conversion = true
 			break
 		}
@@ -385,6 +387,9 @@ fn (mut t Transformer) try_expand_forwarded_multi_return(source_return_id flat.N
 }
 
 fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, actual types.Type, expected types.Type) flat.NodeId {
+	if !t.forwarded_slot_conversion_supported(actual, expected) {
+		return t.transform_expr(value_id)
+	}
 	actual_base := forwarded_return_unalias_type(actual)
 	expected_base := forwarded_return_unalias_type(expected)
 	if actual_base is types.OptionType && expected_base is types.OptionType
@@ -426,6 +431,9 @@ fn (mut t Transformer) transform_forwarded_return_slot(value_id flat.NodeId, act
 }
 
 fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expected types.Type) bool {
+	if forwarded_return_type_is_unresolved(actual) || forwarded_return_type_is_unresolved(expected) {
+		return false
+	}
 	actual_base := forwarded_return_unalias_type(actual)
 	expected_base := forwarded_return_unalias_type(expected)
 	if actual_base.name() == expected_base.name() {
@@ -460,6 +468,31 @@ fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expec
 	if actual_base is types.Map && expected_base is types.Map {
 		return t.forwarded_slot_conversion_supported(actual_base.key_type, expected_base.key_type)
 			|| t.forwarded_slot_conversion_supported(actual_base.value_type, expected_base.value_type)
+	}
+	return false
+}
+
+fn forwarded_return_type_is_unresolved(typ types.Type) bool {
+	base := forwarded_return_unalias_type(typ)
+	name := base.name().trim_space()
+	if name == 'unknown' || name.ends_with('.unknown') || is_generic_placeholder_type_name(name) {
+		return true
+	}
+	if base is types.OptionType {
+		return forwarded_return_type_is_unresolved(base.base_type)
+	}
+	if base is types.ResultType {
+		return forwarded_return_type_is_unresolved(base.base_type)
+	}
+	if base is types.Array {
+		return forwarded_return_type_is_unresolved(base.elem_type)
+	}
+	if base is types.ArrayFixed {
+		return forwarded_return_type_is_unresolved(base.elem_type)
+	}
+	if base is types.Map {
+		return forwarded_return_type_is_unresolved(base.key_type)
+			|| forwarded_return_type_is_unresolved(base.value_type)
 	}
 	return false
 }

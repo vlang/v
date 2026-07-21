@@ -2076,8 +2076,10 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 		}
 		arg := t.a.nodes[int(arg_id)]
 		mut arg_type := if arg.kind == .ident {
-			t.local_decl_type_before(arg.value, arg_id) or {
-				t.generic_call_arg_type_for_inference(arg_id)
+			t.comptime_reflected_for_in_local_type(arg.value, fm) or {
+				t.local_decl_type_before(arg.value, arg_id) or {
+					t.generic_call_arg_type_for_inference(arg_id)
+				}
 			}
 		} else {
 			t.generic_call_arg_type_for_inference(arg_id)
@@ -2119,6 +2121,50 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 		t.set_node_value(int(children[0]), spec_name)
 	}
 	return ''
+}
+
+fn (t &Transformer) comptime_reflected_for_in_local_type(name string, fm FieldMeta) ?string {
+	if name.len == 0 {
+		return none
+	}
+	iter_type := t.comptime_normalize_type_alias_chain(fm.comptime_typ)
+	if !iter_type.starts_with('map[') {
+		return none
+	}
+	for node in t.a.nodes {
+		if node.kind != .for_in_stmt || node.children_count < 3 {
+			continue
+		}
+		key := t.a.child_node(&node, 0)
+		value := t.a.child_node(&node, 1)
+		container_id := t.a.child(&node, 2)
+		if !t.subtree_has_comptime_field_selector(container_id) {
+			continue
+		}
+		if key.kind == .ident && key.value == name {
+			return t.map_key_type(iter_type)
+		}
+		if value.kind == .ident && value.value == name {
+			return t.map_value_type(iter_type)
+		}
+	}
+	return none
+}
+
+fn (t &Transformer) subtree_has_comptime_field_selector(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .selector && node.value == '$' {
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if t.subtree_has_comptime_field_selector(t.a.child(&node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId {
@@ -2985,6 +3031,45 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 	if node.children_count == 0 {
 		return t.a.add_node(node)
 	}
+	if node.kind == .match_stmt && node.children_count > 1 {
+		subject := t.a.child_node(&node, 0)
+		if subject.kind == .selector && subject.value == 'typ' && subject.children_count > 0 {
+			base := t.a.child_node(subject, 0)
+			if base.kind == .ident && base.value == var_name {
+				mut else_branch := flat.empty_node
+				for i in 1 .. node.children_count {
+					branch_id := t.a.child(&node, i)
+					branch := t.a.nodes[int(branch_id)]
+					if branch.kind != .match_branch {
+						continue
+					}
+					if branch.value == 'else' {
+						else_branch = branch_id
+						continue
+					}
+					n_conds := t.count_conds(branch)
+					mut selected := false
+					for j in 0 .. n_conds {
+						pattern := t.type_pattern_name(t.a.child(&branch, j))
+						matches := t.comptime_type_matches(fm.comptime_typ, pattern) or { false }
+						if pattern.len > 0 && matches {
+							selected = true
+							break
+						}
+					}
+					if selected {
+						return t.clone_field_match_branch_body(branch, n_conds, var_name, fm,
+							inner_vars)
+					}
+				}
+				if int(else_branch) >= 0 {
+					branch := t.a.nodes[int(else_branch)]
+					return t.clone_field_match_branch_body(branch, 0, var_name, fm, inner_vars)
+				}
+				return none
+			}
+		}
+	}
 	if node.kind == .prefix && node.op == .amp && node.children_count > 0
 		&& t.subtree_has_reflected_typeof_idx(t.a.child(&node, 0), var_name) {
 		mut pointee := fm.comptime_typ.trim_space()
@@ -3110,6 +3195,16 @@ fn (mut t Transformer) clone_field_subst_scoped(id flat.NodeId, var_name string,
 		return t.clone_field_subst_children_with_value(node, var_name, fm, inner_vars, cond)
 	}
 	return t.clone_field_subst_children(node, var_name, fm, inner_vars)
+}
+
+fn (mut t Transformer) clone_field_match_branch_body(branch flat.Node, body_start int, var_name string, fm FieldMeta, inner_vars []string) flat.NodeId {
+	mut body := []flat.NodeId{}
+	for i in body_start .. branch.children_count {
+		if child := t.clone_field_subst_scoped(t.a.child(&branch, i), var_name, fm, inner_vars) {
+			body << child
+		}
+	}
+	return t.make_block(body)
 }
 
 fn (t &Transformer) comptime_field_attrs_condition(id flat.NodeId, var_name string, fm FieldMeta) ?bool {

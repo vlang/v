@@ -47,7 +47,6 @@ cmd/tools/vtimeout_test.v
 cmd/tools/vvet/vet_test.v
 cmd/tools/vwatch_test.v
 cmd/tools/vwhere/vwhere_test.v
-cmd/v/v2_test.v
 cmd/v/vvm_test.v
 examples/dynamic_library_loader/use_test.v
 examples/dynamic_library_loading/use_library_test.v
@@ -618,7 +617,6 @@ vlib/v/ast/cflags_test.v
 vlib/v/ast/table_test.v
 vlib/v/ast/types_test.v
 vlib/v/build_constraint/constraint_test.v
-vlib/v/builder/interpreterbuilder/v_interpret_test.v
 vlib/v/builder/parallel_cc_failure_test.v
 vlib/v/cflag/cflags_test.v
 vlib/v/compiler_errors_test.v
@@ -632,12 +630,6 @@ vlib/v/embed_file/tests/embed_file_to_string_test.v
 vlib/v/embed_file/tests/embed_file_with_import_test.v
 vlib/v/embed_file/tests/embed_file_with_variable_arg_test.v
 vlib/v/embed_file/tests/embed_v_logo_using_vexeroot_test.v
-vlib/v/eval/interpret_test.v
-vlib/v/eval/tests/comptime_if_test.v
-vlib/v/eval/tests/const_test.v
-vlib/v/eval/tests/func_call_test.v
-vlib/v/eval/tests/if_test.v
-vlib/v/eval/tests/push_val_test.v
 vlib/v/gen/c/autofree_labeled_continue_boehm_leak_test.v
 vlib/v/gen/c/autofree_labeled_continue_codegen_test.v
 vlib/v/gen/c/cheaders_manual_stdlib_decls_test.v
@@ -1505,7 +1497,6 @@ vlib/v/tests/enums/short_enum_syntax_across_module_test.v
 vlib/v/tests/enums/vargs_with_enum_value_test.v
 vlib/v/tests/error_sentinel_test.v
 vlib/v/tests/error_void_test.v
-vlib/v/tests/eval_shared_library_tcc_test.v
 vlib/v/tests/failing_tests_test.v
 vlib/v/tests/filtering_tests/filtering_android_outside_termux_test.v
 vlib/v/tests/filtering_tests/filtering_macos_test.v
@@ -2686,10 +2677,6 @@ vlib/v/util/vflags/vflags_test.v
 vlib/v/vcache/vcache_test.v
 vlib/v/vmod/encoder_test.v
 vlib/v/vmod/parser_test.v
-vlib/v2/ssa/array_init_elem_type_tracking_test.v
-vlib/v2/ssa/selector_module_shadow_test.v
-vlib/v2/ssa/sumtype_address_wrap_test.v
-vlib/v2/transformer/sumtype_wrap_regression_test.v
 vlib/v3/eval/eval_test.v
 vlib/v3/gen/c/names_test.v
 vlib/v3/markused/custom_str_test.v
@@ -2782,7 +2769,6 @@ vlib/veb/tests/memory_leak_test.v
 vlib/veb/tests/persistent_connection_test.v
 vlib/veb/tests/ssl_test.v
 vlib/veb/tests/static_handler_test.v
-vlib/veb/tests/use_openssl_no_mbedtls_test.v
 vlib/veb/tests/veb_app_test.v
 vlib/veb/tests/veb_test.v
 vlib/veb/tr_test.v

@@ -830,6 +830,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		struct_decl_infos:              g.struct_decl_infos
 		struct_decl_short_infos:        g.struct_decl_short_infos
 		shared_type_names:              g.shared_type_names
+		default_value_stack:            map[string]bool{}
 		const_runtime_inits:            if result_only {
 			g.const_runtime_inits
 		} else {

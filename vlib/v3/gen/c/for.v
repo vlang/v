@@ -196,7 +196,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				c_val := g.value_c_type(clean_container_type.value_type)
 				map_value_by_ref := node.op == .amp || container_type is types.Pointer
 				container_str := g.expr_to_string(g.a.child(&node, 2))
-				original_map_ref := if container_type is types.Pointer {
+				storage_container_type := g.usable_expr_type(g.a.child(&node, 2))
+				container_storage_is_pointer := storage_container_type is types.Pointer
+				original_map_ref := if container_storage_is_pointer {
 					container_str
 				} else {
 					'&${container_str}'
@@ -211,7 +213,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				key_values := if use_snapshot {
 					map_snapshot_var = '__for_map_${g.tmp_count}'
 					g.tmp_count++
-					if container_type is types.Pointer {
+					if container_storage_is_pointer {
 						g.writeln('map ${map_snapshot_var} = map__clone(${container_str});')
 					} else {
 						map_src := '__for_map_src_${g.tmp_count}'
@@ -221,7 +223,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					}
 					'${map_snapshot_var}.key_values'
 				} else {
-					access := if container_type is types.Pointer { '->' } else { '.' }
+					access := if container_storage_is_pointer { '->' } else { '.' }
 					'(${container_str})${access}key_values'
 				}
 				g.writeln('for (int ${iter_var} = 0; ${iter_var} < ${key_values}.len; ${iter_var}++) {')
@@ -280,7 +282,7 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 					|| (!val_is_fixed_copy && clean_container_type.value_type is types.Pointer)
 					|| c_type_is_pointer_storage(c_val))
 				if node.op == .amp && val_is_fixed_copy {
-					map_writeback_target = if container_type is types.Pointer {
+					map_writeback_target = if container_storage_is_pointer {
 						container_str
 					} else {
 						'&${container_str}'
