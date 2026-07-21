@@ -31,25 +31,39 @@ mut:
 	ctx    C.TlsContext
 	io_mu  &sync.Mutex = sync.new_mutex()
 	closed bool
+	// write_stall_limit is how long write() waits for the socket to become
+	// writable before failing the connection — set alongside the SO_RCVTIMEO/
+	// SO_SNDTIMEO pair by set_timeouts(), so an h1-pool caller (a per-request
+	// req.write_timeout, no multiplexed reader to keep responsive) and an
+	// h2-pool caller (the fixed h2_pooled_write_stall_limit budget) each get
+	// the value appropriate to how the connection is being used.
+	write_stall_limit time.Duration = h2_pooled_write_stall_limit
 }
 
 fn C.vschannel_set_io_timeouts(tls_ctx &C.TlsContext, recv_timeout_ms u32, send_timeout_ms u32)
 fn C.vschannel_wait_writable(tls_ctx &C.TlsContext, timeout_ms int) int
 
 // new_vschannel_pooled_transport dials host:port over SChannel, advertising
-// ALPN h2/http/1.1, and wraps the open connection for pooled H2MuxConn use.
-// Mirrors vschannel_h2_do's connect sequence (vschannel_h2_windows.c.v), but
-// leaves ALPN-selection branching to the caller (h2_dial_probe_vschannel)
-// instead of driving the h2-vs-h1 fork itself, since the caller also needs
-// the h1 fallback to go through the one-shot path, not this adapter.
-fn new_vschannel_pooled_transport(req &Request, host string, port int) !&VSchannelPooledTransport {
+// `alpn_protocols` (skipped entirely when empty, matching the original
+// one-shot vschannel_h1_do's no-ALPN dial), and wraps the open connection for
+// pooled use — either as an H2Transport (H2MuxConn, when ALPN selects h2) or
+// as an H1StreamConn (H1PooledConn, plain h1 pooling — transport.v). Mirrors
+// vschannel_h2_do's connect sequence (vschannel_h2_windows.c.v), but leaves
+// ALPN-selection branching to the caller instead of driving the h2-vs-h1 fork
+// itself, since different callers do different things with a non-h2 result
+// (h2_dial_probe_vschannel hands the connection back for h1 reuse;
+// vschannel_fresh_round_trip never advertises h2 at all when the request
+// doesn't want it).
+fn new_vschannel_pooled_transport(host string, port int, validate bool, alpn_protocols []string, read_timeout time.Duration, write_timeout time.Duration) !&VSchannelPooledTransport {
 	mut t := &VSchannelPooledTransport{
 		ctx: C.new_tls_context()
 	}
 	C.vschannel_use_tls12_client_protocol()
-	C.vschannel_init(&t.ctx, C.BOOL(if req.validate { 1 } else { 0 }))
-	wire := alpn_wire(['h2', 'http/1.1'])
-	C.vschannel_set_alpn(&t.ctx, &char(wire.data), wire.len)
+	C.vschannel_init(&t.ctx, C.BOOL(if validate { 1 } else { 0 }))
+	if alpn_protocols.len > 0 {
+		wire := alpn_wire(alpn_protocols)
+		C.vschannel_set_alpn(&t.ctx, &char(wire.data), wire.len)
+	}
 	if C.vschannel_h2_connect(&t.ctx, port, host.to_wide()) != 0 {
 		err_code := C.vschannel_last_error(&t.ctx)
 		C.vschannel_cleanup(&t.ctx)
@@ -58,13 +72,24 @@ fn new_vschannel_pooled_transport(req &Request, host string, port int) !&VSchann
 		}
 		return error('http: vschannel connect failed')
 	}
-	// Unlike mbedTLS/OpenSSL (one shared duration field reused for both
-	// directions' internal retry loop, needing widen-then-restore around
-	// every write -- see h2_pooled_transport.v), SO_RCVTIMEO/SO_SNDTIMEO are
-	// independent Winsock options: set once here, never touched again.
-	C.vschannel_set_io_timeouts(&t.ctx, u32(h2_pooled_io_timeout / time.millisecond),
-		u32(h2_pooled_write_stall_limit / time.millisecond))
+	t.set_timeouts(read_timeout, write_timeout)
 	return t
+}
+
+// set_timeouts (re)applies the pooled connection's socket-level read/write
+// timeouts and write()'s stall budget together. Unlike mbedTLS/OpenSSL (one
+// shared duration field reused for both directions' internal retry loop,
+// needing widen-then-restore around every write -- see h2_pooled_transport.v),
+// SO_RCVTIMEO/SO_SNDTIMEO are independent Winsock options that stay in effect
+// until changed again. Called once at dial time with the caller's intended
+// timeouts, and again by h2_dial_probe_vschannel when repurposing a probe
+// connection dialed for h2 (short poll reads, long write stall) for h1
+// pooling (a per-request read_timeout, no multiplexed reader to keep
+// responsive) instead of dialing a second time.
+fn (mut t VSchannelPooledTransport) set_timeouts(read_timeout time.Duration, write_timeout time.Duration) {
+	t.write_stall_limit = write_timeout
+	C.vschannel_set_io_timeouts(&t.ctx, u32(read_timeout / time.millisecond),
+		u32(write_timeout / time.millisecond))
 }
 
 // negotiated_alpn returns the protocol SChannel selected during the
@@ -123,7 +148,7 @@ fn (mut t VSchannelPooledTransport) write(buf []u8) !int {
 	if buf.len == 0 {
 		return 0
 	}
-	deadline := time.now().add(h2_pooled_write_stall_limit)
+	deadline := time.now().add(t.write_stall_limit)
 	for {
 		ready := C.vschannel_wait_writable(&t.ctx, int(h2_pooled_poll_interval / time.millisecond))
 		if ready < 0 {
@@ -139,7 +164,7 @@ fn (mut t VSchannelPooledTransport) write(buf []u8) !int {
 			return error('vschannel pooled transport: closed')
 		}
 		if time.now() >= deadline {
-			return error('vschannel pooled transport: write stalled for ${h2_pooled_write_stall_limit}')
+			return error('vschannel pooled transport: write stalled for ${t.write_stall_limit}')
 		}
 	}
 	t.io_mu.lock()
@@ -196,7 +221,8 @@ fn h2_dial_probe_vschannel(req &Request, host string, port int) !H2ProbeResult {
 			is_h2: false
 		}
 	}
-	mut t := new_vschannel_pooled_transport(req, host, port)!
+	mut t := new_vschannel_pooled_transport(host, port, req.validate, ['h2', 'http/1.1'],
+		h2_pooled_io_timeout, h2_pooled_write_stall_limit)!
 	if t.negotiated_alpn() != 'h2' {
 		t.close()
 		return H2ProbeResult{
