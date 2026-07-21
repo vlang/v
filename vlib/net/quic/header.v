@@ -261,6 +261,10 @@ pub mut:
 	versions []u32
 }
 
+// parse_version_negotiation parses a Version Negotiation packet (RFC 9000
+// §17.2.1) -- distinguished from every other long-header packet by its
+// version field being 0, and carrying no packet number, Length field, or
+// encrypted payload.
 pub fn parse_version_negotiation(buf []u8) !QuicVersionNegotiation {
 	if buf.len < 6 {
 		return error('version negotiation buffer too short')
