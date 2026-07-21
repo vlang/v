@@ -1678,6 +1678,9 @@ fn c_declaration_item_has_static_storage(item string, has_brace bool) bool {
 			head := clean[..brace].trim_space()
 			storage_head = head
 			if c_static_declaration_head_is_function(head) {
+				if c_has_static_storage_class(head) && !c_declaration_head_is_inline(head) {
+					return true
+				}
 				return c_declaration_head_keeps_definition(head)
 					&& c_code_contains_identifier(clean[brace + 1..], 'static')
 			}
@@ -1753,10 +1756,13 @@ fn c_declaration_head_keeps_definition(value string) bool {
 	if c_has_static_storage_class(value) {
 		return true
 	}
-	return !c_code_contains_identifier(value, 'extern')
-		&& (c_code_contains_identifier(value, 'inline')
+	return !c_code_contains_identifier(value, 'extern') && c_declaration_head_is_inline(value)
+}
+
+fn c_declaration_head_is_inline(value string) bool {
+	return c_code_contains_identifier(value, 'inline')
 		|| c_code_contains_identifier(value, '__inline')
-		|| c_code_contains_identifier(value, '__inline__'))
+		|| c_code_contains_identifier(value, '__inline__')
 }
 
 fn c_code_contains_identifier(value string, name string) bool {

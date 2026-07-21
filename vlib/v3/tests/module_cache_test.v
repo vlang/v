@@ -541,6 +541,7 @@ fn main() {
 fn test_module_cache_static_inline_attributes_are_not_storage() {
 	source := 'static __inline void atomic_fence(int order __attribute__((unused))) {\n\t(void)order;\n}\n'
 	assert !modulecache.c_source_has_static_storage(source)
+	assert modulecache.c_source_has_static_storage('static int helper(void) {\n\treturn 1;\n}\n')
 	assert modulecache.c_source_has_static_storage('static int state = 1;\n')
 	assert modulecache.c_source_has_static_storage('static inline int next(void) {\n\tstatic int state;\n\treturn ++state;\n}\n')
 }
@@ -4027,4 +4028,121 @@ fn main() {
 	assert incremental.output.contains('transform (incremental)'), incremental.output
 	assert incremental.output.contains('cgen (incremental)'), incremental.output
 	assert run_module_cache_binary(incremental_output) == 'true'
+}
+
+fn test_cached_native_static_function_stays_with_owner_module() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_native_static_fn_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'native/native.v', 'module native
+
+#include "@DIR/native.c"
+
+fn C.native_static_value() int
+
+pub fn value() int {
+	return C.native_static_value()
+}
+')
+	write_module_cache_file(root, 'native/native.c', 'static int native_static_helper(void) {
+	return 42;
+}
+
+int native_static_value(void) {
+	return native_static_helper();
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import native
+
+fn main() {
+	println(native.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	native_header := module_cache_artifact(cache_dir, 'native_', '.vh')
+	assert native_header.len > 0
+	assert !(os.read_file(native_header) or { panic(err) }).contains('compile source in program unit')
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
+}
+
+fn test_cached_dev_dylib_invalidates_for_named_static_archive_change() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_dev_named_archive_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	library_dir := os.join_path(root, 'archive')
+	os.mkdir_all(library_dir) or { panic(err) }
+	library_source := os.join_path(library_dir, 'value.c')
+	library_object := os.join_path(library_dir, 'value.o')
+	library := os.join_path(library_dir, 'libcachedvalue.a')
+	write_module_cache_file(root, 'archive/value.c', 'int cached_archive_value(void) {
+	return 1;
+}
+')
+	first_cc :=
+		os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(library_source)}')
+	assert first_cc.exit_code == 0, first_cc.output
+	first_ar := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
+	assert first_ar.exit_code == 0, first_ar.output
+	write_module_cache_file(root, 'archive/archive.v', 'module archive
+
+#flag -L@DIR
+#flag -lcachedvalue
+
+fn C.cached_archive_value() int
+
+pub fn value() int {
+	return C.cached_archive_value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import archive
+
+fn main() {
+	println(archive.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '1'
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == '1'
+
+	write_module_cache_file(root, 'archive/value.c', 'int cached_archive_value(void) {
+	return 2;
+}
+')
+	second_cc :=
+		os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(library_source)}')
+	assert second_cc.exit_code == 0, second_cc.output
+	second_ar := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
+	assert second_ar.exit_code == 0, second_ar.output
+	changed_output := os.join_path(root, 'changed')
+	changed :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_output)} ${os.quoted_path(main_file)}')
+	assert changed.exit_code == 0, changed.output
+	assert run_module_cache_binary(changed_output) == '2'
 }

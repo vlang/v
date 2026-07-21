@@ -510,6 +510,54 @@ fn c_dylib_link_flags(flags []string) []string {
 	return link_flags
 }
 
+fn c_dylib_named_static_archive_inputs(link_flags []string) []string {
+	mut library_dirs := []string{}
+	mut library_names := []string{}
+	mut i := 0
+	for i < link_flags.len {
+		clean := link_flags[i].trim(' \t\r\n"\'')
+		if clean == '-L' {
+			if i + 1 < link_flags.len {
+				library_dirs << link_flags[i + 1].trim(' \t\r\n"\'')
+			}
+			i += 2
+			continue
+		}
+		if clean.starts_with('-L') && clean.len > 2 {
+			library_dirs << clean[2..]
+			i++
+			continue
+		}
+		if clean == '-l' {
+			if i + 1 < link_flags.len {
+				library_names << link_flags[i + 1].trim(' \t\r\n"\'')
+			}
+			i += 2
+			continue
+		}
+		if clean.starts_with('-l') && clean.len > 2 {
+			library_names << clean[2..]
+		}
+		i++
+	}
+	mut archives := map[string]bool{}
+	for name in library_names {
+		archive_name := if name.starts_with(':') { name[1..] } else { 'lib${name}.a' }
+		if archive_name.len == 0 {
+			continue
+		}
+		for dir in library_dirs {
+			candidate := os.join_path(dir, archive_name)
+			if os.is_file(candidate) {
+				archives[os.real_path(candidate)] = true
+			}
+		}
+	}
+	mut result := archives.keys()
+	result.sort()
+	return result
+}
+
 fn tcc_cached_main_flags(flags []string) []string {
 	mut compile_flags := []string{}
 	mut i := 0
@@ -703,7 +751,7 @@ fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_
 	objects << cached_objects
 	mut hash := u64(1469598103934665603)
 	compiler_path, compiler_version := c_object_compiler_identity(c_compiler, mut stats)
-	for identity in ['v3-cached-dev-dylib-v1', compiler_path, compiler_version, target_args.join('\x00'),
+	for identity in ['v3-cached-dev-dylib-v2', compiler_path, compiler_version, target_args.join('\x00'),
 		link_flags.join('\x00'), target.os, target.arch, target.abi, target.endian, target.pointer_bits.str(),
 		target.object_format] {
 		hash = c_hash_bytes(hash, identity.bytes())
@@ -726,12 +774,16 @@ fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_
 		}
 	}
 	for flag in link_flags {
-		clean := flag.trim_space()
+		clean := flag.trim(' \t\r\n"\'')
 		if (clean.ends_with('.a') || (c_flag_is_object_file(clean)
 			&& !clean.contains('/v3_thirdparty_objs/'))) && os.is_file(clean) {
 			hash = c_hash_bytes(hash, os.real_path(clean).bytes())
 			hash = c_hash_bytes(hash, c_object_file_signature(clean, true, mut stats).bytes())
 		}
+	}
+	for archive in c_dylib_named_static_archive_inputs(link_flags) {
+		hash = c_hash_bytes(hash, archive.bytes())
+		hash = c_hash_bytes(hash, c_object_file_signature(archive, true, mut stats).bytes())
 	}
 	dylib_path := os.join_path(manager.dir, 'dev_modules_${hash.hex()}.dylib')
 	if os.is_file(dylib_path) {
