@@ -86,6 +86,8 @@ pub fn parse_extension_list(buf []u8) ![]TlsExtension {
 	return extensions
 }
 
+// find_extension returns the first extension in `extensions` matching
+// `typ`, or none if no such extension is present.
 pub fn find_extension(extensions []TlsExtension, typ u16) ?TlsExtension {
 	for e in extensions {
 		if e.typ == typ {
