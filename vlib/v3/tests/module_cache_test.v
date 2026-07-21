@@ -2287,6 +2287,49 @@ fn main() {
 	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
+fn test_cached_generic_body_preserves_source_location_pseudo_variables() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_generic_source_location_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source_file := os.join_path(root, 'origin/origin.v')
+	write_module_cache_file(root, 'origin/origin.v', 'module origin
+
+pub fn source_location[T]() []string {
+	_ = sizeof(T)
+	return [@FILE, @DIR, @LINE, @FILE_LINE]
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import origin
+
+fn main() {
+	println(origin.source_location[int]().join("\\n"))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	first_run := run_module_cache_binary(first_output)
+	assert first_run.contains(os.real_path(source_file)), first_run
+	header_path := module_cache_artifact(cache_dir, 'origin_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains(os.real_path(source_file)), header
+	assert !header.contains('@FILE'), header
+	assert !header.contains('@DIR'), header
+	assert !header.contains('@LINE'), header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == first_run
+}
+
 fn test_cached_comptime_body_resolves_relative_insert() {
 	$if windows {
 		return

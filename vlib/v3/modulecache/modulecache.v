@@ -2213,9 +2213,10 @@ pub fn module_header(a &flat.FlatAst, tc &types.TypeChecker, module_name string,
 					}
 				}
 				mut text := if source_embedded {
-					raw_source := declaration_source_text(a, node, file_node.value, mut
-						source_cache) or { '' }
-					cached_embedded_declaration_source(raw_source, vroot, file_node.value)
+					raw_source := declaration_source_with_line(a, node, file_node.value, mut
+						source_cache) or { CachedDeclarationSource{} }
+					cached_embedded_declaration_source(raw_source.text, vroot, file_node.value,
+						raw_source.line)
 				} else {
 					decl_text(a, tc, module_name, node, vroot, file_node.value, import_paths,
 						effective_attrs, source_is_public)
@@ -2462,7 +2463,10 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, m
 				if !declaration_node_source_is_embeddable(a, id) {
 					return false
 				}
-				_ = declaration_source_text(a, node, file_node.value, mut source_cache) or {
+				source := declaration_source_text(a, node, file_node.value, mut source_cache) or {
+					return false
+				}
+				if source.contains('@LOCATION') || source.contains('@COLUMN') {
 					return false
 				}
 			}
@@ -2480,7 +2484,17 @@ fn declaration_node_source_is_embeddable(a &flat.FlatAst, id flat.NodeId) bool {
 		.global_decl, .comptime_if]
 }
 
+struct CachedDeclarationSource {
+	text string
+	line int
+}
+
 fn declaration_source_text(a &flat.FlatAst, node flat.Node, file_name string, mut source_cache map[string]string) ?string {
+	source := declaration_source_with_line(a, node, file_name, mut source_cache)?
+	return source.text
+}
+
+fn declaration_source_with_line(a &flat.FlatAst, node flat.Node, file_name string, mut source_cache map[string]string) ?CachedDeclarationSource {
 	if !node.pos.is_valid() || node.pos.offset < 0 {
 		return none
 	}
@@ -2500,7 +2514,15 @@ fn declaration_source_text(a &flat.FlatAst, node flat.Node, file_name string, mu
 	if end <= start || end > source.len {
 		return none
 	}
-	return source[start..end]
+	text := source[start..end]
+	return CachedDeclarationSource{
+		text: text
+		line: if text.contains('@LINE') || text.contains('@FILE_LINE') {
+			source[..start].count('\n') + 1
+		} else {
+			1
+		}
+	}
 }
 
 struct CachedSourcePathEdit {
@@ -2509,8 +2531,8 @@ struct CachedSourcePathEdit {
 	replacement string
 }
 
-fn cached_embedded_declaration_source(source string, vroot string, source_file string) string {
-	return cached_embedded_source_paths(source, vroot, source_file)
+fn cached_embedded_declaration_source(source string, vroot string, source_file string, source_line int) string {
+	return cached_embedded_source_paths(source, vroot, source_file, source_line)
 }
 
 fn cached_embedded_directive_edit(source string, start int, vroot string, source_file string) ?CachedSourcePathEdit {
@@ -2559,7 +2581,7 @@ fn cached_embedded_directive_edit(source string, start int, vroot string, source
 	}
 }
 
-fn cached_embedded_source_paths(source string, vroot string, source_file string) string {
+fn cached_embedded_source_paths(source string, vroot string, source_file string, source_line int) string {
 	mut out := strings.new_builder(source.len + 128)
 	mut last := 0
 	mut i := 0
@@ -2568,9 +2590,13 @@ fn cached_embedded_source_paths(source string, vroot string, source_file string)
 	mut escaped := false
 	mut line_comment := false
 	mut block_comment := false
+	mut line_nr := source_line
 	for i < source.len {
 		c := source[i]
 		next := if i + 1 < source.len { source[i + 1] } else { u8(0) }
+		if c == `\n` {
+			line_nr++
+		}
 		if line_comment {
 			if c == `\n` {
 				line_comment = false
@@ -2634,6 +2660,15 @@ fn cached_embedded_source_paths(source string, vroot string, source_file string)
 				continue
 			}
 		}
+		if c == `@` {
+			if edit := cached_source_pseudo_edit(source, i, source_file, line_nr) {
+				out.write_string(source[last..edit.start])
+				out.write_string(edit.replacement)
+				last = edit.end
+				i = edit.end
+				continue
+			}
+		}
 		i++
 	}
 	if last == 0 {
@@ -2641,6 +2676,35 @@ fn cached_embedded_source_paths(source string, vroot string, source_file string)
 	}
 	out.write_string(source[last..])
 	return out.str()
+}
+
+fn cached_source_pseudo_edit(source string, start int, source_file string, line_nr int) ?CachedSourcePathEdit {
+	mut name := ''
+	for candidate in ['@FILE_LINE', '@FILE', '@DIR', '@LINE'] {
+		if source[start..].starts_with(candidate) {
+			name = candidate
+			break
+		}
+	}
+	if name.len == 0 {
+		return none
+	}
+	end := start + name.len
+	if end < source.len && (source[end].is_alnum() || source[end] == `_`) {
+		return none
+	}
+	file := os.real_path(source_file)
+	value := match name {
+		'@FILE_LINE' { '${file}:${line_nr}' }
+		'@FILE' { file }
+		'@DIR' { os.real_path(os.dir(source_file)) }
+		else { line_nr.str() }
+	}
+	return CachedSourcePathEdit{
+		start:       start
+		end:         end
+		replacement: "'${escape_v_string(value)}'"
+	}
 }
 
 fn cached_embed_file_path_edit(source string, start int, vroot string, source_file string) ?CachedSourcePathEdit {
