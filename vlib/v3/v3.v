@@ -2311,6 +2311,55 @@ fn transformed_used_fns_need_monomorphize(used_fns map[string]bool) bool {
 	return false
 }
 
+fn incremental_changed_functions_call_generics(a &flat.FlatAst, tc &types.TypeChecker, changed_names map[string]bool) bool {
+	if changed_names.len == 0 {
+		return false
+	}
+	mut cur_module := ''
+	for idx, node in a.nodes {
+		match node.kind {
+			.file {
+				cur_module = ''
+			}
+			.module_decl {
+				cur_module = node.value
+			}
+			.fn_decl {
+				name := incremental_qualified_fn_name(cur_module, node.value)
+				if changed_names[name]
+					&& incremental_node_tree_calls_generic(a, tc, flat.NodeId(idx)) {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+fn incremental_node_tree_calls_generic(a &flat.FlatAst, tc &types.TypeChecker, root flat.NodeId) bool {
+	mut stack := [root]
+	for stack.len > 0 {
+		id := stack.pop()
+		idx := int(id)
+		if idx < 0 || idx >= a.nodes.len {
+			continue
+		}
+		node := a.nodes[idx]
+		if node.kind == .call {
+			if name := tc.resolved_call_name(id) {
+				if name in tc.fn_generic_params || name.contains('[') {
+					return true
+				}
+			}
+		}
+		for child_idx in 0 .. node.children_count {
+			stack << a.child(&node, child_idx)
+		}
+	}
+	return false
+}
+
 fn ast_contains_sql_expr(a &flat.FlatAst) bool {
 	for node in a.nodes {
 		if node.kind == .sql_expr {
@@ -3137,6 +3186,11 @@ fn main() {
 		if pre_tc.errors.len > 0 {
 			print_type_errors(pre_tc.errors)
 			exit(1)
+		}
+		if incremental_cache_hit
+			&& incremental_changed_functions_call_generics(a, pre_tc, incremental_changed_names) {
+			os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
+			restart_v3_after_cache_invalidation()
 		}
 		pre_tc.prune_inactive_top_level_comptime(mut a)
 		test_harness_errors := validate_test_file_harness_inputs(a, pre_tc, test_files)
