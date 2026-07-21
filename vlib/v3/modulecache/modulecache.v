@@ -1732,13 +1732,13 @@ fn c_has_static_storage_class(value string) bool {
 }
 
 fn c_declaration_head_is_function(value string) bool {
-	return value.contains('(') && !c_contains_parenthesized_pointer_declarator(value)
+	return value.contains('(') && !c_contains_top_level_parenthesized_pointer_declarator(value)
 		&& !c_contains_declaration_attribute(value) && !c_declaration_head_is_control_flow(value)
 		&& !c_has_top_level_assign(value)
 }
 
 fn c_static_declaration_head_is_function(value string) bool {
-	return value.contains('(') && !c_contains_parenthesized_pointer_declarator(value)
+	return value.contains('(') && !c_contains_top_level_parenthesized_pointer_declarator(value)
 		&& !c_declaration_head_is_control_flow(value) && !c_has_top_level_assign(value)
 }
 
@@ -1821,9 +1821,21 @@ fn c_code_contains_identifier(value string, name string) bool {
 	return false
 }
 
-fn c_contains_parenthesized_pointer_declarator(value string) bool {
+fn c_contains_top_level_parenthesized_pointer_declarator(value string) bool {
+	mut depth := 0
 	for i, c in value.bytes() {
+		if c == `)` {
+			if depth > 0 {
+				depth--
+			}
+			continue
+		}
 		if c != `(` {
+			continue
+		}
+		is_top_level := depth == 0
+		depth++
+		if !is_top_level {
 			continue
 		}
 		mut pos := i + 1

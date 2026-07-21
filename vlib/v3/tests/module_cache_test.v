@@ -413,12 +413,60 @@ __attribute__((visibility("default"))) int cached_attributed(void)
 {
 	return 42;
 }
+int cached_apply(int (*cb)(int), int value)
+{
+	return cb(value);
+}
 /* V3CACHE_NATIVE_DIRECTIVES_END */
 '
 	header := modulecache.declaration_header(prefix)
 	assert header.contains('static int cached_readback(int value)\n{'), header
 	assert header.contains('static int cached_sum(\n\tint left,\n\tint right\n)\n{'), header
 	assert header.contains('static __attribute__((visibility("default"))) int cached_attributed(void)\n{'), header
+	assert header.contains('static int cached_apply(int (*cb)(int), int value)\n{'), header
+}
+
+fn test_cached_native_callback_definition_is_localized() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_native_callback_definition_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+#insert "@DIR/api.h"
+
+pub fn value() int {
+	return 42
+}
+')
+	write_module_cache_file(root, 'wrapper/api.h', 'int cached_apply(int (*cb)(int), int value) {
+	return cb(value);
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	println(wrapper.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains(os.real_path(os.join_path(root, 'wrapper/api.h'))), header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == '42'
 }
 
 fn test_module_cache_declaration_header_keeps_column_zero_inner_block_closes() {
