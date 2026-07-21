@@ -1624,6 +1624,24 @@ fn incremental_top_level_nodes(a &flat.FlatAst) []bool {
 	return result
 }
 
+fn incremental_declaration_attribute_signatures(a &flat.FlatAst) map[int]string {
+	mut result := map[int]string{}
+	for node in a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		declaration_id := node.value['@attributes:'.len..].int()
+		if declaration_id < 0 || declaration_id >= a.nodes.len {
+			continue
+		}
+		// The marker embeds its declaration's transient node id in value. Hash only
+		// the stable attribute kinds and payload, then attach it to that declaration.
+		result[declaration_id] = incremental_hash_node_header(u64(1469598103934665603), &node,
+			false).hex()
+	}
+	return result
+}
+
 fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 	mut declaration_parts := []string{}
 	mut synthetic_main_parts := []string{}
@@ -1631,6 +1649,7 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 	mut cur_file := ''
 	mut cur_module := ''
 	top_level_nodes := incremental_top_level_nodes(a)
+	declaration_attributes := incremental_declaration_attribute_signatures(a)
 	for idx, node in a.nodes {
 		match node.kind {
 			.file {
@@ -1641,6 +1660,7 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 				cur_module = node.value
 			}
 			.fn_decl {
+				attribute_signature := declaration_attributes[idx] or { '' }
 				key := incremental_cache_fn_key(cur_file, cur_module, node.value)
 				functions << V3IncrementalFn{
 					key:       key
@@ -1660,12 +1680,14 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 							&child, true).hex())
 					}
 				}
+				declaration.write_string('\t${attribute_signature}')
 				declaration_parts << declaration.str()
 			}
 			.struct_decl, .global_decl, .const_decl, .enum_decl, .type_decl, .interface_decl,
 			.import_decl, .c_fn_decl {
+				attribute_signature := declaration_attributes[idx] or { '' }
 				declaration_parts << '${node.kind}\t${cur_file}\t${cur_module}\t${incremental_node_tree_signature(a,
-					flat.NodeId(idx))}'
+					flat.NodeId(idx))}\t${attribute_signature}'
 			}
 			.directive, .comptime_if, .comptime_for, .asm_stmt, .sql_expr, .fn_literal {
 				if top_level_nodes[idx] {

@@ -820,7 +820,8 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 			cur_module = node.value
 			continue
 		}
-		if !collect_modules[cur_module] {
+		owner_module := if cur_module.len > 0 { cur_module } else { 'main' }
+		if !collect_modules[owner_module] {
 			continue
 		}
 		if node.kind == .directive && node.value in ['include', 'insert'] && node.typ.len > 0 {
@@ -842,14 +843,14 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 					has_untracked_include = true
 				}
 				for file in files {
-					c_add_cache_external_input(mut inputs, cur_module, file)
+					c_add_cache_external_input(mut inputs, owner_module, file)
 				}
 				break
 			}
 			continue
 		}
 		if path := c_embed_external_input_path(a, node) {
-			c_add_cache_external_input(mut inputs, cur_module, path)
+			c_add_cache_external_input(mut inputs, owner_module, path)
 		}
 	}
 	flag_inputs, flags_have_untracked_include := cache_c_flag_input_files_with_status(c_flags)
