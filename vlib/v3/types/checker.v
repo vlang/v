@@ -15705,6 +15705,409 @@ fn (tc &TypeChecker) binding_owner_is_file_scope(owner ScopeBindingOwner) bool {
 	return false
 }
 
+enum ReceiverMutationVisibility {
+	none
+	direct
+	private_path
+	public_path
+}
+
+struct VisibleMutationFnDecl {
+	idx int
+	mod string
+}
+
+fn receiver_mutation_is_visible(vis ReceiverMutationVisibility) bool {
+	return vis in [.direct, .public_path]
+}
+
+fn visible_mutation_receiver_type_name(typ string) string {
+	mut clean := typ.trim_space()
+	for clean.starts_with('&') {
+		clean = clean[1..].trim_space()
+	}
+	for prefix in ['mut ', 'shared '] {
+		if clean.starts_with(prefix) {
+			clean = clean[prefix.len..].trim_space()
+		}
+	}
+	return strip_generic_args_name(clean)
+}
+
+fn visible_mutation_fn_names_match(actual string, declared string) bool {
+	if actual == declared {
+		return true
+	}
+	if actual.all_after_last('.') != declared.all_after_last('.') {
+		return false
+	}
+	actual_receiver := actual.all_before_last('.')
+	declared_receiver := declared.all_before_last('.')
+	return strip_generic_args_name(actual_receiver) == strip_generic_args_name(declared_receiver)
+}
+
+fn (tc &TypeChecker) visible_mutation_fn_decl(name string, fallback_mod string) ?VisibleMutationFnDecl {
+	mut cur_mod := ''
+	for i in tc.top_level_idx {
+		node := tc.a.nodes[i]
+		match node.kind {
+			.file {
+				cur_mod = tc.file_modules[node.value] or { '' }
+			}
+			.module_decl {
+				cur_mod = node.value
+			}
+			.fn_decl {
+				if fallback_mod.len > 0 && cur_mod != fallback_mod {
+					continue
+				}
+				qname := checker_qualified_fn_name(cur_mod, node.value)
+				if visible_mutation_fn_names_match(name, qname)
+					|| visible_mutation_fn_names_match(name, node.value)
+					|| tc.cached_c_name(qname) == name || tc.cached_c_name(node.value) == name {
+					return VisibleMutationFnDecl{
+						idx: i
+						mod: cur_mod
+					}
+				}
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) visible_mutation_fn_param(decl VisibleMutationFnDecl, param_idx int) ?flat.Node {
+	if decl.idx < 0 || decl.idx >= tc.a.nodes.len || param_idx < 0 {
+		return none
+	}
+	fn_node := tc.a.nodes[decl.idx]
+	mut idx := 0
+	for i in 0 .. fn_node.children_count {
+		child := tc.a.child_node(&fn_node, i)
+		if child.kind != .param {
+			break
+		}
+		if idx == param_idx {
+			return *child
+		}
+		idx++
+	}
+	return none
+}
+
+fn (tc &TypeChecker) visible_mutation_struct_field_is_public(receiver_type string, field_name string, decl_mod string) ?bool {
+	type_name := visible_mutation_receiver_type_name(receiver_type)
+	short_name := type_name.all_after_last('.')
+	mut cur_mod := ''
+	for i in tc.top_level_idx {
+		node := tc.a.nodes[i]
+		match node.kind {
+			.file {
+				cur_mod = tc.file_modules[node.value] or { '' }
+			}
+			.module_decl {
+				cur_mod = node.value
+			}
+			.struct_decl {
+				if decl_mod.len > 0 && cur_mod != decl_mod {
+					continue
+				}
+				qname := if cur_mod in ['', 'main', 'builtin'] {
+					node.value
+				} else {
+					'${cur_mod}.${node.value}'
+				}
+				if node.value != short_name && qname != type_name {
+					continue
+				}
+				for j in 0 .. node.children_count {
+					field := tc.a.child_node(&node, j)
+					if field.kind != .field_decl || field.value != field_name {
+						continue
+					}
+					meta := field.generic_params()
+					return meta.len > 0 && meta[0].contains('p')
+				}
+				return none
+			}
+			else {}
+		}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) receiver_expr_mutation_visibility(expr_id flat.NodeId, root_name string, receiver_type string, decl_mod string) ReceiverMutationVisibility {
+	if int(expr_id) < 0 || int(expr_id) >= tc.a.nodes.len {
+		return .none
+	}
+	node := tc.a.nodes[int(expr_id)]
+	match node.kind {
+		.ident {
+			return if node.value == root_name { .direct } else { .none }
+		}
+		.paren, .prefix, .postfix, .cast_expr, .as_expr, .expr_stmt {
+			if node.children_count > 0 {
+				return tc.receiver_expr_mutation_visibility(tc.a.child(&node, 0), root_name,
+					receiver_type, decl_mod)
+			}
+		}
+		.selector {
+			if node.children_count == 0 {
+				return .none
+			}
+			mut parent_id := tc.a.child(&node, 0)
+			for int(parent_id) >= 0 && int(parent_id) < tc.a.nodes.len {
+				parent := tc.a.nodes[int(parent_id)]
+				if parent.kind != .paren || parent.children_count == 0 {
+					break
+				}
+				parent_id = tc.a.child(&parent, 0)
+			}
+			if int(parent_id) >= 0 && int(parent_id) < tc.a.nodes.len {
+				parent := tc.a.nodes[int(parent_id)]
+				if parent.kind == .ident && parent.value == root_name {
+					is_pub := tc.visible_mutation_struct_field_is_public(receiver_type, node.value,
+						decl_mod) or { true }
+					return if is_pub { .public_path } else { .private_path }
+				}
+			}
+			return tc.receiver_expr_mutation_visibility(parent_id, root_name, receiver_type,
+				decl_mod)
+		}
+		.index {
+			if node.children_count > 0 {
+				return tc.receiver_expr_mutation_visibility(tc.a.child(&node, 0), root_name,
+					receiver_type, decl_mod)
+			}
+		}
+		.call {
+			if node.children_count > 0 {
+				mut fn_node := tc.a.child_node(&node, 0)
+				if fn_node.kind == .index && fn_node.children_count > 0 {
+					fn_node = tc.a.child_node(fn_node, 0)
+				}
+				if fn_node.kind == .selector && fn_node.children_count > 0 {
+					return tc.receiver_expr_mutation_visibility(tc.a.child(fn_node, 0), root_name,
+						receiver_type, decl_mod)
+				}
+			}
+		}
+		else {}
+	}
+	return .none
+}
+
+fn (tc &TypeChecker) visible_mutation_call_name(call_id flat.NodeId, call flat.Node, root_type string, decl_mod string) string {
+	if name := tc.resolved_call_name(call_id) {
+		return name
+	}
+	if call.children_count == 0 {
+		return ''
+	}
+	mut fn_node := tc.a.child_node(&call, 0)
+	if fn_node.kind == .index && fn_node.children_count > 0 {
+		fn_node = tc.a.child_node(fn_node, 0)
+	}
+	if fn_node.kind == .ident {
+		return checker_qualified_fn_name(decl_mod, fn_node.value)
+	}
+	if fn_node.kind == .selector && fn_node.children_count > 0 {
+		base := tc.a.child_node(fn_node, 0)
+		if base.kind == .ident && base.value.len > 0 && base.value[0] >= `A` && base.value[0] <= `Z` {
+			return checker_qualified_fn_name(decl_mod, '${base.value}.${fn_node.value}')
+		}
+		receiver_name := visible_mutation_receiver_type_name(root_type)
+		return checker_qualified_fn_name(decl_mod, '${receiver_name}.${fn_node.value}')
+	}
+	return ''
+}
+
+fn (tc &TypeChecker) call_has_visible_receiver_mutation(call_id flat.NodeId, call flat.Node, root_name string, root_type string, decl_mod string, mut visiting map[string]bool, mut cache map[string]bool) bool {
+	if call.children_count == 0 {
+		return false
+	}
+	mut fn_node := tc.a.child_node(&call, 0)
+	if fn_node.kind == .index && fn_node.children_count > 0 {
+		fn_node = tc.a.child_node(fn_node, 0)
+	}
+	called_name := tc.visible_mutation_call_name(call_id, call, root_type, decl_mod)
+	called_mod := tc.fn_type_modules[called_name] or { decl_mod }
+	decl := tc.visible_mutation_fn_decl(called_name, called_mod) or {
+		if fn_node.kind == .selector && fn_node.children_count > 0 {
+			recv_vis := tc.receiver_expr_mutation_visibility(tc.a.child(fn_node, 0), root_name,
+				root_type, decl_mod)
+			if receiver_mutation_is_visible(recv_vis) && tc.mut_receiver_methods[called_name] {
+				return true
+			}
+		}
+		for i in 1 .. call.children_count {
+			arg_id := tc.a.child(&call, i)
+			arg := tc.a.nodes[int(arg_id)]
+			if arg.is_mut
+				&& receiver_mutation_is_visible(tc.receiver_expr_mutation_visibility(arg_id, root_name, root_type, decl_mod)) {
+				return true
+			}
+		}
+		return false
+	}
+	mut is_method := false
+	mut receiver_param_is_mut := false
+	if first_param := tc.visible_mutation_fn_param(decl, 0) {
+		is_method = first_param.op == .dot
+		receiver_param_is_mut = first_param.is_mut
+	}
+	mut param_offset := 0
+	if is_method {
+		param_offset = 1
+		if fn_node.kind == .selector && fn_node.children_count > 0 && receiver_param_is_mut {
+			recv_vis := tc.receiver_expr_mutation_visibility(tc.a.child(fn_node, 0), root_name,
+				root_type, decl_mod)
+			match recv_vis {
+				.direct {
+					if tc.visible_mutation_fn_param_has_visible_mutation(decl, 0, mut visiting, mut
+						cache)
+					{
+						return true
+					}
+				}
+				.public_path {
+					return true
+				}
+				else {}
+			}
+		}
+	}
+	for i in 1 .. call.children_count {
+		arg_id := tc.a.child(&call, i)
+		arg := tc.a.nodes[int(arg_id)]
+		if !arg.is_mut {
+			continue
+		}
+		param_idx := i - 1 + param_offset
+		param := tc.visible_mutation_fn_param(decl, param_idx) or { continue }
+		if !param.is_mut {
+			continue
+		}
+		arg_vis := tc.receiver_expr_mutation_visibility(arg_id, root_name, root_type, decl_mod)
+		match arg_vis {
+			.direct {
+				if tc.visible_mutation_fn_param_has_visible_mutation(decl, param_idx, mut visiting, mut
+					cache)
+				{
+					return true
+				}
+			}
+			.public_path {
+				return true
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) node_has_visible_receiver_mutation(id flat.NodeId, root_name string, root_type string, decl_mod string, mut visiting map[string]bool, mut cache map[string]bool) bool {
+	if int(id) < 0 || int(id) >= tc.a.nodes.len {
+		return false
+	}
+	node := tc.a.nodes[int(id)]
+	match node.kind {
+		.fn_decl, .fn_literal {
+			return false
+		}
+		.assign {
+			lhs_count_value := node.value.int()
+			lhs_count := if lhs_count_value > 0 { lhs_count_value } else { 1 }
+			rhs_count := int(node.children_count) - lhs_count
+			mut child_offset := 0
+			for i in 0 .. lhs_count {
+				if child_offset >= int(node.children_count) {
+					break
+				}
+				lhs_id := tc.a.child(&node, child_offset)
+				if receiver_mutation_is_visible(tc.receiver_expr_mutation_visibility(lhs_id,
+					root_name, root_type, decl_mod))
+				{
+					return true
+				}
+				child_offset++
+				if i < rhs_count {
+					child_offset++
+				}
+			}
+		}
+		.selector_assign, .index_assign {
+			if node.children_count > 0
+				&& receiver_mutation_is_visible(tc.receiver_expr_mutation_visibility(tc.a.child(&node, 0), root_name, root_type, decl_mod)) {
+				return true
+			}
+		}
+		.postfix {
+			if node.op in [.inc, .dec] && node.children_count > 0
+				&& receiver_mutation_is_visible(tc.receiver_expr_mutation_visibility(tc.a.child(&node, 0), root_name, root_type, decl_mod)) {
+				return true
+			}
+		}
+		.call {
+			if tc.call_has_visible_receiver_mutation(id, node, root_name, root_type, decl_mod, mut
+				visiting, mut cache)
+			{
+				return true
+			}
+		}
+		else {}
+	}
+	for i in 0 .. node.children_count {
+		if tc.node_has_visible_receiver_mutation(tc.a.child(&node, i), root_name, root_type,
+			decl_mod, mut visiting, mut cache)
+		{
+			return true
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) visible_mutation_fn_param_has_visible_mutation(decl VisibleMutationFnDecl, param_idx int, mut visiting map[string]bool, mut cache map[string]bool) bool {
+	key := '${decl.idx}|${param_idx}'
+	if key in cache {
+		return cache[key]
+	}
+	if key in visiting {
+		return true
+	}
+	param := tc.visible_mutation_fn_param(decl, param_idx) or { return true }
+	if !param.is_mut {
+		return false
+	}
+	fn_node := tc.a.nodes[decl.idx]
+	mut param_count := 0
+	for i in 0 .. fn_node.children_count {
+		if tc.a.child_node(&fn_node, i).kind != .param {
+			break
+		}
+		param_count++
+	}
+	if param_count == int(fn_node.children_count) {
+		// A source method with `{}` has no visible mutation. Header declarations use
+		// `is_mut` as the parser's cached-body marker and remain conservative.
+		return fn_node.is_mut
+	}
+	visiting[key] = true
+	mut result := false
+	for i in param_count .. fn_node.children_count {
+		if tc.node_has_visible_receiver_mutation(tc.a.child(&fn_node, i), param.value, param.typ,
+			decl.mod, mut visiting, mut cache)
+		{
+			result = true
+			break
+		}
+	}
+	visiting.delete(key)
+	cache[key] = result
+	return result
+}
+
 fn (tc &TypeChecker) mut_receiver_call_requires_mutable_lvalue(info CallInfo, recv_id flat.NodeId) bool {
 	if tc.expr_is_shared_arg(recv_id) {
 		return false
@@ -15712,12 +16115,14 @@ fn (tc &TypeChecker) mut_receiver_call_requires_mutable_lvalue(info CallInfo, re
 	if tc.expr_root_is_global_binding(recv_id) {
 		return false
 	}
-	// Outside the declaring module, a public mut-receiver method may only mutate
-	// fields that its caller cannot access directly. V intentionally permits that
-	// private-mutation API on an immutable binding.
 	method_module := tc.fn_type_modules[info.name] or { '' }
 	if method_module.len > 0 && method_module != tc.cur_module {
-		return false
+		// Match V's private-mutability rule: an immutable binding is accepted across a
+		// module boundary only when the method cannot mutate caller-visible state.
+		mut visiting := map[string]bool{}
+		mut cache := map[string]bool{}
+		decl := tc.visible_mutation_fn_decl(info.name, method_module) or { return true }
+		return tc.visible_mutation_fn_param_has_visible_mutation(decl, 0, mut visiting, mut cache)
 	}
 	return true
 }
@@ -17886,6 +18291,8 @@ fn (tc &TypeChecker) implicit_ref_arg_compatible(expr_id flat.NodeId, actual Typ
 	}
 	actual_depth, actual_base := type_pointer_depth_and_base(actual)
 	expected_depth, expected_base := type_pointer_depth_and_base(expected)
+	// V permits implicit reference arguments to add every missing pointer layer.
+	// Cgen materializes a typed `__ref_arg_N` chain rather than emitting only `&expr`.
 	if expected_depth <= actual_depth {
 		return false
 	}
