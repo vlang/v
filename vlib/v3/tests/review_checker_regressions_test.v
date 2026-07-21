@@ -216,6 +216,16 @@ fn test_numeric_alias_returns_preserve_integer_float_direction() {
 	assert explicit_out == '1'
 }
 
+fn test_fn_value_integer_returns_require_matching_c_abi() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_fn_value_integer_return_abi',
+		'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n',
+		'cannot use `fn() u64`')
+	out := run_good(v3_bin, 'good_fn_value_matching_integer_return_abi',
+		'fn letter() rune {\n\treturn `A`\n}\n\nfn invoke(callback fn () u32) u32 {\n\treturn callback()\n}\n\nfn main() {\n\tprintln(int_str(int(invoke(letter))))\n}\n')
+	assert out == '65'
+}
+
 fn test_alias_with_nested_type_separator_stays_alias() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_alias_nested_type_separator',

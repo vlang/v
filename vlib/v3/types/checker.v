@@ -22637,9 +22637,6 @@ fn (tc &TypeChecker) fn_return_compatible(actual Type, expected Type) bool {
 	if tc.c_type(actual) == tc.c_type(expected) {
 		return true
 	}
-	if actual.is_integer() && expected.is_integer() {
-		return true
-	}
 	return fn_return_canonical_type_name(actual) == fn_return_canonical_type_name(expected)
 }
 

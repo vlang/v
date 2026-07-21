@@ -153,6 +153,13 @@ fn test_pointer_channel_try_call_derefs_receiver() {
 	assert c_source.contains('sync__Channel__try_pop(*(ch),'), 'try_pop on pointer channel receiver does not dereference the channel handle'
 }
 
+fn test_channel_try_push_preserves_explicit_voidptr_cast() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'channel_try_push_explicit_voidptr',
+		'fn main() {\n\tch := chan voidptr{cap: 1}\n\tx := 42\n\tassert ch.try_push(voidptr(&x)) == .success\n\treceived := <-ch\n\tprintln(int_str(unsafe { *(&int(received)) }))\n}\n')
+	assert out == '42'
+}
+
 fn test_pointer_channel_send_or_derefs_receiver() {
 	v3_bin := build_v3_or_review()
 	out := or_review_run(v3_bin, 'pointer_channel_send_or_receiver',

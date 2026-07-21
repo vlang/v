@@ -1111,7 +1111,7 @@ fn (g &FlatGen) channel_try_push_source_arg(arg_id flat.NodeId) flat.NodeId {
 	}
 	cast := g.a.nodes[int(arg_id)]
 	if cast.kind != .cast_expr || cast.children_count == 0
-		|| !type_is_void_pointer(g.tc.parse_type(cast.value)) {
+		|| !type_is_void_pointer(g.tc.parse_type(cast.value)) || cast.pos.is_valid() {
 		return arg_id
 	}
 	addr_id := g.a.child(&cast, 0)
@@ -1120,9 +1120,10 @@ fn (g &FlatGen) channel_try_push_source_arg(arg_id flat.NodeId) flat.NodeId {
 		return arg_id
 	}
 	value_id := g.a.child(&addr, 0)
-	// The transform wrapped a non-pointer channel value as `voidptr(&value)`
-	// solely for the runtime method's opaque parameter. The channel C lowering
-	// supplies that address itself, so recover the original value here.
+	// A synthetic cast has no source position. The transform wrapped this
+	// non-pointer channel value as `voidptr(&value)` solely for the runtime
+	// method's opaque parameter. The channel C lowering supplies that address
+	// itself, so recover the original value here. Preserve explicit source casts.
 	return value_id
 }
 
