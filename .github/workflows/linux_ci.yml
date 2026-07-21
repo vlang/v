@@ -268,7 +268,7 @@ jobs:
           trap on_term TERM
 
           chmod 700 "$runtime_dir"
-          Xvfb -displayfd 1 -screen 0 1280x1024x24 -nolisten tcp >"$display_file" 2>"$xvfb_log" &
+          Xvfb -displayfd 1 -screen 0 1280x1024x24 -nolisten tcp -noreset >"$display_file" 2>"$xvfb_log" &
           xvfb_pid=$!
 
           display_ready=0
