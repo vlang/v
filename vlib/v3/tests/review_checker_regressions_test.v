@@ -179,6 +179,9 @@ fn test_reject_non_optional_or_and_wrapped_string_concat() {
 	run_bad(v3_bin, 'bad_non_optional_call_or_block',
 		'fn value() int {\n\treturn 1\n}\n\nfn main() {\n\tvalue() or { panic(err) }\n}\n',
 		'unexpected `or` block')
+	run_bad(v3_bin, 'bad_non_optional_infix_or_block',
+		'fn maybe() ?int {\n\treturn 1\n}\n\nfn main() {\n\t_ := maybe() == none or { false }\n}\n',
+		'unexpected `or` block, expression of type `bool` is not an Option or a Result')
 	run_bad(v3_bin, 'bad_optional_string_concat',
 		"fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := 'hello ' + maybe_name()\n}\n",
 		'operator `+` cannot concatenate `string` and `?string`')

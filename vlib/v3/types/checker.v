@@ -9773,10 +9773,6 @@ fn (tc &TypeChecker) or_expr_source_can_fail(id flat.NodeId) bool {
 	if node.kind == .or_expr && node.value in ['!', '?'] && node.children_count > 0 {
 		return tc.or_expr_source_can_fail(tc.a.child(node, 0))
 	}
-	if node.kind == .infix && node.children_count >= 2 {
-		return tc.or_expr_source_can_fail(tc.a.child(node, 0))
-			|| tc.or_expr_source_can_fail(tc.a.child(node, 1))
-	}
 	if node.kind == .index && node.children_count > 0 {
 		base_type := unalias_and_unwrap_pointer_type(tc.resolve_type(tc.a.child(node, 0)))
 		return base_type is Map || base_type is Array || base_type is ArrayFixed
@@ -12628,9 +12624,6 @@ fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type,
 					return true
 				}
 			}
-		}
-		if actual is ResultType && tc.type_compatible(actual.base_type, expected.base_type) {
-			return true
 		}
 		if tc.pointer_value_compatible(actual, expected.base_type) {
 			return true
