@@ -772,6 +772,8 @@ fn main() {
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
 	assert run_module_cache_binary(second_output) == '42'
+	assert second.output.split_into_lines().any(it.trim_space().starts_with('parse .vh')), second.output
+	assert second.output.split_into_lines().any(it.trim_space().starts_with('parse .v')), second.output
 	vh_lines := second.output.split_into_lines().filter(it.contains('parsed .vh files'))
 	assert vh_lines.len == 1, second.output
 	fields := vh_lines[0].fields()

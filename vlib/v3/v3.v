@@ -3,6 +3,7 @@ module main
 import os
 import rand
 import strings
+import time
 import v3.bench
 import v3.cmdexec
 import v3.modulecache
@@ -75,6 +76,14 @@ mut:
 	native_source_modules  map[string]bool
 	objects                map[string]string
 	headers                map[string]string
+}
+
+struct V3ParseTiming {
+mut:
+	header_us       i64
+	source_us       i64
+	header_parallel bool
+	source_parallel bool
 }
 
 struct V3PreparedModuleCache {
@@ -3341,9 +3350,8 @@ fn main() {
 		cache_state.source_body_modules['builtin'] = true
 		files << builtin_files
 	}
-	mut parse_was_parallel := false
-	_, builtin_parse_parallel := p.parse_files_dispatch(files, !current_no_parallel)
-	parse_was_parallel = parse_was_parallel || builtin_parse_parallel
+	mut parse_timing := V3ParseTiming{}
+	parse_files_dispatch_profiled(mut p, files, !current_no_parallel, mut parse_timing)
 	mut a := p.a
 	defer {
 		a.close_workers()
@@ -3387,17 +3395,15 @@ fn main() {
 		user_files << input_file
 	}
 	prefs.is_test = user_files.any(pref.is_test_file_for_platform(it, backend, prefs.target))
-	_, user_parse_parallel := p.parse_files_dispatch(user_files, !current_no_parallel)
-	parse_was_parallel = parse_was_parallel || user_parse_parallel
+	parse_files_dispatch_profiled(mut p, user_files, !current_no_parallel, mut parse_timing)
 	test_files := test_input_files(user_files, backend, prefs.target)
 
 	seed_implicit_imports(mut a)
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
 	// Resolve imports recursively
-	import_parse_parallel := resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, mut
-		cache_state)
-	parse_was_parallel = parse_was_parallel || import_parse_parallel
+	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, mut cache_state, mut
+		parse_timing)
 	if p.diagnostics.len > 0 {
 		for diagnostic in p.diagnostics {
 			eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: error: ${diagnostic.message}')
@@ -3413,7 +3419,24 @@ fn main() {
 		''
 	}
 
-	b.step_parallel('parse', parse_was_parallel)
+	parse_total_us := b.current_step_time_us()
+	header_parse_us := if parse_timing.header_us < parse_total_us {
+		parse_timing.header_us
+	} else {
+		parse_total_us
+	}
+	b.step_parts([
+		bench.StepPart{
+			name:     'parse .vh'
+			time_us:  header_parse_us
+			parallel: parse_timing.header_parallel
+		},
+		bench.StepPart{
+			name:     'parse .v'
+			time_us:  parse_total_us - header_parse_us
+			parallel: parse_timing.source_parallel
+		},
+	])
 	b.metric_items('parsed .vh files', p.parsed_v_header_files, 'files', '.vh files',
 		p.parsed_v_header_file_paths)
 	println('    ${'parsed .vh lines':-28s} ${source_file_line_count(p.parsed_v_header_file_paths)} lines')
@@ -6037,7 +6060,7 @@ fn synthetic_index_shift(insertions []SyntheticInsertion, idx int) int {
 }
 
 // resolve_imports resolves resolve imports information for v3 entry point.
-fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, mut cache_state V3ModuleCacheState) bool {
+fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming) bool {
 	mut parsed_modules := map[string]bool{}
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
@@ -6312,7 +6335,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		if wave_files.len == 0 {
 			break
 		}
-		starts, wave_parallel := p.parse_files_dispatch(wave_files, allow_parallel)
+		starts, wave_parallel := parse_files_dispatch_profiled(mut p, wave_files, allow_parallel, mut
+			parse_timing)
 		was_parallel = was_parallel || wave_parallel
 		wave_end_nodes := a.nodes.len
 		for i, canon in wave_canon {
@@ -6364,6 +6388,40 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 		implicit_imports.node_idx += insertions.len
 	}
 	return was_parallel
+}
+
+fn parse_files_dispatch_profiled(mut p parser.Parser, paths []string, allow_parallel bool, mut timing V3ParseTiming) ([]int, bool) {
+	sw := time.new_stopwatch()
+	starts, parallel := p.parse_files_dispatch(paths, allow_parallel)
+	elapsed_us := sw.elapsed().microseconds()
+	mut header_weight := i64(0)
+	mut source_weight := i64(0)
+	for path in paths {
+		size := i64(os.file_size(path))
+		weight := if size > 0 { size } else { i64(1) }
+		if path.ends_with('.vh') {
+			header_weight += weight
+		} else {
+			source_weight += weight
+		}
+	}
+	total_weight := header_weight + source_weight
+	// A partially warm import wave can parse headers and sources concurrently.
+	// Attribute that shared wall time by input size without changing AST parse order.
+	header_us := if header_weight == 0 || total_weight == 0 {
+		i64(0)
+	} else if source_weight == 0 {
+		elapsed_us
+	} else {
+		elapsed_us * header_weight / total_weight
+	}
+	timing.header_us += header_us
+	timing.source_us += elapsed_us - header_us
+	if parallel {
+		timing.header_parallel = timing.header_parallel || header_weight > 0
+		timing.source_parallel = timing.source_parallel || source_weight > 0
+	}
+	return starts, parallel
 }
 
 fn record_cache_module_dependency(mut state V3ModuleCacheState, owner string, dependency string) {
