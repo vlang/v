@@ -3499,12 +3499,13 @@ fn main() {
 	if backend == 'c' && cache_state.manager.enabled {
 		cache_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target)
 	}
-	if backend == 'c' && cache_state.manager.enabled && !is_prod && !is_shared && !is_selfhost
-		&& prefs.normalized_target_os() == 'macos' {
-		generic_cache_signature = monomorph_cache_semantic_signature(a, user_files)
-		generic_cache_runtime_strings = monomorph_cache_runtime_strings(a)
-	}
-	incremental_snapshot := incremental_program_snapshot(a)
+	use_macos_dev_program_cache := backend == 'c' && cache_state.manager.enabled && !is_prod
+		&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos'
+	incremental_cache_enabled := use_macos_dev_program_cache
+		&& os.getenv('V3_CACHE_DISABLE_INCREMENTAL') != '1'
+	mut generic_cache_inputs_ready := false
+	mut incremental_snapshot := V3IncrementalSnapshot{}
+	mut incremental_snapshot_ready := false
 	mut incremental_cache_hit := false
 	mut incremental_changed_keys := []string{}
 	mut incremental_changed_names := map[string]bool{}
@@ -3530,8 +3531,10 @@ fn main() {
 				}
 			}
 		}
-		if !cgen_cache_hit && !is_prod && !is_shared && !is_selfhost
-			&& prefs.normalized_target_os() == 'macos' {
+		if !cgen_cache_hit && use_macos_dev_program_cache {
+			generic_cache_signature = monomorph_cache_semantic_signature(a, user_files)
+			generic_cache_runtime_strings = monomorph_cache_runtime_strings(a)
+			generic_cache_inputs_ready = true
 			if entry := cache_state.manager.valid_generic_program(input.source_files,
 				generic_cache_signature, input.generation_signature, input.dependency_inputs)
 			{
@@ -3565,8 +3568,9 @@ fn main() {
 				}
 			}
 		}
-		if !cgen_cache_hit && os.getenv('V3_CACHE_DISABLE_INCREMENTAL') != '1' && !is_prod
-			&& !is_shared && !is_selfhost && prefs.normalized_target_os() == 'macos' {
+		if !cgen_cache_hit && incremental_cache_enabled {
+			incremental_snapshot = incremental_program_snapshot(a)
+			incremental_snapshot_ready = true
 			if entry := cache_state.manager.valid_incremental_program(input.source_files,
 				incremental_snapshot.declaration_signature, input.generation_signature,
 				input.dependency_inputs)
@@ -3618,6 +3622,21 @@ fn main() {
 				}
 			}
 		}
+	}
+	// Exact whole-program cache hits do not consume the generic or incremental
+	// snapshots. Build those AST-wide signatures only on a miss, while retaining
+	// them for publishing a fresh development cache after a cold build.
+	if !cgen_cache_hit && use_macos_dev_program_cache {
+		if !generic_cache_inputs_ready {
+			generic_cache_signature = monomorph_cache_semantic_signature(a, user_files)
+			generic_cache_runtime_strings = monomorph_cache_runtime_strings(a)
+		}
+		if incremental_cache_enabled && !incremental_snapshot_ready {
+			incremental_snapshot = incremental_program_snapshot(a)
+		}
+	}
+	if backend == 'c' && cache_state.manager.enabled {
+		b.step('cache lookup')
 	}
 
 	// Type-collect + check BEFORE transform, so the transformer is type-aware
