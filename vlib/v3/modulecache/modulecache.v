@@ -1383,23 +1383,49 @@ fn c_native_declaration_directives(source string) string {
 
 fn c_native_localize_function_definitions(source string) string {
 	mut out := strings.new_builder(source.len + 256)
+	mut pending := strings.new_builder(256)
 	mut brace_depth := 0
 	mut in_block_comment := false
 	for raw_line in source.split_into_lines() {
-		delta, _, next_comment, _, first_open := c_line_braces(raw_line, in_block_comment)
-		if !in_block_comment && brace_depth == 0 && first_open > 0 {
-			head := trim_leading_c_comments(raw_line[..first_open].trim_space())
-			if c_declaration_head_is_function(head) && !c_declaration_head_keeps_definition(head) {
-				indent_len := raw_line.len - raw_line.trim_left(' \t').len
-				out.writeln('${raw_line[..indent_len]}static ${raw_line[indent_len..]}')
+		delta, _, next_comment, last_code, first_open := c_line_braces(raw_line, in_block_comment)
+		trimmed := raw_line.trim_space()
+		if brace_depth == 0 {
+			if pending.len == 0
+				&& (in_block_comment || trimmed.len == 0 || trimmed.starts_with('//')
+				|| trimmed.starts_with('#')) {
+				out.writeln(raw_line)
+				in_block_comment = next_comment
+				continue
+			}
+			pending.writeln(raw_line)
+			if first_open >= 0 {
+				declaration := pending.str()
+				current_line_start := declaration.len - raw_line.len - 1
+				head :=
+					trim_leading_c_comments(declaration[..current_line_start + first_open].trim_space())
+				if c_declaration_head_is_function(head)
+					&& !c_declaration_head_keeps_definition(head) {
+					indent_len := declaration.len - declaration.trim_left(' \t').len
+					out.write_string('${declaration[..indent_len]}static ${declaration[indent_len..]}')
+				} else {
+					out.write_string(declaration)
+				}
 				brace_depth += delta
 				in_block_comment = next_comment
 				continue
 			}
+			if last_code == `;` {
+				out.write_string(pending.str())
+			}
+			in_block_comment = next_comment
+			continue
 		}
 		out.writeln(raw_line)
 		brace_depth += delta
 		in_block_comment = next_comment
+	}
+	if pending.len > 0 {
+		out.write_string(pending.str())
 	}
 	return out.str()
 }

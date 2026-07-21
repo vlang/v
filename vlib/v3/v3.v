@@ -4120,7 +4120,7 @@ fn main() {
 		mut result := os.Result{}
 		mut tried_tcc := false
 		mut tcc_cache_hit := false
-		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 {
+		if cached_dev_dylib.len > 0 && tcc_main_file.len > 0 && !link_uses_non_c_language {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
 			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')

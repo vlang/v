@@ -396,6 +396,26 @@ int cached_readback(int value) {
 	assert header.contains('return -value')
 }
 
+fn test_module_cache_native_header_localizes_split_brace_functions() {
+	prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */
+int cached_readback(int value)
+{
+	return value;
+}
+int cached_sum(
+	int left,
+	int right
+)
+{
+	return left + right;
+}
+/* V3CACHE_NATIVE_DIRECTIVES_END */
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.contains('static int cached_readback(int value)\n{'), header
+	assert header.contains('static int cached_sum(\n\tint left,\n\tint right\n)\n{'), header
+}
+
 fn test_cached_header_preserves_include_search_path_names() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_include_search_${os.getpid()}')
@@ -3859,4 +3879,38 @@ fn main() {
 	assert second.exit_code == 0, second.output
 	assert !second.output.contains('cgen (cached)'), second.output
 	assert run_module_cache_binary(second_output) == '2'
+}
+
+fn test_cached_dev_tcc_bypasses_native_source_link_flags() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_dev_native_link_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'v.mod', "Module { name: 'cached_dev_native_link' }\n")
+	write_module_cache_file(root, 'native.m',
+		'int v3_cached_dev_native_value(void) { return 73; }\n')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+#flag @VMODROOT/native.m
+
+fn C.v3_cached_dev_native_value() int
+
+fn main() {
+	println(C.v3_cached_dev_native_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'output')
+	compile :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(output)} ${os.quoted_path(main_file)}')
+	assert compile.exit_code == 0, compile.output
+	assert !compile.output.contains('tcc.exe'), compile.output
+	assert run_module_cache_binary(output) == '73'
 }
