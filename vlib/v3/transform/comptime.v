@@ -130,7 +130,8 @@ fn (t &Transformer) comptime_for_base_type(raw string) string {
 	} else {
 		raw
 	}
-	return t.comptime_normalize_type_alias_chain(t.comptime_resolve_selective_import_type(source))
+	base := t.comptime_for_value_type_base(source)
+	return t.comptime_normalize_type_alias_chain(t.comptime_resolve_selective_import_type(base))
 }
 
 fn (t &Transformer) comptime_for_value_source_type(raw string) ?string {
@@ -177,11 +178,16 @@ fn (t &Transformer) comptime_for_field_source_type(owner_type string, field_name
 
 fn (t &Transformer) comptime_for_value_type_base(raw string) string {
 	mut typ := raw.trim_space()
-	if typ.starts_with('mut ') {
-		typ = typ[4..].trim_space()
-	}
-	for typ.starts_with('&') {
-		typ = typ[1..].trim_space()
+	for {
+		if typ.starts_with('mut ') {
+			typ = typ[4..].trim_space()
+		} else if typ.starts_with('shared ') || typ.starts_with('atomic ') {
+			typ = typ[7..].trim_space()
+		} else if typ.starts_with('&') {
+			typ = typ[1..].trim_space()
+		} else {
+			break
+		}
 	}
 	return typ
 }

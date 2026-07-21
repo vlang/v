@@ -113,6 +113,19 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			} else {
 				cur_file
 			}
+			if g.program_body_only && !g.cache_program_files[fn_file] && fn_module !in ['', 'main'] {
+				continue
+			}
+			if g.incremental_fn_names.len > 0 {
+				qname := if fn_module in ['', 'main', 'builtin'] {
+					node.value
+				} else {
+					'${fn_module}.${node.value}'
+				}
+				if !g.incremental_fn_names[qname] && !g.incremental_fn_names[node.value] {
+					continue
+				}
+			}
 			if !g.should_emit_fn_node_in_module(node, i, fn_module, fn_file) {
 				continue
 			}
@@ -174,6 +187,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 			is_program_specialization: program_specializations[candidate.preferred_name]
 		}
 	}
+	items.sort(a.c_name < b.c_name)
 	return items
 }
 
@@ -198,6 +212,17 @@ fn flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId) int {
 	return cost
 }
 
+fn cache_fn_marker_key(file string, module_name string, name string) string {
+	mut hash := u64(1469598103934665603)
+	for part in [file, module_name, name] {
+		for byte in part.bytes() {
+			hash = (hash ^ u64(byte)) * u64(1099511628211)
+		}
+		hash = (hash ^ u64(0xff)) * u64(1099511628211)
+	}
+	return hash.hex()
+}
+
 // gen_fn_items emits fn items output for c.
 fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 	for item in items {
@@ -217,16 +242,23 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		}
 		if g.cache_split {
 			// Generic templates are source-parsed even when their module object is
-			// cached. Their program-specific concrete specializations belong to the
-			// main translation unit, not to the source-stable module object.
-			module_name := if is_program_fn || item.module.len == 0 {
+			// cached. Program-specific concrete specializations are separated from
+			// both source-stable module objects and the frequently edited program
+			// translation unit, so the dev dylib can retain them across body edits.
+			module_name := if item.is_program_specialization && item.module !in ['', 'main'] {
+				'__v3_program_specializations'
+			} else if is_program_fn || item.module.len == 0 {
 				'main'
 			} else {
 				item.module
 			}
 			g.writeln('/* V3CACHE_MODULE ${module_name} */')
+			g.writeln('/* V3CACHE_FN_BEGIN ${cache_fn_marker_key(item.file, item.module, node.value)} */')
 		}
 		g.gen_fn_in_module(node, item.module)
+		if g.cache_split {
+			g.writeln('/* V3CACHE_FN_END ${cache_fn_marker_key(item.file, item.module, node.value)} */')
+		}
 	}
 }
 
@@ -671,6 +703,9 @@ fn (mut g FlatGen) direct_call_name(name string) string {
 		return 'v_free'
 	}
 	if name == 'new_map' {
+		if g.tc.cur_module == 'builtin' {
+			return 'new_map'
+		}
 		return 'main__new_map'
 	}
 	if name == 'int_str' {
@@ -4487,6 +4522,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 			}
 			mut call_args_name := fn_name
 			call_name := if user_name := g.main_runtime_shadow_call_c_name(node, fn_node) {
+				call_args_name = 'main.${fn_name}'
 				user_name
 			} else if resolved_target_name.len > 0 && resolved_target_name != fn_name {
 				call_args_name = resolved_target_name
@@ -8964,12 +9000,7 @@ fn (mut g FlatGen) gen_optional_arg_with_abi(arg_id flat.NodeId, expected types.
 			g.write('}')
 			return true
 		}
-		collapsed_type := g.usable_expr_type(collapsed)
-		if g.optional_type_name_for_expr(collapsed, collapsed_type) == g.optional_type_name(expected) {
-			g.gen_expr(collapsed)
-		} else {
-			g.gen_expr_with_expected_type(collapsed, expected)
-		}
+		g.gen_expr_with_expected_type(collapsed, expected)
 		return true
 	}
 	arg_node := g.a.nodes[int(arg_id)]
@@ -11680,8 +11711,8 @@ fn (mut g FlatGen) forward_decl_items(items []FlatFnGenItem, mut forwarded_expor
 fn (mut g FlatGen) cached_header_forward_decls() {
 	mut cur_file := ''
 	mut cur_module := ''
-	mut forwarded := map[string]bool{}
-	for node in g.a.nodes {
+	mut items := []FlatFnGenItem{}
+	for node_idx, node in g.a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
 			cur_module = ''
@@ -11691,17 +11722,37 @@ fn (mut g FlatGen) cached_header_forward_decls() {
 			cur_module = node.value
 			continue
 		}
-		if node.kind != .fn_decl || !node.is_mut || !cur_file.ends_with('.vh') {
+		if node.kind != .fn_decl || !cur_file.ends_with('.vh') {
 			continue
 		}
-		qfn := g.fn_c_name_in_module(cur_module, node.value)
+		// Most cached functions are declaration-only nodes (`is_mut` is the parser's
+		// header marker). A small subset retains its source body so the warm pass can
+		// recreate generic specializations. Their ordinary concrete symbol still lives
+		// in the cached object and can be called by a program-generated interface
+		// dispatch, so it needs the same extern prototype. Open generic declarations
+		// have no concrete C symbol of their own.
+		if !node.is_mut && (node.generic_params().len > 0 || node.value.contains('[')) {
+			continue
+		}
+		items << FlatFnGenItem{
+			node_id: flat.NodeId(node_idx)
+			file:    cur_file
+			module:  cur_module
+			c_name:  g.fn_c_name_in_module(cur_module, node.value)
+		}
+	}
+	items.sort(a.c_name < b.c_name)
+	mut forwarded := map[string]bool{}
+	for item in items {
+		qfn := item.c_name
 		if forwarded[qfn] {
 			continue
 		}
 		forwarded[qfn] = true
-		g.tc.cur_file = cur_file
-		g.tc.cur_module = cur_module
-		ret_type := g.fn_node_return_type(node, cur_module)
+		node := g.a.nodes[int(item.node_id)]
+		g.tc.cur_file = item.file
+		g.tc.cur_module = item.module
+		ret_type := g.fn_node_return_type(node, item.module)
 		g.write(g.fn_return_type_name(ret_type))
 		g.write(' ')
 		g.write(qfn)
@@ -11769,11 +11820,15 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		if cfn !in decls {
 			names << cfn
 		}
-		decls[cfn] = g.c_extern_decl_line(node, cfn)
+		decls[cfn] = c_cache_safe_extern_decl(cfn, g.c_extern_decl_line(node, cfn), g.cache_split)
 	}
 	names.sort()
 	for name in names {
-		if name == 'task_info' || name == 'mach_task_self' {
+		if g.c_extern_decl_is_cached_object_fallback(name) {
+			g.writeln('#ifndef V3CACHE_PROGRAM_UNIT')
+			g.writeln(decls[name])
+			g.writeln('#endif')
+		} else if name == 'task_info' || name == 'mach_task_self' {
 			g.writeln('#ifndef __APPLE__')
 			g.writeln(decls[name])
 			g.writeln('#endif')
@@ -11891,6 +11946,26 @@ const c_shared_runtime_extern_symbols = {
 	'pthread_rwlockattr_destroy':    true
 }
 
+const c_cache_macro_sensitive_extern_symbols = {
+	'exp':   true
+	'exp2':  true
+	'log10': true
+	'log1p': true
+	'log2':  true
+	'logb':  true
+	'logf':  true
+	'powf':  true
+	'sqrtf': true
+	'tanf':  true
+}
+
+fn c_cache_safe_extern_decl(cfn string, declaration string, cache_split bool) string {
+	if !cache_split || cfn !in c_cache_macro_sensitive_extern_symbols {
+		return declaration
+	}
+	return declaration.replace_once('${cfn}(', '(${cfn})(')
+}
+
 fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 	if cfn.contains('.') {
 		return false
@@ -11914,12 +11989,21 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 		return false
 	}
 	if cfn in g.inlined_c_fns {
+		if g.cache_split && cfn in g.cache_omitted_c_fns && cfn !in g.inlined_c_static_fns
+			&& cfn !in g.inlined_c_declared_fns {
+			return true
+		}
 		return false
 	}
 	if cfn in g.inlined_c_declared_fns {
 		return false
 	}
 	return true
+}
+
+fn (g &FlatGen) c_extern_decl_is_cached_object_fallback(cfn string) bool {
+	return g.cache_split && cfn in g.inlined_c_fns && cfn in g.cache_omitted_c_fns
+		&& cfn !in g.inlined_c_static_fns && cfn !in g.inlined_c_declared_fns
 }
 
 fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file string) bool {
@@ -11943,6 +12027,7 @@ const c_system_libc_preamble_declared_fns = {
 	'bind':                          true
 	'chdir':                         true
 	'chmod':                         true
+	'chown':                         true
 	'clock_gettime_nsec_np':         true
 	'clock_gettime':                 true
 	'closedir':                      true
@@ -11953,27 +12038,38 @@ const c_system_libc_preamble_declared_fns = {
 	'fdopen':                        true
 	'feof':                          true
 	'ferror':                        true
+	'fgets':                         true
 	'fputs':                         true
 	'freeaddrinfo':                  true
 	'gai_strerror':                  true
 	'getaddrinfo':                   true
 	'getcwd':                        true
 	'getpeername':                   true
+	'getegid':                       true
+	'geteuid':                       true
+	'getgid':                        true
+	'gethostname':                   true
 	'getpid':                        true
 	'gettimeofday':                  true
 	'getuid':                        true
 	'gmtime_r':                      true
+	'getline':                       true
 	'inet_ntop':                     true
 	'ioctl':                         true
 	'isatty':                        true
+	'link':                          true
 	'localtime_r':                   true
 	'log':                           true
 	'lstat':                         true
 	'mkdir':                         true
+	'mkstemp':                       true
 	'mmap':                          true
 	'opendir':                       true
 	'popen':                         true
 	'printf':                        true
+	'pthread_getspecific':           true
+	'pthread_key_delete':            true
+	'pthread_setspecific':           true
 	'pthread_mutex_trylock':         true
 	'pthread_cond_timedwait':        true
 	'pthread_rwlock_init':           true
@@ -11988,12 +12084,14 @@ const c_system_libc_preamble_declared_fns = {
 	'readdir':                       true
 	'recv':                          true
 	'recvfrom':                      true
+	'readlink':                      true
 	'rewind':                        true
 	'rmdir':                         true
 	'send':                          true
 	'sendto':                        true
 	'setsockopt':                    true
 	'shutdown':                      true
+	'sigemptyset':                   true
 	'sin':                           true
 	'sinf':                          true
 	'socket':                        true
@@ -13139,6 +13237,10 @@ fn (mut g FlatGen) emit_fn_ptr_typedef(encoded string, name string, mut emitted 
 	if emitted[encoded] {
 		return
 	}
+	if g.cached_support_identifiers[name] {
+		emitted[encoded] = true
+		return
+	}
 	emitted[encoded] = true
 	if !encoded.starts_with('fn_ptr:') {
 		return
@@ -13347,34 +13449,6 @@ fn (mut g FlatGen) collect_multi_return_types() {
 			continue
 		}
 		g.collect_concrete_multi_return_type(g.tc.expr_type_values[idx])
-	}
-	mut cur_module := ''
-	mut cur_file := ''
-	for node in g.a.nodes {
-		kind_id := node_kind_id(node)
-		if kind_id == 77 {
-			cur_file = node.value
-			g.tc.cur_file = cur_file
-			cur_module = ''
-			g.tc.cur_module = cur_module
-			continue
-		}
-		if kind_id == 73 {
-			cur_module = node.value
-			g.tc.cur_file = cur_file
-			g.tc.cur_module = cur_module
-			continue
-		}
-		g.tc.cur_file = cur_file
-		g.tc.cur_module = cur_module
-		// emit_multi_return_typedef only acts on (optionally `?`/`!`-wrapped) multi-return
-		// types, whose string form always begins with `(`. Skip parse_type for everything
-		// else — this ran on every node's type (~hundreds of thousands of parse_type calls).
-		typ := node.typ
-		if typ.len > 0 && (typ[0] == `(` || ((typ[0] == `?` || typ[0] == `!`) && typ.len > 1
-			&& typ[1] == `(`)) {
-			g.collect_concrete_multi_return_type(g.tc.parse_type(typ))
-		}
 	}
 	g.multi_return_types_ready = true
 }

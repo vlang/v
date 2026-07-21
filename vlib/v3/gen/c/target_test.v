@@ -4,6 +4,21 @@ import os
 import v3.parser
 import v3.pref
 
+fn test_cached_support_declarations_ignore_comments_and_literals() {
+	mut g := FlatGen.new()
+	g.set_cached_support_declarations('typedef int ExistingSupport;
+// Array_fixed_comment_only
+/* _fn_ptr_block_comment_only */
+const char *text = "Option_string_only with \\"escaped\\" text";
+char quote = \'A\';
+')
+	assert g.cached_support_identifiers['ExistingSupport']
+	assert !g.cached_support_identifiers['Array_fixed_comment_only']
+	assert !g.cached_support_identifiers['_fn_ptr_block_comment_only']
+	assert !g.cached_support_identifiers['Option_string_only']
+	assert !g.cached_support_identifiers['escaped']
+}
+
 fn test_c_directive_targets_use_requested_platform() {
 	target := pref.target_from('macos', 'arm64') or { panic(err) }
 	android := pref.target_from('android', 'arm64') or { panic(err) }
@@ -224,6 +239,7 @@ fn test_cache_input_scan_uses_requested_target_flags() {
 	os.write_file(source, 'module sample
 #flag ${target_arch} -I target_include
 #include "target.h"
+#include macos <TargetConditionals.h>
 ') or {
 		panic(err)
 	}
@@ -231,7 +247,7 @@ fn test_cache_input_scan_uses_requested_target_flags() {
 	prefs.target = target
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, has_untracked := cache_external_input_files(a, '', {
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
 		'sample': true
 	}, [], target)
 	assert !has_untracked
@@ -259,7 +275,7 @@ fn test_cache_input_scan_uses_initial_cflags() {
 	prefs.target = target
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, has_untracked := cache_external_input_files(a, '', {
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
 		'sample': true
 	}, ['-I', include_dir, '-include', 'forced_cli.h'], target)
 	assert !has_untracked
@@ -286,13 +302,40 @@ fn test_cache_input_scan_tracks_imported_headers() {
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, has_untracked := cache_external_input_files(a, '', {
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
 		'sample': true
 	}, [], prefs.target)
 	assert !has_untracked
 	mut expected := [os.real_path(outer_header), os.real_path(imported_header)]
 	expected.sort()
 	assert inputs['sample'] == expected
+}
+
+fn test_cache_input_scan_separates_native_source_roots_from_dependencies() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_native_source_root_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	root_source := os.join_path(dir, 'root.c')
+	nested_source := os.join_path(dir, 'nested.c')
+	os.write_file(root_source, '#include "nested.c"\n') or { panic(err) }
+	os.write_file(nested_source, 'static int nested_value(void) { return 42; }\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source, 'module sample\n#include "root.c"\n') or { panic(err) }
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, native_roots, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert !has_untracked
+	mut expected_inputs := [os.real_path(root_source), os.real_path(nested_source)]
+	expected_inputs.sort()
+	assert inputs['sample'] == expected_inputs
+	assert native_roots['sample'] == [os.real_path(root_source)]
 }
 
 fn test_termux_comptime_branch_uses_canonical_target() {

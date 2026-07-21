@@ -21,7 +21,9 @@ const max_shared_transform_jobs = 7
 const max_parallel_monomorph_jobs = 10
 const scoped_transform_worker_batches = 48
 const scoped_transform_master_batches = 48
-const scoped_transform_max_batch_items = 8
+const scoped_transform_max_batch_items = 32
+const scoped_monomorph_batch_specs = 512
+const scoped_monomorph_scan_nodes = 32768
 
 $if !windows {
 	// TransformChunkArgs is the payload handed to each persistent worker.
@@ -89,8 +91,8 @@ mut:
 @[heap]
 struct MonomorphClaimState {
 mut:
-	mu        sync.Mutex
-	cond      &sync.Cond = unsafe { nil }
+	mu        &sync.Mutex = unsafe { nil }
+	cond      &sync.Cond  = unsafe { nil }
 	claimed   map[string]bool
 	queues    [][]PendingGenericFnSpec
 	remaining int
@@ -105,7 +107,10 @@ $if !windows {
 			scope = transform_worker_scope_begin(w.scope_parallel_workers)
 		}
 		w.parallel_monomorph_worker = true
-		w.generic_signatures_pre_registered = true
+		// A worker can discover a nested specialization that another worker will
+		// emit. Register that signature in the discovering worker immediately so
+		// it can transform the current call with the correct return type.
+		w.generic_signatures_pre_registered = false
 		w.defer_nested_generic_emissions = true
 		w.generic_clone_children.ensure_cap(65536)
 		generated_start := w.a.nodes.len
@@ -123,6 +128,12 @@ $if !windows {
 			if claims.remaining == 0 {
 				claims.mu.unlock()
 				break
+			}
+			if claims.queues[a.worker_idx].len == 0 {
+				// A condition variable may wake spuriously. Recheck the queue while
+				// holding the mutex instead of popping an empty worker queue.
+				claims.mu.unlock()
+				continue
 			}
 			spec := claims.queues[a.worker_idx].pop()
 			claims.mu.unlock()
@@ -238,8 +249,13 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		// batches detach, copying the entire immutable base AST in every worker.
 		// The private growing fallback below remains available for truly uneven
 		// batches that exceed their region.
-		node_reserve := specs.len * 4096 + n_jobs * 262144
-		child_reserve := specs.len * 5120 + n_jobs * 393216
+		// Volt's measured closure averages about 1k nodes per specialization,
+		// with the largest hash partition below 130k nodes. Keep enough shared
+		// space for the normal closure without forcing the backing slabs to grow
+		// to several times their retained size. An unusually uneven partition
+		// still uses the private-region fallback below.
+		node_reserve := specs.len * 256 + n_jobs * 196608
+		child_reserve := specs.len * 320 + n_jobs * 229376
 		t.a.nodes.ensure_cap(base_nodes + node_reserve)
 		t.a.children.ensure_cap(base_children + child_reserve)
 		t.monomorph_profile('mono capacity: ${time.ticks() - debug_started} ms')
@@ -266,11 +282,12 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		setup_scope := transform_worker_scope_begin(t.scope_parallel_workers)
 		decls := t.cached_generic_fn_decls()
 		mut claims := &MonomorphClaimState{
+			mu:        sync.new_mutex()
 			claimed:   map[string]bool{}
 			queues:    [][]PendingGenericFnSpec{len: n_jobs}
 			remaining: specs.len
 		}
-		claims.cond = sync.new_cond(&claims.mu)
+		claims.cond = sync.new_cond(claims.mu)
 		for spec in specs {
 			claims.claimed[spec.key] = true
 			target := monomorph_spec_worker(spec.key, n_jobs)
@@ -435,6 +452,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			t.ensure_node_context_map_capacity()
 			for idx, spec in args[ci].emitted_specs {
 				root := flat.NodeId(int(args[ci].roots[idx]) + node_shift)
+				t.record_monomorph_cache_spec(spec.key, spec.decl.key, spec.decl.module, spec.args)
 				if !t.generic_specialization_registered(spec.decl, spec.args) {
 					value := specialized_generic_fn_value(spec.decl.node.value, spec.args)
 					t.register_specialized_fn_signature_value(spec.decl, value, spec.args)
@@ -456,19 +474,216 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 					}
 					t.request_generic_fn_specialization(pending.decl, owned_args)
 				}
-				if args[ci].scope != unsafe { nil } {
-					transform_worker_scope_free(args[ci].scope)
-				}
 			}
 			t.monomorph_profile('mono merged worker ${ci}: ${time.ticks() - debug_started} ms')
+		}
+		// Nested specialization requests can be transferred between workers.
+		// A node emitted by one worker can therefore retain arguments allocated
+		// by another. Publish merged node payloads through the parent text table
+		// against every worker arena before releasing any of them.
+		for ci in 1 .. n_jobs {
+			if args[ci].scope == unsafe { nil } {
+				continue
+			}
+			for idx in 0 .. t.a.nodes.len {
+				t.clone_scoped_worker_node(idx, args[ci].scope)
+			}
+		}
+		for ci in 1 .. n_jobs {
+			if args[ci].scope != unsafe { nil } {
+				transform_worker_scope_free(args[ci].scope)
+			}
 		}
 		t.parallel_monomorph_worker = false
 		t.generic_signatures_pre_registered = false
 		t.parallel_monomorph_scan_end = t.a.nodes.len
 		t.tc.unfreeze_type_cache_after_forks()
+		t.parallel_monomorph_scan_nodes = t.parallel_monomorph_scan_nodes.clone()
+		mut owned_struct_specs := map[string]string{}
+		for spec, base in t.parallel_monomorph_struct_specs {
+			owned_struct_specs[spec.clone()] = base.clone()
+		}
+		t.parallel_monomorph_struct_specs = owned_struct_specs.move()
+		mut owned_sum_specs := map[string]GenericSpecContext{}
+		for spec, context in t.parallel_monomorph_sum_specs {
+			owned_sum_specs[spec.clone()] = GenericSpecContext{
+				base:   context.base.clone()
+				file:   context.file.clone()
+				module: context.module.clone()
+			}
+		}
+		t.parallel_monomorph_sum_specs = owned_sum_specs.move()
+		for idx in 0 .. t.a.nodes.len {
+			t.clone_scoped_worker_node(idx, setup_scope)
+		}
 		transform_worker_scope_free(setup_scope)
 		t.monomorph_profile('mono merge: ${time.ticks() - debug_started} ms')
 		return any_started
+	}
+}
+
+// run_scoped_monomorphize_specs emits a bounded number of specializations in a
+// private AST/checker view, merges their persistent output, and releases all
+// per-specialization scratch before continuing with the next batch.
+fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted map[string]bool, mut generated []string) bool {
+	if specs.len == 0 {
+		return false
+	}
+	// Workers treat declaration parameter metadata as immutable. Build the lazy
+	// index in the parent arena before a scoped worker can grow its backing map.
+	t.prepare_parallel_call_param_types()
+	t.tc.freeze_type_cache_for_forks()
+	defer {
+		t.tc.unfreeze_type_cache_after_forks()
+	}
+	decls := t.cached_generic_fn_decls()
+	mut start := 0
+	for start < specs.len {
+		end := if start + scoped_monomorph_batch_specs < specs.len {
+			start + scoped_monomorph_batch_specs
+		} else {
+			specs.len
+		}
+		base_nodes := t.a.nodes.len
+		base_children := t.a.children.len
+		node_headroom := (end - start) * 8192 + 262144
+		child_headroom := (end - start) * 10240 + 393216
+		t.a.nodes.ensure_cap(base_nodes + node_headroom)
+		t.a.children.ensure_cap(base_children + child_headroom)
+		for spec in specs[start..end] {
+			if !t.generic_specialization_registered(spec.decl, spec.args) {
+				value := specialized_generic_fn_value(spec.decl.node.value, spec.args)
+				t.register_specialized_fn_signature_value(spec.decl, value, spec.args)
+			}
+		}
+		scope := transform_worker_scope_begin(true)
+		mut wast := shared_region_view(t.a, base_nodes, t.a.nodes.cap, base_children,
+			t.a.children.cap)
+		wast.specialized_fn_nodes = map[int]bool{}
+		mut wtc := t.tc.fork_for_parallel_transform(wast)
+		mut w := t.fork_scoped_batch_worker(wast, wtc)
+		w.generic_fn_decls_cache = decls.clone()
+		w.generic_fn_decls_ready = true
+		w.generic_receiver_methods_by_name = t.generic_receiver_methods_by_name.clone()
+		w.parallel_monomorph_worker = true
+		w.generic_signatures_pre_registered = true
+		w.defer_nested_generic_emissions = true
+		w.generic_clone_children.ensure_cap(65536)
+		mut roots := []flat.NodeId{cap: end - start}
+		mut emitted_specs := []PendingGenericFnSpec{cap: end - start}
+		mut generated_names := []string{}
+		for spec in specs[start..end] {
+			if spec.key in t.generic_fn_spec_nodes {
+				continue
+			}
+			root := w.emit_generic_fn_specialization(spec.decl, spec.args)
+			generated_names << w.generated_fn_used_names(spec.decl, root, spec.args)
+			roots << root
+			emitted_specs << spec
+		}
+		w.worker_scope = scope
+		transform_worker_scope_leave(scope)
+
+		node_shift := t.a.nodes.len - base_nodes
+		t.merge_worker_used_fns(w)
+		t.merge_worker(w, []FnWorkItem{}, base_nodes, base_children, false)
+		for name, spec_args in w.generic_specialization_args {
+			if name !in t.generic_specialization_args {
+				t.generic_specialization_args[name.clone()] = spec_args.clone()
+			}
+		}
+		for pending in w.pending_generic_fn_specs {
+			mut owned_args := []string{cap: pending.args.len}
+			for item in pending.args {
+				owned_args << item.clone()
+			}
+			t.request_generic_fn_specialization(pending.decl, owned_args)
+		}
+		for idx, spec in emitted_specs {
+			root := flat.NodeId(int(roots[idx]) + node_shift)
+			if !t.generic_specialization_registered(spec.decl, spec.args) {
+				value := specialized_generic_fn_value(spec.decl.node.value, spec.args)
+				t.register_specialized_fn_signature_value(spec.decl, value, spec.args)
+			}
+			t.generic_fn_spec_nodes[spec.key.clone()] = root
+			t.a.specialized_fn_nodes[int(root)] = true
+			t.mark_node_context(root, spec.decl.module, spec.decl.file)
+			emitted[generic_fn_spec_key(spec.decl.key, spec.args)] = true
+			t.pending_generic_fn_spec_keys.delete(spec.key)
+		}
+		for name in generated_names {
+			generated << name.clone()
+		}
+		if t.stage_scope != unsafe { nil } {
+			parent_state := transform_stage_scope_suspend(t.stage_scope)
+			for idx in 0 .. t.a.nodes.len {
+				t.clone_scoped_worker_node(idx, scope)
+			}
+			transform_stage_scope_resume(t.stage_scope, parent_state)
+		} else {
+			for idx in 0 .. t.a.nodes.len {
+				t.promote_scoped_node_to_current(idx, scope)
+			}
+		}
+		transform_worker_scope_free(scope)
+		start = end
+	}
+	return true
+}
+
+// collect_generic_specs_range_scoped bounds the temporary type parsing and
+// string splitting needed when a monomorphization round scans newly generated
+// nodes. Only the small set of discovered specs escapes each scratch arena.
+fn (mut t Transformer) collect_generic_specs_range_scoped(struct_decls map[string]GenericStructDecl, sum_decls map[string]GenericSumDecl, mut struct_specs map[string]string, mut sum_specs map[string]GenericSpecContext, first int, last int) {
+	if first >= last {
+		return
+	}
+	t.tc.freeze_type_cache_for_forks()
+	defer {
+		t.tc.unfreeze_type_cache_after_forks()
+	}
+	mut start := first
+	for start < last {
+		end := if start + scoped_monomorph_scan_nodes < last {
+			start + scoped_monomorph_scan_nodes
+		} else {
+			last
+		}
+		scope := transform_worker_scope_begin(true)
+		mut wtc := t.tc.fork_for_parallel_transform(t.a)
+		mut w := t.fork_scoped_batch_worker(t.a, wtc)
+		// The master has already extended these append-only context arrays to
+		// `last`; workers only read them while collecting type spellings.
+		w.node_module_map_cache = t.node_module_map_cache
+		w.node_file_map_cache = t.node_file_map_cache
+		w.node_module_map_nodes = t.node_module_map_nodes
+		mut batch_struct_specs := map[string]string{}
+		mut batch_sum_specs := map[string]GenericSpecContext{}
+		w.collect_generic_struct_specs_range(struct_decls, mut batch_struct_specs, start, end)
+		w.collect_generic_sum_specs_range(sum_decls, mut batch_sum_specs, start, end)
+		transform_worker_scope_leave(scope)
+		for spec, base in batch_struct_specs {
+			struct_specs[spec.clone()] = base.clone()
+		}
+		for spec, context in batch_sum_specs {
+			sum_specs[spec.clone()] = GenericSpecContext{
+				base:   context.base.clone()
+				file:   context.file.clone()
+				module: context.module.clone()
+			}
+		}
+		for name, args in w.generic_specialization_args {
+			if name in t.generic_specialization_args {
+				continue
+			}
+			mut owned_args := []string{cap: args.len}
+			for arg in args {
+				owned_args << arg.clone()
+			}
+			t.generic_specialization_args[name.clone()] = owned_args
+		}
+		transform_worker_scope_free(scope)
+		start = end
 	}
 }
 
@@ -746,12 +961,11 @@ fn (mut t Transformer) promote_scoped_result_text(value string) string {
 	if value.len == 0 {
 		return ''
 	}
-	// Scoped self-host workers only read the parse-time text table. Reuse those
-	// compilation-owned strings before adding a worker-local canonical entry.
-	if t.retain_worker_results {
-		if id := t.a.text_ids[value] {
-			return t.a.text_values[int(id) - 1]
-		}
+	// Scoped workers only read the compilation text table. Reuse its canonical
+	// strings before adding a worker-local entry; generic specialization clones
+	// otherwise retain another copy of almost every source identifier and type.
+	if id := t.a.text_ids[value] {
+		return t.a.text_values[int(id) - 1]
 	}
 	if canonical := t.scoped_promoted_texts[value] {
 		return canonical
@@ -761,20 +975,36 @@ fn (mut t Transformer) promote_scoped_result_text(value string) string {
 	return canonical
 }
 
+// promote_scoped_ast_storage moves array backing that grew inside `scope` into
+// the parent arena. Individual node payloads are promoted by absorb_scoped_batch;
+// this preserves the flat containers themselves before the scratch arena dies.
+fn (mut t Transformer) promote_scoped_ast_storage(scope voidptr) {
+	if transform_scope_owns(scope, t.a.nodes.data) {
+		mut nodes := []flat.Node{cap: t.a.nodes.len + t.a.nodes.len / 4 + 1024}
+		nodes << t.a.nodes
+		t.a.nodes = nodes
+	}
+	if transform_scope_owns(scope, t.a.children.data) {
+		mut children := []flat.NodeId{cap: t.a.children.len + t.a.children.len / 4 + 1024}
+		children << t.a.children
+		t.a.children = children
+	}
+}
+
 // absorb_scoped_batch publishes one batch's observable state into the helper's
 // result arena before its large scratch arena is released.
-fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, new_node_start int) {
-	for idx in new_node_start .. batch.a.nodes.len {
+fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr) {
+	// Generic lowering can rewrite nodes reached indirectly through late calls, outside
+	// the initial work item's subtree. Verify the flat payload fields exhaustively before
+	// releasing the batch arena instead of trusting a mutation log that cannot observe
+	// every such rewrite.
+	for idx in 0 .. batch.a.nodes.len {
 		t.promote_scoped_node_to_current(idx, scope)
 	}
 	for idx in batch.scoped_owned_base_nodes.keys() {
-		t.promote_scoped_node_to_current(idx, scope)
 		t.scoped_owned_base_log << idx
 	}
-	for idx in batch.scoped_owned_base_log {
-		t.promote_scoped_node_to_current(idx, scope)
-		t.scoped_owned_base_log << idx
-	}
+	t.scoped_owned_base_log << batch.scoped_owned_base_log
 	for name in batch.used_fns_log {
 		t.mark_used_fn_key(t.promote_scoped_result_text(name))
 	}
@@ -832,7 +1062,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 // scratch lifetime within each helper. A fresh Transformer/TypeChecker fork per
 // batch prevents caches from retaining pointers into the released arena.
 fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_batches int) {
-	result_scope := transform_worker_scope_begin(true)
+	t.retain_current_worker_scope_all()
 	mut total_cost := i64(0)
 	for item in items {
 		total_cost += i64(item.cost) + 1
@@ -864,11 +1094,11 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		batch.used_fns_log_active = true
 		batch.scoped_base_log_active = true
 		batch.ignored_comptime_log_active = true
-		new_node_start := t.a.nodes.len
 		batch.transform_pure_items_serial(items[start..end])
 		transform_worker_scope_leave(scratch_scope)
 		t.a.promote_transform_texts_from(text_start, scratch_scope)
-		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
+		t.absorb_scoped_batch(batch, scratch_scope)
+		t.promote_scoped_ast_storage(scratch_scope)
 		// absorb_scoped_batch publishes every appended node and every base-node
 		// mutation recorded by the batch. Avoid rescanning the continuously growing
 		// AST after each small batch; that makes scoped transform quadratic.
@@ -876,8 +1106,11 @@ fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_b
 		start = end
 		batch_idx++
 	}
-	t.worker_scope = result_scope
-	transform_worker_scope_leave(result_scope)
+	// Promotions and merged side tables were allocated in the helper thread's
+	// persistent parent arena after each scratch scope was left. Nothing from a
+	// completed helper needs to keep a result arena alive until the end of the
+	// whole transform phase.
+	t.worker_scope = unsafe { nil }
 }
 
 // transform_late_candidates_scoped lowers dynamically discovered function bodies in bounded
@@ -926,7 +1159,6 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 		batch.used_fns_log_active = true
 		batch.scoped_base_log_active = true
 		batch.ignored_comptime_log_active = true
-		new_node_start := t.a.nodes.len
 		for si, ci in selected {
 			node_starts[si] = t.a.nodes.len
 			batch.cur_file = candidates[ci].file
@@ -936,7 +1168,8 @@ fn (mut t Transformer) transform_late_candidates_scoped(candidate_index map[stri
 		node_starts[selected.len] = t.a.nodes.len
 		transform_worker_scope_leave(scratch_scope)
 		t.a.promote_transform_texts_from(text_start, scratch_scope)
-		t.absorb_scoped_batch(batch, scratch_scope, new_node_start)
+		t.absorb_scoped_batch(batch, scratch_scope)
+		t.promote_scoped_ast_storage(scratch_scope)
 		transform_worker_scope_free(scratch_scope)
 		for si, ci in selected {
 			idx := candidates[ci].idx
@@ -1304,6 +1537,7 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		t.flush_deferred_base_writes()
 		if t.ignored_comptime_for_log.len > 0 {
 			if t.ignored_comptime_for_nodes.len < t.a.nodes.len {
+				t.ignored_comptime_for_nodes.ensure_cap(t.a.nodes.cap)
 				t.ignored_comptime_for_nodes << []bool{len: t.a.nodes.len - t.ignored_comptime_for_nodes.len}
 			}
 			for idx in t.ignored_comptime_for_log {

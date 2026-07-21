@@ -340,7 +340,7 @@ fn vmemory_block_malloc(n isize, align isize) &u8 {
 				mb.mallocs++
 			}
 		}
-		$if trace_prealloc ? {
+		$if prealloc_trace_malloc ? {
 			if mb.is_scope {
 				used := vmemory_block_used(mb)
 				size := vmemory_block_size(mb)
@@ -678,6 +678,51 @@ pub fn prealloc_scope_leave(scope_ptr voidptr) {
 		scope := &VPreallocScope(scope_ptr)
 		prealloc_trace_scope(c'leave', scope)
 		prealloc_scope_detach_current(scope)
+	}
+}
+
+// prealloc_scope_suspend temporarily makes the parent of the active nested
+// arena current. The returned state must be passed to
+// `prealloc_scope_resume` before the nested arena is left or freed.
+@[unsafe]
+pub fn prealloc_scope_suspend(scope_ptr voidptr) voidptr {
+	if scope_ptr == unsafe { nil } {
+		return unsafe { nil }
+	}
+	unsafe {
+		scope := &VPreallocScope(scope_ptr)
+		current := g_memory_block
+		if current == nil || current.scope != scope || scope.previous == nil {
+			return nil
+		}
+		parent := scope.previous
+		parent.next = nil
+		scope.first.previous = nil
+		scope.previous = nil
+		g_memory_block = parent
+		return current
+	}
+}
+
+// prealloc_scope_resume restores a nested arena suspended with
+// `prealloc_scope_suspend`, attaching it after any parent blocks allocated
+// while it was suspended.
+@[unsafe]
+pub fn prealloc_scope_resume(scope_ptr voidptr, state voidptr) {
+	if scope_ptr == unsafe { nil } || state == unsafe { nil } {
+		return
+	}
+	unsafe {
+		scope := &VPreallocScope(scope_ptr)
+		current := &VMemoryBlock(state)
+		parent := g_memory_block
+		if current.scope != scope || scope.previous != nil || parent == nil {
+			return
+		}
+		parent.next = scope.first
+		scope.first.previous = parent
+		scope.previous = parent
+		g_memory_block = current
 	}
 }
 

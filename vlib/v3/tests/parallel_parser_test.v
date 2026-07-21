@@ -46,6 +46,9 @@ fn test_parallel_parse_matches_serial() {
 	}
 	assert parallel_starts == serial_starts
 	assert pp.parsed_v_files == ps.parsed_v_files
+	assert pp.parsed_v_file_paths == ps.parsed_v_file_paths
+	assert pp.parsed_v_header_files == ps.parsed_v_header_files
+	assert pp.parsed_v_header_file_paths == ps.parsed_v_header_file_paths
 	assert pp.a.nodes.len == ps.a.nodes.len
 	assert pp.a.children.len == ps.a.children.len
 	for i in 0 .. ps.a.children.len {
@@ -74,6 +77,21 @@ fn test_parallel_parse_matches_serial() {
 	for qname, value in ps.a.export_fn_names {
 		assert pp.a.export_fn_names[qname] == value
 	}
+}
+
+fn test_parser_counts_v_header_files() {
+	path := os.join_path(os.temp_dir(), 'v3_parser_header_count_${os.getpid()}.vh')
+	os.write_file(path, 'module sample\n\npub fn value() int\n') or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	p.parse_file(path)
+	assert p.parsed_v_files == 0
+	assert p.parsed_v_file_paths.len == 0
+	assert p.parsed_v_header_files == 1
+	assert p.parsed_v_header_file_paths == [path]
 }
 
 // test_parallel_parse_falls_back_when_workers_cannot_start ensures every helper
