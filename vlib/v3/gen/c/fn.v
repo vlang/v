@@ -4202,7 +4202,9 @@ fn (mut g FlatGen) gen_ierror_from_error_call(node flat.Node) {
 	} else {
 		g.write('0')
 	}
-	g.write('}, sizeof(MessageError)), ._object_is_boxed = true, .message = _str_${empty_sid}, .code = 0}')
+	// The boxed MessageError owns the payload; semantic consumers use dynamic dispatch.
+	g.write('}, sizeof(MessageError)), ._object_is_boxed = true')
+	g.write(', .message = _str_${empty_sid}, .code = 0}')
 }
 
 // gen_optional_error_from_call converts gen optional error from call data for c.
