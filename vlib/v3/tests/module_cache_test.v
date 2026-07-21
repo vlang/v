@@ -371,6 +371,7 @@ int generated_fn(void) { return 3; }
 	assert header.contains('/* Usage:\n   #define STB_IMAGE_IMPLEMENTATION\n*/')
 	assert header.contains('/* v3 cache omitted SOKOL_APP_IMPL */')
 	assert header.contains('/* v3 cache omitted STB_IMAGE_IMPLEMENTATION */')
+	assert !header.contains('static /* v3 cache omitted')
 	assert !header.contains('#define SOKOL_APP_IMPL')
 	assert header.count('#define STB_IMAGE_IMPLEMENTATION') == 1
 	assert !header.contains('native_source_body')
@@ -4412,10 +4413,15 @@ pub fn value() int {
 	return C.native_nested_value()
 }
 ')
-	write_module_cache_file(root, 'native/root.c', '#include "nested.c"
+	write_module_cache_file(root, 'native/root.c', '#include "helper.h"
+#include "nested.c"
 
 int native_nested_value(void) {
-	return nested_static_value();
+	return nested_static_value() + header_static_value() - 1;
+}
+')
+	write_module_cache_file(root, 'native/helper.h', 'static int header_static_value(void) {
+	return 1;
 }
 ')
 	write_module_cache_file(root, 'native/nested.c', 'static int nested_static_value(void) {

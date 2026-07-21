@@ -5174,24 +5174,29 @@ fn restart_v3_with_args(extra_args []string) {
 
 fn cache_external_input_owner_modules(state &V3ModuleCacheState) (map[string]bool, bool) {
 	mut modules := map[string]bool{}
-	for raw_module_name, paths in state.module_external_inputs {
-		for path in paths {
+	for raw_module_name, roots in state.module_native_roots {
+		mut has_static_storage := false
+		for path in state.module_external_inputs[raw_module_name] {
 			source := os.read_file(path) or { continue }
-			if !modulecache.c_source_has_static_storage(source) {
-				continue
+			if modulecache.c_source_has_static_storage(source) {
+				has_static_storage = true
+				break
 			}
-			if !c_flag_is_c_source_file(path) {
-				return modules, false
-			}
-			if raw_module_name == 'main' {
-				modules['main'] = true
-				continue
-			}
-			module_name := cache_state_module_name(state, raw_module_name) or {
-				return modules, false
-			}
-			modules[module_name] = true
 		}
+		if !has_static_storage {
+			continue
+		}
+		for root in roots {
+			if !c_flag_is_c_source_file(root) {
+				return modules, false
+			}
+		}
+		if raw_module_name == 'main' {
+			modules['main'] = true
+			continue
+		}
+		module_name := cache_state_module_name(state, raw_module_name) or { return modules, false }
+		modules[module_name] = true
 	}
 	return modules, true
 }

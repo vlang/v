@@ -1392,7 +1392,8 @@ fn c_native_localize_function_definitions(source string) string {
 		if brace_depth == 0 {
 			if pending.len == 0
 				&& (in_block_comment || trimmed.len == 0 || trimmed.starts_with('//')
-				|| trimmed.starts_with('#')) {
+				|| trimmed.starts_with('#')
+				|| trim_leading_c_comments(trimmed).len == 0) {
 				out.writeln(raw_line)
 				in_block_comment = next_comment
 				continue

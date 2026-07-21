@@ -860,6 +860,8 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 	}
 	c_flags << initial_c_flags
 	include_dirs := c_flag_include_dirs(c_flags)
+	flag_inputs, flags_have_untracked_include, mut include_macros, mut dynamic_include_macros :=
+		cache_c_flag_input_files_with_status(c_flags)
 	mut collect_modules := map[string]bool{}
 	for module_name, enabled in source_modules {
 		if enabled {
@@ -906,7 +908,9 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 				}
 				mut seen := map[string]bool{}
 				mut files := []string{}
-				if c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files) {
+				if c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files, mut
+					include_macros, mut dynamic_include_macros)
+				{
 					has_untracked_include = true
 				}
 				for file in files {
@@ -920,7 +924,6 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 			c_add_cache_external_input(mut inputs, owner_module, path)
 		}
 	}
-	flag_inputs, flags_have_untracked_include := cache_c_flag_input_files_with_status(c_flags)
 	if flags_have_untracked_include {
 		has_untracked_include = true
 	}
@@ -938,28 +941,31 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 // cache_c_flag_input_files returns forced include/macro files whose contents
 // affect every cached object compiled with the supplied C flags.
 pub fn cache_c_flag_input_files(flags []string) []string {
-	files, _ := cache_c_flag_input_files_with_status(flags)
+	files, _, _, _ := cache_c_flag_input_files_with_status(flags)
 	return files
 }
 
-fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool) {
+fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool, map[string][]string, map[string]bool) {
 	include_dirs := c_flag_include_dirs(flags)
 	mut seen := map[string]bool{}
 	mut files := []string{}
 	mut has_untracked_include := false
+	mut include_macros, mut dynamic_include_macros := c_flag_include_macro_definitions(flags)
 	for forced_input in c_forced_include_inputs(flags) {
 		for path in c_include_file_paths('"${forced_input}"', '', '', include_dirs) {
 			if !os.is_file(path) {
 				continue
 			}
-			if c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files) {
+			if c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files, mut
+				include_macros, mut dynamic_include_macros)
+			{
 				has_untracked_include = true
 			}
 			break
 		}
 	}
 	files.sort()
-	return files, has_untracked_include
+	return files, has_untracked_include, include_macros, dynamic_include_macros
 }
 
 fn c_forced_include_inputs(flags []string) []string {
@@ -1039,7 +1045,7 @@ fn c_add_cache_external_input(mut inputs map[string][]string, module_name string
 	}
 }
 
-fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string) bool {
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) bool {
 	if path.len == 0 || !os.is_file(path) {
 		return false
 	}
@@ -1056,24 +1062,95 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		if c_directive_name(clean) !in ['include', 'import'] {
+			c_record_include_macro_definition(clean, mut include_macros, mut dynamic_include_macros)
 			continue
 		}
-		include_arg := c_include_arg(c_directive_arg(clean), vroot, real_path)
-		if !c_include_arg_is_literal(include_arg) {
-			has_untracked_include = true
-			continue
-		}
-		for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
-			if !os.is_file(nested_path) {
+		mut include_args := [c_include_arg(c_directive_arg(clean), vroot, real_path)]
+		if !c_include_arg_is_literal(include_args[0]) {
+			macro_name := include_args[0].trim_space()
+			if dynamic_include_macros[macro_name] {
+				has_untracked_include = true
 				continue
 			}
-			if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut seen, mut files) {
-				has_untracked_include = true
+			include_args = include_macros[macro_name].clone()
+			// An undefined include macro can only occur in an inactive preprocessor
+			// branch in a translation unit that compiles successfully.
+			if include_args.len == 0 {
+				continue
 			}
-			break
+		}
+		for include_arg in include_args {
+			for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
+				if !os.is_file(nested_path) {
+					continue
+				}
+				if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut seen, mut
+					files, mut include_macros, mut dynamic_include_macros)
+				{
+					has_untracked_include = true
+				}
+				break
+			}
 		}
 	}
 	return has_untracked_include
+}
+
+fn c_flag_include_macro_definitions(flags []string) (map[string][]string, map[string]bool) {
+	mut include_macros := map[string][]string{}
+	mut dynamic_include_macros := map[string]bool{}
+	mut i := 0
+	for i < flags.len {
+		clean := flags[i].trim_space()
+		mut definition := ''
+		if clean == '-D' && i + 1 < flags.len {
+			i++
+			definition = flags[i].trim_space()
+		} else if clean.starts_with('-D') {
+			definition = clean[2..].trim_space()
+		}
+		if definition.len > 0 {
+			name := definition.all_before('=').trim_space()
+			value := if definition.contains('=') {
+				definition.all_after('=').trim_space()
+			} else {
+				''
+			}
+			c_record_include_macro_value(name, value, mut include_macros, mut
+				dynamic_include_macros)
+		}
+		i++
+	}
+	return include_macros, dynamic_include_macros
+}
+
+fn c_record_include_macro_definition(directive string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) {
+	if c_directive_name(directive) != 'define' {
+		return
+	}
+	definition := c_directive_arg(directive)
+	parts := definition.fields()
+	if parts.len < 2 || parts[0].contains('(') {
+		return
+	}
+	name := parts[0]
+	value := definition[name.len..].trim_space()
+	c_record_include_macro_value(name, value, mut include_macros, mut dynamic_include_macros)
+}
+
+fn c_record_include_macro_value(name string, value string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) {
+	if name.len == 0 || value.len == 0 {
+		return
+	}
+	if !c_include_arg_is_literal(value) {
+		dynamic_include_macros[name] = true
+		return
+	}
+	mut values := include_macros[name]
+	if value !in values {
+		values << value
+		include_macros[name] = values
+	}
 }
 
 fn c_embed_external_input_path(a &flat.FlatAst, node flat.Node) ?string {
