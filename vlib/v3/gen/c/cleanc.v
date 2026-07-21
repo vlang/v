@@ -3591,7 +3591,8 @@ fn c_cache_native_condition_omitted(directive string, mut stack []CCacheConditio
 		}
 		stack << CCacheConditionalOmission{
 			parent_omitted:         parent_omitted
-			later_branches_omitted: name == 'ifndef' && c_cache_implementation_macro(macro_name)
+			later_branches_omitted: (name == 'ifndef' && c_cache_implementation_macro(macro_name))
+				|| (name == 'if' && c_cache_condition_is_negated_implementation_guard(arg))
 			condition_omitted:      condition_omitted
 		}
 	} else if name in ['else', 'elif'] && stack.len > 0 {
@@ -3634,6 +3635,49 @@ fn c_cache_condition_requires_implementation(condition string) bool {
 		}
 	}
 	return false
+}
+
+fn c_cache_condition_is_negated_implementation_guard(condition string) bool {
+	mut compact := condition.replace(' ', '').replace('\t', '').replace('\r', '').replace('\n', '')
+	for compact.len >= 2 && compact[0] == `(` && compact[compact.len - 1] == `)` {
+		mut depth := 0
+		mut wraps_entire_condition := true
+		for i, c in compact {
+			if c == `(` {
+				depth++
+			} else if c == `)` {
+				depth--
+				if depth == 0 && i < compact.len - 1 {
+					wraps_entire_condition = false
+					break
+				}
+			}
+		}
+		if !wraps_entire_condition || depth != 0 {
+			break
+		}
+		compact = compact[1..compact.len - 1]
+	}
+	if compact.starts_with('!defined(') && compact.ends_with(')') {
+		name := compact['!defined('.len..compact.len - 1]
+		return c_cache_condition_implementation_identifier(name)
+	}
+	if compact.starts_with('!') {
+		return c_cache_condition_implementation_identifier(compact[1..])
+	}
+	return false
+}
+
+fn c_cache_condition_implementation_identifier(name string) bool {
+	if name.len == 0 || !c_cache_implementation_macro(name) {
+		return false
+	}
+	for c in name.bytes() {
+		if !c_ident_char(c) {
+			return false
+		}
+	}
+	return true
 }
 
 fn c_cache_implementation_macro(name string) bool {
