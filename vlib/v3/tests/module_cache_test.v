@@ -56,6 +56,54 @@ fn run_module_cache_binary(path string) string {
 	return result.output.trim_space()
 }
 
+fn test_cached_header_preserves_mutable_pointer_parameters() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_mut_pointer_param_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'wrapper/wrapper.v', 'module wrapper
+
+pub fn write_byte(mut bytes &u8, value u8) {
+	bytes[0] = value
+}
+
+pub fn terminate(mut bytes &u8) {
+	write_byte(mut bytes, `Z`)
+	bytes[1] = 0
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import wrapper
+
+fn main() {
+	mut storage := [2]u8{}
+	mut bytes := &storage[0]
+	wrapper.terminate(mut bytes)
+	assert storage[0] == `Z`
+	assert storage[1] == 0
+	println("ok")
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'ok'
+	header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains('pub fn write_byte(mut bytes &u8, value u8)'), header
+	assert header.contains('pub fn terminate(mut bytes &u8)'), header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == 'ok'
+}
+
 fn module_cache_object_hash(path string) u64 {
 	bytes := os.read_bytes(path) or { panic(err) }
 	mut hash := u64(1469598103934665603)
@@ -2969,6 +3017,111 @@ fn main() {
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
 	assert run_module_cache_binary(second_output) == '41\n41'
+}
+
+fn test_cached_dynamic_const_array_keeps_object_abi() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_dynamic_const_array_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'validators/validators.v', 'module validators
+
+type Validator = fn (u8) bool
+
+struct Entry {
+	value     u8
+	validator Validator
+}
+
+fn is_a(value u8) bool {
+	return value == `a`
+}
+
+fn is_b(value u8) bool {
+	return value == `b`
+}
+
+const entries = [Entry{`a`, is_a}, Entry{`b`, is_b}]
+
+pub fn validate(index int, value u8) bool {
+	return entries[index].validator(value)
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import validators
+
+fn main() {
+	assert validators.validate(0, `a`)
+	assert validators.validate(1, `b`)
+	assert !validators.validate(0, `b`)
+	println("ok")
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'ok'
+	header_path := module_cache_artifact(cache_dir, 'validators_', '.vh')
+	assert header_path.len > 0
+	header := os.read_file(header_path) or { panic(err) }
+	assert header.contains('entries = [Entry{`a`, is_a}, Entry{`b`, is_b}].clone()'), header
+
+	second_output := os.join_path(root, 'second')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
+	assert run_module_cache_binary(second_output) == 'ok'
+}
+
+fn test_cached_module_keeps_generic_specializations() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_generic_specialization_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'headers/headers.v', 'module headers
+
+import arrays
+
+pub fn unique(values []string) []string {
+	return arrays.uniq(values)
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import headers
+
+fn main() {
+	values := headers.unique(["a", "a", "b"])
+	assert values == ["a", "b"]
+	println("ok")
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'ok'
+	// Exercise the generic-program cache independently of the exact Cgen plan.
+	// A large program can legitimately miss that plan on its first header-only
+	// build, while cached module objects already require the cold specializations.
+	for path in os.walk_ext(cache_dir, '.stamp') {
+		if os.file_name(path).starts_with('program_') && path.ends_with('.c.stamp') {
+			os.rm(path) or { panic(err) }
+		}
+	}
+
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert second.output.contains('monomorphize (dependency cache)'), second.output
+	assert run_module_cache_binary(second_output) == 'ok'
 }
 
 fn test_cached_global_with_unsupported_initializer_is_embedded() {

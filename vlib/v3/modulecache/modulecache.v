@@ -9,7 +9,7 @@ import v3.types
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-42'
+const cache_format = 'v3-module-cache-43'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -3394,7 +3394,13 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 	}
 	node := a.nodes[int(id)]
 	if node.kind == .call && node.children_count > 0 {
-		callee := a.child_node(&node, 0)
+		callee_id := a.child(&node, 0)
+		if name := generic_call_source_name(a, callee_id) {
+			if generic_callees[name] {
+				return true
+			}
+		}
+		callee := a.nodes[int(callee_id)]
 		if callee.kind == .selector && callee.children_count > 0 {
 			receiver_type := tc.resolve_type(a.child(callee, 0)).name().trim_left('&?')
 			receiver_base := receiver_type.all_before('[')
@@ -3410,6 +3416,34 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 		}
 	}
 	return false
+}
+
+fn generic_call_source_name(a &flat.FlatAst, id flat.NodeId) ?string {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return none
+	}
+	node := a.nodes[int(id)]
+	match node.kind {
+		.ident {
+			return node.value
+		}
+		.selector {
+			if node.children_count == 0 {
+				return none
+			}
+			base := a.child_node(&node, 0)
+			if base.kind == .ident && base.value.len > 0 && node.value.len > 0 {
+				return '${base.value}.${node.value}'
+			}
+		}
+		.index, .paren {
+			if node.children_count > 0 {
+				return generic_call_source_name(a, a.child(&node, 0))
+			}
+		}
+		else {}
+	}
+	return none
 }
 
 fn generic_specialization_callee_names(tc &types.TypeChecker) map[string]bool {
@@ -3841,7 +3875,12 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		}
 		mut ptype := p.typ
 		mut prefix := ''
-		if ptype.starts_with('&') && p.is_mut {
+		if p.is_mut && p.op == .amp {
+			prefix = 'mut '
+			if !ptype.starts_with('&') {
+				ptype = '&${ptype}'
+			}
+		} else if ptype.starts_with('&') && p.is_mut {
 			prefix = 'mut '
 			ptype = ptype[1..].trim_space()
 		}

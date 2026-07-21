@@ -8485,6 +8485,13 @@ fn (g &FlatGen) fixed_storage_candidate_primary_from_matched_node_for_collect(no
 }
 
 fn (mut g FlatGen) collect_fixed_storage_consts() {
+	// Cached module headers deliberately materialize inferred array constants as
+	// dynamic arrays. Keep cached objects on the same ABI: promoting one of those
+	// constants to a C fixed array would make warm users read an Array header as
+	// element storage.
+	if g.cache_split {
+		return
+	}
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
 	mut cur_module := 'main'
@@ -10373,8 +10380,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 								g.gen_expr(g.a.child(&node, 1))
 								g.write(']')
 							} else {
+								g.write('(')
 								g.gen_expr(base_id)
-								g.write('[')
+								g.write(')[')
 								g.gen_expr(g.a.child(&node, 1))
 								g.write(']')
 							}
