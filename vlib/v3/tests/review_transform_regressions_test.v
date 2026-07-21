@@ -269,6 +269,35 @@ fn main() {
 	assert out == '9'
 }
 
+fn test_mut_interface_argument_shares_concrete_source() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'mut_interface_argument_concrete_source', 'interface Counter {
+mut:
+	inc()
+}
+
+struct State {
+mut:
+	n int
+}
+
+fn (mut s State) inc() {
+	s.n++
+}
+
+fn bump(mut counter Counter) {
+	counter.inc()
+}
+
+fn main() {
+	mut state := State{}
+	bump(mut state)
+	println(int_str(state.n))
+}
+')
+	assert out == '1'
+}
+
 fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization() {
 	v3_bin := build_v3_review_transform()
 	generated := gen_c_from_project(v3_bin, 'nested_generic_main_type_collision', {

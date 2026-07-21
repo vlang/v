@@ -6048,11 +6048,24 @@ fn (tc &TypeChecker) call_never_returns(id flat.NodeId) bool {
 	}
 	callee := tc.a.child_node(&call, 0)
 	if callee.kind == .ident {
+		if callee.value in ['panic', 'exit'] && tc.no_return_builtin_is_shadowed(callee.value) {
+			return false
+		}
 		return callee.value in ['panic', 'exit', '__v_compile_error']
 	}
 	if callee.kind == .selector && callee.children_count > 0 {
 		base := tc.a.child_node(callee, 0)
 		return base.kind == .ident && callee.value == 'exit' && base.value in ['os', 'C']
+	}
+	return false
+}
+
+fn (tc &TypeChecker) no_return_builtin_is_shadowed(name string) bool {
+	if name in tc.smartcasts {
+		return true
+	}
+	if _ := tc.non_file_scope_type(name) {
+		return true
 	}
 	return false
 }
@@ -6115,6 +6128,32 @@ fn (tc &TypeChecker) expr_never_returns(id flat.NodeId) bool {
 			return false
 		}
 	}
+}
+
+fn (tc &TypeChecker) branch_tail_never_returns(branch_id flat.NodeId) bool {
+	if !tc.valid_node_id(branch_id) {
+		return false
+	}
+	branch := tc.a.nodes[int(branch_id)]
+	tail_id := tc.branch_tail_expr_id(branch_id)
+	if !tc.valid_node_id(tail_id) {
+		return false
+	}
+	if branch.kind !in [.block, .match_branch] {
+		return tc.expr_never_returns(tail_id)
+	}
+	body_start := if branch.kind == .match_branch {
+		if branch.value == 'else' { 0 } else { branch.value.int() }
+	} else {
+		0
+	}
+	mut scoped := *tc
+	scoped.smartcasts = clone_smartcasts(tc.smartcasts)
+	tail_index := int(branch.children_count) - 1
+	for i in body_start .. tail_index {
+		scoped.apply_return_analysis_local_binding(tc.a.child(&branch, i))
+	}
+	return scoped.expr_never_returns(tail_id)
 }
 
 // match_covers_all_enum_variants reports whether a `match` over an enum subject
@@ -11145,7 +11184,7 @@ fn (tc &TypeChecker) multi_expr_branch_tail_type_groups(branch_id flat.NodeId, c
 	if !tc.valid_node_id(tail_id) {
 		return none
 	}
-	if tc.expr_never_returns(tail_id) {
+	if tc.branch_tail_never_returns(branch_id) {
 		return [][]Type{}
 	}
 	tail := tc.a.nodes[int(tail_id)]
@@ -11216,7 +11255,7 @@ fn (tc &TypeChecker) match_multi_return_types(expr_id flat.NodeId, count int) ?[
 			return none
 		}
 		tail := tc.a.nodes[int(tail_id)]
-		if tail.kind == .return_stmt || tc.expr_never_returns(tail_id) {
+		if tail.kind == .return_stmt || tc.branch_tail_never_returns(branch_id) {
 			continue
 		}
 		multi := multi_return_payload_type(tc.resolve_type(tail_id)) or { return none }
@@ -11463,7 +11502,7 @@ fn (tc &TypeChecker) wrapped_multi_return_tail_is_error(branch_id flat.NodeId, w
 	if !tc.valid_node_id(tail_id) {
 		return false
 	}
-	if tc.expr_never_returns(tail_id) {
+	if tc.branch_tail_never_returns(branch_id) {
 		return true
 	}
 	raw_type := tc.resolve_type(tail_id)
@@ -11492,7 +11531,7 @@ fn (tc &TypeChecker) tuple_tail_value_groups(body_id flat.NodeId, count int, exp
 		if last.kind == .return_stmt {
 			return [][]flat.NodeId{}
 		}
-		if tc.expr_never_returns(last_id) {
+		if tc.branch_tail_never_returns(body_id) {
 			return [][]flat.NodeId{}
 		}
 	}

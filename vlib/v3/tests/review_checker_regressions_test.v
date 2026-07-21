@@ -488,6 +488,25 @@ fn test_no_return_analysis_requires_resolved_builtin_target() {
 		'missing return at end of function `f`')
 }
 
+fn test_no_return_analysis_rejects_shadowed_builtin_fn_values() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_shadowed_exit_fn_value_missing_return',
+		'fn f() int {\n\texit := fn () int { return 1 }\n\texit()\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_shadowed_panic_fn_value_missing_return',
+		'fn f() int {\n\tpanic := fn () int { return 1 }\n\tpanic()\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_nested_shadowed_exit_fn_value_missing_return',
+		'fn f() int {\n\t{\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_shadowed_exit_multi_return_branch',
+		'fn main() {\n\texit := fn () int { return 1 }\n\tflag := true\n\ta, b := if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'multi-return assignment mismatch')
+	run_bad(v3_bin, 'bad_nested_shadowed_exit_multi_return_branch',
+		'fn main() {\n\tflag := true\n\ta, b := if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'multi-return assignment mismatch')
+}
+
 fn test_returning_receiver_method_named_exit_keeps_value() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_receiver_exit_return_value',

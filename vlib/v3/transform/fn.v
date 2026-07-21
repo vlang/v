@@ -2466,10 +2466,10 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		return t.transform_expr(arg_id)
 	}
 	if param_type.starts_with('&') && t.is_interface_type(param_type) {
-		// Pointer arguments already alias their concrete value when boxed. A value
-		// argument, however, must be copied: the callee may retain the `&Interface`
+		// Explicit `mut` arguments must alias the caller's storage. Other value
+		// arguments are copied because the callee may retain the `&Interface`
 		// after this call (for example `log.set_logger(local_logger)`).
-		if boxed := t.transform_interface_value_for_type(arg_id, param_type, false) {
+		if boxed := t.transform_interface_value_for_type(arg_id, param_type, arg_node.is_mut) {
 			return boxed
 		}
 	}
