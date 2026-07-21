@@ -32,9 +32,12 @@ fn test_multiline_inlined_c_function_definition_is_collected() {
 
 fn test_cache_tracks_omitted_native_function_definitions() {
 	mut g := FlatGen.new()
+	g.cache_split = true
 	g.collect_inlined_c_fns_for_cache('int native_source_fn(void) { return 1; }', true, false)
 	g.collect_inlined_c_fns_for_cache('int native_header_fn(void) { return 2; }', false, true)
 	g.collect_inlined_c_fns_for_cache('#ifdef FONTSTASH_IMPLEMENTATION\nint omitted_header_fn(void) { return 4; }\n#endif',
+		false, true)
+	g.collect_inlined_c_fns_for_cache('#ifndef FOO_IMPLEMENTATION\nint else_implementation_fn(void);\n#else\nint else_implementation_fn(void) { return 5; }\n#endif',
 		false, true)
 	g.collect_inlined_c_fns_for_cache('static int native_static_fn(void) { return 3; }', false,
 		true)
@@ -42,6 +45,8 @@ fn test_cache_tracks_omitted_native_function_definitions() {
 	assert 'native_source_fn' in g.cache_omitted_c_fns
 	assert 'native_header_fn' !in g.cache_omitted_c_fns
 	assert 'omitted_header_fn' in g.cache_omitted_c_fns
+	assert 'else_implementation_fn' in g.cache_omitted_c_fns
+	assert g.should_emit_c_extern_decl('else_implementation_fn')
 	assert 'native_static_fn' in g.inlined_c_static_fns
 }
 

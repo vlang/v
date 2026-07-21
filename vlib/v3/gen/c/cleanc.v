@@ -3569,7 +3569,8 @@ fn (mut g FlatGen) collect_inlined_c_fns_for_cache(text string, cache_omitted bo
 }
 
 struct CCacheConditionalOmission {
-	parent_omitted bool
+	parent_omitted         bool
+	later_branches_omitted bool
 mut:
 	condition_omitted bool
 }
@@ -3580,21 +3581,23 @@ fn c_cache_native_condition_omitted(directive string, mut stack []CCacheConditio
 	if name in ['if', 'ifdef', 'ifndef'] {
 		parent_omitted := stack.len > 0
 			&& (stack.last().parent_omitted || stack.last().condition_omitted)
+		macro_name := arg.fields()[0] or { '' }
 		condition_omitted := if name == 'ifdef' {
-			c_cache_implementation_macro(arg.fields()[0] or { '' })
+			c_cache_implementation_macro(macro_name)
 		} else if name == 'if' {
 			c_cache_condition_requires_implementation(arg)
 		} else {
 			false
 		}
 		stack << CCacheConditionalOmission{
-			parent_omitted:    parent_omitted
-			condition_omitted: condition_omitted
+			parent_omitted:         parent_omitted
+			later_branches_omitted: name == 'ifndef' && c_cache_implementation_macro(macro_name)
+			condition_omitted:      condition_omitted
 		}
 	} else if name in ['else', 'elif'] && stack.len > 0 {
 		last := stack.len - 1
-		stack[last].condition_omitted = name == 'elif'
-			&& c_cache_condition_requires_implementation(arg)
+		stack[last].condition_omitted = stack[last].later_branches_omitted
+			|| (name == 'elif' && c_cache_condition_requires_implementation(arg))
 	} else if name == 'endif' && stack.len > 0 {
 		stack.delete_last()
 	}
