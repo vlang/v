@@ -3054,6 +3054,10 @@ fn main() {
 	mut cached_monomorph_specs := []transform.MonomorphCacheSpec{}
 	mut cached_program_used_fns := map[string]bool{}
 	mut generated_monomorph_specs := []transform.MonomorphCacheSpec{}
+	mut cache_c_flags := user_c_flags.clone()
+	if backend == 'c' && cache_state.manager.enabled {
+		cache_c_flags << cgen.cache_pkgconfig_flags(a)
+	}
 	incremental_snapshot := incremental_program_snapshot(a)
 	mut incremental_cache_hit := false
 	mut incremental_changed_keys := []string{}
@@ -3062,10 +3066,10 @@ fn main() {
 	mut incremental_tcc_declarations_path := ''
 	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
 		&& cache_state.parsed_from_source.len == 0 {
-		if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_c_flags) {
+		if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, cache_c_flags) {
 			restart_v3_without_cache()
 		}
-		input := v3_cgen_cache_input(cache_state, user_files, user_c_flags)
+		input := v3_cgen_cache_input(cache_state, user_files, cache_c_flags)
 		if entry := cache_state.manager.valid_cgen(input.source_files, input.generation_signature,
 			input.dependency_inputs)
 		{
@@ -3220,7 +3224,7 @@ fn main() {
 			exit(1)
 		}
 		if cache_state.manager.enabled {
-			if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, user_c_flags) {
+			if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, cache_c_flags) {
 				restart_v3_without_cache()
 			}
 			for module_name, parsed in cache_state.parsed_from_source {
@@ -3953,7 +3957,7 @@ fn main() {
 				}
 				if !cgen_cache_hit {
 					published_cgen_cache_input := v3_cgen_cache_input(cache_state, user_files,
-						user_c_flags)
+						cache_c_flags)
 					prepared_plan_entry = cache_state.manager.write_cgen(published_cgen_cache_input.source_files,
 						published_cgen_cache_input.generation_signature,
 						published_cgen_cache_input.dependency_inputs, generated_source, encode_v3_cgen_metadata(generated_c_flags,

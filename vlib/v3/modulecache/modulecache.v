@@ -1405,6 +1405,10 @@ fn c_declaration_header(prefix string) (string, bool) {
 					has_brace = false
 				} else {
 					item.write_string(pending)
+					item.write_string(line)
+					in_preprocessor_directive = c_preprocessor_line_continues(raw_line)
+					preprocessor_in_item = in_preprocessor_directive
+					continue
 				}
 			}
 			out.write_string(line)

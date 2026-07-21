@@ -264,6 +264,19 @@ fn test_module_cache_declaration_header_preserves_preprocessor_after_comment() {
 	assert !header.contains('extern #ifndef')
 }
 
+fn test_module_cache_declaration_header_keeps_directives_in_pending_declaration() {
+	prefix := 'int cached_call(
+#ifdef CACHED_EXTRA_PARAMETER
+	int extra,
+#endif
+	int value
+);
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.count('int cached_call(') == 1, header
+	assert header.contains(prefix), header
+}
+
 fn test_module_cache_declaration_header_ignores_semicolons_inside_block_comments() {
 	prefix := '/*
 revision history:
@@ -860,6 +873,69 @@ fn main() {
 		os.walk_ext(cache_dir, '.o.stamp').filter(os.file_name(it).starts_with('wrapper_'))
 	assert second_wrapper_stamps.len == 2
 	assert second_wrapper_stamps.any(it !in first_wrapper_stamps)
+}
+
+fn test_cgen_cache_tracks_pkgconfig_output() {
+	$if windows {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_pkgconfig_cache_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	old_path := os.getenv('PATH')
+	old_flags := os.getenv_opt('V3_TEST_PKGCONFIG_FLAGS')
+	defer {
+		os.setenv('PATH', old_path, true)
+		if value := old_flags {
+			os.setenv('V3_TEST_PKGCONFIG_FLAGS', value, true)
+		} else {
+			os.unsetenv('V3_TEST_PKGCONFIG_FLAGS')
+		}
+		os.rmdir_all(root) or {}
+	}
+	pkgconfig := os.join_path(root, 'pkg-config')
+	write_module_cache_file(root, 'pkg-config', '#!/bin/sh
+printf "%s\\n" "\$V3_TEST_PKGCONFIG_FLAGS"
+')
+	os.chmod(pkgconfig, 0o700) or { panic(err) }
+	os.setenv('PATH', '${root}${os.path_delimiter}${old_path}', true)
+	write_module_cache_file(root, 'value.c', '#ifndef V3_PKG_VALUE
+#error V3_PKG_VALUE is required
+#endif
+int v3_pkg_value(void) { return V3_PKG_VALUE; }
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+#pkgconfig v3-cache-test
+#insert "@DIR/value.c"
+
+fn C.v3_pkg_value() int
+
+fn main() {
+	println(C.v3_pkg_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	os.setenv('V3_TEST_PKGCONFIG_FLAGS', '-DV3_PKG_VALUE=41', true)
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '41'
+	warm_output := os.join_path(root, 'warm')
+	warm :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(warm_output)} ${os.quoted_path(main_file)}')
+	assert warm.exit_code == 0, warm.output
+	assert warm.output.contains('cgen (cached)'), warm.output
+	assert run_module_cache_binary(warm_output) == '41'
+
+	os.setenv('V3_TEST_PKGCONFIG_FLAGS', '-DV3_PKG_VALUE=42', true)
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == '42'
 }
 
 fn test_module_cache_restart_preserves_compiler_stderr() {

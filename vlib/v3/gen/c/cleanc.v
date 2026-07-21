@@ -2381,6 +2381,24 @@ fn (mut g FlatGen) collect_c_flags_from_directives() {
 	}
 }
 
+// cache_pkgconfig_flags resolves the pkg-config flags that affect early C cache keys.
+pub fn cache_pkgconfig_flags(a &flat.FlatAst) []string {
+	mut result := []string{}
+	mut seen_groups := map[string]bool{}
+	for node in a.nodes {
+		if node.kind != .directive || node.value != 'pkgconfig' || node.typ.len == 0 {
+			continue
+		}
+		flags := c_pkgconfig_flags(node.typ)
+		key := flags.join('\x00')
+		if flags.len > 0 && key !in seen_groups {
+			seen_groups[key] = true
+			result << flags
+		}
+	}
+	return result
+}
+
 fn (g &FlatGen) translation_unit_uses_inttypes() bool {
 	mut cur_file := ''
 	include_dirs := c_flag_include_dirs(g.c_flags)
