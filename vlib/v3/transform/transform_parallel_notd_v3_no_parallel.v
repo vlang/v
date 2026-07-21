@@ -1140,9 +1140,9 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 		text_values:            a.text_values
 		text_ids:               a.text_ids
 		worker_pool:            a.worker_pool
-		specialized_fn_nodes:   a.specialized_fn_nodes
-		specialized_fn_modules: a.specialized_fn_modules
-		specialized_fn_files:   a.specialized_fn_files
+		specialized_fn_nodes:   a.specialized_fn_nodes.clone()
+		specialized_fn_modules: a.specialized_fn_modules.clone()
+		specialized_fn_files:   a.specialized_fn_files.clone()
 	}
 }
 

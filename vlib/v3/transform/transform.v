@@ -2233,7 +2233,9 @@ fn (mut t Transformer) transform_pure_items_serial(items []FnWorkItem) {
 // clone_ast_base produces a private FlatAst holding an independent copy of the
 // first base_nodes nodes / base_children children, so a worker can append its own
 // transformed nodes without racing the master or other workers. Read-only metadata
-// (disabled_fns) is shared. The copies carry headroom for the worker's own appends:
+// (disabled_fns) is shared, while per-node specialization maps are private because
+// worker-local appended ids need relocation during merge. The copies carry headroom
+// for the worker's own appends:
 // an exact-size clone (cap == len) would double on the first push, transiently
 // copying the whole array again and keeping the doubled capacity resident for the
 // rest of the build (worker memory is never freed under -gc none). Transform grows
@@ -2254,9 +2256,9 @@ fn (t &Transformer) clone_ast_base(base_nodes int, base_children int) &flat.Flat
 		text_values:            t.a.text_values
 		text_ids:               t.a.text_ids
 		worker_pool:            t.a.worker_pool
-		specialized_fn_nodes:   t.a.specialized_fn_nodes
-		specialized_fn_modules: t.a.specialized_fn_modules
-		specialized_fn_files:   t.a.specialized_fn_files
+		specialized_fn_nodes:   t.a.specialized_fn_nodes.clone()
+		specialized_fn_modules: t.a.specialized_fn_modules.clone()
+		specialized_fn_files:   t.a.specialized_fn_files.clone()
 	}
 }
 
@@ -2691,6 +2693,39 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
 				t.clone_scoped_worker_node(k, w.worker_scope)
 			}
+		}
+	}
+	// Specializations emitted by this worker are keyed by worker-local appended
+	// node ids. Replay only those new entries under the same shift as the nodes;
+	// entries below base_nodes were copied from the master when the worker forked.
+	for idx, specialized in w.a.specialized_fn_nodes {
+		if idx < base_nodes || !specialized {
+			continue
+		}
+		t.a.specialized_fn_nodes[idx + int(node_shift)] = true
+	}
+	for idx, module_name in w.a.specialized_fn_modules {
+		if idx < base_nodes {
+			continue
+		}
+		shifted := idx + int(node_shift)
+		t.a.specialized_fn_modules[shifted] = if w.worker_scope != unsafe { nil }
+			&& !t.retain_worker_results {
+			module_name.clone()
+		} else {
+			module_name
+		}
+	}
+	for idx, file in w.a.specialized_fn_files {
+		if idx < base_nodes {
+			continue
+		}
+		shifted := idx + int(node_shift)
+		t.a.specialized_fn_files[shifted] = if w.worker_scope != unsafe { nil }
+			&& !t.retain_worker_results {
+			file.clone()
+		} else {
+			file
 		}
 	}
 	// Rewritten top-level function nodes keep their original index in the master.
