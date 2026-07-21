@@ -634,6 +634,14 @@ fn skip_signature_quoted_text(source string, quote_pos int, is_raw bool) int {
 
 // valid_entry reports whether both interface and object artifacts match their sources.
 pub fn (m &Manager) valid_entry(module_name string, source_files []string) ?Entry {
+	mut dependency_metadata := map[string]string{}
+	return m.valid_entry_with_metadata_cache(module_name, source_files, mut dependency_metadata)
+}
+
+// valid_entry_with_metadata_cache reports whether both interface and object
+// artifacts match their sources, reusing dependency metadata already observed
+// during this compiler run.
+pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_files []string, mut dependency_metadata map[string]string) ?Entry {
 	if !m.enabled || source_files.len == 0 {
 		return none
 	}
@@ -648,7 +656,7 @@ pub fn (m &Manager) valid_entry(module_name string, source_files []string) ?Entr
 		return none
 	}
 	object_stamp := os.read_file(entry.object_stamp) or { return none }
-	if !object_stamp_valid(object_stamp, expected) {
+	if !object_stamp_valid_with_metadata_cache(object_stamp, expected, mut dependency_metadata) {
 		return none
 	}
 	return entry
@@ -972,6 +980,11 @@ fn cgen_entry_stamp(salt string, source_hash string, dependency_inputs map[strin
 }
 
 fn object_stamp_valid(stamp string, expected_entry string) bool {
+	mut dependency_metadata := map[string]string{}
+	return object_stamp_valid_with_metadata_cache(stamp, expected_entry, mut dependency_metadata)
+}
+
+fn object_stamp_valid_with_metadata_cache(stamp string, expected_entry string, mut dependency_metadata map[string]string) bool {
 	if !stamp.starts_with(expected_entry) {
 		return false
 	}
@@ -991,8 +1004,12 @@ fn object_stamp_valid(stamp string, expected_entry string) bool {
 			return false
 		}
 		dependency := parse_object_stamp_dependency(line) or { return false }
-		if dependency.metadata.len > 0
-			&& file_metadata_signature(dependency.path) == dependency.metadata {
+		current_metadata := dependency_metadata[dependency.path] or {
+			metadata := file_metadata_signature(dependency.path)
+			dependency_metadata[dependency.path] = metadata
+			metadata
+		}
+		if dependency.metadata.len > 0 && current_metadata == dependency.metadata {
 			continue
 		}
 		if file_signature(dependency.path) != dependency.signature {

@@ -71,6 +71,7 @@ mut:
 	module_dependencies    map[string][]string
 	module_external_inputs map[string][]string
 	module_native_roots    map[string][]string
+	dependency_metadata    map[string]string
 	parsed_from_source     map[string]bool
 	source_body_modules    map[string]bool
 	native_source_modules  map[string]bool
@@ -2648,13 +2649,18 @@ fn promote_scoped_signatures(mut tc types.TypeChecker, original_names []string) 
 	}
 }
 
-// default_cc_identity returns the resolved path and version banner of the
-// default `cc`. Module objects in the persistent cache are compiled with literal
-// `cc` (only the default compiler is cacheable), so this must be part of the
-// cache salt: a `cc` upgrade or a retargeted `cc` symlink otherwise leaves stale
-// objects certified as current.
+// default_cc_identity returns a precise identity for the resolved default `cc`.
+// Module objects in the persistent cache are compiled with literal `cc` (only
+// the default compiler is cacheable), so a changed binary or retargeted symlink
+// must invalidate them. File identity avoids launching `cc --version` on every
+// warm build; fall back to the version banner on filesystems without precise
+// metadata support.
 fn default_cc_identity() string {
-	cc_path := os.find_abs_path_of_executable('cc') or { 'cc' }
+	cc_path := os.real_path(os.find_abs_path_of_executable('cc') or { 'cc' })
+	metadata := modulecache.file_metadata_signature(cc_path)
+	if metadata.len > 0 {
+		return '${cc_path}\t${metadata}'
+	}
 	cc_version := cmdexec.run('cc', ['--version']).output
 	return '${cc_path}\t${cc_version.replace('\n', ' ')}'
 }
@@ -3321,6 +3327,7 @@ fn main() {
 		module_dependencies:    map[string][]string{}
 		module_external_inputs: map[string][]string{}
 		module_native_roots:    map[string][]string{}
+		dependency_metadata:    map[string]string{}
 		parsed_from_source:     map[string]bool{}
 		source_body_modules:    map[string]bool{}
 		native_source_modules:  map[string]bool{}
@@ -3402,8 +3409,18 @@ fn main() {
 	seed_cached_builtin_bundle_imports(mut a, cache_state.manager.enabled, builtin_dir)
 
 	// Resolve imports recursively
+	resolve_imports_started_us := b.current_step_time_us()
+	resolve_imports_parse_started_us := parse_timing.header_us + parse_timing.source_us
 	resolve_imports(mut a, mut p, prefs, user_files, !current_no_parallel, mut cache_state, mut
 		parse_timing)
+	resolve_imports_elapsed_us := b.current_step_time_us() - resolve_imports_started_us
+	resolve_imports_parse_us := parse_timing.header_us + parse_timing.source_us -
+		resolve_imports_parse_started_us
+	resolve_imports_coordination_us := if resolve_imports_parse_us < resolve_imports_elapsed_us {
+		resolve_imports_elapsed_us - resolve_imports_parse_us
+	} else {
+		i64(0)
+	}
 	if p.diagnostics.len > 0 {
 		for diagnostic in p.diagnostics {
 			eprintln('${diagnostic.file}:${diagnostic.line}:${diagnostic.column}: error: ${diagnostic.message}')
@@ -3421,19 +3438,21 @@ fn main() {
 
 	parse_total_us := b.current_step_time_us()
 	profiled_parse_us := parse_timing.header_us + parse_timing.source_us
-	parse_coordination_us := if profiled_parse_us < parse_total_us {
-		parse_total_us - profiled_parse_us
-	} else {
-		i64(0)
-	}
-	parse_scale_denominator := if profiled_parse_us > parse_total_us {
-		profiled_parse_us
+	accounted_parse_us := profiled_parse_us + resolve_imports_coordination_us
+	parse_scale_denominator := if accounted_parse_us > parse_total_us {
+		accounted_parse_us
 	} else {
 		parse_total_us
 	}
 	header_parse_us := parse_timing.header_us * parse_total_us / parse_scale_denominator
 	source_parse_us := parse_timing.source_us * parse_total_us / parse_scale_denominator
+	resolve_coordination_us := resolve_imports_coordination_us * parse_total_us / parse_scale_denominator
+	parse_setup_us := parse_total_us - header_parse_us - source_parse_us - resolve_coordination_us
 	b.step_parts([
+		bench.StepPart{
+			name:    'parse setup/cache'
+			time_us: parse_setup_us
+		},
 		bench.StepPart{
 			name:     'parse .vh'
 			time_us:  header_parse_us
@@ -3445,8 +3464,8 @@ fn main() {
 			parallel: parse_timing.source_parallel
 		},
 		bench.StepPart{
-			name:    'parse setup/imports'
-			time_us: parse_coordination_us
+			name:    'resolve imports'
+			time_us: resolve_coordination_us
 		},
 	])
 	b.metric_items('parsed .vh files', p.parsed_v_header_files, 'files', '.vh files',
@@ -6317,7 +6336,9 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						cache_state.source_body_modules[cache_module] = true
 					}
 				} else if !cache_state.force_source {
-					if cached := cache_state.manager.valid_entry(cache_module, mod_files) {
+					if cached := cache_state.manager.valid_entry_with_metadata_cache(cache_module,
+						mod_files, mut cache_state.dependency_metadata)
+					{
 						if !modulecache.header_needs_source(cached) {
 							parse_files = [cached.header]
 							if mod_files.len > 0 {
@@ -6406,6 +6427,25 @@ fn parse_files_dispatch_profiled(mut p parser.Parser, paths []string, allow_para
 	sw := time.new_stopwatch()
 	starts, parallel := p.parse_files_dispatch(paths, allow_parallel)
 	elapsed_us := sw.elapsed().microseconds()
+	mut has_headers := false
+	mut has_sources := false
+	for path in paths {
+		if path.ends_with('.vh') {
+			has_headers = true
+		} else {
+			has_sources = true
+		}
+	}
+	if !has_headers || !has_sources {
+		if has_headers {
+			timing.header_us += elapsed_us
+			timing.header_parallel = timing.header_parallel || parallel
+		} else {
+			timing.source_us += elapsed_us
+			timing.source_parallel = timing.source_parallel || parallel
+		}
+		return starts, parallel
+	}
 	mut header_weight := i64(0)
 	mut source_weight := i64(0)
 	for path in paths {
