@@ -3763,3 +3763,100 @@ fn main() {
 	assert !second.output.contains('check (incremental)'), second.output
 	assert run_module_cache_binary(second_output) == 'second'
 }
+
+fn test_incremental_program_cache_preserves_global_initializer_order() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_global_order_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+__global trace int
+__global first = record(1)
+__global second = record(2)
+
+fn record(value int) int {
+	trace = trace * 10 + value
+	return value
+}
+
+fn main() {
+	println(trace)
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '12'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+__global trace int
+__global second = record(2)
+__global first = record(1)
+
+fn record(value int) int {
+	trace = trace * 10 + value
+	return value
+}
+
+fn main() {
+	println(trace)
+}
+')
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == '21'
+}
+
+fn test_cgen_cache_invalidates_for_resolved_dynamic_flag_change() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_dynamic_c_flag_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'old.c', 'int v3_dynamic_flag_value(void) { return 1; }\n')
+	old_object := os.join_path(root, 'old.o')
+	old_cc := os.execute('cc -c -o ${os.quoted_path(old_object)} ${os.quoted_path(os.join_path(root,
+		'old.c'))}')
+	assert old_cc.exit_code == 0, old_cc.output
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', "module main
+
+#flag \$first_existing('@DIR/new.o', '@DIR/old.o')
+
+fn C.v3_dynamic_flag_value() int
+
+fn main() {
+	println(C.v3_dynamic_flag_value())
+}
+")
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '1'
+
+	write_module_cache_file(root, 'new.c', 'int v3_dynamic_flag_value(void) { return 2; }\n')
+	new_object := os.join_path(root, 'new.o')
+	new_cc := os.execute('cc -c -o ${os.quoted_path(new_object)} ${os.quoted_path(os.join_path(root,
+		'new.c'))}')
+	assert new_cc.exit_code == 0, new_cc.output
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == '2'
+}

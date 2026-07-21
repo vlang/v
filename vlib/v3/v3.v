@@ -1644,6 +1644,7 @@ fn incremental_declaration_attribute_signatures(a &flat.FlatAst) map[int]string 
 
 fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 	mut declaration_parts := []string{}
+	mut global_initializer_parts := []string{}
 	mut synthetic_main_parts := []string{}
 	mut functions := []V3IncrementalFn{}
 	mut cur_file := ''
@@ -1686,8 +1687,12 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 			.struct_decl, .global_decl, .const_decl, .enum_decl, .type_decl, .interface_decl,
 			.import_decl, .c_fn_decl {
 				attribute_signature := declaration_attributes[idx] or { '' }
-				declaration_parts << '${node.kind}\t${cur_file}\t${cur_module}\t${incremental_node_tree_signature(a,
+				part := '${node.kind}\t${cur_file}\t${cur_module}\t${incremental_node_tree_signature(a,
 					flat.NodeId(idx))}\t${attribute_signature}'
+				declaration_parts << part
+				if node.kind == .global_decl {
+					global_initializer_parts << part
+				}
 			}
 			.directive, .comptime_if, .comptime_for, .asm_stmt, .sql_expr, .fn_literal {
 				if top_level_nodes[idx] {
@@ -1706,6 +1711,11 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 	declaration_parts.sort()
 	mut declaration_hash := u64(1469598103934665603)
 	for part in declaration_parts {
+		declaration_hash = c_hash_bytes(declaration_hash, part.bytes())
+		declaration_hash = c_hash_bytes(declaration_hash, [u8(0xff)])
+	}
+	declaration_hash = c_hash_bytes(declaration_hash, 'ordered-global-initializers'.bytes())
+	for part in global_initializer_parts {
 		declaration_hash = c_hash_bytes(declaration_hash, part.bytes())
 		declaration_hash = c_hash_bytes(declaration_hash, [u8(0xff)])
 	}
@@ -3078,7 +3088,7 @@ fn main() {
 	mut generated_monomorph_specs := []transform.MonomorphCacheSpec{}
 	mut cache_c_flags := user_c_flags.clone()
 	if backend == 'c' && cache_state.manager.enabled {
-		cache_c_flags << cgen.cache_pkgconfig_flags(a)
+		cache_c_flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target)
 	}
 	incremental_snapshot := incremental_program_snapshot(a)
 	mut incremental_cache_hit := false
