@@ -4512,6 +4512,74 @@ fn main() {
 	assert run_module_cache_binary(changed_output) == '2'
 }
 
+fn test_cached_dev_dylib_invalidates_for_force_loaded_static_archive_change() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_dev_force_loaded_archive_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	library_dir := os.join_path(root, 'archive')
+	os.mkdir_all(library_dir) or { panic(err) }
+	library_source := os.join_path(library_dir, 'value.c')
+	library_object := os.join_path(library_dir, 'value.o')
+	library := os.join_path(library_dir, 'libforcecached.a')
+	write_module_cache_file(root, 'archive/value.c', 'int force_loaded_archive_value(void) {
+	return 3;
+}
+')
+	first_cc :=
+		os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(library_source)}')
+	assert first_cc.exit_code == 0, first_cc.output
+	first_ar := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
+	assert first_ar.exit_code == 0, first_ar.output
+	write_module_cache_file(root, 'archive/archive.v', 'module archive
+
+#flag -Wl,-force_load,@DIR/libforcecached.a
+
+fn C.force_loaded_archive_value() int
+
+pub fn value() int {
+	return C.force_loaded_archive_value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import archive
+
+fn main() {
+	println(archive.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '3'
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == '3'
+
+	write_module_cache_file(root, 'archive/value.c', 'int force_loaded_archive_value(void) {
+	return 4;
+}
+')
+	second_cc :=
+		os.execute('cc -c -o ${os.quoted_path(library_object)} ${os.quoted_path(library_source)}')
+	assert second_cc.exit_code == 0, second_cc.output
+	second_ar := os.execute('ar rcs ${os.quoted_path(library)} ${os.quoted_path(library_object)}')
+	assert second_ar.exit_code == 0, second_ar.output
+	changed_output := os.join_path(root, 'changed')
+	changed :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_output)} ${os.quoted_path(main_file)}')
+	assert changed.exit_code == 0, changed.output
+	assert run_module_cache_binary(changed_output) == '4'
+}
+
 fn test_cached_dev_dylib_preserves_split_weak_library_flag() {
 	$if !macos {
 		return

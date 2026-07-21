@@ -564,6 +564,32 @@ fn c_dylib_named_static_archive_inputs(link_flags []string) []string {
 	return result
 }
 
+fn c_dylib_force_loaded_static_archive_inputs(link_flags []string) []string {
+	mut archives := map[string]bool{}
+	for flag in link_flags {
+		clean := flag.trim(' \t\r\n"\'')
+		if !clean.starts_with('-Wl,') {
+			continue
+		}
+		parts := clean['-Wl,'.len..].split(',')
+		mut i := 0
+		for i + 1 < parts.len {
+			if parts[i] == '-force_load' {
+				path := parts[i + 1].trim(' \t\r\n"\'')
+				if path.ends_with('.a') && os.is_file(path) {
+					archives[os.real_path(path)] = true
+				}
+				i += 2
+				continue
+			}
+			i++
+		}
+	}
+	mut result := archives.keys()
+	result.sort()
+	return result
+}
+
 fn tcc_cached_main_flags(flags []string) []string {
 	mut compile_flags := []string{}
 	mut i := 0
@@ -816,6 +842,10 @@ fn compile_v3_dev_dylib(prefix_object string, cached_objects []string, resolved_
 		}
 	}
 	for archive in c_dylib_named_static_archive_inputs(link_flags) {
+		hash = c_hash_bytes(hash, archive.bytes())
+		hash = c_hash_bytes(hash, c_object_file_signature(archive, true, mut stats).bytes())
+	}
+	for archive in c_dylib_force_loaded_static_archive_inputs(link_flags) {
 		hash = c_hash_bytes(hash, archive.bytes())
 		hash = c_hash_bytes(hash, c_object_file_signature(archive, true, mut stats).bytes())
 	}
