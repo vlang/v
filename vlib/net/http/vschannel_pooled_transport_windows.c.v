@@ -200,22 +200,21 @@ fn (mut t VSchannelPooledTransport) close() {
 
 // h2_dial_probe_vschannel is the Windows-native counterpart of
 // h2_dial_probe_ssl (transport_h2.v): dials host:port over SChannel and
-// reports whether ALPN selected h2. Unlike the mbedTLS/OpenSSL probe, a
-// non-h2 result closes its own connection before returning rather than
-// handing it back for h1 reuse -- h1-over-vschannel pooling is out of scope,
-// so the caller falls back to the one-shot req.ssl_do instead (see
-// h2_fallback_h1).
+// reports whether ALPN selected h2. A non-h2 result hands the still-open
+// connection back via vsc_probe for h1 reuse, mirroring h2_dial_probe_ssl's
+// own ssl_probe field (#27879 -- h1-over-vschannel pooling).
 fn h2_dial_probe_vschannel(req &Request, host string, port int) !H2ProbeResult {
 	if C.vschannel_alpn_supported() == 0 {
 		// Pre-Windows 8.1 / Server 2012 R2 SChannel has no client-side ALPN:
 		// injecting the SECBUFFER_APPLICATION_PROTOCOLS buffer that
 		// new_vschannel_pooled_transport always installs can fail the whole
 		// handshake outright, so h2 is unreachable on those systems. Report
-		// the origin as h1-only WITHOUT dialing: the caller memoizes
-		// key_proto[key] = 1 and completes this (and every later) request
-		// via the one-shot req.ssl_do path, whose own vschannel_ssl_do guard
-		// (the sibling of this one) then dials plain HTTP/1.1 with no ALPN
-		// -- exactly the pre-pooling behavior (Codex P1, vlang/v#27712
+		// the origin as h1-only WITHOUT dialing (no probe connection to hand
+		// back either): the caller memoizes key_proto[key] = 1 and completes
+		// this (and every later) request via h2_fallback_h1, which dials a
+		// fresh h1-only vschannel connection through vschannel_fresh_round_trip
+		// -- itself gated on the same vschannel_alpn_supported() check, so it
+		// never re-attempts ALPN on these systems either (Codex P1, vlang/v#27712
 		// pullrequestreview-4729311285).
 		return H2ProbeResult{
 			is_h2: false
@@ -224,9 +223,16 @@ fn h2_dial_probe_vschannel(req &Request, host string, port int) !H2ProbeResult {
 	mut t := new_vschannel_pooled_transport(host, port, req.validate, ['h2', 'http/1.1'],
 		h2_pooled_io_timeout, h2_pooled_write_stall_limit)!
 	if t.negotiated_alpn() != 'h2' {
-		t.close()
+		// Hand the still-open, ALPN-probed connection back for h1 reuse
+		// instead of closing it: widen its timeouts from the h2-poll-tuned
+		// values (short reads, tuned for a multiplexed background reader) to
+		// this request's real read/write timeouts first, matching
+		// H1PooledConn.refresh_timeouts' own per-checkout behavior -- an h1
+		// pooled connection has no multiplexed reader to keep responsive.
+		t.set_timeouts(req.read_timeout, req.write_timeout)
 		return H2ProbeResult{
-			is_h2: false
+			is_h2:     false
+			vsc_probe: H1StreamConn(t)
 		}
 	}
 	return H2ProbeResult{
@@ -234,4 +240,49 @@ fn h2_dial_probe_vschannel(req &Request, host string, port int) !H2ProbeResult {
 		transport: H2Transport(t)
 		closer:    H2TransportCloser(t)
 	}
+}
+
+// vschannel_fresh_round_trip is the native-Windows counterpart of
+// tls_fresh_round_trip (transport.v): dials a fresh pooled SChannel
+// connection and completes the request on it. Mirrors tls_fresh_round_trip's
+// ALPN selection exactly -- advertise h2/http1.1 when the request wants h2,
+// run the request on the existing one-shot HTTP/2 driver if the server
+// selects it (unpooled, like the mbedTLS/OpenSSL sibling), otherwise pool the
+// connection as an ordinary h1 keep-alive entry -- except ALPN is
+// additionally gated on vschannel_alpn_supported(), matching
+// vschannel_ssl_do/h2_dial_probe_vschannel's own guard: pre-Windows-8.1
+// SChannel has no client-side ALPN, and injecting the ALPN buffer there can
+// fail the handshake outright.
+fn (mut t Transport) vschannel_fresh_round_trip(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
+	alpn := if req.enable_http2 && C.vschannel_alpn_supported() != 0 {
+		['h2', 'http/1.1']
+	} else {
+		[]string{}
+	}
+	mut vt := new_vschannel_pooled_transport(host, port, req.validate, alpn, req.read_timeout,
+		req.write_timeout)!
+	if req.enable_http2 && vt.negotiated_alpn() == 'h2' {
+		defer {
+			vt.close()
+		}
+		mut conn := new_h2_conn(vt)
+		return req.h2_exchange(mut conn, method, host, port, path, data, header)!
+	}
+	mut conn := &H1PooledConn{
+		key: key
+		vsc: H1StreamConn(vt)
+	}
+	resp, reusable := conn.exchange(req, raw) or {
+		conn.close_conn()
+		// Past the TLS handshake the request bytes may have been (partially)
+		// written; a non-idempotent method must not be replayed by the outer
+		// retry loop. (A dial/handshake failure above propagates before this
+		// and stays retryable, since no request byte was sent.)
+		if !transport_is_idempotent(method) {
+			return error_with_code(err.msg(), transport_err_unsafe_retry)
+		}
+		return err
+	}
+	t.maybe_checkin(mut conn, header, reusable, resp)
+	return resp
 }
