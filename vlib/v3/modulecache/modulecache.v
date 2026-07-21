@@ -20,6 +20,7 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
+const source_signature_cache_format = 'v3-source-signature-cache-1'
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
@@ -206,21 +207,27 @@ fn (m &Manager) incremental_program_entry(source_files []string) IncrementalProg
 // source_signature hashes selected source paths, contents, resolved module roots,
 // build/environment values, and pkg-config probe results in stable order.
 pub fn source_signature(source_files []string) string {
-	return source_signature_with_build_values(source_files, '')
+	return source_signature_details(source_files, '').signature
 }
 
-fn source_signature_with_build_values(source_files []string, build_pseudo_values string) string {
+struct SourceSignatureDetails {
+	signature  string
+	validation []string
+}
+
+fn source_signature_details(source_files []string, build_pseudo_values string) SourceSignatureDetails {
 	mut files := source_files.clone()
 	files.sort()
 	mut hash := u64(1469598103934665603)
 	mut env_names := map[string]bool{}
 	mut pkgconfig_names := map[string]bool{}
 	mut uses_build_pseudo := false
+	mut validation := []string{}
 	for file in files {
 		path := os.real_path(file)
 		hash = hash_bytes(hash, path.bytes())
 		hash = hash_bytes(hash, [u8(0)])
-		content := os.read_bytes(file) or { return '' }
+		content := os.read_bytes(file) or { return SourceSignatureDetails{} }
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
@@ -231,11 +238,17 @@ fn source_signature_with_build_values(source_files []string, build_pseudo_values
 		if source.contains('@VMODROOT') || source.contains('@VMOD_FILE')
 			|| source.contains('@VROOT') {
 			root, vmod_file := signature_vmod_root(file)
+			vmod_metadata := if vmod_file.len > 0 {
+				file_metadata_signature(vmod_file)
+			} else {
+				''
+			}
+			validation << 'vmod=${path}\t${root}\t${vmod_file}\t${vmod_metadata}'
 			hash = hash_bytes(hash, [u8(0xfc)])
 			hash = hash_bytes(hash, root.bytes())
 			hash = hash_bytes(hash, [u8(0)])
 			if vmod_file.len > 0 {
-				vmod_content := os.read_bytes(vmod_file) or { return '' }
+				vmod_content := os.read_bytes(vmod_file) or { return SourceSignatureDetails{} }
 				hash = hash_bytes(hash, [u8(1)])
 				hash = hash_bytes(hash, vmod_file.bytes())
 				hash = hash_bytes(hash, [u8(0)])
@@ -253,6 +266,7 @@ fn source_signature_with_build_values(source_files []string, build_pseudo_values
 		}
 	}
 	if uses_build_pseudo {
+		validation << 'build=${hash_text(build_pseudo_values)}'
 		hash = hash_bytes(hash, [u8(0xfb)])
 		hash = hash_bytes(hash, build_pseudo_values.bytes())
 		hash = hash_bytes(hash, [u8(0xff)])
@@ -260,27 +274,156 @@ fn source_signature_with_build_values(source_files []string, build_pseudo_values
 	mut names := env_names.keys()
 	names.sort()
 	for name in names {
+		value := os.getenv(name)
+		validation << 'env=${name}\t${hash_text(value)}'
 		hash = hash_bytes(hash, [u8(0xfe)])
 		hash = hash_bytes(hash, name.bytes())
 		hash = hash_bytes(hash, [u8(0)])
-		hash = hash_bytes(hash, os.getenv(name).bytes())
+		hash = hash_bytes(hash, value.bytes())
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
 	mut packages := pkgconfig_names.keys()
 	packages.sort()
 	for name in packages {
 		available := os.execute('pkg-config --exists ${name}').exit_code == 0
+		validation << 'pkg=${name}\t${if available { 1 } else { 0 }}'
 		hash = hash_bytes(hash, [u8(0xfd)])
 		hash = hash_bytes(hash, name.bytes())
 		hash = hash_bytes(hash, [u8(0)])
 		hash = hash_bytes(hash, [u8(if available { 1 } else { 0 })])
 		hash = hash_bytes(hash, [u8(0xff)])
 	}
-	return hash.hex()
+	return SourceSignatureDetails{
+		signature:  hash.hex()
+		validation: validation
+	}
 }
 
 fn (m &Manager) source_signature(source_files []string) string {
-	return source_signature_with_build_values(source_files, m.build_pseudo_values)
+	return cached_source_signature_with_build_values(m.dir, 'module', source_files,
+		m.build_pseudo_values)
+}
+
+// cached_source_signature returns a content signature while using precise file
+// metadata to avoid rereading unchanged inputs on subsequent compiler runs.
+pub fn cached_source_signature(cache_dir string, namespace string, source_files []string) string {
+	return cached_source_signature_with_build_values(cache_dir, namespace, source_files, '')
+}
+
+fn cached_source_signature_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string) string {
+	mut paths := source_files.map(os.real_path(it))
+	paths.sort()
+	cache_key := hash_text(namespace + '\n' + paths.join('\n'))
+	cache_path := os.join_path(cache_dir, '.source_signature_${cache_key}')
+	metadata := source_files_metadata_signature(paths)
+	if metadata.len > 0 {
+		cached := os.read_file(cache_path) or { '' }
+		if signature := valid_cached_source_signature(cached, metadata, build_pseudo_values) {
+			return signature
+		}
+	}
+	details := source_signature_details(paths, build_pseudo_values)
+	if details.signature.len == 0 {
+		return ''
+	}
+	fresh_metadata := source_files_metadata_signature(paths)
+	if fresh_metadata.len > 0 {
+		mut out := strings.new_builder(192 + details.validation.len * 96)
+		out.writeln('format=${source_signature_cache_format}')
+		out.writeln('metadata=${fresh_metadata}')
+		for input in details.validation {
+			out.writeln(input)
+		}
+		out.writeln('source=${details.signature}')
+		out.writeln('complete=1')
+		os.mkdir_all(cache_dir) or {}
+		if os.is_dir(cache_dir) {
+			write_atomic(cache_path, out.str()) or {}
+		}
+	}
+	return details.signature
+}
+
+fn source_files_metadata_signature(paths []string) string {
+	mut hash := u64(1469598103934665603)
+	for path in paths {
+		metadata := file_metadata_signature(path)
+		if metadata.len == 0 {
+			return ''
+		}
+		hash = hash_bytes(hash, path.bytes())
+		hash = hash_bytes(hash, [u8(0)])
+		hash = hash_bytes(hash, metadata.bytes())
+		hash = hash_bytes(hash, [u8(0xff)])
+	}
+	return hash.hex()
+}
+
+fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string) ?string {
+	lines := content.split_into_lines()
+	if lines.len < 4 || lines[0] != 'format=${source_signature_cache_format}'
+		|| lines[1] != 'metadata=${metadata}' || lines.last() != 'complete=1' {
+		return none
+	}
+	mut signature := ''
+	for line in lines[2..lines.len - 1] {
+		if line.starts_with('source=') {
+			if signature.len > 0 {
+				return none
+			}
+			signature = line.all_after('source=')
+			continue
+		}
+		if line.starts_with('build=') {
+			if line != 'build=${hash_text(build_pseudo_values)}' {
+				return none
+			}
+			continue
+		}
+		if line.starts_with('env=') {
+			parts := line['env='.len..].split('\t')
+			if parts.len != 2 || parts[0].len == 0 || hash_text(os.getenv(parts[0])) != parts[1] {
+				return none
+			}
+			continue
+		}
+		if line.starts_with('pkg=') {
+			parts := line['pkg='.len..].split('\t')
+			if parts.len != 2 || parts[0].len == 0 {
+				return none
+			}
+			available := os.execute('pkg-config --exists ${parts[0]}').exit_code == 0
+			if parts[1] != '${if available {
+				1
+			} else {
+				0
+			}}' {
+				return none
+			}
+			continue
+		}
+		if line.starts_with('vmod=') {
+			parts := line['vmod='.len..].split('\t')
+			if parts.len != 4 || parts[0].len == 0 {
+				return none
+			}
+			root, vmod_file := signature_vmod_root(parts[0])
+			vmod_metadata := if vmod_file.len > 0 {
+				file_metadata_signature(vmod_file)
+			} else {
+				''
+			}
+			if root != parts[1] || vmod_file != parts[2] || vmod_metadata != parts[3] {
+				return none
+			}
+			continue
+		}
+		return none
+	}
+	if signature.len == 0 {
+		return none
+	}
+	return signature
 }
 
 fn signature_vmod_root(source_file string) (string, string) {

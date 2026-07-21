@@ -65,6 +65,50 @@ fn module_cache_object_hash(path string) u64 {
 	return hash
 }
 
+fn test_cached_source_signatures_revalidate_changed_inputs() {
+	root := os.join_path(os.temp_dir(), 'v3_source_signature_cache_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manager := modulecache.new_manager(root, 'source-signature-metadata', true, '')
+	assert manager.ensure_dir()
+
+	source := os.join_path(root, 'foo.v')
+	write_module_cache_file(root, 'foo.v', 'module foo\n\npub fn value() int { return 1 }\n')
+	manager.write_header('foo', [source], 'module foo\n') or { panic(err) }
+	_ := manager.valid_header('foo', [source]) or {
+		assert false, 'an unchanged source should retain its cached header'
+		return
+	}
+	write_module_cache_file(root, 'foo.v', 'module foo\n\npub fn value() int { return 2 }\n')
+	if _ := manager.valid_header('foo', [source]) {
+		assert false, 'source metadata changes must trigger full content revalidation'
+	}
+
+	env_name := 'V3_SOURCE_SIGNATURE_TEST_${os.getpid()}'
+	os.setenv(env_name, 'first', true)
+	defer {
+		os.unsetenv(env_name)
+	}
+	write_module_cache_file(root, 'env.v', "module envmod\n\nconst value = \$env('${env_name}')\n")
+	env_source := os.join_path(root, 'env.v')
+	manager.write_header('envmod', [env_source], 'module envmod\n') or { panic(err) }
+	os.setenv(env_name, 'second', true)
+	if _ := manager.valid_header('envmod', [env_source]) {
+		assert false, 'compile-time environment changes must invalidate cached signatures'
+	}
+
+	write_module_cache_file(root, 'nested/vmod.v', 'module vmod\n\npub const root = @VMODROOT\n')
+	vmod_source := os.join_path(root, 'nested', 'vmod.v')
+	manager.write_header('vmod', [vmod_source], 'module vmod\n') or { panic(err) }
+	write_module_cache_file(root, 'v.mod', "Module {\n\tname: 'cache_test'\n}\n")
+	if _ := manager.valid_header('vmod', [vmod_source]) {
+		assert false, 'a newly discovered v.mod must invalidate cached signatures'
+	}
+}
+
 fn test_cached_object_accepts_recorded_dependency_superset() {
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_dependency_superset_${os.getpid()}')
 	os.rmdir_all(root) or {}

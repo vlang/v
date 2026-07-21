@@ -2597,7 +2597,8 @@ fn v3_cache_compiler_signature(vroot string) string {
 		files << file
 	}
 	files << os.walk_ext(dir, '.h')
-	return modulecache.source_signature(files)
+	cache_dir := os.join_path(os.vtmp_dir(), 'v3_source_signatures')
+	return modulecache.cached_source_signature(cache_dir, os.real_path(vroot), files)
 }
 
 fn restored_fn_c_name(name string) string {
