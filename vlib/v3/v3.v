@@ -4506,12 +4506,12 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 			}
 		}
 	}
-	declarations := if needs_declarations {
-		cache_source_without_cached_native_inputs(modulecache.declaration_header(split.prefix),
-			state, false)
+	raw_declarations := if needs_declarations {
+		modulecache.declaration_header(split.prefix)
 	} else {
 		''
 	}
+	declarations := cache_source_without_cached_native_inputs(raw_declarations, state, false)
 	compile_signature := v3_cached_object_compile_signature(c_standard, opt_flag, pic_flag,
 		warning_flags, generated_c_flags, objective_c, interface_impl_signature)
 	if resolve_flag_specific_cache_objects(mut state, compile_signature) {
@@ -4541,11 +4541,12 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 	}
 	if !state.bundle_valid {
 		entry := state.manager.object_entry('builtin', state.bundle_sources, compile_signature)
-		bundle_native_includes := cache_native_source_includes(state,
+		bundle_native := cache_source_with_cached_native_inputs(raw_declarations, state,
 			cache_builtin_bundle_roots(state))
-		module_source := if bundle_native_includes.len > 0 {
-			'#define V3CACHE_PROGRAM_UNIT 1\n' + declarations + '#undef V3CACHE_PROGRAM_UNIT\n' +
-				bundle_native_includes + bundle_body.str()
+		module_source := if bundle_native.has_native {
+			'#define V3CACHE_PROGRAM_UNIT 1\n' + bundle_native.source +
+				'#undef V3CACHE_PROGRAM_UNIT\n' + bundle_native.remaining_includes +
+				bundle_body.str()
 		} else {
 			declarations + bundle_body.str()
 		}
@@ -4582,10 +4583,12 @@ fn prepare_v3_module_cache(generated_source string, c_standard string, opt_flag 
 		body := split.modules[module_name] or {
 			split.modules[module_name.all_after_last('.')] or { '' }
 		}
-		native_includes := cache_native_source_includes(state, [module_name])
-		module_source := if native_includes.len > 0 {
-			'#define V3CACHE_PROGRAM_UNIT 1\n' + declarations + '#undef V3CACHE_PROGRAM_UNIT\n' +
-				native_includes + body
+		native := cache_source_with_cached_native_inputs(raw_declarations, state, [
+			module_name,
+		])
+		module_source := if native.has_native {
+			'#define V3CACHE_PROGRAM_UNIT 1\n' + native.source + '#undef V3CACHE_PROGRAM_UNIT\n' +
+				native.remaining_includes + body
 		} else {
 			declarations + body
 		}
@@ -4659,27 +4662,73 @@ fn cache_source_without_cached_native_inputs(source string, state &V3ModuleCache
 	return out.str()
 }
 
-fn cache_native_source_includes(state &V3ModuleCacheState, module_names []string) string {
+struct V3CachedNativeSource {
+	source             string
+	remaining_includes string
+	has_native         bool
+}
+
+fn cache_source_with_cached_native_inputs(source string, state &V3ModuleCacheState, module_names []string) V3CachedNativeSource {
 	mut selected := map[string]bool{}
 	for module_name in module_names {
 		selected[module_name] = true
 	}
-	mut out := strings.new_builder(module_names.len * 96)
-	for raw_module_name, roots in state.module_native_roots {
+	mut all_include_lines := map[string]bool{}
+	mut selected_include_lines := map[string]bool{}
+	mut selected_order := []string{}
+	mut raw_module_names := state.module_native_roots.keys()
+	raw_module_names.sort()
+	for raw_module_name in raw_module_names {
+		roots := state.module_native_roots[raw_module_name]
 		module_name := if raw_module_name == 'main' {
 			'main'
 		} else {
 			cache_state_module_name(state, raw_module_name) or { continue }
 		}
-		if !selected[module_name] || !state.native_source_modules[module_name] {
+		if !state.native_source_modules[module_name] {
 			continue
 		}
 		for root in roots {
 			clean := os.real_path(root).replace('\\', '/').replace('"', '\\"')
-			out.writeln('#include "${clean}"')
+			include_line := '#include "${clean}"'
+			all_include_lines[include_line] = true
+			if selected[module_name] && !selected_include_lines[include_line] {
+				selected_include_lines[include_line] = true
+				selected_order << include_line
+			}
 		}
 	}
-	return out.str()
+	if selected_include_lines.len == 0 {
+		return V3CachedNativeSource{
+			source: cache_source_without_cached_native_inputs(source, state, false)
+		}
+	}
+	mut found := map[string]bool{}
+	mut out := strings.new_builder(source.len + selected_include_lines.len * 64)
+	for line in source.split_into_lines() {
+		clean := line.trim_space()
+		if selected_include_lines[clean] {
+			// The compiler-only macro suppresses fallback declarations, but must not
+			// leak into native source that did not see it in the uncached unit.
+			out.writeln('#undef V3CACHE_PROGRAM_UNIT')
+			out.writeln(line)
+			out.writeln('#define V3CACHE_PROGRAM_UNIT 1')
+			found[clean] = true
+		} else if !all_include_lines[clean] {
+			out.writeln(line)
+		}
+	}
+	mut remaining := strings.new_builder(selected_order.len * 96)
+	for include_line in selected_order {
+		if !found[include_line] {
+			remaining.writeln(include_line)
+		}
+	}
+	return V3CachedNativeSource{
+		source:             out.str()
+		remaining_includes: remaining.str()
+		has_native:         true
+	}
 }
 
 fn module_cache_source_path_set(source_files []string) map[string]bool {
