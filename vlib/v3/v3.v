@@ -2007,6 +2007,8 @@ fn main() {
 		}
 		if a.specialized_fn_nodes.len != base_specialized_fns {
 			a.specialized_fn_nodes = a.specialized_fn_nodes.clone()
+			a.specialized_fn_modules = clone_int_string_map(a.specialized_fn_modules)
+			a.specialized_fn_files = clone_int_string_map(a.specialized_fn_files)
 		}
 		promote_scoped_checker_node_caches(mut pre_tc)
 		promote_scoped_signatures(mut pre_tc, original_signature_names)
