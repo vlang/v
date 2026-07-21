@@ -216,6 +216,45 @@ fn test_array_stringification_prefers_local_struct_over_imported_alias() {
 	assert out == "[Event{\n    kind: 7\n    arg: 'ok'\n}]"
 }
 
+fn test_imported_generic_alias_expands_in_declaration_module() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_generic_alias_decl_module', {
+		'v.mod':     "Module { name: 'imported_generic_alias_decl_module' }\n"
+		'a/types.v': 'module a
+
+pub struct Inner[T] {
+pub:
+	value T
+}
+
+pub type Box[T] = Inner[T]
+
+pub fn make() Box[int] {
+	return Inner[int]{
+		value: 7
+	}
+}
+'
+		'main.v':    'module main
+
+import a
+
+struct Inner[T] {
+	wrong T
+}
+
+fn read(box a.Box[int]) int {
+	return box.value
+}
+
+fn main() {
+	println(int_str(read(a.make())))
+}
+'
+	}, 'main.v')
+	assert out == '7'
+}
+
 fn test_for_in_smartcast_interface_field_keeps_interface_element_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'for_in_smartcast_interface_field',

@@ -1107,34 +1107,13 @@ fn (t &Transformer) expand_generic_type_alias(typ string) ?string {
 			candidates << qualified
 		}
 	}
-	mut has_alias := false
 	for candidate in candidates {
-		if candidate in t.tc.type_aliases {
-			has_alias = true
-			break
-		}
-	}
-	if !has_alias {
-		return none
-	}
-	for i, node in t.a.nodes {
-		if node.kind != .type_decl || node.children_count > 0 {
+		target := t.tc.type_aliases[candidate] or { continue }
+		params := t.tc.type_alias_generic_params[candidate] or { continue }
+		if params.len != args.len {
 			continue
 		}
-		params := node.generic_params()
-		if params.len == 0 || params.len != args.len {
-			continue
-		}
-		module_name := t.node_module_or(i, '')
-		qualified_name := if module_name.len > 0 && module_name !in ['main', 'builtin'] {
-			'${module_name}.${node.value}'
-		} else {
-			node.value
-		}
-		if qualified_name !in candidates && node.value !in candidates {
-			continue
-		}
-		return substitute_generic_type_text_with_params(node.typ, args, params)
+		return substitute_generic_type_text_with_params(target, args, params)
 	}
 	return none
 }
