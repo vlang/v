@@ -4385,6 +4385,61 @@ fn main() {
 	assert run_module_cache_binary(changed_output) == '2'
 }
 
+fn test_cached_dev_dylib_preserves_split_weak_library_flag() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cached_dev_weak_library_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'v.mod', "Module { name: 'cached_dev_weak_library' }\n")
+	write_module_cache_file(root, 'optional.c', 'int cached_weak_library_value(void) {
+	return 42;
+}
+')
+	library := os.join_path(root, 'liboptional.dylib')
+	build_library := os.execute('cc -dynamiclib -o ${os.quoted_path(library)} ${os.quoted_path(os.join_path(root,
+		'optional.c'))}')
+	assert build_library.exit_code == 0, build_library.output
+	write_module_cache_file(root, 'optional/optional.v', 'module optional
+
+#flag -weak_library @VMODROOT/liboptional.dylib
+
+fn C.cached_weak_library_value() int
+
+pub fn value() int {
+	return C.cached_weak_library_value()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import optional
+
+fn main() {
+	println(optional.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'output')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == '42'
+	mut cached_dylibs :=
+		os.walk_ext(cache_dir, '.dylib').filter(os.file_name(it).starts_with('dev_modules_'))
+	assert cached_dylibs.len == 1, cached_dylibs.str()
+	inspection := os.execute('otool -l ${os.quoted_path(cached_dylibs[0])}')
+	assert inspection.exit_code == 0, inspection.output
+	assert inspection.output.contains('cmd LC_LOAD_WEAK_DYLIB'), inspection.output
+	assert inspection.output.contains(library), inspection.output
+	warm_output := os.join_path(root, 'warm')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, warm_output)
+	assert run_module_cache_binary(warm_output) == '42'
+}
+
 fn test_incremental_cgen_preserves_interface_type_ids() {
 	$if !macos {
 		return

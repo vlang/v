@@ -453,7 +453,8 @@ fn c_object_compile_flags(flags []string) []string {
 			i += 2
 			continue
 		}
-		if part in ['-l', '-L', '-Xlinker', '-framework', '-weak_framework', '-force_load'] {
+		if part in ['-l', '-L', '-Xlinker', '-framework', '-weak_framework', '-weak_library',
+			'-force_load'] {
 			skip_link_operand = true
 			i++
 			continue
@@ -489,7 +490,8 @@ fn c_dylib_link_flags(flags []string) []string {
 			i += 2
 			continue
 		}
-		if clean in ['-l', '-L', '-F', '-framework', '-weak_framework', '-Xlinker', '-force_load'] {
+		if clean in ['-l', '-L', '-F', '-framework', '-weak_framework', '-weak_library', '-Xlinker',
+			'-force_load'] {
 			link_flags << flag
 			if i + 1 < flags.len {
 				link_flags << flags[i + 1]
