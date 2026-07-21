@@ -1107,6 +1107,7 @@ fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 			base = decoded
 		}
 	}
+	base = t.normalize_or_expr_value_type(base)
 	// Resolve import aliases and nested generic arguments in the payload. The
 	// optional wrapper and its lowered value temporary must use one canonical
 	// spelling (`json2.Any`, not the source alias `json.Any`).
@@ -1117,6 +1118,25 @@ fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
 		}
 	}
 	return '${prefix}${base}', base
+}
+
+fn (t &Transformer) normalize_or_expr_value_type(typ string) string {
+	if typ.starts_with('(') && typ.ends_with(')') {
+		mut normalized_items := []string{}
+		for item in split_generic_args(typ[1..typ.len - 1]) {
+			normalized_items << t.normalize_or_expr_value_type(item)
+		}
+		return '(${normalized_items.join(', ')})'
+	}
+	base, args, is_generic := generic_app_parts(typ)
+	if !is_generic {
+		return t.normalize_type_alias(typ)
+	}
+	mut normalized_args := []string{cap: args.len}
+	for arg in args {
+		normalized_args << t.normalize_or_expr_value_type(arg)
+	}
+	return '${t.normalize_type_alias(base)}[${normalized_args.join(', ')}]'
 }
 
 fn (t &Transformer) json_decode_or_expr_type(expr_id flat.NodeId, expr_node flat.Node) ?string {

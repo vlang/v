@@ -170,8 +170,13 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 				}
 			}
 			qname := qualify_fn(cur_module, node.value)
+			// Cached headers retain bodies only when the warm pass must recreate
+			// generated specializations or closure support symbols. Root those bodies
+			// even though their ordinary caller can live entirely in another cached
+			// object and therefore be invisible to the program AST.
+			cached_header_body := cur_file.ends_with('.vh') && !node.is_mut
 			if cache_mode && node.kind == .fn_decl && node.generic_params().len == 0
-				&& cache_modules[cur_module] {
+				&& (cache_modules[cur_module] || cached_header_body) {
 				cache_roots << qname
 			}
 			if qname != node.value {
@@ -2862,9 +2867,6 @@ fn (c &CallCollector) type_text_uses_generics_depth(typ string, cur_module strin
 					return true
 				}
 			} else if c.selective_alias_uses_generics(candidate, cur_module, imports, depth + 1) {
-				return true
-			}
-			if c.struct_fields_use_generics(candidate, cur_module, imports, depth + 1) {
 				return true
 			}
 		}

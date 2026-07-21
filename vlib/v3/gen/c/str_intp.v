@@ -344,11 +344,20 @@ fn (mut g FlatGen) string_literals() {
 // anything interned later (worker novelties, the synthetic main) is emitted
 // as a supplement after the joins — per-id definitions are order-independent.
 fn (mut g FlatGen) string_literals_from(start int) {
-	for i := start; i < g.str_lits.len; i++ {
-		s := g.str_lits[i]
-		escaped := c_escape(s)
-		storage := if g.cache_split { 'static ' } else { '' }
-		g.writeln('${storage}string _str_${i} = {"${escaped}", ${s.len}, 1};')
+	if g.cache_split {
+		mut literals := g.str_lits[start..].clone()
+		literals.sort()
+		for s in literals {
+			i := g.str_lit_ids[s]
+			escaped := c_escape(s)
+			g.writeln('static string _str_${i} = {"${escaped}", ${s.len}, 1};')
+		}
+	} else {
+		for i := start; i < g.str_lits.len; i++ {
+			s := g.str_lits[i]
+			escaped := c_escape(s)
+			g.writeln('string _str_${i} = {"${escaped}", ${s.len}, 1};')
+		}
 	}
 	if g.str_lits.len > start {
 		g.writeln('')

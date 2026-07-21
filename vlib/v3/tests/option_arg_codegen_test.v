@@ -64,6 +64,40 @@ fn main() {
 	assert c_code.contains('take((Optional_i64){.ok = true, .value = 1})'), c_code
 }
 
+fn test_optional_params_field_inside_result_function_keeps_field_wrapper() {
+	v3_bin := build_v3()
+	source := 'enum Filter {
+	linear
+}
+
+@[params]
+struct Config {
+	filter ?Filter
+}
+
+struct Image {}
+
+fn create(cfg Config) !Image {
+	filter := cfg.filter or { return error("missing filter") }
+	if filter != .linear {
+		return error("wrong filter")
+	}
+	return Image{}
+}
+
+fn wrapper(filter Filter) !Image {
+	return create(filter: filter)!
+}
+
+fn main() {
+	_ := wrapper(.linear) or { panic(err) }
+	println("ok")
+}
+'
+	out := run_good(v3_bin, 'optional_params_field_result_wrapper', source)
+	assert out == 'ok'
+}
+
 fn test_error_call_argument_expected_ierror_not_result_wrapper() {
 	v3_bin := build_v3()
 	source := "fn wrap(err IError) string {\n\treturn err.msg()\n}\n\nfn f() !string {\n\treturn wrap(error('x'))\n}\n\nfn main() {\n\ts := f() or { '' }\n\tassert s == 'x'\n\tprintln('ok')\n}\n"

@@ -4392,6 +4392,17 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					v_type = cast_type
 				}
 			}
+			if rhs.kind == .call && rhs.children_count > 0
+				&& g.call_callee_uses_specialized_generic_abi(g.a.child(&rhs, 0)) {
+				call_type := g.declared_call_return_type(rhs_id)
+				if call_type !is types.Unknown && call_type !is types.Void {
+					// Comptime field expansion can leave a local annotation as the
+					// unqualified source spelling (`&App`). The concrete generic call
+					// already carries its declaring module (`&gg.App`) and is the ABI
+					// authority for the generated declaration.
+					v_type = call_type
+				}
+			}
 			if rhs.kind == .struct_init
 				&& (v_type is types.OptionType || v_type is types.ResultType) {
 				rhs_type := g.usable_expr_type(rhs_id)
@@ -4428,7 +4439,16 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					v_type = lock_type
 				}
 			}
-			if shared_alias_ptr := g.decl_shared_alias_pointer_type(node, lhs, rhs) {
+			if rhs.kind == .ident && g.local_storage_is_shared(rhs.value) {
+				// Reading a shared parameter yields its inner value. A specialized generic
+				// declaration can still carry `shared T` as its annotation; do not use the
+				// wrapper-pointer ABI for the value copied out through `storage->val`.
+				if inner := shared_inner_type_text(node.typ) {
+					v_type = g.tc.parse_type(g.shared_qualify_type_text(inner, g.tc.cur_module))
+				} else if shared_alias_ptr := g.decl_shared_alias_pointer_type(node, lhs, rhs) {
+					v_type = shared_alias_ptr
+				}
+			} else if shared_alias_ptr := g.decl_shared_alias_pointer_type(node, lhs, rhs) {
 				v_type = shared_alias_ptr
 			}
 			if rhs.kind == .prefix && rhs.op == .amp && rhs.children_count > 0

@@ -62,7 +62,13 @@ fn (mut t Transformer) is_generic_struct(name string) bool {
 
 fn (mut t Transformer) monomorphize_pass() []string {
 	debug_started := time.ticks()
-	t.tc.reset_resolution_type_view_cache()
+	if t.parallel_monomorphize {
+		t.tc.reset_resolution_type_view_cache()
+	} else {
+		// The serial pass mutates the master semantic maps as it materializes
+		// generic structs. Do not retain lookup views across those mutations.
+		t.tc.disable_resolution_type_view_cache()
+	}
 	defer {
 		t.tc.disable_resolution_type_view_cache()
 		t.defer_nested_generic_emissions = false
@@ -152,10 +158,16 @@ fn (mut t Transformer) monomorphize_pass() []string {
 				t.parallel_monomorph_struct_specs.clear()
 				t.parallel_monomorph_sum_specs.clear()
 			} else {
-				t.collect_generic_struct_specs_range(struct_decls, mut generic_struct_specs,
-					generic_struct_specs_scan_start, node_count)
-				t.collect_generic_sum_specs_range(sum_decls, mut generic_sum_specs,
-					generic_struct_specs_scan_start, node_count)
+				if t.scope_parallel_workers {
+					t.collect_generic_specs_range_scoped(struct_decls, sum_decls, mut
+						generic_struct_specs, mut generic_sum_specs,
+						generic_struct_specs_scan_start, node_count)
+				} else {
+					t.collect_generic_struct_specs_range(struct_decls, mut generic_struct_specs,
+						generic_struct_specs_scan_start, node_count)
+					t.collect_generic_sum_specs_range(sum_decls, mut generic_sum_specs,
+						generic_struct_specs_scan_start, node_count)
+				}
 			}
 			generic_struct_specs_scan_start = node_count
 			if generic_struct_specs.len != spec_count {
@@ -294,18 +306,67 @@ fn (mut t Transformer) monomorphize_pass() []string {
 fn (mut t Transformer) request_generic_fn_specialization(decl GenericFnDecl, args []string) {
 	concrete_args := t.canonical_generic_specialization_args(args)
 	key := t.generic_specialization_progress_key(decl, concrete_args)
+	t.record_monomorph_cache_spec(key, decl.key, decl.module, concrete_args)
 	if key in t.generic_fn_spec_nodes || t.generic_fn_specs_in_progress[key]
 		|| t.pending_generic_fn_spec_keys[key] {
 		return
 	}
 	t.pending_generic_fn_spec_keys[key] = true
 	value := specialized_generic_fn_value(decl.node.value, concrete_args)
-	t.register_specialized_fn_signature_value(decl, value, concrete_args)
+	if !t.generic_signatures_pre_registered {
+		t.register_specialized_fn_signature_value(decl, value, concrete_args)
+	}
 	t.pending_generic_fn_specs << PendingGenericFnSpec{
 		decl: decl
 		args: concrete_args
 		key:  key
 	}
+}
+
+fn (mut t Transformer) record_monomorph_cache_spec(key string, decl_key string, module_name string, args []string) {
+	if key.len == 0 || decl_key.len == 0 || key in t.monomorph_cache_specs {
+		return
+	}
+	t.monomorph_cache_specs[key] = MonomorphCacheSpec{
+		decl_key: decl_key
+		module:   module_name
+		args:     args.clone()
+	}
+}
+
+fn (mut t Transformer) seed_cached_monomorph_specs(specs []MonomorphCacheSpec) {
+	if specs.len == 0 {
+		return
+	}
+	decls := t.cached_generic_fn_decls()
+	for spec in specs {
+		decl := decls[spec.decl_key] or { continue }
+		concrete_args := t.canonical_generic_specialization_args(spec.args)
+		if concrete_args.len == 0 || t.generic_args_have_placeholders(concrete_args) {
+			continue
+		}
+		key := t.generic_specialization_progress_key(decl, concrete_args)
+		t.record_monomorph_cache_spec(key, spec.decl_key, decl.module, concrete_args)
+		if !t.generic_specialization_registered(decl, concrete_args) {
+			value := specialized_generic_fn_value(decl.node.value, concrete_args)
+			t.register_specialized_fn_signature_value(decl, value, concrete_args)
+		}
+	}
+}
+
+fn (t &Transformer) sorted_monomorph_cache_specs() []MonomorphCacheSpec {
+	mut keys := t.monomorph_cache_specs.keys()
+	keys.sort()
+	mut specs := []MonomorphCacheSpec{cap: keys.len}
+	for key in keys {
+		spec := t.monomorph_cache_specs[key]
+		specs << MonomorphCacheSpec{
+			decl_key: spec.decl_key.clone()
+			module:   spec.module.clone()
+			args:     spec.args.clone()
+		}
+	}
+	return specs
 }
 
 fn (mut t Transformer) drain_pending_generic_fn_specs(mut emitted map[string]bool, mut generated []string) bool {
@@ -2585,8 +2646,8 @@ fn (mut t Transformer) ensure_node_module_map() {
 		return
 	}
 	if t.node_module_map_nodes < 0 || t.node_module_map_nodes > t.a.nodes.len {
-		t.node_module_map_cache = []string{len: t.a.nodes.len}
-		t.node_file_map_cache = []string{len: t.a.nodes.len}
+		t.node_module_map_cache = []string{len: t.a.nodes.len, cap: t.a.nodes.cap}
+		t.node_file_map_cache = []string{len: t.a.nodes.len, cap: t.a.nodes.cap}
 		t.node_module_map_nodes = 0
 	} else {
 		t.ensure_node_context_map_capacity()
@@ -2621,9 +2682,11 @@ fn (mut t Transformer) ensure_node_module_map() {
 
 fn (mut t Transformer) ensure_node_context_map_capacity() {
 	if t.node_module_map_cache.len < t.a.nodes.len {
+		t.node_module_map_cache.ensure_cap(t.a.nodes.cap)
 		t.node_module_map_cache << []string{len: t.a.nodes.len - t.node_module_map_cache.len}
 	}
 	if t.node_file_map_cache.len < t.a.nodes.len {
+		t.node_file_map_cache.ensure_cap(t.a.nodes.cap)
 		t.node_file_map_cache << []string{len: t.a.nodes.len - t.node_file_map_cache.len}
 	}
 }
@@ -2738,12 +2801,8 @@ fn (mut t Transformer) emit_generic_fn_specialization(decl GenericFnDecl, args [
 		t.tc.cur_module = decl.module
 		t.tc.cur_file = decl.file
 	}
-	if decl.module.len > 0 {
-		t.a.add_node(flat.Node{
-			kind:  .module_decl
-			value: decl.module
-		})
-	}
+	generated_module := if decl.module.len > 0 { decl.module } else { 'main' }
+	t.add_generated_fn_decl_context(generated_module)
 	old_params := t.active_generic_params
 	old_specialization_args := t.active_specialization_args
 	mut old_specialization_main_types := t.active_specialization_main_types.clone()
@@ -9777,7 +9836,7 @@ fn (mut t Transformer) record_generic_specialization_args_in_module(base string,
 		keys << c_name('${base_module}.${short_base}_${suffix}')
 	}
 	for key in keys {
-		if key.len > 0 && key !in t.generic_specialization_args {
+		if key.len > 0 && !t.has_recorded_generic_specialization_args(key) {
 			t.generic_specialization_args[key] = recorded_args.clone()
 		}
 	}
@@ -9789,10 +9848,21 @@ fn (mut t Transformer) record_generic_specialization_args_for_names(names []stri
 	}
 	recorded_args := t.canonical_generic_specialization_args(args)
 	for name in names {
-		if name.len > 0 && name !in t.generic_specialization_args {
+		if name.len > 0 && !t.has_recorded_generic_specialization_args(name) {
 			t.generic_specialization_args[name] = recorded_args.clone()
 		}
 	}
+}
+
+fn (t &Transformer) has_recorded_generic_specialization_args(name string) bool {
+	if name in t.generic_specialization_args {
+		return true
+	}
+	if isnil(t.generic_specialization_args_parent) {
+		return false
+	}
+	parent := unsafe { *t.generic_specialization_args_parent }
+	return name in parent
 }
 
 fn (t &Transformer) canonical_generic_specialization_args(args []string) []string {
@@ -9999,6 +10069,12 @@ fn (t &Transformer) recorded_generic_specialization_args(typ string) ?[]string {
 	for candidate in candidates {
 		if args := t.generic_specialization_args[candidate] {
 			return args
+		}
+		if !isnil(t.generic_specialization_args_parent) {
+			parent := unsafe { *t.generic_specialization_args_parent }
+			if args := parent[candidate] {
+				return args
+			}
 		}
 	}
 	return none

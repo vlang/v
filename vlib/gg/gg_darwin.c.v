@@ -4,21 +4,21 @@ module gg
 
 fn C.gg_get_screen_size() Size
 
-fn C.darwin_draw_string(x i32, y i32, s string, cfg voidptr)
+fn C.darwin_draw_string(x i32, y i32, s string, cfg TextCfg)
 
 fn C.darwin_text_width(s string) i32
 
-fn C.darwin_text_width_with_cfg(s string, cfg voidptr) i32
+fn C.darwin_text_width_with_cfg(s string, cfg TextCfg) i32
 
 fn C.darwin_text_width_runes(r []rune) i32
 
 fn C.darwin_window_refresh()
 
-fn C.darwin_draw_rect(f32, f32, f32, f32, voidptr)
+fn C.darwin_draw_rect(f32, f32, f32, f32, Color)
 
 fn C.darwin_create_image(path string) Image
 
 fn C.darwin_draw_image(f32, f32, f32, f32, &Image)
 
-fn C.darwin_draw_circle(f32, f32, f32, voidptr)
-fn C.darwin_draw_circle_empty(f32, f32, f32, voidptr)
+fn C.darwin_draw_circle(f32, f32, f32, Color)
+fn C.darwin_draw_circle_empty(f32, f32, f32, Color)

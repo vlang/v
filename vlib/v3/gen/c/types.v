@@ -306,7 +306,10 @@ fn (mut g FlatGen) optional_payload_c_type(t types.Type) string {
 fn (mut g FlatGen) optional_typedefs() {
 	g.collect_optional_typedefs()
 	mut wrote := false
-	for opt_name, val_type in g.needed_optional_types {
+	mut names := g.needed_optional_types.keys()
+	names.sort()
+	for opt_name in names {
+		val_type := g.needed_optional_types[opt_name]
 		if g.emit_optional_typedef(opt_name, val_type) {
 			wrote = true
 		}
@@ -582,6 +585,10 @@ fn (g &FlatGen) is_bare_generic_placeholder_name(name string) bool {
 // emit_optional_typedef emits emit optional typedef output for c.
 fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool {
 	if opt_name in g.emitted_optional_types {
+		return false
+	}
+	if g.cached_support_identifiers[opt_name] {
+		g.emitted_optional_types[opt_name] = true
 		return false
 	}
 	err_field := if g.has_ierror_interface() { 'IError err; ' } else { '' }

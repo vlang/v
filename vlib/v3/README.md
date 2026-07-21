@@ -86,9 +86,35 @@ declaration-only `.vh` file and a compiled `.o` file. A module object is rebuilt
 when its source content, compiler implementation, target, or relevant build
 configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
 `math.bits` share one `builtin.o`, matching the v2 core-cache layout. Cache files live under
-the V temporary directory by default; set `V3CACHE` to select another root, or
-pass `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c`
-builds do not use the object cache.
+the V temporary directory by default; set `V3CACHE` to select another root, or pass
+`-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c` builds do not use the
+object cache. The benchmark output prints counts for parsed `.vh` and `.v` files and their total
+line counts immediately after the parse stage, followed by each category's space-separated paths
+on one line. Paths below the current home directory use `~` as a prefix. A nonzero `.vh` count
+shows how many cached module interfaces were parsed by that build. Required compile-time bodies
+are embedded in the `.vh` interface, so a warm cached build parses `.v` files only from the input
+program's directory; the `.v` list makes an unexpected module-cache miss visible. After
+successfully populating module objects, a cold build prints a hint that unchanged modules will not
+be recompiled on the next run.
+Third-party C objects retain dependency manifests, so warm builds verify each unique source or
+header once without launching a dependency-scanner process per object. Unchanged inputs use
+nanosecond-resolution file metadata; a metadata change falls back to the recorded content hash.
+This work is reported as the separate `C object cache` benchmark stage before `cc`.
+On macOS, cached non-production executable builds combine the imported-module objects and
+generated runtime prefix into a content-keyed dylib with the system C compiler. The remaining
+current-directory program unit is compiled and linked against that dylib with bundled TinyCC.
+Objective-C and framework compilation flags stay on the cached dylib side. This work is reported
+as `C dylib cache`; the resulting development executable retains an absolute runtime dependency
+on that cache artifact. An exact warm plan also restores its content-keyed TinyCC executable and
+reports `cc (cached)`; project source, module object, C dependency, TinyCC input, argument, or
+dylib changes invalidate it. Production, shared-library, self-host, explicit `-cc`, and
+`-nocache` builds keep their existing direct-link behavior.
+When the whole-program C plan is unchanged, v3 validates it immediately after parsing and reports
+the check, mark-used, transform, type-annotation, monomorphization, and C generation stages as
+cached. This avoids semantic and lowering work whose only consumer would be the cached C plan.
+The pre-split main, TinyCC, and runtime-prefix sources are restored as `C module plan (cached)`.
+Source, imported-module, native-input, compiler, target, flag, or configuration changes invalidate
+the plan and run the complete diagnostic and generation pipeline normally.
 
 ## Architecture
 
@@ -240,11 +266,21 @@ Compiling `v3.v` itself in the C self-host chain:
 Commands:
 
 ```sh
-v -gc none -prod -o v3 v3.v
+v -prod -prealloc -d parallel -o v3 v3.v
 ./v3 -o v4 v3.v
 ./v4 -o v5 v3.v
 ./v5 -o v6 v3.v
 ```
+
+v3 uses scoped bump arenas to release compiler-stage allocations explicitly. It refuses to build
+with any Boehm GC mode or VGC and must be built with `-gc none`; `-prealloc` enables those arenas
+and selects `-gc none` automatically. v3 also rejects collector modes and GC compile-time defines
+for generated programs, which support `-gc none` only.
+
+The standard v3 executable is built without `-d ownership`, so the ownership checker and its
+analysis stages are compiled out. It rejects both `-ownership` and `-d ownership`; the main V
+driver builds a separate ownership-enabled v3 executable only for an explicit `v -ownership`
+invocation.
 
 The table uses the first v3-generated C stage, `./v3 -o v4 v3.v`. The plain
 bootstrap includes thread support. v3 self-hosts parallel-capable successors by

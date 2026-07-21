@@ -8,7 +8,8 @@ const v3_src = os.join_path(v3_dir, 'v3.v')
 
 fn build_v3_review_checker() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_review_checker_regressions_test')
-	build := os.execute('${vexe} -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+	build :=
+		os.execute('${vexe} -gc none -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -290,6 +291,15 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 	mut_pointer_out := run_good(v3_bin, 'good_mut_receiver_mutable_pointer_binding',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tmut p := &s\n\tp.bump()\n\tprintln(int_str(s.value))\n}\n')
 	assert mut_pointer_out == '1'
+	global_pointer_out := run_good(v3_bin, 'good_mut_receiver_global_pointer',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\n__global global_st = &St{}\n\nfn main() {\n\tglobal_st.bump()\n\tprintln(int_str(global_st.value))\n}\n')
+	assert global_pointer_out == '1'
+	field_pointer_out := run_good(v3_bin, 'good_mut_receiver_pointer_field',
+		'struct St {\nmut:\n\tvalue int\n}\n\nstruct Holder {\n\tst &St\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tholder := Holder{\n\t\tst: &s\n\t}\n\tholder.st.bump()\n\tprintln(int_str(s.value))\n}\n')
+	assert field_pointer_out == '1'
+	if_guard_out := run_good(v3_bin, 'good_mut_receiver_if_guard_binding',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn get() ?St {\n\treturn St{}\n}\n\nfn main() {\n\tif mut s := get() {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}\n}\n')
+	assert if_guard_out == '1'
 	capture_out := run_good(v3_bin, 'good_mut_receiver_explicit_mut_capture',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tfn [mut s] () {\n\t\ts.bump()\n\t\tprintln(int_str(s.value))\n\t}()\n}\n')
 	assert capture_out == '1'
@@ -625,4 +635,11 @@ fn test_match_const_int_does_not_narrow_subject_type() {
 	out := run_good(v3_bin, 'match_const_int_no_subject_narrow',
 		'const size_224 = 28\n\nstruct E {\n\tsize int\n}\n\nfn check(hash_size int) !E {\n\tmatch hash_size {\n\t\tsize_224 {\n\t\t\treturn E{\n\t\t\t\tsize: hash_size\n\t\t\t}\n\t\t}\n\t\telse {}\n\t}\n\treturn E{\n\t\tsize: 0\n\t}\n}\n\nfn main() {\n\tprintln(int_str(check(28)!.size))\n}\n')
 	assert out == '28'
+}
+
+fn test_builtin_function_callee_wins_over_unrelated_const_suffix() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'builtin_fn_unrelated_const_suffix',
+		'import math\nfn main() {\n\t_ = math.pi\n\tprintln(f32(1).eq_epsilon(f32(1)))\n}\n')
+	assert out == 'true'
 }

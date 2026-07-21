@@ -93,9 +93,12 @@ mut:
 	sql_query_data_aliases            map[string]bool
 	export_records                    []ExportRecord
 pub mut:
-	a              &flat.FlatAst = unsafe { nil }
-	parsed_v_files int
-	diagnostics    []Diagnostic
+	a                          &flat.FlatAst = unsafe { nil }
+	parsed_v_files             int
+	parsed_v_file_paths        []string
+	parsed_v_header_files      int
+	parsed_v_header_file_paths []string
+	diagnostics                []Diagnostic
 }
 
 // reserve_selfhost_ast prepares the shared AST for a compiler-sized input
@@ -166,11 +169,10 @@ pub fn (mut p Parser) parse_files(paths []string) &flat.FlatAst {
 	return p.a
 }
 
-// release_source_storage canonicalizes every retained source slice and drops
-// parser/scanner references to raw file buffers. Source files keep only their
-// compact line indexes for later diagnostic lookup.
+// release_source_storage canonicalizes retained metadata and drops parser/scanner
+// references to raw file buffers. Parsed node text is canonicalized as each file
+// is completed and when parallel worker ASTs are merged.
 pub fn (mut p Parser) release_source_storage() {
-	p.a.intern_node_texts_from(0)
 	p.a.intern_metadata_texts()
 	p.lit = ''
 	p.peek_lit = ''
@@ -259,6 +261,10 @@ pub fn (mut p Parser) parse_into(path string) {
 	}
 	if path.ends_with('.v') {
 		p.parsed_v_files++
+		p.parsed_v_file_paths << path
+	} else if path.ends_with('.vh') {
+		p.parsed_v_header_files++
+		p.parsed_v_header_file_paths << path
 	}
 	p.reserve_for_source(stable_src.len)
 	mut file_set := token.FileSet.new()
@@ -3451,7 +3457,7 @@ fn (p &Parser) eval_comptime_cond_with_target_override(cond string, disable_targ
 }
 
 fn source_contains_target_inline_asm(source string, target_arch string) bool {
-	if source.len < 3 {
+	if source.len < 3 || !source.contains('asm') {
 		return false
 	}
 	mut offset := 0
@@ -7318,7 +7324,13 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.pipe {
 			return p.pipe_lambda_expr()
 		}
-		.key_mut, .key_shared {
+		.key_mut {
+			p.next()
+			id := p.prefix_expr()
+			p.mark_node_mut(id)
+			return id
+		}
+		.key_shared {
 			p.next()
 			return p.prefix_expr()
 		}

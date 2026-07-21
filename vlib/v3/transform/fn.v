@@ -2217,6 +2217,11 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		return arg_id
 	}
 	mut arg_node := &t.a.nodes[int(arg_id)]
+	if param_type.starts_with('&') && t.call_arg_is_zero_pointer_literal(arg_id) {
+		value := t.transform_expr(arg_id)
+		t.set_node_typ(int(value), param_type)
+		return value
+	}
 	if t.in_spawn_expr && t.call_arg_has_shared_marker(arg_id) {
 		return t.transform_expr(arg_id)
 	}
@@ -2474,6 +2479,17 @@ fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_ty
 		}
 	}
 	return t.transform_expr_for_type(arg_id, param_type)
+}
+
+fn (t &Transformer) call_arg_is_zero_pointer_literal(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return t.call_arg_is_zero_pointer_literal(t.a.child(&node, 0))
+	}
+	return node.kind == .int_literal && (node.value.len == 0 || node.value == '0')
 }
 
 fn (t &Transformer) call_arg_has_shared_marker(arg_id flat.NodeId) bool {
@@ -8542,26 +8558,25 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	for body_id in new_body {
 		all_ids << body_id
 	}
-	// Generated declarations are appended after all parsed files. Emit an explicit
-	// main context too, otherwise a main-module literal can inherit the preceding
-	// cached module's context during the later flat AST scan.
+	// Generated declarations are appended after all parsed files. Preserve both
+	// source markers, otherwise C generation can associate a lifted literal with
+	// the preceding cached header and omit its program-owned body.
 	file_module := t.current_source_module()
 	generated_module := if file_module.len > 0 { file_module } else { 'main' }
-	t.a.add_node(flat.Node{
-		kind:  .module_decl
-		value: generated_module
-	})
+	t.add_generated_fn_decl_context(generated_module)
 	start := t.a.children.len
 	for child_id in all_ids {
 		t.a.children << child_id
 	}
-	t.a.add_node(flat.Node{
+	fn_decl := t.a.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          name
 		typ:            ret_type
 		children_start: start
 		children_count: flat.child_count(all_ids.len)
 	})
+	t.ensure_node_context_map_capacity()
+	t.mark_node_context(fn_decl, generated_module, t.cur_file)
 	if !isnil(t.tc) {
 		ret := t.tc.parse_type(ret_type)
 		t.tc.fn_ret_types[name] = ret
@@ -8660,6 +8675,21 @@ fn (mut t Transformer) add_fn_literal_capture_global(name string, typ string) {
 	t.globals[name] = typ
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
 		t.globals['${t.cur_module}.${name}'] = typ
+	}
+}
+
+fn (mut t Transformer) add_generated_fn_decl_context(module_name string) {
+	if t.cur_file.len > 0 {
+		t.a.add_node(flat.Node{
+			kind:  .file
+			value: t.cur_file
+		})
+	}
+	if module_name.len > 0 {
+		t.a.add_node(flat.Node{
+			kind:  .module_decl
+			value: module_name
+		})
 	}
 }
 
@@ -11863,12 +11893,6 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type(id flat.NodeId, nod
 	if is_builtin_collection_resolved_call(name) {
 		return none
 	}
-	if typ := t.tc.expr_type(id) {
-		if typ !is types.Unknown && typ !is types.Void {
-			ret := t.call_return_type_name(typ.name(), node)
-			return ret
-		}
-	}
 	if node.children_count > 0 && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		fn_node := t.a.child_node(&node, 0)
 		short_name := name.all_after_last('.')
@@ -11883,6 +11907,9 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type(id flat.NodeId, nod
 			}
 		}
 	}
+	// The expression cache can contain a parser-inferred multi-return tail such as
+	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
+	// is authoritative, before falling back to that provisional expression type.
 	decl_module := t.tc.fn_type_modules[name] or { '' }
 	if ret_text := t.tc.fn_ret_type_texts[name] {
 		if ret_text.len > 0 {
@@ -11892,6 +11919,11 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type(id flat.NodeId, nod
 	if ret := t.tc.fn_ret_types[name] {
 		if ret !is types.Unknown && ret !is types.Void {
 			return t.call_return_type_name_in_module(ret.name(), node, decl_module)
+		}
+	}
+	if typ := t.tc.expr_type(id) {
+		if typ !is types.Unknown && typ !is types.Void {
+			return t.call_return_type_name(typ.name(), node)
 		}
 	}
 	return none

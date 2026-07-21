@@ -4382,7 +4382,13 @@ fn (mut g FlatGen) struct_decls() {
 	// structs below (right after the element struct is defined), so struct fields that
 	// reference them resolve. Primitive-element ones were already emitted earlier.
 	fixed_array_needed := g.collect_fixed_array_typedefs_needed()
-	for name in g.tc.structs.keys() {
+	mut struct_names := g.tc.structs.keys()
+	struct_names.sort()
+	mut sum_names := g.tc.sum_types.keys()
+	sum_names.sort()
+	mut interface_names := g.interfaces.keys()
+	interface_names.sort()
+	for name in struct_names {
 		if g.skip_builtin_struct(name) {
 			// An inlined header that defines `struct zip_t` without a typedef
 			// leaves V references to the bare name dangling; supply the alias
@@ -4417,14 +4423,14 @@ fn (mut g FlatGen) struct_decls() {
 		}
 		g.writeln('typedef ${tag} ${cn} ${cn};')
 	}
-	for name in g.tc.sum_types.keys() {
+	for name in sum_names {
 		cn := g.cname(name)
 		if cn == 'mach_timebase_info_data_t' {
 			continue
 		}
 		g.writeln('typedef struct ${cn} ${cn};')
 	}
-	for name in g.interfaces.keys() {
+	for name in interface_names {
 		cn := g.cname(name)
 		if cn == 'mach_timebase_info_data_t' {
 			continue
@@ -4440,11 +4446,11 @@ fn (mut g FlatGen) struct_decls() {
 	mut remaining := map[string]bool{}
 	mut remaining_cnames := map[string]bool{}
 	mut iface_remaining := map[string]bool{}
-	for name in g.interfaces.keys() {
+	for name in interface_names {
 		iface_remaining[name] = true
 		remaining_cnames[g.cname(name)] = true
 	}
-	for name in g.tc.structs.keys() {
+	for name in struct_names {
 		if g.skip_builtin_struct(name) {
 			continue
 		}
@@ -4452,7 +4458,7 @@ fn (mut g FlatGen) struct_decls() {
 		remaining_cnames[g.struct_cname(name)] = true
 	}
 	mut sum_remaining := map[string]bool{}
-	for name in g.tc.sum_types.keys() {
+	for name in sum_names {
 		sum_remaining[name] = true
 		remaining_cnames[g.cname(name)] = true
 	}
@@ -4463,7 +4469,10 @@ fn (mut g FlatGen) struct_decls() {
 		remaining_cnames.delete('string')
 	}
 	mut has_ierror := false
-	for name in iface_remaining.keys() {
+	for name in interface_names {
+		if name !in iface_remaining {
+			continue
+		}
 		if g.is_ierror_type_name(name) {
 			g.emit_interface_struct(name)
 			emitted['IError'] = true
@@ -4489,7 +4498,9 @@ fn (mut g FlatGen) struct_decls() {
 		}
 		mut progress := false
 		mut emitted_ifaces := []string{}
-		for name in iface_remaining.keys() {
+		mut remaining_iface_names := iface_remaining.keys()
+		remaining_iface_names.sort()
+		for name in remaining_iface_names {
 			cn := g.cname(name)
 			mut can_emit := true
 			if g.is_ierror_type_name(name) {
@@ -4526,7 +4537,9 @@ fn (mut g FlatGen) struct_decls() {
 			iface_remaining.delete(name)
 		}
 		mut emitted_structs := []string{}
-		for name in remaining.keys() {
+		mut remaining_struct_names := remaining.keys()
+		remaining_struct_names.sort()
+		for name in remaining_struct_names {
 			cn := g.struct_cname(name)
 			if cn in emitted {
 				remaining_cnames.delete(cn)
@@ -4563,7 +4576,9 @@ fn (mut g FlatGen) struct_decls() {
 			remaining.delete(name)
 		}
 		mut emitted_sums := []string{}
-		for name in sum_remaining.keys() {
+		mut remaining_sum_names := sum_remaining.keys()
+		remaining_sum_names.sort()
+		for name in remaining_sum_names {
 			cn := g.cname(name)
 			mut can_emit_sum := true
 			if name in g.tc.sum_types {
@@ -4607,15 +4622,21 @@ fn (mut g FlatGen) struct_decls() {
 			break
 		}
 	}
-	for name in iface_remaining.keys() {
+	mut final_iface_names := iface_remaining.keys()
+	final_iface_names.sort()
+	for name in final_iface_names {
 		cn := g.cname(name)
 		g.emit_interface_struct(name)
 		emitted[cn] = true
 	}
-	for name in sum_remaining.keys() {
+	mut final_sum_names := sum_remaining.keys()
+	final_sum_names.sort()
+	for name in final_sum_names {
 		g.emit_sum_type(name)
 	}
-	for name in remaining.keys() {
+	mut final_struct_names := remaining.keys()
+	final_struct_names.sort()
+	for name in final_struct_names {
 		if fields := g.tc.structs[name] {
 			g.emit_struct_option_typedefs(fields)
 		}
@@ -4684,7 +4705,9 @@ fn (g &FlatGen) collect_flattened_map_type_alias(typ string, mut names map[strin
 
 // type_forward_decls returns type forward decls data for FlatGen.
 fn (mut g FlatGen) type_forward_decls() {
-	for name in g.tc.structs.keys() {
+	mut struct_names := g.tc.structs.keys()
+	struct_names.sort()
+	for name in struct_names {
 		if g.skip_builtin_struct(name) {
 			continue
 		}
@@ -4702,14 +4725,18 @@ fn (mut g FlatGen) type_forward_decls() {
 		}
 		g.writeln('typedef ${tag} ${cn} ${cn};')
 	}
-	for name in g.tc.sum_types.keys() {
+	mut sum_names := g.tc.sum_types.keys()
+	sum_names.sort()
+	for name in sum_names {
 		cn := g.cname(name)
 		if cn == 'mach_timebase_info_data_t' {
 			continue
 		}
 		g.writeln('typedef struct ${cn} ${cn};')
 	}
-	for name in g.interfaces.keys() {
+	mut interface_names := g.interfaces.keys()
+	interface_names.sort()
+	for name in interface_names {
 		cn := g.cname(name)
 		if cn == 'mach_timebase_info_data_t' {
 			continue
