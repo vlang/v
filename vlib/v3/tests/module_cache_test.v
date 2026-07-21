@@ -3958,3 +3958,73 @@ fn main() {
 	assert !compile.output.contains('tcc.exe'), compile.output
 	assert run_module_cache_binary(output) == '73'
 }
+
+fn test_incremental_program_cache_synthesizes_new_sum_equality_helpers() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_sum_eq_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+type Value = int | string
+
+fn equal_values(left Value, right Value) bool {
+	_ = left
+	_ = right
+	return true
+}
+
+fn main() {
+	println(equal_values(Value(1), Value(1)))
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'true'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+type Value = int | string
+
+fn equal_values(left Value, right Value) bool {
+	_ = left
+	_ = right
+	return false
+}
+
+fn main() {
+	println(equal_values(Value(1), Value(1)))
+}
+')
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == 'false'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+type Value = int | string
+
+fn equal_values(left Value, right Value) bool {
+	return left == right
+}
+
+fn main() {
+	println(equal_values(Value(1), Value(1)))
+}
+')
+	incremental_output := os.join_path(root, 'incremental')
+	incremental :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(incremental_output)} ${os.quoted_path(main_file)}')
+	assert incremental.exit_code == 0, incremental.output
+	assert incremental.output.contains('transform (incremental)'), incremental.output
+	assert incremental.output.contains('cgen (incremental)'), incremental.output
+	assert run_module_cache_binary(incremental_output) == 'true'
+}

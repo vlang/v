@@ -1756,6 +1756,11 @@ fn decode_incremental_manifest(encoded string) ?map[string]string {
 	return signatures
 }
 
+struct V3IncrementalCFunctionSections {
+	sections map[string]string
+	keys     []string
+}
+
 fn incremental_changed_functions(snapshot V3IncrementalSnapshot, old map[string]string) ?([]string, map[string]bool) {
 	if snapshot.functions.len != old.len {
 		return none
@@ -1772,10 +1777,11 @@ fn incremental_changed_functions(snapshot V3IncrementalSnapshot, old map[string]
 	return keys, names
 }
 
-fn incremental_c_function_sections(source string) ?map[string]string {
+fn incremental_c_function_sections(source string) ?V3IncrementalCFunctionSections {
 	begin_prefix := '/* V3CACHE_FN_BEGIN '
 	end_prefix := '/* V3CACHE_FN_END '
 	mut sections := map[string]string{}
+	mut keys := []string{}
 	mut offset := 0
 	for {
 		relative_start := source[offset..].index(begin_prefix) or { break }
@@ -1791,12 +1797,16 @@ fn incremental_c_function_sections(source string) ?map[string]string {
 			end++
 		}
 		sections[key] = source[start..end]
+		keys << key
 		offset = end
 	}
 	if sections.len == 0 {
 		return none
 	}
-	return sections
+	return V3IncrementalCFunctionSections{
+		sections: sections
+		keys:     keys
+	}
 }
 
 fn merge_incremental_program_body(cached_source string, changed_source string, changed_keys []string) ?string {
@@ -1804,8 +1814,8 @@ fn merge_incremental_program_body(cached_source string, changed_source string, c
 	changed_sections := incremental_c_function_sections(changed_source) or { return none }
 	mut merged := cached_source
 	for key in changed_keys {
-		old_section := cached_sections[key] or { return none }
-		new_section := changed_sections[key] or { return none }
+		old_section := cached_sections.sections[key] or { return none }
+		new_section := changed_sections.sections[key] or { return none }
 		merged = merged.replace(old_section, new_section)
 	}
 	support_declarations := incremental_c_support_declarations(changed_source) or { return none }
@@ -1822,13 +1832,28 @@ fn merge_incremental_program_body(cached_source string, changed_source string, c
 			additions.writeln(line)
 		}
 	}
-	new_text := additions.str()
-	if new_text.len == 0 {
-		return merged
-	}
+	declaration_text := additions.str()
 	marker := '/* V3CACHE_BODY_BEGIN */'
 	marker_idx := merged.index(marker) or { return none }
-	return merged[..marker_idx] + new_text + merged[marker_idx..]
+	if declaration_text.len > 0 {
+		merged = merged[..marker_idx] + declaration_text + merged[marker_idx..]
+	}
+	mut new_sections := strings.new_builder(1024)
+	for key in changed_sections.keys {
+		if key !in cached_sections.sections {
+			new_sections.write_string(changed_sections.sections[key])
+		}
+	}
+	new_section_text := new_sections.str()
+	if new_section_text.len == 0 {
+		return merged
+	}
+	body_marker_idx := merged.index(marker) or { return none }
+	mut body_start := body_marker_idx + marker.len
+	if body_start < merged.len && merged[body_start] == `\n` {
+		body_start++
+	}
+	return merged[..body_start] + new_section_text + merged[body_start..]
 }
 
 fn incremental_c_support_declarations(source string) ?string {
@@ -3355,6 +3380,7 @@ fn main() {
 		// and cgen.
 		mut transform_was_parallel := false
 		mut transform_errors := []string{}
+		mut incremental_synthesized_helpers := []string{}
 		if !building_v && !cmd_v_build && !uses_generics && ast_contains_sql_expr(a) {
 			uses_generics = true
 		}
@@ -3373,7 +3399,7 @@ fn main() {
 			transform_used_fns['main'] = true
 		}
 		if incremental_cache_hit {
-			transform_used_fns, transform_errors = transform.transform_selected_functions(mut a,
+			transform_used_fns, transform_errors, incremental_synthesized_helpers = transform.transform_selected_functions(mut a,
 				&pre_tc, incremental_changed_names)
 			transform_texts_canonical = true
 		} else if scope_prealloc_transform {
@@ -3484,6 +3510,12 @@ fn main() {
 			used_fns = clone_string_bool_map(transform_used_fns)
 		} else {
 			incremental_stage_used_fns = clone_string_bool_map(transform_used_fns)
+			// Synthesized helpers have no source snapshot key, so explicitly include
+			// their generated bodies in both incremental Cgen filters.
+			for name in incremental_synthesized_helpers {
+				incremental_stage_used_fns[name] = true
+				incremental_changed_names[name] = true
+			}
 		}
 		if !building_v && !cmd_v_build && !uses_generics
 			&& transformed_used_fns_need_monomorphize(used_fns) {

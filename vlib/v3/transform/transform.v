@@ -467,10 +467,12 @@ pub fn transform_with_used_opt_config_scoped_workers_checked_owned(mut a flat.Fl
 // incremental driver has proved that declarations and every other body are
 // unchanged. Whole-program interface and comptime scans remain lazy: lowering a
 // selected body still triggers them if that body actually needs the metadata.
-pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, selected map[string]bool) (map[string]bool, []string) {
+// It also returns synthesized helper names that incremental Cgen must emit.
+pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, selected map[string]bool) (map[string]bool, []string, []string) {
 	mut t := new_transformer(mut a, tc, selected)
 	t.skip_generics = true
 	t.prepare()
+	base_node_count := t.a.nodes.len
 	t.transformed_fns = []bool{len: t.a.nodes.len}
 	for i in 0 .. t.a.nodes.len {
 		node := t.a.nodes[i]
@@ -497,7 +499,16 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 		t.transform_fn_body(i)
 	}
 	t.apply_ignored_comptime_for_nodes()
-	return t.used_fns, t.monomorph_errors
+	t.run_sum_eq_synthesis_rounds(base_node_count)
+	t.apply_ignored_comptime_for_nodes()
+	mut synthesized_helpers := []string{}
+	for idx in base_node_count .. t.a.nodes.len {
+		node := t.a.nodes[idx]
+		if node.kind == .fn_decl && node.value.starts_with('__v3_sum_eq_') {
+			synthesized_helpers << node.value
+		}
+	}
+	return t.used_fns, t.monomorph_errors, synthesized_helpers
 }
 
 fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, retain_worker_results bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
