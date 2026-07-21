@@ -6639,7 +6639,7 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				// expression (commonly the value expression in an `or` block).
 				// More deeply indented operators continue a multiline infix.
 				if peek_tok in [.plus, .minus]
-					&& p.column_for_pos(p.peek_pos) <= p.column_for_pos(p.a.nodes[int(lhs)].pos.offset) {
+					&& p.line_indent_for_pos(p.peek_pos) <= p.line_indent_for_pos(p.a.nodes[int(lhs)].pos.offset) {
 					break
 				}
 				p.next()
