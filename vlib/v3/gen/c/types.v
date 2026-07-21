@@ -603,8 +603,9 @@ fn (mut g FlatGen) enum_decls() {
 	for node in g.a.nodes {
 		match node.kind {
 			.file {
-				cur_module = ''
+				cur_module = 'main'
 				g.tc.cur_file = node.value
+				g.tc.cur_module = 'main'
 			}
 			.module_decl {
 				cur_module = node.value
