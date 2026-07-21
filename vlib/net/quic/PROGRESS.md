@@ -730,12 +730,74 @@ The largest, highest-risk phase. Sub-phases, in build order:
       constructs a `largest_acknowledged = 2^62` range and confirms
       `on_ack_received` still completes and resolves correctly.
 
-## Phases 8-14 (NOT STARTED)
+## Phase 8 — Connection lifecycle (done)
+
+- [x] `idle_timeout.v` — `effective_idle_timeout` resolves RFC 9000
+      §10.1's min-of-non-zero rule across all 4 zero/non-zero
+      combinations (0 means "no timeout", not literally zero).
+      `IdleTimeoutState` tracks the deliberately ASYMMETRIC reset rule:
+      an ack-eliciting packet RECEIVED restarts it, a non-ack-eliciting
+      receive does not, but ANY packet SENT restarts it regardless — not
+      "any packet either direction".
+- [x] `connection_close.v` — `ConnectionCloseTracker`: `active` ->
+      `closing` (this endpoint sent its own CONNECTION_CLOSE, may still
+      send a rate-limited retransmission — at most once per received
+      packet, RFC 9000 §10.2.1) -> `draining` (this endpoint received the
+      peer's CONNECTION_CLOSE, or was already closing and then received
+      one; MUST NOT send anything at all, §10.2.2's fully-silent
+      requirement, a one-way absorbing state).
+- [x] `stateless_reset.v` — `StatelessResetTracker` records
+      stateless-reset tokens keyed by connection ID; `is_stateless_reset`
+      is documented as callable ONLY after normal AEAD decryption has
+      already failed (RFC 9000 §10.3.1 — never a first-choice
+      interpretation, since a legitimate packet's ciphertext could
+      coincidentally end in the same 16 bytes as an unrelated token), and
+      compares the trailing 16 bytes via `crypto.internal.subtle`'s
+      constant-time compare (a token is a secret; a variable-time compare
+      would leak a timing side-channel). Scoped-down CID handling: tokens
+      are recorded for matching only, no full NEW_CONNECTION_ID/
+      RETIRE_CONNECTION_ID rotation.
+- [x] `ecn.v` — `EcnState` parses/records a peer's reported ECN counts
+      (frame.v's `EcnCounts`, already implemented) without erroring, but
+      `is_validated()` always reports false — no OS-level ECN socket
+      option exists in V today to mark outgoing datagrams, so there is
+      nothing to validate (a spec-legal fallback, RFC 9000 §13.4.2, not a
+      violation); this is the checkpoint any future congestion-control
+      integration must consult before reacting to an ECN-CE mark, and it
+      can never be true in v1.
+- [x] `pmtu.v` — pinned to the existing 1200-byte safe minimum (reusing
+      `congestion_control.v`'s `max_datagram_size` rather than
+      introducing a third constant for the same number, alongside
+      `coalesce.v`'s `min_initial_datagram_size`), no active DPLPMTUD
+      probing. Connection migration stays explicitly out of scope.
+- [x] Tests: idle-timeout min-of-non-zero across all 4 combinations, the
+      reset asymmetry (ack-eliciting-receive-or-any-send), closing's
+      rate-limited retransmission vs. draining's fully-silent behavior,
+      stateless reset matched only via a previously-recorded token, ECN
+      counts recorded without erroring and never validated, and a runtime
+      assertion pinning the PMTU at exactly 1200 bytes.
+- [x] `/vreview` (full A-G pass) found and fixed one issue before commit:
+      a real integer-overflow bug. `max_idle_timeout` is a peer-supplied
+      transport-parameter varint (RFC 9000 §18.2) that
+      `transport_parameters.v` accepts with NO upper bound (up to the
+      full 2^62-1 varint range) — `effective_idle_timeout` originally
+      multiplied it directly by `time.millisecond`, which overflows the
+      i64 backing `time.Duration` for any peer-supplied value above
+      ~9.2 trillion ms, silently producing a nonsensical (possibly
+      negative) timeout: a hostile or buggy peer could self-inflict a
+      near-immediate teardown, or effectively disable the idle timeout
+      altogether. Fixed by clamping to `max_safe_idle_timeout_ms`
+      (derived from `time.infinite`, i.e. i64::MAX ns, divided by
+      `time.millisecond` — the exact mathematically-necessary bound, not
+      an arbitrary policy number) before scaling; regression test feeds
+      the maximum possible QUIC varint (2^62-1) through both the
+      one-sided and both-sided paths and confirms a large-but-finite,
+      strictly positive `Duration` comes back.
+
+## Phases 9-14 (NOT STARTED)
 
 See the tracking issue for full detail on each. In order:
 
-8. Connection lifecycle — idle timeout, CONNECTION_CLOSE, stateless reset,
-   ECN fallback, PMTU (pinned to 1200 bytes for v1).
 9. `QuicConn` — top-level struct, `poll()`/`process_timeouts()` event-loop
    contract.
 10. HTTP/3 framing (RFC 9114) — incremental/resumable parsing (structurally
