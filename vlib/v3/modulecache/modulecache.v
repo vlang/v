@@ -1403,7 +1403,7 @@ fn c_native_localize_function_definitions(source string) string {
 				current_line_start := declaration.len - raw_line.len - 1
 				head :=
 					trim_leading_c_comments(declaration[..current_line_start + first_open].trim_space())
-				if c_declaration_head_is_function(head)
+				if c_static_declaration_head_is_function(head)
 					&& !c_declaration_head_keeps_definition(head) {
 					indent_len := declaration.len - declaration.trim_left(' \t').len
 					out.write_string('${declaration[..indent_len]}static ${declaration[indent_len..]}')
@@ -1444,12 +1444,15 @@ fn c_declaration_header(prefix string) (string, bool) {
 	mut brace_depth := 0
 	mut has_brace := false
 	mut is_function_block := false
+	mut function_has_conditionals := false
+	mut function_conditional_depth := 0
 	mut has_static_storage := false
 	mut in_block_comment := false
 	mut in_preprocessor_directive := false
 	mut preprocessor_in_item := false
 	mut in_extern_c_block := false
-	for raw_line in prefix.split_into_lines() {
+	lines := prefix.split_into_lines()
+	for line_idx, raw_line in lines {
 		line := raw_line + '\n'
 		trimmed := raw_line.trim_space()
 		if in_preprocessor_directive {
@@ -1483,6 +1486,15 @@ fn c_declaration_header(prefix string) (string, bool) {
 		}
 		if !in_block_comment && trimmed.starts_with('#') {
 			if brace_depth > 0 {
+				if is_function_block {
+					conditional_delta := c_preprocessor_conditional_delta(trimmed)
+					if conditional_delta > 0 {
+						function_has_conditionals = true
+						function_conditional_depth++
+					} else if conditional_delta < 0 && function_conditional_depth > 0 {
+						function_conditional_depth--
+					}
+				}
 				item.write_string(line)
 				in_preprocessor_directive = c_preprocessor_line_continues(raw_line)
 				preprocessor_in_item = in_preprocessor_directive
@@ -1522,18 +1534,22 @@ fn c_declaration_header(prefix string) (string, bool) {
 				head := item_head.str()
 				clean_head := trim_leading_c_comments(head.trim_space())
 				is_function_block = c_static_declaration_head_is_function(clean_head)
+				function_has_conditionals = false
+				function_conditional_depth = 0
 			} else {
 				item_head.write_string(line)
 			}
 			has_brace = saw_brace
 		}
-		closes_function_block := is_function_block
-			&& c_function_block_closes_at_line_start(raw_line)
-		if closes_function_block {
+		mut closes_function_block := is_function_block && brace_depth <= 0
+		if is_function_block && brace_depth > 0 && function_has_conditionals
+			&& function_conditional_depth == 0 && c_function_block_closes_at_line_start(raw_line)
+			&& c_next_line_is_preprocessor_endif(lines, line_idx + 1) {
 			// C macro functions and conditionally compiled bodies do not always
-			// have balanced raw braces. Their outer closing delimiter is still at
-			// the start of a line, so do not let them consume following #endifs.
+			// have balanced raw braces. Once their conditional nesting has closed,
+			// the column-zero outer delimiter still bounds the declaration.
 			brace_depth = 0
+			closes_function_block = true
 		}
 		if in_block_comment || brace_depth > 0 {
 			continue
@@ -1555,6 +1571,8 @@ fn c_declaration_header(prefix string) (string, bool) {
 		brace_depth = 0
 		has_brace = false
 		is_function_block = false
+		function_has_conditionals = false
+		function_conditional_depth = 0
 	}
 	if item.len > 0 {
 		declaration := item.str()
@@ -1567,6 +1585,37 @@ fn c_declaration_header(prefix string) (string, bool) {
 
 fn c_function_block_closes_at_line_start(line string) bool {
 	return line.len > 0 && line[0] == `}`
+}
+
+fn c_next_line_is_preprocessor_endif(lines []string, start int) bool {
+	for line in lines[start..] {
+		clean := line.trim_space()
+		if clean.len == 0 || clean.starts_with('//') {
+			continue
+		}
+		if clean.len < 2 || clean[0] != `#` {
+			return false
+		}
+		fields := clean[1..].trim_space().fields()
+		return fields.len > 0 && fields[0] == 'endif'
+	}
+	return false
+}
+
+fn c_preprocessor_conditional_delta(line string) int {
+	clean := line.trim_space()
+	if clean.len < 2 || clean[0] != `#` {
+		return 0
+	}
+	fields := clean[1..].trim_space().fields()
+	if fields.len == 0 {
+		return 0
+	}
+	return match fields[0] {
+		'if', 'ifdef', 'ifndef' { 1 }
+		'endif' { -1 }
+		else { 0 }
+	}
 }
 
 fn c_preprocessor_line_continues(line string) bool {

@@ -409,11 +409,55 @@ int cached_sum(
 {
 	return left + right;
 }
+__attribute__((visibility("default"))) int cached_attributed(void)
+{
+	return 42;
+}
 /* V3CACHE_NATIVE_DIRECTIVES_END */
 '
 	header := modulecache.declaration_header(prefix)
 	assert header.contains('static int cached_readback(int value)\n{'), header
 	assert header.contains('static int cached_sum(\n\tint left,\n\tint right\n)\n{'), header
+	assert header.contains('static __attribute__((visibility("default"))) int cached_attributed(void)\n{'), header
+}
+
+fn test_module_cache_declaration_header_keeps_column_zero_inner_block_closes() {
+	prefix := 'int cached_nested(int value) {
+if (value) {
+	value++;
+}
+return value;
+}
+int cached_after(void) {
+	return 1;
+}
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.contains('int cached_nested(int value);'), header
+	assert header.contains('int cached_after(void);'), header
+	assert !header.contains('extern return value'), header
+}
+
+fn test_module_cache_declaration_header_bounds_raw_conditional_branches() {
+	prefix := '#if defined(CACHED_BRANCH)
+int cached_branch(bool enabled) {
+#if defined(CACHED_POSITIVE)
+	if (enabled) {
+#else
+	if (!enabled) {
+#endif
+		return 1;
+	}
+}
+#endif
+int cached_after_branch(void) {
+	return 2;
+}
+'
+	header := modulecache.declaration_header(prefix)
+	assert header.contains('int cached_branch(bool enabled);'), header
+	assert header.contains('int cached_after_branch(void);'), header
+	assert header.count('#endif') == 1, header
 }
 
 fn test_cached_header_preserves_include_search_path_names() {
