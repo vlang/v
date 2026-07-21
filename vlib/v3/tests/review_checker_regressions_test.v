@@ -259,6 +259,9 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 	run_bad(v3_bin, 'bad_mut_receiver_immutable_pointer_binding',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n}\n',
 		'method `bump` requires a mutable receiver')
+	run_bad(v3_bin, 'bad_mut_receiver_or_temporary',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut values := {\n\t\t"item": St{}\n\t}\n\t(values["item"] or { St{} }).bump()\n}\n',
+		'method `bump` requires a mutable receiver')
 	run_bad(v3_bin, 'bad_shared_receiver_plain_value',
 		'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n',
 		'cannot use non-shared `St` as receiver')

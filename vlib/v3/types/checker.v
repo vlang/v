@@ -15690,7 +15690,7 @@ fn (tc &TypeChecker) mut_receiver_expr_is_mutable_lvalue(id flat.NodeId) bool {
 		.ident {
 			return tc.ident_is_mutable_lvalue(node.value)
 		}
-		.index, .selector, .paren, .or_expr {
+		.index, .selector, .paren {
 			return node.children_count > 0
 				&& tc.mut_receiver_expr_is_mutable_lvalue(tc.a.child(&node, 0))
 		}
