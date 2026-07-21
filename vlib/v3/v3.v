@@ -2933,10 +2933,7 @@ fn same_dir_module_source_files(test_file string, module_name string, prefs &pre
 	if module_name.len > 0 {
 		for file in all_files {
 			declared_module := declared_module_in_file(file)
-			// Omitting a module declaration means `main`. A test that spells
-			// `module main` explicitly still needs its module-less tool siblings.
-			if declared_module != module_name && !(module_name == 'main'
-				&& declared_module.len == 0) {
+			if declared_module != module_name {
 				continue
 			}
 			files << file
