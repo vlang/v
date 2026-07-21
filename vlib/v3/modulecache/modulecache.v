@@ -2538,7 +2538,11 @@ fn cached_embed_file_path_edit(source string, start int, vroot string, source_fi
 	mut content_end := content_start
 	for content_end < source.len {
 		if !is_raw && source[content_end] == `\\` {
-			return none
+			if content_end + 1 >= source.len {
+				return none
+			}
+			content_end += 2
+			continue
 		}
 		if source[content_end] == quote {
 			break
@@ -2548,13 +2552,113 @@ fn cached_embed_file_path_edit(source string, start int, vroot string, source_fi
 	if content_end >= source.len {
 		return none
 	}
-	path := cached_resolve_embedded_source_path(source[content_start..content_end], vroot,
-		source_file) or { return none }
+	raw_path := source[content_start..content_end]
+	path_value := if is_raw { raw_path } else { cached_unescape_v_string(raw_path) }
+	path := cached_resolve_embedded_source_path(path_value, vroot, source_file) or { return none }
 	return CachedSourcePathEdit{
 		start:       argument_start
 		end:         content_end + 1
 		replacement: "'${escape_v_string(path)}'"
 	}
+}
+
+fn cached_unescape_v_string(value string) string {
+	if !value.contains('\\') {
+		return value
+	}
+	mut out := strings.new_builder(value.len)
+	mut i := 0
+	for i < value.len {
+		if value[i] != `\\` || i + 1 >= value.len {
+			out.write_u8(value[i])
+			i++
+			continue
+		}
+		next := value[i + 1]
+		if next == `\n` {
+			i += 2
+			for i < value.len && value[i] in [` `, `\t`, `\r`] {
+				i++
+			}
+			continue
+		}
+		if next == `\r` && i + 2 < value.len && value[i + 2] == `\n` {
+			i += 3
+			for i < value.len && value[i] in [` `, `\t`] {
+				i++
+			}
+			continue
+		}
+		if next == `x` && i + 3 < value.len {
+			if code := cached_v_string_fixed_hex(value, i + 2, 2) {
+				out.write_u8(u8(code))
+				i += 4
+				continue
+			}
+		}
+		if next == `u` && i + 5 < value.len {
+			if code := cached_v_string_fixed_hex(value, i + 2, 4) {
+				out.write_rune(rune(code))
+				i += 6
+				continue
+			}
+		}
+		if next == `U` && i + 9 < value.len {
+			if code := cached_v_string_fixed_hex(value, i + 2, 8) {
+				out.write_rune(rune(code))
+				i += 10
+				continue
+			}
+		}
+		decoded := match next {
+			`n` { int(`\n`) }
+			`t` { int(`\t`) }
+			`r` { int(`\r`) }
+			`\\` { int(`\\`) }
+			`'` { int(`'`) }
+			`"` { int(`"`) }
+			`$` { int(`$`) }
+			`0` { 0 }
+			`a` { 7 }
+			`b` { 8 }
+			`f` { 12 }
+			`v` { 11 }
+			else { -1 }
+		}
+		if decoded >= 0 {
+			out.write_u8(u8(decoded))
+		} else {
+			out.write_u8(`\\`)
+			out.write_u8(next)
+		}
+		i += 2
+	}
+	return out.str()
+}
+
+fn cached_v_string_fixed_hex(value string, start int, count int) ?u32 {
+	mut code := u32(0)
+	for i in 0 .. count {
+		if start + i >= value.len {
+			return none
+		}
+		digit := cached_v_string_hex_digit(value[start + i]) or { return none }
+		code = (code << 4) | digit
+	}
+	return code
+}
+
+fn cached_v_string_hex_digit(c u8) ?u32 {
+	if c >= `0` && c <= `9` {
+		return u32(c - `0`)
+	}
+	if c >= `a` && c <= `f` {
+		return u32(c - `a` + 10)
+	}
+	if c >= `A` && c <= `F` {
+		return u32(c - `A` + 10)
+	}
+	return none
 }
 
 fn cached_resolve_embedded_source_path(path string, vroot string, source_file string) ?string {
