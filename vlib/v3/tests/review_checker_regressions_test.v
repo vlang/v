@@ -547,6 +547,9 @@ fn test_no_return_analysis_requires_resolved_builtin_target() {
 	run_bad(v3_bin, 'bad_shadowed_os_exit_missing_return',
 		'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f(os OsLike) int {\n\tos.exit()\n}\nfn main() {}\n',
 		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_local_os_exit_missing_return',
+		'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f() int {\n\tos := OsLike{}\n\tos.exit()\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
 }
 
 fn test_no_return_analysis_rejects_shadowed_builtin_fn_values() {

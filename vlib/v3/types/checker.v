@@ -6055,7 +6055,13 @@ fn (tc &TypeChecker) call_never_returns(id flat.NodeId) bool {
 	}
 	if callee.kind == .selector && callee.children_count > 0 {
 		base := tc.a.child_node(callee, 0)
-		return base.kind == .ident && callee.value == 'exit' && base.value in ['os', 'C']
+		if base.kind != .ident || callee.value != 'exit' || base.value !in ['os', 'C'] {
+			return false
+		}
+		if base.value == 'os' && tc.no_return_builtin_is_shadowed(base.value) {
+			return false
+		}
+		return true
 	}
 	return false
 }
