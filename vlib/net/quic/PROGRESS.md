@@ -657,11 +657,83 @@ The largest, highest-risk phase. Sub-phases, in build order:
       frames at that exact type value; retargeted to 0x1e
       (HANDSHAKE_DONE), still genuinely unimplemented.
 
-## Phases 7-14 (NOT STARTED)
+## Phase 7 — Loss detection and NewReno congestion control (done)
+
+- [x] `rtt.v` — `RttEstimator` (RFC 9002 §5.3): first-sample-seeds-directly
+      vs. subsequent-sample-EWMA as two genuinely distinct code paths (not
+      the same formula with a placeholder initial value); ACK Delay
+      unconditionally treated as zero for the Initial/Handshake spaces,
+      decided from the `space` parameter inside `update()` itself rather
+      than trusted to every caller; the peer's `max_ack_delay` clamp
+      applied only once the handshake is confirmed; the ack_delay
+      subtraction itself only applied when it cannot drive the sample
+      below `min_rtt`. `pto_period()` factors out the
+      `smoothed_rtt + max(4*rttvar, kGranularity)` term loss_detection.v
+      scales per space/backoff.
+- [x] `loss_detection.v` — `QuicLossDetectionTimer`: three independent
+      per-space `LossDetectionSpaceState` (packet numbering genuinely is
+      per-space, RFC 9000 §12.3) plus a single connection-wide
+      `RttEstimator`/`pto_count`/PTO timer (the PTO timer is deliberately
+      NOT per-space — sourced from whichever space's own deadline is
+      earliest via `pto_time_and_space`, the plan's own explicitly flagged
+      pitfall, the opposite mistake from treating packet numbers as
+      connection-global). `detect_and_remove_lost_packets` implements
+      RFC 9002 §6.1's packet-threshold (kPacketThreshold=3) OR
+      time-threshold (9/8·max(latest_rtt,smoothed_rtt), floored at
+      kGranularity) rule, either alone sufficient. `is_persistent_congestion`
+      implements RFC 9002 §7.6.2 from a single detection-pass batch (a
+      documented v1 scope choice — see its own doc comment for why this
+      matches the realistic PTO-stall trigger pattern).
+- [x] `congestion_control.v` — `NewRenoCongestionControl` (RFC 9002
+      Appendix B): slow start / congestion avoidance via `is_in_slow_start()`
+      (re-derives `congestion_window < ssthresh` every call — see the
+      `/vreview` finding below for why this can't be shortcut to "has a
+      loss ever happened"), ordinary-loss ssthresh halving via
+      `on_congestion_event`, a distinctly harsher persistent-congestion
+      collapse straight to `kMinimumWindow`, and `in_congestion_recovery`
+      ensuring one recovery episode reacts exactly once regardless of how
+      many packets it takes down. App-limited detection (RFC 9002 §7.8) is
+      a documented v1 scope omission — no real send queue exists yet
+      (Phase 9); spec-legal, only affects how eagerly cwnd grows, not
+      correctness of loss/recovery handling.
+- [x] Tests: first-vs-subsequent RTT formula, ACK-Delay-ignored-for-
+      Initial/Handshake (two identically-seeded estimators, one fed a huge
+      delay, must converge identically), max_ack_delay clamp only after
+      confirmation, packet-threshold-only and time-threshold-only loss
+      (each engineered so the other threshold structurally cannot also
+      fire), single-PTO-timer-sourced-from-earliest-space (including the
+      application_data-excluded-before-confirmation/included-after case),
+      persistent-congestion collapse as its own dedicated test, and
+      single-reaction-per-recovery-episode (multiple losses within one
+      episode react once; a loss from a genuinely later episode reacts
+      again).
+- [x] `/vreview` (full A-G pass) found and fixed two issues before commit:
+      (1) `NewRenoCongestionControl.is_in_slow_start()` originally
+      shortcut to `ssthresh == none` ("a loss has ever happened") instead
+      of RFC 9002's actual `congestion_window < ssthresh` — these diverge
+      after a persistent-congestion collapse, which resets `congestion_window`
+      to `kMinimumWindow` while leaving the larger, just-computed `ssthresh`
+      untouched, so cwnd can legitimately fall back below an already-set
+      ssthresh and must re-enter slow start, not stay in congestion
+      avoidance. Caught via the from-scratch contract restatement, before
+      any test was written against it. (2) A real DoS: `on_ack_received`'s
+      newly-acked extraction originally iterated each ACK range's own
+      `[smallest, largest]` span directly — but `largest_acknowledged` and
+      `first_ack_range` are independent wire varints (RFC 9000 §19.3), so
+      a tiny, well-formed ACK frame can legally claim a range spanning up
+      to 2^62-1 packet numbers with no relationship to the frame's own
+      wire size, and the parser's existing `ack_range_count` bound (against
+      remaining buffer length) does nothing to limit an individual range's
+      span. Fixed by iterating `sent_packets` (bounded by how many packets
+      *we* actually have outstanding) and testing membership against the
+      ranges instead of iterating the peer-supplied span — regression test
+      constructs a `largest_acknowledged = 2^62` range and confirms
+      `on_ack_received` still completes and resolves correctly.
+
+## Phases 8-14 (NOT STARTED)
 
 See the tracking issue for full detail on each. In order:
 
-7. Loss detection & NewReno congestion control (RFC 9002).
 8. Connection lifecycle — idle timeout, CONNECTION_CLOSE, stateless reset,
    ECN fallback, PMTU (pinned to 1200 bytes for v1).
 9. `QuicConn` — top-level struct, `poll()`/`process_timeouts()` event-loop
