@@ -666,6 +666,15 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 				// Temporary hack to make toml work with -usecache TODO remove
 				continue
 			}
+			if sym.cname.contains('[') {
+				// Anonymous sum-type symbols (e.g. ORM's `[]Primitive | []bool | …`)
+				// carry a cname with literal `[]`, which is not a valid C identifier —
+				// emitting it produces uncompilable C and broke `v build-module` for any
+				// module importing orm (cx #520). Such a cname can never be *referenced*
+				// through `_v_type_idx_<cname>()` either (the call site would be equally
+				// invalid C), so skipping the emission loses nothing.
+				continue
+			}
 			if sym.cname in emitted_cache_type_idx_cnames {
 				continue
 			}
@@ -679,6 +688,10 @@ pub fn gen(files []&ast.File, mut table ast.Table, pref_ &pref.Preferences) GenO
 				continue
 			}
 			if is_toml && sym.cname.contains('map[string]') {
+				continue
+			}
+			if sym.cname.contains('[') {
+				// See the build_module loop above — invalid-C-identifier cnames (cx #520).
 				continue
 			}
 			if sym.cname in emitted_cache_type_idx_cnames {
