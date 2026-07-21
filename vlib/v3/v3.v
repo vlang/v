@@ -64,19 +64,23 @@ struct V3ModuleCacheState {
 	bundle_sources      []string
 	bundle_source_paths map[string]bool
 mut:
-	force_source           bool
-	bundle_valid           bool
-	module_sources         map[string][]string
-	module_import_paths    map[string]string
-	module_dependencies    map[string][]string
-	module_external_inputs map[string][]string
-	module_native_roots    map[string][]string
-	dependency_metadata    map[string]string
-	parsed_from_source     map[string]bool
-	source_body_modules    map[string]bool
-	native_source_modules  map[string]bool
-	objects                map[string]string
-	headers                map[string]string
+	force_source              bool
+	bundle_valid              bool
+	module_sources            map[string][]string
+	module_import_paths       map[string]string
+	module_dependencies       map[string][]string
+	module_external_inputs    map[string][]string
+	module_native_roots       map[string][]string
+	external_input_signatures map[string]string
+	external_resolution_dirs  []string
+	external_missing_paths    []string
+	external_inputs_ready     bool
+	dependency_metadata       map[string]string
+	parsed_from_source        map[string]bool
+	source_body_modules       map[string]bool
+	native_source_modules     map[string]bool
+	objects                   map[string]string
+	headers                   map[string]string
 }
 
 struct V3ParseTiming {
@@ -110,6 +114,17 @@ struct V3CgenCacheMetadata {
 	interface_impl_signature string
 	prefix_source_identity   string
 	flags                    []string
+}
+
+struct V3ExternalCachePath {
+	module_name string
+	path        string
+}
+
+struct V3ExternalNativeRoot {
+	module_name string
+	path        string
+	index       int
 }
 
 fn tcc_atomic_s_arg(prefs &pref.Preferences) string {
@@ -1615,7 +1630,35 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 		mut paths := state.module_external_inputs[module_name].clone()
 		paths.sort()
 		for path in paths {
-			dependencies['external:${module_name}:${path}'] = modulecache.file_signature(path)
+			key := v3_external_input_key(module_name, path)
+			dependencies['external:${module_name}:${path}'] = state.external_input_signatures[key] or {
+				modulecache.file_signature(path)
+			}
+			dependencies['external-meta:${module_name}:${path}'] =
+				modulecache.file_metadata_signature(path)
+		}
+	}
+	if state.external_inputs_ready {
+		dependencies['external-state:manifest'] = 'v3-external-inputs-1'
+		mut root_modules := state.module_native_roots.keys()
+		root_modules.sort()
+		for module_name in root_modules {
+			for index, path in state.module_native_roots[module_name] {
+				dependencies['external-root:${module_name}:${index}'] = '${path}\t${modulecache.file_metadata_signature(path)}'
+			}
+		}
+		mut owner_modules := state.native_source_modules.keys()
+		owner_modules.sort()
+		for module_name in owner_modules {
+			if state.native_source_modules[module_name] {
+				dependencies['external-owner:${module_name}'] = '1'
+			}
+		}
+		for path in state.external_resolution_dirs {
+			dependencies['external-dir:${path}'] = modulecache.file_metadata_signature(path)
+		}
+		for path in state.external_missing_paths {
+			dependencies['external-missing:${path}'] = 'missing'
 		}
 	}
 	mut source_files := source_set.keys()
@@ -1633,13 +1676,161 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		cache_input_modules[module_name] = true
 	}
 	cache_input_modules['main'] = true
-	external_inputs, native_source_roots, has_untracked_c_include := cgen.cache_external_input_files(a,
+	external_inputs, native_source_roots, resolution_dirs, missing_resolution_paths, has_untracked_c_include := cgen.cache_external_input_files_with_resolved_flags(a,
 		prefs.vroot, cache_input_modules, user_c_flags, prefs.target)
 	state.module_external_inputs = external_inputs.clone()
 	state.module_native_roots = native_source_roots.clone()
+	state.external_input_signatures = map[string]string{}
+	cache_dir := os.abs_path(state.manager.dir)
+	real_cache_dir := os.real_path(state.manager.dir)
+	state.external_resolution_dirs = resolution_dirs.filter(!v3_path_is_within(it, cache_dir)
+		&& !v3_path_is_within(it, real_cache_dir))
+	state.external_missing_paths = missing_resolution_paths.filter(
+		!v3_path_is_within(it, cache_dir) && !v3_path_is_within(it, real_cache_dir))
 	native_source_modules, can_scope_static_inputs := cache_external_input_owner_modules(state)
 	state.native_source_modules = native_source_modules.clone()
+	state.external_inputs_ready = true
 	return !has_untracked_c_include && can_scope_static_inputs
+}
+
+fn v3_path_is_within(path string, dir string) bool {
+	return dir.len > 0 && (path == dir || path.starts_with(dir + os.path_separator))
+}
+
+fn v3_external_input_key(module_name string, path string) string {
+	return '${module_name}\x00${path}'
+}
+
+fn v3_external_cache_path(key string, prefix string) ?V3ExternalCachePath {
+	if !key.starts_with(prefix) {
+		return none
+	}
+	value := key[prefix.len..]
+	colon := value.index_u8(`:`)
+	if colon <= 0 || colon + 1 >= value.len {
+		return none
+	}
+	return V3ExternalCachePath{
+		module_name: value[..colon]
+		path:        value[colon + 1..]
+	}
+}
+
+fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []string, user_c_flags []string) bool {
+	base_input := v3_cgen_cache_input(state, user_files, user_c_flags)
+	restored := state.manager.cached_cgen_dependency_inputs(base_input.source_files,
+		base_input.generation_signature, base_input.dependency_inputs, ['external:', 'external-meta:',
+		'external-root:', 'external-owner:', 'external-dir:', 'external-missing:', 'external-state:']) or {
+		return false
+	}
+	if restored['external-state:manifest'] or { '' } != 'v3-external-inputs-1' {
+		return false
+	}
+	mut external_inputs := map[string][]string{}
+	mut external_signatures := map[string]string{}
+	for key, signature in restored {
+		input := v3_external_cache_path(key, 'external:') or { continue }
+		metadata_key := 'external-meta:${input.module_name}:${input.path}'
+		metadata := restored[metadata_key] or { return false }
+		if metadata.len == 0 || modulecache.file_metadata_signature(input.path) != metadata {
+			return false
+		}
+		mut paths := external_inputs[input.module_name]
+		paths << input.path
+		external_inputs[input.module_name] = paths
+		external_signatures[v3_external_input_key(input.module_name, input.path)] = signature
+	}
+	for key, _ in restored {
+		if input := v3_external_cache_path(key, 'external-meta:') {
+			if 'external:${input.module_name}:${input.path}' !in restored {
+				return false
+			}
+		}
+	}
+	mut root_records := []V3ExternalNativeRoot{}
+	for key, value in restored {
+		input := v3_external_cache_path(key, 'external-root:') or { continue }
+		if input.path.len == 0 || input.path.bytes().any(!it.is_digit()) {
+			return false
+		}
+		index := input.path.int()
+		tab := value.last_index_u8(`\t`)
+		if index < 0 || tab <= 0 || tab + 1 >= value.len {
+			return false
+		}
+		path := value[..tab]
+		metadata := value[tab + 1..]
+		if metadata.len == 0 || modulecache.file_metadata_signature(path) != metadata
+			|| path !in external_inputs[input.module_name] {
+			return false
+		}
+		root_records << V3ExternalNativeRoot{
+			module_name: input.module_name
+			path:        path
+			index:       index
+		}
+	}
+	root_records.sort_with_compare(fn (a &V3ExternalNativeRoot, b &V3ExternalNativeRoot) int {
+		if a.module_name != b.module_name {
+			return a.module_name.compare(b.module_name)
+		}
+		return a.index - b.index
+	})
+	mut native_roots := map[string][]string{}
+	for record in root_records {
+		mut roots := native_roots[record.module_name]
+		if record.index != roots.len {
+			return false
+		}
+		roots << record.path
+		native_roots[record.module_name] = roots
+	}
+	mut native_source_modules := map[string]bool{}
+	for key, value in restored {
+		if key.starts_with('external-owner:') {
+			module_name := key['external-owner:'.len..]
+			if module_name.len == 0 || value != '1' {
+				return false
+			}
+			native_source_modules[module_name] = true
+		}
+	}
+	mut resolution_dirs := []string{}
+	for key, metadata in restored {
+		if key.starts_with('external-dir:') {
+			path := key['external-dir:'.len..]
+			if path.len == 0 || metadata.len == 0
+				|| modulecache.file_metadata_signature(path) != metadata {
+				return false
+			}
+			resolution_dirs << path
+		}
+	}
+	mut missing_resolution_paths := []string{}
+	for key, value in restored {
+		if key.starts_with('external-missing:') {
+			path := key['external-missing:'.len..]
+			if path.len == 0 || value != 'missing' || os.exists(path) {
+				return false
+			}
+			missing_resolution_paths << path
+		}
+	}
+	for module_name, paths in external_inputs {
+		mut sorted := paths.clone()
+		sorted.sort()
+		external_inputs[module_name] = sorted
+	}
+	resolution_dirs.sort()
+	missing_resolution_paths.sort()
+	state.module_external_inputs = external_inputs.clone()
+	state.external_input_signatures = external_signatures.clone()
+	state.module_native_roots = native_roots.clone()
+	state.native_source_modules = native_source_modules.clone()
+	state.external_resolution_dirs = resolution_dirs.clone()
+	state.external_missing_paths = missing_resolution_paths.clone()
+	state.external_inputs_ready = true
+	return true
 }
 
 fn encode_v3_cgen_metadata(flags []string, interface_impl_signature string, prefix_source_identity string) string {
@@ -3318,21 +3509,22 @@ fn main() {
 		prefs.target)
 	bundle_sources := builtin_bundle_source_files(prefs, builtin_files)
 	mut cache_state := V3ModuleCacheState{
-		manager:                cache_manager
-		bundle_sources:         bundle_sources
-		bundle_source_paths:    module_cache_source_path_set(bundle_sources)
-		force_source:           force_cache_source
-		module_sources:         map[string][]string{}
-		module_import_paths:    map[string]string{}
-		module_dependencies:    map[string][]string{}
-		module_external_inputs: map[string][]string{}
-		module_native_roots:    map[string][]string{}
-		dependency_metadata:    map[string]string{}
-		parsed_from_source:     map[string]bool{}
-		source_body_modules:    map[string]bool{}
-		native_source_modules:  map[string]bool{}
-		objects:                map[string]string{}
-		headers:                map[string]string{}
+		manager:                   cache_manager
+		bundle_sources:            bundle_sources
+		bundle_source_paths:       module_cache_source_path_set(bundle_sources)
+		force_source:              force_cache_source
+		module_sources:            map[string][]string{}
+		module_import_paths:       map[string]string{}
+		module_dependencies:       map[string][]string{}
+		module_external_inputs:    map[string][]string{}
+		module_native_roots:       map[string][]string{}
+		external_input_signatures: map[string]string{}
+		dependency_metadata:       map[string]string{}
+		parsed_from_source:        map[string]bool{}
+		source_body_modules:       map[string]bool{}
+		native_source_modules:     map[string]bool{}
+		objects:                   map[string]string{}
+		headers:                   map[string]string{}
 	}
 	cache_state.module_sources['builtin'] = builtin_files
 	mut files := []string{}
@@ -3513,7 +3705,8 @@ fn main() {
 	mut incremental_tcc_declarations_path := ''
 	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
 		&& cache_state.parsed_from_source.len == 0 {
-		if !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, cache_c_flags) {
+		if !restore_v3_cache_external_inputs(mut cache_state, user_files, cache_c_flags)
+			&& !prepare_v3_cache_external_inputs(mut cache_state, a, prefs, cache_c_flags) {
 			restart_v3_without_cache()
 		}
 		input := v3_cgen_cache_input(cache_state, user_files, cache_c_flags)

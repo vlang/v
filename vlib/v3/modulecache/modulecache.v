@@ -774,6 +774,57 @@ pub fn (m &Manager) valid_cgen(source_files []string, generation_signature strin
 	return entry
 }
 
+// cached_cgen_dependency_inputs restores dependency records whose prefixes are
+// allowed to vary, after validating the program sources, generation signature,
+// and every fixed dependency supplied by the caller.
+pub fn (m &Manager) cached_cgen_dependency_inputs(source_files []string, generation_signature string, fixed_dependencies map[string]string, restored_prefixes []string) ?map[string]string {
+	if !m.enabled || source_files.len == 0 {
+		return none
+	}
+	entry := m.cgen_entry(source_files)
+	if !os.is_file(entry.source) || !os.is_file(entry.metadata) || !os.is_file(entry.stamp) {
+		return none
+	}
+	stamp := os.read_file(entry.stamp) or { return none }
+	expected_head := entry_stamp(m.salt, m.source_signature(source_files)) +
+		'generation=${hash_text(generation_signature)}\n'
+	if !stamp.starts_with(expected_head) {
+		return none
+	}
+	mut restored := map[string]string{}
+	mut fixed_seen := map[string]bool{}
+	for line in stamp[expected_head.len..].split_into_lines() {
+		if !line.starts_with('dependency=') {
+			return none
+		}
+		value := line['dependency='.len..]
+		tab := value.index_u8(`\t`)
+		if tab <= 0 || tab + 1 >= value.len {
+			return none
+		}
+		key := value[..tab]
+		signature := value[tab + 1..]
+		if key in restored || fixed_seen[key] {
+			return none
+		}
+		if expected := fixed_dependencies[key] {
+			if expected != signature {
+				return none
+			}
+			fixed_seen[key] = true
+			continue
+		}
+		if !restored_prefixes.any(key.starts_with(it)) {
+			return none
+		}
+		restored[key] = signature
+	}
+	if fixed_seen.len != fixed_dependencies.len {
+		return none
+	}
+	return restored
+}
+
 // valid_generic_program reports whether cached dependency specializations match
 // the program's type/call shape and all module cache inputs.
 pub fn (m &Manager) valid_generic_program(source_files []string, semantic_signature string, generation_signature string, dependency_inputs map[string]string) ?GenericProgramEntry {

@@ -859,8 +859,18 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 		}
 	}
 	c_flags << initial_c_flags
+	inputs, native_source_roots, _, _, has_untracked_include := cache_external_input_files_with_resolved_flags(a,
+		vroot, source_modules, c_flags, target)
+	return inputs, native_source_roots, has_untracked_include
+}
+
+// cache_external_input_files_with_resolved_flags collects cache inputs without
+// resolving source `#flag` directives a second time. resolution_dirs contains
+// every searched include directory whose contents can change path resolution;
+// missing_resolution_paths are the first nonexistent path components searched.
+pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot string, source_modules map[string]bool, c_flags []string, target pref.Target) (map[string][]string, map[string][]string, []string, []string, bool) {
 	include_dirs := c_flag_include_dirs(c_flags)
-	flag_inputs, flags_have_untracked_include, mut include_macros, mut dynamic_include_macros :=
+	flag_inputs, flags_have_untracked_include, mut include_macros, mut dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths :=
 		cache_c_flag_input_files_with_status(c_flags)
 	mut collect_modules := map[string]bool{}
 	for module_name, enabled in source_modules {
@@ -873,7 +883,7 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 	mut native_source_roots := map[string][]string{}
 	mut has_untracked_include := false
 	mut cur_module := ''
-	cur_file = ''
+	mut cur_file := ''
 	for node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
@@ -898,6 +908,8 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 				continue
 			}
 			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
+				c_record_cache_resolution_path(path, mut resolution_dirs, mut
+					missing_resolution_paths)
 				if !os.is_file(path) {
 					continue
 				}
@@ -909,7 +921,8 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 				mut seen := map[string]bool{}
 				mut files := []string{}
 				if c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files, mut
-					include_macros, mut dynamic_include_macros)
+					include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
+					missing_resolution_paths)
 				{
 					has_untracked_include = true
 				}
@@ -935,29 +948,37 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 		sorted.sort()
 		inputs[module_name] = sorted
 	}
-	return inputs, native_source_roots, has_untracked_include
+	mut sorted_resolution_dirs := resolution_dirs.keys()
+	sorted_resolution_dirs.sort()
+	mut sorted_missing_resolution_paths := missing_resolution_paths.keys()
+	sorted_missing_resolution_paths.sort()
+	return inputs, native_source_roots, sorted_resolution_dirs, sorted_missing_resolution_paths, has_untracked_include
 }
 
 // cache_c_flag_input_files returns forced include/macro files whose contents
 // affect every cached object compiled with the supplied C flags.
 pub fn cache_c_flag_input_files(flags []string) []string {
-	files, _, _, _ := cache_c_flag_input_files_with_status(flags)
+	files, _, _, _, _, _ := cache_c_flag_input_files_with_status(flags)
 	return files
 }
 
-fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool, map[string][]string, map[string]bool) {
+fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool, map[string][]string, map[string]bool, map[string]bool, map[string]bool) {
 	include_dirs := c_flag_include_dirs(flags)
 	mut seen := map[string]bool{}
 	mut files := []string{}
+	mut resolution_dirs := map[string]bool{}
+	mut missing_resolution_paths := map[string]bool{}
 	mut has_untracked_include := false
 	mut include_macros, mut dynamic_include_macros := c_flag_include_macro_definitions(flags)
 	for forced_input in c_forced_include_inputs(flags) {
 		for path in c_include_file_paths('"${forced_input}"', '', '', include_dirs) {
+			c_record_cache_resolution_path(path, mut resolution_dirs, mut missing_resolution_paths)
 			if !os.is_file(path) {
 				continue
 			}
 			if c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files, mut
-				include_macros, mut dynamic_include_macros)
+				include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
+				missing_resolution_paths)
 			{
 				has_untracked_include = true
 			}
@@ -965,7 +986,7 @@ fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool, map[str
 		}
 	}
 	files.sort()
-	return files, has_untracked_include, include_macros, dynamic_include_macros
+	return files, has_untracked_include, include_macros, dynamic_include_macros, resolution_dirs, missing_resolution_paths
 }
 
 fn c_forced_include_inputs(flags []string) []string {
@@ -1045,7 +1066,7 @@ fn c_add_cache_external_input(mut inputs map[string][]string, module_name string
 	}
 }
 
-fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) bool {
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool) bool {
 	if path.len == 0 || !os.is_file(path) {
 		return false
 	}
@@ -1081,11 +1102,14 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		}
 		for include_arg in include_args {
 			for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
+				c_record_cache_resolution_path(nested_path, mut resolution_dirs, mut
+					missing_resolution_paths)
 				if !os.is_file(nested_path) {
 					continue
 				}
 				if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut seen, mut
-					files, mut include_macros, mut dynamic_include_macros)
+					files, mut include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
+					missing_resolution_paths)
 				{
 					has_untracked_include = true
 				}
@@ -1094,6 +1118,30 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		}
 	}
 	return has_untracked_include
+}
+
+fn c_record_cache_resolution_path(path string, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool) {
+	if path.len == 0 {
+		return
+	}
+	mut dir := os.dir(os.abs_path(path))
+	mut first_missing := ''
+	for dir.len > 0 {
+		if os.is_dir(dir) {
+			if first_missing.len > 0 {
+				missing_resolution_paths[first_missing] = true
+			} else {
+				resolution_dirs[os.real_path(dir)] = true
+			}
+			return
+		}
+		first_missing = dir
+		parent := os.dir(dir)
+		if parent == dir {
+			return
+		}
+		dir = parent
+	}
 }
 
 fn c_flag_include_macro_definitions(flags []string) (map[string][]string, map[string]bool) {

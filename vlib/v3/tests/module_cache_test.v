@@ -573,6 +573,47 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
+fn test_cached_cgen_dependency_inputs_restore_only_allowed_groups() {
+	root := os.join_path(os.temp_dir(), 'v3_cgen_dependency_restore_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	manager := modulecache.new_manager(root, 'cgen-dependency-restore', true, '')
+	assert manager.ensure_dir()
+	write_module_cache_file(root, 'main.v', 'println(1)\n')
+	source := os.join_path(root, 'main.v')
+	dependencies := {
+		'fixed':                      'fixed-signature'
+		'external:main:/tmp/input.h': 'external-signature'
+	}
+	manager.write_cgen([source], 'generation', dependencies, 'generated C', 'metadata') or {
+		panic(err)
+	}
+	restored := manager.cached_cgen_dependency_inputs([source], 'generation', {
+		'fixed': 'fixed-signature'
+	}, ['external:']) or {
+		assert false, 'matching fixed dependencies should restore the allowed group'
+		return
+	}
+	assert restored == {
+		'external:main:/tmp/input.h': 'external-signature'
+	}
+	if _ := manager.cached_cgen_dependency_inputs([source], 'generation', {
+		'fixed': 'changed-signature'
+	}, ['external:'])
+	{
+		assert false, 'changed fixed dependencies must reject the cached manifest'
+	}
+	if _ := manager.cached_cgen_dependency_inputs([source], 'generation', map[string]string{}, [
+		'external:',
+	])
+	{
+		assert false, 'unaccounted fixed dependencies must reject the cached manifest'
+	}
+}
+
 fn test_module_cache_declaration_header_keeps_column_zero_inner_block_closes() {
 	prefix := 'int cached_nested(int value) {
 if (value) {
@@ -1599,6 +1640,55 @@ fn main() {
 	second_output := os.join_path(root, 'second')
 	second :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -cflags ${os.quoted_path(c_flags)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == '2'
+}
+
+fn test_whole_program_cgen_invalidates_when_include_resolution_changes() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cgen_include_resolution_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(os.join_path(root, 'fallback')) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'fallback/value.h', 'static inline int v3_include_value(void) {
+	return 1;
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+#flag -I @DIR/first
+#flag -I @DIR/fallback
+#include <value.h>
+
+fn C.v3_include_value() int
+
+fn main() {
+	println(C.v3_include_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first-output')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '1'
+
+	warm_output := os.join_path(root, 'warm-output')
+	warm :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(warm_output)} ${os.quoted_path(main_file)}')
+	assert warm.exit_code == 0, warm.output
+	assert warm.output.contains('cgen (cached)'), warm.output
+	assert run_module_cache_binary(warm_output) == '1'
+
+	write_module_cache_file(root, 'first/value.h', 'static inline int v3_include_value(void) {
+	return 2;
+}
+')
+	second_output := os.join_path(root, 'second-output')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
 	assert !second.output.contains('cgen (cached)'), second.output
 	assert run_module_cache_binary(second_output) == '2'
