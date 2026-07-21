@@ -2082,8 +2082,8 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 		}
 		arg := t.a.nodes[int(arg_id)]
 		mut arg_type := if arg.kind == .ident {
-			t.comptime_reflected_for_in_local_type(arg.value, fm) or {
-				t.local_decl_type_before(arg.value, arg_id) or {
+			t.local_decl_type_before(arg.value, arg_id) or {
+				t.comptime_reflected_for_in_local_type(arg.value, fm) or {
 					t.generic_call_arg_type_for_inference(arg_id)
 				}
 			}

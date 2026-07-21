@@ -1872,6 +1872,38 @@ fn test_comptime_field_generic_calls_keep_resolved_field_types() {
 	assert out == '0'
 }
 
+fn test_comptime_field_generic_call_prefers_shadowing_local_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_field_generic_shadowing_local', 'struct Sample {
+	values map[string]int
+}
+
+fn inferred_type[T](value T) string {
+	_ = value
+	return typeof[T]().name
+}
+
+fn main() {
+	sample := Sample{
+		values: {
+			"one": 1
+		}
+	}
+	$for field in Sample.fields {
+		$if field.is_map {
+			for key, value in sample.$(field.name) {
+				_ = key
+				_ = value
+			}
+			key := 1.5
+			println(inferred_type(key))
+		}
+	}
+}
+')
+	assert out == 'f64'
+}
+
 fn test_comptime_pointer_field_generic_local_uses_call_return_type() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'comptime_pointer_field_call_return_type', {
