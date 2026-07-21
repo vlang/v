@@ -20643,6 +20643,12 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			} else if i < fields.len {
 				expected = fields[i].typ
 			}
+			// A method value stored in a struct field escapes the evaluation site (several
+			// instances from the same `Foo{cb: obj.method}` site would share one receiver).
+			if !tc.stored_method_value_matches_voidptr_callback(value_id, expected) {
+				tc.reject_stored_method_value(value_id)
+			}
+			tc.reject_stored_or_returned_capturing_fn_literal(value_id)
 			if expected !is Void {
 				tc.check_node_with_expected_context(value_id, expected)
 			} else {
