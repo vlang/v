@@ -9,3 +9,22 @@ import encoding.html
 fn filter(s string) string {
 	return html.escape(s)
 }
+
+// filter_html renders a `$veb.html()` template interpolation value. A plain string is
+// HTML-escaped so user-controlled data cannot inject markup; a `RawHtml` value is
+// emitted verbatim; any other value uses its default string representation. This
+// mirrors v1, where cgen wraps only `string`-typed template interpolations with
+// `veb__filter` (`RawHtml` has a distinct type there). The v3 backend lowers templates
+// to source before types are known, so the escaping decision is made here at render
+// time; the comptime `string` branch also matches string aliases such as `RawHtml`, so
+// `RawHtml` is distinguished at runtime.
+pub fn filter_html[T](x T) string {
+	$if T is string {
+		if typeof(x).name.all_after_last('.') == 'RawHtml' {
+			return x
+		}
+		return filter(x)
+	} $else {
+		return x.str()
+	}
+}

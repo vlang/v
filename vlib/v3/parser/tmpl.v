@@ -270,8 +270,10 @@ fn escape_bare_tmpl_dollar_interpolations(line string) string {
 
 // tmpl_line_content transforms one template line into the CONTENT of a single
 // `bname += '<content>'` write (escaping quotes/backslashes and turning `@{expr}`
-// / `@ident` into `${expr}` interpolation). It does not include the wrapper.
-fn tmpl_line_content(line string) string {
+// / `@ident` into `${expr}` interpolation). It does not include the wrapper. When
+// `escape` is set (a `$veb.html()` template), each interpolation is routed through
+// `veb.filter_html` so string values are HTML-escaped against injection.
+fn tmpl_line_content(line string, escape bool) string {
 	rewritten_line :=
 		escape_bare_tmpl_dollar_interpolations(rewrite_complex_template_at_expressions(line))
 	mut sb := strings.new_builder(rewritten_line.len + 16)
@@ -298,6 +300,17 @@ fn tmpl_line_content(line string) string {
 				if i + 1 < rewritten_line.len {
 					next := rewritten_line[i + 1]
 					if next == `{` {
+						if escape {
+							expr_end := find_tmpl_balanced_end(rewritten_line, i + 1, `{`,
+								`}`)
+							if expr_end != -1 {
+								sb.write_string('\${veb.filter_html(')
+								sb.write_string(rewritten_line[i + 2..expr_end - 1])
+								sb.write_string(')}')
+								i = expr_end
+								continue
+							}
+						}
 						sb.write_u8(`$`)
 						i++
 						continue
@@ -307,9 +320,15 @@ fn tmpl_line_content(line string) string {
 						for end < rewritten_line.len && is_tmpl_ident_part(rewritten_line[end]) {
 							end++
 						}
-						sb.write_string('\${')
-						sb.write_string(rewritten_line[i + 1..end])
-						sb.write_u8(`}`)
+						if escape {
+							sb.write_string('\${veb.filter_html(')
+							sb.write_string(rewritten_line[i + 1..end])
+							sb.write_string(')}')
+						} else {
+							sb.write_string('\${')
+							sb.write_string(rewritten_line[i + 1..end])
+							sb.write_u8(`}`)
+						}
 						i = end
 						continue
 					}
@@ -535,8 +554,10 @@ fn process_tmpl_includes(dir string, line string, mut seen map[string]bool) []st
 
 // compile_template_file compiles the template at `template_file` into V source
 // that accumulates the rendered string into `bname` (declared here as `mut bname := ''`).
-// After the returned source runs, `bname` holds the rendered output.
-fn (mut p Parser) compile_template_file(template_file string, bname string) string {
+// After the returned source runs, `bname` holds the rendered output. When `escape` is
+// set (a `$veb.html()` template), interpolated values are HTML-escaped via
+// `veb.filter_html`.
+fn (mut p Parser) compile_template_file(template_file string, bname string, escape bool) string {
 	mut lines := os.read_lines(template_file) or {
 		p.record_diagnostic('reading from template ${template_file} failed', p.tok_pos)
 		return 'mut ${bname} := \'\'\n'
@@ -601,7 +622,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string) stri
 			source.writeln('if ${control.header} {')
 			source.write_string(tmpl_str_start)
 			if control.has_inline_body {
-				source.writeln(tmpl_line_content(control.prefix + control.inline_body))
+				source.writeln(tmpl_line_content(control.prefix + control.inline_body, escape))
 			}
 			if control.closes_inline_block {
 				source.writeln(tmpl_str_end)
@@ -627,7 +648,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string) stri
 			source.writeln('} ${control.header} {')
 			source.write_string(tmpl_str_start)
 			if control.has_inline_body {
-				source.writeln(tmpl_line_content(control.prefix + control.inline_body))
+				source.writeln(tmpl_line_content(control.prefix + control.inline_body, escape))
 			}
 			if control.closes_inline_block {
 				source.writeln(tmpl_str_end)
@@ -645,7 +666,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string) stri
 			source.writeln('for ${control.header} {')
 			source.write_string(tmpl_str_start)
 			if control.has_inline_body {
-				source.writeln(tmpl_line_content(control.prefix + control.inline_body))
+				source.writeln(tmpl_line_content(control.prefix + control.inline_body, escape))
 			}
 			if control.closes_inline_block {
 				source.writeln(tmpl_str_end)
@@ -657,7 +678,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string) stri
 			continue
 		}
 		if state == .simple {
-			source.writeln(tmpl_line_content(line))
+			source.writeln(tmpl_line_content(line, escape))
 			continue
 		}
 		if state != .simple {
@@ -708,7 +729,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string) stri
 				}
 			}
 			.js {
-				source.writeln(tmpl_line_content(line))
+				source.writeln(tmpl_line_content(line, escape))
 				continue
 			}
 			.css {
@@ -717,7 +738,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string) stri
 			}
 			else {}
 		}
-		source.writeln(tmpl_line_content(line))
+		source.writeln(tmpl_line_content(line, escape))
 	}
 	source.writeln(tmpl_str_end)
 	return source.str()
@@ -738,9 +759,12 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 	mut arg := ''
 	if p.tok == .lpar {
 		p.next()
-		if p.tok == .string {
-			arg = strip_quotes(p.lit)
-			p.next()
+		if p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
+			// The path may be a compile-time expression (a `const`, a local binding
+			// with a literal value, or a `+` concatenation of those), not just a raw
+			// string token — e.g. `const p = 'x.html'; $tmpl(p)`. Parse and resolve it.
+			arg_id := p.expr(.lowest)
+			arg = p.resolve_tmpl_path_arg(arg_id)
 		}
 		for p.tok != .rpar && p.tok != .eof && p.tok != .semicolon {
 			p.next()
@@ -755,6 +779,33 @@ fn (mut p Parser) parse_veb_template_expr(is_html bool) flat.NodeId {
 		value: path
 		typ:   if is_html { 'html' } else { 'tmpl' }
 	})
+}
+
+// resolve_tmpl_path_arg resolves a `$tmpl(expr)` / `$veb.html(expr)` path argument
+// to a compile-time string, mirroring v1's `resolve_tmpl_path_expr` for the forms the
+// template tests rely on: string literals, `const`/local bindings whose value is a
+// known compile-time string, parenthesised forms, and `+` concatenations of those.
+// Returns '' when the argument is not a resolvable compile-time string.
+fn (p &Parser) resolve_tmpl_path_arg(id flat.NodeId) string {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return ''
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind == .infix && node.op == .plus && node.children_count == 2 {
+		left := p.resolve_tmpl_path_arg(p.a.children[int(node.children_start)])
+		right := p.resolve_tmpl_path_arg(p.a.children[int(node.children_start) + 1])
+		if left.len == 0 || right.len == 0 {
+			return ''
+		}
+		return left + right
+	}
+	// comptime_node_value handles string literals, parenthesised forms, and idents
+	// bound to a `const` or local with a known compile-time value; it returns the
+	// value in quoted comptime form, so unwrap it back to the raw path string.
+	if value := p.comptime_node_value(id) {
+		return comptime_cond_value(value)
+	}
+	return ''
 }
 
 // resolve_veb_template_path mirrors v1's lookup: an argument-less `$veb.html()`
@@ -888,5 +939,5 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 fn (mut p Parser) veb_template_builder_source(tmpl flat.Node) (string, string) {
 	bname := 'v3tmpl_${p.veb_tmpl_counter}'
 	p.veb_tmpl_counter++
-	return bname, p.compile_template_file(tmpl.value, bname)
+	return bname, p.compile_template_file(tmpl.value, bname, tmpl.typ == 'html')
 }
