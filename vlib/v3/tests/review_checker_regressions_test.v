@@ -70,6 +70,15 @@ fn test_reject_cross_wrapper_option_result_returns() {
 	run_bad(v3_bin, 'bad_option_value_in_result_pointer_return',
 		'struct Item {}\n\nfn convert(opt ?Item) !&Item {\n\treturn opt\n}\n\nfn main() {}\n',
 		'cannot return `?Item` as `&Item`')
+	run_bad(v3_bin, 'bad_error_branch_in_option_return',
+		"fn make_option(ok bool) ?int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {}\n",
+		'if-expression branch type mismatch')
+	run_bad(v3_bin, 'bad_constant_error_branch_in_option_return',
+		"fn make_option() ?int {\n\treturn if true { error('bad') } else { 1 }\n}\n\nfn main() {}\n",
+		'if-expression branch type mismatch')
+	out := run_good(v3_bin, 'good_error_branch_in_result_return',
+		"fn make_result(ok bool) !int {\n\treturn if ok { error('bad') } else { 1 }\n}\n\nfn main() {\n\tprintln(int_str(make_result(false) or { -1 }))\n\tprintln(int_str(make_result(true) or { -1 }))\n}\n")
+	assert out == '1\n-1'
 }
 
 fn test_option_void_is_not_compatible_with_payload_options() {

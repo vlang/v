@@ -49,6 +49,7 @@ vlib/v/tests/comptime/comptime_call_test.v
 vlib/v/tests/comptime/comptime_for_test.v
 vlib/v/tests/comptime/comptime_if_fn_type_signature_test.v
 vlib/v/tests/comptime/comptime_kinds_test.v
+vlib/v/tests/conditions/ifs/if_expr_of_option_test.v
 vlib/v/tests/consts/const_fixed_array_of_reference_value_test.v
 vlib/v/tests/defer/defer_use_returned_value_test.v
 vlib/v/tests/fns/call_on_anon_test.v

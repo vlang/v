@@ -12717,9 +12717,6 @@ fn (mut tc TypeChecker) return_type_compatible(expr_id flat.NodeId, actual Type,
 		return true
 	}
 	if expected is OptionType {
-		if actual is ResultType && tc.type_compatible(actual.base_type, expected.base_type) {
-			return true
-		}
 		if tc.type_compatible(actual, expected.base_type) {
 			return true
 		}
@@ -19617,7 +19614,13 @@ fn (mut tc TypeChecker) check_if_expr(id flat.NodeId, node flat.Node) {
 				return
 			}
 			if tc.if_branch_error_has_result_context(then_type, else_type) {
-				return
+				if expected := tc.expected_context_for_expr(id) {
+					if expected is ResultType || is_ierror_type(expected) {
+						return
+					}
+				} else {
+					return
+				}
 			}
 			if tc.if_branch_enum_shorthand_compatible(then_type, then_tail, else_type, else_tail) {
 				return
