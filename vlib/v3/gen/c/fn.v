@@ -13989,12 +13989,16 @@ fn (mut g FlatGen) collect_concrete_multi_return_type(typ types.Type) {
 	if g.type_contains_generic_placeholder(typ) {
 		return
 	}
+	g.collect_known_concrete_multi_return_type(typ)
+}
+
+fn (mut g FlatGen) collect_known_concrete_multi_return_type(typ types.Type) {
 	if typ is types.OptionType {
-		g.collect_concrete_multi_return_type(typ.base_type)
+		g.collect_known_concrete_multi_return_type(typ.base_type)
 		return
 	}
 	if typ is types.ResultType {
-		g.collect_concrete_multi_return_type(typ.base_type)
+		g.collect_known_concrete_multi_return_type(typ.base_type)
 		return
 	}
 	if typ is types.MultiReturn {
