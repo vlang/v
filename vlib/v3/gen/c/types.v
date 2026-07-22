@@ -320,36 +320,9 @@ fn (mut g FlatGen) optional_typedefs() {
 }
 
 fn (mut g FlatGen) collect_optional_typedefs() {
-	for _, ret in g.tc.fn_ret_types {
-		g.collect_optional_typedef_type(ret)
-	}
-	for _, params in g.tc.fn_param_types {
-		for param in params {
-			g.collect_optional_typedef_type(param)
-		}
-	}
-	for _, fields in g.tc.structs {
-		for field in fields {
-			g.collect_optional_typedef_type(field.typ)
-		}
-	}
-	for _, fields in g.tc.interface_fields {
-		for field in fields {
-			g.collect_optional_typedef_type(field.typ)
-		}
-	}
-	for _, typ in g.tc.c_globals {
-		g.collect_optional_typedef_type(typ)
-	}
-	for _, typ in g.tc.const_types {
-		g.collect_optional_typedef_type(typ)
-	}
-	for idx, is_set in g.tc.expr_type_set {
-		if !is_set || idx >= g.tc.expr_type_values.len {
-			continue
-		}
-		g.collect_optional_typedef_type(g.tc.expr_type_values[idx])
-	}
+	g.collect_declaration_signature_types()
+	// Calls without a resolved expression type are the only optional-type source
+	// not covered by the shared declaration-signature scan.
 	for idx, node in g.a.nodes {
 		if node.kind != .call || (idx < g.tc.expr_type_set.len && g.tc.expr_type_set[idx]) {
 			continue
@@ -363,6 +336,52 @@ fn (mut g FlatGen) collect_optional_typedefs() {
 			}
 		}
 	}
+}
+
+fn (mut g FlatGen) collect_declaration_signature_types() {
+	if g.decl_types_ready {
+		return
+	}
+	for _, ret in g.tc.fn_ret_types {
+		g.collect_declaration_signature_type(ret)
+	}
+	for _, params in g.tc.fn_param_types {
+		for param in params {
+			g.collect_declaration_signature_type(param)
+		}
+	}
+	for _, fields in g.tc.structs {
+		for field in fields {
+			g.collect_declaration_signature_type(field.typ)
+		}
+	}
+	for _, fields in g.tc.interface_fields {
+		for field in fields {
+			g.collect_declaration_signature_type(field.typ)
+		}
+	}
+	for _, typ in g.tc.c_globals {
+		g.collect_declaration_signature_type(typ)
+	}
+	for _, typ in g.tc.const_types {
+		g.collect_declaration_signature_type(typ)
+	}
+	for idx, is_set in g.tc.expr_type_set {
+		if !is_set || idx >= g.tc.expr_type_values.len {
+			continue
+		}
+		g.collect_declaration_signature_type(g.tc.expr_type_values[idx])
+	}
+	g.decl_types_ready = true
+	g.multi_return_types_ready = true
+}
+
+fn (mut g FlatGen) collect_declaration_signature_type(t types.Type) {
+	if g.type_contains_generic_placeholder(t) {
+		return
+	}
+	g.collect_concrete_optional_typedef_type(t)
+	g.collect_known_concrete_multi_return_type(t)
 }
 
 fn (mut g FlatGen) collect_optional_typedef_type(t types.Type) {

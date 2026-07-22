@@ -13959,37 +13959,7 @@ fn (mut g FlatGen) walk_multi_return_typedefs(mut emitted map[string]bool, forwa
 }
 
 fn (mut g FlatGen) collect_multi_return_types() {
-	for _, ret in g.tc.fn_ret_types {
-		g.collect_concrete_multi_return_type(ret)
-	}
-	for _, params in g.tc.fn_param_types {
-		for param in params {
-			g.collect_concrete_multi_return_type(param)
-		}
-	}
-	for _, fields in g.tc.structs {
-		for field in fields {
-			g.collect_concrete_multi_return_type(field.typ)
-		}
-	}
-	for _, fields in g.tc.interface_fields {
-		for field in fields {
-			g.collect_concrete_multi_return_type(field.typ)
-		}
-	}
-	for _, typ in g.tc.c_globals {
-		g.collect_concrete_multi_return_type(typ)
-	}
-	for _, typ in g.tc.const_types {
-		g.collect_concrete_multi_return_type(typ)
-	}
-	for idx, is_set in g.tc.expr_type_set {
-		if !is_set || idx >= g.tc.expr_type_values.len {
-			continue
-		}
-		g.collect_concrete_multi_return_type(g.tc.expr_type_values[idx])
-	}
-	g.multi_return_types_ready = true
+	g.collect_declaration_signature_types()
 }
 
 fn (mut g FlatGen) collect_concrete_multi_return_type(typ types.Type) {
