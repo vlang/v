@@ -144,6 +144,43 @@ fn main() {
 	assert !c_code.contains(' ** '), c_code
 }
 
+fn test_struct_field_power_assign_uses_operator_overload() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'struct_field_power_assign', 'struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * 10 + b.value
+	}
+}
+
+struct Box {
+mut:
+	value Exponent
+}
+
+fn main() {
+	mut box := Box{
+		value: Exponent{
+			value: 2
+		}
+	}
+	box.value **= Exponent{
+		value: 3
+	}
+	println(int_str(box.value.value))
+}
+')
+	assert out == '23'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_struct_field_power_assign.c')) or {
+		panic(err)
+	}
+	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('box.value=Exponent__mul_(box.value,(Exponent){.value=3});'), c_code
+}
+
 fn test_addressed_inferred_array_const_keeps_dynamic_storage() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good(v3_bin, 'addressed_inferred_array_const', 'const vals = [1, 2, 3]

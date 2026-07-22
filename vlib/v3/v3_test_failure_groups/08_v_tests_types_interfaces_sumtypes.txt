@@ -1,3 +1,4 @@
+vlib/v/tests/interfaces/interface_embedding_with_interface_para_test.v
 vlib/v/tests/interfaces/interface_method_closure_test.v
 vlib/v/tests/structs/mut_test.v
 vlib/v/tests/structs/struct_embed_fn_type_test.v

@@ -25326,36 +25326,11 @@ fn (tc &TypeChecker) method_param_signature_compatible(actual Type, expected Typ
 	if actual_iface := tc.method_param_interface_name(actual) {
 		expected_iface := tc.method_param_interface_name(expected) or { return false }
 		return actual_iface == expected_iface
-			|| tc.interface_embeds_interface(actual_iface, expected_iface)
 	}
 	if _ := tc.method_param_interface_name(expected) {
 		return false
 	}
 	return tc.type_compatible(actual, expected) && tc.type_compatible(expected, actual)
-}
-
-fn (tc &TypeChecker) interface_embeds_interface(actual_name string, expected_name string) bool {
-	actual := tc.interface_metadata_name(actual_name)
-	expected := tc.interface_metadata_name(expected_name)
-	if actual == expected {
-		return true
-	}
-	mut pending := (tc.interface_embeds[actual] or { []string{} }).clone()
-	mut seen := map[string]bool{}
-	for pending.len > 0 {
-		current := tc.interface_metadata_name(pending.pop())
-		if current == expected {
-			return true
-		}
-		if seen[current] {
-			continue
-		}
-		seen[current] = true
-		for embed in tc.interface_embeds[current] or { []string{} } {
-			pending << embed
-		}
-	}
-	return false
 }
 
 fn (tc &TypeChecker) method_param_interface_name(typ Type) ?string {

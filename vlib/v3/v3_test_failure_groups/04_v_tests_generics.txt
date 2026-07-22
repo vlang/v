@@ -43,6 +43,7 @@ vlib/v/tests/generics/generics_unused_specialized_fn_array_param_test.v
 vlib/v/tests/generics/generics_with_embed_generics_method_call_test.v
 vlib/v/tests/generics/generics_with_embed_generics_structs_test.v
 vlib/v/tests/generics/generics_with_nested_generic_method_call_test.v
+vlib/v/tests/generics/mixed_generic_and_concrete_fn_type_factories_regression_test.v
 vlib/v/tests/generics/return_closure_f64_test.v
 vlib/v/tests/generics/return_closure_generic_struct_result_test.v
 vlib/v/tests/generics/return_closure_int_test.v

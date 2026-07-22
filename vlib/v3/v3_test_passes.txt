@@ -1972,7 +1972,6 @@ vlib/v/tests/generics/generics_with_reference_generic_args_test.v
 vlib/v/tests/generics/generics_with_variadic_generic_args_test.v
 vlib/v/tests/generics/infer_generic_array_type_in_nested_call_test.v
 vlib/v/tests/generics/lamda_param_and_ret_test.v
-vlib/v/tests/generics/mixed_generic_and_concrete_fn_type_factories_regression_test.v
 vlib/v/tests/generics/modules/simplemodule/importing_test.v
 vlib/v/tests/generics/multiple_generic_resolve_test.v
 vlib/v/tests/generics/struct_generic_map_index_test.v
@@ -2053,7 +2052,6 @@ vlib/v/tests/interfaces/interface_embedding_recursive_test.v
 vlib/v/tests/interfaces/interface_embedding_smartcast_test.v
 vlib/v/tests/interfaces/interface_embedding_test.v
 vlib/v/tests/interfaces/interface_embedding_to_base_interface_arg_test.v
-vlib/v/tests/interfaces/interface_embedding_with_interface_para_test.v
 vlib/v/tests/interfaces/interface_eq_methods_with_option_and_ref_test.v
 vlib/v/tests/interfaces/interface_equality_test.v
 vlib/v/tests/interfaces/interface_err_msg_print_test.v

@@ -190,8 +190,8 @@ fn test_if_expr_pointer_and_value_branches_are_incompatible() {
 fn test_reject_narrowed_interface_method_parameters() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_narrowed_interface_method_param',
-		'interface A {\n\ta() string\n}\n\ninterface B {\n\tA\n\tb() string\n}\n\nstruct Impl {}\n\nfn (Impl) m(x B) {\n\t_ = x\n}\n\ninterface I {\n\tm(x A)\n}\n\nfn main() {\n\t_ := I(Impl{})\n}\n',
-		'type `Impl` does not implement interface `I`')
+		'interface Eq {\n\teq(other Eq) bool\n}\n\ninterface Ord {\n\tEq\n\tlt(other Ord) bool\n}\n\nstruct Int {}\n\nfn (Int) eq(other Ord) bool {\n\t_ = other\n\treturn true\n}\n\nfn (Int) lt(other Ord) bool {\n\t_ = other\n\treturn false\n}\n\nfn main() {\n\t_ := Eq(Int{})\n}\n',
+		'type `Int` does not implement interface `Eq`')
 }
 
 fn test_implicit_str_sum_does_not_satisfy_interface() {
