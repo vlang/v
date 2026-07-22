@@ -454,15 +454,20 @@ fn test_comptime_type_accessor_initializers_stay_single_expressions() {
 	ast, _ := parse_span_source('comptime_type_init', 'fn make_zero[T](x ?T) {
 	_ := typeof(x).payload_type{}
 	_ := \$zero([]typeof(x).payload_type{})
+	_ := \$zero([][]int{})
+	_ := \$zero([]?int{})
 }
 ')
 	mut saw_fn := false
 	mut marker_count := 0
 	mut saw_array_target := false
+	mut saw_accessor_array_target := false
+	mut saw_nested_array_target := false
+	mut saw_optional_array_target := false
 	for node in ast.nodes {
 		if node.kind == .fn_decl && node.value == 'make_zero' {
 			saw_fn = true
-			assert node.children_count == 3
+			assert node.children_count == 5
 			assert ast.child_node(&node, 0).kind == .param
 			assert ast.child_node(&node, 1).kind == .decl_assign
 			assert ast.child_node(&node, 2).kind == .decl_assign
@@ -473,10 +478,29 @@ fn test_comptime_type_accessor_initializers_stay_single_expressions() {
 			target := ast.child_node(&node, 0)
 			if target.kind == .array_init && target.value == '__v3_comptime_type_array' {
 				saw_array_target = true
+				if target.children_count == 1 {
+					elem := ast.child_node(target, 0)
+					if elem.kind == .selector && elem.value == 'payload_type' {
+						saw_accessor_array_target = true
+					}
+					if elem.kind == .array_init && elem.value == '__v3_comptime_type_array' {
+						saw_nested_array_target = true
+						assert elem.children_count == 1
+						leaf := ast.child_node(elem, 0)
+						assert leaf.kind == .ident
+						assert leaf.value == 'int'
+					}
+					if elem.kind == .ident && elem.value == '?int' {
+						saw_optional_array_target = true
+					}
+				}
 			}
 		}
 	}
 	assert saw_fn
-	assert marker_count == 2
+	assert marker_count == 4
 	assert saw_array_target
+	assert saw_accessor_array_target
+	assert saw_nested_array_target
+	assert saw_optional_array_target
 }

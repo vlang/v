@@ -4527,14 +4527,30 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 }
 
 fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
+	if p.tok in [.question, .not, .amp, .and] {
+		typ := p.parse_type_name()
+		if p.tok == .lcbr && p.peek() == .rcbr {
+			p.next()
+			p.check(.rcbr)
+		}
+		return p.add_node(flat.Node{
+			kind:  .ident
+			value: typ
+		})
+	}
 	if p.tok != .lsbr || p.peek() != .rsbr {
 		return p.expr(.lowest)
 	}
 	p.next() // skip `[` in `[]T`
 	p.check(.rsbr)
-	mut elem := p.prefix_expr()
-	for p.tok == .dot {
-		elem = p.selector_or_method(elem)
+	mut elem := flat.empty_node
+	if p.tok in [.question, .not, .amp, .and] || (p.tok == .lsbr && p.peek() == .rsbr) {
+		elem = p.parse_comptime_type_arg()
+	} else {
+		elem = p.prefix_expr()
+		for p.tok == .dot {
+			elem = p.selector_or_method(elem)
+		}
 	}
 	if p.tok == .lcbr && p.peek() == .rcbr {
 		p.next()

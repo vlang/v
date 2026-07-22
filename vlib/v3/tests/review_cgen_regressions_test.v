@@ -454,3 +454,67 @@ fn main() {
 ')
 	assert out == '15'
 }
+
+fn test_enum_power_initializers_are_folded() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'enum_power_initializers', 'fn enum_power(base int, exponent int) int {
+	return base ** exponent
+}
+
+enum Power {
+	direct = 2 ** 3
+	helper = enum_power(3, 2)
+	next
+}
+
+@[flag]
+enum FlagPower {
+	direct = 2 ** 1
+	next
+}
+
+enum BackedPower as u64 {
+	direct = 2 ** 5
+}
+
+@[flag]
+enum BackedFlagPower as u64 {
+	direct = 2 ** 2
+	next
+}
+
+fn main() {
+	println(int_str(int(Power.direct)))
+	println(int_str(int(Power.helper)))
+	println(int_str(int(Power.next)))
+	println(int_str(int(FlagPower.direct)))
+	println(int_str(int(FlagPower.next)))
+	println(u64(BackedPower.direct))
+	println(u64(BackedFlagPower.direct))
+	println(u64(BackedFlagPower.next))
+}
+')
+	assert out == '8\n9\n10\n4\n8\n32\n16\n32'
+}
+
+fn test_zero_and_new_preserve_nested_array_type_arguments() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'nested_array_zero_new', 'fn zero_payload_array[T](value ?T) []T {
+	return $zero([]typeof(value).payload_type{})
+}
+
+fn main() {
+	nested := $zero([][]int{})
+	optional := $zero([]?int{})
+	nested_ptr := $new([][]int{})
+	optional_ptr := $new([]?int{})
+	payload := zero_payload_array[int](none)
+	println(int_str(nested.len))
+	println(int_str(optional.len))
+	println(int_str(nested_ptr.len))
+	println(int_str(optional_ptr.len))
+	println(int_str(payload.len))
+}
+')
+	assert out == '0\n0\n0\n0\n0'
+}
