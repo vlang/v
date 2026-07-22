@@ -6,6 +6,7 @@ module http
 
 import net
 import net.ssl
+import strings
 import sync
 import time
 
@@ -23,14 +24,82 @@ import time
 // loop. is_no_need_retry_error recognizes this code so the outer loop honors it.
 const transport_err_unsafe_retry = -20013
 
+// H1StreamConn abstracts a platform-specific streaming h1 connection that can
+// be pooled the same way H1PooledConn already pools ssl.SSLConn/net.TcpConn —
+// currently implemented only by VSchannelPooledTransport
+// (vschannel_pooled_transport_windows.c.v), for native-Windows h1 pooling.
+// Kept separate from H2Transport (h2_conn.v) even though read/write have the
+// same shape: h1 pooling needs a per-request read/write timeout knob that
+// H2Transport's multiplexed background reader has no use for, and h2_conn.v
+// documents H2Transport as deliberately minimal for testability.
+interface H1StreamConn {
+mut:
+	read(mut buf []u8) !int
+	write(buf []u8) !int
+	close()
+	set_timeouts(read_timeout time.Duration, write_timeout time.Duration)
+}
+
+// H1StreamConnBox lets a boxed H1StreamConn interface value be threaded
+// through receive_all_data_from_cb_in_builder's voidptr+FnReceiveChunk
+// callback convention (request.v), the same convention read_from_ssl_connection_cb/
+// read_from_tcp_connection_cb already use for their own concrete connection
+// types. A concrete box struct is used instead of casting a raw voidptr
+// directly back to &H1StreamConn: an interface value is a fat pointer
+// (type tag + data + method table), and reinterpreting arbitrary bytes as one
+// via unsafe cast would be undefined behavior — boxing it in an ordinary,
+// single-field struct keeps the voidptr round-trip a plain pointer
+// reinterpret, exactly like the existing ssl.SSLConn/net.TcpConn callbacks.
+struct H1StreamConnBox {
+mut:
+	conn H1StreamConn
+}
+
+// read_from_h1stream_cb is the H1StreamConn FnReceiveChunk adapter (see
+// H1StreamConnBox), the h1-pool counterpart of read_from_ssl_connection_cb/
+// read_from_tcp_connection_cb.
+fn read_from_h1stream_cb(con voidptr, buf &u8, bufsize int) !int {
+	mut box := unsafe { &H1StreamConnBox(con) }
+	mut bytes := unsafe { buf.vbytes(bufsize) }
+	return box.conn.read(mut bytes)
+}
+
+// h1_exchange_stream runs one request/response over a pooled H1StreamConn,
+// leaving it open. Mirrors h1_exchange_ssl/h1_exchange_tcp exactly, sharing
+// the same response-framing implementation via receive_all_data_from_cb_in_builder.
+fn (req &Request) h1_exchange_stream(mut conn H1StreamConn, raw string) !(Response, bool) {
+	conn.write(raw.bytes()) or {
+		return error('http.transport: connection write failed: ${err.msg()}')
+	}
+	mut content := strings.new_builder(4096)
+	mut box := &H1StreamConnBox{
+		conn: conn
+	}
+	response_info := req.receive_all_data_from_cb_in_builder(mut content, voidptr(box),
+		read_from_h1stream_cb)!
+	response_text := content.str()
+	$if trace_http_response ? {
+		eprint('< ')
+		eprint(response_text)
+		eprintln('')
+	}
+	if req.on_finish != unsafe { nil } {
+		req.on_finish(req, u64(response_text.len))!
+	}
+	resp := parse_received_response(response_text, response_info)!
+	return resp, response_info.reusable
+}
+
 // H1PooledConn is one keep-alive HTTP/1.1 connection in a Transport pool:
-// either a plain TCP connection or a TLS one (exactly one of the two is set).
+// exactly one of tcp/ssl/vsc is set — a plain TCP connection, an mbedTLS/
+// OpenSSL TLS one, or (native Windows only) a pooled SChannel connection.
 @[heap]
 struct H1PooledConn {
 mut:
 	key        string
 	tcp        &net.TcpConn = unsafe { nil }
 	ssl        &ssl.SSLConn = unsafe { nil }
+	vsc        ?H1StreamConn
 	idle_since time.Time
 }
 
@@ -44,6 +113,10 @@ fn (mut c H1PooledConn) close_conn() {
 		c.tcp.close() or {}
 		c.tcp = unsafe { nil }
 	}
+	if mut v := c.vsc {
+		v.close()
+		c.vsc = none
+	}
 }
 
 // refresh_timeouts applies the current request's timeouts to a pooled
@@ -56,6 +129,15 @@ fn (mut c H1PooledConn) refresh_timeouts(req &Request) {
 		if req.read_timeout > 0 {
 			c.ssl.set_read_timeout(req.read_timeout)
 		}
+	} else if mut v := c.vsc {
+		// Unlike the ssl branch above (read-only, guarded on > 0 — 0 there
+		// means "leave whatever timeout this connection already has"), both
+		// directions are applied unconditionally here: SO_RCVTIMEO/SO_SNDTIMEO
+		// are independent Winsock options where 0 has its own well-defined
+		// meaning ("block indefinitely"), so forwarding it is correct, not a
+		// missing guard — matching the tcp branch's convention (also
+		// unconditional, both directions) rather than ssl's.
+		v.set_timeouts(req.read_timeout, req.write_timeout)
 	}
 }
 
@@ -65,6 +147,9 @@ fn (mut c H1PooledConn) refresh_timeouts(req &Request) {
 fn (mut c H1PooledConn) exchange(req &Request, raw string) !(Response, bool) {
 	if c.ssl != unsafe { nil } {
 		return req.h1_exchange_ssl(mut c.ssl, raw)
+	}
+	if mut v := c.vsc {
+		return req.h1_exchange_stream(mut v, raw)
 	}
 	return req.h1_exchange_tcp(mut c.tcp, raw)
 }
