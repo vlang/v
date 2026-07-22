@@ -38,10 +38,11 @@ $if !windows {
 	fn flat_cgen_cost_thread(arg voidptr) voidptr {
 		mut a := unsafe { &FlatCgenCostArgs(arg) }
 		mut items := unsafe { &[]FlatFnGenItem(a.items_ptr) }
+		mut stack := []flat.NodeId{cap: 256}
 		for idx in a.start .. a.end {
 			unsafe {
 				cost, needs_prelude_scan := exact_flat_fn_gen_item_cost(a.a, items[idx].node_id, mut
-					a.refs)
+					a.refs, mut stack)
 				items[idx].cost = cost
 				items[idx].skip_prelude_scan = !needs_prelude_scan
 			}
