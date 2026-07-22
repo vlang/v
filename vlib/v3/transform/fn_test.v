@@ -184,7 +184,7 @@ fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
 	batch.tc.fork_overlay.resolved_call_names[10] = 'main.resolved_call'
 	batch.tc.fork_overlay.resolved_fn_values[11] = 'main.resolved_fn_value'
 
-	master.absorb_scoped_batch(batch, unsafe { nil })
+	master.absorb_scoped_batch(batch, unsafe { nil }, batch.a.nodes.len)
 	assert tc.sparse_resolved_call_names[10] == 'main.resolved_call'
 	assert tc.sparse_resolved_fn_values[11] == 'main.resolved_fn_value'
 }

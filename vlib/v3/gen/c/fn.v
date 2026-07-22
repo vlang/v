@@ -55,9 +55,11 @@ struct FlatFnGenItem {
 	file                      string
 	module                    string
 	c_name                    string
-	cost                      int
 	is_program_specialization bool
 	direct_array_access       bool
+mut:
+	cost              int
+	skip_prelude_scan bool
 }
 
 struct FlatFnGenCandidate {
@@ -90,7 +92,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	// Defer cost/prep until after preferred-file and emission filtering. When
 	// the parallel path asks for prep, that walk also collects C-extern refs.
 	prep := g.want_parallel_prep
-	for i in 0 .. g.a.nodes.len {
+	for i in g.top_level_nodes() {
 		node := g.a.nodes[i]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
@@ -131,21 +133,24 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 					continue
 				}
 			}
-			if !g.should_emit_fn_node_in_module(node, i, item_module, item_file) {
+			qfn := g.qualified_fn_name_in_module_c(item_module, node.value)
+			is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node, i, qfn)
+			if !g.should_emit_fn_node_in_module_known(node, item_module, item_file, qfn,
+				is_program_specialization) {
 				continue
 			}
 			preferred_name := g.fn_c_name_in_module(item_module, node.value)
-			if g.is_program_specialization_fn_node(node, i, item_module) {
+			if is_program_specialization {
 				program_specializations[preferred_name] = true
 			}
 			rank := c_backend_fn_file_rank(item_file)
-			is_program_specialization := program_specializations[preferred_name]
+			preferred_is_program_specialization := program_specializations[preferred_name]
 			if preferred_name !in preferred_fns || rank > ranks[preferred_name]
-				|| (rank == ranks[preferred_name] && is_program_specialization
+				|| (rank == ranks[preferred_name] && preferred_is_program_specialization
 				&& !preferred_program_specializations[preferred_name]) {
 				preferred_fns[preferred_name] = i
 				ranks[preferred_name] = rank
-				preferred_program_specializations[preferred_name] = is_program_specialization
+				preferred_program_specializations[preferred_name] = preferred_is_program_specialization
 			}
 			candidates << FlatFnGenCandidate{
 				preferred_name: preferred_name
@@ -153,8 +158,8 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 					node_id:             flat.NodeId(i)
 					file:                item_file
 					module:              item_module
-					c_name:              g.fn_c_name_in_module(item_module, node.value)
-					direct_array_access: direct_array_access_positions[fn_source_position_key(node)]
+					c_name:              preferred_name
+					direct_array_access: direct_array_access_positions[i]
 				}
 			}
 		}
@@ -198,13 +203,10 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 	return items
 }
 
-fn fn_source_position_key(node flat.Node) string {
-	return '${node.pos.id}:${node.pos.offset}'
-}
-
-fn (g &FlatGen) direct_array_access_fn_positions() map[string]bool {
-	mut positions := map[string]bool{}
-	for directive in g.a.nodes {
+fn (g &FlatGen) direct_array_access_fn_positions() map[int]bool {
+	mut positions := map[int]bool{}
+	for directive_idx in g.top_level_nodes() {
+		directive := g.a.nodes[directive_idx]
 		if directive.kind != .directive || !directive.value.starts_with('@attributes:') {
 			continue
 		}
@@ -222,16 +224,29 @@ fn (g &FlatGen) direct_array_access_fn_positions() map[string]bool {
 		if target_idx < 0 || target_idx >= g.a.nodes.len {
 			continue
 		}
-		target := g.a.nodes[target_idx]
-		if target.kind == .fn_decl {
-			positions[fn_source_position_key(target)] = true
+		if g.a.nodes[target_idx].kind == .fn_decl {
+			positions[target_idx] = true
 		}
 	}
 	return positions
 }
 
 fn flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId) int {
+	idx := int(node_id)
+	if idx < 0 || idx >= a.nodes.len {
+		return 1
+	}
+	node := a.nodes[idx]
+	// Source span is an O(1) and sufficiently accurate proxy for generated work.
+	// Walking every selected subtree just to balance chunks repeats the entire
+	// function-body traversal immediately before cgen does the real work.
+	span := node.pos.end - node.pos.offset
+	return if span > 0 { span + 64 } else { int(node.children_count) + 65 }
+}
+
+fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, mut c_extern_refs map[string]bool) (int, bool) {
 	mut cost := 0
+	mut needs_prelude_scan := false
 	mut stack := [node_id]
 	for stack.len > 0 {
 		id := stack.pop()
@@ -240,7 +255,24 @@ fn flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId) int {
 			continue
 		}
 		node := a.nodes[idx]
-		cost++
+		cost += flat_cgen_node_cost(node.kind)
+		if node.kind == .lock_expr || node.kind == .label_stmt
+			|| (node.kind == .defer_stmt && node.value == 'function') {
+			needs_prelude_scan = true
+		}
+		if node.kind == .selector && node.children_count > 0 && node.value.len > 0 {
+			base_id := a.children[node.children_start]
+			if int(base_id) >= 0 {
+				base := a.nodes[int(base_id)]
+				if base.kind == .ident && base.value == 'C' {
+					raw_name := 'C.${node.value}'
+					raw_cfn := naming.c_name(raw_name)
+					c_extern_refs[raw_name] = true
+					c_extern_refs[raw_cfn] = true
+					c_extern_refs[c_winapi_wide_export_name(raw_cfn)] = true
+				}
+			}
+		}
 		for i in 0 .. node.children_count {
 			child_id := a.children[node.children_start + i]
 			if int(child_id) >= 0 {
@@ -248,7 +280,20 @@ fn flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId) int {
 			}
 		}
 	}
-	return cost
+	return cost, needs_prelude_scan
+}
+
+@[inline]
+fn flat_cgen_node_cost(kind flat.NodeKind) int {
+	return match kind {
+		.call, .struct_init { 8 }
+		.selector { 6 }
+		.assign, .decl_assign, .selector_assign, .index_assign { 5 }
+		.array_literal, .array_init, .map_init, .fn_literal, .lambda_expr, .string_interp { 4 }
+		.index, .if_expr, .match_stmt, .for_stmt, .for_in_stmt, .select_stmt { 3 }
+		.infix, .cast_expr, .as_expr, .or_expr, .return_stmt { 2 }
+		else { 1 }
+	}
 }
 
 fn cache_fn_marker_key(file string, module_name string, name string) string {
@@ -296,7 +341,7 @@ fn (mut g FlatGen) gen_fn_items(items []FlatFnGenItem) {
 		}
 		old_direct_array_access := g.direct_array_access
 		g.direct_array_access = item.direct_array_access
-		g.gen_fn_in_module(node, item.module)
+		g.gen_fn_in_module(node, item.module, item.skip_prelude_scan)
 		g.direct_array_access = old_direct_array_access
 		if g.cache_split {
 			g.writeln('/* V3CACHE_FN_END ${cache_fn_marker_key(item.file, item.module, node.value)} */')
@@ -333,7 +378,8 @@ fn (mut g FlatGen) gen_synthetic_main_after_fns() {
 
 fn (g &FlatGen) has_entry_main() bool {
 	mut cur_module := ''
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_module = ''
@@ -352,7 +398,8 @@ fn (g &FlatGen) has_entry_main() bool {
 
 fn (g &FlatGen) top_level_stmts() []TopLevelStmt {
 	mut stmts := []TopLevelStmt{}
-	for file_idx, file_node in g.a.nodes {
+	for file_idx in g.top_level_nodes() {
+		file_node := g.a.nodes[file_idx]
 		if !g.should_emit_top_level_file(file_idx, file_node) {
 			continue
 		}
@@ -424,6 +471,12 @@ fn (mut g FlatGen) should_emit_fn_node(node flat.Node, node_index int) bool {
 // should_emit_fn_node_in_module reports whether should emit fn node in module applies in c.
 fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int, module_name string, file_name string) bool {
 	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
+	is_program_specialization := g.is_program_specialization_fn_node_with_qfn(node, node_index, qfn)
+	return g.should_emit_fn_node_in_module_known(node, module_name, file_name, qfn,
+		is_program_specialization)
+}
+
+fn (mut g FlatGen) should_emit_fn_node_in_module_known(node flat.Node, module_name string, file_name string, qfn string, is_program_specialization bool) bool {
 	if g.should_rename_user_main_for_tests(module_name, node.value) {
 		return true
 	}
@@ -472,18 +525,19 @@ fn (mut g FlatGen) should_emit_fn_node_in_module(node flat.Node, node_index int,
 	}
 	// Every specialization materialized from the combined program/module-cache
 	// graph is a concrete body needed by either main or one of the cached objects.
-	if g.is_program_specialization_fn_node(node, node_index, module_name) {
+	if is_program_specialization {
 		return true
 	}
 	if g.fn_node_is_open_generic_template(node, module_name) {
 		return false
 	}
-	is_interface_dispatch_target := g.interface_dispatch_method_is_required(node.value)
-		|| g.interface_dispatch_method_is_required(dotted_fn_name_in_module(module_name, node.value))
-		|| g.interface_dispatch_method_is_required(qfn)
-	if g.has_used_fn_filter() && !g.used_fn_contains_in_module(node.value, module_name)
-		&& !is_interface_dispatch_target {
-		return false
+	if g.has_used_fn_filter() {
+		if g.used_fn_contains_in_module(node.value, module_name) {
+			return true
+		}
+		return g.interface_dispatch_method_is_required(node.value)
+			|| g.interface_dispatch_method_is_required(dotted_fn_name_in_module(module_name, node.value))
+			|| g.interface_dispatch_method_is_required(qfn)
 	}
 	return true
 }
@@ -496,7 +550,7 @@ fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, module_name str
 		return false
 	}
 	receiver := node.value.all_before_last('.')
-	base, args, ok := shared_generic_app_parts(receiver)
+	base, args, ok := g.shared_generic_app_parts(receiver)
 	if !ok || args.len == 0 {
 		return false
 	}
@@ -516,13 +570,16 @@ fn (g &FlatGen) fn_node_is_open_generic_template(node flat.Node, module_name str
 }
 
 fn (g &FlatGen) is_program_specialization_fn_node(node flat.Node, node_index int, module_name string) bool {
+	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
+	return g.is_program_specialization_fn_node_with_qfn(node, node_index, qfn)
+}
+
+fn (g &FlatGen) is_program_specialization_fn_node_with_qfn(node flat.Node, node_index int, qfn string) bool {
 	if g.a.specialized_fn_nodes[node_index] {
 		return true
 	}
-	qfn := g.qualified_fn_name_in_module_c(module_name, node.value)
 	return node.value in g.tc.specialized_generic_fns || qfn in g.tc.specialized_generic_fns
 		|| g.cname(node.value) in g.tc.specialized_generic_fns
-		|| g.cname(qfn) in g.tc.specialized_generic_fns
 }
 
 fn cgen_is_operator_overload_fn(name string) bool {
@@ -559,9 +616,6 @@ fn (g &FlatGen) used_fn_contains_in_module(name string, module_name string) bool
 	dfn := dotted_fn_name_in_module(module_name, name)
 	qfn := g.qualified_fn_name_in_module_c(module_name, name)
 	if g.used_fn_contains(dfn) || g.used_fn_contains(qfn) {
-		return true
-	}
-	if g.used_fn_contains(g.cname(dfn)) || g.used_fn_contains(g.cname(qfn)) {
 		return true
 	}
 	if module_name.len == 0 || module_name == 'main' || module_name == 'builtin' {
@@ -739,7 +793,8 @@ fn (g &FlatGen) test_user_main_c_name() string {
 
 fn (g &FlatGen) c_fn_symbol_exists(candidate string) bool {
 	mut cur_module := ''
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_module = ''
@@ -1069,7 +1124,7 @@ fn qualify_name_in_module(module_name string, name string) string {
 
 // gen_fn emits fn output for c.
 fn (mut g FlatGen) gen_fn(node flat.Node) {
-	g.gen_fn_in_module(node, g.tc.cur_module)
+	g.gen_fn_in_module(node, g.tc.cur_module, false)
 }
 
 fn (mut g FlatGen) write_method_c_name(id flat.NodeId, node flat.Node, method_name string) {
@@ -1644,7 +1699,7 @@ fn generic_method_candidate_receiver_preference(candidate_name string, receiver 
 	if candidate_receiver == receiver {
 		return 30
 	}
-	base, _, ok := shared_generic_app_parts(candidate_receiver)
+	base, _, ok := parse_shared_generic_app_parts(candidate_receiver)
 	if ok {
 		if base == receiver {
 			return 25
@@ -1703,7 +1758,7 @@ fn (g &FlatGen) generic_method_candidate_type_arg_score(node flat.Node, candidat
 		return 0
 	}
 	receiver := candidate_name.all_before_last('.')
-	_, type_args, ok := shared_generic_app_parts(receiver)
+	_, type_args, ok := g.shared_generic_app_parts(receiver)
 	if !ok || type_args.len == 0 {
 		return 0
 	}
@@ -1878,7 +1933,7 @@ fn (g &FlatGen) resolve_method_name(type_name string, method string) string {
 }
 
 fn (g &FlatGen) resolve_concrete_generic_method_name(type_name string, method string) ?string {
-	base, args, ok := shared_generic_app_parts(type_name)
+	base, args, ok := g.shared_generic_app_parts(type_name)
 	if !ok || args.len == 0 {
 		return none
 	}
@@ -1955,7 +2010,7 @@ fn generic_receiver_type_arg_short(type_arg string) string {
 	if clean.contains('(') || clean.contains(' ') {
 		return sanitize_generic_receiver_type_fragment(clean)
 	}
-	base, args, ok := shared_generic_app_parts(clean)
+	base, args, ok := parse_shared_generic_app_parts(clean)
 	if ok {
 		mut parts := [generic_receiver_type_arg_short(base)]
 		for arg in args {
@@ -3517,7 +3572,7 @@ fn (g &FlatGen) resolved_method_name_for_spawn(clean_type types.Type, method str
 }
 
 // gen_fn_in_module emits fn in module output for c.
-fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
+fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_prelude_scan bool) {
 	g.tc.cur_module = module_name
 	g.cur_fn_name = node.value
 	g.ownership_return_index = 0
@@ -3530,24 +3585,28 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
 	g.map_loop_copyback_guards = []MapLoopCopybackGuard{}
-	mut prelude_scan := g.collect_fn_prelude_scan(node)
+	mut prelude_scan := if skip_prelude_scan {
+		FnPreludeScan{}
+	} else {
+		g.collect_fn_prelude_scan(node)
+	}
 	g.goto_label_lock_scopes = prelude_scan.goto_label_lock_scopes.move()
 	g.pending_loop_label = ''
-	old_ierror_stack_pointer_aliases := g.ierror_stack_pointer_aliases.clone()
+	old_ierror_stack_pointer_aliases := g.ierror_stack_pointer_aliases
 	g.ierror_stack_pointer_aliases = []map[string]bool{}
-	old_local_pointer_storage_by_owner := g.local_pointer_storage_by_owner.clone()
+	mut old_local_pointer_storage_by_owner := g.local_pointer_storage_by_owner.move()
 	g.local_pointer_storage_by_owner = map[string]bool{}
-	old_local_c_type_by_owner := g.local_c_type_by_owner.clone()
+	mut old_local_c_type_by_owner := g.local_c_type_by_owner.move()
 	g.local_c_type_by_owner = map[string]string{}
-	old_local_pointer_alias_by_owner := g.local_pointer_alias_by_owner.clone()
+	mut old_local_pointer_alias_by_owner := g.local_pointer_alias_by_owner.move()
 	g.local_pointer_alias_by_owner = map[string]string{}
-	old_local_pointer_alias_mut_param := g.local_pointer_alias_mut_param.clone()
+	mut old_local_pointer_alias_mut_param := g.local_pointer_alias_mut_param.move()
 	g.local_pointer_alias_mut_param = map[string]bool{}
-	old_local_shared_storage_by_owner := g.local_shared_storage_by_owner.clone()
+	mut old_local_shared_storage_by_owner := g.local_shared_storage_by_owner.move()
 	g.local_shared_storage_by_owner = map[string]bool{}
-	old_shadowed_global_locals := g.shadowed_global_locals.clone()
+	mut old_shadowed_global_locals := g.shadowed_global_locals.move()
 	g.shadowed_global_locals = map[string]bool{}
-	old_local_fn_value_c_name_by_owner := g.local_fn_value_c_name_by_owner.clone()
+	mut old_local_fn_value_c_name_by_owner := g.local_fn_value_c_name_by_owner.move()
 	g.local_fn_value_c_name_by_owner = map[string]string{}
 	g.push_scope()
 	g.defers = []flat.NodeId{}
@@ -3556,12 +3615,12 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	g.defer_capture_names = []string{}
 	g.defer_capture_types = map[string]types.Type{}
 	g.set_cur_fn_ret(types.Type(types.void_))
-	old_param_names := g.cur_param_names.clone()
-	old_param_type_values := g.cur_param_type_values.clone()
-	old_param_types := g.cur_param_types.clone()
-	old_concrete_optional_params := g.cur_concrete_optional_params.clone()
-	old_mut_params := g.cur_mut_params.clone()
-	old_mut_param_owners := g.cur_mut_param_owners.clone()
+	old_param_names := g.cur_param_names
+	old_param_type_values := g.cur_param_type_values
+	mut old_param_types := g.cur_param_types.move()
+	mut old_concrete_optional_params := g.cur_concrete_optional_params.move()
+	mut old_mut_params := g.cur_mut_params.move()
+	mut old_mut_param_owners := g.cur_mut_param_owners.move()
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types = map[string]types.Type{}
@@ -3662,26 +3721,26 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string) {
 	if !is_entry_main {
 		g.gen_export_wrapper_for_fn(node, module_name)
 	}
-	g.cur_param_names = old_param_names.clone()
-	g.cur_param_type_values = old_param_type_values.clone()
-	g.cur_param_types = old_param_types.clone()
-	g.cur_concrete_optional_params = old_concrete_optional_params.clone()
-	g.cur_mut_params = old_mut_params.clone()
-	g.cur_mut_param_owners = old_mut_param_owners.clone()
+	g.cur_param_names = old_param_names
+	g.cur_param_type_values = old_param_type_values
+	g.cur_param_types = old_param_types.move()
+	g.cur_concrete_optional_params = old_concrete_optional_params.move()
+	g.cur_mut_params = old_mut_params.move()
+	g.cur_mut_param_owners = old_mut_param_owners.move()
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
 	g.map_loop_copyback_guards = []MapLoopCopybackGuard{}
 	g.goto_label_lock_scopes = map[string][]int{}
 	g.pending_loop_label = ''
 	g.pop_scope()
-	g.ierror_stack_pointer_aliases = old_ierror_stack_pointer_aliases.clone()
-	g.local_pointer_storage_by_owner = old_local_pointer_storage_by_owner.clone()
-	g.local_c_type_by_owner = old_local_c_type_by_owner.clone()
-	g.local_pointer_alias_by_owner = old_local_pointer_alias_by_owner.clone()
-	g.local_pointer_alias_mut_param = old_local_pointer_alias_mut_param.clone()
-	g.local_shared_storage_by_owner = old_local_shared_storage_by_owner.clone()
-	g.shadowed_global_locals = old_shadowed_global_locals.clone()
-	g.local_fn_value_c_name_by_owner = old_local_fn_value_c_name_by_owner.clone()
+	g.ierror_stack_pointer_aliases = old_ierror_stack_pointer_aliases
+	g.local_pointer_storage_by_owner = old_local_pointer_storage_by_owner.move()
+	g.local_c_type_by_owner = old_local_c_type_by_owner.move()
+	g.local_pointer_alias_by_owner = old_local_pointer_alias_by_owner.move()
+	g.local_pointer_alias_mut_param = old_local_pointer_alias_mut_param.move()
+	g.local_shared_storage_by_owner = old_local_shared_storage_by_owner.move()
+	g.shadowed_global_locals = old_shadowed_global_locals.move()
+	g.local_fn_value_c_name_by_owner = old_local_fn_value_c_name_by_owner.move()
 }
 
 fn (mut g FlatGen) gen_export_wrapper_for_fn(node flat.Node, module_name string) {
@@ -3750,19 +3809,19 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	mut prelude_scan := g.collect_top_level_prelude_scan(stmts)
 	g.goto_label_lock_scopes = prelude_scan.goto_label_lock_scopes.move()
 	g.pending_loop_label = ''
-	old_ierror_stack_pointer_aliases := g.ierror_stack_pointer_aliases.clone()
+	old_ierror_stack_pointer_aliases := g.ierror_stack_pointer_aliases
 	g.ierror_stack_pointer_aliases = []map[string]bool{}
-	old_local_pointer_storage_by_owner := g.local_pointer_storage_by_owner.clone()
+	mut old_local_pointer_storage_by_owner := g.local_pointer_storage_by_owner.move()
 	g.local_pointer_storage_by_owner = map[string]bool{}
-	old_local_c_type_by_owner := g.local_c_type_by_owner.clone()
+	mut old_local_c_type_by_owner := g.local_c_type_by_owner.move()
 	g.local_c_type_by_owner = map[string]string{}
-	old_local_pointer_alias_by_owner := g.local_pointer_alias_by_owner.clone()
+	mut old_local_pointer_alias_by_owner := g.local_pointer_alias_by_owner.move()
 	g.local_pointer_alias_by_owner = map[string]string{}
-	old_local_pointer_alias_mut_param := g.local_pointer_alias_mut_param.clone()
+	mut old_local_pointer_alias_mut_param := g.local_pointer_alias_mut_param.move()
 	g.local_pointer_alias_mut_param = map[string]bool{}
-	old_local_shared_storage_by_owner := g.local_shared_storage_by_owner.clone()
+	mut old_local_shared_storage_by_owner := g.local_shared_storage_by_owner.move()
 	g.local_shared_storage_by_owner = map[string]bool{}
-	old_local_fn_value_c_name_by_owner := g.local_fn_value_c_name_by_owner.clone()
+	mut old_local_fn_value_c_name_by_owner := g.local_fn_value_c_name_by_owner.move()
 	g.local_fn_value_c_name_by_owner = map[string]string{}
 	g.push_scope()
 	g.defers = []flat.NodeId{}
@@ -3771,12 +3830,12 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.defer_capture_names = []string{}
 	g.defer_capture_types = map[string]types.Type{}
 	g.set_cur_fn_ret(types.Type(types.void_))
-	old_param_names := g.cur_param_names.clone()
-	old_param_type_values := g.cur_param_type_values.clone()
-	old_param_types := g.cur_param_types.clone()
-	old_concrete_optional_params := g.cur_concrete_optional_params.clone()
-	old_mut_params := g.cur_mut_params.clone()
-	old_mut_param_owners := g.cur_mut_param_owners.clone()
+	old_param_names := g.cur_param_names
+	old_param_type_values := g.cur_param_type_values
+	mut old_param_types := g.cur_param_types.move()
+	mut old_concrete_optional_params := g.cur_concrete_optional_params.move()
+	mut old_mut_params := g.cur_mut_params.move()
+	mut old_mut_param_owners := g.cur_mut_param_owners.move()
 	g.cur_param_names = []string{}
 	g.cur_param_type_values = []types.Type{}
 	g.cur_param_types = map[string]types.Type{}
@@ -3806,12 +3865,12 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.indent--
 	g.writeln('}')
 	g.writeln('')
-	g.cur_param_names = old_param_names.clone()
-	g.cur_param_type_values = old_param_type_values.clone()
-	g.cur_param_types = old_param_types.clone()
-	g.cur_concrete_optional_params = old_concrete_optional_params.clone()
-	g.cur_mut_params = old_mut_params.clone()
-	g.cur_mut_param_owners = old_mut_param_owners.clone()
+	g.cur_param_names = old_param_names
+	g.cur_param_type_values = old_param_type_values
+	g.cur_param_types = old_param_types.move()
+	g.cur_concrete_optional_params = old_concrete_optional_params.move()
+	g.cur_mut_params = old_mut_params.move()
+	g.cur_mut_param_owners = old_mut_param_owners.move()
 	g.cur_fn_name = old_fn_name
 	g.loop_depth = 0
 	g.loop_label_depths = map[string]int{}
@@ -3821,13 +3880,13 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.tc.cur_file = old_tc_file
 	g.tc.cur_module = old_tc_module
 	g.pop_scope()
-	g.ierror_stack_pointer_aliases = old_ierror_stack_pointer_aliases.clone()
-	g.local_pointer_storage_by_owner = old_local_pointer_storage_by_owner.clone()
-	g.local_c_type_by_owner = old_local_c_type_by_owner.clone()
-	g.local_pointer_alias_by_owner = old_local_pointer_alias_by_owner.clone()
-	g.local_pointer_alias_mut_param = old_local_pointer_alias_mut_param.clone()
-	g.local_shared_storage_by_owner = old_local_shared_storage_by_owner.clone()
-	g.local_fn_value_c_name_by_owner = old_local_fn_value_c_name_by_owner.clone()
+	g.ierror_stack_pointer_aliases = old_ierror_stack_pointer_aliases
+	g.local_pointer_storage_by_owner = old_local_pointer_storage_by_owner.move()
+	g.local_c_type_by_owner = old_local_c_type_by_owner.move()
+	g.local_pointer_alias_by_owner = old_local_pointer_alias_by_owner.move()
+	g.local_pointer_alias_mut_param = old_local_pointer_alias_mut_param.move()
+	g.local_shared_storage_by_owner = old_local_shared_storage_by_owner.move()
+	g.local_fn_value_c_name_by_owner = old_local_fn_value_c_name_by_owner.move()
 }
 
 fn (mut g FlatGen) gen_top_level_main_stmt(id flat.NodeId) {
@@ -3907,7 +3966,8 @@ fn (mut g FlatGen) gen_test_fn_call(test_fn TestHarnessFn, hooks TestHarnessHook
 fn (g &FlatGen) test_harness_fns() ([]TestHarnessFn, TestHarnessHooks) {
 	mut tests := []TestHarnessFn{}
 	mut hooks := TestHarnessHooks{}
-	for file_idx, file_node in g.a.nodes {
+	for file_idx in g.top_level_nodes() {
+		file_node := g.a.nodes[file_idx]
 		if !g.is_user_test_file_node(file_idx, file_node) {
 			continue
 		}
@@ -7228,7 +7288,8 @@ fn (g &FlatGen) json_decode_struct_field_is_embedded(field types.StructField) bo
 fn (g &FlatGen) json_struct_has_field_default(struct_name string) bool {
 	decl_name := json_struct_decl_name(struct_name)
 	mut cur_module := ''
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		if node.kind == .module_decl {
 			cur_module = node.value
 			continue
@@ -7290,7 +7351,8 @@ fn (g &FlatGen) json_struct_has_encode_field_attrs(struct_name string) bool {
 fn (g &FlatGen) json_struct_has_disallowed_field_attrs(struct_name string, allowed []string) bool {
 	decl_name := json_struct_decl_name(struct_name)
 	mut cur_module := ''
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		if node.kind == .module_decl {
 			cur_module = node.value
 			continue
@@ -7417,7 +7479,8 @@ fn json_string_content_escape(value string) string {
 // quoted label; returns none for a plain enum.
 fn (g &FlatGen) json_enum_number_cast(enum_name string) ?string {
 	mut cur_module := ''
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		if node.kind == .module_decl {
 			cur_module = node.value
 			continue
@@ -7450,7 +7513,8 @@ fn (g &FlatGen) json_enum_labels(enum_name string) ([]string, map[string]string)
 	mut names := []string{}
 	mut labels := map[string]string{}
 	mut cur_module := ''
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		if node.kind == .module_decl {
 			cur_module = node.value
 			continue
@@ -8055,18 +8119,29 @@ fn (g &FlatGen) interface_receiver_name(typ types.Type) string {
 	if name.len == 0 {
 		return ''
 	}
-	base, _, is_generic := shared_generic_app_parts(name)
+	base, _, is_generic := g.shared_generic_app_parts(name)
 	if is_generic {
 		name = base
 	}
+	if !isnil(g.interface_receiver_cache) {
+		if cached := g.interface_receiver_cache.entries[name] {
+			return cached
+		}
+	}
+	mut result := ''
 	if name in g.tc.interface_names {
-		return name
+		result = name
+	} else {
+		metadata_name := g.tc.interface_metadata_name(name)
+		if metadata_name in g.tc.interface_names {
+			result = metadata_name
+		}
 	}
-	metadata_name := g.tc.interface_metadata_name(name)
-	if metadata_name in g.tc.interface_names {
-		return metadata_name
+	if !isnil(g.interface_receiver_cache) {
+		mut cache := g.interface_receiver_cache
+		cache.entries[name] = result
 	}
-	return ''
+	return result
 }
 
 fn (mut g FlatGen) gen_interface_receiver_base_expr(base_id flat.NodeId, is_ptr bool) {
@@ -8238,7 +8313,8 @@ fn params_have_optional_result(params []types.Type) bool {
 fn (mut g FlatGen) precompute_concrete_optional_abi_fns() {
 	mut cur_module := ''
 	mut cur_file := ''
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		kind_id := node_kind_id(node)
 		if kind_id == 77 {
 			cur_file = node.value
@@ -8372,6 +8448,9 @@ fn (g &FlatGen) current_param_is_mut(name string) bool {
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return false
 	}
+	if owner.belongs_to_scope(g.tc.cur_scope) {
+		return true
+	}
 	return g.tc.cur_scope.nearest_binding_owned_by(name, owner)
 }
 
@@ -8384,6 +8463,9 @@ fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
 	}
 	owner := g.cur_mut_param_owners[name] or { return false }
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
+		return false
+	}
+	if owner.belongs_to_scope(g.tc.cur_scope) {
 		return false
 	}
 	return !g.tc.cur_scope.nearest_binding_owned_by(name, owner)
@@ -8496,6 +8578,21 @@ fn resolved_call_matches_target(resolved string, target string) bool {
 
 // normalize_call_key transforms normalize call key data for c.
 fn (g &FlatGen) normalize_call_key(name string) string {
+	cache_key := '${g.tc.cur_module}\x01${g.tc.cur_file}\x01${name}'
+	if !isnil(g.normalize_call_cache) {
+		if cached := g.normalize_call_cache.entries[cache_key] {
+			return cached
+		}
+	}
+	result := g.normalize_call_key_uncached(name)
+	if !isnil(g.normalize_call_cache) {
+		mut cache := g.normalize_call_cache
+		cache.entries[cache_key] = result
+	}
+	return result
+}
+
+fn (g &FlatGen) normalize_call_key_uncached(name string) string {
 	if name.starts_with('main.') {
 		short_name := name.all_after_last('.')
 		if short_name in g.tc.fn_param_types || short_name in g.tc.fn_ret_types {
@@ -8663,7 +8760,7 @@ fn (g &FlatGen) unique_short_fn_decl_variadic(name string) ?bool {
 }
 
 fn (mut g FlatGen) param_types_for(name string, fallback string) []types.Type {
-	cache_key := '${name}\x01${fallback}'
+	cache_key := if name == fallback { name } else { '${name}\x01${fallback}' }
 	if cached := g.param_types_cache[cache_key] {
 		return cached
 	}
@@ -9924,7 +10021,8 @@ fn (g &FlatGen) plain_concrete_fn_name_shadows_generic(name string) bool {
 // file), so the attribution matches the previous per-call behavior byte for byte.
 fn (mut g FlatGen) precompute_non_generic_fn_index() {
 	mut cur_module := 'main'
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		match node.kind {
 			.module_decl {
 				cur_module = node.value
@@ -10397,9 +10495,9 @@ fn infer_codegen_generic_type_args(param_type string, arg_type string, mut infer
 		}
 		return
 	}
-	p_base, p_args, p_ok := shared_generic_app_parts(param)
+	p_base, p_args, p_ok := parse_shared_generic_app_parts(param)
 	if p_ok {
-		a_base, a_args, a_ok := shared_generic_app_parts(arg)
+		a_base, a_args, a_ok := parse_shared_generic_app_parts(arg)
 		if a_ok && p_base.all_after_last('.') == a_base.all_after_last('.') {
 			for i, p_arg in p_args {
 				if i < a_args.len {
@@ -10508,7 +10606,7 @@ fn codegen_generic_arg_is_unresolved(arg string) bool {
 				|| codegen_generic_arg_is_unresolved(clean[bracket_end + 1..])
 		}
 	}
-	_, nested_args, ok := shared_generic_app_parts(clean)
+	_, nested_args, ok := parse_shared_generic_app_parts(clean)
 	if ok {
 		for nested in nested_args {
 			if codegen_generic_arg_is_unresolved(nested) {
@@ -12164,7 +12262,8 @@ fn (mut g FlatGen) cached_header_forward_decls() {
 	mut cur_file := ''
 	mut cur_module := ''
 	mut items := []FlatFnGenItem{}
-	for node_idx, node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		if node.kind == .file {
 			cur_file = node.value
 			cur_module = ''
@@ -12344,7 +12443,15 @@ fn (g &FlatGen) collect_c_extern_ref_from_node_into(node flat.Node, mut refs map
 
 fn (mut g FlatGen) preseed_c_extern_fn_ptr_types() {
 	referenced := g.c_extern_referenced_symbols()
-	for i in 0 .. g.a.nodes.len {
+	g.preseed_c_extern_fn_ptr_types_with_filter(referenced, true)
+}
+
+fn (mut g FlatGen) preseed_all_c_extern_fn_ptr_types() {
+	g.preseed_c_extern_fn_ptr_types_with_filter(map[string]bool{}, false)
+}
+
+fn (mut g FlatGen) preseed_c_extern_fn_ptr_types_with_filter(referenced map[string]bool, filter_used bool) {
+	for i in g.top_level_nodes() {
 		node := g.a.nodes[i]
 		if node_kind_id(node) != 76 {
 			continue
@@ -12353,7 +12460,7 @@ fn (mut g FlatGen) preseed_c_extern_fn_ptr_types() {
 		raw_cfn := g.cname(raw_name)
 		cfn := c_winapi_wide_export_name(raw_cfn)
 		shared_runtime_extern := g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols
-		if g.has_used_fn_filter() && !(g.spawn_wrapper_defs.len > 0
+		if filter_used && g.has_used_fn_filter() && !(g.spawn_wrapper_defs.len > 0
 			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
 			&& !g.used_fn_contains(raw_name) && !g.used_fn_contains(raw_cfn)
 			&& !g.used_fn_contains(cfn) && !referenced[raw_name] && !referenced[raw_cfn]

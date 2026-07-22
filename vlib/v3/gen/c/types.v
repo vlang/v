@@ -490,7 +490,7 @@ fn (g &FlatGen) type_contains_generic_placeholder(t types.Type) bool {
 }
 
 fn (g &FlatGen) struct_generic_params_for_name(name string) []string {
-	base, _, ok := shared_generic_app_parts(name)
+	base, _, ok := g.shared_generic_app_parts(name)
 	if !ok {
 		return []string{}
 	}
@@ -500,7 +500,7 @@ fn (g &FlatGen) struct_generic_params_for_name(name string) []string {
 }
 
 fn (g &FlatGen) sum_generic_params_for_name(name string) []string {
-	base, _, ok := shared_generic_app_parts(name)
+	base, _, ok := g.shared_generic_app_parts(name)
 	if !ok {
 		return []string{}
 	}
@@ -510,7 +510,7 @@ fn (g &FlatGen) sum_generic_params_for_name(name string) []string {
 }
 
 fn type_name_is_unbound_generic_decl(name string, params []string, materialized bool) bool {
-	_, args, ok := shared_generic_app_parts(name)
+	_, args, ok := parse_shared_generic_app_parts(name)
 	if !ok || materialized || params.len == 0 {
 		return false
 	}
@@ -607,7 +607,8 @@ fn (mut g FlatGen) enum_decls() {
 	}
 	mut cur_module := ''
 	mut emitted := map[string]bool{}
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
 				cur_module = 'main'
@@ -794,7 +795,8 @@ fn (mut g FlatGen) enum_decls() {
 fn (mut g FlatGen) enum_str_forward_decls() {
 	mut cur_module := ''
 	mut emitted := map[string]bool{}
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
 				cur_module = ''
@@ -828,7 +830,8 @@ fn (mut g FlatGen) enum_str_forward_decls() {
 fn (mut g FlatGen) enum_str_defs() {
 	mut cur_module := ''
 	mut emitted := map[string]bool{}
-	for node in g.a.nodes {
+	for node_idx in g.top_level_nodes() {
+		node := g.a.nodes[node_idx]
 		match node.kind {
 			.file {
 				cur_module = ''
@@ -1160,7 +1163,8 @@ fn (g &FlatGen) enum_comptime_call_value(id flat.NodeId, enum_module string, enu
 	mut exact_found := false
 	mut suffix_node := flat.Node{}
 	mut suffix_found := false
-	for candidate in g.a.nodes {
+	for candidate_idx in g.top_level_nodes() {
+		candidate := g.a.nodes[candidate_idx]
 		if candidate.kind == .file {
 			cur_mod = ''
 			continue

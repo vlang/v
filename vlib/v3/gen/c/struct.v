@@ -577,8 +577,8 @@ fn (g &FlatGen) unique_qualified_struct_c_type(short_ct string) ?string {
 }
 
 fn (g &FlatGen) generic_struct_init_context_matches(init_name string, expected_name string) bool {
-	init_base, init_args, init_ok := shared_generic_app_parts(init_name)
-	expected_base, expected_args, expected_ok := shared_generic_app_parts(expected_name)
+	init_base, init_args, init_ok := g.shared_generic_app_parts(init_name)
+	expected_base, expected_args, expected_ok := g.shared_generic_app_parts(expected_name)
 	if !init_ok || !expected_ok || init_args.len != expected_args.len
 		|| init_base.all_after_last('.') != expected_base.all_after_last('.') {
 		return false
@@ -1965,24 +1965,30 @@ fn (g &FlatGen) shared_alias_pointer_type_from_text(raw string) ?types.Type {
 		}
 	}
 	if !clean.contains('.') {
-		mut found := ''
-		for name, target in g.tc.type_aliases {
-			if name == clean || name.ends_with('.${clean}') {
-				if inner := shared_inner_type_text(target) {
-					if found.len > 0 && found != inner {
-						return none
-					}
-					found = inner
-				}
+		if found := g.shared_alias_pointer_shorts[clean] {
+			if found.len == 0 {
+				return none
 			}
-		}
-		if found.len > 0 {
 			return types.Type(types.Pointer{
 				base_type: g.tc.parse_type(found)
 			})
 		}
 	}
 	return none
+}
+
+fn (mut g FlatGen) precompute_shared_alias_pointer_shorts() {
+	for name, target in g.tc.type_aliases {
+		inner := shared_inner_type_text(target) or { continue }
+		short := name.all_after_last('.')
+		if existing := g.shared_alias_pointer_shorts[short] {
+			if existing != inner {
+				g.shared_alias_pointer_shorts[short] = ''
+			}
+		} else {
+			g.shared_alias_pointer_shorts[short] = inner
+		}
+	}
 }
 
 fn (g &FlatGen) shared_alias_pointer_type(typ types.Type) ?types.Type {
@@ -1996,7 +2002,49 @@ fn decl_assign_is_shared_marker(value string) bool {
 	return value == 'shared' || value.starts_with('shared:')
 }
 
-fn shared_generic_app_parts(typ string) (string, []string, bool) {
+struct GenericAppInfo {
+	base string
+	args []string
+	ok   bool
+}
+
+@[heap]
+struct GenericAppCache {
+mut:
+	entries map[string]GenericAppInfo
+	base    &GenericAppCache = unsafe { nil }
+}
+
+fn (g &FlatGen) shared_generic_app_parts(typ string) (string, []string, bool) {
+	// Most queried type names are not generic. Avoid hashing and retaining a
+	// negative cache entry when a single byte scan can reject them.
+	if typ.index_u8(`[`) <= 0 || typ.starts_with('fn(') || typ.starts_with('fn (') {
+		return '', []string{}, false
+	}
+	if !isnil(g.generic_app_cache) {
+		cache := g.generic_app_cache
+		if cached := cache.entries[typ] {
+			return cached.base, cached.args, cached.ok
+		}
+		if !isnil(cache.base) {
+			if cached := cache.base.entries[typ] {
+				return cached.base, cached.args, cached.ok
+			}
+		}
+	}
+	base, args, ok := parse_shared_generic_app_parts(typ)
+	if !isnil(g.generic_app_cache) {
+		mut cache := g.generic_app_cache
+		cache.entries[typ] = GenericAppInfo{
+			base: base
+			args: args
+			ok:   ok
+		}
+	}
+	return base, args, ok
+}
+
+fn parse_shared_generic_app_parts(typ string) (string, []string, bool) {
 	if typ.starts_with('fn(') || typ.starts_with('fn (') {
 		return '', []string{}, false
 	}
@@ -2114,7 +2162,7 @@ fn substitute_shared_generic_type_text(typ string, params []string, args []strin
 		}
 		return '(' + parts.join(', ') + ')'
 	}
-	base, nested_args, ok := shared_generic_app_parts(clean)
+	base, nested_args, ok := parse_shared_generic_app_parts(clean)
 	if ok {
 		mut resolved_args := []string{}
 		for arg in nested_args {
@@ -2210,7 +2258,7 @@ fn shared_type_text_uses_generic_params(typ string, params []string) bool {
 			return shared_type_text_uses_generic_params(clean[params_end + 1..], params)
 		}
 	}
-	base, args, ok := shared_generic_app_parts(clean)
+	base, args, ok := parse_shared_generic_app_parts(clean)
 	if ok {
 		if shared_type_text_uses_generic_params(base, params) {
 			return true
@@ -2277,7 +2325,7 @@ fn (g &FlatGen) shared_qualify_type_text(typ string, module_name string) string 
 				1..], module_name)
 		}
 	}
-	base, args, ok := shared_generic_app_parts(clean)
+	base, args, ok := g.shared_generic_app_parts(clean)
 	if ok {
 		mut qualified_args := []string{}
 		for arg in args {
@@ -2394,7 +2442,7 @@ fn (mut g FlatGen) register_shared_type_name(inner string, module_name string) {
 
 fn (mut g FlatGen) collect_generic_shared_type_names(info StructDeclInfo) {
 	for type_name, _ in g.tc.structs {
-		base, args, ok := shared_generic_app_parts(type_name)
+		base, args, ok := g.shared_generic_app_parts(type_name)
 		if !ok || !shared_generic_base_matches_decl(base, info) {
 			continue
 		}
@@ -2622,7 +2670,7 @@ fn (mut g FlatGen) shared_interface_storage_expr(id flat.NodeId) ?string {
 }
 
 fn (mut g FlatGen) generic_shared_field_info(type_name string, field_name string) ?SharedFieldInfo {
-	base, args, ok := shared_generic_app_parts(type_name)
+	base, args, ok := g.shared_generic_app_parts(type_name)
 	if !ok {
 		return none
 	}
@@ -3119,7 +3167,7 @@ fn (mut g FlatGen) struct_init_c_type_name(type_name string) string {
 }
 
 fn (g &FlatGen) concrete_generic_struct_init_ct(type_name string) ?string {
-	base, args, ok := shared_generic_app_parts(type_name)
+	base, args, ok := g.shared_generic_app_parts(type_name)
 	if !ok || args.len == 0 {
 		return none
 	}
@@ -3127,7 +3175,7 @@ fn (g &FlatGen) concrete_generic_struct_init_ct(type_name string) ?string {
 	mut matches := []string{}
 	mut base_matches := []string{}
 	for candidate in g.tc.structs.keys() {
-		candidate_base, candidate_args, candidate_ok := shared_generic_app_parts(candidate)
+		candidate_base, candidate_args, candidate_ok := g.shared_generic_app_parts(candidate)
 		if !candidate_ok || candidate_args.len != args.len
 			|| candidate_base.all_after_last('.') != base.all_after_last('.') {
 			continue
@@ -3154,7 +3202,7 @@ fn (g &FlatGen) concrete_generic_struct_init_ct(type_name string) ?string {
 }
 
 fn (g &FlatGen) struct_init_import_alias_type_name(type_name string) string {
-	base, args, is_generic := shared_generic_app_parts(type_name)
+	base, args, is_generic := g.shared_generic_app_parts(type_name)
 	if is_generic && args.len > 0 && !base.contains('.') {
 		mut resolved := []string{}
 		if g.tc.cur_file.len > 0 {
@@ -3208,7 +3256,7 @@ fn (g &FlatGen) generic_struct_import_candidate_is_materialized(base string, arg
 	wanted_suffix := generic_receiver_type_suffixes(args).replace('_', '')
 	base_info := g.find_struct_decl(base) or { return false }
 	for candidate in g.tc.structs.keys() {
-		candidate_base, candidate_args, ok := shared_generic_app_parts(candidate)
+		candidate_base, candidate_args, ok := g.shared_generic_app_parts(candidate)
 		if !ok || candidate_base.all_after_last('.') != base.all_after_last('.')
 			|| (candidate_base != base && base_info.module != base.all_before_last('.'))
 			|| candidate_args.len != args.len {
@@ -3236,7 +3284,7 @@ fn (g &FlatGen) generic_struct_import_candidate_is_materialized(base string, arg
 
 fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?string {
 	clean := trimmed_space(type_name)
-	base, args, ok := shared_generic_app_parts(clean)
+	base, args, ok := g.shared_generic_app_parts(clean)
 	if !ok || args.len == 0 {
 		return none
 	}
@@ -3255,7 +3303,7 @@ fn (g &FlatGen) generic_struct_init_app_ct_from_context(type_name string) ?strin
 			continue
 		}
 		candidate_name := candidate_type.name()
-		candidate_base, candidate_args, candidate_ok := shared_generic_app_parts(candidate_name)
+		candidate_base, candidate_args, candidate_ok := g.shared_generic_app_parts(candidate_name)
 		if !candidate_ok || candidate_args.len != args.len {
 			continue
 		}
@@ -3312,7 +3360,7 @@ fn (g &FlatGen) flattened_generic_struct_init_ct(type_name string) ?string {
 	}
 	mut matches := []string{}
 	for struct_name, _ in g.tc.structs {
-		base, args, ok := shared_generic_app_parts(struct_name)
+		base, args, ok := g.shared_generic_app_parts(struct_name)
 		if !ok || args.len == 0 {
 			continue
 		}

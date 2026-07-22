@@ -15,7 +15,10 @@ fn c_name(name string) string {
 @[heap]
 struct CNameCache {
 mut:
-	entries map[string]string
+	entries    map[string]string
+	base       &CNameCache = unsafe { nil }
+	last_name  string
+	last_value string
 }
 
 // ConstShortIndex maps a const short name to its unique primary const name
@@ -36,6 +39,15 @@ mut:
 	entries map[string]i8
 }
 
+// StringLookupCache memoizes context-qualified string lookups whose empty
+// result is meaningful. Keeping the cache behind a pointer lets read-only
+// FlatGen query methods populate a worker-local cache.
+@[heap]
+struct StringLookupCache {
+mut:
+	entries map[string]string
+}
+
 // cname is the memoizing wrapper for naming.c_name used on FlatGen hot paths.
 @[inline]
 fn (g &FlatGen) cname(name string) string {
@@ -43,11 +55,26 @@ fn (g &FlatGen) cname(name string) string {
 		return naming.c_name(name)
 	}
 	mut cache := g.c_name_cache
+	if cache.last_name.len == name.len
+		&& (unsafe { cache.last_name.str == name.str } || cache.last_name == name) {
+		return cache.last_value
+	}
 	if cached := cache.entries[name] {
+		cache.last_name = name
+		cache.last_value = cached
 		return cached
+	}
+	if !isnil(cache.base) {
+		if cached := cache.base.entries[name] {
+			cache.last_name = name
+			cache.last_value = cached
+			return cached
+		}
 	}
 	result := naming.c_name(name)
 	cache.entries[name] = result
+	cache.last_name = name
+	cache.last_value = result
 	return result
 }
 
