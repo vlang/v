@@ -3,7 +3,6 @@ vlib/v/tests/concurrency/autolock_array2_test.v
 vlib/v/tests/concurrency/shared_array_test.v
 vlib/v/tests/conditions/ifs/if_expr_of_option_test.v
 vlib/v/tests/conditions/ifs/if_smartcast_test.v
-vlib/v/tests/fns/array_fixed_unresolved_ret_test.v
 vlib/v/tests/fns/call_on_anon_test.v
 vlib/v/tests/fns/call_with_nil_test.v
 vlib/v/tests/fns/closure_struct_init_cov_regression_test.v

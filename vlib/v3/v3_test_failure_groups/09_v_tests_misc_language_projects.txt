@@ -3,10 +3,8 @@ vlib/v/tests/assign/assert_sumtype_test.v
 vlib/v/tests/assign/assert_with_array_ref_test.v
 vlib/v/tests/assign/assign_literal_with_closure_test.v
 vlib/v/tests/c_shadowed_c_fn_call_test.v
-vlib/v/tests/c_struct_with_reserved_field_name_test.v
 vlib/v/tests/clash_var_fn_name_test.v
 vlib/v/tests/closure_with_fn_ref_var_test.v
-vlib/v/tests/consts/const_array_fixed_test.v
 vlib/v/tests/consts/const_call_expr_order_test.v
 vlib/v/tests/consts/const_fixed_array_of_reference_value_test.v
 vlib/v/tests/consts/const_from_bytes_test.v
@@ -24,9 +22,7 @@ vlib/v/tests/indexexpr_with_anon_fn_test.v
 vlib/v/tests/init_global_test.v
 vlib/v/tests/match_multi_return_closure_heap_test.v
 vlib/v/tests/match_or_expr_test.v
-vlib/v/tests/module_test.v
 vlib/v/tests/modules/function_types_from_module/function_types_from_module_test.v
-vlib/v/tests/modules/methods_struct_another_module/import_symbol_static_method_test.v
 vlib/v/tests/modules/methods_struct_another_module/methods_struct_test.v
 vlib/v/tests/multi_return_test.v
 vlib/v/tests/nested_if_expr_method_call_test.v
@@ -34,7 +30,6 @@ vlib/v/tests/nested_if_return_test.v
 vlib/v/tests/power_operator_test.v
 vlib/v/tests/prefix_expr_test.v
 vlib/v/tests/printing/dump_interface_circular_test.v
-vlib/v/tests/project_with_c_code/main1_test.v
 vlib/v/tests/project_with_tests_for_main/my_other_test.v
 vlib/v/tests/project_with_tests_for_main/my_test.v
 vlib/v/tests/reflection_sym_test.v

@@ -3,7 +3,6 @@ vlib/v/tests/comptime/comptime_call_test.v
 vlib/v/tests/comptime/comptime_default_value_test.v
 vlib/v/tests/comptime/comptime_for_test.v
 vlib/v/tests/comptime/comptime_if_fn_type_signature_test.v
-vlib/v/tests/comptime/comptime_if_generic_struct_init_selector_test.v
 vlib/v/tests/comptime/comptime_indirections_test.v
 vlib/v/tests/comptime/comptime_kinds_test.v
 vlib/v/tests/comptime/comptime_match_assign_test.v
@@ -17,7 +16,6 @@ vlib/v/tests/options/option_fixed_array_test.v
 vlib/v/tests/options/option_fn_multi_ret_test.v
 vlib/v/tests/options/option_generic_array_field_test.v
 vlib/v/tests/options/option_generic_array_mut_test.v
-vlib/v/tests/options/option_generic_method_ret_ptr_none_assert_test.v
 vlib/v/tests/options/option_if_infer_test.v
 vlib/v/tests/options/option_if_unwrap_test.v
 vlib/v/tests/options/option_init_ptr_test.v
@@ -40,7 +38,6 @@ vlib/v/tests/options/option_reference_params_test.v
 vlib/v/tests/options/option_sum_type_test.v
 vlib/v/tests/options/option_sumtype_if_expr_struct_field_test.v
 vlib/v/tests/options/option_sumtype_option_variant_test.v
-vlib/v/tests/options/option_sumtype_unwrap_test.v
 vlib/v/tests/options/option_sumtype_variant_test.v
 vlib/v/tests/options/option_unwrap_fn_test.v
 vlib/v/tests/options/option_unwrap_ifexpr_test.v
