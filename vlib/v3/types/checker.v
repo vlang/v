@@ -443,6 +443,7 @@ pub mut:
 	file_selective_imports  map[string][]string
 	file_imports_by_file    map[string]&FileImportInfo
 	file_modules            map[string]string
+	translated_files        map[string]bool
 	file_scope              &Scope = unsafe { nil }
 	cur_scope               &Scope = unsafe { nil }
 	scope_pool              []&Scope
@@ -632,6 +633,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		file_selective_imports:                map[string][]string{}
 		file_imports_by_file:                  map[string]&FileImportInfo{}
 		file_modules:                          map[string]string{}
+		translated_files:                      map[string]bool{}
 		file_scope:                            fs
 		cur_scope:                             fs
 		// The node-indexed cache arrays start empty: collect() sizes them via
@@ -744,6 +746,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		file_selective_imports:             tc.file_selective_imports
 		file_imports_by_file:               tc.file_imports_by_file
 		file_modules:                       tc.file_modules
+		translated_files:                   tc.translated_files
 		file_scope:                         fs
 		cur_scope:                          fs
 		scope_pool:                         []&Scope{}
@@ -1400,6 +1403,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	// No later phase adds declarations, so both indexes stay complete for the
 	// whole compile.
 	tc.declared_type_scope_keys = map[string]bool{}
+	tc.translated_files = map[string]bool{}
 	tc.top_level_idx = []int{cap: 65536}
 	tc.prepare_threads_condition()
 	inactive_comptime_nodes := tc.inactive_top_level_comptime_nodes()
@@ -1416,6 +1420,20 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				idx_file = node.value
 				idx_module = ''
 				tc.top_level_idx << i
+			}
+			.directive {
+				if idx_file.len > 0 && node.value.starts_with('@attributes:') {
+					decl_idx := node.value['@attributes:'.len..].int()
+					if decl_idx >= 0 && decl_idx < a.nodes.len
+						&& a.nodes[decl_idx].kind == .module_decl {
+						for attr in node.generic_params() {
+							if attr.all_before(':').trim_space() == 'translated' {
+								tc.translated_files[idx_file] = true
+								break
+							}
+						}
+					}
+				}
 			}
 			.module_decl {
 				idx_module = node.value
@@ -11930,6 +11948,10 @@ fn assignment_op_reads_lhs(op flat.Op) bool {
 }
 
 fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Type, expected_type Type, op flat.Op) bool {
+	if op == .assign && tc.translated_files[tc.cur_file] && rhs_type is ArrayFixed
+		&& expected_type is Pointer {
+		return tc.type_compatible(rhs_type.elem_type, expected_type.base_type)
+	}
 	if fn_param_unalias_type(expected_type).is_integer() && tc.c_scalar_byte_literal_arg(rhs_id) {
 		return true
 	}
@@ -12812,9 +12834,6 @@ fn (tc &TypeChecker) generic_expected_type_match(actual Type, expected Type) boo
 }
 
 fn (tc &TypeChecker) pointer_value_compatible(actual Type, expected Type) bool {
-	if actual is ArrayFixed && expected is Pointer {
-		return tc.type_compatible(actual.elem_type, expected.base_type)
-	}
 	if actual is Pointer {
 		actual_base := if actual.base_type is Alias {
 			actual.base_type.base_type

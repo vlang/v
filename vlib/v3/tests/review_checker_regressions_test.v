@@ -59,6 +59,22 @@ fn test_reject_pointer_expressions_for_value_returns() {
 		'cannot initialize field `x` with `&int`; expected `int`')
 }
 
+fn test_reject_fixed_array_decay_to_pointer() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_fixed_array_pointer_argument',
+		'fn consume(value &int) {}\n\nfn main() {\n\tconsume([1, 2]!)\n}\n',
+		'cannot use `[2]int` as argument 1 to `consume`; expected `&int`')
+	run_bad(v3_bin, 'bad_fixed_array_pointer_return',
+		'fn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
+		'cannot return `[2]int` as `&int`')
+	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_return',
+		'@[translated]\nmodule main\n\nfn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
+		'cannot return `[2]int` as `&int`')
+	out := run_good(v3_bin, 'good_translated_fixed_array_pointer_assignment',
+		'@[translated]\nmodule main\n\nfn main() {\n\tvalues := [1, 2]!\n\tmut ptr := &int(0)\n\tptr = values\n\tprintln(int_str(*ptr))\n}\n')
+	assert out == '1'
+}
+
 fn test_reject_cross_wrapper_option_result_returns() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_result_value_in_option_return',
