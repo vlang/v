@@ -94,10 +94,12 @@ on IANA-zoned `Time` values.
 
 The bundled `vlib/time/tzdata/zoneinfo.zip` is a store-only (uncompressed) zip
 of IANA zoneinfo files for offline use via `import time.tzdata`. Refresh it
-from a system zoneinfo tree when updating tzdata, for example:
+from a full system zoneinfo tree when updating tzdata. On macOS, prefer
+`/usr/share/zoneinfo.default` over `/usr/share/zoneinfo`, because the latter may
+contain truncated files with fixed POSIX tails. For example:
 
 ```sh
-cd /usr/share/zoneinfo && zip -0 -r /path/to/v/vlib/time/tzdata/zoneinfo.zip .
+cd /usr/share/zoneinfo.default && zip -0 -r /path/to/v/vlib/time/tzdata/zoneinfo.zip .
 ```
 
 Another very useful feature of the `time` module is the stop watch,
