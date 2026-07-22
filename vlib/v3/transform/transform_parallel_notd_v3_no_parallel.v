@@ -19,9 +19,9 @@ const max_parallel_transform_jobs = 7
 // clone memory; cap by core count only.
 const max_shared_transform_jobs = 10
 const max_parallel_monomorph_jobs = 10
-const scoped_transform_worker_batches = 8
-const scoped_transform_master_batches = 8
-const scoped_transform_max_batch_items = 256
+const scoped_transform_worker_batches = 1
+const scoped_transform_master_batches = 1
+const scoped_transform_max_batch_items = 2048
 const scoped_monomorph_batch_specs = 512
 const scoped_monomorph_scan_nodes = 32768
 

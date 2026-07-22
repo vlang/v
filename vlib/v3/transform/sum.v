@@ -128,12 +128,27 @@ fn (t &Transformer) resolve_sum_name(sum_name string) string {
 	if c.module != t.cur_module {
 		c.module = t.cur_module
 		c.entries.clear()
+		c.clear_recent()
+	}
+	if unsafe { c.last_type.str == sum_name.str } && c.last_type.len == sum_name.len {
+		return c.last_result
+	}
+	if unsafe { c.last_type2.str == sum_name.str } && c.last_type2.len == sum_name.len {
+		return c.last_result2
+	}
+	if unsafe { c.last_type3.str == sum_name.str } && c.last_type3.len == sum_name.len {
+		return c.last_result3
+	}
+	if unsafe { c.last_type4.str == sum_name.str } && c.last_type4.len == sum_name.len {
+		return c.last_result4
 	}
 	if cached := c.entries[sum_name] {
+		c.put_recent(sum_name, cached)
 		return cached
 	}
 	result := t.resolve_sum_name_uncached(sum_name)
 	c.entries[sum_name] = result
+	c.put_recent(sum_name, result)
 	return result
 }
 

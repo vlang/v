@@ -113,6 +113,26 @@ fn (t &Transformer) resolve_interface_type_name(name string) string {
 	if name.len == 0 || isnil(t.tc) {
 		return ''
 	}
+	if isnil(t.interface_type_cache) {
+		return t.resolve_interface_type_name_uncached(name)
+	}
+	mut cache := t.interface_type_cache
+	if cache.module != t.cur_module || cache.file != t.cur_file {
+		cache.module = t.cur_module
+		cache.file = t.cur_file
+		cache.entries.clear()
+	}
+	if resolved := cache.entries[name] {
+		return resolved
+	}
+	resolved := t.resolve_interface_type_name_uncached(name)
+	// An empty value is a cached miss. Map lookup guards distinguish a present
+	// empty string from an absent key, avoiding a second map probe for misses.
+	cache.entries[name] = resolved
+	return resolved
+}
+
+fn (t &Transformer) resolve_interface_type_name_uncached(name string) string {
 	mut clean := t.trim_pointer_type(t.normalize_type_alias(name))
 	base, _, is_generic := generic_app_parts(clean)
 	if is_generic {

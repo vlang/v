@@ -112,8 +112,10 @@ mut:
 	cur_fn_ret_type               string
 	cur_fn_is_generic             bool
 	skip_generics                 bool
+	building_v                    bool
 	var_types                     []VarTypeBinding
 	var_type_indices              map[string]int
+	var_type_cache                &VarTypeIndexCache = unsafe { nil }
 	refined_node_types            map[int]string
 	fn_value_locals               map[string]string
 	mut_param_values              map[string]bool
@@ -146,9 +148,13 @@ mut:
 	autolock_depth                int
 	alias_cache                   &AliasCache             = unsafe { nil }
 	sum_cache                     &AliasCache             = unsafe { nil }
+	module_type_cache             &AliasCache             = unsafe { nil }
+	struct_guess_cache            &AliasCache             = unsafe { nil }
 	generic_unresolved_cache      &GenericUnresolvedCache = unsafe { nil }
 	struct_field_type_cache       &LookupCache            = unsafe { nil }
 	variant_short_name_cache      &LookupCache            = unsafe { nil }
+	interface_type_cache          &ContextLookupCache     = unsafe { nil }
+	type_alias_name_cache         &ContextBoolLookupCache = unsafe { nil }
 	interface_box_param_cache     &BoolLookupCache        = unsafe { nil }
 	alias_receiver_method_cache   &LookupCache            = unsafe { nil }
 	call_variadic_cache           &BoolLookupCache        = unsafe { nil }
@@ -309,9 +315,41 @@ mut:
 // keyed by typ and cleared whenever the source context changes.
 struct AliasCache {
 mut:
-	module  string
-	file    string
-	entries map[string]string
+	module       string
+	file         string
+	last_type    string
+	last_result  string
+	last_type2   string
+	last_result2 string
+	last_type3   string
+	last_result3 string
+	last_type4   string
+	last_result4 string
+	entries      map[string]string
+}
+
+@[inline]
+fn (mut c AliasCache) put_recent(typ string, result string) {
+	c.last_type4 = c.last_type3
+	c.last_result4 = c.last_result3
+	c.last_type3 = c.last_type2
+	c.last_result3 = c.last_result2
+	c.last_type2 = c.last_type
+	c.last_result2 = c.last_result
+	c.last_type = typ
+	c.last_result = result
+}
+
+@[inline]
+fn (mut c AliasCache) clear_recent() {
+	c.last_type = ''
+	c.last_result = ''
+	c.last_type2 = ''
+	c.last_result2 = ''
+	c.last_type3 = ''
+	c.last_result3 = ''
+	c.last_type4 = ''
+	c.last_result4 = ''
 }
 
 struct LookupCache {
@@ -320,9 +358,60 @@ mut:
 	misses  map[string]bool
 }
 
+struct ContextLookupCache {
+mut:
+	module  string
+	file    string
+	entries map[string]string
+	misses  map[string]bool
+}
+
 struct BoolLookupCache {
 mut:
 	entries map[string]i8 // 1 = true, -1 = false
+}
+
+struct ContextBoolLookupCache {
+mut:
+	module  string
+	file    string
+	entries map[string]i8 // 1 = true, -1 = false
+}
+
+struct VarTypeIndexCache {
+mut:
+	name   string
+	index  int = -1
+	name2  string
+	index2 int = -1
+	name3  string
+	index3 int = -1
+	name4  string
+	index4 int = -1
+}
+
+@[inline]
+fn (mut c VarTypeIndexCache) put(name string, index int) {
+	c.name4 = c.name3
+	c.index4 = c.index3
+	c.name3 = c.name2
+	c.index3 = c.index2
+	c.name2 = c.name
+	c.index2 = c.index
+	c.name = name
+	c.index = index
+}
+
+@[inline]
+fn (mut c VarTypeIndexCache) clear() {
+	c.name = ''
+	c.index = -1
+	c.name2 = ''
+	c.index2 = -1
+	c.name3 = ''
+	c.index3 = -1
+	c.name4 = ''
+	c.index4 = -1
 }
 
 // GenericUnresolvedCache memoizes generic_arg_is_unresolved results. Lives on
@@ -444,24 +533,25 @@ pub fn transform_with_used_opt_config(mut a flat.FlatAst, tc &types.TypeChecker,
 // to retain parallel latency without retaining every helper's scratch memory.
 pub fn transform_with_used_opt_config_scoped_workers(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool) (map[string]bool, bool) {
 	augmented, was_parallel, _ := transform_with_used_opt_config_scoped_workers_checked(mut a, tc,
-		used_fns, want_parallel, skip_generics, scope_parallel_workers)
+		used_fns, want_parallel, skip_generics, scope_parallel_workers, false)
 	return augmented, was_parallel
 }
 
 // transform_with_used_opt_config_scoped_workers_checked also returns diagnostics selected while
 // normal comptime reflection loops are unrolled.
-pub fn transform_with_used_opt_config_scoped_workers_checked(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool) (map[string]bool, bool, []string) {
+pub fn transform_with_used_opt_config_scoped_workers_checked(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool) (map[string]bool, bool, []string) {
 	augmented, was_parallel, errors, _, _ := transform_with_used_opt_config_scoped_workers_checked_impl(mut a,
-		tc, used_fns, want_parallel, skip_generics, scope_parallel_workers, false, unsafe { nil })
+		tc, used_fns, want_parallel, skip_generics, scope_parallel_workers, building_v, false,
+		unsafe { nil })
 	return augmented, was_parallel, errors
 }
 
 // transform_with_used_opt_config_scoped_workers_checked_owned additionally
 // reports source AST nodes whose owned payloads were replaced during a scoped
 // transform, so the driver can promote exactly those escaping values.
-pub fn transform_with_used_opt_config_scoped_workers_checked_owned(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
+pub fn transform_with_used_opt_config_scoped_workers_checked_owned(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
 	return transform_with_used_opt_config_scoped_workers_checked_impl(mut a, tc, used_fns,
-		want_parallel, skip_generics, scope_parallel_workers, true, stage_scope)
+		want_parallel, skip_generics, scope_parallel_workers, building_v, true, stage_scope)
 }
 
 // transform_selected_functions lowers only the named function bodies after the
@@ -512,9 +602,10 @@ pub fn transform_selected_functions(mut a flat.FlatAst, tc &types.TypeChecker, s
 	return t.used_fns, t.monomorph_errors, synthesized_helpers
 }
 
-fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, retain_worker_results bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
+fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool, retain_worker_results bool, stage_scope voidptr) (map[string]bool, bool, []string, []int, []ScopedTransformRegion) {
 	mut t := new_transformer(mut a, tc, used_fns)
 	t.skip_generics = skip_generics
+	t.building_v = building_v
 	t.scope_parallel_workers = scope_parallel_workers
 	t.retain_worker_results = retain_worker_results
 	t.stage_scope = stage_scope
@@ -538,7 +629,11 @@ fn transform_with_used_opt_config_scoped_workers_checked_impl(mut a flat.FlatAst
 	// resolve before narrowing and other type-aware lowering. This is needed for
 	// non-generic programs too: a call on a narrowed sum-type variant can become a
 	// concrete primitive method only after transform.
-	mut late_names := t.new_call_names_from_used_fn_bodies(used_fns, t.a.nodes.len)
+	mut late_names := if building_v {
+		[]string{}
+	} else {
+		t.new_call_names_from_used_fn_bodies(used_fns, t.a.nodes.len)
+	}
 	late_names << newly_used_fn_names(used_fns, t.used_fns)
 	t.transform_late_used_fn_bodies(late_names, base_node_count)
 	t.run_sum_eq_synthesis_rounds(base_node_count)
@@ -1004,6 +1099,9 @@ fn (mut t Transformer) prepare() {
 	// entries with results computed against a partial view.
 	t.alias_cache = &AliasCache{}
 	t.sum_cache = &AliasCache{}
+	t.module_type_cache = &AliasCache{}
+	t.struct_guess_cache = &AliasCache{}
+	t.var_type_cache = &VarTypeIndexCache{}
 	t.generic_unresolved_cache = &GenericUnresolvedCache{}
 	t.struct_field_type_cache = &LookupCache{
 		entries: map[string]string{}
@@ -1012,6 +1110,13 @@ fn (mut t Transformer) prepare() {
 	t.variant_short_name_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
+	}
+	t.interface_type_cache = &ContextLookupCache{
+		entries: map[string]string{}
+		misses:  map[string]bool{}
+	}
+	t.type_alias_name_cache = &ContextBoolLookupCache{
+		entries: map[string]i8{}
 	}
 	t.prepare_interface_impl_indexes()
 	t.ierror_none_type_id = t.interface_impl_type_id('IError', 'None__') or { 0 }
@@ -1314,6 +1419,7 @@ fn (mut t Transformer) flush_deferred_base_writes() {
 			2 { t.a.nodes[w.idx] = w.node }
 			else { t.a.nodes[w.idx].set_generic_params(w.gparams) }
 		}
+		t.mark_scoped_owned_base_node(w.idx)
 	}
 	t.deferred_base_writes = []DeferredBaseWrite{}
 }
@@ -1373,6 +1479,9 @@ fn (mut t Transformer) set_receiver_method_suffix_index(key string, name string)
 fn (mut t Transformer) reset_var_types() {
 	t.var_types.clear()
 	t.var_type_indices.clear()
+	if !isnil(t.var_type_cache) {
+		t.var_type_cache.clear()
+	}
 	t.fn_value_locals.clear()
 	t.mut_param_values.clear()
 	t.fixed_array_param_values.clear()
@@ -1437,6 +1546,9 @@ fn (mut t Transformer) set_var_type_binding(name string, typ string, raw_typ str
 		return
 	}
 	t.var_type_indices[name] = t.var_types.len
+	if !isnil(t.var_type_cache) {
+		t.var_type_cache.put(name, t.var_types.len)
+	}
 	t.var_types << VarTypeBinding{
 		name:            name
 		typ:             typ
@@ -1485,11 +1597,15 @@ fn (mut t Transformer) unset_var_type(name string) {
 			t.var_type_indices[t.var_types[j].name] = j
 		}
 	}
+	if !isnil(t.var_type_cache) {
+		t.var_type_cache.clear()
+	}
 	t.fn_value_locals.delete(name)
 	t.interface_var_concrete_types.delete(name)
 }
 
 // var_type supports var type handling for Transformer.
+@[inline]
 fn (t &Transformer) var_type(name string) string {
 	i := t.var_type_index(name)
 	if i >= 0 {
@@ -1614,16 +1730,43 @@ fn (t &Transformer) orm_initialized_lvalue_root(id flat.NodeId) ?string {
 
 @[inline]
 fn (t &Transformer) var_type_index(name string) int {
+	if !isnil(t.var_type_cache) {
+		mut cache := t.var_type_cache
+		if unsafe { cache.name.str == name.str } && cache.name.len == name.len {
+			return cache.index
+		}
+		if unsafe { cache.name2.str == name.str } && cache.name2.len == name.len {
+			return cache.index2
+		}
+		if unsafe { cache.name3.str == name.str } && cache.name3.len == name.len {
+			return cache.index3
+		}
+		if unsafe { cache.name4.str == name.str } && cache.name4.len == name.len {
+			return cache.index4
+		}
+	}
 	if i := t.var_type_indices[name] {
+		if !isnil(t.var_type_cache) {
+			mut cache := t.var_type_cache
+			cache.put(name, i)
+		}
 		return i
 	}
 	if t.var_type_indices.len == t.var_types.len {
+		if !isnil(t.var_type_cache) {
+			mut cache := t.var_type_cache
+			cache.put(name, -1)
+		}
 		return -1
 	}
 	// Focused tests can seed var_types directly. Production transformers keep
 	// the O(1) index synchronized through the setters above.
 	for i, binding in t.var_types {
 		if binding.name == name {
+			if !isnil(t.var_type_cache) {
+				mut cache := t.var_type_cache
+				cache.put(name, i)
+			}
 			return i
 		}
 	}
@@ -1631,6 +1774,28 @@ fn (t &Transformer) var_type_index(name string) int {
 }
 
 fn (mut t Transformer) restore_var_types(saved []VarTypeBinding) {
+	if !isnil(t.var_type_cache) {
+		t.var_type_cache.clear()
+	}
+	// Branch transforms usually only change binding types or append inner-scope
+	// locals. In that common case the name-to-index layout is still valid; keep
+	// it instead of clearing and rebuilding the whole map at every branch exit.
+	if t.var_types.len >= saved.len {
+		mut same_prefix := true
+		for i, binding in saved {
+			if t.var_types[i].name != binding.name {
+				same_prefix = false
+				break
+			}
+		}
+		if same_prefix {
+			for i in saved.len .. t.var_types.len {
+				t.var_type_indices.delete(t.var_types[i].name)
+			}
+			t.var_types = saved
+			return
+		}
+	}
 	t.var_types = saved
 	t.var_type_indices.clear()
 	for i, binding in t.var_types {
@@ -2181,7 +2346,15 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	// Collect source-level interface conversions before any worker rewrites its
 	// private AST. Equality and automatic string lowering can then generate the
 	// same bounded tag dispatch independently of worker scheduling.
-	t.collect_interface_boxed_types_dispatch(want_parallel)
+	if t.building_v {
+		// The V compiler does not use generic interface boxing. Its method tables
+		// come from the checker indexes, so avoid rescanning the complete AST just
+		// to produce an empty boxed-type set during every self-host generation.
+		t.interface_boxed_types_done = true
+		t.interface_boxed_types_frozen = true
+	} else {
+		t.collect_interface_boxed_types_dispatch(want_parallel)
+	}
 	t.refresh_interface_impl_indexes_for_boxed_containers()
 	if !want_parallel {
 		if t.scope_parallel_workers && t.retain_worker_results {
@@ -2304,7 +2477,13 @@ fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool)
 				cost = if span_cost > 0 { span_cost } else { 1 }
 			}
 			if has_literal {
+				old_range_lo := t.item_range_lo
+				old_range_hi := t.item_range_hi
+				t.item_range_lo = prev_tl_any + 1
+				t.item_range_hi = i
 				t.transform_fn_body(i)
+				t.item_range_lo = old_range_lo
+				t.item_range_hi = old_range_hi
 			} else {
 				pure << FnWorkItem{
 					fn_idx:   i
@@ -2432,6 +2611,9 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	}
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
+	w.module_type_cache = &AliasCache{}
+	w.struct_guess_cache = &AliasCache{}
+	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
 	w.struct_field_type_cache = &LookupCache{
 		entries: map[string]string{}
@@ -2440,6 +2622,13 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 	w.variant_short_name_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
+	}
+	w.interface_type_cache = &ContextLookupCache{
+		entries: map[string]string{}
+		misses:  map[string]bool{}
+	}
+	w.type_alias_name_cache = &ContextBoolLookupCache{
+		entries: map[string]i8{}
 	}
 	w.alias_receiver_method_cache = &LookupCache{
 		entries: map[string]string{}
@@ -2537,6 +2726,9 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	mut w := t.fork_program_view(t.a, wtc, map[string]bool{}, false)
 	w.alias_cache = &AliasCache{}
 	w.sum_cache = &AliasCache{}
+	w.module_type_cache = &AliasCache{}
+	w.struct_guess_cache = &AliasCache{}
+	w.var_type_cache = &VarTypeIndexCache{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
 	w.struct_field_type_cache = &LookupCache{
 		entries: map[string]string{}
@@ -2545,6 +2737,13 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.variant_short_name_cache = &LookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
+	}
+	w.interface_type_cache = &ContextLookupCache{
+		entries: map[string]string{}
+		misses:  map[string]bool{}
+	}
+	w.type_alias_name_cache = &ContextBoolLookupCache{
+		entries: map[string]i8{}
 	}
 	w.alias_receiver_method_cache = &LookupCache{
 		entries: map[string]string{}
@@ -2683,6 +2882,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		generic_call_spec_misses:           map[int]bool{}
 		monomorph_error_seen:               map[string]bool{}
 		skip_generics:                      t.skip_generics
+		building_v:                         t.building_v
 		has_spawn_expr:                     t.has_spawn_expr
 		base_write_intercept:               t.base_write_intercept
 		defer_oor_writes:                   t.defer_oor_writes
@@ -2888,6 +3088,12 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 			&& t.stage_scope == unsafe { nil } {
 			t.clone_scoped_worker_node(it.fn_idx, w.worker_scope)
 		}
+	}
+	if t.scope_parallel_workers && t.retain_worker_results {
+		for idx in w.scoped_owned_base_nodes.keys() {
+			t.scoped_owned_base_log << idx
+		}
+		t.scoped_owned_base_log << w.scoped_owned_base_log
 	}
 	if w.worker_scope != unsafe { nil } && !t.retain_worker_results
 		&& t.stage_scope == unsafe { nil } {
@@ -3099,15 +3305,9 @@ fn split_work_items_ex(items []FnWorkItem, n int, chain_stagger bool) [][]FnWork
 				}
 			}
 		} else {
-			// All workers start together. Stagger the worker shares slightly so
-			// the workers merged first finish first — the master then folds each
-			// one in while the later ones are still running — and keep the
-			// master's own share a touch lighter than even to cover the final
-			// merge tail.
-			loads[0] = unit * 3
-			for b in 1 .. n {
-				loads[b] = unit * i64(n - b) / 2
-			}
+			// The persistent pool waits for every submitted callback before the
+			// master can merge. Keep shared-base chunks evenly loaded; staggering
+			// their finish times only lengthens the wait for the heaviest bucket.
 		}
 	}
 	mut sorted := items.clone()
@@ -4764,6 +4964,17 @@ fn (mut t Transformer) collect_return_escape_idents(id flat.NodeId, mut names ma
 }
 
 fn (t &Transformer) next_temp_counter_for_fn(fn_node flat.Node) int {
+	if t.item_range_lo >= 0 && t.item_range_hi >= t.item_range_lo
+		&& t.item_range_hi <= t.a.nodes.len {
+		mut next := 0
+		for idx in t.item_range_lo .. t.item_range_hi {
+			node := t.a.nodes[idx]
+			if node.kind == .ident && node.value.starts_with('__') {
+				next = next_temp_counter_after_name(node.value, next)
+			}
+		}
+		return next
+	}
 	mut seen := map[int]bool{}
 	mut next := 0
 	for i in 0 .. fn_node.children_count {
@@ -4781,15 +4992,21 @@ fn (t &Transformer) scan_existing_temp_suffix(id flat.NodeId, mut seen map[int]b
 	seen[idx] = true
 	node := t.a.nodes[idx]
 	if node.kind == .ident && node.value.starts_with('__') {
-		suffix := node.value.all_after_last('_')
-		if suffix.is_int() && suffix.int() >= next {
-			next = suffix.int() + 1
-		}
+		next = next_temp_counter_after_name(node.value, next)
 	}
 	for i in 0 .. node.children_count {
 		next = t.scan_existing_temp_suffix(t.a.child(&node, i), mut seen, next)
 	}
 	return next
+}
+
+fn next_temp_counter_after_name(name string, current int) int {
+	suffix := name.all_after_last('_')
+	if !suffix.is_int() {
+		return current
+	}
+	value := suffix.int()
+	return if value >= current { value + 1 } else { current }
 }
 
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
@@ -6773,21 +6990,12 @@ fn (t &Transformer) const_array_literal_storage_elem_excluded(raw_type types.Typ
 }
 
 fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool {
-	mut fixed_safe_refs := map[int]bool{}
-	for node in t.a.nodes {
-		if node.kind == .index && node.children_count > 0 {
-			t.mark_const_ref_descendants(mut fixed_safe_refs, t.a.child(&node, 0))
-		}
-		if node.kind == .selector && node.value == 'len' && node.children_count > 0 {
-			t.mark_const_ref_descendants(mut fixed_safe_refs, t.a.child(&node, 0))
-		}
-		if node.kind == .for_in_stmt && node.value.int() == 3 && node.children_count > 2 {
-			container_id := t.a.child(&node, 2)
-			if int(container_id) >= 0 && t.a.nodes[int(container_id)].kind != .range {
-				t.mark_const_ref_descendants(mut fixed_safe_refs, container_id)
-			}
-		}
-	}
+	// 0 = unseen, 1 = fixed-storage-safe context, 2 = unmatched reference.
+	// Parents normally follow their children, but rewritten ASTs can contain
+	// forward edges; retaining both states makes this equivalent to the old
+	// mark-then-classify scans while visiting the complete AST only once.
+	mut ref_states := []u8{len: t.a.nodes.len}
+	mut unmatched_count := 0
 	mut cur_module := 'main'
 	mut cur_file := ''
 	mut fixed_candidate := false
@@ -6811,14 +7019,21 @@ fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool 
 				}
 			}
 		}
-		if node.kind in [.ident, .selector, .as_expr, .paren]
-			&& !(fixed_safe_refs[idx] or { false }) {
+		if node.kind in [.ident, .selector, .as_expr, .paren] {
 			if t.const_ref_matches_key_in_context(flat.NodeId(idx), cur_module, cur_file, key) {
-				return false
+				if ref_states[idx] != 1 {
+					ref_states[idx] = 2
+					unmatched_count++
+				}
 			}
+		}
+		if node.kind == .selector && node.value == 'len' && node.children_count > 0 {
+			unmatched_count -= t.mark_const_ref_descendants_safe(mut ref_states,
+				t.a.child(&node, 0))
 		}
 		if node.kind == .index && node.children_count > 0 {
 			base_id := t.a.child(&node, 0)
+			unmatched_count -= t.mark_const_ref_descendants_safe(mut ref_states, base_id)
 			if t.const_ref_matches_key_in_context(base_id, cur_module, cur_file, key) {
 				fixed_candidate = true
 			}
@@ -6826,24 +7041,32 @@ fn (t &Transformer) const_array_literal_requires_fixed_storage(key string) bool 
 		if node.kind == .for_in_stmt && node.value.int() == 3 && node.children_count > 2 {
 			container_id := t.a.child(&node, 2)
 			if int(container_id) >= 0 && t.a.nodes[int(container_id)].kind != .range {
+				unmatched_count -= t.mark_const_ref_descendants_safe(mut ref_states, container_id)
 				if t.const_ref_matches_key_in_context(container_id, cur_module, cur_file, key) {
 					fixed_candidate = true
 				}
 			}
 		}
 	}
-	return fixed_candidate
+	return fixed_candidate && unmatched_count == 0
 }
 
-fn (t &Transformer) mark_const_ref_descendants(mut ids map[int]bool, id flat.NodeId) {
+fn (t &Transformer) mark_const_ref_descendants_safe(mut states []u8, id flat.NodeId) int {
 	if int(id) < 0 || int(id) >= t.a.nodes.len {
-		return
+		return 0
 	}
-	ids[int(id)] = true
+	mut cleared := 0
+	if int(id) < states.len {
+		if states[int(id)] == 2 {
+			cleared++
+		}
+		states[int(id)] = 1
+	}
 	node := t.a.nodes[int(id)]
 	if node.kind == .paren && node.children_count > 0 {
-		t.mark_const_ref_descendants(mut ids, t.a.child(&node, 0))
+		cleared += t.mark_const_ref_descendants_safe(mut states, t.a.child(&node, 0))
 	}
+	return cleared
 }
 
 fn (t &Transformer) const_ref_matches_key_in_context(id flat.NodeId, module_name string, file string, key string) bool {
@@ -15556,11 +15779,22 @@ fn (t &Transformer) concrete_variant_matches_generic_pattern(concrete string, pa
 }
 
 fn (t &Transformer) variant_names_match(a string, b string) bool {
-	if a == b || t.variant_short_name(a) == t.variant_short_name(b) {
+	if a == b {
 		return true
 	}
-	if canonical_fn_variant_name(a) == canonical_fn_variant_name(b) {
+	a_has_dot := a.contains('.')
+	b_has_dot := b.contains('.')
+	if (a_has_dot || b_has_dot) && t.variant_short_name(a) == t.variant_short_name(b) {
 		return true
+	}
+	if (a.contains('fn') || b.contains('fn'))
+		&& canonical_fn_variant_name(a) == canonical_fn_variant_name(b) {
+		return true
+	}
+	a_has_bracket := a.contains('[')
+	b_has_bracket := b.contains('[')
+	if !a_has_bracket && !b_has_bracket {
+		return false
 	}
 	if t.is_fixed_array_type(a) && t.is_fixed_array_type(b) {
 		return t.resolved_fixed_array_canonical_type(a) == t.resolved_fixed_array_canonical_type(b)
@@ -15595,7 +15829,11 @@ fn (t &Transformer) generic_variant_args_are_open(args []string) bool {
 	return false
 }
 
+@[inline]
 fn (t &Transformer) variant_short_name(name string) string {
+	if !name.contains('.') {
+		return name
+	}
 	if isnil(t.variant_short_name_cache) {
 		return variant_short_name_text(name)
 	}
