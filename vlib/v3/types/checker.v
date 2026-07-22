@@ -26778,6 +26778,16 @@ fn (tc &TypeChecker) is_known_type_text(typ string) bool {
 		|| qtyp in tc.sum_types || qtyp in tc.type_aliases
 }
 
+// canonical_qualified_type_name resolves a possibly bare or partially qualified
+// type name (e.g. `PoolProcessor` or `pool.PoolProcessor`) to its unique fully
+// qualified spelling (`sync.pool.PoolProcessor`). It returns none when the name
+// is unknown or when the short name is ambiguous across modules. Backends use
+// this to rebuild method/type C names when a receiver type carries only the
+// import-local module qualifier instead of the full module path.
+pub fn (tc &TypeChecker) canonical_qualified_type_name(name string) ?string {
+	return tc.unique_qualified_type_name(name.all_after_last('.'))
+}
+
 // unique_qualified_type_name supports unique qualified type name handling for TypeChecker.
 fn (tc &TypeChecker) unique_qualified_type_name(short_name string) ?string {
 	if short_name.len == 0 {

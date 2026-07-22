@@ -1859,6 +1859,21 @@ fn (g &FlatGen) resolve_method_name(type_name string, method string) string {
 			return lowered
 		}
 	}
+	// A receiver type parsed in an importing module may carry only the
+	// import-local qualifier (`pool.PoolProcessor`) rather than the full module
+	// path (`sync.pool.PoolProcessor`) that the method was registered under.
+	// Canonicalize via the unique short-name index so the C method name matches
+	// the emitted definition.
+	if type_name.contains('.') {
+		if full := g.tc.canonical_qualified_type_name(type_name) {
+			if full != type_name {
+				canonical := '${full}.${method}'
+				if canonical in g.tc.fn_param_types || canonical in g.tc.fn_ret_types {
+					return canonical
+				}
+			}
+		}
+	}
 	return ''
 }
 

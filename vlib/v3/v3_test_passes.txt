@@ -625,8 +625,18 @@ vlib/toml/tests/toml_types_test.v
 vlib/toml/tests/value_query_test.v
 vlib/v/ast/cflags_test.v
 vlib/v/ast/table_test.v
+vlib/v/ast/type_size_test.v
 vlib/v/ast/types_test.v
 vlib/v/build_constraint/constraint_test.v
+vlib/v/builder/base_url_test.v
+vlib/v/builder/builder_test.v
+vlib/v/builder/c_error_report_test.v
+vlib/v/builder/cbuilder/parallel_cc_test.v
+vlib/v/builder/cc_tcc_retry_test.v
+vlib/v/builder/cc_test.v
+vlib/v/builder/coroutines_runtime_test.v
+vlib/v/builder/gc_flags_test.v
+vlib/v/builder/icon_test.v
 vlib/v/builder/parallel_cc_failure_test.v
 vlib/v/cflag/cflags_test.v
 vlib/v/compiler_errors_test.v
@@ -681,6 +691,7 @@ vlib/v/parser/map_init_fmt_regression_test.v
 vlib/v/parser/parenthesized_propagated_index_or_block_test.v
 vlib/v/parser/parse_file_spawn_execute_regression_test.v
 vlib/v/parser/parse_text_defer_stdout_test.v
+vlib/v/parser/v_parser_test.v
 vlib/v/parser/v_print_v_files_works_test.v
 vlib/v/parser/v_silent_works_test.v
 vlib/v/pkgconfig/bin/pkgconfig_test.v
