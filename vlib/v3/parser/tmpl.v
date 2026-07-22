@@ -809,15 +809,20 @@ fn (p &Parser) resolve_tmpl_path_arg(id flat.NodeId) string {
 }
 
 // resolve_veb_template_path mirrors v1's lookup: an argument-less `$veb.html()`
-// looks for `<fn>.html` next to the source file and then under `templates/`; an
-// explicit path (from `$tmpl(path)` or `$veb.html('x.html')`) is resolved relative
-// to the source file, then `templates/`.
+// looks for the handler's template next to the source file and then under
+// `templates/`; an explicit path (from `$tmpl(path)` or `$veb.html('x.html')`) is
+// resolved relative to the source file, then `templates/`. Like v1, a handler name
+// with underscores also maps to a nested subpath, so `controller_get_all_task`
+// resolves `controller/get/all/task.html` in addition to the flat filename.
 fn (p &Parser) resolve_veb_template_path(is_html bool, arg string) string {
 	dir := os.dir(os.real_path(p.cur_file))
 	if is_html && arg.len == 0 {
 		fn_name := p.cur_fn.all_after_last('.')
+		split_name := fn_name.split('_').join(os.path_separator)
 		candidates := [
+			os.join_path_single(dir, '${split_name}.html'),
 			os.join_path_single(dir, '${fn_name}.html'),
+			os.join_path(dir, 'templates', '${split_name}.html'),
 			os.join_path(dir, 'templates', '${fn_name}.html'),
 		]
 		for c in candidates {
