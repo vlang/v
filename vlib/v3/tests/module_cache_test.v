@@ -4538,6 +4538,64 @@ fn main() {
 	assert run_module_cache_binary(second_output) == 'called'
 }
 
+fn test_incremental_program_cache_falls_back_for_new_interface_dispatch() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_interface_dispatch_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', "module main
+
+interface Speaker {
+	speak() string
+}
+
+struct Dog {}
+
+fn (_ Dog) speak() string {
+	return 'woof'
+}
+
+fn main() {
+	println('before')
+}
+")
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == 'before'
+
+	write_module_cache_file(root, 'main.v', "module main
+
+interface Speaker {
+	speak() string
+}
+
+struct Dog {}
+
+fn (_ Dog) speak() string {
+	return 'woof'
+}
+
+fn main() {
+	speaker := Speaker(Dog{})
+	println(speaker.speak())
+}
+")
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (incremental)'), second.output
+	assert run_module_cache_binary(second_output) == 'woof'
+}
+
 fn test_incremental_program_cache_invalidates_for_top_level_statement_change() {
 	$if !macos {
 		return

@@ -609,19 +609,10 @@ fn enqueue_used_interface_dispatch_implementers(tc &types.TypeChecker, mut used 
 				continue
 			}
 			for impl in impls {
-				impl_method := tc.concrete_method_signature_key(impl, method) or {
-					'${impl}.${method}'
-				}
-				if enqueue(impl_method, mut used, mut queue) {
-					added = true
-				}
-				lowered := markused_c_name(impl_method)
-				if lowered != impl_method && enqueue(lowered, mut used, mut queue) {
-					added = true
-				}
-				short_impl := '${impl_method.all_before_last('.').all_after_last('.')}.${method}'
-				if short_impl != impl_method && enqueue(short_impl, mut used, mut queue) {
-					added = true
+				for alias in interface_implementer_method_aliases(impl, method, tc) {
+					if enqueue(alias, mut used, mut queue) {
+						added = true
+					}
 				}
 				enqueue_implicit_interface_str_helpers_for_impl(iface_name, method, impl, tc, mut
 					used, mut queue)
@@ -629,6 +620,20 @@ fn enqueue_used_interface_dispatch_implementers(tc &types.TypeChecker, mut used 
 		}
 	}
 	return added
+}
+
+fn interface_implementer_method_aliases(impl string, method string, tc &types.TypeChecker) []string {
+	impl_method := tc.concrete_method_signature_key(impl, method) or { '${impl}.${method}' }
+	mut aliases := [impl_method]
+	lowered := markused_c_name(impl_method)
+	if lowered != impl_method {
+		aliases << lowered
+	}
+	short_impl := '${impl_method.all_before_last('.').all_after_last('.')}.${method}'
+	if short_impl != impl_method {
+		aliases << short_impl
+	}
+	return aliases
 }
 
 fn markused_is_interface_dispatch_call(name string, cur_module string, tc &types.TypeChecker) bool {
@@ -729,6 +734,28 @@ fn interface_dispatch_dotted_name(name string, tc &types.TypeChecker) ?string {
 		}
 	}
 	return none
+}
+
+// interface_dispatch_implementer_aliases returns the function-name aliases
+// markused enqueues for each concrete implementation of an interface dispatch.
+pub fn interface_dispatch_implementer_aliases(name string, cur_module string, tc &types.TypeChecker) [][]string {
+	dotted_name := interface_dispatch_dotted_name(name, tc) or { return [][]string{} }
+	recv := dotted_name.all_before_last('.')
+	method := dotted_name.all_after_last('.')
+	iface_name := interface_name_for_receiver(recv, cur_module, tc) or { return [][]string{} }
+	if tc.interface_method_signature_key(iface_name, method) == none {
+		return [][]string{}
+	}
+	impls := if markused_is_ierror_interface_name(iface_name) {
+		tc.ierror_impl_names()
+	} else {
+		tc.interface_impl_names(iface_name)
+	}
+	mut result := [][]string{cap: impls.len}
+	for impl in impls {
+		result << interface_implementer_method_aliases(impl, method, tc)
+	}
+	return result
 }
 
 fn markused_is_ierror_interface_name(name string) bool {

@@ -2257,6 +2257,7 @@ fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, t
 	}
 	mut program_aliases := map[string][]string{}
 	mut changed_roots := []flat.NodeId{}
+	mut changed_root_modules := map[int]string{}
 	mut cur_module := ''
 	for node_idx in tc.top_level_idx {
 		node := a.nodes[node_idx]
@@ -2271,6 +2272,7 @@ fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, t
 				name := incremental_qualified_fn_name(cur_module, node.value)
 				if changed_names[name] {
 					changed_roots << flat.NodeId(node_idx)
+					changed_root_modules[node_idx] = cur_module
 				}
 				if cur_module !in ['', 'main'] {
 					continue
@@ -2286,6 +2288,7 @@ fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, t
 	}
 	mut stack := []flat.NodeId{cap: 256}
 	for root in changed_roots {
+		root_module := changed_root_modules[int(root)] or { '' }
 		stack.clear()
 		stack << root
 		for stack.len > 0 {
@@ -2302,6 +2305,19 @@ fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, t
 				referenced_name = tc.resolved_fn_value_names[idx]
 			}
 			if referenced_name.len > 0 {
+				for aliases in markused.interface_dispatch_implementer_aliases(referenced_name,
+					root_module, tc) {
+					mut was_cached := false
+					for alias in aliases {
+						if cached[alias] {
+							was_cached = true
+							break
+						}
+					}
+					if !was_cached {
+						return true
+					}
+				}
 				if aliases := program_aliases[referenced_name] {
 					mut was_cached := false
 					for alias in aliases {
