@@ -173,6 +173,27 @@ fn test_none_ierror_values_lower_to_builtin_none() {
 	assert out == 'option'
 }
 
+fn test_reject_non_optional_or_and_wrapped_string_concat() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_non_optional_literal_or_block', 'fn main() {\n\t_ := 1 or { 2 }\n}\n',
+		'unexpected `or` block')
+	run_bad(v3_bin, 'bad_non_optional_call_or_block',
+		'fn value() int {\n\treturn 1\n}\n\nfn main() {\n\tvalue() or { panic(err) }\n}\n',
+		'unexpected `or` block')
+	run_bad(v3_bin, 'bad_non_optional_infix_or_block',
+		'fn maybe() ?int {\n\treturn 1\n}\n\nfn main() {\n\t_ := maybe() == none or { false }\n}\n',
+		'unexpected `or` block, expression of type `bool` is not an Option or a Result')
+	run_bad(v3_bin, 'bad_optional_string_concat',
+		"fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := 'hello ' + maybe_name()\n}\n",
+		'operator `+` cannot concatenate `string` and `?string`')
+	run_bad(v3_bin, 'bad_result_string_concat',
+		"fn result_name() !string {\n\treturn 'Ada'\n}\n\nfn main() {\n\t_ := result_name() + '!'\n}\n",
+		'operator `+` cannot concatenate `!string` and `string`')
+	out := run_good(v3_bin, 'good_map_or_and_unwrapped_string_concat',
+		"fn maybe_name() ?string {\n\treturn 'Ada'\n}\n\nfn main() {\n\tnames := {\n\t\t'first': 'Grace'\n\t}\n\tprintln(names['first'] or { 'unknown' })\n\tprintln('hello ' + (maybe_name() or { 'unknown' }))\n}\n")
+	assert out == 'Grace\nhello Ada'
+}
+
 fn test_rune_receiver_methods_resolve() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'good_rune_receiver_methods',
@@ -197,6 +218,23 @@ fn test_numeric_alias_returns_preserve_integer_float_direction() {
 	explicit_out := run_good(v3_bin, 'good_explicit_float_to_int_alias_return',
 		'type Id = int\n\nfn f(x f64) Id {\n\treturn Id(x)\n}\n\nfn main() {\n\tprintln(int_str(f(1.5)))\n}\n')
 	assert explicit_out == '1'
+}
+
+fn test_fn_value_integer_returns_require_matching_c_abi() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_fn_value_integer_return_abi',
+		'fn wide() u64 {\n\treturn 257\n}\n\nfn invoke(callback fn () u8) u8 {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(wide)\n}\n',
+		'cannot use `fn() u64`')
+	out := run_good(v3_bin, 'good_fn_value_matching_integer_return_abi',
+		'fn letter() rune {\n\treturn `A`\n}\n\nfn invoke(callback fn () u32) u32 {\n\treturn callback()\n}\n\nfn main() {\n\tprintln(int_str(int(invoke(letter))))\n}\n')
+	assert out == '65'
+}
+
+fn test_fn_value_aggregate_returns_require_compatible_payloads() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_fn_value_array_return_payload',
+		'fn numbers() []int {\n\treturn [1, 2]\n}\n\nfn invoke(callback fn () []string) []string {\n\treturn callback()\n}\n\nfn main() {\n\t_ := invoke(numbers)\n}\n',
+		'cannot use `fn() []int`')
 }
 
 fn test_alias_with_nested_type_separator_stays_alias() {
@@ -228,6 +266,9 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 		'method `bump` requires a mutable receiver')
 	run_bad(v3_bin, 'bad_mut_receiver_immutable_pointer_binding',
 		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut s := St{}\n\tp := &s\n\tp.bump()\n}\n',
+		'method `bump` requires a mutable receiver')
+	run_bad(v3_bin, 'bad_mut_receiver_or_temporary',
+		'struct St {\nmut:\n\tvalue int\n}\n\nfn (mut s St) bump() {\n\ts.value++\n}\n\nfn main() {\n\tmut values := {\n\t\t"item": St{}\n\t}\n\t(values["item"] or { St{} }).bump()\n}\n',
 		'method `bump` requires a mutable receiver')
 	run_bad(v3_bin, 'bad_shared_receiver_plain_value',
 		'struct St {}\n\nfn (shared s St) f() {}\n\nfn main() {\n\ts := St{}\n\ts.f()\n}\n',
@@ -265,6 +306,61 @@ fn test_shared_receiver_and_arg_require_shared_bindings() {
 	ptr_out := run_good(v3_bin, 'good_pointer_receiver_immutable_value',
 		'struct St {\n\tvalue int\n}\n\nfn (s &St) get() int {\n\treturn s.value\n}\n\nfn main() {\n\ts := St{\n\t\tvalue: 2\n\t}\n\tprintln(int_str(s.get()))\n}\n')
 	assert ptr_out == '2'
+}
+
+fn test_method_receiver_rejects_extra_pointer_layers() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_value_receiver_extra_pointer_layers', 'struct S {}
+
+fn (s S) value() int {
+	return 1
+}
+
+fn main() {
+	s := S{}
+	p := &s
+	pp := &p
+	_ := pp.value()
+}
+',
+		'cannot use receiver `&&S` as `S`')
+	run_bad(v3_bin, 'bad_pointer_receiver_extra_pointer_layers', 'struct S {}
+
+fn (s &S) value() int {
+	return 1
+}
+
+fn main() {
+	s := S{}
+	p := &s
+	pp := &p
+	ppp := &pp
+	_ := ppp.value()
+}
+',
+		'cannot use receiver `&&&S` as `&S`')
+	out := run_good(v3_bin, 'good_receiver_single_pointer_adjustment', 'struct S {
+	value int
+}
+
+fn (s S) by_value() int {
+	return s.value
+}
+
+fn (s &S) by_pointer() int {
+	return s.value
+}
+
+fn main() {
+	s := S{
+		value: 7
+	}
+	p := &s
+	println(int_str(p.by_value()))
+	println(int_str(s.by_pointer()))
+}
+')
+	assert out == '7\n7'
 }
 
 fn test_restrict_synthetic_hex_fallback_receivers() {
@@ -416,6 +512,45 @@ fn test_reject_unsmartcasted_unique_sum_variant_field() {
 	assert out == '7'
 }
 
+fn test_smartcasted_fn_sum_call_keeps_active_variant_arity() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_smartcasted_fn_sum_variant_arity', 'type Callback = fn () int | fn (int) int
+
+fn no_args() int {
+	return 7
+}
+
+fn invoke(cb Callback) {
+	if cb is fn () int {
+		_ := cb(1)
+	}
+}
+
+fn main() {
+	invoke(Callback(no_args))
+}
+',
+		'argument count mismatch')
+	out := run_good(v3_bin, 'good_smartcasted_fn_sum_variant_arity', 'type Callback = fn () int | fn (int) int
+
+fn with_arg(value int) int {
+	return value
+}
+
+fn invoke(cb Callback) int {
+	if cb is fn (int) int {
+		return cb(7)
+	}
+	return 0
+}
+
+fn main() {
+	println(int_str(invoke(Callback(with_arg))))
+}
+')
+	assert out == '7'
+}
+
 fn test_generic_functions_report_missing_return() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {}\n',
@@ -468,6 +603,28 @@ fn test_no_return_analysis_requires_resolved_builtin_target() {
 	run_bad(v3_bin, 'bad_shadowed_os_exit_missing_return',
 		'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f(os OsLike) int {\n\tos.exit()\n}\nfn main() {}\n',
 		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_local_os_exit_missing_return',
+		'struct OsLike {}\nfn (x OsLike) exit() {}\nfn f() int {\n\tos := OsLike{}\n\tos.exit()\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+}
+
+fn test_no_return_analysis_rejects_shadowed_builtin_fn_values() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_shadowed_exit_fn_value_missing_return',
+		'fn f() int {\n\texit := fn () int { return 1 }\n\texit()\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_shadowed_panic_fn_value_missing_return',
+		'fn f() int {\n\tpanic := fn () int { return 1 }\n\tpanic()\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_nested_shadowed_exit_fn_value_missing_return',
+		'fn f() int {\n\t{\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n}\nfn main() {}\n',
+		'missing return at end of function `f`')
+	run_bad(v3_bin, 'bad_shadowed_exit_multi_return_branch',
+		'fn main() {\n\texit := fn () int { return 1 }\n\tflag := true\n\ta, b := if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'multi-return assignment mismatch')
+	run_bad(v3_bin, 'bad_nested_shadowed_exit_multi_return_branch',
+		'fn main() {\n\tflag := true\n\ta, b := if flag {\n\t\t1\n\t\t2\n\t} else {\n\t\texit := fn () int { return 1 }\n\t\texit()\n\t}\n\tprintln(int_str(a + b))\n}\n',
+		'multi-return assignment mismatch')
 }
 
 fn test_returning_receiver_method_named_exit_keeps_value() {

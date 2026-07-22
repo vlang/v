@@ -310,6 +310,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 			mut view := shared_region_view(t.a, node_starts[ci], node_starts[ci + 1],
 				child_starts[ci], child_starts[ci + 1])
 			view.specialized_fn_nodes = map[int]bool{}
+			view.specialized_fn_modules = map[int]string{}
+			view.specialized_fn_files = map[int]string{}
 			mut wtc := t.tc.fork_for_parallel_transform(view)
 			wtc.fn_ret_types = t.tc.fn_ret_types.clone()
 			wtc.fn_param_types = t.tc.fn_param_types.clone()
@@ -459,6 +461,8 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 				}
 				t.generic_fn_spec_nodes[spec.key.clone()] = root
 				t.a.specialized_fn_nodes[int(root)] = true
+				t.a.specialized_fn_modules[int(root)] = spec.decl.module
+				t.a.specialized_fn_files[int(root)] = spec.decl.file
 				t.mark_node_context(root, spec.decl.module, spec.decl.file)
 				emitted[generic_fn_spec_key(spec.decl.key, spec.args)] = true
 				t.pending_generic_fn_spec_keys.delete(spec.key)
@@ -1269,16 +1273,6 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int
 		// before any worker can rewrite a shared-base fn_decl; lazily scanning or
 		// reading declarations inside workers can otherwise observe a torn node.
 		t.prepare_parallel_call_param_types()
-		// Clone-free shared-base path: needs the checker's top-level index for
-		// exact per-item subtree ranges, and skip_generics (the generic passes
-		// scan and mutate arbitrary AST regions, which the shared design forbids).
-		if t.skip_generics && !isnil(t.tc) && t.tc.top_level_idx.len > 0 {
-			shared_jobs := shared_transform_job_count(t.a.worker_pool.size() + 1, items.len)
-			if shared_jobs > 1 {
-				return t.run_parallel_transform_shared(items, base_nodes, base_children,
-					shared_jobs)
-			}
-		}
 		// Freeze the checker's warm type cache (fully populated by the check
 		// phase) as the shared read-only base for every worker fork, so workers
 		// do not re-parse every type text from a cold cache; the master itself
@@ -1369,17 +1363,19 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 		children.flags.set(.nogrow)
 	}
 	return &flat.FlatAst{
-		nodes:                nodes
-		children:             children
-		user_code_start:      a.user_code_start
-		disabled_fns:         a.disabled_fns
-		noreturn_fns:         a.noreturn_fns
-		source_files:         a.source_files
-		source_buffers:       a.source_buffers
-		text_values:          a.text_values
-		text_ids:             a.text_ids
-		worker_pool:          a.worker_pool
-		specialized_fn_nodes: a.specialized_fn_nodes
+		nodes:                  nodes
+		children:               children
+		user_code_start:        a.user_code_start
+		disabled_fns:           a.disabled_fns
+		noreturn_fns:           a.noreturn_fns
+		source_files:           a.source_files
+		source_buffers:         a.source_buffers
+		text_values:            a.text_values
+		text_ids:               a.text_ids
+		worker_pool:            a.worker_pool
+		specialized_fn_nodes:   a.specialized_fn_nodes.clone()
+		specialized_fn_modules: a.specialized_fn_modules.clone()
+		specialized_fn_files:   a.specialized_fn_files.clone()
 	}
 }
 

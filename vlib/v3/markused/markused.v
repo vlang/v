@@ -358,6 +358,10 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 		false)
 	uses_generics = enqueue_top_level_calls(a, collector, fn_decls, has_entry_main, mut used, mut
 		queue, uses_generics)
+	// Interface method values and other roots can enter the queue as abstract
+	// dispatch keys that have no function declaration of their own. Seed their
+	// concrete implementations before the declaration-driven BFS skips those keys.
+	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue)
 	// Interface dispatch reachability: calling an interface method `Foo.m` may
 	// dispatch to any concrete `T.m` for a type `T` that implements `Foo`. Those
 	// concrete methods are only referenced from the generated dispatch switch, so
@@ -1037,12 +1041,15 @@ fn markused_reachable_modules(a &flat.FlatAst, tc &types.TypeChecker) map[string
 	mut module_imports := map[string][]string{}
 	mut roots := []string{}
 	mut has_user_root := false
+	file_modules := markused_top_level_file_modules(a, tc)
 	for file_idx in tc.top_level_idx {
 		file_node := a.nodes[file_idx]
 		if file_node.kind != .file {
 			continue
 		}
-		module_name := markused_top_level_file_module_name(a, file_node)
+		module_name := file_modules[file_node.value] or {
+			markused_top_level_file_module_name(a, file_node)
+		}
 		if file_idx >= a.user_code_start
 			&& (!markused_file_is_vlib(file_node.value) || !has_user_root) {
 			has_user_root = true
@@ -1085,6 +1092,26 @@ fn markused_reachable_modules(a &flat.FlatAst, tc &types.TypeChecker) map[string
 		}
 	}
 	return reachable
+}
+
+fn markused_top_level_file_modules(a &flat.FlatAst, tc &types.TypeChecker) map[string]string {
+	mut modules := map[string]string{}
+	mut current_file := ''
+	for node_idx in tc.top_level_idx {
+		node := a.nodes[node_idx]
+		match node.kind {
+			.file {
+				current_file = node.value
+			}
+			.module_decl {
+				if current_file.len > 0 {
+					modules[current_file] = node.value
+				}
+			}
+			else {}
+		}
+	}
+	return modules
 }
 
 fn markused_file_is_vlib(file string) bool {
@@ -1540,7 +1567,7 @@ fn enqueue_main_module_roots(fn_decls map[string]FnDeclInfo, mut used map[string
 // is_auto_root_fn reports whether is auto root fn applies in markused.
 fn is_auto_root_fn(name string) bool {
 	short_name := name.all_after_last('.')
-	return short_name == 'init'
+	return short_name in ['init', 'builtin_init']
 }
 
 // enqueue_detected_runtime_helpers supports enqueue detected runtime helpers handling for markused.
@@ -2766,6 +2793,8 @@ fn (c &CallCollector) node_uses_generics(node &flat.Node, cur_module string, imp
 	return match node.kind {
 		.struct_init, .array_init, .cast_expr, .as_expr, .sizeof_expr, .typeof_expr, .is_expr {
 			c.type_text_uses_generics(node.value, cur_module, imports)
+				|| (!node.value.contains('[') && node.generic_params().len > 0
+				&& c.type_text_uses_generics('${node.value}[${node.generic_params().join(', ')}]', cur_module, imports))
 		}
 		else {
 			false
@@ -3665,6 +3694,10 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 			.selector {
 				if c.collect_interface_method_value_selector(child, mut calls) {
 					// handled
+				} else if c.collect_generic_method_value_selector(child, cur_module, imports, mut
+					calls)
+				{
+					// handled
 				} else if resolved := c.tc.resolved_fn_value_name(child_id) {
 					calls << resolved
 				} else {
@@ -3728,6 +3761,10 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 							if callee.children_count > 0 {
 								base_id := c.a.child(&callee, 0)
 								if int(base_id) >= 0 {
+									if detect_generics && !uses_generics
+										&& c.node_tree_uses_generics(base_id, cur_module, imports) {
+										uses_generics = true
+									}
 									base := c.a.nodes[int(base_id)]
 									base_is_local_value := base.kind == .ident
 										&& base.value in local_values
@@ -3739,6 +3776,10 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 										has_exact_selector_call = c.collect_typed_receiver_method(base_id,
 											callee.value, cur_module, imports, local_values,
 											local_types, mut calls)
+										if declared_type := local_types[base.value] {
+											c.collect_sum_variant_receiver_methods_for_type_name(declared_type,
+												callee.value, cur_module, mut calls)
+										}
 									}
 									if !has_exact_selector_call && !base_is_local_value {
 										has_exact_selector_call = c.collect_checker_selected_call(resolved_call, mut
@@ -5120,6 +5161,10 @@ fn (c &CallCollector) collect_top_level_selector_call(callee &flat.Node, method 
 			if base_is_local_value {
 				has_exact_selector_call = c.collect_top_level_typed_receiver_method(base_id,
 					method, cur_module, imports, local_values, local_types, mut calls)
+				if declared_type := local_types[base.value] {
+					c.collect_sum_variant_receiver_methods_for_type_name(declared_type, method,
+						cur_module, mut calls)
+				}
 			}
 			if !has_exact_selector_call && !base_is_local_value {
 				has_exact_selector_call = c.collect_checker_selected_call(resolved_call, mut calls)
@@ -5857,6 +5902,9 @@ fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node,
 	if c.collect_interface_method_value_selector(node, mut calls) {
 		return
 	}
+	if c.collect_generic_method_value_selector(node, cur_module, imports, mut calls) {
+		return
+	}
 	if resolved := c.tc.resolved_fn_value_name(id) {
 		calls << resolved
 		return
@@ -5874,6 +5922,21 @@ fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node,
 	}
 }
 
+fn (c &CallCollector) collect_generic_method_value_selector(node &flat.Node, cur_module string, imports map[string]string, mut calls []string) bool {
+	// A generic receiver method value is resolved to its open declaration name,
+	// but monomorphization also needs the concrete receiver application in the
+	// reachable set so it emits the wrapper's target specialization.
+	mut has_generic_method_value := false
+	for name in c.fn_value_selector_names(node, cur_module, imports) {
+		if info := c.tc.generic_method_value_info[name] {
+			calls << name
+			calls << info.name
+			has_generic_method_value = true
+		}
+	}
+	return has_generic_method_value
+}
+
 fn (c &CallCollector) fn_value_selector_names(node &flat.Node, cur_module string, imports map[string]string) []string {
 	if node.children_count == 0 || node.value.len == 0 {
 		return []string{}
@@ -5887,9 +5950,22 @@ fn (c &CallCollector) fn_value_selector_names(node &flat.Node, cur_module string
 			markused_push_fn_value_selector_name(mut names, '${imports[base.value]}.${node.value}')
 		}
 	}
-	type_name := resolve_type_name(c.node_type(base_id))
-	if method_name := c.typed_receiver_method_name(type_name, node.value, cur_module) {
-		markused_push_fn_value_selector_name(mut names, method_name)
+	mut type_names := [resolve_type_name(c.node_type(base_id))]
+	if base.typ.len > 0 {
+		annotated_name := resolve_type_name(c.tc.parse_type(base.typ))
+		if annotated_name.len > 0 && annotated_name !in type_names {
+			type_names << annotated_name
+		}
+	}
+	for type_name in type_names {
+		concrete_method := '${type_name}.${node.value}'
+		if info := c.tc.generic_method_value_info[concrete_method] {
+			markused_push_fn_value_selector_name(mut names, concrete_method)
+			markused_push_fn_value_selector_name(mut names, info.name)
+		}
+		if method_name := c.typed_receiver_method_name(type_name, node.value, cur_module) {
+			markused_push_fn_value_selector_name(mut names, method_name)
+		}
 	}
 	return names
 }
@@ -6400,16 +6476,35 @@ fn (c &CallCollector) collect_sum_variant_receiver_methods(base_id flat.NodeId, 
 		return false
 	}
 	sum_name := (base_type as types.SumType).name
-	variants := c.tc.sum_types[sum_name] or { return false }
+	return c.collect_sum_variant_receiver_methods_for_type_name(sum_name, method, cur_module, mut
+		calls)
+}
+
+fn (c &CallCollector) collect_sum_variant_receiver_methods_for_type_name(type_name string, method string, cur_module string, mut calls []string) bool {
+	mut clean := markused_clean_receiver_type_name(type_name)
+	for clean.starts_with('?') || clean.starts_with('!') {
+		clean = clean[1..].trim_space()
+	}
+	mut sum_names := [clean]
+	qualified := qualify_fn(cur_module, clean)
+	if qualified != clean {
+		sum_names << qualified
+	}
+	mut variants := []string{}
+	for sum_name in sum_names {
+		if known := c.tc.sum_types[sum_name] {
+			variants = known.clone()
+			break
+		}
+	}
+	if variants.len == 0 {
+		return false
+	}
 	mut added := false
 	for variant in variants {
-		for candidate in [variant + '.' + method, qualify_fn(cur_module, variant + '.' + method)] {
-			if candidate.len == 0 || !c.is_known_fn_name(candidate) {
-				continue
-			}
+		if candidate := c.typed_receiver_method_name(variant, method, cur_module) {
 			c.add_typed_receiver_method_name(candidate, mut calls)
 			added = true
-			break
 		}
 	}
 	return added

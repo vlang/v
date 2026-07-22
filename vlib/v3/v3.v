@@ -54,6 +54,9 @@ $if !skip_wasm ? {
 
 const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
 const scoped_transform_signature_headroom = 2048
+const v3_vvmrc_file_name = '.vvmrc'
+const v3_vvmrc_skip_env = 'V_SKIP_VVMRC'
+const v3_vvmrc_stop_paths = ['.git', '.hg', '.svn', '.v.mod.stop']
 
 struct V3ModuleCacheState {
 	manager             modulecache.Manager
@@ -1335,6 +1338,114 @@ fn run_binary(bin_file string, args []string) int {
 	return exit_code
 }
 
+fn maybe_delegate_v3_to_vvmrc(input_file string, verbose bool) {
+	if os.getenv(v3_vvmrc_skip_env) != '' || input_file in ['', '-'] {
+		return
+	}
+	vvmrc_path := find_v3_project_vvmrc(input_file)
+	if vvmrc_path.len == 0 {
+		return
+	}
+	requested_version := parse_v3_vvmrc_version(os.read_file(vvmrc_path) or { '' })
+	if requested_version.len == 0
+		|| normalize_v3_vvmrc_version(requested_version).to_lower_ascii() in ['latest', 'current'] {
+		return
+	}
+	requested_exe := resolve_v3_version_executable(requested_version) or {
+		eprintln('v3: warning: `${vvmrc_path}` requests V `${requested_version}`, but no matching compiler executable was found; continuing with `${os.executable()}`')
+		return
+	}
+	if os.real_path(requested_exe) == os.real_path(os.executable()) {
+		return
+	}
+	if verbose {
+		eprintln('v3: `.vvmrc` selected V `${requested_version}` from `${vvmrc_path}` => ${requested_exe}')
+	}
+	mut process := os.new_process(requested_exe)
+	process.set_args(os.args[1..])
+	mut envs := os.environ()
+	envs[v3_vvmrc_skip_env] = '1'
+	envs['VEXE'] = requested_exe
+	process.set_environment(envs)
+	process.wait()
+	exit_code := if process.code >= 0 { process.code } else { 1 }
+	process.close()
+	exit(exit_code)
+}
+
+fn find_v3_project_vvmrc(target_path string) string {
+	mut folder := if os.is_dir(target_path) { target_path } else { os.dir(target_path) }
+	if folder.len == 0 {
+		folder = os.getwd()
+	}
+	mut current := os.real_path(folder)
+	for _ in 0 .. 256 {
+		vvmrc_path := os.join_path(current, v3_vvmrc_file_name)
+		if os.is_file(vvmrc_path) {
+			return vvmrc_path
+		}
+		if v3_vvmrc_stop_paths.any(os.exists(os.join_path(current, it))) {
+			break
+		}
+		parent := os.dir(current)
+		if parent.len == 0 || parent == current {
+			break
+		}
+		current = parent
+	}
+	return ''
+}
+
+fn parse_v3_vvmrc_version(content string) string {
+	for raw_line in content.split_into_lines() {
+		line := raw_line.all_before('#').trim_space()
+		if line.len > 0 {
+			return line
+		}
+	}
+	return ''
+}
+
+fn normalize_v3_vvmrc_version(version_name string) string {
+	mut normalized := version_name.trim_space()
+	if normalized.len > 1 && normalized[0] in [`v`, `V`] && normalized[1].is_digit() {
+		normalized = normalized[1..]
+	}
+	return normalized
+}
+
+fn resolve_v3_version_executable(version_name string) !string {
+	raw_version := version_name.trim_space()
+	if raw_version.len == 0 {
+		return error('empty version')
+	}
+	mut names := [raw_version, 'v${raw_version}']
+	if raw_version.starts_with('v') && raw_version.len > 1 {
+		names << raw_version[1..]
+	}
+	for name in names {
+		if found_path := os.find_abs_path_of_executable(name) {
+			return found_path
+		}
+	}
+	normalized := normalize_v3_vvmrc_version(raw_version)
+	mut paths := [os.join_path('/usr/lib/v', normalized, 'bin', 'v'),
+		os.join_path('/usr/local/bin', 'v${normalized}')]
+	for env_name in ['VVM_HOME', 'VVM_DIR'] {
+		vvm_root := os.getenv(env_name).trim_space()
+		if vvm_root.len > 0 {
+			paths << os.join_path(vvm_root, normalized, 'bin', 'v')
+			paths << os.join_path(vvm_root, 'versions', normalized, 'bin', 'v')
+		}
+	}
+	for path in paths {
+		if os.is_file(path) {
+			return path
+		}
+	}
+	return error('V executable for `${raw_version}` was not found')
+}
+
 fn executable_path_for_run(path string) string {
 	mut run_path := path
 	if !os.is_abs_path(path) && !path.contains('/') && !path.contains('\\') {
@@ -2273,18 +2384,20 @@ fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 	children << ast.children
 	text_values, text_ids := ast.clone_text_table_owned()
 	return &flat.FlatAst{
-		nodes:                nodes
-		children:             children
-		user_code_start:      ast.user_code_start
-		disabled_fns:         ast.disabled_fns
-		export_fn_names:      ast.export_fn_names
-		noreturn_fns:         ast.noreturn_fns
-		source_files:         ast.source_files
-		source_buffers:       ast.source_buffers
-		text_values:          text_values
-		text_ids:             text_ids
-		worker_pool:          ast.worker_pool
-		specialized_fn_nodes: ast.specialized_fn_nodes.clone()
+		nodes:                  nodes
+		children:               children
+		user_code_start:        ast.user_code_start
+		disabled_fns:           ast.disabled_fns
+		export_fn_names:        ast.export_fn_names
+		noreturn_fns:           ast.noreturn_fns
+		source_files:           ast.source_files
+		source_buffers:         ast.source_buffers
+		text_values:            text_values
+		text_ids:               text_ids
+		worker_pool:            ast.worker_pool
+		specialized_fn_nodes:   ast.specialized_fn_nodes.clone()
+		specialized_fn_modules: clone_int_string_map(ast.specialized_fn_modules)
+		specialized_fn_files:   clone_int_string_map(ast.specialized_fn_files)
 	}
 }
 
@@ -2717,6 +2830,7 @@ fn main() {
 	mut target_arch_explicit := false
 	mut c_compiler := 'cc'
 	mut c_compiler_explicit := false
+	mut explicit_tcc := false
 	mut gc_mode := 'none'
 	mut enable_globals_compat := false
 	mut is_prod := false
@@ -2833,7 +2947,9 @@ fn main() {
 			gc_mode = args[i + 1]
 			i += 2
 		} else if args[i] == '-cc' && i + 1 < args.len {
-			c_compiler = args[i + 1]
+			requested_compiler := args[i + 1]
+			explicit_tcc = requested_compiler in ['tcc', 'tinyc']
+			c_compiler = requested_compiler
 			c_compiler_explicit = true
 			i += 2
 		} else if args[i] == '-cflags' && i + 1 < args.len {
@@ -2843,14 +2959,20 @@ fn main() {
 			}
 			user_c_flags << parsed_c_flags
 			i += 2
-		} else if args[i] == '-g' {
+		} else if args[i] in ['-g', '-cg'] {
 			is_debug = true
 			user_c_flags << '-g'
+			i++
+		} else if args[i] == '-autofree' {
+			if 'autofree' !in user_defines {
+				user_defines << 'autofree'
+			}
 			i++
 		} else if args[i] == '-v' {
 			verbose = true
 			i++
-		} else if args[i] in ['-stats', '-show-timings', '-showcc', '-keepc', '-w'] {
+		} else if args[i] in ['-stats', '-show-timings', '-showcc', '-keepc', '-w',
+			'-no-retry-compilation'] {
 			// v3 already reports phase metrics, prints the C command, retains generated C,
 			// and suppresses C warnings. Accept the corresponding V flags for compatibility.
 			i++
@@ -2898,6 +3020,7 @@ fn main() {
 		eprintln('no input file')
 		exit(1)
 	}
+	maybe_delegate_v3_to_vvmrc(input_file, verbose)
 	if gc_mode != 'none' {
 		eprintln('unsupported garbage collector `${gc_mode}`; v3 currently supports only `-gc none`')
 		exit(1)
@@ -3605,6 +3728,8 @@ fn main() {
 			}
 			if a.specialized_fn_nodes.len != base_specialized_fns {
 				a.specialized_fn_nodes = a.specialized_fn_nodes.clone()
+				a.specialized_fn_modules = clone_int_string_map(a.specialized_fn_modules)
+				a.specialized_fn_files = clone_int_string_map(a.specialized_fn_files)
 			}
 			promote_scoped_checker_node_caches(mut pre_tc, transform_scope, base_transform_nodes)
 			promote_scoped_signatures(mut pre_tc, original_signature_names)
@@ -3810,6 +3935,8 @@ fn main() {
 			}
 			if a.specialized_fn_nodes.len != base_specialized_fns {
 				a.specialized_fn_nodes = a.specialized_fn_nodes.clone()
+				a.specialized_fn_modules = clone_int_string_map(a.specialized_fn_modules)
+				a.specialized_fn_files = clone_int_string_map(a.specialized_fn_files)
 			}
 			promote_scoped_checker_node_caches(mut pre_tc, monomorph_scope, base_monomorph_nodes)
 			pre_tc.rebuild_scoped_transform_signature_maps()
@@ -4342,10 +4469,19 @@ fn main() {
 		// the much smaller cached main unit with the system C compiler so the same
 		// undeclared-function diagnostics remain enforced.
 		if !tried_tcc && !is_prod && !needs_objective_c && !link_uses_non_c_language
-			&& target_args.len == 0 && !c_compiler_explicit && !cache_state.manager.enabled {
+			&& target_args.len == 0 && (!c_compiler_explicit || explicit_tcc)
+			&& !cache_state.manager.enabled {
 			tried_tcc = true
 			tcc_dir := os.join_path_single(os.join_path_single(prefs.vroot, 'thirdparty'), 'tcc')
-			tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
+			bundled_tcc_path := os.join_path_single(tcc_dir, 'tcc.exe')
+			tcc_path := if explicit_tcc && c_compiler in ['tcc', 'tinyc']
+				&& os.is_executable(bundled_tcc_path) {
+				bundled_tcc_path
+			} else if explicit_tcc {
+				c_compiler
+			} else {
+				bundled_tcc_path
+			}
 			tcc_lib_dir := os.join_path_single(tcc_dir, 'lib')
 			tcc_includes := '-I${os.join_path_single(tcc_lib_dir, 'include')}'
 			tcc_lib := '-L${tcc_lib_dir}'
@@ -5158,7 +5294,7 @@ fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) 
 	for file in user_files {
 		if pref.is_test_file_for_backend(file, prefs.backend) {
 			module_name := declared_module_in_file(file)
-			if module_name.len > 0 && module_name != 'builtin' {
+			if module_name != 'builtin' {
 				for module_file in same_dir_module_source_files(file, module_name, prefs) {
 					append_unique_file(mut expanded, mut seen, module_file)
 				}
@@ -5171,13 +5307,90 @@ fn expand_single_test_file_inputs(user_files []string, prefs &pref.Preferences) 
 
 fn same_dir_module_source_files(test_file string, module_name string, prefs &pref.Preferences) []string {
 	dir := os.dir(test_file)
+	all_files := pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)
 	mut files := []string{}
-	for file in pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target) {
-		if declared_module_in_file(file) == module_name {
+	mut imported_modules := map[string]bool{}
+	if module_name.len > 0 {
+		for file in all_files {
+			declared_module := declared_module_in_file(file)
+			if declared_module != module_name {
+				continue
+			}
+			files << file
+			for imported in declared_imports_in_file(file) {
+				imported_modules[imported] = true
+			}
+		}
+	} else {
+		// A module-less test is a standalone `main` file. Do not pull every other
+		// module-less tool in its directory into the same program.
+		for imported in declared_imports_in_file(test_file) {
+			imported_modules[imported] = true
+		}
+	}
+	// V permits a small project fixture to put an imported module beside its
+	// main/test files. Include those directly imported, differently-declared
+	// files in the initial parse so resolving `import localmod` sees the same
+	// sources as the regular compiler.
+	for file in all_files {
+		if file in files {
+			continue
+		}
+		if imported_modules[declared_module_in_file(file)] {
 			files << file
 		}
 	}
 	return files
+}
+
+fn declared_imports_in_file(path string) []string {
+	source := os.read_file(path) or { return []string{} }
+	mut imports := []string{}
+	mut in_group := false
+	for raw_line in source.split_into_lines() {
+		mut line := raw_line.trim_space()
+		if comment := line.index('//') {
+			line = line[..comment].trim_space()
+		}
+		if line.len == 0 {
+			continue
+		}
+		if in_group {
+			if line.starts_with(')') {
+				in_group = false
+				continue
+			}
+			append_declared_import(mut imports, line)
+			continue
+		}
+		if !line.starts_with('import ') {
+			continue
+		}
+		line = line[7..].trim_space()
+		if line.starts_with('(') {
+			in_group = true
+			line = line[1..].trim_space()
+			if line.len == 0 {
+				continue
+			}
+		}
+		append_declared_import(mut imports, line)
+	}
+	return imports
+}
+
+fn append_declared_import(mut imports []string, line string) {
+	mut end := 0
+	for end < line.len && line[end] !in [` `, `\t`, `{`, `,`, `)`] {
+		end++
+	}
+	if end == 0 {
+		return
+	}
+	name := line[..end]
+	if name !in imports {
+		imports << name
+	}
 }
 
 fn append_unique_file(mut files []string, mut seen map[string]bool, file string) {
@@ -5547,22 +5760,20 @@ fn path_is_in_dir(path string, dir string) bool {
 	return real_path == real_dir || real_path.starts_with(real_dir + os.path_separator)
 }
 
-// skipped_backend_modules lists the importable backend module names that the current
+// skipped_backend_module_groups lists the importable backend module groups that the current
 // configuration excludes (driven by the same `skip_*` defines that gate the dispatch in
-// main()). The arm64 backend is the only consumer of the SSA pipeline, so skipping it also
-// skips v3.ssa and v3.ssa.optimize.
-fn skipped_backend_modules(prefs &pref.Preferences) []string {
-	mut skipped := []string{}
+// main()). The arm64 backend is the only consumer of the SSA pipeline, so it shares a group
+// with v3.ssa and v3.ssa.optimize.
+fn skipped_backend_module_groups(prefs &pref.Preferences) [][]string {
+	mut skipped := [][]string{}
 	if 'skip_arm64' in prefs.user_defines {
-		skipped << 'v3.gen.arm64'
-		skipped << 'v3.ssa'
-		skipped << 'v3.ssa.optimize'
+		skipped << ['v3.gen.arm64', 'v3.ssa', 'v3.ssa.optimize']
 	}
 	if 'skip_wasm' in prefs.user_defines {
-		skipped << 'v3.gen.wasm'
+		skipped << ['v3.gen.wasm']
 	}
 	if 'skip_eval' in prefs.user_defines {
-		skipped << 'v3.eval'
+		skipped << ['v3.eval']
 	}
 	return skipped
 }
@@ -5749,6 +5960,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	parsed_modules['builtin'] = true
 	parsed_modules['main'] = true
 	seed_initial_modules(a, initial_files, mut parsed_modules)
+	explicit_initial_imports := imports_from_files(a, initial_files)
 
 	// Backend modules excluded by the active configuration are never parsed: their
 	// dispatch in main() is gated out by the matching `$if !skip_* ?`, so nothing
@@ -5756,8 +5968,20 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 	// them as already handled, so neither v3.v's top-level imports nor any transitive
 	// import pulls them in. Skipping the arm64 group (v3.gen.arm64 + the v3.ssa SSA
 	// pipeline) and the wasm/eval backends avoids ~30k lines of work when self-hosting.
-	for skipped in skipped_backend_modules(prefs) {
-		parsed_modules[skipped] = true
+	for skipped_group in skipped_backend_module_groups(prefs) {
+		mut group_requested := false
+		for skipped in skipped_group {
+			if skipped in explicit_initial_imports {
+				group_requested = true
+				break
+			}
+		}
+		if group_requested {
+			continue
+		}
+		for skipped in skipped_group {
+			parsed_modules[skipped] = true
+		}
 	}
 
 	mut first_file := ''
@@ -6089,6 +6313,30 @@ fn seed_initial_modules(a &flat.FlatAst, initial_files []string, mut parsed_modu
 			parsed_modules[module_name] = true
 		}
 	}
+}
+
+fn imports_from_files(a &flat.FlatAst, files []string) map[string]bool {
+	mut selected_files := map[string]bool{}
+	for file in files {
+		selected_files[file] = true
+		selected_files[os.real_path(file)] = true
+	}
+	mut imports := map[string]bool{}
+	for file_idx, file_node in a.nodes {
+		if file_idx < a.user_code_start || file_node.kind != .file || file_node.value.len == 0 {
+			continue
+		}
+		if !selected_files[file_node.value] && !selected_files[os.real_path(file_node.value)] {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			child := a.child_node(&file_node, i)
+			if child.kind == .import_decl && child.value.len > 0 {
+				imports[child.value] = true
+			}
+		}
+	}
+	return imports
 }
 
 fn canonicalize_imported_module_name(mut a flat.FlatAst, first_node int, end_node int, import_path string) {

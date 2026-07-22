@@ -5739,6 +5739,28 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	assert fixed_field_out == '7'
 }
 
+fn test_cross_module_mut_receiver_checks_visible_mutation() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'review_cross_module_public_mut_receiver', {
+		'v.mod':          "Module { name: 'review_cross_module_public_mut_receiver' }\n"
+		'other/config.v': 'module other\n\npub struct Config {\npub mut:\n\tvalue int\n}\n\npub fn (mut cfg Config) reset() {\n\tcfg.value = 0\n}\n'
+		'main.v':         'module main\n\nimport other\n\nfn main() {\n\tcfg := other.Config{\n\t\tvalue: 1\n\t}\n\tcfg.reset()\n}\n'
+	}, ['main.v'], 'method `reset` requires a mutable receiver')
+	private_out := run_good_project(v3_bin, 'review_cross_module_private_mut_receiver', {
+		'v.mod':         "Module { name: 'review_cross_module_private_mut_receiver' }\n"
+		'other/state.v': 'module other\n\npub struct State {\nmut:\n\thidden int\n}\n\npub fn (mut state State) bump() {\n\tstate.hidden++\n}\n\npub fn (state State) value() int {\n\treturn state.hidden\n}\n'
+		'main.v':        'module main\n\nimport other\n\nfn main() {\n\tstate := other.State{}\n\tstate.bump()\n\tprintln(int_str(state.value()))\n}\n'
+	}, 'main.v')
+	assert private_out == '1'
+}
+
+fn test_implicit_reference_materializes_required_pointer_levels() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'review_multi_level_implicit_addresses',
+		'fn set_double(pp &&int) {\n\tunsafe {\n\t\t**pp = 5\n\t}\n}\n\nfn set_triple(pp &&&int) {\n\tunsafe {\n\t\t***pp = 7\n\t}\n}\n\nfn main() {\n\tmut x := 1\n\tset_double(x)\n\tmut y := 2\n\tp := &y\n\tset_triple(p)\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n')
+	assert out == '5\n7'
+}
+
 fn test_discard_assignment_preserves_array_return_type() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'discard_array_return_no_context',

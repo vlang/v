@@ -320,6 +320,15 @@ pub fn unwrap_pointer(t Type) Type {
 	return t
 }
 
+// unwrap_all_pointers removes every pointer layer from t.
+pub fn unwrap_all_pointers(t Type) Type {
+	mut clean := t
+	for clean is Pointer {
+		clean = clean.base_type
+	}
+	return clean
+}
+
 // generic_base_name returns the declaration part of a concrete generic type name.
 pub fn generic_base_name(name string) string {
 	if name.starts_with('[') {
@@ -424,10 +433,9 @@ pub fn (t Type) name() string {
 			len_text = t.len_expr
 		}
 		elem_type := nested_type_name(t.elem_type)
-		if t.elem_type is FnType {
-			return '[${len_text}]${elem_type}'
-		}
-		return '${elem_type}[${len_text}]'
+		// Keep fixed arrays in canonical prefix form. Suffix form loses nesting:
+		// both `?[3]u8` and `[3]?u8` otherwise collapse to the ambiguous `?u8[3]`.
+		return '[${len_text}]${elem_type}'
 	}
 	if t is Channel {
 		return 'chan ${nested_type_name(t.elem_type)}'

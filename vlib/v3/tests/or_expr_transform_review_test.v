@@ -50,6 +50,14 @@ fn or_review_run(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn or_review_compile_bad(v3_bin string, name string, src string) string {
+	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
+	os.write_file(src_path, src) or { panic(err) }
+	compile := os.execute('${v3_bin} ${src_path} -b c')
+	assert compile.exit_code != 0, '${name}: invalid source compiled successfully'
+	return compile.output
+}
+
 fn test_channel_receive_or_stabilizes_side_effectful_source() {
 	v3_bin := build_v3_or_review()
 	c_source := or_review_gen_c(v3_bin, 'channel_receive_or_source_once',
@@ -60,12 +68,11 @@ fn test_channel_receive_or_stabilizes_side_effectful_source() {
 	assert c_source.contains('sync__Channel__closed_error(__chan_src_'), 'closed_error does not use channel source temp'
 }
 
-fn test_bare_channel_or_is_not_lowered_to_receive() {
+fn test_bare_channel_or_is_rejected() {
 	v3_bin := build_v3_or_review()
-	c_source := or_review_gen_c(v3_bin, 'bare_channel_or_not_receive',
+	output := or_review_compile_bad(v3_bin, 'bare_channel_or_rejected',
 		'fn main() {\n\tch := chan int{}\n\t_ := ch or { ch }\n}\n')
-	assert !c_source.contains('sync__Channel__pop((sync__Channel*)'), 'bare channel or was lowered to a direct receive'
-	assert !c_source.contains('sync__Channel__pop(__chan_src_'), 'bare channel or was lowered to a temp receive'
+	assert output.contains('unexpected `or` block'), output
 }
 
 fn test_array_optional_element_or_uses_loaded_element_error() {
@@ -82,6 +89,13 @@ fn test_map_optional_element_or_uses_loaded_element_error() {
 		"fn main() {\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tvalue := m['x'] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n")
 	assert c_source.contains('Optional __map_opt_'), 'missing loaded map optional temp'
 	assert c_source.contains('IError err = __map_opt_'), 'map element failure branch does not use loaded optional err'
+}
+
+fn test_map_index_address_or_nil_remains_valid() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'map_index_address_or_nil',
+		"fn main() {\n\tmut values := {\n\t\t'x': 7\n\t}\n\tpresent := unsafe { &values['x'] or { nil } }\n\tmissing := unsafe { &values['missing'] or { nil } }\n\tprintln(int_str(*present))\n\tprintln(missing == unsafe { nil })\n}\n")
+	assert out == '7\ntrue'
 }
 
 fn test_nested_optional_infix_or_uses_whole_expression_fallback() {
@@ -139,6 +153,13 @@ fn test_pointer_channel_try_call_derefs_receiver() {
 	assert c_source.contains('sync__Channel__try_pop(*(ch),'), 'try_pop on pointer channel receiver does not dereference the channel handle'
 }
 
+fn test_channel_try_push_preserves_explicit_voidptr_cast() {
+	v3_bin := build_v3_or_review()
+	out := or_review_run(v3_bin, 'channel_try_push_explicit_voidptr',
+		'fn main() {\n\tch := chan voidptr{cap: 1}\n\tx := 42\n\tassert ch.try_push(voidptr(&x)) == .success\n\treceived := <-ch\n\tprintln(int_str(unsafe { *(&int(received)) }))\n}\n')
+	assert out == '42'
+}
+
 fn test_pointer_channel_send_or_derefs_receiver() {
 	v3_bin := build_v3_or_review()
 	out := or_review_run(v3_bin, 'pointer_channel_send_or_receiver',
@@ -160,9 +181,12 @@ fn test_channel_send_or_binds_error_during_fallback_transform() {
 	assert out == 'channel closed\n7'
 }
 
-fn test_optional_pointer_selector_or_dereferences_wrapper() {
+fn test_optional_result_pointers_or_are_rejected() {
 	v3_bin := build_v3_or_review()
-	out := or_review_run(v3_bin, 'optional_pointer_selector_or',
-		'struct Holder {\n\tfield &?int\n}\n\nfn holder(field &?int) Holder {\n\treturn Holder{\n\t\tfield: field\n\t}\n}\n\nfn main() {\n\tpresent := ?int(7)\n\tpresent_holder := holder(&present)\n\tpresent_holder.field or { println("unexpected") }\n\tprintln("present")\n\n\tmissing := ?int(none)\n\tmissing_holder := holder(&missing)\n\tmissing_holder.field or { println("missing") }\n}\n')
-	assert out == 'present\nmissing'
+	option_output := or_review_compile_bad(v3_bin, 'optional_pointer_or_rejected',
+		'fn invalid(ptr &?int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n')
+	assert option_output.contains('unexpected `or` block'), option_output
+	result_output := or_review_compile_bad(v3_bin, 'result_pointer_or_rejected',
+		'fn invalid(ptr &!int) {\n\t_ := ptr or { 0 }\n}\n\nfn main() {}\n')
+	assert result_output.contains('unexpected `or` block'), result_output
 }

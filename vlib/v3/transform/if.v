@@ -564,6 +564,10 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) string {
 		}
 	}
 	branch_typ := t.if_expr_branch_result_type(node)
+	if branch_typ in ['', 'unknown'] && checked_typ in ['', 'unknown']
+		&& node_typ in ['', 'unknown'] && t.if_expr_has_c_macro_values(node) {
+		return 'int'
+	}
 	if branch_typ.starts_with('[]') && t.is_fixed_array_type(checked_typ)
 		&& fixed_array_elem_type(checked_typ) == branch_typ[2..] {
 		return branch_typ
@@ -591,6 +595,32 @@ fn (t &Transformer) if_expr_result_type(id flat.NodeId, node flat.Node) string {
 		return branch_typ
 	}
 	return ''
+}
+
+fn (t &Transformer) if_expr_has_c_macro_values(node flat.Node) bool {
+	if node.kind != .if_expr || node.children_count < 3 {
+		return false
+	}
+	return t.if_branch_is_c_macro_value(t.a.child(&node, 1))
+		&& t.if_branch_is_c_macro_value(t.a.child(&node, 2))
+}
+
+fn (t &Transformer) if_branch_is_c_macro_value(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= t.a.nodes.len {
+		return false
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .if_expr {
+		return t.if_expr_has_c_macro_values(node)
+	}
+	if node.kind in [.block, .expr_stmt, .paren] && node.children_count > 0 {
+		return t.if_branch_is_c_macro_value(t.a.child(&node, node.children_count - 1))
+	}
+	if node.kind != .selector || node.children_count == 0 {
+		return false
+	}
+	base := t.a.child_node(&node, 0)
+	return base.kind == .ident && base.value == 'C'
 }
 
 // if_expr_branch_type_overrides supports if expr branch type overrides handling for Transformer.
