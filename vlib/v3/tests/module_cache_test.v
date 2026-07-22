@@ -4493,6 +4493,66 @@ fn main() {
 	assert run_module_cache_binary(struct_output) == '44'
 }
 
+fn test_incremental_program_cache_rebuilds_for_new_generic_struct_type() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_generic_struct_type_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'generic/generic.v', 'module generic
+
+pub struct Box[T] {
+pub:
+	value T
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import generic
+
+fn value() i64 {
+	return i64(generic.Box[int]{
+		value: 40
+	}.value)
+}
+
+fn main() {
+	println(value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '40'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+import generic
+
+fn value() i64 {
+	return generic.Box[i64]{
+		value: 41
+	}.value
+}
+
+fn main() {
+	println(value())
+}
+')
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (incremental)'), second.output
+	assert run_module_cache_binary(second_output) == '41'
+}
+
 fn test_incremental_program_cache_falls_back_for_newly_reachable_function() {
 	$if !macos {
 		return

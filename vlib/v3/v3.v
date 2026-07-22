@@ -3003,7 +3003,7 @@ fn transformed_used_fns_need_monomorphize(used_fns map[string]bool) bool {
 	return false
 }
 
-fn incremental_changed_functions_call_generics(a &flat.FlatAst, tc &types.TypeChecker, changed_names map[string]bool) bool {
+fn incremental_changed_functions_use_generics(a &flat.FlatAst, tc &types.TypeChecker, changed_names map[string]bool) bool {
 	if changed_names.len == 0 {
 		return false
 	}
@@ -3019,7 +3019,7 @@ fn incremental_changed_functions_call_generics(a &flat.FlatAst, tc &types.TypeCh
 			.fn_decl {
 				name := incremental_qualified_fn_name(cur_module, node.value)
 				if changed_names[name]
-					&& incremental_node_tree_calls_generic(a, tc, flat.NodeId(idx)) {
+					&& incremental_node_tree_uses_generics(a, tc, flat.NodeId(idx), cur_module) {
 					return true
 				}
 			}
@@ -3029,7 +3029,7 @@ fn incremental_changed_functions_call_generics(a &flat.FlatAst, tc &types.TypeCh
 	return false
 }
 
-fn incremental_node_tree_calls_generic(a &flat.FlatAst, tc &types.TypeChecker, root flat.NodeId) bool {
+fn incremental_node_tree_uses_generics(a &flat.FlatAst, tc &types.TypeChecker, root flat.NodeId, module_name string) bool {
 	mut stack := [root]
 	for stack.len > 0 {
 		id := stack.pop()
@@ -3045,8 +3045,58 @@ fn incremental_node_tree_calls_generic(a &flat.FlatAst, tc &types.TypeChecker, r
 				}
 			}
 		}
+		mut type_names := [node.typ, node.value]
+		if node.generic_params().len > 0 && node.value.len > 0 {
+			type_names << '${node.value}[${node.generic_params().join(', ')}]'
+		}
+		for type_name in type_names {
+			if incremental_type_is_generic_named_application(type_name, module_name, tc) {
+				return true
+			}
+		}
 		for child_idx in 0 .. node.children_count {
 			stack << a.child(&node, child_idx)
+		}
+	}
+	return false
+}
+
+fn incremental_type_is_generic_named_application(type_name string, module_name string, tc &types.TypeChecker) bool {
+	mut offset := 0
+	for offset < type_name.len {
+		relative_bracket := type_name[offset..].index_u8(`[`)
+		if relative_bracket < 0 {
+			return false
+		}
+		bracket := offset + relative_bracket
+		mut start := bracket
+		for start > 0 {
+			c := type_name[start - 1]
+			if !((c >= `a` && c <= `z`) || (c >= `A` && c <= `Z`)
+				|| (c >= `0` && c <= `9`) || c in [`_`, `.`]) {
+				break
+			}
+			start--
+		}
+		if start < bracket
+			&& incremental_generic_type_base_is_known(type_name[start..bracket], module_name, tc) {
+			return true
+		}
+		offset = bracket + 1
+	}
+	return false
+}
+
+fn incremental_generic_type_base_is_known(base string, module_name string, tc &types.TypeChecker) bool {
+	if base in tc.struct_generic_params || base in tc.sum_generic_params
+		|| base in tc.type_alias_generic_params {
+		return true
+	}
+	if !base.contains('.') && module_name !in ['', 'main', 'builtin'] {
+		qualified := '${module_name}.${base}'
+		if qualified in tc.struct_generic_params || qualified in tc.sum_generic_params
+			|| qualified in tc.type_alias_generic_params {
+			return true
 		}
 	}
 	return false
@@ -3791,7 +3841,7 @@ fn main() {
 	mut incremental_cache_hit := false
 	mut incremental_changed_keys := []string{}
 	mut incremental_changed_names := map[string]bool{}
-	mut incremental_calls_generics := false
+	mut incremental_uses_generics := false
 	mut incremental_cached_body := ''
 	mut incremental_tcc_declarations_path := ''
 	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
@@ -3958,8 +4008,8 @@ fn main() {
 			print_type_errors(pre_tc.errors)
 			exit(1)
 		}
-		incremental_calls_generics = incremental_cache_hit
-			&& incremental_changed_functions_call_generics(a, pre_tc, incremental_changed_names)
+		incremental_uses_generics = incremental_cache_hit
+			&& incremental_changed_functions_use_generics(a, pre_tc, incremental_changed_names)
 		pre_tc.prune_inactive_top_level_comptime(mut a)
 		test_harness_errors := validate_test_file_harness_inputs(a, pre_tc, test_files)
 		if test_harness_errors.len > 0 {
@@ -4225,7 +4275,7 @@ fn main() {
 		pre_tc.reject_unlowered_map_mutation = true
 		set_diagnostic_files(mut pre_tc, user_files)
 		set_unsupported_generic_files(mut pre_tc, a, is_selfhost, diagnostic_root)
-		incremental_needs_monomorphize := incremental_cache_hit && (incremental_calls_generics
+		incremental_needs_monomorphize := incremental_cache_hit && (incremental_uses_generics
 			|| transformed_used_fns_need_monomorphize(incremental_stage_used_fns))
 		if !building_v && !cmd_v_build {
 			if uses_generics && (!incremental_cache_hit || incremental_needs_monomorphize) {
@@ -4299,7 +4349,7 @@ fn main() {
 		// AST and checker state on this path.
 	} else if building_v {
 		used_fns = transform.erase_generic_templates(mut a, &pre_tc, used_fns)
-	} else if uses_generics && (!incremental_cache_hit || incremental_calls_generics
+	} else if uses_generics && (!incremental_cache_hit || incremental_uses_generics
 		|| transformed_used_fns_need_monomorphize(incremental_stage_used_fns)) {
 		mut monomorph_used_fns := map[string]bool{}
 		mut monomorph_errors := []string{}
