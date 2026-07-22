@@ -3575,6 +3575,7 @@ fn (g &FlatGen) resolved_method_name_for_spawn(clean_type types.Type, method str
 fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_prelude_scan bool) {
 	g.tc.cur_module = module_name
 	g.cur_fn_name = node.value
+	g.known_expr_type_id = -1
 	g.ownership_return_index = 0
 	g.ownership_seen_return_sources.clear()
 	g.ownership_propagation_index = 0
@@ -5809,6 +5810,8 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							&& g.gen_embedded_interface_receiver(arg_id, arg_type, param_types[arg_idx], param_types[arg_idx] is types.Pointer) {
 							// handled
 						} else if !is_c_call && arg_idx < typed_param_count {
+							g.known_expr_type_id = int(arg_id)
+							g.known_expr_type = arg_type
 							g.gen_expr_with_expected_type(arg_id, param_types[arg_idx])
 						} else {
 							g.gen_expr(arg_id)
