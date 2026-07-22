@@ -8187,23 +8187,22 @@ fn (g &FlatGen) current_param_type(name string) ?types.Type {
 	if g.cur_param_types.len == 0 {
 		return none
 	}
-	if g.current_mut_param_binding_is_shadowed(name) {
+	typ := g.cur_param_types[name] or { return none }
+	if g.cur_mut_params.len > 0 && g.current_mut_param_binding_is_shadowed(name) {
 		return none
 	}
-	return g.cur_param_types[name] or { none }
+	return typ
 }
 
 fn (g &FlatGen) current_param_map_type(name string) ?types.Type {
 	if g.cur_param_types.len == 0 {
 		return none
 	}
-	if g.current_mut_param_binding_is_shadowed(name) {
+	typ := g.cur_param_types[name] or { return none }
+	if g.cur_mut_params.len > 0 && g.current_mut_param_binding_is_shadowed(name) {
 		return none
 	}
-	if typ := g.cur_param_types[name] {
-		return typ
-	}
-	return none
+	return typ
 }
 
 fn (g &FlatGen) call_uses_concrete_optional_params(name string) bool {
