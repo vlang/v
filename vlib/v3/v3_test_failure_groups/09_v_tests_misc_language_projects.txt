@@ -37,7 +37,6 @@ vlib/v/tests/selector_call_with_reserved_c_name_test.v
 vlib/v/tests/selector_generic_fn_test.v
 vlib/v/tests/selector_indexexpr_fn_type_assign_test.v
 vlib/v/tests/sizeof_packed_struct_union_const_test.v
-vlib/v/tests/static_vars_test.v
 vlib/v/tests/testdata/assert_with_scoped_defer_cleanup_failing_test.v
 vlib/v/tests/testdata/sizeof_used_in_assert_test.v
 vlib/v/tests/testdata/tests_returning_options_failing_test.v

@@ -159,7 +159,6 @@ vlib/v/tests/power_operator_test.v
 vlib/v/tests/project_with_tests_for_main/my_other_test.v
 vlib/v/tests/project_with_tests_for_main/my_test.v
 vlib/v/tests/sizeof_packed_struct_union_const_test.v
-vlib/v/tests/static_vars_test.v
 vlib/v/tests/structs/mut_test.v
 vlib/v/tests/structs/struct_embed_fn_type_test.v
 vlib/v/tests/sumtypes/json2_map_to_any_cgen_regression_test.v

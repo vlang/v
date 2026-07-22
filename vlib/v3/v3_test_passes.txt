@@ -2501,6 +2501,7 @@ vlib/v/tests/skip_sort_arg_check_test.v
 vlib/v/tests/skip_unused/generic_fn_instantiation_pruning_test.v
 vlib/v/tests/skip_unused/interface_dispatch_method_dependencies_test.v
 vlib/v/tests/sql_statement_inside_fn_call_test.v
+vlib/v/tests/static_vars_test.v
 vlib/v/tests/struct_init_field_call_or_block_test.v
 vlib/v/tests/structs/anon_struct_alias_type_decl_embed_test.v
 vlib/v/tests/structs/anon_struct_array_test.v

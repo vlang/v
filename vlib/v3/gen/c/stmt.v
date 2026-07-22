@@ -4089,6 +4089,25 @@ fn (g &FlatGen) lock_expr_multi_return_type(node flat.Node, count int) ?types.Mu
 	}
 }
 
+// gen_static_local_lazy_init emits a `static` local whose initializer is not a
+// compile-time constant as zero-initialized storage plus a one-shot guarded
+// assignment, so the value persists across calls but is computed at runtime on
+// first entry (C forbids `static T x = <runtime expr>`).
+fn (mut g FlatGen) gen_static_local_lazy_init(lhs_id flat.NodeId, rhs_id flat.NodeId) {
+	name := g.decl_lhs_str(lhs_id)
+	var_type := g.usable_expr_type(rhs_id)
+	ct := g.tc.c_type(var_type)
+	guard := '${name}_v3_static_inited'
+	g.writeln('static ${ct} ${name};')
+	g.writeln('static bool ${guard} = false;')
+	g.writeln('if (!${guard}) {')
+	g.writeln('\t${guard} = true;')
+	g.write('\t${name} = ')
+	g.gen_expr_with_expected_type(rhs_id, var_type)
+	g.writeln(';')
+	g.writeln('}')
+}
+
 // gen_decl_assign emits decl assign output for c.
 fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 	old_decl_is_mut := g.current_decl_is_mut
@@ -4130,6 +4149,17 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 		rhs_id := g.a.child(&node, i + 1)
 		lhs := g.a.nodes[int(lhs_id)]
 		rhs := g.a.nodes[int(rhs_id)]
+		// A `static` local with a non-constant initializer cannot use a C static
+		// initializer (`static Array x = array_new(...)` is rejected: not a
+		// compile-time constant). Emit the storage once and run the initializer
+		// lazily on first entry. Fixed-array statics need element memmove and are
+		// left to the existing paths below.
+		if node.value == 'static' && lhs.kind == .ident && !g.is_const_expr(rhs_id)
+			&& array_fixed_type(g.usable_expr_type(rhs_id)) == none {
+			g.gen_static_local_lazy_init(lhs_id, rhs_id)
+			i += 2
+			continue
+		}
 		lhs_is_defer_capture := lhs.kind == .ident && lhs.value in g.defer_capture_types
 		g.track_ierror_stack_pointer_alias(lhs, rhs)
 		if decl_is_shared_alias && lhs.kind == .ident
