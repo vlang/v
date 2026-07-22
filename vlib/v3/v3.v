@@ -3766,6 +3766,9 @@ fn main() {
 				}
 				transform_texts_canonical = true
 			}
+			// Type-resolution views can grow their by-file map while the transform arena
+			// is active. Recreate it in the compilation arena before later phases use it.
+			pre_tc.reset_resolution_type_view_cache()
 		} else {
 			transform_used_fns, transform_was_parallel, transform_errors = transform.transform_with_used_opt_config_scoped_workers_checked(mut a,
 				&pre_tc, transform_used_fns, current_parallel_transform, skip_transform_generics,
