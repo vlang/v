@@ -4098,10 +4098,64 @@ fn (p &Parser) comptime_node_value(id flat.NodeId) ?string {
 				none
 			}
 		}
+		.infix {
+			p.comptime_infix_value(node)
+		}
+		.call {
+			p.comptime_join_path_value(node)
+		}
 		else {
 			none
 		}
 	}
+}
+
+// comptime_infix_value evaluates a compile-time `a + b` string concatenation so
+// composed `const`/local path values (`const p = dir + '/' + file`) resolve like v1.
+fn (p &Parser) comptime_infix_value(node flat.Node) ?string {
+	if node.op != .plus || node.children_count != 2 {
+		return none
+	}
+	left := p.comptime_node_value(p.a.children[int(node.children_start)])?
+	right := p.comptime_node_value(p.a.children[int(node.children_start) + 1])?
+	return comptime_cond_quoted_string(comptime_cond_value(left) + comptime_cond_value(right))
+}
+
+// comptime_join_path_value evaluates a compile-time `os.join_path(...)` /
+// `os.join_path_single(...)` call so composed path constants using them resolve like
+// v1's template path resolver. Returns none for any other call or non-const argument.
+fn (p &Parser) comptime_join_path_value(node flat.Node) ?string {
+	if node.children_count < 2 {
+		return none
+	}
+	callee := p.a.nodes[int(p.a.children[int(node.children_start)])]
+	if callee.kind != .selector || callee.value !in ['join_path', 'join_path_single']
+		|| callee.children_count < 1 {
+		return none
+	}
+	base := p.a.nodes[int(p.a.children[int(callee.children_start)])]
+	if base.kind != .ident || base.value != 'os' {
+		return none
+	}
+	mut parts := []string{}
+	for i in 1 .. int(node.children_count) {
+		arg_value := p.comptime_node_value(p.a.children[int(node.children_start) + i])?
+		parts << comptime_cond_value(arg_value)
+	}
+	if parts.len == 0 {
+		return none
+	}
+	joined := if callee.value == 'join_path_single' {
+		if parts.len != 2 {
+			return none
+		}
+		os.join_path_single(parts[0], parts[1])
+	} else if parts.len == 1 {
+		parts[0]
+	} else {
+		os.join_path(parts[0], ...parts[1..])
+	}
+	return comptime_cond_quoted_string(joined)
 }
 
 fn (mut p Parser) begin_comptime_value_scope() {
@@ -5675,6 +5729,13 @@ fn (mut p Parser) match_branch() flat.NodeId {
 			break
 		}
 		id := p.stmt()
+		// Expand a `$tmpl()` / `$veb.html()` used inside a match branch (including as
+		// the branch's trailing value expression), keeping its builder in the branch's
+		// scope, so `return match ... { $tmpl(...) }` renders like v1.
+		if expansion := p.expand_veb_template_stmt(id) {
+			branch_ids << expansion
+			continue
+		}
 		if int(id) >= 0 {
 			branch_ids << id
 		}
@@ -9205,6 +9266,12 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		p.predeclare_local_type_names_in_block(body_start)
 		for p.tok != .rcbr && p.tok != .eof {
 			id := p.stmt()
+			// Lower `$tmpl()` / `$veb.html()` inside an anon fn body too, so a
+			// `return $tmpl(...)` in a closure renders like it does in a named fn.
+			if expansion := p.expand_veb_template_stmt(id) {
+				body_ids << expansion
+				continue
+			}
 			if int(id) >= 0 {
 				body_ids << id
 			}

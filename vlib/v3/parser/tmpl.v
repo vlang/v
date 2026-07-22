@@ -268,6 +268,89 @@ fn escape_bare_tmpl_dollar_interpolations(line string) string {
 	return sb.str()
 }
 
+// tmpl_interp_format_split splits an `@{expr:fmt}` interpolation body at its
+// top-level format-specifier `:` (a `:` outside quotes and any `()[]{}` nesting),
+// returning `(expr, fmt)`. Returns none when there is no format specifier.
+fn tmpl_interp_format_split(content string) ?(string, string) {
+	mut depth := 0
+	mut in_sq := false
+	mut in_dq := false
+	mut i := 0
+	for i < content.len {
+		ch := content[i]
+		if ch == `\\` {
+			i += 2
+			continue
+		}
+		if in_sq {
+			if ch == `'` {
+				in_sq = false
+			}
+			i++
+			continue
+		}
+		if in_dq {
+			if ch == `"` {
+				in_dq = false
+			}
+			i++
+			continue
+		}
+		match ch {
+			`'` { in_sq = true }
+			`"` { in_dq = true }
+			`(`, `[`, `{` { depth++ }
+			`)`, `]`, `}` { depth-- }
+			`:` {
+				if depth == 0 {
+					return content[..i], content[i + 1..]
+				}
+			}
+			else {}
+		}
+		i++
+	}
+	return none
+}
+
+// tmpl_format_is_string_safe reports whether a `${expr:fmt}` format specifier can be
+// applied to `veb.filter_html`'s string result. Width/precision/flags and the string
+// specifier `s` are safe; a numeric/float/char specifier implies a non-string value
+// (which v1 does not escape), so those are left unescaped and unwrapped instead.
+fn tmpl_format_is_string_safe(fmt string) bool {
+	for c in fmt {
+		if c in [`b`, `c`, `d`, `o`, `x`, `X`, `e`, `E`, `f`, `F`, `g`, `G`, `p`] {
+			return false
+		}
+	}
+	return true
+}
+
+// tmpl_write_escaped_interpolation emits an escaped `${...}` interpolation for a
+// `$veb.html()` template, routing string values through `veb.filter_html`. A format
+// specifier is preserved: it stays outside the helper call for string-safe formats
+// (`veb.filter_html(expr):fmt`), and numeric/typed formats are emitted unescaped to
+// match v1, which only filters string interpolations.
+fn tmpl_write_escaped_interpolation(mut sb strings.Builder, content string) {
+	if expr, fmt := tmpl_interp_format_split(content) {
+		if tmpl_format_is_string_safe(fmt) {
+			sb.write_string('\${veb.filter_html(')
+			sb.write_string(expr)
+			sb.write_string('):')
+			sb.write_string(fmt)
+			sb.write_u8(`}`)
+		} else {
+			sb.write_string('\${')
+			sb.write_string(content)
+			sb.write_u8(`}`)
+		}
+		return
+	}
+	sb.write_string('\${veb.filter_html(')
+	sb.write_string(content)
+	sb.write_string(')}')
+}
+
 // tmpl_line_content transforms one template line into the CONTENT of a single
 // `bname += '<content>'` write (escaping quotes/backslashes and turning `@{expr}`
 // / `@ident` into `${expr}` interpolation). It does not include the wrapper. When
@@ -304,9 +387,7 @@ fn tmpl_line_content(line string, escape bool) string {
 							expr_end := find_tmpl_balanced_end(rewritten_line, i + 1, `{`,
 								`}`)
 							if expr_end != -1 {
-								sb.write_string('\${veb.filter_html(')
-								sb.write_string(rewritten_line[i + 2..expr_end - 1])
-								sb.write_string(')}')
+								tmpl_write_escaped_interpolation(mut sb, rewritten_line[i + 2..expr_end - 1])
 								i = expr_end
 								continue
 							}
@@ -321,6 +402,8 @@ fn tmpl_line_content(line string, escape bool) string {
 							end++
 						}
 						if escape {
+							// A bare `@ident` has no format specifier (it stops at the
+							// first non-identifier char), so wrap it directly.
 							sb.write_string('\${veb.filter_html(')
 							sb.write_string(rewritten_line[i + 1..end])
 							sb.write_string(')}')
@@ -502,7 +585,10 @@ enum TmplBraceBlockKind {
 
 // process_tmpl_includes recursively resolves `@include 'file'` directives into
 // the list of lines they expand to. `dir` is the directory of the including file.
-fn process_tmpl_includes(dir string, line string, mut seen map[string]bool) []string {
+// A referenced partial that cannot be opened records a diagnostic instead of being
+// silently dropped, so a missing/misspelled include fails the compile rather than
+// rendering a page without its required partials.
+fn (mut p Parser) process_tmpl_includes(dir string, line string, mut seen map[string]bool) []string {
 	include_pos := line.index('@include ') or { return [] }
 	mut quote_pos := include_pos + '@include '.len
 	for quote_pos < line.len && line[quote_pos].is_space() {
@@ -535,7 +621,11 @@ fn process_tmpl_includes(dir string, line string, mut seen map[string]bool) []st
 		// so the same partial may legitimately be included more than once.)
 		return []
 	}
-	content := os.read_lines(file_path) or { return [] }
+	content := os.read_lines(file_path) or {
+		p.record_diagnostic('veb template include `${file_name}${file_ext}` could not be opened (${file_path})',
+			p.tok_pos)
+		return []
+	}
 	// Mark this file as on the current recursion stack while its own includes are
 	// resolved, then pop it so a later sibling include of the same file still expands.
 	seen[file_path] = true
@@ -543,7 +633,7 @@ fn process_tmpl_includes(dir string, line string, mut seen map[string]bool) []st
 	mut out := []string{}
 	for l in content {
 		if l.contains('@include ') {
-			out << process_tmpl_includes(base, l, mut seen)
+			out << p.process_tmpl_includes(base, l, mut seen)
 		} else {
 			out << l
 		}
@@ -601,7 +691,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 			}
 		}
 		if line.contains('@include ') {
-			resolved := process_tmpl_includes(base_dir, line, mut seen_includes)
+			resolved := p.process_tmpl_includes(base_dir, line, mut seen_includes)
 			lines.delete(i)
 			for resolved_line in resolved.reverse() {
 				lines.insert(i, resolved_line)
@@ -937,6 +1027,73 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 			src += '\n${mut_prefix}${lhs.value} ${bind_op} ${value_expr}\n'
 			return p.parse_stmts_from_source(src)
 		}
+	}
+	// General case: a `$tmpl(...)` / `$veb.html()` used as a subexpression (e.g.
+	// `ctx.html($tmpl('x.html'))`, `$tmpl('x.html').trim_space()`). Render each nested
+	// placeholder into a builder hoisted ahead of this statement, and rewrite the
+	// placeholder in place to the resulting value (`<builder>` for `$tmpl`,
+	// `ctx.html(<builder>)` for `$veb.html()`), so no `.veb_template` node leaks past
+	// the parser into the checker/backend.
+	mut tmpl_ids := []flat.NodeId{}
+	p.collect_veb_template_node_ids(stmt_id, mut tmpl_ids)
+	if tmpl_ids.len == 0 {
+		return none
+	}
+	mut result := []flat.NodeId{}
+	for tid in tmpl_ids {
+		tnode := p.a.nodes[int(tid)]
+		bname, builder_src := p.veb_template_builder_source(tnode)
+		for bid in p.parse_stmts_from_source(builder_src) {
+			result << bid
+		}
+		value_expr := if tnode.typ == 'html' { 'ctx.html(${bname})' } else { bname }
+		repl := p.parse_veb_template_replacement_expr(value_expr) or { return none }
+		p.a.nodes[int(tid)] = p.a.nodes[int(repl)]
+	}
+	result << stmt_id
+	return result
+}
+
+// veb_template_no_descend_kinds are the constructs whose builder must NOT be hoisted
+// out to the enclosing statement, because they introduce their own scope and/or run
+// conditionally: nested function bodies (`fn_literal`/`lambda_expr`/`fn_decl`) and
+// block/branch bodies (`if_expr`/`match_stmt`/`block`/`for_stmt`/`or_expr`). A
+// `$tmpl()` inside those is handled where the inner block itself is parsed, not here.
+const veb_template_no_descend_kinds = [flat.NodeKind.fn_literal, .lambda_expr, .fn_decl,
+	.if_expr, .match_stmt, .block, .for_stmt, .or_expr]
+
+// collect_veb_template_node_ids gathers the `.veb_template` placeholders in the subtree
+// rooted at `id` that are safe to hoist into the current statement — i.e. reached only
+// through unconditional expression composition (calls, selectors, `+`, struct inits,
+// indexing, …). It stops at scope/branch boundaries (see veb_template_no_descend_kinds).
+fn (p &Parser) collect_veb_template_node_ids(id flat.NodeId, mut out []flat.NodeId) {
+	if int(id) < 0 || int(id) >= p.a.nodes.len {
+		return
+	}
+	node := p.a.nodes[int(id)]
+	if node.kind == .veb_template {
+		out << id
+		return
+	}
+	if node.kind in veb_template_no_descend_kinds {
+		return
+	}
+	for i in 0 .. node.children_count {
+		p.collect_veb_template_node_ids(p.a.child(&node, i), mut out)
+	}
+}
+
+// parse_veb_template_replacement_expr parses `src` as an expression (via a throwaway
+// `_ = <src>` assignment) and returns the RHS node id, used to substitute a rendered
+// template value in place of a `.veb_template` placeholder.
+fn (mut p Parser) parse_veb_template_replacement_expr(src string) ?flat.NodeId {
+	stmts := p.parse_stmts_from_source('_ = ${src}\n')
+	if stmts.len != 1 {
+		return none
+	}
+	stmt := p.a.nodes[int(stmts[0])]
+	if stmt.kind == .assign && stmt.children_count == 2 {
+		return p.a.child(&stmt, 1)
 	}
 	return none
 }
