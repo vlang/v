@@ -997,7 +997,8 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 		c.clear_recent()
 	}
 	recent_slot := alias_cache_slot(typ)
-	if unsafe { c.recent_types[recent_slot].str == typ.str }
+	if c.recent_generations[recent_slot] == c.recent_generation
+		&& unsafe { c.recent_types[recent_slot].str == typ.str }
 		&& c.recent_types[recent_slot].len == typ.len {
 		return c.recent_results[recent_slot]
 	}
@@ -1265,7 +1266,8 @@ fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
 		cache.clear_recent()
 	}
 	recent_slot := alias_cache_slot(typ)
-	if unsafe { cache.recent_types[recent_slot].str == typ.str }
+	if cache.recent_generations[recent_slot] == cache.recent_generation
+		&& unsafe { cache.recent_types[recent_slot].str == typ.str }
 		&& cache.recent_types[recent_slot].len == typ.len {
 		return cache.recent_results[recent_slot]
 	}

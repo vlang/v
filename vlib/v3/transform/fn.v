@@ -508,11 +508,8 @@ fn (t &Transformer) resolve_embedded_receiver_method(base_type string, method st
 			lookup_type = short_type
 		}
 	}
-	info := t.lookup_struct_info(lookup_type) or { return none }
-	for field in info.fields {
-		if !t.is_embedded_field(field) {
-			continue
-		}
+	fields := t.embedded_fields[lookup_type] or { return none }
+	for field in fields {
 		field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
 		clean_field := if field_type.starts_with('&') { field_type[1..] } else { field_type }
 		if method_name := t.resolve_receiver_method_for_type(clean_field, method) {
@@ -10611,12 +10608,9 @@ fn (t &Transformer) embedded_receiver_path(base_type string, receiver_type strin
 			lookup_type = short_type
 		}
 	}
-	info := t.structs[lookup_type] or { return none }
+	fields := t.embedded_fields[lookup_type] or { return none }
 	clean_receiver := t.normalize_type_alias(receiver_type)
-	for field in info.fields {
-		if !t.is_embedded_field(field) {
-			continue
-		}
+	for field in fields {
 		field_type := if field.raw_typ.len > 0 { field.raw_typ } else { field.typ }
 		clean_field := t.normalize_type_alias(field_type.trim_left('&'))
 		short_field := if clean_field.contains('.') {

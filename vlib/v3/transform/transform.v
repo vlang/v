@@ -89,6 +89,7 @@ mut:
 	a                             &flat.FlatAst      = unsafe { nil }
 	tc                            &types.TypeChecker = unsafe { nil }
 	structs                       map[string]StructInfo
+	embedded_fields               map[string][]FieldInfo
 	struct_short_name_index       map[string]string
 	struct_short_name_index_ready bool
 	unique_fields                 map[string]string
@@ -152,7 +153,7 @@ mut:
 	struct_guess_cache            &AliasCache              = unsafe { nil }
 	generic_unresolved_cache      &GenericUnresolvedCache  = unsafe { nil }
 	struct_field_type_cache       &LookupCache             = unsafe { nil }
-	variant_short_name_cache      &LookupCache             = unsafe { nil }
+	variant_short_name_cache      &AliasCache              = unsafe { nil }
 	selector_type_cache           &SelectorTypeCache       = unsafe { nil }
 	resolved_call_return_cache    &ResolvedCallReturnCache = unsafe { nil }
 	variant_match_cache           &VariantMatchCache       = unsafe { nil }
@@ -318,16 +319,18 @@ mut:
 // keyed by typ and cleared whenever the source context changes.
 struct AliasCache {
 mut:
-	module         string
-	file           string
-	recent_types   [64]string
-	recent_results [64]string
-	entries        map[string]string
+	module             string
+	file               string
+	recent_generation  u32 = 1
+	recent_types       [256]string
+	recent_results     [256]string
+	recent_generations [256]u32
+	entries            map[string]string
 }
 
 @[inline]
 fn alias_cache_slot(typ string) int {
-	return int((u64(voidptr(typ.str)) >> 4 ^ u64(typ.len)) & 63)
+	return int((u64(voidptr(typ.str)) >> 4 ^ u64(typ.len)) & 255)
 }
 
 @[inline]
@@ -335,14 +338,12 @@ fn (mut c AliasCache) put_recent(typ string, result string) {
 	slot := alias_cache_slot(typ)
 	c.recent_types[slot] = typ
 	c.recent_results[slot] = result
+	c.recent_generations[slot] = c.recent_generation
 }
 
 @[inline]
 fn (mut c AliasCache) clear_recent() {
-	for i in 0 .. c.recent_types.len {
-		c.recent_types[i] = ''
-		c.recent_results[i] = ''
-	}
+	c.recent_generation++
 }
 
 struct LookupCache {
@@ -382,12 +383,11 @@ mut:
 struct VariantMatchCache {
 mut:
 	generation  u32 = 1
+	module      string
 	a_ptrs      [2048]voidptr
 	b_ptrs      [2048]voidptr
 	a_lens      [2048]int
 	b_lens      [2048]int
-	module_ptrs [2048]voidptr
-	module_lens [2048]int
 	generations [2048]u32
 	results     [2048]i8
 }
@@ -1111,6 +1111,7 @@ fn local_method_fn_name_needs_module_prefix(name string) bool {
 
 fn (mut t Transformer) prepare() {
 	t.collect_types()
+	t.rebuild_embedded_fields_index()
 	t.rebuild_struct_short_name_index()
 	t.collect_multi_return_fn_ret_types()
 	t.collect_const_suffixes()
@@ -1133,10 +1134,7 @@ fn (mut t Transformer) prepare() {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
-	t.variant_short_name_cache = &LookupCache{
-		entries: map[string]string{}
-		misses:  map[string]bool{}
-	}
+	t.variant_short_name_cache = &AliasCache{}
 	t.selector_type_cache = &SelectorTypeCache{}
 	t.resolved_call_return_cache = &ResolvedCallReturnCache{}
 	t.variant_match_cache = &VariantMatchCache{}
@@ -1149,6 +1147,21 @@ fn (mut t Transformer) prepare() {
 	}
 	t.prepare_interface_impl_indexes()
 	t.ierror_none_type_id = t.interface_impl_type_id('IError', 'None__') or { 0 }
+}
+
+fn (mut t Transformer) rebuild_embedded_fields_index() {
+	t.embedded_fields = map[string][]FieldInfo{}
+	for name, info in t.structs {
+		mut fields := []FieldInfo{}
+		for field in info.fields {
+			if field.is_embedded {
+				fields << field
+			}
+		}
+		if fields.len > 0 {
+			t.embedded_fields[name] = fields
+		}
+	}
 }
 
 fn (mut t Transformer) prepare_interface_impl_indexes() {
@@ -2389,8 +2402,8 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 		if t.scope_parallel_workers && t.retain_worker_results {
 			$if !v3_no_parallel ? {
 				has_entry_main := t.has_entry_main()
-				has_fn_literals := t.has_fn_literal_nodes()
-				pure_items := t.transform_serial_then_collect_pure(has_fn_literals)
+				literal_decls := t.collect_literal_fn_decls(t.a.nodes.len)
+				pure_items := t.transform_serial_then_collect_pure(literal_decls)
 				t.prepare_parallel_call_param_types()
 				t.transform_scoped_helper_batches(pure_items, scoped_transform_master_batches)
 				if !has_entry_main {
@@ -2409,8 +2422,8 @@ fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
 	// contains a function literal (the only construct that lifts new top-level
 	// declarations and mutates the shared TypeChecker). Collect the remaining,
 	// closure-free functions as parallelizable work items.
-	has_fn_literals := t.has_fn_literal_nodes()
-	pure_items := t.transform_serial_then_collect_pure(has_fn_literals)
+	literal_decls := t.collect_literal_fn_decls(t.a.nodes.len)
+	pure_items := t.transform_serial_then_collect_pure(literal_decls)
 	base_nodes := t.a.nodes.len
 	base_children := t.a.children.len
 	was_parallel := t.run_parallel_transform(pure_items, base_nodes, base_children)
@@ -2448,26 +2461,14 @@ fn (mut t Transformer) collect_interface_boxed_types_dispatch(want_parallel bool
 	t.tc.unfreeze_type_cache_after_forks()
 }
 
-fn (t &Transformer) has_fn_literal_nodes() bool {
-	for node in t.a.nodes {
-		if node.kind == .fn_literal || node.kind == .lambda_expr {
-			return true
-		}
-	}
-	return false
-}
-
 // transform_serial_then_collect_pure walks the top level once: it transforms
 // const/global declarations and closure-bearing functions in place (serially),
 // and returns work items for the closure-free functions left to transform.
-fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool) []FnWorkItem {
+fn (mut t Transformer) transform_serial_then_collect_pure(literal_decls []int) []FnWorkItem {
 	mut pure := []FnWorkItem{}
 	original_len := t.a.nodes.len
-	literal_decls := if scan_fn_literals {
-		t.collect_literal_fn_decls(original_len)
-	} else {
-		[]bool{}
-	}
+	mut literal_decl_idx := 0
+	scan_fn_literals := literal_decls.len > 0
 	// The checker's top-level index gives the exact subtree range of each fn
 	// ((previous top-level decl of ANY kind, fn_idx]); the shared-base parallel
 	// transform relies on those ranges being disjoint per item.
@@ -2499,11 +2500,15 @@ fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool)
 			if !t.should_transform_fn(node) {
 				continue
 			}
-			mut has_literal := false
-			mut cost := int(node.children_count) + 1
-			if scan_fn_literals {
-				has_literal = literal_decls[i]
-				cost = if span_cost > 0 { span_cost } else { 1 }
+			has_literal := literal_decl_idx < literal_decls.len
+				&& literal_decls[literal_decl_idx] == i
+			if has_literal {
+				literal_decl_idx++
+			}
+			cost := if scan_fn_literals {
+				if span_cost > 0 { span_cost } else { 1 }
+			} else {
+				int(node.children_count) + 1
 			}
 			if has_literal {
 				old_range_lo := t.item_range_lo
@@ -2542,8 +2547,8 @@ fn (mut t Transformer) transform_serial_then_collect_pure(scan_fn_literals bool)
 // walks. Literals inside const/global initializers reset at their decl; any
 // other stray attribution can only route an extra function to the serial
 // transform path, which is always safe.
-fn (t &Transformer) collect_literal_fn_decls(limit int) []bool {
-	mut result := []bool{len: limit}
+fn (t &Transformer) collect_literal_fn_decls(limit int) []int {
+	mut result := []int{cap: 64}
 	mut literal_pending := false
 	for i in 0 .. limit {
 		node := t.a.nodes[i]
@@ -2552,7 +2557,9 @@ fn (t &Transformer) collect_literal_fn_decls(limit int) []bool {
 		if kid == 21 || kid == 32 {
 			literal_pending = true
 		} else if kid == 61 {
-			result[i] = literal_pending
+			if literal_pending {
+				result << i
+			}
 			literal_pending = false
 		} else if kid == 64 || kid == 65 {
 			literal_pending = false
@@ -2648,10 +2655,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
-	w.variant_short_name_cache = &LookupCache{
-		entries: map[string]string{}
-		misses:  map[string]bool{}
-	}
+	w.variant_short_name_cache = &AliasCache{}
 	w.selector_type_cache = &SelectorTypeCache{}
 	w.resolved_call_return_cache = &ResolvedCallReturnCache{}
 	w.variant_match_cache = &VariantMatchCache{}
@@ -2766,10 +2770,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
-	w.variant_short_name_cache = &LookupCache{
-		entries: map[string]string{}
-		misses:  map[string]bool{}
-	}
+	w.variant_short_name_cache = &AliasCache{}
 	w.selector_type_cache = &SelectorTypeCache{}
 	w.resolved_call_return_cache = &ResolvedCallReturnCache{}
 	w.variant_match_cache = &VariantMatchCache{}
@@ -2847,6 +2848,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		a:                                  ast
 		tc:                                 wtc
 		structs:                            t.structs
+		embedded_fields:                    t.embedded_fields
 		struct_short_name_index:            t.struct_short_name_index
 		struct_short_name_index_ready:      t.struct_short_name_index_ready
 		unique_fields:                      t.unique_fields
@@ -7165,9 +7167,8 @@ fn (t &Transformer) const_ref_may_match_key(id flat.NodeId, key string, file str
 		&& key.ends_with(node.value)) {
 		return true
 	}
-	if (t.const_suffixes[node.value] or { '' }) == key {
-		return true
-	}
+	// const_suffixes contains only dot-delimited suffixes of `key`, all covered by
+	// the comparison above. Avoid hashing nearly every identifier in the AST here.
 	if node.kind == .ident && node.value.contains('.') && !isnil(t.tc) {
 		base := node.value.all_before_last('.')
 		if resolved_base := t.tc.file_imports[file_import_key(file, base)] {
@@ -15830,11 +15831,14 @@ fn (t &Transformer) variant_names_match(a string, b string) bool {
 		return t.variant_names_match_uncached(a, b)
 	}
 	mut cache := t.variant_match_cache
+	if unsafe { cache.module.str != t.cur_module.str } || cache.module.len != t.cur_module.len {
+		cache.module = t.cur_module
+		cache.generation++
+	}
 	slot := int(((u64(voidptr(a.str)) >> 4) * 2654435761 ^ (u64(voidptr(b.str)) >> 4)) & 2047)
 	if cache.generations[slot] == cache.generation && cache.a_ptrs[slot] == voidptr(a.str)
 		&& cache.b_ptrs[slot] == voidptr(b.str) && cache.a_lens[slot] == a.len
-		&& cache.b_lens[slot] == b.len && cache.module_ptrs[slot] == voidptr(t.cur_module.str)
-		&& cache.module_lens[slot] == t.cur_module.len {
+		&& cache.b_lens[slot] == b.len {
 		return cache.results[slot] > 0
 	}
 	result := t.variant_names_match_uncached(a, b)
@@ -15842,8 +15846,6 @@ fn (t &Transformer) variant_names_match(a string, b string) bool {
 	cache.b_ptrs[slot] = voidptr(b.str)
 	cache.a_lens[slot] = a.len
 	cache.b_lens[slot] = b.len
-	cache.module_ptrs[slot] = voidptr(t.cur_module.str)
-	cache.module_lens[slot] = t.cur_module.len
 	cache.generations[slot] = cache.generation
 	cache.results[slot] = if result { i8(1) } else { i8(-1) }
 	return result
@@ -15899,18 +15901,23 @@ fn (t &Transformer) generic_variant_args_are_open(args []string) bool {
 
 @[inline]
 fn (t &Transformer) variant_short_name(name string) string {
-	if !name.contains('.') {
-		return name
-	}
 	if isnil(t.variant_short_name_cache) {
-		return variant_short_name_text(name)
+		return if name.contains('.') { variant_short_name_text(name) } else { name }
 	}
 	mut cache := t.variant_short_name_cache
+	recent_slot := alias_cache_slot(name)
+	if cache.recent_generations[recent_slot] == cache.recent_generation
+		&& unsafe { cache.recent_types[recent_slot].str == name.str }
+		&& cache.recent_types[recent_slot].len == name.len {
+		return cache.recent_results[recent_slot]
+	}
 	if cached := cache.entries[name] {
+		cache.put_recent(name, cached)
 		return cached
 	}
-	short := variant_short_name_text(name)
+	short := if name.contains('.') { variant_short_name_text(name) } else { name }
 	cache.entries[name] = short
+	cache.put_recent(name, short)
 	return short
 }
 
