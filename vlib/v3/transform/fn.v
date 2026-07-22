@@ -430,9 +430,9 @@ fn (t &Transformer) resolve_alias_receiver_method(base_type string, method strin
 	if isnil(t.tc) || base_type.len == 0 || method.len == 0 {
 		return none
 	}
-	raw_base := base_type.trim_space().trim_left('&')
-	clean_base := t.normalize_type_alias(base_type)
-	cache_key := '${t.cur_module}\n${raw_base}\n${method}'
+	// Key the memo on the raw spelling so cache hits skip the trim/normalize
+	// allocations below; the result is a pure function of the spelling anyway.
+	cache_key := '${t.cur_module}\n${base_type}\n${method}'
 	if !isnil(t.alias_receiver_method_cache) {
 		mut cache := t.alias_receiver_method_cache
 		if cached := cache.entries[cache_key] {
@@ -442,6 +442,8 @@ fn (t &Transformer) resolve_alias_receiver_method(base_type string, method strin
 			return none
 		}
 	}
+	raw_base := base_type.trim_space().trim_left('&')
+	clean_base := t.normalize_type_alias(base_type)
 	mut exact_aliases := [raw_base]
 	if !raw_base.contains('.') && t.cur_module.len > 0 && t.cur_module !in ['main', 'builtin'] {
 		exact_aliases << '${t.cur_module}.${raw_base}'
@@ -3056,6 +3058,18 @@ fn (t &Transformer) is_fn_pointer_type_name(type_name string) bool {
 }
 
 fn transform_param_type_is_void_pointer(type_name string) bool {
+	if type_name.len < 5 {
+		return false
+	}
+	// Fast path: nothing to trim (the common spelling), so compare directly
+	// instead of allocating a trimmed copy per call.
+	if type_name[0] > ` ` && type_name[type_name.len - 1] > ` ` {
+		if type_name.len > 7 {
+			return false
+		}
+		return type_name == '&void' || type_name == 'voidptr' || type_name == 'byteptr'
+			|| type_name == 'charptr'
+	}
 	clean := type_name.trim_space()
 	return clean == '&void' || clean == 'voidptr' || clean == 'byteptr' || clean == 'charptr'
 }
