@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_or_block_selector_newline_call.vv:8:20: error: expression evaluated but not used
+    6 | 
+    7 | fn main() {
+    8 |     maybe_file() or { $embed_file(@FILE) }.to_string
+      |                       ~~~~~~~~~~~~~~~~~~
+    9 |     // Keep the following parenthesized statement separate from the selector above.
+   10 |     (1)

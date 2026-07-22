@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_as_nested_branch_result_with_anon_fn_condition_arg.vv:38:9: error: undefined ident: `missing_symbol`
+   36 |     assert first_arg.path.len > 0
+   37 |     assert sink == 0
+   38 |     sink = missing_symbol
+      |            ~~~~~~~~~~~~~~
+   39 | }

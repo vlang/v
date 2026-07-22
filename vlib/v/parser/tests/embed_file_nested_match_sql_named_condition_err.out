@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_nested_match_sql_named_condition_err.vv:8:9: error: unexpected keyword `sql`, expecting name
+    6 |     fallback := $embed_file(@FILE)
+    7 |     embedded := if yes() {
+    8 |         match sql {
+      |               ~~~
+    9 |             0 { $embed_file(@FILE) }
+   10 |             else { fallback }

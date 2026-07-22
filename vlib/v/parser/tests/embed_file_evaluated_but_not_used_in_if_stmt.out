@@ -1,0 +1,7 @@
+vlib/v/parser/tests/embed_file_evaluated_but_not_used_in_if_stmt.vv:4:3: error: expression evaluated but not used
+    2 |     cond := true
+    3 |     if cond {
+    4 |         $embed_file(@FILE)
+      |         ~~~~~~~~~~~~~~~~~~
+    5 |     }
+    6 | }

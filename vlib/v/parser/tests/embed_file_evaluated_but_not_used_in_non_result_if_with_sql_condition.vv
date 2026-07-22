@@ -1,0 +1,20 @@
+struct User {
+	id int
+}
+
+fn main() {
+	outer := true
+	fallback := $embed_file(@FILE)
+	_ := if outer {
+		if (sql db {
+			select from User
+		}).len > 0 {
+			$embed_file(@FILE)
+		} else {
+			fallback
+		}
+		0
+	} else {
+		1
+	}
+}
