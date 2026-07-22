@@ -859,7 +859,21 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 		}
 	}
 	c_flags << initial_c_flags
+	inputs, native_source_roots, _, _, _, has_untracked_include := cache_external_input_files_with_resolved_flags(a,
+		vroot, source_modules, c_flags, target)
+	return inputs, native_source_roots, has_untracked_include
+}
+
+// cache_external_input_files_with_resolved_flags collects cache inputs without
+// resolving source `#flag` directives a second time. unscoped_inputs contains
+// the dependency trees of direct non-source includes that remain in the program
+// unit. resolution_dirs contains every searched include directory whose contents
+// can change path resolution; missing_resolution_paths are the first nonexistent
+// path components searched.
+pub fn cache_external_input_files_with_resolved_flags(a &flat.FlatAst, vroot string, source_modules map[string]bool, c_flags []string, target pref.Target) (map[string][]string, map[string][]string, map[string][]string, []string, []string, bool) {
 	include_dirs := c_flag_include_dirs(c_flags)
+	flag_inputs, flags_have_untracked_include, mut include_macros, mut dynamic_include_macros, mut resolution_dirs, mut missing_resolution_paths :=
+		cache_c_flag_input_files_with_status(c_flags)
 	mut collect_modules := map[string]bool{}
 	for module_name, enabled in source_modules {
 		if enabled {
@@ -869,9 +883,10 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 	}
 	mut inputs := map[string][]string{}
 	mut native_source_roots := map[string][]string{}
+	mut unscoped_inputs := map[string][]string{}
 	mut has_untracked_include := false
 	mut cur_module := ''
-	cur_file = ''
+	mut cur_file := ''
 	for node in a.nodes {
 		if node.kind == .file {
 			cur_file = node.value
@@ -896,21 +911,30 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 				continue
 			}
 			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
+				c_record_cache_resolution_path(path, mut resolution_dirs, mut
+					missing_resolution_paths)
 				if !os.is_file(path) {
 					continue
 				}
-				if c_include_arg_is_source_file(include_arg) {
+				is_source_input := c_include_arg_is_source_file(include_arg)
+				if is_source_input {
 					mut roots := native_source_roots[owner_module]
 					roots << os.real_path(path)
 					native_source_roots[owner_module] = roots
 				}
 				mut seen := map[string]bool{}
 				mut files := []string{}
-				if c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files) {
+				if c_collect_external_input_tree(path, vroot, include_dirs, mut seen, mut files, mut
+					include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
+					missing_resolution_paths)
+				{
 					has_untracked_include = true
 				}
 				for file in files {
 					c_add_cache_external_input(mut inputs, owner_module, file)
+					if !is_source_input {
+						c_add_cache_external_input(mut unscoped_inputs, owner_module, file)
+					}
 				}
 				break
 			}
@@ -920,7 +944,6 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 			c_add_cache_external_input(mut inputs, owner_module, path)
 		}
 	}
-	flag_inputs, flags_have_untracked_include := cache_c_flag_input_files_with_status(c_flags)
 	if flags_have_untracked_include {
 		has_untracked_include = true
 	}
@@ -932,34 +955,50 @@ pub fn cache_external_input_files(a &flat.FlatAst, vroot string, source_modules 
 		sorted.sort()
 		inputs[module_name] = sorted
 	}
-	return inputs, native_source_roots, has_untracked_include
+	for module_name, paths in unscoped_inputs {
+		mut sorted := paths.clone()
+		sorted.sort()
+		unscoped_inputs[module_name] = sorted
+	}
+	mut sorted_resolution_dirs := resolution_dirs.keys()
+	sorted_resolution_dirs.sort()
+	mut sorted_missing_resolution_paths := missing_resolution_paths.keys()
+	sorted_missing_resolution_paths.sort()
+	return inputs, native_source_roots, unscoped_inputs, sorted_resolution_dirs, sorted_missing_resolution_paths, has_untracked_include
 }
 
 // cache_c_flag_input_files returns forced include/macro files whose contents
 // affect every cached object compiled with the supplied C flags.
 pub fn cache_c_flag_input_files(flags []string) []string {
-	files, _ := cache_c_flag_input_files_with_status(flags)
+	files, _, _, _, _, _ := cache_c_flag_input_files_with_status(flags)
 	return files
 }
 
-fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool) {
+fn cache_c_flag_input_files_with_status(flags []string) ([]string, bool, map[string][]string, map[string]bool, map[string]bool, map[string]bool) {
 	include_dirs := c_flag_include_dirs(flags)
 	mut seen := map[string]bool{}
 	mut files := []string{}
+	mut resolution_dirs := map[string]bool{}
+	mut missing_resolution_paths := map[string]bool{}
 	mut has_untracked_include := false
+	mut include_macros, mut dynamic_include_macros := c_flag_include_macro_definitions(flags)
 	for forced_input in c_forced_include_inputs(flags) {
 		for path in c_include_file_paths('"${forced_input}"', '', '', include_dirs) {
+			c_record_cache_resolution_path(path, mut resolution_dirs, mut missing_resolution_paths)
 			if !os.is_file(path) {
 				continue
 			}
-			if c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files) {
+			if c_collect_external_input_tree(path, '', include_dirs, mut seen, mut files, mut
+				include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
+				missing_resolution_paths)
+			{
 				has_untracked_include = true
 			}
 			break
 		}
 	}
 	files.sort()
-	return files, has_untracked_include
+	return files, has_untracked_include, include_macros, dynamic_include_macros, resolution_dirs, missing_resolution_paths
 }
 
 fn c_forced_include_inputs(flags []string) []string {
@@ -1039,7 +1078,7 @@ fn c_add_cache_external_input(mut inputs map[string][]string, module_name string
 	}
 }
 
-fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string) bool {
+fn c_collect_external_input_tree(path string, vroot string, include_dirs []string, mut seen map[string]bool, mut files []string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool) bool {
 	if path.len == 0 || !os.is_file(path) {
 		return false
 	}
@@ -1056,24 +1095,125 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 		clean, next_in_block_comment := c_preprocessor_directive_scan_line(line, in_block_comment)
 		in_block_comment = next_in_block_comment
 		if c_directive_name(clean) !in ['include', 'import'] {
+			c_record_include_macro_definition(clean, mut include_macros, mut dynamic_include_macros)
 			continue
 		}
-		include_arg := c_include_arg(c_directive_arg(clean), vroot, real_path)
-		if !c_include_arg_is_literal(include_arg) {
-			has_untracked_include = true
-			continue
-		}
-		for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
-			if !os.is_file(nested_path) {
+		mut include_args := [c_include_arg(c_directive_arg(clean), vroot, real_path)]
+		if !c_include_arg_is_literal(include_args[0]) {
+			macro_name := include_args[0].trim_space()
+			if dynamic_include_macros[macro_name] {
+				has_untracked_include = true
 				continue
 			}
-			if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut seen, mut files) {
+			include_args = include_macros[macro_name].clone()
+			if include_args.len == 0 {
 				has_untracked_include = true
+				continue
 			}
-			break
+		}
+		for include_arg in include_args {
+			for nested_path in c_include_file_paths(include_arg, vroot, real_path, include_dirs) {
+				c_record_cache_resolution_path(nested_path, mut resolution_dirs, mut
+					missing_resolution_paths)
+				if !os.is_file(nested_path) {
+					continue
+				}
+				if c_collect_external_input_tree(nested_path, vroot, include_dirs, mut seen, mut
+					files, mut include_macros, mut dynamic_include_macros, mut resolution_dirs, mut
+					missing_resolution_paths)
+				{
+					has_untracked_include = true
+				}
+				break
+			}
 		}
 	}
 	return has_untracked_include
+}
+
+fn c_record_cache_resolution_path(path string, mut resolution_dirs map[string]bool, mut missing_resolution_paths map[string]bool) {
+	if path.len == 0 {
+		return
+	}
+	mut dir := os.dir(os.abs_path(path))
+	mut first_missing := ''
+	for dir.len > 0 {
+		if os.is_dir(dir) {
+			if first_missing.len > 0 {
+				missing_resolution_paths[first_missing] = true
+			} else {
+				resolution_dirs[dir] = true
+				real_dir := os.real_path(dir)
+				if real_dir.len > 0 {
+					resolution_dirs[real_dir] = true
+				}
+			}
+			return
+		}
+		first_missing = dir
+		parent := os.dir(dir)
+		if parent == dir {
+			return
+		}
+		dir = parent
+	}
+}
+
+fn c_flag_include_macro_definitions(flags []string) (map[string][]string, map[string]bool) {
+	mut include_macros := map[string][]string{}
+	mut dynamic_include_macros := map[string]bool{}
+	mut i := 0
+	for i < flags.len {
+		clean := flags[i].trim_space()
+		mut definition := ''
+		if clean == '-D' && i + 1 < flags.len {
+			i++
+			definition = flags[i].trim_space()
+		} else if clean.starts_with('-D') {
+			definition = clean[2..].trim_space()
+		}
+		if definition.len > 0 {
+			name := definition.all_before('=').trim_space()
+			value := if definition.contains('=') {
+				definition.all_after('=').trim_space()
+			} else {
+				''
+			}
+			c_record_include_macro_value(name, value, mut include_macros, mut
+				dynamic_include_macros)
+		}
+		i++
+	}
+	return include_macros, dynamic_include_macros
+}
+
+fn c_record_include_macro_definition(directive string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) {
+	if c_directive_name(directive) != 'define' {
+		return
+	}
+	definition := c_directive_arg(directive)
+	parts := definition.fields()
+	if parts.len < 2 || parts[0].contains('(') {
+		return
+	}
+	name := parts[0]
+	value := definition[name.len..].trim_space()
+	c_record_include_macro_value(name, value, mut include_macros, mut dynamic_include_macros)
+}
+
+fn c_record_include_macro_value(name string, value string, mut include_macros map[string][]string, mut dynamic_include_macros map[string]bool) {
+	if name.len == 0 || value.len == 0 {
+		return
+	}
+	if !c_include_arg_is_literal(value) {
+		dynamic_include_macros[name] = true
+		return
+	}
+	mut values := include_macros[name]
+	if value !in values {
+		values << value
+		include_macros[name] = values
+	}
 }
 
 fn c_embed_external_input_path(a &flat.FlatAst, node flat.Node) ?string {
@@ -1511,7 +1651,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.line_start = orig_line_start
 	if g.program_body_only {
 		unsafe { const_code.free() }
-		g.release_scoped_fn_items()
 		g.sb.ensure_cap(fn_code.len + 262_144)
 		g.writeln('#define V3CACHE_PROGRAM_UNIT 1')
 		g.string_literals()
@@ -1521,8 +1660,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.fn_ptr_typedefs()
 			g.fixed_array_typedefs()
 			g.optional_typedefs()
+			g.forward_decls()
 			g.writeln('/* V3CACHE_SUPPORT_END */')
 		}
+		g.release_scoped_fn_items()
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
 		g.writeln('/* V3CACHE_MODULE main */')
 		for segment in g.fn_segs {
@@ -8408,6 +8549,13 @@ fn (g &FlatGen) fixed_storage_candidate_primary_from_matched_node_for_collect(no
 }
 
 fn (mut g FlatGen) collect_fixed_storage_consts() {
+	// Cached module headers deliberately materialize inferred array constants as
+	// dynamic arrays. Keep cached objects on the same ABI: promoting one of those
+	// constants to a C fixed array would make warm users read an Array header as
+	// element storage.
+	if g.cache_split {
+		return
+	}
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
 	mut cur_module := 'main'
@@ -10296,8 +10444,9 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 								g.gen_expr(g.a.child(&node, 1))
 								g.write(']')
 							} else {
+								g.write('(')
 								g.gen_expr(base_id)
-								g.write('[')
+								g.write(')[')
 								g.gen_expr(g.a.child(&node, 1))
 								g.write(']')
 							}

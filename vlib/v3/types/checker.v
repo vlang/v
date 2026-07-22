@@ -24466,12 +24466,11 @@ fn (tc &TypeChecker) is_builtin_error_struct_name_in_scope(name string, file str
 // prepare_interface_query_indexes publishes immutable interface requirements for
 // transform workers. Interface declarations no longer change after semantic
 // checking, so compatibility scans can reuse these lists safely across threads.
-pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
+pub fn (mut tc TypeChecker) prepare_interface_requirement_indexes() {
 	tc.interface_query_indexes_ready = false
 	tc.interface_method_names_index = map[string][]string{}
 	tc.interface_abstract_index = map[string][]string{}
 	tc.interface_field_list_index = map[string][]StructField{}
-	tc.interface_impl_indexes = map[string]&InterfaceImplIndex{}
 	for iface_name in tc.interface_names.keys() {
 		mut seen_methods := map[string]bool{}
 		methods := tc.interface_method_names_inner(iface_name, mut seen_methods)
@@ -24490,6 +24489,13 @@ pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
 		}
 	}
 	tc.interface_query_indexes_ready = true
+}
+
+// prepare_interface_query_indexes publishes immutable interface requirements and
+// implementer lists for transform workers.
+pub fn (mut tc TypeChecker) prepare_interface_query_indexes() {
+	tc.prepare_interface_requirement_indexes()
+	tc.interface_impl_indexes = map[string]&InterfaceImplIndex{}
 	for iface_name in tc.interface_names.keys() {
 		impls := if is_builtin_ierror_name(iface_name) {
 			tc.ierror_impl_names()

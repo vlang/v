@@ -117,7 +117,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 					cur_file
 				}
 			}
-			if g.program_body_only && !g.cache_program_files[item_file]
+			if g.program_body_only && !is_specialization && !g.cache_program_files[item_file]
 				&& item_module !in ['', 'main'] {
 				continue
 			}
@@ -11892,6 +11892,26 @@ fn (mut g FlatGen) gen_addressed_rvalue_arg(child_id flat.NodeId, pt types.Type)
 fn (mut g FlatGen) gen_mut_pointer_slot_arg(arg_id flat.NodeId, arg_node flat.Node, expected types.Type) bool {
 	if expected !is types.Pointer {
 		return false
+	}
+	// A mutable parameter is already the address of its caller-owned storage. In
+	// particular, `mut p &T` is represented as `T**`; forwarding `mut p` to
+	// another such parameter must pass that slot directly, not read `*p` first.
+	if arg_node.is_mut && arg_node.kind == .ident && g.current_param_is_mut(arg_node.value) {
+		g.write(g.cname(arg_node.value))
+		return true
+	}
+	// Transform lowers a forwarded `mut p` argument to the lvalue `*p`. When p
+	// is itself a mutable parameter, its C variable is already the slot expected
+	// by the callee, so emitting the lowered dereference would lose one level.
+	if arg_node.kind == .prefix && arg_node.op == .mul && arg_node.children_count == 1 {
+		child := g.a.child_node(&arg_node, 0)
+		if child.kind == .ident && g.current_param_is_mut(child.value) {
+			param_type := g.current_param_type(child.value) or { types.Type(types.void_) }
+			if g.tc.c_type(param_type) == g.tc.c_type(expected) {
+				g.write(g.cname(child.value))
+				return true
+			}
+		}
 	}
 	expected_base := (expected as types.Pointer).base_type
 

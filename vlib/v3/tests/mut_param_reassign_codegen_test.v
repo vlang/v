@@ -302,6 +302,25 @@ fn main() {
 }
 ')
 	assert out_lvalues == '9\n7'
+	out_forwarded := mut_param_reassign_run_good(v3_bin, 'mut_pointer_param_forward_and_index', 'fn write_byte(mut bytes &u8, value u8) {
+	bytes[0] = value
+}
+
+fn terminate(mut bytes &u8) {
+	write_byte(mut bytes, `Z`)
+	bytes[1] = 0
+}
+
+fn main() {
+	mut storage := [2]u8{}
+	mut bytes := &storage[0]
+	terminate(mut bytes)
+	assert storage[0] == `Z`
+	assert storage[1] == 0
+	println("ok")
+}
+')
+	assert out_forwarded == 'ok'
 	mut_param_reassign_run_bad(v3_bin, 'generic_mut_pointer_param_requires_pointer_slot', 'struct Item {
 	value int
 }
