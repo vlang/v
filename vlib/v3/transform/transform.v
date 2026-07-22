@@ -2416,6 +2416,12 @@ struct DeferredBaseWrite {
 // enough work, with closure-free function bodies transformed across threads.
 // Returns whether function bodies were actually transformed in parallel.
 fn (mut t Transformer) transform_all_dispatch(want_parallel bool) bool {
+	// Every forked worker checker otherwise lazily rebuilds the source-error
+	// embedding index by rescanning all struct declarations; build it once in
+	// the master cache so forks inherit it through the frozen base.
+	if !isnil(t.tc) {
+		t.tc.precompute_source_error_embed_index()
+	}
 	// Collect source-level interface conversions before any worker rewrites its
 	// private AST. Equality and automatic string lowering can then generate the
 	// same bounded tag dispatch independently of worker scheduling.
