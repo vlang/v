@@ -582,7 +582,7 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		}
 		parallel_type_decls := g.scope_parallel_workers && !g.program_body_only
 			&& g.incremental_fn_names.len == 0
-		chunk_jobs := if parallel_type_decls { n_jobs * 6 } else { n_jobs }
+		chunk_jobs := if parallel_type_decls { n_jobs * 12 } else { n_jobs }
 		mut chunk_items := split_flat_cgen_items(items, chunk_jobs)
 		chunk_count := chunk_items.len
 		if parallel_type_decls {
