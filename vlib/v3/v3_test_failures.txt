@@ -192,10 +192,6 @@ vlib/veb/tests/veb_aliased_app_and_context_test.v
 vlib/veb/tests/veb_should_listen_on_both_ipv4_and_ipv6_by_default_test.v
 vlib/wasm/tests/patch_test.v
 vlib/x/async/tests/mcp/mcp_integration_test.v
-vlib/x/atomics/i32_test.v
-vlib/x/atomics/i64_test.v
-vlib/x/atomics/u32_test.v
-vlib/x/atomics/u64_test.v
 vlib/x/crypto/mldsa/mldsa_test.v
 vlib/x/sessions/tests/db_store_test.v
 vlib/x/sessions/tests/session_app_test.v
