@@ -451,30 +451,41 @@ fn test_comptime_match_expression_consumes_all_branches() {
 }
 
 fn test_comptime_type_accessor_initializers_stay_single_expressions() {
-	ast, _ := parse_span_source('comptime_type_init', 'fn make_zero[T](x ?T) {
+	ast, _ := parse_span_source('comptime_type_init', 'struct Box[T] {}
+
+fn make_zero[T](x ?T) {
 	_ := typeof(x).payload_type{}
 	_ := \$zero([]typeof(x).payload_type{})
 	_ := \$zero([][]int{})
 	_ := \$zero([]?int{})
+	_ := \$zero([]Box[int]{})
+	_ := \$new([]Box[string]{})
 }
 ')
 	mut saw_fn := false
 	mut marker_count := 0
+	mut new_marker_count := 0
 	mut saw_array_target := false
 	mut saw_accessor_array_target := false
 	mut saw_nested_array_target := false
 	mut saw_optional_array_target := false
+	mut saw_generic_array_target := false
+	mut saw_generic_new_array_target := false
 	for node in ast.nodes {
 		if node.kind == .fn_decl && node.value == 'make_zero' {
 			saw_fn = true
-			assert node.children_count == 5
+			assert node.children_count == 7
 			assert ast.child_node(&node, 0).kind == .param
 			assert ast.child_node(&node, 1).kind == .decl_assign
 			assert ast.child_node(&node, 2).kind == .decl_assign
 		}
-		if node.kind == .string_literal && node.value == '__v3_comptime_zero'
+		if node.kind == .string_literal && node.value in ['__v3_comptime_zero', '__v3_comptime_new']
 			&& node.children_count == 1 {
-			marker_count++
+			if node.value == '__v3_comptime_zero' {
+				marker_count++
+			} else {
+				new_marker_count++
+			}
 			target := ast.child_node(&node, 0)
 			if target.kind == .array_init && target.value == '__v3_comptime_type_array' {
 				saw_array_target = true
@@ -493,14 +504,24 @@ fn test_comptime_type_accessor_initializers_stay_single_expressions() {
 					if elem.kind == .ident && elem.value == '?int' {
 						saw_optional_array_target = true
 					}
+					if elem.kind == .ident && elem.value == 'Box[int]' {
+						saw_generic_array_target = true
+					}
+					if elem.kind == .ident && elem.value == 'Box[string]'
+						&& node.value == '__v3_comptime_new' {
+						saw_generic_new_array_target = true
+					}
 				}
 			}
 		}
 	}
 	assert saw_fn
-	assert marker_count == 4
+	assert marker_count == 5
+	assert new_marker_count == 1
 	assert saw_array_target
 	assert saw_accessor_array_target
 	assert saw_nested_array_target
 	assert saw_optional_array_target
+	assert saw_generic_array_target
+	assert saw_generic_new_array_target
 }

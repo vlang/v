@@ -4546,6 +4546,11 @@ fn (mut p Parser) parse_comptime_type_arg() flat.NodeId {
 	mut elem := flat.empty_node
 	if p.tok in [.question, .not, .amp, .and] || (p.tok == .lsbr && p.peek() == .rsbr) {
 		elem = p.parse_comptime_type_arg()
+	} else if p.tok == .name {
+		elem = p.add_node(flat.Node{
+			kind:  .ident
+			value: p.parse_type_name()
+		})
 	} else {
 		elem = p.prefix_expr()
 		for p.tok == .dot {

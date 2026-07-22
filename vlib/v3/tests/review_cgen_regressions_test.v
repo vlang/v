@@ -506,6 +506,10 @@ mut:
 	count  int = 16
 }
 
+struct GenericBox[T] {
+	value T
+}
+
 type NewInts = []int
 type NewNested = [][]int
 type NewOptional = []?int
@@ -537,6 +541,8 @@ fn new_value[T]() T {
 fn main() {
 	nested := $zero([][]int{})
 	optional := $zero([]?int{})
+	generic := $zero([]GenericBox[int]{})
+	mut generic_ptr := $new([]GenericBox[int]{})
 	mut direct_ptr := new_value[&NewInts]()
 	mut nested_ptr := new_value[&NewNested]()
 	mut optional_ptr := new_value[&NewOptional]()
@@ -552,8 +558,13 @@ fn main() {
 	defaults.values << 14
 	defaults.lookup["answer"] = 15
 	optional_generic_ptr << 17
+	generic_ptr << GenericBox[int]{
+		value: 18
+	}
 	println(int_str(nested.len))
 	println(int_str(optional.len))
+	println(int_str(generic.len))
+	println(int_str(generic_ptr.len))
 	println(int_str(payload.len))
 	println(int_str(optional_generic.len))
 	println(int_str(result_generic.len))
@@ -567,5 +578,5 @@ fn main() {
 	println(int_str(defaults.count))
 }
 ')
-	assert out == '0\n0\n0\n0\n0\n0\n17\n11\n12\n13\n14\n15\n16'
+	assert out == '0\n0\n0\n1\n0\n0\n0\n0\n17\n11\n12\n13\n14\n15\n16'
 }
