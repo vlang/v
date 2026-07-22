@@ -1129,6 +1129,15 @@ fn (p &Parser) collect_veb_template_node_ids(id flat.NodeId, mut out []flat.Node
 		}
 		return
 	}
+	if node.kind == .infix && node.op in [.logical_and, .logical_or]
+		&& node.children_count == 2 {
+		// Short-circuit operators only evaluate their left operand unconditionally; the
+		// right runs solely when the left does not short-circuit (`&&` left true, `||`
+		// left false). Hoisting a template from the right operand would render it
+		// unconditionally and break that guard, so only descend into the left operand.
+		p.collect_veb_template_node_ids(p.a.child(&node, 0), mut out)
+		return
+	}
 	if node.kind in veb_template_no_descend_kinds {
 		return
 	}
