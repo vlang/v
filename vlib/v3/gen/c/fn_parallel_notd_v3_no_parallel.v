@@ -554,7 +554,15 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		if isnil(g.a.worker_pool) {
 			g.a.worker_pool = workers.new(runtime.nr_jobs() - 1)
 		}
-		n_jobs := flat_cgen_job_count(g.a.worker_pool.size() + 1, n_items)
+		parallel_type_decls := g.scope_parallel_workers && !g.program_body_only
+			&& g.incremental_fn_names.len == 0
+		available_jobs := g.a.worker_pool.size() + 1
+		body_jobs := available_jobs - if parallel_type_decls && available_jobs <= max_flat_cgen_jobs {
+			1
+		} else {
+			0
+		}
+		n_jobs := flat_cgen_job_count(body_jobs, n_items)
 		if n_items < min_flat_cgen_parallel_items || n_jobs <= 1 {
 			if g.scope_parallel_workers {
 				if n_items < min_flat_cgen_parallel_items {
@@ -580,8 +588,6 @@ fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 		if !g.parallel_prepared {
 			g.prepare_parallel_items(items)
 		}
-		parallel_type_decls := g.scope_parallel_workers && !g.program_body_only
-			&& g.incremental_fn_names.len == 0
 		chunk_jobs := if parallel_type_decls { n_jobs * 12 } else { n_jobs }
 		mut chunk_items := split_flat_cgen_items(items, chunk_jobs)
 		chunk_count := chunk_items.len
