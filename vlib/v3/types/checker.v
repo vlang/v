@@ -411,6 +411,7 @@ pub mut:
 	// the checker stashes the resolved signature here for gen_method_value_closure.
 	generic_method_value_info             map[string]CallInfo
 	params_structs                        map[string]bool
+	c_typedef_structs                     map[string]bool
 	unions                                map[string]bool
 	type_aliases                          map[string]string
 	type_alias_generic_params             map[string][]string // generic alias base name -> type-param names
@@ -602,6 +603,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		struct_field_c_abi_fns:                map[string]string{}
 		generic_method_value_info:             map[string]CallInfo{}
 		params_structs:                        map[string]bool{}
+		c_typedef_structs:                     map[string]bool{}
 		unions:                                map[string]bool{}
 		type_aliases:                          map[string]string{}
 		type_alias_generic_params:             map[string][]string{}
@@ -715,6 +717,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		struct_field_c_abi_fns:             tc.struct_field_c_abi_fns
 		generic_method_value_info:          tc.generic_method_value_info
 		params_structs:                     tc.params_structs
+		c_typedef_structs:                  tc.c_typedef_structs
 		unions:                             tc.unions
 		type_aliases:                       tc.type_aliases
 		type_alias_generic_params:          tc.type_alias_generic_params
@@ -1495,6 +1498,10 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				if 'soa' in node.typ.split(',') {
 					tc.soa_structs[qname] = true
 				}
+				if 'typedef' in node.typ.split(',') {
+					tc.c_typedef_structs[qname] = true
+					tc.c_typedef_structs[node.value] = true
+				}
 			}
 			.type_decl {
 				if node.children_count > 0 {
@@ -1727,6 +1734,10 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 				}
 				if 'soa' in node.typ.split(',') {
 					tc.soa_structs[qname] = true
+				}
+				if 'typedef' in node.typ.split(',') {
+					tc.c_typedef_structs[qname] = true
+					tc.c_typedef_structs[node.value] = true
 				}
 			}
 			.c_fn_decl {
@@ -2777,6 +2788,17 @@ fn (mut tc TypeChecker) enter_file(file string) {
 fn (mut tc TypeChecker) enter_module(name string) {
 	tc.cur_module = name
 	if tc.cur_file.len > 0 {
+		// A file's module is fixed by its own `module` declaration, which is the first
+		// node after the file marker. Later passes (annotate/monomorphize) walk a node
+		// array where appended, specialized nodes can place a foreign module's
+		// `module_decl` after this file's marker without an intervening file marker of
+		// their own; without this guard that would rebind `cur_file` to the foreign
+		// module and mis-resolve same-named types (`main.Context` -> `veb.Context`).
+		if existing := tc.file_modules[tc.cur_file] {
+			if existing != name {
+				return
+			}
+		}
 		tc.file_modules[tc.cur_file] = name
 	}
 }
@@ -2943,6 +2965,28 @@ fn (tc &TypeChecker) resolve_imported_type_text(typ string) string {
 		return typ
 	}
 	alias := typ[..dot]
+	// `main.Foo` is an explicit reference to a program-module type (bare-keyed),
+	// not an import. Strip the prefix so an explicit generic argument locked to
+	// `main` (see explicit_generic_concrete_arg_text) resolves to that program
+	// type rather than staying a distinct `main.Foo` spelling or rebasing into
+	// the active module. Only applies when `main` is not itself an import alias.
+	if alias == 'main' {
+		if _ := tc.resolve_import_alias('main') {
+		} else {
+			rest := typ[dot + 1..]
+			// Transform qualifies main-module const/global references to
+			// `main.<name>` for C codegen; the post-transform re-check must still
+			// resolve them against the bare-keyed program symbol tables.
+			if !rest.contains('.') {
+				if tc.qualify_candidate_type_exists(rest) || rest in tc.const_types {
+					return rest
+				}
+				if _ := tc.file_scope.lookup(rest) {
+					return rest
+				}
+			}
+		}
+	}
 	if resolved := tc.resolve_import_alias(alias) {
 		if resolved != alias {
 			return resolved + typ[dot..]
@@ -4923,7 +4967,14 @@ fn (mut tc TypeChecker) insert_implicit_veb_ctx(node flat.Node) {
 	if !tc.fn_needs_implicit_veb_ctx(node) {
 		return
 	}
-	tc.cur_scope.insert('ctx', tc.implicit_veb_ctx_type())
+	// The implicit veb `ctx` is a `mut ctx Context` parameter — veb hands the
+	// handler a mutable context. Register it as a mut-param binding (not a plain
+	// immutable local) so mut-receiver methods like `ctx.json(...)` / `ctx.set_status(...)`
+	// see a mutable lvalue receiver.
+	typ := tc.implicit_veb_ctx_type()
+	owner := tc.cur_scope.insert_with_owner('ctx', typ)
+	tc.fn_context.mut_param_base_types['ctx'] = mut_param_base_type(typ)
+	tc.fn_context.mut_param_owners['ctx'] = owner
 }
 
 fn (tc &TypeChecker) fn_param_types_with_implicit_veb_ctx(node flat.Node, params []Type) []Type {
@@ -7569,6 +7620,13 @@ fn (mut tc TypeChecker) check_comptime_static_call_metadata_arg_types(id flat.No
 				continue
 			}
 			if voidptr_arg_compatible(expected, actual) {
+				continue
+			}
+			// A `voidptr`/`&void` argument is accepted where a function-pointer type
+			// is expected (e.g. a `map[string]EasingFN` whose first literal element is
+			// `voidptr(fn)`, making the map value type `voidptr`). voidptr and function
+			// pointers are interchangeable in C; matches v1.
+			if is_fn_pointer_type(expected) && fn_param_is_voidptr_type(actual) {
 				continue
 			}
 			if !info.name.starts_with('C.') && fn_param_is_voidptr_type(expected)
@@ -15158,6 +15216,19 @@ fn (tc &TypeChecker) failed_explicit_generic_call_info(name string) CallInfo {
 	}
 }
 
+// explicit_generic_concrete_arg_text qualifies an explicit generic type argument
+// spelled at a call site so it survives being re-parsed in the callee module.
+fn (tc &TypeChecker) explicit_generic_concrete_arg_text(type_arg string) string {
+	qualified := tc.qualify_resolution_type_text(type_arg)
+	if !qualified.contains('.') && !is_builtin_type_name(qualified)
+		&& qualified !in tc.fn_context.generic_params && (qualified in tc.structs
+		|| qualified in tc.enum_names || qualified in tc.flag_enums || qualified in tc.sum_types
+		|| qualified in tc.interface_names || qualified in tc.type_aliases) {
+		return 'main.' + qualified
+	}
+	return qualified
+}
+
 fn (mut tc TypeChecker) explicit_generic_call_info(name string, has_receiver bool, type_args []string) ?CallInfo {
 	generic_params := tc.fn_generic_params[name] or { return none }
 	param_texts := tc.fn_param_type_texts[name] or { return none }
@@ -15166,7 +15237,7 @@ fn (mut tc TypeChecker) explicit_generic_call_info(name string, has_receiver boo
 	}
 	mut concrete_args := []string{cap: generic_params.len}
 	for i in 0 .. generic_params.len {
-		concrete_args << tc.qualify_resolution_type_text(type_args[i])
+		concrete_args << tc.explicit_generic_concrete_arg_text(type_args[i])
 	}
 	mut sub_params := []Type{}
 	for param_text in param_texts {
@@ -16959,6 +17030,13 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			if voidptr_arg_compatible(expected, actual) {
 				continue
 			}
+			// A `voidptr`/`&void` argument is accepted where a function-pointer type
+			// is expected (e.g. a `map[string]EasingFN` whose first literal element is
+			// `voidptr(fn)`, making the map value type `voidptr`). voidptr and function
+			// pointers are interchangeable in C; matches v1.
+			if is_fn_pointer_type(expected) && fn_param_is_voidptr_type(actual) {
+				continue
+			}
 			if !info.name.starts_with('C.') && fn_param_is_voidptr_type(expected)
 				&& tc.expr_can_take_address(arg_id) {
 				continue
@@ -17969,6 +18047,12 @@ fn (tc &TypeChecker) is_params_struct_type(typ Type) bool {
 	if typ is Alias {
 		return tc.is_params_struct_type(typ.base_type)
 	}
+	// A `&Cfg` param (pointer to an `@[params]` struct, e.g. `audio.setup(desc
+	// &C.saudio_desc)`) is still optional: a zero-arg or `key: value` call
+	// constructs a default and passes its address, matching v1.
+	if typ is Pointer {
+		return tc.is_params_struct_type(typ.base_type)
+	}
 	return false
 }
 
@@ -18287,6 +18371,14 @@ fn (tc &TypeChecker) method_receiver_compatible(actual Type, expected Type, meth
 	if tc.receiver_compatible(actual, expected) {
 		return true
 	}
+	// A method receiver rendered as the bare/unqualified generic form (`Vec3[T]`)
+	// matches the declaring module's qualified form (`vec.Vec3[T]`) — same generic,
+	// only the module qualifier differs. This arises when an operator-overload result
+	// on an aliased generic instance (`type Vec = vec.Vec3[f64]`) is re-checked in the
+	// annotate pass with an unqualified receiver spelling.
+	if tc.generic_receiver_qualifier_mismatch(actual, expected) {
+		return true
+	}
 	actual_depth, actual_base := type_pointer_depth_and_base(actual)
 	expected_depth, expected_base := type_pointer_depth_and_base(expected)
 	// C receiver lowering can dereference a pointer for a value receiver, but it
@@ -18304,6 +18396,39 @@ fn (tc &TypeChecker) method_receiver_compatible(actual Type, expected Type, meth
 		return true
 	}
 	return false
+}
+
+// generic_receiver_qualifier_mismatch accepts a method receiver that differs from
+// the declared receiver ONLY by module qualifier on the same generic form
+// (`Vec3[T]` vs `vec.Vec3[T]`, or `Vec3[int]` vs `vec.Vec3[int]`). It requires the
+// short base name and every generic argument's short name to match, and the base to
+// be a known generic struct, so it never conflates two different instantiations
+// (`Vec3[string]` vs `vec.Vec3[int]`) or non-generic types.
+fn (tc &TypeChecker) generic_receiver_qualifier_mismatch(actual Type, expected Type) bool {
+	if (actual is Pointer) != (expected is Pointer) {
+		return false
+	}
+	a_full := unwrap_pointer(actual).name()
+	e_full := unwrap_pointer(expected).name()
+	if a_full == e_full || a_full.len == 0 || e_full.len == 0 {
+		return false
+	}
+	a_base, a_args, a_ok := generic_type_application_parts(a_full)
+	e_base, e_args, e_ok := generic_type_application_parts(e_full)
+	if !a_ok || !e_ok || a_args.len != e_args.len || a_args.len == 0 {
+		return false
+	}
+	if a_base.all_after_last('.') != e_base.all_after_last('.') {
+		return false
+	}
+	for i in 0 .. a_args.len {
+		if a_args[i].trim_space().all_after_last('.') != e_args[i].trim_space().all_after_last('.') {
+			return false
+		}
+	}
+	short := e_base.all_after_last('.')
+	return e_base in tc.struct_generic_params || a_base in tc.struct_generic_params
+		|| short in tc.struct_generic_params
 }
 
 // generic_receiver_base_match relaxes compatibility between two same-base generic
@@ -26159,6 +26284,18 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 	if is_generic_placeholder_type(typ) && !tc.is_known_type_text(typ) {
 		return unknown_type('generic placeholder `${typ}`')
 	}
+	// `main.Foo` is an explicit reference to a program-module type. It is used to
+	// lock a bare concrete generic argument against being rebased into a callee
+	// module that declares a same-named type (see explicit_generic_concrete_arg_text
+	// / lock_colliding_main_generic_type_text). Resolve it directly to the bare-keyed
+	// program symbol so the resulting type name matches the struct/method tables,
+	// unless `main` is an actual import alias in this file.
+	if typ.starts_with('main.') && !typ['main.'.len..].contains('.') {
+		if _ := tc.resolve_import_alias('main') {
+		} else if known := tc.type_from_known_symbol(typ['main.'.len..]) {
+			return known
+		}
+	}
 	if typ.starts_with('&') {
 		return Type(Pointer{
 			base_type: tc.parse_type(typ[1..])
@@ -26454,8 +26591,20 @@ fn (tc &TypeChecker) parse_type_uncached(typ string) Type {
 		}
 		allow_bare_generic_base := qbase == resolved_base
 		if qbase in tc.struct_generic_params {
+			mut sgp_base := qbase
+			if allow_bare_generic_base && qbase !in tc.structs && !resolved_base.contains('.') {
+				// The bare key is only a generic-params shadow of an imported struct
+				// (e.g. main referencing `Vec2` from `import math.vec { Vec2 }`, which is
+				// keyed `vec.Vec2`). Resolve it to the real qualified struct so field/method
+				// lookup and c_type match `vec.Vec2[int]`, not a bogus bare `Vec2[int]`.
+				if resolved := tc.resolve_selective_import_type_symbol(resolved_base) {
+					sgp_base = resolved
+				} else if resolved := tc.unique_qualified_type_name(resolved_base) {
+					sgp_base = resolved
+				}
+			}
 			return Type(Struct{
-				name: qbase + struct_generic_suffix
+				name: sgp_base + struct_generic_suffix
 			})
 		}
 		if qbase in tc.type_aliases {
@@ -28328,6 +28477,13 @@ fn (tc &TypeChecker) c_type_uncached(t Type) string {
 		}
 		if t.name.starts_with('C.') {
 			raw := t.name[2..]
+			// A struct declared `@[typedef] struct C.foo {}` is referenced by its
+			// typedef name (`foo`), never as `struct foo` — the C header (and v3's own
+			// emitted `typedef struct {...} foo;`) has no matching `struct foo` tag, so
+			// a `struct foo` reference would stay an incomplete type.
+			if t.name in tc.c_typedef_structs {
+				return raw
+			}
 			if raw.ends_with('_s')
 				|| (raw.len > 0 && raw[0] >= `a` && raw[0] <= `z` && !raw.ends_with('_t')) {
 				return 'struct ${raw}'

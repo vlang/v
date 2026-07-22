@@ -1073,6 +1073,7 @@ fn (g &FlatGen) clone_parallel_type_checker() &types.TypeChecker {
 		// sees an empty map and gen_method_value_closure falls through.
 		generic_method_value_info: g.tc.generic_method_value_info
 		params_structs:            g.tc.params_structs
+		c_typedef_structs:         g.tc.c_typedef_structs
 	}
 	wtc.inherit_ownership_codegen_metadata_from(g.tc)
 	// A private empty TypeCache lets the worker use the lazily-built lookup

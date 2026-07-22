@@ -235,9 +235,12 @@ fn (t &Transformer) resolve_receiver_method_name(base_id flat.NodeId, method str
 		}
 	}
 	if embedded_method := t.resolve_embedded_receiver_method(base_type, method) {
-		if t.receiver_method_matches_base_type(embedded_method, base_id) {
-			return embedded_method
-		}
+		// resolve_embedded_receiver_method already walked the embedding chain from
+		// base_type, so the method is reachable by promotion. Its receiver is the
+		// embedded type and legitimately differs from base_type (they can even share
+		// a short name under a name collision), so the receiver-match guard used for
+		// direct methods must not reject it here.
+		return embedded_method
 	}
 	return ''
 }
@@ -307,6 +310,32 @@ fn (t &Transformer) resolve_receiver_method_for_type(receiver_type string, metho
 		direct := '${clean_type}.${method}'
 		if t.is_known_fn_name(direct) {
 			return direct
+		}
+		// A bare (unqualified) receiver type reached through a selective import
+		// (`import cli { Command }`, then `cmd.add_flag()`): the method is registered
+		// under the declaring module's qualified name (`cli.Command.add_flag`). The
+		// selective-import table can be unavailable this late, so scan for the unique
+		// module-qualified struct that both shares the short name AND declares the
+		// method (disambiguating e.g. `cli.Command` from `os.Command`).
+		if !clean_type.contains('.') && !clean_type.contains('[') && !isnil(t.tc) {
+			mut matched := ''
+			for sname, _ in t.tc.structs {
+				if !sname.contains('.') || sname.contains('[')
+					|| sname.all_after_last('.') != clean_type {
+					continue
+				}
+				qmethod := '${sname}.${method}'
+				if t.is_known_fn_name(qmethod) {
+					if matched.len > 0 && matched != qmethod {
+						matched = ''
+						break
+					}
+					matched = qmethod
+				}
+			}
+			if matched.len > 0 {
+				return matched
+			}
 		}
 		for receiver in generic_receiver_flat_type_variants(clean_type) {
 			flat_method := '${receiver}.${method}'
@@ -502,7 +531,10 @@ fn (t &Transformer) resolve_embedded_receiver_method(base_type string, method st
 		return none
 	}
 	mut lookup_type := if base_type.starts_with('&') { base_type[1..] } else { base_type }
-	if lookup_type !in t.structs && lookup_type.contains('.') {
+	// Keep an explicit `main.` lock intact: lookup_struct_info resolves it to the
+	// program type by its exact table key, whereas the short-name fallback below
+	// would rebase it into the active (callee) module and lose the embedding chain.
+	if lookup_type !in t.structs && lookup_type.contains('.') && !lookup_type.starts_with('main.') {
 		short_type := lookup_type.all_after_last('.')
 		if short_type in t.structs {
 			lookup_type = short_type
@@ -3019,7 +3051,36 @@ fn (mut t Transformer) append_missing_params_struct_args(mut args []flat.NodeId,
 		param_type := params[param_idx].name()
 		struct_type := t.params_struct_type_name(param_type) or { break }
 		args << t.zero_value_for_type(struct_type)
+		t.mark_params_struct_default_calls(struct_type)
 		param_idx++
+	}
+}
+
+// mark_params_struct_default_calls marks the functions called by the field
+// defaults of a `@[params]` struct whose default value is being synthesized for an
+// omitted argument. cgen fills those field defaults directly from the struct decl,
+// so without this the default-initializer functions (e.g. `default_c_level()` for
+// `compression_level int = default_c_level()`) stay unmarked and undefined at link.
+fn (mut t Transformer) mark_params_struct_default_calls(struct_type string) {
+	info := t.lookup_struct_info(struct_type) or { return }
+	// The field defaults live in the struct's declaring module, so qualify the
+	// discovered calls against that module (not the module currently being
+	// transformed) or the marked name won't match the emitted symbol.
+	old_module := t.cur_module
+	old_file := t.cur_file
+	t.cur_module = info.module
+	t.cur_file = ''
+	defer {
+		t.cur_module = old_module
+		t.cur_file = old_file
+	}
+	for field in info.fields {
+		if int(field.default_expr) < 0 {
+			continue
+		}
+		for call_name in t.generated_fn_body_call_names(field.default_expr) {
+			t.mark_fn_used_name(call_name)
+		}
 	}
 }
 
@@ -10747,6 +10808,14 @@ fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_i
 		return true
 	}
 	if receiver_name.all_after_last('.') != base_type.all_after_last('.') {
+		return true
+	}
+	// An unqualified base type is the short form of the qualified receiver when their
+	// short names match (a selective import renders the receiver as bare `Command`,
+	// but its method is registered under `cli.Command`). A genuine bare/main receiver
+	// hits the exact-match branch above, so it never reaches here.
+	if !base_type.contains('.') && receiver_name.contains('.')
+		&& receiver_name.all_after_last('.') == base_type {
 		return true
 	}
 	return false

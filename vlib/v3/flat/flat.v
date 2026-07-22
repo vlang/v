@@ -98,6 +98,10 @@ pub enum NodeKind as u8 {
 	// top-level
 	file
 	sql_expr
+	// A `$veb.html(...)` / `$tmpl(...)` comptime-template placeholder. It is produced
+	// by parse_comptime_expr and fully expanded (into builder statements) by
+	// parse_block_body at parse time, so it never reaches later phases.
+	veb_template
 }
 
 // Op lists op values used by flat.

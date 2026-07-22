@@ -3462,7 +3462,7 @@ fn (mut t Transformer) specialized_fn_return_display_type_text(decl GenericFnDec
 
 fn (mut t Transformer) specialized_signature_type_text(decl GenericFnDecl, typ string, args []string, params []string) string {
 	if direct := t.specialized_direct_generic_type_text(typ, args, params) {
-		return direct
+		return t.lock_colliding_main_generic_type_text(direct, decl.module)
 	}
 	substituted := substitute_generic_type_text_with_params(typ, args, params)
 	qualified := t.qualify_specialized_signature_type_text(substituted, decl)
@@ -5753,6 +5753,16 @@ fn (mut t Transformer) infer_generic_call_args_seeded(decl GenericFnDecl, _id fl
 			}
 		}
 		inference_param_type := generic_inference_param_type(child)
+		if (child.is_mut || child.op == .amp || child.typ.starts_with('mut '))
+			&& inferred_arg_type.starts_with('&') {
+			// A mutable parameter's leading pointer is its storage ABI, whether the
+			// generic placeholder is direct (`T`) or nested (`Container[T]`). A `mut`
+			// argument that is a field/selector (`mut g.cells`) arrives here still
+			// carrying that `&`, unlike a plain `mut ident` whose value node already
+			// dropped it — strip it so `[]T` matches `[]Cell`, not `&[]Cell`. Mirrors
+			// infer_generic_call_args_from_params.
+			inferred_arg_type = inferred_arg_type[1..]
+		}
 		arg_type := generic_arg_type_for_param(inference_param_type, inferred_arg_type)
 		if arg_type.len > 0 {
 			infer_generic_type_args(inference_param_type, arg_type, mut inferred)
@@ -7454,6 +7464,15 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	} else {
 		t.resolve_substituted_type_text(substituted_node_type)
 	}
+	// A parameter type produced by substituting a generic parameter can carry an
+	// external program (main) type that collides by short name with a same-named
+	// type in the specialization's module (a user `Context` embedding `veb.Context`).
+	// Lock it to an explicit `main.` spelling so codegen (and the closure's field
+	// accesses like `ctx.Context`) bind the program type, not the callee module's
+	// homonym — mirroring the struct-init literal lock below.
+	if node.kind == .param && substituted_node_type != node.typ {
+		cloned_typ = t.lock_colliding_main_generic_type_text(cloned_typ, t.cur_module)
+	}
 	if node.kind == .ident && t.cloning_generic_fn_depth > 0 {
 		scoped_type := t.raw_var_type(node.value)
 		if scoped_type.len > 0 && !t.generic_arg_is_unresolved(scoped_type) {
@@ -7484,17 +7503,34 @@ fn (mut t Transformer) clone_generic_node_from(node flat.Node, args []string, is
 	} else if node.kind == .struct_init && node.value.len > 0 {
 		// The checker can annotate `T{}` with its surrounding optional/result
 		// context. For a concrete clone the literal itself is authoritative.
-		struct_value0 := t.resolve_substituted_type_text(t.subst_type(node.value, args))
-		struct_value := t.normalize_type_alias(struct_value0)
-		parsed := t.tc.parse_resolution_type(struct_value)
-		cloned_typ = if t.is_fixed_array_type(struct_value0) {
-			t.resolved_fixed_array_canonical_type(struct_value0)
-		} else if t.generic_arg_is_alias_name(struct_value0, t.cur_module) {
-			struct_value0
-		} else if parsed is types.Unknown {
-			struct_value
+		struct_subst := t.subst_type(node.value, args)
+		struct_value_pre := t.resolve_substituted_type_text(struct_subst)
+		mut struct_value0 := struct_value_pre
+		if struct_subst != node.value {
+			// Only a `T{}` literal whose type came from substituting a generic
+			// parameter can carry an external program (main) type. Lock a colliding
+			// one so codegen builds that struct rather than the callee module's
+			// homonym. A literal module type (`json2.Decoder{}` written as `Decoder{}`
+			// inside json2) is left untouched — it is bare-keyed but not a lock target.
+			struct_value0 = t.lock_colliding_main_generic_type_text(struct_value_pre, t.cur_module)
+		}
+		if struct_value0.starts_with('main.') && struct_value0 != struct_value_pre {
+			// Keep the explicit `main.` lock as the literal's type: parsing it back to
+			// its bare program name here would let codegen rebase it into the callee
+			// module (the very collision the lock prevents).
+			cloned_typ = struct_value0
 		} else {
-			specialized_signature_storage_type_name(parsed)
+			struct_value := t.normalize_type_alias(struct_value0)
+			parsed := t.tc.parse_resolution_type(struct_value)
+			cloned_typ = if t.is_fixed_array_type(struct_value0) {
+				t.resolved_fixed_array_canonical_type(struct_value0)
+			} else if t.generic_arg_is_alias_name(struct_value0, t.cur_module) {
+				struct_value0
+			} else if parsed is types.Unknown {
+				struct_value
+			} else {
+				specialized_signature_storage_type_name(parsed)
+			}
 		}
 	}
 	if node.kind == .or_expr && children.len > 0 {
@@ -9377,6 +9413,33 @@ fn (t &Transformer) resolve_substituted_type_text(typ string) string {
 		}
 	}
 	return resolved
+}
+
+// lock_colliding_main_generic_type_text rewrites a bare program-module (main)
+// type substituted into a generic specialization to an explicit `main.` spelling
+// when the specialization's own module declares a same-named type. Without the
+// lock, codegen re-resolves the bare name in that module context and captures the
+// wrong type (e.g. a user `Context` embedding `veb.Context` becoming `veb.Context`
+// inside a specialized veb function). resolve_imported_type_text strips `main.`
+// back to the program type.
+fn (t &Transformer) lock_colliding_main_generic_type_text(typ string, module_name string) string {
+	clean := typ.trim_space()
+	for prefix in ['mut ', 'shared ', 'atomic ', '...', '[]', '?', '!', '&'] {
+		if clean.starts_with(prefix) {
+			return prefix + t.lock_colliding_main_generic_type_text(clean[prefix.len..], module_name)
+		}
+	}
+	if clean.contains('.') || module_name.len == 0 || module_name == 'main' {
+		return clean
+	}
+	if !(clean in t.structs || clean in t.sum_types || clean in t.enum_types) {
+		return clean
+	}
+	qname := '${module_name}.${clean}'
+	if qname in t.structs || qname in t.sum_types || qname in t.enum_types {
+		return 'main.' + clean
+	}
+	return clean
 }
 
 fn (t &Transformer) substituted_type_belongs_to_main_generic(typ string) bool {

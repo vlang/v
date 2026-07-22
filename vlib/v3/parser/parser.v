@@ -58,6 +58,7 @@ mut:
 	next_file_id                      int = 1
 	cur_module                        string
 	cur_fn                            string
+	veb_tmpl_counter                  int      // monotonic id for unique `$veb.html`/`$tmpl` builder var names
 	cur_struct                        string   // receiver type name of the current method, for `@STRUCT`
 	cur_method_is_static              bool     // distinguishes `Type.method()` from `(x Type) method()` for `@LOCATION`
 	comptime_for_vars                 []string // active `$for` loop variables; a `$if` that reads one is deferred to unroll time
@@ -69,6 +70,7 @@ mut:
 	pending_flag                      bool
 	pending_json_as_number            bool // `@[json_as_number]` seen before the next enum decl
 	pending_params                    bool
+	pending_typedef                   bool
 	pending_export                    string
 	pending_noreturn                  bool
 	pending_soa                       bool
@@ -222,6 +224,7 @@ pub fn (mut p Parser) parse_into(path string) {
 	p.has_peek = false
 	p.pending_flag = false
 	p.pending_params = false
+	p.pending_typedef = false
 	p.pending_export = ''
 	p.pending_noreturn = false
 	p.pending_soa = false
@@ -744,6 +747,7 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 	p.consume_decl_prefix_after_attrs()
 	if p.skip_next_decl {
 		p.pending_params = false
+		p.pending_typedef = false
 		p.pending_has_aligned = false
 		p.pending_aligned = ''
 		// A skipped enum (e.g. disabled by a preceding `@[if false]`) never reaches
@@ -775,6 +779,7 @@ fn (mut p Parser) parse_decl_after_attrs() flat.NodeId {
 	res := p.top_level_stmt()
 	p.apply_decl_attrs(res)
 	p.pending_params = false
+	p.pending_typedef = false
 	p.pending_export = ''
 	p.pending_noreturn = false
 	p.pending_json_as_number = false
@@ -829,6 +834,9 @@ fn (mut p Parser) apply_decl_attr_flags(attrs []string) {
 			}
 			'params' {
 				p.pending_params = true
+			}
+			'typedef' {
+				p.pending_typedef = true
 			}
 			'noreturn' {
 				p.pending_noreturn = true
@@ -1157,6 +1165,10 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type 
 		p.predeclare_local_type_names_in_block(body_start)
 		for p.tok != .rcbr && p.tok != .eof {
 			id := p.stmt()
+			if expansion := p.expand_veb_template_stmt(id) {
+				body_ids << expansion
+				continue
+			}
 			if int(id) >= 0 {
 				body_ids << id
 			}
@@ -1361,10 +1373,12 @@ fn (mut p Parser) c_anon_param_starts_type() bool {
 fn (mut p Parser) struct_decl() flat.NodeId {
 	is_union := p.tok == .key_union
 	is_params := p.pending_params
+	is_typedef := p.pending_typedef
 	is_soa := p.pending_soa
 	is_aligned := p.pending_has_aligned
 	aligned := p.pending_aligned
 	p.pending_params = false
+	p.pending_typedef = false
 	p.pending_soa = false
 	p.pending_has_aligned = false
 	p.pending_aligned = ''
@@ -1408,8 +1422,8 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 		return p.add_node(flat.Node{
 			kind:    .struct_decl
 			value:   name
-			typ:     struct_decl_typ(is_union, is_generic, is_params, is_soa, is_aligned, aligned,
-				implements_types)
+			typ:     struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa, is_aligned,
+				aligned, implements_types)
 			payload: flat.node_payload(generic_params)
 		})
 	}
@@ -1622,15 +1636,15 @@ fn (mut p Parser) struct_decl() flat.NodeId {
 	return p.add_node(flat.Node{
 		kind:           .struct_decl
 		value:          name
-		typ:            struct_decl_typ(is_union, is_generic, is_params, is_soa, is_aligned,
-			aligned, implements_types)
+		typ:            struct_decl_typ(is_union, is_generic, is_params, is_typedef, is_soa,
+			is_aligned, aligned, implements_types)
 		payload:        flat.node_payload(generic_params)
 		children_start: start
 		children_count: flat.child_count(ids.len)
 	})
 }
 
-fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, is_soa bool, is_aligned bool, aligned string, implements_types []string) string {
+fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, is_typedef bool, is_soa bool, is_aligned bool, aligned string, implements_types []string) string {
 	mut parts := []string{}
 	if is_union {
 		parts << 'union'
@@ -1640,6 +1654,9 @@ fn struct_decl_typ(is_union bool, is_generic bool, is_params bool, is_soa bool, 
 	}
 	if is_params {
 		parts << 'params'
+	}
+	if is_typedef {
+		parts << 'typedef'
 	}
 	if is_soa {
 		parts << 'soa'
@@ -2185,6 +2202,8 @@ fn (mut p Parser) skip_attrs() {
 					p.pending_json_as_number = true
 				} else if p.lit == 'params' {
 					p.pending_params = true
+				} else if p.lit == 'typedef' {
+					p.pending_typedef = true
 				} else if p.lit == 'noreturn' {
 					p.pending_noreturn = true
 				} else if p.lit == 'soa' {
@@ -2220,6 +2239,8 @@ fn (mut p Parser) skip_attrs() {
 					p.pending_json_as_number = true
 				} else if p.lit == 'params' {
 					p.pending_params = true
+				} else if p.lit == 'typedef' {
+					p.pending_typedef = true
 				} else if p.lit == 'noreturn' {
 					p.pending_noreturn = true
 				} else if p.lit == 'soa' {
@@ -4498,6 +4519,16 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 			children_count: 1
 		})
 	}
+	// `$tmpl('path')` renders a template to a string; `$veb.html([...])` renders
+	// a veb HTML template to a `veb.Result`. Both produce a `.veb_template`
+	// placeholder that `expand_veb_template_stmt` (called from parse_block_body)
+	// lowers into inline builder statements at the enclosing statement.
+	if p.tok == .name && p.lit == 'tmpl' {
+		return p.parse_veb_template_expr(false)
+	}
+	if p.tok == .name && p.lit == 'veb' && p.peek() == .dot {
+		return p.parse_veb_template_expr(true)
+	}
 	for p.tok != .semicolon && p.tok != .eof {
 		p.next()
 	}
@@ -5056,7 +5087,10 @@ fn (mut p Parser) for_stmt() flat.NodeId {
 	// Check for for-in: `for x in ...` or `for mut x in ...`.
 	// A comma after the first name is ambiguous with C-style multi-init
 	// (`for h, t := ...`), so handle it after parsing the first expression.
-	if p.tok == .name && p.peek() == .key_in {
+	// `.key_type` is `type` used as a loop variable (`for type in ...`). Detect it
+	// here like a plain name so `p.expr` does not greedily consume the `in` as a
+	// membership operator (which would turn the loop into a `while`).
+	if (p.tok == .name || p.tok == .key_type) && p.peek() == .key_in {
 		first_expr := p.expr(.sum)
 		return p.for_in(first_expr, false)
 	}
@@ -5697,6 +5731,10 @@ fn (mut p Parser) parse_block_body() []flat.NodeId {
 	mut ids := []flat.NodeId{}
 	for p.tok != .rcbr && p.tok != .eof {
 		id := p.stmt()
+		if expansion := p.expand_veb_template_stmt(id) {
+			ids << expansion
+			continue
+		}
 		if int(id) >= 0 {
 			ids << id
 		}
@@ -6486,10 +6524,12 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			continue
 		}
 		// `or` block: expr or { ... }
+		// Binds tightly to the immediately preceding or-able expression (call /
+		// index / propagation), like the `?`/`!` postfixes above — never to an
+		// enclosing infix. So `50 + f() or { 0 }` parses as `50 + (f() or { 0 })`,
+		// matching v1. A min_bp guard here would let `or` bubble up to the whole
+		// `50 + f()` infix (an `int`, not an Option/Result).
 		if p.tok == .key_or {
-			if int(min_bp) > int(token.BindingPower.lowest) {
-				break
-			}
 			p.next()
 			or_body := p.block_stmt()
 			ostart := p.add_children2(lhs, or_body)
@@ -7198,6 +7238,46 @@ fn is_float_number_literal(val string) bool {
 	return val.contains('.') || val.contains('e') || val.contains('E')
 }
 
+// arrow_receive builds a `<-operand` channel-receive prefix. A trailing
+// propagation postfix (`or { ... }` / `?` / `!`) binds to the receive RESULT,
+// not the channel operand — `<-ch or { break }` is `(<-ch) or { ... }`, since a
+// receive from a closed channel can fail. Prefix operands are parsed at
+// `.highest`, where the unconditional propagation postfixes would otherwise
+// attach to the bare operand (yielding `<-(ch or { ... })`, whose inner `ch` is
+// a plain channel — "not an Option or a Result"). So when the operand parse
+// returns a bare trailing or_expr, re-associate it outward around the receive.
+// An explicitly parenthesized `<-(x or { ... })` is a `.paren` node, not a bare
+// `.or_expr`, so it is left intact.
+fn (mut p Parser) arrow_receive(op_start int) flat.NodeId {
+	inner := p.expr(.highest)
+	inner_node := p.a.nodes[int(inner)]
+	if inner_node.kind == .or_expr && inner_node.children_count == 2 {
+		guarded := p.a.child(&inner_node, 0)
+		body := p.a.child(&inner_node, 1)
+		recv := p.a.add_node(flat.Node{
+			kind:           .prefix
+			op:             .arrow
+			children_start: p.add_child(guarded)
+			children_count: 1
+			pos:            p.span_to(op_start)
+		})
+		ostart := p.add_children2(recv, body)
+		return p.a.add_node(flat.Node{
+			kind:           .or_expr
+			value:          inner_node.value
+			children_start: ostart
+			children_count: 2
+		})
+	}
+	return p.a.add_node(flat.Node{
+		kind:           .prefix
+		op:             .arrow
+		children_start: p.add_child(inner)
+		children_count: 1
+		pos:            p.span_to(op_start)
+	})
+}
+
 fn (mut p Parser) prefix_expr() flat.NodeId {
 	// Capture the leading token's span before consuming it so leaf literals keep
 	// their own location and prefix operators can span from here to the operand.
@@ -7251,14 +7331,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	}
 	if tok_id == 3 {
 		p.next()
-		inner := p.expr(.highest)
-		return p.a.add_node(flat.Node{
-			kind:           .prefix
-			op:             .arrow
-			children_start: p.add_child(inner)
-			children_count: 1
-			pos:            p.span_to(op_start)
-		})
+		return p.arrow_receive(op_start)
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
 		p.next()
@@ -7309,14 +7382,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.arrow {
 			p.next()
-			inner := p.expr(.highest)
-			return p.a.add_node(flat.Node{
-				kind:           .prefix
-				op:             .arrow
-				children_start: p.add_child(inner)
-				children_count: 1
-				pos:            p.span_to(op_start)
-			})
+			return p.arrow_receive(op_start)
 		}
 		.logical_or {
 			return p.lambda_expr_no_args()
@@ -7901,6 +7967,14 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		}
 		.key_isreftype {
 			return p.isreftype_expr()
+		}
+		.key_type {
+			// `type` used as a plain identifier (loop variable, local, or reference),
+			// e.g. `for type in [...] { ... ${type} ... }`. Type declarations
+			// (`type Foo = Bar`) are handled at statement level before expression
+			// parsing, so an atom-position `type` is always the identifier. Matches v1,
+			// which does not reserve `type` as a C name.
+			return p.keyword_ident_expr()
 		}
 		.dot {
 			// enum value: .member

@@ -21,7 +21,7 @@ fn tmp_precedence_path(name string) string {
 fn build_v3_precedence() string {
 	v3_bin := tmp_precedence_path('compiler')
 	build :=
-		os.execute('${os.quoted_path(vexe)} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
+		os.execute('${os.quoted_path(vexe)} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(v3_src)}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }

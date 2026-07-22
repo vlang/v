@@ -3981,6 +3981,15 @@ fn main() {
 	if !transform_texts_canonical {
 		a.intern_node_texts_from(0)
 	}
+	// The resolution-type view cache memoizes forked type-parse views keyed by file
+	// path. Views (and their keys) built during the scoped check/annotate phases
+	// live in stage arenas whose deferred frees run mid-codegen, so a stale entry
+	// dangles when parse_resolution_type consults it during cgen. Discard the cache
+	// here so the backend rebuilds views in the durable compilation arena. The
+	// generic dependency-cache path already resets it after annotation.
+	if !generic_cache_hit {
+		pre_tc.reset_resolution_type_view_cache()
+	}
 	if cgen_cache_hit {
 		b.step('monomorphize (cached)')
 	} else if incremental_cache_hit {

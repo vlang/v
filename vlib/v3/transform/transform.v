@@ -16398,11 +16398,12 @@ fn (t &Transformer) resolve_expr_type(id flat.NodeId) string {
 				if node.op == .plus && rhs_type == 'string' {
 					return 'string'
 				}
-				if node.op in [.plus, .minus] && lhs_type.starts_with('&')
+				if node.op in [.plus, .minus] && is_pointer_like_type_name(lhs_type)
 					&& t.is_integer_type_name(rhs_type) {
 					return lhs_type
 				}
-				if node.op == .plus && rhs_type.starts_with('&') && t.is_integer_type_name(lhs_type) {
+				if node.op == .plus && is_pointer_like_type_name(rhs_type)
+					&& t.is_integer_type_name(lhs_type) {
 					return rhs_type
 				}
 				if node.op in [.plus, .minus, .mul, .div, .mod, .amp, .pipe, .xor] {

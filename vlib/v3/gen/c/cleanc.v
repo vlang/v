@@ -15806,10 +15806,17 @@ fn (mut g FlatGen) write_fixed_array_default_elem_initializer(mut builder string
 		return
 	}
 	if elem_type is types.Struct {
+		// add_node stores these strings verbatim, and this synthesized node is
+		// appended to the AST permanently, then read again while collecting
+		// fixed-array typedefs. elem_type.name can point into a disposable stage
+		// arena whose deferred free runs mid-codegen, so bind the node to the
+		// canonical interned text (owned by the compilation arena) rather than the
+		// transient type-name string.
+		_, durable_name := g.a.intern_text(elem_type.name)
 		builder.write_string(g.expr_to_string_with_expected_type(g.a.add_node(flat.Node{
 			kind:  .struct_init
-			value: elem_type.name
-			typ:   elem_type.name
+			value: durable_name
+			typ:   durable_name
 		}), elem_type))
 		return
 	}

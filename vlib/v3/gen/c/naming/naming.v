@@ -101,6 +101,7 @@ const libc_collisions = {
 	'strncpy':  true
 	'strrchr':  true
 	'strstr':   true
+	'wait':     true
 	'y0':       true
 	'y1':       true
 	'yn':       true
