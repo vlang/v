@@ -9583,13 +9583,30 @@ fn comptime_condition_top_level_index(s string, needle string) int {
 // check_infix validates type-sensitive infix operations that would otherwise reach CGen
 // as raw helper calls with incompatible arguments.
 fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
-	if node.op != .plus || node.children_count < 2 || !tc.should_diagnose(id) {
+	if node.children_count < 2 || !tc.should_diagnose(id) {
 		return
 	}
 	lhs_id := tc.a.child(&node, 0)
 	rhs_id := tc.a.child(&node, 1)
 	lhs_type := tc.infix_read_type(lhs_id)
 	rhs_type := tc.infix_read_type(rhs_id)
+	if node.op == .power {
+		if lhs_type is Unknown || rhs_type is Unknown {
+			return
+		}
+		if _ := tc.infix_operator_return_type(node.op, lhs_type, rhs_type) {
+			return
+		}
+		if !infix_power_type_is_numeric(lhs_type) || !infix_power_type_is_numeric(rhs_type) {
+			tc.record_error(.assignment_mismatch,
+				'operator `**` requires numeric operands; got `${lhs_type.name()}` and `${rhs_type.name()}`',
+				id)
+		}
+		return
+	}
+	if node.op != .plus {
+		return
+	}
 	lhs_is_string := type_is_string_like(lhs_type)
 	rhs_is_string := type_is_string_like(rhs_type)
 	if lhs_is_string == rhs_is_string {
@@ -9600,6 +9617,11 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 	}
 	tc.record_error(.assignment_mismatch,
 		'operator `+` cannot concatenate `${lhs_type.name()}` and `${rhs_type.name()}`', id)
+}
+
+fn infix_power_type_is_numeric(typ Type) bool {
+	clean := unalias_type(typ)
+	return clean.is_integer() || clean.is_float()
 }
 
 fn optional_payload_is_string(typ Type) bool {

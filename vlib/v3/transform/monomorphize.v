@@ -7879,6 +7879,10 @@ fn (t &Transformer) generic_comptime_base_type(id flat.NodeId, args []string) ?s
 				return args[idx]
 			}
 		}
+		substituted := t.subst_type(node.value, args)
+		if substituted != node.value && !t.generic_args_have_placeholders([substituted]) {
+			return t.resolve_substituted_type_text(substituted)
+		}
 		typ := t.raw_var_type(node.value)
 		if typ.len > 0 && !t.generic_arg_is_unresolved(typ) {
 			return typ

@@ -183,6 +183,36 @@ fn test_multi_return_arguments_must_consume_the_parameter_tail() {
 		'argument count mismatch for `consume`: expected 3, got 2')
 }
 
+fn test_power_requires_numeric_operands_or_an_overload() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_bool_power', 'fn main() {\n\t_ := true ** 2\n}\n',
+		'operator `**` requires numeric operands; got `bool` and `int`')
+	run_bad(v3_bin, 'bad_array_power', 'fn main() {\n\t_ := [1] ** 2\n}\n',
+		'operator `**` requires numeric operands; got `[]int` and `int`')
+	run_bad(v3_bin, 'bad_string_power', "fn main() {\n\t_ := 'x' ** 2\n}\n",
+		'operator `**` requires numeric operands; got `string` and `int`')
+	out := run_good(v3_bin, 'good_overloaded_power', 'struct Exponent {
+	value int
+}
+
+fn (a Exponent) ** (b Exponent) Exponent {
+	return Exponent{
+		value: a.value * b.value
+	}
+}
+
+fn main() {
+	value := Exponent{
+		value: 2
+	} ** Exponent{
+		value: 3
+	}
+	println(int_str(value.value))
+}
+')
+	assert out == '6'
+}
+
 fn test_if_expr_pointer_and_value_branches_are_incompatible() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_if_expr_pointer_value_branch',

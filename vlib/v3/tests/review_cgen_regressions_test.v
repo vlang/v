@@ -514,6 +514,22 @@ fn zero_payload_array[T](value ?T) []T {
 	return $zero([]typeof(value).payload_type{})
 }
 
+fn zero_optional_array[T]() []?T {
+	return $zero([]?T{})
+}
+
+fn zero_result_array[T]() []!T {
+	return $zero([]!T{})
+}
+
+fn zero_pointer_array[T]() []&T {
+	return $zero([]&T{})
+}
+
+fn new_optional_array[T]() &[]?T {
+	return $new([]?T{})
+}
+
 fn new_value[T]() T {
 	return $new(T.pointee_type)
 }
@@ -526,14 +542,23 @@ fn main() {
 	mut optional_ptr := new_value[&NewOptional]()
 	mut defaults := new_value[&NewDefaults]()
 	payload := zero_payload_array[int](none)
+	optional_generic := zero_optional_array[int]()
+	result_generic := zero_result_array[int]()
+	pointer_generic := zero_pointer_array[int]()
+	mut optional_generic_ptr := new_optional_array[int]()
 	direct_ptr << 11
 	nested_ptr << [12]
 	optional_ptr << 13
 	defaults.values << 14
 	defaults.lookup["answer"] = 15
+	optional_generic_ptr << 17
 	println(int_str(nested.len))
 	println(int_str(optional.len))
 	println(int_str(payload.len))
+	println(int_str(optional_generic.len))
+	println(int_str(result_generic.len))
+	println(int_str(pointer_generic.len))
+	println(int_str(optional_generic_ptr[0] or { -1 }))
 	println(int_str(direct_ptr[0]))
 	println(int_str(nested_ptr[0][0]))
 	println(int_str(optional_ptr[0] or { -1 }))
@@ -542,5 +567,5 @@ fn main() {
 	println(int_str(defaults.count))
 }
 ')
-	assert out == '0\n0\n0\n11\n12\n13\n14\n15\n16'
+	assert out == '0\n0\n0\n0\n0\n0\n17\n11\n12\n13\n14\n15\n16'
 }
