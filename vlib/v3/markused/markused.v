@@ -3689,6 +3689,11 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 		if detect_generics && !uses_generics && c.node_uses_generics(child, cur_module, imports) {
 			uses_generics = true
 		}
+		if detect_generics && !uses_generics && child.kind == .struct_init
+			&& c.generic_type_base_is_known(child.value, cur_module, imports)
+			&& c.parsed_type_uses_concrete_generics(c.tc.resolve_type(child_id), 0) {
+			uses_generics = true
+		}
 		match child.kind {
 			.ident {
 				name_is_local := markused_ident_is_visible_local(child_id, child.value,
@@ -3697,7 +3702,9 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 					calls)
 			}
 			.selector {
-				if c.collect_interface_method_value_selector(child, mut calls) {
+				if c.selector_is_enum_value(child, cur_module, imports, local_values) {
+					// Enum fields are values even when a method has the same name.
+				} else if c.collect_interface_method_value_selector(child, mut calls) {
 					// handled
 				} else if c.collect_generic_method_value_selector(child, cur_module, imports, mut
 					calls)
@@ -3730,6 +3737,13 @@ fn (c &CallCollector) collect_calls_with_locals_and_generics(node &flat.Node, cu
 					callee_id := c.a.child(child, 0)
 					if int(callee_id) >= 0 {
 						mut callee := c.a.nodes[int(callee_id)]
+						if detect_generics && !uses_generics && callee.kind == .index
+							&& callee.children_count > 0 && callee.value != 'range' {
+							base_name := c.qualified_expr_name(c.a.child(&callee, 0))
+							if c.generic_type_base_is_known(base_name, cur_module, imports) {
+								uses_generics = true
+							}
+						}
 						if callee.kind == .paren && callee.children_count > 0 {
 							inner_id := c.a.child(&callee, 0)
 							if int(inner_id) >= 0 {
@@ -4532,7 +4546,9 @@ fn (c &CallCollector) collect_top_level_expr_calls(id flat.NodeId, cur_module st
 				}
 			}
 			.selector {
-				if c.collect_interface_method_value_selector(child, mut calls) {
+				if c.selector_is_enum_value(child, cur_module, imports, local_values) {
+					// Enum fields are values even when a method has the same name.
+				} else if c.collect_interface_method_value_selector(child, mut calls) {
 					// handled
 				} else if !c.top_level_selector_base_is_local(child, local_values) {
 					c.collect_fn_value_selector(child_id, child, cur_module, imports, mut calls)
@@ -5764,6 +5780,7 @@ fn markused_assign_operator_symbol(op flat.Op) ?flat.Op {
 		.plus_assign { return .plus }
 		.minus_assign { return .minus }
 		.mul_assign { return .mul }
+		.power_assign { return .power }
 		.div_assign { return .div }
 		.mod_assign { return .mod }
 		else {}
@@ -5778,6 +5795,7 @@ fn markused_struct_operator_symbol(op flat.Op) ?string {
 		.plus { return '+' }
 		.minus { return '-' }
 		.mul { return '*' }
+		.power { return '**' }
 		.div { return '/' }
 		.mod { return '%' }
 		.eq { return '==' }
@@ -5925,6 +5943,41 @@ fn (c &CallCollector) collect_fn_value_selector(id flat.NodeId, node &flat.Node,
 		c.add_fn_value_candidates(name, cur_module, imports, mut calls)
 		c.add_const_alias_candidates(name, cur_module, imports, mut calls)
 	}
+}
+
+fn (c &CallCollector) selector_is_enum_value(node &flat.Node, cur_module string, imports map[string]string, local_values map[string]bool) bool {
+	if node.kind != .selector || node.children_count == 0 || node.value.len == 0 {
+		return false
+	}
+	base_id := c.a.child(node, 0)
+	base := c.a.node(base_id)
+	if base.kind == .ident && base.value in local_values {
+		return false
+	}
+	base_name := c.qualified_expr_name(base_id)
+	if base_name.len == 0 {
+		return false
+	}
+	resolved_name := markused_resolve_imported_type_name(base_name, imports)
+	mut candidates := [resolved_name]
+	qualified_name := qualify_fn(cur_module, resolved_name)
+	if qualified_name != resolved_name {
+		candidates << qualified_name
+	}
+	for candidate in candidates {
+		mut enum_name := candidate
+		for _ in 0 .. 16 {
+			if fields := c.tc.enum_fields[enum_name] {
+				return node.value in fields
+			}
+			target := c.tc.type_aliases[enum_name] or { break }
+			if target == enum_name {
+				break
+			}
+			enum_name = target
+		}
+	}
+	return false
 }
 
 fn (c &CallCollector) collect_generic_method_value_selector(node &flat.Node, cur_module string, imports map[string]string, mut calls []string) bool {

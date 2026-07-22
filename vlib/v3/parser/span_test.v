@@ -125,6 +125,20 @@ fn test_array_cast_spans_from_bracket() {
 	assert '[]int(p)' in spans
 }
 
+fn test_mut_channel_element_type_is_preserved() {
+	ast, _ := parse_span_source('mut_channel', 'struct Item {}
+fn consume(chs []chan mut Item) {}
+')
+	mut found := false
+	for node in ast.nodes {
+		if node.kind == .param && node.value == 'chs' {
+			found = true
+			assert node.typ == '[]chan mut Item'
+		}
+	}
+	assert found
+}
+
 // Dynamic array initializers (`[]T{...}`) are parsed after the `[]T` prefix is
 // consumed, so the array_init node must span from the opening `[`, not the `{`.
 fn test_dynamic_array_init_spans_from_bracket() {
@@ -172,6 +186,49 @@ fn main() {
 	assert 'foo(1, 2)' in call_spans
 	assert 'o.missing(1, 2)' in call_spans
 	assert 'o.missing' in selector_spans
+}
+
+fn test_keyword_identifiers_keep_declaration_names_and_spans() {
+	ast, src := parse_span_source('keyword_ident', 'fn info(type int) int {
+	return type
+}
+fn main() {
+	type := 3
+	for type in [1, 2] {
+		println(type)
+	}
+	println(type)
+}
+')
+	mut saw_param := false
+	mut saw_decl := false
+	mut saw_loop := false
+	mut type_ident_count := 0
+	for node in ast.nodes {
+		if node.kind == .param && node.value == 'type' && node.typ == 'int' {
+			saw_param = true
+		}
+		if node.kind == .ident && node.value == 'type' {
+			type_ident_count++
+			assert span_text(src, node) == 'type'
+		}
+		if node.kind == .decl_assign && node.children_count >= 2 {
+			lhs := ast.nodes[int(ast.children[int(node.children_start)])]
+			if lhs.kind == .ident && lhs.value == 'type' {
+				saw_decl = true
+			}
+		}
+		if node.kind == .for_in_stmt && node.children_count >= 3 {
+			key := ast.nodes[int(ast.children[int(node.children_start)])]
+			if key.kind == .ident && key.value == 'type' {
+				saw_loop = true
+			}
+		}
+	}
+	assert saw_param
+	assert saw_decl
+	assert saw_loop
+	assert type_ident_count >= 5
 }
 
 // Address-of expressions (`&Foo{}`, `&[]T{}`, `&T(x)`) span from the `&` through
@@ -360,4 +417,66 @@ fn test_lambda_nodes_have_valid_spans() {
 		}
 	}
 	assert saw_lambda
+}
+
+// `$match` is valid in expression position. It must consume every branch before
+// the enclosing declaration continues, otherwise later patterns are parsed as
+// stray function-body statements and the real `return` is lost.
+fn test_comptime_match_expression_consumes_all_branches() {
+	ast, _ := parse_span_source('comptime_match_expr', 'fn choose[T]() int {
+	value := \$match T.unaliased_typ {
+		int { 1 }
+		\$float { 2 }
+		\$else { 3 }
+	}
+	return value
+}
+')
+	mut saw := false
+	for node in ast.nodes {
+		if node.kind != .fn_decl || node.value != 'choose' {
+			continue
+		}
+		saw = true
+		assert node.children_count == 2
+		decl := ast.child_node(&node, 0)
+		ret := ast.child_node(&node, 1)
+		assert decl.kind == .decl_assign
+		assert ret.kind == .return_stmt
+		assert decl.children_count == 2
+		rhs := ast.child_node(decl, 1)
+		assert rhs.kind == .comptime_if
+	}
+	assert saw
+}
+
+fn test_comptime_type_accessor_initializers_stay_single_expressions() {
+	ast, _ := parse_span_source('comptime_type_init', 'fn make_zero[T](x ?T) {
+	_ := typeof(x).payload_type{}
+	_ := \$zero([]typeof(x).payload_type{})
+}
+')
+	mut saw_fn := false
+	mut marker_count := 0
+	mut saw_array_target := false
+	for node in ast.nodes {
+		if node.kind == .fn_decl && node.value == 'make_zero' {
+			saw_fn = true
+			assert node.children_count == 3
+			assert ast.child_node(&node, 0).kind == .param
+			assert ast.child_node(&node, 1).kind == .decl_assign
+			assert ast.child_node(&node, 2).kind == .decl_assign
+		}
+		if node.kind == .string_literal && node.value == '__v3_comptime_zero'
+			&& node.children_count == 1 {
+			marker_count++
+			target := ast.child_node(&node, 0)
+			if target.kind == .array_init && target.value == '__v3_comptime_type_array' {
+				saw_array_target = true
+			}
+		}
+	}
+	assert saw_fn
+	assert marker_count == 2
+	assert saw_array_target
 }

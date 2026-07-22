@@ -12,7 +12,7 @@ fn test_c_string_literal_pointer_codegen_preserves_regular_addresses() {
 
 	src := os.join_path(os.temp_dir(), 'v3_c_string_literal_pointer_input.v')
 	os.write_file(src,
-		"fn C.puts(&char) int\n\nfn takes_string_ptr(s &string) int {\n\treturn s.len\n}\n\nfn takes_byte_ptr(b &u8) int {\n\treturn int(*b)\n}\n\nfn main() {\n\tC.puts(c'canary')\n\ttext := 'ordinary'\n\ttext_len := takes_string_ptr(&text)\n\tch := u8(65)\n\tch_value := takes_byte_ptr(&ch)\n\tprintln(int_str(text_len + ch_value))\n}\n") or {
+		"fn C.puts(&char) int\n\nfn takes_string_ptr(s &string) int {\n\treturn s.len\n}\n\nfn takes_byte_ptr(b &u8) int {\n\treturn int(*b)\n}\n\nfn main() {\n\tC.puts(c'canary')\n\ttext := 'ordinary'\n\ttext_len := takes_string_ptr(&text)\n\tch := u8(65)\n\tch_value := takes_byte_ptr(&ch)\n\tprintln(int_str(text_len + ch_value))\n\tcstring := c'local'\n\tlocal := unsafe { cstring.vstring() }\n\tprintln(local)\n}\n") or {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_c_string_literal_pointer_input')
@@ -24,9 +24,10 @@ fn test_c_string_literal_pointer_codegen_preserves_regular_addresses() {
 	assert !c_code.contains('puts(&"canary");'), c_code
 	assert c_code.contains('takes_string_ptr(&text)'), c_code
 	assert c_code.contains('takes_byte_ptr(&ch)'), c_code
+	assert c_code.contains('u8* cstring = "local";'), c_code
 	run := os.execute(bin)
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'canary\n73'
+	assert run.output.trim_space() == 'canary\n73\nlocal'
 
 	bad_src := os.join_path(os.temp_dir(), 'v3_c_string_literal_address_input.v')
 	os.write_file(bad_src, "fn C.puts(&char) int\n\nfn main() {\n\tC.puts(&c'bad')\n}\n") or {

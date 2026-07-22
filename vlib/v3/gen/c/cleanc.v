@@ -8571,11 +8571,6 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 	g.collect_fixed_storage_const_candidates(mut fixed_storage_candidates, mut
 		fixed_candidate_refs, mut fixed_candidate_shorts, mut fixed_storage_cache, mut
 		primary_name_cache)
-	if fixed_storage_candidates.len == 0 {
-		g.tc.cur_module = old_module
-		g.tc.cur_file = old_file
-		return
-	}
 	unique_const_ref_names := g.build_unique_const_ref_names()
 	mut const_ref_name_cache := map[string]string{}
 	mut ref_items := []FixedStorageConstRefItem{}
@@ -8602,6 +8597,18 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 			continue
 		}
 		match node.kind {
+			.prefix {
+				if node.op != .amp || node.children_count == 0 {
+					continue
+				}
+				child := g.a.child_node(node, 0)
+				const_name := g.const_ref_name_from_node_cached_for_collect(child,
+					unique_const_ref_names, mut const_ref_name_cache)
+				if const_name.len > 0 {
+					primary := g.const_primary_name_cached(const_name, mut primary_name_cache)
+					g.fixed_storage_consts[primary] = true
+				}
+			}
 			.index {
 				if node.children_count == 0 {
 					continue
@@ -8671,6 +8678,11 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 			}
 			else {}
 		}
+	}
+	if fixed_storage_candidates.len == 0 {
+		g.tc.cur_module = old_module
+		g.tc.cur_file = old_file
+		return
 	}
 	for item in call_base_items {
 		g.tc.cur_file = item.file
@@ -8896,7 +8908,9 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			rhs := g.const_expr_to_string(g.a.child(&node, 1), seen)
 			// An int-literal shift by >= 31 would be performed at C `int` width
 			// and wrap (`1 << 51`); widen the lhs so the shift happens in 64 bits.
-			if node.op == .left_shift && g.shift_needs_64bit_widening(&node) {
+			if node.op == .power {
+				g.power_expr_string(lhs, rhs, g.usable_expr_type(id))
+			} else if node.op == .left_shift && g.shift_needs_64bit_widening(&node) {
 				'((u64)(${lhs})) << (${rhs})'
 			} else if node.op == .right_shift_unsigned {
 				// `>>>` must stay a logical shift in const initializers too;
@@ -9611,6 +9625,17 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 			old_expected_enum := g.expected_enum
 			lhs_type := g.usable_expr_type(lhs_id)
 			rhs_type := g.usable_expr_type(rhs_id)
+			if node.op == .power {
+				lhs_node := g.a.nodes[int(lhs_id)]
+				if lhs_node.kind == .prefix && lhs_node.op == .minus && lhs_node.children_count == 1 {
+					g.write('-')
+					g.gen_power_expr(g.a.child(&lhs_node, 0), rhs_id, g.usable_expr_type(id))
+				} else {
+					g.gen_power_expr(lhs_id, rhs_id, g.usable_expr_type(id))
+				}
+				g.expected_enum = old_expected_enum
+				return
+			}
 			// An int-literal shift by >= 31 would be performed at C `int` width
 			// and wrap (`u64(1 << 40)`); widen the lhs so the shift is 64-bit.
 			if node.op == .left_shift && g.shift_needs_64bit_widening(&node) {
@@ -10031,22 +10056,6 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 					}
 				}
 			}
-			// A method used as a value (e.g. `game.draw` passed as a callback) rather
-			// than a field access — bind the receiver and yield a wrapper function.
-			if g.gen_method_value_closure(base_id, base_type0, node.value) {
-				return
-			}
-			// The expected type belongs to the selected field, not to its base. In
-			// particular, propagating a sum payload expectation into an `Optional{}`
-			// base rewrites the wrapper literal as the sum itself before `.ok`/`.value`.
-			old_selector_expected := g.expected_expr_type
-			old_selector_enum := g.expected_enum
-			g.expected_expr_type = types.Type(types.void_)
-			g.expected_enum = ''
-			defer {
-				g.expected_expr_type = old_selector_expected
-				g.expected_enum = old_selector_enum
-			}
 			mut enum_selector_qbase := if base.kind == .ident && base.value != 'C' && !base_is_local {
 				g.enum_selector_base_name(base.value) or { '' }
 			} else {
@@ -10066,6 +10075,23 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 						''
 					}
 				}
+			}
+			// Enum fields take precedence when a method has the same name. Only a
+			// non-enum selector can be lowered as a bound method value.
+			if enum_selector_qbase.len == 0
+				&& g.gen_method_value_closure(base_id, base_type0, node.value) {
+				return
+			}
+			// The expected type belongs to the selected field, not to its base. In
+			// particular, propagating a sum payload expectation into an `Optional{}`
+			// base rewrites the wrapper literal as the sum itself before `.ok`/`.value`.
+			old_selector_expected := g.expected_expr_type
+			old_selector_enum := g.expected_enum
+			g.expected_expr_type = types.Type(types.void_)
+			g.expected_enum = ''
+			defer {
+				g.expected_expr_type = old_selector_expected
+				g.expected_enum = old_selector_enum
 			}
 			if base.kind == .ident && base.value == 'C' {
 				g.write(c_winapi_wide_export_name(node.value))
@@ -11249,17 +11275,24 @@ fn (g &FlatGen) type_index_for_type_name(type_name string) int {
 	if type_name.len == 0 {
 		return 0
 	}
+	mut base_name := type_name.trim_space()
+	mut indirections := 0
+	for base_name.starts_with('&') {
+		indirections++
+		base_name = base_name[1..].trim_space()
+	}
 	// Builtin types keep V's stable ast `*_type_idx` values (int==8, string==21, ...), so
 	// comparisons against `v.ast` constants behave like the reference compiler.
-	builtin_idx := builtin_ast_type_idx(type_name)
+	builtin_idx := builtin_ast_type_idx(base_name)
+	indirection_bits := int(u32(indirections) << 16)
 	if builtin_idx > 0 {
-		return builtin_idx
+		return builtin_idx | indirection_bits
 	}
 	mut candidate_names := []string{cap: 2}
-	candidate_names << type_name
-	if !type_name.contains('.') && g.tc.cur_module.len > 0
+	candidate_names << base_name
+	if !base_name.contains('.') && g.tc.cur_module.len > 0
 		&& g.tc.cur_module !in ['', 'main', 'builtin'] {
-		candidate_names << '${g.tc.cur_module}.${type_name}'
+		candidate_names << '${g.tc.cur_module}.${base_name}'
 	}
 	mut sum_names := []string{}
 	if g.tc.cur_module.len > 0 {
@@ -11274,7 +11307,7 @@ fn (g &FlatGen) type_index_for_type_name(type_name string) int {
 		for candidate in candidate_names {
 			idx := g.sum_type_index(sum_name, candidate)
 			if idx != 0 {
-				return idx
+				return idx | indirection_bits
 			}
 		}
 	}
@@ -11283,7 +11316,7 @@ fn (g &FlatGen) type_index_for_type_name(type_name string) int {
 		if sum_name.len > 0 {
 			idx := g.sum_type_index_resolved(sum_name, candidate)
 			if idx != 0 {
-				return idx
+				return idx | indirection_bits
 			}
 		}
 	}
@@ -11771,6 +11804,8 @@ fn (mut g FlatGen) preamble() {
 	g.writeln('typedef unsigned short u16;')
 	g.writeln('typedef unsigned int u32;')
 	g.writeln('typedef unsigned long long u64;')
+	g.writeln('static inline i64 __v_pow_i64(i64 base, i64 exponent) { if (exponent < 0) { if (base == 0) return -1; if (base != 1 && base != -1) return 0; return (exponent & 1) != 0 ? base : 1; } i64 value = 1; i64 power = base; for (; exponent > 0; exponent >>= 1) { if ((exponent & 1) != 0) value *= power; power *= power; } return value; }')
+	g.writeln('static inline u64 __v_pow_u64(u64 base, i64 exponent) { if (exponent < 0) { if (base == 0) return (u64)-1; return base == 1 ? 1 : 0; } u64 value = 1; u64 power = base; for (; exponent > 0; exponent >>= 1) { if ((exponent & 1) != 0) value *= power; power *= power; } return value; }')
 	g.writeln('#ifdef _MSC_VER')
 	g.writeln('#ifdef _WIN64')
 	g.writeln('typedef unsigned __int64 size_t;')
@@ -14353,7 +14388,11 @@ fn (mut g FlatGen) collect_fixed_array_typedefs_needed() map[string]FixedArrayTy
 		}
 		g.tc.cur_file = cur_file
 		g.tc.cur_module = cur_module
-		g.collect_fixed_array_typedef_text(node.typ, cur_module, mut needed)
+		// Struct-init node types use scratch text while fields are transformed; the
+		// declared struct metadata above is the authoritative fixed-array source.
+		if node.kind != .struct_init {
+			g.collect_fixed_array_typedef_text(node.typ, cur_module, mut needed)
+		}
 		match node.kind {
 			.array_init, .array_literal, .cast_expr, .sizeof_expr, .typeof_expr {
 				g.collect_fixed_array_typedef_text(node.value, cur_module, mut needed)
@@ -14389,7 +14428,7 @@ fn (mut g FlatGen) fixed_array_typedefs() {
 			continue
 		}
 		info := needed[name] or { continue }
-		if fixed_array_typedef_is_early(info.arr) {
+		if g.fixed_array_typedef_is_early(info.arr) {
 			continue
 		}
 		// Completes the struct forward-declared in fixed_array_early_typedefs().
@@ -14404,10 +14443,13 @@ fn (mut g FlatGen) fixed_array_typedefs() {
 // fixed_array_typedef_is_early reports whether a fixed array's bare typedef can be
 // emitted before struct definitions: its element chain must bottom out in a
 // primitive/pointer/enum (not a struct or `string`, whose definitions come later).
-fn fixed_array_typedef_is_early(arr types.ArrayFixed) bool {
+fn (mut g FlatGen) fixed_array_typedef_is_early(arr types.ArrayFixed) bool {
+	if g.fixed_array_len_value(arr).contains('sizeof(') {
+		return false
+	}
 	elem := arr.elem_type
 	if elem is types.ArrayFixed {
-		return fixed_array_typedef_is_early(elem)
+		return g.fixed_array_typedef_is_early(elem)
 	}
 	return fixed_array_elem_is_early_complete(elem)
 }
@@ -14542,7 +14584,7 @@ fn (mut g FlatGen) fixed_array_early_typedefs() {
 	mut emitted_any := false
 	for name in names {
 		info := needed[name] or { continue }
-		if !fixed_array_typedef_is_early(info.arr) {
+		if !g.fixed_array_typedef_is_early(info.arr) {
 			continue
 		}
 		g.emit_fixed_array_typedef(name, info, needed, mut g.emitted_fixed_array_typedefs)
@@ -14558,7 +14600,7 @@ fn (mut g FlatGen) fixed_array_early_typedefs() {
 			continue
 		}
 		info := needed[name] or { continue }
-		if fixed_array_typedef_is_early(info.arr) {
+		if g.fixed_array_typedef_is_early(info.arr) {
 			g.emit_fixed_array_ret_wrapper(name, info, false)
 		} else {
 			g.emit_fixed_array_ret_wrapper_forward(name)
@@ -14618,10 +14660,34 @@ fn (mut g FlatGen) emit_ready_fixed_array_typedefs(needed map[string]FixedArrayT
 		if g.emitted_fixed_array_typedefs[name] {
 			continue
 		}
-		if g.fixed_array_elem_defined(info.arr, emitted_structs) {
+		old_module := g.tc.cur_module
+		g.tc.cur_module = info.module
+		ready := g.fixed_array_elem_defined(info.arr, emitted_structs)
+			&& g.fixed_array_len_types_defined(info.arr, emitted_structs)
+		g.tc.cur_module = old_module
+		if ready {
 			g.emit_fixed_array_typedef(name, info, needed, mut g.emitted_fixed_array_typedefs)
 		}
 	}
+}
+
+fn (mut g FlatGen) fixed_array_len_types_defined(arr types.ArrayFixed, emitted_structs map[string]bool) bool {
+	expr := g.fixed_array_len_value(arr)
+	mut offset := 0
+	for offset < expr.len {
+		rel := expr[offset..].index('sizeof(') or { return true }
+		open := offset + rel + 'sizeof'.len
+		close := fixed_array_len_matching_paren(expr, open)
+		if close < 0 {
+			return false
+		}
+		target := expr[open + 1..close].trim_space()
+		if !g.fixed_array_type_defined(g.tc.parse_type(target), emitted_structs) {
+			return false
+		}
+		offset = close + 1
+	}
+	return true
 }
 
 // fixed_array_elem_defined reports whether a fixed array's element type is fully
@@ -15824,7 +15890,8 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		|| ct in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'float', 'double', 'isize', 'usize'] {
 		if qname == 'max_len' && ct == 'int' {
 			g.writeln('enum { ${qname} = ${expr_str} };')
-		} else if ct == 'u8' || g.name_collides_with_struct_field(qname) {
+		} else if ct == 'u8' || g.fixed_storage_consts[g.const_primary_name(name)]
+			|| g.name_collides_with_struct_field(qname) {
 			// A `#define` whose name matches a struct field would wrongly expand every
 			// `.field` access. Byte constants are also passed by reference by generic
 			// binary I/O helpers, so they need addressable storage rather than a macro.
@@ -16731,11 +16798,39 @@ fn (mut g FlatGen) gen_mixed_sign_integer_comparison(lhs_id flat.NodeId, rhs_id 
 	return true
 }
 
+fn (mut g FlatGen) gen_power_expr(lhs_id flat.NodeId, rhs_id flat.NodeId, result_type types.Type) {
+	g.gen_power_expr_from_lhs_text(g.expr_to_string(lhs_id), rhs_id, result_type)
+}
+
+fn (mut g FlatGen) gen_power_expr_from_lhs_text(lhs string, rhs_id flat.NodeId, result_type types.Type) {
+	rhs := g.expr_to_string(rhs_id)
+	g.write(g.power_expr_string(lhs, rhs, result_type))
+}
+
+fn (mut g FlatGen) power_expr_string(lhs string, rhs string, result_type types.Type) string {
+	clean := default_init_unalias_type(result_type)
+	result_ct := g.value_c_type(result_type)
+	if clean.is_float() {
+		return '((${result_ct})pow((double)(${lhs}), (double)(${rhs})))'
+	}
+	helper := if power_type_is_unsigned(clean) { '__v_pow_u64' } else { '__v_pow_i64' }
+	base_ct := if power_type_is_unsigned(clean) { 'u64' } else { 'i64' }
+	return '((${result_ct})${helper}((${base_ct})(${lhs}), (i64)(${rhs})))'
+}
+
+fn power_type_is_unsigned(typ types.Type) bool {
+	if typ is types.Primitive {
+		return typ.props.has(.unsigned)
+	}
+	return typ is types.USize
+}
+
 fn (g &FlatGen) op_str(op flat.Op) string {
 	return match op {
 		.plus { '+' }
 		.minus { '-' }
 		.mul { '*' }
+		.power { '**' }
 		.div { '/' }
 		.mod { '%' }
 		.eq { '==' }
@@ -16758,6 +16853,7 @@ fn (g &FlatGen) op_str(op flat.Op) string {
 		.plus_assign { '+=' }
 		.minus_assign { '-=' }
 		.mul_assign { '*=' }
+		.power_assign { '**=' }
 		.div_assign { '/=' }
 		.mod_assign { '%=' }
 		.amp_assign { '&=' }

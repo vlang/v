@@ -5533,6 +5533,29 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 						}
 					}
 				}
+				if node.op == .power_assign {
+					lhs_assign_id := g.a.child(&node, i)
+					if g.a.nodes[int(lhs_assign_id)].kind == .ident {
+						mut lhs_text := g.expr_to_string(lhs_assign_id)
+						if g.assign_lhs_needs_deref(lhs_assign_id, lhs_type, rhs_type, node.op) {
+							lhs_text = '*${lhs_text}'
+						}
+						g.write('${lhs_text} = ')
+						g.gen_power_expr_from_lhs_text(lhs_text, rhs_id, lhs_type)
+						g.writeln(';')
+					} else {
+						lhs_ct := g.value_c_type(lhs_type)
+						addr_tmp := g.tmp_name()
+						g.write('{ ${lhs_ct}* ${addr_tmp} = &(')
+						g.gen_expr(lhs_assign_id)
+						g.write('); *${addr_tmp} = ')
+						g.gen_power_expr_from_lhs_text('*${addr_tmp}', rhs_id, lhs_type)
+						g.writeln('; }')
+					}
+					g.expected_enum = ''
+					i += 2
+					continue
+				}
 				if node.op in [.left_shift_assign, .right_shift_assign, .right_shift_unsigned_assign] {
 					shift_op := match node.op {
 						.left_shift_assign { flat.Op.left_shift }
@@ -5763,7 +5786,15 @@ fn (g &FlatGen) local_decl_cname(name string) string {
 }
 
 fn local_name_shadows_c_runtime(name string) bool {
-	return name == 'new_map'
+	return match name {
+		'array_get', 'array_slice', 'int_str', 'new_map', 'string__eq', 'string__lt',
+		'string__plus' {
+			true
+		}
+		else {
+			false
+		}
+	}
 }
 
 fn (g &FlatGen) local_shadows_global(name string) bool {

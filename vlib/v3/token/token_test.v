@@ -7,6 +7,9 @@ fn test_operator_properties_are_owned_by_tokens() {
 	assert Token.xor.left_binding_power() == .sum
 	assert Token.mul.left_binding_power() == .product
 	assert Token.amp.left_binding_power() == .product
+	assert Token.power.left_binding_power() == .power
+	assert Token.power.right_binding_power() == .power
+	assert int(Token.power.left_binding_power()) > int(Token.mul.left_binding_power())
 	// `<<` `>>` `>>>` share the `product` level with `* / % &`, so they bind
 	// tighter than `+ - | ^` at `sum` (V precedence, docs Appendix II).
 	assert Token.left_shift.left_binding_power() == .product
@@ -18,6 +21,8 @@ fn test_operator_properties_are_owned_by_tokens() {
 	assert Token.minus.is_prefix()
 	assert Token.inc.is_postfix()
 	assert Token.right_shift_unsigned_assign.is_assignment()
+	assert Token.power_assign.is_assignment()
+	assert Token.power.is_overloadable()
 	assert !Token.name.is_infix()
 	assert !Token.number.is_assignment()
 }

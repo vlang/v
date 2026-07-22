@@ -1644,6 +1644,7 @@ fn compound_assign_to_infix_op(op flat.Op) ?flat.Op {
 		.plus_assign { return flat.Op.plus }
 		.minus_assign { return flat.Op.minus }
 		.mul_assign { return flat.Op.mul }
+		.power_assign { return flat.Op.power }
 		.div_assign { return flat.Op.div }
 		.mod_assign { return flat.Op.mod }
 		.amp_assign { return flat.Op.amp }
