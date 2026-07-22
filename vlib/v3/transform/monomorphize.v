@@ -354,6 +354,50 @@ fn (mut t Transformer) seed_cached_monomorph_specs(specs []MonomorphCacheSpec) {
 	}
 }
 
+fn (mut t Transformer) materialize_cached_monomorph_signature_types(specs []MonomorphCacheSpec) {
+	if isnil(t.tc) || specs.len == 0 {
+		return
+	}
+	fn_decls := t.cached_generic_fn_decls()
+	struct_decls := t.collect_generic_struct_decls()
+	sum_decls := t.collect_generic_sum_decls()
+	if struct_decls.len == 0 && sum_decls.len == 0 {
+		return
+	}
+	mut struct_specs := map[string]string{}
+	mut sum_specs := map[string]GenericSpecContext{}
+	for spec in specs {
+		decl := fn_decls[spec.decl_key] or { continue }
+		args := t.canonical_generic_specialization_args(spec.args)
+		if args.len == 0 || t.generic_args_have_placeholders(args) {
+			continue
+		}
+		generic_params := t.generic_fn_param_names(decl.node, decl.module)
+		mut signature_types := [
+			t.specialized_signature_type_text(decl, decl.node.typ, args, generic_params),
+		]
+		for i in 0 .. decl.node.children_count {
+			param := t.a.child_node(&decl.node, i)
+			if param.kind == .param {
+				signature_types << t.specialized_signature_type_text(decl, param.typ, args,
+					generic_params)
+			}
+		}
+		for typ in signature_types {
+			t.collect_generic_struct_spec_from_type(typ, decl.module, decl.file, struct_decls, mut
+				struct_specs)
+			t.collect_generic_sum_spec_from_type(typ, decl.module, decl.file, sum_decls, mut
+				sum_specs)
+		}
+	}
+	t.expand_generic_materialization_specs(struct_decls, sum_decls, mut struct_specs, mut sum_specs)
+	for spec, context in sum_specs {
+		decl := sum_decls[context.base] or { continue }
+		t.materialize_generic_sum_spec(spec, decl, context)
+	}
+	t.materialize_generic_struct_specs(struct_specs, struct_decls)
+}
+
 fn (t &Transformer) sorted_monomorph_cache_specs() []MonomorphCacheSpec {
 	mut keys := t.monomorph_cache_specs.keys()
 	keys.sort()

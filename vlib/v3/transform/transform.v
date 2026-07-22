@@ -836,7 +836,8 @@ pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, t
 }
 
 // register_cached_monomorph_signatures installs persistent concrete signatures
-// before the disposable monomorphization arena is entered.
+// and their named signature types before the disposable monomorphization arena
+// is entered.
 pub fn register_cached_monomorph_signatures(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, cached_specs []MonomorphCacheSpec) {
 	if cached_specs.len == 0 {
 		return
@@ -844,6 +845,7 @@ pub fn register_cached_monomorph_signatures(a &flat.FlatAst, tc &types.TypeCheck
 	mut t := new_transformer_view(a, tc, used_fns)
 	t.prepare()
 	t.seed_cached_monomorph_specs(cached_specs)
+	t.materialize_cached_monomorph_signature_types(cached_specs)
 }
 
 fn new_transformer(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool) Transformer {
