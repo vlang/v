@@ -11886,6 +11886,26 @@ fn (t &Transformer) current_generic_receiver_call_return_type(node flat.Node) ?s
 }
 
 fn (t &Transformer) checker_resolved_non_builtin_return_type(id flat.NodeId, node flat.Node) ?string {
+	if isnil(t.resolved_call_return_cache) {
+		return t.checker_resolved_non_builtin_return_type_uncached(id, node)
+	}
+	mut cache := t.resolved_call_return_cache
+	slot := int(id) & 1023
+	if cache.generations[slot] == cache.generation && cache.keys[slot] == int(id)
+		&& cache.value_ptrs[slot] == voidptr(node.value.str)
+		&& cache.value_lens[slot] == node.value.len {
+		return cache.results[slot]
+	}
+	result := t.checker_resolved_non_builtin_return_type_uncached(id, node) or { return none }
+	cache.keys[slot] = int(id)
+	cache.value_ptrs[slot] = voidptr(node.value.str)
+	cache.value_lens[slot] = node.value.len
+	cache.generations[slot] = cache.generation
+	cache.results[slot] = result
+	return result
+}
+
+fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.NodeId, node flat.Node) ?string {
 	if isnil(t.tc) {
 		return none
 	}

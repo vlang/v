@@ -146,19 +146,22 @@ mut:
 	expected_expr_type            string
 	in_selector_base              bool
 	autolock_depth                int
-	alias_cache                   &AliasCache             = unsafe { nil }
-	sum_cache                     &AliasCache             = unsafe { nil }
-	module_type_cache             &AliasCache             = unsafe { nil }
-	struct_guess_cache            &AliasCache             = unsafe { nil }
-	generic_unresolved_cache      &GenericUnresolvedCache = unsafe { nil }
-	struct_field_type_cache       &LookupCache            = unsafe { nil }
-	variant_short_name_cache      &LookupCache            = unsafe { nil }
-	interface_type_cache          &ContextLookupCache     = unsafe { nil }
-	type_alias_name_cache         &ContextBoolLookupCache = unsafe { nil }
-	interface_box_param_cache     &BoolLookupCache        = unsafe { nil }
-	alias_receiver_method_cache   &LookupCache            = unsafe { nil }
-	call_variadic_cache           &BoolLookupCache        = unsafe { nil }
-	str_alias_cache               &LookupCache            = unsafe { nil }
+	alias_cache                   &AliasCache              = unsafe { nil }
+	sum_cache                     &AliasCache              = unsafe { nil }
+	module_type_cache             &AliasCache              = unsafe { nil }
+	struct_guess_cache            &AliasCache              = unsafe { nil }
+	generic_unresolved_cache      &GenericUnresolvedCache  = unsafe { nil }
+	struct_field_type_cache       &LookupCache             = unsafe { nil }
+	variant_short_name_cache      &LookupCache             = unsafe { nil }
+	selector_type_cache           &SelectorTypeCache       = unsafe { nil }
+	resolved_call_return_cache    &ResolvedCallReturnCache = unsafe { nil }
+	variant_match_cache           &VariantMatchCache       = unsafe { nil }
+	interface_type_cache          &ContextLookupCache      = unsafe { nil }
+	type_alias_name_cache         &ContextBoolLookupCache  = unsafe { nil }
+	interface_box_param_cache     &BoolLookupCache         = unsafe { nil }
+	alias_receiver_method_cache   &LookupCache             = unsafe { nil }
+	call_variadic_cache           &BoolLookupCache         = unsafe { nil }
+	str_alias_cache               &LookupCache             = unsafe { nil }
 	generic_alias_names           map[string]bool
 	local_decl_nodes_by_name      map[string][]int
 	struct_field_decl_metas_cache map[string]map[string]FieldDeclMeta
@@ -315,41 +318,31 @@ mut:
 // keyed by typ and cleared whenever the source context changes.
 struct AliasCache {
 mut:
-	module       string
-	file         string
-	last_type    string
-	last_result  string
-	last_type2   string
-	last_result2 string
-	last_type3   string
-	last_result3 string
-	last_type4   string
-	last_result4 string
-	entries      map[string]string
+	module         string
+	file           string
+	recent_types   [64]string
+	recent_results [64]string
+	entries        map[string]string
+}
+
+@[inline]
+fn alias_cache_slot(typ string) int {
+	return int((u64(voidptr(typ.str)) >> 4 ^ u64(typ.len)) & 63)
 }
 
 @[inline]
 fn (mut c AliasCache) put_recent(typ string, result string) {
-	c.last_type4 = c.last_type3
-	c.last_result4 = c.last_result3
-	c.last_type3 = c.last_type2
-	c.last_result3 = c.last_result2
-	c.last_type2 = c.last_type
-	c.last_result2 = c.last_result
-	c.last_type = typ
-	c.last_result = result
+	slot := alias_cache_slot(typ)
+	c.recent_types[slot] = typ
+	c.recent_results[slot] = result
 }
 
 @[inline]
 fn (mut c AliasCache) clear_recent() {
-	c.last_type = ''
-	c.last_result = ''
-	c.last_type2 = ''
-	c.last_result2 = ''
-	c.last_type3 = ''
-	c.last_result3 = ''
-	c.last_type4 = ''
-	c.last_result4 = ''
+	for i in 0 .. c.recent_types.len {
+		c.recent_types[i] = ''
+		c.recent_results[i] = ''
+	}
 }
 
 struct LookupCache {
@@ -364,6 +357,39 @@ mut:
 	file    string
 	entries map[string]string
 	misses  map[string]bool
+}
+
+struct SelectorTypeCache {
+mut:
+	generation  u32 = 1
+	keys        [1024]int
+	value_ptrs  [1024]voidptr
+	value_lens  [1024]int
+	generations [1024]u32
+	results     [1024]string
+}
+
+struct ResolvedCallReturnCache {
+mut:
+	generation  u32 = 1
+	keys        [1024]int
+	value_ptrs  [1024]voidptr
+	value_lens  [1024]int
+	generations [1024]u32
+	results     [1024]string
+}
+
+struct VariantMatchCache {
+mut:
+	generation  u32 = 1
+	a_ptrs      [2048]voidptr
+	b_ptrs      [2048]voidptr
+	a_lens      [2048]int
+	b_lens      [2048]int
+	module_ptrs [2048]voidptr
+	module_lens [2048]int
+	generations [2048]u32
+	results     [2048]i8
 }
 
 struct BoolLookupCache {
@@ -1111,6 +1137,9 @@ fn (mut t Transformer) prepare() {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	t.selector_type_cache = &SelectorTypeCache{}
+	t.resolved_call_return_cache = &ResolvedCallReturnCache{}
+	t.variant_match_cache = &VariantMatchCache{}
 	t.interface_type_cache = &ContextLookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -2623,6 +2652,9 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.selector_type_cache = &SelectorTypeCache{}
+	w.resolved_call_return_cache = &ResolvedCallReturnCache{}
+	w.variant_match_cache = &VariantMatchCache{}
 	w.interface_type_cache = &ContextLookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -2738,6 +2770,9 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 		entries: map[string]string{}
 		misses:  map[string]bool{}
 	}
+	w.selector_type_cache = &SelectorTypeCache{}
+	w.resolved_call_return_cache = &ResolvedCallReturnCache{}
+	w.variant_match_cache = &VariantMatchCache{}
 	w.interface_type_cache = &ContextLookupCache{
 		entries: map[string]string{}
 		misses:  map[string]bool{}
@@ -5010,6 +5045,15 @@ fn next_temp_counter_after_name(name string, current int) int {
 }
 
 fn (mut t Transformer) transform_fn_body(fn_idx int) {
+	if !isnil(t.selector_type_cache) {
+		t.selector_type_cache.generation++
+	}
+	if !isnil(t.resolved_call_return_cache) {
+		t.resolved_call_return_cache.generation++
+	}
+	if !isnil(t.variant_match_cache) {
+		t.variant_match_cache.generation++
+	}
 	old_tc_file := t.tc.cur_file
 	old_tc_module := t.tc.cur_module
 	t.tc.cur_file = t.cur_file
@@ -15782,6 +15826,30 @@ fn (t &Transformer) variant_names_match(a string, b string) bool {
 	if a == b {
 		return true
 	}
+	if isnil(t.variant_match_cache) {
+		return t.variant_names_match_uncached(a, b)
+	}
+	mut cache := t.variant_match_cache
+	slot := int(((u64(voidptr(a.str)) >> 4) * 2654435761 ^ (u64(voidptr(b.str)) >> 4)) & 2047)
+	if cache.generations[slot] == cache.generation && cache.a_ptrs[slot] == voidptr(a.str)
+		&& cache.b_ptrs[slot] == voidptr(b.str) && cache.a_lens[slot] == a.len
+		&& cache.b_lens[slot] == b.len && cache.module_ptrs[slot] == voidptr(t.cur_module.str)
+		&& cache.module_lens[slot] == t.cur_module.len {
+		return cache.results[slot] > 0
+	}
+	result := t.variant_names_match_uncached(a, b)
+	cache.a_ptrs[slot] = voidptr(a.str)
+	cache.b_ptrs[slot] = voidptr(b.str)
+	cache.a_lens[slot] = a.len
+	cache.b_lens[slot] = b.len
+	cache.module_ptrs[slot] = voidptr(t.cur_module.str)
+	cache.module_lens[slot] = t.cur_module.len
+	cache.generations[slot] = cache.generation
+	cache.results[slot] = if result { i8(1) } else { i8(-1) }
+	return result
+}
+
+fn (t &Transformer) variant_names_match_uncached(a string, b string) bool {
 	a_has_dot := a.contains('.')
 	b_has_dot := b.contains('.')
 	if (a_has_dot || b_has_dot) && t.variant_short_name(a) == t.variant_short_name(b) {

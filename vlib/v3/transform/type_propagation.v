@@ -416,6 +416,27 @@ fn type_text_ident_char(ch u8) bool {
 // resolve_selector_type resolves the type of a .selector node (e.g. `obj.field`).
 // Looks up the base expression type, then finds the field in the struct definition.
 fn (t &Transformer) resolve_selector_type(node flat.Node) string {
+	if node.kind != .selector || node.children_count == 0 || t.smartcast_stack.len > 0
+		|| isnil(t.selector_type_cache) {
+		return t.resolve_selector_type_uncached(node)
+	}
+	mut cache := t.selector_type_cache
+	slot := int((u64(node.children_start) * 2654435761 ^ (u64(voidptr(node.value.str)) >> 4)) & 1023)
+	if cache.generations[slot] == cache.generation && cache.keys[slot] == node.children_start
+		&& cache.value_ptrs[slot] == voidptr(node.value.str)
+		&& cache.value_lens[slot] == node.value.len {
+		return cache.results[slot]
+	}
+	result := t.resolve_selector_type_uncached(node)
+	cache.keys[slot] = node.children_start
+	cache.value_ptrs[slot] = voidptr(node.value.str)
+	cache.value_lens[slot] = node.value.len
+	cache.generations[slot] = cache.generation
+	cache.results[slot] = result
+	return result
+}
+
+fn (t &Transformer) resolve_selector_type_uncached(node flat.Node) string {
 	if node.kind != .selector || node.children_count == 0 {
 		return ''
 	}
@@ -975,17 +996,10 @@ fn (t &Transformer) normalize_type_alias(typ string) string {
 		c.entries.clear()
 		c.clear_recent()
 	}
-	if unsafe { c.last_type.str == typ.str } && c.last_type.len == typ.len {
-		return c.last_result
-	}
-	if unsafe { c.last_type2.str == typ.str } && c.last_type2.len == typ.len {
-		return c.last_result2
-	}
-	if unsafe { c.last_type3.str == typ.str } && c.last_type3.len == typ.len {
-		return c.last_result3
-	}
-	if unsafe { c.last_type4.str == typ.str } && c.last_type4.len == typ.len {
-		return c.last_result4
+	recent_slot := alias_cache_slot(typ)
+	if unsafe { c.recent_types[recent_slot].str == typ.str }
+		&& c.recent_types[recent_slot].len == typ.len {
+		return c.recent_results[recent_slot]
 	}
 	if cached := c.entries[typ] {
 		c.put_recent(typ, cached)
@@ -1250,17 +1264,10 @@ fn (t &Transformer) normalize_type_in_module(typ string, mod string) string {
 		cache.entries.clear()
 		cache.clear_recent()
 	}
-	if unsafe { cache.last_type.str == typ.str } && cache.last_type.len == typ.len {
-		return cache.last_result
-	}
-	if unsafe { cache.last_type2.str == typ.str } && cache.last_type2.len == typ.len {
-		return cache.last_result2
-	}
-	if unsafe { cache.last_type3.str == typ.str } && cache.last_type3.len == typ.len {
-		return cache.last_result3
-	}
-	if unsafe { cache.last_type4.str == typ.str } && cache.last_type4.len == typ.len {
-		return cache.last_result4
+	recent_slot := alias_cache_slot(typ)
+	if unsafe { cache.recent_types[recent_slot].str == typ.str }
+		&& cache.recent_types[recent_slot].len == typ.len {
+		return cache.recent_results[recent_slot]
 	}
 	if cached := cache.entries[typ] {
 		cache.put_recent(typ, cached)

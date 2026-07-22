@@ -130,17 +130,10 @@ fn (t &Transformer) resolve_sum_name(sum_name string) string {
 		c.entries.clear()
 		c.clear_recent()
 	}
-	if unsafe { c.last_type.str == sum_name.str } && c.last_type.len == sum_name.len {
-		return c.last_result
-	}
-	if unsafe { c.last_type2.str == sum_name.str } && c.last_type2.len == sum_name.len {
-		return c.last_result2
-	}
-	if unsafe { c.last_type3.str == sum_name.str } && c.last_type3.len == sum_name.len {
-		return c.last_result3
-	}
-	if unsafe { c.last_type4.str == sum_name.str } && c.last_type4.len == sum_name.len {
-		return c.last_result4
+	recent_slot := alias_cache_slot(sum_name)
+	if unsafe { c.recent_types[recent_slot].str == sum_name.str }
+		&& c.recent_types[recent_slot].len == sum_name.len {
+		return c.recent_results[recent_slot]
 	}
 	if cached := c.entries[sum_name] {
 		c.put_recent(sum_name, cached)
