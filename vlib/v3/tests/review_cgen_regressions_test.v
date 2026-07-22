@@ -110,6 +110,47 @@ fn main() {
 	assert c_code.contains('main__float_power = '), c_code
 }
 
+fn test_dynamic_array_power_assign_uses_power_helper() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'dynamic_array_power_assign', 'fn main() {
+	mut values := [2, 3]
+	values[0] **= 3
+	println(int_str(values[0]))
+}
+')
+	assert out == '8'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_dynamic_array_power_assign.c')) or {
+		panic(err)
+	}
+	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('array__set(_a0,_i0,&(int[]){((int)__v_pow_i64('), c_code
+	assert !c_code.contains(' ** '), c_code
+}
+
+fn test_addressed_inferred_array_const_keeps_dynamic_storage() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'addressed_inferred_array_const', 'const vals = [1, 2, 3]
+
+fn array_len(values &[]int) int {
+	return values.len
+}
+
+fn main() {
+	ptr := &vals
+	copy := vals
+	println(int_str(array_len(ptr) + ptr[0] + copy[2]))
+}
+')
+	assert out == '7'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_addressed_inferred_array_const.c')) or {
+		panic(err)
+	}
+	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
+	assert compact.contains('Arraymain__vals;'), c_code
+	assert compact.contains('main__vals=new_array_from_c_array(3,3,sizeof(int),'), c_code
+	assert !compact.contains('intmain__vals[3]'), c_code
+}
+
 fn test_numbered_string_identifiers_do_not_collide_with_literal_symbols() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good(v3_bin, 'numbered_string_identifier_collision', 'struct Named {

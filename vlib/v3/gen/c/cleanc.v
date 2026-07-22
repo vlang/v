@@ -8548,6 +8548,12 @@ fn (g &FlatGen) fixed_storage_candidate_primary_from_matched_node_for_collect(no
 	return primary
 }
 
+fn (mut g FlatGen) const_address_can_force_fixed_storage(const_name string) bool {
+	val_id := g.const_vals[const_name] or { return false }
+	const_type := cgen_unalias_type(g.const_value_type(const_name, val_id))
+	return const_type !is types.Array && const_type !is types.Unknown && const_type !is types.Void
+}
+
 fn (mut g FlatGen) collect_fixed_storage_consts() {
 	// Cached module headers deliberately materialize inferred array constants as
 	// dynamic arrays. Keep cached objects on the same ABI: promoting one of those
@@ -8604,7 +8610,7 @@ fn (mut g FlatGen) collect_fixed_storage_consts() {
 				child := g.a.child_node(node, 0)
 				const_name := g.const_ref_name_from_node_cached_for_collect(child,
 					unique_const_ref_names, mut const_ref_name_cache)
-				if const_name.len > 0 {
+				if const_name.len > 0 && g.const_address_can_force_fixed_storage(const_name) {
 					primary := g.const_primary_name_cached(const_name, mut primary_name_cache)
 					g.fixed_storage_consts[primary] = true
 				}
