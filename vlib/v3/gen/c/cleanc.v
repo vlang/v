@@ -1636,7 +1636,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.line_start = orig_line_start
 	if g.program_body_only {
 		unsafe { const_code.free() }
-		g.release_scoped_fn_items()
 		g.sb.ensure_cap(fn_code.len + 262_144)
 		g.writeln('#define V3CACHE_PROGRAM_UNIT 1')
 		g.string_literals()
@@ -1646,8 +1645,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 			g.fn_ptr_typedefs()
 			g.fixed_array_typedefs()
 			g.optional_typedefs()
+			g.forward_decls()
 			g.writeln('/* V3CACHE_SUPPORT_END */')
 		}
+		g.release_scoped_fn_items()
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
 		g.writeln('/* V3CACHE_MODULE main */')
 		for segment in g.fn_segs {

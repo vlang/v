@@ -117,7 +117,7 @@ fn (mut g FlatGen) collect_fn_gen_items() []FlatFnGenItem {
 					cur_file
 				}
 			}
-			if g.program_body_only && !g.cache_program_files[item_file]
+			if g.program_body_only && !is_specialization && !g.cache_program_files[item_file]
 				&& item_module !in ['', 'main'] {
 				continue
 			}

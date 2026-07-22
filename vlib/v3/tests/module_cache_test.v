@@ -4081,7 +4081,7 @@ fn main() {
 	assert run_module_cache_binary(incremental_output) == 'haha'
 }
 
-fn test_incremental_program_cache_falls_back_for_new_generic_type_argument() {
+fn test_incremental_program_cache_materializes_new_generic_type_argument() {
 	$if !macos {
 		return
 	}
@@ -4094,8 +4094,23 @@ fn test_incremental_program_cache_falls_back_for_new_generic_type_argument() {
 	}
 	write_module_cache_file(root, 'generic/generic.v', 'module generic
 
-pub fn identity[T](value T) T {
+fn pass[T](value T) T {
 	return value
+}
+
+pub struct Box[T] {
+pub:
+	value T
+}
+
+pub fn identity[T](value T) T {
+	return pass[T](value)
+}
+
+pub fn boxed[T](value T) Box[T] {
+	return Box[T]{
+		value: value
+	}
 }
 ')
 	main_file := os.join_path(root, 'main.v')
@@ -4104,6 +4119,7 @@ pub fn identity[T](value T) T {
 import generic
 
 fn value() int {
+	_ = generic.boxed[int](1)
 	return generic.identity[int](40)
 }
 
@@ -4121,6 +4137,7 @@ fn main() {
 import generic
 
 fn value() int {
+	_ = generic.boxed[int](1)
 	return generic.identity[int](41)
 }
 
@@ -4137,6 +4154,7 @@ fn main() {
 import generic
 
 fn value() int {
+	_ = generic.boxed[int](1)
 	return generic.identity[int](42)
 }
 
@@ -4158,6 +4176,7 @@ fn main() {
 import generic
 
 fn value() int {
+	_ = generic.boxed[int](1)
 	return int(generic.identity[i64](43))
 }
 
@@ -4170,9 +4189,30 @@ fn main() {
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
 	assert second.output.contains('check (incremental)'), second.output
-	assert !second.output.contains('monomorphize (incremental)'), second.output
-	assert !second.output.contains('cgen (incremental)'), second.output
+	assert second.output.contains('monomorphize (incremental)'), second.output
+	assert second.output.contains('cgen (incremental)'), second.output
 	assert run_module_cache_binary(second_output) == '43'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+import generic
+
+fn value() int {
+	return int(generic.boxed[i64](44).value)
+}
+
+fn main() {
+	println(value())
+}
+')
+	struct_output := os.join_path(root, 'struct')
+	struct_result :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(struct_output)} ${os.quoted_path(main_file)}')
+	assert struct_result.exit_code == 0, struct_result.output
+	assert struct_result.output.contains('check (incremental)'), struct_result.output
+	assert !struct_result.output.contains('monomorphize (incremental)'), struct_result.output
+	assert !struct_result.output.contains('cgen (incremental)'), struct_result.output
+	assert run_module_cache_binary(struct_output) == '44'
 }
 
 fn test_incremental_program_cache_falls_back_for_newly_reachable_function() {

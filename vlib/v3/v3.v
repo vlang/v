@@ -1985,14 +1985,11 @@ struct V3IncrementalFn {
 	key       string
 	name      string
 	signature string
-mut:
-	generic_signature string
 }
 
 struct V3IncrementalSnapshot {
 	declaration_signature string
-mut:
-	functions []V3IncrementalFn
+	functions             []V3IncrementalFn
 }
 
 fn incremental_cache_fn_key(file string, module_name string, name string) string {
@@ -2208,32 +2205,27 @@ fn incremental_program_snapshot(a &flat.FlatAst) V3IncrementalSnapshot {
 
 fn encode_incremental_manifest(snapshot V3IncrementalSnapshot) string {
 	mut lines := []string{cap: snapshot.functions.len + 1}
-	lines << 'v3-incremental-functions-v2'
+	lines << 'v3-incremental-functions-v3'
 	for function in snapshot.functions {
-		lines << '${function.key}\t${function.signature}\t${function.generic_signature}\t${function.name}'
+		lines << '${function.key}\t${function.signature}\t${function.name}'
 	}
 	return lines.join('\n')
 }
 
-fn decode_incremental_manifest(encoded string) ?map[string]V3IncrementalFn {
+fn decode_incremental_manifest(encoded string) ?map[string]string {
 	lines := encoded.split_into_lines()
-	if lines.len == 0 || lines[0] != 'v3-incremental-functions-v2' {
+	if lines.len == 0 || lines[0] != 'v3-incremental-functions-v3' {
 		return none
 	}
-	mut functions := map[string]V3IncrementalFn{}
+	mut signatures := map[string]string{}
 	for line in lines[1..] {
 		parts := line.split('\t')
-		if parts.len != 4 || parts[0].len == 0 || parts[1].len == 0 || parts[2].len == 0 {
+		if parts.len != 3 || parts[0].len == 0 || parts[1].len == 0 {
 			return none
 		}
-		functions[parts[0]] = V3IncrementalFn{
-			key:               parts[0]
-			signature:         parts[1]
-			generic_signature: parts[2]
-			name:              parts[3]
-		}
+		signatures[parts[0]] = parts[1]
 	}
-	return functions
+	return signatures
 }
 
 struct V3IncrementalCFunctionSections {
@@ -2241,95 +2233,20 @@ struct V3IncrementalCFunctionSections {
 	keys     []string
 }
 
-fn incremental_changed_functions(snapshot V3IncrementalSnapshot, old map[string]V3IncrementalFn) ?([]string, map[string]bool) {
+fn incremental_changed_functions(snapshot V3IncrementalSnapshot, old map[string]string) ?([]string, map[string]bool) {
 	if snapshot.functions.len != old.len {
 		return none
 	}
 	mut keys := []string{}
 	mut names := map[string]bool{}
 	for function in snapshot.functions {
-		old_function := old[function.key] or { return none }
-		if old_function.signature != function.signature {
+		old_signature := old[function.key] or { return none }
+		if old_signature != function.signature {
 			keys << function.key
 			names[function.name] = true
 		}
 	}
 	return keys, names
-}
-
-fn incremental_generic_call_signature(a &flat.FlatAst, tc &types.TypeChecker, root flat.NodeId) string {
-	mut hash := u64(1469598103934665603)
-	mut stack := [root]
-	mut count := 0
-	for stack.len > 0 {
-		id := stack.pop()
-		idx := int(id)
-		if idx < 0 || idx >= a.nodes.len {
-			continue
-		}
-		node := a.nodes[idx]
-		if node.kind == .call {
-			if name := tc.resolved_call_name(id) {
-				if name in tc.fn_generic_params || name.contains('[') {
-					count++
-					hash = c_hash_bytes(hash, name.bytes())
-					hash = c_hash_bytes(hash, [u8(0xff)])
-					if node.children_count > 0 {
-						callee_signature := incremental_node_tree_signature(a, a.child(&node, 0))
-						hash = c_hash_bytes(hash, callee_signature.bytes())
-						hash = c_hash_bytes(hash, [u8(0xfc)])
-					}
-					for param in node.generic_params() {
-						hash = c_hash_bytes(hash, param.bytes())
-						hash = c_hash_bytes(hash, [u8(0xfe)])
-					}
-					for child_idx in 1 .. node.children_count {
-						child_id := a.child(&node, child_idx)
-						if typ := tc.expr_type(child_id) {
-							hash = c_hash_bytes(hash, tc.type_name(typ).bytes())
-						}
-						hash = c_hash_bytes(hash, [u8(0xfd)])
-					}
-				}
-			}
-		}
-		for child_idx := node.children_count - 1; child_idx >= 0; child_idx-- {
-			stack << a.child(&node, child_idx)
-		}
-	}
-	return '${count}:${hash.hex()}'
-}
-
-fn populate_incremental_generic_signatures(mut snapshot V3IncrementalSnapshot, a &flat.FlatAst, tc &types.TypeChecker) {
-	mut function_idx := 0
-	for idx, node in a.nodes {
-		if node.kind != .fn_decl {
-			continue
-		}
-		if function_idx >= snapshot.functions.len {
-			return
-		}
-		snapshot.functions[function_idx].generic_signature = incremental_generic_call_signature(a,
-			tc, flat.NodeId(idx))
-		function_idx++
-	}
-}
-
-fn incremental_generic_calls_changed(snapshot V3IncrementalSnapshot, old map[string]V3IncrementalFn, changed_keys []string) bool {
-	mut changed := map[string]bool{}
-	for key in changed_keys {
-		changed[key] = true
-	}
-	for function in snapshot.functions {
-		if !changed[function.key] {
-			continue
-		}
-		old_function := old[function.key] or { return true }
-		if function.generic_signature != old_function.generic_signature {
-			return true
-		}
-	}
-	return false
 }
 
 fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, tc &types.TypeChecker, changed_names map[string]bool, cached map[string]bool) bool {
@@ -2617,25 +2534,6 @@ fn decode_monomorph_cache_specs(encoded string) []transform.MonomorphCacheSpec {
 		}
 	}
 	return specs
-}
-
-fn monomorph_cache_spec_identity(spec transform.MonomorphCacheSpec) string {
-	return '${spec.decl_key}\t${spec.module}\t${spec.args.join('\x1f')}'
-}
-
-fn incremental_monomorph_has_new_specs(generated []transform.MonomorphCacheSpec, cached []transform.MonomorphCacheSpec) bool {
-	mut cached_identities := map[string]bool{}
-	for spec in cached {
-		cached_identities[monomorph_cache_spec_identity(spec)] = true
-	}
-	for spec in generated {
-		// Main-module specializations live in the replaceable program body and are
-		// deliberately absent from the dependency specialization manifest.
-		if spec.module in ['', 'main'] || !cached_identities[monomorph_cache_spec_identity(spec)] {
-			return true
-		}
-	}
-	return false
 }
 
 fn encode_cached_used_fns(used map[string]bool) string {
@@ -3873,11 +3771,9 @@ fn main() {
 	mut incremental_snapshot := V3IncrementalSnapshot{}
 	mut incremental_snapshot_ready := false
 	mut incremental_cache_hit := false
-	mut incremental_cached_functions := map[string]V3IncrementalFn{}
 	mut incremental_changed_keys := []string{}
 	mut incremental_changed_names := map[string]bool{}
 	mut incremental_calls_generics := false
-	mut incremental_generic_specs_changed := false
 	mut incremental_cached_body := ''
 	mut incremental_tcc_declarations_path := ''
 	if backend == 'c' && cache_state.manager.enabled && !cache_state.force_source
@@ -3958,7 +3854,6 @@ fn main() {
 						decoded_used := decode_cached_used_fns(used_text)
 						if decoded_metadata := decode_v3_cgen_metadata(metadata) {
 							if decoded_used.len > 0 && body_text.len > 0 {
-								incremental_cached_functions = old_manifest.clone()
 								incremental_cache_hit = changed_keys.len > 0
 								incremental_changed_keys = changed_keys.clone()
 								incremental_changed_names = changed_names.clone()
@@ -4045,13 +3940,8 @@ fn main() {
 			print_type_errors(pre_tc.errors)
 			exit(1)
 		}
-		if incremental_snapshot.declaration_signature.len > 0 {
-			populate_incremental_generic_signatures(mut incremental_snapshot, a, pre_tc)
-		}
 		incremental_calls_generics = incremental_cache_hit
 			&& incremental_changed_functions_call_generics(a, pre_tc, incremental_changed_names)
-		incremental_generic_specs_changed = incremental_calls_generics
-			&& incremental_generic_calls_changed(incremental_snapshot, incremental_cached_functions, incremental_changed_keys)
 		pre_tc.prune_inactive_top_level_comptime(mut a)
 		test_harness_errors := validate_test_file_harness_inputs(a, pre_tc, test_files)
 		if test_harness_errors.len > 0 {
@@ -4395,6 +4285,27 @@ fn main() {
 		|| transformed_used_fns_need_monomorphize(incremental_stage_used_fns)) {
 		mut monomorph_used_fns := map[string]bool{}
 		mut monomorph_errors := []string{}
+		incremental_monomorph_node_start := a.nodes.len
+		// Incremental C can append function specializations, but new named types
+		// need a rebuilt prefix containing their layout declarations.
+		mut incremental_struct_names := map[string]bool{}
+		mut incremental_sum_names := map[string]bool{}
+		mut incremental_alias_names := map[string]bool{}
+		mut incremental_interface_names := map[string]bool{}
+		if incremental_cache_hit {
+			for name in pre_tc.structs.keys() {
+				incremental_struct_names[name] = true
+			}
+			for name in pre_tc.sum_types.keys() {
+				incremental_sum_names[name] = true
+			}
+			for name in pre_tc.type_aliases.keys() {
+				incremental_alias_names[name] = true
+			}
+			for name in pre_tc.interface_names.keys() {
+				incremental_interface_names[name] = true
+			}
+		}
 		monomorph_input_used := if incremental_cache_hit {
 			incremental_stage_used_fns
 		} else {
@@ -4459,11 +4370,46 @@ fn main() {
 				&& cache_state.parsed_from_source.len == 0, unsafe { nil }, cached_monomorph_specs)
 		}
 		if incremental_cache_hit {
-			incremental_stage_used_fns = monomorph_used_fns.move()
-			if incremental_generic_specs_changed
-				&& incremental_monomorph_has_new_specs(generated_monomorph_specs, cached_monomorph_specs) {
+			mut added_named_type := false
+			for name in pre_tc.structs.keys() {
+				if !incremental_struct_names[name] {
+					added_named_type = true
+					break
+				}
+			}
+			if !added_named_type {
+				for name in pre_tc.sum_types.keys() {
+					if !incremental_sum_names[name] {
+						added_named_type = true
+						break
+					}
+				}
+			}
+			if !added_named_type {
+				for name in pre_tc.type_aliases.keys() {
+					if !incremental_alias_names[name] {
+						added_named_type = true
+						break
+					}
+				}
+			}
+			if !added_named_type {
+				for name in pre_tc.interface_names.keys() {
+					if !incremental_interface_names[name] {
+						added_named_type = true
+						break
+					}
+				}
+			}
+			if added_named_type {
 				os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
 				restart_v3_after_cache_invalidation()
+			}
+			incremental_stage_used_fns = monomorph_used_fns.move()
+			for idx in incremental_monomorph_node_start .. a.nodes.len {
+				if a.specialized_fn_nodes[idx] && a.nodes[idx].kind == .fn_decl {
+					incremental_changed_names[a.nodes[idx].value] = true
+				}
 			}
 		} else {
 			used_fns = monomorph_used_fns.move()
