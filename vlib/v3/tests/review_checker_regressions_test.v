@@ -512,6 +512,45 @@ fn test_reject_unsmartcasted_unique_sum_variant_field() {
 	assert out == '7'
 }
 
+fn test_smartcasted_fn_sum_call_keeps_active_variant_arity() {
+	v3_bin := build_v3_review_checker()
+	run_bad(v3_bin, 'bad_smartcasted_fn_sum_variant_arity', 'type Callback = fn () int | fn (int) int
+
+fn no_args() int {
+	return 7
+}
+
+fn invoke(cb Callback) {
+	if cb is fn () int {
+		_ := cb(1)
+	}
+}
+
+fn main() {
+	invoke(Callback(no_args))
+}
+',
+		'argument count mismatch')
+	out := run_good(v3_bin, 'good_smartcasted_fn_sum_variant_arity', 'type Callback = fn () int | fn (int) int
+
+fn with_arg(value int) int {
+	return value
+}
+
+fn invoke(cb Callback) int {
+	if cb is fn (int) int {
+		return cb(7)
+	}
+	return 0
+}
+
+fn main() {
+	println(int_str(invoke(Callback(with_arg))))
+}
+')
+	assert out == '7'
+}
+
 fn test_generic_functions_report_missing_return() {
 	v3_bin := build_v3_review_checker()
 	run_bad(v3_bin, 'bad_generic_missing_return', 'fn f[T]() int {\n}\nfn main() {}\n',

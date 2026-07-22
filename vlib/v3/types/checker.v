@@ -13772,14 +13772,16 @@ fn (mut tc TypeChecker) resolve_call_info(id flat.NodeId, node flat.Node) ?CallI
 			binding_type = typ
 		}
 		mut fn_type := Type(void_)
+		mut is_smartcasted := false
 		if smart_type := tc.smartcast_type(fn_id) {
 			fn_type = smart_type
+			is_smartcasted = true
 		} else {
 			fn_type = binding_type
 		}
 		if fn_typ := fn_type_from_type(fn_type) {
 			actual_count := node.children_count - 1
-			selected := if fn_typ.params.len != actual_count {
+			selected := if !is_smartcasted && fn_typ.params.len != actual_count {
 				tc.sum_fn_variant_for_arg_count(binding_type, actual_count) or { fn_typ }
 			} else {
 				fn_typ
