@@ -8091,7 +8091,11 @@ fn (g &FlatGen) interface_receiver_type_id_mappings(source_iface string, target_
 }
 
 fn (g &FlatGen) interface_receiver_name(typ types.Type) string {
-	mut name := g.type_lookup_name(types.unwrap_pointer(typ))
+	clean_type := types.unwrap_pointer(typ)
+	if clean_type !is types.Interface && clean_type !is types.Struct && clean_type !is types.Alias {
+		return ''
+	}
+	mut name := g.type_lookup_name(clean_type)
 	if name.len == 0 {
 		return ''
 	}
