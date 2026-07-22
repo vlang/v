@@ -932,6 +932,13 @@ fn (mut p Parser) merge_parsed_worker(mut w Parser, mut starts []int, chunk_star
 		}
 	}
 	p.parsed_v_files += w.parsed_v_files
+	for path in w.parsed_v_file_paths {
+		p.parsed_v_file_paths << path.clone()
+	}
+	p.parsed_v_header_files += w.parsed_v_header_files
+	for path in w.parsed_v_header_file_paths {
+		p.parsed_v_header_file_paths << path.clone()
+	}
 }
 
 // parse_job_count caps the worker count by the runtime job count, a fixed

@@ -10,8 +10,8 @@ fn test_c_name_sanitize_operator_overloads() {
 	assert c_name('Point.<=') == 'Point__le'
 	assert c_name('Point.>') == 'Point__gt'
 	assert c_name('Point.>=') == 'Point__ge'
-	assert c_name('Point.[]') == 'Point__index'
-	assert c_name('Point.[]=') == 'Point__index_set'
+	assert c_name('Point.[]') == 'Point__op_index'
+	assert c_name('Point.[]=') == 'Point__op_index_set'
 }
 
 fn test_c_name_sanitize_escaped_keywords() {
@@ -30,6 +30,13 @@ fn test_c_name_sanitizes_compound_generic_type_arguments() {
 fn test_c_name_libc_collision_abs() {
 	assert c_name('abs') == 'v_abs'
 	assert c_name('C.abs') == 'abs'
+}
+
+fn test_c_name_generated_string_symbol_collision() {
+	assert c_name('_str_1') == 'v__str_1'
+	assert c_name('_str_002') == 'v__str_002'
+	assert c_name('_str_value') == '_str_value'
+	assert c_name('C._str_3') == '_str_3'
 }
 
 fn test_cgen_flattened_generic_receiver_short_variants() {

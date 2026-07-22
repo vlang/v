@@ -61,6 +61,18 @@ fn run_good(v3_bin string, name string, src string) string {
 	return run.output.trim_space()
 }
 
+fn run_runtime_bad(v3_bin string, name string, src string, expected string) {
+	out := unique_temp_path(name)
+	src_path := out + '.v'
+	os.write_file(src_path, src) or { panic(err) }
+	compile := os.execute('${v3_bin} ${src_path} -b c -o ${out}')
+	assert compile.exit_code == 0, '${name}: compile failed: ${compile.output}'
+	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed: ${compile.output}'
+	run := os.execute(out)
+	assert run.exit_code != 0, '${name}: expected runtime failure, got success: ${run.output}'
+	assert run.output.contains(expected), '${name}: expected `${expected}` in ${run.output}'
+}
+
 // write_project_file writes project file output for v3 tests.
 fn write_project_file(root string, rel string, src string) {
 	path := os.join_path(root, rel)
@@ -215,9 +227,6 @@ fn test_type_checker_reports_core_semantic_errors() {
 		'`map[string]string` is not compatible with interface `Any`')
 	run_bad(v3_bin, 'bad_empty_interface_match_array_pattern',
 		'interface Any {}\nfn check(x Any) int {\n\treturn match x {\n\t\t[]string { 1 }\n\t\telse { 0 }\n\t}\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
-		'`[]string` is not compatible with interface `Any`')
-	run_bad(v3_bin, 'bad_empty_interface_as_array_pattern',
-		'interface Any {}\nfn check(x Any) []string {\n\treturn x as []string\n}\nfn main() {\n\t_ := Any([1, 2])\n}\n',
 		'`[]string` is not compatible with interface `Any`')
 	alias_interface_out := run_good(v3_bin, 'alias_receiver_implements_interface',
 		"type Text = string\n\nfn (t Text) display() string {\n\treturn t\n}\n\ninterface Displayable {\n\tdisplay() string\n}\n\nfn print_displayable(ds ...Displayable) {\n\tfor d in ds {\n\t\tprintln(d.display())\n\t}\n}\n\nfn main() {\n\tprint_displayable(Text('test'), Text('hehe'))\n}\n")
@@ -401,6 +410,28 @@ fn test_type_checker_reports_core_semantic_errors() {
 	}, 'main.v')
 	assert !cross_module_array_append_c.contains('array_push_many(&xs')
 	assert cross_module_array_append_c.contains('array_push(&xs')
+}
+
+fn test_interface_container_as_cast_requirements() {
+	v3_bin := build_v3()
+	run_bad(v3_bin, 'bad_nonempty_interface_as_array_pattern',
+		'interface Speaker {\n\tspeak()\n}\nfn check(x Speaker) []int {\n\treturn x as []int\n}\nfn main() {}\n',
+		'`[]int` is not compatible with interface `Speaker`')
+	empty_interface_as_out := run_good(v3_bin, 'empty_interface_as_array_pattern',
+		'interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\txs := values(Any([1, 2]))\n\tprintln(xs[0] + xs[1])\n}\n')
+	assert empty_interface_as_out == '3'
+	run_runtime_bad(v3_bin, 'empty_interface_as_array_non_array_payload',
+		"interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\t_ := values(Any('not an array'))\n}\n",
+		'as cast: cannot cast interface value to `[]int`')
+	run_runtime_bad(v3_bin, 'empty_interface_as_array_wrong_element_payload',
+		"interface Any {}\nfn values(x Any) []int {\n\treturn x as []int\n}\nfn main() {\n\t_ := values(Any(['wrong element type']))\n}\n",
+		'as cast: cannot cast interface value to `[]int`')
+	empty_interface_map_as_out := run_good(v3_bin, 'empty_interface_as_map_pattern',
+		"interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\tm := values(Any({'answer': 42}))\n\tprintln(m['answer'])\n}\n")
+	assert empty_interface_map_as_out == '42'
+	run_runtime_bad(v3_bin, 'empty_interface_as_map_wrong_value_payload',
+		"interface Any {}\nfn values(x Any) map[string]int {\n\treturn x as map[string]int\n}\nfn main() {\n\t_ := values(Any({'answer': 'wrong value type'}))\n}\n",
+		'as cast: cannot cast interface value to `map[string]int`')
 }
 
 fn test_interface_method_rejects_narrowed_interface_param() {
@@ -1071,6 +1102,9 @@ fn test_nested_if_tuple_tail_multi_return_lowers_each_value() {
 	nested_if_tail := run_good(v3_bin, 'good_nested_if_tail_decl_assign',
 		'fn main() {\n\tc := true\n\td := false\n\ta, b := if c {\n\t\tif d {\n\t\t\t1\n\t\t\t2\n\t\t} else {\n\t\t\t3\n\t\t\t4\n\t\t}\n\t} else {\n\t\t5\n\t\t6\n\t}\n\tprintln(int_str(a + b))\n}\n')
 	assert nested_if_tail == '7'
+	run_bad(v3_bin, 'bad_nested_mixed_tuple_tail_branch_type',
+		"fn pair() (int, string) {\n\treturn 1, 'pair'\n}\nfn main() {\n\touter := false\n\tinner := false\n\ta, b := if outer {\n\t\tpair()\n\t} else {\n\t\tif inner {\n\t\t\t1\n\t\t\t'a'\n\t\t} else {\n\t\t\ttrue\n\t\t\t'b'\n\t\t}\n\t}\n\tprintln(int_str(a) + b)\n}\n",
+		'multi-return assignment mismatch')
 	prefixed_block_tail := run_good(v3_bin, 'good_prefixed_nested_block_tail_decl_assign',
 		"fn main() {\n\tc := true\n\ta, b := if c {\n\t\t{\n\t\t\tprintln('side')\n\t\t\t1\n\t\t\t2\n\t\t}\n\t} else {\n\t\t3\n\t\t4\n\t}\n\tprintln(int_str(a + b))\n}\n")
 	assert prefixed_block_tail == 'side\n3'

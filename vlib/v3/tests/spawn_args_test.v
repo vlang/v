@@ -184,6 +184,30 @@ fn main() {
 	assert !c_compact.contains('typedefstruct{int*a0;}takes_ptr_thread_args'), c_code
 }
 
+fn test_spawn_mutable_local_address_copies_value_into_heap_packet() {
+	v3_bin := build_v3()
+	c_code := gen_c(v3_bin, 'v3_spawn_mutable_local_address', '
+fn takes_ptr(value &int) {
+	println(*value)
+}
+
+fn main() {
+	for i in 0 .. 1 {
+		mut value := i + 9
+		_ := spawn takes_ptr(&value)
+		value = 10
+	}
+	println("ok")
+}
+	')
+	c_compact := compact_c(c_code)
+	assert c_compact.contains('typedefstruct{inta0;}takes_ptr_thread_args'), c_code
+	assert c_compact.contains('->a0=value;'), c_code
+	assert c_compact.contains('takes_ptr(&p->a0)'), c_code
+	assert !c_compact.contains('typedefstruct{int*a0;}takes_ptr_thread_args'), c_code
+	assert !c_compact.contains('->a0=&value;'), c_code
+}
+
 fn test_spawn_result_uses_checked_allocation_and_typed_join() {
 	v3_bin := build_v3()
 	c_code := gen_c(v3_bin, 'v3_spawn_checked_result', '

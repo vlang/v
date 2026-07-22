@@ -510,6 +510,28 @@ fn test_multiline_keyword_infix_expressions_continue_after_semicolon() {
 	assert as_count == 1
 }
 
+fn test_indented_plus_minus_continue_before_operand_column() {
+	a := parse_parser_regression_source('indented_plus_minus_continuation',
+		"module main\n\nfn main() {\n\tfirst := 7\n\tsecond := 2\n\ttotal := first\n\t\t+ second\n\tdifference := first\n\t\t- second\n\tfallback := none or {\n\t\tprintln('fallback')\n\t\t-1\n\t}\n\t_ = total\n\t_ = difference\n\t_ = fallback\n}\n")
+	mut infix_plus := 0
+	mut infix_minus := 0
+	mut prefix_minus := 0
+	for node in a.nodes {
+		if node.kind == .infix && node.op == .plus {
+			infix_plus++
+		}
+		if node.kind == .infix && node.op == .minus {
+			infix_minus++
+		}
+		if node.kind == .prefix && node.op == .minus {
+			prefix_minus++
+		}
+	}
+	assert infix_plus == 1
+	assert infix_minus == 1
+	assert prefix_minus == 1
+}
+
 fn test_parenthesized_statement_after_call_is_not_call_continuation() {
 	a := parse_parser_regression_source('parenthesized_statement_after_call',
 		"module main\n\nfn foo() int {\n\treturn 1\n}\n\nfn main() {\n\tprintln('a')\n\t(foo())\n}\n")

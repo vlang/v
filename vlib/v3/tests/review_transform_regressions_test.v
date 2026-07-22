@@ -23,7 +23,7 @@ fn build_v3_review_transform() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.execute('${vexe} -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -64,6 +64,173 @@ fn run_good_with_env(v3_bin string, name string, env string, src string) string 
 	run := os.execute(good_bin)
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
+}
+
+fn test_recursive_interface_equality_stops_expanding_seen_interfaces() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'recursive_interface_equality', 'interface Value {}
+
+struct Box {
+	values []Value
+}
+
+fn main() {
+	left := Value(Box{})
+	right := Value(Box{})
+	println(left == right)
+}
+')
+	assert out == 'true'
+}
+
+fn test_map_interface_equality_keeps_typed_map_get() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'map_interface_equality_typed_get', 'interface Value {
+	n int
+}
+
+struct Item {
+	n int
+}
+
+fn main() {
+	left := {
+		"item": Value(Item{
+			n: 7
+		})
+	}
+	right := {
+		"item": Value(Item{
+			n: 7
+		})
+	}
+	println(left == right)
+}
+')
+	assert out == 'true'
+}
+
+fn test_pointer_interface_field_as_interface_uses_storage_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_interface_field_as_interface_storage', 'interface Layout {
+	size() int
+}
+
+interface Widget {
+	size() int
+	draw()
+}
+
+interface Application {
+	layout &Layout
+}
+
+struct Item {}
+
+fn (_ Item) size() int {
+	return 7
+}
+
+fn (_ Item) draw() {}
+
+struct App {
+	layout &Layout
+}
+
+fn application_widget(app Application) Widget {
+	if app.layout is Widget {
+		widget := app.layout as Widget
+		return widget
+	}
+	return Widget(Item{})
+}
+
+fn main() {
+	layout := Layout(Item{})
+	app := Application(App{
+		layout: &layout
+	})
+	println(application_widget(app).size())
+}
+')
+	assert out == '7'
+}
+
+fn test_interface_dispatch_reboxes_result_pointer_payload() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_dispatch_result_pointer_payload', 'interface Connection {
+	close() !
+}
+
+struct TcpConn {}
+
+fn (_ &TcpConn) close() ! {}
+
+interface Dialer {
+	dial(string) !Connection
+}
+
+struct Proxy {}
+
+fn (_ &Proxy) dial(_ string) !&TcpConn {
+	return &TcpConn{}
+}
+
+fn main() {
+	dialer := Dialer(&Proxy{})
+	connection := dialer.dial("") or { panic(err) }
+	connection.close() or { panic(err) }
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
+fn test_generic_shared_parameter_value_copy_uses_inner_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_shared_parameter_value_copy', 'struct State {
+	label string
+}
+
+fn destroy(shared state State) {
+	drop_owned(state)
+}
+
+fn main() {
+	shared state := State{
+		label: "ok"
+	}
+	destroy(state)
+	println("done")
+}
+')
+	assert out == 'done'
+}
+
+fn test_c_pointer_zero_argument_stays_null() {
+	v3_bin := build_v3_review_transform()
+	generated := gen_c_from_source(v3_bin, 'c_pointer_zero_argument', 'fn C.wait(&int) int
+
+fn call_wait() int {
+	return C.wait(0)
+}
+
+fn main() {
+	_ = call_wait()
+}
+')
+	assert generated.contains('return wait(0);'), generated
+	assert !generated.contains('wait(&0)'), generated
+}
+
+fn test_system_libc_mode_preserves_ptrace_header() {
+	v3_bin := build_v3_review_transform()
+	generated := gen_c_from_source(v3_bin, 'system_libc_ptrace_header', '#include <math.h>
+#include <sys/ptrace.h>
+
+fn main() {}
+')
+	assert generated.contains('#include <sys/ptrace.h>'), generated
 }
 
 fn gen_c_from_source(v3_bin string, name string, src string) string {
@@ -144,6 +311,40 @@ fn test_lifted_fn_literal_mut_param_interpolation_derefs_value() {
 	assert out == '7'
 }
 
+fn test_interface_fn_field_argument_keeps_parameter_offset_zero() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'interface_fn_field_argument_offset', 'interface Value {
+	value() int
+}
+
+struct Item {
+	n int
+}
+
+fn (item Item) value() int {
+	return item.n
+}
+
+struct Handler {
+	callback fn (Value)
+}
+
+fn print_value(value Value) {
+	println(int_str(value.value()))
+}
+
+fn main() {
+	handler := Handler{
+		callback: print_value
+	}
+	handler.callback(Item{
+		n: 7
+	})
+}
+')
+	assert out == '7'
+}
+
 fn test_folded_string_constant_ifs_keep_branch_scopes() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'folded_string_constant_if_branch_scopes',
@@ -180,6 +381,45 @@ fn test_array_stringification_prefers_local_struct_over_imported_alias() {
 		'main.v':        "module main\n\nimport other\n\nstruct Event {\n\tkind int\n\targ string\n}\n\nfn main() {\n\t_ := other.Event(other.ForeignEvent{\n\t\ttouches: 3\n\t})\n\tevents := [Event{\n\t\tkind: 7\n\t\targ: 'ok'\n\t}]\n\tprintln(events)\n}\n"
 	}, 'main.v')
 	assert out == "[Event{\n    kind: 7\n    arg: 'ok'\n}]"
+}
+
+fn test_imported_generic_alias_expands_in_declaration_module() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'imported_generic_alias_decl_module', {
+		'v.mod':     "Module { name: 'imported_generic_alias_decl_module' }\n"
+		'a/types.v': 'module a
+
+pub struct Inner[T] {
+pub:
+	value T
+}
+
+pub type Box[T] = Inner[T]
+
+pub fn make() Box[int] {
+	return Inner[int]{
+		value: 7
+	}
+}
+'
+		'main.v':    'module main
+
+import a
+
+struct Inner[T] {
+	wrong T
+}
+
+fn read(box a.Box[int]) int {
+	return box.value
+}
+
+fn main() {
+	println(int_str(read(a.make())))
+}
+'
+	}, 'main.v')
+	assert out == '7'
 }
 
 fn test_for_in_smartcast_interface_field_keeps_interface_element_type() {
@@ -269,6 +509,35 @@ fn main() {
 	assert out == '9'
 }
 
+fn test_mut_interface_argument_shares_concrete_source() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'mut_interface_argument_concrete_source', 'interface Counter {
+mut:
+	inc()
+}
+
+struct State {
+mut:
+	n int
+}
+
+fn (mut s State) inc() {
+	s.n++
+}
+
+fn bump(mut counter Counter) {
+	counter.inc()
+}
+
+fn main() {
+	mut state := State{}
+	bump(mut state)
+	println(int_str(state.n))
+}
+')
+	assert out == '1'
+}
+
 fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization() {
 	v3_bin := build_v3_review_transform()
 	generated := gen_c_from_project(v3_bin, 'nested_generic_main_type_collision', {
@@ -279,6 +548,17 @@ fn test_nested_generic_main_type_does_not_emit_imported_homonym_specialization()
 	}, 'main.v')
 	assert generated.contains('codec__Decoder_Item__decode_value'), generated
 	assert !generated.contains('codec__Decoder_other__Item__decode_value'), generated
+}
+
+fn test_same_generic_specialization_name_in_different_modules_keeps_both_bodies() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'generic_specialization_module_collision', {
+		'v.mod':  "Module { name: 'generic_specialization_module_collision' }\n"
+		'a/a.v':  'module a\n\npub fn id[T](value T) T {\n\treturn value\n}\n'
+		'b/b.v':  'module b\n\npub fn id[T](value T) T {\n\treturn value + 10\n}\n'
+		'main.v': 'module main\n\nimport a\nimport b\n\nfn main() {\n\tprintln(int_str(a.id[int](1)))\n\tprintln(int_str(b.id[int](2)))\n}\n'
+	}, 'main.v')
+	assert out == '1\n12'
 }
 
 fn test_generic_struct_default_for_pointer_type_uses_heap_storage() {
@@ -415,6 +695,42 @@ fn test_const_array_allows_newline_separators_with_line_comments() {
 	assert out == '3\n2'
 }
 
+fn test_const_struct_channel_default_uses_runtime_init() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'const_struct_channel_default_runtime_init', 'struct Holder {
+	ch chan int
+}
+
+const holder = Holder{}
+
+fn main() {
+	holder.ch.close()
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
+fn test_const_nested_struct_channel_default_uses_runtime_init() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'const_nested_struct_channel_default_runtime_init', 'struct Inner {
+	ch chan int
+}
+
+struct Outer {
+	inner Inner
+}
+
+const outer = Outer{}
+
+fn main() {
+	outer.inner.ch.close()
+	println("ok")
+}
+')
+	assert out == 'ok'
+}
+
 fn test_mut_pointer_capture_is_not_over_dereferenced() {
 	v3_bin := build_v3_review_transform()
 	// A `[mut p]` capture whose original type is already a pointer (`&S`) must stay a
@@ -469,6 +785,69 @@ fn test_heap_escaping_amp_reassignment_moves_current_source() {
 	body := c_fn_body(c_source, 'int* make(void) {')
 	assert body.contains('int* b ='), body
 	assert !body.contains('p = &b;'), body
+}
+
+fn test_map_index_selector_write_retains_local_address() {
+	v3_bin := build_v3_review_transform()
+	source := 'struct Item {
+mut:
+	value int
+}
+
+struct Slot {
+mut:
+	item &Item = unsafe { nil }
+}
+
+fn make_cache() map[string]Slot {
+	mut cache := map[string]Slot{}
+	cache["entry"] = Slot{}
+	mut local := Item{
+		value: 7
+	}
+	cache["entry"].item = &local
+	local.value = 9
+	return cache
+}
+
+fn main() {
+	cache := make_cache()
+	println(int_str(cache["entry"].item.value))
+}
+'
+	c_source := gen_c_from_source(v3_bin, 'map_index_selector_write_retains_local_address_c',
+		source)
+	body := c_fn_body(c_source, 'map make_cache(void) {')
+	assert body.contains('memdup'), body
+	out := run_good(v3_bin, 'map_index_selector_write_retains_local_address', source)
+	assert out == '9'
+}
+
+fn test_nested_generic_call_preserves_mut_pointer_param_rvalue() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'nested_generic_mut_pointer_param_rvalue', 'struct Item {
+	value int
+}
+
+fn identity[U](value U) U {
+	return value
+}
+
+fn keep[T](mut current &T) &T {
+	return identity(current)
+}
+
+fn main() {
+	item := Item{
+		value: 17
+	}
+	mut current := &item
+	kept := keep[Item](mut current)
+	println((kept == current).str())
+	println(int_str(kept.value))
+}
+')
+	assert out == 'true\n17'
 }
 
 fn test_return_address_of_pointer_backed_field_preserves_identity() {
@@ -583,6 +962,13 @@ fn test_struct_pointer_equality_is_semantic() {
 	out := run_good(v3_bin, 'struct_pointer_semantic_equality',
 		"struct Person {\n\tname string\n\ttags []string\n}\n\nfn main() {\n\tleft := &Person{\n\t\tname: 'abc'.clone()\n\t\ttags: ['x'.clone()]\n\t}\n\tright := &Person{\n\t\tname: ('a' + 'bc')\n\t\ttags: [('x' + '')]\n\t}\n\tsame := left\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == same)\n}\n")
 	assert out == 'true\nfalse\ntrue'
+}
+
+fn test_multilevel_struct_pointer_equality_uses_pointer_identity() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'multilevel_struct_pointer_identity_equality',
+		"struct Person {\n\tname string\n}\n\nfn main() {\n\tmut left := &Person{\n\t\tname: 'same'\n\t}\n\tmut right := &Person{\n\t\tname: 'same'\n\t}\n\tleft_slot := &left\n\tright_slot := &right\n\tsame_slot := left_slot\n\tprintln(left_slot == right_slot)\n\tprintln(left_slot != right_slot)\n\tprintln(left_slot == same_slot)\n\tprintln(*left_slot == *right_slot)\n}\n")
+	assert out == 'false\ntrue\ntrue\ntrue'
 }
 
 fn test_struct_equality_with_interface_field_compiles() {
@@ -996,6 +1382,32 @@ fn main() {
 	assert out == 'Foo\ntrue\nBar\ntrue'
 }
 
+fn test_generic_typeof_idx_comparison_prunes_dead_branch() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'generic_typeof_idx_comparison', 'fn pick_idx[T]() int {
+	$if typeof[T]().idx == typeof[int]().idx {
+		return 42
+	} $else {
+		return T.missing_method()
+	}
+}
+
+fn concrete_idx() int {
+	$if typeof[int]().idx == typeof[int]().idx {
+		return 1
+	} $else {
+		return 2
+	}
+}
+
+fn main() {
+	println(concrete_idx())
+	println(pick_idx[int]())
+}
+')
+	assert out == '1\n42'
+}
+
 fn test_mut_map_for_in_writeback_survives_continue_and_break() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'mut_map_for_in_writeback_continue_break', 'struct Box {
@@ -1190,6 +1602,21 @@ fn main() {
 	assert out == '[1, 2]\ntrue\ntrue'
 }
 
+fn test_empty_interface_stringification_distinguishes_array_element_types() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'empty_interface_mixed_array_stringification', 'interface Value {}
+
+fn main() {
+	values := [Value([1, 2]), Value(["x"])]
+	for value in values {
+		println(value)
+	}
+	println(values[0].type_idx() != values[1].type_idx())
+}
+')
+	assert out == "Value([1, 2])\nValue(['x'])\ntrue"
+}
+
 fn test_optional_string_equality_uses_payload_equality() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'optional_string_semantic_equality',
@@ -1202,6 +1629,34 @@ fn test_optional_nested_array_equality_guards_payload_work() {
 	out := run_good(v3_bin, 'optional_nested_array_guarded_equality',
 		"fn maybe_nested(ok bool) ?[][]string {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn [['a'.clone()], ['b'.clone()]]\n}\n\nfn main() {\n\tleft := maybe_nested(true)\n\tright := maybe_nested(true)\n\tmissing_left := maybe_nested(false)\n\tmissing_right := maybe_nested(false)\n\tprintln(left == right)\n\tprintln(left != right)\n\tprintln(left == missing_left)\n\tprintln(missing_left == missing_right)\n\tprintln(missing_left != missing_right)\n}\n")
 	assert out == 'true\nfalse\nfalse\ntrue\nfalse'
+}
+
+fn test_optional_assignment_invalidates_payload_smartcast() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_assignment_invalidates_payload_smartcast',
+		'fn main() {\n\tmut value := ?int(none)\n\tvalue = 1\n\tvalue = none\n\tresolved := value or { 42 }\n\tprintln(int_str(resolved))\n}\n')
+	assert out == '42'
+}
+
+fn test_unannotated_optional_address_preserves_wrapper() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'unannotated_optional_wrapper_address',
+		'fn main() {\n\tmut maybe := ?int(7)\n\twrapper := &maybe\n\tprintln(typeof(wrapper).name)\n\t*wrapper = none\n\tvalue := maybe or { 42 }\n\tprintln(int_str(value))\n}\n')
+	assert out == '&?int\n42'
+}
+
+fn test_pointer_alias_lvalue_preserves_dereference() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'pointer_alias_lvalue_dereference',
+		'type IntPtr = &int\n\nfn main() {\n\tmut value := 0\n\tmut p := IntPtr(&value)\n\t*p = 7\n\tprintln(int_str(value))\n}\n')
+	assert out == '7'
+}
+
+fn test_optional_variant_to_optional_sum_cast_preserves_wrapper() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'optional_variant_to_optional_sum_cast',
+		"struct Cat {}\n\nstruct Dog {\n\tname string\n}\n\ntype Animal = Cat | Dog\n\nfn maybe_dog(ok bool) ?Dog {\n\tif !ok {\n\t\treturn none\n\t}\n\treturn Dog{\n\t\tname: 'Rex'\n\t}\n}\n\nfn show(ok bool) string {\n\tmaybe_animal := ?Animal(maybe_dog(ok))\n\tanimal := maybe_animal or { return 'missing' }\n\tif animal is Dog {\n\t\treturn animal.name\n\t}\n\treturn 'cat'\n}\n\nfn main() {\n\tprintln(show(true))\n\tprintln(show(false))\n}\n")
+	assert out == 'Rex\nmissing'
 }
 
 fn test_wrapped_plus_minus_continuations_consume_auto_semicolon() {
@@ -1415,6 +1870,49 @@ fn test_comptime_field_generic_calls_keep_resolved_field_types() {
 		'main.v':        'module main\n\nimport codec\nimport model\n\nfn main() {\n\tmut event := model.Event{}\n\tcodec.visit(mut event)\n\tprintln(int_str(int(event.key)))\n}\n'
 	}, 'main.v')
 	assert out == '0'
+}
+
+fn test_comptime_field_generic_call_prefers_shadowing_local_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good(v3_bin, 'comptime_field_generic_shadowing_local', 'struct Sample {
+	values map[string]int
+}
+
+fn inferred_type[T](value T) string {
+	_ = value
+	return typeof[T]().name
+}
+
+fn main() {
+	sample := Sample{
+		values: {
+			"one": 1
+		}
+	}
+	$for field in Sample.fields {
+		$if field.is_map {
+			for key, value in sample.$(field.name) {
+				_ = key
+				_ = value
+			}
+			key := 1.5
+			println(inferred_type(key))
+		}
+	}
+}
+')
+	assert out == 'f64'
+}
+
+fn test_comptime_pointer_field_generic_local_uses_call_return_type() {
+	v3_bin := build_v3_review_transform()
+	out := run_good_project(v3_bin, 'comptime_pointer_field_call_return_type', {
+		'v.mod':         "Module { name: 'comptime_pointer_field_call_return_type' }\n"
+		'model/model.v': 'module model\n\npub struct App {\npub mut:\n\tvalue int\n}\n\npub struct Context {\npub mut:\n\tapp &App\n}\n'
+		'codec/codec.v': 'module codec\n\npub fn fill[T](mut value T) {\n\t$for field in T.fields {\n\t\t$if field.indirections == 1 {\n\t\t\tmut decoded_ptr := create_ptr(value.$(field.name))\n\t\t\tdecoded_ptr.value = 42\n\t\t\tvalue.$(field.name) = decoded_ptr\n\t\t}\n\t}\n}\n\nfn create_ptr[T](_ &T) &T {\n\treturn &T{}\n}\n'
+		'main.v':        'module main\n\nimport codec\nimport model\n\nfn main() {\n\tmut context := model.Context{}\n\tcodec.fill(mut context)\n\tprintln(context.app.value)\n}\n'
+	}, 'main.v')
+	assert out == '42'
 }
 
 fn test_imported_struct_default_qualifies_function_alias_cast() {

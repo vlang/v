@@ -251,7 +251,9 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 			return
 		}
 	}
-	if fixed_array_option_payload_type(types.unwrap_pointer(g.usable_expr_type(id))) != none {
+	annotated_is_fixed := node.typ.len > 0 && array_fixed_type(g.tc.parse_type(node.typ)) != none
+	if !annotated_is_fixed
+		&& fixed_array_option_payload_type(types.unwrap_pointer(g.usable_expr_type(id))) != none {
 		g.gen_expr(id)
 		g.write('.value')
 		return
@@ -266,6 +268,23 @@ fn (mut g FlatGen) gen_fixed_array_data_arg(id flat.NodeId, arr types.ArrayFixed
 		return
 	}
 	g.gen_expr(id)
+}
+
+fn (mut g FlatGen) gen_new_array_fixed_data_arg(call flat.Node, arg_start int, arg_idx int, arg_id flat.NodeId, names []string) bool {
+	if arg_idx != 3 || !names.any(it in ['new_array_from_c_array', 'array__new_array_from_c_array'])
+		|| arg_start + 2 >= call.children_count {
+		return false
+	}
+	sizeof_id := g.a.child(&call, arg_start + 2)
+	sizeof_node := g.a.nodes[int(sizeof_id)]
+	if sizeof_node.kind != .sizeof_expr || sizeof_node.value.len == 0 {
+		return false
+	}
+	elem_type := g.tc.parse_type(sizeof_node.value)
+	g.gen_fixed_array_data_arg(arg_id, types.ArrayFixed{
+		elem_type: elem_type
+	})
+	return true
 }
 
 // gen_nested_fixed_array_literal_copy materializes nested fixed-array elements that cannot be
@@ -1537,7 +1556,9 @@ fn (mut g FlatGen) gen_index_assign(node flat.Node) {
 			c_elem := g.value_c_type(arr_type.elem_type)
 			tmp := g.tmp_count
 			g.tmp_count++
-			g.write('{ array* _a${tmp} = ')
+			// Use the public alias here: a source local named `array` hides the
+			// lowercase C typedef and turns `array* tmp` into an expression.
+			g.write('{ Array* _a${tmp} = ')
 			if g.array_assign_base_is_shared_value_selector(base_id) {
 				g.write('&')
 				g.gen_expr(base_id)
@@ -1598,7 +1619,7 @@ fn (g &FlatGen) array_assign_base_is_shared_value_selector(base_id flat.NodeId) 
 		return false
 	}
 	node := g.a.nodes[int(base_id)]
-	if node.kind == .ident && node.typ.starts_with('shared ') {
+	if node.kind == .ident {
 		return g.local_ident_is_shared_wrapper(node.value)
 	}
 	if node.kind != .selector || node.value != 'val' || node.children_count == 0 {

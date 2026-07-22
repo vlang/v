@@ -3548,6 +3548,24 @@ fn main() {
 	assert out == "[1, 2]\n{'a': 3}\n[4, 5]\n['x', 'y']"
 }
 
+fn test_empty_interface_str_dispatch_stringifies_boxed_map() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'empty_interface_str_dispatch_boxed_map', 'interface Any {}
+
+fn show(value Any) string {
+	return "\${value}"
+}
+
+fn main() {
+	value := Any({
+		"answer": 42
+	})
+	println(show(value))
+}
+')
+	assert out == "Any({'answer': 42})"
+}
+
 fn test_implicit_interface_str_dispatch_rejects_sum_without_dispatch_id() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'implicit_interface_str_dispatch_rejects_sum', 'interface Printable {
@@ -5676,7 +5694,10 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	assert shadow_out == '3\n12'
 	pointer_str_out := run_good(v3_bin, 'review_pointer_value_receiver_str',
 		"struct Foo {\n\tx int\n}\n\nfn (f Foo) str() string {\n\treturn 'custom:' + int_str(f.x)\n}\n\nfn main() {\n\tfoo := Foo{\n\t\tx: 7\n\t}\n\tp := &foo\n\tprintln(p.str())\n}\n")
-	assert pointer_str_out == 'custom:7'
+	assert pointer_str_out == '&custom:7'
+	interface_smartcast_str_out := run_good(v3_bin, 'review_interface_smartcast_pointer_str',
+		"interface Named {\n\tname() string\n}\n\nstruct Item {}\n\nfn (i Item) name() string {\n\treturn 'item'\n}\n\nfn (i Item) str() string {\n\treturn i.name()\n}\n\nfn describe(value Named) string {\n\treturn match value {\n\t\tItem { value.str() }\n\t\telse { 'unknown' }\n\t}\n}\n\nfn main() {\n\tvalue := Named(&Item{})\n\tprintln(describe(value))\n}\n")
+	assert interface_smartcast_str_out == '&item'
 	run_bad(v3_bin, 'review_setter_only_compound_index_assignment',
 		"struct Dict {}\n\nfn (mut d Dict) []= (key string, value int) {\n\t_ = key\n\t_ = value\n}\n\nfn main() {\n\tmut d := Dict{}\n\td['x'] += 1\n}\n",
 		'compound index assignment requires a `[]` overload')
@@ -5716,6 +5737,28 @@ fn test_review_shadowed_global_pointer_str_and_setter_only_compound() {
 	fixed_field_out := run_good(v3_bin, 'review_capital_field_const_fixed_array',
 		'const n = 2\n\nstruct S {\n\tFoo [n]int\n}\n\nfn main() {\n\ts := S{\n\t\tFoo: [3, 4]!\n\t}\n\tprintln(int_str(s.Foo[0] + s.Foo[1]))\n}\n')
 	assert fixed_field_out == '7'
+}
+
+fn test_cross_module_mut_receiver_checks_visible_mutation() {
+	v3_bin := build_v3()
+	run_bad_project(v3_bin, 'review_cross_module_public_mut_receiver', {
+		'v.mod':          "Module { name: 'review_cross_module_public_mut_receiver' }\n"
+		'other/config.v': 'module other\n\npub struct Config {\npub mut:\n\tvalue int\n}\n\npub fn (mut cfg Config) reset() {\n\tcfg.value = 0\n}\n'
+		'main.v':         'module main\n\nimport other\n\nfn main() {\n\tcfg := other.Config{\n\t\tvalue: 1\n\t}\n\tcfg.reset()\n}\n'
+	}, ['main.v'], 'method `reset` requires a mutable receiver')
+	private_out := run_good_project(v3_bin, 'review_cross_module_private_mut_receiver', {
+		'v.mod':         "Module { name: 'review_cross_module_private_mut_receiver' }\n"
+		'other/state.v': 'module other\n\npub struct State {\nmut:\n\thidden int\n}\n\npub fn (mut state State) bump() {\n\tstate.hidden++\n}\n\npub fn (state State) value() int {\n\treturn state.hidden\n}\n'
+		'main.v':        'module main\n\nimport other\n\nfn main() {\n\tstate := other.State{}\n\tstate.bump()\n\tprintln(int_str(state.value()))\n}\n'
+	}, 'main.v')
+	assert private_out == '1'
+}
+
+fn test_implicit_reference_materializes_required_pointer_levels() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'review_multi_level_implicit_addresses',
+		'fn set_double(pp &&int) {\n\tunsafe {\n\t\t**pp = 5\n\t}\n}\n\nfn set_triple(pp &&&int) {\n\tunsafe {\n\t\t***pp = 7\n\t}\n}\n\nfn main() {\n\tmut x := 1\n\tset_double(x)\n\tmut y := 2\n\tp := &y\n\tset_triple(p)\n\tprintln(int_str(x))\n\tprintln(int_str(y))\n}\n')
+	assert out == '5\n7'
 }
 
 fn test_discard_assignment_preserves_array_return_type() {
@@ -6124,9 +6167,10 @@ fn main() {
 	}, 'main.v')
 	assert inactive_objective_c_out == '60'
 	inactive_objective_cpp := run_good_project_result(v3_bin, 'inactive_objective_cpp_source', '', {
-		'v.mod':       "Module { name: 'inactive_objective_cpp_source' }\n"
-		'disabled.mm': '#error inactive Objective-C++ source must not be compiled\n'
-		'main.v':      'module main\n\n#if 0\n#include "disabled.mm"\n#endif\n\n#ifdef V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(65))\n}\n'
+		'v.mod':        "Module { name: 'inactive_objective_cpp_source' }\n"
+		'disabled.mm':  '#error inactive Objective-C++ source must not be compiled\n'
+		'later_defs.c': '#define V3_NEVER_DEFINED_OBJECTIVE_CPP 1\n'
+		'main.v':       'module main\n\n#if 0\n#include "disabled.mm"\n#endif\n\n#ifdef V3_NEVER_DEFINED_OBJECTIVE_CPP\n#include "disabled.mm"\n#endif\n\n#include "later_defs.c"\n\nfn main() {\n\tprintln(int_str(65))\n}\n'
 	}, 'main.v')
 	assert inactive_objective_cpp.run_output == '65'
 	assert !inactive_objective_cpp.compile_output.contains('v3_native_source_context_'), inactive_objective_cpp.compile_output
@@ -6222,6 +6266,47 @@ fn test_imported_objective_cpp_wrapper_context() {
 		'main.v':                  'module main\n\nimport consumer\n\nfn main() {\n\tprintln(int_str(consumer.answer()))\n}\n'
 	}, 'main.v')
 	assert out == '68'
+}
+
+fn test_bare_macro_objective_c_guards_stay_inactive() {
+	v3_bin := build_v3()
+	result := run_good_project_result(v3_bin, 'bare_macro_objective_c_guards', '', {
+		'v.mod':           "Module { name: 'bare_macro_objective_c_guards' }\n"
+		'disabled.m':      '#error inactive Objective-C source must not be compiled\n'
+		'disabled.mm':     '#error inactive Objective-C++ source must not be compiled\n'
+		'inactive_defs.c': '#define V3_INACTIVE_SOURCE_FEATURE 1\n'
+		'main.v':          'module main\n\n#if V3_NEVER_DEFINED_OBJECTIVE_C\n#include "disabled.m"\n#endif\n\n#if 0\n#include "inactive_defs.c"\n#endif\n\n#if V3_INACTIVE_SOURCE_FEATURE\n#include "disabled.mm"\n#endif\n\nfn main() {\n\tprintln(int_str(70))\n}\n'
+	}, 'main.v')
+	assert result.run_output == '70'
+	assert result.compile_output.contains('tcc.exe'), result.compile_output
+	assert !result.compile_output.contains('v3_native_source_context_'), result.compile_output
+}
+
+fn test_valued_bare_macro_objective_c_guards_remain_possible() {
+	v3_bin := build_v3()
+	out := run_good_project_with_flags(v3_bin, 'valued_bare_macro_objective_c_guards', '-cc clang', {
+		'v.mod':     "Module { name: 'valued_bare_macro_objective_c_guards' }\n"
+		'active.m':  'static int answer_from_valued_m_guard(void) { return 1; }\n'
+		'active.mm': 'extern "C" int answer_from_valued_mm_guard(void) { auto answer = []() { return 70; }; return answer(); }\n'
+		'main.v':    'module main\n\n#flag -DV3_MM_FEATURE=0\n\n#define V3_M_FEATURE 0\n#if !V3_M_FEATURE\n#include "active.m"\n#endif\n\n#if !V3_MM_FEATURE\n#include "active.mm"\n#endif\n\nfn C.answer_from_valued_m_guard() int\nfn C.answer_from_valued_mm_guard() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_valued_m_guard() + C.answer_from_valued_mm_guard()))\n}\n'
+	}, 'main.v')
+	assert out == '71'
+}
+
+fn test_external_bare_macro_objective_c_guards_remain_possible() {
+	v3_bin := build_v3()
+	out := run_good_project_with_flags(v3_bin, 'external_bare_macro_objective_c_guards',
+		'-cc clang', {
+		'v.mod':           "Module { name: 'external_bare_macro_objective_c_guards' }\n"
+		'config.h':        '#define V3_HEADER_FEATURE 1\n'
+		'forced.h':        '#define V3_FORCED_FEATURE 1\n'
+		'source_defs.c':   '#define V3_SOURCE_FEATURE 1\n'
+		'active.m':        'static int answer_from_header_macro_guard(void) { return 2; }\n'
+		'active.mm':       'extern "C" int answer_from_forced_macro_guard(void) { auto answer = []() { return 70; }; return answer(); }\n'
+		'source_active.m': 'static int answer_from_source_macro_guard(void) { return 3; }\n'
+		'main.v':          'module main\n\n#flag -UV3_FORCED_FEATURE\n#flag -include @VMODROOT/forced.h\n\n#undef V3_HEADER_FEATURE\n#include "config.h"\n#if V3_HEADER_FEATURE\n#include "active.m"\n#endif\n\n#include "source_defs.c"\n#if V3_SOURCE_FEATURE\n#include "source_active.m"\n#endif\n\n#if V3_FORCED_FEATURE\n#include "active.mm"\n#endif\n\nfn C.answer_from_header_macro_guard() int\nfn C.answer_from_source_macro_guard() int\nfn C.answer_from_forced_macro_guard() int\n\nfn main() {\n\tprintln(int_str(C.answer_from_header_macro_guard() + C.answer_from_source_macro_guard() + C.answer_from_forced_macro_guard()))\n}\n'
+	}, 'main.v')
+	assert out == '75'
 }
 
 fn test_review_fixed_array_alias_clone_dispatch() {
@@ -6441,4 +6526,30 @@ fn main() {
 }
 ',
 		'cannot use `&PointerCallItem` as argument 1 to `take_value`; expected `PointerCallItem`')
+}
+
+fn test_map_retains_address_of_local_after_return() {
+	v3_bin := build_v3()
+	out := run_good(v3_bin, 'map_retains_address_of_local_after_return', 'struct Item {
+	value int
+}
+
+fn make_cache() map[string]&Item {
+	mut cache := map[string]&Item{}
+	mut local := Item{
+		value: 7
+	}
+	ptr := &local
+	cache["alias"] = ptr
+	cache["direct"] = &local
+	return cache
+}
+
+fn main() {
+	cache := make_cache()
+	println(int_str(cache["alias"].value))
+	println(int_str(cache["direct"].value))
+}
+')
+	assert out == '7\n7'
 }

@@ -3,6 +3,10 @@
 
 #include <windows.h>
 
+#ifndef PROCESS_QUERY_LIMITED_INFORMATION
+#define PROCESS_QUERY_LIMITED_INFORMATION 0x1000
+#endif
+
 typedef struct v_multiwindow_watchdog_process {
     HANDLE job;
     HANDLE process;
