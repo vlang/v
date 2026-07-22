@@ -864,6 +864,102 @@ fn main() {
 	assert line_fields.len >= 5 && line_fields[3].int() == expected_v_lines, second.output
 }
 
+fn test_static_storage_header_disables_module_cache_split() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_static_header_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'state.h', '#ifndef V3_STATIC_HEADER_STATE_H
+#define V3_STATIC_HEADER_STATE_H
+
+static int v3_static_header_state = 40;
+
+static int v3_static_header_next(void) {
+	return ++v3_static_header_state;
+}
+
+#endif
+')
+	write_module_cache_file(root, 'native/native.v', 'module native
+
+#include "@DIR/../state.h"
+
+fn C.v3_static_header_next() int
+
+pub fn next() int {
+	return C.v3_static_header_next()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import native
+
+fn C.v3_static_header_next() int
+
+fn main() {
+	println(native.next() + C.v3_static_header_next())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'program')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == '83'
+	assert module_cache_artifact(cache_dir, 'native_', '.o').len == 0
+}
+
+fn test_shared_static_storage_header_disables_module_cache_split() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_shared_static_header_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'state.h', '#ifndef V3_SHARED_STATIC_HEADER_STATE_H
+#define V3_SHARED_STATIC_HEADER_STATE_H
+
+static int v3_shared_static_header_state = 40;
+
+static int v3_shared_static_header_next(void) {
+	return ++v3_shared_static_header_state;
+}
+
+#endif
+')
+	for module_name in ['leftmod', 'rightmod'] {
+		write_module_cache_file(root, '${module_name}/${module_name}.v', 'module ${module_name}
+
+#include "@DIR/../state.h"
+
+fn C.v3_shared_static_header_next() int
+
+pub fn next() int {
+	return C.v3_shared_static_header_next()
+}
+')
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import leftmod
+import rightmod
+
+fn main() {
+	println(leftmod.next() + rightmod.next())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'program')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == '83'
+	assert module_cache_artifact(cache_dir, 'leftmod_', '.o').len == 0
+	assert module_cache_artifact(cache_dir, 'rightmod_', '.o').len == 0
+}
+
 fn test_cold_module_cache_prints_reuse_hint_only_once() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_cold_hint_${os.getpid()}')
