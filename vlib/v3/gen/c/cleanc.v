@@ -11306,11 +11306,29 @@ fn (mut g FlatGen) gen_map_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id f
 fn (g &FlatGen) map_value_bytewise_eq_safe(value_type types.Type) bool {
 	clean := default_init_unalias_type(value_type)
 	if clean is types.Map {
+		// v3_map_map_eq recurses into map values through itself, so a nested map
+		// is safe as long as its own value type is.
 		return g.map_value_bytewise_eq_safe(clean.value_type)
 	}
 	if clean is types.Array {
-		return g.map_value_bytewise_eq_safe(clean.elem_type)
+		// The runtime helper's Array case only compares string elements
+		// (array_eq_string) or primitive/pointer elements (array_eq_raw)
+		// correctly; arrays of maps, structs, or nested arrays fall through to a
+		// bytewise element compare of their descriptors. Only flat element types
+		// are safe here — anything else is left to the transform's element-wise
+		// path.
+		return g.map_scalar_bytewise_eq_safe(clean.elem_type)
 	}
+	return g.map_scalar_bytewise_eq_safe(clean)
+}
+
+// map_scalar_bytewise_eq_safe reports whether a bytewise (memcmp/array_eq_raw)
+// comparison of a single value of this type matches its semantic equality.
+// True only for types with no indirection to follow: primitives, enums,
+// pointers (compared by address), and strings (which v3_map_map_eq / array
+// helpers special-case).
+fn (g &FlatGen) map_scalar_bytewise_eq_safe(t types.Type) bool {
+	clean := default_init_unalias_type(t)
 	return clean is types.Primitive || clean is types.Char || clean is types.Rune
 		|| clean is types.ISize || clean is types.USize || clean is types.Enum
 		|| clean is types.Pointer || clean is types.String || clean is types.Nil
