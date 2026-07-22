@@ -11958,8 +11958,8 @@ fn (tc &TypeChecker) compound_index_overload_value_params_match(setter CallInfo,
 
 fn assignment_op_reads_lhs(op flat.Op) bool {
 	return match op {
-		.plus_assign, .minus_assign, .mul_assign, .div_assign, .mod_assign, .amp_assign,
-		.pipe_assign, .xor_assign, .left_shift_assign, .right_shift_assign,
+		.plus_assign, .minus_assign, .mul_assign, .power_assign, .div_assign, .mod_assign,
+		.amp_assign, .pipe_assign, .xor_assign, .left_shift_assign, .right_shift_assign,
 		.right_shift_unsigned_assign {
 			true
 		}

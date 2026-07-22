@@ -2827,7 +2827,12 @@ fn (t &Transformer) comptime_field_type_id(typ string, decl_module string) int {
 	if builtin_idx > 0 {
 		return builtin_idx | indirection_bits
 	}
-	return (comptime_type_id_hash(base_key) & ~(0xff << 16)) | indirection_bits
+	mut custom_idx := comptime_type_id_hash(base_key) & ~(0xff << 16)
+	if custom_idx < 65536 {
+		// Bit 24 is the first available bit above the reserved indirection byte.
+		custom_idx |= 1 << 24
+	}
+	return custom_idx | indirection_bits
 }
 
 // comptime_builtin_type_idx maps a builtin type name to V's stable ast type index

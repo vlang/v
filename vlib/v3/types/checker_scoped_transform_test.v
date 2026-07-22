@@ -2,6 +2,10 @@ module types
 
 import v3.flat
 
+fn test_power_assignment_reads_index_lhs() {
+	assert assignment_op_reads_lhs(.power_assign)
+}
+
 struct SignatureDenseArrayLayoutForTest {
 	key_bytes   int
 	value_bytes int
