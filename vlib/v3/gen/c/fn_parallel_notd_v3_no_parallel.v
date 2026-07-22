@@ -369,11 +369,13 @@ fn clone_embedded_fields_by_type(values map[string][]types.StructField) map[stri
 fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	if fs_worker.worker_scope == unsafe { nil } {
 		g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
+		g.address_taken_const_keys = fs_worker.address_taken_const_keys.clone()
 		g.param_types_by_short = fs_worker.param_types_by_short.move()
 		g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.move()
 		return
 	}
 	g.fixed_storage_consts = fs_worker.fixed_storage_consts.clone()
+	g.address_taken_const_keys = fs_worker.address_taken_const_keys.clone()
 	g.param_types_by_short = clone_param_types_by_short(fs_worker.param_types_by_short)
 	g.embedded_fields_by_type = clone_embedded_fields_by_type(fs_worker.embedded_fields_by_type)
 	g.concrete_optional_abi_fns = fs_worker.concrete_optional_abi_fns.clone()
@@ -835,6 +837,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		const_modules:                  g.const_modules
 		const_init_order:               g.const_init_order
 		fixed_storage_consts:           g.fixed_storage_consts
+		address_taken_const_keys:       g.address_taken_const_keys
 		global_modules:                 g.global_modules
 		global_inits:                   g.global_inits
 		global_init_order:              g.global_init_order

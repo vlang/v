@@ -1449,6 +1449,7 @@ vlib/v/tests/consts/const_depend_update_expr_test.v
 vlib/v/tests/consts/const_embed_test.v
 vlib/v/tests/consts/const_eval_simple_int_expressions_at_comptime_test.v
 vlib/v/tests/consts/const_fixed_array_containing_references_to_itself_test.v
+vlib/v/tests/consts/const_fixed_array_of_reference_value_test.v
 vlib/v/tests/consts/const_fixed_array_of_string_value_msvc_test.v
 vlib/v/tests/consts/const_fixed_array_return_unresolved_test.v
 vlib/v/tests/consts/const_fixed_array_test.v

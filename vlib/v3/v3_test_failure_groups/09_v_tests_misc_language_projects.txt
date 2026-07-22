@@ -6,7 +6,6 @@ vlib/v/tests/c_shadowed_c_fn_call_test.v
 vlib/v/tests/clash_var_fn_name_test.v
 vlib/v/tests/closure_with_fn_ref_var_test.v
 vlib/v/tests/consts/const_call_expr_order_test.v
-vlib/v/tests/consts/const_fixed_array_of_reference_value_test.v
 vlib/v/tests/consts/const_function_call_init_order_test.v
 vlib/v/tests/consts/const_name_equals_fn_name_test.v
 vlib/v/tests/defer/defer_use_returned_value_test.v
