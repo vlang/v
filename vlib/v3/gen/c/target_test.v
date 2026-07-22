@@ -370,6 +370,33 @@ fn test_cache_input_scan_rejects_dynamic_include_macros() {
 	assert has_untracked
 }
 
+fn test_cache_input_scan_rejects_unresolved_include_macros() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_unresolved_macro_cache_inputs_${os.getpid()}')
+	os.rmdir_all(dir) or {}
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	outer_header := os.join_path(dir, 'outer.h')
+	nested_header := os.join_path(dir, 'nested.h')
+	os.write_file(outer_header, '#include V3_EXTERNAL_HEADER\n') or { panic(err) }
+	os.write_file(nested_header, '#define NESTED_VALUE 1\n') or { panic(err) }
+	source := os.join_path(dir, 'sample.v')
+	os.write_file(source,
+		'module sample\n#define V3_EXTERNAL_HEADER "nested.h"\n#include "outer.h"\n') or {
+		panic(err)
+	}
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_file(source)
+	inputs, _, has_untracked := cache_external_input_files(a, '', {
+		'sample': true
+	}, [], prefs.target)
+	assert has_untracked
+	assert inputs['sample'] == [os.real_path(outer_header)]
+}
+
 fn test_cache_input_scan_separates_native_source_roots_from_dependencies() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_native_source_root_inputs_${os.getpid()}')
 	os.rmdir_all(dir) or {}

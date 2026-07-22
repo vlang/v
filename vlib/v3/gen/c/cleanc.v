@@ -1106,9 +1106,8 @@ fn c_collect_external_input_tree(path string, vroot string, include_dirs []strin
 				continue
 			}
 			include_args = include_macros[macro_name].clone()
-			// An undefined include macro can only occur in an inactive preprocessor
-			// branch in a translation unit that compiles successfully.
 			if include_args.len == 0 {
+				has_untracked_include = true
 				continue
 			}
 		}
