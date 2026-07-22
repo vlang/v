@@ -9650,6 +9650,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_expected_enum
 				return
 			}
+			if g.gen_map_infix_eq(node, lhs_id, rhs_id, lhs_type, rhs_type) {
+				g.expected_enum = old_expected_enum
+				return
+			}
 			if lhs_type is types.String || rhs_type is types.String {
 				if g.gen_string_infix_fallback(node, lhs_id, rhs_id) {
 					g.expected_enum = old_expected_enum
@@ -11403,6 +11407,80 @@ fn (mut g FlatGen) gen_string_infix_fallback(node flat.Node, lhs_id flat.NodeId,
 	}
 
 	return true
+}
+
+// gen_map_infix_eq lowers `map == map` / `map != map` to the runtime map
+// equality helper. C cannot compare `struct map` values with `==`, so without
+// this the generated comparison fails to compile. Pointer operands are left
+// alone (like the array-equality path): `&m1 == &m2` must keep comparing the
+// pointer addresses, not the pointed-to map contents.
+fn (mut g FlatGen) gen_map_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	if node.op !in [.eq, .ne] {
+		return false
+	}
+	if lhs_type is types.Pointer || rhs_type is types.Pointer {
+		return false
+	}
+	clean_lhs := map_str_clean_type(lhs_type)
+	if clean_lhs !is types.Map || map_str_clean_type(rhs_type) !is types.Map {
+		return false
+	}
+	// v3_map_map_eq compares value payloads it does not recognize bytewise. That
+	// is wrong whenever a value's semantic equality differs from its bytes — a
+	// struct/sum type/fixed array holding strings, arrays or maps. The
+	// transformer lowers those maps directly to element-wise comparisons; only
+	// fall back to the raw helper for value types it compares correctly (its
+	// size dispatch handles primitives, pointers, strings, and dynamic maps and
+	// arrays of those). Otherwise leave the comparison unlowered rather than
+	// emit a silently incorrect result.
+	if !g.map_value_bytewise_eq_safe((clean_lhs as types.Map).value_type) {
+		return false
+	}
+	if node.op == .ne {
+		g.write('!')
+	}
+	g.write('v3_map_map_eq(')
+	g.gen_expr(lhs_id)
+	g.write(', ')
+	g.gen_expr(rhs_id)
+	g.write(')')
+	return true
+}
+
+// map_value_bytewise_eq_safe reports whether v3_map_map_eq compares a map value
+// of this type correctly. Its size dispatch handles primitive/pointer/string
+// values and recurses through dynamic maps and arrays of such values, but
+// falls back to a raw memcmp for anything else (structs, sum types, fixed
+// arrays, interfaces, options), which breaks semantic equality.
+fn (g &FlatGen) map_value_bytewise_eq_safe(value_type types.Type) bool {
+	clean := default_init_unalias_type(value_type)
+	if clean is types.Map {
+		// v3_map_map_eq recurses into map values through itself, so a nested map
+		// is safe as long as its own value type is.
+		return g.map_value_bytewise_eq_safe(clean.value_type)
+	}
+	if clean is types.Array {
+		// The runtime helper's Array case only compares string elements
+		// (array_eq_string) or primitive/pointer elements (array_eq_raw)
+		// correctly; arrays of maps, structs, or nested arrays fall through to a
+		// bytewise element compare of their descriptors. Only flat element types
+		// are safe here — anything else is left to the transform's element-wise
+		// path.
+		return g.map_scalar_bytewise_eq_safe(clean.elem_type)
+	}
+	return g.map_scalar_bytewise_eq_safe(clean)
+}
+
+// map_scalar_bytewise_eq_safe reports whether a bytewise (memcmp/array_eq_raw)
+// comparison of a single value of this type matches its semantic equality.
+// True only for types with no indirection to follow: primitives, enums,
+// pointers (compared by address), and strings (which v3_map_map_eq / array
+// helpers special-case).
+fn (g &FlatGen) map_scalar_bytewise_eq_safe(t types.Type) bool {
+	clean := default_init_unalias_type(t)
+	return clean is types.Primitive || clean is types.Char || clean is types.Rune
+		|| clean is types.ISize || clean is types.USize || clean is types.Enum
+		|| clean is types.Pointer || clean is types.String || clean is types.Nil
 }
 
 fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
@@ -15731,7 +15809,16 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		g.writeln('string ${qname} = ${expr_str};')
 	} else if v_type is types.ArrayFixed {
 		c_elem, dims := g.fixed_array_decl_parts(v_type)
-		g.writeln('const ${c_elem} ${qname}${dims} = ${expr_str};')
+		// A fixed-array object declaration cannot be initialized from a
+		// compound-literal array rvalue (`= (u8[16]){...}`); C requires a bare
+		// brace list (`= {...}`) for the array elements. Strip the redundant
+		// leading cast that the value expression carries when present.
+		mut init_str := expr_str
+		cast_prefix := '(${c_elem}${dims})'
+		if init_str.starts_with(cast_prefix) {
+			init_str = init_str[cast_prefix.len..].trim_space()
+		}
+		g.writeln('const ${c_elem} ${qname}${dims} = ${init_str};')
 	} else if v_type is types.Primitive || v_type is types.Char || v_type is types.Rune
 		|| v_type is types.ISize || v_type is types.USize || v_type is types.Enum
 		|| ct in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'float', 'double', 'isize', 'usize'] {
@@ -15745,6 +15832,18 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		} else {
 			g.writeln('#define ${qname} (${expr_str})')
 		}
+	} else if fixed := array_fixed_type(default_init_unalias_type(v_type)) {
+		// An alias whose underlying type is a fixed array still declares a C
+		// array object (`const Array_fixed_u8_16 name`), which cannot be
+		// initialized from a compound-literal array rvalue (`= (u8[16]){...}`).
+		// Strip the redundant cast to a bare brace list.
+		c_elem, dims := g.fixed_array_decl_parts(fixed)
+		mut init_str := expr_str
+		cast_prefix := '(${c_elem}${dims})'
+		if init_str.starts_with(cast_prefix) {
+			init_str = init_str[cast_prefix.len..].trim_space()
+		}
+		g.writeln('const ${ct} ${qname} = ${init_str};')
 	} else {
 		g.writeln('const ${ct} ${qname} = ${expr_str};')
 	}

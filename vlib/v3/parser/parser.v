@@ -7262,7 +7262,22 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
 		p.next()
-		operand := p.expr(.highest)
+		mut operand := p.expr(.highest)
+		// A trailing `or {}` binds to the operand, not to the prefix operator:
+		// `!f() or {}` means `!(f() or {})`. The main expression loop only
+		// attaches `or` at lowest binding power (below the prefix), so it would
+		// otherwise wrap the whole prefix expression, which is not an
+		// Option/Result. Consume it here so the unwrap happens before the prefix.
+		if p.tok == .key_or {
+			p.next()
+			or_body := p.block_stmt()
+			ostart := p.add_children2(operand, or_body)
+			operand = p.a.add_node(flat.Node{
+				kind:           .or_expr
+				children_start: ostart
+				children_count: 2
+			})
+		}
 		pstart := p.add_child(operand)
 		return p.a.add_node(flat.Node{
 			kind:           .prefix

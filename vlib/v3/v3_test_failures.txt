@@ -67,7 +67,6 @@ vlib/v/tests/comptime_pseudo_fn_with_dollar_test.v
 vlib/v/tests/conditions/ifs/if_expr_of_option_test.v
 vlib/v/tests/conditions/ifs/if_smartcast_test.v
 vlib/v/tests/consts/const_fixed_array_of_reference_value_test.v
-vlib/v/tests/consts/const_from_bytes_test.v
 vlib/v/tests/defer/defer_use_returned_value_test.v
 vlib/v/tests/enums/enum_test.v
 vlib/v/tests/fixed_array_2_dims_init_test.v
@@ -139,8 +138,6 @@ vlib/v/tests/indexexpr_with_anon_fn_test.v
 vlib/v/tests/init_global_test.v
 vlib/v/tests/interfaces/interface_edge_cases/voidptr_casted_as_an_interface_test.v
 vlib/v/tests/interfaces/interface_embedding_with_interface_para_test.v
-vlib/v/tests/interfaces/interface_generic_multi_return_test.v
-vlib/v/tests/interfaces/interface_generic_pool_cast_multi_type_test.v
 vlib/v/tests/interfaces/interface_match_smartcast_array_test.v
 vlib/v/tests/interfaces/interface_method_closure_test.v
 vlib/v/tests/match_multi_return_closure_heap_test.v
@@ -163,7 +160,6 @@ vlib/v/tests/power_operator_test.v
 vlib/v/tests/project_with_tests_for_main/my_other_test.v
 vlib/v/tests/project_with_tests_for_main/my_test.v
 vlib/v/tests/sizeof_packed_struct_union_const_test.v
-vlib/v/tests/static_vars_test.v
 vlib/v/tests/structs/mut_test.v
 vlib/v/tests/structs/struct_embed_fn_type_test.v
 vlib/v/tests/sumtypes/json2_map_to_any_cgen_regression_test.v
@@ -192,10 +188,6 @@ vlib/veb/tests/veb_aliased_app_and_context_test.v
 vlib/veb/tests/veb_should_listen_on_both_ipv4_and_ipv6_by_default_test.v
 vlib/wasm/tests/patch_test.v
 vlib/x/async/tests/mcp/mcp_integration_test.v
-vlib/x/atomics/i32_test.v
-vlib/x/atomics/i64_test.v
-vlib/x/atomics/u32_test.v
-vlib/x/atomics/u64_test.v
 vlib/x/crypto/mldsa/mldsa_test.v
 vlib/x/sessions/tests/db_store_test.v
 vlib/x/sessions/tests/session_app_test.v

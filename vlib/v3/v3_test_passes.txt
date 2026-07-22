@@ -1454,6 +1454,7 @@ vlib/v/tests/consts/const_fixed_array_return_unresolved_test.v
 vlib/v/tests/consts/const_fixed_array_test.v
 vlib/v/tests/consts/const_fixed_array_with_type_alias_test.v
 vlib/v/tests/consts/const_fixed_array_with_var_item_test.v
+vlib/v/tests/consts/const_from_bytes_test.v
 vlib/v/tests/consts/const_from_comptime_if_expr_test.v
 vlib/v/tests/consts/const_from_multi_branchs_of_if_expr_test.v
 vlib/v/tests/consts/const_function_call_init_order_test.v
@@ -2034,6 +2035,8 @@ vlib/v/tests/interfaces/interface_fields_typearray_test.v
 vlib/v/tests/interfaces/interface_fixed_array_ret_test.v
 vlib/v/tests/interfaces/interface_fn_return_array_of_interface_test.v
 vlib/v/tests/interfaces/interface_fn_return_with_struct_init_test.v
+vlib/v/tests/interfaces/interface_generic_multi_return_test.v
+vlib/v/tests/interfaces/interface_generic_pool_cast_multi_type_test.v
 vlib/v/tests/interfaces/interface_generic_test.v
 vlib/v/tests/interfaces/interface_implicit_str_method_test.v
 vlib/v/tests/interfaces/interface_int_test.v
@@ -2497,6 +2500,7 @@ vlib/v/tests/skip_sort_arg_check_test.v
 vlib/v/tests/skip_unused/generic_fn_instantiation_pruning_test.v
 vlib/v/tests/skip_unused/interface_dispatch_method_dependencies_test.v
 vlib/v/tests/sql_statement_inside_fn_call_test.v
+vlib/v/tests/static_vars_test.v
 vlib/v/tests/struct_init_field_call_or_block_test.v
 vlib/v/tests/structs/anon_struct_alias_type_decl_embed_test.v
 vlib/v/tests/structs/anon_struct_array_test.v

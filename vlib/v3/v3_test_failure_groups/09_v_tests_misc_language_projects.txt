@@ -7,7 +7,6 @@ vlib/v/tests/clash_var_fn_name_test.v
 vlib/v/tests/closure_with_fn_ref_var_test.v
 vlib/v/tests/consts/const_call_expr_order_test.v
 vlib/v/tests/consts/const_fixed_array_of_reference_value_test.v
-vlib/v/tests/consts/const_from_bytes_test.v
 vlib/v/tests/consts/const_function_call_init_order_test.v
 vlib/v/tests/consts/const_name_equals_fn_name_test.v
 vlib/v/tests/defer/defer_use_returned_value_test.v
@@ -39,7 +38,6 @@ vlib/v/tests/selector_call_with_reserved_c_name_test.v
 vlib/v/tests/selector_generic_fn_test.v
 vlib/v/tests/selector_indexexpr_fn_type_assign_test.v
 vlib/v/tests/sizeof_packed_struct_union_const_test.v
-vlib/v/tests/static_vars_test.v
 vlib/v/tests/testdata/assert_with_scoped_defer_cleanup_failing_test.v
 vlib/v/tests/testdata/sizeof_used_in_assert_test.v
 vlib/v/tests/testdata/tests_returning_options_failing_test.v
