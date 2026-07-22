@@ -295,7 +295,13 @@ fn (mut g FlatGen) gen_nested_fixed_array_literal_copy(node flat.Node, arr types
 	g.write('({ ${c_elem} ${tmp}${dims} = {0}; ')
 	for i in 0 .. node.children_count {
 		g.write('memmove(${tmp}[${i}], ')
-		g.gen_fixed_array_data_arg(g.a.child(&node, i), elem_fixed)
+		child_id := g.a.child(&node, i)
+		literal := g.fixed_array_compound_literal_expr(child_id, elem_fixed)
+		if trimmed_space(literal).len > 0 {
+			g.write(literal)
+		} else {
+			g.gen_fixed_array_data_arg(child_id, elem_fixed)
+		}
 		g.write(', sizeof(${tmp}[${i}])); ')
 	}
 	g.write('${tmp}; })')
