@@ -15987,7 +15987,9 @@ fn (mut g FlatGen) write_fixed_array_initializer(mut builder strings.Builder, va
 		}
 		child_id := g.a.child(&node, i)
 		if fixed.elem_type is types.ArrayFixed {
-			g.write_fixed_array_initializer(mut builder, child_id, fixed.elem_type)
+			if !g.write_fixed_array_initializer(mut builder, child_id, fixed.elem_type) {
+				return false
+			}
 		} else {
 			g.write_fixed_array_elem_initializer(mut builder, child_id, fixed.elem_type)
 		}

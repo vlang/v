@@ -1,7 +1,6 @@
 cmd/tools/vcreate/vcreate_web_test.v
 vlib/crypto/blake3/blake3_test.v
 vlib/crypto/ed25519/internal/edwards25519/element_test.v
-vlib/crypto/pem/pem_test.v
 vlib/db/mssql/mssql_test.v
 vlib/db/mysql/mysql_test.v
 vlib/db/mysql/prepared_stmt_test.v
@@ -63,13 +62,11 @@ vlib/v/tests/comptime/comptime_kinds_test.v
 vlib/v/tests/comptime/comptime_match_assign_test.v
 vlib/v/tests/comptime/comptime_match_ret_test.v
 vlib/v/tests/comptime/comptime_type_accessors_zero_new_test.v
-vlib/v/tests/comptime_pseudo_fn_with_dollar_test.v
 vlib/v/tests/conditions/ifs/if_expr_of_option_test.v
 vlib/v/tests/conditions/ifs/if_smartcast_test.v
 vlib/v/tests/consts/const_fixed_array_of_reference_value_test.v
 vlib/v/tests/defer/defer_use_returned_value_test.v
 vlib/v/tests/enums/enum_test.v
-vlib/v/tests/fixed_array_2_dims_init_test.v
 vlib/v/tests/fns/call_on_anon_test.v
 vlib/v/tests/fns/call_with_nil_test.v
 vlib/v/tests/fns/closure_struct_init_cov_regression_test.v
@@ -145,7 +142,6 @@ vlib/v/tests/match_or_expr_test.v
 vlib/v/tests/modules/function_types_from_module/function_types_from_module_test.v
 vlib/v/tests/modules/methods_struct_another_module/methods_struct_test.v
 vlib/v/tests/multi_return_test.v
-vlib/v/tests/options/option_map_init_test.v
 vlib/v/tests/options/option_mut_struct_init_test.v
 vlib/v/tests/options/option_none_guard_return_unwrap_test.v
 vlib/v/tests/options/option_optional_param_test.v

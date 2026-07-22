@@ -27816,6 +27816,12 @@ pub fn (tc &TypeChecker) resolve_type(id flat.NodeId) Type {
 		.paren {
 			return tc.resolve_type(tc.a.child(&node, 0))
 		}
+		.dump_expr {
+			if node.children_count > 0 {
+				return tc.resolve_type(tc.a.child(&node, 0))
+			}
+			return Type(void_)
+		}
 		.or_expr {
 			if aggregate_type := tc.sql_aggregate_or_expr_type(node) {
 				return aggregate_type

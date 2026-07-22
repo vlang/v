@@ -161,6 +161,7 @@ vlib/crypto/hmac/hmac_test.v
 vlib/crypto/internal/subtle/comparison_test.v
 vlib/crypto/md5/md5_test.v
 vlib/crypto/pbkdf2/pbkdf2_test.v
+vlib/crypto/pem/pem_test.v
 vlib/crypto/rand/crypto_rand_bytes_test.v
 vlib/crypto/rand/utils_test.v
 vlib/crypto/rc4/rc4_test.v
@@ -1266,6 +1267,7 @@ vlib/v/tests/comptime/comptime_variant_interp_test.v
 vlib/v/tests/comptime/comptime_variant_test.v
 vlib/v/tests/comptime/comptime_voidptr_unsafe_nil_test.v
 vlib/v/tests/comptime_generic_comptime_variant_test.v
+vlib/v/tests/comptime_pseudo_fn_with_dollar_test.v
 vlib/v/tests/concurrency/atomic_test.v
 vlib/v/tests/concurrency/autolock_array1_test.v
 vlib/v/tests/concurrency/autolock_array2_test.v
@@ -1537,6 +1539,7 @@ vlib/v/tests/filtering_tests/filtering_macos_test.v
 vlib/v/tests/filtering_tests/filtering_nix_test.v
 vlib/v/tests/filtering_tests/filtering_windows_test.v
 vlib/v/tests/fixed_array_2_dims_embed_test.v
+vlib/v/tests/fixed_array_2_dims_init_test.v
 vlib/v/tests/fixed_array_expr_field_assign_test.v
 vlib/v/tests/fixed_array_init_with_init_test.v
 vlib/v/tests/fixed_array_init_with_option_array_test.v
@@ -2265,6 +2268,7 @@ vlib/v/tests/options/option_interface_test.v
 vlib/v/tests/options/option_last_call_test.v
 vlib/v/tests/options/option_map_fn_type_value_test.v
 vlib/v/tests/options/option_map_fn_value_test.v
+vlib/v/tests/options/option_map_init_test.v
 vlib/v/tests/options/option_map_none_test.v
 vlib/v/tests/options/option_map_set_test.v
 vlib/v/tests/options/option_map_struct_field_init_test.v
@@ -2767,6 +2771,7 @@ vlib/v3/tests/markused_typed_receiver_codegen_test.v
 vlib/v3/tests/mini_calculator_markused_codegen_test.v
 vlib/v3/tests/operator_result_method_checker_test.v
 vlib/v3/tests/option_arg_codegen_test.v
+vlib/v3/tests/optional_map_method_or_codegen_test.v
 vlib/v3/tests/optional_pointer_nil_return_codegen_test.v
 vlib/v3/tests/optional_struct_lvalue_codegen_test.v
 vlib/v3/tests/parallel_cgen_test.v

@@ -2,7 +2,6 @@ vlib/crypto/blake3/blake3_test.v
 vlib/crypto/ecdsa/example/ecdsa_seed_test.v
 vlib/crypto/ecdsa/util_test.v
 vlib/crypto/ed25519/internal/edwards25519/element_test.v
-vlib/crypto/pem/pem_test.v
 vlib/crypto/ripemd160/ripemd160_test.v
 vlib/db/mssql/mssql_test.v
 vlib/db/mysql/mysql_test.v

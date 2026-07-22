@@ -14,7 +14,6 @@ vlib/v/tests/defer/scoped_defer_test.v
 vlib/v/tests/enums/enum_on_array_init_test.v
 vlib/v/tests/enums/enum_test.v
 vlib/v/tests/error_void_test.v
-vlib/v/tests/fixed_array_2_dims_init_test.v
 vlib/v/tests/for_in_iterator_next_test.v
 vlib/v/tests/if_expr_in_or_block_test.v
 vlib/v/tests/indexexpr_with_anon_fn_test.v

@@ -833,7 +833,7 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 				g.write(literal)
 				return
 			}
-			g.gen_expr_with_expected_type(value_id, fixed)
+			g.gen_fixed_array_data_arg(value_id, fixed)
 			return
 		} else {
 			g.write('(${g.tc.c_type(field_type)})')

@@ -4427,6 +4427,24 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		return p.parse_comptime_if()
 	}
 	p.next() // skip $
+	match p.tok {
+		.key_typeof {
+			return p.typeof_expr()
+		}
+		.key_sizeof {
+			return p.sizeof_expr()
+		}
+		.key_isreftype {
+			return p.isreftype_expr()
+		}
+		.key_offsetof {
+			return p.offsetof_expr()
+		}
+		.key_dump {
+			return p.dump_expr()
+		}
+		else {}
+	}
 	if p.tok == .key_if || (p.tok == .name && p.lit == 'if') {
 		return p.parse_comptime_if_expr_after_if()
 	}
@@ -6366,6 +6384,19 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 			p.next()
 			continue
 		}
+		// Bind an option/result handler to the expression immediately before it,
+		// including when that expression is the right operand of an infix operator.
+		if p.tok == .key_or {
+			p.next()
+			or_body := p.block_stmt()
+			ostart := p.add_children2(lhs, or_body)
+			lhs = p.add_node(flat.Node{
+				kind:           .or_expr
+				children_start: ostart
+				children_count: 2
+			})
+			continue
+		}
 		// selector / method call
 		if p.tok == .dot {
 			if p.in_array_literal > 0 && p.spaced_dot_starts_array_enum_value(lhs) {
@@ -6482,21 +6513,6 @@ fn (mut p Parser) expr_with_lhs_context(first flat.NodeId, min_bp token.BindingP
 				value:          type_name
 				children_start: astart
 				children_count: 1
-			})
-			continue
-		}
-		// `or` block: expr or { ... }
-		if p.tok == .key_or {
-			if int(min_bp) > int(token.BindingPower.lowest) {
-				break
-			}
-			p.next()
-			or_body := p.block_stmt()
-			ostart := p.add_children2(lhs, or_body)
-			lhs = p.add_node(flat.Node{
-				kind:           .or_expr
-				children_start: ostart
-				children_count: 2
 			})
 			continue
 		}
