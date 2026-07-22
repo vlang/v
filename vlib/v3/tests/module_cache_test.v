@@ -4665,6 +4665,63 @@ fn main() {
 	assert run_module_cache_binary(second_output) == 'called'
 }
 
+fn test_incremental_program_cache_falls_back_for_newly_reachable_non_main_function() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_non_main_reachability_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'v.mod', "Module {
+	name: 'incremental_non_main_reachability'
+	subdirs: ['worker']
+}
+")
+	write_module_cache_file(root, 'worker/worker.v', "module worker
+
+fn newly_reachable() string {
+	return 'called'
+}
+
+pub fn value() string {
+	return 'before'
+}
+")
+	write_module_cache_file(root, 'main.v', 'module main
+
+import worker
+
+fn main() {
+	println(worker.value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, root, first_output)
+	assert run_module_cache_binary(first_output) == 'before'
+
+	write_module_cache_file(root, 'worker/worker.v', "module worker
+
+fn newly_reachable() string {
+	return 'called'
+}
+
+pub fn value() string {
+	return newly_reachable()
+}
+")
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(root)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (incremental)'), second.output
+	assert run_module_cache_binary(second_output) == 'called'
+}
+
 fn test_incremental_program_cache_falls_back_for_new_interface_dispatch() {
 	$if !macos {
 		return

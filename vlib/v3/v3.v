@@ -2274,9 +2274,6 @@ fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, t
 					changed_roots << flat.NodeId(node_idx)
 					changed_root_modules[node_idx] = cur_module
 				}
-				if cur_module !in ['', 'main'] {
-					continue
-				}
 				aliases := [node.value, name, restored_fn_c_name(node.value),
 					restored_fn_c_name(name)]
 				for alias in aliases {
