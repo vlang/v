@@ -4034,6 +4034,53 @@ fn main() {
 	assert run_module_cache_binary(fn_pointer_output) == '42'
 }
 
+fn test_incremental_program_cache_adds_println_to_main() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_incremental_add_println_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn main() {}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == ''
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+fn main() {
+	value := 1
+	_ = value
+}
+')
+	baseline_output := os.join_path(root, 'baseline')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, baseline_output)
+	assert run_module_cache_binary(baseline_output) == ''
+
+	write_module_cache_file(root, 'main.v', "module main
+
+fn main() {
+	println('haha')
+}
+")
+	incremental_output := os.join_path(root, 'incremental')
+	incremental :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(incremental_output)} ${os.quoted_path(main_file)}')
+	assert incremental.exit_code == 0, incremental.output
+	assert incremental.output.contains('check (incremental)'), incremental.output
+	assert incremental.output.contains('cgen (incremental)'), incremental.output
+	assert run_module_cache_binary(incremental_output) == 'haha'
+}
+
 fn test_incremental_program_cache_falls_back_for_new_generic_type_argument() {
 	$if !macos {
 		return
@@ -4090,7 +4137,28 @@ fn main() {
 import generic
 
 fn value() int {
-	return int(generic.identity[i64](42))
+	return generic.identity[int](42)
+}
+
+fn main() {
+	println(value())
+}
+')
+	incremental_output := os.join_path(root, 'incremental')
+	incremental :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(incremental_output)} ${os.quoted_path(main_file)}')
+	assert incremental.exit_code == 0, incremental.output
+	assert incremental.output.contains('check (incremental)'), incremental.output
+	assert incremental.output.contains('monomorphize (incremental)'), incremental.output
+	assert incremental.output.contains('cgen (incremental)'), incremental.output
+	assert run_module_cache_binary(incremental_output) == '42'
+
+	write_module_cache_file(root, 'main.v', 'module main
+
+import generic
+
+fn value() int {
+	return int(generic.identity[i64](43))
 }
 
 fn main() {
@@ -4101,10 +4169,10 @@ fn main() {
 	second :=
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
 	assert second.exit_code == 0, second.output
-	assert !second.output.contains('check (incremental)'), second.output
+	assert second.output.contains('check (incremental)'), second.output
 	assert !second.output.contains('monomorphize (incremental)'), second.output
 	assert !second.output.contains('cgen (incremental)'), second.output
-	assert run_module_cache_binary(second_output) == '42'
+	assert run_module_cache_binary(second_output) == '43'
 }
 
 fn test_incremental_program_cache_falls_back_for_newly_reachable_function() {
