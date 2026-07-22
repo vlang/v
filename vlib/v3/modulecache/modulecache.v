@@ -329,21 +329,28 @@ fn cached_source_signature_with_build_values(cache_dir string, namespace string,
 		return ''
 	}
 	fresh_metadata := source_files_metadata_signature(paths)
-	if fresh_metadata.len > 0 {
-		mut out := strings.new_builder(192 + details.validation.len * 96)
-		out.writeln('format=${source_signature_cache_format}')
-		out.writeln('metadata=${fresh_metadata}')
-		for input in details.validation {
-			out.writeln(input)
-		}
-		out.writeln('source=${details.signature}')
-		out.writeln('complete=1')
+	if content := source_signature_cache_content(metadata, fresh_metadata, details) {
 		os.mkdir_all(cache_dir) or {}
 		if os.is_dir(cache_dir) {
-			write_atomic(cache_path, out.str()) or {}
+			write_atomic(cache_path, content) or {}
 		}
 	}
 	return details.signature
+}
+
+fn source_signature_cache_content(metadata string, fresh_metadata string, details SourceSignatureDetails) ?string {
+	if metadata.len == 0 || fresh_metadata != metadata {
+		return none
+	}
+	mut out := strings.new_builder(192 + details.validation.len * 96)
+	out.writeln('format=${source_signature_cache_format}')
+	out.writeln('metadata=${metadata}')
+	for input in details.validation {
+		out.writeln(input)
+	}
+	out.writeln('source=${details.signature}')
+	out.writeln('complete=1')
+	return out.str()
 }
 
 fn source_files_metadata_signature(paths []string) string {
