@@ -1245,8 +1245,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					.plus { return i64(left) + right }
 					.minus { return i64(left) - right }
 					.mul { return i64(left) * right }
-					.div { return i64(left) / right }
-					.mod { return i64(left) % right }
+					.div { return if _unlikely_(right == 0) { none } else { i64(left) / right } }
+					.mod { return if _unlikely_(right == 0) { none } else { i64(left) % right } }
 					.xor { return i64(left) ^ right }
 					.pipe { return i64(left) | right }
 					.amp { return i64(left) & right }
@@ -1260,8 +1260,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					.plus { return left + i64(right) }
 					.minus { return left - i64(right) }
 					.mul { return left * i64(right) }
-					.div { return left / i64(right) }
-					.mod { return left % i64(right) }
+					.div { return if _unlikely_(right == 0) { none } else { left / i64(right) } }
+					.mod { return if _unlikely_(right == 0) { none } else { left % i64(right) } }
 					.xor { return left ^ i64(right) }
 					.pipe { return left | i64(right) }
 					.amp { return left & i64(right) }
@@ -1275,8 +1275,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					.plus { return i64(left) + i64(right) }
 					.minus { return i64(left) - i64(right) }
 					.mul { return i64(left) * i64(right) }
-					.div { return i64(left) / i64(right) }
-					.mod { return i64(left) % i64(right) }
+					.div { return if _unlikely_(right == 0) { none } else { i64(left) / i64(right) } }
+					.mod { return if _unlikely_(right == 0) { none } else { i64(left) % i64(right) } }
 					.xor { return i64(left) ^ i64(right) }
 					.pipe { return i64(left) | i64(right) }
 					.amp { return i64(left) & i64(right) }
@@ -1290,8 +1290,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					.plus { return i64(left) + i64(right) }
 					.minus { return i64(left) - i64(right) }
 					.mul { return i64(left) * i64(right) }
-					.div { return i64(left) / i64(right) }
-					.mod { return i64(left) % i64(right) }
+					.div { return if _unlikely_(right == 0) { none } else { i64(left) / i64(right) } }
+					.mod { return if _unlikely_(right == 0) { none } else { i64(left) % i64(right) } }
 					.xor { return i64(left) ^ i64(right) }
 					.pipe { return i64(left) | i64(right) }
 					.amp { return i64(left) & i64(right) }
@@ -1305,8 +1305,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					.plus { return i64(left) + i64(right) }
 					.minus { return i64(left) - i64(right) }
 					.mul { return i64(left) * i64(right) }
-					.div { return i64(left) / i64(right) }
-					.mod { return i64(left) % i64(right) }
+					.div { return if _unlikely_(right == 0) { none } else { i64(left) / i64(right) } }
+					.mod { return if _unlikely_(right == 0) { none } else { i64(left) % i64(right) } }
 					.xor { return i64(left) ^ i64(right) }
 					.pipe { return i64(left) | i64(right) }
 					.amp { return i64(left) & i64(right) }
@@ -1320,8 +1320,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					.plus { return left + right }
 					.minus { return left - right }
 					.mul { return left * right }
-					.div { return left / right }
-					.mod { return left % right }
+					.div { return if _unlikely_(right == 0) { none } else { left / right } }
+					.mod { return if _unlikely_(right == 0) { none } else { left % right } }
 					.xor { return left ^ right }
 					.pipe { return left | right }
 					.amp { return left & right }
@@ -1335,8 +1335,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					.plus { return left + right }
 					.minus { return left - right }
 					.mul { return left * right }
-					.div { return left / right }
-					.mod { return left % right }
+					.div { return if _unlikely_(right == 0) { none } else { left / right } }
+					.mod { return if _unlikely_(right == 0) { none } else { left % right } }
 					.xor { return left ^ right }
 					.pipe { return left | right }
 					.amp { return left & right }
@@ -1350,8 +1350,8 @@ fn (mut c Checker) eval_comptime_const_expr_with_locals(expr ast.Expr, nlevel in
 					.plus { return left + right }
 					.minus { return left - right }
 					.mul { return left * right }
-					.div { return left / right }
-					.mod { return left % right }
+					.div { return if _unlikely_(right == 0) { none } else { left / right } }
+					.mod { return if _unlikely_(right == 0) { none } else { left % right } }
 					.xor { return left ^ right }
 					.pipe { return left | right }
 					.amp { return left & right }
