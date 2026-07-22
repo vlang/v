@@ -5713,19 +5713,12 @@ fn cache_external_input_owner_modules(state &V3ModuleCacheState, unscoped_inputs
 	}
 	for raw_module_name, paths in state.module_external_inputs {
 		roots := state.module_native_roots[raw_module_name] or { []string{} }
-		mut root_paths := map[string]bool{}
-		for root in roots {
-			root_paths[os.real_path(root)] = true
-		}
 		mut has_static_storage := false
 		for path in paths {
 			source := os.read_file(path) or { continue }
 			if modulecache.c_source_has_static_storage(source) {
-				// Only root native source includes are removed from the program unit.
-				// Static storage in any other input would be emitted in both units.
-				if !root_paths[os.real_path(path)] {
-					return modules, false
-				}
+				// Direct non-source include trees were rejected through unscoped_inputs
+				// above. Remaining dependencies are removed with their native root.
 				has_static_storage = true
 			}
 		}
