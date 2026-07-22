@@ -160,7 +160,7 @@ pub fn (t Token) right_binding_power() BindingPower {
 		.logical_and { .compare }
 		.compare { .sum }
 		.sum { .product }
-		.product { .highest }
+		.product { .power }
 		.power { .power }
 		else { .lowest }
 	}

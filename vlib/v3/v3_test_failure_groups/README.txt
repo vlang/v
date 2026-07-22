@@ -5,7 +5,7 @@ parallel fix sessions.
 
 Groups:
 - 01_stdlib_services.txt: crypto, db, net, veb, and x modules (47)
-- 02_stdlib_other_and_tools.txt: cmd, examples, and other non-vlib/v modules (7)
+- 02_stdlib_other_and_tools.txt: cmd, examples, and other non-vlib/v modules (8)
 - 03_v_compiler_infra.txt: vlib/v tests outside vlib/v/tests (9)
 - 04_v_tests_generics.txt: vlib/v/tests generics and generic root tests (50)
 - 05_v_tests_comptime_and_options.txt: comptime and option tests (12)

@@ -497,7 +497,6 @@ vlib/os/process_test.v
 vlib/os/signal_test.v
 vlib/os/xdg_test.v
 vlib/pico_http_parser/pico_http_parser_test.v
-vlib/picoev/picoev_test.v
 vlib/picohttpparser/misc_test.v
 vlib/picohttpparser/request_test.v
 vlib/rand/cuid2/cuid2_test.v

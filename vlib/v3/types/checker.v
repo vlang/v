@@ -22845,9 +22845,6 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 		}
 	}
 	if expected is FnType {
-		if fn_param_is_voidptr_type(actual) {
-			return true
-		}
 		if actual is FnType {
 			if actual.params.len != expected.params.len {
 				return false

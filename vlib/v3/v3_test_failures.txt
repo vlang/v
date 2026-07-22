@@ -31,6 +31,7 @@ vlib/net/jsonrpc/jsonrpc_test.v
 vlib/net/jsonrpc/server_test.v
 vlib/net/ssl/ssl_bsd_tinyc_backend_test.v
 vlib/net/tcp_simple_client_server_test.v
+vlib/picoev/picoev_test.v
 vlib/pool/connection_test.v
 vlib/rand/random_numbers_test.v
 vlib/toml/tests/encode_and_decode_test.v

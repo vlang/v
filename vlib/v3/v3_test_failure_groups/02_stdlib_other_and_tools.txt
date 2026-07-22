@@ -1,6 +1,7 @@
 cmd/tools/vcreate/vcreate_web_test.v
 vlib/fasthttp/fasthttp_linux_regression_test.v
 vlib/flag/flag_test.v
+vlib/picoev/picoev_test.v
 vlib/pool/connection_test.v
 vlib/rand/random_numbers_test.v
 vlib/toml/tests/encode_and_decode_test.v

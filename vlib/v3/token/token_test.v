@@ -6,6 +6,7 @@ fn test_operator_properties_are_owned_by_tokens() {
 	assert Token.pipe.left_binding_power() == .sum
 	assert Token.xor.left_binding_power() == .sum
 	assert Token.mul.left_binding_power() == .product
+	assert Token.mul.right_binding_power() == .power
 	assert Token.amp.left_binding_power() == .product
 	assert Token.power.left_binding_power() == .power
 	assert Token.power.right_binding_power() == .power
