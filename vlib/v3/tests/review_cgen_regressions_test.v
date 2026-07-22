@@ -499,22 +499,48 @@ fn main() {
 
 fn test_zero_and_new_preserve_nested_array_type_arguments() {
 	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'nested_array_zero_new', 'fn zero_payload_array[T](value ?T) []T {
+	out := review_cgen_run_good(v3_bin, 'nested_array_zero_new', 'struct NewDefaults {
+mut:
+	values []int
+	lookup map[string]int
+	count  int = 16
+}
+
+type NewInts = []int
+type NewNested = [][]int
+type NewOptional = []?int
+
+fn zero_payload_array[T](value ?T) []T {
 	return $zero([]typeof(value).payload_type{})
+}
+
+fn new_value[T]() T {
+	return $new(T.pointee_type)
 }
 
 fn main() {
 	nested := $zero([][]int{})
 	optional := $zero([]?int{})
-	nested_ptr := $new([][]int{})
-	optional_ptr := $new([]?int{})
+	mut direct_ptr := new_value[&NewInts]()
+	mut nested_ptr := new_value[&NewNested]()
+	mut optional_ptr := new_value[&NewOptional]()
+	mut defaults := new_value[&NewDefaults]()
 	payload := zero_payload_array[int](none)
+	direct_ptr << 11
+	nested_ptr << [12]
+	optional_ptr << 13
+	defaults.values << 14
+	defaults.lookup["answer"] = 15
 	println(int_str(nested.len))
 	println(int_str(optional.len))
-	println(int_str(nested_ptr.len))
-	println(int_str(optional_ptr.len))
 	println(int_str(payload.len))
+	println(int_str(direct_ptr[0]))
+	println(int_str(nested_ptr[0][0]))
+	println(int_str(optional_ptr[0] or { -1 }))
+	println(int_str(defaults.values[0]))
+	println(int_str(defaults.lookup["answer"]))
+	println(int_str(defaults.count))
 }
 ')
-	assert out == '0\n0\n0\n0\n0'
+	assert out == '0\n0\n0\n11\n12\n13\n14\n15\n16'
 }

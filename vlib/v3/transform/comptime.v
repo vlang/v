@@ -3484,7 +3484,12 @@ fn (mut t Transformer) comptime_field_type_accessor(id flat.NodeId, var_name str
 }
 
 fn (mut t Transformer) comptime_new_value(typ string) flat.NodeId {
-	allocation := t.make_call_typed('vcalloc', arr1(t.make_sizeof_type(typ)), '&u8')
+	value := t.transform_expr(t.zero_value_for_type(typ))
+	tmp_name := t.new_temp('new')
+	t.pending_stmts << t.make_decl_assign_typed(tmp_name, value, typ)
+	addr := t.make_prefix(.amp, t.make_ident(tmp_name))
+	t.set_node_typ(int(addr), '&${typ}')
+	allocation := t.make_memdup_call_for_type(addr, typ)
 	return t.make_cast('&${typ}', allocation, '&${typ}')
 }
 
