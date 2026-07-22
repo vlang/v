@@ -120,6 +120,9 @@ fn windows_month_week_day(year int, month int, week int, weekday int) int {
 		for day + 7 <= days {
 			day += 7
 		}
+		if day > days {
+			day -= 7
+		}
 	}
 	return day
 }
