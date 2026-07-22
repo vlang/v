@@ -524,6 +524,9 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 		has_field = true
 	}
 	if is_optional_init {
+		if !has_field {
+			g.write('0')
+		}
 		g.write('}')
 		return
 	}
@@ -532,6 +535,9 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 	sname := g.struct_init_resolved_decl_name(lookup_source_name)
 	g.tc.cur_module = after_fields_module
 	if is_union_init {
+		if !has_field {
+			g.write('0')
+		}
 		g.write('}')
 		return
 	}
@@ -551,6 +557,9 @@ fn (mut g FlatGen) gen_struct_init(node flat.Node) {
 			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ,
 				c_field_name(f.name), has_field)
 		}
+	}
+	if !has_field {
+		g.write('0')
 	}
 	g.write('}')
 }
@@ -800,6 +809,9 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ,
 				c_field_name(f.name), has_field)
 		}
+	}
+	if !has_field {
+		g.write('0')
 	}
 	g.write('};')
 	for i in 0 .. fixed_fields.len {
@@ -1237,6 +1249,9 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	sname := g.struct_init_resolved_decl_name(node.value)
 	g.tc.cur_module = after_fields_module
 	if is_union_init {
+		if !has_field {
+			g.write('0')
+		}
 		if align_arg.len > 0 {
 			g.write('}, sizeof(${name}), ${align_arg})')
 		} else {
@@ -1260,6 +1275,9 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 			has_field = g.gen_unset_struct_field_default(defaults_key, f.name, f.typ,
 				c_field_name(f.name), has_field)
 		}
+	}
+	if !has_field {
+		g.write('0')
 	}
 	if align_arg.len > 0 {
 		g.write('}, sizeof(${name}), ${align_arg})')
@@ -1590,6 +1608,9 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 				has_field = g.gen_unset_struct_field_default(sname, f.name, f.typ, g.cname(f.name),
 					has_field)
 			}
+		}
+		if !has_field {
+			g.write('0')
 		}
 		g.write('}')
 		return

@@ -196,7 +196,7 @@ fn main() {
 	assert second.output.contains('cgen (cached)'), second.output
 	assert second.output.contains('monomorphize (cached)'), second.output
 	$if macos {
-		assert second.output.contains('cc (cached)'), second.output
+		assert second.output.contains('tcc (cached)'), second.output
 	}
 	assert run_module_cache_binary(second_output) == '42'
 
