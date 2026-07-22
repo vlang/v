@@ -3576,15 +3576,15 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_pre
 	g.tc.cur_module = module_name
 	g.cur_fn_name = node.value
 	g.ownership_return_index = 0
-	g.ownership_seen_return_sources = map[string]bool{}
+	g.ownership_seen_return_sources.clear()
 	g.ownership_propagation_index = 0
 	g.ownership_loop_control_index = 0
 	g.ownership_loop_iteration_index = 0
 	g.ownership_scope_index = 0
-	g.cur_return_drops = []types.OwnershipDropEntry{}
+	g.cur_return_drops.clear()
 	g.loop_depth = 0
-	g.loop_label_depths = map[string]int{}
-	g.map_loop_copyback_guards = []MapLoopCopybackGuard{}
+	g.loop_label_depths.clear()
+	g.map_loop_copyback_guards.clear()
 	mut prelude_scan := if skip_prelude_scan {
 		FnPreludeScan{}
 	} else {
@@ -3592,41 +3592,27 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_pre
 	}
 	g.goto_label_lock_scopes = prelude_scan.goto_label_lock_scopes.move()
 	g.pending_loop_label = ''
-	old_ierror_stack_pointer_aliases := g.ierror_stack_pointer_aliases
-	g.ierror_stack_pointer_aliases = []map[string]bool{}
-	mut old_local_pointer_storage_by_owner := g.local_pointer_storage_by_owner.move()
-	g.local_pointer_storage_by_owner = map[string]bool{}
-	mut old_local_c_type_by_owner := g.local_c_type_by_owner.move()
-	g.local_c_type_by_owner = map[string]string{}
-	mut old_local_pointer_alias_by_owner := g.local_pointer_alias_by_owner.move()
-	g.local_pointer_alias_by_owner = map[string]string{}
-	mut old_local_pointer_alias_mut_param := g.local_pointer_alias_mut_param.move()
-	g.local_pointer_alias_mut_param = map[string]bool{}
-	mut old_local_shared_storage_by_owner := g.local_shared_storage_by_owner.move()
-	g.local_shared_storage_by_owner = map[string]bool{}
-	mut old_shadowed_global_locals := g.shadowed_global_locals.move()
-	g.shadowed_global_locals = map[string]bool{}
-	mut old_local_fn_value_c_name_by_owner := g.local_fn_value_c_name_by_owner.move()
-	g.local_fn_value_c_name_by_owner = map[string]string{}
+	g.ierror_stack_pointer_aliases.clear()
+	g.local_pointer_storage_by_owner.clear()
+	g.local_c_type_by_owner.clear()
+	g.local_pointer_alias_by_owner.clear()
+	g.local_pointer_alias_mut_param.clear()
+	g.local_shared_storage_by_owner.clear()
+	g.shadowed_global_locals.clear()
+	g.local_fn_value_c_name_by_owner.clear()
 	g.push_scope()
-	g.defers = []flat.NodeId{}
-	g.fn_defers = []flat.NodeId{}
-	g.fn_defer_counts = map[int]string{}
-	g.defer_capture_names = []string{}
-	g.defer_capture_types = map[string]types.Type{}
+	g.defers.clear()
+	g.fn_defers.clear()
+	g.fn_defer_counts.clear()
+	g.defer_capture_names.clear()
+	g.defer_capture_types.clear()
 	g.set_cur_fn_ret(types.Type(types.void_))
-	old_param_names := g.cur_param_names
-	old_param_type_values := g.cur_param_type_values
-	mut old_param_types := g.cur_param_types.move()
-	mut old_concrete_optional_params := g.cur_concrete_optional_params.move()
-	mut old_mut_params := g.cur_mut_params.move()
-	mut old_mut_param_owners := g.cur_mut_param_owners.move()
-	g.cur_param_names = []string{}
-	g.cur_param_type_values = []types.Type{}
-	g.cur_param_types = map[string]types.Type{}
-	g.cur_concrete_optional_params = map[string]bool{}
-	g.cur_mut_params = map[string]bool{}
-	g.cur_mut_param_owners = map[string]types.ScopeBindingOwner{}
+	g.cur_param_names.clear()
+	g.cur_param_type_values.clear()
+	g.cur_param_types.clear()
+	g.cur_concrete_optional_params.clear()
+	g.cur_mut_params.clear()
+	g.cur_mut_param_owners.clear()
 	typed_params := g.fn_node_param_types(node, module_name)
 	concrete_optional_params := g.is_specialized_generic_fn_node(node)
 	mut param_idx := 0
@@ -3721,26 +3707,9 @@ fn (mut g FlatGen) gen_fn_in_module(node flat.Node, module_name string, skip_pre
 	if !is_entry_main {
 		g.gen_export_wrapper_for_fn(node, module_name)
 	}
-	g.cur_param_names = old_param_names
-	g.cur_param_type_values = old_param_type_values
-	g.cur_param_types = old_param_types.move()
-	g.cur_concrete_optional_params = old_concrete_optional_params.move()
-	g.cur_mut_params = old_mut_params.move()
-	g.cur_mut_param_owners = old_mut_param_owners.move()
 	g.loop_depth = 0
-	g.loop_label_depths = map[string]int{}
-	g.map_loop_copyback_guards = []MapLoopCopybackGuard{}
-	g.goto_label_lock_scopes = map[string][]int{}
 	g.pending_loop_label = ''
 	g.pop_scope()
-	g.ierror_stack_pointer_aliases = old_ierror_stack_pointer_aliases
-	g.local_pointer_storage_by_owner = old_local_pointer_storage_by_owner.move()
-	g.local_c_type_by_owner = old_local_c_type_by_owner.move()
-	g.local_pointer_alias_by_owner = old_local_pointer_alias_by_owner.move()
-	g.local_pointer_alias_mut_param = old_local_pointer_alias_mut_param.move()
-	g.local_shared_storage_by_owner = old_local_shared_storage_by_owner.move()
-	g.shadowed_global_locals = old_shadowed_global_locals.move()
-	g.local_fn_value_c_name_by_owner = old_local_fn_value_c_name_by_owner.move()
 }
 
 fn (mut g FlatGen) gen_export_wrapper_for_fn(node flat.Node, module_name string) {
