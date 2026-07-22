@@ -3962,6 +3962,12 @@ fn main() {
 		incremental_uses_generics = incremental_cache_hit
 			&& incremental_changed_functions_use_generics(a, pre_tc, incremental_changed_names)
 		pre_tc.prune_inactive_top_level_comptime(mut a)
+		if backend in ['wasm', 'arm64'] {
+			if msg := unsupported_power_backend_error(a, backend) {
+				eprintln(msg)
+				exit(1)
+			}
+		}
 		test_harness_errors := validate_test_file_harness_inputs(a, pre_tc, test_files)
 		if test_harness_errors.len > 0 {
 			for msg in test_harness_errors {
@@ -6050,6 +6056,23 @@ fn print_type_errors(errors []types.TypeError) {
 	if errors.len > 20 {
 		eprintln('  ... and ${errors.len - 20} more')
 	}
+}
+
+fn unsupported_power_backend_error(a &flat.FlatAst, backend string) ?string {
+	for node in a.nodes {
+		op := match node.op {
+			.power { '**' }
+			.power_assign { '**=' }
+			else { continue }
+		}
+		location := if source_pos := a.source_position(node.pos) {
+			'${source_pos}: '
+		} else {
+			''
+		}
+		return '${location}error: operator `${op}` is not supported by the V3 ${backend} backend'
+	}
+	return none
 }
 
 fn diagnostic_root_for_input(input_file string, user_files []string) string {

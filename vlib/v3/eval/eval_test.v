@@ -855,6 +855,32 @@ fn main() {
 	assert e.stdout() == '7\n'
 }
 
+fn test_eval_power_and_power_assignment() {
+	mut e := create()
+	e.run_text('
+struct Number {
+	value int
+}
+
+fn (a Number) ** (b Number) Number {
+	return Number{value: a.value + b.value}
+}
+
+fn main() {
+	mut value := 2
+	value **= 3
+	println(int_str(value))
+	println(int_str(2 ** 3 ** 2))
+	println(4.0 ** 0.5)
+	result := Number{value: 2} ** Number{value: 5}
+	println(int_str(result.value))
+}
+	') or {
+		panic(err)
+	}
+	assert e.stdout() == '8\n512\n2.0\n7\n'
+}
+
 fn test_eval_alias_receiver_method_dispatches_by_static_type() {
 	mut e := create()
 	e.run_text('
@@ -3918,11 +3944,29 @@ fn main() {
 		total += i
 	}
 	println(int_str(total))
+	mut powered := 2
+	powered **= 3
+	println(int_str(powered))
+	println(int_str(2 ** 3 ** 2))
 }
 ') or {
 		panic(err)
 	}
 	result := os.execute('${v3_bin} ${src} -b eval')
 	assert result.exit_code == 0
-	assert result.output.contains('21\n')
+	assert result.output.contains('21\n8\n512\n')
+
+	for backend in ['wasm', 'arm64'] {
+		for operator, expression in {
+			'**':  'println(2 ** 3)'
+			'**=': 'mut value := 2\n\tvalue **= 3'
+		} {
+			unsupported_src := os.join_path(os.temp_dir(),
+				'v3_${backend}_unsupported_power_${operator.len}.v')
+			os.write_file(unsupported_src, 'fn main() {\n\t${expression}\n}\n') or { panic(err) }
+			unsupported := os.execute('${v3_bin} -b ${backend} ${unsupported_src}')
+			assert unsupported.exit_code != 0
+			assert unsupported.output.contains('operator `${operator}` is not supported by the V3 ${backend} backend'), unsupported.output
+		}
+	}
 }
