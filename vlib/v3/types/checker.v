@@ -11952,6 +11952,10 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 		&& expected_type is Pointer {
 		return tc.type_compatible(rhs_type.elem_type, expected_type.base_type)
 	}
+	if op == .assign
+		&& tc.fixed_array_address_to_byte_pointer_compatible(rhs_id, rhs_type, expected_type) {
+		return true
+	}
 	if fn_param_unalias_type(expected_type).is_integer() && tc.c_scalar_byte_literal_arg(rhs_id) {
 		return true
 	}
@@ -11969,6 +11973,26 @@ fn (tc &TypeChecker) assignment_types_compatible(rhs_id flat.NodeId, rhs_type Ty
 	return tc.expr_compatible(rhs_id, rhs_type, expected_type)
 		|| tc.pointer_value_compatible(rhs_type, expected_type)
 		|| tc.pointer_arithmetic_assign_compatible(op, rhs_type, expected_type)
+}
+
+fn (tc &TypeChecker) fixed_array_address_to_byte_pointer_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+	actual_ptr := if actual is Pointer { actual } else { return false }
+	expected_ptr := if expected is Pointer { expected } else { return false }
+	actual_base := if actual_ptr.base_type is Alias {
+		actual_ptr.base_type.base_type
+	} else {
+		actual_ptr.base_type
+	}
+	expected_base := if expected_ptr.base_type is Alias {
+		expected_ptr.base_type.base_type
+	} else {
+		expected_ptr.base_type
+	}
+	if actual_base !is ArrayFixed || expected_base.name() != 'u8' || !tc.valid_node_id(expr_id) {
+		return false
+	}
+	node := tc.a.nodes[int(expr_id)]
+	return node.kind == .prefix && node.op == .amp && node.children_count > 0
 }
 
 fn (tc &TypeChecker) assignment_preserves_smartcast(lhs_id flat.NodeId, rhs_id flat.NodeId, rhs_type Type) bool {
@@ -12835,23 +12859,6 @@ fn (tc &TypeChecker) generic_expected_type_match(actual Type, expected Type) boo
 
 fn (tc &TypeChecker) pointer_value_compatible(actual Type, expected Type) bool {
 	if actual is Pointer {
-		actual_base := if actual.base_type is Alias {
-			actual.base_type.base_type
-		} else {
-			actual.base_type
-		}
-		expected_base := if expected is Pointer {
-			if expected.base_type is Alias {
-				expected.base_type.base_type
-			} else {
-				expected.base_type
-			}
-		} else {
-			Type(Unknown{})
-		}
-		if actual_base is ArrayFixed && expected_base.name() == 'u8' {
-			return true
-		}
 		if !pointer_value_base_can_match(actual.base_type) {
 			return false
 		}

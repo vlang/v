@@ -5351,6 +5351,24 @@ fn (mut g FlatGen) gen_single_fixed_array_elem_assign_to_scalar_local(lhs flat.N
 	return true
 }
 
+fn (mut g FlatGen) gen_fixed_array_address_to_byte_pointer_assign(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	lhs_ptr := if lhs_type is types.Pointer { lhs_type } else { return false }
+	rhs_ptr := if rhs_type is types.Pointer { rhs_type } else { return false }
+	if cgen_unalias_type(lhs_ptr.base_type).name() != 'u8'
+		|| cgen_unalias_type(rhs_ptr.base_type) !is types.ArrayFixed {
+		return false
+	}
+	rhs := g.a.nodes[int(rhs_id)]
+	if rhs.kind != .prefix || rhs.op != .amp || rhs.children_count == 0 {
+		return false
+	}
+	g.gen_expr(lhs_id)
+	g.write(' = ((${g.tc.c_type(lhs_type)})(')
+	g.gen_expr(g.a.child(&rhs, 0))
+	g.writeln('));')
+	return true
+}
+
 // gen_assign emits assign output for c.
 fn (mut g FlatGen) gen_assign(node flat.Node) {
 	if node.children_count >= 3 {
@@ -5476,6 +5494,11 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					g.usable_expr_type(lhs_id)
 				}
 				rhs_type := g.usable_expr_type(rhs_id)
+				if node.op == .assign
+					&& g.gen_fixed_array_address_to_byte_pointer_assign(lhs_id, rhs_id, lhs_type, rhs_type) {
+					i += 2
+					continue
+				}
 				if node.op == .assign {
 					if lhs_fixed := array_fixed_type(lhs_type) {
 						if g.gen_single_fixed_array_elem_assign_to_scalar_local(lhs, lhs_id,

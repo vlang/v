@@ -70,6 +70,9 @@ fn test_reject_fixed_array_decay_to_pointer() {
 	run_bad(v3_bin, 'bad_translated_fixed_array_pointer_return',
 		'@[translated]\nmodule main\n\nfn make_pointer() &int {\n\treturn [1, 2]!\n}\n\nfn main() {}\n',
 		'cannot return `[2]int` as `&int`')
+	run_bad(v3_bin, 'bad_addressed_fixed_u8_array_pointer_argument',
+		'fn consume(value &u8) {}\n\nfn main() {\n\tbuf := [u8(1), 2]!\n\tconsume(&buf)\n}\n',
+		'cannot use `&[2]u8` as argument 1 to `consume`; expected `&u8`')
 	out := run_good(v3_bin, 'good_translated_fixed_array_pointer_assignment',
 		'@[translated]\nmodule main\n\nfn main() {\n\tvalues := [1, 2]!\n\tmut ptr := &int(0)\n\tptr = values\n\tprintln(int_str(*ptr))\n}\n')
 	assert out == '1'

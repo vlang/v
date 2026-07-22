@@ -7286,7 +7286,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	tok_id := int(p.tok)
 	if p.tok == .plus {
 		p.next()
-		operand := p.expr(.highest)
+		operand := p.expr(.power)
 		return p.a.add_node(flat.Node{
 			kind:           .prefix
 			op:             .plus
@@ -7343,7 +7343,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 	}
 	if tok_id == 6 || tok_id == 81 || tok_id == 85 || tok_id == 89 {
 		p.next()
-		mut operand := p.expr(.highest)
+		mut operand := p.expr(.power)
 		// A trailing `or {}` binds to the operand, not to the prefix operator:
 		// `!f() or {}` means `!(f() or {})`. The main expression loop only
 		// attaches `or` at lowest binding power (below the prefix), so it would
@@ -7917,7 +7917,7 @@ fn (mut p Parser) prefix_expr() flat.NodeId {
 		.not, .bit_not, .mul {
 			op_id := int(p.tok)
 			p.next()
-			operand := p.expr(.highest)
+			operand := p.expr(.power)
 			pstart := p.add_child(operand)
 			return p.add_node(flat.Node{
 				kind:           .prefix
