@@ -1454,6 +1454,7 @@ vlib/v/tests/consts/const_fixed_array_return_unresolved_test.v
 vlib/v/tests/consts/const_fixed_array_test.v
 vlib/v/tests/consts/const_fixed_array_with_type_alias_test.v
 vlib/v/tests/consts/const_fixed_array_with_var_item_test.v
+vlib/v/tests/consts/const_from_bytes_test.v
 vlib/v/tests/consts/const_from_comptime_if_expr_test.v
 vlib/v/tests/consts/const_from_multi_branchs_of_if_expr_test.v
 vlib/v/tests/consts/const_function_call_init_order_test.v

@@ -67,7 +67,6 @@ vlib/v/tests/comptime_pseudo_fn_with_dollar_test.v
 vlib/v/tests/conditions/ifs/if_expr_of_option_test.v
 vlib/v/tests/conditions/ifs/if_smartcast_test.v
 vlib/v/tests/consts/const_fixed_array_of_reference_value_test.v
-vlib/v/tests/consts/const_from_bytes_test.v
 vlib/v/tests/defer/defer_use_returned_value_test.v
 vlib/v/tests/enums/enum_test.v
 vlib/v/tests/fixed_array_2_dims_init_test.v
