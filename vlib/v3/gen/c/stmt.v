@@ -4363,7 +4363,12 @@ fn (mut g FlatGen) gen_decl_assign(node flat.Node) {
 					g.usable_expr_type(rhs_id)
 				} else if sum_field_type := g.selector_sum_shared_field_type(rhs_id) {
 					sum_field_type
-				} else if decl_annotation_is_unusable(decl_type, node.typ) {
+				} else if decl_type is types.Unknown
+					|| decl_annotation_is_unusable(decl_type, node.typ) {
+					// An unresolvable annotation (e.g. a leftover generic type parameter such
+					// as `T` inlined verbatim from a generic function body) parses to Unknown,
+					// whose C type would degrade to `int`. Recover the concrete type from the
+					// RHS expression, which still carries the specialized type.
 					rhs_type := g.decl_rhs_fallback_type(rhs_id, rhs)
 					if rhs_type is types.Unknown {
 						types.Type(decl_type)
