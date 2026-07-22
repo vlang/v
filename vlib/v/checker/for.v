@@ -99,14 +99,14 @@ fn (mut c Checker) for_in_stmt(mut node ast.ForInStmt) {
 				high_pos)
 		}
 
+		// At this point, it is guaranteed that both node.cond and node.high are integers
 		low_val := c.eval_comptime_const_expr(node.cond, 0)
 		high_val := c.eval_comptime_const_expr(node.high, 0)
 
 		// Check for empty ranges with comptime constant integer bounds
 		// TODO: fix case when a bound is overflowing (e.g. 0 .. max_u8 + 1)
 		// TODO: fix case where a bound is an operation with 2 different casts (e.g. 4 .. int(2) + u8(1))
-		if low_val != none && high_val != none && typ_idx in ast.integer_type_idxs
-			&& high_type_idx in ast.integer_type_idxs {
+		if low_val != none && high_val != none {
 			low_i64 := low_val.i64()
 			high_i64 := high_val.i64()
 
