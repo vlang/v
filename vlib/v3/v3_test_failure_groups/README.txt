@@ -14,7 +14,7 @@ Groups:
 - 08_v_tests_types_interfaces_sumtypes.txt: interfaces, structs, pointers, unions,
   and sum types (8)
 - 09_v_tests_misc_language_projects.txt: remaining vlib/v/tests language/project
-  tests (51)
+  tests (52)
 
 All ORM tests (vlib/orm, vlib/db *_orm_*, and vlib/v/tests/orm_*) are owned by a
 separate session and are tracked in v3_test_skipped.txt, not here. Do not add ORM

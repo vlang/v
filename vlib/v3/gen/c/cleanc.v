@@ -117,7 +117,6 @@ mut:
 	const_files                    map[string]string // const name -> declaring file (for import-alias type resolution)
 	const_init_order               []string
 	fixed_storage_consts           map[string]bool
-	address_taken_const_keys       map[string]bool // short-name key of consts whose address is taken (`&c`)
 	global_modules                 map[string]string
 	global_files                   map[string]string      // qualified global name -> declaring file (for import-alias type resolution)
 	global_inits                   map[string]flat.NodeId // qualified global name -> initializer value node
@@ -636,7 +635,6 @@ pub fn FlatGen.new() FlatGen {
 		const_files:                    map[string]string{}
 		const_init_order:               []string{}
 		fixed_storage_consts:           map[string]bool{}
-		address_taken_const_keys:       map[string]bool{}
 		global_modules:                 map[string]string{}
 		global_files:                   map[string]string{}
 		global_inits:                   map[string]flat.NodeId{}
@@ -1328,7 +1326,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.const_files.clear()
 	g.const_init_order = []string{}
 	g.fixed_storage_consts.clear()
-	g.address_taken_const_keys.clear()
 	g.global_modules.clear()
 	g.global_files.clear()
 	g.global_inits.clear()
@@ -8410,41 +8407,7 @@ fn (g &FlatGen) fixed_storage_candidate_primary_from_matched_node_for_collect(no
 	return primary
 }
 
-// const_address_key reduces a const name (raw ident, module-qualified, or
-// C-mangled) to a bare comparison key so an `&c` use site and the const's
-// declaration match regardless of how each spells the name.
-fn const_address_key(name string) string {
-	return name.all_after_last('.').all_after_last('__')
-}
-
-// collect_address_taken_consts records the consts whose address is taken with a
-// `&` prefix. Such consts cannot be emitted as `#define` value macros (a macro
-// has no storage to point at), so emit_const gives them addressable static
-// storage instead. Over-approximating (e.g. a local shadowing a const name)
-// only forces harmless storage, so matching on the bare name key is safe.
-fn (mut g FlatGen) collect_address_taken_consts() {
-	for idx := 0; idx < g.a.nodes.len; idx++ {
-		node := unsafe { &g.a.nodes[idx] }
-		if node.kind != .prefix || node.op != .amp || node.children_count == 0 {
-			continue
-		}
-		operand := g.a.node(g.a.child(node, 0))
-		key := if operand.kind == .ident {
-			operand.value
-		} else if operand.kind == .selector {
-			operand.value
-		} else {
-			continue
-		}
-		if key.len == 0 {
-			continue
-		}
-		g.address_taken_const_keys[const_address_key(key)] = true
-	}
-}
-
 fn (mut g FlatGen) collect_fixed_storage_consts() {
-	g.collect_address_taken_consts()
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
 	mut cur_module := 'main'
@@ -15694,18 +15657,10 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		|| ct in ['bool', 'char', 'i8', 'i16', 'i32', 'int', 'i64', 'u8', 'u16', 'u32', 'u64', 'f32', 'f64', 'float', 'double', 'isize', 'usize'] {
 		if qname == 'max_len' && ct == 'int' {
 			g.writeln('enum { ${qname} = ${expr_str} };')
-		} else if ct == 'u8' || g.name_collides_with_struct_field(qname)
-			|| (const_owner in ['', 'main']
-			&& g.address_taken_const_keys[const_address_key(name)]) {
+		} else if ct == 'u8' || g.name_collides_with_struct_field(qname) {
 			// A `#define` whose name matches a struct field would wrongly expand every
 			// `.field` access. Byte constants are also passed by reference by generic
-			// binary I/O helpers, and consts whose address is taken (`&c`) need a real
-			// object to point at, so all of these need addressable storage over a macro.
-			// The address-taken case is restricted to main-module consts: those are
-			// only referenced from the single program unit, so their static storage has
-			// one address. A `static const` in the shared prefix of an imported module
-			// would be duplicated per cached translation unit, so `&mod.c` from the main
-			// unit and a cached module function would observe different objects.
+			// binary I/O helpers, so they need addressable storage rather than a macro.
 			g.writeln('static const ${ct} ${qname} = ${expr_str};')
 		} else {
 			g.writeln('#define ${qname} (${expr_str})')

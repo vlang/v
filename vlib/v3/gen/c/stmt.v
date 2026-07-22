@@ -4096,15 +4096,18 @@ fn (g &FlatGen) lock_expr_multi_return_type(node flat.Node, count int) ?types.Mu
 fn (mut g FlatGen) gen_static_local_lazy_init(lhs_id flat.NodeId, rhs_id flat.NodeId) {
 	name := g.decl_lhs_str(lhs_id)
 	var_type := g.usable_expr_type(rhs_id)
+	ct := g.tc.c_type(var_type)
 	// Register the lhs as a local before emitting: this path skips the normal
 	// decl handling, so without this a later reference in the same function that
 	// shadows a const/global of the same name would resolve to that global's C
-	// name instead of the static local declared here.
+	// name instead of the static local declared here. track_local_pointer_storage_decl
+	// also records the shadowed-global mapping the ident emitter needs, otherwise
+	// reads/writes of a static local shadowing a global still target the global.
 	lhs := g.a.nodes[int(lhs_id)]
 	if lhs.kind == .ident && lhs.value.len > 0 {
-		g.tc.cur_scope.insert_with_owner(lhs.value, var_type)
+		owner := g.tc.cur_scope.insert_with_owner(lhs.value, var_type)
+		g.track_local_pointer_storage_decl(lhs, owner, var_type, ct)
 	}
-	ct := g.tc.c_type(var_type)
 	guard := '${name}_v3_static_inited'
 	g.writeln('static ${ct} ${name};')
 	g.writeln('static bool ${guard} = false;')
