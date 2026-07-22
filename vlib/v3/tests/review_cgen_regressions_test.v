@@ -110,20 +110,37 @@ fn main() {
 	assert c_code.contains('main__float_power = '), c_code
 }
 
-fn test_dynamic_array_power_assign_uses_power_helper() {
+fn test_array_power_assign_uses_power_helper() {
 	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'dynamic_array_power_assign', 'fn main() {
+	out := review_cgen_run_good(v3_bin, 'array_power_assign', 'struct IntList {
+mut:
+	values []int
+}
+
+fn (list IntList) [] (index int) int {
+	return list.values[index]
+}
+
+fn (mut list IntList) []= (index int, value int) {
+	list.values[index] = value
+}
+
+fn main() {
 	mut values := [2, 3]
 	values[0] **= 3
 	println(int_str(values[0]))
+	mut list := IntList{
+		values: [3]
+	}
+	list[0] **= 2
+	println(int_str(list.values[0]))
 }
 ')
-	assert out == '8'
-	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_dynamic_array_power_assign.c')) or {
-		panic(err)
-	}
+	assert out == '8\n9'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_array_power_assign.c')) or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('array__set(_a0,_i0,&(int[]){((int)__v_pow_i64('), c_code
+	assert compact.contains('IntList__op_index_set('), c_code
 	assert !c_code.contains(' ** '), c_code
 }
 

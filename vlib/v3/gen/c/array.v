@@ -3,6 +3,7 @@ module c
 import v3.flat
 import v3.gen.c.naming
 import v3.types
+import strings
 
 // array_like_type supports array like type handling for c.
 fn array_like_type(t types.Type) ?types.Array {
@@ -1080,6 +1081,11 @@ fn (mut g FlatGen) gen_index_overload_compound_set(lhs flat.Node, base_id flat.N
 }
 
 fn (mut g FlatGen) gen_index_overload_compound_value_expr(recv_tmp string, index_tmp string, setter types.CallInfo, getter types.CallInfo, assign_op flat.Op, infix_op flat.Op, rhs_id flat.NodeId) {
+	if infix_op == .power {
+		lhs_text := g.index_overload_cached_getter_call_string(recv_tmp, index_tmp, getter)
+		g.gen_power_expr_from_lhs_text(lhs_text, rhs_id, getter.return_type)
+		return
+	}
 	if infix_op == .plus && (index_overload_compound_type_is_string(getter.return_type)
 		|| (setter.params.len > 2 && index_overload_compound_type_is_string(setter.params[2]))) {
 		g.write('string__plus(')
@@ -1115,6 +1121,18 @@ fn (mut g FlatGen) gen_index_overload_cached_getter_call(recv_tmp string, index_
 	g.write('(')
 	g.gen_index_overload_cached_receiver_arg(recv_tmp, getter)
 	g.write(', ${index_tmp})')
+}
+
+fn (mut g FlatGen) index_overload_cached_getter_call_string(recv_tmp string, index_tmp string, getter types.CallInfo) string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	g.line_start = false
+	g.gen_index_overload_cached_getter_call(recv_tmp, index_tmp, getter)
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	return result
 }
 
 fn index_overload_compound_type_is_string(typ types.Type) bool {
@@ -1339,7 +1357,11 @@ fn (mut g FlatGen) gen_index_operator_compound_assign(node flat.Node, lhs flat.N
 	g.gen_index_operator_tmp_arg(index_tmp, index_storage, setter.params[1])
 	g.write(', ')
 	if op := compound_assign_to_infix_op(node.op) {
-		if op == .plus && (g.index_operator_type_is_string_like(getter.return_type)
+		if op == .power {
+			lhs_text := g.index_operator_get_call_from_temps_string(getter, recv_tmp, recv_storage,
+				index_tmp, index_storage)
+			g.gen_power_expr_from_lhs_text(lhs_text, rhs_id, getter.return_type)
+		} else if op == .plus && (g.index_operator_type_is_string_like(getter.return_type)
 			|| g.index_operator_type_is_string_like(setter.params[2])) {
 			g.write('string__plus(')
 			g.gen_index_operator_get_call_from_temps(getter, recv_tmp, recv_storage, index_tmp,
@@ -1394,6 +1416,19 @@ fn (mut g FlatGen) gen_index_operator_get_call_from_temps(getter types.CallInfo,
 	g.write(', ')
 	g.gen_index_operator_tmp_arg(index_tmp, index_storage, getter.params[1])
 	g.write(')')
+}
+
+fn (mut g FlatGen) index_operator_get_call_from_temps_string(getter types.CallInfo, recv_tmp string, recv_storage types.Type, index_tmp string, index_storage types.Type) string {
+	orig := g.sb
+	orig_line_start := g.line_start
+	g.sb = strings.new_builder(64)
+	g.line_start = false
+	g.gen_index_operator_get_call_from_temps(getter, recv_tmp, recv_storage, index_tmp,
+		index_storage)
+	result := g.sb.str()
+	g.sb = orig
+	g.line_start = orig_line_start
+	return result
 }
 
 fn (mut g FlatGen) gen_index_operator_tmp_arg(index_tmp string, actual types.Type, expected types.Type) {
