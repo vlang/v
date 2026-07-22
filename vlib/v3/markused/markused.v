@@ -7209,8 +7209,19 @@ fn (c &CallCollector) collect_omitted_params_default_calls(call &flat.Node, call
 			param_type_texts << p.typ
 		}
 	}
-	provided := int(call.children_count) - 1
-	if provided < 0 || provided >= param_type_texts.len {
+	// Count only positional arguments. Trailing named params
+	// (`compress(data, level: 3)`) are `field_init` children of the call, not
+	// positional arguments; counting them would make the trailing params struct
+	// look fully provided and skip collecting its omitted field defaults.
+	mut provided := 0
+	for i in 1 .. int(call.children_count) {
+		arg := c.a.child_node(call, i)
+		if arg.kind == .field_init {
+			continue
+		}
+		provided++
+	}
+	if provided >= param_type_texts.len {
 		return
 	}
 	fn_imports := c.imports(info.import_context)

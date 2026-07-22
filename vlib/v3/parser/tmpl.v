@@ -511,11 +511,15 @@ fn process_tmpl_includes(dir string, line string, mut seen map[string]bool) []st
 		file_path = os.real_path(file_path)
 	}
 	if file_path in seen {
-		// Circular include: stop expanding.
+		// The file is on the current include stack: a circular include. Stop
+		// expanding. (A partial already fully expanded and popped is NOT in `seen`,
+		// so the same partial may legitimately be included more than once.)
 		return []
 	}
-	seen[file_path] = true
 	content := os.read_lines(file_path) or { return [] }
+	// Mark this file as on the current recursion stack while its own includes are
+	// resolved, then pop it so a later sibling include of the same file still expands.
+	seen[file_path] = true
 	base := os.dir(file_path)
 	mut out := []string{}
 	for l in content {
@@ -525,6 +529,7 @@ fn process_tmpl_includes(dir string, line string, mut seen map[string]bool) []st
 			out << l
 		}
 	}
+	seen.delete(file_path)
 	return out
 }
 
@@ -867,9 +872,13 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 			lhs_id := p.a.child(&node, 0)
 			lhs := p.a.nodes[int(lhs_id)]
 			bind_op := if node.kind == .decl_assign { ':=' } else { '=' }
+			// `mut x := $tmpl(...)` records its mutability on the decl_assign node
+			// (see mark_node_mut); re-emit `mut` so the reparsed binding is not
+			// lowered as an immutable local and reject later mutation of `x`.
+			mut_prefix := if node.kind == .decl_assign && node.is_mut { 'mut ' } else { '' }
 			bname, mut src := p.veb_template_builder_source(rhs)
 			value_expr := if rhs.typ == 'html' { 'ctx.html(${bname})' } else { bname }
-			src += '\n${lhs.value} ${bind_op} ${value_expr}\n'
+			src += '\n${mut_prefix}${lhs.value} ${bind_op} ${value_expr}\n'
 			return p.parse_stmts_from_source(src)
 		}
 	}
