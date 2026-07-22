@@ -5706,11 +5706,15 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 						}
 					}
 				}
+				arg_type := if arg_idx >= 0 && arg_idx < typed_param_count {
+					g.usable_expr_type(arg_id)
+				} else {
+					types.Type(types.void_)
+				}
 				mut needs_addr := false
 				if !is_c_call && arg_idx < typed_param_count
 					&& param_types[arg_idx] is types.Pointer && !(arg_node.kind == .prefix
 					&& arg_node.op == .amp) && !g.arg_is_null_pointer_literal(arg_id, arg_node) {
-					arg_type := g.usable_expr_type(arg_id)
 					arg_is_pointer_param := arg_node.kind == .ident && c_type_is_pointer_like(g.current_param_type(arg_node.value) or {
 						types.Type(types.void_)
 					})
@@ -5733,7 +5737,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 					}
 				}
 				if arg_idx < typed_param_count
-					&& g.voidptr_value_arg_needs_address(arg_id, arg_node, g.usable_expr_type(arg_id), param_types[arg_idx], is_c_call) {
+					&& g.voidptr_value_arg_needs_address(arg_id, arg_node, arg_type, param_types[arg_idx], is_c_call) {
 					needs_addr = true
 				}
 				if !is_c_call && !needs_addr && arg_idx == 0
@@ -5802,7 +5806,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node flat.Node) {
 							&& g.gen_pointer_backed_param_arg(arg_id, param_types[arg_idx]) {
 							// handled
 						} else if !is_c_call && arg_idx < typed_param_count
-							&& g.gen_embedded_interface_receiver(arg_id, g.usable_expr_type(arg_id), param_types[arg_idx], param_types[arg_idx] is types.Pointer) {
+							&& g.gen_embedded_interface_receiver(arg_id, arg_type, param_types[arg_idx], param_types[arg_idx] is types.Pointer) {
 							// handled
 						} else if !is_c_call && arg_idx < typed_param_count {
 							g.gen_expr_with_expected_type(arg_id, param_types[arg_idx])
