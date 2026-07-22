@@ -12882,6 +12882,15 @@ fn (tc &TypeChecker) expr_compatible(expr_id flat.NodeId, actual Type, expected 
 	return tc.type_compatible(actual, expected) || tc.zero_literal_can_be_pointer(expr_id, expected)
 		|| tc.int_literal_can_be_char(expr_id, expected)
 		|| tc.optional_pointer_expr_compatible(expr_id, actual, expected)
+		|| tc.failure_literal_expr_compatible(expr_id, actual, expected)
+}
+
+fn (tc &TypeChecker) failure_literal_expr_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
+	tail_id := tc.branch_tail_expr_id(expr_id)
+	if !tc.valid_node_id(tail_id) {
+		return false
+	}
+	return tc.if_branch_type_compatible_with_context(actual, tail_id, expected)
 }
 
 fn (tc &TypeChecker) optional_pointer_expr_compatible(expr_id flat.NodeId, actual Type, expected Type) bool {
@@ -22684,7 +22693,7 @@ fn (tc &TypeChecker) type_compatible(actual Type, expected Type) bool {
 	if actual is None {
 		return expected is OptionType || expected is ResultType || is_ierror_type(expected)
 	}
-	if is_option_void_type(actual) && (expected is OptionType || is_ierror_type(expected)) {
+	if is_option_void_type(actual) && is_ierror_type(expected) {
 		return true
 	}
 	if expected is OptionType {
@@ -23056,6 +23065,30 @@ fn const_expr_paren_wraps_whole(s string) bool {
 	return false
 }
 
+@[ignore_overflow]
+fn const_int_power(base int, exponent int) int {
+	mut exp := exponent
+	mut power := base
+	mut value := 1
+	if exp < 0 {
+		if base == 0 {
+			return -1
+		}
+		if base != 1 && base != -1 {
+			return 0
+		}
+		return if exp & 1 != 0 { base } else { 1 }
+	}
+	for exp > 0 {
+		if exp & 1 != 0 {
+			value *= power
+		}
+		power *= power
+		exp >>= 1
+	}
+	return value
+}
+
 // const_int_value supports const int value handling for TypeChecker.
 pub fn (tc &TypeChecker) const_int_value(name string, seen []string) ?int {
 	return tc.const_int_value_in_module(name, tc.cur_module, seen)
@@ -23114,13 +23147,14 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 	// Operators grouped by precedence level, lowest first, MATCHING the v3 parser's binding
 	// power (token.left_binding_power) so a length text recovered from source folds to the
 	// same value as the AST const evaluator below: `|` < `^` < `<< >> >>>` < `+ -` <
-	// `* / % &`. The parser keeps shifts below additive operators (so `arr << a + b` appends
-	// `a + b`), hence `1 << 2 + 1` groups as `1 << (2 + 1)` — split on `<<` before `+` here
-	// too, not the reverse. Split on the rightmost top-level operator of the lowest level
-	// present; longer operators match first (`>>>` before `>>`, two-char before one) and
-	// `idx + op.len` skips the operator.
+	// `* / % &`, then `**`. The parser keeps shifts below additive operators, so
+	// `1 << 2 + 1` groups as `1 << (2 + 1)`. Split on `<<` before `+` here. Split on
+	// the rightmost top-level operator of the lowest level. Power is right-associative, so
+	// it instead splits on its first top-level operator.
+	// Longer operators match first (`>>>` before `>>`, two-char before one) and `idx + op.len`
+	// skips the operator.
 	for level in [['|'], ['^'], ['<<', '>>', '>>>'], ['+', '-'],
-		['*', '/', '%', '&']] {
+		['*', '/', '%', '&'], ['**']] {
 		mut idx := -1
 		mut op := ''
 		mut depth := 0
@@ -23146,6 +23180,14 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 					continue
 				}
 				two := if i + 2 <= expr.len { expr[i..i + 2] } else { '' }
+				if two == '**' {
+					if two in level && idx < 0 {
+						idx = i
+						op = two
+					}
+					i += 2
+					continue
+				}
 				if two.len == 2 && two in level {
 					idx = i
 					op = two
@@ -23186,6 +23228,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 			'&' { l & r }
 			'<<' { int(u64(l) << r) }
 			'>>' { l >> r }
+			'**' { const_int_power(l, r) }
 			else { int(u64(l) >> r) }
 		}
 	}
@@ -23298,6 +23341,9 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []s
 				}
 				.mul {
 					return left * right
+				}
+				.power {
+					return const_int_power(left, right)
 				}
 				.div {
 					if right == 0 {

@@ -72,6 +72,26 @@ fn test_reject_cross_wrapper_option_result_returns() {
 		'cannot return `?Item` as `&Item`')
 }
 
+fn test_option_void_is_not_compatible_with_payload_options() {
+	v3_bin := build_v3_review_checker()
+	out := run_good(v3_bin, 'good_unsafe_none_option_default', 'struct Holder {
+	value ?int = unsafe { none }
+}
+
+fn main() {
+	holder := Holder{}
+	println((holder.value == none).str())
+}
+')
+	assert out == 'true'
+	run_bad(v3_bin, 'bad_option_void_returned_as_option_int',
+		'fn empty() ? {\n\treturn\n}\n\nfn value() ?int {\n\treturn empty()\n}\n\nfn main() {}\n',
+		'cannot return `?void` as `?int`')
+	run_bad(v3_bin, 'bad_option_void_assigned_to_option_int',
+		'fn empty() ? {\n\treturn\n}\n\nfn main() {\n\tmut value := ?int(1)\n\tvalue = empty()\n}\n',
+		'cannot assign `?void` to `?int`')
+}
+
 fn test_optional_address_preserves_wrapper_shape() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'optional_address_wrapper_shape', 'fn take_wrapper(value &?int) {

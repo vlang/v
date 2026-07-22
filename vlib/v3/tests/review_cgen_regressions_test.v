@@ -74,6 +74,10 @@ fn test_power_consts_are_initialized_at_runtime() {
 const max_len = 2 ** 3
 const address_power = 3 ** 2
 const float_power = 9.0 ** 0.5
+const array_len = 2 ** 3
+
+type NamedPowerArray = [array_len]int
+type DirectPowerArray = [2 ** 2]int
 
 fn read_int(value &int) int {
 	return *value
@@ -88,9 +92,11 @@ fn main() {
 	println(int_str(max_len))
 	println(int_str(read_int(&address_power)))
 	println(read_float(&float_power).str())
+	println(int_str(NamedPowerArray{}.len))
+	println(int_str(DirectPowerArray{}.len))
 }
 ')
-	assert out == '8\n8\n9\n3.0'
+	assert out == '8\n8\n9\n3.0\n8\n4'
 	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_power_const_runtime_init.c')) or {
 		panic(err)
 	}
