@@ -9539,6 +9539,10 @@ fn (mut g FlatGen) gen_expr(id flat.NodeId) {
 				g.expected_enum = old_expected_enum
 				return
 			}
+			if g.gen_map_infix_eq(node, lhs_id, rhs_id, lhs_type, rhs_type) {
+				g.expected_enum = old_expected_enum
+				return
+			}
 			if lhs_type is types.String || rhs_type is types.String {
 				if g.gen_string_infix_fallback(node, lhs_id, rhs_id) {
 					g.expected_enum = old_expected_enum
@@ -11291,6 +11295,41 @@ fn (mut g FlatGen) gen_string_infix_fallback(node flat.Node, lhs_id flat.NodeId,
 	}
 
 	return true
+}
+
+// gen_map_infix_eq lowers `map == map` / `map != map` to the runtime map
+// equality helper. C cannot compare `struct map` values with `==`, so without
+// this the generated comparison fails to compile.
+fn (mut g FlatGen) gen_map_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
+	if node.op !in [.eq, .ne] {
+		return false
+	}
+	lhs_is_map := map_str_clean_type(types.unwrap_pointer(lhs_type)) is types.Map
+	rhs_is_map := map_str_clean_type(types.unwrap_pointer(rhs_type)) is types.Map
+	if !lhs_is_map || !rhs_is_map {
+		return false
+	}
+	if node.op == .ne {
+		g.write('!')
+	}
+	g.write('v3_map_map_eq(')
+	g.gen_map_value_arg(lhs_id, lhs_type)
+	g.write(', ')
+	g.gen_map_value_arg(rhs_id, rhs_type)
+	g.write(')')
+	return true
+}
+
+// gen_map_value_arg emits a `map` value operand, dereferencing a map pointer so
+// the runtime helper receives the map by value.
+fn (mut g FlatGen) gen_map_value_arg(base_id flat.NodeId, base_type types.Type) {
+	if base_type is types.Pointer {
+		g.write('*(')
+		g.gen_expr(base_id)
+		g.write(')')
+	} else {
+		g.gen_expr(base_id)
+	}
 }
 
 fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
