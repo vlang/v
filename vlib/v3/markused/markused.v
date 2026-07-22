@@ -736,28 +736,6 @@ fn interface_dispatch_dotted_name(name string, tc &types.TypeChecker) ?string {
 	return none
 }
 
-// interface_dispatch_implementer_aliases returns the function-name aliases
-// markused enqueues for each concrete implementation of an interface dispatch.
-pub fn interface_dispatch_implementer_aliases(name string, cur_module string, tc &types.TypeChecker) [][]string {
-	dotted_name := interface_dispatch_dotted_name(name, tc) or { return [][]string{} }
-	recv := dotted_name.all_before_last('.')
-	method := dotted_name.all_after_last('.')
-	iface_name := interface_name_for_receiver(recv, cur_module, tc) or { return [][]string{} }
-	if tc.interface_method_signature_key(iface_name, method) == none {
-		return [][]string{}
-	}
-	impls := if markused_is_ierror_interface_name(iface_name) {
-		tc.ierror_impl_names()
-	} else {
-		tc.interface_impl_names(iface_name)
-	}
-	mut result := [][]string{cap: impls.len}
-	for impl in impls {
-		result << interface_implementer_method_aliases(impl, method, tc)
-	}
-	return result
-}
-
 fn markused_is_ierror_interface_name(name string) bool {
 	return name == 'IError' || name == 'builtin.IError'
 }

@@ -2251,86 +2251,44 @@ fn incremental_changed_functions(snapshot V3IncrementalSnapshot, old map[string]
 	return keys, names
 }
 
-fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, tc &types.TypeChecker, changed_names map[string]bool, cached map[string]bool) bool {
+fn incremental_changed_functions_require_reachability_rebuild(a &flat.FlatAst, tc &types.TypeChecker, changed_names map[string]bool, cached map[string]bool, user_files []string) bool {
 	if changed_names.len == 0 {
 		return false
 	}
-	mut program_aliases := map[string][]string{}
-	mut changed_roots := []flat.NodeId{}
-	mut changed_root_modules := map[int]string{}
+	current, _ := markused.mark_used_with_generic_usage(a, tc)
+	mut program_files := map[string]bool{}
+	for file in user_files {
+		program_files[file] = true
+		program_files[os.real_path(file)] = true
+	}
 	mut cur_module := ''
+	mut is_program_file := false
 	for node_idx in tc.top_level_idx {
 		node := a.nodes[node_idx]
 		match node.kind {
 			.file {
 				cur_module = ''
+				is_program_file = program_files[node.value]
+					|| program_files[os.real_path(node.value)]
 			}
 			.module_decl {
 				cur_module = node.value
 			}
 			.fn_decl {
-				name := incremental_qualified_fn_name(cur_module, node.value)
-				if changed_names[name] {
-					changed_roots << flat.NodeId(node_idx)
-					changed_root_modules[node_idx] = cur_module
+				if !is_program_file {
+					continue
 				}
+				name := incremental_qualified_fn_name(cur_module, node.value)
 				aliases := [node.value, name, restored_fn_c_name(node.value),
 					restored_fn_c_name(name)]
-				for alias in aliases {
-					program_aliases[alias] = aliases
+				if !aliases.any(current[it]) {
+					continue
+				}
+				if !aliases.any(cached[it]) {
+					return true
 				}
 			}
 			else {}
-		}
-	}
-	mut stack := []flat.NodeId{cap: 256}
-	for root in changed_roots {
-		root_module := changed_root_modules[int(root)] or { '' }
-		stack.clear()
-		stack << root
-		for stack.len > 0 {
-			id := stack.pop()
-			idx := int(id)
-			if idx < 0 || idx >= a.nodes.len {
-				continue
-			}
-			node := a.nodes[idx]
-			mut referenced_name := ''
-			if node.kind == .call {
-				referenced_name = tc.resolved_call_name(id) or { '' }
-			} else if idx < tc.resolved_fn_value_set.len && tc.resolved_fn_value_set[idx] {
-				referenced_name = tc.resolved_fn_value_names[idx]
-			}
-			if referenced_name.len > 0 {
-				for aliases in markused.interface_dispatch_implementer_aliases(referenced_name,
-					root_module, tc) {
-					mut was_cached := false
-					for alias in aliases {
-						if cached[alias] {
-							was_cached = true
-							break
-						}
-					}
-					if !was_cached {
-						return true
-					}
-				}
-				if aliases := program_aliases[referenced_name] {
-					mut was_cached := false
-					for alias in aliases {
-						if cached[alias] {
-							was_cached = true
-							break
-						}
-					}
-					if !was_cached {
-						return true
-					}
-				}
-			}
-			for child_idx in 0 .. node.children_count {
-				stack << a.child(&node, child_idx)
-			}
 		}
 	}
 	return false
@@ -4071,7 +4029,7 @@ fn main() {
 			used_fns = clone_string_bool_map(cached_program_used_fns)
 			uses_generics = true
 			if incremental_cache_hit
-				&& incremental_changed_functions_require_reachability_rebuild(a, markused_tc, incremental_changed_names, cached_program_used_fns) {
+				&& incremental_changed_functions_require_reachability_rebuild(a, markused_tc, incremental_changed_names, cached_program_used_fns, user_files) {
 				os.setenv('V3_CACHE_DISABLE_INCREMENTAL', '1', true)
 				restart_v3_after_cache_invalidation()
 			}
