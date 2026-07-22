@@ -68,6 +68,42 @@ fn review_cgen_run_bad_project(v3_bin string, name string, files map[string]stri
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
 }
 
+fn test_power_consts_are_initialized_at_runtime() {
+	v3_bin := build_v3_review_cgen()
+	out := review_cgen_run_good(v3_bin, 'power_const_runtime_init', 'const byte_power = u8(2 ** 3)
+const max_len = 2 ** 3
+const address_power = 3 ** 2
+const float_power = 9.0 ** 0.5
+
+fn read_int(value &int) int {
+	return *value
+}
+
+fn read_float(value &f64) f64 {
+	return *value
+}
+
+fn main() {
+	println(int_str(int(byte_power)))
+	println(int_str(max_len))
+	println(int_str(read_int(&address_power)))
+	println(read_float(&float_power).str())
+}
+')
+	assert out == '8\n8\n9\n3.0'
+	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_power_const_runtime_init.c')) or {
+		panic(err)
+	}
+	assert c_code.contains('u8 main__byte_power;'), c_code
+	assert c_code.contains('int main__max_len;'), c_code
+	assert c_code.contains('int main__address_power;'), c_code
+	assert c_code.contains('double main__float_power;'), c_code
+	assert c_code.contains('main__byte_power = '), c_code
+	assert c_code.contains('main__max_len = '), c_code
+	assert c_code.contains('main__address_power = '), c_code
+	assert c_code.contains('main__float_power = '), c_code
+}
+
 fn test_numbered_string_identifiers_do_not_collide_with_literal_symbols() {
 	v3_bin := build_v3_review_cgen()
 	out := review_cgen_run_good(v3_bin, 'numbered_string_identifier_collision', 'struct Named {

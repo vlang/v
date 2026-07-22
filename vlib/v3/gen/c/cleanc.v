@@ -16367,8 +16367,14 @@ fn (mut g FlatGen) is_const_expr_inner(id flat.NodeId, mut visiting map[int]bool
 			}
 		}
 		.infix {
-			g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
-				&& g.is_const_expr_inner(g.a.child(&node, 1), mut visiting)
+			// Power lowers to a helper or pow() call, neither of which is a valid C
+			// constant expression. Initialize power-containing consts in _vinit.
+			if node.op == .power {
+				false
+			} else {
+				g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
+					&& g.is_const_expr_inner(g.a.child(&node, 1), mut visiting)
+			}
 		}
 		.paren {
 			g.is_const_expr_inner(g.a.child(&node, 0), mut visiting)
