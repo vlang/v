@@ -2326,7 +2326,6 @@ vlib/v/tests/options/option_nested_struct_test.v
 vlib/v/tests/options/option_nested_unwrapping_test.v
 vlib/v/tests/options/option_none_to_anon_struct_test.v
 vlib/v/tests/options/option_operator_overload_test.v
-vlib/v/tests/options/option_optional_param_test.v
 vlib/v/tests/options/option_or_block_test.v
 vlib/v/tests/options/option_or_expr_dump_test.v
 vlib/v/tests/options/option_or_expr_with_non_opt_test.v

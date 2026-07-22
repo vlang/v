@@ -5,6 +5,7 @@ vlib/v/tests/comptime/comptime_if_fn_type_signature_test.v
 vlib/v/tests/comptime/comptime_kinds_test.v
 vlib/v/tests/options/option_mut_struct_init_test.v
 vlib/v/tests/options/option_none_guard_return_unwrap_test.v
+vlib/v/tests/options/option_optional_param_test.v
 vlib/v/tests/options/option_sum_type_test.v
 vlib/v/tests/options/option_sumtype_variant_test.v
 vlib/v/tests/options/option_var_test.v

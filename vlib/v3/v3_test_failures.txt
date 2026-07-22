@@ -116,6 +116,7 @@ vlib/v/tests/modules/function_types_from_module/function_types_from_module_test.
 vlib/v/tests/modules/methods_struct_another_module/methods_struct_test.v
 vlib/v/tests/options/option_mut_struct_init_test.v
 vlib/v/tests/options/option_none_guard_return_unwrap_test.v
+vlib/v/tests/options/option_optional_param_test.v
 vlib/v/tests/options/option_sum_type_test.v
 vlib/v/tests/options/option_sumtype_variant_test.v
 vlib/v/tests/options/option_var_test.v

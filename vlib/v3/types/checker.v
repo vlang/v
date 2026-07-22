@@ -3481,7 +3481,7 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
-		if arg_type is MultiReturn {
+		if arg_type is MultiReturn && i == node.children_count - 1 {
 			actual_count += arg_type.types.len - 1
 		}
 	}
@@ -3505,7 +3505,8 @@ fn (mut tc TypeChecker) annotate_call_expected_exprs(id flat.NodeId, node flat.N
 			continue
 		}
 		arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
-		if arg_type is MultiReturn {
+		if arg_type is MultiReturn && i == node.children_count - 1
+			&& arg_type.types.len == info.params.len - param_idx {
 			expanded_arg_offset += arg_type.types.len - 1
 			continue
 		}
@@ -16665,7 +16666,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
-		if arg_type is MultiReturn {
+		if arg_type is MultiReturn && i == node.children_count - 1 {
 			actual_count += arg_type.types.len - 1
 		}
 	}
@@ -16827,7 +16828,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			tc.check_node(check_arg_id)
 		}
 		multi_arg_type := tc.cached_expr_type(check_arg_id) or { tc.resolve_type(check_arg_id) }
-		if multi_arg_type is MultiReturn {
+		if multi_arg_type is MultiReturn && i == node.children_count - 1
+			&& multi_arg_type.types.len == info.params.len - param_idx {
 			for multi_idx, actual in multi_arg_type.types {
 				multi_param_idx := param_idx + multi_idx
 				if multi_param_idx >= info.params.len {
@@ -18033,7 +18035,7 @@ fn (tc &TypeChecker) min_required_arg_count(info CallInfo) int {
 	mut n := info.params.len
 	for n > 0 {
 		param := info.params[n - 1]
-		if tc.is_params_struct_type(param) || unalias_type(param) is OptionType {
+		if tc.is_params_struct_type(param) {
 			n--
 			continue
 		}
