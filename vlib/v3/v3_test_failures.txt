@@ -137,8 +137,6 @@ vlib/v/tests/indexexpr_with_anon_fn_test.v
 vlib/v/tests/init_global_test.v
 vlib/v/tests/interfaces/interface_edge_cases/voidptr_casted_as_an_interface_test.v
 vlib/v/tests/interfaces/interface_embedding_with_interface_para_test.v
-vlib/v/tests/interfaces/interface_generic_multi_return_test.v
-vlib/v/tests/interfaces/interface_generic_pool_cast_multi_type_test.v
 vlib/v/tests/interfaces/interface_match_smartcast_array_test.v
 vlib/v/tests/interfaces/interface_method_closure_test.v
 vlib/v/tests/match_multi_return_closure_heap_test.v

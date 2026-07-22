@@ -2036,6 +2036,8 @@ vlib/v/tests/interfaces/interface_fields_typearray_test.v
 vlib/v/tests/interfaces/interface_fixed_array_ret_test.v
 vlib/v/tests/interfaces/interface_fn_return_array_of_interface_test.v
 vlib/v/tests/interfaces/interface_fn_return_with_struct_init_test.v
+vlib/v/tests/interfaces/interface_generic_multi_return_test.v
+vlib/v/tests/interfaces/interface_generic_pool_cast_multi_type_test.v
 vlib/v/tests/interfaces/interface_generic_test.v
 vlib/v/tests/interfaces/interface_implicit_str_method_test.v
 vlib/v/tests/interfaces/interface_int_test.v
