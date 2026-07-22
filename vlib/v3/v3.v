@@ -1639,7 +1639,7 @@ fn v3_cgen_cache_input(state &V3ModuleCacheState, user_files []string, user_c_fl
 		}
 	}
 	if state.external_inputs_ready {
-		dependencies['external-state:manifest'] = 'v3-external-inputs-1'
+		dependencies['external-state:manifest'] = 'v3-external-inputs-2'
 		mut root_modules := state.module_native_roots.keys()
 		root_modules.sort()
 		for module_name in root_modules {
@@ -1676,7 +1676,7 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		cache_input_modules[module_name] = true
 	}
 	cache_input_modules['main'] = true
-	external_inputs, native_source_roots, resolution_dirs, missing_resolution_paths, has_untracked_c_include := cgen.cache_external_input_files_with_resolved_flags(a,
+	external_inputs, native_source_roots, unscoped_inputs, resolution_dirs, missing_resolution_paths, has_untracked_c_include := cgen.cache_external_input_files_with_resolved_flags(a,
 		prefs.vroot, cache_input_modules, user_c_flags, prefs.target)
 	state.module_external_inputs = external_inputs.clone()
 	state.module_native_roots = native_source_roots.clone()
@@ -1687,7 +1687,8 @@ fn prepare_v3_cache_external_inputs(mut state V3ModuleCacheState, a &flat.FlatAs
 		&& !v3_path_is_within(it, real_cache_dir))
 	state.external_missing_paths = missing_resolution_paths.filter(
 		!v3_path_is_within(it, cache_dir) && !v3_path_is_within(it, real_cache_dir))
-	native_source_modules, can_scope_static_inputs := cache_external_input_owner_modules(state)
+	native_source_modules, can_scope_static_inputs := cache_external_input_owner_modules(state,
+		unscoped_inputs)
 	state.native_source_modules = native_source_modules.clone()
 	state.external_inputs_ready = true
 	return !has_untracked_c_include && can_scope_static_inputs
@@ -1723,7 +1724,7 @@ fn restore_v3_cache_external_inputs(mut state V3ModuleCacheState, user_files []s
 		'external-root:', 'external-owner:', 'external-dir:', 'external-missing:', 'external-state:']) or {
 		return false
 	}
-	if restored['external-state:manifest'] or { '' } != 'v3-external-inputs-1' {
+	if restored['external-state:manifest'] or { '' } != 'v3-external-inputs-2' {
 		return false
 	}
 	mut external_inputs := map[string][]string{}
@@ -5638,8 +5639,16 @@ fn restart_v3_with_args(extra_args []string) {
 	}
 }
 
-fn cache_external_input_owner_modules(state &V3ModuleCacheState) (map[string]bool, bool) {
+fn cache_external_input_owner_modules(state &V3ModuleCacheState, unscoped_inputs map[string][]string) (map[string]bool, bool) {
 	mut modules := map[string]bool{}
+	for _, paths in unscoped_inputs {
+		for path in paths {
+			source := os.read_file(path) or { continue }
+			if modulecache.c_source_has_static_storage(source) {
+				return modules, false
+			}
+		}
+	}
 	for raw_module_name, paths in state.module_external_inputs {
 		mut has_static_storage := false
 		for path in paths {

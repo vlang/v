@@ -379,22 +379,34 @@ fn test_cache_input_scan_separates_native_source_roots_from_dependencies() {
 	}
 	root_source := os.join_path(dir, 'root.c')
 	nested_source := os.join_path(dir, 'nested.c')
+	direct_header := os.join_path(dir, 'direct.h')
+	nested_header := os.join_path(dir, 'nested.h')
 	os.write_file(root_source, '#include "nested.c"\n') or { panic(err) }
 	os.write_file(nested_source, 'static int nested_value(void) { return 42; }\n') or { panic(err) }
+	os.write_file(direct_header, '#include "nested.h"\n') or { panic(err) }
+	os.write_file(nested_header, 'static int header_value(void) { return 1; }\n') or { panic(err) }
 	source := os.join_path(dir, 'sample.v')
-	os.write_file(source, 'module sample\n#include "root.c"\n') or { panic(err) }
+	os.write_file(source, 'module sample\n#include "root.c"\n#include "direct.h"\n') or {
+		panic(err)
+	}
 	mut prefs := pref.new_preferences()
 	prefs.target = pref.host_target()
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(source)
-	inputs, native_roots, has_untracked := cache_external_input_files(a, '', {
+	inputs, native_roots, unscoped_inputs, _, _, has_untracked := cache_external_input_files_with_resolved_flags(a,
+		'', {
 		'sample': true
 	}, [], prefs.target)
 	assert !has_untracked
-	mut expected_inputs := [os.real_path(root_source), os.real_path(nested_source)]
+	mut expected_inputs := [os.real_path(root_source), os.real_path(nested_source),
+		os.real_path(direct_header), os.real_path(nested_header)]
 	expected_inputs.sort()
 	assert inputs['sample'] == expected_inputs
 	assert native_roots['sample'] == [os.real_path(root_source)]
+	mut expected_unscoped_inputs := [os.real_path(direct_header),
+		os.real_path(nested_header)]
+	expected_unscoped_inputs.sort()
+	assert unscoped_inputs['sample'] == expected_unscoped_inputs
 }
 
 fn test_termux_comptime_branch_uses_canonical_target() {

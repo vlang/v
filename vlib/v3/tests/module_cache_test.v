@@ -911,6 +911,59 @@ fn main() {
 	assert module_cache_artifact(cache_dir, 'native_', '.o').len == 0
 }
 
+fn test_mixed_native_root_and_static_header_disables_module_cache_split() {
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_module_cache_mixed_static_header_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'state.h', '#ifndef V3_MIXED_STATIC_HEADER_STATE_H
+#define V3_MIXED_STATIC_HEADER_STATE_H
+
+static int v3_mixed_static_header_state = 40;
+
+static int v3_mixed_static_header_next(void) {
+	return ++v3_mixed_static_header_state;
+}
+
+#endif
+')
+	write_module_cache_file(root, 'native/root.c', 'int v3_mixed_native_root_value(void) {
+	return 0;
+}
+')
+	write_module_cache_file(root, 'native/native.v', 'module native
+
+#include "@DIR/root.c"
+#include "@DIR/../state.h"
+
+fn C.v3_mixed_native_root_value() int
+fn C.v3_mixed_static_header_next() int
+
+pub fn next() int {
+	return C.v3_mixed_native_root_value() + C.v3_mixed_static_header_next()
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+import native
+
+fn C.v3_mixed_static_header_next() int
+
+fn main() {
+	println(native.next() + C.v3_mixed_static_header_next())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	output := os.join_path(root, 'program')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, output)
+	assert run_module_cache_binary(output) == '83'
+	assert module_cache_artifact(cache_dir, 'native_', '.o').len == 0
+}
+
 fn test_shared_static_storage_header_disables_module_cache_split() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_shared_static_header_${os.getpid()}')
