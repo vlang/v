@@ -906,15 +906,24 @@ fn (p &Parser) resolve_tmpl_path_arg(id flat.NodeId) string {
 // resolves `controller/get/all/task.html` in addition to the flat filename.
 fn (p &Parser) resolve_veb_template_path(is_html bool, arg string) string {
 	dir := os.dir(os.real_path(p.cur_file))
+	vmod_dir := nearest_vmod_dir(dir)
 	if is_html && arg.len == 0 {
 		fn_name := p.cur_fn.all_after_last('.')
 		split_name := fn_name.split('_').join(os.path_separator)
-		candidates := [
+		mut candidates := [
 			os.join_path_single(dir, '${split_name}.html'),
 			os.join_path_single(dir, '${fn_name}.html'),
 			os.join_path(dir, 'templates', '${split_name}.html'),
 			os.join_path(dir, 'templates', '${fn_name}.html'),
 		]
+		// A handler in a module subdirectory keeps its templates under the module
+		// root's `templates/` (next to `v.mod`); include those before failing.
+		if root := vmod_dir {
+			if root != dir {
+				candidates << os.join_path(root, 'templates', '${split_name}.html')
+				candidates << os.join_path(root, 'templates', '${fn_name}.html')
+			}
+		}
 		for c in candidates {
 			if os.exists(c) {
 				return c
@@ -933,7 +942,39 @@ fn (p &Parser) resolve_veb_template_path(is_html bool, arg string) string {
 	if os.exists(in_templates) {
 		return in_templates
 	}
+	// Fall back to the nearest `v.mod` root: routes kept in subdirectories reference
+	// templates at `<module>/<arg>` (e.g. `$veb.html('templates/user.html')`) or
+	// `<module>/templates/<arg>`, which are not reachable relative to the source dir.
+	if root := vmod_dir {
+		if root != dir {
+			vmod_direct := os.join_path_single(root, arg)
+			if os.exists(vmod_direct) {
+				return vmod_direct
+			}
+			vmod_templates := os.join_path(root, 'templates', arg)
+			if os.exists(vmod_templates) {
+				return vmod_templates
+			}
+		}
+	}
 	return direct
+}
+
+// nearest_vmod_dir walks up from `start_dir` to the closest directory that contains a
+// `v.mod` file (the module root), or returns none when there is none.
+fn nearest_vmod_dir(start_dir string) ?string {
+	mut d := start_dir
+	for d.len > 0 {
+		if os.exists(os.join_path_single(d, 'v.mod')) {
+			return d
+		}
+		parent := os.dir(d)
+		if parent == d {
+			break
+		}
+		d = parent
+	}
+	return none
 }
 
 // parse_stmts_from_source parses `src` as a statement sequence using a temporary
@@ -1057,15 +1098,18 @@ fn (mut p Parser) expand_veb_template_stmt(stmt_id flat.NodeId) ?[]flat.NodeId {
 // veb_template_no_descend_kinds are the constructs whose builder must NOT be hoisted
 // out to the enclosing statement, because they introduce their own scope and/or run
 // conditionally: nested function bodies (`fn_literal`/`lambda_expr`/`fn_decl`) and
-// block/branch bodies (`if_expr`/`match_stmt`/`block`/`for_stmt`/`or_expr`). A
-// `$tmpl()` inside those is handled where the inner block itself is parsed, not here.
+// block/branch bodies (`block`/`for_stmt`/`or_expr`). A `$tmpl()` inside those is
+// handled where the inner block itself is parsed, not here. `if_expr`/`match_stmt` are
+// handled specially in collect_veb_template_node_ids: their control expression runs
+// unconditionally and is descended into, while their branch bodies are not.
 const veb_template_no_descend_kinds = [flat.NodeKind.fn_literal, .lambda_expr, .fn_decl,
-	.if_expr, .match_stmt, .block, .for_stmt, .or_expr]
+	.block, .for_stmt, .or_expr]
 
 // collect_veb_template_node_ids gathers the `.veb_template` placeholders in the subtree
 // rooted at `id` that are safe to hoist into the current statement — i.e. reached only
 // through unconditional expression composition (calls, selectors, `+`, struct inits,
-// indexing, …). It stops at scope/branch boundaries (see veb_template_no_descend_kinds).
+// indexing, …) and `if`/`match` control expressions. It stops at scope/branch
+// boundaries (see veb_template_no_descend_kinds).
 fn (p &Parser) collect_veb_template_node_ids(id flat.NodeId, mut out []flat.NodeId) {
 	if int(id) < 0 || int(id) >= p.a.nodes.len {
 		return
@@ -1073,6 +1117,16 @@ fn (p &Parser) collect_veb_template_node_ids(id flat.NodeId, mut out []flat.Node
 	node := p.a.nodes[int(id)]
 	if node.kind == .veb_template {
 		out << id
+		return
+	}
+	if node.kind in [.if_expr, .match_stmt] {
+		// The control expression (child 0 — an `if` condition/guard or a `match`
+		// subject) runs unconditionally in this scope, so a template call there is safe
+		// to hoist; the branch bodies/values are conditional and are handled where each
+		// branch block is parsed, so they are not descended into.
+		if node.children_count > 0 {
+			p.collect_veb_template_node_ids(p.a.child(&node, 0), mut out)
+		}
 		return
 	}
 	if node.kind in veb_template_no_descend_kinds {
