@@ -1083,6 +1083,12 @@ fn (mut t Transformer) thread_wait_or_expr_type(call flat.Node) ?string {
 }
 
 fn (t &Transformer) canonical_or_expr_types(expr_type string) (string, string) {
+	// A bare `!` or `?` (a result/option of `void`, e.g. `fn f() !`) carries no payload.
+	// Falling through would run `optional_base_type('!')` -> `'!'`, then resolve `'!'` as
+	// the `Optional` wrapper struct and double-wrap the temporary as `Optional_Optional`.
+	if expr_type == '!' || expr_type == '?' {
+		return '${expr_type}void', 'void'
+	}
 	mut clean_expr_type := expr_type
 	if !t.is_optional_type_name(clean_expr_type) {
 		normalized := t.normalize_type_alias(clean_expr_type)
