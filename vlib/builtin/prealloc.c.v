@@ -729,7 +729,7 @@ pub fn prealloc_scope_resume(scope_ptr voidptr, state voidptr) {
 // prealloc_scope_owns reports whether ptr points into an allocation block owned
 // by scope_ptr. It lets arena users promote only escaping fields instead of
 // deep-cloning every object reachable from a scoped operation.
-@[unsafe]
+@[inline; unsafe]
 pub fn prealloc_scope_owns(scope_ptr voidptr, ptr voidptr) bool {
 	if scope_ptr == unsafe { nil } || ptr == unsafe { nil } {
 		return false
