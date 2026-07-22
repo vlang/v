@@ -11299,13 +11299,18 @@ fn (mut g FlatGen) gen_string_infix_fallback(node flat.Node, lhs_id flat.NodeId,
 
 // gen_map_infix_eq lowers `map == map` / `map != map` to the runtime map
 // equality helper. C cannot compare `struct map` values with `==`, so without
-// this the generated comparison fails to compile.
+// this the generated comparison fails to compile. Pointer operands are left
+// alone (like the array-equality path): `&m1 == &m2` must keep comparing the
+// pointer addresses, not the pointed-to map contents.
 fn (mut g FlatGen) gen_map_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
 	if node.op !in [.eq, .ne] {
 		return false
 	}
-	lhs_is_map := map_str_clean_type(types.unwrap_pointer(lhs_type)) is types.Map
-	rhs_is_map := map_str_clean_type(types.unwrap_pointer(rhs_type)) is types.Map
+	if lhs_type is types.Pointer || rhs_type is types.Pointer {
+		return false
+	}
+	lhs_is_map := map_str_clean_type(lhs_type) is types.Map
+	rhs_is_map := map_str_clean_type(rhs_type) is types.Map
 	if !lhs_is_map || !rhs_is_map {
 		return false
 	}
@@ -11313,23 +11318,11 @@ fn (mut g FlatGen) gen_map_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id f
 		g.write('!')
 	}
 	g.write('v3_map_map_eq(')
-	g.gen_map_value_arg(lhs_id, lhs_type)
+	g.gen_expr(lhs_id)
 	g.write(', ')
-	g.gen_map_value_arg(rhs_id, rhs_type)
+	g.gen_expr(rhs_id)
 	g.write(')')
 	return true
-}
-
-// gen_map_value_arg emits a `map` value operand, dereferencing a map pointer so
-// the runtime helper receives the map by value.
-fn (mut g FlatGen) gen_map_value_arg(base_id flat.NodeId, base_type types.Type) {
-	if base_type is types.Pointer {
-		g.write('*(')
-		g.gen_expr(base_id)
-		g.write(')')
-	} else {
-		g.gen_expr(base_id)
-	}
 }
 
 fn (mut g FlatGen) gen_array_infix_eq(node flat.Node, lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type types.Type, rhs_type types.Type) bool {
@@ -15674,11 +15667,17 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		if qname == 'max_len' && ct == 'int' {
 			g.writeln('enum { ${qname} = ${expr_str} };')
 		} else if ct == 'u8' || g.name_collides_with_struct_field(qname)
-			|| g.address_taken_const_keys[const_address_key(name)] {
+			|| (const_owner in ['', 'main']
+			&& g.address_taken_const_keys[const_address_key(name)]) {
 			// A `#define` whose name matches a struct field would wrongly expand every
 			// `.field` access. Byte constants are also passed by reference by generic
 			// binary I/O helpers, and consts whose address is taken (`&c`) need a real
 			// object to point at, so all of these need addressable storage over a macro.
+			// The address-taken case is restricted to main-module consts: those are
+			// only referenced from the single program unit, so their static storage has
+			// one address. A `static const` in the shared prefix of an imported module
+			// would be duplicated per cached translation unit, so `&mod.c` from the main
+			// unit and a cached module function would observe different objects.
 			g.writeln('static const ${ct} ${qname} = ${expr_str};')
 		} else {
 			g.writeln('#define ${qname} (${expr_str})')

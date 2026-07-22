@@ -4096,15 +4096,27 @@ fn (g &FlatGen) lock_expr_multi_return_type(node flat.Node, count int) ?types.Mu
 fn (mut g FlatGen) gen_static_local_lazy_init(lhs_id flat.NodeId, rhs_id flat.NodeId) {
 	name := g.decl_lhs_str(lhs_id)
 	var_type := g.usable_expr_type(rhs_id)
+	// Register the lhs as a local before emitting: this path skips the normal
+	// decl handling, so without this a later reference in the same function that
+	// shadows a const/global of the same name would resolve to that global's C
+	// name instead of the static local declared here.
+	lhs := g.a.nodes[int(lhs_id)]
+	if lhs.kind == .ident && lhs.value.len > 0 {
+		g.tc.cur_scope.insert_with_owner(lhs.value, var_type)
+	}
 	ct := g.tc.c_type(var_type)
 	guard := '${name}_v3_static_inited'
 	g.writeln('static ${ct} ${name};')
 	g.writeln('static bool ${guard} = false;')
 	g.writeln('if (!${guard}) {')
-	g.writeln('\t${guard} = true;')
+	// Set the guard only after the assignment completes: a non-constant
+	// initializer may leave through an `or { return ... }` block, and marking
+	// the variable initialized before that would skip the retry on the next
+	// call and expose the zero value.
 	g.write('\t${name} = ')
 	g.gen_expr_with_expected_type(rhs_id, var_type)
 	g.writeln(';')
+	g.writeln('\t${guard} = true;')
 	g.writeln('}')
 }
 
