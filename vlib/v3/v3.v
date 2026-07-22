@@ -1917,6 +1917,7 @@ fn monomorph_cache_semantic_signature(a &flat.FlatAst, source_files []string) st
 	for idx in file_ids {
 		hash = c_hash_monomorph_node(hash, a, flat.NodeId(idx), cacheable_strings)
 	}
+	hash = c_hash_function_metadata(hash, a)
 	return hash.hex()
 }
 

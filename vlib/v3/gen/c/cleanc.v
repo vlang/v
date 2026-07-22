@@ -1131,7 +1131,11 @@ fn c_record_cache_resolution_path(path string, mut resolution_dirs map[string]bo
 			if first_missing.len > 0 {
 				missing_resolution_paths[first_missing] = true
 			} else {
-				resolution_dirs[os.real_path(dir)] = true
+				resolution_dirs[dir] = true
+				real_dir := os.real_path(dir)
+				if real_dir.len > 0 {
+					resolution_dirs[real_dir] = true
+				}
 			}
 			return
 		}

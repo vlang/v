@@ -1790,6 +1790,66 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '2'
 }
 
+fn test_whole_program_cgen_invalidates_when_symlinked_include_dir_changes() {
+	$if windows {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_cgen_symlinked_include_resolution_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	first_target := os.join_path(root, 'first_target')
+	second_target := os.join_path(root, 'second_target')
+	for dir in [first_target, second_target, os.join_path(root, 'fallback')] {
+		os.mkdir_all(dir) or { panic(err) }
+	}
+	include_link := os.join_path(root, 'first')
+	os.symlink(first_target, include_link) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_module_cache_file(root, 'fallback/value.h', 'static inline int v3_include_value(void) {
+	return 1;
+}
+')
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', 'module main
+
+#flag -I @DIR/first
+#flag -I @DIR/fallback
+#include <value.h>
+
+fn C.v3_include_value() int
+
+fn main() {
+	println(C.v3_include_value())
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first-output')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '1'
+
+	warm_output := os.join_path(root, 'warm-output')
+	warm :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(warm_output)} ${os.quoted_path(main_file)}')
+	assert warm.exit_code == 0, warm.output
+	assert warm.output.contains('cgen (cached)'), warm.output
+	assert run_module_cache_binary(warm_output) == '1'
+
+	write_module_cache_file(root, 'second_target/value.h', 'static inline int v3_include_value(void) {
+	return 2;
+}
+')
+	os.rm(include_link) or { panic(err) }
+	os.symlink(second_target, include_link) or { panic(err) }
+	second_output := os.join_path(root, 'second-output')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('cgen (cached)'), second.output
+	assert run_module_cache_binary(second_output) == '2'
+}
+
 fn test_module_cache_rebuilds_modules_when_comptime_env_changes() {
 	v3_bin := build_module_cache_v3()
 	root := os.join_path(os.temp_dir(), 'v3_module_cache_comptime_env_${os.getpid()}')
@@ -3837,6 +3897,75 @@ fn main() {
 		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(changed_output)} ${os.quoted_path(main_file)}')
 	assert changed.exit_code == 0, changed.output
 	assert run_module_cache_binary(changed_output) == 'stable\nafter'
+}
+
+fn test_generic_program_cache_invalidates_function_metadata() {
+	$if !macos {
+		return
+	}
+	v3_bin := build_module_cache_v3()
+	root := os.join_path(os.temp_dir(), 'v3_generic_function_metadata_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	main_file := os.join_path(root, 'main.v')
+	write_module_cache_file(root, 'main.v', "module main
+
+fn identity[T](value T) T {
+	return value
+}
+
+@[export: 'v3_cache_export_before']
+fn exported_value() int {
+	return identity(42)
+}
+
+fn main() {
+	println(exported_value())
+}
+")
+	cache_dir := os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
+	assert run_module_cache_binary(first_output) == '42'
+	first_symbols := os.execute('nm -gU ${os.quoted_path(first_output)}')
+	assert first_symbols.exit_code == 0, first_symbols.output
+	assert first_symbols.output.contains('_v3_cache_export_before'), first_symbols.output
+	warm_output := os.join_path(root, 'warm')
+	warm :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(warm_output)} ${os.quoted_path(main_file)}')
+	assert warm.exit_code == 0, warm.output
+	assert warm.output.contains('monomorphize (cached)'), warm.output
+	assert run_module_cache_binary(warm_output) == '42'
+
+	write_module_cache_file(root, 'main.v', "module main
+
+fn identity[T](value T) T {
+	return value
+}
+
+@[export: 'v3_cache_export_after']
+fn exported_value() int {
+	return identity(42)
+}
+
+fn main() {
+	println(exported_value())
+}
+")
+	second_output := os.join_path(root, 'second')
+	second :=
+		os.execute('V3CACHE=${os.quoted_path(cache_dir)} ${os.quoted_path(v3_bin)} -o ${os.quoted_path(second_output)} ${os.quoted_path(main_file)}')
+	assert second.exit_code == 0, second.output
+	assert !second.output.contains('monomorphize (cached)'), second.output
+	assert !second.output.contains('monomorphize (dependency cache)'), second.output
+	assert run_module_cache_binary(second_output) == '42'
+	second_symbols := os.execute('nm -gU ${os.quoted_path(second_output)}')
+	assert second_symbols.exit_code == 0, second_symbols.output
+	assert second_symbols.output.contains('_v3_cache_export_after'), second_symbols.output
+	assert !second_symbols.output.contains('_v3_cache_export_before'), second_symbols.output
 }
 
 fn test_incremental_program_cache_recompiles_real_main_logic() {
